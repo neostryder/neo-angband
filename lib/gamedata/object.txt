@@ -919,8 +919,8 @@ cost:590
 alloc:20:45 to 100
 attack:3d6:0:0
 armor:0:0
-desc:Two great bars of wood connected by a massive chain, needing two hands
-desc: to properly wield.
+desc:Two great bars of wood connected by a massive chain, built
+desc: to deliver crushing blows.
 
 
 ### Clubs ###
@@ -1081,8 +1081,7 @@ cost:358
 alloc:20:15 to 100
 attack:2d5:0:0
 armor:0:0
-desc:A fifteen foot spear, requiring two hands to wield, principally used in
-desc: infantry formations.
+desc:A fifteen foot spear, principally used in infantry formations.
 
 
 ### Axes ###
