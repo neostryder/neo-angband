@@ -1,0 +1,57 @@
+name: Mac
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  build:
+    name: Cocoa
+    runs-on: macos-latest
+    steps:
+      - name: Clone Project
+        uses: actions/checkout@v6
+
+      - name: Build
+        run: |
+          cd src
+          env OPT="-Werror" make -f Makefile.osx -j$(sysctl -n hw.activecpu)
+
+  cmake-curses:
+    runs-on: macos-latest
+    steps:
+      - name: Install Build Dependencies
+        run: |
+          brew install ncurses
+
+      - name: Clone Project
+        uses: actions/checkout@v6
+
+      - name: Configure (CMake)
+        run: |
+          cmake -S . -B build -G Ninja -DSUPPORT_GCU_FRONTEND=ON
+
+      - name: Build
+        run: |
+          cmake --build build --parallel
+
+  autoconf-curses:
+    runs-on: macos-latest
+    steps:
+      # Requires autoconf and automake; install those via homebrew (available
+      # by default).
+      - name: Install Build Dependencies
+        run: |
+          brew install m4
+          brew install autoconf
+          brew install automake
+
+      - name: Clone Project
+        uses: actions/checkout@v6
+
+      - name: Build
+        run: |
+          ./autogen.sh
+          ./configure --with-no-install --enable-curses --disable-ncursestest
+          make -j$(sysctl -n hw.activecpu)

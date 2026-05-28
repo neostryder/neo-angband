@@ -1,8 +1,0 @@
-{
-  "id": "early-view",
-  "name": "Early view",
-  "version": "1.0.0",
-  "shape": "plugin",
-  "modApi": 1,
-  "capabilities": ["display:replace"]
-}
