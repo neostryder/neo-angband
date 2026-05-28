@@ -1,0 +1,97 @@
+/**
+ * \file main.h
+ * \brief Core game initialisation for UNIX (and other) machines
+ *
+ * Copyright (c) 1997 Ben Harrison, and others
+ * Copyright (c) 2002 Robert Ruehlmann
+ *
+ * This work is free software; you can redistribute it and/or modify it
+ * under the terms of either:
+ *
+ * a) the GNU General Public License as published by the Free Software
+ *    Foundation, version 2, or
+ *
+ * b) the "Angband licence":
+ *    This software may be copied and distributed for educational, research,
+ *    and not for profit purposes provided that this copyright and statement
+ *    are included in all such copies.  Other copyrights may also apply.
+ */
+
+#ifndef INCLUDED_MAIN_H
+#define INCLUDED_MAIN_H
+
+#include "angband.h"
+#include "ui-term.h"
+
+extern errr init_lfb(int argc, char **argv);
+extern errr init_x11(int argc, char **argv);
+extern errr init_xpj(int argc, char **argv);
+extern errr init_gcu(int argc, char **argv);
+extern errr init_cap(int argc, char **argv);
+extern errr init_dos(int argc, char **argv);
+extern errr init_ibm(int argc, char **argv);
+extern errr init_emx(int argc, char **argv);
+extern errr init_sla(int argc, char **argv);
+extern errr init_lsl(int argc, char **argv);
+extern errr init_ami(int argc, char **argv);
+extern errr init_vme(int argc, char **argv);
+extern errr init_vcs(int argc, char **argv);
+extern errr init_sdl(int argc, char **argv);
+extern errr init_sdl2(int argc, char **argv);
+extern errr init_test(int argc, char **argv);
+extern errr init_stats(int argc, char **argv);
+extern errr init_spoil(int argc, char **argv);
+
+
+extern const char help_lfb[];
+extern const char help_xpj[];
+extern const char help_x11[];
+extern const char help_vcs[];
+extern const char help_gcu[];
+extern const char help_cap[];
+extern const char help_vme[];
+extern const char help_ami[];
+extern const char help_lsl[];
+extern const char help_sla[];
+extern const char help_emx[];
+extern const char help_ibm[];
+extern const char help_dos[];
+extern const char help_sdl[];
+extern const char help_sdl2[];
+extern const char help_test[];
+extern const char help_stats[];
+extern const char help_spoil[];
+
+
+struct module
+{
+	const char *name;
+	const char *help;
+	errr (*init)(int argc, char **argv);
+	/**
+	 * If true, SIGHUP triggers the UI to disconnect from the game and
+	 * the game to exit.  In that case, the front end should either use
+	 * NULL for ui-input.h's disconnect_denier_hook (that is the default)
+	 * or have the hook it registers be able to deal with the case that
+	 * the communication channel with the player has indeed been lost.
+	 * If false, SIGHUP is ignored.
+	 */
+	bool hup_disconnects;
+	/**
+	 * If true, the default disposition, stopping, is used for SIGTSTP.
+	 * Otherwise, a handler is installed that sets ui-term.h's
+	 * terms_suspending to be non-zero.  The front end should check
+	 * terms_suspending when its xtra_hook is called with TERM_XTRA_EVENT,
+	 * and suspend if it is non-zero.  ui-signal.h's
+	 * signals_perform_deferred_stop() provides a standardized way to
+	 * suspend and then resume when ready.  It relies on the front end's
+	 * xtra_hook performing the front-end specific suspend operations
+	 * when called with TERM_XTRA_ALIVE as the first argument and zero
+	 * as the second argument and performing the front-end specific resume
+	 * operations when called with TERM_XTRA_ALIVE as the first argument and
+	 * a non-zero value as the second argument.
+	 */
+	bool tstp_default;
+};
+
+#endif /* INCLUDED_MAIN_H */

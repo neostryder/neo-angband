@@ -1,0 +1,222 @@
+name: msys2
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  stock:
+    name: GCU
+    runs-on: windows-latest
+    defaults:
+      # Reduce verbosity and always run with msys2 as the default shell.
+      # See https://github.com/marketplace/actions/setup-msys2 .
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Set up prerequisites
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >-
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-ncurses
+
+      - name: Clone Project
+        uses: actions/checkout@v6
+
+      - name: Build with CMake/Ninja
+        run: |
+          mkdir build
+          cd build
+          cmake -G Ninja -DSUPPORT_GCU_FRONTEND=ON -DSUPPORT_STATIC_LINKING=ON ..
+          ninja -j$(nproc)
+
+  sdl:
+    name: SDL2
+    runs-on: windows-latest
+    defaults:
+      # Reduce verbosity and always run with msys2 as the default shell.
+      # See https://github.com/marketplace/actions/setup-msys2 .
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Set up prerequisites
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >-
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-SDL2_ttf
+            mingw-w64-x86_64-SDL2_image
+            mingw-w64-x86_64-SDL2_mixer
+
+      - name: Clone Project
+        uses: actions/checkout@v6
+
+      - name: Build with CMake/Ninja including sound and static linking
+        run: |
+          mkdir build-sound
+          cd build-sound
+          cmake -G Ninja -DSUPPORT_SDL2_FRONTEND=ON -DSUPPORT_SDL2_SOUND=ON -DSUPPORT_STATIC_LINKING=ON ..
+          ninja -j$(nproc)
+
+  configure-win:
+    runs-on: windows-latest
+    defaults:
+      # Reduce verbosity and always run with msys2 as the default shell.
+      # See https://github.com/marketplace/actions/setup-msys2 .
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Set up prerequisites
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          # The libraries in src/win/lib and src/win/dll are 32-bit.
+          msystem: mingw32
+          install: >-
+            autoconf-wrapper
+            automake-wrapper
+            make
+            mingw-w64-i686-gcc
+
+      - name: Clone Project
+        uses: actions/checkout@v6
+
+      - name: Build
+        run: |
+          ./autogen.sh
+          ./configure --enable-win
+          make -j$(nproc) install
+          make -j$(nproc) tests
+
+  cmake-win32:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Set up prerequisites
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          # The libraries in src/win/lib and src/win/dll are 32-bit.
+          msystem: MINGW32
+          install: >-
+            mingw-w64-i686-cmake
+            mingw-w64-i686-ninja
+            mingw-w64-i686-gcc
+            mingw-w64-i686-libpng
+
+      - name: Clone Project
+        uses: actions/checkout@v6
+
+      - name: Configure with CMake/Ninja and static linking
+        run: |
+          mkdir build
+          cd build
+          cmake -G Ninja -DSUPPORT_WINDOWS_FRONTEND=ON -DSUPPORT_STATIC_LINKING=ON ..
+
+      - name: Build with Ninja
+        run: |
+          cd build
+          ninja -j$(nproc)
+
+      - name: Run Tests
+        run: |
+          cd build
+          ninja -j$(nproc) alltests
+
+      - name: Configure and build with bundled PNG
+        run: |
+          mkdir build-bundled-png
+          cd build-bundled-png
+          cmake -G Ninja -DSUPPORT_WINDOWS_FRONTEND=ON -DSUPPORT_BUNDLED_PNG=ON ..
+          ninja -j$(nproc)
+
+  cmake-win64:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Set up prerequisites
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          msystem: MINGW64
+          install: >-
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-libpng
+
+      - name: Clone Project
+        uses: actions/checkout@v6
+
+      - name: Configure with CMake/Ninja
+        run: |
+          mkdir build
+          cd build
+          cmake -G Ninja -DSUPPORT_WINDOWS_FRONTEND=ON ..
+
+      - name: Build with Ninja
+        run: |
+          cd build
+          ninja -j$(nproc)
+
+      - name: Run Tests
+        run: |
+          cd build
+          ninja -j$(nproc) alltests
+
+      - name: Configure and build with static linking
+        run: |
+          mkdir build-static
+          cd build-static
+          cmake -G Ninja -DSUPPORT_WINDOWS_FRONTEND=ON -DSUPPORT_STATIC_LINKING=ON ..
+          ninja -j$(nproc)
+
+  asan-ubsan-clang64:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Set up prerequisites
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          msystem: CLANG64
+          install: >-
+            mingw-w64-clang-x86_64-clang
+            mingw-w64-clang-x86_64-compiler-rt
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-libpng
+
+      - name: Clone Project
+        uses: actions/checkout@v6
+
+      - name: Build with ASAN/UBSAN
+        run: |
+          mkdir build
+          cd build
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
+            -DCMAKE_C_FLAGS="-fsanitize=address -fsanitize=undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -fno-lto -g" \
+            ..
+          ninja -j$(nproc) --verbose
+
+      - name: Run Tests with ASAN/UBSAN
+        run: |
+          cd build
+          ninja -j$(nproc) --verbose alltests

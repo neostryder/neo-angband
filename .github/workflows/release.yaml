@@ -1,0 +1,735 @@
+name: create-github-release
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+env:
+    # Used as the name when uploading or downloading the artifact for passing
+    # configuration data from the Setup job to those dependent on it.
+    CONFIG_ARTIFACT: release-config
+    # Used as the path for the file with the configuration data passed from
+    # the Setup job to those dependent on it.
+    CONFIG_ARTIFACT_PATH: release-config.txt
+    # Used as the name when uploading or downloading the artifact with the
+    # converted document files.
+    DOC_ARTIFACT: release-docs
+    # Used as the path for the file with the converted document files.
+    DOC_ARTIFACT_PATH: release-docs.tar
+    # Used as the name when uploading or downloading the artifact for passing
+    # the name of the source archive.
+    SRC_ARTIFACT: release-src
+    # Used as the path for the file with the name of the source archive in it.
+    SRC_ARTIFACT_PATH: release-src.txt
+    # Used as the name when uploading or downloading the artifact holding
+    # the source archive.
+    SRC_ARCHIVE_ARTIFACT: release-src-archive
+    # Used as the name when uploading or downloading the artifact for passing
+    # the name of the Windows archive.
+    WIN_ARTIFACT: release-win
+    # Used as the path for the file with the name of the Windows archive in it.
+    WIN_ARTIFACT_PATH: release-win.txt
+    # Used as the name when uploading or downloading the artifact holding
+    # the Windows archive.
+    WIN_ARCHIVE_ARTIFACT: release-win-archive
+    # Used as the name when uploading or downloading the artifact for passing
+    # the name of the Mac archive.
+    MAC_ARTIFACT: release-mac
+    # Used as the path for the file with the name of the Mac archive in it.
+    MAC_ARTIFACT_PATH: release-mac.txt
+    # Used as the name when uploading or downloading the artifact holding
+    # the Mac archive.
+    MAC_ARCHIVE_ARTIFACT: release-mac-archive
+    # Used as the name when uploading or downloading the artifact for passing
+    # the name of the Nintendo NDS archive.
+    NIN_DS_ARTIFACT: release-ds
+    # Used as the path for the file with the name of the Nintendo NDS archive
+    # in it.
+    NIN_DS_ARTIFACT_PATH: release-ds.txt
+    # Used as the name when uploading or downloading the artifact holding
+    # the Nintendo DS archive.
+    NIN_DS_ARCHIVE_ARTIFACT: release-ds-archive
+    # Used as the name when uploading or downloading the artifact for passing
+    # the name of the Nintendo 3DS archive.
+    NIN_3DS_ARTIFACT: release-3ds
+    # Used as the path for the file with the name of the Nintendo 3DS archive
+    # in it.
+    NIN_3DS_ARTIFACT_PATH: release-3ds.txt
+    # Used as the name when uploading or downloading the artifact holding
+    # the Nintendo 3DS archive.
+    NIN_3DS_ARCHIVE_ARTIFACT: release-3ds-archive
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    steps:
+      # Need commit history and tags for scripts/version.sh to work as expected
+      # so use 0 for fetch-depth.
+      - name: Clone Project
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # Need automake and autoconf to initialize the build system and make to
+      # extract the names.
+      - name: Install Build Dependencies
+        id: build_dep
+        run: |
+          sudo apt-get update
+          sudo apt-get install cmake ninja-build gcc libx11-dev
+
+      - name: Initialize the Build System
+        id: build_init
+        run: |
+          cmake -S . -B build -G Ninja
+
+      - name: Extract Names from the Build System
+        id: get_names
+        run: |
+          name=$(cmake --build build --target print-project-name | sed -En 's/^our-project-name=//p')
+          echo "name=$name" >> $GITHUB_OUTPUT
+          prog=$(cmake --build build --target print-executable-name | sed -En 's/^our-executable-name=//p')
+          echo "prog=$prog" >> $GITHUB_OUTPUT
+
+      - name: Set Release Version
+        id: get_release_vars
+        run: |
+          version=`scripts/version.sh`
+          echo "version=$version" >> $GITHUB_OUTPUT
+          prerelease=`echo $version | awk '/^[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+$/ { print "false" ; exit 0 } ; { print "true"; exit 0 } ;'`
+          echo "prerelease=$prerelease" >> $GITHUB_OUTPUT
+          # Mark anything that isn't a prerelease as a draft.
+          draft=true
+          if test x$prerelease = xtrue ; then
+              draft=false
+          fi
+          echo "draft=$draft" >> $GITHUB_OUTPUT
+
+      # The quoting here may be too simple-minded:  what if there are single
+      # quotes in the steps.*.outputs.* stuff.
+      - name: Create Artifact with Configuration Details
+        run: |
+          echo name= '${{ steps.get_names.outputs.name }}' > $CONFIG_ARTIFACT_PATH
+          echo prog= '${{ steps.get_names.outputs.prog }}' >> $CONFIG_ARTIFACT_PATH
+          echo version= '${{ steps.get_release_vars.outputs.version }}' >> $CONFIG_ARTIFACT_PATH
+          echo prerelease= '${{ steps.get_release_vars.outputs.prerelease }}' >> $CONFIG_ARTIFACT_PATH
+          echo draft= '${{ steps.get_release_vars.outputs.draft }}' >> $CONFIG_ARTIFACT_PATH
+
+      - name: Upload Artifact for Use by Dependent Steps
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.CONFIG_ARTIFACT }}
+          path: ${{ env.CONFIG_ARTIFACT_PATH }}
+          retention-days: 1
+
+  docconvert:
+    name: Document Conversion
+    runs-on: ubuntu-latest
+    steps:
+      # Need commit history and tags for scripts/version.sh to work as expected
+      # so use 0 for fetch-depth.  Do this before installing the build
+      # dependencies as that step does some writing to the current directory
+      # and cloning the project wipes the current directory.
+      - name: Clone Project
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # Need both Sphinx (Python documentation tool) and a 3rd party theme.
+      # Also install pip (to get theme), gcc, cmake, ninja, libx11-dev
+      # (those four are so configuration and build work), and git
+      # (so scripts/version.sh works).  With Python 3, use a virtual
+      # environment (requires at least Python 3.3) to install the 3rd party
+      # theme and a hacked version of sphinx-build which will use that
+      # environment for compatibility with "externally managed environments"
+      # like GitHub's runner for Ubuntu 24.04.
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install cmake gcc ninja-build libx11-dev sphinx-common git
+          use_python3=`python --version 2>&1 | awk "/^Python 3\\./ { print \"YES\" ; exit 0 ; } ; { print \"NO\" ; exit 0; }"`
+          if test X$use_python3 == XYES ; then
+            sudo apt-get install python3-pip
+            python3 -m venv .venv/doc-builder
+            .venv/doc-builder/bin/pip install -U sphinx
+            .venv/doc-builder/bin/pip install sphinx-better-theme
+            echo "#!${PWD}/.venv/doc-builder/bin/python" >./sphinx-build
+            tail -n +2 `which sphinx-build` >>./sphinx-build
+            chmod a+x ./sphinx-build
+          else
+            sudo apt-get install python-pip
+            pip install sphinx-better-theme
+            ln -s `which sphinx-build` ./sphinx-build
+          fi
+
+      # Use the version (perhaps just a symbolic link) of sphinx-build set up
+      # in the build dependencies step.
+      - name: Convert
+        run: |
+          cmake -S . -B build -G Ninja -DBUILD_DOC=ON -DSPHINX_EXECUTABLE=$PWD/sphinx-build
+          cmake --build build --parallel --target OurManual
+
+      - name: Archive
+        run: |
+          tar -cf ${{ env.DOC_ARTIFACT_PATH }} \
+            --transform='s|^manual-output/html|docs/_build/html|' \
+            -C build manual-output/html
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.DOC_ARTIFACT }}
+          path: ${{ env.DOC_ARTIFACT_PATH }}
+          retention-days: 1
+
+  source:
+    needs: setup
+    name: Source Archive
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifact with Configuration Information
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.CONFIG_ARTIFACT }}
+
+      - name: Extract Configuration Information and Store in Step Outputs
+        id: store_config
+        run: |
+          name=`sed -E -n -e 's/name= //p' $CONFIG_ARTIFACT_PATH`
+          echo "name=$name" >> $GITHUB_OUTPUT
+          prog=`sed -E -n -e 's/prog= //p' $CONFIG_ARTIFACT_PATH`
+          echo "prog=$prog" >> $GITHUB_OUTPUT
+          version=`sed -E -n -e 's/version= //p' $CONFIG_ARTIFACT_PATH`
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install git
+
+      # Need commit history and tags for scripts/version.sh to work as expected
+      # so use 0 for fetch-depth.
+      - name: Clone Project
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Create source archive (CMake-era)
+        id: create_source_archive
+        run: |
+          archive_prefix=${{ steps.store_config.outputs.name }}-${{ steps.store_config.outputs.version }}
+
+          # Export tracked files only
+          git archive \
+            --prefix=${archive_prefix}/ \
+            --format=tar \
+            HEAD \
+            | tar -x
+
+          # Generate version file
+          scripts/version.sh > ${archive_prefix}/version
+
+          # Generate autotools files in the exported tree
+          (
+            cd ${archive_prefix}
+            ./autogen.sh
+            rm -rf autom4te.cache autogen.sh
+          )
+
+          # Create compressed archive
+          tar \
+            --exclude .github \
+            --exclude .gitignore \
+            --exclude .readthedocs.yaml \
+            --exclude .travis.yml \
+            -czvf ${archive_prefix}.tar.gz \
+            ${archive_prefix}
+
+          rm -rf ${archive_prefix}
+
+          echo "archive_file=${archive_prefix}.tar.gz" >> $GITHUB_OUTPUT
+
+      - name: Create Artifact with Source Archive Path
+        run: |
+          echo archive_path= '${{ steps.create_source_archive.outputs.archive_file }}' > $SRC_ARTIFACT_PATH
+
+      - name: Upload Artifact with Source Archive Path
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.SRC_ARTIFACT }}
+          path: ${{ env.SRC_ARTIFACT_PATH }}
+          retention-days: 1
+
+      - name: Upload Source Archive as Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.SRC_ARCHIVE_ARTIFACT }}
+          path: ${{ steps.create_source_archive.outputs.archive_file }}
+          retention-days: 1
+
+  windows:
+    needs: [setup, docconvert]
+    name: Windows
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download Artifact with Configuration Information
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.CONFIG_ARTIFACT }}
+
+      - name: Extract Configuration Information and Store in Step Outputs
+        id: store_config
+        run: |
+          name=`sed -E -n -e 's/name= //p' $CONFIG_ARTIFACT_PATH`
+          echo "name=$name" >> $GITHUB_OUTPUT
+          prog=`sed -E -n -e 's/prog= //p' $CONFIG_ARTIFACT_PATH`
+          echo "prog=$prog" >> $GITHUB_OUTPUT
+          version=`sed -E -n -e 's/version= //p' $CONFIG_ARTIFACT_PATH`
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install gcc-mingw-w64 automake autoconf git make zip
+
+      # Need commit history and tags for scripts/version.sh to work as expected
+      # so use 0 for fetch-depth.
+      - name: Clone Project
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download Artifact with Converted Documents
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.DOC_ARTIFACT }}
+
+      - name: Extract Converted Documents
+        run: |
+          tar -xf ${{ env.DOC_ARTIFACT_PATH }}
+
+      # Override the default CFLAGS (-g -O2) to get a smaller executable.
+      # Using -O2 instead of -g -O2 reduces the unstripped executable from ~12 MB to ~3 MB
+      # with MinGW-w64 GCC 10-win32 (i686-w64-mingw32) on Ubuntu 22.04 LTS.
+      # Alternatively, we could keep -g -O2 for debugging and apply `strip`
+      # (or link with -s) afterwards to achieve the same reduced size.
+      #
+      # The main size reduction comes from removing -g.
+      # Defining NDEBUG has no measurable effect on the size.
+      # Optimizing for size (-Os) gives an additional ~13–18 % reduction after stripping.
+      #
+      # Example measurements:
+      #
+      #   | Flags            | Size (bytes) | Stripped size | Δ vs -O2  |
+      #   |------------------|--------------|---------------|-----------|
+      #   | -g -O2           | 11,843,443   | 2,163,214     | +302.6%   |
+      #   | -O2              | 2,942,051    | 2,163,214     | —         |
+      #   | -O2 -s           | 2,163,200    | 2,163,200     | −26.5%    |
+      #   | -Os              | 2,558,723    | 1,777,678     | −13.0%    |
+      #
+      # Conclusion: removing -g or stripping the binary are the main ways to reduce size,
+      # while -Os yields a modest further reduction if minimal binary size is desired.
+      - name: Create Windows Archive
+        id: create_windows_archive
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -Werror" \
+            -DSUPPORT_WINDOWS_FRONTEND=ON \
+            -DSUPPORT_BUNDLED_PNG=ON \
+            -DCMAKE_TOOLCHAIN_FILE=toolchains/linux-i686-mingw32-cross.cmake
+          cmake --build build --parallel
+          cp build/game/${{ steps.store_config.outputs.prog }}.exe build/game/libpng12.dll build/game/zlib1.dll .
+          archive_prefix=${{ steps.store_config.outputs.name }}-${{ steps.store_config.outputs.version }}
+          echo "archive_file=${archive_prefix}-win.zip" >> $GITHUB_OUTPUT
+          scripts/pkg_win $archive_prefix ${archive_prefix}-win.zip
+
+      - name: Create Artifact with Windows Archive Path
+        run: |
+          echo archive_path= '${{ steps.create_windows_archive.outputs.archive_file }}' > $WIN_ARTIFACT_PATH
+
+      - name: Upload Artifact with Windows Archive Path
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.WIN_ARTIFACT }}
+          path: ${{ env.WIN_ARTIFACT_PATH }}
+          retention-days: 1
+
+      - name: Upload Windows Archive as Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.WIN_ARCHIVE_ARTIFACT }}
+          path: ${{ steps.create_windows_archive.outputs.archive_file }}
+          retention-days: 1
+
+  mac:
+    needs: [setup, docconvert]
+    name: Mac
+    runs-on: macos-latest
+    steps:
+      - name: Download Artifact with Configuration Information
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.CONFIG_ARTIFACT }}
+
+      - name: Extract Configuration Information and Store in Step Outputs
+        id: store_config
+        run: |
+          name=`sed -E -n -e 's/name= //p' $CONFIG_ARTIFACT_PATH`
+          echo "name=$name" >> $GITHUB_OUTPUT
+          prog=`sed -E -n -e 's/prog= //p' $CONFIG_ARTIFACT_PATH`
+          echo "prog=$prog" >> $GITHUB_OUTPUT
+          version=`sed -E -n -e 's/version= //p' $CONFIG_ARTIFACT_PATH`
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      # Need commit history and tags for scripts/version.sh to work as expected
+      # so use 0 for fetch-depth.
+      - name: Clone Project
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download Artifact with Converted Documents
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.DOC_ARTIFACT }}
+
+      - name: Extract Converted Documents
+        run: |
+          tar -xf ${{ env.DOC_ARTIFACT_PATH }}
+
+      # An SDK that supports building x86_64 and arm64 objects is currently
+      # necessary unless the default list of architectures, ARCHS, in
+      # Makefile.osx is overridden.  If the default SDK does not handle that,
+      # setting SDKROOT to point to an installed SDK that does would be one
+      # workaround.  Override the default OPT (-O2) to get the equivalent of
+      # what --enable-release does for builds using configure.
+      - name: Create Mac Archive
+        id: create_mac_archive
+        run: |
+          cd src
+          env OPT="-O2 -DNDEBUG -Werror" make -f Makefile.osx -j$(sysctl -n hw.activecpu) dist
+          archive_prefix=${{ steps.store_config.outputs.name }}-${{ steps.store_config.outputs.version }}-osx
+          echo "archive_file=${archive_prefix}.dmg" >> $GITHUB_OUTPUT
+
+      - name: Create Artifact with Mac Archive Path
+        run: |
+          echo archive_path= '${{ steps.create_mac_archive.outputs.archive_file }}' > $MAC_ARTIFACT_PATH
+
+      - name: Upload Artifact with Mac Archive Path
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.MAC_ARTIFACT }}
+          path: ${{ env.MAC_ARTIFACT_PATH }}
+          retention-days: 1
+
+      - name: Upload Mac Archive as Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.MAC_ARCHIVE_ARTIFACT }}
+          path: ${{ steps.create_mac_archive.outputs.archive_file }}
+          retention-days: 1
+
+  _3ds:
+    needs: [setup, docconvert]
+    name: Nintendo 3DS
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm
+    steps:
+      - name: Download Artifact with Configuration Information
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.CONFIG_ARTIFACT }}
+
+      - name: Extract Configuration Information and Store in Step Outputs
+        id: store_config
+        run: |
+          name=`sed -E -n -e 's/name= //p' $CONFIG_ARTIFACT_PATH`
+          echo "name=$name" >> $GITHUB_OUTPUT
+          prog=`sed -E -n -e 's/prog= //p' $CONFIG_ARTIFACT_PATH`
+          echo "prog=$prog" >> $GITHUB_OUTPUT
+          version=`sed -E -n -e 's/version= //p' $CONFIG_ARTIFACT_PATH`
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Clone Project
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download Artifact with Converted Documents
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.DOC_ARTIFACT }}
+
+      - name: Extract Converted Documents
+        run: |
+          tar -xf ${{ env.DOC_ARTIFACT_PATH }}
+
+      - name: Build Nintendo 3DS (3dsx)
+        id: create_nintendo_3ds_3dsx
+        shell: bash
+        run: |
+          pushd src/
+          make -f Makefile.3ds -j$(nproc)
+          popd
+          test -e src/${{ steps.store_config.outputs.prog }}.3dsx
+
+      - name: Setup cxitool
+        shell: bash
+        run: |
+          apt-get update && apt-get install -y build-essential automake autoconf autotools-dev
+          git clone -b cxi-stuff https://github.com/devkitPro/3dstools/
+          pushd 3dstools/
+          ./autogen.sh
+          ./configure
+          make -j$(nproc) install
+          popd
+
+      - name: Setup makerom
+        shell: bash
+        run: |
+          apt-get update && apt-get install -y build-essential libmbedtls-dev liblzma-dev libyaml-dev
+          git clone https://github.com/3DSGuy/Project_CTR/
+          pushd Project_CTR/makerom
+          make -j$(nproc) deps
+          make -j$(nproc)
+          cp -rv bin/makerom /usr/local/bin
+          popd
+
+      # The quoting to get prog may be too simple-minded:  what if there
+      # are single quotes in the steps.*.outputs.* stuff.  Restrict what's
+      # passed to cxitool's --name option to at most 8 characters since that
+      # is a limitation of that tool.
+      - name: Build Nintendo 3DS (cia)
+        id: create_nintendo_3ds_cia
+        shell: bash
+        run: |
+          pushd src/
+          prog='${{ steps.store_config.outputs.prog }}'
+          procname=`echo "$prog" | head -c 8`
+          test -e "$prog".3dsx
+          cxitool --name="$procname" --code=CTR-P-`echo "$procname" | tr [:lower:] [:upper:]` --tid=000400000616E600 "$prog".3dsx "$prog".cxi
+          makerom -v -f cia -o "$prog".cia -target t -i "$prog".cxi:0:0 -ignoresign -icon icon.smdh  
+          test -e "$prog".cia
+          popd
+
+      - name: Create Nintendo 3DS Archive
+        id: create_nintendo_3ds_archive
+        shell: bash
+        run: |
+          archive_prefix=${{ steps.store_config.outputs.name }}-${{ steps.store_config.outputs.version }}
+          echo "archive_file=${archive_prefix}-3ds.zip" >> $GITHUB_OUTPUT
+          mkdir -v ${{ steps.store_config.outputs.prog }}/
+          cp -v src/${{ steps.store_config.outputs.prog }}.3dsx ${archive_prefix}.3dsx
+          cp -v src/${{ steps.store_config.outputs.prog }}.cia ${archive_prefix}.cia
+          cp -rv lib ${{ steps.store_config.outputs.prog }}/
+          zip -r ${archive_prefix}-3ds.zip ${archive_prefix}.3dsx ${archive_prefix}.cia ${{ steps.store_config.outputs.prog }}/
+
+      - name: Create Artifact with Nintendo 3DS Archive Path
+        run: |
+          echo archive_path= '${{ steps.create_nintendo_3ds_archive.outputs.archive_file }}' > $NIN_3DS_ARTIFACT_PATH
+
+      - name: Upload Artifact with Nintendo 3DS Archive Path
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.NIN_3DS_ARTIFACT }}
+          path: ${{ env.NIN_3DS_ARTIFACT_PATH }}
+          retention-days: 1
+
+      - name: Upload Nintendo 3DS Archive as Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.NIN_3DS_ARCHIVE_ARTIFACT }}
+          path: ${{ steps.create_nintendo_3ds_archive.outputs.archive_file }}
+          retention-days: 1
+
+  nds:
+    needs: [setup, docconvert]
+    name: Nintendo DS
+    runs-on: ubuntu-latest
+    container: skylyrac/blocksds:slim-latest
+    steps:
+      - name: Download Artifact with Configuration Information
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.CONFIG_ARTIFACT }}
+
+      - name: Extract Configuration Information and Store in Step Outputs
+        id: store_config
+        run: |
+          name=`sed -E -n -e 's/name= //p' $CONFIG_ARTIFACT_PATH`
+          echo "name=$name" >> $GITHUB_OUTPUT
+          prog=`sed -E -n -e 's/prog= //p' $CONFIG_ARTIFACT_PATH`
+          echo "prog=$prog" >> $GITHUB_OUTPUT
+          version=`sed -E -n -e 's/version= //p' $CONFIG_ARTIFACT_PATH`
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Clone Project
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download Artifact with Converted Documents
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.DOC_ARTIFACT }}
+
+      - name: Extract Converted Documents
+        run: |
+          tar -xf ${{ env.DOC_ARTIFACT_PATH }}
+
+      - name: Create Nintendo DS Archive
+        id: create_nintendo_ds_archive
+        shell: bash
+        run: |
+          apt-get update && apt-get install -y zip
+          pushd src/
+          make -f Makefile.blocksds -j$(nproc)
+          popd
+          test -e src/${{ steps.store_config.outputs.prog }}.nds
+
+          archive_prefix=${{ steps.store_config.outputs.name }}-${{ steps.store_config.outputs.version }}
+          echo "archive_file=${archive_prefix}-nds.zip" >> $GITHUB_OUTPUT
+          mkdir -v ${{ steps.store_config.outputs.prog }}/
+          cp -v src/${{ steps.store_config.outputs.prog }}.nds ${archive_prefix}.nds
+          cp -rv lib ${{ steps.store_config.outputs.prog }}/
+          zip -r ${archive_prefix}-nds.zip ${archive_prefix}.nds ${{ steps.store_config.outputs.prog }}/
+
+      - name: Create Artifact with Nintendo DS Archive Path
+        run: |
+          echo archive_path= '${{ steps.create_nintendo_ds_archive.outputs.archive_file }}' > $NIN_DS_ARTIFACT_PATH
+
+      - name: Upload Artifact with Nintendo DS Archive Path
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.NIN_DS_ARTIFACT }}
+          path: ${{ env.NIN_DS_ARTIFACT_PATH }}
+          retention-days: 1
+
+      - name: Upload Nintendo DS Archive as Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.NIN_DS_ARCHIVE_ARTIFACT }}
+          path: ${{ steps.create_nintendo_ds_archive.outputs.archive_file }}
+          retention-days: 1
+
+  release:
+    if: github.event_name == 'push'
+    needs: [ setup, source, windows, mac, _3ds, nds ]
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone Project
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download Artifact with Configuration Information
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.CONFIG_ARTIFACT }}
+
+      - name: Extract Configuration Information and Store in Step Outputs
+        id: store_config
+        run: |
+          version=`sed -E -n -e 's/version= //p' $CONFIG_ARTIFACT_PATH`
+          echo "version=$version" >> $GITHUB_OUTPUT
+          prerelease=`sed -E -n -e 's/prerelease= //p' $CONFIG_ARTIFACT_PATH`
+          echo "prerelease=$prerelease" >> $GITHUB_OUTPUT
+          draft=`sed -E -n -e 's/draft= //p' $CONFIG_ARTIFACT_PATH`
+          echo "draft=$draft" >> $GITHUB_OUTPUT
+
+      - name: Download Artifact with Source Archive Path
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.SRC_ARTIFACT }}
+
+      - name: Extract Source Archive Path and Store in Step Outputs
+        id: store_src
+        run: |
+          archive_path=`sed -E -n -e 's/archive_path= //p' $SRC_ARTIFACT_PATH`
+          echo "archive_path=$archive_path" >> $GITHUB_OUTPUT
+
+      - name: Download Artifact with Source Archive
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.SRC_ARCHIVE_ARTIFACT }}
+
+      - name: Download Artifact with Windows Archive Path
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.WIN_ARTIFACT }}
+
+      - name: Extract Windows Archive Path and Store in Step Outputs
+        id: store_win
+        run: |
+          archive_path=`sed -E -n -e 's/archive_path= //p' $WIN_ARTIFACT_PATH`
+          echo "archive_path=$archive_path" >> $GITHUB_OUTPUT
+
+      - name: Download Artifact with Windows Archive
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.WIN_ARCHIVE_ARTIFACT }}
+
+      - name: Download Artifact with Mac Archive Path
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.MAC_ARTIFACT }}
+
+      - name: Extract Mac Archive Path and Store in Step Outputs
+        id: store_mac
+        run: |
+          archive_path=`sed -E -n -e 's/archive_path= //p' $MAC_ARTIFACT_PATH`
+          echo "archive_path=$archive_path" >> $GITHUB_OUTPUT
+
+      - name: Download Artifact with Mac Archive
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.MAC_ARCHIVE_ARTIFACT }}
+
+      - name: Download Artifact with Nintendo 3DS Archive Path
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.NIN_3DS_ARTIFACT }}
+
+      - name: Extract Nintendo 3DS Archive Path and Store in Step Outputs
+        id: store_3ds
+        run: |
+          archive_path=`sed -E -n -e 's/archive_path= //p' $NIN_3DS_ARTIFACT_PATH`
+          echo "archive_path=$archive_path" >> $GITHUB_OUTPUT
+
+      - name: Download Artifact with Nintendo 3DS Archive
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.NIN_3DS_ARCHIVE_ARTIFACT }}
+
+      - name: Download Artifact with Nintendo DS Archive Path
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.NIN_DS_ARTIFACT }}
+
+      - name: Extract Nintendo DS Archive Path and Store in Step Outputs
+        id: store_ds
+        run: |
+          archive_path=`sed -E -n -e 's/archive_path= //p' $NIN_DS_ARTIFACT_PATH`
+          echo "archive_path=$archive_path" >> $GITHUB_OUTPUT
+
+      - name: Download Artifact with Nintendo DS Archive
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.NIN_DS_ARCHIVE_ARTIFACT }}
+
+      # Use the gh CLI,  https://cli.github.com/manual/gh_release_create , to
+      # create the release.  Requires a checked out repository, thus the
+      # checkout step prior to retrieving the artifacts.
+      - name: Populate Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_tag="${{ steps.store_config.outputs.version }}"
+          options="-t $release_tag"
+          test x"${{ steps.store_config.outputs.draft }}" = xtrue && options="$options -d"
+          test x"${{ steps.store_config.outputs.prerelease }}" = xtrue && options="$options -p"
+          gh release create $release_tag ${{ steps.store_src.outputs.archive_path }} ${{ steps.store_win.outputs.archive_path }} ${{ steps.store_mac.outputs.archive_path }} ${{ steps.store_3ds.outputs.archive_path }} ${{ steps.store_ds.outputs.archive_path }} $options
