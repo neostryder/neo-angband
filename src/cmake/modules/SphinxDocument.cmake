@@ -391,7 +391,7 @@ function(add_sphinx_document _TARGET_NAME)
 
     # Add the target dependencies.
     if(NOT ("${_TARGET_DEPENDS}" STREQUAL ""))
-        ADD_DEPENDENCIES(${_TARGET_NAME} ${_TARGET_DEPENDS})
+        add_dependencies(${_TARGET_NAME} ${_TARGET_DEPENDS})
     endif()
 
     # Define properties on the target to describe the placement of the output.

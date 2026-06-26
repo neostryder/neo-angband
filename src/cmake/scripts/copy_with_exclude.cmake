@@ -7,7 +7,7 @@ set(_USAGE "usage: cmake [[-D <var>=<value>] ...] -P copy_with_exclude.cmake -- 
 set(_X 0)
 while(_X LESS CMAKE_ARGC)
     if(CMAKE_ARGV${_X} STREQUAL "--")
-        BREAK()
+        break()
     endif()
     math(EXPR _X "${_X} + 1")
 endwhile()

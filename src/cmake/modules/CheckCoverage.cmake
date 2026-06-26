@@ -243,7 +243,7 @@ function(add_coverage_targets _RESET_TARGET _REPORT_TARGET _COMBINED_TARGET)
             add_custom_target(${_REPORT_TARGET})
         endif()
     else()
-        ADD_CUSTOM_TARGET(${_REPORT_TARGET})
+        add_custom_target(${_REPORT_TARGET})
     endif()
 
     if(DEFINED COVERAGE_C_IMPLEMENTATION)
