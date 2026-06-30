@@ -4045,12 +4045,12 @@ int borg_calculate_attack_effectiveness(int attack_type)
         return (borg_attack_aux_spell_bolt(
             SPEAR_OF_OROME, rad, dam, BORG_ATTACK_HOLY_ORB, z_info->max_range, false));
 
-    /* spell -- Light of Manw(e + diaresis) */
-    case BF_SPELL_LIGHT_OF_MANWE:
+    /* spell -- Light of Varda */
+    case BF_SPELL_LIGHT_OF_VARDA:
         rad = 0;
         dam = borg.trait[BI_CLEVEL] * 5 + 100;
         return (borg_attack_aux_spell_bolt(
-            LIGHT_OF_MANWE, rad, dam, BORG_ATTACK_LIGHT, z_info->max_range, false));
+            LIGHT_OF_VARDA, rad, dam, BORG_ATTACK_LIGHT, z_info->max_range, false));
 
     /* spell -- Nether Bolt */
     case BF_SPELL_NETHER_BOLT:
