@@ -1,0 +1,23 @@
+module: packages/core/src/events.ts
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/game-event.h
+    items: [game_event_type (all 65), game_event_data, game_event_handler]
+  - path: src/game-event.c
+    items:
+      - event_add_handler
+      - event_remove_handler
+      - event_remove_handler_type
+      - event_remove_all_handlers
+      - event_add_handler_set
+      - event_remove_handler_set
+      - event_signal and typed event_signal_* helpers (unified into emit)
+notes: >-
+  The core-to-UI seam. Typed payload map replaces the C union; the void*
+  user pointer is dropped (closures). Handlers dispatch in registration
+  order like the upstream linked list. Instantiable (GameEvents class)
+  instead of global handler chains.
+verified-by:
+  - unit tests (ordering, set add/remove, mid-dispatch unsubscribe, type
+    count vs upstream enum)
