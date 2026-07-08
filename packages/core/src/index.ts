@@ -14,6 +14,10 @@ export * from "./events";
 export * from "./cmd";
 export * from "./msg";
 export * from "./color";
+export * from "./bitflag";
+export * from "./expression";
+export * from "./dice";
+export * from "./generated";
 
 /** Upstream release this port is verified against. */
 export const PARITY_BASELINE = "4.2.6";
