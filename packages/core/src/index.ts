@@ -37,3 +37,7 @@ export * from "./mon/types";
 export * from "./mon/bind";
 export * from "./mon/monster";
 export * from "./mon/make";
+export * from "./obj/types";
+export * from "./obj/bind";
+export * from "./obj/object";
+export * from "./obj/make";
