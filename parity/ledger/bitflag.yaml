@@ -1,0 +1,59 @@
+module: packages/core/src/bitflag.ts
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/z-bitflag.c
+    items:
+      - flag_has
+      - flag_next
+      - flag_count
+      - flag_is_empty
+      - flag_is_full
+      - flag_is_inter
+      - flag_is_subset
+      - flag_is_equal
+      - flag_on
+      - flag_off
+      - flag_wipe
+      - flag_setall
+      - flag_negate
+      - flag_copy
+      - flag_union
+      - flag_inter
+      - flag_diff
+      - flags_test
+      - flags_test_all
+      - flags_clear
+      - flags_set
+      - flags_init
+      - flags_mask
+  - path: src/z-bitflag.h
+    items:
+      - FLAG_WIDTH
+      - FLAG_START
+      - FLAG_END
+      - FLAG_SIZE
+      - FLAG_MAX
+      - FLAG_OFFSET
+      - FLAG_BINARY
+notes: >-
+  Flag sets are Uint8Array (bitflag is uint8_t upstream); flags are
+  1-indexed with FLAG_START 1 and flag 0 (FLAG_END) never set. Faithful
+  quirks kept: flag_inter returns byte INEQUALITY rather than whether the
+  destination changed, flags_mask inherits that via flag_inter, and
+  flag_is_full checks whole bytes so padding bits count. Intentional
+  divergences: flagNext returns NO_FLAG (-1) instead of FLAG_END (0) as the
+  exhaustion sentinel; the variadic flags_* functions take rest parameters
+  instead of a FLAG_END-terminated va_list; the explicit size parameter is
+  replaced by the Uint8Array length (binary ops assert equal lengths);
+  out-of-range or zero flags throw RangeError where upstream asserts or has
+  UB. flagCompUnion/flagCompInter/flagCompDiff are port extensions defined
+  as union/inter/diff against the complement of the second operand;
+  upstream 4.2.6 declares no flag_comp_* functions (the only trace is the
+  never-expanded macro rf_comp_union in src/monster.h line 114). A FlagSet
+  class wraps the functional API; not ported: flag_has_dbg/flag_on_dbg
+  (debug wrappers around quit_fmt) and the mem_* allocation plumbing.
+verified-by:
+  - packages/core/src/bitflag.test.ts (29 tests pinning the documented C
+    behavior, including the flag_inter inequality quirk, byte-boundary
+    flags, and 1-indexing; upstream ships no z-bitflag unit test suite)

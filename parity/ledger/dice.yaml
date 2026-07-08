@@ -1,0 +1,46 @@
+module: packages/core/src/dice.ts
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/z-dice.c
+    items:
+      - dice_new
+      - dice_reset
+      - dice_add_variable
+      - dice_bind_expression
+      - dice_parse_string
+      - dice_parse_state_transition
+      - dice_input_for_char
+      - dice_random_value
+      - dice_evaluate
+      - dice_roll
+      - dice_test_values
+      - dice_test_variables
+  - path: src/z-dice.h
+    items:
+      - dice_t
+notes: >-
+  The parser state machine (13 states x 9 inputs) is transcribed verbatim
+  from dice_parse_state_transition, including all quirks; spaces
+  concatenate surrounding characters, tokens truncate at 16 chars, bare 'd'
+  means one die, '-' is legal only as the first character, 'M' is the bonus
+  marker except while reading a variable name, and characters outside
+  [0-9A-Z$dmM+-&]/whitespace/NUL are silently ignored. Numbers go through C
+  strtol base 0 (leading 0 is octal) then an (int) cast, matching 64-bit
+  Linux long-to-int truncation. Variable names bind case-insensitively
+  (my_stricmp); at most 4 variables fit, and on overflow the component
+  stores index -1 (upstream then reads out of bounds, UB; this port
+  evaluates such a component as 0). dice_random_value is deterministic;
+  dice_evaluate delegates to randcalc and dice_roll to base + damroll on an
+  Rng instance passed as a parameter (intentional divergence: no global RNG
+  state; upstream out-parameters become an optional out object).
+  random_value maps to the RandomValue type from rng.ts (m_bonus ->
+  mBonus). Not ported: dice_free (garbage collected).
+verified-by:
+  - packages/core/src/dice.test.ts replicates all 4 upstream test cases
+    (alloc, parse-success with 27 accepted strings, parse-failure with 22
+    rejected strings, evaluate with a bound expression under MAXIMISE)
+    from src/tests/z-dice/dice.c, plus 8 extra tests pinning ignored
+    characters, octal bases, 16-char truncation, unbound variables,
+    case-insensitive binding, slot reuse, object reuse, and the
+    dice_roll/dice_evaluate m_bonus difference

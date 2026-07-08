@@ -1,0 +1,40 @@
+module: packages/core/src/expression.ts
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/z-expression.c
+    items:
+      - expression_new
+      - expression_copy
+      - expression_set_base_value
+      - expression_evaluate
+      - expression_add_operation
+      - expression_add_operations_string
+      - expression_test_copy
+      - expression_operator_from_token
+      - expression_input_for_operator
+  - path: src/z-expression.h
+    items:
+      - expression_err_e
+      - expression_base_value_f
+notes: >-
+  Strings are prefix notation ("+ 1 2 3"), space-delimited via strtok, and
+  must start with an operator; operations apply to the accumulator strictly
+  left to right with NO precedence ("+ 2 * 3" is (0+2)*3). Number tokens use
+  C strtol base-0 semantics (leading 0 is octal, 0x is hex, trailing junk
+  after digits is ignored), replicated by the exported strtolBase0 helper
+  shared with the dice parser. Operands are bounded to int16; division by
+  zero is caught at parse time (error -5); at most 50 operations are added
+  per parse call with the remainder silently dropped; a failed parse appends
+  nothing. Arithmetic is C int32 (wrap via | 0 / Math.imul, division
+  truncates toward zero). The operations_size capacity bookkeeping is kept
+  so expression_test_copy compares it faithfully. Not ported:
+  expression_free (garbage collected); strtol long-overflow saturation
+  (tokens are short in practice; documented in the helper).
+verified-by:
+  - packages/core/src/expression.test.ts replicates all 4 upstream test
+    cases (alloc, parse-success, parse-failure, evaluate) from
+    src/tests/z-expression/expression.c, including the adjacent string
+    literal concatenation in the 50-op cap case, plus 7 extra tests pinning
+    left-to-right evaluation, truncating division, int16 operand bounds,
+    strtol base-0 behavior, and int32 wrap
