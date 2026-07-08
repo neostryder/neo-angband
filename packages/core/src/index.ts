@@ -9,6 +9,8 @@
  */
 
 export * from "./rng";
+export * from "./loc";
+export * from "./events";
 
 /** Upstream release this port is verified against. */
 export const PARITY_BASELINE = "4.2.6";
