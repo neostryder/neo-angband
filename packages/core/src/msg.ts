@@ -14,11 +14,8 @@
  * C's printf-style formatting is dropped; callers use template strings.
  */
 
+import { COLOUR_DARK, COLOUR_WHITE } from "./color";
 import type { GameEvents } from "./events";
-
-/** COLOUR_DARK and COLOUR_WHITE from z-color.h. */
-export const COLOUR_DARK = 0;
-export const COLOUR_WHITE = 1;
 
 /** MSG_GENERIC: the default message type (index 0 of list-message.h). */
 export const MSG_GENERIC = 0;
