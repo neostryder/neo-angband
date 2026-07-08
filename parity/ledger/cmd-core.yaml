@@ -1,0 +1,31 @@
+module: packages/core/src/cmd.ts
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/cmd-core.h
+    items: [cmd_code (all), cmd_context, cmd_arg types, struct command]
+  - path: src/cmd-core.c
+    items:
+      - game_cmds table (112 rows, verb/repeat_allowed/can_use_energy/auto_repeat_n)
+      - cmd_copy
+      - cmd_verb
+      - cmdq_peek
+      - cmdq_push / cmdq_push_repeat / cmdq_push_copy
+      - cmdq_pop / cmdq_execute
+      - cmdq_flush / cmdq_release
+      - process_command (repeat + auto-repeat semantics)
+      - cmd_cancel_repeat / cmd_set_repeat / cmd_get_nrepeats
+      - cmd_disable_repeat
+      - cmd_set_arg_* / cmd_get_arg_* (unified typed accessors)
+notes: >-
+  The UI-to-core seam. Divergences by design: runtime handler registry
+  replaces the compiled function-pointer column; args are a name-keyed
+  tagged map instead of a fixed 4-slot union; player-coupled coercion
+  (bloodlust, TMD_COMMAND redirect) is an injected hook wired by the game
+  loop later. Not yet ported: cmd_disable_repeat_floor_item and the
+  interactive cmd_get_* "try harder" prompting helpers (need objects and
+  the UI prompt layer; tracked for the game-loop phase).
+verified-by:
+  - unit tests (table diffed 112/112 against game_cmds via script, FIFO,
+    capacity CMD_QUEUE_SIZE-1, repeat duplication, auto-repeat 99,
+    disable-repeat, coercion substitution)
