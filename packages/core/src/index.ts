@@ -8,6 +8,8 @@
  * Parity baseline: Angband 4.2.6 (see reference/ and parity/).
  */
 
+export * from "./rng";
+
 /** Upstream release this port is verified against. */
 export const PARITY_BASELINE = "4.2.6";
 
