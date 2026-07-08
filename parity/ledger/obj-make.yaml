@@ -1,0 +1,36 @@
+module: packages/core/src/obj/make.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/obj-make.c
+    items:
+      - obj_alloc / obj_alloc_great allocation tables from kind `alloc:`
+        entries (commonness, min/max depth)
+      - get_obj_num (level, good, tval filter) with the cumulative
+        probability walk
+      - apply_magic: to-hit / to-dam / to-ac enchant levels via m_bonus
+        and the ENCH_* tables, ego selection (ego_find_random), supercharge
+      - make_object (drop pipeline: prep, apply_magic, stack generation)
+      - make_gold (money objects)
+      - object_prep, ego application, curse application entry
+counts:
+  live-branches: [get_obj_num, apply_magic tohit/todam/toac/ego, make_object
+                  core path, make_gold core path]
+notes: >-
+  Determinism verified: with a seeded Rng, get_obj_num at depths 5/20/50
+  returns kinds whose alloc range includes the depth and distribution
+  tracks commonness (loose statistical bounds); apply_magic is
+  reproducible for a fixed seed and level.
+deferred:
+  - Artifact creation: make_artifact and make_artifact_special are stubs
+    returning false/null (consume no RNG), so apply_magic's artifact
+    branch never fires. Lands with the artifact-generation path.
+  - make_object book rejection (obj_kind_can_browse needs the player class
+    spell realm); the reroll loop runs but the guard is inert for now.
+  - make_gold birth_no_selling value inflation (needs player options).
+  - *value* computation and the per-level out-of-depth boost details tied
+    to knowledge/pricing.
+  - pick_chest_traps (chest/trap domain).
+verified-by:
+  - seeded allocation tests at multiple depths (legal-range + distribution)
+  - apply_magic determinism test for fixed seed and level
