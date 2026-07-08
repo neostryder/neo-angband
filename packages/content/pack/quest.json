@@ -1,0 +1,18 @@
+{
+  "file": "quest",
+  "source": "lib/gamedata/quest.txt",
+  "records": [
+    {
+      "name": "Sauron",
+      "level": 99,
+      "race": "Sauron, the Sorcerer",
+      "number": 1
+    },
+    {
+      "name": "Morgoth",
+      "level": 100,
+      "race": "Morgoth, Lord of Darkness",
+      "number": 1
+    }
+  ]
+}

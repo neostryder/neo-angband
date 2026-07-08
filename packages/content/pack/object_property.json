@@ -1,0 +1,2034 @@
+{
+  "file": "object_property",
+  "source": "lib/gamedata/object_property.txt",
+  "records": [
+    {
+      "name": "strength",
+      "code": "STR",
+      "type": "stat",
+      "power": 9,
+      "mult": 13,
+      "adjective": "strong",
+      "neg-adjective": "weak",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<STR>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "intelligence",
+      "code": "INT",
+      "type": "stat",
+      "power": 5,
+      "mult": 10,
+      "adjective": "smart",
+      "neg-adjective": "stupid",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<INT>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "wisdom",
+      "code": "WIS",
+      "type": "stat",
+      "power": 5,
+      "mult": 10,
+      "adjective": "wise",
+      "neg-adjective": "naive",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<WIS>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "dexterity",
+      "code": "DEX",
+      "type": "stat",
+      "power": 8,
+      "mult": 10,
+      "type-mult": [
+        {
+          "type": "gloves",
+          "mult": 2
+        }
+      ],
+      "adjective": "dextrous",
+      "neg-adjective": "clumsy",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<DEX>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "constitution",
+      "code": "CON",
+      "type": "stat",
+      "power": 12,
+      "mult": 15,
+      "adjective": "healthy",
+      "neg-adjective": "sickly",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<CON>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "stealth",
+      "code": "STEALTH",
+      "type": "mod",
+      "power": 8,
+      "mult": 12,
+      "bindui": {
+        "ui": "stealth_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "searching skill",
+      "code": "SEARCH",
+      "type": "mod",
+      "power": 2,
+      "mult": 5,
+      "bindui": {
+        "ui": "search_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "infravision",
+      "code": "INFRA",
+      "type": "mod",
+      "power": 4,
+      "mult": 8,
+      "bindui": {
+        "ui": "infravision_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "tunneling",
+      "code": "TUNNEL",
+      "type": "mod",
+      "power": 3,
+      "mult": 8,
+      "bindui": {
+        "ui": "tunneling_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "speed",
+      "code": "SPEED",
+      "type": "mod",
+      "power": 20,
+      "mult": 6,
+      "bindui": {
+        "ui": "speed_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "damage reduction",
+      "code": "DAM_RED",
+      "type": "mod",
+      "power": 5,
+      "mult": 6,
+      "bindui": {
+        "ui": "damage_reduction_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "extra blows",
+      "code": "BLOWS",
+      "type": "mod",
+      "power": 0,
+      "mult": 50,
+      "type-mult": [
+        {
+          "type": "bow",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 3
+        },
+        {
+          "type": "amulet",
+          "mult": 3
+        },
+        {
+          "type": "light",
+          "mult": 3
+        },
+        {
+          "type": "soft armor",
+          "mult": 3
+        },
+        {
+          "type": "hard armor",
+          "mult": 3
+        },
+        {
+          "type": "dragon armor",
+          "mult": 3
+        },
+        {
+          "type": "cloak",
+          "mult": 3
+        },
+        {
+          "type": "shield",
+          "mult": 3
+        },
+        {
+          "type": "helm",
+          "mult": 3
+        },
+        {
+          "type": "crown",
+          "mult": 3
+        },
+        {
+          "type": "gloves",
+          "mult": 3
+        },
+        {
+          "type": "boots",
+          "mult": 3
+        }
+      ],
+      "bindui": {
+        "ui": "blows_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "shooting speed",
+      "code": "SHOTS",
+      "type": "mod",
+      "power": 0,
+      "mult": 5,
+      "type-mult": [
+        {
+          "type": "sword",
+          "mult": 0
+        },
+        {
+          "type": "polearm",
+          "mult": 0
+        },
+        {
+          "type": "hafted",
+          "mult": 0
+        },
+        {
+          "type": "digger",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 4
+        },
+        {
+          "type": "amulet",
+          "mult": 4
+        },
+        {
+          "type": "light",
+          "mult": 4
+        },
+        {
+          "type": "soft armor",
+          "mult": 4
+        },
+        {
+          "type": "hard armor",
+          "mult": 4
+        },
+        {
+          "type": "dragon armor",
+          "mult": 4
+        },
+        {
+          "type": "cloak",
+          "mult": 4
+        },
+        {
+          "type": "shield",
+          "mult": 4
+        },
+        {
+          "type": "helm",
+          "mult": 4
+        },
+        {
+          "type": "crown",
+          "mult": 4
+        },
+        {
+          "type": "gloves",
+          "mult": 4
+        },
+        {
+          "type": "boots",
+          "mult": 4
+        }
+      ],
+      "bindui": {
+        "ui": "shots_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "shooting power",
+      "code": "MIGHT",
+      "type": "mod",
+      "power": 0,
+      "mult": 30,
+      "type-mult": [
+        {
+          "type": "sword",
+          "mult": 0
+        },
+        {
+          "type": "polearm",
+          "mult": 0
+        },
+        {
+          "type": "hafted",
+          "mult": 0
+        },
+        {
+          "type": "digger",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 0
+        },
+        {
+          "type": "amulet",
+          "mult": 0
+        },
+        {
+          "type": "light",
+          "mult": 0
+        },
+        {
+          "type": "soft armor",
+          "mult": 0
+        },
+        {
+          "type": "hard armor",
+          "mult": 0
+        },
+        {
+          "type": "dragon armor",
+          "mult": 0
+        },
+        {
+          "type": "cloak",
+          "mult": 0
+        },
+        {
+          "type": "shield",
+          "mult": 0
+        },
+        {
+          "type": "helm",
+          "mult": 0
+        },
+        {
+          "type": "crown",
+          "mult": 0
+        },
+        {
+          "type": "gloves",
+          "mult": 0
+        },
+        {
+          "type": "boots",
+          "mult": 0
+        }
+      ],
+      "bindui": {
+        "ui": "shooting_power_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "extra moves",
+      "code": "MOVES",
+      "type": "mod",
+      "power": 0,
+      "mult": 50,
+      "type-mult": [
+        {
+          "type": "sword",
+          "mult": 0
+        },
+        {
+          "type": "polearm",
+          "mult": 0
+        },
+        {
+          "type": "hafted",
+          "mult": 0
+        },
+        {
+          "type": "digger",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 0
+        },
+        {
+          "type": "amulet",
+          "mult": 0
+        },
+        {
+          "type": "light",
+          "mult": 0
+        },
+        {
+          "type": "soft armor",
+          "mult": 0
+        },
+        {
+          "type": "hard armor",
+          "mult": 0
+        },
+        {
+          "type": "dragon armor",
+          "mult": 0
+        },
+        {
+          "type": "cloak",
+          "mult": 0
+        },
+        {
+          "type": "shield",
+          "mult": 0
+        },
+        {
+          "type": "helm",
+          "mult": 0
+        },
+        {
+          "type": "crown",
+          "mult": 0
+        },
+        {
+          "type": "gloves",
+          "mult": 0
+        },
+        {
+          "type": "boots",
+          "mult": 0
+        }
+      ],
+      "bindui": {
+        "ui": "movement_speed_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "light",
+      "code": "LIGHT",
+      "type": "mod",
+      "power": 3,
+      "mult": 6,
+      "type-mult": [
+        {
+          "type": "light",
+          "mult": 3
+        }
+      ],
+      "bindui": {
+        "ui": "light_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "sustain strength",
+      "code": "SUST_STR",
+      "type": "flag",
+      "subtype": "sustain",
+      "id-type": "on effect",
+      "power": 9,
+      "msg": "Your {name} glows.",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<STR>",
+        "aux": 1
+      }
+    },
+    {
+      "name": "sustain intelligence",
+      "code": "SUST_INT",
+      "type": "flag",
+      "subtype": "sustain",
+      "id-type": "on effect",
+      "power": 4,
+      "msg": "Your {name} glows.",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<INT>",
+        "aux": 1
+      }
+    },
+    {
+      "name": "sustain wisdom",
+      "code": "SUST_WIS",
+      "type": "flag",
+      "subtype": "sustain",
+      "id-type": "on effect",
+      "power": 4,
+      "msg": "Your {name} glows.",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<WIS>",
+        "aux": 1
+      }
+    },
+    {
+      "name": "sustain dexterity",
+      "code": "SUST_DEX",
+      "type": "flag",
+      "subtype": "sustain",
+      "id-type": "on effect",
+      "power": 7,
+      "msg": "Your {name} glows.",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<DEX>",
+        "aux": 1
+      }
+    },
+    {
+      "name": "sustain constitution",
+      "code": "SUST_CON",
+      "type": "flag",
+      "subtype": "sustain",
+      "id-type": "on effect",
+      "power": 8,
+      "msg": "Your {name} glows.",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<CON>",
+        "aux": 1
+      }
+    },
+    {
+      "name": "protection from fear",
+      "code": "PROT_FEAR",
+      "type": "flag",
+      "subtype": "protection",
+      "id-type": "on effect",
+      "power": 6,
+      "msg": "Your {name} strengthens your courage.",
+      "desc": "fear",
+      "bindui": {
+        "ui": "pfear_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "protection from blindness",
+      "code": "PROT_BLIND",
+      "type": "flag",
+      "subtype": "protection",
+      "id-type": "on effect",
+      "power": 16,
+      "msg": "Your {name} soothes your eyes.",
+      "desc": "blindness",
+      "bindui": {
+        "ui": "pblind_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "protection from confusion",
+      "code": "PROT_CONF",
+      "type": "flag",
+      "subtype": "protection",
+      "id-type": "on effect",
+      "power": 24,
+      "msg": "Your {name} clears your thoughts.",
+      "desc": "confusion",
+      "bindui": {
+        "ui": "pconf_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "protection from stunning",
+      "code": "PROT_STUN",
+      "type": "flag",
+      "subtype": "protection",
+      "id-type": "on effect",
+      "power": 12,
+      "msg": "Your {name} steadies you.",
+      "desc": "stunning",
+      "bindui": {
+        "ui": "pstun_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "slow digestion",
+      "code": "SLOW_DIGEST",
+      "type": "flag",
+      "subtype": "misc ability",
+      "id-type": "timed",
+      "power": 2,
+      "msg": "You realise your {name} is slowing your metabolism.",
+      "desc": "Slows your metabolism",
+      "bindui": {
+        "ui": "slow_digestion_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "feather falling",
+      "code": "FEATHER",
+      "type": "flag",
+      "subtype": "misc ability",
+      "id-type": "on effect",
+      "power": 1,
+      "msg": "Your {name} slows your fall.",
+      "desc": "Feather Falling",
+      "bindui": {
+        "ui": "feather_falling_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "regeneration",
+      "code": "REGEN",
+      "type": "flag",
+      "subtype": "misc ability",
+      "id-type": "timed",
+      "power": 5,
+      "type-mult": [
+        {
+          "type": "ring",
+          "mult": 2
+        },
+        {
+          "type": "amulet",
+          "mult": 2
+        },
+        {
+          "type": "light",
+          "mult": 2
+        },
+        {
+          "type": "soft armor",
+          "mult": 2
+        },
+        {
+          "type": "hard armor",
+          "mult": 2
+        },
+        {
+          "type": "dragon armor",
+          "mult": 2
+        },
+        {
+          "type": "cloak",
+          "mult": 2
+        },
+        {
+          "type": "shield",
+          "mult": 2
+        },
+        {
+          "type": "helm",
+          "mult": 2
+        },
+        {
+          "type": "crown",
+          "mult": 2
+        },
+        {
+          "type": "gloves",
+          "mult": 2
+        },
+        {
+          "type": "boots",
+          "mult": 2
+        }
+      ],
+      "msg": "You note that your {name} is speeding up your recovery.",
+      "desc": "Speeds regeneration",
+      "bindui": {
+        "ui": "regen_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "telepathy",
+      "code": "TELEPATHY",
+      "type": "flag",
+      "subtype": "misc ability",
+      "id-type": "on wield",
+      "power": 35,
+      "type-mult": [
+        {
+          "type": "ring",
+          "mult": 2
+        },
+        {
+          "type": "amulet",
+          "mult": 2
+        },
+        {
+          "type": "light",
+          "mult": 2
+        },
+        {
+          "type": "soft armor",
+          "mult": 2
+        },
+        {
+          "type": "hard armor",
+          "mult": 2
+        },
+        {
+          "type": "dragon armor",
+          "mult": 2
+        },
+        {
+          "type": "cloak",
+          "mult": 2
+        },
+        {
+          "type": "shield",
+          "mult": 2
+        },
+        {
+          "type": "helm",
+          "mult": 2
+        },
+        {
+          "type": "crown",
+          "mult": 2
+        },
+        {
+          "type": "gloves",
+          "mult": 2
+        },
+        {
+          "type": "boots",
+          "mult": 2
+        }
+      ],
+      "desc": "Grants telepathy",
+      "bindui": {
+        "ui": "esp_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "see invisible",
+      "code": "SEE_INVIS",
+      "type": "flag",
+      "subtype": "misc ability",
+      "id-type": "on wield",
+      "power": 6,
+      "type-mult": [
+        {
+          "type": "ring",
+          "mult": 2
+        },
+        {
+          "type": "amulet",
+          "mult": 2
+        },
+        {
+          "type": "light",
+          "mult": 2
+        },
+        {
+          "type": "soft armor",
+          "mult": 2
+        },
+        {
+          "type": "hard armor",
+          "mult": 2
+        },
+        {
+          "type": "dragon armor",
+          "mult": 2
+        },
+        {
+          "type": "cloak",
+          "mult": 2
+        },
+        {
+          "type": "shield",
+          "mult": 2
+        },
+        {
+          "type": "helm",
+          "mult": 2
+        },
+        {
+          "type": "crown",
+          "mult": 2
+        },
+        {
+          "type": "gloves",
+          "mult": 2
+        },
+        {
+          "type": "boots",
+          "mult": 2
+        }
+      ],
+      "desc": "Grants the ability to see invisible things",
+      "bindui": {
+        "ui": "see_invis_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "free action",
+      "code": "FREE_ACT",
+      "type": "flag",
+      "subtype": "misc ability",
+      "id-type": "on effect",
+      "power": 8,
+      "type-mult": [
+        {
+          "type": "ring",
+          "mult": 2
+        },
+        {
+          "type": "amulet",
+          "mult": 2
+        },
+        {
+          "type": "light",
+          "mult": 2
+        },
+        {
+          "type": "soft armor",
+          "mult": 2
+        },
+        {
+          "type": "hard armor",
+          "mult": 2
+        },
+        {
+          "type": "dragon armor",
+          "mult": 2
+        },
+        {
+          "type": "cloak",
+          "mult": 2
+        },
+        {
+          "type": "shield",
+          "mult": 2
+        },
+        {
+          "type": "helm",
+          "mult": 2
+        },
+        {
+          "type": "crown",
+          "mult": 2
+        },
+        {
+          "type": "gloves",
+          "mult": 5
+        },
+        {
+          "type": "boots",
+          "mult": 2
+        }
+      ],
+      "msg": "Your {name} keeps you moving.",
+      "desc": "Prevents paralysis",
+      "bindui": {
+        "ui": "free_action_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "hold life",
+      "code": "HOLD_LIFE",
+      "type": "flag",
+      "subtype": "misc ability",
+      "id-type": "on effect",
+      "power": 5,
+      "type-mult": [
+        {
+          "type": "ring",
+          "mult": 2
+        },
+        {
+          "type": "amulet",
+          "mult": 2
+        },
+        {
+          "type": "light",
+          "mult": 2
+        },
+        {
+          "type": "soft armor",
+          "mult": 2
+        },
+        {
+          "type": "hard armor",
+          "mult": 2
+        },
+        {
+          "type": "dragon armor",
+          "mult": 2
+        },
+        {
+          "type": "cloak",
+          "mult": 2
+        },
+        {
+          "type": "shield",
+          "mult": 2
+        },
+        {
+          "type": "helm",
+          "mult": 2
+        },
+        {
+          "type": "crown",
+          "mult": 2
+        },
+        {
+          "type": "gloves",
+          "mult": 2
+        },
+        {
+          "type": "boots",
+          "mult": 2
+        }
+      ],
+      "msg": "Your {name} warms your spirit.",
+      "desc": "Sustains your life force",
+      "bindui": {
+        "ui": "holdlife_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "earthquakes",
+      "code": "IMPACT",
+      "type": "flag",
+      "subtype": "melee",
+      "id-type": "on effect",
+      "power": 10,
+      "type-mult": [
+        {
+          "type": "bow",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 0
+        },
+        {
+          "type": "amulet",
+          "mult": 0
+        },
+        {
+          "type": "light",
+          "mult": 0
+        },
+        {
+          "type": "soft armor",
+          "mult": 0
+        },
+        {
+          "type": "hard armor",
+          "mult": 0
+        },
+        {
+          "type": "dragon armor",
+          "mult": 0
+        },
+        {
+          "type": "cloak",
+          "mult": 0
+        },
+        {
+          "type": "shield",
+          "mult": 0
+        },
+        {
+          "type": "helm",
+          "mult": 0
+        },
+        {
+          "type": "crown",
+          "mult": 0
+        },
+        {
+          "type": "gloves",
+          "mult": 0
+        },
+        {
+          "type": "boots",
+          "mult": 0
+        }
+      ],
+      "msg": "Your {name} causes an earthquake!",
+      "desc": "Sometimes creates earthquakes on impact"
+    },
+    {
+      "name": "blessed melee",
+      "code": "BLESSED",
+      "type": "flag",
+      "subtype": "melee",
+      "id-type": "on wield",
+      "power": 1,
+      "type-mult": [
+        {
+          "type": "bow",
+          "mult": 0
+        },
+        {
+          "type": "hafted",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 0
+        },
+        {
+          "type": "amulet",
+          "mult": 0
+        },
+        {
+          "type": "light",
+          "mult": 0
+        },
+        {
+          "type": "soft armor",
+          "mult": 0
+        },
+        {
+          "type": "hard armor",
+          "mult": 0
+        },
+        {
+          "type": "dragon armor",
+          "mult": 0
+        },
+        {
+          "type": "cloak",
+          "mult": 0
+        },
+        {
+          "type": "shield",
+          "mult": 0
+        },
+        {
+          "type": "helm",
+          "mult": 0
+        },
+        {
+          "type": "crown",
+          "mult": 0
+        },
+        {
+          "type": "gloves",
+          "mult": 0
+        },
+        {
+          "type": "boots",
+          "mult": 0
+        }
+      ],
+      "desc": "Blessed by the gods (combat bonuses for holy casters)",
+      "bindui": {
+        "ui": "bless_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "burns out",
+      "code": "BURNS_OUT",
+      "type": "flag",
+      "subtype": "light",
+      "id-type": "on wield",
+      "power": 0,
+      "type-mult": [
+        {
+          "type": "sword",
+          "mult": 0
+        },
+        {
+          "type": "polearm",
+          "mult": 0
+        },
+        {
+          "type": "hafted",
+          "mult": 0
+        },
+        {
+          "type": "digger",
+          "mult": 0
+        },
+        {
+          "type": "bow",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 0
+        },
+        {
+          "type": "amulet",
+          "mult": 0
+        },
+        {
+          "type": "soft armor",
+          "mult": 0
+        },
+        {
+          "type": "hard armor",
+          "mult": 0
+        },
+        {
+          "type": "dragon armor",
+          "mult": 0
+        },
+        {
+          "type": "cloak",
+          "mult": 0
+        },
+        {
+          "type": "shield",
+          "mult": 0
+        },
+        {
+          "type": "helm",
+          "mult": 0
+        },
+        {
+          "type": "crown",
+          "mult": 0
+        },
+        {
+          "type": "gloves",
+          "mult": 0
+        },
+        {
+          "type": "boots",
+          "mult": 0
+        }
+      ]
+    },
+    {
+      "name": "takes fuel",
+      "code": "TAKES_FUEL",
+      "type": "flag",
+      "subtype": "light",
+      "id-type": "on wield",
+      "power": 0,
+      "type-mult": [
+        {
+          "type": "sword",
+          "mult": 0
+        },
+        {
+          "type": "polearm",
+          "mult": 0
+        },
+        {
+          "type": "hafted",
+          "mult": 0
+        },
+        {
+          "type": "digger",
+          "mult": 0
+        },
+        {
+          "type": "bow",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 0
+        },
+        {
+          "type": "amulet",
+          "mult": 0
+        },
+        {
+          "type": "soft armor",
+          "mult": 0
+        },
+        {
+          "type": "hard armor",
+          "mult": 0
+        },
+        {
+          "type": "dragon armor",
+          "mult": 0
+        },
+        {
+          "type": "cloak",
+          "mult": 0
+        },
+        {
+          "type": "shield",
+          "mult": 0
+        },
+        {
+          "type": "helm",
+          "mult": 0
+        },
+        {
+          "type": "crown",
+          "mult": 0
+        },
+        {
+          "type": "gloves",
+          "mult": 0
+        },
+        {
+          "type": "boots",
+          "mult": 0
+        }
+      ]
+    },
+    {
+      "name": "no fuel",
+      "code": "NO_FUEL",
+      "type": "flag",
+      "subtype": "light",
+      "id-type": "on wield",
+      "power": 5,
+      "type-mult": [
+        {
+          "type": "sword",
+          "mult": 0
+        },
+        {
+          "type": "polearm",
+          "mult": 0
+        },
+        {
+          "type": "hafted",
+          "mult": 0
+        },
+        {
+          "type": "digger",
+          "mult": 0
+        },
+        {
+          "type": "bow",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 0
+        },
+        {
+          "type": "amulet",
+          "mult": 0
+        },
+        {
+          "type": "soft armor",
+          "mult": 0
+        },
+        {
+          "type": "hard armor",
+          "mult": 0
+        },
+        {
+          "type": "dragon armor",
+          "mult": 0
+        },
+        {
+          "type": "cloak",
+          "mult": 0
+        },
+        {
+          "type": "shield",
+          "mult": 0
+        },
+        {
+          "type": "helm",
+          "mult": 0
+        },
+        {
+          "type": "crown",
+          "mult": 0
+        },
+        {
+          "type": "gloves",
+          "mult": 0
+        },
+        {
+          "type": "boots",
+          "mult": 0
+        }
+      ]
+    },
+    {
+      "name": "impaired hitpoint recovery",
+      "code": "IMPAIR_HP",
+      "type": "flag",
+      "subtype": "bad",
+      "id-type": "timed",
+      "power": -8,
+      "msg": "You feel your {name} is slowing your recovery.",
+      "desc": "Impairs hitpoint recovery",
+      "bindui": {
+        "ui": "imphp_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "impaired mana recovery",
+      "code": "IMPAIR_MANA",
+      "type": "flag",
+      "subtype": "bad",
+      "id-type": "timed",
+      "power": -8,
+      "msg": "You feel your {name} is slowing your mana recovery.",
+      "desc": "Impairs mana recovery",
+      "bindui": {
+        "ui": "impsp_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "constant fear",
+      "code": "AFRAID",
+      "type": "flag",
+      "subtype": "bad",
+      "id-type": "on wield",
+      "power": -20,
+      "desc": "Makes you afraid of melee, and worse at shooting and casting spells",
+      "bindui": {
+        "ui": "fear_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "teleportation ban",
+      "code": "NO_TELEPORT",
+      "type": "flag",
+      "subtype": "bad",
+      "id-type": "on effect",
+      "power": -20,
+      "msg": "Your {name} prevents you teleporting.",
+      "desc": "Prevents teleportation",
+      "bindui": {
+        "ui": "noteleport_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "aggravation",
+      "code": "AGGRAVATE",
+      "type": "flag",
+      "subtype": "bad",
+      "id-type": "timed",
+      "power": -20,
+      "msg": "You notice your {name} aggravating things around you.",
+      "desc": "Aggravates creatures nearby",
+      "bindui": {
+        "ui": "aggravate_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "experience drain",
+      "code": "DRAIN_EXP",
+      "type": "flag",
+      "subtype": "bad",
+      "id-type": "timed",
+      "power": -5,
+      "msg": "You sense your {name} is draining your life.",
+      "desc": "Drains experience",
+      "bindui": {
+        "ui": "drainxp_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "stuck on",
+      "code": "STICKY",
+      "type": "flag",
+      "subtype": "bad",
+      "id-type": "on wield",
+      "power": -5,
+      "desc": "Can't be removed",
+      "bindui": {
+        "ui": "sticky_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "fragile",
+      "code": "FRAGILE",
+      "type": "flag",
+      "subtype": "bad",
+      "id-type": "on wield",
+      "power": -1,
+      "desc": "Can be destroyed if you attempt to remove its curses",
+      "bindui": {
+        "ui": "fragile_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "intensity 2 light",
+      "code": "LIGHT_2",
+      "type": "flag",
+      "subtype": "light",
+      "id-type": "on wield",
+      "power": 9,
+      "type-mult": [
+        {
+          "type": "sword",
+          "mult": 0
+        },
+        {
+          "type": "polearm",
+          "mult": 0
+        },
+        {
+          "type": "hafted",
+          "mult": 0
+        },
+        {
+          "type": "digger",
+          "mult": 0
+        },
+        {
+          "type": "bow",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 0
+        },
+        {
+          "type": "amulet",
+          "mult": 0
+        },
+        {
+          "type": "soft armor",
+          "mult": 0
+        },
+        {
+          "type": "hard armor",
+          "mult": 0
+        },
+        {
+          "type": "dragon armor",
+          "mult": 0
+        },
+        {
+          "type": "cloak",
+          "mult": 0
+        },
+        {
+          "type": "shield",
+          "mult": 0
+        },
+        {
+          "type": "helm",
+          "mult": 0
+        },
+        {
+          "type": "crown",
+          "mult": 0
+        },
+        {
+          "type": "gloves",
+          "mult": 0
+        },
+        {
+          "type": "boots",
+          "mult": 0
+        }
+      ]
+    },
+    {
+      "name": "intensity 3 light",
+      "code": "LIGHT_3",
+      "type": "flag",
+      "subtype": "light",
+      "id-type": "on wield",
+      "power": 18,
+      "type-mult": [
+        {
+          "type": "sword",
+          "mult": 0
+        },
+        {
+          "type": "polearm",
+          "mult": 0
+        },
+        {
+          "type": "hafted",
+          "mult": 0
+        },
+        {
+          "type": "digger",
+          "mult": 0
+        },
+        {
+          "type": "bow",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 0
+        },
+        {
+          "type": "amulet",
+          "mult": 0
+        },
+        {
+          "type": "soft armor",
+          "mult": 0
+        },
+        {
+          "type": "hard armor",
+          "mult": 0
+        },
+        {
+          "type": "dragon armor",
+          "mult": 0
+        },
+        {
+          "type": "cloak",
+          "mult": 0
+        },
+        {
+          "type": "shield",
+          "mult": 0
+        },
+        {
+          "type": "helm",
+          "mult": 0
+        },
+        {
+          "type": "crown",
+          "mult": 0
+        },
+        {
+          "type": "gloves",
+          "mult": 0
+        },
+        {
+          "type": "boots",
+          "mult": 0
+        }
+      ]
+    },
+    {
+      "name": "power 1 digging",
+      "code": "DIG_1",
+      "type": "flag",
+      "subtype": "dig",
+      "id-type": "on wield",
+      "power": 3,
+      "bindui": {
+        "ui": "tunneling_ui_compact_0",
+        "aux": 0,
+        "uival": 1
+      }
+    },
+    {
+      "name": "power 2 digging",
+      "code": "DIG_2",
+      "type": "flag",
+      "subtype": "dig",
+      "id-type": "on wield",
+      "power": 6,
+      "bindui": {
+        "ui": "tunneling_ui_compact_0",
+        "aux": 0,
+        "uival": 2
+      }
+    },
+    {
+      "name": "power 3 digging",
+      "code": "DIG_3",
+      "type": "flag",
+      "subtype": "dig",
+      "id-type": "on wield",
+      "power": 9,
+      "bindui": {
+        "ui": "tunneling_ui_compact_0",
+        "aux": 0,
+        "uival": 3
+      }
+    },
+    {
+      "name": "explode",
+      "code": "EXPLODE",
+      "type": "flag",
+      "subtype": "light",
+      "id-type": "on wield",
+      "power": 0,
+      "type-mult": [
+        {
+          "type": "sword",
+          "mult": 0
+        },
+        {
+          "type": "polearm",
+          "mult": 0
+        },
+        {
+          "type": "hafted",
+          "mult": 0
+        },
+        {
+          "type": "digger",
+          "mult": 0
+        },
+        {
+          "type": "bow",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 0
+        },
+        {
+          "type": "amulet",
+          "mult": 0
+        },
+        {
+          "type": "soft armor",
+          "mult": 0
+        },
+        {
+          "type": "hard armor",
+          "mult": 0
+        },
+        {
+          "type": "dragon armor",
+          "mult": 0
+        },
+        {
+          "type": "cloak",
+          "mult": 0
+        },
+        {
+          "type": "shield",
+          "mult": 0
+        },
+        {
+          "type": "helm",
+          "mult": 0
+        },
+        {
+          "type": "crown",
+          "mult": 0
+        },
+        {
+          "type": "gloves",
+          "mult": 0
+        },
+        {
+          "type": "boots",
+          "mult": 0
+        }
+      ]
+    },
+    {
+      "name": "trap immunity",
+      "code": "TRAP_IMMUNE",
+      "type": "flag",
+      "subtype": "misc ability",
+      "id-type": "on effect",
+      "power": 5,
+      "type-mult": [
+        {
+          "type": "ring",
+          "mult": 2
+        },
+        {
+          "type": "amulet",
+          "mult": 2
+        },
+        {
+          "type": "light",
+          "mult": 2
+        },
+        {
+          "type": "soft armor",
+          "mult": 2
+        },
+        {
+          "type": "hard armor",
+          "mult": 2
+        },
+        {
+          "type": "dragon armor",
+          "mult": 2
+        },
+        {
+          "type": "cloak",
+          "mult": 2
+        },
+        {
+          "type": "shield",
+          "mult": 2
+        },
+        {
+          "type": "helm",
+          "mult": 2
+        },
+        {
+          "type": "crown",
+          "mult": 2
+        },
+        {
+          "type": "gloves",
+          "mult": 2
+        },
+        {
+          "type": "boots",
+          "mult": 2
+        }
+      ],
+      "msg": "Your {name} stops you from setting off the trap.",
+      "desc": "Gives immunity to traps",
+      "bindui": {
+        "ui": "trap_immunity_ui_compact_0",
+        "aux": 0
+      }
+    },
+    {
+      "name": "throwing",
+      "code": "THROWING",
+      "type": "flag",
+      "subtype": "throw",
+      "id-type": "on wield",
+      "power": 4
+    },
+    {
+      "name": "multiply weight",
+      "code": "MULTIPLY_WEIGHT",
+      "type": "flag",
+      "subtype": "curse-only",
+      "id-type": "on wield",
+      "power": 0,
+      "type-mult": [
+        {
+          "type": "sword",
+          "mult": 0
+        },
+        {
+          "type": "polearm",
+          "mult": 0
+        },
+        {
+          "type": "hafted",
+          "mult": 0
+        },
+        {
+          "type": "digger",
+          "mult": 0
+        },
+        {
+          "type": "bow",
+          "mult": 0
+        },
+        {
+          "type": "ring",
+          "mult": 0
+        },
+        {
+          "type": "amulet",
+          "mult": 0
+        },
+        {
+          "type": "light",
+          "mult": 0
+        },
+        {
+          "type": "soft armor",
+          "mult": 0
+        },
+        {
+          "type": "hard armor",
+          "mult": 0
+        },
+        {
+          "type": "dragon armor",
+          "mult": 0
+        },
+        {
+          "type": "cloak",
+          "mult": 0
+        },
+        {
+          "type": "shield",
+          "mult": 0
+        },
+        {
+          "type": "helm",
+          "mult": 0
+        },
+        {
+          "type": "crown",
+          "mult": 0
+        },
+        {
+          "type": "gloves",
+          "mult": 0
+        },
+        {
+          "type": "boots",
+          "mult": 0
+        }
+      ]
+    },
+    {
+      "name": "ignore acid",
+      "code": "ACID",
+      "type": "ignore",
+      "power": 3
+    },
+    {
+      "name": "ignore electricity",
+      "code": "ELEC",
+      "type": "ignore",
+      "power": 1
+    },
+    {
+      "name": "ignore fire",
+      "code": "FIRE",
+      "type": "ignore",
+      "power": 3
+    },
+    {
+      "name": "ignore cold",
+      "code": "COLD",
+      "type": "ignore",
+      "power": 1
+    },
+    {
+      "name": "acid resistance",
+      "code": "ACID",
+      "type": "resistance",
+      "power": 5,
+      "bindui": {
+        "ui": "resist_ui_compact_0<ACID>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "electricity resistance",
+      "code": "ELEC",
+      "type": "resistance",
+      "power": 6,
+      "bindui": {
+        "ui": "resist_ui_compact_0<ELEC>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "fire resistance",
+      "code": "FIRE",
+      "type": "resistance",
+      "power": 6,
+      "bindui": {
+        "ui": "resist_ui_compact_0<FIRE>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "cold resistance",
+      "code": "COLD",
+      "type": "resistance",
+      "power": 6,
+      "bindui": {
+        "ui": "resist_ui_compact_0<COLD>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "poison resistance",
+      "code": "POIS",
+      "type": "resistance",
+      "power": 28,
+      "bindui": {
+        "ui": "resist_ui_compact_0<POIS>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "light resistance",
+      "code": "LIGHT",
+      "type": "resistance",
+      "power": 6,
+      "bindui": {
+        "ui": "resist_ui_compact_0<LIGHT>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "dark resistance",
+      "code": "DARK",
+      "type": "resistance",
+      "power": 16,
+      "bindui": {
+        "ui": "resist_ui_compact_0<DARK>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "sound resistance",
+      "code": "SOUND",
+      "type": "resistance",
+      "power": 14,
+      "bindui": {
+        "ui": "resist_ui_compact_0<SOUND>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "shards resistance",
+      "code": "SHARD",
+      "type": "resistance",
+      "power": 8,
+      "bindui": {
+        "ui": "resist_ui_compact_0<SHARD>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "nexus resistance",
+      "code": "NEXUS",
+      "type": "resistance",
+      "power": 15,
+      "bindui": {
+        "ui": "resist_ui_compact_0<NEXUS>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "nether resistance",
+      "code": "NETHER",
+      "type": "resistance",
+      "power": 20,
+      "bindui": {
+        "ui": "resist_ui_compact_0<NETHER>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "chaos resistance",
+      "code": "CHAOS",
+      "type": "resistance",
+      "power": 20,
+      "bindui": {
+        "ui": "resist_ui_compact_0<CHAOS>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "disenchantment resistance",
+      "code": "DISEN",
+      "type": "resistance",
+      "power": 20,
+      "bindui": {
+        "ui": "resist_ui_compact_0<DISEN>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "acid vulnerability",
+      "code": "ACID",
+      "type": "vulnerability",
+      "power": -6,
+      "bindui": {
+        "ui": "resist_ui_compact_0<ACID>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "lightning vulnerability",
+      "code": "ELEC",
+      "type": "vulnerability",
+      "power": -6,
+      "bindui": {
+        "ui": "resist_ui_compact_0<ELEC>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "fire vulnerability",
+      "code": "FIRE",
+      "type": "vulnerability",
+      "power": -6,
+      "bindui": {
+        "ui": "resist_ui_compact_0<FIRE>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "cold vulnerability",
+      "code": "COLD",
+      "type": "vulnerability",
+      "power": -6,
+      "bindui": {
+        "ui": "resist_ui_compact_0<COLD>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "acid immunity",
+      "code": "ACID",
+      "type": "immunity",
+      "power": 43,
+      "bindui": {
+        "ui": "resist_ui_compact_0<ACID>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "lightning immunity",
+      "code": "ELEC",
+      "type": "immunity",
+      "power": 41,
+      "bindui": {
+        "ui": "resist_ui_compact_0<ELEC>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "fire immunity",
+      "code": "FIRE",
+      "type": "immunity",
+      "power": 46,
+      "bindui": {
+        "ui": "resist_ui_compact_0<FIRE>",
+        "aux": 0
+      }
+    },
+    {
+      "name": "cold immunity",
+      "code": "COLD",
+      "type": "immunity",
+      "power": 43,
+      "bindui": {
+        "ui": "resist_ui_compact_0<COLD>",
+        "aux": 0
+      }
+    }
+  ]
+}

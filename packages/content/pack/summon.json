@@ -1,0 +1,143 @@
+{
+  "file": "summon",
+  "source": "lib/gamedata/summon.txt",
+  "records": [
+    {
+      "name": "ANY",
+      "msgt": "SUM_MONSTER",
+      "uniques": 1,
+      "desc": "a monster"
+    },
+    {
+      "name": "KIN",
+      "msgt": "SUM_MONSTER",
+      "uniques": 0,
+      "desc": "similar monsters"
+    },
+    {
+      "name": "MONSTER",
+      "msgt": "SUM_MONSTER",
+      "uniques": 0,
+      "desc": "a monster"
+    },
+    {
+      "name": "MONSTERS",
+      "msgt": "SUM_MONSTER",
+      "uniques": 0,
+      "desc": "monsters"
+    },
+    {
+      "name": "ANIMAL",
+      "msgt": "SUM_ANIMAL",
+      "uniques": 0,
+      "race-flag": "ANIMAL",
+      "desc": "animals"
+    },
+    {
+      "name": "SPIDER",
+      "msgt": "SUM_SPIDER",
+      "uniques": 0,
+      "base": [
+        "spider"
+      ],
+      "desc": "spiders"
+    },
+    {
+      "name": "HOUND",
+      "msgt": "SUM_HOUND",
+      "uniques": 0,
+      "base": [
+        "zephyr hound",
+        "canine"
+      ],
+      "desc": "hounds"
+    },
+    {
+      "name": "HYDRA",
+      "msgt": "SUM_HYDRA",
+      "uniques": 0,
+      "base": [
+        "hydra"
+      ],
+      "desc": "hydras"
+    },
+    {
+      "name": "AINU",
+      "msgt": "SUM_AINU",
+      "uniques": 0,
+      "base": [
+        "ainu"
+      ],
+      "desc": "ainur"
+    },
+    {
+      "name": "DEMON",
+      "msgt": "SUM_DEMON",
+      "uniques": 0,
+      "race-flag": "DEMON",
+      "desc": "demons"
+    },
+    {
+      "name": "UNDEAD",
+      "msgt": "SUM_UNDEAD",
+      "uniques": 0,
+      "race-flag": "UNDEAD",
+      "desc": "undead"
+    },
+    {
+      "name": "DRAGON",
+      "msgt": "SUM_DRAGON",
+      "uniques": 0,
+      "race-flag": "DRAGON",
+      "desc": "dragons"
+    },
+    {
+      "name": "HI_DEMON",
+      "msgt": "SUM_HI_DEMON",
+      "uniques": 1,
+      "base": [
+        "major demon"
+      ],
+      "desc": "greater demons"
+    },
+    {
+      "name": "HI_UNDEAD",
+      "msgt": "SUM_HI_UNDEAD",
+      "uniques": 1,
+      "base": [
+        "vampire",
+        "wraith",
+        "lich"
+      ],
+      "desc": "greater undead"
+    },
+    {
+      "name": "HI_DRAGON",
+      "msgt": "SUM_HI_DRAGON",
+      "uniques": 1,
+      "base": [
+        "ancient dragon"
+      ],
+      "desc": "ancient dragons"
+    },
+    {
+      "name": "WRAITH",
+      "msgt": "SUM_WRAITH",
+      "uniques": 1,
+      "base": [
+        "wraith"
+      ],
+      "race-flag": "UNIQUE",
+      "fallback": "HI_UNDEAD",
+      "desc": "ringwraiths"
+    },
+    {
+      "name": "UNIQUE",
+      "msgt": "SUM_UNIQUE",
+      "uniques": 1,
+      "race-flag": "UNIQUE",
+      "fallback": "HI_UNDEAD",
+      "desc": "unique monsters"
+    }
+  ]
+}

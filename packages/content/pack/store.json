@@ -1,0 +1,675 @@
+{
+  "file": "store",
+  "source": "lib/gamedata/store.txt",
+  "records": [
+    {
+      "store": "STORE_GENERAL",
+      "owner": [
+        {
+          "purse": 5000,
+          "name": "Bilbo the Friendly (Hobbit)"
+        },
+        {
+          "purse": 10000,
+          "name": "Rincewind the Chicken (Human)"
+        },
+        {
+          "purse": 20000,
+          "name": "Snafu the Midget (Gnome)"
+        },
+        {
+          "purse": 30000,
+          "name": "Lyar-el the Comely (Elf)"
+        }
+      ],
+      "slots": {
+        "min": 0,
+        "max": 4
+      },
+      "turnover": 2,
+      "normal": [
+        {
+          "tval": "food",
+          "sval": "Pint of Fine Wine"
+        },
+        {
+          "tval": "food",
+          "sval": "Slime Mold"
+        },
+        {
+          "tval": "food",
+          "sval": "Flask of Whisky"
+        },
+        {
+          "tval": "food",
+          "sval": "Hard Biscuit"
+        },
+        {
+          "tval": "mushroom",
+          "sval": "Stoneskin"
+        },
+        {
+          "tval": "mushroom",
+          "sval": "Purging"
+        }
+      ],
+      "always": [
+        {
+          "tval": "cloak",
+          "sval": "Cloak"
+        },
+        {
+          "tval": "food",
+          "sval": "Ration of Food"
+        },
+        {
+          "tval": "light",
+          "sval": "Wooden Torch"
+        },
+        {
+          "tval": "flask",
+          "sval": "Flask of Oil"
+        },
+        {
+          "tval": "digger",
+          "sval": "Shovel"
+        },
+        {
+          "tval": "digger",
+          "sval": "Pick"
+        },
+        {
+          "tval": "shot",
+          "sval": "Iron Shot"
+        },
+        {
+          "tval": "arrow",
+          "sval": "Arrow"
+        },
+        {
+          "tval": "bolt",
+          "sval": "Bolt"
+        }
+      ],
+      "buy": [
+        "light",
+        "food",
+        "mushroom",
+        "flask",
+        "digger",
+        "cloak",
+        "shot",
+        "bolt",
+        "arrow"
+      ]
+    },
+    {
+      "store": "STORE_ARMOR",
+      "owner": [
+        {
+          "purse": 5000,
+          "name": "Kon-Dar the Ugly (Half-Orc)"
+        },
+        {
+          "purse": 10000,
+          "name": "Darg-Low the Grim (Human)"
+        },
+        {
+          "purse": 25000,
+          "name": "Decado the Handsome (Dunadan)"
+        },
+        {
+          "purse": 30000,
+          "name": "Mauglin the Grumpy (Dwarf)"
+        }
+      ],
+      "slots": {
+        "min": 6,
+        "max": 18
+      },
+      "turnover": 9,
+      "normal": [
+        {
+          "tval": "boots",
+          "sval": "Pair of Leather Sandals"
+        },
+        {
+          "tval": "boots",
+          "sval": "Pair of Leather Boots"
+        },
+        {
+          "tval": "boots",
+          "sval": "Pair of Iron Shod Boots"
+        },
+        {
+          "tval": "helm",
+          "sval": "Hard Leather Cap"
+        },
+        {
+          "tval": "helm",
+          "sval": "Metal Cap"
+        },
+        {
+          "tval": "helm",
+          "sval": "Iron Helm"
+        },
+        {
+          "tval": "soft armour",
+          "sval": "Robe"
+        },
+        {
+          "tval": "soft armour",
+          "sval": "Soft Leather Armour"
+        },
+        {
+          "tval": "soft armour",
+          "sval": "Studded Leather Armour"
+        },
+        {
+          "tval": "soft armour",
+          "sval": "Hard Leather Armour"
+        },
+        {
+          "tval": "soft armour",
+          "sval": "Leather Scale Mail"
+        },
+        {
+          "tval": "hard armour",
+          "sval": "Metal Scale Mail"
+        },
+        {
+          "tval": "hard armour",
+          "sval": "Chain Mail"
+        },
+        {
+          "tval": "gloves",
+          "sval": "Set of Leather Gloves"
+        },
+        {
+          "tval": "gloves",
+          "sval": "Set of Gauntlets"
+        },
+        {
+          "tval": "shield",
+          "sval": "Wicker Shield"
+        },
+        {
+          "tval": "shield",
+          "sval": "Small Metal Shield"
+        },
+        {
+          "tval": "shield",
+          "sval": "Leather Shield"
+        }
+      ],
+      "buy": [
+        "boots",
+        "gloves",
+        "crown",
+        "helm",
+        "shield",
+        "cloak",
+        "soft armor",
+        "hard armor",
+        "dragon armor"
+      ]
+    },
+    {
+      "store": "STORE_WEAPON",
+      "owner": [
+        {
+          "purse": 5000,
+          "name": "Ithyl-Mak the Beastly (Half-Troll)"
+        },
+        {
+          "purse": 10000,
+          "name": "Arndal Beast-Slayer (Half-Elf)"
+        },
+        {
+          "purse": 25000,
+          "name": "Tarl Beast-Master (Hobbit)"
+        },
+        {
+          "purse": 30000,
+          "name": "Oglign Dragon-Slayer (Dwarf)"
+        }
+      ],
+      "slots": {
+        "min": 3,
+        "max": 14
+      },
+      "turnover": 9,
+      "normal": [
+        {
+          "tval": "shot",
+          "sval": "Iron Shot"
+        },
+        {
+          "tval": "arrow",
+          "sval": "Arrow"
+        },
+        {
+          "tval": "bolt",
+          "sval": "Bolt"
+        },
+        {
+          "tval": "sword",
+          "sval": "Dagger"
+        },
+        {
+          "tval": "sword",
+          "sval": "Main Gauche"
+        },
+        {
+          "tval": "sword",
+          "sval": "Rapier"
+        },
+        {
+          "tval": "sword",
+          "sval": "Short Sword"
+        },
+        {
+          "tval": "sword",
+          "sval": "Cutlass"
+        },
+        {
+          "tval": "sword",
+          "sval": "Tulwar"
+        },
+        {
+          "tval": "sword",
+          "sval": "Broad Sword"
+        },
+        {
+          "tval": "sword",
+          "sval": "Long Sword"
+        },
+        {
+          "tval": "sword",
+          "sval": "Scimitar"
+        },
+        {
+          "tval": "sword",
+          "sval": "Katana"
+        },
+        {
+          "tval": "sword",
+          "sval": "Bastard Sword"
+        },
+        {
+          "tval": "polearm",
+          "sval": "Spear"
+        },
+        {
+          "tval": "polearm",
+          "sval": "Awl-Pike"
+        },
+        {
+          "tval": "polearm",
+          "sval": "Trident"
+        },
+        {
+          "tval": "polearm",
+          "sval": "Pike"
+        },
+        {
+          "tval": "polearm",
+          "sval": "Beaked Axe"
+        },
+        {
+          "tval": "polearm",
+          "sval": "Broad Axe"
+        },
+        {
+          "tval": "polearm",
+          "sval": "Battle Axe"
+        },
+        {
+          "tval": "polearm",
+          "sval": "Lance"
+        },
+        {
+          "tval": "polearm",
+          "sval": "Lucerne Hammer"
+        },
+        {
+          "tval": "hafted",
+          "sval": "Whip"
+        },
+        {
+          "tval": "bow",
+          "sval": "Sling"
+        },
+        {
+          "tval": "bow",
+          "sval": "Short Bow"
+        },
+        {
+          "tval": "bow",
+          "sval": "Long Bow"
+        },
+        {
+          "tval": "bow",
+          "sval": "Light Crossbow"
+        }
+      ],
+      "buy": [
+        "shot",
+        "bolt",
+        "arrow",
+        "bow",
+        "digger",
+        "sword",
+        "polearm",
+        "hafted"
+      ]
+    },
+    {
+      "store": "STORE_BOOK",
+      "owner": [
+        {
+          "purse": 15000,
+          "name": "Ludwig the Humble (Human)"
+        },
+        {
+          "purse": 20000,
+          "name": "Gunnar the Paladin (Human)"
+        },
+        {
+          "purse": 25000,
+          "name": "Delilah the Pure (Elf)"
+        },
+        {
+          "purse": 30000,
+          "name": "Bosk the Wise (Dwarf)"
+        }
+      ],
+      "slots": {
+        "min": 0,
+        "max": 2
+      },
+      "turnover": 0,
+      "always": [
+        {
+          "tval": "prayer book"
+        },
+        {
+          "tval": "magic book"
+        },
+        {
+          "tval": "nature book"
+        },
+        {
+          "tval": "shadow book"
+        }
+      ],
+      "buy": [
+        "magic book",
+        "prayer book",
+        "nature book",
+        "shadow book"
+      ]
+    },
+    {
+      "store": "STORE_ALCHEMY",
+      "owner": [
+        {
+          "purse": 10000,
+          "name": "Mauser the Chemist (Half-Elf)"
+        },
+        {
+          "purse": 10000,
+          "name": "Wizzle the Chaotic (Hobbit)"
+        },
+        {
+          "purse": 15000,
+          "name": "Ga-nat the Greedy (Gnome)"
+        },
+        {
+          "purse": 15000,
+          "name": "Vella the Slender (Human)"
+        }
+      ],
+      "slots": {
+        "min": 6,
+        "max": 10
+      },
+      "turnover": 9,
+      "normal": [
+        {
+          "tval": "scroll",
+          "sval": "Monster Confusion"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Magic Mapping"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Detect Invisible"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Recharging"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Remove Hunger"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Blessing"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Holy Chant"
+        },
+        {
+          "tval": "potion",
+          "sval": "Boldness"
+        },
+        {
+          "tval": "potion",
+          "sval": "Berserk Strength"
+        },
+        {
+          "tval": "potion",
+          "sval": "Resist Heat"
+        },
+        {
+          "tval": "potion",
+          "sval": "Resist Cold"
+        },
+        {
+          "tval": "potion",
+          "sval": "Restore Life Levels"
+        },
+        {
+          "tval": "potion",
+          "sval": "Neutralize Poison"
+        },
+        {
+          "tval": "potion",
+          "sval": "Cure Serious Wounds"
+        },
+        {
+          "tval": "potion",
+          "sval": "Cure Critical Wounds"
+        }
+      ],
+      "always": [
+        {
+          "tval": "scroll",
+          "sval": "Word of Recall"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Phase Door"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Remove Curse"
+        },
+        {
+          "tval": "potion",
+          "sval": "Cure Light Wounds"
+        }
+      ],
+      "buy": [
+        "scroll",
+        "potion"
+      ]
+    },
+    {
+      "store": "STORE_MAGIC",
+      "owner": [
+        {
+          "purse": 15000,
+          "name": "Ariel the Sorceress (Half-Elf)"
+        },
+        {
+          "purse": 20000,
+          "name": "Buggerby the Great (Gnome)"
+        },
+        {
+          "purse": 25000,
+          "name": "Inglorian the Mage (Human)"
+        },
+        {
+          "purse": 30000,
+          "name": "Luthien Starshine (High-Elf)"
+        }
+      ],
+      "slots": {
+        "min": 4,
+        "max": 14
+      },
+      "turnover": 9,
+      "normal": [
+        {
+          "tval": "ring",
+          "sval": "Searching"
+        },
+        {
+          "tval": "ring",
+          "sval": "Feather Falling"
+        },
+        {
+          "tval": "ring",
+          "sval": "Protection"
+        },
+        {
+          "tval": "ring",
+          "sval": "Open Wounds"
+        },
+        {
+          "tval": "amulet",
+          "sval": "Slow Digestion"
+        },
+        {
+          "tval": "amulet",
+          "sval": "Resist Acid"
+        },
+        {
+          "tval": "wand",
+          "sval": "Light"
+        },
+        {
+          "tval": "wand",
+          "sval": "Slow Monster"
+        },
+        {
+          "tval": "wand",
+          "sval": "Confuse Monster"
+        },
+        {
+          "tval": "wand",
+          "sval": "Magic Missile"
+        },
+        {
+          "tval": "wand",
+          "sval": "Stinking Cloud"
+        },
+        {
+          "tval": "wand",
+          "sval": "Stone to Mud"
+        },
+        {
+          "tval": "staff",
+          "sval": "Teleportation"
+        },
+        {
+          "tval": "staff",
+          "sval": "Light"
+        },
+        {
+          "tval": "staff",
+          "sval": "Mapping"
+        },
+        {
+          "tval": "staff",
+          "sval": "Detect Invisible"
+        },
+        {
+          "tval": "staff",
+          "sval": "Detect Evil"
+        }
+      ],
+      "buy": [
+        "magic book",
+        "amulet",
+        "ring",
+        "staff",
+        "wand",
+        "rod"
+      ]
+    },
+    {
+      "store": "STORE_BLACK",
+      "owner": [
+        {
+          "purse": 15000,
+          "name": "Lo-Hak the Awful (Half-Troll)"
+        },
+        {
+          "purse": 20000,
+          "name": "Histor the Goblin (Kobold)"
+        },
+        {
+          "purse": 25000,
+          "name": "Durwin the Shifty (Half-Orc)"
+        },
+        {
+          "purse": 30000,
+          "name": "Drago the Fair (Elf)"
+        }
+      ],
+      "slots": {
+        "min": 6,
+        "max": 18
+      },
+      "turnover": 9
+    },
+    {
+      "store": "HOME",
+      "owner": [
+        {
+          "purse": 0,
+          "name": "Your home"
+        },
+        {
+          "purse": 0,
+          "name": "Your home"
+        },
+        {
+          "purse": 0,
+          "name": "Your home"
+        },
+        {
+          "purse": 0,
+          "name": "Your home"
+        }
+      ]
+    }
+  ]
+}
