@@ -1,7 +1,45 @@
 # The Mod System
 
 Neo Angband is moddable by construction: the base game is itself a pack
-loaded through the same pipeline as any third-party mod.
+loaded through the same pipeline as any third-party mod. Moddability is a
+ratified pillar (PORT_PLAN.md decisions 13-15): every aspect of the game is
+open to mods, including capabilities that do not exist in the base resources.
+
+## The moddable-surface matrix
+
+This is the contract each engine module is held to. "Add" means new records,
+"patch/replace" means overriding base records, "extend" means introducing
+genuinely new behavior or record types.
+
+| Surface | Add | Patch/replace | Extend |
+|---|---|---|---|
+| Terrain types | yes | yes | new terrain flags + handlers |
+| Room templates and vaults | yes | yes | new room builders (scripted) |
+| Dungeon generation profiles | yes | yes | new level generators |
+| Objects, egos, artifacts | yes | yes | new object properties |
+| Monsters and monster bases | yes | yes | new blow methods/effects, new AI hooks |
+| Player races, classes, abilities | yes | yes | new ability mechanics |
+| Effects | yes | yes | NEW effect opcodes registered at runtime |
+| Commands and keymaps | yes | yes | new commands with energy/repeat rules |
+| Shops | yes | yes | new services, pricing models, stock rules |
+| NPCs and dialogs | yes | yes | new interaction verbs, dialog conditions |
+| Quests | yes | yes | new trigger/objective/reward types |
+| Messages, colors, UI panels | yes | yes | new panel types (scripted) |
+| Tiles and glyphs | yes | yes | Linoleum packs, new render layers |
+| Sounds | yes | yes | new sound events |
+| Game constants (z_info) | n/a | yes | new constants namespaced per pack |
+| Networking sessions | n/a | n/a | plugin transports and modes |
+
+How the engine keeps this true:
+
+- Every registry accepts runtime registration and is keyed by namespaced
+  string IDs, never closed enums. Upstream's compiled dispatch tables
+  (effects, commands) are ported as open handler registries.
+- New record TYPES are supported: a pack may declare its own schemas, and
+  scripted plugins may register loaders for them. The engine treats the base
+  game's record types as pack-zero declarations, not engine specials.
+- The base game must consume every surface through the same public API mods
+  use. If core needs a private hook, the hook becomes public API instead.
 
 ## Pack shapes
 
@@ -32,6 +70,55 @@ loaded through the same pipeline as any third-party mod.
 - Savefiles embed the active pack manifest and per-entity provenance, so a
   save knows exactly which content produced it and can fail gracefully when
   a pack is missing or changed.
+
+## Beyond-parity systems (mod-first by design)
+
+Three systems the original never had are built as engine capabilities whose
+base-game use is deliberately minimal, so mods get their full power:
+
+1. **World NPCs**: placeable characters with interaction menus and branching
+   dialog, all declarative (dialog nodes, conditions on game state, effects
+   on selection). Upstream's shopkeepers become the first NPCs; mods can
+   populate the town, the dungeon, or a total conversion with speaking
+   characters.
+2. **Quest engine**: declarative quests - triggers (kill, reach, collect,
+   talk, timer), stages, objectives, rewards, and failure states - with
+   scripted escape hatches for exotic logic. Upstream's Sauron/Morgoth win
+   condition is expressed as the first quest content.
+3. **Moddable shops**: stock tables, pricing, buy/sell rules, and services
+   as data + handlers, bound to NPC shopkeepers.
+
+Parity note: the statistical parity bar is measured against upstream with
+these systems exercising only upstream behavior. They are additive.
+
+## Networking
+
+The engine is deterministic (seeded named RNG streams) and fully driven by a
+serializable command queue, so a game IS its seed plus its command stream.
+That makes replay, spectating, synchronization, and server-side verification
+possible without bespoke netcode in the core. The engine exposes a
+transport-agnostic session interface; networked features - leaderboards,
+save sync, spectating, shared-world variants - are built as plugins against
+it. The core ships no network calls; local-first play always works offline.
+Which first-party networked features ship is an open decision tracked in
+PORT_PLAN.md decision 15.
+
+## The modding SDK
+
+The SDK is the documented, versioned surface mod authors build against:
+
+- `docs/modding/` - the documentation set (P7 deliverable): getting started,
+  pack anatomy, schema reference generated from the engine's own validators,
+  the handler registry catalog, dialog/quest/shop cookbooks, tile-pack guide
+  (see `docs/LINOLEUM.md`), sandbox capability reference, and publishing
+  guidance.
+- Typed APIs: `@neo-angband/core` exports the same typed interfaces the base
+  game is built from; plugin authors get full TypeScript types.
+- Validation-first tooling: `neo-pack` (planned) scaffolds, validates, and
+  bundles packs; validation errors point at the offending line of the
+  author's JSON.
+- Sample mods maintained in-repo as living documentation and CI-tested
+  against every engine change, so the SDK cannot silently rot.
 
 ## The AI seam
 
