@@ -1,0 +1,27 @@
+module: packages/core/src/loc.ts
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/z-type.h
+    items: [loc, loc_eq, loc_is_zero, loc_sum, loc_diff, loc_offset, rand_loc]
+  - path: src/cave.c
+    items:
+      - ddd
+      - ddx
+      - ddy
+      - ddgrid
+      - ddx_ddd
+      - ddy_ddd
+      - ddgrid_ddd
+      - clockwise_ddd
+      - clockwise_grid
+      - side_dirs
+  - path: src/cave-view.c
+    items: [distance]
+notes: >-
+  Immutable value objects instead of C structs; rand_loc takes an explicit
+  Rng. dist_offsets_x/y precomputed tables are NOT here; the world kernel
+  will compute them (scatter) and verify counts against upstream.
+verified-by:
+  - unit tests including cross-validation that clockwise_grid equals
+    ddgrid reordered by clockwise_ddd and ddgrid_ddd equals ddgrid over ddd
