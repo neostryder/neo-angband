@@ -30,3 +30,6 @@ export * from "./world/chunk";
 export * from "./world/view";
 export * from "./world/scatter";
 export * from "./world/flow";
+export * from "./effects/effect";
+export * from "./effects/interpreter";
+export * from "./effects/handlers";
