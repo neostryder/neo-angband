@@ -28,9 +28,12 @@ notes: >-
   square predicates needing objects/traps/knowledge (isempty variants,
   trap and player-knowledge predicates), square_set_feat in-game side
   effects (trap destruction, note/light spot), update_one knowledge
-  effects (trap reveal, feeling display, blind memory forget), heatmap
-  flow/scent updates (cave_update_flow), grid_data / map_info (render
-  layer). scatter/scatter_ext ported (world/scatter.ts): feasible-set
+  effects (trap reveal, feeling display, blind memory forget), grid_data /
+  map_info (render layer). Noise/scent heatmaps ported (world/flow.ts)
+  from game-world.c make_noise/update_scent verbatim, including the
+  row-major scent-stamp order quirk and the covert-tracks increment;
+  FlowSource injects the player fields, as ViewerState does for FOV.
+  scatter/scatter_ext ported (world/scatter.ts): feasible-set
   collection incl. the upstream d <= 1 distance-check skip, draw without
   replacement via rng.randint0, LOS and predicate filters.
 verified-by:
