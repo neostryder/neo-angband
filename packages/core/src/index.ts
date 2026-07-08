@@ -18,6 +18,7 @@ export * from "./bitflag";
 export * from "./expression";
 export * from "./dice";
 export * from "./generated";
+export * from "./constants";
 
 /** Upstream release this port is verified against. */
 export const PARITY_BASELINE = "4.2.6";
