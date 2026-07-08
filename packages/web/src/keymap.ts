@@ -1,7 +1,13 @@
 /**
- * Keyboard-to-command mapping: the original Angband keyset (hjkl +
- * diagonals, numpad) plus arrow keys, customizable later via settings.
- * Directions use keypad numbering exactly like the engine.
+ * Keyboard-to-command mapping.
+ *
+ * Angband has two movement keysets. The ORIGINAL keyset (the default,
+ * upstream `rogue_like_commands` = false) moves with the numeric keypad;
+ * the ROGUELIKE keyset (opt-in) adds hjkl + yubn diagonals. We honor that
+ * default here: numpad and arrow keys always move; the roguelike letters
+ * are gated behind the same option the engine exposes.
+ *
+ * Directions use keypad numbering exactly like the engine (1-9, 5 = self).
  */
 
 export interface KeyBinding {
@@ -9,21 +15,8 @@ export interface KeyBinding {
   dir: number;
 }
 
-const DIRS: Record<string, number> = {
-  // Roguelike keys.
-  h: 4,
-  j: 2,
-  k: 8,
-  l: 6,
-  y: 7,
-  u: 9,
-  b: 1,
-  n: 3,
-  // Arrows.
-  ArrowLeft: 4,
-  ArrowDown: 2,
-  ArrowUp: 8,
-  ArrowRight: 6,
+/** Original keyset: numpad + arrows. Always active. */
+const DIRS_ORIGINAL: Record<string, number> = {
   // Numpad (event.key reports digits when NumLock is on).
   "1": 1,
   "2": 2,
@@ -33,17 +26,46 @@ const DIRS: Record<string, number> = {
   "7": 7,
   "8": 8,
   "9": 9,
+  // Arrow keys (orthogonal only, like the engine's arrow handling).
+  ArrowLeft: 4,
+  ArrowDown: 2,
+  ArrowUp: 8,
+  ArrowRight: 6,
 };
 
-/** Resolve a KeyboardEvent to a binding, or null when unbound. */
-export function resolveKey(ev: KeyboardEvent): KeyBinding | null {
+/** Roguelike keyset: hjkl orthogonals + yubn diagonals. Opt-in. */
+const DIRS_ROGUELIKE: Record<string, number> = {
+  h: 4,
+  j: 2,
+  k: 8,
+  l: 6,
+  y: 7,
+  u: 9,
+  b: 1,
+  n: 3,
+};
+
+/**
+ * Resolve a KeyboardEvent to a movement binding, or null when unbound.
+ * `roguelikeKeys` mirrors the engine's rogue_like_commands option and
+ * defaults to false (the original numpad keyset), matching upstream.
+ */
+export function resolveKey(
+  ev: KeyboardEvent,
+  roguelikeKeys = false,
+): KeyBinding | null {
   if (ev.ctrlKey || ev.altKey || ev.metaKey) return null;
-  const dir = DIRS[ev.key];
-  if (dir === undefined) {
-    // Shifted roguelike keys run instead of walk.
-    const lower = ev.key.toLowerCase();
-    const runDir = ev.shiftKey ? DIRS[lower] : undefined;
-    return runDir !== undefined ? { kind: "run", dir: runDir } : null;
+
+  const dir = DIRS_ORIGINAL[ev.key];
+  if (dir !== undefined) return { kind: "walk", dir };
+
+  if (roguelikeKeys) {
+    // In the roguelike keyset a lowercase letter walks; the shifted
+    // (uppercase) letter runs, as upstream does.
+    const runDir = DIRS_ROGUELIKE[ev.key.toLowerCase()];
+    if (runDir !== undefined) {
+      return { kind: ev.shiftKey ? "run" : "walk", dir: runDir };
+    }
   }
-  return { kind: "walk", dir };
+  return null;
 }
