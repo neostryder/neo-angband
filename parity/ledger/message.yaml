@@ -1,0 +1,20 @@
+module: packages/core/src/msg.ts
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/message.c
+    items:
+      - messages_init / messages_free (constructor/GC)
+      - messages_num
+      - message_add (duplicate squash, uint16 count saturation, max 2048)
+      - message_str / message_count / message_type / message_color
+      - message_color_define / message_type_color (COLOUR_DARK = unset)
+      - msg / msgt (event emission; printf formatting dropped for template strings)
+      - sound (use_sound gate injected) / bell
+notes: >-
+  Instantiable MessageLog + Messages facade instead of a global singleton.
+  Deferred to the pref-file loader: message_lookup_by_name and
+  message_lookup_by_sound_name (need the generated list-message table).
+verified-by:
+  - unit tests (squash counts, saturation at 0xFFFF, capacity trim, color
+    fallback semantics, event emission and sound gating)
