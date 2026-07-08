@@ -1,0 +1,67 @@
+module: packages/core/src/gen/room.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/gen-room.c
+    items:
+      - build_room_template (+ build_room_template_type, random_room_template,
+        build_template): full two-pass instantiation from room_template.json,
+        the symmetry transform, optional walls / random door position, the
+        8/9/[ object and monster glyphs, and inner-wall conversion
+      - build_vault (+ build_vault_type, random_vault, build_interesting and
+        the lesser/medium/greater and "(new)" vault wrappers): full grid-text
+        instantiation from vault.json, MON_RESTRICT marking, the full object
+        glyph table (] armour, | weapon, =/"/!/?/_/- items, ~ chest, $ gold),
+        the numeric monster/object depth glyphs, and inner-wall conversion
+      - build_simple (with pillared and ragged-edge variants)
+      - build_circular (with the middle-chamber variant)
+      - build_overlap
+      - build_crossed (all four special-feature variants)
+      - build_large (all five inner-room variants)
+      - build_staircase (persistent-level 1x1 staircase room)
+      - find_space / check_for_unreserved_blocks / reserve_blocks /
+        append_entrance
+      - room_build dispatch (string-keyed via the RoomRegistry)
+  - path: src/gen-chunk.c
+    items:
+      - symmetry_transform / get_random_symmetry_transform /
+        calc_default_transpose_weight
+moddability:
+  - The room builder registry (RoomRegistry) is string-keyed and
+    runtime-registrable; createRoomRegistry() populates it with the upstream
+    builders bound to the room_template.json / vault.json data. A mod
+    registers a new builder under any key and references it from a (modded)
+    dungeon profile's room list. There is no closed switch. Verified by the
+    gen.test.ts "mod-registered room builder" case, which registers a
+    "mod_bunker" builder absent upstream and generates a full level with it.
+counts:
+  live-builders: [staircase, simple, circular, overlap, crossed, large,
+                  template, interesting, lesser_vault, medium_vault,
+                  greater_vault, lesser_new_vault, medium_new_vault,
+                  greater_new_vault]
+  simplified-builders: [nest, pit]
+  stubbed-builders: [moria, room_of_chambers, huge]
+notes: >-
+  Template and vault instantiation are RNG-faithful for the structural work
+  (transform draw, optional walls, door positions, feature glyphs). Verified
+  by instantiating real records ("Tiny hidden room", "Round" lesser vault)
+  under a fixed RNG and checking dimensions and glyph->feature mappings.
+deferred:
+  - nest / pit: the room shell (outer room, inner room, single door) is
+    faithful, but monster theming is simplified - the inner room is filled
+    with any depth-appropriate monster rather than a themed pit_profile
+    (set_pit_type / mon_pit_hook / pit.txt selection is not ported). Object
+    rarity fill and the concentric pit monster layout are not reproduced.
+  - vault racial glyphs (get_vault_monsters): each alphabetic racial glyph
+    places any depth-appropriate monster (Lesser/Medium/Greater depth boost
+    kept) rather than a base-symbol-restricted one.
+  - build_moria, build_room_of_chambers, build_huge: registered but return
+    false (fall through to another room profile exactly as room_build does on
+    failure). Their profiles are not enabled for selection (see gen-cave).
+  - random_room_template / random_vault iterate the loaded arrays in file
+    order; upstream walks a reverse-of-file-order linked list, so the specific
+    template/vault chosen for a given seed may differ (the reservoir draw
+    count and uniform probability are unchanged). Not verified against a C run.
+verified-by:
+  - packages/core/src/gen/gen.test.ts: room template + vault instantiation
+    glyph mapping, and the mod-registered custom builder end-to-end
