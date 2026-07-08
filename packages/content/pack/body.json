@@ -1,0 +1,59 @@
+{
+  "file": "body",
+  "source": "lib/gamedata/body.txt",
+  "records": [
+    {
+      "body": "Humanoid",
+      "slot": [
+        {
+          "slot": "WEAPON",
+          "name": "weapon"
+        },
+        {
+          "slot": "BOW",
+          "name": "shooting"
+        },
+        {
+          "slot": "RING",
+          "name": "right hand"
+        },
+        {
+          "slot": "RING",
+          "name": "left hand"
+        },
+        {
+          "slot": "AMULET",
+          "name": "neck"
+        },
+        {
+          "slot": "LIGHT",
+          "name": "light"
+        },
+        {
+          "slot": "BODY_ARMOR",
+          "name": "body"
+        },
+        {
+          "slot": "CLOAK",
+          "name": "back"
+        },
+        {
+          "slot": "SHIELD",
+          "name": "arm"
+        },
+        {
+          "slot": "HAT",
+          "name": "head"
+        },
+        {
+          "slot": "GLOVES",
+          "name": "hands"
+        },
+        {
+          "slot": "BOOTS",
+          "name": "feet"
+        }
+      ]
+    }
+  ]
+}

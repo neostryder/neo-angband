@@ -1,0 +1,364 @@
+{
+  "file": "object_base",
+  "source": "lib/gamedata/object_base.txt",
+  "header": {
+    "default": [
+      {
+        "label": "break-chance",
+        "value": 10
+      },
+      {
+        "label": "max-stack",
+        "value": 40
+      }
+    ]
+  },
+  "records": [
+    {
+      "name": {
+        "tval": "chest",
+        "name": "Chest~"
+      },
+      "graphics": "slate",
+      "flags": [
+        "HATES_ACID | HATES_FIRE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "shot",
+        "name": "Shot~"
+      },
+      "graphics": "light umber",
+      "break": 0,
+      "flags": [
+        "SHOW_DICE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "arrow",
+        "name": "Arrow~"
+      },
+      "graphics": "light umber",
+      "break": 35,
+      "flags": [
+        "HATES_ACID | HATES_FIRE",
+        "SHOW_DICE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "bolt",
+        "name": "Bolt~"
+      },
+      "graphics": "light umber",
+      "break": 20,
+      "flags": [
+        "HATES_ACID",
+        "SHOW_DICE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "bow",
+        "name": "Bow~"
+      },
+      "graphics": "umber",
+      "flags": [
+        "HATES_ACID | HATES_FIRE",
+        "SHOW_MULT"
+      ]
+    },
+    {
+      "name": {
+        "tval": "digger",
+        "name": "Digger~"
+      },
+      "graphics": "slate",
+      "flags": [
+        "SHOW_DICE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "hafted",
+        "name": "Hafted weapon~"
+      },
+      "graphics": "white",
+      "flags": [
+        "HATES_ACID | HATES_FIRE",
+        "SHOW_DICE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "polearm",
+        "name": "Polearm~"
+      },
+      "graphics": "white",
+      "flags": [
+        "HATES_ACID | HATES_FIRE",
+        "SHOW_DICE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "sword",
+        "name": "Bladed weapon~"
+      },
+      "graphics": "white",
+      "flags": [
+        "HATES_ACID",
+        "SHOW_DICE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "boots",
+        "name": "Boot~"
+      },
+      "graphics": "light umber",
+      "flags": [
+        "HATES_ACID | HATES_FIRE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "gloves",
+        "name": "Glove~"
+      },
+      "graphics": "light umber",
+      "flags": [
+        "HATES_ACID | HATES_FIRE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "helm",
+        "name": "Helm~"
+      },
+      "graphics": "light umber",
+      "flags": [
+        "HATES_ACID"
+      ]
+    },
+    {
+      "name": {
+        "tval": "crown",
+        "name": "Crown~"
+      },
+      "graphics": "light umber",
+      "flags": [
+        "HATES_ACID"
+      ]
+    },
+    {
+      "name": {
+        "tval": "shield",
+        "name": "Shield~"
+      },
+      "graphics": "light umber",
+      "flags": [
+        "HATES_ACID"
+      ]
+    },
+    {
+      "name": {
+        "tval": "cloak",
+        "name": "Cloak~"
+      },
+      "graphics": "light umber",
+      "flags": [
+        "HATES_ACID | HATES_FIRE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "soft armor",
+        "name": "Soft Armor~"
+      },
+      "graphics": "slate",
+      "flags": [
+        "HATES_ACID | HATES_FIRE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "hard armor",
+        "name": "Hard Armor~"
+      },
+      "graphics": "slate",
+      "flags": [
+        "HATES_ACID"
+      ]
+    },
+    {
+      "name": {
+        "tval": "dragon armor",
+        "name": "Dragon Armor~"
+      },
+      "graphics": "slate"
+    },
+    {
+      "name": {
+        "tval": "light",
+        "name": "Light~"
+      },
+      "graphics": "yellow",
+      "break": 50,
+      "flags": [
+        "HATES_FIRE"
+      ]
+    },
+    {
+      "name": {
+        "tval": "amulet",
+        "name": "Amulet~"
+      },
+      "graphics": "orange"
+    },
+    {
+      "name": {
+        "tval": "ring",
+        "name": "Ring~"
+      },
+      "graphics": "red",
+      "flags": [
+        "HATES_ELEC"
+      ]
+    },
+    {
+      "name": {
+        "tval": "staff",
+        "name": "Staff~"
+      },
+      "graphics": "light umber",
+      "flags": [
+        "HATES_ACID | HATES_FIRE | EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "wand",
+        "name": "Wand~"
+      },
+      "graphics": "green",
+      "flags": [
+        "HATES_ELEC | EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "rod",
+        "name": "Rod~"
+      },
+      "graphics": "light purple",
+      "flags": [
+        "HATES_ELEC | EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "scroll",
+        "name": "Scroll~"
+      },
+      "graphics": "white",
+      "flags": [
+        "HATES_ACID | HATES_FIRE | EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "potion",
+        "name": "Potion~"
+      },
+      "graphics": "light blue",
+      "break": 100,
+      "flags": [
+        "HATES_COLD | HATES_SOUND | HATES_SHARD | HATES_ICE | HATES_FORCE",
+        "EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "flask",
+        "name": "Flask~"
+      },
+      "graphics": "yellow",
+      "break": 100,
+      "flags": [
+        "HATES_COLD | HATES_SOUND | HATES_SHARD | HATES_ICE | HATES_FORCE",
+        "EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "food",
+        "name": "Food"
+      },
+      "graphics": "light umber",
+      "break": 100,
+      "flags": [
+        "EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "mushroom",
+        "name": "Mushroom~"
+      },
+      "graphics": "light umber",
+      "break": 100,
+      "flags": [
+        "EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "magic book",
+        "name": "Magic Book~"
+      },
+      "graphics": "light red",
+      "flags": [
+        "HATES_FIRE | EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "prayer book",
+        "name": "Prayer Book~"
+      },
+      "graphics": "light green",
+      "flags": [
+        "HATES_FIRE | EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "nature book",
+        "name": "Nature Book~"
+      },
+      "graphics": "yellow",
+      "flags": [
+        "HATES_FIRE | EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "shadow book",
+        "name": "Shadow Book~"
+      },
+      "graphics": "light purple",
+      "flags": [
+        "HATES_FIRE | EASY_KNOW"
+      ]
+    },
+    {
+      "name": {
+        "tval": "gold"
+      },
+      "graphics": "light yellow"
+    }
+  ]
+}

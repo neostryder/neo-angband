@@ -1,0 +1,1541 @@
+{
+  "file": "flavor",
+  "source": "lib/gamedata/flavor.txt",
+  "records": [
+    {
+      "kind": {
+        "tval": "ring",
+        "glyph": "="
+      },
+      "flavor": [
+        {
+          "index": 2,
+          "attr": "Green",
+          "desc": "Alexandrite"
+        },
+        {
+          "index": 3,
+          "attr": "Violet",
+          "desc": "Amethyst"
+        },
+        {
+          "index": 4,
+          "attr": "Light Blue",
+          "desc": "Aquamarine"
+        },
+        {
+          "index": 5,
+          "attr": "Light Blue",
+          "desc": "Azurite"
+        },
+        {
+          "index": 6,
+          "attr": "Light Green",
+          "desc": "Beryl"
+        },
+        {
+          "index": 7,
+          "attr": "Red",
+          "desc": "Bloodstone"
+        },
+        {
+          "index": 8,
+          "attr": "White",
+          "desc": "Calcite"
+        },
+        {
+          "index": 9,
+          "attr": "Red",
+          "desc": "Carnelian"
+        },
+        {
+          "index": 10,
+          "attr": "Slate",
+          "desc": "Corundum"
+        },
+        {
+          "index": 11,
+          "attr": "White",
+          "desc": "Diamond"
+        },
+        {
+          "index": 12,
+          "attr": "Green",
+          "desc": "Emerald"
+        },
+        {
+          "index": 13,
+          "attr": "Light Green",
+          "desc": "Fluorite"
+        },
+        {
+          "index": 14,
+          "attr": "Red",
+          "desc": "Garnet"
+        },
+        {
+          "index": 15,
+          "attr": "Light Slate",
+          "desc": "Hematite"
+        },
+        {
+          "index": 16,
+          "attr": "Light Green",
+          "desc": "Jade"
+        },
+        {
+          "index": 17,
+          "attr": "Umber",
+          "desc": "Jasper"
+        },
+        {
+          "index": 18,
+          "attr": "Blue",
+          "desc": "Lapis Lazuli"
+        },
+        {
+          "index": 19,
+          "attr": "Green",
+          "desc": "Malachite"
+        },
+        {
+          "index": 20,
+          "attr": "White",
+          "desc": "Marble"
+        },
+        {
+          "index": 21,
+          "attr": "Light Slate",
+          "desc": "Moonstone"
+        },
+        {
+          "index": 22,
+          "attr": "Light Red",
+          "desc": "Onyx"
+        },
+        {
+          "index": 23,
+          "attr": "Light Slate",
+          "desc": "Opal"
+        },
+        {
+          "index": 24,
+          "attr": "White",
+          "desc": "Pearl"
+        },
+        {
+          "index": 25,
+          "attr": "Light Slate",
+          "desc": "Quartz"
+        },
+        {
+          "index": 26,
+          "attr": "Light Slate",
+          "desc": "Quartzite"
+        },
+        {
+          "index": 27,
+          "attr": "Light Red",
+          "desc": "Rhodonite"
+        },
+        {
+          "index": 30,
+          "attr": "Yellow",
+          "desc": "Tiger Eye"
+        },
+        {
+          "index": 31,
+          "attr": "Yellow",
+          "desc": "Topaz"
+        },
+        {
+          "index": 32,
+          "attr": "Light Blue",
+          "desc": "Turquoise"
+        },
+        {
+          "index": 33,
+          "attr": "Light Umber",
+          "desc": "Zircon"
+        },
+        {
+          "index": 34,
+          "attr": "White",
+          "desc": "Platinum"
+        },
+        {
+          "index": 35,
+          "attr": "Light Umber",
+          "desc": "Bronze"
+        },
+        {
+          "index": 36,
+          "attr": "Yellow",
+          "desc": "Gold"
+        },
+        {
+          "index": 37,
+          "attr": "Light Dark",
+          "desc": "Obsidian"
+        },
+        {
+          "index": 38,
+          "attr": "Light Slate",
+          "desc": "Silver"
+        },
+        {
+          "index": 39,
+          "attr": "Umber",
+          "desc": "Amber"
+        },
+        {
+          "index": 41,
+          "attr": "Light Dark",
+          "desc": "Jet"
+        },
+        {
+          "index": 42,
+          "attr": "Yellow",
+          "desc": "Jewelled"
+        },
+        {
+          "index": 43,
+          "attr": "Light Green",
+          "desc": "Adamantite"
+        }
+      ],
+      "fixed": [
+        {
+          "index": 1,
+          "sval": "Ring of Power",
+          "attr": "Yellow",
+          "desc": "Plain Gold"
+        },
+        {
+          "index": 28,
+          "sval": "Ring of Fire",
+          "attr": "Red",
+          "desc": "Ruby"
+        },
+        {
+          "index": 40,
+          "sval": "Ring of Adamant",
+          "attr": "Light Blue",
+          "desc": "Mithril"
+        },
+        {
+          "index": 29,
+          "sval": "Ring of Firmament",
+          "attr": "Blue",
+          "desc": "Sapphire"
+        }
+      ]
+    },
+    {
+      "kind": {
+        "tval": "amulet",
+        "glyph": "\""
+      },
+      "flavor": [
+        {
+          "index": 45,
+          "attr": "Light Umber",
+          "desc": "Driftwood"
+        },
+        {
+          "index": 47,
+          "attr": "Light Slate",
+          "desc": "Agate"
+        },
+        {
+          "index": 48,
+          "attr": "White",
+          "desc": "Ivory"
+        },
+        {
+          "index": 49,
+          "attr": "Light Dark",
+          "desc": "Obsidian"
+        },
+        {
+          "index": 50,
+          "attr": "White",
+          "desc": "Bone"
+        },
+        {
+          "index": 51,
+          "attr": "Light Umber",
+          "desc": "Brass"
+        },
+        {
+          "index": 53,
+          "attr": "Slate",
+          "desc": "Pewter"
+        },
+        {
+          "index": 54,
+          "attr": "Umber",
+          "desc": "Tortoise Shell"
+        },
+        {
+          "index": 56,
+          "attr": "Light Blue",
+          "desc": "Azure"
+        },
+        {
+          "index": 57,
+          "attr": "White",
+          "desc": "Crystal"
+        },
+        {
+          "index": 58,
+          "attr": "Light Slate",
+          "desc": "Silver"
+        },
+        {
+          "index": 59,
+          "attr": "Light Umber",
+          "desc": "Copper"
+        },
+        {
+          "index": 60,
+          "attr": "Umber",
+          "desc": "Carved Oak"
+        },
+        {
+          "index": 61,
+          "attr": "Light Slate",
+          "desc": "Dragon Tooth"
+        },
+        {
+          "index": 62,
+          "attr": "Red",
+          "desc": "Ruby"
+        },
+        {
+          "index": 63,
+          "attr": "Light Blue",
+          "desc": "Mithril"
+        },
+        {
+          "index": 64,
+          "attr": "Light Green",
+          "desc": "Adamant"
+        },
+        {
+          "index": 65,
+          "attr": "Slate",
+          "desc": "Flint Stone"
+        },
+        {
+          "index": 66,
+          "attr": "Light Blue",
+          "desc": "Sea Shell"
+        },
+        {
+          "index": 67,
+          "attr": "Light Slate",
+          "desc": "Mother-of-Pearl"
+        }
+      ],
+      "fixed": [
+        {
+          "index": 52,
+          "sval": "Amulet",
+          "attr": "Light Umber",
+          "desc": "Bronze"
+        },
+        {
+          "index": 55,
+          "sval": "Necklace",
+          "attr": "Yellow",
+          "desc": "Golden"
+        },
+        {
+          "index": 44,
+          "sval": "Elfstone",
+          "attr": "Green",
+          "desc": "Green"
+        },
+        {
+          "index": 46,
+          "sval": "Jewel",
+          "attr": "White",
+          "desc": "White"
+        }
+      ]
+    },
+    {
+      "kind": {
+        "tval": "staff",
+        "glyph": "_"
+      },
+      "flavor": [
+        {
+          "index": 68,
+          "attr": "Light Umber",
+          "desc": "Aspen"
+        },
+        {
+          "index": 69,
+          "attr": "Light Umber",
+          "desc": "Balsa"
+        },
+        {
+          "index": 70,
+          "attr": "Light Umber",
+          "desc": "Banyan"
+        },
+        {
+          "index": 71,
+          "attr": "Light Umber",
+          "desc": "Birch"
+        },
+        {
+          "index": 72,
+          "attr": "Light Umber",
+          "desc": "Cedar"
+        },
+        {
+          "index": 73,
+          "attr": "Light Umber",
+          "desc": "Cottonwood"
+        },
+        {
+          "index": 74,
+          "attr": "Light Umber",
+          "desc": "Cypress"
+        },
+        {
+          "index": 75,
+          "attr": "Light Umber",
+          "desc": "Dogwood"
+        },
+        {
+          "index": 76,
+          "attr": "Light Umber",
+          "desc": "Elm"
+        },
+        {
+          "index": 77,
+          "attr": "Light Umber",
+          "desc": "Eucalyptus"
+        },
+        {
+          "index": 78,
+          "attr": "Light Umber",
+          "desc": "Hemlock"
+        },
+        {
+          "index": 79,
+          "attr": "Light Umber",
+          "desc": "Hickory"
+        },
+        {
+          "index": 80,
+          "attr": "Umber",
+          "desc": "Ironwood"
+        },
+        {
+          "index": 81,
+          "attr": "Light Umber",
+          "desc": "Locust"
+        },
+        {
+          "index": 82,
+          "attr": "Umber",
+          "desc": "Mahogany"
+        },
+        {
+          "index": 83,
+          "attr": "Umber",
+          "desc": "Maple"
+        },
+        {
+          "index": 84,
+          "attr": "Umber",
+          "desc": "Mulberry"
+        },
+        {
+          "index": 85,
+          "attr": "Umber",
+          "desc": "Oak"
+        },
+        {
+          "index": 86,
+          "attr": "Umber",
+          "desc": "Pine"
+        },
+        {
+          "index": 87,
+          "attr": "Red",
+          "desc": "Redwood"
+        },
+        {
+          "index": 88,
+          "attr": "Red",
+          "desc": "Rosewood"
+        },
+        {
+          "index": 89,
+          "attr": "Light Umber",
+          "desc": "Spruce"
+        },
+        {
+          "index": 90,
+          "attr": "Light Umber",
+          "desc": "Sycamore"
+        },
+        {
+          "index": 91,
+          "attr": "Light Umber",
+          "desc": "Teak"
+        },
+        {
+          "index": 92,
+          "attr": "Umber",
+          "desc": "Walnut"
+        },
+        {
+          "index": 93,
+          "attr": "Green",
+          "desc": "Mistletoe"
+        },
+        {
+          "index": 94,
+          "attr": "Light Umber",
+          "desc": "Hawthorn"
+        },
+        {
+          "index": 95,
+          "attr": "Light Umber",
+          "desc": "Bamboo"
+        },
+        {
+          "index": 96,
+          "attr": "Light Slate",
+          "desc": "Silver Birch"
+        },
+        {
+          "index": 97,
+          "attr": "Umber",
+          "desc": "Hazel"
+        },
+        {
+          "index": 98,
+          "attr": "Yellow",
+          "desc": "Golden"
+        },
+        {
+          "index": 99,
+          "attr": "Slate",
+          "desc": "Blackthorn"
+        },
+        {
+          "index": 100,
+          "attr": "Light Umber",
+          "desc": "Gnarled"
+        },
+        {
+          "index": 101,
+          "attr": "White",
+          "desc": "Ivory"
+        },
+        {
+          "index": 102,
+          "attr": "Light Umber",
+          "desc": "Willow"
+        }
+      ]
+    },
+    {
+      "kind": {
+        "tval": "wand",
+        "glyph": "-"
+      },
+      "flavor": [
+        {
+          "index": 103,
+          "attr": "Light Blue",
+          "desc": "Aluminium"
+        },
+        {
+          "index": 104,
+          "attr": "Light Dark",
+          "desc": "Cast Iron"
+        },
+        {
+          "index": 105,
+          "attr": "White",
+          "desc": "Chromium"
+        },
+        {
+          "index": 106,
+          "attr": "Light Umber",
+          "desc": "Copper"
+        },
+        {
+          "index": 107,
+          "attr": "Yellow",
+          "desc": "Gold"
+        },
+        {
+          "index": 108,
+          "attr": "Slate",
+          "desc": "Iron"
+        },
+        {
+          "index": 109,
+          "attr": "Light Slate",
+          "desc": "Magnesium"
+        },
+        {
+          "index": 110,
+          "attr": "Light Slate",
+          "desc": "Molybdenum"
+        },
+        {
+          "index": 111,
+          "attr": "Light Umber",
+          "desc": "Nickel"
+        },
+        {
+          "index": 112,
+          "attr": "Red",
+          "desc": "Rusty"
+        },
+        {
+          "index": 113,
+          "attr": "Light Slate",
+          "desc": "Silver"
+        },
+        {
+          "index": 114,
+          "attr": "Light Slate",
+          "desc": "Steel"
+        },
+        {
+          "index": 115,
+          "attr": "Light Slate",
+          "desc": "Tin"
+        },
+        {
+          "index": 116,
+          "attr": "White",
+          "desc": "Titanium"
+        },
+        {
+          "index": 117,
+          "attr": "White",
+          "desc": "Tungsten"
+        },
+        {
+          "index": 118,
+          "attr": "Light Slate",
+          "desc": "Zirconium"
+        },
+        {
+          "index": 119,
+          "attr": "Light Slate",
+          "desc": "Zinc"
+        },
+        {
+          "index": 120,
+          "attr": "Light Blue",
+          "desc": "Aluminium-Plated"
+        },
+        {
+          "index": 121,
+          "attr": "Light Umber",
+          "desc": "Copper-Plated"
+        },
+        {
+          "index": 122,
+          "attr": "Yellow",
+          "desc": "Gold-Plated"
+        },
+        {
+          "index": 123,
+          "attr": "Light Umber",
+          "desc": "Nickel-Plated"
+        },
+        {
+          "index": 124,
+          "attr": "Light Slate",
+          "desc": "Silver-Plated"
+        },
+        {
+          "index": 125,
+          "attr": "Light Slate",
+          "desc": "Steel-Plated"
+        },
+        {
+          "index": 126,
+          "attr": "Light Slate",
+          "desc": "Tin-Plated"
+        },
+        {
+          "index": 127,
+          "attr": "Light Slate",
+          "desc": "Zinc-Plated"
+        },
+        {
+          "index": 128,
+          "attr": "Light Blue",
+          "desc": "Mithril-Plated"
+        },
+        {
+          "index": 129,
+          "attr": "Light Blue",
+          "desc": "Mithril"
+        },
+        {
+          "index": 130,
+          "attr": "Umber",
+          "desc": "Runed"
+        },
+        {
+          "index": 131,
+          "attr": "Light Umber",
+          "desc": "Bronze"
+        },
+        {
+          "index": 132,
+          "attr": "Light Umber",
+          "desc": "Brass"
+        },
+        {
+          "index": 133,
+          "attr": "White",
+          "desc": "Platinum"
+        },
+        {
+          "index": 134,
+          "attr": "Slate",
+          "desc": "Lead"
+        },
+        {
+          "index": 135,
+          "attr": "Slate",
+          "desc": "Lead-Plated"
+        },
+        {
+          "index": 136,
+          "attr": "White",
+          "desc": "Ivory"
+        },
+        {
+          "index": 137,
+          "attr": "Slate",
+          "desc": "Pewter"
+        }
+      ]
+    },
+    {
+      "kind": {
+        "tval": "rod",
+        "glyph": "-"
+      },
+      "flavor": [
+        {
+          "index": 138,
+          "attr": "Light Blue",
+          "desc": "Aluminium"
+        },
+        {
+          "index": 139,
+          "attr": "Light Dark",
+          "desc": "Cast Iron"
+        },
+        {
+          "index": 140,
+          "attr": "White",
+          "desc": "Chromium"
+        },
+        {
+          "index": 141,
+          "attr": "Light Umber",
+          "desc": "Copper"
+        },
+        {
+          "index": 142,
+          "attr": "Yellow",
+          "desc": "Gold"
+        },
+        {
+          "index": 143,
+          "attr": "Slate",
+          "desc": "Iron"
+        },
+        {
+          "index": 144,
+          "attr": "Light Slate",
+          "desc": "Magnesium"
+        },
+        {
+          "index": 145,
+          "attr": "Light Slate",
+          "desc": "Molybdenum"
+        },
+        {
+          "index": 146,
+          "attr": "Light Umber",
+          "desc": "Nickel"
+        },
+        {
+          "index": 147,
+          "attr": "Red",
+          "desc": "Rusty Iron"
+        },
+        {
+          "index": 148,
+          "attr": "Light Slate",
+          "desc": "Silver"
+        },
+        {
+          "index": 149,
+          "attr": "Light Slate",
+          "desc": "Steel"
+        },
+        {
+          "index": 150,
+          "attr": "Light Slate",
+          "desc": "Tin"
+        },
+        {
+          "index": 151,
+          "attr": "White",
+          "desc": "Titanium"
+        },
+        {
+          "index": 152,
+          "attr": "White",
+          "desc": "Tungsten"
+        },
+        {
+          "index": 153,
+          "attr": "Light Slate",
+          "desc": "Zirconium"
+        },
+        {
+          "index": 154,
+          "attr": "Light Slate",
+          "desc": "Zinc"
+        },
+        {
+          "index": 155,
+          "attr": "Light Blue",
+          "desc": "Aluminium-Plated"
+        },
+        {
+          "index": 156,
+          "attr": "Light Umber",
+          "desc": "Copper-Plated"
+        },
+        {
+          "index": 157,
+          "attr": "Yellow",
+          "desc": "Engraved Gold"
+        },
+        {
+          "index": 158,
+          "attr": "Light Umber",
+          "desc": "Nickel-Plated"
+        },
+        {
+          "index": 159,
+          "attr": "Light Slate",
+          "desc": "Silver-Gilt"
+        },
+        {
+          "index": 160,
+          "attr": "Light Slate",
+          "desc": "Polished Steel"
+        },
+        {
+          "index": 161,
+          "attr": "Light Slate",
+          "desc": "Tin-Plated"
+        },
+        {
+          "index": 162,
+          "attr": "White",
+          "desc": "White Gold"
+        },
+        {
+          "index": 163,
+          "attr": "Light Blue",
+          "desc": "Mithril-Plated"
+        },
+        {
+          "index": 164,
+          "attr": "Light Blue",
+          "desc": "Mithril"
+        },
+        {
+          "index": 165,
+          "attr": "Umber",
+          "desc": "Runed"
+        },
+        {
+          "index": 166,
+          "attr": "Light Umber",
+          "desc": "Bronze"
+        },
+        {
+          "index": 167,
+          "attr": "Light Umber",
+          "desc": "Brass"
+        },
+        {
+          "index": 168,
+          "attr": "White",
+          "desc": "Platinum"
+        },
+        {
+          "index": 169,
+          "attr": "Red",
+          "desc": "Rusted Steel"
+        },
+        {
+          "index": 170,
+          "attr": "Slate",
+          "desc": "Lead-Plated"
+        },
+        {
+          "index": 171,
+          "attr": "White",
+          "desc": "Ivory"
+        },
+        {
+          "index": 172,
+          "attr": "Slate",
+          "desc": "Pewter"
+        }
+      ]
+    },
+    {
+      "kind": {
+        "tval": "mushroom",
+        "glyph": ","
+      },
+      "flavor": [
+        {
+          "index": 173,
+          "attr": "Light Purple",
+          "desc": "Spotted"
+        },
+        {
+          "index": 174,
+          "attr": "Light Dark",
+          "desc": "Rubbery"
+        },
+        {
+          "index": 175,
+          "attr": "Mustard",
+          "desc": "Crumbly"
+        },
+        {
+          "index": 176,
+          "attr": "Light Yellow",
+          "desc": "Moldy"
+        },
+        {
+          "index": 177,
+          "attr": "Blue",
+          "desc": "Mottled"
+        },
+        {
+          "index": 178,
+          "attr": "Green",
+          "desc": "Firm"
+        },
+        {
+          "index": 179,
+          "attr": "Mud",
+          "desc": "Woody"
+        },
+        {
+          "index": 180,
+          "attr": "Yellow",
+          "desc": "Wrinkled"
+        },
+        {
+          "index": 181,
+          "attr": "Light Slate",
+          "desc": "Furry"
+        },
+        {
+          "index": 182,
+          "attr": "Light Red",
+          "desc": "Fragile"
+        },
+        {
+          "index": 183,
+          "attr": "Slate",
+          "desc": "Marbled"
+        },
+        {
+          "index": 184,
+          "attr": "Light Blue",
+          "desc": "Gelatinous"
+        },
+        {
+          "index": 185,
+          "attr": "Light Green",
+          "desc": "Speckled"
+        },
+        {
+          "index": 186,
+          "attr": "Violet",
+          "desc": "Glowing"
+        },
+        {
+          "index": 187,
+          "attr": "Red",
+          "desc": "Striped"
+        },
+        {
+          "index": 188,
+          "attr": "Slate",
+          "desc": "Slimy"
+        },
+        {
+          "index": 189,
+          "attr": "Deep Light Blue",
+          "desc": "Moist"
+        },
+        {
+          "index": 190,
+          "attr": "White",
+          "desc": "Withered"
+        },
+        {
+          "index": 191,
+          "attr": "White",
+          "desc": "Waxy"
+        },
+        {
+          "index": 192,
+          "attr": "Umber",
+          "desc": "Smelly"
+        }
+      ]
+    },
+    {
+      "kind": {
+        "tval": "potion",
+        "glyph": "!"
+      },
+      "flavor": [
+        {
+          "index": 193,
+          "attr": "White",
+          "desc": "Clear"
+        },
+        {
+          "index": 194,
+          "attr": "Light Umber",
+          "desc": "Light Brown"
+        },
+        {
+          "index": 195,
+          "attr": "Green",
+          "desc": "Icky Green"
+        },
+        {
+          "index": 196,
+          "attr": "Light Blue",
+          "desc": "Azure"
+        },
+        {
+          "index": 197,
+          "attr": "Blue",
+          "desc": "Blue"
+        },
+        {
+          "index": 198,
+          "attr": "Light Blue",
+          "desc": "Cerulean"
+        },
+        {
+          "index": 199,
+          "attr": "Light Dark",
+          "desc": "Black"
+        },
+        {
+          "index": 200,
+          "attr": "Umber",
+          "desc": "Brown"
+        },
+        {
+          "index": 201,
+          "attr": "Umber",
+          "desc": "Ochre"
+        },
+        {
+          "index": 202,
+          "attr": "Light Slate",
+          "desc": "Bubbling"
+        },
+        {
+          "index": 203,
+          "attr": "Light Green",
+          "desc": "Chartreuse"
+        },
+        {
+          "index": 204,
+          "attr": "White",
+          "desc": "Cloudy"
+        },
+        {
+          "index": 205,
+          "attr": "Light Umber",
+          "desc": "Copper Speckled"
+        },
+        {
+          "index": 206,
+          "attr": "Red",
+          "desc": "Crimson"
+        },
+        {
+          "index": 207,
+          "attr": "Light Blue",
+          "desc": "Cyan"
+        },
+        {
+          "index": 208,
+          "attr": "Blue",
+          "desc": "Ultramarine"
+        },
+        {
+          "index": 209,
+          "attr": "Green",
+          "desc": "Dark Green"
+        },
+        {
+          "index": 210,
+          "attr": "Red",
+          "desc": "Dark Red"
+        },
+        {
+          "index": 211,
+          "attr": "Light Yellow",
+          "desc": "Light Yellow"
+        },
+        {
+          "index": 212,
+          "attr": "Green",
+          "desc": "Green"
+        },
+        {
+          "index": 213,
+          "attr": "Mud",
+          "desc": "Muddy"
+        },
+        {
+          "index": 214,
+          "attr": "Slate",
+          "desc": "Grey"
+        },
+        {
+          "index": 215,
+          "attr": "Slate",
+          "desc": "Vespertine"
+        },
+        {
+          "index": 216,
+          "attr": "Light Slate",
+          "desc": "Hazy"
+        },
+        {
+          "index": 217,
+          "attr": "Violet",
+          "desc": "Indigo"
+        },
+        {
+          "index": 218,
+          "attr": "Light Blue",
+          "desc": "Light Blue"
+        },
+        {
+          "index": 219,
+          "attr": "Light Green",
+          "desc": "Light Green"
+        },
+        {
+          "index": 220,
+          "attr": "Magenta-Pink",
+          "desc": "Magenta"
+        },
+        {
+          "index": 221,
+          "attr": "Deep Light Blue",
+          "desc": "Metallic Blue"
+        },
+        {
+          "index": 222,
+          "attr": "Red",
+          "desc": "Metallic Red"
+        },
+        {
+          "index": 223,
+          "attr": "Green",
+          "desc": "Metallic Green"
+        },
+        {
+          "index": 224,
+          "attr": "Violet",
+          "desc": "Metallic Purple"
+        },
+        {
+          "index": 225,
+          "attr": "Light Slate",
+          "desc": "Misty"
+        },
+        {
+          "index": 226,
+          "attr": "Orange",
+          "desc": "Orange"
+        },
+        {
+          "index": 227,
+          "attr": "Orange",
+          "desc": "Orange Speckled"
+        },
+        {
+          "index": 228,
+          "attr": "Magenta-Pink",
+          "desc": "Pink"
+        },
+        {
+          "index": 229,
+          "attr": "Light Teal",
+          "desc": "Light Teal"
+        },
+        {
+          "index": 230,
+          "attr": "Light Violet",
+          "desc": "Light Violet"
+        },
+        {
+          "index": 231,
+          "attr": "Purple",
+          "desc": "Purple"
+        },
+        {
+          "index": 232,
+          "attr": "Purple",
+          "desc": "Purple Speckled"
+        },
+        {
+          "index": 233,
+          "attr": "Red",
+          "desc": "Red"
+        },
+        {
+          "index": 234,
+          "attr": "Teal",
+          "desc": "Teal"
+        },
+        {
+          "index": 235,
+          "attr": "Mustard",
+          "desc": "Mustard Yellow"
+        },
+        {
+          "index": 236,
+          "attr": "Light Dark",
+          "desc": "Smoky"
+        },
+        {
+          "index": 237,
+          "attr": "Orange",
+          "desc": "Tangerine"
+        },
+        {
+          "index": 238,
+          "attr": "Violet",
+          "desc": "Violet"
+        },
+        {
+          "index": 239,
+          "attr": "Red",
+          "desc": "Vermilion"
+        },
+        {
+          "index": 240,
+          "attr": "White",
+          "desc": "White"
+        },
+        {
+          "index": 241,
+          "attr": "Yellow",
+          "desc": "Yellow"
+        },
+        {
+          "index": 242,
+          "attr": "Light Purple",
+          "desc": "Light Purple"
+        },
+        {
+          "index": 243,
+          "attr": "Light Red",
+          "desc": "Pungent"
+        },
+        {
+          "index": 244,
+          "attr": "Light Purple",
+          "desc": "Lavender"
+        },
+        {
+          "index": 245,
+          "attr": "Light Red",
+          "desc": "Viscous Pink"
+        },
+        {
+          "index": 246,
+          "attr": "Yellow",
+          "desc": "Oily Yellow"
+        },
+        {
+          "index": 247,
+          "attr": "Green",
+          "desc": "Gloopy Green"
+        },
+        {
+          "index": 248,
+          "attr": "Violet",
+          "desc": "Shimmering"
+        },
+        {
+          "index": 249,
+          "attr": "Red",
+          "desc": "Coagulated Crimson"
+        },
+        {
+          "index": 250,
+          "attr": "Light Pink",
+          "desc": "Light Pink"
+        },
+        {
+          "index": 251,
+          "attr": "Yellow",
+          "desc": "Gold"
+        }
+      ]
+    },
+    {
+      "kind": {
+        "tval": "scroll",
+        "glyph": "?"
+      },
+      "flavor": [
+        {
+          "index": 252,
+          "attr": "White"
+        },
+        {
+          "index": 253,
+          "attr": "White"
+        },
+        {
+          "index": 254,
+          "attr": "White"
+        },
+        {
+          "index": 255,
+          "attr": "White"
+        },
+        {
+          "index": 256,
+          "attr": "White"
+        },
+        {
+          "index": 257,
+          "attr": "White"
+        },
+        {
+          "index": 258,
+          "attr": "White"
+        },
+        {
+          "index": 259,
+          "attr": "White"
+        },
+        {
+          "index": 260,
+          "attr": "White"
+        },
+        {
+          "index": 261,
+          "attr": "White"
+        },
+        {
+          "index": 262,
+          "attr": "White"
+        },
+        {
+          "index": 263,
+          "attr": "White"
+        },
+        {
+          "index": 264,
+          "attr": "White"
+        },
+        {
+          "index": 265,
+          "attr": "White"
+        },
+        {
+          "index": 266,
+          "attr": "White"
+        },
+        {
+          "index": 267,
+          "attr": "White"
+        },
+        {
+          "index": 268,
+          "attr": "White"
+        },
+        {
+          "index": 269,
+          "attr": "White"
+        },
+        {
+          "index": 270,
+          "attr": "White"
+        },
+        {
+          "index": 271,
+          "attr": "White"
+        },
+        {
+          "index": 272,
+          "attr": "White"
+        },
+        {
+          "index": 273,
+          "attr": "White"
+        },
+        {
+          "index": 274,
+          "attr": "White"
+        },
+        {
+          "index": 275,
+          "attr": "White"
+        },
+        {
+          "index": 276,
+          "attr": "White"
+        },
+        {
+          "index": 277,
+          "attr": "White"
+        },
+        {
+          "index": 278,
+          "attr": "White"
+        },
+        {
+          "index": 279,
+          "attr": "White"
+        },
+        {
+          "index": 280,
+          "attr": "White"
+        },
+        {
+          "index": 281,
+          "attr": "White"
+        },
+        {
+          "index": 282,
+          "attr": "White"
+        },
+        {
+          "index": 283,
+          "attr": "White"
+        },
+        {
+          "index": 284,
+          "attr": "White"
+        },
+        {
+          "index": 285,
+          "attr": "White"
+        },
+        {
+          "index": 286,
+          "attr": "White"
+        },
+        {
+          "index": 287,
+          "attr": "White"
+        },
+        {
+          "index": 288,
+          "attr": "White"
+        },
+        {
+          "index": 289,
+          "attr": "White"
+        },
+        {
+          "index": 290,
+          "attr": "White"
+        },
+        {
+          "index": 291,
+          "attr": "White"
+        },
+        {
+          "index": 292,
+          "attr": "White"
+        },
+        {
+          "index": 293,
+          "attr": "White"
+        },
+        {
+          "index": 294,
+          "attr": "White"
+        },
+        {
+          "index": 295,
+          "attr": "White"
+        },
+        {
+          "index": 296,
+          "attr": "White"
+        },
+        {
+          "index": 297,
+          "attr": "White"
+        },
+        {
+          "index": 298,
+          "attr": "White"
+        },
+        {
+          "index": 299,
+          "attr": "White"
+        },
+        {
+          "index": 300,
+          "attr": "White"
+        },
+        {
+          "index": 301,
+          "attr": "White"
+        },
+        {
+          "index": 302,
+          "attr": "White"
+        }
+      ]
+    }
+  ]
+}

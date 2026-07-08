@@ -1,0 +1,470 @@
+{
+  "file": "constants",
+  "source": "lib/gamedata/constants.txt",
+  "records": [
+    {
+      "level-max": [
+        {
+          "label": "monsters",
+          "value": 1024
+        }
+      ],
+      "mon-gen": [
+        {
+          "label": "chance",
+          "value": 500
+        },
+        {
+          "label": "level-min",
+          "value": 14
+        },
+        {
+          "label": "town-day",
+          "value": 4
+        },
+        {
+          "label": "town-night",
+          "value": 8
+        },
+        {
+          "label": "repro-max",
+          "value": 100
+        },
+        {
+          "label": "ood-chance",
+          "value": 25
+        },
+        {
+          "label": "ood-amount",
+          "value": 10
+        },
+        {
+          "label": "group-max",
+          "value": 25
+        },
+        {
+          "label": "group-dist",
+          "value": 5
+        }
+      ],
+      "mon-play": [
+        {
+          "label": "break-glyph",
+          "value": 550
+        },
+        {
+          "label": "mult-rate",
+          "value": 8
+        },
+        {
+          "label": "life-drain",
+          "value": 2
+        },
+        {
+          "label": "flee-range",
+          "value": 5
+        },
+        {
+          "label": "turn-range",
+          "value": 5
+        }
+      ],
+      "dun-gen": [
+        {
+          "label": "cent-max",
+          "value": 100
+        },
+        {
+          "label": "door-max",
+          "value": 200
+        },
+        {
+          "label": "wall-max",
+          "value": 500
+        },
+        {
+          "label": "tunn-max",
+          "value": 900
+        },
+        {
+          "label": "amt-room",
+          "value": 9
+        },
+        {
+          "label": "amt-item",
+          "value": 3
+        },
+        {
+          "label": "amt-gold",
+          "value": 3
+        },
+        {
+          "label": "pit-max",
+          "value": 2
+        }
+      ],
+      "world": [
+        {
+          "label": "max-depth",
+          "value": 128
+        },
+        {
+          "label": "day-length",
+          "value": 10000
+        },
+        {
+          "label": "dungeon-hgt",
+          "value": 66
+        },
+        {
+          "label": "dungeon-wid",
+          "value": 198
+        },
+        {
+          "label": "town-hgt",
+          "value": 22
+        },
+        {
+          "label": "town-wid",
+          "value": 66
+        },
+        {
+          "label": "feeling-total",
+          "value": 100
+        },
+        {
+          "label": "feeling-need",
+          "value": 10
+        },
+        {
+          "label": "stair-skip",
+          "value": 1
+        },
+        {
+          "label": "move-energy",
+          "value": 100
+        }
+      ],
+      "carry-cap": [
+        {
+          "label": "pack-size",
+          "value": 23
+        },
+        {
+          "label": "quiver-size",
+          "value": 10
+        },
+        {
+          "label": "quiver-slot-size",
+          "value": 40
+        },
+        {
+          "label": "thrown-quiver-mult",
+          "value": 5
+        },
+        {
+          "label": "floor-size",
+          "value": 23
+        }
+      ],
+      "store": [
+        {
+          "label": "inven-max",
+          "value": 24
+        },
+        {
+          "label": "turns",
+          "value": 1000
+        },
+        {
+          "label": "shuffle",
+          "value": 25
+        },
+        {
+          "label": "magic-level",
+          "value": 5
+        }
+      ],
+      "obj-make": [
+        {
+          "label": "max-depth",
+          "value": 100
+        },
+        {
+          "label": "great-obj",
+          "value": 20
+        },
+        {
+          "label": "great-ego",
+          "value": 20
+        },
+        {
+          "label": "fuel-torch",
+          "value": 5000
+        },
+        {
+          "label": "fuel-lamp",
+          "value": 15000
+        },
+        {
+          "label": "default-lamp",
+          "value": 7500
+        }
+      ],
+      "player": [
+        {
+          "label": "max-sight",
+          "value": 20
+        },
+        {
+          "label": "max-range",
+          "value": 20
+        },
+        {
+          "label": "start-gold",
+          "value": 600
+        },
+        {
+          "label": "food-value",
+          "value": 100
+        }
+      ],
+      "melee-critical": [
+        {
+          "label": "debuff-toh",
+          "value": 10
+        },
+        {
+          "label": "chance-weight-scale",
+          "value": 1
+        },
+        {
+          "label": "chance-toh-scale",
+          "value": 5
+        },
+        {
+          "label": "chance-level-scale",
+          "value": 0
+        },
+        {
+          "label": "chance-toh-skill-scale",
+          "value": 1
+        },
+        {
+          "label": "chance-offset",
+          "value": -60
+        },
+        {
+          "label": "chance-range",
+          "value": 5000
+        },
+        {
+          "label": "power-weight-scale",
+          "value": 1
+        },
+        {
+          "label": "power-random",
+          "value": 650
+        }
+      ],
+      "melee-critical-level": [
+        {
+          "cutoff": 400,
+          "mult": 2,
+          "add": 5,
+          "msg": "HIT_GOOD"
+        },
+        {
+          "cutoff": 700,
+          "mult": 2,
+          "add": 10,
+          "msg": "HIT_GREAT"
+        },
+        {
+          "cutoff": 900,
+          "mult": 3,
+          "add": 15,
+          "msg": "HIT_SUPERB"
+        },
+        {
+          "cutoff": 1300,
+          "mult": 3,
+          "add": 20,
+          "msg": "HIT_HI_GREAT"
+        },
+        {
+          "cutoff": -1,
+          "mult": 4,
+          "add": 20,
+          "msg": "HIT_HI_SUPERB"
+        }
+      ],
+      "ranged-critical": [
+        {
+          "label": "debuff-toh",
+          "value": 10
+        },
+        {
+          "label": "chance-weight-scale",
+          "value": 1
+        },
+        {
+          "label": "chance-toh-scale",
+          "value": 4
+        },
+        {
+          "label": "chance-level-scale",
+          "value": 2
+        },
+        {
+          "label": "chance-launched-toh-skill-scale",
+          "value": 0
+        },
+        {
+          "label": "chance-thrown-toh-skill-scale",
+          "value": 0
+        },
+        {
+          "label": "chance-offset",
+          "value": 0
+        },
+        {
+          "label": "chance-range",
+          "value": 5000
+        },
+        {
+          "label": "power-weight-scale",
+          "value": 1
+        },
+        {
+          "label": "power-random",
+          "value": 500
+        }
+      ],
+      "ranged-critical-level": [
+        {
+          "cutoff": 500,
+          "mult": 2,
+          "add": 5,
+          "msg": "HIT_GOOD"
+        },
+        {
+          "cutoff": 1000,
+          "mult": 2,
+          "add": 10,
+          "msg": "HIT_GREAT"
+        },
+        {
+          "cutoff": -1,
+          "mult": 3,
+          "add": 15,
+          "msg": "HIT_SUPERB"
+        }
+      ],
+      "o-melee-critical": [
+        {
+          "label": "debuff-toh",
+          "value": 10
+        },
+        {
+          "label": "power-toh-scale-numerator",
+          "value": 1
+        },
+        {
+          "label": "power-toh-scale-denominator",
+          "value": 3
+        },
+        {
+          "label": "chance-power-scale-numerator",
+          "value": 1
+        },
+        {
+          "label": "chance-power-scale-denominator",
+          "value": 1
+        },
+        {
+          "label": "chance-add-denominator",
+          "value": 240
+        }
+      ],
+      "o-melee-critical-level": [
+        {
+          "chance": 40,
+          "dice": 5,
+          "msg": "HIT_HI_SUPERB"
+        },
+        {
+          "chance": 12,
+          "dice": 4,
+          "msg": "HIT_HI_GREAT"
+        },
+        {
+          "chance": 3,
+          "dice": 3,
+          "msg": "HIT_SUPERB"
+        },
+        {
+          "chance": 2,
+          "dice": 2,
+          "msg": "HIT_GREAT"
+        },
+        {
+          "chance": 1,
+          "dice": 1,
+          "msg": "HIT_GOOD"
+        }
+      ],
+      "o-ranged-critical": [
+        {
+          "label": "debuff-toh",
+          "value": 10
+        },
+        {
+          "label": "power-launched-toh-scale-numerator",
+          "value": 1
+        },
+        {
+          "label": "power-launched-toh-scale-denominator",
+          "value": 1
+        },
+        {
+          "label": "power-thrown-toh-scale-numerator",
+          "value": 3
+        },
+        {
+          "label": "power-thrown-toh-scale-denominator",
+          "value": 2
+        },
+        {
+          "label": "chance-power-scale-numerator",
+          "value": 1
+        },
+        {
+          "label": "chance-power-scale-denominator",
+          "value": 1
+        },
+        {
+          "label": "chance-add-denominator",
+          "value": 360
+        }
+      ],
+      "o-ranged-critical-level": [
+        {
+          "chance": 50,
+          "dice": 3,
+          "msg": "HIT_SUPERB"
+        },
+        {
+          "chance": 10,
+          "dice": 2,
+          "msg": "HIT_GREAT"
+        },
+        {
+          "chance": 1,
+          "dice": 1,
+          "msg": "HIT_GOOD"
+        }
+      ]
+    }
+  ]
+}

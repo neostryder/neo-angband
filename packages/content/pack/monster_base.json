@@ -1,0 +1,688 @@
+{
+  "file": "monster_base",
+  "source": "lib/gamedata/monster_base.txt",
+  "records": [
+    {
+      "name": "ancient dragon",
+      "glyph": "D",
+      "pain": 1,
+      "flags": [
+        "DRAGON | EVIL | POWERFUL | SMART | SPIRIT",
+        "DROP_4",
+        "MOVE_BODY | CLEAR_WEB",
+        "NO_CONF | NO_SLEEP | NO_HOLD",
+        "FORCE_SLEEP"
+      ],
+      "desc": [
+        "Ancient Dragon/Wyrm"
+      ]
+    },
+    {
+      "name": "ainu",
+      "glyph": "A",
+      "pain": 1,
+      "flags": [
+        "POWERFUL | SPIRIT | SMART",
+        "ONLY_ITEM",
+        "OPEN_DOOR | BASH_DOOR | TAKE_ITEM | CLEAR_WEB",
+        "IM_COLD | IM_FIRE | IM_POIS | NO_CONF | NO_SLEEP | NO_HOLD",
+        "FORCE_SLEEP"
+      ],
+      "desc": [
+        "Ainu/maia"
+      ]
+    },
+    {
+      "name": "ant",
+      "glyph": "a",
+      "pain": 7,
+      "flags": [
+        "ANIMAL | WEIRD_MIND",
+        "BASH_DOOR"
+      ],
+      "desc": [
+        "Ant"
+      ]
+    },
+    {
+      "name": "bat",
+      "glyph": "b",
+      "pain": 4,
+      "flags": [
+        "ANIMAL"
+      ],
+      "desc": [
+        "Bat"
+      ]
+    },
+    {
+      "name": "bird",
+      "glyph": "B",
+      "pain": 8,
+      "flags": [
+        "ANIMAL | CLEAR_WEB"
+      ],
+      "desc": [
+        "Bird"
+      ]
+    },
+    {
+      "name": "canine",
+      "glyph": "C",
+      "pain": 3,
+      "flags": [
+        "ANIMAL | CLEAR_WEB"
+      ],
+      "desc": [
+        "Canine (Dog)"
+      ]
+    },
+    {
+      "name": "centipede",
+      "glyph": "c",
+      "pain": 5,
+      "flags": [
+        "ANIMAL | WEIRD_MIND"
+      ],
+      "desc": [
+        "Centipede"
+      ]
+    },
+    {
+      "name": "creeping coins",
+      "glyph": "$",
+      "pain": 1,
+      "flags": [
+        "COLD_BLOOD | METAL | UNAWARE | EMPTY_MIND",
+        "ONLY_GOLD",
+        "BASH_DOOR | CLEAR_WEB",
+        "IM_ELEC | IM_POIS | NO_CONF | NO_SLEEP",
+        "MIMIC_INV"
+      ],
+      "desc": [
+        "Creeping Coins"
+      ]
+    },
+    {
+      "name": "dragon",
+      "glyph": "d",
+      "pain": 1,
+      "flags": [
+        "DRAGON | EVIL | SPIRIT",
+        "FORCE_SLEEP | CLEAR_WEB"
+      ],
+      "desc": [
+        "Dragon"
+      ]
+    },
+    {
+      "name": "dragon fly",
+      "glyph": "F",
+      "pain": 7,
+      "flags": [
+        "ANIMAL | WEIRD_MIND",
+        "RAND_50 | BASH_DOOR",
+        "FORCE_SLEEP"
+      ],
+      "desc": [
+        "Dragon Fly"
+      ]
+    },
+    {
+      "name": "eye",
+      "glyph": "e",
+      "pain": 1,
+      "flags": [
+        "CLEAR_WEB"
+      ],
+      "desc": [
+        "Floating Eye"
+      ]
+    },
+    {
+      "name": "elemental",
+      "glyph": "E",
+      "pain": 1,
+      "flags": [
+        "EMPTY_MIND | CLEAR_WEB",
+        "IM_POIS | NO_FEAR | NO_CONF | NO_SLEEP",
+        "NONLIVING"
+      ],
+      "desc": [
+        "Elemental"
+      ]
+    },
+    {
+      "name": "feline",
+      "glyph": "f",
+      "pain": 6,
+      "flags": [
+        "ANIMAL | CLEAR_WEB"
+      ],
+      "desc": [
+        "Feline (Cat)"
+      ]
+    },
+    {
+      "name": "ghost",
+      "glyph": "G",
+      "pain": 1,
+      "flags": [
+        "UNDEAD | EVIL | INVISIBLE | COLD_BLOOD | SPIRIT",
+        "PASS_WALL",
+        "IM_COLD | IM_POIS | NO_CONF | NO_SLEEP | NO_STUN | NO_HOLD"
+      ],
+      "desc": [
+        "Ghost"
+      ]
+    },
+    {
+      "name": "giant",
+      "glyph": "P",
+      "pain": 1,
+      "flags": [
+        "GIANT | EVIL | SPIRIT",
+        "BASH_DOOR | CLEAR_WEB"
+      ],
+      "desc": [
+        "Giant Humanoid"
+      ]
+    },
+    {
+      "name": "golem",
+      "glyph": "g",
+      "pain": 1,
+      "flags": [
+        "EMPTY_MIND | CLEAR_WEB",
+        "IM_ELEC | NO_FEAR | NO_CONF | NO_SLEEP",
+        "NONLIVING"
+      ],
+      "desc": [
+        "Golem"
+      ]
+    },
+    {
+      "name": "humanoid",
+      "glyph": "h",
+      "pain": 1,
+      "flags": [
+        "OPEN_DOOR | BASH_DOOR | SPIRIT | CLEAR_WEB"
+      ],
+      "desc": [
+        "Hobbit/Elf/Dwarf"
+      ]
+    },
+    {
+      "name": "hybrid",
+      "glyph": "H",
+      "pain": 1,
+      "flags": [
+        "CLEAR_WEB"
+      ],
+      "desc": [
+        "Hybrid"
+      ]
+    },
+    {
+      "name": "hydra",
+      "glyph": "M",
+      "pain": 4,
+      "flags": [
+        "ANIMAL",
+        "ONLY_GOLD",
+        "BASH_DOOR | CLEAR_WEB",
+        "FORCE_SLEEP | HURT_COLD"
+      ],
+      "desc": [
+        "Hydra"
+      ]
+    },
+    {
+      "name": "icky thing",
+      "glyph": "i",
+      "pain": 2,
+      "flags": [
+        "RAND_50"
+      ],
+      "desc": [
+        "Icky Thing"
+      ]
+    },
+    {
+      "name": "insect",
+      "glyph": "I",
+      "pain": 7,
+      "flags": [
+        "ANIMAL | WEIRD_MIND | MULTIPLY",
+        "RAND_50 | RAND_25"
+      ],
+      "desc": [
+        "Insect"
+      ]
+    },
+    {
+      "name": "jelly",
+      "glyph": "j",
+      "pain": 2,
+      "flags": [
+        "EMPTY_MIND | STUPID | CLEAR_WEB",
+        "NO_FEAR"
+      ],
+      "desc": [
+        "Jelly"
+      ]
+    },
+    {
+      "name": "killer beetle",
+      "glyph": "K",
+      "pain": 7,
+      "flags": [
+        "ANIMAL | WEIRD_MIND",
+        "BASH_DOOR"
+      ],
+      "desc": [
+        "Killer Beetle"
+      ]
+    },
+    {
+      "name": "kobold",
+      "glyph": "k",
+      "pain": 1,
+      "flags": [
+        "EVIL",
+        "OPEN_DOOR | BASH_DOOR | SPIRIT | CLEAR_WEB",
+        "IM_POIS"
+      ],
+      "desc": [
+        "Kobold"
+      ]
+    },
+    {
+      "name": "lich",
+      "glyph": "L",
+      "pain": 1,
+      "flags": [
+        "UNDEAD | EVIL | COLD_BLOOD | SMART | SPIRIT",
+        "OPEN_DOOR | BASH_DOOR | CLEAR_WEB",
+        "IM_COLD | IM_POIS | NO_CONF | NO_SLEEP | NO_STUN | NO_HOLD",
+        "FORCE_SLEEP"
+      ],
+      "desc": [
+        "Lich"
+      ]
+    },
+    {
+      "name": "lurker",
+      "glyph": "x",
+      "pain": 1,
+      "flags": [
+        "COLD_BLOOD | EMPTY_MIND | INVISIBLE | UNAWARE",
+        "NEVER_MOVE",
+        "NO_FEAR | NO_CONF | NO_SLEEP"
+      ],
+      "desc": [
+        "Lurker"
+      ]
+    },
+    {
+      "name": "major demon",
+      "glyph": "U",
+      "pain": 1,
+      "flags": [
+        "DEMON | EVIL | SPIRIT",
+        "ONLY_ITEM",
+        "OPEN_DOOR | BASH_DOOR | CLEAR_WEB",
+        "NO_CONF | NO_SLEEP | NO_HOLD",
+        "FORCE_SLEEP"
+      ],
+      "desc": [
+        "Major Demon"
+      ]
+    },
+    {
+      "name": "mimic",
+      "glyph": "?",
+      "pain": 1,
+      "flags": [
+        "COLD_BLOOD | EMPTY_MIND | UNAWARE",
+        "NEVER_MOVE",
+        "NO_FEAR | NO_CONF | NO_SLEEP",
+        "FORCE_SLEEP | ATTR_CLEAR"
+      ],
+      "desc": [
+        "Mimic"
+      ]
+    },
+    {
+      "name": "minor demon",
+      "glyph": "u",
+      "pain": 1,
+      "flags": [
+        "DEMON | EVIL | SPIRIT",
+        "CLEAR_WEB",
+        "IM_FIRE"
+      ],
+      "desc": [
+        "Minor Demon"
+      ]
+    },
+    {
+      "name": "mold",
+      "glyph": "m",
+      "pain": 2,
+      "flags": [
+        "NEVER_MOVE",
+        "IM_POIS | HURT_FIRE | NO_FEAR | NO_CONF | NO_SLEEP"
+      ],
+      "desc": [
+        "Mold"
+      ]
+    },
+    {
+      "name": "mushroom",
+      "glyph": ",",
+      "pain": 2,
+      "flags": [
+        "EMPTY_MIND | STUPID",
+        "HURT_FIRE | NO_FEAR | NO_CONF | NO_SLEEP"
+      ],
+      "desc": [
+        "Mushroom"
+      ]
+    },
+    {
+      "name": "naga",
+      "glyph": "n",
+      "pain": 1,
+      "flags": [
+        "FEMALE | EVIL | HURT_COLD | SPIRIT",
+        "BASH_DOOR | CLEAR_WEB"
+      ],
+      "desc": [
+        "Naga"
+      ]
+    },
+    {
+      "name": "ogre",
+      "glyph": "O",
+      "pain": 1,
+      "flags": [
+        "GIANT | EVIL | SPIRIT",
+        "OPEN_DOOR | BASH_DOOR | CLEAR_WEB"
+      ],
+      "desc": [
+        "Ogre"
+      ]
+    },
+    {
+      "name": "orc",
+      "glyph": "o",
+      "pain": 1,
+      "flags": [
+        "MALE | ORC | EVIL | SPIRIT",
+        "OPEN_DOOR | BASH_DOOR | CLEAR_WEB"
+      ],
+      "desc": [
+        "Orc"
+      ]
+    },
+    {
+      "name": "person",
+      "glyph": "p",
+      "pain": 1,
+      "flags": [
+        "BASH_DOOR | SPIRIT | CLEAR_WEB"
+      ],
+      "desc": [
+        "Person/Human"
+      ]
+    },
+    {
+      "name": "quadruped",
+      "glyph": "q",
+      "pain": 4,
+      "flags": [
+        "BASH_DOOR | CLEAR_WEB"
+      ],
+      "desc": [
+        "Quadruped"
+      ]
+    },
+    {
+      "name": "quylthulg",
+      "glyph": "Q",
+      "pain": 2,
+      "flags": [
+        "EMPTY_MIND | INVISIBLE",
+        "NEVER_BLOW | NEVER_MOVE",
+        "NO_FEAR | NO_CONF | NO_SLEEP | NO_HOLD",
+        "FORCE_SLEEP"
+      ],
+      "desc": [
+        "Quylthulg"
+      ]
+    },
+    {
+      "name": "reptile",
+      "glyph": "R",
+      "pain": 5,
+      "flags": [
+        "ANIMAL | HURT_COLD | CLEAR_WEB"
+      ],
+      "desc": [
+        "Reptile/Amphibian"
+      ]
+    },
+    {
+      "name": "rodent",
+      "glyph": "r",
+      "pain": 4,
+      "flags": [
+        "ANIMAL | CLEAR_WEB"
+      ],
+      "desc": [
+        "Rodent"
+      ]
+    },
+    {
+      "name": "skeleton",
+      "glyph": "s",
+      "pain": 9,
+      "flags": [
+        "UNDEAD | EVIL | COLD_BLOOD | CLEAR_WEB",
+        "IM_COLD | IM_POIS | NO_FEAR | NO_CONF | NO_SLEEP | NO_STUN"
+      ],
+      "desc": [
+        "Skeleton"
+      ]
+    },
+    {
+      "name": "snake",
+      "glyph": "J",
+      "pain": 5,
+      "flags": [
+        "ANIMAL | HURT_COLD",
+        "BASH_DOOR | CLEAR_WEB"
+      ],
+      "desc": [
+        "Snake"
+      ]
+    },
+    {
+      "name": "spider",
+      "glyph": "S",
+      "pain": 7,
+      "flags": [
+        "BASH_DOOR | PASS_WEB"
+      ],
+      "desc": [
+        "Spider/Scorpion/Tick"
+      ]
+    },
+    {
+      "name": "townsfolk",
+      "glyph": "t",
+      "pain": 4,
+      "flags": [
+        "SPIRIT | CLEAR_WEB"
+      ],
+      "desc": [
+        "Townsfolk"
+      ]
+    },
+    {
+      "name": "tree",
+      "glyph": "l",
+      "pain": 9,
+      "flags": [
+        "CLEAR_WEB | COLD_BLOOD | REGENERATE",
+        "NO_FEAR | NO_CONF | HURT_FIRE | IM_WATER"
+      ],
+      "desc": [
+        "Tree/Ent"
+      ]
+    },
+    {
+      "name": "troll",
+      "glyph": "T",
+      "pain": 1,
+      "flags": [
+        "TROLL | EVIL | SPIRIT",
+        "OPEN_DOOR | BASH_DOOR | CLEAR_WEB"
+      ],
+      "desc": [
+        "Troll"
+      ]
+    },
+    {
+      "name": "vampire",
+      "glyph": "V",
+      "pain": 1,
+      "flags": [
+        "UNDEAD | EVIL | COLD_BLOOD | REGENERATE | SPIRIT",
+        "OPEN_DOOR | BASH_DOOR | CLEAR_WEB",
+        "HURT_LIGHT | HURT_FIRE | IM_COLD | IM_POIS | NO_CONF | NO_SLEEP | NO_STUN",
+        "FORCE_SLEEP"
+      ],
+      "desc": [
+        "Vampire"
+      ]
+    },
+    {
+      "name": "vortex",
+      "glyph": "v",
+      "pain": 11,
+      "flags": [
+        "EMPTY_MIND | POWERFUL",
+        "RAND_50 | BASH_DOOR | CLEAR_WEB",
+        "NO_FEAR | NO_CONF | NO_SLEEP | NO_HOLD | IM_POIS",
+        "FORCE_SLEEP",
+        "NONLIVING"
+      ],
+      "desc": [
+        "Vortex"
+      ]
+    },
+    {
+      "name": "worm",
+      "glyph": "w",
+      "pain": 1,
+      "flags": [
+        "ANIMAL"
+      ],
+      "desc": [
+        "Worm/Worm Mass"
+      ]
+    },
+    {
+      "name": "wraith",
+      "glyph": "W",
+      "pain": 1,
+      "flags": [
+        "UNDEAD | EVIL | COLD_BLOOD | SPIRIT | CLEAR_WEB",
+        "HURT_LIGHT | IM_COLD | IM_POIS | NO_CONF | NO_SLEEP | NO_STUN | NO_HOLD"
+      ],
+      "desc": [
+        "Wight/Wraith"
+      ]
+    },
+    {
+      "name": "xorn",
+      "glyph": "X",
+      "pain": 4,
+      "flags": [
+        "COLD_BLOOD | EMPTY_MIND | CLEAR_WEB",
+        "HURT_ROCK | IM_POIS | NO_CONF | NO_SLEEP"
+      ],
+      "desc": [
+        "Xorn/Xaren"
+      ]
+    },
+    {
+      "name": "yeek",
+      "glyph": "y",
+      "pain": 1,
+      "flags": [
+        "ANIMAL | SPIRIT",
+        "OPEN_DOOR | BASH_DOOR | CLEAR_WEB",
+        "IM_ACID"
+      ],
+      "desc": [
+        "Yeek"
+      ]
+    },
+    {
+      "name": "yeti",
+      "glyph": "Y",
+      "pain": 1,
+      "flags": [
+        "ANIMAL",
+        "OPEN_DOOR | BASH_DOOR | CLEAR_WEB",
+        "IM_COLD"
+      ],
+      "desc": [
+        "Yeti"
+      ]
+    },
+    {
+      "name": "zephyr hound",
+      "glyph": "Z",
+      "pain": 3,
+      "flags": [
+        "ANIMAL | GROUP_AI | CLEAR_WEB"
+      ],
+      "desc": [
+        "Zephyr Hound"
+      ]
+    },
+    {
+      "name": "zombie",
+      "glyph": "z",
+      "pain": 10,
+      "flags": [
+        "UNDEAD | EVIL | COLD_BLOOD",
+        "OPEN_DOOR | BASH_DOOR | CLEAR_WEB",
+        "IM_COLD | IM_POIS | HURT_FIRE | NO_CONF | NO_SLEEP | NO_STUN"
+      ],
+      "desc": [
+        "Zombie/Mummy"
+      ]
+    },
+    {
+      "name": "player",
+      "glyph": "@",
+      "pain": 1,
+      "desc": [
+        "You"
+      ]
+    },
+    {
+      "name": "Morgoth",
+      "glyph": "P",
+      "pain": 12,
+      "desc": [
+        "Morgoth"
+      ]
+    }
+  ]
+}

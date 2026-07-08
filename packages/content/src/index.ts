@@ -10,3 +10,22 @@
 
 /** Namespace prefix reserved for the base game's content. */
 export const CORE_NAMESPACE = "core";
+
+export { ParseError, isValidRandom, parseLine, parseSignature } from "./parser.js";
+export type {
+  DirectiveSignature,
+  FieldSpec,
+  FieldType,
+  ParseErrorCode,
+  ParsedLine,
+} from "./parser.js";
+export { compileGamedata } from "./records.js";
+export type {
+  CompiledFile,
+  DirectiveDef,
+  FileSpec,
+  JsonObject,
+  JsonPrimitive,
+  JsonValue,
+} from "./records.js";
+export { gamedataSpecs } from "./specs/index.js";
