@@ -14,6 +14,10 @@ overall design and the moddable-surface matrix, read `docs/MODS.md`.
 
 - This page: pack anatomy, manifests, and record composition (live today,
   backed by `@neo-angband/mod-sdk`).
+- `MOD_LIFECYCLE.md`: how saves stay safe across install/update/
+  uninstall, installing from git (and a future marketplace), multi-mod
+  composition and conflict resolution, and the UX principles. CANDIDATE
+  design pending ratification.
 - `docs/LINOLEUM.md`: tile packs and converting the classic tilesets.
 - Coming as the engine lands them (P7 deliverables): handler registry
   catalog (effects, commands, room builders), the sandbox capability
