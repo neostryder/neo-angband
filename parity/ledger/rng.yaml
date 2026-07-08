@@ -1,25 +1,47 @@
 module: packages/core/src/rng.ts
-status: planned
+status: ported
 baseline: 4.2.6
 upstream:
   - path: src/z-rand.c
     items:
       - Rand_state_init
-      - Rand_state_step
+      - WELLRNG1024a
       - Rand_div
       - Rand_normal
+      - Rand_sample
       - damroll
-      - randint0
-      - randint1
+      - damcalc
+      - rand_range
+      - m_bonus
+      - m_bonus_calc
+      - randcalc
+      - randcalc_valid
+      - randcalc_varies
+      - random_chance_check
+      - random_chance_scaled
+      - rand_fix
   - path: src/z-rand.h
     items:
       - RAND_DEG
-      - Rand_quick
-      - Rand_value
+      - MAX_RAND_DEPTH
+      - randint0
+      - randint1
+      - rand_spread
+      - one_in_
+      - aspect
+      - random_value
+      - random_chance
 notes: >-
-  First P1 module. Intentional divergence: upstream uses one global WELL-1024
-  stream plus a quick-LCG mode toggled by seed-swapping for flavors and
-  randarts; the port provides named, independently seeded streams
-  (gameplay, generation, flavors, randarts, cosmetic) with serializable
-  state. Distribution equivalence, not bit equivalence, is the parity claim.
-verified-by: []
+  Bit-for-bit faithful per stream, including C uint32 wrap semantics
+  (Math.imul / >>> 0) and the rand_fix overflow behavior. Intentional
+  divergence: upstream uses one global WELL-1024 stream plus a quick-LCG
+  mode toggled by seed-swapping for flavors and randarts; the port provides
+  named, independently seeded streams (RngStreams) with serializable state.
+  Each individual stream is exact. Not ported: Rand_init (time/pid seeding,
+  a front-end concern) and Rand_simple (time-based, non-deterministic by
+  design); front ends seed streams explicitly instead.
+verified-by:
+  - golden vectors from an independent Python re-implementation of z-rand.c
+    (packages/core/scripts/gen-rng-vectors.py -> packages/core/vectors/
+    rng-vectors.json), replayed exactly in packages/core/src/rng.test.ts
+    across seeds 1, 42, 123456789, 0xDEADBEEF, quick mode, and rand_fix

@@ -11,6 +11,10 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@neo-angband/core": "workspace:*"
+    "@neo-angband/core": "workspace:*",
+    "@neo-angband/content": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0"
   }
 }
