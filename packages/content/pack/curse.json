@@ -1,0 +1,580 @@
+{
+  "file": "curse",
+  "source": "lib/gamedata/curse.txt",
+  "records": [
+    {
+      "name": "vulnerability",
+      "type": [
+        "cloak",
+        "soft armor",
+        "hard armor",
+        "dragon armor",
+        "shield"
+      ],
+      "combat": {
+        "to-h": 0,
+        "to-d": 0,
+        "to-a": -50
+      },
+      "flags": [
+        "AGGRAVATE"
+      ],
+      "desc": [
+        "attracts opponents and weakens the defences"
+      ]
+    },
+    {
+      "name": "teleportation",
+      "type": [
+        "helm",
+        "crown",
+        "amulet",
+        "ring"
+      ],
+      "effect": [
+        {
+          "eff": "TELEPORT",
+          "dice": "40"
+        }
+      ],
+      "msg": [
+        "Space warps around you."
+      ],
+      "time": "d100",
+      "desc": [
+        "randomly makes you teleport"
+      ],
+      "conflict": [
+        "anti-teleportation"
+      ],
+      "conflict-flags": [
+        "NO_TELEPORT"
+      ]
+    },
+    {
+      "name": "dullness",
+      "type": [
+        "helm",
+        "crown"
+      ],
+      "values": [
+        "INT[-5] | WIS[-5]"
+      ],
+      "desc": [
+        "makes you mentally slow"
+      ]
+    },
+    {
+      "name": "sickliness",
+      "type": [
+        "helm",
+        "crown"
+      ],
+      "values": [
+        "STR[-5] | DEX[-5] | CON[-5]"
+      ],
+      "desc": [
+        "makes you frail"
+      ]
+    },
+    {
+      "name": "enveloping",
+      "type": [
+        "cloak"
+      ],
+      "combat": {
+        "to-h": -5,
+        "to-d": -5,
+        "to-a": 20
+      },
+      "desc": [
+        "protects you at the expense of free movement"
+      ]
+    },
+    {
+      "name": "irritation",
+      "type": [
+        "cloak"
+      ],
+      "combat": {
+        "to-h": -15,
+        "to-d": -15,
+        "to-a": 0
+      },
+      "flags": [
+        "AGGRAVATE"
+      ],
+      "desc": [
+        "annoys monsters and makes it hard for you to hit them"
+      ]
+    },
+    {
+      "name": "weakness",
+      "type": [
+        "gloves"
+      ],
+      "values": [
+        "STR[-10]"
+      ],
+      "desc": [
+        "weakens your grasp"
+      ]
+    },
+    {
+      "name": "clumsiness",
+      "type": [
+        "gloves"
+      ],
+      "values": [
+        "DEX[-10]"
+      ],
+      "desc": [
+        "gives you butterfingers"
+      ]
+    },
+    {
+      "name": "slowness",
+      "type": [
+        "boots"
+      ],
+      "values": [
+        "SPEED[-5]"
+      ],
+      "desc": [
+        "drags at your feet"
+      ]
+    },
+    {
+      "name": "annoyance",
+      "type": [
+        "boots"
+      ],
+      "flags": [
+        "AGGRAVATE"
+      ],
+      "values": [
+        "SPEED[-10] | STEALTH[-10]"
+      ],
+      "desc": [
+        "wakes up and annoys nearby monsters, and delays your escape"
+      ]
+    },
+    {
+      "name": "poison",
+      "type": [
+        "bow",
+        "digger",
+        "hafted",
+        "polearm",
+        "sword",
+        "boots",
+        "gloves",
+        "helm",
+        "crown",
+        "shield",
+        "cloak",
+        "soft armor",
+        "hard armor",
+        "dragon armor",
+        "light",
+        "amulet",
+        "ring"
+      ],
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "POISONED",
+          "dice": "10+d10"
+        }
+      ],
+      "time": "1d500",
+      "desc": [
+        "poisons you from time to time"
+      ]
+    },
+    {
+      "name": "siren",
+      "type": [
+        "bow",
+        "digger",
+        "hafted",
+        "polearm",
+        "sword",
+        "boots",
+        "gloves",
+        "helm",
+        "crown",
+        "shield",
+        "cloak",
+        "soft armor",
+        "hard armor",
+        "dragon armor",
+        "light",
+        "amulet",
+        "ring"
+      ],
+      "effect": [
+        {
+          "eff": "WAKE"
+        }
+      ],
+      "msg": [
+        "A horn blares out!"
+      ],
+      "time": "100+1d50",
+      "desc": [
+        "occasionally makes a loud noise"
+      ]
+    },
+    {
+      "name": "hallucination",
+      "type": [
+        "bow",
+        "digger",
+        "hafted",
+        "polearm",
+        "sword",
+        "boots",
+        "gloves",
+        "helm",
+        "crown",
+        "shield",
+        "cloak",
+        "soft armor",
+        "hard armor",
+        "dragon armor",
+        "light",
+        "amulet",
+        "ring"
+      ],
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "IMAGE",
+          "dice": "10+d10"
+        }
+      ],
+      "time": "1d500",
+      "desc": [
+        "makes you hallucinate sometimes"
+      ]
+    },
+    {
+      "name": "paralysis",
+      "type": [
+        "bow",
+        "digger",
+        "hafted",
+        "polearm",
+        "sword",
+        "boots",
+        "gloves",
+        "helm",
+        "crown",
+        "shield",
+        "cloak",
+        "soft armor",
+        "hard armor",
+        "dragon armor",
+        "light",
+        "amulet",
+        "ring"
+      ],
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "PARALYZED",
+          "dice": "5+1d5"
+        }
+      ],
+      "msg": [
+        "Your equipment grabs you!"
+      ],
+      "time": "1d1000",
+      "desc": [
+        "paralyses you every now and then"
+      ]
+    },
+    {
+      "name": "dragon summon",
+      "type": [
+        "dragon armor"
+      ],
+      "effect": [
+        {
+          "eff": "SUMMON",
+          "type": "DRAGON",
+          "dice": "1"
+        }
+      ],
+      "msg": [
+        "Your armour lets out a cry..."
+      ],
+      "time": "1d500",
+      "desc": [
+        "sometimes summons a dragon"
+      ]
+    },
+    {
+      "name": "demon summon",
+      "type": [
+        "digger",
+        "hafted",
+        "polearm",
+        "sword"
+      ],
+      "effect": [
+        {
+          "eff": "SUMMON",
+          "type": "DEMON",
+          "dice": "1"
+        }
+      ],
+      "msg": [
+        "Your weapon gives out a demonic shriek!"
+      ],
+      "time": "1d500",
+      "desc": [
+        "occasionally summons a demon"
+      ]
+    },
+    {
+      "name": "undead summon",
+      "type": [
+        "digger",
+        "hafted",
+        "polearm",
+        "sword"
+      ],
+      "effect": [
+        {
+          "eff": "SUMMON",
+          "type": "UNDEAD",
+          "dice": "1"
+        }
+      ],
+      "msg": [
+        "Your weapon calls beyond the grave!"
+      ],
+      "time": "1d500",
+      "desc": [
+        "occasionally summons an undead"
+      ]
+    },
+    {
+      "name": "impair mana recovery",
+      "type": [
+        "helm",
+        "crown"
+      ],
+      "flags": [
+        "IMPAIR_MANA"
+      ],
+      "desc": [
+        "makes you slow to recover mana"
+      ],
+      "conflict-flags": [
+        "IMPAIR_MANA"
+      ]
+    },
+    {
+      "name": "impair hitpoint recovery",
+      "type": [
+        "boots",
+        "gloves",
+        "shield",
+        "cloak",
+        "soft armor",
+        "hard armor",
+        "dragon armor"
+      ],
+      "flags": [
+        "IMPAIR_HP"
+      ],
+      "desc": [
+        "makes you slow to recover hitpoints"
+      ],
+      "conflict-flags": [
+        "IMPAIR_HP"
+      ]
+    },
+    {
+      "name": "cowardice",
+      "type": [
+        "amulet",
+        "ring"
+      ],
+      "flags": [
+        "AFRAID"
+      ],
+      "desc": [
+        "makes you too scared to fight"
+      ],
+      "conflict-flags": [
+        "AFRAID | PROT_FEAR"
+      ]
+    },
+    {
+      "name": "stone",
+      "type": [
+        "amulet",
+        "ring"
+      ],
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "STONESKIN",
+          "dice": "20+1d20"
+        }
+      ],
+      "time": "1d1000",
+      "desc": [
+        "periodically turns your skin to stone"
+      ]
+    },
+    {
+      "name": "anti-teleportation",
+      "type": [
+        "boots",
+        "cloak",
+        "soft armor",
+        "hard armor",
+        "dragon armor",
+        "amulet",
+        "ring"
+      ],
+      "flags": [
+        "NO_TELEPORT"
+      ],
+      "desc": [
+        "prevents you from teleporting"
+      ],
+      "conflict": [
+        "teleportation"
+      ],
+      "conflict-flags": [
+        "NO_TELEPORT"
+      ]
+    },
+    {
+      "name": "treacherous weapon",
+      "type": [
+        "digger",
+        "hafted",
+        "polearm",
+        "sword"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "WEAPON_DAMAGE",
+              "expr": "+ 0"
+            }
+          ]
+        }
+      ],
+      "msg": [
+        "Your weapon turns on you!"
+      ],
+      "time": "1d200",
+      "desc": [
+        "makes your weapon attack you"
+      ]
+    },
+    {
+      "name": "burning up",
+      "type": [
+        "boots",
+        "gloves",
+        "helm",
+        "crown",
+        "shield",
+        "cloak",
+        "soft armor",
+        "hard armor",
+        "dragon armor"
+      ],
+      "values": [
+        "RES_FIRE[-1] | RES_COLD[1]"
+      ],
+      "desc": [
+        "makes you vulnerable to fire attacks, but resistant to cold"
+      ],
+      "conflict": [
+        "chilled to the bone"
+      ]
+    },
+    {
+      "name": "chilled to the bone",
+      "type": [
+        "boots",
+        "gloves",
+        "helm",
+        "crown",
+        "shield",
+        "cloak",
+        "soft armor",
+        "hard armor",
+        "dragon armor"
+      ],
+      "values": [
+        "RES_FIRE[1] | RES_COLD[-1]"
+      ],
+      "desc": [
+        "makes you vulnerable to cold attacks, but resistant to fire"
+      ],
+      "conflict": [
+        "burning up"
+      ]
+    },
+    {
+      "name": "steelskin",
+      "type": [
+        "digger",
+        "hafted",
+        "polearm",
+        "sword",
+        "helm",
+        "crown",
+        "shield",
+        "hard armor",
+        "dragon armor",
+        "light",
+        "amulet",
+        "ring"
+      ],
+      "combat": {
+        "to-h": 0,
+        "to-d": 0,
+        "to-a": 20
+      },
+      "values": [
+        "RES_ELEC[-1] | RES_SHARD[1]"
+      ],
+      "desc": [
+        "makes your skin harder to damage, but conduct electricity"
+      ]
+    },
+    {
+      "name": "air swing",
+      "type": [
+        "digger",
+        "hafted",
+        "polearm",
+        "sword"
+      ],
+      "combat": {
+        "to-h": -20,
+        "to-d": 0,
+        "to-a": 0
+      },
+      "desc": [
+        "makes it hard to hit anything"
+      ]
+    }
+  ]
+}

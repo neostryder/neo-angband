@@ -1,0 +1,1321 @@
+{
+  "file": "player_timed",
+  "source": "lib/gamedata/player_timed.txt",
+  "records": [
+    {
+      "name": "FAST",
+      "desc": [
+        "haste"
+      ],
+      "on-end": [
+        "You feel yourself slow down."
+      ],
+      "msgt": "SPEED",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "Haste",
+          "up_msg": "You feel yourself moving faster!"
+        }
+      ]
+    },
+    {
+      "name": "SLOW",
+      "desc": [
+        "slowness"
+      ],
+      "on-end": [
+        "You feel yourself speed up."
+      ],
+      "msgt": "SLOW",
+      "fail": [
+        {
+          "code": 1,
+          "flag": "FREE_ACT"
+        }
+      ],
+      "grade": [
+        {
+          "color": "U",
+          "max": 10000,
+          "name": "Slow",
+          "up_msg": "You feel yourself moving slower!"
+        }
+      ]
+    },
+    {
+      "name": "BLIND",
+      "desc": [
+        "blindness"
+      ],
+      "on-end": [
+        "You blink and your eyes clear."
+      ],
+      "msgt": "BLIND",
+      "fail": [
+        {
+          "code": 1,
+          "flag": "PROT_BLIND"
+        }
+      ],
+      "grade": [
+        {
+          "color": "o",
+          "max": 10000,
+          "name": "Blind",
+          "up_msg": "You are blind."
+        }
+      ]
+    },
+    {
+      "name": "PARALYZED",
+      "desc": [
+        "paralysis"
+      ],
+      "on-end": [
+        "You can move again."
+      ],
+      "msgt": "PARALYZED",
+      "fail": [
+        {
+          "code": 1,
+          "flag": "FREE_ACT"
+        }
+      ],
+      "grade": [
+        {
+          "color": "r",
+          "max": 10000,
+          "name": "Paralyzed!",
+          "up_msg": "You are paralysed!"
+        }
+      ],
+      "flags": [
+        "NONSTACKING"
+      ]
+    },
+    {
+      "name": "CONFUSED",
+      "desc": [
+        "confusion"
+      ],
+      "on-end": [
+        "You are no longer confused."
+      ],
+      "on-increase": [
+        "You are more confused!"
+      ],
+      "on-decrease": [
+        "You feel a little less confused."
+      ],
+      "msgt": "CONFUSED",
+      "fail": [
+        {
+          "code": 1,
+          "flag": "PROT_CONF"
+        }
+      ],
+      "grade": [
+        {
+          "color": "o",
+          "max": 10000,
+          "name": "Confused",
+          "up_msg": "You are confused!"
+        }
+      ]
+    },
+    {
+      "name": "AFRAID",
+      "desc": [
+        "fear"
+      ],
+      "on-end": [
+        "You feel bolder now."
+      ],
+      "on-increase": [
+        "You are more scared!"
+      ],
+      "msgt": "AFRAID",
+      "fail": [
+        {
+          "code": 1,
+          "flag": "PROT_FEAR"
+        }
+      ],
+      "grade": [
+        {
+          "color": "o",
+          "max": 10000,
+          "name": "Afraid",
+          "up_msg": "You are terrified!"
+        }
+      ],
+      "flag-synonym": [
+        {
+          "code": "AFRAID",
+          "exact": 1
+        }
+      ]
+    },
+    {
+      "name": "IMAGE",
+      "desc": [
+        "hallucination"
+      ],
+      "on-end": [
+        "You can see clearly again."
+      ],
+      "on-increase": [
+        "You feel more drugged!"
+      ],
+      "msgt": "DRUGGED",
+      "fail": [
+        {
+          "code": 2,
+          "flag": "CHAOS"
+        }
+      ],
+      "grade": [
+        {
+          "color": "o",
+          "max": 10000,
+          "name": "Halluc",
+          "up_msg": "You feel drugged!"
+        }
+      ]
+    },
+    {
+      "name": "POISONED",
+      "desc": [
+        "poisoning"
+      ],
+      "on-end": [
+        "You are no longer poisoned."
+      ],
+      "on-increase": [
+        "You are more poisoned!"
+      ],
+      "on-decrease": [
+        "You are less poisoned."
+      ],
+      "msgt": "POISONED",
+      "fail": [
+        {
+          "code": 2,
+          "flag": "POIS"
+        },
+        {
+          "code": 5,
+          "flag": "OPP_POIS"
+        }
+      ],
+      "grade": [
+        {
+          "color": "o",
+          "max": 10000,
+          "name": "Poisoned",
+          "up_msg": "You are poisoned!"
+        }
+      ]
+    },
+    {
+      "name": "CUT",
+      "desc": [
+        "wounds"
+      ],
+      "on-end": [
+        "You are no longer bleeding."
+      ],
+      "msgt": "CUT",
+      "fail": [
+        {
+          "code": 4,
+          "flag": "ROCK"
+        }
+      ],
+      "grade": [
+        {
+          "color": "y",
+          "max": 10,
+          "name": "Graze",
+          "up_msg": "You have been given a graze."
+        },
+        {
+          "color": "y",
+          "max": 25,
+          "name": "Light Cut",
+          "up_msg": "You have been given a light cut."
+        },
+        {
+          "color": "o",
+          "max": 50,
+          "name": "Bad Cut",
+          "up_msg": "You have been given a bad cut."
+        },
+        {
+          "color": "o",
+          "max": 100,
+          "name": "Nasty Cut",
+          "up_msg": "You have been given a nasty cut."
+        },
+        {
+          "color": "r",
+          "max": 200,
+          "name": "Severe Cut",
+          "up_msg": "You have been given a severe cut."
+        },
+        {
+          "color": "r",
+          "max": 1000,
+          "name": "Deep Gash",
+          "up_msg": "You have been given a deep gash."
+        },
+        {
+          "color": "R",
+          "max": 10000,
+          "name": "Mortal Wound",
+          "up_msg": "You have been given a mortal wound."
+        }
+      ]
+    },
+    {
+      "name": "STUN",
+      "desc": [
+        "stunning"
+      ],
+      "on-end": [
+        "You are no longer stunned."
+      ],
+      "msgt": "STUN",
+      "fail": [
+        {
+          "code": 1,
+          "flag": "PROT_STUN"
+        }
+      ],
+      "grade": [
+        {
+          "color": "o",
+          "max": 50,
+          "name": "Stun",
+          "up_msg": "You have been stunned."
+        },
+        {
+          "color": "o",
+          "max": 150,
+          "name": "Heavy Stun",
+          "up_msg": "You have been heavily stunned."
+        },
+        {
+          "color": "r",
+          "max": 10000,
+          "name": "Knocked Out",
+          "up_msg": "You have been knocked out."
+        }
+      ]
+    },
+    {
+      "name": "FOOD",
+      "desc": [
+        "nourishment"
+      ],
+      "msgt": "HUNGRY",
+      "grade": [
+        {
+          "color": "R",
+          "max": 1,
+          "name": "Starving",
+          "up_msg": " ",
+          "down_msg": "You are starving!!"
+        },
+        {
+          "color": "r",
+          "max": 4,
+          "name": "Faint",
+          "up_msg": "You are still faint.",
+          "down_msg": "You are getting faint from hunger!"
+        },
+        {
+          "color": "o",
+          "max": 8,
+          "name": "Weak",
+          "up_msg": "You are still weak.",
+          "down_msg": "You are getting weak from hunger!"
+        },
+        {
+          "color": "y",
+          "max": 15,
+          "name": "Hungry",
+          "up_msg": "You are still hungry.",
+          "down_msg": "You are getting hungry."
+        },
+        {
+          "color": "G",
+          "max": 90,
+          "name": "Fed",
+          "up_msg": "You are no longer hungry.",
+          "down_msg": "You are no longer full."
+        },
+        {
+          "color": "g",
+          "max": 100,
+          "name": "Full",
+          "up_msg": "You are full!"
+        }
+      ],
+      "lower-bound": 1
+    },
+    {
+      "name": "PROTEVIL",
+      "desc": [
+        "protection from evil"
+      ],
+      "on-end": [
+        "You no longer feel safe from evil."
+      ],
+      "on-increase": [
+        "You feel even safer from evil!"
+      ],
+      "msgt": "PROT_EVIL",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "ProtEvil",
+          "up_msg": "You feel safe from evil!"
+        }
+      ]
+    },
+    {
+      "name": "INVULN",
+      "desc": [
+        "invulnerability"
+      ],
+      "on-end": [
+        "You feel vulnerable once more."
+      ],
+      "msgt": "INVULN",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "Invuln",
+          "up_msg": "You feel invulnerable!"
+        }
+      ]
+    },
+    {
+      "name": "HERO",
+      "desc": [
+        "heroism"
+      ],
+      "on-end": [
+        "You no longer feel heroic."
+      ],
+      "on-increase": [
+        "You feel more like a hero!"
+      ],
+      "msgt": "HERO",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "Hero",
+          "up_msg": "You feel like a hero!"
+        }
+      ],
+      "flag-synonym": [
+        {
+          "code": "PROT_FEAR",
+          "exact": 0
+        }
+      ]
+    },
+    {
+      "name": "SHERO",
+      "desc": [
+        "berserk rage"
+      ],
+      "on-end": [
+        "You no longer feel berserk."
+      ],
+      "on-increase": [
+        "You feel even more berserk!"
+      ],
+      "msgt": "BERSERK",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "Berserk",
+          "up_msg": "You feel like a killing machine!"
+        }
+      ],
+      "flag-synonym": [
+        {
+          "code": "PROT_FEAR",
+          "exact": 0
+        }
+      ]
+    },
+    {
+      "name": "SHIELD",
+      "desc": [
+        "mystic shield"
+      ],
+      "on-end": [
+        "Your mystic shield crumbles away."
+      ],
+      "on-increase": [
+        "The mystic shield strengthens."
+      ],
+      "msgt": "SHIELD",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "Shield",
+          "up_msg": "A mystic shield forms around your body!"
+        }
+      ]
+    },
+    {
+      "name": "BLESSED",
+      "desc": [
+        "your AC and to-hit bonus"
+      ],
+      "on-end": [
+        "The prayer has expired."
+      ],
+      "on-increase": [
+        "You feel more righteous!"
+      ],
+      "msgt": "BLESSED",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "Blssd",
+          "up_msg": "You feel righteous!"
+        }
+      ]
+    },
+    {
+      "name": "SINVIS",
+      "desc": [
+        "see invisible"
+      ],
+      "on-end": [
+        "Your eyes no longer feel so sensitive."
+      ],
+      "on-increase": [
+        "Your eyes feel more sensitive!"
+      ],
+      "msgt": "SEE_INVIS",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "SInvis",
+          "up_msg": "Your eyes feel very sensitive!"
+        }
+      ],
+      "flag-synonym": [
+        {
+          "code": "SEE_INVIS",
+          "exact": 1
+        }
+      ]
+    },
+    {
+      "name": "SINFRA",
+      "desc": [
+        "enhanced infravision"
+      ],
+      "on-end": [
+        "Your eyes stop tingling."
+      ],
+      "on-increase": [
+        "The tingling in your eyes intensifies."
+      ],
+      "msgt": "INFRARED",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "Infra",
+          "up_msg": "Your eyes begin to tingle!"
+        }
+      ]
+    },
+    {
+      "name": "OPP_ACID",
+      "desc": [
+        "acid resistance"
+      ],
+      "on-end": [
+        "You are no longer resistant to acid."
+      ],
+      "on-increase": [
+        "You feel more resistant to acid!"
+      ],
+      "msgt": "RES_ACID",
+      "fail": [
+        {
+          "code": 3,
+          "flag": "ACID"
+        }
+      ],
+      "grade": [
+        {
+          "color": "s",
+          "max": 10000,
+          "name": "RAcid",
+          "up_msg": "You feel resistant to acid!"
+        }
+      ],
+      "resist": "ACID"
+    },
+    {
+      "name": "OPP_ELEC",
+      "desc": [
+        "electricity resistance"
+      ],
+      "on-end": [
+        "You are no longer resistant to electricity."
+      ],
+      "on-increase": [
+        "You feel more resistant to electricity!"
+      ],
+      "msgt": "RES_ELEC",
+      "fail": [
+        {
+          "code": 3,
+          "flag": "ELEC"
+        }
+      ],
+      "grade": [
+        {
+          "color": "b",
+          "max": 10000,
+          "name": "RElec",
+          "up_msg": "You feel resistant to electricity!"
+        }
+      ],
+      "resist": "ELEC"
+    },
+    {
+      "name": "OPP_FIRE",
+      "desc": [
+        "fire resistance"
+      ],
+      "on-end": [
+        "You are no longer resistant to fire."
+      ],
+      "on-increase": [
+        "You feel more resistant to fire!"
+      ],
+      "msgt": "RES_FIRE",
+      "fail": [
+        {
+          "code": 3,
+          "flag": "FIRE"
+        }
+      ],
+      "grade": [
+        {
+          "color": "r",
+          "max": 10000,
+          "name": "RFire",
+          "up_msg": "You feel resistant to fire!"
+        }
+      ],
+      "resist": "FIRE"
+    },
+    {
+      "name": "OPP_COLD",
+      "desc": [
+        "cold resistance"
+      ],
+      "on-end": [
+        "You are no longer resistant to cold."
+      ],
+      "on-increase": [
+        "You feel more resistant to cold!"
+      ],
+      "msgt": "RES_COLD",
+      "fail": [
+        {
+          "code": 3,
+          "flag": "COLD"
+        }
+      ],
+      "grade": [
+        {
+          "color": "w",
+          "max": 10000,
+          "name": "RCold",
+          "up_msg": "You feel resistant to cold!"
+        }
+      ],
+      "resist": "COLD"
+    },
+    {
+      "name": "OPP_POIS",
+      "desc": [
+        "poison resistance"
+      ],
+      "on-end": [
+        "You are no longer resistant to poison."
+      ],
+      "on-increase": [
+        "You feel more resistant to poison!"
+      ],
+      "msgt": "RES_POIS",
+      "fail": [
+        {
+          "code": 3,
+          "flag": "POIS"
+        }
+      ],
+      "grade": [
+        {
+          "color": "g",
+          "max": 10000,
+          "name": "RPois",
+          "up_msg": "You feel resistant to poison!"
+        }
+      ],
+      "resist": "POIS"
+    },
+    {
+      "name": "OPP_CONF",
+      "desc": [
+        "confusion resistance"
+      ],
+      "on-end": [
+        "You are no longer resistant to confusion."
+      ],
+      "on-increase": [
+        "You feel more resistant to confusion!"
+      ],
+      "grade": [
+        {
+          "color": "v",
+          "max": 10000,
+          "name": "RConf",
+          "up_msg": "You feel resistant to confusion!"
+        }
+      ],
+      "flag-synonym": [
+        {
+          "code": "PROT_CONF",
+          "exact": 1
+        }
+      ]
+    },
+    {
+      "name": "AMNESIA",
+      "desc": [
+        "amnesia"
+      ],
+      "on-end": [
+        "Your memories come flooding back."
+      ],
+      "msgt": "GENERIC",
+      "grade": [
+        {
+          "color": "o",
+          "max": 10000,
+          "name": "Amnesiac",
+          "up_msg": "You feel your memories fade."
+        }
+      ]
+    },
+    {
+      "name": "TELEPATHY",
+      "desc": [
+        "telepathy"
+      ],
+      "on-end": [
+        "Your horizons are once more limited."
+      ],
+      "on-increase": [
+        "Your mind expands further."
+      ],
+      "msgt": "GENERIC",
+      "grade": [
+        {
+          "color": "B",
+          "max": 10000,
+          "name": "ESP",
+          "up_msg": "Your mind expands."
+        }
+      ],
+      "flag-synonym": [
+        {
+          "code": "TELEPATHY",
+          "exact": 1
+        }
+      ]
+    },
+    {
+      "name": "STONESKIN",
+      "desc": [
+        "stone skin"
+      ],
+      "on-end": [
+        "A fleshy shade returns to your skin."
+      ],
+      "msgt": "GENERIC",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "Stone",
+          "up_msg": "Your skin turns to stone."
+        }
+      ]
+    },
+    {
+      "name": "TERROR",
+      "desc": [
+        "terror"
+      ],
+      "on-end": [
+        "The urge to run dissipates."
+      ],
+      "msgt": "AFRAID",
+      "grade": [
+        {
+          "color": "r",
+          "max": 10000,
+          "name": "Terror",
+          "up_msg": "You feel the need to run away and fast!"
+        }
+      ],
+      "flag-synonym": [
+        {
+          "code": "AFRAID",
+          "exact": 0
+        }
+      ]
+    },
+    {
+      "name": "SPRINT",
+      "desc": [
+        "sprinting"
+      ],
+      "on-end": [
+        "You suddenly stop sprinting."
+      ],
+      "msgt": "SPEED",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "Sprint",
+          "up_msg": "You start sprinting."
+        }
+      ],
+      "on-end-effect": [
+        {
+          "eff": "TIMED_INC_NO_RES",
+          "type": "SLOW",
+          "effect-dice": "100"
+        }
+      ]
+    },
+    {
+      "name": "BOLD",
+      "desc": [
+        "fearlessness"
+      ],
+      "on-end": [
+        "You no longer feel bold."
+      ],
+      "on-increase": [
+        "You feel even bolder!"
+      ],
+      "msgt": "BOLD",
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "Bold",
+          "up_msg": "You feel bold."
+        }
+      ],
+      "flag-synonym": [
+        {
+          "code": "PROT_FEAR",
+          "exact": 1
+        }
+      ]
+    },
+    {
+      "name": "SCRAMBLE",
+      "desc": [
+        "scrambled"
+      ],
+      "on-end": [
+        "Your body reasserts its true nature."
+      ],
+      "on-increase": [
+        "You are more scrambled!"
+      ],
+      "msgt": "SCRAMBLE",
+      "fail": [
+        {
+          "code": 2,
+          "flag": "NEXUS"
+        }
+      ],
+      "grade": [
+        {
+          "color": "v",
+          "max": 10000,
+          "name": "Scrambled",
+          "up_msg": "Your body starts to scramble..."
+        }
+      ],
+      "on-begin-effect": [
+        {
+          "eff": "SCRAMBLE_STATS"
+        }
+      ],
+      "on-end-effect": [
+        {
+          "eff": "UNSCRAMBLE_STATS"
+        }
+      ]
+    },
+    {
+      "name": "TRAPSAFE",
+      "desc": [
+        "safety from traps"
+      ],
+      "on-end": [
+        "You feel vulnerable to traps again."
+      ],
+      "on-increase": [
+        "You feel even safer from traps!"
+      ],
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "TrapSafe",
+          "up_msg": "You feel safe from traps."
+        }
+      ],
+      "flag-synonym": [
+        {
+          "code": "TRAP_IMMUNE",
+          "exact": 1
+        }
+      ]
+    },
+    {
+      "name": "FASTCAST",
+      "desc": [
+        "mana channelling"
+      ],
+      "on-end": [
+        "You feel your mind slow again."
+      ],
+      "grade": [
+        {
+          "color": "i",
+          "max": 10000,
+          "name": "FastCast",
+          "up_msg": "You feel your mind accelerate."
+        }
+      ]
+    },
+    {
+      "name": "ATT_ACID",
+      "desc": [
+        "temporary acid brand"
+      ],
+      "on-end": [
+        "The acid disappears from your {kind}."
+      ],
+      "grade": [
+        {
+          "color": "s",
+          "max": 10000,
+          "name": "AttAcid",
+          "up_msg": "Your {kind} start{s} to drip with acid!"
+        }
+      ],
+      "brand": [
+        "ACID_3"
+      ]
+    },
+    {
+      "name": "ATT_ELEC",
+      "desc": [
+        "temporary lightning brand"
+      ],
+      "on-end": [
+        "The sparks fade from your {kind}."
+      ],
+      "grade": [
+        {
+          "color": "b",
+          "max": 10000,
+          "name": "AttElec",
+          "up_msg": "Sparks gather around your {kind}!"
+        }
+      ],
+      "brand": [
+        "ELEC_3"
+      ]
+    },
+    {
+      "name": "ATT_FIRE",
+      "desc": [
+        "temporary fire brand"
+      ],
+      "on-end": [
+        "The flames on your {kind} subside."
+      ],
+      "grade": [
+        {
+          "color": "r",
+          "max": 10000,
+          "name": "AttFire",
+          "up_msg": "Flames surround your {kind}!"
+        }
+      ],
+      "brand": [
+        "FIRE_3"
+      ]
+    },
+    {
+      "name": "ATT_COLD",
+      "desc": [
+        "temporary cold brand"
+      ],
+      "on-end": [
+        "The frost evaporates from your {kind}."
+      ],
+      "grade": [
+        {
+          "color": "w",
+          "max": 10000,
+          "name": "AttCold",
+          "up_msg": "Your {kind} {is} covered in frost!"
+        }
+      ],
+      "brand": [
+        "COLD_3"
+      ]
+    },
+    {
+      "name": "ATT_POIS",
+      "desc": [
+        "temporary poison brand"
+      ],
+      "on-end": [
+        "The poison disappears from your {kind}."
+      ],
+      "grade": [
+        {
+          "color": "g",
+          "max": 10000,
+          "name": "AttPois",
+          "up_msg": "Your {kind} drip{s} with poison!"
+        }
+      ],
+      "brand": [
+        "POIS_3"
+      ]
+    },
+    {
+      "name": "ATT_CONF",
+      "desc": [
+        "temporary monster confusion"
+      ],
+      "on-end": [
+        "The glow fades from your hands."
+      ],
+      "grade": [
+        {
+          "color": "U",
+          "max": 10000,
+          "name": "AttConf",
+          "up_msg": "Your hands begin to glow!"
+        }
+      ]
+    },
+    {
+      "name": "ATT_EVIL",
+      "desc": [
+        "temporary slay evil"
+      ],
+      "on-end": [
+        "Holy force fades from your {kind}."
+      ],
+      "grade": [
+        {
+          "color": "w",
+          "max": 10000,
+          "name": "AttEvil",
+          "up_msg": "Your {kind} {is} imbued with holy force!"
+        }
+      ],
+      "slay": [
+        "EVIL_2"
+      ]
+    },
+    {
+      "name": "ATT_DEMON",
+      "desc": [
+        "temporary slay demon"
+      ],
+      "on-end": [
+        "Your {kind} return{s} to normal."
+      ],
+      "grade": [
+        {
+          "color": "R",
+          "max": 10000,
+          "name": "AttDemon",
+          "up_msg": "Your {kind} become{s} a bane of demons!"
+        }
+      ],
+      "slay": [
+        "DEMON_5"
+      ]
+    },
+    {
+      "name": "ATT_VAMP",
+      "desc": [
+        "temporary hitpoint siphoning"
+      ],
+      "on-end": [
+        "Your life-draining power passes."
+      ],
+      "grade": [
+        {
+          "color": "p",
+          "max": 10000,
+          "name": "AttVamp",
+          "up_msg": "Your can drain life from your victims!"
+        }
+      ]
+    },
+    {
+      "name": "HEAL",
+      "desc": [
+        "turn-by-turn healing through increased metabolism"
+      ],
+      "on-end": [
+        "Your metabolism return to normal."
+      ],
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "Heal",
+          "up_msg": "Your metabolism speeds up!"
+        }
+      ]
+    },
+    {
+      "name": "COMMAND",
+      "desc": [
+        "commanding a monster"
+      ],
+      "on-end": [
+        "Your resume control of your own body."
+      ],
+      "grade": [
+        {
+          "color": "P",
+          "max": 10000,
+          "name": "Cmd",
+          "up_msg": "You focus on your target."
+        }
+      ]
+    },
+    {
+      "name": "ATT_RUN",
+      "desc": [
+        "escape on attack"
+      ],
+      "on-end": [
+        "You relax again."
+      ],
+      "grade": [
+        {
+          "color": "m",
+          "max": 10000,
+          "name": "HitRun",
+          "up_msg": "You tense up ready to escape!"
+        }
+      ]
+    },
+    {
+      "name": "COVERTRACKS",
+      "desc": [
+        "leave no scent trail, reduce visibility"
+      ],
+      "on-end": [
+        "You stop covering your tracks."
+      ],
+      "grade": [
+        {
+          "color": "T",
+          "max": 10000,
+          "name": "NoTrack",
+          "up_msg": "You begin covering your tracks."
+        }
+      ]
+    },
+    {
+      "name": "POWERSHOT",
+      "desc": [
+        "piercing shot"
+      ],
+      "on-end": [
+        "Your shooting power returns to normal."
+      ],
+      "grade": [
+        {
+          "color": "i",
+          "max": 10000,
+          "name": "PShot",
+          "up_msg": "You prepare to shoot powerfully!"
+        }
+      ]
+    },
+    {
+      "name": "TAUNT",
+      "desc": [
+        "taunting"
+      ],
+      "on-end": [
+        "You stop aggravating your enemies."
+      ],
+      "grade": [
+        {
+          "color": "i",
+          "max": 10000,
+          "name": "Taunt",
+          "up_msg": "You start aggravating your enemies!"
+        }
+      ]
+    },
+    {
+      "name": "BLOODLUST",
+      "desc": [
+        "desire to kill"
+      ],
+      "on-end": [
+        "The mist clears."
+      ],
+      "grade": [
+        {
+          "color": "y",
+          "max": 10,
+          "name": "Bloodlust",
+          "up_msg": "A red mist descends over your eyes!"
+        },
+        {
+          "color": "I",
+          "max": 18,
+          "name": "Bloodlust",
+          "up_msg": "Your thirst for blood increases!"
+        },
+        {
+          "color": "o",
+          "max": 26,
+          "name": "Bloodlust",
+          "up_msg": "Your thirst for blood increases!"
+        },
+        {
+          "color": "r",
+          "max": 34,
+          "name": "Bloodlust",
+          "up_msg": "Your thirst for blood increases!"
+        },
+        {
+          "color": "R",
+          "max": 45,
+          "name": "Bloodlust",
+          "up_msg": "Your thirst for blood increases!"
+        },
+        {
+          "color": "P",
+          "max": 50,
+          "name": "Bloodlust",
+          "up_msg": "Your thirst for blood is insatiable!"
+        }
+      ]
+    },
+    {
+      "name": "BLACKBREATH",
+      "desc": [
+        "black breath"
+      ],
+      "on-end": [
+        "The Black Shadow lifts."
+      ],
+      "grade": [
+        {
+          "color": "D",
+          "max": 10,
+          "name": "BlkBrth",
+          "up_msg": "You are overcome by the Black Breath."
+        }
+      ]
+    },
+    {
+      "name": "STEALTH",
+      "desc": [
+        "stealth"
+      ],
+      "on-end": [
+        "You feel less stealthy."
+      ],
+      "grade": [
+        {
+          "color": "D",
+          "max": 10000,
+          "name": "Stealth",
+          "up_msg": "You feel silent!"
+        }
+      ]
+    },
+    {
+      "name": "FREE_ACT",
+      "desc": [
+        "free action"
+      ],
+      "on-end": [
+        "Your limbs return to normal."
+      ],
+      "on-increase": [
+        "Your limbs feel more energetic!"
+      ],
+      "grade": [
+        {
+          "color": "G",
+          "max": 10000,
+          "name": "FrAct",
+          "up_msg": "Your limbs fill with energy!"
+        }
+      ],
+      "flag-synonym": [
+        {
+          "code": "FREE_ACT",
+          "exact": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,3340 @@
+{
+  "file": "activation",
+  "source": "lib/gamedata/activation.txt",
+  "records": [
+    {
+      "name": "CURE_POISON",
+      "aim": 0,
+      "level": 5,
+      "power": 1,
+      "effect": [
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        }
+      ],
+      "desc": [
+        "neutralizes poison"
+      ]
+    },
+    {
+      "name": "CURE_BLINDNESS",
+      "aim": 0,
+      "level": 13,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        }
+      ],
+      "desc": [
+        "cures blindness"
+      ]
+    },
+    {
+      "name": "CURE_PARANOIA",
+      "aim": 0,
+      "level": 8,
+      "power": 2,
+      "effect": [
+        {
+          "eff": "CURE",
+          "type": "AFRAID"
+        }
+      ],
+      "desc": [
+        "removes your fear"
+      ]
+    },
+    {
+      "name": "CURE_CONFUSION",
+      "aim": 0,
+      "level": 13,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "CURE",
+          "type": "CONFUSED"
+        }
+      ],
+      "desc": [
+        "cures confusion"
+      ]
+    },
+    {
+      "name": "CURE_MIND",
+      "aim": 0,
+      "level": 18,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "RESTORE_MANA",
+          "dice": "20"
+        },
+        {
+          "eff": "CURE",
+          "type": "CONFUSED"
+        },
+        {
+          "eff": "CURE",
+          "type": "AFRAID"
+        },
+        {
+          "eff": "CURE",
+          "type": "IMAGE"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_CONF",
+          "dice": "12+6d10"
+        }
+      ],
+      "desc": [
+        "restores 20SP, cures confusion and hallucination, removes fear and grants you temporary resistance to confusion"
+      ]
+    },
+    {
+      "name": "CURE_BODY",
+      "aim": 0,
+      "level": 15,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "30"
+        },
+        {
+          "eff": "CURE",
+          "type": "STUN"
+        },
+        {
+          "eff": "CURE",
+          "type": "CUT"
+        },
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        },
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        }
+      ],
+      "desc": [
+        "heals 30 hitpoints, cut damage, and cures stunning, poison and blindness"
+      ]
+    },
+    {
+      "name": "CURE_LIGHT",
+      "aim": 0,
+      "level": 12,
+      "power": 3,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "20"
+        },
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        },
+        {
+          "eff": "TIMED_DEC",
+          "type": "CUT",
+          "dice": "20"
+        },
+        {
+          "eff": "TIMED_DEC",
+          "type": "CONFUSED",
+          "dice": "20"
+        }
+      ],
+      "desc": [
+        "heals 20 hitpoints, some cut damage, makes you a little less confused, and cures blindness"
+      ]
+    },
+    {
+      "name": "CURE_SERIOUS",
+      "aim": 0,
+      "level": 25,
+      "power": 6,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "40"
+        },
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        },
+        {
+          "eff": "CURE",
+          "type": "CUT"
+        },
+        {
+          "eff": "CURE",
+          "type": "CONFUSED"
+        }
+      ],
+      "msg": [
+        "Your {kind} radiate{s} deep purple..."
+      ],
+      "desc": [
+        "heals 40 hitpoints, cut damage, and cures blindness and confusion"
+      ]
+    },
+    {
+      "name": "CURE_CRITICAL",
+      "aim": 0,
+      "level": 40,
+      "power": 9,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "60"
+        },
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        },
+        {
+          "eff": "CURE",
+          "type": "CUT"
+        },
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        },
+        {
+          "eff": "CURE",
+          "type": "STUN"
+        },
+        {
+          "eff": "CURE",
+          "type": "AMNESIA"
+        },
+        {
+          "eff": "CURE",
+          "type": "CONFUSED"
+        }
+      ],
+      "desc": [
+        "heals 60 hitpoints, cut damage, and cures stunning, poisoning, blindness, and confusion"
+      ]
+    },
+    {
+      "name": "CURE_FULL",
+      "aim": 0,
+      "level": 80,
+      "power": 12,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "300+m35"
+        },
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        },
+        {
+          "eff": "CURE",
+          "type": "CUT"
+        },
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        },
+        {
+          "eff": "CURE",
+          "type": "STUN"
+        },
+        {
+          "eff": "CURE",
+          "type": "AMNESIA"
+        },
+        {
+          "eff": "CURE",
+          "type": "CONFUSED"
+        }
+      ],
+      "desc": [
+        "heals 35% of max HP (minimum 300HP), cut damage, and cures stunning, poisoning, blindness, and confusion"
+      ]
+    },
+    {
+      "name": "CURE_FULL2",
+      "aim": 0,
+      "level": 90,
+      "power": 18,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "1200"
+        },
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        },
+        {
+          "eff": "CURE",
+          "type": "CUT"
+        },
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        },
+        {
+          "eff": "CURE",
+          "type": "STUN"
+        },
+        {
+          "eff": "CURE",
+          "type": "AMNESIA"
+        },
+        {
+          "eff": "CURE",
+          "type": "CONFUSED"
+        }
+      ],
+      "desc": [
+        "heals 1200 hit points, cut damage, and cures stunning, poisoning, blindness, and confusion"
+      ]
+    },
+    {
+      "name": "CURE_NONORLYBIG",
+      "aim": 0,
+      "level": 100,
+      "power": 21,
+      "effect": [
+        {
+          "eff": "RESTORE_EXP"
+        },
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        },
+        {
+          "eff": "CURE",
+          "type": "CUT"
+        },
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        },
+        {
+          "eff": "CURE",
+          "type": "STUN"
+        },
+        {
+          "eff": "CURE",
+          "type": "AMNESIA"
+        },
+        {
+          "eff": "CURE",
+          "type": "CONFUSED"
+        },
+        {
+          "eff": "CURE",
+          "type": "IMAGE"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "STR"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "INT"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "WIS"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "DEX"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "CON"
+        },
+        {
+          "eff": "HEAL_HP",
+          "dice": "5000"
+        }
+      ],
+      "msg": [
+        "You feel life flow through your body!"
+      ],
+      "desc": [
+        "heals 5000 hit points, restores experience and stats, heals cut damage, and cures stunning, poison, blindness, and confusion"
+      ]
+    },
+    {
+      "name": "CURE_TEMP",
+      "aim": 0,
+      "level": 27,
+      "power": 9,
+      "effect": [
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        },
+        {
+          "eff": "CURE",
+          "type": "CUT"
+        },
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        },
+        {
+          "eff": "CURE",
+          "type": "STUN"
+        },
+        {
+          "eff": "CURE",
+          "type": "CONFUSED"
+        }
+      ],
+      "desc": [
+        "heals cut damage, and cures all stunning, poison, blindness and confusion"
+      ]
+    },
+    {
+      "name": "HEAL1",
+      "aim": 0,
+      "level": 60,
+      "power": 13,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "500"
+        },
+        {
+          "eff": "CURE",
+          "type": "CUT"
+        }
+      ],
+      "msg": [
+        "You feel a warm tingling inside..."
+      ],
+      "desc": [
+        "heals 500 hit points"
+      ]
+    },
+    {
+      "name": "HEAL2",
+      "aim": 0,
+      "level": 80,
+      "power": 16,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "1000"
+        },
+        {
+          "eff": "CURE",
+          "type": "CUT"
+        }
+      ],
+      "msg": [
+        "{name} glows a bright white..."
+      ],
+      "desc": [
+        "heals 1000 hit points"
+      ]
+    },
+    {
+      "name": "HEAL3",
+      "aim": 0,
+      "level": 65,
+      "power": 14,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "500"
+        },
+        {
+          "eff": "CURE",
+          "type": "CUT"
+        },
+        {
+          "eff": "CURE",
+          "type": "STUN"
+        }
+      ],
+      "desc": [
+        "heals 500 hit points, heals cut damage, and cures stunning"
+      ]
+    },
+    {
+      "name": "RESTORE_EXP",
+      "aim": 0,
+      "level": 40,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "RESTORE_EXP"
+        }
+      ],
+      "desc": [
+        "restores your experience"
+      ]
+    },
+    {
+      "name": "RESTORE_MANA",
+      "aim": 0,
+      "level": 75,
+      "power": 20,
+      "effect": [
+        {
+          "eff": "RESTORE_MANA"
+        }
+      ],
+      "desc": [
+        "restores your mana points to maximum"
+      ]
+    },
+    {
+      "name": "BRAWN",
+      "aim": 0,
+      "level": 35,
+      "power": 30,
+      "effect": [
+        {
+          "eff": "GAIN_STAT",
+          "type": "STR"
+        },
+        {
+          "eff": "LOSE_RANDOM_STAT",
+          "type": "STR"
+        }
+      ],
+      "desc": [
+        "raises your strength at the expense of a random attribute"
+      ]
+    },
+    {
+      "name": "INTELLECT",
+      "aim": 0,
+      "level": 31,
+      "power": 25,
+      "effect": [
+        {
+          "eff": "GAIN_STAT",
+          "type": "INT"
+        },
+        {
+          "eff": "LOSE_RANDOM_STAT",
+          "type": "INT"
+        }
+      ],
+      "desc": [
+        "raises your intelligence at the expense of a random attribute"
+      ]
+    },
+    {
+      "name": "CONTEMPLATION",
+      "aim": 0,
+      "level": 31,
+      "power": 25,
+      "effect": [
+        {
+          "eff": "GAIN_STAT",
+          "type": "WIS"
+        },
+        {
+          "eff": "LOSE_RANDOM_STAT",
+          "type": "WIS"
+        }
+      ],
+      "desc": [
+        "raises your wisdom at the expense of a random attribute"
+      ]
+    },
+    {
+      "name": "TOUGHNESS",
+      "aim": 0,
+      "level": 35,
+      "power": 30,
+      "effect": [
+        {
+          "eff": "GAIN_STAT",
+          "type": "CON"
+        },
+        {
+          "eff": "LOSE_RANDOM_STAT",
+          "type": "CON"
+        }
+      ],
+      "desc": [
+        "raises your constitution at the expense of a random attribute"
+      ]
+    },
+    {
+      "name": "NIMBLENESS",
+      "aim": 0,
+      "level": 31,
+      "power": 25,
+      "effect": [
+        {
+          "eff": "GAIN_STAT",
+          "type": "DEX"
+        },
+        {
+          "eff": "LOSE_RANDOM_STAT",
+          "type": "DEX"
+        }
+      ],
+      "desc": [
+        "raises your dexterity at the expense of a random attribute"
+      ]
+    },
+    {
+      "name": "RESTORE_STR",
+      "aim": 0,
+      "level": 20,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "RESTORE_STAT",
+          "type": "STR"
+        }
+      ],
+      "desc": [
+        "restores your strength"
+      ]
+    },
+    {
+      "name": "RESTORE_INT",
+      "aim": 0,
+      "level": 16,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "RESTORE_STAT",
+          "type": "INT"
+        }
+      ],
+      "desc": [
+        "restores your intelligence"
+      ]
+    },
+    {
+      "name": "RESTORE_WIS",
+      "aim": 0,
+      "level": 16,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "RESTORE_STAT",
+          "type": "WIS"
+        }
+      ],
+      "desc": [
+        "restores your wisdom"
+      ]
+    },
+    {
+      "name": "RESTORE_DEX",
+      "aim": 0,
+      "level": 18,
+      "power": 9,
+      "effect": [
+        {
+          "eff": "RESTORE_STAT",
+          "type": "DEX"
+        }
+      ],
+      "desc": [
+        "restores your dexterity"
+      ]
+    },
+    {
+      "name": "RESTORE_CON",
+      "aim": 0,
+      "level": 20,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "RESTORE_STAT",
+          "type": "CON"
+        }
+      ],
+      "desc": [
+        "restores your constitution"
+      ]
+    },
+    {
+      "name": "RESTORE_ALL",
+      "aim": 0,
+      "level": 67,
+      "power": 15,
+      "effect": [
+        {
+          "eff": "RESTORE_STAT",
+          "type": "STR"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "INT"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "WIS"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "DEX"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "CON"
+        }
+      ],
+      "desc": [
+        "restores all your stats"
+      ]
+    },
+    {
+      "name": "RESTORE_ST_LEV",
+      "aim": 0,
+      "level": 72,
+      "power": 17,
+      "effect": [
+        {
+          "eff": "RESTORE_STAT",
+          "type": "STR"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "INT"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "WIS"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "DEX"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "CON"
+        },
+        {
+          "eff": "RESTORE_EXP"
+        }
+      ],
+      "desc": [
+        "restores all your stats and your experience points"
+      ]
+    },
+    {
+      "name": "TMD_FREE_ACT",
+      "aim": 0,
+      "level": 8,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "FREE_ACT",
+          "dice": "10+1d10"
+        }
+      ],
+      "desc": [
+        "grants temporary free action for 1d10+10 turns"
+      ]
+    },
+    {
+      "name": "TMD_INFRA",
+      "aim": 0,
+      "level": 10,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "SINFRA",
+          "dice": "100+4d25"
+        }
+      ],
+      "desc": [
+        "extends your infravision by 50 feet for 4d25+100 turns"
+      ]
+    },
+    {
+      "name": "TMD_SINVIS",
+      "aim": 0,
+      "level": 12,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "SINVIS",
+          "dice": "12+2d6"
+        }
+      ],
+      "desc": [
+        "cures blindness and allows you to see invisible things for 2d6+12 turns"
+      ]
+    },
+    {
+      "name": "TMD_ESP",
+      "aim": 0,
+      "level": 15,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "TELEPATHY",
+          "dice": "24+9d9"
+        }
+      ],
+      "desc": [
+        "cures blindness and gives you telepathy for 9d9+24 turns"
+      ]
+    },
+    {
+      "name": "ENLIGHTENMENT",
+      "aim": 0,
+      "level": 60,
+      "power": 25,
+      "effect": [
+        {
+          "eff": "LIGHT_LEVEL",
+          "dice": "1"
+        }
+      ],
+      "desc": [
+        "completely lights up and magically maps the level, detecting all objects"
+      ]
+    },
+    {
+      "name": "HERO",
+      "aim": 0,
+      "level": 12,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "10"
+        },
+        {
+          "eff": "CURE",
+          "type": "AFRAID"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "HERO",
+          "dice": "25+1d25"
+        }
+      ],
+      "desc": [
+        "restores 10 hit points, removes fear and grants you resistance to fear and +12 to-hit for 1d25+25 turns"
+      ]
+    },
+    {
+      "name": "SHERO",
+      "aim": 0,
+      "level": 15,
+      "power": 9,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "30"
+        },
+        {
+          "eff": "CURE",
+          "type": "AFRAID"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "SHERO",
+          "dice": "25+1d25"
+        }
+      ],
+      "desc": [
+        "restores 30 hit points, removes fear and grants you resistance to fear, +25 to-hit for melee, and -10AC for 1d25+25 turns"
+      ]
+    },
+    {
+      "name": "RESIST_ACID",
+      "aim": 0,
+      "level": 5,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_ACID",
+          "dice": "10+1d10"
+        }
+      ],
+      "desc": [
+        "grants temporary resistance to acid for 1d10+10 turns"
+      ]
+    },
+    {
+      "name": "RESIST_ELEC",
+      "aim": 0,
+      "level": 5,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_ELEC",
+          "dice": "10+1d10"
+        }
+      ],
+      "desc": [
+        "grants temporary resistance to electricity for 1d10+10 turns"
+      ]
+    },
+    {
+      "name": "RESIST_FIRE",
+      "aim": 0,
+      "level": 5,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_FIRE",
+          "dice": "10+1d10"
+        }
+      ],
+      "desc": [
+        "grants temporary resistance to fire for 1d10+10 turns"
+      ]
+    },
+    {
+      "name": "RESIST_COLD",
+      "aim": 0,
+      "level": 5,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_COLD",
+          "dice": "10+1d10"
+        }
+      ],
+      "desc": [
+        "grants temporary resistance to cold for 1d10+10 turns"
+      ]
+    },
+    {
+      "name": "RESIST_POIS",
+      "aim": 0,
+      "level": 5,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_POIS",
+          "dice": "10+1d10"
+        }
+      ],
+      "desc": [
+        "grants temporary resistance to poison for 1d10+10 turns"
+      ]
+    },
+    {
+      "name": "RESIST_ALL",
+      "aim": 0,
+      "level": 15,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "SET_VALUE",
+          "dice": "20+1d20"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_ACID"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_ELEC"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_FIRE"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_COLD"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_POIS"
+        },
+        {
+          "eff": "CLEAR_VALUE"
+        }
+      ],
+      "msg": [
+        "{name} glows many colours..."
+      ],
+      "desc": [
+        "grants temporary resistance to acid, electricity, fire, cold and poison",
+        " for 1d20+20 turns"
+      ]
+    },
+    {
+      "name": "DETECT_TREASURE",
+      "aim": 0,
+      "level": 5,
+      "power": 6,
+      "effect": [
+        {
+          "eff": "DETECT_GOLD",
+          "effect-yx": {
+            "y": 22,
+            "x": 40
+          }
+        },
+        {
+          "eff": "SENSE_OBJECTS",
+          "effect-yx": {
+            "y": 22,
+            "x": 40
+          }
+        }
+      ],
+      "desc": [
+        "detects gold and objects nearby"
+      ]
+    },
+    {
+      "name": "DETECT_INVIS",
+      "aim": 0,
+      "level": 8,
+      "power": 6,
+      "effect": [
+        {
+          "eff": "DETECT_INVISIBLE_MONSTERS",
+          "effect-yx": {
+            "y": 22,
+            "x": 40
+          }
+        }
+      ],
+      "desc": [
+        "detects invisible creatures nearby"
+      ]
+    },
+    {
+      "name": "DETECT_EVIL",
+      "aim": 0,
+      "level": 15,
+      "power": 6,
+      "effect": [
+        {
+          "eff": "DETECT_EVIL",
+          "effect-yx": {
+            "y": 22,
+            "x": 40
+          }
+        }
+      ],
+      "desc": [
+        "detects evil creatures nearby"
+      ]
+    },
+    {
+      "name": "DETECT_ALL",
+      "aim": 0,
+      "level": 20,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "DETECT_GOLD",
+          "effect-yx": {
+            "y": 22,
+            "x": 40
+          }
+        },
+        {
+          "eff": "SENSE_OBJECTS",
+          "effect-yx": {
+            "y": 22,
+            "x": 40
+          }
+        },
+        {
+          "eff": "DETECT_INVISIBLE_MONSTERS",
+          "effect-yx": {
+            "y": 22,
+            "x": 40
+          }
+        },
+        {
+          "eff": "DETECT_VISIBLE_MONSTERS",
+          "effect-yx": {
+            "y": 22,
+            "x": 40
+          }
+        },
+        {
+          "eff": "MAP_AREA",
+          "effect-yx": {
+            "y": 11,
+            "x": 11
+          }
+        }
+      ],
+      "msg": [
+        "{name} forms an image in your mind..."
+      ],
+      "desc": [
+        "detects treasure and all creatures and maps an area nearby"
+      ]
+    },
+    {
+      "name": "DETECT_OBJECTS",
+      "aim": 0,
+      "level": 15,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "DETECT_OBJECTS",
+          "effect-yx": {
+            "y": 22,
+            "x": 40
+          }
+        }
+      ],
+      "desc": [
+        "detects all objects in the immediate area"
+      ]
+    },
+    {
+      "name": "ENCHANT_TOHIT",
+      "aim": 0,
+      "level": 30,
+      "power": 15,
+      "effect": [
+        {
+          "eff": "ENCHANT",
+          "type": "TOHIT",
+          "dice": "1"
+        }
+      ],
+      "desc": [
+        "attempts to magically enhance a weapon's to-hit bonus"
+      ]
+    },
+    {
+      "name": "ENCHANT_TODAM",
+      "aim": 0,
+      "level": 35,
+      "power": 20,
+      "effect": [
+        {
+          "eff": "ENCHANT",
+          "type": "TODAM",
+          "dice": "1"
+        }
+      ],
+      "desc": [
+        "attempts to magically enhance a weapon's to-dam bonus"
+      ]
+    },
+    {
+      "name": "ENCHANT_WEAPON",
+      "aim": 0,
+      "level": 45,
+      "power": 22,
+      "effect": [
+        {
+          "eff": "ENCHANT",
+          "type": "TOBOTH",
+          "dice": "1d3"
+        }
+      ],
+      "desc": [
+        "attempts to magically enhance a weapon both to-hit and to-dam"
+      ]
+    },
+    {
+      "name": "ENCHANT_ARMOR",
+      "aim": 0,
+      "level": 25,
+      "power": 12,
+      "effect": [
+        {
+          "eff": "ENCHANT",
+          "type": "TOAC",
+          "dice": "1"
+        }
+      ],
+      "desc": [
+        "attempts to magically enhance a piece of armour"
+      ]
+    },
+    {
+      "name": "ENCHANT_ARMOR2",
+      "aim": 0,
+      "level": 40,
+      "power": 15,
+      "effect": [
+        {
+          "eff": "ENCHANT",
+          "type": "TOAC",
+          "dice": "2+1d3"
+        }
+      ],
+      "desc": [
+        "attempts to magically enhance a piece of armour with high chance of success"
+      ]
+    },
+    {
+      "name": "REMOVE_CURSE",
+      "aim": 0,
+      "level": 22,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "REMOVE_CURSE",
+          "dice": "20+d20"
+        }
+      ],
+      "desc": [
+        "attempts to remove a curse from an item"
+      ]
+    },
+    {
+      "name": "REMOVE_CURSE2",
+      "aim": 0,
+      "level": 62,
+      "power": 20,
+      "effect": [
+        {
+          "eff": "REMOVE_CURSE",
+          "dice": "50+d50"
+        }
+      ],
+      "desc": [
+        "makes a strong attempt to remove a curse from an item"
+      ]
+    },
+    {
+      "name": "LIGHT",
+      "aim": 0,
+      "level": 10,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "LIGHT_AREA"
+        },
+        {
+          "eff": "SPHERE",
+          "type": "LIGHT_WEAK",
+          "radius": 2,
+          "dice": "2d8"
+        }
+      ]
+    },
+    {
+      "name": "TELE_PHASE",
+      "aim": 0,
+      "level": 8,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "TELEPORT",
+          "dice": "10"
+        }
+      ],
+      "msg": [
+        "{name} twists space around you..."
+      ],
+      "desc": [
+        "teleports you randomly up to 10 squares away"
+      ]
+    },
+    {
+      "name": "TELE_LONG",
+      "aim": 0,
+      "level": 25,
+      "power": 6,
+      "effect": [
+        {
+          "eff": "TELEPORT",
+          "dice": "M60"
+        }
+      ],
+      "msg": [
+        "Your {kind} twist{s} space around you."
+      ],
+      "desc": [
+        "teleports you randomly about 60 per cent of the largest distance you",
+        " could go"
+      ]
+    },
+    {
+      "name": "TELE_LEVEL",
+      "aim": 0,
+      "level": 32,
+      "power": 15,
+      "effect": [
+        {
+          "eff": "TELEPORT_LEVEL"
+        }
+      ],
+      "desc": [
+        "teleports you one level up or down"
+      ]
+    },
+    {
+      "name": "CONFUSING",
+      "aim": 0,
+      "level": 12,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "ATT_CONF",
+          "dice": "10000"
+        }
+      ],
+      "desc": [
+        "causes your next attack upon a monster to confuse it"
+      ]
+    },
+    {
+      "name": "MAPPING",
+      "aim": 0,
+      "level": 30,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "MAP_AREA",
+          "effect-yx": {
+            "y": 22,
+            "x": 40
+          }
+        }
+      ],
+      "msg": [
+        "The {kind} shine{s} brightly..."
+      ],
+      "desc": [
+        "maps the area around you"
+      ]
+    },
+    {
+      "name": "GLYPH",
+      "aim": 0,
+      "level": 70,
+      "power": 20,
+      "effect": [
+        {
+          "eff": "GLYPH",
+          "type": "WARDING"
+        }
+      ],
+      "desc": [
+        "inscribes a glyph of warding beneath you, which monsters cannot move onto"
+      ]
+    },
+    {
+      "name": "DESTROY_DOORS",
+      "aim": 0,
+      "level": 5,
+      "power": 6,
+      "effect": [
+        {
+          "eff": "TOUCH",
+          "type": "KILL_DOOR"
+        }
+      ],
+      "msg": [
+        "Your {kind} glow{s} bright red..."
+      ],
+      "desc": [
+        "destroys all doors surrounding you"
+      ]
+    },
+    {
+      "name": "RECHARGE",
+      "aim": 0,
+      "level": 60,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "RECHARGE",
+          "dice": "10"
+        }
+      ],
+      "msg": [
+        "Your {kind} glow{s} bright yellow..."
+      ],
+      "desc": [
+        "tries to recharge a wand or staff, destroying the wand or staff on failure"
+      ]
+    },
+    {
+      "name": "BANISHMENT",
+      "aim": 0,
+      "level": 50,
+      "power": 20,
+      "effect": [
+        {
+          "eff": "BANISH"
+        }
+      ],
+      "msg": [
+        "Your {kind} glow{s} deep blue..."
+      ],
+      "desc": [
+        "removes all non-unique monsters represented by a chosen symbol from the level, dealing you damage in the process"
+      ]
+    },
+    {
+      "name": "PROTEVIL",
+      "aim": 0,
+      "level": 40,
+      "power": 6,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "PROTEVIL",
+          "dice": "$B+1d25",
+          "expr": [
+            {
+              "name": "B",
+              "base": "PLAYER_LEVEL",
+              "expr": "* 3"
+            }
+          ]
+        }
+      ],
+      "msg": [
+        "The {kind} let{s} out a shrill wail..."
+      ],
+      "desc": [
+        "grants you protection from evil for 1d25 plus 3 times your character level turns"
+      ]
+    },
+    {
+      "name": "SATISFY",
+      "aim": 0,
+      "level": 10,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "NOURISH",
+          "type": "INC_TO",
+          "dice": "50"
+        }
+      ],
+      "desc": [
+        "magically renders you comfortably fed"
+      ]
+    },
+    {
+      "name": "BLESSING",
+      "aim": 0,
+      "level": 8,
+      "power": 6,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "BLESSED",
+          "dice": "6+1d12"
+        }
+      ],
+      "desc": [
+        "increases your AC and to-hit bonus for 1d12+6 turns"
+      ]
+    },
+    {
+      "name": "BLESSING2",
+      "aim": 0,
+      "level": 12,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "BLESSED",
+          "dice": "12+1d24"
+        }
+      ],
+      "desc": [
+        "increases your AC and to-hit bonus for 1d24+12 turns"
+      ]
+    },
+    {
+      "name": "BLESSING3",
+      "aim": 0,
+      "level": 18,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "BLESSED",
+          "dice": "24+1d48"
+        }
+      ],
+      "desc": [
+        "increases your AC and to-hit bonus for 1d48+24 turns"
+      ]
+    },
+    {
+      "name": "RECALL",
+      "aim": 0,
+      "level": 20,
+      "power": 15,
+      "effect": [
+        {
+          "eff": "RECALL"
+        }
+      ],
+      "msg": [
+        "{name} pulses a soft white."
+      ],
+      "desc": [
+        "returns you from the dungeon or takes you to the dungeon after a short delay"
+      ]
+    },
+    {
+      "name": "DEEP_DESCENT",
+      "aim": 0,
+      "level": 25,
+      "power": 19,
+      "effect": [
+        {
+          "eff": "DEEP_DESCENT"
+        }
+      ],
+      "desc": [
+        "teleports you five levels down"
+      ]
+    },
+    {
+      "name": "EARTHQUAKES",
+      "aim": 0,
+      "level": 47,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "EARTHQUAKE",
+          "type": "NONE",
+          "radius": 10
+        }
+      ],
+      "desc": [
+        "causes an earthquake around you"
+      ]
+    },
+    {
+      "name": "DESTRUCTION2",
+      "aim": 0,
+      "level": 57,
+      "power": 12,
+      "effect": [
+        {
+          "eff": "DESTRUCTION",
+          "type": "LIGHT",
+          "radius": 15
+        }
+      ],
+      "desc": [
+        "destroys an area around you in the shape of a circle radius 15, and blinds you for 1d10+10 turns"
+      ]
+    },
+    {
+      "name": "LOSSLOW",
+      "aim": 0,
+      "level": 16,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "PROJECT_LOS",
+          "type": "MON_SLOW",
+          "dice": "20"
+        }
+      ],
+      "desc": [
+        "slows all non-unique monsters within line of sight"
+      ]
+    },
+    {
+      "name": "LOSSLEEP",
+      "aim": 0,
+      "level": 18,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "PROJECT_LOS",
+          "type": "SLEEP_ALL",
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "PLAYER_LEVEL",
+              "expr": "* 10 + 500"
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "sleeps all non-unique creatures within line of sight"
+      ]
+    },
+    {
+      "name": "LOSCONF",
+      "aim": 0,
+      "level": 18,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "PROJECT_LOS",
+          "type": "MON_CONF",
+          "dice": "5+1d5"
+        }
+      ],
+      "desc": [
+        "confuses all non-unique creatures within line of sight"
+      ]
+    },
+    {
+      "name": "LOSKILL",
+      "aim": 0,
+      "level": 40,
+      "power": 25,
+      "effect": [
+        {
+          "eff": "MASS_BANISH"
+        }
+      ],
+      "msg": [
+        "Your {kind} let{s} out a long, shrill note..."
+      ],
+      "desc": [
+        "removes all non-unique monsters within 20 squares, dealing you damage in the process"
+      ]
+    },
+    {
+      "name": "ILLUMINATION",
+      "aim": 0,
+      "level": 12,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "LIGHT_AREA"
+        },
+        {
+          "eff": "SPHERE",
+          "type": "LIGHT_WEAK",
+          "radius": 3,
+          "dice": "2d15"
+        }
+      ],
+      "msg": [
+        "The {kind} well{s} with clear light..."
+      ]
+    },
+    {
+      "name": "CLAIRVOYANCE",
+      "aim": 0,
+      "level": 50,
+      "power": 22,
+      "effect": [
+        {
+          "eff": "LIGHT_LEVEL"
+        }
+      ],
+      "msg": [
+        "The {kind} form{s} an image in your mind..."
+      ],
+      "desc": [
+        "lights and maps the entire level, sensing objects"
+      ]
+    },
+    {
+      "name": "PROBING",
+      "aim": 0,
+      "level": 20,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "PROBE"
+        }
+      ],
+      "msg": [
+        "{name} glows brightly..."
+      ],
+      "desc": [
+        "gives you information on the health and abilities of monsters you can see"
+      ]
+    },
+    {
+      "name": "HASTE",
+      "aim": 0,
+      "level": 40,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "FAST",
+          "radius": 0,
+          "other": 5,
+          "dice": "20+2d10"
+        }
+      ],
+      "desc": [
+        "hastens you for 2d10+20 turns"
+      ]
+    },
+    {
+      "name": "HASTE1",
+      "aim": 0,
+      "level": 40,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "FAST",
+          "radius": 0,
+          "other": 5,
+          "dice": "20+1d20"
+        }
+      ],
+      "msg": [
+        "Your {kind} glow{s} bright green..."
+      ],
+      "desc": [
+        "hastens you for d20+20 turns"
+      ]
+    },
+    {
+      "name": "HASTE2",
+      "aim": 0,
+      "level": 60,
+      "power": 13,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "FAST",
+          "radius": 0,
+          "other": 5,
+          "dice": "75+1d75"
+        }
+      ],
+      "msg": [
+        "The {kind} glow{s} brightly..."
+      ],
+      "desc": [
+        "hastens you for d75+75 turns"
+      ]
+    },
+    {
+      "name": "DISPEL_EVIL",
+      "aim": 0,
+      "level": 65,
+      "power": 12,
+      "effect": [
+        {
+          "eff": "PROJECT_LOS",
+          "type": "DISP_EVIL",
+          "radius": 0,
+          "other": 1,
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "PLAYER_LEVEL",
+              "expr": "* 5"
+            }
+          ]
+        }
+      ],
+      "msg": [
+        "The {kind} flood{s} the area with goodness..."
+      ],
+      "desc": [
+        "deals five times your level's damage to all evil creatures that you can see"
+      ]
+    },
+    {
+      "name": "DISPEL_EVIL60",
+      "aim": 0,
+      "level": 55,
+      "power": 9,
+      "effect": [
+        {
+          "eff": "PROJECT_LOS",
+          "type": "DISP_EVIL",
+          "radius": 0,
+          "other": 1,
+          "dice": "60"
+        }
+      ],
+      "desc": [
+        "deals 60 damage to all evil creatures that you can see"
+      ]
+    },
+    {
+      "name": "DISPEL_UNDEAD",
+      "aim": 0,
+      "level": 50,
+      "power": 9,
+      "effect": [
+        {
+          "eff": "PROJECT_LOS",
+          "type": "DISP_UNDEAD",
+          "radius": 0,
+          "other": 1,
+          "dice": "60"
+        }
+      ],
+      "desc": [
+        "deals 60 damage to all undead creatures that you can see"
+      ]
+    },
+    {
+      "name": "DISPEL_ALL",
+      "aim": 0,
+      "level": 75,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "PROJECT_LOS",
+          "type": "DISP_ALL",
+          "radius": 0,
+          "other": 1,
+          "dice": "120"
+        }
+      ],
+      "desc": [
+        "deals 120 damage to all creatures that you can see"
+      ]
+    },
+    {
+      "name": "SLEEPII",
+      "aim": 0,
+      "level": 12,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "TOUCH_AWARE",
+          "type": "SLEEP_ALL",
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "PLAYER_LEVEL",
+              "expr": "* 10 + 500"
+            }
+          ]
+        }
+      ],
+      "msg": [
+        "{name} glows deep blue..."
+      ],
+      "desc": [
+        "puts to sleep the monsters around you"
+      ]
+    },
+    {
+      "name": "STAR_BALL",
+      "aim": 0,
+      "level": 60,
+      "power": 18,
+      "effect": [
+        {
+          "eff": "STAR_BALL",
+          "type": "ELEC",
+          "radius": 3,
+          "dice": "150"
+        }
+      ],
+      "msg": [
+        "Lightning surrounds your {kind}!"
+      ]
+    },
+    {
+      "name": "RAGE_BLESS_RESIST",
+      "aim": 0,
+      "level": 50,
+      "power": 21,
+      "effect": [
+        {
+          "eff": "HEAL_HP",
+          "dice": "30"
+        },
+        {
+          "eff": "CURE",
+          "type": "AFRAID"
+        },
+        {
+          "eff": "SET_VALUE",
+          "dice": "50+1d50"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "SHERO"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "BLESSED"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_ACID"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_ELEC"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_FIRE"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_COLD"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_POIS"
+        },
+        {
+          "eff": "CLEAR_VALUE"
+        }
+      ],
+      "msg": [
+        "{name} glow{s} many colors..."
+      ],
+      "desc": [
+        "bestows upon you berserk rage, bless, and resistance"
+      ]
+    },
+    {
+      "name": "RESTORE_LIFE",
+      "aim": 0,
+      "level": 40,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "RESTORE_EXP"
+        }
+      ],
+      "msg": [
+        "Your {kind} glow{s} a deep red..."
+      ],
+      "desc": [
+        "restores your experience to full"
+      ]
+    },
+    {
+      "name": "REM_FEAR_POIS",
+      "aim": 0,
+      "level": 10,
+      "power": 3,
+      "effect": [
+        {
+          "eff": "CURE",
+          "type": "AFRAID"
+        },
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        }
+      ],
+      "msg": [
+        "Your {kind} glow{s} deep blue..."
+      ],
+      "desc": [
+        "cures you of fear and poison"
+      ]
+    },
+    {
+      "name": "FIREBRAND",
+      "aim": 0,
+      "level": 45,
+      "power": 25,
+      "effect": [
+        {
+          "eff": "BRAND_BOLTS"
+        }
+      ],
+      "desc": [
+        "brands bolts with fire, in an unbalanced fashion"
+      ]
+    },
+    {
+      "name": "FIRE_BOLT",
+      "aim": 1,
+      "level": 1,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "BOLT",
+          "type": "FIRE",
+          "dice": "9d8"
+        }
+      ],
+      "msg": [
+        "Your {kind} {is} covered in fire..."
+      ]
+    },
+    {
+      "name": "FIRE_BOLT2",
+      "aim": 1,
+      "level": 32,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "BOLT_OR_BEAM",
+          "type": "FIRE",
+          "dice": "12d8"
+        }
+      ]
+    },
+    {
+      "name": "FIRE_BOLT3",
+      "aim": 1,
+      "level": 40,
+      "power": 9,
+      "effect": [
+        {
+          "eff": "BOLT_OR_BEAM",
+          "type": "FIRE",
+          "dice": "16d8"
+        }
+      ]
+    },
+    {
+      "name": "FIRE_BALL72",
+      "aim": 1,
+      "level": 30,
+      "power": 9,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "FIRE",
+          "radius": 2,
+          "dice": "72"
+        }
+      ],
+      "msg": [
+        "{name} rages in fire..."
+      ]
+    },
+    {
+      "name": "FIRE_BALL",
+      "aim": 1,
+      "level": 50,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "FIRE",
+          "radius": 2,
+          "dice": "144"
+        }
+      ],
+      "msg": [
+        "The {kind} glow{s} deep red..."
+      ]
+    },
+    {
+      "name": "FIRE_BALL2",
+      "aim": 1,
+      "level": 60,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "FIRE",
+          "radius": 3,
+          "dice": "120"
+        }
+      ]
+    },
+    {
+      "name": "FIRE_BALL200",
+      "aim": 1,
+      "level": 75,
+      "power": 13,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "FIRE",
+          "radius": 3,
+          "dice": "200"
+        }
+      ]
+    },
+    {
+      "name": "COLD_BOLT",
+      "aim": 1,
+      "level": 1,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "BOLT_OR_BEAM",
+          "type": "COLD",
+          "dice": "6d8"
+        }
+      ],
+      "msg": [
+        "Your {kind} {is} covered in frost..."
+      ]
+    },
+    {
+      "name": "COLD_BOLT2",
+      "aim": 1,
+      "level": 20,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "BOLT",
+          "type": "COLD",
+          "dice": "12d8"
+        }
+      ],
+      "msg": [
+        "{name} glows a pale blue..."
+      ]
+    },
+    {
+      "name": "COLD_BALL2",
+      "aim": 1,
+      "level": 70,
+      "power": 13,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "COLD",
+          "radius": 3,
+          "dice": "200"
+        }
+      ]
+    },
+    {
+      "name": "COLD_BALL50",
+      "aim": 1,
+      "level": 10,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "COLD",
+          "radius": 2,
+          "dice": "50"
+        }
+      ],
+      "msg": [
+        "Your {kind} {is} covered in frost..."
+      ]
+    },
+    {
+      "name": "COLD_BALL100",
+      "aim": 1,
+      "level": 35,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "COLD",
+          "radius": 2,
+          "dice": "100"
+        }
+      ],
+      "msg": [
+        "{name} glows an intense blue..."
+      ]
+    },
+    {
+      "name": "COLD_BALL160",
+      "aim": 1,
+      "level": 55,
+      "power": 12,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "COLD",
+          "radius": 3,
+          "dice": "160"
+        }
+      ]
+    },
+    {
+      "name": "ACID_BOLT",
+      "aim": 1,
+      "level": 1,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "BOLT",
+          "type": "ACID",
+          "dice": "5d8"
+        }
+      ],
+      "msg": [
+        "Your {kind} {is} covered in acid..."
+      ]
+    },
+    {
+      "name": "ACID_BOLT2",
+      "aim": 1,
+      "level": 30,
+      "power": 6,
+      "effect": [
+        {
+          "eff": "BOLT_OR_BEAM",
+          "type": "ACID",
+          "dice": "10d8"
+        }
+      ]
+    },
+    {
+      "name": "ACID_BOLT3",
+      "aim": 1,
+      "level": 35,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "BOLT_OR_BEAM",
+          "type": "ACID",
+          "dice": "12d8"
+        }
+      ]
+    },
+    {
+      "name": "ACID_BALL",
+      "aim": 1,
+      "level": 55,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "ACID",
+          "radius": 2,
+          "dice": "120"
+        }
+      ]
+    },
+    {
+      "name": "ELEC_BOLT",
+      "aim": 1,
+      "level": 1,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "BEAM",
+          "type": "ELEC",
+          "dice": "6d6"
+        }
+      ],
+      "msg": [
+        "Your {kind} {is} covered in sparks..."
+      ]
+    },
+    {
+      "name": "ELEC_BALL",
+      "aim": 1,
+      "level": 40,
+      "power": 9,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "ELEC",
+          "radius": 2,
+          "dice": "64"
+        }
+      ]
+    },
+    {
+      "name": "ELEC_BALL2",
+      "aim": 1,
+      "level": 77,
+      "power": 14,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "ELEC",
+          "radius": 3,
+          "dice": "250"
+        }
+      ]
+    },
+    {
+      "name": "DRAIN_LIFE1",
+      "aim": 1,
+      "level": 20,
+      "power": 9,
+      "effect": [
+        {
+          "eff": "BOLT",
+          "type": "MON_DRAIN",
+          "dice": "90"
+        }
+      ],
+      "msg": [
+        "{name} glows white..."
+      ],
+      "desc": [
+        "drains up to 90 hit points of life from a target creature.  Does not affect undead, demons, golems, elementals or vortices"
+      ]
+    },
+    {
+      "name": "DRAIN_LIFE2",
+      "aim": 1,
+      "level": 30,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "BOLT",
+          "type": "MON_DRAIN",
+          "dice": "120"
+        }
+      ],
+      "msg": [
+        "Your {kind} glow{s} black..."
+      ],
+      "desc": [
+        "drains up to 120 hit points of life from a target creature.  Does not affect undead, demons, golems, elementals or vortices"
+      ]
+    },
+    {
+      "name": "DRAIN_LIFE3",
+      "aim": 1,
+      "level": 60,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "BOLT",
+          "type": "MON_DRAIN",
+          "dice": "150"
+        }
+      ],
+      "desc": [
+        "drains up to 150 hit points of life from a target creature.  Does not affect undead, demons, golems, elementals or vortices"
+      ]
+    },
+    {
+      "name": "DRAIN_LIFE4",
+      "aim": 1,
+      "level": 75,
+      "power": 12,
+      "effect": [
+        {
+          "eff": "BOLT",
+          "type": "MON_DRAIN",
+          "dice": "250"
+        }
+      ],
+      "desc": [
+        "drains up to 250 hit points of life from a target creature.  Does not affect undead, demons, golems, elementals or vortices"
+      ]
+    },
+    {
+      "name": "MISSILE",
+      "aim": 1,
+      "level": 5,
+      "power": 3,
+      "effect": [
+        {
+          "eff": "BOLT_OR_BEAM",
+          "type": "MISSILE",
+          "dice": "3d4"
+        }
+      ],
+      "msg": [
+        "{name} glows very brightly..."
+      ]
+    },
+    {
+      "name": "MANA_BOLT",
+      "aim": 1,
+      "level": 52,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "BOLT",
+          "type": "MANA",
+          "dice": "12d8"
+        }
+      ],
+      "msg": [
+        "Your {kind} glow{s} white..."
+      ]
+    },
+    {
+      "name": "BIZARRE",
+      "aim": 1,
+      "level": 80,
+      "power": 20,
+      "effect": [
+        {
+          "eff": "BIZARRE"
+        }
+      ],
+      "msg": [
+        "{name} glows intensely black..."
+      ],
+      "desc": [
+        "does bizarre things"
+      ]
+    },
+    {
+      "name": "ARROW",
+      "aim": 1,
+      "level": 38,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "BOLT",
+          "type": "ARROW",
+          "dice": "150"
+        }
+      ],
+      "msg": [
+        "Your {kind} form{s} a magical arrow..."
+      ]
+    },
+    {
+      "name": "STINKING_CLOUD",
+      "aim": 1,
+      "level": 3,
+      "power": 3,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "POIS",
+          "radius": 3,
+          "dice": "12"
+        }
+      ],
+      "msg": [
+        "{name} throws deep green shadows..."
+      ]
+    },
+    {
+      "name": "STONE_TO_MUD",
+      "aim": 1,
+      "level": 5,
+      "power": 6,
+      "effect": [
+        {
+          "eff": "LINE",
+          "type": "KILL_WALL",
+          "dice": "20+1d30"
+        }
+      ],
+      "msg": [
+        "Your {kind} pulsate{s}..."
+      ]
+    },
+    {
+      "name": "TELE_OTHER",
+      "aim": 1,
+      "level": 25,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "BOLT_STATUS",
+          "type": "AWAY_ALL",
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "MAX_SIGHT",
+              "expr": "* 5"
+            }
+          ]
+        }
+      ],
+      "msg": [
+        "Your {kind} glow{s} deep red..."
+      ],
+      "desc": [
+        "teleports a target monster away"
+      ]
+    },
+    {
+      "name": "CONFUSE2",
+      "aim": 1,
+      "level": 20,
+      "power": 3,
+      "effect": [
+        {
+          "eff": "BOLT_AWARE",
+          "type": "MON_CONF",
+          "dice": "20"
+        }
+      ],
+      "msg": [
+        "{name} glows in scintillating colours..."
+      ],
+      "desc": [
+        "confuses a target monster"
+      ]
+    },
+    {
+      "name": "MON_SLOW",
+      "aim": 1,
+      "level": 25,
+      "power": 3,
+      "effect": [
+        {
+          "eff": "BOLT_AWARE",
+          "type": "MON_SLOW",
+          "dice": "20"
+        }
+      ],
+      "desc": [
+        "attempts to magically slow a single monster"
+      ]
+    },
+    {
+      "name": "MON_CONFUSE",
+      "aim": 1,
+      "level": 15,
+      "power": 3,
+      "effect": [
+        {
+          "eff": "BOLT_AWARE",
+          "type": "MON_CONF",
+          "dice": "10"
+        }
+      ],
+      "desc": [
+        "attempts to magically confuse a single monster"
+      ]
+    },
+    {
+      "name": "SLEEP_ALL",
+      "aim": 1,
+      "level": 8,
+      "power": 3,
+      "effect": [
+        {
+          "eff": "BOLT_AWARE",
+          "type": "SLEEP_ALL",
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "PLAYER_LEVEL",
+              "expr": "* 10 + 500"
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "attempts to induce magical sleep in a single monster"
+      ]
+    },
+    {
+      "name": "MON_SCARE",
+      "aim": 1,
+      "level": 12,
+      "power": 3,
+      "effect": [
+        {
+          "eff": "BOLT_AWARE",
+          "type": "TURN_ALL",
+          "dice": "10"
+        }
+      ],
+      "desc": [
+        "attempts to induce magical fear in a single monster"
+      ]
+    },
+    {
+      "name": "LIGHT_LINE",
+      "aim": 1,
+      "level": 5,
+      "power": 6,
+      "effect": [
+        {
+          "eff": "LINE",
+          "type": "LIGHT_WEAK",
+          "dice": "6d8"
+        }
+      ],
+      "msg": [
+        "A line of shimmering blue light appears."
+      ]
+    },
+    {
+      "name": "DISABLE_TRAPS",
+      "aim": 1,
+      "level": 27,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "ALTER",
+          "type": "KILL_TRAP"
+        }
+      ],
+      "desc": [
+        "disables traps, unlocks doors and reveals all secret doors in a given direction"
+      ]
+    },
+    {
+      "name": "DOOR_DEST",
+      "aim": 1,
+      "level": 1,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "ALTER",
+          "type": "KILL_DOOR"
+        }
+      ],
+      "desc": [
+        "destroys doors"
+      ]
+    },
+    {
+      "name": "POLYMORPH",
+      "aim": 1,
+      "level": 27,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "BOLT_AWARE",
+          "type": "MON_POLY",
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "PLAYER_LEVEL",
+              "expr": "+ 0"
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "polymorphs a monster into another kind of creature"
+      ]
+    },
+    {
+      "name": "STARLIGHT",
+      "aim": 0,
+      "level": 25,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "STAR",
+          "type": "LIGHT_WEAK",
+          "dice": "6d8"
+        }
+      ]
+    },
+    {
+      "name": "STARLIGHT2",
+      "aim": 0,
+      "level": 30,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "STAR",
+          "type": "LIGHT",
+          "dice": "10d8"
+        }
+      ],
+      "msg": [
+        "Your {kind} glow{s} with the light of a thousand stars..."
+      ]
+    },
+    {
+      "name": "BERSERKER",
+      "aim": 0,
+      "level": 20,
+      "power": 10,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "SHERO",
+          "dice": "50+1d50"
+        }
+      ],
+      "msg": [
+        "{name} glows in anger!"
+      ],
+      "desc": [
+        "puts you in a berserker rage for d50+50 turns"
+      ]
+    },
+    {
+      "name": "WONDER",
+      "aim": 1,
+      "level": 10,
+      "power": 9,
+      "effect": [
+        {
+          "eff": "WONDER",
+          "dice": "$B+1d100",
+          "expr": [
+            {
+              "name": "B",
+              "base": "PLAYER_LEVEL",
+              "expr": "/ 5"
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "creates random and unpredictable effects"
+      ]
+    },
+    {
+      "name": "WAND_BREATH",
+      "aim": 1,
+      "level": 35,
+      "power": 12,
+      "effect": [
+        {
+          "eff": "SELECT",
+          "dice": "5"
+        },
+        {
+          "eff": "BREATH",
+          "type": "ACID",
+          "radius": 0,
+          "other": 30,
+          "dice": "160"
+        },
+        {
+          "eff": "BREATH",
+          "type": "ELEC",
+          "radius": 0,
+          "other": 30,
+          "dice": "160"
+        },
+        {
+          "eff": "BREATH",
+          "type": "FIRE",
+          "radius": 0,
+          "other": 30,
+          "dice": "160"
+        },
+        {
+          "eff": "BREATH",
+          "type": "COLD",
+          "radius": 0,
+          "other": 30,
+          "dice": "160"
+        },
+        {
+          "eff": "BREATH",
+          "type": "POIS",
+          "radius": 0,
+          "other": 30,
+          "dice": "160"
+        }
+      ]
+    },
+    {
+      "name": "STAFF_MAGI",
+      "aim": 0,
+      "level": 77,
+      "power": 20,
+      "effect": [
+        {
+          "eff": "RESTORE_STAT",
+          "type": "INT"
+        },
+        {
+          "eff": "RESTORE_MANA"
+        }
+      ],
+      "desc": [
+        "restores both intelligence and manapoints to maximum"
+      ]
+    },
+    {
+      "name": "STAFF_HOLY",
+      "aim": 0,
+      "level": 80,
+      "power": 12,
+      "effect": [
+        {
+          "eff": "PROJECT_LOS",
+          "type": "DISP_EVIL",
+          "radius": 0,
+          "other": 1,
+          "dice": "120"
+        },
+        {
+          "eff": "HEAL_HP",
+          "dice": "50"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "PROTEVIL",
+          "dice": "$B+1d25",
+          "expr": [
+            {
+              "name": "B",
+              "base": "PLAYER_LEVEL",
+              "expr": "* 3"
+            }
+          ]
+        },
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        },
+        {
+          "eff": "CURE",
+          "type": "TERROR"
+        },
+        {
+          "eff": "CURE",
+          "type": "AFRAID"
+        },
+        {
+          "eff": "CURE",
+          "type": "STUN"
+        },
+        {
+          "eff": "CURE",
+          "type": "CUT"
+        },
+        {
+          "eff": "CURE",
+          "type": "SLOW"
+        },
+        {
+          "eff": "CURE",
+          "type": "BLIND"
+        },
+        {
+          "eff": "CURE",
+          "type": "CONFUSED"
+        },
+        {
+          "eff": "CURE",
+          "type": "IMAGE"
+        },
+        {
+          "eff": "CURE",
+          "type": "AMNESIA"
+        }
+      ],
+      "desc": [
+        "inflicts damage on evil creatures you can see, heals 50 hit points, cures all temporary negative effects and grants you protection from evil"
+      ]
+    },
+    {
+      "name": "DRINK_BREATH",
+      "aim": 1,
+      "level": 20,
+      "power": 8,
+      "effect": [
+        {
+          "eff": "SELECT",
+          "dice": "2"
+        },
+        {
+          "eff": "BREATH",
+          "type": "FIRE",
+          "radius": 0,
+          "other": 30,
+          "dice": "80"
+        },
+        {
+          "eff": "BREATH",
+          "type": "COLD",
+          "radius": 0,
+          "other": 30,
+          "dice": "80"
+        }
+      ]
+    },
+    {
+      "name": "FOOD_WAYBREAD",
+      "aim": 0,
+      "level": 15,
+      "power": 4,
+      "effect": [
+        {
+          "eff": "NOURISH",
+          "type": "INC_TO",
+          "dice": "75"
+        },
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        },
+        {
+          "eff": "HEAL_HP",
+          "dice": "4d8"
+        }
+      ],
+      "desc": [
+        "restores 4d8 hit points, neutralizes poison and leaves you very well fed"
+      ]
+    },
+    {
+      "name": "SHROOM_EMERGENCY",
+      "aim": 0,
+      "level": 20,
+      "power": 7,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "IMAGE",
+          "dice": "249+1d101"
+        },
+        {
+          "eff": "SET_VALUE",
+          "dice": "19+1d21"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_FIRE"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_COLD"
+        },
+        {
+          "eff": "CLEAR_VALUE"
+        },
+        {
+          "eff": "HEAL_HP",
+          "dice": "200"
+        }
+      ],
+      "desc": [
+        "grants temporary resistance to fire and cold, cures 200HP, but also makes you hallucinate wildly"
+      ]
+    },
+    {
+      "name": "SHROOM_TERROR",
+      "aim": 0,
+      "level": 10,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "TIMED_SET",
+          "type": "TERROR",
+          "dice": "79+1d41"
+        }
+      ],
+      "desc": [
+        "speeds up you temporarily but also makes you mortally afraid"
+      ]
+    },
+    {
+      "name": "SHROOM_STONE",
+      "aim": 0,
+      "level": 10,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "TIMED_SET",
+          "type": "STONESKIN",
+          "dice": "79+1d41"
+        }
+      ],
+      "desc": [
+        "turns your skin to stone briefly, which grants an extra 40AC but slows you down"
+      ]
+    },
+    {
+      "name": "SHROOM_DEBILITY",
+      "aim": 0,
+      "level": 20,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "RESTORE_MANA"
+        },
+        {
+          "eff": "RANDOM",
+          "dice": "2"
+        },
+        {
+          "eff": "DRAIN_STAT",
+          "type": "STR"
+        },
+        {
+          "eff": "DRAIN_STAT",
+          "type": "CON"
+        }
+      ],
+      "desc": [
+        "restores some mana but also drains either your strength or constitution"
+      ]
+    },
+    {
+      "name": "SHROOM_SPRINTING",
+      "aim": 0,
+      "level": 25,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "SPRINT",
+          "dice": "100"
+        }
+      ],
+      "desc": [
+        "hastes you for a while, but then makes you slower for a while afterward"
+      ]
+    },
+    {
+      "name": "SHROOM_PURGING",
+      "aim": 0,
+      "level": 25,
+      "power": 5,
+      "effect": [
+        {
+          "eff": "NOURISH",
+          "type": "SET_TO",
+          "dice": "5"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "STR"
+        },
+        {
+          "eff": "RESTORE_STAT",
+          "type": "CON"
+        },
+        {
+          "eff": "CURE",
+          "type": "POISONED"
+        }
+      ],
+      "desc": [
+        "makes you very hungry but restores constitution and strength"
+      ]
+    },
+    {
+      "name": "RING_ACID",
+      "aim": 1,
+      "level": 25,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "ACID",
+          "radius": 2,
+          "dice": "70"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_ACID",
+          "dice": "20+1d20"
+        }
+      ]
+    },
+    {
+      "name": "RING_FLAMES",
+      "aim": 1,
+      "level": 30,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "FIRE",
+          "radius": 2,
+          "dice": "80"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_FIRE",
+          "dice": "20+1d20"
+        }
+      ]
+    },
+    {
+      "name": "RING_ICE",
+      "aim": 1,
+      "level": 28,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "COLD",
+          "radius": 2,
+          "dice": "75"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_COLD",
+          "dice": "20+1d20"
+        }
+      ]
+    },
+    {
+      "name": "RING_LIGHTNING",
+      "aim": 1,
+      "level": 32,
+      "power": 11,
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "ELEC",
+          "radius": 2,
+          "dice": "85"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "OPP_ELEC",
+          "dice": "20+1d20"
+        }
+      ]
+    },
+    {
+      "name": "DRAGON_BLUE",
+      "aim": 1,
+      "level": 30,
+      "power": 18,
+      "effect": [
+        {
+          "eff": "BREATH",
+          "type": "ELEC",
+          "radius": 0,
+          "other": 20,
+          "dice": "150"
+        }
+      ]
+    },
+    {
+      "name": "DRAGON_GREEN",
+      "aim": 1,
+      "level": 30,
+      "power": 19,
+      "effect": [
+        {
+          "eff": "BREATH",
+          "type": "POIS",
+          "radius": 0,
+          "other": 20,
+          "dice": "150"
+        }
+      ]
+    },
+    {
+      "name": "DRAGON_RED",
+      "aim": 1,
+      "level": 32,
+      "power": 20,
+      "effect": [
+        {
+          "eff": "BREATH",
+          "type": "FIRE",
+          "radius": 0,
+          "other": 20,
+          "dice": "200"
+        }
+      ]
+    },
+    {
+      "name": "DRAGON_MULTIHUED",
+      "aim": 1,
+      "level": 50,
+      "power": 20,
+      "effect": [
+        {
+          "eff": "SELECT",
+          "dice": "5"
+        },
+        {
+          "eff": "BREATH",
+          "type": "ACID",
+          "radius": 0,
+          "other": 20,
+          "dice": "250"
+        },
+        {
+          "eff": "BREATH",
+          "type": "ELEC",
+          "radius": 0,
+          "other": 20,
+          "dice": "250"
+        },
+        {
+          "eff": "BREATH",
+          "type": "FIRE",
+          "radius": 0,
+          "other": 20,
+          "dice": "250"
+        },
+        {
+          "eff": "BREATH",
+          "type": "COLD",
+          "radius": 0,
+          "other": 20,
+          "dice": "250"
+        },
+        {
+          "eff": "BREATH",
+          "type": "POIS",
+          "radius": 0,
+          "other": 20,
+          "dice": "250"
+        }
+      ]
+    },
+    {
+      "name": "DRAGON_GOLD",
+      "aim": 1,
+      "level": 40,
+      "power": 19,
+      "effect": [
+        {
+          "eff": "BREATH",
+          "type": "SOUND",
+          "radius": 0,
+          "other": 20,
+          "dice": "150"
+        }
+      ]
+    },
+    {
+      "name": "DRAGON_CHAOS",
+      "aim": 1,
+      "level": 45,
+      "power": 23,
+      "effect": [
+        {
+          "eff": "SELECT",
+          "dice": "2"
+        },
+        {
+          "eff": "BREATH",
+          "type": "CHAOS",
+          "radius": 0,
+          "other": 20,
+          "dice": "220"
+        },
+        {
+          "eff": "BREATH",
+          "type": "DISEN",
+          "radius": 0,
+          "other": 20,
+          "dice": "220"
+        }
+      ]
+    },
+    {
+      "name": "DRAGON_LAW",
+      "aim": 1,
+      "level": 45,
+      "power": 23,
+      "effect": [
+        {
+          "eff": "SELECT",
+          "dice": "2"
+        },
+        {
+          "eff": "BREATH",
+          "type": "SOUND",
+          "radius": 0,
+          "other": 20,
+          "dice": "230"
+        },
+        {
+          "eff": "BREATH",
+          "type": "SHARD",
+          "radius": 0,
+          "other": 20,
+          "dice": "230"
+        }
+      ]
+    },
+    {
+      "name": "DRAGON_BALANCE",
+      "aim": 1,
+      "level": 52,
+      "power": 24,
+      "effect": [
+        {
+          "eff": "SELECT",
+          "dice": "4"
+        },
+        {
+          "eff": "BREATH",
+          "type": "SOUND",
+          "radius": 0,
+          "other": 20,
+          "dice": "250"
+        },
+        {
+          "eff": "BREATH",
+          "type": "SHARD",
+          "radius": 0,
+          "other": 20,
+          "dice": "250"
+        },
+        {
+          "eff": "BREATH",
+          "type": "CHAOS",
+          "radius": 0,
+          "other": 20,
+          "dice": "250"
+        },
+        {
+          "eff": "BREATH",
+          "type": "DISEN",
+          "radius": 0,
+          "other": 20,
+          "dice": "250"
+        }
+      ]
+    },
+    {
+      "name": "DRAGON_SHINING",
+      "aim": 1,
+      "level": 37,
+      "power": 21,
+      "effect": [
+        {
+          "eff": "SELECT",
+          "dice": "2"
+        },
+        {
+          "eff": "BREATH",
+          "type": "LIGHT",
+          "radius": 0,
+          "other": 20,
+          "dice": "200"
+        },
+        {
+          "eff": "BREATH",
+          "type": "DARK",
+          "radius": 0,
+          "other": 20,
+          "dice": "200"
+        }
+      ]
+    },
+    {
+      "name": "DRAGON_POWER",
+      "aim": 1,
+      "level": 57,
+      "power": 25,
+      "effect": [
+        {
+          "eff": "BREATH",
+          "type": "MISSILE",
+          "radius": 0,
+          "other": 20,
+          "dice": "300"
+        }
+      ]
+    }
+  ]
+}

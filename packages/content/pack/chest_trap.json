@@ -1,0 +1,117 @@
+{
+  "file": "chest_trap",
+  "source": "lib/gamedata/chest_trap.txt",
+  "records": [
+    {
+      "name": "locked",
+      "code": "NO_TRAP",
+      "level": 1
+    },
+    {
+      "name": "gas trap",
+      "code": "POISON",
+      "level": 1,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "POISONED",
+          "dice": "10+d20"
+        }
+      ],
+      "msg": [
+        "A puff of green gas surrounds you!"
+      ]
+    },
+    {
+      "name": "poison needle",
+      "code": "LOSE_STR",
+      "level": 2,
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "1d4"
+        },
+        {
+          "eff": "DRAIN_STAT",
+          "type": "STR"
+        }
+      ],
+      "msg": [
+        "A small needle has pricked you!"
+      ],
+      "msg-death": [
+        "a poison needle"
+      ]
+    },
+    {
+      "name": "poison needle",
+      "code": "LOSE_CON",
+      "level": 3,
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "1d4"
+        },
+        {
+          "eff": "DRAIN_STAT",
+          "type": "CON"
+        }
+      ],
+      "msg": [
+        "A small needle has pricked you!"
+      ],
+      "msg-death": [
+        "a poison needle"
+      ]
+    },
+    {
+      "name": "summoning runes",
+      "code": "SUMMON",
+      "level": 15,
+      "effect": [
+        {
+          "eff": "SUMMON",
+          "type": "ANY",
+          "dice": "2+1d3"
+        }
+      ],
+      "magic": 1,
+      "msg": [
+        "You are enveloped in a cloud of smoke!"
+      ]
+    },
+    {
+      "name": "gas trap",
+      "code": "PARALYZE",
+      "level": 19,
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "PARALYZED",
+          "dice": "10+d20"
+        }
+      ],
+      "msg": [
+        "A puff of yellow gas surrounds you!"
+      ]
+    },
+    {
+      "name": "explosion device",
+      "code": "EXPLODE",
+      "level": 25,
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "5d8"
+        }
+      ],
+      "destroy": 1,
+      "msg": [
+        "There is a sudden explosion! Everything inside the chest is destroyed!"
+      ],
+      "msg-death": [
+        "an exploding chest"
+      ]
+    }
+  ]
+}

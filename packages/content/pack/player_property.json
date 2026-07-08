@@ -1,0 +1,519 @@
+{
+  "file": "player_property",
+  "source": "lib/gamedata/player_property.txt",
+  "records": [
+    {
+      "type": "player",
+      "code": "ROCK",
+      "desc": [
+        "You are made of rock."
+      ],
+      "name": "Rock"
+    },
+    {
+      "type": "player",
+      "code": "KNOW_MUSHROOM",
+      "desc": [
+        "You easily recognize mushrooms."
+      ],
+      "name": "Mushroom Lore"
+    },
+    {
+      "type": "player",
+      "code": "KNOW_ZAPPER",
+      "desc": [
+        "You easily recognize magic devices."
+      ],
+      "name": "Device Lore"
+    },
+    {
+      "type": "player",
+      "code": "SEE_ORE",
+      "desc": [
+        "You can sense ore in the walls."
+      ],
+      "name": "Miner"
+    },
+    {
+      "type": "player",
+      "code": "FAST_SHOT",
+      "desc": [
+        "Your shooting speed improves every 3 levels."
+      ],
+      "name": "Extra Shots",
+      "bindui": {
+        "ui": "shots_ui_compact_0",
+        "aux": 0,
+        "uival": "special"
+      }
+    },
+    {
+      "type": "player",
+      "code": "BRAVERY_30",
+      "desc": [
+        "You become immune to fear at level 30."
+      ],
+      "name": "Relentless [30]",
+      "bindui": {
+        "ui": "pfear_ui_compact_0",
+        "aux": 0,
+        "uival": "special"
+      }
+    },
+    {
+      "type": "player",
+      "code": "BLESS_WEAPON",
+      "desc": [
+        "You get improved melee with blessed or hafted weapons."
+      ],
+      "name": "Blessed Fighter"
+    },
+    {
+      "type": "player",
+      "code": "ZERO_FAIL",
+      "desc": [
+        "You may obtain a perfect success rate with magic."
+      ],
+      "name": "Full Spellcaster"
+    },
+    {
+      "type": "player",
+      "code": "BEAM",
+      "desc": [
+        "Your bolt spells frequently turn into beams."
+      ],
+      "name": "Extra Spell Beaming"
+    },
+    {
+      "type": "player",
+      "code": "CHOOSE_SPELLS",
+      "desc": [
+        "You may choose your own spells to study."
+      ],
+      "name": "Spell Choice"
+    },
+    {
+      "type": "player",
+      "code": "NO_MANA",
+      "desc": [
+        "You cannot cast spells."
+      ],
+      "name": "No Magic"
+    },
+    {
+      "type": "player",
+      "code": "CHARM",
+      "desc": [
+        "You are extra persuasive to monsters."
+      ],
+      "name": "Charms"
+    },
+    {
+      "type": "player",
+      "code": "UNLIGHT",
+      "desc": [
+        "You gain stealth in, can see in, and resist the dark."
+      ],
+      "name": "Unlight",
+      "bindui": {
+        "ui": "resist_ui_compact_0<DARK>",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "player",
+      "code": "STEAL",
+      "desc": [
+        "You can steal from monsters."
+      ],
+      "name": "Pickpocketing"
+    },
+    {
+      "type": "player",
+      "code": "SHIELD_BASH",
+      "desc": [
+        "You can bash monsters with a shield in melee."
+      ],
+      "name": "Shield Bash"
+    },
+    {
+      "type": "player",
+      "code": "EVIL",
+      "desc": [
+        "You resist nether, but are hurt by holy attacks."
+      ],
+      "name": "Evil",
+      "bindui": {
+        "ui": "resist_ui_compact_0<NETHER>",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "player",
+      "code": "COMBAT_REGEN",
+      "desc": [
+        "You draw power from the thrill of combat, represented by",
+        " Spell Points (SP).  You gain SP when damaged by an enemy or",
+        " when you attack in melee.  As your blood cools your power fades;",
+        " you lose SP at half the rate other classes gain them.",
+        "  When you spend SP by casting a spell you regain some health, and",
+        " fading SP replenish your health more efficiently.  The more damaged",
+        " you are, the bigger these health gains will be."
+      ],
+      "name": "Combat Regeneration",
+      "bindui": {
+        "ui": "imphp_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "SUST_STR",
+      "desc": [
+        "Your strength is sustained."
+      ],
+      "name": "Sustain Strength",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<STR>",
+        "aux": 1,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "SUST_INT",
+      "desc": [
+        "Your intelligence is sustained."
+      ],
+      "name": "Sustain Intelligence",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<INT>",
+        "aux": 1,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "SUST_WIS",
+      "desc": [
+        "Your wisdom is sustained."
+      ],
+      "name": "Sustain Wisdom",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<WIS>",
+        "aux": 1,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "SUST_DEX",
+      "desc": [
+        "Your dexterity is sustained."
+      ],
+      "name": "Sustain Dexterity",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<DEX>",
+        "aux": 1,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "SUST_CON",
+      "desc": [
+        "Your constitution is sustained."
+      ],
+      "name": "Sustain Constitution",
+      "bindui": {
+        "ui": "stat_mod_ui_compact_0<CON>",
+        "aux": 1,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "PROT_FEAR",
+      "desc": [
+        "You are immune to fear."
+      ],
+      "name": "Fear Immunity",
+      "bindui": {
+        "ui": "pfear_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "PROT_BLIND",
+      "desc": [
+        "You cannot be blinded."
+      ],
+      "name": "Blindness Immunity",
+      "bindui": {
+        "ui": "pblind_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "PROT_CONF",
+      "desc": [
+        "You cannot be confused."
+      ],
+      "name": "Confusion Immunity",
+      "bindui": {
+        "ui": "pconf_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "PROT_STUN",
+      "desc": [
+        "You cannot be stunned."
+      ],
+      "name": "Stun Immunity",
+      "bindui": {
+        "ui": "pstun_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "SLOW_DIGEST",
+      "desc": [
+        "You have slow metabolism."
+      ],
+      "name": "Slow Digestion",
+      "bindui": {
+        "ui": "slow_digestion_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "FEATHER",
+      "desc": [
+        "You fall lightly."
+      ],
+      "name": "Feather Falling",
+      "bindui": {
+        "ui": "feather_falling_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "REGEN",
+      "desc": [
+        "You regenerate quickly."
+      ],
+      "name": "Regeneration",
+      "bindui": {
+        "ui": "regen_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "TELEPATHY",
+      "desc": [
+        "You have telepathy."
+      ],
+      "name": "Telepathy",
+      "bindui": {
+        "ui": "esp_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "SEE_INVIS",
+      "desc": [
+        "You can see invisible creatures."
+      ],
+      "name": "See Invisible",
+      "bindui": {
+        "ui": "see_invis_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "FREE_ACT",
+      "desc": [
+        "You are immune to paralysis."
+      ],
+      "name": "Free Action",
+      "bindui": {
+        "ui": "free_action_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "HOLD_LIFE",
+      "desc": [
+        "Your life force is sustained."
+      ],
+      "name": "Hold Life",
+      "bindui": {
+        "ui": "holdlife_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "IMPACT",
+      "desc": [
+        "You sometimes create earthquakes on impact."
+      ],
+      "name": "Earthquakes"
+    },
+    {
+      "type": "object",
+      "code": "IMPAIR_HP",
+      "desc": [
+        "Your hitpoint recovery is impaired."
+      ],
+      "name": "Slow Regeneration",
+      "bindui": {
+        "ui": "imphp_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "IMPAIR_MANA",
+      "desc": [
+        "Your mana recovery is impaired."
+      ],
+      "name": "Slow Mana Regeneration",
+      "bindui": {
+        "ui": "impsp_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "AFRAID",
+      "desc": [
+        "You are afraid of melee, and bad at shooting and casting spells."
+      ],
+      "name": "Constant Fear",
+      "bindui": {
+        "ui": "fear_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "NO_TELEPORT",
+      "desc": [
+        "You cannot teleport."
+      ],
+      "name": "Teleport Ban",
+      "bindui": {
+        "ui": "noteleport_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "AGGRAVATE",
+      "desc": [
+        "You aggravate creatures nearby."
+      ],
+      "name": "Aggravate",
+      "bindui": {
+        "ui": "aggravate_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "DRAIN_EXP",
+      "desc": [
+        "Your experience constantly drains away."
+      ],
+      "name": "Experience Drain",
+      "bindui": {
+        "ui": "drainxp_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "object",
+      "code": "TRAP_IMMUNE",
+      "desc": [
+        "You are immune to traps."
+      ],
+      "name": "Trap Immune",
+      "bindui": {
+        "ui": "trap_immunity_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "element",
+      "desc": [
+        "You resist"
+      ],
+      "name": "Resistance",
+      "value": 1,
+      "bindui": {
+        "ui": "resist_ui_compact_0",
+        "aux": 0,
+        "uival": "1"
+      }
+    },
+    {
+      "type": "element",
+      "desc": [
+        "You are immune to"
+      ],
+      "name": "Immunity",
+      "value": 3,
+      "bindui": {
+        "ui": "resist_ui_compact_0",
+        "aux": 0,
+        "uival": "3"
+      }
+    },
+    {
+      "type": "element",
+      "desc": [
+        "You are vulnerable to"
+      ],
+      "name": "Vulnerability",
+      "value": -1,
+      "bindui": {
+        "ui": "resist_ui_compact_0",
+        "aux": 0,
+        "uival": "-1"
+      }
+    }
+  ]
+}

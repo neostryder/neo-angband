@@ -1,0 +1,492 @@
+# Gamedata compiler and the core content pack (pack zero).
+#
+# YAML stream: the first document covers the parser/compiler
+# infrastructure; the following documents cover each compiled pack file;
+# the trailing documents record the deferred gamedata files.
+#
+# Divergences shared by every pack file (stated once here, not repeated):
+# - rand (dice) fields are validated against the parse_random() grammar
+#   but stored as RAW strings (e.g. "1+2d3M4"); they are never evaluated.
+# - Directives that upstream accumulates via string_append (desc, msg,
+#   lore, D map rows, phrase, ...) or into lists (flags, blows, drops,
+#   owners, ...) are stored as arrays of values in FILE order. Joining a
+#   string array with "" reproduces the upstream concatenated string.
+#   Note that several upstream parsers PREPEND to linked lists (store
+#   owners and buy entries, summon bases, monster friends), so upstream
+#   in-memory order is the reverse of file order; loaders must not assume
+#   the C memory order.
+# - char fields are stored as one-character JSON strings (a glyph may be
+#   a space or a colon).
+# - Sub-record structure (effect chains with their dice/expr, class
+#   book -> spell -> effect, monster_spell power-cutoff levels, trap
+#   effect-xtra chains, player_timed on-begin/on-end effects) is nested in
+#   the JSON exactly as the upstream "attach to the most recent instance"
+#   parse state does it. Directives seen before their first parent (e.g.
+#   monster_spell lore before any power-cutoff: the implicit first level)
+#   stay on the record itself.
+module: packages/content/src/parser.ts
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/parser.c
+    items:
+      - parser_parse
+      - parser_reg
+      - parse_specs
+      - parse_type
+      - parse_random
+  - path: src/parser.h
+notes: >-
+  Line-level record format semantics: comment/blank handling, directive
+  lookup, ':' tokenization with strtok collapse of empty fields, str
+  fields consuming the rest of the line, char fields consuming exactly one
+  character then ':' or end of line, strtol/strtoul base-0 number parsing,
+  optional '?' fields, and parse_random validation. parser.c error codes
+  are surfaced as thrown errors with file:line context instead of the
+  upstream parser_state. Field values are kept verbatim; nothing is
+  normalized. Record assembly (packages/content/src/records.ts) and the
+  CLI (packages/content/src/compile.ts) are the pack-format replacements
+  for the per-file init hooks and have no single upstream counterpart.
+verified-by:
+  - packages/content/src/parser.test.ts and records.test.ts (unit)
+  - packages/content/src/pack.test.ts (record counts re-derived from the
+    upstream .txt files at test time, plus content spot checks)
+---
+module: packages/content/pack/constants.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/constants.txt
+  - path: src/init.c
+    items: [init_parse_constants]
+notes: >-
+  Singleton file: compiles to one record of grouped {label, value} arrays,
+  mirroring struct angband_constants filling.
+---
+module: packages/content/pack/object_base.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/object_base.txt
+  - path: src/obj-init.c
+    items: [init_parse_object_base]
+notes: >-
+  The pre-record default: directives compile into the pack file header
+  rather than a record, mirroring the upstream defaults struct.
+---
+module: packages/content/pack/object_property.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/object_property.txt
+  - path: src/obj-init.c
+    items: [init_parse_object_property]
+notes: ""
+---
+module: packages/content/pack/projection.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/projection.txt
+  - path: src/obj-init.c
+    items: [init_parse_projection]
+notes: ""
+---
+module: packages/content/pack/terrain.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/terrain.txt
+  - path: src/init.c
+    items: [init_parse_feat]
+notes: >-
+  Glyphs from char fields may be spaces and are preserved verbatim.
+---
+module: packages/content/pack/object.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/object.txt
+  - path: src/obj-init.c
+    items: [init_parse_object]
+notes: >-
+  One record (Dragon Breath) carries two pile: lines; upstream last-wins,
+  the pack keeps both in file order (loaders should apply the last).
+---
+module: packages/content/pack/monster_base.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/monster_base.txt
+  - path: src/mon-init.c
+    items: [init_parse_mon_base]
+notes: ""
+---
+module: packages/content/pack/monster_spell.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/monster_spell.txt
+  - path: src/mon-init.c
+    items: [init_parse_mon_spell]
+notes: >-
+  Each spell has an implicit first lore level; lore/message directives
+  before the first power-cutoff stay on the record, later ones nest under
+  their power-cutoff entry, as upstream builds spell levels.
+---
+module: packages/content/pack/blow_methods.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/blow_methods.txt
+  - path: src/mon-init.c
+    items: [init_parse_meth]
+notes: ""
+---
+module: packages/content/pack/blow_effects.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/blow_effects.txt
+  - path: src/mon-init.c
+    items: [init_parse_eff]
+notes: ""
+---
+module: packages/content/pack/monster.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/monster.txt
+  - path: src/mon-init.c
+    items: [init_parse_monster]
+notes: >-
+  monster.txt in 4.2.6 contains no drop-artifact lines (that directive is
+  only registered by the lore parser), so it is not part of this spec.
+---
+module: packages/content/pack/ego_item.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/ego_item.txt
+  - path: src/obj-init.c
+    items: [init_parse_ego]
+notes: ""
+---
+module: packages/content/pack/artifact.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/artifact.txt
+  - path: src/obj-init.c
+    items: [init_parse_artifact]
+notes: ""
+---
+module: packages/content/pack/curse.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/curse.txt
+  - path: src/obj-init.c
+    items: [init_parse_curse]
+notes: ""
+---
+module: packages/content/pack/brand.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/brand.txt
+  - path: src/obj-init.c
+    items: [init_parse_brand]
+notes: ""
+---
+module: packages/content/pack/slay.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/slay.txt
+  - path: src/obj-init.c
+    items: [init_parse_slay]
+notes: ""
+---
+module: packages/content/pack/activation.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/activation.txt
+  - path: src/obj-init.c
+    items: [init_parse_act]
+notes: ""
+---
+module: packages/content/pack/p_race.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/p_race.txt
+  - path: src/init.c
+    items: [init_parse_p_race]
+notes: >-
+  The stats directive registers a field literally named "int"
+  (intelligence); the JSON keeps that key.
+---
+module: packages/content/pack/class.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/class.txt
+  - path: src/init.c
+    items: [init_parse_class]
+notes: >-
+  Books nest under the class, spells under their book, effects under
+  their spell, and dice/expr/effect-msg under the most recent effect,
+  matching the upstream magic parsing state machine.
+---
+module: packages/content/pack/player_property.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/player_property.txt
+  - path: src/init.c
+    items: [init_parse_player_prop]
+notes: >-
+  Records begin at type: (not name:). The name directive registers its
+  field as "desc" upstream; the JSON key is the directive name ("name").
+---
+module: packages/content/pack/player_timed.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/player_timed.txt
+  - path: src/player-timed.c
+    items: [init_parse_player_timed]
+notes: >-
+  effect-yx/effect-dice/effect-expr/effect-msg attach to whichever of
+  on-begin-effect / on-end-effect appeared most recently, as upstream
+  tracks a single current-effect pointer for both chains.
+---
+module: packages/content/pack/shape.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/shape.txt
+  - path: src/init.c
+    items: [init_parse_shape]
+notes: ""
+---
+module: packages/content/pack/body.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/body.txt
+  - path: src/init.c
+    items: [init_parse_body]
+notes: ""
+---
+module: packages/content/pack/history.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/history.txt
+  - path: src/init.c
+    items: [init_parse_history]
+notes: >-
+  Every chart: line is its own record (chart/next/roll plus its phrase
+  lines); upstream groups records with equal chart numbers into one chart
+  at load time.
+---
+module: packages/content/pack/names.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/names.txt
+  - path: src/init.c
+    items: [init_parse_names]
+notes: ""
+---
+module: packages/content/pack/flavor.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/flavor.txt
+  - path: src/init.c
+    items: [init_parse_flavor]
+notes: >-
+  Records are kind: groups; flavor: and fixed: lines both map to
+  parse_flavor_flavor upstream but are kept as separate arrays here.
+---
+module: packages/content/pack/pain.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/pain.txt
+  - path: src/mon-init.c
+    items: [init_parse_pain]
+notes: ""
+---
+module: packages/content/pack/pit.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/pit.txt
+  - path: src/mon-init.c
+    items: [init_parse_pit]
+notes: ""
+---
+module: packages/content/pack/room_template.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/room_template.txt
+  - path: src/generate.c
+    items: [init_parse_room]
+notes: >-
+  D: map rows are stored verbatim (padding included) as an array.
+---
+module: packages/content/pack/vault.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/vault.txt
+  - path: src/generate.c
+    items: [init_parse_vault]
+notes: >-
+  D: map rows are stored verbatim (padding included) as an array.
+---
+module: packages/content/pack/dungeon_profile.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/dungeon_profile.txt
+  - path: src/generate.c
+    items: [init_parse_profile]
+notes: ""
+---
+module: packages/content/pack/store.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/store.txt
+  - path: src/store.c
+    items: [init_parse_stores]
+notes: >-
+  Owners and buy entries are arrays in file order; upstream prepends to
+  linked lists, so its runtime order is reversed.
+---
+module: packages/content/pack/quest.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/quest.txt
+  - path: src/player-quest.c
+    items: [init_parse_quest]
+notes: ""
+---
+module: packages/content/pack/summon.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/summon.txt
+  - path: src/mon-summon.c
+    items: [init_parse_summon]
+notes: ""
+---
+module: packages/content/pack/trap.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/trap.txt
+  - path: src/init.c
+    items: [init_parse_trap]
+notes: >-
+  The primary effect chain and the effect-xtra chain each carry their own
+  dice/expr children, matching the two upstream effect lists.
+---
+module: packages/content/pack/chest_trap.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/chest_trap.txt
+  - path: src/obj-chest.c
+    items: [init_parse_chest_trap]
+notes: ""
+---
+module: packages/content/pack/realm.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/realm.txt
+  - path: src/init.c
+    items: [init_parse_realm]
+notes: ""
+---
+module: packages/content/pack/world.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/world.txt
+  - path: src/init.c
+    items: [init_parse_world]
+notes: ""
+---
+module: packages/content/pack/hints.json
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/hints.txt
+  - path: src/init.c
+    items: [init_parse_hints]
+notes: ""
+---
+module: packages/content/pack/ui_entry.json
+status: planned
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/ui_entry.txt
+  - path: src/ui-entry.c
+notes: >-
+  Deferred: front-end/UI concern, not part of the core rules pack.
+---
+module: packages/content/pack/ui_entry_base.json
+status: planned
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/ui_entry_base.txt
+  - path: src/ui-entry.c
+notes: >-
+  Deferred: front-end/UI concern, not part of the core rules pack.
+---
+module: packages/content/pack/ui_entry_renderer.json
+status: planned
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/ui_entry_renderer.txt
+  - path: src/ui-entry-renderers.c
+notes: >-
+  Deferred: front-end/UI concern, not part of the core rules pack.
+---
+module: packages/content/pack/ui_knowledge.json
+status: planned
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/ui_knowledge.txt
+  - path: src/ui-knowledge.c
+notes: >-
+  Deferred: front-end/UI concern, not part of the core rules pack.
+---
+module: packages/content/pack/visuals.json
+status: planned
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/visuals.txt
+  - path: src/ui-visuals.c
+notes: >-
+  Deferred: front-end/UI concern (color cycling), not part of the core
+  rules pack.
+---
+module: packages/content/pack/old_class.json
+status: planned
+baseline: 4.2.6
+upstream:
+  - path: lib/gamedata/old_class.txt
+notes: >-
+  Deferred: retired class data kept upstream for reference; not loaded by
+  the 4.2.6 game.

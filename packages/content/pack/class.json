@@ -1,0 +1,5191 @@
+{
+  "file": "class",
+  "source": "lib/gamedata/class.txt",
+  "records": [
+    {
+      "name": "Warrior",
+      "stats": {
+        "str": 3,
+        "int": -2,
+        "wis": -2,
+        "dex": 2,
+        "con": 2
+      },
+      "skill-disarm-phys": {
+        "base": 25,
+        "incr": 15
+      },
+      "skill-disarm-magic": {
+        "base": 20,
+        "incr": 10
+      },
+      "skill-device": {
+        "base": 18,
+        "incr": 7
+      },
+      "skill-save": {
+        "base": 18,
+        "incr": 10
+      },
+      "skill-stealth": {
+        "base": 0,
+        "incr": 0
+      },
+      "skill-search": {
+        "base": 10,
+        "incr": 12
+      },
+      "skill-melee": {
+        "base": 70,
+        "incr": 45
+      },
+      "skill-shoot": {
+        "base": 55,
+        "incr": 45
+      },
+      "skill-throw": {
+        "base": 55,
+        "incr": 45
+      },
+      "skill-dig": {
+        "base": 0,
+        "incr": 0
+      },
+      "hitdie": 9,
+      "max-attacks": 6,
+      "min-weight": 30,
+      "strength-multiplier": 5,
+      "title": [
+        "Rookie",
+        "Soldier",
+        "Swordsman",
+        "Swashbuckler",
+        "Veteran",
+        "Myrmidon",
+        "Commando",
+        "Champion",
+        "Hero",
+        "Lord"
+      ],
+      "equip": [
+        {
+          "tval": "food",
+          "sval": "Ration of Food",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "light",
+          "sval": "Wooden Torch",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "potion",
+          "sval": "Berserk Strength",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "sword",
+          "sval": "Dagger",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "soft armour",
+          "sval": "Soft Leather Armour",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Word of Recall",
+          "min": 1,
+          "max": 1,
+          "eopts": "birth_no_recall"
+        }
+      ],
+      "player-flags": [
+        "BRAVERY_30 | NO_MANA | SHIELD_BASH"
+      ]
+    },
+    {
+      "name": "Mage",
+      "stats": {
+        "str": -3,
+        "int": 3,
+        "wis": 0,
+        "dex": 0,
+        "con": -2
+      },
+      "skill-disarm-phys": {
+        "base": 30,
+        "incr": 10
+      },
+      "skill-disarm-magic": {
+        "base": 35,
+        "incr": 12
+      },
+      "skill-device": {
+        "base": 36,
+        "incr": 13
+      },
+      "skill-save": {
+        "base": 30,
+        "incr": 9
+      },
+      "skill-stealth": {
+        "base": 2,
+        "incr": 0
+      },
+      "skill-search": {
+        "base": 10,
+        "incr": 12
+      },
+      "skill-melee": {
+        "base": 35,
+        "incr": 15
+      },
+      "skill-shoot": {
+        "base": 20,
+        "incr": 15
+      },
+      "skill-throw": {
+        "base": 20,
+        "incr": 15
+      },
+      "skill-dig": {
+        "base": 0,
+        "incr": 0
+      },
+      "hitdie": 0,
+      "max-attacks": 4,
+      "min-weight": 40,
+      "strength-multiplier": 2,
+      "title": [
+        "Novice",
+        "Apprentice",
+        "Trickster",
+        "Illusionist",
+        "Spellbinder",
+        "Evoker",
+        "Conjurer",
+        "Warlock",
+        "Sorcerer",
+        "Arch-Mage"
+      ],
+      "equip": [
+        {
+          "tval": "food",
+          "sval": "Ration of Food",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "light",
+          "sval": "Wooden Torch",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "sword",
+          "sval": "Rapier",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Word of Recall",
+          "min": 1,
+          "max": 1,
+          "eopts": "birth_no_recall"
+        },
+        {
+          "tval": "magic book",
+          "sval": "[First Spells]",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        }
+      ],
+      "player-flags": [
+        "ZERO_FAIL | BEAM | CHOOSE_SPELLS"
+      ],
+      "magic": {
+        "first": 1,
+        "weight": 300,
+        "books": 5
+      },
+      "book": [
+        {
+          "tval": "magic book",
+          "quality": "town",
+          "name": "[First Spells]",
+          "spells": 7,
+          "realm": "arcane",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "R"
+          },
+          "book-properties": {
+            "cost": 25,
+            "common": 40,
+            "minmax": "1 to 100"
+          },
+          "spell": [
+            {
+              "name": "Magic Missile",
+              "level": 1,
+              "mana": 1,
+              "fail": 22,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "BOLT_OR_BEAM",
+                  "type": "MISSILE",
+                  "radius": 0,
+                  "other": -10,
+                  "dice": "$Dd4",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "- 1 / 5 + 3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Light Room",
+              "level": 1,
+              "mana": 2,
+              "fail": 26,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "LIGHT_AREA"
+                },
+                {
+                  "eff": "SPHERE",
+                  "type": "LIGHT_WEAK",
+                  "radius": 2,
+                  "dice": "1"
+                }
+              ]
+            },
+            {
+              "name": "Find Traps, Doors & Stairs",
+              "level": 1,
+              "mana": 1,
+              "fail": 20,
+              "exp": 2,
+              "effect": [
+                {
+                  "eff": "DETECT_TRAPS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "DETECT_DOORS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "DETECT_STAIRS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Phase Door",
+              "level": 2,
+              "mana": 2,
+              "fail": 22,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "TELEPORT",
+                  "dice": "10"
+                }
+              ]
+            },
+            {
+              "name": "Electric Arc",
+              "level": 2,
+              "mana": 2,
+              "fail": 34,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "SHORT_BEAM",
+                  "type": "ELEC",
+                  "radius": 0,
+                  "other": 1,
+                  "dice": "$Dd6",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "- 1 / 5 + 3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Detect Monsters",
+              "level": 3,
+              "mana": 2,
+              "fail": 24,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "DETECT_VISIBLE_MONSTERS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Fire Ball",
+              "level": 6,
+              "mana": 5,
+              "fail": 33,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "BALL",
+                  "type": "FIRE",
+                  "radius": 2,
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "magic book",
+          "quality": "town",
+          "name": "[Attacks and Knowledge]",
+          "spells": 6,
+          "realm": "arcane",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "R"
+          },
+          "book-properties": {
+            "cost": 400,
+            "common": 40,
+            "minmax": "10 to 100"
+          },
+          "spell": [
+            {
+              "name": "Recharging",
+              "level": 5,
+              "mana": 5,
+              "fail": 28,
+              "exp": 6,
+              "effect": [
+                {
+                  "eff": "RECHARGE",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 8 + 6"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Identify Rune",
+              "level": 8,
+              "mana": 7,
+              "fail": 25,
+              "exp": 8,
+              "effect": [
+                {
+                  "eff": "IDENTIFY"
+                }
+              ]
+            },
+            {
+              "name": "Treasure Detection",
+              "level": 10,
+              "mana": 3,
+              "fail": 60,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "DETECT_ORE",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "SENSE_GOLD",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "SENSE_OBJECTS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Frost Bolt",
+              "level": 13,
+              "mana": 5,
+              "fail": 40,
+              "exp": 6,
+              "effect": [
+                {
+                  "eff": "BOLT_OR_BEAM",
+                  "type": "COLD",
+                  "dice": "$Dd8",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "- 5 / 3 + 6"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Reveal Monsters",
+              "level": 15,
+              "mana": 6,
+              "fail": 40,
+              "exp": 8,
+              "effect": [
+                {
+                  "eff": "DETECT_INVISIBLE_MONSTERS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "DETECT_VISIBLE_MONSTERS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Acid Spray",
+              "level": 20,
+              "mana": 5,
+              "fail": 30,
+              "exp": 12,
+              "effect": [
+                {
+                  "eff": "ARC",
+                  "type": "ACID",
+                  "radius": 10,
+                  "other": 60,
+                  "dice": "$Dd8",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "magic book",
+          "quality": "town",
+          "name": "[Magical Defences]",
+          "spells": 6,
+          "realm": "arcane",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "R"
+          },
+          "book-properties": {
+            "cost": 1600,
+            "common": 20,
+            "minmax": "30 to 100"
+          },
+          "spell": [
+            {
+              "name": "Disable Traps, Destroy Doors",
+              "level": 5,
+              "mana": 5,
+              "fail": 30,
+              "exp": 6,
+              "effect": [
+                {
+                  "eff": "TOUCH",
+                  "type": "KILL_DOOR"
+                },
+                {
+                  "eff": "TOUCH",
+                  "type": "KILL_TRAP"
+                }
+              ]
+            },
+            {
+              "name": "Teleport Self",
+              "level": 7,
+              "mana": 6,
+              "fail": 35,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "TELEPORT",
+                  "dice": "M$M",
+                  "expr": [
+                    {
+                      "name": "M",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 9 / 5"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Teleport Other",
+              "level": 15,
+              "mana": 10,
+              "fail": 30,
+              "exp": 12,
+              "effect": [
+                {
+                  "eff": "BOLT_STATUS",
+                  "type": "AWAY_ALL",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Resistance",
+              "level": 20,
+              "mana": 20,
+              "fail": 65,
+              "exp": 20,
+              "effect": [
+                {
+                  "eff": "SET_VALUE",
+                  "dice": "20+d20"
+                },
+                {
+                  "eff": "TIMED_INC",
+                  "type": "OPP_ACID"
+                },
+                {
+                  "eff": "TIMED_INC",
+                  "type": "OPP_ELEC"
+                },
+                {
+                  "eff": "TIMED_INC",
+                  "type": "OPP_COLD"
+                },
+                {
+                  "eff": "TIMED_INC",
+                  "type": "OPP_FIRE"
+                },
+                {
+                  "eff": "CLEAR_VALUE"
+                }
+              ]
+            },
+            {
+              "name": "Tap Magical Energy",
+              "level": 22,
+              "mana": 2,
+              "fail": 30,
+              "exp": 12,
+              "effect": [
+                {
+                  "eff": "TAP_DEVICE"
+                }
+              ]
+            },
+            {
+              "name": "Mana Channel",
+              "level": 25,
+              "mana": 10,
+              "fail": 50,
+              "exp": 20,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "FASTCAST",
+                  "dice": "5+1d5"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "magic book",
+          "quality": "dungeon",
+          "name": "[Arcane Control]",
+          "spells": 6,
+          "realm": "arcane",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "r"
+          },
+          "book-properties": {
+            "cost": 30000,
+            "common": 15,
+            "minmax": "40 to 100"
+          },
+          "spell": [
+            {
+              "name": "Door Creation",
+              "level": 13,
+              "mana": 9,
+              "fail": 40,
+              "exp": 12,
+              "effect": [
+                {
+                  "eff": "TOUCH",
+                  "type": "MAKE_DOOR"
+                }
+              ]
+            },
+            {
+              "name": "Mana Bolt",
+              "level": 25,
+              "mana": 8,
+              "fail": 60,
+              "exp": 30,
+              "effect": [
+                {
+                  "eff": "BOLT_OR_BEAM",
+                  "type": "MISSILE",
+                  "dice": "$Dd8",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "- 10"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Teleport Level",
+              "level": 28,
+              "mana": 17,
+              "fail": 65,
+              "exp": 20,
+              "effect": [
+                {
+                  "eff": "TELEPORT_LEVEL"
+                }
+              ]
+            },
+            {
+              "name": "Detection",
+              "level": 30,
+              "mana": 10,
+              "fail": 70,
+              "exp": 30,
+              "effect": [
+                {
+                  "eff": "DETECT_TRAPS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "DETECT_DOORS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "DETECT_STAIRS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "DETECT_ORE",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "SENSE_GOLD",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "SENSE_OBJECTS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "DETECT_INVISIBLE_MONSTERS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "DETECT_VISIBLE_MONSTERS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Dimension Door",
+              "level": 35,
+              "mana": 30,
+              "fail": 80,
+              "exp": 40,
+              "effect": [
+                {
+                  "eff": "TELEPORT_TO"
+                }
+              ]
+            },
+            {
+              "name": "Thrust Away",
+              "level": 40,
+              "mana": 12,
+              "fail": 90,
+              "exp": 40,
+              "effect": [
+                {
+                  "eff": "SHORT_BEAM",
+                  "type": "FORCE",
+                  "radius": 1,
+                  "other": 10,
+                  "dice": "$Dd8",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "magic book",
+          "quality": "dungeon",
+          "name": "[Wizard's Tome of Power]",
+          "spells": 5,
+          "realm": "arcane",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "r"
+          },
+          "book-properties": {
+            "cost": 50000,
+            "common": 10,
+            "minmax": "60 to 100"
+          },
+          "spell": [
+            {
+              "name": "Shock Wave",
+              "level": 20,
+              "mana": 5,
+              "fail": 40,
+              "exp": 16,
+              "effect": [
+                {
+                  "eff": "BALL",
+                  "type": "SOUND",
+                  "radius": 2,
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Explosion",
+              "level": 30,
+              "mana": 10,
+              "fail": 50,
+              "exp": 20,
+              "effect": [
+                {
+                  "eff": "BALL",
+                  "type": "SHARD",
+                  "radius": 2,
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 2"
+                    }
+                  ]
+                },
+                {
+                  "eff": "BALL",
+                  "type": "FORCE",
+                  "radius": 2,
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 5"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Banishment",
+              "level": 35,
+              "mana": 45,
+              "fail": 95,
+              "exp": 25,
+              "effect": [
+                {
+                  "eff": "BANISH"
+                }
+              ]
+            },
+            {
+              "name": "Mass Banishment",
+              "level": 40,
+              "mana": 75,
+              "fail": 90,
+              "exp": 100,
+              "effect": [
+                {
+                  "eff": "MASS_BANISH"
+                }
+              ]
+            },
+            {
+              "name": "Mana Storm",
+              "level": 45,
+              "mana": 16,
+              "fail": 85,
+              "exp": 200,
+              "effect": [
+                {
+                  "eff": "BALL",
+                  "type": "MANA",
+                  "radius": 3,
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 2 + 300"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "Fires a magic missile that always hits its target and does",
+        " unresistable damage.",
+        "  Sometimes a beam is fired instead that hurts each monster",
+        " in its path.",
+        "  The chance to get a beam goes up with your character level.",
+        "Lights up all squares within 2 grids of the player, and hurts",
+        " all light-sensitive monsters in the area of effect.",
+        "  If you are in a room, the entire room will be lit up as well.",
+        "Detects all traps, doors, and stairs in the immediate area.",
+        "Teleports you randomly up to 10 squares away.",
+        "Creates an electrical discharge that hurts monsters and destroys",
+        " vulnerable items in its path.  Length of the effect increases",
+        " with player level.",
+        "Detects all non-invisible monsters in the immediate area,",
+        " for one turn only.",
+        "Shoots a radius-2 fire ball.",
+        "Adds charges to a stack of wands or staves.",
+        "  Chance of success and number of charges gained increase with your",
+        " level and decrease with level of wand or staff and number of charges.",
+        "  A failed attempt to recharge destroys one wand or staff from the stack.",
+        "Reveals an unknown rune on an object.",
+        "Detects gold and senses objects in the immediate area.",
+        "Shoots a bolt of frost that always hits its target.",
+        "  Sometimes a beam is fired instead that hurts each monster",
+        " in its path.",
+        "  The chance to get a beam goes up with your character level.",
+        "Detects all monsters in the immediate area, for one turn only.",
+        "Sprays acid in a 60-degree cone, hitting all monsters up to 10 grids away.",
+        "Disables traps and destroys doors within a 1-square radius of you.",
+        "Teleports you randomly within the current level.",
+        "Produces a bolt that teleports away the first monster in its path.",
+        "  Distance teleported increases with player level.",
+        "Grants you resistance to acid, cold, fire and lightning for 20+1d20 turns.",
+        "Turns wand or staff energy into mana; tapping stuns the player briefly.",
+        "Increases spellcasting speed by 33% for 5+1d5 turns.",
+        "A door is created on each empty floor space that is directly",
+        " adjacent to you.  These doors are closed, but not locked.",
+        "Fires a magic missile that always hits its target and does",
+        " unresistable damage.",
+        "  Sometimes a beam is fired instead that hurts each monster",
+        " in its path.",
+        "  The chance to get a beam goes up with your character level.",
+        "Teleports you 1 level up or 1 level down (chosen at random).",
+        "  This spell may have no effect when the forced descent option is set.",
+        "Detects all traps, doors, stairs, treasure, objects and monsters in the",
+        " immediate area.",
+        "Teleports you to (or near to) a square of your choice.",
+        "Fires a short range beam of force.",
+        "Shoots a radius-2 sound ball.",
+        "  Apart from doing sound damage, this also has a chance to stun",
+        " each monster in the area of effect.",
+        "Shoots a radius-2 shards ball and throws around anything in the area of",
+        " effect.",
+        "Removes all monsters represented by a chosen symbol from the level.",
+        "  Uniques are not affected.",
+        "  You take 1d4 points of damage for every monster removed.",
+        "Removes all monsters within 20 squares of you.",
+        "  Uniques are not affected.",
+        "  You take 1d3 points of damage for every monster removed.",
+        "Shoots a radius-3 mana ball that does unresistable",
+        " damage to each monster in its area of effect."
+      ]
+    },
+    {
+      "name": "Druid",
+      "stats": {
+        "str": -2,
+        "int": 0,
+        "wis": 3,
+        "dex": -2,
+        "con": 0
+      },
+      "skill-disarm-phys": {
+        "base": 30,
+        "incr": 10
+      },
+      "skill-disarm-magic": {
+        "base": 30,
+        "incr": 10
+      },
+      "skill-device": {
+        "base": 24,
+        "incr": 10
+      },
+      "skill-save": {
+        "base": 30,
+        "incr": 10
+      },
+      "skill-stealth": {
+        "base": 3,
+        "incr": 0
+      },
+      "skill-search": {
+        "base": 12,
+        "incr": 12
+      },
+      "skill-melee": {
+        "base": 45,
+        "incr": 20
+      },
+      "skill-shoot": {
+        "base": 40,
+        "incr": 30
+      },
+      "skill-throw": {
+        "base": 40,
+        "incr": 30
+      },
+      "skill-dig": {
+        "base": 0,
+        "incr": 0
+      },
+      "hitdie": 2,
+      "max-attacks": 4,
+      "min-weight": 35,
+      "strength-multiplier": 3,
+      "title": [
+        "Wanderer",
+        "Tamer",
+        "Nurturer",
+        "Gardener",
+        "Forester",
+        "Creator",
+        "Earth Warder",
+        "Windrider",
+        "Stormwielder",
+        "High Mystic"
+      ],
+      "equip": [
+        {
+          "tval": "food",
+          "sval": "Ration of Food",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "hafted",
+          "sval": "Whip",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "light",
+          "sval": "Wooden Torch",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Word of Recall",
+          "min": 1,
+          "max": 1,
+          "eopts": "birth_no_recall"
+        },
+        {
+          "tval": "nature book",
+          "sval": "[Lesser Charms]",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        }
+      ],
+      "player-flags": [
+        "ZERO_FAIL | CHOOSE_SPELLS | CHARM"
+      ],
+      "magic": {
+        "first": 1,
+        "weight": 350,
+        "books": 5
+      },
+      "book": [
+        {
+          "tval": "nature book",
+          "quality": "town",
+          "name": "[Lesser Charms]",
+          "spells": 6,
+          "realm": "nature",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "y"
+          },
+          "book-properties": {
+            "cost": 25,
+            "common": 40,
+            "minmax": "1 to 100"
+          },
+          "spell": [
+            {
+              "name": "Detect Life",
+              "level": 1,
+              "mana": 1,
+              "fail": 23,
+              "exp": 2,
+              "effect": [
+                {
+                  "eff": "DETECT_LIVING_MONSTERS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Fox Form",
+              "level": 1,
+              "mana": 2,
+              "fail": 20,
+              "exp": 10,
+              "effect": [
+                {
+                  "eff": "SHAPECHANGE",
+                  "type": "fox"
+                }
+              ]
+            },
+            {
+              "name": "Remove Hunger",
+              "level": 2,
+              "mana": 2,
+              "fail": 25,
+              "exp": 2,
+              "effect": [
+                {
+                  "eff": "NOURISH",
+                  "type": "INC_TO",
+                  "dice": "50"
+                }
+              ]
+            },
+            {
+              "name": "Stinking Cloud",
+              "level": 3,
+              "mana": 2,
+              "fail": 27,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "BALL",
+                  "type": "POIS",
+                  "radius": 2,
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 2 + 10"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Confuse Monster",
+              "level": 5,
+              "mana": 3,
+              "fail": 30,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "BOLT_AWARE",
+                  "type": "MON_CONF",
+                  "dice": "5+d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "- 5"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Slow Monster",
+              "level": 6,
+              "mana": 4,
+              "fail": 30,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "BOLT_STATUS",
+                  "type": "MON_SLOW",
+                  "dice": "5+d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "- 5"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "nature book",
+          "quality": "town",
+          "name": "[Gifts of Nature]",
+          "spells": 6,
+          "realm": "nature",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "y"
+          },
+          "book-properties": {
+            "cost": 400,
+            "common": 40,
+            "minmax": "10 to 100"
+          },
+          "spell": [
+            {
+              "name": "Cure Poison",
+              "level": 4,
+              "mana": 4,
+              "fail": 30,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "CURE",
+                  "type": "POISONED"
+                }
+              ]
+            },
+            {
+              "name": "Resist Poison",
+              "level": 7,
+              "mana": 6,
+              "fail": 32,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "OPP_POIS",
+                  "dice": "20+d20"
+                }
+              ]
+            },
+            {
+              "name": "Turn Stone to Mud",
+              "level": 8,
+              "mana": 3,
+              "fail": 25,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "LINE",
+                  "type": "KILL_WALL",
+                  "dice": "20+1d30"
+                }
+              ]
+            },
+            {
+              "name": "Sense Surroundings",
+              "level": 9,
+              "mana": 4,
+              "fail": 35,
+              "exp": 6,
+              "effect": [
+                {
+                  "eff": "MAP_AREA",
+                  "dice": "$Dd$S",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 30 + 1 * 22"
+                    },
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 30 + 1 * 44"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Lightning Strike",
+              "level": 12,
+              "mana": 6,
+              "fail": 35,
+              "exp": 8,
+              "effect": [
+                {
+                  "eff": "STRIKE",
+                  "type": "ELEC",
+                  "radius": 0,
+                  "dice": "$Dd4",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 4"
+                    }
+                  ]
+                },
+                {
+                  "eff": "STRIKE",
+                  "type": "SOUND",
+                  "radius": 3,
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 5"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Earth Rising",
+              "level": 14,
+              "mana": 5,
+              "fail": 40,
+              "exp": 12,
+              "effect": [
+                {
+                  "eff": "SHORT_BEAM",
+                  "type": "SHARD",
+                  "radius": 4,
+                  "other": 5,
+                  "dice": "$Dd6",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 3 + 2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "nature book",
+          "quality": "dungeon",
+          "name": "[Creature Dominion]",
+          "spells": 5,
+          "realm": "nature",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "o"
+          },
+          "book-properties": {
+            "cost": 10000,
+            "common": 20,
+            "minmax": "30 to 100"
+          },
+          "spell": [
+            {
+              "name": "Trance",
+              "level": 20,
+              "mana": 10,
+              "fail": 45,
+              "exp": 15,
+              "effect": [
+                {
+                  "eff": "TOUCH_AWARE",
+                  "type": "MON_HOLD",
+                  "dice": "3+d$D",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 7"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Mass Sleep",
+              "level": 25,
+              "mana": 15,
+              "fail": 50,
+              "exp": 15,
+              "effect": [
+                {
+                  "eff": "PROJECT_LOS",
+                  "type": "SLEEP_ALL",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 10 + 500"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Become Pukel-man",
+              "level": 30,
+              "mana": 20,
+              "fail": 75,
+              "exp": 50,
+              "effect": [
+                {
+                  "eff": "SHAPECHANGE",
+                  "type": "Pukel-man"
+                }
+              ]
+            },
+            {
+              "name": "Eagle's Flight",
+              "level": 35,
+              "mana": 20,
+              "fail": 80,
+              "exp": 80,
+              "effect": [
+                {
+                  "eff": "SHAPECHANGE",
+                  "type": "eagle"
+                }
+              ]
+            },
+            {
+              "name": "Bear Form",
+              "level": 40,
+              "mana": 20,
+              "fail": 85,
+              "exp": 100,
+              "effect": [
+                {
+                  "eff": "SHAPECHANGE",
+                  "type": "bear"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "nature book",
+          "quality": "dungeon",
+          "name": "[Nature Craft]",
+          "spells": 5,
+          "realm": "nature",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "o"
+          },
+          "book-properties": {
+            "cost": 30000,
+            "common": 15,
+            "minmax": "40 to 100"
+          },
+          "spell": [
+            {
+              "name": "Tremor",
+              "level": 20,
+              "mana": 20,
+              "fail": 60,
+              "exp": 16,
+              "effect": [
+                {
+                  "eff": "EARTHQUAKE",
+                  "type": "TARGETED",
+                  "radius": 4
+                }
+              ]
+            },
+            {
+              "name": "Haste Self",
+              "level": 25,
+              "mana": 12,
+              "fail": 65,
+              "exp": 15,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "FAST",
+                  "radius": 0,
+                  "other": 5,
+                  "dice": "$B+d20",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Revitalize",
+              "level": 35,
+              "mana": 70,
+              "fail": 90,
+              "exp": 90,
+              "effect": [
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "STR"
+                },
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "INT"
+                },
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "WIS"
+                },
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "DEX"
+                },
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "CON"
+                },
+                {
+                  "eff": "RESTORE_EXP"
+                }
+              ]
+            },
+            {
+              "name": "Rapid Regeneration",
+              "level": 37,
+              "mana": 20,
+              "fail": 90,
+              "exp": 100,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "HEAL",
+                  "dice": "5+1d3"
+                }
+              ]
+            },
+            {
+              "name": "Herbal Curing",
+              "level": 40,
+              "mana": 20,
+              "fail": 90,
+              "exp": 100,
+              "effect": [
+                {
+                  "eff": "CURE",
+                  "type": "CUT"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "POISONED"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "STUN"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "BLACKBREATH"
+                },
+                {
+                  "eff": "NOURISH",
+                  "type": "INC_TO",
+                  "dice": "80"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "nature book",
+          "quality": "dungeon",
+          "name": "[Wild Forces]",
+          "spells": 5,
+          "realm": "nature",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "o"
+          },
+          "book-properties": {
+            "cost": 50000,
+            "common": 10,
+            "minmax": "60 to 100"
+          },
+          "spell": [
+            {
+              "name": "Meteor Swarm",
+              "level": 30,
+              "mana": 14,
+              "fail": 85,
+              "exp": 20,
+              "effect": [
+                {
+                  "eff": "SWARM",
+                  "type": "METEOR",
+                  "radius": 1,
+                  "dice": "$B+m$M",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 2 + 30"
+                    },
+                    {
+                      "name": "M",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 20 + 2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Rift",
+              "level": 35,
+              "mana": 20,
+              "fail": 60,
+              "exp": 25,
+              "effect": [
+                {
+                  "eff": "BEAM",
+                  "type": "GRAVITY",
+                  "dice": "40+$Dd7",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Ice Storm",
+              "level": 37,
+              "mana": 25,
+              "fail": 75,
+              "exp": 24,
+              "effect": [
+                {
+                  "eff": "PROJECT_LOS",
+                  "type": "ICE",
+                  "dice": "3d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Volcanic Eruption",
+              "level": 40,
+              "mana": 30,
+              "fail": 75,
+              "exp": 50,
+              "effect": [
+                {
+                  "eff": "SPHERE",
+                  "type": "FIRE",
+                  "radius": 5,
+                  "other": 5,
+                  "dice": "$B+d$S",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 3 / 2"
+                    },
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 3"
+                    }
+                  ]
+                },
+                {
+                  "eff": "EARTHQUAKE",
+                  "type": "NONE",
+                  "radius": 5
+                }
+              ]
+            },
+            {
+              "name": "River of Lightning",
+              "level": 43,
+              "mana": 35,
+              "fail": 75,
+              "exp": 100,
+              "effect": [
+                {
+                  "eff": "ARC",
+                  "type": "PLASMA",
+                  "radius": 0,
+                  "other": 20,
+                  "dice": "$Dd8",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 10"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "Detects all living monsters in the immediate area, for one turn only.",
+        "Changes you into the shape of a quick and stealthy fox.",
+        "  While shapechanged you cannot use items.",
+        "Magically renders you comfortably fed (but not satiated).",
+        "Shoots a radius-2 poison ball.",
+        "Confuse a single monster; more effective against animals.",
+        "Slows down a monster; more effective against animals.",
+        "Neutralizes poison.",
+        "Grants you resistance to poison for 20+1d20 turns.",
+        "Produces a beam that destroys the first section of wall it hits,",
+        " unless it is a permanent wall.  Each monster caught in the beam that",
+        " is susceptible to rock remover takes 20+1d30 points of damage.",
+        "Maps the nearby area.",
+        "Strikes a target from above with a lightning bolt, followed by a clap",
+        " of thunder.  If targeting a direction or the target is not a passable",
+        " grid in the line of sight, the player will be the target.",
+        "Causes shards to explode in a line out of the earth, striking objects and",
+        " monsters.  Length of the line increases with player level.",
+        "Holds every adjacent, non-resistant monster for a level-dependent",
+        " number of turns; animals are entranced for longer.",
+        "Attempts to put to sleep each monster within line of sight.",
+        "  Monsters that resist sleep are not affected.",
+        "Gives you the form of a statue of the Drúedain, slow but hard to hurt.",
+        "Gives you the form of one of the great eagles of Manwë.",
+        "Allows you to take the form of a great bear of the mountains, sweeping",
+        " aside your enemies with your mighty paws.",
+        "Causes a targeted 4-square radius earthquake.",
+        "  Earthquakes may hurt the player, damage monsters and destroy items",
+        " in some squares in the area of effect.",
+        "  Artifacts will not be destroyed by this spell.",
+        "  This spell has no effect when used in the town.",
+        "Hastes you (+10 to speed) for a level-dependent duration.",
+        "Restores all stats and experience points to maximum.",
+        "Speed up digestion to increase regeneration of hitpoints for",
+        " the next 5+1d3 turns (or until hungry).",
+        "Cures all cuts, poison, stunning and black breath, and leaves you",
+        " well-nourished.",
+        "Shoots a swarm of 3 or 4 meteors.",
+        "  Meteors will travel until hitting a wall, a monster,",
+        " or reaching the target location.",
+        "  Meteors will explode as a radius-1 ball that does unresistable",
+        " damage to each monster in its area of effect.",
+        "  If this kills the monster that blocked the path to the target",
+        " location, the next meteor may continue to find another target.",
+        "Fires a gravity beam that hurts each monster in its path",
+        " and has a chance of teleporting it away.",
+        "Strikes every monster in line of sight with sheets of ice from above.",
+        "Creates a radius 5 ball of fire, followed by a radius 5 earthquake,",
+        " around the player.",
+        "Spews plasma in a long narrow cone from the player."
+      ]
+    },
+    {
+      "name": "Priest",
+      "stats": {
+        "str": -1,
+        "int": -3,
+        "wis": 3,
+        "dex": -1,
+        "con": 1
+      },
+      "skill-disarm-phys": {
+        "base": 25,
+        "incr": 12
+      },
+      "skill-disarm-magic": {
+        "base": 25,
+        "incr": 12
+      },
+      "skill-device": {
+        "base": 30,
+        "incr": 10
+      },
+      "skill-save": {
+        "base": 32,
+        "incr": 12
+      },
+      "skill-stealth": {
+        "base": 2,
+        "incr": 0
+      },
+      "skill-search": {
+        "base": 10,
+        "incr": 14
+      },
+      "skill-melee": {
+        "base": 45,
+        "incr": 20
+      },
+      "skill-shoot": {
+        "base": 35,
+        "incr": 20
+      },
+      "skill-throw": {
+        "base": 35,
+        "incr": 20
+      },
+      "skill-dig": {
+        "base": 0,
+        "incr": 0
+      },
+      "hitdie": 2,
+      "max-attacks": 4,
+      "min-weight": 35,
+      "strength-multiplier": 3,
+      "title": [
+        "Believer",
+        "Acolyte",
+        "Devotee",
+        "Adept",
+        "Evangelist",
+        "Priest",
+        "Elder",
+        "Prophet",
+        "Patriarch",
+        "High Priest"
+      ],
+      "equip": [
+        {
+          "tval": "food",
+          "sval": "Ration of Food",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "light",
+          "sval": "Wooden Torch",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "hafted",
+          "sval": "Mace",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "potion",
+          "sval": "Cure Serious Wounds",
+          "min": 2,
+          "max": 2,
+          "eopts": "none"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Word of Recall",
+          "min": 1,
+          "max": 1,
+          "eopts": "birth_no_recall"
+        },
+        {
+          "tval": "prayer book",
+          "sval": "[Novice's Handbook]",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        }
+      ],
+      "player-flags": [
+        "BLESS_WEAPON | ZERO_FAIL"
+      ],
+      "magic": {
+        "first": 1,
+        "weight": 350,
+        "books": 5
+      },
+      "book": [
+        {
+          "tval": "prayer book",
+          "quality": "town",
+          "name": "[Novice's Handbook]",
+          "spells": 6,
+          "realm": "divine",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "G"
+          },
+          "book-properties": {
+            "cost": 25,
+            "common": 40,
+            "minmax": "1 to 100"
+          },
+          "spell": [
+            {
+              "name": "Call Light",
+              "level": 1,
+              "mana": 1,
+              "fail": 10,
+              "exp": 2,
+              "effect": [
+                {
+                  "eff": "LIGHT_AREA"
+                },
+                {
+                  "eff": "SPHERE",
+                  "type": "LIGHT_WEAK",
+                  "radius": 1,
+                  "other": 10,
+                  "dice": "2d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Detect Evil",
+              "level": 1,
+              "mana": 1,
+              "fail": 10,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "DETECT_EVIL",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Minor Healing",
+              "level": 1,
+              "mana": 2,
+              "fail": 15,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "HEAL_HP",
+                  "dice": "$B+m$M",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 10"
+                    },
+                    {
+                      "name": "M",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 4"
+                    }
+                  ]
+                },
+                {
+                  "eff": "TIMED_DEC",
+                  "type": "CUT",
+                  "dice": "20"
+                },
+                {
+                  "eff": "TIMED_DEC",
+                  "type": "STUN",
+                  "dice": "20"
+                }
+              ]
+            },
+            {
+              "name": "Bless",
+              "level": 1,
+              "mana": 2,
+              "fail": 20,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "BLESSED",
+                  "dice": "$B+d$S",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 10"
+                    },
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 10"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Sense Invisible",
+              "level": 3,
+              "mana": 4,
+              "fail": 25,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "SINVIS",
+                  "dice": "24+d24"
+                }
+              ]
+            },
+            {
+              "name": "Heroism",
+              "level": 5,
+              "mana": 2,
+              "fail": 30,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "HEAL_HP",
+                  "dice": "10"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "AFRAID"
+                },
+                {
+                  "eff": "TIMED_INC",
+                  "type": "HERO",
+                  "dice": "$B+d$S",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "- 19"
+                    },
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "- 19"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "prayer book",
+          "quality": "town",
+          "name": "[Cleansing Power]",
+          "spells": 6,
+          "realm": "divine",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "G"
+          },
+          "book-properties": {
+            "cost": 100,
+            "common": 40,
+            "minmax": "5 to 100"
+          },
+          "spell": [
+            {
+              "name": "Orb of Draining",
+              "level": 7,
+              "mana": 7,
+              "fail": 40,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "BALL",
+                  "type": "HOLY_ORB",
+                  "radius": 2,
+                  "other": 30,
+                  "dice": "$B+3d6",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 3 / 2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Spear of Light",
+              "level": 7,
+              "mana": 6,
+              "fail": 30,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "LINE",
+                  "type": "LIGHT_WEAK",
+                  "dice": "6d8"
+                }
+              ]
+            },
+            {
+              "name": "Dispel Undead",
+              "level": 10,
+              "mana": 14,
+              "fail": 55,
+              "exp": 6,
+              "effect": [
+                {
+                  "eff": "PROJECT_LOS_AWARE",
+                  "type": "DISP_UNDEAD",
+                  "dice": "d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 5"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Dispel Evil",
+              "level": 12,
+              "mana": 20,
+              "fail": 70,
+              "exp": 10,
+              "effect": [
+                {
+                  "eff": "PROJECT_LOS_AWARE",
+                  "type": "DISP_EVIL",
+                  "dice": "d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 5"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Protection from Evil",
+              "level": 14,
+              "mana": 8,
+              "fail": 42,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "PROTEVIL",
+                  "dice": "$B+d25",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Remove Curse",
+              "level": 16,
+              "mana": 6,
+              "fail": 38,
+              "exp": 8,
+              "effect": [
+                {
+                  "eff": "REMOVE_CURSE",
+                  "dice": "$B+d$S",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    },
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "prayer book",
+          "quality": "dungeon",
+          "name": "[Healing and Sanctuary]",
+          "spells": 6,
+          "realm": "divine",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "g"
+          },
+          "book-properties": {
+            "cost": 10000,
+            "common": 20,
+            "minmax": "30 to 100"
+          },
+          "spell": [
+            {
+              "name": "Portal",
+              "level": 10,
+              "mana": 4,
+              "fail": 30,
+              "exp": 8,
+              "effect": [
+                {
+                  "eff": "TELEPORT",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 2 + 30"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Remembrance",
+              "level": 20,
+              "mana": 30,
+              "fail": 90,
+              "exp": 50,
+              "effect": [
+                {
+                  "eff": "RESTORE_EXP"
+                }
+              ]
+            },
+            {
+              "name": "Word of Recall",
+              "level": 25,
+              "mana": 30,
+              "fail": 75,
+              "exp": 10,
+              "effect": [
+                {
+                  "eff": "RECALL"
+                }
+              ]
+            },
+            {
+              "name": "Healing",
+              "level": 30,
+              "mana": 50,
+              "fail": 80,
+              "exp": 100,
+              "effect": [
+                {
+                  "eff": "HEAL_HP",
+                  "dice": "2000"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "CUT"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "POISONED"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "STUN"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "AMNESIA"
+                }
+              ]
+            },
+            {
+              "name": "Restoration",
+              "level": 35,
+              "mana": 70,
+              "fail": 90,
+              "exp": 130,
+              "effect": [
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "STR"
+                },
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "INT"
+                },
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "WIS"
+                },
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "DEX"
+                },
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "CON"
+                }
+              ]
+            },
+            {
+              "name": "Clairvoyance",
+              "level": 37,
+              "mana": 50,
+              "fail": 80,
+              "exp": 150,
+              "effect": [
+                {
+                  "eff": "LIGHT_LEVEL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "prayer book",
+          "quality": "dungeon",
+          "name": "[Battle Blessings]",
+          "spells": 5,
+          "realm": "divine",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "g"
+          },
+          "book-properties": {
+            "cost": 30000,
+            "common": 15,
+            "minmax": "40 to 100"
+          },
+          "spell": [
+            {
+              "name": "Enchant Weapon",
+              "level": 35,
+              "mana": 50,
+              "fail": 80,
+              "exp": 230,
+              "effect": [
+                {
+                  "eff": "ENCHANT",
+                  "type": "TOBOTH",
+                  "dice": "1d4"
+                }
+              ]
+            },
+            {
+              "name": "Enchant Armour",
+              "level": 37,
+              "mana": 60,
+              "fail": 85,
+              "exp": 250,
+              "effect": [
+                {
+                  "eff": "ENCHANT",
+                  "type": "TOAC",
+                  "dice": "1+1d3"
+                }
+              ]
+            },
+            {
+              "name": "Smite Evil",
+              "level": 25,
+              "mana": 20,
+              "fail": 70,
+              "exp": 40,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "ATT_EVIL",
+                  "radius": 0,
+                  "other": 5,
+                  "dice": "20+d20"
+                }
+              ]
+            },
+            {
+              "name": "Glyph of Warding",
+              "level": 20,
+              "mana": 40,
+              "fail": 90,
+              "exp": 35,
+              "effect": [
+                {
+                  "eff": "GLYPH",
+                  "type": "WARDING"
+                }
+              ]
+            },
+            {
+              "name": "Demon Bane",
+              "level": 42,
+              "mana": 40,
+              "fail": 80,
+              "exp": 300,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "ATT_DEMON",
+                  "radius": 0,
+                  "other": 5,
+                  "dice": "20+d20"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "prayer book",
+          "quality": "dungeon",
+          "name": "[Wrath of the Valar]",
+          "spells": 5,
+          "realm": "divine",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "g"
+          },
+          "book-properties": {
+            "cost": 50000,
+            "common": 10,
+            "minmax": "60 to 100"
+          },
+          "spell": [
+            {
+              "name": "Banish Evil",
+              "level": 25,
+              "mana": 25,
+              "fail": 80,
+              "exp": 250,
+              "effect": [
+                {
+                  "eff": "PROJECT_LOS_AWARE",
+                  "type": "AWAY_EVIL",
+                  "dice": "100"
+                }
+              ]
+            },
+            {
+              "name": "Word of Destruction",
+              "level": 35,
+              "mana": 35,
+              "fail": 80,
+              "exp": 115,
+              "effect": [
+                {
+                  "eff": "DESTRUCTION",
+                  "type": "LIGHT",
+                  "radius": 15
+                }
+              ]
+            },
+            {
+              "name": "Holy Word",
+              "level": 39,
+              "mana": 32,
+              "fail": 95,
+              "exp": 20,
+              "effect": [
+                {
+                  "eff": "PROJECT_LOS_AWARE",
+                  "type": "DISP_EVIL",
+                  "dice": "d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 4"
+                    }
+                  ]
+                },
+                {
+                  "eff": "HEAL_HP",
+                  "dice": "1000"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "AFRAID"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "POISONED"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "STUN"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "CUT"
+                }
+              ]
+            },
+            {
+              "name": "Spear of Oromë",
+              "level": 40,
+              "mana": 10,
+              "fail": 75,
+              "exp": 130,
+              "effect": [
+                {
+                  "eff": "BEAM",
+                  "type": "HOLY_ORB",
+                  "dice": "$Dd8",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Light of Manwë",
+              "level": 42,
+              "mana": 40,
+              "fail": 85,
+              "exp": 200,
+              "effect": [
+                {
+                  "eff": "BALL",
+                  "type": "LIGHT",
+                  "radius": 4,
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 5"
+                    }
+                  ]
+                },
+                {
+                  "eff": "PROJECT_LOS",
+                  "type": "LIGHT_WEAK",
+                  "dice": "100"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "Lights up all squares in a level-dependent area, and hurts",
+        " all light-sensitive monsters in the area of effect.",
+        "  If you are in a room, the entire room will be lit up as well.",
+        "Detects all evil monsters in the immediate area,",
+        " for one turn only.",
+        "Heals a level-dependent amount or percentage of hitpoints, and",
+        " cures 20 points worth of cuts and of stunning.",
+        "Blesses you, giving a bonus of +5 to AC and +10 to-hit, for a",
+        " level-dependent number of turns.",
+        "Enables you to see invisible monsters for 24+1d24 turns.",
+        "Cures 10 points of damage, removes fear and, from character level 20,",
+        " grants you heroism (resistance to fear, and a bonus of +12 to-hit)",
+        " for a level-dependent duration.",
+        "Shoots a radius-2 or radius-3 ball that does unresistable",
+        " damage to each monster in its area of effect.",
+        "  Evil monsters take double damage.",
+        "  The bigger area of effect is attained at character level 30.",
+        "Fires a beam that lights up each square and hurts each",
+        " light-sensitive monster in its path.",
+        "Inflicts unresistable damage on each undead monster within line of sight.",
+        "Inflicts unresistable damage on each evil monster within line of sight.",
+        "Protects you from evil for a level-dependent duration:",
+        " all melee attacks by evil monsters have a chance to be repelled,",
+        " unless the monster's level is higher than your character level.",
+        "Attempts to remove a curse from an item, more effective at higher",
+        " character levels.",
+        "Teleports you randomly over a short distance.",
+        "Restores experience points to maximum if it is currently below maximum.",
+        "Teleports you from the dungeon to the town or from the town to the",
+        " deepest level you have visited in the dungeon.",
+        "  The recall effect is not immediate; it is delayed by 14+1d20 turns.",
+        "  During that delay, the prayer can be canceled by invoking the prayer",
+        " of recall again.",
+        "  This prayer has no effect when the option to restrict the use of",
+        " stairs and recall is set, unless Morgoth is dead.",
+        "Heals 2000 points of damage and cures all stunning, cuts, poison",
+        " and amnesia.",
+        "Restores to maximum all stats that are currently below maximum.",
+        "Lights up, maps out, and senses all objects on the complete current",
+        " dungeon level.",
+        "Attempts to improve the to-hit bonus and the to-dam bonus of a weapon.",
+        "Attempts to improve the armour class bonus of a piece of armour.",
+        "Temporarily makes your melee attacks slay evil creatures.",
+        "Inscribes a glyph of warding beneath you.",
+        "  Summoned monsters can't appear on the glyph.",
+        "  If a monster attempts to move onto the glyph or melee you while you",
+        " are standing on the glyph, it must first succeed in breaking the glyph.",
+        "  Higher level monsters are more likely to break the glyph.",
+        "  The glyph will remain where it is, until a monster succeeds in",
+        " breaking it, or until you leave the level.",
+        "Temporarily makes your melee attacks powerfully slay demons.",
+        "Teleports away each evil monster within line of sight.",
+        "Destroys everything in a 15-square radius circle around you.",
+        "  All monsters, objects, and terrain features in the area of",
+        " effect are destroyed, except stairs and permanent walls.",
+        "  You will also be blinded for 10+1d10 turns, unless you",
+        " have resistance to blindness or light.",
+        "  This prayer has no effect when used in the town.",
+        "Inflicts unresistable damage on each evil monster within line of sight,",
+        " cures 1000 points of damage, cures all stunning, heals all cut damage,",
+        " neutralizes poison, and removes fear.",
+        "Fires a beam of holy magic that does extra damage to evil creatures.",
+        "Casts a radius 4 ball of strong light, and then bathes the entire area",
+        " in light doing 100 damage to every light-sensitive creature."
+      ]
+    },
+    {
+      "name": "Necromancer",
+      "stats": {
+        "str": -3,
+        "int": 3,
+        "wis": 0,
+        "dex": 0,
+        "con": -2
+      },
+      "skill-disarm-phys": {
+        "base": 30,
+        "incr": 10
+      },
+      "skill-disarm-magic": {
+        "base": 35,
+        "incr": 12
+      },
+      "skill-device": {
+        "base": 36,
+        "incr": 13
+      },
+      "skill-save": {
+        "base": 30,
+        "incr": 9
+      },
+      "skill-stealth": {
+        "base": 2,
+        "incr": 0
+      },
+      "skill-search": {
+        "base": 10,
+        "incr": 12
+      },
+      "skill-melee": {
+        "base": 35,
+        "incr": 25
+      },
+      "skill-shoot": {
+        "base": 20,
+        "incr": 15
+      },
+      "skill-throw": {
+        "base": 20,
+        "incr": 15
+      },
+      "skill-dig": {
+        "base": 0,
+        "incr": 0
+      },
+      "hitdie": 2,
+      "max-attacks": 4,
+      "min-weight": 35,
+      "strength-multiplier": 3,
+      "title": [
+        "Acolyte",
+        "Curser",
+        "Dark Student",
+        "Initiate",
+        "Slavemaster",
+        "Summoner",
+        "Controller",
+        "Commander",
+        "Dark Master",
+        "Night Lord"
+      ],
+      "equip": [
+        {
+          "tval": "food",
+          "sval": "Ration of Food",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "sword",
+          "sval": "Main Gauche",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Word of Recall",
+          "min": 1,
+          "max": 1,
+          "eopts": "birth_no_recall"
+        },
+        {
+          "tval": "shadow book",
+          "sval": "[Into the Shadows]",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        }
+      ],
+      "player-flags": [
+        "ZERO_FAIL | CHOOSE_SPELLS | UNLIGHT | EVIL"
+      ],
+      "magic": {
+        "first": 1,
+        "weight": 300,
+        "books": 5
+      },
+      "book": [
+        {
+          "tval": "shadow book",
+          "quality": "town",
+          "name": "[Into the Shadows]",
+          "spells": 5,
+          "realm": "shadow",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "P"
+          },
+          "book-properties": {
+            "cost": 25,
+            "common": 40,
+            "minmax": "1 to 100"
+          },
+          "spell": [
+            {
+              "name": "Nether Bolt",
+              "level": 1,
+              "mana": 1,
+              "fail": 22,
+              "exp": 2,
+              "effect": [
+                {
+                  "eff": "BOLT",
+                  "type": "NETHER",
+                  "dice": "$Dd4",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 4 + 3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Sense Invisible",
+              "level": 2,
+              "mana": 4,
+              "fail": 25,
+              "exp": 3,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "SINVIS",
+                  "dice": "24+d24"
+                }
+              ]
+            },
+            {
+              "name": "Create Darkness",
+              "level": 3,
+              "mana": 3,
+              "fail": 10,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "DARKEN_AREA"
+                },
+                {
+                  "eff": "SPHERE",
+                  "type": "DARK_WEAK",
+                  "radius": 1,
+                  "other": 10,
+                  "dice": "1"
+                }
+              ]
+            },
+            {
+              "name": "Bat Form",
+              "level": 3,
+              "mana": 4,
+              "fail": 20,
+              "exp": 10,
+              "effect": [
+                {
+                  "eff": "SHAPECHANGE",
+                  "type": "bat"
+                }
+              ]
+            },
+            {
+              "name": "Read Minds",
+              "level": 4,
+              "mana": 4,
+              "fail": 10,
+              "exp": 6,
+              "effect": [
+                {
+                  "eff": "DETECT_SOUL",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "READ_MINDS",
+                  "dice": "$Dd$S",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 10"
+                    },
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 10 + 1"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "shadow book",
+          "quality": "town",
+          "name": "[Dark Rituals]",
+          "spells": 5,
+          "realm": "shadow",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "P"
+          },
+          "book-properties": {
+            "cost": 400,
+            "common": 40,
+            "minmax": "10 to 100"
+          },
+          "spell": [
+            {
+              "name": "Tap Unlife",
+              "level": 7,
+              "mana": 0,
+              "fail": 50,
+              "exp": 3,
+              "effect": [
+                {
+                  "eff": "TAP_UNLIFE",
+                  "dice": "$Dd6",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 4 + 2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Crush",
+              "level": 10,
+              "mana": 6,
+              "fail": 40,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "PROJECT_LOS",
+                  "type": "MON_CRUSH",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 4"
+                    }
+                  ]
+                },
+                {
+                  "eff": "DAMAGE",
+                  "dice": "d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Sleep Evil",
+              "level": 12,
+              "mana": 5,
+              "fail": 50,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "PROJECT_LOS",
+                  "type": "SLEEP_EVIL",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 10 + 500"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Shadow Shift",
+              "level": 15,
+              "mana": 10,
+              "fail": 50,
+              "exp": 10,
+              "effect": [
+                {
+                  "eff": "TELEPORT",
+                  "dice": "30"
+                },
+                {
+                  "eff": "DAMAGE",
+                  "dice": "2d5",
+                  "effect-msg": [
+                    "shadow shifting"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Disenchant",
+              "level": 16,
+              "mana": 12,
+              "fail": 50,
+              "exp": 15,
+              "effect": [
+                {
+                  "eff": "BOLT",
+                  "type": "DISEN",
+                  "dice": "2d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 2 + 10"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "shadow book",
+          "quality": "town",
+          "name": "[Fear and Torment]",
+          "spells": 5,
+          "realm": "shadow",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "P"
+          },
+          "book-properties": {
+            "cost": 1600,
+            "common": 20,
+            "minmax": "30 to 100"
+          },
+          "spell": [
+            {
+              "name": "Frighten",
+              "level": 17,
+              "mana": 4,
+              "fail": 40,
+              "exp": 12,
+              "effect": [
+                {
+                  "eff": "BOLT_AWARE",
+                  "type": "TURN_ALL",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Vampire Strike",
+              "level": 20,
+              "mana": 5,
+              "fail": 50,
+              "exp": 10,
+              "effect": [
+                {
+                  "eff": "JUMP_AND_BITE",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Dispel Life",
+              "level": 22,
+              "mana": 20,
+              "fail": 50,
+              "exp": 10,
+              "effect": [
+                {
+                  "eff": "PROJECT_LOS_AWARE",
+                  "type": "MON_DRAIN",
+                  "dice": "d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Dark Spear",
+              "level": 25,
+              "mana": 10,
+              "fail": 60,
+              "exp": 12,
+              "effect": [
+                {
+                  "eff": "LINE",
+                  "type": "DARK",
+                  "dice": "2d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Warg Form",
+              "level": 28,
+              "mana": 20,
+              "fail": 60,
+              "exp": 80,
+              "effect": [
+                {
+                  "eff": "SHAPECHANGE",
+                  "type": "warg"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "shadow book",
+          "quality": "dungeon",
+          "name": "[Deadly Powers]",
+          "spells": 6,
+          "realm": "shadow",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "p"
+          },
+          "book-properties": {
+            "cost": 30000,
+            "common": 15,
+            "minmax": "40 to 100"
+          },
+          "spell": [
+            {
+              "name": "Banish Spirits",
+              "level": 25,
+              "mana": 25,
+              "fail": 80,
+              "exp": 25,
+              "effect": [
+                {
+                  "eff": "PROJECT_LOS_AWARE",
+                  "type": "AWAY_SPIRIT",
+                  "dice": "100"
+                }
+              ]
+            },
+            {
+              "name": "Annihilate",
+              "level": 30,
+              "mana": 20,
+              "fail": 75,
+              "exp": 25,
+              "effect": [
+                {
+                  "eff": "BOLT",
+                  "type": "MON_DRAIN",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 4"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Grond's Blow",
+              "level": 35,
+              "mana": 35,
+              "fail": 80,
+              "exp": 115,
+              "effect": [
+                {
+                  "eff": "DESTRUCTION",
+                  "type": "DARK",
+                  "radius": 15
+                }
+              ]
+            },
+            {
+              "name": "Unleash Chaos",
+              "level": 38,
+              "mana": 15,
+              "fail": 90,
+              "exp": 100,
+              "effect": [
+                {
+                  "eff": "RANDOM",
+                  "dice": "3"
+                },
+                {
+                  "eff": "BEAM",
+                  "type": "CHAOS",
+                  "dice": "8d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                },
+                {
+                  "eff": "ARC",
+                  "type": "CHAOS",
+                  "radius": 0,
+                  "other": 10,
+                  "dice": "8d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                },
+                {
+                  "eff": "BALL",
+                  "type": "CHAOS",
+                  "radius": 3,
+                  "dice": "8d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                },
+                {
+                  "eff": "WAKE"
+                },
+                {
+                  "eff": "PROJECT_LOS",
+                  "type": "TURN_ALL",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Fume of Mordor",
+              "level": 40,
+              "mana": 50,
+              "fail": 80,
+              "exp": 150,
+              "effect": [
+                {
+                  "eff": "DARKEN_LEVEL",
+                  "dice": "1"
+                }
+              ]
+            },
+            {
+              "name": "Storm of Darkness",
+              "level": 43,
+              "mana": 16,
+              "fail": 80,
+              "exp": 200,
+              "effect": [
+                {
+                  "eff": "BALL",
+                  "type": "DARK",
+                  "radius": 4,
+                  "dice": "4d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "shadow book",
+          "quality": "dungeon",
+          "name": "[Corruption of Spirit]",
+          "spells": 5,
+          "realm": "shadow",
+          "book-graphics": {
+            "glyph": "?",
+            "color": "p"
+          },
+          "book-properties": {
+            "cost": 50000,
+            "common": 10,
+            "minmax": "60 to 100"
+          },
+          "spell": [
+            {
+              "name": "Power Sacrifice",
+              "level": 27,
+              "mana": 0,
+              "fail": 20,
+              "exp": 20,
+              "effect": [
+                {
+                  "eff": "DAMAGE",
+                  "dice": "50",
+                  "effect-msg": [
+                    "self sacrifice"
+                  ]
+                },
+                {
+                  "eff": "RESTORE_MANA",
+                  "dice": "50"
+                }
+              ]
+            },
+            {
+              "name": "Zone of Unmagic",
+              "level": 32,
+              "mana": 16,
+              "fail": 60,
+              "exp": 110,
+              "effect": [
+                {
+                  "eff": "SPOT",
+                  "type": "DISEN",
+                  "radius": 4,
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Vampire Form",
+              "level": 37,
+              "mana": 20,
+              "fail": 60,
+              "exp": 140,
+              "effect": [
+                {
+                  "eff": "SHAPECHANGE",
+                  "type": "vampire"
+                },
+                {
+                  "eff": "JUMP_AND_BITE",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Curse",
+              "level": 40,
+              "mana": 50,
+              "fail": 60,
+              "exp": 180,
+              "effect": [
+                {
+                  "eff": "DAMAGE",
+                  "dice": "100",
+                  "effect-msg": [
+                    "performing a curse"
+                  ]
+                },
+                {
+                  "eff": "CURSE",
+                  "dice": "$Dd$S",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 12 + 1"
+                    },
+                    {
+                      "name": "S",
+                      "base": "MONSTER_PERCENT_HP_GONE",
+                      "expr": "+ 50"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Command",
+              "level": 45,
+              "mana": 40,
+              "fail": 60,
+              "exp": 250,
+              "effect": [
+                {
+                  "eff": "COMMAND",
+                  "dice": "5+1d10"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "Fires a bolt of nether magic.",
+        "Enables you to see invisible monsters for 24+1d24 turns.",
+        "Darkens all squares in a level-dependent area.  If you are in a room,",
+        " the entire room will be darkened as well.",
+        "Changes you into the shape of a bat, weak but with excellent senses.",
+        "  While shapechanged you cannot use items.",
+        "Detects all monsters which have a spirit in the immediate area,",
+        " and then maps in a region around them, increasing in size with",
+        " character level.",
+        "Targets the nearest undead monster and damages it to gain player mana.",
+        "Instantly kill any monster in line-of-sight with less than four times the",
+        " player's level in hitpoints, also hurting the player.  Other monsters are",
+        " unharmed.",
+        "Attempts to put to sleep each evil monster within line of sight.",
+        "  Monsters that resist confusion are not affected.",
+        "Displaces your spirit a short distance, hurting your body as it is",
+        " dragged along.",
+        "Casts a bolt which wounds, and makes spellcasting monsters less successful",
+        " in casting spells.",
+        "Attempts to scare a single monster for a level-dependent duration.",
+        "  Monsters that resist fear are not affected.",
+        "Teleports you to the nearest living monster and drains its hitpoints",
+        " to heal and nourish you.  The number of hitpoints drained is twice your",
+        " level or one more than the monster's current hitpoints, whichever is",
+        " smaller.",
+        "Inflicts unresistable damage on each living monster within line of sight.",
+        "Fires a beam of darkness.",
+        "Changes you into the form of a warg, and gives you temporary berserk",
+        " strength, at the cost of some hitpoints.",
+        "Teleports away each monster with a spirit within line of sight.",
+        "Inflicts damage equal to four times player level on a single monster that",
+        " is not undead, an elemental, a golem, or a vortex.",
+        "Destroys everything in a 15-square radius circle around you.",
+        "  All monsters, objects, and terrain features in the area of",
+        " effect are destroyed, except stairs and permanent walls.",
+        "  You will also be blinded for 10+1d10 turns, unless you",
+        " have resistance to blindness or dark.",
+        "  This ritual has no effect when used in the town.",
+        "Fires a chaos beam, arc or ball in the chosen direction, wakes everything",
+        " in the area, and attempts to frighten everything in line of sight.",
+        "Darkens, maps out, and detects all objects on the complete current",
+        " dungeon level.",
+        "Invokes a radius-4 darkness ball.",
+        "Exchanges 50 hitpoints for 50 mana.",
+        "Produces a zone of disenchantment affecting the player and monsters",
+        " within radius 4.",
+        "Allows you to assume the form of a vampire at the cost of half your",
+        " current hitpoints, than teleports you to the nearest living monster",
+        " and drains a level-dependent number of hitpoints, healing and nourishing",
+        " you.  When first transformed you will temporarily be able",
+        " to take hitpoints from living monsters with your bite attack.",
+        "Deals direct damage to a single monster, more the more damaged the monster",
+        " is already, at the cost of 100 hitpoints.",
+        "Allows you to take control of a monster, and move it instead of yourself.",
+        "  Possible actions are move, stand still, 'd'rop, 'm'agic, or 'r'elease."
+      ]
+    },
+    {
+      "name": "Paladin",
+      "stats": {
+        "str": 1,
+        "int": -3,
+        "wis": 1,
+        "dex": -1,
+        "con": 2
+      },
+      "skill-disarm-phys": {
+        "base": 20,
+        "incr": 15
+      },
+      "skill-disarm-magic": {
+        "base": 20,
+        "incr": 10
+      },
+      "skill-device": {
+        "base": 24,
+        "incr": 10
+      },
+      "skill-save": {
+        "base": 25,
+        "incr": 11
+      },
+      "skill-stealth": {
+        "base": 0,
+        "incr": 0
+      },
+      "skill-search": {
+        "base": 10,
+        "incr": 12
+      },
+      "skill-melee": {
+        "base": 65,
+        "incr": 40
+      },
+      "skill-shoot": {
+        "base": 50,
+        "incr": 30
+      },
+      "skill-throw": {
+        "base": 50,
+        "incr": 30
+      },
+      "skill-dig": {
+        "base": 0,
+        "incr": 0
+      },
+      "hitdie": 6,
+      "max-attacks": 5,
+      "min-weight": 30,
+      "strength-multiplier": 5,
+      "title": [
+        "Gallant",
+        "Keeper",
+        "Protector",
+        "Defender",
+        "Warder",
+        "Knight",
+        "Guardian",
+        "Chevalier",
+        "Paladin",
+        "Paladin Lord"
+      ],
+      "equip": [
+        {
+          "tval": "food",
+          "sval": "Ration of Food",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "light",
+          "sval": "Wooden Torch",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "sword",
+          "sval": "Main Gauche",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Protection from Evil",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Word of Recall",
+          "min": 1,
+          "max": 1,
+          "eopts": "birth_no_recall"
+        },
+        {
+          "tval": "prayer book",
+          "sval": "[Novice's Handbook]",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        }
+      ],
+      "player-flags": [
+        "BLESS_WEAPON | SHIELD_BASH"
+      ],
+      "magic": {
+        "first": 1,
+        "weight": 400,
+        "books": 3
+      },
+      "book": [
+        {
+          "tval": "prayer book",
+          "quality": "town",
+          "name": "[Novice's Handbook]",
+          "spells": 6,
+          "realm": "divine",
+          "spell": [
+            {
+              "name": "Bless",
+              "level": 1,
+              "mana": 2,
+              "fail": 20,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "BLESSED",
+                  "dice": "$B+d$S",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 10"
+                    },
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 10"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Detect Evil",
+              "level": 3,
+              "mana": 2,
+              "fail": 10,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "DETECT_EVIL",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Call Light",
+              "level": 5,
+              "mana": 3,
+              "fail": 10,
+              "exp": 2,
+              "effect": [
+                {
+                  "eff": "LIGHT_AREA"
+                },
+                {
+                  "eff": "SPHERE",
+                  "type": "LIGHT_WEAK",
+                  "radius": 1,
+                  "other": 10,
+                  "dice": "2d$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Minor Healing",
+              "level": 7,
+              "mana": 3,
+              "fail": 15,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "HEAL_HP",
+                  "dice": "$B+m$M",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 10"
+                    },
+                    {
+                      "name": "M",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 4"
+                    }
+                  ]
+                },
+                {
+                  "eff": "TIMED_DEC",
+                  "type": "CUT",
+                  "dice": "20"
+                },
+                {
+                  "eff": "TIMED_DEC",
+                  "type": "STUN",
+                  "dice": "20"
+                }
+              ]
+            },
+            {
+              "name": "Sense Invisible",
+              "level": 8,
+              "mana": 4,
+              "fail": 25,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "SINVIS",
+                  "dice": "24+d24"
+                }
+              ]
+            },
+            {
+              "name": "Heroism",
+              "level": 12,
+              "mana": 5,
+              "fail": 30,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "HEAL_HP",
+                  "dice": "10"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "AFRAID"
+                },
+                {
+                  "eff": "TIMED_INC",
+                  "type": "HERO",
+                  "dice": "$B+d$S",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "- 14"
+                    },
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "- 14"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "prayer book",
+          "quality": "dungeon",
+          "name": "[Healing and Sanctuary]",
+          "spells": 5,
+          "realm": "divine",
+          "spell": [
+            {
+              "name": "Protection from Evil",
+              "level": 15,
+              "mana": 8,
+              "fail": 42,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "PROTEVIL",
+                  "dice": "$B+d25",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Remove Curse",
+              "level": 20,
+              "mana": 12,
+              "fail": 38,
+              "exp": 8,
+              "effect": [
+                {
+                  "eff": "REMOVE_CURSE",
+                  "dice": "$B+d$S",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    },
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Word of Recall",
+              "level": 25,
+              "mana": 30,
+              "fail": 75,
+              "exp": 10,
+              "effect": [
+                {
+                  "eff": "RECALL"
+                }
+              ]
+            },
+            {
+              "name": "Healing",
+              "level": 30,
+              "mana": 50,
+              "fail": 80,
+              "exp": 100,
+              "effect": [
+                {
+                  "eff": "HEAL_HP",
+                  "dice": "2000"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "CUT"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "POISONED"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "STUN"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "AMNESIA"
+                }
+              ]
+            },
+            {
+              "name": "Clairvoyance",
+              "level": 37,
+              "mana": 50,
+              "fail": 80,
+              "exp": 150,
+              "effect": [
+                {
+                  "eff": "LIGHT_LEVEL"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "prayer book",
+          "quality": "dungeon",
+          "name": "[Battle Blessings]",
+          "spells": 5,
+          "realm": "divine",
+          "spell": [
+            {
+              "name": "Smite Evil",
+              "level": 25,
+              "mana": 20,
+              "fail": 70,
+              "exp": 40,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "ATT_EVIL",
+                  "radius": 0,
+                  "other": 5,
+                  "dice": "20+d20"
+                }
+              ]
+            },
+            {
+              "name": "Demon Bane",
+              "level": 30,
+              "mana": 40,
+              "fail": 80,
+              "exp": 150,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "ATT_DEMON",
+                  "radius": 0,
+                  "other": 5,
+                  "dice": "20+d20"
+                }
+              ]
+            },
+            {
+              "name": "Enchant Weapon",
+              "level": 35,
+              "mana": 50,
+              "fail": 80,
+              "exp": 230,
+              "effect": [
+                {
+                  "eff": "ENCHANT",
+                  "type": "TOBOTH",
+                  "dice": "1d4"
+                }
+              ]
+            },
+            {
+              "name": "Enchant Armour",
+              "level": 37,
+              "mana": 60,
+              "fail": 85,
+              "exp": 250,
+              "effect": [
+                {
+                  "eff": "ENCHANT",
+                  "type": "TOAC",
+                  "dice": "1+1d3"
+                }
+              ]
+            },
+            {
+              "name": "Single Combat",
+              "level": 40,
+              "mana": 50,
+              "fail": 30,
+              "exp": 300,
+              "effect": [
+                {
+                  "eff": "SINGLE_COMBAT"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "Blesses you, giving a bonus of +5 to AC and +10 to-hit, for a",
+        " level-dependent number of turns.",
+        "Detects all evil monsters in the immediate area,",
+        " for one turn only.",
+        "Lights up all squares in a level-dependent area, and hurts",
+        " all light-sensitive monsters in the area of effect.",
+        "  If you are in a room, the entire room will be lit up as well.",
+        "Heals a level-dependent amount or percentage of hitpoints, and",
+        " cures 20 points worth of cuts and of stunning.",
+        "Enables you to see invisible monsters for 24+1d24 turns.",
+        "Cures 10 points of damage, removes fear and, from character level 15,",
+        " grants you heroism (resistance to fear, and a bonus of +12 to-hit)",
+        " for a level-dependent duration.",
+        "Protects you from evil for a level-dependent duration:",
+        " all melee attacks by evil monsters have a chance to be repelled,",
+        " unless the monster's level is higher than your character level.",
+        "Attempts to remove a curse from an item, more effective at higher",
+        " character levels.",
+        "Teleports you from the dungeon to the town or from the town to the",
+        " deepest level you have visited in the dungeon.",
+        "  The recall effect is not immediate; it is delayed by 14+1d20 turns.",
+        "  During that delay, the prayer can be canceled by invoking the prayer",
+        " of recall again.",
+        "  This prayer has no effect when the option to restrict the use of",
+        " stairs and recall is set, unless Morgoth is dead.",
+        "Heals 2000 points of damage and cures all stunning, cuts, poison",
+        " and amnesia.",
+        "Lights up, maps out, and senses all objects on the complete current",
+        " dungeon level.",
+        "Temporarily makes your melee attacks slay evil creatures.",
+        "Temporarily makes your melee attacks powerfully slay demons.",
+        "Attempts to improve the to-hit bonus and the to-dam bonus of a weapon.",
+        "Attempts to improve the armour class bonus of a piece of armour.",
+        "Encases you and the targeted monster in a stone cell from which only the",
+        " winner can emerge."
+      ]
+    },
+    {
+      "name": "Rogue",
+      "stats": {
+        "str": 0,
+        "int": 1,
+        "wis": -3,
+        "dex": 3,
+        "con": -1
+      },
+      "skill-disarm-phys": {
+        "base": 45,
+        "incr": 20
+      },
+      "skill-disarm-magic": {
+        "base": 45,
+        "incr": 20
+      },
+      "skill-device": {
+        "base": 32,
+        "incr": 10
+      },
+      "skill-save": {
+        "base": 28,
+        "incr": 10
+      },
+      "skill-stealth": {
+        "base": 3,
+        "incr": 1
+      },
+      "skill-search": {
+        "base": 20,
+        "incr": 16
+      },
+      "skill-melee": {
+        "base": 35,
+        "incr": 45
+      },
+      "skill-shoot": {
+        "base": 66,
+        "incr": 30
+      },
+      "skill-throw": {
+        "base": 72,
+        "incr": 45
+      },
+      "skill-dig": {
+        "base": 0,
+        "incr": 0
+      },
+      "hitdie": 4,
+      "max-attacks": 5,
+      "min-weight": 20,
+      "strength-multiplier": 4,
+      "title": [
+        "Vagabond",
+        "Cutpurse",
+        "Footpad",
+        "Robber",
+        "Burglar",
+        "Filcher",
+        "Sharper",
+        "Rogue",
+        "Thief",
+        "Master Thief"
+      ],
+      "equip": [
+        {
+          "tval": "food",
+          "sval": "Ration of Food",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "light",
+          "sval": "Wooden Torch",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "sword",
+          "sval": "Dagger",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "soft armour",
+          "sval": "Soft Leather Armour",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Word of Recall",
+          "min": 1,
+          "max": 1,
+          "eopts": "birth_no_recall"
+        },
+        {
+          "tval": "magic book",
+          "sval": "[First Spells]",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        }
+      ],
+      "player-flags": [
+        "CHOOSE_SPELLS | STEAL"
+      ],
+      "magic": {
+        "first": 5,
+        "weight": 350,
+        "books": 2
+      },
+      "book": [
+        {
+          "tval": "magic book",
+          "quality": "town",
+          "name": "[First Spells]",
+          "spells": 7,
+          "realm": "arcane",
+          "spell": [
+            {
+              "name": "Detect Monsters",
+              "level": 5,
+              "mana": 1,
+              "fail": 50,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "DETECT_VISIBLE_MONSTERS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Phase Door",
+              "level": 7,
+              "mana": 2,
+              "fail": 55,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "TELEPORT",
+                  "dice": "10"
+                }
+              ]
+            },
+            {
+              "name": "Object Detection",
+              "level": 10,
+              "mana": 3,
+              "fail": 60,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "DETECT_ORE",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "DETECT_GOLD",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "DETECT_OBJECTS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Detect Stairs",
+              "level": 12,
+              "mana": 3,
+              "fail": 50,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "DETECT_STAIRS",
+                  "effect-yx": {
+                    "y": 44,
+                    "x": 60
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Recharging",
+              "level": 20,
+              "mana": 10,
+              "fail": 50,
+              "exp": 6,
+              "effect": [
+                {
+                  "eff": "RECHARGE",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 10 + 4"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Reveal Monsters",
+              "level": 25,
+              "mana": 3,
+              "fail": 40,
+              "exp": 8,
+              "effect": [
+                {
+                  "eff": "DETECT_INVISIBLE_MONSTERS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                },
+                {
+                  "eff": "DETECT_VISIBLE_MONSTERS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "magic book",
+          "quality": "dungeon",
+          "name": "[Arcane Control]",
+          "spells": 4,
+          "realm": "arcane",
+          "spell": [
+            {
+              "name": "Teleport Self",
+              "level": 17,
+              "mana": 6,
+              "fail": 35,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "TELEPORT",
+                  "dice": "M$M",
+                  "expr": [
+                    {
+                      "name": "M",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 9 / 5"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Hit and Run",
+              "level": 23,
+              "mana": 20,
+              "fail": 40,
+              "exp": 20,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "ATT_RUN",
+                  "dice": "10"
+                }
+              ]
+            },
+            {
+              "name": "Teleport Other",
+              "level": 30,
+              "mana": 10,
+              "fail": 30,
+              "exp": 50,
+              "effect": [
+                {
+                  "eff": "BOLT_STATUS",
+                  "type": "AWAY_ALL",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Teleport Level",
+              "level": 35,
+              "mana": 17,
+              "fail": 65,
+              "exp": 80,
+              "effect": [
+                {
+                  "eff": "TELEPORT_LEVEL"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "Detects all non-invisible monsters in the immediate area,",
+        " for one turn only.",
+        "Teleports you randomly up to 10 squares away.",
+        "Detects all objects in the immediate area.",
+        "Detects all stairs in a wide area.",
+        "Adds charges to a stack of wands or staves.",
+        "  Chance of success and number of charges gained increase with your",
+        " level and decrease with level of wand or staff and number of charges.",
+        "  A failed attempt to recharge destroys one wand or staff from the stack.",
+        "Detects all monsters in the immediate area, for one turn only.",
+        "Teleports you randomly within the current level.",
+        "Prepares you to teleport a short distance after stealing from a monster.",
+        "Produces a bolt that teleports away the first monster in its path.",
+        "  Distance teleported increases with player level.",
+        "Teleports you 1 level up or 1 level down (chosen at random).",
+        "  This spell may have no effect when the forced descent option is set."
+      ]
+    },
+    {
+      "name": "Ranger",
+      "stats": {
+        "str": 0,
+        "int": 0,
+        "wis": 2,
+        "dex": 1,
+        "con": -1
+      },
+      "skill-disarm-phys": {
+        "base": 40,
+        "incr": 15
+      },
+      "skill-disarm-magic": {
+        "base": 30,
+        "incr": 10
+      },
+      "skill-device": {
+        "base": 28,
+        "incr": 10
+      },
+      "skill-save": {
+        "base": 32,
+        "incr": 10
+      },
+      "skill-stealth": {
+        "base": 3,
+        "incr": 0
+      },
+      "skill-search": {
+        "base": 15,
+        "incr": 15
+      },
+      "skill-melee": {
+        "base": 60,
+        "incr": 40
+      },
+      "skill-shoot": {
+        "base": 72,
+        "incr": 45
+      },
+      "skill-throw": {
+        "base": 66,
+        "incr": 30
+      },
+      "skill-dig": {
+        "base": 0,
+        "incr": 0
+      },
+      "hitdie": 5,
+      "max-attacks": 5,
+      "min-weight": 35,
+      "strength-multiplier": 4,
+      "title": [
+        "Runner",
+        "Strider",
+        "Scout",
+        "Courser",
+        "Tracker",
+        "Guide",
+        "Explorer",
+        "Pathfinder",
+        "Ranger",
+        "Ranger Lord"
+      ],
+      "equip": [
+        {
+          "tval": "food",
+          "sval": "Ration of Food",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "light",
+          "sval": "Wooden Torch",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "sword",
+          "sval": "Main Gauche",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "bow",
+          "sval": "Short Bow",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "arrow",
+          "sval": "Arrow",
+          "min": 15,
+          "max": 20,
+          "eopts": "none"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Word of Recall",
+          "min": 1,
+          "max": 1,
+          "eopts": "birth_no_recall"
+        },
+        {
+          "tval": "nature book",
+          "sval": "[Lesser Charms]",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        }
+      ],
+      "player-flags": [
+        "FAST_SHOT | CHOOSE_SPELLS"
+      ],
+      "magic": {
+        "first": 3,
+        "weight": 400,
+        "books": 2
+      },
+      "book": [
+        {
+          "tval": "nature book",
+          "quality": "town",
+          "name": "[Lesser Charms]",
+          "spells": 6,
+          "realm": "nature",
+          "spell": [
+            {
+              "name": "Remove Hunger",
+              "level": 3,
+              "mana": 1,
+              "fail": 25,
+              "exp": 2,
+              "effect": [
+                {
+                  "eff": "NOURISH",
+                  "type": "INC_TO",
+                  "dice": "50"
+                }
+              ]
+            },
+            {
+              "name": "Detect Life",
+              "level": 5,
+              "mana": 2,
+              "fail": 23,
+              "exp": 2,
+              "effect": [
+                {
+                  "eff": "DETECT_LIVING_MONSTERS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Herbal Curing",
+              "level": 9,
+              "mana": 6,
+              "fail": 30,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "CURE",
+                  "type": "CUT"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "POISONED"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "STUN"
+                },
+                {
+                  "eff": "CURE",
+                  "type": "BLACKBREATH"
+                }
+              ]
+            },
+            {
+              "name": "Resist Poison",
+              "level": 12,
+              "mana": 10,
+              "fail": 32,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "OPP_POIS",
+                  "dice": "20+d20"
+                }
+              ]
+            },
+            {
+              "name": "Turn Stone to Mud",
+              "level": 15,
+              "mana": 5,
+              "fail": 25,
+              "exp": 5,
+              "effect": [
+                {
+                  "eff": "LINE",
+                  "type": "KILL_WALL",
+                  "dice": "20+1d30"
+                }
+              ]
+            },
+            {
+              "name": "Sense Surroundings",
+              "level": 20,
+              "mana": 8,
+              "fail": 35,
+              "exp": 8,
+              "effect": [
+                {
+                  "eff": "MAP_AREA",
+                  "dice": "$Dd$S",
+                  "expr": [
+                    {
+                      "name": "D",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 30 + 1 * 22"
+                    },
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 30 + 1 * 44"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "nature book",
+          "quality": "dungeon",
+          "name": "[Nature Craft]",
+          "spells": 5,
+          "realm": "nature",
+          "spell": [
+            {
+              "name": "Cover Tracks",
+              "level": 20,
+              "mana": 20,
+              "fail": 40,
+              "exp": 40,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "COVERTRACKS",
+                  "radius": 0,
+                  "other": 5,
+                  "dice": "$B+d20",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "* 2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Create Arrows",
+              "level": 22,
+              "mana": 20,
+              "fail": 40,
+              "exp": 40,
+              "effect": [
+                {
+                  "eff": "CREATE_ARROWS"
+                }
+              ]
+            },
+            {
+              "name": "Haste Self",
+              "level": 25,
+              "mana": 12,
+              "fail": 65,
+              "exp": 15,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "FAST",
+                  "radius": 0,
+                  "other": 5,
+                  "dice": "$B+d20",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Decoy",
+              "level": 30,
+              "mana": 30,
+              "fail": 40,
+              "exp": 60,
+              "effect": [
+                {
+                  "eff": "GLYPH",
+                  "type": "DECOY"
+                }
+              ]
+            },
+            {
+              "name": "Brand Ammunition",
+              "level": 40,
+              "mana": 60,
+              "fail": 95,
+              "exp": 120,
+              "effect": [
+                {
+                  "eff": "BRAND_AMMO"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "Magically renders you comfortably fed (but not satiated).",
+        "Detects all living monsters in the immediate area, for one turn only.",
+        "Cures all cuts, poison, stunning and black breath.",
+        "Grants you resistance to poison for 20+1d20 turns.",
+        "Produces a beam that destroys the first section of wall it hits,",
+        " unless it is a permanent wall.  Each monster caught in the beam that",
+        " is susceptible to rock remover takes 20+1d30 points of damage.",
+        "Maps the nearby area.",
+        "Prevents you from leaving scent for monsters to track you by for a",
+        " level-dependent duration.",
+        "Allows the player to turn a staff into a stack of arrows, with quality",
+        " depending on staff level and player level.",
+        "Hastes you (+10 to speed) for a level-dependent duration.",
+        "Leaves a magical decoy that looks and sounds like the player.",
+        "Brands one stack of ammunition with fire, cold, or poison",
+        " (selected at random) and at the same time attempts to improve",
+        " the to-hit bonus and the to-dam bonus of the same ammunition.",
+        "  The spell has no effect if the ammunition is already branded, has a",
+        " slay, is broken, or is cursed."
+      ]
+    },
+    {
+      "name": "Blackguard",
+      "stats": {
+        "str": 2,
+        "int": 0,
+        "wis": -3,
+        "dex": 0,
+        "con": 2
+      },
+      "skill-disarm-phys": {
+        "base": 20,
+        "incr": 15
+      },
+      "skill-disarm-magic": {
+        "base": 20,
+        "incr": 10
+      },
+      "skill-device": {
+        "base": 24,
+        "incr": 10
+      },
+      "skill-save": {
+        "base": 18,
+        "incr": 10
+      },
+      "skill-stealth": {
+        "base": -1,
+        "incr": -1
+      },
+      "skill-search": {
+        "base": 8,
+        "incr": 10
+      },
+      "skill-melee": {
+        "base": 65,
+        "incr": 40
+      },
+      "skill-shoot": {
+        "base": 35,
+        "incr": 15
+      },
+      "skill-throw": {
+        "base": 40,
+        "incr": 30
+      },
+      "skill-dig": {
+        "base": 0,
+        "incr": 0
+      },
+      "hitdie": 8,
+      "max-attacks": 5,
+      "min-weight": 100,
+      "strength-multiplier": 5,
+      "title": [
+        "Rat",
+        "Bully",
+        "Thug",
+        "Ruffian",
+        "Brigand",
+        "Raider",
+        "Tormentor",
+        "Marauder",
+        "Destroyer",
+        "Tyrant"
+      ],
+      "equip": [
+        {
+          "tval": "shadow book",
+          "sval": "[Into the Shadows]",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "food",
+          "sval": "Ration of Food",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "light",
+          "sval": "Wooden Torch",
+          "min": 1,
+          "max": 3,
+          "eopts": "none"
+        },
+        {
+          "tval": "sword",
+          "sval": "Tulwar",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "shield",
+          "sval": "Leather Shield",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        },
+        {
+          "tval": "scroll",
+          "sval": "Word of Recall",
+          "min": 1,
+          "max": 1,
+          "eopts": "birth_no_recall"
+        },
+        {
+          "tval": "potion",
+          "sval": "Cure Light Wounds",
+          "min": 1,
+          "max": 1,
+          "eopts": "none"
+        }
+      ],
+      "obj-flags": [
+        "IMPAIR_HP"
+      ],
+      "player-flags": [
+        "CHOOSE_SPELLS | SHIELD_BASH | COMBAT_REGEN"
+      ],
+      "magic": {
+        "first": 1,
+        "weight": 600,
+        "books": 3
+      },
+      "book": [
+        {
+          "tval": "shadow book",
+          "quality": "town",
+          "name": "[Into the Shadows]",
+          "spells": 6,
+          "realm": "shadow",
+          "spell": [
+            {
+              "name": "Seek Battle",
+              "level": 1,
+              "mana": 1,
+              "fail": 15,
+              "exp": 2,
+              "effect": [
+                {
+                  "eff": "DETECT_FEARFUL_MONSTERS",
+                  "effect-yx": {
+                    "y": 22,
+                    "x": 40
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Berserk Strength",
+              "level": 3,
+              "mana": 2,
+              "fail": 20,
+              "exp": 4,
+              "effect": [
+                {
+                  "eff": "CURE",
+                  "type": "AFRAID"
+                },
+                {
+                  "eff": "TIMED_INC",
+                  "type": "SHERO",
+                  "radius": 0,
+                  "other": 5,
+                  "dice": "$B+d$S",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 5"
+                    },
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 5"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Whirlwind Attack",
+              "level": 5,
+              "mana": 4,
+              "fail": 25,
+              "exp": 6,
+              "effect": [
+                {
+                  "eff": "SWEEP",
+                  "dice": "$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 10 / 15"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Shatter Stone",
+              "level": 7,
+              "mana": 3,
+              "fail": 20,
+              "exp": 8,
+              "effect": [
+                {
+                  "eff": "SHORT_BEAM",
+                  "type": "KILL_WALL",
+                  "radius": 1,
+                  "dice": "20+1d30"
+                }
+              ]
+            },
+            {
+              "name": "Leap into Battle",
+              "level": 10,
+              "mana": 5,
+              "fail": 30,
+              "exp": 10,
+              "effect": [
+                {
+                  "eff": "MOVE_ATTACK",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 5 / 15"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Grim Purpose",
+              "level": 13,
+              "mana": 8,
+              "fail": 30,
+              "exp": 12,
+              "effect": [
+                {
+                  "eff": "SET_VALUE",
+                  "dice": "12+d12"
+                },
+                {
+                  "eff": "TIMED_INC",
+                  "type": "OPP_CONF"
+                },
+                {
+                  "eff": "TIMED_INC",
+                  "type": "FREE_ACT"
+                },
+                {
+                  "eff": "CLEAR_VALUE"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "shadow book",
+          "quality": "town",
+          "name": "[Fear and Torment]",
+          "spells": 5,
+          "realm": "shadow",
+          "spell": [
+            {
+              "name": "Maim Foe",
+              "level": 15,
+              "mana": 6,
+              "fail": 35,
+              "exp": 14,
+              "effect": [
+                {
+                  "eff": "MELEE_BLOWS",
+                  "type": "MON_STUN",
+                  "radius": 6,
+                  "dice": "$S",
+                  "expr": [
+                    {
+                      "name": "S",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "/ 15"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Howl of the Damned",
+              "level": 18,
+              "mana": 8,
+              "fail": 30,
+              "exp": 16,
+              "effect": [
+                {
+                  "eff": "PROJECT_LOS",
+                  "type": "TURN_ALL",
+                  "dice": "$B",
+                  "expr": [
+                    {
+                      "name": "B",
+                      "base": "PLAYER_LEVEL",
+                      "expr": "+ 0"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Relentless Taunting",
+              "level": 24,
+              "mana": 10,
+              "fail": 32,
+              "exp": 20,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "TAUNT",
+                  "dice": "12+d12"
+                }
+              ]
+            },
+            {
+              "name": "Venom",
+              "level": 28,
+              "mana": 18,
+              "fail": 35,
+              "exp": 30,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "ATT_POIS",
+                  "radius": 0,
+                  "other": 5,
+                  "dice": "18+d18"
+                }
+              ]
+            },
+            {
+              "name": "Werewolf Form",
+              "level": 32,
+              "mana": 30,
+              "fail": 40,
+              "exp": 100,
+              "effect": [
+                {
+                  "eff": "SHAPECHANGE",
+                  "type": "werewolf"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tval": "shadow book",
+          "quality": "dungeon",
+          "name": "[Deadly Powers]",
+          "spells": 4,
+          "realm": "shadow",
+          "spell": [
+            {
+              "name": "Bloodlust",
+              "level": 30,
+              "mana": 25,
+              "fail": 37,
+              "exp": 80,
+              "effect": [
+                {
+                  "eff": "TIMED_INC",
+                  "type": "BLOODLUST",
+                  "radius": 0,
+                  "other": -1,
+                  "dice": "10"
+                }
+              ]
+            },
+            {
+              "name": "Unholy Reprieve",
+              "level": 34,
+              "mana": 45,
+              "fail": 60,
+              "exp": 120,
+              "effect": [
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "STR"
+                },
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "INT"
+                },
+                {
+                  "eff": "RESTORE_STAT",
+                  "type": "CON"
+                },
+                {
+                  "eff": "RESTORE_EXP"
+                },
+                {
+                  "eff": "DAMAGE",
+                  "dice": "66"
+                }
+              ]
+            },
+            {
+              "name": "Forceful Blow",
+              "level": 38,
+              "mana": 16,
+              "fail": 50,
+              "exp": 150,
+              "effect": [
+                {
+                  "eff": "MELEE_BLOWS",
+                  "type": "FORCE",
+                  "radius": 200,
+                  "dice": "1"
+                }
+              ]
+            },
+            {
+              "name": "Quake",
+              "level": 44,
+              "mana": 39,
+              "fail": 55,
+              "exp": 175,
+              "effect": [
+                {
+                  "eff": "EARTHQUAKE",
+                  "type": "NONE",
+                  "radius": 13
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "Detects all monsters susceptible to fear in the immediate area,",
+        " for one turn only.",
+        "Removes fear and grants you berserk strength (resistance to fear,",
+        " +75 melee skill, -10 to AC, and prevents healing",
+        " over time) for a level-dependent duration.",
+        "Deals a level-dependent number of melee blows to each adjacent enemy.",
+        "  At level 5 you do one blow and gain an additional blow every 15",
+        " levels (2 at 20, 3 at 35, and 4 at 50).",
+        "Destroys an adjacent section of wall or rubble, unless it is a permanent",
+        " wall.  Deals 20+1d30 damage to monsters vulnerable to rock remover.",
+        "You run up to 4 spaces towards targeted enemy, then perform a",
+        " melee blow.  You gain an additional blow at levels 25 and 40.  If you",
+        " moved, the number of blows is reduced by 25% for each space, then rounded.",
+        "Your mind becomes too focused to be slowed, paralyzed or confused",
+        " for 12+d12 turns.",
+        "Attempts a level-dependent number of melee blows against the targeted",
+        " enemy.  You get 1 blow for every 15 levels.  If any of these blows",
+        " damage the enemy, it will be stunned for 6 turns.",
+        "Attempts to scare every monster in line of sight for a duration dependent",
+        " on player level and monster depth.  Monsters that resist fear are not",
+        " affected.",
+        "Makes any monster that can move more inclined to run toward you, and less",
+        " likely to use a ranged attack (including spells and innate abilities).",
+        "Coats all your melee weapons with poison for 18+d18 turns.",
+        "With a blood-curdling cry you change into a half-man half-wolf!",
+        "  In this form you move, attack, and heal faster.",
+        "Gives you a powerful desire to kill, increased every time you satisfy it.",
+        "  Gives you extra melee damage and extra blows, but comes",
+        " with dangerous side-effects.",
+        "Restores STR, INT, CON, and experience at the cost of 66 HP.",
+        "Attempts a melee blow that deals additional force damage when it hits,",
+        " knocking the target back with a chance to stun it.",
+        "Causes a radius 13 earthquake centered around the player."
+      ]
+    }
+  ]
+}

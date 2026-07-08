@@ -1,0 +1,511 @@
+{
+  "file": "terrain",
+  "source": "lib/gamedata/terrain.txt",
+  "records": [
+    {
+      "code": "NONE",
+      "name": "unknown grid",
+      "graphics": {
+        "glyph": " ",
+        "color": "w"
+      },
+      "priority": 2
+    },
+    {
+      "code": "FLOOR",
+      "name": "open floor",
+      "graphics": {
+        "glyph": ".",
+        "color": "w"
+      },
+      "priority": 5,
+      "flags": [
+        "LOS | PROJECT | PASSABLE | FLOOR | OBJECT | EASY | TRAP | TORCH"
+      ],
+      "desc": [
+        "An open floor or bare ground.  Can be walked across by anything, and can",
+        " hold traps or items.  Does not break line of sight."
+      ]
+    },
+    {
+      "code": "CLOSED",
+      "name": "closed door",
+      "graphics": {
+        "glyph": "+",
+        "color": "U"
+      },
+      "priority": 17,
+      "flags": [
+        "DOOR_ANY | DOOR_CLOSED | INTERESTING"
+      ],
+      "digging": 5,
+      "desc": [
+        "Doors may be locked; getting through them may not be easy.  Your",
+        " disarming skill makes all the difference to your ability to handle locks,",
+        " but you can also take a pickaxe to them, or blast them open",
+        " with magic.  Monsters are also slowed down by doors; you can earn yourself",
+        " valuable time by locking them."
+      ],
+      "confused-msg": [
+        "bangs into a door"
+      ]
+    },
+    {
+      "code": "OPEN",
+      "name": "open door",
+      "graphics": {
+        "glyph": "'",
+        "color": "U"
+      },
+      "priority": 15,
+      "flags": [
+        "LOS | PROJECT | PASSABLE | DOOR_ANY | INTERESTING | CLOSABLE | EASY"
+      ],
+      "desc": [
+        "A door that is already open.  Player, monster, spell and missile can pass",
+        " through as long as it stays open."
+      ],
+      "look-in-preposition": [
+        "in"
+      ]
+    },
+    {
+      "code": "BROKEN",
+      "name": "broken door",
+      "graphics": {
+        "glyph": "'",
+        "color": "u"
+      },
+      "priority": 15,
+      "flags": [
+        "LOS | PROJECT | PASSABLE | DOOR_ANY | INTERESTING | EASY"
+      ],
+      "desc": [
+        "A door so broken that it cannot be shut."
+      ],
+      "look-in-preposition": [
+        "in"
+      ]
+    },
+    {
+      "code": "LESS",
+      "name": "up staircase",
+      "graphics": {
+        "glyph": "<",
+        "color": "w"
+      },
+      "priority": 25,
+      "flags": [
+        "LOS | PROJECT | PASSABLE | PERMANENT | INTERESTING | STAIR | UPSTAIR",
+        "EASY | TORCH"
+      ],
+      "desc": [
+        "A staircase up to a shallower part of the dungeon."
+      ]
+    },
+    {
+      "code": "MORE",
+      "name": "down staircase",
+      "graphics": {
+        "glyph": ">",
+        "color": "w"
+      },
+      "priority": 25,
+      "flags": [
+        "LOS | PROJECT | PASSABLE | PERMANENT | INTERESTING | STAIR | DOWNSTAIR",
+        "EASY | TORCH"
+      ],
+      "desc": [
+        "A staircase down to a deeper part of the dungeon."
+      ]
+    },
+    {
+      "code": "STORE_GENERAL",
+      "name": "General Store",
+      "graphics": {
+        "glyph": "1",
+        "color": "U"
+      },
+      "priority": 20,
+      "flags": [
+        "SHOP | LOS | PROJECT | PASSABLE | PERMANENT | INTERESTING | EASY"
+      ],
+      "desc": [
+        "The General Store sells food, ammunition and lighting supplies."
+      ],
+      "look-prefix": [
+        "the entrance to the"
+      ],
+      "look-in-preposition": [
+        "at"
+      ]
+    },
+    {
+      "code": "STORE_ARMOR",
+      "name": "Armoury",
+      "graphics": {
+        "glyph": "2",
+        "color": "s"
+      },
+      "priority": 20,
+      "flags": [
+        "SHOP | LOS | PROJECT | PASSABLE | PERMANENT | INTERESTING | EASY"
+      ],
+      "desc": [
+        "The armour sold here will give you some protection against the blows of",
+        " your enemies."
+      ],
+      "look-prefix": [
+        "the entrance to the"
+      ],
+      "look-in-preposition": [
+        "at"
+      ]
+    },
+    {
+      "code": "STORE_WEAPON",
+      "name": "Weapon Smiths",
+      "graphics": {
+        "glyph": "3",
+        "color": "w"
+      },
+      "priority": 20,
+      "flags": [
+        "SHOP | LOS | PROJECT | PASSABLE | PERMANENT | INTERESTING | EASY"
+      ],
+      "desc": [
+        "Weapons for hitting and shooting your enemies are forged in the hot, acrid",
+        " backroom of this enticing shop."
+      ],
+      "look-prefix": [
+        "the entrance to the"
+      ],
+      "look-in-preposition": [
+        "at"
+      ]
+    },
+    {
+      "code": "STORE_BOOK",
+      "name": "Bookseller",
+      "graphics": {
+        "glyph": "4",
+        "color": "g"
+      },
+      "priority": 20,
+      "flags": [
+        "SHOP | LOS | PROJECT | PASSABLE | PERMANENT | INTERESTING | EASY"
+      ],
+      "desc": [
+        "A quiet, reflective place of refuge, lined with shelves of",
+        " mystical tomes."
+      ],
+      "look-prefix": [
+        "the entrance to the"
+      ],
+      "look-in-preposition": [
+        "at"
+      ]
+    },
+    {
+      "code": "STORE_ALCHEMY",
+      "name": "Alchemy Shop",
+      "graphics": {
+        "glyph": "5",
+        "color": "b"
+      },
+      "priority": 20,
+      "flags": [
+        "SHOP | LOS | PROJECT | PASSABLE | PERMANENT | INTERESTING | EASY"
+      ],
+      "desc": [
+        "A dim, scented room where potions and scrolls are traded."
+      ],
+      "look-prefix": [
+        "the entrance to the"
+      ],
+      "look-in-preposition": [
+        "at"
+      ]
+    },
+    {
+      "code": "STORE_MAGIC",
+      "name": "Magic Shop",
+      "graphics": {
+        "glyph": "6",
+        "color": "r"
+      },
+      "priority": 20,
+      "flags": [
+        "SHOP | LOS | PROJECT | PASSABLE | PERMANENT | INTERESTING | EASY"
+      ],
+      "desc": [
+        "A shop for devices and adornments with magic trapped within."
+      ],
+      "look-prefix": [
+        "the entrance to the"
+      ],
+      "look-in-preposition": [
+        "at"
+      ]
+    },
+    {
+      "code": "STORE_BLACK",
+      "name": "Black Market",
+      "graphics": {
+        "glyph": "7",
+        "color": "D"
+      },
+      "priority": 20,
+      "flags": [
+        "SHOP | LOS | PROJECT | PASSABLE | PERMANENT | INTERESTING | EASY"
+      ],
+      "desc": [
+        "Watch your back and hold onto your purse as you enter this disreputable",
+        " haunt - and do not expect friendly service or good bargains."
+      ],
+      "look-prefix": [
+        "the entrance to the"
+      ],
+      "look-in-preposition": [
+        "at"
+      ]
+    },
+    {
+      "code": "HOME",
+      "name": "Home",
+      "graphics": {
+        "glyph": "8",
+        "color": "y"
+      },
+      "priority": 20,
+      "flags": [
+        "SHOP | LOS | PROJECT | PASSABLE | PERMANENT | INTERESTING | EASY"
+      ],
+      "desc": [
+        "Your safe piece of Middle Earth, and the only place you can store goods",
+        " apart from on your person."
+      ],
+      "look-prefix": [
+        "the entrance to the"
+      ],
+      "look-in-preposition": [
+        "at"
+      ]
+    },
+    {
+      "code": "SECRET",
+      "name": "secret door",
+      "graphics": {
+        "glyph": "#",
+        "color": "w"
+      },
+      "mimic": "GRANITE",
+      "priority": 10,
+      "flags": [
+        "WALL | ROCK | DOOR_ANY | GRANITE | TORCH"
+      ],
+      "digging": 5,
+      "desc": [
+        "A door that appears like a granite wall to untrained eyes."
+      ],
+      "confused-msg": [
+        "bashes into a wall"
+      ]
+    },
+    {
+      "code": "RUBBLE",
+      "name": "pile of rubble",
+      "graphics": {
+        "glyph": ":",
+        "color": "W"
+      },
+      "priority": 13,
+      "flags": [
+        "ROCK | NO_SCENT | NO_FLOW | INTERESTING | TORCH"
+      ],
+      "digging": 1,
+      "desc": [
+        "Ends LOS, stops missiles, bolts, and beams.  May dissolve or be tunnelled",
+        " to normal floor."
+      ],
+      "confused-msg": [
+        "bumps into some rocks"
+      ]
+    },
+    {
+      "code": "MAGMA",
+      "name": "magma vein",
+      "graphics": {
+        "glyph": "%",
+        "color": "D"
+      },
+      "priority": 12,
+      "flags": [
+        "WALL | ROCK | NO_SCENT | NO_FLOW | MAGMA | TORCH"
+      ],
+      "digging": 2,
+      "desc": [
+        "A seam of soft rock.  It can be removed by digging or magic, and passed",
+        " through by immaterial monsters.  It stops any spells, missiles or line of",
+        " sight."
+      ],
+      "confused-msg": [
+        "bashes into a wall"
+      ]
+    },
+    {
+      "code": "QUARTZ",
+      "name": "quartz vein",
+      "graphics": {
+        "glyph": "%",
+        "color": "s"
+      },
+      "priority": 11,
+      "flags": [
+        "WALL | ROCK | NO_SCENT | NO_FLOW | QUARTZ | TORCH"
+      ],
+      "digging": 3,
+      "desc": [
+        "A seam of hardish rock.  It can be removed by digging or magic, and passed",
+        " through by immaterial monsters.  It stops any spells, missiles or line of",
+        " sight."
+      ],
+      "confused-msg": [
+        "bashes into a wall"
+      ]
+    },
+    {
+      "code": "MAGMA_K",
+      "name": "magma vein with treasure",
+      "graphics": {
+        "glyph": "*",
+        "color": "o"
+      },
+      "priority": 19,
+      "flags": [
+        "WALL | ROCK | INTERESTING | NO_SCENT | NO_FLOW | GOLD | MAGMA"
+      ],
+      "digging": 2,
+      "desc": [
+        "A seam of soft rock.  It can be removed by digging or magic, and passed",
+        " through by immaterial monsters.  It stops any spells, missiles or line of",
+        " sight.  It contains visible treasure."
+      ],
+      "confused-msg": [
+        "bashes into a wall"
+      ]
+    },
+    {
+      "code": "QUARTZ_K",
+      "name": "quartz vein with treasure",
+      "graphics": {
+        "glyph": "*",
+        "color": "y"
+      },
+      "priority": 19,
+      "flags": [
+        "WALL | ROCK | INTERESTING | NO_SCENT | NO_FLOW | GOLD | QUARTZ"
+      ],
+      "digging": 3,
+      "desc": [
+        "A seam of hardish rock.  It can be removed by digging or magic, and passed",
+        " through by immaterial monsters.  It stops any spells, missiles or line of",
+        " sight.  It contains visible treasure."
+      ],
+      "confused-msg": [
+        "bashes into a wall"
+      ]
+    },
+    {
+      "code": "GRANITE",
+      "name": "granite wall",
+      "graphics": {
+        "glyph": "#",
+        "color": "W"
+      },
+      "priority": 10,
+      "flags": [
+        "WALL | ROCK | GRANITE | NO_SCENT | NO_FLOW | TORCH"
+      ],
+      "digging": 4,
+      "desc": [
+        "A seam of hard rock.  It can be removed by digging or magic, and passed",
+        " through by immaterial monsters.  It stops any spells, missiles or line of",
+        " sight."
+      ],
+      "confused-msg": [
+        "bashes into a wall"
+      ]
+    },
+    {
+      "code": "PERM",
+      "name": "permanent wall",
+      "graphics": {
+        "glyph": "#",
+        "color": "z"
+      },
+      "priority": 10,
+      "flags": [
+        "WALL | ROCK | PERMANENT | NO_SCENT | NO_FLOW"
+      ],
+      "desc": [
+        "You can dig through most walls but these are impenetrable.  The dungeon is",
+        " surrounded by these kinds of walls and some special rooms are made of them."
+      ],
+      "confused-msg": [
+        "bashes into a wall"
+      ]
+    },
+    {
+      "code": "LAVA",
+      "name": "lava",
+      "graphics": {
+        "glyph": "#",
+        "color": "r"
+      },
+      "priority": 10,
+      "flags": [
+        "LOS | PROJECT | FIERY | PASSABLE | NO_SCENT | BRIGHT"
+      ],
+      "desc": [
+        "A fiery pool of glowing lava.  Step in it at your peril!"
+      ],
+      "walk-msg": [
+        "The lava will scald you!  Really step in? "
+      ],
+      "run-msg": [
+        "Lava blocks your path.  Step into it? "
+      ],
+      "hurt-msg": [
+        "The lava burns you!"
+      ],
+      "die-msg": [
+        "burning to a cinder in lava"
+      ],
+      "look-prefix": [
+        "some"
+      ],
+      "resist-flag": [
+        "IM_FIRE"
+      ]
+    },
+    {
+      "code": "PASS_RUBBLE",
+      "name": "pile of passable rubble",
+      "graphics": {
+        "glyph": ":",
+        "color": "u"
+      },
+      "priority": 13,
+      "flags": [
+        "ROCK | PASSABLE | INTERESTING | TORCH"
+      ],
+      "digging": 1,
+      "desc": [
+        "Ends LOS, stops missiles, bolts, and beams, and reduces the radius of ball",
+        " spells.  May dissolve or be tunnelled to normal floor, and can be walked",
+        " through by the player and monsters."
+      ]
+    }
+  ]
+}

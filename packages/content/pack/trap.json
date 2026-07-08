@@ -1,0 +1,1483 @@
+{
+  "file": "trap",
+  "source": "lib/gamedata/trap.txt",
+  "records": [
+    {
+      "name": {
+        "name": "no trap",
+        "desc": "no trap"
+      },
+      "graphics": {
+        "glyph": " ",
+        "color": "w"
+      }
+    },
+    {
+      "name": {
+        "name": "glyph of warding",
+        "desc": "glyph of warding"
+      },
+      "graphics": {
+        "glyph": ";",
+        "color": "y"
+      },
+      "appear": {
+        "rarity": 0,
+        "mindepth": 0,
+        "maxnum": 0
+      },
+      "flags": [
+        "GLYPH | VISIBLE | FLOOR"
+      ],
+      "desc": [
+        "A magical rune which monsters cannot pass without difficulty."
+      ]
+    },
+    {
+      "name": {
+        "name": "decoy",
+        "desc": "decoy"
+      },
+      "graphics": {
+        "glyph": ";",
+        "color": "G"
+      },
+      "appear": {
+        "rarity": 0,
+        "mindepth": 0,
+        "maxnum": 0
+      },
+      "flags": [
+        "GLYPH | VISIBLE | FLOOR"
+      ],
+      "desc": [
+        "A magical decoy which sounds and looks like the player."
+      ]
+    },
+    {
+      "name": {
+        "name": "door lock",
+        "desc": "door lock"
+      },
+      "graphics": {
+        "glyph": " ",
+        "color": "w"
+      },
+      "appear": {
+        "rarity": 0,
+        "mindepth": 0,
+        "maxnum": 0
+      },
+      "flags": [
+        "LOCK | INVISIBLE"
+      ],
+      "desc": [
+        "A device which makes a closed door harder to open."
+      ]
+    },
+    {
+      "name": {
+        "name": "web",
+        "desc": "web"
+      },
+      "graphics": {
+        "glyph": "%",
+        "color": "y"
+      },
+      "appear": {
+        "rarity": 0,
+        "mindepth": 0,
+        "maxnum": 0
+      },
+      "flags": [
+        "WEB | VISIBLE"
+      ],
+      "desc": [
+        "A tangle of sticky spider webs."
+      ]
+    },
+    {
+      "name": {
+        "name": "trap door",
+        "desc": "trap door"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "w"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 2,
+        "maxnum": 0
+      },
+      "visibility": "2d10M50",
+      "flags": [
+        "TRAP | FLOOR | DOWN"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "2d8"
+        }
+      ],
+      "save": "FEATHER",
+      "desc": [
+        "It looks like floor, but step incautiously and you will fall through."
+      ],
+      "msg": [
+        "You fall through a trap door!"
+      ],
+      "msg-good": [
+        "You float gently down to the next level."
+      ]
+    },
+    {
+      "name": {
+        "name": "pit",
+        "desc": "pit"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "s"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 2,
+        "maxnum": 0
+      },
+      "visibility": "90",
+      "flags": [
+        "TRAP | FLOOR | PIT"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "2d6"
+        }
+      ],
+      "save": "FEATHER",
+      "desc": [
+        "A hole dug to snare the unwary."
+      ],
+      "msg": [
+        "You fall into a pit!"
+      ],
+      "msg-good": [
+        "You float gently to the bottom of the pit."
+      ]
+    },
+    {
+      "name": {
+        "name": "pit",
+        "desc": "spiked pit"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "s"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 2,
+        "maxnum": 0
+      },
+      "visibility": "80",
+      "flags": [
+        "TRAP | FLOOR | PIT"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "2d6"
+        }
+      ],
+      "effect-xtra": [
+        {
+          "eff": "DAMAGE",
+          "dice-xtra": "2d6"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "CUT",
+          "dice-xtra": "4d6"
+        }
+      ],
+      "save": "FEATHER",
+      "desc": [
+        "A hole dug to snare the unwary, with spikes."
+      ],
+      "msg": [
+        "You fall into a spiked pit!"
+      ],
+      "msg-good": [
+        "You float gently to the bottom of the pit, neatly avoiding the spikes."
+      ],
+      "msg-xtra": [
+        "You are impaled!"
+      ]
+    },
+    {
+      "name": {
+        "name": "pit",
+        "desc": "poison pit"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "s"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 2,
+        "maxnum": 0
+      },
+      "visibility": "70",
+      "flags": [
+        "TRAP | FLOOR | PIT"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "2d6"
+        }
+      ],
+      "effect-xtra": [
+        {
+          "eff": "TIMED_INC",
+          "type": "CUT",
+          "dice-xtra": "4d6"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "POISONED",
+          "dice-xtra": "8d6"
+        }
+      ],
+      "save": "FEATHER",
+      "desc": [
+        "A hole dug to snare the unwary, with poisoned spikes."
+      ],
+      "msg": [
+        "You fall into a spiked pit!"
+      ],
+      "msg-good": [
+        "You float gently to the bottom of the pit, neatly avoiding the spikes."
+      ],
+      "msg-xtra": [
+        "You are impaled on poisonous spikes!"
+      ]
+    },
+    {
+      "name": {
+        "name": "strange rune",
+        "desc": "rune of summon foe"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "B"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 3,
+        "maxnum": 0
+      },
+      "visibility": "0",
+      "flags": [
+        "TRAP | FLOOR | ONETIME | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "SUMMON",
+          "type": "MONSTER",
+          "radius": 0,
+          "other": 5,
+          "dice": "1"
+        }
+      ],
+      "desc": [
+        "A magical rune which calls a monster to attack you."
+      ],
+      "msg": [
+        "A new foe appears from nowhere!"
+      ]
+    },
+    {
+      "name": {
+        "name": "strange rune",
+        "desc": "rune of summoning"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "B"
+      },
+      "appear": {
+        "rarity": 2,
+        "mindepth": 3,
+        "maxnum": 0
+      },
+      "visibility": "0",
+      "flags": [
+        "TRAP | FLOOR | ONETIME | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "SUMMON",
+          "type": "ANY",
+          "dice": "2+1d3"
+        }
+      ],
+      "desc": [
+        "A magical rune which calls up monsters to attack you."
+      ],
+      "msg": [
+        "You are enveloped in a cloud of smoke!"
+      ]
+    },
+    {
+      "name": {
+        "name": "strange rune",
+        "desc": "rune of necromancy"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "B"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 20,
+        "maxnum": 0
+      },
+      "visibility": "0",
+      "flags": [
+        "TRAP | FLOOR | ONETIME | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "SUMMON",
+          "type": "UNDEAD",
+          "dice": "1d3M2"
+        }
+      ],
+      "desc": [
+        "A magical rune which calls the undead to attack you."
+      ],
+      "msg": [
+        "A sense of dread washes over you..."
+      ]
+    },
+    {
+      "name": {
+        "name": "strange rune",
+        "desc": "rune of dragonsong"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "B"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 20,
+        "maxnum": 0
+      },
+      "visibility": "0",
+      "flags": [
+        "TRAP | FLOOR | ONETIME | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "SUMMON",
+          "type": "DRAGON",
+          "dice": "1d3"
+        }
+      ],
+      "desc": [
+        "A magical rune which calls dragons to attack you."
+      ],
+      "msg": [
+        "You hear a dragon's call!"
+      ]
+    },
+    {
+      "name": {
+        "name": "strange rune",
+        "desc": "hellhole"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "B"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 20,
+        "maxnum": 0
+      },
+      "visibility": "0",
+      "flags": [
+        "TRAP | FLOOR | ONETIME | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "SUMMON",
+          "type": "DEMON",
+          "dice": "1+1d3"
+        }
+      ],
+      "desc": [
+        "A magical rune which calls demons to attack you."
+      ],
+      "msg": [
+        "Demons appear!"
+      ]
+    },
+    {
+      "name": {
+        "name": "strange rune",
+        "desc": "teleport rune"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "o"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 1,
+        "maxnum": 0
+      },
+      "visibility": "30+d30",
+      "flags": [
+        "TRAP | FLOOR | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "TELEPORT",
+          "dice": "M80"
+        }
+      ],
+      "desc": [
+        "A magical rune which teleports you to a random location."
+      ],
+      "msg": [
+        "You hit a teleport trap!"
+      ]
+    },
+    {
+      "name": {
+        "name": "discolored spot",
+        "desc": "fire trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "u"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 2,
+        "maxnum": 0
+      },
+      "visibility": "20",
+      "flags": [
+        "TRAP | FLOOR | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "SPOT",
+          "type": "FIRE",
+          "radius": 0,
+          "dice": "4d$S",
+          "expr": [
+            {
+              "name": "S",
+              "base": "DUNGEON_LEVEL",
+              "expr": "/ 2"
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "A strange coloured spot on the ground - beware its fiery attack."
+      ],
+      "msg": [
+        "You are enveloped in flames!"
+      ]
+    },
+    {
+      "name": {
+        "name": "discolored spot",
+        "desc": "acid trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "u"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 2,
+        "maxnum": 0
+      },
+      "visibility": "0",
+      "flags": [
+        "TRAP | FLOOR | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "SPOT",
+          "type": "ACID",
+          "radius": 0,
+          "dice": "4d$S",
+          "expr": [
+            {
+              "name": "S",
+              "base": "DUNGEON_LEVEL",
+              "expr": "/ 2"
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "A strange coloured spot on the ground - beware its acidic attack."
+      ],
+      "msg": [
+        "You are splashed with acid!"
+      ]
+    },
+    {
+      "name": {
+        "name": "dart trap",
+        "desc": "slow dart"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "r"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 2,
+        "maxnum": 0
+      },
+      "visibility": "M50",
+      "flags": [
+        "TRAP | FLOOR | SAVE_ARMOR"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "1d4"
+        },
+        {
+          "eff": "TIMED_INC_NO_RES",
+          "type": "SLOW",
+          "dice": "20+1d20"
+        }
+      ],
+      "desc": [
+        "A trap which shoots slowing darts."
+      ],
+      "msg-good": [
+        "A small dart barely misses you."
+      ],
+      "msg-bad": [
+        "A small dart hits you!"
+      ]
+    },
+    {
+      "name": {
+        "name": "dart trap",
+        "desc": "strength loss dart"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "r"
+      },
+      "appear": {
+        "rarity": 2,
+        "mindepth": 6,
+        "maxnum": 0
+      },
+      "visibility": "30",
+      "flags": [
+        "TRAP | FLOOR | SAVE_ARMOR"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "1d4"
+        },
+        {
+          "eff": "DRAIN_STAT",
+          "type": "STR"
+        }
+      ],
+      "desc": [
+        "A trap which shoots damaging darts."
+      ],
+      "msg-good": [
+        "A small dart barely misses you."
+      ],
+      "msg-bad": [
+        "A small dart hits you!"
+      ]
+    },
+    {
+      "name": {
+        "name": "dart trap",
+        "desc": "dexterity loss dart"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "r"
+      },
+      "appear": {
+        "rarity": 2,
+        "mindepth": 6,
+        "maxnum": 0
+      },
+      "visibility": "30",
+      "flags": [
+        "TRAP | FLOOR | SAVE_ARMOR"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "1d4"
+        },
+        {
+          "eff": "DRAIN_STAT",
+          "type": "DEX"
+        }
+      ],
+      "desc": [
+        "A trap which shoots damaging darts."
+      ],
+      "msg-good": [
+        "A small dart barely misses you."
+      ],
+      "msg-bad": [
+        "A small dart hits you!"
+      ]
+    },
+    {
+      "name": {
+        "name": "dart trap",
+        "desc": "constitution loss dart"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "r"
+      },
+      "appear": {
+        "rarity": 2,
+        "mindepth": 6,
+        "maxnum": 0
+      },
+      "visibility": "30",
+      "flags": [
+        "TRAP | FLOOR | SAVE_ARMOR"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "1d4"
+        },
+        {
+          "eff": "DRAIN_STAT",
+          "type": "CON"
+        }
+      ],
+      "desc": [
+        "A trap which shoots damaging darts."
+      ],
+      "msg-good": [
+        "A small dart barely misses you."
+      ],
+      "msg-bad": [
+        "A small dart hits you!"
+      ]
+    },
+    {
+      "name": {
+        "name": "gas trap",
+        "desc": "blinding gas trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "g"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 2,
+        "maxnum": 0
+      },
+      "visibility": "20+d5",
+      "flags": [
+        "TRAP | FLOOR"
+      ],
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "BLIND",
+          "dice": "25+1d50"
+        }
+      ],
+      "desc": [
+        "A trap that releases gas to blind you."
+      ],
+      "msg": [
+        "You are surrounded by a black gas!"
+      ]
+    },
+    {
+      "name": {
+        "name": "gas trap",
+        "desc": "confusion gas trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "g"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 1,
+        "maxnum": 0
+      },
+      "visibility": "20+d5",
+      "flags": [
+        "TRAP | FLOOR"
+      ],
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "CONFUSED",
+          "dice": "10+1d20"
+        }
+      ],
+      "desc": [
+        "A trap that releases gas to confuse you."
+      ],
+      "msg": [
+        "You are surrounded by a gas of scintillating colors!"
+      ]
+    },
+    {
+      "name": {
+        "name": "gas trap",
+        "desc": "poison gas trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "g"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 2,
+        "maxnum": 0
+      },
+      "visibility": "20+d5",
+      "flags": [
+        "TRAP | FLOOR"
+      ],
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "POISONED",
+          "dice": "10+1d20"
+        }
+      ],
+      "desc": [
+        "A trap that releases gas to poison you."
+      ],
+      "msg": [
+        "You are surrounded by a pungent green gas!"
+      ]
+    },
+    {
+      "name": {
+        "name": "gas trap",
+        "desc": "sleep gas trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "g"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 2,
+        "maxnum": 0
+      },
+      "visibility": "20+d5",
+      "flags": [
+        "TRAP | FLOOR"
+      ],
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "PARALYZED",
+          "dice": "5+1d10"
+        }
+      ],
+      "desc": [
+        "A trap that releases gas to put you to sleep."
+      ],
+      "msg": [
+        "You are surrounded by a strange white mist!"
+      ]
+    },
+    {
+      "name": {
+        "name": "alarm",
+        "desc": "aggravation trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "R"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 5,
+        "maxnum": 0
+      },
+      "visibility": "M50",
+      "flags": [
+        "TRAP | FLOOR | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "WAKE"
+        },
+        {
+          "eff": "PROJECT_LOS",
+          "type": "MON_SPEED",
+          "dice": "25"
+        }
+      ],
+      "desc": [
+        "A trap that wakes nearby monsters and impels them toward you."
+      ],
+      "msg": [
+        "A high-pitched whistle blares through the dungeon!"
+      ]
+    },
+    {
+      "name": {
+        "name": "alarm",
+        "desc": "siren"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "R"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 1,
+        "maxnum": 0
+      },
+      "visibility": "60+d10",
+      "flags": [
+        "TRAP | FLOOR | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "WAKE"
+        }
+      ],
+      "desc": [
+        "A trap that wakes nearby monsters."
+      ],
+      "msg": [
+        "A horn blast sounds!"
+      ]
+    },
+    {
+      "name": {
+        "name": "explosion",
+        "desc": "mine trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "M"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 15,
+        "maxnum": 0
+      },
+      "visibility": "10+d5",
+      "flags": [
+        "TRAP | FLOOR | ONETIME"
+      ],
+      "effect": [
+        {
+          "eff": "SPOT",
+          "type": "SHARD",
+          "radius": 2,
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "DUNGEON_LEVEL",
+              "expr": "* 2"
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "A trap that blows up the floor."
+      ],
+      "msg": [
+        "The floor explodes around you!"
+      ]
+    },
+    {
+      "name": {
+        "name": "explosion",
+        "desc": "blast trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "M"
+      },
+      "appear": {
+        "rarity": 2,
+        "mindepth": 25,
+        "maxnum": 0
+      },
+      "visibility": "0",
+      "flags": [
+        "TRAP | FLOOR | ONETIME"
+      ],
+      "effect": [
+        {
+          "eff": "SPOT",
+          "type": "LIGHT",
+          "radius": 1,
+          "dice": "2d6"
+        },
+        {
+          "eff": "SPOT",
+          "type": "SOUND",
+          "radius": 2,
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "DUNGEON_LEVEL",
+              "expr": "/ 2"
+            }
+          ]
+        },
+        {
+          "eff": "SPOT",
+          "type": "FIRE",
+          "radius": 2,
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "DUNGEON_LEVEL",
+              "expr": "+ 0"
+            }
+          ]
+        },
+        {
+          "eff": "SPOT",
+          "type": "FORCE",
+          "radius": 2,
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "DUNGEON_LEVEL",
+              "expr": "+ 0"
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "A trap that creates an explosion."
+      ],
+      "msg": [
+        "The air seems to catch fire!"
+      ]
+    },
+    {
+      "name": {
+        "name": "mind blast trap",
+        "desc": "mind blasting trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "G"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 20,
+        "maxnum": 0
+      },
+      "visibility": "30+d10",
+      "flags": [
+        "TRAP | FLOOR | MAGICAL | SAVE_THROW"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "8d$S",
+          "expr": [
+            {
+              "name": "S",
+              "base": "DUNGEON_LEVEL",
+              "expr": "/ 10"
+            }
+          ]
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "CONFUSED",
+          "dice": "3+1d4"
+        }
+      ],
+      "desc": [
+        "A trap that blasts your senses."
+      ],
+      "msg": [
+        "You feel pressure on your mind."
+      ],
+      "msg-good": [
+        "You shake your head and are back to normal."
+      ],
+      "msg-bad": [
+        "Your mind is blasted by psionic energy!"
+      ]
+    },
+    {
+      "name": {
+        "name": "mind blast trap",
+        "desc": "brain smashing trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "G"
+      },
+      "appear": {
+        "rarity": 2,
+        "mindepth": 40,
+        "maxnum": 0
+      },
+      "visibility": "30+d10",
+      "flags": [
+        "TRAP | FLOOR | MAGICAL | SAVE_THROW"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "10d$S",
+          "expr": [
+            {
+              "name": "S",
+              "base": "DUNGEON_LEVEL",
+              "expr": "/ 5"
+            }
+          ]
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "SLOW",
+          "dice": "3+1d4"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "CONFUSED",
+          "dice": "3+1d4"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "PARALYZED",
+          "dice": "3+1d4"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "BLIND",
+          "dice": "7+1d8"
+        }
+      ],
+      "desc": [
+        "A trap that blasts your senses."
+      ],
+      "msg": [
+        "You feel pressure on your mind."
+      ],
+      "msg-good": [
+        "You shake your head and are back to normal."
+      ],
+      "msg-bad": [
+        "Your mind is blasted by psionic energy!"
+      ]
+    },
+    {
+      "name": {
+        "name": "ancient mechanism",
+        "desc": "rock fall trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "U"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 4,
+        "maxnum": 0
+      },
+      "visibility": "40+d5",
+      "flags": [
+        "TRAP | FLOOR | ONETIME"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "$Dd5",
+          "expr": [
+            {
+              "name": "D",
+              "base": "DUNGEON_LEVEL",
+              "expr": "/ 10 + 1"
+            }
+          ]
+        },
+        {
+          "eff": "TIMED_INC_NO_RES",
+          "type": "STUN",
+          "dice": "2d20"
+        },
+        {
+          "eff": "RUBBLE"
+        }
+      ],
+      "desc": [
+        "A trap that drops a boulder on you."
+      ],
+      "msg": [
+        "A rock falls on your head!"
+      ]
+    },
+    {
+      "name": {
+        "name": "ancient mechanism",
+        "desc": "earthquake trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "U"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 30,
+        "maxnum": 0
+      },
+      "visibility": "30+d5",
+      "flags": [
+        "TRAP | FLOOR"
+      ],
+      "effect": [
+        {
+          "eff": "DAMAGE",
+          "dice": "$Dd5",
+          "expr": [
+            {
+              "name": "D",
+              "base": "DUNGEON_LEVEL",
+              "expr": "/ 10 + 1"
+            }
+          ]
+        },
+        {
+          "eff": "EARTHQUAKE",
+          "type": "NONE",
+          "radius": 5
+        }
+      ],
+      "desc": [
+        "A trap that causes an earthquake."
+      ],
+      "msg": [
+        "The ground shakes."
+      ]
+    },
+    {
+      "name": {
+        "name": "ancient mechanism",
+        "desc": "block fall trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "U"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 4,
+        "maxnum": 0
+      },
+      "visibility": "40+d5",
+      "flags": [
+        "TRAP | FLOOR | ONETIME | DELAY"
+      ],
+      "effect": [
+        {
+          "eff": "GRANITE"
+        }
+      ],
+      "desc": [
+        "A pressure plate that drops a stone block behind you."
+      ],
+      "msg": [
+        "A section of the ceiling falls in behind you!"
+      ]
+    },
+    {
+      "name": {
+        "name": "ancient mechanism",
+        "desc": "area blast trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "U"
+      },
+      "appear": {
+        "rarity": 2,
+        "mindepth": 40,
+        "maxnum": 0
+      },
+      "visibility": "20+d5",
+      "flags": [
+        "TRAP | FLOOR | ONETIME"
+      ],
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "KILL_WALL",
+          "radius": 2,
+          "dice": "20"
+        },
+        {
+          "eff": "BALL",
+          "type": "FORCE",
+          "radius": 2,
+          "dice": "$B",
+          "expr": [
+            {
+              "name": "B",
+              "base": "DUNGEON_LEVEL",
+              "expr": "+ 0"
+            }
+          ]
+        },
+        {
+          "eff": "RUBBLE"
+        }
+      ],
+      "desc": [
+        "A trap that clears the surrounding area."
+      ],
+      "msg": [
+        "The trap explodes, blasting the area clear!"
+      ]
+    },
+    {
+      "name": {
+        "name": "trap",
+        "desc": "blinding flash trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "light yellow"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 5,
+        "maxnum": 0
+      },
+      "visibility": "30+d5",
+      "flags": [
+        "TRAP | FLOOR | MAGICAL | ONETIME"
+      ],
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "LIGHT",
+          "radius": 4,
+          "dice": "$Dd8",
+          "expr": [
+            {
+              "name": "D",
+              "base": "DUNGEON_LEVEL",
+              "expr": "/ 10 + 2"
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "A trap that creates a ball of light."
+      ],
+      "msg": [
+        "A blazing light descends on you!"
+      ]
+    },
+    {
+      "name": {
+        "name": "trap",
+        "desc": "blinding trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "light slate"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 5,
+        "maxnum": 0
+      },
+      "visibility": "20+d5",
+      "flags": [
+        "TRAP | FLOOR | MAGICAL | ONETIME"
+      ],
+      "effect": [
+        {
+          "eff": "BALL",
+          "type": "DARK",
+          "radius": 4,
+          "dice": "$Dd8",
+          "expr": [
+            {
+              "name": "D",
+              "base": "DUNGEON_LEVEL",
+              "expr": "/ 10 + 2"
+            }
+          ]
+        },
+        {
+          "eff": "DRAIN_LIGHT",
+          "dice": "100+1d100"
+        }
+      ],
+      "desc": [
+        "A trap that envelops you in darkness."
+      ],
+      "msg": [
+        "Everything starts to fade..."
+      ]
+    },
+    {
+      "name": {
+        "name": "trap",
+        "desc": "mana drain trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "light purple"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 5,
+        "maxnum": 0
+      },
+      "visibility": "50+d10",
+      "flags": [
+        "TRAP | FLOOR | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "DRAIN_MANA",
+          "dice": "1d$D",
+          "expr": [
+            {
+              "name": "D",
+              "base": "DUNGEON_LEVEL",
+              "expr": "/ 2 + 1"
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "A trap that drains your mana."
+      ],
+      "msg": [
+        "You feel your energies sap away."
+      ]
+    },
+    {
+      "name": {
+        "name": "trap",
+        "desc": "knife trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "yellow"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 20,
+        "maxnum": 0
+      },
+      "visibility": "20+d5",
+      "flags": [
+        "TRAP | FLOOR"
+      ],
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "CUT",
+          "dice": "150"
+        },
+        {
+          "eff": "DAMAGE",
+          "dice": "$D",
+          "expr": [
+            {
+              "name": "D",
+              "base": "DUNGEON_LEVEL",
+              "expr": "/ 2"
+            }
+          ]
+        }
+      ],
+      "desc": [
+        "A trap designed to bleed you to death."
+      ],
+      "msg": [
+        "Blades whirl around you, slicing your skin!"
+      ]
+    },
+    {
+      "name": {
+        "name": "trap",
+        "desc": "petrifying trap"
+      },
+      "graphics": {
+        "glyph": "^",
+        "color": "blue"
+      },
+      "appear": {
+        "rarity": 1,
+        "mindepth": 5,
+        "maxnum": 0
+      },
+      "visibility": "20+d5",
+      "flags": [
+        "TRAP | FLOOR | MAGICAL"
+      ],
+      "effect": [
+        {
+          "eff": "TIMED_INC",
+          "type": "STONESKIN",
+          "dice": "20+1d20"
+        },
+        {
+          "eff": "TIMED_INC",
+          "type": "STUN",
+          "dice": "20+1d20"
+        }
+      ],
+      "desc": [
+        "A trap that stuns you and gives you stoneskin."
+      ],
+      "msg": [
+        "You feel yourself turning to stone!"
+      ]
+    }
+  ]
+}
