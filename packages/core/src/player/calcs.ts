@@ -6,26 +6,40 @@
  * (0..STAT_RANGE-1). Each has exactly STAT_RANGE (38) entries. blows_table is
  * the 12x12 blow-energy table; player_exp is the experience needed per level.
  *
- * This module also ports the non-equipment portion of calc_bonuses skill
- * computation and the level-1 hitpoint math. Equipment-, shape- and
- * class-special-dependent adjustments are DEFERRED (see the DEFERRED list
- * below and parity/ledger/player-calcs.yaml):
- *   - object modifier contributions to skills (STEALTH/SEARCH/DIGGING/to-hit)
- *   - shape->skills / shape->modifiers additions
- *   - weapon/launcher weight to-hit penalties and heavy-wield handling
- *   - class-special skill scaling (rogue/ranger device/disarm, throwing, etc.)
- *   - to_a/to_d/to_h, num_blows/num_shots, mana (calc_mana), light, speed
+ * This module also ports the innate (race/class/stat/level) portion of
+ * calc_bonuses as calcBonuses, calc_blows as the pure calcBlows, plus
+ * player_flags (player.c), adjust_skill_scale and weight_limit, and the
+ * level-1 hitpoint math. Equipment-, timed- and shape-dependent
+ * contributions are DEFERRED (see the notes on calcBonuses and
+ * parity/ledger/player-calcs-bonuses.yaml):
+ *   - the equipment analysis loop (stat_add, ac/to_a/to_h/to_d from gear,
+ *     object modifiers, curses, element info from gear)
+ *   - timed effects (food, stun, bless, hero, shero, fast/slow, etc.)
+ *   - non-normal shapechanges (calc_shapechange)
+ *   - launcher analysis (num_shots/ammo_mult/ammo_tval/heavy_shoot) and the
+ *     wielded-weapon analysis (heavy_wield, bless_wield, digging bonus)
+ *   - calc_mana / calc_light
  */
 
 import {
+  OF_SIZE,
+  PF_SIZE,
   PY_MAX_LEVEL,
   SKILL,
   SKILL_MAX,
   STAT_MAX,
   STAT_RANGE,
 } from "./types";
-import { STAT } from "../generated";
-import type { PlayerClass, PlayerRace } from "./types";
+import { ELEM, OF, PF, STAT } from "../generated";
+import { FlagSet } from "../bitflag";
+import type {
+  PlayerClass,
+  PlayerElementInfo,
+  PlayerRace,
+} from "./types";
+import type { Player } from "./player";
+import type { PlayerCombatState } from "../combat/melee";
+import type { DefenderState } from "../combat/mon-melee";
 
 /* ------------------------------------------------------------------ */
 /* Stat adjustment tables (player-calcs.c), each STAT_RANGE entries    */
@@ -262,26 +276,26 @@ export function calcHitpoints(
 }
 
 /**
- * The non-equipment portion of calc_bonuses skill computation:
- *   skills[i] = r_skills[i] + c_skills[i]
- *   DEVICE  += adj_int_dev[stat_ind[INT]]
- *   SAVE    += adj_wis_sav[stat_ind[WIS]]
- *   DIGGING += adj_str_dig[stat_ind[STR]]
- *   skills[i] += x_skills[i] * lev / 10
- * then DIGGING is floored at 1 and STEALTH clamped to [0, 30].
- *
- * Equipment/shape/class-special adjustments are DEFERRED (see module header).
+ * The "Modify skills" tail of calc_bonuses (player-calcs.c:2239-2250),
+ * applied in the exact upstream statement order:
+ *   DISARM_PHYS  += adj_dex_dis[stat_ind[DEX]]   (2240)
+ *   DISARM_MAGIC += adj_int_dis[stat_ind[INT]]   (2241)
+ *   DEVICE       += adj_int_dev[stat_ind[INT]]   (2242)
+ *   SAVE         += adj_wis_sav[stat_ind[WIS]]   (2243)
+ *   DIGGING      += adj_str_dig[stat_ind[STR]]   (2244)
+ *   skills[i]    += x_skills[i] * lev / 10       (2245-2246)
+ * then DIGGING is floored at 1 and STEALTH clamped to [0, 30] (2248-2250).
  */
-export function calcSkills(
-  race: PlayerRace,
+function applySkillStatAndLevel(
+  skills: number[],
   cls: PlayerClass,
   lev: number,
   statInd: readonly number[],
-): number[] {
-  const skills = new Array<number>(SKILL_MAX).fill(0);
-  for (let i = 0; i < SKILL_MAX; i++) {
-    skills[i] = (race.skills[i] ?? 0) + (cls.skills[i] ?? 0);
-  }
+): void {
+  skills[SKILL.DISARM_PHYS] =
+    (skills[SKILL.DISARM_PHYS] ?? 0) + at(adj_dex_dis, statInd[STAT.DEX] ?? 0);
+  skills[SKILL.DISARM_MAGIC] =
+    (skills[SKILL.DISARM_MAGIC] ?? 0) + at(adj_int_dis, statInd[STAT.INT] ?? 0);
   skills[SKILL.DEVICE] =
     (skills[SKILL.DEVICE] ?? 0) + at(adj_int_dev, statInd[STAT.INT] ?? 0);
   skills[SKILL.SAVE] =
@@ -294,7 +308,430 @@ export function calcSkills(
   if ((skills[SKILL.DIGGING] ?? 0) < 1) skills[SKILL.DIGGING] = 1;
   if ((skills[SKILL.STEALTH] ?? 0) > 30) skills[SKILL.STEALTH] = 30;
   if ((skills[SKILL.STEALTH] ?? 0) < 0) skills[SKILL.STEALTH] = 0;
+}
+
+/**
+ * The non-equipment portion of calc_bonuses skill computation: base
+ * skills[i] = r_skills[i] + c_skills[i] (player-calcs.c:1904-1906) followed
+ * by the stat and level adjustments (2239-2250, see applySkillStatAndLevel).
+ * For a player with no equipment, no timed effects and the normal shape this
+ * equals calcBonuses(player).skills.
+ */
+export function calcSkills(
+  race: PlayerRace,
+  cls: PlayerClass,
+  lev: number,
+  statInd: readonly number[],
+): number[] {
+  const skills = new Array<number>(SKILL_MAX).fill(0);
+  for (let i = 0; i < SKILL_MAX; i++) {
+    skills[i] = (race.skills[i] ?? 0) + (cls.skills[i] ?? 0);
+  }
+  applySkillStatAndLevel(skills, cls, lev, statInd);
   return skills;
+}
+
+/* ------------------------------------------------------------------ */
+/* Player state (calc_bonuses / calc_blows)                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * struct player_state (player.h:401-438): all the variable state that
+ * changes when equipment goes on or off. Field-for-field port; `hold` is
+ * additionally kept (upstream computes it as a local at player-calcs.c:2251)
+ * because the deferred launcher/weapon weight analysis will need it.
+ */
+export interface PlayerState {
+  /** stat_add[STAT_MAX]: equipment stat bonuses (equipment DEFERRED: 0). */
+  statAdd: number[];
+  /** stat_ind[STAT_MAX]: indices into the adj_* stat tables. */
+  statInd: number[];
+  /** stat_use[STAT_MAX]: current modified stats. */
+  statUse: number[];
+  /** stat_top[STAT_MAX]: maximal modified stats. */
+  statTop: number[];
+  /** skills[SKILL_MAX], indexed by SKILL. */
+  skills: number[];
+  /** Current speed (110 = normal). */
+  speed: number;
+  /** Number of blows times 100. */
+  numBlows: number;
+  /** Number of shots times 10 (launcher DEFERRED: 0). */
+  numShots: number;
+  /** Number of extra movement actions. */
+  numMoves: number;
+  /** Ammo multiplier (launcher DEFERRED: 0). */
+  ammoMult: number;
+  /** Ammo variety, as an upstream tval number (launcher DEFERRED: 0). */
+  ammoTval: number;
+  /** Base ac (armour DEFERRED: 0). */
+  ac: number;
+  /** Damage reduction. */
+  damRed: number;
+  /** Percentage damage reduction. */
+  percDamRed: number;
+  /** Bonus to ac. */
+  toA: number;
+  /** Bonus to hit. */
+  toH: number;
+  /** Bonus to dam. */
+  toD: number;
+  /** Infravision range. */
+  seeInfra: number;
+  /** Radius of light (calc_light DEFERRED: 0). */
+  curLight: number;
+  /** Heavy weapon (weapon analysis DEFERRED: false). */
+  heavyWield: boolean;
+  /** Heavy shooter (launcher analysis DEFERRED: false). */
+  heavyShoot: boolean;
+  /** Blessed (or blunt) weapon (weapon analysis DEFERRED: false). */
+  blessWield: boolean;
+  /** Mana draining armour (calc_mana DEFERRED: false). */
+  cumberArmor: boolean;
+  /** Status flags from race and items (OF_*). */
+  flags: FlagSet;
+  /** Player intrinsic flags (PF_*). */
+  pflags: FlagSet;
+  /** Resists from race and items, length ELEM_MAX. */
+  elInfo: PlayerElementInfo[];
+  /** adj_str_hold[stat_ind[STR]] (local `hold` at player-calcs.c:2251). */
+  hold: number;
+}
+
+/**
+ * player_flags (player.c:290-300): the player's innate object flags -- racial
+ * flags unioned with class flags, plus OF_PROT_FEAR for PF_BRAVERY_30
+ * classes at level 30+. Returns a fresh OF-sized flag set (upstream fills a
+ * caller buffer).
+ */
+export function playerFlags(player: Player): FlagSet {
+  const f = new FlagSet(OF_SIZE);
+  f.copy(player.race.flags);
+  f.union(player.cls.flags);
+  if (
+    (player.race.pflags.has(PF.BRAVERY_30) ||
+      player.cls.pflags.has(PF.BRAVERY_30)) &&
+    player.lev >= 30
+  ) {
+    f.on(OF.PROT_FEAR);
+  }
+  return f;
+}
+
+/**
+ * adjust_skill_scale (player-calcs.c:1781-1792): adjust a value by a
+ * relative factor of its absolute value, mimicking value * (den + num) / den
+ * for positive values (negative num rounds the adjustment up). Returns the
+ * adjusted value instead of mutating through a pointer.
+ */
+export function adjustSkillScale(
+  v: number,
+  num: number,
+  den: number,
+  minv: number,
+): number {
+  if (num >= 0) {
+    return v + Math.trunc((Math.max(minv, Math.abs(v)) * num) / den);
+  }
+  /* To mimic (value * (den + num)) / den for positive value, round up. */
+  return v - Math.trunc((Math.max(minv, Math.abs(v)) * -num + den - 1) / den);
+}
+
+/**
+ * weight_limit (player-calcs.c:1741-1750): the carrying capacity in tenth
+ * pounds, based only on strength.
+ */
+export function weightLimit(state: PlayerState): number {
+  return at(adj_str_wgt, state.statInd[STAT.STR] ?? 0) * 100;
+}
+
+/**
+ * calc_blows (player-calcs.c:1703-1735): the blows a player would get with a
+ * weapon of the given weight, as a pure function of the class blow
+ * parameters and the STR/DEX stat indices (state->stat_ind upstream).
+ *
+ * \param cls supplies min_weight, att_multiply and max_attacks.
+ * \param weaponWeight is object_weight_one(obj) in tenth pounds, or null for
+ * no weapon (upstream passes obj == NULL and uses weight 0, so the class
+ * min_weight becomes the divisor).
+ * \param strInd / dexInd are stat_ind[STAT_STR] / stat_ind[STAT_DEX].
+ * \param extraBlows is the +blows total from gear and state (innately 0).
+ * \param percentDamage is OPT(p, birth_percent_damage): O-combat requires
+ * two blows minimum instead of one.
+ * \returns 100x the number of blows.
+ */
+export function calcBlows(
+  cls: Pick<PlayerClass, "minWeight" | "attMultiply" | "maxAttacks">,
+  weaponWeight: number | null,
+  strInd: number,
+  dexInd: number,
+  extraBlows = 0,
+  percentDamage = false,
+): number {
+  const weight = weaponWeight === null ? 0 : weaponWeight;
+  const minWeight = cls.minWeight;
+
+  /* Enforce a minimum "weight" (tenth pounds) (1715). */
+  const div = weight < minWeight ? minWeight : weight;
+
+  /* Get the strength vs weight (1717-1722). */
+  let strIndex = Math.trunc((at(adj_str_blow, strInd) * cls.attMultiply) / div);
+  if (strIndex > 11) strIndex = 11;
+
+  /* Index by dexterity (1724-1725). */
+  const dexIndex = Math.min(at(adj_dex_blow, dexInd), 11);
+
+  /* Use the blows table to get energy per blow (1727-1730). */
+  const blowEnergy = blows_table[strIndex]?.[dexIndex];
+  if (blowEnergy === undefined) {
+    throw new Error(`player: blows_table index out of range: ${strIndex},${dexIndex}`);
+  }
+  const blows = Math.min(
+    Math.trunc(10000 / blowEnergy),
+    100 * cls.maxAttacks,
+  );
+
+  /* Require at least one blow, two for O-combat (1732-1734). */
+  return Math.max(blows + 100 * extraBlows, percentDamage ? 200 : 100);
+}
+
+/** Options for calcBonuses covering upstream globals. */
+export interface CalcBonusesOptions {
+  /**
+   * character_dungeon (upstream global): true once the character is in play
+   * on a generated level. Gates the PF_UNLIGHT / PF_EVIL element-info
+   * adjustments (player-calcs.c:2043-2052). Defaults to false (the
+   * freshly-born state).
+   */
+  characterDungeon?: boolean;
+}
+
+/**
+ * calc_bonuses (player-calcs.c:1877-2331), innate portion: derives the
+ * player's state from race/class intrinsics, stats and level. The player is
+ * treated as UNARMED and UNARMORED with no timed effects beyond a "Fed"
+ * food level -- the faithful just-born state (there is no equipment or
+ * timed-effect model in the port yet).
+ *
+ * Ported statement-for-statement in upstream order; each block cites its
+ * lines. DEFERRED blocks (see parity/ledger/player-calcs-bonuses.yaml), all
+ * of which are no-ops for the innate state:
+ * - equipment analysis loop (1924-2025): no equipment exists; stat_add, ac,
+ *   gear to_a/to_h/to_d, object modifiers and curses stay 0
+ * - calc_shapechange (2030-2032): the "normal" shape adds all zeros, so
+ *   skipping it is behavior-identical; non-normal shapes are deferred
+ * - calc_light (2040-2041): needs equipment; cur_light stays 0
+ * - food effects (2094-2132): a just-born player is in the "Fed" grade, for
+ *   which upstream applies no adjustment; the timed-grade model is deferred
+ * - timed effects (2134-2213): all timers except FOOD are 0 at birth
+ * - launcher analysis (2254-2288) and weapon analysis (2291-2315): no
+ *   equipment; the unarmed branch (2316-2319) IS ported
+ * - calc_mana (2322): deferred; the PF_NO_MANA check (2323-2325) is ported
+ *   and reads p->msp, which stays at its birth value of 0 until calc_mana
+ *   lands
+ * - the known_only object-knowledge variant and the !update hypothetical
+ *   blows index shift (1891-1893, 2077-2088): birth-UI only
+ */
+export function calcBonuses(
+  player: Player,
+  options: CalcBonusesOptions = {},
+): PlayerState {
+  const race = player.race;
+  const cls = player.cls;
+  const elemCount = race.elInfo.length;
+  const extraBlows = 0; /* extra_blows/shots/might/moves: gear/shape/timed */
+
+  /* Reset (1896) and set various defaults (1898-1900). */
+  const state: PlayerState = {
+    statAdd: new Array<number>(STAT_MAX).fill(0),
+    statInd: new Array<number>(STAT_MAX).fill(0),
+    statUse: new Array<number>(STAT_MAX).fill(0),
+    statTop: new Array<number>(STAT_MAX).fill(0),
+    skills: new Array<number>(SKILL_MAX).fill(0),
+    speed: 110,
+    numBlows: 100,
+    numShots: 0,
+    numMoves: 0,
+    ammoMult: 0,
+    ammoTval: 0,
+    ac: 0,
+    damRed: 0,
+    percDamRed: 0,
+    toA: 0,
+    toH: 0,
+    toD: 0,
+    seeInfra: 0,
+    curLight: 0,
+    heavyWield: false,
+    heavyShoot: false,
+    blessWield: false,
+    cumberArmor: false,
+    flags: new FlagSet(OF_SIZE),
+    pflags: new FlagSet(PF_SIZE),
+    elInfo: [],
+    hold: 0,
+  };
+
+  /* Extract race/class info (1902-1914). */
+  state.seeInfra = race.infravision;
+  for (let i = 0; i < SKILL_MAX; i++) {
+    state.skills[i] = (race.skills[i] ?? 0) + (cls.skills[i] ?? 0);
+  }
+  const vuln = new Array<boolean>(elemCount).fill(false);
+  for (let i = 0; i < elemCount; i++) {
+    const raceRes = race.elInfo[i]?.resLevel ?? 0;
+    if (raceRes === -1) {
+      vuln[i] = true;
+      state.elInfo.push({ resLevel: 0 });
+    } else {
+      state.elInfo.push({ resLevel: raceRes });
+    }
+  }
+
+  /* Base pflags (1916-1919). */
+  state.pflags.wipe();
+  state.pflags.copy(race.pflags);
+  state.pflags.union(cls.pflags);
+
+  /* Extract the player flags (1921-1922; player.c:290-300). */
+  const collectF = playerFlags(player);
+
+  /* Analyze equipment (1924-2025): DEFERRED, the player is unarmed and
+     unarmored; stat_add/ac/gear bonuses stay 0. */
+
+  /* Apply the collected flags (2027-2028). */
+  state.flags.union(collectF);
+
+  /* Add shapechange info (2030-2032): the normal shape is all zeros;
+     non-normal shapes DEFERRED. */
+
+  /* Now deal with vulnerabilities (2034-2038). */
+  for (let i = 0; i < elemCount; i++) {
+    const el = state.elInfo[i] as PlayerElementInfo;
+    if (vuln[i] && el.resLevel < 3) el.resLevel--;
+  }
+
+  /* Calculate light (2040-2041): calc_light DEFERRED (equipment). */
+
+  /* Unlight (2043-2046). */
+  const characterDungeon = options.characterDungeon ?? false;
+  if (state.pflags.has(PF.UNLIGHT) && characterDungeon) {
+    const el = state.elInfo[ELEM.DARK];
+    if (el) el.resLevel = 1;
+  }
+
+  /* Evil (2048-2052). */
+  if (state.pflags.has(PF.EVIL) && characterDungeon) {
+    const nether = state.elInfo[ELEM.NETHER];
+    if (nether) nether.resLevel = 1;
+    const holy = state.elInfo[ELEM.HOLY_ORB];
+    if (holy) holy.resLevel = -1;
+  }
+
+  /* Calculate the various stat values (2054-2092). */
+  for (let i = 0; i < STAT_MAX; i++) {
+    let add = state.statAdd[i] ?? 0;
+    add += (race.statAdj[i] ?? 0) + (cls.statAdj[i] ?? 0);
+    state.statTop[i] = modifyStatValue(player.statMax[i] ?? 0, add);
+    const use = modifyStatValue(player.statCur[i] ?? 0, add);
+    state.statUse[i] = use;
+    /* The !update hypothetical-blows index shift (2077-2088) is a birth-UI
+       hack and is not ported; this is the update=true path. */
+    state.statInd[i] = statUseToIndex(use);
+  }
+
+  /* Effects of food outside the "Fed" range (2094-2132): DEFERRED (timed
+     grades); a just-born player is Fed, for which upstream is a no-op. */
+
+  /* Other timed effects (2134-2213): DEFERRED (all timers 0 at birth). */
+
+  /* Analyze flags - check for fear (2215-2220). Innate flags can in
+     principle carry OF_AFRAID (mods), so the check is ported. */
+  if (state.flags.has(OF.AFRAID)) {
+    state.toH -= 20;
+    state.toA += 8;
+    state.skills[SKILL.DEVICE] = adjustSkillScale(
+      state.skills[SKILL.DEVICE] ?? 0,
+      -1,
+      20,
+      0,
+    );
+  }
+
+  /* Analyze weight (2222-2230). */
+  const j = player.upkeep.totalWeight;
+  const limit = weightLimit(state);
+  if (j > Math.trunc(limit / 2)) {
+    state.speed -=
+      Math.trunc((j - Math.trunc(limit / 2)) / Math.trunc(limit / 10));
+  }
+  if (state.speed < 0) state.speed = 0;
+  if (state.speed > 199) state.speed = 199;
+
+  /* Apply modifier bonuses (2232-2236). */
+  state.toA += at(adj_dex_ta, state.statInd[STAT.DEX] ?? 0);
+  state.toD += at(adj_str_td, state.statInd[STAT.STR] ?? 0);
+  state.toH += at(adj_dex_th, state.statInd[STAT.DEX] ?? 0);
+  state.toH += at(adj_str_th, state.statInd[STAT.STR] ?? 0);
+
+  /* Modify skills (2239-2250). */
+  applySkillStatAndLevel(state.skills, cls, player.lev, state.statInd);
+  state.hold = at(adj_str_hold, state.statInd[STAT.STR] ?? 0);
+
+  /* Analyze launcher (2254-2288): DEFERRED (no equipment); heavy_shoot
+     stays false, num_shots/ammo_tval/ammo_mult stay 0. */
+
+  /* Analyze weapon (2291-2319): no weapon, so the unarmed branch
+     (2316-2319) applies. heavy_wield/bless_wield stay false. */
+  state.numBlows = calcBlows(
+    cls,
+    null,
+    state.statInd[STAT.STR] ?? 0,
+    state.statInd[STAT.DEX] ?? 0,
+    extraBlows,
+  );
+
+  /* Mana (2321-2325): calc_mana DEFERRED. The PF_NO_MANA check reads
+     p->msp, which is 0 until calc_mana is ported (correct for warriors;
+     see the ledger for the caster caveat). */
+  if (!player.msp) {
+    state.pflags.on(PF.NO_MANA);
+  }
+
+  /* Movement speed (2327-2328): num_moves = extra_moves (0 innately). */
+  state.numMoves = 0;
+
+  return state;
+}
+
+/* ------------------------------------------------------------------ */
+/* Adapters for the combat and turn-loop consumers                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The player_state fields player-attack.c reads as p->state, shaped as
+ * combat/melee.ts PlayerCombatState. The skills array is shared, not
+ * copied: recompute the state rather than mutating it.
+ */
+export function toCombatState(state: PlayerState): PlayerCombatState {
+  return {
+    toH: state.toH,
+    toD: state.toD,
+    ac: state.ac,
+    toA: state.toA,
+    skills: state.skills,
+    numBlows: state.numBlows,
+    ammoMult: state.ammoMult,
+    blessWield: state.blessWield,
+  };
+}
+
+/**
+ * The player_state fields mon-attack.c reads (p->state.ac + p->state.to_a),
+ * shaped as combat/mon-melee.ts DefenderState.
+ */
+export function toDefenderState(state: PlayerState): DefenderState {
+  return { ac: state.ac, toA: state.toA };
 }
 
 /** Re-export for callers computing HP arrays over all levels. */

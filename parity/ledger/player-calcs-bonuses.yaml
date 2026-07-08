@@ -1,0 +1,87 @@
+module: packages/core/src/player/calcs.ts (calcBonuses / calcBlows / adapters)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/player-calcs.c
+    items:
+      - calc_bonuses (1877-2331), innate portion, ported statement-for-
+        statement in upstream order as calcBonuses -- reset and defaults
+        (speed 110, num_blows 100); race/class extraction (see_infra,
+        r_skills + c_skills, race el_info with vulnerability collection);
+        base pflags (race | class); collected object flags via player_flags;
+        vulnerability application (res_level-- when vuln and < 3);
+        PF_UNLIGHT / PF_EVIL element adjustments gated on the
+        character_dungeon global (exposed as the characterDungeon option,
+        default false = the just-born state); the stat loop (stat_add +
+        r_adj + c_adj through modify_stat_value into stat_top/stat_use and
+        stat_ind); the OF_AFRAID innate-flag fear penalties (to_h -20,
+        to_a +8, DEVICE scaled -1/20); the encumbrance speed penalty and the
+        [0, 199] speed clamp; the stat modifier bonuses (adj_dex_ta,
+        adj_str_td, adj_dex_th, adj_str_th); the skill modifications
+        (adj_dex_dis, adj_int_dis, adj_int_dev, adj_wis_sav, adj_str_dig,
+        x_skills * lev / 10, digging floor 1, stealth clamp [0, 30]); hold =
+        adj_str_hold[stat_ind[STR]]; the unarmed num_blows branch (2316-2319)
+        via calc_blows; the PF_NO_MANA check on p->msp; num_moves =
+        extra_moves
+      - calc_blows (1703-1735) as the pure calcBlows(cls, weaponWeight,
+        strInd, dexInd, extraBlows, percentDamage) -- min_weight divisor
+        floor, str_index = adj_str_blow * att_multiply / div capped at 11,
+        dex_index = adj_dex_blow capped at 11, blows_table energy,
+        min(10000 / energy, 100 * max_attacks), floor of 100 (200 for
+        birth_percent_damage). Note upstream gives MORE than one blow
+        unarmed whenever the stat indices warrant it (obj == NULL just makes
+        min_weight the divisor); the port reproduces that exactly
+      - adjust_skill_scale (1781-1792) as adjustSkillScale (returns the
+        adjusted value instead of mutating through a pointer)
+      - weight_limit (1741-1750) as weightLimit
+      - PlayerState mirrors struct player_state (player.h:401-438)
+        field-for-field, plus `hold` (an upstream local at 2251) kept for
+        the deferred weapon/launcher weight analysis
+  - path: src/player.c
+    items:
+      - player_flags (290-300) as playerFlags -- race flags | class flags,
+        plus OF_PROT_FEAR for PF_BRAVERY_30 at level 30+ (the pflag is read
+        from race/class pflags, equivalent to upstream's p->state.pflags for
+        the innate no-shape state)
+notes: >-
+  DEFERRED, all no-ops for the faithful just-born (unarmed, unarmored,
+  untimed) state the port models today: the equipment analysis loop
+  (1924-2025: stat_add, gear ac/to_a/to_h/to_d, object modifiers, curses,
+  gear element info, DIG flags) -- there is no equipment model yet;
+  calc_shapechange (1798-1853, called at 2030-2032) -- the "normal" shape
+  adds all zeros so skipping it is behavior-identical, non-normal shapes
+  deferred; calc_light (1598-, called at 2040-2041) -- needs equipment,
+  cur_light stays 0; food effects (2094-2132) -- needs the timed-grade
+  model, and a just-born player is in the "Fed" grade for which upstream is
+  a no-op; timed effects (2134-2213, player_flags_timed player.c:310-320)
+  -- all timers except FOOD are 0 at birth; the launcher analysis
+  (2254-2288: num_shots, ammo_tval, ammo_mult, heavy_shoot, PF_FAST_SHOT)
+  and the wielded-weapon analysis (2291-2315: heavy_wield, weapon digging
+  bonus, PF_BLESS_WEAPON / bless_wield); calc_mana (1480-, called at 2322)
+  -- msp stays at its birth value 0, so the ported PF_NO_MANA check
+  (2323-2325) currently sets NO_MANA for every class; correct for warriors,
+  and self-correcting for casters once calc_mana lands; the known_only
+  object-knowledge variant and the update=false hypothetical-blows index
+  shift (1891-1893, 2077-2088) -- birth-UI only, calcBonuses is the
+  update=true real-state path. calcSkills was extended with the
+  adj_dex_dis / adj_int_dis disarm terms (2240-2241) it previously omitted,
+  making it agree with calcBonuses for the innate case. The upkeep
+  total_weight the encumbrance check reads is 0 until the inventory model
+  lands.
+verified-by:
+  - bonuses.test.ts, all expected values hand-derived from the C tables for
+    a level-1 Human Warrior with natural stats 16/12/11/15/14 -- stat_use
+    [28, 10, 9, 17, 16], stat_ind [16, 7, 6, 14, 13], skills
+    [28, 22, 19, 20, 11, 0, 74, 59, 59, 10], to_h 3, to_d 2, to_a 1, ac 0,
+    speed 110, hold 30, weight limit 2200, unarmed num_blows 238
+    (blows_table[5][2] = 42)
+  - calcBlows cases -- rock-bottom stats give exactly 100 unarmed
+    (blows_table[0][0]); 130 tenth-lb weapon gives 117 (blows_table[1][2] =
+    85); a 12 tenth-lb dagger falls back to min_weight 30 (238); +1 extra
+    blow adds 100; str/dex indices 37 hit the 100 * max_attacks = 600 cap;
+    percentDamage floors at 200
+  - PF_BRAVERY_30 grants OF_PROT_FEAR at level 30 and not at 1; Warrior
+    pflags carried; NO_MANA set for msp 0; Elf RES_LIGHT 1; Necromancer
+    UNLIGHT/EVIL element info applied only with characterDungeon true;
+    Dwarf see_infra 5; adjustSkillScale up/down rounding asymmetry;
+    toCombatState / toDefenderState field mapping
