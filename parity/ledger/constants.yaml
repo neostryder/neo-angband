@@ -1,0 +1,19 @@
+module: packages/core/src/constants.ts
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/init.h
+    items: [struct angband_constants (constants.txt-sourced members)]
+  - path: src/init.c
+    items:
+      - parse_constants_level_max / mon_gen / mon_play / dun_gen / world /
+        carry_cap / store / obj_make / player (label -> field mappings)
+      - melee/ranged critical scalar and level parsers (incl. o-variants)
+notes: >-
+  Array-bound members upstream fills while parsing other edit files
+  (store_max, k_max, a_max, r_max, ...) are derived by the respective
+  registries instead of living here. Unknown labels and negative scalars
+  throw, mirroring PARSE_ERROR_UNDEFINED_DIRECTIVE / INVALID_VALUE.
+verified-by:
+  - unit tests binding the real compiled pack (classic values pinned:
+    dungeon 198x66, max depth 128, move energy 100, critical tables)
