@@ -29,7 +29,11 @@ const MAP_W = 40;
 const MAP_H = 16;
 let px = 5;
 let py = 5;
-let message = "Welcome to Neo Angband. hjkl / arrows / numpad to move.";
+// Original keyset (numpad + arrows) is the default, matching upstream's
+// rogue_like_commands = false. Flip to enable hjkl movement.
+const roguelikeKeys = false;
+let message =
+  "Welcome to Neo Angband. Numpad or arrow keys to move.";
 
 function isWall(x: number, y: number): boolean {
   return x === 0 || y === 0 || x === MAP_W - 1 || y === MAP_H - 1;
@@ -58,7 +62,7 @@ events.on("message", (_t, data) => {
 events.on("playermoved", () => render());
 
 window.addEventListener("keydown", (ev) => {
-  const binding = resolveKey(ev);
+  const binding = resolveKey(ev, roguelikeKeys);
   if (!binding) return;
   ev.preventDefault();
   const cmd = makeCommand(binding.kind === "run" ? "run" : "walk", "game");
