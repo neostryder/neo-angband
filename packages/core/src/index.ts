@@ -52,6 +52,7 @@ export * from "./gen/util";
 export * from "./gen/room";
 export * from "./gen/cave";
 export * from "./gen/generate";
+export * from "./combat/index";
 export * from "./session/boot";
 
 // Some small derived constants and geometry helpers are defined
@@ -64,3 +65,7 @@ export * from "./session/boot";
 //   gen/util as grid + DDGRID[dir].
 export { OF_SIZE, ELEM_MAX } from "./obj/types";
 export { nextGrid } from "./world/view";
+// CriticalLevel is defined by both constants (parsed data) and combat/hit
+// (with msg typed as the specific HitType). Crit levels are a combat
+// concept; expose combat/hit's as canonical.
+export type { CriticalLevel } from "./combat/hit";
