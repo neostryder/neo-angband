@@ -1,0 +1,61 @@
+module: packages/core/src/mon/ (types.ts, bind.ts, monster.ts)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/monster.h
+    items:
+      - struct monster_base, struct monster_race, struct monster_blow
+      - struct monster_spell, struct monster_spell_level
+      - struct monster_altmsg, struct monster_drop (minimal)
+      - struct monster_friends, struct monster_friends_base
+      - struct monster_mimic (minimal), struct monster_shape
+      - struct monster (live instance; world refs as numeric handles)
+      - RF_SIZE / RSF_SIZE / MFLAG_SIZE via generated flag lists
+  - path: src/mon-blows.h
+    items: [struct blow_method, struct blow_effect]
+  - path: src/mon-init.c
+    items:
+      - parse_monster_* binding semantics for every monster.txt directive
+      - parse_mon_base_* (glyph, pain index, flags, desc)
+      - parse_mon_spell_* (hit, effects, dice, expr, power-cutoff levels,
+        lore and message lines applying to the last level)
+      - parse_pain_* (type-indexed message families)
+      - finish_parse_monster name resolution (friends "same", shapes
+        base-first-then-race)
+  - path: src/mon-util.c
+    items:
+      - lookup_monster (exact case-insensitive, then first substring
+        match; the shipped "spider" friends line depends on this)
+  - path: src/game-world.c
+    items: [extract_energy table, turn_energy (monster.ts)]
+notes: >-
+  Binding subtleties kept faithfully: base inheritance ORs the base flags
+  onto the race before the race's own flags: lines, and flags-off: can
+  remove inherited flags (green glutton ghost drops ghost's IM_COLD);
+  the base also supplies the default glyph, overridden by an explicit
+  glyph: line. depth: sets spell_power = level as a default and
+  spell-power: overrides it. innate-freq / spell-freq store 100 / pct
+  with C integer division; parse_monster_spells defaults freq_innate to
+  4 when innate spells exist without innate-freq and freq_spell to 4
+  when non-(breath|innate) spells exist without spell-freq (breaths
+  count as innate for frequency). hearing and smell scale by
+  max_sight / 20 at bind time. max_num is not gamedata: binding applies
+  the player-birth.c rule (100, uniques 1). Divergences by design:
+  blow damage and spell dice use the ported Dice type instead of raw
+  random_value; lore colors, message types, blow-effect resist elements
+  and mimic/drop object kinds stay as names until their domains bind
+  them; the JSON pack loses intra-record directive order, so binding
+  applies the canonical order (base, glyph, flags, flags-off, spells),
+  which matches every shipped record. Deferred (ledgered here): monster
+  lore (monster_lore, spell_msgs consumption, l_list), drop kind
+  resolution and mon_create_drop, color-cycle visuals, shape-change
+  behavior, heatmaps, known_pstate (player-state snapshot on struct
+  monster), pit and summon deep binding (records load and count only).
+verified-by:
+  - bind.test.ts against the real pack (624/56/91/19/30/12 counts,
+    Morgoth spot check, kobold base inheritance, flags-off removal,
+    Grip blow binding, crow of Durthang spell power/freq, SHOT
+    power-cutoff levels, friends/shape resolution incl. substring and
+    case-insensitive lookup)
+  - mod-record extension test (new base + race bind through the same
+    path, inheritance and frequency defaults included)
