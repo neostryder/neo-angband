@@ -30,9 +30,18 @@ The dividing line (PORT_PLAN.md decisions 17-18) is deliberately sharp:
 
 ## The moddable-surface matrix
 
-This is the contract each engine module is held to. "Add" means new records,
+This is the contract for each surface. "Add" means new records,
 "patch/replace" means overriding base records, "extend" means introducing
 genuinely new behavior or record types.
+
+Read the lower rows correctly (decision 22): rows like NPCs/dialogs, Quests,
+and Networking are NOT core modules. Core provides only the generic
+extension surface (command queue, event bus, string-keyed registries, the
+sandboxed plugin API, save namespaces, render hooks); a MOD builds the
+NPC, dialog, quest, or networking SYSTEM on it. The only related things in
+core are the upstream parity pieces (the 4.2.6 town and its shops, the
+win condition), implemented through these same surfaces so mods can
+overhaul them. The matrix asserts what mods CAN do, not what core ships.
 
 | Surface | Add | Patch/replace | Extend |
 |---|---|---|---|
@@ -94,43 +103,52 @@ How the engine keeps this true:
   save knows exactly which content produced it and can fail gracefully when
   a pack is missing or changed.
 
-## Beyond-parity systems (seams in core, features in mods)
+## Beyond-parity systems are mods, not core (decision 22)
 
-Three systems the original never had. Per decision 18, core ships only the
-extensibility SEAMS for them - registries, handler dispatch, and event
-hooks that are part of the mod architecture - while the generalized
-FEATURES beyond upstream parity ship as mods (bundled or third-party) on
-those seams. The upstream behavior that IS parity - shops, the town, and
-the Sauron/Morgoth win condition - stays in core as parity content. Each
-system below is described by the seam core provides and the mod-space
-feature it enables:
+NPCs and dialog, quests, shops-as-systems, and networking are things the
+original never had as generalized systems. The port does NOT build them, or
+feature-specific seams for them, into core. They are built entirely by mods
+on the GENERIC extension surface every mod already uses:
 
-1. **World NPCs**: placeable characters with interaction menus and branching
-   dialog, all declarative (dialog nodes, conditions on game state, effects
-   on selection). Upstream's shopkeepers become the first NPCs; mods can
-   populate the town, the dungeon, or a total conversion with speaking
-   characters.
-2. **Quest engine**: declarative quests - triggers (kill, reach, collect,
-   talk, timer), stages, objectives, rewards, and failure states - with
-   scripted escape hatches for exotic logic. Upstream's Sauron/Morgoth win
-   condition is expressed as the first quest content.
-3. **Moddable shops**: stock tables, pricing, buy/sell rules, and services
-   as data + handlers, bound to NPC shopkeepers.
+- the serializable command queue (input) and event bus (output) - the
+  engine's public I/O API;
+- string-keyed registries for the record and behavior types the base game
+  itself declares (open to runtime registration);
+- the sandboxed plugin runtime with capability grants;
+- per-mod save namespaces (arbitrary private state);
+- render/UI hooks.
 
-Parity note: the statistical parity bar is measured against upstream with
-these systems exercising only upstream behavior. They are additive.
+That surface is deliberately powerful enough to build whole subsystems and
+full system overhauls - a dialog engine, a quest tracker, a networked
+shared world, an economy - without core anticipating any of them. If a mod
+needs a hook core does not expose, the fix is to make that generic hook part
+of the public API, never to ship the feature.
 
-## Networking
+What core DOES contain is the upstream parity content that happens to
+resemble these systems - the town, its shops, and the Sauron/Morgoth win
+condition. These are implemented THROUGH the generic moddable surfaces (the
+base game is pack zero), so a mod can extend, replace, or overhaul them.
+The statistical parity bar (PORT_PLAN.md decision 2) is measured on that
+upstream behavior alone.
 
-The engine is deterministic (seeded named RNG streams) and fully driven by a
-serializable command queue, so a game IS its seed plus its command stream.
-That makes replay, spectating, synchronization, and server-side verification
-possible without bespoke netcode in the core. The engine exposes a
-transport-agnostic session interface; networked features - leaderboards,
-save sync, spectating, shared-world variants - are built as plugins against
-it. The core ships no network calls; local-first play always works offline.
-Which first-party networked features ship is an open decision tracked in
-PORT_PLAN.md decision 15.
+## Determinism (decision 22)
+
+The engine is deterministic in the same LOCAL sense the original is: it uses
+a seeded RNG whose full state is persisted in the save, so a reload resumes
+the exact stream (this, not whole-game replay, is what makes reload-reroll
+impossible - see the save-scum policy). Unmodded runs are additionally
+reproducible from their start seed, which the port exposes as a shareable
+seed - a free bonus the original does not advertise.
+
+This is best-effort under mods, by design. A mod may be nondeterministic
+(wall clock, its own randomness, a network, an external AI agent), and any
+mid-game add/remove/update of mods breaks reproducibility from the start
+seed. That is allowed and expected; such a run is simply labelled
+non-reproducible. Determinism is not the anti-cheese mechanism and is not
+sacred - mods are essential and win the tradeoff. A planned example is an AI
+agent that plays the game (Borg-like but nondeterministic) by driving the
+command queue and reading the event bus; another is intelligent
+controller/mobile input. Both are ordinary mods.
 
 ## The modding SDK
 

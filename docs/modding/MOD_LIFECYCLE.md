@@ -282,25 +282,37 @@ Three trust tiers, unchanged from MODS.md, made concrete at install:
   and the mod gets nothing it did not request and the user did not
   approve.
 
-Determinism guard (RATIFIED with a change, decision 19): determinism is
-what makes the no-save-scum guarantee, replay, and shareable seed+profile
-reproduction work - the game is a deterministic function of (seed,
-command stream, mod set). The SDK therefore hands every plugin a seeded
-RNG and, by default, the sandbox withholds the nondeterministic sources
-(wall clock, `Math.random`, ambient network) so authors stay
-deterministic without trying.
+Determinism guard (RATIFIED, decisions 19 and 22 - and deliberately
+modest). First, what determinism is NOT here: it is NOT the anti-save-scum
+mechanism. Anti-save-scum comes from the faithful port of the original's
+persisted RNG state (the full `STATE[]`/`Rand_value` in the save, so a
+reload resumes the exact stream and cannot reroll) plus single-save and
+terminal death - see the save-scum policy. That protection rides on saved
+state, not on the run being reproducible from a seed, so it composes with
+mods.
 
-But per decision 18, cheaty mods are allowed and the engine does not
-forbid. So the guard is a WARNING and a LABEL, not a bar. A mod that
-genuinely needs nondeterminism (a live-multiplayer transport, a
-wall-clock event, an external oracle) declares `nondeterministic: true`
-in its manifest. The engine then: (a) grants the nondeterministic
-capabilities it asks for, (b) marks any profile containing it as
-"not reproducible" and its runs as "not seed-shareable", and (c) notes
-the save-integrity implication at enable time. Nothing is blocked; the
-player is simply told, honestly, what they are trading away. An
-undeclared plugin that trips a withheld source gets a clear author-facing
-error pointing at the fix, not a silent divergence.
+What the guard IS: a convenience and an honest label. The SDK hands every
+plugin a seeded RNG and, by default, the sandbox withholds the
+nondeterministic sources (wall clock, `Math.random`, ambient network) so an
+author who does nothing special stays deterministic - which keeps the
+unmodded-style "shareable seed" reproducibility working when their mod is
+pure. That reproducibility is a nice-to-have, not a guarantee the game
+depends on.
+
+Per decision 18, cheaty and nondeterministic mods are allowed and the
+engine does not forbid. A mod that wants nondeterminism (a live-multiplayer
+transport, a wall-clock event, an external AI agent) declares
+`nondeterministic: true` in its manifest. The engine then grants the
+capabilities it asks for and marks any profile containing it as
+"not reproducible / not seed-shareable" - nothing is blocked; the player is
+just told what they are trading away. Note two honest consequences, both
+expected: (a) any add/remove/update of mods mid-run also breaks
+reproducibility-from-seed, because the mod set is part of the seed's inputs;
+(b) a nondeterministic mod re-opens reload-reroll WITHIN its own mechanics
+(those outcomes are not pinned to saved state) - core mechanics stay
+reroll-proof because they draw from the saved seeded stream. An undeclared
+plugin that trips a withheld source gets a clear author-facing error
+pointing at the fix, not a silent divergence.
 
 ---
 

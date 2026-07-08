@@ -85,30 +85,43 @@ documentation lives here under `docs/`.
     its first content), and moddable shops (inventory tables, pricing,
     services, and shopkeeper behavior as data + handlers). These are additive:
     the parity bar (decision 2) is measured with none of them active beyond
-    upstream behavior. Refined by decision 18: core ships only the
-    extensibility SEAMS for these systems (registries, handler dispatch,
-    dialog/quest/shop hooks) as part of the mod architecture; the
-    generalized NPC-dialog, quest, and shop FEATURES beyond upstream parity
-    ship as (bundled or third-party) mods on those seams. Upstream shops,
-    the town, and the Sauron/Morgoth win condition remain in core as parity
-    content.
-15. **Networking seam** (ratified 2026-07-08, scope open): the deterministic
-    engine plus serialized command streams is the networking foundation - a
-    game is replayable and syncable by construction. The engine ships a
-    transport-agnostic session interface so networked features can be built
-    as plugins. Which first-party networked features ship (candidates:
-    leaderboards, cross-device save sync, spectating/replays, cooperative or
-    competitive variants) is an OPEN decision for Aaron; the seam itself is
-    ratified. No networking is required to play; local-first always works.
-16. **Saves and anti-cheese** (ratified 2026-07-08; previously tracked as
-    16/16b): a single overwritten save with terminal death, faithful to the
-    original - no save-scumming. Anti-tamper is an injectable whole-file
-    digest (FNV-1a default) stamped into the savefile as a DETERRENT against
-    casual hand-editing; it is honest about its ceiling (client-side hashing
-    cannot stop a determined user - true anti-tamper needs the
-    server-authoritative save that the networking seam enables later). Mods
-    may override the no-save-scum rule (see decision 18). See
-    `docs/modding/MOD_LIFECYCLE.md`.
+    upstream behavior. SUPERSEDED by decision 22 (2026-07-08): core does NOT
+    ship NPC/dialog/quest/shop systems OR their feature-specific seams. These
+    are built entirely by mods on the GENERIC extension surface (command
+    queue, event bus, string-keyed registries, the sandboxed plugin API,
+    per-mod save namespaces, render hooks). The upstream town, shops, and the
+    Sauron/Morgoth win condition remain in core only as PARITY content, and
+    are themselves implemented through the generic moddable surfaces so a mod
+    can override or overhaul them. The engine's obligation is that its
+    extensibility is powerful enough to build these systems - and full system
+    overhauls - from mod space, not to pre-provide them.
+15. **Networking is a mod, not a core seam** (ratified 2026-07-08; amended
+    2026-07-08 per decision 22): the port ships NO networking, and NO
+    networking-specific session interface in core. The serializable command
+    queue and the event bus (the engine's public I/O API) are general-purpose
+    and already enough for a mod to build networking - leaderboards, save
+    sync, spectating/replays, cooperative or competitive variants - on top.
+    Because those seams are generic, a networking mod is not privileged; it is
+    an ordinary plugin. Local-first, offline single-player is the whole port;
+    everything networked is mod space.
+16. **Saves and anti-cheese** (ratified 2026-07-08; amended 2026-07-08 with
+    the determinism analysis of decision 22; previously tracked as 16/16b):
+    no save-scumming, faithful to the original. The anti-scum mechanism is
+    what the original actually uses, ported faithfully - NOT whole-game
+    determinism and NOT the hash: (a) the full RNG state is persisted in the
+    savefile (upstream `wr_randomizer`: `Rand_value`, `state_i`, and the
+    `STATE[]` array), so reloading resumes the exact stream and reload-retry
+    of the same action gives the same outcome - you cannot reroll by
+    reloading; (b) a single savefile overwritten in place, terminal death, no
+    restore-points. The injectable whole-file digest (FNV-1a default) is a
+    separate, weaker thing: a DETERRENT against casual hand-editing, honest
+    about its ceiling (a client-side verifier ships in the bundle). The one
+    hole the original also had - copying the savefile (here, the IndexedDB
+    record) before a risk and restoring it - is closable only by a
+    server-authoritative save, which is a networking MOD (decision 15). Mods
+    may relax or replace any of this (decision 18); nondeterministic mods
+    weaken reload-reroll protection within their own domain by their own
+    choice (decision 22). See `docs/modding/MOD_LIFECYCLE.md`.
 17. **Scope discipline: direct port first** (ratified 2026-07-08): the port
     reproduces Angband 4.2.6 faithfully before anything else. Core contains
     exactly two things - faithful parity behavior, and the mod architecture
@@ -145,13 +158,51 @@ documentation lives here under `docs/`.
     worked examples, a single-file agent context document, and validation
     errors that point precisely at the fix. An agent should be able to
     author a valid, working mod from the documentation alone.
-21. **Boot and UI shell** (ratified 2026-07-08): `bootLevel` drives the app
-    during development now; the shipping build opens on a TITLE SCREEN with
-    an option to autoload a run already in progress. The HUD stays faithful
-    to the original, while the rendered play area fills the entire viewport
-    at any size or aspect ratio. A modern, ergonomic graphical layer is
-    added for settings and menus that AUGMENTS rather than replaces the
-    original interface.
+21. **Boot and UI shell** (ratified 2026-07-08; amended 2026-07-08):
+    `bootLevel` drives the app during development now; the shipping build
+    opens on a TITLE SCREEN with an option to autoload a run already in
+    progress. The HUD stays faithful to the original, while the rendered play
+    area fills the entire viewport at any size or aspect ratio. Menus and
+    settings are recreated in each platform's NATIVE idiom (as is the nature
+    of a port): the original presents them through the terminal UI, so each
+    front-end rebuilds them natively - a modern, ergonomic web UI in the web
+    build, native menus in a desktop shell, touch controls on mobile - rather
+    than one shared cross-platform GUI. The headless core (decision 1) stays
+    UI-agnostic; each shell owns its own presentation. Input, too, is
+    abstract enough for alternative schemes (a controller/mobile input mod is
+    a planned example; see decision 22 notes).
+22. **Determinism scope: faithful, not absolute** (ratified 2026-07-08). What
+    the original does, verified in the reference source: a seeded PRNG whose
+    FULL state is saved with the game (`wr_randomizer`), plus fixed
+    `seed_flavor`/`seed_randart` for consistent colors and randarts. It does
+    NOT record a command stream and is NOT reproducible from a single
+    start-seed across a playthrough. So Angband uses LOCAL determinism
+    (reload resumes the exact stream), not whole-game reproducibility. The
+    port matches that and no more:
+    - Unmodded, and mods that stay on the engine's seeded RNG: deterministic
+      in the faithful sense. As a free bonus over the original, the start
+      seed is exposed so an unmodded run is reproducible and shareable.
+    - Modded: best-effort. A mod that uses wall-clock, its own randomness, a
+      network, or an external agent - and ANY add/remove/update of mods
+      mid-game - breaks reproducibility-from-seed. This is allowed and
+      expected; the run is simply LABELED non-reproducible / non-shareable.
+      Aaron's framing, adopted: unmodded stays deterministic; with mods the
+      randomness gets as random as the mods make it.
+    - Determinism is NOT the anti-save-scum lever. Anti-scum rides on the
+      persisted RNG state and single-save/terminal-death (decision 16), which
+      compose fine with mods. Reproducibility-from-seed is only a sharing
+      nicety. A nondeterministic mod re-opens reload-reroll within its OWN
+      mechanics by its own choice; core mechanics stay reroll-proof because
+      they draw from the saved seeded stream.
+    - Conclusion: determinism and modding are not fundamentally at odds.
+      Nothing essential is lost by letting mods be nondeterministic; only the
+      optional shareable-seed guarantee is, and only for those runs.
+    Two planned mods exercise exactly this and are explicitly welcome:
+    (a) an AI agent that plays Angband - Borg-like but nondeterministic,
+    driving the public command queue and observing the event bus, declaring
+    itself nondeterministic; (b) intelligent controller/mobile input. Both
+    are mods, not core, and both validate that the command-queue + event-bus
+    seams are strong enough to fully drive and observe the game.
 
 ## Phases
 
