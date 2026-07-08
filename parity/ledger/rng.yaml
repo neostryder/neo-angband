@@ -1,0 +1,25 @@
+module: packages/core/src/rng.ts
+status: planned
+baseline: 4.2.6
+upstream:
+  - path: src/z-rand.c
+    items:
+      - Rand_state_init
+      - Rand_state_step
+      - Rand_div
+      - Rand_normal
+      - damroll
+      - randint0
+      - randint1
+  - path: src/z-rand.h
+    items:
+      - RAND_DEG
+      - Rand_quick
+      - Rand_value
+notes: >-
+  First P1 module. Intentional divergence: upstream uses one global WELL-1024
+  stream plus a quick-LCG mode toggled by seed-swapping for flavors and
+  randarts; the port provides named, independently seeded streams
+  (gameplay, generation, flavors, randarts, cosmetic) with serializable
+  state. Distribution equivalence, not bit equivalence, is the parity claim.
+verified-by: []

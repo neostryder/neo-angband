@@ -1,0 +1,16 @@
+{
+  "name": "@neo-angband/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Terminal front-end and developer harness (headless runs, stats, golden scenarios)",
+  "license": "GPL-2.0-only",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@neo-angband/core": "workspace:*"
+  }
+}

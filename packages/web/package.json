@@ -1,0 +1,16 @@
+{
+  "name": "@neo-angband/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web + PWA front-end: modern glyph-first renderer on a single responsive surface",
+  "license": "GPL-2.0-only",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@neo-angband/core": "workspace:*"
+  }
+}

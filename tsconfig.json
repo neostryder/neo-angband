@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/content" },
+    { "path": "packages/mod-sdk" },
+    { "path": "packages/cli" },
+    { "path": "packages/web" }
+  ]
+}

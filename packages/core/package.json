@@ -1,0 +1,13 @@
+{
+  "name": "@neo-angband/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Headless Neo Angband game engine: rules, world, entities, effects, generation",
+  "license": "GPL-2.0-only",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@neo-angband/content",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The core content pack: Angband 4.2.6 gamedata compiled to schema-validated pack format",
+  "license": "GPL-2.0-only",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  }
+}
