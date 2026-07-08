@@ -1,0 +1,38 @@
+module: packages/core/src/world/
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/cave.h
+    items: [struct feature, struct square, struct chunk (core fields)]
+  - path: src/cave.c
+    items: [cave_new, square_set_feat (feat_count + bright glow)]
+  - path: src/cave-square.c
+    items:
+      - feat_is_* predicates (all 19)
+      - square predicates ported: isfloor, iswall, isperm, isrubble,
+        isgranite/ismagma/isquartz, mineral wall, isdoor, iscloseddoor,
+        isstairs/up/down, isfiery, ispassable, isprojectable, allowslos,
+        iswall_inner/outer/solid, in_bounds(_fully)
+  - path: src/cave-view.c
+    items:
+      - los (Joseph Hall integer LOS, knight-move cases)
+      - update_view / update_view_one / become_viewable / update_one
+      - calc_lighting / add_light / source_can_light_wall /
+        glow_can_light_wall / mark_wasseen
+      - motion_dir / next_grid helpers
+notes: >-
+  Divergences by design: flat typed arrays instead of pointer grids;
+  objects/traps attach later via handles; ViewerState injects the player
+  fields update_view reads; monster lights arrive as an injected source
+  list instead of scanning the monster array. Deferred (ledgered here):
+  square predicates needing objects/traps/knowledge (isempty variants,
+  trap and player-knowledge predicates), square_set_feat in-game side
+  effects (trap destruction, note/light spot), update_one knowledge
+  effects (trap reveal, feeling display, blind memory forget), heatmap
+  flow/scent updates (cave_update_flow), scatter (next), grid_data /
+  map_info (render layer).
+verified-by:
+  - unit tests against real pack terrain (predicates, feat counts)
+  - LOS symmetry sweep over seeded random maps; knight-move cases
+  - FOV behavior tests (torch radius, glowing room fully seen on entry,
+    wall blocking, blindness, lit wall faces, feeling square counting)
