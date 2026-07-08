@@ -52,6 +52,7 @@ export * from "./gen/util";
 export * from "./gen/room";
 export * from "./gen/cave";
 export * from "./gen/generate";
+export * from "./session/boot";
 
 // Some small derived constants and geometry helpers are defined
 // independently by more than one domain (identical values/behavior).
