@@ -1,0 +1,50 @@
+module: packages/core/src/obj/ (types.ts, bind.ts, object.ts)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/object.h
+    items: [object_base, object_kind, ego_item, artifact, curse, brand,
+            slay, object (live instance), activation, flavor]
+  - path: src/obj-init.c
+    items:
+      - base/kind/ego/artifact/curse/brand/slay/property/activation binding
+      - flag parsing (OF/KF/element), value and modifier strings
+        (grab_rand_value / STR[1d2]-style random values)
+      - sval assignment in the finish pass; kidx ordering (1-based,
+        upstream reverse ordering preserved)
+      - one INSTA_ART dummy kind appended per special artifact
+  - path: src/obj-tval.c / obj-util.c
+    items: [tval_find_idx (name/number/armour spelling), lookup_kind,
+            lookup_sval, object base name formatting]
+  - path: src/obj-pile.c
+    items:
+      - object_similar / object_stackable kind-only stack checks
+      - object_absorb merge math (minus knowledge bookkeeping)
+counts:
+  bases: 34 records (33 named; "gold" is nameless upstream)
+  kinds: 375 ordinary + 14 INSTA_ART dummies
+  egos: 107
+  artifacts: 138
+  curses: 27
+  brands: 10
+  slays: 11
+  activations: 163
+  properties: 79
+notes: >-
+  Moddability (decision 13): registries accept records beyond the pack via
+  the same JSON shape; a mod-added kind/ego/artifact binds cleanly
+  (test-pinned). Divergences by design: FlagSet over C bitfields; held
+  objects as numeric handles.
+deferred:
+  - The knowledge/ID system (obj-knowledge.c): no obj->known twin yet.
+    Stacking/similarity rules that read player knowledge run as if all is
+    known; OSTACK_LIST unknown-item checks and equipped-item checks
+    stubbed. To land with the knowledge domain.
+  - Curse timed-effect foil check (needs the player-timed fail field).
+  - Inscription-driven ignore/pickup behavior (needs player + UI).
+verified-by:
+  - unit tests against real pack terrain data (counts + spot checks:
+    Broad Sword dice/weight, Ringil artifact fields, ego binding, brand
+    and slay wiring)
+  - tval/sval lookup tests; INSTA_ART dummy-kind appension test
+  - mod-record extension test
