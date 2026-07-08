@@ -1,8 +1,11 @@
 # Neo Angband Port Plan
 
 Status: ratified 2026-07-07; amended 2026-07-08 (decisions 13-15: total
-moddability guarantee, beyond-parity systems, networking seam). This is the
-governing plan for the port; changes land here first.
+moddability guarantee, beyond-parity systems, networking seam; decisions
+16-21: saves and anti-cheese, scope discipline, everything-new-is-a-mod
+plus bundled mods, mod lifecycle and uninstall recovery, AI-first SDK,
+and the boot/HUD/settings UX). This is the governing plan for the port;
+changes land here first.
 
 ## What this is
 
@@ -31,6 +34,9 @@ documentation lives here under `docs/`.
    follow from the same headless core.
 4. **Enhancement budget for v1**: UI-level quality-of-life only (message log,
    searchable knowledge, item comparison, recaps). Zero rules changes.
+   Refined by decision 18: these QoL enhancements ship as a BUNDLED QoL
+   mod, not baked into core. Core stays pure parity; the QoL mod is on by
+   default and fully removable.
 5. **Behavior model**: declarative-first. Effects, abilities, and generation
    parameters are schema-validated data interpreted by the engine; a
    capability-scoped sandboxed scripting layer is the escape hatch for exotic
@@ -79,7 +85,13 @@ documentation lives here under `docs/`.
     its first content), and moddable shops (inventory tables, pricing,
     services, and shopkeeper behavior as data + handlers). These are additive:
     the parity bar (decision 2) is measured with none of them active beyond
-    upstream behavior.
+    upstream behavior. Refined by decision 18: core ships only the
+    extensibility SEAMS for these systems (registries, handler dispatch,
+    dialog/quest/shop hooks) as part of the mod architecture; the
+    generalized NPC-dialog, quest, and shop FEATURES beyond upstream parity
+    ship as (bundled or third-party) mods on those seams. Upstream shops,
+    the town, and the Sauron/Morgoth win condition remain in core as parity
+    content.
 15. **Networking seam** (ratified 2026-07-08, scope open): the deterministic
     engine plus serialized command streams is the networking foundation - a
     game is replayable and syncable by construction. The engine ships a
@@ -88,6 +100,58 @@ documentation lives here under `docs/`.
     leaderboards, cross-device save sync, spectating/replays, cooperative or
     competitive variants) is an OPEN decision for Aaron; the seam itself is
     ratified. No networking is required to play; local-first always works.
+16. **Saves and anti-cheese** (ratified 2026-07-08; previously tracked as
+    16/16b): a single overwritten save with terminal death, faithful to the
+    original - no save-scumming. Anti-tamper is an injectable whole-file
+    digest (FNV-1a default) stamped into the savefile as a DETERRENT against
+    casual hand-editing; it is honest about its ceiling (client-side hashing
+    cannot stop a determined user - true anti-tamper needs the
+    server-authoritative save that the networking seam enables later). Mods
+    may override the no-save-scum rule (see decision 18). See
+    `docs/modding/MOD_LIFECYCLE.md`.
+17. **Scope discipline: direct port first** (ratified 2026-07-08): the port
+    reproduces Angband 4.2.6 faithfully before anything else. Core contains
+    exactly two things - faithful parity behavior, and the mod architecture
+    (registries, composition, sandbox, save namespacing, the SDK). Nothing
+    else lands in core.
+18. **Everything-new-is-a-mod, and bundled mods** (ratified 2026-07-08):
+    except for the mod architecture itself, every new feature, behavior, or
+    visual - including beyond-parity systems (decision 14) and the v1 QoL
+    budget (decision 4) - ships as a mod, never baked into the port. Two
+    official mods are BUNDLED with the port and enabled by default (both
+    fully removable): **neo-linoleum** (the tile packs; formerly treated as
+    an in-core feature) and a **QoL mod** (Aaron's curated fixes and
+    UI-level quality-of-life). Cheaty mods are explicitly permitted: a mod
+    may add, patch, replace, or remove anything - up to and including the
+    rules that make the game Angband or even a roguelike. The engine warns
+    and labels; it does not forbid.
+19. **Mod lifecycle and uninstall recovery** (ratified 2026-07-08): ratifies
+    the six decisions in `docs/modding/MOD_LIFECYCLE.md` - string-id (not
+    index) save serialization; namespaced per-mod save blocks with
+    quarantine-on-uninstall; field-level patch composition with
+    last-in-load-order-wins; save-bound, shareable profiles; and a
+    pre-migration snapshot as operational safety - with one change per
+    decision 18: the determinism guard is a WARNING plus a
+    non-reproducible/non-shareable label plus an opt-out, not a bar on
+    state-affecting mods. Graceful recovery is required: a character
+    stranded in mod-generated terrain when that mod is uninstalled is
+    returned safely to town; mod-owned items are quarantined to the
+    player's home and made inert until the mod is reinstalled; and a
+    player-facing stash view shows everything quarantined by an uninstall or
+    shadowed by another mod's override.
+20. **AI-first SDK** (ratified 2026-07-08): the modding SDK is designed to be
+    highly accessible to AI coding agents as well as humans - machine-
+    readable schemas, a generated schema/registry reference, copy-pasteable
+    worked examples, a single-file agent context document, and validation
+    errors that point precisely at the fix. An agent should be able to
+    author a valid, working mod from the documentation alone.
+21. **Boot and UI shell** (ratified 2026-07-08): `bootLevel` drives the app
+    during development now; the shipping build opens on a TITLE SCREEN with
+    an option to autoload a run already in progress. The HUD stays faithful
+    to the original, while the rendered play area fills the entire viewport
+    at any size or aspect ratio. A modern, ergonomic graphical layer is
+    added for settings and menus that AUGMENTS rather than replaces the
+    original interface.
 
 ## Phases
 

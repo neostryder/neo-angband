@@ -1,9 +1,11 @@
 # Mod Lifecycle, Saves, and Composition
 
-> STATUS: CANDIDATE DESIGN, pending Aaron's ratification. This page
-> records a proposed architecture so it can be reviewed and revised. It
-> is not yet built. Decisions marked [PROPOSED] are calls the author made
-> and that Aaron may override; [OPEN] items still need a decision.
+> STATUS: RATIFIED 2026-07-08 (PORT_PLAN.md decision 19). Aaron confirmed
+> decisions 1, 2, 3, 5, and 6 as written, and 4 (the determinism guard)
+> with the change recorded in section 4 below: it is a warning and label,
+> not a bar. Aaron also added the uninstall-recovery behaviors in the new
+> section "When a mod's content leaves the game". This page is the design
+> of record; it is not yet fully built. [OPEN] items still need a decision.
 
 This page answers four questions that decide whether a mod system is
 pleasant or painful:
@@ -85,6 +87,41 @@ change is that namespace:
 orphaned items permanently"); (b) auto-purge trivial cosmetic orphans
 but quarantine anything that affects progression. Recommend (a) surfaced
 as a one-time prompt, defaulting to keep.
+
+### When a mod's content leaves the game (RATIFIED, decision 19)
+
+Quarantine is the storage mechanism; these are the player-facing
+recoveries built on top of it, so uninstalling a mod never strands or
+silently destroys a character. They also fire when content is not
+uninstalled but SHADOWED - a later mod in the load order `removes` or
+`replaces` a record the save depends on.
+
+- Stranded location. If the character is standing on a level, in a room,
+  or in a whole region that a now-missing mod generated, the load cannot
+  place them there. They are returned safely to the TOWN (the canonical
+  always-present safe location, itself core parity content), with a
+  message explaining why. The dungeon regenerates from the surviving
+  content as normal on the next descent; no half-loaded mod geometry is
+  ever walked.
+- Stranded items. Items whose definition came from the missing mod are
+  not dropped and not deleted. They are moved into the player's HOME
+  (the game's existing persistent stash) as inert entries - visible,
+  labelled with their origin mod, but not equippable, usable, or
+  sellable while the mod is absent. Reinstalling the mod (same major
+  version) reactivates them in place. This uses the same
+  `orphans:<id>@<version>` store; the home is just where the player sees
+  and reclaims them.
+- The stash view. A dedicated, always-reachable screen lists everything
+  currently quarantined - by uninstall OR by another mod's override -
+  grouped by the mod that owns it, showing what it is, why it is inert
+  ("frost uninstalled" / "shadowed by bigmonsters"), and what would
+  restore it ("reinstall frost >=1.0" / "move bigmonsters below frost").
+  Nothing a player earned ever vanishes without a trace they can find.
+
+These recoveries are graceful degradation, not gameplay rollback: they
+preserve what the player has against a tooling change, and do not let the
+player undo an in-game outcome, so they sit cleanly beside the
+no-save-scum rule.
 
 ### Compatibility gating
 
@@ -245,13 +282,25 @@ Three trust tiers, unchanged from MODS.md, made concrete at install:
   and the mod gets nothing it did not request and the user did not
   approve.
 
-[PROPOSED] Determinism guard: a plugin that affects game state may use
-only the engine's seeded RNG - no wall clock, no `Math.random`. The
-sandbox enforces this. This is not red tape: the no-save-scum guarantee,
-replay, and shareable seed+profile reproduction all depend on the whole
-game being a deterministic function of (seed, command stream, mod set).
-A mod that wants nondeterminism must declare itself cosmetic-only and is
-barred from touching game state.
+Determinism guard (RATIFIED with a change, decision 19): determinism is
+what makes the no-save-scum guarantee, replay, and shareable seed+profile
+reproduction work - the game is a deterministic function of (seed,
+command stream, mod set). The SDK therefore hands every plugin a seeded
+RNG and, by default, the sandbox withholds the nondeterministic sources
+(wall clock, `Math.random`, ambient network) so authors stay
+deterministic without trying.
+
+But per decision 18, cheaty mods are allowed and the engine does not
+forbid. So the guard is a WARNING and a LABEL, not a bar. A mod that
+genuinely needs nondeterminism (a live-multiplayer transport, a
+wall-clock event, an external oracle) declares `nondeterministic: true`
+in its manifest. The engine then: (a) grants the nondeterministic
+capabilities it asks for, (b) marks any profile containing it as
+"not reproducible" and its runs as "not seed-shareable", and (c) notes
+the save-integrity implication at enable time. Nothing is blocked; the
+player is simply told, honestly, what they are trading away. An
+undeclared plugin that trips a withheld source gets a clear author-facing
+error pointing at the fix, not a silent divergence.
 
 ---
 
@@ -335,13 +384,18 @@ repo carries sample mods that CI installs and runs.
 
 ---
 
-## Decisions this doc is asking Aaron to confirm
+## Decisions (ratified 2026-07-08, PORT_PLAN.md decision 19)
 
-1. String-id (not index) serialization as the load-bearing rule. [PROPOSED]
+1. String-id (not index) serialization as the load-bearing rule. [DECIDED]
 2. Quarantine (freeze + restore) as the default uninstall behavior, with
-   a one-time keep/purge prompt for orphans. [PROPOSED, alt in 1]
-3. Last-in-load-order-wins with field-level patch composition. [PROPOSED]
-4. Determinism guard on state-affecting plugins. [PROPOSED]
-5. Profiles bound to saves, profiles shareable but saves not. [PROPOSED]
+   a one-time keep/purge prompt for orphans. [DECIDED]
+3. Last-in-load-order-wins with field-level patch composition. [DECIDED]
+4. Determinism guard on state-affecting plugins - AS A WARNING AND LABEL
+   WITH AN OPT-OUT, NOT A BAR (cheaty and nondeterministic mods are
+   allowed; see section 4 and PORT_PLAN.md decision 18). [DECIDED, changed]
+5. Profiles bound to saves, profiles shareable but saves not. [DECIDED]
 6. Pre-migration snapshot as operational safety, reconciled with the
-   no-save-scum rule. [PROPOSED]
+   no-save-scum rule. [DECIDED]
+7. Uninstall recovery: stranded characters return to town, mod items are
+   quarantined to the player's home and reactivate on reinstall, and a
+   stash view surfaces everything quarantined or shadowed. [DECIDED]
