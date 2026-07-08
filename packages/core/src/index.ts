@@ -41,3 +41,16 @@ export * from "./obj/types";
 export * from "./obj/bind";
 export * from "./obj/object";
 export * from "./obj/make";
+export * from "./player/types";
+export * from "./player/bind";
+export * from "./player/player";
+export * from "./player/calcs";
+export * from "./player/birth";
+export * from "./save/buffer";
+export * from "./save/integrity";
+
+// The obj and player domains each derive the same flag-array sizes from
+// the generated lists (OF_SIZE = flagSize(OF.MAX), ELEM_MAX). They are
+// identical values; re-export obj/types' copies explicitly so the barrel
+// has one unambiguous export rather than two colliding `export *` names.
+export { OF_SIZE, ELEM_MAX } from "./obj/types";

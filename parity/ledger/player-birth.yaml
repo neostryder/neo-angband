@@ -1,0 +1,49 @@
+module: packages/core/src/player/birth.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/player-birth.c
+    items:
+      - birth_stat_costs[18+1] table and MAX_BIRTH_POINTS (point-buy costs)
+      - reset_stats / buy_stat / sell_stat (base 10, cost = costs[value+1],
+        refund = costs[value], cap at 18, floor at 10)
+      - recalculate_stats gold formula (start_gold + 50 * points_left)
+      - get_stats (classic roller: 5 + 1d3 + 1d4 + 1d5 per stat, whole-set
+        reroll until 15-dice total is strictly between 7*STAT_MAX and
+        9*STAT_MAX)
+      - do_cmd_roll_stats sequence (get_stats, get_ahw, get_history)
+      - get_history (walk the chart graph, randint1(100), first entry with
+        roll <= threshold, append text, move to successor)
+      - get_ahw (age = b_age + 1d(m_age); height/weight via Rand_normal)
+      - get_money (z_info->start_gold = 600)
+      - player_generate (level 1, expfact = r_exp + c_exp, hitdie =
+        r_mhp + c_mhp, player_hp[0] = hitdie, mhp from calc_hitpoints,
+        timed[TMD_FOOD] = PY_FOOD_FULL - 1)
+  - path: src/player-util.c
+    items: [modify_stat_value (used for the CON index into calc_hitpoints)]
+notes: >-
+  generatePlayer is a pure pipeline (race, class, options, rng) ->
+  PlayerBirthResult using the classic roller path (do_cmd_roll_stats), which
+  is fully self-contained and reproducible from a seeded Rng. The RNG is
+  consumed as stats -> age/height/weight -> history, matching upstream
+  (get_bonuses sits between stats and ahw but consumes no RNG). Point-buy is
+  ported as primitives (resetStats/buyStat/sellStat/pointBuyCost/birthGold)
+  so a UI or the auto-roller can drive it. Buying a stat from 10 to 17 costs
+  8 points (1+1+1+1+1+1+2), matching birth_stat_costs. Deferred (ledgered
+  here): the point-based auto-spend generate_stats routine, whose step 1/2
+  DEX-blow optimisation reads state->num_blows and therefore needs the
+  equipment-aware calc_bonuses (the cost primitives it builds on ARE ported);
+  starting inventory objects (returned as tval/sval kind-name refs in
+  startingKit, min/max not yet rolled and birth-option exclusion not yet
+  applied); roll_hp for levels 2..50 (birth fills only player_hp[0] = hitdie,
+  as player_generate does with overestimates); calc_mana (msp/csp left 0);
+  quickstart/prev-roller data and the birth command flow (do_cmd_birth_*).
+verified-by:
+  - birth.test.ts point-buy (cost table, 10->17 = 8 points, cap at 18 costing
+    4, sell-back to base, gold formula)
+  - roller determinism per seed with all stats in 8..17
+  - history determinism per seed (non-empty for Human)
+  - Half-Troll Warrior full pipeline: hitdie 21, player_hp[0] 21, level-1 mhp
+    equals calc_hitpoints(21, 1, con_index) with the CON index recomputed
+    independently; full per-seed determinism (stats, mhp, age, height,
+    history); well-fed FOOD ceiling, six-item kit, level-scaled melee skill

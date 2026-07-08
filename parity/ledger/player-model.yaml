@@ -1,0 +1,73 @@
+module: packages/core/src/player/ (types.ts, bind.ts, player.ts)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/player.h
+    items:
+      - struct player_race, struct player_class
+      - struct class_magic, struct class_book, struct class_spell (minimal)
+      - struct magic_realm, struct start_item (minimal)
+      - struct player_shape (name only; combat/flags/blows preserved raw)
+      - struct player_body, struct equip_slot
+      - struct history_chart, struct history_entry (graph)
+      - struct player (savefile core; world/UI members omitted), player_upkeep (minimal)
+      - SKILL_ enum order, STAT_MAX, STAT_RANGE, PY_MAX_LEVEL, OF_SIZE, PF_SIZE, TMD_MAX
+  - path: src/init.c
+    items:
+      - parse_p_race_* for every p_race.txt directive (stats, ten skills,
+        hitdie, exp, infravision, history, age/height/weight, obj-flags,
+        player-flags, values)
+      - parse_class_* (stats, ten base+incr skills, hitdie, max-attacks,
+        min-weight, strength-multiplier, title, equip, obj/player flags)
+      - parse_class_magic / parse_class_book / parse_class_spell (spell_first,
+        spell_weight, num_books, realm lookup, sidx/bidx assignment)
+      - parse_realm_* (name as lookup code, stat_name_to_idx, verb/nouns)
+      - parse_history_chart / finish_parse_history (entry grouping + isucc
+        successor resolution)
+      - parse_body / parse_body_slot
+      - parse_p_race_values via grab_index_and_int over element names with
+        the "RES_" prefix
+  - path: src/player-timed.c
+    items:
+      - struct timed_effect_data, struct timed_grade
+      - parse_player_timed_grade (implicit zero "off" grade, ascending
+        maxima, single-char name/message dummies -> null, FOOD grade scaling
+        by z_info->food_value)
+      - parse_player_timed_fail (code + flag rows)
+  - path: src/player-properties.c / player_property.txt
+    items: [struct player_ability rows (player/object/element), bindui, value]
+notes: >-
+  Skills bind by directive name rather than position because the SKILL_ enum
+  orders SEARCH before STEALTH while the data files list stealth first; the
+  name-based mapping is exercised by the Warrior/Half-Troll spot checks.
+  Class skills carry a base (c_skills) and a per-10-levels increment
+  (x_skills); race skills are a single racial bonus. Magic realms resolve by
+  name (lookup_realm). Timed effects always prepend the implicit off grade so
+  a record with N pack grades yields N+1 entries. History entries are grouped
+  by chart id in file order (matching the reversed-then-reordered upstream
+  list) and successor charts are resolved in a second pass. The player type
+  names hitpoints chp/mhp/chpFrac and exposes the timed array so it can back
+  the effects domain's EffectPlayer / HpHolder narrow interfaces without
+  adaptation. Divergences by design: colours are stored as resolved attrs
+  (color_char/text_to_attr) as upstream does; msgt stays a name until the
+  message domain resolves it. Deferred (ledgered here): starting-inventory
+  object resolution (start_items kept as tval/sval kind-name refs; the object
+  domain resolves kinds, book svals via write_book_kind, and book graphics/
+  properties); class spell effect chains (preserved raw in effectsRaw, not
+  compiled into the effects domain); player_shape combat bonuses, flags,
+  modifiers, resists, blows and on-shape effect (preserved raw beyond the
+  name); the equipment-dependent parts of struct player (gear lists,
+  known_state, redraw/update/notice masks, inventory/quiver arrays,
+  trackees); quest state; player_history log (player-history.c).
+verified-by:
+  - bind.test.ts against the real pack (11 races, 9 classes, 53 timed,
+    44 properties, 9 shapes, 1 body, 4 realms; 165 history entries grouped
+    into charts)
+  - Half-Troll race spot check (stat adjustments, name-mapped skills, hitdie,
+    exp, infravision, history chart, SUST_STR|REGEN flags, Kobold RES_POIS[1])
+  - Warrior class spot check (stat mods, base/incr skills incl. search vs
+    stealth ordering, titles, NO_MANA/SHIELD_BASH, six start items with
+    birth-option eopts) and Mage magic structure (5 books, arcane realm,
+    Magic Missile sidx/bidx, raw effect preserved)
+  - timed grade binding (implicit off grade, seven CUT grades, FOOD scaling)
+  - mod-record extension test (new race + class bind through the same path)
