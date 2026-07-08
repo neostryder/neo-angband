@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+*.log
+
+# Reference C-tree build artifacts (built locally as the parity oracle)
+reference/build*/
