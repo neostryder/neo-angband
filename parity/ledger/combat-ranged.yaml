@@ -1,0 +1,40 @@
+module: packages/core/src/combat/ranged.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/player-attack.c
+    items:
+      - chance_of_missile_hit_base / chance_of_missile_hit (launcher: skills
+        [SKILL_TO_HIT_BOW] + (object_to_hit(missile) + to_h + object_to_hit
+        (launcher)) * BTH_PLUS_ADJ; thrown throwing-weapon: skills[TO_HIT_THROW]
+        + (to_h + object_to_hit) * BTH_PLUS_ADJ; other thrown: 3*skills
+        [TO_HIT_THROW]/2 + object_to_hit * BTH_PLUS_ADJ; less distance; half
+        if not obvious)
+      - ranged_damage (mult = launcher ? ammo_mult : 1, plus the brand/slay
+        multiplier; damroll(dd, ds) + object_to_dam(missile) + launcher to_dam;
+        thrown throwing-weapons scale by 2 + weight/12; times mult)
+      - critical_shot integration (make_ranged_shot launched=true,
+        make_ranged_throw launched=false) with improve_attack_modifier(range)
+      - OF_EXPLODE thrown objects triple damage
+      - breakage_chance (artifacts 0; throwing non-ammo non-explode -> 1;
+        miss squares the percent: perc*perc/100)
+notes: >-
+  ranged.ts is the attack-resolution shell (to-hit, damage, critical). It reuses
+  hit.ts (test_hit, critical_shot) and brand-slay.ts (improve_attack_modifier,
+  get_monster_brand_multiplier), and shares PlayerCombatState with melee.ts.
+deferred:
+  - The projectile path and command front-ends: ranged_helper, do_cmd_fire,
+    do_cmd_throw, do_cmd_fire_at_nearest (project_path, missile display events,
+    ammo/quiver selection, piercing via TMD_POWERSHOT, drop_near and the actual
+    application of breakage_chance).
+  - O-combat ranged (birth_percent_damage): o_ranged_damage, o_critical_shot,
+    and the o-ranged-critical constants/levels.
+  - Knowledge / learning: missile_learn_on_ranged_attack, equip_learn_on_
+    ranged_attack, learn_brand_slay_from_launch/throw.
+  - Temporary brands/slays (improve_attack_modifier obj == NULL path).
+  - Curse contributions to object_to_hit/to_dam/weight.
+verified-by:
+  - ranged.test.ts: ranged_damage launcher multiplier and launcher + slay
+    multiplier; make_ranged_shot hit (launcher-multiplied damage) and miss
+    (rand_fix bands); breakage_chance artifact (0) and throwing weapon
+    (1 on hit, 0 on miss)

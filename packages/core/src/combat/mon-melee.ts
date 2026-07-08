@@ -1,0 +1,586 @@
+/**
+ * Monster melee attacks against the player, ported from
+ * reference/src/mon-attack.c (make_attack_normal, monster_critical, check_hit,
+ * chance_of_monster_hit, adjust_dam_armor) and the RBE_ blow-effect handlers
+ * in reference/src/mon-blows.c (Angband 4.2.6).
+ *
+ * The blow loop, to-hit test, monster critical, per-blow damage roll and the
+ * cut/stun rolls are ported faithfully. Blow EFFECTS resolve as follows:
+ * effects that reduce to direct HP damage (HURT, SHATTER, and the physical
+ * component of the elemental blows) are computed here and applied to the
+ * player's HP; effects that need the player timed / resist / inventory / stat
+ * systems (status ailments, stat drain, exp drain, theft, disenchant, the
+ * elemental component of elemental blows) are recorded as structured
+ * BlowSideEffect intents (the "stub log") for a later, fully-modelled
+ * integration to apply.
+ *
+ * DEFERRED (ledgered in parity/ledger/combat-melee.yaml):
+ * - Full RNG-stream parity for monster attacks: the player timed system
+ *   (player_inc_timed saving throws / notifications), adjust_dam elemental
+ *   resist rolls, and player_apply_damage_reduction are NOT ported, so the
+ *   stream diverges after the ported rolls. Each ported quantity (damage,
+ *   monster critical, cut/stun amounts, status durations) uses the exact
+ *   upstream formula.
+ * - Monster lore / smart-learn, protection-from-evil repel, the "player
+ *   moved" early-out, monster-vs-monster attacks (monster_attack_monster),
+ *   and the elemental resist/immunity application against the player.
+ */
+
+import type { Rng, RandomValue } from "../rng";
+import type { Monster } from "../mon/monster";
+import type { Player } from "../player/player";
+import { MON_TMD, RF } from "../generated";
+import { STUN_DAM_REDUCTION, STUN_HIT_REDUCTION, testHit } from "./hit";
+
+/** A defender's combat AC contribution (upstream p->state.ac + p->state.to_a). */
+export interface DefenderState {
+  /** state->ac. */
+  ac: number;
+  /** state->to_a. */
+  toA: number;
+}
+
+/**
+ * A recorded blow side effect ("stub log"): the intent a fully-modelled
+ * player-timed / resist / inventory system would apply. `element` and status
+ * `amount` durations use the exact upstream formulas.
+ */
+export type BlowSideEffect =
+  | { kind: "timed"; effect: string; amount: number }
+  | { kind: "drainStat"; stat: string }
+  | { kind: "loseExp"; holdChance: number; amount: number }
+  | { kind: "drainCharges" }
+  | { kind: "eatGold" }
+  | { kind: "eatItem" }
+  | { kind: "eatFood" }
+  | { kind: "eatLight" }
+  | { kind: "disenchant" }
+  | { kind: "elemental"; element: string; damage: number }
+  | { kind: "earthquake"; radius: number }
+  | { kind: "knockback"; distance: number };
+
+/** The outcome of a single monster blow. */
+export interface MonBlow {
+  hit: boolean;
+  /** RBE_ effect name (e.g. "HURT", "POISON"). */
+  effect: string;
+  /** RBM_ method name (e.g. "HIT", "CLAW"). */
+  method: string;
+  /** HP damage actually dealt to the player. */
+  damage: number;
+  sideEffects: BlowSideEffect[];
+  obvious: boolean;
+}
+
+/** The outcome of a full monster attack (make_attack_normal). */
+export interface MonMeleeAttack {
+  /** false only when RF_NEVER_BLOW blocked the attack entirely. */
+  attacked: boolean;
+  blows: MonBlow[];
+  totalDamage: number;
+  playerDied: boolean;
+  /** Aggregated side-effect intents across all blows. */
+  sideEffects: BlowSideEffect[];
+}
+
+/** Options for a monster melee attack. */
+export interface MonMeleeOptions {
+  /** monster_is_visible(mon); affects only messaging (DEFERRED). */
+  monVisible?: boolean;
+}
+
+/* ------------------------------------------------------------------ *
+ * Shared math (mon-attack.c)
+ * ------------------------------------------------------------------ */
+
+/**
+ * chance_of_monster_hit_base: a monster's to-hit from race level and the
+ * blow's power.
+ */
+export function chanceOfMonsterHitBase(level: number, effectPower: number): number {
+  return Math.max(level, 1) * 3 + effectPower;
+}
+
+/**
+ * chance_of_monster_hit: the base value, reduced if the monster is stunned.
+ */
+export function chanceOfMonsterHit(
+  mon: Monster,
+  level: number,
+  effectPower: number,
+): number {
+  let toHit = chanceOfMonsterHitBase(level, effectPower);
+  if ((mon.mTimed[MON_TMD.STUN] ?? 0) > 0) {
+    toHit = Math.trunc((toHit * (100 - STUN_HIT_REDUCTION)) / 100);
+  }
+  return toHit;
+}
+
+/**
+ * check_hit: does an attack with the given to-hit land on the player? Uses the
+ * player's total AC (state.ac + state.to_a).
+ */
+export function checkHit(rng: Rng, toHit: number, def: DefenderState): boolean {
+  return testHit(rng, toHit, def.ac + def.toA);
+}
+
+/**
+ * adjust_dam_armor: physical damage remaining after armor (mon-attack.c).
+ */
+export function adjustDamArmor(damage: number, ac: number): number {
+  return damage - Math.trunc((damage * (ac < 240 ? ac : 240)) / 400);
+}
+
+/**
+ * monster_critical: the "cut/stun" critical tier of a monster blow. All hits
+ * doing >= 95% of the maximum possible (and >= 20, or sometimes N) qualify.
+ * Returns a tier 0..(6+extra) used to index the cut/stun amount tables.
+ */
+export function monsterCritical(
+  rng: Rng,
+  dice: RandomValue,
+  rlev: number,
+  dam: number,
+): number {
+  let max = 0;
+  const total = rng.randcalc(dice, rlev, "maximise");
+
+  /* Must do at least 95% of perfect */
+  if (dam < Math.trunc((total * 19) / 20)) return 0;
+
+  /* Weak blows rarely work */
+  if (dam < 20 && rng.randint0(100) >= dam) return 0;
+
+  /* Perfect damage */
+  if (dam === total) max++;
+
+  /* Super-charge */
+  if (dam >= 20) {
+    while (rng.randint0(100) < 2) max++;
+  }
+
+  /* Critical damage */
+  if (dam > 45) return 6 + max;
+  if (dam > 33) return 5 + max;
+  if (dam > 25) return 4 + max;
+  if (dam > 18) return 3 + max;
+  if (dam > 11) return 2 + max;
+  return 1 + max;
+}
+
+/** Cut amount for a monster_critical tier (make_attack_normal cut switch). */
+function cutAmount(rng: Rng, tier: number): number {
+  switch (tier) {
+    case 0:
+      return 0;
+    case 1:
+      return rng.randint1(5);
+    case 2:
+      return rng.randint1(5) + 5;
+    case 3:
+      return rng.randint1(20) + 20;
+    case 4:
+      return rng.randint1(50) + 50;
+    case 5:
+      return rng.randint1(100) + 100;
+    case 6:
+      return 300;
+    default:
+      return 500;
+  }
+}
+
+/** Stun amount for a monster_critical tier (make_attack_normal stun switch). */
+function stunAmount(rng: Rng, tier: number): number {
+  switch (tier) {
+    case 0:
+      return 0;
+    case 1:
+      return rng.randint1(5);
+    case 2:
+      return rng.randint1(10) + 10;
+    case 3:
+      return rng.randint1(20) + 20;
+    case 4:
+      return rng.randint1(30) + 30;
+    case 5:
+      return rng.randint1(40) + 40;
+    case 6:
+      return 100;
+    default:
+      return 200;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Blow-effect resolution (mon-blows.c handlers)
+ * ------------------------------------------------------------------ */
+
+interface BlowEffectContext {
+  rng: Rng;
+  /** damage = randcalc(dice, rlev, RANDOMISE), after stun reduction. */
+  baseDamage: number;
+  ac: number;
+  rlev: number;
+  /** method->phys: whether the blow has a physical component. */
+  phys: boolean;
+}
+
+interface BlowEffectResult {
+  /** context->damage after the handler (HP dealt, and used by cut/stun crit). */
+  hpDamage: number;
+  obvious: boolean;
+  sideEffects: BlowSideEffect[];
+}
+
+const ELEMENT_OF_EFFECT: Readonly<Record<string, string>> = {
+  ACID: "ACID",
+  ELEC: "ELEC",
+  FIRE: "FIRE",
+  COLD: "COLD",
+  POISON: "POIS",
+};
+
+const STAT_OF_EFFECT: Readonly<Record<string, string>> = {
+  LOSE_STR: "STR",
+  LOSE_INT: "INT",
+  LOSE_WIS: "WIS",
+  LOSE_DEX: "DEX",
+  LOSE_CON: "CON",
+};
+
+/** Experience-drain effects: OF_HOLD_LIFE resist chance and base drain dice. */
+const EXP_DRAIN: Readonly<Record<string, { holdChance: number; dice: number }>> = {
+  EXP_10: { holdChance: 95, dice: 10 },
+  EXP_20: { holdChance: 90, dice: 20 },
+  EXP_40: { holdChance: 75, dice: 40 },
+  EXP_80: { holdChance: 50, dice: 80 },
+};
+
+/**
+ * Resolve one RBE_ blow effect: compute the HP damage the effect deals to the
+ * player (context->damage after the handler runs) and record any timed /
+ * stat / inventory / elemental side-effect intents.
+ */
+function resolveBlowEffect(
+  name: string,
+  ctx: BlowEffectContext,
+): BlowEffectResult {
+  const { rng, baseDamage, ac, rlev, phys } = ctx;
+  const side: BlowSideEffect[] = [];
+
+  /* Elemental blows: physical component to HP; elemental component deferred. */
+  if (name === "ACID" || name === "ELEC" || name === "FIRE" || name === "COLD") {
+    const physical = phys ? adjustDamArmor(baseDamage, ac + 50) : 0;
+    side.push({
+      kind: "elemental",
+      element: ELEMENT_OF_EFFECT[name] as string,
+      damage: baseDamage,
+    });
+    return { hpDamage: physical, obvious: true, sideEffects: side };
+  }
+
+  switch (name) {
+    case "NONE":
+      return { hpDamage: 0, obvious: true, sideEffects: side };
+
+    case "HURT":
+      return {
+        hpDamage: adjustDamArmor(baseDamage, ac),
+        obvious: true,
+        sideEffects: side,
+      };
+
+    case "POISON": {
+      const physical = phys ? adjustDamArmor(baseDamage, ac + 50) : 0;
+      side.push({ kind: "elemental", element: "POIS", damage: baseDamage });
+      side.push({
+        kind: "timed",
+        effect: "POISONED",
+        amount: 5 + rng.randint1(rlev),
+      });
+      return { hpDamage: physical, obvious: true, sideEffects: side };
+    }
+
+    case "DISENCHANT":
+      side.push({ kind: "disenchant" });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "DRAIN_CHARGES":
+      side.push({ kind: "drainCharges" });
+      return { hpDamage: baseDamage, obvious: false, sideEffects: side };
+
+    case "EAT_GOLD":
+      side.push({ kind: "eatGold" });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "EAT_ITEM":
+      side.push({ kind: "eatItem" });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "EAT_FOOD":
+      side.push({ kind: "eatFood" });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "EAT_LIGHT":
+      side.push({ kind: "eatLight" });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "BLIND":
+      side.push({
+        kind: "timed",
+        effect: "BLIND",
+        amount: 10 + rng.randint1(rlev),
+      });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "CONFUSE":
+      side.push({
+        kind: "timed",
+        effect: "CONFUSED",
+        amount: 3 + rng.randint1(rlev),
+      });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "TERRIFY":
+      side.push({
+        kind: "timed",
+        effect: "AFRAID",
+        amount: 3 + rng.randint1(rlev),
+      });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "PARALYZE":
+      side.push({
+        kind: "timed",
+        effect: "PARALYZED",
+        amount: 3 + rng.randint1(rlev),
+      });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "LOSE_STR":
+    case "LOSE_INT":
+    case "LOSE_WIS":
+    case "LOSE_DEX":
+    case "LOSE_CON":
+      side.push({ kind: "drainStat", stat: STAT_OF_EFFECT[name] as string });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "LOSE_ALL":
+      for (const stat of ["STR", "DEX", "CON", "INT", "WIS"]) {
+        side.push({ kind: "drainStat", stat });
+      }
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "SHATTER": {
+      const hp = adjustDamArmor(baseDamage, ac);
+      if (hp > 23) {
+        side.push({ kind: "earthquake", radius: Math.trunc(hp / 12) });
+      }
+      if (hp > 100) {
+        const value = hp - 100;
+        if (rng.randint1(value) > 40) {
+          side.push({ kind: "knockback", distance: 1 + Math.trunc(value / 40) });
+        }
+      }
+      return { hpDamage: hp, obvious: true, sideEffects: side };
+    }
+
+    case "EXP_10":
+    case "EXP_20":
+    case "EXP_40":
+    case "EXP_80": {
+      const spec = EXP_DRAIN[name] as { holdChance: number; dice: number };
+      /* damroll(N, 6) is evaluated as the handler's argument. */
+      const amount = rng.damroll(spec.dice, 6);
+      side.push({ kind: "loseExp", holdChance: spec.holdChance, amount });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+    }
+
+    case "HALLU":
+      side.push({
+        kind: "timed",
+        effect: "IMAGE",
+        amount: 3 + rng.randint1(Math.trunc(rlev / 2)),
+      });
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    case "BLACK_BREATH":
+      if (rng.oneIn(5)) {
+        side.push({
+          kind: "timed",
+          effect: "BLACKBREATH",
+          amount: Math.trunc(baseDamage / 10),
+        });
+      }
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+
+    default:
+      /* Unknown effect: deal the base damage, as the fallthrough would. */
+      return { hpDamage: baseDamage, obvious: true, sideEffects: side };
+  }
+}
+
+/** The set of RBE_ effect names this port resolves (for coverage checks). */
+export const RESOLVED_BLOW_EFFECTS: readonly string[] = [
+  "NONE",
+  "HURT",
+  "POISON",
+  "DISENCHANT",
+  "DRAIN_CHARGES",
+  "EAT_GOLD",
+  "EAT_ITEM",
+  "EAT_FOOD",
+  "EAT_LIGHT",
+  "ACID",
+  "ELEC",
+  "FIRE",
+  "COLD",
+  "BLIND",
+  "CONFUSE",
+  "TERRIFY",
+  "PARALYZE",
+  "LOSE_STR",
+  "LOSE_INT",
+  "LOSE_WIS",
+  "LOSE_DEX",
+  "LOSE_CON",
+  "LOSE_ALL",
+  "SHATTER",
+  "EXP_10",
+  "EXP_20",
+  "EXP_40",
+  "EXP_80",
+  "HALLU",
+  "BLACK_BREATH",
+];
+
+/* ------------------------------------------------------------------ *
+ * make_attack_normal
+ * ------------------------------------------------------------------ */
+
+/** Zero random_value, for blows that carry no damage dice. */
+const ZERO_RV: RandomValue = { base: 0, dice: 0, sides: 0, mBonus: 0 };
+
+/**
+ * make_attack_normal: run all of the monster's blows against the player. HP
+ * damage is applied to `defender.chp`; status / stat / inventory effects are
+ * recorded as BlowSideEffect intents. Stops early if the player dies.
+ */
+export function monMeleeAttack(
+  rng: Rng,
+  mon: Monster,
+  defender: Player,
+  def: DefenderState,
+  _opts: MonMeleeOptions = {},
+): MonMeleeAttack {
+  /* Not allowed to attack. */
+  if (mon.race.flags.has(RF.NEVER_BLOW)) {
+    return {
+      attacked: false,
+      blows: [],
+      totalDamage: 0,
+      playerDied: false,
+      sideEffects: [],
+    };
+  }
+
+  const rlev = mon.race.level >= 1 ? mon.race.level : 1;
+  const stunned = (mon.mTimed[MON_TMD.STUN] ?? 0) > 0;
+
+  const blows: MonBlow[] = [];
+  const allSide: BlowSideEffect[] = [];
+  let totalDamage = 0;
+  let playerDied = false;
+
+  for (const blow of mon.race.blows) {
+    /* No more attacks. */
+    if (!blow.method) break;
+    if (playerDied) break;
+
+    const effectName = blow.effect.name;
+
+    /* Monster hits player (a "NONE" effect always connects). */
+    const hit =
+      effectName === "NONE" ||
+      checkHit(rng, chanceOfMonsterHit(mon, mon.race.level, blow.effect.power), def);
+
+    if (!hit) {
+      blows.push({
+        hit: false,
+        effect: effectName,
+        method: blow.method.name,
+        damage: 0,
+        sideEffects: [],
+        obvious: false,
+      });
+      continue;
+    }
+
+    /* Roll dice, reduce when the attacker is stunned. */
+    const diceRv = blow.dice ? blow.dice.randomValue() : ZERO_RV;
+    let damage = blow.dice ? rng.randcalc(diceRv, rlev, "randomise") : 0;
+    if (stunned) {
+      damage = Math.trunc((damage * (100 - STUN_DAM_REDUCTION)) / 100);
+    }
+
+    /* Resolve the blow effect. */
+    const res = resolveBlowEffect(effectName, {
+      rng,
+      baseDamage: damage,
+      ac: def.ac + def.toA,
+      rlev,
+      phys: blow.method.phys,
+    });
+
+    /* Apply HP damage (take_hit; player_apply_damage_reduction DEFERRED). */
+    const hpDamage = res.hpDamage;
+    if (hpDamage > 0) {
+      defender.chp -= hpDamage;
+      totalDamage += hpDamage;
+      if (defender.chp < 0) playerDied = true;
+    }
+
+    const blowSide: BlowSideEffect[] = [...res.sideEffects];
+
+    /* Cut and stun (only one of the two), using the post-handler damage. */
+    let doCut = blow.method.cut;
+    let doStun = blow.method.stun;
+    if (playerDied) {
+      doCut = false;
+      doStun = false;
+    }
+    if (doCut && doStun) {
+      if (rng.randint0(100) < 50) doCut = false;
+      else doStun = false;
+    }
+    if (doCut) {
+      const tier = monsterCritical(rng, diceRv, rlev, hpDamage);
+      const amt = cutAmount(rng, tier);
+      if (amt) blowSide.push({ kind: "timed", effect: "CUT", amount: amt });
+    }
+    if (doStun) {
+      const tier = monsterCritical(rng, diceRv, rlev, hpDamage);
+      const amt = stunAmount(rng, tier);
+      if (amt) blowSide.push({ kind: "timed", effect: "STUN", amount: amt });
+    }
+
+    for (const s of blowSide) allSide.push(s);
+    blows.push({
+      hit: true,
+      effect: effectName,
+      method: blow.method.name,
+      damage: hpDamage,
+      sideEffects: blowSide,
+      obvious: res.obvious,
+    });
+  }
+
+  return {
+    attacked: true,
+    blows,
+    totalDamage,
+    playerDied,
+    sideEffects: allSide,
+  };
+}
