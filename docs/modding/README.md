@@ -1,10 +1,13 @@
 # Modding Neo Angband
 
 Moddability is a ratified pillar of this project (PORT_PLAN.md decisions
-13-15): every aspect of the game is open to mods, including capabilities
+13-21): every aspect of the game is open to mods, including capabilities
 that do not exist in the base resources. The base game is itself a pack
 ("core", pack zero) loaded through the same pipeline your mod uses - if
-core can do it, your mod can do it, redefine it, or delete it.
+core can do it, your mod can do it, redefine it, or delete it. Core is
+parity plus the mod architecture only; everything else - including the
+bundled neo-linoleum and QoL mods - is a mod (decisions 17-18). Cheaty
+mods are allowed: the engine warns and labels, it does not forbid.
 
 This directory is the modding SDK documentation set. It grows with the
 engine; each page documents surfaces that exist and are tested. For the
@@ -16,8 +19,8 @@ overall design and the moddable-surface matrix, read `docs/MODS.md`.
   backed by `@neo-angband/mod-sdk`).
 - `MOD_LIFECYCLE.md`: how saves stay safe across install/update/
   uninstall, installing from git (and a future marketplace), multi-mod
-  composition and conflict resolution, and the UX principles. CANDIDATE
-  design pending ratification.
+  composition and conflict resolution, uninstall recovery, and the UX
+  principles. RATIFIED (decision 19); not yet fully built.
 - `docs/LINOLEUM.md`: tile packs and converting the classic tilesets.
 - Coming as the engine lands them (P7 deliverables): handler registry
   catalog (effects, commands, room builders), the sandbox capability

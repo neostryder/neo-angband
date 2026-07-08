@@ -6,9 +6,13 @@ PNG assets addressed through explicit, auditable target maps.
 
 The format originated as a feature of Aaron's upstream Angband fork (see
 `docs/hacking/linoleum.rst` there, and the converter
-`scripts/build-linoleum-packs.ps1`). This port replicates it as a first-class
-feature: `packages/linoleum` is a behaviorally faithful TypeScript port of
-that converter, and the runtime consumes the same loose-pack layout.
+`scripts/build-linoleum-packs.ps1`). This port replicates it, but as a
+BUNDLED MOD rather than an in-core feature (PORT_PLAN.md decision 18):
+`packages/linoleum` is a behaviorally faithful TypeScript port of the
+converter, and the tiles ship as **neo-linoleum**, a tile-pack mod loaded
+through the ordinary mod pipeline and enabled by default. It is the
+reference tile pack - proof the tile-pack seam is real - and, like any mod,
+fully removable. Everything below describes the pack format that mod uses.
 
 ## Pack layout
 
