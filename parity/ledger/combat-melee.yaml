@@ -1,0 +1,121 @@
+module: packages/core/src/combat/{hit,brand-slay,melee,mon-melee}.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/player-attack.c
+    items:
+      - chance_of_melee_hit_base / chance_of_melee_hit (skills[SKILL_TO_HIT_MELEE]
+        + (to_h + object_to_hit + bless_wield*2) * BTH_PLUS_ADJ; half if unseen)
+      - test_hit / hit_chance (scaled to 10000; ALWAYS_HIT 1200, ALWAYS_MISS
+        500; to_hit floored at 9; numerator = max(0, to_hit - ac*2/3), then
+        scaled by (10000 - 500 - 1200)/10000 and + 1200). getHitChance derives
+        the display percentage (numerator/100), matching ui-player.c.
+      - critical_melee (chance = weight*1 + to_h*5 + level*0 + melee_skill*1
+        - 60 vs randint1(5000); power = weight*1 + randint1(650) selects a
+        critical-level; is_debuffed adds +10 to-hit)
+      - critical_shot (chance = weight*1 + to_h*4 + level*2 + 0; power =
+        weight*1 + randint1(500); launched/thrown skill scale factors are 0)
+      - melee_damage (damroll(dd, ds) * slay.multiplier or brand multiplier,
+        + object_to_dam)
+      - player_damage_bonus (= state->to_d, added after criticals)
+      - py_attack_real (afraid guard, hit test, weight, improve_attack_modifier
+        over off-weapon slots then weapon, damage, criticals, to_d, no-negative
+        clamp, mon_take_hit) and py_attack (blow_energy = 100*move_energy/
+        num_blows loop, bounded by one turn's energy, stops on death)
+      - the melee/ranged hit_types tables (HitType keys: MISS, HIT, HIT_GOOD,
+        HIT_GREAT, HIT_SUPERB, HIT_HI_GREAT, HIT_HI_SUPERB, SHOOT_HIT)
+  - path: src/mon-attack.c
+    items:
+      - chance_of_monster_hit_base (max(level,1)*3 + effect.power) /
+        chance_of_monster_hit (STUN_HIT_REDUCTION 25% when stunned)
+      - check_hit (test_hit vs p->state.ac + p->state.to_a)
+      - adjust_dam_armor (dam - dam * min(ac,240) / 400)
+      - monster_critical (>=95% of max and >=20-or-N; perfect/super-charge
+        bonuses; damage-band tiers 1..6+)
+      - make_attack_normal (RF_NEVER_BLOW guard, blow loop, per-blow damage
+        randcalc(dice, rlev, RANDOMISE) with STUN_DAM_REDUCTION, effect
+        dispatch, cut/stun via monster_critical and the cut/stun amount
+        switch tables)
+  - path: src/mon-blows.c
+    items:
+      - all 30 RBE_ blow effects dispatched (RESOLVED_BLOW_EFFECTS):
+        HP-damage effects (NONE, HURT, SHATTER) computed directly; the
+        physical component of the elemental blows (ACID, ELEC, FIRE, COLD,
+        POISON) computed via adjust_dam_armor(dam, ac + 50); status / stat /
+        inventory / exp / disenchant / elemental effects recorded as
+        BlowSideEffect intents (the "stub log")
+  - path: src/obj-slays.c
+    items:
+      - get_monster_brand_multiplier (base multiplier; elemental-vulnerability
+        doubling, distinct standard vs O-combat forms)
+      - improve_attack_modifier (best-of over object brands then slays,
+        resist-flag skip, react_to_specific_slay race-flag/base match, verb
+        selection incl. range 's' suffix, and the upstream quirk that the
+        brand loop sets brand_used without clearing slay_used)
+      - react_to_specific_slay
+  - path: src/obj-util.c
+    items: [object_to_hit, object_to_dam, object_weight_one (curse terms DEFERRED)]
+  - path: lib/gamedata/constants.txt
+    items:
+      - melee-critical / ranged-critical chance & power scale constants
+      - melee-critical-level (400:2:5 GOOD, 700:2:10 GREAT, 900:3:15 SUPERB,
+        1300:3:20 HI_GREAT, -1:4:20 HI_SUPERB) and ranged-critical-level
+        (500:2:5 GOOD, 1000:2:10 GREAT, -1:3:15 SUPERB)
+  - path: src/mon-util.c
+    items: [mon_take_hit (HP subtraction and hp < 0 death; fear/arena DEFERRED)]
+  - path: src/mon-timed.h
+    items: [STUN_HIT_REDUCTION, STUN_DAM_REDUCTION (25%)]
+  - path: src/player.h
+    items: [BTH_PLUS_ADJ (3)]
+blow_effect_coverage:
+  total_pack_effects: 30
+  dispatched: 30
+  hp_damage_faithful: 25   # every non-elemental effect (HP = base or armor-adjusted)
+  hp_damage_physical_only: 5  # ACID/ELEC/FIRE/COLD/POISON (elemental part deferred)
+  side_effect_intents:
+    - timed (POISONED, BLIND, CONFUSED, AFRAID, PARALYZED, IMAGE, BLACKBREATH,
+      CUT, STUN) with the exact upstream duration formulas
+    - drainStat (LOSE_STR/INT/WIS/DEX/CON, LOSE_ALL)
+    - loseExp (EXP_10/20/40/80; damroll(N,6) rolled, hold-life chance recorded)
+    - drainCharges, eatGold, eatItem, eatFood, eatLight, disenchant
+    - elemental (element + raw damage), earthquake (radius), knockback (dist)
+deferred:
+  - O-combat (birth_percent_damage): o_melee_damage, o_critical_melee, and the
+    o-melee-critical constants/levels. Off by default; ledgered for later.
+  - Elemental damage vs the player (adjust_dam with player el_info / resists);
+    only the physical component reaches HP, the elemental part is recorded.
+  - player_apply_damage_reduction (treated as identity) and take_hit warnings.
+  - Full RNG-stream parity for monster attacks: player_inc_timed saving-throw
+    and notification rolls, and adjust_dam elemental rolls, are not ported, so
+    the stream diverges after each ported roll. Every ported quantity (damage,
+    monster_critical, cut/stun amounts, status durations, exp drain) uses the
+    exact upstream formula.
+  - Knowledge / learning: equip_learn_on_melee_attack, learn_brand_slay_from_*,
+    monster lore, smart-learn, become_aware.
+  - Player-side melee extras: bloodlust exertion, vampiric drain (TMD_ATT_VAMP),
+    confusion-brand side effect (blow_side_effects / TMD_ATT_CONF), impact
+    earthquakes (OF_IMPACT / blow_after_effects), splash damage, shape-change
+    blow substitution, shield bash (attempt_shield_bash), PF_COMBAT_REGEN.
+  - Temporary brands/slays (improve_attack_modifier obj == NULL path;
+    player_has_temporary_brand/slay from the player-timed registry).
+  - Curse contributions to object_to_hit/to_dam/weight.
+  - Monster fear generation (monster_scared_by_damage), delayed fear messages,
+    protection-from-evil repel, the "player moved" early-out, arena handling.
+  - monster_attack_monster (monster-vs-monster melee).
+  - Message text/formatting (combat returns HitType keys and structured
+    results; the UI layer renders messages).
+verified-by:
+  - hit.test.ts: hit_chance 95% cap / 12% floor / to-hit 9 floor / mid-range
+    exact arithmetic; test_hit determinism (rand_fix top/bottom bands);
+    selectCritLevel melee & ranged cutoff buckets and add/mult; critical_melee
+    no-crit and triggered (power 1001 -> HIT_HI_GREAT, 20 + 3*dam); critical_shot
+    SHOOT_HIT; is_debuffed
+  - brand-slay.test.ts: get_monster_brand_multiplier base / vuln-doubling /
+    O-combat 2*(m-10)+10; improve_attack_modifier best-of, vuln in the compare,
+    immunity skip + slay fallback, non-matching slay, range verb suffix
+  - melee.test.ts: melee_damage slay multiply + to-dam; py_attack_real slay
+    damage + to_d (no crit), miss band, afraid guard; py_attack blow counts
+    (1 @ 100, 2 @ 250), death stops the loop
+  - mon-melee.test.ts: monster_critical maxed-weak tier and weak-fail; make_
+    attack_normal NEVER_BLOW, hit/miss determinism + HP reduction, POISON and
+    LOSE_STR side-effect intents; all 30 pack RBE_ effects resolved
