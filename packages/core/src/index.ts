@@ -29,3 +29,4 @@ export * from "./world/feature";
 export * from "./world/chunk";
 export * from "./world/view";
 export * from "./world/scatter";
+export * from "./world/flow";
