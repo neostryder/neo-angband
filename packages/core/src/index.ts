@@ -13,6 +13,7 @@ export * from "./loc";
 export * from "./events";
 export * from "./cmd";
 export * from "./msg";
+export * from "./color";
 
 /** Upstream release this port is verified against. */
 export const PARITY_BASELINE = "4.2.6";

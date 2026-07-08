@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { COLOUR_DARK, COLOUR_WHITE } from "./color";
 import { GameEvents } from "./events";
-import {
-  COLOUR_DARK,
-  COLOUR_WHITE,
-  MSG_GENERIC,
-  MessageLog,
-  Messages,
-} from "./msg";
+import { MSG_GENERIC, MessageLog, Messages } from "./msg";
 
 describe("MessageLog", () => {
   it("stores newest-first with age access", () => {
