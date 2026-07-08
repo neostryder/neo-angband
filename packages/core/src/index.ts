@@ -54,6 +54,7 @@ export * from "./gen/cave";
 export * from "./gen/generate";
 export * from "./combat/index";
 export * from "./session/boot";
+export * from "./session/game";
 export * from "./game/energy";
 export * from "./game/context";
 export * from "./game/monster-turn";
