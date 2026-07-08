@@ -1,8 +1,10 @@
 name: Deploy web build to GitHub Pages
 
-# Manual-only until GitHub Pages is enabled for the repo (Settings ->
-# Pages -> Source: GitHub Actions). Then add a push trigger on master.
+# Pages is enabled in workflow build mode. Deploys run on every push to
+# master and can also be triggered by hand.
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
 
 permissions:
