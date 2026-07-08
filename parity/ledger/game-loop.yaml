@@ -1,0 +1,74 @@
+module: packages/core/src/game/{energy,scheduler,player-turn,loop,context}.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/game-world.c
+    items:
+      - extract_energy[200] and turn_energy(speed) = extract_energy[speed] *
+        z_info->move_energy / 100 (the table lives in mon/monster.ts; energy.ts
+        re-exports it as the canonical turn arithmetic). NORMAL_ENERGY =
+        move_energy (100); an actor acts when energy >= move_energy; a
+        normal-speed actor (110 -> 10 energy/turn) acts once per 10 game turns.
+      - run_game_loop (loop.ts runGameLoop): player acts first; before each
+        player action any monster with strictly more energy acts
+        (process_monsters(player.energy + 1)); then process_monsters(0),
+        reset_monsters, process_world every 10 game turns, player energised by
+        turn_energy(speed), turn++. Returns INPUT (cmd queue empty), DEAD,
+        LEVEL_CHANGE (generate_level) or STOPPED.
+      - process_player / process_player_cleanup (player-turn.ts processPlayer):
+        drain queued commands until one spends energy or the queue empties;
+        player->energy -= energy_use; total_energy += energy_use.
+      - process_world (loop.ts processWorld): the periodic upkeep ported here is
+        player_regen_hp (when chp < mhp), player_regen_mana, decrease_timeouts.
+      - player_regen_hp / player_regen_mana (via player-util.c): food-tier
+        percent (PY_REGEN_NORMAL/WEAK/FAINT), fed-bonus scaling, the
+        paralyse/poison/stun/cut zeroing, PY_REGEN_HPBASE/MNBASE.
+      - player_adjust_hp_precise / player_adjust_mana_precise (player-util.c):
+        the 2^16 fixed-point chp/chp_frac (csp/csp_frac) split, clamped to mhp
+        (msp) and 0.
+      - decrease_timeouts: player->timed[] countdown, decr = 1 except
+        TMD_FOOD (0, handled by digestion) and TMD_POISONED/STUN/CUT (the CON
+        adj_con_fix + 1 regeneration adjust).
+      - process_monsters(minimum_energy) / reset_monsters (scheduler.ts): the
+        backwards energise-and-run scan, MFLAG_HANDLED guard, per-100-turn
+        regen_monster, FAST/SLOW net speed, move_energy spend, active/timed
+        gating before monster_turn.
+  - path: src/player-util.c
+    items: [PY_REGEN_* constants, player_regen_hp/mana, adjust_hp/mana_precise]
+  - path: src/cmd-core.c
+    items:
+      - cmdq_pop reduced to the injected command provider (state.nextCommand),
+        so the loop never blocks on real input; the string-keyed ActionRegistry
+        (decision 13) is the moddable command table (walk / hold / rest /
+        descend / ascend ported; ~20 other codes registered as deferred stubs).
+notes: >-
+  struct player's world/turn members that player/player.ts omits (grid,
+  energy, state.speed, total_energy) live in a PlayerActor wrapper
+  (context.ts) alongside the Player; combat's p->state (py_attack) and
+  p->state.ac + to_a (make_attack_normal) are supplied explicitly there
+  because calc_bonuses is deferred (player/calcs.ts). Live monsters are a flat
+  array indexed by midx (0 unused); Chunk.mon stores occupancy (0 empty,
+  >0 midx, <0 player). mon->cdis is refreshed by updateMonsterDistances in
+  lieu of update_mon. DEFERRED: monster-list compaction; ambient sound and the
+  day-night town cycle (is_daytime, cave_illuminate, store daycount);
+  one_in_(alloc_monster_chance) creature generation; damage-over-time
+  (poison/cut/bloodlust/black-breath/starvation take_hit); food digestion and
+  the TMD_FOOD clock; light update; per-turn noise/scent laydown
+  (make_noise/update_scent exist in world/flow.ts, wired by the caller);
+  inventory/rod recharge (recharge_objects); trap timeout; word-of-recall and
+  deep-descent; timed-effect grade transitions and their messages
+  (player_dec_timed message plumbing); TMD_COMMAND monster sync; the Rock/PF
+  cut specials; actual level generation on LEVEL_CHANGE (the loop only signals
+  it). Divergence: the energy table lookup clamps speed to 0..199 (upstream
+  indexes unchecked).
+verified-by:
+  - energy.test.ts: extract_energy values, ten-turns-per-action, a +10-speed
+    actor acts twice as often over N turns, canAct threshold, move_energy scale
+  - scheduler.test.ts: energise/spend bookkeeping, move_energy gate,
+    minimum_energy gate, MFLAG_HANDLED / reset_monsters, givePlayerEnergy
+  - player-turn.test.ts: walk step / wall bump / py_attack, hold, descend
+    signal, custom (mod) action dispatch, built-in replacement, stub fallthrough
+  - loop.test.ts: a walk advances turn by exactly 10 and restores actionable
+    energy; empty-queue INPUT; descend LEVEL_CHANGE; process_world HP regen
+    exact fixed-point value, no regen at full health, ten-turn cadence,
+    timed-effect countdown with TMD_FOOD exempt

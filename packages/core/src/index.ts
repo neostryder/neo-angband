@@ -54,6 +54,12 @@ export * from "./gen/cave";
 export * from "./gen/generate";
 export * from "./combat/index";
 export * from "./session/boot";
+export * from "./game/energy";
+export * from "./game/context";
+export * from "./game/monster-turn";
+export * from "./game/scheduler";
+export * from "./game/player-turn";
+export * from "./game/loop";
 
 // Some small derived constants and geometry helpers are defined
 // independently by more than one domain (identical values/behavior).
@@ -69,3 +75,13 @@ export { nextGrid } from "./world/view";
 // (with msg typed as the specific HitType). Crit levels are a combat
 // concept; expose combat/hit's as canonical.
 export type { CriticalLevel } from "./combat/hit";
+// - EXTRACT_ENERGY/turnEnergy: the extract_energy[] table and turn_energy()
+//   live in mon/monster; game/energy re-exports them for convenience, so
+//   pin mon/monster as the single canonical source.
+// - squareIsEmpty: two genuinely different predicates share the name -
+//   gen/util's is a generation-time check (takes a Gen), game/context's is
+//   a live occupancy check (takes a GameState). Keep gen/util's as the
+//   barrel-canonical (it predates game/); game/context's is reached via its
+//   module and will get an aliased export if the game API needs it publicly.
+export { EXTRACT_ENERGY, turnEnergy } from "./mon/monster";
+export { squareIsEmpty } from "./gen/util";

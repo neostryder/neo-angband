@@ -1,0 +1,65 @@
+module: packages/core/src/game/monster-turn.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-move.c
+    items:
+      - get_move_find_range: min_range / best_range. Ported: fear/FRIGHTENED
+        flight distance (max_sight + flee_range), the bodyguard min_range = 1,
+        the m_lev = level + (midx & 8) + 25 vs p_lev comparison and the
+        (p_lev*p_mhp + 4*p_chp) health cross-multiply that scares strong
+        monsters, the NEVER_MOVE / NEVER_BLOW +3 stand-off, and the turn_range
+        "nearby monsters won't run" clamp.
+      - get_move_advance: the flow-following core. Ported: pass-wall beeline,
+        line-of-sight beeline (monster_can_see_player via square_isview), then
+        sound (cave->noise flow heatmap) with the cardinal-first ddgrid_ddd
+        8-direction scan and the current/backup noise comparison, then scent
+        (cave->scent). Sets MFLAG_TRACKING.
+      - get_move: advance vs. the MFLAG_TRACKING fallback / get_move_random
+        step, the afraid flee branch, and get_move_choose_direction (the
+        vertical / horizontal / diagonal preference with the turn-parity
+        tie-break) producing a side_dirs row index.
+      - monster_turn_should_stagger: the cumulative RAND_25 / RAND_50 erratic
+        chances and the confusion staggers (CONF_ERRATIC_CHANCE per confusion
+        grade), returning NO / CONFUSED / INNATE stagger.
+      - monster_turn: the 5-step side_dirs (or random ddd when staggering)
+        movement loop, the tracking commit early-out, monster_turn_can_move
+        (player attack allowed, passable, PASS_WALL phasing, perm-wall block),
+        NEVER_BLOW / NEVER_MOVE, attack the player via combat.monMeleeAttack,
+        monster_turn_try_push (KILL_BODY trample / MOVE_BODY swap via
+        compare_monsters), and the "out of options -> paralysed by fear"
+        conversion of MON_TMD_FEAR to MON_TMD_HOLD.
+      - process_monster_timed: sleep skip + monster_reduce_sleep, the
+        FAST/SLOW/HOLD/DISEN/STUN/CONF/CHANGED/FEAR decrements, and the
+        held/commanded skip plus the one-in-STUN_MISS_CHANCE stunned miss.
+      - monster_check_active: MFLAG_ACTIVE from cdis<=hearing+passwall, hurt,
+        in-view, can-hear, or can-smell.
+      - monster_effect_level (mon-timed.c) and monster_passes_walls
+        (mon-predicate.c).
+notes: >-
+  DEFERRED (clear stubs, no behaviour yet): spellcasting and breath
+  (make_ranged_attack), reproduction (monster_turn_multiply / multiply_monster
+  and the num_repro cap), item pickup and crush (monster_turn_grab_objects,
+  RF_TAKE_ITEM / KILL_ITEM), group and escort tactics (get_move_bodyguard, the
+  group-surround fill, group_monster_tracking, monster_group_rouse), pack
+  ambush and "duck behind a wall" flight (get_move_find_hiding /
+  get_move_find_safety and the swerving get_move_flee -- the afraid branch here
+  just legs it in the reverse of the advance direction), damaging-terrain
+  avoidance and monster_take_terrain_damage, door open/bash and wall
+  kill/smash carving (OPEN_DOOR / BASH_DOOR / KILL_WALL / SMASH_WALL: those
+  monsters are blocked by the obstacle in this subset, only PASS_WALL phases
+  through), glyph / decoy / web handling, aggravation (OF_AGGRAVATE),
+  camouflage/mimic reveal (become_aware, monster_is_mimicking lie-in-wait), and
+  every monster-lore update (rf_on/lore_update). monster_hates_grid always
+  returns false (no damaging terrain modelled). cdis is refreshed by
+  updateMonsterDistances (context.ts) in lieu of update_mon; the AI reads the
+  Chunk noise/scent heatmaps produced by world/flow.ts.
+verified-by:
+  - monster-turn.test.ts: a hearing monster follows the noise flow and closes
+    on the player each turn without stepping onto it; a visible monster
+    beelines and melees an adjacent player (combat damage lands); an afraid
+    monster flees directly away; a NEVER_MOVE monster holds ground
+  - monster-turn.test.ts (statistical, seeded): a non-random monster never
+    staggers; RAND_50 staggers ~50% and RAND_25 ~25% of the time over 2000 rolls
+  - scheduler.test.ts exercises process_monster_timed / monster_check_active
+    indirectly through process_monsters
