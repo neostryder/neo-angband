@@ -1,0 +1,347 @@
+# Mod Lifecycle, Saves, and Composition
+
+> STATUS: CANDIDATE DESIGN, pending Aaron's ratification. This page
+> records a proposed architecture so it can be reviewed and revised. It
+> is not yet built. Decisions marked [PROPOSED] are calls the author made
+> and that Aaron may override; [OPEN] items still need a decision.
+
+This page answers four questions that decide whether a mod system is
+pleasant or painful:
+
+1. How is mod content kept out of the way so installing, updating, and
+   uninstalling mods does not break your save?
+2. How do you install a mod - from a git repo today, from a marketplace
+   later - without friction?
+3. How do several mods run together without corrupting each other?
+4. What makes the whole thing ergonomic instead of the usual mod-manager
+   headache?
+
+It builds on the vocabulary already in `README.md` (packs, `pack.json`,
+namespaced ids, `patches`/`replaces`/`removes`, provenance) and the
+ratified pillars in `../MODS.md`.
+
+---
+
+## 1. Saves that survive mod changes
+
+The single most important rule, from which almost everything else
+follows:
+
+> [PROPOSED] Saves reference content by stable namespaced string id,
+> never by numeric index.
+
+Upstream Angband serializes a monster as its `r_idx` and an item as its
+`k_idx` - array positions. Add or remove one record and every later
+index shifts, silently corrupting old saves. That fragility is exactly
+what breaks modded saves elsewhere. We serialize `core:kobold`,
+`frost:frost-wyrm`, `mypack:quest-of-the-lost-ring` and resolve the
+string to a runtime index at load time. Adding, removing, or reordering
+content never moves an existing id.
+
+### The save is block-structured and namespaced
+
+The savefile is already block-based (a faithful port of `savefile.c`:
+magic, then framed blocks). We extend it into three tiers:
+
+- A `manifest` block: the exact mod set that produced this save - each
+  pack's `id`, `version`, content hash, and source (git URL + ref, or
+  marketplace id), plus the resolved load order. This is the save's
+  "profile fingerprint".
+- Core blocks (player, dungeon, messages, RNG state, ...): the base
+  game state. All cross-references inside use namespaced string ids.
+- One block per mod, keyed `mod:<id>`: that mod's own private state - an
+  opaque bag the engine never interprets, versioned by the mod's
+  `saveSchema` number. A scripted plugin persists whatever it likes here
+  and is the only thing that reads it back.
+
+Every persisted entity that came from a mod records the id of its
+definition. A `frost:frost-wyrm` standing on the level is stored as a
+normal monster instance whose "race" reference is the string
+`frost:frost-wyrm`. The instance data is core-shaped; only the reference
+is mod-owned.
+
+### What happens when the mod set changes under a save
+
+Because each mod owns exactly its own namespace, the blast radius of any
+change is that namespace:
+
+- Mod ADDED since the save: its namespace was empty in the save; it
+  simply starts contributing. No migration.
+- Mod UPDATED (version changed): the engine hands the mod its own old
+  `mod:<id>` bag and asks it to migrate from its old `saveSchema` to the
+  new one. Declarative content usually needs nothing (ids are stable);
+  scripted mods ship a migration function that touches only their bag.
+  Core never participates.
+- Mod REMOVED (uninstalled): entities that reference the missing mod are
+  [PROPOSED] quarantined, not deleted. They move into an
+  `orphans:<id>@<version>` store inside the save - frozen, inert,
+  removed from active play, but preserved. Reinstall the mod (same major
+  version) and they rehydrate exactly where they were. This is the
+  clean-uninstall guarantee: uninstalling removes a mod's active content
+  without ever corrupting the save.
+
+[OPEN] Orphan policy alternatives if quarantine is too conservative:
+(a) offer the player a choice at load ("keep frozen" vs "purge N
+orphaned items permanently"); (b) auto-purge trivial cosmetic orphans
+but quarantine anything that affects progression. Recommend (a) surfaced
+as a one-time prompt, defaulting to keep.
+
+### Compatibility gating
+
+A save refuses to load only when it genuinely cannot: an incompatible
+engine version, or a missing REQUIRED dependency of an enabled mod. In
+those cases the app says exactly what is missing and offers the fix
+("install core >=0.6.0" / "reinstall frost@1.x"), rather than failing
+with a stack trace. Everything softer than that (a removed optional mod,
+a cosmetic pack gone) degrades gracefully via quarantine.
+
+---
+
+## 2. Installing mods
+
+### The manifest carries everything the installer needs
+
+`pack.json` (see README for the base fields) gains lifecycle fields:
+
+```json
+{
+  "id": "frost",
+  "version": "1.2.0",
+  "engine": ">=0.5.0 <0.7.0",
+  "shape": "content",
+  "dependencies": { "core": ">=0.5.0", "runes": "^2.0.0" },
+  "optionalDependencies": { "biglevels": "*" },
+  "loadAfter": ["runes"],
+  "loadBefore": [],
+  "saveSchema": 3,
+  "capabilities": ["command:add", "event:turn-start", "state:party.read"],
+  "repository": "https://github.com/you/frost",
+  "license": "CC-BY-4.0",
+  "screenshots": ["media/1.png"],
+  "changelog": "CHANGELOG.md"
+}
+```
+
+The `capabilities` list applies only to `shape: plugin` mods and is the
+consent surface (section 4). Content and tile packs request none.
+
+### From a git repository (today)
+
+The user pastes a repository URL (or picks a ref). The app:
+
+1. Resolves a specific ref (tag preferred, else branch head, else
+   commit) and pins it - installs are reproducible, not "latest".
+2. Fetches the tree at that ref and reads `pack.json`.
+3. Validates: schema, `engine` compatibility, dependency availability
+   and version ranges, and (for plugins) the capability list.
+4. Shows a pre-install summary: what it adds, what it patches/replaces/
+   removes (computed against the current load order), capabilities it
+   requests in plain language, size, license, author, screenshots, and
+   any conflicts with already-enabled mods.
+5. On confirm, materializes the mod into local storage
+   (content-addressed by hash), enables it, and inserts it into the load
+   order at the dependency-correct position.
+
+[PROPOSED] Browser reality, stated honestly: a web page cannot speak the
+git protocol or clone arbitrary hosts (CORS, no git transport). "Install
+from git" in the web build means fetching the repository tarball at a
+ref through the host's HTTP API (GitHub/GitLab both expose CORS-friendly
+archive and raw endpoints for public repos). Private or self-hosted
+repos need a user-supplied token or a small optional proxy; this is
+documented, not hidden. A desktop build (if one ships) can clone
+directly. Either way the installer consumes the same pack format.
+
+### From a marketplace (future release)
+
+The marketplace is a delivery layer over the same pipeline, not a
+separate system. It serves pre-validated, pre-packaged `.ngpack` bundles
+(the pack directory, zipped, with the manifest and a signed content
+hash) from our own host, and adds browse / search / screenshots /
+ratings in-app. Building it later is cheap because we build the bundle
+format and the installer now, with "git" and "marketplace" as two
+sources feeding one installer. [PROPOSED] The in-app browser is a view
+onto that source; actually building the marketplace backend is a future
+release, as Aaron noted.
+
+### Updating and uninstalling
+
+- Update: the app compares the pinned ref (or marketplace version)
+  against upstream, shows the changelog and any migration notes,
+  re-checks conflicts and dependencies, then applies atomically. Before
+  a migration runs it takes an internal pre-migration snapshot of the
+  affected save (see the note under section 5 on why this is not
+  save-scumming) and rolls back if the migration throws.
+- Uninstall: disable, then optionally delete files. The app states the
+  consequence up front ("3 characters use this mod; their in-world frost
+  content will be quarantined and restored if you reinstall") so there
+  is never a silent loss.
+
+---
+
+## 3. Running many mods together
+
+### Load order and dependency resolution
+
+Enabled mods form an ordered list. [PROPOSED] Later in the order wins on
+genuine conflicts (last-write-wins, the convention players already know
+from Bethesda and Forge). The order is computed by:
+
+1. Topological sort by `dependencies` and `loadAfter`/`loadBefore`
+   (hard requirements first; cycles rejected at install).
+2. User preference within the freedom that leaves.
+
+Most mods never need manual ordering; the app only asks the user to
+choose when two mods actually collide on the same field (below).
+
+### Additive vs conflicting changes
+
+- Additive (each mod adds new records): namespaced ids keep them
+  distinct. Never a conflict. This is the overwhelming common case.
+- Override (two mods both touch `core:kobold`): a real conflict only if
+  they touch the SAME FIELD.
+
+The existing composition model (`patches`, `replaces`, `removes`) is the
+lever. [PROPOSED] We make `patches` field-granular and composable: a
+patch is a set of field operations (`set`, `merge`, `addFlag`,
+`removeFlag`, numeric `add`/`mul`), applied in load order. Two mods that
+patch DIFFERENT fields of the same record compose cleanly with zero
+conflict. Only same-field patches conflict, and then load order decides
+and the app says so. This removes the biggest source of false conflicts
+in coarse whole-record systems.
+
+### The conflict report
+
+Before a session starts, the app computes the merged content and shows a
+conflict report: every record touched by more than one mod, which fields
+each touched, and who wins. Same-field collisions are highlighted with a
+one-line resolution ("frost and runes both set kobold.speed; frost wins
+- drag to reorder"). Nothing is silent, nothing is a surprise at
+runtime. A load order that fails validation (unmet dependency, engine
+mismatch, cyclic requirement) cannot be launched, and the reason is
+plain language, not an error code.
+
+### External managers (Vortex, MO2)
+
+[PROPOSED] The pack format is a plain directory / zip with a manifest, so
+it is filesystem-friendly. A desktop build can watch a mod directory
+that a Vortex or Mod Organizer 2 extension deploys into, giving power
+users their preferred tool for free. But the in-app manager is
+first-class and aims to be good enough that most players never need an
+external one. Same format serves both; we do not fork.
+
+---
+
+## 4. Trust, safety, and determinism
+
+Three trust tiers, unchanged from MODS.md, made concrete at install:
+
+- Content packs (declarative JSON): validated data, cannot execute.
+  Lowest bar, freely shareable.
+- Tile packs: validated manifest plus images. Same posture.
+- Scripted plugins: real code, run in a sandbox (a Web Worker with no
+  ambient DOM, network, or storage) with explicit capability grants. At
+  install the app lists the capabilities in plain language ("add
+  commands", "read party state", "network access to api.example.com")
+  and the mod gets nothing it did not request and the user did not
+  approve.
+
+[PROPOSED] Determinism guard: a plugin that affects game state may use
+only the engine's seeded RNG - no wall clock, no `Math.random`. The
+sandbox enforces this. This is not red tape: the no-save-scum guarantee,
+replay, and shareable seed+profile reproduction all depend on the whole
+game being a deterministic function of (seed, command stream, mod set).
+A mod that wants nondeterminism must declare itself cosmetic-only and is
+barred from touching game state.
+
+---
+
+## 5. Ergonomics: designing out the usual complaints
+
+The brief was a mod UX that avoids the pitfalls people complain about
+elsewhere. Each known complaint, and the design answer:
+
+- "A mod broke my save / I cannot uninstall safely."
+  -> String-id references, per-mod save namespaces, per-mod migrations,
+  and quarantine-on-uninstall. Uninstalling is reversible.
+- "Load order is arcane (hand-sorting plugin files, external sorters)."
+  -> Auto-sort by declared dependencies; manual ordering surfaces only
+  for real same-field conflicts, with a plain explanation of what each
+  choice does.
+- "Silent conflicts, mystery crashes mid-game."
+  -> A pre-launch conflict report and a validation gate. If it launches,
+  it composed cleanly; if it will not, you are told why in plain words.
+- "Dependency hell / missing masters."
+  -> Dependency resolution with version ranges and a clear "this also
+  needs runes >=2.0 - install it too?" step. Never launches with unmet
+  requirements.
+- "Where do I even get mods, and is this download safe?"
+  -> In-app install from trusted git sources now, a browsable
+  marketplace later, license and author shown before install,
+  capabilities shown before enabling a script.
+- "Updating breaks everything."
+  -> Pinned refs, changelog and migration preview, atomic apply with an
+  internal pre-migration snapshot and automatic rollback on failure.
+- "I cannot tell what a mod actually changes."
+  -> The computed diff view: records added, patched, replaced, removed,
+  fields touched, and capabilities requested.
+
+### Profiles (a feature players will expect once they have it)
+
+[PROPOSED] A profile is a named, ordered mod set. A character/save is
+bound to the profile that created it (that is what the manifest block
+records). You can keep a vanilla character and a heavily modded one side
+by side with no cross-contamination, and switch a character's profile
+only through a guarded flow that runs the appropriate migrations or
+quarantine. Profiles are shareable (export/import a small profile file:
+ids, versions, sources, order) so a friend can one-click reproduce your
+setup. Note the deliberate asymmetry with saves: profiles are meant to
+be shared; savefiles are not casually exportable, because the engine's
+determinism plus a shared seed plus a shared profile already reproduces
+a playthrough, and freely exportable saves would undercut the
+no-save-scum guarantee (see save-scum policy).
+
+Why the pre-migration snapshot in section 2 is not save-scumming: it is
+an operational safety net that only ever restores when a migration
+throws, and it is not exposed as a "load an earlier save" command. It
+protects against tool failure, not against the player's own bad luck.
+The no-save-scum rule bars player-facing rollback of gameplay outcomes;
+this is neither player-facing nor a gameplay rollback.
+
+### Safe mode
+
+[PROPOSED] If an enabled combination fails to boot, the app offers a
+one-click "start with mods disabled" recovery so a bad mod can never
+brick access to the app or to a save.
+
+---
+
+## 6. Build order (so this is real, not aspirational)
+
+Seams and formats first (they are cheap now and expensive to retrofit),
+UI next, marketplace last:
+
+1. Now, as the save system and loader land: string-id serialization,
+   the namespaced save blocks and per-mod bags, the field-level patch/
+   merge composer, the load-order + dependency resolver, the capability
+   model, and the conflict-report computation. These are engine seams.
+2. Next: the in-app mod manager UI (list, enable/disable, reorder,
+   install-from-url, conflict view, capability consent, profiles).
+3. Future release: the marketplace backend and in-app browser, and an
+   optional Vortex/MO2 extension over the shared on-disk format.
+
+A `neo-pack` CLI (validate + bundle, a sibling of `neo-linoleum`) ships
+alongside so authors can check a pack in CI before publishing, and the
+repo carries sample mods that CI installs and runs.
+
+---
+
+## Decisions this doc is asking Aaron to confirm
+
+1. String-id (not index) serialization as the load-bearing rule. [PROPOSED]
+2. Quarantine (freeze + restore) as the default uninstall behavior, with
+   a one-time keep/purge prompt for orphans. [PROPOSED, alt in 1]
+3. Last-in-load-order-wins with field-level patch composition. [PROPOSED]
+4. Determinism guard on state-affecting plugins. [PROPOSED]
+5. Profiles bound to saves, profiles shareable but saves not. [PROPOSED]
+6. Pre-migration snapshot as operational safety, reconciled with the
+   no-save-scum rule. [PROPOSED]
