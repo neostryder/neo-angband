@@ -1,0 +1,47 @@
+module: packages/core/src/player/calcs.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/player-calcs.c
+    items:
+      - adj_int_dev, adj_wis_sav, adj_dex_dis, adj_int_dis, adj_dex_ta,
+        adj_str_td, adj_dex_th, adj_str_th, adj_str_wgt, adj_str_hold,
+        adj_str_dig, adj_str_blow, adj_dex_blow, adj_dex_safe, adj_con_fix,
+        adj_con_mhp, adj_mag_study, adj_mag_mana (all 18 tables, verbatim,
+        STAT_RANGE = 38 entries each)
+      - blows_table[12][12] (blow energy by STR/DEX blow index)
+      - calc_hitpoints (mhp = player_hp[lev-1] + adj_con_mhp[con] * lev / 100,
+        floored at lev + 1)
+      - calc_bonuses stat_ind derivation (use<=3 -> 0, use<=18 -> use-3,
+        use<=18+219 -> 15 + (use-18)/10, else 37)
+      - calc_bonuses skill computation, non-equipment part (base r_skills +
+        c_skills; DEVICE/SAVE/DIGGING += the adj_int_dev/adj_wis_sav/
+        adj_str_dig stat term; += x_skills * lev / 10; DIGGING floored at 1,
+        STEALTH clamped to [0, 30])
+  - path: src/player.c
+    items: [player_exp[PY_MAX_LEVEL] experience thresholds]
+  - path: src/player-util.c
+    items: [modify_stat_value (3..18/220 stat encoding, symmetric)]
+notes: >-
+  The adj_* tables are transcribed verbatim with exact values and lengths and
+  spot-checked against the C arrays. calcSkills ports only the race/class and
+  level-based portion of calc_bonuses. DEFERRED (ledgered here, all
+  equipment-, shape- or class-special-dependent): object modifier
+  contributions to STEALTH/SEARCH/DIGGING and to-hit; shape->skills and
+  shape->modifiers additions; weapon/launcher weight to-hit penalties and
+  heavy_wield/heavy_shoot handling; class-special skill scaling (rogue/ranger
+  device and disarm, throwing, etc.); to_a/to_d/to_h, num_blows (via
+  blows_table + str/dex blow indices), num_shots/num_moves, ammo multiplier;
+  calc_mana / adj_mag_mana application and adj_mag_study spell counts;
+  calc_light; speed adjustments (food, encumbrance). blows_table, adj_mag_*
+  and the unused adj_* tables (weight/hold/safe/fix/th/dis) are ported now so
+  the deferred combat/mana calculations can consume them unchanged later.
+verified-by:
+  - calcs.test.ts: every ported table has STAT_RANGE (38) entries; C spot
+    values for adj_con_mhp, adj_str_blow, adj_dex_ta, adj_int_dev, adj_str_td,
+    adj_wis_sav, adj_dex_blow; blows_table 12x12 corners; player_exp 50
+    thresholds
+  - modify_stat_value up/down encoding; statUseToIndex boundaries
+    (18/210-219 -> 36, 18/220+ -> 37); calc_hitpoints CON bonus and lev+1 floor
+  - exercised end to end by birth.test.ts (Half-Troll Warrior level-1 mhp and
+    the level-scaled melee skill)
