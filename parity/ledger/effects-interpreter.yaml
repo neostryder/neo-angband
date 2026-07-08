@@ -1,0 +1,155 @@
+module: packages/core/src/effects
+status: machinery ported, handler skeleton
+baseline: 4.2.6
+upstream:
+  - path: src/effects.h
+    items:
+      - effect_index (enum)
+      - effect_valid
+      - effect_aim
+      - effect_info
+      - effect_desc
+      - effect_lookup
+      - effect_subtype
+      - effect_value_base_by_name
+      - effect_do
+      - effect_simple
+  - path: src/effects.c
+    items:
+      - effects[] kind table (-> EffectRegistry, runtime-registered)
+      - effect_names[] (-> generated EFFECT_ENTRIES)
+      - effect_do (chain walk, EF_RANDOM/EF_SELECT selection, ident)
+      - effect_simple
+      - effect_subtype (all categories; two injected, see below)
+      - effect_value_base_by_name (names table; providers injected)
+  - path: src/effect-handler.h
+    items:
+      - effect_handler_context_t (-> EffectHandlerContext)
+      - effect_handler_f (-> EffectHandler)
+      - struct effect_kind (-> EffectDefinition/RegisteredEffect)
+      - ENCH_TOHIT/TODAM/TOBOTH/TOAC
+  - path: src/effect-handler-general.c
+    items:
+      - set_value static + effect_calculate_value
+      - handlers listed in coverage below
+  - path: src/effect-handler-attack.c
+    items:
+      - effect_handler_HEAL_HP
+      - effect_handler_DAMAGE (partial)
+  - path: src/init.c
+    items:
+      - grab_effect_data (-> EffectBuilder.effect)
+      - parse_*_effect / effect-yx / dice / expr / effect-msg directive
+        semantics (-> EffectBuilder methods, orphan-directive tolerance
+        included)
+handler-coverage:
+  total: 112
+  implemented: 11
+  partial: 2
+  stubbed: 99
+  implemented-codes:
+    - RANDOM (dummy, as upstream; selection lives in effect_do)
+    - SELECT (dummy, as upstream)
+    - HEAL_HP
+    - NOURISH
+    - CRUNCH
+    - CURE
+    - TIMED_SET
+    - TIMED_INC_NO_RES
+    - TIMED_DEC
+    - SET_VALUE
+    - CLEAR_VALUE
+  partial-codes:
+    - DAMAGE: player path complete (reduction, show_damage message,
+      take_hit, killer for player/none sources); monster-target and
+      decoy branches plus registry-derived killer descriptions for
+      monster/trap/object/chest origins deferred to the world/monster
+      waves (placeholders used).
+    - TIMED_INC: player path complete including the `other` re-up rule;
+      decoy destruction and the TMD->MON_TMD mapping for monster targets
+      deferred to the world/monster waves.
+  stubbed: every other list-effects.h code is registered as a
+    NOT_IMPLEMENTED stub that records (code, name, value, subtype,
+    radius, other, y, x, dir, beam, boost) into EffectContext.stubLog
+    and returns true, so dispatch coverage is testable now and stubs are
+    replaced one by one later. EFFECT_HANDLER_MANIFEST in handlers.ts is
+    the authoritative machine-readable split.
+injection-points:
+  - effect_subtype EF_SUMMON: summon_name_to_idx deferred to the monster
+    domain; SubtypeInjections.summonNameToIdx (absent -> -1).
+  - effect_subtype EF_SHAPECHANGE: shape_name_to_idx deferred to the
+    player-shapes domain; SubtypeInjections.shapeNameToIdx (absent -> -1).
+  - effect_subtype for mod string codes: SubtypeInjections.custom.
+  - effect_value_base_by_name: the seven upstream base value functions
+    read globals (ref_race, cave, player, z_info, target); ported as
+    injected providers (EffectValueBaseProviders), case-insensitive
+    lookup kept. EFFECT_VALUE_BASE_NAMES documents the upstream set.
+  - EF_SELECT player prompt: cmd_get_effect_from_list /
+    get_effect_from_list ported as EffectContext.chooseEffect
+    (0-based choice, -1 abort, -2 random); absent, selection falls back
+    to the random branch. ident is still set when a choice is presented,
+    as upstream.
+  - effect_simple aiming: get_aim_dir ported as EffectContext.getAimDir,
+    defaulting to DIR_TARGET (5).
+  - z_info->food_value: EffectContext.foodValue (default 100, the
+    constants.txt value).
+  - EffectContext slots player/chunk/target are typed narrowly against
+    the implemented handlers (HasHp, TimedHost, EffectPlayer) or opaque;
+    later domains widen them.
+notes: >-
+  Moddability (ratified pillar): EffectRegistry keys are number | string;
+  mods register new effect codes at runtime, may override core codes, and
+  EffectBuilder resolves mod names via lookupEffect. Verified by a
+  dedicated test dispatching a custom "MOD_SPARKLE" effect in a chain
+  with core effects.
+
+  C subtleties preserved: effect_do rolls the dice once per effect for
+  the RANDOM/SELECT choice count, and handlers re-roll via
+  effect_calculate_value (RNG is consumed twice for XdY dice, matching
+  upstream call order); the rolled random_value persists across
+  dice-less chain entries; EF_RANDOM selection is exactly
+  randint0(choice_count) with leftover = choice_count - choice skipping
+  past the subeffect block; a RANDOM/SELECT with zero rolled subeffects
+  or an overrun choice counts as completed; ident only ever accumulates;
+  handler completion ORs into the chain result; effect_calculate_value
+  returns a live SET_VALUE verbatim (so a nested SET_VALUE re-asserts
+  the old value rather than rolling, a quirk kept deliberately);
+  the boost is integer arithmetic (final * (100 + boost) / 100,
+  truncated). effect_subtype accepts plain base-10 numbers with
+  strtol/contains_only_spaces semantics (trailing spaces/tabs only,
+  INT_MIN/INT_MAX rejected); proj/timed/stat name lookups are
+  case-insensitive with reachable trailing "MAX" entries for proj and
+  stat, while mon_timed lookup is case-sensitive and excludes MAX,
+  all as upstream.
+
+  Divergences by design: the C file-static set_value becomes per-registry
+  state (one registry ~ one compiled program); it still leaks across
+  chains until CLEAR_VALUE, verified by test. effect_lookup returns
+  EF_MAX on failure as upstream (EF_MAX exported). free_effect is
+  garbage collected. recharge_failure_chance belongs to the object
+  domain and is not ported here. Effects keep the raw dice string
+  (diceString) for serialization. Worldless no-op rule: implemented
+  handlers return true without acting when their player slot is absent
+  (upstream dereferences always-present globals).
+verified-by:
+  - packages/core/src/effects/effect.test.ts (lookup, validity, all four
+    name_to_idx lookups incl. case and MAX quirks, numeric subtype
+    parsing, every ported subtype category, injected summon/shape/custom
+    resolvers, builder round-trips from gamedata-style strings, expr
+    binding with injected base values, orphan-directive tolerance,
+    upstream-named parse errors, mod name resolution)
+  - packages/core/src/effects/interpreter.test.ts (chain walk order,
+    bad-effect message, NULL-handler skip, EF_RANDOM selection mirrored
+    against a same-seed Rng for 200 trials, subeffect coverage, leftover
+    skipping, zero/overrun subeffect completion, EF_SELECT chooser /
+    abort / random fallback / non-player bypass with ident, RandomValue
+    passing vs total, value persistence into dice-less effects, boost
+    integer math, ident accumulation, runtime mod registration and
+    dispatch, effectAim/effectInfo, effectSimple incl. aim injection)
+  - packages/core/src/effects/handlers.test.ts (HEAL_HP minimum vs
+    m_bonus percentage and message tiers, DAMAGE reduction/killer/msg,
+    TIMED family arguments incl. check flags, other re-up and division
+    rules, disturbance flag, NOURISH all four subtypes with food_value
+    scaling, CRUNCH, SET_VALUE/CLEAR_VALUE chain and cross-chain
+    semantics, stub recording, ident non-touch by stubs, manifest vs
+    registry coverage reconciliation)
