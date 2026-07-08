@@ -7,4 +7,29 @@
  * themselves; converted packs are not redistributed with the port.
  */
 
-export const LINOLEUM_TOOLS_VERSION = "0.1.0";
+export { LINOLEUM_TOOLS_VERSION } from "./version.js";
+export {
+  parseLegacySelectorLine,
+  readLegacySelectors,
+  removeLegacyInlineComment,
+} from "./prf.js";
+export type { LegacySelector, PrefSource } from "./prf.js";
+export { deterministicAssetName, selectorKey, stableHashHex } from "./naming.js";
+export { ALL_PACKS, selectPacks } from "./packs.js";
+export type { PackConfig } from "./packs.js";
+export {
+  buildPackExport,
+  compatibilityVariantRank,
+  convertPacks,
+  effectProfileFor,
+  selectCompatibilityEntry,
+  sourceTileRectangle,
+  writeInventoryMarkdown,
+} from "./convert.js";
+export type {
+  ConvertOptions,
+  ConvertSummary,
+  EffectProfile,
+  ExportEntry,
+  PackResult,
+} from "./convert.js";

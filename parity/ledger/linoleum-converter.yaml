@@ -1,0 +1,57 @@
+module: packages/linoleum/src/convert.ts
+status: ported
+baseline: 4.2.6
+upstream:
+  # NOTE: the baseline for this module is NOT the 4.2.6 C tree. The Linoleum
+  # converter is a feature of Aaron's upstream fork; the source of truth is
+  # the PowerShell script below (paths relative to the fork repo, not to
+  # reference/). The reference/lib/tiles data it consumes is the pinned
+  # 4.2.6 tileset corpus.
+  - path: scripts/build-linoleum-packs.ps1
+    items:
+      - New-DeterministicAssetName
+      - Get-StableHashHex
+      - Get-SelectorKey
+      - Get-CompatibilityVariantRank
+      - Get-SourceTileRectangle
+      - Remove-LegacyInlineComment
+      - Parse-LegacySelectorLine
+      - Read-LegacySelectors
+      - Select-CompatibilityEntry
+      - Get-LinoleumEffectProfile
+      - Add-UniqueExportEntry
+      - Build-PackExport
+      - Write-InventoryMarkdown
+      - $allPacks (six pack configs)
+  - path: docs/hacking/linoleum.rst
+    items:
+      - loose-pack layout (manifest, maps/targets.txt, maps/families.txt,
+        images/<resolution>/)
+notes: >-
+  Behaviorally faithful port including PowerShell quirks: case-insensitive
+  type/variant matching and dedupe keys (PS switch/-eq/hashtables are
+  case-insensitive), ?: conditions consumed by the next candidate line even
+  when it fails to parse and carried across pref-file boundaries, source
+  order incremented for unparseable candidate lines, and output rule
+  ordering matching Sort-Object's culture-aware case-insensitive comparison
+  (reproduced with Intl.Collator "en-US" sensitivity "accent"; verified as a
+  fixed point of pwsh 7 Sort-Object over all 3080 rules of the
+  original-tiles and nomad packs). Tile extraction uses pngjs instead of
+  System.Drawing. Intentional divergences: generated-by header comments name
+  @neo-angband/linoleum instead of the ps1; text outputs use LF without a
+  BOM (ps1 Set-Content wrote CRLF, BOM under Windows PowerShell); inventory
+  reports go into the converter output root instead of docs/; default
+  output root is build/linoleum instead of lib/tiles/linoleum; unique asset
+  PNGs are written once instead of rewritten per duplicate selector (same
+  bytes; last-write-wins only matters for case-colliding selectors with
+  different tiles, which do not exist in the bundled data).
+verified-by:
+  - ground-truth diff against a run of the original ps1 over the same
+    reference data (original-tiles + nomad): manifest/targets/families
+    byte-identical modulo header and EOL, asset name sets identical, all
+    2956 PNGs pixel-identical, inventory counts identical
+  - packages/linoleum/src/convert.test.ts end-to-end pins (manifest lines,
+    hand-computed target rules, asset counts 1495/1461, PNG dimensions
+    8x8 and 8x16, out-of-bounds skip examples, inventory counts)
+  - packages/linoleum/src/prf.test.ts and naming.test.ts unit pins,
+    including a md5-suffix name cross-checked against the ps1 function

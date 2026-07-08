@@ -8,3 +8,7 @@ coverage/
 
 # Reference C-tree build artifacts (built locally as the parity oracle)
 reference/build*/
+
+# Linoleum converter output (default CLI out dir and test output)
+/build/
+.test-out/
