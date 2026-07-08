@@ -1,0 +1,66 @@
+module: packages/core/src/gen/cave.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/gen-cave.c
+    items:
+      - classic_gen: size scaling, block table, the untried-block reservoir
+        walk, key/rarity rolls, room_build loop, the "< 2 rooms" failure,
+        perimeter perm wall, tunneling, streamers, stairs, rubble/traps,
+        player placement, distant monsters, room/floor object allocation
+      - modified_gen / modified_chunk: level scaling, the floor-count +
+        two-room termination, the 500-attempt failure cutoff, room_build with
+        find-own-space, and the same post-processing pipeline as classic
+      - build_tunnel: correct_dir / rand_dir bends, wall piercing
+        (pierce_outer_wall, find_normal_to_wall, handle_post_wall_step),
+        marked-entrance routing (choose_random_entrance), room fast-travel,
+        granite tunneling, corridor intersections, doors, preemptive
+        termination
+      - do_traditional_tunneling: scramble, link, next_to_corr /
+        possible_doorway / try_door intersection doors
+      - build_streamer (with square_upgrade_mineral treasure)
+      - ensure_connectedness: build_colors / build_color_point (flood fill),
+        count_colors / first_color / fix_colors, join_regions / join_region
+      - handle_level_stairs (non-persistent minsep path)
+  - path: src/generate.c
+    items:
+      - choose_profile: depth-0 town, quest -> classic, labyrinth_check,
+        the depth 10-40 moria roll, and PowerWyrm's one-pass weighted
+        allocation selection
+moddability:
+  - Cave builders live in a string-keyed registry (DungeonProfiles) and
+    dungeon profiles in a runtime-registrable list; registerBuilder() and
+    addProfile() are public so a mod can add a builder key and/or a whole new
+    profile. loadDunProfile() converts dungeon_profile.json records (room
+    names resolved to builder keys via list-rooms.h).
+counts:
+  live-builders: [classic, modified, town(minimal)]
+  delegating-builders: [moria, labyrinth, cavern, lair, gauntlet, hard_centre]
+  enabled-for-selection: [town, classic, modified]
+notes: >-
+  classic_gen and modified_gen reproduce the upstream RNG-consuming control
+  flow for room allocation, tunneling, streamers and stair placement. Levels
+  are fully connected (ensure_connectedness) before rubble/stairs are added;
+  the gen.test.ts connectivity check treats rubble and doors as traversable
+  (matching the pre-rubble connectivity guarantee) and confirms every
+  traversable grid is reachable from the player start.
+deferred:
+  - labyrinth_gen, cavern_gen, moria_gen, lair_gen, gauntlet_gen,
+    hard_centre_gen and arena_gen are NOT ported. Their builder keys are
+    registered but delegate to modified_gen, and their profiles are not
+    enabled for selection by default (createDungeonProfiles enables only
+    town/classic/modified). choose_profile still consults find("moria") /
+    find("labyrinth") and correctly skips them when absent. A mod may register
+    real builders and add the profiles.
+  - town_gen: replaced by a minimal open, lit level with a perimeter wall and
+    one down staircase. Full town generation (stores, home, day/night monster
+    population) is a separate later task.
+  - Persistent-level handling: build_staircase_rooms, get_join_info,
+    transform_join_list, connectors and the one_off_above/below avoidance are
+    not exercised (dun.persist is always false).
+  - Themed levels and the streamer treasure-chance nuances beyond
+    magma/quartz upgrade.
+verified-by:
+  - packages/core/src/gen/gen.test.ts: profile selection by depth (town at 0,
+    classic/modified below), full-level connectivity/stairs/player invariants,
+    determinism, and monster/object count ranges at depths 1/5/25/50

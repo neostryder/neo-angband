@@ -48,9 +48,18 @@ export * from "./player/calcs";
 export * from "./player/birth";
 export * from "./save/buffer";
 export * from "./save/integrity";
+export * from "./gen/util";
+export * from "./gen/room";
+export * from "./gen/cave";
+export * from "./gen/generate";
 
-// The obj and player domains each derive the same flag-array sizes from
-// the generated lists (OF_SIZE = flagSize(OF.MAX), ELEM_MAX). They are
-// identical values; re-export obj/types' copies explicitly so the barrel
-// has one unambiguous export rather than two colliding `export *` names.
+// Some small derived constants and geometry helpers are defined
+// independently by more than one domain (identical values/behavior).
+// Re-export a single canonical copy so the barrel is unambiguous rather
+// than dropping the name from two colliding `export *`s.
+// - OF_SIZE/ELEM_MAX: flag-array sizes derived from the generated lists,
+//   defined by both obj/types and player/types.
+// - nextGrid: next_grid(grid, dir), defined by both world/view and
+//   gen/util as grid + DDGRID[dir].
 export { OF_SIZE, ELEM_MAX } from "./obj/types";
+export { nextGrid } from "./world/view";
