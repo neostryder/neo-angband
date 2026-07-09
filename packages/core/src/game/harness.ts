@@ -197,6 +197,7 @@ export function makeState(opts: StateOptions = {}): GameState {
     actor,
     gear: newGear(),
     monsters: [null],
+    groups: [null],
     turn: 0,
     z: { ...DEFAULT_GAME_CONSTANTS },
     brands: [null],
