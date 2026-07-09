@@ -27,6 +27,7 @@ import type {
   EffectMessages,
   EffectPlayer,
   HasHp,
+  HasMana,
   TimedHost,
 } from "../effects/interpreter";
 import {
@@ -174,8 +175,30 @@ export function buildEffectPlayer(
     },
   };
 
+  const mana: HasMana = {
+    get csp(): number {
+      return p.csp;
+    },
+    set csp(v: number) {
+      p.csp = v;
+    },
+    get msp(): number {
+      return p.msp;
+    },
+    set msp(v: number) {
+      p.msp = v;
+    },
+    get cspFrac(): number {
+      return p.cspFrac;
+    },
+    set cspFrac(v: number) {
+      p.cspFrac = v;
+    },
+  };
+
   return {
     hp,
+    mana,
     timed: buildTimedHost(state, deps),
     applyDamageReduction: (dam) =>
       playerApplyDamageReduction(target, reduction, dam),

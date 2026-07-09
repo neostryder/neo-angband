@@ -138,6 +138,32 @@ const handleHEAL_HP: EffectHandler = (context) => {
   return true;
 };
 
+/**
+ * EF_RESTORE_MANA: restore spell points by a set amount (or fully if none is
+ * given). Worldless no-op when the mana slot is absent.
+ */
+const handleRESTORE_MANA: EffectHandler = (context) => {
+  let amount = effectCalculateValue(context, false);
+  const mana = context.env.player?.mana;
+  if (!mana) {
+    context.ident = true;
+    return true;
+  }
+  if (!amount) amount = mana.msp;
+  if (mana.csp < mana.msp) {
+    mana.csp += amount;
+    if (mana.csp > mana.msp) {
+      mana.csp = mana.msp;
+      mana.cspFrac = 0;
+      msg(context, "You feel your head clear.");
+    } else {
+      msg(context, "You feel your head clear somewhat.");
+    }
+  }
+  context.ident = true;
+  return true;
+};
+
 /** EF_NOURISH: feed the player or set their satiety level. */
 const handleNOURISH: EffectHandler = (context) => {
   let amount = effectCalculateValue(context, false);
@@ -329,6 +355,7 @@ const IMPLEMENTED: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.RANDOM, handleRANDOM],
   [EF.SELECT, handleSELECT],
   [EF.HEAL_HP, handleHEAL_HP],
+  [EF.RESTORE_MANA, handleRESTORE_MANA],
   [EF.NOURISH, handleNOURISH],
   [EF.CRUNCH, handleCRUNCH],
   [EF.CURE, handleCURE],
