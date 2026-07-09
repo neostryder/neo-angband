@@ -254,3 +254,17 @@ export function makeRangedAttack(
   doMonSpell(state, midx, thrown, seen, deps);
   return true;
 }
+
+/**
+ * Install make_ranged_attack as the state's monsterCast hook, so monsters cast
+ * during the game loop (the monster turn calls it before moving). The session /
+ * loop wiring calls this once, after building the effect registry, projection
+ * cast context and bound spells.
+ */
+export function installMonsterCasting(
+  state: GameState,
+  deps: DoMonSpellDeps,
+  config: MakeRangedAttackConfig = {},
+): void {
+  state.monsterCast = (mon, s) => makeRangedAttack(s, mon.midx, deps, config);
+}

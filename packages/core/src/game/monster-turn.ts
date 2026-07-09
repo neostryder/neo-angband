@@ -459,12 +459,18 @@ function monsterTurnTryPush(
 }
 
 /**
- * monster_turn: the monster acts. Reproduction, ranged attacks, item pickup,
- * web/glyph/decoy, group behaviour and lore are DEFERRED (see the module
- * header); this ports the movement/attack core.
+ * monster_turn: the monster acts. A ranged attack (spell / breath) is attempted
+ * first through the injected state.monsterCast hook (make_ranged_attack, wired by
+ * game/mon-ranged.ts installMonsterCasting); when it spends the turn we stop
+ * here, exactly as upstream's `if (make_ranged_attack(mon)) return;`.
+ * Reproduction, item pickup, web/glyph/decoy, group behaviour and lore are
+ * DEFERRED (see the module header); this ports the movement/attack core.
  */
 export function monsterTurn(mon: Monster, state: GameState): void {
   let didSomething = false;
+
+  /* Attempt a ranged attack (spell / breath) before moving. */
+  if (state.monsterCast?.(mon, state)) return;
 
   const stagger = monsterTurnShouldStagger(mon, state);
   let dir = 0;

@@ -128,6 +128,12 @@ export interface GameState {
   nextCommand: () => PlayerCommand | null;
   /** update_view: refresh player FOV after the player moves. */
   updateFov?: (state: GameState) => void;
+  /**
+   * make_ranged_attack: a monster attempts a spell / breath on its turn,
+   * returning true if it spent the turn casting. Installed by
+   * installMonsterCasting (game/mon-ranged.ts); absent, monsters never cast.
+   */
+  monsterCast?: (mon: Monster, state: GameState) => boolean;
 }
 
 /** One queued player command (a keyed action plus optional direction/args). */
