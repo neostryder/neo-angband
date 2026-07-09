@@ -1,0 +1,53 @@
+module: packages/core/src/store/store.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/store.c
+    items:
+      - store_reset (L340) / store_maint (L1294): the stock-refresh cycle. Sell
+        a handful of random items down toward normal_stock_max, ensure every
+        staple exists at a full stack, then restock random items up between
+        normal_stock_min+always and normal_stock_max+always. Black market first
+        purges items failing black_market_ok. store_reset runs store_maint 10x
+        per non-home store after shuffling the proprietor.
+      - store_create_random (L1156) / store_get_choice (L1146): make a random
+        object at a store-appropriate level (black market uses get_obj_num at
+        player.max_depth+5..+20; others draw from the normal table at
+        1..store_magic_level+max(max_depth-20,0)), reject damaged/cursed/
+        worthless items and (for the black market) black_market_ok failures,
+        mass_produce, and store_carry it.
+      - store_create_item (L1262): make a specific always-stocked kind.
+      - mass_produce (L696) / mass_roll (L680): stack sizes for cheap items.
+      - store_carry (L912) / store_object_absorb (L813) / store_check_num
+        (L836): add an object to a store, merging into a compatible stack
+        (OSTACK_STORE) or taking a free slot; light/charge maintenance on carry.
+      - store_delete (L989) / store_delete_random (L1040) / store_find_kind
+        (L1011): remove stock, imitating non-PC buyers (ammo and stack rules).
+      - black_market_ok (L1105): the black market only stocks what other stores
+        do not, unless ego or notably enchanted.
+      - store_choose_owner (L1478) / store_shuffle (L1493): pick the proprietor.
+      - store_is_staple (L373) / store_can_carry (L391) /
+        store_sale_should_reduce_stock (L405): stock classification.
+notes: >-
+  The stocking half of the store subsystem is live: stores bind to live Store
+  instances (bindStoreRuntime) and store_reset fills them faithfully using the
+  ported object generation (makeObject/applyMagic/objectPrep + ObjAllocState)
+  and valuation (object_value_real). Model divergences, all faithful in
+  reachable states: the stock is a GameObject[] (stock_num = length,
+  stock_size = z_info->store_inven_max); there is no obj->known twin so the
+  parallel stock_k pile and obj->known assignments are dropped; player->max_depth
+  is threaded in as maxDepth (dungeon progress is not on Player yet).
+deferred:
+  - home_carry and the buy/sell/stash/retrieve commands (do_cmd_buy etc.):
+    they need a player pack/inventory model, which is not built yet. store_carry
+    here always takes fresh store-generated objects (the non-carried value
+    branch); the player-carried branch lands with the transactions increment.
+  - store_stock_list / earlier_object: the display sort order (UI concern).
+  - store_update / daycount: the return-to-town multi-day maintenance and
+    shopkeeper shuffle probability (needs the game clock).
+  - The town-book expansion of alwaysBookTvals (needs class-book metadata, see
+    store-bind.yaml) so the bookseller's always list is still short by its books.
+verified-by:
+  - store/store.test.ts: store_reset stocks the town stores within their slot
+    cap with positive quantities, leaves the home empty, carries every staple
+    at a full stack, and is deterministic for a fixed seed.
