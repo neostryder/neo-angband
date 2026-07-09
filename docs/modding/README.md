@@ -21,9 +21,6 @@ overall design and the moddable-surface matrix, read `docs/MODS.md`.
   uninstall, installing from git (and a future marketplace), multi-mod
   composition and conflict resolution, uninstall recovery, and the UX
   principles. RATIFIED (decision 19); not yet fully built.
-- `MOD_IDEAS.md`: a documented-only backlog of mod ideas (not scheduled to
-  build). Ideas are recorded when raised and built only when Aaron schedules
-  them.
 - `docs/LINOLEUM.md`: tile packs and converting the classic tilesets.
 - Coming as the engine lands them (P7 deliverables): handler registry
   catalog (effects, commands, room builders), the sandbox capability

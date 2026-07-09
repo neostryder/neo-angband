@@ -153,9 +153,6 @@ never reverse; it is distinct from the save-scum gameplay policy (which a mod
 may relax). Anti-scum itself holds in both modes for core mechanics, which
 always draw from the saved seeded stream.
 
-Ideas that exercise this (an AI agent player, AI-generated content, and more)
-are documented, not built, in `docs/modding/MOD_IDEAS.md`.
-
 ## The modding SDK
 
 The SDK is the documented, versioned surface mod authors - human and AI -

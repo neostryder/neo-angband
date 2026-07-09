@@ -174,8 +174,7 @@ documentation lives here under `docs/`.
     build, native menus in a desktop shell, touch controls on mobile - rather
     than one shared cross-platform GUI. The headless core (decision 1) stays
     UI-agnostic; each shell owns its own presentation. Input, too, is
-    abstract enough for alternative schemes (a controller/mobile input mod is
-    a planned example; see decision 22 notes).
+    abstract enough for alternative schemes (gamepad or touch, for example).
 22. **Determinism scope: faithful, not absolute** (ratified 2026-07-08). What
     the original does, verified in the reference source: a seeded PRNG whose
     FULL state is saved with the game (`wr_randomizer`), plus fixed
@@ -216,9 +215,6 @@ documentation lives here under `docs/`.
       modding. The only thing a nondeterministic mod costs is the optional
       shareable-seed reproducibility, and that cost is recorded honestly and
       permanently on the save.
-    Planned mods that exercise this (an AI agent player, controller/mobile
-    input, and more) are DOCUMENTED, not scheduled to build, in
-    `docs/modding/MOD_IDEAS.md`.
 23. **Release certification** (ratified 2026-07-08): the definition of done is
     CERTIFIED FULL FEATURE PARITY with Angband 4.2.6 (decision 2). The ONLY
     permitted differences from the original are: (a) unavoidable port
