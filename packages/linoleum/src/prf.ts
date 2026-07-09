@@ -1,8 +1,8 @@
 /**
  * Legacy .prf selector parsing for the Linoleum tile-pack converter.
  *
- * Faithful port of the selector-reading half of Aaron's
- * scripts/build-linoleum-packs.ps1 (upstream fork). PowerShell string
+ * Faithful port of the selector-reading half of the upstream fork's
+ * scripts/build-linoleum-packs.ps1. PowerShell string
  * comparisons are case-insensitive by default, so type/variant matching
  * here is deliberately case-insensitive too.
  */
