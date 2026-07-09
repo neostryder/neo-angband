@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Linoleum tile-pack tools: convert bundled legacy tilesheets into loose-pack Linoleum format",
+  "author": "neostryder (RPGM Tools)",
   "license": "GPL-2.0-only",
   "type": "module",
   "main": "dist/index.js",

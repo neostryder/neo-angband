@@ -18,7 +18,9 @@ Instead, every such fix ships in this single BUNDLED, opt-in mod - the model
 players know from the Skyrim / Bethesda unofficial patches. It is a
 `plugin`-shape pack (docs/MODS.md), id `bug-fixes`, depending on `core`. It is
 enabled by default and fully removable; removing it returns the game to
-faithful, buggy-as-shipped 4.2.6 behavior.
+faithful, buggy-as-shipped 4.2.6 behavior. It is authored and maintained by
+neostryder (RPGM Tools) as its own standalone pack, separate from the
+neo-linoleum tile mod (decision 26).
 
 Balance and subjective changes are NOT bug fixes and do not belong here; they
 live in the QoL mod (decision 18) or their own mod. This page tracks only
