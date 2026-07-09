@@ -1,0 +1,59 @@
+module: packages/core/src/game/mon-ranged.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-attack.c
+    items:
+      - make_ranged_attack (L394): makeRangedAttack - a monster casts a spell,
+        shoots a missile or breathes. Tries to cast (non-innate then innate) via
+        monster_can_cast, copies the racial spell flags, lets smart badly-hurt
+        monsters drop damage spells (one_in_2), filters ineffective spells for
+        non-stupid monsters (remove_bad_spells + the clean-bolt and summon-room
+        checks), picks a spell, rolls spell failure (innate never fails) and
+        hands the chosen spell to do_mon_spell (game/mon-cast.ts).
+      - monster_can_cast (L89): monsterCanCast - the frequency gate: freq_innate /
+        freq_spell, blocked by MFLAG_NICE, halved by TMD_TAUNT, doubled at the
+        monster's best_range, then the randint0(100) roll, the max_range check and
+        a clear PROJECT_SHORT path to the target.
+      - monster_get_target_dist_grid (L65): the target is the player (mon->cdis /
+        player->grid); the decoy target is deferred.
+      - remove_bad_spells (L153): removeBadSpells - drop RSF_HEAL at full health,
+        RSF_HEAL_KIN with no injured kin, RSF_HASTE while well-hasted, RSF_TELE_TO
+        / RSF_TELE_SELF_TO when adjacent, RSF_WHIP / RSF_SPIT out of range.
+      - choose_attack_spell (L281): chooseAttackSpell - collect the flagset's
+        spells filtered by innate / non-innate and pick one at random (RSF_NONE
+        when empty).
+      - monster_spell_failrate (L307): monsterSpellFailrate - 25 - (MIN(spell_power,1)
+        + 3) / 4, +20 with fear, +50 with confusion or disenchantment; zero for
+        stupid monsters.
+      - summon_possible (L238): summonPossible - an empty floor grid within 2 of
+        the caster in line of sight (glyph-of-warding / arena exclusions deferred).
+notes: >-
+  The spell-selection AI that decides whether and which spell a monster casts,
+  the decider that calls the do_mon_spell executor. It lives in game/ (it reads
+  the GameState monster / player / chunk and drives the effect stack). The
+  default-play path is complete: the frequency / range / LOS gate, the wasted-
+  spell pruning, the clean-bolt (PROJECT_STOP) and summon-room checks, the random
+  pick and the spell-failure roll. best_range is set by the monster turn
+  (game/monster-turn.ts get_move_find_range); the frequencies and racial spell
+  flags come from the bound race.
+deferred:
+  - The birth_ai_learn knowledge filter (unset_spells in remove_bad_spells): the
+    AI's memory of player resists; the option is off by default.
+  - RSF_HEAL_KIN's find_any_nearby_injured_kin scan: monster groups (#19); the
+    injured-kin test is an injected hook, default none (so HEAL_KIN is dropped).
+  - The monster-lore updates (lore->spell_flags / cast counts) and become_aware
+    for a camouflaged caster (lore, #24), and the failure / cast messages: all
+    injected hooks.
+  - The decoy target and the non-player-target witness path (square_isview along
+    project_path): decoys and monster-vs-monster targeting are not modelled here.
+  - Wiring makeRangedAttack into the live monster turn (game/monster-turn.ts):
+    the next step, so monsters actually cast during the game loop.
+verified-by:
+  - game/mon-ranged.test.ts (8 tests): monster_can_cast passes at 100% frequency
+    and fails at 0% and when nice; make_ranged_attack casts an innate breath at
+    the player for real damage and returns false when the monster cannot cast;
+    remove_bad_spells strips heal (full hp), haste (hasted), whip (out of range)
+    and keeps a ball; choose_attack_spell filters by innate / non-innate;
+    summon_possible is true on open floor and false when boxed in; the fail rate
+    is zero for stupid monsters and rises with fear and confusion.
