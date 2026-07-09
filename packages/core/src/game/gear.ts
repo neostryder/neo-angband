@@ -117,9 +117,10 @@ function objectCopy(src: GameObject): GameObject {
 /**
  * object_split (obj-util.c): split `amt` items off `src` into a fresh copy,
  * distributing wand/staff/rod charges, and reduce src by amt. Requires
- * src.number > amt (upstream assert).
+ * src.number > amt (upstream assert). Exported for the floor-pile module
+ * (floor_object_for_use splits floor stacks the same way).
  */
-function objectSplit(src: GameObject, amt: number): GameObject {
+export function objectSplit(src: GameObject, amt: number): GameObject {
   const dest = objectCopy(src);
   /* Distribute charges of wands, staves, or rods (dest is a new stack). */
   distributeCharges(src, dest, amt, true);

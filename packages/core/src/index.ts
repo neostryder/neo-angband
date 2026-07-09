@@ -89,6 +89,7 @@ export * from "./game/effect-teleport";
 export * from "./game/mon-cast";
 export * from "./game/mon-ranged";
 export * from "./game/mon-group";
+export * from "./game/floor";
 export * from "./game/loop";
 
 // Some small derived constants and geometry helpers are defined
@@ -115,4 +116,9 @@ export type { CriticalLevel } from "./combat/hit";
 //   module and will get an aliased export if the game API needs it publicly.
 export { EXTRACT_ENERGY, turnEnergy } from "./mon/monster";
 export { squareIsEmpty } from "./gen/util";
+// - squareCanPutItem: like squareIsEmpty, a generation-time predicate
+//   (gen/util, takes a Gen) and a live-cave one (game/floor, takes a
+//   GameState) share the name; gen/util's stays barrel-canonical and the
+//   live one is reached via its module.
+export { squareCanPutItem } from "./gen/util";
 export * from "./game/gear";

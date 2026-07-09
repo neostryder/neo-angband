@@ -198,6 +198,7 @@ export function makeState(opts: StateOptions = {}): GameState {
     gear: newGear(),
     monsters: [null],
     groups: [null],
+    floor: new Map(),
     turn: 0,
     z: { ...DEFAULT_GAME_CONSTANTS },
     brands: [null],

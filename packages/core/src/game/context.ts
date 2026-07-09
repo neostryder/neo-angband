@@ -53,6 +53,8 @@ export interface GameConstants {
   foodStarve: number;
   foodFaint: number;
   foodWeak: number;
+  /** z_info->floor_size (obj:floor-size): max objects in one floor pile. */
+  floorSize: number;
 }
 
 /** The shipped constants.txt values, food thresholds scaled by food_value. */
@@ -66,6 +68,7 @@ export const DEFAULT_GAME_CONSTANTS: GameConstants = {
   foodStarve: 100,
   foodFaint: 400,
   foodWeak: 800,
+  floorSize: 23,
 };
 
 /**
@@ -128,6 +131,13 @@ export interface GameState {
   monsters: Array<Monster | null>;
   /** cave->monster_groups[]: monster packs, index 0 unused (null). */
   groups: Array<MonsterGroup | null>;
+  /**
+   * Floor object piles (square(c, grid)->obj), keyed by grid index
+   * (y * width + x). Each pile is head-first: pile_insert prepends, so
+   * pile[0] is the newest drop, exactly as the upstream linked list.
+   * Managed by game/floor.ts (floor_carry / drop_near / excise).
+   */
+  floor: Map<number, GameObject[]>;
   /** turn (game-world.c): the game-turn counter. */
   turn: number;
   z: GameConstants;

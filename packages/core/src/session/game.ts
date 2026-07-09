@@ -38,6 +38,7 @@ import {
 } from "../game/context";
 import type { GameState, PlayerActor, PlayerCommand } from "../game/context";
 import { monsterGroupAssign, monsterGroupsVerify } from "../game/mon-group";
+import { floorCarry } from "../game/floor";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
@@ -132,8 +133,13 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     gear,
     monsters: [null],
     groups: [null],
+    floor: new Map(),
     turn: 0,
-    z: { ...DEFAULT_GAME_CONSTANTS, maxSight: reg.constants.maxSight },
+    z: {
+      ...DEFAULT_GAME_CONSTANTS,
+      maxSight: reg.constants.maxSight,
+      floorSize: reg.constants.floorSize,
+    },
     brands: reg.objects.brands,
     slays: reg.objects.slays,
     playing: true,
@@ -156,6 +162,14 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   }
   monsterGroupsVerify(state);
   updateMonsterDistances(state);
+
+  // Register the generated floor objects as live piles (floor_carry), so
+  // pickup / drop / projections operate on the same objects the level laid
+  // down. Generation placed each on a legal, empty grid, so this always
+  // succeeds; piles keep working even if a mod pre-stacks a grid.
+  for (const po of booted.objects) {
+    floorCarry(state, po.grid, po.obj);
+  }
 
   return { state, registry: createDefaultRegistry(), booted, players };
 }
