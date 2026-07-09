@@ -7,6 +7,7 @@ import { MON_GROUP } from "../mon/types";
 import type { MonsterRace } from "../mon/types";
 import { addMon, makeState, makeRace } from "./harness";
 import type { GameState } from "./context";
+import { deleteMonster } from "./context";
 import {
   groupMonsterTracking,
   monsterAddToGroup,
@@ -174,6 +175,30 @@ describe("monsterGroupChangeIndex", () => {
     expect(monsterGroupChangeIndex(state, 999, member.midx)).toBe(true);
     expect(state.groups[gi]!.members).toContain(999);
     expect(state.groups[gi]!.members).not.toContain(member.midx);
+  });
+});
+
+describe("deleteMonster group integration", () => {
+  it("removes the dead monster from its group and promotes an heir", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const race = makeRace({ flags: [] });
+    const leader = addMon(state, race, loc(10, 10));
+    const heir = addMon(state, race, loc(10, 11));
+    const gi = makeGroup(state, leader, [heir]);
+
+    deleteMonster(state, leader.midx);
+    expect(state.monsters[leader.midx]).toBeNull();
+    expect(state.chunk.mon(loc(10, 10))).toBe(0);
+    expect(state.groups[gi]!.leader).toBe(heir.midx);
+    expect(state.groups[gi]!.members).not.toContain(leader.midx);
+    monsterGroupsVerify(state);
+  });
+
+  it("is a no-op for a monster that was never assigned a group", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const solo = addMon(state, makeRace({ flags: [] }), loc(10, 10));
+    deleteMonster(state, solo.midx); // groupInfo index 0 -> no group work
+    expect(state.monsters[solo.midx]).toBeNull();
   });
 });
 

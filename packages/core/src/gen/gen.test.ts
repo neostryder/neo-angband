@@ -34,12 +34,15 @@ import {
   type VaultRecordJson,
 } from "./room";
 import { generateLevel, type GenDeps } from "./generate";
+import { GROUP_TYPE } from "../mon/monster";
+import { MON_GROUP } from "../mon/types";
 import {
   Dun,
   Gen,
   drawRectangle,
   fillRectangle,
   generateRoom,
+  placeNewMonster,
   type MonPlaceDeps,
 } from "./util";
 
@@ -397,5 +400,107 @@ describe("mod-registered room builder", () => {
     const p = g.playerSpot as Loc;
     expect(g.c.isFloor(p)).toBe(true);
     expect(reachableCount(g, p)).toBe(totalTraversable(g));
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Monster group placement (mon-make.c place_new_monster family).
+ * ------------------------------------------------------------------ */
+
+describe("place_new_monster groups and friends", () => {
+  const monReg = bindMonsters(monPack, { maxSight: constants.maxSight });
+  const table = new MonAllocTable(monReg.races, { maxDepth: constants.maxDepth });
+
+  /** An open floor arena with a granite border, monster deps wired. */
+  function openGen(depth: number, seed: number): Gen {
+    const c = new Chunk(reg, 25, 40);
+    c.depth = depth;
+    drawRectangle(c, 0, 0, 24, 39, FEAT.GRANITE, SQUARE.NONE, false);
+    fillRectangle(c, 1, 1, 23, 38, FEAT.FLOOR, SQUARE.NONE);
+    const dun = new Dun(constants);
+    return new Gen(c, new Rng(seed), reg, constants, dun, null, { table });
+  }
+
+  /* The urchin's "friends:100:3d4:Same" line always brings company. */
+  const urchin = monReg.races.find((r) => r.name === "filthy street urchin")!;
+
+  it("places a same-race group led by the placed monster", () => {
+    const g = openGen(5, 42);
+    const ok = placeNewMonster(g, loc(20, 12), urchin, false, true, {
+      index: 0,
+      role: MON_GROUP.LEADER,
+    });
+    expect(ok).toBe(true);
+
+    /* 3d4 same-race friends at full strength (depth 5 vs level 0). */
+    expect(g.monsters.length).toBeGreaterThanOrEqual(4);
+
+    const leader = g.monsters[0]!.mon;
+    const gi = leader.groupInfo[GROUP_TYPE.PRIMARY]!;
+    expect(gi.index).toBeGreaterThan(0);
+    expect(gi.role).toBe(MON_GROUP.LEADER);
+
+    /* Every friend (same race or 50%-chance cats/dogs) shares the group. */
+    for (const pm of g.monsters.slice(1)) {
+      const info = pm.mon.groupInfo[GROUP_TYPE.PRIMARY]!;
+      expect(info.index).toBe(gi.index);
+      expect(info.role).not.toBe(MON_GROUP.LEADER);
+    }
+  });
+
+  it("group_ok=false places exactly one monster", () => {
+    const g = openGen(5, 42);
+    const ok = placeNewMonster(g, loc(20, 12), urchin, false, false, {
+      index: 0,
+      role: MON_GROUP.LEADER,
+    });
+    expect(ok).toBe(true);
+    expect(g.monsters.length).toBe(1);
+  });
+
+  it("separate placements get distinct group indices", () => {
+    const g = openGen(5, 7);
+    placeNewMonster(g, loc(5, 5), urchin, false, false, {
+      index: 0,
+      role: MON_GROUP.LEADER,
+    });
+    placeNewMonster(g, loc(30, 18), urchin, false, false, {
+      index: 0,
+      role: MON_GROUP.LEADER,
+    });
+    const a = g.monsters[0]!.mon.groupInfo[GROUP_TYPE.PRIMARY]!.index;
+    const b = g.monsters[1]!.mon.groupInfo[GROUP_TYPE.PRIMARY]!.index;
+    expect(a).not.toBe(b);
+    expect(a).toBeGreaterThan(0);
+    expect(b).toBeGreaterThan(0);
+  });
+
+  it("base-template escorts join the leader's group", () => {
+    /* A race with friends-base lines (e.g. a person-escorted leader). */
+    const escorted = monReg.races.find(
+      (r) => r.friendsBase.length > 0 && r.friends.length === 0,
+    );
+    expect(escorted).toBeDefined();
+    if (!escorted) return;
+
+    /* The escort lines are percent-chance gated; scan seeds until one
+     * fires so the assertion is on structure, not luck. */
+    for (let seed = 1; seed <= 20; seed++) {
+      const g = openGen(escorted.level + 5, seed);
+      placeNewMonster(g, loc(20, 12), escorted, false, true, {
+        index: 0,
+        role: MON_GROUP.LEADER,
+      });
+      if (g.monsters.length > 1) {
+        const gi = g.monsters[0]!.mon.groupInfo[GROUP_TYPE.PRIMARY]!.index;
+        const bases = new Set(escorted.friendsBase.map((fb) => fb.base));
+        for (const pm of g.monsters.slice(1)) {
+          expect(pm.mon.groupInfo[GROUP_TYPE.PRIMARY]!.index).toBe(gi);
+          expect(bases.has(pm.mon.race.base)).toBe(true);
+        }
+        return;
+      }
+    }
+    throw new Error("no seed produced an escort in 20 tries");
   });
 });

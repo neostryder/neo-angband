@@ -27,6 +27,9 @@ import type { GameObject } from "../obj/object";
 import type { Brand, Slay } from "../obj/types";
 import type { Gear } from "./gear";
 import { NORMAL_ENERGY } from "./energy";
+/* Value import is safe: mon-group's imports from this module are type-only,
+ * so there is no runtime cycle. */
+import { monsterRemoveFromGroups } from "./mon-group";
 
 /**
  * z_info fields the turn loop and monster AI read (defaults are the shipped
@@ -227,14 +230,16 @@ export function monsterSwap(state: GameState, grid1: Loc, grid2: Loc): void {
 }
 
 /**
- * delete_monster_idx (mon-make.c), minimal: clear the monster's square and
- * free its slot. The held-object drop, monster-group, mimic, racial-counter
- * and targeting/redraw bookkeeping are DEFERRED with their subsystems (floor
- * objects, groups, lore); the caller runs monster_death (drops) beforehand.
+ * delete_monster_idx (mon-make.c): remove the monster from its groups
+ * (leader succession / group split happen here), clear its square and free
+ * its slot. The held-object drop, mimic, racial-counter and targeting/redraw
+ * bookkeeping are DEFERRED with their subsystems (floor objects, lore); the
+ * caller runs monster_death (drops) beforehand.
  */
 export function deleteMonster(state: GameState, midx: number): void {
   const mon = state.monsters[midx];
   if (!mon) return;
+  monsterRemoveFromGroups(state, mon);
   state.chunk.setMon(mon.grid, 0);
   state.monsters[midx] = null;
 }
