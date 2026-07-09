@@ -36,13 +36,12 @@ notes: >-
   alwaysTable when store_init lands. buy entries model an optional OF_* flag
   (object_buy.flag) for mods; 4.2.6 uses only bare tvals.
 deferred:
-  - The behavioural half of store.c: price_item (needs object_value /
-    object_value_real, i.e. object_power in obj-power.c, not ported); stock
-    maintenance (store_maint, mass_produce, store_create_random,
-    store_create_item); store_carry / home_carry / store_check_num /
-    store_will_buy; store_shuffle / store_reset / store_update; and the
-    buy/sell/stash/retrieve commands (do_cmd_buy etc., need the command queue
-    and player gold).
+  - The behavioural half of store.c: price_item is now PORTED (store/price.ts,
+    ledgered in store-price.yaml). Still deferred: stock maintenance
+    (store_maint, mass_produce, store_create_random, store_create_item);
+    store_carry / home_carry / store_check_num / store_will_buy; store_shuffle /
+    store_reset / store_update; and the buy/sell/stash/retrieve commands
+    (do_cmd_buy etc., need the command queue and player gold).
   - The town-book expansion of alwaysBookTvals (needs class-book metadata).
   - The runtime current-owner selection (store->owner chosen at store_init):
     owners are bound as a list; picking one needs the seeded Rng at init.

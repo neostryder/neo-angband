@@ -8,6 +8,14 @@ upstream:
         loop (L1863-1871) - every nonzero modifier on the worn item learns its
         rune, setting player.objKnown.modifiers[i] = 1 (player_learn_rune's
         RUNE_VAR_MOD case, L1291-1296).
+      - object_flavor_is_aware (L2243) / object_flavor_was_tried (L2254) /
+        object_flavor_aware core (L2266) / object_flavor_tried (L2320): PORTED
+        as the FlavorKnowledge class. Upstream these are the kind->aware /
+        kind->tried bits (object.h), global to the game; here they are a
+        per-game FlavorKnowledge keyed by kidx so the bound registry stays
+        immutable. object_flavor_tried skips artifacts (kidx >=
+        ordinary_kind_max). Drives object_value / object_value_base's aware
+        dispatch (obj/value.ts).
   - path: src/player-calcs.c
     items:
       - calc_bonuses (L1877): the real-state gate this feeds. Equipped
@@ -28,9 +36,16 @@ notes: >-
   a default class kit carries no modifiers, so it stays empty until magic gear
   is worn.
 deferred:
-  - The OBJ_NOTICE_WORN guard and object_flavor_tried: there is no obj->known
-    twin yet, so re-wielding simply re-learns (idempotent) instead of
-    short-circuiting.
+  - object_flavor_aware's side effects (L2274-2312): revealing
+    obj->known->effect, ignore/autoinscribe fixes (kind_ignore_when_aware,
+    PN_IGNORE), propagating object_set_base_known over gear and every store's
+    stock, and refreshing floor tiles that change glyph on awareness. All need
+    the player, stores and cave; FlavorKnowledge.setAware sets only the bit.
+  - The OBJ_NOTICE_WORN guard and object_flavor_tried on wield: there is no
+    obj->known twin yet, so re-wielding simply re-learns (idempotent) instead of
+    short-circuiting. FlavorKnowledge.setTried exists but is not yet wired into
+    objectLearnOnWield (needs the wield chokepoint to thread the game's
+    FlavorKnowledge).
   - Obvious-flag learning: create_obj_flag_mask(OFID_WIELD) intersection plus
     the sustain-flag promotion for stat items (L1839-1861). Needs obj_k->flags,
     which PlayerObjectKnowledge does not model yet. Flags apply to the REAL
@@ -53,3 +68,5 @@ verified-by:
     modifier and leaves every stat rune unknown.
   - bonuses.test.ts: the calc_bonuses rune gate (a +3 STR item adds 0 while the
     rune is unknown and +3 once objKnown.modifiers[STR] = 1).
+  - knowledge.test.ts: FlavorKnowledge tracks awareness per kind (idempotent
+    setAware), and marks ordinary kinds tried while never marking artifacts.
