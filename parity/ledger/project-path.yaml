@@ -1,0 +1,42 @@
+module: packages/core/src/world/project.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/project.c
+    items:
+      - project_path (L123): the octagonal slope walk from grid1 toward grid2,
+        one grid per unit of major-axis distance, stopping at range, the finish
+        grid (unless PROJECT_THRU), non-initial wall grids (unless PROJECT_ROCK),
+        and monsters/decoys (with PROJECT_STOP). Vertical / horizontal /
+        diagonal branches with the frac/half/full fraction tracking and the
+        k-based (minor-axis) range accounting. The initial grid is never saved.
+      - projectable (L366): run project_path over max_range and require a
+        non-empty path ending on a passable grid that equals the target.
+  - path: src/project.h
+    items:
+      - the PROJECT_* behaviour flags (JUMP/BEAM/THRU/STOP/GRID/ITEM/KILL/HIDE/
+        AWARE/SAFE/ARC/PLAY/INFO/SHORT/SELF/ROCK).
+notes: >-
+  Pure projection geometry over a Chunk, the foundation for targeting and for
+  the project() blast driver + GF_ handlers (later increments). The C array
+  out-parameter is returned as a Loc[] whose length is upstream's return n.
+  Distance is the game's octagonal metric via the slope walk. Verified against
+  hand-derived paths, including the 4:2 bolt (0,0)->(4,2) = (1,0),(2,1),(3,1),
+  (4,2). projectable takes max_range explicitly; callers apply the PROJECT_SHORT
+  quartering (a player's COVERTRACKS state) by passing a reduced value.
+deferred:
+  - The project() driver (blast-grid collection, arc angle filtering via
+    get_angle_to_grid, damage falloff by distance, distance sort) and the
+    per-target GF_ handlers project_f/o/m/p: the next projection increments.
+  - Decoys (cave_find_decoy): not modelled, so the PROJECT_STOP decoy check uses
+    a (-1,-1) sentinel that never matches; a decoy exists only once the
+    create-decoy effect is ported.
+  - PROJECT_INFO's square_isbelievedwall (the player's remembered map): not
+    modelled, approximated by real projectability. Only targeting display uses
+    it (deferred UI), so it is currently unreached by ported callers.
+verified-by:
+  - world/project.test.ts: empty path when source==target; straight horizontal
+    and pure-diagonal walks ending on target; the hand-derived 4:2 slope walk;
+    inclusion-and-stop at a wall grid; monster halt only with PROJECT_STOP; the
+    range limit; and projectable true on a clear line, false through a wall, and
+    never from a grid to itself.
