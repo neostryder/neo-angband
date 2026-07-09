@@ -22,6 +22,10 @@ overall design and the moddable-surface matrix, read `docs/MODS.md`.
   composition and conflict resolution, uninstall recovery, and the UX
   principles. RATIFIED (decision 19); not yet fully built.
 - `docs/LINOLEUM.md`: tile packs and converting the classic tilesets.
+- `BUG_FIXES.md`: the bundled `bug-fixes` mod - its design of record and
+  referenced changelog for upstream crash/corruption/save/determinism fixes
+  that core deliberately does not carry (decision 24). Design of record;
+  patches land with the mod runtime and the systems they touch.
 - Coming as the engine lands them (P7 deliverables): handler registry
   catalog (effects, commands, room builders), the sandbox capability
   reference for scripted plugins, dialog/quest/shop cookbooks, the
