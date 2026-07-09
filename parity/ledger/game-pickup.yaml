@@ -1,0 +1,58 @@
+module: packages/core/src/game/pickup.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/cmd-pickup.c
+    items:
+      - player_pickup_gold (L45): sum and delete every money object on the
+        player's grid (single-kind vs "treasures" naming, the ignored-item
+        verbosity gate), adding the total to p->au.
+      - auto_pickup_okay (L147): inven_carry_num gate; pickup_always;
+        the !g / =g / =g<n> inscription rules including the pack-side
+        inscriptions read from the first matching stack and the =g<n>
+        cap summed over every matching pack stack.
+      - find_stack_object_in_inventory (L128): matching pack stacks by
+        object_similar under OSTACK_PACK.
+      - player_pickup_aux (L236): full pickup excises the floor object and
+        inven_carry's it; partial pickup splits via floor_object_for_use.
+      - player_pickup_item (L304): gold first, a given object or the floor
+        tally, the single-object direct path, and the multi-object menu
+        (the chooseItem seam; headless default takes the pile head, one
+        item per 'g').
+      - do_autopickup (L408): gold, then auto_pickup_okay over the pile
+        with the disturb hook.
+      - do_cmd_pickup / do_cmd_autopickup (L449/L475): the energy formula
+        picked * move_energy / 10, capped at move_energy, wired as the
+        "pickup" / "autopickup" registry actions (installPickup).
+  - path: src/obj-util.c
+    items:
+      - check_for_inscrip (L425) / check_for_inscrip_with_int (L456): the
+        inscription counters (first-value semantics preserved).
+notes: >-
+  Options default as shipped (pickup_always false, pickup_inven true) via
+  PickupEnv. ENERGY SPLIT DIVERGENCE (ledgered): upstream move_player queues
+  CMD_AUTOPICKUP, which charges its energy as a separate later command; the
+  port's command provider is injected (the engine cannot push commands), so
+  walkAction adds the identical capped autopickup cost to the step's energy
+  via the state.autoPickup hook - total energy per step+pickup is the same,
+  only the command split differs. The web front end renders floor piles live
+  from state.floor and binds 'g'.
+deferred:
+  - The pickup menu (get_item over USE_FLOOR) is the chooseItem seam; the
+    headless default picks the pile head, one object per 'g' press (ui #25
+    supplies the real menu, restoring the recursive menu loop).
+  - square_know_pile / OFLOOR_VISIBLE marking (knowledge #24): every object
+    on the grid is visible; unmarked objects cannot yet exist.
+  - ignore_item_ok (obj-ignore #24): isIgnored hook, nothing ignored.
+  - get_quantity partial-pickup prompt (ui): defaults to the carryable max.
+  - Weight tracking (p->upkeep->total_weight) and PN_IGNORE notice - with
+    the inventory upkeep layer.
+verified-by:
+  - game/pickup.test.ts (13 tests): inscription counting and =g<n> parsing;
+    gold collection into the purse leaving non-gold; auto_pickup_okay
+    default-refuses, honours pickup_always, !g precedence, =g force, the
+    pickup_inven pack match and the =g<n> pack-count cap; do_autopickup
+    takes gold + =g items only; 'g' picks the single object; the chooseItem
+    seam selects among several; the registered command charges
+    move_energy/10 per object through processPlayer; stepping onto gold
+    auto-collects it through the walk wiring.

@@ -39,6 +39,7 @@ import {
 import type { GameState, PlayerActor, PlayerCommand } from "../game/context";
 import { monsterGroupAssign, monsterGroupsVerify } from "../game/mon-group";
 import { floorCarry } from "../game/floor";
+import { installPickup } from "../game/pickup";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
@@ -171,5 +172,9 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     floorCarry(state, po.grid, po.obj);
   }
 
-  return { state, registry: createDefaultRegistry(), booted, players };
+  // Live commands over the floor piles: 'g'et + autopickup on stepping.
+  const registry = createDefaultRegistry();
+  installPickup(state, registry, { constants: reg.constants });
+
+  return { state, registry, booted, players };
 }

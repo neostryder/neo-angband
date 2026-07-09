@@ -163,6 +163,13 @@ export interface GameState {
    * installMonsterCasting (game/mon-ranged.ts); absent, monsters never cast.
    */
   monsterCast?: (mon: Monster, state: GameState) => boolean;
+  /**
+   * do_autopickup after a step: returns the energy the pickup cost (picked
+   * * move_energy / 10, capped). Installed by installPickup (game/pickup.ts);
+   * upstream queues CMD_AUTOPICKUP instead - the port folds the identical
+   * cost into the step because the command provider is injected.
+   */
+  autoPickup?: (state: GameState) => number;
 }
 
 /** One queued player command (a keyed action plus optional direction/args). */
