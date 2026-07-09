@@ -1,0 +1,61 @@
+module: packages/core/src/mon/project-mon.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/project-mon.c
+    items:
+      - project_monster_handler_context_t (L239): the accumulating effect state
+        for one monster, modelled as MonProjectContext. rng and hooks are
+        carried on the context so every handler has a uniform (ctx) signature.
+      - adjust_radius (L261): (amount + r) / (r + 1), integer.
+      - project_monster_resist_element (L276), project_monster_resist_other
+        (L299), project_monster_hurt_immune (L326), project_monster_hurt_only
+        (L355), project_monster_breath (L379): the damage-scaling helpers, with
+        C integer division reproduced via Math.trunc.
+      - project_monster_teleport_away (L401), project_monster_scare (L427),
+        project_monster_dispel (L454), project_monster_sleep (L480): the
+        no-damage status helpers; teleport_away / scare wake the monster via the
+        ported monster_wake.
+      - project_monster_handler_ACID .. project_monster_handler_MON_CRUSH
+        (L499-L1010): all 56 per-PROJ-type handlers, plus the empty
+        METEOR/MISSILE/MANA/ARROW handlers (hNoop).
+      - monster_handlers[] (L1012): the dispatch table, built as MONSTER_HANDLERS
+        indexed by PROJ value and assigned by name so ordering follows the
+        generated PROJ map exactly (independent of handler definition order).
+notes: >-
+  The pure effect-computation core of project_m: it runs the type handler and
+  accumulates the outcome (final damage after resist/vulnerability, timed-effect
+  amounts, polymorph / teleport / thrust requests, hurt & die messages, obvious
+  / skipped). It does NOT apply damage, kill, move, poly, or teleport the
+  monster - that is the project_m driver, landing next on top of this and
+  mon_take_hit. Monster lore is not modelled yet (a late subsystem), so the
+  rf_on(lore) / rsf_on(lore) learning is injected as learnRaceFlag /
+  learnSpellFlag hooks firing on the same `seen` condition as upstream.
+  multiply_monster (MON_CLONE) is the multiplyMonster hook. thrust_away (FORCE)
+  mutates the cave, so the handler only records context.thrustGridsAway and the
+  driver performs the thrust. All integer maths (division, the *factor then
+  /(randint1(6)+6) breath reduction) match upstream operation-for-operation.
+deferred:
+  - The project_m driver itself (L1328) and its three appliers -
+    project_m_monster_attack (L1034), project_m_player_attack (L1102, routes
+    through mon_take_hit), project_m_apply_side_effects (L1177) - land in the
+    next increment, wiring damage application, polymorph (poly_race +
+    place_new_monster), teleport (effect_simple EF_TELEPORT), and the deferred
+    thrust.
+  - poly_race (L45) and thrust_away (L87): poly_race needs get_mon_num (monster
+    generation) and thrust_away needs monster_swap / feature projectability on a
+    live cave; both are supplied to the driver rather than ported here.
+  - The PR_HEALTH-tracked branch of MON_HEAL (a UI redraw) is dropped; the
+    "looks healthier" message branch is taken unconditionally, matching an
+    untracked monster.
+verified-by:
+  - mon/project-mon.test.ts (41 tests): the table has a handler for all 56 PROJ
+    types; elemental resist/immunity math (ACID /9, FIRE immune /9 vs vulnerable
+    x2 with death message, WATER immunity, HOLY_ORB x2 vs evil); breath
+    resistance drops damage below base and learns the breath; NETHER undead
+    immunity / evil half; teleport-away and scare wake and skip correctly;
+    dispel and sleep gating; the status projections map dam to the right timer
+    and the charm-vs-animal boost; MON_POLY / MON_HEAL / MON_CLONE (heal, haste,
+    clone hook, SPAWN); MON_DRAIN and MON_CRUSH thresholds; CHAOS poly/confuse
+    (suppressed on breathers) and FORCE thrust request; feature-only skips and
+    the raw-damage no-op handlers; and lore learning only when seen.
