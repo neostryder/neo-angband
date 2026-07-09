@@ -15,8 +15,9 @@
  * combat and resist contributions and derives blows from the wielded weapon.
  * Still DEFERRED (see the calcBonuses notes and
  * parity/ledger/player-calcs-bonuses.yaml):
- *   - the object-knowledge rune mask (treated as all-known) and the
- *     per-object curse-object traversal inside the equipment loop
+ *   - the learn-by-use rune system that populates obj_k (equipment modifiers
+ *     are rune-gated and inert at birth) and the per-object curse-object
+ *     traversal inside the equipment loop
  *   - timed effects (food, stun, bless, hero, shero, fast/slow, etc.)
  *   - non-normal shapechanges (calc_shapechange)
  *   - calc_mana / calc_light
@@ -526,8 +527,10 @@ export interface CalcBonusesOptions {
  * Ported statement-for-statement in upstream order; each block cites its
  * lines. DEFERRED blocks (see parity/ledger/player-calcs-bonuses.yaml), all
  * of which are no-ops for the innate state:
- * - object-knowledge rune mask (all runes treated as known) and the
- *   per-object curse-object traversal in the equipment loop (1924-2025)
+ * - the learn-by-use rune system that populates obj_k: equipment modifiers
+ *   are rune-gated (obj->modifiers * obj_k->modifiers) and UNKNOWN at birth
+ *   (decision 25), so they contribute nothing until a rune is learned; and
+ *   the per-object curse-object traversal in the equipment loop (1924-2025)
  * - calc_shapechange (2030-2032): the "normal" shape adds all zeros, so
  *   skipping it is behavior-identical; non-normal shapes are deferred
  * - calc_light (2040-2041): needs equipment; cur_light stays 0
@@ -615,14 +618,19 @@ export function calcBonuses(
   const collectF = playerFlags(player);
 
   /* Analyze equipment (1924-2025). Equipped objects arrive from the caller
-     (options.equipment, indexed by body slot). Two upstream inputs are
-     DEFERRED (parity/ledger/player-calcs-bonuses.yaml) and handled by the
-     port's "everything known" convention (shared with obj/object.ts): the
-     object-knowledge rune mask (p->obj_k->modifiers) is treated as all-ones,
-     so every modifier and combat bonus applies; and the per-object
-     curse-object traversal (2009-2023) is skipped, so a cursed item still
-     contributes its own object but not its attached curse objects. */
+     (options.equipment, indexed by body slot). Each item's pval MODIFIERS are
+     gated by the player's learned-rune mask (p->obj_k->modifiers): upstream
+     multiplies every modifier by obj_k, so a bonus is inert until its rune is
+     known, and runes are UNKNOWN by default (PORT_PLAN.md decision 25) -- at
+     birth, item modifiers contribute nothing until learned. The el_info and
+     combat bonuses (to_a/to_h/to_d) are NOT rune-gated for the real state
+     (upstream gates those only for the displayed known_state), so they apply
+     unconditionally here. Still DEFERRED (parity ledger): the per-object
+     curse-object traversal (2009-2023), so a cursed item contributes its own
+     object but not its attached curse objects; and the learn-by-use rune
+     system that populates obj_k (obj-knowledge.c), pending its own increment. */
   const equipment = options.equipment ?? [];
+  const knownMods = player.objKnown.modifiers;
   for (let i = 0; i < player.body.count; i++) {
     const obj = equipment[i] ?? null;
     if (!obj) continue;
@@ -636,16 +644,21 @@ export function calcBonuses(
     /* Extract the item flags (1933-1939). */
     collectF.union(obj.flags);
 
-    /* Apply modifiers (1941-1981). The five stat modifiers share indices
-       with STAT_* (OBJ_MOD_STR == STAT_STR == 0). */
+    /* Apply modifiers (1941-1981), each multiplied by the learned-rune mask
+       (obj->modifiers[X] * p->obj_k->modifiers[X]). The five stat modifiers
+       share indices with STAT_* (OBJ_MOD_STR == STAT_STR == 0). */
     for (let s = 0; s < STAT_MAX; s++) {
-      state.statAdd[s] = (state.statAdd[s] ?? 0) + (obj.modifiers[s] ?? 0);
+      state.statAdd[s] =
+        (state.statAdd[s] ?? 0) + (obj.modifiers[s] ?? 0) * (knownMods[s] ?? 0);
     }
     state.skills[SKILL.STEALTH] =
-      (state.skills[SKILL.STEALTH] ?? 0) + (obj.modifiers[OBJ_MOD.STEALTH] ?? 0);
+      (state.skills[SKILL.STEALTH] ?? 0) +
+      (obj.modifiers[OBJ_MOD.STEALTH] ?? 0) * (knownMods[OBJ_MOD.STEALTH] ?? 0);
     state.skills[SKILL.SEARCH] =
-      (state.skills[SKILL.SEARCH] ?? 0) + (obj.modifiers[OBJ_MOD.SEARCH] ?? 0) * 5;
-    state.seeInfra += obj.modifiers[OBJ_MOD.INFRA] ?? 0;
+      (state.skills[SKILL.SEARCH] ?? 0) +
+      (obj.modifiers[OBJ_MOD.SEARCH] ?? 0) * 5 * (knownMods[OBJ_MOD.SEARCH] ?? 0);
+    state.seeInfra +=
+      (obj.modifiers[OBJ_MOD.INFRA] ?? 0) * (knownMods[OBJ_MOD.INFRA] ?? 0);
 
     let dig = 0;
     if (tvalIsDigger(obj.tval)) {
@@ -653,15 +666,17 @@ export function calcBonuses(
       else if (obj.flags.has(OF.DIG_2)) dig = 2;
       else if (obj.flags.has(OF.DIG_3)) dig = 3;
     }
-    dig += obj.modifiers[OBJ_MOD.TUNNEL] ?? 0;
+    dig += (obj.modifiers[OBJ_MOD.TUNNEL] ?? 0) * (knownMods[OBJ_MOD.TUNNEL] ?? 0);
     state.skills[SKILL.DIGGING] = (state.skills[SKILL.DIGGING] ?? 0) + dig * 20;
 
-    state.speed += obj.modifiers[OBJ_MOD.SPEED] ?? 0;
-    state.damRed += obj.modifiers[OBJ_MOD.DAM_RED] ?? 0;
-    extraBlows += obj.modifiers[OBJ_MOD.BLOWS] ?? 0;
-    extraShots += obj.modifiers[OBJ_MOD.SHOTS] ?? 0;
-    extraMight += obj.modifiers[OBJ_MOD.MIGHT] ?? 0;
-    extraMoves += obj.modifiers[OBJ_MOD.MOVES] ?? 0;
+    state.speed +=
+      (obj.modifiers[OBJ_MOD.SPEED] ?? 0) * (knownMods[OBJ_MOD.SPEED] ?? 0);
+    state.damRed +=
+      (obj.modifiers[OBJ_MOD.DAM_RED] ?? 0) * (knownMods[OBJ_MOD.DAM_RED] ?? 0);
+    extraBlows += (obj.modifiers[OBJ_MOD.BLOWS] ?? 0) * (knownMods[OBJ_MOD.BLOWS] ?? 0);
+    extraShots += (obj.modifiers[OBJ_MOD.SHOTS] ?? 0) * (knownMods[OBJ_MOD.SHOTS] ?? 0);
+    extraMight += (obj.modifiers[OBJ_MOD.MIGHT] ?? 0) * (knownMods[OBJ_MOD.MIGHT] ?? 0);
+    extraMoves += (obj.modifiers[OBJ_MOD.MOVES] ?? 0) * (knownMods[OBJ_MOD.MOVES] ?? 0);
 
     /* Apply element info, noting vulnerabilities for later (1983-1993). */
     for (let jj = 0; jj < elemCount; jj++) {

@@ -54,14 +54,20 @@ notes: >-
   The equipment analysis loop (1924-2025), the launcher analysis (2254-2288)
   and the wielded-weapon analysis (2291-2319) are now LIVE, driven by
   options.equipment (the worn object per body slot, resolved from
-  player.equipment via the gear store). Two upstream inputs to the equipment
-  loop remain DEFERRED and are handled by the port's "everything known"
-  convention (shared with obj/object.ts): the object-knowledge rune mask
-  (p->obj_k->modifiers / obj->known) is treated as all-ones, so every
-  modifier and combat bonus applies immediately rather than only once its
-  rune is learned; and the per-object curse-object traversal (2009-2023) is
-  skipped, so a cursed item contributes its own object but not its attached
-  curse objects. Still fully DEFERRED elsewhere in calc_bonuses:
+  player.equipment via the gear store). The rune gate is now LIVE and faithful
+  (PORT_PLAN.md decision 25): each equipped item's pval modifiers are
+  multiplied by the player's obj_k mask (player.objKnown.modifiers), which is
+  UNKNOWN (all zeros) at birth exactly as upstream, so item modifiers stay
+  inert until their rune is learned. The to_a/to_h/to_d and el_info
+  contributions are NOT rune-gated for the real state (upstream gates them only
+  for the displayed known_state, known_only=true), so they apply
+  unconditionally here, matching the !known_only branch. Two inputs remain
+  DEFERRED: the learn-by-use rune system that POPULATES obj_k (obj-knowledge.c)
+  -- until it lands, learned runes are set explicitly and no in-play item yet
+  carries modifiers, so the gate is not yet observable in normal play; and the
+  per-object curse-object traversal (2009-2023), so a cursed item contributes
+  its own object but not its attached curse objects. Still fully DEFERRED
+  elsewhere in calc_bonuses:
   calc_shapechange (1798-1853, called 2030-2032) -- the "normal" shape adds
   all zeros so skipping it is behavior-identical, non-normal shapes deferred;
   calc_light (1598-, called 2040-2041) -- cur_light stays 0; food effects
@@ -98,3 +104,6 @@ verified-by:
     Soft Leather Armour raises calcBonuses ac above the unarmored (equipment
     []) state; the actor combat state (ac, num_blows) equals the equipped
     derivation the loop reads
+  - bonuses.test.ts (rune gate, decision 25): a born character's obj_k is
+    all-unknown, and a worn +3 STR item stays inert (stat_add STR 0) until
+    player.objKnown.modifiers[STR] is set, after which the +3 applies
