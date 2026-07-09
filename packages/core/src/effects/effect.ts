@@ -17,12 +17,11 @@ import { Expression } from "../expression";
 import {
   EF,
   EFFECT_ENTRIES,
-  MON_TMD,
-  MON_TIMED_ENTRIES,
   PLAYER_TIMED_ENTRIES,
   PROJ,
   STAT_ENTRIES,
 } from "../generated";
+import { monTimedNameToIdx } from "../mon/timed";
 
 /**
  * An effect code: an upstream EF_* numeric index, or a string code for a
@@ -178,17 +177,6 @@ export function timedNameToIdx(name: string): number {
     if (striEq(name, (PLAYER_TIMED_ENTRIES[i] as { name: string }).name)) {
       return i;
     }
-  }
-  return -1;
-}
-
-/**
- * mon_timed_name_to_idx (mon-timed.c): case-SENSITIVE (streq), and only
- * indices below MON_TMD_MAX are reachable (the "MAX" row is excluded).
- */
-export function monTimedNameToIdx(name: string): number {
-  for (let i = 0; i < MON_TMD.MAX; i++) {
-    if ((MON_TIMED_ENTRIES[i] as { name: string }).name === name) return i;
   }
   return -1;
 }
