@@ -1,5 +1,5 @@
 module: packages/core/src/obj/value.ts
-status: partial
+status: complete
 baseline: 4.2.6
 upstream:
   - path: src/obj-power.c
@@ -28,17 +28,19 @@ notes: >-
   object_power (obj/power.ts). object_value_base takes flavor-awareness as a
   parameter rather than reading it, since the object-knowledge awareness state
   is not modelled yet.
+upstream_extra:
+  - object_value (L1253): the full dispatch PORTED - variable-power ->
+    object_value_real; aware flavored -> object_value_real; else
+    object_value_base * qty. Takes `aware` (object_flavor_is_aware, from
+    FlavorKnowledge) as a parameter.
 deferred:
-  - object_value (L1253): the full dispatch (variable + obj->known ->
-    object_value_real on obj->known; aware flavored -> object_value_real; else
-    object_value_base). The obj->known partial-knowledge twin is not modelled,
-    so pricing a variable-power item values the real object - exact for a
-    fully-known item (store stock, identified gear) and over-values only an item
-    with still-unknown runes. Awaits the known-object model. To land alongside
-    price_item.
-  - price_item (store.c L579): the buy/sell price on top of object_value /
-    object_value_real (owner max_cost purse cap, black-market surcharge,
-    birth_no_selling kill-switch). Next up.
+  - The obj->known partial-knowledge twin: object_value upstream prices
+    obj->known for variable-power items; with no known twin modelled this port
+    values the real object, which is exact for a fully-known item (store stock,
+    identified gear) and over-values only an item with still-unknown runes.
+    Awaits the known-object model.
+  - price_item is ported separately in packages/core/src/store/price.ts
+    (ledgered in store-price.yaml).
 verified-by:
   - obj/value.test.ts: a potion prices at kind.cost and kind.cost*qty; a wand
     adds the charge premium (cost + floor(cost*pval/20)); a costless kind is

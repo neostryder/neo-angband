@@ -1,0 +1,33 @@
+module: packages/core/src/store/price.ts
+status: complete
+baseline: 4.2.6
+upstream:
+  - path: src/store.c
+    items:
+      - price_item (L579): the price of an object (qty one, or a wand/staff
+        stack) in a store. Ported faithfully - the buy/sell base from MIN/MAX of
+        object_value_real vs object_value; the worthless short-circuit (0 when
+        buying, qty when selling); the black-market adjust of 150; the shop-buy
+        path (adjust = 100 + (100 - adjust) capped at 100, pay 2/3, black market
+        halved again, birth_no_selling returns 0); the shop-sell re-evaluation
+        to object_value_real with the black-market doubling; the rounded final
+        (price * adjust + 50) / 100; the qty multiply for non-charge items; and
+        the owner->max_cost * qty purse cap when buying. Integer divisions use
+        Math.trunc to match C.
+notes: >-
+  The store economics layer on top of object valuation (obj/value.ts). Model
+  divergences, all faithful in reachable states: the current proprietor is
+  passed in as `owner` (its max_cost is the only owner field price_item reads;
+  runtime current-owner selection at store_init is still deferred, see
+  store-bind.yaml); OPT(player, birth_no_selling) is passed as `noSelling`;
+  object_flavor_is_aware(obj) is passed as `aware` (from FlavorKnowledge). The
+  black market is detected by store.feat === FEAT.STORE_BLACK.
+deferred:
+  - The buy/sell COMMANDS (do_cmd_buy / do_cmd_sell), stock maintenance and the
+    store UI remain in store-bind.yaml's deferred list; price_item is only the
+    price computation.
+verified-by:
+  - store/price.test.ts: a clean 1d4 weapon (real value 66) sells to the player
+    at 66, is bought from the player at 44 (2/3), pays 0 under birth_no_selling,
+    sells for 198 at the black market (132 doubled, then the 150 surcharge), and
+    a buy price is capped to a small owner purse.
