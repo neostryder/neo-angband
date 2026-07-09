@@ -78,6 +78,7 @@ export * from "./game/monster-turn";
 export * from "./game/scheduler";
 export * from "./game/player-turn";
 export * from "./game/project-monster";
+export * from "./game/project-player";
 export * from "./game/loop";
 
 // Some small derived constants and geometry helpers are defined
