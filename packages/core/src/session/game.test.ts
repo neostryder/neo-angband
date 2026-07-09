@@ -136,6 +136,22 @@ describe("startGame (new-game assembly)", () => {
     }
   });
 
+  it("registers the generated floor objects as live piles", () => {
+    const { state, booted } = startGame(pack, { seed: 123, depth: 5 });
+    expect(booted.objects.length).toBeGreaterThan(0);
+    let onFloor = 0;
+    for (const pile of state.floor.values()) onFloor += pile.length;
+    // Same-grid stacks may merge, never grow.
+    expect(onFloor).toBeGreaterThan(0);
+    expect(onFloor).toBeLessThanOrEqual(booted.objects.length);
+    // Every registered object knows its grid and its pile lists it.
+    for (const pile of state.floor.values()) {
+      for (const obj of pile) {
+        expect(obj.grid).not.toBeNull();
+      }
+    }
+  });
+
   it("is deterministic for a fixed seed", () => {
     const a = startGame(pack, { seed: 777, depth: 2 });
     const b = startGame(pack, { seed: 777, depth: 2 });

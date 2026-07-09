@@ -1,0 +1,54 @@
+module: packages/core/src/game/floor.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/obj-pile.c
+    items:
+      - floor_carry (L905): merge into a compatible OSTACK_FLOOR stack, or
+        prepend to the pile when it has room; the floor-size cap with the
+        oldest-ignored eviction, the birth_stacking single-object rule, and
+        the square_isobjectholding gate.
+      - floor_get_oldest_ignored (L886): the last ignored object at a grid
+        (inert until obj-ignore, task 24 - the isIgnored hook).
+      - drop_find_grid (L1025): the scored 7x7 scan (dist <= 10, in bounds
+        fully, los from the start, floor, no trap; combine / shown / ignored
+        analysis; 1000 - (dist + num_shown * 5) score with the prefer_pile
+        exemption and the one_in_2 tie break) plus the artifact rescue walk
+        (1000 rand_loc bounces then 1000 uniform picks over square_canputitem).
+      - drop_near (L1128): the breakage roll (randint0(100) < chance,
+        artifacts exempt), then drop_find_grid + floor_carry, destroying the
+        object when the floor fails to carry it (onBreak hook).
+      - floor_object_for_use (L831): split num items off a floor stack
+        (object_split with charge distribution) or excise the whole object.
+      - pile_insert / pile_excise (obj-pile.c top): the pile primitives -
+        state.floor maps grid index -> GameObject[], head-first so pile[0]
+        is the newest drop exactly like the upstream linked list.
+      - square_canputitem (cave-square.c L626): object-holding floor, no
+        trap, no existing pile (the live-cave twin of gen/util's
+        generation-time predicate; gen's stays barrel-canonical).
+notes: >-
+  Floor piles live on the GameState (state.floor), the same seam as monsters
+  and groups; z_info->floor_size rides on GameConstants (shipped 23).
+  session/game.ts startGame registers every generated PlacedObject through
+  floor_carry so the live game operates on the objects the level laid down.
+  Unported-subsystem seams are FloorEnv hooks with inert defaults: isIgnored
+  (obj-ignore #24), isTrap (trap.c #21), birthStacking (default true as
+  shipped), onBreak/onDrop (messages/UI). RNG draws (breakage roll, tie
+  breaks, artifact rescue walk) match upstream order.
+deferred:
+  - push_object (L1166): needs the door/trap interplay (squares become
+    unable to hold objects) - lands with trap.c (#21) / door commands (#20).
+  - The known-object shadow cave (player->cave, obj->known) and
+    list_object/delist_object oidx bookkeeping - knowledge system (#24);
+    the pile map itself serves as the object list.
+  - Mimicked-object handling (obj->mimicking_m_idx) - mimic reveal.
+  - square_note_spot / square_light_spot redraw calls - render layer (#25).
+verified-by:
+  - game/floor.test.ts (13 tests): carry places and records the grid; merges
+    into a compatible stack; newest-first pile order; refuses walls; refuses
+    a full pile; evicts the oldest ignored object; dropNear lands on a free
+    target, breaks on the chance roll, never breaks artifacts, and lands
+    within the 7x7 scan when the target is full; floorObjectForUse splits or
+    excises; floorExcise removes exactly the given object.
+  - session/game.test.ts: startGame registers the generated floor objects as
+    live piles (counts bounded by merging, grids recorded).
