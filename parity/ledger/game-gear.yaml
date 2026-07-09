@@ -1,0 +1,75 @@
+module: packages/core/src/game/gear.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/obj-gear.c
+    items:
+      - slot_by_type (empty-preferring slot search with matching-type
+        fallback; "filled" reads player.equipment[i] != 0 here rather than
+        body.slots[i].obj)
+      - wield_slot (full tval switch: BOW/AMULET/CLOAK/SHIELD/GLOVES/BOOTS
+        then melee-weapon/ring/light/body-armor/head-armor, -1 otherwise)
+      - inven_carry (merge into a mergeable pack stack via object_mergeable /
+        object_absorb, else add a new pack handle)
+  - path: src/player-birth.c
+    items:
+      - wield_all (scan a snapshot of the pack, wield each object whose liked
+        slot is empty, splitting one item off a stack and leaving the
+        remainder in the pack)
+      - player_outfit (per class start_item: rand_range(min,max), lookup_kind
+        by tval/sval name, start_kit option, object_prep MINIMISE at level 0,
+        number + ORIGIN_BIRTH, inven_carry, then wield_all)
+  - path: src/obj-util.c
+    items:
+      - object_copy (deep copy of the live struct; kind/ego/artifact/
+        activation/effect stay shared references as upstream memcpy leaves)
+      - object_split (copy amt items off, distribute_charges, reduce source)
+notes: >-
+  The parity Player omits struct player's gear list and keeps only
+  equipment[] as per-body-slot object HANDLES (0 = empty); this module owns
+  the objects behind those handles. Gear = { store: handle -> GameObject,
+  next handle (>= 1), pack: non-equipped handles }. Equipped objects remain
+  in store and are referenced by player.equipment[slot]; they are not in
+  pack. slot_by_type/wield_slot take the equipment array so the empty-slot
+  preference (e.g. a second ring lands in the free hand) is faithful;
+  wieldSlot's equipment argument is optional and defaults to all-empty so the
+  "which slot type does this tval want" query still works with two arguments.
+  A born Human Warrior ends up with the Dagger in the WEAPON slot, Soft
+  Leather Armour in the BODY_ARMOR slot, a Wooden Torch in the LIGHT slot,
+  and food / Berserk Strength potion / Word of Recall scroll (plus any spare
+  torches) in the pack. Determinism: outfitPlayer draws from the same seeded
+  Rng as birth, so a fixed seed yields the same kit; it runs after the first
+  calcBonuses in startGame, which is unaffected (it read the empty-handed
+  player).
+deferred:
+  - Starting-gold deduction p->au -= object_value_real(obj, number):
+    obj-value.c (obj-power) is not ported, so no gold is deducted and
+    starting gold is HIGHER than upstream until it lands. No fake valuation
+    is used.
+  - eopts birth-option exclusion: birth options are not modelled, so eopts
+    are treated as "no exclusions". This equals upstream behaviour with the
+    default birth options (e.g. the Warrior's Word of Recall scroll, excluded
+    only when birth_no_recall is ON, is included by default).
+  - pack_size overflow (combine_pack / pack_overflow / inven_carry_num /
+    pack_slots_used): a birth kit never overflows, so the z_info->pack_size
+    limit is not enforced.
+  - The knowledge twin (obj->known) and the whole obj-knowledge block in
+    player_outfit (obj_k obvious knowledge, object_flavor_aware,
+    object_set_base_known, update_player_object_knowledge), consistent with
+    obj/object.ts.
+  - The equip_cnt UI counter (p->upkeep->equip_cnt).
+  - The running carried-weight total (p->upkeep->total_weight beyond the
+    reset to 0); recomputing it belongs to the calc/inventory owner.
+  - The take-off / inventory command layer (inven_wield messaging,
+    inven_takeoff, inven_drop, gear_object_for_use) and the quiver
+    (quiver_absorb_num, OSTACK_QUIVER handling): out of scope for the birth
+    substrate.
+  - Re-deriving calc_bonuses from the populated equipment and wiring
+    actor.weapon / actor.defense: owned by player/calcs.ts (downstream).
+verified-by:
+  - gear.test.ts: wieldSlot maps each wearable tval to the correct slot type
+    (and -1 for a potion), the empty-slot preference puts a second ring in
+    the free hand, a born Human Warrior wears a sword in WEAPON and soft
+    armour in BODY_ARMOR (handles resolve to objects of the expected tval),
+    invenCarry merges stackable potions into one stack, and the split path
+    (number > 1) wields one and leaves the remainder in the pack

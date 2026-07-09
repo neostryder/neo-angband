@@ -86,3 +86,4 @@ export type { CriticalLevel } from "./combat/hit";
 //   module and will get an aliased export if the game API needs it publicly.
 export { EXTRACT_ENERGY, turnEnergy } from "./mon/monster";
 export { squareIsEmpty } from "./gen/util";
+export * from "./game/gear";
