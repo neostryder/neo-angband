@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
-import { FEAT } from "../generated";
+import { FEAT, TV } from "../generated";
 import { ObjRegistry } from "../obj/bind";
-import { ObjAllocState } from "../obj/make";
+import { ObjAllocState, objectPrep } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
+import type { GameObject } from "../obj/object";
 import type { ObjPackJson } from "../obj/types";
 import { Rng } from "../rng";
 import { StoreRegistry } from "./bind";
-import { bindStoreRuntime, storeReset } from "./store";
+import { bindStoreRuntime, storeReset, storeWillBuy } from "./store";
 import type { Store, StoreMaintContext } from "./store";
 import type { StoreRecordJson } from "./types";
 
@@ -102,5 +103,51 @@ describe("store maintenance (store.c store_reset/store_maint)", () => {
     const countsA = a.stores.map((s) => s.stock.length);
     const countsB = b.stores.map((s) => s.stock.length);
     expect(countsA).toEqual(countsB);
+  });
+});
+
+function makeKind(tval: number): GameObject {
+  const kind = reg.kinds.find(
+    (k) => k.tval === tval && k.kidx < reg.ordinaryKindCount,
+  );
+  if (!kind) throw new Error(`no ordinary kind for tval ${tval}`);
+  return objectPrep(new Rng(7), reg, constants, kind, 0, "minimise");
+}
+
+describe("store_will_buy (store.c)", () => {
+  const home = storeReg.byFeat(FEAT.HOME);
+  const weapon = storeReg.byFeat(FEAT.STORE_WEAPON);
+  const black = storeReg.byFeat(FEAT.STORE_BLACK);
+  if (!home || !weapon || !black) throw new Error("missing store");
+
+  it("home accepts anything, even a worthless item", () => {
+    const potion = makeKind(TV.POTION);
+    potion.kind = { ...potion.kind, cost: 0 };
+    expect(storeWillBuy(reg, home, potion, true, false, false)).toBe(true);
+  });
+
+  it("the black market (no buy list) buys any item of positive value", () => {
+    const sword = makeKind(TV.SWORD);
+    expect(black.buy).toBeNull();
+    expect(storeWillBuy(reg, black, sword, false, false, false)).toBe(true);
+  });
+
+  it("a listed store buys tvals on its list and refuses others", () => {
+    const sword = makeKind(TV.SWORD);
+    const potion = makeKind(TV.POTION);
+    const buysSword = (weapon.buy ?? []).some((b) => b.tval === TV.SWORD);
+    expect(buysSword).toBe(true);
+    expect(storeWillBuy(reg, weapon, sword, false, false, false)).toBe(true);
+    // Potions are not on the weaponsmith's buy list.
+    expect(storeWillBuy(reg, weapon, potion, false, false, false)).toBe(false);
+  });
+
+  it("refuses an apparently worthless item at a normal store", () => {
+    const general = storeReg.byFeat(FEAT.STORE_GENERAL);
+    if (!general) throw new Error("no general store");
+    const potion = makeKind(TV.POTION);
+    potion.kind = { ...potion.kind, cost: 0 };
+    // aware flavored + cost 0 -> object_value 0 -> worthless.
+    expect(storeWillBuy(reg, general, potion, true, false, false)).toBe(false);
   });
 });
