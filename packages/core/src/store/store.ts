@@ -33,6 +33,7 @@ import {
   OSTACK_STORE,
   tvalCanHaveCharges,
   tvalCanHaveTimeout,
+  tvalHasVariablePower,
   tvalIsAmmo,
   tvalIsArmor,
   tvalIsLauncher,
@@ -40,7 +41,7 @@ import {
   tvalIsWeapon,
 } from "../obj/object";
 import type { ObjectKind } from "../obj/types";
-import { objectValueReal } from "../obj/value";
+import { objectValue, objectValueReal } from "../obj/value";
 import type { Rng } from "../rng";
 import type { BoundStore, ObjectBuy, StoreOwner } from "./types";
 
@@ -143,6 +144,55 @@ function storeSaleShouldReduceStock(store: Store, obj: GameObject): boolean {
   if (tvalIsWeapon(obj.tval) && (obj.toH || obj.toD)) return true;
   if (tvalIsArmor(obj.tval) && obj.toA) return true;
   return !storeIsStaple(store, obj.kind);
+}
+
+/* ------------------------------------------------------------------ */
+/* Buy decision (store.c L524)                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * store_will_buy (L524): will this store purchase the object? The home accepts
+ * anything; a normal store refuses apparently worthless items (except unknown
+ * variable-power items when birth_no_selling is on) and, if it has a buy list,
+ * only buys listed tvals.
+ *
+ * `aware` feeds object_value; `runesKnown` is object_runes_known(obj) for the
+ * no-selling worthless exception. The buy-list flag branch's
+ * object_flag_is_known check is DEFERRED (needs the knowledge system); 4.2.6
+ * data uses only bare tvals (flag 0), so it is unreached at the baseline.
+ */
+export function storeWillBuy(
+  reg: ObjRegistry,
+  store: { feat: number; buy: ObjectBuy[] | null },
+  obj: GameObject,
+  aware: boolean,
+  noSelling: boolean,
+  runesKnown: boolean,
+): boolean {
+  /* Home accepts anything. */
+  if (store.feat === FEAT.HOME) return true;
+
+  /* Ignore apparently worthless items, except no-selling unknown items. */
+  const value = objectValue(reg, obj, 1, aware);
+  if (
+    value <= 0 &&
+    !(noSelling && tvalHasVariablePower(obj.tval) && !runesKnown)
+  ) {
+    return false;
+  }
+
+  /* No buy list means we buy anything. */
+  if (!store.buy) return true;
+
+  /* Run through the buy list. */
+  for (const buy of store.buy) {
+    if (buy.tval !== obj.tval) continue;
+    if (!buy.flag) return true;
+    /* DEFERRED: && object_flag_is_known(player, obj, buy.flag). */
+    if (obj.flags.has(buy.flag)) return true;
+  }
+
+  return false;
 }
 
 /* ------------------------------------------------------------------ */
