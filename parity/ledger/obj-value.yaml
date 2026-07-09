@@ -1,0 +1,47 @@
+module: packages/core/src/obj/value.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/obj-power.c
+    items:
+      - object_value_base (L1060): the non-aware value guess - kind.cost when
+        the flavor is aware, else a flat per-tval estimate (food/mushroom 5,
+        potion/scroll 20, ring/amulet 45, wand 50, staff 70, rod 90). Ported
+        with `aware` (object_flavor_is_aware) passed in.
+      - object_value_real (L1099): constant-price path PORTED - kind.cost * qty
+        for ordinary items, plus a per-charge premium (value * charges / 20,
+        charges rounded up) for wands and staves. Integer division matches C.
+  - path: src/obj-tval.c
+    items:
+      - tval_has_variable_power (L256): ported to obj/object.ts; selects the
+        object_power pricing path (weapons, launchers, ammo, armour, jewelry,
+        lights).
+notes: >-
+  Valuation for constant-price items is live: potions, scrolls, food,
+  mushrooms, flasks, wands, staves, rods and other non-wearable, non-ammo kinds
+  are priced from kind.cost (with the charge premium for wands/staves) exactly
+  as upstream. This is the piece of the store keystone that has no deep
+  dependency. object_value_base takes flavor-awareness as a parameter rather
+  than reading it, since the object-knowledge awareness state is not modelled
+  yet.
+deferred:
+  - object_value_real's VARIABLE-power path: prices wearables and ammo by
+    object_power (obj-power.c, ~1000 lines). object_power aggregates ~15 helper
+    ratings (to_damage/dice/ammo/launcher/blows/shots/might, slay_power,
+    to_hit/ac/to_ac/jewelry/modifier/flags/element/effects/curse/weight power)
+    over the object_property power tables, brand/slay power, and - via
+    curse_power - RECURSES into object_power on curse objects using
+    apply_curse_attributes (the curse system). Not ported; value.ts throws for
+    variable-power items rather than guess.
+  - object_value (L1253): the full dispatch (variable+known -> object_value_real
+    on obj->known; aware flavored -> object_value_real; else object_value_base).
+    Needs both object_power and flavor-awareness, so it waits on both.
+  - price_item (store.c L579): the buy/sell price on top of object_value /
+    object_value_real (owner greed/purse, black-market surcharge,
+    birth_no_selling). Blocked on object_value above.
+verified-by:
+  - obj/value.test.ts: a potion prices at kind.cost and kind.cost*qty; a wand
+    adds the charge premium (cost + floor(cost*pval/20)); a costless kind is
+    worthless; a sword throws (variable path pending object_power);
+    object_value_base returns the flat estimates when unaware and kind.cost
+    when aware.

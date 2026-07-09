@@ -140,6 +140,38 @@ export function tvalCanHaveFailure(tval: number): boolean {
 export function tvalIsJewelry(tval: number): boolean {
   return tval === TV.RING || tval === TV.AMULET;
 }
+/**
+ * tval_has_variable_power (obj-tval.c L256): items whose value/price depends on
+ * individual properties (weapons, launchers, ammo, armour, jewelry, lights),
+ * so object_value_real prices them by object_power rather than a flat cost.
+ */
+export function tvalHasVariablePower(tval: number): boolean {
+  switch (tval) {
+    case TV.SHOT:
+    case TV.ARROW:
+    case TV.BOLT:
+    case TV.BOW:
+    case TV.DIGGING:
+    case TV.HAFTED:
+    case TV.POLEARM:
+    case TV.SWORD:
+    case TV.BOOTS:
+    case TV.GLOVES:
+    case TV.HELM:
+    case TV.CROWN:
+    case TV.SHIELD:
+    case TV.CLOAK:
+    case TV.SOFT_ARMOR:
+    case TV.HARD_ARMOR:
+    case TV.DRAG_ARMOR:
+    case TV.LIGHT:
+    case TV.AMULET:
+    case TV.RING:
+      return true;
+    default:
+      return false;
+  }
+}
 export function tvalIsWeapon(tval: number): boolean {
   switch (tval) {
     case TV.SWORD:
