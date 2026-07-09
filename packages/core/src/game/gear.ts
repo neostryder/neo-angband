@@ -35,12 +35,16 @@ import {
   distributeCharges,
   objectAbsorb,
   objectMergeable,
+  objectStackable,
   OSTACK_PACK,
+  tvalCanHaveCharges,
+  tvalCanHaveTimeout,
   tvalIsBodyArmor,
   tvalIsFood,
   tvalIsHeadArmor,
   tvalIsLight,
   tvalIsMeleeWeapon,
+  tvalIsMoney,
   tvalIsRing,
 } from "../obj/object";
 import type { StackLimits } from "../obj/object";
@@ -238,6 +242,132 @@ export function invenCarry(
   const handle = gearAdd(gear, obj);
   gear.pack.push(handle);
   return handle;
+}
+
+/* ------------------------------------------------------------------ */
+/* inven_carry_num / object_copy_amt / gear_object_for_use             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * pack_slots_used (obj-gear.c L257): the number of pack slots occupied.
+ * Upstream discounts equipped and quivered gear; here equipped objects are
+ * not in `pack` and the quiver is DEFERRED, so this is simply pack.length.
+ */
+export function packSlotsUsed(gear: Gear): number {
+  return gear.pack.length;
+}
+
+/**
+ * inven_carry_num (obj-gear.c L749): how many of `obj` the pack can accept.
+ * A free pack slot takes the whole incoming stack; otherwise the remainder
+ * is squeezed into partially-full stackable slots. The quiver path is
+ * DEFERRED (no quiver in this model), so num_to_quiver is always 0.
+ */
+export function invenCarryNum(
+  gear: Gear,
+  obj: GameObject,
+  constants: Constants,
+): number {
+  /* Treasure can always be picked up (never reached via a store). */
+  if (tvalIsMoney(obj.tval)) return obj.number;
+
+  const nFreeSlot = constants.packSize - packSlotsUsed(gear);
+
+  /* A free slot holds everything (quiver DEFERRED: nothing goes there). */
+  if (nFreeSlot > 0) return obj.number;
+
+  /* See if we can add to partially-full inventory slots. */
+  let numLeft = obj.number;
+  for (const handle of gear.pack) {
+    const stack = gear.store.get(handle);
+    if (stack && objectStackable(stack, obj, OSTACK_PACK)) {
+      numLeft -= stack.kind.base.maxStack - stack.number;
+      if (numLeft <= 0) break;
+    }
+  }
+
+  return obj.number - Math.max(numLeft, 0);
+}
+
+/**
+ * object_copy_amt (obj-pile.c L743): a fresh copy of `src` holding `amt`
+ * items, with wand/staff charges and rod/activation timeouts scaled to the
+ * split (source unchanged). The AVERAGE charge time is deterministic.
+ */
+export function objectCopyAmt(src: GameObject, amt: number): GameObject {
+  const dest = objectCopy(src);
+  dest.number = amt;
+
+  if (tvalCanHaveCharges(src.tval)) {
+    dest.pval = Math.trunc((src.pval * amt) / src.number);
+  }
+
+  if (tvalCanHaveTimeout(src.tval)) {
+    /* randcalc(src->time, 0, AVERAGE). */
+    const t = src.time;
+    const chargeTime = t.base + Math.trunc((t.dice * (t.sides + 1)) / 2);
+    const maxTime = chargeTime * amt;
+    dest.timeout = src.timeout > maxTime ? maxTime : src.timeout;
+  }
+
+  return dest;
+}
+
+/** The detached result of gear_object_for_use. */
+export interface GearForUse {
+  /** The removed object (a split copy, or the excised original stack). */
+  obj: GameObject;
+  /** True when the whole stack was taken and its slot is now empty. */
+  noneLeft: boolean;
+}
+
+/**
+ * Detach `handle` (or the free equipment/pack slot holding it) from the
+ * gear. A pack handle is removed from the ordered pack; an equipped handle
+ * clears its body slot. Either way the handle leaves the store map.
+ */
+function gearExcise(gear: Gear, player: Player, handle: number): void {
+  const pi = gear.pack.indexOf(handle);
+  if (pi >= 0) {
+    gear.pack.splice(pi, 1);
+    gear.store.delete(handle);
+    return;
+  }
+  const si = player.equipment.indexOf(handle);
+  if (si >= 0) {
+    player.equipment[si] = 0;
+    gear.store.delete(handle);
+  }
+}
+
+/**
+ * gear_object_for_use (obj-gear.c L524): remove `amt` items of the gear
+ * object referenced by `handle`, returning a detached object to hand off.
+ * When part of a stack is taken, the remainder stays under `handle` and a
+ * fresh split is returned (noneLeft=false); when the whole stack is taken,
+ * the original is excised (noneLeft=true). The total_weight upkeep and the
+ * knowledge twin are DEFERRED (see the module ledger).
+ */
+export function gearObjectForUse(
+  gear: Gear,
+  player: Player,
+  handle: number,
+  amt: number,
+): GearForUse {
+  const obj = gear.store.get(handle);
+  if (!obj) throw new Error(`gearObjectForUse: no object for handle ${handle}`);
+
+  const num = Math.min(amt, obj.number);
+
+  /* Split off a usable object if we are not taking the whole stack. */
+  if (obj.number > num) {
+    const usable = objectSplit(obj, num);
+    return { obj: usable, noneLeft: false };
+  }
+
+  /* Using the entire stack. */
+  gearExcise(gear, player, handle);
+  return { obj, noneLeft: true };
 }
 
 /* ------------------------------------------------------------------ */

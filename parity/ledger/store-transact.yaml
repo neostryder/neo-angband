@@ -1,0 +1,72 @@
+module: packages/core/src/store/transact.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/store.c
+    items:
+      - do_cmd_buy (L1650): buy amt of a store-stock object. object_copy_amt
+        the desired amount, gate on inven_carry_num (pack room), price the
+        whole stack with price_item(store_buying=false), refuse if price >
+        player->au, spend the gold, stamp ORIGIN_STORE, reduce the source
+        stack's charges (obj->pval -= bought->pval), inven_carry it, then (for
+        a non-staple) store_delete the bought amount and, if the store emptied,
+        roll one_in_(store_shuffle) to shuffle the owner and run store_maint x10.
+      - do_cmd_sell (L1869): sell amt of a gear object. Refuse a stuck
+        (OF_STICKY) equipped item, refuse what store_will_buy rejects, test
+        store_check_num for room, price with price_item(store_buying=true),
+        credit the gold, gear_object_for_use to detach the items, and
+        store_carry them (a rejected object is discarded).
+      - do_cmd_retrieve (L1783): take amt of a home-stock object into the pack.
+        object_copy_amt, gate on inven_carry_num, distribute_charges out of the
+        home stack, inven_carry, then store_delete. No gold.
+      - do_cmd_stash (L2009): drop amt of a gear object into the home. Refuse a
+        stuck equipped item, test store_check_num, gear_object_for_use to
+        detach, then home_carry. No gold.
+      - home_carry (L870): merge into a compatible home stack (OSTACK_PACK -
+        the home stacks like the player) via object_absorb, else take a free
+        slot; the object is lost if the home is full.
+  - path: src/obj-util.c
+    items:
+      - obj_can_takeoff (L794): !obj_has_flag(obj, OF_STICKY); the "stuck"
+        refusal shared by do_cmd_sell and do_cmd_stash.
+notes: >-
+  The behavioural half of the store subsystem: the four buy/sell/retrieve/stash
+  transactions plus home_carry, sitting on the stocking layer (store.ts), the
+  pricing layer (price.ts), and the player pack model (game/gear.ts). The
+  upstream commands are driven by the command queue (cmd_get_arg_item /
+  cmd_get_arg_number / cmd_get_quantity); here each is a plain function taking
+  the object (or a pack handle) and amount directly, so the headless core runs
+  a transaction with no UI command layer. Each returns a small result object
+  ({ ok, failure?, price?, ... }) instead of emitting messages. The economic and
+  inventory effects are faithful: gold debit/credit, the pack-room gate, the
+  buy/sell price asymmetry, the empty-store restock, and the home merge all
+  match upstream. Awareness (object_flavor_is_aware) and birth_no_selling are
+  passed in via a TxnKnowledge argument; when a FlavorKnowledge is supplied,
+  buying or selling makes the kind's flavor known (object_flavor_aware).
+deferred:
+  - The rune learn-on-transaction loop (object_learn_unknown_rune /
+    player_know_object until object_fully_known) that do_cmd_buy and do_cmd_sell
+    run: it needs the knowledge/display system and the obj->known twin (task
+    #13). Flavor awareness IS applied; only the rune half is deferred.
+  - The obj->known twin throughout (known_obj copies, bought->known / picked_
+    item->known assignments), consistent with the rest of the object port.
+  - p->upkeep->total_weight, the PU_/PN_/PR_ update-notice-redraw masks, the
+    EVENT_STORECHANGED / EVENT_INVENTORY / EVENT_EQUIPMENT signals, and
+    handle_stuff / notice_stuff: UI/upkeep bookkeeping.
+  - The verbal flavor (purchase_analyze / comment_accept / comment_* tables and
+    the msg lines): store UI, not economics.
+  - autoinscription (apply_autoinscription) and the artifact auto-history
+    (history_find_artifact / history_lose_artifact on sale).
+  - The OF_STICKY guard reads the object's own flags; the curse -> flags
+    propagation for live objects lands with the curse-on-object application
+    path, so at the baseline only intrinsically-sticky items are refused
+    (conservative: no base item is intrinsically sticky).
+verified-by:
+  - store/transact.test.ts: storeBuy pays exactly the price_item price, pockets
+    the item, and debits gold; it refuses on insufficient gold (no gold spent)
+    and on a full pack (no-room). storeSell sells a sword to the weaponsmith
+    for positive gold and empties the pack slot, refuses an item off the buy
+    list (item retained), and under birth_no_selling gives the item away for
+    zero gold while still transferring it. homeStash/homeRetrieve round-trip an
+    item through the home with no gold changing hands, and home_carry merges
+    two compatible food stacks into one.
