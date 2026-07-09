@@ -48,8 +48,8 @@ function make(tval: number) {
 describe("object_value_real (obj-power.c constant-price path)", () => {
   it("prices a constant-price item at kind.cost * qty", () => {
     const potion = make(TV.POTION);
-    expect(objectValueReal(potion, 1)).toBe(potion.kind.cost);
-    expect(objectValueReal(potion, 3)).toBe(potion.kind.cost * 3);
+    expect(objectValueReal(reg, potion, 1)).toBe(potion.kind.cost);
+    expect(objectValueReal(reg, potion, 3)).toBe(potion.kind.cost * 3);
   });
 
   it("adds a per-charge premium for wands and staves", () => {
@@ -58,18 +58,46 @@ describe("object_value_real (obj-power.c constant-price path)", () => {
     wand.number = 1;
     const cost = wand.kind.cost;
     // total = cost*qty + floor(cost * charges / 20); charges = pval = 10.
-    expect(objectValueReal(wand, 1)).toBe(cost + Math.floor((cost * 10) / 20));
+    expect(objectValueReal(reg, wand, 1)).toBe(
+      cost + Math.floor((cost * 10) / 20),
+    );
   });
 
   it("returns 0 for a worthless (costless) kind", () => {
     const potion = make(TV.POTION);
     potion.kind = { ...potion.kind, cost: 0 };
-    expect(objectValueReal(potion, 5)).toBe(0);
+    expect(objectValueReal(reg, potion, 5)).toBe(0);
+  });
+});
+
+describe("object_value_real (obj-power.c variable-power path)", () => {
+  it("prices a weapon from its power via value = power*(power+5)", () => {
+    // A 1d4 weapon has power 6, so value = 6*(6+5) = 66 for a single item.
+    const sword = make(TV.SWORD);
+    sword.dd = 1;
+    sword.ds = 4;
+    sword.toH = 0;
+    sword.toD = 0;
+    sword.toA = 0;
+    sword.ac = 0;
+    sword.weight = 100;
+    sword.ego = null;
+    sword.brands = null;
+    sword.slays = null;
+    sword.curses = null;
+    sword.flags.wipe();
+    for (const e of sword.elInfo) {
+      e.resLevel = 0;
+      e.flags = 0;
+    }
+    for (let i = 0; i < sword.modifiers.length; i++) sword.modifiers[i] = 0;
+    expect(objectValueReal(reg, sword, 1)).toBe(66);
+    expect(objectValueReal(reg, sword, 2)).toBe(132);
   });
 
-  it("throws for variable-power items (object_power not yet ported)", () => {
-    const sword = make(TV.SWORD);
-    expect(() => objectValueReal(sword, 1)).toThrow(/object_power/);
+  it("never rounds a positive-power wearable down to worthless", () => {
+    const cloak = make(TV.CLOAK);
+    expect(objectValueReal(reg, cloak, 1)).toBeGreaterThan(0);
   });
 });
 

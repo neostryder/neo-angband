@@ -24,7 +24,7 @@ import type { Monster } from "../mon/monster";
 import type { Player } from "../player/player";
 import { OF } from "../generated";
 import { SKILL } from "../player/types";
-import { tvalIsAmmo } from "../obj/object";
+import { objectWeightOne, tvalIsAmmo } from "../obj/object";
 import type { CritActor, HitType } from "./hit";
 import { BTH_PLUS_ADJ, criticalShot, testHit } from "./hit";
 import type { PlayerCombatState } from "./melee";
@@ -33,7 +33,6 @@ import {
   improveAttackModifier,
   objectToDam,
   objectToHit,
-  objectWeightOne,
 } from "./brand-slay";
 import type { AttackModifier } from "./brand-slay";
 

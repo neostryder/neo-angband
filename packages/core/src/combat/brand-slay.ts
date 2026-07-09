@@ -2,7 +2,8 @@
  * Brand and slay selection for combat, ported VERBATIM from
  * reference/src/obj-slays.c (Angband 4.2.6): get_monster_brand_multiplier and
  * improve_attack_modifier, plus the small object bonus accessors from
- * obj-util.c (object_to_hit / object_to_dam / object_weight_one).
+ * obj-util.c (object_to_hit / object_to_dam). object_weight_one now lives in
+ * obj/object.ts (its curse-aware home); combat imports it from there.
  *
  * These live in the combat domain rather than obj/ because they are combat
  * math and the obj domain does not export them; obj/ owns the Brand/Slay
@@ -12,8 +13,9 @@
  * - Temporary brands/slays (improve_attack_modifier's obj == NULL path, which
  *   reads player_has_temporary_brand/slay from the player-timed registry).
  *   The obj != NULL path (weapon and off-weapon equipment) is fully ported.
- * - Curse contributions to object_to_hit/to_dam/weight (obj->curses); no
- *   object carries curses through combat yet.
+ * - Curse contributions to object_to_hit/to_dam (obj->curses); no object
+ *   carries curses through combat yet. object_weight_one's curse adjustment is
+ *   likewise skipped there, since combat does not thread the curse table.
  */
 
 import type { Brand, Slay } from "../obj/types";
@@ -33,11 +35,6 @@ export function objectToHit(obj: GameObject): number {
 /** object_to_dam(obj): the object's to-dam bonus (curses DEFERRED). */
 export function objectToDam(obj: GameObject): number {
   return obj.toD;
-}
-
-/** object_weight_one(obj): the object's weight, floored at 0 (curses DEFERRED). */
-export function objectWeightOne(obj: GameObject): number {
-  return Math.max(obj.weight, 0);
 }
 
 /**
