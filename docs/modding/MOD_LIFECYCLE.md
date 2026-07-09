@@ -314,6 +314,17 @@ reroll-proof because they draw from the saved seeded stream. An undeclared
 plugin that trips a withheld source gets a clear author-facing error
 pointing at the fix, not a silent divergence.
 
+Save determinism mode (core-governed ratchet). The label is not just cosmetic:
+every save carries a determinism mode that CORE owns and enforces regardless
+of which mods are loaded. A save starts DETERMINISTIC; the first time a
+determinism-affecting mod is enabled on it, core flips it to NONDETERMINISTIC
+seamlessly and IRREVERSIBLY. Removing the mod later does not restore
+deterministic mode - it is a one-way ratchet, so a deterministic (unmodded)
+save cannot be tainted by a mod and then "cleansed" to reclaim its
+reproducibility/anti-scum guarantees. Mods can trigger the flip but can never
+reverse or prevent it. This is why the save block records the exact mod set
+and the mode: the mode travels with the save. See PORT_PLAN.md decision 22.
+
 ---
 
 ## 5. Ergonomics: designing out the usual complaints

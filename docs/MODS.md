@@ -140,15 +140,21 @@ impossible - see the save-scum policy). Unmodded runs are additionally
 reproducible from their start seed, which the port exposes as a shareable
 seed - a free bonus the original does not advertise.
 
-This is best-effort under mods, by design. A mod may be nondeterministic
-(wall clock, its own randomness, a network, an external AI agent), and any
-mid-game add/remove/update of mods breaks reproducibility from the start
-seed. That is allowed and expected; such a run is simply labelled
-non-reproducible. Determinism is not the anti-cheese mechanism and is not
-sacred - mods are essential and win the tradeoff. A planned example is an AI
-agent that plays the game (Borg-like but nondeterministic) by driving the
-command queue and reading the event bus; another is intelligent
-controller/mobile input. Both are ordinary mods.
+Determinism is PRESERVED BY DEFAULT and degraded only when forced. A mod may
+be nondeterministic (wall clock, its own randomness, a network, an external
+AI agent), and any mid-game add/remove/update of mods breaks
+reproducibility-from-seed. When that happens core does not just shrug: every
+save carries a core-owned DETERMINISM MODE (decision 22). A save starts
+DETERMINISTIC; the first time a determinism-affecting mod is enabled on it,
+core flips it to NONDETERMINISTIC seamlessly and IRREVERSIBLY - removing the
+mod later never restores the deterministic mode, so a save cannot be tainted
+and then cleansed. This is core integrity metadata that mods can trigger but
+never reverse; it is distinct from the save-scum gameplay policy (which a mod
+may relax). Anti-scum itself holds in both modes for core mechanics, which
+always draw from the saved seeded stream.
+
+Ideas that exercise this (an AI agent player, AI-generated content, and more)
+are documented, not built, in `docs/modding/MOD_IDEAS.md`.
 
 ## The modding SDK
 

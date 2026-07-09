@@ -121,7 +121,12 @@ documentation lives here under `docs/`.
     server-authoritative save, which is a networking MOD (decision 15). Mods
     may relax or replace any of this (decision 18); nondeterministic mods
     weaken reload-reroll protection within their own domain by their own
-    choice (decision 22). See `docs/modding/MOD_LIFECYCLE.md`.
+    choice (decision 22). Multiple characters are supported: the
+    single-overwritten-save rule is PER CHARACTER, and many characters coexist,
+    each with its own save (and its own determinism mode, decision 22) -
+    exactly as the original, whose roster is many characters each with one
+    savefile. Maintaining several characters is not save-scumming. See
+    `docs/modding/MOD_LIFECYCLE.md`.
 17. **Scope discipline: direct port first** (ratified 2026-07-08): the port
     reproduces Angband 4.2.6 faithfully before anything else. Core contains
     exactly two things - faithful parity behavior, and the mod architecture
@@ -182,27 +187,48 @@ documentation lives here under `docs/`.
     - Unmodded, and mods that stay on the engine's seeded RNG: deterministic
       in the faithful sense. As a free bonus over the original, the start
       seed is exposed so an unmodded run is reproducible and shareable.
-    - Modded: best-effort. A mod that uses wall-clock, its own randomness, a
-      network, or an external agent - and ANY add/remove/update of mods
-      mid-game - breaks reproducibility-from-seed. This is allowed and
-      expected; the run is simply LABELED non-reproducible / non-shareable.
-      Aaron's framing, adopted: unmodded stays deterministic; with mods the
-      randomness gets as random as the mods make it.
-    - Determinism is NOT the anti-save-scum lever. Anti-scum rides on the
-      persisted RNG state and single-save/terminal-death (decision 16), which
-      compose fine with mods. Reproducibility-from-seed is only a sharing
-      nicety. A nondeterministic mod re-opens reload-reroll within its OWN
-      mechanics by its own choice; core mechanics stay reroll-proof because
-      they draw from the saved seeded stream.
-    - Conclusion: determinism and modding are not fundamentally at odds.
-      Nothing essential is lost by letting mods be nondeterministic; only the
-      optional shareable-seed guarantee is, and only for those runs.
-    Two planned mods exercise exactly this and are explicitly welcome:
-    (a) an AI agent that plays Angband - Borg-like but nondeterministic,
-    driving the public command queue and observing the event bus, declaring
-    itself nondeterministic; (b) intelligent controller/mobile input. Both
-    are mods, not core, and both validate that the command-queue + event-bus
-    seams are strong enough to fully drive and observe the game.
+    - Modded: determinism is PRESERVED BY DEFAULT and degraded only when
+      forced. A mod that uses wall-clock, its own randomness, a network, or an
+      external agent - and ANY add/remove/update of mods mid-game - breaks
+      reproducibility-from-seed. When that happens the game does not simply
+      shrug; a core-governed save determinism mode (below) records it,
+      seamlessly and irreversibly.
+    - Save determinism mode (a CORE mechanism, not a mod concern; amended
+      2026-07-08 per Aaron). Every save carries a mode that core owns and
+      enforces regardless of which mods are loaded:
+        * DETERMINISTIC - the default. A character born unmodded (or with only
+          deterministic mods) is deterministic in the faithful sense, and its
+          start seed is exposed as a reproducible/shareable bonus.
+        * NONDETERMINISTIC - the seamless alternative. The first time a
+          determinism-affecting mod is enabled on a save, core flips it to
+          this mode IRREVERSIBLY. Removing the mod later never restores
+          deterministic mode (a one-way ratchet), so a save cannot be tainted
+          and then "cleansed" to reclaim guarantees it lost. The transition is
+          seamless: a one-time notice, then normal play.
+      This lives in core so it governs save behavior no matter what mods do:
+      mods can TRIGGER the flip but can never reverse or prevent it. It is
+      distinct from the save-scum GAMEPLAY policy (decision 16), which a mod
+      may relax; the determinism mode is integrity metadata, not a rule.
+    - Anti-scum (decision 16) holds in BOTH modes for core mechanics, which
+      always draw from the saved seeded stream. A nondeterministic mod only
+      re-opens reload-reroll within its own mechanics, by its own choice.
+    - Conclusion: determinism is the retained default, not a casualty of
+      modding. The only thing a nondeterministic mod costs is the optional
+      shareable-seed reproducibility, and that cost is recorded honestly and
+      permanently on the save.
+    Planned mods that exercise this (an AI agent player, controller/mobile
+    input, and more) are DOCUMENTED, not scheduled to build, in
+    `docs/modding/MOD_IDEAS.md`.
+23. **Release certification** (ratified 2026-07-08): the definition of done is
+    CERTIFIED FULL FEATURE PARITY with Angband 4.2.6 (decision 2). The ONLY
+    permitted differences from the original are: (a) unavoidable port
+    artifacts (the web/TypeScript platform, the single responsive surface, the
+    save format); (b) the mod system itself; and (c) minor variations Aaron
+    has explicitly approved, each logged as a decision here. Anything not on
+    that approved-variation list must match the original. At release the two
+    bundled mods (neo-linoleum, QoL) are complete and default to active.
+    Certification is measured by the parity harness (decision 2, docs/
+    PARITY.md) plus a checklist of the approved variations.
 
 ## Phases
 
