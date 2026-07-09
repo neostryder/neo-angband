@@ -18,6 +18,9 @@ upstream:
       - take_hit / player_apply_damage_reduction (player/take-hit.ts) exposed as
         EffectPlayer.takeHit / applyDamageReduction over a live TakeHitTarget
         whose chp / is_dead write back to the player and game state.
+      - the live hitpoint (HasHp) and spell-point (HasMana) views: EF_HEAL_HP and
+        EF_RESTORE_MANA (effects/handlers.ts) mutate the player's chp / csp
+        through them.
 notes: >-
   The bridge that connects the effect interpreter (effects/interpreter.ts) to a
   live player. buildEffectContext assembles rng, the message sink, the player
@@ -41,6 +44,6 @@ verified-by:
   - game/effect-env.test.ts (7 tests): through a real EffectRegistry +
     registerCoreHandlers, EF_CURE clears a live status, EF_TIMED_INC raises one
     (default allow), EF_NOURISH raises the food level, EF_HEAL_HP heals the live
-    player, EF_DAMAGE hurts them through take_hit, and a fatal EF_DAMAGE flags
-    death and fires the death hook; buildTimedHost.decTimed reduces a live
-    status directly.
+    player, EF_RESTORE_MANA restores their spell points, EF_DAMAGE hurts them
+    through take_hit, and a fatal EF_DAMAGE flags death and fires the death hook;
+    buildTimedHost.decTimed reduces a live status directly.
