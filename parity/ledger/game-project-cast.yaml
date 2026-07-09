@@ -24,6 +24,37 @@ upstream:
         radius bonuses are applied by the caller (they need monsterIsPowerful /
         player.lev, both available there); the confused-target and decoy
         branches are deferred as in get_target.
+      - effect_handler_LINE (L173): castLine (PROJECT_BEAM | GRID | KILL | THRU).
+      - effect_handler_ALTER (L186): castAlter (PROJECT_BEAM | GRID | ITEM |
+        THRU, no damage, no KILL).
+      - effect_handler_ARC (L789): castArc - PROJECT_ARC | GRID | ITEM | KILL,
+        the min-20 arc width, rad 0 => max_range, and the source-diameter
+        widening (4 * 60 / degrees, capped 25) for cones under 60 degrees.
+      - effect_handler_BREATH (L681): castBreath - as castArc plus the
+        powerful-monster full-strength boost (source diameter 4 -> 6 before the
+        arc widening); breath_dam and the "You breathe" message are the caller's
+        (#19).
+      - effect_handler_SHORT_BEAM (L852): castShortBeam - a fixed-length beam
+        (PROJECT_ARC, degrees 0, source diameter = radius) normalised to a beam
+        by project(); the player-level radius bonus is the caller's.
+      - effect_handler_SPOT (L545): castSpot - explode on the player's grid
+        (PROJECT_STOP | PLAY | GRID | ITEM | KILL | SELF, source diameter = rad).
+      - effect_handler_SPHERE (L571): castSphere - a ball from the player's grid
+        with an explicit source diameter (PROJECT_STOP | GRID | ITEM | KILL).
+      - effect_handler_STRIKE (L1001): castStrike - a jump ball on the target
+        (PROJECT_JUMP | GRID | ITEM | KILL).
+      - effect_handler_STAR (L1032): castStar - a beam in each of the eight
+        compass directions (PROJECT_THRU | BEAM | GRID | KILL).
+      - effect_handler_STAR_BALL (L1062): castStarBall - a ball in each of the
+        eight compass directions (PROJECT_STOP | THRU | GRID | ITEM | KILL).
+      - project_touch (L112) / effect_handler_TOUCH (L411): castTouch - the base
+        player-centred radius-1 ball (PROJECT_GRID | KILL | HIDE | ITEM | THRU,
+        +AWARE when aware); the monster decoy / target-monster branches deferred.
+      - effect_handler_SWARM (L974): castSwarm - fire value.m_bonus balls at a
+        fixed target grid (PROJECT_THRU | STOP | GRID | ITEM | KILL).
+      - effect_handler_PROJECT_LOS (L1088): castProjectLos - a jump projection to
+        every monster in LOS of the origin, always attributed to the player,
+        excluding the currently-acting monster (cave->mon_current).
   - path: src/player-util.c
     items:
       - op_ptr->hitpoint_warn default (option.c L205 = 3): DEFAULT_HITPOINT_WARN,
@@ -36,8 +67,10 @@ notes: >-
   the live GameState, and runs one projection. It is the single seam the attack
   effect handlers (#18), monster spells (#19) and player spellcasting (#22) all
   dispatch a bolt/beam/ball/arc/breath through. The flag-shape helpers
-  (castBolt / castBeam / castBall) preset project()'s flags and radius exactly
-  as the matching effect_handler_* and delegate to it.
+  (castBolt / castBeam / castBall / castArc / castBreath / castShortBeam /
+  castLine / castAlter / castSpot / castSphere / castStrike / castStar /
+  castStarBall / castTouch / castSwarm / castProjectLos) preset project()'s
+  flags and radius exactly as the matching effect_handler_* and delegate to it.
 
   The player-projection actor (PlayerProjActor: resist levels, damage
   reduction, minus_ac) is supplied by the caller, exactly as PlayerActor's
@@ -47,11 +80,13 @@ notes: >-
   it lands; chp and is_dead are live getters/setters so take_hit's mutations
   write back to the player and the game state.
 deferred:
-  - The remaining attack shapes (ARC, BREATH, SHORT_BEAM, LASH, SPOT, SPHERE,
-    SWARM, STAR, STAR_BALL, STRIKE, LINE, ALTER, TOUCH, PROJECT_LOS) follow the
-    same castProjection delegation and land in the next increment, together with
-    the effect-registry wiring (registering these as the EF_* handlers) and the
-    player-timed / EffectPlayer adapters for the general handlers.
+  - effect_handler_LASH (L899): the whip/spit finite beam - its damage is summed
+    from the caster's monster blows (mon->race->blow[]), so it lands with the
+    monster-spell layer (#19) that already has that data; the projection shape
+    itself is a short beam (castShortBeam).
+  - The effect-registry wiring (registering these as the EF_* handlers) and the
+    player-timed / EffectPlayer adapters for the general handlers - next
+    increment.
   - resolveAimedTarget's monster branch (confused direction, target-monster,
     decoy) and the target system (target_okay / target_get) - #19 / #24.
   - onObject (#20 floor objects) and onFeature (#21 traps/terrain) projection
@@ -59,7 +94,7 @@ deferred:
   - A real PlayerProjActor from calc_bonuses (resists, damage reduction,
     minus_ac) replaces basicPlayerActor's zeroes.
 verified-by:
-  - game/project-cast.test.ts (13 tests): basicPlayerActor writes take_hit
+  - game/project-cast.test.ts (23 tests): basicPlayerActor writes take_hit
     mutations back to the live player/state and shares the timed array;
     resolveAimedTarget aims a player projection at the adjacent grid, at an
     acquired DIR_TARGET grid, and a monster projection at the player with
@@ -67,4 +102,10 @@ verified-by:
     monster hit, damages the player through the live actor, kills the player and
     fires the death hook, and suppresses vs shows bolt visuals by blindness;
     castBeam passes through and damages every monster in line; castBall explodes
-    on a player-cast target and detonates on the player for a monster source.
+    on a player-cast target and detonates on the player for a monster source;
+    castLine damages a monster in its path while castAlter (no KILL) leaves it
+    unharmed; castArc damages a monster on its centreline; castSpot hits a
+    neighbour and scales self damage down; castStar shoots a beam in each
+    direction; castStrike drops a jump ball with no path; castSwarm applies its
+    given shot count; castProjectLos hits every monster in LOS, skips the
+    excluded caster, and does not reach one blocked by a wall.
