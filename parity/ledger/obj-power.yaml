@@ -1,0 +1,56 @@
+module: packages/core/src/obj/power.ts
+status: complete
+baseline: 4.2.6
+upstream:
+  - path: src/obj-power.c
+    items:
+      - object_power (L1005): the overall power evaluation - full pipeline of
+        to_damage_power, damage_dice_power, ammo_damage_power, bow_multiplier,
+        launcher_ammo_damage_power, extra_blows/shots/might_power (with the
+        INHIBIT_POWER early-outs), slay_power, rescale_bow_power, to_hit_power,
+        ac_power, to_ac_power, jewelry_power, modifier_power, flags_power,
+        element_power, effects_power, curse_power and nonstandard_weight_power.
+        Ported in the same order; every intermediate integer division uses
+        Math.trunc to match C truncation.
+      - The static power tables (archery, flag_sets, element_sets, el_powers,
+        ability_power) and constants from obj-power.h (DAMAGE_POWER,
+        TO_HIT_POWER, BASE_AC_POWER, MAX_BLOWS, INHIBIT_*, the WGT_POWER_*
+        weight factors, AMMO_RESCALER, etc.).
+      - curse_power (L736): both passes. Pass 1 recurses object_power on each
+        non-weight curse template (curse->obj) and subtracts curse power / 10;
+        pass 2 handles weight-affecting curses by valuing the object with all
+        curses merged (apply_curse_attributes(-1)) versus all-but-one, taking
+        the guarded difference and the resistance-to-removal rescale.
+  - path: src/obj-properties.c
+    items:
+      - lookup_obj_property (L24): find the property by type and stored index,
+        with stats counting as mods for a MOD lookup. Ported as
+        lookupObjProperty over reg.properties (the port's propIndex is the
+        upstream prop->index, i.e. the OF_/OBJ_MOD_/ELEM_ value).
+  - path: src/obj-tval.c
+    items:
+      - Every "wield_slot(obj) == slot_by_name(player, 'shooting')" test in
+        object_power is exactly obj->tval == TV_BOW for the standard body, so it
+        is ported as tvalIsLauncher(obj.tval).
+notes: >-
+  The full object_power engine is live. object_power accepts a normalized
+  PowerObject so both a live GameObject (structurally a superset) and a bare
+  curse template (curse->obj, adapted by cursePowerObject with no
+  kind/ac/dd/ds/brands/slays, matching curse_object_kind which is tval "none"
+  with power 0) can be valued. The upstream verbose/log_file logging is dropped
+  - it never changes the returned power. object_flags(obj) is a straight copy of
+  obj->flags (obj-util.c L353), so flags_power iterates obj.flags directly. The
+  add_guardi/sub_guardi/add_guardi16 overflow guards (z-util.c) live in
+  packages/core/src/guard.ts.
+deferred:
+  - The moddable-body case where a data file maps a non-bow tval to the shooting
+    slot; on the 4.2.6 baseline only TV_BOW does, so tvalIsLauncher is exact.
+verified-by:
+  - obj/power.test.ts: a plain 1d4 melee weapon rates 6 (dice only); adding
+    to_dam 4 rates 16 (no non-weapon second lot for a melee weapon); a ring with
+    +5 to_ac rates 9 (to_ac 5 + jewelry 4); an object carrying a real curse
+    values to a finite number (exercises the recursion and both passes).
+  - obj/value.test.ts: a 1d4 weapon prices at 66 = 6*(6+5) and scales with qty,
+    and a positive-power wearable never rounds to worthless.
+  - The curse runtime helpers (apply_curse_attributes, modify_weight_for_curse)
+    are exercised in obj/power.test.ts and ledgered in obj-model.yaml.

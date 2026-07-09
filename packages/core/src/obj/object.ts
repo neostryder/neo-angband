@@ -26,7 +26,8 @@
  */
 
 import type { FlagSet } from "../bitflag";
-import { TV } from "../generated";
+import { OF, TV } from "../generated";
+import { addGuardi16 } from "../guard";
 import type { Loc } from "../loc";
 import type { RandomValue, Rng } from "../rng";
 import type {
@@ -555,6 +556,148 @@ export function appendObjectCurse(
 
   checkObjectCurses(obj);
   return false;
+}
+
+/**
+ * modify_weight_for_curse (obj-curse.c L382): apply curse `i`'s weight
+ * adjustment to `weight`. OF_MULTIPLY_WEIGHT curses scale by
+ * curse->obj->weight / 100 (rounded to nearest, coercing to at least 1 when
+ * the factor exceeds 1); the rest add curse->obj->weight as a flat delta.
+ * Result is clamped to [0, 32767] like the int16_t upstream.
+ */
+export function modifyWeightForCurse(
+  curses: readonly (Curse | null)[],
+  i: number,
+  weight: number,
+): number {
+  const curseObj = (curses[i] as Curse).obj;
+  let result: number;
+  if (curseObj.flags.has(OF.MULTIPLY_WEIGHT)) {
+    let scaled = curseObj.weight > 100 ? Math.max(weight, 1) : Math.max(weight, 0);
+    scaled *= curseObj.weight;
+    const q = Math.trunc(scaled / 100);
+    if (q < 32767) {
+      result = q;
+      if (scaled % 100 >= 50) result++;
+    } else {
+      result = 32767;
+    }
+  } else {
+    weight = Math.max(0, weight);
+    if (curseObj.weight < 0) {
+      result = weight + curseObj.weight;
+      if (result < 0) result = 0;
+    } else {
+      result =
+        weight < 32767 - curseObj.weight ? weight + curseObj.weight : 32767;
+    }
+  }
+  return result;
+}
+
+/**
+ * object_weight_one (obj-util.c L276): the weight of a single item, including
+ * any active curse's weight adjustment.
+ *
+ * `curses` is the bound curse table; when it is omitted (combat callers that do
+ * not thread it, where objects never carry curses) the curse adjustment is
+ * skipped, which is exactly Math.max(weight, 0) for a curse-free object.
+ */
+export function objectWeightOne(
+  obj: { weight: number; curses: CurseData[] | null },
+  curses?: readonly (Curse | null)[] | null,
+): number {
+  let result = Math.max(obj.weight, 0);
+  if (obj.curses && curses) {
+    for (let i = 1; i < curses.length; i++) {
+      if (obj.curses[i]?.power) {
+        result = modifyWeightForCurse(curses, i, result);
+      }
+    }
+  }
+  return result;
+}
+
+/** Sentinel for "vulnerability + resistance" during curse el_info merging. */
+const RES_VULN_AND_RES = -32768;
+
+/**
+ * apply_curse_attributes (obj-curse.c L450): merge the attributes of every
+ * active curse (skipping index `i` when i >= 0) into the base attributes of
+ * `obj`, in place. Weight, to_a/to_h/to_d, flags, modifiers and el_info are
+ * combined; brands and slays are never merged (the data files cannot give a
+ * curse a brand or slay, per upstream). The caller clears obj.curses after,
+ * since the curse attributes are now folded directly into the object.
+ *
+ * The struct field obj.ac would also take curse->obj->ac here, but no curse
+ * data directive can set a curse's base AC (it is always 0), so that merge is
+ * a guaranteed no-op and CurseObject omits the field.
+ */
+export function applyCurseAttributes(
+  curses: readonly (Curse | null)[],
+  i: number,
+  obj: Pick<
+    GameObject,
+    "weight" | "toA" | "toH" | "toD" | "flags" | "modifiers" | "elInfo" | "curses"
+  >,
+): void {
+  if (!obj.curses) return;
+
+  for (let j = 0; j < curses.length; j++) {
+    /* Ignore the requested curse and any that are not active. */
+    if (j === i || !obj.curses[j]?.power) continue;
+    const curse = curses[j];
+    if (!curse) continue;
+    const curseObj = curse.obj;
+
+    /* The curse may modify the object's weight. */
+    obj.weight = modifyWeightForCurse(curses, j, obj.weight);
+
+    /* Curses can adjust the AC, hit and to-dam modifiers. */
+    obj.toA = addGuardi16(obj.toA, curseObj.toA);
+    obj.toH = addGuardi16(obj.toH, curseObj.toH);
+    obj.toD = addGuardi16(obj.toD, curseObj.toD);
+
+    /* The curse may extend the object's flags. */
+    obj.flags.union(curseObj.flags);
+
+    /* The curse's modifiers combine additively with the object's. */
+    for (let k = 0; k < OBJ_MOD_MAX; k++) {
+      obj.modifiers[k] = addGuardi16(
+        obj.modifiers[k] ?? 0,
+        curseObj.modifiers[k] ?? 0,
+      );
+    }
+
+    /* Resistances combine with the standard resistance-merge lattice. */
+    for (let k = 0; k < ELEM_MAX; k++) {
+      const oe = obj.elInfo[k] as ElementInfo;
+      const ce = curseObj.elInfo[k] as ElementInfo;
+      if (oe.resLevel >= 3) {
+        /* Already immune; the curse cannot change that. */
+        continue;
+      }
+      if (oe.resLevel === 1) {
+        if (ce.resLevel >= 3) oe.resLevel = 3;
+        else if (ce.resLevel < 0) oe.resLevel = RES_VULN_AND_RES;
+      } else if (oe.resLevel === RES_VULN_AND_RES) {
+        if (ce.resLevel >= 3) oe.resLevel = 3;
+      } else if (oe.resLevel < 0) {
+        if (ce.resLevel >= 3) oe.resLevel = 3;
+        else if (ce.resLevel === 1) oe.resLevel = RES_VULN_AND_RES;
+      } else {
+        /* No resistance in the base: take whatever the curse has. */
+        oe.resLevel = ce.resLevel;
+      }
+    }
+  }
+
+  /* Vulnerability + resistance nets out to no resistance for the caller. */
+  for (let j = 0; j < ELEM_MAX; j++) {
+    if ((obj.elInfo[j] as ElementInfo).resLevel === RES_VULN_AND_RES) {
+      (obj.elInfo[j] as ElementInfo).resLevel = 0;
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ */
