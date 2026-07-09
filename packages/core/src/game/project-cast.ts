@@ -13,9 +13,10 @@
  * monster spells (#19) and player spellcasting (#22) all dispatch a projection
  * through. The flag-shape helpers (castBolt / castBeam / castBall) preset
  * project()'s flags and radius exactly as the matching effect_handler_* in
- * effect-handler-attack.c and delegate to it; the remaining shapes (arc,
- * breath, short-beam, spot, sphere, swarm, star, strike, ...) follow the same
- * pattern in the next increment.
+ * effect-handler-attack.c and delegate to it: castBolt / castBeam / castBall /
+ * castArc / castBreath / castShortBeam / castLine / castAlter / castSpot /
+ * castSphere / castStrike / castStar / castStarBall / castTouch / castSwarm /
+ * castProjectLos.
  *
  * The target grid is resolved by the caller. resolveAimedTarget ports the
  * portable branches of get_target (effect-handler-attack.c L38): the player
@@ -34,7 +35,7 @@
 
 import { TMD } from "../generated";
 import { DIR_TARGET } from "../effects/interpreter";
-import { DDGRID, loc, locSum } from "../loc";
+import { DDGRID, DDGRID_DDD, loc, locSum } from "../loc";
 import type { Loc } from "../loc";
 import { monsterIsVisible } from "../mon/predicate";
 import { PROJECT, project } from "../world/project";
@@ -44,7 +45,9 @@ import type {
   ProjectHooks,
   ProjectParams,
 } from "../world/project";
+import { los } from "../world/view";
 import type { ProjectionInfo } from "../world/projection";
+import { monsterMax } from "./context";
 import type { GameState } from "./context";
 import { projectMonster } from "./project-monster";
 import type { ProjectMonsterHooks } from "./project-monster";
@@ -332,4 +335,307 @@ export function castBall(
     flg &= ~(PROJECT.STOP | PROJECT.THRU);
   }
   return castProjection(state, cctx, source, target, dam, typ, flg, rad);
+}
+
+/**
+ * effect_handler_LINE (L173): a beam that also affects grids (e.g. light).
+ * As castBeam but with PROJECT_GRID.
+ */
+export function castLine(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  dam: number,
+  typ: number,
+): boolean {
+  let flg = PROJECT.BEAM | PROJECT.GRID | PROJECT.KILL | PROJECT.THRU;
+  if (!source.isPlayer) flg |= PROJECT.PLAY;
+  return castProjection(state, cctx, source, target, dam, typ, flg, 0);
+}
+
+/**
+ * effect_handler_ALTER (L186): affect grids and objects, not monsters, with no
+ * damage (door/wall alteration). PROJECT_BEAM | GRID | ITEM (+THRU from
+ * project_aimed).
+ */
+export function castAlter(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  typ: number,
+): boolean {
+  let flg = PROJECT.BEAM | PROJECT.GRID | PROJECT.ITEM | PROJECT.THRU;
+  if (!source.isPlayer) flg |= PROJECT.PLAY;
+  return castProjection(state, cctx, source, target, 0, typ, flg, 0);
+}
+
+/** diameter_of_source for an arc/breath of the given width (arc.c geometry). */
+function arcDiameter(baseDiameter: number, degreesOfArc: number): number {
+  let d = baseDiameter;
+  if (degreesOfArc < 60) d = Math.trunc((d * 60) / degreesOfArc);
+  return d > 25 ? 25 : d;
+}
+
+/**
+ * effect_handler_ARC (L789): a cone from the caster. PROJECT_ARC | GRID | ITEM |
+ * KILL (+PLAY for a monster source). A radius of 0 means no fixed limit
+ * (z_info->max_range). The arc's energy source diameter starts at 4 and widens
+ * as the cone narrows, so a tight arc dissipates more slowly. degrees_of_arc is
+ * clamped to a minimum of 20.
+ */
+export function castArc(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  dam: number,
+  typ: number,
+  rad: number,
+  degreesOfArc: number,
+): boolean {
+  let flg = PROJECT.ARC | PROJECT.GRID | PROJECT.ITEM | PROJECT.KILL;
+  if (source.isMonster) flg |= PROJECT.PLAY;
+  const degrees = Math.max(degreesOfArc, 20);
+  const r = rad === 0 ? cctx.maxRange : rad;
+  const diameter = arcDiameter(4, degrees);
+  return castProjection(state, cctx, source, target, dam, typ, flg, r, degrees, diameter);
+}
+
+/**
+ * effect_handler_BREATH (L681): breathe an element in a cone. Like castArc, but
+ * a powerful monster breathes at full strength further out (source diameter
+ * 4 -> 6 before the arc-width widening). The damage (breath_dam) and the
+ * "You breathe X" message are the caller's (#19); a radius of 0 means
+ * z_info->max_range.
+ */
+export function castBreath(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  dam: number,
+  typ: number,
+  degreesOfArc: number,
+  opts: { radius?: number; powerful?: boolean } = {},
+): boolean {
+  let flg = PROJECT.ARC | PROJECT.GRID | PROJECT.ITEM | PROJECT.KILL;
+  if (source.isMonster) flg |= PROJECT.PLAY;
+  const degrees = Math.max(degreesOfArc, 20);
+  const rad = opts.radius && opts.radius > 0 ? opts.radius : cctx.maxRange;
+  /* Powerful monsters breathe at full strength further out. */
+  const baseDiameter = opts.powerful ? Math.trunc((4 * 3) / 2) : 4;
+  const diameter = arcDiameter(baseDiameter, degrees);
+  return castProjection(state, cctx, source, target, dam, typ, flg, rad, degrees, diameter);
+}
+
+/**
+ * effect_handler_SHORT_BEAM (L852): a fixed-length beam. PROJECT_ARC with
+ * degrees 0 and a positive radius is normalised to a beam by project(); the
+ * source diameter equals the radius so it is full strength for its whole
+ * length. The caller applies any player-level radius bonus (rad += lev / other).
+ */
+export function castShortBeam(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  dam: number,
+  typ: number,
+  rad: number,
+): boolean {
+  let flg = PROJECT.ARC | PROJECT.GRID | PROJECT.ITEM | PROJECT.KILL;
+  if (source.isMonster) flg |= PROJECT.PLAY;
+  const diameter = rad > 25 ? 25 : rad;
+  return castProjection(state, cctx, source, target, dam, typ, flg, rad, 0, diameter);
+}
+
+/**
+ * effect_handler_SPOT (L545): explode on the player's own grid, hitting the
+ * player (PROJECT_PLAY | SELF), grids, objects and monsters. The source
+ * diameter equals the radius. The caller applies any player-level radius bonus.
+ */
+export function castSpot(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  dam: number,
+  typ: number,
+  rad: number,
+): boolean {
+  const flg =
+    PROJECT.STOP |
+    PROJECT.PLAY |
+    PROJECT.GRID |
+    PROJECT.ITEM |
+    PROJECT.KILL |
+    PROJECT.SELF;
+  return castProjection(state, cctx, source, state.actor.grid, dam, typ, flg, rad, 0, rad);
+}
+
+/**
+ * effect_handler_SPHERE (L571): a ball from the player's grid with an explicit
+ * source diameter (full strength out to that diameter). Affects grids, objects
+ * and monsters, but not the player.
+ */
+export function castSphere(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  dam: number,
+  typ: number,
+  rad: number,
+  diameterOfSource: number,
+): boolean {
+  const flg = PROJECT.STOP | PROJECT.GRID | PROJECT.ITEM | PROJECT.KILL;
+  return castProjection(
+    state,
+    cctx,
+    source,
+    state.actor.grid,
+    dam,
+    typ,
+    flg,
+    rad,
+    0,
+    diameterOfSource,
+  );
+}
+
+/**
+ * effect_handler_STRIKE (L1001): drop a ball on the target from above
+ * (PROJECT_JUMP, no travel path). Affects grids, objects and monsters.
+ */
+export function castStrike(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  dam: number,
+  typ: number,
+  rad: number,
+): boolean {
+  const flg = PROJECT.JUMP | PROJECT.GRID | PROJECT.ITEM | PROJECT.KILL;
+  return castProjection(state, cctx, source, target, dam, typ, flg, rad);
+}
+
+/**
+ * effect_handler_STAR (L1032): a beam in each of the eight compass directions
+ * from the player. Affects grids and monsters. Returns whether any beam was
+ * noticed.
+ */
+export function castStar(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  dam: number,
+  typ: number,
+): boolean {
+  const flg = PROJECT.THRU | PROJECT.BEAM | PROJECT.GRID | PROJECT.KILL;
+  let notice = false;
+  for (const off of DDGRID_DDD) {
+    const target = locSum(state.actor.grid, off);
+    if (castProjection(state, cctx, source, target, dam, typ, flg, 0)) notice = true;
+  }
+  return notice;
+}
+
+/**
+ * effect_handler_STAR_BALL (L1062): a ball in each of the eight compass
+ * directions from the player. Affects grids, objects and monsters.
+ */
+export function castStarBall(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  dam: number,
+  typ: number,
+  rad: number,
+): boolean {
+  const flg =
+    PROJECT.STOP | PROJECT.THRU | PROJECT.GRID | PROJECT.ITEM | PROJECT.KILL;
+  let notice = false;
+  for (const off of DDGRID_DDD) {
+    const target = locSum(state.actor.grid, off);
+    if (castProjection(state, cctx, source, target, dam, typ, flg, rad)) notice = true;
+  }
+  return notice;
+}
+
+/**
+ * project_touch (L112): a radius-1 (or given) ball centred on the player,
+ * affecting grids, objects and monsters but hidden from bolt visuals
+ * (PROJECT_HIDE). PROJECT_AWARE is set when the player is aware of the effect.
+ * The monster-source decoy / target-monster branches of effect_handler_TOUCH
+ * are deferred (#19); this is the base player-centred touch.
+ */
+export function castTouch(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  dam: number,
+  typ: number,
+  rad: number,
+  aware: boolean,
+): boolean {
+  let flg =
+    PROJECT.GRID | PROJECT.KILL | PROJECT.HIDE | PROJECT.ITEM | PROJECT.THRU;
+  if (aware) flg |= PROJECT.AWARE;
+  const r = rad > 0 ? rad : 1;
+  return castProjection(state, cctx, source, state.actor.grid, dam, typ, flg, r);
+}
+
+/**
+ * effect_handler_SWARM (L974): fire `num` non-jumping balls at the same target
+ * (targeting an absolute grid so a monster's death does not move the aim).
+ * Always player-sourced. Returns whether any shot was noticed.
+ */
+export function castSwarm(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  dam: number,
+  typ: number,
+  rad: number,
+  num: number,
+): boolean {
+  const flg =
+    PROJECT.THRU | PROJECT.STOP | PROJECT.GRID | PROJECT.ITEM | PROJECT.KILL;
+  let notice = false;
+  for (let n = num; n > 0; n--) {
+    if (castProjection(state, cctx, source, target, dam, typ, flg, rad)) notice = true;
+  }
+  return notice;
+}
+
+/**
+ * effect_handler_PROJECT_LOS (L1088): apply a jump projection to every monster
+ * in line of sight of the origin. The projection source is always the player
+ * (damage is attributed to them), exactly as upstream. `excludeMonster` is the
+ * currently-acting monster (cave->mon_current), skipped so a monster casting
+ * this does not hit itself; `originGrid` defaults to the player's grid.
+ */
+export function castProjectLos(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  dam: number,
+  typ: number,
+  opts: { originGrid?: Loc; excludeMonster?: number } = {},
+): boolean {
+  const flg = PROJECT.JUMP | PROJECT.KILL | PROJECT.HIDE;
+  const originGrid = opts.originGrid ?? state.actor.grid;
+  const exclude = opts.excludeMonster ?? 0;
+  let notice = false;
+  const max = monsterMax(state);
+  for (let i = 1; i < max; i++) {
+    const mon = state.monsters[i];
+    if (!mon) continue;
+    if (i === exclude) continue;
+    if (!los(state.chunk, originGrid, mon.grid)) continue;
+    if (castProjection(state, cctx, source, mon.grid, dam, typ, flg, 0)) notice = true;
+  }
+  return notice;
 }

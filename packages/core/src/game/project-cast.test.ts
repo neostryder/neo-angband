@@ -5,13 +5,21 @@ import { DIR_TARGET } from "../effects/interpreter";
 import { loc } from "../loc";
 import { bindProjections } from "../world/projection";
 import type { ProjectionRecordJson } from "../world/projection";
-import { addMon, makeState, monReg } from "./harness";
+import { GRANITE, addMon, makeState, monReg } from "./harness";
 import type { GameState } from "./context";
 import {
   basicPlayerActor,
+  castAlter,
+  castArc,
   castBall,
   castBeam,
   castBolt,
+  castLine,
+  castProjectLos,
+  castSpot,
+  castStar,
+  castStrike,
+  castSwarm,
   monsterCastSource,
   playerCastSource,
   resolveAimedTarget,
@@ -178,5 +186,99 @@ describe("castBall", () => {
     const src = monsterCastSource(state, mon.midx, { killer: "an orc" });
     castBall(state, cctx(state), src, state.actor.grid, 30, PROJ.FIRE, 2);
     expect(state.actor.player.chp).toBe(70);
+  });
+});
+
+describe("castLine / castAlter", () => {
+  it("a line beam damages a monster in its path", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, plainRace, loc(5, 8), { hp: 50 });
+    castLine(state, cctx(state), playerCastSource(state), loc(5, 8), 20, PROJ.FIRE);
+    expect(mon.hp).toBe(30);
+  });
+
+  it("an alter projection leaves monsters unharmed (no PROJECT_KILL)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, plainRace, loc(5, 8), { hp: 50 });
+    castAlter(state, cctx(state), playerCastSource(state), loc(5, 8), PROJ.FIRE);
+    expect(mon.hp).toBe(50);
+  });
+});
+
+describe("castArc", () => {
+  it("a cone damages a monster on its centreline", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, plainRace, loc(8, 5), { hp: 50 });
+    castArc(state, cctx(state), playerCastSource(state), loc(10, 5), 20, PROJ.FIRE, 5, 60);
+    expect(mon.hp).toBe(30);
+  });
+});
+
+describe("castSpot", () => {
+  it("explodes on the player, hurting a neighbour and the caster (SELF)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.actor.player.chp = 100;
+    const mon = addMon(state, plainRace, loc(5, 6), { hp: 50 });
+    castSpot(state, cctx(state), playerCastSource(state), 20, PROJ.FIRE, 2);
+    expect(mon.hp).toBe(30);
+    /* self damage is scaled down by ten (20 -> 2). */
+    expect(state.actor.player.chp).toBe(98);
+  });
+});
+
+describe("castStar", () => {
+  it("shoots a beam in each direction, hitting a monster in line", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, plainRace, loc(5, 3), { hp: 50 });
+    castStar(state, cctx(state), playerCastSource(state), 20, PROJ.FIRE);
+    expect(mon.hp).toBe(30);
+  });
+});
+
+describe("castStrike", () => {
+  it("drops a ball on a target with no travel path (JUMP)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, plainRace, loc(10, 10), { hp: 50 });
+    castStrike(state, cctx(state), playerCastSource(state), loc(10, 10), 20, PROJ.FIRE, 0);
+    expect(mon.hp).toBe(30);
+  });
+});
+
+describe("castSwarm", () => {
+  it("fires the given number of balls at the target", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, plainRace, loc(5, 8), { hp: 50 });
+    castSwarm(state, cctx(state), playerCastSource(state), loc(5, 8), 10, PROJ.FIRE, 0, 3);
+    expect(mon.hp).toBe(20); /* 3 x 10 */
+  });
+});
+
+describe("castProjectLos", () => {
+  it("hits every monster in line of sight", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const a = addMon(state, plainRace, loc(5, 8), { hp: 50 });
+    const b = addMon(state, plainRace, loc(8, 5), { hp: 50 });
+    castProjectLos(state, cctx(state), playerCastSource(state), 15, PROJ.FIRE);
+    expect(a.hp).toBe(35);
+    expect(b.hp).toBe(35);
+  });
+
+  it("skips the excluded (currently-acting) monster", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const a = addMon(state, plainRace, loc(5, 8), { hp: 50 });
+    const b = addMon(state, plainRace, loc(8, 5), { hp: 50 });
+    castProjectLos(state, cctx(state), playerCastSource(state), 15, PROJ.FIRE, {
+      excludeMonster: a.midx,
+    });
+    expect(a.hp).toBe(50);
+    expect(b.hp).toBe(35);
+  });
+
+  it("does not reach a monster whose line of sight is blocked by a wall", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.chunk.setFeat(loc(5, 8), GRANITE);
+    const mon = addMon(state, plainRace, loc(5, 11), { hp: 50 });
+    castProjectLos(state, cctx(state), playerCastSource(state), 15, PROJ.FIRE);
+    expect(mon.hp).toBe(50);
   });
 });
