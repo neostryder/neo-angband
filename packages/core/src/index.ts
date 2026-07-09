@@ -61,6 +61,7 @@ export * from "./store/types";
 export * from "./store/bind";
 export * from "./store/price";
 export * from "./store/store";
+export * from "./store/transact";
 export * from "./session/boot";
 export * from "./session/game";
 export * from "./game/energy";

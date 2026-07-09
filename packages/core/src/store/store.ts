@@ -15,8 +15,8 @@
  *   knowledge/display system is a separate increment).
  * - player->max_depth (used only to pick generation levels) is threaded in as
  *   `maxDepth`, since dungeon progress is not modelled on Player yet.
- * - The buy/sell commands and home_carry live with the transactions increment
- *   (they need a player pack model); this module is the stocking half only.
+ * - The buy/sell commands and home_carry live in store/transact.ts (they use
+ *   the player pack model in game/gear.ts); this module is the stocking half.
  */
 
 import type { Constants } from "../constants";
@@ -139,7 +139,7 @@ function storeCanCarry(store: Store, kind: ObjectKind): boolean {
 }
 
 /** store_sale_should_reduce_stock (L405). */
-function storeSaleShouldReduceStock(store: Store, obj: GameObject): boolean {
+export function storeSaleShouldReduceStock(store: Store, obj: GameObject): boolean {
   if (obj.artifact || obj.ego) return true;
   if (tvalIsWeapon(obj.tval) && (obj.toH || obj.toD)) return true;
   if (tvalIsArmor(obj.tval) && obj.toA) return true;
@@ -354,7 +354,7 @@ export function storeCarry(
 }
 
 /** store_delete (L989): remove `amt` of a stack, or the whole stack. */
-function storeDelete(store: Store, obj: GameObject, amt: number): void {
+export function storeDelete(store: Store, obj: GameObject, amt: number): void {
   if (obj.number > amt) {
     obj.number -= amt;
   } else {
