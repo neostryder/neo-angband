@@ -54,11 +54,16 @@ notes: >-
   is verified end to end (identical terrain, player spot and monster/object
   counts across two runs).
 deferred:
-  - Monster group/escort spawning (mon-make place_new_monster groups): a
-    single monster is placed per call; unique cur_num tracking is kept
-    level-local so a unique appears at most once per level without mutating
-    the shared registry. Placement RNG order therefore diverges from upstream
-    after the first monster; structural invariants are asserted instead.
+  - Pit/nest monster theming (mon_restrict): pits place any depth-appropriate
+    monster (group_ok off, as upstream). Placement RNG order therefore
+    diverges from upstream where theming would have restricted the table;
+    structural invariants are asserted instead. NOTE monster group/escort
+    spawning (place_new_monster / place_friends / place_new_monster_group /
+    the escort-base prep hook) is now PORTED in gen/util.ts: group indices
+    come from a per-generation counter recorded on each monster's group_info,
+    and session/game.ts rebuilds the live groups from them (the savefile
+    loading path of monster_group_assign). Unique cur_num tracking stays
+    level-local (plus the shared-registry cur_num check for friend uniques).
   - place_trap only records the grid (the trap domain / trap objects are not
     ported); square_set_door_lock is a no-op but its RNG roll is preserved.
   - Arena and quest levels, persistent-level connectors (join / one_off), the

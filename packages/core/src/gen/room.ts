@@ -1161,9 +1161,12 @@ function buildNestOrPit(g: Gen, centreIn: Loc, width: number): Loc | null {
   drawRectangle(c, y1 - 1, x1 - 1, y2 + 1, x2 + 1, FEAT.GRANITE, SQUARE.WALL_INNER, false);
   generateHole(g.rng, c, y1 - 1, x1 - 1, y2 + 1, x2 + 1, FEAT.CLOSED);
 
-  /* Fill the inner room with depth-appropriate monsters (theming simplified). */
+  /* Fill the inner room with depth-appropriate monsters (theming simplified).
+   * Upstream pits/nests place with group_ok off (the pit IS the group). */
   for (let y = y1; y <= y2; y++) {
-    for (let x = x1; x <= x2; x++) pickAndPlaceMonster(g, loc(x, y), c.depth + 10, false);
+    for (let x = x1; x <= x2; x++) {
+      pickAndPlaceMonster(g, loc(x, y), c.depth + 10, false, false);
+    }
   }
   return centre;
 }

@@ -37,6 +37,7 @@ import {
   updateMonsterDistances,
 } from "../game/context";
 import type { GameState, PlayerActor, PlayerCommand } from "../game/context";
+import { monsterGroupAssign, monsterGroupsVerify } from "../game/mon-group";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
@@ -146,6 +147,14 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     pm.mon.grid = pm.grid;
     addMonster(state, pm.mon);
   }
+  // Rebuild the monster groups from the group_info recorded at generation
+  // (place_new_monster) - the loading path of monster_group_assign, exactly
+  // as upstream rebuilds groups from a savefile.
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (mon) monsterGroupAssign(state, mon, mon.groupInfo, true);
+  }
+  monsterGroupsVerify(state);
   updateMonsterDistances(state);
 
   return { state, registry: createDefaultRegistry(), booted, players };

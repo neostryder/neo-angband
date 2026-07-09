@@ -116,6 +116,26 @@ describe("startGame (new-game assembly)", () => {
     expect(state.actor.combat.numBlows).toBe(armed.numBlows);
   });
 
+  it("rebuilds monster groups from the generation group info", () => {
+    const { state } = startGame(pack, { seed: 123, depth: 5 });
+    // Every live monster belongs to a group that lists it back.
+    let checked = 0;
+    for (let i = 1; i < state.monsters.length; i++) {
+      const mon = state.monsters[i];
+      if (!mon) continue;
+      const gi = mon.groupInfo[0]!.index;
+      expect(gi).toBeGreaterThan(0);
+      expect(state.groups[gi]!.members).toContain(mon.midx);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+    // Each group has a live leader among its members.
+    for (const group of state.groups) {
+      if (!group) continue;
+      expect(group.members).toContain(group.leader);
+    }
+  });
+
   it("is deterministic for a fixed seed", () => {
     const a = startGame(pack, { seed: 777, depth: 2 });
     const b = startGame(pack, { seed: 777, depth: 2 });

@@ -35,17 +35,23 @@ notes: >-
   primary / summon slots and the MON_GROUP roles) was already present
   (mon/monster.ts). The leader-succession, split and verify logic is ported
   faithfully.
+integration:
+  - Placement: gen/util.ts place_new_monster records group indices (from a
+    per-generation counter) and roles on each monster's group_info; session/
+    game.ts startGame rebuilds the live groups via monster_group_assign's
+    loading path and runs monster_groups_verify.
+  - Deletion: game/context.ts deleteMonster calls monster_remove_from_groups
+    (leader succession / split) before freeing the slot.
+  - AI consumers: monster_group_rouse at the top of monster_turn and
+    group_monster_tracking in get_move's fallback (game/monster-turn.ts).
 deferred:
-  - Placement assignment: the caller (monster generation / place_new_monster)
-    must call monster_group_assign when it adds a monster, and deleteMonster must
-    call monster_remove_from_groups; both are wired with those subsystems.
-  - The AI consumers: monster_group_rouse in the monster turn
-    (game/monster-turn.ts) and group_monster_tracking in get_move - wired next.
   - monster_can_see (mon-util.c) is not ported, so rouse uses plain line of sight
     (it also weighs range and light).
   - monster_group_index_new grows state.groups on demand rather than capping at
     z_info->level_monster_max, so it never returns 0 (fail); behaviour is
     otherwise identical.
+  - Summon-group assignment at summon time (summon_group's caller in the
+    EF_SUMMON handler) lands with monster summoning.
 verified-by:
   - game/mon-group.test.ts (11 tests): membership tracks size / leader / members;
     removing a non-leader shrinks the group and removing the only member deletes

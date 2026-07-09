@@ -29,15 +29,16 @@ notes: >-
   SEASONAL is an option flag instead of reading the wall clock;
   turn_energy clamps speed to 0..199 where upstream indexes unchecked;
   builder throws when a race's level breaches max-depth (upstream would
-  corrupt memory). Deferred (ledgered here): actual placement
-  (place_monster, place_new_monster_one square checks, level rating,
-  mon_pop/chunk monster list, update_mon), mon_create_drop and
-  mon_create_drop_count, mimicked-object creation, group and friends
-  placement (place_new_monster_group, place_friends,
-  place_monster_base_okay, monster_group_assign), summoning
-  (pick_and_place_*), deletion/compaction (delete_monster*,
-  compact_monsters, monster_index_move, wipe_mon_list). Town
-  generation counts (town-day/town-night) belong to level generation.
+  corrupt memory). Deferred (ledgered here): level rating, update_mon,
+  mon_create_drop and mon_create_drop_count, mimicked-object creation,
+  summon placement, compaction (compact_monsters, monster_index_move,
+  wipe_mon_list). Town generation counts (town-day/town-night) belong
+  to level generation. NOW PORTED ELSEWHERE: group and friends
+  placement (place_new_monster, place_new_monster_group, place_friends,
+  place_monster_base_okay) and pick_and_place_monster/_distant live in
+  gen/util.ts with generation-time group indices; monster_group_assign
+  and delete_monster_idx's group removal live in game/mon-group.ts +
+  game/context.ts (see game-mon-group.yaml, gen-framework.yaml).
 verified-by:
   - make.test.ts against the real pack (617 legal alloc entries,
     level-sorted, prob1 formula; seeded getMonNum at depths 1/10/40/98
