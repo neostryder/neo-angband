@@ -18,6 +18,7 @@ import type { EffectContext, EffectHandlerContext } from "../effects/interpreter
 import type { TakeHitHooks } from "../player/take-hit";
 import type { GameState } from "./context";
 import type { CastContext } from "./project-cast";
+import type { TeleportEnv } from "./effect-teleport";
 
 /** Everything the game-layer effect handlers need beyond the EffectContext. */
 export interface GameEffectEnv {
@@ -38,6 +39,8 @@ export interface GameEffectEnv {
    * null to abort. Absent means the effect aborts (no UI wired).
    */
   banishSymbol?: () => string | null;
+  /** Teleport-family hooks and unmodelled-subsystem seams (effect-teleport.ts). */
+  teleport?: TeleportEnv;
 }
 
 /** Attach a game environment to an effect context for the game handlers. */

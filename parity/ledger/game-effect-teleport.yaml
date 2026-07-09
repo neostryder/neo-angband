@@ -1,0 +1,87 @@
+module: packages/core/src/game/effect-teleport.ts
+status: complete
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-general.c
+    items:
+      - has_teleport_destination_prereqs (L132): hasTeleportDestinationPrereqs -
+        a grid is a legal landing spot when it is passable (player) or
+        monster-walkable (monster), holds no monster or player, and is not a
+        shop; the player-trap / glyph-ward / damaging-terrain / web tests are
+        injected predicates (inert until traps #21 and damaging terrain land).
+      - effect_handler_TELEPORT (L2507): handleTELEPORT - score every interior
+        grid by |distance(grid, start) - want| (want = value.base + damroll,
+        adjusted by the m_bonus percentage of the largest cardinal edge distance
+        and the one_in_(2) jitter), preferring non-vault grids, and move the
+        player or monster to a uniformly chosen best grid; the no-teleport grid
+        (short-hop exception) and no-teleport curse are honoured, the projection
+        marker is cleared on the destination.
+      - effect_handler_TELEPORT_TO (L2703): handleTELEPORT_TO - rejection-sample
+        a legal grid near an aim (supplied coordinates, a monster, or a chosen
+        target), widening the search radius as upstream (ctr > 4d^2+4d+1) when it
+        keeps failing; supports the player being teleported, a monster pulled to
+        the player (dis 2), the player pulled to a monster, and Dimension Door
+        (the aim prompt is an injected targeting seam).
+      - effect_handler_TELEPORT_LEVEL (L2834): handleTELEPORT_LEVEL - the exact
+        up/down decision tree (no rising with force_descend or in the town, no
+        descending onto unleavable quest levels or past z_info->max_depth - 1,
+        a coin flip when both are legal), a monster-vs-monster target simply
+        deleted, a nexus-resisted hostile cast, and the level change delegated to
+        the injected changeLevel hook (dungeon_change_level, #23).
+  - path: src/mon-util.c
+    items:
+      - the project_m teleport consequence: teleportMonster is the concrete
+        backing for the project_m `teleport` hook deferred in
+        game/project-monster.ts (a monster teleported a fixed number of grids).
+  - path: src/effects.c
+    items:
+      - the effect_kind[] slots for TELEPORT / TELEPORT_TO / TELEPORT_LEVEL:
+        registered by registerTeleportHandlers, overriding registerCoreHandlers'
+        stubs.
+notes: >-
+  The teleport-family general effect handlers. They mutate the live GameState
+  (moving the player via movePlayer or a monster via monsterSwap, both
+  game/context.ts), so they live in game/ and read their environment from
+  context.env.game (the shared GameEffectEnv, effect-game-env.ts), no-opping when
+  it is absent. The geometry, the RNG draw order (the jitter one_in_(2) then the
+  final randint0 pick for TELEPORT; rand_loc draws for TELEPORT_TO) and the
+  up/down decision are ported exactly, so a seeded run reproduces the outcome.
+  The current_score seed uses the chunk's own dimensions in place of
+  z_info->dungeon_wid / _hgt: it only needs to exceed any achievable score, which
+  both bounds satisfy identically, so the vault-avoidance reset behaves the same.
+  Everything that touches an unported subsystem is reached through the injected
+  TeleportEnv (env.teleport) with inert defaults.
+deferred:
+  - player_handle_post_move / handle_stuff: the FOV / light / target refresh
+    after a teleport is the injected onPlayerPostMove / onMonsterPostMove hook
+    (the game-loop layer wires update_view, as it already does for movement).
+  - The OF_NO_TELEPORT curse and its equip_learn_flag: injected as
+    hasNoTeleport / onLearnNoTeleport (object flags on the player are
+    calc_bonuses / gear state, #13 rune learning).
+  - monster_target_monster (the monster-vs-monster targetMonster) and the
+    Dimension Door aim prompt (getAimTarget): monster spells (#19) and targeting
+    (#24); target_able / target_set_monster / target_set_location clears are the
+    same targeting subsystem.
+  - dungeon_get_next_level / dungeon_change_level and is_quest / birth_force_descend
+    for TELEPORT_LEVEL: level change and quests (#23); injected as getNextLevel /
+    changeLevel / isQuest / forceDescend / maxPlayerDepth / maxDepth.
+  - The trap / glyph-ward / damaging-terrain / web destination predicates
+    (square_isplayertrap / _iswarded / _isdamaging / _iswebbed): traps (#21) and
+    damaging terrain; injected predicates that default to absent.
+  - Arena levels, decoys (cave_find_decoy / square_destroy_decoy), sound
+    (MSG_TELEPORT / MSG_TPOTHER / MSG_TPLEVEL) and the monster "puzzled" message
+    (add_monster_message): their subsystems are not modelled (sound #26, lore
+    #19).
+verified-by:
+  - game/effect-teleport.test.ts (15 tests): through a real EffectRegistry
+    (registerCoreHandlers + registerTeleportHandlers), EF_TELEPORT moves the
+    player to a distinct legal grid and fires the post-move hook, is
+    deterministic for a fixed seed, is forbidden from a no-teleport grid (long
+    hop) and by a no-teleport curse (learning it), no-ops worldless, and
+    self-teleports a monster without moving the player; EF_TELEPORT_TO lands the
+    player at a Dimension Door aim, returns false on a cancelled prompt, and is
+    forbidden from a no-teleport grid; EF_TELEPORT_LEVEL sinks from the town,
+    rises from the dungeon bottom, and is resisted with nexus resistance;
+    chooseTeleportDestination avoids vault grids when a non-vault landing exists
+    and lands near the requested distance; teleportMonster moves a monster to a
+    legal grid and fires the hook.
