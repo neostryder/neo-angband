@@ -1,0 +1,52 @@
+module: packages/core/src/game/mon-cast.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-spell.c
+    items:
+      - do_mon_spell (L345): doMonSpell - a monster casts a spell by RSF_ index.
+        Looks up the bound spell, rolls the hit (spell->hit 100 always, 0 never,
+        else test_hit vs a target monster's AC or check_hit vs the player using
+        chance_of_spell_hit), fires the disturb / spell-message hooks, walks the
+        power-cutoff levels for the caster's spell_power, tries the saving throw
+        (randint0(100) < SKILL_SAVE, player target only) which shows the save
+        message and learns the fail rune, otherwise runs the spell's effect chain
+        through the interpreter with a monster source and the live game env.
+  - path: src/effects.c
+    items:
+      - grab_effect_data (record -> struct effect): buildSpellEffectChain rebuilds
+        a spell's effect chain through EffectBuilder so the dice then the expr
+        directives bind (SPELL_POWER = the caster's spell_power, MAX_SIGHT =
+        z_info->max_sight); bindSpells stores exprs separately from the parsed
+        dice, so the chain must be rebuilt rather than reusing the bound dice.
+notes: >-
+  The convergence point of the projection -> effect stack: with the attack,
+  monster and teleport effect handlers registered and the game effect env
+  attached, a monster spell's effect chain runs against the real GameState -
+  damage projections reach the player through the cast context, and status
+  effects (TIMED_INC) afflict the live player through the effect environment. It
+  lives in game/ because it drives effect_do, and effects/ sits above mon/ in the
+  layering (effects/effect.ts imports mon/timed). The hit uses the ported combat
+  primitives (combat/hit.ts test_hit, combat/mon-melee.ts check_hit) and
+  chance_of_spell_hit (mon/spell.ts). The base-value providers for the spell dice
+  are built per cast so SPELL_POWER binds the casting monster.
+deferred:
+  - disturb(player), spell_message and spell_check_for_fail_rune are injected
+    hooks: the message selection (seen / blind / save text) and the fail-rune
+    learning are UI / lore concerns (#24).
+  - Summon and shapechange subtypes (S_KIN, SHAPECHANGE, ...) need their name
+    resolvers injected (mon-summon.c summon_name_to_idx, player shapes); absent,
+    the chain cannot build and the cast fizzles via the unresolved hook. The
+    EF_SUMMON handler itself is still a stub until monster generation lands.
+  - choose_attack_spell / remove_bad_spells / make_attack_spell (mon-attack.c):
+    the spell-selection AI that decides whether and which spell a monster casts
+    on its turn - the next #19 increment; doMonSpell is the executor it calls.
+verified-by:
+  - game/mon-cast.test.ts (7 tests): through a full registry (core + attack +
+    monster + teleport handlers), a breath spell damages the player (breath_dam
+    scaled), a status spell (CONF) afflicts the live player, a spell with a save
+    message (MIND_BLAST) is prevented by a save (no damage / no confusion, save
+    and fail-rune hooks fire) and lands when the save fails (8d8 damage), the
+    disturb / message hooks receive the hit result, and doMonSpell returns false
+    for an unknown spell or a missing caster; buildSpellEffectChain binds
+    SPELL_POWER into a spell's dice (BOLT $Dd7 -> 11d7 at spell_power 80).
