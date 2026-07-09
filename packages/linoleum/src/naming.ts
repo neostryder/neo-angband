@@ -2,7 +2,7 @@
  * Deterministic asset naming for Linoleum loose packs.
  *
  * Faithful port of New-DeterministicAssetName / Get-StableHashHex from
- * Aaron's scripts/build-linoleum-packs.ps1 (upstream fork).
+ * the upstream fork's scripts/build-linoleum-packs.ps1.
  */
 
 import { createHash } from "node:crypto";

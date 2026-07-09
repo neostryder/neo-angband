@@ -138,7 +138,7 @@ documentation lives here under `docs/`.
     budget (decision 4) - ships as a mod, never baked into the port. Two
     official mods are BUNDLED with the port and enabled by default (both
     fully removable): **neo-linoleum** (the tile packs; formerly treated as
-    an in-core feature) and a **QoL mod** (Aaron's curated fixes and
+    an in-core feature) and a **QoL mod** (curated fixes and
     UI-level quality-of-life). Cheaty mods are explicitly permitted: a mod
     may add, patch, replace, or remove anything - up to and including the
     rules that make the game Angband or even a roguelike. The engine warns
@@ -193,7 +193,7 @@ documentation lives here under `docs/`.
       shrug; a core-governed save determinism mode (below) records it,
       seamlessly and irreversibly.
     - Save determinism mode (a CORE mechanism, not a mod concern; amended
-      2026-07-08 per Aaron). Every save carries a mode that core owns and
+      2026-07-08). Every save carries a mode that core owns and
       enforces regardless of which mods are loaded:
         * DETERMINISTIC - the default. A character born unmodded (or with only
           deterministic mods) is deterministic in the faithful sense, and its
@@ -219,8 +219,8 @@ documentation lives here under `docs/`.
     CERTIFIED FULL FEATURE PARITY with Angband 4.2.6 (decision 2). The ONLY
     permitted differences from the original are: (a) unavoidable port
     artifacts (the web/TypeScript platform, the single responsive surface, the
-    save format); (b) the mod system itself; and (c) minor variations Aaron
-    has explicitly approved, each logged as a decision here. Anything not on
+    save format); (b) the mod system itself; and (c) minor variations the
+    maintainer has explicitly approved, each logged as a decision here. Anything not on
     that approved-variation list must match the original. At release the two
     bundled mods (neo-linoleum, QoL) are complete and default to active.
     Certification is measured by the parity harness (decision 2, docs/
