@@ -50,7 +50,9 @@ import type { CastContext } from "../game/project-cast";
 import type { EffectEnvDeps } from "../game/effect-env";
 import { installMonsterCasting } from "../game/mon-ranged";
 import { installObjCommands } from "../game/obj-cmd";
+import { installCaveCommands } from "../game/cave-cmd";
 import { FlavorKnowledge } from "../obj/knowledge";
+import { ObjAllocState } from "../obj/make";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
@@ -217,6 +219,16 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       flavor: new FlavorKnowledge(reg.objects.ordinaryKindCount),
     });
   }
+
+  // Cave commands (open / close / tunnel / alter / stair checks); rubble
+  // finds and gold veins pay out through the object generator.
+  installCaveCommands(registry, {
+    makeDeps: {
+      reg: reg.objects,
+      alloc: new ObjAllocState(reg.objects, reg.constants),
+      constants: reg.constants,
+    },
+  });
 
   return { state, registry, booted, players };
 }

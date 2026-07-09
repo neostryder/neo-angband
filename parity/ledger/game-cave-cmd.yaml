@@ -1,0 +1,58 @@
+module: packages/core/src/game/cave-cmd.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/cmd-cave.c
+    items:
+      - do_cmd_open (L235) / do_cmd_open_test / do_cmd_open_aux: open a
+        closed door (a full turn), attacking a monster in the way; locked
+        doors ride the isLockedDoor / pickLock seams (door locks ARE traps
+        upstream - the "door lock" trap kind - so they land with #21).
+      - do_cmd_close (L395) / _test / _aux: close an open door, refuse a
+        broken one, refuse with the player in the doorway, attack a
+        blocking monster.
+      - do_cmd_tunnel (L653) / _test / _aux / twall (L497): the digging
+        attempt - square_digging class from the terrain dig rating,
+        calc_digging_chances, chance > randint0(1600), wall to floor on
+        success, rubble 10%-object and gold-vein treasure payouts placed
+        onto the live floor piles via the object generator.
+      - do_cmd_alter (L1005): monster -> attack, diggable -> tunnel,
+        closed door -> open dispatch.
+      - do_cmd_go_down (L101) / go_up (L56): the staircase-underfoot
+        checks and the surface check before signalling a level change.
+      - player_confuse_dir applied after the turn commits, as upstream.
+  - path: src/player-calcs.c
+    items:
+      - calc_digging_chances (L1651): the five difficulty formulas with
+        the zero floor.
+  - path: src/cave-square.c
+    items:
+      - square_isopendoor / isbrokendoor / issecretdoor / isdiggable /
+        square_digging / square_tunnel_wall over the terrain flags.
+notes: >-
+  Doors mutate the real Chunk terrain (FEAT.OPEN / CLOSED / FLOOR), so FOV
+  and monster pathing react immediately. Rubble finds and gold veins use
+  makeObject / makeGold onto state.floor - the first consumer of the floor
+  piles from terrain. square_isknown gates are knowledge (#24; everything
+  is known). Registered by installCaveCommands; startGame wires it with the
+  object generator.
+deferred:
+  - Locked / jammed doors, do_cmd_disarm and do_cmd_lock_door: door locks
+    are the "door lock" trap upstream - all land with trap.c (#21) through
+    the isLockedDoor / pickLock seams.
+  - The swap-digger machinery (player_best_digger + the temporary
+    calc_bonuses with a swapped weapon): digging reads the wielded state's
+    DIGGING skill.
+  - Chests (chest_check / do_cmd_open_chest): the chest object model.
+  - do_cmd_steal (shapechanged players, #22); run / explore / pathfind /
+    navigate (player-path.c, #24); command repetition and the count_feats
+    single-target direction inference (UI); messages are hooks.
+verified-by:
+  - game/cave-cmd.test.ts (14 tests): the digging-chance formulas at skill
+    50 and the zero floor; open/close round-trip with full-turn energy; a
+    broken door refuses to close; opening nothing costs no turn; a locked
+    door resists until pickLock succeeds; a monster in the doorway is
+    attacked; a skilled digger turns magma to floor; an unskilled digger
+    spends the turn without progress; a gold vein pays out money onto the
+    floor pile; permanent rock refuses; alter dispatches to open and
+    tunnel; descend/ascend require the matching staircase (and depth).
