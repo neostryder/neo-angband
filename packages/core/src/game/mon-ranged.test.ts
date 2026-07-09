@@ -4,7 +4,7 @@ import { MFLAG, MON_TMD, RF, RSF } from "../generated";
 import { FlagSet } from "../bitflag";
 import { EffectRegistry } from "../effects/interpreter";
 import { registerCoreHandlers } from "../effects/handlers";
-import { loc } from "../loc";
+import { loc, locEq } from "../loc";
 import { bindProjections } from "../world/projection";
 import type { ProjectionRecordJson } from "../world/projection";
 import { RSF_SIZE } from "../mon/types";
@@ -17,9 +17,11 @@ import type { CastContext } from "./project-cast";
 import { registerAttackHandlers } from "./effect-attack";
 import { registerMonsterHandlers } from "./effect-monster";
 import { registerTeleportHandlers } from "./effect-teleport";
+import { monsterTurn } from "./monster-turn";
 import type { DoMonSpellDeps } from "./mon-cast";
 import {
   chooseAttackSpell,
+  installMonsterCasting,
   makeRangedAttack,
   monsterCanCast,
   monsterSpellFailrate,
@@ -113,6 +115,32 @@ describe("makeRangedAttack", () => {
     const mon = addMon(state, casterRace([RSF.BR_FIRE], { spell: 0, innate: 0 }), loc(5, 6));
     updateMonsterDistances(state);
     expect(makeRangedAttack(state, mon.midx, deps(state))).toBe(false);
+  });
+});
+
+describe("installMonsterCasting (live monster turn)", () => {
+  it("makes a monster cast on its turn instead of moving", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.actor.player.chp = 200;
+    const mon = addMon(state, casterRace([RSF.BR_FIRE], { innate: 100 }), loc(5, 8), {
+      hp: 300,
+    });
+    updateMonsterDistances(state);
+    installMonsterCasting(state, deps(state));
+    monsterTurn(mon, state);
+    expect(state.actor.player.chp).toBeLessThan(200);
+    expect(locEq(mon.grid, loc(5, 8))).toBe(true); // cast, did not move
+  });
+
+  it("without casting installed, the monster deals no ranged damage", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.actor.player.chp = 200;
+    const mon = addMon(state, casterRace([RSF.BR_FIRE], { innate: 100 }), loc(5, 8), {
+      hp: 300,
+    });
+    updateMonsterDistances(state);
+    monsterTurn(mon, state);
+    expect(state.actor.player.chp).toBe(200);
   });
 });
 
