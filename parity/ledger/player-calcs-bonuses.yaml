@@ -20,8 +20,15 @@ upstream:
         adj_str_td, adj_dex_th, adj_str_th); the skill modifications
         (adj_dex_dis, adj_int_dis, adj_int_dev, adj_wis_sav, adj_str_dig,
         x_skills * lev / 10, digging floor 1, stealth clamp [0, 30]); hold =
-        adj_str_hold[stat_ind[STR]]; the unarmed num_blows branch (2316-2319)
-        via calc_blows; the PF_NO_MANA check on p->msp; num_moves =
+        adj_str_hold[stat_ind[STR]]; the equipment analysis loop (1924-2025:
+        object flags, stat_add, stealth/search/infra/tunnel/speed/dam_red
+        modifiers, extra blows/shots/might/moves, gear element info with
+        vulnerability, ac/to_a and off-weapon to_h/to_d) fed by
+        options.equipment; the launcher analysis (2254-2288) and the
+        wielded-weapon analysis (2291-2319: heavy_wield/heavy_shoot weight
+        penalty, weapon-weight num_blows via calc_blows, digging bonus,
+        PF_BLESS_WEAPON bless_wield), with the unarmed branch (2316-2319) when
+        no weapon is worn; the PF_NO_MANA check on p->msp; num_moves =
         extra_moves
       - calc_blows (1703-1735) as the pure calcBlows(cls, weaponWeight,
         strInd, dexInd, extraBlows, percentDamage) -- min_weight divisor
@@ -44,30 +51,32 @@ upstream:
         from race/class pflags, equivalent to upstream's p->state.pflags for
         the innate no-shape state)
 notes: >-
-  DEFERRED, all no-ops for the faithful just-born (unarmed, unarmored,
-  untimed) state the port models today: the equipment analysis loop
-  (1924-2025: stat_add, gear ac/to_a/to_h/to_d, object modifiers, curses,
-  gear element info, DIG flags) -- there is no equipment model yet;
-  calc_shapechange (1798-1853, called at 2030-2032) -- the "normal" shape
-  adds all zeros so skipping it is behavior-identical, non-normal shapes
-  deferred; calc_light (1598-, called at 2040-2041) -- needs equipment,
-  cur_light stays 0; food effects (2094-2132) -- needs the timed-grade
-  model, and a just-born player is in the "Fed" grade for which upstream is
-  a no-op; timed effects (2134-2213, player_flags_timed player.c:310-320)
-  -- all timers except FOOD are 0 at birth; the launcher analysis
-  (2254-2288: num_shots, ammo_tval, ammo_mult, heavy_shoot, PF_FAST_SHOT)
-  and the wielded-weapon analysis (2291-2315: heavy_wield, weapon digging
-  bonus, PF_BLESS_WEAPON / bless_wield); calc_mana (1480-, called at 2322)
-  -- msp stays at its birth value 0, so the ported PF_NO_MANA check
-  (2323-2325) currently sets NO_MANA for every class; correct for warriors,
-  and self-correcting for casters once calc_mana lands; the known_only
-  object-knowledge variant and the update=false hypothetical-blows index
-  shift (1891-1893, 2077-2088) -- birth-UI only, calcBonuses is the
-  update=true real-state path. calcSkills was extended with the
-  adj_dex_dis / adj_int_dis disarm terms (2240-2241) it previously omitted,
-  making it agree with calcBonuses for the innate case. The upkeep
-  total_weight the encumbrance check reads is 0 until the inventory model
-  lands.
+  The equipment analysis loop (1924-2025), the launcher analysis (2254-2288)
+  and the wielded-weapon analysis (2291-2319) are now LIVE, driven by
+  options.equipment (the worn object per body slot, resolved from
+  player.equipment via the gear store). Two upstream inputs to the equipment
+  loop remain DEFERRED and are handled by the port's "everything known"
+  convention (shared with obj/object.ts): the object-knowledge rune mask
+  (p->obj_k->modifiers / obj->known) is treated as all-ones, so every
+  modifier and combat bonus applies immediately rather than only once its
+  rune is learned; and the per-object curse-object traversal (2009-2023) is
+  skipped, so a cursed item contributes its own object but not its attached
+  curse objects. Still fully DEFERRED elsewhere in calc_bonuses:
+  calc_shapechange (1798-1853, called 2030-2032) -- the "normal" shape adds
+  all zeros so skipping it is behavior-identical, non-normal shapes deferred;
+  calc_light (1598-, called 2040-2041) -- cur_light stays 0; food effects
+  (2094-2132) and the other timed effects (2134-2213) -- no timed-effect
+  model yet, and a just-born player is in the "Fed" grade for which upstream
+  is a no-op; calc_mana (1480-, called 2322) -- msp stays at its birth value
+  0, so the ported PF_NO_MANA check (2323-2325) currently sets NO_MANA for
+  every class, correct for warriors and self-correcting for casters once
+  calc_mana lands; the known_only object-knowledge variant and the
+  update=false hypothetical-blows index shift (1891-1893, 2077-2088) --
+  birth-UI only, calcBonuses is the update=true real-state path. calcSkills
+  was extended with the adj_dex_dis / adj_int_dis disarm terms (2240-2241) it
+  previously omitted, making it agree with calcBonuses for the innate case.
+  The upkeep total_weight the encumbrance check reads is 0 until the inventory
+  weight model lands.
 verified-by:
   - bonuses.test.ts, all expected values hand-derived from the C tables for
     a level-1 Human Warrior with natural stats 16/12/11/15/14 -- stat_use
@@ -85,3 +94,7 @@ verified-by:
     UNLIGHT/EVIL element info applied only with characterDungeon true;
     Dwarf see_infra 5; adjustSkillScale up/down rounding asymmetry;
     toCombatState / toDefenderState field mapping
+  - session/game.test.ts: a born Human Warrior wields a weapon, and its worn
+    Soft Leather Armour raises calcBonuses ac above the unarmored (equipment
+    []) state; the actor combat state (ac, num_blows) equals the equipped
+    derivation the loop reads

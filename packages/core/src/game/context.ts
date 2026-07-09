@@ -25,6 +25,7 @@ import type { PlayerCombatState } from "../combat/melee";
 import type { DefenderState } from "../combat/mon-melee";
 import type { GameObject } from "../obj/object";
 import type { Brand, Slay } from "../obj/types";
+import type { Gear } from "./gear";
 import { NORMAL_ENERGY } from "./energy";
 
 /**
@@ -100,6 +101,12 @@ export interface GameState {
   rng: Rng;
   chunk: Chunk;
   actor: PlayerActor;
+  /**
+   * The player's gear store (obj-gear.c): a handle -> object map, the pack
+   * (non-equipped handles) and the equipment[] handles on actor.player.
+   * Populated at birth by outfitPlayer (game/gear.ts).
+   */
+  gear: Gear;
   /** cave_monster(cave, i): live monsters, index 0 unused (null). */
   monsters: Array<Monster | null>;
   /** turn (game-world.c): the game-turn counter. */
