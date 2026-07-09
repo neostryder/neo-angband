@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
-import { TV } from "../generated";
+import { OBJ_MOD, TV } from "../generated";
 import { ObjRegistry } from "../obj/bind";
 import { objectPrep } from "../obj/make";
 import type { StackLimits } from "../obj/object";
@@ -16,6 +16,7 @@ import {
   newGear,
   outfitPlayer,
   wieldAll,
+  wieldObject,
   wieldSlot,
 } from "./gear";
 
@@ -271,6 +272,63 @@ describe("outfitPlayer (player-birth.c player_outfit)", () => {
     const armorSlot = body.slots.findIndex((s) => s.type === "BODY_ARMOR");
     expect(player.equipment[weaponSlot]).toBe(0);
     expect(player.equipment[armorSlot]).toBe(0);
+  });
+});
+
+describe("object_learn_on_wield learns modifier runes (obj-knowledge.c)", () => {
+  it("wielding a +3 STR ring learns the STR rune so the bonus goes live", () => {
+    const reg = new ObjRegistry(pack.obj);
+    const rng = new Rng(1);
+    const gear = newGear();
+    const { race, cls, body } = humanWarrior();
+    const player = blankPlayer(race, cls, body);
+
+    // A ring carrying a +3 STR modifier (as an ego/artifact rune would).
+    const ring = objectPrep(
+      rng,
+      reg,
+      constants,
+      firstOrdinaryKind(reg, TV.RING),
+      0,
+      "minimise",
+    );
+    ring.modifiers[OBJ_MOD.STR] = 3;
+    const handle = invenCarry(gear, ring, limits);
+
+    // Rune unknown until worn (born unknown, exactly as upstream).
+    expect(player.objKnown.modifiers[OBJ_MOD.STR]).toBe(0);
+
+    const slot = wieldObject(gear, player, handle);
+    expect(slot).toBeGreaterThanOrEqual(0);
+
+    // Wearing it taught the STR rune; calc_bonuses will now apply the +3.
+    expect(player.objKnown.modifiers[OBJ_MOD.STR]).toBe(1);
+  });
+
+  it("wielding a plain item teaches no modifier runes", () => {
+    const reg = new ObjRegistry(pack.obj);
+    const rng = new Rng(1);
+    const gear = newGear();
+    const { race, cls, body } = humanWarrior();
+    const player = blankPlayer(race, cls, body);
+
+    const torch = objectPrep(
+      rng,
+      reg,
+      constants,
+      firstOrdinaryKind(reg, TV.LIGHT),
+      0,
+      "minimise",
+    );
+    // A plain wooden torch has a LIGHT modifier; it should learn that one and
+    // nothing else, leaving every stat rune unknown.
+    const hadLight = (torch.modifiers[OBJ_MOD.LIGHT] ?? 0) !== 0;
+    invenCarry(gear, torch, limits);
+    wieldAll(gear, player);
+
+    expect(player.objKnown.modifiers[OBJ_MOD.STR]).toBe(0);
+    expect(player.objKnown.modifiers[OBJ_MOD.DEX]).toBe(0);
+    expect(player.objKnown.modifiers[OBJ_MOD.LIGHT]).toBe(hadLight ? 1 : 0);
   });
 });
 
