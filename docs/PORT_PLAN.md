@@ -287,7 +287,16 @@ completeness where possible.
   town and stores, quests and the win condition (data-driven objective
   system).
 - **P5 - Web UI**: glyph renderer, responsive single-surface layout, keymaps,
-  PWA packaging, IndexedDB saves with export/import.
+  PWA packaging, IndexedDB saves with export/import. The presentation logic
+  behind every classic panel (sidebar, character sheet, monster/object lists,
+  monster lore, map, knowledge, options) is ported as engine-computed data;
+  only the terminal draw layer is what the web surface replaces. Sound
+  (`sound-core.c` event-to-sound mapping, played by the web audio backend that
+  replaces `snd-sdl.c`) and tile graphics (`grafmode.c` + `ui-visuals.c`, with
+  ASCII the default exactly as upstream) are in scope and essential, not
+  optional extras. Per decision 23 the only permitted differences from 4.2.6
+  are the platform/surface, the save format, and the mod system; every other
+  subsystem - sound, graphics, wizard/debug, the Borg - is ported.
 - **P6 - Parity closure**: full statistical verification against the C
   baseline, golden scenario suite, UI QoL features, documentation.
 - **P7 - Mod ecosystem hardening**: sandboxed scripting, pack tooling,
