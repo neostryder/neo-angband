@@ -28,6 +28,7 @@ import type { PlayerCombatState } from "../combat/melee";
 import type { DefenderState } from "../combat/mon-melee";
 import { DEFAULT_GAME_CONSTANTS, addMonster, placePlayer } from "./context";
 import type { GameState, PlayerActor, PlayerCommand } from "./context";
+import { newGear } from "./gear";
 
 function load(name: string): unknown {
   return JSON.parse(
@@ -194,6 +195,7 @@ export function makeState(opts: StateOptions = {}): GameState {
     rng: new Rng(opts.seed ?? 1),
     chunk,
     actor,
+    gear: newGear(),
     monsters: [null],
     turn: 0,
     z: { ...DEFAULT_GAME_CONSTANTS },

@@ -9,15 +9,16 @@
  * This module also ports the innate (race/class/stat/level) portion of
  * calc_bonuses as calcBonuses, calc_blows as the pure calcBlows, plus
  * player_flags (player.c), adjust_skill_scale and weight_limit, and the
- * level-1 hitpoint math. Equipment-, timed- and shape-dependent
- * contributions are DEFERRED (see the notes on calcBonuses and
+ * level-1 hitpoint math. The equipment analysis loop and the launcher /
+ * weapon analysis ARE ported: pass the worn objects via
+ * CalcBonusesOptions.equipment and calc_bonuses applies their stat, skill,
+ * combat and resist contributions and derives blows from the wielded weapon.
+ * Still DEFERRED (see the calcBonuses notes and
  * parity/ledger/player-calcs-bonuses.yaml):
- *   - the equipment analysis loop (stat_add, ac/to_a/to_h/to_d from gear,
- *     object modifiers, curses, element info from gear)
+ *   - the object-knowledge rune mask (treated as all-known) and the
+ *     per-object curse-object traversal inside the equipment loop
  *   - timed effects (food, stun, bless, hero, shero, fast/slow, etc.)
  *   - non-normal shapechanges (calc_shapechange)
- *   - launcher analysis (num_shots/ammo_mult/ammo_tval/heavy_shoot) and the
- *     wielded-weapon analysis (heavy_wield, bless_wield, digging bonus)
  *   - calc_mana / calc_light
  */
 
@@ -30,7 +31,7 @@ import {
   STAT_MAX,
   STAT_RANGE,
 } from "./types";
-import { ELEM, OF, PF, STAT } from "../generated";
+import { ELEM, KF, OBJ_MOD, OF, PF, STAT, TV } from "../generated";
 import { FlagSet } from "../bitflag";
 import type {
   PlayerClass,
@@ -38,6 +39,8 @@ import type {
   PlayerRace,
 } from "./types";
 import type { Player } from "./player";
+import type { GameObject } from "../obj/object";
+import { tvalIsDigger } from "../obj/object";
 import type { PlayerCombatState } from "../combat/melee";
 import type { DefenderState } from "../combat/mon-melee";
 
@@ -504,28 +507,35 @@ export interface CalcBonusesOptions {
    * freshly-born state).
    */
   characterDungeon?: boolean;
+  /**
+   * The equipped object per body slot (index = body slot, null = empty), as
+   * resolved from player.equipment via the gear store. Drives the equipment
+   * analysis loop (player-calcs.c:1924-2025) and the launcher / weapon
+   * analysis (2254-2319). Defaults to empty (unarmed and unarmored).
+   */
+  equipment?: readonly (GameObject | null)[];
 }
 
 /**
  * calc_bonuses (player-calcs.c:1877-2331), innate portion: derives the
- * player's state from race/class intrinsics, stats and level. The player is
- * treated as UNARMED and UNARMORED with no timed effects beyond a "Fed"
- * food level -- the faithful just-born state (there is no equipment or
- * timed-effect model in the port yet).
+ * player's state from race/class intrinsics, stats, level and the worn
+ * equipment (options.equipment). With no equipment supplied the player is
+ * unarmed and unarmored (the just-born default). Timed effects beyond a
+ * "Fed" food level are still absent (no timed-effect model yet).
  *
  * Ported statement-for-statement in upstream order; each block cites its
  * lines. DEFERRED blocks (see parity/ledger/player-calcs-bonuses.yaml), all
  * of which are no-ops for the innate state:
- * - equipment analysis loop (1924-2025): no equipment exists; stat_add, ac,
- *   gear to_a/to_h/to_d, object modifiers and curses stay 0
+ * - object-knowledge rune mask (all runes treated as known) and the
+ *   per-object curse-object traversal in the equipment loop (1924-2025)
  * - calc_shapechange (2030-2032): the "normal" shape adds all zeros, so
  *   skipping it is behavior-identical; non-normal shapes are deferred
  * - calc_light (2040-2041): needs equipment; cur_light stays 0
  * - food effects (2094-2132): a just-born player is in the "Fed" grade, for
  *   which upstream applies no adjustment; the timed-grade model is deferred
  * - timed effects (2134-2213): all timers except FOOD are 0 at birth
- * - launcher analysis (2254-2288) and weapon analysis (2291-2315): no
- *   equipment; the unarmed branch (2316-2319) IS ported
+ * - (launcher analysis 2254-2288 and weapon analysis 2291-2319 are now
+ *   ported; the wielded weapon drives num_blows and digging)
  * - calc_mana (2322): deferred; the PF_NO_MANA check (2323-2325) is ported
  *   and reads p->msp, which stays at its birth value of 0 until calc_mana
  *   lands
@@ -539,7 +549,15 @@ export function calcBonuses(
   const race = player.race;
   const cls = player.cls;
   const elemCount = race.elInfo.length;
-  const extraBlows = 0; /* extra_blows/shots/might/moves: gear/shape/timed */
+  /* extra_blows/shots/might/moves accumulate from equipment modifiers and
+     feed the launcher / weapon / movement analysis below (0 when unarmed). */
+  let extraBlows = 0;
+  let extraShots = 0;
+  let extraMight = 0;
+  let extraMoves = 0;
+  /* The wielded weapon and launcher, captured during the equipment loop. */
+  let weapon: GameObject | null = null;
+  let launcher: GameObject | null = null;
 
   /* Reset (1896) and set various defaults (1898-1900). */
   const state: PlayerState = {
@@ -596,8 +614,75 @@ export function calcBonuses(
   /* Extract the player flags (1921-1922; player.c:290-300). */
   const collectF = playerFlags(player);
 
-  /* Analyze equipment (1924-2025): DEFERRED, the player is unarmed and
-     unarmored; stat_add/ac/gear bonuses stay 0. */
+  /* Analyze equipment (1924-2025). Equipped objects arrive from the caller
+     (options.equipment, indexed by body slot). Two upstream inputs are
+     DEFERRED (parity/ledger/player-calcs-bonuses.yaml) and handled by the
+     port's "everything known" convention (shared with obj/object.ts): the
+     object-knowledge rune mask (p->obj_k->modifiers) is treated as all-ones,
+     so every modifier and combat bonus applies; and the per-object
+     curse-object traversal (2009-2023) is skipped, so a cursed item still
+     contributes its own object but not its attached curse objects. */
+  const equipment = options.equipment ?? [];
+  for (let i = 0; i < player.body.count; i++) {
+    const obj = equipment[i] ?? null;
+    if (!obj) continue;
+
+    const slotType = player.body.slots[i]?.type;
+    const isWeaponSlot = slotType === "WEAPON";
+    const isBowSlot = slotType === "BOW";
+    if (isWeaponSlot) weapon = obj;
+    if (isBowSlot) launcher = obj;
+
+    /* Extract the item flags (1933-1939). */
+    collectF.union(obj.flags);
+
+    /* Apply modifiers (1941-1981). The five stat modifiers share indices
+       with STAT_* (OBJ_MOD_STR == STAT_STR == 0). */
+    for (let s = 0; s < STAT_MAX; s++) {
+      state.statAdd[s] = (state.statAdd[s] ?? 0) + (obj.modifiers[s] ?? 0);
+    }
+    state.skills[SKILL.STEALTH] =
+      (state.skills[SKILL.STEALTH] ?? 0) + (obj.modifiers[OBJ_MOD.STEALTH] ?? 0);
+    state.skills[SKILL.SEARCH] =
+      (state.skills[SKILL.SEARCH] ?? 0) + (obj.modifiers[OBJ_MOD.SEARCH] ?? 0) * 5;
+    state.seeInfra += obj.modifiers[OBJ_MOD.INFRA] ?? 0;
+
+    let dig = 0;
+    if (tvalIsDigger(obj.tval)) {
+      if (obj.flags.has(OF.DIG_1)) dig = 1;
+      else if (obj.flags.has(OF.DIG_2)) dig = 2;
+      else if (obj.flags.has(OF.DIG_3)) dig = 3;
+    }
+    dig += obj.modifiers[OBJ_MOD.TUNNEL] ?? 0;
+    state.skills[SKILL.DIGGING] = (state.skills[SKILL.DIGGING] ?? 0) + dig * 20;
+
+    state.speed += obj.modifiers[OBJ_MOD.SPEED] ?? 0;
+    state.damRed += obj.modifiers[OBJ_MOD.DAM_RED] ?? 0;
+    extraBlows += obj.modifiers[OBJ_MOD.BLOWS] ?? 0;
+    extraShots += obj.modifiers[OBJ_MOD.SHOTS] ?? 0;
+    extraMight += obj.modifiers[OBJ_MOD.MIGHT] ?? 0;
+    extraMoves += obj.modifiers[OBJ_MOD.MOVES] ?? 0;
+
+    /* Apply element info, noting vulnerabilities for later (1983-1993). */
+    for (let jj = 0; jj < elemCount; jj++) {
+      const oel = obj.elInfo[jj];
+      const sel = state.elInfo[jj] as PlayerElementInfo;
+      if (!oel) continue;
+      if (oel.resLevel === -1) vuln[jj] = true;
+      if (oel.resLevel > sel.resLevel) sel.resLevel = oel.resLevel;
+    }
+
+    /* Apply combat bonuses (1995-2007). The wielded weapon's and launcher's
+       own to_h/to_d are applied at attack time, not here. */
+    state.ac += obj.ac;
+    state.toA += obj.toA;
+    if (!isWeaponSlot && !isBowSlot) {
+      state.toH += obj.toH;
+      state.toD += obj.toD;
+    }
+
+    /* DEFERRED: the per-object curse-object traversal (2009-2023). */
+  }
 
   /* Apply the collected flags (2027-2028). */
   state.flags.union(collectF);
@@ -678,18 +763,68 @@ export function calcBonuses(
   applySkillStatAndLevel(state.skills, cls, player.lev, state.statInd);
   state.hold = at(adj_str_hold, state.statInd[STAT.STR] ?? 0);
 
-  /* Analyze launcher (2254-2288): DEFERRED (no equipment); heavy_shoot
-     stays false, num_shots/ammo_tval/ammo_mult stay 0. */
+  /* Analyze launcher (2254-2288). object_weight_one is per-item weight; a
+     wielded launcher has number 1. */
+  state.heavyShoot = false;
+  if (launcher) {
+    const launcherWeight = launcher.weight;
+    if (state.hold < Math.trunc(launcherWeight / 10)) {
+      state.toH += 2 * (state.hold - Math.trunc(launcherWeight / 10));
+      state.heavyShoot = true;
+    }
+    state.numShots = 10;
+    if (launcher.kind.kindFlags.has(KF.SHOOTS_SHOTS)) state.ammoTval = TV.SHOT;
+    else if (launcher.kind.kindFlags.has(KF.SHOOTS_ARROWS)) state.ammoTval = TV.ARROW;
+    else if (launcher.kind.kindFlags.has(KF.SHOOTS_BOLTS)) state.ammoTval = TV.BOLT;
+    state.ammoMult = launcher.pval;
+    if (!state.heavyShoot) {
+      state.numShots += extraShots;
+      state.ammoMult += extraMight;
+      if (state.pflags.has(PF.FAST_SHOT)) {
+        state.numShots += Math.trunc(player.lev / 3);
+      }
+    }
+    if (state.numShots < 10) state.numShots = 10;
+  }
 
-  /* Analyze weapon (2291-2319): no weapon, so the unarmed branch
-     (2316-2319) applies. heavy_wield/bless_wield stay false. */
-  state.numBlows = calcBlows(
-    cls,
-    null,
-    state.statInd[STAT.STR] ?? 0,
-    state.statInd[STAT.DEX] ?? 0,
-    extraBlows,
-  );
+  /* Analyze weapon (2291-2319). An empty weapon slot uses the unarmed branch
+     (2316-2319); a too-heavy weapon keeps num_blows at its 1-blow default. */
+  state.heavyWield = false;
+  state.blessWield = false;
+  if (weapon) {
+    const weaponWeight = weapon.weight;
+    if (state.hold < Math.trunc(weaponWeight / 10)) {
+      state.toH += 2 * (state.hold - Math.trunc(weaponWeight / 10));
+      state.heavyWield = true;
+    }
+    if (!state.heavyWield) {
+      state.numBlows = calcBlows(
+        cls,
+        weaponWeight,
+        state.statInd[STAT.STR] ?? 0,
+        state.statInd[STAT.DEX] ?? 0,
+        extraBlows,
+      );
+      state.skills[SKILL.DIGGING] =
+        (state.skills[SKILL.DIGGING] ?? 0) + Math.trunc(weaponWeight / 10);
+    }
+    if (
+      state.pflags.has(PF.BLESS_WEAPON) &&
+      (weapon.tval === TV.HAFTED || state.flags.has(OF.BLESSED))
+    ) {
+      state.toD += 2;
+      state.blessWield = true;
+    }
+  } else {
+    /* Unarmed (2316-2319). */
+    state.numBlows = calcBlows(
+      cls,
+      null,
+      state.statInd[STAT.STR] ?? 0,
+      state.statInd[STAT.DEX] ?? 0,
+      extraBlows,
+    );
+  }
 
   /* Mana (2321-2325): calc_mana DEFERRED. The PF_NO_MANA check reads
      p->msp, which is 0 until calc_mana is ported (correct for warriors;
@@ -698,8 +833,8 @@ export function calcBonuses(
     state.pflags.on(PF.NO_MANA);
   }
 
-  /* Movement speed (2327-2328): num_moves = extra_moves (0 innately). */
-  state.numMoves = 0;
+  /* Movement speed (2327-2328): num_moves = extra_moves. */
+  state.numMoves = extraMoves;
 
   return state;
 }

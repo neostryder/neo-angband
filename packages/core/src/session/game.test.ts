@@ -4,6 +4,8 @@ import { runGameLoop, LOOP_STATUS } from "../game/loop";
 import type { PlayerCommand } from "../game/context";
 import { startGame } from "./game";
 import type { GamePack } from "./game";
+import { calcBonuses } from "../player/calcs";
+import { gearGet } from "../game/gear";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -94,6 +96,24 @@ describe("startGame (new-game assembly)", () => {
     // player must act again, so the loop stops for input with turns elapsed.
     expect(status).toBe(LOOP_STATUS.INPUT);
     expect(state.turn).toBeGreaterThan(0);
+  });
+
+  it("derives combat bonuses from the worn starting kit", () => {
+    const { state } = startGame(pack, { seed: 123, depth: 1 });
+    const p = state.actor.player;
+
+    // A born Warrior is armed and armored (player_outfit + wield_all).
+    expect(state.actor.weapon).not.toBeNull();
+
+    const worn = p.equipment.map((h) => (h ? gearGet(state.gear, h) : null));
+    const armed = calcBonuses(p, { equipment: worn });
+    const bare = calcBonuses(p, { equipment: [] });
+
+    // Worn body armour raises base AC above the unarmored state, and the
+    // actor's combat state is exactly the equipped derivation py_attack reads.
+    expect(armed.ac).toBeGreaterThan(bare.ac);
+    expect(state.actor.combat.ac).toBe(armed.ac);
+    expect(state.actor.combat.numBlows).toBe(armed.numBlows);
   });
 
   it("is deterministic for a fixed seed", () => {

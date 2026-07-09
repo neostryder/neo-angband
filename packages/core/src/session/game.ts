@@ -37,6 +37,7 @@ import {
   updateMonsterDistances,
 } from "../game/context";
 import type { GameState, PlayerActor, PlayerCommand } from "../game/context";
+import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
 import { bootLevel } from "./boot";
@@ -92,7 +93,22 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     booted.rng,
   );
 
-  const pstate = calcBonuses(birth.player);
+  // Populate the gear store and wear the class starting kit (player_outfit +
+  // wield_all) BEFORE deriving bonuses, so calc_bonuses sees the worn gear.
+  const gear = newGear();
+  outfitPlayer(gear, birth.player, reg.objects, booted.rng, reg.constants);
+
+  // Resolve the worn objects by body slot; calc_bonuses reads them for the
+  // equipment analysis, and the wielded weapon drives melee (py_attack).
+  const equipment = birth.player.equipment.map((h) =>
+    h ? gearGet(gear, h) : null,
+  );
+  const weaponSlot = birth.player.body.slots.findIndex(
+    (s) => s.type === "WEAPON",
+  );
+  const weapon = weaponSlot >= 0 ? (equipment[weaponSlot] ?? null) : null;
+
+  const pstate = calcBonuses(birth.player, { equipment });
   const combat = toCombatState(pstate);
 
   const spot: Loc = booted.playerSpot ?? loc(1, 1);
@@ -104,7 +120,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     totalEnergy: 0,
     combat,
     defense: toDefenderState(pstate),
-    weapon: null,
+    weapon,
     stealth: combat.skills[SKILL.STEALTH] ?? 0,
   };
 
@@ -112,11 +128,12 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     rng: booted.rng,
     chunk: booted.chunk,
     actor,
+    gear,
     monsters: [null],
     turn: 0,
     z: { ...DEFAULT_GAME_CONSTANTS, maxSight: reg.constants.maxSight },
-    brands: [null],
-    slays: [null],
+    brands: reg.objects.brands,
+    slays: reg.objects.slays,
     playing: true,
     isDead: false,
     generateLevel: false,
