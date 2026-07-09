@@ -130,6 +130,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     actor,
     gear,
     monsters: [null],
+    groups: [null],
     turn: 0,
     z: { ...DEFAULT_GAME_CONSTANTS, maxSight: reg.constants.maxSight },
     brands: reg.objects.brands,

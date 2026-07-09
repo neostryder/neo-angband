@@ -1,0 +1,57 @@
+module: packages/core/src/game/mon-group.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-group.c
+    items:
+      - monster_group_new / _by_index / _index / _leader_idx / _leader (L30, L330,
+        L322, L474, L482): the group accessors over state.groups.
+      - monster_group_index_new (L209): the next free group slot (grows the array
+        rather than failing at z_info->level_monster_max).
+      - monster_add_to_group (L224) / monster_group_start (L243): prepend a member
+        (head-first, as upstream's member_list) and make a one-monster leader
+        group in a chosen slot (primary or summon).
+      - monster_group_split (L54) / monster_group_remove_leader (L96) /
+        monster_remove_from_groups (L152): drop a monster, delete an emptied
+        group, and on the leader's loss appoint a same-race or unique successor,
+        else fracture the group into race-based pieces.
+      - monster_group_assign (L267): join / start the primary group for a new
+        monster, or rebuild both slots by hand when loading a savefile.
+      - monster_group_change_index (L338): rewrite a monster's midx in its groups
+        (for monster-list compaction).
+      - summon_group (L379): the group a summoner's creatures join (its primary
+        group if it leads one, else a lazily-created summon group).
+      - monster_group_rouse (L407): an aware monster wakes sleeping group-mates it
+        can see, likelier the closer they are.
+      - monster_primary_group_size (L434) / group_monster_tracking (L451): the
+        member count, and an active tracking group-mate for get_move.
+      - monster_groups_verify (L492): assert each member's group_info points back
+        at the group it is listed in (throws instead of quitting).
+notes: >-
+  The monster-pack bookkeeping half of #19. Groups live on the GameState
+  (state.groups, index 0 unused, parallel to state.monsters); MonsterGroup is
+  {index, leader, members[]} with members head-first so add prepends exactly as
+  upstream's member_list. The per-monster group model (Monster.group_info's
+  primary / summon slots and the MON_GROUP roles) was already present
+  (mon/monster.ts). The leader-succession, split and verify logic is ported
+  faithfully.
+deferred:
+  - Placement assignment: the caller (monster generation / place_new_monster)
+    must call monster_group_assign when it adds a monster, and deleteMonster must
+    call monster_remove_from_groups; both are wired with those subsystems.
+  - The AI consumers: monster_group_rouse in the monster turn
+    (game/monster-turn.ts) and group_monster_tracking in get_move - wired next.
+  - monster_can_see (mon-util.c) is not ported, so rouse uses plain line of sight
+    (it also weighs range and light).
+  - monster_group_index_new grows state.groups on demand rather than capping at
+    z_info->level_monster_max, so it never returns 0 (fail); behaviour is
+    otherwise identical.
+verified-by:
+  - game/mon-group.test.ts (11 tests): membership tracks size / leader / members;
+    removing a non-leader shrinks the group and removing the only member deletes
+    it; a same-race member succeeds a dead leader while a different-race group
+    fractures into singletons; summon_group returns a leader's primary group and
+    lazily makes a member's summon group; rouse wakes nobody when unaware and
+    eventually wakes a sleeping group-mate in sight when aware; group tracking
+    returns an active tracking mate; change_index rewrites a midx; assign joins an
+    existing primary group or starts a new one.
