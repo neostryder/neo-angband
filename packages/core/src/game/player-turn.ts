@@ -103,6 +103,10 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
   /* Autopickup on the new grid (upstream queues CMD_AUTOPICKUP; its energy
    * cost is folded into this step, see game/pickup.ts). */
   const pickupCost = state.autoPickup ? state.autoPickup(state) : 0;
+
+  /* Trap / terrain consequences of the step (move_player -> hit_trap). */
+  state.onPlayerMoved?.(state, next);
+
   return state.z.moveEnergy + pickupCost;
 }
 

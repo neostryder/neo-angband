@@ -55,6 +55,8 @@ export interface GameConstants {
   foodWeak: number;
   /** z_info->floor_size (obj:floor-size): max objects in one floor pile. */
   floorSize: number;
+  /** z_info->max_depth (world:max-depth): the trapdoor legality bound. */
+  maxDepth: number;
 }
 
 /** The shipped constants.txt values, food thresholds scaled by food_value. */
@@ -69,6 +71,7 @@ export const DEFAULT_GAME_CONSTANTS: GameConstants = {
   foodFaint: 400,
   foodWeak: 800,
   floorSize: 23,
+  maxDepth: 128,
 };
 
 /**
@@ -138,6 +141,12 @@ export interface GameState {
    * Managed by game/floor.ts (floor_carry / drop_near / excise).
    */
   floor: Map<number, GameObject[]>;
+  /**
+   * Live traps (square(c, grid)->trap), keyed by grid index, newest
+   * first. Managed by game/trap.ts (place_trap / hit_trap / locks).
+   * The type import is erased, so no runtime cycle with game/trap.
+   */
+  traps: Map<number, import("./trap").Trap[]>;
   /** turn (game-world.c): the game-turn counter. */
   turn: number;
   z: GameConstants;
@@ -170,6 +179,11 @@ export interface GameState {
    * cost into the step because the command provider is injected.
    */
   autoPickup?: (state: GameState) => number;
+  /**
+   * Runs after the player steps onto a new grid (move_player's trap /
+   * terrain consequences). Installed by installTraps (game/trap.ts).
+   */
+  onPlayerMoved?: (state: GameState, grid: Loc) => void;
 }
 
 /** One queued player command (a keyed action plus optional direction/args). */

@@ -33,6 +33,7 @@ export function loadGamePack(): GamePack {
     vaults: records("vault"),
     dungeonProfiles: records("dungeon_profile"),
     projection: records("projection"),
+    trap: records("trap"),
     obj: {
       objectBase: file("object_base"),
       object: file("object"),

@@ -44,6 +44,9 @@ import type { GenDeps, GenerateOptions } from "../gen/generate";
 import type { MonPlaceDeps, PlacedMonster, PlacedObject } from "../gen/util";
 import { bindProjections } from "../world/projection";
 import type { ProjectionInfo, ProjectionRecordJson } from "../world/projection";
+import { bindTraps } from "../world/trap";
+import type { TrapKind, TrapRecordJson } from "../world/trap";
+import { iToGrid } from "../gen/util";
 
 /** The base content pack as parsed JSON (pack zero, or a merged pack). */
 export interface CorePack {
@@ -60,6 +63,8 @@ export interface CorePack {
    * (monster spells, item use).
    */
   projection?: ProjectionRecordJson[];
+  /** trap.json (trap kinds). Optional; without it levels have no traps. */
+  trap?: TrapRecordJson[];
 }
 
 /** Runtime registries bound from a pack. */
@@ -72,6 +77,8 @@ export interface CoreRegistries {
   profiles: DungeonProfiles;
   /** Bound projections (PROJ_-indexed), or null when the pack has none. */
   projections: ProjectionInfo[] | null;
+  /** Bound trap kinds (t_idx-indexed), or null when the pack has none. */
+  traps: TrapKind[] | null;
 }
 
 /** Bind a parsed pack into the full set of runtime registries. */
@@ -86,7 +93,17 @@ export function bindCore(pack: CorePack): CoreRegistries {
   });
   const profiles = createDungeonProfiles(pack.dungeonProfiles);
   const projections = pack.projection ? bindProjections(pack.projection) : null;
-  return { constants, features, objects, monsters, rooms, profiles, projections };
+  const traps = pack.trap ? bindTraps(pack.trap) : null;
+  return {
+    constants,
+    features,
+    objects,
+    monsters,
+    rooms,
+    profiles,
+    projections,
+    traps,
+  };
 }
 
 /** Build the generator dependency bundle from bound registries. */
@@ -141,6 +158,10 @@ export interface BootedLevel {
   playerSpot: Loc | null;
   monsters: readonly PlacedMonster[];
   objects: readonly PlacedObject[];
+  /** Grids generation marked for player traps (instantiated at start). */
+  trapGrids: readonly Loc[];
+  /** Doors generation rolled locked (grid + lock power). */
+  lockedDoors: readonly { grid: Loc; power: number }[];
   rng: Rng;
   registries: CoreRegistries;
 }
@@ -163,6 +184,8 @@ export function bootLevel(pack: CorePack, opts: BootLevelOptions = {}): BootedLe
     playerSpot: g.playerSpot,
     monsters: g.monsters,
     objects: g.objects,
+    trapGrids: [...g.trapGrids].map((i) => iToGrid(i, g.c.width)),
+    lockedDoors: g.lockedDoors,
     rng,
     registries,
   };
