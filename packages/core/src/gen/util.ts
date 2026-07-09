@@ -14,10 +14,13 @@
  *   upstream for placement decisions.
  * - place_trap only records the grid (no trap object is created; the trap
  *   domain is not ported).
- * - Monster group/escort spawning is not ported (mon-make.c place_new_monster
- *   groups are deferred); a single monster is placed. Unique cur_num tracking
- *   is kept level-local so a unique appears at most once per level without
- *   mutating the shared registry.
+ * - Monster group/escort spawning (mon-make.c place_new_monster /
+ *   place_friends / place_new_monster_group) is ported; group indices are
+ *   allocated from a per-generation counter and recorded on each monster's
+ *   group_info, and the live GameState rebuilds its group structures from
+ *   them at start (the savefile-loading path of monster_group_assign).
+ *   Unique cur_num tracking is kept level-local so a unique appears at most
+ *   once per level without mutating the shared registry.
  */
 
 import { FEAT, RF, SQUARE } from "../generated";
@@ -38,9 +41,10 @@ import type { FeatureRegistry } from "../world/feature";
 import type { GameObject } from "../obj/object";
 import type { MakeDeps } from "../obj/make";
 import { makeGold, makeObject } from "../obj/make";
-import type { Monster } from "../mon/monster";
+import type { Monster, MonsterGroupInfo } from "../mon/monster";
 import { createMonster, type MonAllocTable } from "../mon/make";
 import type { MonsterRace } from "../mon/types";
+import { MON_GROUP } from "../mon/types";
 import { scatterExt } from "../world/scatter";
 
 /* ------------------------------------------------------------------ *
@@ -220,6 +224,7 @@ export class Gen {
   /** ridx of uniques already placed on this level. */
   private readonly placedUniques = new Set<number>();
   private monCounter = 0;
+  private groupCounter = 0;
   /** The player start, set by the cave builder via new_player_spot. */
   playerSpot: Loc | null = null;
   /** Current tunnel/streamer parameters (set by the cave builder). */
@@ -269,6 +274,14 @@ export class Gen {
   /** Assign a fresh monster index (upstream indices start at 1). */
   nextMonIndex(): number {
     return ++this.monCounter;
+  }
+
+  /**
+   * monster_group_index_new for generation: a fresh group index. The live
+   * GameState rebuilds its group structures from these at start.
+   */
+  nextGroupIndex(): number {
+    return ++this.groupCounter;
   }
 
   attachMonster(grid: Loc, mon: Monster, index: number): void {
@@ -1096,28 +1109,220 @@ export function vaultTraps(
 /* ------------------------------------------------------------------ *
  * Monster placement (mon-make placement half + gen-monster helpers).
  *
- * SIMPLIFIED (ledgered): a single monster is placed; groups, escorts and
- * pit/nest monster theming are not ported. Placement RNG order therefore
- * diverges from upstream after the first monster; structural invariants and
- * per-seed determinism are asserted instead.
+ * The place_new_monster family (one monster, same-race groups, friends and
+ * base-template escorts) is ported. Pit/nest monster theming (mon_restrict)
+ * is still simplified to any depth-appropriate monster; placement RNG order
+ * therefore diverges from upstream where theming would have restricted the
+ * table, and structural invariants plus per-seed determinism are asserted
+ * instead.
  * ------------------------------------------------------------------ */
 
-/** pick_and_place_monster: place one appropriate monster at grid. */
+/**
+ * place_new_monster_one, reduced to the generation-time subset: build the
+ * monster and attach it if the grid is free. The live-cave concerns (mimicked
+ * objects, drops, level rating, update_mon) attach with their subsystems.
+ */
+function placeNewMonsterOne(
+  g: Gen,
+  grid: Loc,
+  race: MonsterRace,
+  sleep: boolean,
+  info: MonsterGroupInfo,
+): boolean {
+  if (!g.c.inBounds(grid) || !squareIsEmpty(g, grid)) return false;
+  if (g.uniqueAlreadyPlaced(race)) return false;
+  const mon = createMonster(g.rng, race, {
+    sleep,
+    moveEnergy: g.constants.moveEnergy,
+    groupIndex: info.index,
+    groupRole: info.role,
+  });
+  g.attachMonster(grid, mon, g.nextMonIndex());
+  return true;
+}
+
+/**
+ * place_new_monster_group: puddle up to `total` monsters of one race around
+ * grid, breadth first over the 8 neighbours of each placed monster.
+ */
+function placeNewMonsterGroup(
+  g: Gen,
+  grid: Loc,
+  race: MonsterRace,
+  sleep: boolean,
+  info: MonsterGroupInfo,
+  total: number,
+): boolean {
+  total = Math.min(total, g.constants.monsterGroupMax);
+
+  /* Start on the monster. */
+  const locList: Loc[] = [grid];
+
+  /* Puddle monsters, breadth first, up to total. */
+  for (let n = 0; n < locList.length && locList.length < total; n++) {
+    for (let i = 0; i < 8 && locList.length < total; i++) {
+      const tryGrid = locSum(locList[n] as Loc, DDGRID_DDD[i] as Loc);
+
+      /* Walls and monsters block flow. */
+      if (!squareIsEmpty(g, tryGrid)) continue;
+
+      if (placeNewMonsterOne(g, tryGrid, race, sleep, info)) {
+        locList.push(tryGrid);
+      }
+    }
+  }
+  return true;
+}
+
+/** place_friends: place a friend or escort race near the original monster. */
+function placeFriends(
+  g: Gen,
+  grid: Loc,
+  race: MonsterRace,
+  friendsRace: MonsterRace,
+  total: number,
+  sleep: boolean,
+  info: MonsterGroupInfo,
+): boolean {
+  /* Find the difference between current dungeon depth and monster level. */
+  const levelDifference = g.c.depth - friendsRace.level + 5;
+
+  /* Handle unique monsters. */
+  const isUnique = friendsRace.flags.has(RF.UNIQUE);
+
+  /* Make sure the unique hasn't been killed (or placed here) already. */
+  if (isUnique) {
+    if (friendsRace.curNum >= friendsRace.maxNum) return false;
+    if (g.uniqueAlreadyPlaced(friendsRace)) return false;
+  }
+
+  /* More than 4 levels OoD, no groups allowed. */
+  if (levelDifference <= 0 && !isUnique) return false;
+
+  /* Reduce group size within 5 levels of natural depth. */
+  if (levelDifference < 10 && !isUnique) {
+    const extraChance = (total * levelDifference) % 10;
+    total = Math.trunc((total * levelDifference) / 10);
+
+    /* Instead of flooring the group value, we use the decimal place
+     * as a chance of an extra monster. */
+    if (g.rng.randint0(10) > extraChance) total += 1;
+  }
+
+  if (total > 0) {
+    /* Handle friends same as original monster. */
+    if (race.ridx === friendsRace.ridx) {
+      return placeNewMonsterGroup(g, grid, race, sleep, info, total);
+    }
+
+    /* Find a nearby place to put the other groups. */
+    const spots = scatterExt(
+      g.c,
+      g.rng,
+      1,
+      grid,
+      g.constants.monsterGroupDist,
+      false,
+      (_c, gr) => squareIsOpen(g, gr),
+    );
+    if (spots.length > 0) {
+      const start = spots[0] as Loc;
+      /* Place the monsters. */
+      let success = placeNewMonsterOne(g, start, friendsRace, sleep, info);
+      if (total > 1) {
+        success = placeNewMonsterGroup(g, start, friendsRace, sleep, info, total);
+      }
+      return success;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * place_new_monster: place a monster of the given race at the given location,
+ * with its friends and escorts when `groupOk` is set. The first monster of a
+ * fresh group is its leader.
+ */
+export function placeNewMonster(
+  g: Gen,
+  grid: Loc,
+  race: MonsterRace,
+  sleep: boolean,
+  groupOk: boolean,
+  groupInfo: MonsterGroupInfo,
+): boolean {
+  if (!g.monDeps) return false;
+  const info: MonsterGroupInfo = { ...groupInfo };
+
+  /* If we don't have a group index already, make one; our first monster
+   * will be the leader. */
+  if (!info.index) info.index = g.nextGroupIndex();
+
+  /* Place one monster, or fail. */
+  if (!placeNewMonsterOne(g, grid, race, sleep, info)) return false;
+
+  /* We're done unless the group flag is set. */
+  if (!groupOk) return true;
+
+  /* Go through friends flags. */
+  for (const friends of race.friends) {
+    if (g.rng.randint0(100) >= friends.percentChance) continue;
+
+    /* Calculate the base number of monsters to place. */
+    const total = g.rng.damroll(friends.numberDice, friends.numberSide);
+
+    /* Set group role. */
+    info.role = friends.role;
+
+    /* Place them. */
+    if (friends.race) {
+      placeFriends(g, grid, race, friends.race, total, sleep, info);
+    }
+  }
+
+  /* Go through the friends_base flags. */
+  for (const friendsBase of race.friendsBase) {
+    /* Check if we pass chance for the monster appearing. */
+    if (g.rng.randint0(100) >= friendsBase.percentChance) continue;
+
+    const total = g.rng.damroll(friendsBase.numberDice, friendsBase.numberSide);
+
+    /* Prepare allocation table for the escort base (no uniques). */
+    g.monDeps.table.prep(
+      (r) => r.base === friendsBase.base && !r.flags.has(RF.UNIQUE),
+    );
+
+    /* Pick a random race, then reset the allocation table. */
+    const friendsRace = g.monDeps.table.getMonNum(g.rng, race.level, g.c.depth);
+    g.monDeps.table.prep(null);
+
+    /* Handle failure. */
+    if (!friendsRace) break;
+
+    /* Set group role. */
+    info.role = friendsBase.role;
+
+    /* Place them. */
+    placeFriends(g, grid, race, friendsRace, total, sleep, info);
+  }
+
+  return true;
+}
+
+/** pick_and_place_monster: place an appropriate monster (and group) at grid. */
 export function pickAndPlaceMonster(
   g: Gen,
   grid: Loc,
   depth: number,
   sleep: boolean,
+  groupOkay = true,
 ): boolean {
   if (!g.monDeps) return false;
-  if (!g.c.inBounds(grid) || !squareIsEmpty(g, grid)) return false;
   const race = g.monDeps.table.getMonNum(g.rng, depth, g.c.depth);
   if (!race) return false;
-  if (g.uniqueAlreadyPlaced(race)) return false;
-  const mon = createMonster(g.rng, race, { sleep, moveEnergy: g.constants.moveEnergy });
-  const index = g.nextMonIndex();
-  g.attachMonster(grid, mon, index);
-  return true;
+  const info: MonsterGroupInfo = { index: 0, role: MON_GROUP.LEADER };
+  return placeNewMonster(g, grid, race, sleep, groupOkay, info);
 }
 
 /** pick_and_place_distant_monster: place one monster far from the player. */

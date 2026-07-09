@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { MON_TMD, RF, SQUARE } from "../generated";
+import { MFLAG, MON_TMD, RF, SQUARE } from "../generated";
 import { distance, loc } from "../loc";
 import { makeNoise } from "../world/flow";
+import { GROUP_TYPE } from "../mon/monster";
+import { MON_GROUP } from "../mon/types";
 import { updateMonsterDistances } from "./context";
+import { monsterAddToGroup, monsterGroupStart } from "./mon-group";
 import { STAGGER, monsterTurn, monsterTurnShouldStagger } from "./monster-turn";
 import { addMon, makeBlow, makeRace, makeState } from "./harness";
 
@@ -65,6 +68,27 @@ describe("monster movement AI", () => {
 
     monsterTurn(mon, state);
     expect(mon.grid).toEqual(loc(20, 10));
+  });
+
+  it("an aware monster's turn rouses sleeping group-mates (monster_group_rouse)", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const race = makeRace({ level: 5, flags: [RF.NEVER_MOVE] });
+    const leader = addMon(state, race, loc(20, 10));
+    const friend = addMon(state, race, loc(20, 11));
+
+    monsterGroupStart(state, leader, GROUP_TYPE.PRIMARY);
+    const gi = leader.groupInfo[GROUP_TYPE.PRIMARY]!.index;
+    friend.groupInfo[GROUP_TYPE.PRIMARY]! = { index: gi, role: MON_GROUP.MEMBER };
+    monsterAddToGroup(state, friend, state.groups[gi]!);
+
+    leader.mflag.on(MFLAG.AWARE);
+    friend.mTimed[MON_TMD.SLEEP] = 500;
+    updateMonsterDistances(state);
+
+    for (let i = 0; i < 2000 && (friend.mTimed[MON_TMD.SLEEP] ?? 0) > 0; i++) {
+      monsterTurn(leader, state);
+    }
+    expect(friend.mTimed[MON_TMD.SLEEP]).toBe(0);
   });
 });
 

@@ -21,10 +21,13 @@
  * - process_monster_timed (sleep/wake, timer decrement, hold/stun miss) and
  *   monster_check_active.
  *
+ * NOW WIRED (was deferred): make_ranged_attack via the state.monsterCast
+ * hook, monster_group_rouse before it, and group_monster_tracking in
+ * get_move's fallback branch.
+ *
  * DEFERRED (ledgered in parity/ledger/game-monster-ai.yaml):
- * - Spellcasting / breath (make_ranged_attack), reproduction (multiply),
- *   item pickup/crush (monster_turn_grab_objects), group/escort/bodyguard
- *   tactics (get_move_bodyguard, group surround, group_monster_tracking),
+ * - Reproduction (multiply), item pickup/crush (monster_turn_grab_objects),
+ *   bodyguard tactics (get_move_bodyguard, group surround),
  *   ambush hiding and "duck behind a wall" safety (get_move_find_hiding /
  *   get_move_find_safety / the swerving get_move_flee: the afraid branch here
  *   just legs it in the opposite direction), damaging-terrain avoidance,
@@ -49,9 +52,10 @@ import { MON_GROUP } from "../mon/types";
 import { monsterPassesWalls } from "../mon/predicate";
 import { monsterEffectLevel } from "../mon/timed";
 import { monMeleeAttack } from "../combat/mon-melee";
-import { squareIsView } from "../world/view";
+import { los, squareIsView } from "../world/view";
 import type { GameState } from "./context";
 import { monsterSwap, squareIsPlayer, squareMonster } from "./context";
+import { groupMonsterTracking, monsterGroupRouse } from "./mon-group";
 
 /** enum monster_stagger. */
 export const STAGGER = {
@@ -362,13 +366,22 @@ export function getMove(mon: Monster, state: GameState): MoveDecision {
     grid = locDiff(mon.target.grid, mon.grid);
     mon.mflag.on(MFLAG.TRACKING);
   } else {
-    /* group_monster_tracking DEFERRED. */
-    if (mon.mflag.has(MFLAG.TRACKING)) {
-      grid = locDiff(mon.target.grid, mon.grid);
-    }
-    if (locIsZero(grid)) {
-      grid = getMoveRandom(mon, state);
+    /* Try to follow someone who knows where they're going. */
+    const tracker = groupMonsterTracking(state, mon);
+    if (tracker && los(state.chunk, mon.grid, tracker.grid)) {
+      grid = locDiff(tracker.grid, mon.grid);
+      /* No longer tracking. */
       mon.mflag.off(MFLAG.TRACKING);
+    } else {
+      if (mon.mflag.has(MFLAG.TRACKING)) {
+        /* Keep heading to the most recent goal. */
+        grid = locDiff(mon.target.grid, mon.grid);
+      }
+      if (locIsZero(grid)) {
+        /* Try a random move and no longer track. */
+        grid = getMoveRandom(mon, state);
+        mon.mflag.off(MFLAG.TRACKING);
+      }
     }
   }
 
@@ -468,6 +481,9 @@ function monsterTurnTryPush(
  */
 export function monsterTurn(mon: Monster, state: GameState): void {
   let didSomething = false;
+
+  /* Let other group monsters know about the player. */
+  monsterGroupRouse(state, mon);
 
   /* Attempt a ranged attack (spell / breath) before moving. */
   if (state.monsterCast?.(mon, state)) return;

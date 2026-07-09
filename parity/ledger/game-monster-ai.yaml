@@ -37,11 +37,14 @@ upstream:
       - monster_effect_level (mon-timed.c) and monster_passes_walls
         (mon-predicate.c).
 notes: >-
-  DEFERRED (clear stubs, no behaviour yet): spellcasting and breath
-  (make_ranged_attack), reproduction (monster_turn_multiply / multiply_monster
-  and the num_repro cap), item pickup and crush (monster_turn_grab_objects,
-  RF_TAKE_ITEM / KILL_ITEM), group and escort tactics (get_move_bodyguard, the
-  group-surround fill, group_monster_tracking, monster_group_rouse), pack
+  NOW WIRED (were deferred): spellcasting and breath via the state.monsterCast
+  hook (make_ranged_attack, game/mon-ranged.ts), monster_group_rouse at the
+  top of monster_turn, and group_monster_tracking in get_move's fallback
+  branch (both game/mon-group.ts).
+  DEFERRED (clear stubs, no behaviour yet): reproduction (monster_turn_multiply
+  / multiply_monster and the num_repro cap), item pickup and crush
+  (monster_turn_grab_objects, RF_TAKE_ITEM / KILL_ITEM), bodyguard tactics and
+  the group-surround fill (get_move_bodyguard), pack
   ambush and "duck behind a wall" flight (get_move_find_hiding /
   get_move_find_safety and the swerving get_move_flee -- the afraid branch here
   just legs it in the reverse of the advance direction), damaging-terrain
@@ -58,7 +61,8 @@ verified-by:
   - monster-turn.test.ts: a hearing monster follows the noise flow and closes
     on the player each turn without stepping onto it; a visible monster
     beelines and melees an adjacent player (combat damage lands); an afraid
-    monster flees directly away; a NEVER_MOVE monster holds ground
+    monster flees directly away; a NEVER_MOVE monster holds ground; an aware
+    monster's turn rouses a sleeping group-mate (monster_group_rouse wiring)
   - monster-turn.test.ts (statistical, seeded): a non-random monster never
     staggers; RAND_50 staggers ~50% and RAND_25 ~25% of the time over 2000 rolls
   - scheduler.test.ts exercises process_monster_timed / monster_check_active
