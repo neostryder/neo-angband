@@ -41,6 +41,7 @@ export * from "./mon/monster";
 export * from "./mon/make";
 export * from "./mon/predicate";
 export * from "./mon/timed";
+export * from "./mon/take-hit";
 export * from "./obj/types";
 export * from "./obj/bind";
 export * from "./obj/object";
