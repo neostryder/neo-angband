@@ -15,8 +15,9 @@ import { addMon, makeState, monReg } from "./harness";
 import type { GameState } from "./context";
 import { basicPlayerActor } from "./project-cast";
 import type { CastContext } from "./project-cast";
-import { attachAttackEnv, registerAttackHandlers } from "./effect-attack";
-import type { AttackEffectEnv } from "./effect-attack";
+import { attachGameEnv } from "./effect-game-env";
+import type { GameEffectEnv } from "./effect-game-env";
+import { registerAttackHandlers } from "./effect-attack";
 
 const projections = bindProjections(
   JSON.parse(
@@ -46,10 +47,10 @@ function castContext(state: GameState): CastContext {
   return { projections, maxRange: 20, playerActor: basicPlayerActor(state) };
 }
 
-function env(state: GameState, attack: Partial<AttackEffectEnv> = {}): EffectContext {
-  return attachAttackEnv(
+function env(state: GameState, game: Partial<GameEffectEnv> = {}): EffectContext {
+  return attachGameEnv(
     { rng: state.rng },
-    { state, cast: castContext(state), ...attack },
+    { state, cast: castContext(state), ...game },
   );
 }
 

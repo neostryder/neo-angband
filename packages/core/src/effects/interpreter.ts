@@ -143,12 +143,13 @@ export interface EffectContext {
   /** Targeting slot; opaque until the monster domain lands. */
   target?: unknown;
   /**
-   * Attack-projection environment for the EF_BOLT/BEAM/BALL/... handlers,
-   * opaque here (it references game-layer state); game/effect-attack.ts casts
-   * it to AttackEffectEnv. Absent for a worldless interpreter, in which case
-   * the attack handlers no-op.
+   * Game-layer effect environment for handlers that need the live GameState
+   * (the attack projections, monster effects, ...), opaque here because it
+   * references game-layer state; game/effect-game-env.ts casts it to
+   * GameEffectEnv. Absent for a worldless interpreter, in which case those
+   * handlers no-op.
    */
-  attack?: unknown;
+  game?: unknown;
   /** Dungeon depth, for handlers/expressions that need it. */
   level?: number;
   /** z_info->food_value (constants.txt player:food-value, 100 upstream). */

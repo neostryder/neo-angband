@@ -32,8 +32,8 @@ upstream:
     items:
       - the effect_kind[] table slots for the attack codes: registered into the
         EffectRegistry by registerAttackHandlers, overriding registerCoreHandlers'
-        NOT_IMPLEMENTED stubs. Handlers read their game env from
-        context.env.attack (attached by attachAttackEnv) and no-op when absent.
+        NOT_IMPLEMENTED stubs. Handlers read their game env from context.env.game
+        (the shared GameEffectEnv, game/effect-game-env.ts) and no-op when absent.
 notes: >-
   The attack effect handlers, wired to the projection-casting spine
   (game/project-cast.ts) so the projection stack is now reachable from
@@ -42,11 +42,12 @@ notes: >-
   handlers live in game/ (not effects/) because they need the GameState, and
   are registered from here so the effects/ layer stays below game/.
 
-  AttackEffectEnv carries the GameState, the CastContext (bound projections,
-  max range, player-projection actor) and the acquired target / mon_current /
-  charm; attachAttackEnv puts it on an EffectContext. The player path is
-  complete; the monster-origin refinements (confused / target-monster / decoy
-  targeting, breath_dam) are the monster-spell layer's (#19).
+  The shared GameEffectEnv (game/effect-game-env.ts) carries the GameState, the
+  CastContext (bound projections, max range, player-projection actor) and the
+  acquired target / mon_current / charm; attachGameEnv puts it on an
+  EffectContext. The player path is complete; the monster-origin refinements
+  (confused / target-monster / decoy targeting, breath_dam) are the
+  monster-spell layer's (#19).
 deferred:
   - breath_dam(type, mon->hp) for monster breath damage (#19); the dice value is
     used until then.

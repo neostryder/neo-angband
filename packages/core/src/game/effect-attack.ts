@@ -11,8 +11,9 @@
  * (the layering rule keeps effects/ below game/). Instead they are registered
  * into the EffectRegistry from here with registerAttackHandlers, overriding the
  * NOT_IMPLEMENTED stubs registerCoreHandlers installed. They find their game
- * environment on context.env.attack (an AttackEffectEnv the caller attaches
- * with attachAttackEnv); with no such env they no-op (the worldless rule).
+ * environment on context.env.game (a GameEffectEnv the caller attaches with
+ * attachGameEnv, effect-game-env.ts); with no such env they no-op (the
+ * worldless rule).
  *
  * The player path is complete. The monster-origin refinements that belong to
  * the monster-spell layer are deferred there (#19): confused-direction /
@@ -28,13 +29,12 @@ import type { Loc } from "../loc";
 import { monsterIsPowerful } from "../mon/predicate";
 import { DIR_TARGET, effectCalculateValue } from "../effects/interpreter";
 import type {
-  EffectContext,
   EffectHandler,
-  EffectHandlerContext,
   EffectRegistry,
   Source,
 } from "../effects/interpreter";
-import type { GameState } from "./context";
+import { gameEnv } from "./effect-game-env";
+import type { GameEffectEnv } from "./effect-game-env";
 import {
   castAlter,
   castArc,
@@ -56,35 +56,10 @@ import {
   playerCastSource,
   resolveAimedTarget,
 } from "./project-cast";
-import type { CastContext, CastSource } from "./project-cast";
-
-/** The game environment the attack handlers read from context.env.attack. */
-export interface AttackEffectEnv {
-  state: GameState;
-  cast: CastContext;
-  /** target_get result for a DIR_TARGET player cast (targeting deferred, #24). */
-  aimed?: Loc;
-  /** cave->mon_current: the acting monster, excluded by PROJECT_LOS. */
-  monCurrent?: number;
-  /** player_has(PF_CHARM). */
-  charm?: boolean;
-}
-
-/** Attach an attack environment to an effect context for the attack handlers. */
-export function attachAttackEnv(
-  env: EffectContext,
-  attack: AttackEffectEnv,
-): EffectContext {
-  return { ...env, attack };
-}
-
-/** Read the attack env off the context, or null for a worldless interpreter. */
-function attackEnv(ctx: EffectHandlerContext): AttackEffectEnv | null {
-  return (ctx.env.attack as AttackEffectEnv | undefined) ?? null;
-}
+import type { CastSource } from "./project-cast";
 
 /** Build a CastSource from the effect origin. */
-function sourceFor(env: AttackEffectEnv, origin: Source): CastSource {
+function sourceFor(env: GameEffectEnv, origin: Source): CastSource {
   switch (origin.what) {
     case "player":
       return playerCastSource(env.state, env.charm !== undefined ? { charm: env.charm } : {});
@@ -104,12 +79,12 @@ function sourceFor(env: AttackEffectEnv, origin: Source): CastSource {
 }
 
 /** Whether the player is currently blind. */
-function playerBlind(env: AttackEffectEnv): boolean {
+function playerBlind(env: GameEffectEnv): boolean {
   return (env.cast.playerActor.timed[TMD.BLIND] ?? 0) > 0;
 }
 
 /** The player's level, for the level-scaled radius bonuses. */
-function playerLevel(env: AttackEffectEnv): number {
+function playerLevel(env: GameEffectEnv): number {
   return env.state.actor.player.lev;
 }
 
@@ -118,7 +93,7 @@ function playerLevel(env: AttackEffectEnv): number {
  * ------------------------------------------------------------------ */
 
 const handleBOLT: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
@@ -129,7 +104,7 @@ const handleBOLT: EffectHandler = (ctx) => {
 };
 
 const handleBEAM: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
@@ -140,14 +115,14 @@ const handleBEAM: EffectHandler = (ctx) => {
 };
 
 const handleBOLT_OR_BEAM: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const beam = ctx.beam + ctx.other;
   return env.state.rng.randint0(100) < beam ? handleBEAM(ctx) : handleBOLT(ctx);
 };
 
 const handleLINE: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
@@ -157,7 +132,7 @@ const handleLINE: EffectHandler = (ctx) => {
 };
 
 const handleALTER: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const source = sourceFor(env, ctx.origin);
   const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
@@ -166,7 +141,7 @@ const handleALTER: EffectHandler = (ctx) => {
 };
 
 const handleBALL: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
@@ -187,7 +162,7 @@ const handleBALL: EffectHandler = (ctx) => {
 };
 
 const handleBREATH: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   /* breath_dam(type, mon->hp) is the monster-spell layer's (#19); the dice
    * value stands in until then. */
@@ -209,7 +184,7 @@ const handleBREATH: EffectHandler = (ctx) => {
 };
 
 const handleARC: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
@@ -220,7 +195,7 @@ const handleARC: EffectHandler = (ctx) => {
 };
 
 const handleSHORT_BEAM: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, false);
   const source = sourceFor(env, ctx.origin);
@@ -233,7 +208,7 @@ const handleSHORT_BEAM: EffectHandler = (ctx) => {
 };
 
 const handleSPOT: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, false);
   const source = sourceFor(env, ctx.origin);
@@ -244,7 +219,7 @@ const handleSPOT: EffectHandler = (ctx) => {
 };
 
 const handleSPHERE: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, false);
   const source = sourceFor(env, ctx.origin);
@@ -256,7 +231,7 @@ const handleSPHERE: EffectHandler = (ctx) => {
 };
 
 const handleSTRIKE: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
@@ -268,7 +243,7 @@ const handleSTRIKE: EffectHandler = (ctx) => {
 };
 
 const handleSTAR: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
@@ -277,7 +252,7 @@ const handleSTAR: EffectHandler = (ctx) => {
 };
 
 const handleSTAR_BALL: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
@@ -287,7 +262,7 @@ const handleSTAR_BALL: EffectHandler = (ctx) => {
 };
 
 const handleSWARM: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
@@ -299,7 +274,7 @@ const handleSWARM: EffectHandler = (ctx) => {
 };
 
 const handleTOUCH: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
@@ -309,7 +284,7 @@ const handleTOUCH: EffectHandler = (ctx) => {
 };
 
 const handleTOUCH_AWARE: EffectHandler = (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
@@ -319,7 +294,7 @@ const handleTOUCH_AWARE: EffectHandler = (ctx) => {
 };
 
 const makeProjectLos = (aware: boolean): EffectHandler => (ctx) => {
-  const env = attackEnv(ctx);
+  const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, ctx.other ? true : false);
   const source =
@@ -361,8 +336,8 @@ const ATTACK_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
 /**
  * Register the attack projection handlers, overriding the stubs
  * registerCoreHandlers installed. Call after registerCoreHandlers. Each handler
- * reads its game environment from context.env.attack (attach it with
- * attachAttackEnv), and no-ops when it is absent.
+ * reads its game environment from context.env.game (attach it with
+ * attachGameEnv), and no-ops when it is absent.
  */
 export function registerAttackHandlers(registry: EffectRegistry): void {
   for (const [code, handler] of ATTACK_HANDLERS) {
