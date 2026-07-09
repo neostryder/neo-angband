@@ -1,0 +1,19 @@
+module: packages/core/src/guard.ts
+status: complete
+baseline: 4.2.6
+upstream:
+  - path: src/z-util.c
+    items:
+      - add_guardi (L937) / sub_guardi (L949): 32-bit saturating add/subtract,
+        clamped to [INT_MIN, INT_MAX] on overflow.
+      - add_guardi16 (L960) / sub_guardi16 (L972): 16-bit saturating add/
+        subtract, clamped to [-32768, 32767].
+notes: >-
+  The overflow-guarded integer arithmetic the object power/pricing engine and
+  the curse-attribute merge depend on. A curse can push a bonus to the int16
+  rail (add_guardi16 in apply_curse_attributes) and the curse-power delta
+  arithmetic saturates at int32 (add_guardi/sub_guardi in curse_power), so the
+  clamps are reproduced exactly rather than letting JS doubles run unbounded.
+verified-by:
+  - guard.test.ts: normal add/subtract, and saturation at INT_MAX/INT_MIN and
+    32767/-32768 for the 32-bit and 16-bit variants.

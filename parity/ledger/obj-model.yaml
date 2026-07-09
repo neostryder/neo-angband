@@ -20,6 +20,20 @@ upstream:
     items:
       - object_similar / object_stackable kind-only stack checks
       - object_absorb merge math (minus knowledge bookkeeping)
+  - path: src/obj-curse.c / obj-util.c
+    items:
+      - modify_weight_for_curse (obj-curse.c L382): a curse's multiplicative or
+        additive weight adjustment, clamped to the int16 range.
+      - apply_curse_attributes (obj-curse.c L450): merge every active curse's
+        weight/to_a/to_h/to_d/flags/modifiers/el_info into an object in place
+        (brands/slays never merged, per upstream; curse base AC is always 0 so
+        the ac merge is a no-op and CurseObject omits the field). Drives the
+        object_power curse pass. Used by curse_power in obj/power.ts.
+      - object_weight_one (obj-util.c L276): single-item weight including curse
+        adjustment; the curse table is an optional argument so combat callers
+        (which do not thread it, and whose objects carry no curses) get the
+        plain Math.max(weight, 0). Single canonical copy - the combat stub in
+        combat/brand-slay.ts was removed and now imports this one.
 counts:
   bases: 34 records (33 named; "gold" is nameless upstream)
   kinds: 375 ordinary + 14 INSTA_ART dummies

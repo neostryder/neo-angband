@@ -23,6 +23,7 @@
 import type { Rng } from "../rng";
 import type { Brand, Slay } from "../obj/types";
 import type { GameObject } from "../obj/object";
+import { objectWeightOne } from "../obj/object";
 import type { Monster } from "../mon/monster";
 import type { Player } from "../player/player";
 import { SKILL } from "../player/types";
@@ -33,7 +34,6 @@ import {
   improveAttackModifier,
   objectToDam,
   objectToHit,
-  objectWeightOne,
 } from "./brand-slay";
 import type { AttackModifier } from "./brand-slay";
 
