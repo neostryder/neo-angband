@@ -46,6 +46,8 @@ export interface ProjectionInfo {
   msgt: string | null;
   /** Colour name (resolved to an attr by the render layer). */
   color: string | null;
+  /** "hit by X" description used when the player cannot see the source. */
+  blindDesc: string | null;
 }
 
 /** One projection.json record (only the fields bound here are typed). */
@@ -61,6 +63,7 @@ export interface ProjectionRecordJson {
   wake?: number;
   msgt?: string;
   color?: string;
+  "blind-desc"?: string;
 }
 
 /**
@@ -105,6 +108,7 @@ export function bindProjections(
       wake: (rec.wake ?? 0) !== 0,
       msgt: rec.msgt ?? null,
       color: rec.color ?? null,
+      blindDesc: rec["blind-desc"] ?? null,
     };
   }
 
