@@ -58,6 +58,7 @@ import {
   squareDoorPower,
   squareRemoveAllTraps,
   squareSetDoorLock,
+  trapPredicates,
 } from "../game/trap";
 import type { TrapDeps } from "../game/trap";
 import { lookupTrap } from "../world/trap";
@@ -216,19 +217,35 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       playerActor: basicPlayerActor(state),
     };
     const envDeps: EffectEnvDeps = { timedTable: players.timed };
+
+    // The trap-backed square predicates feed every consumer that stubbed
+    // them (teleport landing checks, drop placement) once traps exist.
+    const preds = reg.traps ? trapPredicates(state) : null;
+    const teleport = preds
+      ? {
+          isPlayerTrap: preds.isPlayerTrap,
+          isWarded: preds.isWarded,
+          isWebbed: preds.isWebbed,
+        }
+      : undefined;
+
     installMonsterCasting(state, {
       registry: effects,
       cast,
       spells: reg.monsters.spells,
       envDeps,
       saveSkill: pstate.skills[SKILL.SAVE] ?? 0,
+      ...(teleport ? { teleport } : {}),
     });
+
     installObjCommands(registry, {
       constants: reg.constants,
       registry: effects,
       cast,
       envDeps,
       flavor: new FlavorKnowledge(reg.objects.ordinaryKindCount),
+      ...(teleport ? { teleport } : {}),
+      ...(preds ? { floorEnv: { isTrap: preds.isTrap } } : {}),
     });
 
     // Traps: instantiate the generation-marked grids as real traps (the
@@ -236,7 +253,15 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     // lock the doors generation rolled locked, and install disarm + the
     // step-onto-trap hook.
     if (reg.traps) {
-      trapDeps = { kinds: reg.traps, effects: { registry: effects, cast, envDeps } };
+      trapDeps = {
+        kinds: reg.traps,
+        effects: {
+          registry: effects,
+          cast,
+          envDeps,
+          ...(teleport ? { teleport } : {}),
+        },
+      };
       for (const grid of booted.trapGrids) {
         placeTrap(state, grid, -1, booted.depth, trapDeps);
       }

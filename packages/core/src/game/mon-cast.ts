@@ -33,6 +33,7 @@ import type { Monster } from "../mon/monster";
 import { buildEffectContext } from "./effect-env";
 import type { EffectEnvDeps } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
+import type { TeleportEnv } from "./effect-teleport";
 import type { CastContext } from "./project-cast";
 import type { GameState } from "./context";
 
@@ -68,6 +69,8 @@ export interface DoMonSpellDeps {
   saveSkill: number;
   /** Extra subtype / base-value injections (summon, shape, mods). */
   inject?: EffectBuilderInjections;
+  /** Teleport-family seams (trap predicates, level change; game/trap.ts). */
+  teleport?: TeleportEnv;
   hooks?: MonSpellHooks;
 }
 
@@ -177,6 +180,7 @@ export function doMonSpell(
     ...(deps.envDeps.takeHitHooks
       ? { takeHitHooks: deps.envDeps.takeHitHooks }
       : {}),
+    ...(deps.teleport ? { teleport: deps.teleport } : {}),
   });
 
   deps.registry.effectDo(chain, ctx, {

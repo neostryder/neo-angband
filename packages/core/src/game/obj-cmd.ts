@@ -40,6 +40,8 @@ import {
 import { FlavorKnowledge } from "../obj/knowledge";
 import type { GameState, PlayerCommand } from "./context";
 import { dropNear, floorObjectForUse, floorPile } from "./floor";
+import type { FloorEnv } from "./floor";
+import type { TeleportEnv } from "./effect-teleport";
 import {
   gearGet,
   gearObjectForUse,
@@ -80,6 +82,10 @@ export interface ObjCmdDeps {
   flavor?: FlavorKnowledge;
   /** Extra effect-builder injections (summon/shape names, mod bases). */
   inject?: EffectBuilderInjections;
+  /** Teleport-family seams (trap predicates; wired by game/trap.ts). */
+  teleport?: TeleportEnv;
+  /** Floor-pile seams (isTrap for drop placement). */
+  floorEnv?: FloorEnv;
   env?: ObjCmdEnv;
 }
 
@@ -138,6 +144,7 @@ export function invenDrop(
   state: GameState,
   handle: number,
   amt: number,
+  floorEnv: FloorEnv = {},
 ): GameObject | null {
   if (amt <= 0) return null;
   const obj = gearGet(state.gear, handle);
@@ -155,7 +162,7 @@ export function invenDrop(
     handle,
     amt,
   );
-  dropNear(state, dropped, 0, state.actor.grid, false);
+  dropNear(state, dropped, 0, state.actor.grid, false, floorEnv);
   return dropped;
 }
 
@@ -394,6 +401,7 @@ export function useAux(
     const ctx = attachGameEnv(buildEffectContext(state, deps.envDeps), {
       state,
       cast: deps.cast,
+      ...(deps.teleport ? { teleport: deps.teleport } : {}),
     });
     const ident = { value: false };
     const used = deps.registry.effectDo(chain, ctx, {
@@ -409,7 +417,7 @@ export function useAux(
     if (!used && deductBefore) {
       /* Restore the tentative deduction. */
       if (use === USE.SINGLE && singleUsed) {
-        dropNear(state, singleUsed, 0, state.actor.grid, true);
+        dropNear(state, singleUsed, 0, state.actor.grid, true, deps.floorEnv);
       } else if (use === USE.CHARGE) {
         obj.pval = charges;
       } else if (use === USE.TIMEOUT) {
@@ -540,7 +548,7 @@ export function installObjCommands(
     if (!obj) return 0;
     const amt =
       typeof args["quantity"] === "number" ? args["quantity"] : obj.number;
-    return invenDrop(state, handle, amt)
+    return invenDrop(state, handle, amt, deps.floorEnv)
       ? Math.trunc(state.z.moveEnergy / 2)
       : 0;
   });

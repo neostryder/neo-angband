@@ -64,8 +64,29 @@ export interface TrapEnv {
 export interface TrapDeps {
   kinds: readonly TrapKind[];
   /** The effect stack (same registry/cast/envDeps bundle as obj-cmd). */
-  effects?: Pick<ObjCmdDeps, "registry" | "cast" | "envDeps" | "inject">;
+  effects?: Pick<
+    ObjCmdDeps,
+    "registry" | "cast" | "envDeps" | "inject" | "teleport"
+  >;
   env?: TrapEnv;
+}
+
+/**
+ * The trap-backed TeleportEnv / FloorEnv predicates (square_isplayertrap,
+ * square_iswarded, square_iswebbed) for the modules that stubbed them.
+ */
+export function trapPredicates(state: GameState): {
+  isPlayerTrap: (grid: Loc) => boolean;
+  isWarded: (grid: Loc) => boolean;
+  isWebbed: (grid: Loc) => boolean;
+  isTrap: (grid: Loc) => boolean;
+} {
+  return {
+    isPlayerTrap: (grid) => squareIsPlayerTrap(state, grid),
+    isWarded: (grid) => squareIsWarded(state, grid),
+    isWebbed: (grid) => squareIsWebbed(state, grid),
+    isTrap: (grid) => squareIsTrap(state, grid),
+  };
 }
 
 function gridIdx(state: GameState, grid: Loc): number {
@@ -366,7 +387,11 @@ function runTrapEffect(
   const chain = buildObjectEffectChain(records, state, deps.effects.inject);
   const ctx = attachGameEnv(
     buildEffectContext(state, deps.effects.envDeps),
-    { state, cast: deps.effects.cast },
+    {
+      state,
+      cast: deps.effects.cast,
+      ...(deps.effects.teleport ? { teleport: deps.effects.teleport } : {}),
+    },
   );
   deps.effects.registry.effectDo(chain, ctx, {
     origin: sourceTrap(trap),
