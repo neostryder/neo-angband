@@ -23,7 +23,7 @@ import { DDGRID } from "../loc";
 import type { Loc } from "../loc";
 import { pyAttack } from "../combat/melee";
 import type { GameState, PlayerCommand } from "./context";
-import { movePlayer, squareMonster } from "./context";
+import { deleteMonster, movePlayer, squareMonster } from "./context";
 
 /**
  * A player action: mutate the state for `cmd` and return the energy spent
@@ -89,8 +89,7 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
       { monVisible: true },
     );
     if (result.monsterDied) {
-      state.monsters[target.midx] = null;
-      state.chunk.setMon(next, 0);
+      deleteMonster(state, target.midx);
     }
     return state.z.moveEnergy;
   }

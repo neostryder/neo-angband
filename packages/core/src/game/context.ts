@@ -205,6 +205,19 @@ export function monsterSwap(state: GameState, grid1: Loc, grid2: Loc): void {
 }
 
 /**
+ * delete_monster_idx (mon-make.c), minimal: clear the monster's square and
+ * free its slot. The held-object drop, monster-group, mimic, racial-counter
+ * and targeting/redraw bookkeeping are DEFERRED with their subsystems (floor
+ * objects, groups, lore); the caller runs monster_death (drops) beforehand.
+ */
+export function deleteMonster(state: GameState, midx: number): void {
+  const mon = state.monsters[midx];
+  if (!mon) return;
+  state.chunk.setMon(mon.grid, 0);
+  state.monsters[midx] = null;
+}
+
+/**
  * Mark the player's starting grid occupied (square(c, grid)->mon = -1) and
  * set actor.grid, mirroring how the player is placed on a fresh level.
  */
