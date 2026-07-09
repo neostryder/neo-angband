@@ -13,9 +13,9 @@
  * (Human Warrior) for now.
  *
  * Still front-end-in-progress and ledgered as such: per-hit combat messages
- * (the message log is not wired yet), stairs/level regeneration, and item
- * pickup are deferred; the player starts unarmed until the equipment model
- * and starting-kit wield land.
+ * (the message log is not wired yet) and stairs/level regeneration are
+ * deferred. Item pickup is live: gold and auto-pickup items are collected on
+ * stepping, and 'g' picks up from the pile underfoot.
  */
 
 import {
@@ -28,6 +28,7 @@ import {
   squareIsSeen,
   loc,
   STAT,
+  installPickup,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -58,8 +59,22 @@ const chunk = state.chunk;
 const features = booted.registries.features;
 const constants = booted.registries.constants;
 
-let message = `Welcome. Numpad or arrow keys to move. (seed ${seed}, depth ${depth})`;
+let message = `Welcome. Move with numpad/arrows; 'g' picks up. (seed ${seed}, depth ${depth})`;
 let dead = false;
+
+// Reinstall the pickup commands with message hooks so gold and item pickup
+// report on the message line.
+installPickup(state, registry, {
+  constants,
+  env: {
+    onGold: (total, name, single): void => {
+      message = `You have found ${total} gold pieces worth of ${single ? name : "treasures"}.`;
+    },
+    onPickup: (obj): void => {
+      message = `You have ${obj.kind.name} (${obj.number}).`;
+    },
+  },
+});
 
 const Z: ViewConstants = {
   maxSight: constants.maxSight,
@@ -90,13 +105,19 @@ function gridIndex(x: number, y: number): number {
   return y * chunk.width + x;
 }
 
-// Static floor items (pickup is deferred, so these do not move).
-const objectAt = new Map<number, { ch: string; css: string }>();
-for (const o of booted.objects) {
-  objectAt.set(gridIndex(o.grid.x, o.grid.y), {
-    ch: o.obj.kind.dChar,
-    css: colorToCss(colorCharToAttr(o.obj.kind.dAttr)),
-  });
+// Live floor items from the engine's piles (pile head = newest, drawn on
+// top exactly as upstream lists the first object).
+function objectIndex(): Map<number, { ch: string; css: string }> {
+  const map = new Map<number, { ch: string; css: string }>();
+  for (const pile of state.floor.values()) {
+    const o = pile[0];
+    if (!o || !o.grid) continue;
+    map.set(gridIndex(o.grid.x, o.grid.y), {
+      ch: o.kind.dChar,
+      css: colorToCss(colorCharToAttr(o.kind.dAttr)),
+    });
+  }
+  return map;
 }
 
 // Grids the player has ever seen, drawn dim when out of view (a front-end
@@ -187,6 +208,7 @@ function render(): void {
   const camX = px - Math.floor(mapCols / 2);
   const camY = py - Math.floor(mapRows / 2);
   const monsterAt = monsterIndex();
+  const objectAt = objectIndex();
 
   for (let sy = 0; sy < mapRows; sy++) {
     for (let sx = 0; sx < mapCols; sx++) {
@@ -244,6 +266,12 @@ function advance(): void {
 
 window.addEventListener("keydown", (ev) => {
   if (dead) return;
+  if (ev.key === "g" && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+    ev.preventDefault();
+    commandBuffer.push({ code: "pickup" });
+    advance();
+    return;
+  }
   const binding = resolveKey(ev, roguelikeKeys);
   if (!binding) return;
   ev.preventDefault();
