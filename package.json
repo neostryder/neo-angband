@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Modern TypeScript port of Angband: web-first, moddable, replayability-focused",
+  "author": "neostryder (RPGM Tools)",
   "license": "GPL-2.0-only",
   "packageManager": "pnpm@10.17.0",
   "engines": {

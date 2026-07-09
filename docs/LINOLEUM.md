@@ -4,15 +4,18 @@ Linoleum is a manifest-backed, loose-pack graphics format: instead of one
 large tilesheet plus pixel coordinates, a pack is a directory of individual
 PNG assets addressed through explicit, auditable target maps.
 
-The format originated as a feature of the upstream Angband fork (see
+The format originated as a feature of neostryder's own Angband fork (see
 `docs/hacking/linoleum.rst` there, and the converter
-`scripts/build-linoleum-packs.ps1`). This port replicates it, but as a
-BUNDLED MOD rather than an in-core feature (PORT_PLAN.md decision 18):
-`packages/linoleum` is a behaviorally faithful TypeScript port of the
-converter, and the tiles ship as **neo-linoleum**, a tile-pack mod loaded
-through the ordinary mod pipeline and enabled by default. It is the
-reference tile pack - proof the tile-pack seam is real - and, like any mod,
-fully removable. Everything below describes the pack format that mod uses.
+`scripts/build-linoleum-packs.ps1`). It is NOT part of the official Angband
+4.2.6 parity tag, so it exists ONLY as a mod - never in core (PORT_PLAN.md
+decisions 18 and 26). It ships as **neo-linoleum**, a STANDALONE
+`tiles`-shape pack (id `linoleum`) loaded through the ordinary mod pipeline,
+enabled by default, independent of and never combined with the QoL or
+`bug-fixes` mods, and - like any mod - fully removable. `packages/linoleum`
+is the build-time converter (a behaviorally faithful TypeScript port of the
+fork's converter) that produces this pack; it is tooling, not a core feature.
+It is the reference tile pack - proof the tile-pack seam is real. Everything
+below describes the pack format that mod uses.
 
 ## Pack layout
 

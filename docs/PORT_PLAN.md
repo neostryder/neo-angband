@@ -135,11 +135,13 @@ documentation lives here under `docs/`.
 18. **Everything-new-is-a-mod, and bundled mods** (ratified 2026-07-08):
     except for the mod architecture itself, every new feature, behavior, or
     visual - including beyond-parity systems (decision 14) and the v1 QoL
-    budget (decision 4) - ships as a mod, never baked into the port. Two
-    official mods are BUNDLED with the port and enabled by default (both
-    fully removable): **neo-linoleum** (the tile packs; formerly treated as
-    an in-core feature) and a **QoL mod** (curated fixes and
-    UI-level quality-of-life). Cheaty mods are explicitly permitted: a mod
+    budget (decision 4) - ships as a mod, never baked into the port.
+    Official mods are BUNDLED with the port and enabled by default, each a
+    separate standalone pack and fully removable on its own: **neo-linoleum**
+    (the tile packs; formerly treated as an in-core feature - see decision 26)
+    and a **QoL mod** (UI-level quality-of-life); the `bug-fixes` mod (decision
+    24) is a third. They are never combined into one pack. Cheaty mods are
+    explicitly permitted: a mod
     may add, patch, replace, or remove anything - up to and including the
     rules that make the game Angband or even a roguelike. The engine warns
     and labels; it does not forbid.
@@ -250,9 +252,21 @@ documentation lives here under `docs/`.
     earlier "everything known" convention (treating the object-knowledge rune
     mask as all-ones so item modifiers applied immediately) is REVOKED: runes
     are UNKNOWN by default exactly as upstream, and an item's pval modifiers
-    stay inert until their rune is learned. Every default and initial-state
-    value the port ships must match the original's; deviations require an
-    explicit approved-variation decision here.
+    stay inert until their rune is learned. The faithful counterpart is that
+    wearing an item learns its modifier runes at once (obj-knowledge.c
+    object_learn_on_wield, ported in obj/knowledge.ts), so a worn +N modifier
+    applies immediately and its rune is discovered in the same step; resists
+    and combat bonuses apply to the real state regardless of knowledge and are
+    learned by use. Every default and initial-state value the port ships must
+    match the original's; deviations require an explicit approved-variation
+    decision here.
+26. **Linoleum is a standalone tiles mod** (ratified 2026-07-08): Linoleum is
+    not part of the upstream 4.2.6 tag, so it exists ONLY as a mod, never in
+    the parity core. It ships as its own standalone `tiles`-shape pack (id
+    `linoleum`), independent of and never combined with the QoL or `bug-fixes`
+    mods. Each bundled mod (decisions 18, 24) is a separate pack, installable
+    and removable on its own; `packages/linoleum` is the build-time converter
+    that produces the Linoleum tile pack, not an in-core feature.
 
 ## Phases
 

@@ -62,6 +62,15 @@ source so future upstream releases can be merged deliberately. This is a
 community port, not an official Angband project - all honor to the Angband
 maintainers and three decades of contributors whose work this builds on.
 
+## Author
+
+Built and maintained by [neostryder](https://github.com/neostryder) at RPGM
+Tools. The bundled mods are by the same author: the
+[Linoleum](docs/LINOLEUM.md) tile packs and the
+[bug-fixes](docs/modding/BUG_FIXES.md) quality-of-life patch set - both ship
+as standalone mods, not as part of the parity core. All honor, as above, to
+the upstream Angband maintainers and contributors whose work this builds on.
+
 ## License
 
 Dual-licensed under GPLv2 or the traditional Angband license, matching
