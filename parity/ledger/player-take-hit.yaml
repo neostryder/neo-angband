@@ -1,0 +1,48 @@
+module: packages/core/src/player/take-hit.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/player-util.c
+    items:
+      - player_apply_damage_reduction (L167): INVULN zeroes sub-9000 damage,
+        then the flat state.dam_red and percentage state.perc_dam_red cuts;
+        never returns negative.
+      - take_hit (L197): decrease the player's hit points and set the death flag
+        if fatal. Paranoia guard (dead / non-positive damage), disturb, subtract
+        hp, the PF_COMBAT_REGEN mana reward for eligible killers, the PR_HP
+        redraw, the bloodlust save, the death routine, and the low-hitpoint
+        warning with the first-notice bell.
+notes: >-
+  The player analog of mon_take_hit and the concrete backing for the effect
+  interpreter's EffectPlayer.takeHit / applyDamageReduction capabilities.
+  Damage reduction is a separate call the caller applies first (so the
+  post-reduction amount can be shown) exactly as upstream. take_hit operates on
+  a narrow structural TakeHitTarget (chp/mhp/lev/isDead/timed/hitpointWarn) so
+  it is decoupled from the full Player; the game / effect layer adapts its state
+  and rng to it. Heavy or downstream consequences are injected as hooks (same
+  seam pattern as mon/take-hit.ts): onDeath (the death routine), combatRegen
+  Reward (player_adjust_mana_precise), cheatDeath (wizard escape), plus the
+  disturb / PR_HP / bell UI hooks. The bloodlust save consumes the RNG exactly
+  as upstream (randint0(10) picks the flavour message; survival is
+  deterministic). Integer maths (the warning threshold, the percentage cut)
+  match upstream.
+deferred:
+  - onDeath supplies the full death routine (died_from, total_winner reset,
+    death_knowledge, score, EVENT_DEATH); take_hit only sets isDead and calls
+    the hook. cheatDeath defaults to absent, so death is final - matching the
+    ratified no-save-scum policy (decision 16); the wizard/cheat_live "Die?"
+    prompt wires in with the wizard layer.
+  - The COMBAT_REGEN reward's PF_COMBAT_REGEN check and mana maths live in the
+    injected combatRegenReward hook (the caller has the player flags + mana);
+    take_hit does the kb_str exclusion filter itself, faithfully.
+  - disturb, the PR_HP redraw, and bell() are UI hooks; message text is emitted
+    verbatim (no substitution needed for these strings).
+verified-by:
+  - player/take-hit.test.ts (11 tests): invulnerability zeroes sub-9000 damage
+    but not a 9000+ hit; flat-then-percentage reduction; reduction floors at 0;
+    no-op for non-positive damage or an already dead player; hp reduction with
+    the COMBAT_REGEN reward for normal killers but not poison / fatal wound /
+    starvation; death sets isDead and runs onDeath with the "You die." message;
+    bloodlust survives a lethal blow; cheat-death survives when the hook allows;
+    the low-hitpoint warning rings the bell on first crossing but not when
+    already below the threshold.
