@@ -53,10 +53,11 @@ deferred:
   - pack_size overflow (combine_pack / pack_overflow / inven_carry_num /
     pack_slots_used): a birth kit never overflows, so the z_info->pack_size
     limit is not enforced.
-  - The knowledge twin (obj->known) and the whole obj-knowledge block in
-    player_outfit (obj_k obvious knowledge, object_flavor_aware,
-    object_set_base_known, update_player_object_knowledge), consistent with
-    obj/object.ts.
+  - The DISPLAY half of obj-knowledge in player_outfit (object_flavor_aware,
+    object_set_base_known, update_player_object_knowledge) and the obj->known
+    twin, consistent with obj/object.ts. NOT deferred: modifier-rune learning,
+    which wieldObject now runs via object_learn_on_wield (obj/knowledge.ts) so
+    worn pval bonuses go live immediately.
   - The equip_cnt UI counter (p->upkeep->equip_cnt).
   - The running carried-weight total (p->upkeep->total_weight beyond the
     reset to 0); recomputing it belongs to the calc/inventory owner.

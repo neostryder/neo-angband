@@ -18,8 +18,10 @@
  *   upstream until it lands); eopts birth-option exclusion (birth options
  *   not modelled - treated as "no exclusions", which equals upstream with
  *   default birth options); the pack_size overflow enforcement (a birth kit
- *   never overflows); the knowledge twin (obj->known) and equip_cnt UI
- *   counter; the take-off / inventory-command layer; and the quiver.
+ *   never overflows); the display knowledge twin (obj->known) and equip_cnt
+ *   UI counter; the take-off / inventory-command layer; and the quiver.
+ *   Wielding DOES learn modifier runes (obj-knowledge.c object_learn_on_wield,
+ *   the only knowledge that changes real bonuses); see obj/knowledge.ts.
  */
 
 import type { Constants } from "../constants";
@@ -28,6 +30,7 @@ import type { Rng } from "../rng";
 import type { ObjRegistry } from "../obj/bind";
 import { tvalFindIdx } from "../obj/bind";
 import type { GameObject } from "../obj/object";
+import { objectLearnOnWield } from "../obj/knowledge";
 import {
   distributeCharges,
   objectAbsorb,
@@ -248,8 +251,9 @@ export function invenCarry(
  * object_split in wield_all / inven_wield). Returns the filled slot, or -1
  * if the object cannot be wielded or the slot is already occupied.
  *
- * The knowledge twin (object_learn_on_wield) and the equip_cnt UI counter
- * are DEFERRED (see the module ledger).
+ * object_learn_on_wield runs the instant the item is worn (as in wield_all
+ * and inven_wield), so a worn item's modifier runes become known and its
+ * pval bonuses go live at once. The equip_cnt UI counter is DEFERRED.
  */
 export function wieldObject(gear: Gear, player: Player, handle: number): number {
   const obj = gear.store.get(handle);
@@ -269,6 +273,10 @@ export function wieldObject(gear: Gear, player: Player, handle: number): number 
   const idx = gear.pack.indexOf(handle);
   if (idx >= 0) gear.pack.splice(idx, 1);
   player.equipment[slot] = handle;
+
+  /* Learn the runes that wearing makes obvious (obj-knowledge.c wield_all
+   * L494-495): the modifier runes, so worn pval bonuses apply immediately. */
+  objectLearnOnWield(player, obj);
 
   return slot;
 }
@@ -316,11 +324,15 @@ export interface OutfitOptions {
  * option, prep it with MINIMISE at level 0 (object_prep), set number and
  * ORIGIN_BIRTH, carry it (invenCarry), and finally wield_all.
  *
+ * wield_all learns each worn item's modifier runes (object_learn_on_wield);
+ * for a default class kit those items carry no modifiers, so obj_k stays
+ * empty at birth exactly as upstream.
+ *
  * DEFERRED (see the module ledger): the p->au -= object_value_real(obj, num)
  * starting-gold deduction (obj-value.c not ported); the eopts birth-option
  * exclusion (birth options not modelled - treated as no exclusions, which
- * equals upstream with default birth options); and the whole obj-knowledge
- * block (obj_k / object_flavor_aware / object_set_base_known).
+ * equals upstream with default birth options); and the display half of the
+ * obj-knowledge block (object_flavor_aware / object_set_base_known / obj->known).
  */
 export function outfitPlayer(
   gear: Gear,
@@ -340,7 +352,8 @@ export function outfitPlayer(
    * side, which is DEFERRED; we mirror only the reset upstream performs). */
   player.upkeep.totalWeight = 0;
 
-  /* DEFERRED: the obj_k obvious-knowledge block (knowledge system). */
+  /* Modifier runes are learned per item at wield_all (below); the display
+   * half of the knowledge block (flavor_aware / base_known) is DEFERRED. */
 
   /* Give the player starting equipment. */
   for (const si of player.cls.startItems) {
