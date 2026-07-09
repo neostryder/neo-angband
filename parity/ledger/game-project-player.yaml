@@ -1,0 +1,41 @@
+module: packages/core/src/game/project-player.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/project-player.c
+    items:
+      - project_p (L800): the player projection driver - seen/blind resolution,
+        the killer/self gating, the blind "hit by X" message, adjust_dam for
+        resistance/immunity/vulnerability, self-damage scaling, damage reduction
+        (player_apply_damage_reduction), take_hit, then the per-type side effects
+        and any extra damage they add, and disturb. Implements the onPlayer seam
+        of project() (world/project.ts).
+notes: >-
+  The player-side counterpart of the project_m driver. The damage core is fully
+  portable and wired directly: adjust_dam (world/projection.ts), take_hit and
+  player_apply_damage_reduction (player/take-hit.ts). ICE uses the COLD
+  resistance for the adjust_dam lookup, exactly as upstream. Self damage is
+  scaled by 1/10 and reduction affects only the dealt damage, not the value the
+  side-effect handler keys off - matching project_p's ordering. The per-PROJ-type
+  player handlers (project_player_handler_*) are injected as the onSideEffects
+  hook because they depend on subsystems not yet modelled (inven_damage /
+  inventory #20, EF_DRAIN_STAT #18, player_exp_lose / experience); the killer
+  name (monster_desc / trap name / "yourself") is resolved by the caller. This
+  is the same seam discipline as the project_m driver.
+deferred:
+  - The per-type side effects themselves (blindness from light, stun from sound,
+    cuts from shards, poison, confusion, stat/exp drain, inventory damage) land
+    with their subsystems and the player-timed adapter; supplied via
+    onSideEffects.
+  - The decoy-hit branch (square_isdecoyed / square_destroy_decoy) is omitted -
+    decoys are not modelled (create-decoy effect not ported).
+  - update_smart_learn (the monster learning the player's resistances) and the
+    killer-name resolution are the caller's responsibility.
+verified-by:
+  - game/project-player.test.ts (10 tests): returns false when the player is not
+    in the grid and when a player source lacks self; applies unresisted damage;
+    deals none to an immune player; scales self damage by 1/10; applies flat
+    damage reduction; kills the player and fires the take_hit death hook;
+    announces a blind hit with the projection's blind description; applies extra
+    damage from the side-effect hook; and passes the adjusted damage and monster
+    power to that hook.
