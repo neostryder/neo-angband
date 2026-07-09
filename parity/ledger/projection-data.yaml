@@ -1,0 +1,47 @@
+module: packages/core/src/world/projection.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/project.h + lib/gamedata/projection.txt
+    items:
+      - struct projection (loaded from projection.txt): the behavioural data per
+        PROJ_ type - resistance numerator / denominator, damage divisor and cap,
+        the obvious and wake flags, msgt and colour. Bound to ProjectionInfo[]
+        by bindProjections, indexed by PROJ value.
+  - path: src/project-player.c
+    items:
+      - adjust_dam (L48): scale incoming damage by the player's resistance level
+        for a projection type - immune (0), vulnerable (x4/3), or the variable
+        numerator/denominator division per resist level, with the acid-vs-armour
+        halving and the aspect-inverted denominator.
+notes: >-
+  The generated projections.ts carries only the PROJ names/enum; the behavioural
+  data lives in projection.json and is bound here. Critical ordering fact: the
+  projection.txt / .json record order does NOT match the PROJ enum order
+  (upstream matches records to slots by code at load, e.g. AWAY_UNDEAD /
+  AWAY_SPIRIT / AWAY_EVIL differ between list-projections.h and projection.txt),
+  so bindProjections places each record at its resolved PROJ[code] slot and
+  throws on an unknown code or an unfilled / duplicated slot. adjust_dam is kept
+  pure: the caller looks up the resistance level (applying the ICE->COLD remap
+  and equip_learn side effect) and passes it in, the same split project_p and
+  the attack effect handlers need. The variable-resist denominator is evaluated
+  with the aspect inverted (least damage uses the largest divisor), matching
+  upstream; integer division via Math.trunc throughout.
+deferred:
+  - adjust_dam's internal el_info[res_type].res_level lookup, the ICE->COLD
+    res_type remap, equip_learn_element, and minus_ac(p) are the caller's
+    responsibility (they read live player state / knowledge); adjustDam takes
+    the resolved resistLevel and a minusAc flag.
+  - The damage-cap and divisor are bound but not applied here; the attack effect
+    handlers apply the cap when they compute breath / ball damage, and the
+    geometry layer (world/project.ts) computes its own distance falloff.
+  - Colour is kept as the raw name for the render layer to resolve; msgt as the
+    MSG_ name.
+verified-by:
+  - world/projection.test.ts (8 tests): binds all 56 types in PROJ order despite
+    the differing record order; captures element resist data + obvious/wake and
+    the environs types' absence of a denominator/wake; adjustDam returns 0 when
+    immune, x4/3 when vulnerable, unchanged with no resist, /3 per level for
+    ACID's constant denominator (compounding at level 2), the acid-vs-armour
+    halving, and LIGHT's variable 6/denominator with the aspect correctly
+    inverted (minimise damage -> maximise divisor).
