@@ -1,0 +1,57 @@
+module: packages/core/src/store/bind.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/store.c
+    items:
+      - init_parse_stores / store_parser_new / store_owner_parser_new: the
+        store-definition parse (parse_store, parse_owner, parse_slots,
+        parse_turnover, parse_normal, parse_always, parse_buy, parse_buy_flag).
+      - parse_owner (L236): owners kept in list order with oidx; bound here as
+        StoreOwner.index (parse order), name, and maxCost (purse).
+      - parse_normal (L162) / parse_always (L185): the normal_table and
+        always_table stocking lists, resolved from tval + sval names to kinds.
+      - parse_always book branch (L208-231): an always line with NO sval means
+        "stock every TOWN book of this tval" (object_kind_to_book(kind)->dungeon
+        gate). Captured as BoundStore.alwaysBookTvals; expansion is DEFERRED.
+      - parse_buy (L254) / parse_buy_flag (L268): the buy list; each entry is a
+        tval, optionally flag-qualified. 4.2.6 data uses only bare tvals.
+      - store_at (L77): resolved here as StoreRegistry.byFeat (entrance feature
+        -> store).
+  - path: src/store.h
+    items:
+      - struct store, struct owner, struct object_buy: the bound BoundStore /
+        StoreOwner / ObjectBuy shapes.
+notes: >-
+  Data-binding slice of the store subsystem: the eight 4.2.6 stores (general,
+  armoury, weaponsmith, bookseller, alchemist, magic shop, black market, home)
+  bound from packages/content/pack/store.json into BoundStore records. Each
+  store's entrance feature comes from the FEAT_* name in its `store` key; the
+  black market and home carry owners/slots but no fixed tables, and a store
+  with no buy list "buys anything" (store_will_buy's !store->buy), while the
+  home (FEAT_HOME) accepts anything regardless. The bookseller's `always:` book
+  lines name a tval with no sval; upstream expands each to the town books of
+  that tval, filtered by the class-book dungeon flag - that metadata is not
+  bound yet, so the tvals are captured in alwaysBookTvals and resolved into
+  alwaysTable when store_init lands. buy entries model an optional OF_* flag
+  (object_buy.flag) for mods; 4.2.6 uses only bare tvals.
+deferred:
+  - The behavioural half of store.c: price_item (needs object_value /
+    object_value_real, i.e. object_power in obj-power.c, not ported); stock
+    maintenance (store_maint, mass_produce, store_create_random,
+    store_create_item); store_carry / home_carry / store_check_num /
+    store_will_buy; store_shuffle / store_reset / store_update; and the
+    buy/sell/stash/retrieve commands (do_cmd_buy etc., need the command queue
+    and player gold).
+  - The town-book expansion of alwaysBookTvals (needs class-book metadata).
+  - The runtime current-owner selection (store->owner chosen at store_init):
+    owners are bound as a list; picking one needs the seeded Rng at init.
+  - Town-level generation / store placement (the town map), and all of
+    ui-store.c (the store UI).
+verified-by:
+  - store/bind.test.ts: all eight stores bind; the general store's owners
+    (Bilbo first, purse 5000), nine always kinds (incl. a Wooden Torch), six
+    normal kinds, nine bare-tval buy entries, turnover 2 and slots 0..4 are
+    pinned; the bookseller defers four book tvals with an empty alwaysTable;
+    the black market has empty tables and a null (buys-anything) buy list;
+    the home binds as storage; byFeat resolves STORE_MAGIC and rejects FLOOR.
