@@ -12,31 +12,67 @@ upstream:
         k-based (minor-axis) range accounting. The initial grid is never saved.
       - projectable (L366): run project_path over max_range and require a
         non-empty path ending on a passable grid that equals the target.
+      - project (L576): the generic beam/bolt/ball/arc driver, split into a pure
+        computeProjection (blast geometry + damage falloff) and the project()
+        orchestration. Resolves the source (PROJECT_JUMP, origin, or finish),
+        normalizes a zero-width arc into a THRU beam, walks the path collecting
+        beam grids (all) or bolt/ball grids (final only, exploding before a wall
+        when rad>0), gathers the explosion's blast grids within the radius using
+        LOS from the centre and arc-angle rejection, precomputes dam_at_dist
+        (standard (dam+i)/(i+1) falloff or the diameter_of_source form), and
+        sorts grids outward from the centre. Then marks SQUARE_PROJECT, and in
+        upstream order runs bolt visuals, blast visuals, project_o, project_m
+        (with single-target player tracking), project_p (with player-death early
+        out), and project_f, clearing the marks at the end.
+  - path: src/gen-util.c
+    items:
+      - get_angle_to_grid[41][41] (L63): the angle-in-degrees to each grid
+        offset (dx,dy) from a centre, indexed [dy+20][dx+20], used to delineate
+        arc cones. Copied verbatim; [20][20] is the 255 centre sentinel.
   - path: src/project.h
     items:
       - the PROJECT_* behaviour flags (JUMP/BEAM/THRU/STOP/GRID/ITEM/KILL/HIDE/
         AWARE/SAFE/ARC/PLAY/INFO/SHORT/SELF/ROCK).
 notes: >-
-  Pure projection geometry over a Chunk, the foundation for targeting and for
-  the project() blast driver + GF_ handlers (later increments). The C array
-  out-parameter is returned as a Loc[] whose length is upstream's return n.
-  Distance is the game's octagonal metric via the slope walk. Verified against
-  hand-derived paths, including the 4:2 bolt (0,0)->(4,2) = (1,0),(2,1),(3,1),
-  (4,2). projectable takes max_range explicitly; callers apply the PROJECT_SHORT
-  quartering (a player's COVERTRACKS state) by passing a reduced value.
+  Projection geometry + the blast driver over a Chunk. The C array
+  out-parameters (path_grid, blast_grid, distance_to_grid) are returned as
+  arrays; the driver keeps upstream's exact collection, arc-angle, damage, and
+  sort logic. Distance is the game's octagonal metric via the slope walk
+  (project_path) and MAX+MIN/2 (distance()). The per-target GF_ handlers
+  (project_f/o/m/p) and the UI bolt/blast events are injected as optional hooks
+  (ProjectHooks) so the geometry + falloff ship and are tested independently of
+  the GF_ semantics, which land with the effect handlers. The single-monster
+  player-tracking block calls an onTrackMonster hook; its `!(flg & JUMP)` guard
+  mirrors upstream exactly (JUMP is always already cleared here, so the guard is
+  always true). projectable takes max_range explicitly; callers apply the
+  PROJECT_SHORT quartering (a player's COVERTRACKS state) by passing a reduced
+  value.
 deferred:
-  - The project() driver (blast-grid collection, arc angle filtering via
-    get_angle_to_grid, damage falloff by distance, distance sort) and the
-    per-target GF_ handlers project_f/o/m/p: the next projection increments.
+  - The per-target GF_ handlers project_f/o/m/p (project-feat/obj/mon/player.c):
+    supplied to project() as hooks for now; ported with the effect handlers.
   - Decoys (cave_find_decoy): not modelled, so the PROJECT_STOP decoy check uses
     a (-1,-1) sentinel that never matches; a decoy exists only once the
     create-decoy effect is ported.
   - PROJECT_INFO's square_isbelievedwall (the player's remembered map): not
     modelled, approximated by real projectability. Only targeting display uses
     it (deferred UI), so it is currently unreached by ported callers.
+  - player_sees_grid / panel_contains and update_stuff: viewport + upkeep
+    concerns left to the caller/UI, so the driver does not compute them.
+  - Faithful deviation: on the player-death early return the driver clears the
+    SQUARE_PROJECT marks first (upstream leaves them set and relies on level
+    teardown); unobservable but avoids stale marks on a retained Chunk.
 verified-by:
   - world/project.test.ts: empty path when source==target; straight horizontal
     and pure-diagonal walks ending on target; the hand-derived 4:2 slope walk;
     inclusion-and-stop at a wall grid; monster halt only with PROJECT_STOP; the
-    range limit; and projectable true on a clear line, false through a wall, and
+    range limit; projectable true on a clear line, false through a wall, and
     never from a grid to itself.
+  - world/project.test.ts (computeProjection): bolt collects only the final
+    grid (with the traveled bolt steps); beam collects every path grid; beam
+    length limiting; ball explosion rings and outward sort around a jumped-to
+    centre; explosion against a wall in the path; standard and wide-diameter
+    damage falloff; arc cone restriction via get_angle_to_grid.
+  - world/project.test.ts (project driver): monster handler applied once per
+    occupied grid with ringed damage; SQUARE_PROJECT marks cleared afterward;
+    single-monster player tracking (and no tracking when >1 hit); bolt visuals
+    suppressed while blind; player-death early-out skips feature effects.
