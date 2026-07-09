@@ -93,6 +93,20 @@ export interface PlayerActor {
 }
 
 /**
+ * struct monster_group (mon-group.c): a pack of monsters sharing a leader.
+ * `members` is the member midx list; its head is the most recently added
+ * member, mirroring upstream's member_list (add prepends).
+ */
+export interface MonsterGroup {
+  /** The group's index in state.groups. */
+  index: number;
+  /** midx of the group leader (0 = none). */
+  leader: number;
+  /** Member midx list, head-first (most recently added). */
+  members: number[];
+}
+
+/**
  * The full mutable game state. `turn` is the upstream int32 game-turn counter;
  * `monsters` is indexed by midx with index 0 unused. Signals mirror the
  * upstream player->upkeep flags the loop branches on.
@@ -109,6 +123,8 @@ export interface GameState {
   gear: Gear;
   /** cave_monster(cave, i): live monsters, index 0 unused (null). */
   monsters: Array<Monster | null>;
+  /** cave->monster_groups[]: monster packs, index 0 unused (null). */
+  groups: Array<MonsterGroup | null>;
   /** turn (game-world.c): the game-turn counter. */
   turn: number;
   z: GameConstants;

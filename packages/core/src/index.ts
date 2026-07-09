@@ -88,6 +88,7 @@ export * from "./game/effect-monster";
 export * from "./game/effect-teleport";
 export * from "./game/mon-cast";
 export * from "./game/mon-ranged";
+export * from "./game/mon-group";
 export * from "./game/loop";
 
 // Some small derived constants and geometry helpers are defined
