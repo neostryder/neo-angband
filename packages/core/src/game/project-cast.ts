@@ -1,0 +1,335 @@
+/**
+ * The projection-casting spine, the game-layer glue that makes the projection
+ * stack usable. It wires the two projection drivers - game/project-monster.ts
+ * (projectMonster) and game/project-player.ts (projectPlayer) - to the generic
+ * beam/bolt/ball/arc driver project() (world/project.ts) using the live
+ * GameState.
+ *
+ * castProjection is the core: it assembles project()'s ProjectHooks from the
+ * two drivers plus GameState (and the injected hooks for the genuinely
+ * downstream consequences those drivers defer - kills/drops/exp, polymorph,
+ * teleport, inventory damage, stat/exp drain, messages) and runs one
+ * projection. This is the single entry point the attack effect handlers (#18),
+ * monster spells (#19) and player spellcasting (#22) all dispatch a projection
+ * through. The flag-shape helpers (castBolt / castBeam / castBall) preset
+ * project()'s flags and radius exactly as the matching effect_handler_* in
+ * effect-handler-attack.c and delegate to it; the remaining shapes (arc,
+ * breath, short-beam, spot, sphere, swarm, star, strike, ...) follow the same
+ * pattern in the next increment.
+ *
+ * The target grid is resolved by the caller. resolveAimedTarget ports the
+ * portable branches of get_target (effect-handler-attack.c L38): the player
+ * and no-source cases fully, and the monster case to the player's grid. The
+ * monster confused-direction / target-monster / decoy branches need the
+ * monster-spell targeting and decoys (both #19+), so #19 resolves those and
+ * passes the grid in.
+ *
+ * The player-projection actor (PlayerProjActor: resist levels, damage
+ * reduction, minus_ac) is supplied by the caller, exactly as PlayerActor's
+ * combat / defense views are, because calc_bonuses (which derives them) is
+ * deferred. basicPlayerActor builds the no-resist, no-reduction view over the
+ * live Player for callers and tests until calc_bonuses lands; take_hit's
+ * mutations (chp, is_dead) write back through it to the live player/state.
+ */
+
+import { TMD } from "../generated";
+import { DIR_TARGET } from "../effects/interpreter";
+import { DDGRID, loc, locSum } from "../loc";
+import type { Loc } from "../loc";
+import { monsterIsVisible } from "../mon/predicate";
+import { PROJECT, project } from "../world/project";
+import type {
+  BoltStep,
+  Projection,
+  ProjectHooks,
+  ProjectParams,
+} from "../world/project";
+import type { ProjectionInfo } from "../world/projection";
+import type { GameState } from "./context";
+import { projectMonster } from "./project-monster";
+import type { ProjectMonsterHooks } from "./project-monster";
+import { projectPlayer } from "./project-player";
+import type { PlayerProjActor, ProjectPlayerHooks } from "./project-player";
+
+/** option.c: op_ptr->hitpoint_warn default (0..9). Options system deferred. */
+export const DEFAULT_HITPOINT_WARN = 3;
+
+/**
+ * The projection source, unified across the two drivers. Built from a struct
+ * source with playerCastSource / monsterCastSource, or by hand.
+ */
+export interface CastSource {
+  /** origin.what == SRC_PLAYER. */
+  isPlayer: boolean;
+  /** origin.what == SRC_MONSTER. */
+  isMonster: boolean;
+  /** origin.which.monster (midx); 0 when the source is not a monster. */
+  monster: number;
+  /** origin_get_loc(origin): the projection's start grid. */
+  grid: Loc;
+  /** player_has(PF_CHARM): boosts a player projection's effects vs animals. */
+  charm?: boolean;
+  /** monster_is_visible(source): false hides an unseen monster source. */
+  monsterVisible?: boolean;
+  /** kb_str death cause for take_hit ("an orc", "a trap", "yourself"). */
+  killer?: string;
+  /** Monster spell power, forwarded to the player side-effect handler. */
+  power?: number;
+}
+
+/** source_player(): a player-origin cast from the live player grid. */
+export function playerCastSource(
+  state: GameState,
+  opts: { charm?: boolean; killer?: string } = {},
+): CastSource {
+  return {
+    isPlayer: true,
+    isMonster: false,
+    monster: 0,
+    grid: state.actor.grid,
+    charm: opts.charm ?? false,
+    killer: opts.killer ?? "yourself",
+  };
+}
+
+/** source_monster(midx): a monster-origin cast from that monster's grid. */
+export function monsterCastSource(
+  state: GameState,
+  midx: number,
+  opts: { killer?: string; power?: number } = {},
+): CastSource {
+  const mon = state.monsters[midx] ?? null;
+  return {
+    isPlayer: false,
+    isMonster: true,
+    monster: midx,
+    grid: mon ? mon.grid : loc(-1, -1),
+    monsterVisible: mon ? monsterIsVisible(mon) : false,
+    killer: opts.killer ?? "a monster",
+    power: opts.power ?? 0,
+  };
+}
+
+/** The consequences and UI seams a cast defers to its caller. */
+export interface CastHooks {
+  /** project_m's deferred consequences (kills, poly, teleport, messages). */
+  monster?: ProjectMonsterHooks;
+  /** project_p's deferred consequences (side effects, take_hit, messages). */
+  player?: ProjectPlayerHooks;
+  /** UI: one traveled bolt/beam step (suppressed when the player is blind). */
+  onBolt?: (step: BoltStep, typ: number, beam: boolean) => void;
+  /** UI: the whole blast, once, before per-grid effects. */
+  onBlast?: (proj: Projection, typ: number) => void;
+  /** Recall / health-track the single monster a player projection hit. */
+  onTrackMonster?: (grid: Loc) => void;
+}
+
+/** Everything a cast needs beyond the source and the shot parameters. */
+export interface CastContext {
+  /** The bound projection table (world/projection.ts bindProjections). */
+  projections: readonly ProjectionInfo[];
+  /** z_info->max_range. */
+  maxRange: number;
+  /** The player-projection actor (resist / reduction view; see module doc). */
+  playerActor: PlayerProjActor;
+  hooks?: CastHooks;
+}
+
+/**
+ * basicPlayerActor: the no-resist, no-reduction player-projection view over the
+ * live Player, for callers and tests until calc_bonuses (el_info, dam_red,
+ * perc_dam_red, minus_ac) lands. chp and is_dead are live so take_hit's
+ * mutations write back to the player and the game state.
+ */
+export function basicPlayerActor(state: GameState): PlayerProjActor {
+  const p = state.actor.player;
+  return {
+    get chp(): number {
+      return p.chp;
+    },
+    set chp(v: number) {
+      p.chp = v;
+    },
+    mhp: p.mhp,
+    lev: p.lev,
+    get isDead(): boolean {
+      return state.isDead;
+    },
+    set isDead(v: boolean) {
+      state.isDead = v;
+    },
+    timed: p.timed,
+    hitpointWarn: DEFAULT_HITPOINT_WARN,
+    resistLevel: () => 0,
+    reduction: { damRed: 0, percDamRed: 0 },
+    minusAc: false,
+  };
+}
+
+/**
+ * The portable branches of get_target (effect-handler-attack.c L38) for the
+ * aimed bolt/beam family. Returns the target grid and whether PROJECT_PLAY
+ * should be set (get_target sets it for monster and no-source projections so
+ * they can hit the player).
+ *
+ * - SRC_PLAYER: DIR_TARGET with an acquired target aims at it; otherwise the
+ *   adjacent grid in `dir`. The target system (target_okay / target_get) is
+ *   deferred (#24), so the acquired grid is passed in as `aimed`.
+ * - SRC_MONSTER: aims at the player. The confused-direction, target-monster
+ *   and decoy branches need monster-spell targeting and decoys (#19+); #19
+ *   resolves those and passes the grid in directly.
+ * - default (SRC_NONE / trap / object): aims at the player, sets PROJECT_PLAY.
+ */
+export function resolveAimedTarget(
+  state: GameState,
+  source: CastSource,
+  dir: number,
+  aimed?: Loc,
+): { grid: Loc; play: boolean } {
+  if (source.isPlayer) {
+    if (dir === DIR_TARGET && aimed) return { grid: aimed, play: false };
+    return { grid: locSum(state.actor.grid, DDGRID[dir] ?? loc(0, 0)), play: false };
+  }
+  /* Monster and no-source projections target the player and may hit them. */
+  return { grid: state.actor.grid, play: true };
+}
+
+/**
+ * castProjection: assemble project()'s hooks from the two drivers plus the live
+ * GameState and fire one projection at `target`. `flg` is the fully-resolved
+ * PROJECT_* flag set; `rad` is 0 for a bolt/beam or the ball/arc radius. Returns
+ * project()'s notice value (the player observed some effect). This is the seam
+ * every attack effect, monster spell and player spell dispatches through.
+ */
+export function castProjection(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  dam: number,
+  typ: number,
+  flg: number,
+  rad: number,
+  degreesOfArc = 0,
+  diameterOfSource = 0,
+): boolean {
+  const hooks = cctx.hooks ?? {};
+
+  const monCtx = {
+    state,
+    projections: cctx.projections,
+    origin: {
+      isPlayer: source.isPlayer,
+      monster: source.monster,
+      grid: source.grid,
+      charm: source.charm ?? false,
+    },
+    hooks: hooks.monster ?? {},
+  };
+
+  const plCtx = {
+    rng: state.rng,
+    actor: cctx.playerActor,
+    playerGrid: state.actor.grid,
+    projections: cctx.projections,
+    origin: {
+      isPlayer: source.isPlayer,
+      isMonster: source.isMonster,
+      ...(source.monsterVisible !== undefined
+        ? { monsterVisible: source.monsterVisible }
+        : {}),
+      killer: source.killer ?? "a bug",
+    },
+    power: source.power ?? 0,
+    hooks: hooks.player ?? {},
+  };
+
+  const projectHooks: ProjectHooks = {
+    onMonster: (dist, g, d, t, f) => projectMonster(monCtx, dist, g, d, t, f),
+    onPlayer: (dist, g, d, t, self) => projectPlayer(plCtx, dist, g, d, t, self),
+    playerIsDead: () => cctx.playerActor.isDead,
+    ...(hooks.onTrackMonster ? { onTrackMonster: hooks.onTrackMonster } : {}),
+    ...(hooks.onBolt ? { onBolt: hooks.onBolt } : {}),
+    ...(hooks.onBlast ? { onBlast: hooks.onBlast } : {}),
+    /* onObject (#20) and onFeature (#21) are wired when those subsystems land. */
+  };
+
+  const params: ProjectParams = {
+    origin: source.grid,
+    finish: target,
+    rad,
+    typ,
+    flg,
+    dam,
+    maxRange: cctx.maxRange,
+    sourceIsPlayer: source.isPlayer,
+    blind: cctx.playerActor.timed[TMD.BLIND]! > 0,
+    degreesOfArc,
+    diameterOfSource,
+  };
+
+  return project(state.chunk, params, projectHooks);
+}
+
+/**
+ * effect_handler_BOLT: a bolt that stops at the first monster. project_aimed
+ * adds PROJECT_THRU; get_target adds PROJECT_PLAY for a non-player source.
+ */
+export function castBolt(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  dam: number,
+  typ: number,
+): boolean {
+  let flg = PROJECT.STOP | PROJECT.KILL | PROJECT.THRU;
+  if (!source.isPlayer) flg |= PROJECT.PLAY;
+  return castProjection(state, cctx, source, target, dam, typ, flg, 0);
+}
+
+/**
+ * effect_handler_BEAM: a beam that passes through monsters. As castBolt but
+ * PROJECT_BEAM instead of PROJECT_STOP.
+ */
+export function castBeam(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  dam: number,
+  typ: number,
+): boolean {
+  let flg = PROJECT.BEAM | PROJECT.KILL | PROJECT.THRU;
+  if (!source.isPlayer) flg |= PROJECT.PLAY;
+  return castProjection(state, cctx, source, target, dam, typ, flg, 0);
+}
+
+/**
+ * effect_handler_BALL: an exploding ball. A monster source adds PROJECT_PLAY
+ * and drops STOP/THRU so it detonates on the player; a player source drops
+ * STOP/THRU only when a specific target was acquired (aimedAtTarget), so a
+ * bare-direction ball still stops at the first obstacle. `rad` defaults to 2
+ * upstream; the caller applies any powerful-monster or player-level radius
+ * bonus before calling.
+ */
+export function castBall(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  dam: number,
+  typ: number,
+  rad = 2,
+  opts: { aimedAtTarget?: boolean } = {},
+): boolean {
+  let flg =
+    PROJECT.THRU | PROJECT.STOP | PROJECT.GRID | PROJECT.ITEM | PROJECT.KILL;
+  if (source.isMonster) {
+    flg |= PROJECT.PLAY;
+    flg &= ~(PROJECT.STOP | PROJECT.THRU);
+  } else if (source.isPlayer && opts.aimedAtTarget) {
+    flg &= ~(PROJECT.STOP | PROJECT.THRU);
+  }
+  return castProjection(state, cctx, source, target, dam, typ, flg, rad);
+}

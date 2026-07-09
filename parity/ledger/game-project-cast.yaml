@@ -1,0 +1,70 @@
+module: packages/core/src/game/project-cast.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-attack.c
+    items:
+      - get_target (L38): the portable branches - SRC_PLAYER (DIR_TARGET at an
+        acquired target, else the adjacent grid in the direction) and the
+        default / SRC_NONE case (target the player, set PROJECT_PLAY). Ported as
+        resolveAimedTarget. The SRC_MONSTER confused-direction, target-monster
+        (monster_target_monster) and decoy (cave_find_decoy) branches are
+        deferred to #19 (monster-spell targeting) and the decoy effect; #19
+        resolves those and passes the grid in.
+      - project_aimed (L94): the PROJECT_THRU add + get_target flag merge, folded
+        into castBolt / castBeam.
+      - effect_handler_BOLT (L127): castBolt (PROJECT_STOP | KILL | THRU, plus
+        PROJECT_PLAY for a non-player source).
+      - effect_handler_BEAM (L143): castBeam (PROJECT_BEAM | KILL | THRU, plus
+        PROJECT_PLAY for a non-player source).
+      - effect_handler_BALL (L594): castBall - the flag toggles (a monster source
+        adds PROJECT_PLAY and drops STOP/THRU; a player source drops STOP/THRU
+        only when a specific target was acquired) and the radius default of 2.
+        The powerful-monster (+1 rad) and player-level (rad += lev / other)
+        radius bonuses are applied by the caller (they need monsterIsPowerful /
+        player.lev, both available there); the confused-target and decoy
+        branches are deferred as in get_target.
+  - path: src/player-util.c
+    items:
+      - op_ptr->hitpoint_warn default (option.c L205 = 3): DEFAULT_HITPOINT_WARN,
+        used by basicPlayerActor until the options system lands.
+notes: >-
+  The projection-casting spine: the game-layer glue that makes the whole
+  projection stack usable. castProjection assembles project()'s ProjectHooks
+  (world/project.ts) from the two drivers - projectMonster
+  (game/project-monster.ts) and projectPlayer (game/project-player.ts) - over
+  the live GameState, and runs one projection. It is the single seam the attack
+  effect handlers (#18), monster spells (#19) and player spellcasting (#22) all
+  dispatch a bolt/beam/ball/arc/breath through. The flag-shape helpers
+  (castBolt / castBeam / castBall) preset project()'s flags and radius exactly
+  as the matching effect_handler_* and delegate to it.
+
+  The player-projection actor (PlayerProjActor: resist levels, damage
+  reduction, minus_ac) is supplied by the caller, exactly as PlayerActor's
+  combat / defense views are, because calc_bonuses (which derives el_info,
+  dam_red, perc_dam_red, minus_ac) is deferred. basicPlayerActor builds the
+  no-resist, no-reduction view over the live Player for callers and tests until
+  it lands; chp and is_dead are live getters/setters so take_hit's mutations
+  write back to the player and the game state.
+deferred:
+  - The remaining attack shapes (ARC, BREATH, SHORT_BEAM, LASH, SPOT, SPHERE,
+    SWARM, STAR, STAR_BALL, STRIKE, LINE, ALTER, TOUCH, PROJECT_LOS) follow the
+    same castProjection delegation and land in the next increment, together with
+    the effect-registry wiring (registering these as the EF_* handlers) and the
+    player-timed / EffectPlayer adapters for the general handlers.
+  - resolveAimedTarget's monster branch (confused direction, target-monster,
+    decoy) and the target system (target_okay / target_get) - #19 / #24.
+  - onObject (#20 floor objects) and onFeature (#21 traps/terrain) projection
+    hooks; breath_dam for monster breath damage (#19).
+  - A real PlayerProjActor from calc_bonuses (resists, damage reduction,
+    minus_ac) replaces basicPlayerActor's zeroes.
+verified-by:
+  - game/project-cast.test.ts (13 tests): basicPlayerActor writes take_hit
+    mutations back to the live player/state and shares the timed array;
+    resolveAimedTarget aims a player projection at the adjacent grid, at an
+    acquired DIR_TARGET grid, and a monster projection at the player with
+    PROJECT_PLAY; castBolt damages the monster it stops at, tracks the single
+    monster hit, damages the player through the live actor, kills the player and
+    fires the death hook, and suppresses vs shows bolt visuals by blindness;
+    castBeam passes through and damages every monster in line; castBall explodes
+    on a player-cast target and detonates on the player for a monster source.
