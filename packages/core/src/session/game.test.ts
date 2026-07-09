@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { TMD } from "../generated";
 import { runGameLoop, LOOP_STATUS } from "../game/loop";
 import type { PlayerCommand } from "../game/context";
 import { startGame } from "./game";
@@ -27,6 +28,7 @@ const pack: GamePack = {
   roomTemplates: loadRecords("room_template"),
   vaults: loadRecords("vault"),
   dungeonProfiles: loadRecords("dungeon_profile"),
+  projection: loadRecords("projection"),
   obj: {
     objectBase: loadJson("object_base"),
     object: loadJson("object"),
@@ -150,6 +152,37 @@ describe("startGame (new-game assembly)", () => {
         expect(obj.grid).not.toBeNull();
       }
     }
+  });
+
+  it("wires the effect stack: monsters can cast and items are usable", () => {
+    const { state, registry } = startGame(pack, { seed: 123, depth: 5 });
+    // make_ranged_attack is installed on the state.
+    expect(typeof state.monsterCast).toBe("function");
+    // The object commands replaced their stubs.
+    expect(registry.has("quaff")).toBe(true);
+    expect(registry.has("zap-rod")).toBe(true);
+    expect(registry.has("wield")).toBe(true);
+  });
+
+  it("a born Warrior can quaff their starting Berserk Strength potion", () => {
+    const { state, registry } = startGame(pack, { seed: 123, depth: 1 });
+    const p = state.actor.player;
+    // Find the kit potion in the pack.
+    const handle = state.gear.pack.find((h) => {
+      const o = gearGet(state.gear, h);
+      return o !== null && o.kind.name === "Berserk Strength";
+    });
+    expect(handle).toBeDefined();
+
+    p.chp = 1; // hurt, so the 30hp heal is observable
+    const commands: PlayerCommand[] = [
+      { code: "quaff", args: { handle: handle! } },
+    ];
+    state.nextCommand = (): PlayerCommand | null => commands.shift() ?? null;
+    runGameLoop(state, registry);
+    expect(p.chp).toBeGreaterThan(1);
+    // And the berserker rage timed effect is running.
+    expect(p.timed[TMD.SHERO]!).toBeGreaterThan(0);
   });
 
   it("is deterministic for a fixed seed", () => {

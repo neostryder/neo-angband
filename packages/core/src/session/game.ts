@@ -40,6 +40,17 @@ import type { GameState, PlayerActor, PlayerCommand } from "../game/context";
 import { monsterGroupAssign, monsterGroupsVerify } from "../game/mon-group";
 import { floorCarry } from "../game/floor";
 import { installPickup } from "../game/pickup";
+import { EffectRegistry } from "../effects/interpreter";
+import { registerCoreHandlers } from "../effects/handlers";
+import { registerAttackHandlers } from "../game/effect-attack";
+import { registerMonsterHandlers } from "../game/effect-monster";
+import { registerTeleportHandlers } from "../game/effect-teleport";
+import { basicPlayerActor } from "../game/project-cast";
+import type { CastContext } from "../game/project-cast";
+import type { EffectEnvDeps } from "../game/effect-env";
+import { installMonsterCasting } from "../game/mon-ranged";
+import { installObjCommands } from "../game/obj-cmd";
+import { FlavorKnowledge } from "../obj/knowledge";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
@@ -175,6 +186,37 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // Live commands over the floor piles: 'g'et + autopickup on stepping.
   const registry = createDefaultRegistry();
   installPickup(state, registry, { constants: reg.constants });
+
+  // The effect stack: with bound projections, monsters cast spells on
+  // their turns (make_ranged_attack) and items are usable (cmd-obj.c),
+  // both through the same effect interpreter.
+  if (reg.projections) {
+    const effects = new EffectRegistry();
+    registerCoreHandlers(effects);
+    registerAttackHandlers(effects);
+    registerMonsterHandlers(effects);
+    registerTeleportHandlers(effects);
+    const cast: CastContext = {
+      projections: reg.projections,
+      maxRange: reg.constants.maxRange,
+      playerActor: basicPlayerActor(state),
+    };
+    const envDeps: EffectEnvDeps = { timedTable: players.timed };
+    installMonsterCasting(state, {
+      registry: effects,
+      cast,
+      spells: reg.monsters.spells,
+      envDeps,
+      saveSkill: pstate.skills[SKILL.SAVE] ?? 0,
+    });
+    installObjCommands(registry, {
+      constants: reg.constants,
+      registry: effects,
+      cast,
+      envDeps,
+      flavor: new FlavorKnowledge(reg.objects.ordinaryKindCount),
+    });
+  }
 
   return { state, registry, booted, players };
 }
