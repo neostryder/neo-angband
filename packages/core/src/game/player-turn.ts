@@ -99,7 +99,11 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
 
   movePlayer(state, next);
   if (state.updateFov) state.updateFov(state);
-  return state.z.moveEnergy;
+
+  /* Autopickup on the new grid (upstream queues CMD_AUTOPICKUP; its energy
+   * cost is folded into this step, see game/pickup.ts). */
+  const pickupCost = state.autoPickup ? state.autoPickup(state) : 0;
+  return state.z.moveEnergy + pickupCost;
 }
 
 /** hold / rest: stay put and spend a full turn. */
@@ -127,7 +131,8 @@ export function stubAction(_state: GameState, _cmd: PlayerCommand): number {
   return 0;
 }
 
-/** Command codes registered as stubs (deferred; see game-loop.yaml). */
+/** Command codes registered as stubs (deferred; see game-loop.yaml).
+ * "pickup"/"autopickup" stubs are replaced by installPickup (game/pickup.ts). */
 export const STUBBED_COMMANDS: readonly string[] = [
   "run",
   "tunnel",
