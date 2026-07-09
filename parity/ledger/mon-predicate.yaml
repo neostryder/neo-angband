@@ -1,0 +1,45 @@
+module: packages/core/src/mon/predicate.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-predicate.c
+    items:
+      - monster_is_undead / _nonliving / _living / _destroyed: RF_UNDEAD /
+        RF_NONLIVING / RF_STUPID derived life-state predicates.
+      - monster_passes_walls: PASS_WALL | KILL_WALL | SMASH_WALL.
+      - monster_is_invisible / _not_invisible: RF_INVISIBLE.
+      - monster_is_unique / _shape_unique: RF_UNIQUE, on the original vs the
+        current form (shapechange-aware via mon.originalRace).
+      - monster_is_stupid / _smart: RF_STUPID / RF_SMART (smart checks the
+        original form too).
+      - monster_is_esp_detectable: EMPTY_MIND (intersected across the current
+        and original form) blocks telepathy; WEIRD_MIND makes only midx%10==5
+        detectable.
+      - monster_has_spirit / _is_evil / _is_fearful / _is_powerful: RF_SPIRIT /
+        RF_EVIL / RF_NO_FEAR / RF_POWERFUL.
+      - monster_has_spells / _breathes / _has_innate_spells /
+        _has_non_innate_spells / _loves_archery: spell-flag masks built from
+        monSpellsOfTypes (create_mon_spell_mask over RST_ types).
+      - monster_is_in_view / _visible / _camouflaged / _obvious / _mimicking:
+        the MFLAG_VIEW / VISIBLE / CAMOUFLAGE temporary-flag reads.
+      - monster_can_be_scared: NO_FEAR, then group role (bodyguard fearless,
+        servant one-in-three, others a per-member one-in-twenty group save).
+notes: >-
+  Pure queries over a live Monster and its race. create_mon_spell_mask is
+  expressed via monSpellsOfTypes (mon/types.ts); flag reads use the generated
+  RF / MFLAG enums and FlagSet. These consolidate the ad-hoc monster_passes_walls
+  that game/monster-turn.ts had defined locally (now imported from here).
+  monster_can_be_scared takes primaryGroupSize as an argument (default 1) and an
+  Rng, since monster-group tracking is not in the cave yet; size 1 gives count=0
+  so the group fear-save loop never runs, exactly matching a lone monster.
+deferred:
+  - monster_is_decoyed: needs cave_find_decoy + los + a live cave; a decoy only
+    exists once the create-decoy effect is ported, so this predicate is omitted
+    until then (currently unreachable).
+  - lore side effects: none here (mon-predicate.c is side-effect free).
+verified-by:
+  - mon/predicate.test.ts: undead are nonliving and not living; a plain living
+    race is living; unique / invisible / wall-passing races are recognised;
+    EMPTY_MIND blocks telepathy while an ordinary mind is detectable;
+    spellcasters and breathers are detected; monster_is_obvious tracks VISIBLE
+    minus CAMOUFLAGE as the mflags toggle.

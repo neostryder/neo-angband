@@ -38,6 +38,8 @@ export * from "./mon/types";
 export * from "./mon/bind";
 export * from "./mon/monster";
 export * from "./mon/make";
+export * from "./mon/predicate";
+export * from "./mon/timed";
 export * from "./obj/types";
 export * from "./obj/bind";
 export * from "./obj/object";

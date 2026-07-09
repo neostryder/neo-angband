@@ -43,9 +43,11 @@ import {
   locIsZero,
   locSum,
 } from "../loc";
-import { MFLAG, MON_TIMED_ENTRIES, MON_TMD, RF } from "../generated";
+import { MFLAG, MON_TMD, RF } from "../generated";
 import type { Monster } from "../mon/monster";
 import { MON_GROUP } from "../mon/types";
+import { monsterPassesWalls } from "../mon/predicate";
+import { monsterEffectLevel } from "../mon/timed";
 import { monMeleeAttack } from "../combat/mon-melee";
 import { squareIsView } from "../world/view";
 import type { GameState } from "./context";
@@ -72,26 +74,6 @@ function noiseAt(state: GameState, grid: Loc): number {
 
 function scentAt(state: GameState, grid: Loc): number {
   return state.chunk.scent[grid.y * state.chunk.width + grid.x] ?? 0;
-}
-
-/**
- * monster_effect_level (mon-timed.c): divisor = MAX(max_timer / 5, 1);
- * min((timer + divisor - 1) / divisor, 5).
- */
-export function monsterEffectLevel(mon: Monster, effectType: number): number {
-  const maxTimer = MON_TIMED_ENTRIES[effectType]?.time ?? 0;
-  const divisor = Math.max(Math.trunc(maxTimer / 5), 1);
-  const timer = mon.mTimed[effectType] ?? 0;
-  return Math.min(Math.trunc((timer + divisor - 1) / divisor), 5);
-}
-
-/** monster_passes_walls: PASS_WALL | KILL_WALL | SMASH_WALL. */
-export function monsterPassesWalls(mon: Monster): boolean {
-  return (
-    mon.race.flags.has(RF.PASS_WALL) ||
-    mon.race.flags.has(RF.KILL_WALL) ||
-    mon.race.flags.has(RF.SMASH_WALL)
-  );
 }
 
 /** monster_can_see_player: the monster's grid is in the player's view. */

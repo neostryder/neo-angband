@@ -1,0 +1,49 @@
+module: packages/core/src/mon/timed.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-timed.c
+    items:
+      - the effects[] table (name / gets_save / stacking / flag_resist /
+        max_timer / begin-end-increase messages): the generated
+        MON_TIMED_ENTRIES (from list-mon-timed.h).
+      - mon_timed_name_to_idx: case-sensitive name -> MON_TMD_ index (canonical
+        home; effects/effect.ts now imports it from here).
+      - saving_throw: min(90, level + max(0, 25 - timer/2)); uniques roll twice.
+      - does_resist: MON_TMD_FLG_NOFAIL override, then the race resist flag,
+        then the optional saving throw.
+      - mon_set_timed: clamp to max_timer, the no-change / turn-off / turn-on /
+        increase / decrease message + check-resist selection, the
+        MON_TMD_COMMAND target-clear on expiry, resist -> UNAFFECTED, and the
+        visibility-gated message emission.
+      - mon_inc_timed (MON_INC_MIN_TURNS=2 floor + STACK_NO/MAX/INCR stacking),
+        mon_dec_timed (floor 0), mon_clear_timed.
+      - monster_effect_level: the 0..5 intensity band.
+  - path: src/mon-timed.h
+    items:
+      - MON_TMD_FLG_NOTIFY / NOMESSAGE / NOFAIL flag bits.
+notes: >-
+  The monster timed-effect engine over mon.mTimed[]. The effect table is the
+  generated MON_TIMED_ENTRIES; resistFlag strings ("RF_NO_SLEEP" | 0) resolve to
+  RF indices. Two upstream couplings, both faithful in reachable states: the
+  monster-message queue (mon-msg.c add_monster_message) is not ported, so
+  mon_set_timed emits through an optional MonTimedMessageSink while preserving
+  exactly which MON_MSG_ fires and its NOTIFY/NOMESSAGE/visibility gate; and the
+  saving throw / inc / dec / clear entry points take an Rng explicitly (no
+  globals). monster_effect_level here is the consolidation of the copy
+  game/monster-turn.ts had defined locally (now imported from this module).
+deferred:
+  - MON_TMD_CHANGED shapechange (monster_change_shape / _revert_shape,
+    mon-util.c): the CHANGED timer is set but the form is not swapped. CHANGED
+    is only set by an unported effect, so this path is currently unreachable.
+  - lore_learn_flag_if_visible on a flag-resist (mon-lore.c): DEFERRED with the
+    monster-memory system (see the late/optional task).
+  - the health-bar / monster-list redraw (player->upkeep redraw masks): UI upkeep.
+verified-by:
+  - mon/timed.test.ts: a non-resisted effect is set and clamped at its max
+    timer; a flag-immune monster resists (timer 0); MON_TMD_FLG_NOFAIL forces
+    the effect through immunity; a new effect lasts at least 2 turns; FEAR
+    stacks additively, STUN by max, SLEEP not at all; decreases floor at 0 and
+    clear reports change; the message sink fires for a seen monster with the
+    begin message; clearing COMMAND drops the stale target; monster_effect_level
+    bands 0..5 and the name lookup resolves and rejects.

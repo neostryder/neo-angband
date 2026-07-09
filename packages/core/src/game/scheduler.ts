@@ -21,9 +21,9 @@ import type { Monster } from "../mon/monster";
 import { turnEnergy } from "./energy";
 import type { GameState } from "./context";
 import { updateMonsterDistances } from "./context";
+import { monsterEffectLevel } from "../mon/timed";
 import {
   monsterCheckActive,
-  monsterEffectLevel,
   monsterTurn,
   processMonsterTimed,
 } from "./monster-turn";

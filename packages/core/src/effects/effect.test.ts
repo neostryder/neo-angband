@@ -14,11 +14,11 @@ import {
   effectSubtype,
   effectValidUpstream,
   effectValueBaseByName,
-  monTimedNameToIdx,
   projNameToIdx,
   statNameToIdx,
   timedNameToIdx,
 } from "./effect";
+import { monTimedNameToIdx } from "../mon/timed";
 
 describe("effectLookup", () => {
   it("maps names to EF indices (entry index + 1)", () => {
