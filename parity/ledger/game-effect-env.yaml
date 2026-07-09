@@ -1,0 +1,46 @@
+module: packages/core/src/game/effect-env.ts
+status: complete
+baseline: 4.2.6
+upstream:
+  - path: src/effects.c
+    items:
+      - the effect_handler_context_t environment (globals player / cave / z_info
+        the general handlers read): built as a live EffectContext from the
+        GameState, so the already-ported handlers in effects/handlers.ts run for
+        real instead of no-opping on an absent player slot.
+  - path: src/player-timed.c
+    items:
+      - the player_set_timed / _inc_timed / _dec_timed / _clear_timed /
+        _inc_check runtime (already ported in player/timed.ts) exposed to the
+        interpreter as a TimedHost over the live player and the bound timed table.
+  - path: src/player-util.c
+    items:
+      - take_hit / player_apply_damage_reduction (player/take-hit.ts) exposed as
+        EffectPlayer.takeHit / applyDamageReduction over a live TakeHitTarget
+        whose chp / is_dead write back to the player and game state.
+notes: >-
+  The bridge that connects the effect interpreter (effects/interpreter.ts) to a
+  live player. buildEffectContext assembles rng, the message sink, the player
+  slot and the food value from the GameState; buildEffectPlayer wires the
+  hitpoint view, the TimedHost and take_hit / damage-reduction; buildTimedHost
+  dispatches every TimedHost call through the player-timed runtime, looking the
+  bound TimedEffect up by index (so the table may be in any order).
+
+  The bound timed table, food value, depth, damage reduction and
+  player_inc_check queries are passed in via EffectEnvDeps because GameState
+  does not carry them (they are calc_bonuses / pack state outside the turn-loop
+  state). With no incQueries every timed increase is allowed, matching a bare
+  resistance-less player; reduction defaults to zero until calc_bonuses lands.
+deferred:
+  - The attack effect handlers (EF_BOLT / BALL / BREATH / ...) are dispatched
+    through the projection-casting spine (game/project-cast.ts) and are wired
+    into the registry in the next increment via a game env slot.
+  - A real damage reduction and player_inc_check state from calc_bonuses replace
+    the zero / allow-all defaults.
+verified-by:
+  - game/effect-env.test.ts (7 tests): through a real EffectRegistry +
+    registerCoreHandlers, EF_CURE clears a live status, EF_TIMED_INC raises one
+    (default allow), EF_NOURISH raises the food level, EF_HEAL_HP heals the live
+    player, EF_DAMAGE hurts them through take_hit, and a fatal EF_DAMAGE flags
+    death and fires the death hook; buildTimedHost.decTimed reduces a live
+    status directly.
