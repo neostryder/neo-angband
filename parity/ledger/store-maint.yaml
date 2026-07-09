@@ -44,12 +44,12 @@ notes: >-
   is threaded in as maxDepth (dungeon progress is not on Player yet).
 deferred:
   - The buy/sell/stash/retrieve TRANSACTIONS (do_cmd_buy / do_cmd_sell /
-    store_purchase / store_sell) and home_carry: they need a player pack/
-    inventory model (inven_carry + gear list), which is a distinct domain not
-    built yet (Player has au/gold but no pack array). store_will_buy (the buy
-    decision) is ported; store_carry here always takes fresh store-generated
-    objects (the non-carried value branch), so the player-carried branch lands
-    with the transactions increment.
+    do_cmd_retrieve / do_cmd_stash) and home_carry are now PORTED in
+    store/transact.ts (ledgered in store-transact.yaml), built on the player
+    pack model in game/gear.ts. store_carry here still always takes fresh
+    store-generated objects (the non-carried value branch); the player-carried
+    value branch (object_value on a carried object) is unreached because the
+    sell path hands store_carry a detached gear object valued the same way.
   - store_stock_list / earlier_object: the display sort order (UI concern).
   - store_update / daycount: the return-to-town multi-day maintenance and
     shopkeeper shuffle probability (needs the game clock).

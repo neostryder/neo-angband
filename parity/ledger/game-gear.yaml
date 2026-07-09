@@ -11,6 +11,13 @@ upstream:
         then melee-weapon/ring/light/body-armor/head-armor, -1 otherwise)
       - inven_carry (merge into a mergeable pack stack via object_mergeable /
         object_absorb, else add a new pack handle)
+      - pack_slots_used (pack.length: equipped gear is not in pack and the
+        quiver is DEFERRED, so no discount is needed)
+      - inven_carry_num (a free pack slot takes the whole stack, else the
+        remainder is squeezed into partially-full stackable slots; the quiver
+        path is DEFERRED so num_to_quiver is always 0)
+      - gear_object_for_use (split amt off a pack/equipment stack, or excise
+        the whole stack and report none_left; total_weight upkeep DEFERRED)
   - path: src/player-birth.c
     items:
       - wield_all (scan a snapshot of the pack, wield each object whose liked
@@ -24,6 +31,11 @@ upstream:
       - object_copy (deep copy of the live struct; kind/ego/artifact/
         activation/effect stay shared references as upstream memcpy leaves)
       - object_split (copy amt items off, distribute_charges, reduce source)
+  - path: src/obj-pile.c
+    items:
+      - object_copy_amt (a fresh copy holding amt items, with wand/staff
+        charges and rod/activation timeouts scaled to the split; source
+        unchanged; the AVERAGE charge time is deterministic)
 notes: >-
   The parity Player omits struct player's gear list and keeps only
   equipment[] as per-body-slot object HANDLES (0 = empty); this module owns
@@ -50,9 +62,10 @@ deferred:
     are treated as "no exclusions". This equals upstream behaviour with the
     default birth options (e.g. the Warrior's Word of Recall scroll, excluded
     only when birth_no_recall is ON, is included by default).
-  - pack_size overflow (combine_pack / pack_overflow / inven_carry_num /
-    pack_slots_used): a birth kit never overflows, so the z_info->pack_size
-    limit is not enforced.
+  - pack overflow reordering (combine_pack / pack_overflow): inven_carry_num
+    and pack_slots_used are now ported (the pack-room GATE is enforced for
+    transactions), but the reorder/overflow-slot handling on an over-fill is
+    still DEFERRED - a birth kit never overflows.
   - The DISPLAY half of obj-knowledge in player_outfit (object_flavor_aware,
     object_set_base_known, update_player_object_knowledge) and the obj->known
     twin, consistent with obj/object.ts. NOT deferred: modifier-rune learning,
@@ -62,9 +75,9 @@ deferred:
   - The running carried-weight total (p->upkeep->total_weight beyond the
     reset to 0); recomputing it belongs to the calc/inventory owner.
   - The take-off / inventory command layer (inven_wield messaging,
-    inven_takeoff, inven_drop, gear_object_for_use) and the quiver
-    (quiver_absorb_num, OSTACK_QUIVER handling): out of scope for the birth
-    substrate.
+    inven_takeoff, inven_drop) and the quiver (quiver_absorb_num,
+    OSTACK_QUIVER handling): out of scope for the birth substrate.
+    gear_object_for_use is now ported (used by the store transactions).
   - Re-deriving calc_bonuses from the populated equipment and wiring
     actor.weapon / actor.defense: owned by player/calcs.ts (downstream).
 verified-by:
@@ -73,4 +86,7 @@ verified-by:
     the free hand, a born Human Warrior wears a sword in WEAPON and soft
     armour in BODY_ARMOR (handles resolve to objects of the expected tval),
     invenCarry merges stackable potions into one stack, and the split path
-    (number > 1) wields one and leaves the remainder in the pack
+    (number > 1) wields one and leaves the remainder in the pack.
+  - store/transact.test.ts exercises inven_carry_num (the no-room buy gate),
+    object_copy_amt, and gear_object_for_use (split vs whole-stack excise)
+    through the buy/sell/stash/retrieve transactions.
