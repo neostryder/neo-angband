@@ -72,6 +72,18 @@ describe("effect env - hitpoints through the registry", () => {
     expect(state.actor.player.chp).toBe(70);
   });
 
+  it("EF_RESTORE_MANA restores the live player's spell points", () => {
+    const state = makeState();
+    state.actor.player.msp = 30;
+    state.actor.player.csp = 10;
+    const env = buildEffectContext(state, deps(state));
+    registry().effectSimple(EF.RESTORE_MANA, env, {
+      origin: sourcePlayer(),
+      diceString: "15",
+    });
+    expect(state.actor.player.csp).toBe(25);
+  });
+
   it("EF_DAMAGE hurts the live player through take_hit", () => {
     const state = makeState();
     state.actor.player.chp = 100;

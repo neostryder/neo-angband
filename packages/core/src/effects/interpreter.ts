@@ -83,6 +83,13 @@ export interface HasHp {
   chpFrac: number;
 }
 
+/** Spell-point holder for EF_RESTORE_MANA (player->csp / msp / csp_frac). */
+export interface HasMana {
+  csp: number;
+  msp: number;
+  cspFrac: number;
+}
+
 /**
  * Timed-effect host for the EF_TIMED_* family, EF_CURE and EF_NOURISH.
  * Signatures mirror player-timed.h: player_set_timed(p, idx, v, notify,
@@ -106,6 +113,7 @@ export interface TimedHost {
 /** The player slot: only what implemented handlers touch, all optional. */
 export interface EffectPlayer {
   hp?: HasHp;
+  mana?: HasMana;
   timed?: TimedHost;
   /** player_apply_damage_reduction. */
   applyDamageReduction?: (dam: number) => number;
