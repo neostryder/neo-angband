@@ -1,0 +1,61 @@
+module: packages/core/src/player/timed.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/player-timed.c
+    items:
+      - player_set_timed (L787): coerce the new duration into the effect's
+        [lower_bound, top-grade max] range, detect grade transitions and emit
+        the up / down / end / increase / decrease messages, dispatch the
+        0<->positive begin/end effect chains, store the value, and notify
+        (disturb + redraw). Returns whether the player was notified.
+      - player_inc_check (L923): walk the effect's fail conditions - object
+        flag, resist, vulnerability, player flag, active timed effect - and
+        report whether an increase is inhibited.
+      - player_inc_timed (L1050): resist gate (when check) + NONSTACKING guard,
+        then player_set_timed(old + v).
+      - player_dec_timed (L1093): player_set_timed(old - v), always notifying
+        when the effect finishes.
+      - player_clear_timed (L1123): player_set_timed(0).
+      - player_timed_grade_eq (L734) and the grade walk shared by set_timed:
+        playerTimedGrade / playerTimedGradeEq.
+  - path: src/player/bind.ts (binder extension)
+    items:
+      - bindTimed now also captures on-increase, on-decrease, the NONSTACKING
+        flag, and lower-bound from player_timed.json (the grade list, fail
+        conditions, on-end and msgt were already bound).
+notes: >-
+  The shared primitive every player status change funnels through (effect
+  handlers EF_TIMED_* / EF_CURE, the game turn's poison/cut/stun ticks, combat
+  and monster attacks), so grade transitions, messages, disturbance and the
+  NONSTACKING guard are identical regardless of source. It backs the effect
+  interpreter's TimedHost capability. The bound TimedEffect[] table is passed in
+  (no pack IO here). player_inc_check's fail conditions resolve against injected
+  PlayerIncCheckQueries because the resist / object-flag / player-flag state they
+  read is derived in the player calc layer; the TMD_FAIL_ codes (OBJECT=1,
+  RESIST=2, VULN=3, PLAYER=4, TIMED_EFFECT=5) match player-timed.h. All duration
+  and grade arithmetic matches upstream.
+deferred:
+  - The on_begin_effect / on_end_effect chains (a 0<->positive transition would
+    recurse into the effect interpreter) are surfaced via the onTransition hook;
+    wiring the actual chains waits until the effect layer is threaded in.
+  - The temp_resist / oflag_syn "don't mention an effect that duplicates known
+    player state" notify suppression needs obj_k element/flag knowledge; it only
+    silences a message and never changes the duration, so it is deferred.
+  - print_custom_message's weapon-name substitution (messages are emitted
+    verbatim; none of the ported effects substitute) and the disturb + PR_/PU_
+    redraw + handle_stuff bookkeeping (collapsed into the onNotify hook).
+  - player_inc_check's learning side effects (equip_learn_flag /
+    equip_learn_element / update_smart_learn and the "You resist!" message) are
+    deferred with the lore / knowledge system.
+verified-by:
+  - player/timed.test.ts (15 tests): the binder now captures NONSTACKING /
+    on-increase / on-decrease and STUN's graded severity; playerTimedGrade walks
+    STUN's four grades; set_timed sets a value, messages on entering a grade,
+    notifies and fires the begin transition; no-op on an unchanged value;
+    on-end message + end transition when finishing; up-grade message on STUN
+    Stun->Heavy Stun; clamps to the top grade max; inc stacks a normal effect
+    but is blocked for an active NONSTACKING effect; incCheck is honoured only
+    when check is true; dec always notifies when finishing; clear zeroes;
+    inc_check blocks PARALYZED via FREE_ACT and CONFUSED via PROT_CONF; and
+    grade_eq matches the active grade name.

@@ -206,7 +206,11 @@ export interface PlayerTimedRecordJson {
   name: string;
   desc?: string[];
   "on-end"?: string[];
+  "on-increase"?: string[];
+  "on-decrease"?: string[];
   msgt?: string;
+  flags?: string[];
+  "lower-bound"?: number;
   fail?: TimedFailJson[];
   grade?: TimedGradeJson[];
 }
@@ -530,7 +534,11 @@ function bindTimed(records: PlayerTimedRecordJson[]): TimedEffect[] {
       name: rec.name,
       desc: joinLines(rec.desc),
       onEnd: joinLines(rec["on-end"]),
+      onIncrease: joinLines(rec["on-increase"]),
+      onDecrease: joinLines(rec["on-decrease"]),
       msgt: rec.msgt ?? "GENERIC",
+      nonStacking: (rec.flags ?? []).includes("NONSTACKING"),
+      lowerBound: rec["lower-bound"] ?? 0,
       grades,
       fail,
     });
