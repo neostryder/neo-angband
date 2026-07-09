@@ -16,6 +16,7 @@
 
 import { PY_MAX_LEVEL, SKILL_MAX, STAT_MAX, TMD_MAX } from "./types";
 import type { PlayerBody, PlayerClass, PlayerRace, Shape } from "./types";
+import { OBJ_MOD_MAX } from "../obj/types";
 
 /**
  * Minimal struct player_upkeep: only the derived counters the headless core
@@ -28,6 +29,24 @@ export interface PlayerUpkeep {
   newSpells: number;
   /** Total weight of carried gear (tenths of a pound). */
   totalWeight: number;
+}
+
+/**
+ * obj_k: the player's cumulative object-knowledge, i.e. the learned "rune"
+ * mask (ported from struct player's obj_k, a struct object used as a knowledge
+ * template). Only the modifier runes are modelled so far, because they are the
+ * sole input to the REAL-state calc_bonuses gate; flag, element, and combat-
+ * bonus knowledge (which upstream also stores here but reads only for the
+ * DISPLAYED known_state) join it when the knowledge/display system lands.
+ */
+export interface PlayerObjectKnowledge {
+  /**
+   * modifiers[OBJ_MOD_MAX]: 1 if the player has learned this modifier's rune,
+   * else 0. calc_bonuses multiplies each equipped item's modifier by this, so
+   * a pval bonus is inert until its rune is known. UNKNOWN (all 0) at birth,
+   * exactly as upstream (PORT_PLAN.md decision 25).
+   */
+  modifiers: number[];
 }
 
 /** struct player core (player.h), world/UI-only members omitted. */
@@ -93,6 +112,12 @@ export interface Player {
    */
   equipment: number[];
 
+  /**
+   * obj_k: learned object-knowledge ("rune") mask. Gates equipment modifiers
+   * in calcBonuses; all runes UNKNOWN at birth (PORT_PLAN.md decision 25).
+   */
+  objKnown: PlayerObjectKnowledge;
+
   /** Current shape (defaults to "normal"). */
   shape: Shape | null;
 
@@ -147,6 +172,7 @@ export function blankPlayer(
     history: "",
     body: { name: body.name, count: body.count, slots: body.slots.map((s) => ({ ...s })) },
     equipment: new Array<number>(body.count).fill(0),
+    objKnown: { modifiers: new Array<number>(OBJ_MOD_MAX).fill(0) },
     shape: null,
     skills: new Array<number>(SKILL_MAX).fill(0),
     upkeep: { playing: false, newSpells: 0, totalWeight: 0 },

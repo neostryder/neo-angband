@@ -225,6 +225,33 @@ documentation lives here under `docs/`.
     bundled mods (neo-linoleum, QoL) are complete and default to active.
     Certification is measured by the parity harness (decision 2, docs/
     PARITY.md) plus a checklist of the approved variations.
+24. **Upstream tracking and the bug-fix mod** (ratified 2026-07-08): the port
+    tracks upstream by TAGGED RELEASE, not tip-of-tree. The baseline is the
+    4.2.6 tag and core stays faithful to it; we do NOT cherry-pick post-tag
+    commits, merged PRs, or issue fixes into core, because that makes core
+    diverge from the tag and turns every future upstream re-sync into a rebase
+    over local patches. Instead, all such fixes ship in a single BUNDLED "bug
+    fixes" mod (the model players know from the Skyrim/Bethesda unofficial
+    patches): crash, data-corruption, save/load, determinism, and clear
+    logic-error fixes drawn from post-tag commits, PRs, and issues. The mod's
+    documentation MUST cite, directly and explicitly, every upstream commit
+    SHA, PR number, and issue number it patches. Any bug our own port code has
+    already "fixed" relative to the tag is likewise moved OUT of core and INTO
+    the bug-fix mod, so core remains a faithful reproduction of the tag (bugs
+    included) and the fixes stay opt-in. Balance and subjective changes are
+    NOT bug fixes; they belong in the QoL mod (decision 18) or their own mod.
+    This is decision 18 applied to upstream drift: everything-new-is-a-mod,
+    including upstream's own later fixes.
+25. **No unapproved simplifications; upstream-faithful configuration**
+    (ratified 2026-07-08): reinforcing decisions 2 and 23, any place the port
+    took a modeling shortcut that changes configured behavior from the 4.2.6
+    tag is a defect to close, not an accepted variation. Concretely, the
+    earlier "everything known" convention (treating the object-knowledge rune
+    mask as all-ones so item modifiers applied immediately) is REVOKED: runes
+    are UNKNOWN by default exactly as upstream, and an item's pval modifiers
+    stay inert until their rune is learned. Every default and initial-state
+    value the port ships must match the original's; deviations require an
+    explicit approved-variation decision here.
 
 ## Phases
 

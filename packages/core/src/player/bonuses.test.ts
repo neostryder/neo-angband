@@ -7,7 +7,10 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ELEM, OF, PF } from "../generated";
+import { ELEM, OF, PF, STAT } from "../generated";
+import { objectNew } from "../obj/object";
+import type { GameObject } from "../obj/object";
+import type { ObjectKind } from "../obj/types";
 import { Rng } from "../rng";
 import { bindPlayer } from "./bind";
 import type { PlayerPackRecords } from "./bind";
@@ -73,6 +76,38 @@ function bornWithStats(
   }
   return player;
 }
+
+describe("calcBonuses: rune knowledge gates equipment modifiers (decision 25)", () => {
+  const STATS = [16, 12, 11, 15, 14] as const;
+
+  it("a born character starts with every rune unknown (obj_k empty)", () => {
+    const p = bornWithStats("Human", "Warrior", STATS);
+    expect(p.objKnown.modifiers.every((m) => m === 0)).toBe(true);
+  });
+
+  it("keeps an unlearned +STR modifier inert, then applies it once the rune is known", () => {
+    const p = bornWithStats("Human", "Warrior", STATS);
+    const equipment: (GameObject | null)[] = new Array<GameObject | null>(
+      p.body.count,
+    ).fill(null);
+    // An item bearing +3 STR, worn in the last (non-weapon) slot.
+    const item = objectNew({} as ObjectKind);
+    item.modifiers[STAT.STR] = 3;
+    equipment[p.body.count - 1] = item;
+
+    // Rune unknown (the faithful birth default): the modifier does nothing.
+    const unknown = calcBonuses(p, { equipment });
+    expect(unknown.statAdd[STAT.STR]).toBe(0);
+
+    // Learn the STR rune: the same worn item now grants its full +3.
+    p.objKnown.modifiers[STAT.STR] = 1;
+    const learned = calcBonuses(p, { equipment });
+    expect(learned.statAdd[STAT.STR]).toBe(3);
+    expect(learned.statUse[STAT.STR]).toBeGreaterThan(
+      unknown.statUse[STAT.STR] ?? 0,
+    );
+  });
+});
 
 /*
  * The reference character: a level-1 Human Warrior with natural stats
