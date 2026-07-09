@@ -241,7 +241,8 @@ documentation lives here under `docs/`.
     included) and the fixes stay opt-in. Balance and subjective changes are
     NOT bug fixes; they belong in the QoL mod (decision 18) or their own mod.
     This is decision 18 applied to upstream drift: everything-new-is-a-mod,
-    including upstream's own later fixes.
+    including upstream's own later fixes. The mod's design of record and
+    referenced changelog live in docs/modding/BUG_FIXES.md.
 25. **No unapproved simplifications; upstream-faithful configuration**
     (ratified 2026-07-08): reinforcing decisions 2 and 23, any place the port
     took a modeling shortcut that changes configured behavior from the 4.2.6
