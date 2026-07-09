@@ -1,0 +1,44 @@
+module: packages/core/src/mon/take-hit.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-util.c
+    items:
+      - mon_take_hit (L1264): inflict player damage on a monster. Wakes it and
+        clears MON_TMD_HOLD on a non-fatal blow, reveals a camouflaged mimic,
+        breaks the player's cover tracks once damage is dealt, subtracts hp, and
+        either kills the monster (hp < 0) or rolls fear. Returns whether the
+        monster died and whether it was newly frightened.
+      - monster_wake (L686): clear MON_TMD_SLEEP (message per the notify flag)
+        and set MFLAG_AWARE with the given percentage chance.
+      - monster_scared_by_damage (L1137): pain reduces, cancels, or newly causes
+        fear; the low-hp and half-current-hp fright rolls with their duration
+        formula. Returns true only when the hit newly frightens the monster.
+notes: >-
+  The shared "a monster is hurt" primitive that project_m, melee, ranged, and
+  the effect handlers all route damage through, so death / fear / waking are
+  identical regardless of the damage source. The heavy player-facing
+  consequences are injected as hooks (MonTakeHitHooks): onKill
+  (player_kill_monster - experience, drops, death messages, uniqueness, quests),
+  becomeAware (become_aware mimic reveal), and coverTracksBroken (clearing the
+  player's TMD_COVERTRACKS). This mirrors the project() driver's hook pattern so
+  the damage / fear / wake logic ships and is tested independently of routines
+  that land with the effect and command layers. Integer maths match upstream
+  (the percentage floor, the randint rolls). monsterCanBeScared is called with
+  the default group size 1 (monster groups are not tracked yet), matching a lone
+  monster exactly.
+deferred:
+  - player_kill_monster (the death routine): supplied via the onKill hook for
+    now; ported with the effect / command layer (experience, drops, messages).
+  - The arena-level branch of mon_take_hit (arena mode is not modelled) and the
+    PR_HEALTH redraw (a UI concern) are omitted; both are unreached here.
+  - Existing melee damage is still applied inline in game/player-turn.ts
+    (pyAttack); routing it through monTakeHit is a follow-up once the death hook
+    is filled in.
+verified-by:
+  - mon/take-hit.test.ts: monsterWake clears sleep and sets AWARE; a non-fatal
+    blow wakes, clears Hold, and reduces hp; a fatal blow runs onKill and
+    reports death; a monster survives at exactly zero hp; cover tracks break
+    only when damage is dealt; a camouflaged mimic is revealed via becomeAware;
+    a NO_FEAR monster is never frightened; and monster_scared_by_damage cures
+    small fear while only reducing larger fear on light pain.
