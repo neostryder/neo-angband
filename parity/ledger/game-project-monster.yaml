@@ -1,0 +1,60 @@
+module: packages/core/src/game/project-monster.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/project-mon.c
+    items:
+      - project_m (L1328): the monster projection driver - gating (walls protect
+        monsters, no-monster, never-affect-projector, PROJECT_SAFE same-race
+        skip), seen determination, PROJECT_STOP camouflage reveal, forced
+        obviousness and forced wake from the projection data, running the type
+        handler, and dispatching to the damage appliers and side effects.
+        Implements the onMonster seam of project() (world/project.ts).
+      - project_m_player_attack (L1102): player / trap damage, routed through
+        mon_take_hit so death, fear and waking match every other player attack;
+        the lethal-blow death message is shown before mon_take_hit (which gets an
+        empty note), then hurt / pain / flee messages.
+      - project_m_monster_attack (L1034): monster-vs-monster damage; uniques are
+        reduced to but not killed; direct hp subtraction, death message,
+        monster_death, removal.
+      - project_m_apply_side_effects (L1177): polymorph (save throw + replacement
+        via hook), teleport (via hook), else applying the accumulated MON_TMD
+        timers with mon_inc_timed.
+  - path: src/mon-make.c
+    items:
+      - delete_monster_idx (L314), minimal: clear the square and free the slot
+        (game/context.ts deleteMonster); walkAction's inline removal now uses it.
+notes: >-
+  The game-layer half of the monster projection, built on the pieces already
+  landed: the pure effect core (mon/project-mon.ts runMonsterHandler), the shared
+  damage primitive (mon/take-hit.ts monTakeHit), and the projection behaviour
+  data (world/projection.ts obvious/wake). mon/ must not depend on game/, so the
+  driver lives here - it mutates GameState (chunk.mon / monsters[] / removal).
+  The genuinely downstream consequences are injected as ProjectMonsterHooks, so
+  the driver ships and is tested before their subsystems exist: onKill /
+  onMonsterDeath (experience, drops, quests), polymorph (poly_race +
+  place_new_monster), teleport (effect_simple EF_TELEPORT), thrustAway
+  (thrust_away), and the becomeAware / revertShape / message / lore hooks. The
+  minimal delete_monster_idx (square clear + slot free) runs in the driver; the
+  hook does the rest. Message and update ordering follows upstream.
+deferred:
+  - The onKill / onMonsterDeath bodies (player_kill_monster / monster_death:
+    experience, treasure drops, quest completion) are blocked on floor-object
+    piles (#20), lore (#24), experience and quests; supplied as hooks.
+  - polymorph needs monster generation (get_mon_num / place_new_monster) and
+    teleport needs EF_TELEPORT (#18); both are hooks that no-op until then, so
+    the poly "maintain" and teleport branches are exercised via the hook, not
+    end to end.
+  - thrust_away is a hook (cave-mutating knockback with feature checks).
+  - delete_monster_idx's held-object drop, monster-group, mimic, racial-counter
+    and targeting/redraw bookkeeping are deferred with their subsystems.
+  - update_mon / square_light_spot / PR_MONSTER collapse into the onUpdate hook.
+verified-by:
+  - game/project-monster.test.ts (12 tests): misses an empty or impassable grid
+    and never affects the projector; damages a monster and reports the hit;
+    kills it, runs onKill, and removes it from monsters[] and the chunk; applies
+    a stun timer with no damage (MON_STUN); teleports via the hook for AWAY_ALL;
+    requests a thrust for PROJ_FORCE; a non-undead is skipped by SLEEP_UNDEAD; a
+    monster source kills another monster via onMonsterDeath (not onKill); a
+    same-race target is spared under PROJECT_SAFE; and a waking projection clears
+    a sleeper's SLEEP timer.
