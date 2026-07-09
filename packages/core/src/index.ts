@@ -91,6 +91,7 @@ export * from "./game/mon-ranged";
 export * from "./game/mon-group";
 export * from "./game/floor";
 export * from "./game/pickup";
+export * from "./game/obj-cmd";
 export * from "./game/loop";
 
 // Some small derived constants and geometry helpers are defined
