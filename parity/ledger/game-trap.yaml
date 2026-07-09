@@ -1,0 +1,69 @@
+module: packages/core/src/game/trap.ts (+ packages/core/src/world/trap.ts)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/trap.c
+    items:
+      - The trap_kind table bound from trap.json (world/trap.ts bindTraps):
+        appear rarity/mindepth/maxnum, the visibility power random-value,
+        TRF flags, raw effect / effect-xtra chains, OF save flags, msgs;
+        lookup_trap by desc (L41).
+      - square_trap / _specific / _trap_flag / isplayertrap / isvisibletrap
+        / iswarded / iswebbed over state.traps (grid-keyed, newest first).
+      - square_remove_trap / _all_traps / _of_type (L136-L250).
+      - square_player_trap_allowed (L255): one trap, no objects, TF TRAP
+        terrain.
+      - pick_trap (L275): cumulative-rarity pick with the min-depth,
+        TRF_FLOOR and trapdoor legality rules (quest hook, max-depth).
+      - place_trap (L356): random pick on an illegal index, power rolled
+        from the kind's random-value at trap level, instance flag copy.
+      - square_reveal_trap (L399): SEARCH vs power, forced reveal, the
+        VISIBLE instance flag.
+      - hit_trap (L494): delayed selection, kind msg, the three save paths
+        (OF save flags via the playerHasFlag hook, SAVE_ARMOR vs check_hit
+        125, SAVE_THROW vs SKILL_SAVE), the effect chain run through the
+        interpreter with a trap source, effect_xtra at one_in_2, TRF_DOWN
+        level change, TRF_PIT pull-onto-trap, ONETIME / one_in_3 removal
+        else becoming visible.
+      - square_set_trap_timeout / square_trap_timeout (L625/L674).
+      - square_set_door_lock / square_door_power (L706/L731): the lock IS
+        the "door lock" trap; powers the cave-cmd locked-door seams.
+  - path: src/cmd-cave.c
+    items:
+      - do_cmd_disarm / do_cmd_disarm_aux (L788): DISARM_MAGIC vs _PHYS by
+        TRF_MAGICAL, the blind/no-light/confused/hallucinating tenth, power
+        = depth / 5, the three-outcome roll (disarm / retry / set it off).
+  - path: src/player-calcs.c
+    items:
+      - calc_unlocking_chance (L1676): DISARM_PHYS - 4 * lock power,
+        tenth-ed by conditions, floor 2.
+notes: >-
+  Traps live on state.traps (the GameState seam, like floor piles); gen
+  marks trap grids and rolls door locks (place_closed_door 1-in-4 at 1d7,
+  now recorded instead of discarded), and startGame instantiates both on
+  the live cave and installs disarm + the step-onto-trap hook
+  (walkAction -> onPlayerMoved -> hit_trap, exactly move_player's flow).
+  Locked doors resolve through calc_unlocking_chance in the open command.
+  The web renders revealed traps under objects/monsters.
+deferred:
+  - player_is_trapsafe and the OF save-flag equip learning ride the
+    playerHasFlag hook (rune knowledge, #13/#24) - default: no flags, no
+    trap immunity.
+  - square_memorize_traps / the player's shadow cave (knowledge #24): the
+    VISIBLE instance flag doubles as the render gate.
+  - no_light in the unlock/disarm penalties (light model); monster glyph
+    and web interactions in the monster AI (mon-move); trap-created
+    terrain effects that need unported effect handlers fizzle silently.
+  - The trapdoor persistent-levels option check (birth options).
+verified-by:
+  - game/trap.test.ts (14 tests): the bound pit kind's flags/power/save;
+    lookup_trap; specific and random placement (none in town); reveal vs
+    SEARCH and forced; a pit damages the live player through the effect
+    stack; FEATHER evades; a trap door signals the level change; a
+    disabled trap does not fire; door lock set/read and the non-door
+    refusal; calc_unlocking_chance values; a skilled disarm removes the
+    trap through processPlayer; invisible traps cannot be disarmed;
+    stepping onto a trap triggers it through the walk wiring.
+  - session/game.test.ts: startGame instantiates generation traps and one
+    lock per generation-rolled locked door; the step hook and disarm are
+    installed.
