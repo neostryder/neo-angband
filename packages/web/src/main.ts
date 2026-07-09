@@ -28,6 +28,7 @@ import {
   squareIsSeen,
   loc,
   STAT,
+  TRF,
   installPickup,
 } from "@neo-angband/core";
 import type {
@@ -103,6 +104,21 @@ state.nextCommand = (): PlayerCommand | null => commandBuffer.shift() ?? null;
 
 function gridIndex(x: number, y: number): number {
   return y * chunk.width + x;
+}
+
+// Revealed traps draw under objects and monsters (upstream layer order).
+function trapIndex(): Map<number, { ch: string; css: string }> {
+  const map = new Map<number, { ch: string; css: string }>();
+  for (const list of state.traps.values()) {
+    for (const t of list) {
+      if (!t.flags.has(TRF.VISIBLE) || !t.kind.glyph.trim()) continue;
+      map.set(gridIndex(t.grid.x, t.grid.y), {
+        ch: t.kind.glyph,
+        css: colorToCss(colorCharToAttr(t.kind.color)),
+      });
+    }
+  }
+  return map;
 }
 
 // Live floor items from the engine's piles (pile head = newest, drawn on
@@ -209,6 +225,7 @@ function render(): void {
   const camY = py - Math.floor(mapRows / 2);
   const monsterAt = monsterIndex();
   const objectAt = objectIndex();
+  const trapAt = trapIndex();
 
   for (let sy = 0; sy < mapRows; sy++) {
     for (let sx = 0; sx < mapCols; sx++) {
@@ -230,6 +247,8 @@ function render(): void {
       }
 
       let drawn = { ch: t.ch, css: t.css };
+      const trap = trapAt.get(idx);
+      if (trap) drawn = trap;
       const obj = objectAt.get(idx);
       if (obj) drawn = obj;
       const mon = monsterAt.get(idx);

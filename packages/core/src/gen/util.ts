@@ -221,6 +221,8 @@ export class Gen {
   readonly objOccupied = new Set<number>();
   /** grid index -> square holds a trap (player trap for gen purposes). */
   readonly trapGrids = new Set<number>();
+  /** Doors rolled locked at generation (grid + 1d7 lock power). */
+  readonly lockedDoors: Array<{ grid: Loc; power: number }> = [];
   /** ridx of uniques already placed on this level. */
   private readonly placedUniques = new Set<number>();
   private monCounter = 0;
@@ -813,11 +815,12 @@ export function placeSecretDoor(c: Chunk, grid: Loc): void {
   c.setFeat(grid, FEAT.SECRET);
 }
 
-/** place_closed_door (locking is a door-domain side effect, ledgered). */
+/** place_closed_door: one in four doors is locked to power 1d7. */
 export function placeClosedDoor(g: Gen, grid: Loc): void {
   g.c.setFeat(grid, FEAT.CLOSED);
-  /* square_set_door_lock is deferred (door domain); still roll for RNG order. */
-  if (g.rng.oneIn(4)) g.rng.randint1(7);
+  /* square_set_door_lock: the lock is a trap on the live cave; record the
+   * rolled power so the game state can place the lock at start. */
+  if (g.rng.oneIn(4)) g.lockedDoors.push({ grid, power: g.rng.randint1(7) });
 }
 
 export function placeRandomDoor(g: Gen, grid: Loc): void {

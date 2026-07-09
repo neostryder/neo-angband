@@ -33,6 +33,7 @@ export * from "./world/scatter";
 export * from "./world/flow";
 export * from "./world/project";
 export * from "./world/projection";
+export * from "./world/trap";
 export * from "./effects/effect";
 export * from "./effects/interpreter";
 export * from "./effects/handlers";
@@ -93,6 +94,7 @@ export * from "./game/floor";
 export * from "./game/pickup";
 export * from "./game/obj-cmd";
 export * from "./game/cave-cmd";
+export * from "./game/trap";
 export * from "./game/loop";
 
 // Some small derived constants and geometry helpers are defined
@@ -124,4 +126,7 @@ export { squareIsEmpty } from "./gen/util";
 //   GameState) share the name; gen/util's stays barrel-canonical and the
 //   live one is reached via its module.
 export { squareCanPutItem } from "./gen/util";
+// - placeTrap: gen/util's generation-time marker vs game/trap's live
+//   place_trap; same convention, gen/util's stays barrel-canonical.
+export { placeTrap } from "./gen/util";
 export * from "./game/gear";

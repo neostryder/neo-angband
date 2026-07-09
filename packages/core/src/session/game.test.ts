@@ -29,6 +29,7 @@ const pack: GamePack = {
   vaults: loadRecords("vault"),
   dungeonProfiles: loadRecords("dungeon_profile"),
   projection: loadRecords("projection"),
+  trap: loadRecords("trap"),
   obj: {
     objectBase: loadJson("object_base"),
     object: loadJson("object"),
@@ -162,6 +163,27 @@ describe("startGame (new-game assembly)", () => {
     expect(registry.has("quaff")).toBe(true);
     expect(registry.has("zap-rod")).toBe(true);
     expect(registry.has("wield")).toBe(true);
+    // The trap system is live (step hook + disarm).
+    expect(typeof state.onPlayerMoved).toBe("function");
+    expect(registry.has("disarm")).toBe(true);
+  });
+
+  it("instantiates generation-marked traps and locked doors", () => {
+    const { state, booted } = startGame(pack, { seed: 321, depth: 8 });
+    // Every door generation rolled locked carries a live door-lock trap.
+    let locks = 0;
+    let playerTraps = 0;
+    for (const list of state.traps.values()) {
+      for (const trap of list) {
+        if (trap.kind.name === "door lock") locks++;
+        else playerTraps++;
+      }
+    }
+    expect(locks).toBe(booted.lockedDoors.length);
+    // Trap grids that still allowed a trap got one (depth 8 rolls some).
+    if (booted.trapGrids.length > 0) {
+      expect(playerTraps).toBeGreaterThan(0);
+    }
   });
 
   it("a born Warrior can quaff their starting Berserk Strength potion", () => {

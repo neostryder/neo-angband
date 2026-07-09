@@ -51,6 +51,16 @@ import type { EffectEnvDeps } from "../game/effect-env";
 import { installMonsterCasting } from "../game/mon-ranged";
 import { installObjCommands } from "../game/obj-cmd";
 import { installCaveCommands } from "../game/cave-cmd";
+import {
+  calcUnlockingChance,
+  installTraps,
+  placeTrap,
+  squareDoorPower,
+  squareRemoveAllTraps,
+  squareSetDoorLock,
+} from "../game/trap";
+import type { TrapDeps } from "../game/trap";
+import { lookupTrap } from "../world/trap";
 import { FlavorKnowledge } from "../obj/knowledge";
 import { ObjAllocState } from "../obj/make";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
@@ -148,6 +158,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     monsters: [null],
     groups: [null],
     floor: new Map(),
+    traps: new Map(),
     turn: 0,
     z: {
       ...DEFAULT_GAME_CONSTANTS,
@@ -190,8 +201,9 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   installPickup(state, registry, { constants: reg.constants });
 
   // The effect stack: with bound projections, monsters cast spells on
-  // their turns (make_ranged_attack) and items are usable (cmd-obj.c),
-  // both through the same effect interpreter.
+  // their turns (make_ranged_attack), items are usable (cmd-obj.c), and
+  // traps fire (trap.c) - all through the same effect interpreter.
+  let trapDeps: TrapDeps | null = null;
   if (reg.projections) {
     const effects = new EffectRegistry();
     registerCoreHandlers(effects);
@@ -218,16 +230,51 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       envDeps,
       flavor: new FlavorKnowledge(reg.objects.ordinaryKindCount),
     });
+
+    // Traps: instantiate the generation-marked grids as real traps (the
+    // random pick happens here, on the live cave, exactly as place_trap),
+    // lock the doors generation rolled locked, and install disarm + the
+    // step-onto-trap hook.
+    if (reg.traps) {
+      trapDeps = { kinds: reg.traps, effects: { registry: effects, cast, envDeps } };
+      for (const grid of booted.trapGrids) {
+        placeTrap(state, grid, -1, booted.depth, trapDeps);
+      }
+      for (const door of booted.lockedDoors) {
+        squareSetDoorLock(state, door.grid, door.power, trapDeps);
+      }
+      installTraps(state, registry, trapDeps);
+    }
   }
 
   // Cave commands (open / close / tunnel / alter / stair checks); rubble
-  // finds and gold veins pay out through the object generator.
+  // finds and gold veins pay out through the object generator, and door
+  // locks resolve through the trap system when it is live.
+  const lockKind = trapDeps ? lookupTrap(trapDeps.kinds, "door lock") : null;
+  const deps = trapDeps; // narrow for the closures
   installCaveCommands(registry, {
     makeDeps: {
       reg: reg.objects,
       alloc: new ObjAllocState(reg.objects, reg.constants),
       constants: reg.constants,
     },
+    ...(deps && lockKind
+      ? {
+          env: {
+            isLockedDoor: (grid: Loc): boolean =>
+              squareDoorPower(state, grid, deps) > 0,
+            pickLock: (grid: Loc): boolean => {
+              const power = squareDoorPower(state, grid, deps);
+              const chance = calcUnlockingChance(state, power);
+              if (state.rng.randint0(100) < chance) {
+                squareRemoveAllTraps(state, grid, lockKind.tidx);
+                return true;
+              }
+              return false;
+            },
+          },
+        }
+      : {}),
   });
 
   return { state, registry, booted, players };
