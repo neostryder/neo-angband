@@ -1,0 +1,55 @@
+module: packages/core/src/mon/spell.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-spell.c
+    items:
+      - the mon_spell_types[] table (L397, built from list-mon-spells.h): the
+        RSF_ -> RST_ classification, ported as MON_SPELL_TYPES by evaluating the
+        generated type expression (generated/mon-spells.ts keeps it as written)
+        into a bitmask indexed by RSF value (index 0 = RSF_NONE).
+      - mon_spell_is_valid (L407), monster_spell_is_breath (L412),
+        mon_spell_has_damage (L417), mon_spell_is_innate (L422): the spell-type
+        predicates; RST_DAMAGE = RST_BOLT | RST_BALL | RST_BREATH | RST_DIRECT.
+      - test_spells (L434), ignore_spells (L451), create_mon_spell_mask (L657):
+        the spell-flagset type queries and mask builder (createMonSpellMask
+        returns a fresh RSF flagset rather than filling one in place).
+      - chance_of_spell_hit_base (L313) and chance_of_spell_hit (L325):
+        MAX(race->level, 1) * 3 + spell->hit, reduced CONF_HIT_REDUCTION (20)
+        percent per level of monster confusion (monsterEffectLevel, mon/timed.ts).
+      - breath_dam (L614): a monster breath does hp / element->divisor damage,
+        capped at element->damage_cap; takes the projection's divisor/cap
+        structurally so mon/ need not import world/.
+  - path: src/effect-handler-attack.c
+    items:
+      - effect_handler_BREATH (L681): now wired to the real breath_dam - a
+        monster breath's damage scales with the breather's current hitpoints
+        (game/effect-attack.ts handleBREATH), replacing the dice-value stand-in;
+        a player breath still uses the dice value.
+notes: >-
+  The pure monster-spell substrate: the RST_ classification, the type predicates
+  and masks, the spell-hit chance and breath damage. These are the computations
+  the spell executor (do_mon_spell) and the spell-selection AI
+  (choose_attack_spell / remove_bad_spells) sit on; none touch the GameState, so
+  they live in mon/ below game/. MON_SPELL_TYPES is evaluated once at module
+  load from the generated string expressions, aligned to RSF value so the
+  lookups mirror mon_spell_types[index] exactly.
+deferred:
+  - do_mon_spell (L345): executes a spell's effect chain through effect_do with
+    a monster source - the game/ layer wiring (spell messages, the saving throw,
+    spell_check_for_fail_rune), a follow-up increment now that the effect
+    handlers and the game effect env exist.
+  - choose_attack_spell / remove_bad_spells / make_attack_spell (mon-attack.c):
+    the spell-selection AI, a follow-up increment (needs player resist knowledge
+    and the monster turn integration).
+  - nonhp_dam (L571) / mon_spell_dam (L637) / mon_spell_lore_description (L681) /
+    mon_spell_lore_damage (L698): the lore damage calculations roll spell-effect
+    dice whose expressions can reference the casting race (upstream's ref_race),
+    which is bound with the monster-lore / recall layer (#24).
+verified-by:
+  - mon/spell.test.ts (10 tests): MON_SPELL_TYPES evaluates the generated
+    expressions aligned to RSF value; the breath / damage / innate predicates and
+    monSpellIsValid classify correctly; RST_DAMAGE is the four damaging
+    categories; test_spells / ignore_spells / create_mon_spell_mask operate on an
+    RSF flagset; the hit chance is MAX(level,1)*3 + hit and drops with confusion;
+    breath_dam is hp/divisor capped at the damage cap (integer division).
