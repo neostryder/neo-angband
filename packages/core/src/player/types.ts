@@ -273,6 +273,14 @@ export interface TimedEffect {
   onEnd: string;
   /** MSG_ type name (kept as a name; obj/effects resolve the int). */
   msgt: string;
+  /** on-increase message (shown when the duration grows), or empty. */
+  onIncrease: string;
+  /** on-decrease message (shown when the duration shrinks), or empty. */
+  onDecrease: string;
+  /** TMD_FLAG_NONSTACKING: a fresh increase is blocked while already active. */
+  nonStacking: boolean;
+  /** lower-bound directive: values below this floor are raised to it. */
+  lowerBound: number;
   grades: TimedGrade[];
   fail: TimedFail[];
 }

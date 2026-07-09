@@ -54,6 +54,7 @@ export * from "./player/types";
 export * from "./player/bind";
 export * from "./player/player";
 export * from "./player/calcs";
+export * from "./player/timed";
 export * from "./player/birth";
 export * from "./save/buffer";
 export * from "./save/integrity";
