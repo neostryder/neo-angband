@@ -234,6 +234,22 @@ describe("EF_TELEPORT_LEVEL", () => {
   });
 });
 
+describe("EF_ALTER_REALITY", () => {
+  it("regenerates the current level in place", () => {
+    const state = makeState();
+    state.chunk.depth = 12;
+    let changed: number | null = null;
+    const msgs: string[] = [];
+    registry().effectSimple(
+      EF.ALTER_REALITY,
+      env(state, { teleport: { changeLevel: (d) => (changed = d) } }, msgs),
+      { origin: sourcePlayer() },
+    );
+    expect(changed).toBe(12);
+    expect(msgs).toContain("The world changes!");
+  });
+});
+
 describe("chooseTeleportDestination", () => {
   it("avoids vault grids when a non-vault landing exists", () => {
     const state = makeState({ playerGrid: loc(20, 12), seed: 5 });

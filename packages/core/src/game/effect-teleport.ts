@@ -1,7 +1,8 @@
 /**
  * The teleport-family general effect handlers, ported from
  * reference/src/effect-handler-general.c (Angband 4.2.6): EF_TELEPORT (L2507),
- * EF_TELEPORT_TO (L2703) and EF_TELEPORT_LEVEL (L2834). Like the other
+ * EF_TELEPORT_TO (L2703), EF_TELEPORT_LEVEL (L2834) and the level-regenerating
+ * EF_ALTER_REALITY (L1184). Like the other
  * game-layer effect handlers they mutate the live GameState (moving the player
  * or a monster across the level), so they live in game/ and register into the
  * EffectRegistry from here (registerTeleportHandlers), reading their game
@@ -440,6 +441,22 @@ const handleTELEPORT_LEVEL: EffectHandler = (ctx) => {
 };
 
 /**
+ * EF_ALTER_REALITY: regenerate the current dungeon level in place. The world
+ * change is the injected changeLevel hook (staying on the same depth, #23); the
+ * arena-level guard is omitted (arenas are not modelled).
+ */
+const handleALTER_REALITY: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  ctx.ident = true;
+  const { state } = env;
+  const tp = env.teleport ?? {};
+  say(ctx, "The world changes!");
+  tp.changeLevel?.(state.chunk.depth);
+  return true;
+};
+
+/**
  * teleportMonster: the concrete backing for the project_m `teleport` hook
  * (game/project-monster.ts). A monster is teleported `distance` grids from its
  * current location, exactly as EF_TELEPORT does for a self-teleporting monster.
@@ -468,6 +485,7 @@ const TELEPORT_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.TELEPORT, handleTELEPORT],
   [EF.TELEPORT_TO, handleTELEPORT_TO],
   [EF.TELEPORT_LEVEL, handleTELEPORT_LEVEL],
+  [EF.ALTER_REALITY, handleALTER_REALITY],
 ]);
 
 /**

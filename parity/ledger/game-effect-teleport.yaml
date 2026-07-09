@@ -22,6 +22,9 @@ upstream:
         keeps failing; supports the player being teleported, a monster pulled to
         the player (dis 2), the player pulled to a monster, and Dimension Door
         (the aim prompt is an injected targeting seam).
+      - effect_handler_ALTER_REALITY (L1184): handleALTER_REALITY - regenerate
+        the current level in place (dungeon_change_level at the same depth via the
+        injected changeLevel hook); the arena-level guard is omitted.
       - effect_handler_TELEPORT_LEVEL (L2834): handleTELEPORT_LEVEL - the exact
         up/down decision tree (no rising with force_descend or in the town, no
         descending onto unleavable quest levels or past z_info->max_depth - 1,
