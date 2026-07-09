@@ -42,6 +42,8 @@ import type { DungeonProfiles, DunProfileRecordJson } from "../gen/cave";
 import { generateLevel } from "../gen/generate";
 import type { GenDeps, GenerateOptions } from "../gen/generate";
 import type { MonPlaceDeps, PlacedMonster, PlacedObject } from "../gen/util";
+import { bindProjections } from "../world/projection";
+import type { ProjectionInfo, ProjectionRecordJson } from "../world/projection";
 
 /** The base content pack as parsed JSON (pack zero, or a merged pack). */
 export interface CorePack {
@@ -52,6 +54,12 @@ export interface CorePack {
   dungeonProfiles: DunProfileRecordJson[];
   obj: ObjPackJson;
   mon: MonsterPackRecords;
+  /**
+   * projection.json (PROJ_ element/damage table). Optional so old callers
+   * keep working; without it startGame skips the effect-stack wiring
+   * (monster spells, item use).
+   */
+  projection?: ProjectionRecordJson[];
 }
 
 /** Runtime registries bound from a pack. */
@@ -62,6 +70,8 @@ export interface CoreRegistries {
   monsters: ReturnType<typeof bindMonsters>;
   rooms: RoomRegistry;
   profiles: DungeonProfiles;
+  /** Bound projections (PROJ_-indexed), or null when the pack has none. */
+  projections: ProjectionInfo[] | null;
 }
 
 /** Bind a parsed pack into the full set of runtime registries. */
@@ -75,7 +85,8 @@ export function bindCore(pack: CorePack): CoreRegistries {
     vaults: loadVaults(pack.vaults),
   });
   const profiles = createDungeonProfiles(pack.dungeonProfiles);
-  return { constants, features, objects, monsters, rooms, profiles };
+  const projections = pack.projection ? bindProjections(pack.projection) : null;
+  return { constants, features, objects, monsters, rooms, profiles, projections };
 }
 
 /** Build the generator dependency bundle from bound registries. */
