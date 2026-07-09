@@ -27,6 +27,7 @@
 import { EF, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { monsterIsPowerful } from "../mon/predicate";
+import { breathDam } from "../mon/spell";
 import { DIR_TARGET, effectCalculateValue } from "../effects/interpreter";
 import type {
   EffectHandler,
@@ -164,16 +165,20 @@ const handleBALL: EffectHandler = (ctx) => {
 const handleBREATH: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
-  /* breath_dam(type, mon->hp) is the monster-spell layer's (#19); the dice
-   * value stands in until then. */
-  const dam = effectCalculateValue(ctx, false);
+  /* A player breath uses the dice value; a monster breath scales with the
+   * breather's current hitpoints (breath_dam, mon/spell.ts). */
+  let dam = effectCalculateValue(ctx, false);
   const source = sourceFor(env, ctx.origin);
   const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
 
   let powerful = false;
   if (source.isMonster) {
     const mon = env.state.monsters[source.monster];
-    powerful = !!mon && monsterIsPowerful(mon);
+    if (mon) {
+      powerful = monsterIsPowerful(mon);
+      const proj = env.cast.projections[ctx.subtype];
+      if (proj) dam = breathDam(proj, mon.hp);
+    }
   }
 
   const opts: { radius?: number; powerful?: boolean } = { powerful };
