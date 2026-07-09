@@ -28,6 +28,13 @@ upstream:
         stupid monsters.
       - summon_possible (L238): summonPossible - an empty floor grid within 2 of
         the caster in line of sight (glyph-of-warding / arena exclusions deferred).
+  - path: src/mon-move.c
+    items:
+      - monster_turn's `if (make_ranged_attack(mon)) return;` (L1568): wired
+        through the injected state.monsterCast hook (game/context.ts), which
+        monsterTurn (game/monster-turn.ts) calls before moving; installed by
+        installMonsterCasting. So monsters cast during the live game loop
+        (scheduler -> processMonsters -> monsterTurn -> monsterCast).
 notes: >-
   The spell-selection AI that decides whether and which spell a monster casts,
   the decider that calls the do_mon_spell executor. It lives in game/ (it reads
@@ -47,8 +54,9 @@ deferred:
     injected hooks.
   - The decoy target and the non-player-target witness path (square_isview along
     project_path): decoys and monster-vs-monster targeting are not modelled here.
-  - Wiring makeRangedAttack into the live monster turn (game/monster-turn.ts):
-    the next step, so monsters actually cast during the game loop.
+  - The session / web layer still needs to call installMonsterCasting during
+    startGame (with the effect registry, cast context and bound spells) to enable
+    casting in the shipped game; the core seam and integration are complete.
 verified-by:
   - game/mon-ranged.test.ts (8 tests): monster_can_cast passes at 100% frequency
     and fails at 0% and when nice; make_ranged_attack casts an innate breath at
