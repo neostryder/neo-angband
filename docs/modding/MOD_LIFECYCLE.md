@@ -1,9 +1,9 @@
 # Mod Lifecycle, Saves, and Composition
 
-> STATUS: RATIFIED 2026-07-08 (PORT_PLAN.md decision 19). Aaron confirmed
+> STATUS: RATIFIED 2026-07-08 (PORT_PLAN.md decision 19). The maintainer confirmed
 > decisions 1, 2, 3, 5, and 6 as written, and 4 (the determinism guard)
 > with the change recorded in section 4 below: it is a warning and label,
-> not a bar. Aaron also added the uninstall-recovery behaviors in the new
+> not a bar. The maintainer also added the uninstall-recovery behaviors in the new
 > section "When a mod's content leaves the game". This page is the design
 > of record; it is not yet fully built. [OPEN] items still need a decision.
 
@@ -198,7 +198,7 @@ ratings in-app. Building it later is cheap because we build the bundle
 format and the installer now, with "git" and "marketplace" as two
 sources feeding one installer. [PROPOSED] The in-app browser is a view
 onto that source; actually building the marketplace backend is a future
-release, as Aaron noted.
+release, as noted.
 
 ### Updating and uninstalling
 
@@ -221,7 +221,7 @@ release, as Aaron noted.
 
 Enabled mods form an ordered list. [PROPOSED] Later in the order wins on
 genuine conflicts (last-write-wins, the convention players already know
-from Bethesda and Forge). The order is computed by:
+from Bethesda games and similar mod ecosystems). The order is computed by:
 
 1. Topological sort by `dependencies` and `loadAfter`/`loadBefore`
    (hard requirements first; cycles rejected at install).

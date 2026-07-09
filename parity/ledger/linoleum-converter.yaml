@@ -3,7 +3,7 @@ status: ported
 baseline: 4.2.6
 upstream:
   # NOTE: the baseline for this module is NOT the 4.2.6 C tree. The Linoleum
-  # converter is a feature of Aaron's upstream fork; the source of truth is
+  # converter is a feature of the upstream fork; the source of truth is
   # the PowerShell script below (paths relative to the fork repo, not to
   # reference/). The reference/lib/tiles data it consumes is the pinned
   # 4.2.6 tileset corpus.

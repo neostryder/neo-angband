@@ -4,7 +4,7 @@ Linoleum is a manifest-backed, loose-pack graphics format: instead of one
 large tilesheet plus pixel coordinates, a pack is a directory of individual
 PNG assets addressed through explicit, auditable target maps.
 
-The format originated as a feature of Aaron's upstream Angband fork (see
+The format originated as a feature of the upstream Angband fork (see
 `docs/hacking/linoleum.rst` there, and the converter
 `scripts/build-linoleum-packs.ps1`). This port replicates it, but as a
 BUNDLED MOD rather than an in-core feature (PORT_PLAN.md decision 18):

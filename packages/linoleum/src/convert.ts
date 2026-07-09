@@ -1,8 +1,8 @@
 /**
  * Linoleum loose-pack converter.
  *
- * Faithful port of the export half of Aaron's
- * scripts/build-linoleum-packs.ps1 (upstream fork), using pngjs instead of
+ * Faithful port of the export half of the upstream fork's
+ * scripts/build-linoleum-packs.ps1, using pngjs instead of
  * System.Drawing for tile extraction. Intentional divergences are limited
  * to: generated-by header text naming this tool, LF line endings without a
  * BOM, and inventory reports written into the output root.

@@ -1,8 +1,8 @@
 /**
  * Bundled legacy tileset pack configurations.
  *
- * Faithful port of the $allPacks table in Aaron's
- * scripts/build-linoleum-packs.ps1 (upstream fork).
+ * Faithful port of the $allPacks table in the upstream fork's
+ * scripts/build-linoleum-packs.ps1.
  */
 
 /** Configuration for one convertible legacy tileset. */
