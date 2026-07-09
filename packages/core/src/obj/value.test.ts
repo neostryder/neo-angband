@@ -5,7 +5,7 @@ import { TV } from "../generated";
 import { ObjRegistry } from "./bind";
 import { objectPrep } from "./make";
 import type { ObjPackJson } from "./types";
-import { objectValueBase, objectValueReal } from "./value";
+import { objectValue, objectValueBase, objectValueReal } from "./value";
 import { Rng } from "../rng";
 
 function loadJson<T>(name: string): T {
@@ -111,5 +111,22 @@ describe("object_value_base (obj-power.c)", () => {
   it("uses the kind cost when the flavor is aware", () => {
     const potion = make(TV.POTION);
     expect(objectValueBase(potion, true)).toBe(potion.kind.cost);
+  });
+});
+
+describe("object_value (obj-power.c dispatch)", () => {
+  it("prices an aware flavored kind at its real cost", () => {
+    const potion = make(TV.POTION);
+    expect(objectValue(reg, potion, 2, true)).toBe(potion.kind.cost * 2);
+  });
+
+  it("prices an unaware flavored kind at the flat base guess", () => {
+    const potion = make(TV.POTION);
+    expect(objectValue(reg, potion, 2, false)).toBe(20 * 2);
+  });
+
+  it("prices a variable-power item by object_power regardless of awareness", () => {
+    const cloak = make(TV.CLOAK);
+    expect(objectValue(reg, cloak, 1, false)).toBe(objectValueReal(reg, cloak, 1));
   });
 });

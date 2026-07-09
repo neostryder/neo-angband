@@ -7,11 +7,12 @@
  * scrolls, food, wands, staves, rods, ...) are priced from the kind's base
  * cost, plus a per-charge premium for wands and staves.
  *
- * DEFERRED (ledgered in parity/ledger/obj-value.yaml): object_value's dispatch
- * on obj->known (the partial-knowledge twin). Until the known-object model
- * lands, object_value prices the real object for variable-power items, which
- * is exactly correct for a fully-known item (store stock, identified gear) and
- * over-values only an item with still-unknown runes.
+ * object_value dispatches by flavor-awareness (supplied by the caller's
+ * FlavorKnowledge) and item class. DEFERRED (ledgered in
+ * parity/ledger/obj-value.yaml): the obj->known partial-knowledge twin. Until
+ * the known-object model lands, object_value prices the real object for
+ * variable-power items, which is exactly correct for a fully-known item (store
+ * stock, identified gear) and over-values only an item with still-unknown runes.
  */
 
 import { OF, TV } from "../generated";
@@ -19,6 +20,7 @@ import { INT_MAX, INT_MIN } from "../guard";
 import type { ObjRegistry } from "./bind";
 import {
   tvalCanHaveCharges,
+  tvalCanHaveFlavor,
   tvalHasVariablePower,
   tvalIsAmmo,
   tvalIsLight,
@@ -158,4 +160,32 @@ export function objectValueReal(
   }
 
   return totalValue;
+}
+
+/**
+ * object_value (obj-power.c L1253): the price of an item (qty one or a stack),
+ * including plusses and charges, never noticing unknown bonuses.
+ *
+ * `aware` is object_flavor_is_aware(obj), supplied by the caller's
+ * FlavorKnowledge. Upstream dispatches variable-power items to
+ * object_value_real(obj->known); with the known twin not modelled, this values
+ * the real object, which is exact for a fully-known item (store stock,
+ * identified gear) and over-values only an item with still-unknown runes.
+ */
+export function objectValue(
+  reg: ObjRegistry,
+  obj: GameObject,
+  qty: number,
+  aware: boolean,
+): number {
+  /* Variable-power items are assessed by what is known about them. */
+  if (tvalHasVariablePower(obj.tval)) {
+    return objectValueReal(reg, obj, qty);
+  }
+  /* Flavoured kinds the player is aware of price at their real cost. */
+  if (tvalCanHaveFlavor(obj.kind.tval) && aware) {
+    return objectValueReal(reg, obj, qty);
+  }
+  /* Otherwise, a flat base guess. */
+  return objectValueBase(obj, aware) * qty;
 }

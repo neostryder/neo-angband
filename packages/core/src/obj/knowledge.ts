@@ -19,6 +19,7 @@
  */
 
 import type { GameObject } from "./object";
+import type { ObjectKind } from "./types";
 import { OBJ_MOD_MAX } from "./types";
 import type { Player } from "../player/player";
 
@@ -46,5 +47,63 @@ export function objectLearnOnWield(player: Player, obj: GameObject): void {
     if ((obj.modifiers[i] ?? 0) !== 0 && (known[i] ?? 0) === 0) {
       known[i] = 1;
     }
+  }
+}
+
+/**
+ * Flavor awareness, ported from the kind->aware / kind->tried bits of
+ * reference/src/object.h and the accessors/setters in obj-knowledge.c
+ * (object_flavor_is_aware L2243, object_flavor_was_tried L2254,
+ * object_flavor_aware L2266, object_flavor_tried L2320).
+ *
+ * Upstream these two bits live on the shared object_kind template and are
+ * global to the running game. This port keeps them out of the immutable bound
+ * registry and in a per-game FlavorKnowledge, keyed by kind index (kidx), so a
+ * bound ObjRegistry stays reusable across games.
+ *
+ * "aware" means the player knows what a flavored kind does (has quaffed the
+ * potion, etc.); "tried" means a kind of that flavor has been used without the
+ * effect being learned. object_value and object_value_base read is_aware to
+ * decide between the real cost and a flat per-tval guess.
+ */
+export class FlavorKnowledge {
+  private readonly awareKidx = new Set<number>();
+  private readonly triedKidx = new Set<number>();
+
+  /**
+   * @param ordinaryKindCount z_info->ordinary_kind_max: kinds at or above this
+   * index are INSTA_ART dummies and are never marked tried.
+   */
+  constructor(private readonly ordinaryKindCount: number) {}
+
+  /** object_flavor_is_aware(obj): is the player aware of this kind's flavor? */
+  isAware(kind: ObjectKind): boolean {
+    return this.awareKidx.has(kind.kidx);
+  }
+
+  /** object_flavor_was_tried(obj): has a kind of this flavor been tried? */
+  wasTried(kind: ObjectKind): boolean {
+    return this.triedKidx.has(kind.kidx);
+  }
+
+  /**
+   * object_flavor_aware core (L2266): mark a kind's flavor known; returns true
+   * when this made a change. The upstream side effects - revealing
+   * obj->known->effect, ignore/autoinscribe fixes, propagating
+   * object_set_base_known over gear and every store's stock, and refreshing
+   * floor tiles that change glyph on awareness - need the player, stores and
+   * cave and are DEFERRED (ledgered in obj-knowledge.yaml); they belong with
+   * the known-object and UI wiring.
+   */
+  setAware(kind: ObjectKind): boolean {
+    if (this.awareKidx.has(kind.kidx)) return false;
+    this.awareKidx.add(kind.kidx);
+    return true;
+  }
+
+  /** object_flavor_tried (L2320): mark a kind tried; artifacts are skipped. */
+  setTried(kind: ObjectKind): void {
+    if (kind.kidx >= this.ordinaryKindCount) return;
+    this.triedKidx.add(kind.kidx);
   }
 }
