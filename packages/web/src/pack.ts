@@ -1,11 +1,11 @@
 /**
- * Loads pack zero (the compiled core content) into a CorePack the engine
- * can boot. The pack JSON lives in @neo-angband/content; Vite's glob
+ * Loads pack zero (the compiled core content) into a GamePack the engine
+ * can start. The pack JSON lives in @neo-angband/content; Vite's glob
  * import inlines every file into the bundle at build time, so the whole
  * game ships as one static asset with no runtime fetch.
  */
 
-import type { CorePack } from "@neo-angband/core";
+import type { GamePack } from "@neo-angband/core";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
 // are the parsed JSON (the file's default export).
@@ -24,8 +24,8 @@ function records(name: string): unknown[] {
   return (file(name) as { records: unknown[] }).records;
 }
 
-/** Assemble the parsed core pack for bootLevel/bindCore. */
-export function loadCorePack(): CorePack {
+/** Assemble the parsed game pack for startGame (core content + player). */
+export function loadGamePack(): GamePack {
   return {
     constants: file("constants"),
     terrain: records("terrain"),
@@ -54,5 +54,15 @@ export function loadCorePack(): CorePack {
       summons: records("summon"),
       pits: records("pit"),
     },
-  } as unknown as CorePack;
+    player: {
+      races: records("p_race"),
+      classes: records("class"),
+      properties: records("player_property"),
+      timed: records("player_timed"),
+      shapes: records("shape"),
+      bodies: records("body"),
+      history: records("history"),
+      realms: records("realm"),
+    },
+  } as unknown as GamePack;
 }
