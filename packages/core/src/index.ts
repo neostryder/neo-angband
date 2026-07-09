@@ -81,7 +81,9 @@ export * from "./game/project-monster";
 export * from "./game/project-player";
 export * from "./game/project-cast";
 export * from "./game/effect-env";
+export * from "./game/effect-game-env";
 export * from "./game/effect-attack";
+export * from "./game/effect-monster";
 export * from "./game/loop";
 
 // Some small derived constants and geometry helpers are defined

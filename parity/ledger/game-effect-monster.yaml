@@ -1,0 +1,41 @@
+module: packages/core/src/game/effect-monster.ts
+status: complete
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-general.c
+    items:
+      - effect_handler_WAKE (L2205): handleWAKE - wake every sleeping monster
+        within z_info->max_sight * 2 of the effect origin, closer meaning likelier
+        to become aware (monster_wake with chance 100 - 2 * dist); the "sudden
+        stirring" message fires when any woke.
+      - effect_handler_BANISH (L2337): handleBANISH - delete all non-unique
+        monsters whose display glyph matches a player-chosen symbol (shape-
+        shifters by their original race's glyph), costing 1d4 hitpoints per
+        monster through take_hit; aborts (returns false) when no symbol is chosen.
+      - effect_handler_MASS_BANISH (L2401): handleMASS_BANISH - delete all
+        non-unique monsters within context->radius (else the sight radius),
+        costing 1d3 hitpoints per monster.
+  - path: src/effects.c
+    items:
+      - the effect_kind[] slots for WAKE / BANISH / MASS_BANISH: registered by
+        registerMonsterHandlers, overriding registerCoreHandlers' stubs.
+notes: >-
+  The monster-targeting general effect handlers. Like the attack handlers they
+  iterate the live GameState, so they live in game/ and read their environment
+  from context.env.game (the shared GameEffectEnv, effect-game-env.ts); they
+  no-op when it is absent. All primitives are already ported: monster iteration
+  and removal (game/context.ts), waking (mon/take-hit.ts monsterWake), the
+  uniqueness test (mon/predicate.ts) and the shared player-damage primitive
+  (player/take-hit.ts). The EF_BANISH symbol prompt (get_com) is an injected
+  chooser on the game env (banishSymbol); absent, the effect aborts, mirroring a
+  cancelled prompt.
+deferred:
+  - The arena-level guard (player->upkeep->arena_level): arenas are not modelled.
+  - The PR_MONLIST redraw is a UI concern (the monster-list window).
+verified-by:
+  - game/effect-monster.test.ts (6 tests): through a real EffectRegistry
+    (registerCoreHandlers + registerMonsterHandlers), EF_WAKE wakes a sleeping
+    monster in range; EF_BANISH removes matching non-unique monsters and hurts
+    the caster, aborts with no damage when no symbol is chosen, and never
+    banishes uniques; EF_MASS_BANISH removes nearby non-uniques and spares
+    distant ones; and the handlers no-op without a game env.
