@@ -1,0 +1,67 @@
+module: packages/core/src/game/effect-attack.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-attack.c
+    items:
+      - effect_handler_BOLT / BEAM / BOLT_OR_BEAM / LINE / ALTER (L127-192):
+        handleBOLT / BEAM / BOLT_OR_BEAM / LINE / ALTER, dispatching through
+        castBolt / castBeam / castLine / castAlter. BOLT/BEAM set ident when the
+        player is not blind; LINE/ALTER on a noticed effect. BOLT_OR_BEAM rolls
+        beam + other against 100.
+      - effect_handler_BALL (L594): handleBALL - dice value with device boost,
+        radius default 2, the powerful-monster (+1) and player-level
+        (rad += lev / other) radius bonuses, and aimedAtTarget for a DIR_TARGET
+        player cast.
+      - effect_handler_BREATH (L681): handleBREATH - dispatch through castBreath
+        with the powerful-monster diameter boost; the dice value stands in for
+        breath_dam until the monster-spell layer (#19).
+      - effect_handler_ARC / SHORT_BEAM (L789-892): handleARC / SHORT_BEAM, with
+        the player-level SHORT_BEAM length bonus.
+      - effect_handler_SPOT / SPHERE / STRIKE (L545-1025): handleSPOT / SPHERE /
+        STRIKE with their radius / source-diameter / player-level scaling.
+      - effect_handler_STAR / STAR_BALL / SWARM (L974-1080): handleSTAR /
+        STAR_BALL / SWARM (SWARM fires value.m_bonus shots).
+      - effect_handler_TOUCH / TOUCH_AWARE (L411-453): handleTOUCH / TOUCH_AWARE
+        (the base player-centred touch; the monster decoy / target-monster
+        branch is deferred with resolveAimedTarget).
+      - effect_handler_PROJECT_LOS / PROJECT_LOS_AWARE (L1088): makeProjectLos -
+        a jump projection to every monster in LOS, attributed to the player,
+        excluding cave->mon_current.
+  - path: src/effects.c
+    items:
+      - the effect_kind[] table slots for the attack codes: registered into the
+        EffectRegistry by registerAttackHandlers, overriding registerCoreHandlers'
+        NOT_IMPLEMENTED stubs. Handlers read their game env from
+        context.env.attack (attached by attachAttackEnv) and no-op when absent.
+notes: >-
+  The attack effect handlers, wired to the projection-casting spine
+  (game/project-cast.ts) so the projection stack is now reachable from
+  effect_do: a bolt/beam/ball/arc/breath dispatched as an effect fires
+  project() over the live GameState via the two projection drivers. These
+  handlers live in game/ (not effects/) because they need the GameState, and
+  are registered from here so the effects/ layer stays below game/.
+
+  AttackEffectEnv carries the GameState, the CastContext (bound projections,
+  max range, player-projection actor) and the acquired target / mon_current /
+  charm; attachAttackEnv puts it on an EffectContext. The player path is
+  complete; the monster-origin refinements (confused / target-monster / decoy
+  targeting, breath_dam) are the monster-spell layer's (#19).
+deferred:
+  - breath_dam(type, mon->hp) for monster breath damage (#19); the dice value is
+    used until then.
+  - resolveAimedTarget's monster targeting (confused direction, target-monster,
+    decoy) and the target system (target_okay / target_get provide env.aimed) -
+    #19 / #24.
+  - PROJECT_LOS_AWARE's awareness-gated notice difference (a UI/notice nuance);
+    both codes apply the same projection.
+  - EF_LASH (effect_handler_LASH) - its damage is summed from the caster's
+    monster blows, so it lands with #19.
+  - onObject (#20) and onFeature (#21) side effects of the projections.
+verified-by:
+  - game/effect-attack.test.ts (5 tests): through a real EffectRegistry
+    (registerCoreHandlers + registerAttackHandlers), EF_BOLT damages the aimed
+    monster and sets ident; EF_BEAM passes through several monsters in line;
+    EF_BALL from a monster detonates on the player; EF_PROJECT_LOS hits every
+    monster in line of sight; and every attack handler no-ops without an attack
+    environment (the worldless rule).
