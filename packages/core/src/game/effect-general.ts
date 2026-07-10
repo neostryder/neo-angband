@@ -2,10 +2,16 @@
  * The world-touching general effect handlers, ported from
  * reference/src/effect-handler-general.c (Angband 4.2.6): EF_GLYPH (L700, a
  * glyph of warding or a decoy on the player's grid), EF_WEB (L732, a web
- * spinner filling its surroundings), and EF_DISENCHANT (L2003, disenchanting
- * a random piece of worn equipment). Like the other game-layer handlers they
- * read their environment from context.env.game and no-op when it is absent
- * (the worldless rule); GLYPH and WEB additionally need the trap system
+ * spinner filling its surroundings), EF_DISENCHANT (L2003, disenchanting
+ * a random piece of worn equipment), the stat family (RESTORE_STAT L773,
+ * DRAIN_STAT L803 with its sustain save and rune learning,
+ * LOSE_RANDOM_STAT L852, GAIN_STAT L875, SCRAMBLE_STATS / UNSCRAMBLE_STATS
+ * L3634 for the TMD_SCRAMBLE timed chains), the experience pair
+ * (RESTORE_EXP L893, GAIN_EXP L913), the drains (DRAIN_LIGHT L928,
+ * DRAIN_MANA L956 healing a monster caster and soaked by a decoy) and
+ * MON_TIMED_INC (L667). Like the other game-layer handlers they read their
+ * environment from context.env.game and no-op when it is absent (the
+ * worldless rule); GLYPH and WEB additionally need the trap system
  * (env.general.trapDeps) since glyphs and webs ARE trap kinds upstream.
  *
  * disenchantEquipment is exported separately: project-player.c's DISEN
@@ -20,7 +26,7 @@
  * (#24).
  */
 
-import { EF } from "../generated";
+import { EF, OF, TMD } from "../generated";
 import { distance, loc } from "../loc";
 import { GLYPH_DECOY } from "../effects/effect";
 import type {
@@ -28,23 +34,85 @@ import type {
   EffectHandlerContext,
   EffectRegistry,
 } from "../effects/interpreter";
-import { objBaseName } from "../obj/knowledge";
+import { effectCalculateValue } from "../effects/interpreter";
+import { equipLearnFlag, objBaseName, sustainFlag } from "../obj/knowledge";
+import { OBJ_PROPERTY } from "../obj/types";
+import type { ObjectProperty } from "../obj/types";
+import { STAT_MAX } from "../player/types";
+import {
+  PY_MAX_EXP,
+  playerExpGain,
+  playerFixScramble,
+  playerScrambleStats,
+  playerStatDec,
+  playerStatInc,
+} from "../player/exp";
+import type { ExpDeps } from "../player/exp";
+import { monIncTimed } from "../mon/timed";
+import { monsterIsVisible } from "../mon/predicate";
 import { featIsTrapHolding } from "../world/chunk";
 import { lookupTrap } from "../world/trap";
 import type { GameState } from "./context";
 import { gameEnv } from "./effect-game-env";
 import { floorPile } from "./floor";
 import { pushObject } from "./project-feat";
-import { placeTrap, squareIsTrap } from "./trap";
+import { placeTrap, squareIsTrap, squareRemoveAllTraps } from "./trap";
 import type { TrapDeps } from "./trap";
 
 /**
  * The general-handler seams, grouped on the game effect environment
  * (effect-game-env.ts GameEffectEnv.general). trapDeps backs glyph and web
  * creation; absent, those handlers no-op (the trap system is not wired).
+ * properties backs desc_stat (the stat adjectives from object_property.txt);
+ * expDeps lets experience gains ripple level changes.
  */
 export interface GeneralEffectEnv {
   trapDeps?: TrapDeps;
+  /** The bound object properties (ObjRegistry.properties), for desc_stat. */
+  properties?: readonly (ObjectProperty | null)[];
+  /** player_exp_gain's level-change ripple (player/exp.ts). */
+  expDeps?: ExpDeps;
+}
+
+/** desc_stat: the stat's (positive or negative) adjective from its property. */
+function descStat(
+  env: GeneralEffectEnv | undefined,
+  stat: number,
+  positive: boolean,
+): string {
+  const prop = env?.properties?.find(
+    (pr) => pr && pr.type === OBJ_PROPERTY.STAT && pr.propIndex === stat,
+  );
+  if (!prop) return positive ? "better" : "worse";
+  return positive ? prop.adjective : prop.negAdj;
+}
+
+/** player_of_has: the racial flags plus every equipped item's. */
+function playerOfHas(state: GameState, flag: number): boolean {
+  const p = state.actor.player;
+  if (p.race.flags.has(flag)) return true;
+  for (let i = 0; i < p.body.count; i++) {
+    if (state.runeEnv.slotObject(i)?.flags.has(flag)) return true;
+  }
+  return false;
+}
+
+/** The expDeps fallback: level changes still recompute, messages ride ctx. */
+function expDepsOf(
+  ctx: EffectHandlerContext,
+  env: GameEffectEnvLike,
+): ExpDeps {
+  if (env.general?.expDeps) return env.general.expDeps;
+  return {
+    rng: env.state.rng,
+    msg: (t: string): void => say(ctx, t),
+  };
+}
+
+/** The slice of GameEffectEnv these helpers need (keeps tests light). */
+interface GameEffectEnvLike {
+  state: GameState;
+  general?: GeneralEffectEnv;
 }
 
 /** msg() over the effect context's optional message sink. */
@@ -227,6 +295,280 @@ const handleDISENCHANT: EffectHandler = (ctx) => {
   return true;
 };
 
+/**
+ * EF_RESTORE_STAT: restore a drained stat (subtype is the stat index).
+ */
+const handleRESTORE_STAT: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const p = env.state.actor.player;
+  const stat = ctx.subtype;
+
+  /* ID */
+  ctx.ident = true;
+
+  /* Check bounds */
+  if (stat < 0 || stat >= STAT_MAX) return false;
+
+  /* Not needed */
+  if (p.statCur[stat] === p.statMax[stat]) return true;
+
+  /* Restore */
+  p.statCur[stat] = p.statMax[stat]!;
+
+  /* Recalculate bonuses (PU_BONUS) */
+  env.state.updateBonuses?.();
+
+  say(ctx, `You feel less ${descStat(env.general, stat, false)}.`);
+  return true;
+};
+
+/**
+ * EF_DRAIN_STAT: drain a stat temporarily (subtype is the stat index),
+ * unless the matching sustain saves it (teaching the sustain rune either
+ * way, as upstream equip_learn_flag runs on both branches).
+ */
+const handleDRAIN_STAT: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  const p = state.actor.player;
+  const stat = ctx.subtype;
+  const flag = sustainFlag(stat);
+
+  /* Bounds check */
+  if (flag < 0) return false;
+
+  /* ID */
+  ctx.ident = true;
+
+  /* Sustain */
+  if (playerOfHas(state, flag)) {
+    equipLearnFlag(p, state.runeEnv, flag);
+    say(
+      ctx,
+      `You feel very ${descStat(env.general, stat, false)} for a moment, but the feeling passes.`,
+    );
+    return true;
+  }
+
+  /* Attempt to reduce the stat */
+  if (playerStatDec(p, stat, false)) {
+    let dam = effectCalculateValue(ctx, false);
+    const player = ctx.env.player;
+    if (player?.applyDamageReduction) dam = player.applyDamageReduction(dam);
+    equipLearnFlag(p, state.runeEnv, flag);
+    say(ctx, `You feel very ${descStat(env.general, stat, false)}.`);
+    if (player?.takeHit) player.takeHit(dam, "stat drain");
+    state.updateBonuses?.();
+  }
+
+  return true;
+};
+
+/**
+ * EF_LOSE_RANDOM_STAT: lose a stat point permanently, in a stat other than
+ * the one in subtype.
+ */
+const handleLOSE_RANDOM_STAT: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  const safeStat = ctx.subtype;
+  const lossStat =
+    (state.rng.randint1(STAT_MAX - 1) + safeStat) % STAT_MAX;
+
+  if (playerStatDec(state.actor.player, lossStat, true)) {
+    say(ctx, `You feel very ${descStat(env.general, lossStat, false)}.`);
+    state.updateBonuses?.();
+  }
+
+  ctx.ident = true;
+  return true;
+};
+
+/**
+ * EF_GAIN_STAT: gain a stat point (subtype is the stat index).
+ */
+const handleGAIN_STAT: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  const stat = ctx.subtype;
+
+  if (playerStatInc(state.actor.player, state.rng, stat)) {
+    say(ctx, `You feel very ${descStat(env.general, stat, true)}!`);
+    state.updateBonuses?.();
+  }
+
+  ctx.ident = true;
+  return true;
+};
+
+/**
+ * EF_RESTORE_EXP: restore any drained experience.
+ */
+const handleRESTORE_EXP: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const p = env.state.actor.player;
+
+  if (p.exp < p.maxExp) {
+    if (ctx.origin.what !== "none") {
+      say(ctx, "You feel your life energies returning.");
+    }
+    playerExpGain(p, p.maxExp - p.exp, expDepsOf(ctx, env));
+  }
+
+  ctx.ident = true;
+  return true;
+};
+
+/**
+ * EF_GAIN_EXP: gain experience (halved, a slight upstream hack to simplify
+ * food descriptions).
+ */
+const handleGAIN_EXP: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const p = env.state.actor.player;
+  const amount = effectCalculateValue(ctx, false);
+
+  if (p.exp < PY_MAX_EXP) {
+    say(ctx, "You feel more experienced.");
+    playerExpGain(p, Math.trunc(amount / 2), expDepsOf(ctx, env));
+  }
+
+  ctx.ident = true;
+  return true;
+};
+
+/**
+ * EF_DRAIN_LIGHT: drain fuel from the player's light source, if it burns
+ * fuel and has any.
+ */
+const handleDRAIN_LIGHT: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  const p = state.actor.player;
+  const drain = effectCalculateValue(ctx, false);
+
+  const lightSlot = p.body.slots.findIndex((s) => s.type === "LIGHT");
+  const obj = lightSlot >= 0 ? state.runeEnv.slotObject(lightSlot) : null;
+
+  if (obj && !obj.flags.has(OF.NO_FUEL) && obj.timeout > 0) {
+    /* Reduce fuel */
+    obj.timeout -= drain;
+    if (obj.timeout < 1) obj.timeout = 1;
+
+    /* Notice */
+    if (!(p.timed[TMD.BLIND]! > 0)) {
+      say(ctx, "Your light dims.");
+      ctx.ident = true;
+    }
+  }
+
+  return true;
+};
+
+/**
+ * EF_DRAIN_MANA: drain mana from the player, healing a monster caster six
+ * points per point drained. A decoy soaks the drain (and is destroyed);
+ * the monster-vs-monster branch (MON_TMD_DISEN on the target) rides the
+ * monster-spell targeting (#19).
+ */
+const handleDRAIN_MANA: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  const p = state.actor.player;
+  let drain = effectCalculateValue(ctx, false);
+  const isMonster = ctx.origin.what !== "trap";
+  const mon =
+    ctx.origin.what === "monster" ? state.monsters[ctx.origin.monster] : null;
+
+  ctx.ident = true;
+
+  /* Target was a decoy - destroy it. */
+  if (state.decoy) {
+    const decoyKind = env.general?.trapDeps
+      ? lookupTrap(env.general.trapDeps.kinds, "decoy")
+      : null;
+    squareRemoveAllTraps(state, state.decoy, decoyKind ? decoyKind.tidx : -1);
+    state.decoy = null;
+    return true;
+  }
+
+  /* The player has no mana. */
+  if (!p.csp) {
+    say(ctx, "The draining fails.");
+    /* update_smart_learn(PF_NO_MANA) rides lore (#24). */
+    return true;
+  }
+
+  /* Drain the given amount if the player has that much, or all of it. */
+  if (drain >= p.csp) {
+    drain = p.csp;
+    p.csp = 0;
+    p.cspFrac = 0;
+  } else {
+    p.csp -= drain;
+  }
+
+  /* Heal the monster. */
+  if (isMonster && mon && mon.hp < mon.maxhp) {
+    mon.hp += 6 * drain;
+    if (mon.hp > mon.maxhp) mon.hp = mon.maxhp;
+    if (monsterIsVisible(mon)) {
+      /* MDESC_STANDARD rides the display layer; the race name stands in. */
+      say(ctx, `${mon.race.name} appears healthier.`);
+    }
+  }
+
+  return true;
+};
+
+/**
+ * EF_SCRAMBLE_STATS / EF_UNSCRAMBLE_STATS: the TMD_SCRAMBLE timed effect's
+ * on-begin / on-end chains.
+ */
+const handleSCRAMBLE_STATS: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  playerScrambleStats(env.state.actor.player, env.state.rng);
+  env.state.updateBonuses?.();
+  return true;
+};
+
+const handleUNSCRAMBLE_STATS: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  playerFixScramble(env.state.actor.player);
+  env.state.updateBonuses?.();
+  return true;
+};
+
+/**
+ * EF_MON_TIMED_INC: extend a monster status condition on the casting
+ * monster (effect-handler-general.c L667).
+ */
+const handleMON_TIMED_INC: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  if (ctx.origin.what !== "monster") return true;
+  const { state } = env;
+  const amount = effectCalculateValue(ctx, false);
+  const mon = state.monsters[ctx.origin.monster];
+
+  if (mon) {
+    monIncTimed(state.rng, mon, ctx.subtype, Math.max(amount, 0), 0);
+    ctx.ident = true;
+  }
+
+  return true;
+};
+
 /** The general handlers, keyed by upstream EF code. */
 const GENERAL_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   number,
@@ -235,6 +577,17 @@ const GENERAL_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.GLYPH, handleGLYPH],
   [EF.WEB, handleWEB],
   [EF.DISENCHANT, handleDISENCHANT],
+  [EF.RESTORE_STAT, handleRESTORE_STAT],
+  [EF.DRAIN_STAT, handleDRAIN_STAT],
+  [EF.LOSE_RANDOM_STAT, handleLOSE_RANDOM_STAT],
+  [EF.GAIN_STAT, handleGAIN_STAT],
+  [EF.RESTORE_EXP, handleRESTORE_EXP],
+  [EF.GAIN_EXP, handleGAIN_EXP],
+  [EF.DRAIN_LIGHT, handleDRAIN_LIGHT],
+  [EF.DRAIN_MANA, handleDRAIN_MANA],
+  [EF.SCRAMBLE_STATS, handleSCRAMBLE_STATS],
+  [EF.UNSCRAMBLE_STATS, handleUNSCRAMBLE_STATS],
+  [EF.MON_TIMED_INC, handleMON_TIMED_INC],
 ]);
 
 /**
