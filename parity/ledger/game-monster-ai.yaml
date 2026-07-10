@@ -52,8 +52,11 @@ notes: >-
   kill/smash carving (OPEN_DOOR / BASH_DOOR / KILL_WALL / SMASH_WALL: those
   monsters are blocked by the obstacle in this subset, only PASS_WALL phases
   through), glyph / decoy / web handling, aggravation (OF_AGGRAVATE),
-  camouflage/mimic reveal (become_aware, monster_is_mimicking lie-in-wait), and
-  every monster-lore update (rf_on/lore_update). monster_hates_grid always
+  camouflage/mimic reveal (become_aware, monster_is_mimicking lie-in-wait).
+  The monster-lore updates are DONE (mon-lore.yaml): melee counts each
+  visible obvious/damaging blow's times_seen, notices deaths and runs
+  lore_update, and monster_reduce_sleep counts wake/ignore on an obvious
+  sleeper. monster_hates_grid always
   returns false (no damaging terrain modelled). cdis is refreshed by
   updateMonsterDistances (context.ts) in lieu of update_mon; the AI reads the
   Chunk noise/scent heatmaps produced by world/flow.ts.

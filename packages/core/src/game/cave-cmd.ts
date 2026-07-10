@@ -25,6 +25,7 @@ import { FEAT, TF } from "../generated";
 import { SKILL } from "../player/types";
 import { pyAttack } from "../combat/melee";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay";
+import { getLore } from "../mon/lore";
 import { equipLearnOnMeleeAttack } from "../obj/knowledge";
 import { featIsTreasure } from "../world/chunk";
 import type { MakeDeps } from "../obj/make";
@@ -283,7 +284,7 @@ function attackBlocker(state: GameState, grid: Loc, env: CaveCmdEnv): void {
     state.actor.player,
     state.runeEnv,
     state.actor.weapon,
-    { race: target.race, visible: true },
+    { race: target.race, visible: true, lore: getLore(state.lore, target.race) },
   );
   const result = pyAttack(
     state.rng,

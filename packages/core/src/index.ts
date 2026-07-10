@@ -98,6 +98,7 @@ export * from "./game/effect-summon";
 export * from "./game/effect-detect";
 export * from "./game/known";
 export * from "./game/target";
+export * from "./mon/lore";
 /* The live-cave placement family shares upstream names with its
  * generation-time twin in gen/util; the live variants export Live-suffixed. */
 export {

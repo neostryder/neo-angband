@@ -207,6 +207,7 @@ export function makeState(opts: StateOptions = {}): GameState {
     traps: new Map(),
     known: newKnownMap(w, h),
     target: newTargetState(),
+    lore: new Map(),
     turn: 0,
     z: { ...DEFAULT_GAME_CONSTANTS },
     brands: [null],
