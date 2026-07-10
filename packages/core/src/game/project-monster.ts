@@ -41,7 +41,7 @@ import type { MonTimedMessageSink } from "../mon/timed";
 import { PROJECT } from "../world/project";
 import type { MonsterHitResult } from "../world/project";
 import type { ProjectionInfo } from "../world/projection";
-import { deleteMonster } from "./context";
+import { arenaInterceptDeath, deleteMonster } from "./context";
 import type { GameState } from "./context";
 
 /** The player-facing / downstream consequences the driver defers to the caller. */
@@ -242,6 +242,10 @@ function playerAttack(
       ...(hooks.becomeAware ? { becomeAware: hooks.becomeAware } : {}),
       ...(hooks.coverTracksBroken
         ? { coverTracksBroken: hooks.coverTracksBroken }
+        : {}),
+      /* Single combat: the kill waits for the arena exit. */
+      ...(state.arenaLevel
+        ? { onArenaDeath: (m: Monster) => void arenaInterceptDeath(state, m) }
         : {}),
     });
     died = res.died;

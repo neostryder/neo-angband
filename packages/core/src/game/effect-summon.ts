@@ -45,6 +45,9 @@ const handleSUMMON: EffectHandler = (ctx) => {
   if (!senv) return true;
   const { state } = env;
 
+  /* No summoning in arena levels. */
+  if (state.arenaLevel) return true;
+
   let summonMax = effectCalculateValue(ctx, false);
   const type = ctx.subtype;
   const levelBoost = ctx.other;
