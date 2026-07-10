@@ -44,7 +44,13 @@ import {
   tvalIsWand,
   tvalIsWeapon,
 } from "../obj/object";
-import { objBaseName, playerLearnFlagRune } from "../obj/knowledge";
+import {
+  buildRuneList,
+  objBaseName,
+  objectLearnUnknownRune,
+  objectRunesKnown,
+  playerLearnFlagRune,
+} from "../obj/knowledge";
 import type { ObjRegistry } from "../obj/bind";
 import { egoApplyMagic, makeObject } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
@@ -770,6 +776,35 @@ const handleACQUIRE: EffectHandler = (ctx) => {
   return true;
 };
 
+/**
+ * EF_IDENTIFY (effect-handler-general.c L1945): learn one random unknown
+ * rune of a chosen not-fully-known item (object_learn_unknown_rune over the
+ * rune list). Cancelling (or no chooser wired) leaves the effect unused.
+ */
+const handleIDENTIFY: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  ctx.ident = true;
+
+  const runes = buildRuneList(state.runeEnv);
+  const player = state.actor.player;
+
+  /* Get an item (item_tester_unknown: not all runes known). */
+  const obj =
+    env.item?.getItem?.({
+      prompt: "Identify which item? ",
+      reject: "You have nothing to identify.",
+      tester: (o) => !objectRunesKnown(player, state.runeEnv, o, runes),
+      mode: { equip: true, inven: true, quiver: true, floor: true },
+    }) ?? null;
+  if (!obj) return false;
+
+  /* Identify the object. */
+  objectLearnUnknownRune(state.rng, player, state.runeEnv, obj, runes);
+  return true;
+};
+
 /** The item-targeting handlers, keyed by upstream EF code. */
 const ITEM_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   number,
@@ -786,6 +821,7 @@ const ITEM_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.CREATE_ARROWS, handleCREATE_ARROWS],
   [EF.TAP_DEVICE, handleTAP_DEVICE],
   [EF.ACQUIRE, handleACQUIRE],
+  [EF.IDENTIFY, handleIDENTIFY],
 ]);
 
 /**

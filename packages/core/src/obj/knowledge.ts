@@ -44,6 +44,7 @@ import {
   OBJ_PROPERTY,
   OF_SIZE,
   OFID,
+  OFT,
 } from "./types";
 import { OF } from "../generated";
 import { OBJ_MOD } from "../generated/object-modifiers";
@@ -699,6 +700,254 @@ export function playerLearnAllRunes(p: Player, env: RuneEnv): void {
   for (let i = 1; i < env.brands.length; i++) playerLearnBrand(p, env, i, false);
   for (let i = 1; i < env.slays.length; i++) playerLearnSlay(p, env, i, false);
   for (let i = 1; i < env.curses.length; i++) playerLearnCurse(p, env, i, false);
+}
+
+/* ------------------------------------------------------------------ *
+ * The rune list (init_rune) and per-object rune enumeration. The port
+ * keeps player rune knowledge in typed stores (objKnown) instead of the
+ * upstream flat list, so the list here exists for the consumers that
+ * genuinely need enumeration order: EF_IDENTIFY's random unknown rune
+ * (upstream poss_runes fills in list order before randint0) and the later
+ * knowledge screens.
+ * ------------------------------------------------------------------ */
+
+/** enum rune_variety. */
+export type RuneVariety =
+  | "combat"
+  | "mod"
+  | "resist"
+  | "brand"
+  | "slay"
+  | "curse"
+  | "flag";
+
+/** struct rune, resolved: a variety, its per-variety index, and a name. */
+export interface Rune {
+  variety: RuneVariety;
+  index: number;
+  name: string;
+}
+
+/** COMBAT_RUNE_TO_A / TO_H / TO_D. */
+const COMBAT_RUNE = ["toA", "toH", "toD"] as const;
+
+/**
+ * init_rune: build the rune list in the exact upstream order - combat,
+ * modifiers, high elements, brands (first of each name), slays (first of
+ * each same-monsters group), named curses, then the identifiable flags
+ * (subtypes NONE / LIGHT / DIG / THROW / CURSE_ONLY excluded).
+ */
+export function buildRuneList(env: RuneEnv): Rune[] {
+  const runes: Rune[] = [];
+  const combatNames = [
+    COMBAT_RUNE_NAMES.toA,
+    COMBAT_RUNE_NAMES.toH,
+    COMBAT_RUNE_NAMES.toD,
+  ];
+  for (let i = 0; i < 3; i++) {
+    runes.push({ variety: "combat", index: i, name: combatNames[i]! });
+  }
+  for (let i = 0; i < OBJ_MOD_MAX; i++) {
+    const name =
+      lookupProp(env, OBJ_PROPERTY.MOD, i)?.name ??
+      lookupProp(env, OBJ_PROPERTY.STAT, i)?.name ??
+      "";
+    runes.push({ variety: "mod", index: i, name });
+  }
+  for (let i = 0; i < ELEM_HIGH_MAX; i++) {
+    runes.push({ variety: "resist", index: i, name: env.elementNames[i] ?? "" });
+  }
+  for (let i = 1; i < env.brands.length; i++) {
+    const name = env.brands[i]?.name;
+    if (!name) continue;
+    let counted = false;
+    for (let j = 1; j < i; j++) {
+      if (env.brands[j]?.name === name) {
+        counted = true;
+        break;
+      }
+    }
+    if (!counted) runes.push({ variety: "brand", index: i, name });
+  }
+  for (let i = 1; i < env.slays.length; i++) {
+    const s = env.slays[i];
+    if (!s?.name) continue;
+    let counted = false;
+    for (let j = 1; j < i; j++) {
+      if (sameMonstersSlain(env.slays, i, j)) counted = true;
+    }
+    if (!counted) runes.push({ variety: "slay", index: i, name: s.name });
+  }
+  for (let i = 1; i < env.curses.length; i++) {
+    const name = env.curses[i]?.name;
+    if (name) runes.push({ variety: "curse", index: i, name });
+  }
+  for (let i = 1; i < OF.MAX; i++) {
+    const prop = lookupProp(env, OBJ_PROPERTY.FLAG, i);
+    if (!prop) continue;
+    if (
+      prop.subtype === OFT.NONE ||
+      prop.subtype === OFT.LIGHT ||
+      prop.subtype === OFT.DIG ||
+      prop.subtype === OFT.THROW ||
+      prop.subtype === OFT.CURSE_ONLY
+    ) {
+      continue;
+    }
+    runes.push({ variety: "flag", index: i, name: prop.name });
+  }
+  return runes;
+}
+
+/** player_knows_rune over the typed knowledge stores. */
+export function playerKnowsRune(p: Player, rune: Rune): boolean {
+  switch (rune.variety) {
+    case "combat":
+      return !!p.objKnown[COMBAT_RUNE[rune.index] as "toA" | "toH" | "toD"];
+    case "mod":
+      return !!p.objKnown.modifiers[rune.index];
+    case "resist":
+      return !!p.objKnown.elInfo[rune.index]?.resLevel;
+    case "brand":
+      return playerKnowsBrand(p, rune.index);
+    case "slay":
+      return playerKnowsSlay(p, rune.index);
+    case "curse":
+      return playerKnowsCurse(p, rune.index);
+    case "flag":
+      return p.objKnown.flags.has(rune.index);
+  }
+}
+
+/** object_has_rune. */
+export function objectHasRune(
+  env: RuneEnv,
+  obj: GameObject,
+  rune: Rune,
+): boolean {
+  switch (rune.variety) {
+    case "combat":
+      if (rune.index === 0) return obj.toA !== 0;
+      if (rune.index === 1) return !objectHasStandardToH(env, obj);
+      return obj.toD !== 0;
+    case "mod":
+      return (obj.modifiers[rune.index] ?? 0) !== 0;
+    case "resist":
+      return (obj.elInfo[rune.index]?.resLevel ?? 0) !== 0;
+    case "brand": {
+      if (!obj.brands) return false;
+      for (let i = 0; i < obj.brands.length; i++) {
+        if (obj.brands[i] && env.brands[i]?.name === rune.name) return true;
+      }
+      return false;
+    }
+    case "slay": {
+      if (!obj.slays) return false;
+      for (let i = 0; i < obj.slays.length; i++) {
+        if (obj.slays[i] && sameMonstersSlain(env.slays, rune.index, i)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    case "curse":
+      return (obj.curses?.[rune.index]?.power ?? 0) !== 0;
+    case "flag":
+      return obj.flags.has(rune.index);
+  }
+}
+
+/**
+ * object_runes_known, reduced to the port's player-rune knowledge model:
+ * every rune the object carries is known to the player. (Upstream compares
+ * the obj->known twin, which is filled from the same rune knowledge.)
+ */
+export function objectRunesKnown(
+  p: Player,
+  env: RuneEnv,
+  obj: GameObject,
+  runes: readonly Rune[],
+): boolean {
+  for (const rune of runes) {
+    if (objectHasRune(env, obj, rune) && !playerKnowsRune(p, rune)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** player_learn_rune dispatched by variety. */
+export function playerLearnRune(
+  p: Player,
+  env: RuneEnv,
+  rune: Rune,
+  message: boolean,
+): boolean {
+  switch (rune.variety) {
+    case "combat":
+      return playerLearnCombat(
+        p,
+        env,
+        COMBAT_RUNE[rune.index] as "toA" | "toH" | "toD",
+        message,
+      );
+    case "mod":
+      return playerLearnMod(p, env, rune.index, message);
+    case "resist":
+      return playerLearnResist(p, env, rune.index, message);
+    case "brand":
+      return playerLearnBrand(p, env, rune.index, message);
+    case "slay":
+      return playerLearnSlay(p, env, rune.index, message);
+    case "curse":
+      return playerLearnCurse(p, env, rune.index, message);
+    case "flag":
+      return playerLearnFlagRune(p, env, rune.index, message);
+  }
+}
+
+/**
+ * object_find_unknown_rune: a random unknown rune carried by the object
+ * (upstream RNG: candidates gathered in list order, then randint0), or -1.
+ */
+export function objectFindUnknownRune(
+  rng: { randint0(m: number): number },
+  p: Player,
+  env: RuneEnv,
+  obj: GameObject,
+  runes: readonly Rune[],
+): number {
+  if (objectRunesKnown(p, env, obj, runes)) return -1;
+  const poss: number[] = [];
+  for (let i = 0; i < runes.length; i++) {
+    if (objectHasRune(env, obj, runes[i]!) && !playerKnowsRune(p, runes[i]!)) {
+      poss.push(i);
+    }
+  }
+  if (poss.length === 0) return -1;
+  return poss[rng.randint0(poss.length)]!;
+}
+
+/**
+ * object_learn_unknown_rune: learn a random unknown rune from the object;
+ * with none left the object is marked assessed. Returns whether a rune was
+ * learned.
+ */
+export function objectLearnUnknownRune(
+  rng: { randint0(m: number): number },
+  p: Player,
+  env: RuneEnv,
+  obj: GameObject,
+  runes: readonly Rune[],
+): boolean {
+  const i = objectFindUnknownRune(rng, p, env, obj, runes);
+  if (i < 0) {
+    /* No unknown runes: assessed (player_know_object rides the known
+     * twin, which the port's rune model replaces). */
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    return false;
+  }
+  return playerLearnRune(p, env, runes[i]!, true);
 }
 
 /**

@@ -32,6 +32,18 @@ upstream:
         equip_learn_flag (L2088), equip_learn_element (L2130),
         equip_learn_after_time (L2171, OFID_TIMED mask).
       - object_has_standard_to_h (L584) with the body-armor kind-to_h case.
+      - init_rune (L75) as buildRuneList - the rune list in the exact
+        upstream order (combat, modifiers, high elements, brands deduped
+        by name, slays deduped by same_monsters_slain, named curses, the
+        identifiable flags with NONE/LIGHT/DIG/THROW/CURSE_ONLY subtypes
+        excluded); player_knows_rune (L253), object_has_rune (L603),
+        player_learn_rune dispatched by variety (playerLearnRune),
+        object_find_unknown_rune (L1770, candidates gathered in list order
+        before randint0) and object_learn_unknown_rune (L1798, marking an
+        exhausted object OBJ_NOTICE_ASSESSED). object_runes_known (L734)
+        is reduced to "every rune the object carries is player-known"
+        (the obj->known twin it compares upstream is filled from the same
+        rune knowledge).
       - player_learn_innate (L1449) - racial el_info and flags at birth -
         and player_learn_all_runes (L1474) for wizard mode.
       - object_flavor_is_aware / was_tried / aware / tried as the
@@ -76,12 +88,11 @@ notes: >-
 deferred:
   - The per-object obj->known twin and everything display-only that hangs
     off it - "had a chance to notice" markers (equip_learn_flag/element's
-    else branches, the timed-mask union), object_fully_known /
-    object_runes_known / object_has_rune, object_find_unknown_rune /
-    object_learn_unknown_rune (the rune-identify scroll effect),
-    update_player_object_knowledge's gear/store sweep, object_sense /
-    object_see / object_touch / object_grab, and rune_note inscriptions.
-    All land with the known-object/display system (#25).
+    else branches, the timed-mask union), object_fully_known's
+    effect-knowledge half, update_player_object_knowledge's gear/store
+    sweep, object_sense / object_see / object_touch / object_grab, and
+    rune_note inscriptions. All land with the known-object/display
+    system (#25).
   - object_learn_on_use's exp reward + PN_IGNORE (cmd-obj.c wiring exists
     for flavor awareness; the exp formula joins it with the ignore system).
   - shape_learn_on_assume and every shape branch of equip_learn_* (shapes
@@ -98,6 +109,15 @@ deferred:
   - ODESC_BASE via object_desc: baseName() strips ~ and & from the kind
     name until the real object_desc lands (#25).
 verified-by:
+  - knowledge-learn.test.ts rune-list block (3 tests) - the list builds
+    in upstream order with one brand rune per name and no
+    throwing/digging/light flag runes; objectHasRune / playerKnowsRune /
+    objectRunesKnown track an enchanted weapon's combat runes; and
+    objectLearnUnknownRune learns the remaining unknown rune with its
+    message, then marks the exhausted object assessed.
+  - game/effect-identify.test.ts (3 tests) - EF_IDENTIFY learns one
+    unknown rune of the chosen item, a cancelled pick leaves the effect
+    unused, and a fully-known item fails the item tester.
   - knowledge-learn.test.ts (19 tests) - wield learns obvious flags,
     promotes sustains on stat items, learns all modifiers and sets the WORN
     guard (a second wield is a no-op); timed-only flags do NOT learn on

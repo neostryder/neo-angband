@@ -12,8 +12,9 @@ import { ObjRegistry } from "./bind";
 import type { ObjPackJson } from "./types";
 import { objectNew, sameMonstersSlain } from "./object";
 import type { GameObject } from "./object";
-import { ELEM_HIGH_MAX, OBJ_PROPERTY, OFID } from "./types";
+import { ELEM_HIGH_MAX, OBJ_PROPERTY, OFID, OFT } from "./types";
 import {
+  buildRuneList,
   equipLearnAfterTime,
   equipLearnElement,
   equipLearnFlag,
@@ -22,11 +23,16 @@ import {
   makeRuneEnv,
   missileLearnOnRangedAttack,
   OBJ_NOTICE,
+  objectHasRune,
   objectLearnOnWield,
+  objectLearnUnknownRune,
+  objectRunesKnown,
   playerKnowsBrand,
+  playerKnowsRune,
   playerKnowsSlay,
   playerLearnBrand,
   playerLearnInnate,
+  playerLearnRune,
   playerLearnSlay,
 } from "./knowledge";
 import type { RuneEnv } from "./knowledge";
@@ -423,5 +429,83 @@ describe("player_learn_innate (player-birth.c L1274)", () => {
     for (let i = 0; i < ELEM_HIGH_MAX; i++) {
       expect(p.objKnown.elInfo[i]!.resLevel).toBe(0);
     }
+  });
+});
+
+describe("the rune list (init_rune) and per-object enumeration", () => {
+  it("builds in upstream order and dedups brand/slay names", () => {
+    const { env } = fixture();
+    const runes = buildRuneList(env);
+    /* Combat first (the three c_rune names), then the modifiers. */
+    expect(runes[0]).toEqual({
+      variety: "combat",
+      index: 0,
+      name: "enchantment to armor",
+    });
+    expect(runes[1]!.name).toBe("enchantment to hit");
+    expect(runes[2]!.name).toBe("enchantment to damage");
+    expect(runes[3]!.variety).toBe("mod");
+    /* One brand rune per NAME even though brands share names (of Flame
+     * egos carry fire x2 and fire x3). */
+    const fireBrands = runes.filter(
+      (r) => r.variety === "brand" && r.name === "fire",
+    );
+    expect(fireBrands.length).toBe(1);
+    /* Identifiable flags only: no throwing/digging/light subtypes. */
+    for (const r of runes) {
+      if (r.variety !== "flag") continue;
+      const prop = reg.properties.find(
+        (pr) =>
+          pr && pr.type === OBJ_PROPERTY.FLAG && pr.propIndex === r.index,
+      )!;
+      expect([prop.subtype]).not.toContain(OFT.THROW);
+    }
+  });
+
+  it("objectHasRune / playerKnowsRune track an enchanted weapon", () => {
+    const { p, env } = fixture();
+    const runes = buildRuneList(env);
+    const obj = objectNew(kindOfTval(TV.SWORD));
+    obj.toD = 5;
+    obj.toH = 3; /* nonstandard to-hit: a second combat rune */
+    const toD = runes.find(
+      (r) => r.variety === "combat" && r.index === 2,
+    )!;
+    expect(objectHasRune(env, obj, toD)).toBe(true);
+    expect(playerKnowsRune(p, toD)).toBe(false);
+    expect(objectRunesKnown(p, env, obj, runes)).toBe(false);
+    playerLearnRune(p, env, toD, false);
+    expect(playerKnowsRune(p, toD)).toBe(true);
+    /* The sword also has a nonstandard to-hit rune until learned. */
+    expect(objectRunesKnown(p, env, obj, runes)).toBe(false);
+    playerLearnRune(
+      p,
+      env,
+      runes.find((r) => r.variety === "combat" && r.index === 1)!,
+      false,
+    );
+    expect(objectRunesKnown(p, env, obj, runes)).toBe(true);
+  });
+
+  it("objectLearnUnknownRune learns a random unknown rune with its message", () => {
+    const { p, env, messages } = fixture();
+    const runes = buildRuneList(env);
+    const obj = objectNew(kindOfTval(TV.SWORD));
+    obj.toD = 5;
+    /* Learn to-hit so only the to-damage rune remains. */
+    playerLearnRune(
+      p,
+      env,
+      runes.find((r) => r.variety === "combat" && r.index === 1)!,
+      false,
+    );
+    expect(objectLearnUnknownRune(rng, p, env, obj, runes)).toBe(true);
+    expect(p.objKnown.toD).toBe(1);
+    expect(messages).toContain(
+      "You have learned the rune of enchantment to damage.",
+    );
+    /* Nothing left: the object is assessed instead. */
+    expect(objectLearnUnknownRune(rng, p, env, obj, runes)).toBe(false);
+    expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(OBJ_NOTICE.ASSESSED);
   });
 });

@@ -47,6 +47,10 @@ upstream:
       - effect_handler_ACQUIRE (L2194) with acquirement (obj-make.c
         L1240) - `value` good/great/extra-roll make_object calls at the
         current depth, ORIGIN_ACQUIRE stamped, dropped near the player.
+      - effect_handler_IDENTIFY (L1945) - the get_item chooser with
+        item_tester_unknown (not all runes known) and
+        object_learn_unknown_rune over the rune list (obj/knowledge.ts
+        buildRuneList); cancelling leaves the effect unused.
 notes: >-
   Registered by registerItemHandlers over the core stubs. The object
   chooser (upstream get_item / cmd_get_item "tgtitem") is the injected
@@ -56,9 +60,6 @@ notes: >-
   path, and the scroll/spell is not consumed. destroyOneItem covers both
   gear (gear_object_for_use) and floor piles.
 deferred:
-  - EF_IDENTIFY - needs the per-object rune enumeration
-    (object_learn_unknown_rune / object_runes_known); rides the
-    knowledge/detection batch (#24).
   - ODESC_BASE / ODESC_FULL descriptions and gear letters ride the display
     layer (#25); the kind's base name is used. obj->known->to_h/to_d/to_a
     display sync rides rune-based knowledge. The recharge_pow failure-rate
@@ -71,6 +72,9 @@ deferred:
   - Monster casts never reach these handlers (mon-cast deps omit the item
     env); upstream reaches them only through player commands too.
 verified-by:
+  - game/effect-identify.test.ts (3 tests) - IDENTIFY learns one unknown
+    rune of the chosen item, a cancelled pick leaves the effect unused,
+    and a fully-known item fails the tester.
   - game/effect-item.test.ts (21 tests) - enchant raises a +0 score and
     refreshes bonuses, and cannot pass +15; EF_ENCHANT enchants a chosen
     carried weapon (glow message) and armour to-ac, and a cancelled pick
