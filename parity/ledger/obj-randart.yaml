@@ -1,0 +1,79 @@
+module: packages/core/src/obj/randart-data.ts + randart-build.ts +
+  randart.ts (the random artifact generator)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/obj-randart.c
+    items:
+      - artifact_power (L186) as artifactPower - builds a fake PowerObject
+        (make_fake_artifact = object_prep MAXIMISE + copy_artifact_data)
+        and calls objectPower (obj/power.ts).
+      - store_base_power (L219), count_weapon_abilities (L342),
+        count_bow_abilities (L444), count_nonweapon_abilities (L516),
+        count_modifiers (L630), count_low_resists (L764),
+        count_high_resists (L816), count_abilities (L943),
+        collect_artifact_data (L1059), rescale_freqs (L1124),
+        adjust_freqs (L1214), parse_frequencies (L1273),
+        get_base_item_tval (L1332), artifact_set_data_new (L2993) - the
+        measurement half producing the ArtifactSetData profile
+        (randart-data.ts).
+      - get_base_item (L1348), artifact_prep (L1383), build_freq_table
+        (L1505), try_supercharge (L1627), and the full add_* mutator
+        family (add_flag / resist / immunity / mod / stat / sustain /
+        low_resist / high_resist / brand / slay / damage_dice / to_hit /
+        to_dam / to_AC / weight_mod / activation L1721-L2078),
+        choose_ability (L2121), add_ability_aux (L2150),
+        remove_contradictory_activation (L2420), remove_contradictory
+        (L2530), add_ability (L2567), add_curse (L2591), make_bad (L2613)
+        - the building primitives (randart-build.ts).
+      - copy_artifact (L2676, faithful to the memcpy-then-null of
+        activation / alt_msg), artifact_gen_name (L2713), design_artifact
+        (L2751, incl. the stale-kind quirk), create_artifact_set (L2954),
+        do_randart (L3154) - the design loop and entry point (randart.ts).
+  - path: src/obj-randart.h, list-randart-properties.h
+    items:
+      - ART_IDX / RANDART_PROPERTY_ENTRIES are codegen'd
+        (generated/randart-properties.ts); MAX_TRIES / INHIBIT_STRONG
+        (one_in_(6)) / INHIBIT_WEAK (one_in_(2)) / AGGR_POWER inlined.
+notes: >-
+  doRandart(reg, seed) is pure w.r.t. the seed: it creates one quick-mode
+  Rng (upstream sets Rand_quick + seeds Rand_value), measures the
+  registry's standard set to build the generation frequencies, then
+  designs a fresh clone of every artifact into a new (Artifact|null)[],
+  leaving ObjRegistry.artifacts untouched. Fixed artifacts (The One Ring,
+  KF_QUEST_ART) are skipped and preserved. Produced by an orchestrated
+  workflow (3 sequential porter agents down the module dependency chain +
+  4 parallel adversarial fidelity auditors, all of which returned no
+  discrepancies) and then independently verified here (typecheck + the
+  determinism / integrity test suite).
+deferred:
+  - artifact_gen_name's word list (randname.c randname_make +
+    RANDNAME_TOLKIEN from the names datafile) is not ported; artifactGenName
+    assembles a deterministic Tolkien-flavoured name from a local syllable
+    table (bounded MIN_NAME_LEN..MAX_NAME_LEN) then applies the upstream
+    one_in_(3) "'Name'" / "of Name" wrapper. Reproducible within the port,
+    but names and their RNG draw count differ from upstream Angband.
+  - The spoiler / log output (create_file, write_randart_entry L3043-L3215,
+    randart.log, and the post-generation second measurement pass) is
+    dropped: it never affects an artifact field or an RNG draw.
+  - Birth integration (the birth_randarts option that swaps the standard
+    set for do_randart's output at game start, and persisting the randart
+    seed in the save) rides the build-option flags (#30); doRandart is the
+    generator, not yet wired into startGame.
+  - mean / variance use floored double arithmetic rather than the upstream
+    exact-rational multiprecision (z-util.c); artifact powers are small
+    ints so the floored result is exact. remove_contradictory_activation is
+    a conservative no-op (effect_summarize_properties is unported and it
+    draws no RNG); add_brand base-element matching uses a local
+    projection-name table.
+verified-by:
+  - obj/randart.test.ts (7 tests) - do_randart is deterministic (same seed
+    => identical set), seed-sensitive (different seeds differ), never
+    mutates reg.artifacts, returns a full set of valid artifacts on real
+    base kinds with sane rarity/depth (majority redesigned), and preserves
+    The One Ring; collect_artifact_data measures a sane power profile
+    (max > min, positive avg/total, base_power filled) and artifact_power
+    rates a real artifact positively.
+  - The workflow's 4 parallel adversarial auditors (measurement, mutators,
+    design loop, artifact_power integration) each reported zero fidelity
+    discrepancies against reference/src/obj-randart.c.

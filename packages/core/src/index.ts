@@ -54,6 +54,8 @@ export * from "./obj/make";
 export * from "./obj/power";
 export * from "./obj/value";
 export * from "./obj/knowledge";
+export * from "./obj/ignore";
+export * from "./obj/randart";
 export * from "./player/types";
 export * from "./player/bind";
 export * from "./player/player";
