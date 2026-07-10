@@ -29,6 +29,7 @@ import type { DefenderState } from "../combat/mon-melee";
 import { DEFAULT_GAME_CONSTANTS, addMonster, placePlayer } from "./context";
 import type { GameState, PlayerActor, PlayerCommand } from "./context";
 import { newGear } from "./gear";
+import { newKnownMap } from "./known";
 import { makeRuneEnv } from "../obj/knowledge";
 
 function load(name: string): unknown {
@@ -203,6 +204,7 @@ export function makeState(opts: StateOptions = {}): GameState {
     groups: [null],
     floor: new Map(),
     traps: new Map(),
+    known: newKnownMap(w, h),
     turn: 0,
     z: { ...DEFAULT_GAME_CONSTANTS },
     brands: [null],

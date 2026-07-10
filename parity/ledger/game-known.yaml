@@ -1,0 +1,59 @@
+module: packages/core/src/game/known.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/cave-square.c
+    items:
+      - square_memorize / square_forget / square_isknown /
+        square_ismemorybad over a remembered-feat array (-1 unknown) that
+        can go stale exactly like the player->cave twin (you remember the
+        door, not the floor it became).
+      - square_know_pile / square_sense_pile reduced to a per-grid
+        remembered-object marker - the (first matching) pile head's
+        display glyph for know, a null-glyph "something is there" marker
+        for sense (upstream's unknown_item_kind / unknown_gold_kind), and
+        stale-memory forgetting when the pile is gone.
+  - path: src/cave-view.c
+    items:
+      - note_spot as the seen half of noteSpots - every SEEN grid is
+        memorized with its floor pile after each updateView.
+  - path: src/mon-util.c
+    items:
+      - update_mon reduced to noteSpots' monster pass - a monster on a
+        SEEN grid that is neither invisible nor camouflaged is VISIBLE
+        and MARKed; a detection-marked monster (MARK + SHOW) survives one
+        more refresh then fades (the MFLAG_SHOW lifecycle).
+  - path: src/cave-map.c
+    items:
+      - wiz_dark's forgetting half (forgetMap - all terrain and object
+        memory plus the DTRAP marks); wiz_light's memorization joined the
+        existing wizLightLevel in effect-terrain.ts.
+notes: >-
+  This replaces the web front end's ad-hoc "explored" set: the renderer
+  now draws remembered terrain (dim, possibly stale) and remembered /
+  sensed objects from state.known, and draws monsters only when VISIBLE
+  or detection-MARKed - real fog of war. The knowledge map is on the
+  GameState, wiped by level changes, and persists in the save
+  (SavedGame.known; absent in older saves, which load all-unknown).
+deferred:
+  - The full player->cave twin (known traps as trap instances, per-object
+    known twins with pval/ego knowledge) rides object knowledge and #25;
+    the sense markers do not record which predicate sensed them, so a
+    know/sense of a different object class can clear them (upstream keeps
+    per-object knowledge).
+  - update_mon's telepathy (RF_TELEPATHY equipment), infravision,
+    SEE_INVIS, monster_is_in_view distance/light weighting and the
+    disturb-on-appear side effects ride the full visibility model;
+    invisible monsters are simply never seen without detection.
+  - square_light_spot / PR_ redraws ride presentation (the web renderer
+    repaints fully each frame).
+verified-by:
+  - game/known.test.ts (9 tests) - memorize/forget round trip, stale
+    memory (square_ismemorybad) when the world changes, knowPile
+    remembers the head and forgets emptied piles, sensePile marks
+    unknowns without downgrading exact memories, predicates restrict
+    matching, noteSpots memorizes exactly the seen grids with piles and
+    keeps monster VISIBLE/MARK flags in step (invisible monsters unseen,
+    detection marks fade after one refresh), forgetMap erases everything.
+  - Browser smoke: remembered terrain accumulates as the player walks
+    (lit-pixel growth probe), no console errors.

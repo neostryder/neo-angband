@@ -54,6 +54,7 @@ import {
 import { gameEnv } from "./effect-game-env";
 import type { GameEffectEnv } from "./effect-game-env";
 import { floorExcise, floorPile } from "./floor";
+import { forgetMap, squareKnowPile, squareMemorize } from "./known";
 import { pushObject } from "./project-feat";
 import { squareIsWarded } from "./trap";
 
@@ -134,9 +135,10 @@ export function lightRoom(state: GameState, grid: Loc, light: boolean): void {
 }
 
 /**
- * wiz_light / wiz_dark (cave-map.c L417 / L488) reduced to the world half:
- * perma-light (or darken) the neighbourhood of every grid that does not seem
- * like a wall (TF_ROCK). The magic-mapping memorization rides map memory.
+ * wiz_light / wiz_dark (cave-map.c L417 / L488): perma-light (or darken)
+ * the neighbourhood of every grid that does not seem like a wall (TF_ROCK).
+ * Lighting also memorizes the level (the clairvoyance half: terrain and
+ * floor piles); darkening forgets the whole remembered map.
  */
 export function wizLightLevel(state: GameState, lit: boolean): void {
   const c = state.chunk;
@@ -149,11 +151,17 @@ export function wizLightLevel(state: GameState, lit: boolean): void {
       /* Scan all neighbors (ddgrid_ddd[8] is the grid itself). */
       for (let i = 0; i < 9; i++) {
         const a = locSum(grid, DDGRID_DDD[i]!);
-        if (lit) c.sqinfoOn(a, SQUARE.GLOW);
-        else c.sqinfoOff(a, SQUARE.GLOW);
+        if (lit) {
+          c.sqinfoOn(a, SQUARE.GLOW);
+          squareMemorize(state, a);
+        } else {
+          c.sqinfoOff(a, SQUARE.GLOW);
+        }
       }
+      if (lit) squareKnowPile(state, grid);
     }
   }
+  if (!lit) forgetMap(state);
   state.updateFov?.(state);
 }
 
