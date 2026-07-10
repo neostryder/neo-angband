@@ -42,6 +42,10 @@ upstream:
         its hit points ("Probing...", "That's all.") and is fully
         learned via lore_do_probe (mon/lore.ts); names are the race name
         until MDESC (#25).
+      - COMMAND (L3479) - wake, the explicit level-vs-level save with the
+        resist message, and the paired TMD_COMMAND / MON_TMD_COMMAND
+        timers; the possession itself is game/mon-cmd.ts (ledgered in
+        game-mon-cmd.yaml).
       - BIZARRE (L3516) - randint1(10): the malignant aura (all five
         stats and a quarter of the experience, permanently), the
         powerful-aura dispel (EF_PROJECT_LOS 1000 via the context

@@ -1,0 +1,83 @@
+module: packages/core/src/game/mon-cmd.ts (+ EF_COMMAND in
+  effect-general.ts and the lifecycle sites)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-general.c
+    items:
+      - effect_handler_COMMAND (L3479) - the targeted-monster check ("No
+        monster selected!"), monster_wake, the explicit randint1(plev) vs
+        randint1(rlev) saving throw with the resist message (still a
+        turn), and the paired TMD_COMMAND / MON_TMD_COMMAND timers.
+  - path: src/cmd-core.c
+    items:
+      - The command-list swap while TMD_COMMAND runs (L333): processPlayer
+        routes every command through the state.monCommand hook
+        (installMonCommand) instead of the action registry.
+  - path: src/cmd-cave.c
+    items:
+      - do_cmd_mon_command (L1755) - 'r'ead releases (both timers
+        cleared), cast picks a random spell from the monster's full list
+        via choose_attack_spell and do_mon_spell at the player's target
+        monster (with the make_ranged_attack lore memory), hold/rest do
+        nothing, and walk moves the monster - attacking an intervening
+        monster, refusing NEVER_MOVE ("The monster can not move.", free),
+        opening/bashing doors by racial ability with the lock-strength
+        randint0(hp/10) > k test and squareSetDoorLock(k-1), destroying
+        walls for KILL/SMASH_WALL, phasing for PASS_WALL, learning those
+        flags on a visible monster, and "The way is blocked." (a turn) on
+        failure. Every handled command costs move_energy; unknown
+        commands print the valid-commands line and are free.
+  - path: src/mon-attack.c
+    items:
+      - monster_attack_monster (L765) - the commanded blow loop vs the
+        target's racial AC, NONE always connecting, the stun-reduced
+        damage roll, the monster_critical stun tiers (randint1(5) ..
+        200), the visible-miss message, and death WITHOUT player
+        experience (mon_take_nonplayer_hit -> deleteMonster only).
+  - path: src/mon-util.c
+    items:
+      - get_commanded_monster (L182).
+  - path: src/game-world.c
+    items:
+      - The TMD_COMMAND world tick (L324) in loop.ts decreaseTimeouts -
+        out of sight is out of mind (both timers cleared), otherwise the
+        monster timer decrements in step; on_new_level's clear (L1065)
+        in makeChangeLevel.
+  - path: src/mon-make.c
+    items:
+      - delete_monster_idx's release (L345) in context.ts deleteMonster -
+        a commanded monster dying clears the player's TMD_COMMAND.
+notes: >-
+  wireGame builds one DoMonSpellDeps and shares it between
+  installMonsterCasting and installMonCommand, so the commanded cast runs
+  the same spell stack as the monster's own turn. The mon-timed
+  MON_TMD_COMMAND target reset (mon-timed.c L169) was already ported.
+  processMonsterTimed already skips a commanded monster's own turn.
+deferred:
+  - Monster names are the race name until MDESC (#25); the light-purple
+    commanded-monster highlight (ui-display.c) rides #25.
+  - The cast branch's interactive re-target prompt (target_set_monster
+    NULL + get_aim_dir) is UI; the player's current target stands in.
+  - CMD_DROP no-ops: monster-held objects (mon->held_obj,
+    get_random_monster_object) are not modelled yet.
+  - The monster-target branches of the mon-blow-effects handlers reduce
+    to their damage + the critical stun (blind/confuse/poison etc. on a
+    monster victim, and the blinked teleport, ride the full
+    mon-blow-effects monster path).
+  - square_smash_wall's neighbour scouring reduces to the wall becoming
+    floor; door bashing does not roll the upstream broken-vs-open split
+    beyond square_smash_door -> BROKEN.
+  - TMD_COMMAND's timed-effect definition messages ride the player-timed
+    grade table (the direct field set matches player_set_timed's
+    no-notify call).
+verified-by:
+  - game/mon-cmd.test.ts (13 tests) - EF_COMMAND binds the paired timers
+    on the targeted monster, a mighty monster resists a novice (seed
+    sweep) and no target refuses; the commanded walk moves the monster
+    for a turn, refuses NEVER_MOVE for free, reports a blocking wall
+    (still a turn) and attacks an intervening monster without moving;
+    'read' releases both timers; a spell-less monster cannot cast; the
+    world tick keeps the timers aligned in sight and clears both out of
+    sight; a commanded monster dying releases the player; NEVER_BLOW
+    monsters cannot attack.

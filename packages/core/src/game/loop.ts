@@ -23,8 +23,15 @@
  * in parity/ledger/game-loop.yaml).
  */
 
-import { STAT, TMD } from "../generated";
+import { MON_TMD, STAT, TMD } from "../generated";
 import { TMD_MAX } from "../player/types";
+import { los } from "../world/view";
+import {
+  MON_TMD_FLG_NOTIFY,
+  monClearTimed,
+  monDecTimed,
+} from "../mon/timed";
+import { getCommandedMonster } from "./mon-cmd";
 import { adj_con_fix, calcStatIndices } from "../player/calcs";
 import { equipLearnAfterTime } from "../obj/knowledge";
 import type { Player } from "../player/player";
@@ -156,9 +163,10 @@ export function playerRegenMana(state: GameState): void {
 /**
  * decrease_timeouts: count the player timed effects down. Most drop by 1;
  * poison / stun / cut drop by the CON regeneration adjust (cut Mortal-Wound
- * maintenance, TMD_COMMAND monster sync, curse timeouts and grade-transition
- * messaging are DEFERRED); TMD_FOOD is handled by digestion (DEFERRED) and
- * does not decrement here.
+ * maintenance, curse timeouts and grade-transition messaging are DEFERRED);
+ * TMD_FOOD is handled by digestion (DEFERRED) and does not decrement here.
+ * TMD_COMMAND stays aligned with the commanded monster's timer, and a
+ * commanded monster out of sight is out of mind (game-world.c L324).
  */
 export function decreaseTimeouts(state: GameState): void {
   const p = state.actor.player;
@@ -172,6 +180,17 @@ export function decreaseTimeouts(state: GameState): void {
     if (i === TMD.FOOD) decr = 0;
     else if (i === TMD.CUT || i === TMD.POISONED || i === TMD.STUN) {
       decr = adjust;
+    } else if (i === TMD.COMMAND) {
+      const mon = getCommandedMonster(state);
+      if (mon && !los(state.chunk, state.actor.grid, mon.grid)) {
+        /* Out of sight is out of mind. */
+        monClearTimed(state.rng, mon, MON_TMD.COMMAND, MON_TMD_FLG_NOTIFY);
+        p.timed[i] = 0;
+        continue;
+      } else if (mon) {
+        /* Keep the monster timer aligned. */
+        monDecTimed(state.rng, mon, MON_TMD.COMMAND, decr, 0);
+      }
     }
     p.timed[i] = Math.max(0, cur - decr);
   }
