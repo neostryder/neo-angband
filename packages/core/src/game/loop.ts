@@ -26,6 +26,7 @@
 import { STAT, TMD } from "../generated";
 import { TMD_MAX } from "../player/types";
 import { adj_con_fix, calcStatIndices } from "../player/calcs";
+import { equipLearnAfterTime } from "../obj/knowledge";
 import type { Player } from "../player/player";
 import type { GameState } from "./context";
 import {
@@ -185,6 +186,9 @@ export function processWorld(state: GameState): void {
   if (p.chp < p.mhp) playerRegenHp(state);
   playerRegenMana(state);
   decreaseTimeouts(state);
+
+  /* Notice things after time (game-world.c L755: every 100 game turns). */
+  if (state.turn % 100 === 0) equipLearnAfterTime(p, state.runeEnv);
 }
 
 /** Non-null when the loop must stop and hand control back to the caller. */

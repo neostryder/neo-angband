@@ -11,8 +11,9 @@
  * visibility (most are TRF_INVISIBLE until revealed or triggered);
  * square_memorize_traps / the player's shadow cave are replaced by the
  * VISIBLE instance flag the renderer reads. player_is_trapsafe and the
- * OF_ save-flag checks ride on the playerHasFlag hook (equip flags land
- * with rune knowledge #13/#24).
+ * OF_ save-flag checks ride on the playerHasFlag hook; a flag that saves
+ * is noticed on the equipment supplying it (equipLearnFlag, rune
+ * knowledge #13).
  */
 
 import type { Loc } from "../loc";
@@ -20,6 +21,7 @@ import { DDGRID, locEq, locSum } from "../loc";
 import { SKILL } from "../player/types";
 import { TMD, TRF } from "../generated";
 import { checkHit } from "../combat/mon-melee";
+import { equipLearnFlag } from "../obj/knowledge";
 import { featIsTrapHolding } from "../world/chunk";
 import type { TrapKind } from "../world/trap";
 import { lookupTrap } from "../world/trap";
@@ -318,10 +320,14 @@ export function hitTrap(
     env.disturb?.();
     if (trap.kind.msg) env.msg?.(trap.kind.msg);
 
-    /* Test for save due to flag (OF_ flags via the hook). */
+    /* Test for save due to flag (OF_ flags via the hook); a flag that
+     * saves is noticed on whatever equipment supplies it (trap.c L538). */
     let saved = false;
     for (const flag of trap.kind.saveFlags) {
-      if (env.playerHasFlag?.(flag)) saved = true;
+      if (env.playerHasFlag?.(flag)) {
+        saved = true;
+        equipLearnFlag(state.actor.player, state.runeEnv, flag);
+      }
     }
 
     /* Test for save due to armor. */

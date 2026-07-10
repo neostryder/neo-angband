@@ -20,7 +20,11 @@
 
 import type { Brand, Slay } from "../obj/types";
 import type { GameObject } from "../obj/object";
+import { tvalIsLauncher, tvalIsWeapon } from "../obj/object";
 import type { MonsterRace } from "../mon/types";
+import type { Player } from "../player/player";
+import type { RuneEnv } from "../obj/knowledge";
+import { playerLearnBrand, playerLearnSlay } from "../obj/knowledge";
 
 /** The monster fields brand/slay selection reads. */
 export interface BrandSlayTarget {
@@ -160,4 +164,110 @@ export function improveAttackModifier(
       }
     }
   }
+}
+
+/** The monster fields brand/slay LEARNING reads (visibility gates slays). */
+export interface BrandSlayLearnTarget extends BrandSlayTarget {
+  /** monster_is_visible(mon). */
+  visible: boolean;
+}
+
+/**
+ * learn_brand_slay_helper (obj-slays.c L463): after an attack, learn the
+ * brand/slay runes carried by the objects involved (and, for melee/throws,
+ * by off-weapon equipment) that the monster did not resist. Slays are only
+ * learned on visible monsters; brands teach whenever they bite.
+ *
+ * Monster-lore learning (lore_learn_flag_if_visible) is DEFERRED with the
+ * lore subsystem (#24); temporary brands/slays remain DEFERRED with the
+ * player-timed brand/slay table (see improveAttackModifier).
+ */
+function learnBrandSlayHelper(
+  p: Player,
+  env: RuneEnv,
+  obj1: GameObject | null,
+  obj2: GameObject | null,
+  mon: BrandSlayLearnTarget,
+  allowOff: boolean,
+): void {
+  /* Handle brands. */
+  for (let i = 1; i < env.brands.length; i++) {
+    const b = env.brands[i];
+    if (!b) continue;
+    let learn = Boolean(obj1?.brands?.[i]) || Boolean(obj2?.brands?.[i]);
+    if (allowOff && !learn) {
+      for (let j = 0; j < p.body.count; j++) {
+        const obj = env.slotObject(j);
+        if (
+          obj?.brands?.[i] &&
+          !tvalIsWeapon(obj.tval) &&
+          !tvalIsLauncher(obj.tval)
+        ) {
+          learn = true;
+        }
+      }
+    }
+    if (!learn) continue; /* temporary brands DEFERRED */
+
+    if (!b.resistFlag || !mon.race.flags.has(b.resistFlag)) {
+      playerLearnBrand(p, env, i);
+      /* lore_learn_flag_if_visible(resist/vuln flag): DEFERRED (#24). */
+    }
+  }
+
+  /* Handle slays. */
+  for (let i = 1; i < env.slays.length; i++) {
+    const s = env.slays[i];
+    if (!s) continue;
+    let learn = Boolean(obj1?.slays?.[i]) || Boolean(obj2?.slays?.[i]);
+    if (allowOff && !learn) {
+      for (let j = 0; j < p.body.count; j++) {
+        const obj = env.slotObject(j);
+        if (
+          obj?.slays?.[i] &&
+          !tvalIsWeapon(obj.tval) &&
+          !tvalIsLauncher(obj.tval)
+        ) {
+          learn = true;
+        }
+      }
+    }
+    if (!learn) continue; /* temporary slays DEFERRED */
+
+    if (reactToSpecificSlay(s, mon) && mon.visible) {
+      playerLearnSlay(p, env, i);
+      /* lore learning: DEFERRED (#24). */
+    }
+  }
+}
+
+/** learn_brand_slay_from_melee: weapon (or unarmed) plus off-weapon gear. */
+export function learnBrandSlayFromMelee(
+  p: Player,
+  env: RuneEnv,
+  weapon: GameObject | null,
+  mon: BrandSlayLearnTarget,
+): void {
+  learnBrandSlayHelper(p, env, weapon, null, mon, true);
+}
+
+/** learn_brand_slay_from_launch: missile and launcher only. */
+export function learnBrandSlayFromLaunch(
+  p: Player,
+  env: RuneEnv,
+  missile: GameObject,
+  launcher: GameObject | null,
+  mon: BrandSlayLearnTarget,
+): void {
+  learnBrandSlayHelper(p, env, missile, launcher, mon, false);
+}
+
+/** learn_brand_slay_from_throw: thrown object plus off-weapon gear. */
+export function learnBrandSlayFromThrow(
+  p: Player,
+  env: RuneEnv,
+  missile: GameObject,
+  mon: BrandSlayLearnTarget,
+): void {
+  learnBrandSlayHelper(p, env, missile, null, mon, true);
 }

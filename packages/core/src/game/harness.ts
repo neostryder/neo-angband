@@ -29,6 +29,7 @@ import type { DefenderState } from "../combat/mon-melee";
 import { DEFAULT_GAME_CONSTANTS, addMonster, placePlayer } from "./context";
 import type { GameState, PlayerActor, PlayerCommand } from "./context";
 import { newGear } from "./gear";
+import { makeRuneEnv } from "../obj/knowledge";
 
 function load(name: string): unknown {
   return JSON.parse(
@@ -191,11 +192,13 @@ export function makeState(opts: StateOptions = {}): GameState {
     stealth: opts.stealth ?? 0,
   };
 
+  const rng = new Rng(opts.seed ?? 1);
+  const gear = newGear();
   const state: GameState = {
-    rng: new Rng(opts.seed ?? 1),
+    rng,
     chunk,
     actor,
-    gear: newGear(),
+    gear,
     monsters: [null],
     groups: [null],
     floor: new Map(),
@@ -204,6 +207,10 @@ export function makeState(opts: StateOptions = {}): GameState {
     z: { ...DEFAULT_GAME_CONSTANTS },
     brands: [null],
     slays: [null],
+    runeEnv: makeRuneEnv(
+      (slot) => gear.store.get(actor.player.equipment[slot] ?? 0) ?? null,
+      (v) => rng.randcalcVaries(v),
+    ),
     playing: true,
     isDead: false,
     generateLevel: false,

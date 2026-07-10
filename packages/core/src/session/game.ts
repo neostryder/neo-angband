@@ -69,7 +69,13 @@ import {
   registerBookKinds,
 } from "../player/spell";
 import { installSpellCommands } from "../game/spell-cmd";
-import { FlavorKnowledge } from "../obj/knowledge";
+import {
+  FlavorKnowledge,
+  makeRuneEnv,
+  objectLearnOnWield,
+  playerLearnInnate,
+} from "../obj/knowledge";
+import { ELEM_MAX } from "../obj/types";
 import { ObjAllocState } from "../obj/make";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import { createDefaultRegistry } from "../game/player-turn";
@@ -154,6 +160,29 @@ function wireGame(
   installPickup(state, registry, { constants: reg.constants });
 
   const flavor = new FlavorKnowledge(reg.objects.ordinaryKindCount);
+
+  // Rune learning (obj-knowledge.c learn-by-use): the registry tables plus
+  // live equipment access. Reads through the state object so level changes
+  // and gear swaps need no rewiring.
+  state.runeEnv = makeRuneEnv(
+    (slot) =>
+      state.gear.store.get(state.actor.player.equipment[slot] ?? 0) ?? null,
+    (v) => state.rng.randcalcVaries(v),
+    {
+      brands: reg.objects.brands,
+      slays: reg.objects.slays,
+      curses: reg.objects.curses,
+      properties: reg.objects.properties,
+      ...(reg.projections
+        ? {
+            elementNames: reg.projections
+              .slice(0, ELEM_MAX)
+              .map((p) => p.name),
+          }
+        : {}),
+      flavor,
+    },
+  );
 
   // The effect stack: with bound projections, monsters cast spells on
   // their turns (make_ranged_attack), items are usable (cmd-obj.c), the
@@ -454,6 +483,11 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     },
     brands: reg.objects.brands,
     slays: reg.objects.slays,
+    /* Placeholder; wireGame installs the full registry-backed env. */
+    runeEnv: makeRuneEnv(
+      () => null,
+      () => false,
+    ),
     playing: true,
     isDead: false,
     generateLevel: false,
@@ -461,6 +495,18 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   };
 
   const wired = wireGame(state, reg, players, pstate);
+
+  // Racial rune knowledge (player-birth.c L1274 player_learn_innate) and the
+  // starting kit's obvious runes (L495 object_learn_on_wield): the outfit
+  // wield ran before the rune env existed and learned only the modifier
+  // runes, so run the full wield learning over the worn items now (their
+  // WORN notice bit is still clear).
+  playerLearnInnate(birth.player, state.runeEnv);
+  for (let i = 0; i < birth.player.body.count; i++) {
+    const worn = state.runeEnv.slotObject(i);
+    if (worn) objectLearnOnWield(birth.player, worn, state.runeEnv);
+  }
+
   populateFromLevel(
     state,
     {
@@ -575,6 +621,11 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     },
     brands: reg.objects.brands,
     slays: reg.objects.slays,
+    /* Placeholder; wireGame installs the full registry-backed env. */
+    runeEnv: makeRuneEnv(
+      () => null,
+      () => false,
+    ),
     playing: save.playing,
     isDead: save.isDead,
     generateLevel: false,

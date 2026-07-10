@@ -153,6 +153,12 @@ export interface GameState {
   /** Object domain tables for player melee brands/slays (index 0 = none). */
   brands: readonly (Brand | null)[];
   slays: readonly (Slay | null)[];
+  /**
+   * Rune-learning environment (obj-knowledge.c learn-by-use): registry
+   * tables plus equipment access. Built by the session (wireGame); the
+   * harness supplies an inert default so worldless tests stay total.
+   */
+  runeEnv: import("../obj/knowledge").RuneEnv;
 
   /* --- upkeep signals (player->upkeep) --- */
   playing: boolean;

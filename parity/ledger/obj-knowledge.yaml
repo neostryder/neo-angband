@@ -1,72 +1,118 @@
-module: packages/core/src/obj/knowledge.ts
+module: packages/core/src/obj/knowledge.ts (+ learn_brand_slay_* in
+  combat/brand-slay.ts and the game-layer call sites)
 status: partial
 baseline: 4.2.6
 upstream:
   - path: src/obj-knowledge.c
     items:
-      - object_learn_on_wield (L1820): PORTED only the "Learn all modifiers"
-        loop (L1863-1871) - every nonzero modifier on the worn item learns its
-        rune, setting player.objKnown.modifiers[i] = 1 (player_learn_rune's
-        RUNE_VAR_MOD case, L1291-1296).
-      - object_flavor_is_aware (L2243) / object_flavor_was_tried (L2254) /
-        object_flavor_aware core (L2266) / object_flavor_tried (L2320): PORTED
-        as the FlavorKnowledge class. Upstream these are the kind->aware /
-        kind->tried bits (object.h), global to the game; here they are a
-        per-game FlavorKnowledge keyed by kidx so the bound registry stays
-        immutable. object_flavor_tried skips artifacts (kidx >=
-        ordinary_kind_max). Drives object_value / object_value_base's aware
-        dispatch (obj/value.ts).
+      - player_learn_rune (L1264), split by variety into typed functions
+        (the port keeps no flat rune list; each switch case is a function) -
+        playerLearnCombat (the three c_rune combat runes, "enchantment to
+        armor/hit/damage"), playerLearnMod, playerLearnResist (high elements
+        only, as the rune list), playerLearnFlagRune, playerLearnBrand (all
+        brands sharing the name learn together, L1307-1321), playerLearnSlay
+        (all same_monsters_slain slays learn together, L1324-1338),
+        playerLearnCurse. Each sends "You have learned the rune of %s."
+        through the optional env.msg sink.
+      - player_knows_brand/slay/curse (L436-473) as accessors over the
+        sparse objKnown arrays.
+      - object_learn_on_wield (L1820) FULL - the OBJ_NOTICE_WORN guard,
+        object_flavor_tried, the create_obj_flag_mask(OFID_WIELD) obvious
+        mask with the sustain-flag promotion for stat items (L1843-1848),
+        obvious-flag learning with flag_message, the learn-all-modifiers
+        loop with mod_message (the "You feel..." table, L1492 ported
+        verbatim), and every object_curses_find_* call. The env-less call
+        (birth outfit, worldless tests) learns modifiers only.
+      - object_curses_find_to_a/to_h/to_d/flags/modifiers/element
+        (L1561-1761): notice properties supplied by an object's curses,
+        learning both the property rune and the curse rune.
+      - missile_learn_on_ranged_attack (L1945), equip_learn_on_defend
+        (L1974), equip_learn_on_ranged_attack (L2007, skipping the WEAPON
+        and BOW slots), equip_learn_on_melee_attack (L2043, skipping BOW),
+        equip_learn_flag (L2088), equip_learn_element (L2130),
+        equip_learn_after_time (L2171, OFID_TIMED mask).
+      - object_has_standard_to_h (L584) with the body-armor kind-to_h case.
+      - player_learn_innate (L1449) - racial el_info and flags at birth -
+        and player_learn_all_runes (L1474) for wizard mode.
+      - object_flavor_is_aware / was_tried / aware / tried as the
+        FlavorKnowledge class (per-game, keyed by kidx; registry stays
+        immutable); setTried is now wired into objectLearnOnWield.
+  - path: src/obj-slays.c
+    items:
+      - learn_brand_slay_helper (L463) + learn_brand_slay_from_melee /
+        _from_launch / _from_throw, in combat/brand-slay.ts - brands teach
+        when unresisted, slays only on affected VISIBLE monsters, melee and
+        throws include off-weapon (non weapon/launcher) equipment.
+      - same_monsters_slain reused from obj/object.ts.
+  - path: src/obj-properties.c
+    items:
+      - flag_message (L86) - the property's msg with the object base name
+        substituted; gated on upkeep.playing as upstream.
   - path: src/player-calcs.c
     items:
-      - calc_bonuses (L1877): the real-state gate this feeds. Equipped
+      - calc_bonuses (L1877), the real-state gate this feeds. Equipped
         modifiers are multiplied by p->obj_k->modifiers (L1942-1981), so an
-        unlearned modifier is inert even in play; flags, el_info resists, and
-        to_a/to_h/to_d apply to the real state whenever !known_only (L1985,
-        L1997-2006) and are NOT gated by knowledge.
+        unlearned modifier is inert even in play; flags, el_info resists and
+        to_a/to_h/to_d apply to the real state regardless and their runes
+        feed the DISPLAYED known_state (lands with #25).
 notes: >-
-  Only the modifier-learning slice of obj-knowledge.c is ported, because it is
-  the sole knowledge that changes REAL bonuses: calc_bonuses gates equipped
-  modifiers through obj_k, so a worn +N modifier is inert until its rune is
-  known, and object_learn_on_wield learns every modifier the instant an item is
-  worn - which is why a freshly worn +3 STR ring raises STR by 3 at once and
-  simultaneously "discovers the rune of strength". Wired at wieldObject
-  (game/gear.ts), the single wield chokepoint both birth's wield_all and any
-  future runtime wield pass through, matching upstream (wield_all L494-495,
-  inven_wield obj-gear.c L983). obj_k is empty at birth (PORT_PLAN decision 25);
-  a default class kit carries no modifiers, so it stays empty until magic gear
-  is worn.
+  PlayerObjectKnowledge now models every rune variety (modifiers, the three
+  combat runes, el_info, OF flags, brands, slays, curses); the brand/slay/
+  curse arrays are sparse (learned indices only) and are densified in the
+  save. The RuneEnv seam carries the registry tables (brands/slays/curses/
+  properties), element rune names (from bound projections), live equipment
+  access (slot_object) and the msg sink; session/game.ts wireGame installs
+  the real env on state.runeEnv and the harness supplies an inert default.
+  GAME-LAYER CALL SITES, matching upstream - wieldObject/invenWield (full
+  wield learning), walkAction and attackBlocker melee (equip_learn_on_
+  melee_attack + learn_brand_slay_from_melee, player-attack.c L822),
+  monster melee on the player (equip_learn_on_defend, mon-attack.c L530),
+  processWorld every 100 game turns (equip_learn_after_time, game-world.c
+  L755), trap saves by OF flag (equip_learn_flag, trap.c L538), and birth
+  (playerLearnInnate + full wield learning over the starting kit,
+  player-birth.c L495/L1274). ELEM names for rune messages come from the
+  projection registry ("acid", "lightning", ...), exactly upstream's
+  projections[i].name.
 deferred:
-  - object_flavor_aware's side effects (L2274-2312): revealing
-    obj->known->effect, ignore/autoinscribe fixes (kind_ignore_when_aware,
-    PN_IGNORE), propagating object_set_base_known over gear and every store's
-    stock, and refreshing floor tiles that change glyph on awareness. All need
-    the player, stores and cave; FlavorKnowledge.setAware sets only the bit.
-  - The OBJ_NOTICE_WORN guard and object_flavor_tried on wield: there is no
-    obj->known twin yet, so re-wielding simply re-learns (idempotent) instead of
-    short-circuiting. FlavorKnowledge.setTried exists but is not yet wired into
-    objectLearnOnWield (needs the wield chokepoint to thread the game's
-    FlavorKnowledge).
-  - Obvious-flag learning: create_obj_flag_mask(OFID_WIELD) intersection plus
-    the sustain-flag promotion for stat items (L1839-1861). Needs obj_k->flags,
-    which PlayerObjectKnowledge does not model yet. Flags apply to the REAL
-    state regardless of knowledge, so deferring this changes only the display.
-  - All object_curses_find_* learning (to_a/to_h/to_d/flags/modifiers/element
-    from curses, L1873-1883): curse knowledge is not modelled.
-  - The learn-by-use paths that populate el_info / combat / brand / slay
-    knowledge: object_learn_on_use, equip_learn_on_defend,
-    equip_learn_on_melee_attack, equip_learn_on_ranged_attack,
-    equip_learn_element, equip_learn_flag, missile_learn_on_ranged_attack.
-    These teach the DISPLAY state only (resists/brands already apply to the
-    real state), and land with the message log and known_state.
-  - player_learn_rune's non-modifier varieties (combat/resist/brand/slay/
-    curse/flag) and the "You have learned the rune of %s." messages.
-  - update_player_object_knowledge / the whole known_state (calc_bonuses called
-    with known_only = true) used for the character sheet.
+  - The per-object obj->known twin and everything display-only that hangs
+    off it - "had a chance to notice" markers (equip_learn_flag/element's
+    else branches, the timed-mask union), object_fully_known /
+    object_runes_known / object_has_rune, object_find_unknown_rune /
+    object_learn_unknown_rune (the rune-identify scroll effect),
+    update_player_object_knowledge's gear/store sweep, object_sense /
+    object_see / object_touch / object_grab, and rune_note inscriptions.
+    All land with the known-object/display system (#25).
+  - object_learn_on_use's exp reward + PN_IGNORE (cmd-obj.c wiring exists
+    for flavor awareness; the exp formula joins it with the ignore system).
+  - shape_learn_on_assume and every shape branch of equip_learn_* (shapes
+    are bound raw; shapechange lands later).
+  - lore_learn_flag_if_visible in learn_brand_slay_helper (monster lore is
+    #24); temporary brands/slays (player-timed table, ledgered with
+    improveAttackModifier).
+  - equip_learn_flag/element call sites living in unported upstream files
+    (project-player.c resist learning rides #17; effect-handler learn calls
+    ride #18; cmd-cave.c OF_AFRAID, player-util.c OF_REGEN/IMPAIR,
+    mon-util.c, obj-chest.c ride their subsystems).
+  - object_flavor_aware's side effects (ignore/autoinscribe, store sweeps,
+    floor-tile refresh) - FlavorKnowledge.setAware still sets only the bit.
+  - ODESC_BASE via object_desc: baseName() strips ~ and & from the kind
+    name until the real object_desc lands (#25).
 verified-by:
-  - gear.test.ts: wielding a +3 STR ring flips objKnown.modifiers[STR] from 0
-    to 1 so the bonus goes live; wielding a plain torch learns only its LIGHT
-    modifier and leaves every stat rune unknown.
-  - bonuses.test.ts: the calc_bonuses rune gate (a +3 STR item adds 0 while the
-    rune is unknown and +3 once objKnown.modifiers[STR] = 1).
-  - knowledge.test.ts: FlavorKnowledge tracks awareness per kind (idempotent
-    setAware), and marks ordinary kinds tried while never marking artifacts.
+  - knowledge-learn.test.ts (19 tests) - wield learns obvious flags,
+    promotes sustains on stat items, learns all modifiers and sets the WORN
+    guard (a second wield is a no-op); timed-only flags do NOT learn on
+    wield; defend teaches to-armor from worn armor; melee teaches
+    to-hit/to-dam from an enchanted weapon and nothing from a plain one;
+    missiles teach the combat runes; equip_learn_flag notices only flags
+    the equipment has; equip_learn_element notices resists with the glow
+    message; equip_learn_after_time notices timed flags; one brand learns
+    every same-name brand; one slay learns every same-monsters slay; melee
+    teaches unresisted brands and skips resisted ones; slays teach only on
+    affected visible monsters; launch learning reads missile+launcher but
+    not worn gear; a High-Elf is born knowing its LIGHT resist and
+    SEE_INVIS runes while a Human knows nothing; every learned variety
+    round-trips through the save and a legacy (objKnownModifiers-only)
+    save still loads.
+  - gear.test.ts / bonuses.test.ts: the calc_bonuses modifier gate
+    (unchanged behaviour, now through blankObjKnowledge).
+  - knowledge.test.ts: FlavorKnowledge awareness/tried semantics.
