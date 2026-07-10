@@ -68,7 +68,14 @@ export interface TrapDeps {
   /** The effect stack (same registry/cast/envDeps bundle as obj-cmd). */
   effects?: Pick<
     ObjCmdDeps,
-    "registry" | "cast" | "envDeps" | "inject" | "teleport" | "general" | "item"
+    | "registry"
+    | "cast"
+    | "envDeps"
+    | "inject"
+    | "teleport"
+    | "general"
+    | "item"
+    | "summon"
   >;
   env?: TrapEnv;
 }
@@ -399,6 +406,7 @@ function runTrapEffect(
       ...(deps.effects.teleport ? { teleport: deps.effects.teleport } : {}),
       ...(deps.effects.general ? { general: deps.effects.general } : {}),
       ...(deps.effects.item ? { item: deps.effects.item } : {}),
+      ...(deps.effects.summon ? { summon: deps.effects.summon } : {}),
     },
   );
   deps.effects.registry.effectDo(chain, ctx, {

@@ -26,7 +26,7 @@
 import { loc } from "../loc";
 import type { Loc } from "../loc";
 import { SKILL } from "../player/types";
-import { STAT } from "../generated";
+import { RF, STAT } from "../generated";
 import { bindPlayer } from "../player/bind";
 import type { PlayerPackRecords, PlayerRegistry } from "../player/bind";
 import { generatePlayer } from "../player/birth";
@@ -61,6 +61,12 @@ import { registerTerrainHandlers } from "../game/effect-terrain";
 import { registerItemHandlers } from "../game/effect-item";
 import type { ItemEffectEnv } from "../game/effect-item";
 import { registerMeleeHandlers } from "../game/effect-melee";
+import { registerSummonHandlers } from "../game/effect-summon";
+import type { SummonEffectEnv } from "../game/effect-summon";
+import { countMonsterRaces, wipeMonsterCounts } from "../game/mon-place";
+import { SummonTable } from "../mon/summon";
+import { MonAllocTable } from "../mon/make";
+import type { EffectBuilderInjections } from "../effects/effect";
 import { thrustAway } from "../game/thrust";
 import { basicPlayerActor } from "../game/project-cast";
 import type { CastContext } from "../game/project-cast";
@@ -248,6 +254,12 @@ function wireGame(
     },
   };
   state.onPlayerKill = (mon): void => {
+    /* player_kill_monster: dead uniques stay dead (max_num = 0). The flag
+     * is session-lifetime; persisting it rides the save format (ledgered). */
+    if (mon.race.flags.has(RF.UNIQUE)) {
+      mon.race.maxNum = 0;
+      if (mon.originalRace) mon.originalRace.maxNum = 0;
+    }
     playerKillExp(state.actor.player, mon.race, expDeps);
   };
   const expGain = (amount: number): void =>
@@ -273,6 +285,7 @@ function wireGame(
     registerTerrainHandlers(effects);
     registerItemHandlers(effects);
     registerMeleeHandlers(effects);
+    registerSummonHandlers(effects);
 
     // The trap-backed square predicates feed every consumer that stubbed
     // them (teleport landing checks, drop placement) once traps exist.
@@ -300,6 +313,27 @@ function wireGame(
     // The get_item chooser itself rides presentation (#25); until it is
     // wired, the choosing effects return unused (the upstream cancel path).
     const item: ItemEffectEnv = { reg: reg.objects, makeDeps };
+    // Summoning: the bound summon table, the session's live allocation
+    // table (get_mon_num over the full race registry) and the placement
+    // deps. The summonNameToIdx injection lets effect chains resolve
+    // "SUMMON:UNDEAD"-style subtypes at build time.
+    const summons = new SummonTable(reg.monsters.summons, reg.monsters.bases);
+    const summon: SummonEffectEnv = {
+      summons,
+      place: {
+        table: new MonAllocTable(reg.monsters.races, {
+          maxDepth: reg.constants.maxDepth,
+          oodChance: reg.constants.oodMonsterChance,
+          oodAmount: reg.constants.oodMonsterAmount,
+        }),
+        groupMax: reg.constants.monsterGroupMax,
+        groupDist: reg.constants.monsterGroupDist,
+        ...(preds ? { preds } : {}),
+      },
+    };
+    const inject: EffectBuilderInjections = {
+      summonNameToIdx: (name) => summons.nameToIdx(name),
+    };
     // project_o / project_f world access; trapDeps joins it below once the
     // trap system is wired (the mutual reference is deliberate).
     const worldEnv: ProjectFeatEnv = { makeDeps };
@@ -348,8 +382,10 @@ function wireGame(
       spells: reg.monsters.spells,
       envDeps,
       saveSkill: pstate.skills[SKILL.SAVE] ?? 0,
+      inject,
       ...(teleport ? { teleport } : {}),
       general,
+      summon,
     });
 
     installObjCommands(registry, {
@@ -358,9 +394,11 @@ function wireGame(
       cast,
       envDeps,
       flavor,
+      inject,
       ...(teleport ? { teleport } : {}),
       general,
       item,
+      summon,
       ...(preds ? { floorEnv: { isTrap: preds.isTrap } } : {}),
     });
 
@@ -370,9 +408,11 @@ function wireGame(
         registry: effects,
         cast,
         envDeps,
+        inject,
         ...(teleport ? { teleport } : {}),
         general,
         item,
+        summon,
       },
       statInd: pstate.statInd,
       env: { expGain },
@@ -386,9 +426,11 @@ function wireGame(
           registry: effects,
           cast,
           envDeps,
+          inject,
           ...(teleport ? { teleport } : {}),
           general,
           item,
+          summon,
         },
         env: {
           expGain,
@@ -475,6 +517,9 @@ function populateFromLevel(
   }
   monsterGroupsVerify(state);
   updateMonsterDistances(state);
+  /* Count racial occurrences (generation tracks uniques level-locally; the
+   * live cur_num starts here and placement / deleteMonster maintain it). */
+  countMonsterRaces(state);
 
   // Register the generated floor objects as live piles (floor_carry), so
   // pickup / drop / projections operate on the same objects the level laid
@@ -511,6 +556,9 @@ function makeChangeLevel(
     if (depth > state.actor.player.maxDepth) {
       state.actor.player.maxDepth = depth;
     }
+    /* wipe_mon_list: the old level's monsters forget their racial counts
+     * before the new level allocates against them. */
+    wipeMonsterCounts(state);
     const g = generateLevel(state.rng, depth, genDeps(reg, true));
     state.chunk = g.c;
     state.monsters = [null];
@@ -776,6 +824,11 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     generateLevel: false,
     nextCommand: (): PlayerCommand | null => null,
   };
+
+  /* Rebuild the racial counts from the restored monster list (the save
+   * carries the monsters, not the registry-side counters). Killed-unique
+   * max_num zeroes are not yet persisted (ledgered with mon-place). */
+  countMonsterRaces(state);
 
   const wired = wireGame(state, reg, players, pstate);
   wired.flavor.restore(save.flavor);

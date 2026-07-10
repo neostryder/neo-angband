@@ -300,15 +300,19 @@ export function monsterSwap(state: GameState, grid1: Loc, grid2: Loc): void {
 
 /**
  * delete_monster_idx (mon-make.c): remove the monster from its groups
- * (leader succession / group split happen here), clear its square and free
- * its slot. The held-object drop, mimic, racial-counter and targeting/redraw
- * bookkeeping are DEFERRED with their subsystems (floor objects, lore); the
- * caller runs monster_death (drops) beforehand.
+ * (leader succession / group split happen here), forget its racial
+ * occurrence, clear its square and free its slot. The held-object drop,
+ * mimic and targeting/redraw bookkeeping are DEFERRED with their subsystems
+ * (floor objects, lore); the caller runs monster_death (drops) beforehand.
  */
 export function deleteMonster(state: GameState, midx: number): void {
   const mon = state.monsters[midx];
   if (!mon) return;
   monsterRemoveFromGroups(state, mon);
+  /* Decrease the racial counter (clamped: test-harness monsters register
+   * without counting, so a naked decrement could go negative). */
+  const race = mon.originalRace ?? mon.race;
+  if (race.curNum > 0) race.curNum--;
   state.chunk.setMon(mon.grid, 0);
   state.monsters[midx] = null;
 }

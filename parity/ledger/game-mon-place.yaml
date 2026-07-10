@@ -1,0 +1,88 @@
+module: packages/core/src/game/mon-place.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-make.c
+    items:
+      - place_monster (L999) reduced to the live bookkeeping - mon_pop slot
+        reuse (first free index, else append), square occupancy,
+        monster_group_assign, the update_mon distance refresh, and the
+        racial cur_num increment. delete_monster_idx's matching decrement
+        lives in game/context.ts deleteMonster (clamped at 0 because
+        test-harness monsters register without counting).
+      - place_new_monster_one (L1079) - the occupied / player / walkability
+        / glyph / decoy refusals, the unique cur_num >= max_num gate, the
+        FORCE_DEPTH depth gate, and construction through the shared
+        mon/make.ts createMonster (upstream RNG order: sleep, hp, speed
+        variation, energy, random attr).
+      - place_new_monster_group (L1215) - breadth-first puddling over the
+        ddd neighbours up to monster_group_max.
+      - place_friends (L1283) - the dead-unique gate, the no-groups rule
+        past 4 levels OoD, the level-difference size scaling with the
+        decimal-place extra-monster roll, same-race groups in place and
+        other races scattered monster_group_dist away.
+      - place_new_monster (L1360) - fresh group index for a group-less
+        placement (the first monster leads), the friends percent/dice
+        rolls, and the friends-base escort pick through get_mon_num_prep
+        with the base + non-unique predicate.
+      - pick_and_place_monster (L1457).
+  - path: src/mon-summon.c
+    items:
+      - summon_specific (L402) - the widening scatter_ext(1..4) with
+        square_allows_summon, the call_monster branch (skipped for UNIQUE /
+        WRAITH), the summon_specific_okay table prep, get_mon_num at
+        (depth + lev) / 2 + 5, joining the summoner's summon_group with
+        MON_GROUP_SUMMON, awake group-less placement, and the delay branch
+        (energy 0 plus the MON_TMD_HOLD turns formula for faster monsters,
+        capped 32767).
+      - call_monster (L326) with can_call_monster (L308) - eligible = okay
+        for the type and NOT in LOS of the summon point; the
+        randint0(count - 1) pick (upstream quirk preserved), monster_swap,
+        monster_wake(false, 100) and energy 0.
+      - select_shape (L488) - the summon-type-filtered get_mon_num at
+        depth + 5 for monster shapechanges (consumer rides the shapes
+        batch).
+  - path: src/cave-square.c
+    items:
+      - square_isopen (L597), square_isempty (L604) and
+        square_allows_summon (L949) on the live state - floor piles from
+        state.floor, player traps / webs / wards through the injected
+        trapPredicates, the decoy from state.decoy.
+notes: >-
+  This is the live-cave twin of the generation-time family in gen/util.ts
+  (same upstream provenance); the barrel exports the live variants
+  Live-suffixed (placeNewMonsterLive, pickAndPlaceMonsterLive,
+  LiveMonPlaceDeps) to avoid colliding with the generation names. The
+  session (wireGame) builds the shared MonAllocTable and threads
+  trapPredicates and the mon-gen group constants in. Racial counts are now
+  live: placement and populateFromLevel increment, deleteMonster and the
+  level change's wipe_mon_list half (wipeMonsterCounts) decrement, and
+  loadGame recounts from the restored monster list. player_kill_monster's
+  dead-unique rule (max_num = 0) is wired in the session's onPlayerKill.
+deferred:
+  - mon_create_drop / mon_create_mimicked_object ride the
+    monster-inventory subsystem (monster_carry / held objects); summoned
+    monsters carry no loot yet, and ORIGIN_DROP_SUMMON stamps with it.
+  - add_to_monster_rating and the cheat_hear OOD messages ride level
+    feelings (#25); num_repro counting rides breeders; the PU_UPDATE_VIEW
+    monster-light refresh rides the FOV consumers.
+  - Killed-unique max_num zeroes are session-lifetime only; persisting
+    them rides the save format (a lore/race-state section, #24).
+  - compact_monsters / monster_index_move ride the level-cap pressure path
+    (the port's monster list grows on demand); wipe_mon_list beyond the
+    racial-count half is the session's store swap.
+verified-by:
+  - game/mon-place.test.ts (13 tests) - squareAllowsSummon accepts empty
+    floor and refuses walls/occupants/player/decoy/warded/trapped grids;
+    placeNewMonsterOne registers a counted, grouped monster (deleteMonster
+    uncounts), honors sleep, refuses occupied/player/wall/glyph grids,
+    enforces unique cur_num/max_num and FORCE_DEPTH; placeNewMonster
+    places a same-race friend pack sharing the leader's group and
+    wipeMonsterCounts rebalances; summonSpecific summons an eligible
+    undead within 4 grids awake, returns 0 with no eligible race, zeroes
+    energy and HOLDs only faster-than-player summons (seed sweep), and
+    call moves an out-of-LOS resident to the summon point (woken, energy
+    0, nothing created); summons join the summoner's group with the
+    SUMMON role.
+  - session/game.test.ts - the started game passes with the live counts
+    (populateFromLevel counting, the unique max_num kill rule).
