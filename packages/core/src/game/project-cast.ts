@@ -47,6 +47,7 @@ import type {
 } from "../world/project";
 import { los } from "../world/view";
 import type { ProjectionInfo } from "../world/projection";
+import type { DamageReduction } from "../player/take-hit";
 import { monsterMax } from "./context";
 import type { GameState } from "./context";
 import { projectMonster } from "./project-monster";
@@ -152,7 +153,15 @@ export interface CastContext {
  * perc_dam_red, minus_ac) lands. chp and is_dead are live so take_hit's
  * mutations write back to the player and the game state.
  */
-export function basicPlayerActor(state: GameState): PlayerProjActor {
+export function basicPlayerActor(
+  state: GameState,
+  opts: {
+    /** state.el_info[type].res_level from the live derived state. */
+    resistLevel?: (type: number) => number;
+    /** state.dam_red / perc_dam_red from the live derived state. */
+    reduction?: () => DamageReduction;
+  } = {},
+): PlayerProjActor {
   const p = state.actor.player;
   return {
     get chp(): number {
@@ -161,8 +170,12 @@ export function basicPlayerActor(state: GameState): PlayerProjActor {
     set chp(v: number) {
       p.chp = v;
     },
-    mhp: p.mhp,
-    lev: p.lev,
+    get mhp(): number {
+      return p.mhp;
+    },
+    get lev(): number {
+      return p.lev;
+    },
     get isDead(): boolean {
       return state.isDead;
     },
@@ -171,8 +184,10 @@ export function basicPlayerActor(state: GameState): PlayerProjActor {
     },
     timed: p.timed,
     hitpointWarn: DEFAULT_HITPOINT_WARN,
-    resistLevel: () => 0,
-    reduction: { damRed: 0, percDamRed: 0 },
+    resistLevel: opts.resistLevel ?? ((): number => 0),
+    get reduction(): DamageReduction {
+      return opts.reduction ? opts.reduction() : { damRed: 0, percDamRed: 0 };
+    },
     minusAc: false,
   };
 }

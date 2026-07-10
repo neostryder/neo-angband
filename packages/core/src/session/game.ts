@@ -36,6 +36,7 @@ import {
   toCombatState,
   toDefenderState,
 } from "../player/calcs";
+import type { PlayerState } from "../player/calcs";
 import { playerExpGain, playerKillExp } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
 import { makePlayerSideEffects } from "../game/player-side";
@@ -164,7 +165,7 @@ function wireGame(
   state: GameState,
   reg: CoreRegistries,
   players: PlayerRegistry,
-  pstate: { skills: readonly number[]; statInd: readonly number[] },
+  pstate: PlayerState,
 ): WiredGame {
   // Live commands over the floor piles: 'g'et + autopickup on stepping.
   const registry = createDefaultRegistry();
@@ -195,32 +196,48 @@ function wireGame(
     },
   );
 
+  // The live derived state (upstream p->state). refreshDerived is the
+  // port's PU_BONUS | PU_HP | PU_MANA: recompute from the current gear,
+  // refresh the actor (including the wielded weapon), re-derive hitpoints
+  // from the rolled hitdice and mana from the armor encumbrance. Installed
+  // as state.updateBonuses so equipment commands trigger it.
+  let derived: PlayerState = pstate;
+  const refreshDerived = (): void => {
+    const p = state.actor.player;
+    const equipment = p.equipment.map((h) =>
+      h ? gearGet(state.gear, h) : null,
+    );
+    derived = calcBonuses(p, { equipment });
+    const combat = toCombatState(derived);
+    state.actor.combat = combat;
+    state.actor.defense = toDefenderState(derived);
+    state.actor.speed = derived.speed;
+    state.actor.stealth = combat.skills[SKILL.STEALTH] ?? 0;
+    const weaponSlot = p.body.slots.findIndex((s) => s.type === "WEAPON");
+    state.actor.weapon =
+      weaponSlot >= 0 ? (equipment[weaponSlot] ?? null) : null;
+    /* calc_hitpoints from the rolled hitdice (CON may have changed). */
+    p.mhp = calcHitpoints(
+      p.playerHp[p.lev - 1] ?? p.hitdie,
+      p.lev,
+      derived.statInd[STAT.CON] ?? 0,
+    );
+    if (p.chp > p.mhp) p.chp = p.mhp;
+    /* calc_mana with the worn-armor encumbrance. */
+    calcMana(p, derived.statInd, wornArmorWeight(p, equipment));
+    if (p.csp > p.msp) p.csp = p.msp;
+  };
+  state.updateBonuses = refreshDerived;
+
   // Experience (player.c): a level change recomputes the derived state
-  // from the live gear (upstream's PU_BONUS | PU_HP | PU_SPELLS), and a
-  // player kill rewards mexp * rlev / plev with the fractional carry.
+  // (upstream's PU_BONUS | PU_HP | PU_SPELLS), and a player kill rewards
+  // mexp * rlev / plev with the fractional carry.
   const expDeps: ExpDeps = {
     rng: state.rng,
     onLevelChange: (p): void => {
-      const equipment = p.equipment.map((h) =>
-        h ? gearGet(state.gear, h) : null,
-      );
-      const ps = calcBonuses(p, { equipment });
-      const combat = toCombatState(ps);
-      state.actor.combat = combat;
-      state.actor.defense = toDefenderState(ps);
-      state.actor.speed = ps.speed;
-      state.actor.stealth = combat.skills[SKILL.STEALTH] ?? 0;
-      /* calc_hitpoints at the new level from the rolled hitdice. */
-      p.mhp = calcHitpoints(
-        p.playerHp[p.lev - 1] ?? p.hitdie,
-        p.lev,
-        ps.statInd[STAT.CON] ?? 0,
-      );
-      if (p.chp > p.mhp) p.chp = p.mhp;
-      /* Casters learn/forget spells and re-derive mana. */
-      calcSpells(p, ps.statInd);
-      calcMana(p, ps.statInd, wornArmorWeight(p, equipment));
-      if (p.csp > p.msp) p.csp = p.msp;
+      refreshDerived();
+      /* Casters learn/forget spells at the new level. */
+      calcSpells(p, derived.statInd);
     },
   };
   state.onPlayerKill = (mon): void => {
@@ -248,7 +265,15 @@ function wireGame(
     // project_o / project_f world access; trapDeps joins it below once the
     // trap system is wired (the mutual reference is deliberate).
     const worldEnv: ProjectFeatEnv = { makeDeps };
-    const playerActor = basicPlayerActor(state);
+    /* The projection view reads the LIVE derived state, so worn resistance
+     * gear reduces projection damage and equipment swaps take effect. */
+    const playerActor = basicPlayerActor(state, {
+      resistLevel: (t) => derived.elInfo[t]?.resLevel ?? 0,
+      reduction: () => ({
+        damRed: derived.damRed,
+        percDamRed: derived.percDamRed,
+      }),
+    });
     const cast: CastContext = {
       projections: reg.projections,
       maxRange: reg.constants.maxRange,
