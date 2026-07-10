@@ -1,11 +1,41 @@
-module: packages/core/src/game/player-path.ts (the running engine) +
+module: packages/core/src/game/player-path.ts (running + pathfinding) +
   the internal command queue (game/context.ts cmdQueue, player-turn.ts
-  processPlayer drain) and the run action wiring (session/game.ts)
+  processPlayer drain) and the run / pathfind / explore action wiring
+  (session/game.ts)
 status: partial
 baseline: 4.2.6
 upstream:
   - path: src/player-path.c
     items:
+      - is_valid_pf (L80), prepare_pfdistances (L307),
+        pfdistances_to_turncount (L479), pfdistances_to_path (L506) - the
+        distance field over the level (movement turns * PF_SCL) from the
+        player's memory, the border-unreachable marking, the closed-door
+        (unlocked / locked) and rubble traversal penalties, the
+        turncount rounding, and the backtracking path (forward keypad
+        directions in reverse order).
+      - find_path (L1069) - the start-to-dest path with the constraint
+        loosening (remembered-only then any, no-traps then traps). Ported
+        via prepare_pfdistances + pfdistances_to_path (the same distances
+        upstream's patched-array A* approximates, so paths match up to
+        tie-breaking) rather than the patched A* itself.
+      - path_nearest_known (L834) - the path to the nearest remembered
+        grid satisfying a predicate (travel-to-stairs), same loosening.
+      - path_nearest_unknown (L932) - the explore target: the nearest
+        remembered passable grid with an unknown neighbor, else the
+        nearest remembered closed door / rubble with an unknown neighbor
+        and a known-passable neighbor to stand on.
+      - pathfind_direction_to (L1347) - the diagonal-preferring keypad
+        direction from one point to another.
+      - the pathfinding branch of run_step (L1903) - the stored path walk
+        with the auto-open of a fully-surrounded closed door and the
+        auto-dig of fully-known rubble (disturb, then re-issue the
+        open / tunnel command and re-pathfind from path_dest), the
+        block / visible-monster / remembered-object stops, and the
+        convert-to-a-plain-run-if-the-path-ends-in-a-wall fallback.
+      - do_cmd_pathfind / do_cmd_explore (cmd-cave.c L1500-L1571) as the
+        pathfind / explore actions: compute the path, set steps /
+        step_count / path_dest / running, and run_step(0).
       - see_wall (L1568) - a "known wall" in a direction: webs count,
         square_seemslikewall (TF_ROCK) gated by square_isknown, illegal
         grids are not walls.
@@ -45,15 +75,22 @@ notes: >-
   command for a shift+move (roguelike keyset) and the loop drains the
   continuation to a stop.
 deferred:
-  - Pathfinding / travel: find_path (the A* with the patched distance
-    array), prepare_pfdistances / pfdistances_to_path /
-    pfdistances_to_turncount, path_nearest_known / path_nearest_unknown
-    (explore), pathfind_direction_to, and the door-unlock / rubble-dig
-    turn penalties (compute_unlocked / _locked / _rubble_penalty). With
-    them, the pathfinding branch of run_step (upkeep->steps / step_count /
-    path_dest, the automatic CMD_OPEN / CMD_TUNNEL pushes for a known
-    closed door or impassable rubble in the path, and the
-    convert-to-normal-run-on-a-dead-end fallback).
+  - find_path uses prepare_pfdistances + pfdistances_to_path, NOT the
+    patched-distance A* (an equal-result performance optimization);
+    paths match upstream up to tie-breaking. The relaxation queue is a
+    plain array shift() (upstream's q_queue); correctness is identical.
+  - convert_turn_penalty (the door / rubble penalties assume moving costs
+    z_info->move_energy, the common case; movement-speed class energy is
+    unported) and compute_rubble_penalty's swap-to-best-digger
+    recalculation (the wielded DIGGING skill decides, as in tunnelAux).
+    compute_locked_penalty's dark / PF_UNLIGHT lighting nuance rides
+    light. square_isdamaging is reduced to fiery terrain (lava).
+  - Pathfinding reads live terrain gated by square_isknown rather than
+    the remembered feat itself (identical for seen grids; only stale
+    memory from magic mapping could differ), matching the running engine.
+  - do_cmd_pathfind / do_cmd_explore are registered core actions but not
+    yet wired to a web click / key (no grid-click handler exists front
+    end); the running keypress is wired.
   - disturb() from events OTHER than run_test's own per-step checks (a
     monster waking or closing from behind, taking damage, a status
     message, resting). disturb() is exported so those sites call it as
@@ -67,12 +104,17 @@ deferred:
     remembered floor object aborts, matching the "everything seen is
     known" front end.
 verified-by:
-  - game/player-path.test.ts (7 tests) - run_init detects a hallway
-    (both sides walled -> open-area cleared, both breaks set), treats
-    unmemorized walls as open (see_wall's known-gate), and looks for an
-    open area with no adjacent walls; a corridor run follows the hallway
-    and stops on the last floor grid before the end wall (6 steps, counter
-    zeroed, queue drained); an L-corridor run rounds the corner to the far
-    end; a run halts one grid short of an obvious monster in the path (the
-    soon-to-be-adjacent check); disturb() zeroes the counter and flushes
-    the queue.
+  - game/player-path.test.ts (13 tests). Running (7): run_init detects a
+    hallway (open-area cleared, both breaks set), treats unmemorized walls
+    as open (see_wall's known-gate), and looks for an open area with no
+    adjacent walls; a corridor run follows the hallway and stops on the
+    last floor grid before the end wall (6 steps, counter zeroed, queue
+    drained); an L-corridor run rounds the corner; a run halts one grid
+    short of an obvious monster (the soon-to-be-adjacent check); disturb()
+    zeroes the counter and flushes the queue. Pathfinding (6):
+    pathfind_direction_to picks diagonals / cardinals / none; find_path
+    returns a straight corridor path (reverse-order east steps), 0 for the
+    start and -1 for a walled-off cell; travel walks the player to a
+    destination (step_count zeroed, queue drained) and auto-opens a closed
+    door mid-path then continues; explore's path_nearest_unknown targets
+    the frontier column and walks the player there.

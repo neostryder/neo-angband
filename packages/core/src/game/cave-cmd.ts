@@ -14,10 +14,9 @@
  * DEFERRED (ledgered in game-cave-cmd.yaml): the swap-digger machinery
  * (player_best_digger recalculating bonuses with the best pack digger -
  * digging uses the wielded state's DIGGING skill), chests (obj model),
- * do_cmd_steal (shapechange #22), explore/pathfind/navigate (the
- * find_path travel half of player-path #24; running itself is ported in
- * game/player-path.ts), command repetition and count_feats direction
- * inference (UI).
+ * do_cmd_steal (shapechange #22), command repetition and count_feats
+ * direction inference (UI). Running and travel / explore (player-path
+ * #24) are ported in game/player-path.ts.
  */
 
 import type { Loc } from "../loc";
