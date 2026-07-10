@@ -1,0 +1,56 @@
+module: packages/core/src/game/project-feat.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/project-feat.c
+    items:
+      - project_f (L703): the PROJECT_GRID driver. Handlers ported -
+        LIGHT/LIGHT_WEAK (SQUARE_GLOW on, obvious when in view and not
+        blind, FOV refresh), DARK/DARK_WEAK (glow off), KILL_WALL
+        (stone-to-mud: rubble to floor with the 10% buried-object find,
+        doors, gold veins paying out with place_gold, magma/quartz and
+        granite to floor, permanent rock immune, non-walls skipped),
+        KILL_DOOR (bright flash, door to floor), KILL_TRAP (secret doors
+        become closed doors, visible traps seize up via the timeout-10
+        disable, locked doors click open by removing the lock trap),
+        MAKE_DOOR (floor without occupants: pile pushed aside, closed door
+        placed), MAKE_TRAP (empty untrapped floor, 1-in-4 place + reveal),
+        FIRE/PLASMA (observe; fire removes webs; damage beyond
+        randint1(1800)+600 turns floor to lava and pushes the pile),
+        COLD/ICE (observe; damage beyond randint1(900)+300 solidifies lava
+        to floor / rubble / passable rubble, rubble only when unoccupied),
+        and the observe-only handlers for every other projection.
+  - path: src/obj-pile.c
+    items:
+      - push_object: the pile is excised and re-dropped nearby with the
+        grid temporarily an open door so nothing lands back on it, then
+        the original feature restored (the caller's change follows).
+  - path: src/cave-square.c
+    items:
+      - square_disable_trap / square_set_trap_timeout: player traps at the
+        grid get timeout 10.
+notes: >-
+  Wired into castProjection (game/project-cast.ts) through the optional
+  CastContext.worldEnv (makeDeps for the rubble/gold payouts, trapDeps for
+  trap and lock work, msg sink); wireGame builds it and shares the same
+  MakeDeps with the cave commands. Any projection with PROJECT.GRID now
+  alters terrain - stone to mud, door spells, trap-destruction, light and
+  darkness - for player spells, monster spells, traps and devices alike.
+deferred:
+  - square_forget / square_unmark and the PU_UPDATE_VIEW | PU_MONSTERS
+    masks: the core keeps no player square-memory yet (the web renderer
+    holds its own explored set); FOV refresh rides state.updateFov.
+  - expose_to_sun / is_daytime and square_isbright's surface interplay:
+    no town or day-night cycle yet (#24/#25).
+  - The decoy branch (square_destroy_decoy) rides mon-desire (#24).
+  - push_object's trap re-run (square_add_trap on the restored feature)
+    and its queue-size cap (z_info->floor_size) are simplified: the port
+    excises a snapshot and re-drops it.
+verified-by:
+  - game/project-world.test.ts: LIGHT_WEAK lights and DARK_WEAK darkens
+    the grid's GLOW bit; KILL_WALL melts granite to floor but leaves
+    permanent rock; both KILL_DOOR and KILL_WALL destroy doors; MAKE_DOOR
+    creates a closed door, pushes the pile to a nearby grid, and refuses
+    the player's own grid; KILL_TRAP seizes up a revealed trap (timeout
+    10); FIRE clears a web and extreme damage makes lava; intense COLD
+    solidifies it again.

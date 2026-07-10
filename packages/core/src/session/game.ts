@@ -77,6 +77,8 @@ import {
 } from "../obj/knowledge";
 import { ELEM_MAX } from "../obj/types";
 import { ObjAllocState } from "../obj/make";
+import type { MakeDeps } from "../obj/make";
+import type { ProjectFeatEnv } from "../game/project-feat";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
@@ -189,16 +191,25 @@ function wireGame(
   // player casts (player-spell.c) and traps fire (trap.c) - all through
   // the same effect interpreter.
   let trapDeps: TrapDeps | null = null;
+  const makeDeps: MakeDeps = {
+    reg: reg.objects,
+    alloc: new ObjAllocState(reg.objects, reg.constants),
+    constants: reg.constants,
+  };
   if (reg.projections) {
     const effects = new EffectRegistry();
     registerCoreHandlers(effects);
     registerAttackHandlers(effects);
     registerMonsterHandlers(effects);
     registerTeleportHandlers(effects);
+    // project_o / project_f world access; trapDeps joins it below once the
+    // trap system is wired (the mutual reference is deliberate).
+    const worldEnv: ProjectFeatEnv = { makeDeps };
     const cast: CastContext = {
       projections: reg.projections,
       maxRange: reg.constants.maxRange,
       playerActor: basicPlayerActor(state),
+      worldEnv,
     };
     const envDeps: EffectEnvDeps = { timedTable: players.timed };
 
@@ -265,6 +276,7 @@ function wireGame(
         },
       };
       installTraps(state, registry, trapDeps);
+      worldEnv.trapDeps = trapDeps;
     }
   }
 
@@ -274,11 +286,7 @@ function wireGame(
   const lockKind = trapDeps ? lookupTrap(trapDeps.kinds, "door lock") : null;
   const deps = trapDeps; // narrow for the closures
   installCaveCommands(registry, {
-    makeDeps: {
-      reg: reg.objects,
-      alloc: new ObjAllocState(reg.objects, reg.constants),
-      constants: reg.constants,
-    },
+    makeDeps,
     ...(deps && lockKind
       ? {
           env: {
