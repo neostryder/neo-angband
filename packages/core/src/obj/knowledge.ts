@@ -106,4 +106,20 @@ export class FlavorKnowledge {
     if (kind.kidx >= this.ordinaryKindCount) return;
     this.triedKidx.add(kind.kidx);
   }
+
+  /** A JSON-safe snapshot of the aware/tried kidx sets, for savefiles. */
+  snapshot(): { aware: number[]; tried: number[] } {
+    return {
+      aware: Array.from(this.awareKidx),
+      tried: Array.from(this.triedKidx),
+    };
+  }
+
+  /** Restore a snapshot() payload (replacing the current knowledge). */
+  restore(data: { aware: number[]; tried: number[] }): void {
+    this.awareKidx.clear();
+    this.triedKidx.clear();
+    for (const k of data.aware) this.awareKidx.add(k);
+    for (const k of data.tried) this.triedKidx.add(k);
+  }
 }

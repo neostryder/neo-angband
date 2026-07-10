@@ -74,8 +74,28 @@ import { ObjAllocState } from "../obj/make";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
-import { bindCore, bootLevel } from "./boot";
-import type { BootedLevel, BootLevelOptions, CorePack } from "./boot";
+import { bindCore, bootLevel, genDeps } from "./boot";
+import type {
+  BootedLevel,
+  BootLevelOptions,
+  CorePack,
+  CoreRegistries,
+} from "./boot";
+import { Rng } from "../rng";
+import type { Player } from "../player/player";
+import { generateLevel } from "../gen/generate";
+import { iToGrid } from "../gen/util";
+import {
+  SAVE_VERSION,
+  deserializeChunk,
+  deserializeFloor,
+  deserializeGear,
+  deserializeMonster,
+  deserializePlayer,
+  deserializeTraps,
+  serializeGame,
+} from "./save";
+import type { SavedGame } from "./save";
 
 /** A pack that also carries the player-domain records (races, classes, ...). */
 export interface GamePack extends CorePack {
@@ -97,13 +117,257 @@ export interface StartedGame {
   /** The generated world (features, placed objects, registries) for rendering. */
   booted: BootedLevel;
   players: PlayerRegistry;
+  /** Per-game flavor knowledge (aware/tried), for the save format. */
+  flavor: FlavorKnowledge;
+  /**
+   * dungeon_change_level + prepare_next_level: generate a fresh level at
+   * `depth` from the game's own RNG stream and repopulate the state in
+   * place (same GameState object, so installed commands keep working).
+   * The caller clears state.generateLevel and refreshes FOV/render.
+   */
+  changeLevel: (depth: number) => void;
+}
+
+/** What the shared command/effect wiring returns. */
+interface WiredGame {
+  registry: ActionRegistry;
+  trapDeps: TrapDeps | null;
+  flavor: FlavorKnowledge;
+}
+
+/**
+ * Install every command and effect-stack seam on a constructed GameState:
+ * pickup, the effect interpreter (monster casting, item use, player
+ * spells), traps (disarm + the step hook) and the cave commands with the
+ * lock seams. Shared by startGame and loadGame; the same state object is
+ * captured by every closure, so a level change may swap the state's chunk
+ * and entity stores in place without rewiring.
+ */
+function wireGame(
+  state: GameState,
+  reg: CoreRegistries,
+  players: PlayerRegistry,
+  pstate: { skills: readonly number[]; statInd: readonly number[] },
+): WiredGame {
+  // Live commands over the floor piles: 'g'et + autopickup on stepping.
+  const registry = createDefaultRegistry();
+  installPickup(state, registry, { constants: reg.constants });
+
+  const flavor = new FlavorKnowledge(reg.objects.ordinaryKindCount);
+
+  // The effect stack: with bound projections, monsters cast spells on
+  // their turns (make_ranged_attack), items are usable (cmd-obj.c), the
+  // player casts (player-spell.c) and traps fire (trap.c) - all through
+  // the same effect interpreter.
+  let trapDeps: TrapDeps | null = null;
+  if (reg.projections) {
+    const effects = new EffectRegistry();
+    registerCoreHandlers(effects);
+    registerAttackHandlers(effects);
+    registerMonsterHandlers(effects);
+    registerTeleportHandlers(effects);
+    const cast: CastContext = {
+      projections: reg.projections,
+      maxRange: reg.constants.maxRange,
+      playerActor: basicPlayerActor(state),
+    };
+    const envDeps: EffectEnvDeps = { timedTable: players.timed };
+
+    // The trap-backed square predicates feed every consumer that stubbed
+    // them (teleport landing checks, drop placement) once traps exist.
+    const preds = reg.traps ? trapPredicates(state) : null;
+    const teleport = preds
+      ? {
+          isPlayerTrap: preds.isPlayerTrap,
+          isWarded: preds.isWarded,
+          isWebbed: preds.isWebbed,
+          changeLevel: (targetDepth: number): void => {
+            state.targetDepth = targetDepth;
+            state.generateLevel = true;
+          },
+        }
+      : undefined;
+
+    installMonsterCasting(state, {
+      registry: effects,
+      cast,
+      spells: reg.monsters.spells,
+      envDeps,
+      saveSkill: pstate.skills[SKILL.SAVE] ?? 0,
+      ...(teleport ? { teleport } : {}),
+    });
+
+    installObjCommands(registry, {
+      constants: reg.constants,
+      registry: effects,
+      cast,
+      envDeps,
+      flavor,
+      ...(teleport ? { teleport } : {}),
+      ...(preds ? { floorEnv: { isTrap: preds.isTrap } } : {}),
+    });
+
+    // Player spellcasting (cast / study) for casting classes.
+    installSpellCommands(registry, {
+      effects: {
+        registry: effects,
+        cast,
+        envDeps,
+        ...(teleport ? { teleport } : {}),
+      },
+      statInd: pstate.statInd,
+    });
+
+    // Traps: disarm + the step-onto-trap hook; a trapdoor drops a level.
+    if (reg.traps) {
+      trapDeps = {
+        kinds: reg.traps,
+        effects: {
+          registry: effects,
+          cast,
+          envDeps,
+          ...(teleport ? { teleport } : {}),
+        },
+        env: {
+          changeLevel: (s: GameState): void => {
+            s.targetDepth = s.chunk.depth + 1;
+            s.generateLevel = true;
+          },
+        },
+      };
+      installTraps(state, registry, trapDeps);
+    }
+  }
+
+  // Cave commands (open / close / tunnel / alter / stair checks); rubble
+  // finds and gold veins pay out through the object generator, and door
+  // locks resolve through the trap system when it is live.
+  const lockKind = trapDeps ? lookupTrap(trapDeps.kinds, "door lock") : null;
+  const deps = trapDeps; // narrow for the closures
+  installCaveCommands(registry, {
+    makeDeps: {
+      reg: reg.objects,
+      alloc: new ObjAllocState(reg.objects, reg.constants),
+      constants: reg.constants,
+    },
+    ...(deps && lockKind
+      ? {
+          env: {
+            isLockedDoor: (grid: Loc): boolean =>
+              squareDoorPower(state, grid, deps) > 0,
+            pickLock: (grid: Loc): boolean => {
+              const power = squareDoorPower(state, grid, deps);
+              const chance = calcUnlockingChance(state, power);
+              if (state.rng.randint0(100) < chance) {
+                squareRemoveAllTraps(state, grid, lockKind.tidx);
+                return true;
+              }
+              return false;
+            },
+          },
+        }
+      : {}),
+  });
+
+  return { registry, trapDeps, flavor };
+}
+
+/** The parts of a generated level that populate a GameState. */
+interface LevelContent {
+  playerSpot: Loc | null;
+  monsters: readonly { grid: Loc; mon: import("../mon/monster").Monster }[];
+  objects: readonly { grid: Loc; obj: import("../obj/object").GameObject }[];
+  trapGrids: readonly Loc[];
+  lockedDoors: readonly { grid: Loc; power: number }[];
+  depth: number;
+}
+
+/**
+ * Register a generated level's content on the live state: place the player,
+ * the monsters (rebuilding groups from the generation group_info, exactly
+ * as upstream rebuilds from a savefile), the floor piles, and instantiate
+ * the marked traps and rolled door locks.
+ */
+function populateFromLevel(
+  state: GameState,
+  level: LevelContent,
+  trapDeps: TrapDeps | null,
+): void {
+  const spot: Loc = level.playerSpot ?? loc(1, 1);
+  state.actor.grid = spot;
+  placePlayer(state, spot);
+
+  for (const pm of level.monsters) {
+    pm.mon.grid = pm.grid;
+    addMonster(state, pm.mon);
+  }
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (mon) monsterGroupAssign(state, mon, mon.groupInfo, true);
+  }
+  monsterGroupsVerify(state);
+  updateMonsterDistances(state);
+
+  // Register the generated floor objects as live piles (floor_carry), so
+  // pickup / drop / projections operate on the same objects the level laid
+  // down.
+  for (const po of level.objects) {
+    floorCarry(state, po.grid, po.obj);
+  }
+
+  // Instantiate the generation-marked traps on the live cave (the random
+  // pick happens here, exactly as place_trap) and the rolled door locks.
+  if (trapDeps) {
+    for (const grid of level.trapGrids) {
+      placeTrap(state, grid, -1, level.depth, trapDeps);
+    }
+    for (const door of level.lockedDoors) {
+      squareSetDoorLock(state, door.grid, door.power, trapDeps);
+    }
+  }
+}
+
+/**
+ * dungeon_change_level + prepare_next_level: generate a fresh level at
+ * `depth` from the state's own RNG stream and swap it into the state in
+ * place. Installed commands keep working (they close over the state
+ * object, whose chunk and entity stores are replaced).
+ */
+function makeChangeLevel(
+  state: GameState,
+  reg: CoreRegistries,
+  trapDeps: TrapDeps | null,
+): (depth: number) => void {
+  return (depth: number): void => {
+    const g = generateLevel(state.rng, depth, genDeps(reg, true));
+    state.chunk = g.c;
+    state.monsters = [null];
+    state.groups = [null];
+    state.floor = new Map();
+    state.traps = new Map();
+    populateFromLevel(
+      state,
+      {
+        playerSpot: g.playerSpot,
+        monsters: g.monsters,
+        objects: g.objects,
+        trapGrids: [...g.trapGrids].map((i) => iToGrid(i, g.c.width)),
+        lockedDoors: g.lockedDoors,
+        depth,
+      },
+      trapDeps,
+    );
+    delete state.targetDepth;
+    state.updateFov?.(state);
+  };
 }
 
 /**
  * Assemble a runnable GameState from a pack: generate a level, birth a
  * character, derive its bonuses, and register the placed monsters. The
  * caller wires state.nextCommand (input) and state.updateFov (FOV) and then
- * drives runGameLoop.
+ * drives runGameLoop; on LOOP_STATUS.LEVEL_CHANGE it calls
+ * game.changeLevel(state.targetDepth) and clears state.generateLevel.
  */
 export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedGame {
   // Bind registries and the player domain first: spellbook object kinds
@@ -156,22 +420,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // the worn-armor weight over the class allowance as the penalty).
   playerSpellsInit(birth.player);
   calcSpells(birth.player, pstate.statInd);
-  let armorWeight = 0;
-  for (let i = 0; i < birth.player.body.count; i++) {
-    const slotType = birth.player.body.slots[i]?.type ?? "";
-    if (
-      slotType === "WEAPON" ||
-      slotType === "BOW" ||
-      slotType === "RING" ||
-      slotType === "AMULET" ||
-      slotType === "LIGHT"
-    ) {
-      continue;
-    }
-    const worn = equipment[i];
-    if (worn) armorWeight += worn.weight;
-  }
-  calcMana(birth.player, pstate.statInd, armorWeight);
+  calcMana(birth.player, pstate.statInd, wornArmorWeight(birth.player, equipment));
   birth.player.csp = birth.player.msp; // born rested, full mana
 
   const spot: Loc = booted.playerSpot ?? loc(1, 1);
@@ -201,6 +450,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       ...DEFAULT_GAME_CONSTANTS,
       maxSight: reg.constants.maxSight,
       floorSize: reg.constants.floorSize,
+      maxDepth: reg.constants.maxDepth,
     },
     brands: reg.objects.brands,
     slays: reg.objects.slays,
@@ -210,145 +460,149 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     nextCommand: (): PlayerCommand | null => null,
   };
 
-  placePlayer(state, spot);
-  for (const pm of booted.monsters) {
-    pm.mon.grid = pm.grid;
-    addMonster(state, pm.mon);
-  }
-  // Rebuild the monster groups from the group_info recorded at generation
-  // (place_new_monster) - the loading path of monster_group_assign, exactly
-  // as upstream rebuilds groups from a savefile.
-  for (let i = 1; i < state.monsters.length; i++) {
-    const mon = state.monsters[i];
-    if (mon) monsterGroupAssign(state, mon, mon.groupInfo, true);
-  }
-  monsterGroupsVerify(state);
-  updateMonsterDistances(state);
-
-  // Register the generated floor objects as live piles (floor_carry), so
-  // pickup / drop / projections operate on the same objects the level laid
-  // down. Generation placed each on a legal, empty grid, so this always
-  // succeeds; piles keep working even if a mod pre-stacks a grid.
-  for (const po of booted.objects) {
-    floorCarry(state, po.grid, po.obj);
-  }
-
-  // Live commands over the floor piles: 'g'et + autopickup on stepping.
-  const registry = createDefaultRegistry();
-  installPickup(state, registry, { constants: reg.constants });
-
-  // The effect stack: with bound projections, monsters cast spells on
-  // their turns (make_ranged_attack), items are usable (cmd-obj.c), and
-  // traps fire (trap.c) - all through the same effect interpreter.
-  let trapDeps: TrapDeps | null = null;
-  if (reg.projections) {
-    const effects = new EffectRegistry();
-    registerCoreHandlers(effects);
-    registerAttackHandlers(effects);
-    registerMonsterHandlers(effects);
-    registerTeleportHandlers(effects);
-    const cast: CastContext = {
-      projections: reg.projections,
-      maxRange: reg.constants.maxRange,
-      playerActor: basicPlayerActor(state),
-    };
-    const envDeps: EffectEnvDeps = { timedTable: players.timed };
-
-    // The trap-backed square predicates feed every consumer that stubbed
-    // them (teleport landing checks, drop placement) once traps exist.
-    const preds = reg.traps ? trapPredicates(state) : null;
-    const teleport = preds
-      ? {
-          isPlayerTrap: preds.isPlayerTrap,
-          isWarded: preds.isWarded,
-          isWebbed: preds.isWebbed,
-        }
-      : undefined;
-
-    installMonsterCasting(state, {
-      registry: effects,
-      cast,
-      spells: reg.monsters.spells,
-      envDeps,
-      saveSkill: pstate.skills[SKILL.SAVE] ?? 0,
-      ...(teleport ? { teleport } : {}),
-    });
-
-    installObjCommands(registry, {
-      constants: reg.constants,
-      registry: effects,
-      cast,
-      envDeps,
-      flavor: new FlavorKnowledge(reg.objects.ordinaryKindCount),
-      ...(teleport ? { teleport } : {}),
-      ...(preds ? { floorEnv: { isTrap: preds.isTrap } } : {}),
-    });
-
-    // Player spellcasting (cast / study) for casting classes, through the
-    // same effect stack.
-    installSpellCommands(registry, {
-      effects: {
-        registry: effects,
-        cast,
-        envDeps,
-        ...(teleport ? { teleport } : {}),
-      },
-      statInd: pstate.statInd,
-    });
-
-    // Traps: instantiate the generation-marked grids as real traps (the
-    // random pick happens here, on the live cave, exactly as place_trap),
-    // lock the doors generation rolled locked, and install disarm + the
-    // step-onto-trap hook.
-    if (reg.traps) {
-      trapDeps = {
-        kinds: reg.traps,
-        effects: {
-          registry: effects,
-          cast,
-          envDeps,
-          ...(teleport ? { teleport } : {}),
-        },
-      };
-      for (const grid of booted.trapGrids) {
-        placeTrap(state, grid, -1, booted.depth, trapDeps);
-      }
-      for (const door of booted.lockedDoors) {
-        squareSetDoorLock(state, door.grid, door.power, trapDeps);
-      }
-      installTraps(state, registry, trapDeps);
-    }
-  }
-
-  // Cave commands (open / close / tunnel / alter / stair checks); rubble
-  // finds and gold veins pay out through the object generator, and door
-  // locks resolve through the trap system when it is live.
-  const lockKind = trapDeps ? lookupTrap(trapDeps.kinds, "door lock") : null;
-  const deps = trapDeps; // narrow for the closures
-  installCaveCommands(registry, {
-    makeDeps: {
-      reg: reg.objects,
-      alloc: new ObjAllocState(reg.objects, reg.constants),
-      constants: reg.constants,
+  const wired = wireGame(state, reg, players, pstate);
+  populateFromLevel(
+    state,
+    {
+      playerSpot: booted.playerSpot,
+      monsters: booted.monsters,
+      objects: booted.objects,
+      trapGrids: booted.trapGrids,
+      lockedDoors: booted.lockedDoors,
+      depth: booted.depth,
     },
-    ...(deps && lockKind
-      ? {
-          env: {
-            isLockedDoor: (grid: Loc): boolean =>
-              squareDoorPower(state, grid, deps) > 0,
-            pickLock: (grid: Loc): boolean => {
-              const power = squareDoorPower(state, grid, deps);
-              const chance = calcUnlockingChance(state, power);
-              if (state.rng.randint0(100) < chance) {
-                squareRemoveAllTraps(state, grid, lockKind.tidx);
-                return true;
-              }
-              return false;
-            },
-          },
-        }
-      : {}),
-  });
+    wired.trapDeps,
+  );
 
-  return { state, registry, booted, players };
+  return {
+    state,
+    registry: wired.registry,
+    booted,
+    players,
+    flavor: wired.flavor,
+    changeLevel: makeChangeLevel(state, reg, wired.trapDeps),
+  };
+}
+
+/** The worn-armor weight calc_mana penalizes (non-weapon/bow/jewelry slots). */
+function wornArmorWeight(
+  player: Player,
+  equipment: readonly (import("../obj/object").GameObject | null)[],
+): number {
+  let weight = 0;
+  for (let i = 0; i < player.body.count; i++) {
+    const slotType = player.body.slots[i]?.type ?? "";
+    if (
+      slotType === "WEAPON" ||
+      slotType === "BOW" ||
+      slotType === "RING" ||
+      slotType === "AMULET" ||
+      slotType === "LIGHT"
+    ) {
+      continue;
+    }
+    const worn = equipment[i];
+    if (worn) weight += worn.weight;
+  }
+  return weight;
+}
+
+/** Serialize a started game into the JSON save format (decision 9). */
+export function saveGame(game: StartedGame): SavedGame {
+  return serializeGame(game.state, game.flavor);
+}
+
+/**
+ * Rebuild a running game from a save: bind the pack, restore every entity
+ * store and the RNG stream (decision 22: reloading resumes the exact
+ * stream, the anti-save-scum posture), rewire the commands, and derive the
+ * combat state from the restored player and gear.
+ */
+export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
+  if (save.version !== SAVE_VERSION) {
+    throw new Error(`save: unsupported version ${save.version}`);
+  }
+  const reg = bindCore(pack);
+  const players = bindPlayer(pack.player);
+  registerBookKinds(reg.objects, players.classes);
+
+  const chunk = deserializeChunk(save.chunk, reg.features);
+  const player = deserializePlayer(save.player, players);
+  const gear = deserializeGear(save.gear, reg.objects);
+
+  const equipment = player.equipment.map((h) => (h ? gearGet(gear, h) : null));
+  const weaponSlot = player.body.slots.findIndex((s) => s.type === "WEAPON");
+  const weapon = weaponSlot >= 0 ? (equipment[weaponSlot] ?? null) : null;
+  const pstate = calcBonuses(player, { equipment });
+  const combat = toCombatState(pstate);
+
+  const rng = new Rng(1);
+  rng.setState(save.rng);
+
+  const actor: PlayerActor = {
+    player,
+    grid: loc(save.actor.grid.x, save.actor.grid.y),
+    energy: save.actor.energy,
+    speed: pstate.speed,
+    totalEnergy: save.actor.totalEnergy,
+    combat,
+    defense: toDefenderState(pstate),
+    weapon,
+    stealth: combat.skills[SKILL.STEALTH] ?? 0,
+  };
+
+  const state: GameState = {
+    rng,
+    chunk,
+    actor,
+    gear,
+    monsters: save.monsters.map((m) =>
+      m ? deserializeMonster(m, reg.monsters) : null,
+    ),
+    groups: save.groups.map((g) =>
+      g ? { index: g.index, leader: g.leader, members: [...g.members] } : null,
+    ),
+    floor: deserializeFloor(save.floor, reg.objects, chunk.width),
+    traps: reg.traps
+      ? deserializeTraps(save.traps, reg.traps, chunk.width)
+      : new Map(),
+    turn: save.turn,
+    z: {
+      ...DEFAULT_GAME_CONSTANTS,
+      maxSight: reg.constants.maxSight,
+      floorSize: reg.constants.floorSize,
+      maxDepth: reg.constants.maxDepth,
+    },
+    brands: reg.objects.brands,
+    slays: reg.objects.slays,
+    playing: save.playing,
+    isDead: save.isDead,
+    generateLevel: false,
+    nextCommand: (): PlayerCommand | null => null,
+  };
+
+  const wired = wireGame(state, reg, players, pstate);
+  wired.flavor.restore(save.flavor);
+
+  // A renderer-facing view of the restored level (no generation ran).
+  const booted: BootedLevel = {
+    chunk,
+    depth: chunk.depth,
+    playerSpot: actor.grid,
+    monsters: [],
+    objects: [],
+    trapGrids: [],
+    lockedDoors: [],
+    rng,
+    registries: reg,
+  };
+
+  return {
+    state,
+    registry: wired.registry,
+    booted,
+    players,
+    flavor: wired.flavor,
+    changeLevel: makeChangeLevel(state, reg, wired.trapDeps),
+  };
 }

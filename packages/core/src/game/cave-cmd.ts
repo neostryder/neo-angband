@@ -364,6 +364,7 @@ export function installCaveCommands(
       env.msg?.("There is no down staircase here.");
       return 0;
     }
+    state.targetDepth = state.chunk.depth + 1;
     state.generateLevel = true;
     return state.z.moveEnergy;
   });
@@ -377,6 +378,7 @@ export function installCaveCommands(
       env.msg?.("You are already on the surface.");
       return 0;
     }
+    state.targetDepth = state.chunk.depth - 1;
     state.generateLevel = true;
     return state.z.moveEnergy;
   });

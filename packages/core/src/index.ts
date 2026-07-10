@@ -75,6 +75,7 @@ export * from "./store/store";
 export * from "./store/transact";
 export * from "./session/boot";
 export * from "./session/game";
+export * from "./session/save";
 export * from "./game/energy";
 export * from "./game/context";
 export * from "./game/monster-turn";
