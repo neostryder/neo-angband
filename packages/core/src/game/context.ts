@@ -209,7 +209,19 @@ export interface GameState {
   /** player->old_grid: where to stand again after the arena. */
   oldGrid?: Loc;
 
+  /**
+   * The running engine's live state (player-path.c). Created lazily by the
+   * run action (game/player-path.ts); absent until the player first runs.
+   */
+  run?: RunState;
+
   /* --- injected hooks --- */
+  /**
+   * cmdq: the internal command queue (cmd-core.c). Self-continuing commands
+   * (running re-queues CMD_RUN) push here; processPlayer drains it before
+   * nextCommand so a run advances without new input. disturb() flushes it.
+   */
+  cmdQueue?: PlayerCommand[];
   /** cmdq_pop: the next queued player command, or null when input is needed. */
   nextCommand: () => PlayerCommand | null;
   /** update_view: refresh player FOV after the player moves. */
@@ -272,6 +284,29 @@ export interface PlayerCommand {
   dir?: number;
   /** Free-form arguments a mod-registered action may read. */
   args?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * The running engine's state (player-path.c file-statics plus the
+ * player->upkeep running counter). Created lazily by the run action; a
+ * `running` of 0 means the player is not running. `firstStep` mirrors
+ * upstream's running_firststep (the disturb-suppressed first step).
+ */
+export interface RunState {
+  /** run_cur_dir: the direction we are moving. */
+  curDir: number;
+  /** run_old_dir: the direction we are considered to have come from. */
+  oldDir: number;
+  /** run_open_area: in the open on at least one side. */
+  openArea: boolean;
+  /** run_break_right: wall on the right, stop if it opens. */
+  breakRight: boolean;
+  /** run_break_left: wall on the left, stop if it opens. */
+  breakLeft: boolean;
+  /** player->upkeep->running: steps remaining (0 = not running). */
+  running: number;
+  /** player->upkeep->running_firststep. */
+  firstStep: boolean;
 }
 
 /** cave_monster_max(cave): one past the highest occupied monster slot. */

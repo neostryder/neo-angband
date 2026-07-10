@@ -1,0 +1,78 @@
+module: packages/core/src/game/player-path.ts (the running engine) +
+  the internal command queue (game/context.ts cmdQueue, player-turn.ts
+  processPlayer drain) and the run action wiring (session/game.ts)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/player-path.c
+    items:
+      - see_wall (L1568) - a "known wall" in a direction: webs count,
+        square_seemslikewall (TF_ROCK) gated by square_isknown, illegal
+        grids are not walls.
+      - run_init (L1606) - the new-direction setup: examine the two grids
+        on each side of the destination (cycle[i+1] / cycle[i-1] from
+        the player's grid = short, from the stepped-to grid = deep) to
+        set run_break_left / _right and run_open_area, and pick the
+        angled / blunt corridor entry direction (run_old_dir) for a
+        hallway (both sides walled).
+      - run_test (L1688) - the post-step surroundings scan: visible
+        monsters / visible traps (unless trapsafe) / remembered objects /
+        interesting features abort; the newly-adjacent open/obstacle
+        analysis steering run_cur_dir and run_old_dir in a corridor; the
+        soon-to-be-adjacent obvious-monster check; the open-area break
+        detection; and the about-to-hit-a-known-wall stop.
+      - run_step (L1878), running branch - start (real direction:
+        run_init, running = 9999 if unset) or continue (dir 0: run_test,
+        stop on true); the move via move_player (the port routes it
+        through walkAction: move + FOV + autopickup + trap consequences);
+        the post-move counter decrement; and the CMD_RUN re-queue while
+        running remains.
+  - path: src/cmd-core.c
+    items:
+      - cmdq (the command queue) reduced to GameState.cmdQueue: the run
+        step's cmdq_push(CMD_RUN) pushes there and processPlayer
+        (player-turn.ts) drains it before the injected nextCommand, so a
+        single run keypress self-continues through runGameLoop exactly as
+        upstream's re-queue does. disturb() flushes it.
+notes: >-
+  Running reads the player's memory (game/known.ts squareIsKnown /
+  knownObject), the live cave for terrain / monsters / traps, and the
+  monster visibility flags - identical inputs to upstream. The engine
+  state (run_cur_dir etc. + upkeep->running + running_firststep) lives on
+  GameState.run, created lazily by the run action; it is transient (not
+  saved), like upstream. installRunning (session/game.ts) registers the
+  run action over its player-turn stub; the web front end pushes a run
+  command for a shift+move (roguelike keyset) and the loop drains the
+  continuation to a stop.
+deferred:
+  - Pathfinding / travel: find_path (the A* with the patched distance
+    array), prepare_pfdistances / pfdistances_to_path /
+    pfdistances_to_turncount, path_nearest_known / path_nearest_unknown
+    (explore), pathfind_direction_to, and the door-unlock / rubble-dig
+    turn penalties (compute_unlocked / _locked / _rubble_penalty). With
+    them, the pathfinding branch of run_step (upkeep->steps / step_count /
+    path_dest, the automatic CMD_OPEN / CMD_TUNNEL pushes for a known
+    closed door or impassable rubble in the path, and the
+    convert-to-normal-run-on-a-dead-end fallback).
+  - disturb() from events OTHER than run_test's own per-step checks (a
+    monster waking or closing from behind, taking damage, a status
+    message, resting). disturb() is exported so those sites call it as
+    they land with the monster-AI / message / rest layers; run_test
+    already stops for anything the runner moves toward.
+  - The OF_TRAP_IMMUNE / shape-flag half of player_is_trapsafe (only the
+    TMD_TRAPSAFE timer is read; #13 equipment flags); the running
+    torch-radius recompute (PU_TORCH, light layer); the
+    running-straight-into-a-trap-disarms nuance (move_player's disarm arg,
+    trap layer); ignore_item_ok on remembered objects (#24 ignore) - any
+    remembered floor object aborts, matching the "everything seen is
+    known" front end.
+verified-by:
+  - game/player-path.test.ts (7 tests) - run_init detects a hallway
+    (both sides walled -> open-area cleared, both breaks set), treats
+    unmemorized walls as open (see_wall's known-gate), and looks for an
+    open area with no adjacent walls; a corridor run follows the hallway
+    and stops on the last floor grid before the end wall (6 steps, counter
+    zeroed, queue drained); an L-corridor run rounds the corner to the far
+    end; a run halts one grid short of an obvious monster in the path (the
+    soon-to-be-adjacent check); disturb() zeroes the counter and flushes
+    the queue.

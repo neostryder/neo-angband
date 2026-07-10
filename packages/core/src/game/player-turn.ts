@@ -155,9 +155,9 @@ export function stubAction(_state: GameState, _cmd: PlayerCommand): number {
 }
 
 /** Command codes registered as stubs (deferred; see game-loop.yaml).
- * "pickup"/"autopickup" stubs are replaced by installPickup (game/pickup.ts). */
+ * "pickup"/"autopickup" stubs are replaced by installPickup (game/pickup.ts);
+ * "run" is replaced by installRunning (game/player-path.ts). */
 export const STUBBED_COMMANDS: readonly string[] = [
-  "run",
   "tunnel",
   "cast",
   "fire",
@@ -214,7 +214,12 @@ export function processPlayer(
   do {
     if (state.isDead || state.generateLevel) break;
 
-    const cmd = state.nextCommand();
+    /* Drain the internal queue (cmdq) first - self-continuing commands like
+     * running push their follow-up there - then ask the injected provider. */
+    const cmd =
+      state.cmdQueue && state.cmdQueue.length > 0
+        ? state.cmdQueue.shift()!
+        : state.nextCommand();
     if (!cmd) return { needsInput: true, energyUsed: 0 };
 
     /* While TMD_COMMAND runs, the player's commands drive the commanded
