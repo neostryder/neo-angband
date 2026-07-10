@@ -22,6 +22,7 @@
 import { MFLAG, SQUARE } from "../generated";
 import type { Loc } from "../loc";
 import { squareIsSeen } from "../world/view";
+import { getLore, loreCountU16 } from "../mon/lore";
 import {
   monsterIsCamouflaged,
   monsterIsInvisible,
@@ -200,6 +201,10 @@ export function noteSpots(state: GameState): void {
       !monsterIsInvisible(mon) &&
       !monsterIsCamouflaged(mon);
     if (seen) {
+      /* Count "fresh" sightings (update_mon, mon-util.c L422). */
+      if (!mon.mflag.has(MFLAG.VISIBLE)) {
+        loreCountU16(getLore(state.lore, mon.race), "sights");
+      }
       mon.mflag.on(MFLAG.VISIBLE);
       mon.mflag.on(MFLAG.MARK);
     } else if (mon.mflag.has(MFLAG.SHOW)) {

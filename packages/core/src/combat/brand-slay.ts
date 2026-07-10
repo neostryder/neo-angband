@@ -24,7 +24,12 @@ import { tvalIsLauncher, tvalIsWeapon } from "../obj/object";
 import type { MonsterRace } from "../mon/types";
 import type { Player } from "../player/player";
 import type { RuneEnv } from "../obj/knowledge";
-import { playerLearnBrand, playerLearnSlay } from "../obj/knowledge";
+import {
+  playerKnowsBrand,
+  playerKnowsSlay,
+  playerLearnBrand,
+  playerLearnSlay,
+} from "../obj/knowledge";
 
 /** The monster fields brand/slay selection reads. */
 export interface BrandSlayTarget {
@@ -170,17 +175,28 @@ export function improveAttackModifier(
 export interface BrandSlayLearnTarget extends BrandSlayTarget {
   /** monster_is_visible(mon). */
   visible: boolean;
+  /**
+   * The monster's lore record (mon/lore.ts getLore), for the
+   * lore_learn_flag_if_visible learns. Optional: absent (worldless
+   * tests), only the player-rune half runs.
+   */
+  lore?: import("../mon/lore").MonsterLore;
+}
+
+/** lore_learn_flag_if_visible over the reduced learn target. */
+function loreLearnFlag(mon: BrandSlayLearnTarget, flag: number): void {
+  if (flag && mon.lore && mon.visible) mon.lore.flags.on(flag);
 }
 
 /**
  * learn_brand_slay_helper (obj-slays.c L463): after an attack, learn the
  * brand/slay runes carried by the objects involved (and, for melee/throws,
- * by off-weapon equipment) that the monster did not resist. Slays are only
+ * by off-weapon equipment) that the monster did not resist, and note the
+ * monster's resist/vulnerability flags in its lore. Slays are only
  * learned on visible monsters; brands teach whenever they bite.
  *
- * Monster-lore learning (lore_learn_flag_if_visible) is DEFERRED with the
- * lore subsystem (#24); temporary brands/slays remain DEFERRED with the
- * player-timed brand/slay table (see improveAttackModifier).
+ * Temporary brands/slays remain DEFERRED with the player-timed brand/slay
+ * table (see improveAttackModifier).
  */
 function learnBrandSlayHelper(
   p: Player,
@@ -211,7 +227,12 @@ function learnBrandSlayHelper(
 
     if (!b.resistFlag || !mon.race.flags.has(b.resistFlag)) {
       playerLearnBrand(p, env, i);
-      /* lore_learn_flag_if_visible(resist/vuln flag): DEFERRED (#24). */
+      /* Learn about the monster (the flag's known absence / presence). */
+      loreLearnFlag(mon, b.resistFlag);
+      loreLearnFlag(mon, b.vulnFlag);
+    } else if (playerKnowsBrand(p, i)) {
+      /* A known brand fizzles: learn the monster resists. */
+      loreLearnFlag(mon, b.resistFlag);
     }
   }
 
@@ -234,9 +255,13 @@ function learnBrandSlayHelper(
     }
     if (!learn) continue; /* temporary slays DEFERRED */
 
-    if (reactToSpecificSlay(s, mon) && mon.visible) {
-      playerLearnSlay(p, env, i);
-      /* lore learning: DEFERRED (#24). */
+    if (reactToSpecificSlay(s, mon)) {
+      /* Learn about the monster. */
+      loreLearnFlag(mon, s.raceFlag);
+      if (mon.visible) playerLearnSlay(p, env, i);
+    } else if (playerKnowsSlay(p, i)) {
+      /* Learn about unaffected monsters. */
+      loreLearnFlag(mon, s.raceFlag);
     }
   }
 }

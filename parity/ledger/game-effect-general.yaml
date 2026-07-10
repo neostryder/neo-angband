@@ -38,6 +38,10 @@ upstream:
         drain is capped at csp (csp_frac cleared); a monster caster heals
         6 per point with the visible-monster message.
       - MON_TIMED_INC (L667) - mon_inc_timed on the casting monster.
+      - PROBE (L2451) - every visible monster in line of sight reports
+        its hit points ("Probing...", "That's all.") and is fully
+        learned via lore_do_probe (mon/lore.ts); names are the race name
+        until MDESC (#25).
       - RECALL (L1096) - activate / cancel Word of Recall with the depth
         reset rules (recall_depth / max_depth on Player, saved), the
         randint0(20)+15 fuse, and the force_descend quest guards; the

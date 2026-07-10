@@ -1,0 +1,96 @@
+module: packages/core/src/mon/lore.ts (+ the counter call sites in game/
+  and session/)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-lore.c
+    items:
+      - struct monster_lore (mon-lore.h L28) as MonsterLore on the
+        GameState.lore store (upstream l_list), keyed by race.ridx and
+        created lazily by getLore (L1735). The lore->blows copy is
+        reduced to blowKnown[] + blowTimesSeen[] (the blow data itself
+        is read off the immutable race when known).
+      - lore_learn_spell_if_has (L278), lore_learn_spell_if_visible
+        (L285), lore_learn_flag_if_visible (L292).
+      - lore_update (L303) - the RFT_OBV assumed-flags mask
+        (create_mon_flag_mask over the generated flag types), seen blows
+        becoming known, the kill reveal (armour, drops, RFT_RACE_A /
+        RACE_N / DROP + FORCE_DEPTH), the wake^2 > sleep / ignore-maxed /
+        sleep-0-and-10-kills awareness rule, the 50+ cast frequency
+        reveals, and all_known's flag/spell spread.
+      - cheat_monster_lore (L361), wipe_monster_lore (L374),
+        lore_do_probe (L426), lore_is_fully_known (L441, including the
+        byte-level flag test kept verbatim and the all_known promotion),
+        lore_treasure (L502, drop maxima + DROP_GOOD/GREAT + the
+        one-in-4 ONLY_ITEM / ONLY_GOLD learns), monster_flags_known
+        (L542).
+  - path: src/effect-handler-general.c
+    items:
+      - effect_handler_PROBE (L2451) in game/effect-general.ts - every
+        visible monster in view (square_isview) reports its hit points
+        ("Probing...", "%s has %d hit points.", "That's all.") and is
+        fully learned via lore_do_probe.
+  - path: src/mon-util.c
+    items:
+      - update_mon's fresh-sighting count (L422) in game/known.ts
+        noteSpots - sights++ when a monster turns VISIBLE.
+      - monster_death's kill counts (L1120) in the session's
+        onPlayerKill - pkills/tkills (visible or unique) + lore_update.
+  - path: src/mon-attack.c
+    items:
+      - make_ranged_attack's memory (L460) in game/mon-ranged.ts - the
+        cast spell flag, cast_innate / cast_spell counts when seen, and
+        the death count.
+      - make_attack_normal's blow memory (L727) in game/monster-turn.ts -
+        obvious-or-damaging blows (or already seen > 10 times) count
+        times_seen per blow on visible attackers; deaths noted;
+        lore_update after the attack.
+  - path: src/mon-move.c
+    items:
+      - monster_reduce_sleep's knowledge (L1771) in game/monster-turn.ts
+        - an obvious sleeper that stirs counts ignore, one that wakes
+        counts wake.
+  - path: src/obj-slays.c
+    items:
+      - learn_brand_slay_helper's lore learns (L463) in
+        combat/brand-slay.ts - unresisted brands note the resist flag's
+        absence (and any vulnerability); resisted known brands note the
+        resist; slays note the race flag on affected AND (when the slay
+        is known) unaffected monsters. The lore record rides the
+        BrandSlayLearnTarget seam (absent in worldless tests).
+notes: >-
+  The save serializes the whole store (SavedGame.lore); upstream splits
+  persistence between the savefile (pkills / thefts) and the user lore
+  file (everything else) - the JSON save carries both, so monster memory
+  survives reload. Older saves load with no memory.
+deferred:
+  - The recall text generation (lore_append_* over textblocks, spell /
+    blow colors, lore_describe_awareness / _speed, the pronoun tables)
+    is the monster recall screen and rides presentation (#25); the
+    lore->drops / friends / mimic_kinds known-copies exist only for that
+    walk and are read off the race gated on drop_known when it lands.
+  - monster_race_track / PR_MONSTER redraws (upkeep display) ride #25.
+  - lore->thefts (mon-util.c L1504 steal blows) rides the monster-melee
+    side-effect application (EAT_ITEM/EAT_GOLD intents are produced but
+    not yet applied); lore_treasure's call site rides monster drops
+    (mon_create_drop, ledgered with mon-place).
+  - lore_learn_flag_if_visible in mon/timed.ts (flag-resisted monster
+    timed effects) rides a lore seam through monTimed's callers;
+    cmd-cave.c's TMD_COMMAND cast counts ride EF_COMMAND.
+  - tkills survives only within one save (upstream's cross-life lore
+    file has no analogue); player-birth's pkills/thefts zeroing is
+    implicit (each game starts a fresh store).
+  - cheat_monster_lore's wizard command rides #29; lore_save (the
+    lore.txt dump) rides the user-file layer if ever needed.
+verified-by:
+  - mon/lore.test.ts (12 tests) - getLore lazy creation; the RFT_OBV
+    mask; lore_update's obvious flags, seen blows, kill reveal and
+    awareness/frequency rules; probe learns everything and satisfies
+    lore_is_fully_known; cheat + wipe round-trip; a fresh race is not
+    fully known; lore_treasure maxima, quality flags and the ONLY_ITEM
+    chance; visibility-gated flag learning; spell-if-has learning;
+    monster_flags_known masking.
+  - game/effect-probe.test.ts (2 tests) - PROBE reports hit points and
+    fully learns visible in-view monsters, and finds nothing otherwise.
+  - session/game.test.ts (kill test) - the wired onPlayerKill runs the
+    lore count path.

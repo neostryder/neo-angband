@@ -22,7 +22,9 @@ upstream:
       - update_mon reduced to noteSpots' monster pass - a monster on a
         SEEN grid that is neither invisible nor camouflaged is VISIBLE
         and MARKed; a detection-marked monster (MARK + SHOW) survives one
-        more refresh then fades (the MFLAG_SHOW lifecycle).
+        more refresh then fades (the MFLAG_SHOW lifecycle). A fresh
+        sighting (VISIBLE turning on, L422) counts lore->sights
+        (mon-lore.yaml).
   - path: src/cave-map.c
     items:
       - wiz_dark's forgetting half (forgetMap - all terrain and object

@@ -49,8 +49,10 @@ import {
 } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
 import { monIncTimed } from "../mon/timed";
+import { loreDoProbe } from "../mon/lore";
 import { monsterIsVisible } from "../mon/predicate";
 import { featIsTrapHolding } from "../world/chunk";
+import { squareIsView } from "../world/view";
 import { lookupTrap } from "../world/trap";
 import type { GameState } from "./context";
 import { gameEnv } from "./effect-game-env";
@@ -662,11 +664,47 @@ const handleMON_TIMED_INC: EffectHandler = (ctx) => {
   return true;
 };
 
+/**
+ * EF_PROBE: learn everything about every visible monster in line of
+ * sight, reporting its hit points (effect-handler-general.c L2451).
+ * Monster names are the race name until MDESC (#25).
+ */
+const handlePROBE: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  let probe = false;
+
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (!mon || !mon.race) continue;
+    if (!squareIsView(state.chunk, mon.grid)) continue;
+    if (!monsterIsVisible(mon)) continue;
+
+    if (!probe) say(ctx, "Probing...");
+    const name = mon.race.name;
+    say(
+      ctx,
+      `${name.charAt(0).toUpperCase()}${name.slice(1)} has ${mon.hp} hit ` +
+        `point${mon.hp === 1 ? "" : "s"}.`,
+    );
+    loreDoProbe(state.lore, mon);
+    probe = true;
+  }
+
+  if (probe) {
+    say(ctx, "That's all.");
+    ctx.ident = true;
+  }
+  return true;
+};
+
 /** The general handlers, keyed by upstream EF code. */
 const GENERAL_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   number,
   EffectHandler
 >([
+  [EF.PROBE, handlePROBE],
   [EF.GLYPH, handleGLYPH],
   [EF.WEB, handleWEB],
   [EF.DISENCHANT, handleDISENCHANT],
