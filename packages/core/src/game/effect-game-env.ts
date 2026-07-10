@@ -55,6 +55,12 @@ export interface GameEffectEnv {
   item?: ItemEffectEnv;
   /** Summoning seams: the summon table and live placement (effect-summon.ts). */
   summon?: SummonEffectEnv;
+  /**
+   * monster_change_shape / monster_revert_shape (game/mon-shape.ts), for
+   * the MON_TMD_CHANGED timer (the SHAPECHANGE monster spell). Built by
+   * wireGame; absent, the timer stands and the form is unchanged.
+   */
+  monShape?: import("../mon/timed").MonShapeHooks;
 }
 
 /** Attach a game environment to an effect context for the game handlers. */

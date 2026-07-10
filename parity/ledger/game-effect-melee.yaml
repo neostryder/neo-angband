@@ -42,9 +42,9 @@ notes: >-
   without a game env (worldless rule).
 deferred:
   - EF_SINGLE_COMBAT rides arena levels (not modelled) and
-    monster_index_move (#24); EF_SHAPECHANGE rides the shapes registry
-    (#24). EF_WONDER / EF_BIZARRE (game-effect-attack / general),
-    EF_COMMAND (game-mon-cmd) and EF_PROBE (mon-lore) are DONE.
+    monster_index_move (#24). EF_WONDER / EF_BIZARRE (game-effect-attack
+    / general), EF_COMMAND (game-mon-cmd), EF_PROBE (mon-lore) and
+    EF_SHAPECHANGE (game-shape) are DONE.
   - target_set_closest's bookkeeping (target_set_monster, healthWho, the
     "No Available Target." / "%s is targeted." messages) is now the real
     game/target.ts implementation; the messages flow through state.msg

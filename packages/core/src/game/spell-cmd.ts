@@ -38,6 +38,7 @@ import {
   buildObjectEffectChain,
   effectRecordsNeedAim,
   playerConfuseDir,
+  playerGetResumeNormalShape,
 } from "./obj-cmd";
 import type { ObjCmdDeps } from "./obj-cmd";
 import { gearGet } from "./gear";
@@ -199,6 +200,9 @@ export function installSpellCommands(
   const env = deps.env ?? {};
 
   registry.register("cast", (state, cmd: PlayerCommand) => {
+    /* A shapechanged caster returns to normal form first (cmd-obj.c
+     * L1118 player_get_resume_normal_shape; headless default yes). */
+    if (!playerGetResumeNormalShape(state, env)) return 0;
     if (!playerCanCast(state, env)) return 0;
     const player = state.actor.player;
 
@@ -233,6 +237,7 @@ export function installSpellCommands(
   });
 
   registry.register("study", (state, cmd: PlayerCommand) => {
+    if (!playerGetResumeNormalShape(state, env)) return 0;
     if (!playerCanCast(state, env)) return 0;
     const player = state.actor.player;
     if (player.upkeep.newSpells <= 0) {
