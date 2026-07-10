@@ -196,6 +196,12 @@ export interface GameState {
    * terrain consequences). Installed by installTraps (game/trap.ts).
    */
   onPlayerMoved?: (state: GameState, grid: Loc) => void;
+  /**
+   * player_kill_monster's reward slice: runs when the PLAYER kills a
+   * monster, before it is deleted (experience now; drops/lore/quests join
+   * it with their subsystems). Installed by the session (wireGame).
+   */
+  onPlayerKill?: (mon: Monster) => void;
 }
 
 /** One queued player command (a keyed action plus optional direction/args). */

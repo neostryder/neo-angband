@@ -1,0 +1,62 @@
+module: packages/core/src/player/exp.ts (+ the session wiring in
+  session/game.ts and the kill sites in game/)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/player.c
+    items:
+      - player_exp[PY_MAX_LEVEL] (L48), verbatim - the 50 advancement
+        thresholds; PY_MAX_EXP.
+      - adjust_level (L208) - exp/max_exp clamping and syncing, the
+        level-down loop under the previous threshold and the level-up loop
+        over the next (scaled by expfact/100), "Welcome to level %d.", the
+        EF_RESTORE_STAT x5 stat restoration on each level gained, and the
+        max_lev tracking loop from max_exp.
+      - player_exp_gain (L269) with the tenth-restored-toward-max_exp rule
+        and player_exp_lose (L277) with the permanent flag.
+      - player_stat_inc (L145) and player_stat_dec (L171) - the classic
+        18/xx arithmetic (a point below 18, a tenth above 18/10, permanent
+        drains lowering the max).
+  - path: src/player-birth.c
+    items:
+      - roll_hp - the cumulative per-level hitdice rolled at birth,
+        rerolled until the level-50 total lands in the 3/8..5/8 band of
+        (hitdie-1) plus PY_MAX_LEVEL. Called from generatePlayer, so the
+        character's whole HP ladder is fixed at birth under the seed.
+  - path: src/mon-util.c
+    items:
+      - player_kill_monster's reward slice (L1067): exp = mexp * rlev /
+        plev with the 16.16 exp_frac fractional carry, then
+        player_exp_gain.
+notes: >-
+  Level changes ripple through ExpDeps.onLevelChange, which the session
+  wires to the upstream PU_BONUS | PU_HP | PU_SPELLS work - calcBonuses
+  over the live equipment (refreshing actor.combat/defense/speed/stealth),
+  calc_hitpoints from the rolled hitdice at the new level (chp clamped),
+  and calcSpells + calcMana for casters. Kills reach the reward through
+  the new GameState.onPlayerKill hook, fired at every player kill site -
+  melee in walkAction and attackBlocker (which now also DELETES a killed
+  blocker, fixing a latent gap), and spell/device kills through the cast
+  hooks' project-monster onKill. The spell WORKED experience
+  (spell-cmd env.expGain) and disarm experience (trap env.expGain) are now
+  wired to player_exp_gain instead of no-op hooks.
+deferred:
+  - history_add level-gain log entries (char history, #25) and the PR_/PU_
+    display masks.
+  - The rest of player_kill_monster (uniques' max_num, quest checks, drops
+    and monster_death) rides mon-util/lore (#24); onPlayerKill is the seam.
+  - Ranged/thrown kill sites land with the fire/throw commands.
+  - player_stat_inc's gain-stat effect callers (EF_GAIN_STAT potions) ride
+    the effect-handler tail (#18).
+verified-by:
+  - player/exp.test.ts (11 tests): threshold crossing with the welcome
+    message; expFactor scaling; multi-level jumps restoring drained stats;
+    exp loss dropping levels while maxLev stays; the tenth-toward-max_exp
+    restoration; clamping at zero and PY_MAX_EXP; the kill formula's exact
+    16.16 fractional carry over four kills; roll_hp monotonicity and band;
+    stat inc/dec arithmetic including permanent drains.
+  - session/game.test.ts: a kill through the wired onPlayerKill hook
+    grants exp, levels the character up, and raises mhp from the rolled
+    hitdice ladder.
+  - Browser-verified: 50 live turns with the full wiring, zero console
+    errors; web build clean.

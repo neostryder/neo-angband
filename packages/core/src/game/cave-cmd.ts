@@ -30,7 +30,7 @@ import { featIsTreasure } from "../world/chunk";
 import type { MakeDeps } from "../obj/make";
 import { makeGold, makeObject } from "../obj/make";
 import type { GameState, PlayerCommand } from "./context";
-import { squareMonster } from "./context";
+import { deleteMonster, squareMonster } from "./context";
 import { floorCarry } from "./floor";
 import { playerConfuseDir } from "./obj-cmd";
 import type { ActionRegistry } from "./player-turn";
@@ -285,7 +285,7 @@ function attackBlocker(state: GameState, grid: Loc, env: CaveCmdEnv): void {
     state.actor.weapon,
     { race: target.race, visible: true },
   );
-  pyAttack(
+  const result = pyAttack(
     state.rng,
     state.actor.player,
     state.actor.combat,
@@ -296,6 +296,10 @@ function attackBlocker(state: GameState, grid: Loc, env: CaveCmdEnv): void {
     { monVisible: true },
   );
   equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
+  if (result.monsterDied) {
+    state.onPlayerKill?.(target);
+    deleteMonster(state, target.midx);
+  }
 }
 
 /**

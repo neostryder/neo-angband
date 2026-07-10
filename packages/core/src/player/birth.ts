@@ -30,6 +30,7 @@ import {
 } from "./calcs";
 import { blankPlayer } from "./player";
 import type { Player } from "./player";
+import { rollHp } from "./exp";
 import { STAT_MAX } from "./types";
 import type {
   HistoryChart,
@@ -272,6 +273,8 @@ export function generatePlayer(
   player.expFactor = race.expFactor + cls.expFactor;
   player.hitdie = race.hitdie + cls.hitdie;
   player.playerHp[0] = player.hitdie;
+  /* roll_hp: the cumulative hitdice for levels 2..50, banded 3/8..5/8. */
+  rollHp(player, rng);
 
   /* Stat indices into adj_* tables, then level-1 hitpoints. */
   const statInd = calcStatIndices(race, cls, player.statCur);
