@@ -228,6 +228,31 @@ describe("startGame (new-game assembly)", () => {
     expect(p.chp).toBeLessThanOrEqual(p.mhp);
   });
 
+  it("equipment changes refresh the derived state (PU_BONUS)", () => {
+    const game = startGame(pack, { seed: 91, depth: 1 });
+    const { state, registry } = game;
+    const weaponBefore = state.actor.weapon;
+    expect(weaponBefore).not.toBeNull();
+
+    /* Take the wielded weapon off through the command: the actor's derived
+     * weapon reference must follow. */
+    const handle = state.actor.player.equipment.find((h) => {
+      if (!h) return false;
+      const slot = state.actor.player.equipment.indexOf(h);
+      return state.actor.player.body.slots[slot]?.type === "WEAPON";
+    })!;
+    const commands: PlayerCommand[] = [{ code: "takeoff", args: { handle } }];
+    state.nextCommand = (): PlayerCommand | null => commands.shift() ?? null;
+    runGameLoop(state, registry);
+    expect(state.actor.weapon).toBeNull();
+
+    /* And wielding it again restores it. */
+    const again: PlayerCommand[] = [{ code: "wield", args: { handle } }];
+    state.nextCommand = (): PlayerCommand | null => again.shift() ?? null;
+    runGameLoop(state, registry);
+    expect(state.actor.weapon).toBe(weaponBefore);
+  });
+
   it("is deterministic for a fixed seed", () => {
     const a = startGame(pack, { seed: 777, depth: 2 });
     const b = startGame(pack, { seed: 777, depth: 2 });

@@ -202,6 +202,12 @@ export interface GameState {
    * it with their subsystems). Installed by the session (wireGame).
    */
   onPlayerKill?: (mon: Monster) => void;
+  /**
+   * PU_BONUS | PU_HP | PU_MANA: recompute the derived state from the
+   * current gear (equipment commands call this after changing what is
+   * worn). Installed by the session (wireGame).
+   */
+  updateBonuses?: () => void;
 }
 
 /** One queued player command (a keyed action plus optional direction/args). */

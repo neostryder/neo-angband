@@ -112,6 +112,7 @@ export function invenTakeoff(state: GameState, handle: number): boolean {
   if (slot < 0) return false;
   player.equipment[slot] = 0;
   state.gear.pack.push(handle);
+  state.updateBonuses?.(); /* PU_BONUS */
   return true;
 }
 
@@ -132,7 +133,9 @@ export function invenWield(state: GameState, handle: number): number {
   const oldHandle = player.equipment[slot] ?? 0;
   if (oldHandle !== 0) invenTakeoff(state, oldHandle);
 
-  return wieldObject(state.gear, player, handle, state.runeEnv);
+  const worn = wieldObject(state.gear, player, handle, state.runeEnv);
+  state.updateBonuses?.(); /* PU_BONUS */
+  return worn;
 }
 
 /**
