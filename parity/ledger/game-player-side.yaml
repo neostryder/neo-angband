@@ -1,0 +1,54 @@
+module: packages/core/src/game/player-side.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/project-player.c
+    items:
+      - The project_player_handler_* table (L147-580), built as the
+        onSideEffects hook of the projectPlayer driver. Ported per type -
+        ACID/ELEC/FIRE/COLD immunity-gated inven_damage(min(dam*5,300));
+        FIRE power>=80 extras (STR sap, smoke blindness, poisonous fumes);
+        COLD power>=80 extras (DEX seep, life withering with HOLD_LIFE);
+        POIS timed poison plus the power>=60 acid sting (inven damage AND
+        the adjust_dam extra damage returned to the driver) and CON
+        stench; LIGHT/DARK resist-gated blindness with dazzle confusion
+        (light, dam>300) and the power>=70 dark package (life steal, slow,
+        amnesia); SOUND stun capped 35 with the PROT_STUN learn, dam>300
+        disorient; SHARD cuts; NEXUS save-or-scramble; NETHER
+        resist-or-HOLD_LIFE life drain (200 + exp/100 * life_drain) with
+        power>=80 mana dulling and energy sap; CHAOS hallucination +
+        confusion + HOLD_LIFE-gated drain; WATER confusion + stun; ICE
+        cold inven damage + shard-gated 5d8 cuts + stun; GRAVITY slow +
+        PROT_STUN-gated stun; INERTIA slow; FORCE stun; TIME's three-way
+        sap (life / two random stats / all stats); PLASMA's 3/4-damage
+        stun; and the no-op stubs.
+      - project_player_drain_stats' message table ("You're not as strong
+        as you used to be...").
+      - The EF_DRAIN_STAT slice used by the drains: the sustain check
+        (OF_SUST_ + stat) saves the stat and teaches the sustain rune.
+notes: >-
+  Wired in wireGame as cast.hooks.player.onSideEffects, so monster spells,
+  traps and devices that hit the player now carry their full upstream
+  consequences: inventory melts/burns/shatters (game/project-obj.ts
+  invenDamage), timed effects run through the bound player_timed registry
+  (playerIncTimed), stat drains respect sustains, experience drains ripple
+  levels (player/exp.ts), and HOLD_LIFE / PROT_STUN / sustain saves teach
+  their runes (obj/knowledge.ts). player_of_has is implemented over the
+  racial flags plus every equipped item via the state's RuneEnv.
+deferred:
+  - The teleport branches (NEXUS teleport-to / teleport-level / teleport
+    200, GRAVITY blink) and FORCE's thrust_away: they dispatch through
+    effect_simple and land with the effect-handler tail (#18).
+  - DISEN's EF_DISENCHANT equipment disenchantment (#18).
+  - player_inc_check's fail-condition messages before the confusion
+    messages (the timed registry check runs, but the pre-check message
+    gating is simplified to always announcing).
+  - update_smart_learn (monster learning the player's resists) rides lore
+    (#24); PR_MANA and the other redraw masks are display.
+verified-by:
+  - game/player-side.test.ts (6 tests): WATER confuses and stuns; SHARD
+    cuts unless resisted (with the resist message); SOUND stuns while
+    PROT_STUN prevents it and teaches the rune; NETHER drains experience
+    while HOLD_LIFE resists and teaches the rune; INERTIA slows and CHAOS
+    hallucinates + confuses; TIME saps experience or stats under the
+    seeded roll.

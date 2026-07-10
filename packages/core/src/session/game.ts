@@ -38,6 +38,7 @@ import {
 } from "../player/calcs";
 import { playerExpGain, playerKillExp } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
+import { makePlayerSideEffects } from "../game/player-side";
 import {
   DEFAULT_GAME_CONSTANTS,
   addMonster,
@@ -247,13 +248,26 @@ function wireGame(
     // project_o / project_f world access; trapDeps joins it below once the
     // trap system is wired (the mutual reference is deliberate).
     const worldEnv: ProjectFeatEnv = { makeDeps };
+    const playerActor = basicPlayerActor(state);
     const cast: CastContext = {
       projections: reg.projections,
       maxRange: reg.constants.maxRange,
-      playerActor: basicPlayerActor(state),
+      playerActor,
       worldEnv,
-      /* Spell/device kills reward experience like melee kills. */
-      hooks: { monster: { onKill: (m): void => state.onPlayerKill?.(m) } },
+      hooks: {
+        /* Spell/device kills reward experience like melee kills. */
+        monster: { onKill: (m): void => state.onPlayerKill?.(m) },
+        /* The per-PROJ player side effects (project-player.c handlers). */
+        player: {
+          onSideEffects: makePlayerSideEffects(state, {
+            timed: players.timed,
+            actor: playerActor,
+            projections: reg.projections,
+            expDeps,
+            lifeDrainPercent: reg.constants.lifeDrainPercent,
+          }),
+        },
+      },
     };
     const envDeps: EffectEnvDeps = { timedTable: players.timed };
 
