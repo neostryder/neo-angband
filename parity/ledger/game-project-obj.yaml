@@ -1,0 +1,46 @@
+module: packages/core/src/game/project-obj.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/project-obj.c
+    items:
+      - project_o (L506): the PROJECT_ITEM driver over the floor pile at a
+        grid. Every per-projection object handler - the elemental
+        destruction cases (ACID melts, ELEC/MANA destroy, FIRE burns,
+        COLD/SOUND/SHARD/ICE/FORCE shatter, PLASMA = fire + elec, METEOR =
+        fire + cold) gated by EL_INFO_HATES with EL_INFO_IGNORE resisting,
+        artifacts always resisting with the "unaffected" message, the
+        destruction messages with VERB_AGREEMENT, and the empty stubs for
+        every other projection, exactly as upstream.
+      - inven_damage (L42): the pack-side casualty roll for elemental hits.
+        Equipment is exempt; artifacts skip; weapons (non-ammo) and armor
+        are damaged (to_h/to_d or to_a decremented) on a single cperc roll
+        instead of destroyed; rods quarter the chance; every other
+        vulnerable item rolls per-copy at cperc in 10000; whole-stack /
+        some-of / one-of message prefixes preserved.
+notes: >-
+  Wired into castProjection (game/project-cast.ts) through the optional
+  CastContext.worldEnv: any projection with PROJECT.ITEM now destroys
+  vulnerable floor objects, for player spells, monster spells, traps and
+  device effects alike. invenDamage is exported for the project-player
+  elemental side effects (the #17/#18 tail that computes cperc from damage)
+  and for effect handlers that call it directly.
+deferred:
+  - KILL_TRAP's chest unlock (is_locked_chest / unlock_chest): chests ride
+    with obj-chest.c (#24).
+  - Mimic reveal (obj->mimicking_m_idx -> become_aware): mimics are not in
+    the live loop yet.
+  - The protected_obj parameter (the object that created the projection):
+    the engine's onObject hook does not thread it and no live caller
+    projects from an object yet.
+  - obj->known twin updates in inven_damage, ignore_item_ok checks (#24),
+    gear_to_label lettering, PU_BONUS/PR_EQUIP redraw flags (display), and
+    cmd_disable_repeat_floor_item.
+  - inven_damage call sites in project-player.c (side effects computing
+    cperc from elemental damage) land with the project-player tail.
+verified-by:
+  - game/project-world.test.ts: fire burns a flammable floor object while
+    an EL_INFO_IGNORE object and an artifact resist; unrelated projections
+    leave the pile alone; MANA destroys anything; inven_damage destroys a
+    vulnerable potion stack, damages (not destroys) a weapon's to_h/to_d,
+    skips items that do not hate the element, and cperc 0 is a no-op.
