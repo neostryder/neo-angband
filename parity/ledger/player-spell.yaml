@@ -45,7 +45,11 @@ upstream:
     items:
       - do_cmd_cast (L1113): player_can_cast gate (no spells / blind /
         confused), learned-spell check, aim resolution with
-        player_confuse_dir, full-turn energy.
+        player_confuse_dir, the target_fix / target_release bracket around
+        spell_cast (L1162/L1170; a target dying mid-spell keeps its grid
+        for the rest of the chain), full-turn energy. spell_cast backs
+        GameEffectEnv.aimed with the live targetOkay + targetGet getter
+        (game/target.ts), so DIR_TARGET spells hit the player's target.
       - do_cmd_study (L1245): PF_CHOOSE_SPELLS picks (args.spell), other
         classes learn a random studyable spell from the book (the
         reservoir-sample pick), then calc_spells refreshes the allowance.
