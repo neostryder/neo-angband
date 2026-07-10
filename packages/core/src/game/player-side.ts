@@ -13,14 +13,17 @@
  * it on the cast context so every projection that reaches the player runs
  * the upstream consequences.
  *
- * DEFERRED (ledgered in parity/ledger/game-player-side.yaml): the teleport
- * branches (NEXUS teleport-to/level/200, GRAVITY blink) and FORCE's
- * thrust_away ride the effect stack (#18); DISEN's EF_DISENCHANT likewise;
- * the drain-stat "sustain but still feel it" message variant is folded to
- * the save message.
+ * The GRAVITY blink (effect_simple(EF_TELEPORT, "5")) runs through
+ * teleportPlayer (effect-teleport.ts) with the injected TeleportEnv; FORCE's
+ * knockback runs thrust_away (game/thrust.ts) from the origin grid; DISEN
+ * runs disenchantEquipment (game/effect-general.ts). DEFERRED (ledgered in
+ * parity/ledger/game-player-side.yaml): the NEXUS teleport-to/level/200
+ * branches ride the effect stack (#18); the drain-stat "sustain but still
+ * feel it" message variant is folded to the save message.
  */
 
 import { ELEM, OF, PROJ, STAT, TMD } from "../generated";
+import { DDGRID_DDD, locEq, locSum } from "../loc";
 import { SKILL, STAT_MAX } from "../player/types";
 import type { ProjectionInfo } from "../world/projection";
 import type { TimedEffect } from "../player/types";
@@ -36,6 +39,10 @@ import type {
   ProjectPlayerSideContext,
 } from "./project-player";
 import { invenDamage } from "./project-obj";
+import { disenchantEquipment } from "./effect-general";
+import { teleportPlayer } from "./effect-teleport";
+import type { TeleportEnv } from "./effect-teleport";
+import { thrustAway } from "./thrust";
 
 /** Everything the side-effect handlers need beyond the GameState. */
 export interface PlayerSideDeps {
@@ -49,6 +56,8 @@ export interface PlayerSideDeps {
   expDeps: ExpDeps;
   /** z_info->life_drain_percent. */
   lifeDrainPercent: number;
+  /** The teleport seams (no-teleport curse, post-move) for GRAVITY's blink. */
+  teleport?: TeleportEnv;
   msg?(text: string): void;
 }
 
@@ -316,7 +325,8 @@ export function makePlayerSideEffects(
           msg("You resist the effect!");
           break;
         }
-        /* EF_DISENCHANT over the equipment: DEFERRED (#18). */
+        /* Disenchant gear (effect_simple(EF_DISENCHANT)). */
+        disenchantEquipment(state, { msg });
         break;
       }
       case PROJ.WATER: {
@@ -338,7 +348,10 @@ export function makePlayerSideEffects(
       }
       case PROJ.GRAVITY: {
         msg("Gravity warps around you.");
-        /* Blink teleport: DEFERRED (#18). */
+        /* Blink (effect_simple(EF_TELEPORT, "5")). */
+        if (rng.randint1(127) > p().lev) {
+          teleportPlayer(state, 5, deps.teleport ?? {}, msg);
+        }
         incTimed(TMD.SLOW, 4 + rng.randint0(4), false);
         if (!playerOfHas(state, OF.PROT_STUN)) {
           incTimed(TMD.STUN, Math.min(5 + rng.randint1(Math.trunc(dam / 3)), 35), true);
@@ -352,8 +365,25 @@ export function makePlayerSideEffects(
         break;
       }
       case PROJ.FORCE: {
+        let centre = ctx.origin.grid ?? ctx.grid;
+
+        /* Player gets pushed in a random direction if on the trap. */
+        if (ctx.origin.isTrap && locEq(state.actor.grid, centre)) {
+          centre = locSum(centre, DDGRID_DDD[rng.randint0(8)]!);
+        }
+
         incTimed(TMD.STUN, rng.randint1(20), true);
-        /* thrust_away: DEFERRED (#18 knockback). */
+
+        /* Thrust player away. */
+        thrustAway(state, centre, ctx.grid, 3 + Math.trunc(dam / 20), {
+          msg,
+          ...(deps.teleport?.onPlayerPostMove
+            ? {
+                onPlayerPostMove: (): void =>
+                  deps.teleport!.onPlayerPostMove!(true),
+              }
+            : {}),
+        });
         break;
       }
       case PROJ.TIME: {

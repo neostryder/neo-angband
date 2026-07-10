@@ -84,6 +84,8 @@ export interface ObjCmdDeps {
   inject?: EffectBuilderInjections;
   /** Teleport-family seams (trap predicates; wired by game/trap.ts). */
   teleport?: TeleportEnv;
+  /** General-handler seams (trap access for glyphs; effect-general.ts). */
+  general?: import("./effect-general").GeneralEffectEnv;
   /** Floor-pile seams (isTrap for drop placement). */
   floorEnv?: FloorEnv;
   env?: ObjCmdEnv;
@@ -411,6 +413,7 @@ export function useAux(
       state,
       cast: deps.cast,
       ...(deps.teleport ? { teleport: deps.teleport } : {}),
+      ...(deps.general ? { general: deps.general } : {}),
     });
     const ident = { value: false };
     const used = deps.registry.effectDo(chain, ctx, {

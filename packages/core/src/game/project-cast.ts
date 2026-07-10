@@ -81,6 +81,8 @@ export interface CastSource {
   killer?: string;
   /** Monster spell power, forwarded to the player side-effect handler. */
   power?: number;
+  /** origin.what == SRC_TRAP (FORCE's on-the-trap centre jitter). */
+  isTrap?: boolean;
 }
 
 /** source_player(): a player-origin cast from the live player grid. */
@@ -265,6 +267,9 @@ export function castProjection(
         ? { monsterVisible: source.monsterVisible }
         : {}),
       killer: source.killer ?? "a bug",
+      /* origin_get_loc + SRC_TRAP, for the FORCE thrust centre. */
+      grid: source.grid,
+      ...(source.isTrap !== undefined ? { isTrap: source.isTrap } : {}),
     },
     power: source.power ?? 0,
     hooks: hooks.player ?? {},
@@ -478,6 +483,31 @@ export function castShortBeam(
 ): boolean {
   let flg = PROJECT.ARC | PROJECT.GRID | PROJECT.ITEM | PROJECT.KILL;
   if (source.isMonster) flg |= PROJECT.PLAY;
+  const diameter = rad > 25 ? 25 : rad;
+  return castProjection(state, cctx, source, target, dam, typ, flg, rad, 0, diameter);
+}
+
+/**
+ * effect_handler_LASH (L899): a whip crack or spit - a finite-length beam at
+ * full strength for its whole length (source diameter = radius), affecting
+ * grids, objects, monsters AND the player (monsters lash the player).
+ * The caller computes the blow-derived damage and lash element.
+ */
+export function castLash(
+  state: GameState,
+  cctx: CastContext,
+  source: CastSource,
+  target: Loc,
+  dam: number,
+  typ: number,
+  rad: number,
+): boolean {
+  const flg =
+    PROJECT.ARC |
+    PROJECT.GRID |
+    PROJECT.ITEM |
+    PROJECT.KILL |
+    PROJECT.PLAY;
   const diameter = rad > 25 ? 25 : rad;
   return castProjection(state, cctx, source, target, dam, typ, flg, rad, 0, diameter);
 }

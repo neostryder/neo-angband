@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, PROJ, RF } from "../generated";
+import { EF, MFLAG, PROJ, RF } from "../generated";
 import {
   EffectRegistry,
   sourceMonster,
@@ -11,7 +11,9 @@ import { registerCoreHandlers } from "../effects/handlers";
 import { loc } from "../loc";
 import { bindProjections } from "../world/projection";
 import type { ProjectionRecordJson } from "../world/projection";
-import { addMon, makeState, monReg } from "./harness";
+import { Dice } from "../dice";
+import type { MonsterRace } from "../mon/types";
+import { addMon, makeRace, makeState, monReg } from "./harness";
 import type { GameState } from "./context";
 import { basicPlayerActor } from "./project-cast";
 import type { CastContext } from "./project-cast";
@@ -118,5 +120,69 @@ describe("attack effect handlers - dispatch through the registry", () => {
     });
     expect(ran).toBe(true);
     expect(mon.hp).toBe(50);
+  });
+
+  it("EF_BOLT_STATUS identifies only when the projection was noticed", () => {
+    /* An unseen monster: the bolt lands but nothing was noticed. */
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, plainRace, loc(5, 8), { hp: 50 });
+    const ident = { value: false };
+    registry().effectSimple(EF.BOLT_STATUS, env(state, { aimed: mon.grid }), {
+      origin: sourcePlayer(),
+      diceString: "20",
+      subtype: PROJ.FIRE,
+      ident,
+    });
+    expect(mon.hp).toBe(30);
+    expect(ident.value).toBe(false);
+
+    /* A visible monster: the effect is noticed and identifies. */
+    const seen = makeState({ playerGrid: loc(5, 5) });
+    const vis = addMon(seen, plainRace, loc(5, 8), { hp: 50 });
+    vis.mflag.on(MFLAG.VISIBLE);
+    const ident2 = { value: false };
+    registry().effectSimple(EF.BOLT_STATUS, env(seen, { aimed: vis.grid }), {
+      origin: sourcePlayer(),
+      diceString: "20",
+      subtype: PROJ.FIRE,
+      ident: ident2,
+    });
+    expect(vis.hp).toBe(30);
+    expect(ident2.value).toBe(true);
+  });
+
+  it("EF_LASH whips the player with the first blow's lash element", () => {
+    const state = makeState({ playerGrid: loc(5, 5), seed: 8 });
+    state.actor.player.chp = 1000;
+    const dice = new Dice();
+    dice.parseString("10d1"); /* a fixed 10 per roll */
+    const blow = {
+      method: { name: "HIT" },
+      effect: { name: "HURT", lashType: "FIRE" },
+      dice,
+      diceRaw: "10d1",
+    } as unknown as MonsterRace["blows"][number];
+    const race = { ...makeRace(), blows: [blow, blow] };
+    const mon = addMon(state, race, loc(5, 8), { hp: 50 });
+
+    const ident = { value: false };
+    registry().effectSimple(EF.LASH, env(state), {
+      origin: sourceMonster(mon.midx),
+      radius: 3,
+      ident,
+    });
+    /* Full first blow (10) plus half the second (5), through the player's
+     * fire adjustment (none on the bare test actor). */
+    expect(state.actor.player.chp).toBeLessThan(1000);
+    expect(ident.value).toBe(true);
+  });
+
+  it("EF_LASH from a player source fails (monsters only)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const ran = registry().effectSimple(EF.LASH, env(state), {
+      origin: sourcePlayer(),
+      radius: 3,
+    });
+    expect(ran).toBe(false);
   });
 });

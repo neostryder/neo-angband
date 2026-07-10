@@ -142,9 +142,10 @@ function flagMessage(p: Player, env: RuneEnv, flag: number, oName: string): void
 }
 
 /** ODESC_BASE approximation until object_desc lands: the kind's plain name. */
-function baseName(obj: GameObject): string {
+export function objBaseName(obj: GameObject): string {
   return obj.kind.name.replace(/[~&]/g, "").trim();
 }
+const baseName = objBaseName;
 
 /* ------------------------------------------------------------------ *
  * player_knows_* accessors.
