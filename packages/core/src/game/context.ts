@@ -150,6 +150,12 @@ export interface GameState {
    * The type import is erased, so no runtime cycle with game/trap.
    */
   traps: Map<number, import("./trap").Trap[]>;
+  /**
+   * The player's map knowledge (the upstream player->cave twin, reduced):
+   * remembered terrain and floor objects, possibly stale. Managed by
+   * game/known.ts (square_memorize / note_spot / detection).
+   */
+  known: import("./known").KnownMap;
   /** turn (game-world.c): the game-turn counter. */
   turn: number;
   z: GameConstants;

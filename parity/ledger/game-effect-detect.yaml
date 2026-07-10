@@ -1,0 +1,57 @@
+module: packages/core/src/game/effect-detect.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-general.c
+    items:
+      - effect_handler_MAP_AREA (L1201) - the context y/x (or value
+        dice/sides) rectangle around the effect origin, the NO_MAP skip,
+        memorizing interesting (non-floor) features plus adjacent walls
+        for every non-wall grid, and forgetting misremembered grids. The
+        exclusive upper bounds (y < y2, x < x2) are preserved.
+      - effect_handler_READ_MINDS (L1286) - MAP_AREA around every
+        detection-marked (MFLAG_MARK) monster, "Images form in your
+        mind!".
+      - effect_handler_DETECT_TRAPS (L1321) - square_reveal_trap over the
+        region (through the trap system), SQUARE_DTRAP marking, and the
+        always-aware messages.
+      - effect_handler_DETECT_DOORS (L1398) - secret doors become real
+        closed doors (place_closed_door with its one-in-four 1d7 lock
+        through the trap system), doors are memorized when misremembered,
+        and misremembered non-doors are forgotten.
+      - effect_handler_DETECT_STAIRS (L1467) and DETECT_ORE (L1519, gold
+        veins remembered, mined-out veins forgotten, silent from a none
+        origin).
+      - sense_stuff / detect_stuff (L1579/L1632) behind SENSE_GOLD /
+        DETECT_GOLD / SENSE_OBJECTS / DETECT_OBJECTS (L1682-L1761) with
+        the money / non-money predicates and inclusive bounds.
+      - detect_monsters (L1768) behind DETECT_LIVING_MONSTERS /
+        DETECT_VISIBLE_MONSTERS / DETECT_INVISIBLE_MONSTERS /
+        DETECT_FEARFUL_MONSTERS / DETECT_EVIL / DETECT_SOUL
+        (L1833-L1940) - MARK + SHOW (+ VISIBLE, the reduced update_mon)
+        on every matching non-camouflaged monster in the rectangle, with
+        each type's exact messages.
+notes: >-
+  Registered by registerDetectHandlers over the core stubs and wired in
+  wireGame, so detection scrolls, staff effects, spells and rods all
+  work. Handlers write the game/known.ts knowledge layer; the renderer
+  displays what they reveal (detected monsters show even out of view
+  until the mark fades).
+deferred:
+  - Chest-trap identification inside DETECT_TRAPS (obj->known pval) rides
+    object knowledge; ignore_item_ok rides ignore (#24); the DTRAP border
+    display, item/monster list redraws and detection sounds ride #25/#26.
+  - Invisible-monster lore learning (rf_on lore RF_INVISIBLE) and the
+    monster recall window ride lore (#24).
+verified-by:
+  - game/effect-detect.test.ts (15 tests) - MAP_AREA memorizes a door
+    and nearby walls but not plain floor and forgets misremembered
+    grids; READ_MINDS maps around a marked monster with its message;
+    DETECT_TRAPS reveals a hidden trap, sets DTRAP and reports (also on
+    an empty result); DETECT_DOORS converts a secret door to a
+    remembered closed door and forgets vanished doors; DETECT_STAIRS
+    and DETECT_ORE remember stairs/veins, forget mined-out veins and
+    stay silent from a none origin; SENSE/DETECT_OBJECTS mark vs learn
+    the pile head and DETECT_GOLD ignores non-money; the monster
+    detectors mark evil/invisible monsters in range (not camouflaged /
+    out-of-range / non-matching ones) with the exact messages.
