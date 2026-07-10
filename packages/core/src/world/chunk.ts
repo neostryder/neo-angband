@@ -370,4 +370,71 @@ export class Chunk {
       }
     }
   }
+
+  /**
+   * A JSON-safe snapshot of every square (features, info flags, light,
+   * monster occupancy) plus the chunk scalars, for savefiles. Noise and
+   * scent heatmaps are transient (upstream does not save them either;
+   * they rebuild on the first turn).
+   */
+  snapshotSquares(): ChunkSquaresData {
+    return {
+      name: this.name,
+      turn: this.turn,
+      depth: this.depth,
+      feeling: this.feeling,
+      objRating: this.objRating,
+      monRating: this.monRating,
+      goodItem: this.goodItem,
+      feelingSquares: this.feelingSquares,
+      height: this.height,
+      width: this.width,
+      feats: Array.from(this.feats),
+      infos: this.infos.map((f) => Array.from(f.bits)),
+      lights: Array.from(this.lights),
+      mons: Array.from(this.mons),
+    };
+  }
+
+  /** Restore a snapshotSquares() payload into this chunk (sizes must match). */
+  restoreSquares(data: ChunkSquaresData): void {
+    if (data.height !== this.height || data.width !== this.width) {
+      throw new RangeError("chunk restore: size mismatch");
+    }
+    this.name = data.name;
+    this.turn = data.turn;
+    this.depth = data.depth;
+    this.feeling = data.feeling;
+    this.objRating = data.objRating;
+    this.monRating = data.monRating;
+    this.goodItem = data.goodItem;
+    this.feelingSquares = data.feelingSquares;
+    this.featCount.fill(0);
+    for (let i = 0; i < data.feats.length; i++) {
+      const feat = data.feats[i] as number;
+      this.feats[i] = feat;
+      if (feat) this.featCount[feat] = (this.featCount[feat] ?? 0) + 1;
+      (this.infos[i] as FlagSet).bits.set(data.infos[i] as number[]);
+      this.lights[i] = data.lights[i] as number;
+      this.mons[i] = data.mons[i] as number;
+    }
+  }
+}
+
+/** The snapshotSquares() / restoreSquares() payload. */
+export interface ChunkSquaresData {
+  name: string;
+  turn: number;
+  depth: number;
+  feeling: number;
+  objRating: number;
+  monRating: number;
+  goodItem: boolean;
+  feelingSquares: number;
+  height: number;
+  width: number;
+  feats: number[];
+  infos: number[][];
+  lights: number[];
+  mons: number[];
 }

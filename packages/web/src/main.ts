@@ -12,14 +12,18 @@
  * next step (PORT_PLAN.md decision 21); this drives bootLevel-style defaults
  * (Human Warrior) for now.
  *
- * Still front-end-in-progress and ledgered as such: per-hit combat messages
- * (the message log is not wired yet) and stairs/level regeneration are
- * deferred. Item pickup is live: gold and auto-pickup items are collected on
- * stepping, and 'g' picks up from the pile underfoot.
+ * Live systems: pickup ('g'), stairs with real level regeneration ('>' and
+ * '<'), and JSON save/continue ('S' saves to localStorage; ?continue=1
+ * resumes, with the integrity stamp checked). Death deletes the save
+ * (decision 16). Per-hit combat messages await the message-log wiring.
  */
 
 import {
   startGame,
+  saveGame,
+  loadGame,
+  encodeSavedGame,
+  decodeSavedGame,
   runGameLoop,
   LOOP_STATUS,
   colorCharToAttr,
@@ -54,14 +58,59 @@ const seed = Number(params.get("seed")) || 20260708;
 const depth = Number(params.get("depth")) || 1;
 
 const pack: GamePack = loadGamePack();
-const game = startGame(pack, { seed, depth });
+
+// Saves live in localStorage as stamped bytes (decision 16b tamper
+// deterrent), base64-wrapped. ?continue=1 resumes; death deletes the save
+// (decision 16: death is terminal).
+const SAVE_KEY = "neo-angband-save";
+function bytesToB64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+let loadedNote = "";
+function bootGame(): ReturnType<typeof startGame> {
+  if (params.get("continue")) {
+    const stored = localStorage.getItem(SAVE_KEY);
+    if (stored) {
+      try {
+        const decoded = decodeSavedGame(b64ToBytes(stored));
+        if (decoded.save) {
+          loadedNote = decoded.verified
+            ? "Welcome back."
+            : "Welcome back. (WARNING: save integrity check failed.)";
+          return loadGame(pack, decoded.save);
+        }
+      } catch {
+        loadedNote = "Could not read the save; starting a new game.";
+      }
+    }
+  }
+  return startGame(pack, { seed, depth });
+}
+
+const game = bootGame();
 const { state, registry, booted } = game;
-const chunk = state.chunk;
 const features = booted.registries.features;
 const constants = booted.registries.constants;
 
-let message = `Welcome. Move with numpad/arrows; 'g' picks up. (seed ${seed}, depth ${depth})`;
+let message =
+  loadedNote ||
+  `Welcome. Move with numpad/arrows; 'g' picks up, '>' descends, 'S' saves. (seed ${seed}, depth ${depth})`;
 let dead = false;
+
+function persistSave(): void {
+  localStorage.setItem(SAVE_KEY, bytesToB64(encodeSavedGame(saveGame(game))));
+}
 
 // Reinstall the pickup commands with message hooks so gold and item pickup
 // report on the message line.
@@ -88,13 +137,13 @@ function viewerState(): ViewerState {
     curLight: 2,
     blind: false,
     hasUnlight: false,
-    level: depth,
+    level: state.chunk.depth,
   };
 }
 
 // FOV refresh after the player moves (the loop calls this via updateFov).
 state.updateFov = (): void => {
-  updateView(chunk, viewerState(), Z);
+  updateView(state.chunk, viewerState(), Z);
 };
 
 // Feed player commands to the loop from a small buffer; runGameLoop pulls
@@ -103,7 +152,7 @@ const commandBuffer: PlayerCommand[] = [];
 state.nextCommand = (): PlayerCommand | null => commandBuffer.shift() ?? null;
 
 function gridIndex(x: number, y: number): number {
-  return y * chunk.width + x;
+  return y * state.chunk.width + x;
 }
 
 // Revealed traps draw under objects and monsters (upstream layer order).
@@ -150,7 +199,7 @@ function dim(css: string): string {
 
 /** Glyph and color for a grid's terrain, resolving display mimics. */
 function terrainGlyph(x: number, y: number): { ch: string; css: string } {
-  const f = chunk.feature(loc(x, y));
+  const f = state.chunk.feature(loc(x, y));
   const disp = f.mimic !== null ? features.get(f.mimic) : f;
   return { ch: disp.dChar, css: colorToCss(colorCharToAttr(disp.dAttr)) };
 }
@@ -231,12 +280,12 @@ function render(): void {
     for (let sx = 0; sx < mapCols; sx++) {
       const gx = camX + sx;
       const gy = camY + sy;
-      if (gx < 0 || gy < 0 || gx >= chunk.width || gy >= chunk.height) continue;
+      if (gx < 0 || gy < 0 || gx >= state.chunk.width || gy >= state.chunk.height) continue;
       const idx = gridIndex(gx, gy);
       const screenX = mapOriginX + sx;
       const screenY = 1 + sy;
 
-      const seen = squareIsSeen(chunk, loc(gx, gy));
+      const seen = squareIsSeen(state.chunk, loc(gx, gy));
       if (seen) explored.add(idx);
       else if (!explored.has(idx)) continue;
 
@@ -265,7 +314,8 @@ function render(): void {
 
   renderSidebar(rows);
   term.print(mapOriginX, 0, message.slice(0, mapCols - 1), "#c8c8d4");
-  const status = `DL${depth} (${depth * 50} ft)   Turn ${state.turn}`;
+  const dl = state.chunk.depth;
+  const status = `DL${dl} (${dl * 50} ft)   Turn ${state.turn}`;
   term.print(mapOriginX, rows - 1, status.slice(0, mapCols - 1), "#5a5a66");
 }
 
@@ -274,22 +324,48 @@ function advance(): void {
   const status = runGameLoop(state, registry);
   if (status === LOOP_STATUS.DEAD) {
     dead = true;
+    localStorage.removeItem(SAVE_KEY); // death is terminal (decision 16)
     message = "You have died. (Refresh to start a new game.)";
   } else if (status === LOOP_STATUS.LEVEL_CHANGE) {
-    // Stairs / regeneration are deferred; acknowledge and stay put.
+    // Generate the next level in place and keep playing.
+    const target = state.targetDepth ?? state.chunk.depth + 1;
+    game.changeLevel(target);
     state.generateLevel = false;
-    message = "The stairs lead down... (level change not yet wired).";
+    explored.clear();
+    persistSave();
+    message = `You enter a maze of staircases... (depth ${state.chunk.depth})`;
   }
   render();
 }
 
 window.addEventListener("keydown", (ev) => {
   if (dead) return;
-  if (ev.key === "g" && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
-    ev.preventDefault();
-    commandBuffer.push({ code: "pickup" });
-    advance();
-    return;
+  if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+    if (ev.key === "g") {
+      ev.preventDefault();
+      commandBuffer.push({ code: "pickup" });
+      advance();
+      return;
+    }
+    if (ev.key === ">") {
+      ev.preventDefault();
+      commandBuffer.push({ code: "descend" });
+      advance();
+      return;
+    }
+    if (ev.key === "<") {
+      ev.preventDefault();
+      commandBuffer.push({ code: "ascend" });
+      advance();
+      return;
+    }
+    if (ev.key === "S") {
+      ev.preventDefault();
+      persistSave();
+      message = "Game saved. (Open with ?continue=1 to resume.)";
+      render();
+      return;
+    }
   }
   const binding = resolveKey(ev, roguelikeKeys);
   if (!binding) return;
