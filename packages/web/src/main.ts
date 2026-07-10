@@ -30,7 +30,11 @@ import {
   colorToCss,
   updateView,
   squareIsSeen,
+  noteSpots,
+  knownFeat,
+  knownObject,
   loc,
+  MFLAG,
   STAT,
   TRF,
   installPickup,
@@ -142,8 +146,11 @@ function viewerState(): ViewerState {
 }
 
 // FOV refresh after the player moves (the loop calls this via updateFov).
+// noteSpots is the engine's note_spot pass: it memorizes seen terrain and
+// floor piles into state.known and refreshes monster visibility flags.
 state.updateFov = (): void => {
   updateView(state.chunk, viewerState(), Z);
+  noteSpots(state);
 };
 
 // Feed player commands to the loop from a small buffer; runGameLoop pulls
@@ -185,10 +192,6 @@ function objectIndex(): Map<number, { ch: string; css: string }> {
   return map;
 }
 
-// Grids the player has ever seen, drawn dim when out of view (a front-end
-// map memory; the engine knowledge layer lands later).
-const explored = new Set<number>();
-
 /** Darken a #rrggbb color for remembered-but-unseen terrain. */
 function dim(css: string): string {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(css);
@@ -204,12 +207,17 @@ function terrainGlyph(x: number, y: number): { ch: string; css: string } {
   return { ch: disp.dChar, css: colorToCss(colorCharToAttr(disp.dAttr)) };
 }
 
-/** Live monster glyphs, rebuilt each frame since monsters move. */
+/**
+ * Live monster glyphs, rebuilt each frame since monsters move. Only
+ * monsters the player can see (or has detected - MFLAG MARK) are drawn;
+ * noteSpots maintains the flags after every FOV refresh.
+ */
 function monsterIndex(): Map<number, { ch: string; css: string }> {
   const map = new Map<number, { ch: string; css: string }>();
   for (let i = 1; i < state.monsters.length; i++) {
     const mon = state.monsters[i];
     if (!mon) continue;
+    if (!mon.mflag.has(MFLAG.VISIBLE) && !mon.mflag.has(MFLAG.MARK)) continue;
     map.set(gridIndex(mon.grid.x, mon.grid.y), {
       ch: mon.race.dChar,
       css: colorToCss(mon.race.dAttr),
@@ -286,15 +294,35 @@ function render(): void {
       const screenY = 1 + sy;
 
       const seen = squareIsSeen(state.chunk, loc(gx, gy));
-      if (seen) explored.add(idx);
-      else if (!explored.has(idx)) continue;
-
-      const t = terrainGlyph(gx, gy);
       if (!seen) {
-        term.put(screenX, screenY, { ch: t.ch, fg: dim(t.css) });
+        /* Remembered terrain from the engine's knowledge layer, drawn
+         * dim - possibly stale, exactly as upstream memory works. */
+        const kf = knownFeat(state, loc(gx, gy));
+        if (kf < 0) continue;
+        const f = features.get(kf);
+        const disp = f.mimic !== null ? features.get(f.mimic) : f;
+        term.put(screenX, screenY, {
+          ch: disp.dChar,
+          fg: dim(colorToCss(colorCharToAttr(disp.dAttr))),
+        });
+        /* Remembered / sensed objects persist on the map in full color. */
+        const mem = knownObject(state, loc(gx, gy));
+        if (mem) {
+          term.put(
+            screenX,
+            screenY,
+            mem.ch === null
+              ? { ch: "*", fg: "#8a8a94" }
+              : { ch: mem.ch, fg: colorToCss(colorCharToAttr(mem.attr)) },
+          );
+        }
+        /* Detected monsters show even out of view - that is the point. */
+        const marked = monsterAt.get(idx);
+        if (marked) term.put(screenX, screenY, { ch: marked.ch, fg: marked.css });
         continue;
       }
 
+      const t = terrainGlyph(gx, gy);
       let drawn = { ch: t.ch, css: t.css };
       const trap = trapAt.get(idx);
       if (trap) drawn = trap;
@@ -331,7 +359,6 @@ function advance(): void {
     const target = state.targetDepth ?? state.chunk.depth + 1;
     game.changeLevel(target);
     state.generateLevel = false;
-    explored.clear();
     persistSave();
     message = `You enter a maze of staircases... (depth ${state.chunk.depth})`;
   }

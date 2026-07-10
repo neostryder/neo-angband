@@ -37,6 +37,8 @@ import type { TrapKind } from "../world/trap";
 import type { GameState, MonsterGroup } from "../game/context";
 import type { Trap } from "../game/trap";
 import type { Gear } from "../game/gear";
+import { newKnownMap } from "../game/known";
+import type { KnownMap } from "../game/known";
 import {
   fnv1aIntegrity,
   stampSavefile,
@@ -476,6 +478,18 @@ export interface SavedGame {
   playing: boolean;
   isDead: boolean;
   flavor: { aware: number[]; tried: number[] };
+  /**
+   * The player's map knowledge (game/known.ts). Optional: absent in
+   * version-1 saves written before the knowledge layer, which load with
+   * an all-unknown map.
+   */
+  known?: SavedKnown;
+}
+
+/** Serialized map knowledge (remembered terrain and floor objects). */
+export interface SavedKnown {
+  feat: number[];
+  objects: Array<[number, { ch: string | null; attr: string }]>;
 }
 
 /** Serialize a live game (state + flavor knowledge) into plain JSON data. */
@@ -537,7 +551,29 @@ export function serializeGame(
     playing: state.playing,
     isDead: state.isDead,
     flavor: flavor.snapshot(),
+    known: {
+      feat: Array.from(state.known.feat),
+      objects: Array.from(state.known.objects.entries()).map(([i, m]) => [
+        i,
+        { ch: m.ch, attr: m.attr },
+      ]),
+    },
   };
+}
+
+/** Rebuild the map knowledge (absent in older saves: all unknown). */
+export function deserializeKnown(
+  data: SavedKnown | undefined,
+  width: number,
+  height: number,
+): KnownMap {
+  const known = newKnownMap(width, height);
+  if (!data) return known;
+  known.feat.set(data.feat.slice(0, known.feat.length));
+  for (const [i, m] of data.objects) {
+    known.objects.set(i, { ch: m.ch, attr: m.attr });
+  }
+  return known;
 }
 
 /** Rebuild a Gear store from its saved form. */

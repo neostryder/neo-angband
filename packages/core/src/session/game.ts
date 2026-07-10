@@ -63,6 +63,8 @@ import type { ItemEffectEnv } from "../game/effect-item";
 import { registerMeleeHandlers } from "../game/effect-melee";
 import { registerSummonHandlers } from "../game/effect-summon";
 import type { SummonEffectEnv } from "../game/effect-summon";
+import { registerDetectHandlers } from "../game/effect-detect";
+import { newKnownMap } from "../game/known";
 import { countMonsterRaces, wipeMonsterCounts } from "../game/mon-place";
 import { SummonTable } from "../mon/summon";
 import { MonAllocTable } from "../mon/make";
@@ -121,6 +123,7 @@ import {
   deserializeChunk,
   deserializeFloor,
   deserializeGear,
+  deserializeKnown,
   deserializeMonster,
   deserializePlayer,
   deserializeTraps,
@@ -286,6 +289,7 @@ function wireGame(
     registerItemHandlers(effects);
     registerMeleeHandlers(effects);
     registerSummonHandlers(effects);
+    registerDetectHandlers(effects);
 
     // The trap-backed square predicates feed every consumer that stubbed
     // them (teleport landing checks, drop placement) once traps exist.
@@ -565,6 +569,7 @@ function makeChangeLevel(
     state.groups = [null];
     state.floor = new Map();
     state.traps = new Map();
+    state.known = newKnownMap(g.c.width, g.c.height);
     populateFromLevel(
       state,
       {
@@ -665,6 +670,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     groups: [null],
     floor: new Map(),
     traps: new Map(),
+    known: newKnownMap(booted.chunk.width, booted.chunk.height),
     turn: 0,
     z: {
       ...DEFAULT_GAME_CONSTANTS,
@@ -804,6 +810,7 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     traps: reg.traps
       ? deserializeTraps(save.traps, reg.traps, chunk.width)
       : new Map(),
+    known: deserializeKnown(save.known, chunk.width, chunk.height),
     turn: save.turn,
     z: {
       ...DEFAULT_GAME_CONSTANTS,
