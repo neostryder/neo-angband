@@ -41,11 +41,11 @@ deferred:
   - The onKill / onMonsterDeath bodies (player_kill_monster / monster_death:
     experience, treasure drops, quest completion) are blocked on floor-object
     piles (#20), lore (#24), experience and quests; supplied as hooks.
-  - polymorph needs monster generation (get_mon_num / place_new_monster) and
-    teleport needs EF_TELEPORT (#18); both are hooks that no-op until then, so
-    the poly "maintain" and teleport branches are exercised via the hook, not
-    end to end.
-  - thrust_away is a hook (cave-mutating knockback with feature checks).
+  - polymorph needs monster generation (get_mon_num / place_new_monster); a
+    hook that no-ops until then.
+  - The teleport and thrustAway hooks are now BACKED in wireGame by
+    teleportMonster (game/effect-teleport.ts) and thrustAway
+    (game/thrust.ts); worldless callers still get the inert defaults.
   - delete_monster_idx's held-object drop, monster-group, mimic, racial-counter
     and targeting/redraw bookkeeping are deferred with their subsystems.
   - update_mon / square_light_spot / PR_MONSTER collapse into the onUpdate hook.

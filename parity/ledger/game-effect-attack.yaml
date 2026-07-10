@@ -28,6 +28,15 @@ upstream:
       - effect_handler_PROJECT_LOS / PROJECT_LOS_AWARE (L1088): makeProjectLos -
         a jump projection to every monster in LOS, attributed to the player,
         excluding cave->mon_current.
+      - effect_handler_BOLT_STATUS / BOLT_STATUS_DAM / BOLT_AWARE (L368-407):
+        handleBOLT_STATUS / handleBOLT_AWARE - as BOLT but identifying only
+        when the projection was noticed (the two _STATUS codes are distinct
+        upstream purely for descriptions).
+      - effect_handler_LASH (L899): handleLASH - monsters only; the element
+        from the first blow's lash_type (default PROJ_MISSILE), damage
+        summed as the full first blow plus half of every other, the radius
+        clamped to max_range, dispatched through castLash (a full-strength
+        finite beam that also hits the player, PROJECT_PLAY).
   - path: src/effects.c
     items:
       - the effect_kind[] table slots for the attack codes: registered into the
@@ -55,14 +64,16 @@ deferred:
     decoy) and the target system (target_okay / target_get provide env.aimed) -
     #19 / #24.
   - PROJECT_LOS_AWARE's awareness-gated notice difference (a UI/notice nuance);
-    both codes apply the same projection.
-  - EF_LASH (effect_handler_LASH) - its damage is summed from the caster's
-    monster blows, so it lands with #19.
-  - onObject (#20) and onFeature (#21) side effects of the projections.
+    both codes apply the same projection. BOLT_AWARE's PROJECT_AWARE flag is
+    the same notice nuance (#25).
+  - EF_LASH's monster-vs-monster target and decoy branches (#19); the target
+    is the player.
 verified-by:
-  - game/effect-attack.test.ts (5 tests): through a real EffectRegistry
+  - game/effect-attack.test.ts (8 tests): through a real EffectRegistry
     (registerCoreHandlers + registerAttackHandlers), EF_BOLT damages the aimed
     monster and sets ident; EF_BEAM passes through several monsters in line;
     EF_BALL from a monster detonates on the player; EF_PROJECT_LOS hits every
-    monster in line of sight; and every attack handler no-ops without an attack
-    environment (the worldless rule).
+    monster in line of sight; EF_BOLT_STATUS identifies only on a noticed
+    (visible-monster) effect; EF_LASH whips the player with the first blow's
+    lash element and fails for a player source; and every attack handler
+    no-ops without an attack environment (the worldless rule).
