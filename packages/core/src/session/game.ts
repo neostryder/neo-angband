@@ -55,6 +55,7 @@ import type { GameState, PlayerActor, PlayerCommand } from "../game/context";
 import { monsterGroupAssign, monsterGroupsVerify } from "../game/mon-group";
 import { floorCarry } from "../game/floor";
 import { installPickup } from "../game/pickup";
+import { IgnoreSettings, ignoreItemOk } from "../obj/ignore";
 import { EffectRegistry } from "../effects/interpreter";
 import { registerCoreHandlers } from "../effects/handlers";
 import { registerAttackHandlers } from "../game/effect-attack";
@@ -204,9 +205,19 @@ function wireGame(
 ): WiredGame {
   // Live commands over the floor piles: 'g'et + autopickup on stepping.
   const registry = createDefaultRegistry();
-  installPickup(state, registry, { constants: reg.constants });
 
   const flavor = new FlavorKnowledge(reg.objects.ordinaryKindCount);
+
+  // ignore_item_ok (obj-ignore.c): the player's ignore settings resolved with
+  // live flavor awareness. Everything reads it through state.isIgnored so the
+  // floor / pickup / running / projection paths need no flavor coupling.
+  state.isIgnored = (obj) =>
+    ignoreItemOk(obj, state.ignore, flavor.isAware(obj.kind));
+
+  installPickup(state, registry, {
+    constants: reg.constants,
+    env: { isIgnored: (obj) => state.isIgnored!(obj) },
+  });
 
   // Rune learning (obj-knowledge.c learn-by-use): the registry tables plus
   // live equipment access. Reads through the state object so level changes
@@ -465,7 +476,10 @@ function wireGame(
       general,
       item,
       summon,
-      ...(preds ? { floorEnv: { isTrap: preds.isTrap } } : {}),
+      floorEnv: {
+        isIgnored: (obj) => state.isIgnored!(obj),
+        ...(preds ? { isTrap: preds.isTrap } : {}),
+      },
     });
 
     // Player spellcasting (cast / study) for casting classes.
@@ -858,6 +872,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     traps: new Map(),
     known: newKnownMap(booted.chunk.width, booted.chunk.height),
     target: newTargetState(),
+    ignore: new IgnoreSettings(),
     lore: new Map(),
     turn: 0,
     z: {
@@ -1003,6 +1018,7 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     /* The target is not persisted (as upstream: the savefile carries no
      * target and loading starts unset). */
     target: newTargetState(),
+    ignore: new IgnoreSettings(),
     lore: deserializeLore(save.lore),
     turn: save.turn,
     z: {
@@ -1040,6 +1056,7 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
 
   const wired = wireGame(state, reg, players, pstate);
   wired.flavor.restore(save.flavor);
+  if (save.ignore) state.ignore.restore(save.ignore);
 
   // A renderer-facing view of the restored level (no generation ran).
   const booted: BootedLevel = {
