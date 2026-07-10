@@ -444,6 +444,13 @@ function populateFromLevel(
   state.actor.grid = spot;
   placePlayer(state, spot);
 
+  /* Track the deepest level reached (player->max_depth). */
+  if (level.depth > state.actor.player.maxDepth) {
+    state.actor.player.maxDepth = level.depth;
+  }
+  /* A new level clears the decoy (glyph traps do not persist the swap). */
+  state.decoy = null;
+
   for (const pm of level.monsters) {
     pm.mon.grid = pm.grid;
     addMonster(state, pm.mon);
@@ -486,6 +493,10 @@ function makeChangeLevel(
   trapDeps: TrapDeps | null,
 ): (depth: number) => void {
   return (depth: number): void => {
+    /* dungeon_change_level: track the deepest level reached. */
+    if (depth > state.actor.player.maxDepth) {
+      state.actor.player.maxDepth = depth;
+    }
     const g = generateLevel(state.rng, depth, genDeps(reg, true));
     state.chunk = g.c;
     state.monsters = [null];
@@ -598,6 +609,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       maxSight: reg.constants.maxSight,
       floorSize: reg.constants.floorSize,
       maxDepth: reg.constants.maxDepth,
+      stairSkip: reg.constants.stairSkip,
     },
     brands: reg.objects.brands,
     slays: reg.objects.slays,
@@ -736,6 +748,7 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
       maxSight: reg.constants.maxSight,
       floorSize: reg.constants.floorSize,
       maxDepth: reg.constants.maxDepth,
+      stairSkip: reg.constants.stairSkip,
     },
     brands: reg.objects.brands,
     slays: reg.objects.slays,

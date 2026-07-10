@@ -25,6 +25,7 @@ import type { GameEffectEnv } from "./effect-game-env";
 import { squareIsWarded, squareIsWebbed } from "./trap";
 import type { TrapDeps } from "./trap";
 import { disenchantEquipment, registerGeneralHandlers } from "./effect-general";
+import { processWorld } from "./loop";
 
 const trapKinds = bindTraps(
   (
@@ -416,6 +417,82 @@ describe("stat / exp / mana handlers (effect-handler-general.c)", () => {
     r.effectSimple(EF.UNSCRAMBLE_STATS, env(state), { origin: sourcePlayer() });
     expect([...p.statCur]).toEqual(original);
     expect([...p.statMap]).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("RECALL charges the air, cancels on recast, and yanks via processWorld", () => {
+    const state = makeState({ seed: 61 });
+    const p = state.actor.player;
+    state.chunk.depth = 7;
+    p.maxDepth = 7;
+    const msgs: string[] = [];
+    const r = registry();
+    r.effectSimple(EF.RECALL, env(state, {}, msgs), { origin: sourcePlayer() });
+    expect(p.wordRecall).toBeGreaterThanOrEqual(15);
+    expect(p.recallDepth).toBe(7);
+    expect(msgs).toContain("The air about you becomes charged...");
+
+    /* Count it down: the yank fires the level-change signal. */
+    p.wordRecall = 1;
+    const yanks: string[] = [];
+    state.msg = (t): void => {
+      yanks.push(t);
+    };
+    processWorld(state);
+    expect(p.wordRecall).toBe(0);
+    expect(state.generateLevel).toBe(true);
+    expect(state.targetDepth).toBe(0);
+    expect(yanks).toContain("You feel yourself yanked upwards!");
+
+    /* Recasting an active recall cancels it (default-yes confirm). */
+    state.generateLevel = false;
+    p.wordRecall = 10;
+    const msgs2: string[] = [];
+    r.effectSimple(EF.RECALL, env(state, {}, msgs2), { origin: sourcePlayer() });
+    expect(p.wordRecall).toBe(0);
+    expect(msgs2).toContain("A tension leaves the air around you...");
+  });
+
+  it("in town, recall yanks down to the recall depth", () => {
+    const state = makeState({ seed: 62 });
+    const p = state.actor.player;
+    state.chunk.depth = 0;
+    p.maxDepth = 12;
+    p.wordRecall = 1;
+    processWorld(state);
+    expect(state.targetDepth).toBe(12);
+    expect(state.generateLevel).toBe(true);
+  });
+
+  it("DEEP_DESCENT schedules a multi-level drop, or is blocked at depth", () => {
+    const state = makeState({ seed: 63 });
+    const p = state.actor.player;
+    state.chunk.depth = 10;
+    p.maxDepth = 10;
+    const msgs: string[] = [];
+    registry().effectSimple(EF.DEEP_DESCENT, env(state, {}, msgs), {
+      origin: sourcePlayer(),
+    });
+    expect(p.deepDescent).toBeGreaterThan(0);
+    expect(msgs).toContain("The air around you starts to swirl...");
+
+    /* Count it down: stair_skip 1 makes the increment 5. */
+    p.deepDescent = 1;
+    processWorld(state);
+    expect(state.targetDepth).toBe(15);
+    expect(state.generateLevel).toBe(true);
+
+    /* At the dungeon bottom nothing deeper exists. */
+    const bottom = makeState({ seed: 63 });
+    bottom.chunk.depth = 127;
+    bottom.actor.player.maxDepth = 127;
+    const msgs2: string[] = [];
+    registry().effectSimple(EF.DEEP_DESCENT, env(bottom, {}, msgs2), {
+      origin: sourcePlayer(),
+    });
+    expect(bottom.actor.player.deepDescent).toBe(0);
+    expect(
+      msgs2.some((m) => m.includes("malevolent presence")),
+    ).toBe(true);
   });
 
   it("MON_TIMED_INC extends a condition on the casting monster", () => {

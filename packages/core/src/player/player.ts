@@ -106,6 +106,15 @@ export interface Player {
   /** exp_frac (times 2^16). */
   expFrac: number;
 
+  /** max_depth: the deepest dungeon level reached. */
+  maxDepth: number;
+  /** recall_depth: where Word of Recall returns to. */
+  recallDepth: number;
+  /** word_recall: turns until a pending recall fires (0 = inactive). */
+  wordRecall: number;
+  /** deep_descent: turns until a pending deep descent fires (0 = inactive). */
+  deepDescent: number;
+
   mhp: number;
   chp: number;
   chpFrac: number;
@@ -192,6 +201,10 @@ export function blankPlayer(
     maxExp: 0,
     exp: 0,
     expFrac: 0,
+    maxDepth: 0,
+    recallDepth: 0,
+    wordRecall: 0,
+    deepDescent: 0,
     mhp: 0,
     chp: 0,
     chpFrac: 0,
