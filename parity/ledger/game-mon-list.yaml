@@ -1,0 +1,42 @@
+module: packages/core/src/game/mon-list.ts (the monster-list view model)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-list.c
+    items:
+      - monster_list_collect (L138) as monsterListCollect - scans the live
+        cave's monsters, skips the invisible and camouflaged, groups the rest
+        into per-race entries split into the LOS and ESP sections (LOS decided
+        by projectable() exactly as upstream, so ESP-detected out-of-view
+        monsters still land in LOS when a bolt could reach them), tallies the
+        per-section count / asleep / offset and the list totals.
+      - monster_list_standard_compare (L228) as monsterListStandardCompare -
+        sort by race level descending.
+      - monster_list_compare_exp (L250) as monsterListCompareExp(playerLev) -
+        sort by (mexp * level / player_lev) descending; a factory over the
+        player level (upstream reads the global player).
+      - monster_list_sort (L278) as monsterListSort - stable in-place sort with
+        the given comparator, no-op for 0 / 1 entries, sets the sorted flag.
+      - monster_list_entry_line_color (L304) as monsterListEntryLineColor -
+        uniques violet, over-depth monsters red, else white.
+notes: >-
+  The presentation logic behind the "list visible monsters" panel, ported as
+  front-end-agnostic data (PORT_PLAN P5: the panel data is engine-computed; the
+  terminal draw half, ui-mon-list.c, is what each shell replaces). The port
+  builds a fresh MonsterList each collect rather than keeping upstream's shared,
+  lazily-reallocated instance sized to cave_monster_max() - the realloc dance
+  (monster_list_new / _reset / _shared_instance / _can_update /
+  _needs_update / creation_turn staleness) is a memory / redraw optimisation,
+  not behaviour, and is dropped. distinctEntries is the number of races (the
+  upstream totals loop counts every non-null entry).
+verified-by:
+  - game/mon-list.test.ts (7 tests) - grouping by race into the LOS section,
+    skipping invisible / camouflaged monsters, the asleep tally, the ESP
+    section for an out-of-range visible monster, the depth and exp sort orders,
+    and the line colours.
+deferred:
+  - The flicker-animation attr is collected but there is no per-frame redraw in
+    the engine (rides the front-end draw layer).
+  - ui-mon-list.c (the terminal section headers, the "you see / are aware of N
+    monsters" summary text, the too-many-to-fit truncation, and the map cursor
+    tracking) is the draw half, replaced by each shell's own panel.

@@ -179,6 +179,13 @@ export interface GameState {
    */
   isIgnored?: (obj: GameObject) => boolean;
   /**
+   * object_flavor_is_aware(kind): whether the player has identified this
+   * kind's flavour. Installed by the session (wireGame) from flavor
+   * knowledge, so presentation code (obj-list.c, #25) stays decoupled from
+   * the flavor store the same way isIgnored does; absent, treated as aware.
+   */
+  isAware?: (kind: import("../obj/types").ObjectKind) => boolean;
+  /**
    * player->upkeep->health_who (health_track reduced to the tracked
    * monster; the health-bar redraw rides presentation, #25).
    */

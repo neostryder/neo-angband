@@ -1,0 +1,52 @@
+module: packages/core/src/game/obj-list.ts (the object-list view model)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/obj-list.c
+    items:
+      - object_list_collect (L156) as objectListCollect - one entry per known
+        floor object, split into the LOS and NO_LOS sections (LOS by
+        projectable() or standing on the grid), skipping money and ignored
+        items (object_list_should_ignore_object, L136); the section stack count
+        and the offset from the player.
+      - object_list_standard_compare (L275) over compare_items (obj-util.c
+        L646) and compare_types (obj-util.c L629) as objectListStandardCompare
+        - unknown last, known artifacts first, unaware-flavour kinds next,
+        worthless (cost 0) kinds after valuable ones, then by tval / sval;
+        ties break nearest-to-farthest (object_list_distance_compare, L257).
+      - object_list_sort (L297) as objectListSort - stable in-place sort, no-op
+        for 0 / 1 entries, sets the sorted flag.
+      - object_list_entry_line_attribute (L323) as objectListEntryLineAttribute
+        - unknown red, known artifact violet, unaware-flavour light red,
+        worthless slate, else white.
+      - object_list_format_name (L364) as objectListEntryName (reduced) - the
+        display name with the accumulated stack count.
+notes: >-
+  The presentation logic behind the "list visible objects" panel, ported as
+  front-end-agnostic data; the terminal draw half (ui-obj-list.c) is replaced
+  by each shell. Kind awareness reaches the sort / colour through the
+  state.isAware seam installed by the session (wireGame), the same pattern as
+  state.isIgnored, so the view model stays decoupled from the flavor store.
+divergences:
+  - Upstream scans player->cave->objects (the fully memorised pile per grid).
+    The port's reduced known model (game/known.ts) remembers only the pile-head
+    glyph, so the list is computed from the LIVE floor pile at each known grid -
+    the same "live cave gated by knowledge" shape the monster list uses. This
+    can list pile members below a remembered head that upstream's per-object
+    memory would omit; acceptable given the reduced known model, ledgered here.
+  - A sensed-but-unidentified grid (null-glyph marker from detection's
+    square_sense_pile) yields one "unknown" entry (upstream's unknown_item /
+    unknown_gold_kind markers). The port cannot tell sensed gold from sensed
+    items, so a sensed-unknown is always listed (never money-skipped).
+  - object_desc is not ported, so objectListEntryName uses the base-kind name
+    (objBaseName) plus count. Rich naming (flavours, ego / artifact names,
+    pluralisation) and the terminal right-aligned "%3.3s" prefix of
+    object_list_format_name are deferred; the entry carries the real object so
+    a full object_desc slice (a separate #25 item) drops in without re-collect.
+  - The shared-instance / MAX_ITEMLIST realloc machinery is dropped (a fresh
+    list each collect), as with the monster list.
+verified-by:
+  - game/obj-list.test.ts (8 tests) - listing known floor objects with stack
+    counts, skipping money, skipping session-ignored items, the sensed-unknown
+    entry, the NO_LOS section for a far object, the artifact-first /
+    worthless-last sort, the line colours, and the counted name.

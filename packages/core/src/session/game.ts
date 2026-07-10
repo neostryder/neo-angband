@@ -214,6 +214,11 @@ function wireGame(
   state.isIgnored = (obj) =>
     ignoreItemOk(obj, state.ignore, flavor.isAware(obj.kind));
 
+  // object_flavor_is_aware (obj-knowledge.c): the presentation view models
+  // (obj-list.c, #25) read kind awareness through this seam, keeping them
+  // decoupled from the flavor store just like isIgnored.
+  state.isAware = (kind) => flavor.isAware(kind);
+
   installPickup(state, registry, {
     constants: reg.constants,
     env: { isIgnored: (obj) => state.isIgnored!(obj) },
