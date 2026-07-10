@@ -5,14 +5,15 @@ upstream:
   - path: src/effect-handler-attack.c
     items:
       - effect_handler_TAP_UNLIFE (L1615) - the closest-undead target
-        (target_set_closest ported as closestTarget: the closest visible
-        monster in LOS matching the predicate), the min(hp, amount) / 4
-        drain, mon_take_hit(" is destroyed!"), and the nested
-        EF_RESTORE_MANA gain with its head-clearing messages.
+        (closestTarget = the real target_set_closest(TARGET_KILL, pred) +
+        target_get_monster from game/target.ts, so the drain retargets the
+        player's target as upstream), the min(hp, amount) / 4 drain,
+        mon_take_hit(" is destroyed!"), and the nested EF_RESTORE_MANA
+        gain with its head-clearing messages.
       - effect_handler_CURSE (L1665) - direct damage to the chosen monster
-        (target_get_monster reads the aimed seam), the "No monster
-        selected!" refusal, mon_take_hit(" dies!"), and the fear message
-        for shaken survivors.
+        (target_get_monster, with the aimed seam as the worldless-test
+        fallback), the "No monster selected!" refusal, mon_take_hit
+        (" dies!"), and the fear message for shaken survivors.
       - effect_handler_JUMP_AND_BITE (L1710) - the closest living victim,
         the randint0(8)-started scan of its neighbours skipping player
         traps and webs (square_isopen: floor with no occupant), the
@@ -46,9 +47,10 @@ deferred:
     and ride the same later batch; EF_SHAPECHANGE rides the shapes
     registry (#24); EF_COMMAND rides monster targeting + TMD_COMMAND
     (#24); EF_PROBE rides lore (#24).
-  - target_set_closest's targeting bookkeeping (target_set_monster,
-    health tracking, "No Available Target" prompt) rides targeting (#24);
-    closestTarget is the world half only.
+  - target_set_closest's bookkeeping (target_set_monster, healthWho, the
+    "No Available Target." / "%s is targeted." messages) is now the real
+    game/target.ts implementation; the messages flow through state.msg
+    (the world-event sink), not the effect context's.
   - MDESC names, message_pain grammar and MSG_TELEPORT sound ride the
     display layer (#25) - the race name stands in and pain messages are
     reduced to the MON_MSG_FLEE_IN_TERROR flee line; show_damage (#30).
@@ -57,7 +59,7 @@ deferred:
     the early-death energy refund marked "Should return some energy"
     upstream is unimplemented there too.
 verified-by:
-  - game/effect-melee.test.ts (15 tests) - closestTarget picks the
+  - game/effect-melee.test.ts (15 tests) - closestTarget targets the
     closest visible predicate match and ignores invisible monsters;
     TAP_UNLIFE drains the closest undead for the full amount and gains a
     quarter as mana, failing without an undead; CURSE damages the aimed

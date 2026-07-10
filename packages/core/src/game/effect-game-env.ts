@@ -29,8 +29,13 @@ export interface GameEffectEnv {
   state: GameState;
   /** The projection casting context (bound projections, range, player actor). */
   cast: CastContext;
-  /** target_get result for a DIR_TARGET player cast (targeting deferred, #24). */
-  aimed?: Loc;
+  /**
+   * target_get for a DIR_TARGET player cast. The command layers back it
+   * with a live getter over game/target.ts (targetOkay + targetGet), so a
+   * target that moves or dies mid-chain is re-read per handler exactly as
+   * upstream's per-handler target_get; tests may pass a plain grid.
+   */
+  aimed?: Loc | undefined;
   /** cave->mon_current: the acting monster, excluded by PROJECT_LOS. */
   monCurrent?: number;
   /** player_has(PF_CHARM). */

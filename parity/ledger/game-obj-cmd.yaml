@@ -18,7 +18,10 @@ upstream:
         unused, the effect chain run through effect_do with source_player /
         dir / beam / boost (device skill vs item level), flavor learning
         (single-use auto-learn, ident learn, tried), and charge / timeout /
-        single-use consumption.
+        single-use consumption. target_fix / target_release (L566/L576)
+        bracket the effect run, and GameEffectEnv.aimed is a live getter
+        over targetOkay + targetGet so DIR_TARGET handlers re-read the
+        target per handler (game/target.ts).
       - do_cmd_eat_food / quaff_potion / read_scroll (USE_SINGLE),
         use_staff / aim_wand (USE_CHARGE), zap_rod / activate (USE_TIMEOUT)
         as registry actions with their tval filters and the obj_can_zap /

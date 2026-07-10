@@ -44,6 +44,7 @@ import { gearGet } from "./gear";
 import { buildEffectContext } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
 import type { ActionRegistry } from "./player-turn";
+import { targetFix, targetGet, targetOkay, targetRelease } from "./target";
 
 /** Hooks for messages and unported systems; all optional. */
 export interface SpellCmdEnv extends SpellChanceEnv {
@@ -52,7 +53,10 @@ export interface SpellCmdEnv extends SpellChanceEnv {
   expGain?: (amount: number) => void;
   /** player_over_exert on overcasting (faint / CON drain). */
   overExert?: (oops: number) => void;
-  /** A use command needs a direction (targeting #24); keypad 1-9. */
+  /**
+   * get_aim_dir: keypad 1-9, or DIR_TARGET (5) to use the player's
+   * current target (game/target.ts). The prompt itself is UI (#25).
+   */
   chooseDir?: () => number;
 }
 
@@ -137,6 +141,11 @@ export function spellCast(
     const ctx = attachGameEnv(buildEffectContext(state, deps.effects.envDeps), {
       state,
       cast: deps.effects.cast,
+      /* target_get inside the handlers: a DIR_TARGET cast re-reads the
+       * live target per handler, as upstream. */
+      get aimed() {
+        return targetOkay(state) ? targetGet(state) : undefined;
+      },
       ...(deps.effects.teleport ? { teleport: deps.effects.teleport } : {}),
       ...(deps.effects.general ? { general: deps.effects.general } : {}),
       ...(deps.effects.item ? { item: deps.effects.item } : {}),
@@ -212,7 +221,13 @@ export function installSpellCommands(
       dir = playerConfuseDir(state, chosen);
     }
 
-    if (!spellCast(state, spellIndex, dir, deps)) return 0;
+    /* target_fix / target_release bracket the whole cast (cmd-obj.c
+     * L1162): a target dying mid-spell keeps its grid for the rest of
+     * the effect chain. */
+    targetFix(state);
+    const cast = spellCast(state, spellIndex, dir, deps);
+    targetRelease(state);
+    if (!cast) return 0;
     /* TMD_FASTCAST's 3/4 turn is deferred with that timed effect. */
     return state.z.moveEnergy;
   });

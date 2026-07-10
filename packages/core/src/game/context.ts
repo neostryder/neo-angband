@@ -41,6 +41,8 @@ export interface GameConstants {
   moveEnergy: number;
   /** z_info->max_sight (flee_range = max_sight + flee-range). */
   maxSight: number;
+  /** z_info->max_range (the projectable / targeting range bound). */
+  maxRange: number;
   /** z_info->flee_range. */
   fleeRange: number;
   /** z_info->turn_range (nearby monsters won't run away). */
@@ -65,6 +67,7 @@ export interface GameConstants {
 export const DEFAULT_GAME_CONSTANTS: GameConstants = {
   moveEnergy: NORMAL_ENERGY,
   maxSight: 20,
+  maxRange: 20,
   fleeRange: 5,
   turnRange: 5,
   dayLength: 10000,
@@ -156,6 +159,16 @@ export interface GameState {
    * game/known.ts (square_memorize / note_spot / detection).
    */
   known: import("./known").KnownMap;
+  /**
+   * The player's target (target.c's file-statics). Managed by
+   * game/target.ts (target_set_monster / target_okay / fix / release).
+   */
+  target: import("./target").TargetState;
+  /**
+   * player->upkeep->health_who (health_track reduced to the tracked
+   * monster; the health-bar redraw rides presentation, #25).
+   */
+  healthWho?: Monster | null;
   /** turn (game-world.c): the game-turn counter. */
   turn: number;
   z: GameConstants;
@@ -315,6 +328,19 @@ export function deleteMonster(state: GameState, midx: number): void {
   const mon = state.monsters[midx];
   if (!mon) return;
   monsterRemoveFromGroups(state, mon);
+  /* If the monster was the target, forget it (target_set_monster(NULL),
+   * inlined to keep this module below game/target.ts): a fixed target
+   * keeps its grid for the rest of the spell, otherwise fully reset. */
+  const t = state.target;
+  if (t.midx === midx) {
+    t.midx = 0;
+    if (!t.fixed) {
+      t.set = false;
+      t.grid = { x: 0, y: 0 };
+    }
+  }
+  /* If the monster was tracked, forget it (health_track(NULL)). */
+  if (state.healthWho === mon) state.healthWho = null;
   /* Decrease the racial counter (clamped: test-harness monsters register
    * without counting, so a naked decrement could go negative). */
   const race = mon.originalRace ?? mon.race;

@@ -1,0 +1,106 @@
+module: packages/core/src/game/target.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/target.c
+    items:
+      - The file-statics (target_set, target_fixed, target, old_target) as
+        GameState.target (TargetState), created unset by newTargetState;
+        neither upstream nor the port persists the target in the save.
+      - look_mon_desc (L56) - the living/destroyed health bands (unhurt,
+        somewhat wounded at 60%, wounded at 25%, badly wounded at 10%,
+        almost dead) and the eight status suffixes in upstream order
+        (asleep, held, disenchanted, confused, afraid, stunned, slowed,
+        hasted).
+      - target_able (L110) - obvious (visible, not camouflaged), hittable
+        by a projection (projectable at PROJECT_NONE over z.maxRange), and
+        the player not hallucinating (TMD_IMAGE).
+      - target_okay (L124) - a monster target's grid follows the live
+        monster; a bare location (nonzero grid) is always okay.
+      - target_set_monster (L152) - the target-able set, the fixed-target
+        midx=0 grid-keeping branch (a monster dying mid-spell leaves its
+        grid for the rest of the chain), and the full reset.
+      - target_set_location (L180, square_in_bounds_fully), target_is_set
+        (L203), target_get (L395), target_get_monster (L405).
+      - target_fix (L211) / target_release (L220) - old_target saved; on
+        release a dead or out-of-view old monster target zeroes the grid.
+        The commands bracket effects with them - use_aux (cmd-obj.c L566)
+        around effectDo in obj-cmd useAux, do_cmd_cast (cmd-obj.c L1162)
+        around spellCast in the cast command.
+      - cmp_distance (L240) as the doubleDistance sort key; target_pick
+        (L276) with the quadrant/axis-dominance filters, for the look UI's
+        direction cycling.
+      - target_accept (L325) - player grids always; hallucination blanks
+        the rest; obvious monsters; visible traps (square_isvisibletrap);
+        remembered floor objects (the KnownMap marker stands in for the
+        player->cave object list); remembered interesting terrain
+        (square_isknown + TF_INTERESTING on the REMEMBERED feat, so stale
+        memory stays interesting exactly as player->cave).
+      - coords_desc (L370) - "12 S, 35 W" relative to the player.
+      - target_sighted (L414) - target_okay, the panel test (injected
+        predicate, default all), then square_isseen for grids /
+        monster_is_visible for monsters.
+      - target_get_monsters (L437) - the interesting-grid scan over
+        player +/- max_range (exclusive upper bound quirk kept), the
+        TARGET_KILL target_able + predicate filter, sorted closest-first.
+      - target_set_closest (L493) - cancel, scan, "No Available Target."
+        on an empty set or an untargetable head, the "%s is targeted."
+        announcement unless TARGET_QUIET, health_track, and
+        target_set_monster.
+  - path: src/mon-make.c
+    items:
+      - delete_monster_idx's target/health forgetting (L338/L342), inlined
+        in game/context.ts deleteMonster (layering keeps context below
+        target.ts); the fixed-target branch keeps the grid.
+  - path: src/game-world.c
+    items:
+      - on_new_level's target_set_monster(0) + health_track(NULL) (L1010),
+        in the session's makeChangeLevel.
+  - path: src/player-calcs.c
+    items:
+      - health_track (L2470) reduced to the GameState.healthWho field; the
+        health-bar redraw flag rides presentation (#25).
+notes: >-
+  The effect handlers reach the target through the aimed seam: obj-cmd
+  useAux and spell-cmd spellCast back GameEffectEnv.aimed with a live
+  getter (targetOkay(state) ? targetGet(state) : undefined), so a
+  DIR_TARGET handler re-reads the target per handler exactly like
+  upstream's dir == DIR_TARGET && target_okay() then target_get()
+  pattern, including a target that moves or dies mid-chain.
+  effect-melee's closestTarget now wraps the real targetSetClosest
+  (TARGET_KILL) + targetGetMonster, so TAP_UNLIFE / JUMP_AND_BITE retarget
+  the player's target as upstream; EF_CURSE prefers targetGetMonster with
+  the aimed-grid fallback for worldless tests. z.maxRange joined
+  GameConstants from constants.txt world:max-range.
+deferred:
+  - The interactive targeting UI (ui-target.c: the * browsing loop,
+    look prompts, panel scrolling, path drawing) rides presentation
+    (#25); target_pick and target_get_monsters are its complete engine
+    half. Monster names in messages are the race name until MDESC.
+  - panel_contains in target_sighted and restrict_to_panel in
+    target_get_monsters are injected (panels are UI state; the default
+    accepts everything / scans max_range as the upstream else-branch).
+  - ignore_known_item_ok in target_accept (the ignore system is a later
+    #24 slice); every remembered object is interesting for now. The
+    unknown_item_kind marker is the KnownMap's null-glyph memory.
+  - monster_race_track in target_set_closest rides monster lore (#24);
+    healthWho covers health_track. project.c's health_track on a struck
+    visible monster (L978) and player-attack.c's ranged-fire targeting
+    (L1070) / fire_at_nearest (L1440) ride the missile-fire command.
+  - cmd-core.c L959 (the cmd_get_target retry when a stale DIR_TARGET
+    has no okay target) rides the command-prompt layer (#25).
+verified-by:
+  - game/target.test.ts (21 tests) - target_able accepts an obvious
+    projectable monster and rejects unseen / hallucinated / out-of-range
+    ones; a monster target follows its monster and clears on nobody;
+    location targets honor bounds; an unfixed target dies with its
+    monster while a fixed target's grid survives until release (and
+    release keeps a live in-view target); target_accept finds the player,
+    monsters, remembered objects and remembered stairs interesting, and
+    hallucination blanks all but the player; KILL-mode scans sort
+    closest-first and filter; target_set_closest announces, tracks
+    health, honors QUIET and reports No Available Target; target_pick
+    picks by direction; target_sighted tracks SEEN grids and visible
+    monsters; look_mon_desc bands and status suffixes; coords_desc.
+  - game/effect-melee.test.ts (15 tests) - closestTarget now drives the
+    real targetSetClosest under TAP_UNLIFE / JUMP_AND_BITE.
