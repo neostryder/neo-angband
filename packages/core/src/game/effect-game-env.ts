@@ -20,6 +20,7 @@ import type { GameState } from "./context";
 import type { CastContext } from "./project-cast";
 import type { TeleportEnv } from "./effect-teleport";
 import type { GeneralEffectEnv } from "./effect-general";
+import type { ItemEffectEnv } from "./effect-item";
 
 /** Everything the game-layer effect handlers need beyond the EffectContext. */
 export interface GameEffectEnv {
@@ -44,6 +45,8 @@ export interface GameEffectEnv {
   teleport?: TeleportEnv;
   /** General-handler seams: trap access for glyphs/webs (effect-general.ts). */
   general?: GeneralEffectEnv;
+  /** Item-targeting seams: get_item and the ego/curse tables (effect-item.ts). */
+  item?: ItemEffectEnv;
 }
 
 /** Attach a game environment to an effect context for the game handlers. */

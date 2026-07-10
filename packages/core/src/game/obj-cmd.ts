@@ -86,6 +86,8 @@ export interface ObjCmdDeps {
   teleport?: TeleportEnv;
   /** General-handler seams (trap access for glyphs; effect-general.ts). */
   general?: import("./effect-general").GeneralEffectEnv;
+  /** Item-targeting seams (get_item, ego/curse tables; effect-item.ts). */
+  item?: import("./effect-item").ItemEffectEnv;
   /** Floor-pile seams (isTrap for drop placement). */
   floorEnv?: FloorEnv;
   env?: ObjCmdEnv;
@@ -414,6 +416,7 @@ export function useAux(
       cast: deps.cast,
       ...(deps.teleport ? { teleport: deps.teleport } : {}),
       ...(deps.general ? { general: deps.general } : {}),
+      ...(deps.item ? { item: deps.item } : {}),
     });
     const ident = { value: false };
     const used = deps.registry.effectDo(chain, ctx, {
