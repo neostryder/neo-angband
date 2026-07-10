@@ -1,0 +1,30 @@
+module: packages/core/src/mon/summon.ts
+status: complete
+baseline: 4.2.6
+upstream:
+  - path: src/mon-summon.c
+    items:
+      - The summon table (struct summon, parse_summon_* / finish_parse_summon)
+        bound from the pack's summon.json in file order, so a record's array
+        position is its upstream summon index; fallback names resolve to
+        indices after the table is built (WRAITH / UNIQUE -> HI_UNDEAD).
+      - summon_name_to_idx (L227), summon_message_type (L242),
+        summon_fallback_type (L250), summon_desc (L258) as SummonTable
+        methods.
+      - summon_specific_okay (L273) as summonSpecificOkay - the
+        unique-allowed gate, the base-list filter, the race-flag filter and
+        the KIN special case (non-unique, same base as the summoner).
+notes: >-
+  The file-static summon_specific_type / kin_base globals become explicit
+  parameters (the type is passed to the predicate; the kin base is captured
+  by the caller from the summoner's race), so concurrent interpreters
+  cannot trample each other. message_type stays the msgt NAME string;
+  upstream resolves it to a message index at parse time and the port's
+  message/sound channels ride #25/#26. The placement half of mon-summon.c
+  (summon_specific, call_monster, select_shape) is game/mon-place.ts,
+  ledgered separately.
+verified-by:
+  - mon/summon.test.ts (8 tests) - table binds all 17 summon.txt records in
+    file order with resolved fallbacks, bases and race flags; the okay
+    predicate filters by race flag (UNDEAD), base (SPIDER), forbids uniques
+    unless allowed (ANY), and KIN matches only non-unique same-base races.

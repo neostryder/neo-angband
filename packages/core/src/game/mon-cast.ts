@@ -73,6 +73,8 @@ export interface DoMonSpellDeps {
   teleport?: TeleportEnv;
   /** General-handler seams (trap access for webs; effect-general.ts). */
   general?: import("./effect-general").GeneralEffectEnv;
+  /** Summoning seams (summon table + live placement; effect-summon.ts). */
+  summon?: import("./effect-summon").SummonEffectEnv;
   hooks?: MonSpellHooks;
 }
 
@@ -184,6 +186,7 @@ export function doMonSpell(
       : {}),
     ...(deps.teleport ? { teleport: deps.teleport } : {}),
     ...(deps.general ? { general: deps.general } : {}),
+    ...(deps.summon ? { summon: deps.summon } : {}),
   });
 
   deps.registry.effectDo(chain, ctx, {

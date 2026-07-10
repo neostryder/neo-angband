@@ -1,0 +1,36 @@
+module: packages/core/src/game/effect-summon.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-general.c
+    items:
+      - effect_handler_SUMMON (L2241) - the monster-origin loop (kin_base
+        capture for KIN, summoning until the squared levels reach
+        depth * rlev or attempts hit the rolled max, the fallback-type
+        retry loop, "But nothing comes." on total failure) and the
+        player-origin loop (depth + level_boost, delayed, one_in_(4)
+        calling), plus the blind-player "You hear something / many things
+        appear nearby." message. count accumulates 1s in the monster
+        branch and summoned levels in the player branch, exactly as
+        upstream.
+notes: >-
+  Registered by registerSummonHandlers over the core stub. The handler
+  reads the summon seam (GameEffectEnv.summon: the bound SummonTable plus
+  the live placement deps) and no-ops without it, like the worldless rule.
+  wireGame threads the seam into monster casting, item use, player spells
+  and traps, and injects summonNameToIdx so effect chains resolve
+  "SUMMON:UNDEAD"-style subtypes at build time - monster summon spells,
+  summon scrolls/staves and summon traps all fire through this handler
+  now.
+deferred:
+  - The arena-level guard (player->upkeep->arena_level) - arenas are not
+    modelled (SINGLE_COMBAT rides later #24 work).
+  - sound(message_type) rides the sound system (#26); the msgt channel on
+    the blind message rides presentation (#25).
+verified-by:
+  - game/effect-summon.test.ts (6 tests) - a player summon places delayed
+    undead within 4 grids; a blind player hears the arrivals; a monster
+    summon fills its summon group with SUMMON-role helpers near itself;
+    KIN summons share the summoner's base (never unique); an impossible
+    monster summon (HI_DRAGON at depth 5, no fallback) says "But nothing
+    comes."; the handler no-ops without the summon seam.
