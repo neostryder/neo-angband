@@ -35,8 +35,20 @@ import type {
   EffectHandlerContext,
   EffectRegistry,
 } from "../effects/interpreter";
-import { DIR_TARGET, effectCalculateValue } from "../effects/interpreter";
-import { equipLearnFlag, objBaseName, sustainFlag } from "../obj/knowledge";
+import {
+  DIR_TARGET,
+  effectCalculateValue,
+  sourcePlayer,
+} from "../effects/interpreter";
+import {
+  equipLearnFlag,
+  objBaseName,
+  shapeLearnOnAssume,
+  sustainFlag,
+} from "../obj/knowledge";
+import type { EffectRecordJson } from "../obj/types";
+import type { Shape } from "../player/types";
+import { buildObjectEffectChain } from "./obj-cmd";
 import { OBJ_PROPERTY } from "../obj/types";
 import type { ObjectProperty } from "../obj/types";
 import { STAT_MAX } from "../player/types";
@@ -80,6 +92,8 @@ export interface GeneralEffectEnv {
   expDeps?: ExpDeps;
   /** get_check yes/no prompts (RECALL's depth/cancel checks). Default yes. */
   confirm?: (prompt: string) => boolean;
+  /** The bound player shapes (PlayerRegistry.shapes), for EF_SHAPECHANGE. */
+  shapes?: readonly Shape[];
 }
 
 /** desc_stat: the stat's (positive or negative) adjective from its property. */
@@ -661,10 +675,57 @@ const handleMON_TIMED_INC: EffectHandler = (ctx) => {
   const mon = state.monsters[ctx.origin.monster];
 
   if (mon) {
-    monIncTimed(state.rng, mon, ctx.subtype, Math.max(amount, 0), 0);
+    monIncTimed(
+      state.rng,
+      mon,
+      ctx.subtype,
+      Math.max(amount, 0),
+      0,
+      undefined,
+      env.monShape,
+    );
     ctx.ident = true;
   }
 
+  return true;
+};
+
+/**
+ * EF_SHAPECHANGE (L3449): assume the shape in the subtype - set
+ * player.shape (null = normal), run the shape's own effect chain, learn
+ * its obvious runes (shape_learn_on_assume) and refresh the bonuses.
+ */
+const handleSHAPECHANGE: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  const p = state.actor.player;
+  const shape = env.general?.shapes?.[ctx.subtype];
+  if (!shape) return false;
+
+  /* Change shape. */
+  p.shape = shape.name === "normal" ? null : shape;
+  say(ctx, `You assume the shape of a ${shape.name}!`);
+  say(ctx, "Your gear merges into your body.");
+
+  /* Do effect. */
+  if (shape.effects.length) {
+    const chain = buildObjectEffectChain(
+      shape.effects as EffectRecordJson[],
+      state,
+    );
+    ctx.registry.effectDo(chain, ctx.env, {
+      origin: sourcePlayer(),
+      ident: { value: false },
+      aware: true,
+      dir: 0,
+      beam: 0,
+    });
+  }
+
+  /* Update. */
+  shapeLearnOnAssume(p, state.runeEnv, shape);
+  state.updateBonuses?.();
   return true;
 };
 
@@ -848,6 +909,7 @@ const GENERAL_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.PROBE, handlePROBE],
   [EF.BIZARRE, handleBIZARRE],
   [EF.COMMAND, handleCOMMAND],
+  [EF.SHAPECHANGE, handleSHAPECHANGE],
   [EF.GLYPH, handleGLYPH],
   [EF.WEB, handleWEB],
   [EF.DISENCHANT, handleDISENCHANT],

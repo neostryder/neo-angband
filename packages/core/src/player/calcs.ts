@@ -19,8 +19,9 @@
  *     are rune-gated and inert at birth) and the per-object curse-object
  *     traversal inside the equipment loop
  *   - timed effects (food, stun, bless, hero, shero, fast/slow, etc.)
- *   - non-normal shapechanges (calc_shapechange)
  *   - calc_mana / calc_light
+ * calc_shapechange is now ported (a non-normal player.shape stacks its
+ * combat/skill/flag/modifier/resist package on the state).
  */
 
 import {
@@ -531,8 +532,6 @@ export interface CalcBonusesOptions {
  *   are rune-gated (obj->modifiers * obj_k->modifiers) and UNKNOWN at birth
  *   (decision 25), so they contribute nothing until a rune is learned; and
  *   the per-object curse-object traversal in the equipment loop (1924-2025)
- * - calc_shapechange (2030-2032): the "normal" shape adds all zeros, so
- *   skipping it is behavior-identical; non-normal shapes are deferred
  * - calc_light (2040-2041): needs equipment; cur_light stays 0
  * - food effects (2094-2132): a just-born player is in the "Fed" grade, for
  *   which upstream applies no adjustment; the timed-grade model is deferred
@@ -702,8 +701,48 @@ export function calcBonuses(
   /* Apply the collected flags (2027-2028). */
   state.flags.union(collectF);
 
-  /* Add shapechange info (2030-2032): the normal shape is all zeros;
-     non-normal shapes DEFERRED. */
+  /* Add shapechange info (calc_shapechange, 1798/2030): a non-normal
+     shape's combat bonuses, skills, flags and modifiers stack on top of
+     the equipment, and its resists apply when better (vulnerabilities
+     join the vuln pass below). The normal shape is null (all zeros). */
+  const shape = player.shape;
+  if (shape) {
+    state.toA += shape.toA;
+    state.toH += shape.toH;
+    state.toD += shape.toD;
+    for (let i = 0; i < SKILL_MAX; i++) {
+      state.skills[i] = (state.skills[i] ?? 0) + (shape.skills[i] ?? 0);
+    }
+    state.flags.union(shape.flags);
+    state.pflags.union(shape.pflags);
+    for (let s = 0; s < STAT_MAX; s++) {
+      state.statAdd[s] = (state.statAdd[s] ?? 0) + (shape.modifiers[s] ?? 0);
+    }
+    state.skills[SKILL.STEALTH] =
+      (state.skills[SKILL.STEALTH] ?? 0) +
+      (shape.modifiers[OBJ_MOD.STEALTH] ?? 0);
+    state.skills[SKILL.SEARCH] =
+      (state.skills[SKILL.SEARCH] ?? 0) +
+      (shape.modifiers[OBJ_MOD.SEARCH] ?? 0) * 5;
+    state.seeInfra += shape.modifiers[OBJ_MOD.INFRA] ?? 0;
+    state.skills[SKILL.DIGGING] =
+      (state.skills[SKILL.DIGGING] ?? 0) +
+      (shape.modifiers[OBJ_MOD.TUNNEL] ?? 0) * 20;
+    state.speed += shape.modifiers[OBJ_MOD.SPEED] ?? 0;
+    state.damRed += shape.modifiers[OBJ_MOD.DAM_RED] ?? 0;
+    extraBlows += shape.modifiers[OBJ_MOD.BLOWS] ?? 0;
+    extraShots += shape.modifiers[OBJ_MOD.SHOTS] ?? 0;
+    extraMight += shape.modifiers[OBJ_MOD.MIGHT] ?? 0;
+    extraMoves += shape.modifiers[OBJ_MOD.MOVES] ?? 0;
+
+    /* Resists and vulnerabilities. */
+    for (let i = 0; i < elemCount; i++) {
+      const sel = state.elInfo[i] as PlayerElementInfo;
+      const res = shape.elInfo[i]?.resLevel ?? 0;
+      if (res === -1) vuln[i] = true;
+      else if (res > sel.resLevel) sel.resLevel = res;
+    }
+  }
 
   /* Now deal with vulnerabilities (2034-2038). */
   for (let i = 0; i < elemCount; i++) {

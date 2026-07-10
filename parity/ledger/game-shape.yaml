@@ -1,0 +1,92 @@
+module: packages/core/src/game/mon-shape.ts + the player-shape binding
+  (player/bind.ts bindShape), calc_shapechange (player/calcs.ts),
+  EF_SHAPECHANGE (effect-general.ts), shape_learn_on_assume
+  (obj/knowledge.ts) and the resume-normal-shape gates (obj-cmd.ts)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/init.c
+    items:
+      - parse_shape_* (L3013) as bindShape - name, combat to-h/to-d/to-a,
+        the eight skill-<name> lines, obj-flags / player-flags flag sets,
+        values over obj_mods ("STR[-3] | STEALTH[5]") and RES_<ELEM>[n],
+        the raw assume-shape effect records with effect-msg, and the blow
+        verb list. Shape is now fully typed (player/types.ts).
+  - path: src/player-calcs.c
+    items:
+      - calc_shapechange (L1798) in calcBonuses - the shape's combat
+        bonuses, skills, flag/pflag unions, stat adds, the
+        stealth/search*5/infra/tunnel*20/speed/dam_red modifiers, the
+        extra blows/shots/might/moves, and resists (better-level wins,
+        -1 joins the vulnerability pass).
+  - path: src/effect-handler-general.c
+    items:
+      - effect_handler_SHAPECHANGE (L3449) - player.shape set from the
+        subtype (shape_name_to_idx rides the inject.shapeNameToIdx seam,
+        wired in wireGame), the assume messages, the shape's own effect
+        chain run through the context registry, shape_learn_on_assume,
+        and the PU_BONUS refresh.
+  - path: src/obj-knowledge.c
+    items:
+      - shape_learn_on_assume (L1892) - the shape's obvious (OFID_WIELD)
+        flags learn through equip_learn_flag and its resists through
+        equip_learn_element (closing the #13 deferral).
+  - path: src/player-util.c
+    items:
+      - player_is_shapechanged (L1065; null shape = normal),
+        player_resume_normal_shape (L1048; message, TMD_ATT_VAMP killed,
+        PU_BONUS) and player_get_resume_normal_shape (L1022) in
+        obj-cmd.ts. The y/n/r prompt is the confirm seam (headless
+        default: change back and proceed). Gated commands match upstream:
+        takeoff / wield / drop / read / use-staff / aim-wand / zap-rod /
+        activate (cmd-obj.c) and cast / study (L1118/L1247); eat and
+        quaff stay possible in any shape.
+  - path: src/mon-util.c
+    items:
+      - monster_change_shape (L1590) - a preferred shape picks a direct
+        race or a random race of the base at depth + 5
+        (monster_base_shape_okay over the allocation table); otherwise
+        the RST_SUMMON spell mask picks a summon spell and selectShape
+        chooses by its summon subtype (KIN sets the kin base). The
+        "shimmers and changes!" message, original_race kept, the speed
+        delta, and the emergency teleport off newly-illegal grids.
+      - monster_revert_shape (L1686) - the reverse swap; called when the
+        CHANGED timer runs out (monster turn), on death (onPlayerKill and
+        the project-monster revertShape hook, now backed in wireGame),
+        and by the MON_DRAIN / sleep side effects that already used the
+        hook.
+  - path: src/mon-timed.c
+    items:
+      - mon_set_timed's CHANGED special case (L195) - the optional
+        MonShapeHooks parameter on monSetTimed/monIncTimed/monDecTimed/
+        monClearTimed: a raise calls change (failure notes
+        MON_MSG_SHAPE_FAIL and restores the old timer), reaching zero
+        calls revert. wireGame builds the hooks once and threads them to
+        mon-cast (the SHAPECHANGE monster spell's MON_TIMED_INC).
+notes: >-
+  The player shape persists in the save (SavedPlayer.shapeName, restored
+  against the now fully-bound registry shapes). exp for a kill comes from
+  the killed form while the lore counts land on the reverted race
+  (player_kill_monster computes new_exp before monster_death reverts).
+deferred:
+  - The shape blow verbs are bound but the shape unarmed attack itself
+    (py_attack_real's player_is_shapechanged branch over shape->blows)
+    rides the combat layer; a shapechanged player still attacks with the
+    normal unarmed path.
+  - TMD_ATT_VAMP's vampire-bite effect rides that timed effect's
+    consumers; resume just clears the timer.
+  - MON_MSG_SHAPE_FAIL's message text rides the monster-message table
+    (#25); PR_TITLE / PR_MISC / PR_HEALTH redraws ride #25.
+  - The commanded-monster / mimic interactions with shapes (mimicked
+    objects) ride monster mimicry.
+verified-by:
+  - game/shape.test.ts (12 tests) - the fox and Pukel-man bind their
+    combat/flags/modifiers/skills/resists/effects; calc_shapechange
+    stacks the fox package (to-h/to-a/stealth/STR/FREE_ACT) and the
+    Pukel-man's poison resist / damage reduction / ROCK; EF_SHAPECHANGE
+    assumes the fox with its messages and refreshes bonuses; the resume
+    gate returns a fox to normal form (or blocks when declined) and
+    no-ops for a normal player; a preferred-shape monster swaps race and
+    speed and reverts; reverting unshaped monsters no-ops; the CHANGED
+    timer calls change on a raise (a failure restores the timer) and
+    revert at zero.

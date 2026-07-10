@@ -95,8 +95,9 @@ deferred:
     system (#25).
   - object_learn_on_use's exp reward + PN_IGNORE (cmd-obj.c wiring exists
     for flavor awareness; the exp formula joins it with the ignore system).
-  - shape_learn_on_assume and every shape branch of equip_learn_* (shapes
-    are bound raw; shapechange lands later).
+  - shape_learn_on_assume is DONE (game-shape.yaml); the shape branches
+    of equip_learn_* (skipping merged gear while shapechanged) still ride
+    the gear-merge model.
   - temporary brands/slays (player-timed table, ledgered with
     improveAttackModifier). learn_brand_slay_helper's monster-lore learns
     are DONE (mon-lore.yaml).

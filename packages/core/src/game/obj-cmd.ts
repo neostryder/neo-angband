@@ -324,6 +324,47 @@ export function objNeedsAim(
   return aimed || tvalIsWand(obj.tval) || (tvalIsRod(obj.tval) && !aware);
 }
 
+/** player_is_shapechanged (player-util.c L1065): null shape = normal. */
+export function playerIsShapechanged(state: GameState): boolean {
+  return state.actor.player.shape !== null;
+}
+
+/**
+ * player_resume_normal_shape (player-util.c L1048): back to normal form,
+ * killing the vampire attack and refreshing the bonuses.
+ */
+export function playerResumeNormalShape(
+  state: GameState,
+  env: Pick<ObjCmdEnv, "msg"> = {},
+): void {
+  state.actor.player.shape = null;
+  env.msg?.("You resume your usual shape.");
+  /* Kill vampire attack. */
+  state.actor.player.timed[TMD.ATT_VAMP] = 0;
+  state.updateBonuses?.();
+}
+
+/**
+ * player_get_resume_normal_shape (player-util.c L1022): a shapechanged
+ * player must return to normal form before acting with hands/voice. The
+ * y/n/r prompt is the confirm seam (headless default: change back and
+ * proceed).
+ */
+export function playerGetResumeNormalShape(
+  state: GameState,
+  env: Pick<ObjCmdEnv, "msg" | "confirm"> = {},
+): boolean {
+  if (!playerIsShapechanged(state)) return true;
+  env.msg?.(
+    `You cannot do this while in ${state.actor.player.shape!.name} form.`,
+  );
+  if (env.confirm?.("Change back and continue? ") ?? true) {
+    playerResumeNormalShape(state, env);
+    return true;
+  }
+  return false;
+}
+
 /**
  * player_confuse_dir (player-util.c): confusion randomises the direction
  * 75% of the time (always for "no direction").
@@ -543,8 +584,18 @@ export function installObjCommands(
   registry: ActionRegistry,
   deps: ObjCmdDeps,
 ): void {
+  /* player_get_resume_normal_shape gates the hands/voice commands
+   * (cmd-obj.c: takeoff/wield/drop, scroll/staff/wand/rod/activate);
+   * eating and quaffing stay possible in any shape. */
+  const gated = (
+    fn: (state: GameState, cmd: PlayerCommand) => number,
+  ): ((state: GameState, cmd: PlayerCommand) => number) => {
+    return (state, cmd) =>
+      playerGetResumeNormalShape(state, deps.env ?? {}) ? fn(state, cmd) : 0;
+  };
+
   /* do_cmd_wield: wear/wield from the pack or the floor. */
-  registry.register("wield", (state, cmd) => {
+  registry.register("wield", gated((state, cmd) => {
     const found = commandObject(state, cmd);
     if (!found) return 0;
     let handle = found.handle;
@@ -556,20 +607,20 @@ export function installObjCommands(
     if (handle === undefined) return 0;
     const slot = invenWield(state, handle);
     return slot >= 0 ? state.z.moveEnergy : 0;
-  });
+  }));
 
   /* do_cmd_takeoff: energy is half a turn. */
-  registry.register("takeoff", (state, cmd) => {
+  registry.register("takeoff", gated((state, cmd) => {
     const args = cmd.args ?? {};
     const handle = typeof args["handle"] === "number" ? args["handle"] : null;
     if (handle === null) return 0;
     return invenTakeoff(state, handle)
       ? Math.trunc(state.z.moveEnergy / 2)
       : 0;
-  });
+  }));
 
   /* do_cmd_drop: energy is half a turn. */
-  registry.register("drop", (state, cmd) => {
+  registry.register("drop", gated((state, cmd) => {
     const args = cmd.args ?? {};
     const handle = typeof args["handle"] === "number" ? args["handle"] : null;
     if (handle === null) return 0;
@@ -580,7 +631,7 @@ export function installObjCommands(
     return invenDrop(state, handle, amt, deps.floorEnv)
       ? Math.trunc(state.z.moveEnergy / 2)
       : 0;
-  });
+  }));
 
   registry.register(
     "eat",
@@ -592,28 +643,30 @@ export function installObjCommands(
   );
   registry.register(
     "read",
-    useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE),
+    gated(useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE)),
   );
   registry.register(
     "use-staff",
-    useCommand(deps, (o) => tvalIsStaff(o.tval), USE.CHARGE),
+    gated(useCommand(deps, (o) => tvalIsStaff(o.tval), USE.CHARGE)),
   );
   registry.register(
     "aim-wand",
-    useCommand(deps, (o) => tvalIsWand(o.tval), USE.CHARGE),
+    gated(useCommand(deps, (o) => tvalIsWand(o.tval), USE.CHARGE)),
   );
   registry.register(
     "zap-rod",
-    useCommand(deps, (o) => tvalIsRod(o.tval), USE.TIMEOUT),
+    gated(useCommand(deps, (o) => tvalIsRod(o.tval), USE.TIMEOUT)),
   );
   /* obj_can_activate: an activation and not recharging. */
   registry.register(
     "activate",
-    useCommand(
-      deps,
-      (o) =>
-        (o.activation !== null || o.artifact !== null) && o.timeout === 0,
-      USE.TIMEOUT,
+    gated(
+      useCommand(
+        deps,
+        (o) =>
+          (o.activation !== null || o.artifact !== null) && o.timeout === 0,
+        USE.TIMEOUT,
+      ),
     ),
   );
 }

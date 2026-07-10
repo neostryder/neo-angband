@@ -290,16 +290,45 @@ export interface TimedEffect {
 }
 
 /**
- * struct player_shape (player.h), bound minimally. Combat bonuses, flags,
- * modifiers, resists, blows and the on-shape effect are preserved as raw pack
- * data; their full binding is deferred (see parity/ledger/player-model.yaml).
+ * struct player_shape (player.h L216), fully bound from shape.json:
+ * combat bonuses, skills, object/player flags, the OBJ_MOD modifier
+ * array, elemental resists, the assume-shape effect chain and the shape
+ * blow verbs (the shape unarmed attack rides combat).
  */
 export interface Shape {
   /** Index in the shape array; record order mirrors shape.txt. */
   sidx: number;
   name: string;
-  /** Raw pack record, preserving combat/obj-flags/values/blow/effect fields. */
-  raw: unknown;
+  /** Plusses to AC / hit / damage. */
+  toA: number;
+  toH: number;
+  toD: number;
+  /** skills[SKILL_MAX]. */
+  skills: number[];
+  /** Shape (object) flags. */
+  flags: FlagSet;
+  /** Shape (player) flags. */
+  pflags: FlagSet;
+  /** Stat and other modifiers (the OBJ_MOD index space). */
+  modifiers: number[];
+  /** Elemental resists (res_level per element). */
+  elInfo: PlayerElementInfo[];
+  /** The effect on taking this shape (raw records; chain built on cast). */
+  effects: readonly ShapeEffectJson[];
+  /** The effect's message, if any. */
+  effectMsg: string | null;
+  /** Shape blow verbs ("bite", "claw", ...). */
+  blows: readonly string[];
+}
+
+/** One raw shape-effect record (the object-effect record shape). */
+export interface ShapeEffectJson {
+  eff: string;
+  type?: string;
+  radius?: number;
+  other?: number;
+  dice?: string;
+  expr?: Array<{ name: string; base: string; expr: string }>;
 }
 
 /** One equipment slot of a body (struct equip_slot). */

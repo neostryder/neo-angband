@@ -75,6 +75,8 @@ export interface DoMonSpellDeps {
   general?: import("./effect-general").GeneralEffectEnv;
   /** Summoning seams (summon table + live placement; effect-summon.ts). */
   summon?: import("./effect-summon").SummonEffectEnv;
+  /** MON_TMD_CHANGED shapechange hooks (game/mon-shape.ts). */
+  monShape?: import("../mon/timed").MonShapeHooks;
   hooks?: MonSpellHooks;
 }
 
@@ -187,6 +189,7 @@ export function doMonSpell(
     ...(deps.teleport ? { teleport: deps.teleport } : {}),
     ...(deps.general ? { general: deps.general } : {}),
     ...(deps.summon ? { summon: deps.summon } : {}),
+    ...(deps.monShape ? { monShape: deps.monShape } : {}),
   });
 
   deps.registry.effectDo(chain, ctx, {

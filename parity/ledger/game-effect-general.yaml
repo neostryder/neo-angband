@@ -42,6 +42,9 @@ upstream:
         its hit points ("Probing...", "That's all.") and is fully
         learned via lore_do_probe (mon/lore.ts); names are the race name
         until MDESC (#25).
+      - SHAPECHANGE (L3449) - assume the subtype's shape, run its effect
+        chain, learn its obvious runes and refresh bonuses (the full
+        shapechange system is ledgered in game-shape.yaml).
       - COMMAND (L3479) - wake, the explicit level-vs-level save with the
         resist message, and the paired TMD_COMMAND / MON_TMD_COMMAND
         timers; the possession itself is game/mon-cmd.ts (ledgered in

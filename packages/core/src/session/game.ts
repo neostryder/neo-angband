@@ -84,6 +84,8 @@ import type { CastContext } from "../game/project-cast";
 import type { EffectEnvDeps } from "../game/effect-env";
 import { installMonsterCasting } from "../game/mon-ranged";
 import { installMonCommand } from "../game/mon-cmd";
+import { monsterChangeShape, monsterRevertShape } from "../game/mon-shape";
+import type { MonShapeHooks } from "../mon/timed";
 import { installObjCommands } from "../game/obj-cmd";
 import { installCaveCommands } from "../game/cave-cmd";
 import {
@@ -268,11 +270,15 @@ function wireGame(
     },
   };
   state.onPlayerKill = (mon): void => {
+    /* Experience comes from the killed form (player_kill_monster computes
+     * new_exp before monster_death's revert). */
+    const expRace = mon.race;
+    /* Shapechanged monsters revert on death (mon-util.c L1027). */
+    monsterRevertShape(state, mon);
     /* player_kill_monster: dead uniques stay dead (max_num = 0). The flag
      * is session-lifetime; persisting it rides the save format (ledgered). */
     if (mon.race.flags.has(RF.UNIQUE)) {
       mon.race.maxNum = 0;
-      if (mon.originalRace) mon.originalRace.maxNum = 0;
     }
     /* Recall even invisible uniques (mon-util.c L1118): count the kill
      * and refresh the derived lore (monster_race_track rides #25). */
@@ -282,7 +288,7 @@ function wireGame(
       loreCountU16(lore, "tkills");
       loreUpdate(mon.race, lore);
     }
-    playerKillExp(state.actor.player, mon.race, expDeps);
+    playerKillExp(state.actor.player, expRace, expDeps);
   };
   const expGain = (amount: number): void =>
     playerExpGain(state.actor.player, amount, expDeps);
@@ -331,6 +337,7 @@ function wireGame(
     const general: GeneralEffectEnv = {
       properties: reg.objects.properties,
       expDeps,
+      shapes: players.shapes,
     };
     // Item-targeting seams: the ego / curse tables and arrow generation.
     // The get_item chooser itself rides presentation (#25); until it is
@@ -356,6 +363,11 @@ function wireGame(
     };
     const inject: EffectBuilderInjections = {
       summonNameToIdx: (name) => summons.nameToIdx(name),
+      /* shape_name_to_idx (player-util.c): case-insensitive name lookup. */
+      shapeNameToIdx: (name) =>
+        players.shapes.findIndex(
+          (s) => s.name.toLowerCase() === name.toLowerCase(),
+        ),
     };
     // project_o / project_f world access; trapDeps joins it below once the
     // trap system is wired (the mutual reference is deliberate).
@@ -383,6 +395,10 @@ function wireGame(
             loreLearnFlagIfVisible(getLore(state.lore, m.race), m, flag),
           learnSpellFlag: (m, flag): void =>
             loreLearnSpellIfVisible(getLore(state.lore, m.race), m, flag),
+          /* monster_revert_shape on death / MON_DRAIN (mon-shape.ts). */
+          revertShape: (m): void => {
+            monsterRevertShape(state, m);
+          },
           /* PROJ_AWAY_ALL teleports and PROJ_FORCE knockback for monsters. */
           teleport: (m, dist): void =>
             teleportMonster(state, m.midx, dist, teleport ?? {}),
@@ -404,6 +420,18 @@ function wireGame(
     };
     const envDeps: EffectEnvDeps = { timedTable: players.timed };
 
+    /* monster_change_shape / monster_revert_shape, driving the
+     * MON_TMD_CHANGED timer (the SHAPECHANGE monster spell). */
+    const monShape: MonShapeHooks = {
+      change: (m) =>
+        monsterChangeShape(state, m, {
+          summon,
+          spells: reg.monsters.spells,
+          ...(teleport ? { teleport } : {}),
+        }),
+      revert: (m) => monsterRevertShape(state, m),
+    };
+
     const monSpellDeps = {
       registry: effects,
       cast,
@@ -414,6 +442,7 @@ function wireGame(
       ...(teleport ? { teleport } : {}),
       general,
       summon,
+      monShape,
     };
     installMonsterCasting(state, monSpellDeps);
     /* do_cmd_mon_command: EF_COMMAND possession drives the monster. */
