@@ -58,6 +58,8 @@ import type { GeneralEffectEnv } from "../game/effect-general";
 import { registerMonsterHandlers } from "../game/effect-monster";
 import { registerTeleportHandlers, teleportMonster } from "../game/effect-teleport";
 import { registerTerrainHandlers } from "../game/effect-terrain";
+import { registerItemHandlers } from "../game/effect-item";
+import type { ItemEffectEnv } from "../game/effect-item";
 import { thrustAway } from "../game/thrust";
 import { basicPlayerActor } from "../game/project-cast";
 import type { CastContext } from "../game/project-cast";
@@ -268,6 +270,7 @@ function wireGame(
     registerTeleportHandlers(effects);
     registerGeneralHandlers(effects);
     registerTerrainHandlers(effects);
+    registerItemHandlers(effects);
 
     // The trap-backed square predicates feed every consumer that stubbed
     // them (teleport landing checks, drop placement) once traps exist.
@@ -291,6 +294,10 @@ function wireGame(
       properties: reg.objects.properties,
       expDeps,
     };
+    // Item-targeting seams: the ego / curse tables and arrow generation.
+    // The get_item chooser itself rides presentation (#25); until it is
+    // wired, the choosing effects return unused (the upstream cancel path).
+    const item: ItemEffectEnv = { reg: reg.objects, makeDeps };
     // project_o / project_f world access; trapDeps joins it below once the
     // trap system is wired (the mutual reference is deliberate).
     const worldEnv: ProjectFeatEnv = { makeDeps };
@@ -351,6 +358,7 @@ function wireGame(
       flavor,
       ...(teleport ? { teleport } : {}),
       general,
+      item,
       ...(preds ? { floorEnv: { isTrap: preds.isTrap } } : {}),
     });
 
@@ -362,6 +370,7 @@ function wireGame(
         envDeps,
         ...(teleport ? { teleport } : {}),
         general,
+        item,
       },
       statInd: pstate.statInd,
       env: { expGain },
@@ -377,6 +386,7 @@ function wireGame(
           envDeps,
           ...(teleport ? { teleport } : {}),
           general,
+          item,
         },
         env: {
           expGain,

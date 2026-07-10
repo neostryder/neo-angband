@@ -559,6 +559,20 @@ export function appendObjectCurse(
 }
 
 /**
+ * remove_object_curse (obj-curse.c L219): clear curse `pick` from the
+ * object, dropping the curse array if it was the last one. Returns whether
+ * the object had that curse; the removal message rides the caller.
+ */
+export function removeObjectCurse(obj: GameObject, pick: number): boolean {
+  const c = obj.curses?.[pick];
+  if (!c || !c.power) return false;
+  c.power = 0;
+  c.timeout = 0;
+  checkObjectCurses(obj);
+  return true;
+}
+
+/**
  * modify_weight_for_curse (obj-curse.c L382): apply curse `i`'s weight
  * adjustment to `weight`. OF_MULTIPLY_WEIGHT curses scale by
  * curse->obj->weight / 100 (rounded to nearest, coercing to at least 1 when
