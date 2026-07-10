@@ -498,6 +498,11 @@ export interface SavedGame {
    * winning after a reload exits to a fresh level of the same depth.
    */
   arena?: { oldGrid: { x: number; y: number } };
+  /**
+   * The player's ignore settings (obj-ignore.c). Optional: absent in saves
+   * written before ignoring, which load with everything shown.
+   */
+  ignore?: import("../obj/ignore").IgnoreSettingsData;
 }
 
 /** Serialized map knowledge (remembered terrain and floor objects). */
@@ -607,6 +612,7 @@ export function serializeGame(
           },
         }
       : {}),
+    ignore: state.ignore.snapshot(),
     lore: Array.from(state.lore.entries()).map(([ridx, l]) => [
       ridx,
       {

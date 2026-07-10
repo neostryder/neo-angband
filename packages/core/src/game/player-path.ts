@@ -35,7 +35,7 @@ import { SKILL } from "../player/types";
 import { monsterIsObvious, monsterIsVisible } from "../mon/predicate";
 import type { GameState, PlayerCommand, RunState } from "./context";
 import { squareMonster } from "./context";
-import { knownObject, squareIsKnown } from "./known";
+import { squareIsKnown } from "./known";
 import { squareIsVisibleTrap, squareIsWebbed } from "./trap";
 import { calcUnlockingChance } from "./trap";
 import { DIGGING, calcDiggingChances } from "./cave-cmd";
@@ -174,6 +174,20 @@ function passable(state: GameState, grid: Loc): boolean {
 }
 
 /**
+ * A visible floor object here that running should stop for: any object in the
+ * pile that is not ignored (obj->known && !ignore_item_ok). Everything is
+ * known in the port, so the live pile is the player's knowledge.
+ */
+function hasBlockingObject(state: GameState, grid: Loc): boolean {
+  const pile = state.floor.get(grid.y * state.chunk.width + grid.x);
+  if (!pile) return false;
+  for (const obj of pile) {
+    if (!state.isIgnored || !state.isIgnored(obj)) return true;
+  }
+  return false;
+}
+
+/**
  * run_test: examine the surroundings after a step to decide whether running
  * should stop, and to steer the current direction when following a corridor.
  * Returns true if the running should be stopped.
@@ -203,9 +217,8 @@ function runTest(state: GameState): boolean {
       return true;
     }
 
-    /* Visible (remembered) objects abort running. The obj->known /
-     * ignore_item_ok refinement rides knowledge and ignore (#24). */
-    if (knownObject(state, grid) !== null) return true;
+    /* Visible, non-ignored floor objects abort running. */
+    if (hasBlockingObject(state, grid)) return true;
 
     /* Assume unknown. */
     let inv = true;
@@ -772,7 +785,7 @@ function pathfindStep(state: GameState, run: RunState): boolean {
     disturb(state);
     return false;
   }
-  if (knownObject(state, grid) !== null) {
+  if (hasBlockingObject(state, grid)) {
     disturb(state);
     return false;
   }

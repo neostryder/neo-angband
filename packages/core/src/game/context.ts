@@ -166,6 +166,19 @@ export interface GameState {
    */
   target: import("./target").TargetState;
   /**
+   * The player's ignore settings (obj-ignore.c's file-statics: quality tiers,
+   * ego ignore, per-kind flags). Defaults to nothing ignored. Persists in the
+   * save. Read through state.isIgnored (built by the session with flavor
+   * awareness), so worldless code stays decoupled from flavor knowledge.
+   */
+  ignore: import("../obj/ignore").IgnoreSettings;
+  /**
+   * ignore_item_ok(obj): whether an object is currently ignored. Installed by
+   * the session (wireGame) with the flavor-awareness lookup baked in; absent,
+   * nothing is ignored.
+   */
+  isIgnored?: (obj: GameObject) => boolean;
+  /**
    * player->upkeep->health_who (health_track reduced to the tracked
    * monster; the health-bar redraw rides presentation, #25).
    */

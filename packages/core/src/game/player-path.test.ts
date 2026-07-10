@@ -136,6 +136,26 @@ describe("running stops on disturbance", () => {
     expect(state.run!.running).toBe(0);
   });
 
+  it("stops at a non-ignored floor object but runs past ignored ones", () => {
+    const mk = () => {
+      const s = makeState({ w: 14, h: 7, playerGrid: loc(1, 3) });
+      corridor(s, 3, 12);
+      memorizeAll(s);
+      s.floor.set(3 * s.chunk.width + 6, [{} as never]); /* object at (6,3) */
+      return s;
+    };
+    /* No ignore hook: the object blocks, stopping the run beside it. */
+    const blocked = mk();
+    driveRun(blocked, 6);
+    expect(blocked.actor.grid.x).toBe(5);
+
+    /* With the object ignored, the run passes over it to the end wall. */
+    const past = mk();
+    past.isIgnored = () => true;
+    driveRun(past, 6);
+    expect(past.actor.grid.x).toBe(12);
+  });
+
   it("disturb() halts running and flushes the queue", () => {
     const state = makeState({ w: 12, h: 7, playerGrid: loc(1, 3) });
     corridor(state, 3, 10);

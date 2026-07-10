@@ -31,6 +31,7 @@ import type { GameState, PlayerActor, PlayerCommand } from "./context";
 import { newGear } from "./gear";
 import { newKnownMap } from "./known";
 import { newTargetState } from "./target";
+import { IgnoreSettings } from "../obj/ignore";
 import { makeRuneEnv } from "../obj/knowledge";
 
 function load(name: string): unknown {
@@ -207,6 +208,7 @@ export function makeState(opts: StateOptions = {}): GameState {
     traps: new Map(),
     known: newKnownMap(w, h),
     target: newTargetState(),
+    ignore: new IgnoreSettings(),
     lore: new Map(),
     turn: 0,
     z: { ...DEFAULT_GAME_CONSTANTS },
