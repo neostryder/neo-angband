@@ -43,9 +43,14 @@ import { makePlayerSideEffects } from "../game/player-side";
 import {
   DEFAULT_GAME_CONSTANTS,
   addMonster,
+  deleteMonster,
   placePlayer,
   updateMonsterDistances,
 } from "../game/context";
+import { Chunk } from "../world/chunk";
+import { FEAT } from "../generated";
+import { blankMonster } from "../mon/monster";
+import { MON_GROUP } from "../mon/types";
 import type { GameState, PlayerActor, PlayerCommand } from "../game/context";
 import { monsterGroupAssign, monsterGroupsVerify } from "../game/mon-group";
 import { floorCarry } from "../game/floor";
@@ -610,8 +615,123 @@ function makeChangeLevel(
   state: GameState,
   reg: CoreRegistries,
   trapDeps: TrapDeps | null,
+  opts: { inArena?: boolean } = {},
 ): (depth: number) => void {
+  /* The level stashed when entering an arena: leaving a level FOR an
+   * arena persists it even without birth_levels_persist (generate.c
+   * L1349), and the arena exit restores it. */
+  let arenaStash: {
+    chunk: GameState["chunk"];
+    monsters: GameState["monsters"];
+    groups: GameState["groups"];
+    floor: GameState["floor"];
+    traps: GameState["traps"];
+    known: GameState["known"];
+    decoy: Loc | null;
+    monMidx: number;
+  } | null = null;
+  let inArena = opts.inArena ?? false;
+
   return (depth: number): void => {
+    /* --- Arena entry: EF_SINGLE_COMBAT fired the change. --- */
+    if (state.arenaLevel && !inArena) {
+      const mon = state.healthWho;
+      if (mon) {
+        arenaStash = {
+          chunk: state.chunk,
+          monsters: state.monsters,
+          groups: state.groups,
+          floor: state.floor,
+          traps: state.traps,
+          known: state.known,
+          decoy: state.decoy ?? null,
+          monMidx: mon.midx,
+        };
+        /* arena_gen (gen-cave.c L3984): 6x6 floor bounded by perm rock,
+         * the player in one corner and the opponent in the other. */
+        const arena = new Chunk(reg.features, 6, 6);
+        arena.depth = state.chunk.depth;
+        for (let y = 0; y < 6; y++) {
+          for (let x = 0; x < 6; x++) {
+            const edge = y === 0 || x === 0 || y === 5 || x === 5;
+            arena.setFeat(loc(x, y), edge ? FEAT.PERM : FEAT.FLOOR);
+          }
+        }
+        state.chunk = arena;
+        state.monsters = [null];
+        state.groups = [null];
+        state.floor = new Map();
+        state.traps = new Map();
+        state.known = newKnownMap(6, 6);
+        delete state.decoy;
+
+        /* The monster is COPIED in (upstream memcpy); the original stays
+         * in the stashed level and is finished on the way out. Held
+         * objects are ignored, and it gets a fresh group. */
+        const copy = blankMonster(mon.race);
+        copy.originalRace = mon.originalRace;
+        copy.hp = mon.hp;
+        copy.maxhp = mon.maxhp;
+        copy.mspeed = mon.mspeed;
+        copy.energy = mon.energy;
+        copy.mTimed.set(mon.mTimed);
+        copy.mflag = mon.mflag.clone();
+        copy.grid = loc(4, 1);
+        addMonster(state, copy);
+        state.groups[1] = { index: 1, leader: copy.midx, members: [copy.midx] };
+        copy.groupInfo[0] = { index: 1, role: MON_GROUP.LEADER };
+        state.healthWho = copy;
+        targetSetMonster(state, copy);
+
+        placePlayer(state, loc(1, 4));
+        inArena = true;
+        delete state.targetDepth;
+        state.updateFov?.(state);
+        return;
+      }
+      /* No tracked opponent: fall through to a normal change. */
+      state.arenaLevel = false;
+    }
+
+    /* --- Arena exit: the fight is over (or abandoned). --- */
+    if (inArena) {
+      inArena = false;
+      state.arenaLevel = false;
+      const stash = arenaStash;
+      arenaStash = null;
+      if (stash) {
+        /* Restore the level left behind (the player marker stayed). */
+        state.chunk = stash.chunk;
+        state.monsters = stash.monsters;
+        state.groups = stash.groups;
+        state.floor = stash.floor;
+        state.traps = stash.traps;
+        state.known = stash.known;
+        if (stash.decoy) state.decoy = stash.decoy;
+        const back = state.oldGrid ?? state.actor.grid;
+        state.actor.grid = back;
+        state.chunk.setMon(back, -1);
+        delete state.oldGrid;
+
+        /* Kill the arena monster's original (kill_arena_monster). */
+        const orig = state.monsters[stash.monMidx];
+        if (orig) {
+          orig.hp = -1;
+          state.msg?.(`${orig.race.name} is defeated!`);
+          state.onPlayerKill?.(orig);
+          deleteMonster(state, orig.midx);
+        }
+        state.healthWho = null;
+        targetSetMonster(state, null);
+        delete state.targetDepth;
+        state.updateFov?.(state);
+        return;
+      }
+      /* The stash did not survive a save boundary: fall through to a
+       * fresh level of the same depth (ledgered). */
+      delete state.oldGrid;
+    }
+
     /* dungeon_change_level: track the deepest level reached. */
     if (depth > state.actor.player.maxDepth) {
       state.actor.player.maxDepth = depth;
@@ -906,6 +1026,13 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
    * max_num zeroes are not yet persisted (ledgered with mon-place). */
   countMonsterRaces(state);
 
+  /* A save taken in single combat resumes it (the stashed pre-arena
+   * level is gone: winning exits to a fresh level of the same depth). */
+  if (save.arena) {
+    state.arenaLevel = true;
+    state.oldGrid = loc(save.arena.oldGrid.x, save.arena.oldGrid.y);
+  }
+
   const wired = wireGame(state, reg, players, pstate);
   wired.flavor.restore(save.flavor);
 
@@ -928,6 +1055,8 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     booted,
     players,
     flavor: wired.flavor,
-    changeLevel: makeChangeLevel(state, reg, wired.trapDeps),
+    changeLevel: makeChangeLevel(state, reg, wired.trapDeps, {
+      inArena: !!save.arena,
+    }),
   };
 }

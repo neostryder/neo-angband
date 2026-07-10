@@ -31,7 +31,7 @@ import { featIsTreasure } from "../world/chunk";
 import type { MakeDeps } from "../obj/make";
 import { makeGold, makeObject } from "../obj/make";
 import type { GameState, PlayerCommand } from "./context";
-import { deleteMonster, squareMonster } from "./context";
+import { arenaInterceptDeath, deleteMonster, squareMonster } from "./context";
 import { floorCarry } from "./floor";
 import { playerConfuseDir } from "./obj-cmd";
 import type { ActionRegistry } from "./player-turn";
@@ -297,7 +297,7 @@ function attackBlocker(state: GameState, grid: Loc, env: CaveCmdEnv): void {
     { monVisible: true },
   );
   equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
-  if (result.monsterDied) {
+  if (result.monsterDied && !arenaInterceptDeath(state, target)) {
     state.onPlayerKill?.(target);
     deleteMonster(state, target.midx);
   }

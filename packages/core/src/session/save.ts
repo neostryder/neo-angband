@@ -492,6 +492,12 @@ export interface SavedGame {
    * JSON save carries the whole record.
    */
   lore?: Array<[number, SavedLore]>;
+  /**
+   * Single combat in progress (upkeep->arena_level + player->old_grid).
+   * The stashed pre-arena level does not survive the save boundary:
+   * winning after a reload exits to a fresh level of the same depth.
+   */
+  arena?: { oldGrid: { x: number; y: number } };
 }
 
 /** Serialized map knowledge (remembered terrain and floor objects). */
@@ -591,6 +597,16 @@ export function serializeGame(
         { ch: m.ch, attr: m.attr },
       ]),
     },
+    ...(state.arenaLevel
+      ? {
+          arena: {
+            oldGrid: {
+              x: state.oldGrid?.x ?? state.actor.grid.x,
+              y: state.oldGrid?.y ?? state.actor.grid.y,
+            },
+          },
+        }
+      : {}),
     lore: Array.from(state.lore.entries()).map(([ridx, l]) => [
       ridx,
       {

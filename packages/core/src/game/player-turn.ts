@@ -27,7 +27,7 @@ import { learnBrandSlayFromMelee } from "../combat/brand-slay";
 import { getLore } from "../mon/lore";
 import { equipLearnOnMeleeAttack } from "../obj/knowledge";
 import type { GameState, PlayerCommand } from "./context";
-import { deleteMonster, movePlayer, squareMonster } from "./context";
+import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context";
 
 /**
  * A player action: mutate the state for `cmd` and return the energy spent
@@ -106,7 +106,7 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
       { monVisible: true },
     );
     equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
-    if (result.monsterDied) {
+    if (result.monsterDied && !arenaInterceptDeath(state, target)) {
       state.onPlayerKill?.(target);
       deleteMonster(state, target.midx);
     }
