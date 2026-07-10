@@ -59,6 +59,7 @@ export * from "./player/player";
 export * from "./player/calcs";
 export * from "./player/timed";
 export * from "./player/take-hit";
+export * from "./player/spell";
 export * from "./player/birth";
 export * from "./save/buffer";
 export * from "./save/integrity";
@@ -95,6 +96,7 @@ export * from "./game/pickup";
 export * from "./game/obj-cmd";
 export * from "./game/cave-cmd";
 export * from "./game/trap";
+export * from "./game/spell-cmd";
 export * from "./game/loop";
 
 // Some small derived constants and geometry helpers are defined

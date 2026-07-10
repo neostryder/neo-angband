@@ -660,6 +660,8 @@ function bindClassMagic(
     }
     books.push({
       tval: b.tval,
+      tvalIdx: 0,
+      sval: 0,
       dungeon: b.quality === "dungeon",
       name: b.name,
       realm,
