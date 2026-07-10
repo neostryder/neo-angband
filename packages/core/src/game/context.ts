@@ -307,6 +307,16 @@ export interface RunState {
   running: number;
   /** player->upkeep->running_firststep. */
   firstStep: boolean;
+  /**
+   * player->upkeep->steps: a pathfinding path as forward keypad directions
+   * in reverse order (index stepCount-1 is the next step); absent for a
+   * plain run. Freed by disturb().
+   */
+  steps?: number[];
+  /** player->upkeep->step_count: steps of `steps` left to take. */
+  stepCount: number;
+  /** player->upkeep->path_dest: the travel destination (kept across disturb). */
+  pathDest?: Loc;
 }
 
 /** cave_monster_max(cave): one past the highest occupied monster slot. */
