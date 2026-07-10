@@ -13,12 +13,13 @@
  * it on the cast context so every projection that reaches the player runs
  * the upstream consequences.
  *
- * The GRAVITY blink (effect_simple(EF_TELEPORT, "5")) runs through
- * teleportPlayer (effect-teleport.ts) with the injected TeleportEnv; FORCE's
- * knockback runs thrust_away (game/thrust.ts) from the origin grid; DISEN
- * runs disenchantEquipment (game/effect-general.ts). DEFERRED (ledgered in
- * parity/ledger/game-player-side.yaml): the NEXUS teleport-to/level/200
- * branches ride the effect stack (#18); the drain-stat "sustain but still
+ * The teleport branches run through the player slices of the teleport
+ * handlers (effect-teleport.ts) with the injected TeleportEnv: GRAVITY's
+ * blink (teleportPlayer 5), NEXUS's teleport-to-caster / teleport-level /
+ * teleport-200 three-way, and FORCE's knockback via thrust_away
+ * (game/thrust.ts) from the origin grid; DISEN runs disenchantEquipment
+ * (game/effect-general.ts). DEFERRED (ledgered in
+ * parity/ledger/game-player-side.yaml): the drain-stat "sustain but still
  * feel it" message variant is folded to the save message.
  */
 
@@ -40,7 +41,11 @@ import type {
 } from "./project-player";
 import { invenDamage } from "./project-obj";
 import { disenchantEquipment } from "./effect-general";
-import { teleportPlayer } from "./effect-teleport";
+import {
+  teleportPlayer,
+  teleportPlayerLevel,
+  teleportPlayerTo,
+} from "./effect-teleport";
 import type { TeleportEnv } from "./effect-teleport";
 import { thrustAway } from "./thrust";
 
@@ -278,7 +283,23 @@ export function makePlayerSideEffects(
         } else {
           incTimed(TMD.SCRAMBLE, rng.randint0(20) + 20, true);
         }
-        /* Teleport-to / teleport-level / teleport 200: DEFERRED (#18). */
+        const tp = deps.teleport ?? {};
+        if (rng.oneIn(3) && ctx.origin.isMonster && ctx.origin.grid) {
+          /* Teleport to the caster. */
+          teleportPlayerTo(state, ctx.origin.grid, tp, msg);
+        } else if (rng.oneIn(4)) {
+          /* Teleport level. */
+          if (
+            rng.randint0(100) < (state.actor.combat.skills[SKILL.SAVE] ?? 0)
+          ) {
+            msg("You avoid the effect!");
+            break;
+          }
+          teleportPlayerLevel(state, tp, msg, ctx.origin.isMonster);
+        } else {
+          /* Teleport 200 grids. */
+          teleportPlayer(state, 200, tp, msg);
+        }
         break;
       }
       case PROJ.NETHER: {

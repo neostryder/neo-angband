@@ -204,6 +204,59 @@ describe("project-player side effects (project-player.c handlers)", () => {
     expect(msgs).toContain("You resist the effect!");
   });
 
+  it("NEXUS scrambles and fires one of its three teleport branches", () => {
+    /* Sweep seeds so each teleport branch is exercised at least once. */
+    const outcomes = { to: 0, level: 0, far: 0 } as Record<string, number>;
+    for (let seed = 1; seed <= 12; seed++) {
+      /* A big enough field that a 200-grid teleport can score a landing
+       * (the search cap is twice the largest map dimension). */
+      const state = makeState({ seed, w: 120, h: 60 });
+      const start = state.actor.grid;
+      let levelChange = false;
+      const dbg: string[] = [];
+      const hook = makePlayerSideEffects(state, {
+        timed: plReg.timed,
+        actor: stubActor(),
+        projections: [],
+        expDeps: { rng: state.rng },
+        lifeDrainPercent: 2,
+        teleport: { changeLevel: () => (levelChange = true) },
+        msg: (t) => dbg.push(t),
+      });
+      const casterGrid = loc(start.x + 4, start.y);
+      hook({
+        origin: {
+          isPlayer: false,
+          isMonster: true,
+          killer: "a test",
+          grid: casterGrid,
+        },
+        r: 0,
+        grid: start,
+        obvious: true,
+        dam: 30,
+        typ: PROJ.NEXUS,
+        power: 0,
+      });
+      const moved =
+        state.actor.grid.x !== start.x || state.actor.grid.y !== start.y;
+      /* Every seed teleports somehow - or legitimately saves against the
+       * teleport-level branch ("You avoid the effect!"). */
+      const avoided = dbg.includes("You avoid the effect!");
+      expect(moved || levelChange || avoided).toBe(true);
+      if (levelChange) outcomes.level!++;
+      else if (
+        moved &&
+        Math.abs(state.actor.grid.x - casterGrid.x) <= 2 &&
+        Math.abs(state.actor.grid.y - casterGrid.y) <= 2
+      )
+        outcomes.to!++;
+      else if (moved) outcomes.far!++;
+    }
+    expect(outcomes.to).toBeGreaterThan(0);
+    expect(outcomes.far).toBeGreaterThan(0);
+  });
+
   it("TIME saps the character (exp or stats) under the seeded roll", () => {
     const state = makeState({ seed: 27 });
     const p = state.actor.player;
