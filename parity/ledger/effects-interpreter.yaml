@@ -24,7 +24,11 @@ upstream:
       - effect_value_base_by_name (names table; providers injected)
   - path: src/effect-handler.h
     items:
-      - effect_handler_context_t (-> EffectHandlerContext)
+      - effect_handler_context_t (-> EffectHandlerContext; carries the
+        dispatching registry so handlers can re-dispatch to another
+        handler with a synthetic context or run effect_simple, the way
+        upstream handlers call each other as free functions - WONDER and
+        BIZARRE use it via registry.handlerFor / registry.effectSimple)
       - effect_handler_f (-> EffectHandler)
       - struct effect_kind (-> EffectDefinition/RegisteredEffect)
       - ENCH_TOHIT/TODAM/TOBOTH/TOAC
