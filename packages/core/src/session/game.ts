@@ -65,6 +65,7 @@ import { registerSummonHandlers } from "../game/effect-summon";
 import type { SummonEffectEnv } from "../game/effect-summon";
 import { registerDetectHandlers } from "../game/effect-detect";
 import { newKnownMap } from "../game/known";
+import { newTargetState, targetSetMonster } from "../game/target";
 import { countMonsterRaces, wipeMonsterCounts } from "../game/mon-place";
 import { SummonTable } from "../mon/summon";
 import { MonAllocTable } from "../mon/make";
@@ -563,6 +564,9 @@ function makeChangeLevel(
     /* wipe_mon_list: the old level's monsters forget their racial counts
      * before the new level allocates against them. */
     wipeMonsterCounts(state);
+    /* Forget the target and the tracked monster (game-world.c L1010). */
+    targetSetMonster(state, null);
+    state.healthWho = null;
     const g = generateLevel(state.rng, depth, genDeps(reg, true));
     state.chunk = g.c;
     state.monsters = [null];
@@ -671,10 +675,12 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     floor: new Map(),
     traps: new Map(),
     known: newKnownMap(booted.chunk.width, booted.chunk.height),
+    target: newTargetState(),
     turn: 0,
     z: {
       ...DEFAULT_GAME_CONSTANTS,
       maxSight: reg.constants.maxSight,
+      maxRange: reg.constants.maxRange,
       floorSize: reg.constants.floorSize,
       maxDepth: reg.constants.maxDepth,
       stairSkip: reg.constants.stairSkip,
@@ -811,10 +817,14 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
       ? deserializeTraps(save.traps, reg.traps, chunk.width)
       : new Map(),
     known: deserializeKnown(save.known, chunk.width, chunk.height),
+    /* The target is not persisted (as upstream: the savefile carries no
+     * target and loading starts unset). */
+    target: newTargetState(),
     turn: save.turn,
     z: {
       ...DEFAULT_GAME_CONSTANTS,
       maxSight: reg.constants.maxSight,
+      maxRange: reg.constants.maxRange,
       floorSize: reg.constants.floorSize,
       maxDepth: reg.constants.maxDepth,
       stairSkip: reg.constants.stairSkip,

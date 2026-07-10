@@ -11,10 +11,11 @@
  * Melee routes through combat/melee.ts pyAttackReal with the same
  * learn-on-attack wrapping the walk command uses; kills ripple through
  * state.onPlayerKill + deleteMonster exactly like the melee commands.
- * target_set_closest is ported as closestTarget (the closest visible
- * monster in line of sight matching the predicate); the interactive
+ * closestTarget wraps the real target_set_closest (game/target.ts) - the
+ * vampiric handlers retarget the player's target, exactly upstream; the
  * target_get of MELEE_BLOWS / MOVE_ATTACK reads the aimed seam
- * (GameEffectEnv.aimed) and falls back to the effect direction.
+ * (GameEffectEnv.aimed, now backed by the live target) and falls back to
+ * the effect direction.
  *
  * Simplifications, ledgered in parity/ledger/game-effect-melee.yaml:
  * MDESC names and message_pain grammar ride the display layer (#25) - the
@@ -43,13 +44,13 @@ import { monTakeHit } from "../mon/take-hit";
 import { pyAttackReal } from "../combat/melee";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay";
 import { equipLearnOnMeleeAttack } from "../obj/knowledge";
-import { los } from "../world/view";
 import type { GameState } from "./context";
 import { deleteMonster, movePlayer, squareMonster } from "./context";
 import { gameEnv } from "./effect-game-env";
 import type { GameEffectEnv } from "./effect-game-env";
 import { castProjection, playerCastSource } from "./project-cast";
 import { squareIsPlayerTrap, squareIsWebbed } from "./trap";
+import { TARGET, targetGetMonster, targetSetClosest } from "./target";
 
 /** msg() over the effect context's optional message sink. */
 function say(ctx: EffectHandlerContext, text: string): void {
@@ -57,29 +58,16 @@ function say(ctx: EffectHandlerContext, text: string): void {
 }
 
 /**
- * target_set_closest reduced to the world half: the closest monster in the
- * player's line of sight, visible, matching the predicate. The targeting
- * bookkeeping (target_set_monster, health tracking) rides targeting (#24).
+ * target_set_closest(TARGET_KILL, pred) followed by target_get_monster, as
+ * the vampiric handlers call it - the drain retargets the player's target,
+ * exactly upstream.
  */
 export function closestTarget(
   state: GameState,
   pred: (mon: Monster) => boolean,
 ): Monster | null {
-  let best: Monster | null = null;
-  let bestDist = Infinity;
-  for (let i = 1; i < state.monsters.length; i++) {
-    const mon = state.monsters[i];
-    if (!mon) continue;
-    if (!pred(mon)) continue;
-    if (!monsterIsVisible(mon)) continue;
-    if (!los(state.chunk, state.actor.grid, mon.grid)) continue;
-    const d = distance(state.actor.grid, mon.grid);
-    if (d < bestDist) {
-      bestDist = d;
-      best = mon;
-    }
-  }
-  return best;
+  if (!targetSetClosest(state, TARGET.KILL, pred)) return null;
+  return targetGetMonster(state);
 }
 
 /**
@@ -213,8 +201,11 @@ const handleCURSE: EffectHandler = (ctx) => {
 
   ctx.ident = true;
 
-  /* Need to choose a monster, not just point (target_get_monster). */
-  const mon = env.aimed ? squareMonster(state, env.aimed) : null;
+  /* Need to choose a monster, not just point (target_get_monster; the
+   * aimed seam stands in when no target bookkeeping is active). */
+  const mon =
+    targetGetMonster(state) ??
+    (env.aimed ? squareMonster(state, env.aimed) : null);
   if (!mon) {
     say(ctx, "No monster selected!");
     return false;

@@ -54,6 +54,7 @@ import type { EffectEnvDeps } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
 import type { CastContext } from "./project-cast";
 import type { ActionRegistry } from "./player-turn";
+import { targetFix, targetGet, targetOkay, targetRelease } from "./target";
 
 /** enum use (cmd-obj.c). */
 export const USE = { TIMEOUT: 0, CHARGE: 1, SINGLE: 2 } as const;
@@ -63,7 +64,10 @@ export type UseKind = (typeof USE)[keyof typeof USE];
 export interface ObjCmdEnv {
   /** msg / msgt / activation_message. */
   msg?: (text: string) => void;
-  /** A use command needs a direction (targeting #24); keypad 1-9. */
+  /**
+   * get_aim_dir: keypad 1-9, or DIR_TARGET (5) to use the player's
+   * current target (game/target.ts). The prompt itself is UI (#25).
+   */
   chooseDir?: () => number;
   /** get_check for the !t take-off confirmation (UI); default true. */
   confirm?: (prompt: string) => boolean;
@@ -416,12 +420,18 @@ export function useAux(
     const ctx = attachGameEnv(buildEffectContext(state, deps.envDeps), {
       state,
       cast: deps.cast,
+      /* target_get inside the handlers: a DIR_TARGET cast re-reads the
+       * live target per handler, as upstream. */
+      get aimed() {
+        return targetOkay(state) ? targetGet(state) : undefined;
+      },
       ...(deps.teleport ? { teleport: deps.teleport } : {}),
       ...(deps.general ? { general: deps.general } : {}),
       ...(deps.item ? { item: deps.item } : {}),
       ...(deps.summon ? { summon: deps.summon } : {}),
     });
     const ident = { value: false };
+    targetFix(state);
     const used = deps.registry.effectDo(chain, ctx, {
       origin: sourcePlayer(),
       obj,
@@ -431,6 +441,7 @@ export function useAux(
       beam,
       boost,
     });
+    targetRelease(state);
 
     if (!used && deductBefore) {
       /* Restore the tentative deduction. */
