@@ -1,0 +1,84 @@
+module: packages/core/src/game/effect-item.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-general.c
+    items:
+      - effect_handler_ENCHANT (L2095) - the ENCH_ subtype dispatch into
+        enchant_spell (L373: the weapon-vs-armour tester, the carried
+        "Your"/"The" glow message, the TOBOTH-then-TOHIT-then-TODAM chain
+        and the TOAC tail, the failure message) over enchant (L319: the
+        pile-resistance prob with the ammo /20, the per-try eflag rolls)
+        and enchant_score (L268: the enchant_table, the 50% artifact
+        resist, randint1(1000) <= chance fails), all in the upstream RNG
+        order. The value is randcalc(value, depth, RANDOMISE).
+      - effect_handler_RECHARGE (L2127) - strength = base + the dice roll,
+        the tval_can_have_charges tester over inven+floor,
+        recharge_failure_chance (effects.c L563), the one_in_(i) backfire
+        destroying one item of the stack, and the (strength / (10 - ease))
+        + 1 power adding 2 + randint1(t) charges.
+      - effect_handler_REMOVE_CURSE (L1051) with uncurse_object (L179) -
+        the removable-curse tester (0 < power < 100), the permanent-curse
+        refusal, strength >= power removal with the named message,
+        fragile-marking on failure (learning the OF_FRAGILE rune), and the
+        one_in_(4) fragile destruction with 5d5 reduced damage and
+        take_hit("Failed uncursing"). get_curse's picker is the
+        chooseCurse seam (default: the first active curse).
+      - effect_handler_BRAND_WEAPON (L3233, one_in_(2) Flame/Frost on the
+        wielded weapon), BRAND_AMMO (L3251, one_in_(3)/one_in_(2)
+        Flame/Frost/Venom on chosen ammo), BRAND_BOLTS (L3284, Flame on
+        chosen bolts), all through brand_object (L427: cost/artifact/ego
+        eligibility, the "of X" ego lookup filtered by poss_items, the
+        aura message, ego_apply_magic, and the randint0(3)+4
+        hit/dam enchant).
+      - effect_handler_CURSE_ARMOR (L3103) / CURSE_WEAPON (L3167) - the
+        equipped body/weapon slot, the 50% artifact save with its message,
+        the to-a (or to-h/to-d) knock, and the randint1(3) curses at
+        10 * m_bonus(9, depth) power appended through the poss[tval]
+        filter with 20 max tries.
+      - effect_handler_CREATE_ARROWS (L3315) - the staff tester, the
+        randint1(lev) > 25 good / > 50 great rolls, staff destruction,
+        and make_object(player->lev, ..., TV_ARROW) dropped near the
+        player.
+      - effect_handler_TAP_DEVICE (L3370) - the charge tester, the
+        (5 + lev) * 3 * pval / 2 energy, the < 36 refusal, the mana top-up
+        (energy / 6, csp_frac cleared), the randint1(2) stun, and the
+        full-mana refusal with the capitalized item name.
+notes: >-
+  Registered by registerItemHandlers over the core stubs. The object
+  chooser (upstream get_item / cmd_get_item "tgtitem") is the injected
+  ItemEffectEnv.getItem seam; wireGame supplies the ego/curse tables and
+  makeDeps but no chooser yet (the item menu rides presentation, #25), so
+  the choosing effects return false unused - exactly the upstream cancel
+  path, and the scroll/spell is not consumed. destroyOneItem covers both
+  gear (gear_object_for_use) and floor piles.
+deferred:
+  - EF_IDENTIFY - needs the per-object rune enumeration
+    (object_learn_unknown_rune / object_runes_known); rides the
+    knowledge/detection batch (#24).
+  - ODESC_BASE / ODESC_FULL descriptions and gear letters ride the display
+    layer (#25); the kind's base name is used. obj->known->to_h/to_d/to_a
+    display sync rides rune-based knowledge. The recharge_pow failure-rate
+    display (ui-object.c) rides #25.
+  - REMOVE_CURSE's known-twin curse tester (obj->known->curses) is read
+    from the live curses (knowledge is rune-based); show_damage (#30).
+  - CURSE_ARMOR/WEAPON's total_weight upkeep rides the gear weight
+    bookkeeping; history_lose_artifact rides history (#24).
+  - EVENT_INPUT_FLUSH and the PN_COMBINE / PR_ redraws ride presentation.
+  - Monster casts never reach these handlers (mon-cast deps omit the item
+    env); upstream reaches them only through player commands too.
+verified-by:
+  - game/effect-item.test.ts (21 tests) - enchant raises a +0 score and
+    refreshes bonuses, and cannot pass +15; EF_ENCHANT enchants a chosen
+    carried weapon (glow message) and armour to-ac, and a cancelled pick
+    leaves the scroll unused; RECHARGE recharges a drained wand, backfires
+    destroying a full wand on a weak recharge, and the failure chance
+    tightens with charges; REMOVE_CURSE lifts a weak curse with its named
+    message, marks the item fragile on a failed attempt, and can destroy a
+    fragile item (seed sweep, with the player taking damage); BRAND_WEAPON
+    egos the wielded weapon Flame/Frost with the aura message and enchant,
+    BRAND_AMMO refuses an existing ego, BRAND_BOLTS flames bolts;
+    CURSE_ARMOR/WEAPON blast worn gear's bonuses (artifact-less) and no-op
+    with nothing worn; CREATE_ARROWS consumes the staff and drops arrows
+    near the player; TAP_DEVICE drains a staff into mana with the stun,
+    refuses low-energy devices, and spares a full-mana player's charges.
