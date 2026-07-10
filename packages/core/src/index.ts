@@ -105,6 +105,7 @@ export * from "./game/mon-list";
 export * from "./game/obj-list";
 export * from "./game/mon-shape";
 export * from "./mon/lore";
+export * from "./mon/lore-describe";
 /* The live-cave placement family shares upstream names with its
  * generation-time twin in gen/util; the live variants export Live-suffixed. */
 export {

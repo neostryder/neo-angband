@@ -1,0 +1,79 @@
+module: packages/core/src/mon/lore-describe.ts (the monster recall text)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/mon-lore.c
+    items:
+      - lore_describe_awareness (L558), lore_describe_speed (L599),
+        lore_adjective_speed (L636), lore_multiplier_speed (L652) - the
+        awareness / speed description tables and the two speed forms.
+      - lore_monster_sex (L695), lore_pronoun_nominative (L715),
+        lore_pronoun_possessive (L744) - the sex enum and pronoun tables.
+      - lore_append_clause (L777), lore_append_spell_clause (L819) - the
+        comma / conjunction list builders (spell variant colours per spell and
+        appends damage).
+      - lore_append_kills (L867), lore_append_flavor (L943),
+        lore_append_movement (L961), lore_append_toughness (L1057),
+        lore_append_exp (L1109), lore_append_drop (L1177),
+        lore_append_abilities (L1276), lore_append_awareness (L1425),
+        lore_append_friends (L1458), lore_append_spells (L1491),
+        lore_append_attack (L1621) - the eleven recall sections. Wording,
+        punctuation, two-space sentence separators, number words and the
+        pronoun / sex logic are kept verbatim.
+  - path: src/ui-mon-lore.c
+    items:
+      - lore_title (L38) as loreTitle and lore_description (L89) as
+        loreDescription - the non-spoiler recall assembly. The section call
+        order (title, kills, flavor, movement, toughness, exp, drop,
+        abilities, awareness, friends, spells, attack, fully-known note,
+        questor note) is transcribed from L110-150. The title's " ('glyph')"
+        is upstream (textblock_append_pict).
+  - path: src/mon-spell.c
+    items:
+      - mon_spell_lore_description (L681) as monSpellLoreDescription and
+        mon_spell_lore_damage (L698) as monSpellLoreDamage - the spell recall
+        text and damage number, needed by lore_append_spells.
+  - path: src/mon-make.c
+    items:
+      - mon_create_drop_count (L699), the maximize=true / specific=false path,
+        ported inline (monCreateDropCountMax) for lore_append_drop's item
+        maximum; deterministic (no RNG), sums race.drops[].max.
+notes: >-
+  The presentation logic behind the monster recall panel, ported as
+  front-end-agnostic data. Upstream's z-textblock coloured buffer is reduced to
+  a flat LoreText = LoreTextRun{text, color}[] run list (no terminal wrap /
+  indent - that is the draw layer). Every textblock_append becomes
+  LoreTextBuilder.append(text) (COLOUR_WHITE) and textblock_append_c becomes
+  append(text, COLOUR_X). Player- / world- / combat-derived inputs upstream
+  reads off the global player are injected through LoreDeps (playerLevel,
+  playerMaxDepth, playerSpeed, effectiveSpeed, the bound spells map, and the
+  optional danger-colour / hit-chance / spell-damage callbacks). Produced by a
+  porter agent and then verified here (typecheck + the recall test over real
+  races, both normal and unique, fresh and fully-known lore).
+deferred:
+  - Spell / breath damage numbers (mon_spell_dam / nonhp_dam, mon-spell.c) are
+    not bound to the casting race yet (mon/spell.ts defers them), so
+    monSpellLoreDamage returns 0 via deps.spellLoreDamage when absent - upstream
+    omits the "(N)" at 0 damage. The integration seam is deps.spellLoreDamage.
+  - The player's melee hit chance (lore_append_toughness L1086) and the
+    monster's blow hit chance / its centidamage average (lore_append_attack
+    L1710) need the player-attack combat math + live defensive state; they are
+    the deps.meleeHitPercent / deps.monsterHitPercent callbacks, defaulting to 0
+    when the combat layer does not supply them.
+  - spell_color (mon-lore.c L59) and blow_color (L178) read the player's
+    known_state (resists / skills / inventory) for danger colouring; defaulted
+    to the datum's base lore colour (loreColorBase), overridable via
+    deps.spellColor / deps.blowColor.
+  - The title's optional secondary glyph (monster_x_char / monster_x_attr),
+    purple_uniques recolouring, and tile-size gating (ui-mon-lore.c L47-L74)
+    are presentation state not modelled; only "The " / name / primary glyph
+    are emitted.
+  - A game-layer LoreDeps adapter (building the deps from GameState + the combat
+    callbacks) lands when the recall panel is wired into a shell; the module is
+    pure and deps-injected until then.
+verified-by:
+  - mon/lore-describe.test.ts (6 tests) - the LoreTextBuilder run semantics,
+    the non-unique title ("The " + name + glyph), the flavor + fresh-lore kill
+    line, the experience reward + player-level dependence, the full-knowledge
+    trailer after cheat_monster_lore, and a unique's kill line without the
+    "The " prefix - all over real pack races and the bound spell list.
