@@ -457,6 +457,46 @@ const handleALTER_REALITY: EffectHandler = (ctx) => {
 };
 
 /**
+ * teleportPlayer: the player self-teleport slice of EF_TELEPORT, for callers
+ * that dispatch it through effect_simple (project-player.c's GRAVITY blink,
+ * NEXUS). Runs the same forbidden-grid / curse checks and destination search
+ * as handleTELEPORT's player branch, for a fixed distance.
+ */
+export function teleportPlayer(
+  state: GameState,
+  dis: number,
+  tp: TeleportEnv = {},
+  say?: (text: string) => void,
+): void {
+  const start = state.actor.grid;
+
+  /* A no-teleport grid blocks all but a short, fixed hop. */
+  if (
+    state.chunk.sqinfoHas(start, SQUARE.NO_TELEPORT) &&
+    (dis > 10 || dis === 0)
+  ) {
+    say?.("Teleportation forbidden!");
+    return;
+  }
+  /* A no-teleport curse blocks it outright. */
+  if (tp.hasNoTeleport) {
+    tp.onLearnNoTeleport?.();
+    say?.("Teleportation forbidden!");
+    return;
+  }
+
+  const dest = chooseTeleportDestination(state, start, dis, 0, true, tp);
+  if (!dest) {
+    say?.("Failed to find teleport destination!");
+    return;
+  }
+
+  movePlayer(state, dest);
+  tp.onPlayerPostMove?.(true);
+  state.chunk.sqinfoOff(dest, SQUARE.PROJECT);
+}
+
+/**
  * teleportMonster: the concrete backing for the project_m `teleport` hook
  * (game/project-monster.ts). A monster is teleported `distance` grids from its
  * current location, exactly as EF_TELEPORT does for a self-teleporting monster.

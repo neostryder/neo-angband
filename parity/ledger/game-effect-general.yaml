@@ -1,0 +1,45 @@
+module: packages/core/src/game/effect-general.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-general.c
+    items:
+      - effect_handler_GLYPH (L700) - the one-decoy-at-a-time check, the
+        square_istrappable floor test with its message, push_object off the
+        grid, and square_add_glyph as placeTrap of the "glyph of warding" /
+        "decoy" trap kinds. The decoy grid is GameState.decoy (upstream
+        cave->decoy).
+      - effect_handler_WEB (L732) - the acting monster (cave->mon_current
+        via GameEffectEnv.monCurrent) spins webs over every webbable grid
+        (floor, no existing trap) within radius 1, +1 at spell power > 40
+        and > 80; fails for a player source.
+      - effect_handler_DISENCHANT (L2003) - exported as
+        disenchantEquipment, shared with the PROJ_DISEN player side effect
+        (project-player.c dispatches it through effect_simple). The
+        rings/amulets/lights exclusion, the one_in_(count--) slot pick RNG
+        order, the 60% artifact resist, and the to-hit/to-dam (weapon and
+        bow) vs to-ac decrements with the >5 20% second point are
+        verbatim; PU_BONUS is state.updateBonuses.
+notes: >-
+  Registered by registerGeneralHandlers over the core stubs; wireGame
+  attaches GeneralEffectEnv (trapDeps) through the same deps threading as
+  the teleport seams (obj-cmd / spell-cmd / mon-cast / trap effect
+  bundles). Handlers no-op without a game env (worldless rule) and glyph /
+  web creation no-ops without the trap system.
+deferred:
+  - The equipment letter (gear_to_label) and ODESC_BASE description in the
+    disenchant messages ride the display layer (#25); the kind's base name
+    is used.
+  - obj->known->to_h/to_d/to_a display sync - knowledge is rune-based
+    here (obj/knowledge.ts).
+  - Monster-AI decoy targeting (monster_is_decoyed and the decoy's death)
+    rides lore/AI (#24); the decoy grid is tracked and the glyph trap is
+    real.
+verified-by:
+  - game/effect-general.test.ts (10 tests) - GLYPH places a warding glyph
+    under the player; a decoy deploys once and a second is refused with
+    the message; worldless no-op; WEB webs the full 3x3 at spell power 10
+    and wider at 50, and fails for a player source; DISENCHANT lowers a
+    worn weapon's to-hit/to-dam and refreshes bonuses, lowers armour to-ac
+    with artifacts resisting, never touches rings/amulets/lights, and runs
+    through the effect stack.

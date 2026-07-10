@@ -1,0 +1,31 @@
+module: packages/core/src/game/thrust.ts
+status: complete
+baseline: 4.2.6
+upstream:
+  - path: src/project-mon.c
+    items:
+      - thrust_away (L87-232) - force the player or a monster away from a
+        projection source for up to gridsAway grids. The caster-to-target
+        angle from GET_ANGLE_TO_GRID (gen-util.c, ported in
+        world/project.ts), the per-direction 44-degree rejection windows,
+        the randint0(8) initial-direction draw per step, the pass-by
+        strength rules (a monster cannot pass a monster with more mexp or
+        a character with lev*2 > its level; the player cannot pass a
+        monster with level > lev*2), enter-but-not-leave passable
+        non-projectable grids, the wall-stop message, the molten-lava
+        message, and the SQUARE_PROJECT clear are all verbatim.
+notes: >-
+  Wired as the project_m thrustAway hook (PROJ_FORCE vs monsters) in
+  wireGame's cast.hooks.monster, and called directly by the FORCE player
+  side effect (game/player-side.ts). monster_swap is wrapped so a swap
+  involving the player also updates actor.grid. player_handle_post_move
+  fires through the injected onPlayerPostMove hook exactly where upstream
+  calls it (after a swap that leaves the player on the vacated grid).
+deferred:
+  - Taking fire damage on the lava landing grid is the terrain-damage
+    movement pass (the message is emitted here as upstream).
+verified-by:
+  - game/thrust.test.ts (4 tests) - a monster is knocked away from the
+    centre with its occupancy marker following; the player is knocked away
+    with actor.grid kept in step; a thrust toward the map edge stays in
+    bounds on a passable grid; the path is deterministic for a fixed seed.

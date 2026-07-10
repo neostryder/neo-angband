@@ -125,6 +125,85 @@ describe("project-player side effects (project-player.c handlers)", () => {
     expect(chaos.actor.player.timed[TMD.CONFUSED]!).toBeGreaterThan(0);
   });
 
+  it("GRAVITY blinks a low-level player and slows them", () => {
+    const state = makeState({ seed: 41 });
+    const start = state.actor.grid;
+    /* Level 1: randint1(127) > 1 makes the blink all but certain. */
+    sideFx(state)({ dam: 20, typ: PROJ.GRAVITY, power: 0 });
+    expect(
+      state.actor.grid.x !== start.x || state.actor.grid.y !== start.y,
+    ).toBe(true);
+    expect(state.chunk.mon(state.actor.grid)).toBe(-1);
+    expect(state.actor.player.timed[TMD.SLOW]!).toBeGreaterThan(0);
+  });
+
+  it("FORCE stuns and thrusts the player away from the origin", () => {
+    const state = makeState({ seed: 42 });
+    const start = state.actor.grid;
+    const hook = makePlayerSideEffects(state, {
+      timed: plReg.timed,
+      actor: stubActor(),
+      projections: [],
+      expDeps: { rng: state.rng },
+      lifeDrainPercent: 2,
+    });
+    hook({
+      origin: {
+        isPlayer: false,
+        isMonster: true,
+        killer: "a test",
+        grid: loc(start.x, start.y - 3),
+      },
+      r: 0,
+      grid: start,
+      obvious: true,
+      dam: 60,
+      typ: PROJ.FORCE,
+      power: 0,
+    });
+    expect(
+      state.actor.grid.x !== start.x || state.actor.grid.y !== start.y,
+    ).toBe(true);
+    expect(state.chunk.mon(state.actor.grid)).toBe(-1);
+    expect(state.actor.player.timed[TMD.STUN]!).toBeGreaterThan(0);
+  });
+
+  it("DISEN disenchants worn equipment unless resisted", () => {
+    const state = makeState({ seed: 43 });
+    /* A worn weapon with enchantment (slot 0 is WEAPON on the humanoid
+     * body; the harness rune env reads the gear store). */
+    const kind = {
+      kidx: 78,
+      tval: TV.SWORD,
+      name: "Blade",
+      toH: { base: 0, dice: 0, sides: 0, mBonus: 0 },
+      base: { maxStack: 40 },
+    } as unknown as ObjectKind;
+    const sword: GameObject = objectNew(kind);
+    sword.number = 1;
+    sword.toH = 8;
+    sword.toD = 8;
+    state.gear.store.set(92, sword);
+    state.actor.player.equipment[0] = 92;
+
+    const fx = sideFx(state);
+    for (let i = 0; i < 30; i++) fx({ dam: 20, typ: PROJ.DISEN, power: 0 });
+    expect(sword.toH).toBeLessThan(8);
+
+    /* Resistance blocks it entirely. */
+    const safe = makeState({ seed: 43 });
+    const blade: GameObject = objectNew(kind);
+    blade.number = 1;
+    blade.toH = 8;
+    safe.gear.store.set(92, blade);
+    safe.actor.player.equipment[0] = 92;
+    const msgs: string[] = [];
+    const rfx = sideFx(safe, { resists: { [ELEM.DISEN]: 1 }, msgs });
+    for (let i = 0; i < 30; i++) rfx({ dam: 20, typ: PROJ.DISEN, power: 0 });
+    expect(blade.toH).toBe(8);
+    expect(msgs).toContain("You resist the effect!");
+  });
+
   it("TIME saps the character (exp or stats) under the seeded roll", () => {
     const state = makeState({ seed: 27 });
     const p = state.actor.player;

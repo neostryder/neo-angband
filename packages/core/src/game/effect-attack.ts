@@ -24,7 +24,7 @@
  * attack projections are rare and resolve to a bare source.
  */
 
-import { EF, TMD } from "../generated";
+import { EF, PROJ, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { monsterIsPowerful } from "../mon/predicate";
 import { breathDam } from "../mon/spell";
@@ -43,6 +43,7 @@ import {
   castBeam,
   castBolt,
   castBreath,
+  castLash,
   castLine,
   castProjectLos,
   castShortBeam,
@@ -74,7 +75,8 @@ function sourceFor(env: GameEffectEnv, origin: Source): CastSource {
         isMonster: false,
         monster: 0,
         grid: env.state.actor.grid,
-        killer: "a bug",
+        killer: origin.what === "trap" ? "a trap" : "a bug",
+        isTrap: origin.what === "trap",
       };
   }
 }
@@ -114,6 +116,29 @@ const handleBEAM: EffectHandler = (ctx) => {
   if (!playerBlind(env)) ctx.ident = true;
   return true;
 };
+
+/**
+ * EF_BOLT_STATUS / EF_BOLT_STATUS_DAM: as BOLT, but only identifies on
+ * noticing an effect (project() reporting something visible happened). The
+ * two are distinct upstream codes purely to aid effect descriptions.
+ */
+const handleBOLT_STATUS: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const dam = effectCalculateValue(ctx, true);
+  const source = sourceFor(env, ctx.origin);
+  const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
+  if (castBolt(env.state, env.cast, source, grid, dam, ctx.subtype))
+    ctx.ident = true;
+  return true;
+};
+
+/**
+ * EF_BOLT_AWARE: as BOLT_STATUS; upstream adds PROJECT_AWARE when the caster
+ * is aware of the effect (notice for unseen grids - a display refinement,
+ * #25).
+ */
+const handleBOLT_AWARE: EffectHandler = (ctx) => handleBOLT_STATUS(ctx);
 
 const handleBOLT_OR_BEAM: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
@@ -266,6 +291,53 @@ const handleSTAR_BALL: EffectHandler = (ctx) => {
   return true;
 };
 
+/**
+ * EF_LASH: crack a whip, or spit at the player - a finite-length beam whose
+ * element comes from the monster's first blow (lash_type, default MISSILE)
+ * and whose damage sums the full first blow plus half of every other blow.
+ * Monsters only; the monster-vs-monster target and decoy branches ride the
+ * monster-spell layer (#19), so the target is the player.
+ */
+const handleLASH: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  let dam = effectCalculateValue(ctx, false);
+
+  /* Monsters only */
+  if (ctx.origin.what !== "monster") return false;
+  const { state } = env;
+  const mon = state.monsters[ctx.origin.monster];
+  if (!mon) return false;
+
+  const source = sourceFor(env, ctx.origin);
+  const target = state.actor.grid;
+
+  /* Paranoia */
+  let rad = ctx.radius;
+  if (rad > env.cast.maxRange) rad = env.cast.maxRange;
+
+  /* Get the type (default is PROJ_MISSILE) */
+  const lashName = mon.race.blows[0]?.effect.lashType ?? null;
+  const typ =
+    lashName !== null
+      ? (PROJ[lashName as keyof typeof PROJ] ?? PROJ.MISSILE)
+      : PROJ.MISSILE;
+
+  /* Scan through all blows: full damage of the first, half of the others. */
+  for (let i = 0; i < mon.race.blows.length; i++) {
+    const dice = mon.race.blows[i]!.dice;
+    const roll = dice ? dice.roll(state.rng) : 0;
+    dam += Math.trunc(roll / (i ? 2 : 1));
+  }
+
+  /* No damaging blows */
+  if (!dam) return false;
+
+  if (castLash(env.state, env.cast, source, target, dam, typ, rad))
+    ctx.ident = true;
+  return true;
+};
+
 const handleSWARM: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
@@ -320,6 +392,10 @@ const ATTACK_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.BOLT, handleBOLT],
   [EF.BEAM, handleBEAM],
   [EF.BOLT_OR_BEAM, handleBOLT_OR_BEAM],
+  [EF.BOLT_STATUS, handleBOLT_STATUS],
+  [EF.BOLT_STATUS_DAM, handleBOLT_STATUS],
+  [EF.BOLT_AWARE, handleBOLT_AWARE],
+  [EF.LASH, handleLASH],
   [EF.LINE, handleLINE],
   [EF.ALTER, handleALTER],
   [EF.BALL, handleBALL],

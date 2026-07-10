@@ -63,7 +63,7 @@ function observed(state: GameState, grid: Loc): boolean {
  * drop_near cannot land anything back on it; the caller's feature change
  * happens after.
  */
-function pushObject(state: GameState, grid: Loc): void {
+export function pushObject(state: GameState, grid: Loc): void {
   const c = state.chunk;
   const featOld = c.feat(grid);
   c.setFeat(grid, FEAT.OPEN);

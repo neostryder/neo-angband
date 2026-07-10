@@ -59,7 +59,10 @@ export interface SpellCmdEnv extends SpellChanceEnv {
 /** Everything the cast/study commands need beyond the state. */
 export interface SpellCmdDeps {
   /** The effect stack bundle (same as obj-cmd / traps). */
-  effects: Pick<ObjCmdDeps, "registry" | "cast" | "envDeps" | "inject" | "teleport">;
+  effects: Pick<
+    ObjCmdDeps,
+    "registry" | "cast" | "envDeps" | "inject" | "teleport" | "general"
+  >;
   /** state->stat_ind from calc_bonuses, for the fail / mana math. */
   statInd: readonly number[];
   env?: SpellCmdEnv;
@@ -128,6 +131,7 @@ export function spellCast(
       state,
       cast: deps.effects.cast,
       ...(deps.effects.teleport ? { teleport: deps.effects.teleport } : {}),
+      ...(deps.effects.general ? { general: deps.effects.general } : {}),
     });
     const ident = { value: false };
     if (

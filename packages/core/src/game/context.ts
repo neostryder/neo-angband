@@ -208,6 +208,12 @@ export interface GameState {
    * worn). Installed by the session (wireGame).
    */
   updateBonuses?: () => void;
+  /**
+   * cave->decoy: the grid of the player's active decoy glyph (EF_GLYPH with
+   * GLYPH_DECOY), or absent/null when none is deployed. Level state, like
+   * traps; cleared when the decoy trap is destroyed or the level changes.
+   */
+  decoy?: Loc | null;
 }
 
 /** One queued player command (a keyed action plus optional direction/args). */

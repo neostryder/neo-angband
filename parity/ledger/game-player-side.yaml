@@ -26,6 +26,11 @@ upstream:
         as you used to be...").
       - The EF_DRAIN_STAT slice used by the drains: the sustain check
         (OF_SUST_ + stat) saves the stat and teaches the sustain rune.
+      - The GRAVITY blink (L399, effect_simple(EF_TELEPORT, "5") behind the
+        randint1(127) > lev roll) through teleportPlayer with the injected
+        TeleportEnv; FORCE's thrust_away (L432) from the origin grid with
+        the SRC_TRAP on-the-trap centre jitter; DISEN's equipment
+        disenchantment (L390) through disenchantEquipment.
 notes: >-
   Wired in wireGame as cast.hooks.player.onSideEffects, so monster spells,
   traps and devices that hit the player now carry their full upstream
@@ -36,19 +41,20 @@ notes: >-
   their runes (obj/knowledge.ts). player_of_has is implemented over the
   racial flags plus every equipped item via the state's RuneEnv.
 deferred:
-  - The teleport branches (NEXUS teleport-to / teleport-level / teleport
-    200, GRAVITY blink) and FORCE's thrust_away: they dispatch through
-    effect_simple and land with the effect-handler tail (#18).
-  - DISEN's EF_DISENCHANT equipment disenchantment (#18).
+  - The NEXUS teleport branches (teleport-to the caster / teleport-level /
+    teleport 200): they dispatch through effect_simple over the wired
+    handlers; the hookup rides the remaining #18 tail.
   - player_inc_check's fail-condition messages before the confusion
     messages (the timed registry check runs, but the pre-check message
     gating is simplified to always announcing).
   - update_smart_learn (monster learning the player's resists) rides lore
     (#24); PR_MANA and the other redraw masks are display.
 verified-by:
-  - game/player-side.test.ts (6 tests): WATER confuses and stuns; SHARD
+  - game/player-side.test.ts (9 tests): WATER confuses and stuns; SHARD
     cuts unless resisted (with the resist message); SOUND stuns while
     PROT_STUN prevents it and teaches the rune; NETHER drains experience
     while HOLD_LIFE resists and teaches the rune; INERTIA slows and CHAOS
     hallucinates + confuses; TIME saps experience or stats under the
-    seeded roll.
+    seeded roll; GRAVITY blinks a low-level player and slows them; FORCE
+    stuns and thrusts the player away from the origin; DISEN disenchants
+    worn equipment unless resisted.

@@ -71,6 +71,8 @@ export interface DoMonSpellDeps {
   inject?: EffectBuilderInjections;
   /** Teleport-family seams (trap predicates, level change; game/trap.ts). */
   teleport?: TeleportEnv;
+  /** General-handler seams (trap access for webs; effect-general.ts). */
+  general?: import("./effect-general").GeneralEffectEnv;
   hooks?: MonSpellHooks;
 }
 
@@ -181,6 +183,7 @@ export function doMonSpell(
       ? { takeHitHooks: deps.envDeps.takeHitHooks }
       : {}),
     ...(deps.teleport ? { teleport: deps.teleport } : {}),
+    ...(deps.general ? { general: deps.general } : {}),
   });
 
   deps.registry.effectDo(chain, ctx, {

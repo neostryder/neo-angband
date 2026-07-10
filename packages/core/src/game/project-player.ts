@@ -55,6 +55,10 @@ export interface ProjectPlayerSource {
   monsterVisible?: boolean;
   /** The kb_str death cause ("yourself", a monster/trap name, "a bug"). */
   killer: string;
+  /** origin_get_loc(origin): the projection's start grid (FORCE centre). */
+  grid?: Loc;
+  /** origin.what == SRC_TRAP (FORCE jitters an on-the-trap centre). */
+  isTrap?: boolean;
 }
 
 /** Context passed to the per-type side-effect hook (upstream handler context). */

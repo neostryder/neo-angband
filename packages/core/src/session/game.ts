@@ -53,8 +53,11 @@ import { installPickup } from "../game/pickup";
 import { EffectRegistry } from "../effects/interpreter";
 import { registerCoreHandlers } from "../effects/handlers";
 import { registerAttackHandlers } from "../game/effect-attack";
+import { registerGeneralHandlers } from "../game/effect-general";
+import type { GeneralEffectEnv } from "../game/effect-general";
 import { registerMonsterHandlers } from "../game/effect-monster";
-import { registerTeleportHandlers } from "../game/effect-teleport";
+import { registerTeleportHandlers, teleportMonster } from "../game/effect-teleport";
+import { thrustAway } from "../game/thrust";
 import { basicPlayerActor } from "../game/project-cast";
 import type { CastContext } from "../game/project-cast";
 import type { EffectEnvDeps } from "../game/effect-env";
@@ -262,6 +265,25 @@ function wireGame(
     registerAttackHandlers(effects);
     registerMonsterHandlers(effects);
     registerTeleportHandlers(effects);
+    registerGeneralHandlers(effects);
+
+    // The trap-backed square predicates feed every consumer that stubbed
+    // them (teleport landing checks, drop placement) once traps exist.
+    const preds = reg.traps ? trapPredicates(state) : null;
+    const teleport = preds
+      ? {
+          isPlayerTrap: preds.isPlayerTrap,
+          isWarded: preds.isWarded,
+          isWebbed: preds.isWebbed,
+          changeLevel: (targetDepth: number): void => {
+            state.targetDepth = targetDepth;
+            state.generateLevel = true;
+          },
+        }
+      : undefined;
+    // Glyph / web creation needs the trap system; trapDeps joins below
+    // once it is built (the mutual reference is deliberate).
+    const general: GeneralEffectEnv = {};
     // project_o / project_f world access; trapDeps joins it below once the
     // trap system is wired (the mutual reference is deliberate).
     const worldEnv: ProjectFeatEnv = { makeDeps };
@@ -280,8 +302,15 @@ function wireGame(
       playerActor,
       worldEnv,
       hooks: {
-        /* Spell/device kills reward experience like melee kills. */
-        monster: { onKill: (m): void => state.onPlayerKill?.(m) },
+        monster: {
+          /* Spell/device kills reward experience like melee kills. */
+          onKill: (m): void => state.onPlayerKill?.(m),
+          /* PROJ_AWAY_ALL teleports and PROJ_FORCE knockback for monsters. */
+          teleport: (m, dist): void =>
+            teleportMonster(state, m.midx, dist, teleport ?? {}),
+          thrustAway: (centre, target, gridsAway): void =>
+            thrustAway(state, centre, target, gridsAway),
+        },
         /* The per-PROJ player side effects (project-player.c handlers). */
         player: {
           onSideEffects: makePlayerSideEffects(state, {
@@ -290,26 +319,12 @@ function wireGame(
             projections: reg.projections,
             expDeps,
             lifeDrainPercent: reg.constants.lifeDrainPercent,
+            ...(teleport ? { teleport } : {}),
           }),
         },
       },
     };
     const envDeps: EffectEnvDeps = { timedTable: players.timed };
-
-    // The trap-backed square predicates feed every consumer that stubbed
-    // them (teleport landing checks, drop placement) once traps exist.
-    const preds = reg.traps ? trapPredicates(state) : null;
-    const teleport = preds
-      ? {
-          isPlayerTrap: preds.isPlayerTrap,
-          isWarded: preds.isWarded,
-          isWebbed: preds.isWebbed,
-          changeLevel: (targetDepth: number): void => {
-            state.targetDepth = targetDepth;
-            state.generateLevel = true;
-          },
-        }
-      : undefined;
 
     installMonsterCasting(state, {
       registry: effects,
@@ -318,6 +333,7 @@ function wireGame(
       envDeps,
       saveSkill: pstate.skills[SKILL.SAVE] ?? 0,
       ...(teleport ? { teleport } : {}),
+      general,
     });
 
     installObjCommands(registry, {
@@ -327,6 +343,7 @@ function wireGame(
       envDeps,
       flavor,
       ...(teleport ? { teleport } : {}),
+      general,
       ...(preds ? { floorEnv: { isTrap: preds.isTrap } } : {}),
     });
 
@@ -337,6 +354,7 @@ function wireGame(
         cast,
         envDeps,
         ...(teleport ? { teleport } : {}),
+        general,
       },
       statInd: pstate.statInd,
       env: { expGain },
@@ -351,6 +369,7 @@ function wireGame(
           cast,
           envDeps,
           ...(teleport ? { teleport } : {}),
+          general,
         },
         env: {
           expGain,
@@ -362,6 +381,7 @@ function wireGame(
       };
       installTraps(state, registry, trapDeps);
       worldEnv.trapDeps = trapDeps;
+      general.trapDeps = trapDeps;
     }
   }
 
