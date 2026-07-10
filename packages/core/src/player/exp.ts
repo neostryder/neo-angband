@@ -215,3 +215,44 @@ export function playerStatDec(
   }
   return res;
 }
+
+/**
+ * player_scramble_stats (player-util.c L375): swap the stats at random with
+ * a Fisher-Yates shuffle, recording the swaps in statMap so they can be
+ * reverted. The caller marks PU_BONUS.
+ */
+export function playerScrambleStats(p: Player, rng: Rng): void {
+  for (let i = STAT_MAX - 1; i > 0; --i) {
+    const j = rng.randint0(i);
+
+    const max1 = p.statMax[i]!;
+    const cur1 = p.statCur[i]!;
+    p.statMax[i] = p.statMax[j]!;
+    p.statCur[i] = p.statCur[j]!;
+    p.statMax[j] = max1;
+    p.statCur[j] = cur1;
+
+    /* Record what we did */
+    const swap = p.statMap[i]!;
+    p.statMap[i] = p.statMap[j]!;
+    p.statMap[j] = swap;
+  }
+}
+
+/**
+ * player_fix_scramble (player-util.c L409): revert all prior stat swaps.
+ * No effect if the stats have not been swapped. The caller marks PU_BONUS.
+ */
+export function playerFixScramble(p: Player): void {
+  const newCur = new Array<number>(STAT_MAX);
+  const newMax = new Array<number>(STAT_MAX);
+  for (let i = 0; i < STAT_MAX; ++i) {
+    newCur[p.statMap[i]!] = p.statCur[i]!;
+    newMax[p.statMap[i]!] = p.statMax[i]!;
+  }
+  for (let i = 0; i < STAT_MAX; ++i) {
+    p.statCur[i] = newCur[i]!;
+    p.statMax[i] = newMax[i]!;
+    p.statMap[i] = i;
+  }
+}

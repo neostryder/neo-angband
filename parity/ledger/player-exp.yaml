@@ -17,6 +17,12 @@ upstream:
       - player_stat_inc (L145) and player_stat_dec (L171) - the classic
         18/xx arithmetic (a point below 18, a tenth above 18/10, permanent
         drains lowering the max).
+  - path: src/player-util.c
+    items:
+      - player_scramble_stats (L375) and player_fix_scramble (L409) - the
+        Fisher-Yates stat shuffle with statMap bookkeeping and its exact
+        reversal, for the TMD_SCRAMBLE effect chains (EF_SCRAMBLE_STATS /
+        EF_UNSCRAMBLE_STATS, game/effect-general.ts).
   - path: src/player-birth.c
     items:
       - roll_hp - the cumulative per-level hitdice rolled at birth,
@@ -46,8 +52,8 @@ deferred:
   - The rest of player_kill_monster (uniques' max_num, quest checks, drops
     and monster_death) rides mon-util/lore (#24); onPlayerKill is the seam.
   - Ranged/thrown kill sites land with the fire/throw commands.
-  - player_stat_inc's gain-stat effect callers (EF_GAIN_STAT potions) ride
-    the effect-handler tail (#18).
+  - (EF_GAIN_STAT and the other stat/exp effect callers are now wired -
+    game/effect-general.ts.)
 verified-by:
   - player/exp.test.ts (11 tests): threshold crossing with the welcome
     message; expFactor scaling; multi-level jumps restoring drained stats;

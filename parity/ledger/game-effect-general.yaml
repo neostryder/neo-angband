@@ -20,6 +20,24 @@ upstream:
         order, the 60% artifact resist, and the to-hit/to-dam (weapon and
         bow) vs to-ac decrements with the >5 20% second point are
         verbatim; PU_BONUS is state.updateBonuses.
+      - The stat family - RESTORE_STAT (L773), DRAIN_STAT (L803, sustain
+        save with equip_learn_flag on both branches and the drain damage
+        through the context's player takeHit), LOSE_RANDOM_STAT (L852,
+        (randint1(STAT_MAX-1)+safe) % STAT_MAX), GAIN_STAT (L875), and
+        SCRAMBLE_STATS / UNSCRAMBLE_STATS (L3634, player_scramble_stats /
+        player_fix_scramble ported to player/exp.ts with the Fisher-Yates
+        order and statMap bookkeeping). desc_stat reads the adjectives
+        from the bound object properties (GeneralEffectEnv.properties).
+      - RESTORE_EXP (L893) and GAIN_EXP (L913, amount halved), rippling
+        level changes through GeneralEffectEnv.expDeps.
+      - DRAIN_LIGHT (L928) - the light slot's fuel (not OF_NO_FUEL,
+        timeout floored at 1) with the blind-gated message.
+      - DRAIN_MANA (L956) - a decoy soaks the drain and is destroyed
+        (square_destroy_decoy as squareRemoveAllTraps of the decoy kind +
+        clearing GameState.decoy); no mana fails with its message; the
+        drain is capped at csp (csp_frac cleared); a monster caster heals
+        6 per point with the visible-monster message.
+      - MON_TIMED_INC (L667) - mon_inc_timed on the casting monster.
 notes: >-
   Registered by registerGeneralHandlers over the core stubs; wireGame
   attaches GeneralEffectEnv (trapDeps) through the same deps threading as
@@ -35,11 +53,22 @@ deferred:
   - Monster-AI decoy targeting (monster_is_decoyed and the decoy's death)
     rides lore/AI (#24); the decoy grid is tracked and the glyph trap is
     real.
+  - DRAIN_MANA's monster-vs-monster branch (MON_TMD_DISEN on the target
+    monster) rides monster-spell targeting (#19); update_smart_learn
+    (PF_NO_MANA) rides lore (#24). MDESC monster names ride the display
+    layer (#25); the race name stands in.
+  - DRAIN_STAT's show_damage " (%d)" suffix is the options system (#30).
 verified-by:
-  - game/effect-general.test.ts (10 tests) - GLYPH places a warding glyph
+  - game/effect-general.test.ts (18 tests) - GLYPH places a warding glyph
     under the player; a decoy deploys once and a second is refused with
     the message; worldless no-op; WEB webs the full 3x3 at spell power 10
     and wider at 50, and fails for a player source; DISENCHANT lowers a
     worn weapon's to-hit/to-dam and refreshes bonuses, lowers armour to-ac
     with artifacts resisting, never touches rings/amulets/lights, and runs
-    through the effect stack.
+    through the effect stack; RESTORE_STAT restores with its message;
+    DRAIN_STAT drains unless sustained (learning the rune); GAIN_STAT
+    raises and LOSE_RANDOM_STAT spares the safe stat; GAIN_EXP halves and
+    RESTORE_EXP heals drains; DRAIN_MANA drains, heals the caster, fails
+    on empty mana and is soaked by a decoy; SCRAMBLE / UNSCRAMBLE round-
+    trips the stats through statMap; MON_TIMED_INC extends a monster
+    condition.

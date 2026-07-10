@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { EF, MON_TMD, RF } from "../generated";
 import {
   EffectRegistry,
+  sourceMonster,
   sourcePlayer,
 } from "../effects/interpreter";
 import type { EffectContext } from "../effects/interpreter";
@@ -113,6 +114,51 @@ describe("EF_MASS_BANISH", () => {
     expect(state.monsters[near.midx]).toBeNull();
     expect(state.monsters[far.midx]).not.toBeNull();
     expect(state.actor.player.chp).toBeLessThan(100);
+  });
+});
+
+describe("EF_MON_HEAL_HP / EF_MON_HEAL_KIN", () => {
+  it("the casting monster heals itself, capped at max, and sheds fear", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, plainRace, loc(7, 7), { hp: 50 });
+    mon.hp = 10;
+    mon.mTimed[MON_TMD.FEAR] = 20;
+    registry().effectSimple(EF.MON_HEAL_HP, env(state), {
+      origin: sourceMonster(mon.midx),
+      diceString: "100",
+    });
+    expect(mon.hp).toBe(50);
+    expect(mon.mTimed[MON_TMD.FEAR]).toBe(0);
+  });
+
+  it("heals a nearby injured monster of the same base", () => {
+    const state = makeState({ playerGrid: loc(20, 5) });
+    const caster = addMon(state, plainRace, loc(7, 7), { hp: 50 });
+    const kin = addMon(state, plainRace, loc(9, 7), { hp: 50 });
+    kin.hp = 15;
+    registry().effectSimple(EF.MON_HEAL_KIN, env(state), {
+      origin: sourceMonster(caster.midx),
+      diceString: "20",
+    });
+    expect(kin.hp).toBe(35);
+    expect(caster.hp).toBe(50); /* the caster itself is never the target */
+  });
+
+  it("finds no kin when none is injured or of the same base", () => {
+    const state = makeState({ playerGrid: loc(20, 5) });
+    const caster = addMon(state, plainRace, loc(7, 7), { hp: 50 });
+    const healthy = addMon(state, plainRace, loc(9, 7), { hp: 50 });
+    const otherBase = monReg.races.find(
+      (r) => r.rarity > 0 && r.base !== plainRace.base,
+    )!;
+    const stranger = addMon(state, otherBase, loc(7, 9), { hp: 50 });
+    stranger.hp = 5;
+    registry().effectSimple(EF.MON_HEAL_KIN, env(state), {
+      origin: sourceMonster(caster.midx),
+      diceString: "20",
+    });
+    expect(healthy.hp).toBe(50);
+    expect(stranger.hp).toBe(5); /* different base: not kin */
   });
 });
 

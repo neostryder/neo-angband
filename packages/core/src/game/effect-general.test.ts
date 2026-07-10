@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, TV } from "../generated";
+import { EF, MFLAG, MON_TMD, OF, RF, TV } from "../generated";
 import { loc, locEq } from "../loc";
 import {
   EffectRegistry,
@@ -12,11 +12,12 @@ import { registerCoreHandlers } from "../effects/handlers";
 import { GLYPH_DECOY, GLYPH_WARDING } from "../effects/effect";
 import { bindTraps } from "../world/trap";
 import type { TrapRecordJson } from "../world/trap";
-import type { ObjectKind } from "../obj/types";
+import { OBJ_PROPERTY } from "../obj/types";
+import type { ObjectKind, ObjectProperty } from "../obj/types";
 import { objectNew } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { makeRuneEnv } from "../obj/knowledge";
-import { addMon, makeRace, makeState } from "./harness";
+import { addMon, makeRace, makeState, monReg } from "./harness";
 import type { GameState } from "./context";
 import { basicPlayerActor } from "./project-cast";
 import { attachGameEnv } from "./effect-game-env";
@@ -243,5 +244,188 @@ describe("EF_DISENCHANT (effect-handler-general.c L2003)", () => {
       r.effectSimple(EF.DISENCHANT, env(state), { origin: sourcePlayer() });
     }
     expect(sword.toH).toBeLessThan(9);
+  });
+});
+
+/** desc_stat backing: a synthetic STR property. */
+const statProps = [
+  {
+    type: OBJ_PROPERTY.STAT,
+    propIndex: 0,
+    adjective: "strong",
+    negAdj: "weak",
+  } as ObjectProperty,
+];
+
+describe("stat / exp / mana handlers (effect-handler-general.c)", () => {
+  it("RESTORE_STAT restores a drained stat with its message", () => {
+    const state = makeState({ seed: 51 });
+    const p = state.actor.player;
+    p.statCur[0] = 10;
+    p.statMax[0] = 15;
+    const msgs: string[] = [];
+    registry().effectSimple(
+      EF.RESTORE_STAT,
+      env(state, { general: { properties: statProps } }, msgs),
+      { origin: sourcePlayer(), subtype: 0 },
+    );
+    expect(p.statCur[0]).toBe(15);
+    expect(msgs).toContain("You feel less weak.");
+  });
+
+  it("DRAIN_STAT drains unless the sustain saves it (learning the rune)", () => {
+    const state = makeState({ seed: 52 });
+    const p = state.actor.player;
+    p.statCur[0] = 15;
+    p.statMax[0] = 15;
+    const msgs: string[] = [];
+    registry().effectSimple(
+      EF.DRAIN_STAT,
+      env(state, { general: { properties: statProps } }, msgs),
+      { origin: sourcePlayer(), subtype: 0, diceString: "5" },
+    );
+    expect(p.statCur[0]).toBe(14);
+    expect(msgs).toContain("You feel very weak.");
+
+    /* Sustained: the stat holds and the sustain rune is learned. */
+    const held = makeState({ seed: 52 });
+    const hp = held.actor.player;
+    hp.statCur[0] = 15;
+    hp.statMax[0] = 15;
+    const vest = makeItem(TV.SOFT_ARMOR, "Vest");
+    vest.flags.on(OF.SUST_STR);
+    held.gear.store.set(93, vest);
+    hp.equipment[0] = 93;
+    registry().effectSimple(
+      EF.DRAIN_STAT,
+      env(held, { general: { properties: statProps } }),
+      { origin: sourcePlayer(), subtype: 0, diceString: "5" },
+    );
+    expect(hp.statCur[0]).toBe(15);
+    expect(hp.objKnown.flags.has(OF.SUST_STR)).toBe(true);
+  });
+
+  it("GAIN_STAT raises the stat; LOSE_RANDOM_STAT spares the safe one", () => {
+    const state = makeState({ seed: 53 });
+    const p = state.actor.player;
+    p.statCur[0] = 10;
+    p.statMax[0] = 10;
+    registry().effectSimple(
+      EF.GAIN_STAT,
+      env(state, { general: { properties: statProps } }),
+      { origin: sourcePlayer(), subtype: 0 },
+    );
+    expect(p.statCur[0]).toBe(11);
+
+    for (let i = 0; i < 5; i++) {
+      p.statCur[i] = 12;
+      p.statMax[i] = 12;
+    }
+    registry().effectSimple(EF.LOSE_RANDOM_STAT, env(state), {
+      origin: sourcePlayer(),
+      subtype: 0,
+    });
+    expect(p.statMax[0]).toBe(12); /* the safe stat is untouched */
+    const dropped = [1, 2, 3, 4].filter((i) => p.statMax[i]! < 12);
+    expect(dropped.length).toBe(1);
+  });
+
+  it("GAIN_EXP grants half the rolled amount; RESTORE_EXP heals drains", () => {
+    const state = makeState({ seed: 54 });
+    const p = state.actor.player;
+    registry().effectSimple(EF.GAIN_EXP, env(state), {
+      origin: sourcePlayer(),
+      diceString: "100",
+    });
+    expect(p.exp).toBe(50);
+
+    p.exp = 40; /* drained below max */
+    const msgs: string[] = [];
+    registry().effectSimple(EF.RESTORE_EXP, env(state, {}, msgs), {
+      origin: sourcePlayer(),
+    });
+    expect(p.exp).toBe(p.maxExp);
+    expect(msgs).toContain("You feel your life energies returning.");
+  });
+
+  it("DRAIN_MANA drains the player and heals a monster caster", () => {
+    const state = makeState({ seed: 55 });
+    const p = state.actor.player;
+    p.msp = 10;
+    p.csp = 10;
+    const race = monReg.races.find((r) => r.rarity > 0 && !r.flags.has(RF.UNIQUE))!;
+    const mon = addMon(state, race, loc(10, 10), { hp: 50 });
+    mon.hp = 20;
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    const msgs: string[] = [];
+    registry().effectSimple(EF.DRAIN_MANA, env(state, {}, msgs), {
+      origin: sourceMonster(mon.midx),
+      diceString: "4",
+    });
+    expect(p.csp).toBe(6);
+    expect(mon.hp).toBe(20 + 6 * 4);
+    expect(msgs.some((m) => m.includes("appears healthier."))).toBe(true);
+
+    /* No mana: the draining fails. */
+    p.csp = 0;
+    const msgs2: string[] = [];
+    registry().effectSimple(EF.DRAIN_MANA, env(state, {}, msgs2), {
+      origin: sourceMonster(mon.midx),
+      diceString: "4",
+    });
+    expect(msgs2).toContain("The draining fails.");
+  });
+
+  it("a decoy soaks DRAIN_MANA and is destroyed", () => {
+    const state = makeState({ seed: 56 });
+    const p = state.actor.player;
+    p.msp = 10;
+    p.csp = 10;
+    const r = registry();
+    r.effectSimple(EF.GLYPH, env(state), {
+      origin: sourcePlayer(),
+      subtype: GLYPH_DECOY,
+    });
+    expect(state.decoy).toBeTruthy();
+    const race = monReg.races.find((rr) => rr.rarity > 0)!;
+    const mon = addMon(state, race, loc(3, 3), { hp: 50 });
+
+    r.effectSimple(EF.DRAIN_MANA, env(state), {
+      origin: sourceMonster(mon.midx),
+      diceString: "4",
+    });
+    expect(p.csp).toBe(10); /* untouched */
+    expect(state.decoy).toBeNull();
+  });
+
+  it("SCRAMBLE_STATS permutes the stats and UNSCRAMBLE_STATS restores them", () => {
+    const state = makeState({ seed: 57 });
+    const p = state.actor.player;
+    const original = [10, 11, 12, 13, 14];
+    for (let i = 0; i < 5; i++) {
+      p.statCur[i] = original[i]!;
+      p.statMax[i] = original[i]!;
+      p.statMap[i] = i;
+    }
+    const r = registry();
+    r.effectSimple(EF.SCRAMBLE_STATS, env(state), { origin: sourcePlayer() });
+    /* Same multiset of values, tracked by statMap. */
+    expect([...p.statCur].sort()).toEqual([...original].sort());
+
+    r.effectSimple(EF.UNSCRAMBLE_STATS, env(state), { origin: sourcePlayer() });
+    expect([...p.statCur]).toEqual(original);
+    expect([...p.statMap]).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("MON_TIMED_INC extends a condition on the casting monster", () => {
+    const state = makeState({ seed: 58 });
+    const mon = addMon(state, makeRace(), loc(10, 10), { hp: 30 });
+    registry().effectSimple(EF.MON_TIMED_INC, env(state), {
+      origin: sourceMonster(mon.midx),
+      subtype: MON_TMD.FAST,
+      diceString: "10",
+    });
+    expect(mon.mTimed[MON_TMD.FAST]!).toBeGreaterThan(0);
   });
 });

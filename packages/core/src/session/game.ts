@@ -282,8 +282,13 @@ function wireGame(
         }
       : undefined;
     // Glyph / web creation needs the trap system; trapDeps joins below
-    // once it is built (the mutual reference is deliberate).
-    const general: GeneralEffectEnv = {};
+    // once it is built (the mutual reference is deliberate). The stat
+    // adjectives (desc_stat) come from the bound object properties, and
+    // experience gains ripple level changes through expDeps.
+    const general: GeneralEffectEnv = {
+      properties: reg.objects.properties,
+      expDeps,
+    };
     // project_o / project_f world access; trapDeps joins it below once the
     // trap system is wired (the mutual reference is deliberate).
     const worldEnv: ProjectFeatEnv = { makeDeps };

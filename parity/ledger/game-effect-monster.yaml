@@ -15,10 +15,21 @@ upstream:
       - effect_handler_MASS_BANISH (L2401): handleMASS_BANISH - delete all
         non-unique monsters within context->radius (else the sight radius),
         costing 1d3 hitpoints per monster.
+  - path: src/effect-handler-attack.c
+    items:
+      - effect_handler_MON_HEAL_HP (L254): the casting monster heals itself,
+        capped at maxhp, with the looks/sounds (REALLY) healthy messages by
+        blindness and visibility, and fear cancelled (mon_clear_timed
+        NOMESSAGE plus the courage message).
+      - effect_handler_MON_HEAL_KIN (L311): heal a nearby injured monster of
+        the same base, found by choose_nearby_injured_kin (mon-util.c L907) -
+        the 11x11 scan, same-base / LOS / injured / distance-5 filters and
+        the k=1 reservoir sample with upstream RNG draws.
   - path: src/effects.c
     items:
-      - the effect_kind[] slots for WAKE / BANISH / MASS_BANISH: registered by
-        registerMonsterHandlers, overriding registerCoreHandlers' stubs.
+      - the effect_kind[] slots for WAKE / BANISH / MASS_BANISH /
+        MON_HEAL_HP / MON_HEAL_KIN: registered by registerMonsterHandlers,
+        overriding registerCoreHandlers' stubs.
 notes: >-
   The monster-targeting general effect handlers. Like the attack handlers they
   iterate the live GameState, so they live in game/ and read their environment
@@ -31,11 +42,16 @@ notes: >-
   cancelled prompt.
 deferred:
   - The arena-level guard (player->upkeep->arena_level): arenas are not modelled.
-  - The PR_MONLIST redraw is a UI concern (the monster-list window).
+  - The PR_MONLIST / PR_HEALTH redraws are UI concerns.
+  - MDESC monster names and possessives (monster_desc) ride the display
+    layer (#25); the race name and "its" stand in.
 verified-by:
-  - game/effect-monster.test.ts (6 tests): through a real EffectRegistry
+  - game/effect-monster.test.ts (9 tests): through a real EffectRegistry
     (registerCoreHandlers + registerMonsterHandlers), EF_WAKE wakes a sleeping
     monster in range; EF_BANISH removes matching non-unique monsters and hurts
     the caster, aborts with no damage when no symbol is chosen, and never
     banishes uniques; EF_MASS_BANISH removes nearby non-uniques and spares
-    distant ones; and the handlers no-op without a game env.
+    distant ones; EF_MON_HEAL_HP heals the caster (capped) and sheds fear;
+    EF_MON_HEAL_KIN heals a nearby injured same-base monster and skips
+    healthy or different-base ones; and the handlers no-op without a game
+    env.
