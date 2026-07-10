@@ -20,7 +20,7 @@
  * knowledge/detection batch (#24).
  */
 
-import { EF, OF, TMD, TV } from "../generated";
+import { EF, OF, ORIGIN, TMD, TV } from "../generated";
 import {
   ENCH_TOAC,
   ENCH_TOBOTH,
@@ -736,6 +736,40 @@ const handleTAP_DEVICE: EffectHandler = (ctx) => {
   return used;
 };
 
+/**
+ * EF_ACQUIRE: conjure `value` great objects out of thin air (acquirement,
+ * obj-make.c L1240).
+ */
+const handleACQUIRE: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  let num = effectCalculateValue(ctx, false);
+  ctx.ident = true;
+  if (!env.item?.makeDeps) return true;
+
+  while (num-- > 0) {
+    /* Make a good (or great) object (if possible) */
+    const nice = makeObject(
+      state.rng,
+      env.item.makeDeps,
+      state.chunk.depth,
+      true,
+      true,
+      true,
+      0,
+    );
+    if (!nice) continue;
+
+    nice.origin = ORIGIN.ACQUIRE;
+    nice.originDepth = state.chunk.depth;
+
+    /* Drop the object */
+    dropNear(state, nice, 0, state.actor.grid, true);
+  }
+  return true;
+};
+
 /** The item-targeting handlers, keyed by upstream EF code. */
 const ITEM_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   number,
@@ -751,6 +785,7 @@ const ITEM_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.CURSE_WEAPON, handleCURSE_WEAPON],
   [EF.CREATE_ARROWS, handleCREATE_ARROWS],
   [EF.TAP_DEVICE, handleTAP_DEVICE],
+  [EF.ACQUIRE, handleACQUIRE],
 ]);
 
 /**
