@@ -40,6 +40,7 @@ import {
   monsterIsUndead,
   monsterIsVisible,
 } from "../mon/predicate";
+import { getLore } from "../mon/lore";
 import { monTakeHit } from "../mon/take-hit";
 import { pyAttackReal } from "../combat/melee";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay";
@@ -80,7 +81,7 @@ function playerBlow(state: GameState, mon: Monster): boolean {
     state.actor.player,
     state.runeEnv,
     state.actor.weapon,
-    { race: mon.race, visible: true },
+    { race: mon.race, visible: true, lore: getLore(state.lore, mon.race) },
   );
   const blow = pyAttackReal(
     state.rng,

@@ -22,6 +22,12 @@ upstream:
         aidx / ridx / trap tidx / race+class names) and re-resolved against
         the pack on load; kind-owned data (effect chains, messages,
         activations) re-points at the bound kind.
+      - wr_monster_memory / rd_monster_memory: SavedGame.lore carries the
+        WHOLE monster-memory record per race (upstream saves only
+        pkills/thefts and keeps the rest in the user lore file; the JSON
+        save carries both, so memory survives reload). Optional - older
+        saves load with no memory. The player's target is NOT persisted,
+        as upstream.
   - path: src/game-world.c, src/player-util.c
     items:
       - dungeon_change_level + prepare_next_level: StartedGame.changeLevel

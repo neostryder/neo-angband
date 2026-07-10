@@ -29,6 +29,7 @@ import type { ObjRegistry } from "../obj/bind";
 import type { ElementInfo } from "../obj/types";
 import { blankMonster, GROUP_MAX } from "../mon/monster";
 import type { Monster, MonsterGroupInfo } from "../mon/monster";
+import type { MonsterLore } from "../mon/lore";
 import type { MonsterRegistry } from "../mon/bind";
 import { blankPlayer } from "../player/player";
 import type { Player } from "../player/player";
@@ -484,12 +485,44 @@ export interface SavedGame {
    * an all-unknown map.
    */
   known?: SavedKnown;
+  /**
+   * Monster memory (mon/lore.ts), keyed by race.ridx. Optional: absent in
+   * saves written before lore, which load with no memory. Upstream splits
+   * this between the savefile (pkills/thefts) and the user lore file; the
+   * JSON save carries the whole record.
+   */
+  lore?: Array<[number, SavedLore]>;
 }
 
 /** Serialized map knowledge (remembered terrain and floor objects). */
 export interface SavedKnown {
   feat: number[];
   objects: Array<[number, { ch: string | null; attr: string }]>;
+}
+
+/** One serialized race-lore record. */
+export interface SavedLore {
+  sights: number;
+  deaths: number;
+  pkills: number;
+  thefts: number;
+  tkills: number;
+  wake: number;
+  ignore: number;
+  dropGold: number;
+  dropItem: number;
+  castInnate: number;
+  castSpell: number;
+  blowTimesSeen: number[];
+  blowKnown: boolean[];
+  flags: number[];
+  spellFlags: number[];
+  allKnown: boolean;
+  armourKnown: boolean;
+  dropKnown: boolean;
+  sleepKnown: boolean;
+  spellFreqKnown: boolean;
+  innateFreqKnown: boolean;
 }
 
 /** Serialize a live game (state + flavor knowledge) into plain JSON data. */
@@ -558,7 +591,67 @@ export function serializeGame(
         { ch: m.ch, attr: m.attr },
       ]),
     },
+    lore: Array.from(state.lore.entries()).map(([ridx, l]) => [
+      ridx,
+      {
+        sights: l.sights,
+        deaths: l.deaths,
+        pkills: l.pkills,
+        thefts: l.thefts,
+        tkills: l.tkills,
+        wake: l.wake,
+        ignore: l.ignore,
+        dropGold: l.dropGold,
+        dropItem: l.dropItem,
+        castInnate: l.castInnate,
+        castSpell: l.castSpell,
+        blowTimesSeen: [...l.blowTimesSeen],
+        blowKnown: [...l.blowKnown],
+        flags: Array.from(l.flags.bits),
+        spellFlags: Array.from(l.spellFlags.bits),
+        allKnown: l.allKnown,
+        armourKnown: l.armourKnown,
+        dropKnown: l.dropKnown,
+        sleepKnown: l.sleepKnown,
+        spellFreqKnown: l.spellFreqKnown,
+        innateFreqKnown: l.innateFreqKnown,
+      },
+    ]),
   };
+}
+
+/** Rebuild the monster memory (absent in older saves: none). */
+export function deserializeLore(
+  data: SavedGame["lore"],
+): Map<number, MonsterLore> {
+  const store = new Map<number, MonsterLore>();
+  if (!data) return store;
+  for (const [ridx, l] of data) {
+    store.set(ridx, {
+      sights: l.sights,
+      deaths: l.deaths,
+      pkills: l.pkills,
+      thefts: l.thefts,
+      tkills: l.tkills,
+      wake: l.wake,
+      ignore: l.ignore,
+      dropGold: l.dropGold,
+      dropItem: l.dropItem,
+      castInnate: l.castInnate,
+      castSpell: l.castSpell,
+      blowTimesSeen: [...l.blowTimesSeen],
+      blowKnown: [...l.blowKnown],
+      flags: new FlagSet(Uint8Array.from(l.flags)),
+      spellFlags: new FlagSet(Uint8Array.from(l.spellFlags)),
+      allKnown: l.allKnown,
+      armourKnown: l.armourKnown,
+      dropKnown: l.dropKnown,
+      sleepKnown: l.sleepKnown,
+      spellFreqKnown: l.spellFreqKnown,
+      innateFreqKnown: l.innateFreqKnown,
+    });
+  }
+  return store;
 }
 
 /** Rebuild the map knowledge (absent in older saves: all unknown). */

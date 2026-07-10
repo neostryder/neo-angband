@@ -49,9 +49,10 @@ deferred:
     AI's memory of player resists; the option is off by default.
   - RSF_HEAL_KIN's find_any_nearby_injured_kin scan: monster groups (#19); the
     injured-kin test is an injected hook, default none (so HEAL_KIN is dropped).
-  - The monster-lore updates (lore->spell_flags / cast counts) and become_aware
-    for a camouflaged caster (lore, #24), and the failure / cast messages: all
-    injected hooks.
+  - The monster-lore updates are DONE (mon-lore.yaml): a seen cast learns
+    the spell flag and counts cast_innate / cast_spell, and a fatal cast
+    counts a death. become_aware for a camouflaged caster and the
+    failure / cast messages remain injected hooks.
   - The decoy target and the non-player-target witness path (square_isview along
     project_path): decoys and monster-vs-monster targeting are not modelled here.
   - The session / web layer still needs to call installMonsterCasting during

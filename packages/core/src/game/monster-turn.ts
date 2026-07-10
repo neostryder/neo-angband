@@ -49,7 +49,12 @@ import {
 import { MFLAG, MON_TMD, RF } from "../generated";
 import type { Monster } from "../mon/monster";
 import { MON_GROUP } from "../mon/types";
-import { monsterPassesWalls } from "../mon/predicate";
+import {
+  monsterIsObvious,
+  monsterIsVisible,
+  monsterPassesWalls,
+} from "../mon/predicate";
+import { getLore, loreCountU16, loreCountU8, loreUpdate } from "../mon/lore";
 import { monsterEffectLevel } from "../mon/timed";
 import { monMeleeAttack } from "../combat/mon-melee";
 import { equipLearnOnDefend } from "../obj/knowledge";
@@ -537,6 +542,18 @@ export function monsterTurn(mon: Monster, state: GameState): void {
         state.isDead = true;
         state.playing = false;
       }
+      /* Analyze "visible" monsters only: count obvious or damaging blows
+       * (mon-attack.c L727), notice the cause of death, refresh lore. */
+      const lore = getLore(state.lore, mon.race);
+      if (monsterIsVisible(mon)) {
+        result.blows.forEach((blow, i) => {
+          if (blow.obvious || blow.damage || (lore.blowTimesSeen[i] ?? 0) > 10) {
+            if ((lore.blowTimesSeen[i] ?? 0) < 255) lore.blowTimesSeen[i]!++;
+          }
+        });
+      }
+      if (state.isDead) loreCountU16(lore, "deaths");
+      loreUpdate(mon.race, lore);
       didSomething = true;
       break;
     }
@@ -563,7 +580,7 @@ export function monsterTurn(mon: Monster, state: GameState): void {
 
 /**
  * monster_reduce_sleep: wake a monster (or reduce its sleep) from player
- * noise. Aggravation and the lore updates are DEFERRED.
+ * noise. Aggravation is DEFERRED.
  */
 function monsterReduceSleep(mon: Monster, state: GameState): void {
   const stealth = state.actor.stealth;
@@ -576,7 +593,15 @@ function monsterReduceSleep(mon: Monster, state: GameState): void {
       sleepReduction = Math.trunc(100 / localNoise);
     }
     const cur = mon.mTimed[MON_TMD.SLEEP] ?? 0;
-    mon.mTimed[MON_TMD.SLEEP] = Math.max(0, cur - sleepReduction);
+    const next = Math.max(0, cur - sleepReduction);
+    mon.mTimed[MON_TMD.SLEEP] = next;
+
+    /* Update knowledge (mon-move.c L1771): a watched sleeper that stirs
+     * is "ignored", one that wakes is "woken". */
+    if (monsterIsObvious(mon)) {
+      const lore = getLore(state.lore, mon.race);
+      loreCountU8(lore, next > 0 ? "ignore" : "wake");
+    }
   }
 }
 

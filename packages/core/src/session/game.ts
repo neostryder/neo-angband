@@ -66,6 +66,14 @@ import type { SummonEffectEnv } from "../game/effect-summon";
 import { registerDetectHandlers } from "../game/effect-detect";
 import { newKnownMap } from "../game/known";
 import { newTargetState, targetSetMonster } from "../game/target";
+import {
+  getLore,
+  loreCountU16,
+  loreLearnFlagIfVisible,
+  loreLearnSpellIfVisible,
+  loreUpdate,
+} from "../mon/lore";
+import { monsterIsVisible } from "../mon/predicate";
 import { countMonsterRaces, wipeMonsterCounts } from "../game/mon-place";
 import { SummonTable } from "../mon/summon";
 import { MonAllocTable } from "../mon/make";
@@ -125,6 +133,7 @@ import {
   deserializeFloor,
   deserializeGear,
   deserializeKnown,
+  deserializeLore,
   deserializeMonster,
   deserializePlayer,
   deserializeTraps,
@@ -264,6 +273,14 @@ function wireGame(
       mon.race.maxNum = 0;
       if (mon.originalRace) mon.originalRace.maxNum = 0;
     }
+    /* Recall even invisible uniques (mon-util.c L1118): count the kill
+     * and refresh the derived lore (monster_race_track rides #25). */
+    if (monsterIsVisible(mon) || mon.race.flags.has(RF.UNIQUE)) {
+      const lore = getLore(state.lore, mon.race);
+      loreCountU16(lore, "pkills");
+      loreCountU16(lore, "tkills");
+      loreUpdate(mon.race, lore);
+    }
     playerKillExp(state.actor.player, mon.race, expDeps);
   };
   const expGain = (amount: number): void =>
@@ -360,6 +377,11 @@ function wireGame(
         monster: {
           /* Spell/device kills reward experience like melee kills. */
           onKill: (m): void => state.onPlayerKill?.(m),
+          /* Lore learning when a projection's outcome is seen. */
+          learnRaceFlag: (m, flag): void =>
+            loreLearnFlagIfVisible(getLore(state.lore, m.race), m, flag),
+          learnSpellFlag: (m, flag): void =>
+            loreLearnSpellIfVisible(getLore(state.lore, m.race), m, flag),
           /* PROJ_AWAY_ALL teleports and PROJ_FORCE knockback for monsters. */
           teleport: (m, dist): void =>
             teleportMonster(state, m.midx, dist, teleport ?? {}),
@@ -676,6 +698,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     traps: new Map(),
     known: newKnownMap(booted.chunk.width, booted.chunk.height),
     target: newTargetState(),
+    lore: new Map(),
     turn: 0,
     z: {
       ...DEFAULT_GAME_CONSTANTS,
@@ -820,6 +843,7 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     /* The target is not persisted (as upstream: the savefile carries no
      * target and loading starts unset). */
     target: newTargetState(),
+    lore: deserializeLore(save.lore),
     turn: save.turn,
     z: {
       ...DEFAULT_GAME_CONSTANTS,

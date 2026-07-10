@@ -97,9 +97,9 @@ deferred:
     for flavor awareness; the exp formula joins it with the ignore system).
   - shape_learn_on_assume and every shape branch of equip_learn_* (shapes
     are bound raw; shapechange lands later).
-  - lore_learn_flag_if_visible in learn_brand_slay_helper (monster lore is
-    #24); temporary brands/slays (player-timed table, ledgered with
-    improveAttackModifier).
+  - temporary brands/slays (player-timed table, ledgered with
+    improveAttackModifier). learn_brand_slay_helper's monster-lore learns
+    are DONE (mon-lore.yaml).
   - equip_learn_flag/element call sites living in unported upstream files
     (project-player.c resist learning rides #17; effect-handler learn calls
     ride #18; cmd-cave.c OF_AFRAID, player-util.c OF_REGEN/IMPAIR,

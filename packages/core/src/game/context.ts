@@ -169,6 +169,12 @@ export interface GameState {
    * monster; the health-bar redraw rides presentation, #25).
    */
   healthWho?: Monster | null;
+  /**
+   * Monster memory (upstream l_list), keyed by race.ridx and created
+   * lazily by getLore (mon/lore.ts). Persists across levels and in the
+   * save.
+   */
+  lore: import("../mon/lore").LoreStore;
   /** turn (game-world.c): the game-turn counter. */
   turn: number;
   z: GameConstants;

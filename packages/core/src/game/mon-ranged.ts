@@ -30,6 +30,7 @@ import {
   testSpells,
 } from "../mon/spell";
 import type { FlagSet } from "../bitflag";
+import { getLore, loreCountU16, loreCountU8 } from "../mon/lore";
 import type { Monster } from "../mon/monster";
 import { squareIsEmpty } from "./context";
 import type { GameState } from "./context";
@@ -252,6 +253,15 @@ export function makeRangedAttack(
 
   /* Cast it. */
   doMonSpell(state, midx, thrown, seen, deps);
+
+  /* Remember what the monster did (mon-attack.c L460). */
+  const lore = getLore(state.lore, mon.race);
+  if (seen) {
+    lore.spellFlags.on(thrown);
+    loreCountU8(lore, monSpellIsInnate(thrown) ? "castInnate" : "castSpell");
+  }
+  /* Always notice cause of death. */
+  if (state.isDead) loreCountU16(lore, "deaths");
   return true;
 }
 

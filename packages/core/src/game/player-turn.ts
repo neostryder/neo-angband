@@ -23,6 +23,7 @@ import { DDGRID } from "../loc";
 import type { Loc } from "../loc";
 import { pyAttack } from "../combat/melee";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay";
+import { getLore } from "../mon/lore";
 import { equipLearnOnMeleeAttack } from "../obj/knowledge";
 import type { GameState, PlayerCommand } from "./context";
 import { deleteMonster, movePlayer, squareMonster } from "./context";
@@ -87,7 +88,11 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
       state.actor.player,
       state.runeEnv,
       state.actor.weapon,
-      { race: target.race, visible: true },
+      {
+        race: target.race,
+        visible: true,
+        lore: getLore(state.lore, target.race),
+      },
     );
     const result = pyAttack(
       state.rng,
