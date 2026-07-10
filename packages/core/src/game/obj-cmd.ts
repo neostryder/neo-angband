@@ -132,7 +132,7 @@ export function invenWield(state: GameState, handle: number): number {
   const oldHandle = player.equipment[slot] ?? 0;
   if (oldHandle !== 0) invenTakeoff(state, oldHandle);
 
-  return wieldObject(state.gear, player, handle);
+  return wieldObject(state.gear, player, handle, state.runeEnv);
 }
 
 /**

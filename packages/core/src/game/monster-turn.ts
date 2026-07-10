@@ -52,6 +52,7 @@ import { MON_GROUP } from "../mon/types";
 import { monsterPassesWalls } from "../mon/predicate";
 import { monsterEffectLevel } from "../mon/timed";
 import { monMeleeAttack } from "../combat/mon-melee";
+import { equipLearnOnDefend } from "../obj/knowledge";
 import { los, squareIsView } from "../world/view";
 import type { GameState } from "./context";
 import { monsterSwap, squareIsPlayer, squareMonster } from "./context";
@@ -530,6 +531,8 @@ export function monsterTurn(mon: Monster, state: GameState): void {
         state.actor.player,
         state.actor.defense,
       );
+      /* Being attacked teaches the to-armor rune (mon-attack.c L530). */
+      equipLearnOnDefend(state.actor.player, state.runeEnv);
       if (result.playerDied || state.actor.player.chp < 0) {
         state.isDead = true;
         state.playing = false;
