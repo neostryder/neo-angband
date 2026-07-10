@@ -386,7 +386,12 @@ export function gearObjectForUse(
  * and inven_wield), so a worn item's modifier runes become known and its
  * pval bonuses go live at once. The equip_cnt UI counter is DEFERRED.
  */
-export function wieldObject(gear: Gear, player: Player, handle: number): number {
+export function wieldObject(
+  gear: Gear,
+  player: Player,
+  handle: number,
+  env?: import("../obj/knowledge").RuneEnv,
+): number {
   const obj = gear.store.get(handle);
   if (!obj) return -1;
 
@@ -406,8 +411,10 @@ export function wieldObject(gear: Gear, player: Player, handle: number): number 
   player.equipment[slot] = handle;
 
   /* Learn the runes that wearing makes obvious (obj-knowledge.c wield_all
-   * L494-495): the modifier runes, so worn pval bonuses apply immediately. */
-  objectLearnOnWield(player, obj);
+   * L494-495). With an env the full obvious-flag/curse learning runs; the
+   * env-less path (birth outfit, worldless tests) learns the modifier
+   * runes, so worn pval bonuses apply immediately either way. */
+  objectLearnOnWield(player, obj, env);
 
   return slot;
 }

@@ -9,8 +9,12 @@
  * therefore takes an explicit PlayerCombatState alongside the Player, exactly
  * as upstream separates `p` from `p->state`. num_blows is likewise injected.
  *
+ * Knowledge / learning side effects (equip_learn_on_melee_attack,
+ * learn_brand_slay_from_melee) are wired at the GAME layer around pyAttack
+ * (game/player-turn.ts, game/cave-cmd.ts), keeping this module pure combat
+ * math; see obj/knowledge.ts and parity/ledger/obj-knowledge.yaml.
+ *
  * DEFERRED (ledgered in parity/ledger/combat-melee.yaml):
- * - Knowledge / learning side effects (equip_learn_*, learn_brand_slay_*).
  * - Bloodlust exertion, vampiric drain (TMD_ATT_VAMP), confusion-brand
  *   side effect (blow_side_effects / TMD_ATT_CONF), impact earthquakes
  *   (OF_IMPACT / blow_after_effects), splash damage.

@@ -16,7 +16,9 @@
 
 import { PY_MAX_LEVEL, SKILL_MAX, STAT_MAX, TMD_MAX } from "./types";
 import type { PlayerBody, PlayerClass, PlayerRace, Shape } from "./types";
-import { OBJ_MOD_MAX } from "../obj/types";
+import { newElemInfo, newOfFlags, OBJ_MOD_MAX } from "../obj/types";
+import type { ElementInfo } from "../obj/types";
+import type { FlagSet } from "../bitflag";
 
 /**
  * Minimal struct player_upkeep: only the derived counters the headless core
@@ -34,10 +36,12 @@ export interface PlayerUpkeep {
 /**
  * obj_k: the player's cumulative object-knowledge, i.e. the learned "rune"
  * mask (ported from struct player's obj_k, a struct object used as a knowledge
- * template). Only the modifier runes are modelled so far, because they are the
- * sole input to the REAL-state calc_bonuses gate; flag, element, and combat-
- * bonus knowledge (which upstream also stores here but reads only for the
- * DISPLAYED known_state) join it when the knowledge/display system lands.
+ * template). Every rune variety is modelled: the modifier runes gate real play
+ * (calc_bonuses multiplies equipped modifiers by them), while the combat,
+ * element, flag, brand, slay and curse runes are learned by use exactly as
+ * upstream (obj-knowledge.c) and will additionally feed the DISPLAYED
+ * known_state when the display system lands. All runes UNKNOWN at birth
+ * except the racial innates (player_learn_innate).
  */
 export interface PlayerObjectKnowledge {
   /**
@@ -47,6 +51,35 @@ export interface PlayerObjectKnowledge {
    * exactly as upstream (PORT_PLAN.md decision 25).
    */
   modifiers: number[];
+  /** obj_k->to_a / to_h / to_d: the three combat runes (0 or 1). */
+  toA: number;
+  toH: number;
+  toD: number;
+  /** obj_k->el_info[ELEM_MAX]: resLevel 1 = element rune known. */
+  elInfo: ElementInfo[];
+  /** obj_k->flags: OF_* rune knowledge. */
+  flags: FlagSet;
+  /** obj_k->brands[]: known brands by brand index (0 unused). */
+  brands: boolean[];
+  /** obj_k->slays[]: known slays by slay index (0 unused). */
+  slays: boolean[];
+  /** obj_k->curses[]: power 1 = curse rune known, by curse index (0 unused). */
+  curses: number[];
+}
+
+/** A blank, nothing-learned object-knowledge block (birth state). */
+export function blankObjKnowledge(): PlayerObjectKnowledge {
+  return {
+    modifiers: new Array<number>(OBJ_MOD_MAX).fill(0),
+    toA: 0,
+    toH: 0,
+    toD: 0,
+    elInfo: newElemInfo(),
+    flags: newOfFlags(),
+    brands: [],
+    slays: [],
+    curses: [],
+  };
 }
 
 /** struct player core (player.h), world/UI-only members omitted. */
@@ -179,7 +212,7 @@ export function blankPlayer(
     history: "",
     body: { name: body.name, count: body.count, slots: body.slots.map((s) => ({ ...s })) },
     equipment: new Array<number>(body.count).fill(0),
-    objKnown: { modifiers: new Array<number>(OBJ_MOD_MAX).fill(0) },
+    objKnown: blankObjKnowledge(),
     shape: null,
     skills: new Array<number>(SKILL_MAX).fill(0),
     upkeep: { playing: false, newSpells: 0, totalWeight: 0 },

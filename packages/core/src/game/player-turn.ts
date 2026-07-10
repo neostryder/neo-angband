@@ -22,6 +22,8 @@
 import { DDGRID } from "../loc";
 import type { Loc } from "../loc";
 import { pyAttack } from "../combat/melee";
+import { learnBrandSlayFromMelee } from "../combat/brand-slay";
+import { equipLearnOnMeleeAttack } from "../obj/knowledge";
 import type { GameState, PlayerCommand } from "./context";
 import { deleteMonster, movePlayer, squareMonster } from "./context";
 
@@ -78,6 +80,15 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
 
   const target = squareMonster(state, next);
   if (target) {
+    /* Learning from the attack (player-attack.c L822 equip_learn_on_melee_
+     * attack; obj-slays.c learn_brand_slay_from_melee). The target is
+     * treated as visible, matching the monVisible option below. */
+    learnBrandSlayFromMelee(
+      state.actor.player,
+      state.runeEnv,
+      state.actor.weapon,
+      { race: target.race, visible: true },
+    );
     const result = pyAttack(
       state.rng,
       state.actor.player,
@@ -88,6 +99,7 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
       state.slays,
       { monVisible: true },
     );
+    equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
     if (result.monsterDied) {
       deleteMonster(state, target.midx);
     }

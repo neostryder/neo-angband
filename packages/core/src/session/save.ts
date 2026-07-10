@@ -290,7 +290,24 @@ export interface SavedPlayer {
   wtBirth: number;
   history: string;
   equipment: number[];
-  objKnownModifiers: number[];
+  /**
+   * obj_k, every rune variety (wr_player's object knowledge). Older saves
+   * (pre rune learn-by-use) carried only objKnownModifiers; the reader
+   * accepts both.
+   */
+  objKnown?: {
+    modifiers: number[];
+    toA: number;
+    toH: number;
+    toD: number;
+    elInfo: ElementInfo[];
+    flags: number[];
+    brands: boolean[];
+    slays: boolean[];
+    curses: number[];
+  };
+  /** Legacy (save version 1 pre-#13): modifier runes only. */
+  objKnownModifiers?: number[];
   shapeName: string | null;
   skills: number[];
   upkeep: { playing: boolean; newSpells: number; totalWeight: number };
@@ -330,7 +347,18 @@ export function serializePlayer(p: Player): SavedPlayer {
     wtBirth: p.wtBirth,
     history: p.history,
     equipment: [...p.equipment],
-    objKnownModifiers: [...p.objKnown.modifiers],
+    objKnown: {
+      modifiers: [...p.objKnown.modifiers],
+      toA: p.objKnown.toA,
+      toH: p.objKnown.toH,
+      toD: p.objKnown.toD,
+      elInfo: p.objKnown.elInfo.map((e) => ({ ...e })),
+      flags: Array.from(p.objKnown.flags.bits),
+      /* The live arrays are sparse (learned indices only); save densely. */
+      brands: Array.from(p.objKnown.brands, (b) => b ?? false),
+      slays: Array.from(p.objKnown.slays, (s) => s ?? false),
+      curses: Array.from(p.objKnown.curses, (c) => c ?? 0),
+    },
     shapeName: p.shape ? p.shape.name : null,
     skills: [...p.skills],
     upkeep: { ...p.upkeep },
@@ -378,7 +406,22 @@ export function deserializePlayer(
   p.wtBirth = data.wtBirth;
   p.history = data.history;
   p.equipment = [...data.equipment];
-  p.objKnown = { modifiers: [...data.objKnownModifiers] };
+  if (data.objKnown) {
+    p.objKnown = {
+      modifiers: [...data.objKnown.modifiers],
+      toA: data.objKnown.toA,
+      toH: data.objKnown.toH,
+      toD: data.objKnown.toD,
+      elInfo: data.objKnown.elInfo.map((e) => ({ ...e })),
+      flags: new FlagSet(Uint8Array.from(data.objKnown.flags)),
+      brands: [...data.objKnown.brands],
+      slays: [...data.objKnown.slays],
+      curses: [...data.objKnown.curses],
+    };
+  } else if (data.objKnownModifiers) {
+    /* Legacy pre-#13 save: only the modifier runes were tracked. */
+    p.objKnown.modifiers = [...data.objKnownModifiers];
+  }
   p.shape =
     data.shapeName !== null
       ? (players.shapes.find((s) => s.name === data.shapeName) ?? null)
