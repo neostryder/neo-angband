@@ -51,9 +51,12 @@ deferred:
   - do_cmd_refill (fuel model), do_cmd_use dispatcher (UI menu),
     do_cmd_cast / study (player spells, #22).
   - The glyph-of-warding push_object interaction (traps #21).
-  - Command repetition (can_use == 0 retry), shapechange gating
-    (player_get_resume_normal_shape), the !t take-off confirmation and the
-    ring-slot choice (get_check / cmd_get_item, UI #25).
+  - Command repetition (can_use == 0 retry), the !t take-off confirmation
+    and the ring-slot choice (get_check / cmd_get_item, UI #25). The
+    shapechange gating (player_get_resume_normal_shape) is DONE
+    (game-shape.yaml): takeoff/wield/drop and the scroll/staff/wand/rod/
+    activate family resume the normal form first (confirm seam, default
+    yes); eat/quaff stay ungated as upstream.
   - The work_obj known-copy machinery and object descriptions (knowledge
     #24 / UI #25); messages are hooks.
 verified-by:

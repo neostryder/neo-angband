@@ -26,7 +26,15 @@
 
 import { FlagSet } from "../bitflag";
 import { colorCharToAttr, colorTextToAttr } from "../color";
-import { ELEMENT_ENTRIES, OF, PF, STAT, TMD } from "../generated";
+import {
+  ELEMENT_ENTRIES,
+  OBJECT_MODIFIER_ENTRIES,
+  STAT_ENTRIES,
+  OF,
+  PF,
+  STAT,
+  TMD,
+} from "../generated";
 import {
   OF_SIZE,
   PF_SIZE,
@@ -342,6 +350,106 @@ function applyRaceValues(elInfo: PlayerElementInfo[], lines: string[] | undefine
   }
 }
 
+/** obj_mods[]: the five stats then the object modifiers, index = value. */
+const SHAPE_MOD_NAMES: readonly string[] = [
+  ...STAT_ENTRIES.map((e) => e.name),
+  ...OBJECT_MODIFIER_ENTRIES.map((e) => e.name),
+];
+
+/** shape.txt skill-<name> keys -> SKILL indices (parse_shape_skill_*). */
+const SHAPE_SKILL_KEYS: ReadonlyArray<[string, number]> = [
+  ["skill-disarm-phys", SKILL.DISARM_PHYS],
+  ["skill-disarm-magic", SKILL.DISARM_MAGIC],
+  ["skill-save", SKILL.SAVE],
+  ["skill-stealth", SKILL.STEALTH],
+  ["skill-search", SKILL.SEARCH],
+  ["skill-melee", SKILL.TO_HIT_MELEE],
+  ["skill-throw", SKILL.TO_HIT_THROW],
+  ["skill-dig", SKILL.DIGGING],
+];
+
+/**
+ * parse_shape_* (init.c L3013): bind one shape.json record - the combat
+ * bonuses, skills, object/player flags, the modifier/resist values
+ * ("STR[-3] | STEALTH[5]" over obj_mods, "RES_<ELEM>[n]" over elements)
+ * and the raw assume-shape effect records.
+ */
+function bindShape(rec: ShapeRecordJson, sidx: number): Shape {
+  const combat = (rec["combat"] ?? {}) as Record<string, number>;
+  const skills = new Array<number>(SKILL_MAX).fill(0);
+  for (const [key, skill] of SHAPE_SKILL_KEYS) {
+    if (typeof rec[key] === "number") skills[skill] = rec[key] as number;
+  }
+
+  const flags = new FlagSet(OF_SIZE);
+  for (const line of (rec["obj-flags"] as string[] | undefined) ?? []) {
+    for (const raw of line.split("|")) {
+      const name = raw.trim();
+      if (!name) continue;
+      const value = OF[name as keyof typeof OF];
+      if (typeof value !== "number") {
+        throw new Error(`player: unknown shape obj-flag: ${name}`);
+      }
+      flags.on(value);
+    }
+  }
+  const pflags = new FlagSet(PF_SIZE);
+  for (const line of (rec["player-flags"] as string[] | undefined) ?? []) {
+    for (const raw of line.split("|")) {
+      const name = raw.trim();
+      if (!name) continue;
+      const value = PF[name as keyof typeof PF];
+      if (typeof value !== "number") {
+        throw new Error(`player: unknown shape player-flag: ${name}`);
+      }
+      pflags.on(value);
+    }
+  }
+
+  const modifiers = new Array<number>(SHAPE_MOD_NAMES.length).fill(0);
+  const elInfo = newElemInfo();
+  for (const line of (rec["values"] as string[] | undefined) ?? []) {
+    for (const raw of line.split("|")) {
+      const token = raw.trim();
+      if (!token) continue;
+      const parsed = findValueArg(token);
+      if (!parsed) throw new Error(`player: invalid shape value: ${token}`);
+      const m = /^\s*([-+]?\d+)\s*$/.exec(parsed.arg);
+      if (!m) throw new Error(`player: invalid shape value int: ${token}`);
+      const mod = SHAPE_MOD_NAMES.indexOf(parsed.name);
+      if (mod >= 0) {
+        modifiers[mod] = Number(m[1]);
+        continue;
+      }
+      let matched = false;
+      for (let i = 0; i < ELEMENT_ENTRIES.length; i++) {
+        if ("RES_" + ELEMENT_ENTRIES[i]!.name === parsed.name) {
+          (elInfo[i] as PlayerElementInfo).resLevel = Number(m[1]);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) throw new Error(`player: unknown shape value: ${token}`);
+    }
+  }
+
+  return {
+    sidx,
+    name: rec.name,
+    toA: combat["to-a"] ?? 0,
+    toH: combat["to-h"] ?? 0,
+    toD: combat["to-d"] ?? 0,
+    skills,
+    flags,
+    pflags,
+    modifiers,
+    elInfo,
+    effects: (rec["effect"] as Shape["effects"] | undefined) ?? [],
+    effectMsg: (rec["effect-msg"] as string | undefined) ?? null,
+    blows: (rec["blow"] as string[] | undefined) ?? [],
+  };
+}
+
 /** Resolve a colour token (single char or full name) to an attr; throws. */
 function colorToAttr(color: string): number {
   const attr = color.length > 1 ? colorTextToAttr(color) : colorCharToAttr(color);
@@ -388,11 +496,7 @@ export class PlayerRegistry {
     this.bodies = bindBodies(pack.bodies);
     this.properties = bindProperties(pack.properties);
     this.timed = bindTimed(pack.timed);
-    this.shapes = pack.shapes.map((rec, sidx) => ({
-      sidx,
-      name: rec.name,
-      raw: rec,
-    }));
+    this.shapes = pack.shapes.map((rec, sidx) => bindShape(rec, sidx));
 
     this.races = pack.races.map((rec, ridx) => bindRace(rec, ridx));
     this.classes = pack.classes.map((rec, cidx) =>

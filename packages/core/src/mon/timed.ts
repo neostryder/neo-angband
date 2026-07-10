@@ -41,6 +41,15 @@ const MON_INC_MIN_TURNS = 2;
  * MON_MSG_* name (or the synthetic "MON_MSG_UNAFFECTED" / "MON_MSG_SHAPE_FAIL")
  * upstream would pass to add_monster_message; `add` mirrors its 3rd argument.
  */
+/**
+ * monster_change_shape / monster_revert_shape (game/mon-shape.ts), passed
+ * by the game-layer timed calls for MON_TMD_CHANGED.
+ */
+export interface MonShapeHooks {
+  change: (mon: Monster) => boolean;
+  revert: (mon: Monster) => boolean;
+}
+
 export type MonTimedMessageSink = (
   mon: Monster,
   note: string,
@@ -109,6 +118,7 @@ export function monSetTimed(
   timer: number,
   flag = 0,
   onMessage?: MonTimedMessageSink,
+  shape?: MonShapeHooks,
 ): boolean {
   const effect = MON_TIMED_ENTRIES[effectType]!;
   const oldTimer = mon.mTimed[effectType]!;
@@ -154,11 +164,19 @@ export function monSetTimed(
     update = true;
   }
 
-  /* Special case - monster shapechange (form swap DEFERRED; timer stands). */
-  if (effectType === MON_TMD.CHANGED) {
-    /* monster_change_shape / monster_revert_shape are not ported yet; the
-     * CHANGED timer is only ever set by an unported effect, so this branch is
-     * currently unreachable and the form is left unchanged. */
+  /* Special case - deal with monster shapechanges (mon-timed.c L195).
+   * The swap functions live in game/mon-shape.ts; the game-layer timed
+   * calls pass them as hooks (the layering keeps this module below
+   * game/). Without hooks, the timer stands and the form is unchanged. */
+  if (effectType === MON_TMD.CHANGED && shape) {
+    if (timer > oldTimer) {
+      if (!shape.change(mon)) {
+        note = "MON_MSG_SHAPE_FAIL";
+        mon.mTimed[effectType] = oldTimer;
+      }
+    } else if (timer === 0) {
+      shape.revert(mon);
+    }
   }
 
   /* Queue a message if there is one, it is allowed, and the monster is seen. */
@@ -188,6 +206,7 @@ export function monIncTimed(
   timer: number,
   flag = 0,
   onMessage?: MonTimedMessageSink,
+  shape?: MonShapeHooks,
 ): boolean {
   const effect = MON_TIMED_ENTRIES[effectType]!;
 
@@ -209,7 +228,7 @@ export function monIncTimed(
       break;
   }
 
-  return monSetTimed(rng, mon, effectType, newValue, flag, onMessage);
+  return monSetTimed(rng, mon, effectType, newValue, flag, onMessage, shape);
 }
 
 /**
@@ -223,9 +242,10 @@ export function monDecTimed(
   timer: number,
   flag = 0,
   onMessage?: MonTimedMessageSink,
+  shape?: MonShapeHooks,
 ): boolean {
   const newLevel = Math.max(0, mon.mTimed[effectType]! - timer);
-  return monSetTimed(rng, mon, effectType, newLevel, flag, onMessage);
+  return monSetTimed(rng, mon, effectType, newLevel, flag, onMessage, shape);
 }
 
 /** mon_clear_timed: clear effect `effectType` (no-op if already 0). */
@@ -235,9 +255,10 @@ export function monClearTimed(
   effectType: number,
   flag = 0,
   onMessage?: MonTimedMessageSink,
+  shape?: MonShapeHooks,
 ): boolean {
   if (mon.mTimed[effectType] === 0) return false;
-  return monSetTimed(rng, mon, effectType, 0, flag, onMessage);
+  return monSetTimed(rng, mon, effectType, 0, flag, onMessage, shape);
 }
 
 /**

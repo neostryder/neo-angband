@@ -55,6 +55,7 @@ import {
   monsterPassesWalls,
 } from "../mon/predicate";
 import { getLore, loreCountU16, loreCountU8, loreUpdate } from "../mon/lore";
+import { monsterRevertShape } from "./mon-shape";
 import { monsterEffectLevel } from "../mon/timed";
 import { monMeleeAttack } from "../combat/mon-melee";
 import { equipLearnOnDefend } from "../obj/knowledge";
@@ -629,7 +630,13 @@ export function processMonsterTimed(mon: Monster, state: GameState): boolean {
   dec(MON_TMD.DISEN);
   dec(MON_TMD.STUN);
   dec(MON_TMD.CONF);
-  dec(MON_TMD.CHANGED);
+  if (mon.mTimed[MON_TMD.CHANGED] ?? 0) {
+    dec(MON_TMD.CHANGED);
+    /* The shapechange running out reverts the form (mon-timed.c L202). */
+    if ((mon.mTimed[MON_TMD.CHANGED] ?? 0) === 0) {
+      monsterRevertShape(state, mon);
+    }
+  }
   if (mon.mTimed[MON_TMD.FEAR] ?? 0) {
     const d = state.rng.randint1(Math.trunc(mon.race.level / 10) + 1);
     mon.mTimed[MON_TMD.FEAR] = Math.max(0, (mon.mTimed[MON_TMD.FEAR] ?? 0) - d);

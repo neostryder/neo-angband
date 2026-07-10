@@ -26,7 +26,7 @@
  * brands/slays (lore is #24), and shapechange learning (shapes are bound raw).
  */
 
-import { FlagSet } from "../bitflag";
+import { FLAG_START, FlagSet, NO_FLAG } from "../bitflag";
 import type { RandomValue } from "../rng";
 import type { GameObject } from "./object";
 import { sameMonstersSlain, tvalIsBodyArmor } from "./object";
@@ -642,6 +642,36 @@ export function equipLearnElement(p: Player, env: RuneEnv, element: number): voi
     }
     /* obj->known element marking: DEFERRED (display). */
     objectCursesFindElement(p, env, obj, element);
+  }
+}
+
+/**
+ * shape_learn_on_assume (L1892): on taking a shape, learn its obvious
+ * (OFID_WIELD) flags and its resists, through the same equipment learn
+ * calls upstream uses.
+ */
+export function shapeLearnOnAssume(
+  p: Player,
+  env: RuneEnv,
+  shape: import("../player/types").Shape,
+): void {
+  /* Get the shape's obvious flags. */
+  const f = shape.flags.clone();
+  f.inter(objFlagMaskById(env, OFID.WIELD));
+
+  /* Learn flags. */
+  for (let flag = f.next(FLAG_START); flag !== NO_FLAG; flag = f.next(flag + 1)) {
+    equipLearnFlag(p, env, flag);
+  }
+
+  /* Learn elements. */
+  for (let element = 0; element < ELEM_MAX; element++) {
+    if (
+      (shape.elInfo[element]?.resLevel ?? 0) !== 0 &&
+      (p.objKnown.elInfo[element]?.resLevel ?? 0) === 0
+    ) {
+      equipLearnElement(p, env, element);
+    }
   }
 }
 
