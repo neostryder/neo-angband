@@ -160,6 +160,12 @@ export interface GameState {
   isDead: boolean;
   /** player->upkeep->generate_level (a stairs/recall level change). */
   generateLevel: boolean;
+  /**
+   * The depth the pending level change targets (dungeon_change_level's
+   * argument). Set with generateLevel by stairs / trapdoors / deep
+   * descent; consumed by the session's changeLevel.
+   */
+  targetDepth?: number;
 
   /* --- injected hooks --- */
   /** cmdq_pop: the next queued player command, or null when input is needed. */

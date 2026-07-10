@@ -1,0 +1,68 @@
+module: packages/core/src/session/save.ts (+ saveGame / loadGame / changeLevel
+  in session/game.ts)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/save.c, src/load.c
+    items:
+      - The savefile CONTENT model, in the port's JSON format (PORT_PLAN.md
+        decision 9 replaces the C binary blocks by design). Serialized, per
+        upstream semantics - the player (wr_player; every stat, hp/sp/exp,
+        timed array, spell flags and learn order, equipment handles, object
+        knowledge), the gear (wr_gear), the dungeon squares (wr_dungeon:
+        features, square info flags, light, occupancy), monsters
+        (wr_monsters: race, timed, flags, target, group info), traps
+        (wr_traps: kind, power, timeout, instance flags), floor objects
+        (wr_objects, pile order preserved), monster groups, the turn.
+      - wr_randomizer / rd_randomizer: the RNG state is persisted and
+        restored EXACTLY (Rng.getState/setState) - the anti-save-scum
+        posture of decisions 16/22: reloading resumes the same stream, so
+        a reload-and-reroll yields nothing new (pinned by test).
+      - References are stored as registry indices/names (kidx / eidx /
+        aidx / ridx / trap tidx / race+class names) and re-resolved against
+        the pack on load; kind-owned data (effect chains, messages,
+        activations) re-points at the bound kind.
+  - path: src/game-world.c, src/player-util.c
+    items:
+      - dungeon_change_level + prepare_next_level: StartedGame.changeLevel
+        generates a fresh level at the target depth FROM THE GAME'S OWN RNG
+        STREAM and swaps it into the same GameState object (chunk, monsters,
+        groups, floor, traps), so every installed command keeps working; the
+        player lands on the new level's spot, groups rebuild, floor piles
+        and traps instantiate, FOV refreshes. state.targetDepth carries the
+        destination (stairs +-1, trapdoors +1, EF_TELEPORT_LEVEL's choice
+        via the wired teleport.changeLevel seam).
+notes: >-
+  serializeGame produces plain JSON (proven by a JSON.stringify/parse round
+  trip in the tests); encodeSavedGame/decodeSavedGame wrap it in the
+  save/integrity.ts stamp (decision 16b) - a failed digest still loads but
+  reports verified=false (warn-and-label, not a lock). loadGame rebinds the
+  pack, restores every entity store, recomputes the derived combat state
+  from the restored player and gear (calc_bonuses), and rewires the
+  commands through the same wireGame used by startGame. The web front end
+  saves to localStorage ('S' and on every level change), resumes with
+  ?continue=1, and deletes the save on death (decision 16: death is
+  terminal). Noise/scent heatmaps are transient (upstream does not save
+  them either - known upstream issue 4605); they rebuild on the next turn.
+deferred:
+  - Multiple save slots / per-character files and the quit-to-title flow
+    (boot/title UX, decision 21 / #25).
+  - Store stock, mimicked-object and monster held-object contents ride
+    with their subsystems (stores are session-scoped, mimics/monster
+    inventories not yet live in the loop).
+  - The determinism-ratchet mode label (decision 22) joins the save header
+    when the mod loader lands.
+  - Level persistence options (birth_levels_persist) - levels regenerate,
+    as the shipped upstream default.
+verified-by:
+  - session/save.test.ts (6 tests) - a mid-game Mage save restores the
+    player (hp/sp/gold/spells/equipment), the derived combat state, every
+    dungeon square, every monster (timed/flags/groups verified), floor
+    piles, traps and gear exactly; the RNG stream resumes identically
+    across repeated loads (anti-scum pin); a restored game keeps playing;
+    stamped bytes verify and a flipped byte fails verification; descending
+    stairs regenerates a deeper level in place through the loop
+    (LEVEL_CHANGE -> changeLevel) and keeps playing; a save on a deeper
+    level round-trips its depth.
+  - Browser-verified: 'S' writes the stamped save to localStorage and
+    ?continue=1 resumes it and plays on with no console errors.
