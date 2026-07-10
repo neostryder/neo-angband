@@ -155,6 +155,10 @@ export interface ClassSpell {
 export interface ClassBook {
   /** tval name from the pack (object domain resolves the numeric tval). */
   tval: string;
+  /** Numeric tval, stamped by registerBookKinds (0 until registered). */
+  tvalIdx: number;
+  /** The book kind's sval, stamped by registerBookKinds (write_book_kind). */
+  sval: number;
   /** dungeon: true when quality is "dungeon" rather than "town". */
   dungeon: boolean;
   /** The book's display name (used by write_book_kind to find its sval). */
