@@ -31,6 +31,10 @@ upstream:
         TeleportEnv; FORCE's thrust_away (L432) from the origin grid with
         the SRC_TRAP on-the-trap centre jitter; DISEN's equipment
         disenchantment (L390) through disenchantEquipment.
+      - NEXUS's three-way teleport (L296): one_in_(3)-with-a-monster
+        teleport-to-the-caster (teleportPlayerTo), one_in_(4)
+        teleport-level behind its own saving throw (teleportPlayerLevel),
+        else teleport 200 (teleportPlayer) - RNG draw order as upstream.
 notes: >-
   Wired in wireGame as cast.hooks.player.onSideEffects, so monster spells,
   traps and devices that hit the player now carry their full upstream
@@ -41,20 +45,18 @@ notes: >-
   their runes (obj/knowledge.ts). player_of_has is implemented over the
   racial flags plus every equipped item via the state's RuneEnv.
 deferred:
-  - The NEXUS teleport branches (teleport-to the caster / teleport-level /
-    teleport 200): they dispatch through effect_simple over the wired
-    handlers; the hookup rides the remaining #18 tail.
   - player_inc_check's fail-condition messages before the confusion
     messages (the timed registry check runs, but the pre-check message
     gating is simplified to always announcing).
   - update_smart_learn (monster learning the player's resists) rides lore
     (#24); PR_MANA and the other redraw masks are display.
 verified-by:
-  - game/player-side.test.ts (9 tests): WATER confuses and stuns; SHARD
+  - game/player-side.test.ts (10 tests): WATER confuses and stuns; SHARD
     cuts unless resisted (with the resist message); SOUND stuns while
     PROT_STUN prevents it and teaches the rune; NETHER drains experience
     while HOLD_LIFE resists and teaches the rune; INERTIA slows and CHAOS
     hallucinates + confuses; TIME saps experience or stats under the
     seeded roll; GRAVITY blinks a low-level player and slows them; FORCE
     stuns and thrusts the player away from the origin; DISEN disenchants
-    worn equipment unless resisted.
+    worn equipment unless resisted; NEXUS fires each of its teleport
+    branches across a seed sweep (with the level-save avoid honoured).

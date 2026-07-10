@@ -54,6 +54,13 @@ notes: >-
   both bounds satisfy identically, so the vault-avoidance reset behaves the same.
   Everything that touches an unported subsystem is reached through the injected
   TeleportEnv (env.teleport) with inert defaults.
+
+  The player slices are exported for callers that dispatch through
+  effect_simple (project-player.c's GRAVITY and NEXUS handlers):
+  teleportPlayer (a fixed-distance self-teleport), teleportPlayerTo (land
+  near supplied coordinates via the shared findLandingNear search) and
+  teleportPlayerLevel (the up/down decision, shared with
+  handleTELEPORT_LEVEL).
 deferred:
   - player_handle_post_move / handle_stuff: the FOV / light / target refresh
     after a teleport is the injected onPlayerPostMove / onMonsterPostMove hook

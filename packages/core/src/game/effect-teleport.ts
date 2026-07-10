@@ -270,6 +270,37 @@ const handleTELEPORT: EffectHandler = (ctx) => {
 };
 
 /**
+ * EF_TELEPORT_TO's landing search: rejection-sample a legal grid near `aim`,
+ * widening the search radius when it keeps failing. RNG draws (randLoc per
+ * attempt) match upstream.
+ */
+function findLandingNear(
+  state: GameState,
+  aim: Loc,
+  dis: number,
+  isPlayerMoving: boolean,
+  tp: TeleportEnv,
+): Loc {
+  let land: Loc;
+  let ctr = 0;
+  /* eslint-disable-next-line no-constant-condition */
+  for (;;) {
+    do {
+      land = randLoc(state.rng, aim, dis, dis);
+    } while (!state.chunk.inBoundsFully(land));
+
+    if (hasTeleportDestinationPrereqs(state, land, isPlayerMoving, tp)) {
+      return land;
+    }
+
+    if (++ctr > 4 * dis * dis + 4 * dis + 1) {
+      ctr = 0;
+      dis++;
+    }
+  }
+}
+
+/**
  * EF_TELEPORT_TO: teleport the player or the target monster to a grid near a
  * given location (a monster, a chosen target, or supplied coordinates).
  */
@@ -336,21 +367,7 @@ const handleTELEPORT_TO: EffectHandler = (ctx) => {
   }
 
   /* Find a usable location, widening the search when it keeps failing. */
-  let land: Loc;
-  let ctr = 0;
-  /* eslint-disable-next-line no-constant-condition */
-  for (;;) {
-    do {
-      land = randLoc(state.rng, aim, dis, dis);
-    } while (!state.chunk.inBoundsFully(land));
-
-    if (hasTeleportDestinationPrereqs(state, land, playerMoves, tp)) break;
-
-    if (++ctr > 4 * dis * dis + 4 * dis + 1) {
-      ctr = 0;
-      dis++;
-    }
-  }
+  const land = findLandingNear(state, aim, dis, playerMoves, tp);
 
   const startOcc = state.chunk.mon(start);
   moveOccupant(state, start, land);
@@ -364,46 +381,66 @@ const handleTELEPORT_TO: EffectHandler = (ctx) => {
 };
 
 /**
- * EF_TELEPORT_LEVEL: move the player one level up or down (random when both are
- * legal). The up/down decision is ported exactly; the actual level change is
- * the injected changeLevel hook (#23).
+ * teleportPlayerTo: the player slice of EF_TELEPORT_TO with supplied
+ * coordinates, for callers dispatching through effect_simple (the NEXUS
+ * "teleport to" branch of project-player.c). The forbidden-grid / curse
+ * checks and the landing search are the handler's.
  */
-const handleTELEPORT_LEVEL: EffectHandler = (ctx) => {
-  const env = gameEnv(ctx);
-  if (!env) return true;
-  ctx.ident = true;
+export function teleportPlayerTo(
+  state: GameState,
+  aim: Loc,
+  tp: TeleportEnv = {},
+  say?: (text: string) => void,
+): void {
+  const start = state.actor.grid;
+  if (state.chunk.sqinfoHas(start, SQUARE.NO_TELEPORT)) {
+    say?.("Teleportation forbidden!");
+    return;
+  }
+  if (tp.hasNoTeleport) {
+    tp.onLearnNoTeleport?.();
+    say?.("Teleportation forbidden!");
+    return;
+  }
 
-  const { state } = env;
-  const tp = env.teleport ?? {};
+  const land = findLandingNear(state, aim, 0, true, tp);
+  movePlayer(state, land);
+  tp.onPlayerPostMove?.(true);
+  state.chunk.sqinfoOff(land, SQUARE.PROJECT);
+}
+
+/**
+ * teleportPlayerLevel: the player path of EF_TELEPORT_LEVEL (the up/down
+ * decision and its messages), shared between the handler and the NEXUS
+ * "teleport level" branch. `hostile` runs the nexus-resistance check a
+ * monster-origin effect gets.
+ */
+export function teleportPlayerLevel(
+  state: GameState,
+  tp: TeleportEnv,
+  say: (text: string) => void,
+  hostile: boolean,
+): void {
   const depth = state.chunk.depth;
   const maxDepth = tp.maxDepth ?? 128;
   const maxPlayerDepth = tp.maxPlayerDepth ?? depth;
   const getNext = tp.getNextLevel ?? ((from: number, dir: 1 | -1) => from + dir);
   const isQuest = tp.isQuest ?? (() => false);
 
-  const tMon =
-    tp.targetMonster !== undefined ? state.monsters[tp.targetMonster] : null;
-
-  /* A monster targeting another monster: it is simply gone. */
-  if (tMon) {
-    deleteMonster(state, tp.targetMonster!);
-    return true;
-  }
-
   if (state.chunk.sqinfoHas(state.actor.grid, SQUARE.NO_TELEPORT)) {
-    say(ctx, "Teleportation forbidden!");
-    return true;
+    say("Teleportation forbidden!");
+    return;
   }
   if (tp.hasNoTeleport) {
     tp.onLearnNoTeleport?.();
-    say(ctx, "Teleportation forbidden!");
-    return true;
+    say("Teleportation forbidden!");
+    return;
   }
 
   /* Resist hostile teleport. */
-  if (ctx.origin.what === "monster" && tp.resistsNexus) {
-    say(ctx, "You resist the effect!");
-    return true;
+  if (hostile && tp.resistsNexus) {
+    say("You resist the effect!");
+    return;
   }
 
   let up = true;
@@ -424,19 +461,47 @@ const handleTELEPORT_LEVEL: EffectHandler = (ctx) => {
   }
 
   if (up) {
-    say(ctx, "You rise up through the ceiling.");
+    say("You rise up through the ceiling.");
     targetDepth = getNext(depth, -1);
     tp.changeLevel?.(targetDepth);
   } else if (down) {
-    say(ctx, "You sink through the floor.");
+    say("You sink through the floor.");
     targetDepth = tp.forceDescend
       ? getNext(maxPlayerDepth, 1)
       : getNext(depth, 1);
     tp.changeLevel?.(targetDepth);
   } else {
-    say(ctx, "Nothing happens.");
+    say("Nothing happens.");
+  }
+}
+
+/**
+ * EF_TELEPORT_LEVEL: move the player one level up or down (random when both are
+ * legal). The up/down decision is ported exactly; the actual level change is
+ * the injected changeLevel hook (#23).
+ */
+const handleTELEPORT_LEVEL: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  ctx.ident = true;
+
+  const { state } = env;
+  const tp = env.teleport ?? {};
+  const tMon =
+    tp.targetMonster !== undefined ? state.monsters[tp.targetMonster] : null;
+
+  /* A monster targeting another monster: it is simply gone. */
+  if (tMon) {
+    deleteMonster(state, tp.targetMonster!);
+    return true;
   }
 
+  teleportPlayerLevel(
+    state,
+    tp,
+    (t) => say(ctx, t),
+    ctx.origin.what === "monster",
+  );
   return true;
 };
 
