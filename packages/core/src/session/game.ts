@@ -26,10 +26,18 @@
 import { loc } from "../loc";
 import type { Loc } from "../loc";
 import { SKILL } from "../player/types";
+import { STAT } from "../generated";
 import { bindPlayer } from "../player/bind";
 import type { PlayerPackRecords, PlayerRegistry } from "../player/bind";
 import { generatePlayer } from "../player/birth";
-import { calcBonuses, toCombatState, toDefenderState } from "../player/calcs";
+import {
+  calcBonuses,
+  calcHitpoints,
+  toCombatState,
+  toDefenderState,
+} from "../player/calcs";
+import { playerExpGain, playerKillExp } from "../player/exp";
+import type { ExpDeps } from "../player/exp";
 import {
   DEFAULT_GAME_CONSTANTS,
   addMonster,
@@ -186,6 +194,40 @@ function wireGame(
     },
   );
 
+  // Experience (player.c): a level change recomputes the derived state
+  // from the live gear (upstream's PU_BONUS | PU_HP | PU_SPELLS), and a
+  // player kill rewards mexp * rlev / plev with the fractional carry.
+  const expDeps: ExpDeps = {
+    rng: state.rng,
+    onLevelChange: (p): void => {
+      const equipment = p.equipment.map((h) =>
+        h ? gearGet(state.gear, h) : null,
+      );
+      const ps = calcBonuses(p, { equipment });
+      const combat = toCombatState(ps);
+      state.actor.combat = combat;
+      state.actor.defense = toDefenderState(ps);
+      state.actor.speed = ps.speed;
+      state.actor.stealth = combat.skills[SKILL.STEALTH] ?? 0;
+      /* calc_hitpoints at the new level from the rolled hitdice. */
+      p.mhp = calcHitpoints(
+        p.playerHp[p.lev - 1] ?? p.hitdie,
+        p.lev,
+        ps.statInd[STAT.CON] ?? 0,
+      );
+      if (p.chp > p.mhp) p.chp = p.mhp;
+      /* Casters learn/forget spells and re-derive mana. */
+      calcSpells(p, ps.statInd);
+      calcMana(p, ps.statInd, wornArmorWeight(p, equipment));
+      if (p.csp > p.msp) p.csp = p.msp;
+    },
+  };
+  state.onPlayerKill = (mon): void => {
+    playerKillExp(state.actor.player, mon.race, expDeps);
+  };
+  const expGain = (amount: number): void =>
+    playerExpGain(state.actor.player, amount, expDeps);
+
   // The effect stack: with bound projections, monsters cast spells on
   // their turns (make_ranged_attack), items are usable (cmd-obj.c), the
   // player casts (player-spell.c) and traps fire (trap.c) - all through
@@ -210,6 +252,8 @@ function wireGame(
       maxRange: reg.constants.maxRange,
       playerActor: basicPlayerActor(state),
       worldEnv,
+      /* Spell/device kills reward experience like melee kills. */
+      hooks: { monster: { onKill: (m): void => state.onPlayerKill?.(m) } },
     };
     const envDeps: EffectEnvDeps = { timedTable: players.timed };
 
@@ -256,6 +300,7 @@ function wireGame(
         ...(teleport ? { teleport } : {}),
       },
       statInd: pstate.statInd,
+      env: { expGain },
     });
 
     // Traps: disarm + the step-onto-trap hook; a trapdoor drops a level.
@@ -269,6 +314,7 @@ function wireGame(
           ...(teleport ? { teleport } : {}),
         },
         env: {
+          expGain,
           changeLevel: (s: GameState): void => {
             s.targetDepth = s.chunk.depth + 1;
             s.generateLevel = true;

@@ -101,6 +101,7 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
     );
     equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
     if (result.monsterDied) {
+      state.onPlayerKill?.(target);
       deleteMonster(state, target.midx);
     }
     return state.z.moveEnergy;
