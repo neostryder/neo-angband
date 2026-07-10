@@ -52,6 +52,8 @@ import type { GameState } from "./context";
 import { projectMonster } from "./project-monster";
 import type { ProjectMonsterHooks } from "./project-monster";
 import { projectPlayer } from "./project-player";
+import { projectObject } from "./project-obj";
+import { projectFeature } from "./project-feat";
 import type { PlayerProjActor, ProjectPlayerHooks } from "./project-player";
 
 /** option.c: op_ptr->hitpoint_warn default (0..9). Options system deferred. */
@@ -136,6 +138,12 @@ export interface CastContext {
   /** The player-projection actor (resist / reduction view; see module doc). */
   playerActor: PlayerProjActor;
   hooks?: CastHooks;
+  /**
+   * World seams for project_o / project_f (floor destruction, stone-to-mud,
+   * trap and door effects). When absent, PROJECT.ITEM / PROJECT.GRID
+   * projections skip objects and terrain (the pre-#20/#21 behaviour).
+   */
+  worldEnv?: import("./project-feat").ProjectFeatEnv;
 }
 
 /**
@@ -254,7 +262,15 @@ export function castProjection(
     ...(hooks.onTrackMonster ? { onTrackMonster: hooks.onTrackMonster } : {}),
     ...(hooks.onBolt ? { onBolt: hooks.onBolt } : {}),
     ...(hooks.onBlast ? { onBlast: hooks.onBlast } : {}),
-    /* onObject (#20) and onFeature (#21) are wired when those subsystems land. */
+    /* project_o / project_f over the live floor piles and terrain. */
+    ...(cctx.worldEnv
+      ? {
+          onObject: (dist: number, g: Loc, d: number, t: number): boolean =>
+            projectObject(state, dist, g, d, t, cctx.worldEnv),
+          onFeature: (dist: number, g: Loc, d: number, t: number): boolean =>
+            projectFeature(state, dist, g, d, t, cctx.worldEnv),
+        }
+      : {}),
   };
 
   const params: ProjectParams = {
