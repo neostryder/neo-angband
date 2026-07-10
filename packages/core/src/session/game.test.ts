@@ -207,6 +207,27 @@ describe("startGame (new-game assembly)", () => {
     expect(p.timed[TMD.SHERO]!).toBeGreaterThan(0);
   });
 
+  it("a player kill grants experience and levels the character up", () => {
+    const game = startGame(pack, { seed: 4242, depth: 1 });
+    const p = game.state.actor.player;
+    const mhpBefore = p.mhp;
+    expect(p.lev).toBe(1);
+    expect(p.exp).toBe(0);
+
+    /* player_kill_monster's reward slice through the wired hook: a fat
+     * kill (mexp * rlev / plev = 60 at level 1) passes level thresholds. */
+    game.state.onPlayerKill?.({
+      race: { mexp: 30, level: 2 },
+    } as Parameters<NonNullable<typeof game.state.onPlayerKill>>[0]);
+
+    expect(p.exp).toBe(60);
+    expect(p.lev).toBeGreaterThan(1);
+    expect(p.maxLev).toBe(p.lev);
+    /* PU_HP: mhp recomputed from the rolled hitdice at the new level. */
+    expect(p.mhp).toBeGreaterThan(mhpBefore);
+    expect(p.chp).toBeLessThanOrEqual(p.mhp);
+  });
+
   it("is deterministic for a fixed seed", () => {
     const a = startGame(pack, { seed: 777, depth: 2 });
     const b = startGame(pack, { seed: 777, depth: 2 });
