@@ -57,6 +57,8 @@ export interface GameConstants {
   floorSize: number;
   /** z_info->max_depth (world:max-depth): the trapdoor legality bound. */
   maxDepth: number;
+  /** z_info->stair_skip (world:stair-skip): deep-descent increment scale. */
+  stairSkip: number;
 }
 
 /** The shipped constants.txt values, food thresholds scaled by food_value. */
@@ -72,6 +74,7 @@ export const DEFAULT_GAME_CONSTANTS: GameConstants = {
   foodWeak: 800,
   floorSize: 23,
   maxDepth: 128,
+  stairSkip: 1,
 };
 
 /**
@@ -214,6 +217,11 @@ export interface GameState {
    * traps; cleared when the decoy trap is destroyed or the level changes.
    */
   decoy?: Loc | null;
+  /**
+   * The world-event message sink (the recall yank, the deep-descent floor
+   * opening). Presentation (#25) installs it; absent, the messages drop.
+   */
+  msg?: (text: string) => void;
 }
 
 /** One queued player command (a keyed action plus optional direction/args). */

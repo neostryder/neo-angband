@@ -271,6 +271,11 @@ export interface SavedPlayer {
   maxExp: number;
   exp: number;
   expFrac: number;
+  /** Recall / descent state (absent in older saves; default 0). */
+  maxDepth?: number;
+  recallDepth?: number;
+  wordRecall?: number;
+  deepDescent?: number;
   mhp: number;
   chp: number;
   chpFrac: number;
@@ -328,6 +333,10 @@ export function serializePlayer(p: Player): SavedPlayer {
     maxExp: p.maxExp,
     exp: p.exp,
     expFrac: p.expFrac,
+    maxDepth: p.maxDepth,
+    recallDepth: p.recallDepth,
+    wordRecall: p.wordRecall,
+    deepDescent: p.deepDescent,
     mhp: p.mhp,
     chp: p.chp,
     chpFrac: p.chpFrac,
@@ -387,6 +396,10 @@ export function deserializePlayer(
   p.maxExp = data.maxExp;
   p.exp = data.exp;
   p.expFrac = data.expFrac;
+  p.maxDepth = data.maxDepth ?? 0;
+  p.recallDepth = data.recallDepth ?? 0;
+  p.wordRecall = data.wordRecall ?? 0;
+  p.deepDescent = data.deepDescent ?? 0;
   p.mhp = data.mhp;
   p.chp = data.chp;
   p.chpFrac = data.chpFrac;

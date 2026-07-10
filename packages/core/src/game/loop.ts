@@ -179,7 +179,10 @@ export function decreaseTimeouts(state: GameState): void {
 
 /**
  * process_world: the once-every-ten-turns upkeep this task owns. Regenerate
- * HP (when hurt) and mana, then count the timed effects down.
+ * HP (when hurt) and mana, count the timed effects down, then the
+ * involuntary movement countdowns (game-world.c L780): a pending Word of
+ * Recall or Deep Descent fires a level change through the same
+ * targetDepth / generateLevel signal the stairs use.
  */
 export function processWorld(state: GameState): void {
   const p = state.actor.player;
@@ -189,6 +192,43 @@ export function processWorld(state: GameState): void {
 
   /* Notice things after time (game-world.c L755: every 100 game turns). */
   if (state.turn % 100 === 0) equipLearnAfterTime(p, state.runeEnv);
+
+  /* Delayed Word-of-Recall. */
+  if (p.wordRecall > 0) {
+    p.wordRecall--;
+    if (p.wordRecall === 0) {
+      if (state.chunk.depth > 0) {
+        state.msg?.("You feel yourself yanked upwards!");
+        state.targetDepth = 0;
+      } else {
+        state.msg?.("You feel yourself yanked downwards!");
+        /* player_set_recall_depth: non-persistent levels use max_depth. */
+        p.recallDepth = p.maxDepth;
+        state.targetDepth = p.recallDepth;
+      }
+      state.generateLevel = true;
+    }
+  }
+
+  /* Delayed Deep Descent. */
+  if (p.deepDescent > 0) {
+    p.deepDescent--;
+    if (p.deepDescent === 0) {
+      const increment = Math.trunc(4 / state.z.stairSkip) + 1;
+      const targetDepth = Math.min(
+        p.maxDepth + increment,
+        state.z.maxDepth - 1,
+      );
+      if (targetDepth > state.chunk.depth) {
+        state.msg?.("The floor opens beneath you!");
+        state.targetDepth = targetDepth;
+        state.generateLevel = true;
+      } else {
+        /* The disastrous EF_DESTRUCTION fallback rides that handler. */
+        state.msg?.("You are thrown back in an explosion!");
+      }
+    }
+  }
 }
 
 /** Non-null when the loop must stop and hand control back to the caller. */
