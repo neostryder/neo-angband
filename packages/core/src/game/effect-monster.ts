@@ -97,6 +97,12 @@ const handleBANISH: EffectHandler = (ctx) => {
   if (!env) return true;
   ctx.ident = true;
 
+  /* Don't allow in an arena. */
+  if (env.state.arenaLevel) {
+    ctx.env.messages?.msg("Nothing happens.");
+    return true;
+  }
+
   const typ = env.banishSymbol ? env.banishSymbol() : null;
   if (typ === null) return false;
 
@@ -128,6 +134,13 @@ const handleMASS_BANISH: EffectHandler = (ctx) => {
   ctx.ident = true;
 
   const { state } = env;
+
+  /* Don't allow in an arena. */
+  if (state.arenaLevel) {
+    ctx.env.messages?.msg("Nothing happens.");
+    return true;
+  }
+
   const radius = ctx.radius ? ctx.radius : state.z.maxSight;
   let dam = 0;
   const max = monsterMax(state);

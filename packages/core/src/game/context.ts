@@ -201,6 +201,13 @@ export interface GameState {
    * descent; consumed by the session's changeLevel.
    */
   targetDepth?: number;
+  /**
+   * player->upkeep->arena_level: the player is in (or headed to) single
+   * combat. Set by EF_SINGLE_COMBAT; cleared by the arena exit.
+   */
+  arenaLevel?: boolean;
+  /** player->old_grid: where to stand again after the arena. */
+  oldGrid?: Loc;
 
   /* --- injected hooks --- */
   /** cmdq_pop: the next queued player command, or null when input is needed. */
@@ -384,6 +391,19 @@ export function movePlayer(state: GameState, grid: Loc): void {
   state.chunk.setMon(state.actor.grid, 0);
   state.actor.grid = grid;
   state.chunk.setMon(grid, -1);
+}
+
+/**
+ * The mon_take_hit arena branch (mon-util.c L1290) for the game-layer
+ * kill sites: a lethal player blow in single combat signals the level
+ * change (the arena exit finishes the monster) instead of killing.
+ * Returns true when the death was intercepted (skip the kill).
+ */
+export function arenaInterceptDeath(state: GameState, mon: Monster): boolean {
+  if (!state.arenaLevel) return false;
+  state.generateLevel = true;
+  state.healthWho = mon;
+  return true;
 }
 
 /** Refresh mon->cdis for every live monster (update_mon does this upstream). */

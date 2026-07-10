@@ -46,12 +46,17 @@ import { pyAttackReal } from "../combat/melee";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay";
 import { equipLearnOnMeleeAttack } from "../obj/knowledge";
 import type { GameState } from "./context";
-import { deleteMonster, movePlayer, squareMonster } from "./context";
+import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context";
 import { gameEnv } from "./effect-game-env";
 import type { GameEffectEnv } from "./effect-game-env";
 import { castProjection, playerCastSource } from "./project-cast";
 import { squareIsPlayerTrap, squareIsWebbed } from "./trap";
-import { TARGET, targetGetMonster, targetSetClosest } from "./target";
+import {
+  TARGET,
+  targetGetMonster,
+  targetSetClosest,
+  targetSetMonster,
+} from "./target";
 
 /** msg() over the effect context's optional message sink. */
 function say(ctx: EffectHandlerContext, text: string): void {
@@ -94,7 +99,7 @@ function playerBlow(state: GameState, mon: Monster): boolean {
     { monVisible: true },
   );
   equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
-  if (blow.monsterDied) {
+  if (blow.monsterDied && !arenaInterceptDeath(state, mon)) {
     state.onPlayerKill?.(mon);
     deleteMonster(state, mon.midx);
   }
@@ -115,6 +120,7 @@ function effectHit(
 ): boolean {
   const result = monTakeHit(state.rng, mon, dam, note, {});
   if (result.died) {
+    if (arenaInterceptDeath(state, mon)) return true;
     if (monsterIsVisible(mon)) say(ctx, `${mon.race.name}${note}`);
     state.onPlayerKill?.(mon);
     deleteMonster(state, mon.midx);
@@ -213,6 +219,52 @@ const handleCURSE: EffectHandler = (ctx) => {
   }
 
   effectHit(ctx, state, mon, dam, " dies!");
+  return true;
+};
+
+/**
+ * EF_SINGLE_COMBAT (effect-handler-attack.c L1856): drag the targeted
+ * monster into an arena. High spell power resists; otherwise the arena
+ * flags fire the level change (the session builds the arena around
+ * state.healthWho - upstream's monster_index_move juggle only serves
+ * arena_gen's memcpy and is not needed).
+ */
+const handleSINGLE_COMBAT: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  ctx.ident = true;
+
+  /* Already in an arena. */
+  if (state.arenaLevel) {
+    say(ctx, "You are already in single combat!");
+    return false;
+  }
+
+  /* Need to choose a monster, not just point. */
+  const mon = targetGetMonster(state);
+  if (!mon) {
+    say(ctx, "No monster selected!");
+    return false;
+  }
+
+  /* Monsters with high spell power can resist. */
+  if (
+    mon.race.spellPower > 0 &&
+    state.rng.randint0(mon.race.spellPower) > state.actor.player.lev
+  ) {
+    const name = mon.race.name;
+    say(ctx, `${name.charAt(0).toUpperCase()}${name.slice(1)} resists!`);
+    return true;
+  }
+
+  /* Head to the arena. */
+  targetSetMonster(state, mon);
+  state.healthWho = mon;
+  state.arenaLevel = true;
+  state.oldGrid = state.actor.grid;
+  state.targetDepth = state.chunk.depth;
+  state.generateLevel = true;
   return true;
 };
 
@@ -429,6 +481,7 @@ const MELEE_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   EffectHandler
 >([
   [EF.TAP_UNLIFE, handleTAP_UNLIFE],
+  [EF.SINGLE_COMBAT, handleSINGLE_COMBAT],
   [EF.CURSE, handleCURSE],
   [EF.JUMP_AND_BITE, handleJUMP_AND_BITE],
   [EF.MOVE_ATTACK, handleMOVE_ATTACK],

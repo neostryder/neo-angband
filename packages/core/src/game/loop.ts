@@ -212,8 +212,8 @@ export function processWorld(state: GameState): void {
   /* Notice things after time (game-world.c L755: every 100 game turns). */
   if (state.turn % 100 === 0) equipLearnAfterTime(p, state.runeEnv);
 
-  /* Delayed Word-of-Recall. */
-  if (p.wordRecall > 0) {
+  /* Delayed Word-of-Recall; suspended in arenas (game-world.c L784). */
+  if (p.wordRecall > 0 && !state.arenaLevel) {
     p.wordRecall--;
     if (p.wordRecall === 0) {
       if (state.chunk.depth > 0) {

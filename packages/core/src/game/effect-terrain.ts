@@ -243,13 +243,17 @@ const handleCREATE_STAIRS: EffectHandler = (ctx) => {
   const grid = state.actor.grid;
   ctx.ident = true;
 
+  /* Fails in arenas (birth_levels_persist rides #30). */
+  if (state.arenaLevel) {
+    say(ctx, "Nothing happens!");
+    return false;
+  }
+
   /* Only allow stairs to be created on empty floor. */
   if (!state.chunk.isFloor(grid)) {
     say(ctx, "There is no empty floor here.");
     return false;
   }
-
-  /* birth_levels_persist (#30) and arenas are not modelled. */
 
   /* Push objects off the grid. */
   if (floorPile(state, grid).length > 0) pushObject(state, grid);
@@ -365,8 +369,8 @@ const handleDESTRUCTION: EffectHandler = (ctx) => {
 
   ctx.ident = true;
 
-  /* No effect in town (arenas are not modelled). */
-  if (c.depth === 0) {
+  /* No effect in town or arena. */
+  if (c.depth === 0 || state.arenaLevel) {
     say(ctx, "The ground shakes for a moment.");
     return true;
   }
@@ -458,10 +462,10 @@ const handleEARTHQUAKE: EffectHandler = (ctx) => {
   /* Sometimes ask for a target (get_aim_dir / target_get: the aimed seam). */
   if (targeted && env.aimed) centre = env.aimed;
 
-  if (c.depth > 0) {
+  if (c.depth > 0 && (!state.arenaLevel || ctx.origin.what === "monster")) {
     say(ctx, "The ground shakes! The ceiling caves in!");
   } else {
-    /* No effect in town (arenas are not modelled). */
+    /* No effect in town or arena. */
     say(ctx, "The ground shakes for a moment.");
     return true;
   }

@@ -568,6 +568,12 @@ const handleRECALL: EffectHandler = (ctx) => {
   const confirm = env.general?.confirm ?? ((): boolean => true);
   ctx.ident = true;
 
+  /* No recall from single combat. */
+  if (state.arenaLevel) {
+    say(ctx, "Nothing happens.");
+    return true;
+  }
+
   /* No recall from quest levels with force_descend. */
   if (tp.forceDescend && tp.isQuest?.(state.chunk.depth)) {
     say(ctx, "Nothing happens.");

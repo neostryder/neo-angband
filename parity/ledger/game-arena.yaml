@@ -1,0 +1,80 @@
+module: EF_SINGLE_COMBAT (effect-melee.ts) + the arena lifecycle
+  (session/game.ts makeChangeLevel, mon/take-hit.ts onArenaDeath,
+  game/context.ts arenaInterceptDeath) and the arena guards
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-attack.c
+    items:
+      - effect_handler_SINGLE_COMBAT (L1856) - the already-in-combat
+        guard, the targeted-monster requirement, the
+        randint0(spell_power) > plev resist ("%s resists!", still a
+        turn), and the arena flags (arena_level, old_grid saved, a
+        same-depth dungeon_change_level). Upstream's monster_index_move
+        juggle to slot 1 only serves arena_gen's memcpy; the port's
+        arena builder reads state.healthWho instead (monster_index_move
+        itself is not needed and not ported).
+  - path: src/gen-cave.c
+    items:
+      - arena_gen (L3984) in the session's changeLevel - the 6x6
+        floor-filled, perm-rock-bounded chunk at the same depth, the
+        player at (1, height-2), the opponent COPIED in at (width-2, 1)
+        with a fresh group and its held objects ignored.
+  - path: src/generate.c
+    items:
+      - The arena persistence rule (L1349): the level left for an arena
+        is stashed (chunk, monsters, groups, floor, traps, knowledge,
+        decoy) even without birth_levels_persist, and the exit restores
+        it wholesale - the player marker stayed, old_grid places the
+        player (L1440).
+  - path: src/mon-util.c
+    items:
+      - mon_take_hit's arena branch (L1290) as MonTakeHitHooks
+        .onArenaDeath / game/context.ts arenaInterceptDeath - a lethal
+        player blow in single combat signals generate_level and tracks
+        the monster instead of killing; wired at every player kill site
+        (walk melee, attackBlocker, effect-melee playerBlow/effectHit,
+        project-monster playerAttack).
+      - kill_arena_monster (L1315) in the arena exit - the restored
+        level's original opponent drops to -1 hp and dies through the
+        normal player-kill path (" is defeated!", experience, lore,
+        unique flags).
+  - path: src/game-world.c
+    items:
+      - The generate_level arena detection (L1170) folded into the
+        session changeLevel's enter/exit branches; the recall countdown
+        suspension in arenas (L784) in loop.ts processWorld.
+  - path: src/effect-handler-general.c, src/effect-handler-attack.c
+    items:
+      - The arena guards - RECALL ("Nothing happens."), CREATE_STAIRS
+        ("Nothing happens!", unused), SUMMON (silent no-op), BANISH /
+        MASS_BANISH ("Nothing happens."), DESTRUCTION and EARTHQUAKE
+        ("The ground shakes for a moment.", the monster-origin quake
+        exemption kept).
+notes: >-
+  A save taken in single combat records SavedGame.arena (old_grid); the
+  stashed pre-arena level does not survive the save boundary, so winning
+  after a reload exits to a FRESH level of the same depth (loadGame
+  passes inArena to makeChangeLevel and the exit falls through to the
+  normal generator). With this handler, EVERY effect in effect_kind[]
+  that upstream implements is ported - task #18's surface is closed.
+deferred:
+  - monster_turn_multiply's no-breeding-in-arena guard rides monster
+    reproduction (unported); mon_take_nonplayer_hit's arena floor
+    (monsters cannot kill the arena opponent) is moot while the arena
+    holds exactly one monster.
+  - ALTER_REALITY's arena guard rides that (unported, deprecated
+    upstream) effect; TELEPORT_LEVEL in arenas is blocked by the same
+    generate_level flow it signals.
+  - The arena event banners / EVENT_GEN_LEVEL_START("arena") ride
+    presentation (#25).
+verified-by:
+  - game/arena.test.ts (4 tests) - EF_SINGLE_COMBAT sets the arena
+    flags on the targeted monster (spell-power 0 cannot resist) and
+    refuses without a target or when already fighting; the kill gate
+    signals the exit inside an arena and passes kills through outside;
+    the full round trip through a real startGame - a 6x6 arena with the
+    copied opponent at (4,1) and the player at (1,4), the killing blow
+    signalling the exit, the ORIGINAL level object restored with the
+    player on their old grid, and the original opponent defeated with
+    its message.

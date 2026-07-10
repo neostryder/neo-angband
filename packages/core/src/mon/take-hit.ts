@@ -116,6 +116,13 @@ export interface MonTakeHitHooks {
   becomeAware?: (mon: Monster) => void;
   /** Clear the player's TMD_COVERTRACKS (a hit ends stealthy movement). */
   coverTracksBroken?: () => void;
+  /**
+   * The arena branch (mon-util.c L1290): a lethal blow in single combat
+   * signals the level change instead of killing - the monster stays (at
+   * negative hp) until the arena exit finishes it. Passed by game
+   * callers while state.arenaLevel is set.
+   */
+  onArenaDeath?: (mon: Monster) => void;
 }
 
 /** The outcome of a hit: whether the monster died and whether it took fright. */
@@ -160,7 +167,12 @@ export function monTakeHit(
   /* Hurt it. */
   mon.hp -= dam;
   if (mon.hp < 0) {
-    /* It is dead now (arena-level handling is not modelled). */
+    /* Deal with arena monsters: the kill waits for the arena exit. */
+    if (hooks.onArenaDeath) {
+      hooks.onArenaDeath(mon);
+      return { died: true, fear: false };
+    }
+    /* It is dead now. */
     hooks.onKill?.(mon, note);
     return { died: true, fear: false };
   }
