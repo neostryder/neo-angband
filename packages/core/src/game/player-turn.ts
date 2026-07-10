@@ -19,6 +19,7 @@
  * upstream do-while around cmdq_pop.
  */
 
+import { TMD } from "../generated";
 import { DDGRID } from "../loc";
 import type { Loc } from "../loc";
 import { pyAttack } from "../combat/melee";
@@ -216,7 +217,13 @@ export function processPlayer(
     const cmd = state.nextCommand();
     if (!cmd) return { needsInput: true, energyUsed: 0 };
 
-    const action = registry.get(cmd.code) ?? stubAction;
+    /* While TMD_COMMAND runs, the player's commands drive the commanded
+     * monster instead (cmd-core.c L333 swaps the command list). */
+    const commanding =
+      (state.actor.player.timed[TMD.COMMAND] ?? 0) > 0 && state.monCommand;
+    const action = commanding
+      ? state.monCommand!
+      : (registry.get(cmd.code) ?? stubAction);
     const use = action(state, cmd);
     if (use > 0) {
       state.actor.energy -= use;

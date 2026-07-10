@@ -15,6 +15,7 @@
  * (called after the player moves, as game code calls update_view).
  */
 
+import { MON_TMD, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { distance, locEq } from "../loc";
 import type { Rng } from "../rng";
@@ -213,6 +214,13 @@ export interface GameState {
    */
   monsterCast?: (mon: Monster, state: GameState) => boolean;
   /**
+   * do_cmd_mon_command: while TMD_COMMAND runs, player commands drive the
+   * commanded monster instead (upstream swaps the command list,
+   * cmd-core.c L333). Installed by installMonCommand (game/mon-cmd.ts);
+   * returns the energy spent.
+   */
+  monCommand?: (state: GameState, cmd: PlayerCommand) => number;
+  /**
    * do_autopickup after a step: returns the energy the pickup cost (picked
    * * move_energy / 10, capped). Installed by installPickup (game/pickup.ts);
    * upstream queues CMD_AUTOPICKUP instead - the port folds the identical
@@ -347,6 +355,10 @@ export function deleteMonster(state: GameState, midx: number): void {
   }
   /* If the monster was tracked, forget it (health_track(NULL)). */
   if (state.healthWho === mon) state.healthWho = null;
+  /* A commanded monster dying releases the player (mon-make.c L345). */
+  if (mon.mTimed[MON_TMD.COMMAND]) {
+    state.actor.player.timed[TMD.COMMAND] = 0;
+  }
   /* Decrease the racial counter (clamped: test-harness monsters register
    * without counting, so a naked decrement could go negative). */
   const race = mon.originalRace ?? mon.race;

@@ -26,7 +26,7 @@
  * (#24).
  */
 
-import { EF, OF, PROJ, TMD } from "../generated";
+import { EF, MON_TMD, OF, PROJ, TMD } from "../generated";
 import { DDGRID, distance, loc, locSum } from "../loc";
 import { PROJECT } from "../world/project";
 import { GLYPH_DECOY } from "../effects/effect";
@@ -51,6 +51,7 @@ import {
 } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
 import { monIncTimed } from "../mon/timed";
+import { monsterWake } from "../mon/take-hit";
 import { loreDoProbe } from "../mon/lore";
 import { monsterIsVisible } from "../mon/predicate";
 import { featIsTrapHolding } from "../world/chunk";
@@ -668,6 +669,48 @@ const handleMON_TIMED_INC: EffectHandler = (ctx) => {
 };
 
 /**
+ * EF_COMMAND (L3479): bend the targeted monster to the player's will -
+ * wake it, roll the explicit level-vs-level save, then start the paired
+ * TMD_COMMAND / MON_TMD_COMMAND timers (game/mon-cmd.ts drives the
+ * possession; the world tick keeps the timers aligned).
+ */
+const handleCOMMAND: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  const p = state.actor.player;
+  const amount = effectCalculateValue(ctx, false);
+  const mon = state.monsters[state.target.midx] ?? null;
+
+  ctx.ident = true;
+
+  /* Need to choose a monster, not just point. */
+  if (!mon) {
+    say(ctx, "No monster selected!");
+    return false;
+  }
+
+  /* Wake up, become aware. */
+  monsterWake(state.rng, mon, false, 100);
+
+  /* Explicit saving throw. */
+  if (state.rng.randint1(p.lev) < state.rng.randint1(mon.race.level)) {
+    const name = mon.race.name;
+    say(
+      ctx,
+      `${name.charAt(0).toUpperCase()}${name.slice(1)} resists your command!`,
+    );
+    /* Take a turn and deduct mana when the monster resists. */
+    return true;
+  }
+
+  /* Player is commanding; monster is commanded. */
+  p.timed[TMD.COMMAND] = Math.max(amount, 0);
+  monIncTimed(state.rng, mon, MON_TMD.COMMAND, Math.max(amount, 0), 0);
+  return true;
+};
+
+/**
  * EF_BIZARRE (L3516): the Ring of Bazaar-tan Ishi's random effect - a
  * malignant aura (all stats and a quarter of the experience, permanently),
  * a dispel-all burst, a 300-damage mana ball or a 250-damage mana bolt.
@@ -804,6 +847,7 @@ const GENERAL_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
 >([
   [EF.PROBE, handlePROBE],
   [EF.BIZARRE, handleBIZARRE],
+  [EF.COMMAND, handleCOMMAND],
   [EF.GLYPH, handleGLYPH],
   [EF.WEB, handleWEB],
   [EF.DISENCHANT, handleDISENCHANT],
