@@ -38,6 +38,17 @@ upstream:
         drain is capped at csp (csp_frac cleared); a monster caster heals
         6 per point with the visible-monster message.
       - MON_TIMED_INC (L667) - mon_inc_timed on the casting monster.
+      - RECALL (L1096) - activate / cancel Word of Recall with the depth
+        reset rules (recall_depth / max_depth on Player, saved), the
+        randint0(20)+15 fuse, and the force_descend quest guards; the
+        get_check prompts are the injected confirm (default yes). The
+        countdown and the yank live in game/loop.ts processWorld
+        (game-world.c L780), signalling the same targetDepth /
+        generateLevel level change the stairs use.
+      - DEEP_DESCENT (L1166) - the (4 / stair_skip) + 1 increment from
+        max_depth, the 3+1d4 fuse, and the malevolent-presence block; the
+        countdown fires the drop in processWorld (the blocked-at-bottom
+        EF_DESTRUCTION fallback rides that handler).
 notes: >-
   Registered by registerGeneralHandlers over the core stubs; wireGame
   attaches GeneralEffectEnv (trapDeps) through the same deps threading as
@@ -57,9 +68,11 @@ deferred:
     monster) rides monster-spell targeting (#19); update_smart_learn
     (PF_NO_MANA) rides lore (#24). MDESC monster names ride the display
     layer (#25); the race name stands in.
-  - DRAIN_STAT's show_damage " (%d)" suffix is the options system (#30).
+  - DRAIN_STAT's show_damage " (%d)" suffix is the options system (#30);
+    likewise RECALL's birth_no_recall / birth_levels_persist options and
+    total_winner. Arena levels are not modelled.
 verified-by:
-  - game/effect-general.test.ts (18 tests) - GLYPH places a warding glyph
+  - game/effect-general.test.ts (21 tests) - GLYPH places a warding glyph
     under the player; a decoy deploys once and a second is refused with
     the message; worldless no-op; WEB webs the full 3x3 at spell power 10
     and wider at 50, and fails for a player source; DISENCHANT lowers a
@@ -71,4 +84,6 @@ verified-by:
     RESTORE_EXP heals drains; DRAIN_MANA drains, heals the caster, fails
     on empty mana and is soaked by a decoy; SCRAMBLE / UNSCRAMBLE round-
     trips the stats through statMap; MON_TIMED_INC extends a monster
-    condition.
+    condition; RECALL charges/cancels and the processWorld countdown yanks
+    up from depth and down from town; DEEP_DESCENT schedules the drop and
+    is blocked at the bottom.

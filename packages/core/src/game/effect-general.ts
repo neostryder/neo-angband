@@ -72,6 +72,8 @@ export interface GeneralEffectEnv {
   properties?: readonly (ObjectProperty | null)[];
   /** player_exp_gain's level-change ripple (player/exp.ts). */
   expDeps?: ExpDeps;
+  /** get_check yes/no prompts (RECALL's depth/cancel checks). Default yes. */
+  confirm?: (prompt: string) => boolean;
 }
 
 /** desc_stat: the stat's (positive or negative) adjective from its property. */
@@ -530,6 +532,97 @@ const handleDRAIN_MANA: EffectHandler = (ctx) => {
 };
 
 /**
+ * EF_RECALL: toggle Word of Recall (effect-handler-general.c L1096) - a
+ * delayed level change counted down by process_world (game/loop.ts). The
+ * get_check prompts are the injected confirm (default yes, as an
+ * unprompted terminal would auto-accept); birth_no_recall /
+ * birth_levels_persist are options (#30, off); force_descend and is_quest
+ * read the teleport env; arenas are not modelled.
+ */
+const handleRECALL: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  const p = state.actor.player;
+  const tp = env.teleport ?? {};
+  const confirm = env.general?.confirm ?? ((): boolean => true);
+  ctx.ident = true;
+
+  /* No recall from quest levels with force_descend. */
+  if (tp.forceDescend && tp.isQuest?.(state.chunk.depth)) {
+    say(ctx, "Nothing happens.");
+    return true;
+  }
+
+  /* Warn the player if they're descending to an unrecallable level. */
+  const getNext = tp.getNextLevel ?? ((from: number, dir: 1 | -1): number => from + dir);
+  const targetDepth = getNext(p.maxDepth, 1);
+  if (tp.forceDescend && !state.chunk.depth && tp.isQuest?.(targetDepth)) {
+    if (!confirm("Are you sure you want to descend? ")) return false;
+  }
+
+  if (!p.wordRecall) {
+    /* Reset recall depth. */
+    if (state.chunk.depth > 0) {
+      if (state.chunk.depth !== p.maxDepth) {
+        if (confirm("Set recall depth to current depth? ")) {
+          p.recallDepth = p.maxDepth = state.chunk.depth;
+        }
+      } else {
+        p.recallDepth = p.maxDepth;
+      }
+    }
+
+    p.wordRecall = state.rng.randint0(20) + 15;
+    say(ctx, "The air about you becomes charged...");
+  } else {
+    /* Deactivate recall. */
+    if (
+      !confirm(
+        "Word of Recall is already active.  Do you want to cancel it? ",
+      )
+    ) {
+      return false;
+    }
+
+    p.wordRecall = 0;
+    say(ctx, "A tension leaves the air around you...");
+  }
+
+  return true;
+};
+
+/**
+ * EF_DEEP_DESCENT: a delayed drop of several levels (effect-handler-
+ * general.c L1166), counted down by process_world. The target increment is
+ * (4 / stair_skip) + 1 from the deepest reached depth.
+ */
+const handleDEEP_DESCENT: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  const p = state.actor.player;
+  const tp = env.teleport ?? {};
+
+  /* Calculate target depth. */
+  const increment = Math.trunc(4 / state.z.stairSkip) + 1;
+  const maxDepth = tp.maxDepth ?? 128;
+  const targetDepth = Math.min(p.maxDepth + increment, maxDepth - 1);
+
+  if (targetDepth > state.chunk.depth) {
+    say(ctx, "The air around you starts to swirl...");
+    p.deepDescent = 3 + state.rng.randint1(4);
+  } else {
+    say(
+      ctx,
+      "You sense a malevolent presence blocking passage to the levels below.",
+    );
+  }
+  ctx.ident = true;
+  return true;
+};
+
+/**
  * EF_SCRAMBLE_STATS / EF_UNSCRAMBLE_STATS: the TMD_SCRAMBLE timed effect's
  * on-begin / on-end chains.
  */
@@ -577,6 +670,8 @@ const GENERAL_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.GLYPH, handleGLYPH],
   [EF.WEB, handleWEB],
   [EF.DISENCHANT, handleDISENCHANT],
+  [EF.RECALL, handleRECALL],
+  [EF.DEEP_DESCENT, handleDEEP_DESCENT],
   [EF.RESTORE_STAT, handleRESTORE_STAT],
   [EF.DRAIN_STAT, handleDRAIN_STAT],
   [EF.LOSE_RANDOM_STAT, handleLOSE_RANDOM_STAT],
