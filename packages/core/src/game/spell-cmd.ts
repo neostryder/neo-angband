@@ -61,7 +61,14 @@ export interface SpellCmdDeps {
   /** The effect stack bundle (same as obj-cmd / traps). */
   effects: Pick<
     ObjCmdDeps,
-    "registry" | "cast" | "envDeps" | "inject" | "teleport" | "general" | "item"
+    | "registry"
+    | "cast"
+    | "envDeps"
+    | "inject"
+    | "teleport"
+    | "general"
+    | "item"
+    | "summon"
   >;
   /** state->stat_ind from calc_bonuses, for the fail / mana math. */
   statInd: readonly number[];
@@ -133,6 +140,7 @@ export function spellCast(
       ...(deps.effects.teleport ? { teleport: deps.effects.teleport } : {}),
       ...(deps.effects.general ? { general: deps.effects.general } : {}),
       ...(deps.effects.item ? { item: deps.effects.item } : {}),
+      ...(deps.effects.summon ? { summon: deps.effects.summon } : {}),
     });
     const ident = { value: false };
     if (

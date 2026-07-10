@@ -41,6 +41,7 @@ export * from "./mon/types";
 export * from "./mon/bind";
 export * from "./mon/monster";
 export * from "./mon/make";
+export * from "./mon/summon";
 export * from "./mon/predicate";
 export * from "./mon/timed";
 export * from "./mon/take-hit";
@@ -93,6 +94,25 @@ export * from "./game/effect-teleport";
 export * from "./game/effect-terrain";
 export * from "./game/effect-item";
 export * from "./game/effect-melee";
+export * from "./game/effect-summon";
+/* The live-cave placement family shares upstream names with its
+ * generation-time twin in gen/util; the live variants export Live-suffixed. */
+export {
+  squareIsOpenLive,
+  squareIsEmptyLive,
+  squareAllowsSummon,
+  placeNewMonsterOne,
+  placeNewMonster as placeNewMonsterLive,
+  pickAndPlaceMonster as pickAndPlaceMonsterLive,
+  summonSpecific,
+  selectShape,
+  wipeMonsterCounts,
+  countMonsterRaces,
+} from "./game/mon-place";
+export type {
+  MonPlaceDeps as LiveMonPlaceDeps,
+  SummonDeps,
+} from "./game/mon-place";
 export * from "./game/thrust";
 export * from "./game/mon-cast";
 export * from "./game/mon-ranged";

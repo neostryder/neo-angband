@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { TMD } from "../generated";
+import { FlagSet } from "../bitflag";
+import { RF_SIZE } from "../mon/types";
 import { runGameLoop, LOOP_STATUS } from "../game/loop";
 import type { PlayerCommand } from "../game/context";
 import { startGame } from "./game";
@@ -217,7 +219,7 @@ describe("startGame (new-game assembly)", () => {
     /* player_kill_monster's reward slice through the wired hook: a fat
      * kill (mexp * rlev / plev = 60 at level 1) passes level thresholds. */
     game.state.onPlayerKill?.({
-      race: { mexp: 30, level: 2 },
+      race: { mexp: 30, level: 2, flags: new FlagSet(RF_SIZE) },
     } as Parameters<NonNullable<typeof game.state.onPlayerKill>>[0]);
 
     expect(p.exp).toBe(60);

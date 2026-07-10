@@ -88,6 +88,8 @@ export interface ObjCmdDeps {
   general?: import("./effect-general").GeneralEffectEnv;
   /** Item-targeting seams (get_item, ego/curse tables; effect-item.ts). */
   item?: import("./effect-item").ItemEffectEnv;
+  /** Summoning seams (summon table + live placement; effect-summon.ts). */
+  summon?: import("./effect-summon").SummonEffectEnv;
   /** Floor-pile seams (isTrap for drop placement). */
   floorEnv?: FloorEnv;
   env?: ObjCmdEnv;
@@ -417,6 +419,7 @@ export function useAux(
       ...(deps.teleport ? { teleport: deps.teleport } : {}),
       ...(deps.general ? { general: deps.general } : {}),
       ...(deps.item ? { item: deps.item } : {}),
+      ...(deps.summon ? { summon: deps.summon } : {}),
     });
     const ident = { value: false };
     const used = deps.registry.effectDo(chain, ctx, {
