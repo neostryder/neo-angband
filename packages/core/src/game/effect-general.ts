@@ -26,15 +26,16 @@
  * (#24).
  */
 
-import { EF, OF, TMD } from "../generated";
-import { distance, loc } from "../loc";
+import { EF, OF, PROJ, TMD } from "../generated";
+import { DDGRID, distance, loc, locSum } from "../loc";
+import { PROJECT } from "../world/project";
 import { GLYPH_DECOY } from "../effects/effect";
 import type {
   EffectHandler,
   EffectHandlerContext,
   EffectRegistry,
 } from "../effects/interpreter";
-import { effectCalculateValue } from "../effects/interpreter";
+import { DIR_TARGET, effectCalculateValue } from "../effects/interpreter";
 import { equipLearnFlag, objBaseName, sustainFlag } from "../obj/knowledge";
 import { OBJ_PROPERTY } from "../obj/types";
 import type { ObjectProperty } from "../obj/types";
@@ -42,6 +43,7 @@ import { STAT_MAX } from "../player/types";
 import {
   PY_MAX_EXP,
   playerExpGain,
+  playerExpLose,
   playerFixScramble,
   playerScrambleStats,
   playerStatDec,
@@ -57,6 +59,7 @@ import { lookupTrap } from "../world/trap";
 import type { GameState } from "./context";
 import { gameEnv } from "./effect-game-env";
 import { floorPile } from "./floor";
+import { castProjection, playerCastSource } from "./project-cast";
 import { pushObject } from "./project-feat";
 import { placeTrap, squareIsTrap, squareRemoveAllTraps } from "./trap";
 import type { TrapDeps } from "./trap";
@@ -665,6 +668,101 @@ const handleMON_TIMED_INC: EffectHandler = (ctx) => {
 };
 
 /**
+ * EF_BIZARRE (L3516): the Ring of Bazaar-tan Ishi's random effect - a
+ * malignant aura (all stats and a quarter of the experience, permanently),
+ * a dispel-all burst, a 300-damage mana ball or a 250-damage mana bolt.
+ */
+const handleBIZARRE: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  const p = state.actor.player;
+
+  ctx.ident = true;
+
+  switch (state.rng.randint1(10)) {
+    case 1:
+    case 2: {
+      say(ctx, "You are surrounded by a malignant aura.");
+
+      /* Decrease all stats (permanently). */
+      for (let stat = 0; stat < STAT_MAX; stat++) {
+        playerStatDec(p, stat, true);
+      }
+
+      /* Lose some experience (permanently). */
+      playerExpLose(p, Math.trunc(p.exp / 4), true, expDepsOf(ctx, env));
+      state.updateBonuses?.();
+      return true;
+    }
+
+    case 3: {
+      say(ctx, "You are surrounded by a powerful aura.");
+
+      /* Dispel monsters. */
+      ctx.registry.effectSimple(EF.PROJECT_LOS, ctx.env, {
+        origin: ctx.origin,
+        diceString: "1000",
+        subtype: PROJ.DISP_ALL,
+      });
+      return true;
+    }
+
+    case 4:
+    case 5:
+    case 6: {
+      /* Mana ball. */
+      let flg =
+        PROJECT.THRU |
+        PROJECT.STOP |
+        PROJECT.GRID |
+        PROJECT.ITEM |
+        PROJECT.KILL;
+      let target = locSum(state.actor.grid, DDGRID[ctx.dir] ?? loc(0, 0));
+
+      /* Ask for a target if no direction given. */
+      if (ctx.dir === DIR_TARGET && env.aimed) {
+        flg &= ~(PROJECT.STOP | PROJECT.THRU);
+        target = env.aimed;
+      }
+
+      /* Aim at the target, explode. */
+      return castProjection(
+        state,
+        env.cast,
+        playerCastSource(state),
+        target,
+        300,
+        PROJ.MANA,
+        flg,
+        3,
+      );
+    }
+
+    default: {
+      /* Mana bolt. */
+      const flg = PROJECT.STOP | PROJECT.KILL | PROJECT.THRU;
+      let target = locSum(state.actor.grid, DDGRID[ctx.dir] ?? loc(0, 0));
+
+      /* Use an actual target. */
+      if (ctx.dir === DIR_TARGET && env.aimed) target = env.aimed;
+
+      /* Aim at the target, do NOT explode. */
+      return castProjection(
+        state,
+        env.cast,
+        playerCastSource(state),
+        target,
+        250,
+        PROJ.MANA,
+        flg,
+        0,
+      );
+    }
+  }
+};
+
+/**
  * EF_PROBE: learn everything about every visible monster in line of
  * sight, reporting its hit points (effect-handler-general.c L2451).
  * Monster names are the race name until MDESC (#25).
@@ -705,6 +803,7 @@ const GENERAL_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   EffectHandler
 >([
   [EF.PROBE, handlePROBE],
+  [EF.BIZARRE, handleBIZARRE],
   [EF.GLYPH, handleGLYPH],
   [EF.WEB, handleWEB],
   [EF.DISENCHANT, handleDISENCHANT],

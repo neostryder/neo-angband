@@ -202,6 +202,12 @@ export interface EffectHandlerContext {
   readonly env: EffectContext;
   /** SET_VALUE/CLEAR_VALUE shared box (upstream file-static set_value). */
   readonly shared: { value: number };
+  /**
+   * The dispatching registry. Handlers that re-dispatch to another
+   * handler with a synthetic context (upstream's free-function calls,
+   * e.g. effect_handler_WONDER) or run effect_simple reach it here.
+   */
+  readonly registry: EffectRegistry;
 }
 
 export type EffectHandler = (context: EffectHandlerContext) => boolean;
@@ -314,6 +320,11 @@ export class EffectRegistry {
    * upstream EF values; string codes are the mod extension surface.
    * Re-registering a code replaces it (mods may override core effects).
    */
+  /** The registered handler for a code (effect_handler_f), or null. */
+  handlerFor(code: EffectCode): EffectHandler | null {
+    return this.defs.get(code)?.handler ?? null;
+  }
+
   register(code: EffectCode, def: EffectDefinition): void {
     if (typeof code === "number" && (code <= EF.NONE || !Number.isInteger(code))) {
       throw new Error(`invalid numeric effect code ${code}`);
@@ -537,6 +548,7 @@ export class EffectRegistry {
           cmd,
           env,
           shared: this.sharedValue,
+          registry: this,
         };
 
         completed = def.handler(context) || completed;
