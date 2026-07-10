@@ -26,7 +26,7 @@
 import { loc } from "../loc";
 import type { Loc } from "../loc";
 import { SKILL } from "../player/types";
-import { RF, STAT } from "../generated";
+import { RF, STAT, TMD } from "../generated";
 import { bindPlayer } from "../player/bind";
 import type { PlayerPackRecords, PlayerRegistry } from "../player/bind";
 import { generatePlayer } from "../player/birth";
@@ -83,6 +83,7 @@ import { basicPlayerActor } from "../game/project-cast";
 import type { CastContext } from "../game/project-cast";
 import type { EffectEnvDeps } from "../game/effect-env";
 import { installMonsterCasting } from "../game/mon-ranged";
+import { installMonCommand } from "../game/mon-cmd";
 import { installObjCommands } from "../game/obj-cmd";
 import { installCaveCommands } from "../game/cave-cmd";
 import {
@@ -403,7 +404,7 @@ function wireGame(
     };
     const envDeps: EffectEnvDeps = { timedTable: players.timed };
 
-    installMonsterCasting(state, {
+    const monSpellDeps = {
       registry: effects,
       cast,
       spells: reg.monsters.spells,
@@ -413,7 +414,10 @@ function wireGame(
       ...(teleport ? { teleport } : {}),
       general,
       summon,
-    });
+    };
+    installMonsterCasting(state, monSpellDeps);
+    /* do_cmd_mon_command: EF_COMMAND possession drives the monster. */
+    installMonCommand(state, monSpellDeps);
 
     installObjCommands(registry, {
       constants: reg.constants,
@@ -586,9 +590,11 @@ function makeChangeLevel(
     /* wipe_mon_list: the old level's monsters forget their racial counts
      * before the new level allocates against them. */
     wipeMonsterCounts(state);
-    /* Forget the target and the tracked monster (game-world.c L1010). */
+    /* Forget the target and the tracked monster (game-world.c L1010),
+     * and release any commanded monster (L1065). */
     targetSetMonster(state, null);
     state.healthWho = null;
+    state.actor.player.timed[TMD.COMMAND] = 0;
     const g = generateLevel(state.rng, depth, genDeps(reg, true));
     state.chunk = g.c;
     state.monsters = [null];
