@@ -1,0 +1,71 @@
+module: packages/core/src/obj/ignore.ts (the ignore predicate engine +
+  the player's ignore settings) + wiring (game/context.ts isIgnored,
+  session/game.ts, game/player-path.ts, game/pickup.ts, game/obj-cmd.ts,
+  session/save.ts)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/obj-ignore.c
+    items:
+      - quality_mapping (L44) as QUALITY_MAPPING and ignore_type_of (L382)
+        - the tval (+ optional kind-name identifier) to ITYPE mapping,
+        returning ITYPE_MAX for the unmappable.
+      - cmp_object_trait (L434) and is_object_good (L448) - the
+        to_d / to_h / to_d weighting (4 / 2 / 1) against the base kind's
+        minimised trait, a positive base treated as zero.
+      - ignore_level_of (L464) - the quality tier: jewelry is bad or
+        average by its modifiers / combat signs; other items are bad /
+        average / good by is_object_good, ego -> ALL, artifact -> MAX.
+        The port treats every object as fully known, so the
+        not-fully-known branch never applies.
+      - the file-static settings (ignore_level[], ego_ignore_types[][],
+        kind->ignore bits) as the IgnoreSettings class - quality
+        thresholds per type, ego ignore keyed eidx:itype, per-kind
+        aware / unaware flags keyed by kidx (kept off the immutable pack
+        records), and p->unignoring. With snapshot / restore for the save.
+      - object_is_ignored (L576) - the OBJ_NOTICE_IGNORE individual mark,
+        the artifact / !k / !* exemption, kind ignore by flavor
+        awareness, ego ignore, the assessed-non-artifact ALL shortcut,
+        and the quality-tier <= threshold test.
+      - ignore_item_ok (L622) - object_is_ignored gated by !unignoring.
+  - path: src/cmd-cave.c, src/player-path.c, src/obj-pickup.c
+    items:
+      - ignore_item_ok is now wired at its call sites: the running /
+        pathfinding object-abort (game/player-path.ts hasBlockingObject),
+        autopickup and the pickup verbal check (game/pickup.ts), and the
+        floor-command / display paths (game/obj-cmd.ts floorEnv). The
+        session builds state.isIgnored = ignore_item_ok with live flavor
+        awareness so those layers stay decoupled from flavor knowledge.
+notes: >-
+  The player's ignore settings live on GameState.ignore (an IgnoreSettings)
+  and default to nothing ignored, matching the shipped default in a
+  headless engine; they ride the save (SavedGame.ignore, optional so older
+  saves load with everything shown). object_is_ignored / ignore_item_ok
+  are pure (settings + a flavor-aware boolean), and everything reads them
+  through the state.isIgnored closure the session installs. cmp_object_trait
+  computes the base trait's minimise via a shared deterministic Rng (the
+  minimise aspect draws no randomness).
+deferred:
+  - The ignore MENU plumbing: ego_has_ignore_type (L405, needs
+    ego->poss_items), quality_choices / quality_values name tables, and
+    the autoinscription block (rune_autoinscribe / get_autoinscription /
+    apply_autoinscription / autoinscribe_pack) - all presentation (#25).
+  - ignore_drop (L651): the "drop all {ignore}able gear" command, and
+    object_ignore_flavor_of (L370) - gear-command surface.
+  - The PN_IGNORE notice pass and the ignore redraw / EVENT signals ride
+    presentation (#25); the port applies settings immediately on read.
+  - object_is_ignored's !obj->known / object_fully_known guards are moot
+    while the port has no per-object known twin (everything is known), so
+    ignore_level_of always takes the fully-known branch.
+verified-by:
+  - obj/ignore.test.ts (10 tests) - ignore_type_of maps tvals (sword ->
+    SHARP, hafted -> BLUNT, ring -> RING, potion -> ITYPE_MAX);
+    ignore_level_of grades weapons bad / average / good, caps jewelry at
+    bad / average, and rates ego -> ALL / artifact -> MAX; object_is_ignored
+    ignores nothing by default, ignores by quality threshold per type,
+    never ignores artifacts or !k-inscribed items, honors the individual
+    ignore bit and the unignoring flag, ignores an ego of an ignored
+    ego+type, ignores by aware / unaware kind, and round-trips the settings.
+  - game/player-path.test.ts - a run stops beside a non-ignored floor
+    object but runs past it once state.isIgnored returns true (the running
+    / ignore wiring).
