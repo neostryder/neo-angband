@@ -397,7 +397,9 @@ window.addEventListener("keydown", (ev) => {
   const binding = resolveKey(ev, roguelikeKeys);
   if (!binding) return;
   ev.preventDefault();
-  commandBuffer.push({ code: "walk", dir: binding.dir });
+  // A run binding starts a run; the engine self-continues via cmdQueue until
+  // run_test stops it (runGameLoop returns INPUT), so one keypress runs.
+  commandBuffer.push({ code: binding.kind, dir: binding.dir });
   advance();
 });
 

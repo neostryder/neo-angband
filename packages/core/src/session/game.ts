@@ -124,6 +124,7 @@ import type { ProjectFeatEnv } from "../game/project-feat";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
+import { installRunning } from "../game/player-path";
 import { bindCore, bootLevel, genDeps } from "./boot";
 import type {
   BootedLevel,
@@ -536,6 +537,10 @@ function wireGame(
         }
       : {}),
   });
+
+  // Running (player-path.c): the corridor / open-area running engine. It
+  // re-queues itself onto state.cmdQueue, which processPlayer drains.
+  installRunning(registry);
 
   return { registry, trapDeps, flavor };
 }
