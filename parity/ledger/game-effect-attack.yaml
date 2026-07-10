@@ -43,6 +43,15 @@ upstream:
         EffectRegistry by registerAttackHandlers, overriding registerCoreHandlers'
         NOT_IMPLEMENTED stubs. Handlers read their game env from context.env.game
         (the shared GameEffectEnv, game/effect-game-env.ts) and no-op when absent.
+      - effect_handler_WONDER (L1988) - the full plev-weighted die table
+        (clone/haste/heal/poly/missile/confuse bolts, the elemental
+        bolt-or-beams with their beam-10 rows, the poison/elec/acid/ice/
+        fire balls, the drain bolts, quake/destruction/banish/dispel at
+        the top) re-dispatched through EffectHandlerContext.registry
+        (handlerFor + a synthetic context, upstream's direct
+        effect_handler_* call; a mod overriding a code changes WONDER's
+        row with it), the >100 power-surge message, and the very rare
+        (die >= 110) dispel/slow/sleep/heal-300 effect_simple batch.
 notes: >-
   The attack effect handlers, wired to the projection-casting spine
   (game/project-cast.ts) so the projection stack is now reachable from
@@ -77,3 +86,6 @@ verified-by:
     (visible-monster) effect; EF_LASH whips the player with the first blow's
     lash element and fails for a player source; and every attack handler
     no-ops without an attack environment (the worldless rule).
+  - game/effect-wonder.test.ts (2 tests): a mid die dispatches a poison
+    ball that damages the target; a very rare die surges power and runs
+    the heal-300 tail.

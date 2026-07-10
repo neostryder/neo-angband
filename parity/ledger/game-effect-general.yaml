@@ -42,6 +42,12 @@ upstream:
         its hit points ("Probing...", "That's all.") and is fully
         learned via lore_do_probe (mon/lore.ts); names are the race name
         until MDESC (#25).
+      - BIZARRE (L3516) - randint1(10): the malignant aura (all five
+        stats and a quarter of the experience, permanently), the
+        powerful-aura dispel (EF_PROJECT_LOS 1000 via the context
+        registry), the 300-damage radius-3 mana ball (STOP|THRU dropped
+        when aimed at an okay target) and the 250-damage mana bolt, both
+        through castProjection with the upstream flag sets.
       - RECALL (L1096) - activate / cancel Word of Recall with the depth
         reset rules (recall_depth / max_depth on Player, saved), the
         randint0(20)+15 fuse, and the force_descend quest guards; the
@@ -76,6 +82,9 @@ deferred:
     likewise RECALL's birth_no_recall / birth_levels_persist options and
     total_winner. Arena levels are not modelled.
 verified-by:
+  - game/effect-wonder.test.ts (2 BIZARRE tests) - the malignant aura
+    drains all stats and a quarter of the experience permanently, and
+    the mana ball blasts the targeted monster.
   - game/effect-general.test.ts (21 tests) - GLYPH places a warding glyph
     under the player; a decoy deploys once and a second is refused with
     the message; worldless no-op; WEB webs the full 3x3 at spell power 10

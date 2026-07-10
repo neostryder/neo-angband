@@ -384,6 +384,167 @@ const makeProjectLos = (aware: boolean): EffectHandler => (ctx) => {
   return true;
 };
 
+/**
+ * EF_WONDER (L1988): a random effect chosen by the die roll (the chain's
+ * dice add plev/5, so the worst results fade with experience). Each row
+ * re-dispatches to another registered handler with a synthetic context,
+ * exactly upstream's direct effect_handler_* calls; the very rare tail
+ * (die >= 110) runs the dispel/slow/sleep/heal effect_simple batch.
+ */
+const handleWONDER: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const plev = env.state.actor.player.lev;
+  const die = effectCalculateValue(ctx, false);
+  let subtype = 0;
+  let radius = 0;
+  let beam = ctx.beam;
+  let code = 0;
+  const value = { base: 0, dice: 0, sides: 0, mBonus: 0 };
+
+  ctx.ident = true;
+
+  if (die > 100) ctx.env.messages?.msg("You feel a surge of power!");
+
+  if (die < 8) {
+    subtype = PROJ.MON_CLONE;
+    code = EF.BOLT;
+  } else if (die < 14) {
+    subtype = PROJ.MON_SPEED;
+    value.base = 100;
+    code = EF.BOLT;
+  } else if (die < 26) {
+    subtype = PROJ.MON_HEAL;
+    value.dice = 4;
+    value.sides = 6;
+    code = EF.BOLT;
+  } else if (die < 31) {
+    subtype = PROJ.MON_POLY;
+    value.base = plev;
+    code = EF.BOLT;
+  } else if (die < 36) {
+    beam -= 10;
+    subtype = PROJ.MISSILE;
+    value.dice = 3 + Math.trunc((plev - 1) / 5);
+    value.sides = 4;
+    code = EF.BOLT_OR_BEAM;
+  } else if (die < 41) {
+    subtype = PROJ.MON_CONF;
+    value.base = plev;
+    code = EF.BOLT;
+  } else if (die < 46) {
+    subtype = PROJ.POIS;
+    value.base = 20 + Math.trunc(plev / 2);
+    radius = 3;
+    code = EF.BALL;
+  } else if (die < 51) {
+    subtype = PROJ.LIGHT_WEAK;
+    value.dice = 6;
+    value.sides = 8;
+    code = EF.LINE;
+  } else if (die < 56) {
+    subtype = PROJ.ELEC;
+    value.dice = 3 + Math.trunc((plev - 5) / 6);
+    value.sides = 6;
+    code = EF.BEAM;
+  } else if (die < 61) {
+    beam -= 10;
+    subtype = PROJ.COLD;
+    value.dice = 5 + Math.trunc((plev - 5) / 4);
+    value.sides = 8;
+    code = EF.BOLT_OR_BEAM;
+  } else if (die < 66) {
+    subtype = PROJ.ACID;
+    value.dice = 6 + Math.trunc((plev - 5) / 4);
+    value.sides = 8;
+    code = EF.BOLT_OR_BEAM;
+  } else if (die < 71) {
+    subtype = PROJ.FIRE;
+    value.dice = 8 + Math.trunc((plev - 5) / 4);
+    value.sides = 8;
+    code = EF.BOLT_OR_BEAM;
+  } else if (die < 76) {
+    subtype = PROJ.MON_DRAIN;
+    value.base = 75;
+    code = EF.BOLT;
+  } else if (die < 81) {
+    subtype = PROJ.ELEC;
+    value.base = 30 + Math.trunc(plev / 2);
+    radius = 2;
+    code = EF.BALL;
+  } else if (die < 86) {
+    subtype = PROJ.ACID;
+    value.base = 40 + plev;
+    radius = 2;
+    code = EF.BALL;
+  } else if (die < 91) {
+    subtype = PROJ.ICE;
+    value.base = 70 + plev;
+    radius = 3;
+    code = EF.BALL;
+  } else if (die < 96) {
+    subtype = PROJ.FIRE;
+    value.base = 80 + plev;
+    radius = 3;
+    code = EF.BALL;
+  } else if (die < 101) {
+    subtype = PROJ.MON_DRAIN;
+    value.base = 100 + plev;
+    code = EF.BOLT;
+  } else if (die < 104) {
+    radius = 12;
+    code = EF.EARTHQUAKE;
+  } else if (die < 106) {
+    radius = 15;
+    code = EF.DESTRUCTION;
+  } else if (die < 108) {
+    code = EF.BANISH;
+  } else if (die < 110) {
+    subtype = PROJ.DISP_ALL;
+    value.base = 120;
+    code = EF.PROJECT_LOS;
+  }
+
+  const handler = code ? ctx.registry.handlerFor(code) : null;
+  if (handler) {
+    return handler({
+      ...ctx,
+      effect: code,
+      beam,
+      value,
+      subtype,
+      radius,
+      other: 0,
+      y: 0,
+      x: 0,
+      msg: null,
+    });
+  }
+
+  /* RARE */
+  const simple = { origin: ctx.origin } as const;
+  ctx.registry.effectSimple(EF.PROJECT_LOS, ctx.env, {
+    ...simple,
+    diceString: "150",
+    subtype: PROJ.DISP_ALL,
+  });
+  ctx.registry.effectSimple(EF.PROJECT_LOS, ctx.env, {
+    ...simple,
+    diceString: "20",
+    subtype: PROJ.MON_SLOW,
+  });
+  ctx.registry.effectSimple(EF.PROJECT_LOS, ctx.env, {
+    ...simple,
+    diceString: "40",
+    subtype: PROJ.SLEEP_ALL,
+  });
+  ctx.registry.effectSimple(EF.HEAL_HP, ctx.env, {
+    ...simple,
+    diceString: "300",
+  });
+  return true;
+};
+
 /** The attack handlers, keyed by upstream EF code. */
 const ATTACK_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   number,
@@ -412,6 +573,7 @@ const ATTACK_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.TOUCH_AWARE, handleTOUCH_AWARE],
   [EF.PROJECT_LOS, makeProjectLos(false)],
   [EF.PROJECT_LOS_AWARE, makeProjectLos(true)],
+  [EF.WONDER, handleWONDER],
 ]);
 
 /**
