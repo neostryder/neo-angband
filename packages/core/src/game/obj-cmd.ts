@@ -291,16 +291,22 @@ const EFFECT_NEEDS_AIM = new Map<string, boolean>(
   EFFECT_ENTRIES.map((e) => [e.name, e.aim]),
 );
 
+/** effect_aim over a raw record chain: any effect marked as aimed. */
+export function effectRecordsNeedAim(
+  records: readonly EffectRecordJson[],
+): boolean {
+  /* RANDOM/SELECT children share the parent walk; the flat list covers them. */
+  return records.some(
+    (e) => EFFECT_NEEDS_AIM.get(e.eff.split(":")[0] ?? e.eff) === true,
+  );
+}
+
 /** obj_needs_aim (obj-util.c L899), on the raw effect records. */
 export function objNeedsAim(
   obj: GameObject,
   deps: Pick<ObjCmdDeps, "flavor">,
 ): boolean {
-  /* effect_aim: any effect in the chain marked as aimed (RANDOM/SELECT
-   * children share the parent walk; the flat record list covers them). */
-  const aimed = (obj.effect ?? []).some(
-    (e) => EFFECT_NEEDS_AIM.get(e.eff.split(":")[0] ?? e.eff) === true,
-  );
+  const aimed = effectRecordsNeedAim(obj.effect ?? []);
   const aware = deps.flavor ? deps.flavor.isAware(obj.kind) : true;
   return aimed || tvalIsWand(obj.tval) || (tvalIsRod(obj.tval) && !aware);
 }

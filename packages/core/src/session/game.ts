@@ -62,12 +62,19 @@ import {
 } from "../game/trap";
 import type { TrapDeps } from "../game/trap";
 import { lookupTrap } from "../world/trap";
+import {
+  calcMana,
+  calcSpells,
+  playerSpellsInit,
+  registerBookKinds,
+} from "../player/spell";
+import { installSpellCommands } from "../game/spell-cmd";
 import { FlavorKnowledge } from "../obj/knowledge";
 import { ObjAllocState } from "../obj/make";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
-import { bootLevel } from "./boot";
+import { bindCore, bootLevel } from "./boot";
 import type { BootedLevel, BootLevelOptions, CorePack } from "./boot";
 
 /** A pack that also carries the player-domain records (races, classes, ...). */
@@ -99,9 +106,15 @@ export interface StartedGame {
  * drives runGameLoop.
  */
 export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedGame {
-  const booted = bootLevel(pack, opts);
-  const reg = booted.registries;
+  // Bind registries and the player domain first: spellbook object kinds
+  // are created FROM the class book definitions (init.c write_book_kind),
+  // and must exist before level generation builds the allocation tables
+  // (so books spawn) and before the starting kit resolves.
+  const reg = bindCore(pack);
   const players = bindPlayer(pack.player);
+  registerBookKinds(reg.objects, players.classes);
+
+  const booted = bootLevel(pack, { ...opts, registries: reg });
 
   const race =
     (opts.raceName ? players.raceByName(opts.raceName) : null) ??
@@ -137,6 +150,29 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
 
   const pstate = calcBonuses(birth.player, { equipment });
   const combat = toCombatState(pstate);
+
+  // Spell bookkeeping for casting classes: size the spell arrays, compute
+  // the learnable-spell allowance (calc_spells) and mana (calc_mana, with
+  // the worn-armor weight over the class allowance as the penalty).
+  playerSpellsInit(birth.player);
+  calcSpells(birth.player, pstate.statInd);
+  let armorWeight = 0;
+  for (let i = 0; i < birth.player.body.count; i++) {
+    const slotType = birth.player.body.slots[i]?.type ?? "";
+    if (
+      slotType === "WEAPON" ||
+      slotType === "BOW" ||
+      slotType === "RING" ||
+      slotType === "AMULET" ||
+      slotType === "LIGHT"
+    ) {
+      continue;
+    }
+    const worn = equipment[i];
+    if (worn) armorWeight += worn.weight;
+  }
+  calcMana(birth.player, pstate.statInd, armorWeight);
+  birth.player.csp = birth.player.msp; // born rested, full mana
 
   const spot: Loc = booted.playerSpot ?? loc(1, 1);
   const actor: PlayerActor = {
@@ -246,6 +282,18 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       flavor: new FlavorKnowledge(reg.objects.ordinaryKindCount),
       ...(teleport ? { teleport } : {}),
       ...(preds ? { floorEnv: { isTrap: preds.isTrap } } : {}),
+    });
+
+    // Player spellcasting (cast / study) for casting classes, through the
+    // same effect stack.
+    installSpellCommands(registry, {
+      effects: {
+        registry: effects,
+        cast,
+        envDeps,
+        ...(teleport ? { teleport } : {}),
+      },
+      statInd: pstate.statInd,
     });
 
     // Traps: instantiate the generation-marked grids as real traps (the

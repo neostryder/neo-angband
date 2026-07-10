@@ -93,6 +93,11 @@ export interface Player {
   /** timed[TMD_MAX]: timed effect durations. */
   timed: Int16Array;
 
+  /** spell_flags[total_spells]: PY_SPELL_ bits (player_spells_init sizes). */
+  spellFlags: number[];
+  /** spell_order[total_spells]: sidx in learn order (99 = unused slot). */
+  spellOrder: number[];
+
   /** player_hp[PY_MAX_LEVEL]: cumulative hitpoint rolls per level. */
   playerHp: number[];
 
@@ -165,6 +170,8 @@ export function blankPlayer(
     statMap: new Array<number>(STAT_MAX).fill(0),
     statBirth: new Array<number>(STAT_MAX).fill(0),
     timed: new Int16Array(TMD_MAX),
+    spellFlags: [],
+    spellOrder: [],
     playerHp: new Array<number>(PY_MAX_LEVEL).fill(0),
     auBirth: 0,
     htBirth: 0,
