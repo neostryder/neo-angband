@@ -44,6 +44,9 @@ upstream:
         (5 + lev) * 3 * pval / 2 energy, the < 36 refusal, the mana top-up
         (energy / 6, csp_frac cleared), the randint1(2) stun, and the
         full-mana refusal with the capitalized item name.
+      - effect_handler_ACQUIRE (L2194) with acquirement (obj-make.c
+        L1240) - `value` good/great/extra-roll make_object calls at the
+        current depth, ORIGIN_ACQUIRE stamped, dropped near the player.
 notes: >-
   Registered by registerItemHandlers over the core stubs. The object
   chooser (upstream get_item / cmd_get_item "tgtitem") is the injected

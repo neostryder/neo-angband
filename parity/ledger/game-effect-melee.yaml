@@ -1,0 +1,71 @@
+module: packages/core/src/game/effect-melee.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-attack.c
+    items:
+      - effect_handler_TAP_UNLIFE (L1615) - the closest-undead target
+        (target_set_closest ported as closestTarget: the closest visible
+        monster in LOS matching the predicate), the min(hp, amount) / 4
+        drain, mon_take_hit(" is destroyed!"), and the nested
+        EF_RESTORE_MANA gain with its head-clearing messages.
+      - effect_handler_CURSE (L1665) - direct damage to the chosen monster
+        (target_get_monster reads the aimed seam), the "No monster
+        selected!" refusal, mon_take_hit(" dies!"), and the fear message
+        for shaken survivors.
+      - effect_handler_JUMP_AND_BITE (L1710) - the closest living victim,
+        the randint0(8)-started scan of its neighbours skipping player
+        traps and webs (square_isopen: floor with no occupant), the
+        not-enough-room refusal, monster_swap + player_handle_post_move
+        (movePlayer + updateFov + onPlayerMoved), the min(hp + 1, amount)
+        drain bitten for the full amount, the nested EF_HEAL_HP heal with
+        its tier messages, and TMD_FOOD nourishment.
+      - effect_handler_MOVE_ATTACK (L1785) - the four-move approach with
+        the diagonal-prioritized direction pick and the d/d+1/d-1 choice
+        triple over clockwise_grid, "The way is barred." (returning used
+        only if any move was made), attacking a blocking monster and
+        stopping, and the (blows * moves + 2) / 4 blow scaling into
+        py_attack_real.
+      - effect_handler_MELEE_BLOWS (L1907) - player-only, the adjacency
+        and monster checks with their messages, py_attack_real per blow,
+        and the PROJECT_KILL elemental side-effect projection after every
+        damaging blow (via castProjection).
+      - effect_handler_SWEEP (L1955) - player-only, one py_attack_real at
+        each of the eight clockwise_grid neighbours per blow.
+notes: >-
+  Registered by registerMeleeHandlers over the core stubs. Melee routes
+  through combat/melee.ts pyAttackReal with the same
+  learnBrandSlayFromMelee / equipLearnOnMeleeAttack wrapping and
+  onPlayerKill + deleteMonster kill path the walk command uses; effect
+  damage routes through mon/take-hit.ts monTakeHit. Handlers no-op
+  without a game env (worldless rule).
+deferred:
+  - EF_SINGLE_COMBAT rides arena levels (not modelled) and
+    monster_index_move (#24); EF_WONDER / EF_BIZARRE need a
+    handler-dispatch seam over the registry (with the WONDER die table)
+    and ride the same later batch; EF_SHAPECHANGE rides the shapes
+    registry (#24); EF_COMMAND rides monster targeting + TMD_COMMAND
+    (#24); EF_PROBE rides lore (#24).
+  - target_set_closest's targeting bookkeeping (target_set_monster,
+    health tracking, "No Available Target" prompt) rides targeting (#24);
+    closestTarget is the world half only.
+  - MDESC names, message_pain grammar and MSG_TELEPORT sound ride the
+    display layer (#25) - the race name stands in and pain messages are
+    reduced to the MON_MSG_FLEE_IN_TERROR flee line; show_damage (#30).
+  - MOVE_ATTACK's move_player is reduced to movePlayer + updateFov +
+    onPlayerMoved (no autopickup / disturb on the pass-through grids);
+    the early-death energy refund marked "Should return some energy"
+    upstream is unimplemented there too.
+verified-by:
+  - game/effect-melee.test.ts (15 tests) - closestTarget picks the
+    closest visible predicate match and ignores invisible monsters;
+    TAP_UNLIFE drains the closest undead for the full amount and gains a
+    quarter as mana, failing without an undead; CURSE damages the aimed
+    monster, kills outright (rewarding onPlayerKill, deleting, saying the
+    note) and refuses with no target; JUMP_AND_BITE lands the player
+    adjacent, bites for the amount, heals and feeds by the drain, and
+    no-ops without a living victim; MELEE_BLOWS lands blows with side
+    effects on an adjacent monster and refuses far/empty targets with
+    their messages; SWEEP hits every adjacent monster and nothing
+    further; MOVE_ATTACK closes to adjacency on every seed and lands
+    scaled blows (seed sweep), refusing a monsterless target.

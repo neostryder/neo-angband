@@ -433,6 +433,25 @@ describe("EF_CREATE_ARROWS (effect-handler-general.c L3315)", () => {
   });
 });
 
+describe("EF_ACQUIRE (obj-make.c L1240)", () => {
+  it("conjures great objects onto the floor near the player", () => {
+    const state = makeState({ playerGrid: loc(10, 10), seed: 5 });
+    state.chunk.depth = 20;
+    const used = registry().effectSimple(EF.ACQUIRE, env(state, null), {
+      origin: sourcePlayer(),
+      diceString: "3",
+    });
+    expect(used).toBe(true);
+    let dropped = 0;
+    for (let y = 7; y <= 13; y++) {
+      for (let x = 7; x <= 13; x++) {
+        dropped += floorPile(state, loc(x, y)).length;
+      }
+    }
+    expect(dropped).toBeGreaterThan(0);
+  });
+});
+
 describe("EF_TAP_DEVICE (effect-handler-general.c L3370)", () => {
   it("drains a charged staff into mana, stunning slightly", () => {
     const state = makeState({ seed: 5 });

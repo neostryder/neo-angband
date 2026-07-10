@@ -92,6 +92,7 @@ export * from "./game/effect-monster";
 export * from "./game/effect-teleport";
 export * from "./game/effect-terrain";
 export * from "./game/effect-item";
+export * from "./game/effect-melee";
 export * from "./game/thrust";
 export * from "./game/mon-cast";
 export * from "./game/mon-ranged";

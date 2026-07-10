@@ -60,6 +60,7 @@ import { registerTeleportHandlers, teleportMonster } from "../game/effect-telepo
 import { registerTerrainHandlers } from "../game/effect-terrain";
 import { registerItemHandlers } from "../game/effect-item";
 import type { ItemEffectEnv } from "../game/effect-item";
+import { registerMeleeHandlers } from "../game/effect-melee";
 import { thrustAway } from "../game/thrust";
 import { basicPlayerActor } from "../game/project-cast";
 import type { CastContext } from "../game/project-cast";
@@ -271,6 +272,7 @@ function wireGame(
     registerGeneralHandlers(effects);
     registerTerrainHandlers(effects);
     registerItemHandlers(effects);
+    registerMeleeHandlers(effects);
 
     // The trap-backed square predicates feed every consumer that stubbed
     // them (teleport landing checks, drop placement) once traps exist.
