@@ -1,0 +1,85 @@
+module: packages/core/src/game/effect-terrain.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/effect-handler-general.c
+    items:
+      - effect_handler_RUBBLE (L2939) - randint1(3) rubble grids capped at
+        the open neighbours, the ten-iteration sweep over ddgrid_ddd with
+        one_in_(3) placement and one_in_(2) FEAT_PASS_RUBBLE vs FEAT_RUBBLE,
+        in the upstream RNG order.
+      - effect_handler_GRANITE (L2991) - FEAT_GRANITE on the originating
+        trap's grid (the earthquake trap's wall seal); non-trap origins
+        no-op.
+      - effect_handler_CREATE_STAIRS (L1975) - the empty-floor test with its
+        message, push_object, and square_add_stairs (cave-square.c L1337:
+        the randint0(100) coin drawn first, town forcing down, quest levels
+        - the teleport env's isQuest - and the bottom level forcing up).
+      - effect_handler_LIGHT_LEVEL / DARKEN_LEVEL (L3003) - the full-form
+        messages keyed on value.base and wiz_light / wiz_dark (cave-map.c
+        L417/L488) reduced to their world half - SQUARE_GLOW set/cleared on
+        the 3x3 neighbourhood of every grid that does not seem like a wall
+        (TF_ROCK).
+      - effect_handler_LIGHT_AREA / DARKEN_AREA (L3026/L3044) - light_room
+        (cave-map.c L372): the room flood (walls lit but stopping the
+        spread), cave_light's illumination wake-ups (smart 100 / normal 25 /
+        stupid 10 on sleepers), cave_unlight sparing BRIGHT grids, the
+        blind-gated messages, and the player-cast darkness blinding an
+        unresisting caster 3+1d5 turns.
+  - path: src/effect-handler-attack.c
+    items:
+      - effect_handler_DESTRUCTION (L1169) - the radius circle losing
+        ROOM/VAULT/GLOW(unless BRIGHT)/SEEN, monsters deleted (not killed),
+        stairs and permanent walls spared, objects destroyed, and
+        square_destroy's randint0(200) terrain rebuild (20 granite / 50
+        quartz / 30 magma / floor). The ELEM_LIGHT / ELEM_DARK player blast
+        with equip_learn_element and the 10+1d10 blind unless resisted.
+      - effect_handler_EARTHQUAKE (L1290) - the 32x32 damage map with the
+        85% skip, the player safe-grid reservoir pick over square_isopen
+        neighbours, the three collapse messages, the 300 no-escape crush vs
+        the 1-in-3 dodge / 10d4+stun(1d50) bash, monster processing
+        (KILL_WALL / PASS_WALL immune, NEVER_MOVE pinned, the warded-grid
+        exclusion, 4d8 vs hp+1 burial, monster_wake, delete or swap), the
+        no-wall-on-player guard, square_changeable (perma/shop/stairs/
+        artifact piles) gating square_earthquake's randint0(100) rebuild,
+        and take_hit("an earthquake") ordered last. The TARGETED subtype
+        reads the aimed seam (get_aim_dir / target_get, #24).
+notes: >-
+  Registered by registerTerrainHandlers over the core stubs; wireGame
+  registers it with the other game-layer handler batches. light_room and
+  wiz_light/wiz_dark live here (exported) until a dedicated cave-map module
+  is warranted. Handlers no-op without a game env (worldless rule).
+deferred:
+  - The player square-memory half of cave-map.c (square_memorize / mark /
+    forget, square_know_pile / sense_pile, square_light_spot redraws) rides
+    the map-memory layer (#24/#25); the web renderer holds its own explored
+    set. PF_UNLIGHT's dark-memorization likewise.
+  - expose_to_sun / is_daytime on the surface ride the town day-night cycle;
+    arena levels are not modelled (depth 0 takes the town branch).
+  - birth_levels_persist (CREATE_STAIRS) and show_damage (EARTHQUAKE) are
+    options (#30); total_winner recall interplay is with RECALL's ledger.
+  - DESTRUCTION's artifact bookkeeping (history_lose_artifact /
+    mark_artifact_created) rides artifact upkeep (#24) - nothing marks
+    artifacts created yet, so a destroyed artifact can regenerate;
+    EARTHQUAKE's square_changeable artifact check IS ported (artifact piles
+    shield their grid).
+  - DARKEN_AREA's monster-target branch (monster_target_monster, #19) and
+    decoy branch (monster_is_decoyed, #24); MDESC names and the MON_MSG
+    plural grammar ride the display layer (#25) - the race name stands in
+    for the quake messages, shown only for visible monsters.
+  - player_handle_post_move after the quake displacement rides the teleport
+    env's onPlayerPostMove hook (installed by wireGame).
+verified-by:
+  - game/effect-terrain.test.ts (22 tests) - RUBBLE drops 1-3 rubble grids
+    around the player and no-ops worldless; GRANITE walls the trap grid and
+    ignores other origins; CREATE_STAIRS forces down in town and up at the
+    bottom, refuses non-floor with its message and pushes objects off;
+    LIGHT_AREA lights exactly the room with its message and wakes sleeping
+    smart monsters; DARKEN_AREA darkens the room and blinds a player caster
+    3+1d5 but not under a monster's spell; LIGHT_LEVEL / DARKEN_LEVEL sweep
+    the whole level with the full-form messages; DESTRUCTION only shakes the
+    town, deletes monsters in the circle (sparing distant ones, stairs and
+    the player's grid), destroys objects, and blinds 10+1d10 on the light
+    subtype; EARTHQUAKE only shakes the town, shuffles terrain without
+    walling in the player, hurts or displaces a caught player and buries or
+    damages monsters (seed sweeps), and leaves KILL_WALL monsters untouched.
