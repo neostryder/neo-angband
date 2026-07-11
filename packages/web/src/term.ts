@@ -116,6 +116,17 @@ export class GlyphTerm {
     this.redraw();
   }
 
+  /**
+   * The current grid as one string per row (spaces for empty cells). Used by
+   * automated verification to read what is on screen without pixel-scraping the
+   * canvas, and handy for tests/diagnostics.
+   */
+  snapshot(): string[] {
+    return this.grid.map((row) =>
+      row.map((g) => (g && g.ch ? g.ch : " ")).join("").replace(/\s+$/u, ""),
+    );
+  }
+
   put(x: number, y: number, glyph: Glyph): void {
     if (y < 0 || y >= this.rows || x < 0 || x >= this.cols) return;
     const row = this.grid[y];
