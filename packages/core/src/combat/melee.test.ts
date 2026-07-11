@@ -96,6 +96,8 @@ function state(overrides: Partial<PlayerCombatState> = {}): PlayerCombatState {
     skills: new Array<number>(SKILL_MAX).fill(0),
     numBlows: 100,
     ammoMult: 1,
+    numShots: 0,
+    ammoTval: 0,
     blessWield: false,
     ...overrides,
   };

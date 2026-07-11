@@ -60,6 +60,10 @@ export interface PlayerCombatState {
   numBlows: number;
   /** state->ammo_mult (ranged). */
   ammoMult: number;
+  /** state->num_shots, in tenths of a shot (10 = one shot). */
+  numShots: number;
+  /** state->ammo_tval: the ammo tval the equipped launcher fires (0 = none). */
+  ammoTval: number;
   /** state->bless_wield (blessed weapon / holy-wield bonus). */
   blessWield: boolean;
 }
