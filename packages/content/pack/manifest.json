@@ -42,6 +42,9 @@
     "chest_trap.json",
     "realm.json",
     "world.json",
-    "hints.json"
+    "hints.json",
+    "ui_entry_renderer.json",
+    "ui_entry_base.json",
+    "ui_entry.json"
   ]
 }

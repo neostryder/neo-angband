@@ -1,0 +1,60 @@
+{
+  "file": "ui_entry_base",
+  "source": "lib/gamedata/ui_entry_base.txt",
+  "records": [
+    {
+      "name": "good_flag_ui_compact_0",
+      "renderer": "char_screen1_flag_renderer",
+      "combine": "LOGICAL_OR",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN",
+        "abilities"
+      ],
+      "flags": [
+        "TIMED_AS_AUX"
+      ],
+      "desc": [
+        "Template for one of the positive flags shown on the second character",
+        " screen.  Each occupies a row and has the label colored by the combination",
+        " of the flags across several sources."
+      ]
+    },
+    {
+      "name": "other_flag_ui_compact_0",
+      "renderer": "char_screen1_flag_renderer",
+      "combine": "LOGICAL_OR",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN",
+        "hindrances"
+      ],
+      "flags": [
+        "TIMED_AS_AUX"
+      ],
+      "desc": [
+        "Template for one of the other flags shown on the second character",
+        " screen.  Each occupies a row and has the label colored by the combination",
+        " of the flags across several sources."
+      ]
+    },
+    {
+      "name": "numeric_as_sign_ui_0",
+      "renderer": "char_screen1_numeric_as_sign_renderer",
+      "combine": "ADD",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN",
+        "modifiers"
+      ],
+      "flags": [
+        "TIMED_AS_AUX"
+      ],
+      "desc": [
+        "Template for one of the auxiliary statistics shown on the second",
+        " character screen.  Each occupies a row and has the label colored by",
+        " combination of the flags across several sources."
+      ]
+    }
+  ]
+}
