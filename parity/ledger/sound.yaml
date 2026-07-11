@@ -1,0 +1,73 @@
+module: packages/core/src/sound/
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/sound.h
+    items:
+      - enum sound_status (SOUND_ST_UNKNOWN/ERROR/LOADED) -> SoundStatus
+      - struct sound_data -> SoundData (name/hash/status/platData)
+      - struct sound_file_type -> SoundFileType
+      - struct sound_hooks -> SoundHooks (open/close/load/unload/play/supported)
+      - SOUND_PRF_FORMAT ("sound sym type str sounds") -> gen-sound-prefs.mjs
+  - path: src/sound-core.c
+    items:
+      - MAX_SOUNDS_PER_MESSAGE (16; the `< MAX-1` cap preserved -> 15 kept)
+      - struct msg_snd_data / message_sounds[] -> SoundEngine.messageSounds
+      - grow_sound_list (implicit growable pool)
+      - load_sound (L127; supported_files loop, delegates path/file_exists to hook)
+      - message_sound_define (L179; djb2 dedup, space tokenizing, cap)
+      - parse_prefs_sound (L273) / register_sound_pref_parser -> loadPrefs
+      - play_sound (L309; randint0 selection, lazy load, LOADED-gate)
+      - set_preloaded_sounds (L345)
+      - init_sound (L356; open audio + EVENT_SOUND subscription)
+      - close_sound (L392; unload pool, detach handler)
+      - is_sound_inited (L423)
+  - path: src/z-util.c
+    items:
+      - djb2_hash (L2043) -> djb2Hash
+  - path: lib/customize/sound.prf
+    items:
+      - the 149 sound:<MSG_NAME>:<samples> directives (message->sound NAME
+        MAPPING only) -> packages/core/src/sound/sound-prefs-data.ts
+data-choice: >-
+  The sound.prf map is loaded by a CORE loader (SoundEngine.loadPrefs over
+  SOUND_PREF_ENTRIES), NOT a content-pack spec. sound.prf is a pref file
+  (ui-prefs.c parser), a different subsystem from the gamedata .txt files the
+  content compiler (packages/content specs) handles, and upstream registers
+  it via register_sound_pref_parser rather than init_parse_*. More decisively,
+  message_sound_define carries stateful cross-message logic (a djb2-dedup
+  shared sound-id pool, the MAX-1 cap) that the declarative per-record spec
+  system cannot express. So the faithful parse lives in core; the directive
+  data is extracted verbatim by packages/core/scripts/gen-sound-prefs.mjs.
+platform-seam:
+  - SoundHooks interface (load/play/unload/open/close/supportedFiles) is the
+    C sound_hooks struct; the web front end implements it in
+    packages/web/src/sound.ts with HTMLAudioElement.
+  - RNG seam: play_sound selection goes through an injected randint0(n); the
+    web binds it to the game RNG (state.rng.randint0) so selection is
+    deterministic under the determinism ratchet, matching upstream
+    randint0(num_sounds).
+  - EVENT_SOUND: SoundEngine.init subscribes to the "sound" game event
+    (events.on("sound", ...)), mirroring event_add_handler(EVENT_SOUND, ...).
+licensing-deferral: >-
+  NO audio assets are bundled or committed. The Dubtrain sound pack (the
+  reference/lib/sounds/*.mp3 the mapping was authored against) is under a
+  Creative-Commons NON-COMMERCIAL license; this repo has commercial intent.
+  Only the message->sample-NAME mapping (functional data) is ported. The web
+  hook loads audio from a configurable base URL (?sounds=<url> / baseUrl
+  option) that the user populates with their own pack; with no URL configured
+  the engine runs silently and missing/undecodable files never crash the game.
+divergences: >-
+  load_sound's path_build(ANGBAND_DIR_SOUNDS) + file_exists gate is delegated
+  to the platform loadSound hook (the core is filesystem-agnostic); the hook
+  owns status transitions (LOADED on success, ERROR on a missing/undecodable
+  file), preserving the observable UNKNOWN->LOADED/ERROR contract and the
+  LOADED-only play gate. The global file-scope state of sound-core.c becomes
+  an instantiable SoundEngine.
+verified-by:
+  - packages/core/src/sound/engine.test.ts (djb2 seed/step, message_sound_define
+    dedup + redefine + MAX-1 cap + space collapsing, randint0 selection,
+    no-sound no-op, missing-play-hook no-op, lazy vs preload status
+    transitions, ERROR-not-played gate, loadPrefs known MSG->samples entries
+    incl. AMBIENT_DAY/AMBIENT_NITE/HIT and the 149-directive count, unknown
+    message skip, EVENT_SOUND subscription + close detach)
