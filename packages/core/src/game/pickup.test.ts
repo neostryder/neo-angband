@@ -23,6 +23,7 @@ import {
 import type { PickupDeps } from "./pickup";
 import { createDefaultRegistry, processPlayer } from "./player-turn";
 import { makeState } from "./harness";
+import { OptionState } from "../player/options";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -117,6 +118,16 @@ describe("autoPickupOkay (cmd-pickup.c auto_pickup_okay)", () => {
     expect(
       autoPickupOkay(state, obj, { constants, env: { pickupAlways: true } }),
     ).toBe(obj.number);
+  });
+
+  it("reads pickup_always from the wired option store when env omits it", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const obj = underfoot(state, makeObj(TV.POTION));
+    /* No env override: without a store, the shipped default (off) refuses. */
+    expect(autoPickupOkay(state, obj, deps)).toBe(0);
+    /* Install an option store with pickup_always on: the seam consults it. */
+    state.options = new OptionState({ overrides: { pickup_always: true } });
+    expect(autoPickupOkay(state, obj, deps)).toBe(obj.number);
   });
 
   it("!g always refuses, even with pickup inscriptions", () => {

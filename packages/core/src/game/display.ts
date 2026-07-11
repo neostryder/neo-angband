@@ -187,9 +187,11 @@ function defaultStatUse(player: Player): number[] {
 function resolveDeps(state: GameState, deps: DisplayDeps): ResolvedDeps {
   const player = state.actor.player;
   return {
-    hitpointWarn: deps.hitpointWarn ?? 3,
-    effectiveSpeed: deps.effectiveSpeed ?? false,
-    birthFeelings: deps.birthFeelings ?? true,
+    hitpointWarn: deps.hitpointWarn ?? state.options?.hitpointWarn ?? 3,
+    effectiveSpeed:
+      deps.effectiveSpeed ?? state.options?.get("effective_speed") ?? false,
+    birthFeelings:
+      deps.birthFeelings ?? state.options?.get("birth_feelings") ?? true,
     feelingNeed: deps.feelingNeed ?? 10,
     timedEffects: deps.timedEffects ?? [],
     statUse: deps.statUse ?? defaultStatUse(player),

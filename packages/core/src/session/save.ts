@@ -509,6 +509,18 @@ export interface SavedGame {
    * written before ignoring, which load with everything shown.
    */
   ignore?: import("../obj/ignore").IgnoreSettingsData;
+  /**
+   * The player option store (option.c): every option value, hitpoint_warn /
+   * delay_factor, and the immutable birth-option snapshot. Optional: absent in
+   * saves written before the option store, which load with the table defaults.
+   */
+  options?: import("../player/options").OptionStateData;
+  /**
+   * randart_seed (obj-randart.c): the seed do_randart used when birth_randarts
+   * is on. Optional / 0 when the standard artifact set is in use. Persisted so
+   * a reload rebuilds the identical random artifact set.
+   */
+  randartSeed?: number;
 }
 
 /** Serialized map knowledge (remembered terrain and floor objects). */
@@ -547,6 +559,7 @@ export function serializeGame(
   state: GameState,
   flavor: { snapshot(): { aware: number[]; tried: number[] } },
   seedFlavor: number,
+  randartSeed = 0,
 ): SavedGame {
   const floor: SavedGame["floor"] = [];
   for (const pile of state.floor.values()) {
@@ -603,6 +616,8 @@ export function serializeGame(
     isDead: state.isDead,
     flavor: flavor.snapshot(),
     seedFlavor,
+    ...(state.options ? { options: state.options.snapshot() } : {}),
+    ...(randartSeed ? { randartSeed } : {}),
     known: {
       feat: Array.from(state.known.feat),
       objects: Array.from(state.known.objects.entries()).map(([i, m]) => [

@@ -134,7 +134,7 @@ export function floorCarry(
   }
 
   /* The stack is already too large. */
-  if (n >= state.z.floorSize || (!(env.birthStacking ?? true) && n)) {
+  if (n >= state.z.floorSize || (!((env.birthStacking ?? state.options?.get("birth_stacking") ?? true)) && n)) {
     /* Delete the oldest ignored object. */
     if (ignore) floorExcise(state, grid, ignore);
     else return false;
@@ -198,7 +198,7 @@ export function dropFindGrid(
 
       /* Disallow if the stack size is too big. */
       if (
-        (!(env.birthStacking ?? true) && numShown > 1) ||
+        (!((env.birthStacking ?? state.options?.get("birth_stacking") ?? true)) && numShown > 1) ||
         (numShown + numIgnored > state.z.floorSize &&
           !floorGetOldestIgnored(state, tryGrid, env))
       ) {

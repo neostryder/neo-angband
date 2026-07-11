@@ -191,7 +191,8 @@ function resolveDeps(state: GameState, deps: CharSheetDeps): ResolvedDeps {
     statAdd: deps.statAdd ?? new Array<number>(STAT_MAX).fill(0),
     statTop: deps.statTop ?? defaultStatMod(player, player.statMax),
     statUse: deps.statUse ?? defaultStatMod(player, player.statCur),
-    effectiveSpeed: deps.effectiveSpeed ?? false,
+    effectiveSpeed:
+      deps.effectiveSpeed ?? state.options?.get("effective_speed") ?? false,
     wizard: deps.wizard ?? false,
     totalWinner: deps.totalWinner ?? false,
     meleeWeapon: deps.meleeWeapon ?? state.actor.weapon,

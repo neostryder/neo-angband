@@ -255,3 +255,92 @@ describe("changeLevel (dungeon_change_level)", () => {
     expect(restored.booted.depth).toBe(4);
   });
 });
+
+describe("option store persistence (option.c)", () => {
+  it("startGame seeds the option store from the table defaults", () => {
+    const game = startGame(pack, { seed: 42, depth: 2 });
+    expect(game.state.options).toBeDefined();
+    /* Shipped defaults. */
+    expect(game.state.options!.get("pickup_inven")).toBe(true);
+    expect(game.state.options!.get("effective_speed")).toBe(false);
+    expect(game.state.options!.hitpointWarn).toBe(3);
+    expect(game.randartSeed).toBe(0);
+  });
+
+  it("round-trips option values, hitpoint_warn and the birth snapshot", () => {
+    const game = startGame(pack, {
+      seed: 7,
+      depth: 2,
+      hitpointWarn: 6,
+      optionOverrides: {
+        effective_speed: true,
+        cheat_hear: true,
+        birth_feelings: false,
+      },
+    });
+    /* cheat_hear forced score_hear on (the coupling). */
+    expect(game.state.options!.get("score_hear")).toBe(true);
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game)));
+    expect(saved.options).toBeDefined();
+    const restored = loadGame(pack, saved);
+    const ro = restored.state.options!;
+
+    expect(ro.get("effective_speed")).toBe(true);
+    expect(ro.get("cheat_hear")).toBe(true);
+    expect(ro.get("score_hear")).toBe(true);
+    expect(ro.get("birth_feelings")).toBe(false);
+    expect(ro.hitpointWarn).toBe(6);
+    /* The birth snapshot survives and stays locked. */
+    expect(ro.birthValue("birth_feelings")).toBe(false);
+    expect(ro.set("birth_feelings", true)).toBe(false);
+  });
+
+  it("older saves without an option store load with the table defaults", () => {
+    const game = startGame(pack, { seed: 3, depth: 2 });
+    const saved = JSON.parse(JSON.stringify(saveGame(game)));
+    /* Simulate a pre-option save: strip the field. */
+    delete saved.options;
+    const restored = loadGame(pack, saved);
+    expect(restored.state.options!.get("pickup_inven")).toBe(true);
+    expect(restored.state.options!.hitpointWarn).toBe(3);
+  });
+});
+
+describe("birth_randarts (obj-randart.c do_randart)", () => {
+  it("swaps the artifact set and persists the seed reproducibly", () => {
+    const standard = startGame(pack, { seed: 88, depth: 2 });
+    const randart = startGame(pack, {
+      seed: 88,
+      depth: 2,
+      optionOverrides: { birth_randarts: true },
+    });
+
+    /* A randart seed was drawn and the set differs from the standard one. */
+    expect(randart.randartSeed).not.toBe(0);
+    const stdArts = standard.booted.registries.objects.artifacts;
+    const rndArts = randart.booted.registries.objects.artifacts;
+    expect(rndArts.length).toBe(stdArts.length);
+    let differing = 0;
+    for (let i = 1; i < stdArts.length; i++) {
+      const a = stdArts[i];
+      const b = rndArts[i];
+      if (a && b && (a.toH !== b.toH || a.toD !== b.toD || a.toA !== b.toA)) {
+        differing++;
+      }
+    }
+    expect(differing).toBeGreaterThan(0);
+
+    /* A reload rebuilds the identical randart set from the persisted seed. */
+    const saved = JSON.parse(JSON.stringify(saveGame(randart)));
+    expect(saved.randartSeed).toBe(randart.randartSeed);
+    const restored = loadGame(pack, saved);
+    expect(restored.randartSeed).toBe(randart.randartSeed);
+    const reArts = restored.booted.registries.objects.artifacts;
+    for (let i = 1; i < rndArts.length; i++) {
+      expect(reArts[i]?.toH).toBe(rndArts[i]?.toH);
+      expect(reArts[i]?.toD).toBe(rndArts[i]?.toD);
+      expect(reArts[i]?.name).toBe(rndArts[i]?.name);
+    }
+  });
+});

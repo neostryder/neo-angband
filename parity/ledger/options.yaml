@@ -1,0 +1,116 @@
+module: packages/core/src/player/options.ts
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/list-options.h
+    items:
+      - The OPT_* option table (name, description, page type, normal default).
+        Codegen'd to packages/core/src/generated/options.ts as OPTION_ENTRIES
+        and the OPT name->index map; OptionState reuses that table verbatim,
+        never hand-copying it.
+  - path: src/option.c
+    items:
+      - options_init_defaults (L190): seed every option from options[opt].normal
+        (OptionState constructor loops OPTION_ENTRIES), delay_factor = 40
+        (DEFAULT_DELAY_FACTOR) and hitpoint_warn = 3 (DEFAULT_HITPOINT_WARN).
+      - option_set (L153): set a boolean option; when a cheat_* option is turned
+        on, force its score_* twin on (OptionState.applyRaw / set - the twin is
+        resolved by name cheat_X -> score_X, matching the table's cheat-then-
+        score ordering). Birth options are locked after creation (set() no-ops).
+      - option_type / option_is_cheat (L138/L145): the page classification used
+        for the cheat/score/birth predicates (isCheat / isScore / isBirth,
+        derived once from OPTION_ENTRIES.type).
+      - option_name / option_desc (L120/L129): available through OPTION_ENTRIES.
+  - path: src/score.c
+    items:
+      - enter_score cheat check (L277): "any OP_SCORE option set" is ported as
+        OptionState.anyScoreSet(), fed into EnterScoreGating.cheated by the
+        shell (packages/web/src/main.ts death path).
+notes: >-
+  This is the CONSOLIDATION half of the option subsystem: a single real option
+  store replaces the scattered "option deferred, default X" seams. Every seam
+  now reads dep ?? state.options?.get(name) ?? <shipped default>, so an absent
+  store (worldless harness tests) reproduces the shipped defaults exactly and
+  no shipped default changed (full suite unchanged at 1510 pre-existing tests).
+  The store is pure (no DOM). The session (startGame / loadGame) builds it from
+  OPTION_ENTRIES defaults plus the birth/interface choices (StartGameOptions.
+  optionOverrides / hitpointWarn) and hangs it on GameState.options, mirroring
+  how state.ignore / flavor / isAware were added. hitpoint_warn is the 0..9
+  integer op_ptr->hitpoint_warn (default 3, clamped); delay_factor (40) rides
+  along. A frozen birth-option snapshot captures the birth_* values chosen at
+  creation (immutable thereafter).
+seams_wired:
+  - effective_speed -> game/display.ts (prt speed) and game/char-sheet.ts
+    (show_speed): DisplayDeps/CharSheetDeps default now consults the store.
+  - birth_feelings -> game/display.ts (level-feeling line).
+  - hitpoint_warn -> game/display.ts (player_hp_attr / _sp_attr colour). The
+    project-cast DEFAULT_HITPOINT_WARN constant is now re-exported from
+    player/options (single canonical source).
+  - pickup_always / pickup_inven -> game/pickup.ts auto_pickup_okay.
+  - birth_stacking -> game/floor.ts floor_carry / drop_find_grid.
+  - birth_force_descend -> game/effect-teleport.ts teleport_player_level.
+  - show_damage -> game/effect-env.ts buildEffectContext (feeds effects/
+    handlers.ts and game/effect-monster.ts) and the game/project-player.ts
+    player-side hook (wired in session/game.ts wireGame).
+  - show_flavors -> game/describe.ts knownDesc (obj-desc.c L89: keep the
+    flavour once aware only when the option is on). The seam-absent default is
+    true, so worldless describe tests are unchanged; a wired store applies the
+    faithful default (off).
+  - birth_randarts -> session/game.ts: do_randart (obj/randart.ts) swaps the
+    standard artifact set for a random one before the starting level generates,
+    and obj/flavor.ts flavor_reset_fixed scrubs the fixed flavours. The
+    randart_seed is derived from the game seed and persisted; a reload rebuilds
+    the identical set (do_randart preserves aidx, so saved-object references
+    resolve). FULLY WIRED (not flag+seed-only).
+  - cheat->score coupling + enter_score gating -> OptionState.anyScoreSet()
+    feeds EnterScoreGating.cheated (score/score.ts stays pure; the web shell
+    supplies the gate at the death path).
+deferred:
+  - src/ui-options.c (2092 lines): the entire option MENU (keypress screens,
+    the birth-option editor, the customized_*_options.txt load/save). This is
+    the draw half / a platform-native menu concern (repo decision: platform-
+    native menus). The store exposes get/set/names so a native menu can drive
+    it, but no in-engine menu UI is ported.
+  - options_save_custom / options_restore_custom / options_restore_maintainer
+    (option.c L213-L328): the per-user customized-defaults text files
+    (ANGBAND_DIR_USER). Filesystem-bound and menu-adjacent; deferred with
+    ui-options.c.
+  - The wizard/debug gate (game/wizard.ts WizardDeps.wizard) is NOT an OPT_
+    option (no list-options.h entry): it is the ALLOW_DEBUG + NOSCORE_WIZARD
+    flag, a player/debug concern with no option-table value to read, so it
+    stays a dep-injected boolean. The noscore side of enter_score (p->noscore)
+    likewise remains an injected gate, not an option.
+  - birth_no_selling (store/price.ts, store/transact.ts) and
+    birth_percent_damage (player/calcs.ts) keep their existing dep seams; they
+    were outside this task's seam list and are left overridable (they read the
+    same shipped defaults, so they can adopt state.options in a later pass).
+  - Non-gameplay interface options with no ported consumer yet
+    (rogue_like_commands, solid_walls, purple_uniques, auto_more, ...) exist in
+    the store with correct defaults but have no wired reader; presentation (#25)
+    and the keymap layer will consult them when ported.
+save_format:
+  - session/save.ts SavedGame gains optional `options` (OptionStateData: every
+    value, hitpoint_warn, delay_factor, the birth snapshot) and `randartSeed`.
+    Both are back-compat optional: a save without them loads with the table
+    defaults / standard artifact set (exactly like SavedGame.ignore /
+    seedFlavor). serializeGame writes them; loadGame restores via
+    OptionState.restore and re-runs do_randart from the seed.
+verified-by:
+  - player/options.test.ts (12 tests): defaults match every OPTION_ENTRIES.
+    normal; hitpoint_warn 3 / delay_factor 40 and the 0..9 clamp; the
+    cheat->score coupling (including the twin staying set after the cheat is
+    cleared, and coupling applied to construction overrides); birth-option lock
+    + immutable birth snapshot; interface options mutable in play; serialize /
+    restore round trip including missing-option back-fill.
+  - game/pickup.test.ts (+1): auto_pickup_okay reads pickup_always from the
+    wired store when the env omits it.
+  - session/save.test.ts (+4): startGame seeds the store from table defaults;
+    option values / hitpoint_warn / birth snapshot round-trip through save/load
+    with the cheat->score coupling preserved; a stripped-options save loads
+    with defaults; birth_randarts swaps the artifact set and the persisted seed
+    reproduces the identical set on reload.
+  - score/score.test.ts (+1): OptionState.anyScoreSet() feeds the enter_score
+    cheated gate (cheated character rejected, clean character entered).
+  - Full suite: 1510 pre-existing tests unchanged, +18 new = 1528 passing;
+    packages/web tsc --noEmit clean (the death-path enter_score gate reads
+    state.options.anyScoreSet()).

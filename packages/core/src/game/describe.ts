@@ -19,6 +19,10 @@ function knownDesc(state: GameState): KnownDesc {
      * The port has no live tried seam on GameState yet, so it reports false;
      * ledgered in game-describe.yaml. */
     isTried: () => false,
+    /* OPT(p, show_flavors) (obj-desc.c L89): once aware, keep the flavour only
+     * when the option is on. Reads the wired option store; absent (worldless
+     * tests), it reports true so the prior seam-absent behaviour is preserved. */
+    showFlavors: () => state.options?.get("show_flavors") ?? true,
     /* The per-game flavour assignment (flavor_init), installed by wireGame.
      * Absent seams leave object_desc on its tval-only fallback. */
     ...(state.hasFlavor ? { hasFlavor: state.hasFlavor } : {}),
