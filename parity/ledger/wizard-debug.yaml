@@ -1,0 +1,213 @@
+module: packages/core/src/game/wizard.ts (the do_cmd_wiz_* command surface)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/cmd-wizard.c
+    items:
+      - wiz_create_object_from_kind (L169) as wizCreateObjectFromKind - money
+        made through makeGold (make_gold), everything else objectPrep +
+        applyMagic(depth, allow_artifacts=false, good=false, great=false,
+        extra=false) at player depth (obj/make.ts).
+      - wiz_create_object_from_artifact (L139) as wizCreateObjectFromArtifact -
+        lookup_kind(art.tval, art.sval), objectPrep at art.allocMin, obj.artifact
+        set, copyArtifactData (obj/make.ts). mark_artifact_created is a no-op
+        (see deferred: the port has no artifact-created registry yet).
+      - wiz_drop_object (L292) as wizDropObject - origin = ORIGIN_CHEAT,
+        origin_depth = depth, drop_near from heaven (game/floor.ts dropNear).
+      - do_cmd_wiz_acquire (L389) as wizAcquire - the acquirement() loop:
+        make_object(depth, good=true, great, extra=true) x quantity, dropped near
+        the player (obj/make.ts makeObject). good/great choice is a parameter.
+      - do_cmd_wiz_advance (L414) as wizAdvance - stat_cur/stat_max = 118, au =
+        1000000, player_exp_gain(PY_MAX_EXP) (player/exp.ts), chp = mhp, csp =
+        msp. The "awesome equipment" block is a no-op upstream too.
+      - do_cmd_wiz_banish (L449) as wizBanish - delete_monster_idx (game/context.ts
+        deleteMonster) for every live monster with cdis <= range.
+      - do_cmd_wiz_create_all_artifact (L728) / _from_tval (L746) as
+        wizCreateAllArtifact / wizCreateAllArtifactFromTval - scan reg.artifacts.
+      - do_cmd_wiz_create_all_obj (L780) / _from_tval (L803) as wizCreateAllObj /
+        wizCreateAllObjFromTval - scan reg.kinds, skipping KF_INSTA_ART kinds
+        (the from_tval variant includes them when its art flag is set).
+      - do_cmd_wiz_create_artifact (L842) as wizCreateArtifact - one artifact by
+        index (bounds-checked against reg.artifacts).
+      - do_cmd_wiz_create_obj (L873) as wizCreateObj - one kind by index
+        (bounds-checked against reg.kinds).
+      - do_cmd_wiz_create_trap (L904) as wizCreateTrap - the placement guards
+        (square_isfloor, not player-trap / webbed / object-holding, not town, tidx
+        in range) then place_trap (game/trap.ts placeTrap). The random-pick path
+        for an out-of-range index is not taken (index is validated first, as the
+        wizard command supplies a concrete trap kind).
+      - do_cmd_wiz_cure_all (L941) as wizCureAll - strip equipment curses, then
+        effect_simple(EF_RESTORE_STAT) per stat and effect_simple(EF_RESTORE_EXP,
+        source_none), chp = mhp, csp = msp, player_clear_timed over the ten
+        affliction timers and player_set_timed(TMD_FOOD, PY_FOOD_FULL - 1)
+        through the effect context's TimedHost (game/effect-env.ts).
+      - do_cmd_wiz_curse_item (L1004) as wizCurseItem - append_object_curse
+        (power > 0) or remove_object_curse (power == 0) (obj/object.ts). The
+        item / curse-index / power arrive as parameters (the prompts are the
+        shell's).
+      - do_cmd_wiz_detect_all_local (L1068) as wizDetectAllLocal - the seven
+        effect_simple detect calls (traps/doors/stairs/gold/objects/visible +
+        invisible monsters) in a 22x40 box (game/effect-detect.ts).
+      - do_cmd_wiz_detect_all_monsters (L1091) as wizDetectAllMonsters - the two
+        monster-detect effect_simple calls in a 500x500 box.
+      - do_cmd_wiz_magic_map (L1418) as wizMagicMap - effect_simple(EF_MAP_AREA)
+        22x40.
+      - do_cmd_wiz_hit_all_los (L1303) as wizHitAllLos - effect_simple(
+        EF_PROJECT_LOS, "10000", PROJ_DISP_ALL) (game/effect-attack.ts).
+      - do_cmd_wiz_edit_player_exp (L1137) as wizEditPlayerExp - clamp to
+        [0, PY_MAX_EXP], player_exp_gain / player_exp_lose to reach it.
+      - do_cmd_wiz_edit_player_gold (L1169) as wizEditPlayerGold - clamp au to
+        [0, INT32_MAX].
+      - do_cmd_wiz_edit_player_stat (L1247) as wizEditPlayerStat - clamp to
+        [3, 118], stat_cur = stat_max = value.
+      - do_cmd_wiz_increase_exp (L1314) as wizIncreaseExp - player_exp_gain(max(1, n)).
+      - do_cmd_wiz_jump_level (L1339) as wizJumpLevel - dungeon_change_level(level)
+        modelled as state.targetDepth + state.generateLevel (the port's pending
+        level-change signal, matching game/cave-cmd.ts descend/ascend). The
+        NOSCORE_JUMPING / choose_profile / energy_use bookkeeping is not carried
+        (no player noscore or cave-profile selection in the port).
+      - do_cmd_wiz_learn_object_kinds (L1386) as wizLearnObjectKinds - mark every
+        named kind with level <= level aware; awareness lives on the per-game
+        FlavorKnowledge (obj/knowledge.ts setAware), the port's kind->aware twin.
+      - do_cmd_wiz_recall_monster (L2161) as wizRecallMonster - cheat_monster_lore
+        (mon/lore.ts) over a race, or all races when all is set.
+      - do_cmd_wiz_wipe_recall (L2860) as wizWipeRecall - wipe_monster_lore, one
+        race or all.
+      - do_cmd_wiz_rerate (L2209) as wizRerate - reroll player_hp[] until the
+        cumulative total lands in the min/max band, returning the life rating.
+      - do_cmd_wiz_reroll_item (L2254) as wizRerollItem - objectPrep + applyMagic
+        (good/great from the 0/1/2 roll choice) on a fresh copy, the rolled
+        combat / property values written back onto the target object in place
+        (the port keeps the object identity and pile links rather than the
+        upstream object_copy + pile-link restore dance).
+      - do_cmd_wiz_tweak_item (L2698) DATA half as wizTweakItem - set a
+        non-artifact item's ego / artifact / modifiers / to_a / to_h / to_d from
+        parameters. The get_string prompts and the re-prep + ego_apply_magic /
+        copy_artifact_data an interactive ego/artifact set triggers are the
+        shell's follow-up (see deferred).
+      - do_cmd_wiz_summon_named (L2569) as wizSummonNamed - scatter_ext(square_
+        isempty) + place_new_monster (ORIGIN_DROP_WIZARD), up to 10 tries
+        (world/scatter.ts, game/mon-place.ts). The race arrives resolved.
+      - do_cmd_wiz_summon_random (L2629) as wizSummonRandom - effect_simple(
+        EF_SUMMON, "1") x quantity (game/effect-summon.ts).
+      - do_cmd_wiz_teleport_random (L2651) as wizTeleportRandom - effect_simple(
+        EF_TELEPORT, range) (game/effect-teleport.ts).
+      - do_cmd_wiz_teleport_to (L2673) as wizTeleportTo - passability guard then
+        effect_simple(EF_TELEPORT_TO, y, x).
+      - do_cmd_wiz_push_object (L1871) as wizPushObject - push_object
+        (game/project-feat.ts).
+      - do_cmd_wiz_wizard_light (L2907) as wizWizardLight - wiz_light(cave, true)
+        (game/effect-terrain.ts wizLightLevel).
+      - do_cmd_wiz_query_feature (L1930) DATA half as wizQueryFeature - the
+        fully-in-bounds grids whose feature is in the selected set (the terrain
+        classes the shell chooses by keypress are supplied as a feature list).
+      - do_cmd_wiz_query_square_flag (L2105) DATA half as wizQuerySquareFlag - the
+        fully-in-bounds grids carrying a SQUARE_* flag, or the known grids when
+        flag == 0.
+      - do_cmd_wiz_peek_noise_scent (L1477) DATA half as wizPeekFlow - the
+        fully-in-bounds grids at a given depth on the noise or scent heatmap
+        (chunk.noise / chunk.scent).
+      - do_cmd_wiz_dump_level_map (L1112) DATA half as wizDumpLevelMap - the
+        level's feature grid as rows of feature indices; the HTML file write
+        (dump_level + file I/O) is not ported.
+  - path: src/wiz-debug.c
+    items:
+      - wiz_cheat_death (L28) as wizCheatDeath - reset age, refill HP/SP, clear
+        the eight affliction timers, feed (TMD_FOOD), and return to town
+        (state.targetDepth = 0 + generateLevel). noscore |= NOSCORE_WIZARD and
+        the word_recall / deep_descent cancels are not carried (no player noscore
+        field; recall/deep-descent counters ride #23's level-change model).
+notes: >-
+  The WIZARD / DEBUG command surface. These are cheat/debug commands; upstream
+  gates them behind ALLOW_DEBUG and NOSCORE_WIZARD, and this project's design
+  (decision 16: faithful, no-save-scumming play) must never reach them in
+  ordinary play. The port keeps that gate as an explicit WizardDeps.wizard
+  boolean seam: every action is a no-op refusal when wizard is false, so the
+  surface is a dev affordance behind a flag exactly like upstream. Most commands
+  are thin wrappers that drive already-ported engine systems with debug
+  parameters; the module wires to them (obj/make.ts object creation, the effect
+  interpreter's effect_simple for detection/teleport/summon/restore, game/trap.ts
+  place_trap, game/mon-place.ts place_new_monster, obj/object.ts curses,
+  player/exp.ts exp/level, mon/lore.ts recall, game/effect-terrain.ts wiz_light)
+  rather than re-implementing them. The Term / prompt UI halves stay with the
+  shell: a selection or count is taken as a parameter, and the map QUERY /
+  dump commands return the grids or feature grid the shell would highlight or
+  write, not the drawing.
+deferred:
+  - src/wiz-spoil.c (749 lines): the obj / monster / artifact spoiler-file
+    generators. Pure offline dev tooling that writes files; low value for a play
+    port. Deferred entirely.
+  - The three Monte-Carlo statistics collectors: do_cmd_wiz_collect_disconnect_
+    stats (L585), do_cmd_wiz_collect_obj_mon_stats (L622), do_cmd_wiz_collect_
+    pit_stats (L671), and their src/wiz-stats.c backends (disconnect_stats /
+    stats_collect / pit_stats). They run thousands of level generations to gather
+    histograms - heavy, low value for a play port. Deferred (omitted).
+  - do_cmd_wiz_stat_item (L2386): a TEST_ROLL = 100000 make_object rarity
+    sampler. Same rationale as the stats collectors (a heavy Monte-Carlo
+    sampler); deferred.
+  - The pure interactive shells, whose non-UI sub-actions ARE ported as standalone
+    functions:
+    - do_cmd_wiz_play_item (L1596): the [a]ccept/[s]tatistics/[r]eroll/[t]weak/
+      [c]urse/[q]uantity/[k]nown menu that queues the sub-commands. The menu and
+      its screen_save/get_com keypress loop are UI; the sub-actions it dispatches
+      to are ported as standalone functions (wizRerollItem, wizTweakItem,
+      wizCurseItem) except change_item_quantity (deferred below).
+    - wiz_display_item (L190): the Term_clear / prt / prt_binary flag dump. Pure
+      Term rendering.
+    - do_cmd_wiz_edit_player_start (L1202) / _stat (queued form): the command-
+      queue orchestration that chains the stat/gold/exp edits with the static
+      edit_player_state machine. The individual edits are ported (wizEditPlayerStat
+      / wizEditPlayerGold / wizEditPlayerExp); the queue-chaining shell is UI.
+    - do_cmd_wiz_perform_effect (L1524): the free-form effect prompt (name, dice,
+      subtype, radius, other, y, x). Pure prompt UI over effect_simple, which is
+      already reachable; not ported as a distinct action.
+  - do_cmd_wiz_change_item_quantity (L484): NOT ported this slice. The action is a
+    stack-size setter with MAX_PVAL / quiver-slot / charge-timeout scaling; it is
+    only reached from the play_item menu (also deferred) and its limit math leans
+    on quiver/charge helpers. Deferred with the play_item shell; low standalone
+    value.
+  - do_cmd_wiz_quit_no_save (L2149): quit("user choice") - a process-exit action,
+    not game state. Not ported (the shell owns process lifetime).
+  - mark_artifact_created (obj-mark) in the artifact create path: the port has no
+    artifact-created registry yet (obj/make.ts makeArtifact is a stub that always
+    fails, as if every artifact were already generated). wizCreateObjectFromArtifact
+    instantiates the artifact but does not record it as created; when artifact
+    upkeep lands, this call site should mark it.
+  - do_cmd_wiz_jump_level's NOSCORE_JUMPING flag, choose_profile (cave-profile
+    selection) and the energy_use nudge: no player noscore field, no cave-profile
+    picker, and the port's level-change model does not need the energy nudge.
+  - The map-highlight redraw halves of query_feature / query_square_flag /
+    peek_noise_scent (wiz_hack_map + print_rel + prt_map + inkey) and the HTML
+    file write of dump_level_map: presentation (#25) / file I/O. Only the DATA
+    (the grids / the feature grid) is returned.
+  - Web hook: SKIPPED. The wizard actions need the full engine deps bundle
+    (makeDeps / the effect stack / trapDeps / monPlace), which session/game.ts
+    builds internally and startGame does not return, and the web Player carries
+    no noscore/options wizard toggle (packages/web/src/main.ts L487-488). Exposing
+    a wizard hook would mean plumbing those deps out of the session assembly -
+    not the minimal, low-risk change the task scopes. Skipped and noted.
+seam:
+  - WizardDeps.wizard (boolean): the wizard/debug gate (upstream ALLOW_DEBUG +
+    NOSCORE_WIZARD). Every exported action checks wizardEnabled(deps) first and is
+    a no-op refusal (returns false / [] / null, no state change) when it is false.
+    The rest of WizardDeps are the already-ported engine bundles, each optional so
+    a caller can expose only the subset of commands it needs (an absent bundle
+    behaves as gated): makeDeps (obj/make.ts), expDeps (player/exp.ts), effect (the
+    effect_simple bundle - registry + cast + envDeps + optional teleport/general/
+    item/summon), trapDeps, monPlace, flavor, races, artifacts, curses, msg.
+verified-by:
+  - game/wizard.test.ts (26 tests): the wizard gate blocks a non-wizard
+    wizCreateObj (nothing dropped) and the map-query data commands (empty) while
+    wizard mode permits them; wizCreateObj drops the requested kind on the floor
+    and refuses an out-of-range index; wizAdvance maxes stats/level/gold and
+    restores HP/SP; wizCureAll clears the affliction timers and heals; wizBanish
+    deletes monsters within range and spares distant ones; wizAcquire drops the
+    requested count; wizCurseItem adds then removes a curse; the exp/gold/stat
+    edits clamp to their bounds; wizLearnObjectKinds makes low-level kinds aware;
+    wizRecallMonster / wizWipeRecall learn then forget a race's lore; wizSummonNamed
+    places the named race; wizCreateTrap places a trap in the dungeon and refuses
+    in town; wizTeleportRandom moves the player, wizMagicMap and wizDetectAllMonsters
+    run through effect_simple; wizWizardLight lights and knows the level; wizRerate
+    reports a life rating in the legal band; wizRerollItem rerolls in place; and the
+    map-query DATA commands (wizQueryFeature / wizQuerySquareFlag / wizPeekFlow /
+    wizDumpLevelMap) return the expected grids / feature grid.

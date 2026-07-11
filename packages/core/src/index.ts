@@ -143,6 +143,10 @@ export * from "./game/cave-cmd";
 export * from "./game/trap";
 export * from "./game/spell-cmd";
 export * from "./game/loop";
+/* --- Wizard / debug commands (task #29: cmd-wizard.c / wiz-debug.c) ---
+ * The debug/cheat command surface, gated behind the WizardDeps.wizard flag
+ * (upstream ALLOW_DEBUG + NOSCORE_WIZARD); unreachable in faithful play. */
+export * from "./game/wizard";
 export * from "./sound";
 
 /* --- High scores (task #28: score.c / score-util.c / ui-score.c) --- */
