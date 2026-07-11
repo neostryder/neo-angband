@@ -1,0 +1,86 @@
+module: packages/core/src/obj/desc.ts (object_desc) +
+  packages/core/src/obj/known-object.ts (the per-object known shadow) +
+  packages/core/src/game/describe.ts (the game-layer adapter)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/obj-desc.c
+    items:
+      - object_desc (L607) as objectDesc - describes an object under an ODESC
+        mode, gated by the player's knowledge. Builds the known shadow and
+        reads it exactly where upstream reads obj->known (ego name, artifact
+        name, combat / modifier numbers, pval visibility).
+      - obj_desc_name_format (L231) as objDescNameFormat - the "&" article,
+        "~" pluralisation, "|sing|plur|" and "#" modstr grammar.
+      - obj_desc_get_modstr (L66), obj_desc_get_basename (L82),
+        obj_desc_name_prefix (L184), obj_desc_name, obj_desc_chest,
+        obj_desc_light, obj_desc_combat, obj_desc_mods, obj_desc_charges,
+        obj_desc_inscrip (L494), obj_desc_aware (L565) - the name / combat /
+        modifier / charge / inscription sections.
+      - the ODESC_* flags (L588-606) as the ODESC bitmask. ODESC_ALTNUM is a
+        separate numeric argument to objectDesc rather than packed into the
+        mode's high 16 bits.
+  - path: src/obj-knowledge.c
+    items:
+      - object_set_base_known (L820) + player_know_object (L1022) as
+        objectKnownShadow - synthesises the per-object obj->known shadow ON
+        DEMAND from the port's cumulative rune model (Player.objKnown =
+        upstream p->obj_k): base info always; when ASSESSED, the pval, the
+        combat bonuses (to_a/to_h/to_d gated by their runes), modifiers,
+        elements, flags, brands, slays, curses and ego, each gated exactly as
+        upstream.
+      - object_runes_known (L734) as objectRunesKnownUpstream,
+        object_non_curse_runes_known (L678), object_fully_known (L754),
+        player_knows_ego (L475) as playerKnowsEgo, object_effect_is_known
+        (L540) as objectEffectIsKnown - the knowledge predicates the shadow
+        and object_desc read.
+      - object_touch's artifact reveal (L963): known->artifact is set from the
+        ASSESSED notice bit, so an artifact's name shows once touched / picked
+        up while its powers stay hidden until their runes are learned.
+notes: >-
+  Object naming ported to behave exactly like the original (see the user
+  directive captured in memory neo-angband-names-exact-original and PORT_PLAN
+  decision 25: no everything-known shortcut). Upstream keeps a persistent
+  obj->known twin per object; the port DEFERRED that twin, so objectKnownShadow
+  rebuilds an equivalent shadow on demand from Player.objKnown. object_desc
+  reads the shadow so a name reveals a component only when the player really
+  knows it: unaware flavoured items show the generic base ("a Potion"), aware
+  items add " of <kind>", ego names appear only when every ego rune is known,
+  artifact names on touch (ASSESSED), and the (+h,+d) / <+N mod> numbers only
+  when their runes are learned. game/describe.ts wires this to a live GameState
+  (player + runeEnv + the state.isAware seam). Produced by a porter agent; a
+  fidelity bug it introduced (known->artifact gated on object_fully_known
+  instead of object_touch's ASSESSED reveal) was caught in verification and
+  corrected to match upstream.
+deferred:
+  - Flavour text on kinds is not bound (flavor_init is unported; ObjectKind has
+    no flavour link), so unaware flavoured items show the plain base name ("a
+    Potion", "a Ring") instead of the flavoured name ("a Smoky Potion"), and the
+    scroll "titled #" segment is dropped. Never leaks the real kind. Porting
+    flavor_init (deterministic flavour assignment + persistence) + wiring the
+    modstr is the immediate follow-on that completes exact unaware names.
+  - PlayerObjectKnowledge has no dd/ds/ac runes (upstream p->obj_k->dd/ds/ac);
+    the dice / base-ac display is gated by the object's ASSESSED bit, which is
+    when upstream learns them in practice.
+  - object_flavor_aware side effects in player_know_object's jewellery /
+    special-artifact branches (mutating the shared FlavorKnowledge and
+    propagating over gear + stores) are not run from the shadow (KnownDesc is
+    read-only); they belong with the awareness-propagation wiring.
+  - Store "{tried}" marker: no live tried seam on GameState, so the adapter's
+    isTried reports false (game/describe.ts).
+  - chest trap name, the " {ignore}"/"{ignore}" markers (no ignore-name
+    surface), the everseen mutations, and ODESC_CAPITAL (a caller concern in
+    4.2.6) are omitted.
+  - Migrating the existing name approximations (objBaseName call sites,
+    obj-list.ts objectListEntryName, inventory / store / message surfaces, the
+    web renderer) to describeObject is the integration follow-on; the engine
+    and adapter are landed and the object-list name is next.
+verified-by:
+  - game/describe.test.ts (4 tests) - the &/~ plural grammar and a/the/N
+    prefix, combat bonuses hidden until the to_h/to_d runes are learned, a
+    flavoured kind's identity never leaking while unaware, and the artifact
+    name revealing on touch (ASSESSED) but not before.
+  - Independent audit against obj-desc.c / obj-knowledge.c: the FlagSet.isSubset
+    direction in playerKnowsEgo / object_non_curse_runes_known, the basename
+    aware-vs-unaware split (no name leak), and the object_touch artifact gate
+    (corrected during review).

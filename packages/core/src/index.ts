@@ -55,6 +55,8 @@ export * from "./obj/power";
 export * from "./obj/value";
 export * from "./obj/knowledge";
 export * from "./obj/ignore";
+export * from "./obj/known-object";
+export * from "./obj/desc";
 export * from "./obj/randart";
 export * from "./player/types";
 export * from "./player/bind";
@@ -101,6 +103,7 @@ export * from "./game/effect-detect";
 export * from "./game/known";
 export * from "./game/target";
 export * from "./game/mon-cmd";
+export * from "./game/describe";
 export * from "./game/mon-list";
 export * from "./game/obj-list";
 export * from "./game/mon-shape";
@@ -146,6 +149,10 @@ export * from "./game/loop";
 //   gen/util as grid + DDGRID[dir].
 export { OF_SIZE, ELEM_MAX } from "./obj/types";
 export { nextGrid } from "./world/view";
+// objDescNameFormat: obj/bind has a reduced &-stripping helper (sval name
+// matching); obj/desc has the full obj_desc_name_format (modstr + pluralise).
+// Expose the full port as canonical; bind's stays internal to its module.
+export { objDescNameFormat } from "./obj/desc";
 // CriticalLevel is defined by both constants (parsed data) and combat/hit
 // (with msg typed as the specific HitType). Crit levels are a combat
 // concept; expose combat/hit's as canonical.
