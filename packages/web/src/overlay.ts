@@ -99,6 +99,37 @@ export function showTextScreen(
   });
 }
 
+/**
+ * get_aim_dir: prompt for a keypad direction (1-9). Resolves to the keypad
+ * digit, or null if cancelled. Accepts numpad/number keys and the arrows; 5 is
+ * DIR_TARGET (use the current target). A one-line banner shows over the game so
+ * the player keeps their bearings while aiming.
+ */
+export function promptDirection(
+  term: GlyphTerm,
+  prompt = "Aim in which direction? (1-9 / arrows, ESC to cancel)",
+): Promise<number | null> {
+  return new Promise<number | null>((resolve) => {
+    const { rows, cols } = term.size();
+    term.print(0, rows - 1, prompt.slice(0, cols - 1), "#e0c040");
+    const finish = (value: number | null): void => {
+      window.removeEventListener("keydown", onKey, true);
+      resolve(value);
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (ev.key === "Escape") return finish(null);
+      const arrows: Record<string, number> = {
+        ArrowUp: 8, ArrowDown: 2, ArrowLeft: 4, ArrowRight: 6,
+      };
+      if (ev.key in arrows) return finish(arrows[ev.key] ?? null);
+      if (/^[1-9]$/.test(ev.key)) return finish(Number(ev.key));
+    };
+    window.addEventListener("keydown", onKey, true);
+  });
+}
+
 /** One selectable row in a menu. Disabled rows show dimmed and cannot be picked. */
 export interface MenuItem {
   label: string;

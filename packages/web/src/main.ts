@@ -44,6 +44,15 @@ import {
   TRF,
   installPickup,
   describeObject,
+  gearGet,
+  objNeedsAim,
+  tvalIsPotion,
+  tvalIsScroll,
+  tvalIsEdible,
+  tvalIsStaff,
+  tvalIsWand,
+  tvalIsRod,
+  tvalIsWearable,
   sidebarModel,
   statusLineModel,
   createVisualsAnimator,
@@ -52,6 +61,7 @@ import {
 } from "@neo-angband/core";
 import type {
   GamePack,
+  GameObject,
   PlayerCommand,
   ViewConstants,
   ViewerState,
@@ -64,13 +74,15 @@ import { GlyphTerm } from "./term";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import { createTileRenderer } from "./tiles";
-import { showTextScreen } from "./overlay";
+import { showTextScreen, selectFromMenu, promptDirection } from "./overlay";
 import { MessageLog } from "./messages";
 import {
   inventoryLines,
   equipmentLines,
   characterSheetLines,
   messageHistoryLines,
+  packMenu,
+  equipmentMenu,
 } from "./screens";
 // --- High scores (task #28) ---
 import {
@@ -227,6 +239,116 @@ async function openModal(fn: () => Promise<void>): Promise<void> {
     modalDepth--;
     render();
   }
+}
+
+// --- Item-use commands (cmd-obj.c verbs) ------------------------------------
+// Each verb opens a lettered selection menu over the pack (filtered by tval),
+// then dispatches a PlayerCommand referencing the chosen object by args.handle
+// - the live command system's object reference (obj-cmd.ts commandObject). For
+// items that need aiming (wands, unknown rods, aimed effects: objNeedsAim), it
+// prompts a keypad direction and passes args.dir; the engine bypasses its own
+// get_aim_dir when a dir is supplied. The obj commands were installed without a
+// message env, so the shell narrates the action here for feedback; the real
+// per-effect messages arrive when the core message seam lands (task #42).
+const VERB_LABEL: Record<string, string> = {
+  quaff: "Quaff", read: "Read", eat: "Eat", "use-staff": "Use", "aim-wand": "Aim",
+  "zap-rod": "Zap", activate: "Activate", wield: "Wear/Wield", drop: "Drop",
+};
+function actionLine(code: string, obj: GameObject | null): string {
+  const name = obj ? describeObject(state, obj) : "the item";
+  switch (code) {
+    case "quaff": return `You quaff ${name}.`;
+    case "read": return `You read ${name}.`;
+    case "eat": return `You eat ${name}.`;
+    case "use-staff": return `You use ${name}.`;
+    case "aim-wand": return `You aim ${name}.`;
+    case "zap-rod": return `You zap ${name}.`;
+    case "activate": return `You activate ${name}.`;
+    case "wield": return `You are wielding ${name}.`;
+    case "takeoff": return `You take off ${name}.`;
+    case "drop": return `You drop ${name}.`;
+    default: return `You use ${name}.`;
+  }
+}
+
+/** Select a pack item matching `filter`, then dispatch `code` for it. */
+async function useItem(
+  code: string,
+  filter: (obj: GameObject) => boolean,
+  emptyNoun: string,
+): Promise<void> {
+  const { items, handles } = packMenu(state, filter);
+  if (items.length === 0) {
+    say(`You have no ${emptyNoun}.`);
+    return;
+  }
+  const idx = await selectFromMenu(
+    term,
+    `${VERB_LABEL[code] ?? "Use"} which item?`,
+    items,
+  );
+  if (idx === null) return;
+  const handle = handles[idx];
+  if (handle === undefined) return;
+  const obj = gearGet(state.gear, handle);
+  const args: Record<string, unknown> = { handle };
+  if (obj && objNeedsAim(obj, { flavor: game.flavor })) {
+    const dir = await promptDirection(term);
+    if (dir === null) return;
+    args["dir"] = dir;
+  }
+  say(actionLine(code, obj));
+  commandBuffer.push({ code, args });
+  advance();
+}
+
+/** Activate a worn item (A): pick from equipped items that have an activation. */
+async function activateItem(): Promise<void> {
+  const player = state.actor.player;
+  const items = [];
+  const handles: number[] = [];
+  for (let i = 0; i < player.body.count; i++) {
+    const handle = player.equipment[i] ?? 0;
+    if (!handle) continue;
+    const obj = gearGet(state.gear, handle);
+    if (!obj || !obj.activation) continue;
+    items.push({ label: describeObject(state, obj), color: "#c8c8d4" });
+    handles.push(handle);
+  }
+  if (items.length === 0) {
+    say("You have nothing to activate.");
+    return;
+  }
+  const idx = await selectFromMenu(term, "Activate which item?", items);
+  if (idx === null) return;
+  const handle = handles[idx];
+  if (handle === undefined) return;
+  const obj = gearGet(state.gear, handle);
+  const args: Record<string, unknown> = { handle };
+  if (obj && objNeedsAim(obj, { flavor: game.flavor })) {
+    const dir = await promptDirection(term);
+    if (dir === null) return;
+    args["dir"] = dir;
+  }
+  say(actionLine("activate", obj));
+  commandBuffer.push({ code: "activate", args });
+  advance();
+}
+
+/** Take off an equipped item (t): pick from filled equipment slots. */
+async function takeOffItem(): Promise<void> {
+  const { items, handles } = equipmentMenu(state);
+  if (items.length === 0) {
+    say("You are not wearing anything you can take off.");
+    return;
+  }
+  const idx = await selectFromMenu(term, "Take off which item?", items);
+  if (idx === null) return;
+  const handle = handles[idx];
+  if (handle === undefined) return;
+  say(actionLine("takeoff", gearGet(state.gear, handle)));
+  commandBuffer.push({ code: "takeoff", args: { handle } });
+  advance();
 }
 
 // --- High scores (task #28: score.c / ui-score.c) -------------------------
@@ -704,6 +826,25 @@ window.addEventListener("keydown", (ev) => {
       void openModal(() =>
         showTextScreen(term, "Character", characterSheetLines(state)),
       );
+      return;
+    }
+    // Item-use verbs (original keyset: cmd-obj.c). Each opens a selection menu.
+    const ITEM_VERBS: Record<string, () => Promise<void>> = {
+      q: () => useItem("quaff", (o) => tvalIsPotion(o.tval), "potions"),
+      r: () => useItem("read", (o) => tvalIsScroll(o.tval), "scrolls"),
+      E: () => useItem("eat", (o) => tvalIsEdible(o.tval), "food"),
+      u: () => useItem("use-staff", (o) => tvalIsStaff(o.tval), "staves"),
+      a: () => useItem("aim-wand", (o) => tvalIsWand(o.tval), "wands"),
+      z: () => useItem("zap-rod", (o) => tvalIsRod(o.tval), "rods"),
+      w: () => useItem("wield", (o) => tvalIsWearable(o.tval), "items you can wear or wield"),
+      d: () => useItem("drop", () => true, "items"),
+      A: () => activateItem(),
+      t: () => takeOffItem(),
+    };
+    const verb = ITEM_VERBS[ev.key];
+    if (verb) {
+      ev.preventDefault();
+      void openModal(verb);
       return;
     }
     if (ev.key === "g") {
