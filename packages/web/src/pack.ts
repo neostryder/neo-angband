@@ -34,6 +34,7 @@ export function loadGamePack(): GamePack {
     dungeonProfiles: records("dungeon_profile"),
     projection: records("projection"),
     trap: records("trap"),
+    names: records("names"),
     obj: {
       objectBase: file("object_base"),
       object: file("object"),

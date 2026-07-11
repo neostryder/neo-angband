@@ -480,6 +480,12 @@ export interface SavedGame {
   isDead: boolean;
   flavor: { aware: number[]; tried: number[] };
   /**
+   * seed_flavor (game-world.c): the seed flavor_init used to assign object
+   * colours/titles. Optional: absent in saves written before flavour
+   * assignment, which reload with a stable seed-0 assignment.
+   */
+  seedFlavor?: number;
+  /**
    * The player's map knowledge (game/known.ts). Optional: absent in
    * version-1 saves written before the knowledge layer, which load with
    * an all-unknown map.
@@ -540,6 +546,7 @@ export interface SavedLore {
 export function serializeGame(
   state: GameState,
   flavor: { snapshot(): { aware: number[]; tried: number[] } },
+  seedFlavor: number,
 ): SavedGame {
   const floor: SavedGame["floor"] = [];
   for (const pile of state.floor.values()) {
@@ -595,6 +602,7 @@ export function serializeGame(
     playing: state.playing,
     isDead: state.isDead,
     flavor: flavor.snapshot(),
+    seedFlavor,
     known: {
       feat: Array.from(state.known.feat),
       objects: Array.from(state.known.objects.entries()).map(([i, m]) => [

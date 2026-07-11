@@ -186,6 +186,18 @@ export interface GameState {
    */
   isAware?: (kind: import("../obj/types").ObjectKind) => boolean;
   /**
+   * obj->kind->flavor != NULL: whether flavor_init assigned this kind a
+   * flavour. Installed by the session (wireGame) from the per-game
+   * FlavorAssignment; absent, presentation falls back to the tval-only test.
+   */
+  hasFlavor?: (kind: import("../obj/types").ObjectKind) => boolean;
+  /**
+   * obj->kind->flavor->text: the flavour adjective ("Smoky") or scroll title
+   * shown for an unaware flavoured object. Installed by wireGame from the
+   * FlavorAssignment; absent, no '#' modstr is produced.
+   */
+  flavorText?: (kind: import("../obj/types").ObjectKind) => string;
+  /**
    * player->upkeep->health_who (health_track reduced to the tracked
    * monster; the health-bar redraw rides presentation, #25).
    */

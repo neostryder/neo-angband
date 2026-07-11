@@ -44,8 +44,10 @@ notes: >-
   obj->known twin per object; the port DEFERRED that twin, so objectKnownShadow
   rebuilds an equivalent shadow on demand from Player.objKnown. object_desc
   reads the shadow so a name reveals a component only when the player really
-  knows it: unaware flavoured items show the generic base ("a Potion"), aware
-  items add " of <kind>", ego names appear only when every ego rune is known,
+  knows it: unaware flavoured items show the flavoured base ("a Smoky Potion",
+  supplied by flavor_init via the KnownDesc flavorText/hasFlavor seams; see
+  obj-flavor.yaml), aware items add " of <kind>", ego names appear only when
+  every ego rune is known,
   artifact names on touch (ASSESSED), and the (+h,+d) / <+N mod> numbers only
   when their runes are learned. game/describe.ts wires this to a live GameState
   (player + runeEnv + the state.isAware seam). Produced by a porter agent; a
@@ -53,12 +55,6 @@ notes: >-
   instead of object_touch's ASSESSED reveal) was caught in verification and
   corrected to match upstream.
 deferred:
-  - Flavour text on kinds is not bound (flavor_init is unported; ObjectKind has
-    no flavour link), so unaware flavoured items show the plain base name ("a
-    Potion", "a Ring") instead of the flavoured name ("a Smoky Potion"), and the
-    scroll "titled #" segment is dropped. Never leaks the real kind. Porting
-    flavor_init (deterministic flavour assignment + persistence) + wiring the
-    modstr is the immediate follow-on that completes exact unaware names.
   - PlayerObjectKnowledge has no dd/ds/ac runes (upstream p->obj_k->dd/ds/ac);
     the dice / base-ac display is gated by the object's ASSESSED bit, which is
     when upstream learns them in practice.
