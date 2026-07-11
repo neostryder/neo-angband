@@ -1310,14 +1310,15 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // ---- Sound subsystem wiring (faithful to init_sound + EVENT_SOUND) ----
-// The core SoundEngine subscribes to the "sound" event and plays a sample
-// from the user's pack. NO audio ships with the repo: point the game at your
-// own pack with `?sounds=<base-url>` (the Dubtrain pack the mapping came from
-// is Creative-Commons non-commercial). With no URL the engine is silent.
-// Selection uses the game RNG so it is deterministic. Once the live turn loop
-// routes msgt()/sound() through this bus, in-game events will play here.
+// The core SoundEngine subscribes to the "sound" event and plays a sample from
+// the pack. The Dubtrain pack (CC-BY 4.0) ships in public/sounds/ as the
+// default, so combat, spells, deaths and ranged attacks play out of the box;
+// override it with `?sounds=<base-url>`. Selection uses the game RNG so it is
+// deterministic. The live turn loop routes sound() through this bus (state.sound).
 const soundEvents = new GameEvents();
-const soundBase = params.get("sounds") ?? "";
+// Default to the bundled Dubtrain pack (public/sounds/, CC-BY 4.0) so sound
+// plays out of the box; a user/mod can override the pack with ?sounds=<url>.
+const soundBase = params.get("sounds") ?? "sounds/";
 installWebSound(soundEvents, {
   baseUrl: soundBase,
   randint0: (n: number): number => state.rng.randint0(n),
