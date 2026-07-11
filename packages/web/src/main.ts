@@ -13,9 +13,15 @@
  * (Human Warrior) for now.
  *
  * Live systems: pickup ('g'), stairs with real level regeneration ('>' and
- * '<'), and JSON save/continue ('S' saves to localStorage; ?continue=1
- * resumes, with the integrity stamp checked). Death deletes the save
- * (decision 16). Per-hit combat messages await the message-log wiring.
+ * '<'), and JSON save/continue. The game AUTO-RESUMES the stored save on load
+ * (a plain refresh continues where you left off); it autosaves during play,
+ * on level change, and when the tab is hidden/closed. 'S' saves on demand,
+ * 'N' starts a new game, and death clears the save (decision 16). Death
+ * deletes the save. Per-hit combat messages await the message-log wiring.
+ *
+ * The render surface is responsive: it fills the viewport at any size and, on
+ * narrow (phone / portrait) screens, drops the sidebar for a compact layout.
+ * Touch devices get tap-to-move plus an on-screen action bar.
  */
 
 import {
@@ -81,9 +87,15 @@ const depth = Number(params.get("depth")) || 1;
 const pack: GamePack = loadGamePack();
 
 // Saves live in localStorage as stamped bytes (decision 16b tamper
-// deterrent), base64-wrapped. ?continue=1 resumes; death deletes the save
-// (decision 16: death is terminal).
+// deterrent), base64-wrapped. The stored game AUTO-RESUMES on load so a plain
+// refresh continues where you left off; `?new=1` (or an explicit `?seed=`, a
+// request for a specific reproducible run) starts fresh, as does the in-game
+// New Game action. Death clears the save (decision 16: death is terminal).
 const SAVE_KEY = "neo-angband-save";
+// A one-shot flag the New Game action sets before reloading (survives the
+// reload via sessionStorage, then is cleared) so the reboot starts fresh
+// instead of auto-resuming the save it is about to overwrite.
+const FORCE_NEW_KEY = "neo-angband-force-new";
 function bytesToB64(bytes: Uint8Array): string {
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -98,16 +110,34 @@ function b64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+function readStoredSave(): string | null {
+  try {
+    return localStorage.getItem(SAVE_KEY);
+  } catch {
+    return null; // storage disabled / private mode: play unsaved
+  }
+}
+
 let loadedNote = "";
 function bootGame(): ReturnType<typeof startGame> {
-  if (params.get("continue")) {
-    const stored = localStorage.getItem(SAVE_KEY);
+  // Start fresh only when explicitly asked: `?new`, an explicit `?seed=` (a
+  // request for a specific reproducible run), or the in-game New Game action.
+  // Otherwise auto-resume the stored save so a refresh continues the game.
+  let forcedNew = params.has("new") || params.has("seed");
+  try {
+    if (sessionStorage.getItem(FORCE_NEW_KEY) === "1") forcedNew = true;
+    sessionStorage.removeItem(FORCE_NEW_KEY);
+  } catch {
+    /* sessionStorage unavailable: fall through to the query-param decision. */
+  }
+  if (!forcedNew) {
+    const stored = readStoredSave();
     if (stored) {
       try {
         const decoded = decodeSavedGame(b64ToBytes(stored));
         if (decoded.save) {
           loadedNote = decoded.verified
-            ? "Welcome back."
+            ? "Welcome back. Your game was restored."
             : "Welcome back. (WARNING: save integrity check failed.)";
           return loadGame(pack, decoded.save);
         }
@@ -162,7 +192,7 @@ let tileNoteShown = false;
 
 let message =
   loadedNote ||
-  `Welcome. Move with numpad/arrows; 'g' picks up, '>' descends, 'S' saves, 'V' shows the Hall of Fame. (seed ${seed}, depth ${depth})`;
+  `Welcome. Move with numpad/arrows (or tap the map); 'g' picks up, '>' descends, 'S' saves, 'N' new game, 'V' Hall of Fame. (seed ${seed})`;
 let dead = false;
 
 // --- High scores (task #28: score.c / ui-score.c) -------------------------
@@ -199,7 +229,39 @@ async function openHallOfFame(): Promise<void> {
 }
 
 function persistSave(): void {
-  localStorage.setItem(SAVE_KEY, bytesToB64(encodeSavedGame(saveGame(game))));
+  try {
+    localStorage.setItem(SAVE_KEY, bytesToB64(encodeSavedGame(saveGame(game))));
+  } catch {
+    /* Quota exceeded or storage disabled: keep playing unsaved rather than
+     * crashing the turn. The next autosave retries. */
+  }
+}
+
+// Autosave keeps the session recoverable without the player thinking about it:
+// throttled during active play, and forced on level change and when the tab is
+// hidden/closed (pagehide / visibilitychange) so closing the tab never loses
+// more than the current turn. Manual 'S' forces an immediate save too.
+let lastSaveMs = -Infinity;
+function autosave(force = false): void {
+  if (dead) return;
+  const now =
+    typeof performance !== "undefined" ? performance.now() : Date.now();
+  if (!force && now - lastSaveMs < 3000) return;
+  lastSaveMs = now;
+  persistSave();
+}
+
+/** Start a brand-new game: clear the save and reload with the force-new flag. */
+function newGame(): void {
+  try {
+    localStorage.removeItem(SAVE_KEY);
+    sessionStorage.setItem(FORCE_NEW_KEY, "1");
+  } catch {
+    /* ignore storage errors; the reload below still starts fresh via ?new */
+  }
+  const url = new URL(location.href);
+  url.searchParams.set("new", "1");
+  location.assign(url.toString());
 }
 
 // Reinstall the pickup commands with message hooks so gold and item pickup
@@ -398,17 +460,61 @@ function renderStatusLine(originX: number, row: number, maxCols: number): void {
   }
 }
 
+/**
+ * The map viewport geometry for the current terminal size. Narrow (phone /
+ * portrait) viewports use a COMPACT layout: the 13-column sidebar is dropped
+ * so the map fills the full width, with a one-line vitals header under the
+ * message row. Roomy screens keep the classic left sidebar. Kept as a helper
+ * so the touch handler maps a tapped cell back to a grid square identically.
+ */
+function viewport(): {
+  compact: boolean;
+  mapOriginX: number;
+  mapTop: number;
+  mapCols: number;
+  mapRows: number;
+  camX: number;
+  camY: number;
+} {
+  const { cols, rows } = term.size();
+  const compact = cols < 48;
+  const mapOriginX = compact ? 0 : SIDEBAR_W;
+  const mapTop = compact ? 2 : 1; // message row (+ a vitals row when compact)
+  const mapCols = cols - mapOriginX;
+  const mapRows = rows - mapTop - 1; // the last row is the status line
+  const camX = state.actor.grid.x - Math.floor(mapCols / 2);
+  const camY = state.actor.grid.y - Math.floor(mapRows / 2);
+  return { compact, mapOriginX, mapTop, mapCols, mapRows, camX, camY };
+}
+
+/** Selected sidebar fields shown inline on the compact-layout vitals row. */
+const COMPACT_VITALS_KEYS = ["level", "hp", "sp", "ac", "gold", "depth"];
+
+/** The one-line vitals header for the compact layout (reuses sidebarModel). */
+function renderCompactVitals(row: number, maxCols: number): void {
+  const byKey = new Map(
+    sidebarModel(state, displayDeps()).map((f) => [f.key, f]),
+  );
+  let x = 0;
+  for (const key of COMPACT_VITALS_KEYS) {
+    const f = byKey.get(key);
+    if (!f) continue;
+    for (const run of f.runs) {
+      if (x >= maxCols - 1) return;
+      const text = run.text.slice(0, maxCols - 1 - x);
+      term.print(x, row, text, colorToCss(run.color));
+      x += run.text.length;
+    }
+    x += 1; // gap between fields
+  }
+}
+
 function render(): void {
   const { cols, rows } = term.size();
   term.clear();
 
-  const mapOriginX = SIDEBAR_W;
-  const mapCols = cols - mapOriginX;
-  const mapRows = rows - 2; // row 0 message, last row status.
-  const px = state.actor.grid.x;
-  const py = state.actor.grid.y;
-  const camX = px - Math.floor(mapCols / 2);
-  const camY = py - Math.floor(mapRows / 2);
+  const { compact, mapOriginX, mapTop, mapCols, mapRows, camX, camY } =
+    viewport();
   const monsterAt = monsterIndex();
   const objectAt = objectIndex();
   const trapAt = trapIndex();
@@ -420,7 +526,7 @@ function render(): void {
       if (gx < 0 || gy < 0 || gx >= state.chunk.width || gy >= state.chunk.height) continue;
       const idx = gridIndex(gx, gy);
       const screenX = mapOriginX + sx;
-      const screenY = 1 + sy;
+      const screenY = mapTop + sy;
 
       const seen = squareIsSeen(state.chunk, loc(gx, gy));
       if (!seen) {
@@ -464,12 +570,14 @@ function render(): void {
   }
 
   // The player, centered and bright.
-  term.put(mapOriginX + Math.floor(mapCols / 2), 1 + Math.floor(mapRows / 2), {
-    ch: "@",
-    fg: "#e8e8f0",
-  });
+  term.put(
+    mapOriginX + Math.floor(mapCols / 2),
+    mapTop + Math.floor(mapRows / 2),
+    { ch: "@", fg: "#e8e8f0" },
+  );
 
-  renderSidebar(rows);
+  if (compact) renderCompactVitals(1, cols);
+  else renderSidebar(rows);
   term.print(mapOriginX, 0, message.slice(0, mapCols - 1), "#c8c8d4");
   renderStatusLine(mapOriginX, rows - 1, mapCols);
 }
@@ -479,8 +587,12 @@ function advance(): void {
   const status = runGameLoop(state, registry);
   if (status === LOOP_STATUS.DEAD) {
     dead = true;
-    localStorage.removeItem(SAVE_KEY); // death is terminal (decision 16)
-    message = "You have died. (Refresh to start a new game.)";
+    try {
+      localStorage.removeItem(SAVE_KEY); // death is terminal (decision 16)
+    } catch {
+      /* ignore storage errors */
+    }
+    message = "You have died. (Press 'N' or refresh to start a new game.)";
     // Enter the character on the high-score table (enter_score) and show the
     // Hall of Fame. died_from is a placeholder: the engine does not yet surface
     // the killer to the shell (take-hit's onDeath hook has it; wiring it onto
@@ -514,9 +626,10 @@ function advance(): void {
     const target = state.targetDepth ?? state.chunk.depth + 1;
     game.changeLevel(target);
     state.generateLevel = false;
-    persistSave();
+    autosave(true); // a fresh level is a natural save point
     message = `You enter a maze of staircases... (depth ${state.chunk.depth})`;
   }
+  autosave(); // throttled: keep the session recoverable during active play
   render();
 }
 
@@ -549,9 +662,20 @@ window.addEventListener("keydown", (ev) => {
     }
     if (ev.key === "S") {
       ev.preventDefault();
-      persistSave();
-      message = "Game saved. (Open with ?continue=1 to resume.)";
+      autosave(true);
+      message = "Game saved. It will resume automatically next time.";
       render();
+      return;
+    }
+    if (ev.key === "N") {
+      ev.preventDefault();
+      if (
+        window.confirm(
+          "Start a new game? Your current character will be lost.",
+        )
+      ) {
+        newGame();
+      }
       return;
     }
   }
@@ -562,6 +686,94 @@ window.addEventListener("keydown", (ev) => {
   // run_test stops it (runGameLoop returns INPUT), so one keypress runs.
   commandBuffer.push({ code: binding.kind, dir: binding.dir });
   advance();
+});
+
+// ---- Touch input: tap a map cell to step toward it (one square) ----------
+// The core game is UI-agnostic (decision 21); this is the web shell's native
+// touch scheme so the game is playable on a phone or tablet with no keyboard.
+// A tap resolves to the 8-way keypad direction from the player toward the
+// tapped square and queues a single walk. A richer controller is a future mod
+// (the "intelligent controller / mobile input" idea), not core.
+canvas.addEventListener("pointerdown", (ev) => {
+  if (scoresOpen || dead) return;
+  const rect = canvas.getBoundingClientRect();
+  const { col, row } = term.cellAt(ev.clientX - rect.left, ev.clientY - rect.top);
+  const vp = viewport();
+  const sx = col - vp.mapOriginX;
+  const sy = row - vp.mapTop;
+  if (sx < 0 || sy < 0 || sx >= vp.mapCols || sy >= vp.mapRows) return; // HUD tap
+  const dx = Math.sign(vp.camX + sx - state.actor.grid.x);
+  const dy = Math.sign(vp.camY + sy - state.actor.grid.y);
+  if (dx === 0 && dy === 0) return; // tapped the player: no move
+  ev.preventDefault();
+  // Keypad direction: 7 8 9 / 4 5 6 / 1 2 3, so dir = (1-dy)*3 + (dx+2).
+  commandBuffer.push({ code: "walk", dir: (1 - dy) * 3 + (dx + 2) });
+  advance();
+});
+
+// On touch devices (coarse pointer), add an on-screen bar for the discrete
+// actions the keyboard has, so a phone player is not stuck. Hidden on desktop,
+// where the keyboard is the native scheme.
+function installTouchActionBar(): void {
+  const bar = document.createElement("div");
+  Object.assign(bar.style, {
+    position: "fixed",
+    left: "0",
+    right: "0",
+    bottom: "0",
+    display: "flex",
+    gap: "6px",
+    justifyContent: "center",
+    padding: "6px",
+    pointerEvents: "none",
+    zIndex: "10",
+  });
+  const actions: Array<[string, () => void]> = [
+    ["Get", () => { commandBuffer.push({ code: "pickup" }); advance(); }],
+    ["Down >", () => { commandBuffer.push({ code: "descend" }); advance(); }],
+    ["Up <", () => { commandBuffer.push({ code: "ascend" }); advance(); }],
+    ["Save", () => { autosave(true); message = "Game saved."; render(); }],
+    [
+      "New",
+      () => {
+        if (window.confirm("Start a new game? Your current character will be lost.")) {
+          newGame();
+        }
+      },
+    ],
+  ];
+  for (const [label, fn] of actions) {
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    Object.assign(btn.style, {
+      pointerEvents: "auto",
+      padding: "8px 12px",
+      background: "rgba(20,20,28,0.82)",
+      color: "#c8c8d4",
+      border: "1px solid #3a3a44",
+      borderRadius: "6px",
+      font: "14px system-ui, sans-serif",
+      touchAction: "manipulation",
+    });
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (dead && label !== "New") return;
+      fn();
+    });
+    bar.appendChild(btn);
+  }
+  document.body.appendChild(bar);
+}
+if (window.matchMedia?.("(pointer: coarse)").matches) installTouchActionBar();
+
+// ---- Session continuity: force a save when the tab is hidden or closed ----
+// Mobile browsers may kill a backgrounded tab without warning; pagehide and the
+// hidden visibility state are the reliable last-chance hooks to flush the save.
+window.addEventListener("pagehide", () => {
+  if (!dead) persistSave();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && !dead) persistSave();
 });
 
 // ---- Sound subsystem wiring (faithful to init_sound + EVENT_SOUND) ----
@@ -581,6 +793,24 @@ installWebSound(soundEvents, {
 state.updateFov(state);
 term.onResize = () => render();
 render();
+
+// Dev-only diagnostic hook for automated verification; Vite strips this whole
+// block from the production bundle (import.meta.env.DEV is false there).
+if (import.meta.env.DEV) {
+  (window as unknown as { __neo?: unknown }).__neo = {
+    resumed: loadedNote.startsWith("Welcome back"),
+    get turn() {
+      return state.turn;
+    },
+    get grid() {
+      return { x: state.actor.grid.x, y: state.actor.grid.y };
+    },
+    get compact() {
+      return term.size().cols < 48;
+    },
+    size: () => term.size(),
+  };
+}
 
 // ---- Animation timer (faithful to do_animation on EVENT_ANIMATE) ----
 // A display-only tick advances the flicker frame and repaints when an animated

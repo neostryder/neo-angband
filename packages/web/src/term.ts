@@ -31,8 +31,12 @@ export class GlyphTerm {
   constructor(
     private canvas: HTMLCanvasElement,
     private options: { minCols: number; minRows: number; fontPx: number } = {
-      minCols: 80,
-      minRows: 24,
+      // A small, usable floor rather than a hard 80x24: on a desktop the grid
+      // is far larger than this (floor(w/cellW)); on a phone we drop to this
+      // few, still-legible cells and let the shell reflow to a compact layout,
+      // instead of clipping an 80-column grid off the right edge.
+      minCols: 32,
+      minRows: 18,
       fontPx: 18,
     },
   ) {
@@ -54,6 +58,18 @@ export class GlyphTerm {
     return { cols: this.cols, rows: this.rows };
   }
 
+  /**
+   * The grid cell under a client-space pixel (e.g. a pointer/touch), for
+   * tap-to-move on touch devices. Coordinates are relative to the canvas's
+   * top-left; callers pass event.clientX/Y minus the canvas bounding rect.
+   */
+  cellAt(cssX: number, cssY: number): { col: number; row: number } {
+    return {
+      col: Math.floor(cssX / this.cellW),
+      row: Math.floor(cssY / this.cellH),
+    };
+  }
+
   /** Recompute cell metrics so at least minCols x minRows always fit. */
   private fit(): void {
     const dpr = window.devicePixelRatio || 1;
@@ -69,9 +85,12 @@ export class GlyphTerm {
     this.ctx.font = `${fontPx}px ${FONT_STACK}`;
     let cellW = Math.ceil(this.ctx.measureText("M").width);
     let cellH = Math.ceil(fontPx * 1.2);
-    // Shrink to honor the minimum grid on small screens.
+    // Shrink to honor the minimum grid on small screens, but never below a
+    // legible floor: on a phone we would rather show fewer, readable cells
+    // than an unreadable 5px 80-column grid.
+    const MIN_FONT = 11;
     while (
-      fontPx > 8 &&
+      fontPx > MIN_FONT &&
       (Math.floor(w / cellW) < this.options.minCols ||
         Math.floor(h / cellH) < this.options.minRows)
     ) {
