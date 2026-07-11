@@ -68,6 +68,20 @@ export interface KnownDesc {
   isAware(kind: ObjectKind): boolean;
   /** object_flavor_was_tried(obj): a kind of this flavour has been tried. */
   isTried(kind: ObjectKind): boolean;
+  /**
+   * obj->kind->flavor != NULL: whether flavor_init assigned this kind a
+   * flavour. Optional; when absent the tval-only kindHasFlavor is used (the
+   * behaviour before flavor_init was wired). Every flavoured tval's kinds are
+   * assigned a flavour, so the two agree in practice.
+   */
+  hasFlavor?(kind: ObjectKind): boolean;
+  /** obj->kind->flavor->text: the "Smoky" adjective or scroll title. */
+  flavorText?(kind: ObjectKind): string;
+  /**
+   * OPT(p, show_flavors): show the flavour even once aware. Defaults to true
+   * (the upstream default), matching a game whose option is unset.
+   */
+  showFlavors?(): boolean;
 }
 
 /**

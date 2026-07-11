@@ -57,6 +57,8 @@ export * from "./obj/knowledge";
 export * from "./obj/ignore";
 export * from "./obj/known-object";
 export * from "./obj/desc";
+export * from "./obj/randname";
+export * from "./obj/flavor";
 export * from "./obj/randart";
 export * from "./player/types";
 export * from "./player/bind";

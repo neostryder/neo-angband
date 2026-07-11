@@ -32,6 +32,7 @@ const pack: GamePack = {
   dungeonProfiles: loadRecords("dungeon_profile"),
   projection: loadRecords("projection"),
   trap: loadRecords("trap"),
+  names: loadRecords("names"),
   obj: {
     objectBase: loadJson("object_base"),
     object: loadJson("object"),

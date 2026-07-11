@@ -4,16 +4,15 @@
  * player's real knowledge EXACTLY as upstream, by reading the per-object known
  * shadow synthesised in known-object.ts wherever upstream reads obj->known.
  *
+ * Flavour text (the "Smoky" adjective, the scroll title) is supplied through
+ * the KnownDesc deps (flavorText / hasFlavor), fed from the per-game
+ * FlavorAssignment that flavor_init builds (obj/flavor.ts). When those deps are
+ * absent the helpers fall back to the tval-only flavour test and omit the '#'
+ * modstr - the pre-flavor_init behaviour - which still never leaks a real kind
+ * name.
+ *
  * Divergences from upstream, all forced by port model gaps (each ledgered
  * inline with a // DEFERRED: note):
- * - Flavour TEXT is unavailable: the port does not bind obj->kind->flavor onto
- *   ObjectKind, so the '#' modstr for flavoured kinds (the "Smoky" adjective,
- *   the scroll title) cannot be produced. obj_desc_get_basename therefore uses
- *   the plain (show_flavor = false) base forms for flavoured kinds and drops
- *   the scroll "titled #" segment. The base kind name and the aware " of
- *   <name>" suffix are unaffected, so IDed items read correctly; only the
- *   flavour adjective/title is missing. Books are unaffected (their modstr is
- *   kind->name, which is available).
  * - ODESC_CAPITAL: object_desc in 4.2.6 documents but does NOT apply this flag
  *   (it is a caller concern via my_strcap); accepted and ignored, as upstream.
  * - ODESC_ALTNUM: rather than packing the count into the high 16 bits of mode,
@@ -51,7 +50,6 @@ import type { RuneEnv } from "./knowledge";
 import { OBJ_NOTICE, objectHasStandardToH } from "./knowledge";
 import type { KnownDesc } from "./known-object";
 import {
-  kindHasFlavor,
   objectIsKnownArtifact,
   objectKnownShadow,
   objectRunesKnownUpstream,
@@ -148,35 +146,56 @@ function numberCharging(obj: GameObject): number {
 }
 
 /**
- * obj_desc_get_modstr (obj-desc.c L66): the string that replaces '#' in the
- * base name. Books use kind->name (available); flavoured kinds use the flavour
- * text, which is DEFERRED (unavailable) -> "".
+ * Whether a kind carries an assigned flavour (upstream obj->kind->flavor).
+ * Uses the deps' per-game assignment when wired (flavor_init), else falls back
+ * to the tval-only test - the two agree because every flavoured tval's kinds
+ * are assigned a flavour.
  */
-function objDescGetModstr(kind: ObjectKind): string {
+function descHasFlavor(kind: ObjectKind, deps: KnownDesc): boolean {
+  return deps.hasFlavor?.(kind) ?? tvalCanHaveFlavor(kind.tval);
+}
+
+/**
+ * obj_desc_get_modstr (obj-desc.c L66): the string that replaces '#' in the
+ * base name. Books use kind->name; flavoured kinds use the flavour text (the
+ * "Smoky" adjective or scroll title) from the per-game assignment.
+ */
+function objDescGetModstr(kind: ObjectKind, deps: KnownDesc): string {
   if (tvalCanHaveFlavor(kind.tval)) {
-    return ""; // DEFERRED: obj->kind->flavor->text unavailable
+    return deps.flavorText?.(kind) ?? "";
   }
   if (tvalIsBook(kind.tval)) return kind.name;
   return "";
 }
 
 /**
- * obj_desc_get_basename (obj-desc.c L82): the object's basic name format.
- *
- * DEFERRED (see module docs): flavour text is unavailable, so for flavoured
- * kinds we always use the plain (show_flavor = false) base form and drop the
- * scroll "titled #" segment. `knownArtifact` is object_is_known_artifact(obj),
- * computed once by the caller from the shadow.
+ * obj_desc_get_basename (obj-desc.c L82): the object's basic name format. When
+ * show_flavor is set the flavoured forms carry a '#' (filled by the flavour
+ * modstr): "& # Ring~", the scroll "& Scroll~ titled #", etc. `knownArtifact`
+ * is object_is_known_artifact(obj), computed once by the caller.
  */
 function objDescGetBasename(
   obj: GameObject,
   aware: boolean,
   terse: boolean,
   knownArtifact: boolean,
+  mode: number,
+  deps: KnownDesc,
 ): string {
-  const flavored = kindHasFlavor(obj);
+  const flavored = descHasFlavor(obj.kind, deps);
 
-  /* Artifacts are special (L92-94). */
+  /* show_flavor (L84-88): flavoured, not terse, not a store listing, and -
+   * once aware - only when the show_flavors option is on (default true).
+   * Also requires the flavour TEXT to be available: upstream obj->kind->flavor
+   * always carries text, but the port's tval-only fallback (no flavor_init
+   * wired) has none, and emitting "& # X" with an empty modstr would leave a
+   * stray space. Gating on the text keeps the plain base form in that case. */
+  const hasFlavorText = (deps.flavorText?.(obj.kind) ?? "").length > 0;
+  let showFlavor = !terse && flavored && hasFlavorText;
+  if (mode & ODESC.STORE) showFlavor = false;
+  if (aware && deps.showFlavors && !deps.showFlavors()) showFlavor = false;
+
+  /* Artifacts are special (L91-94). */
   if (obj.artifact && (aware || knownArtifact || terse || !flavored)) {
     return obj.kind.name;
   }
@@ -205,23 +224,22 @@ function objDescGetBasename(
     case TV.FOOD:
       return obj.kind.name;
 
-    /* Flavoured kinds: plain form (DEFERRED flavour text; no "& # X"). */
     case TV.AMULET:
-      return "& Amulet~";
+      return showFlavor ? "& # Amulet~" : "& Amulet~";
     case TV.RING:
-      return "& Ring~";
+      return showFlavor ? "& # Ring~" : "& Ring~";
     case TV.STAFF:
-      return "& Sta|ff|ves|";
+      return showFlavor ? "& # Sta|ff|ves|" : "& Sta|ff|ves|";
     case TV.WAND:
-      return "& Wand~";
+      return showFlavor ? "& # Wand~" : "& Wand~";
     case TV.ROD:
-      return "& Rod~";
+      return showFlavor ? "& # Rod~" : "& Rod~";
     case TV.POTION:
-      return "& Potion~";
+      return showFlavor ? "& # Potion~" : "& Potion~";
     case TV.SCROLL:
-      return "& Scroll~"; // DEFERRED: dropped "titled #" (flavour title)
+      return showFlavor ? "& Scroll~ titled #" : "& Scroll~";
     case TV.MUSHROOM:
-      return "& Mushroom~";
+      return showFlavor ? "& # Mushroom~" : "& Mushroom~";
 
     case TV.MAGIC_BOOK:
       return terse ? "& Book~ #" : "& Book~ of Magic Spells #";
@@ -330,6 +348,7 @@ function objDescName(
   number: number,
   aware: boolean,
   knownArtifact: boolean,
+  deps: KnownDesc,
 ): string {
   const store = (mode & ODESC.STORE) !== 0;
   /* Pluralise unless forced singular, an artifact, or a lone non-PLURAL item. */
@@ -337,8 +356,8 @@ function objDescName(
     !(mode & ODESC.SINGULAR) &&
     !obj.artifact &&
     (number !== 1 || (mode & ODESC.PLURAL) !== 0);
-  const basename = objDescGetBasename(obj, aware, terse, knownArtifact);
-  const modstr = objDescGetModstr(obj.kind);
+  const basename = objDescGetBasename(obj, aware, terse, knownArtifact, mode, deps);
+  const modstr = objDescGetModstr(obj.kind, deps);
 
   let out = "";
   if (prefix) {
@@ -357,7 +376,7 @@ function objDescName(
   } else if (
     aware &&
     !obj.artifact &&
-    (kindHasFlavor(obj) || obj.tval === TV.SCROLL)
+    (descHasFlavor(obj.kind, deps) || obj.tval === TV.SCROLL)
   ) {
     if (terse) out += ` '${obj.kind.name}'`;
     else out += ` of ${obj.kind.name}`;
@@ -634,6 +653,7 @@ export function objectDesc(
     number,
     aware,
     knownArtifact,
+    deps,
   );
 
   /* Combat properties (L645-652). */

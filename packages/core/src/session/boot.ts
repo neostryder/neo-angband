@@ -65,6 +65,18 @@ export interface CorePack {
   projection?: ProjectionRecordJson[];
   /** trap.json (trap kinds). Optional; without it levels have no traps. */
   trap?: TrapRecordJson[];
+  /**
+   * names.json (random-name corpus sections). Optional; without it flavor_init
+   * has no scroll-title words, so unaware scrolls fall back to the plain
+   * "& Scroll~" base form.
+   */
+  names?: NameSectionJson[];
+}
+
+/** One names.txt section: a list of lowercase words under a section index. */
+export interface NameSectionJson {
+  section: number;
+  word: string[];
 }
 
 /** Runtime registries bound from a pack. */
@@ -79,6 +91,11 @@ export interface CoreRegistries {
   projections: ProjectionInfo[] | null;
   /** Bound trap kinds (t_idx-indexed), or null when the pack has none. */
   traps: TrapKind[] | null;
+  /**
+   * Random-name corpus, keyed by section index (RANDNAME_SCROLL = 2 for scroll
+   * titles). Empty when the pack ships no names.json.
+   */
+  nameSections: Map<number, string[]>;
 }
 
 /** Bind a parsed pack into the full set of runtime registries. */
@@ -94,6 +111,10 @@ export function bindCore(pack: CorePack): CoreRegistries {
   const profiles = createDungeonProfiles(pack.dungeonProfiles);
   const projections = pack.projection ? bindProjections(pack.projection) : null;
   const traps = pack.trap ? bindTraps(pack.trap) : null;
+  const nameSections = new Map<number, string[]>();
+  for (const rec of pack.names ?? []) {
+    nameSections.set(rec.section, rec.word);
+  }
   return {
     constants,
     features,
@@ -103,6 +124,7 @@ export function bindCore(pack: CorePack): CoreRegistries {
     profiles,
     projections,
     traps,
+    nameSections,
   };
 }
 

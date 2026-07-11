@@ -1,9 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT } from "../generated";
+import { FEAT, TV } from "../generated";
 import { runGameLoop, LOOP_STATUS } from "../game/loop";
 import { monsterGroupsVerify } from "../game/mon-group";
 import type { PlayerCommand } from "../game/context";
+import { objectNew } from "../obj/object";
+import type { ObjectKind } from "../obj/types";
+import { describeObject } from "../game/describe";
 import { loadGame, saveGame, startGame } from "./game";
 import type { GamePack, StartedGame } from "./game";
 import { decodeSavedGame, encodeSavedGame } from "./save";
@@ -28,6 +31,7 @@ const pack: GamePack = {
   dungeonProfiles: loadRecords("dungeon_profile"),
   projection: loadRecords("projection"),
   trap: loadRecords("trap"),
+  names: loadRecords("names"),
   obj: {
     objectBase: loadJson("object_base"),
     object: loadJson("object"),
@@ -137,6 +141,25 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     /* Gear. */
     expect(rs.gear.pack).toEqual(state.gear.pack);
     expect(rs.gear.next).toBe(state.gear.next);
+
+    /* Flavours survive the reload: the persisted seed_flavor re-derives the
+     * same unaware potion name (a reload must not re-colour the dungeon). */
+    expect(saved.seedFlavor).toBe(game.seedFlavor);
+    const potionKind = game.booted.registries.objects.kinds.find(
+      (k) => k.tval === TV.POTION,
+    ) as ObjectKind;
+    const makePotion = () => {
+      const o = objectNew(potionKind);
+      o.tval = potionKind.tval;
+      o.sval = potionKind.sval;
+      o.number = 1;
+      return o;
+    };
+    const nameBefore = describeObject(state, makePotion());
+    const nameAfter = describeObject(rs, makePotion());
+    expect(nameAfter).toBe(nameBefore);
+    /* Unaware: a flavoured word, not the real kind. */
+    expect(nameBefore).not.toContain(`of ${potionKind.name}`);
   });
 
   it("resumes the exact RNG stream (the anti-save-scum posture)", () => {
