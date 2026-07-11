@@ -484,14 +484,17 @@ function advance(): void {
     // Enter the character on the high-score table (enter_score) and show the
     // Hall of Fame. died_from is a placeholder: the engine does not yet surface
     // the killer to the shell (take-hit's onDeath hook has it; wiring it onto
-    // GameState is deferred), so the cause defaults here. Gating (cheat/wizard)
-    // defaults to a clean character - the port has no options/noscore on Player.
+    // GameState is deferred), so the cause defaults here.
     const diedFrom = "the dungeon";
+    // --- OPTIONS (task #30) --- the cheat/score gate now reads the wired
+    // option store (score.c L277: any OP_SCORE option set = "cheating"). A
+    // clean character trips nothing, so behaviour is unchanged by default. The
+    // noscore/wizard gate stays a shell concern (no wizard mode on the web).
     const outcome = enterScore(
       scoreStore,
       state.actor.player,
       { ...scoreBuildDeps(diedFrom), deathTime: new Date() },
-      { diedFrom },
+      { diedFrom, cheated: state.options?.anyScoreSet() ?? false },
     );
     scoresOpen = true;
     void showPredictedScores(

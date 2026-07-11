@@ -198,6 +198,15 @@ export interface GameState {
    */
   flavorText?: (kind: import("../obj/types").ObjectKind) => string;
   /**
+   * The player option store (option.c op_ptr->opt / hitpoint_warn). Built by
+   * the session (startGame / loadGame) from OPTION_ENTRIES defaults and the
+   * birth-option choices; persists in the save. Optional so worldless tests
+   * (game/harness.ts) stay total - each deferred seam reads it as
+   * `dep ?? state.options?.get(name) ?? <shipped default>`, so an absent store
+   * reproduces the shipped defaults exactly.
+   */
+  options?: import("../player/options").OptionState;
+  /**
    * player->upkeep->health_who (health_track reduced to the tracked
    * monster; the health-bar redraw rides presentation, #25).
    */

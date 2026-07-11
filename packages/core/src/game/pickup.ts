@@ -152,7 +152,8 @@ export function autoPickupOkay(
   const num = invenCarryNum(state.gear, obj, deps.constants);
   if (!num) return 0;
 
-  if (env.pickupAlways ?? false) return num;
+  if (env.pickupAlways ?? state.options?.get("pickup_always") ?? false)
+    return num;
   if (checkForInscrip(obj, "!g")) return 0;
 
   const objHasAuto = checkForInscrip(obj, "=g");
@@ -160,7 +161,10 @@ export function autoPickupOkay(
   const objMaxauto = objMax.count ? objMax.value : Number.MAX_SAFE_INTEGER;
   if (objHasAuto > objMax.count) return num;
 
-  if ((env.pickupInven ?? true) || objMax.count) {
+  if (
+    (env.pickupInven ?? state.options?.get("pickup_inven") ?? true) ||
+    objMax.count
+  ) {
     const matches = packStacksSimilarTo(state, obj);
     const gearObj = matches[0];
     if (!gearObj) {

@@ -14,6 +14,7 @@ import {
 } from "./score";
 import { MAX_HISCORES, WINNING_HOW } from "./types";
 import type { HighScore, ScoreStore } from "./types";
+import { OptionState } from "../player/options";
 
 /**
  * A minimal Player stub carrying only the fields the score code reads
@@ -263,6 +264,29 @@ describe("enterScore (score.c L272): gating", () => {
     });
     expect(r).toEqual({ entered: false, reason: "cheater" });
     expect(store.data.length).toBe(0);
+  });
+
+  it("the option store's anyScoreSet() feeds the cheated gate (score.c L277)", () => {
+    /* A game that never cheated is scored; one that tripped a score_* option
+     * (via the cheat->score coupling) is gated out - the wired seam. */
+    const clean = new OptionState();
+    const cheated = new OptionState({ overrides: { cheat_room: true } });
+    expect(clean.anyScoreSet()).toBe(false);
+    expect(cheated.anyScoreSet()).toBe(true);
+
+    const store = memStore();
+    expect(
+      enterScore(store, stubPlayer(), { diedFrom: "orc", turn: 1, depth: 1 }, {
+        cheated: cheated.anyScoreSet(),
+        diedFrom: "orc",
+      }),
+    ).toEqual({ entered: false, reason: "cheater" });
+    expect(
+      enterScore(store, stubPlayer(), { diedFrom: "orc", turn: 1, depth: 1 }, {
+        cheated: clean.anyScoreSet(),
+        diedFrom: "orc",
+      }).entered,
+    ).toBe(true);
   });
 
   it("does NOT enter a wizard/debug character", () => {
