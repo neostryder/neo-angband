@@ -46,11 +46,12 @@ import {
 } from "../obj/object";
 import {
   buildRuneList,
-  objBaseName,
   objectLearnUnknownRune,
   objectRunesKnown,
   playerLearnFlagRune,
 } from "../obj/knowledge";
+import { ODESC } from "../obj/desc";
+import { describeObject } from "./describe";
 import type { ObjRegistry } from "../obj/bind";
 import { egoApplyMagic, makeObject } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
@@ -239,8 +240,8 @@ function enchantSpell(
   });
   if (!obj) return false;
 
-  /* Describe */
-  const name = objBaseName(obj);
+  /* Describe (ODESC_BASE, obj-desc gates the name by knowledge) */
+  const name = describeObject(state, obj, ODESC.BASE);
   say(
     ctx,
     `${objectIsCarried(state, obj) ? "Your" : "The"} ${name} glow${
@@ -288,10 +289,10 @@ export function brandObject(
       return;
     }
 
-    /* Describe */
+    /* Describe (ODESC_BASE) */
     say(
       ctx,
-      `The ${objBaseName(obj)} ${obj.number > 1 ? "are" : "is"} surrounded with an aura of ${name}.`,
+      `The ${describeObject(state, obj, ODESC.BASE)} ${obj.number > 1 ? "are" : "is"} surrounded with an aura of ${name}.`,
     );
 
     /* Make it an ego item */
@@ -443,7 +444,10 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
     say(ctx, `The ${name} curse is removed!`);
   } else if (!obj.flags.has(OF.FRAGILE)) {
     /* Failure to remove, object is now fragile */
-    say(ctx, `The spell fails; your ${objBaseName(obj)} is now fragile.`);
+    say(
+      ctx,
+      `The spell fails; your ${describeObject(state, obj, ODESC.FULL)} is now fragile.`,
+    );
     obj.flags.on(OF.FRAGILE);
     playerLearnFlagRune(state.actor.player, state.runeEnv, OF.FRAGILE);
   } else if (state.rng.oneIn(4)) {
@@ -556,7 +560,7 @@ function curseWorn(
   /* Nothing to curse */
   if (!obj) return true;
 
-  const name = objBaseName(obj);
+  const name = describeObject(state, obj, ODESC.FULL);
 
   /* Attempt a saving throw for artifacts */
   if (obj.artifact && state.rng.randint0(100) < 50) {
