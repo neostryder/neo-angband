@@ -18,7 +18,7 @@
  * verb still varies). The throw range uses a compact weight bound.
  */
 
-import { MON_MSG, RF } from "../generated";
+import { MON_MSG, MSG, RF } from "../generated";
 import { loc } from "../loc";
 import type { Loc } from "../loc";
 import { makeRangedShot, makeRangedThrow, breakageChance } from "../combat/ranged";
@@ -33,7 +33,7 @@ import { squareMonster, deleteMonster, arenaInterceptDeath } from "./context";
 import type { GameState, PlayerCommand } from "./context";
 import { targetOkay, targetGet } from "./target";
 import { describeObject } from "./describe";
-import { formatMonsterMessage } from "./mon-message";
+import { formatMonsterMessage, monMessageSoundType } from "./mon-message";
 import type { ActionRegistry } from "./player-turn";
 
 /* Keypad direction deltas (ddx/ddy), indexed by keypad digit 1..9. */
@@ -66,6 +66,9 @@ function rangedHelper(
     const dd = dir >= 1 && dir <= 9 ? dir : 5;
     target = loc(start.x + 99 * DDX[dd]!, start.y + 99 * DDY[dd]!);
   }
+
+  /* sound(MSG_SHOOT): the loose (do_cmd_fire / do_cmd_throw). */
+  state.sound?.(MSG.SHOOT);
 
   const path = projectPath(state.chunk, range, start, target, 0);
 
@@ -108,11 +111,13 @@ function rangedHelper(
       } else {
         state.msg?.(`Your ${oName} ${result.verb} ${mName}.`);
       }
+      state.sound?.(MSG.SHOOT_HIT);
       mon.hp -= dmg;
       if (mon.hp < 0 && !arenaInterceptDeath(state, mon)) {
         const dieMsg = monsterIsDestroyed(mon) ? MON_MSG.DESTROYED : MON_MSG.DIE;
         const text = formatMonsterMessage(mon, dieMsg);
         if (text) state.msg?.(text);
+        state.sound?.(monMessageSoundType(dieMsg));
         state.onPlayerKill?.(mon);
         deleteMonster(state, mon.midx);
       }
