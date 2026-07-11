@@ -34,6 +34,7 @@ import {
   STAT_RANGE,
 } from "./types";
 import { ELEM, KF, OBJ_MOD, OF, PF, STAT, TV } from "../generated";
+import { COLOUR_L_GREEN, COLOUR_RED, COLOUR_YELLOW } from "../color";
 import { FlagSet } from "../bitflag";
 import type {
   PlayerClass,
@@ -421,6 +422,35 @@ export function playerFlags(player: Player): FlagSet {
     f.on(OF.PROT_FEAR);
   }
   return f;
+}
+
+/**
+ * player_hp_attr (player.c:323): the colour the current hitpoints are drawn
+ * in - COLOUR_L_GREEN at full health, COLOUR_YELLOW while above the
+ * hitpoint-warning fraction (mhp * hitpoint_warn / 10), else COLOUR_RED.
+ * `hitpointWarn` is op_ptr->hitpoint_warn (0..9); the options store is
+ * deferred, so the caller supplies it.
+ */
+export function playerHpAttr(
+  p: Pick<Player, "chp" | "mhp">,
+  hitpointWarn: number,
+): number {
+  if (p.chp >= p.mhp) return COLOUR_L_GREEN;
+  if (p.chp > Math.trunc((p.mhp * hitpointWarn) / 10)) return COLOUR_YELLOW;
+  return COLOUR_RED;
+}
+
+/**
+ * player_sp_attr (player.c:337): the spell-point colour, identical thresholds
+ * to player_hp_attr but on csp / msp.
+ */
+export function playerSpAttr(
+  p: Pick<Player, "csp" | "msp">,
+  hitpointWarn: number,
+): number {
+  if (p.csp >= p.msp) return COLOUR_L_GREEN;
+  if (p.csp > Math.trunc((p.msp * hitpointWarn) / 10)) return COLOUR_YELLOW;
+  return COLOUR_RED;
 }
 
 /**
