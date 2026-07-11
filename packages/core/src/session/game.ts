@@ -112,6 +112,7 @@ import {
   registerBookKinds,
 } from "../player/spell";
 import { installSpellCommands } from "../game/spell-cmd";
+import { installRangedCommands } from "../game/ranged-cmd";
 import {
   formatMonsterMessage,
   formatMonsterMessageByName,
@@ -587,6 +588,11 @@ function wireGame(
       statInd: liveStatInd,
       env: { expGain, msg: (text: string): void => state.msg?.(text) },
     });
+
+    // Player ranged attacks (fire launcher + ammo, throw an object). The hit
+    // math is combat/ranged.ts; the front-end walks the missile's path and
+    // routes hit / death messages through state.msg like the other commands.
+    installRangedCommands(registry);
 
     // Traps: disarm + the step-onto-trap hook; a trapdoor drops a level.
     if (reg.traps) {

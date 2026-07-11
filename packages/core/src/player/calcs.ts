@@ -941,6 +941,8 @@ export function toCombatState(state: PlayerState): PlayerCombatState {
     skills: state.skills,
     numBlows: state.numBlows,
     ammoMult: state.ammoMult,
+    numShots: state.numShots,
+    ammoTval: state.ammoTval,
     blessWield: state.blessWield,
   };
 }

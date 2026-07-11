@@ -144,6 +144,8 @@ export function defaultCombat(): PlayerCombatState {
     skills,
     numBlows: 100,
     ammoMult: 1,
+    numShots: 0,
+    ammoTval: 0,
     blessWield: false,
   };
 }
