@@ -8,16 +8,17 @@
  *
  * Layout follows the original: a left status sidebar (faithful HUD), a
  * message line across the top, a bottom status line, and the map filling the
- * rest of the viewport at any size. Menus and a title/birth screen are the
- * next step (PORT_PLAN.md decision 21); this drives bootLevel-style defaults
- * (Human Warrior) for now.
+ * rest of the viewport at any size. A new game opens the birth screen (choose
+ * race / class / sex / name); resuming a save goes straight back into play.
  *
- * Live systems: pickup ('g'), stairs with real level regeneration ('>' and
- * '<'), and JSON save/continue. The game AUTO-RESUMES the stored save on load
- * (a plain refresh continues where you left off); it autosaves during play,
- * on level change, and when the tab is hidden/closed. 'S' saves on demand,
- * 'N' starts a new game, and death clears the save (decision 16). Death
- * deletes the save. Per-hit combat messages await the message-log wiring.
+ * Live systems: movement + melee (with faithful "You hit/slay the X" messages),
+ * item use (quaff/read/eat/wield/take-off/drop/devices/activate), inventory (i),
+ * equipment (e), the character sheet (C), the message history (Ctrl-P), pickup
+ * ('g'), stairs with real level regeneration ('>'/'<'), and JSON save/continue.
+ * The game AUTO-RESUMES the stored save on load (a plain refresh continues where
+ * you left off); it autosaves during play, on level change, and when the tab is
+ * hidden/closed. 'S' saves on demand; 'N' rolls a new character (allowed after
+ * death, reusing the same save slot - faithful to the original's death flow).
  *
  * The render surface is responsive: it fills the viewport at any size and, on
  * narrow (phone / portrait) screens, drops the sidebar for a compact layout.
@@ -75,6 +76,7 @@ import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import { createTileRenderer } from "./tiles";
 import { showTextScreen, selectFromMenu, promptDirection } from "./overlay";
+import { runBirth } from "./birth";
 import { MessageLog } from "./messages";
 import {
   inventoryLines,
@@ -116,6 +118,27 @@ const SAVE_KEY = "neo-angband-save";
 // reload via sessionStorage, then is cleared) so the reboot starts fresh
 // instead of auto-resuming the save it is about to overwrite.
 const FORCE_NEW_KEY = "neo-angband-force-new";
+// The chosen character identity (birth): race/class drive startGame; name/sex
+// are cosmetic. Persisted so a birthed character survives the reload that
+// rebuilds the game as that race/class, and so the next New Game reuses it as
+// defaults. A sessionStorage flag marks "birth already done this load" so the
+// post-birth reload does not reopen the birth screen.
+const BIRTH_KEY = "neo-angband-birth";
+const BIRTH_DONE_KEY = "neo-angband-birth-done";
+interface StoredBirth {
+  raceName: string;
+  className: string;
+  name: string;
+  sex: string;
+}
+function readBirthChoice(): StoredBirth | null {
+  try {
+    const raw = localStorage.getItem(BIRTH_KEY);
+    return raw ? (JSON.parse(raw) as StoredBirth) : null;
+  } catch {
+    return null;
+  }
+}
 function bytesToB64(bytes: Uint8Array): string {
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -139,6 +162,10 @@ function readStoredSave(): string | null {
 }
 
 let loadedNote = "";
+// True when this load started a fresh character (startGame), not a resume; the
+// birth screen keys off this to appear only for a new character.
+let bootedNew = false;
+const birthChoice = readBirthChoice();
 function bootGame(): ReturnType<typeof startGame> {
   // Start fresh only when explicitly asked: `?new`, an explicit `?seed=` (a
   // request for a specific reproducible run), or the in-game New Game action.
@@ -166,13 +193,25 @@ function bootGame(): ReturnType<typeof startGame> {
       }
     }
   }
-  return startGame(pack, { seed, depth });
+  bootedNew = true;
+  // A birthed character supplies its race/class; otherwise the engine defaults
+  // to Human Warrior (the classic quick-start).
+  return startGame(pack, {
+    seed,
+    depth,
+    ...(birthChoice
+      ? { raceName: birthChoice.raceName, className: birthChoice.className }
+      : {}),
+  });
 }
 
 const game = bootGame();
 const { state, registry, booted, players } = game;
 const features = booted.registries.features;
 const constants = booted.registries.constants;
+// The birthed name (cosmetic: character sheet, high-score row). Empty for the
+// default quick-start until the player names a character.
+const playerName = birthChoice?.name ?? "";
 
 // --- Visuals: color-cycle + flicker animation (task #27: ui-visuals.c) -----
 // The core animator turns a monster race + animation frame into the COLOUR_*
@@ -829,6 +868,16 @@ window.addEventListener("keydown", (ev) => {
     );
     return;
   }
+  // New character (N): allowed even after death, so a fallen hero rolls a new
+  // character into the same save slot (faithful to the original's death -> new
+  // character flow). Confirm only while alive, since death already ends the run.
+  if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key === "N") {
+    ev.preventDefault();
+    if (dead || window.confirm("Start a new character? Your current one will be lost.")) {
+      newGame();
+    }
+    return;
+  }
   if (dead) return;
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
     if (ev.key === "V") {
@@ -853,7 +902,7 @@ window.addEventListener("keydown", (ev) => {
     if (ev.key === "C") {
       ev.preventDefault();
       void openModal(() =>
-        showTextScreen(term, "Character", characterSheetLines(state)),
+        showTextScreen(term, "Character", characterSheetLines(state, playerName)),
       );
       return;
     }
@@ -967,7 +1016,7 @@ function installTouchActionBar(): void {
     ["Down >", () => { commandBuffer.push({ code: "descend" }); advance(); }],
     ["Up <", () => { commandBuffer.push({ code: "ascend" }); advance(); }],
     ["Inv", () => { void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))); }],
-    ["Char", () => { void openModal(() => showTextScreen(term, "Character", characterSheetLines(state))); }],
+    ["Char", () => { void openModal(() => showTextScreen(term, "Character", characterSheetLines(state, playerName))); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     [
       "New",
@@ -1029,6 +1078,44 @@ installWebSound(soundEvents, {
 state.updateFov(state);
 term.onResize = () => render();
 render();
+
+// --- Birth: choose a character for a new game -------------------------------
+// A brand-new game opens the birth screen (race / class / sex / name). The
+// engine has already built a default Human Warrior this load; when the player
+// chooses, we persist the choice and reload so startGame rebuilds as that
+// race/class (its stats and starting kit differ). A one-shot sessionStorage
+// flag suppresses the screen on that rebuild. Backing out (ESC) keeps whatever
+// character was built. Resuming a save never births.
+async function maybeBirth(): Promise<void> {
+  if (!bootedNew) return;
+  let justBirthed = false;
+  try {
+    justBirthed = sessionStorage.getItem(BIRTH_DONE_KEY) === "1";
+    sessionStorage.removeItem(BIRTH_DONE_KEY);
+  } catch {
+    /* sessionStorage unavailable: fall through and show birth. */
+  }
+  if (justBirthed) return; // the choice from the previous load is already live
+  await openModal(async () => {
+    const choice = await runBirth(term, players.races, players.classes);
+    if (!choice) {
+      say("Your adventure begins.");
+      return;
+    }
+    try {
+      localStorage.setItem(BIRTH_KEY, JSON.stringify(choice));
+      localStorage.removeItem(SAVE_KEY);
+      sessionStorage.setItem(BIRTH_DONE_KEY, "1");
+      sessionStorage.setItem(FORCE_NEW_KEY, "1");
+    } catch {
+      /* storage disabled: the reload still starts a fresh game via ?new */
+    }
+    const url = new URL(location.href);
+    url.searchParams.set("new", "1");
+    location.assign(url.toString());
+  });
+}
+void maybeBirth();
 
 // Dev-only diagnostic hook for automated verification; Vite strips this whole
 // block from the production bundle (import.meta.env.DEV is false there).
