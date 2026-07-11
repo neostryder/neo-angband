@@ -145,6 +145,14 @@ export * from "./game/spell-cmd";
 export * from "./game/loop";
 export * from "./sound";
 
+/* --- High scores (task #28: score.c / score-util.c / ui-score.c) --- */
+export * from "./score/types";
+export * from "./score/score";
+export * from "./score/display";
+
+/* --- Graphics/tiles + visuals (task #27: grafmode.c / ui-visuals.c) --- */
+export * from "./visuals";
+
 // Some small derived constants and geometry helpers are defined
 // independently by more than one domain (identical values/behavior).
 // Re-export a single canonical copy so the barrel is unambiguous rather

@@ -1,0 +1,139 @@
+module: packages/core/src/visuals/
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/ui-visuals.c
+    items:
+      - VISUALS_GROUPS_MAX/CYCLES_MAX/STEPS_MAX/INVALID_COLOR (L29-38)
+      - struct visuals_color_cycle -> VisualsColorCycle
+      - visuals_color_cycle_new (L62) -> VisualsColorCycle.create (null on 0 steps)
+      - visuals_color_cycle_copy (L126) -> VisualsColorCycle.copy (compress valids)
+      - visuals_color_cycle_attr_for_frame (L169) -> attrForFrame (frame % max_steps)
+      - struct visuals_cycle_group (L186) -> VisualsCycleGroup
+      - struct visuals_cycler (L261) -> VisualsCycler
+      - visuals_cycler_cycle_by_name (L336) -> VisualsCycler.cycleByName
+      - visuals_cycler_get_attr_for_frame (L384) -> VisualsCycler.getAttrForFrame
+      - visuals_cycler_set_cycle_for_race (L420) -> VisualsAnimator.setCycleForRace
+      - visuals_cycler_get_attr_for_race (L468) -> VisualsAnimator.getAttrForRace
+      - struct visuals_flicker (L496) -> VisualsFlicker
+      - visuals_flicker_new (L515; max_cycles>=BASIC_COLORS gate) -> VisualsFlicker.create
+      - visuals_flicker_set_color (L574) -> VisualsFlicker.setColor
+      - visuals_flicker_get_color (L603) -> VisualsFlicker.getColor
+      - visuals_flicker_get_attr_for_frame (L633) -> VisualsFlicker.getAttrForFrame
+      - visuals_parse_flicker / _flicker_color (L828/L863) -> buildVisualsFlicker
+      - visuals_parse_cycle / _cycle_color (L900/L1001) -> buildVisualsCycler
+      - visuals_parse_context_convert (L768; copy cycles into groups) -> buildVisualsCycler
+      - visuals_file_parser_init parser_reg set (L1048-1051) -> visualsSpec directives
+      - ui_visuals_module_init (L1105; flicker_new(MAX_COLORS,3)) -> createVisualsAnimator
+  - path: src/ui-display.c
+    items:
+      - do_animation (L1435) per-monster branch -> animateMonsterAttr
+      - "flicker counter (uint8_t, L1430) -> animFrame display counter (web)"
+      - "RF_ATTR_MULTI randint1(BASIC_COLORS-1) / RF_ATTR_FLICKER cycle->flicker->base"
+  - path: src/grafmode.c
+    items:
+      - struct graphics_mode -> GraphicsMode
+      - "init_parse_grafmode parser_reg set (L96-100) -> gen-grafmode.mjs parse"
+      - "GRAPHICS_NONE + hardcoded None fallback (L137-146) -> GRAPHICS_MODE_NONE"
+      - graphics_mode_high_id (L148) -> GRAPHICS_MODE_HIGH_ID
+      - get_graphics_mode (L223) -> getGraphicsMode (undefined == NULL)
+      - is_dh_tile (L241) -> isDoubleHeightTile
+  - path: src/z-color.h
+    items:
+      - "BASIC_COLORS (29; also the no-color sentinel) -> BASIC_COLORS"
+      - "MAX_COLORS (32; flicker-table cycle count) -> VISUALS_MAX_COLORS"
+  - path: lib/gamedata/visuals.txt
+    items:
+      - "28 flicker + 38 cycle (flicker group 28, fancy group 10) directives
+        -> packages/content/pack/visuals.json (compiled by visualsSpec)"
+  - path: lib/tiles/list.txt
+    items:
+      - "6 graphics-mode metadata entries -> packages/core/src/visuals/grafmode-data.ts
+        (via scripts/gen-grafmode.mjs). METADATA ONLY, no image bytes."
+data-choice: >-
+  visuals.txt IS a lib/gamedata file, so it compiles into the content pack via
+  a FileSpec (visualsSpec), consistent with every other gamedata file (unlike
+  sound.prf, which is a pref file handled by a core loader). It holds TWO
+  record kinds in one file (legacy `flicker`/`flicker-color` and grouped
+  `cycle`/`cycle-color`) with no single record-start directive, so it is
+  modelled as a singleton spec (recordStart: null): the whole file compiles to
+  one record whose `flicker` and `cycle` arrays carry the entries (each with
+  its nested color steps) in file order. The compiler only mirrors the raw
+  directives; the stateful interpretation the C parser does (indexing the
+  flicker table by the selection color's attr, building/replacing named cycles
+  within groups) lives in the engine (buildVisualsFlicker/buildVisualsCycler),
+  exactly as ui-visuals.c keeps it out of the raw file format.
+
+  list.txt does NOT go through the content compiler: it lives under lib/tiles
+  (not lib/gamedata), uses a different parser (grafmode.c), and - critically -
+  names third-party tile IMAGE files with restrictive licenses. So it is
+  compiled by a dedicated core codegen (scripts/gen-grafmode.mjs) into a TS
+  data table (grafmode-data.ts), mirroring the sound-prefs codegen precedent,
+  and paired with the get_graphics_mode lookup + GRAPHICS_NONE fallback in
+  grafmode.ts. Only catalog METADATA (ids, names, dimensions, directory +
+  filenames, double-height rows) is ported; no image bytes.
+platform-seam:
+  - "Animation-frame seam: do_animation's uint8_t `flicker` counter becomes a
+    display-only animFrame in packages/web/src/main.ts, advanced by a
+    setInterval (250 ms) that repaints only when an animated (RF_ATTR_MULTI /
+    RF_ATTR_FLICKER) monster is visible. It never advances the game loop."
+  - "RNG seam / determinism: RF_ATTR_MULTI uses randint1(BASIC_COLORS-1). The
+    engine takes randint1 as an injected seam; the web binds it to a
+    DISPLAY-ONLY Math.random helper, NOT state.rng, so idle shimmer cannot
+    perturb the deterministic game RNG (a deliberate divergence from
+    do_animation, which pulls the game RNG). Monster color-cycling
+    (RF_ATTR_FLICKER) is deterministic and touches no RNG."
+  - "Per-race cycle registration: mon-init.c parse_monster_color_cycle ->
+    visuals_cycler_set_cycle_for_race is reproduced by the web reading each
+    monster record's `color-cycle` (compiled into monster.json already) and
+    calling VisualsAnimator.setCycleForRace(ridx, group, cycle) at boot."
+  - "Tile draw seam: the actual tile-image blitting + graphics-mode selection
+    UI is the web's half (packages/web/src/tiles.ts, TileSet/createTileRenderer),
+    loading a user-supplied atlas from a configurable base URL. The core is
+    catalog + engine only, with no DOM/canvas dependency."
+licensing-deferral: >-
+  NO tile IMAGE assets are bundled or committed. The tile art packs under
+  reference/lib/tiles/** (adam-bolt, gervais, shockbolt, nomad) carry their own
+  licenses; Shockbolt's in particular is NOT freely redistributable for
+  commercial use, and this repo has commercial intent. Only the graphics-mode
+  CATALOG (functional metadata: ids, menu names, pixel dimensions, directory
+  and image/pref filenames, double-height rows) is ported. ASCII rendering is
+  the DEFAULT and the game runs fully with no tile pack present. The web tile
+  renderer loads images from a configurable base URL
+  (`?tiles=<base-url>&graf=<id>`) the user populates with their own pack; with
+  nothing configured createTileRenderer returns null and the map is pure ASCII.
+  A missing/undecodable atlas never crashes the game (TileSet.ready stays
+  false, ASCII continues).
+divergences: >-
+  (1) The animation frame is a display timer bound to a display-only RNG, not
+  the game RNG, to protect determinism (see platform-seam). (2) The live map
+  still renders ASCII even when a tile pack is configured: turning a game glyph
+  (attr/char) into a tile-atlas position needs the graf-*.prf pref mapping
+  (ui-prefs.c), a separate subsystem NOT in this slice. tiles.ts provides the
+  atlas LOAD path, the classic tile-code (row=attr&0x7F, col=char&0x7F) decode,
+  and the blit primitive; wiring the map to draw tiles awaits the pref-file
+  port. (3) The C's fixed-capacity parse tables (VISUALS_GROUPS_MAX 8,
+  VISUALS_CYCLES_MAX 64) and their PARSE_ERROR_TOO_MANY_ENTRIES limits become
+  growable JS Maps in the cycler; the VISUALS_STEPS_MAX (32) per-cycle cap is
+  still enforced. The shipped data (2 groups, 28+10 cycles, <=15 steps) is well
+  within every limit. (4) Invalid color codes (which abort the C parser via
+  run_parser->quit) are skipped defensively in the builders; unreachable for
+  the valid pack-zero data. (5) monster_x_attr[ridx] (the pref-overridable base
+  attr) is taken as the race's static dAttr, since the web applies no pref
+  attr overrides.
+verified-by:
+  - packages/core/src/visuals/engine.test.ts (color-cycle attrForFrame
+    wrapping/indexing + copy compression + null-on-empty; flicker create gate,
+    getAttrForFrame indexing/wrap + out-of-range BASIC_COLORS sentinel;
+    buildVisualsFlicker selection-attr indexing + last-duplicate-wins;
+    buildVisualsCycler 2 shipped groups, flicker:d and fancy:rainbow reproduced,
+    unknown group/cycle -> BASIC_COLORS, later group+name replaces earlier;
+    set/get cycle for race + no-cycle sentinel + unknown-cycle ignore;
+    animateMonsterAttr non-animated null / RF_ATTR_MULTI roll / RF_ATTR_FLICKER
+    race-cycle then flicker-table then static-base fallbacks)
+  - packages/core/src/visuals/grafmode.test.ts (catalog parses 6 modes in
+    order; per-mode metadata incl. Shockbolt double-height rows; GRAPHICS_NONE
+    fallback appended + resolved; high id; getGraphicsMode hit/miss;
+    is_dh_tile non-tile/no-mode/no-overdraw/in-band/out-of-band)
+  - packages/content/src/pack.test.ts (visuals.json compiles to one singleton
+    record; manifest includes visuals.json in spec order)
