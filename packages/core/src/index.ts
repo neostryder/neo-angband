@@ -143,6 +143,7 @@ export * from "./game/cave-cmd";
 export * from "./game/trap";
 export * from "./game/spell-cmd";
 export * from "./game/loop";
+export * from "./sound";
 
 // Some small derived constants and geometry helpers are defined
 // independently by more than one domain (identical values/behavior).

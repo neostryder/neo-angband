@@ -47,9 +47,11 @@ import type {
   ViewConstants,
   ViewerState,
 } from "@neo-angband/core";
+import { GameEvents } from "@neo-angband/core";
 import { loadGamePack } from "./pack";
 import { GlyphTerm } from "./term";
 import { resolveKey } from "./keymap";
+import { installWebSound } from "./sound";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
@@ -410,6 +412,20 @@ window.addEventListener("keydown", (ev) => {
   // run_test stops it (runGameLoop returns INPUT), so one keypress runs.
   commandBuffer.push({ code: binding.kind, dir: binding.dir });
   advance();
+});
+
+// ---- Sound subsystem wiring (faithful to init_sound + EVENT_SOUND) ----
+// The core SoundEngine subscribes to the "sound" event and plays a sample
+// from the user's pack. NO audio ships with the repo: point the game at your
+// own pack with `?sounds=<base-url>` (the Dubtrain pack the mapping came from
+// is Creative-Commons non-commercial). With no URL the engine is silent.
+// Selection uses the game RNG so it is deterministic. Once the live turn loop
+// routes msgt()/sound() through this bus, in-game events will play here.
+const soundEvents = new GameEvents();
+const soundBase = params.get("sounds") ?? "";
+installWebSound(soundEvents, {
+  baseUrl: soundBase,
+  randint0: (n: number): number => state.rng.randint0(n),
 });
 
 state.updateFov(state);
