@@ -14,9 +14,10 @@
  * Live systems: movement + melee (with faithful "You hit/slay the X" messages),
  * item use (quaff/read/eat/wield/take-off/drop/devices/activate), spellcasting
  * (study 'G', cast/pray 'm'/'p' with a faithful book -> spell picker showing
- * level/mana/fail%), inventory (i), equipment (e), the character sheet (C), the
- * message history (Ctrl-P), pickup ('g'), stairs with real level regeneration
- * ('>'/'<'), and JSON save/continue.
+ * level/mana/fail%), targeting and look ('*' target, "'" target closest, 'l'/'x'
+ * look; aimed spells/devices fire at the target via DIR_TARGET), inventory (i),
+ * equipment (e), the character sheet (C), the message history (Ctrl-P), pickup
+ * ('g'), stairs with real level regeneration ('>'/'<'), and JSON save/continue.
  * The game AUTO-RESUMES the stored save on load (a plain refresh continues where
  * you left off); it autosaves during play, on level change, and when the tab is
  * hidden/closed. 'S' saves on demand; 'N' rolls a new character (allowed after
@@ -64,6 +65,10 @@ import {
   PF,
   spellNeedsAim,
   playerObjectToBook,
+  targetSetMonster,
+  targetSetClosest,
+  targetOkay,
+  TARGET,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -80,7 +85,7 @@ import { GlyphTerm } from "./term";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import { createTileRenderer } from "./tiles";
-import { showTextScreen, selectFromMenu, promptDirection } from "./overlay";
+import { showTextScreen, selectFromMenu, promptDirection, AIM_STAR } from "./overlay";
 import { runBirth } from "./birth";
 import { MessageLog } from "./messages";
 import {
@@ -92,6 +97,8 @@ import {
   equipmentMenu,
   magicBooks,
   bookSpellMenu,
+  targetMenu,
+  lookLines,
 } from "./screens";
 // --- High scores (task #28) ---
 import {
@@ -368,7 +375,7 @@ async function useItem(
   const obj = gearGet(state.gear, handle);
   const args: Record<string, unknown> = { handle };
   if (obj && objNeedsAim(obj, { flavor: game.flavor })) {
-    const dir = await promptDirection(term);
+    const dir = await aimDir();
     if (dir === null) return;
     args["dir"] = dir;
   }
@@ -401,7 +408,7 @@ async function activateItem(): Promise<void> {
   const obj = gearGet(state.gear, handle);
   const args: Record<string, unknown> = { handle };
   if (obj && objNeedsAim(obj, { flavor: game.flavor })) {
-    const dir = await promptDirection(term);
+    const dir = await aimDir();
     if (dir === null) return;
     args["dir"] = dir;
   }
@@ -476,7 +483,7 @@ async function castSpell(): Promise<void> {
   if (spell === undefined) return;
   const args: Record<string, unknown> = { spell };
   if (spellNeedsAim(player, spell)) {
-    const dir = await promptDirection(term);
+    const dir = await aimDir();
     if (dir === null) return;
     args["dir"] = dir;
   }
@@ -519,6 +526,54 @@ async function studySpell(): Promise<void> {
   }
   commandBuffer.push({ code: "study", args });
   advance();
+}
+
+// --- Targeting + look (target.c; get_aim_dir) -------------------------------
+// A monster target lets aimed spells / devices fire at a specific creature
+// (DIR_TARGET, keypad 5) instead of a compass direction. chooseTarget lists the
+// target-able monsters (target_get_monsters, sorted by distance) and sets the
+// pick as state.target; the aim prompt then resolves dir 5 through the engine's
+// targetOkay/targetGet, exactly as upstream's cmd_get_target does. '*' opens the
+// picker mid-aim, "'" targets the closest, and 'l' looks (read-only).
+
+/** Pick a monster to target from the target-able list; true if one was set. */
+async function chooseTarget(): Promise<boolean> {
+  const { items, mons } = targetMenu(state);
+  if (items.length === 0) {
+    say("No Available Target.");
+    return false;
+  }
+  const idx = await selectFromMenu(
+    term,
+    "Target which monster?",
+    items,
+    "[ a-z to target, ESC to cancel ]",
+  );
+  if (idx === null) return false;
+  const mon = mons[idx];
+  if (!mon) return false;
+  targetSetMonster(state, mon);
+  state.healthWho = mon;
+  const n = mon.race.name;
+  say(`${n.charAt(0).toUpperCase()}${n.slice(1)} is targeted.`);
+  return true;
+}
+
+// get_aim_dir: a keypad direction (1-9), or DIR_TARGET (5). '*' opens the target
+// picker and, once a monster is chosen, fires at it (dir 5). Re-prompts if the
+// player backs out of the picker without choosing.
+async function aimDir(): Promise<number | null> {
+  for (;;) {
+    const d = await promptDirection(term);
+    if (d === null) return null;
+    if (d === AIM_STAR) {
+      const chosen = await chooseTarget();
+      render();
+      if (chosen) return 5;
+      continue;
+    }
+    return d;
+  }
 }
 
 // --- High scores (task #28: score.c / ui-score.c) -------------------------
@@ -1023,11 +1078,21 @@ window.addEventListener("keydown", (ev) => {
       m: () => castSpell(),
       p: () => castSpell(),
       G: () => studySpell(),
+      "*": () => chooseTarget().then(() => undefined),
+      l: () => showTextScreen(term, "Look - monsters in view", lookLines(state)),
+      x: () => showTextScreen(term, "Look - monsters in view", lookLines(state)),
     };
     const verb = ITEM_VERBS[ev.key];
     if (verb) {
       ev.preventDefault();
       void openModal(verb);
+      return;
+    }
+    if (ev.key === "'") {
+      // Target the closest target-able monster (a free action, no turn spent).
+      ev.preventDefault();
+      targetSetClosest(state, TARGET.KILL);
+      render();
       return;
     }
     if (ev.key === "g") {

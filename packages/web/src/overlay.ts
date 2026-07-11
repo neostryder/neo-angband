@@ -99,15 +99,19 @@ export function showTextScreen(
   });
 }
 
+/** promptDirection sentinel: the player pressed '*' to pick a target. */
+export const AIM_STAR = -1;
+
 /**
  * get_aim_dir: prompt for a keypad direction (1-9). Resolves to the keypad
  * digit, or null if cancelled. Accepts numpad/number keys and the arrows; 5 is
- * DIR_TARGET (use the current target). A one-line banner shows over the game so
+ * DIR_TARGET (use the current target), and '*' resolves to AIM_STAR so the
+ * caller can open the target picker. A one-line banner shows over the game so
  * the player keeps their bearings while aiming.
  */
 export function promptDirection(
   term: GlyphTerm,
-  prompt = "Aim in which direction? (1-9 / arrows, ESC to cancel)",
+  prompt = "Aim: 1-9 direction, 5/* to target, ESC to cancel",
 ): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
     const { rows, cols } = term.size();
@@ -120,6 +124,7 @@ export function promptDirection(
       ev.preventDefault();
       ev.stopImmediatePropagation();
       if (ev.key === "Escape") return finish(null);
+      if (ev.key === "*") return finish(AIM_STAR);
       const arrows: Record<string, number> = {
         ArrowUp: 8, ArrowDown: 2, ArrowLeft: 4, ArrowRight: 6,
       };

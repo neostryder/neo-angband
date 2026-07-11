@@ -26,8 +26,12 @@ import {
   spellChance,
   spellOkayToCast,
   spellOkayToStudy,
+  targetGetMonsters,
+  squareMonster,
+  lookMonDesc,
+  TARGET,
 } from "@neo-angband/core";
-import type { GameState, GameObject } from "@neo-angband/core";
+import type { GameState, GameObject, Monster } from "@neo-angband/core";
 import type { ScreenLine, MenuItem } from "./overlay";
 import { menuLetter } from "./overlay";
 import { MessageLog, format as formatMessage } from "./messages";
@@ -240,6 +244,37 @@ export function bookSpellMenu(
     sidx.push(idx);
   }
   return { items, sidx };
+}
+
+/** Capitalized monster name ("small kobold" -> "Small kobold"). */
+function capMonName(mon: Monster): string {
+  const n = mon.race.name;
+  return `${n.charAt(0).toUpperCase()}${n.slice(1)}`;
+}
+
+/**
+ * The target-able monsters (target_get_monsters with TARGET_KILL), sorted by
+ * distance, as a selection menu labelled "Name (health, status)". The parallel
+ * monster list lets the caller set the chosen one as the target. Used by both
+ * the target picker ('*') and the read-only look screen ('l').
+ */
+export function targetMenu(state: GameState): { items: MenuItem[]; mons: Monster[] } {
+  const items: MenuItem[] = [];
+  const mons: Monster[] = [];
+  for (const grid of targetGetMonsters(state, TARGET.KILL)) {
+    const mon = squareMonster(state, grid);
+    if (!mon) continue;
+    items.push({ label: `${capMonName(mon)}  (${lookMonDesc(mon)})` });
+    mons.push(mon);
+  }
+  return { items, mons };
+}
+
+/** The look screen lines ('l'): every visible monster and its condition. */
+export function lookLines(state: GameState): ScreenLine[] {
+  const { items } = targetMenu(state);
+  if (items.length === 0) return [{ text: "You see no monsters.", color: DIM }];
+  return items.map((it) => ({ text: it.label, color: FG }));
 }
 
 /** The message-history lines (Ctrl-P): whole log, newest last. */
