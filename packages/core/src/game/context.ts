@@ -313,6 +313,13 @@ export interface GameState {
    */
   updateBonuses?: () => void;
   /**
+   * state->stat_ind: the six internal stat indices from the last
+   * calc_bonuses, kept live (updateBonuses refreshes it in place). The
+   * casting math (spell_chance / spell_cast) reads it, and a shell reads it
+   * to show live fail chances; absent only before the first bonus calc.
+   */
+  statInd?: readonly number[];
+  /**
    * cave->decoy: the grid of the player's active decoy glyph (EF_GLYPH with
    * GLYPH_DECOY), or absent/null when none is deployed. Level state, like
    * traps; cleared when the decoy trap is destroyed or the level changes.
