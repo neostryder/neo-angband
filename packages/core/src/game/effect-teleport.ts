@@ -443,12 +443,17 @@ export function teleportPlayerLevel(
     return;
   }
 
+  /* OPT(player, birth_force_descend): the injected dep wins, else the wired
+   * option store, else off (the shipped default). */
+  const forceDescend =
+    tp.forceDescend ?? state.options?.get("birth_force_descend") ?? false;
+
   let up = true;
   let down = true;
   let targetDepth = getNext(maxPlayerDepth, 1);
 
   /* No going up with force_descend or in the town. */
-  if (tp.forceDescend || depth === 0) up = false;
+  if (forceDescend || depth === 0) up = false;
   /* No forcing the player down to quest levels they cannot leave. */
   if (!up && isQuest(targetDepth)) down = false;
   /* Cannot leave quest levels or descend past the bottom of the dungeon. */
@@ -466,7 +471,7 @@ export function teleportPlayerLevel(
     tp.changeLevel?.(targetDepth);
   } else if (down) {
     say("You sink through the floor.");
-    targetDepth = tp.forceDescend
+    targetDepth = forceDescend
       ? getNext(maxPlayerDepth, 1)
       : getNext(depth, 1);
     tp.changeLevel?.(targetDepth);

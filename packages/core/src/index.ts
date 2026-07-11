@@ -61,6 +61,7 @@ export * from "./obj/randname";
 export * from "./obj/flavor";
 export * from "./obj/randart";
 export * from "./player/types";
+export * from "./player/options";
 export * from "./player/bind";
 export * from "./player/player";
 export * from "./player/calcs";

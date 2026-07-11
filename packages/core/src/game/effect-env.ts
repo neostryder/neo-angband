@@ -219,6 +219,11 @@ export function buildEffectContext(
     ? { msg: deps.onMessage }
     : undefined;
 
+  /* OPT(player, show_damage): the injected dep wins, else the wired option
+   * store. Absent (worldless tests), it stays undefined (falsey), preserving
+   * the prior seam-absent behaviour and the shipped default (off). */
+  const showDamage = deps.showDamage ?? state.options?.get("show_damage");
+
   return {
     rng: state.rng,
     ...(messages ? { messages } : {}),
@@ -226,6 +231,6 @@ export function buildEffectContext(
     player: buildEffectPlayer(state, deps),
     foodValue: deps.foodValue ?? state.z.foodValue,
     ...(deps.level !== undefined ? { level: deps.level } : {}),
-    ...(deps.showDamage !== undefined ? { showDamage: deps.showDamage } : {}),
+    ...(showDamage !== undefined ? { showDamage } : {}),
   };
 }

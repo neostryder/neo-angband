@@ -136,6 +136,9 @@ import type {
 } from "./boot";
 import { Rng } from "../rng";
 import type { Player } from "../player/player";
+import { OptionState } from "../player/options";
+import type { OptionName } from "../player/options";
+import { doRandart } from "../obj/randart";
 import { generateLevel } from "../gen/generate";
 import { iToGrid } from "../gen/util";
 import {
@@ -163,6 +166,14 @@ export interface StartGameOptions extends BootLevelOptions {
   raceName?: string;
   /** Class name (case-insensitive). Default "Warrior". */
   className?: string;
+  /**
+   * Birth / interface option choices, applied over the table defaults at
+   * character creation (option.c options_init_defaults). Birth options become
+   * the immutable birth snapshot; the rest seed the live option store.
+   */
+  optionOverrides?: Partial<Record<OptionName, boolean>>;
+  /** op_ptr->hitpoint_warn (0..9). Default 3 (DEFAULT_HITPOINT_WARN). */
+  hitpointWarn?: number;
 }
 
 /** A started game: the loop's state and registry, plus what a renderer needs. */
@@ -176,6 +187,14 @@ export interface StartedGame {
   flavor: FlavorKnowledge;
   /** seed_flavor: the seed flavor_init used, persisted so a reload matches. */
   seedFlavor: number;
+  /** The player option store (option.c), persisted in the save. */
+  options: OptionState;
+  /**
+   * randart_seed (obj-randart.c): the seed do_randart used when birth_randarts
+   * is on, persisted so a reload reproduces the same random artifact set. 0
+   * when birth_randarts is off (no randart set was generated).
+   */
+  randartSeed: number;
   /**
    * dungeon_change_level + prepare_next_level: generate a fresh level at
    * `depth` from the game's own RNG stream and repopulate the state in
@@ -221,6 +240,9 @@ function wireGame(
     flavors: reg.objects.flavors,
     ordinaryKindCount: reg.objects.ordinaryKindCount,
     nameSections: reg.nameSections,
+    /* OPT(player, birth_randarts): scrub the fixed flavours so the randart
+     * set's items are not pre-identified by their standard colour/adjective. */
+    birthRandarts: state.options?.get("birth_randarts") ?? false,
   });
   state.hasFlavor = (kind) => flavorAssignment.hasFlavor(kind);
   state.flavorText = (kind) => flavorAssignment.text(kind);
@@ -446,6 +468,8 @@ function wireGame(
         },
         /* The per-PROJ player side effects (project-player.c handlers). */
         player: {
+          /* OPT(player, show_damage): the extra "you take N damage" lines. */
+          showDamage: state.options?.get("show_damage") ?? false,
           onSideEffects: makePlayerSideEffects(state, {
             timed: players.timed,
             actor: playerActor,
@@ -825,6 +849,26 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   const players = bindPlayer(pack.player);
   registerBookKinds(reg.objects, players.classes);
 
+  // The player option store (option.c options_init_defaults): seeded from
+  // OPTION_ENTRIES defaults, with the birth/interface choices applied. Built
+  // before level generation so birth_randarts can swap the artifact set first.
+  const options = new OptionState({
+    ...(opts.optionOverrides ? { overrides: opts.optionOverrides } : {}),
+    ...(opts.hitpointWarn !== undefined ? { hitpointWarn: opts.hitpointWarn } : {}),
+  });
+
+  // OPT(player, birth_randarts) (obj-randart.c do_randart): replace the
+  // standard artifact set with a random one BEFORE the starting level is
+  // generated, so its drops come from the randart set. The seed is derived
+  // deterministically from the game seed (decision 22: a function of the seed)
+  // and persisted so a reload reproduces the identical set. Off by default, so
+  // the standard set and the existing draw order are untouched.
+  let randartSeed = 0;
+  if (options.get("birth_randarts")) {
+    randartSeed = new Rng(opts.seed ?? 1).randint0(0x10000000);
+    swapRandartSet(reg, randartSeed);
+  }
+
   const booted = bootLevel(pack, { ...opts, registries: reg });
 
   const race =
@@ -895,6 +939,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     known: newKnownMap(booted.chunk.width, booted.chunk.height),
     target: newTargetState(),
     ignore: new IgnoreSettings(),
+    options,
     lore: new Map(),
     turn: 0,
     z: {
@@ -954,8 +999,23 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     players,
     flavor: wired.flavor,
     seedFlavor,
+    options,
+    randartSeed,
     changeLevel: makeChangeLevel(state, reg, wired.trapDeps),
   };
+}
+
+/**
+ * do_randart (obj-randart.c): generate a random artifact set from `seed` and
+ * install it in place of the registry's standard set. do_randart preserves the
+ * artifact indices (aidx), so live references and saved-object aidx lookups
+ * keep resolving; only the artifact properties change. Mutates the per-game
+ * ObjRegistry (built fresh by bindCore), never a shared global.
+ */
+function swapRandartSet(reg: CoreRegistries, seed: number): void {
+  const randarts = doRandart(reg.objects, seed);
+  reg.objects.artifacts.length = 0;
+  reg.objects.artifacts.push(...randarts);
 }
 
 /** The worn-armor weight calc_mana penalizes (non-weapon/bow/jewelry slots). */
@@ -983,7 +1043,7 @@ function wornArmorWeight(
 
 /** Serialize a started game into the JSON save format (decision 9). */
 export function saveGame(game: StartedGame): SavedGame {
-  return serializeGame(game.state, game.flavor, game.seedFlavor);
+  return serializeGame(game.state, game.flavor, game.seedFlavor, game.randartSeed);
 }
 
 /**
@@ -999,6 +1059,20 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
   const reg = bindCore(pack);
   const players = bindPlayer(pack.player);
   registerBookKinds(reg.objects, players.classes);
+
+  // Restore the option store (older saves lack it: table defaults). Do this
+  // before the artifact-set swap so birth_randarts is known.
+  const options = save.options
+    ? OptionState.restore(save.options)
+    : new OptionState();
+
+  // OPT(player, birth_randarts): rebuild the same random artifact set from the
+  // persisted seed, so saved-object aidx references resolve to the identical
+  // randarts (do_randart preserves indices). Off / seed 0: the standard set.
+  const randartSeed = save.randartSeed ?? 0;
+  if (options.get("birth_randarts") && randartSeed) {
+    swapRandartSet(reg, randartSeed);
+  }
 
   const chunk = deserializeChunk(save.chunk, reg.features);
   const player = deserializePlayer(save.player, players);
@@ -1045,6 +1119,7 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
      * target and loading starts unset). */
     target: newTargetState(),
     ignore: new IgnoreSettings(),
+    options,
     lore: deserializeLore(save.lore),
     turn: save.turn,
     z: {
@@ -1110,6 +1185,8 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     players,
     flavor: wired.flavor,
     seedFlavor,
+    options,
+    randartSeed,
     changeLevel: makeChangeLevel(state, reg, wired.trapDeps, {
       inArena: !!save.arena,
     }),

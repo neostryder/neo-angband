@@ -57,8 +57,9 @@ import { projectObject } from "./project-obj";
 import { projectFeature } from "./project-feat";
 import type { PlayerProjActor, ProjectPlayerHooks } from "./project-player";
 
-/** option.c: op_ptr->hitpoint_warn default (0..9). Options system deferred. */
-export const DEFAULT_HITPOINT_WARN = 3;
+/** option.c: op_ptr->hitpoint_warn default (0..9). Canonical in player/options. */
+import { DEFAULT_HITPOINT_WARN } from "../player/options";
+export { DEFAULT_HITPOINT_WARN };
 
 /**
  * The projection source, unified across the two drivers. Built from a struct
