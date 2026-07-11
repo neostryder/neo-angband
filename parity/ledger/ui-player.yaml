@@ -1,0 +1,129 @@
+module: packages/core/src/game/char-sheet.ts (characterPanels / statTable)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/ui-player.c
+    items:
+      - panels[] (L849) as characterPanels - the five character-screen panels
+        in table order: topleft, misc, midleft, combat, skills. Each
+        panel_line(attr,label,fmt,..) becomes a CharSheetLine{label, value:
+        formatted, color: attr}; a panel_space() separator is kept as an
+        explicit blank line (label "" value "") so a shell can map line ->
+        screen row. The DRAW half - display_panel's left/right column
+        alignment and the panels[] region layout - stays with each shell.
+      - get_panel_topleft (L694) - Name/Race/Class/Title/HP/SP, all COLOUR_L_BLUE,
+        "%s" and "%d/%d". Title from show_title.
+      - get_panel_misc (L826) - Age, Height "%d'%d\"" (ht/12, ht%12), Weight
+        "%dst %dlb" (wt/14, wt%14), the "Turns used:" header (empty value),
+        Game "%d" turn, Standard total_energy/100, Resting resting_turn; all
+        COLOUR_L_BLUE.
+      - get_panel_midleft (L707) - Level / Cur Exp coloured by max_color, Max Exp
+        / Gold / Adv Exp / Max Depth L_GREEN, a panel_space, and Burden "%.1f lb"
+        (total_weight/10) + Overweight "%d.%d lb" (-diff/10, abs(diff)%10) both
+        coloured L_RED when weight_remaining < 0 else L_GREEN.
+      - get_panel_combat (L728) - Armor "[%d,%+d]", a space, Melee "%dd%d,%+d",
+        To-hit "%d,%+d" (bth/10, hit), Blows "%d.%d/turn" (num_blows/100,
+        num_blows/10%10), a space, Shoot to-dam "%+d", To-hit, Shots "%d.%d/turn"
+        (num_shots/10, num_shots%10); all COLOUR_L_BLUE. bth = skills[*] * 10 /
+        BTH_PLUS_ADJ (=3). The weapon adds its dice and object_to_hit /
+        object_to_dam; bless_wield adds +2 to melee hit.
+      - get_panel_skills (L778) - Saving Throw / Disarm phys / Disarm magic /
+        Searching coloured by colour_table[skill/10], Magic Devices by
+        colour_table[skill/13], Stealth by likert, Infravision "%d ft"
+        (see_infra*10) L_GREEN, Speed by show_speed (attr L_UMBER when the
+        TMD-adjusted net speed < 110 else L_GREEN). The BOUND(x,min,max) clamps
+        are ported exactly: saving throw 0..100, disarm phys/magic (each minus
+        depth/5) 2..100, search 0..100.
+      - likert (L274) as likert - y floored at 1, x<0 -> "Very Bad"/RED, then the
+        x/y switch: Bad/Poor RED, Fair/Good/Very Good YELLOW, Excellent/Superb/
+        Heroic/Legendary L_GREEN, buckets copied verbatim.
+      - show_title (L626) as showTitle - wizard / winner (or lev>PY_MAX_LEVEL) /
+        class title[(lev-1)/5]. NOTE: no shape branch here, unlike
+        ui-display.c's fmt_title (display.ts fmtTitle).
+      - show_adv_exp (L636) as showAdvExp - player_exp[lev-1]*expfact/100, or
+        "********" at the level maximum.
+      - show_depth (L650) as showDepth - "Town" or "%d' (L%d)" using
+        player->max_depth (NOT the live cave depth fmt_depth uses).
+      - show_speed (L661) as showSpeed - TMD_FAST -10 / TMD_SLOW +10, "Normal"
+        at 110, else "%d.%dx (%d)" (effective_speed) or "%d (%d.%dx)" via
+        extract_energy[tmp] / extract_energy[110].
+      - max_color (L678) as maxColor - val<max ? YELLOW : L_GREEN.
+      - colour_table[] (L686) as COLOUR_TABLE - the 11 colours, copied verbatim.
+      - display_player_stat_info (L449) as statTable - per STAT: natural =
+        cnv_stat(stat_max), raceBonus "%+3d" r_adj, classBonus "%+3d" c_adj,
+        equipBonus "%+3d" stat_add, best = cnv_stat(stat_top), reduced =
+        cnv_stat(stat_use) only when drained (stat_cur<stat_max, lower-case
+        label), naturalMax = stat_max==18+100 (the "!" indicator). Labels from
+        stat_names / stat_names_reduced (replicated locally from display.ts).
+notes: >-
+  Front-end-agnostic DATA port of the classic character screen: characterPanels
+  returns the five panels[] entries as ordered CharSheetLine{label,value,color}
+  rows (with panel_space kept as a blank line), and statTable returns the six
+  StatRow columns. printf formatting (%+d, %+3d, %.1f, cnv_stat) is baked into
+  the value strings; column headers, region placement and display_panel
+  alignment are draw-half concerns left to the shell. cnv_stat is reused from
+  display.ts; STAT_NAMES / STAT_NAMES_REDUCED are replicated locally (they are
+  file-local consts in display.ts).
+deferred:
+  - The resist / ability / sustain grid is NOT ported here: it is the separate
+    ui-entry.c slice. display_player_flag_info / display_resistance_panel
+    (L379/L437) and display_player_sust_info (L521) all drive the ui_entry.c
+    system (compute_ui_entry_values_for_object / _for_player,
+    ui_entry_renderer_apply, char_sheet_config loaded from ui_entry.txt /
+    ui_entry_renderers.txt) plus display_player_equippy. That whole grid, and
+    its cached char_sheet layout, belong to the ui-entry.c port slice.
+  - The combat panel reads player->known_state (the rune-gated display state)
+    for ac / to_a / to_h / to_d / bless_wield and obj->known for the weapon
+    dice and object_to_hit / object_to_dam. The port uses the REAL combat state
+    (actor.combat) and the real weapon object, exactly the known_state /
+    real-state deferral display.ts's prt_ac took (tracked in ui-display.yaml and
+    obj-desc.yaml); an unknown rune is therefore not hidden from the panel.
+  - CharSheetDeps seams (defaults chosen for a freshly born headless character;
+    the session wires the real player_state values):
+    - fullName (default ""): player->full_name; the port Player has no name
+      field (only history).
+    - restingTurn (default 0): player->resting_turn (not on the port Player).
+    - weightRemaining (default 0): weight_remaining(player); the encumbrance
+      formula is deferred (player/calcs.ts), so Overweight shows "0.0 lb" and
+      Burden colours L_GREEN by default.
+    - numShots (default 0): player->state.num_shots; PlayerCombatState omits it.
+    - seeInfra (default player->race->infravision): player->state.see_infra;
+      calc_bonuses seeds it from the race at birth, so the racial infra is the
+      faithful headless default.
+    - statAdd (default all-zero): player->state.stat_add - the equipment stat
+      bonuses; no computed player_state is stored.
+    - statTop (default modify_stat_value(stat_max, race+class adj)):
+      player->state.stat_top; equipment / timed contributions deferred.
+    - statUse (default modify_stat_value(stat_cur, race+class adj)):
+      player->state.stat_use; same fallback as display.ts's statUse.
+    - effectiveSpeed (default false): OPT(player, effective_speed).
+    - wizard / totalWinner (defaults false): player->wizard /
+      player->total_winner (UI/debug members, not on the port Player); the
+      lev > PY_MAX_LEVEL winner branch of show_title IS live.
+    - meleeWeapon (default state.actor.weapon): equipped_item_by_slot_name(
+      player, "weapon").
+    - launcher (default null): equipped_item_by_slot_name(player, "shooting");
+      actor carries no launcher-slot accessor yet, so ranged dam/hit show the
+      base (0 / to_h) by default.
+  - Members read directly off the port (NOT seams, listed for clarity):
+    player.age / ht / wt / maxDepth / lev / maxLev / exp / maxExp / au / chp /
+    mhp / csp / msp, player.upkeep.totalWeight (Burden), state.turn (Game),
+    state.actor.totalEnergy (Standard), state.actor.speed, state.chunk.depth
+    (the disarm depth adjustment), actor.combat.{ac,toA,toH,toD,blessWield,
+    numBlows,skills}.
+  - The draw half is not ported: display_panel (L586) column alignment, the
+    panels[] region bounds (L849), display_player_xtra_info's Term_* placement
+    and history text_out (L858), and the "Self/RB/CB/EB/Best" column headers of
+    display_player_stat_info (L463).
+verified-by:
+  - game/char-sheet.test.ts (16 tests) - likert boundaries (x<0 -> Very Bad/RED,
+    each x/y bucket -> exact desc+colour, y<=0 guard), max_color, show_speed
+    Normal vs the TMD_FAST/SLOW-adjusted delta form, show_depth Town vs
+    "50' (L1)"/"500' (L10)", the skills BOUND clamps (saving throw 0..100,
+    disarm phys minus depth/5 clamped 2..100) and colour_table skill/10 vs
+    skill/13 indexing, infravision + speed colours, the combat panel
+    label/format ("[0,+0]", "1d1,+0", "6,+0", "1.0/turn", "0.0/turn") and the
+    panel_space blank line, the topleft HP/SP rows + blank name, the panel key
+    order [topleft,misc,midleft,combat,skills], and the stat table (STAT_MAX
+    rows, cnv_stat natural/best, "%+3d" race/class/equip bonuses, drained ->
+    lower-case label + non-null reduced, naturalMax "!" at 18/100).
