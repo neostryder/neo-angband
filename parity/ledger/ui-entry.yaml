@@ -1,0 +1,168 @@
+module: packages/core/src/game/ui-entry.ts (buildUiEntryConfig / characterGrid)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/ui-entry.c
+    items:
+      - bind_object_property_to_ui_entry_by_name (L212) / parse_object_property_bindui
+        (obj-init.c L3401) as bindObjectProperties - each object_property record's
+        bindui{ui,aux,uival} is resolved to the concrete ui_entry by name; the
+        property type string ("stat"/"mod"/"flag"/"ignore"/"resistance"/
+        "vulnerability"/"immunity", obj-init.c L3213) maps to OBJ_PROPERTY_* and
+        the code to its index (STAT/OBJ_MOD/OF/ELEM). have_value = uival present.
+      - bind_player_ability_to_ui_entry_by_name (L269) / parse_player_prop_bindui
+        (init.c L1292) as bindPlayerProperties - "player"/"object" abilities bind
+        by PF_/OF_ code to the named entry; "element" abilities expand per element
+        (finish_parse_player_prop init.c L1362, one ability for elements 0..n-2)
+        to "<ui><ELEM>". have_value = !(uival == "special").
+      - get_ui_entry_label (L337) as getUiEntryLabel - the length-1 visible label
+        padded left/right, drawing on the shortened-label table or the full label.
+      - cmp_desc_prio (L389) + initialize_ui_entry_iterator_const (L459) as
+        iterateEntries - filter !TEMPLATE_ONLY entries having both categories, sort
+        by descending priority in the sort category, tie-break by strcmp(name).
+      - is_ui_entry_for_known_rune (L591) as isUiEntryForKnownRune - true only when
+        every bound obj_prop / non-"player" ability rune is known: modifiers via
+        p.objKnown.modifiers[ind], flags via p.objKnown.flags.has(ind), elements via
+        p.objKnown.elInfo[ind].resLevel; "player" abilities never change the result.
+      - compute_ui_entry_values_for_object (L708) as computeObjectValues - NULL /
+        no-obj_prop -> NOT_PRESENT; per property switch on STAT/MOD (obj.modifiers),
+        FLAG (obj.flags), IGNORE (obj.elInfo[].flags & EL_INFO_IGNORE), RESIST/VULN/
+        IMM (obj.elInfo[].resLevel), with the have_value override, the aux v/a swap,
+        the p.objKnown knowledge gate producing UI_ENTRY_UNKNOWN_VALUE, and the
+        all_aux/any_aux post-processing (val 0 when all aux, auxval 0 when none aux).
+      - compute_ui_entry_values_for_player (L910) as computePlayerValues - the
+        p_abilities loop for "player" (playerHas + FAST_SHOT / BRAVERY_30 special
+        cases), "object" (playerFlags cache + shape.flags), "element" (race.elInfo +
+        shape.elInfo) abilities, then the intrinsic stat/mod loop (shape.modifiers,
+        modifier_to_skill TUNNEL->r_skills[DIGGING]/20, and the race.infravision add
+        for OBJ_MOD_INFRA); the TIMED_AS_AUX aux mapping and the aux v/a swap.
+      - get_timed_modifier_effect (L1370) as getTimedModifierEffect - the hardcoded
+        BLOODLUST/20 (blows), SINFRA 5 (infra), FAST|SPRINT/STONESKIN/SLOW/TERROR
+        (speed), STEALTH 10 map, read straight off p.timed[].
+      - modifier_to_skill (L1317) as modifierToSkill - only OBJ_MOD_TUNNEL ->
+        (SKILL_DIGGING, 1/20) is live (stealth/search are #if 0 upstream).
+      - run_parse_ui_entry / hatch_embryo / parse_entry_* (L1794-2318) as
+        buildEntries / applyRecordToEntry - template resolution (copy renderer/
+        combiner/default_priority/flags, merge categories), the element/stat generic
+        expansion (parameter -> one "<name><PARAM>" entry each, default label = the
+        param name, priority via the negative_index / index scheme applied to the
+        param index), the shortened-label overrides (label1..label10) and the
+        fill_out_shortened (L1756) / finish_parse (L2389) default-priority fill.
+  - path: src/ui-entry-combiner.c
+    items:
+      - the nine combiners (init/accum/finish/vec) as the COMBINERS table:
+        ADD (L84, overflow guarded at INT_MAX-2 / INT_MIN), BITWISE_OR (L86),
+        FIRST (L88), LARGEST (L90), LAST (L92), LOGICAL_OR (L94),
+        LOGICAL_OR_WITH_CANCEL (L96, negative overrides positive -> -1), RESIST_0
+        (L100, immunity trumps, resist+vuln -> UI_ENTRY_RESIST0_RES_VUL via the
+        work[] most-negative tracking), SMALLEST (L102). UI_ENTRY_UNKNOWN_VALUE /
+        UI_ENTRY_VALUE_NOT_PRESENT / UI_ENTRY_RESIST0_RES_VUL from
+        ui-entry-combiner.h (INT_MAX, INT_MAX-1, INT_MAX-2).
+  - path: src/ui-entry-renderers.c
+    items:
+      - ui_entry_renderer_apply (L309) as applyRenderer - the DATA half of the six
+        backends: for each column a {symbol, palette-colour} cell and the combined-
+        coloured label palette index. COMPACT_RESIST (L572) via convert_vanilla_res_
+        level + combined_effect_tbl / combined_label_tbl; COMPACT_FLAG (L696);
+        COMPACT_FLAG_WITH_CANCEL (L786); NUMERIC_AS_SIGN (L911, incl. the
+        alternate-color init of 7); NUMERIC_WITH_COMBINED_AUX (L1015);
+        NUMERIC_WITH_BOOL_AUX (L1160). The colour is colors[palette_index +
+        color_offset] with the every-other-column color_offset toggle.
+      - format_int (L462) as formatInt - the zero / overflow symbol, optional +1,
+        optional sign, right-justified into ndigit(+sign) columns.
+      - the renderer parser (init_parse_ui_entry_renderer L1634) as buildRenderers -
+        code -> backend, combiner (default from backend), colors / labelcolors /
+        symbols with the finish-time augment from the backend defaults
+        (list-ui-entry-renderers.h via generated/ui-entry-renderers.ts), ndigit,
+        sign, and the combined-renderer link.
+  - path: src/ui-player.c
+    items:
+      - configure_char_sheet (L185) as the region/entry selection inside
+        characterGrid - the four region categories [resistances, abilities,
+        hindrances, modifiers] each iterated with [CHAR_SCREEN1, region] sorted by
+        the region category, the stat_mod_entries iterated with [CHAR_SCREEN1,
+        stat_modifiers] capped at STAT_MAX, and the row cap (n + 2 + (2+STAT_MAX) >
+        22 -> n = 20 - row) that fits the 24-row screen.
+      - display_resistance_panel (L379) as the resist-panel rows - per row loop the
+        body.count equipment slots (compute_ui_entry_values_for_object) then the
+        player (compute_ui_entry_values_for_player), render with
+        is_ui_entry_for_known_rune as known_rune; the 6-char label is
+        get_ui_entry_label(entry, 6, pad_left) with the null slot replaced by ':'
+        (L252-253).
+      - display_player_sust_info (L521) as statModPanel - the stat_mod_entries
+        rendered with no label and the player column value forced to 0 (only the
+        sustain aux shows for the player, L563).
+      - display_player_flag_info (L437) as the four-panel loop.
+notes: >-
+  Front-end-agnostic DATA port of the second character screen's resist / ability
+  / sustain / modifier grid. buildUiEntryConfig(packRecords) compiles
+  ui_entry.txt + ui_entry_base.txt + ui_entry_renderer.txt (plus the bindui rows
+  of object_property.json / player_property.json) into concrete ui_entry records
+  with bound properties; characterGrid(state, config, deps) returns, per panel,
+  ordered rows of {label, labelColor, cells:[{symbol,color}]} - one cell per
+  equipment slot then the player. Colours are COLOUR_* indices; symbols are the
+  glyph strings the shell draws. Compilation is deliverable 1
+  (packages/content/src/specs/ui-entry.ts + regenerated pack JSON).
+deferred:
+  - Per-object known twin (obj->known) is not ported (see obj/knowledge.ts
+    L22-27), so compute_ui_entry_values_for_object uses the REAL object's
+    flags/modifiers/el_info gated by the player's rune knowledge (p.objKnown) as
+    the object_flag_is_known / object_element_is_known stand-in - the same
+    known_state deferral char-sheet.yaml / obj-desc.yaml took. An unknown rune on
+    a present object still yields UI_ENTRY_UNKNOWN_VALUE; a rune-hidden value is
+    not otherwise concealed.
+  - The upstream separate curse-object iteration (compute L833-863) is NOT ported:
+    the port's curse model differs (curse data is merged into the object's own
+    flags/modifiers/el_info by obj/object.ts mergeCurses), so computeObjectValues
+    reads the object's own combined properties and does not walk obj->curses.
+  - UiEntryDeps seams (defaults reproduce a headless character with no active
+    timed effects; a session wires the computed player_state):
+    - timedObjectFlags (default empty FlagSet): player_flags_timed(p) (player.c
+      L310, the OF-flag dups of active timed effects). The ported timed registry
+      carries no oflag_dup field, so timed OF-flag contributions default to none;
+      OF_TRAP_IMMUNE IS still added from p.timed[TMD_TRAPSAFE] directly.
+    - timedElementEffect (default () => 0): get_timed_element_effect(p, elem)
+      (ui-entry.c L1357) - 1 if a timed effect grants a temp resist. The ported
+      timed registry carries no temp_resist field, so timed element resists
+      default to none.
+    - playerHas (default reads p.pflags if present, else false): player_has(p,
+      PF_*) (player.h L440, pf_has(p->state.pflags)). The port has no computed
+      state.pflags, so the "player"-type abilities (only FAST_SHOT and BRAVERY_30
+      in the data) contribute nothing by default.
+  - PF_FAST_SHOT (compute L974) needs the equipped launcher and
+    KF_SHOOTS_ARROWS; that launcher-slot reach is deferred, so its contribution
+    is 0 (BRAVERY_30's p.lev >= 30 branch IS live).
+  - The show_combined path and the EQUIPCMP_SCREEN (equippable-comparison)
+    rendering are not wired: characterGrid drives CHAR_SCREEN1 only (the char
+    screen always sets show_combined = false and alternate_color_first = false,
+    so no combined cell is produced - the combined value only colours the row
+    label). The EQUIPCMP_SCREEN category is compiled and bound but not iterated.
+  - Per-category priority overrides are not reconstructable: the pack compiler
+    erases the intra-record order of category vs priority lines, so a priority set
+    after a specific category cannot be attributed to it. The shipped ui_entry.txt
+    / ui_entry_base.txt never do this (priority always precedes any category, i.e.
+    it sets the default priority), so every category inherits defaultPriority -
+    faithful for the shipped data.
+  - The DRAW half stays with the shell: the Term_putch / Term_putstr / safe_queue_
+    chars row/col placement, region_erase, the value/label/combined position
+    stepping (struct ui_entry_details positions), vertical labels, the equippy
+    header (display_player_equippy L350) and the "abcdefgimnop@" / stat column
+    headers.
+verified-by:
+  - game/ui-entry.test.ts (28 tests) - the nine combiners incl. RESIST_0
+    (immunity trumps, resist+vuln -> RES_VUL marker) and LOGICAL_OR_WITH_CANCEL
+    (negative overrides positive); generic element/stat expansion with the right
+    labels (Acid/Elec/Cold/Disenchant, STR/CON) and shortened labels (Pois via
+    label5, Nx via label2, Nexus/Ac filled from the full label); the undecorated
+    parameterized name is not entered and templates stay template-only; bindui
+    resolution (Acid gets resistance/vulnerability/immunity + 3 element abilities,
+    STR gets the stat + SUST_STR aux); the priority-sorted resistance panel
+    (ACID..DISEN) and abilities panel (pFear first); the renderer symbol mapping
+    for COMPACT_RESIST (unknown/not-present/none/resist/vuln/immune -> ?..+-*),
+    NUMERIC_AS_SIGN (.+-) and NUMERIC_WITH_BOOL_AUX (single digit / negative
+    overflow / not-present) and the unknown-rune grey label; computeObjectValues
+    (NULL -> NOT_PRESENT, known resist -> 1, unlearned rune -> UNKNOWN, stat + its
+    sustain aux); isUiEntryForKnownRune flipping once the rune is learned; and the
+    characterGrid assembly (four resist panels + the five-row stat-mod panel,
+    body.count+1 cells, the " Acid:" / " Pois:" / "Nexus:" labels, empty sustain
+    labels).

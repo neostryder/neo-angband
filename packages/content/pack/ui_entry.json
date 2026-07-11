@@ -1,0 +1,382 @@
+{
+  "file": "ui_entry",
+  "source": "lib/gamedata/ui_entry.txt",
+  "records": [
+    {
+      "name": "stat_mod_ui_compact_0",
+      "parameter": "stat",
+      "renderer": "char_screen1_stat_mod_renderer",
+      "combine": "ADD",
+      "category": [
+        "stat_modifiers",
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ],
+      "priority": "negative_index",
+      "desc": [
+        "Generic UI entry for compact display of modifier and sustain information",
+        " for one of the core statistics.  Given that this is linked to other",
+        " entries that are hardcoded, the priority should be negative_index and",
+        " this should be the only thing with stat_modifiers and CHAR_SCREEN1 as",
+        " categories."
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0",
+      "parameter": "element",
+      "renderer": "char_screen1_resist_renderer",
+      "combine": "RESIST_0",
+      "category": [
+        "resistances"
+      ],
+      "priority": "negative_index",
+      "flags": [
+        "TIMED_AS_AUX"
+      ],
+      "desc": [
+        "Generic UI entry for compact display of a resistance flag with the",
+        " label colored by the combined resistance across several sources.",
+        "  It is used for rows in the second character screen's display of",
+        " resistances.  Specializations below set the label and categories for",
+        " particular screens."
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<ACID>",
+      "label": "Acid",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<ELEC>",
+      "label": "Elec",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<FIRE>",
+      "label": "Fire",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<COLD>",
+      "label": "Cold",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<POIS>",
+      "label": "Poison",
+      "label5": "Pois",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<LIGHT>",
+      "label": "Light",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<DARK>",
+      "label": "Dark",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<SOUND>",
+      "label": "Sound",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<SHARD>",
+      "label": "Shard",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<NEXUS>",
+      "label": "Nexus",
+      "label2": "Nx",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<NETHER>",
+      "label": "Nether",
+      "label5": "Nethr",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<CHAOS>",
+      "label": "Chaos",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "resist_ui_compact_0<DISEN>",
+      "label": "Disenchant",
+      "category": [
+        "CHAR_SCREEN1",
+        "EQUIPCMP_SCREEN"
+      ]
+    },
+    {
+      "name": "pfear_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "Fear resistance",
+      "label5": "pFear",
+      "priority": "0"
+    },
+    {
+      "name": "pblind_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "Blindess resistance",
+      "label5": "pBlnd",
+      "priority": "-1"
+    },
+    {
+      "name": "pconf_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "Confusion resistance",
+      "label5": "pConf",
+      "priority": "-2"
+    },
+    {
+      "name": "pstun_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "Stun resistance",
+      "label5": "pStun",
+      "priority": "-3"
+    },
+    {
+      "name": "holdlife_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "Hold life",
+      "label5": "HLife",
+      "priority": "-4"
+    },
+    {
+      "name": "regen_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "Regeneration",
+      "priority": "-5"
+    },
+    {
+      "name": "esp_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "ESP",
+      "priority": "-6"
+    },
+    {
+      "name": "see_invis_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "See invisible",
+      "label2": "SI",
+      "label5": "S.Inv",
+      "priority": "-7"
+    },
+    {
+      "name": "free_action_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "Free action",
+      "label2": "FA",
+      "label5": "FrAct",
+      "priority": "-8"
+    },
+    {
+      "name": "feather_falling_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "Feather falling",
+      "label2": "Ft",
+      "label5": "Feath",
+      "priority": "-9"
+    },
+    {
+      "name": "slow_digestion_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "Slow digestion",
+      "label2": "SD",
+      "label5": "S.Dig",
+      "priority": "-10"
+    },
+    {
+      "name": "trap_immunity_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "Trap immunity",
+      "label2": "TI",
+      "label5": "TrpIm",
+      "priority": "-11"
+    },
+    {
+      "name": "bless_ui_compact_0",
+      "template": "good_flag_ui_compact_0",
+      "label": "Bless",
+      "priority": "-12"
+    },
+    {
+      "name": "imphp_ui_compact_0",
+      "template": "other_flag_ui_compact_0",
+      "label": "Impaired HP recovery",
+      "label2": "IH",
+      "label5": "ImpHP",
+      "priority": "0"
+    },
+    {
+      "name": "impsp_ui_compact_0",
+      "template": "other_flag_ui_compact_0",
+      "label": "Impaired mana recovery",
+      "label2": "IS",
+      "label5": "ImpSP",
+      "priority": "-1"
+    },
+    {
+      "name": "fear_ui_compact_0",
+      "template": "other_flag_ui_compact_0",
+      "label": "Fear",
+      "priority": "-2"
+    },
+    {
+      "name": "aggravate_ui_compact_0",
+      "template": "other_flag_ui_compact_0",
+      "label": "Aggravate",
+      "label5": "Aggrv",
+      "priority": "-3"
+    },
+    {
+      "name": "noteleport_ui_compact_0",
+      "template": "other_flag_ui_compact_0",
+      "label": "No teleportation",
+      "label2": "NT",
+      "label5": "NoTel",
+      "priority": "-4"
+    },
+    {
+      "name": "drainxp_ui_compact_0",
+      "template": "other_flag_ui_compact_0",
+      "label": "Drain experience",
+      "label2": "DE",
+      "label5": "DrExp",
+      "priority": "-5"
+    },
+    {
+      "name": "sticky_ui_compact_0",
+      "template": "other_flag_ui_compact_0",
+      "label": "Sticky curse",
+      "label2": "Sy",
+      "label5": "Stick",
+      "priority": "-6"
+    },
+    {
+      "name": "fragile_ui_compact_0",
+      "template": "other_flag_ui_compact_0",
+      "label": "Fragile",
+      "label5": "Fragl",
+      "priority": "-7"
+    },
+    {
+      "name": "stealth_ui_compact_0",
+      "template": "numeric_as_sign_ui_0",
+      "label": "Stealth",
+      "label5": "Stea.",
+      "priority": "0"
+    },
+    {
+      "name": "search_ui_compact_0",
+      "template": "numeric_as_sign_ui_0",
+      "label": "Search",
+      "label5": "Sear.",
+      "priority": "-1"
+    },
+    {
+      "name": "infravision_ui_compact_0",
+      "template": "numeric_as_sign_ui_0",
+      "label": "Infravision",
+      "priority": "-2"
+    },
+    {
+      "name": "tunneling_ui_compact_0",
+      "template": "numeric_as_sign_ui_0",
+      "label": "Tunneling",
+      "label5": "Tunn.",
+      "priority": "-3"
+    },
+    {
+      "name": "speed_ui_compact_0",
+      "template": "numeric_as_sign_ui_0",
+      "label": "Speed",
+      "priority": "-4"
+    },
+    {
+      "name": "blows_ui_compact_0",
+      "template": "numeric_as_sign_ui_0",
+      "label": "Attack speed",
+      "label5": "Blows",
+      "priority": "-5"
+    },
+    {
+      "name": "shots_ui_compact_0",
+      "template": "numeric_as_sign_ui_0",
+      "label": "Shooting speed",
+      "label5": "Shots",
+      "priority": "-6"
+    },
+    {
+      "name": "shooting_power_ui_compact_0",
+      "template": "numeric_as_sign_ui_0",
+      "label": "Shooting power",
+      "label5": "Might",
+      "priority": "-7"
+    },
+    {
+      "name": "light_ui_compact_0",
+      "template": "numeric_as_sign_ui_0",
+      "label": "Light",
+      "label2": "Lt",
+      "priority": "-8"
+    },
+    {
+      "name": "damage_reduction_ui_compact_0",
+      "template": "numeric_as_sign_ui_0",
+      "label": "Damage reduction",
+      "label2": "DR",
+      "label5": "D.Red",
+      "priority": "-9"
+    },
+    {
+      "name": "movement_speed_ui_compact_0",
+      "template": "numeric_as_sign_ui_0",
+      "label": "Movement speed",
+      "label2": "MS",
+      "label5": "Moves",
+      "priority": "-10"
+    }
+  ]
+}
