@@ -1,0 +1,680 @@
+{
+  "file": "visuals",
+  "source": "lib/gamedata/visuals.txt",
+  "records": [
+    {
+      "flicker": [
+        {
+          "color": "d",
+          "name": "black light-dark light-red",
+          "flicker-color": [
+            "d",
+            "D",
+            "R"
+          ]
+        },
+        {
+          "color": "w",
+          "name": "white light-white light-blue",
+          "flicker-color": [
+            "w",
+            "W",
+            "B"
+          ]
+        },
+        {
+          "color": "s",
+          "name": "slate white light-dark",
+          "flicker-color": [
+            "s",
+            "w",
+            "D"
+          ]
+        },
+        {
+          "color": "o",
+          "name": "orange yellow light-red",
+          "flicker-color": [
+            "o",
+            "y",
+            "R"
+          ]
+        },
+        {
+          "color": "r",
+          "name": "red light-red light-pink",
+          "flicker-color": [
+            "r",
+            "R",
+            "I"
+          ]
+        },
+        {
+          "color": "g",
+          "name": "green light-green light-teal",
+          "flicker-color": [
+            "g",
+            "G",
+            "T"
+          ]
+        },
+        {
+          "color": "b",
+          "name": "blue light-blue slate",
+          "flicker-color": [
+            "b",
+            "B",
+            "s"
+          ]
+        },
+        {
+          "color": "u",
+          "name": "umber light-umber mustard",
+          "flicker-color": [
+            "u",
+            "U",
+            "M"
+          ]
+        },
+        {
+          "color": "D",
+          "name": "light-dark slate light-violet",
+          "flicker-color": [
+            "D",
+            "s",
+            "V"
+          ]
+        },
+        {
+          "color": "W",
+          "name": "(light slate/light white) white slate light-white",
+          "flicker-color": [
+            "w",
+            "s",
+            "W"
+          ]
+        },
+        {
+          "color": "P",
+          "name": "light-purple purple light-violet",
+          "flicker-color": [
+            "P",
+            "p",
+            "V"
+          ]
+        },
+        {
+          "color": "y",
+          "name": "yellow light-yellow, mustard",
+          "flicker-color": [
+            "y",
+            "Y",
+            "M"
+          ]
+        },
+        {
+          "color": "R",
+          "name": "light-red red light-pink",
+          "flicker-color": [
+            "R",
+            "r",
+            "I"
+          ]
+        },
+        {
+          "color": "G",
+          "name": "light-green light-teal green",
+          "flicker-color": [
+            "G",
+            "T",
+            "g"
+          ]
+        },
+        {
+          "color": "B",
+          "name": "light-blue deep-light-blue blue-slate",
+          "flicker-color": [
+            "B",
+            "Z",
+            "z"
+          ]
+        },
+        {
+          "color": "U",
+          "name": "light-umber umber mud",
+          "flicker-color": [
+            "U",
+            "u",
+            "m"
+          ]
+        },
+        {
+          "color": "p",
+          "name": "purple violet magenta",
+          "flicker-color": [
+            "p",
+            "v",
+            "i"
+          ]
+        },
+        {
+          "color": "v",
+          "name": "violet light-violet magenta",
+          "flicker-color": [
+            "v",
+            "V",
+            "i"
+          ]
+        },
+        {
+          "color": "t",
+          "name": "teal light-teal light-green",
+          "flicker-color": [
+            "t",
+            "T",
+            "G"
+          ]
+        },
+        {
+          "color": "m",
+          "name": "mud yellow umber",
+          "flicker-color": [
+            "m",
+            "y",
+            "u"
+          ]
+        },
+        {
+          "color": "Y",
+          "name": "light-yellow white light-umber",
+          "flicker-color": [
+            "Y",
+            "w",
+            "U"
+          ]
+        },
+        {
+          "color": "i",
+          "name": "magenta light-pink light-red",
+          "flicker-color": [
+            "i",
+            "I",
+            "R"
+          ]
+        },
+        {
+          "color": "T",
+          "name": "light-teal light-white teal",
+          "flicker-color": [
+            "T",
+            "W",
+            "t"
+          ]
+        },
+        {
+          "color": "V",
+          "name": "light-violet light-purple violet",
+          "flicker-color": [
+            "V",
+            "P",
+            "v"
+          ]
+        },
+        {
+          "color": "I",
+          "name": "light-pink light-red light-white",
+          "flicker-color": [
+            "I",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "color": "M",
+          "name": "mustard yellow umber",
+          "flicker-color": [
+            "M",
+            "y",
+            "u"
+          ]
+        },
+        {
+          "color": "z",
+          "name": "blue-slate blue slate",
+          "flicker-color": [
+            "z",
+            "b",
+            "s"
+          ]
+        },
+        {
+          "color": "Z",
+          "name": "deep-light-blue light-blue blue",
+          "flicker-color": [
+            "Z",
+            "B",
+            "b"
+          ]
+        }
+      ],
+      "cycle": [
+        {
+          "group": "flicker",
+          "name": "d",
+          "cycle-color": [
+            "d",
+            "D",
+            "R"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "w",
+          "cycle-color": [
+            "w",
+            "W",
+            "B"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "s",
+          "cycle-color": [
+            "s",
+            "w",
+            "D"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "o",
+          "cycle-color": [
+            "o",
+            "y",
+            "R"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "r",
+          "cycle-color": [
+            "r",
+            "R",
+            "I"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "g",
+          "cycle-color": [
+            "g",
+            "G",
+            "T"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "b",
+          "cycle-color": [
+            "b",
+            "B",
+            "s"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "u",
+          "cycle-color": [
+            "u",
+            "U",
+            "M"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "D",
+          "cycle-color": [
+            "D",
+            "s",
+            "V"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "W",
+          "cycle-color": [
+            "w",
+            "s",
+            "W"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "P",
+          "cycle-color": [
+            "P",
+            "p",
+            "V"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "y",
+          "cycle-color": [
+            "y",
+            "Y",
+            "M"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "R",
+          "cycle-color": [
+            "R",
+            "r",
+            "I"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "G",
+          "cycle-color": [
+            "G",
+            "T",
+            "g"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "B",
+          "cycle-color": [
+            "B",
+            "Z",
+            "z"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "U",
+          "cycle-color": [
+            "U",
+            "u",
+            "m"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "p",
+          "cycle-color": [
+            "p",
+            "v",
+            "i"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "v",
+          "cycle-color": [
+            "v",
+            "V",
+            "i"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "t",
+          "cycle-color": [
+            "t",
+            "T",
+            "G"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "m",
+          "cycle-color": [
+            "m",
+            "y",
+            "u"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "Y",
+          "cycle-color": [
+            "Y",
+            "w",
+            "U"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "i",
+          "cycle-color": [
+            "i",
+            "I",
+            "R"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "T",
+          "cycle-color": [
+            "T",
+            "W",
+            "t"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "V",
+          "cycle-color": [
+            "V",
+            "P",
+            "v"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "I",
+          "cycle-color": [
+            "I",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "M",
+          "cycle-color": [
+            "M",
+            "y",
+            "u"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "z",
+          "cycle-color": [
+            "z",
+            "b",
+            "s"
+          ]
+        },
+        {
+          "group": "flicker",
+          "name": "Z",
+          "cycle-color": [
+            "Z",
+            "B",
+            "b"
+          ]
+        },
+        {
+          "group": "fancy",
+          "name": "rainbow",
+          "cycle-color": [
+            "r",
+            "R",
+            "o",
+            "M",
+            "y",
+            "G",
+            "Y",
+            "T",
+            "t",
+            "Z",
+            "b",
+            "v",
+            "p",
+            "i"
+          ]
+        },
+        {
+          "group": "fancy",
+          "name": "bile",
+          "cycle-color": [
+            "s",
+            "t",
+            "s",
+            "D",
+            "u",
+            "s",
+            "D",
+            "u",
+            "t",
+            "D"
+          ]
+        },
+        {
+          "group": "fancy",
+          "name": "storm",
+          "cycle-color": [
+            "b",
+            "b",
+            "w",
+            "Z",
+            "b",
+            "b",
+            "b",
+            "Z",
+            "b",
+            "b",
+            "b",
+            "b",
+            "Z",
+            "b",
+            "b"
+          ]
+        },
+        {
+          "group": "fancy",
+          "name": "hell",
+          "cycle-color": [
+            "r",
+            "s",
+            "R",
+            "o",
+            "M",
+            "y",
+            "m",
+            "s",
+            "M",
+            "y",
+            "o",
+            "r",
+            "R"
+          ]
+        },
+        {
+          "group": "fancy",
+          "name": "ice",
+          "cycle-color": [
+            "w",
+            "w",
+            "Z",
+            "z",
+            "w",
+            "w"
+          ]
+        },
+        {
+          "group": "fancy",
+          "name": "swamp",
+          "cycle-color": [
+            "g",
+            "g",
+            "g",
+            "U",
+            "M",
+            "G",
+            "M",
+            "U",
+            "g",
+            "m",
+            "g",
+            "m"
+          ]
+        },
+        {
+          "group": "fancy",
+          "name": "crystal",
+          "cycle-color": [
+            "m",
+            "m",
+            "U",
+            "u",
+            "M",
+            "m",
+            "m"
+          ]
+        },
+        {
+          "group": "fancy",
+          "name": "thunder",
+          "cycle-color": [
+            "y",
+            "y",
+            "y",
+            "Y",
+            "M",
+            "o",
+            "m"
+          ]
+        },
+        {
+          "group": "fancy",
+          "name": "law",
+          "cycle-color": [
+            "B",
+            "Z",
+            "I",
+            "Z"
+          ]
+        },
+        {
+          "group": "fancy",
+          "name": "balance",
+          "cycle-color": [
+            "I",
+            "i",
+            "p",
+            "p",
+            "I",
+            "i",
+            "V",
+            "V",
+            "I",
+            "i",
+            "v",
+            "v",
+            "I",
+            "i",
+            "P",
+            "P"
+          ]
+        }
+      ]
+    }
+  ]
+}

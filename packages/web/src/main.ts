@@ -40,18 +40,31 @@ import {
   describeObject,
   sidebarModel,
   statusLineModel,
+  createVisualsAnimator,
+  animateMonsterAttr,
+  RF,
 } from "@neo-angband/core";
 import type {
   GamePack,
   PlayerCommand,
   ViewConstants,
   ViewerState,
+  VisualsRecord,
+  VisualsAnimator,
 } from "@neo-angband/core";
 import { GameEvents } from "@neo-angband/core";
-import { loadGamePack } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles } from "./pack";
 import { GlyphTerm } from "./term";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
+import { createTileRenderer } from "./tiles";
+// --- High scores (task #28) ---
+import {
+  createLocalStorageScoreStore,
+  registryNameResolver,
+  showPredictedScores,
+} from "./score";
+import { enterScore } from "@neo-angband/core";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
@@ -111,10 +124,79 @@ const { state, registry, booted, players } = game;
 const features = booted.registries.features;
 const constants = booted.registries.constants;
 
+// --- Visuals: color-cycle + flicker animation (task #27: ui-visuals.c) -----
+// The core animator turns a monster race + animation frame into the COLOUR_*
+// attr to draw, faithful to do_animation. It is built from the compiled
+// visuals.txt record and driven by a display-only frame counter (below). The
+// game runs fine with no visuals.json (animator stays null -> static colors).
+const visualsRecord = loadVisualsRecord() as VisualsRecord | null;
+const animator: VisualsAnimator | null = visualsRecord
+  ? createVisualsAnimator(visualsRecord)
+  : null;
+if (animator) {
+  // parse_monster_color_cycle: assign each race's color-cycle to the animator.
+  for (const { ridx, group, cycle } of loadMonsterColorCycles()) {
+    animator.setCycleForRace(ridx, group, cycle);
+  }
+}
+
+// do_animation increments a uint8_t `flicker` counter each animation tick. We
+// drive it off a display timer so shimmering never touches the deterministic
+// game RNG. RF_ATTR_MULTI's randint1 uses this DISPLAY rng (Math.random), not
+// state.rng, for the same reason (see parity/ledger/graphics-visuals.yaml).
+let animFrame = 0;
+const displayRandint1 = (n: number): number => 1 + Math.floor(Math.random() * n);
+
+// --- Optional tiles (task #27: grafmode.c catalog) -------------------------
+// NO tile art ships with the repo (the packs carry their own, partly
+// non-commercial, licenses). Point the game at your own pack with
+// `?tiles=<base-url>&graf=<id>`; with nothing configured this is null and the
+// map renders as pure ASCII (the default). The attr/char -> tile-atlas pref
+// mapping (graf-*.prf) is a separate subsystem, so the live map stays ASCII
+// for now; this proves the load path and the catalog lookup are wired.
+const tileset = createTileRenderer({
+  baseUrl: params.get("tiles") ?? "",
+  grafID: Number(params.get("graf")) || 0,
+});
+let tileNoteShown = false;
+
 let message =
   loadedNote ||
-  `Welcome. Move with numpad/arrows; 'g' picks up, '>' descends, 'S' saves. (seed ${seed}, depth ${depth})`;
+  `Welcome. Move with numpad/arrows; 'g' picks up, '>' descends, 'S' saves, 'V' shows the Hall of Fame. (seed ${seed}, depth ${depth})`;
 let dead = false;
+
+// --- High scores (task #28: score.c / ui-score.c) -------------------------
+// A localStorage-backed ScoreStore (JSON) is the persistence seam; the core
+// owns the scoring/ordering/gating. `scoresOpen` gates the main keyhandler
+// while the Hall of Fame screen owns the keyboard.
+const scoreStore = createLocalStorageScoreStore();
+const scoreNames = registryNameResolver(players);
+let scoresOpen = false;
+
+/** BuildScoreDeps drawn from the live game (turn, live depth, name, uid). */
+function scoreBuildDeps(diedFrom: string): {
+  diedFrom: string;
+  turn: number;
+  depth: number;
+} {
+  return { diedFrom, turn: state.turn, depth: state.chunk.depth };
+}
+
+/** Open the Hall of Fame around the current character (predict_score). */
+async function openHallOfFame(): Promise<void> {
+  if (scoresOpen) return;
+  scoresOpen = true;
+  await showPredictedScores(
+    term,
+    scoreStore,
+    state.actor.player,
+    scoreBuildDeps("nobody (yet!)"),
+    scoreNames,
+    state.isDead,
+  );
+  scoresOpen = false;
+  render();
+}
 
 function persistSave(): void {
   localStorage.setItem(SAVE_KEY, bytesToB64(encodeSavedGame(saveGame(game))));
@@ -213,6 +295,40 @@ function terrainGlyph(x: number, y: number): { ch: string; css: string } {
 }
 
 /**
+ * The display attr for a monster at the current animation frame. Faithful to
+ * do_animation (ui-display.c): RF_ATTR_MULTI shimmers a random color, an
+ * RF_ATTR_FLICKER monster color-cycles (race cycle, else the legacy flicker
+ * cycle, else its static color), and everything else keeps its static attr.
+ */
+function monsterAttr(mon: (typeof state.monsters)[number]): number {
+  const base = mon!.race.dAttr;
+  if (!animator) return base;
+  const anim = animateMonsterAttr(animator, {
+    ridx: mon!.race.ridx,
+    baseAttr: base,
+    attrMulti: mon!.race.flags.has(RF.ATTR_MULTI),
+    attrFlicker: mon!.race.flags.has(RF.ATTR_FLICKER),
+    frame: animFrame,
+    randint1: displayRandint1,
+  });
+  return anim ?? base;
+}
+
+/** True if any visible monster animates (drives the display frame timer). */
+function hasAnimatedVisibleMonster(): boolean {
+  if (!animator) return false;
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (!mon) continue;
+    if (!mon.mflag.has(MFLAG.VISIBLE)) continue;
+    if (mon.race.flags.has(RF.ATTR_MULTI) || mon.race.flags.has(RF.ATTR_FLICKER)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Live monster glyphs, rebuilt each frame since monsters move. Only
  * monsters the player can see (or has detected - MFLAG MARK) are drawn;
  * noteSpots maintains the flags after every FOV refresh.
@@ -225,7 +341,7 @@ function monsterIndex(): Map<number, { ch: string; css: string }> {
     if (!mon.mflag.has(MFLAG.VISIBLE) && !mon.mflag.has(MFLAG.MARK)) continue;
     map.set(gridIndex(mon.grid.x, mon.grid.y), {
       ch: mon.race.dChar,
-      css: colorToCss(mon.race.dAttr),
+      css: colorToCss(monsterAttr(mon)),
     });
   }
   return map;
@@ -365,6 +481,31 @@ function advance(): void {
     dead = true;
     localStorage.removeItem(SAVE_KEY); // death is terminal (decision 16)
     message = "You have died. (Refresh to start a new game.)";
+    // Enter the character on the high-score table (enter_score) and show the
+    // Hall of Fame. died_from is a placeholder: the engine does not yet surface
+    // the killer to the shell (take-hit's onDeath hook has it; wiring it onto
+    // GameState is deferred), so the cause defaults here. Gating (cheat/wizard)
+    // defaults to a clean character - the port has no options/noscore on Player.
+    const diedFrom = "the dungeon";
+    const outcome = enterScore(
+      scoreStore,
+      state.actor.player,
+      { ...scoreBuildDeps(diedFrom), deathTime: new Date() },
+      { diedFrom },
+    );
+    scoresOpen = true;
+    void showPredictedScores(
+      term,
+      scoreStore,
+      state.actor.player,
+      { ...scoreBuildDeps(diedFrom), deathTime: new Date() },
+      scoreNames,
+      true,
+    ).then(() => {
+      scoresOpen = false;
+      void outcome; // slot/rejection reason available for a future death screen
+      render();
+    });
   } else if (status === LOOP_STATUS.LEVEL_CHANGE) {
     // Generate the next level in place and keep playing.
     const target = state.targetDepth ?? state.chunk.depth + 1;
@@ -377,8 +518,14 @@ function advance(): void {
 }
 
 window.addEventListener("keydown", (ev) => {
+  if (scoresOpen) return; // the Hall of Fame screen owns the keyboard
   if (dead) return;
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+    if (ev.key === "V") {
+      ev.preventDefault();
+      void openHallOfFame();
+      return;
+    }
     if (ev.key === "g") {
       ev.preventDefault();
       commandBuffer.push({ code: "pickup" });
@@ -431,3 +578,24 @@ installWebSound(soundEvents, {
 state.updateFov(state);
 term.onResize = () => render();
 render();
+
+// ---- Animation timer (faithful to do_animation on EVENT_ANIMATE) ----
+// A display-only tick advances the flicker frame and repaints when an animated
+// monster (RF_ATTR_MULTI / RF_ATTR_FLICKER) is on screen, so shimmering and
+// color-cycling monsters animate even while the player is idle - exactly what
+// the upstream idle animation timer does. It never advances the game or the
+// deterministic RNG. When no tile/animation data is present it simply idles.
+const ANIM_INTERVAL_MS = 250;
+setInterval(() => {
+  if (dead || scoresOpen) return;
+  // Surface tile-pack readiness once (the live map stays ASCII pending the
+  // pref-file mapping; this confirms the catalog + load path are wired).
+  if (tileset && tileset.ready && !tileNoteShown) {
+    tileNoteShown = true;
+    message = `Tile pack loaded (${tileset.mode.menuname}); map remains ASCII for now.`;
+    render();
+  }
+  if (!hasAnimatedVisibleMonster()) return;
+  animFrame = (animFrame + 1) & 0xff; // uint8_t flicker counter
+  render();
+}, ANIM_INTERVAL_MS);
