@@ -64,6 +64,14 @@ import { GlyphTerm } from "./term";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import { createTileRenderer } from "./tiles";
+import { showTextScreen } from "./overlay";
+import { MessageLog } from "./messages";
+import {
+  inventoryLines,
+  equipmentLines,
+  characterSheetLines,
+  messageHistoryLines,
+} from "./screens";
 // --- High scores (task #28) ---
 import {
   createLocalStorageScoreStore,
@@ -192,8 +200,34 @@ let tileNoteShown = false;
 
 let message =
   loadedNote ||
-  `Welcome. Move with numpad/arrows (or tap the map); 'g' picks up, '>' descends, 'S' saves, 'N' new game, 'V' Hall of Fame. (seed ${seed})`;
+  `Welcome. Move (numpad/arrows/tap); 'g' get, '>' descend, 'i' inventory, 'e' equip, 'C' character, 'S' save, 'N' new, 'V' scores. (seed ${seed})`;
 let dead = false;
+
+// The message log: every message the engine emits this session, for the top
+// status line and the scrollable history (Ctrl-P). state.msg is the core's
+// central message sink; routing it here means command/effect messages surface
+// without each call site knowing about the shell.
+const msglog = new MessageLog();
+function say(text: string): void {
+  if (!text) return;
+  msglog.push(text);
+  message = msglog.latest();
+}
+state.msg = (text: string): void => say(text);
+
+// Modal gate: while a full-screen overlay (inventory, character sheet, message
+// history, item/spell selection) owns the keyboard, the in-game key handler
+// stands down - exactly the single-owner input model of the upstream UI.
+let modalDepth = 0;
+async function openModal(fn: () => Promise<void>): Promise<void> {
+  modalDepth++;
+  try {
+    await fn();
+  } finally {
+    modalDepth--;
+    render();
+  }
+}
 
 // --- High scores (task #28: score.c / ui-score.c) -------------------------
 // A localStorage-backed ScoreStore (JSON) is the persistence seam; the core
@@ -270,11 +304,11 @@ installPickup(state, registry, {
   constants,
   env: {
     onGold: (total, name, single): void => {
-      message = `You have found ${total} gold pieces worth of ${single ? name : "treasures"}.`;
+      say(`You have found ${total} gold pieces worth of ${single ? name : "treasures"}.`);
     },
     onPickup: (obj): void => {
       // object_desc(ODESC_PREFIX | ODESC_FULL): flavours + knowledge-gated name.
-      message = `You have ${describeObject(state, obj)}.`;
+      say(`You have ${describeObject(state, obj)}.`);
     },
   },
 });
@@ -634,12 +668,42 @@ function advance(): void {
 }
 
 window.addEventListener("keydown", (ev) => {
-  if (scoresOpen) return; // the Hall of Fame screen owns the keyboard
+  if (scoresOpen || modalDepth > 0) return; // a modal owns the keyboard
+  // Ctrl-P: recall the message history (do_cmd_messages), even the same key
+  // the roguelike keyset would otherwise use, since a modifier is held.
+  if (ev.ctrlKey && (ev.key === "p" || ev.key === "P")) {
+    ev.preventDefault();
+    void openModal(() =>
+      showTextScreen(term, "Message history", messageHistoryLines(msglog)),
+    );
+    return;
+  }
   if (dead) return;
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
     if (ev.key === "V") {
       ev.preventDefault();
       void openHallOfFame();
+      return;
+    }
+    if (ev.key === "i") {
+      ev.preventDefault();
+      void openModal(() =>
+        showTextScreen(term, "Inventory", inventoryLines(state)),
+      );
+      return;
+    }
+    if (ev.key === "e") {
+      ev.preventDefault();
+      void openModal(() =>
+        showTextScreen(term, "Equipment", equipmentLines(state)),
+      );
+      return;
+    }
+    if (ev.key === "C") {
+      ev.preventDefault();
+      void openModal(() =>
+        showTextScreen(term, "Character", characterSheetLines(state)),
+      );
       return;
     }
     if (ev.key === "g") {
@@ -732,6 +796,8 @@ function installTouchActionBar(): void {
     ["Get", () => { commandBuffer.push({ code: "pickup" }); advance(); }],
     ["Down >", () => { commandBuffer.push({ code: "descend" }); advance(); }],
     ["Up <", () => { commandBuffer.push({ code: "ascend" }); advance(); }],
+    ["Inv", () => { void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))); }],
+    ["Char", () => { void openModal(() => showTextScreen(term, "Character", characterSheetLines(state))); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     [
       "New",
@@ -808,7 +874,12 @@ if (import.meta.env.DEV) {
     get compact() {
       return term.size().cols < 48;
     },
+    get modal() {
+      return modalDepth > 0;
+    },
     size: () => term.size(),
+    screen: () => term.snapshot(),
+    messages: () => msglog.all().map((m) => m.text),
   };
 }
 
