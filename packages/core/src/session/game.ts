@@ -113,6 +113,11 @@ import {
 } from "../player/spell";
 import { installSpellCommands } from "../game/spell-cmd";
 import {
+  formatMonsterMessage,
+  formatMonsterMessageByName,
+  formatPainMessage,
+} from "../game/mon-message";
+import {
   FlavorKnowledge,
   makeRuneEnv,
   objectLearnOnWield,
@@ -461,6 +466,26 @@ function wireGame(
         monster: {
           /* Spell/device kills reward experience like melee kills. */
           onKill: (m): void => state.onPlayerKill?.(m),
+          /* add_monster_message: "the kobold dies", "wakes up", "catches
+           * fire" - the MON_MSG grammar, routed to the game's message sink so
+           * a shell shows ranged/spell/status monster messages the same way
+           * melee shows "You hit/slay the X". The projection already gates on
+           * visibility before calling this. */
+          message: (m, msgCode): void => {
+            const text = formatMonsterMessage(m, msgCode);
+            if (text) state.msg?.(text);
+          },
+          /* message_pain: the graded "shrugs off the attack" / "cries out in
+           * pain" line for a monster hurt but not killed. */
+          messagePain: (m, dam): void => {
+            const text = formatPainMessage(m, dam);
+            if (text) state.msg?.(text);
+          },
+          /* mon_set_timed's queued status messages (slowed, confused, held). */
+          timedMessage: (m, note): void => {
+            const text = formatMonsterMessageByName(m, note);
+            if (text) state.msg?.(text);
+          },
           /* Lore learning when a projection's outcome is seen. */
           learnRaceFlag: (m, flag): void =>
             loreLearnFlagIfVisible(getLore(state.lore, m.race), m, flag),
