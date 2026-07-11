@@ -292,12 +292,22 @@ function wireGame(
   // from the rolled hitdice and mana from the armor encumbrance. Installed
   // as state.updateBonuses so equipment commands trigger it.
   let derived: PlayerState = pstate;
+  // A stable live copy of state->stat_ind: refreshDerived replaces the whole
+  // derived PlayerState (new statInd array), so anything that captured
+  // pstate.statInd would freeze at birth values. This array keeps the same
+  // reference and is refreshed in place, so the casting math and a shell's
+  // fail-chance display always read the current stats.
+  const liveStatInd: number[] = [...pstate.statInd];
+  state.statInd = liveStatInd;
   const refreshDerived = (): void => {
     const p = state.actor.player;
     const equipment = p.equipment.map((h) =>
       h ? gearGet(state.gear, h) : null,
     );
     derived = calcBonuses(p, { equipment });
+    for (let i = 0; i < liveStatInd.length; i++) {
+      liveStatInd[i] = derived.statInd[i] ?? 0;
+    }
     const combat = toCombatState(derived);
     state.actor.combat = combat;
     state.actor.defense = toDefenderState(derived);
@@ -549,7 +559,7 @@ function wireGame(
         item,
         summon,
       },
-      statInd: pstate.statInd,
+      statInd: liveStatInd,
       env: { expGain, msg: (text: string): void => state.msg?.(text) },
     });
 

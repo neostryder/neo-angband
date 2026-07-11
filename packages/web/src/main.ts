@@ -12,9 +12,11 @@
  * race / class / sex / name); resuming a save goes straight back into play.
  *
  * Live systems: movement + melee (with faithful "You hit/slay the X" messages),
- * item use (quaff/read/eat/wield/take-off/drop/devices/activate), inventory (i),
- * equipment (e), the character sheet (C), the message history (Ctrl-P), pickup
- * ('g'), stairs with real level regeneration ('>'/'<'), and JSON save/continue.
+ * item use (quaff/read/eat/wield/take-off/drop/devices/activate), spellcasting
+ * (study 'G', cast/pray 'm'/'p' with a faithful book -> spell picker showing
+ * level/mana/fail%), inventory (i), equipment (e), the character sheet (C), the
+ * message history (Ctrl-P), pickup ('g'), stairs with real level regeneration
+ * ('>'/'<'), and JSON save/continue.
  * The game AUTO-RESUMES the stored save on load (a plain refresh continues where
  * you left off); it autosaves during play, on level change, and when the tab is
  * hidden/closed. 'S' saves on demand; 'N' rolls a new character (allowed after
@@ -59,6 +61,9 @@ import {
   createVisualsAnimator,
   animateMonsterAttr,
   RF,
+  PF,
+  spellNeedsAim,
+  playerObjectToBook,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -85,6 +90,8 @@ import {
   messageHistoryLines,
   packMenu,
   equipmentMenu,
+  magicBooks,
+  bookSpellMenu,
 } from "./screens";
 // --- High scores (task #28) ---
 import {
@@ -416,6 +423,101 @@ async function takeOffItem(): Promise<void> {
   if (handle === undefined) return;
   say(actionLine("takeoff", gearGet(state.gear, handle)));
   commandBuffer.push({ code: "takeoff", args: { handle } });
+  advance();
+}
+
+// --- Spellcasting (cmd-obj.c cast/study; player-spell.c) --------------------
+// Cast (m/p) and study (G) mirror the item-use flow: pick a usable book from
+// the pack, then a spell from that book. The core cast/study commands address
+// the spell by its class-wide index (args.spell) and the book by gear handle
+// (args.handle); this shell is the cmd_get_spell UI that resolves the choice
+// before the command runs. Aimed spells prompt a keypad direction (args.dir),
+// exactly like aimed items. Per-spell effect/fail messages arrive through the
+// message seam (state.msg) the same way item effects do.
+
+/** Pick one of the player's usable spellbooks, or null if none/cancelled. */
+async function chooseBook(verb: string): Promise<number | null> {
+  const { items, handles } = magicBooks(state);
+  if (items.length === 0) {
+    say("You have no books that you can use.");
+    return null;
+  }
+  if (items.length === 1) return handles[0] ?? null;
+  const idx = await selectFromMenu(term, `${verb} from which book?`, items);
+  if (idx === null) return null;
+  return handles[idx] ?? null;
+}
+
+/** Cast/pray (m/p): choose book, choose spell, aim if needed, dispatch cast. */
+async function castSpell(): Promise<void> {
+  const player = state.actor.player;
+  if (!player.cls.magic.totalSpells) {
+    say("You cannot cast spells.");
+    return;
+  }
+  const handle = await chooseBook("Cast");
+  if (handle === null) return;
+  const bookObj = gearGet(state.gear, handle);
+  if (!bookObj) return;
+  const { items, sidx } = bookSpellMenu(state, bookObj, "cast");
+  if (items.every((it) => it.disabled)) {
+    say("You don't know any spells in that book.");
+    return;
+  }
+  const verb = playerObjectToBook(player, bookObj)?.realm.verb ?? "cast";
+  const pick = await selectFromMenu(
+    term,
+    `${verb[0]?.toUpperCase()}${verb.slice(1)} which spell?`,
+    items,
+    "[ a-z to choose a spell, ESC to cancel ]",
+  );
+  if (pick === null) return;
+  const spell = sidx[pick];
+  if (spell === undefined) return;
+  const args: Record<string, unknown> = { spell };
+  if (spellNeedsAim(player, spell)) {
+    const dir = await promptDirection(term);
+    if (dir === null) return;
+    args["dir"] = dir;
+  }
+  commandBuffer.push({ code: "cast", args });
+  advance();
+}
+
+/** Study (G): learn a spell. Choose-spell classes pick; others learn at random. */
+async function studySpell(): Promise<void> {
+  const player = state.actor.player;
+  if (!player.cls.magic.totalSpells) {
+    say("You cannot learn spells.");
+    return;
+  }
+  if (player.upkeep.newSpells <= 0) {
+    say("You cannot learn any new spells.");
+    return;
+  }
+  const handle = await chooseBook("Study");
+  if (handle === null) return;
+  const args: Record<string, unknown> = { handle };
+  if (player.cls.pflags.has(PF.CHOOSE_SPELLS)) {
+    const bookObj = gearGet(state.gear, handle);
+    if (!bookObj) return;
+    const { items, sidx } = bookSpellMenu(state, bookObj, "study");
+    if (items.every((it) => it.disabled)) {
+      say("You cannot learn any spells from that book yet.");
+      return;
+    }
+    const pick = await selectFromMenu(
+      term,
+      "Study which spell?",
+      items,
+      "[ a-z to choose a spell, ESC to cancel ]",
+    );
+    if (pick === null) return;
+    const spell = sidx[pick];
+    if (spell === undefined) return;
+    args["spell"] = spell;
+  }
+  commandBuffer.push({ code: "study", args });
   advance();
 }
 
@@ -918,6 +1020,9 @@ window.addEventListener("keydown", (ev) => {
       d: () => useItem("drop", () => true, "items"),
       A: () => activateItem(),
       t: () => takeOffItem(),
+      m: () => castSpell(),
+      p: () => castSpell(),
+      G: () => studySpell(),
     };
     const verb = ITEM_VERBS[ev.key];
     if (verb) {
