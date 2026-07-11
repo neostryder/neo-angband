@@ -330,6 +330,13 @@ export interface GameState {
    * opening). Presentation (#25) installs it; absent, the messages drop.
    */
   msg?: (text: string) => void;
+  /**
+   * sound(msgt): play the sound bound to a MSG_* type (message.c sound()).
+   * A front end wires it to its audio engine (the web build emits the core
+   * EVENT_SOUND onto its sound bus); absent, sound is silent. The engine's
+   * own message->sound map and dedup ride #26; this is only the emit seam.
+   */
+  sound?: (msgType: number) => void;
 }
 
 /** One queued player command (a keyed action plus optional direction/args). */

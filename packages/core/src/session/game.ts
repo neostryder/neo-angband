@@ -117,6 +117,8 @@ import {
   formatMonsterMessage,
   formatMonsterMessageByName,
   formatPainMessage,
+  monMessageSoundType,
+  painMessageCode,
 } from "../game/mon-message";
 import {
   FlavorKnowledge,
@@ -475,12 +477,14 @@ function wireGame(
           message: (m, msgCode): void => {
             const text = formatMonsterMessage(m, msgCode);
             if (text) state.msg?.(text);
+            state.sound?.(monMessageSoundType(msgCode));
           },
           /* message_pain: the graded "shrugs off the attack" / "cries out in
            * pain" line for a monster hurt but not killed. */
           messagePain: (m, dam): void => {
             const text = formatPainMessage(m, dam);
             if (text) state.msg?.(text);
+            state.sound?.(monMessageSoundType(painMessageCode(m, dam)));
           },
           /* mon_set_timed's queued status messages (slowed, confused, held). */
           timedMessage: (m, note): void => {

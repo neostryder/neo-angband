@@ -13,7 +13,7 @@
  * later batched front end can reuse it with do_plural = true.
  */
 
-import { MON_MESSAGE_ENTRIES, MON_MSG, RF } from "../generated";
+import { MON_MESSAGE_ENTRIES, MON_MSG, MSG, RF } from "../generated";
 import type { Monster } from "../mon/monster";
 import type { MonsterRace } from "../mon/types";
 
@@ -117,4 +117,16 @@ export function painMessageCode(mon: Monster, dam: number): number {
 /** message_pain (mon-msg.c L123): the graded "it is hurt" line, or null. */
 export function formatPainMessage(mon: Monster, dam: number): string | null {
   return formatMonsterMessage(mon, painMessageCode(mon, dam));
+}
+
+/**
+ * get_message_type (mon-msg.c L448): the MSG_* sound type for a monster
+ * message code (MSG_KILL for deaths, MSG_GENERIC for the rest). The
+ * unique/Morgoth KILL_UNIQUE/KILL_KING refinement is DEFERRED (needs the
+ * Morgoth base check). Returns a MSG index for state.sound.
+ */
+export function monMessageSoundType(msgCode: number): number {
+  const name = MON_MESSAGE_ENTRIES[msgCode]?.msgType ?? "MSG_GENERIC";
+  const key = name.replace(/^MSG_/, "") as keyof typeof MSG;
+  return MSG[key] ?? MSG.GENERIC;
 }
