@@ -481,7 +481,13 @@ function wireGame(
         },
       },
     };
-    const envDeps: EffectEnvDeps = { timedTable: players.timed };
+    const envDeps: EffectEnvDeps = {
+      timedTable: players.timed,
+      // Effect status/damage messages ("You feel better", "You feel yourself
+      // yanked upwards!") route to the game's message sink so a shell shows
+      // them; absent, they would drop.
+      onMessage: (text: string): void => state.msg?.(text),
+    };
 
     /* monster_change_shape / monster_revert_shape, driving the
      * MON_TMD_CHANGED timer (the SHAPECHANGE monster spell). */
@@ -526,6 +532,9 @@ function wireGame(
         isIgnored: (obj) => state.isIgnored!(obj),
         ...(preds ? { isTrap: preds.isTrap } : {}),
       },
+      // Route object/effect messages (msg / msgt / activation_message) to the
+      // game's message sink so a shell shows them; absent, they would drop.
+      env: { msg: (text: string): void => state.msg?.(text) },
     });
 
     // Player spellcasting (cast / study) for casting classes.
@@ -541,7 +550,7 @@ function wireGame(
         summon,
       },
       statInd: pstate.statInd,
-      env: { expGain },
+      env: { expGain, msg: (text: string): void => state.msg?.(text) },
     });
 
     // Traps: disarm + the step-onto-trap hook; a trapdoor drops a level.
@@ -560,6 +569,7 @@ function wireGame(
         },
         env: {
           expGain,
+          msg: (text: string): void => state.msg?.(text),
           changeLevel: (s: GameState): void => {
             s.targetDepth = s.chunk.depth + 1;
             s.generateLevel = true;
