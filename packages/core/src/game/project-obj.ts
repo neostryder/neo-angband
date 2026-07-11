@@ -22,8 +22,10 @@ import { ELEM, PROJ } from "../generated";
 import { EL_INFO_HATES, EL_INFO_IGNORE } from "../obj/types";
 import type { GameObject } from "../obj/object";
 import { tvalIsAmmo, tvalIsArmor, tvalIsRod, tvalIsWeapon } from "../obj/object";
+import { ODESC } from "../obj/desc";
 import { squareIsSeen } from "../world/view";
 import type { GameState } from "./context";
+import { describeObject } from "./describe";
 import { floorExcise, floorPile } from "./floor";
 import { gearObjectForUse } from "./gear";
 
@@ -35,11 +37,6 @@ export interface ProjectWorldEnv {
 /** VERB_AGREEMENT over an object stack. */
 function verbAgree(n: number, singular: string, plural: string): string {
   return n > 1 ? plural : singular;
-}
-
-/** The kind's plain name (ODESC_BASE approximation until object_desc). */
-function baseName(obj: GameObject): string {
-  return obj.kind.name.replace(/[~&]/g, "").trim();
 }
 
 /** One handler outcome (project_object_handler_context_t's out fields). */
@@ -140,13 +137,13 @@ export function projectObject(
       /* Artifacts and ignoring objects resist. */
       if (seen) {
         env.msg?.(
-          `The ${baseName(obj)} ${verbAgree(obj.number, "is", "are")} unaffected!`,
+          `The ${describeObject(state, obj, ODESC.BASE)} ${verbAgree(obj.number, "is", "are")} unaffected!`,
         );
       }
     } else {
       /* Mimic reveal: DEFERRED (mimics not live). */
       if (seen && noteKill) {
-        env.msg?.(`The ${baseName(obj)} ${noteKill}!`);
+        env.msg?.(`The ${describeObject(state, obj, ODESC.BASE)} ${noteKill}!`);
       }
       floorExcise(state, grid, obj);
     }
@@ -226,7 +223,7 @@ export function invenDamage(
             : "One of y"
         : "Y";
     env.msg?.(
-      `${prefix}our ${baseName(obj)} ${amt > 1 ? "were" : "was"} ${
+      `${prefix}our ${describeObject(state, obj, ODESC.BASE)} ${amt > 1 ? "were" : "was"} ${
         damage ? "damaged" : "destroyed"
       }!`,
     );

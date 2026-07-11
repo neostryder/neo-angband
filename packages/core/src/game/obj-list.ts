@@ -14,10 +14,10 @@
  *    known-grid marker - the same "live cave, gated by knowledge" shape the
  *    monster list uses. A sensed-but-unidentified grid (null-glyph marker,
  *    from detection's square_sense_pile) yields one "unknown" entry.
- *  - object_desc is not ported yet, so entry names use the base-kind name
- *    approximation (objBaseName). Rich naming (flavours, ego/artifact names,
- *    pluralisation, the right-aligned prefix of object_list_format_name) is a
- *    separate #25 slice; the entry carries the real object so it drops in.
+ *  - Entry names route through object_desc (describeObject), so flavours,
+ *    ego/artifact names and the &/~ pluralisation gate exactly by the player's
+ *    knowledge. Only the terminal right-aligned "%3.3s" prefix padding of the
+ *    upstream draw code stays with each shell.
  */
 
 import {
@@ -28,10 +28,10 @@ import {
   COLOUR_WHITE,
 } from "../color";
 import { PROJECT, projectable } from "../world/project";
-import { objBaseName } from "../obj/knowledge";
+import { ODESC } from "../obj/desc";
 import { tvalIsMoney } from "../obj/object";
 import type { GameObject } from "../obj/object";
-import { knownObject } from "./known";
+import { describeObject } from "./describe";
 import type { GameState } from "./context";
 
 /** Which part of the list an entry falls under. */
@@ -244,15 +244,26 @@ export function objectListEntryLineAttribute(
 }
 
 /**
- * object_list_format_name (obj-list.c L364), reduced: the display name for an
- * entry. Full object_desc (flavours, ego/artifact names, pluralisation) and
- * the terminal right-aligned prefix are deferred; this returns the base-kind
- * name with the accumulated stack count, front-end-agnostic.
+ * object_list_format_name (obj-list.c L364): the display name for an entry.
+ * The accumulated stack count is passed through object_desc's ODESC_ALTNUM
+ * mechanism (as upstream does) so the article / pluralisation reflect the
+ * summed count, not the single pile's number. Names now gate exactly by the
+ * player's knowledge (flavours, ego / artifact names, the &/~ grammar) via
+ * describeObject. The terminal right-aligned "%3.3s" prefix padding of the
+ * upstream draw code stays with each shell (front-end-agnostic).
  */
-export function objectListEntryName(entry: ObjectListEntry): string {
+export function objectListEntryName(
+  entry: ObjectListEntry,
+  state: GameState,
+): string {
   if (entry.unknown || entry.object === null) return "(unknown)";
+  /* Only one section field is ever set at collect time; summing picks it. */
   const n = (entry.count[OBJECT_LIST_SECTION_LOS] || 0) +
     (entry.count[OBJECT_LIST_SECTION_NO_LOS] || 0);
-  const name = objBaseName(entry.object);
-  return n > 1 ? `${n} ${name}` : name;
+  return describeObject(
+    state,
+    entry.object,
+    ODESC.PREFIX | ODESC.FULL | ODESC.ALTNUM,
+    n,
+  );
 }

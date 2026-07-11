@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { TV } from "../generated";
 import { loc } from "../loc";
@@ -8,6 +9,9 @@ import {
   COLOUR_WHITE,
 } from "../color";
 import type { Loc } from "../loc";
+import { ObjRegistry } from "../obj/bind";
+import type { ObjPackJson, ObjectKind } from "../obj/types";
+import { objectNew } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import type { Artifact } from "../obj/types";
 import type { GameState } from "./context";
@@ -21,6 +25,53 @@ import {
   objectListSort,
   objectListStandardCompare,
 } from "./obj-list";
+
+function loadJson<T>(name: string): T {
+  return JSON.parse(
+    readFileSync(
+      new URL(`../../../content/pack/${name}.json`, import.meta.url),
+      "utf8",
+    ),
+  ) as T;
+}
+
+/* A real object registry so entry names can flow through object_desc. */
+const objReg = new ObjRegistry({
+  objectBase: loadJson("object_base"),
+  object: loadJson("object"),
+  egoItem: loadJson("ego_item"),
+  artifact: loadJson("artifact"),
+  curse: loadJson("curse"),
+  brand: loadJson("brand"),
+  slay: loadJson("slay"),
+  activation: loadJson("activation"),
+  objectProperty: loadJson("object_property"),
+  flavor: loadJson("flavor"),
+} as ObjPackJson);
+
+/** Drop a real kind (from the pack) on a known floor grid. */
+function putRealFloor(
+  state: GameState,
+  at: Loc,
+  kindName: string,
+  number: number,
+): GameObject {
+  const kind = objReg.kinds.find((k) => k.name === kindName) as ObjectKind;
+  const obj = objectNew(kind);
+  obj.tval = kind.tval;
+  obj.sval = kind.sval;
+  obj.number = number;
+  obj.grid = at;
+  const idx = at.y * state.chunk.width + at.x;
+  const pile = state.floor.get(idx) ?? [];
+  pile.push(obj);
+  state.floor.set(idx, pile);
+  state.known.objects.set(idx, {
+    ch: kind.dChar ?? ",",
+    attr: kind.dAttr ?? "w",
+  });
+  return obj;
+}
 
 interface FakeOpts {
   name?: string;
@@ -94,7 +145,7 @@ describe("object_list_collect (obj-list.c L156)", () => {
     const list = objectListCollect(state);
     expect(list.distinctEntries).toBe(1);
     expect(list.entries[0]!.unknown).toBe(true);
-    expect(objectListEntryName(list.entries[0]!)).toBe("(unknown)");
+    expect(objectListEntryName(list.entries[0]!, state)).toBe("(unknown)");
   });
 
   it("places a far object in the out-of-view section", () => {
@@ -146,10 +197,14 @@ describe("object_list sorting + colour", () => {
     ).toBe(COLOUR_RED);
   });
 
-  it("formats a stack name with its count", () => {
+  it("formats a stack name with its count through object_desc", () => {
     const state = makeState({ playerGrid: loc(20, 12) });
-    putFloor(state, loc(22, 12), { name: "Ration of Food", number: 3 });
+    /* A real kind so the name flows through object_desc: the accumulated
+     * count drives the article and the "~" plural (Ration -> Rations). */
+    putRealFloor(state, loc(22, 12), "& Ration~ of Food", 3);
     const list = objectListCollect(state);
-    expect(objectListEntryName(list.entries[0]!)).toBe("3 Ration of Food");
+    expect(objectListEntryName(list.entries[0]!, state)).toBe(
+      "3 Rations of Food",
+    );
   });
 });

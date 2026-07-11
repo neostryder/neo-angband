@@ -38,6 +38,7 @@ import {
   STAT,
   TRF,
   installPickup,
+  describeObject,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -125,7 +126,8 @@ installPickup(state, registry, {
       message = `You have found ${total} gold pieces worth of ${single ? name : "treasures"}.`;
     },
     onPickup: (obj): void => {
-      message = `You have ${obj.kind.name} (${obj.number}).`;
+      // object_desc(ODESC_PREFIX | ODESC_FULL): flavours + knowledge-gated name.
+      message = `You have ${describeObject(state, obj)}.`;
     },
   },
 });

@@ -67,10 +67,19 @@ deferred:
   - chest trap name, the " {ignore}"/"{ignore}" markers (no ignore-name
     surface), the everseen mutations, and ODESC_CAPITAL (a caller concern in
     4.2.6) are omitted.
-  - Migrating the existing name approximations (objBaseName call sites,
-    obj-list.ts objectListEntryName, inventory / store / message surfaces, the
-    web renderer) to describeObject is the integration follow-on; the engine
-    and adapter are landed and the object-list name is next.
+  - The game-layer name sites are migrated onto describeObject: obj-list.ts
+    objectListEntryName (ODESC_PREFIX | ODESC_FULL | ODESC_ALTNUM, the summed
+    count driving the article / "~" plural), the effect-handler messages
+    (enchant "glow", brand aura, remove-curse "fragile", curse armour/weapon,
+    disenchant), project-obj.ts (project_o unaffected / kill, inven_damage),
+    and the web pickup message. object_list_format_name's terminal "%3.3s"
+    right-align padding stays with each shell (front-end-agnostic).
+  - The remaining objBaseName / baseName approximations live in
+    obj/knowledge.ts (the rune / flag learn-by-use messages), which run on a
+    RuneEnv, not a full GameState; routing them through the game-layer
+    describeObject would invert the module dependency, so they stay with the
+    awareness-propagation wiring (same boundary as the object_flavor_aware
+    deferral above). Store transaction messages await a store shell.
 verified-by:
   - game/describe.test.ts (4 tests) - the &/~ plural grammar and a/the/N
     prefix, combat bonuses hidden until the to_h/to_d runes are learned, a
