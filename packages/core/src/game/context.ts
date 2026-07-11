@@ -22,7 +22,7 @@ import type { Rng } from "../rng";
 import type { Chunk } from "../world/chunk";
 import type { Player } from "../player/player";
 import type { Monster } from "../mon/monster";
-import type { PlayerCombatState } from "../combat/melee";
+import type { MeleeAttack, PlayerCombatState } from "../combat/melee";
 import type { DefenderState } from "../combat/mon-melee";
 import type { GameObject } from "../obj/object";
 import type { Brand, Slay } from "../obj/types";
@@ -298,6 +298,14 @@ export interface GameState {
    * it with their subsystems). Installed by the session (wireGame).
    */
   onPlayerKill?: (mon: Monster) => void;
+  /**
+   * py_attack's message slice: runs after the player melees a monster, with
+   * the full blow-by-blow result (hits, damage, crit HitType, and whether the
+   * monster died). The combat code returns only HitType keys - the text is a UI
+   * concern (combat/melee.ts) - so a shell installs this to render faithful
+   * "You hit/miss/slay the X" messages. Called before the monster is deleted.
+   */
+  onMelee?: (mon: Monster, result: MeleeAttack) => void;
   /**
    * PU_BONUS | PU_HP | PU_MANA: recompute the derived state from the
    * current gear (equipment commands call this after changing what is

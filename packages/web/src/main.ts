@@ -227,6 +227,35 @@ function say(text: string): void {
 }
 state.msg = (text: string): void => say(text);
 
+// py_attack text (player-attack.c): the combat code returns HitType keys only,
+// leaving the wording to the UI. Render the classic "You hit the kobold." plus
+// the crit flavour and the kill line, faithful to melee_hit_types + mon_take_hit.
+const CRIT_FLAVOR: Record<string, string> = {
+  HIT_GOOD: "It was a good hit!",
+  HIT_GREAT: "It was a great hit!",
+  HIT_SUPERB: "It was a superb hit!",
+  HIT_HI_GREAT: "It was a *GREAT* hit!",
+  HIT_HI_SUPERB: "It was a *SUPERB* hit!",
+};
+function monName(mon: { race: { name: string; flags: { has: (f: number) => boolean } } }): string {
+  // monster_desc 0x00: "the kobold" for a visible non-unique, the proper name
+  // for a unique.
+  return mon.race.flags.has(RF.UNIQUE) ? mon.race.name : `the ${mon.race.name}`;
+}
+state.onMelee = (mon, result): void => {
+  const name = monName(mon);
+  for (const blow of result.blows) {
+    if (!blow.hit) {
+      say(`You miss ${name}.`);
+      continue;
+    }
+    say(`You ${blow.verb} ${name}.`);
+    const flavor = CRIT_FLAVOR[blow.msg];
+    if (flavor) say(flavor);
+  }
+  if (result.monsterDied) say(`You have slain ${name}.`);
+};
+
 // Modal gate: while a full-screen overlay (inventory, character sheet, message
 // history, item/spell selection) owns the keyboard, the in-game key handler
 // stands down - exactly the single-owner input model of the upstream UI.
@@ -1021,6 +1050,22 @@ if (import.meta.env.DEV) {
     size: () => term.size(),
     screen: () => term.snapshot(),
     messages: () => msglog.all().map((m) => m.text),
+    monsters: () =>
+      state.monsters
+        .slice(1)
+        .filter((m) => m)
+        .map((m) => ({ x: m!.grid.x, y: m!.grid.y, name: m!.race.name, hp: m!.hp })),
+    // Drive a raw PlayerCommand through the loop (verification aid only).
+    push: (c: PlayerCommand): void => {
+      commandBuffer.push(c);
+      advance();
+    },
+    // Reposition the player (verification aid only; not a game action).
+    warp: (x: number, y: number): void => {
+      state.actor.grid = loc(x, y);
+      state.updateFov?.(state);
+      render();
+    },
   };
 }
 

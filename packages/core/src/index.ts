@@ -176,6 +176,10 @@ export { objDescNameFormat } from "./obj/desc";
 // (with msg typed as the specific HitType). Crit levels are a combat
 // concept; expose combat/hit's as canonical.
 export type { CriticalLevel } from "./combat/hit";
+// Combat message types for shells rendering py_attack text (the combat code
+// returns HitType keys only; the text is a UI concern - see combat/melee.ts).
+export type { MeleeAttack, MeleeBlow } from "./combat/melee";
+export type { HitType } from "./combat/hit";
 // - EXTRACT_ENERGY/turnEnergy: the extract_energy[] table and turn_energy()
 //   live in mon/monster; game/energy re-exports them for convenience, so
 //   pin mon/monster as the single canonical source.
