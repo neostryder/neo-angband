@@ -15,9 +15,10 @@
  * item use (quaff/read/eat/wield/take-off/drop/devices/activate), spellcasting
  * (study 'G', cast/pray 'm'/'p' with a faithful book -> spell picker showing
  * level/mana/fail%), targeting and look ('*' target, "'" target closest, 'l'/'x'
- * look; aimed spells/devices fire at the target via DIR_TARGET), inventory (i),
- * equipment (e), the character sheet (C), the message history (Ctrl-P), pickup
- * ('g'), stairs with real level regeneration ('>'/'<'), and JSON save/continue.
+ * look; aimed spells/devices fire at the target via DIR_TARGET), ranged attacks
+ * ('f' fire ammo, 'v' throw), inventory (i), equipment (e), the character sheet
+ * (C), the message history (Ctrl-P), pickup ('g'), stairs with real level
+ * regeneration ('>'/'<'), and JSON save/continue.
  * The game AUTO-RESUMES the stored save on load (a plain refresh continues where
  * you left off); it autosaves during play, on level change, and when the tab is
  * hidden/closed. 'S' saves on demand; 'N' rolls a new character (allowed after
@@ -57,6 +58,7 @@ import {
   tvalIsWand,
   tvalIsRod,
   tvalIsWearable,
+  tvalIsAmmo,
   sidebarModel,
   statusLineModel,
   createVisualsAnimator,
@@ -525,6 +527,53 @@ async function studySpell(): Promise<void> {
     args["spell"] = spell;
   }
   commandBuffer.push({ code: "study", args });
+  advance();
+}
+
+// --- Ranged attacks (do_cmd_fire / do_cmd_throw) ----------------------------
+// Fire launches ammo matching the equipped launcher; throw hurls any pack item.
+// Both pick the object, then aim (aimDir, so '*'/target/DIR_TARGET all work) and
+// dispatch to the core fire/throw commands, which walk the missile's path.
+
+/** Fire (f): pick matching ammo, aim, and loose it at the target/direction. */
+async function fireCmd(): Promise<void> {
+  const tval = state.actor.combat.ammoTval;
+  if (!tval) {
+    say("You have nothing to fire with.");
+    return;
+  }
+  const { items, handles } = packMenu(
+    state,
+    (o) => tvalIsAmmo(o.tval) && o.tval === tval,
+  );
+  if (items.length === 0) {
+    say("You have no ammunition for your weapon.");
+    return;
+  }
+  const idx = await selectFromMenu(term, "Fire which ammunition?", items);
+  if (idx === null) return;
+  const handle = handles[idx];
+  if (handle === undefined) return;
+  const dir = await aimDir();
+  if (dir === null) return;
+  commandBuffer.push({ code: "fire", args: { handle, dir } });
+  advance();
+}
+
+/** Throw (v): pick any pack item, aim, and hurl it. */
+async function throwCmd(): Promise<void> {
+  const { items, handles } = packMenu(state, () => true);
+  if (items.length === 0) {
+    say("You have nothing to throw.");
+    return;
+  }
+  const idx = await selectFromMenu(term, "Throw which item?", items);
+  if (idx === null) return;
+  const handle = handles[idx];
+  if (handle === undefined) return;
+  const dir = await aimDir();
+  if (dir === null) return;
+  commandBuffer.push({ code: "throw", args: { handle, dir } });
   advance();
 }
 
@@ -1081,6 +1130,8 @@ window.addEventListener("keydown", (ev) => {
       "*": () => chooseTarget().then(() => undefined),
       l: () => showTextScreen(term, "Look - monsters in view", lookLines(state)),
       x: () => showTextScreen(term, "Look - monsters in view", lookLines(state)),
+      f: () => fireCmd(),
+      v: () => throwCmd(),
     };
     const verb = ITEM_VERBS[ev.key];
     if (verb) {
