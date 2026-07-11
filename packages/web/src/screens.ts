@@ -129,11 +129,12 @@ export function equipmentMenu(state: GameState): { items: MenuItem[]; handles: n
  * (name/class, misc, level/exp, combat, skills), faithful to characterPanels /
  * statTable. Laid out as a scrollable single column so it reads at any width.
  */
-export function characterSheetLines(state: GameState): ScreenLine[] {
+export function characterSheetLines(state: GameState, name?: string): ScreenLine[] {
+  const deps = name ? { fullName: name } : {};
   const lines: ScreenLine[] = [];
   // Stat block.
   lines.push({ text: "Stat   Self    RB   CB   EB   Best   Cur", color: LABEL });
-  for (const row of statTable(state)) {
+  for (const row of statTable(state, deps)) {
     const cur = row.drained ? row.reduced ?? "" : "";
     const flag = row.naturalMax ? "!" : " ";
     lines.push({
@@ -147,7 +148,7 @@ export function characterSheetLines(state: GameState): ScreenLine[] {
   }
   lines.push({ text: "", color: FG });
   // Panels.
-  for (const panel of characterPanels(state)) {
+  for (const panel of characterPanels(state, deps)) {
     for (const line of panel.lines) {
       if (!line.label && !line.value) {
         lines.push({ text: "", color: FG });

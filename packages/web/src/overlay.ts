@@ -130,6 +130,50 @@ export function promptDirection(
   });
 }
 
+/**
+ * A single-line text input (get_string / textui_get_name). Renders a prompt and
+ * the editable buffer; Enter confirms, Escape cancels (resolves null), Backspace
+ * deletes. Resolves the entered string (possibly empty) or null on cancel.
+ */
+export function promptText(
+  term: GlyphTerm,
+  title: string,
+  initial = "",
+  maxLen = 15,
+): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
+    let buf = initial;
+    const paint = (): void => {
+      const { cols, rows } = term.size();
+      term.clear();
+      term.print(0, HEADER_ROW, title.slice(0, cols - 1), TITLE);
+      term.print(0, BODY_TOP, `> ${buf}_`.slice(0, cols - 1), FG);
+      term.print(0, rows - 1, "[ type a name, Enter to accept, ESC to cancel ]", DIM);
+    };
+    const finish = (value: string | null): void => {
+      window.removeEventListener("keydown", onKey, true);
+      resolve(value);
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (ev.key === "Escape") return finish(null);
+      if (ev.key === "Enter") return finish(buf);
+      if (ev.key === "Backspace") {
+        buf = buf.slice(0, -1);
+        paint();
+        return;
+      }
+      if (ev.key.length === 1 && buf.length < maxLen && !ev.ctrlKey && !ev.metaKey) {
+        buf += ev.key;
+        paint();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    paint();
+  });
+}
+
 /** One selectable row in a menu. Disabled rows show dimmed and cannot be picked. */
 export interface MenuItem {
   label: string;
