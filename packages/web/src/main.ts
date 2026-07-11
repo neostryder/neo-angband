@@ -35,10 +35,11 @@ import {
   knownObject,
   loc,
   MFLAG,
-  STAT,
   TRF,
   installPickup,
   describeObject,
+  sidebarModel,
+  statusLineModel,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -104,7 +105,7 @@ function bootGame(): ReturnType<typeof startGame> {
 }
 
 const game = bootGame();
-const { state, registry, booted } = game;
+const { state, registry, booted, players } = game;
 const features = booted.registries.features;
 const constants = booted.registries.constants;
 
@@ -230,44 +231,52 @@ function monsterIndex(): Map<number, { ch: string; css: string }> {
 
 const SIDEBAR_W = 13; // classic Angband status column width.
 
-const STAT_ROWS: ReadonlyArray<readonly [string, number]> = [
-  ["STR", STAT.STR],
-  ["INT", STAT.INT],
-  ["WIS", STAT.WIS],
-  ["DEX", STAT.DEX],
-  ["CON", STAT.CON],
-];
+/** Display seams the engine model needs beyond GameState (timed-effect names,
+ * so the status line can label Poisoned/Afraid/Fed etc). Options the web does
+ * not surface fall back to the model's defaults. */
+function displayDeps() {
+  return { timedEffects: players.timed };
+}
 
-/** Render the faithful left status sidebar from the live player state. */
+/**
+ * Render the left status sidebar from the engine's sidebarModel (ui-display.c),
+ * one field per row in side_handlers[] order. Blank separators are inserted at
+ * the original NULL-spacer positions to reproduce the classic grouping; the
+ * priority culling of update_sidebar is not needed at full height.
+ */
 function renderSidebar(rows: number): void {
-  const p = state.actor.player;
-  const c = state.actor.combat;
-  const speed = state.actor.speed - 110;
-  const speedStr = speed === 0 ? "Normal" : speed > 0 ? `+${speed}` : `${speed}`;
-  const lines: Array<[string, string]> = [
-    [p.cls.name, "#c8c8d4"],
-    [p.race.name, "#9aa0b4"],
-    ["", "#000000"],
-    [`LEVEL ${p.lev}`, "#c8c8d4"],
-    [`EXP ${p.exp}`, "#9aa0b4"],
-    [`AU ${p.au}`, "#d0c060"],
-    ["", "#000000"],
-    ...STAT_ROWS.map(
-      ([label, idx]): [string, string] => [
-        `${label} ${p.statCur[idx] ?? 0}`,
-        "#a8b0a0",
-      ],
-    ),
-    ["", "#000000"],
-    [`AC ${c.ac + c.toA}`, "#a8b0c8"],
-    [`HP ${p.chp}/${p.mhp}`, p.chp * 2 < p.mhp ? "#e05050" : "#60c060"],
-    [`SP ${p.csp}/${p.msp}`, "#6080d0"],
-    ["", "#000000"],
-    [`Speed ${speedStr}`, "#9aa0b4"],
-  ];
-  for (let y = 0; y < lines.length && y < rows; y++) {
-    const [text, fg] = lines[y]!;
-    if (text) term.print(0, y, text.slice(0, SIDEBAR_W - 1), fg);
+  const fields = sidebarModel(state, displayDeps());
+  const spacerAfter = new Set(["con", "sp", "health"]);
+  let y = 0;
+  for (const f of fields) {
+    if (y >= rows) break;
+    let x = 0;
+    for (const run of f.runs) {
+      if (x >= SIDEBAR_W - 1) break;
+      const text = run.text.slice(0, SIDEBAR_W - 1 - x);
+      term.print(x, y, text, colorToCss(run.color));
+      x += run.text.length;
+    }
+    y++;
+    if (spacerAfter.has(f.key)) y++;
+  }
+}
+
+/**
+ * Render the bottom status line from statusLineModel (ui-display.c), the active
+ * indicators (level feeling, timed effects, DTrap, terrain, ...) laid left to
+ * right with a one-column gap, exactly the status_handlers[] order.
+ */
+function renderStatusLine(originX: number, row: number, maxCols: number): void {
+  let x = originX;
+  for (const ind of statusLineModel(state, displayDeps())) {
+    for (const run of ind.runs) {
+      if (x - originX >= maxCols - 1) return;
+      const text = run.text.slice(0, maxCols - 1 - (x - originX));
+      term.print(x, row, text, colorToCss(run.color));
+      x += run.text.length;
+    }
+    if (ind.runs.length > 0) x += 1; // inter-indicator gap
   }
 }
 
@@ -344,9 +353,7 @@ function render(): void {
 
   renderSidebar(rows);
   term.print(mapOriginX, 0, message.slice(0, mapCols - 1), "#c8c8d4");
-  const dl = state.chunk.depth;
-  const status = `DL${dl} (${dl * 50} ft)   Turn ${state.turn}`;
-  term.print(mapOriginX, rows - 1, status.slice(0, mapCols - 1), "#5a5a66");
+  renderStatusLine(mapOriginX, rows - 1, mapCols);
 }
 
 /** Advance the engine after queuing input, then repaint. */
