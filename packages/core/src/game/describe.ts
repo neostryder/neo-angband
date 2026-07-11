@@ -19,6 +19,10 @@ function knownDesc(state: GameState): KnownDesc {
      * The port has no live tried seam on GameState yet, so it reports false;
      * ledgered in game-describe.yaml. */
     isTried: () => false,
+    /* The per-game flavour assignment (flavor_init), installed by wireGame.
+     * Absent seams leave object_desc on its tval-only fallback. */
+    ...(state.hasFlavor ? { hasFlavor: state.hasFlavor } : {}),
+    ...(state.flavorText ? { flavorText: state.flavorText } : {}),
   };
 }
 

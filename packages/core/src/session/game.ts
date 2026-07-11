@@ -118,6 +118,7 @@ import {
   objectLearnOnWield,
   playerLearnInnate,
 } from "../obj/knowledge";
+import { flavorInit } from "../obj/flavor";
 import { ELEM_MAX } from "../obj/types";
 import { ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
@@ -173,6 +174,8 @@ export interface StartedGame {
   players: PlayerRegistry;
   /** Per-game flavor knowledge (aware/tried), for the save format. */
   flavor: FlavorKnowledge;
+  /** seed_flavor: the seed flavor_init used, persisted so a reload matches. */
+  seedFlavor: number;
   /**
    * dungeon_change_level + prepare_next_level: generate a fresh level at
    * `depth` from the game's own RNG stream and repopulate the state in
@@ -202,11 +205,25 @@ function wireGame(
   reg: CoreRegistries,
   players: PlayerRegistry,
   pstate: PlayerState,
+  seedFlavor: number,
 ): WiredGame {
   // Live commands over the floor piles: 'g'et + autopickup on stepping.
   const registry = createDefaultRegistry();
 
   const flavor = new FlavorKnowledge(reg.objects.ordinaryKindCount);
+
+  // flavor_init (obj-util.c): assign each flavoured kind a colour/adjective and
+  // mark the non-flavoured ordinary kinds aware. Deterministic in seedFlavor,
+  // so a save/reload reproduces identical flavours. The assignment feeds the
+  // object_desc name seams below (state.hasFlavor / state.flavorText).
+  const flavorAssignment = flavorInit(seedFlavor, flavor, {
+    kinds: reg.objects.kinds,
+    flavors: reg.objects.flavors,
+    ordinaryKindCount: reg.objects.ordinaryKindCount,
+    nameSections: reg.nameSections,
+  });
+  state.hasFlavor = (kind) => flavorAssignment.hasFlavor(kind);
+  state.flavorText = (kind) => flavorAssignment.text(kind);
 
   // ignore_item_ok (obj-ignore.c): the player's ignore settings resolved with
   // live flavor awareness. Everything reads it through state.isIgnored so the
@@ -901,7 +918,10 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     nextCommand: (): PlayerCommand | null => null,
   };
 
-  const wired = wireGame(state, reg, players, pstate);
+  // seed_flavor (player-birth.c L1291): drawn once at birth from the game RNG
+  // and persisted, so the object colours/titles stay stable across reloads.
+  const seedFlavor = booted.rng.randint0(0x10000000);
+  const wired = wireGame(state, reg, players, pstate, seedFlavor);
 
   // Racial rune knowledge (player-birth.c L1274 player_learn_innate) and the
   // starting kit's obvious runes (L495 object_learn_on_wield): the outfit
@@ -933,6 +953,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     booted,
     players,
     flavor: wired.flavor,
+    seedFlavor,
     changeLevel: makeChangeLevel(state, reg, wired.trapDeps),
   };
 }
@@ -962,7 +983,7 @@ function wornArmorWeight(
 
 /** Serialize a started game into the JSON save format (decision 9). */
 export function saveGame(game: StartedGame): SavedGame {
-  return serializeGame(game.state, game.flavor);
+  return serializeGame(game.state, game.flavor, game.seedFlavor);
 }
 
 /**
@@ -1059,7 +1080,13 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     state.oldGrid = loc(save.arena.oldGrid.x, save.arena.oldGrid.y);
   }
 
-  const wired = wireGame(state, reg, players, pstate);
+  /* seed_flavor from the save (load.c L960). Older saves predate it; fall
+   * back to 0 so flavor_init still produces a stable per-load assignment. */
+  const seedFlavor = save.seedFlavor ?? 0;
+  const wired = wireGame(state, reg, players, pstate, seedFlavor);
+  /* restore() replaces the aware/tried sets, so it must run AFTER flavor_init's
+   * aware-marking of non-flavoured kinds - the save is the source of truth for
+   * what the player has actually identified. */
   wired.flavor.restore(save.flavor);
   if (save.ignore) state.ignore.restore(save.ignore);
 
@@ -1082,6 +1109,7 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     booted,
     players,
     flavor: wired.flavor,
+    seedFlavor,
     changeLevel: makeChangeLevel(state, reg, wired.trapDeps, {
       inArena: !!save.arena,
     }),

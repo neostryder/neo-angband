@@ -1,0 +1,76 @@
+module: packages/core/src/obj/flavor.ts (flavor_init + FlavorAssignment) +
+  packages/core/src/obj/randname.ts (the Markov name generator) +
+  session/boot.ts + session/game.ts wiring + the save format seed
+status: complete
+baseline: 4.2.6
+upstream:
+  - path: src/obj-util.c
+    items:
+      - flavor_init (L154) as flavorInit - assign a flavour (colour / metal /
+        adjective) to every flavoured kind (rings, amulets, staves, wands,
+        rods, mushrooms, potions, scrolls) and mark the non-flavoured ordinary
+        kinds aware (L232-246). Deterministic in seed_flavor (Rand_quick +
+        Rand_value), so a save/reload reproduces identical flavours.
+      - flavor_assign_fixed (L58) - bind flavours that name a specific sval to
+        their kind; flavor_assign_random (L76) - give each remaining kind of a
+        tval a random unassigned flavour, drawn in kidx / file order so the RNG
+        sequence matches upstream; flavor_reset_fixed (L121) - scrub fixed
+        svals for randarts (keeping the One Ring), wired via the birthRandarts
+        option.
+      - the scroll-title loop (L193-227) - generate MAX_TITLES unique random
+        titles with randname_make(RANDNAME_SCROLL) and assign them as scroll
+        flavour text (scroll_adj[sval]).
+  - path: src/randname.c
+    items:
+      - randname_make (L77) as randnameMake and build_prob (L41) as buildProb -
+        W. Sheldon Simms' Markov word generator; faithful to the S_WORD/E_WORD/
+        TOTAL markers, the 10-try + min-length + must-contain-a-vowel
+        acceptance, and the weighted-pick loop, so draws line up for a corpus.
+  - path: src/player-birth.c
+    items:
+      - seed_flavor = randint0(0x10000000) (L1291) - drawn once at birth from
+        the game RNG (session/game.ts startGame) and persisted in the save
+        (SavedGame.seedFlavor); load.c L960 reads it back and re-runs
+        flavor_init, reproducing the assignment (loadGame).
+notes: >-
+  Completes exact-original object naming (the user's names-exact directive;
+  memory neo-angband-names-exact-original, PORT_PLAN decision 25). Upstream
+  mutates the shared object_kind template (kind->flavor) and the flavour
+  records (flavor->sval); the port keeps ObjRegistry immutable and reusable
+  across games (mirroring FlavorKnowledge), so flavorInit builds a separate
+  per-game FlavorAssignment keyed by kidx and marks aware into the per-game
+  FlavorKnowledge, mutating neither bound array. The assignment is installed on
+  the GameState as the hasFlavor / flavorText seams (context.ts), which
+  game/describe.ts feeds to object_desc's KnownDesc deps, so an unaware
+  flavoured item shows its flavour ("a Smoky Potion", a scroll "titled <name>")
+  and never the real kind, while an aware item adds " of <kind>". names.json
+  (already compiled) is threaded through CorePack.names into the nameSections
+  map on CoreRegistries. The RNG is a local quick-mode Rng seeded with
+  seed_flavor, so the main game stream is untouched (decision 22 determinism).
+deferred:
+  - The proper RANDNAME_TOLKIEN Markov generator now exists (randname.ts);
+    obj/randart.ts still uses its own simplified syllable stand-in for artifact
+    names and could be migrated onto randnameMake + nameSections section 1 as a
+    follow-on (ledgered in obj-randart).
+  - flavor->d_attr is exposed on AssignedFlavor (FlavorAssignment.attr) for the
+    unaware-glyph colour, but the map renderer / object-list colour is not yet
+    routed through it; object_desc names do not use the attr.
+  - object_flavor_aware's propagation side effects (revealing effects, fixing
+    ignore/autoinscribe, refreshing store stock and floor glyphs on first
+    awareness) stay with the awareness-propagation wiring, as before
+    (obj-knowledge.yaml); flavor_init only does the initial aware-marking.
+  - A pack shipping no names.json leaves nameSections empty; scroll titles are
+    then skipped (unaware scrolls fall back to the plain "& Scroll~" base) since
+    randnameMake cannot satisfy its acceptance test on an empty corpus. The
+    shipped pack always includes names, so this is a test-fixture-only path.
+verified-by:
+  - obj/flavor.test.ts (7 tests) - every flavoured ordinary kind gets a
+    flavour with non-empty text; non-flavoured ordinary kinds (torch) are
+    marked aware while flavoured kinds are not; determinism in the seed (same
+    seed = same assignment, different seed differs); quoted scroll titles;
+    randnameMake bounded / voweled / deterministic; and end-to-end through
+    describeObject that an unaware potion shows the flavour but never "of
+    <kind>", gaining it once aware.
+  - session/save.test.ts - the round trip persists seed_flavor and re-derives
+    the identical unaware potion name after reload (a reload must not recolour
+    the dungeon).
