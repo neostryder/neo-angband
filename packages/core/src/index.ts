@@ -108,6 +108,7 @@ export * from "./game/mon-cmd";
 export * from "./game/describe";
 export * from "./game/mon-list";
 export * from "./game/obj-list";
+export * from "./game/display";
 export * from "./game/mon-shape";
 export * from "./mon/lore";
 export * from "./mon/lore-describe";
