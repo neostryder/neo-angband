@@ -1,0 +1,45 @@
+/**
+ * Game-layer object naming: the bridge from a live GameState to the pure
+ * object_desc engine (obj/desc.ts). It supplies the player, the rune registry
+ * (state.runeEnv) and the flavour-awareness view (state.isAware / a tried
+ * seam), so presentation code can name an object with a single call that gates
+ * exactly by the player's real knowledge, as upstream does.
+ */
+
+import { ODESC, objectDesc } from "../obj/desc";
+import type { KnownDesc } from "../obj/known-object";
+import type { GameObject } from "../obj/object";
+import type { GameState } from "./context";
+
+/** Build the flavour-awareness view object_desc needs from the game state. */
+function knownDesc(state: GameState): KnownDesc {
+  return {
+    isAware: (kind) => (state.isAware ? state.isAware(kind) : false),
+    /* object_flavor_was_tried: only affects the in-store "{tried}" marker.
+     * The port has no live tried seam on GameState yet, so it reports false;
+     * ledgered in game-describe.yaml. */
+    isTried: () => false,
+  };
+}
+
+/**
+ * object_desc for a live object, gated by the player's knowledge. `mode`
+ * defaults to the common "full name with prefix" combination
+ * (ODESC_PREFIX | ODESC_FULL). Pass `altnum` with ODESC.ALTNUM to describe a
+ * different stack count than obj.number (the object-list accumulation).
+ */
+export function describeObject(
+  state: GameState,
+  obj: GameObject | null,
+  mode: number = ODESC.PREFIX | ODESC.FULL,
+  altnum?: number,
+): string {
+  return objectDesc(
+    obj,
+    mode,
+    state.actor.player,
+    state.runeEnv,
+    knownDesc(state),
+    altnum,
+  );
+}
