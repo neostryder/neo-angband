@@ -64,6 +64,7 @@ import {
   createVisualsAnimator,
   animateMonsterAttr,
   RF,
+  MSG,
   PF,
   spellNeedsAim,
   playerObjectToBook,
@@ -302,13 +303,18 @@ state.onMelee = (mon, result): void => {
   for (const blow of result.blows) {
     if (!blow.hit) {
       say(`You miss ${name}.`);
+      state.sound?.(MSG.MISS);
       continue;
     }
     say(`You ${blow.verb} ${name}.`);
     const flavor = CRIT_FLAVOR[blow.msg];
     if (flavor) say(flavor);
+    state.sound?.((MSG as Record<string, number>)[blow.msg] ?? MSG.HIT);
   }
-  if (result.monsterDied) say(`You have slain ${name}.`);
+  if (result.monsterDied) {
+    say(`You have slain ${name}.`);
+    state.sound?.(MSG.KILL);
+  }
 };
 
 // Modal gate: while a full-screen overlay (inventory, character sheet, message
@@ -1295,6 +1301,14 @@ installWebSound(soundEvents, {
   baseUrl: soundBase,
   randint0: (n: number): number => state.rng.randint0(n),
 });
+// Route the engine's sound() emits (msgt types from combat, deaths, casts,
+// ranged attacks) onto the bus so a loaded pack actually plays on gameplay.
+// This is the emit half of decision (b): sound is first-class and fully wired;
+// audio only plays once a pack is pointed at via ?sounds=. state.sound is the
+// core seam (game/context.ts); combat/ranged/monster-message code calls it.
+state.sound = (type: number): void => {
+  soundEvents.emit("sound", { msg: "", type });
+};
 
 state.updateFov(state);
 term.onResize = () => render();
