@@ -981,8 +981,29 @@ export const modifiedGen: CaveBuilder = (ctx) => {
 };
 
 /**
- * A minimal town builder: an open lit level with a perimeter wall and a down
- * staircase. Full town generation (stores, home) is a separate later task.
+ * The eight town entrance features, in store order: the seven shops plus the
+ * player's Home. Their FEAT_* indices are the store_at keys the store runtime
+ * looks a store up by.
+ */
+export const TOWN_STORE_FEATS: readonly number[] = [
+  FEAT.STORE_GENERAL,
+  FEAT.STORE_ARMOR,
+  FEAT.STORE_WEAPON,
+  FEAT.STORE_BOOK,
+  FEAT.STORE_ALCHEMY,
+  FEAT.STORE_MAGIC,
+  FEAT.STORE_BLACK,
+  FEAT.HOME,
+];
+
+/**
+ * The town builder: a lit, walled surface with the eight store entrances laid
+ * out on it, a down staircase, and the player. This is a compact, deterministic
+ * layout rather than a full port of town_gen_layout (gen-cave.c L2515) - the
+ * upstream starburst / lava / crossroads-lots / ruins are cosmetic and are
+ * deferred (ledgered); the functional town (walk into a shop entrance to trade,
+ * take the stair down to the dungeon) is complete. Store entrances are
+ * non-passable terrain (a shell opens the shop when the player walks into one).
  */
 export const townGen: CaveBuilder = (ctx) => {
   const { constants, dun } = ctx;
@@ -1008,7 +1029,23 @@ export const townGen: CaveBuilder = (ctx) => {
   }
   drawRectangle(c, 0, 0, c.height - 1, c.width - 1, FEAT.PERM, SQUARE.NONE, true);
 
-  /* One down staircase (all town stairs go down). */
+  /* Lay the eight entrances out in two rows of four, spaced across the town
+   * with an open street between them so every entrance is reachable. */
+  const cols = 4;
+  const rows = 2;
+  const stepX = Math.floor(c.width / (cols + 1));
+  const stepY = Math.floor(c.height / (rows + 1));
+  for (let i = 0; i < TOWN_STORE_FEATS.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = stepX * (col + 1);
+    const y = stepY * (row + 1);
+    const grid = loc(x, y);
+    c.setFeat(grid, TOWN_STORE_FEATS[i]!);
+    c.sqinfoOn(grid, SQUARE.GLOW);
+  }
+
+  /* One down staircase (all town stairs go down) placed on open floor. */
   allocStairs(g, FEAT.MORE, 1, 0, false, [], false);
 
   const pspot = newPlayerSpot(g);

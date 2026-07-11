@@ -46,6 +46,8 @@ import { bindProjections } from "../world/projection";
 import type { ProjectionInfo, ProjectionRecordJson } from "../world/projection";
 import { bindTraps } from "../world/trap";
 import type { TrapKind, TrapRecordJson } from "../world/trap";
+import { StoreRegistry } from "../store/bind";
+import type { StoreRecordJson } from "../store/types";
 import { iToGrid } from "../gen/util";
 
 /** The base content pack as parsed JSON (pack zero, or a merged pack). */
@@ -71,6 +73,8 @@ export interface CorePack {
    * "& Scroll~" base form.
    */
   names?: NameSectionJson[];
+  /** store.json (the 8 town stores). Optional; without it the town has no shops. */
+  store?: StoreRecordJson[];
 }
 
 /** One names.txt section: a list of lowercase words under a section index. */
@@ -96,6 +100,8 @@ export interface CoreRegistries {
    * titles). Empty when the pack ships no names.json.
    */
   nameSections: Map<number, string[]>;
+  /** Bound town stores (indexable by entrance feature), or null when none. */
+  stores: StoreRegistry | null;
 }
 
 /** Bind a parsed pack into the full set of runtime registries. */
@@ -115,6 +121,7 @@ export function bindCore(pack: CorePack): CoreRegistries {
   for (const rec of pack.names ?? []) {
     nameSections.set(rec.section, rec.word);
   }
+  const stores = pack.store ? new StoreRegistry(pack.store, objects) : null;
   return {
     constants,
     features,
@@ -125,6 +132,7 @@ export function bindCore(pack: CorePack): CoreRegistries {
     projections,
     traps,
     nameSections,
+    stores,
   };
 }
 
