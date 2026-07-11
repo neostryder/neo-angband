@@ -113,6 +113,11 @@ import {
 } from "../player/spell";
 import { installSpellCommands } from "../game/spell-cmd";
 import { installRangedCommands } from "../game/ranged-cmd";
+import { createTownStores } from "../store/store";
+import type { Store } from "../store/store";
+import { storeBuy, storeSell } from "../store/transact";
+import type { BuyResult, SellResult } from "../store/transact";
+import { priceItem } from "../store/price";
 import {
   formatMonsterMessage,
   formatMonsterMessageByName,
@@ -132,6 +137,7 @@ import { ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import type { ProjectFeatEnv } from "../game/project-feat";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
+import type { GameObject } from "../obj/object";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
 import { installRunning } from "../game/player-path";
@@ -210,6 +216,18 @@ export interface StartedGame {
    * The caller clears state.generateLevel and refreshes FOV/render.
    */
   changeLevel: (depth: number) => void;
+  /**
+   * do_cmd_buy: purchase `amt` of a store-stock object into the player's pack
+   * (store/transact.ts), with the deps and knowledge closed over. Town only.
+   */
+  buy: (store: Store, obj: GameObject, amt: number) => BuyResult;
+  /** do_cmd_sell: sell `amt` of the pack object at `handle` to the store. */
+  sell: (store: Store, handle: number, amt: number) => SellResult;
+  /**
+   * price_item for display: the per-item price the player pays (storeBuying
+   * false) or is offered (storeBuying true).
+   */
+  price: (store: Store, obj: GameObject, storeBuying: boolean, qty: number) => number;
 }
 
 /** What the shared command/effect wiring returns. */
@@ -883,9 +901,34 @@ function makeChangeLevel(
       },
       trapDeps,
     );
+    refreshTownStores(state, reg);
     delete state.targetDepth;
     state.updateFov?.(state);
   };
+}
+
+/**
+ * store_init / store_reset on entering town: build and stock the eight shops
+ * when the active level is the town (depth 0), and clear them in the dungeon.
+ * Stock is regenerated per visit (save-persistence of store stock is a
+ * documented parity gap). No-op when the pack ships no stores.
+ */
+function refreshTownStores(state: GameState, reg: CoreRegistries): void {
+  if (state.chunk.depth === 0 && reg.stores) {
+    const storeDeps: MakeDeps = {
+      reg: reg.objects,
+      alloc: new ObjAllocState(reg.objects, reg.constants),
+      constants: reg.constants,
+    };
+    state.stores = createTownStores(
+      reg.stores.stores,
+      storeDeps,
+      state.rng,
+      state.actor.player.maxDepth,
+    );
+  } else {
+    delete state.stores;
+  }
 }
 
 /**
@@ -1046,6 +1089,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     },
     wired.trapDeps,
   );
+  refreshTownStores(state, reg);
 
   return {
     state,
@@ -1057,6 +1101,66 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     options,
     randartSeed,
     changeLevel: makeChangeLevel(state, reg, wired.trapDeps),
+    ...makeStoreApi(state, reg, wired.flavor, options),
+  };
+}
+
+/**
+ * The store buy/sell/price closures a shell uses: they build the maintenance
+ * context (for restock after a purchase empties a shop), read the live flavour
+ * knowledge and no-selling option, and route through the ported store runtime.
+ * Shared by startGame and loadGame so both StartedGame results expose them.
+ */
+function makeStoreApi(
+  state: GameState,
+  reg: CoreRegistries,
+  flavor: FlavorKnowledge,
+  options: OptionState,
+): Pick<StartedGame, "buy" | "sell" | "price"> {
+  const storeCtx = (): {
+    rng: typeof state.rng;
+    deps: MakeDeps;
+    maxDepth: number;
+    stores: Store[];
+  } => ({
+    rng: state.rng,
+    deps: {
+      reg: reg.objects,
+      alloc: new ObjAllocState(reg.objects, reg.constants),
+      constants: reg.constants,
+    },
+    maxDepth: state.actor.player.maxDepth,
+    stores: state.stores ?? [],
+  });
+  const noSelling = (): boolean => options.get("birth_no_selling") ?? false;
+  const txnKnow = (
+    obj: GameObject,
+  ): { flavor: FlavorKnowledge; aware: boolean; noSelling: boolean } => ({
+    flavor,
+    aware: flavor.isAware(obj.kind),
+    noSelling: noSelling(),
+  });
+  return {
+    buy: (store, obj, amt): BuyResult =>
+      storeBuy(storeCtx(), store, obj, amt, state.actor.player, state.gear, txnKnow(obj)),
+    sell: (store, handle, amt): SellResult => {
+      const obj = state.gear.store.get(handle);
+      const know = obj
+        ? txnKnow(obj)
+        : { flavor, aware: false, noSelling: noSelling() };
+      return storeSell(storeCtx(), store, handle, amt, state.actor.player, state.gear, know);
+    },
+    price: (store, obj, storeBuying, qty): number =>
+      priceItem(
+        reg.objects,
+        store,
+        store.owner,
+        obj,
+        storeBuying,
+        qty,
+        flavor.isAware(obj.kind),
+        noSelling(),
+      ),
   };
 }
 
@@ -1233,6 +1337,9 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     registries: reg,
   };
 
+  /* Resuming in town: re-stock the shops (store stock is not persisted). */
+  refreshTownStores(state, reg);
+
   return {
     state,
     registry: wired.registry,
@@ -1245,5 +1352,6 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     changeLevel: makeChangeLevel(state, reg, wired.trapDeps, {
       inArena: !!save.arena,
     }),
+    ...makeStoreApi(state, reg, wired.flavor, options),
   };
 }

@@ -110,6 +110,7 @@ import {
   showPredictedScores,
 } from "./score";
 import { enterScore } from "@neo-angband/core";
+import { runStore } from "./shop";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
@@ -121,7 +122,11 @@ const roguelikeKeys = false;
 // reproducible (unmodded runs are deterministic - PORT_PLAN.md decision 22).
 const params = new URLSearchParams(location.search);
 const seed = Number(params.get("seed")) || 20260708;
-const depth = Number(params.get("depth")) || 1;
+// A new character starts in town (depth 0), faithful to the original, so the
+// shops are the first thing you can visit. Overridable via ?depth= (0 is
+// honoured explicitly rather than falling through to a dungeon default).
+const depthParam = params.get("depth");
+const depth = depthParam !== null && depthParam !== "" ? Number(depthParam) : 0;
 
 const pack: GamePack = loadGamePack();
 
@@ -282,6 +287,10 @@ function say(text: string): void {
   message = msglog.latest();
 }
 state.msg = (text: string): void => say(text);
+
+// Keypad direction deltas (1-9), for resolving a walk's destination grid.
+const DIR_DX = [0, -1, 0, 1, -1, 0, 1, -1, 0, 1];
+const DIR_DY = [0, 1, 1, 1, 0, 0, 0, -1, -1, -1];
 
 // py_attack text (player-attack.c): the combat code returns HitType keys only,
 // leaving the wording to the UI. Render the classic "You hit the kobold." plus
@@ -1192,6 +1201,18 @@ window.addEventListener("keydown", (ev) => {
   const binding = resolveKey(ev, roguelikeKeys);
   if (!binding) return;
   ev.preventDefault();
+  // Walking into a store entrance enters the shop (do_cmd_store) rather than
+  // moving - the town's shops are non-passable store-feature tiles.
+  if (binding.kind === "walk") {
+    const dx = DIR_DX[binding.dir] ?? 0;
+    const dy = DIR_DY[binding.dir] ?? 0;
+    const dest = loc(state.actor.grid.x + dx, state.actor.grid.y + dy);
+    const store = state.stores?.find((s) => s.feat === state.chunk.feat(dest));
+    if (store) {
+      void openModal(() => runStore(term, game, store, say));
+      return;
+    }
+  }
   // A run binding starts a run; the engine self-continues via cmdQueue until
   // run_test stops it (runGameLoop returns INPUT), so one keypress runs.
   commandBuffer.push({ code: binding.kind, dir: binding.dir });

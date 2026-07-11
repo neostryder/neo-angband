@@ -72,6 +72,7 @@ export function loadGamePack(): GamePack {
     projection: records("projection"),
     trap: records("trap"),
     names: records("names"),
+    store: records("store"),
     obj: {
       objectBase: file("object_base"),
       object: file("object"),

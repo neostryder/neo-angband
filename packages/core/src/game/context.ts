@@ -27,6 +27,7 @@ import type { DefenderState } from "../combat/mon-melee";
 import type { GameObject } from "../obj/object";
 import type { Brand, Slay } from "../obj/types";
 import type { Gear } from "./gear";
+import type { Store } from "../store/store";
 import { NORMAL_ENERGY } from "./energy";
 /* Value import is safe: mon-group's imports from this module are type-only,
  * so there is no runtime cycle. */
@@ -337,6 +338,12 @@ export interface GameState {
    * own message->sound map and dedup ride #26; this is only the emit seam.
    */
   sound?: (msgType: number) => void;
+  /**
+   * The live town stores (store.c `stores`), indexed however the session
+   * instantiates them; a shell looks a store up by its entrance feature. Set
+   * when the town level is generated; absent in the dungeon.
+   */
+  stores?: Store[];
 }
 
 /** One queued player command (a keyed action plus optional direction/args). */
