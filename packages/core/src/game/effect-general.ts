@@ -42,10 +42,11 @@ import {
 } from "../effects/interpreter";
 import {
   equipLearnFlag,
-  objBaseName,
   shapeLearnOnAssume,
   sustainFlag,
 } from "../obj/knowledge";
+import { ODESC } from "../obj/desc";
+import { describeObject } from "./describe";
 import type { EffectRecordJson } from "../obj/types";
 import type { Shape } from "../player/types";
 import { buildObjectEffectChain } from "./obj-cmd";
@@ -270,7 +271,7 @@ export function disenchantEquipment(
   /* Nothing to disenchant */
   if (obj.toH <= 0 && obj.toD <= 0 && obj.toA <= 0) return;
 
-  const name = objBaseName(obj);
+  const name = describeObject(state, obj, ODESC.BASE);
 
   /* Artifacts have a 60% chance to resist */
   if (obj.artifact && rng.randint0(100) < 60) {
