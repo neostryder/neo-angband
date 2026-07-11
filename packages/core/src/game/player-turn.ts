@@ -106,6 +106,10 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
       { monVisible: true },
     );
     equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
+    /* py_attack message slice: hand the blow-by-blow result to the shell for
+     * faithful "You hit/miss/slay the X" text (combat returns HitType keys
+     * only). Before deletion so the monster name is still resolvable. */
+    state.onMelee?.(target, result);
     if (result.monsterDied && !arenaInterceptDeath(state, target)) {
       state.onPlayerKill?.(target);
       deleteMonster(state, target.midx);
