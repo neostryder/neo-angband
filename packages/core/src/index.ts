@@ -107,6 +107,7 @@ export * from "./game/known";
 export * from "./game/target";
 export * from "./game/mon-cmd";
 export * from "./game/describe";
+export * from "./game/mon-message";
 export * from "./game/mon-list";
 export * from "./game/obj-list";
 export * from "./game/display";
