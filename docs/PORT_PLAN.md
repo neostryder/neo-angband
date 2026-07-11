@@ -303,8 +303,13 @@ completeness where possible.
   Linoleum tile-pack support, AI-seam documentation, sample mods, the
   moddable-surface matrix audit (decision 13), and the modding SDK
   documentation set (`docs/modding/`).
-- **P8 - Borg**: port of the automatic player, built against the public
-  command-queue API (proving the plugin surface).
+- **P8 - Borg**: a faithful port of the automatic player, packaged as a
+  BUNDLED MOD on the mod framework's perceive/act agent API rather than as
+  in-core code. It is the reference implementation and acceptance test of that
+  API - the most demanding "read the whole game, drive every command" consumer,
+  so a Borg that plays faithfully proves the agent surface is complete. The
+  same API hosts any third-party or AI-driven agent mod. Depends on the P7 mod
+  substrate. Full scope and plan: `docs/BORG_AS_MOD.md`.
 - **P9 - Beyond parity**: the NPC/dialog system, quest engine, moddable
   shops (decision 14), and the networking session seam (decision 15).
   Design docs and registry stubs may land earlier wherever they cheaply
