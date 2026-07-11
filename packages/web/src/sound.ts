@@ -6,12 +6,13 @@
  * implements the SoundHooks - loading and playing actual audio - using
  * HTMLAudioElement.
  *
- * LICENSING / ASSETS: no audio ships with this repo. The Dubtrain sound
- * pack the mapping was derived from is Creative-Commons NON-COMMERCIAL, and
- * this project has commercial intent. A user supplies their OWN sound pack
- * and points the engine at it with a base URL (the `?sounds=` query param or
- * the `baseUrl` option). With no base URL configured, the hooks no-op and
- * the game runs silently. Missing or undecodable files never crash the game.
+ * LICENSING / ASSETS: no audio ships in this file's default path. The Dubtrain
+ * sound pack the mapping was derived from is Creative Commons Attribution 4.0
+ * (reference/docs/copying.rst) - commercial-safe WITH attribution, so it may be
+ * bundled or a user may supply their own pack and point the engine at it with a
+ * base URL (the `?sounds=` query param or the `baseUrl` option). With no base
+ * URL configured, the hooks no-op and the game runs silently. Missing or
+ * undecodable files never crash the game.
  */
 
 import {
