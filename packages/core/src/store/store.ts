@@ -584,3 +584,21 @@ export function storeReset(ctx: StoreMaintContext): void {
     for (let j = 0; j < 10; j++) storeMaint(ctx, store);
   }
 }
+
+/**
+ * store_init + store_reset for a fresh town: build every store's live instance
+ * from the bound registry and stock it. Returns the stores in registry order
+ * (the session holds them on GameState; a shell looks one up by entrance feat).
+ */
+export function createTownStores(
+  bound: BoundStore[],
+  deps: MakeDeps,
+  rng: Rng,
+  maxDepth: number,
+): Store[] {
+  const stores = bound.map((b) =>
+    bindStoreRuntime(b, rng, deps.constants.storeInvenMax),
+  );
+  storeReset({ rng, deps, maxDepth, stores });
+  return stores;
+}
