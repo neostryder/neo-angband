@@ -1,0 +1,122 @@
+module: packages/core/src/score/
+status: ported
+baseline: 4.2.6
+upstream:
+  - path: src/score.h
+    items:
+      - MAX_HISCORES (100) -> types.ts MAX_HISCORES
+      - WINNING_HOW ("Ripe Old Age") -> types.ts WINNING_HOW
+      - struct high_score (fixed-width string record: what/pts/gold/turns/day/
+        who/uid/p_r/p_c/cur_lev/cur_dun/max_lev/max_dun/how) -> HighScore, with
+        the numeric fields ported to numbers and the string fields to strings
+        (see divergences: the binary record becomes typed JSON)
+  - path: src/score.c
+    items:
+      - total_points (L28; max_exp + 100 * max_depth) -> totalPoints EXACTLY
+      - build_score (L216; fill a record from the player + died_from +
+        death_time) -> buildScore(player, BuildScoreDeps). who capped 15 chars
+        ("%-.15s"), how capped 31 (how[32]), what capped 7 (what[8]); day is
+        "@%Y%m%d" localtime or "TODAY" when death_time is NULL
+      - highscore_add (L72; memmove shift + insert) -> highscoreAdd (splice at
+        the slot, truncate at MAX_HISCORES; the full-list replace-last case
+        matches the C's zero-count memmove)
+      - highscore_count (L84) -> highscoreCount
+      - enter_score (L272; the gating) -> enterScore. Order preserved: cheat
+        (OP_SCORE options) > wizard/debug (NOSCORE_WIZARD|NOSCORE_DEBUG) >
+        non-winner "Interrupting" > non-winner "Retiring" > enter. Borg
+        (ALLOW_BORG/SCORE_BORGS) branch omitted (no borg in this port)
+      - highscore_read (L37) / highscore_write (L98) -> the ScoreStore seam
+        (read/write); the binary file, scores.lok lock, scores.old/new rename
+        dance and safe_setuid_grab/drop are platform concerns dropped by design
+  - path: src/score-util.c
+    items:
+      - highscore_cmp (L43; winners first, then points desc, ties keep order)
+        -> highscoreCmp (returns 0 on a true tie so a stable Array.sort keeps
+        the current order, replacing the C's pointer-address tiebreak)
+      - highscore_valid (L95; all fields null-terminated + numeric parseable)
+        -> highscoreValid (typed: empty `what` = empty record, non-finite in a
+        numeric field = invalid; the null-termination checks are N/A for JSON)
+      - highscore_regularize (L199; drop invalid/empty, compact, re-sort) ->
+        highscoreRegularize (filter invalid/empty + stable sort; returns the
+        `irregular` changed-flag)
+      - highscore_where (L276; insert slot, winners first, points desc, ties
+        prefer the new entry) -> highscoreWhere. First-empty-slot return maps to
+        the compact list length (below the cap) or MAX_HISCORES-1 (full)
+  - path: src/ui-score.c
+    items:
+      - display_score_page (L30; the 3-line-per-entry row format) -> scoreRow /
+        scorePageRows as DATA (ScoreRow: line1/line2/line3 + color + rank). The
+        exact format strings are reproduced: line1 "%3d.%9s  %s the %s %s,
+        level %d" (+ " (Max %d)"); line2 "Killed by %s on dungeon level %d" /
+        "... in the town" (+ " (Max %d)"); line3 "(User %s, Date %s, Gold %s,
+        Turn %s).". The "@YYYYMMDD"->"YYYY-MM-DD" when-cleanup is ported; the
+        stripped user/gold/turn numbers come straight from the typed fields
+      - display_scores_aux (L117; the 5-per-page paging/scroll/keypress loop,
+        title, prompt, ARROW_UP paging) -> packages/web/src/score.ts
+        showScoreScreen (the Term loop is the shell's, per the slice pattern)
+      - predict_score (L193; provisional insert when alive, locate when dead,
+        top-15 vs windowed neighbourhood) -> predictScore (core, returns
+        {scores, from, to, highlight}) + showPredictedScores (web)
+      - show_scores (L221; screen_save/predict/screen_load) -> the web 'V'
+        keybinding + openHallOfFame in main.ts
+persistence-seam:
+  - ScoreStore { read(): HighScore[]; write(scores): void } is the whole
+    storage boundary; core never touches localStorage or a filesystem. The web
+    implements createLocalStorageScoreStore (JSON in localStorage, regularized
+    on read so a corrupt/stale blob still yields a valid ordered list, mirroring
+    highscore_read's regularize-on-load). Nothing stored -> empty Hall of Fame
+    (graceful degradation).
+  - Name resolution: display_score_page's player_id2race/player_id2class become
+    an injected ScoreNameResolver (registryNameResolver over the PlayerRegistry
+    races/classes arrays); unknown index -> "<none>" exactly as the C.
+divergences: >-
+  JSON-store vs binary file (PORT_PLAN.md decision 9): upstream persists a
+  fixed 128-byte struct high_score record per entry in scores.raw and orders by
+  strcmp on the space-padded right-justified "pts" string; this port stores a
+  compact typed HighScore[] as JSON and orders by numeric comparison, which is
+  exactly equivalent for the realistic value range (the C's strtol(pts) recovers
+  the same number the port compares directly). The upstream fixed array of
+  MAX_HISCORES records with empty (what[0]=='\0') tail slots becomes a compact
+  list of only-real records capped at MAX_HISCORES; highscore_where's
+  first-empty-slot return maps to the list length (below the cap) and its
+  replace-last return maps to MAX_HISCORES-1 (full) - same observable slot. The
+  file lock (scores.lok), the scores.old/scores.new atomic-rename dance, and the
+  safe_setuid_grab/drop privilege juggling are elevated-privilege/OS concerns
+  with no analog in a single-user browser and are dropped. struct high_score in
+  4.2.6 carries NO sex field (unlike older Angband), so none is captured -
+  faithful to the reference.
+seams-and-defaults:
+  - cheat/debug gating source: EnterScoreGating { cheated, noscore, totalWinner,
+    diedFrom }. The port's Player has no options table or noscore flags yet, so
+    these arrive explicitly; the web defaults to a clean, scored character
+    (cheated/noscore = false). This is the faithful seam for score.c L277-304.
+  - death-cause (died_from): the engine surfaces the killer only through
+    take-hit.ts's onDeath(target, killer) hook, not onto GameState after
+    LOOP_STATUS.DEAD. main.ts therefore defaults died_from to "the dungeon" on
+    death; wiring the real killer through GameState is deferred. deathTime
+    defaults to new Date() at the death moment.
+  - store backend: localStorage JSON (key "neo-angband-scores"), separate from
+    the savegame key. Storage errors (private mode, quota) degrade to an empty
+    table and silent write failures - scores never break the game.
+  - Term paging draw-half exclusion: display_scores_aux's Term_clear/put_str/
+    inkey scroll loop lives in the web (showScoreScreen); core exposes only the
+    row DATA and the predict_score range math, per the presentation-slice
+    pattern (cf. the sound slice).
+  - VERSION_NAME ("Neo Angband") for the page title and the default buildid
+    (DEFAULT_BUILDID "0.1.0" stamped into what[]) live at the edges (web title /
+    score.ts constant) rather than depending on the barrel's ENGINE_VERSION,
+    which would be a circular import from a core submodule.
+verified-by:
+  - packages/core/src/score/score.test.ts (total_points for representative
+    players; buildScore field capture incl. who/how/what truncation, live-depth
+    cur_dun, TODAY vs @YYYYMMDD day; highscoreWhere points-desc + tie-prefers-
+    entry + winner-first + full-table replace-last; highscoreAdd shift +
+    MAX_HISCORES truncation + replace-last; highscoreCount; highscoreValid
+    non-finite reject; highscoreCmp winner/points/tie; highscoreRegularize
+    drop-invalid + stable sort + winner-ahead + irregular flag; enterScore
+    gating - cheater/wizard/interrupted/retired NOT entered, winner bypass,
+    normal death slot; predictScore alive-insert vs dead-locate vs deep window)
+  - packages/core/src/score/display.test.ts (the "Killed by a giant rat on
+    dungeon level 5" three-line format, in-the-town at depth 0, (Max N)
+    appends, highlight L_GREEN, <none> for unknown race/class, TODAY passthrough,
+    rank/points right-justification, 5-per-page paging + range clamp)
