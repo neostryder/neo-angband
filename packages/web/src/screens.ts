@@ -19,6 +19,13 @@ import {
   colorToCss,
   colorCharToAttr,
   ODESC,
+  tvalIsBook,
+  playerObjectToBook,
+  spellCollectFromBook,
+  spellByIndex,
+  spellChance,
+  spellOkayToCast,
+  spellOkayToStudy,
 } from "@neo-angband/core";
 import type { GameState, GameObject } from "@neo-angband/core";
 import type { ScreenLine, MenuItem } from "./overlay";
@@ -165,6 +172,74 @@ export function characterSheetLines(state: GameState, name?: string): ScreenLine
     lines.push({ text: "", color: FG });
   }
   return lines;
+}
+
+/**
+ * The spellbooks in the pack this class can actually use (its own realm's
+ * books), as a selection menu. Empty for non-casters or a caster carrying no
+ * usable book. Handles map the chosen index back to the book's gear handle.
+ */
+export function magicBooks(state: GameState): { items: MenuItem[]; handles: number[] } {
+  const player = state.actor.player;
+  const items: MenuItem[] = [];
+  const handles: number[] = [];
+  for (const handle of state.gear.pack) {
+    const obj = gearGet(state.gear, handle);
+    if (!obj || !tvalIsBook(obj.tval)) continue;
+    if (!playerObjectToBook(player, obj)) continue;
+    items.push({ label: objectName(state, obj), color: objectColor(obj) });
+    handles.push(handle);
+  }
+  return { items, handles };
+}
+
+/**
+ * The spell list of a book as a menu, faithful to the cast/study spell picker
+ * (textui_book_browse columns: name, level, mana, fail%). `mode` decides which
+ * spells are selectable: "cast" enables learned spells (low-mana ones stay
+ * castable but are flagged, matching upstream's over-exert), "study" enables
+ * only spells okay to study (right level, not yet known). Returns the parallel
+ * class-wide sidx list so the caller dispatches cast/study by args.spell.
+ */
+export function bookSpellMenu(
+  state: GameState,
+  bookObj: GameObject,
+  mode: "cast" | "study",
+): { items: MenuItem[]; sidx: number[] } {
+  const player = state.actor.player;
+  const statInd = state.statInd ?? [];
+  const items: MenuItem[] = [];
+  const sidx: number[] = [];
+  for (const idx of spellCollectFromBook(player, bookObj)) {
+    const spell = spellByIndex(player.cls, idx);
+    if (!spell) continue;
+    const name = spell.name.padEnd(20).slice(0, 20);
+    const lv = String(spell.level).padStart(2);
+    const mana = String(spell.mana).padStart(2);
+    let disabled = false;
+    let tail: string;
+    if (mode === "cast") {
+      if (!spellOkayToCast(player, idx)) {
+        disabled = true;
+        tail = "  (unknown)";
+      } else {
+        const fail = String(spellChance(player, statInd, idx)).padStart(2);
+        const low = spell.mana > player.csp ? " low mana" : "";
+        tail = ` ${fail}%${low}`;
+      }
+    } else {
+      disabled = !spellOkayToStudy(player, idx);
+      const fail = String(spell.fail).padStart(2);
+      tail = disabled ? "  (cannot learn)" : ` ${fail}%`;
+    }
+    items.push({
+      label: `${name} Lv ${lv} Mana ${mana}${tail}`,
+      disabled,
+      color: DIM,
+    });
+    sidx.push(idx);
+  }
+  return { items, sidx };
 }
 
 /** The message-history lines (Ctrl-P): whole log, newest last. */
