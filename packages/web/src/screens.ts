@@ -30,8 +30,11 @@ import {
   squareMonster,
   lookMonDesc,
   TARGET,
+  buildObjectEffectChain,
+  getSpellInfo,
+  PY_SPELL,
 } from "@neo-angband/core";
-import type { GameState, GameObject, Monster } from "@neo-angband/core";
+import type { GameState, GameObject, Monster, EffectRecordJson } from "@neo-angband/core";
 import type { ScreenLine, MenuItem } from "./overlay";
 import { menuLetter } from "./overlay";
 import { MessageLog, format as formatMessage } from "./messages";
@@ -231,7 +234,23 @@ export function bookSpellMenu(
       } else {
         const fail = String(spellChance(player, statInd, idx)).padStart(2);
         const low = spell.mana > player.csp ? " low mana" : "";
-        tail = ` ${fail}%${low}`;
+        /*
+         * spell_menu_display (ui-spell.c L88-92): once a learned spell has
+         * been cast successfully at least once (WORKED), append its
+         * get_spell_info() comment (" dam 3d4", " heal 15", ...).
+         */
+        let info = "";
+        if (((player.spellFlags[idx] ?? 0) & PY_SPELL.WORKED) !== 0) {
+          const chain = buildObjectEffectChain(
+            spell.effectsRaw as EffectRecordJson[],
+            state,
+          );
+          info = getSpellInfo(chain, {
+            playerLevel: player.lev,
+            maxRange: state.z.maxRange,
+          });
+        }
+        tail = ` ${fail}%${low}${info}`;
       }
     } else {
       disabled = !spellOkayToStudy(player, idx);
