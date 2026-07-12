@@ -25,39 +25,38 @@ Legend: [x] done, [~] partial, [ ] gap. Tiers are recommended execution order.
   casting via the wired `monsterCast` hook.
 - [x] Multiple save slots (per-character roster; built this pass).
 
-## Tier 1 - Playability-critical (normal play is wrong/incomplete without these)
+## Tier 1 - Playability-critical (normal play is wrong/incomplete without these)  [ALL 7 GAPS PORTED + PUSHED this pass]
 
-- [ ] **Per-turn world clock** (`game/loop.ts` `processWorld`) - all VERIFIED gaps:
-  - [ ] food/hunger digestion (`decreaseTimeouts` forces FOOD decr=0)
-  - [ ] light-source fuel burn (torch/lantern timeout never decremented)
-  - [ ] damage-over-time: poison, cut, black-breath, starvation (`take_hit`
+- [x] **Per-turn world clock** (`game/loop.ts` `processWorld`) - all VERIFIED gaps:
+  - [x] food/hunger digestion (`decreaseTimeouts` forces FOOD decr=0)
+  - [x] light-source fuel burn (torch/lantern timeout never decremented)
+  - [x] damage-over-time: poison, cut, black-breath, starvation (`take_hit`
     exists but is never called by the clock; regen only zeroes healing)
-  - [ ] rod/ring/activatable recharge (`rechargeObjects` does not exist)
-  - [ ] ambient monster generation over time (`alloc_monster_chance`)
-  - [~] timed-effect grade/wear-off messages: machinery real in
-    `player/timed.ts` but the clock's countdown bypasses it, so effects expire
-    silently.
-- [ ] **Monster melee side-effects** (`combat/mon-melee.ts` +
+  - [x] rod/ring/activatable recharge (`rechargeObjects` does not exist)
+  - [x] ambient monster generation over time (`alloc_monster_chance`)
+  - [x] timed-effect grade/wear-off messages: the clock's countdown now routes
+    through `playerDecTimed`, so grade transitions and wear-off messages fire.
+- [x] **Monster melee side-effects** (`combat/mon-melee.ts` +
   `game/monster-turn.ts`): only the PHYSICAL slice of a blow reaches HP. The
   elemental component (acid/fire/cold/elec/poison) and ALL status/stat/theft
   effects are computed into a `sideEffects` intent list that no caller consumes,
   and `player_apply_damage_reduction` is not applied on melee. Net: elemental
   monsters hit like plain physical and never poison/cut/stun/blind/drain/steal.
-- [ ] **calc_bonuses completeness** (`player/calcs.ts`):
-  - [ ] `calc_light` - `curLight` hard-set to 0; the shell papers over it with a
+- [x] **calc_bonuses completeness** (`player/calcs.ts`):
+  - [x] `calc_light` - `curLight` hard-set to 0; the shell papers over it with a
     constant `curLight: 2`. Light radius is never derived from the wielded light.
-  - [ ] timed buffs/debuffs folded into combat state - haste/heroism/blessing/
+  - [x] timed buffs/debuffs folded into combat state - haste/heroism/blessing/
     slow have NO mechanical effect (speed + to-hit/dam/ac unchanged); they show
     only in char-sheet text.
-- [ ] **Monster loot drops** (`mon/take-hit.ts` onKill path): kills grant XP +
+- [x] **Monster loot drops** (`mon/take-hit.ts` onKill path): kills grant XP +
   lore but create zero objects. No `mon_create_drop`.
-- [ ] **Artifact generation** (`obj/make.ts`): `makeArtifact` returns `false`,
+- [x] **Artifact generation** (`obj/make.ts`): `makeArtifact` returns `false`,
   `makeArtifactSpecial` returns `null` - pure stubs, so no artifact ever spawns.
-- [ ] **Item-target effects** (`game/effect-item.ts`): handler bodies are real
+- [x] **Item-target effects** (`game/effect-item.ts`): handler bodies are real
   but the `getItem` chooser seam is NEVER wired in production, so enchant /
   identify / recharge / remove-curse / brand-ammo / create-arrows / tap-device
   all no-op AND fail to consume the scroll/spell.
-- [ ] **Monster visibility model** (`game/known.ts`): no telepathy
+- [x] **Monster visibility model** (`game/known.ts`): no telepathy
   (`RF_TELEPATHY`), no infravision, no see-invisible. Invisible monsters are
   never revealed even with a see-invis item; ESP senses nothing out of LOS.
 
