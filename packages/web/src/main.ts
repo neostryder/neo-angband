@@ -103,6 +103,20 @@ import {
   lookLines,
 } from "./screens";
 import { showCharacterSheet } from "./charsheet";
+import { runCharacterSelect } from "./charselect";
+import {
+  listRoster,
+  livingRoster,
+  getActiveId,
+  setActiveId,
+  getMeta,
+  readSlotSave,
+  writeSlot,
+  markDead,
+  deleteSlot,
+  newCharId,
+} from "./roster";
+import type { CharMeta } from "./roster";
 // --- High scores (task #28) ---
 import {
   createLocalStorageScoreStore,
@@ -175,11 +189,40 @@ function b64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-function readStoredSave(): string | null {
+// Legacy single-slot saves (pre-roster) migrate into the roster on first boot
+// as one character, then the old key is retired.
+function migrateLegacySave(): void {
+  if (listRoster().length > 0) return; // already on the roster
+  let legacy: string | null = null;
   try {
-    return localStorage.getItem(SAVE_KEY);
+    legacy = localStorage.getItem(SAVE_KEY);
   } catch {
-    return null; // storage disabled / private mode: play unsaved
+    return; // storage disabled / private mode
+  }
+  if (!legacy) return;
+  const id = newCharId();
+  const choice = readBirthChoice();
+  // Minimal metadata; the first autosave after resume refreshes it to the real
+  // level/depth (the character is resumed straight away, so it is never shown
+  // stale in the picker).
+  writeSlot(id, legacy, {
+    id,
+    name: choice?.name ?? "",
+    race: choice?.raceName ?? "?",
+    cls: choice?.className ?? "?",
+    sex: choice?.sex ?? "",
+    level: 1,
+    depth: 0,
+    maxDepth: 0,
+    turn: 0,
+    alive: true,
+    updatedAt: Date.now(),
+  });
+  setActiveId(id);
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch {
+    /* ignore */
   }
 }
 
@@ -187,11 +230,16 @@ let loadedNote = "";
 // True when this load started a fresh character (startGame), not a resume; the
 // birth screen keys off this to appear only for a new character.
 let bootedNew = false;
+// resumedActive: boot resumed the active roster character (a plain refresh
+// continues it). needsSelect: nothing to auto-resume but other characters are
+// saved, so the select screen is shown over a throwaway game.
+let resumedActive = false;
+let needsSelect = false;
 const birthChoice = readBirthChoice();
 function bootGame(): ReturnType<typeof startGame> {
   // Start fresh only when explicitly asked: `?new`, an explicit `?seed=` (a
-  // request for a specific reproducible run), or the in-game New Game action.
-  // Otherwise auto-resume the stored save so a refresh continues the game.
+  // request for a specific reproducible run), or the in-game New Character
+  // action. Otherwise resume the active character so a refresh continues it.
   let forcedNew = params.has("new") || params.has("seed");
   try {
     if (sessionStorage.getItem(FORCE_NEW_KEY) === "1") forcedNew = true;
@@ -199,8 +247,10 @@ function bootGame(): ReturnType<typeof startGame> {
   } catch {
     /* sessionStorage unavailable: fall through to the query-param decision. */
   }
+  migrateLegacySave();
   if (!forcedNew) {
-    const stored = readStoredSave();
+    const activeId = getActiveId();
+    const stored = activeId ? readSlotSave(activeId) : null;
     if (stored) {
       try {
         const decoded = decodeSavedGame(b64ToBytes(stored));
@@ -208,16 +258,22 @@ function bootGame(): ReturnType<typeof startGame> {
           loadedNote = decoded.verified
             ? "Welcome back. Your game was restored."
             : "Welcome back. (WARNING: save integrity check failed.)";
+          resumedActive = true;
           return loadGame(pack, decoded.save);
         }
       } catch {
         loadedNote = "Could not read the save; starting a new game.";
       }
     }
+    // Nothing to auto-resume: if other characters are saved, the select screen
+    // (bootMenus) picks one; the game started here is a throwaway shown behind
+    // it and must NOT claim a slot, so no active id is set in that case.
+    if (livingRoster().length > 0) needsSelect = true;
   }
   bootedNew = true;
-  // A birthed character supplies its race/class; otherwise the engine defaults
-  // to Human Warrior (the classic quick-start).
+  // A genuine new character (forcedNew, or an empty roster with nothing to
+  // pick) gets an active slot now so its autosaves land.
+  if (!needsSelect && !getActiveId()) setActiveId(newCharId());
   return startGame(pack, {
     seed,
     depth,
@@ -231,9 +287,29 @@ const game = bootGame();
 const { state, registry, booted, players } = game;
 const features = booted.registries.features;
 const constants = booted.registries.constants;
-// The birthed name (cosmetic: character sheet, high-score row). Empty for the
-// default quick-start until the player names a character.
-const playerName = birthChoice?.name ?? "";
+// A birth is pending when this load started fresh but the character has not
+// been chosen yet (the birth screen is about to show). The game running behind
+// it is a throwaway default; saving it would poison the new slot (its bytes and
+// its name) with the previous character, so all saving is suppressed until the
+// choice is made and the reload comes back with BIRTH_DONE.
+const birthPending = ((): boolean => {
+  if (!bootedNew) return false;
+  try {
+    return sessionStorage.getItem(BIRTH_DONE_KEY) !== "1";
+  } catch {
+    return true;
+  }
+})();
+// The character name (cosmetic: character sheet, high-score row). It is NOT in
+// the core save - it lives per-slot in the roster metadata - so a RESUMED
+// character takes its name from its own slot; only a brand-new character (no
+// stored name yet) falls back to the birth choice. Deriving it from BIRTH_KEY
+// alone would give every character the last-birthed name.
+const playerName = ((): string => {
+  const id = getActiveId();
+  const metaName = id ? getMeta(id)?.name : "";
+  return metaName || birthChoice?.name || "";
+})();
 
 // --- Visuals: color-cycle + flicker animation (task #27: ui-visuals.c) -----
 // The core animator turns a monster race + animation frame into the COLOUR_*
@@ -673,9 +749,36 @@ async function openHallOfFame(): Promise<void> {
   render();
 }
 
+/** The roster metadata for the current character, drawn from the live game. */
+function metaFromState(id: string): CharMeta {
+  const p = state.actor.player;
+  return {
+    id,
+    name: playerName || "",
+    race: p.race.name,
+    cls: p.cls.name,
+    sex: birthChoice?.sex ?? "",
+    level: p.lev,
+    depth: state.chunk.depth,
+    maxDepth: p.maxDepth,
+    turn: state.turn,
+    alive: !state.isDead,
+    updatedAt: Date.now(),
+  };
+}
+
+// Latched true just before a New-character reload so the OUTGOING page's
+// pagehide autosave cannot write the (now throwaway) game into the freshly
+// allocated slot - birthPending only guards the incoming page.
+let suppressSave = false;
+
 function persistSave(): void {
+  if (suppressSave || birthPending) return; // don't let a throwaway claim a slot
+  const id = getActiveId();
+  if (!id) return; // no active slot (e.g. the picker is up): nothing to save
   try {
-    localStorage.setItem(SAVE_KEY, bytesToB64(encodeSavedGame(saveGame(game))));
+    const b64 = bytesToB64(encodeSavedGame(saveGame(game)));
+    writeSlot(id, b64, metaFromState(id));
   } catch {
     /* Quota exceeded or storage disabled: keep playing unsaved rather than
      * crashing the turn. The next autosave retries. */
@@ -696,10 +799,12 @@ function autosave(force = false): void {
   persistSave();
 }
 
-/** Start a brand-new game: clear the save and reload with the force-new flag. */
+/** Start a brand-new character in a fresh roster slot (birth, then play). */
 function newGame(): void {
+  suppressSave = true; // the outgoing page must not save into the new slot
+  setActiveId(newCharId()); // a fresh slot so the new character does not
+  // overwrite any existing one
   try {
-    localStorage.removeItem(SAVE_KEY);
     sessionStorage.setItem(FORCE_NEW_KEY, "1");
   } catch {
     /* ignore storage errors; the reload below still starts fresh via ?new */
@@ -707,6 +812,51 @@ function newGame(): void {
   const url = new URL(location.href);
   url.searchParams.set("new", "1");
   location.assign(url.toString());
+}
+
+/** Switch characters: flush the current one, then show the picker on reload. */
+function switchCharacter(): void {
+  persistSave();
+  setActiveId(null); // boot finds no active character -> shows the select screen
+  const url = new URL(location.href);
+  url.searchParams.delete("new");
+  url.searchParams.delete("seed");
+  location.assign(url.toString());
+}
+
+/**
+ * The in-game menu (Escape): the discoverable home for the save/character
+ * actions whose keys a new player will not know. Save and switch and new all
+ * either stay in play or navigate away, so there is no nested-modal race.
+ */
+async function openGameMenu(): Promise<void> {
+  const pick = await selectFromMenu(
+    term,
+    "Game menu",
+    [
+      { label: "Resume play" },
+      { label: "Save game" },
+      { label: "Switch character" },
+      { label: "New character" },
+    ],
+    "[ a-z to choose, ESC to resume ]",
+  );
+  switch (pick) {
+    case 1:
+      autosave(true);
+      message = "Game saved. It will resume automatically next time.";
+      render();
+      break;
+    case 2:
+      switchCharacter();
+      break;
+    case 3:
+      persistSave(); // keep the current character in its slot, then birth anew
+      newGame();
+      break;
+    default:
+      break; // Resume play / ESC
+  }
 }
 
 // Reinstall the pickup commands with message hooks so gold and item pickup
@@ -1032,11 +1182,13 @@ function advance(): void {
   const status = runGameLoop(state, registry);
   if (status === LOOP_STATUS.DEAD) {
     dead = true;
-    try {
-      localStorage.removeItem(SAVE_KEY); // death is terminal (decision 16)
-    } catch {
-      /* ignore storage errors */
-    }
+    // Death is terminal (decision 16): the character's slot becomes a
+    // tombstone - its save bytes are dropped so it can never be resumed, but
+    // its record stays in the roster for the memorial. Clearing the active id
+    // sends the next boot to the picker (or birth if no one else is left).
+    const activeId = getActiveId();
+    if (activeId) markDead(activeId);
+    setActiveId(null);
     message = "You have died. (Press 'N' or refresh to start a new game.)";
     // Enter the character on the high-score table (enter_score) and show the
     // Hall of Fame. died_from is a placeholder: the engine does not yet surface
@@ -1093,10 +1245,12 @@ window.addEventListener("keydown", (ev) => {
   // character into the same save slot (faithful to the original's death -> new
   // character flow). Confirm only while alive, since death already ends the run.
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key === "N") {
+    // New character. With the roster this is non-destructive: the current
+    // character is flushed to its own slot first, so it stays playable via the
+    // select screen; no "you will lose your character" prompt is needed.
     ev.preventDefault();
-    if (dead || window.confirm("Start a new character? Your current one will be lost.")) {
-      newGame();
-    }
+    if (!dead) persistSave();
+    newGame();
     return;
   }
   if (dead) return;
@@ -1188,15 +1342,11 @@ window.addEventListener("keydown", (ev) => {
       render();
       return;
     }
-    if (ev.key === "N") {
+    if (ev.key === "Escape") {
+      // The game menu: the discoverable home for save / switch / new character
+      // (so a player who does not know the keys is never stuck).
       ev.preventDefault();
-      if (
-        window.confirm(
-          "Start a new game? Your current character will be lost.",
-        )
-      ) {
-        newGame();
-      }
+      void openModal(openGameMenu);
       return;
     }
   }
@@ -1268,14 +1418,8 @@ function installTouchActionBar(): void {
     ["Inv", () => { void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))); }],
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots })); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
-    [
-      "New",
-      () => {
-        if (window.confirm("Start a new game? Your current character will be lost.")) {
-          newGame();
-        }
-      },
-    ],
+    ["Switch", () => { switchCharacter(); }],
+    ["New", () => { if (!dead) persistSave(); newGame(); }],
   ];
   for (const [label, fn] of actions) {
     const btn = document.createElement("button");
@@ -1363,7 +1507,6 @@ async function maybeBirth(): Promise<void> {
     }
     try {
       localStorage.setItem(BIRTH_KEY, JSON.stringify(choice));
-      localStorage.removeItem(SAVE_KEY);
       sessionStorage.setItem(BIRTH_DONE_KEY, "1");
       sessionStorage.setItem(FORCE_NEW_KEY, "1");
     } catch {
@@ -1374,7 +1517,38 @@ async function maybeBirth(): Promise<void> {
     location.assign(url.toString());
   });
 }
-void maybeBirth();
+
+/** Reload to resume the chosen character (clears the fresh-start params). */
+function resumeSelected(id: string): void {
+  setActiveId(id);
+  const url = new URL(location.href);
+  url.searchParams.delete("new");
+  url.searchParams.delete("seed");
+  location.assign(url.toString());
+}
+
+// Boot-time flow: a resumed character plays immediately; otherwise pick from
+// the roster (when other characters are saved) or birth a brand-new one.
+async function bootMenus(): Promise<void> {
+  if (resumedActive) return;
+  if (needsSelect) {
+    await openModal(async () => {
+      for (;;) {
+        const res = await runCharacterSelect(term, listRoster());
+        if (res.action === "delete") {
+          deleteSlot(res.id);
+          if (livingRoster().length === 0) return newGame();
+          continue;
+        }
+        if (res.action === "resume") return resumeSelected(res.id);
+        return newGame();
+      }
+    });
+    return;
+  }
+  await maybeBirth();
+}
+void bootMenus();
 
 // Dev-only diagnostic hook for automated verification; Vite strips this whole
 // block from the production bundle (import.meta.env.DEV is false there).
