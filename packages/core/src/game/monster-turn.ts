@@ -536,6 +536,7 @@ export function monsterTurn(mon: Monster, state: GameState): void {
         mon,
         state.actor.player,
         state.actor.defense,
+        state.monBlowEnv ? { env: state.monBlowEnv(mon) } : {},
       );
       /* Being attacked teaches the to-armor rune (mon-attack.c L530). */
       equipLearnOnDefend(state.actor.player, state.runeEnv);
