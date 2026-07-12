@@ -71,6 +71,130 @@ export interface ItemRequest {
   tester: (obj: GameObject) => boolean;
   /** USE_EQUIP / USE_INVEN / USE_QUIVER / USE_FLOOR. */
   mode: { equip?: boolean; inven?: boolean; quiver?: boolean; floor?: boolean };
+  /**
+   * REMOVE_CURSE: after the item pick, get_curse chooses which removable curse
+   * to lift. The shell prompts for it (and rides it on args.tgtcurse) only when
+   * this is set and the chosen object has more than one removable curse.
+   */
+  curses?: boolean;
+}
+
+/**
+ * enchant_spell's get_item request (effect-handler-general.c L383): a weapon,
+ * or armour when the enchant targets AC only. Shared by the ENCHANT handler
+ * (enchantSpell) and the shell probe (requestForEffect) so the tval filter can
+ * never drift between them.
+ */
+function enchantRequest(numAc: number): ItemRequest {
+  return {
+    prompt: "Enchant which item? ",
+    reject: "You have nothing to enchant.",
+    tester: numAc
+      ? (o: GameObject): boolean => tvalIsArmor(o.tval)
+      : (o: GameObject): boolean => tvalIsWeapon(o.tval),
+    mode: { equip: true, inven: true, quiver: true, floor: true },
+  };
+}
+
+/** item_tester_uncursable (obj-util.c): a removable (power in (0,100)) curse. */
+function uncursableTester(o: GameObject): boolean {
+  return !!o.curses?.some((c, i) => i > 0 && c.power > 0 && c.power < 100);
+}
+
+/**
+ * requestForEffect (single source of truth): the ItemRequest a choosing handler
+ * uses for a given EF code and decoded subtype. Both each handler and the pure
+ * shell probe (itemTargetRequest) read it, so the prompt / reject / tval filter
+ * / item modes never drift. Returns null for non-choosing effects and for the
+ * auto-target ones (BRAND_WEAPON / CURSE_ARMOR / CURSE_WEAPON / ACQUIRE).
+ */
+export function requestForEffect(
+  code: number,
+  subtype: number,
+  state: GameState,
+): ItemRequest | null {
+  switch (code) {
+    case EF.ENCHANT:
+      /* enchant_spell L383: filter = num_ac ? armour : weapon. The first
+       * getItem targets a weapon unless the effect is AC-only. */
+      return enchantRequest((subtype & (ENCH_TOHIT | ENCH_TODAM)) === 0 ? 1 : 0);
+    case EF.RECHARGE:
+      return {
+        prompt: "Recharge which item? ",
+        reject: "You have nothing to recharge.",
+        tester: (o) => tvalCanHaveCharges(o.tval),
+        mode: { inven: true, floor: true },
+      };
+    case EF.REMOVE_CURSE:
+      return {
+        prompt: "Uncurse which item? ",
+        reject: "You have no curses to remove.",
+        tester: uncursableTester,
+        mode: { equip: true, inven: true, quiver: true, floor: true },
+        curses: true,
+      };
+    case EF.BRAND_AMMO:
+      return {
+        prompt: "Brand which kind of ammunition? ",
+        reject: "You have nothing to brand.",
+        tester: (o) => tvalIsAmmo(o.tval),
+        mode: { inven: true, quiver: true, floor: true },
+      };
+    case EF.BRAND_BOLTS:
+      return {
+        prompt: "Brand which bolts? ",
+        reject: "You have no bolts to brand.",
+        tester: (o) => o.tval === TV.BOLT,
+        mode: { inven: true, quiver: true, floor: true },
+      };
+    case EF.CREATE_ARROWS:
+      return {
+        prompt: "Make arrows from which staff? ",
+        reject: "You have no staff to use.",
+        tester: (o) => tvalIsStaff(o.tval),
+        mode: { inven: true, floor: true },
+      };
+    case EF.TAP_DEVICE:
+      return {
+        prompt: "Drain charges from which item? ",
+        reject: "You have nothing to drain charges from.",
+        tester: (o) => tvalCanHaveCharges(o.tval),
+        mode: { inven: true, floor: true },
+      };
+    case EF.IDENTIFY: {
+      /* item_tester_unknown (L247): not all runes known. */
+      const runes = buildRuneList(state.runeEnv);
+      const player = state.actor.player;
+      return {
+        prompt: "Identify which item? ",
+        reject: "You have nothing to identify.",
+        tester: (o) => !objectRunesKnown(player, state.runeEnv, o, runes),
+        mode: { equip: true, inven: true, quiver: true, floor: true },
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * itemTargetRequest (the RNG-free shell probe): walk a built effect chain and
+ * return the ItemRequest the first item-choosing handler will use, decoding
+ * subtype exactly as the handler does. The shell calls this before running the
+ * effect so it can pre-resolve the target and the effect runs EXACTLY ONCE
+ * (preserving the pre-getItem RNG draw order); chain construction draws no RNG.
+ * Returns null for objects / spells with no item-target effect.
+ */
+export function itemTargetRequest(
+  chain: import("../effects/effect").Effect | null,
+  state: GameState,
+): ItemRequest | null {
+  for (let e = chain; e; e = e.next) {
+    if (typeof e.index !== "number") continue;
+    const req = requestForEffect(e.index, e.subtype, state);
+    if (req) return req;
+  }
+  return null;
 }
 
 /**
@@ -228,16 +352,7 @@ function enchantSpell(
   numAc: number,
 ): boolean {
   const { state } = env;
-  const filter = numAc
-    ? (o: GameObject): boolean => tvalIsArmor(o.tval)
-    : (o: GameObject): boolean => tvalIsWeapon(o.tval);
-
-  const obj = env.item?.getItem?.({
-    prompt: "Enchant which item? ",
-    reject: "You have nothing to enchant.",
-    tester: filter,
-    mode: { equip: true, inven: true, quiver: true, floor: true },
-  });
+  const obj = env.item?.getItem?.(enchantRequest(numAc));
   if (!obj) return false;
 
   /* Describe (ODESC_BASE, obj-desc gates the name by knowledge) */
@@ -371,12 +486,7 @@ const handleRECHARGE: EffectHandler = (ctx) => {
   /* The recharge_pow failure-rate display rides presentation (#25). */
 
   /* Get an item */
-  const obj = env.item?.getItem?.({
-    prompt: "Recharge which item? ",
-    reject: "You have nothing to recharge.",
-    tester: (o) => tvalCanHaveCharges(o.tval),
-    mode: { inven: true, floor: true },
-  });
+  const obj = env.item?.getItem?.(requestForEffect(EF.RECHARGE, 0, state)!);
   if (!obj) return false;
 
   const i = rechargeFailureChance(obj, strength);
@@ -412,15 +522,7 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
 
   /* item_tester_uncursable: at least one removable (power < 100) curse.
    * Upstream tests the known twin; knowledge is rune-based here. */
-  const uncursable = (o: GameObject): boolean =>
-    !!o.curses?.some((c, i) => i > 0 && c.power > 0 && c.power < 100);
-
-  const obj = env.item?.getItem?.({
-    prompt: "Uncurse which item? ",
-    reject: "You have no curses to remove.",
-    tester: uncursable,
-    mode: { equip: true, inven: true, quiver: true, floor: true },
-  });
+  const obj = env.item?.getItem?.(requestForEffect(EF.REMOVE_CURSE, 0, state)!);
   if (!obj || !obj.curses) return false;
 
   /* get_curse: pick among the object's active curses. */
@@ -508,12 +610,7 @@ const handleBRAND_AMMO: EffectHandler = (ctx) => {
   ctx.ident = true;
 
   /* Get an item */
-  const obj = env.item?.getItem?.({
-    prompt: "Brand which kind of ammunition? ",
-    reject: "You have nothing to brand.",
-    tester: (o) => tvalIsAmmo(o.tval),
-    mode: { inven: true, quiver: true, floor: true },
-  });
+  const obj = env.item?.getItem?.(requestForEffect(EF.BRAND_AMMO, 0, state)!);
   if (!obj) return false;
 
   /* Brand the ammo */
@@ -530,12 +627,9 @@ const handleBRAND_BOLTS: EffectHandler = (ctx) => {
   ctx.ident = true;
 
   /* Get an item */
-  const obj = env.item?.getItem?.({
-    prompt: "Brand which bolts? ",
-    reject: "You have no bolts to brand.",
-    tester: (o) => o.tval === TV.BOLT,
-    mode: { inven: true, quiver: true, floor: true },
-  });
+  const obj = env.item?.getItem?.(
+    requestForEffect(EF.BRAND_BOLTS, 0, env.state)!,
+  );
   if (!obj) return false;
 
   /* Brand the bolts */
@@ -644,12 +738,7 @@ const handleCREATE_ARROWS: EffectHandler = (ctx) => {
   const { state } = env;
 
   /* Get an item */
-  const obj = env.item?.getItem?.({
-    prompt: "Make arrows from which staff? ",
-    reject: "You have no staff to use.",
-    tester: (o) => tvalIsStaff(o.tval),
-    mode: { inven: true, floor: true },
-  });
+  const obj = env.item?.getItem?.(requestForEffect(EF.CREATE_ARROWS, 0, state)!);
   if (!obj) return false;
 
   /* Extract the object "level" */
@@ -696,12 +785,7 @@ const handleTAP_DEVICE: EffectHandler = (ctx) => {
   let used = false;
 
   /* Get an item */
-  const obj = env.item?.getItem?.({
-    prompt: "Drain charges from which item? ",
-    reject: "You have nothing to drain charges from.",
-    tester: (o) => tvalCanHaveCharges(o.tval),
-    mode: { inven: true, floor: true },
-  });
+  const obj = env.item?.getItem?.(requestForEffect(EF.TAP_DEVICE, 0, state)!);
   if (!obj) return false;
 
   /* Extract the object "level" and its energy. */
@@ -798,12 +882,7 @@ const handleIDENTIFY: EffectHandler = (ctx) => {
 
   /* Get an item (item_tester_unknown: not all runes known). */
   const obj =
-    env.item?.getItem?.({
-      prompt: "Identify which item? ",
-      reject: "You have nothing to identify.",
-      tester: (o) => !objectRunesKnown(player, state.runeEnv, o, runes),
-      mode: { equip: true, inven: true, quiver: true, floor: true },
-    }) ?? null;
+    env.item?.getItem?.(requestForEffect(EF.IDENTIFY, 0, state)!) ?? null;
   if (!obj) return false;
 
   /* Identify the object. */
