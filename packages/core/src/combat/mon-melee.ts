@@ -5,31 +5,41 @@
  * in reference/src/mon-blows.c (Angband 4.2.6).
  *
  * The blow loop, to-hit test, monster critical, per-blow damage roll and the
- * cut/stun rolls are ported faithfully. Blow EFFECTS resolve as follows:
- * effects that reduce to direct HP damage (HURT, SHATTER, and the physical
- * component of the elemental blows) are computed here and applied to the
- * player's HP; effects that need the player timed / resist / inventory / stat
- * systems (status ailments, stat drain, exp drain, theft, disenchant, the
- * elemental component of elemental blows) are recorded as structured
- * BlowSideEffect intents (the "stub log") for a later, fully-modelled
- * integration to apply.
+ * cut/stun rolls are ported faithfully. Blow EFFECTS resolve one of two ways:
  *
- * DEFERRED (ledgered in parity/ledger/combat-melee.yaml):
- * - Full RNG-stream parity for monster attacks: the player timed system
- *   (player_inc_timed saving throws / notifications), adjust_dam elemental
- *   resist rolls, and player_apply_damage_reduction are NOT ported, so the
- *   stream diverges after the ported rolls. Each ported quantity (damage,
- *   monster critical, cut/stun amounts, status durations) uses the exact
- *   upstream formula.
- * - Monster lore / smart-learn, protection-from-evil repel, the "player
- *   moved" early-out, monster-vs-monster attacks (monster_attack_monster),
- *   and the elemental resist/immunity application against the player.
+ * - When a world-touching MonBlowEnv is injected (the live game), every
+ *   melee_effect_handler_* runs its real consequences inline in the EXACT
+ *   upstream RNG order: adjust_dam elemental resist rolls (env.elementalDam),
+ *   inven_damage, player_apply_damage_reduction on the HP dealt, and all the
+ *   status / stat / exp / theft / disenchant / earthquake / knockback effects.
+ *   This is the analog of project-player's onSideEffects seam: combat/ stays
+ *   worldless, and game/mon-side.ts (makeMonBlowEnv) supplies the environment.
+ *   The unreduced context->damage drives the side-effect math and the cut/stun
+ *   critical; only the HP actually subtracted goes through damage reduction.
+ *
+ * - When no env is injected (the worldless harness / unit tests), the effects
+ *   that need the player timed / resist / inventory / stat systems are recorded
+ *   as structured BlowSideEffect intents (the "stub log"), exactly as before.
+ *
+ * Additional per-blow rolls now ported inside the blow loop: the protection
+ * from evil repel (randint0(100) drawn when PROTEVIL is up vs an evil monster),
+ * the PARALYZE damage=1 pre-clamp, and the "player moved" early-out (a blow that
+ * relocates the player via earthquake / knockback skips the remaining blows).
+ *
+ * DEFERRED (ledgered in parity/ledger/combat-melee.yaml): monster lore /
+ * smart-learn, monster-vs-monster melee (monster_attack_monster), react_to_slay
+ * blocking a theft (the item is stolen regardless; no RNG impact), and attaching
+ * stolen gold/items to the monster's held-object pile (monster_carry, coordinated
+ * with the loot-drops gap; the item/gold is still removed from the player and no
+ * RNG is drawn by the attach).
  */
 
 import type { Rng, RandomValue } from "../rng";
+import type { Loc } from "../loc";
+import { locEq } from "../loc";
 import type { Monster } from "../mon/monster";
 import type { Player } from "../player/player";
-import { MON_TMD, RF } from "../generated";
+import { ELEM, MON_TMD, PROJ, RF, STAT, TMD } from "../generated";
 import { STUN_DAM_REDUCTION, STUN_HIT_REDUCTION, testHit } from "./hit";
 
 /** A defender's combat AC contribution (upstream p->state.ac + p->state.to_a). */
@@ -83,10 +93,71 @@ export interface MonMeleeAttack {
   sideEffects: BlowSideEffect[];
 }
 
+/**
+ * The world-touching environment a monster blow needs: the analog of
+ * project-player's onSideEffects hook. It keeps combat/ worldless - when
+ * absent, monMeleeAttack falls back to the stub-log intents. Implemented by
+ * game/mon-side.ts (makeMonBlowEnv), bound to the attacking monster.
+ */
+export interface MonBlowEnv {
+  /** p->grid, read to detect the "player moved" mid-loop break. */
+  playerGrid(): Loc;
+  /** player_apply_damage_reduction(p, dam): the HP actually taken. */
+  applyReduction(dam: number): number;
+  /** take_hit(p, reducedDam, ddesc): subtract HP, set is_dead. */
+  takeHit(reducedDam: number): void;
+  /** p->is_dead after the last takeHit. */
+  readonly playerDied: boolean;
+  /** msg(): route a blow message to the game's sink. */
+  msg(text: string): void;
+  /** adjust_dam(p, proj, dam, RANDOMISE): elemental damage after resists. */
+  elementalDam(proj: number, dam: number): number;
+  /** inven_damage(p, elem, cperc): pack casualties from an elemental hit. */
+  invenDamage(elem: number, cperc: number): void;
+  /** player_resists(p, elem): el_info[elem].res_level > 0. */
+  resists(elem: number): boolean;
+  /** player_inc_timed(p, tmd, amount, ..., check): returns whether noticed. */
+  incTimed(tmd: number, amount: number, check: boolean): boolean;
+  /** randint0(100) < p->state.skills[SKILL_SAVE] (the melee saving throw). */
+  saveVsSkill(): boolean;
+  /** effect_simple(EF_DRAIN_STAT): sustain check then player_stat_dec. */
+  drainStat(stat: number): void;
+  /** player_of_has(p, OF_HOLD_LIFE). */
+  hasHoldLife(): boolean;
+  /** melee_effect_experience's HOLD_LIFE gate and player_exp_lose. */
+  drainExp(chance: number, drainAmount: number): void;
+  /** DRAIN_CHARGES: drain a random charged wand/staff, healing the monster. */
+  drainCharges(rlev: number): void;
+  /** EAT_GOLD: save-or-steal the player's gold; returns context->blinked. */
+  eatGold(): boolean;
+  /** EAT_ITEM: save-or-steal a pack item; returns blinked / obvious. */
+  eatItem(): { blinked: boolean; obvious: boolean };
+  /** EAT_FOOD: eat a random edible pack item. */
+  eatFood(): void;
+  /** EAT_LIGHT: EF_DRAIN_LIGHT "250+1d250". */
+  eatLight(): void;
+  /** EF_DISENCHANT on the player's equipment. */
+  disenchant(): void;
+  /** EF_EARTHQUAKE centred on the monster, given radius. */
+  earthquake(radius: number): void;
+  /** thrust_away(monster grid, player grid, dist). */
+  thrust(dist: number): void;
+  /** Blink the monster away (EF_TELEPORT max_sight*2+5) after the blows. */
+  blinkAway(): void;
+}
+
 /** Options for a monster melee attack. */
 export interface MonMeleeOptions {
   /** monster_is_visible(mon); affects only messaging (DEFERRED). */
   monVisible?: boolean;
+  /**
+   * The world-touching blow environment (game/mon-side.ts), bound to the
+   * attacking monster. When present, blow effects apply for real in upstream
+   * RNG order; the `rng` argument MUST be the same stream this env draws from
+   * (state.rng), because the env's reused helpers (adjust_dam, inven_damage,
+   * ...) draw from it and interleave with this driver's own rolls.
+   */
+  env?: MonBlowEnv;
 }
 
 /* ------------------------------------------------------------------ *
@@ -456,6 +527,284 @@ export const RESOLVED_BLOW_EFFECTS: readonly string[] = [
 ];
 
 /* ------------------------------------------------------------------ *
+ * Live blow-effect resolution (mon-blows.c handlers with a MonBlowEnv)
+ * ------------------------------------------------------------------ */
+
+/** effect name -> { proj: PROJ_ value, elem: ELEM_ value } for elementals. */
+const ELEMENTAL_OF_EFFECT: Readonly<
+  Record<string, { proj: number; elem: number }>
+> = {
+  ACID: { proj: PROJ.ACID, elem: ELEM.ACID },
+  ELEC: { proj: PROJ.ELEC, elem: ELEM.ELEC },
+  FIRE: { proj: PROJ.FIRE, elem: ELEM.FIRE },
+  COLD: { proj: PROJ.COLD, elem: ELEM.COLD },
+  POISON: { proj: PROJ.POIS, elem: ELEM.POIS },
+};
+
+/** The "You are covered in acid!" flavour lines (melee_effect_elemental). */
+const ELEMENTAL_MESSAGE: Readonly<Record<string, string>> = {
+  ACID: "You are covered in acid!",
+  ELEC: "You are struck by electricity!",
+  FIRE: "You are enveloped in flames!",
+  COLD: "You are covered with frost!",
+};
+
+const STAT_OF_LIVE_EFFECT: Readonly<Record<string, number>> = {
+  LOSE_STR: STAT.STR,
+  LOSE_INT: STAT.INT,
+  LOSE_WIS: STAT.WIS,
+  LOSE_DEX: STAT.DEX,
+  LOSE_CON: STAT.CON,
+};
+
+/** The outcome of a live blow effect (context->damage, HP taken, blinked). */
+interface LiveBlowResult {
+  /** context->damage after the handler (unreduced; feeds the cut/stun crit). */
+  contextDamage: number;
+  /** The HP actually subtracted (post player_apply_damage_reduction). */
+  reducedDamage: number;
+  obvious: boolean;
+  /** context->blinked (EAT_GOLD / EAT_ITEM theft). */
+  blinked: boolean;
+}
+
+/**
+ * melee_effect_elemental (mon-blows.c L417): physical vs elemental, the larger
+ * to HP, inven_damage on the elemental component. RNG order: [adjust_dam
+ * denominator] then [inven_damage per-item saves].
+ */
+function applyElemental(
+  env: MonBlowEnv,
+  name: string,
+  ctx: BlowEffectContext,
+  pure: boolean,
+): { contextDamage: number; reducedDamage: number } {
+  if (pure) {
+    const line = ELEMENTAL_MESSAGE[name];
+    if (line) env.msg(line);
+  }
+  const map = ELEMENTAL_OF_EFFECT[name]!;
+  const physical = ctx.phys ? adjustDamArmor(ctx.baseDamage, ctx.ac + 50) : 0;
+  const elementalDam = env.elementalDam(map.proj, ctx.baseDamage);
+  const contextDamage = physical > elementalDam ? physical : elementalDam;
+  if (elementalDam > 0) {
+    env.invenDamage(map.elem, Math.min(elementalDam * 5, 300));
+  }
+  let reducedDamage = 0;
+  if (contextDamage > 0) {
+    reducedDamage = env.applyReduction(contextDamage);
+    env.takeHit(reducedDamage);
+  }
+  return { contextDamage, reducedDamage };
+}
+
+/**
+ * Resolve one RBE_ blow effect for real, running each mon-blows.c handler in
+ * the exact upstream RNG order and applying HP through the env. Returns the
+ * (unreduced) context->damage for the cut/stun critical, the reduced HP dealt,
+ * and context->blinked. The PARALYZE damage=1 pre-clamp is applied by the
+ * caller before this runs (mon-blows.c L1020).
+ */
+function resolveBlowEffectLive(
+  name: string,
+  ctx: BlowEffectContext,
+  env: MonBlowEnv,
+): LiveBlowResult {
+  const { rng, baseDamage, ac, rlev } = ctx;
+  const done = (
+    contextDamage: number,
+    reducedDamage: number,
+    blinked = false,
+  ): LiveBlowResult => ({ contextDamage, reducedDamage, obvious: true, blinked });
+
+  /* Elemental blows (pure). */
+  if (name === "ACID" || name === "ELEC" || name === "FIRE" || name === "COLD") {
+    const r = applyElemental(env, name, ctx, true);
+    return done(r.contextDamage, r.reducedDamage);
+  }
+
+  switch (name) {
+    case "NONE":
+      return done(0, 0);
+
+    case "HURT": {
+      const cd = adjustDamArmor(baseDamage, ac);
+      const reduced = env.applyReduction(cd);
+      env.takeHit(reduced);
+      return done(cd, reduced);
+    }
+
+    case "POISON": {
+      const r = applyElemental(env, name, ctx, false);
+      if (!env.playerDied) {
+        /* player_inc_timed(TMD_POISONED, 5 + randint1(rlev)). */
+        env.incTimed(TMD.POISONED, 5 + rng.randint1(rlev), true);
+      }
+      return done(r.contextDamage, r.reducedDamage);
+    }
+
+    case "DISENCHANT": {
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied && !env.resists(ELEM.DISEN)) env.disenchant();
+      return done(baseDamage, reduced);
+    }
+
+    case "DRAIN_CHARGES": {
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied) env.drainCharges(rlev);
+      return done(baseDamage, reduced);
+    }
+
+    case "EAT_GOLD": {
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (env.playerDied) return done(baseDamage, reduced);
+      const blinked = env.eatGold();
+      return done(baseDamage, reduced, blinked);
+    }
+
+    case "EAT_ITEM": {
+      /* monster_damage_target(context, false): returns only on death. */
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (env.playerDied) return done(baseDamage, reduced);
+      const r = env.eatItem();
+      return done(baseDamage, reduced, r.blinked);
+    }
+
+    case "EAT_FOOD": {
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied) env.eatFood();
+      return done(baseDamage, reduced);
+    }
+
+    case "EAT_LIGHT": {
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied) env.eatLight();
+      return done(baseDamage, reduced);
+    }
+
+    case "BLIND": {
+      /* melee_effect_timed: duration arg drawn first, then damage, no save. */
+      const amount = 10 + rng.randint1(rlev);
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied) env.incTimed(TMD.BLIND, amount, true);
+      return done(baseDamage, reduced);
+    }
+
+    case "CONFUSE": {
+      const amount = 3 + rng.randint1(rlev);
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied) env.incTimed(TMD.CONFUSED, amount, true);
+      return done(baseDamage, reduced);
+    }
+
+    case "TERRIFY": {
+      const amount = 3 + rng.randint1(rlev);
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied) {
+        if (env.saveVsSkill()) env.msg("You stand your ground!");
+        else env.incTimed(TMD.AFRAID, amount, true);
+      }
+      return done(baseDamage, reduced);
+    }
+
+    case "PARALYZE": {
+      const amount = 3 + rng.randint1(rlev);
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied) {
+        if (env.saveVsSkill()) env.msg("You resist the effects!");
+        else env.incTimed(TMD.PARALYZED, amount, true);
+      }
+      return done(baseDamage, reduced);
+    }
+
+    case "LOSE_STR":
+    case "LOSE_INT":
+    case "LOSE_WIS":
+    case "LOSE_DEX":
+    case "LOSE_CON": {
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied) env.drainStat(STAT_OF_LIVE_EFFECT[name]!);
+      return done(baseDamage, reduced);
+    }
+
+    case "LOSE_ALL": {
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied) {
+        env.drainStat(STAT.STR);
+        env.drainStat(STAT.DEX);
+        env.drainStat(STAT.CON);
+        env.drainStat(STAT.INT);
+        env.drainStat(STAT.WIS);
+      }
+      return done(baseDamage, reduced);
+    }
+
+    case "SHATTER": {
+      const cd = adjustDamArmor(baseDamage, ac);
+      const reduced = env.applyReduction(cd);
+      env.takeHit(reduced);
+      if (env.playerDied) return done(cd, reduced);
+      if (cd > 23) env.earthquake(Math.trunc(cd / 12));
+      if (cd > 100) {
+        const value = cd - 100;
+        if (rng.randint1(value) > 40) env.thrust(1 + Math.trunc(value / 40));
+      }
+      return done(cd, reduced);
+    }
+
+    case "EXP_10":
+    case "EXP_20":
+    case "EXP_40":
+    case "EXP_80": {
+      const spec = EXP_DRAIN[name]!;
+      /* damroll(N, 6) is evaluated as the handler's argument, before take_hit. */
+      const drainAmount = rng.damroll(spec.dice, 6);
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied) env.drainExp(spec.holdChance, drainAmount);
+      return done(baseDamage, reduced);
+    }
+
+    case "HALLU": {
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied) {
+        env.incTimed(TMD.IMAGE, 3 + rng.randint1(Math.trunc(rlev / 2)), true);
+      }
+      return done(baseDamage, reduced);
+    }
+
+    case "BLACK_BREATH": {
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      if (!env.playerDied && rng.oneIn(5)) {
+        env.incTimed(TMD.BLACKBREATH, Math.trunc(baseDamage / 10), false);
+      }
+      return done(baseDamage, reduced);
+    }
+
+    default: {
+      /* Unknown effect: deal the base damage, as the fallthrough would. */
+      const reduced = env.applyReduction(baseDamage);
+      env.takeHit(reduced);
+      return done(baseDamage, reduced);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * make_attack_normal
  * ------------------------------------------------------------------ */
 
@@ -463,16 +812,19 @@ export const RESOLVED_BLOW_EFFECTS: readonly string[] = [
 const ZERO_RV: RandomValue = { base: 0, dice: 0, sides: 0, mBonus: 0 };
 
 /**
- * make_attack_normal: run all of the monster's blows against the player. HP
- * damage is applied to `defender.chp`; status / stat / inventory effects are
- * recorded as BlowSideEffect intents. Stops early if the player dies.
+ * make_attack_normal: run all of the monster's blows against the player. When
+ * `opts.env` is supplied the blow effects apply for real (HP through
+ * player_apply_damage_reduction / take_hit, plus every status / stat / theft /
+ * terrain consequence in the exact upstream RNG order); otherwise HP damage is
+ * applied to `defender.chp` and the rest is recorded as BlowSideEffect intents.
+ * Stops early if the player dies or a blow relocates the player.
  */
 export function monMeleeAttack(
   rng: Rng,
   mon: Monster,
   defender: Player,
   def: DefenderState,
-  _opts: MonMeleeOptions = {},
+  opts: MonMeleeOptions = {},
 ): MonMeleeAttack {
   /* Not allowed to attack. */
   if (mon.race.flags.has(RF.NEVER_BLOW)) {
@@ -485,6 +837,7 @@ export function monMeleeAttack(
     };
   }
 
+  const env = opts.env;
   const rlev = mon.race.level >= 1 ? mon.race.level : 1;
   const stunned = (mon.mTimed[MON_TMD.STUN] ?? 0) > 0;
 
@@ -492,15 +845,18 @@ export function monMeleeAttack(
   const allSide: BlowSideEffect[] = [];
   let totalDamage = 0;
   let playerDied = false;
+  let blinked = false;
 
   for (const blow of mon.race.blows) {
     /* No more attacks. */
     if (!blow.method) break;
     if (playerDied) break;
 
+    /* p->grid at the start of the blow (mon-attack.c L568). */
+    const pgrid: Loc | null = env ? env.playerGrid() : null;
     const effectName = blow.effect.name;
 
-    /* Monster hits player (a "NONE" effect always connects). */
+    /* Monster hits player (a "NONE" effect always connects, no to-hit roll). */
     const hit =
       effectName === "NONE" ||
       checkHit(rng, chanceOfMonsterHit(mon, mon.race.level, blow.effect.power), def);
@@ -517,6 +873,19 @@ export function monMeleeAttack(
       continue;
     }
 
+    /* Apply "protection from evil" (mon-attack.c L597): an evil monster is
+     * repelled on a high roll. The randint0(100) draw happens only when the
+     * guard conditions hold, matching the C short-circuit order. */
+    if (
+      (defender.timed[TMD.PROTEVIL] ?? 0) > 0 &&
+      mon.race.flags.has(RF.EVIL) &&
+      defender.lev >= rlev &&
+      rng.randint0(100) + defender.lev > 50
+    ) {
+      env?.msg(`${mon.race.name} is repelled.`);
+      continue;
+    }
+
     /* Roll dice, reduce when the attacker is stunned. */
     const diceRv = blow.dice ? blow.dice.randomValue() : ZERO_RV;
     let damage = blow.dice ? rng.randcalc(diceRv, rlev, "randomise") : 0;
@@ -524,26 +893,53 @@ export function monMeleeAttack(
       damage = Math.trunc((damage * (100 - STUN_DAM_REDUCTION)) / 100);
     }
 
-    /* Resolve the blow effect. */
-    const res = resolveBlowEffect(effectName, {
+    /* PARALYZE pre-clamp (mon-blows.c L1020): a paralysed player always takes
+     * at least 1 damage, so paralysis cannot be perma-locked at 0 damage. */
+    if (
+      effectName === "PARALYZE" &&
+      (defender.timed[TMD.PARALYZED] ?? 0) > 0 &&
+      damage < 1
+    ) {
+      damage = 1;
+    }
+
+    const blowCtx: BlowEffectContext = {
       rng,
       baseDamage: damage,
       ac: def.ac + def.toA,
       rlev,
       phys: blow.method.phys,
-    });
+    };
 
-    /* Apply HP damage (take_hit; player_apply_damage_reduction DEFERRED). */
-    const hpDamage = res.hpDamage;
-    if (hpDamage > 0) {
-      defender.chp -= hpDamage;
-      totalDamage += hpDamage;
-      if (defender.chp < 0) playerDied = true;
+    /* context->damage after the handler (unreduced; feeds the cut/stun crit). */
+    let contextDamage: number;
+    /* The HP actually dealt this blow (reported / totalled). */
+    let dealtDamage: number;
+    let obvious: boolean;
+    const blowSide: BlowSideEffect[] = [];
+
+    if (env) {
+      const res = resolveBlowEffectLive(effectName, blowCtx, env);
+      contextDamage = res.contextDamage;
+      dealtDamage = res.reducedDamage;
+      obvious = res.obvious;
+      if (res.blinked) blinked = true;
+      if (dealtDamage > 0) totalDamage += dealtDamage;
+      if (env.playerDied) playerDied = true;
+    } else {
+      const res = resolveBlowEffect(effectName, blowCtx);
+      contextDamage = res.hpDamage;
+      dealtDamage = res.hpDamage;
+      obvious = res.obvious;
+      for (const s of res.sideEffects) blowSide.push(s);
+      if (res.hpDamage > 0) {
+        defender.chp -= res.hpDamage;
+        totalDamage += res.hpDamage;
+        if (defender.chp < 0) playerDied = true;
+      }
     }
 
-    const blowSide: BlowSideEffect[] = [...res.sideEffects];
-
-    /* Cut and stun (only one of the two), using the post-handler damage. */
+    /* Cut and stun (only one of the two), keyed off the UNREDUCED damage. */
     let doCut = blow.method.cut;
     let doStun = blow.method.stun;
     if (playerDied) {
@@ -555,14 +951,20 @@ export function monMeleeAttack(
       else doStun = false;
     }
     if (doCut) {
-      const tier = monsterCritical(rng, diceRv, rlev, hpDamage);
+      const tier = monsterCritical(rng, diceRv, rlev, contextDamage);
       const amt = cutAmount(rng, tier);
-      if (amt) blowSide.push({ kind: "timed", effect: "CUT", amount: amt });
+      if (amt) {
+        if (env) env.incTimed(TMD.CUT, amt, true);
+        else blowSide.push({ kind: "timed", effect: "CUT", amount: amt });
+      }
     }
     if (doStun) {
-      const tier = monsterCritical(rng, diceRv, rlev, hpDamage);
+      const tier = monsterCritical(rng, diceRv, rlev, contextDamage);
       const amt = stunAmount(rng, tier);
-      if (amt) blowSide.push({ kind: "timed", effect: "STUN", amount: amt });
+      if (amt) {
+        if (env) env.incTimed(TMD.STUN, amt, true);
+        else blowSide.push({ kind: "timed", effect: "STUN", amount: amt });
+      }
     }
 
     for (const s of blowSide) allSide.push(s);
@@ -570,11 +972,19 @@ export function monMeleeAttack(
       hit: true,
       effect: effectName,
       method: blow.method.name,
-      damage: hpDamage,
+      damage: dealtDamage,
       sideEffects: blowSide,
-      obvious: res.obvious,
+      obvious,
     });
+
+    /* Skip the other blows if the player has moved (mon-attack.c L736): an
+     * earthquake or knockback relocated the player mid-loop. */
+    if (env && pgrid && !locEq(env.playerGrid(), pgrid)) break;
   }
+
+  /* Blink away (mon-attack.c L740): a monster that stole gold / an item
+   * teleports after all its blows resolve. */
+  if (env && blinked) env.blinkAway();
 
   return {
     attacked: true,

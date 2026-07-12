@@ -279,6 +279,14 @@ export interface GameState {
    */
   monsterCast?: (mon: Monster, state: GameState) => boolean;
   /**
+   * make_attack_normal's blow-effect environment (game/mon-side.ts): binds a
+   * MonBlowEnv to an attacking monster so combat/mon-melee.ts applies the full
+   * status / stat / theft / terrain consequences of a melee blow in upstream
+   * RNG order. Installed by wireGame; absent, monster melee falls back to the
+   * worldless stub-log intents (the physical HP slice only).
+   */
+  monBlowEnv?: (mon: Monster) => import("../combat/mon-melee").MonBlowEnv;
+  /**
    * do_cmd_mon_command: while TMD_COMMAND runs, player commands drive the
    * commanded monster instead (upstream swaps the command list,
    * cmd-core.c L333). Installed by installMonCommand (game/mon-cmd.ts);
