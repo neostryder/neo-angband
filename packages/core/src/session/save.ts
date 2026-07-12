@@ -522,6 +522,12 @@ export interface SavedGame {
    * a reload rebuilds the identical random artifact set.
    */
   randartSeed?: number;
+  /**
+   * aup_info[] (obj-make.c): the per-artifact created flags, indexed by
+   * aidx (index 0 unused). Optional / absent in saves written before
+   * artifact generation landed, which load with an all-false set.
+   */
+  artifactsCreated?: boolean[];
 }
 
 /** Serialized map knowledge (remembered terrain and floor objects). */
@@ -619,6 +625,7 @@ export function serializeGame(
     seedFlavor,
     ...(state.options ? { options: state.options.snapshot() } : {}),
     ...(randartSeed ? { randartSeed } : {}),
+    ...(state.artifacts ? { artifactsCreated: state.artifacts.snapshot() } : {}),
     known: {
       feat: Array.from(state.known.feat),
       objects: Array.from(state.known.objects.entries()).map(([i, m]) => [

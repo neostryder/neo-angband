@@ -677,6 +677,7 @@ const handleCREATE_ARROWS: EffectHandler = (ctx) => {
       great,
       false,
       TV.ARROW,
+      state.chunk.depth,
     );
     if (arrows) dropNear(state, arrows, 0, state.actor.grid, true);
   }
@@ -768,6 +769,7 @@ const handleACQUIRE: EffectHandler = (ctx) => {
       true,
       true,
       0,
+      state.chunk.depth,
     );
     if (!nice) continue;
 

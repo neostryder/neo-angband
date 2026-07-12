@@ -227,6 +227,13 @@ export interface GameState {
    */
   options?: import("../player/options").OptionState;
   /**
+   * aup_info[] (obj-make.c): the shared per-artifact created flags. The
+   * session owns the single per-game instance and threads it into every
+   * MakeDeps so no artifact spawns twice; it is serialized in the save.
+   * Optional so the worldless harness (game/harness.ts) stays total.
+   */
+  artifacts?: import("../obj/make").ArtifactState;
+  /**
    * The live derived player state (upstream p->state), the result of the last
    * calc_bonuses. update_mon (game/known.ts) reads its OF flag set (telepathy /
    * see-invisible) and see_infra to compute monster visibility. Reassigned by

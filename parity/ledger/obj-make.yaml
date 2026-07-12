@@ -11,20 +11,26 @@ upstream:
       - apply_magic: to-hit / to-dam / to-ac enchant levels via m_bonus
         and the ENCH_* tables, ego selection (ego_find_random), supercharge
       - make_object (drop pipeline: prep, apply_magic, stack generation)
+      - make_artifact (apply_magic promotion) / make_artifact_special
+        (make_object special roll), with the aup_info[] created registry
       - make_gold (money objects)
       - object_prep, ego application, curse application entry
 counts:
   live-branches: [get_obj_num, apply_magic tohit/todam/toac/ego, make_object
-                  core path, make_gold core path]
+                  core path, make_artifact, make_artifact_special, make_gold
+                  core path]
 notes: >-
   Determinism verified: with a seeded Rng, get_obj_num at depths 5/20/50
   returns kinds whose alloc range includes the depth and distribution
   tracks commonness (loose statistical bounds); apply_magic is
-  reproducible for a fixed seed and level.
+  reproducible for a fixed seed and level. Artifact creation (LIVE): the
+  per-candidate OOD roll (randint0 when alloc_min>depth) then rarity roll
+  (randint1(100)) run in aidx ascending order, matching obj-make.c; the
+  shared ArtifactState (aup_info[]) is threaded into every MakeDeps and
+  serialized. This inserted the previously-missing artifact-scan draws back
+  into the stream, but no existing seeded fixture shifted (candidate draws
+  only occur on a tval+sval match or an eligible special).
 deferred:
-  - Artifact creation: make_artifact and make_artifact_special are stubs
-    returning false/null (consume no RNG), so apply_magic's artifact
-    branch never fires. Lands with the artifact-generation path.
   - make_object book rejection (obj_kind_can_browse needs the player class
     spell realm); the reroll loop runs but the guard is inert for now.
   - make_gold birth_no_selling value inflation (needs player options).
@@ -34,3 +40,7 @@ deferred:
 verified-by:
   - seeded allocation tests at multiple depths (legal-range + distribution)
   - apply_magic determinism test for fixed seed and level
+  - obj/make.test.ts: make_artifact promotion, make_artifact_special, the
+    deep make_object special-artifact roll, already-created + birth_no_art +
+    town-depth zero-RNG guards, ArtifactState snapshot/restore
+  - game/mon-death.test.ts: a level-100 QUESTOR force-drops every QUEST_ART

@@ -142,6 +142,7 @@ export function projectFeature(
             false,
             false,
             0,
+            c.depth,
           );
           if (found) {
             found.origin = ORIGIN.RUBBLE;

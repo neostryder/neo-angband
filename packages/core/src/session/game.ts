@@ -143,7 +143,7 @@ import {
 } from "../obj/knowledge";
 import { flavorInit } from "../obj/flavor";
 import { ELEM_MAX } from "../obj/types";
-import { ObjAllocState } from "../obj/make";
+import { ArtifactState, ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import { monsterDeath } from "../game/mon-death";
 import type { MonsterDeathDeps } from "../game/mon-death";
@@ -438,6 +438,8 @@ function wireGame(
     reg: reg.objects,
     alloc: new ObjAllocState(reg.objects, reg.constants),
     constants: reg.constants,
+    artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
+    noArtifacts: state.options?.get("birth_no_artifacts") ?? false,
   };
   if (reg.projections) {
     const effects = new EffectRegistry();
@@ -1004,7 +1006,16 @@ function makeChangeLevel(
     targetSetMonster(state, null);
     state.healthWho = null;
     state.actor.player.timed[TMD.COMMAND] = 0;
-    const g = generateLevel(state.rng, depth, genDeps(reg, true));
+    const g = generateLevel(
+      state.rng,
+      depth,
+      genDeps(
+        reg,
+        true,
+        state.artifacts,
+        state.options?.get("birth_no_artifacts") ?? false,
+      ),
+    );
     state.chunk = g.c;
     state.monsters = [null];
     state.groups = [null];
@@ -1041,6 +1052,10 @@ function refreshTownStores(state: GameState, reg: CoreRegistries): void {
       reg: reg.objects,
       alloc: new ObjAllocState(reg.objects, reg.constants),
       constants: reg.constants,
+      /* Stores pass allowArtifacts=false, so these are inert here; shared
+       * for consistency with the rest of the game's MakeDeps. */
+      artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
+      noArtifacts: state.options?.get("birth_no_artifacts") ?? false,
     };
     state.stores = createTownStores(
       reg.stores.stores,
@@ -1089,7 +1104,18 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     swapRandartSet(reg, randartSeed);
   }
 
-  const booted = bootLevel(pack, { ...opts, registries: reg });
+  // aup_info[] (obj-make.c): the game's shared artifact-created registry.
+  // Built AFTER swapRandartSet so its length matches the (index-preserving)
+  // final artifact set, and BEFORE bootLevel so the starting level shares it.
+  const artifacts = new ArtifactState(reg.objects.artifacts.length);
+  const noArtifacts = options.get("birth_no_artifacts") ?? false;
+
+  const booted = bootLevel(pack, {
+    ...opts,
+    registries: reg,
+    artifacts,
+    noArtifacts,
+  });
 
   const race =
     (opts.raceName ? players.raceByName(opts.raceName) : null) ??
@@ -1166,6 +1192,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     target: newTargetState(),
     ignore: new IgnoreSettings(),
     options,
+    artifacts,
     lore: new Map(),
     turn: 0,
     z: {
@@ -1262,6 +1289,9 @@ function makeStoreApi(
       reg: reg.objects,
       alloc: new ObjAllocState(reg.objects, reg.constants),
       constants: reg.constants,
+      /* allowArtifacts=false in store generation; inert but shared. */
+      artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
+      noArtifacts: state.options?.get("birth_no_artifacts") ?? false,
     },
     maxDepth: state.actor.player.maxDepth,
     stores: state.stores ?? [],
@@ -1367,6 +1397,13 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     swapRandartSet(reg, randartSeed);
   }
 
+  // aup_info[] (load.c): the artifact-created registry. Restore the saved
+  // flags (built after swapRandartSet so aidx references align); older saves
+  // predate the field and load with an all-false set (a fresh game's state).
+  const artifacts = save.artifactsCreated
+    ? ArtifactState.restore(save.artifactsCreated)
+    : new ArtifactState(reg.objects.artifacts.length);
+
   const chunk = deserializeChunk(save.chunk, reg.features);
   const player = deserializePlayer(save.player, players);
   const gear = deserializeGear(save.gear, reg.objects);
@@ -1419,6 +1456,7 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     target: newTargetState(),
     ignore: new IgnoreSettings(),
     options,
+    artifacts,
     lore: deserializeLore(save.lore),
     turn: save.turn,
     z: {
