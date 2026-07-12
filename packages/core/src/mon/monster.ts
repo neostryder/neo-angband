@@ -13,6 +13,7 @@ import { FlagSet } from "../bitflag";
 import type { Loc } from "../loc";
 import { loc } from "../loc";
 import { MON_TMD } from "../generated";
+import type { GameObject } from "../obj/object";
 import type { MonsterGroupRole, MonsterRace } from "./types";
 import { MFLAG_SIZE, MON_GROUP } from "./types";
 
@@ -55,8 +56,13 @@ export interface Monster {
   mflag: FlagSet;
   /** Object handle of the mimicked object (0 = none). */
   mimickedObj: number;
-  /** Object handle of the first held object (0 = none). */
-  heldObj: number;
+  /**
+   * The monster's held objects (struct monster.held_obj), head-first: pile[0]
+   * is the newest, exactly as upstream's pile_insert-prepended linked list.
+   * Populated by monster_carry (mon/make.ts) - generated drops at death and
+   * gold/items stolen by melee - and emptied by monster_death.
+   */
+  heldObj: GameObject[];
   /** Attr last used for drawing (0 = use race default). */
   attr: number;
   target: MonsterTarget;
@@ -84,7 +90,7 @@ export function blankMonster(race: MonsterRace): Monster {
     cdis: 0,
     mflag: new FlagSet(MFLAG_SIZE),
     mimickedObj: 0,
-    heldObj: 0,
+    heldObj: [],
     attr: 0,
     target: { grid: loc(0, 0), midx: 0 },
     groupInfo,

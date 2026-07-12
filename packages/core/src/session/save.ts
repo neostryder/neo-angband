@@ -186,7 +186,7 @@ export interface SavedMonster {
   cdis: number;
   mflag: number[];
   mimickedObj: number;
-  heldObj: number;
+  heldObj: SavedObject[];
   attr: number;
   target: { grid: { x: number; y: number }; midx: number };
   groupInfo: MonsterGroupInfo[];
@@ -208,7 +208,7 @@ export function serializeMonster(mon: Monster): SavedMonster {
     cdis: mon.cdis,
     mflag: Array.from(mon.mflag.bits),
     mimickedObj: mon.mimickedObj,
-    heldObj: mon.heldObj,
+    heldObj: mon.heldObj.map(serializeObject),
     attr: mon.attr,
     target: {
       grid: { x: mon.target.grid.x, y: mon.target.grid.y },
@@ -223,6 +223,7 @@ export function serializeMonster(mon: Monster): SavedMonster {
 export function deserializeMonster(
   data: SavedMonster,
   monsters: MonsterRegistry,
+  objects: ObjRegistry,
 ): Monster {
   const race = monsters.races[data.ridx];
   if (!race) throw new Error(`save: unknown race ${data.ridx}`);
@@ -241,7 +242,7 @@ export function deserializeMonster(
   mon.cdis = data.cdis;
   mon.mflag.bits.set(data.mflag);
   mon.mimickedObj = data.mimickedObj;
-  mon.heldObj = data.heldObj;
+  mon.heldObj = data.heldObj.map((o) => deserializeObject(o, objects));
   mon.attr = data.attr;
   mon.target = {
     grid: loc(data.target.grid.x, data.target.grid.y),

@@ -7,7 +7,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { TMD, TV } from "../generated";
+import { ORIGIN, TMD, TV } from "../generated";
 import { STAT } from "../generated";
 import { loc } from "../loc";
 import { Rng } from "../rng";
@@ -15,7 +15,8 @@ import { SKILL } from "../player/types";
 import { bindConstants } from "../constants";
 import { ObjRegistry } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
+import { objectPrep, ObjAllocState } from "../obj/make";
+import type { MakeDeps } from "../obj/make";
 import type { GameObject } from "../obj/object";
 import { bindProjections } from "../world/projection";
 import type { ProjectionRecordJson } from "../world/projection";
@@ -55,6 +56,11 @@ const objReg = new ObjRegistry({
   flavor: loadJson("flavor"),
 } as ObjPackJson);
 const constants = bindConstants(loadJson("constants"));
+const makeDeps: MakeDeps = {
+  reg: objReg,
+  alloc: new ObjAllocState(objReg, constants),
+  constants,
+};
 
 const DEFENSE: DefenderState = { ac: 0, toA: 0 };
 
@@ -136,6 +142,7 @@ function buildEnvWithMsgs(
     lifeDrainPercent: 10,
     adjDexSafe: adj_dex_safe,
     packSize: opts.packSize ?? constants.packSize,
+    makeDeps,
     earthquake: (): void => {},
     msg: (t: string): void => {
       msgs.push(t);
@@ -249,6 +256,13 @@ describe("live monster melee - theft", () => {
       },
     );
     expect(setup.state.actor.player.au).toBeLessThan(1000);
+    /* The stolen gold is attached to the monster's held pile (monster_carry),
+     * as money with ORIGIN.STOLEN, so it drops on death. */
+    expect(setup.mon.heldObj.length).toBeGreaterThan(0);
+    const gold = setup.mon.heldObj[0]!;
+    expect(gold.tval).toBe(TV.GOLD);
+    expect(gold.origin).toBe(ORIGIN.STOLEN);
+    expect(gold.pval).toBeGreaterThan(0);
   });
 
   it("steals a non-artifact pack item (EAT_ITEM)", () => {
@@ -273,5 +287,8 @@ describe("live monster melee - theft", () => {
       },
     );
     expect(setup.state.gear.pack.length).toBe(0);
+    /* The stolen item is carried by the monster (drops on death). */
+    expect(setup.mon.heldObj.length).toBe(1);
+    expect(setup.mon.heldObj[0]!.tval).toBe(TV.FOOD);
   });
 });

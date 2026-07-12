@@ -12,7 +12,7 @@ import { loc } from "../loc";
 import type { Loc } from "../loc";
 import { SKILL } from "../player/types";
 import { RF_SIZE } from "../mon/types";
-import type { MonsterBlow, MonsterRace } from "../mon/types";
+import type { MonsterBlow, MonsterDrop, MonsterRace } from "../mon/types";
 import { blankMonster } from "../mon/monster";
 import type { Monster } from "../mon/monster";
 import { bindMonsters } from "../mon/bind";
@@ -101,6 +101,7 @@ export interface RaceOverrides {
   ac?: number;
   flags?: number[];
   blows?: MonsterBlow[];
+  drops?: MonsterDrop[];
 }
 
 /** A MonsterRace derived from the template, with a fresh flag set. */
@@ -117,6 +118,7 @@ export function makeRace(overrides: RaceOverrides = {}): MonsterRace {
     ac: overrides.ac ?? 10,
     flags,
     blows: overrides.blows ?? baseRace.blows,
+    drops: overrides.drops ?? [],
   };
 }
 

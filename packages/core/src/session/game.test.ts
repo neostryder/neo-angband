@@ -220,7 +220,18 @@ describe("startGame (new-game assembly)", () => {
     /* player_kill_monster's reward slice through the wired hook: a fat
      * kill (mexp * rlev / plev = 60 at level 1) passes level thresholds. */
     game.state.onPlayerKill?.({
-      race: { mexp: 30, level: 2, flags: new FlagSet(RF_SIZE), blows: [] },
+      race: {
+        ridx: 1,
+        mexp: 30,
+        level: 2,
+        flags: new FlagSet(RF_SIZE),
+        blows: [],
+        drops: [],
+      },
+      originalRace: null,
+      midx: 0,
+      grid: { x: 20, y: 12 },
+      heldObj: [],
       mflag: new FlagSet(MFLAG_SIZE),
     } as unknown as Parameters<NonNullable<typeof game.state.onPlayerKill>>[0]);
 

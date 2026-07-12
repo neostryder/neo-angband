@@ -25,13 +25,15 @@
 
 import type { Rng } from "../rng";
 import type { Aspect } from "../rng";
-import { RF } from "../generated";
+import { ORIGIN, RF } from "../generated";
 import { MON_TMD } from "../generated";
 import type { MonsterGroupRole, MonsterRace } from "./types";
 import { MON_GROUP } from "./types";
 import type { Monster } from "./monster";
 import { blankMonster, GROUP_TYPE, turnEnergy } from "./monster";
 import { MFLAG } from "../generated";
+import type { GameObject, StackLimits } from "../obj/object";
+import { objectAbsorb, objectMergeable, OSTACK_MONSTER } from "../obj/object";
 
 /** BASIC_COLORS from z-color.h, for ATTR_RAND rolls. */
 const BASIC_COLORS = 29;
@@ -297,4 +299,100 @@ export function createMonster(
   }
 
   return mon;
+}
+
+/* ------------------------------------------------------------------ */
+/* Drops (mon_create_drop_count) and held objects (monster_carry)       */
+/* ------------------------------------------------------------------ */
+
+/** drop_4_max / drop_3_max / drop_2_max (mon-make.c L704-706). */
+const DROP_4_MAX = 6;
+const DROP_3_MAX = 4;
+const DROP_2_MAX = 3;
+
+/**
+ * mon_create_drop_count (mon-make.c L699): how many generic drops a race
+ * yields from its RF_DROP_* flags, plus (optionally) its specified-drop
+ * count. `maximize` returns the maximum instead of a random roll (the lore
+ * display path); `specific` folds the specified-drop count into the returned
+ * `number`. `specificCount` is always the (random or maximum) specified-drop
+ * total, so callers that need the two separately (lore display) can read it.
+ *
+ * CRITICAL (mon-make.c L728-734): in the non-maximize branch the specified-drop
+ * loop draws RNG - randint0(100), then randint0(max-min) when it passes - for
+ * EVERY race.drops entry, even though the resulting specnum is discarded when
+ * specific=false. mon_create_drop calls this with specific=false but the draws
+ * still happen; omitting them desyncs every later draw. Kept faithfully below.
+ */
+export function monCreateDropCount(
+  rng: Rng,
+  race: MonsterRace,
+  maximize: boolean,
+  specific: boolean,
+): { number: number; specificCount: number } {
+  let number = 0;
+  let specnum = 0;
+
+  if (maximize) {
+    if (race.flags.has(RF.DROP_20)) number++;
+    if (race.flags.has(RF.DROP_40)) number++;
+    if (race.flags.has(RF.DROP_60)) number++;
+    if (race.flags.has(RF.DROP_4)) number += DROP_4_MAX;
+    if (race.flags.has(RF.DROP_3)) number += DROP_3_MAX;
+    if (race.flags.has(RF.DROP_2)) number += DROP_2_MAX;
+    if (race.flags.has(RF.DROP_1)) number++;
+    for (const drop of race.drops) specnum += drop.max;
+  } else {
+    if (race.flags.has(RF.DROP_20) && rng.randint0(100) < 20) number++;
+    if (race.flags.has(RF.DROP_40) && rng.randint0(100) < 40) number++;
+    if (race.flags.has(RF.DROP_60) && rng.randint0(100) < 60) number++;
+    if (race.flags.has(RF.DROP_4)) number += rng.randRange(2, DROP_4_MAX);
+    if (race.flags.has(RF.DROP_3)) number += rng.randRange(2, DROP_3_MAX);
+    if (race.flags.has(RF.DROP_2)) number += rng.randRange(1, DROP_2_MAX);
+    if (race.flags.has(RF.DROP_1)) number++;
+    for (const drop of race.drops) {
+      if (rng.randint0(100) < drop.percentChance) {
+        specnum += rng.randint0(drop.max - drop.min) + drop.min;
+      }
+    }
+  }
+
+  if (specific) number += specnum;
+  return { number, specificCount: specnum };
+}
+
+/**
+ * OSTACK_MONSTER stacking never reads the quiver limits (only OSTACK_QUIVER
+ * does), so any values work; these are the shipped constants.txt quiver
+ * numbers for consistency with floor.ts.
+ */
+const MON_STACK_LIMITS: StackLimits = { quiverSlotSize: 40, thrownQuiverMult: 5 };
+
+/**
+ * monster_carry (mon-util.c L1368): give an object to a monster's held pile.
+ * Merges into a compatible held stack when possible (object_absorb), otherwise
+ * forgets the object's location and prepends it (pile_insert) so `pile[0]` is
+ * the newest held object, matching the upstream head-first held_obj list.
+ *
+ * The port's held pile is the GameObject[] on Monster.heldObj (head-first);
+ * the chunk-side list_object / known-object bookkeeping of upstream rides the
+ * knowledge subsystem and is not modelled here.
+ */
+export function monsterCarry(
+  pile: GameObject[],
+  obj: GameObject,
+  midx: number,
+): void {
+  /* Scan objects already being held for combination. */
+  for (const held of pile) {
+    if (objectMergeable(held, obj, OSTACK_MONSTER, MON_STACK_LIMITS)) {
+      objectAbsorb(held, obj, ORIGIN.MIXED);
+      return;
+    }
+  }
+
+  /* Forget location; link the object to the monster; prepend to the pile. */
+  obj.grid = null;
+  obj.heldMIdx = midx;
+  pile.unshift(obj);
 }
