@@ -14,6 +14,13 @@
  * type. It stays pure - the caller looks up the resistance (with the ICE->COLD
  * remap and equip_learn side effect) and passes it in, exactly the split the
  * effect handlers and project_p need.
+ *
+ * desc / playerDesc / lashDesc are the display-only strings (struct
+ * projection's desc / player_desc / lash_desc) consumed by
+ * effects/effect-info.ts (effect_projection, effect_describe): desc is always
+ * present; playerDesc and lashDesc are absent (null) for projection types the
+ * pack never gives a "player-desc" / "lash-desc" line, exactly as upstream
+ * leaves those fields NULL.
  */
 
 import { Dice } from "../dice";
@@ -48,6 +55,12 @@ export interface ProjectionInfo {
   color: string | null;
   /** "hit by X" description used when the player cannot see the source. */
   blindDesc: string | null;
+  /** Generic description ("acid", "fear", ...); always present. */
+  desc: string;
+  /** Description as experienced by the player ("acid", "frost", ...), or null. */
+  playerDesc: string | null;
+  /** Description for the LASH effect handler ("acid", "venom", ...), or null. */
+  lashDesc: string | null;
 }
 
 /** One projection.json record (only the fields bound here are typed). */
@@ -63,6 +76,9 @@ export interface ProjectionRecordJson {
   wake?: number;
   msgt?: string;
   color?: string;
+  desc?: string;
+  "player-desc"?: string;
+  "lash-desc"?: string;
   "blind-desc"?: string;
 }
 
@@ -109,6 +125,9 @@ export function bindProjections(
       msgt: rec.msgt ?? null,
       color: rec.color ?? null,
       blindDesc: rec["blind-desc"] ?? null,
+      desc: rec.desc ?? "",
+      playerDesc: rec["player-desc"] ?? null,
+      lashDesc: rec["lash-desc"] ?? null,
     };
   }
 
