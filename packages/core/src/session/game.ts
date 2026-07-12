@@ -26,7 +26,7 @@
 import { loc } from "../loc";
 import type { Loc } from "../loc";
 import { SKILL } from "../player/types";
-import { PF, RF, STAT, TMD } from "../generated";
+import { EF, PF, RF, STAT, TMD } from "../generated";
 import { bindPlayer } from "../player/bind";
 import type { PlayerPackRecords, PlayerRegistry } from "../player/bind";
 import { generatePlayer } from "../player/birth";
@@ -40,6 +40,10 @@ import type { PlayerState } from "../player/calcs";
 import { playerExpGain, playerKillExp } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
 import { makePlayerSideEffects } from "../game/player-side";
+import { makeMonBlowEnv } from "../game/mon-side";
+import { adj_dex_safe } from "../player/calcs";
+import { buildEffectContext } from "../game/effect-env";
+import { sourceMonster } from "../effects/interpreter";
 import {
   DEFAULT_GAME_CONSTANTS,
   addMonster,
@@ -582,6 +586,30 @@ function wireGame(
     installMonsterCasting(state, monSpellDeps);
     /* do_cmd_mon_command: EF_COMMAND possession drives the monster. */
     installMonCommand(state, monSpellDeps);
+
+    /* make_attack_normal's blow-effect environment (game/mon-side.ts): the
+     * monster-melee analog of the player onSideEffects hook, so a melee blow
+     * applies its full elemental / status / stat / theft / terrain
+     * consequences in upstream RNG order. EF_EARTHQUAKE (SHATTER) routes
+     * through the effect interpreter so its internal draws are shared. */
+    state.monBlowEnv = makeMonBlowEnv(state, {
+      timed: players.timed,
+      actor: playerActor,
+      projections: reg.projections,
+      expDeps,
+      lifeDrainPercent: reg.constants.lifeDrainPercent,
+      adjDexSafe: adj_dex_safe,
+      packSize: reg.constants.packSize,
+      ...(teleport ? { teleport } : {}),
+      earthquake: (mon, radius): void => {
+        effects.effectSimple(EF.EARTHQUAKE, buildEffectContext(state, envDeps), {
+          origin: sourceMonster(mon.midx),
+          subtype: 0,
+          radius,
+        });
+      },
+      msg: (text: string): void => state.msg?.(text),
+    });
 
     installObjCommands(registry, {
       constants: reg.constants,
