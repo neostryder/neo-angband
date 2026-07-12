@@ -6,7 +6,7 @@ import { loc } from "../loc";
 import { SKILL } from "../player/types";
 import { ObjRegistry } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
-import { ObjAllocState } from "../obj/make";
+import { ArtifactState, ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import { tvalIsMoney } from "../obj/object";
 import {
@@ -49,7 +49,13 @@ const constants = bindConstants(loadJson("constants"));
 
 function makeDeps(): MakeDeps {
   const reg = new ObjRegistry(objPack);
-  return { reg, alloc: new ObjAllocState(reg, constants), constants };
+  return {
+    reg,
+    alloc: new ObjAllocState(reg, constants),
+    constants,
+    artifacts: new ArtifactState(reg.artifacts.length),
+    noArtifacts: false,
+  };
 }
 
 /** A state, a registry with the cave commands, and a one-command runner. */

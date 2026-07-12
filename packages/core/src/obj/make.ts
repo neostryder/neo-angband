@@ -19,14 +19,12 @@
  *   supercharge, apply_curse (see object.ts for the one deferred check
  *   inside append_object_curse); make_object's kind selection, prep,
  *   magic, and stack-size generation; make_gold/money_kind.
- * - DEFERRED: artifact creation. make_artifact and
- *   make_artifact_special return false/null stubs, so apply_magic's
- *   artifact rolls always fail (upstream consumes RNG scanning the
- *   artifact list; this port consumes none there) and make_object's
- *   special-artifact attempt falls through to its "player gets a good
- *   item" branch exactly as upstream does when no artifact is possible.
- *   copy_artifact_data IS ported (make_fake_artifact-style uses and
- *   tests), but nothing marks artifacts created.
+ * - LIVE: artifact creation. make_artifact (apply_magic promotion) and
+ *   make_artifact_special (make_object's special-artifact roll) scan the
+ *   artifact list consuming RNG in upstream's per-candidate order
+ *   (out-of-depth roll then rarity roll, aidx ascending), copy the
+ *   artifact's fixed data, and mark it created in the shared ArtifactState
+ *   (aup_info[]). copy_artifact_data was already ported.
  * - DEFERRED: make_object's book rejection (obj_kind_can_browse needs
  *   the player class), the *value out-parameter and its
  *   out-of-depth boost (object_value_real is obj-power), and
@@ -717,24 +715,201 @@ export function copyArtifactData(
 }
 
 /**
- * DEFERRED STUB: make_artifact (obj-make.c). Random artifact creation
- * needs artifact upkeep (created flags), the player depth, and birth
- * options; until those land this always fails, like a game where every
- * artifact has been generated. Upstream consumes RNG while scanning the
- * artifact list; this stub consumes none.
+ * aup_info[] (object.h struct artifact_upkeep; obj-util.c
+ * is_artifact_created / mark_artifact_created): the per-artifact
+ * "created" flags, indexed by aidx (1-based; index 0 unused, matching the
+ * null placeholder in ObjRegistry.artifacts). One shared instance per
+ * game, serialized in the save (save.c/load.c) and reset to all-false at
+ * birth (player-birth.c reset_artifacts).
  */
-export function makeArtifact(_obj: GameObject): boolean {
-  return false;
+export class ArtifactState {
+  private readonly created: boolean[];
+
+  constructor(count: number) {
+    this.created = new Array<boolean>(count).fill(false);
+  }
+
+  /** is_artifact_created(art). */
+  isCreated(aidx: number): boolean {
+    return this.created[aidx] ?? false;
+  }
+
+  /** mark_artifact_created(art, created). */
+  markCreated(aidx: number, created: boolean): void {
+    this.created[aidx] = created;
+  }
+
+  /** A copy of the flags for serialization. */
+  snapshot(): boolean[] {
+    return [...this.created];
+  }
+
+  /** Rebuild from serialized flags (load.c). */
+  static restore(data: readonly boolean[]): ArtifactState {
+    const s = new ArtifactState(data.length);
+    for (let i = 0; i < data.length; i++) s.markCreated(i, data[i] ?? false);
+    return s;
+  }
+
+  /** reset_artifacts at birth: clear every created flag. */
+  reset(): void {
+    this.created.fill(false);
+  }
 }
 
 /**
- * DEFERRED STUB: make_artifact_special (obj-make.c). See makeArtifact.
+ * make_artifact_special (obj-make.c:578): try to create one of the
+ * special (KF_INSTA_ART) artifacts. Scans the artifact list in aidx
+ * ascending order; the first candidate that survives the birth/depth/
+ * created/tval/rarity filters is prepped from its base kind, stamped with
+ * the artifact's fixed data, marked created, and returned.
+ *
+ * The C `level` parameter is vestigial (the body uses player->depth and
+ * art->alloc_min instead), so the port takes `depth` and drops it.
+ *
+ * RNG order per surviving candidate: randint0((alloc_min-depth)*2) only
+ * when alloc_min > depth, then randint1(100) for the rarity roll, then on
+ * success object_prep(RANDOMISE) followed by copy_artifact_data's
+ * curse-timeout draws.
  */
 export function makeArtifactSpecial(
-  _level: number,
-  _tval: number,
+  rng: Rng,
+  deps: MakeDeps,
+  depth: number,
+  tval: number,
 ): GameObject | null {
+  const { reg, constants } = deps;
+
+  /* No artifacts, do nothing */
+  if (deps.noArtifacts) return null;
+
+  /* No artifacts in the town */
+  if (depth <= 0) return null;
+
+  /* Check the special artifacts */
+  for (let i = 1; i < reg.artifacts.length; i++) {
+    const art = reg.artifacts[i];
+    if (!art) continue;
+    const kind = reg.lookupKind(art.tval, art.sval);
+
+    /* Skip "empty" artifacts */
+    if (!art.name) continue;
+
+    /* Make sure the kind was found */
+    if (!kind) continue;
+
+    /* Make sure it's the right tval (if given) */
+    if (tval && tval !== art.tval) continue;
+
+    /* Skip non-special artifacts */
+    if (!kind.kindFlags.has(KF.INSTA_ART)) continue;
+
+    /* Cannot make an artifact twice */
+    if (deps.artifacts.isCreated(art.aidx)) continue;
+
+    /* Enforce minimum "depth" (loosely) */
+    if (art.allocMin > depth) {
+      const d = (art.allocMin - depth) * 2;
+      if (rng.randint0(d) !== 0) continue;
+    }
+
+    /* Enforce maximum depth (strictly) */
+    if (art.allocMax < depth) continue;
+
+    /* Artifact "rarity roll" */
+    if (rng.randint1(100) > art.allocProb) continue;
+
+    /* Assign the template */
+    const obj = objectPrep(rng, reg, constants, kind, art.allocMin, "randomise");
+
+    /* Mark the item as an artifact */
+    obj.artifact = art;
+
+    /* Copy across all the data from the artifact struct */
+    copyArtifactData(rng, reg, obj, art);
+
+    /* Mark the artifact as "created" */
+    deps.artifacts.markCreated(art.aidx, true);
+
+    return obj;
+  }
+
   return null;
+}
+
+/**
+ * make_artifact (obj-make.c:655): try to promote an already-prepped
+ * object into a matching non-special artifact (tval AND sval match).
+ * Only apply_magic calls this. The scan halts on the first match (the C
+ * for-loop condition `!obj->artifact`); the object is NOT re-prepped
+ * (make_object already prepped it before apply_magic ran).
+ *
+ * RNG order per surviving candidate matches make_artifact_special: the
+ * out-of-depth roll (only when alloc_min > depth) then the rarity roll;
+ * on success copy_artifact_data draws the artifact's curse timeouts.
+ */
+export function makeArtifact(
+  rng: Rng,
+  deps: MakeDeps,
+  obj: GameObject,
+  depth: number,
+): boolean {
+  const { reg } = deps;
+
+  /* Make sure birth no artifacts isn't set */
+  if (deps.noArtifacts) return false;
+
+  /* No artifacts in the town */
+  if (depth <= 0) return false;
+
+  /* Paranoia -- no "plural" artifacts */
+  if (obj.number !== 1) return false;
+
+  /* Check the artifact list (skip the "specials") */
+  for (let i = 1; !obj.artifact && i < reg.artifacts.length; i++) {
+    const art = reg.artifacts[i];
+    if (!art) continue;
+    const kind = reg.lookupKind(art.tval, art.sval);
+
+    /* Skip "empty" items */
+    if (!art.name) continue;
+
+    /* Make sure the kind was found */
+    if (!kind) continue;
+
+    /* Skip special artifacts */
+    if (kind.kindFlags.has(KF.INSTA_ART)) continue;
+
+    /* Cannot make an artifact twice */
+    if (deps.artifacts.isCreated(art.aidx)) continue;
+
+    /* Must have the correct fields */
+    if (art.tval !== obj.tval) continue;
+    if (art.sval !== obj.sval) continue;
+
+    /* Enforce minimum "depth" (loosely) */
+    if (art.allocMin > depth) {
+      const d = (art.allocMin - depth) * 2;
+      if (rng.randint0(d) !== 0) continue;
+    }
+
+    /* Enforce maximum depth (strictly) */
+    if (art.allocMax < depth) continue;
+
+    /* We must make the "rarity roll" */
+    if (rng.randint1(100) > art.allocProb) continue;
+
+    /* Mark the item as an artifact */
+    obj.artifact = art;
+  }
+
+  if (obj.artifact) {
+    copyArtifactData(rng, reg, obj, obj.artifact);
+    deps.artifacts.markCreated(obj.artifact.aidx, true);
+    return true;
+  }
+
+  return false;
 }
 
 /* ------------------------------------------------------------------ */
@@ -838,15 +1013,25 @@ export interface MakeDeps {
   reg: ObjRegistry;
   alloc: ObjAllocState;
   constants: Constants;
+  /**
+   * aup_info[]: the shared per-artifact created flags. MUST be the single
+   * instance owned by the game so every generation path (dungeon levels,
+   * loot, effects, stores) marks the same flags and no artifact spawns
+   * twice.
+   */
+  artifacts: ArtifactState;
+  /** OPT(player, birth_no_artifacts): suppress all artifact creation. */
+  noArtifacts: boolean;
 }
 
 /**
  * apply_magic: ego creation and random bonuses. Returns 0 for a normal
- * object, 1 good, 2 ego, 3 artifact (never 3 while artifact generation
- * is deferred; the rolls loop runs but the stub always fails).
+ * object, 1 good, 2 ego, 3 artifact.
  *
- * DEFERRED inside (see module docs): artifact creation rolls,
- * pick_chest_traps for chests.
+ * `depth` is the player/chunk depth make_artifact tests against (0 in
+ * town); it is distinct from the object creation level `lev`.
+ *
+ * DEFERRED inside (see module docs): pick_chest_traps for chests.
  */
 export function applyMagic(
   rng: Rng,
@@ -857,6 +1042,7 @@ export function applyMagic(
   good: boolean,
   great: boolean,
   extraRoll: boolean,
+  depth: number,
 ): number {
   const { reg, alloc, constants } = deps;
   let power = 0;
@@ -870,14 +1056,14 @@ export function applyMagic(
     if (great || rng.randint0(100) < greatChance) power = 2;
   }
 
-  /* Roll for artifact creation (DEFERRED: stub never succeeds) */
+  /* Roll for artifact creation */
   if (allowArtifacts) {
     let rolls = 0;
     if (power >= 2) rolls = 1;
     if (great) rolls = 2;
     if (extraRoll) rolls += 2;
     for (let i = 0; i < rolls; i++) {
-      if (makeArtifact(obj)) return 3;
+      if (makeArtifact(rng, deps, obj, depth)) return 3;
     }
   }
 
@@ -936,12 +1122,13 @@ export function makeObject(
   great: boolean,
   extraRoll: boolean,
   tval: number,
+  depth: number,
 ): GameObject | null {
   const { reg, alloc, constants } = deps;
 
   /* Try to make a special artifact */
   if (rng.oneIn(good ? 10 : 1000)) {
-    const special = makeArtifactSpecial(lev, tval);
+    const special = makeArtifactSpecial(rng, deps, depth, tval);
     if (special) return special;
     /* If we failed to make an artifact, the player gets a good item */
     good = true;
@@ -959,7 +1146,7 @@ export function makeObject(
 
   /* Make the object, prep it and apply magic */
   const obj = objectPrep(rng, reg, constants, kind, lev, "randomise");
-  applyMagic(rng, deps, obj, lev, true, good, great, extraRoll);
+  applyMagic(rng, deps, obj, lev, true, good, great, extraRoll, depth);
 
   /* Generate multiple items */
   if (!obj.artifact && kind.genMultProb >= rng.randint1(100)) {

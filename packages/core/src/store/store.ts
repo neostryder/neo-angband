@@ -466,7 +466,9 @@ export function storeCreateRandom(ctx: StoreMaintContext, store: Store): boolean
     if (!kind || kind.tval === TV.CHEST) continue;
 
     const obj = objectPrep(rng, reg, constants, kind, level, "randomise");
-    applyMagic(rng, deps, obj, level, false, false, false, false);
+    /* depth 0: store stock is generated at the player's town depth, so no
+     * artifacts (allowArtifacts is false regardless). */
+    applyMagic(rng, deps, obj, level, false, false, false, false, 0);
 
     /* Reject 'damaged' items (negative combat mods, curses). */
     if (

@@ -28,10 +28,10 @@
  *     and the specified-drop loop (which draws even though its count is discarded
  *     here) - see mon/make.ts monCreateDropCount.
  *  2. no RNG in the theft reduction, unique monlevel bump, or level calc.
- *  3. QUESTOR/Morgoth QUEST_ART force-drop (mon-make.c L795): DEFERRED to the
- *     artifacts gap; draws nothing here (upstream's object_prep at lev 100 per
- *     QUEST_ART artifact must be inserted BEFORE the specified-drop loop when
- *     artifacts land, to stay faithful).
+ *  3. QUESTOR/Morgoth QUEST_ART force-drop (mon-make.c L794): a level-100
+ *     QUESTOR force-drops every QUEST_ART artifact - object_prep(RANDOMISE) at
+ *     lev 100 plus copy_artifact_data curse timeouts per artifact - inserted
+ *     BEFORE the specified-drop loop, matching upstream's stream position.
  *  4. specified-drops loop (mon-make.c L830): per entry randint0(100) gate FIRST,
  *     then object creation (objectPrep+applyMagic by-kind, or makeObject by-tval),
  *     then randint0(max-min) for the stack count.
@@ -50,12 +50,18 @@
  * redraw (UI).
  */
 
-import { ORIGIN, RF } from "../generated";
+import { KF, ORIGIN, RF } from "../generated";
 import type { Rng } from "../rng";
 import type { GameObject } from "../obj/object";
 import { tvalIsMoney } from "../obj/object";
 import type { MakeDeps } from "../obj/make";
-import { applyMagic, makeGold, makeObject, objectPrep } from "../obj/make";
+import {
+  applyMagic,
+  copyArtifactData,
+  makeGold,
+  makeObject,
+  objectPrep,
+} from "../obj/make";
 import type { ObjRegistry } from "../obj/bind";
 import { tvalFindIdx } from "../obj/bind";
 import type { Monster } from "../mon/monster";
@@ -144,14 +150,37 @@ export function monsterDeath(
   let level = Math.max(Math.trunc((monlevel + depth) / 2), monlevel);
   level = Math.min(level, 100);
 
-  /* Morgoth's QUEST_ART force-drop (mon-make.c L795-827): DEFERRED to the
-   * artifacts gap. Upstream object_prep(RANDOMISE) at lev 100 per QUEST_ART
-   * artifact draws RNG that must be inserted HERE, before the specified-drop
-   * loop, when artifacts land. */
-
   /* Build the generated pile in the same order upstream would (monster_carry
    * prepends), so the drop pass yields the same floor order. */
   const genHeld: GameObject[] = [];
+
+  /* Morgoth's QUEST_ART force-drop (mon-make.c L794-827): a level-100 QUESTOR
+   * drops every QUEST_ART artifact. Runs BEFORE the specified-drop loop so its
+   * object_prep(RANDOMISE) at lev 100 lands at the same point in the stream as
+   * upstream. Each is prepped from its base kind, stamped with the artifact
+   * data, marked created, and carried. monster_carry never fails here (the
+   * port's held pile is unbounded), so upstream's mark-uncreated rollback path
+   * is unreachable. */
+  if (effectiveRace.flags.has(RF.QUESTOR) && effectiveRace.level === 100) {
+    for (let j = 1; j < reg.artifacts.length; j++) {
+      const art = reg.artifacts[j];
+      if (!art) continue;
+      const kind = reg.lookupKind(art.tval, art.sval);
+      if (!kind || !kind.kindFlags.has(KF.QUEST_ART)) continue;
+
+      const obj = objectPrep(rng, reg, makeDeps.constants, kind, 100, "randomise");
+      obj.artifact = art;
+      copyArtifactData(rng, reg, obj, art);
+      makeDeps.artifacts.markCreated(art.aidx, true);
+
+      obj.origin = ORIGIN.DROP;
+      obj.originDepth = depth;
+      obj.originRace = effectiveRace.ridx;
+      obj.number = 1;
+
+      monsterCarry(genHeld, obj, mon.midx);
+    }
+  }
 
   /* Specified drops (mon-make.c L830). */
   for (const drop of effectiveRace.drops) {
@@ -165,10 +194,10 @@ export function monsterDeath(
       const kind = reg.lookupKind(tvalNum, sval);
       if (!kind) continue;
       obj = objectPrep(rng, reg, makeDeps.constants, kind, level, "randomise");
-      applyMagic(rng, makeDeps, obj, level, true, good, great, extraRoll);
+      applyMagic(rng, makeDeps, obj, level, true, good, great, extraRoll, depth);
     } else {
       /* Specified by tval (drop->tval). */
-      obj = makeObject(rng, makeDeps, level, good, great, extraRoll, tvalNum);
+      obj = makeObject(rng, makeDeps, level, good, great, extraRoll, tvalNum, depth);
     }
 
     if (!obj) continue;
@@ -189,7 +218,7 @@ export function monsterDeath(
     if (goldOk && (!itemOk || rng.randint0(100) < 50)) {
       obj = makeGold(rng, makeDeps, level, "any");
     } else {
-      obj = makeObject(rng, makeDeps, level, good, great, extraRoll, 0);
+      obj = makeObject(rng, makeDeps, level, good, great, extraRoll, 0, depth);
       if (!obj) continue;
     }
 
