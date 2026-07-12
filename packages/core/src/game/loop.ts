@@ -23,7 +23,7 @@
  * in parity/ledger/game-loop.yaml).
  */
 
-import { MON_TMD, STAT, TMD } from "../generated";
+import { MON_TMD, PF, STAT, TMD } from "../generated";
 import { TMD_MAX } from "../player/types";
 import { los } from "../world/view";
 import {
@@ -34,6 +34,21 @@ import {
 import { getCommandedMonster } from "./mon-cmd";
 import { adj_con_fix, calcStatIndices } from "../player/calcs";
 import { equipLearnAfterTime } from "../obj/knowledge";
+import { playerClearTimed, playerDecTimed, playerTimedGradeEq } from "../player/timed";
+import { tickMonsterMarks } from "./known";
+import {
+  caveMonsterCount,
+  compactMonsters,
+  digestFood,
+  isDaytime,
+  playAmbientSound,
+  playerHasWorld,
+  playerUpdateLight,
+  processDamageOverTime,
+  processExpDrain,
+  processFaintOrStarve,
+  rechargeObjects,
+} from "./world";
 import type { Player } from "../player/player";
 import type { GameState } from "./context";
 import {
@@ -161,56 +176,180 @@ export function playerRegenMana(state: GameState): void {
 }
 
 /**
- * decrease_timeouts: count the player timed effects down. Most drop by 1;
- * poison / stun / cut drop by the CON regeneration adjust (cut Mortal-Wound
- * maintenance, curse timeouts and grade-transition messaging are DEFERRED);
- * TMD_FOOD is handled by digestion (DEFERRED) and does not decrement here.
- * TMD_COMMAND stays aligned with the commanded monster's timer, and a
- * commanded monster out of sight is out of mind (game-world.c L324).
+ * decrease_timeouts (game-world.c L280): count the player timed effects down.
+ * Most drop by 1; poison / stun / cut drop by the CON regeneration adjust (cut
+ * maintains at 0 for a Mortal Wound or a Rock player); TMD_FOOD is handled by
+ * digestion and does not decrement here. TMD_COMMAND stays aligned with the
+ * commanded monster's timer, and a commanded monster out of sight is out of
+ * mind (game-world.c L324).
+ *
+ * Each per-effect decrement routes through player_dec_timed (with the bound
+ * timed table + hooks from state.world), so grade transitions and wear-off
+ * messages fire. Absent the world env, it falls back to the raw mutation for
+ * worldless callers. The curse-timeout countdown (L343-364) is DEFERRED with
+ * the curse subsystem; it draws no RNG while no cursed items are equipped.
  */
 export function decreaseTimeouts(state: GameState): void {
   const p = state.actor.player;
   const conInd = calcStatIndices(p.race, p.cls, p.statCur)[STAT.CON] ?? 0;
   const adjust = (adj_con_fix[conInd] ?? 0) + 1;
+  const env = state.world;
+  const table = env?.timedTable;
+  const thooks = env?.timedHooks ?? {};
 
   for (let i = 0; i < TMD_MAX; i++) {
     const cur = p.timed[i] ?? 0;
     if (!cur) continue;
     let decr = 1;
-    if (i === TMD.FOOD) decr = 0;
-    else if (i === TMD.CUT || i === TMD.POISONED || i === TMD.STUN) {
+
+    /* Special cases. */
+    if (i === TMD.FOOD) {
+      decr = 0;
+    } else if (i === TMD.CUT) {
+      const cut = table?.[TMD.CUT];
+      if (cut && playerTimedGradeEq(p, cut, "Mortal Wound")) decr = 0;
+      else decr = adjust;
+      /* Rock players just maintain. */
+      if (playerHasWorld(state, PF.ROCK)) decr = 0;
+    } else if (i === TMD.POISONED || i === TMD.STUN) {
       decr = adjust;
     } else if (i === TMD.COMMAND) {
       const mon = getCommandedMonster(state);
       if (mon && !los(state.chunk, state.actor.grid, mon.grid)) {
         /* Out of sight is out of mind. */
         monClearTimed(state.rng, mon, MON_TMD.COMMAND, MON_TMD_FLG_NOTIFY);
-        p.timed[i] = 0;
-        continue;
+        const cmd = table?.[TMD.COMMAND];
+        if (cmd) playerClearTimed(p, cmd, true, true, thooks);
+        else p.timed[i] = 0;
       } else if (mon) {
         /* Keep the monster timer aligned. */
         monDecTimed(state.rng, mon, MON_TMD.COMMAND, decr, 0);
       }
     }
-    p.timed[i] = Math.max(0, cur - decr);
+
+    /* Decrement the effect. */
+    const eff = table?.[i];
+    if (eff) playerDecTimed(p, eff, decr, false, true, thooks);
+    else p.timed[i] = Math.max(0, cur - decr);
   }
 }
 
 /**
- * process_world: the once-every-ten-turns upkeep this task owns. Regenerate
- * HP (when hurt) and mana, count the timed effects down, then the
- * involuntary movement countdowns (game-world.c L780): a pending Word of
- * Recall or Deep Descent fires a level change through the same
- * targetDepth / generateLevel signal the stairs use.
+ * Decrease trap timeouts (game-world.c L759): every disabled trap counts its
+ * timeout down; the square_memorize_traps / square_light_spot refresh when a
+ * seen trap re-arms is a presentation concern (#25) and is DEFERRED. No RNG.
+ */
+function decreaseTrapTimeouts(state: GameState): void {
+  for (const traps of state.traps.values()) {
+    for (const trap of traps) {
+      if (trap.timeout) trap.timeout--;
+    }
+  }
+}
+
+/**
+ * process_world (game-world.c L532): the once-every-ten-game-turns upkeep,
+ * reproduced statement by statement in upstream order (take_hit early-returns
+ * on death and the RNG draw sequence are order-sensitive). The MFLAG detection
+ * fade (tickMonsterMarks), monster-list compaction, ambient sound + town clock,
+ * ambient monster generation, damage / healing over time, food digestion,
+ * HP/mana regen, timed-effect countdown, light-fuel burn, experience drain,
+ * rod / activatable recharge, learn-after-time, trap timeouts, and the
+ * involuntary Word-of-Recall / Deep-Descent movement all run here.
  */
 export function processWorld(state: GameState): void {
   const p = state.actor.player;
+
+  /* MFLAG_NICE / MARK / SHOW detection-fade housekeeping (game-world.c:882). */
+  tickMonsterMarks(state);
+
+  /* Compact the monster list if we're approaching the limit. */
+  if (caveMonsterCount(state) + 32 > state.z.levelMonsterMax) {
+    compactMonsters(state, 64);
+  }
+  /* Too many holes in the monster list - compress (RNG-free, slot reuse). */
+  if (caveMonsterCount(state) + 32 < state.monsters.length) {
+    compactMonsters(state, 0);
+  }
+
+  /*** Check the Time ***/
+
+  /* Play an ambient sound at regular intervals. */
+  if (state.turn % Math.trunc((10 * state.z.dayLength) / 4) === 0) {
+    playAmbientSound(state);
+  }
+
+  /* Handle stores and sunshine. */
+  if (state.chunk.depth === 0) {
+    /* Daybreak / nightfall in town. */
+    if (state.turn % Math.trunc((10 * state.z.dayLength) / 2) === 0) {
+      const dawn = state.turn % (10 * state.z.dayLength) === 0;
+      state.msg?.(dawn ? "The sun has risen." : "The sun has fallen.");
+      state.world?.caveIlluminate?.(state, dawn);
+    }
+  } else {
+    /* Update the stores once a day while in the dungeon. */
+    if (state.turn % (10 * state.z.storeTurns) === 0) {
+      state.daycount = (state.daycount ?? 0) + 1;
+    }
+  }
+
+  /* Check for light change (PU_BONUS folds into the recompute below). */
+
+  /* Check for creature generation. The one_in_ roll is drawn UNCONDITIONALLY
+   * each world tick so the seeded stream stays stable even if the spawn hook
+   * is absent; pick_and_place_distant_monster then draws its own variable
+   * sequence (x-then-y per attempt, then get_mon_num / placement). */
+  if (state.rng.oneIn(state.z.allocMonsterChance)) {
+    state.world?.spawnAmbientMonster?.(state);
+  }
+
+  /*** Damage (or healing) over Time ***/
+  if (processDamageOverTime(state)) return;
+
+  /*** Check the Food, and Regenerate ***/
+
+  /* Digest (the gorged branch flags PU_BONUS, folded into the recompute below). */
+  digestFood(state);
+
+  /* Faint or starving. */
+  if (processFaintOrStarve(state)) return;
+
+  /* Regenerate Hit Points if needed. */
   if (p.chp < p.mhp) playerRegenHp(state);
+
+  /* Regenerate or lose mana. */
   playerRegenMana(state);
+
+  /* Timeout various things. */
   decreaseTimeouts(state);
+
+  /* Process light (PU_TORCH). */
+  playerUpdateLight(state);
+
+  /* Update noise and scent (not if resting): DEFERRED (no RNG; the AI does not
+   * read the noise / scent floods yet, ledgered in parity/ledger). */
+
+  /*** Process Inventory ***/
+
+  /* Handle experience draining (OF_DRAIN_EXP). */
+  processExpDrain(state);
+
+  /* Recharge activatable objects and rods. */
+  rechargeObjects(state);
 
   /* Notice things after time (game-world.c L755: every 100 game turns). */
   if (state.turn % 100 === 0) equipLearnAfterTime(p, state.runeEnv);
+
+  /* Decrease trap timeouts. */
+  decreaseTrapTimeouts(state);
+
+  /* Apply the collapsed PU_TORCH / PU_BONUS recompute: UNLIGHT and the gorged
+   * digest branch flag PU_BONUS, and PU_TORCH (torch radius) is set every tick,
+   * so recompute the derived state once when the bonus hook is installed. */
+  state.updateBonuses?.();
+
+  /*** Involuntary Movement ***/
 
   /* Delayed Word-of-Recall; suspended in arenas (game-world.c L784). */
   if (p.wordRecall > 0 && !state.arenaLevel) {
