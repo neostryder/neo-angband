@@ -285,6 +285,23 @@ export interface TimedEffect {
   nonStacking: boolean;
   /** lower-bound directive: values below this floor are raised to it. */
   lowerBound: number;
+  /**
+   * temp_resist (player-timed.c parse_player_timed_resist): the ELEM_ index
+   * this effect grants a temporary resist against, or -1 when none. Bound
+   * from the pack `resist` field via ELEM[name]. On the five OPP_* effects.
+   */
+  tempResist: number;
+  /**
+   * oflag_dup (parse_player_timed_flag_synonym): the OF_ index this effect
+   * duplicates into the player's object flags while active, or 0 (OF_NONE)
+   * when none. Bound from the pack `flag-synonym[0].code` via OF[name].
+   */
+  oflagDup: number;
+  /**
+   * oflag_syn: whether the flag synonym is an exact duplicate (used only by
+   * the deferred notify-suppression). Bound from `flag-synonym[0].exact`.
+   */
+  oflagSyn: boolean;
   grades: TimedGrade[];
   fail: TimedFail[];
 }

@@ -13,13 +13,14 @@
  * weapon analysis ARE ported: pass the worn objects via
  * CalcBonusesOptions.equipment and calc_bonuses applies their stat, skill,
  * combat and resist contributions and derives blows from the wielded weapon.
- * Still DEFERRED (see the calcBonuses notes and
- * parity/ledger/player-calcs-bonuses.yaml):
+ * calc_light and the timed effects (food, stun, bless, hero, shero,
+ * fast/slow, temp resists, etc.) are now ported (calcLight + the
+ * timedEffects-gated blocks in calcBonuses). Still DEFERRED (see the
+ * calcBonuses notes and parity/ledger/player-calcs-bonuses.yaml):
  *   - the learn-by-use rune system that populates obj_k (equipment modifiers
  *     are rune-gated and inert at birth) and the per-object curse-object
  *     traversal inside the equipment loop
- *   - timed effects (food, stun, bless, hero, shero, fast/slow, etc.)
- *   - calc_mana / calc_light
+ *   - calc_mana
  * calc_shapechange is now ported (a non-normal player.shape stacks its
  * combat/skill/flag/modifier/resist package on the state).
  */
@@ -32,18 +33,21 @@ import {
   SKILL_MAX,
   STAT_MAX,
   STAT_RANGE,
+  TMD_MAX,
 } from "./types";
-import { ELEM, KF, OBJ_MOD, OF, PF, STAT, TV } from "../generated";
+import { ELEM, KF, OBJ_MOD, OF, PF, STAT, TMD, TV } from "../generated";
 import { COLOUR_L_GREEN, COLOUR_RED, COLOUR_YELLOW } from "../color";
 import { FlagSet } from "../bitflag";
 import type {
   PlayerClass,
   PlayerElementInfo,
   PlayerRace,
+  TimedEffect,
 } from "./types";
 import type { Player } from "./player";
 import type { GameObject } from "../obj/object";
-import { tvalIsDigger } from "../obj/object";
+import { tvalIsDigger, tvalIsLight } from "../obj/object";
+import { playerTimedGradeEq } from "./timed";
 import type { PlayerCombatState } from "../combat/melee";
 import type { DefenderState } from "../combat/mon-melee";
 
@@ -384,7 +388,7 @@ export interface PlayerState {
   toD: number;
   /** Infravision range. */
   seeInfra: number;
-  /** Radius of light (calc_light DEFERRED: 0). */
+  /** Radius of light (calc_light; 0 when no light source is wielded). */
   curLight: number;
   /** Heavy weapon (weapon analysis DEFERRED: false). */
   heavyWield: boolean;
@@ -546,14 +550,111 @@ export interface CalcBonusesOptions {
    * analysis (2254-2319). Defaults to empty (unarmed and unarmored).
    */
   equipment?: readonly (GameObject | null)[];
+  /**
+   * The bound timed-effect table (player/bind.ts TimedEffect[]), indexed by
+   * TMD. Drives the FOOD-grade block (2094-2132), player_flags_timed and the
+   * grade / temp_resist driven timed block (2134-2213). Defaults to empty,
+   * which disables the whole timed model (both the table-driven AND the
+   * per-timer branches) so no self-inconsistent partial derive can occur:
+   * an empty table is valid only when the timed contributions are meant to
+   * be ignored wholesale (the innate / no-timers callers). All three live
+   * call sites (game.ts refreshDerived, startGame, loadGame) pass players.timed.
+   */
+  timedEffects?: readonly TimedEffect[];
+  /**
+   * calc_bonuses' `update` arg (player-calcs.c:1877): when true the derive is
+   * allowed its faithful side effects -- zeroing p->timed[TMD_FASTCAST] on a
+   * Stun/Heavy Stun grade (2141-2143/2148-2150) and the calc_light town
+   * redraw flag. Defaults to true (the live refresh path). Hypothetical /
+   * known_only callers pass false so the derive stays pure.
+   */
+  update?: boolean;
+  /**
+   * p->depth (calc_light town-daytime early-out, 1607). Defaults to undefined,
+   * treated as a nonzero depth so the town branch stays dormant.
+   */
+  depth?: number;
+  /**
+   * is_daytime() (calc_light, 1607). Defaults to false; the town-daytime
+   * early-out is dormant until the world clock lands (see calcLight).
+   */
+  isDaytime?: boolean;
+}
+
+/**
+ * calc_light (player-calcs.c:1598-1645): set state.curLight to the sum of the
+ * light radii of every wielded light source. Each slot contributes OF_LIGHT_2
+ * (2) or OF_LIGHT_3 (3) plus its OBJ_MOD_LIGHT modifier, an UNLIGHT player
+ * loses 1 from any positive +LIGHT item, and a tval-light item with fuel that
+ * has run out (timeout == 0, no NO_FUEL) contributes nothing.
+ *
+ * FAITHFULNESS: obj->modifiers[OBJ_MOD_LIGHT] is read RAW here (1629), NOT
+ * multiplied by the learned-rune mask obj_k like the pval modifiers in the
+ * equipment loop -- upstream calc_light does not rune-gate light. Do not
+ * "consistency-fix" this into a knownMods multiply; that would diverge.
+ */
+function calcLight(
+  player: Player,
+  state: PlayerState,
+  options: CalcBonusesOptions,
+): void {
+  /* Assume no light (1604). */
+  state.curLight = 0;
+
+  /* Ascertain lightness if in the town (1606-1613). is_daytime() comes from
+     the world clock (deferred), so isDaytime defaults false and this branch
+     is dormant in the dungeon-only build.
+     TODO(world-clock): when isDaytime becomes real, also reinstate the
+     upstream visual refresh here -- calc_light sets p->upkeep->update |=
+     (PU_UPDATE_VIEW | PU_MONSTERS) when the town light changes (1608-1611)
+     before returning. The port must trigger the equivalent view/monster
+     refresh on the town daytime path once the town/world clock lands. */
+  const depth = options.depth;
+  const update = options.update ?? true;
+  if (depth === 0 && (options.isDaytime ?? false) && update) {
+    return;
+  }
+
+  const equipment = options.equipment ?? [];
+
+  /* Examine all wielded objects, use the brightest (1615-1644). */
+  for (let i = 0; i < player.body.count; i++) {
+    let amt = 0;
+    const obj = equipment[i] ?? null;
+
+    /* Skip empty slots (1621). */
+    if (!obj) continue;
+
+    /* Light radius - innate plus modifier (1623-1629). */
+    if (obj.flags.has(OF.LIGHT_2)) {
+      amt = 2;
+    } else if (obj.flags.has(OF.LIGHT_3)) {
+      amt = 3;
+    }
+    amt += obj.modifiers[OBJ_MOD.LIGHT] ?? 0;
+
+    /* Adjustment to allow UNLIGHT players to use +1 LIGHT gear (1631-1634). */
+    if ((obj.modifiers[OBJ_MOD.LIGHT] ?? 0) > 0 && state.pflags.has(PF.UNLIGHT)) {
+      amt--;
+    }
+
+    /* Examine actual lights: no fuel means no light (1636-1640). */
+    if (tvalIsLight(obj.tval) && !obj.flags.has(OF.NO_FUEL) && obj.timeout === 0) {
+      amt = 0;
+    }
+
+    /* Alter cur_light if reasonable (1643). */
+    state.curLight += amt;
+  }
 }
 
 /**
  * calc_bonuses (player-calcs.c:1877-2331), innate portion: derives the
- * player's state from race/class intrinsics, stats, level and the worn
- * equipment (options.equipment). With no equipment supplied the player is
- * unarmed and unarmored (the just-born default). Timed effects beyond a
- * "Fed" food level are still absent (no timed-effect model yet).
+ * player's state from race/class intrinsics, stats, level, the worn
+ * equipment (options.equipment) and the timed effects (options.timedEffects
+ * + player.timed). With no equipment supplied the player is unarmed and
+ * unarmored (the just-born default); with no timed table supplied the timed
+ * model is inert (see CalcBonusesOptions.timedEffects).
  *
  * Ported statement-for-statement in upstream order; each block cites its
  * lines. DEFERRED blocks (see parity/ledger/player-calcs-bonuses.yaml), all
@@ -562,12 +663,10 @@ export interface CalcBonusesOptions {
  *   are rune-gated (obj->modifiers * obj_k->modifiers) and UNKNOWN at birth
  *   (decision 25), so they contribute nothing until a rune is learned; and
  *   the per-object curse-object traversal in the equipment loop (1924-2025)
- * - calc_light (2040-2041): needs equipment; cur_light stays 0
- * - food effects (2094-2132): a just-born player is in the "Fed" grade, for
- *   which upstream applies no adjustment; the timed-grade model is deferred
- * - timed effects (2134-2213): all timers except FOOD are 0 at birth
- * - (launcher analysis 2254-2288 and weapon analysis 2291-2319 are now
- *   ported; the wielded weapon drives num_blows and digging)
+ * - calc_light (2040-2041), the food-grade block (2094-2132) and the timed
+ *   block (2134-2213) are now ported (calcLight + the timedEffects-gated
+ *   blocks below); the launcher analysis (2254-2288) and weapon analysis
+ *   (2291-2319) are ported and the wielded weapon drives num_blows/digging
  * - calc_mana (2322): deferred; the PF_NO_MANA check (2323-2325) is ported
  *   and reads p->msp, which stays at its birth value of 0 until calc_mana
  *   lands
@@ -780,7 +879,8 @@ export function calcBonuses(
     if (vuln[i] && el.resLevel < 3) el.resLevel--;
   }
 
-  /* Calculate light (2040-2041): calc_light DEFERRED (equipment). */
+  /* Calculate light (2040-2041). */
+  calcLight(player, state, options);
 
   /* Unlight (2043-2046). */
   const characterDungeon = options.characterDungeon ?? false;
@@ -809,10 +909,166 @@ export function calcBonuses(
     state.statInd[i] = statUseToIndex(use);
   }
 
-  /* Effects of food outside the "Fed" range (2094-2132): DEFERRED (timed
-     grades); a just-born player is Fed, for which upstream is a no-op. */
+  /* The timed model (FOOD 2094-2132 + the timed block 2134-2213) is gated on
+     the bound table being supplied. An empty table disables BOTH halves -- the
+     table-driven grade / flag / temp_resist logic AND the per-timer combat
+     branches -- so a caller that omits the table gets a consistent "no timed
+     effects" derive rather than a partial one (see CalcBonusesOptions). */
+  const timedEffects = options.timedEffects ?? [];
+  const update = options.update ?? true;
+  if (timedEffects.length > 0) {
+    /* Effects of food outside the "Fed" range (2094-2132). PY_FOOD_* are the
+       FOOD grade maxes (player-timed.c:320-338), already FOOD_VALUE-scaled in
+       the bound table: Fed.max = PY_FOOD_FULL, Full.max = PY_FOOD_MAX,
+       Hungry.max = PY_FOOD_HUNGRY. */
+    const foodEffect = timedEffects[TMD.FOOD];
+    if (foodEffect && !playerTimedGradeEq(player, foodEffect, "Fed")) {
+      const foodMax = (name: string): number =>
+        foodEffect.grades.find((g) => g.name === name)?.max ?? 0;
+      const pyFoodFull = foodMax("Fed");
+      const pyFoodMax = foodMax("Full");
+      const pyFoodHungry = foodMax("Hungry");
+      const food = player.timed[TMD.FOOD] ?? 0;
+      const excess = food - pyFoodFull;
+      const lack = pyFoodHungry - food;
+      if (excess > 0 && !player.timed[TMD.ATT_VAMP]) {
+        /* Scale to units 1/10 of the range and subtract from speed. */
+        state.speed -= Math.trunc((excess * 10) / (pyFoodMax - pyFoodFull));
+      } else if (lack > 0) {
+        /* Scale to units 1/20 of the range. */
+        const l = Math.trunc((lack * 20) / pyFoodHungry);
+        state.toH -= l;
+        state.toD -= l;
+        if (l > 10 && l <= 15) {
+          state.skills[SKILL.DEVICE] = adjustSkillScale(
+            state.skills[SKILL.DEVICE] ?? 0, -1, 10, 0);
+        } else if (l > 15 && l <= 18) {
+          state.skills[SKILL.DEVICE] = adjustSkillScale(
+            state.skills[SKILL.DEVICE] ?? 0, -1, 5, 0);
+          state.skills[SKILL.DISARM_PHYS] =
+            Math.trunc(((state.skills[SKILL.DISARM_PHYS] ?? 0) * 9) / 10);
+          state.skills[SKILL.DISARM_MAGIC] =
+            Math.trunc(((state.skills[SKILL.DISARM_MAGIC] ?? 0) * 9) / 10);
+        } else if (l > 18) {
+          state.skills[SKILL.DEVICE] = adjustSkillScale(
+            state.skills[SKILL.DEVICE] ?? 0, -3, 10, 0);
+          state.skills[SKILL.DISARM_PHYS] =
+            Math.trunc(((state.skills[SKILL.DISARM_PHYS] ?? 0) * 8) / 10);
+          state.skills[SKILL.DISARM_MAGIC] =
+            Math.trunc(((state.skills[SKILL.DISARM_MAGIC] ?? 0) * 8) / 10);
+          state.skills[SKILL.SAVE] =
+            Math.trunc(((state.skills[SKILL.SAVE] ?? 0) * 9) / 10);
+          state.skills[SKILL.SEARCH] =
+            Math.trunc(((state.skills[SKILL.SEARCH] ?? 0) * 9) / 10);
+        }
+      }
+    }
 
-  /* Other timed effects (2134-2213): DEFERRED (all timers 0 at birth). */
+    /* Other timed effects (2134-2213). */
+    /* player_flags_timed (2135; player.c:310-320): OR each active effect's
+       oflag_dup into state.flags, except TMD_TRAPSAFE (excluded so the
+       OF_TRAP_IMMUNE learning hack can tell timed from innate). */
+    for (let i = 0; i < TMD_MAX; i++) {
+      const eff = timedEffects[i];
+      if (
+        player.timed[i] &&
+        eff &&
+        eff.oflagDup !== 0 &&
+        i !== TMD.TRAPSAFE
+      ) {
+        state.flags.on(eff.oflagDup);
+      }
+    }
+
+    /* STUN grade (2137-2151): the FASTCAST-zeroing is the one faithful
+       player.timed mutation this derive makes, gated on `update`. */
+    const stunEffect = timedEffects[TMD.STUN];
+    if (stunEffect && playerTimedGradeEq(player, stunEffect, "Heavy Stun")) {
+      state.toH -= 20;
+      state.toD -= 20;
+      state.skills[SKILL.DEVICE] = adjustSkillScale(
+        state.skills[SKILL.DEVICE] ?? 0, -1, 5, 0);
+      if (update) player.timed[TMD.FASTCAST] = 0;
+    } else if (stunEffect && playerTimedGradeEq(player, stunEffect, "Stun")) {
+      state.toH -= 5;
+      state.toD -= 5;
+      state.skills[SKILL.DEVICE] = adjustSkillScale(
+        state.skills[SKILL.DEVICE] ?? 0, -1, 10, 0);
+      if (update) player.timed[TMD.FASTCAST] = 0;
+    }
+    if (player.timed[TMD.INVULN]) {
+      state.toA += 100;
+    }
+    if (player.timed[TMD.BLESSED]) {
+      state.toA += 5;
+      state.toH += 10;
+      state.skills[SKILL.DEVICE] = adjustSkillScale(
+        state.skills[SKILL.DEVICE] ?? 0, 1, 20, 0);
+    }
+    if (player.timed[TMD.SHIELD]) {
+      state.toA += 50;
+    }
+    if (player.timed[TMD.STONESKIN]) {
+      state.toA += 40;
+      state.speed -= 5;
+    }
+    if (player.timed[TMD.HERO]) {
+      state.toH += 12;
+      state.skills[SKILL.DEVICE] = adjustSkillScale(
+        state.skills[SKILL.DEVICE] ?? 0, 1, 20, 0);
+    }
+    if (player.timed[TMD.SHERO]) {
+      state.skills[SKILL.TO_HIT_MELEE] =
+        (state.skills[SKILL.TO_HIT_MELEE] ?? 0) + 75;
+      state.toA -= 10;
+      state.skills[SKILL.DEVICE] = adjustSkillScale(
+        state.skills[SKILL.DEVICE] ?? 0, -1, 10, 0);
+    }
+    if (player.timed[TMD.FAST] || player.timed[TMD.SPRINT]) {
+      state.speed += 10;
+    }
+    if (player.timed[TMD.SLOW]) {
+      state.speed -= 10;
+    }
+    if (player.timed[TMD.SINFRA]) {
+      state.seeInfra += 5;
+    }
+    if (player.timed[TMD.TERROR]) {
+      state.speed += 10;
+    }
+    /* Temporary elemental resists (2188-2194): each active temp_resist effect
+       bumps its element's res_level by one, capped at 2 through this path. */
+    for (let i = 0; i < TMD_MAX; i++) {
+      const eff = timedEffects[i];
+      if (!player.timed[i] || !eff || eff.tempResist === -1) continue;
+      const el = state.elInfo[eff.tempResist];
+      if (el && el.resLevel < 2) el.resLevel++;
+    }
+    if (player.timed[TMD.CONFUSED]) {
+      state.skills[SKILL.DEVICE] = adjustSkillScale(
+        state.skills[SKILL.DEVICE] ?? 0, -1, 4, 0);
+    }
+    if (player.timed[TMD.AMNESIA]) {
+      state.skills[SKILL.DEVICE] = adjustSkillScale(
+        state.skills[SKILL.DEVICE] ?? 0, -1, 5, 0);
+    }
+    if (player.timed[TMD.POISONED]) {
+      state.skills[SKILL.DEVICE] = adjustSkillScale(
+        state.skills[SKILL.DEVICE] ?? 0, -1, 20, 0);
+    }
+    if (player.timed[TMD.IMAGE]) {
+      state.skills[SKILL.DEVICE] = adjustSkillScale(
+        state.skills[SKILL.DEVICE] ?? 0, -1, 5, 0);
+    }
+    if (player.timed[TMD.BLOODLUST]) {
+      const bl = player.timed[TMD.BLOODLUST] ?? 0;
+      state.toD += Math.trunc(bl / 2);
+      extraBlows += Math.trunc(bl / 20);
+    }
+    if (player.timed[TMD.STEALTH]) {
+      state.skills[SKILL.STEALTH] = (state.skills[SKILL.STEALTH] ?? 0) + 10;
+    }
+  }
 
   /* Analyze flags - check for fear (2215-2220). Innate flags can in
      principle carry OF_AFRAID (mods), so the check is ported. */

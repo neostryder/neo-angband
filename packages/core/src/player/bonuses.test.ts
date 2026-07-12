@@ -7,7 +7,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ELEM, OF, PF, STAT } from "../generated";
+import { ELEM, OBJ_MOD, OF, PF, STAT, TMD, TV } from "../generated";
 import { objectNew } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import type { ObjectKind } from "../obj/types";
@@ -331,5 +331,324 @@ describe("adapters for combat and turn-loop consumers", () => {
 
   it("toDefenderState exposes ac + to_a", () => {
     expect(toDefenderState(state)).toEqual({ ac: 0, toA: 1 });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* calc_light (player-calcs.c:1598-1645)                               */
+/* ------------------------------------------------------------------ */
+
+/** Fresh equipment array (all slots empty) for a player. */
+function emptyEquipment(p: Player): (GameObject | null)[] {
+  return new Array<GameObject | null>(p.body.count).fill(null);
+}
+
+/** The body-slot index of the LIGHT slot. */
+function lightSlot(p: Player): number {
+  return p.body.slots.findIndex((s) => s.type === "LIGHT");
+}
+
+/** The first RING slot index. */
+function ringSlot(p: Player): number {
+  return p.body.slots.findIndex((s) => s.type === "RING");
+}
+
+describe("calcLight (player-calcs.c:1598-1645)", () => {
+  it("keeps curLight 0 for an unarmed player with no light source", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    expect(calcBonuses(p).curLight).toBe(0);
+    /* Also 0 with an (empty) equipment array supplied. */
+    expect(calcBonuses(p, { equipment: emptyEquipment(p) }).curLight).toBe(0);
+  });
+
+  it("lights a wielded fuelled torch (OF_LIGHT_2, timeout>0) to radius 2", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    const eq = emptyEquipment(p);
+    const torch = objectNew({} as ObjectKind);
+    torch.tval = TV.LIGHT;
+    torch.flags.on(OF.LIGHT_2);
+    torch.timeout = 5000;
+    eq[lightSlot(p)] = torch;
+    expect(calcBonuses(p, { equipment: eq }).curLight).toBe(2);
+  });
+
+  it("gives no light from a burnt-out torch (fuel gate: timeout==0)", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    const eq = emptyEquipment(p);
+    const torch = objectNew({} as ObjectKind);
+    torch.tval = TV.LIGHT;
+    torch.flags.on(OF.LIGHT_2);
+    torch.timeout = 0;
+    eq[lightSlot(p)] = torch;
+    expect(calcBonuses(p, { equipment: eq }).curLight).toBe(0);
+  });
+
+  it("lights a LIGHT_3 lantern to radius 3", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    const eq = emptyEquipment(p);
+    const lantern = objectNew({} as ObjectKind);
+    lantern.tval = TV.LIGHT;
+    lantern.flags.on(OF.LIGHT_3);
+    lantern.timeout = 5000;
+    eq[lightSlot(p)] = lantern;
+    expect(calcBonuses(p, { equipment: eq }).curLight).toBe(3);
+  });
+
+  it("stacks a raw OBJ_MOD_LIGHT ring on a torch (light is NOT rune-gated)", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    /* Every rune unknown, yet the +1 light applies (calc_light reads the raw
+       modifier, unlike the pval modifiers in the equipment loop). */
+    expect(p.objKnown.modifiers.every((m) => m === 0)).toBe(true);
+    const eq = emptyEquipment(p);
+    const torch = objectNew({} as ObjectKind);
+    torch.tval = TV.LIGHT;
+    torch.flags.on(OF.LIGHT_2);
+    torch.timeout = 5000;
+    eq[lightSlot(p)] = torch;
+    const ring = objectNew({} as ObjectKind);
+    ring.modifiers[OBJ_MOD.LIGHT] = 1;
+    eq[ringSlot(p)] = ring;
+    expect(calcBonuses(p, { equipment: eq }).curLight).toBe(3);
+  });
+
+  it("reduces +LIGHT gear by 1 for an UNLIGHT player", () => {
+    const p = bornWithStats("Human", "Necromancer", HUMAN_WARRIOR_STATS);
+    const eq = emptyEquipment(p);
+    const ring = objectNew({} as ObjectKind);
+    ring.modifiers[OBJ_MOD.LIGHT] = 1;
+    eq[ringSlot(p)] = ring;
+    const state = calcBonuses(p, { equipment: eq });
+    expect(state.pflags.has(PF.UNLIGHT)).toBe(true);
+    /* amt = 0 + mod(1), then UNLIGHT subtracts 1 -> 0. */
+    expect(state.curLight).toBe(0);
+    /* A non-UNLIGHT Warrior with the same ring keeps the full +1. */
+    const w = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    const weq = emptyEquipment(w);
+    const wring = objectNew({} as ObjectKind);
+    wring.modifiers[OBJ_MOD.LIGHT] = 1;
+    weq[ringSlot(w)] = wring;
+    expect(calcBonuses(w, { equipment: weq }).curLight).toBe(1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Timed-effect contributions (player-calcs.c:2094-2213)               */
+/* ------------------------------------------------------------------ */
+
+/** A born Warrior plus a baseline derive computed with the timed table. */
+function warriorAndBase(): {
+  base: ReturnType<typeof calcBonuses>;
+  fresh: () => Player;
+} {
+  const fresh = (): Player =>
+    bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+  const base = calcBonuses(fresh(), { timedEffects: reg.timed });
+  return { base, fresh };
+}
+
+describe("temp_resist ELEM/PROJ alignment", () => {
+  it("pins ELEM.ACID..POIS to 0..4 (proj_name_to_idx equivalence)", () => {
+    /* temp_resist binds ELEM[name] as a stand-in for proj_name_to_idx; that
+       is faithful only because PROJ_ACID..PROJ_POIS coincide with 0..4. */
+    expect([ELEM.ACID, ELEM.ELEC, ELEM.FIRE, ELEM.COLD, ELEM.POIS]).toEqual([
+      0, 1, 2, 3, 4,
+    ]);
+  });
+
+  it("binds the five OPP_* temp resists and the flag synonyms", () => {
+    expect(reg.timed[TMD.OPP_FIRE]?.tempResist).toBe(ELEM.FIRE);
+    expect(reg.timed[TMD.OPP_ACID]?.tempResist).toBe(ELEM.ACID);
+    expect(reg.timed[TMD.AFRAID]?.oflagDup).toBe(OF.AFRAID);
+    expect(reg.timed[TMD.BOLD]?.oflagDup).toBe(OF.PROT_FEAR);
+    expect(reg.timed[TMD.TRAPSAFE]?.oflagDup).toBe(OF.TRAP_IMMUNE);
+    /* A plain effect with no synonym / resist stays at the defaults. */
+    expect(reg.timed[TMD.FAST]?.oflagDup).toBe(0);
+    expect(reg.timed[TMD.FAST]?.tempResist).toBe(-1);
+  });
+});
+
+describe("calcBonuses: timed-effect deltas", () => {
+  const opt = { timedEffects: reg.timed } as const;
+
+  it("FAST adds +10 speed, SLOW subtracts 10", () => {
+    const { base, fresh } = warriorAndBase();
+    const fp = fresh();
+    fp.timed[TMD.FAST] = 10;
+    expect(calcBonuses(fp, opt).speed - base.speed).toBe(10);
+    const sp = fresh();
+    sp.timed[TMD.SLOW] = 10;
+    expect(calcBonuses(sp, opt).speed - base.speed).toBe(-10);
+  });
+
+  it("BLESSED adds +5 to_a and +10 to_h", () => {
+    const { base, fresh } = warriorAndBase();
+    const p = fresh();
+    p.timed[TMD.BLESSED] = 10;
+    const s = calcBonuses(p, opt);
+    expect(s.toA - base.toA).toBe(5);
+    expect(s.toH - base.toH).toBe(10);
+  });
+
+  it("HERO adds +12 to_h; INVULN +100 to_a; SHIELD +50 to_a", () => {
+    const { base, fresh } = warriorAndBase();
+    const h = fresh();
+    h.timed[TMD.HERO] = 10;
+    expect(calcBonuses(h, opt).toH - base.toH).toBe(12);
+    const iv = fresh();
+    iv.timed[TMD.INVULN] = 10;
+    expect(calcBonuses(iv, opt).toA - base.toA).toBe(100);
+    const sh = fresh();
+    sh.timed[TMD.SHIELD] = 10;
+    expect(calcBonuses(sh, opt).toA - base.toA).toBe(50);
+  });
+
+  it("SHERO adds +75 melee skill and -10 to_a", () => {
+    const { base, fresh } = warriorAndBase();
+    const p = fresh();
+    p.timed[TMD.SHERO] = 10;
+    const s = calcBonuses(p, opt);
+    expect(s.skills[SKILL.TO_HIT_MELEE]! - base.skills[SKILL.TO_HIT_MELEE]!).toBe(
+      75,
+    );
+    expect(s.toA - base.toA).toBe(-10);
+  });
+
+  it("STONESKIN adds +40 to_a and -5 speed", () => {
+    const { base, fresh } = warriorAndBase();
+    const p = fresh();
+    p.timed[TMD.STONESKIN] = 10;
+    const s = calcBonuses(p, opt);
+    expect(s.toA - base.toA).toBe(40);
+    expect(s.speed - base.speed).toBe(-5);
+  });
+
+  it("SINFRA adds +5 infravision; TERROR adds +10 speed", () => {
+    const { base, fresh } = warriorAndBase();
+    const si = fresh();
+    si.timed[TMD.SINFRA] = 10;
+    expect(calcBonuses(si, opt).seeInfra - base.seeInfra).toBe(5);
+    const tr = fresh();
+    tr.timed[TMD.TERROR] = 10;
+    /* TERROR gives +10 speed (and, via its AFRAID synonym, fear). */
+    expect(calcBonuses(tr, opt).speed - base.speed).toBe(10);
+  });
+
+  it("CONFUSED penalises the device skill", () => {
+    const { base, fresh } = warriorAndBase();
+    const p = fresh();
+    p.timed[TMD.CONFUSED] = 10;
+    /* Device base 18 at the timed block: adjust(-1,4,0) = 18 - ceil(18/4) = 13,
+       then +1 from adj_int_dev -> 14 vs baseline 19: a -5 delta. */
+    expect(calcBonuses(p, opt).skills[SKILL.DEVICE]! - base.skills[SKILL.DEVICE]!).toBe(
+      -5,
+    );
+  });
+
+  it("BLOODLUST adds to_d and extra blows", () => {
+    const { base, fresh } = warriorAndBase();
+    const p = fresh();
+    p.timed[TMD.BLOODLUST] = 40;
+    const s = calcBonuses(p, opt);
+    /* to_d += 40/2 = 20; extra_blows += 40/20 = 2 -> +200 to num_blows. */
+    expect(s.toD - base.toD).toBe(20);
+    expect(s.numBlows - base.numBlows).toBe(200);
+  });
+});
+
+describe("calcBonuses: STUN grades (FASTCAST side effect gated on update)", () => {
+  const opt = { timedEffects: reg.timed } as const;
+
+  it("Stun grade applies -5/-5 and zeroes FASTCAST when update", () => {
+    const { base, fresh } = warriorAndBase();
+    const p = fresh();
+    p.timed[TMD.STUN] = 30; /* <= 50 -> "Stun" */
+    p.timed[TMD.FASTCAST] = 5;
+    const s = calcBonuses(p, { ...opt, update: true });
+    expect(s.toH - base.toH).toBe(-5);
+    expect(s.toD - base.toD).toBe(-5);
+    expect(p.timed[TMD.FASTCAST]).toBe(0);
+  });
+
+  it("Heavy Stun grade applies -20/-20", () => {
+    const { base, fresh } = warriorAndBase();
+    const p = fresh();
+    p.timed[TMD.STUN] = 100; /* 51..150 -> "Heavy Stun" */
+    const s = calcBonuses(p, opt);
+    expect(s.toH - base.toH).toBe(-20);
+    expect(s.toD - base.toD).toBe(-20);
+  });
+
+  it("leaves FASTCAST intact when update is false", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    p.timed[TMD.STUN] = 30;
+    p.timed[TMD.FASTCAST] = 5;
+    calcBonuses(p, { timedEffects: reg.timed, update: false });
+    expect(p.timed[TMD.FASTCAST]).toBe(5);
+  });
+});
+
+describe("calcBonuses: temporary elemental resists (temp_resist)", () => {
+  it("OPP_FIRE bumps the fire resist level by one", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    p.timed[TMD.OPP_FIRE] = 100;
+    const s = calcBonuses(p, { timedEffects: reg.timed });
+    expect(s.elInfo[ELEM.FIRE]?.resLevel).toBe(1);
+    /* Untouched elements stay 0. */
+    expect(s.elInfo[ELEM.COLD]?.resLevel).toBe(0);
+  });
+});
+
+describe("calcBonuses: player_flags_timed and fear", () => {
+  it("AFRAID sets OF_AFRAID and applies the fear penalties (incl. device)", () => {
+    const { base, fresh } = warriorAndBase();
+    const p = fresh();
+    p.timed[TMD.AFRAID] = 10;
+    const s = calcBonuses(p, { timedEffects: reg.timed });
+    expect(s.flags.has(OF.AFRAID)).toBe(true);
+    /* Fear: to_h -20, to_a +8, device adjust(-1,20,0) = -1 vs baseline. */
+    expect(s.toH - base.toH).toBe(-20);
+    expect(s.toA - base.toA).toBe(8);
+    expect(s.skills[SKILL.DEVICE]! - base.skills[SKILL.DEVICE]!).toBe(-1);
+  });
+
+  it("TRAPSAFE does NOT leak OF_TRAP_IMMUNE through the timed path", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    p.timed[TMD.TRAPSAFE] = 10;
+    const s = calcBonuses(p, { timedEffects: reg.timed });
+    expect(s.flags.has(OF.TRAP_IMMUNE)).toBe(false);
+  });
+
+  it("BOLD sets OF_PROT_FEAR", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    p.timed[TMD.BOLD] = 10;
+    const s = calcBonuses(p, { timedEffects: reg.timed });
+    expect(s.flags.has(OF.PROT_FEAR)).toBe(true);
+  });
+});
+
+describe("calcBonuses: food grades outside Fed", () => {
+  const opt = { timedEffects: reg.timed } as const;
+
+  it("applies hunger penalties to to_h/to_d and device", () => {
+    const { base, fresh } = warriorAndBase();
+    const p = fresh();
+    p.timed[TMD.FOOD] = 600; /* Weak grade: lack = 1500-600 = 900 -> l = 12 */
+    const s = calcBonuses(p, opt);
+    expect(s.toH - base.toH).toBe(-12);
+    expect(s.toD - base.toD).toBe(-12);
+    /* l in (10,15]: device adjust(-1,10,0) = 18 - ceil(18/10) = 16, +1 -> -2. */
+    expect(s.skills[SKILL.DEVICE]! - base.skills[SKILL.DEVICE]!).toBe(-2);
+  });
+
+  it("gorging (Full) slows the player unless ATT_VAMP is active", () => {
+    const { base, fresh } = warriorAndBase();
+    const gorged = fresh();
+    gorged.timed[TMD.FOOD] = 9500; /* Full grade: excess = 500 -> speed -5 */
+    expect(calcBonuses(gorged, opt).speed - base.speed).toBe(-5);
+    /* ATT_VAMP suppresses the excess speed penalty. */
+    const vamp = fresh();
+    vamp.timed[TMD.FOOD] = 9500;
+    vamp.timed[TMD.ATT_VAMP] = 1;
+    expect(calcBonuses(vamp, opt).speed - base.speed).toBe(0);
   });
 });

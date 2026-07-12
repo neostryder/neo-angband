@@ -72,6 +72,7 @@ import {
   targetSetClosest,
   targetOkay,
   TARGET,
+  TMD,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -882,9 +883,9 @@ const Z: ViewConstants = {
 function viewerState(): ViewerState {
   return {
     grid: state.actor.grid,
-    curLight: 2,
-    blind: false,
-    hasUnlight: false,
+    curLight: state.actor.light,
+    blind: (state.actor.player.timed[TMD.BLIND] ?? 0) > 0,
+    hasUnlight: state.actor.unlight,
     level: state.chunk.depth,
   };
 }
