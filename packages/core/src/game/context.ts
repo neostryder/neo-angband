@@ -107,6 +107,10 @@ export interface PlayerActor {
   weapon: GameObject | null;
   /** p->state.skills[SKILL_STEALTH]; the AI's hearing math reads it. */
   stealth: number;
+  /** p->state.cur_light (calc_light): the derived light radius. */
+  light: number;
+  /** state.pflags PF_UNLIGHT: the derived unlight status. */
+  unlight: boolean;
 }
 
 /**

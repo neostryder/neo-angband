@@ -26,7 +26,7 @@
 import { loc } from "../loc";
 import type { Loc } from "../loc";
 import { SKILL } from "../player/types";
-import { RF, STAT, TMD } from "../generated";
+import { PF, RF, STAT, TMD } from "../generated";
 import { bindPlayer } from "../player/bind";
 import type { PlayerPackRecords, PlayerRegistry } from "../player/bind";
 import { generatePlayer } from "../player/birth";
@@ -330,7 +330,13 @@ function wireGame(
     const equipment = p.equipment.map((h) =>
       h ? gearGet(state.gear, h) : null,
     );
-    derived = calcBonuses(p, { equipment });
+    derived = calcBonuses(p, {
+      equipment,
+      timedEffects: players.timed,
+      update: true,
+      depth: state.chunk.depth,
+      isDaytime: false,
+    });
     for (let i = 0; i < liveStatInd.length; i++) {
       liveStatInd[i] = derived.statInd[i] ?? 0;
     }
@@ -338,6 +344,8 @@ function wireGame(
     state.actor.combat = combat;
     state.actor.defense = toDefenderState(derived);
     state.actor.speed = derived.speed;
+    state.actor.light = derived.curLight;
+    state.actor.unlight = derived.pflags.has(PF.UNLIGHT);
     state.actor.stealth = combat.skills[SKILL.STEALTH] ?? 0;
     const weaponSlot = p.body.slots.findIndex((s) => s.type === "WEAPON");
     state.actor.weapon =
@@ -1001,7 +1009,11 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   );
   const weapon = weaponSlot >= 0 ? (equipment[weaponSlot] ?? null) : null;
 
-  const pstate = calcBonuses(birth.player, { equipment });
+  const pstate = calcBonuses(birth.player, {
+    equipment,
+    timedEffects: players.timed,
+    update: true,
+  });
   const combat = toCombatState(pstate);
 
   // Spell bookkeeping for casting classes: size the spell arrays, compute
@@ -1023,6 +1035,8 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     defense: toDefenderState(pstate),
     weapon,
     stealth: combat.skills[SKILL.STEALTH] ?? 0,
+    light: pstate.curLight,
+    unlight: pstate.pflags.has(PF.UNLIGHT),
   };
 
   const state: GameState = {
@@ -1240,7 +1254,11 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
   const equipment = player.equipment.map((h) => (h ? gearGet(gear, h) : null));
   const weaponSlot = player.body.slots.findIndex((s) => s.type === "WEAPON");
   const weapon = weaponSlot >= 0 ? (equipment[weaponSlot] ?? null) : null;
-  const pstate = calcBonuses(player, { equipment });
+  const pstate = calcBonuses(player, {
+    equipment,
+    timedEffects: players.timed,
+    update: true,
+  });
   const combat = toCombatState(pstate);
 
   const rng = new Rng(1);
@@ -1256,6 +1274,8 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     defense: toDefenderState(pstate),
     weapon,
     stealth: combat.skills[SKILL.STEALTH] ?? 0,
+    light: pstate.curLight,
+    unlight: pstate.pflags.has(PF.UNLIGHT),
   };
 
   const state: GameState = {
