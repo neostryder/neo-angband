@@ -145,6 +145,8 @@ import { flavorInit } from "../obj/flavor";
 import { ELEM_MAX } from "../obj/types";
 import { ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
+import { monsterDeath } from "../game/mon-death";
+import type { MonsterDeathDeps } from "../game/mon-death";
 import type { ProjectFeatEnv } from "../game/project-feat";
 import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import type { GameObject } from "../obj/object";
@@ -393,6 +395,12 @@ function wireGame(
       calcSpells(p, derived.statInd);
     },
   };
+  // Monster-death loot deps (mon_create_drop + monster_death, game/mon-death.ts).
+  // Assigned inside the projections block below once makeDeps, the object
+  // registry, the shared floorEnv and the trap predicates are all available;
+  // onPlayerKill / onMonsterDeath run only after wireGame has finished, so the
+  // deferred assignment is always resolved by the time they fire.
+  let deathDeps: MonsterDeathDeps | undefined;
   state.onPlayerKill = (mon): void => {
     /* Experience comes from the killed form (player_kill_monster computes
      * new_exp before monster_death's revert). */
@@ -404,6 +412,10 @@ function wireGame(
     if (mon.race.flags.has(RF.UNIQUE)) {
       mon.race.maxNum = 0;
     }
+    /* Generate treasure (monster_death, mon-util.c L1108) BEFORE the pkills /
+     * tkills lore counting (L1118), so loreUpdate below sees any drop_gold /
+     * drop_item that loreTreasure records. */
+    if (deathDeps) monsterDeath(state, mon, deathDeps);
     /* Recall even invisible uniques (mon-util.c L1118): count the kill
      * and refresh the derived lore (monster_race_track rides #25). */
     if (monsterIsVisible(mon) || mon.race.flags.has(RF.UNIQUE)) {
@@ -443,6 +455,22 @@ function wireGame(
     // The trap-backed square predicates feed every consumer that stubbed
     // them (teleport landing checks, drop placement) once traps exist.
     const preds = reg.traps ? trapPredicates(state) : null;
+    // The shared floor drop environment (drop_near's ignore / trap rules),
+    // used by both the object commands and monster-death loot so a kill's
+    // drops land under the same placement rules as any other floor drop.
+    const floorEnv = {
+      isIgnored: (obj: GameObject): boolean => state.isIgnored!(obj),
+      ...(preds ? { isTrap: preds.isTrap } : {}),
+    };
+    // Monster-death loot deps: makeDeps builds the objects, reg.objects looks
+    // up specified drops, floorEnv places them, state.lore feeds the theft
+    // reduction and loreTreasure.
+    deathDeps = {
+      makeDeps,
+      reg: reg.objects,
+      floorEnv,
+      lore: state.lore,
+    };
     const teleport = preds
       ? {
           isPlayerTrap: preds.isPlayerTrap,
@@ -514,6 +542,11 @@ function wireGame(
         monster: {
           /* Spell/device kills reward experience like melee kills. */
           onKill: (m): void => state.onPlayerKill?.(m),
+          /* monster_death for a monster-vs-monster kill: no player reward, just
+           * drops (project-mon.c fires monster_death for these too). */
+          onMonsterDeath: (m): void => {
+            if (deathDeps) monsterDeath(state, m, deathDeps);
+          },
           /* add_monster_message: "the kobold dies", "wakes up", "catches
            * fire" - the MON_MSG grammar, routed to the game's message sink so
            * a shell shows ranged/spell/status monster messages the same way
@@ -615,6 +648,7 @@ function wireGame(
       lifeDrainPercent: reg.constants.lifeDrainPercent,
       adjDexSafe: adj_dex_safe,
       packSize: reg.constants.packSize,
+      makeDeps,
       ...(teleport ? { teleport } : {}),
       earthquake: (mon, radius): void => {
         effects.effectSimple(EF.EARTHQUAKE, buildEffectContext(state, envDeps), {
@@ -637,10 +671,7 @@ function wireGame(
       general,
       item,
       summon,
-      floorEnv: {
-        isIgnored: (obj) => state.isIgnored!(obj),
-        ...(preds ? { isTrap: preds.isTrap } : {}),
-      },
+      floorEnv,
       // Route object/effect messages (msg / msgt / activation_message) to the
       // game's message sink so a shell shows them; absent, they would drop.
       env: { msg: (text: string): void => state.msg?.(text) },
@@ -1373,7 +1404,7 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     actor,
     gear,
     monsters: save.monsters.map((m) =>
-      m ? deserializeMonster(m, reg.monsters) : null,
+      m ? deserializeMonster(m, reg.monsters, reg.objects) : null,
     ),
     groups: save.groups.map((g) =>
       g ? { index: g.index, leader: g.leader, members: [...g.members] } : null,

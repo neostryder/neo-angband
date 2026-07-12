@@ -18,11 +18,13 @@
  * session layer keeps the counts consistent across level changes
  * (wipe_mon_list decrements for every live monster).
  *
- * DEFERRED (ledgered in parity/ledger/game-mon-place.yaml): monster drops
- * (mon_create_drop) and mimicked objects ride the monster-inventory
- * subsystem; level rating (add_to_monster_rating) and the cheat_hear
- * messages ride level feelings (#25); update_mon / monster-light view
- * refresh rides the FOV consumers.
+ * DEFERRED (ledgered in parity/ledger/game-mon-place.yaml): placement-time
+ * monster drops (mon_create_drop) - the drops are instead generated at death
+ * in game/mon-death.ts (an accepted RNG-stream deviation documented there),
+ * so no held pile is populated here; mimicked objects ride the
+ * monster-inventory subsystem; level rating (add_to_monster_rating) and the
+ * cheat_hear messages ride level feelings (#25); update_mon / monster-light
+ * view refresh rides the FOV consumers.
  */
 
 import { MON_TMD, RF } from "../generated";

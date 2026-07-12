@@ -15,16 +15,17 @@
  * (game/thrust) and EF_EARTHQUAKE (routed through the injected earthquake dep,
  * which runs the terrain effect via the interpreter so its draws are shared).
  *
- * DEFERRED (ledgered in parity/ledger/combat-melee.yaml): attaching stolen
- * gold / items to the monster's held-object pile (monster_carry, coordinated
- * with the loot-drops gap; the item / gold is still removed from the player and
- * the attach draws no RNG), and react_to_slay blocking a theft (no RNG impact).
+ * Stolen gold / items are attached to the monster's held-object pile
+ * (monster_carry, mon/make.ts) so they drop on death via monster_death
+ * (game/mon-death.ts). react_to_slay blocking a theft stays DEFERRED (no RNG
+ * impact); ledgered in parity/ledger/combat-melee.yaml.
  */
 
-import { OF, STAT, TMD } from "../generated";
+import { ORIGIN, OF, STAT, TMD } from "../generated";
 import { SKILL } from "../player/types";
 import type { Loc } from "../loc";
 import type { Monster } from "../mon/monster";
+import { monsterCarry } from "../mon/make";
 import type { Player } from "../player/player";
 import type { TimedEffect } from "../player/types";
 import type { ProjectionInfo } from "../world/projection";
@@ -37,8 +38,11 @@ import {
   takeHit,
 } from "../player/take-hit";
 import { equipLearnFlag } from "../obj/knowledge";
+import { MAX_PVAL } from "../obj/types";
 import { tvalCanHaveCharges, tvalIsEdible } from "../obj/object";
 import type { GameObject } from "../obj/object";
+import type { MakeDeps } from "../obj/make";
+import { objectPrep } from "../obj/make";
 import { ODESC } from "../obj/desc";
 import type { MonBlowEnv } from "../combat/mon-melee";
 import type { GameState } from "./context";
@@ -67,6 +71,8 @@ export interface MonBlowDeps {
   adjDexSafe: readonly number[];
   /** z_info->pack_size, for the random-inventory-slot theft picks. */
   packSize: number;
+  /** Object generation deps: stolen gold is prepped into money objects. */
+  makeDeps: MakeDeps;
   /** The teleport seam (blink-away and thrust post-move). */
   teleport?: TeleportEnv;
   /** EF_EARTHQUAKE routed through the effect interpreter (SHATTER). */
@@ -264,7 +270,28 @@ export function makeMonBlowEnv(
       msg("Your purse feels lighter.");
       if (current.au) msg(`${gold} coins were stolen!`);
       else msg("All of your coins were stolen!");
-      /* monster_carry(gold) DEFERRED (loot-drops gap); no RNG drawn. */
+
+      /* While we have gold, put it in objects and give it to the monster
+       * (mon-blows.c L814-834). Prepped MINIMISE at level 0 (no RNG), with
+       * ORIGIN.STOLEN so monster_death does not count it as dropped treasure. */
+      const { makeDeps } = deps;
+      while (gold > 0) {
+        const kind = makeDeps.alloc.moneyKind(makeDeps.constants, "gold", gold);
+        const obj = objectPrep(
+          state.rng,
+          makeDeps.reg,
+          makeDeps.constants,
+          kind,
+          0,
+          "minimise",
+        );
+        const amt = gold > MAX_PVAL ? MAX_PVAL : gold;
+        obj.pval = amt;
+        gold -= amt;
+        obj.origin = ORIGIN.STOLEN;
+        obj.originDepth = state.chunk.depth;
+        monsterCarry(mon.heldObj, obj, mon.midx);
+      }
       return true;
     },
 
@@ -293,8 +320,15 @@ export function makeMonBlowEnv(
         const split = item.obj.number > 1;
         /* react_to_slay blocking the theft is DEFERRED (no RNG); steal. */
         msg(`${split ? "One of your" : "Your"} ${name} was stolen!`);
-        gearObjectForUse(state.gear, current, item.handle, 1);
-        /* monster_carry(stolen) DEFERRED (loot-drops gap); no RNG drawn. */
+        /* Steal one and carry it (mon-blows.c L292-294); the stolen object
+         * keeps its own origin, so monster_death does not count it as a drop. */
+        const { obj: stolen } = gearObjectForUse(
+          state.gear,
+          current,
+          item.handle,
+          1,
+        );
+        monsterCarry(mon.heldObj, stolen, mon.midx);
         return { blinked: true, obvious: true };
       }
       return { blinked: false, obvious: true };
