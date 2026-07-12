@@ -195,6 +195,8 @@ export function makeState(opts: StateOptions = {}): GameState {
     defense: defaultDefense(),
     weapon: null,
     stealth: opts.stealth ?? 0,
+    light: 0,
+    unlight: false,
   };
 
   const rng = new Rng(opts.seed ?? 1);

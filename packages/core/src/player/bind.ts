@@ -30,6 +30,7 @@ import {
   ELEMENT_ENTRIES,
   OBJECT_MODIFIER_ENTRIES,
   STAT_ENTRIES,
+  ELEM,
   OF,
   PF,
   STAT,
@@ -209,6 +210,12 @@ export interface TimedFailJson {
   flag: string;
 }
 
+/** player_timed.json flag-synonym record ("flag-synonym code exact"). */
+export interface TimedFlagSynonymJson {
+  code: string;
+  exact: number;
+}
+
 /** player_timed.json record. */
 export interface PlayerTimedRecordJson {
   name: string;
@@ -221,6 +228,10 @@ export interface PlayerTimedRecordJson {
   "lower-bound"?: number;
   fail?: TimedFailJson[];
   grade?: TimedGradeJson[];
+  /** Temporary elemental resist granted while active (ELEM_ name). */
+  resist?: string;
+  /** Object flag(s) duplicated while active; only the first is bound. */
+  "flag-synonym"?: TimedFlagSynonymJson[];
 }
 
 /** shape.json record (bound raw beyond name; see Shape). */
@@ -633,6 +644,30 @@ function bindTimed(records: PlayerTimedRecordJson[]): TimedEffect[] {
       flag: f.flag,
     }));
 
+    /*
+     * temp_resist (parse_player_timed_resist): the pack `resist` name maps to
+     * an element index via proj_name_to_idx upstream. For the five OPP_*
+     * effects the resist name is one of ACID/ELEC/FIRE/COLD/POIS, whose ELEM_
+     * indices (0..4) coincide with the PROJ_ indices proj_name_to_idx returns,
+     * so ELEM[name] is the faithful equivalent. Absent -> -1 (no resist).
+     */
+    const tempResist =
+      rec.resist !== undefined
+        ? ((ELEM as Record<string, number>)[rec.resist] ?? -1)
+        : -1;
+
+    /*
+     * oflag_dup / oflag_syn (parse_player_timed_flag_synonym): the first
+     * flag-synonym's code maps to an OF_ index (code_index_in_array); a valid
+     * synonym is always > OF_NONE(0). Absent -> 0 (OF_NONE, no synonym).
+     */
+    const synonym = rec["flag-synonym"]?.[0];
+    const oflagDup =
+      synonym !== undefined
+        ? ((OF as Record<string, number>)[synonym.code] ?? 0)
+        : 0;
+    const oflagSyn = synonym !== undefined && synonym.exact !== 0;
+
     out.push({
       index,
       name: rec.name,
@@ -643,6 +678,9 @@ function bindTimed(records: PlayerTimedRecordJson[]): TimedEffect[] {
       msgt: rec.msgt ?? "GENERIC",
       nonStacking: (rec.flags ?? []).includes("NONSTACKING"),
       lowerBound: rec["lower-bound"] ?? 0,
+      tempResist,
+      oflagDup,
+      oflagSyn,
       grades,
       fail,
     });
