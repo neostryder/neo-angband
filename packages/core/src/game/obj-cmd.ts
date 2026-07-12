@@ -38,7 +38,7 @@ import {
   tvalCanHaveTimeout,
 } from "../obj/object";
 import { FlavorKnowledge } from "../obj/knowledge";
-import type { GameState, PlayerCommand } from "./context";
+import type { GameState, ItemTargetRef, PlayerCommand } from "./context";
 import { dropNear, floorObjectForUse, floorPile } from "./floor";
 import type { FloorEnv } from "./floor";
 import type { TeleportEnv } from "./effect-teleport";
@@ -396,7 +396,15 @@ export function useAux(
   obj: GameObject,
   use: UseKind,
   deps: ObjCmdDeps,
-  opts: { fromFloor?: boolean; handle?: number; dir?: number } = {},
+  opts: {
+    fromFloor?: boolean;
+    handle?: number;
+    dir?: number;
+    /** cmd_get_arg_item "tgtitem": the shell's pre-resolved item-effect pick. */
+    tgtItem?: ItemTargetRef;
+    /** cmd_get_arg_choice "tgtcurse": the REMOVE_CURSE curse index. */
+    tgtCurse?: number;
+  } = {},
 ): UseResult {
   const env = deps.env ?? {};
   const fromFloor = opts.fromFloor ?? false;
@@ -473,6 +481,12 @@ export function useAux(
     });
     const ident = { value: false };
     targetFix(state);
+    /* cmd_get_item "tgtitem" / "tgtcurse" presets: the item-choosing effects
+     * read state.itemTarget / state.curseTarget through the getItem seam. Set
+     * before the run, cleared after (cmd_set_arg_item's scope). */
+    state.itemRequest = null;
+    state.itemTarget = opts.tgtItem ?? null;
+    state.curseTarget = opts.tgtCurse ?? null;
     const used = deps.registry.effectDo(chain, ctx, {
       origin: sourcePlayer(),
       obj,
@@ -482,6 +496,8 @@ export function useAux(
       beam,
       boost,
     });
+    state.itemTarget = null;
+    state.curseTarget = null;
     targetRelease(state);
 
     if (!used && deductBefore) {
@@ -553,6 +569,20 @@ function commandDir(cmd: PlayerCommand): number | undefined {
   return typeof d === "number" ? d : undefined;
 }
 
+/** cmd_get_arg_item "tgtitem": the shell's pre-resolved item-effect target. */
+function commandTargetItem(cmd: PlayerCommand): ItemTargetRef | undefined {
+  const t = cmd.args?.["tgtitem"];
+  if (t && typeof t === "object") {
+    if (typeof (t as { handle?: unknown }).handle === "number") {
+      return { handle: (t as { handle: number }).handle };
+    }
+    if (typeof (t as { floor?: unknown }).floor === "number") {
+      return { floor: (t as { floor: number }).floor };
+    }
+  }
+  return undefined;
+}
+
 /** A use command over a tval filter and use kind. */
 function useCommand(
   deps: ObjCmdDeps,
@@ -567,10 +597,14 @@ function useCommand(
       return 0;
     }
     const dir = commandDir(cmd);
+    const tgtItem = commandTargetItem(cmd);
+    const tgtCurse = cmd.args?.["tgtcurse"];
     const result = useAux(state, found.obj, use, deps, {
       fromFloor: found.fromFloor,
       ...(found.handle !== undefined ? { handle: found.handle } : {}),
       ...(dir !== undefined ? { dir } : {}),
+      ...(tgtItem ? { tgtItem } : {}),
+      ...(typeof tgtCurse === "number" ? { tgtCurse } : {}),
     });
     return result.turnSpent ? state.z.moveEnergy : 0;
   };

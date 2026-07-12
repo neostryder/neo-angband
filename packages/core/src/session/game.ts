@@ -55,9 +55,14 @@ import { Chunk } from "../world/chunk";
 import { FEAT } from "../generated";
 import { blankMonster } from "../mon/monster";
 import { MON_GROUP } from "../mon/types";
-import type { GameState, PlayerActor, PlayerCommand } from "../game/context";
+import type {
+  GameState,
+  ItemTargetRef,
+  PlayerActor,
+  PlayerCommand,
+} from "../game/context";
 import { monsterGroupAssign, monsterGroupsVerify } from "../game/mon-group";
-import { floorCarry } from "../game/floor";
+import { floorCarry, floorPile } from "../game/floor";
 import { installPickup } from "../game/pickup";
 import { IgnoreSettings, ignoreItemOk } from "../obj/ignore";
 import { EffectRegistry } from "../effects/interpreter";
@@ -69,7 +74,7 @@ import { registerMonsterHandlers } from "../game/effect-monster";
 import { registerTeleportHandlers, teleportMonster } from "../game/effect-teleport";
 import { registerTerrainHandlers } from "../game/effect-terrain";
 import { registerItemHandlers } from "../game/effect-item";
-import type { ItemEffectEnv } from "../game/effect-item";
+import type { ItemEffectEnv, ItemRequest } from "../game/effect-item";
 import { registerMeleeHandlers } from "../game/effect-melee";
 import { registerSummonHandlers } from "../game/effect-summon";
 import type { SummonEffectEnv } from "../game/effect-summon";
@@ -180,6 +185,54 @@ import {
   serializeGame,
 } from "./save";
 import type { SavedGame } from "./save";
+
+/**
+ * The getItem seam body (cmd_get_item's "tgtitem" fast path, cmd-core.c L1060):
+ * resolve the shell's preset target (a gear handle or a floor-pile index) to a
+ * live object. If it resolves and passes the request's tester, consume the
+ * one-shot preset and return it; otherwise record the unfulfilled request and
+ * return null - the faithful cancel/abort (C falls through a filter-failing
+ * preset to the blocking prompt, which the port cannot do mid-turn). Draws no
+ * RNG.
+ */
+export function resolveTargetItem(
+  state: GameState,
+  req: ItemRequest,
+): GameObject | null {
+  const ref = state.itemTarget;
+  let obj: GameObject | null = null;
+  if (ref) {
+    if ("handle" in ref) {
+      obj = gearGet(state.gear, ref.handle);
+    } else {
+      obj = floorPile(state, state.actor.grid)[ref.floor] ?? null;
+    }
+  }
+  if (obj && req.tester(obj)) {
+    /* One-shot: clear so a two-prompt effect cannot reuse the same object. */
+    state.itemTarget = null;
+    return obj;
+  }
+  state.itemRequest = req;
+  return null;
+}
+
+/**
+ * The chooseCurse seam body (get_curse, effect-handler-general.c): return the
+ * shell's preset curse index when it is one of the removable curses, else the
+ * first removable one (upstream get_curse's default highlight), else null. No
+ * RNG - get_curse is a pure menu.
+ */
+export function resolveTargetCurse(
+  state: GameState,
+  removable: readonly number[],
+): number | null {
+  const preset = state.curseTarget;
+  if (preset !== null && preset !== undefined && removable.includes(preset)) {
+    return preset;
+  }
+  return removable[0] ?? null;
+}
 
 /** A pack that also carries the player-domain records (races, classes, ...). */
 export interface GamePack extends CorePack {
@@ -493,10 +546,19 @@ function wireGame(
       expDeps,
       shapes: players.shapes,
     };
-    // Item-targeting seams: the ego / curse tables and arrow generation.
-    // The get_item chooser itself rides presentation (#25); until it is
-    // wired, the choosing effects return unused (the upstream cancel path).
-    const item: ItemEffectEnv = { reg: reg.objects, makeDeps };
+    // Item-targeting seams: the ego / curse tables, arrow generation, and the
+    // get_item / get_curse choosers. The shell pre-resolves the target object
+    // (async item menu) and rides it on the command as state.itemTarget; these
+    // closures are the sync side of cmd_get_item's "tgtitem" fast path
+    // (cmd-core.c L1060), turning the preset back into a live object without
+    // blocking the turn loop. Absent a preset, the choosing effect aborts (the
+    // upstream cancel path) and records the unfulfilled request for the shell.
+    const item: ItemEffectEnv = {
+      reg: reg.objects,
+      makeDeps,
+      getItem: (req) => resolveTargetItem(state, req),
+      chooseCurse: (_obj, removable) => resolveTargetCurse(state, removable),
+    };
     // Summoning: the bound summon table, the session's live allocation
     // table (get_mon_num over the full race registry) and the placement
     // deps. The summonNameToIdx injection lets effect chains resolve

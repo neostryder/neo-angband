@@ -50,6 +50,10 @@ import {
   installPickup,
   describeObject,
   gearGet,
+  floorPile,
+  buildObjectEffectChain,
+  itemTargetRequest,
+  spellByIndex,
   objNeedsAim,
   tvalIsPotion,
   tvalIsScroll,
@@ -82,6 +86,10 @@ import type {
   ViewerState,
   VisualsRecord,
   VisualsAnimator,
+  Effect,
+  EffectRecordJson,
+  ItemRequest,
+  ItemTargetRef,
 } from "@neo-angband/core";
 import { GameEvents } from "@neo-angband/core";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles } from "./pack";
@@ -90,6 +98,7 @@ import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import { createTileRenderer } from "./tiles";
 import { showTextScreen, selectFromMenu, promptDirection, AIM_STAR } from "./overlay";
+import type { MenuItem } from "./overlay";
 import { runBirth } from "./birth";
 import { MessageLog } from "./messages";
 import {
@@ -102,6 +111,7 @@ import {
   bookSpellMenu,
   targetMenu,
   lookLines,
+  objectName,
 } from "./screens";
 import { showCharacterSheet } from "./charsheet";
 import { runCharacterSelect } from "./charselect";
@@ -447,6 +457,113 @@ function actionLine(code: string, obj: GameObject | null): string {
   }
 }
 
+// --- Item-target effect chooser (cmd_get_item "tgtitem") --------------------
+// Effects like Enchant / Recharge / Remove Curse / Identify pick a SECOND item
+// to act on. The core exposes the request (itemTargetRequest, an RNG-free probe
+// over the built effect chain); this shell pre-resolves the target with an async
+// lettered menu BEFORE the command runs, so the effect executes exactly once
+// (faithful RNG order) and the getItem seam just reads the preset. On ESC the
+// pick is cancelled and the carrier is not consumed (the upstream cancel path).
+
+/** True when the player has identified this object kind's flavour. */
+function objectIsAware(obj: GameObject): boolean {
+  return game.flavor ? game.flavor.isAware(obj.kind) : true;
+}
+
+/** Resolve an ItemTargetRef back to the live object (pack/equip handle or floor pile). */
+function targetRefObject(ref: ItemTargetRef): GameObject | null {
+  if ("handle" in ref) return gearGet(state.gear, ref.handle);
+  return floorPile(state, state.actor.grid)[ref.floor] ?? null;
+}
+
+/**
+ * An async lettered picker over the sources req.mode allows (inventory, worn
+ * equipment, the floor pile under the player), each filtered by req.tester.
+ * The quiver rides the pack in this gear model, so USE_QUIVER is covered by the
+ * inventory pass. Returns the chosen ref, or null on ESC / an empty menu.
+ */
+async function selectTargetItem(req: ItemRequest): Promise<ItemTargetRef | null> {
+  const items: MenuItem[] = [];
+  const refs: ItemTargetRef[] = [];
+  if (req.mode.inven || req.mode.quiver) {
+    const { items: packItems, handles } = packMenu(state, req.tester);
+    packItems.forEach((it, i) => {
+      items.push(it);
+      refs.push({ handle: handles[i]! });
+    });
+  }
+  if (req.mode.equip) {
+    const player = state.actor.player;
+    for (let i = 0; i < player.body.count; i++) {
+      const handle = player.equipment[i] ?? 0;
+      if (!handle) continue;
+      const obj = gearGet(state.gear, handle);
+      if (!obj || !req.tester(obj)) continue;
+      items.push({ label: objectName(state, obj), color: "#c8c8d4" });
+      refs.push({ handle });
+    }
+  }
+  if (req.mode.floor) {
+    floorPile(state, state.actor.grid).forEach((obj, i) => {
+      if (!req.tester(obj)) return;
+      items.push({ label: `${objectName(state, obj)} (on floor)`, color: "#c8c8d4" });
+      refs.push({ floor: i });
+    });
+  }
+  if (items.length === 0) {
+    say(req.reject);
+    return null;
+  }
+  const idx = await selectFromMenu(term, req.prompt.trim(), items);
+  if (idx === null) return null;
+  return refs[idx] ?? null;
+}
+
+/** The removable-curse indices of an object (item_tester_uncursable membership). */
+function removableCurses(obj: GameObject): number[] {
+  const out: number[] = [];
+  obj.curses?.forEach((c, i) => {
+    if (i > 0 && c.power > 0 && c.power < 100) out.push(i);
+  });
+  return out;
+}
+
+/** get_curse: pick which removable curse to lift; null on ESC. */
+async function selectCurse(removable: number[]): Promise<number | null> {
+  const curseTable = booted.registries.objects.curses;
+  const items: MenuItem[] = removable.map((i) => ({
+    label: curseTable[i]?.name ?? `curse ${i}`,
+  }));
+  const idx = await selectFromMenu(term, "Remove which curse?", items);
+  if (idx === null) return null;
+  return removable[idx] ?? null;
+}
+
+/**
+ * Pre-resolve the item-target effect of a chain, if any. Returns:
+ *  - "none": the chain has no item-choosing effect; queue the command normally.
+ *  - "cancel": the player aborted the item / curse picker.
+ *  - args: the extra command args (tgtitem, optionally tgtcurse) to merge.
+ */
+async function prepareItemTarget(
+  chain: Effect | null,
+): Promise<"none" | "cancel" | { tgtitem: ItemTargetRef; tgtcurse?: number }> {
+  const req = itemTargetRequest(chain, state);
+  if (!req) return "none";
+  const ref = await selectTargetItem(req);
+  if (!ref) return "cancel";
+  if (req.curses) {
+    const obj = targetRefObject(ref);
+    const removable = obj ? removableCurses(obj) : [];
+    if (removable.length > 1) {
+      const pick = await selectCurse(removable);
+      if (pick === null) return "cancel";
+      return { tgtitem: ref, tgtcurse: pick };
+    }
+  }
+  return { tgtitem: ref };
+}
+
 /** Select a pack item matching `filter`, then dispatch `code` for it. */
 async function useItem(
   code: string,
@@ -473,9 +590,33 @@ async function useItem(
     if (dir === null) return;
     args["dir"] = dir;
   }
+  if (obj && !(await applyItemTarget(obj, args))) return;
   say(actionLine(code, obj));
   commandBuffer.push({ code, args });
   advance();
+}
+
+/**
+ * Resolve an object's item-target effect (Enchant / Recharge / ... ) into the
+ * command args before it is queued. Returns whether the command should be
+ * queued. On a cancelled picker the command is queued ONLY for an unaware
+ * consumable (upstream still runs it: the flavour is learned and the turn is
+ * spent, but nothing is consumed); an aware carrier aborts with no turn, so we
+ * return false and the caller drops the command.
+ */
+async function applyItemTarget(
+  obj: GameObject,
+  args: Record<string, unknown>,
+): Promise<boolean> {
+  const chain = buildObjectEffectChain(
+    (obj.effect ?? []) as EffectRecordJson[],
+    state,
+  );
+  const prep = await prepareItemTarget(chain);
+  if (prep === "none") return true;
+  if (prep === "cancel") return !objectIsAware(obj);
+  Object.assign(args, prep);
+  return true;
 }
 
 /** Activate a worn item (A): pick from equipped items that have an activation. */
@@ -506,6 +647,7 @@ async function activateItem(): Promise<void> {
     if (dir === null) return;
     args["dir"] = dir;
   }
+  if (obj && !(await applyItemTarget(obj, args))) return;
   say(actionLine("activate", obj));
   commandBuffer.push({ code: "activate", args });
   advance();
@@ -580,6 +722,19 @@ async function castSpell(): Promise<void> {
     const dir = await aimDir();
     if (dir === null) return;
     args["dir"] = dir;
+  }
+  /* Enchant / Identify / Brand / Remove-Curse spells pick a target item. A
+   * cancelled picker aborts the whole cast (no mana, no turn - the spell's
+   * effect_do returns false before any mana is spent). */
+  const spellData = spellByIndex(player.cls, spell);
+  if (spellData) {
+    const chain = buildObjectEffectChain(
+      spellData.effectsRaw as EffectRecordJson[],
+      state,
+    );
+    const prep = await prepareItemTarget(chain);
+    if (prep === "cancel") return;
+    if (prep !== "none") Object.assign(args, prep);
   }
   commandBuffer.push({ code: "cast", args });
   advance();

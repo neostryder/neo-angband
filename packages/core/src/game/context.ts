@@ -376,6 +376,29 @@ export interface GameState {
    */
   decoy?: Loc | null;
   /**
+   * The preset target-item reference for an item-choosing effect (the port of
+   * cmd_get_item's "tgtitem" command argument, cmd-core.c L1056). Set by the
+   * object / spell command from cmd.args.tgtitem just before effect_do, read by
+   * the getItem seam (session/game.ts resolveTargetItem), and cleared after the
+   * run. Absent means the shell did not pre-resolve a pick, so the choosing
+   * handler aborts (the upstream cancel path). One-shot: the getItem seam clears
+   * it once consumed so a two-prompt effect cannot reuse the same object.
+   */
+  itemTarget?: ItemTargetRef | null;
+  /**
+   * The unfulfilled item request left behind when a choosing handler ran with no
+   * (or a filter-failing) preset target - the shell's defensive fallback reads
+   * it to re-prompt. Absent in the normal probe/pre-resolution flow.
+   */
+  itemRequest?: import("./effect-item").ItemRequest | null;
+  /**
+   * The preset curse index for EF_REMOVE_CURSE's get_curse selection (the port
+   * of cmd_get_arg_choice on a multi-curse item). Set from cmd.args.tgtcurse;
+   * read by the chooseCurse seam; cleared after the run. Absent picks the first
+   * removable curse (upstream get_curse's default), never a random one.
+   */
+  curseTarget?: number | null;
+  /**
    * The world-event message sink (the recall yank, the deep-descent floor
    * opening). Presentation (#25) installs it; absent, the messages drop.
    */
@@ -403,6 +426,15 @@ export interface GameState {
    */
   world?: import("./world").WorldClockEnv;
 }
+
+/**
+ * A reference to an item-choosing effect's pre-resolved target object: a gear
+ * handle (a pack, equipped or quiver object - all live in gear.store) or an
+ * index into the floor pile under the player. The shell resolves the pick
+ * asynchronously and rides it on the command's args.tgtitem; the getItem seam
+ * turns it back into the live object.
+ */
+export type ItemTargetRef = { handle: number } | { floor: number };
 
 /** One queued player command (a keyed action plus optional direction/args). */
 export interface PlayerCommand {

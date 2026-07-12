@@ -229,7 +229,24 @@ export function installSpellCommands(
      * L1162): a target dying mid-spell keeps its grid for the rest of
      * the effect chain. */
     targetFix(state);
+    /* cmd_get_item "tgtitem" / "tgtcurse" presets for enchant/identify-family
+     * spells: the shell pre-resolves the target and rides it on the cast
+     * command; the getItem seam reads state.itemTarget. */
+    state.itemRequest = null;
+    const rawTgt = args["tgtitem"];
+    state.itemTarget =
+      rawTgt && typeof rawTgt === "object"
+        ? typeof (rawTgt as { handle?: unknown }).handle === "number"
+          ? { handle: (rawTgt as { handle: number }).handle }
+          : typeof (rawTgt as { floor?: unknown }).floor === "number"
+            ? { floor: (rawTgt as { floor: number }).floor }
+            : null
+        : null;
+    state.curseTarget =
+      typeof args["tgtcurse"] === "number" ? args["tgtcurse"] : null;
     const cast = spellCast(state, spellIndex, dir, deps);
+    state.itemTarget = null;
+    state.curseTarget = null;
     targetRelease(state);
     if (!cast) return 0;
     /* TMD_FASTCAST's 3/4 turn is deferred with that timed effect. */
