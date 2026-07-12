@@ -322,6 +322,9 @@ function wireGame(
   // from the rolled hitdice and mana from the armor encumbrance. Installed
   // as state.updateBonuses so equipment commands trigger it.
   let derived: PlayerState = pstate;
+  // Expose the live derived state so update_mon reads the current OF flags
+  // (telepathy / see-invisible) and see_infra. refreshDerived reassigns it.
+  state.playerState = derived;
   // A stable live copy of state->stat_ind: refreshDerived replaces the whole
   // derived PlayerState (new statInd array), so anything that captured
   // pstate.statInd would freeze at birth values. This array keeps the same
@@ -341,6 +344,7 @@ function wireGame(
       depth: state.chunk.depth,
       isDaytime: false,
     });
+    state.playerState = derived;
     for (let i = 0; i < liveStatInd.length; i++) {
       liveStatInd[i] = derived.statInd[i] ?? 0;
     }
