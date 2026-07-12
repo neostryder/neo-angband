@@ -146,7 +146,9 @@ export function characterSheetLines(state: GameState, name?: string): ScreenLine
   // Stat block.
   lines.push({ text: "Stat   Self    RB   CB   EB   Best   Cur", color: LABEL });
   for (const row of statTable(state, deps)) {
-    const cur = row.drained ? row.reduced ?? "" : "";
+    // The "Cur" column is the current (possibly drained) value; when not drained
+    // it equals Best, so show Best there rather than leaving the column blank.
+    const cur = row.drained ? row.reduced ?? row.best : row.best;
     const flag = row.naturalMax ? "!" : " ";
     lines.push({
       text:

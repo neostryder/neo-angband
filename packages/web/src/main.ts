@@ -94,7 +94,6 @@ import { MessageLog } from "./messages";
 import {
   inventoryLines,
   equipmentLines,
-  characterSheetLines,
   messageHistoryLines,
   packMenu,
   equipmentMenu,
@@ -103,6 +102,7 @@ import {
   targetMenu,
   lookLines,
 } from "./screens";
+import { showCharacterSheet } from "./charsheet";
 // --- High scores (task #28) ---
 import {
   createLocalStorageScoreStore,
@@ -1123,7 +1123,9 @@ window.addEventListener("keydown", (ev) => {
     if (ev.key === "C") {
       ev.preventDefault();
       void openModal(() =>
-        showTextScreen(term, "Character", characterSheetLines(state, playerName)),
+        showCharacterSheet(term, state, playerName, {
+          numShots: state.actor.combat.numShots,
+        }),
       );
       return;
     }
@@ -1264,7 +1266,7 @@ function installTouchActionBar(): void {
     ["Down >", () => { commandBuffer.push({ code: "descend" }); advance(); }],
     ["Up <", () => { commandBuffer.push({ code: "ascend" }); advance(); }],
     ["Inv", () => { void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))); }],
-    ["Char", () => { void openModal(() => showTextScreen(term, "Character", characterSheetLines(state, playerName))); }],
+    ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots })); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     [
       "New",
