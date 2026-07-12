@@ -11,22 +11,31 @@
  * remembered-terrain display need. The full twin (known traps as objects,
  * per-object known twins) rides later batches and is ledgered.
  *
- * noteSpots() is the note_spot / update_mon pass over the current field of
- * view: every SEEN grid is memorized with its floor pile, and monster
- * visibility flags (MFLAG VISIBLE / MARK / SHOW) are refreshed - a seen,
- * non-invisible, non-camouflaged monster is visible; a detection-marked
- * monster stays displayed for one more refresh (the SHOW lifecycle), then
- * fades. The session and front end call it after every updateView.
+ * noteSpots() is the note_spot pass over the current field of view: every
+ * SEEN grid is memorized with its floor pile. It then runs updateMonsters()
+ * - the faithful port of update_mon (mon-util.c) - to refresh every live
+ * monster's visibility flags from telepathy, infravision, see-invisible and
+ * illumination. The session and front end call it after every updateView.
+ *
+ * update_mon only READS MFLAG_MARK; the detection-fade lifecycle
+ * (MFLAG_MARK / MFLAG_SHOW clearing, game-world.c process_world) lives in
+ * tickMonsterMarks() until the world-clock port absorbs it.
  */
 
-import { MFLAG, SQUARE } from "../generated";
+import { MFLAG, OF, RF, SQUARE, TMD } from "../generated";
 import type { Loc } from "../loc";
-import { squareIsSeen } from "../world/view";
+import { loc } from "../loc";
+import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view";
 import { getLore, loreCountU16 } from "../mon/lore";
 import {
   monsterIsCamouflaged,
+  monsterIsEspDetectable,
+  monsterIsInView,
   monsterIsInvisible,
+  monsterIsVisible,
 } from "../mon/predicate";
+import { disturb } from "./player-path";
+import type { Monster } from "../mon/monster";
 import type { GameObject } from "../obj/object";
 import type { GameState } from "./context";
 
@@ -175,12 +184,175 @@ export function forgetMap(state: GameState): void {
   }
 }
 
+/** OPT(player, disturb_near): shipped default true (options.c). */
+function disturbNear(state: GameState): boolean {
+  return state.options?.get("disturb_near") ?? true;
+}
+
 /**
- * note_spot + update_mon, reduced: memorize every currently seen grid with
- * its floor pile, and refresh monster visibility - seen, non-invisible,
- * non-camouflaged monsters are VISIBLE and MARKed; detection-marked
- * monsters (MARK + SHOW) stay displayed for one more refresh, then fade.
- * Call after every updateView.
+ * update_mon (mon-util.c): recompute a single monster's visibility. When
+ * `full`, recompute its distance to the player (mon->cdis); otherwise use the
+ * stored one. Sets MFLAG_VISIBLE / MFLAG_VIEW from telepathy, infravision,
+ * see-invisible and illumination, learns the associated lore flags, and
+ * disturbs the player on appearance / disappearance. Draws no RNG.
+ *
+ * The player's derived flags (OF_TELEPATHY / OF_SEE_INVIS) and see_infra come
+ * from the last calc_bonuses (state.playerState); the blind check reads
+ * player->timed[TMD_BLIND] directly. update_mon only READS MFLAG_MARK - the
+ * MARK / SHOW detection-fade lives in tickMonsterMarks.
+ */
+export function updateMon(
+  state: GameState,
+  mon: Monster,
+  full: boolean,
+): void {
+  const c = state.chunk;
+  const lore = getLore(state.lore, mon.race);
+
+  /* If still generating the level, measure distances from the middle
+   * (character_dungeon); a live refresh always uses the player's grid. */
+  const pgrid: Loc = state.playing
+    ? state.actor.grid
+    : loc(Math.trunc(c.width / 2), Math.trunc(c.height / 2));
+
+  /* Seen at all. */
+  let flag = false;
+  /* Seen by vision. */
+  let easy = false;
+
+  /* ESP permitted, see-invisible and infravision come from the derived
+   * player state (racial / class innate flags, worn equipment, and the timed
+   * player_flags_timed / see_infra bumps all flow through calc_bonuses). With
+   * no derived state (worldless harness) fall back to a bare character: no OF
+   * flags, racial infravision only. */
+  const ps = state.playerState;
+  let telepathyOk = ps ? ps.flags.has(OF.TELEPATHY) : false;
+  const seeInvis = ps ? ps.flags.has(OF.SEE_INVIS) : false;
+  const seeInfra = ps ? ps.seeInfra : state.actor.player.race.infravision;
+
+  /* Compute distance, or just use the current one. */
+  let d: number;
+  if (full) {
+    const dy = Math.abs(pgrid.y - mon.grid.y);
+    const dx = Math.abs(pgrid.x - mon.grid.x);
+    d = dy > dx ? dy + (dx >> 1) : dx + (dy >> 1);
+    if (d > 255) d = 255;
+    mon.cdis = d;
+  } else {
+    d = mon.cdis;
+  }
+
+  /* Detected (read-only: the MARK / SHOW fade belongs to tickMonsterMarks). */
+  if (mon.mflag.has(MFLAG.MARK)) flag = true;
+
+  /* Check if telepathy works here. */
+  if (squareIsNoEsp(c, mon.grid) || squareIsNoEsp(c, pgrid)) {
+    telepathyOk = false;
+  }
+
+  /* Nearby. */
+  if (d <= state.z.maxSight) {
+    /* Basic telepathy. */
+    if (telepathyOk && monsterIsEspDetectable(mon)) {
+      flag = true;
+      /* Check for LOS so that MFLAG_VIEW is set later. */
+      if (squareIsView(c, mon.grid)) easy = true;
+    }
+
+    /* Normal line of sight and player is not blind. */
+    if (squareIsView(c, mon.grid) && !state.actor.player.timed[TMD.BLIND]) {
+      /* Use "infravision". */
+      if (d <= seeInfra) {
+        /* Learn about warm / cold blood. */
+        lore.flags.on(RF.COLD_BLOOD);
+        if (!mon.race.flags.has(RF.COLD_BLOOD)) {
+          easy = flag = true;
+        }
+      }
+
+      /* Use illumination. */
+      if (squareIsSeen(c, mon.grid)) {
+        /* Learn about invisibility. */
+        lore.flags.on(RF.INVISIBLE);
+        if (monsterIsInvisible(mon)) {
+          /* See invisible. */
+          if (seeInvis) easy = flag = true;
+        } else {
+          easy = flag = true;
+        }
+      }
+
+      /* path_analyse (learn intervening-square terrain): DEFERRED. */
+    }
+  }
+
+  /* If a mimic looks like an ignored item, it's not seen (mon-util.c L394):
+   *   if (monster_is_mimicking(mon) && ignore_item_ok(player, obj))
+   *     easy = flag = false;
+   * mon.mimickedObj is always 0 until mimic placement is generated, so the
+   * guard never fires; resolving the handle to a GameObject is DEFERRED with
+   * that work. */
+
+  /* Is the monster now visible? */
+  if (flag) {
+    /* Learn about the monster's mind. */
+    if (telepathyOk) {
+      lore.flags.on(RF.EMPTY_MIND);
+      lore.flags.on(RF.WEIRD_MIND);
+      lore.flags.on(RF.SMART);
+      lore.flags.on(RF.STUPID);
+    }
+
+    /* It was previously unseen. */
+    if (!monsterIsVisible(mon)) {
+      mon.mflag.on(MFLAG.VISIBLE);
+      /* square_light_spot / PR_HEALTH / PR_MONLIST are presentation (#25). */
+      /* Count "fresh" sightings (capped at SHRT_MAX). */
+      loreCountU16(lore, "sights");
+    }
+  } else if (monsterIsVisible(mon)) {
+    /* Not visible but was previously seen. With mimickedObj always 0 the
+     * mimic caveat (!mon->mimicked_obj || ignore_item_ok) always clears. */
+    if (mon.mimickedObj === 0) {
+      mon.mflag.off(MFLAG.VISIBLE);
+    }
+  }
+
+  /* Is the monster now easily visible? */
+  if (easy) {
+    if (!monsterIsInView(mon)) {
+      mon.mflag.on(MFLAG.VIEW);
+      /* Disturb on appearance. */
+      if (disturbNear(state)) disturb(state);
+    }
+  } else {
+    if (monsterIsInView(mon)) {
+      mon.mflag.off(MFLAG.VIEW);
+      /* Disturb on disappearance (but not for a camouflaged monster). */
+      if (disturbNear(state) && !monsterIsCamouflaged(mon)) disturb(state);
+    }
+  }
+}
+
+/** update_monsters (mon-util.c): update every live (non-dead) monster. */
+export function updateMonsters(state: GameState, full: boolean): void {
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (!mon) continue;
+    updateMon(state, mon, full);
+  }
+}
+
+/**
+ * note_spot pass: memorize every currently seen grid with its floor pile,
+ * then refresh all monster visibility via update_mon.
+ *
+ * Called after every updateView. Upstream, movement sets PU_DISTANCE and
+ * update() runs update_monsters(TRUE) - cdis and visibility recompute in one
+ * pass - while a view-only change runs update_monsters(FALSE). Since cdis is
+ * purely geometric (idempotent when nothing moved, correct when the player
+ * did), noteSpots recomputes it here (full=true) so the d <= max_sight and
+ * d <= see_infra gates never read a stale distance after a step.
  */
 export function noteSpots(state: GameState): void {
   const c = state.chunk;
@@ -193,26 +365,33 @@ export function noteSpots(state: GameState): void {
     }
   }
 
+  updateMonsters(state, true);
+}
+
+/**
+ * The MFLAG_NICE / MFLAG_MARK / MFLAG_SHOW housekeeping process_world runs at
+ * the end of a player turn (game-world.c:882-908): clear NICE; where a monster
+ * is MARKed but no longer SHOWn, drop the mark and re-run update_mon; then
+ * clear every SHOW. This keeps a freshly detected monster displayed for one
+ * more refresh before fading. Interim home until the world-clock / process_world
+ * port absorbs it (the NICE clear must be preserved when it does).
+ */
+export function tickMonsterMarks(state: GameState): void {
+  /* Clear NICE flag, and show marked monsters. */
   for (let i = 1; i < state.monsters.length; i++) {
     const mon = state.monsters[i];
     if (!mon) continue;
-    const seen =
-      squareIsSeen(c, mon.grid) &&
-      !monsterIsInvisible(mon) &&
-      !monsterIsCamouflaged(mon);
-    if (seen) {
-      /* Count "fresh" sightings (update_mon, mon-util.c L422). */
-      if (!mon.mflag.has(MFLAG.VISIBLE)) {
-        loreCountU16(getLore(state.lore, mon.race), "sights");
-      }
-      mon.mflag.on(MFLAG.VISIBLE);
-      mon.mflag.on(MFLAG.MARK);
-    } else if (mon.mflag.has(MFLAG.SHOW)) {
-      /* Recently detected: keep the mark one refresh, then let it fade. */
-      mon.mflag.off(MFLAG.SHOW);
-    } else {
+    mon.mflag.off(MFLAG.NICE);
+    if (mon.mflag.has(MFLAG.MARK) && !mon.mflag.has(MFLAG.SHOW)) {
       mon.mflag.off(MFLAG.MARK);
-      mon.mflag.off(MFLAG.VISIBLE);
+      updateMon(state, mon, false);
     }
+  }
+
+  /* Clear SHOW flag. */
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (!mon) continue;
+    mon.mflag.off(MFLAG.SHOW);
   }
 }

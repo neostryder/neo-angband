@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
-import { MFLAG, RF, SQUARE, TV } from "../generated";
+import { FlagSet } from "../bitflag";
+import { MFLAG, OF, RF, SQUARE, TV } from "../generated";
+import { OF_SIZE } from "../player/types";
+import type { PlayerState } from "../player/calcs";
+import { getLore } from "../mon/lore";
+import type { Monster } from "../mon/monster";
+import type { GameState } from "./context";
 import { loc } from "../loc";
 import { Rng } from "../rng";
 import { ObjRegistry } from "../obj/bind";
@@ -20,6 +26,9 @@ import {
   squareMemorize,
   squareMemoryBad,
   squareSensePile,
+  tickMonsterMarks,
+  updateMon,
+  updateMonsters,
 } from "./known";
 import { FLOOR, GRANITE, addMon, makeRace, makeState } from "./harness";
 
@@ -130,7 +139,35 @@ describe("object memory (square_know_pile / square_sense_pile)", () => {
   });
 });
 
-describe("noteSpots (note_spot + update_mon reduced)", () => {
+/**
+ * Give the state a derived PlayerState with just the fields update_mon reads
+ * (the OF flag set and see_infra). update_mon touches nothing else on it.
+ */
+function withPlayerState(
+  state: GameState,
+  opts: { telepathy?: boolean; seeInvis?: boolean; seeInfra?: number } = {},
+): void {
+  const flags = new FlagSet(OF_SIZE);
+  if (opts.telepathy) flags.on(OF.TELEPATHY);
+  if (opts.seeInvis) flags.on(OF.SEE_INVIS);
+  state.playerState = {
+    flags,
+    seeInfra: opts.seeInfra ?? 0,
+  } as unknown as PlayerState;
+}
+
+/** A grid is fully lit and in view (SEEN implies VIEW upstream). */
+function lightAndView(state: GameState, grid: ReturnType<typeof loc>): void {
+  state.chunk.sqinfoOn(grid, SQUARE.VIEW);
+  state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+}
+
+/** The lore sight counter for a monster's race. */
+function getLoreSights(state: GameState, mon: Monster): number {
+  return getLore(state.lore, mon.race).sights;
+}
+
+describe("noteSpots (note_spot + update_mon)", () => {
   it("memorizes seen grids with their piles", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const grid = loc(12, 10);
@@ -147,34 +184,184 @@ describe("noteSpots (note_spot + update_mon reduced)", () => {
   it("keeps monster visibility flags in step with the view", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const mon = addMon(state, makeRace(), loc(12, 10));
-    state.chunk.sqinfoOn(mon.grid, SQUARE.SEEN);
+    lightAndView(state, mon.grid);
 
     noteSpots(state);
     expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(true);
-    expect(mon.mflag.has(MFLAG.MARK)).toBe(true);
+    expect(mon.mflag.has(MFLAG.VIEW)).toBe(true);
 
-    /* Out of view: the flags fade. */
+    /* Out of view: the flag fades. */
     state.chunk.sqinfoOff(mon.grid, SQUARE.SEEN);
+    state.chunk.sqinfoOff(mon.grid, SQUARE.VIEW);
     noteSpots(state);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(false);
+    expect(mon.mflag.has(MFLAG.VIEW)).toBe(false);
+  });
+
+  it("an illuminated monster records a fresh sighting in the lore", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    lightAndView(state, mon.grid);
+
+    noteSpots(state);
+    expect(getLoreSights(state, mon)).toBe(1);
+    /* Already visible: no double count. */
+    noteSpots(state);
+    expect(getLoreSights(state, mon)).toBe(1);
+  });
+});
+
+describe("update_mon telepathy", () => {
+  it("senses an out-of-LOS non-empty-mind monster (visible, not in view)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    withPlayerState(state, { telepathy: true });
+    /* No VIEW / SEEN: the monster is out of line of sight. */
+    const mon = addMon(state, makeRace(), loc(12, 10));
+
+    updateMon(state, mon, true);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(true);
+    expect(mon.mflag.has(MFLAG.VIEW)).toBe(false);
+    /* Telepathy learns the mind flags. */
+    const lore = getLore(state.lore, mon.race);
+    expect(lore.flags.has(RF.EMPTY_MIND)).toBe(true);
+    expect(lore.flags.has(RF.WEIRD_MIND)).toBe(true);
+    expect(lore.flags.has(RF.SMART)).toBe(true);
+    expect(lore.flags.has(RF.STUPID)).toBe(true);
+  });
+
+  it("does not sense an EMPTY_MIND monster", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    withPlayerState(state, { telepathy: true });
+    const mon = addMon(state, makeRace({ flags: [RF.EMPTY_MIND] }), loc(12, 10));
+
+    updateMon(state, mon, true);
     expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(false);
   });
 
-  it("invisible monsters are not seen; detection marks fade after one refresh", () => {
+  it("is suppressed on a NO_ESP square", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    withPlayerState(state, { telepathy: true });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    state.chunk.sqinfoOn(mon.grid, SQUARE.NO_ESP);
+
+    updateMon(state, mon, true);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(false);
+  });
+});
+
+describe("update_mon infravision", () => {
+  it("reveals a warm-blooded monster in the dark within radius", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    withPlayerState(state, { seeInfra: 5 });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    /* In view but unlit (no SEEN): only infravision can reveal it. */
+    state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+
+    updateMon(state, mon, true);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(true);
+    expect(mon.mflag.has(MFLAG.VIEW)).toBe(true);
+    expect(getLore(state.lore, mon.race).flags.has(RF.COLD_BLOOD)).toBe(true);
+  });
+
+  it("does not reveal a cold-blooded monster in the dark", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    withPlayerState(state, { seeInfra: 5 });
+    const mon = addMon(state, makeRace({ flags: [RF.COLD_BLOOD] }), loc(12, 10));
+    state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+
+    updateMon(state, mon, true);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(false);
+    /* The cold blood is still learned. */
+    expect(getLore(state.lore, mon.race).flags.has(RF.COLD_BLOOD)).toBe(true);
+  });
+});
+
+describe("update_mon see-invisible", () => {
+  it("hides an invisible monster in LOS without see-invisible", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    withPlayerState(state, { seeInfra: 0 });
+    const ghost = addMon(state, makeRace({ flags: [RF.INVISIBLE] }), loc(12, 10));
+    lightAndView(state, ghost.grid);
+
+    updateMon(state, ghost, true);
+    expect(ghost.mflag.has(MFLAG.VISIBLE)).toBe(false);
+    /* Invisibility is learned from the illumination attempt. */
+    expect(getLore(state.lore, ghost.race).flags.has(RF.INVISIBLE)).toBe(true);
+  });
+
+  it("reveals an invisible monster in LOS with see-invisible", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    withPlayerState(state, { seeInvis: true, seeInfra: 0 });
+    const ghost = addMon(state, makeRace({ flags: [RF.INVISIBLE] }), loc(12, 10));
+    lightAndView(state, ghost.grid);
+
+    updateMon(state, ghost, true);
+    expect(ghost.mflag.has(MFLAG.VISIBLE)).toBe(true);
+  });
+});
+
+describe("update_mon distance and determinism", () => {
+  it("full=true writes the octagonal distance, full=false leaves cdis", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(16, 13));
+    /* dy=3, dx=6 -> 6 + (3>>1) = 7. */
+    updateMon(state, mon, true);
+    expect(mon.cdis).toBe(7);
+
+    mon.grid = loc(11, 10);
+    updateMon(state, mon, false);
+    expect(mon.cdis).toBe(7); /* unchanged: full=false keeps cdis */
+  });
+
+  it("draws no RNG", () => {
+    /* Two identically-seeded states; only one runs the visibility pass. If
+     * updateMonsters draws nothing, the next RNG value is the same on both. */
+    const build = (): GameState => {
+      const s = makeState({ seed: 777, playerGrid: loc(10, 10) });
+      withPlayerState(s, { telepathy: true });
+      addMon(s, makeRace(), loc(12, 10));
+      lightAndView(s, loc(12, 10));
+      return s;
+    };
+    const a = build();
+    updateMonsters(a, true);
+    const b = build();
+    expect(a.rng.randint0(1_000_000)).toBe(b.rng.randint0(1_000_000));
+  });
+});
+
+describe("tickMonsterMarks (process_world detection fade)", () => {
+  it("a detection MARK survives one refresh, then fades", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const ghost = addMon(state, makeRace({ flags: [RF.INVISIBLE] }), loc(12, 10));
-    state.chunk.sqinfoOn(ghost.grid, SQUARE.SEEN);
 
-    noteSpots(state);
-    expect(ghost.mflag.has(MFLAG.VISIBLE)).toBe(false);
-
-    /* Detected: MARK + SHOW survive exactly one refresh, then fade. */
+    /* Detected: MARK + SHOW, and update_mon keeps it VISIBLE while MARKed. */
     ghost.mflag.on(MFLAG.MARK);
     ghost.mflag.on(MFLAG.SHOW);
-    ghost.mflag.on(MFLAG.VISIBLE);
-    noteSpots(state);
+    updateMon(state, ghost, true);
+    expect(ghost.mflag.has(MFLAG.VISIBLE)).toBe(true);
+
+    /* First tick: SHOW present, so MARK is kept (SHOW then cleared). */
+    tickMonsterMarks(state);
     expect(ghost.mflag.has(MFLAG.MARK)).toBe(true);
-    noteSpots(state);
+    expect(ghost.mflag.has(MFLAG.SHOW)).toBe(false);
+
+    /* Second tick: SHOW gone, so MARK is dropped and the monster fades. */
+    tickMonsterMarks(state);
     expect(ghost.mflag.has(MFLAG.MARK)).toBe(false);
+    expect(ghost.mflag.has(MFLAG.VISIBLE)).toBe(false);
+  });
+
+  it("update_mon only reads MARK; it never clears MARK or SHOW", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    mon.mflag.on(MFLAG.MARK);
+    mon.mflag.on(MFLAG.SHOW);
+
+    updateMon(state, mon, true);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(true);
+    expect(mon.mflag.has(MFLAG.MARK)).toBe(true);
+    expect(mon.mflag.has(MFLAG.SHOW)).toBe(true);
   });
 });
 

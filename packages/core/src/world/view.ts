@@ -211,6 +211,11 @@ export function squareIsSeen(c: Chunk, grid: Loc): boolean {
   return c.sqinfoHas(grid, SQUARE["SEEN"]);
 }
 
+/** square_isno_esp: telepathy does not work on this square. */
+export function squareIsNoEsp(c: Chunk, grid: Loc): boolean {
+  return c.sqinfoHas(grid, SQUARE["NO_ESP"]);
+}
+
 /** mark_wasseen. */
 function markWasseen(c: Chunk): void {
   for (let y = 0; y < c.height; y++) {

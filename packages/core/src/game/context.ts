@@ -212,6 +212,15 @@ export interface GameState {
    */
   options?: import("../player/options").OptionState;
   /**
+   * The live derived player state (upstream p->state), the result of the last
+   * calc_bonuses. update_mon (game/known.ts) reads its OF flag set (telepathy /
+   * see-invisible) and see_infra to compute monster visibility. Reassigned by
+   * the session on every refreshDerived (equip / level / timed change); absent
+   * in the worldless harness, where update_mon falls back to the bare race
+   * infravision and an empty flag set.
+   */
+  playerState?: import("../player/calcs").PlayerState;
+  /**
    * player->upkeep->health_who (health_track reduced to the tracked
    * monster; the health-bar redraw rides presentation, #25).
    */
