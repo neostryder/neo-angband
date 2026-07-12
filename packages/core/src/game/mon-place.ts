@@ -383,6 +383,47 @@ export function pickAndPlaceMonster(
   return placeNewMonster(state, grid, race, sleep, groupOkay, info, deps);
 }
 
+/**
+ * pick_and_place_distant_monster (mon-make.c L1483): pick a monster race and
+ * place it on a naked floor grid at least `dis` away from `toAvoid`, allowing
+ * groups. Up to 10000 attempts, each drawing randint0(width) THEN
+ * randint0(height) (x before y - a chosen canonical order; C leaves the two
+ * argument evaluations unspecified and the port targets its own save
+ * determinism, not binary C-save compatibility). In a running game
+ * character_dungeon is true, so the "no random monsters in marked rooms" test
+ * is skipped. Returns whether a monster was placed.
+ */
+export function pickAndPlaceDistantMonster(
+  state: GameState,
+  toAvoid: Loc,
+  dis: number,
+  sleep: boolean,
+  depth: number,
+  deps: MonPlaceDeps,
+): boolean {
+  let grid: Loc = toAvoid;
+  let attemptsLeft = 10000;
+
+  /* Find a legal, distant, unoccupied space. */
+  while (--attemptsLeft) {
+    /* Pick a location (x drawn before y). */
+    const x = state.rng.randint0(state.chunk.width);
+    const y = state.rng.randint0(state.chunk.height);
+    grid = { x, y };
+
+    /* Require "naked" floor grid. */
+    if (!squareIsEmptyLive(state, grid, deps.preds)) continue;
+
+    /* Accept far away grids. */
+    if (distance(grid, toAvoid) > dis) break;
+  }
+
+  if (!attemptsLeft) return false;
+
+  /* Attempt to place the monster, allow groups. */
+  return pickAndPlaceMonster(state, grid, depth, sleep, true, deps);
+}
+
 /* ------------------------------------------------------------------ *
  * mon-summon.c world half.
  * ------------------------------------------------------------------ */

@@ -175,6 +175,8 @@ export interface StateOptions {
   stealth?: number;
   commands?: PlayerCommand[];
   updateFov?: (state: GameState) => void;
+  /** Collector for the world-clock messages (grade, wear-off, take_hit, etc.). */
+  worldMsgs?: string[];
 }
 
 /** Build a GameState on an open field with the player placed and marked. */
@@ -227,6 +229,20 @@ export function makeState(opts: StateOptions = {}): GameState {
     generateLevel: false,
     nextCommand: () => commands.shift() ?? null,
     ...(opts.updateFov ? { updateFov: opts.updateFov } : {}),
+  };
+
+  /* A default process_world upkeep env: the bound timed table so decrements
+   * route through the grade / message machinery, and message sinks (grade,
+   * wear-off, take_hit) collected into opts.worldMsgs when supplied. */
+  const worldMsgs = opts.worldMsgs;
+  const push = (t: string): void => {
+    if (worldMsgs) worldMsgs.push(t);
+  };
+  state.world = {
+    timedTable: plReg.timed,
+    timedHooks: { onMessage: (t) => push(t) },
+    takeHitHooks: { rng, onMessage: (t) => push(t) },
+    expDeps: { rng },
   };
 
   placePlayer(state, playerGrid);

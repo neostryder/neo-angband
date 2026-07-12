@@ -75,6 +75,7 @@ import { registerSummonHandlers } from "../game/effect-summon";
 import type { SummonEffectEnv } from "../game/effect-summon";
 import { registerDetectHandlers } from "../game/effect-detect";
 import { newKnownMap } from "../game/known";
+import { isDaytime } from "../game/world";
 import { newTargetState, targetSetMonster } from "../game/target";
 import {
   getLore,
@@ -84,7 +85,12 @@ import {
   loreUpdate,
 } from "../mon/lore";
 import { monsterIsVisible } from "../mon/predicate";
-import { countMonsterRaces, wipeMonsterCounts } from "../game/mon-place";
+import {
+  countMonsterRaces,
+  pickAndPlaceDistantMonster,
+  wipeMonsterCounts,
+} from "../game/mon-place";
+import type { MonPlaceDeps } from "../game/mon-place";
 import { SummonTable } from "../mon/summon";
 import { MonAllocTable } from "../mon/make";
 import type { EffectBuilderInjections } from "../effects/effect";
@@ -144,7 +150,7 @@ import { newGear, outfitPlayer, gearGet } from "../game/gear";
 import type { GameObject } from "../obj/object";
 import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
-import { installRunning } from "../game/player-path";
+import { disturb, installRunning } from "../game/player-path";
 import { bindCore, bootLevel, genDeps } from "./boot";
 import type {
   BootedLevel,
@@ -337,14 +343,19 @@ function wireGame(
     const equipment = p.equipment.map((h) =>
       h ? gearGet(state.gear, h) : null,
     );
+    const daytime = isDaytime(state.turn, state.z.dayLength);
     derived = calcBonuses(p, {
       equipment,
       timedEffects: players.timed,
       update: true,
       depth: state.chunk.depth,
-      isDaytime: false,
+      isDaytime: daytime,
     });
     state.playerState = derived;
+    /* calc_light's town-daytime branch (player-calcs.c 1608-1611) flags
+     * PU_UPDATE_VIEW | PU_MONSTERS before returning; reinstate that refresh so
+     * ambient town light tracks the day/night cycle. */
+    if (state.chunk.depth === 0 && daytime) state.updateFov?.(state);
     for (let i = 0; i < liveStatInd.length; i++) {
       liveStatInd[i] = derived.statInd[i] ?? 0;
     }
@@ -714,6 +725,46 @@ function wireGame(
   // Running (player-path.c): the corridor / open-area running engine. It
   // re-queues itself onto state.cmdQueue, which processPlayer drains.
   installRunning(registry);
+
+  // process_world upkeep environment (game/world.ts): the bound timed table so
+  // decrease_timeouts / digestion route through the grade / message machinery,
+  // the DoT take_hit hooks (rng is threaded in by worldTakeHit), and the
+  // ambient-monster spawn using the same allocation-table placement path as
+  // normal generation so its variable RNG draws stay faithful.
+  const worldPreds = reg.traps ? trapPredicates(state) : null;
+  const ambientPlaceDeps: MonPlaceDeps = {
+    table: new MonAllocTable(reg.monsters.races, {
+      maxDepth: reg.constants.maxDepth,
+      oodChance: reg.constants.oodMonsterChance,
+      oodAmount: reg.constants.oodMonsterAmount,
+    }),
+    groupMax: reg.constants.monsterGroupMax,
+    groupDist: reg.constants.monsterGroupDist,
+    ...(worldPreds ? { preds: worldPreds } : {}),
+  };
+  state.world = {
+    timedTable: players.timed,
+    timedHooks: {
+      onMessage: (text: string): void => state.msg?.(text),
+      onNotify: (_idx: number, canDisturb: boolean): void => {
+        if (canDisturb) disturb(state);
+      },
+    },
+    takeHitHooks: {
+      onMessage: (text: string): void => state.msg?.(text),
+      onDisturb: (): void => disturb(state),
+    },
+    expDeps,
+    spawnAmbientMonster: (s: GameState): boolean =>
+      pickAndPlaceDistantMonster(
+        s,
+        s.actor.grid,
+        s.z.maxSight + 5,
+        true,
+        s.chunk.depth,
+        ambientPlaceDeps,
+      ),
+  };
 
   return { registry, trapDeps, flavor };
 }
@@ -1093,6 +1144,12 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       floorSize: reg.constants.floorSize,
       maxDepth: reg.constants.maxDepth,
       stairSkip: reg.constants.stairSkip,
+      dayLength: reg.constants.dayLength,
+      foodValue: reg.constants.foodValue,
+      allocMonsterChance: reg.constants.allocMonsterChance,
+      storeTurns: reg.constants.storeTurns,
+      lifeDrainPercent: reg.constants.lifeDrainPercent,
+      levelMonsterMax: reg.constants.levelMonsterMax,
     },
     brands: reg.objects.brands,
     slays: reg.objects.slays,
@@ -1340,6 +1397,12 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
       floorSize: reg.constants.floorSize,
       maxDepth: reg.constants.maxDepth,
       stairSkip: reg.constants.stairSkip,
+      dayLength: reg.constants.dayLength,
+      foodValue: reg.constants.foodValue,
+      allocMonsterChance: reg.constants.allocMonsterChance,
+      storeTurns: reg.constants.storeTurns,
+      lifeDrainPercent: reg.constants.lifeDrainPercent,
+      levelMonsterMax: reg.constants.levelMonsterMax,
     },
     brands: reg.objects.brands,
     slays: reg.objects.slays,
