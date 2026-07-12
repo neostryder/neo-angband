@@ -5,7 +5,7 @@ import { FEAT, TV } from "../generated";
 import { gearAdd, invenCarry, newGear, objectCopyAmt } from "../game/gear";
 import type { Gear } from "../game/gear";
 import { ObjRegistry } from "../obj/bind";
-import { ObjAllocState, objectPrep } from "../obj/make";
+import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import type { GameObject, StackLimits } from "../obj/object";
 import type { ObjPackJson } from "../obj/types";
@@ -76,6 +76,8 @@ function setup(): {
     reg,
     alloc: new ObjAllocState(reg, constants),
     constants,
+    artifacts: new ArtifactState(reg.artifacts.length),
+    noArtifacts: false,
   };
   const stores = storeReg.stores.map((b) =>
     bindStoreRuntime(b, rng, constants.storeInvenMax),

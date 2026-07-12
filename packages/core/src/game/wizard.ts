@@ -219,14 +219,14 @@ export function wizCreateObjectFromKind(
   );
   /* apply_magic(obj, depth, allow_artifacts=false, good=false, great=false,
    * extra=false). */
-  applyMagic(state.rng, makeDeps, obj, state.chunk.depth, false, false, false, false);
+  applyMagic(state.rng, makeDeps, obj, state.chunk.depth, false, false, false, false, state.chunk.depth);
   return obj;
 }
 
 /**
  * wiz_create_object_from_artifact (cmd-wizard.c L139): instantiate an artifact
- * on its base kind. mark_artifact_created is DEFERRED (the port has no
- * artifact-created registry yet - makeArtifact is a stub); see the ledger.
+ * on its base kind and mark it created in the shared registry (L157), so the
+ * normal generation paths will not spawn it again.
  */
 export function wizCreateObjectFromArtifact(
   state: GameState,
@@ -246,6 +246,7 @@ export function wizCreateObjectFromArtifact(
   );
   obj.artifact = art;
   copyArtifactData(state.rng, makeDeps.reg, obj, art);
+  makeDeps.artifacts.markCreated(art.aidx, true);
   return obj;
 }
 
@@ -285,6 +286,7 @@ export function wizAcquire(
       great,
       true,
       0,
+      state.chunk.depth,
     );
     if (!obj) continue;
     obj.origin = ORIGIN.ACQUIRE;
@@ -810,7 +812,7 @@ export function wizRerollItem(
     state.chunk.depth,
     "randomise",
   );
-  applyMagic(state.rng, deps.makeDeps, fresh, state.chunk.depth, false, good, great, false);
+  applyMagic(state.rng, deps.makeDeps, fresh, state.chunk.depth, false, good, great, false, state.chunk.depth);
 
   /* Copy the rolled combat / property values back onto the target object,
    * keeping its identity and pile position (obj is not a fresh allocation

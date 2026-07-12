@@ -241,6 +241,7 @@ function tunnelAux(
           false,
           false,
           0,
+          state.chunk.depth,
         );
         if (obj) {
           floorCarry(state, grid, obj);

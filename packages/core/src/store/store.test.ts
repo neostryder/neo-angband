@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
 import { FEAT, TV } from "../generated";
 import { ObjRegistry } from "../obj/bind";
-import { ObjAllocState, objectPrep } from "../obj/make";
+import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import type { GameObject } from "../obj/object";
 import type { ObjPackJson } from "../obj/types";
@@ -54,6 +54,8 @@ function context(): { ctx: StoreMaintContext; stores: Store[] } {
     reg,
     alloc: new ObjAllocState(reg, constants),
     constants,
+    artifacts: new ArtifactState(reg.artifacts.length),
+    noArtifacts: false,
   };
   const stores = freshStores(rng);
   return { ctx: { rng, deps, maxDepth: 0, stores }, stores };

@@ -13,7 +13,7 @@ import { bindTraps } from "../world/trap";
 import type { TrapRecordJson } from "../world/trap";
 import { ObjRegistry } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
-import { ObjAllocState } from "../obj/make";
+import { ArtifactState, ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import { objectPrep } from "../obj/make";
 import type { GameObject } from "../obj/object";
@@ -102,6 +102,8 @@ const makeDeps: MakeDeps = {
   reg: objReg,
   alloc: new ObjAllocState(objReg, constants),
   constants,
+  artifacts: new ArtifactState(objReg.artifacts.length),
+  noArtifacts: false,
 };
 
 function registry(): EffectRegistry {

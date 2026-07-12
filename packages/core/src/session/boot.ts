@@ -22,7 +22,7 @@ import { FeatureRegistry } from "../world/feature";
 import type { TerrainRecordJson } from "../world/feature";
 import { ObjRegistry } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
-import { ObjAllocState } from "../obj/make";
+import { ArtifactState, ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import { bindMonsters } from "../mon/bind";
 import type { MonsterPackRecords } from "../mon/bind";
@@ -136,10 +136,20 @@ export function bindCore(pack: CorePack): CoreRegistries {
   };
 }
 
-/** Build the generator dependency bundle from bound registries. */
+/**
+ * Build the generator dependency bundle from bound registries.
+ *
+ * `artifacts` is the game's shared ArtifactState (aup_info[]); pass the
+ * single per-game instance so every regenerated level marks the same
+ * created flags. When omitted (standalone bootLevel / tests) a fresh
+ * all-false instance is created. `noArtifacts` mirrors
+ * OPT(player, birth_no_artifacts).
+ */
 export function genDeps(
   reg: CoreRegistries,
   placeContent: boolean,
+  artifacts?: ArtifactState,
+  noArtifacts = false,
 ): GenDeps {
   let objDeps: MakeDeps | null = null;
   let monDeps: MonPlaceDeps | null = null;
@@ -148,6 +158,8 @@ export function genDeps(
       reg: reg.objects,
       alloc: new ObjAllocState(reg.objects, reg.constants),
       constants: reg.constants,
+      artifacts: artifacts ?? new ArtifactState(reg.objects.artifacts.length),
+      noArtifacts,
     };
     monDeps = {
       table: new MonAllocTable(reg.monsters.races, {
@@ -179,6 +191,14 @@ export interface BootLevelOptions {
   generate?: GenerateOptions;
   /** Reuse already-bound registries instead of rebinding the pack. */
   registries?: CoreRegistries;
+  /**
+   * The game's shared ArtifactState (aup_info[]). Pass it so the starting
+   * level marks the same created flags the rest of the game references;
+   * omitted, a fresh all-false instance is used (standalone boots/tests).
+   */
+  artifacts?: ArtifactState;
+  /** OPT(player, birth_no_artifacts). */
+  noArtifacts?: boolean;
 }
 
 /** A generated, populated level ready to hand to a renderer or game loop. */
@@ -206,7 +226,12 @@ export function bootLevel(pack: CorePack, opts: BootLevelOptions = {}): BootedLe
   const registries = opts.registries ?? bindCore(pack);
   const depth = opts.depth ?? 1;
   const rng = new Rng(opts.seed ?? 1);
-  const deps = genDeps(registries, opts.placeContent ?? true);
+  const deps = genDeps(
+    registries,
+    opts.placeContent ?? true,
+    opts.artifacts,
+    opts.noArtifacts ?? false,
+  );
   const g = generateLevel(rng, depth, deps, opts.generate ?? {});
   return {
     chunk: g.c,

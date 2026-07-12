@@ -15,7 +15,7 @@ import { SKILL } from "../player/types";
 import { bindConstants } from "../constants";
 import { ObjRegistry } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
-import { objectPrep, ObjAllocState } from "../obj/make";
+import { ArtifactState, objectPrep, ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import type { GameObject } from "../obj/object";
 import { bindProjections } from "../world/projection";
@@ -60,6 +60,8 @@ const makeDeps: MakeDeps = {
   reg: objReg,
   alloc: new ObjAllocState(objReg, constants),
   constants,
+  artifacts: new ArtifactState(objReg.artifacts.length),
+  noArtifacts: false,
 };
 
 const DEFENSE: DefenderState = { ac: 0, toA: 0 };

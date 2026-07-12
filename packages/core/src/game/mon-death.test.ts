@@ -8,13 +8,13 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, ORIGIN, RF } from "../generated";
+import { KF, MFLAG, ORIGIN, RF } from "../generated";
 import { loc } from "../loc";
 import { Rng } from "../rng";
 import { bindConstants } from "../constants";
 import { ObjRegistry } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
-import { ObjAllocState, objectPrep } from "../obj/make";
+import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import type { GameObject } from "../obj/object";
 import { tvalIsMoney } from "../obj/object";
@@ -53,6 +53,8 @@ const makeDeps: MakeDeps = {
   reg: objReg,
   alloc: new ObjAllocState(objReg, constants),
   constants,
+  artifacts: new ArtifactState(objReg.artifacts.length),
+  noArtifacts: false,
 };
 
 function deathDeps(state: GameState): MonsterDeathDeps {
@@ -306,6 +308,54 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
     const probe = new Rng(33);
     expect(before).toBe(probe.randint0(1000000));
     expect(after).toBe(probe.randint0(1000000));
+  });
+
+  it("a level-100 QUESTOR force-drops every QUEST_ART artifact", () => {
+    /* The QUEST_ART artifacts (Grond, the Crown of Morgoth) that a level-100
+     * questor must drop (mon-make.c L794). */
+    const questArtAidx = objReg.artifacts
+      .filter((a): a is NonNullable<typeof a> => a !== null)
+      .filter((a) => {
+        const kind = objReg.lookupKind(a.tval, a.sval);
+        return !!kind && kind.kindFlags.has(KF.QUEST_ART);
+      })
+      .map((a) => a.aidx);
+    expect(questArtAidx.length).toBeGreaterThan(0);
+
+    const state = makeState({ seed: 4242 });
+    state.chunk.depth = 100;
+    const race = makeRace({ level: 100, flags: [RF.QUESTOR] });
+    const mon = addMon(state, race, loc(20, 12));
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    /* A private MakeDeps with a fresh created-registry, so the assertion is
+     * not contaminated by the shared module-level makeDeps. */
+    const localDeps: MakeDeps = {
+      reg: objReg,
+      alloc: new ObjAllocState(objReg, constants),
+      constants,
+      artifacts: new ArtifactState(objReg.artifacts.length),
+      noArtifacts: false,
+    };
+    monsterDeath(state, mon, {
+      makeDeps: localDeps,
+      reg: objReg,
+      floorEnv: {},
+      lore: state.lore,
+    });
+
+    const objs = allFloorObjects(state);
+    const droppedArts = objs
+      .filter((o) => o.artifact)
+      .map((o) => o.artifact!.aidx)
+      .sort((x, y) => x - y);
+    expect(droppedArts).toEqual([...questArtAidx].sort((x, y) => x - y));
+    /* Each quest artifact is a single, created item tagged as a drop. */
+    for (const o of objs.filter((ob) => ob.artifact)) {
+      expect(o.number).toBe(1);
+      expect(o.origin).toBe(ORIGIN.DROP);
+      expect(localDeps.artifacts.isCreated(o.artifact!.aidx)).toBe(true);
+    }
   });
 
   it("is deterministic for a fixed seed (RNG-order snapshot)", () => {

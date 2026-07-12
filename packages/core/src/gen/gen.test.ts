@@ -11,7 +11,7 @@ import { FeatureRegistry } from "../world/feature";
 import type { TerrainRecordJson } from "../world/feature";
 import { ObjRegistry } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
-import { ObjAllocState } from "../obj/make";
+import { ArtifactState, ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import { bindMonsters } from "../mon/bind";
 import type { MonsterPackRecords } from "../mon/bind";
@@ -94,7 +94,13 @@ const monPack: MonsterPackRecords = {
 function makeDeps(): GenDeps {
   const objReg = new ObjRegistry(objPack);
   const objAlloc = new ObjAllocState(objReg, constants);
-  const objDeps: MakeDeps = { reg: objReg, alloc: objAlloc, constants };
+  const objDeps: MakeDeps = {
+    reg: objReg,
+    alloc: objAlloc,
+    constants,
+    artifacts: new ArtifactState(objReg.artifacts.length),
+    noArtifacts: false,
+  };
 
   const monReg = bindMonsters(monPack, { maxSight: constants.maxSight });
   const table = new MonAllocTable(monReg.races, {
@@ -390,7 +396,13 @@ describe("mod-registered room builder", () => {
       constants,
       rooms,
       profiles,
-      objDeps: { reg: objReg, alloc: objAlloc, constants },
+      objDeps: {
+        reg: objReg,
+        alloc: objAlloc,
+        constants,
+        artifacts: new ArtifactState(objReg.artifacts.length),
+        noArtifacts: false,
+      },
       monDeps: { table },
     };
 

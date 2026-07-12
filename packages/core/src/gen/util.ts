@@ -867,7 +867,7 @@ export function placeObject(
   if (!g.c.inBounds(grid)) return;
   if (!squareCanPutItem(g, grid)) return;
   if (!g.objDeps) return;
-  const obj = makeObject(g.rng, g.objDeps, level, good, great, false, tval);
+  const obj = makeObject(g.rng, g.objDeps, level, good, great, false, tval, g.c.depth);
   if (!obj) return;
   g.addObject(grid, obj);
 }
