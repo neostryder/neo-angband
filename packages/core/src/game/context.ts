@@ -49,14 +49,24 @@ export interface GameConstants {
   fleeRange: number;
   /** z_info->turn_range (nearby monsters won't run away). */
   turnRange: number;
-  /** z_info->day_length (is_daytime; town cycle DEFERRED). */
+  /** z_info->day_length (is_daytime; the town day/night cycle). */
   dayLength: number;
   /** z_info->food_value. */
   foodValue: number;
-  /** PY_FOOD_STARVE / _FAINT / _WEAK (food_value-scaled grade maxima). */
+  /** PY_FOOD_STARVE / _FAINT / _WEAK / _HUNGRY (food_value-scaled grade maxima). */
   foodStarve: number;
   foodFaint: number;
   foodWeak: number;
+  /** PY_FOOD_HUNGRY (Hungry grade max, food_value-scaled): fast-metabolism cutoff. */
+  foodHungry: number;
+  /** z_info->alloc_monster_chance (mon-gen:chance): 1/N ambient spawn chance. */
+  allocMonsterChance: number;
+  /** z_info->store_turns (store:turns): dungeon turns per store day. */
+  storeTurns: number;
+  /** z_info->life_drain_percent (mon-play:life-drain): exp-drain scaling. */
+  lifeDrainPercent: number;
+  /** z_info->level_monster_max (level-max:monsters): monster-list capacity. */
+  levelMonsterMax: number;
   /** z_info->floor_size (obj:floor-size): max objects in one floor pile. */
   floorSize: number;
   /** z_info->max_depth (world:max-depth): the trapdoor legality bound. */
@@ -77,6 +87,11 @@ export const DEFAULT_GAME_CONSTANTS: GameConstants = {
   foodStarve: 100,
   foodFaint: 400,
   foodWeak: 800,
+  foodHungry: 1500,
+  allocMonsterChance: 500,
+  storeTurns: 1000,
+  lifeDrainPercent: 2,
+  levelMonsterMax: 1024,
   floorSize: 23,
   maxDepth: 128,
   stairSkip: 1,
@@ -233,6 +248,12 @@ export interface GameState {
   lore: import("../mon/lore").LoreStore;
   /** turn (game-world.c): the game-turn counter. */
   turn: number;
+  /**
+   * daycount (game-world.c): the number of store turnovers accrued while in
+   * the dungeon; the town stores restock this many days on return. Persists in
+   * the save. Absent is treated as 0.
+   */
+  daycount?: number;
   z: GameConstants;
   /** Object domain tables for player melee brands/slays (index 0 = none). */
   brands: readonly (Brand | null)[];
@@ -365,6 +386,15 @@ export interface GameState {
    * when the town level is generated; absent in the dungeon.
    */
   stores?: Store[];
+  /**
+   * process_world upkeep environment (game/world.ts): the bound timed-effect
+   * table, take_hit / timed hooks, the ambient-spawn and cave-illuminate
+   * hooks, and exp deps the once-every-ten-turns world clock needs. Installed
+   * by the session (wireGame) and the test harness. Absent, decrease_timeouts
+   * falls back to raw mutation and the damage-over-time / digestion / recharge
+   * upkeep is skipped (the ambient-spawn roll is still drawn unconditionally).
+   */
+  world?: import("./world").WorldClockEnv;
 }
 
 /** One queued player command (a keyed action plus optional direction/args). */

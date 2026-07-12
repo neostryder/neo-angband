@@ -67,6 +67,7 @@ describe("process_world upkeep", () => {
     p.mhp = 1000;
     p.chp = 1000;
     p.chpFrac = 0;
+    p.timed[TMD.FOOD] = 5000; /* fed, so no starvation damage confounds this */
     processWorld(state);
     expect(p.chp).toBe(1000);
     expect(p.chpFrac).toBe(0);
