@@ -24,6 +24,7 @@ export type GameMenuAction =
   | "inventory"
   | "equipment"
   | "messages"
+  | "knowledge"
   | "save"
   | "options"
   | "help"
@@ -63,6 +64,10 @@ export function gameMenuEntries(): GameMenuEntry[] {
     {
       action: "messages",
       item: { label: "Message history", hint: "Every message this session (Ctrl-P)." },
+    },
+    {
+      action: "knowledge",
+      item: { label: "Knowledge", hint: "Browse what you have learned - monster recall ('~')." },
     },
     {
       action: "save",

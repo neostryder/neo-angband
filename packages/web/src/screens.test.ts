@@ -53,6 +53,7 @@ import type {
   MagicRealm,
   MonsterPackRecords,
   MonsterRace,
+  MonsterLore,
   LoreDeps,
 } from "@neo-angband/core";
 import {
@@ -61,6 +62,8 @@ import {
   historyLines,
   spellBrowseLines,
   monsterRecallLines,
+  knownMonsterEntries,
+  monsterKnowledgeMenu,
 } from "./screens";
 
 const WHITE = 1;
@@ -729,5 +732,103 @@ describe("monsterRecallLines ('r' recall screen, ui-mon-lore.c lore_description)
     monsterRecallLines(breathingRace, lore, testRecallDeps(), 80); // a second width, in case wrapping hides a draw
 
     expect(rng.getState()).toEqual(before);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* knownMonsterEntries / monsterKnowledgeMenu ('~' -> Monsters,          */
+/* ui-knowledge.c do_cmd_knowledge_monsters): the list-building and      */
+/* filtering logic behind the monster-knowledge screen, over the real   */
+/* shipped monster registry.                                            */
+/* ------------------------------------------------------------------ */
+
+/** A few real, named races to seed the lore store with. */
+const namedRaces = monReg.races.filter((r) => r.name);
+
+/** newMonsterLore + observed overrides, so a race counts as "known". */
+function seenLore(race: MonsterRace, over: Partial<MonsterLore> = {}): MonsterLore {
+  return { ...newMonsterLore(race), ...over };
+}
+
+describe("knownMonsterEntries (ui-knowledge.c monster-knowledge filter/sort)", () => {
+  it("is empty when no lore has been recorded", () => {
+    expect(knownMonsterEntries(namedRaces, new Map())).toEqual([]);
+  });
+
+  it("includes only races that have been sighted or are fully known", () => {
+    const seen = namedRaces[3]!; // sights > 0
+    const known = namedRaces[7]!; // all_known but never sighted
+    const blank = namedRaces[11]!; // has a record, but nothing observed
+    const store = new Map<number, MonsterLore>([
+      [seen.ridx, seenLore(seen, { sights: 2 })],
+      [known.ridx, seenLore(known, { allKnown: true })],
+      [blank.ridx, seenLore(blank)], // sights 0, not all_known -> excluded
+    ]);
+    const rows = knownMonsterEntries(namedRaces, store);
+    const ridxs = rows.map((r) => r.race.ridx);
+    expect(ridxs).toContain(seen.ridx);
+    expect(ridxs).toContain(known.ridx);
+    expect(ridxs).not.toContain(blank.ridx);
+    // A race with no record at all (namedRaces[0]) is never listed.
+    expect(ridxs).not.toContain(namedRaces[0]!.ridx);
+    expect(rows.length).toBe(2);
+  });
+
+  it("skips the nameless r_info[0]-style blank even when it has been sighted", () => {
+    const real = namedRaces[5]!;
+    const nameless: MonsterRace = { ...real, ridx: 99991, name: "" };
+    const store = new Map<number, MonsterLore>([
+      [nameless.ridx, seenLore(real, { sights: 9 })],
+    ]);
+    expect(knownMonsterEntries([nameless], store)).toEqual([]);
+  });
+
+  it("sorts by level ascending, then by ordinal name (m_cmp_race fallback)", () => {
+    // Seed a broad spread of races so both sort keys are exercised.
+    const store = new Map<number, MonsterLore>();
+    for (const r of namedRaces.slice(0, 60)) store.set(r.ridx, seenLore(r, { sights: 1 }));
+    const rows = knownMonsterEntries(namedRaces, store);
+    expect(rows.length).toBe(60);
+    for (let i = 1; i < rows.length; i++) {
+      const prev = rows[i - 1]!.race;
+      const cur = rows[i]!.race;
+      expect(prev.level).toBeLessThanOrEqual(cur.level);
+      if (prev.level === cur.level) {
+        // strcmp (ordinal), matching the port's byte-order name tiebreak.
+        expect(prev.name <= cur.name).toBe(true);
+      }
+    }
+  });
+
+  it("does not mutate the lore store while filtering (no getLore side effects)", () => {
+    const store = new Map<number, MonsterLore>([
+      [namedRaces[4]!.ridx, seenLore(namedRaces[4]!, { sights: 1 })],
+    ]);
+    knownMonsterEntries(namedRaces, store);
+    expect(store.size).toBe(1); // unseen races got no blank records
+  });
+});
+
+describe("monsterKnowledgeMenu ('~' -> Monsters selection list)", () => {
+  it("labels each row by capitalized name, appends a kill tally, colours by dAttr", () => {
+    const killed = namedRaces[6]!;
+    const unkilled = namedRaces[9]!;
+    const store = new Map<number, MonsterLore>([
+      [killed.ridx, seenLore(killed, { sights: 1, pkills: 4 })],
+      [unkilled.ridx, seenLore(unkilled, { sights: 1, pkills: 0 })],
+    ]);
+    const { items, rows } = monsterKnowledgeMenu(namedRaces, store);
+    expect(items.length).toBe(rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      const { race, lore } = rows[i]!;
+      const item = items[i]!;
+      const cap = race.name.charAt(0).toUpperCase() + race.name.slice(1);
+      expect(item.label.startsWith(cap)).toBe(true);
+      expect(item.label.includes("killed")).toBe(lore.pkills > 0);
+      expect(item.color).toBe(colorToCss(race.dAttr));
+    }
+    // The killed race carries its "(N killed)" tally.
+    const killedItem = items[rows.findIndex((r) => r.race.ridx === killed.ridx)]!;
+    expect(killedItem.label).toContain("(4 killed)");
   });
 });

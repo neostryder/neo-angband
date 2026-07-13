@@ -129,6 +129,8 @@ import type {
   ObjectInfoExtras,
   Loc,
   Monster,
+  MonsterRace,
+  MonsterLore,
   LoreDeps,
 } from "@neo-angband/core";
 import { GameEvents } from "@neo-angband/core";
@@ -187,7 +189,8 @@ import {
   SVAL_DEPENDENT,
   objectListLines,
   monsterRecallLines,
-  capMonName,
+  monsterKnowledgeMenu,
+  capRaceName,
 } from "./screens";
 import { showCharacterSheet } from "./charsheet";
 import { runCharacterSelect } from "./charselect";
@@ -1701,10 +1704,56 @@ function recallDeps(): LoreDeps {
  * loreDescription's runs through the same showTextScreen + wrapRuns pattern
  * every other full-screen viewer uses.
  */
+async function showRaceRecall(race: MonsterRace, lore: MonsterLore): Promise<void> {
+  const lines = monsterRecallLines(race, lore, recallDeps(), term.size().cols);
+  await showTextScreen(term, capRaceName(race), lines);
+}
+
 async function showMonsterRecall(mon: Monster): Promise<void> {
-  const lore = getLore(state.lore, mon.race);
-  const lines = monsterRecallLines(mon.race, lore, recallDeps(), term.size().cols);
-  await showTextScreen(term, capMonName(mon), lines);
+  await showRaceRecall(mon.race, getLore(state.lore, mon.race));
+}
+
+/**
+ * The knowledge menu ('~', ui-knowledge.c do_cmd_knowledge_menu): upstream's
+ * home for browsing everything the character has learned. Only the two
+ * sections the port has data for are wired - monster knowledge (this task)
+ * and the character history that '~' used to open directly, preserved here as
+ * an entry. Object / artifact / ego / rune / feature knowledge are the larger
+ * follow-up the context-menu.ts header tracks; they are omitted (not shown
+ * disabled) until their per-kind knowledge registries exist.
+ */
+async function openKnowledgeMenu(): Promise<void> {
+  const idx = await selectFromMenu(term, "Display current knowledge", [
+    { label: "Display monster knowledge" },
+    { label: "Display character history" },
+  ]);
+  if (idx === 0) await showMonsterKnowledge();
+  else if (idx === 1)
+    await showTextScreen(term, "Player history", historyLines(state));
+}
+
+/**
+ * do_cmd_knowledge_monsters (ui-knowledge.c): a selectable list of every race
+ * the player has memory of (monsterKnowledgeMenu off the live lore store);
+ * picking one opens its recall through the SAME monsterRecallLines +
+ * recallDeps path the look/target loop's 'r' uses (showRaceRecall). Loops
+ * back to the list after a recall closes, like the upstream browser, until
+ * ESC.
+ */
+async function showMonsterKnowledge(): Promise<void> {
+  const races = booted.registries.monsters.races;
+  for (;;) {
+    const { items, rows } = monsterKnowledgeMenu(races, state.lore);
+    if (items.length === 0) {
+      say("You have not encountered any monsters yet.");
+      return;
+    }
+    const idx = await selectFromMenu(term, "Monsters", items);
+    if (idx === null) return;
+    const row = rows[idx];
+    if (!row) return;
+    await showRaceRecall(row.race, getLore(state.lore, row.race));
+  }
 }
 
 /**
@@ -2002,6 +2051,9 @@ async function openGameMenu(): Promise<void> {
       break;
     case "messages":
       await showTextScreen(term, "Message history", messageHistoryLines(msglog));
+      break;
+    case "knowledge":
+      await openKnowledgeMenu();
       break;
     case "save":
       autosave(true);
@@ -2838,15 +2890,11 @@ window.addEventListener("keydown", (ev) => {
       );
       return;
     }
-    // Player history (history_display, ui-history.c): upstream reaches this
-    // from the '~' knowledge menu, which the port has not built; '~' is
-    // otherwise unhandled (resolveKey/ITEM_VERBS have no binding for it), so
-    // it is bound directly to the history screen here.
+    // The knowledge menu ('~', do_cmd_knowledge_menu): monster recall plus the
+    // character history '~' used to open directly. See openKnowledgeMenu.
     if (ev.key === "~") {
       ev.preventDefault();
-      void openModal(() =>
-        showTextScreen(term, "Player history", historyLines(state)),
-      );
+      void openModal(openKnowledgeMenu);
       return;
     }
     if (ev.key === "I") {
