@@ -36,6 +36,22 @@ function charLabel(c: CharMeta): string {
   return `${who} ${lv} ${where}`;
 }
 
+/** "just now" / "Nm ago" / "Nh ago" / "Nd ago" from an epoch-ms save stamp. */
+function lastPlayed(updatedAt: number, now: number): string {
+  const mins = Math.floor(Math.max(0, now - updatedAt) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/** Per-row detail shown while the row is highlighted (MenuItem.hint). */
+function charHint(c: CharMeta, now: number): string {
+  if (!c.alive) return "(deceased) - memorial only";
+  return `Level ${c.level} ${c.cls} - ${depthLabel(c.depth)}, last played ${lastPlayed(c.updatedAt, now)}`;
+}
+
 /**
  * Run the picker until the player chooses. Living characters resume; a dead
  * character offers to clear its tombstone; the last row starts a new
@@ -47,16 +63,23 @@ export async function runCharacterSelect(
   roster: CharMeta[],
 ): Promise<SelectResult> {
   for (;;) {
+    const now = Date.now();
     const items: MenuItem[] = roster.map((c) => ({
       label: charLabel(c),
       color: c.alive ? FG : DIM,
+      hint: charHint(c, now),
     }));
-    const newRow: MenuItem = { label: "[ New character ]", color: FG };
+    const newRow: MenuItem = {
+      label: "[ New character ]",
+      color: FG,
+      hint: "Birth a brand-new character in a fresh save slot.",
+    };
     const pick = await selectFromMenu(
       term,
       "Select a character",
       [...items, newRow],
-      "[ a-z to choose, ESC for the most recent ]",
+      "[ a-z to choose, tap a row, ESC for the most recent ]",
+      { subtitle: "Living characters resume; tombstones are memorials." },
     );
 
     if (pick === null) {

@@ -35,6 +35,8 @@ import {
   spellDamageSummary,
   PY_SPELL,
   COLOUR_WHITE,
+  COLOUR_L_BLUE,
+  COLOUR_YELLOW,
   TV,
   ITYPE,
   ITYPE_MAX,
@@ -236,29 +238,136 @@ export function equipmentMenu(state: GameState): { items: MenuItem[]; handles: n
 }
 
 /**
+ * The CharSheetDeps the shell can actually supply: the name plus the live
+ * computed player_state (calc_bonuses) where one exists. statAdd currently
+ * carries only the KNOWN-rune equipment modifiers the calc computes (the full
+ * equipment stat_add slice is deferred in player/calcs.ts), so EB may still
+ * read +0 on a fresh character; the sheet reads whatever the calc produced
+ * rather than claiming more.
+ */
+export function charSheetDeps(
+  state: GameState,
+  name?: string,
+): {
+  fullName?: string;
+  statAdd?: readonly number[];
+  statTop?: readonly number[];
+  statUse?: readonly number[];
+  seeInfra?: number;
+  numShots?: number;
+} {
+  const ps = state.playerState;
+  return {
+    ...(name ? { fullName: name } : {}),
+    ...(ps
+      ? {
+          statAdd: ps.statAdd,
+          statTop: ps.statTop,
+          statUse: ps.statUse,
+          seeInfra: ps.seeInfra,
+          numShots: ps.numShots,
+        }
+      : {}),
+  };
+}
+
+/** Greedy word-wrap of plain text to `width` columns (history paragraphs). */
+function wrapPlain(text: string, width: number): string[] {
+  const out: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/u).filter((w) => w.length > 0)) {
+    if (line.length === 0) line = word;
+    else if (line.length + 1 + word.length <= width) line += ` ${word}`;
+    else {
+      out.push(line);
+      line = word;
+    }
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+/**
+ * The player-history block (display_player_xtra_info, ui-player.c L858):
+ * player->history wrapped (upstream text_out_wrap = 72) and indented one
+ * column, in COLOUR_WHITE. Empty history renders nothing (a fresh character
+ * has "" until birth background generation - get_history - is ported).
+ */
+export function historyBlockLines(state: GameState, cols = 80): ScreenLine[] {
+  const history = state.actor.player.history.trim();
+  if (!history) return [];
+  const width = Math.max(10, Math.min(72, cols - 2));
+  return wrapPlain(history, width).map((text) => ({
+    text: ` ${text}`,
+    color: colorToCss(COLOUR_WHITE),
+  }));
+}
+
+/**
+ * One stat row of display_player_stat_info (ui-player.c L469-507) as a
+ * per-run-coloured line on the exact upstream column stops: the stat name at
+ * col 0 (with '!' REPLACING the colon at index 3 for a natural-max stat, per
+ * L480-481), Self at col 5 (cnv_stat, always 6 wide, L_GREEN), RB/CB/EB at
+ * cols 12/16/20 ("%+3d", L_BLUE), Best at col 24 (L_GREEN), and - only when
+ * drained - the current value at col 31 in YELLOW. No Cur column otherwise.
+ */
+export function statRowLine(row: {
+  label: string;
+  natural: string;
+  raceBonus: string;
+  classBonus: string;
+  equipBonus: string;
+  best: string;
+  reduced: string | null;
+  naturalMax: boolean;
+  drained: boolean;
+}): ScreenLine {
+  const label = row.naturalMax
+    ? `${row.label.slice(0, 3)}!${row.label.slice(4)}`
+    : row.label;
+  const runs: { text: string; color: string }[] = [
+    { text: label.padEnd(5).slice(0, 5), color: colorToCss(COLOUR_WHITE) },
+    { text: row.natural.padStart(6), color: colorToCss(COLOUR_L_GREEN) },
+    {
+      text: ` ${row.raceBonus.padStart(3)} ${row.classBonus.padStart(3)} ${row.equipBonus.padStart(3)}`,
+      color: colorToCss(COLOUR_L_BLUE),
+    },
+    { text: ` ${row.best.padStart(6)}`, color: colorToCss(COLOUR_L_GREEN) },
+  ];
+  if (row.drained && row.reduced !== null) {
+    runs.push({ text: ` ${row.reduced.padStart(6)}`, color: colorToCss(COLOUR_YELLOW) });
+  }
+  return { text: runs.map((r) => r.text).join(""), color: FG, runs };
+}
+
+/** The stat-table header, on the same column stops as statRowLine (the
+ * upstream header strings "  Self" / " RB" / " CB" / " EB" / "  Best" at
+ * col+5/+12/+16/+20/+24 - both width-6 headers padded like the data, fixing
+ * the classic 5-wide header misalignment; there is no Cur header). */
+export function statHeaderLine(): ScreenLine {
+  const text =
+    `${" ".repeat(5)}${"Self".padStart(6)} ${"RB".padStart(3)} ` +
+    `${"CB".padStart(3)} ${"EB".padStart(3)} ${"Best".padStart(6)}`;
+  return { text, color: LABEL };
+}
+
+/**
  * The character-sheet lines (C): the six-stat table then the five panels
  * (name/class, misc, level/exp, combat, skills), faithful to characterPanels /
- * statTable. Laid out as a scrollable single column so it reads at any width.
+ * statTable, then the player-history block. Laid out as a scrollable single
+ * column so it reads at any width (the narrow / phone layout).
  */
-export function characterSheetLines(state: GameState, name?: string): ScreenLine[] {
-  const deps = name ? { fullName: name } : {};
+export function characterSheetLines(
+  state: GameState,
+  name?: string,
+  cols = 80,
+): ScreenLine[] {
+  const deps = charSheetDeps(state, name);
   const lines: ScreenLine[] = [];
-  // Stat block.
-  lines.push({ text: "Stat   Self    RB   CB   EB   Best   Cur", color: LABEL });
-  for (const row of statTable(state, deps)) {
-    // The "Cur" column is the current (possibly drained) value; when not drained
-    // it equals Best, so show Best there rather than leaving the column blank.
-    const cur = row.drained ? row.reduced ?? row.best : row.best;
-    const flag = row.naturalMax ? "!" : " ";
-    lines.push({
-      text:
-        `${row.label.slice(0, 4).padEnd(5)}` +
-        `${row.natural.padStart(6)} ` +
-        `${row.raceBonus.padStart(4)} ${row.classBonus.padStart(4)} ${row.equipBonus.padStart(4)} ` +
-        `${row.best.padStart(6)}${flag} ${cur.padStart(6)}`,
-      color: row.drained ? "#e0c040" : FG,
-    });
-  }
+  // Stat block: same 6-wide Self/Best fields as the wide sheet, blank Cur
+  // column unless drained (upstream shows nothing there otherwise).
+  lines.push(statHeaderLine());
+  for (const row of statTable(state, deps)) lines.push(statRowLine(row));
   lines.push({ text: "", color: FG });
   // Panels.
   for (const panel of characterPanels(state, deps)) {
@@ -277,6 +386,8 @@ export function characterSheetLines(state: GameState, name?: string): ScreenLine
     }
     lines.push({ text: "", color: FG });
   }
+  // History (display_player_xtra_info row 19): degrades to nothing when empty.
+  lines.push(...historyBlockLines(state, cols));
   return lines;
 }
 
