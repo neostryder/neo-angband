@@ -18,8 +18,11 @@
  * - ODESC_ALTNUM: rather than packing the count into the high 16 bits of mode,
  *   the alternate number is passed as a separate `altnum` argument; the
  *   ODESC.ALTNUM bit still selects it over obj.number.
- * - Chest trap names (obj_desc_chest -> chest_trap_name) are not ported; the
- *   "(<trap>)" segment is omitted.
+ * - Chest trap names (obj_desc_chest -> chest_trap_name, gap #49) are ported
+ *   (obj/chest.ts's chestTrapName), gated by the same shadow.pval guard as
+ *   upstream; since chests never copy pval to the known shadow (L355 below /
+ *   known-object.ts), the "(<trap>)" segment only ever fires for an empty
+ *   chest ("(empty)") under the current knowledge simplification (#24).
  * - ignore_item_ok / the "{ignore}" and gold "{ignore}" markers: no ignore
  *   subsystem in the port yet; omitted.
  * - obj->kind->everseen / obj->ego->everseen "seen" mutations (L633-637): the
@@ -46,6 +49,7 @@ import {
   tvalIsRod,
   tvalIsWeapon,
 } from "./object";
+import { chestTrapName } from "./chest";
 import type { RuneEnv } from "./knowledge";
 import { OBJ_NOTICE, objectHasStandardToH } from "./knowledge";
 import type { KnownDesc } from "./known-object";
@@ -391,14 +395,15 @@ function objDescShowArmor(shadow: GameObject, gates: CombatGates): boolean {
 }
 
 /**
- * obj_desc_chest (obj-desc.c L356). DEFERRED: chest_trap_name is not ported, so
- * the "(<trap>)" segment is omitted; the unopened/unknown guard is kept.
+ * obj_desc_chest (obj-desc.c L356): the "(<trap>)" suffix. Reads obj (not the
+ * shadow) for chest_trap_name, exactly as upstream; the guard is the shadow's
+ * pval (obj->known->pval), which chests never populate under the current
+ * knowledge simplification (#24), so this only ever fires for pval 0.
  */
 function objDescChest(obj: GameObject, shadow: GameObject): string {
   if (!tvalIsChest(obj.tval)) return "";
   if (obj.pval && !shadow.pval) return "";
-  /* DEFERRED: strnfcat(buf, " (%s)", chest_trap_name(obj)). */
-  return "";
+  return ` (${chestTrapName(obj)})`;
 }
 
 /**

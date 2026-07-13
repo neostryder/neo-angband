@@ -109,6 +109,7 @@ import { monsterChangeShape, monsterRevertShape } from "../game/mon-shape";
 import type { MonShapeHooks } from "../mon/timed";
 import { installObjCommands } from "../game/obj-cmd";
 import { installCaveCommands } from "../game/cave-cmd";
+import type { ChestCmdDeps } from "../game/chest";
 import {
   calcUnlockingChance,
   installTraps,
@@ -487,6 +488,7 @@ function wireGame(
   // player casts (player-spell.c) and traps fire (trap.c) - all through
   // the same effect interpreter.
   let trapDeps: TrapDeps | null = null;
+  let chestDeps: ChestCmdDeps | null = null;
   const makeDeps: MakeDeps = {
     reg: reg.objects,
     alloc: new ObjAllocState(reg.objects, reg.constants),
@@ -789,18 +791,47 @@ function wireGame(
       worldEnv.trapDeps = trapDeps;
       general.trapDeps = trapDeps;
     }
+
+    // Chests (gap #49): reuse the exact effect bundle traps/objects use, so
+    // chest_trap's dice draws (poison/paralysis/summon/explosion) share the
+    // interpreter, RNG stream and summon wiring with every other effect
+    // source, and floorEnv so a chest's loot lands under the same drop
+    // rules as any other floor drop.
+    chestDeps = {
+      makeDeps,
+      floorEnv,
+      effects: {
+        registry: effects,
+        cast,
+        envDeps,
+        inject,
+        ...(teleport ? { teleport } : {}),
+        general,
+        item,
+        summon,
+      },
+      env: {
+        expGain,
+        msg: (text: string): void => state.msg?.(text),
+      },
+    };
   }
 
   // Cave commands (open / close / tunnel / alter / stair checks); rubble
-  // finds and gold veins pay out through the object generator, and door
-  // locks resolve through the trap system when it is live.
+  // finds and gold veins pay out through the object generator, door locks
+  // resolve through the trap system when it is live, and chests (gap #49)
+  // open/disarm through game/chest.ts when the effect stack is live.
   const lockKind = trapDeps ? lookupTrap(trapDeps.kinds, "door lock") : null;
   const deps = trapDeps; // narrow for the closures
   installCaveCommands(registry, {
     makeDeps,
-    ...(deps && lockKind
-      ? {
-          env: {
+    env: {
+      // Route open/close/tunnel/chest messages to the game's message sink
+      // (matching installObjCommands/installSpellCommands/installTraps);
+      // absent, door/tunnel/chest messages would silently drop.
+      msg: (text: string): void => state.msg?.(text),
+      ...(deps && lockKind
+        ? {
             isLockedDoor: (grid: Loc): boolean =>
               squareDoorPower(state, grid, deps) > 0,
             pickLock: (grid: Loc): boolean => {
@@ -812,9 +843,10 @@ function wireGame(
               }
               return false;
             },
-          },
-        }
-      : {}),
+          }
+        : {}),
+    },
+    ...(chestDeps ? { chestDeps } : {}),
   });
 
   // Running (player-path.c): the corridor / open-area running engine. It
