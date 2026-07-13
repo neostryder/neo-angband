@@ -19,6 +19,7 @@ import type { PlayerBody, PlayerClass, PlayerRace, Shape } from "./types";
 import { newElemInfo, newOfFlags, OBJ_MOD_MAX } from "../obj/types";
 import type { ElementInfo } from "../obj/types";
 import type { FlagSet } from "../bitflag";
+import type { HistoryInfo } from "./history";
 
 /**
  * Minimal struct player_upkeep: only the derived counters the headless core
@@ -148,8 +149,16 @@ export interface Player {
   htBirth: number;
   wtBirth: number;
 
-  /** Player history text. */
+  /** Player history text (the birth background/bio paragraph). */
   history: string;
+
+  /**
+   * hist (player-history.h struct player_history): the runtime auto-history
+   * event log (artifact finds/losses, level-ups, unique kills, birth) -
+   * distinct from the `history` bio string above. Oldest-first; see
+   * player/history.ts for the append/query API.
+   */
+  hist: HistoryInfo[];
 
   /** Equipment slots available (copied from the race's body). */
   body: PlayerBody;
@@ -223,6 +232,7 @@ export function blankPlayer(
     htBirth: 0,
     wtBirth: 0,
     history: "",
+    hist: [],
     body: { name: body.name, count: body.count, slots: body.slots.map((s) => ({ ...s })) },
     equipment: new Array<number>(body.count).fill(0),
     objKnown: blankObjKnowledge(),

@@ -19,7 +19,7 @@
  */
 
 import type { Rng } from "../rng";
-import { STAT } from "../generated";
+import { HIST, STAT } from "../generated";
 import { TMD } from "../generated";
 import {
   calcHitpoints,
@@ -30,6 +30,7 @@ import {
 } from "./calcs";
 import { blankPlayer } from "./player";
 import type { Player } from "./player";
+import { historyAddFull } from "./history";
 import { rollHp } from "./exp";
 import { STAT_MAX } from "./types";
 import type {
@@ -312,6 +313,20 @@ export function generatePlayer(
   /* Starting gold (get_money; roller path leaves 0 points, so no bonus). */
   player.au = START_GOLD;
   player.auBirth = START_GOLD;
+
+  /* do_cmd_accept_character (player-birth.c L1241-1242): history_clear then
+   * history_add(HIST_PLAYER_BIRTH). blankPlayer already leaves player.hist
+   * empty, so the clear is a no-op here; stamped with the constants true of
+   * every character at birth (town, level 1, turn 0). */
+  historyAddFull(
+    player,
+    1 << HIST.PLAYER_BIRTH,
+    0,
+    0,
+    1,
+    0,
+    "Began the quest to destroy Morgoth.",
+  );
 
   const startingKit: StartItemRef[] = cls.startItems.map((s: StartItem) => ({
     tval: s.tval,

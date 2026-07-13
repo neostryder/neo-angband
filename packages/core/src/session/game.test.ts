@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { TMD } from "../generated";
+import { HIST, RF, TMD } from "../generated";
 import { FlagSet } from "../bitflag";
 import { MFLAG_SIZE, RF_SIZE } from "../mon/types";
 import { runGameLoop, LOOP_STATUS } from "../game/loop";
@@ -9,6 +9,9 @@ import { startGame } from "./game";
 import type { GamePack } from "./game";
 import { calcBonuses } from "../player/calcs";
 import { gearGet } from "../game/gear";
+import { histHas, historyIsArtifactKnown } from "../player/history";
+import { floorCarry } from "../game/floor";
+import { objectPrep } from "../obj/make";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -241,6 +244,87 @@ describe("startGame (new-game assembly)", () => {
     /* PU_HP: mhp recomputed from the rolled hitdice at the new level. */
     expect(p.mhp).toBeGreaterThan(mhpBefore);
     expect(p.chp).toBeLessThanOrEqual(p.mhp);
+
+    /* history_add(HIST_GAIN_LEVEL) (player.c L246-247): one entry per level
+     * gained, via the wired ExpDeps.onGainLevel. */
+    const gainEntries = p.hist.filter((e) => histHas(e.type, HIST.GAIN_LEVEL));
+    expect(gainEntries.length).toBe(p.lev - 1);
+    expect(gainEntries[0]!.event).toBe("Reached level 2");
+  });
+
+  it("killing a unique logs HIST_SLAY_UNIQUE; a non-unique kill logs nothing", () => {
+    const game = startGame(pack, { seed: 4242, depth: 1 });
+    const p = game.state.actor.player;
+
+    const uniqueFlags = new FlagSet(RF_SIZE);
+    uniqueFlags.on(RF.UNIQUE);
+    game.state.onPlayerKill?.({
+      race: {
+        ridx: 2,
+        name: "Grip, Farmer Maggot's Dog",
+        mexp: 1,
+        level: 1,
+        flags: uniqueFlags,
+        blows: [],
+        drops: [],
+        maxNum: 1,
+      },
+      originalRace: null,
+      midx: 0,
+      grid: { x: 20, y: 12 },
+      heldObj: [],
+      mflag: new FlagSet(MFLAG_SIZE),
+    } as unknown as Parameters<NonNullable<typeof game.state.onPlayerKill>>[0]);
+
+    const slayEntries = p.hist.filter((e) => histHas(e.type, HIST.SLAY_UNIQUE));
+    expect(slayEntries).toHaveLength(1);
+    expect(slayEntries[0]!.event).toBe("Killed Grip, Farmer Maggot's Dog");
+
+    /* A non-unique kill (the earlier test's race shape) logs nothing. */
+    game.state.onPlayerKill?.({
+      race: {
+        ridx: 3,
+        name: "a rat",
+        mexp: 1,
+        level: 1,
+        flags: new FlagSet(RF_SIZE),
+        blows: [],
+        drops: [],
+      },
+      originalRace: null,
+      midx: 0,
+      grid: { x: 20, y: 12 },
+      heldObj: [],
+      mflag: new FlagSet(MFLAG_SIZE),
+    } as unknown as Parameters<NonNullable<typeof game.state.onPlayerKill>>[0]);
+    expect(p.hist.filter((e) => histHas(e.type, HIST.SLAY_UNIQUE))).toHaveLength(1);
+  });
+
+  it("picking up an artifact logs HIST_ARTIFACT_KNOWN with the spoiled name, RNG-untouched", () => {
+    const game = startGame(pack, { seed: 4242, depth: 1 });
+    const { state, registry } = game;
+    const reg = game.booted.registries;
+    const art = reg.objects.artifacts.find((a) => a?.name === "of Galadriel")!;
+    const kind = reg.objects.lookupKind(art.tval, art.sval)!;
+    const obj = objectPrep(state.rng, reg.objects, reg.constants, kind, 0, "average");
+    obj.artifact = art;
+    floorCarry(state, state.actor.grid, obj);
+
+    // Call the registered "pickup" action directly (not the whole game loop,
+    // which would also run monster turns and draw RNG for unrelated reasons)
+    // so the RNG delta measured below is solely the pickup + history_add.
+    const pickupAction = registry.get("pickup")!;
+    const before = state.rng.getState();
+    pickupAction(state, { code: "pickup" });
+    const after = state.rng.getState();
+
+    expect(historyIsArtifactKnown(state.actor.player, art)).toBe(true);
+    const found = state.actor.player.hist.find((e) =>
+      histHas(e.type, HIST.ARTIFACT_KNOWN),
+    );
+    expect(found?.event).toBe("Found the Phial of Galadriel");
+    /* Recording the find must not perturb the RNG stream (no save-scum). */
+    expect(after).toEqual(before);
   });
 
   it("equipment changes refresh the derived state (PU_BONUS)", () => {

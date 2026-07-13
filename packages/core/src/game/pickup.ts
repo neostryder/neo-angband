@@ -16,6 +16,15 @@
  * head so 'g' picks one item per press), messages/disturb hooks, and
  * square_know_pile / OFLOOR_VISIBLE marking (knowledge #24 - everything on
  * the grid is visible).
+ *
+ * playerPickupAux fires state.onArtifactFound (object_touch's
+ * history_find_artifact, obj-knowledge.c L960-972) when a picked object is
+ * an artifact. Upstream also calls object_touch from square_know_pile the
+ * instant an artifact's pile becomes known - i.e. on sight, not only on
+ * pickup - which square_know_pile's reduced port (game/known.ts, #24 above)
+ * does not yet reproduce; find-on-sight is deferred (ledgered in
+ * parity/ledger/player-history.yaml). historyFindArtifact's per-aidx
+ * de-dupe keeps both paths safe once find-on-sight lands.
  */
 
 import type { Constants } from "../constants";
@@ -220,6 +229,11 @@ function playerPickupAux(
     const { usable } = floorObjectForUse(state, obj, num);
     invenCarry(state.gear, usable, limits);
   }
+  /* object_touch (obj-knowledge.c L960-972): auto-notice artifacts on entry
+   * to the pack and log the find (history_find_artifact). Read through the
+   * state-level hook (not PickupEnv) so it survives a later installPickup
+   * call that only supplies message hooks (main.ts's "reinstall"). */
+  if (obj.artifact) state.onArtifactFound?.(obj.artifact);
   env.onPickup?.(obj);
 }
 

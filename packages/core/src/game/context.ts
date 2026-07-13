@@ -349,6 +349,14 @@ export interface GameState {
    */
   onPlayerKill?: (mon: Monster) => void;
   /**
+   * object_touch's history_find_artifact call (obj-knowledge.c L971): fires
+   * when an artifact enters the pack for the first time. Installed by the
+   * session (wireGame); pickup.ts's playerPickupAux calls it, keeping the
+   * hook alive across a later installPickup re-registration (which only
+   * replaces the message-hook env, not this state-level slot).
+   */
+  onArtifactFound?: (art: import("../obj/types").Artifact) => void;
+  /**
    * py_attack's message slice: runs after the player melees a monster, with
    * the full blow-by-blow result (hits, damage, crit HitType, and whether the
    * monster died). The combat code returns only HitType keys - the text is a UI

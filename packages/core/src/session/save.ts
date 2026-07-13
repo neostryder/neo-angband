@@ -34,6 +34,7 @@ import type { MonsterRegistry } from "../mon/bind";
 import { blankPlayer } from "../player/player";
 import type { Player } from "../player/player";
 import type { PlayerRegistry } from "../player/bind";
+import type { HistoryInfo } from "../player/history";
 import type { TrapKind } from "../world/trap";
 import type { GameState, MonsterGroup } from "../game/context";
 import type { Trap } from "../game/trap";
@@ -298,6 +299,13 @@ export interface SavedPlayer {
   htBirth: number;
   wtBirth: number;
   history: string;
+  /**
+   * hist (player-history.h struct player_history): the runtime auto-history
+   * event log - absent in saves predating this field, which load as an
+   * empty log (SAVEFILE_IMPORT-tolerant posture, matching load.c's
+   * best-effort read of older savefiles).
+   */
+  hist?: HistoryInfo[];
   equipment: number[];
   /**
    * obj_k, every rune variety (wr_player's object knowledge). Older saves
@@ -359,6 +367,7 @@ export function serializePlayer(p: Player): SavedPlayer {
     htBirth: p.htBirth,
     wtBirth: p.wtBirth,
     history: p.history,
+    hist: p.hist.map((e) => ({ ...e })),
     equipment: [...p.equipment],
     objKnown: {
       modifiers: [...p.objKnown.modifiers],
@@ -422,6 +431,7 @@ export function deserializePlayer(
   p.htBirth = data.htBirth;
   p.wtBirth = data.wtBirth;
   p.history = data.history;
+  p.hist = data.hist ? data.hist.map((e) => ({ ...e })) : [];
   p.equipment = [...data.equipment];
   if (data.objKnown) {
     p.objKnown = {
