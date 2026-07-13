@@ -5,7 +5,7 @@
  * game ships as one static asset with no runtime fetch.
  */
 
-import type { GamePack } from "@neo-angband/core";
+import type { GamePack, UiEntryPackRecords } from "@neo-angband/core";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
 // are the parsed JSON (the file's default export).
@@ -59,6 +59,21 @@ export function loadMonsterColorCycles(): {
     }
   }
   return out;
+}
+
+/**
+ * The ui_entry* + object_property/player_property record sets buildUiEntryConfig
+ * needs (game/ui-entry.ts): the property-grid backend behind the equip-cmp
+ * screen and the (not yet shell-wired) second character screen.
+ */
+export function loadUiEntryPacks(): UiEntryPackRecords {
+  return {
+    uiEntry: records("ui_entry"),
+    uiEntryBase: records("ui_entry_base"),
+    uiEntryRenderer: records("ui_entry_renderer"),
+    objectProperty: records("object_property"),
+    playerProperty: records("player_property"),
+  } as unknown as UiEntryPackRecords;
 }
 
 /** Assemble the parsed game pack for startGame (core content + player). */
