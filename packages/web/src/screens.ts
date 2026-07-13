@@ -51,6 +51,9 @@ import {
   objectListEntryLineAttribute,
   OBJECT_LIST_SECTION_LOS,
   OBJECT_LIST_SECTION_NO_LOS,
+  HIST,
+  histHas,
+  historyGetList,
 } from "@neo-angband/core";
 import type {
   GameState,
@@ -472,6 +475,35 @@ export function messageHistoryLines(log: MessageLog): ScreenLine[] {
   const all = log.all();
   if (all.length === 0) return [{ text: "(no messages yet)", color: DIM }];
   return all.map((m) => ({ text: formatMessage(m), color: m.color ?? FG }));
+}
+
+/** ARTIFACT_KNOWN entries get a gold highlight (a web-native enhancement). */
+const HIST_KNOWN_GOLD = "#e0c040";
+
+/**
+ * The character auto-history lines (history_display, ui-history.c L38-73):
+ * the column header, then one row per entry oldest-first - "%10ld%7d'  %s"
+ * (turn right-justified 10, depth-in-feet right-justified 7 + apostrophe,
+ * two spaces, event text) with " (LOST)" appended for ARTIFACT_LOST entries.
+ * showTextScreen supplies scrolling/ESC and the "[Player history]" title, so
+ * this only needs to build the header + entry lines.
+ */
+export function historyLines(state: GameState): ScreenLine[] {
+  const list = historyGetList(state.actor.player);
+  const lines: ScreenLine[] = [
+    { text: "      Turn   Depth  Note", color: LABEL },
+  ];
+  if (list.length === 0) {
+    lines.push({ text: "(no history yet)", color: DIM });
+    return lines;
+  }
+  for (const e of list) {
+    const lost = histHas(e.type, HIST.ARTIFACT_LOST);
+    const known = histHas(e.type, HIST.ARTIFACT_KNOWN);
+    const text = `${String(e.turn).padStart(10)}${String(e.dlev * 50).padStart(7)}'  ${e.event}${lost ? " (LOST)" : ""}`;
+    lines.push({ text, color: lost ? DIM : known ? HIST_KNOWN_GOLD : FG });
+  }
+  return lines;
 }
 
 /* ------------------------------------------------------------------ */

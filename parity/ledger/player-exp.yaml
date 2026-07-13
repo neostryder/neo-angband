@@ -47,8 +47,12 @@ notes: >-
   (spell-cmd env.expGain) and disarm experience (trap env.expGain) are now
   wired to player_exp_gain instead of no-op hooks.
 deferred:
-  - history_add level-gain log entries (char history, #25) and the PR_/PU_
-    display masks.
+  - The PR_/PU_ display masks (redraw bookkeeping only; the derived state
+    itself is recomputed regardless via onLevelChange).
+  - (RESOLVED, task #56: history_add(HIST_GAIN_LEVEL) now fires from
+    ExpDeps.onGainLevel, wired in session/game.ts and verified by this
+    file's onGainLevel tests plus session/game.test.ts's level-up history
+    assertion. See parity/ledger/player-history.yaml.)
   - The rest of player_kill_monster (uniques' max_num, quest checks, drops
     and monster_death) rides mon-util/lore (#24); onPlayerKill is the seam.
   - Ranged/thrown kill sites land with the fire/throw commands.

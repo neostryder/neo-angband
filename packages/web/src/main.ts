@@ -93,6 +93,7 @@ import {
   stepTargetLoop,
   describeLookGrid,
   computePathColours,
+  historyUnmaskUnknown,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -123,6 +124,7 @@ import {
   inventoryLines,
   equipmentLines,
   messageHistoryLines,
+  historyLines,
   packMenu,
   equipmentMenu,
   magicBooks,
@@ -1830,6 +1832,11 @@ function advance(): void {
     const activeId = getActiveId();
     if (activeId) markDead(activeId);
     setActiveId(null);
+    // death_knowledge (player-util.c L309): reveal every ARTIFACT_UNKNOWN
+    // history entry before the memorial/score screen, so a "Missed X" find
+    // the player never identified shows its real name. 4.2.6 writes no
+    // HIST_PLAYER_DEATH entry (verified: zero uses in reference/src).
+    historyUnmaskUnknown(state.actor.player);
     message = "You have died. (Press 'N' or refresh to start a new game.)";
     // Enter the character on the high-score table (enter_score) and show the
     // Hall of Fame. died_from is a placeholder: the engine does not yet surface
@@ -1936,6 +1943,17 @@ window.addEventListener("keydown", (ev) => {
         showCharacterSheet(term, state, playerName, {
           numShots: state.actor.combat.numShots,
         }),
+      );
+      return;
+    }
+    // Player history (history_display, ui-history.c): upstream reaches this
+    // from the '~' knowledge menu, which the port has not built; '~' is
+    // otherwise unhandled (resolveKey/ITEM_VERBS have no binding for it), so
+    // it is bound directly to the history screen here.
+    if (ev.key === "~") {
+      ev.preventDefault();
+      void openModal(() =>
+        showTextScreen(term, "Player history", historyLines(state)),
       );
       return;
     }
@@ -2134,6 +2152,7 @@ function installTouchActionBar(): void {
     ["Insc", () => { void openModal(() => inscribeItem()); }],
     ["Fuel", () => { void openModal(() => refuelItem()); }],
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots })); }],
+    ["Hist", () => { void openModal(() => showTextScreen(term, "Player history", historyLines(state))); }],
     ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
     ["Help", () => { void openModal(() => runHelp(term)); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],

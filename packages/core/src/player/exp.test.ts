@@ -115,6 +115,39 @@ describe("player_exp_gain / adjust_level (player.c)", () => {
     expect(p.exp).toBe(99999999);
     expect(p.lev).toBe(PY_MAX_LEVEL);
   });
+
+  it("onGainLevel fires once per level gained, before the welcome message", () => {
+    const p = human();
+    const events: string[] = [];
+    const gained: number[] = [];
+    const withHooks = {
+      rng: new Rng(5),
+      msg: (t: string) => events.push(`msg:${t}`),
+      onGainLevel: (_p: Player, lev: number) => {
+        gained.push(lev);
+        events.push(`gain:${lev}`);
+      },
+    };
+    playerExpGain(p, 500, withHooks); /* reaches level 11 (thresholds 10..500) */
+    expect(gained).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    /* history_add (onGainLevel) precedes msgt for each level, per player.c
+     * L246-249. */
+    expect(events.slice(0, 2)).toEqual(["gain:2", "msg:Welcome to level 2."]);
+  });
+
+  it("onGainLevel does NOT fire when verbose is false (a load-path replay)", () => {
+    const p = human();
+    const gained: number[] = [];
+    p.exp = 500;
+    p.maxExp = 500;
+    adjustLevel(
+      p,
+      { rng: new Rng(5), onGainLevel: (_p, lev) => gained.push(lev) },
+      false,
+    );
+    expect(p.lev).toBe(11);
+    expect(gained).toEqual([]);
+  });
 });
 
 describe("playerKillExp (mon-util.c player_kill_monster)", () => {

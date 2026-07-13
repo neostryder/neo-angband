@@ -1,0 +1,195 @@
+module: packages/core/src/player/history.ts (+ the game-layer stamp/name
+  builder in game/history.ts, the trigger wiring in session/game.ts,
+  player/birth.ts and player/exp.ts, and the web display in
+  packages/web/src/screens.ts)
+status: partial
+baseline: 4.2.6
+upstream:
+  - path: src/player-history.h
+    items:
+      - The HIST_* enum (list-history-types.h) - reused verbatim from the
+        already-generated packages/core/src/generated/history-types.ts
+        (HIST.PLAYER_BIRTH=1 .. HIST.GENERIC=10); not redefined here.
+      - struct history_info (L47-54): type (bitflag set, ported as a single
+        JS number bitmask), dlev, clev, a_idx, turn, event[80]. Modelled as
+        HistoryInfo in player/history.ts.
+  - path: src/player-history.c
+    items:
+      - history_clear (L56-67), history_add_full (L76-105),
+        history_add_with_flags (L107-121, the p->depth/p->lev/
+        p->total_energy/100 stamp - reproduced by game/history.ts's
+        historyStamp, since the port's Player has no depth/total_energy of
+        its own), history_add (L124-134).
+      - history_is_artifact_known (L136-153), history_mark_artifact_known
+        (L155-173), history_mark_artifact_lost (L175-192).
+      - get_artifact_name (L195-215): ported as game/history.ts's
+        artifactHistoryName, WITH A DELIBERATE DIVERGENCE from
+        make_fake_artifact (see notes).
+      - history_find_artifact (L220-241), history_lose_artifact (L244-266).
+      - history_unmask_unknown (L269-283): wired at the death path
+        (packages/web/src/main.ts advance(), LOOP_STATUS.DEAD), matching
+        player-util.c death_knowledge (L309) which is the only upstream
+        caller. Confirmed by grep: 4.2.6 has ZERO history_add(...,
+        HIST_PLAYER_DEATH,...) call sites - death logs nothing new, only
+        unmasks prior ARTIFACT_UNKNOWN entries.
+      - history_get_list (L286-294).
+  - path: src/ui-history.c
+    items:
+      - print_history_header / history_display (L27-122): the exact header
+        string "      Turn   Depth  Note" (L31) and row format
+        "%10ld%7d'  %s" + " (LOST)" (L67-73), oldest-first. Ported as
+        packages/web/src/screens.ts historyLines, rendered through the
+        existing showTextScreen modal (the same reuse as Inventory/
+        Equipment/Message-history) rather than a bespoke scroll loop -
+        showTextScreen already supplies the arrow/PgUp/PgDn scrolling and
+        ESC/Enter/Space dismissal upstream's history_display hand-rolls.
+      - dump_history (L127-146): not ported (no character-dump-to-file
+        feature yet in the port).
+  - path: full call-site audit (grep reference/src for `history_add(` /
+      `history_add_full(` / `history_find_artifact` / `history_lose_artifact`
+      / `history_unmask_unknown` / `history_clear`)
+    items:
+      - player-birth.c:1241-1242 (history_clear + HIST_PLAYER_BIRTH) - WIRED,
+        player/birth.ts generatePlayer (constants dlev=0/clev=1/turn=0, the
+        only values true at birth; history_clear is a no-op since blankPlayer
+        already leaves hist empty).
+      - player.c:247 (HIST_GAIN_LEVEL, inside adjustLevel's verbose block,
+        before "Welcome to level") - WIRED, ExpDeps.onGainLevel (exp.ts),
+        wired in session/game.ts's expDeps.
+      - mon-util.c:1101 (HIST_SLAY_UNIQUE, MDESC_DIED_FROM name) - WIRED,
+        inside session/game.ts's onPlayerKill, in the same `if
+        (mon.race.flags.has(RF.UNIQUE))` block as max_num=0, BEFORE
+        playerKillExp (matching upstream's history_add-before-
+        player_exp_gain order so p.lev is the pre-kill level). The port has
+        no MDESC subsystem; a unique's died-from name is just race.name (no
+        article), matching main.ts's existing monName helper's behaviour for
+        uniques.
+      - obj-knowledge.c:971 (object_touch -> history_find_artifact) -
+        PARTIALLY WIRED: fires from pickup.ts's playerPickupAux via the new
+        GameState.onArtifactFound hook (installed once in session/game.ts's
+        wireGame) whenever a picked-up object has obj.artifact set. NOT
+        wired: object_touch also fires from square_know_pile the instant an
+        artifact's floor pile becomes KNOWN (cave-square.c:1181), i.e. on
+        sight, not only on pickup - the port's square_know_pile equivalent
+        (game/known.ts) is a reduced glyph-only port that does not iterate
+        pile contents (pre-existing #24 gap), so find-on-sight is deferred.
+        historyFindArtifact's per-aidx de-dupe makes stacking the sight path
+        on later safe.
+      - store.c:1928 (buying an artifact from a store calls
+        history_find_artifact) - NOT WIRED. Deferred: stores in the port do
+        not currently stock/sell artifacts.
+      - player-util.c:309 (death_knowledge -> history_unmask_unknown) -
+        WIRED, packages/web/src/main.ts's advance() DEAD branch, before
+        enterScore/the memorial screen.
+      - load.c:1720/1757 (history_clear + history_add_full per saved entry,
+        for the C save format's own reader) - N/A: the port's save format is
+        its own JSON schema (session/save.ts), not the C binary reader;
+        SavedPlayer.hist round-trips the array directly instead.
+      - cmd-misc.c:115 (HIST_USER_INPUT, the "take notes" command) - NOT
+        WIRED. The port has no take-notes command; the HIST.USER_INPUT
+        constant exists (generated/history-types.ts) but nothing calls
+        historyAdd with it. Deferred until a notes command is built.
+      - effect-handler-attack.c:1226, effect-handler-general.c:222,
+        generate.c:1387, store.c:1091/1307/1992 (six history_lose_artifact
+        call sites: acid/disenchant destruction, an artifact abandoned when
+        a level regenerates, and selling an artifact back to a store) - NOT
+        WIRED. historyLoseArtifact/the ARTIFACT_LOST bit/the "(LOST)" suffix
+        are fully implemented and unit-tested (player/history.test.ts,
+        screens.test.ts), but no live game event currently calls
+        historyLoseArtifact, so the "(LOST)" rendering is presently
+        exercised only by directly-constructed entries (tests) or a
+        hand-authored save. This is the largest remaining gap in this
+        module; wiring the first of the six (most likely generate.c:1387,
+        once/if the port discards floor items on level regeneration) is the
+        natural next step.
+notes: >-
+  RNG SAFETY: history_add/historyAddFull/historyFindArtifact/
+  historyLoseArtifact/historyUnmaskUnknown are pure array append/scan/bit-flip
+  and draw nothing from state.rng - verified by an explicit
+  rng.getState()-before/after test in game/history.test.ts and an end-to-end
+  one in session/game.test.ts (pickup through the wired game).
+
+  artifactHistoryName (game/history.ts) DELIBERATELY DOES NOT call
+  copyArtifactData, even though get_artifact_name's C original
+  (make_fake_artifact, obj-make.c:728-745) is object_prep(MAXIMISE) THEN
+  copy_artifact_data. Reason: copy_artifact_data's copy_curses step always
+  rolls the curse timeout with the RANDOMISE aspect regardless of the
+  caller's aspect (obj-curse.c:67 / obj/object.ts copyCurses, ported
+  faithfully) - a property upstream itself has, meaning even real 4.2.6 draws
+  one RNG value when it names the one cursed artifact in the game data
+  (artifact.txt's "curse:air swing:30") for the FIRST time. Since
+  object_desc's ODESC_PREFIX|ODESC_BASE|ODESC_SPOIL mode never reads
+  modifiers/combat bonuses/curses (verified by reading objDescName/
+  objDescCombat: only obj.kind and obj.artifact.name feed this mode's
+  output), copying the rest of copy_artifact_data is both unnecessary for
+  the string produced and would introduce a real (if narrow, upstream-
+  matching) RNG draw into what must be a pure log-append operation. A golden
+  test (game/history.test.ts) pins the exact output ("the Phial of
+  Galadriel") so any future drift from make_fake_artifact's real behaviour on
+  fields that DO matter is caught.
+
+  Save format: SavedPlayer.hist is a new, optional, additive array field
+  (session/save.ts) - old saves without it load as an empty log (p.hist =
+  []), matching the additive-optional-field posture already used for
+  maxDepth/objKnown. Unlike upstream (save.c:1063/load.c:1748, which persists
+  the artifact by NAME and re-resolves aidx via lookup_artifact_name so a
+  save survives artifact renumbering across versions), the port stores aIdx
+  as a raw number; acceptable for a port with stable aidx numbering, but a
+  deliberate divergence worth remembering if artifacts are ever renumbered.
+
+  Player.hist (the new event-log array) is intentionally distinct from the
+  pre-existing Player.history string (the birth background/bio paragraph,
+  player.ts's generateHistory/get_history) - the two upstream concepts
+  (struct player_history vs a plain char* bio) share only a name prefix.
+
+  Entry point / keybind: upstream reaches history_display via the '~'
+  knowledge menu (ui-knowledge.c), which the port has not built. '~' is
+  otherwise unbound (resolveKey/ITEM_VERBS have no case for it), so it is
+  bound directly to the history modal in main.ts, plus a "Hist" touch button
+  and the same showTextScreen reuse pattern as Inventory/Equipment/Message
+  history.
+deferred:
+  - Find-on-sight (object_touch via square_know_pile, cave-square.c:1181):
+    only the pickup path is wired; see the pickup.ts entry above.
+  - All six history_lose_artifact call sites (item destruction, level
+    regeneration abandoning an artifact, store sales) - the ARTIFACT_LOST
+    machinery and "(LOST)" display are implemented and tested but not yet
+    triggered by any live game event.
+  - HIST_USER_INPUT (the take-notes command, cmd-misc.c:115) - no notes
+    command exists in the port yet.
+  - Store purchase of an artifact calling history_find_artifact
+    (store.c:1928) - stores do not yet stock artifacts.
+  - dump_history (ui-history.c:127-146, character-dump-to-file) - no
+    character-dump feature in the port yet.
+  - The upstream '~' knowledge-menu entry point itself (ui-knowledge.c) is
+    not built; '~' binds directly to the history screen as a shell
+    adaptation instead.
+verified-by:
+  - player/history.test.ts (9 tests): historyAddFull field-exact append and
+    79-char truncation; historyAdd's single-bit semantics; historyClear;
+    historyFindArtifact's first-find vs de-dupe-on-repeat; historyLoseArtifact
+    on unknown vs already-known artifacts; historyUnmaskUnknown flipping only
+    UNKNOWN entries and leaving unrelated entries untouched.
+  - game/history.test.ts (4 tests): historyStamp reads dlev/clev/turn off
+    live state; artifactHistoryName's golden "the Phial of Galadriel" string;
+    an explicit RNG-state-unchanged assertion around the name builder and
+    around a full historyFindArtifact call.
+  - player/birth.test.ts (+1 test): generatePlayer logs exactly one
+    HIST_PLAYER_BIRTH entry stamped dlev=0/clev=1/turn=0.
+  - player/exp.test.ts (+2 tests): onGainLevel fires once per level gained,
+    strictly before the "Welcome to level" message; does not fire when
+    verbose=false (the load-path replay guard).
+  - game/pickup.test.ts (+2 tests): picking up an artifact fires
+    state.onArtifactFound; a non-artifact pickup does not.
+  - session/game.test.ts (+3 tests): a wired game's level-up logs one
+    GAIN_LEVEL entry per level with the right text; killing a UNIQUE logs
+    exactly one SLAY_UNIQUE "Killed <name>" entry and a non-unique kill logs
+    none; picking up a real Phial of Galadriel through the wired
+    onArtifactFound hook logs "Found the Phial of Galadriel" with the RNG
+    stream provably untouched.
+  - session/save.test.ts (+2 tests): player.hist (including a LOST-flagged
+    entry) round-trips through saveGame/loadGame exactly; a save with the
+    `hist` field deleted (simulating a pre-#56 savefile) loads with hist = [].
+  - packages/web/src/screens.test.ts (+2 tests): historyLines shows the
+    exact upstream header and the "(no history yet)" placeholder on an empty
+    log; formats the "%10ld%7d'  %s" columns and appends " (LOST)" exactly.
