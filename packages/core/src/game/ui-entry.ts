@@ -1303,7 +1303,7 @@ interface ResolvedUiDeps {
   playerHas: (flag: number) => boolean;
 }
 
-function resolveUiDeps(p: Player, deps: UiEntryDeps): ResolvedUiDeps {
+export function resolveUiDeps(p: Player, deps: UiEntryDeps): ResolvedUiDeps {
   const timed = deps.timedObjectFlags ?? new FlagSet(OF_SIZE);
   if (p.timed[TMD.TRAPSAFE]) timed.on(OF.TRAP_IMMUNE);
   const pflags = (p as unknown as { pflags?: FlagSet }).pflags;
@@ -1888,4 +1888,57 @@ export function characterGrid(
   for (let i = 0; i < nStat; i++) statRows.push(renderRow(statIter[i]!, true, false));
 
   return { resistPanels, statModPanel: { key: "stat_modifiers", rows: statRows } };
+}
+
+/* ------------------------------------------------------------------ */
+/* Equip-cmp support (ui-equip-cmp.c initialize_summary /               */
+/* compute_player_and_equipment_values): shared plumbing the           */
+/* equip-cmp.ts model needs but that lives on the private UiEntry /     */
+/* RendererInfo shapes, so it is exposed here rather than duplicated.   */
+/* ------------------------------------------------------------------ */
+
+/** initialize_summary's five property categories (L2394), each intersected
+ * with category "EQUIPCMP_SCREEN" (the equip-cmp screen's own category tag,
+ * distinct from the character screen's "CHAR_SCREEN1"). */
+const EQUIPCMP_CATEGORIES = [...REGION_CATEGORIES, "stat_modifiers"] as const;
+
+/** One equip-cmp property category and its ordered (priority-sorted) entries. */
+export interface EquipCmpCategory {
+  key: (typeof EQUIPCMP_CATEGORIES)[number];
+  entries: UiEntry[];
+}
+
+/**
+ * The equip-cmp screen's property columns (initialize_summary L2434-2469):
+ * the same five categories as the character screen's resist/ability/
+ * hindrance/modifier/stat-modifier panels, but scoped to "EQUIPCMP_SCREEN"
+ * instead of "CHAR_SCREEN1".
+ */
+export function equipCmpCategories(config: UiEntryConfig): EquipCmpCategory[] {
+  return EQUIPCMP_CATEGORIES.map((cat) => ({
+    key: cat,
+    entries: iterateEntries(config, "EQUIPCMP_SCREEN", cat, cat),
+  }));
+}
+
+/** get_ui_entry_label(entry, nproplab + 1, true) with nproplab hardwired to 2
+ * (ui-equip-cmp.c initialize_summary L2421): the equip-cmp column header. */
+export function equipCmpColumnLabel(entry: UiEntry): string {
+  return getUiEntryLabel(entry, 3, true);
+}
+
+/**
+ * compute_player_and_equipment_values's per-property accumulation (ui-equip-
+ * cmp.c L2279), condensed to the vectorized form combineValues already uses:
+ * combine the player's own value with every equipped item's value for one
+ * property entry into the equip-cmp "@" row's single combined (val, auxval).
+ * Uses the entry's own (already-resolved) combinerIndex rather than looking
+ * it up via the renderer - computePlayerValues does the same (L1323).
+ */
+export function combineEntryValues(
+  entry: UiEntry,
+  vals: number[],
+  auxs: number[],
+): { accum: number; accumAux: number } {
+  return combinerFuncs(entry.combinerIndex).vec(vals, auxs);
 }

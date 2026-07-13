@@ -206,27 +206,53 @@ export interface MenuItem {
 }
 
 /**
+ * Optional extras for selectFromMenu, ported from upstream's menu browse_hook
+ * (curse_menu_browser, view_ability_menu_browser): a per-cursor detail pane
+ * drawn below the list, and (for the read-only ability browser) a "browse
+ * only" mode where Enter/letter re-displays the current row instead of
+ * closing the menu (upstream's MN_DBL_TAP with no EVT_SELECT action) so only
+ * ESC exits.
+ */
+export interface SelectMenuOptions {
+  /** browse_hook: lines shown below the list for the row under the cursor. */
+  detail?: (index: number) => readonly ScreenLine[];
+  /** MN_DBL_TAP / read-only menu: Enter and letters never resolve; only ESC does. */
+  browseOnly?: boolean;
+  /** Colour applied to the cursor row instead of its own MenuItem.color (upstream draws the highlighted row COLOUR_WHITE regardless of its normal colour, e.g. view_ability_display). */
+  cursorColor?: string;
+}
+
+/**
  * A single-column lettered selection menu (the object/spell/command menus).
  * Rows are labelled a).. and picked by that letter; ESC returns null. Resolves
  * to the chosen index, or null if the user cancelled. Disabled rows are shown
  * but reject selection (e.g. a spell too high level, an item that cannot be
  * used). Falls back to arrow-key + Enter selection for touch/discoverability.
+ *
+ * `extra.detail`, when given, renders a description pane below the list for
+ * the row under the cursor (the curse-removal and abilities screens use this
+ * to show the curse/ability's long description, mirroring upstream's
+ * browse_hook). `extra.browseOnly` turns the menu read-only (abilities): Enter
+ * / letter-select just re-paints instead of resolving, so only ESC exits.
  */
 export function selectFromMenu(
   term: GlyphTerm,
   title: string,
   items: readonly MenuItem[],
   footer = "[ a-z to choose, ESC to cancel ]",
+  extra?: SelectMenuOptions,
 ): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
     let cursor = items.findIndex((it) => !it.disabled);
     if (cursor < 0) cursor = 0;
     let top = 0;
+    const detail = extra?.detail;
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
       term.print(0, HEADER_ROW, title.slice(0, cols - 1), TITLE);
-      const bodyRows = rows - BODY_TOP - 1;
+      const detailLines = detail ? detail(cursor) : [];
+      const bodyRows = Math.max(1, rows - BODY_TOP - 1 - detailLines.length);
       if (cursor < top) top = cursor;
       if (cursor >= top + bodyRows) top = cursor - bodyRows + 1;
       for (let r = 0; r < bodyRows; r++) {
@@ -236,8 +262,24 @@ export function selectFromMenu(
         const letter = menuLetter(i);
         const mark = i === cursor ? ">" : " ";
         const prefix = letter ? `${mark}${letter}) ` : `${mark}   `;
-        const color = it.disabled ? DIM : it.color ?? FG;
+        const color = it.disabled ? DIM : i === cursor && extra?.cursorColor ? extra.cursorColor : it.color ?? FG;
         term.print(0, BODY_TOP + r, `${prefix}${it.label}`.slice(0, cols - 1), color);
+      }
+      let dy = BODY_TOP + bodyRows;
+      for (const line of detailLines) {
+        if (dy >= rows - 1) break;
+        if (line.runs) {
+          let x = 0;
+          for (const run of line.runs) {
+            if (x >= cols - 1) break;
+            const chunk = run.text.slice(0, cols - 1 - x);
+            term.print(x, dy, chunk, run.color);
+            x += chunk.length;
+          }
+        } else {
+          term.print(0, dy, line.text.slice(0, cols - 1), line.color ?? FG);
+        }
+        dy++;
       }
       term.print(0, rows - 1, footer.slice(0, cols - 1), DIM);
     };
@@ -248,6 +290,11 @@ export function selectFromMenu(
     const pick = (i: number): void => {
       const it = items[i];
       if (!it || it.disabled) return;
+      if (extra?.browseOnly) {
+        cursor = i;
+        paint();
+        return;
+      }
       finish(i);
     };
     const onKey = (ev: KeyboardEvent): void => {
