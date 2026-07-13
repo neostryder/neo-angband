@@ -110,6 +110,9 @@ import {
   COLOUR_ORANGE,
   COLOUR_L_RED,
   COLOUR_RED,
+  getLore,
+  chanceOfMeleeHitBase,
+  getHitChance,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -125,6 +128,8 @@ import type {
   ItemTargetRef,
   ObjectInfoExtras,
   Loc,
+  Monster,
+  LoreDeps,
 } from "@neo-angband/core";
 import { GameEvents } from "@neo-angband/core";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks } from "./pack";
@@ -181,6 +186,8 @@ import {
   svalCategoryItems,
   SVAL_DEPENDENT,
   objectListLines,
+  monsterRecallLines,
+  capMonName,
 } from "./screens";
 import { showCharacterSheet } from "./charsheet";
 import { runCharacterSelect } from "./charselect";
@@ -1645,7 +1652,59 @@ function targetHelpLines(useFreeMode: boolean): string[] {
     useFreeMode
       ? "'m' restricts to interesting places. 't' targets the cursor."
       : "space/'+'/'-' cycle places. 'o' allows free selection. 't' targets the selection.",
+    "'r' shows full recall for a visible monster.",
   ];
+}
+
+/**
+ * The LoreDeps the recall viewer needs (mon/lore-describe.ts), assembled
+ * fresh every time it opens since player level/speed/depth change turn to
+ * turn: the real per-race spell table (monster_spell.json, bound at boot),
+ * the melee/monster hit-chance formulas off the live combat state
+ * (mon-lore.c L1086-1094 / L1710-1715 - both pure integer math over
+ * chance_of_melee_hit_base/chance_of_monster_hit_base + hit_chance, no RNG),
+ * and the breath element damage table (world/projection.ts) - the one piece
+ * of breath lore damage that lives outside mon/, without which breath
+ * damage would render as 0. spellColor/blowColor (the player-resistance-
+ * aware danger recolouring) and spellLoreDamage are left at loreDescription's
+ * own documented defaults - real player-state-aware recolouring is a
+ * separate, larger feature (mon-lore.c spell_color/blow_color read the
+ * player's known elemental resistances/protections), tracked as a follow-up
+ * rather than half-built here.
+ */
+function recallDeps(): LoreDeps {
+  const player = state.actor.player;
+  const projections = booted.registries.projections;
+  return {
+    playerLevel: player.lev,
+    playerMaxDepth: player.maxDepth,
+    playerSpeed: state.actor.speed,
+    effectiveSpeed: state.options?.get("effective_speed") ?? false,
+    spells: booted.registries.monsters.spells,
+    meleeHitPercent: (race) =>
+      getHitChance(chanceOfMeleeHitBase(state.actor.combat, state.actor.weapon), race.ac),
+    monsterHitPercent: (race, effect) =>
+      // chance_of_monster_hit_base (mon-attack.c): MAX(race->level, 1) * 3 + effect->power.
+      getHitChance(
+        Math.max(race.level, 1) * 3 + effect.power,
+        state.actor.defense.ac + state.actor.defense.toA,
+      ),
+    breathProjection: (subtype) => projections?.[subtype],
+  };
+}
+
+/**
+ * The monster recall screen (ui-mon-lore.c lore_description, reached via
+ * 'r' - ui-target.c aux_monster's recall toggle, L596-598): reads the
+ * monster's REAL lore record (getLore(state.lore, race) - never a
+ * fully-known override, so unlearned sections stay hidden) and renders
+ * loreDescription's runs through the same showTextScreen + wrapRuns pattern
+ * every other full-screen viewer uses.
+ */
+async function showMonsterRecall(mon: Monster): Promise<void> {
+  const lore = getLore(state.lore, mon.race);
+  const lines = monsterRecallLines(mon.race, lore, recallDeps(), term.size().cols);
+  await showTextScreen(term, capMonName(mon), lines);
 }
 
 /**
@@ -1663,6 +1722,10 @@ function runTargetLoop(
   return new Promise<boolean>((resolve) => {
     const targets = targetGetMonsters(state, mode);
     let ui = initTargetLoopUi(state, startX, startY);
+    // The visible monster (if any) the cursor is currently on, tracked by
+    // paint()'s own describeLookGrid call (aux_monster only ever names an
+    // obvious monster), so 'r' knows what to recall without recomputing it.
+    let lastMon: Monster | null = null;
 
     const paint = (): void => {
       const cur = currentLoopGrid(ui, targets);
@@ -1674,6 +1737,7 @@ function runTargetLoop(
         PROJECT.THRU | PROJECT.INFO,
       );
       const { text, mon } = describeLookGrid(state, cur, mode);
+      lastMon = mon;
       // health_track / monster_race_track (aux_monster): re-tracked every
       // frame the cursor sits on an obvious monster, not just on selection.
       if (mon) state.healthWho = mon;
@@ -1696,6 +1760,22 @@ function runTargetLoop(
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
+      if (ev.key === "r") {
+        // aux_monster's recall toggle: open the full recall for the grid's
+        // monster, then return to this same loop (any key closes the recall
+        // screen - showTextScreen's own ESC/Enter/Space/arrows handling).
+        const mon = lastMon;
+        if (!mon) {
+          state.sound?.(MSG.BELL);
+          return;
+        }
+        window.removeEventListener("keydown", onKey, true);
+        void showMonsterRecall(mon).then(() => {
+          window.addEventListener("keydown", onKey, true);
+          paint();
+        });
+        return;
+      }
       const step = stepTargetLoop(state, targets, ui, ev.key);
       ui = step.ui;
       if (step.bell) state.sound?.(MSG.BELL);
