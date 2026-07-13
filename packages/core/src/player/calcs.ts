@@ -570,6 +570,17 @@ export interface CalcBonusesOptions {
    */
   update?: boolean;
   /**
+   * The hypothetical-blows stat-index shift (player-calcs.c:2077-2088), the
+   * "Hack for hypothetical blows - NRM" upstream runs when update is false and
+   * a caller has pre-loaded state->stat_ind[STAT_STR]/[STAT_DEX] with an
+   * increment. obj-info.c's obj_known_blows / obj_known_damage / obj_known_digging
+   * / obj_known_misc_combat all take this path (they zero the two indices, then
+   * the blows scan bumps them). When supplied, the STR and DEX stat indices are
+   * shifted by str / dex and clamped to [3, 37] AFTER the normal derivation,
+   * exactly as upstream. Absent (the live refresh path), no shift is applied.
+   */
+  statIndBoost?: { str: number; dex: number };
+  /**
    * p->depth (calc_light town-daytime early-out, 1607). Defaults to undefined,
    * treated as a nonzero depth so the town branch stays dormant.
    */
@@ -904,9 +915,17 @@ export function calcBonuses(
     state.statTop[i] = modifyStatValue(player.statMax[i] ?? 0, add);
     const use = modifyStatValue(player.statCur[i] ?? 0, add);
     state.statUse[i] = use;
-    /* The !update hypothetical-blows index shift (2077-2088) is a birth-UI
-       hack and is not ported; this is the update=true path. */
-    state.statInd[i] = statUseToIndex(use);
+    let ind = statUseToIndex(use);
+    /* The !update hypothetical-blows index shift (2077-2088): applied only
+       when a caller supplies statIndBoost (obj-info's hypothetical re-derive);
+       the live refresh path leaves it undefined and takes the update=true
+       branch (no shift). */
+    const boost = options.statIndBoost;
+    if (boost) {
+      if (i === STAT.STR) ind = Math.max(3, Math.min(37, ind + boost.str));
+      else if (i === STAT.DEX) ind = Math.max(3, Math.min(37, ind + boost.dex));
+    }
+    state.statInd[i] = ind;
   }
 
   /* The timed model (FOOD 2094-2132 + the timed block 2134-2213) is gated on
