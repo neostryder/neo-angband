@@ -33,6 +33,17 @@ import {
   buildObjectEffectChain,
   getSpellInfo,
   PY_SPELL,
+  TV,
+  ITYPE,
+  ITYPE_MAX,
+  IGNORE,
+  IGNORE_TYPE_ENTRIES,
+  QUALITY_VALUE_NAMES,
+  egoHasIgnoreType,
+  KF,
+  tvalIsMoney,
+  COLOUR_L_RED,
+  COLOUR_L_GREEN,
 } from "@neo-angband/core";
 import type {
   GameState,
@@ -40,6 +51,10 @@ import type {
   Monster,
   EffectRecordJson,
   Textblock,
+  IgnoreSettings,
+  EgoItem,
+  ObjectKind,
+  ObjRegistry,
 } from "@neo-angband/core";
 import type { ScreenLine, MenuItem } from "./overlay";
 import { menuLetter } from "./overlay";
@@ -335,6 +350,18 @@ export function bookSpellMenu(
   return { items, sidx };
 }
 
+/**
+ * strcmp: an ordinal (byte-order) string comparison, matching upstream's
+ * qsort(ego_comp_func)/sort(cmp_ignore) exactly - JS's default
+ * String.prototype.localeCompare is locale-aware and can reorder punctuation
+ * (e.g. it would sort "*Slay Animal*" after "Holy Avenger" instead of before
+ * it, since '*' < 'A' in a raw byte comparison but not under most locale
+ * collations).
+ */
+function strcmp(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /** Capitalized monster name ("small kobold" -> "Small kobold"). */
 function capMonName(mon: Monster): string {
   const n = mon.race.name;
@@ -371,4 +398,246 @@ export function messageHistoryLines(log: MessageLog): ScreenLine[] {
   const all = log.all();
   if (all.length === 0) return [{ text: "(no messages yet)", color: DIM }];
   return all.map((m) => ({ text: formatMessage(m), color: m.color ?? FG }));
+}
+
+/* ------------------------------------------------------------------ */
+/* Ignore configuration menus (obj-ignore.c / ui-options.c)            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * object_kind_name (obj-desc.c L48): a kind's plain menu name - the flavour
+ * text (e.g. "Smoky") when `easyKnow` is false and the flavour is not yet
+ * identified, else the real name. `easyKnow` is the *row's* aware flag, not
+ * necessarily the kind's live awareness: the sval menu's aware row always
+ * shows the real name (upstream lets a player pre-set an aware-ignore
+ * before ever identifying the flavour), while the unaware row shows the
+ * flavour text if one is assigned and the kind is not yet aware.
+ */
+function objectKindName(state: GameState, kind: ObjectKind, easyKnow: boolean): string {
+  const trueAware = state.isAware ? state.isAware(kind) : true;
+  if (!easyKnow && !trueAware && (state.hasFlavor?.(kind) ?? false)) {
+    return state.flavorText?.(kind) ?? "";
+  }
+  return kind.name;
+}
+
+/**
+ * quality_menu / quality_display (ui-options.c L1630/L1539): one row per
+ * ITYPE_* (1..26; ITYPE_NONE is skipped), "<type name padded to 30> :
+ * <level name>". Returns the parallel itype list so the caller knows which
+ * tier submenu to open for a picked row.
+ */
+export function qualityIgnoreMenu(
+  settings: IgnoreSettings,
+): { items: MenuItem[]; itypes: number[] } {
+  const items: MenuItem[] = [];
+  const itypes: number[] = [];
+  for (let itype = 1; itype < ITYPE_MAX; itype++) {
+    const name = IGNORE_TYPE_ENTRIES[itype]?.description ?? "";
+    const level = settings.level[itype] ?? IGNORE.NONE;
+    const levelName = QUALITY_VALUE_NAMES[level] ?? (QUALITY_VALUE_NAMES[0] as string);
+    items.push({ label: `${name.padEnd(30)} : ${levelName}` });
+    itypes.push(itype);
+  }
+  return { items, itypes };
+}
+
+/**
+ * quality_action's tier submenu (ui-options.c L1584-1625): every quality
+ * tier name, except ITYPE_RING/ITYPE_AMULET which cap at IGNORE_BAD+1 ("no
+ * ignore"/"bad" only - jewelry is never rated "good" or better).
+ */
+export function qualityLevelItems(itype: number): MenuItem[] {
+  const count =
+    itype === ITYPE.RING || itype === ITYPE.AMULET ? IGNORE.BAD + 1 : IGNORE.MAX;
+  const items: MenuItem[] = [];
+  for (let i = 0; i < count; i++) {
+    items.push({ label: QUALITY_VALUE_NAMES[i] ?? "" });
+  }
+  return items;
+}
+
+/** One row of the ego ignore menu: which ego + ignore-type it toggles. */
+export interface EgoIgnoreChoice {
+  eidx: number;
+  itype: number;
+}
+
+/**
+ * ego_menu (ui-options.c L1405): every (ego, itype) pair the ego can be
+ * meaningfully quality-ignored under, sorted by the ego's short name (its
+ * name with a leading "of the "/"of " stripped - strip_ego_name L1288,
+ * ego_comp_func L1349). Each label mirrors ego_item_name (L1301): "[ ] " +
+ * the ignore type's name + " " + the stripped-prefix + short name, with a
+ * leading '*' when already ignored (col+1, inside the brackets).
+ *
+ * SIMPLIFICATION: upstream also requires `ego->everseen` (only egos the
+ * player has met appear in the list). The port tracks no per-ego "seen"
+ * flag (obj/ignore.ts's KNOWLEDGE note already runs quality/ego ignoring
+ * "fully known"), so every ego with a valid ignore type is listed
+ * regardless of whether it has been encountered - this can reveal ego
+ * existence early. Ledgered as a follow-up (a lightweight seen-ego set)
+ * rather than blocking this gap.
+ */
+export function egoIgnoreMenu(
+  egos: readonly EgoItem[],
+  kinds: readonly ObjectKind[],
+  settings: IgnoreSettings,
+): { items: MenuItem[]; choices: EgoIgnoreChoice[] } {
+  interface Row {
+    eidx: number;
+    itype: number;
+    shortName: string;
+    prefix: string;
+  }
+  const rows: Row[] = [];
+  for (const ego of egos) {
+    if (!ego.name) continue;
+    for (let itype = 1; itype < ITYPE_MAX; itype++) {
+      if (!egoHasIgnoreType(ego, itype, kinds)) continue;
+      let prefixLen = 0;
+      if (ego.name.startsWith("of the ")) prefixLen = 7;
+      else if (ego.name.startsWith("of ")) prefixLen = 3;
+      rows.push({
+        eidx: ego.eidx,
+        itype,
+        shortName: ego.name.slice(prefixLen),
+        prefix: ego.name.slice(0, prefixLen),
+      });
+    }
+  }
+  rows.sort((a, b) => strcmp(a.shortName, b.shortName));
+
+  const items: MenuItem[] = [];
+  const choices: EgoIgnoreChoice[] = [];
+  for (const row of rows) {
+    const ignored = settings.egoIsIgnored(row.eidx, row.itype);
+    const typeName = IGNORE_TYPE_ENTRIES[row.itype]?.description ?? "";
+    items.push({
+      label: `[${ignored ? "*" : " "}] ${typeName} ${row.prefix}${row.shortName}`,
+      color: colorToCss(ignored ? COLOUR_L_RED : COLOUR_L_GREEN),
+    });
+    choices.push({ eidx: row.eidx, itype: row.itype });
+  }
+  return { items, choices };
+}
+
+/** One row of the sval (kind) ignore menu: which kind + aware/unaware bit. */
+export interface SvalIgnoreRow {
+  kidx: number;
+  aware: boolean;
+}
+
+/**
+ * ignore_collect_kind + ignore_sval_menu_display (ui-options.c L1778/L1717):
+ * every (kind, aware) row for a tval - an "unaware" row for every kind not
+ * yet identified, and an "aware" row for every non-INSTA_ART kind (or any
+ * money kind). Sorting matches cmp_ignore (aware rows first, then
+ * alphabetical by the row's own name) except for the tvals upstream keeps
+ * in sval (kind file) order.
+ *
+ * SIMPLIFICATION: upstream also gates the aware row on `kind->everseen`
+ * (only kinds the player has laid eyes on get one). The port tracks no
+ * per-kind "seen" flag independent of flavour awareness, so - as with the
+ * ego menu - every ordinary kind of the tval gets an aware row.
+ */
+export function svalKindMenu(
+  reg: ObjRegistry,
+  tval: number,
+  settings: IgnoreSettings,
+  state: GameState,
+): { items: MenuItem[]; rows: SvalIgnoreRow[] } {
+  interface Row {
+    kind: ObjectKind;
+    aware: boolean;
+    name: string;
+  }
+  const rows: Row[] = [];
+  for (let i = 0; i < reg.ordinaryKindCount; i++) {
+    const kind = reg.kinds[i];
+    if (!kind || kind.tval !== tval) continue;
+    const trueAware = state.isAware ? state.isAware(kind) : true;
+    if (!trueAware) {
+      rows.push({ kind, aware: false, name: objectKindName(state, kind, false) });
+    }
+    const insta = kind.kindFlags.has(KF.INSTA_ART);
+    if (!insta || tvalIsMoney(kind.tval)) {
+      rows.push({ kind, aware: true, name: objectKindName(state, kind, true) });
+    }
+  }
+
+  /* cmp_ignore's sval-order exceptions (ui-options.c L1836-1852): these
+   * categories stay in kind (sval) file order instead of being sorted. */
+  const KEEP_SVAL_ORDER = new Set<number>([
+    TV.LIGHT,
+    TV.MAGIC_BOOK,
+    TV.PRAYER_BOOK,
+    TV.NATURE_BOOK,
+    TV.SHADOW_BOOK,
+    TV.OTHER_BOOK,
+    TV.DRAG_ARMOR,
+    TV.GOLD,
+  ]);
+  if (!KEEP_SVAL_ORDER.has(tval)) {
+    rows.sort((a, b) => {
+      if (a.aware !== b.aware) return a.aware ? -1 : 1;
+      return strcmp(a.name, b.name);
+    });
+  }
+
+  const items: MenuItem[] = [];
+  const out: SvalIgnoreRow[] = [];
+  for (const row of rows) {
+    const ignored = row.aware
+      ? settings.kindIsIgnoredAware(row.kind.kidx)
+      : settings.kindIsIgnoredUnaware(row.kind.kidx);
+    items.push({
+      label: `[${ignored ? "*" : " "}] ${row.name}`,
+      /* curs_attrs[aware][cursor] (ui-options.c L1726): unaware rows dim. */
+      color: row.aware ? FG : DIM,
+    });
+    out.push({ kidx: row.kind.kidx, aware: row.aware });
+  }
+  return { items, rows: out };
+}
+
+/**
+ * sval_dependent[] (ui-options.c L1674): the ignore-menu tval categories,
+ * verbatim labels and order.
+ */
+export const SVAL_DEPENDENT: readonly { tval: number; desc: string }[] = [
+  { tval: TV.STAFF, desc: "Staffs" },
+  { tval: TV.WAND, desc: "Wands" },
+  { tval: TV.ROD, desc: "Rods" },
+  { tval: TV.SCROLL, desc: "Scrolls" },
+  { tval: TV.POTION, desc: "Potions" },
+  { tval: TV.RING, desc: "Rings" },
+  { tval: TV.AMULET, desc: "Amulets" },
+  { tval: TV.FOOD, desc: "Food" },
+  { tval: TV.MUSHROOM, desc: "Mushrooms" },
+  { tval: TV.MAGIC_BOOK, desc: "Magic books" },
+  { tval: TV.PRAYER_BOOK, desc: "Prayer books" },
+  { tval: TV.NATURE_BOOK, desc: "Nature books" },
+  { tval: TV.SHADOW_BOOK, desc: "Shadow books" },
+  { tval: TV.OTHER_BOOK, desc: "Mystery books" },
+  { tval: TV.LIGHT, desc: "Lights" },
+  { tval: TV.FLASK, desc: "Flasks of oil" },
+  { tval: TV.GOLD, desc: "Money" },
+];
+
+/**
+ * ignore_tval (ui-options.c L1699): the eligible categories - only tvals
+ * whose object_base actually carries svals (kb_info[tval].num_svals > 0).
+ */
+export function svalCategoryItems(
+  reg: ObjRegistry,
+): { items: MenuItem[]; tvals: number[] } {
+  const items: MenuItem[] = [];
+  const tvals: number[] = [];
+  for (const cat of SVAL_DEPENDENT) {
+    if ((reg.bases[cat.tval]?.numSvals ?? 0) === 0) continue;
+    items.push({ label: cat.desc, color: FG });
+    tvals.push(cat.tval);
+  }
+  return { items, tvals };
 }
