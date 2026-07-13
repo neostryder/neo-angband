@@ -49,6 +49,7 @@ import {
   TRF,
   installPickup,
   describeObject,
+  objectInfoTextblock,
   gearGet,
   floorPile,
   buildObjectEffectChain,
@@ -90,6 +91,7 @@ import type {
   EffectRecordJson,
   ItemRequest,
   ItemTargetRef,
+  ObjectInfoExtras,
 } from "@neo-angband/core";
 import { GameEvents } from "@neo-angband/core";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles } from "./pack";
@@ -112,6 +114,7 @@ import {
   targetMenu,
   lookLines,
   objectName,
+  wrapRuns,
 } from "./screens";
 import { showCharacterSheet } from "./charsheet";
 import { runCharacterSelect } from "./charselect";
@@ -517,6 +520,43 @@ async function selectTargetItem(req: ItemRequest): Promise<ItemTargetRef | null>
   const idx = await selectFromMenu(term, req.prompt.trim(), items);
   if (idx === null) return null;
   return refs[idx] ?? null;
+}
+
+/** The registry data the object-info engine needs; stable for the session. */
+const inspectExtras: ObjectInfoExtras = {
+  projections: booted.registries.projections ?? [],
+  constants: booted.registries.constants,
+  timedDesc: (i) => players.timed[i]?.desc ?? "",
+  raceOrigin: (h) => {
+    const r = booted.registries.monsters.races[h];
+    if (!r) return null;
+    return {
+      name: r.name,
+      unique: r.flags.has(RF.UNIQUE),
+      comma: r.flags.has(RF.NAME_COMMA),
+    };
+  },
+};
+
+/**
+ * Inspect command ('I', textui_obj_examine): pick any inven / equip / floor
+ * item, then show its combat / abilities / origin info in the scrollable
+ * viewer. object_info is a pure read (no RNG), so this never advances the game.
+ */
+async function inspectItem(): Promise<void> {
+  const ref = await selectTargetItem({
+    prompt: "Inspect which item? ",
+    reject: "You have nothing to examine.",
+    tester: () => true,
+    mode: { equip: true, inven: true, quiver: true, floor: true },
+  });
+  if (!ref) return;
+  const obj = targetRefObject(ref);
+  if (!obj) return;
+  const name = objectName(state, obj);
+  const header = name.charAt(0).toUpperCase() + name.slice(1); /* ODESC_CAPITAL */
+  const tb = objectInfoTextblock(state, obj, inspectExtras);
+  await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
 }
 
 /** The removable-curse indices of an object (item_tester_uncursable membership). */
@@ -1439,6 +1479,11 @@ window.addEventListener("keydown", (ev) => {
       );
       return;
     }
+    if (ev.key === "I") {
+      ev.preventDefault();
+      void openModal(() => inspectItem());
+      return;
+    }
     // Item-use verbs (original keyset: cmd-obj.c). Each opens a selection menu.
     const ITEM_VERBS: Record<string, () => Promise<void>> = {
       q: () => useItem("quaff", (o) => tvalIsPotion(o.tval), "potions"),
@@ -1572,6 +1617,7 @@ function installTouchActionBar(): void {
     ["Down >", () => { commandBuffer.push({ code: "descend" }); advance(); }],
     ["Up <", () => { commandBuffer.push({ code: "ascend" }); advance(); }],
     ["Inv", () => { void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))); }],
+    ["Insp", () => { void openModal(() => inspectItem()); }],
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots })); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     ["Switch", () => { switchCharacter(); }],

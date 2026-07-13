@@ -34,7 +34,13 @@ import {
   getSpellInfo,
   PY_SPELL,
 } from "@neo-angband/core";
-import type { GameState, GameObject, Monster, EffectRecordJson } from "@neo-angband/core";
+import type {
+  GameState,
+  GameObject,
+  Monster,
+  EffectRecordJson,
+  Textblock,
+} from "@neo-angband/core";
 import type { ScreenLine, MenuItem } from "./overlay";
 import { menuLetter } from "./overlay";
 import { MessageLog, format as formatMessage } from "./messages";
@@ -42,6 +48,68 @@ import { MessageLog, format as formatMessage } from "./messages";
 const FG = "#c8c8d4";
 const DIM = "#8a8a94";
 const LABEL = "#9aa0b4";
+
+/** Coalesce a run of coloured chars into a ScreenLine with per-run colours. */
+function charsToLine(chars: { ch: string; color: string }[]): ScreenLine {
+  const runs: { text: string; color: string }[] = [];
+  for (const c of chars) {
+    const last = runs[runs.length - 1];
+    if (last && last.color === c.color) last.text += c.ch;
+    else runs.push({ text: c.ch, color: c.color });
+  }
+  const text = chars.map((c) => c.ch).join("");
+  return runs.length > 0 ? { text, color: FG, runs } : { text: "", color: FG };
+}
+
+/**
+ * Turn a core object-info Textblock (a run-stream with literal '\n' and
+ * COLOUR_* attrs) into wrapped, per-run-coloured ScreenLine[] sized to the
+ * terminal. Splits on '\n' into paragraphs, then greedily word-wraps each to
+ * `cols - 1`, carrying run colours across the wrap boundary. The core emits
+ * logical lines only (obj-info.c stays width-agnostic); this is where display
+ * wrapping happens.
+ */
+export function wrapRuns(tb: Textblock, cols: number): ScreenLine[] {
+  const width = Math.max(1, cols - 1);
+  type C = { ch: string; color: string };
+  const out: ScreenLine[] = [];
+
+  /* Flatten to a coloured char stream split into paragraphs on '\n'. */
+  const paragraphs: C[][] = [[]];
+  for (const run of tb.runs) {
+    const color = colorToCss(run.attr);
+    for (const ch of run.text) {
+      if (ch === "\n") paragraphs.push([]);
+      else (paragraphs[paragraphs.length - 1] as C[]).push({ ch, color });
+    }
+  }
+
+  for (const para of paragraphs) {
+    if (para.length === 0) {
+      out.push({ text: "", color: FG });
+      continue;
+    }
+    let start = 0;
+    while (start < para.length) {
+      let end = Math.min(start + width, para.length);
+      if (end < para.length) {
+        let brk = -1;
+        for (let i = end - 1; i > start; i--) {
+          if ((para[i] as C).ch === " ") {
+            brk = i;
+            break;
+          }
+        }
+        if (brk > start) end = brk;
+      }
+      out.push(charsToLine(para.slice(start, end)));
+      start = end;
+      /* Skip the single break space so the next line does not start with it. */
+      if (start < para.length && (para[start] as C).ch === " ") start++;
+    }
+  }
+  return out;
+}
 
 /** The display CSS color for an object (its kind's flavour/base attr). */
 export function objectColor(obj: GameObject): string {
