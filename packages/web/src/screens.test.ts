@@ -22,8 +22,13 @@ import {
   COLOUR_VIOLET,
   COLOUR_WHITE,
   COLOUR_L_RED,
+  COLOUR_L_GREEN,
   TV,
   HIST,
+  STAT,
+  FlagSet,
+  bindProjections,
+  PY_SPELL,
 } from "@neo-angband/core";
 import type {
   Textblock,
@@ -35,8 +40,12 @@ import type {
   Artifact,
   TerrainRecordJson,
   PlayerPackRecords,
+  ProjectionRecordJson,
+  ClassSpell,
+  PlayerClass,
+  MagicRealm,
 } from "@neo-angband/core";
-import { wrapRuns, objectListLines, historyLines } from "./screens";
+import { wrapRuns, objectListLines, historyLines, spellBrowseLines } from "./screens";
 
 const WHITE = 1;
 const L_GREEN = 13;
@@ -430,5 +439,147 @@ describe("historyLines (history_display, ui-history.c)", () => {
     expect(lines[2]!.text).toBe(
       `${"1234".padStart(10)}${"150".padStart(7)}'  Missed the Amulet of Testing (LOST)`,
     );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* spellBrowseLines ('?' description panel, ui-spell.c spell_menu_browser) */
+/* ------------------------------------------------------------------ */
+
+const testProjections = bindProjections(loadRecords<ProjectionRecordJson>("projection"));
+
+const TEST_REALM: MagicRealm = {
+  name: "test-realm",
+  stat: STAT.INT,
+  verb: "cast",
+  spellNoun: "spell",
+  bookNoun: "book",
+};
+
+/** A minimal, directly-constructed class_spell fixture (no content pack). */
+function makeTestClassSpell(overrides: Partial<ClassSpell> = {}): ClassSpell {
+  return {
+    name: "Test Bolt",
+    sidx: 0,
+    bidx: 0,
+    level: 1,
+    mana: 1,
+    fail: 10,
+    exp: 0,
+    realm: TEST_REALM,
+    effectsRaw: [{ eff: "BOLT", type: "FIRE", dice: "2d4" }],
+    text: "A bolt of test fire.",
+    ...overrides,
+  };
+}
+
+/** A minimal player_class carrying only the given spells, one book. */
+function makeTestClass(spells: ClassSpell[]): PlayerClass {
+  return {
+    cidx: 0,
+    name: "Test Caster",
+    titles: [],
+    statAdj: [0, 0, 0, 0, 0],
+    skills: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    extraSkills: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    hitdie: 0,
+    expFactor: 0,
+    flags: new FlagSet(1),
+    pflags: new FlagSet(1),
+    maxAttacks: 1,
+    minWeight: 0,
+    attMultiply: 1,
+    startItems: [],
+    magic: {
+      spellFirst: 1,
+      spellWeight: 0,
+      numBooks: 1,
+      totalSpells: spells.length,
+      books: [
+        {
+          tval: "magic book",
+          tvalIdx: 0,
+          sval: 0,
+          dungeon: false,
+          name: "Test Book",
+          realm: TEST_REALM,
+          numSpells: spells.length,
+          spells,
+          graphics: null,
+          properties: null,
+        },
+      ],
+    },
+  };
+}
+
+/** State + player set up with a two-spell test class: sidx0 damaging (fire
+ * bolt, 2d4 -> average 5), sidx1 non-damaging (a plain detection). */
+function makeSpellTestState(): GameState {
+  const state = makeTestState({ playerGrid: loc(20, 12) });
+  const bolt = makeTestClassSpell();
+  const detect = makeTestClassSpell({
+    sidx: 1,
+    name: "Test Wardsight",
+    text: "Detects nothing in particular.",
+    effectsRaw: [{ eff: "DETECT_TRAPS" }],
+  });
+  state.actor.player.cls = makeTestClass([bolt, detect]);
+  state.actor.player.spellFlags = [];
+  return state;
+}
+
+describe("spellBrowseLines ('?' description panel, ui-spell.c spell_menu_browser)", () => {
+  it("shows only the description when the spell has never been cast (not WORKED)", () => {
+    const state = makeSpellTestState();
+    const lines = spellBrowseLines(state, 0, testProjections, 200);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.text).toBe("A bolt of test fire.");
+    // No green digit run: the average-damage sentence is gated on WORKED.
+    expect(lines[0]!.runs?.some((r) => r.color === colorToCss(COLOUR_L_GREEN))).toBe(false);
+  });
+
+  it("appends the 'Inflicts an average of ... damage.' sentence once WORKED", () => {
+    const state = makeSpellTestState();
+    state.actor.player.spellFlags[0] = PY_SPELL.WORKED;
+    const lines = spellBrowseLines(state, 0, testProjections, 200);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.text).toBe(
+      "A bolt of test fire.  Inflicts an average of 5 fire damage.",
+    );
+    // Only the damage number itself is COLOUR_L_GREEN, matching upstream's
+    // text_out_c(COLOUR_L_GREEN, " %d", ...) - not the surrounding words.
+    const greenRuns = lines[0]!.runs?.filter((r) => r.color === colorToCss(COLOUR_L_GREEN));
+    expect(greenRuns).toEqual([{ text: "5", color: colorToCss(COLOUR_L_GREEN) }]);
+  });
+
+  it("suppresses the summary again once the spell is FORGOTTEN, even though WORKED", () => {
+    const state = makeSpellTestState();
+    state.actor.player.spellFlags[0] = PY_SPELL.WORKED | PY_SPELL.FORGOTTEN;
+    const lines = spellBrowseLines(state, 0, testProjections, 200);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.text).toBe("A bolt of test fire.");
+  });
+
+  it("a non-damaging spell shows only its description, WORKED or not", () => {
+    const state = makeSpellTestState();
+    state.actor.player.spellFlags[1] = PY_SPELL.WORKED;
+    const lines = spellBrowseLines(state, 1, testProjections, 200);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.text).toBe("Detects nothing in particular.");
+  });
+
+  it("returns no lines for an out-of-range spell index", () => {
+    const state = makeSpellTestState();
+    expect(spellBrowseLines(state, 99, testProjections, 200)).toEqual([]);
+  });
+
+  it("is RNG-invariant: browsing a damaging spell draws no random numbers", () => {
+    const state = makeSpellTestState();
+    state.actor.player.spellFlags[0] = PY_SPELL.WORKED;
+    const before = state.rng.getState();
+    spellBrowseLines(state, 0, testProjections, 200);
+    spellBrowseLines(state, 0, testProjections, 200); // twice, in case a first-call-only branch hides a draw
+    expect(state.rng.getState()).toEqual(before);
   });
 });

@@ -243,7 +243,7 @@ export const classSpec: FileSpec = {
     { fmt: "dice str dice", childOf: ["effect"] },
     { fmt: "expr sym name sym base str expr", childOf: ["effect"], repeat: true },
     { fmt: "effect-msg str text", childOf: ["effect"], repeat: true },
-    { fmt: "desc str desc", repeat: true },
+    { fmt: "desc str desc", childOf: ["spell"], repeat: true },
   ],
 };
 

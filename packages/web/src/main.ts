@@ -163,6 +163,7 @@ import {
   equipmentMenu,
   magicBooks,
   bookSpellMenu,
+  spellBrowseLines,
   targetMenu,
   objectName,
   wrapRuns,
@@ -1459,7 +1460,12 @@ async function castSpell(): Promise<void> {
     term,
     `${verb[0]?.toUpperCase()}${verb.slice(1)} which spell?`,
     items,
-    "[ a-z to choose a spell, ESC to cancel ]",
+    "[ a-z to choose a spell, ? to toggle description, ESC to cancel ]",
+    {
+      detail: (i) =>
+        spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, term.size().cols),
+      detailToggleKey: "?",
+    },
   );
   if (pick === null) return;
   const spell = sidx[pick];
@@ -1513,7 +1519,12 @@ async function studySpell(): Promise<void> {
       term,
       "Study which spell?",
       items,
-      "[ a-z to choose a spell, ESC to cancel ]",
+      "[ a-z to choose a spell, ? to toggle description, ESC to cancel ]",
+      {
+        detail: (i) =>
+          spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, term.size().cols),
+        detailToggleKey: "?",
+      },
     );
     if (pick === null) return;
     const spell = sidx[pick];

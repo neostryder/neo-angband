@@ -263,6 +263,13 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Fires a magic missile that always hits its target and does",
+                " unresistable damage.",
+                "  Sometimes a beam is fired instead that hurts each monster",
+                " in its path.",
+                "  The chance to get a beam goes up with your character level."
               ]
             },
             {
@@ -281,6 +288,11 @@
                   "radius": 2,
                   "dice": "1"
                 }
+              ],
+              "desc": [
+                "Lights up all squares within 2 grids of the player, and hurts",
+                " all light-sensitive monsters in the area of effect.",
+                "  If you are in a room, the entire room will be lit up as well."
               ]
             },
             {
@@ -311,6 +323,9 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all traps, doors, and stairs in the immediate area."
               ]
             },
             {
@@ -324,6 +339,9 @@
                   "eff": "TELEPORT",
                   "dice": "10"
                 }
+              ],
+              "desc": [
+                "Teleports you randomly up to 10 squares away."
               ]
             },
             {
@@ -347,6 +365,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Creates an electrical discharge that hurts monsters and destroys",
+                " vulnerable items in its path.  Length of the effect increases",
+                " with player level."
               ]
             },
             {
@@ -363,6 +386,10 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all non-invisible monsters in the immediate area,",
+                " for one turn only."
               ]
             },
             {
@@ -385,6 +412,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Shoots a radius-2 fire ball."
               ]
             }
           ]
@@ -423,6 +453,12 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Adds charges to a stack of wands or staves.",
+                "  Chance of success and number of charges gained increase with your",
+                " level and decrease with level of wand or staff and number of charges.",
+                "  A failed attempt to recharge destroys one wand or staff from the stack."
               ]
             },
             {
@@ -435,6 +471,9 @@
                 {
                   "eff": "IDENTIFY"
                 }
+              ],
+              "desc": [
+                "Reveals an unknown rune on an object."
               ]
             },
             {
@@ -465,6 +504,9 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects gold and senses objects in the immediate area."
               ]
             },
             {
@@ -486,6 +528,12 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Shoots a bolt of frost that always hits its target.",
+                "  Sometimes a beam is fired instead that hurts each monster",
+                " in its path.",
+                "  The chance to get a beam goes up with your character level."
               ]
             },
             {
@@ -509,6 +557,9 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all monsters in the immediate area, for one turn only."
               ]
             },
             {
@@ -532,6 +583,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Sprays acid in a 60-degree cone, hitting all monsters up to 10 grids away."
               ]
             }
           ]
@@ -567,6 +621,9 @@
                   "eff": "TOUCH",
                   "type": "KILL_TRAP"
                 }
+              ],
+              "desc": [
+                "Disables traps and destroys doors within a 1-square radius of you."
               ]
             },
             {
@@ -587,6 +644,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Teleports you randomly within the current level."
               ]
             },
             {
@@ -608,6 +668,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Produces a bolt that teleports away the first monster in its path.",
+                "  Distance teleported increases with player level."
               ]
             },
             {
@@ -640,6 +704,9 @@
                 {
                   "eff": "CLEAR_VALUE"
                 }
+              ],
+              "desc": [
+                "Grants you resistance to acid, cold, fire and lightning for 20+1d20 turns."
               ]
             },
             {
@@ -652,6 +719,9 @@
                 {
                   "eff": "TAP_DEVICE"
                 }
+              ],
+              "desc": [
+                "Turns wand or staff energy into mana; tapping stuns the player briefly."
               ]
             },
             {
@@ -666,6 +736,9 @@
                   "type": "FASTCAST",
                   "dice": "5+1d5"
                 }
+              ],
+              "desc": [
+                "Increases spellcasting speed by 33% for 5+1d5 turns."
               ]
             }
           ]
@@ -697,6 +770,10 @@
                   "eff": "TOUCH",
                   "type": "MAKE_DOOR"
                 }
+              ],
+              "desc": [
+                "A door is created on each empty floor space that is directly",
+                " adjacent to you.  These doors are closed, but not locked."
               ]
             },
             {
@@ -718,6 +795,13 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Fires a magic missile that always hits its target and does",
+                " unresistable damage.",
+                "  Sometimes a beam is fired instead that hurts each monster",
+                " in its path.",
+                "  The chance to get a beam goes up with your character level."
               ]
             },
             {
@@ -730,6 +814,10 @@
                 {
                   "eff": "TELEPORT_LEVEL"
                 }
+              ],
+              "desc": [
+                "Teleports you 1 level up or 1 level down (chosen at random).",
+                "  This spell may have no effect when the forced descent option is set."
               ]
             },
             {
@@ -795,6 +883,10 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all traps, doors, stairs, treasure, objects and monsters in the",
+                " immediate area."
               ]
             },
             {
@@ -807,6 +899,9 @@
                 {
                   "eff": "TELEPORT_TO"
                 }
+              ],
+              "desc": [
+                "Teleports you to (or near to) a square of your choice."
               ]
             },
             {
@@ -830,6 +925,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Fires a short range beam of force."
               ]
             }
           ]
@@ -870,6 +968,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Shoots a radius-2 sound ball.",
+                "  Apart from doing sound damage, this also has a chance to stun",
+                " each monster in the area of effect."
               ]
             },
             {
@@ -905,6 +1008,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Shoots a radius-2 shards ball and throws around anything in the area of",
+                " effect."
               ]
             },
             {
@@ -917,6 +1024,11 @@
                 {
                   "eff": "BANISH"
                 }
+              ],
+              "desc": [
+                "Removes all monsters represented by a chosen symbol from the level.",
+                "  Uniques are not affected.",
+                "  You take 1d4 points of damage for every monster removed."
               ]
             },
             {
@@ -929,6 +1041,11 @@
                 {
                   "eff": "MASS_BANISH"
                 }
+              ],
+              "desc": [
+                "Removes all monsters within 20 squares of you.",
+                "  Uniques are not affected.",
+                "  You take 1d3 points of damage for every monster removed."
               ]
             },
             {
@@ -951,73 +1068,14 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Shoots a radius-3 mana ball that does unresistable",
+                " damage to each monster in its area of effect."
               ]
             }
           ]
         }
-      ],
-      "desc": [
-        "Fires a magic missile that always hits its target and does",
-        " unresistable damage.",
-        "  Sometimes a beam is fired instead that hurts each monster",
-        " in its path.",
-        "  The chance to get a beam goes up with your character level.",
-        "Lights up all squares within 2 grids of the player, and hurts",
-        " all light-sensitive monsters in the area of effect.",
-        "  If you are in a room, the entire room will be lit up as well.",
-        "Detects all traps, doors, and stairs in the immediate area.",
-        "Teleports you randomly up to 10 squares away.",
-        "Creates an electrical discharge that hurts monsters and destroys",
-        " vulnerable items in its path.  Length of the effect increases",
-        " with player level.",
-        "Detects all non-invisible monsters in the immediate area,",
-        " for one turn only.",
-        "Shoots a radius-2 fire ball.",
-        "Adds charges to a stack of wands or staves.",
-        "  Chance of success and number of charges gained increase with your",
-        " level and decrease with level of wand or staff and number of charges.",
-        "  A failed attempt to recharge destroys one wand or staff from the stack.",
-        "Reveals an unknown rune on an object.",
-        "Detects gold and senses objects in the immediate area.",
-        "Shoots a bolt of frost that always hits its target.",
-        "  Sometimes a beam is fired instead that hurts each monster",
-        " in its path.",
-        "  The chance to get a beam goes up with your character level.",
-        "Detects all monsters in the immediate area, for one turn only.",
-        "Sprays acid in a 60-degree cone, hitting all monsters up to 10 grids away.",
-        "Disables traps and destroys doors within a 1-square radius of you.",
-        "Teleports you randomly within the current level.",
-        "Produces a bolt that teleports away the first monster in its path.",
-        "  Distance teleported increases with player level.",
-        "Grants you resistance to acid, cold, fire and lightning for 20+1d20 turns.",
-        "Turns wand or staff energy into mana; tapping stuns the player briefly.",
-        "Increases spellcasting speed by 33% for 5+1d5 turns.",
-        "A door is created on each empty floor space that is directly",
-        " adjacent to you.  These doors are closed, but not locked.",
-        "Fires a magic missile that always hits its target and does",
-        " unresistable damage.",
-        "  Sometimes a beam is fired instead that hurts each monster",
-        " in its path.",
-        "  The chance to get a beam goes up with your character level.",
-        "Teleports you 1 level up or 1 level down (chosen at random).",
-        "  This spell may have no effect when the forced descent option is set.",
-        "Detects all traps, doors, stairs, treasure, objects and monsters in the",
-        " immediate area.",
-        "Teleports you to (or near to) a square of your choice.",
-        "Fires a short range beam of force.",
-        "Shoots a radius-2 sound ball.",
-        "  Apart from doing sound damage, this also has a chance to stun",
-        " each monster in the area of effect.",
-        "Shoots a radius-2 shards ball and throws around anything in the area of",
-        " effect.",
-        "Removes all monsters represented by a chosen symbol from the level.",
-        "  Uniques are not affected.",
-        "  You take 1d4 points of damage for every monster removed.",
-        "Removes all monsters within 20 squares of you.",
-        "  Uniques are not affected.",
-        "  You take 1d3 points of damage for every monster removed.",
-        "Shoots a radius-3 mana ball that does unresistable",
-        " damage to each monster in its area of effect."
       ]
     },
     {
@@ -1161,6 +1219,9 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all living monsters in the immediate area, for one turn only."
               ]
             },
             {
@@ -1174,6 +1235,10 @@
                   "eff": "SHAPECHANGE",
                   "type": "fox"
                 }
+              ],
+              "desc": [
+                "Changes you into the shape of a quick and stealthy fox.",
+                "  While shapechanged you cannot use items."
               ]
             },
             {
@@ -1188,6 +1253,9 @@
                   "type": "INC_TO",
                   "dice": "50"
                 }
+              ],
+              "desc": [
+                "Magically renders you comfortably fed (but not satiated)."
               ]
             },
             {
@@ -1210,6 +1278,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Shoots a radius-2 poison ball."
               ]
             },
             {
@@ -1231,6 +1302,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Confuse a single monster; more effective against animals."
               ]
             },
             {
@@ -1252,6 +1326,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Slows down a monster; more effective against animals."
               ]
             }
           ]
@@ -1283,6 +1360,9 @@
                   "eff": "CURE",
                   "type": "POISONED"
                 }
+              ],
+              "desc": [
+                "Neutralizes poison."
               ]
             },
             {
@@ -1297,6 +1377,9 @@
                   "type": "OPP_POIS",
                   "dice": "20+d20"
                 }
+              ],
+              "desc": [
+                "Grants you resistance to poison for 20+1d20 turns."
               ]
             },
             {
@@ -1311,6 +1394,11 @@
                   "type": "KILL_WALL",
                   "dice": "20+1d30"
                 }
+              ],
+              "desc": [
+                "Produces a beam that destroys the first section of wall it hits,",
+                " unless it is a permanent wall.  Each monster caught in the beam that",
+                " is susceptible to rock remover takes 20+1d30 points of damage."
               ]
             },
             {
@@ -1336,6 +1424,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Maps the nearby area."
               ]
             },
             {
@@ -1371,6 +1462,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Strikes a target from above with a lightning bolt, followed by a clap",
+                " of thunder.  If targeting a direction or the target is not a passable",
+                " grid in the line of sight, the player will be the target."
               ]
             },
             {
@@ -1394,6 +1490,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Causes shards to explode in a line out of the earth, striking objects and",
+                " monsters.  Length of the line increases with player level."
               ]
             }
           ]
@@ -1433,6 +1533,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Holds every adjacent, non-resistant monster for a level-dependent",
+                " number of turns; animals are entranced for longer."
               ]
             },
             {
@@ -1454,6 +1558,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Attempts to put to sleep each monster within line of sight.",
+                "  Monsters that resist sleep are not affected."
               ]
             },
             {
@@ -1467,6 +1575,9 @@
                   "eff": "SHAPECHANGE",
                   "type": "Pukel-man"
                 }
+              ],
+              "desc": [
+                "Gives you the form of a statue of the Drúedain, slow but hard to hurt."
               ]
             },
             {
@@ -1480,6 +1591,9 @@
                   "eff": "SHAPECHANGE",
                   "type": "eagle"
                 }
+              ],
+              "desc": [
+                "Gives you the form of one of the great eagles of Manwë."
               ]
             },
             {
@@ -1493,6 +1607,10 @@
                   "eff": "SHAPECHANGE",
                   "type": "bear"
                 }
+              ],
+              "desc": [
+                "Allows you to take the form of a great bear of the mountains, sweeping",
+                " aside your enemies with your mighty paws."
               ]
             }
           ]
@@ -1525,6 +1643,13 @@
                   "type": "TARGETED",
                   "radius": 4
                 }
+              ],
+              "desc": [
+                "Causes a targeted 4-square radius earthquake.",
+                "  Earthquakes may hurt the player, damage monsters and destroy items",
+                " in some squares in the area of effect.",
+                "  Artifacts will not be destroyed by this spell.",
+                "  This spell has no effect when used in the town."
               ]
             },
             {
@@ -1548,6 +1673,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Hastes you (+10 to speed) for a level-dependent duration."
               ]
             },
             {
@@ -1580,6 +1708,9 @@
                 {
                   "eff": "RESTORE_EXP"
                 }
+              ],
+              "desc": [
+                "Restores all stats and experience points to maximum."
               ]
             },
             {
@@ -1594,6 +1725,10 @@
                   "type": "HEAL",
                   "dice": "5+1d3"
                 }
+              ],
+              "desc": [
+                "Speed up digestion to increase regeneration of hitpoints for",
+                " the next 5+1d3 turns (or until hungry)."
               ]
             },
             {
@@ -1624,6 +1759,10 @@
                   "type": "INC_TO",
                   "dice": "80"
                 }
+              ],
+              "desc": [
+                "Cures all cuts, poison, stunning and black breath, and leaves you",
+                " well-nourished."
               ]
             }
           ]
@@ -1669,6 +1808,15 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Shoots a swarm of 3 or 4 meteors.",
+                "  Meteors will travel until hitting a wall, a monster,",
+                " or reaching the target location.",
+                "  Meteors will explode as a radius-1 ball that does unresistable",
+                " damage to each monster in its area of effect.",
+                "  If this kills the monster that blocked the path to the target",
+                " location, the next meteor may continue to find another target."
               ]
             },
             {
@@ -1690,6 +1838,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Fires a gravity beam that hurts each monster in its path",
+                " and has a chance of teleporting it away."
               ]
             },
             {
@@ -1711,6 +1863,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Strikes every monster in line of sight with sheets of ice from above."
               ]
             },
             {
@@ -1744,6 +1899,10 @@
                   "type": "NONE",
                   "radius": 5
                 }
+              ],
+              "desc": [
+                "Creates a radius 5 ball of fire, followed by a radius 5 earthquake,",
+                " around the player."
               ]
             },
             {
@@ -1767,62 +1926,13 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Spews plasma in a long narrow cone from the player."
               ]
             }
           ]
         }
-      ],
-      "desc": [
-        "Detects all living monsters in the immediate area, for one turn only.",
-        "Changes you into the shape of a quick and stealthy fox.",
-        "  While shapechanged you cannot use items.",
-        "Magically renders you comfortably fed (but not satiated).",
-        "Shoots a radius-2 poison ball.",
-        "Confuse a single monster; more effective against animals.",
-        "Slows down a monster; more effective against animals.",
-        "Neutralizes poison.",
-        "Grants you resistance to poison for 20+1d20 turns.",
-        "Produces a beam that destroys the first section of wall it hits,",
-        " unless it is a permanent wall.  Each monster caught in the beam that",
-        " is susceptible to rock remover takes 20+1d30 points of damage.",
-        "Maps the nearby area.",
-        "Strikes a target from above with a lightning bolt, followed by a clap",
-        " of thunder.  If targeting a direction or the target is not a passable",
-        " grid in the line of sight, the player will be the target.",
-        "Causes shards to explode in a line out of the earth, striking objects and",
-        " monsters.  Length of the line increases with player level.",
-        "Holds every adjacent, non-resistant monster for a level-dependent",
-        " number of turns; animals are entranced for longer.",
-        "Attempts to put to sleep each monster within line of sight.",
-        "  Monsters that resist sleep are not affected.",
-        "Gives you the form of a statue of the Drúedain, slow but hard to hurt.",
-        "Gives you the form of one of the great eagles of Manwë.",
-        "Allows you to take the form of a great bear of the mountains, sweeping",
-        " aside your enemies with your mighty paws.",
-        "Causes a targeted 4-square radius earthquake.",
-        "  Earthquakes may hurt the player, damage monsters and destroy items",
-        " in some squares in the area of effect.",
-        "  Artifacts will not be destroyed by this spell.",
-        "  This spell has no effect when used in the town.",
-        "Hastes you (+10 to speed) for a level-dependent duration.",
-        "Restores all stats and experience points to maximum.",
-        "Speed up digestion to increase regeneration of hitpoints for",
-        " the next 5+1d3 turns (or until hungry).",
-        "Cures all cuts, poison, stunning and black breath, and leaves you",
-        " well-nourished.",
-        "Shoots a swarm of 3 or 4 meteors.",
-        "  Meteors will travel until hitting a wall, a monster,",
-        " or reaching the target location.",
-        "  Meteors will explode as a radius-1 ball that does unresistable",
-        " damage to each monster in its area of effect.",
-        "  If this kills the monster that blocked the path to the target",
-        " location, the next meteor may continue to find another target.",
-        "Fires a gravity beam that hurts each monster in its path",
-        " and has a chance of teleporting it away.",
-        "Strikes every monster in line of sight with sheets of ice from above.",
-        "Creates a radius 5 ball of fire, followed by a radius 5 earthquake,",
-        " around the player.",
-        "Spews plasma in a long narrow cone from the player."
       ]
     },
     {
@@ -1983,6 +2093,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Lights up all squares in a level-dependent area, and hurts",
+                " all light-sensitive monsters in the area of effect.",
+                "  If you are in a room, the entire room will be lit up as well."
               ]
             },
             {
@@ -1999,6 +2114,10 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all evil monsters in the immediate area,",
+                " for one turn only."
               ]
             },
             {
@@ -2034,6 +2153,10 @@
                   "type": "STUN",
                   "dice": "20"
                 }
+              ],
+              "desc": [
+                "Heals a level-dependent amount or percentage of hitpoints, and",
+                " cures 20 points worth of cuts and of stunning."
               ]
             },
             {
@@ -2060,6 +2183,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Blesses you, giving a bonus of +5 to AC and +10 to-hit, for a",
+                " level-dependent number of turns."
               ]
             },
             {
@@ -2074,6 +2201,9 @@
                   "type": "SINVIS",
                   "dice": "24+d24"
                 }
+              ],
+              "desc": [
+                "Enables you to see invisible monsters for 24+1d24 turns."
               ]
             },
             {
@@ -2108,6 +2238,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Cures 10 points of damage, removes fear and, from character level 20,",
+                " grants you heroism (resistance to fear, and a bonus of +12 to-hit)",
+                " for a level-dependent duration."
               ]
             }
           ]
@@ -2149,6 +2284,12 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Shoots a radius-2 or radius-3 ball that does unresistable",
+                " damage to each monster in its area of effect.",
+                "  Evil monsters take double damage.",
+                "  The bigger area of effect is attained at character level 30."
               ]
             },
             {
@@ -2163,6 +2304,10 @@
                   "type": "LIGHT_WEAK",
                   "dice": "6d8"
                 }
+              ],
+              "desc": [
+                "Fires a beam that lights up each square and hurts each",
+                " light-sensitive monster in its path."
               ]
             },
             {
@@ -2184,6 +2329,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Inflicts unresistable damage on each undead monster within line of sight."
               ]
             },
             {
@@ -2205,6 +2353,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Inflicts unresistable damage on each evil monster within line of sight."
               ]
             },
             {
@@ -2226,6 +2377,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Protects you from evil for a level-dependent duration:",
+                " all melee attacks by evil monsters have a chance to be repelled,",
+                " unless the monster's level is higher than your character level."
               ]
             },
             {
@@ -2251,6 +2407,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Attempts to remove a curse from an item, more effective at higher",
+                " character levels."
               ]
             }
           ]
@@ -2289,6 +2449,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Teleports you randomly over a short distance."
               ]
             },
             {
@@ -2301,6 +2464,9 @@
                 {
                   "eff": "RESTORE_EXP"
                 }
+              ],
+              "desc": [
+                "Restores experience points to maximum if it is currently below maximum."
               ]
             },
             {
@@ -2313,6 +2479,15 @@
                 {
                   "eff": "RECALL"
                 }
+              ],
+              "desc": [
+                "Teleports you from the dungeon to the town or from the town to the",
+                " deepest level you have visited in the dungeon.",
+                "  The recall effect is not immediate; it is delayed by 14+1d20 turns.",
+                "  During that delay, the prayer can be canceled by invoking the prayer",
+                " of recall again.",
+                "  This prayer has no effect when the option to restrict the use of",
+                " stairs and recall is set, unless Morgoth is dead."
               ]
             },
             {
@@ -2342,6 +2517,10 @@
                   "eff": "CURE",
                   "type": "AMNESIA"
                 }
+              ],
+              "desc": [
+                "Heals 2000 points of damage and cures all stunning, cuts, poison",
+                " and amnesia."
               ]
             },
             {
@@ -2371,6 +2550,9 @@
                   "eff": "RESTORE_STAT",
                   "type": "CON"
                 }
+              ],
+              "desc": [
+                "Restores to maximum all stats that are currently below maximum."
               ]
             },
             {
@@ -2383,6 +2565,10 @@
                 {
                   "eff": "LIGHT_LEVEL"
                 }
+              ],
+              "desc": [
+                "Lights up, maps out, and senses all objects on the complete current",
+                " dungeon level."
               ]
             }
           ]
@@ -2415,6 +2601,9 @@
                   "type": "TOBOTH",
                   "dice": "1d4"
                 }
+              ],
+              "desc": [
+                "Attempts to improve the to-hit bonus and the to-dam bonus of a weapon."
               ]
             },
             {
@@ -2429,6 +2618,9 @@
                   "type": "TOAC",
                   "dice": "1+1d3"
                 }
+              ],
+              "desc": [
+                "Attempts to improve the armour class bonus of a piece of armour."
               ]
             },
             {
@@ -2445,6 +2637,9 @@
                   "other": 5,
                   "dice": "20+d20"
                 }
+              ],
+              "desc": [
+                "Temporarily makes your melee attacks slay evil creatures."
               ]
             },
             {
@@ -2458,6 +2653,15 @@
                   "eff": "GLYPH",
                   "type": "WARDING"
                 }
+              ],
+              "desc": [
+                "Inscribes a glyph of warding beneath you.",
+                "  Summoned monsters can't appear on the glyph.",
+                "  If a monster attempts to move onto the glyph or melee you while you",
+                " are standing on the glyph, it must first succeed in breaking the glyph.",
+                "  Higher level monsters are more likely to break the glyph.",
+                "  The glyph will remain where it is, until a monster succeeds in",
+                " breaking it, or until you leave the level."
               ]
             },
             {
@@ -2474,6 +2678,9 @@
                   "other": 5,
                   "dice": "20+d20"
                 }
+              ],
+              "desc": [
+                "Temporarily makes your melee attacks powerfully slay demons."
               ]
             }
           ]
@@ -2506,6 +2713,9 @@
                   "type": "AWAY_EVIL",
                   "dice": "100"
                 }
+              ],
+              "desc": [
+                "Teleports away each evil monster within line of sight."
               ]
             },
             {
@@ -2520,6 +2730,14 @@
                   "type": "LIGHT",
                   "radius": 15
                 }
+              ],
+              "desc": [
+                "Destroys everything in a 15-square radius circle around you.",
+                "  All monsters, objects, and terrain features in the area of",
+                " effect are destroyed, except stairs and permanent walls.",
+                "  You will also be blinded for 10+1d10 turns, unless you",
+                " have resistance to blindness or light.",
+                "  This prayer has no effect when used in the town."
               ]
             },
             {
@@ -2561,6 +2779,11 @@
                   "eff": "CURE",
                   "type": "CUT"
                 }
+              ],
+              "desc": [
+                "Inflicts unresistable damage on each evil monster within line of sight,",
+                " cures 1000 points of damage, cures all stunning, heals all cut damage,",
+                " neutralizes poison, and removes fear."
               ]
             },
             {
@@ -2582,6 +2805,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Fires a beam of holy magic that does extra damage to evil creatures."
               ]
             },
             {
@@ -2609,76 +2835,14 @@
                   "type": "LIGHT_WEAK",
                   "dice": "100"
                 }
+              ],
+              "desc": [
+                "Casts a radius 4 ball of strong light, and then bathes the entire area",
+                " in light doing 100 damage to every light-sensitive creature."
               ]
             }
           ]
         }
-      ],
-      "desc": [
-        "Lights up all squares in a level-dependent area, and hurts",
-        " all light-sensitive monsters in the area of effect.",
-        "  If you are in a room, the entire room will be lit up as well.",
-        "Detects all evil monsters in the immediate area,",
-        " for one turn only.",
-        "Heals a level-dependent amount or percentage of hitpoints, and",
-        " cures 20 points worth of cuts and of stunning.",
-        "Blesses you, giving a bonus of +5 to AC and +10 to-hit, for a",
-        " level-dependent number of turns.",
-        "Enables you to see invisible monsters for 24+1d24 turns.",
-        "Cures 10 points of damage, removes fear and, from character level 20,",
-        " grants you heroism (resistance to fear, and a bonus of +12 to-hit)",
-        " for a level-dependent duration.",
-        "Shoots a radius-2 or radius-3 ball that does unresistable",
-        " damage to each monster in its area of effect.",
-        "  Evil monsters take double damage.",
-        "  The bigger area of effect is attained at character level 30.",
-        "Fires a beam that lights up each square and hurts each",
-        " light-sensitive monster in its path.",
-        "Inflicts unresistable damage on each undead monster within line of sight.",
-        "Inflicts unresistable damage on each evil monster within line of sight.",
-        "Protects you from evil for a level-dependent duration:",
-        " all melee attacks by evil monsters have a chance to be repelled,",
-        " unless the monster's level is higher than your character level.",
-        "Attempts to remove a curse from an item, more effective at higher",
-        " character levels.",
-        "Teleports you randomly over a short distance.",
-        "Restores experience points to maximum if it is currently below maximum.",
-        "Teleports you from the dungeon to the town or from the town to the",
-        " deepest level you have visited in the dungeon.",
-        "  The recall effect is not immediate; it is delayed by 14+1d20 turns.",
-        "  During that delay, the prayer can be canceled by invoking the prayer",
-        " of recall again.",
-        "  This prayer has no effect when the option to restrict the use of",
-        " stairs and recall is set, unless Morgoth is dead.",
-        "Heals 2000 points of damage and cures all stunning, cuts, poison",
-        " and amnesia.",
-        "Restores to maximum all stats that are currently below maximum.",
-        "Lights up, maps out, and senses all objects on the complete current",
-        " dungeon level.",
-        "Attempts to improve the to-hit bonus and the to-dam bonus of a weapon.",
-        "Attempts to improve the armour class bonus of a piece of armour.",
-        "Temporarily makes your melee attacks slay evil creatures.",
-        "Inscribes a glyph of warding beneath you.",
-        "  Summoned monsters can't appear on the glyph.",
-        "  If a monster attempts to move onto the glyph or melee you while you",
-        " are standing on the glyph, it must first succeed in breaking the glyph.",
-        "  Higher level monsters are more likely to break the glyph.",
-        "  The glyph will remain where it is, until a monster succeeds in",
-        " breaking it, or until you leave the level.",
-        "Temporarily makes your melee attacks powerfully slay demons.",
-        "Teleports away each evil monster within line of sight.",
-        "Destroys everything in a 15-square radius circle around you.",
-        "  All monsters, objects, and terrain features in the area of",
-        " effect are destroyed, except stairs and permanent walls.",
-        "  You will also be blinded for 10+1d10 turns, unless you",
-        " have resistance to blindness or light.",
-        "  This prayer has no effect when used in the town.",
-        "Inflicts unresistable damage on each evil monster within line of sight,",
-        " cures 1000 points of damage, cures all stunning, heals all cut damage,",
-        " neutralizes poison, and removes fear.",
-        "Fires a beam of holy magic that does extra damage to evil creatures.",
-        "Casts a radius 4 ball of strong light, and then bathes the entire area",
-        " in light doing 100 damage to every light-sensitive creature."
       ]
     },
     {
@@ -2820,6 +2984,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Fires a bolt of nether magic."
               ]
             },
             {
@@ -2834,6 +3001,9 @@
                   "type": "SINVIS",
                   "dice": "24+d24"
                 }
+              ],
+              "desc": [
+                "Enables you to see invisible monsters for 24+1d24 turns."
               ]
             },
             {
@@ -2853,6 +3023,10 @@
                   "other": 10,
                   "dice": "1"
                 }
+              ],
+              "desc": [
+                "Darkens all squares in a level-dependent area.  If you are in a room,",
+                " the entire room will be darkened as well."
               ]
             },
             {
@@ -2866,6 +3040,10 @@
                   "eff": "SHAPECHANGE",
                   "type": "bat"
                 }
+              ],
+              "desc": [
+                "Changes you into the shape of a bat, weak but with excellent senses.",
+                "  While shapechanged you cannot use items."
               ]
             },
             {
@@ -2898,6 +3076,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Detects all monsters which have a spirit in the immediate area,",
+                " and then maps in a region around them, increasing in size with",
+                " character level."
               ]
             }
           ]
@@ -2936,6 +3119,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Targets the nearest undead monster and damages it to gain player mana."
               ]
             },
             {
@@ -2968,6 +3154,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Instantly kill any monster in line-of-sight with less than four times the",
+                " player's level in hitpoints, also hurting the player.  Other monsters are",
+                " unharmed."
               ]
             },
             {
@@ -2989,6 +3180,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Attempts to put to sleep each evil monster within line of sight.",
+                "  Monsters that resist confusion are not affected."
               ]
             },
             {
@@ -3009,6 +3204,10 @@
                     "shadow shifting"
                   ]
                 }
+              ],
+              "desc": [
+                "Displaces your spirit a short distance, hurting your body as it is",
+                " dragged along."
               ]
             },
             {
@@ -3030,6 +3229,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Casts a bolt which wounds, and makes spellcasting monsters less successful",
+                " in casting spells."
               ]
             }
           ]
@@ -3069,6 +3272,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Attempts to scare a single monster for a level-dependent duration.",
+                "  Monsters that resist fear are not affected."
               ]
             },
             {
@@ -3089,6 +3296,12 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Teleports you to the nearest living monster and drains its hitpoints",
+                " to heal and nourish you.  The number of hitpoints drained is twice your",
+                " level or one more than the monster's current hitpoints, whichever is",
+                " smaller."
               ]
             },
             {
@@ -3110,6 +3323,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Inflicts unresistable damage on each living monster within line of sight."
               ]
             },
             {
@@ -3131,6 +3347,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Fires a beam of darkness."
               ]
             },
             {
@@ -3144,6 +3363,10 @@
                   "eff": "SHAPECHANGE",
                   "type": "warg"
                 }
+              ],
+              "desc": [
+                "Changes you into the form of a warg, and gives you temporary berserk",
+                " strength, at the cost of some hitpoints."
               ]
             }
           ]
@@ -3176,6 +3399,9 @@
                   "type": "AWAY_SPIRIT",
                   "dice": "100"
                 }
+              ],
+              "desc": [
+                "Teleports away each monster with a spirit within line of sight."
               ]
             },
             {
@@ -3197,6 +3423,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Inflicts damage equal to four times player level on a single monster that",
+                " is not undead, an elemental, a golem, or a vortex."
               ]
             },
             {
@@ -3211,6 +3441,14 @@
                   "type": "DARK",
                   "radius": 15
                 }
+              ],
+              "desc": [
+                "Destroys everything in a 15-square radius circle around you.",
+                "  All monsters, objects, and terrain features in the area of",
+                " effect are destroyed, except stairs and permanent walls.",
+                "  You will also be blinded for 10+1d10 turns, unless you",
+                " have resistance to blindness or dark.",
+                "  This ritual has no effect when used in the town."
               ]
             },
             {
@@ -3278,6 +3516,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Fires a chaos beam, arc or ball in the chosen direction, wakes everything",
+                " in the area, and attempts to frighten everything in line of sight."
               ]
             },
             {
@@ -3291,6 +3533,10 @@
                   "eff": "DARKEN_LEVEL",
                   "dice": "1"
                 }
+              ],
+              "desc": [
+                "Darkens, maps out, and detects all objects on the complete current",
+                " dungeon level."
               ]
             },
             {
@@ -3313,6 +3559,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Invokes a radius-4 darkness ball."
               ]
             }
           ]
@@ -3351,6 +3600,9 @@
                   "eff": "RESTORE_MANA",
                   "dice": "50"
                 }
+              ],
+              "desc": [
+                "Exchanges 50 hitpoints for 50 mana."
               ]
             },
             {
@@ -3373,6 +3625,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Produces a zone of disenchantment affecting the player and monsters",
+                " within radius 4."
               ]
             },
             {
@@ -3397,6 +3653,13 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Allows you to assume the form of a vampire at the cost of half your",
+                " current hitpoints, than teleports you to the nearest living monster",
+                " and drains a level-dependent number of hitpoints, healing and nourishing",
+                " you.  When first transformed you will temporarily be able",
+                " to take hitpoints from living monsters with your bite attack."
               ]
             },
             {
@@ -3429,6 +3692,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Deals direct damage to a single monster, more the more damaged the monster",
+                " is already, at the cost of 100 hitpoints."
               ]
             },
             {
@@ -3442,67 +3709,14 @@
                   "eff": "COMMAND",
                   "dice": "5+1d10"
                 }
+              ],
+              "desc": [
+                "Allows you to take control of a monster, and move it instead of yourself.",
+                "  Possible actions are move, stand still, 'd'rop, 'm'agic, or 'r'elease."
               ]
             }
           ]
         }
-      ],
-      "desc": [
-        "Fires a bolt of nether magic.",
-        "Enables you to see invisible monsters for 24+1d24 turns.",
-        "Darkens all squares in a level-dependent area.  If you are in a room,",
-        " the entire room will be darkened as well.",
-        "Changes you into the shape of a bat, weak but with excellent senses.",
-        "  While shapechanged you cannot use items.",
-        "Detects all monsters which have a spirit in the immediate area,",
-        " and then maps in a region around them, increasing in size with",
-        " character level.",
-        "Targets the nearest undead monster and damages it to gain player mana.",
-        "Instantly kill any monster in line-of-sight with less than four times the",
-        " player's level in hitpoints, also hurting the player.  Other monsters are",
-        " unharmed.",
-        "Attempts to put to sleep each evil monster within line of sight.",
-        "  Monsters that resist confusion are not affected.",
-        "Displaces your spirit a short distance, hurting your body as it is",
-        " dragged along.",
-        "Casts a bolt which wounds, and makes spellcasting monsters less successful",
-        " in casting spells.",
-        "Attempts to scare a single monster for a level-dependent duration.",
-        "  Monsters that resist fear are not affected.",
-        "Teleports you to the nearest living monster and drains its hitpoints",
-        " to heal and nourish you.  The number of hitpoints drained is twice your",
-        " level or one more than the monster's current hitpoints, whichever is",
-        " smaller.",
-        "Inflicts unresistable damage on each living monster within line of sight.",
-        "Fires a beam of darkness.",
-        "Changes you into the form of a warg, and gives you temporary berserk",
-        " strength, at the cost of some hitpoints.",
-        "Teleports away each monster with a spirit within line of sight.",
-        "Inflicts damage equal to four times player level on a single monster that",
-        " is not undead, an elemental, a golem, or a vortex.",
-        "Destroys everything in a 15-square radius circle around you.",
-        "  All monsters, objects, and terrain features in the area of",
-        " effect are destroyed, except stairs and permanent walls.",
-        "  You will also be blinded for 10+1d10 turns, unless you",
-        " have resistance to blindness or dark.",
-        "  This ritual has no effect when used in the town.",
-        "Fires a chaos beam, arc or ball in the chosen direction, wakes everything",
-        " in the area, and attempts to frighten everything in line of sight.",
-        "Darkens, maps out, and detects all objects on the complete current",
-        " dungeon level.",
-        "Invokes a radius-4 darkness ball.",
-        "Exchanges 50 hitpoints for 50 mana.",
-        "Produces a zone of disenchantment affecting the player and monsters",
-        " within radius 4.",
-        "Allows you to assume the form of a vampire at the cost of half your",
-        " current hitpoints, than teleports you to the nearest living monster",
-        " and drains a level-dependent number of hitpoints, healing and nourishing",
-        " you.  When first transformed you will temporarily be able",
-        " to take hitpoints from living monsters with your bite attack.",
-        "Deals direct damage to a single monster, more the more damaged the monster",
-        " is already, at the cost of 100 hitpoints.",
-        "Allows you to take control of a monster, and move it instead of yourself.",
-        "  Possible actions are move, stand still, 'd'rop, 'm'agic, or 'r'elease."
       ]
     },
     {
@@ -3654,6 +3868,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Blesses you, giving a bonus of +5 to AC and +10 to-hit, for a",
+                " level-dependent number of turns."
               ]
             },
             {
@@ -3670,6 +3888,10 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all evil monsters in the immediate area,",
+                " for one turn only."
               ]
             },
             {
@@ -3696,6 +3918,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Lights up all squares in a level-dependent area, and hurts",
+                " all light-sensitive monsters in the area of effect.",
+                "  If you are in a room, the entire room will be lit up as well."
               ]
             },
             {
@@ -3731,6 +3958,10 @@
                   "type": "STUN",
                   "dice": "20"
                 }
+              ],
+              "desc": [
+                "Heals a level-dependent amount or percentage of hitpoints, and",
+                " cures 20 points worth of cuts and of stunning."
               ]
             },
             {
@@ -3745,6 +3976,9 @@
                   "type": "SINVIS",
                   "dice": "24+d24"
                 }
+              ],
+              "desc": [
+                "Enables you to see invisible monsters for 24+1d24 turns."
               ]
             },
             {
@@ -3779,6 +4013,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Cures 10 points of damage, removes fear and, from character level 15,",
+                " grants you heroism (resistance to fear, and a bonus of +12 to-hit)",
+                " for a level-dependent duration."
               ]
             }
           ]
@@ -3809,6 +4048,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Protects you from evil for a level-dependent duration:",
+                " all melee attacks by evil monsters have a chance to be repelled,",
+                " unless the monster's level is higher than your character level."
               ]
             },
             {
@@ -3834,6 +4078,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Attempts to remove a curse from an item, more effective at higher",
+                " character levels."
               ]
             },
             {
@@ -3846,6 +4094,15 @@
                 {
                   "eff": "RECALL"
                 }
+              ],
+              "desc": [
+                "Teleports you from the dungeon to the town or from the town to the",
+                " deepest level you have visited in the dungeon.",
+                "  The recall effect is not immediate; it is delayed by 14+1d20 turns.",
+                "  During that delay, the prayer can be canceled by invoking the prayer",
+                " of recall again.",
+                "  This prayer has no effect when the option to restrict the use of",
+                " stairs and recall is set, unless Morgoth is dead."
               ]
             },
             {
@@ -3875,6 +4132,10 @@
                   "eff": "CURE",
                   "type": "AMNESIA"
                 }
+              ],
+              "desc": [
+                "Heals 2000 points of damage and cures all stunning, cuts, poison",
+                " and amnesia."
               ]
             },
             {
@@ -3887,6 +4148,10 @@
                 {
                   "eff": "LIGHT_LEVEL"
                 }
+              ],
+              "desc": [
+                "Lights up, maps out, and senses all objects on the complete current",
+                " dungeon level."
               ]
             }
           ]
@@ -3912,6 +4177,9 @@
                   "other": 5,
                   "dice": "20+d20"
                 }
+              ],
+              "desc": [
+                "Temporarily makes your melee attacks slay evil creatures."
               ]
             },
             {
@@ -3928,6 +4196,9 @@
                   "other": 5,
                   "dice": "20+d20"
                 }
+              ],
+              "desc": [
+                "Temporarily makes your melee attacks powerfully slay demons."
               ]
             },
             {
@@ -3942,6 +4213,9 @@
                   "type": "TOBOTH",
                   "dice": "1d4"
                 }
+              ],
+              "desc": [
+                "Attempts to improve the to-hit bonus and the to-dam bonus of a weapon."
               ]
             },
             {
@@ -3956,6 +4230,9 @@
                   "type": "TOAC",
                   "dice": "1+1d3"
                 }
+              ],
+              "desc": [
+                "Attempts to improve the armour class bonus of a piece of armour."
               ]
             },
             {
@@ -3968,47 +4245,14 @@
                 {
                   "eff": "SINGLE_COMBAT"
                 }
+              ],
+              "desc": [
+                "Encases you and the targeted monster in a stone cell from which only the",
+                " winner can emerge."
               ]
             }
           ]
         }
-      ],
-      "desc": [
-        "Blesses you, giving a bonus of +5 to AC and +10 to-hit, for a",
-        " level-dependent number of turns.",
-        "Detects all evil monsters in the immediate area,",
-        " for one turn only.",
-        "Lights up all squares in a level-dependent area, and hurts",
-        " all light-sensitive monsters in the area of effect.",
-        "  If you are in a room, the entire room will be lit up as well.",
-        "Heals a level-dependent amount or percentage of hitpoints, and",
-        " cures 20 points worth of cuts and of stunning.",
-        "Enables you to see invisible monsters for 24+1d24 turns.",
-        "Cures 10 points of damage, removes fear and, from character level 15,",
-        " grants you heroism (resistance to fear, and a bonus of +12 to-hit)",
-        " for a level-dependent duration.",
-        "Protects you from evil for a level-dependent duration:",
-        " all melee attacks by evil monsters have a chance to be repelled,",
-        " unless the monster's level is higher than your character level.",
-        "Attempts to remove a curse from an item, more effective at higher",
-        " character levels.",
-        "Teleports you from the dungeon to the town or from the town to the",
-        " deepest level you have visited in the dungeon.",
-        "  The recall effect is not immediate; it is delayed by 14+1d20 turns.",
-        "  During that delay, the prayer can be canceled by invoking the prayer",
-        " of recall again.",
-        "  This prayer has no effect when the option to restrict the use of",
-        " stairs and recall is set, unless Morgoth is dead.",
-        "Heals 2000 points of damage and cures all stunning, cuts, poison",
-        " and amnesia.",
-        "Lights up, maps out, and senses all objects on the complete current",
-        " dungeon level.",
-        "Temporarily makes your melee attacks slay evil creatures.",
-        "Temporarily makes your melee attacks powerfully slay demons.",
-        "Attempts to improve the to-hit bonus and the to-dam bonus of a weapon.",
-        "Attempts to improve the armour class bonus of a piece of armour.",
-        "Encases you and the targeted monster in a stone cell from which only the",
-        " winner can emerge."
       ]
     },
     {
@@ -4150,6 +4394,10 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all non-invisible monsters in the immediate area,",
+                " for one turn only."
               ]
             },
             {
@@ -4163,6 +4411,9 @@
                   "eff": "TELEPORT",
                   "dice": "10"
                 }
+              ],
+              "desc": [
+                "Teleports you randomly up to 10 squares away."
               ]
             },
             {
@@ -4193,6 +4444,9 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all objects in the immediate area."
               ]
             },
             {
@@ -4209,6 +4463,9 @@
                     "x": 60
                   }
                 }
+              ],
+              "desc": [
+                "Detects all stairs in a wide area."
               ]
             },
             {
@@ -4229,6 +4486,12 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Adds charges to a stack of wands or staves.",
+                "  Chance of success and number of charges gained increase with your",
+                " level and decrease with level of wand or staff and number of charges.",
+                "  A failed attempt to recharge destroys one wand or staff from the stack."
               ]
             },
             {
@@ -4252,6 +4515,9 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all monsters in the immediate area, for one turn only."
               ]
             }
           ]
@@ -4281,6 +4547,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Teleports you randomly within the current level."
               ]
             },
             {
@@ -4295,6 +4564,9 @@
                   "type": "ATT_RUN",
                   "dice": "10"
                 }
+              ],
+              "desc": [
+                "Prepares you to teleport a short distance after stealing from a monster."
               ]
             },
             {
@@ -4316,6 +4588,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Produces a bolt that teleports away the first monster in its path.",
+                "  Distance teleported increases with player level."
               ]
             },
             {
@@ -4328,28 +4604,14 @@
                 {
                   "eff": "TELEPORT_LEVEL"
                 }
+              ],
+              "desc": [
+                "Teleports you 1 level up or 1 level down (chosen at random).",
+                "  This spell may have no effect when the forced descent option is set."
               ]
             }
           ]
         }
-      ],
-      "desc": [
-        "Detects all non-invisible monsters in the immediate area,",
-        " for one turn only.",
-        "Teleports you randomly up to 10 squares away.",
-        "Detects all objects in the immediate area.",
-        "Detects all stairs in a wide area.",
-        "Adds charges to a stack of wands or staves.",
-        "  Chance of success and number of charges gained increase with your",
-        " level and decrease with level of wand or staff and number of charges.",
-        "  A failed attempt to recharge destroys one wand or staff from the stack.",
-        "Detects all monsters in the immediate area, for one turn only.",
-        "Teleports you randomly within the current level.",
-        "Prepares you to teleport a short distance after stealing from a monster.",
-        "Produces a bolt that teleports away the first monster in its path.",
-        "  Distance teleported increases with player level.",
-        "Teleports you 1 level up or 1 level down (chosen at random).",
-        "  This spell may have no effect when the forced descent option is set."
       ]
     },
     {
@@ -4496,6 +4758,9 @@
                   "type": "INC_TO",
                   "dice": "50"
                 }
+              ],
+              "desc": [
+                "Magically renders you comfortably fed (but not satiated)."
               ]
             },
             {
@@ -4512,6 +4777,9 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all living monsters in the immediate area, for one turn only."
               ]
             },
             {
@@ -4537,6 +4805,9 @@
                   "eff": "CURE",
                   "type": "BLACKBREATH"
                 }
+              ],
+              "desc": [
+                "Cures all cuts, poison, stunning and black breath."
               ]
             },
             {
@@ -4551,6 +4822,9 @@
                   "type": "OPP_POIS",
                   "dice": "20+d20"
                 }
+              ],
+              "desc": [
+                "Grants you resistance to poison for 20+1d20 turns."
               ]
             },
             {
@@ -4565,6 +4839,11 @@
                   "type": "KILL_WALL",
                   "dice": "20+1d30"
                 }
+              ],
+              "desc": [
+                "Produces a beam that destroys the first section of wall it hits,",
+                " unless it is a permanent wall.  Each monster caught in the beam that",
+                " is susceptible to rock remover takes 20+1d30 points of damage."
               ]
             },
             {
@@ -4590,6 +4869,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Maps the nearby area."
               ]
             }
           ]
@@ -4622,6 +4904,10 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Prevents you from leaving scent for monsters to track you by for a",
+                " level-dependent duration."
               ]
             },
             {
@@ -4634,6 +4920,10 @@
                 {
                   "eff": "CREATE_ARROWS"
                 }
+              ],
+              "desc": [
+                "Allows the player to turn a staff into a stack of arrows, with quality",
+                " depending on staff level and player level."
               ]
             },
             {
@@ -4657,6 +4947,9 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Hastes you (+10 to speed) for a level-dependent duration."
               ]
             },
             {
@@ -4670,6 +4963,9 @@
                   "eff": "GLYPH",
                   "type": "DECOY"
                 }
+              ],
+              "desc": [
+                "Leaves a magical decoy that looks and sounds like the player."
               ]
             },
             {
@@ -4682,31 +4978,17 @@
                 {
                   "eff": "BRAND_AMMO"
                 }
+              ],
+              "desc": [
+                "Brands one stack of ammunition with fire, cold, or poison",
+                " (selected at random) and at the same time attempts to improve",
+                " the to-hit bonus and the to-dam bonus of the same ammunition.",
+                "  The spell has no effect if the ammunition is already branded, has a",
+                " slay, is broken, or is cursed."
               ]
             }
           ]
         }
-      ],
-      "desc": [
-        "Magically renders you comfortably fed (but not satiated).",
-        "Detects all living monsters in the immediate area, for one turn only.",
-        "Cures all cuts, poison, stunning and black breath.",
-        "Grants you resistance to poison for 20+1d20 turns.",
-        "Produces a beam that destroys the first section of wall it hits,",
-        " unless it is a permanent wall.  Each monster caught in the beam that",
-        " is susceptible to rock remover takes 20+1d30 points of damage.",
-        "Maps the nearby area.",
-        "Prevents you from leaving scent for monsters to track you by for a",
-        " level-dependent duration.",
-        "Allows the player to turn a staff into a stack of arrows, with quality",
-        " depending on staff level and player level.",
-        "Hastes you (+10 to speed) for a level-dependent duration.",
-        "Leaves a magical decoy that looks and sounds like the player.",
-        "Brands one stack of ammunition with fire, cold, or poison",
-        " (selected at random) and at the same time attempts to improve",
-        " the to-hit bonus and the to-dam bonus of the same ammunition.",
-        "  The spell has no effect if the ammunition is already branded, has a",
-        " slay, is broken, or is cursed."
       ]
     },
     {
@@ -4858,6 +5140,10 @@
                     "x": 40
                   }
                 }
+              ],
+              "desc": [
+                "Detects all monsters susceptible to fear in the immediate area,",
+                " for one turn only."
               ]
             },
             {
@@ -4890,6 +5176,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Removes fear and grants you berserk strength (resistance to fear,",
+                " +75 melee skill, -10 to AC, and prevents healing",
+                " over time) for a level-dependent duration."
               ]
             },
             {
@@ -4910,6 +5201,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Deals a level-dependent number of melee blows to each adjacent enemy.",
+                "  At level 5 you do one blow and gain an additional blow every 15",
+                " levels (2 at 20, 3 at 35, and 4 at 50)."
               ]
             },
             {
@@ -4925,6 +5221,10 @@
                   "radius": 1,
                   "dice": "20+1d30"
                 }
+              ],
+              "desc": [
+                "Destroys an adjacent section of wall or rubble, unless it is a permanent",
+                " wall.  Deals 20+1d30 damage to monsters vulnerable to rock remover."
               ]
             },
             {
@@ -4945,6 +5245,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "You run up to 4 spaces towards targeted enemy, then perform a",
+                " melee blow.  You gain an additional blow at levels 25 and 40.  If you",
+                " moved, the number of blows is reduced by 25% for each space, then rounded."
               ]
             },
             {
@@ -4969,6 +5274,10 @@
                 {
                   "eff": "CLEAR_VALUE"
                 }
+              ],
+              "desc": [
+                "Your mind becomes too focused to be slowed, paralyzed or confused",
+                " for 12+d12 turns."
               ]
             }
           ]
@@ -5000,6 +5309,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Attempts a level-dependent number of melee blows against the targeted",
+                " enemy.  You get 1 blow for every 15 levels.  If any of these blows",
+                " damage the enemy, it will be stunned for 6 turns."
               ]
             },
             {
@@ -5021,6 +5335,11 @@
                     }
                   ]
                 }
+              ],
+              "desc": [
+                "Attempts to scare every monster in line of sight for a duration dependent",
+                " on player level and monster depth.  Monsters that resist fear are not",
+                " affected."
               ]
             },
             {
@@ -5035,6 +5354,10 @@
                   "type": "TAUNT",
                   "dice": "12+d12"
                 }
+              ],
+              "desc": [
+                "Makes any monster that can move more inclined to run toward you, and less",
+                " likely to use a ranged attack (including spells and innate abilities)."
               ]
             },
             {
@@ -5051,6 +5374,9 @@
                   "other": 5,
                   "dice": "18+d18"
                 }
+              ],
+              "desc": [
+                "Coats all your melee weapons with poison for 18+d18 turns."
               ]
             },
             {
@@ -5064,6 +5390,10 @@
                   "eff": "SHAPECHANGE",
                   "type": "werewolf"
                 }
+              ],
+              "desc": [
+                "With a blood-curdling cry you change into a half-man half-wolf!",
+                "  In this form you move, attack, and heal faster."
               ]
             }
           ]
@@ -5089,6 +5419,11 @@
                   "other": -1,
                   "dice": "10"
                 }
+              ],
+              "desc": [
+                "Gives you a powerful desire to kill, increased every time you satisfy it.",
+                "  Gives you extra melee damage and extra blows, but comes",
+                " with dangerous side-effects."
               ]
             },
             {
@@ -5117,6 +5452,9 @@
                   "eff": "DAMAGE",
                   "dice": "66"
                 }
+              ],
+              "desc": [
+                "Restores STR, INT, CON, and experience at the cost of 66 HP."
               ]
             },
             {
@@ -5132,6 +5470,10 @@
                   "radius": 200,
                   "dice": "1"
                 }
+              ],
+              "desc": [
+                "Attempts a melee blow that deals additional force damage when it hits,",
+                " knocking the target back with a chance to stun it."
               ]
             },
             {
@@ -5146,45 +5488,13 @@
                   "type": "NONE",
                   "radius": 13
                 }
+              ],
+              "desc": [
+                "Causes a radius 13 earthquake centered around the player."
               ]
             }
           ]
         }
-      ],
-      "desc": [
-        "Detects all monsters susceptible to fear in the immediate area,",
-        " for one turn only.",
-        "Removes fear and grants you berserk strength (resistance to fear,",
-        " +75 melee skill, -10 to AC, and prevents healing",
-        " over time) for a level-dependent duration.",
-        "Deals a level-dependent number of melee blows to each adjacent enemy.",
-        "  At level 5 you do one blow and gain an additional blow every 15",
-        " levels (2 at 20, 3 at 35, and 4 at 50).",
-        "Destroys an adjacent section of wall or rubble, unless it is a permanent",
-        " wall.  Deals 20+1d30 damage to monsters vulnerable to rock remover.",
-        "You run up to 4 spaces towards targeted enemy, then perform a",
-        " melee blow.  You gain an additional blow at levels 25 and 40.  If you",
-        " moved, the number of blows is reduced by 25% for each space, then rounded.",
-        "Your mind becomes too focused to be slowed, paralyzed or confused",
-        " for 12+d12 turns.",
-        "Attempts a level-dependent number of melee blows against the targeted",
-        " enemy.  You get 1 blow for every 15 levels.  If any of these blows",
-        " damage the enemy, it will be stunned for 6 turns.",
-        "Attempts to scare every monster in line of sight for a duration dependent",
-        " on player level and monster depth.  Monsters that resist fear are not",
-        " affected.",
-        "Makes any monster that can move more inclined to run toward you, and less",
-        " likely to use a ranged attack (including spells and innate abilities).",
-        "Coats all your melee weapons with poison for 18+d18 turns.",
-        "With a blood-curdling cry you change into a half-man half-wolf!",
-        "  In this form you move, attack, and heal faster.",
-        "Gives you a powerful desire to kill, increased every time you satisfy it.",
-        "  Gives you extra melee damage and extra blows, but comes",
-        " with dangerous side-effects.",
-        "Restores STR, INT, CON, and experience at the cost of 66 HP.",
-        "Attempts a melee blow that deals additional force damage when it hits,",
-        " knocking the target back with a chance to stun it.",
-        "Causes a radius 13 earthquake centered around the player."
       ]
     }
   ]

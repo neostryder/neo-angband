@@ -32,7 +32,9 @@ import {
   TARGET,
   buildObjectEffectChain,
   getSpellInfo,
+  spellDamageSummary,
   PY_SPELL,
+  COLOUR_WHITE,
   TV,
   ITYPE,
   ITYPE_MAX,
@@ -61,6 +63,8 @@ import type {
   Monster,
   EffectRecordJson,
   Textblock,
+  TextRun,
+  ProjectionInfo,
   IgnoreSettings,
   EgoItem,
   ObjectKind,
@@ -358,6 +362,69 @@ export function bookSpellMenu(
     sidx.push(idx);
   }
   return { items, sidx };
+}
+
+/**
+ * Colour the digit runs of `text` COLOUR_L_GREEN, everything else COLOUR_WHITE
+ * (spell_menu_browser's `text_out_c(COLOUR_L_GREEN, " %d", ...)` calls, which
+ * highlight only the average-damage numbers - "fire"/"and"/"damage" stay
+ * plain). A pure string->runs split; the digit-highlighting itself is a
+ * rendering concern the core layer deliberately leaves to the UI (see the
+ * module doc atop effect-info.ts).
+ */
+function highlightDigitRuns(text: string): TextRun[] {
+  const runs: TextRun[] = [];
+  const re = /\d+/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) runs.push({ text: text.slice(last, m.index), attr: COLOUR_WHITE });
+    runs.push({ text: m[0], attr: COLOUR_L_GREEN });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) runs.push({ text: text.slice(last), attr: COLOUR_WHITE });
+  return runs;
+}
+
+/**
+ * spell_menu_browser's '?' description panel (ui-spell.c L147-208): the
+ * spell's flavour text (spell->text), plus - once the spell has been cast
+ * successfully at least once (PY_SPELL_WORKED) and not since forgotten
+ * (PY_SPELL_FORGOTTEN) - the "Inflicts an average of ... damage." sentence
+ * with its damage numbers in COLOUR_L_GREEN. A spell with no damaging
+ * effects at all never gets a summary (spellDamageSummary returns null),
+ * matching upstream's num_damaging > 0 guard.
+ *
+ * Reuses spellDamageSummary (effect-info.ts, gap #48) for the sentence
+ * itself - no dice/grammar logic is reimplemented here - and wrapRuns for
+ * the wrap + per-run colouring, exactly like the object-inspect viewer.
+ * Pure and RNG-safe: nothing here (or in spellDamageSummary) reads the RNG.
+ */
+export function spellBrowseLines(
+  state: GameState,
+  spellIndex: number,
+  projections: readonly Pick<ProjectionInfo, "playerDesc">[],
+  cols: number,
+): ScreenLine[] {
+  const player = state.actor.player;
+  const spell = spellByIndex(player.cls, spellIndex);
+  if (!spell) return [];
+
+  const flags = player.spellFlags[spellIndex] ?? 0;
+  const worked = (flags & PY_SPELL.WORKED) !== 0;
+  const forgotten = (flags & PY_SPELL.FORGOTTEN) !== 0;
+
+  const runs: TextRun[] = [{ text: spell.text, attr: COLOUR_WHITE }];
+  if (worked && !forgotten) {
+    const chain = buildObjectEffectChain(spell.effectsRaw as EffectRecordJson[], state);
+    const summary = spellDamageSummary(chain, projections);
+    if (summary) {
+      runs.push({ text: "  ", attr: COLOUR_WHITE });
+      runs.push(...highlightDigitRuns(summary));
+    }
+  }
+  const tb: Textblock = { runs };
+  return wrapRuns(tb, cols);
 }
 
 /**

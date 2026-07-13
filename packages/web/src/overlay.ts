@@ -353,6 +353,16 @@ export interface SelectMenuOptions {
   browseOnly?: boolean;
   /** Colour applied to the cursor row instead of its own MenuItem.color (upstream draws the highlighted row COLOUR_WHITE regardless of its normal colour, e.g. view_ability_display). */
   cursorColor?: string;
+  /**
+   * spell_menu_handler's '?' toggle (ui-spell.c L127-142): when set, `detail`
+   * only renders while toggled on, and this key flips it (repainting in
+   * place, no selection made). Omitted entirely, `detail` behaves as before
+   * (always shown) - the curse-removal and ability-browser callers, which
+   * predate this toggle, are unaffected since they never set it.
+   */
+  detailToggleKey?: string;
+  /** Initial toggle state when `detailToggleKey` is set (default false, matching spell_menu_new's cast/study call sites; textui_book_browse passes true). */
+  detailInitiallyShown?: boolean;
 }
 
 /**
@@ -380,11 +390,13 @@ export function selectFromMenu(
     if (cursor < 0) cursor = 0;
     let top = 0;
     const detail = extra?.detail;
+    const toggleKey = extra?.detailToggleKey;
+    let detailShown = toggleKey ? (extra?.detailInitiallyShown ?? false) : true;
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
       term.print(0, HEADER_ROW, title.slice(0, cols - 1), TITLE);
-      const detailLines = detail ? detail(cursor) : [];
+      const detailLines = detail && detailShown ? detail(cursor) : [];
       const bodyRows = Math.max(1, rows - BODY_TOP - 1 - detailLines.length);
       if (cursor < top) top = cursor;
       if (cursor >= top + bodyRows) top = cursor - bodyRows + 1;
@@ -435,6 +447,11 @@ export function selectFromMenu(
       ev.stopImmediatePropagation();
       if (ev.key === "Escape") {
         finish(null);
+        return;
+      }
+      if (toggleKey && ev.key === toggleKey) {
+        detailShown = !detailShown;
+        paint();
         return;
       }
       if (ev.key === "Enter") {

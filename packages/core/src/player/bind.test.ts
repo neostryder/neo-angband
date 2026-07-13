@@ -179,6 +179,18 @@ describe("Mage magic structure (deferred spell effects preserved)", () => {
     expect(spell?.bidx).toBe(0);
     /* Effect chain preserved raw, not compiled. */
     expect(spell?.effectsRaw.length).toBe(1);
+    /*
+     * spell->text (class.txt desc: lines), joined verbatim with
+     * string_append semantics (no separator - each source line already
+     * carries its own leading space where the prose wants one).
+     */
+    expect(spell?.text).toBe(
+      "Fires a magic missile that always hits its target and does" +
+        " unresistable damage." +
+        "  Sometimes a beam is fired instead that hurts each monster" +
+        " in its path." +
+        "  The chance to get a beam goes up with your character level.",
+    );
   });
 });
 
