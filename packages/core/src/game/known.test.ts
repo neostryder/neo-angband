@@ -20,7 +20,11 @@ import {
   knownFeat,
   knownObject,
   noteSpots,
+  squareApparentLookInPreposition,
+  squareApparentLookPrefix,
+  squareApparentName,
   squareForget,
+  squareIsInteresting,
   squareIsKnown,
   squareKnowPile,
   squareMemorize,
@@ -30,7 +34,7 @@ import {
   updateMon,
   updateMonsters,
 } from "./known";
-import { FLOOR, GRANITE, addMon, makeRace, makeState } from "./harness";
+import { FLOOR, GRANITE, addMon, featureReg, makeRace, makeState } from "./harness";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -378,5 +382,76 @@ describe("forgetMap (wiz_dark's forgetting half)", () => {
     expect(squareIsKnown(state, grid)).toBe(false);
     expect(knownObject(state, grid)).toBeNull();
     expect(state.chunk.sqinfoHas(grid, SQUARE.DTRAP)).toBe(false);
+  });
+});
+
+describe("squareApparentName / squareApparentLookPrefix / squareApparentLookInPreposition (cave-square.c)", () => {
+  const MORE = featureReg.byCodeName("MORE").fidx; // "down staircase", TF_INTERESTING
+  const LAVA = featureReg.byCodeName("LAVA").fidx; // custom look-prefix "some"
+  const OPEN = featureReg.byCodeName("OPEN").fidx; // custom look-in-preposition "in"
+
+  it("falls back to an indefinite article when the feature has no look-prefix", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    state.chunk.setFeat(grid, MORE);
+    squareMemorize(state, grid);
+    expect(squareApparentName(state, grid)).toBe("down staircase");
+    expect(squareApparentLookPrefix(state, grid)).toBe("a ");
+  });
+
+  it("uses the feature's own look-prefix override when it has one", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    state.chunk.setFeat(grid, LAVA);
+    squareMemorize(state, grid);
+    expect(squareApparentLookPrefix(state, grid)).toBe("some");
+  });
+
+  it("uses the feature's own look-in-preposition override when it has one", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    state.chunk.setFeat(grid, OPEN);
+    squareMemorize(state, grid);
+    // terrain.txt's own data for OPEN has no trailing space (unlike the
+    // "on " default); reproduced verbatim rather than "fixed" here.
+    expect(squareApparentLookInPreposition(state, grid)).toBe("in");
+  });
+
+  it("defaults the look-in-preposition to 'on ' otherwise", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    state.chunk.setFeat(grid, FLOOR);
+    squareMemorize(state, grid);
+    expect(squareApparentLookInPreposition(state, grid)).toBe("on ");
+  });
+
+  it("reads 'unknown grid' for a grid the player has never memorized", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(20, 20);
+    expect(squareIsKnown(state, grid)).toBe(false);
+    expect(squareApparentName(state, grid)).toBe("unknown grid");
+  });
+});
+
+describe("squareIsInteresting (cave-square.c square_isinteresting, read against knowledge)", () => {
+  it("is false for an unmemorized grid", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    expect(squareIsInteresting(state, loc(20, 20))).toBe(false);
+  });
+
+  it("is true for a memorized TF_INTERESTING feature (a down staircase)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    state.chunk.setFeat(grid, featureReg.byCodeName("MORE").fidx);
+    squareMemorize(state, grid);
+    expect(squareIsInteresting(state, grid)).toBe(true);
+  });
+
+  it("is false for a memorized plain floor", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    state.chunk.setFeat(grid, FLOOR);
+    squareMemorize(state, grid);
+    expect(squareIsInteresting(state, grid)).toBe(false);
   });
 });

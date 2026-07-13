@@ -80,9 +80,19 @@ import {
   targetSetMonster,
   targetSetClosest,
   targetOkay,
+  targetGetMonsters,
+  targetIsSet,
   TARGET,
   TMD,
   ignoreDropTargets,
+  projectPath,
+  PROJECT,
+  initTargetLoopUi,
+  useInterestingLoopMode,
+  currentLoopGrid,
+  stepTargetLoop,
+  describeLookGrid,
+  computePathColours,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -97,6 +107,7 @@ import type {
   ItemRequest,
   ItemTargetRef,
   ObjectInfoExtras,
+  Loc,
 } from "@neo-angband/core";
 import { GameEvents } from "@neo-angband/core";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles } from "./pack";
@@ -117,7 +128,6 @@ import {
   magicBooks,
   bookSpellMenu,
   targetMenu,
-  lookLines,
   objectName,
   wrapRuns,
   qualityIgnoreMenu,
@@ -1102,6 +1112,96 @@ async function throwCmd(): Promise<void> {
   advance();
 }
 
+// --- Targeting + look (target_set_interactive, ui-target.c) ----------------
+// The faithful interactive browse loop: cycle the interesting-grid list
+// (space/+/-), free-move the cursor by direction ('o'), look at whatever
+// grid is under the cursor (a monster/trap/object/terrain description on the
+// message row), draw the projection path in TARGET_KILL mode, and set a
+// monster or location target with 't'/'5'/'0'/'.'. '*' opens it in
+// TARGET_KILL (textui_target); 'l'/'x' open it in TARGET_LOOK (do_cmd_look);
+// aimDir's AIM_STAR branch opens it in TARGET_KILL and, on success, resolves
+// dir 5 (DIR_TARGET) exactly as get_aim_dir does - the seam every aimed
+// spell/device/fire/throw already rides. "'" stays target_set_closest.
+//
+// chooseTarget/targetMenu/lookLines (the prior distance-sorted list picker)
+// are kept as a fallback utility, not wired into any key below.
+
+/** target_display_help (ui-target.c), reduced to the commands this port
+ * implements: pathfinding ('g'), the ignore key, and nearest-stairs/
+ * unexplored ('>'/'<'/'x') are sibling gaps and stay off this banner so it
+ * never promises a key that does nothing. */
+function targetHelpLines(useFreeMode: boolean): string[] {
+  return [
+    "Arrows/numpad look around. 'p' selects player. 'q'/Esc exits.",
+    useFreeMode
+      ? "'m' restricts to interesting places. 't' targets the cursor."
+      : "space/'+'/'-' cycle places. 'o' allows free selection. 't' targets the selection.",
+  ];
+}
+
+/**
+ * target_set_interactive: the interactive map-cursor browse loop. Owns the
+ * keyboard like promptDirection/selectFromMenu (its own capturing keydown
+ * listener) - the caller gates the main handler via openModal. Returns
+ * target_is_set() once the loop finishes (selection or cancel).
+ */
+function runTargetLoop(
+  mode: number,
+  _allowPathfinding: boolean,
+  startX?: number,
+  startY?: number,
+): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const targets = targetGetMonsters(state, mode);
+    let ui = initTargetLoopUi(state, startX, startY);
+
+    const paint = (): void => {
+      const cur = currentLoopGrid(ui, targets);
+      const path = projectPath(
+        state.chunk,
+        state.z.maxRange,
+        state.actor.grid,
+        cur,
+        PROJECT.THRU | PROJECT.INFO,
+      );
+      const { text, mon } = describeLookGrid(state, cur, mode);
+      // health_track / monster_race_track (aux_monster): re-tracked every
+      // frame the cursor sits on an obvious monster, not just on selection.
+      if (mon) state.healthWho = mon;
+      render({
+        cursor: cur,
+        path,
+        mode,
+        desc: text,
+        help: ui.help,
+        helpLines: targetHelpLines(!useInterestingLoopMode(ui, targets)),
+      });
+    };
+
+    const finish = (): void => {
+      window.removeEventListener("keydown", onKey, true);
+      render();
+      resolve(targetIsSet(state));
+    };
+
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      const step = stepTargetLoop(state, targets, ui, ev.key);
+      ui = step.ui;
+      if (step.bell) state.sound?.(MSG.BELL);
+      if (step.done) {
+        finish();
+        return;
+      }
+      paint();
+    };
+
+    window.addEventListener("keydown", onKey, true);
+    paint();
+  });
+}
+
 // --- Targeting + look (target.c; get_aim_dir) -------------------------------
 // A monster target lets aimed spells / devices fire at a specific creature
 // (DIR_TARGET, keypad 5) instead of a compass direction. chooseTarget lists the
@@ -1109,6 +1209,9 @@ async function throwCmd(): Promise<void> {
 // pick as state.target; the aim prompt then resolves dir 5 through the engine's
 // targetOkay/targetGet, exactly as upstream's cmd_get_target does. '*' opens the
 // picker mid-aim, "'" targets the closest, and 'l' looks (read-only).
+//
+// Kept as a fallback utility (see the note above runTargetLoop); no key below
+// wires to it any more.
 
 /** Pick a monster to target from the target-able list; true if one was set. */
 async function chooseTarget(): Promise<boolean> {
@@ -1133,15 +1236,15 @@ async function chooseTarget(): Promise<boolean> {
   return true;
 }
 
-// get_aim_dir: a keypad direction (1-9), or DIR_TARGET (5). '*' opens the target
-// picker and, once a monster is chosen, fires at it (dir 5). Re-prompts if the
-// player backs out of the picker without choosing.
+// get_aim_dir: a keypad direction (1-9), or DIR_TARGET (5). '*' opens the
+// interactive target loop and, once a monster is chosen, fires at it (dir 5).
+// Re-prompts if the player backs out of the loop without choosing.
 async function aimDir(): Promise<number | null> {
   for (;;) {
     const d = await promptDirection(term);
     if (d === null) return null;
     if (d === AIM_STAR) {
-      const chosen = await chooseTarget();
+      const chosen = await runTargetLoop(TARGET.KILL, false);
       render();
       if (chosen) return 5;
       continue;
@@ -1527,7 +1630,7 @@ function renderStatusLine(originX: number, row: number, maxCols: number): void {
  * message row. Roomy screens keep the classic left sidebar. Kept as a helper
  * so the touch handler maps a tapped cell back to a grid square identically.
  */
-function viewport(): {
+function viewport(focus?: Loc): {
   compact: boolean;
   mapOriginX: number;
   mapTop: number;
@@ -1542,8 +1645,9 @@ function viewport(): {
   const mapTop = compact ? 2 : 1; // message row (+ a vitals row when compact)
   const mapCols = cols - mapOriginX;
   const mapRows = rows - mapTop - 1; // the last row is the status line
-  const camX = state.actor.grid.x - Math.floor(mapCols / 2);
-  const camY = state.actor.grid.y - Math.floor(mapRows / 2);
+  const center = focus ?? state.actor.grid;
+  const camX = center.x - Math.floor(mapCols / 2);
+  const camY = center.y - Math.floor(mapRows / 2);
   return { compact, mapOriginX, mapTop, mapCols, mapRows, camX, camY };
 }
 
@@ -1569,15 +1673,47 @@ function renderCompactVitals(row: number, maxCols: number): void {
   }
 }
 
-function render(): void {
+/**
+ * The '*'/'l' interactive loop's overlay: a cursor grid the camera follows,
+ * the projected path to it (drawn in TARGET_KILL mode), the current look
+ * description (shown on the message row in place of `message`), and the
+ * '?' help banner/text (shown on the status row in place of the normal
+ * status line).
+ */
+interface TargetingOverlay {
+  cursor: Loc;
+  path: Loc[];
+  mode: number;
+  desc: string;
+  help: boolean;
+  helpLines: string[];
+}
+
+/** The cursor cell's highlight background, so the described grid is obvious. */
+const CURSOR_BG = "#3a4a6a";
+
+function render(targeting?: TargetingOverlay): void {
   const { cols, rows } = term.size();
   term.clear();
 
   const { compact, mapOriginX, mapTop, mapCols, mapRows, camX, camY } =
-    viewport();
+    viewport(targeting?.cursor);
   const monsterAt = monsterIndex();
   const objectAt = objectIndex();
   const trapAt = trapIndex();
+
+  // draw_path (ui-target.c): the projection path's per-grid colour, only in
+  // TARGET_KILL mode. Folded into the same per-cell pass below rather than a
+  // separate overlay pass, since the next render() always repaints from
+  // scratch (no save/restore of the underlying glyph is needed).
+  const pathColourAt = new Map<number, number>();
+  if (targeting && targeting.mode & TARGET.KILL) {
+    const colours = computePathColours(state, targeting.path);
+    targeting.path.forEach((g, i) => {
+      const c = colours[i];
+      if (c !== undefined) pathColourAt.set(gridIndex(g.x, g.y), c);
+    });
+  }
 
   for (let sy = 0; sy < mapRows; sy++) {
     for (let sx = 0; sx < mapCols; sx++) {
@@ -1587,18 +1723,29 @@ function render(): void {
       const idx = gridIndex(gx, gy);
       const screenX = mapOriginX + sx;
       const screenY = mapTop + sy;
+      const isCursor = !!targeting && gx === targeting.cursor.x && gy === targeting.cursor.y;
+      const cursorBg = isCursor ? { bg: CURSOR_BG } : {};
+      const pathColour = pathColourAt.get(idx);
 
       const seen = squareIsSeen(state.chunk, loc(gx, gy));
       if (!seen) {
         /* Remembered terrain from the engine's knowledge layer, drawn
          * dim - possibly stale, exactly as upstream memory works. */
         const kf = knownFeat(state, loc(gx, gy));
-        if (kf < 0) continue;
+        if (kf < 0) {
+          if (pathColour !== undefined) {
+            term.put(screenX, screenY, { ch: "*", fg: colorToCss(pathColour), ...cursorBg });
+          } else if (isCursor) {
+            term.put(screenX, screenY, { ch: " ", fg: "#101014", ...cursorBg });
+          }
+          continue;
+        }
         const f = features.get(kf);
         const disp = f.mimic !== null ? features.get(f.mimic) : f;
         term.put(screenX, screenY, {
           ch: disp.dChar,
           fg: dim(colorToCss(colorCharToAttr(disp.dAttr))),
+          ...cursorBg,
         });
         /* Remembered / sensed objects persist on the map in full color. */
         const mem = knownObject(state, loc(gx, gy));
@@ -1607,13 +1754,16 @@ function render(): void {
             screenX,
             screenY,
             mem.ch === null
-              ? { ch: "*", fg: "#8a8a94" }
-              : { ch: mem.ch, fg: colorToCss(colorCharToAttr(mem.attr)) },
+              ? { ch: "*", fg: "#8a8a94", ...cursorBg }
+              : { ch: mem.ch, fg: colorToCss(colorCharToAttr(mem.attr)), ...cursorBg },
           );
         }
         /* Detected monsters show even out of view - that is the point. */
         const marked = monsterAt.get(idx);
-        if (marked) term.put(screenX, screenY, { ch: marked.ch, fg: marked.css });
+        if (marked) term.put(screenX, screenY, { ch: marked.ch, fg: marked.css, ...cursorBg });
+        if (pathColour !== undefined) {
+          term.put(screenX, screenY, { ch: "*", fg: colorToCss(pathColour), ...cursorBg });
+        }
         continue;
       }
 
@@ -1625,21 +1775,45 @@ function render(): void {
       if (obj) drawn = obj;
       const mon = monsterAt.get(idx);
       if (mon) drawn = mon;
-      term.put(screenX, screenY, { ch: drawn.ch, fg: drawn.css });
+      if (pathColour !== undefined) drawn = { ch: "*", css: colorToCss(pathColour) };
+      term.put(screenX, screenY, { ch: drawn.ch, fg: drawn.css, ...cursorBg });
     }
   }
 
-  // The player, centered and bright.
-  term.put(
-    mapOriginX + Math.floor(mapCols / 2),
-    mapTop + Math.floor(mapRows / 2),
-    { ch: "@", fg: "#e8e8f0" },
-  );
+  // The player: centered and bright when the camera follows the player;
+  // repositioned to its own grid (which may be off-center) while targeting.
+  const playerScreenX = mapOriginX + (state.actor.grid.x - camX);
+  const playerScreenY = mapTop + (state.actor.grid.y - camY);
+  const playerIsCursor =
+    !!targeting &&
+    state.actor.grid.x === targeting.cursor.x &&
+    state.actor.grid.y === targeting.cursor.y;
+  term.put(playerScreenX, playerScreenY, {
+    ch: "@",
+    fg: "#e8e8f0",
+    ...(playerIsCursor ? { bg: CURSOR_BG } : {}),
+  });
 
   if (compact) renderCompactVitals(1, cols);
   else renderSidebar(rows);
-  term.print(mapOriginX, 0, message.slice(0, mapCols - 1), "#c8c8d4");
-  renderStatusLine(mapOriginX, rows - 1, mapCols);
+
+  if (targeting) {
+    // The look description takes the message row; the bottom status row
+    // becomes the help prompt/text, exactly as target_set_interactive owns
+    // both while it runs.
+    term.print(mapOriginX, 0, targeting.desc.slice(0, mapCols - 1), "#e0c040");
+    if (targeting.help) {
+      const n = targeting.helpLines.length;
+      targeting.helpLines.forEach((line, i) => {
+        term.print(mapOriginX, rows - n + i, line.slice(0, mapCols - 1), "#c8c8d4");
+      });
+    } else {
+      term.print(mapOriginX, rows - 1, "Press '?' for help.".slice(0, mapCols - 1), "#8a8a94");
+    }
+  } else {
+    term.print(mapOriginX, 0, message.slice(0, mapCols - 1), "#c8c8d4");
+    renderStatusLine(mapOriginX, rows - 1, mapCols);
+  }
 }
 
 /** Advance the engine after queuing input, then repaint. */
@@ -1771,9 +1945,19 @@ window.addEventListener("keydown", (ev) => {
       m: () => castSpell(),
       p: () => castSpell(),
       G: () => studySpell(),
-      "*": () => chooseTarget().then(() => undefined),
-      l: () => showTextScreen(term, "Look - monsters in view", lookLines(state)),
-      x: () => showTextScreen(term, "Look - monsters in view", lookLines(state)),
+      // textui_target: the interactive '*' loop in TARGET_KILL mode.
+      "*": async () => {
+        if (await runTargetLoop(TARGET.KILL, true)) say("Target Selected.");
+        else say("Target Aborted.");
+      },
+      // do_cmd_look: the same loop in TARGET_LOOK mode (read-only browse
+      // that can still 't'-target); only messages on a successful pick.
+      l: async () => {
+        if (await runTargetLoop(TARGET.LOOK, true)) say("Target Selected.");
+      },
+      x: async () => {
+        if (await runTargetLoop(TARGET.LOOK, true)) say("Target Selected.");
+      },
       f: () => fireCmd(),
       v: () => throwCmd(),
       o: () => openCmd(),

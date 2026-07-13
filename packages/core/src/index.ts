@@ -108,6 +108,7 @@ export * from "./game/effect-summon";
 export * from "./game/effect-detect";
 export * from "./game/known";
 export * from "./game/target";
+export * from "./game/target-loop";
 export * from "./game/mon-cmd";
 export * from "./game/describe";
 export * from "./game/object-inspect";
