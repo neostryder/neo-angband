@@ -74,6 +74,7 @@ import type {
   ObjRegistry,
   LoreDeps,
   LoreText,
+  LoreStore,
   MonsterLore,
   MonsterRace,
 } from "@neo-angband/core";
@@ -555,10 +556,15 @@ function strcmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** Capitalized race name ("small kobold" -> "Small kobold"). */
+export function capRaceName(race: { name: string }): string {
+  const n = race.name;
+  return `${n.charAt(0).toUpperCase()}${n.slice(1)}`;
+}
+
 /** Capitalized monster name ("small kobold" -> "Small kobold"). */
 export function capMonName(mon: Monster): string {
-  const n = mon.race.name;
-  return `${n.charAt(0).toUpperCase()}${n.slice(1)}`;
+  return capRaceName(mon.race);
 }
 
 /**
@@ -589,6 +595,67 @@ export function monsterRecallLines(
   cols: number,
 ): ScreenLine[] {
   return wrapRuns(loreTextToTextblock(loreDescription(race, lore, deps)), cols);
+}
+
+/** A race the player has memory of, paired with its live lore record. */
+export interface KnownMonsterRow {
+  race: MonsterRace;
+  lore: MonsterLore;
+}
+
+/**
+ * The monster-knowledge set (ui-knowledge.c do_cmd_knowledge_monsters,
+ * L1397-1449): every race the player has ANY memory of - the
+ * `l_list[i].all_known || l_list[i].sights` gate (L1402), skipping the
+ * nameless r_info[0] blank (L1405). Sorted by what the group comparator
+ * m_cmp_race falls back to within a group: level ascending, then name by
+ * ordinal strcmp (L1258-1262). The thematic monster_group columns the
+ * full-screen upstream browser draws over this set are a display grouping
+ * only and are deferred (a larger follow-up alongside object/artifact
+ * knowledge); this flat list is exactly the selectable membership those
+ * columns partition.
+ *
+ * Reads the lore store directly (store.get) rather than getLore so building
+ * the list never creates blank lore records for unseen races as a side
+ * effect - a race with no record has never been sighted and is excluded.
+ */
+export function knownMonsterEntries(
+  races: readonly MonsterRace[],
+  store: LoreStore,
+): KnownMonsterRow[] {
+  const rows: KnownMonsterRow[] = [];
+  for (const race of races) {
+    if (!race.name) continue; // r_info[0] blank
+    const lore = store.get(race.ridx);
+    if (!lore) continue; // never accessed -> never sighted
+    if (!lore.allKnown && lore.sights <= 0) continue;
+    rows.push({ race, lore });
+  }
+  rows.sort((a, b) => {
+    const c = a.race.level - b.race.level;
+    if (c) return c;
+    return strcmp(a.race.name, b.race.name);
+  });
+  return rows;
+}
+
+/**
+ * The monster-knowledge list as a selection menu (the '~' -> Monsters screen,
+ * ui-knowledge.c). Each row is the capitalized race name plus its kill tally
+ * (the browser's "Kills" column), coloured by the monster's display attr
+ * (m_xattr); the parallel row list lets the caller open the picked race's
+ * recall. Row order and membership come straight from knownMonsterEntries.
+ */
+export function monsterKnowledgeMenu(
+  races: readonly MonsterRace[],
+  store: LoreStore,
+): { items: MenuItem[]; rows: KnownMonsterRow[] } {
+  const rows = knownMonsterEntries(races, store);
+  const items: MenuItem[] = rows.map(({ race, lore }) => {
+    const kills = lore.pkills > 0 ? `  (${lore.pkills} killed)` : "";
+    return { label: `${capRaceName(race)}${kills}`, color: colorToCss(race.dAttr) };
+  });
+  return { items, rows };
 }
 
 /**

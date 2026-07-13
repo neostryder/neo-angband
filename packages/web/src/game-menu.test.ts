@@ -85,7 +85,7 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
     const actions = entries.map((e) => e.action);
     for (const required of [
       "resume", "character", "inventory", "equipment", "messages",
-      "save", "options", "help", "switch", "new",
+      "knowledge", "save", "options", "help", "switch", "new",
     ]) {
       expect(actions).toContain(required);
     }
