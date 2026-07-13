@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ITYPE, TV } from "../generated";
+import { Rng } from "../rng";
 import { ObjRegistry } from "./bind";
 import type { ObjPackJson } from "./types";
 import { objectNew } from "./object";
@@ -10,6 +11,7 @@ import { OBJ_NOTICE } from "./knowledge";
 import {
   IGNORE,
   IgnoreSettings,
+  egoHasIgnoreType,
   ignoreItemOk,
   ignoreLevelOf,
   ignoreTypeOf,
@@ -174,5 +176,93 @@ describe("object_is_ignored / ignore_item_ok (obj-ignore.c L576)", () => {
     restored.restore(s.snapshot());
     expect(restored.level[ITYPE.SHARP]).toBe(IGNORE.GOOD);
     expect(objectIsIgnored(potion, restored, true)).toBe(true);
+  });
+
+  it("round-trips the unignoring flag through snapshot/restore", () => {
+    const s = new IgnoreSettings();
+    s.unignoring = true;
+    const restored = new IgnoreSettings();
+    restored.restore(s.snapshot());
+    expect(restored.unignoring).toBe(true);
+
+    /* Saves written before this gap have no `unignoring` field. */
+    const legacy = new IgnoreSettings();
+    legacy.restore({ level: [], ego: [], kindAware: [], kindUnaware: [] });
+    expect(legacy.unignoring).toBe(false);
+  });
+});
+
+describe("egoHasIgnoreType (obj-ignore.c L405)", () => {
+  const westernesse = reg.egos.find((e) => e.name === "of Westernesse");
+  if (!westernesse) {
+    throw new Error("fixture: no 'of Westernesse' ego in ego_item.json");
+  }
+
+  it("is true for an ignore type one of the ego's possible kinds maps to", () => {
+    /* "of Westernesse" applies to sword/polearm (ITYPE_SHARP) and hafted
+     * (ITYPE_BLUNT) base kinds. */
+    expect(egoHasIgnoreType(westernesse, ITYPE.SHARP, reg.kinds)).toBe(true);
+    expect(egoHasIgnoreType(westernesse, ITYPE.BLUNT, reg.kinds)).toBe(true);
+  });
+
+  it("is false for an ignore type none of the ego's possible kinds maps to", () => {
+    expect(egoHasIgnoreType(westernesse, ITYPE.RING, reg.kinds)).toBe(false);
+  });
+});
+
+describe("IgnoreSettings.kindToggleAware / kindToggleUnaware", () => {
+  it("flips only its own bit, independent of the other", () => {
+    const s = new IgnoreSettings();
+    const potion = neutral(TV.POTION);
+    const kidx = potion.kind.kidx;
+
+    s.kindToggleAware(kidx);
+    expect(s.kindIsIgnoredAware(kidx)).toBe(true);
+    expect(s.kindIsIgnoredUnaware(kidx)).toBe(false);
+    expect(objectIsIgnored(potion, s, true)).toBe(true);
+    expect(objectIsIgnored(potion, s, false)).toBe(false);
+
+    s.kindToggleUnaware(kidx);
+    expect(s.kindIsIgnoredAware(kidx)).toBe(true);
+    expect(s.kindIsIgnoredUnaware(kidx)).toBe(true);
+    expect(objectIsIgnored(potion, s, false)).toBe(true);
+
+    /* Toggling aware back off leaves the unaware bit untouched. */
+    s.kindToggleAware(kidx);
+    expect(s.kindIsIgnoredAware(kidx)).toBe(false);
+    expect(s.kindIsIgnoredUnaware(kidx)).toBe(true);
+  });
+});
+
+describe("RNG safety (ignore configuration draws no randomness)", () => {
+  it("leaves an untouched rng's position unchanged across every ignore op", () => {
+    const rng = new Rng(42);
+    const before = JSON.stringify(rng.getState());
+
+    const westernesse = reg.egos.find((e) => e.name === "of Westernesse");
+    const s = new IgnoreSettings();
+    s.level[ITYPE.SHARP] = IGNORE.BAD;
+    s.egoToggle(5, ITYPE.SHARP);
+    s.kindToggleAware(1);
+    s.kindToggleUnaware(1);
+    s.unignoring = true;
+    s.unignoring = false;
+    const snap = s.snapshot();
+    const restored = new IgnoreSettings();
+    restored.restore(snap);
+
+    const bad = neutral(TV.SWORD);
+    bad.toD = -3;
+    objectIsIgnored(bad, restored, false);
+    ignoreItemOk(bad, restored, false);
+    ignoreLevelOf(bad);
+    ignoreTypeOf(bad);
+    if (westernesse) egoHasIgnoreType(westernesse, ITYPE.SHARP, reg.kinds);
+
+    /* None of the above take a Rng argument (settings state and its
+     * predicates are pure), so an unrelated generator is provably
+     * untouched - the port's one RNG use here (randcalc under MINIMISE,
+     * inside ignoreLevelOf) is pure arithmetic with no state draw. */
+    expect(JSON.stringify(rng.getState())).toBe(before);
   });
 });

@@ -17,10 +17,14 @@
  * !obj->known guards never fire. Flavor awareness (task #11) is real and
  * decides the aware-vs-unaware per-kind ignore.
  *
- * DEFERRED (ledgered in obj-ignore.yaml): the ignore MENU plumbing
- * (ego_has_ignore_type / quality_choices / autoinscription), ignore_drop
- * (drop all {ignore}able gear - a command), and the redraw / PN_IGNORE notice
- * pass - all presentation (#25) or gear-command surface.
+ * MENU PLUMBING: egoHasIgnoreType, QUALITY_VALUE_NAMES and the per-bit kind
+ * toggles feed the ignore-configuration UI (web/screens.ts + web/main.ts);
+ * ignore_drop's scan lives in game/ignore-cmd.ts (ignoreDropTargets), since it
+ * needs the live GameState/gear this module deliberately stays free of.
+ *
+ * DEFERRED (ledgered in obj-ignore.yaml): autoinscription (obj-ignore.c's
+ * rune/kind note machinery) and the per-item context ignore menu - both
+ * out of scope for this gap.
  */
 
 import { TV } from "../generated";
@@ -31,6 +35,7 @@ import { OBJ_NOTICE } from "./knowledge";
 import { tvalIsJewelry } from "./object";
 import type { GameObject } from "./object";
 import { OBJ_MOD_MAX } from "./types";
+import type { EgoItem, ObjectKind } from "./types";
 
 /**
  * Quality ignore tiers (obj-ignore.h quality_values). ALL means "everything
@@ -49,6 +54,18 @@ export const IGNORE = {
 /** kind->ignore bit flags (object.h): ignore this kind when aware / unaware. */
 export const IGNORE_IF_AWARE = 0x01;
 export const IGNORE_IF_UNAWARE = 0x02;
+
+/**
+ * quality_values[].name (obj-ignore.c L98): the tier names shown in the
+ * quality menu, indexed by the IGNORE_* tier.
+ */
+export const QUALITY_VALUE_NAMES: readonly string[] = [
+  "no ignore",
+  "bad",
+  "average",
+  "good",
+  "non-artifact",
+];
 
 /** The number of ignore types (ITYPE_MAX). */
 export const ITYPE_MAX = 27;
@@ -114,6 +131,30 @@ export function ignoreTypeOf(obj: GameObject): number {
     }
   }
   return ITYPE_MAX;
+}
+
+/**
+ * ego_has_ignore_type (obj-ignore.c L405): whether this ego, worn on any of
+ * its possible kinds, can fall under the given ignore type - i.e. whether
+ * the ego + itype combination is a meaningful row in the ego ignore menu.
+ * `kinds` is the registry's kidx-indexed kind table (poss_items stores kidx
+ * values).
+ */
+export function egoHasIgnoreType(
+  ego: EgoItem,
+  itype: number,
+  kinds: readonly ObjectKind[],
+): boolean {
+  for (const kidx of ego.possItems) {
+    const kind = kinds[kidx];
+    if (!kind) continue;
+    for (const q of QUALITY_MAPPING) {
+      if (q.tval === kind.tval && q.itype === itype && kind.name.includes(q.identifier)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /*
@@ -229,6 +270,21 @@ export class IgnoreSettings {
     this.kindAware.delete(kidx);
     this.kindUnaware.delete(kidx);
   }
+  /**
+   * ignore_sval_menu_action's `kind->ignore ^= IGNORE_IF_AWARE` (ui-options.c
+   * L1753-1756): flip only the aware bit, leaving the unaware bit untouched.
+   * The sval ignore menu toggles one bit per row (an aware row and an
+   * unaware row for the same kind are independent picks).
+   */
+  kindToggleAware(kidx: number): void {
+    if (this.kindAware.has(kidx)) this.kindAware.delete(kidx);
+    else this.kindAware.add(kidx);
+  }
+  /** The unaware-bit counterpart of kindToggleAware. */
+  kindToggleUnaware(kidx: number): void {
+    if (this.kindUnaware.has(kidx)) this.kindUnaware.delete(kidx);
+    else this.kindUnaware.add(kidx);
+  }
 
   /** A JSON-safe snapshot for the savefile. */
   snapshot(): IgnoreSettingsData {
@@ -237,6 +293,7 @@ export class IgnoreSettings {
       ego: Array.from(this.egoSet),
       kindAware: Array.from(this.kindAware),
       kindUnaware: Array.from(this.kindUnaware),
+      unignoring: this.unignoring,
     };
   }
   /** Restore a snapshot() payload. */
@@ -251,6 +308,9 @@ export class IgnoreSettings {
     for (const k of data.kindAware) this.kindAware.add(k);
     this.kindUnaware.clear();
     for (const k of data.kindUnaware) this.kindUnaware.add(k);
+    /* wr_byte(player->unignoring) (save.c L491): absent in saves written
+     * before this gap, which load with unignoring off. */
+    this.unignoring = data.unignoring ?? false;
   }
 }
 
@@ -260,6 +320,8 @@ export interface IgnoreSettingsData {
   ego: string[];
   kindAware: number[];
   kindUnaware: number[];
+  /** player->unignoring (save.c L491). Optional: absent in older saves. */
+  unignoring?: boolean;
 }
 
 /**

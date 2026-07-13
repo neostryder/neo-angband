@@ -1,7 +1,10 @@
 module: packages/core/src/obj/ignore.ts (the ignore predicate engine +
-  the player's ignore settings) + wiring (game/context.ts isIgnored,
+  the player's ignore settings) + packages/core/src/game/ignore-cmd.ts
+  (ignore_drop's scan) + wiring (game/context.ts isIgnored,
   session/game.ts, game/player-path.ts, game/pickup.ts, game/obj-cmd.ts,
-  session/save.ts)
+  session/save.ts) + the configuration UI (packages/web/src/screens.ts
+  quality/ego/sval menu builders, packages/web/src/main.ts's '=' / 'K'
+  handlers and the ignore_drop shell pass)
 status: partial
 baseline: 4.2.6
 upstream:
@@ -36,6 +39,29 @@ upstream:
         floor-command / display paths (game/obj-cmd.ts floorEnv). The
         session builds state.isIgnored = ignore_item_ok with live flavor
         awareness so those layers stay decoupled from flavor knowledge.
+  - path: src/obj-ignore.c, src/ui-options.c
+    items:
+      - ego_has_ignore_type (L405) as core egoHasIgnoreType, and
+        quality_values[].name as core QUALITY_VALUE_NAMES.
+      - IgnoreSettings.kindToggleAware/kindToggleUnaware - the sval menu's
+        per-bit toggle (ignore_sval_menu_action's `kind->ignore ^=
+        IGNORE_IF_AWARE/UNAWARE`), distinct from the add-only
+        kindIgnoreWhenAware/Unaware.
+      - ignore_drop (L651) as core ignoreDropTargets (the scan half:
+        eligible gear in backwards order, minus !d/!*-inscribed items,
+        flagging which are worn) + the web shell's applyIgnoreDrop (the
+        confirm/inscribe/queue-drop half).
+      - The quality menu (quality_menu/quality_display/quality_action),
+        the ego menu (ego_menu/ego_display/ego_action/ego_item_name/
+        strip_ego_name/ego_comp_func), the sval menu
+        (sval_menu/ignore_collect_kind/ignore_sval_menu_display/
+        ignore_sval_menu_action/cmp_ignore), and do_cmd_options_item's
+        top-level list (sval_dependent[]/ignore_tval), all as
+        web/screens.ts builders driven from web/main.ts's '=' key
+        (openIgnoreSetup) - reused verbatim titles/labels/footer wording
+        where upstream has any. The 'K' unignoring toggle
+        (textui_cmd_toggle_ignore) and its status-line indicator
+        (prt_unignore) are wired too.
 notes: >-
   The player's ignore settings live on GameState.ignore (an IgnoreSettings)
   and default to nothing ignored, matching the shipped default in a
@@ -46,26 +72,41 @@ notes: >-
   computes the base trait's minimise via a shared deterministic Rng (the
   minimise aspect draws no randomness).
 deferred:
-  - The ignore MENU plumbing: ego_has_ignore_type (L405, needs
-    ego->poss_items), quality_choices / quality_values name tables, and
-    the autoinscription block (rune_autoinscribe / get_autoinscription /
-    apply_autoinscription / autoinscribe_pack) - all presentation (#25).
-  - ignore_drop (L651): the "drop all {ignore}able gear" command, and
-    object_ignore_flavor_of (L370) - gear-command surface.
+  - Autoinscription (rune_autoinscribe / get_autoinscription /
+    apply_autoinscription / autoinscribe_pack) and the per-item context
+    ignore menu (textui_cmd_ignore_menu) - out of scope for the
+    configuration-menu gap; ledgered as follow-ups.
+  - object_ignore_flavor_of (L370) - the auto-ignore-on-first-sight hook,
+    a separate obj-knowledge.c surface from the menu/ignore_drop pair.
   - The PN_IGNORE notice pass and the ignore redraw / EVENT signals ride
-    presentation (#25); the port applies settings immediately on read.
+    presentation (#25); the port applies settings immediately on read
+    (ignore_drop's own PN_IGNORE trigger is reproduced directly: the shell
+    runs the drop pass right after a menu edit or 'K', with no deferred
+    notice flag to carry).
   - object_is_ignored's !obj->known / object_fully_known guards are moot
     while the port has no per-object known twin (everything is known), so
     ignore_level_of always takes the fully-known branch.
+  - "everseen" gating on the ego menu and the sval menu's aware rows
+    (ego->everseen / kind->everseen) - the port tracks no per-ego/per-kind
+    "seen" flag, so every ego/kind with a valid ignore type is listed
+    regardless of whether the player has encountered it yet (can spoil
+    ego/flavour existence early). A lightweight seen-set is a follow-up.
 verified-by:
-  - obj/ignore.test.ts (10 tests) - ignore_type_of maps tvals (sword ->
+  - obj/ignore.test.ts (23 tests) - ignore_type_of maps tvals (sword ->
     SHARP, hafted -> BLUNT, ring -> RING, potion -> ITYPE_MAX);
     ignore_level_of grades weapons bad / average / good, caps jewelry at
     bad / average, and rates ego -> ALL / artifact -> MAX; object_is_ignored
     ignores nothing by default, ignores by quality threshold per type,
     never ignores artifacts or !k-inscribed items, honors the individual
     ignore bit and the unignoring flag, ignores an ego of an ignored
-    ego+type, ignores by aware / unaware kind, and round-trips the settings.
+    ego+type, ignores by aware / unaware kind, and round-trips the settings
+    (including unignoring); egoHasIgnoreType true/false by ego + itype;
+    kindToggleAware/kindToggleUnaware flip independent bits; an
+    RNG-invariance test over every ignore-config operation.
+  - game/ignore-cmd.test.ts (3 tests) - ignoreDropTargets collects
+    pack + equipment gear currently ignored (excluding !d/!*-inscribed and
+    non-ignored items), flags equipped targets, excludes everything while
+    unignoring is active, and draws no randomness.
   - game/player-path.test.ts - a run stops beside a non-ignored floor
     object but runs past it once state.isIgnored returns true (the running
     / ignore wiring).

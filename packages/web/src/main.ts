@@ -82,6 +82,7 @@ import {
   targetOkay,
   TARGET,
   TMD,
+  ignoreDropTargets,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -119,6 +120,12 @@ import {
   lookLines,
   objectName,
   wrapRuns,
+  qualityIgnoreMenu,
+  qualityLevelItems,
+  egoIgnoreMenu,
+  svalKindMenu,
+  svalCategoryItems,
+  SVAL_DEPENDENT,
 } from "./screens";
 import { showCharacterSheet } from "./charsheet";
 import { runCharacterSelect } from "./charselect";
@@ -788,6 +795,158 @@ async function refuelItem(): Promise<void> {
   advance();
 }
 
+// --- Ignore configuration ('=') and ignore_drop (obj-ignore.c / ui-options.c) --
+// The faithful quality / ego / sval ignore-setup screens (do_cmd_options_item),
+// reached directly from '=' rather than through a full options screen (none
+// exists yet - see the gap's shellUX note). Editing any setting marks
+// ignoreConfigChanged so ESC-ing out of the top-level menu runs the
+// ignore_drop pass (notice_stuff's PN_IGNORE -> ignore_drop, player-calcs.c
+// L2542); the 'K' unignoring toggle sets PN_IGNORE too, so it runs the same
+// pass on every press (a no-op when nothing is currently ignored).
+let ignoreConfigChanged = false;
+
+/** get_check: a plain Yes/No confirmation; ESC counts as "No". */
+async function confirmYesNo(title: string): Promise<boolean> {
+  const idx = await selectFromMenu(
+    term,
+    title,
+    [{ label: "Yes" }, { label: "No" }],
+    "[ a-z to choose, ESC = No ]",
+  );
+  return idx === 0;
+}
+
+/**
+ * ignore_drop (obj-ignore.c L651): drop every gear item now eligible for
+ * ignoring. An equipped item is confirmed first (verify_object); declining
+ * inscribes "!d" on it (the upstream Hack to stop the same confirmation
+ * firing again) instead of dropping it. Naturally skips while a store or any
+ * other modal owns the keyboard, since '=' and 'K' are only reachable with
+ * no modal open - the faithful stand-in for upstream's square_isshop guard.
+ */
+async function applyIgnoreDrop(): Promise<void> {
+  let dropped = false;
+  for (const target of ignoreDropTargets(state)) {
+    const obj = gearGet(state.gear, target.handle);
+    if (!obj) continue;
+    if (target.equipped) {
+      const name = objectName(state, obj);
+      const yes = await confirmYesNo(`Really take off and drop ${name}?`);
+      if (!yes) {
+        obj.note = obj.note ? `${obj.note}!d` : "!d";
+        continue;
+      }
+    }
+    say(actionLine("drop", obj));
+    commandBuffer.push({
+      code: "drop",
+      args: { handle: target.handle, quantity: target.number },
+    });
+    dropped = true;
+  }
+  if (dropped) advance();
+}
+
+/** quality_action's tier submenu (ui-options.c L1584-1625): pick a tier. */
+async function openQualityLevelMenu(itype: number): Promise<void> {
+  const items = qualityLevelItems(itype);
+  const idx = await selectFromMenu(term, "Quality ignore menu", items);
+  if (idx === null) return;
+  state.ignore.level[itype] = idx;
+  ignoreConfigChanged = true;
+}
+
+/** quality_menu (ui-options.c L1630): the 26 ignore-type rows. */
+async function openQualityMenu(): Promise<void> {
+  for (;;) {
+    const { items, itypes } = qualityIgnoreMenu(state.ignore);
+    const idx = await selectFromMenu(term, "Quality ignore menu", items);
+    if (idx === null) return;
+    const itype = itypes[idx];
+    if (itype !== undefined) await openQualityLevelMenu(itype);
+  }
+}
+
+/** ego_menu (ui-options.c L1405): the ego x ignore-type toggle list. */
+async function openEgoMenu(): Promise<void> {
+  for (;;) {
+    const { items, choices } = egoIgnoreMenu(
+      booted.registries.objects.egos,
+      booted.registries.objects.kinds,
+      state.ignore,
+    );
+    if (items.length === 0) {
+      say("No known ego items to configure.");
+      return;
+    }
+    const idx = await selectFromMenu(term, "Ego item ignore menu", items);
+    if (idx === null) return;
+    const choice = choices[idx];
+    if (!choice) continue;
+    state.ignore.egoToggle(choice.eidx, choice.itype);
+    ignoreConfigChanged = true;
+  }
+}
+
+/** sval_menu (ui-options.c L1823): the aware/unaware kind toggles for a tval. */
+async function openSvalKindMenu(tval: number, desc: string): Promise<void> {
+  for (;;) {
+    const { items, rows } = svalKindMenu(
+      booted.registries.objects,
+      tval,
+      state.ignore,
+      state,
+    );
+    if (items.length === 0) return;
+    const idx = await selectFromMenu(
+      term,
+      `Ignore the following ${desc}:`,
+      items,
+      "[ a-z toggle, ESC to go back ]",
+    );
+    if (idx === null) return;
+    const row = rows[idx];
+    if (!row) continue;
+    if (row.aware) state.ignore.kindToggleAware(row.kidx);
+    else state.ignore.kindToggleUnaware(row.kidx);
+    ignoreConfigChanged = true;
+  }
+}
+
+/**
+ * do_cmd_options_item (ui-options.c L2009): titled "Item ignoring setup" (the
+ * upstream options-menu row's own label). Quality and Ego lead here (there is
+ * no full options screen to host them as trailing "extra options" yet); every
+ * eligible sval category (ignore_tval) follows. ESC exits the whole flow and,
+ * if anything changed, runs the ignore_drop pass.
+ */
+async function openIgnoreSetup(): Promise<void> {
+  ignoreConfigChanged = false;
+  for (;;) {
+    const { items: catItems, tvals } = svalCategoryItems(booted.registries.objects);
+    const items: MenuItem[] = [
+      { label: "Quality ignoring options" },
+      { label: "Ego ignoring options" },
+      ...catItems,
+    ];
+    const idx = await selectFromMenu(term, "Item ignoring setup", items);
+    if (idx === null) break;
+    if (idx === 0) {
+      await openQualityMenu();
+      continue;
+    }
+    if (idx === 1) {
+      await openEgoMenu();
+      continue;
+    }
+    const tval = tvals[idx - 2];
+    if (tval === undefined) continue;
+    const desc = SVAL_DEPENDENT.find((d) => d.tval === tval)?.desc ?? "";
+    await openSvalKindMenu(tval, desc);
+  }
+  if (ignoreConfigChanged) await applyIgnoreDrop();
+}
+
 // --- Spellcasting (cmd-obj.c cast/study; player-spell.c) --------------------
 // Cast (m/p) and study (G) mirror the item-use flow: pick a usable book from
 // the pack, then a spell from that book. The core cast/study commands address
@@ -1133,6 +1292,7 @@ async function openGameMenu(): Promise<void> {
     [
       { label: "Resume play" },
       { label: "Save game" },
+      { label: "Ignore setup" },
       { label: "Switch character" },
       { label: "New character" },
     ],
@@ -1145,9 +1305,12 @@ async function openGameMenu(): Promise<void> {
       render();
       break;
     case 2:
-      switchCharacter();
+      await openIgnoreSetup();
       break;
     case 3:
+      switchCharacter();
+      break;
+    case 4:
       persistSave(); // keep the current character in its slot, then birth anew
       newGame();
       break;
@@ -1312,7 +1475,7 @@ const SIDEBAR_W = 13; // classic Angband status column width.
  * so the status line can label Poisoned/Afraid/Fed etc). Options the web does
  * not surface fall back to the model's defaults. */
 function displayDeps() {
-  return { timedEffects: players.timed };
+  return { timedEffects: players.timed, unignoring: state.ignore.unignoring };
 }
 
 /**
@@ -1615,11 +1778,22 @@ window.addEventListener("keydown", (ev) => {
       v: () => throwCmd(),
       o: () => openCmd(),
       D: () => disarmCmd(),
+      "=": () => openIgnoreSetup(),
     };
     const verb = ITEM_VERBS[ev.key];
     if (verb) {
       ev.preventDefault();
       void openModal(verb);
+      return;
+    }
+    // Toggle ignoring off (K, textui_cmd_toggle_ignore): a free action, then
+    // the same ignore_drop pass PN_IGNORE would trigger upstream (a no-op
+    // re-enabling ignoring surfaces nothing new to drop; disabling it while
+    // gear is already flagged ignored has nothing to do either way).
+    if (ev.key === "K") {
+      ev.preventDefault();
+      state.ignore.unignoring = !state.ignore.unignoring;
+      void openModal(() => applyIgnoreDrop());
       return;
     }
     if (ev.key === "'") {
@@ -1758,6 +1932,7 @@ function installTouchActionBar(): void {
     ["Insc", () => { void openModal(() => inscribeItem()); }],
     ["Fuel", () => { void openModal(() => refuelItem()); }],
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots })); }],
+    ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     ["Switch", () => { switchCharacter(); }],
     ["New", () => { if (!dead) persistSave(); newGame(); }],
