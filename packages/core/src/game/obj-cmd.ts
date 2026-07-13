@@ -11,25 +11,34 @@
  * The deeper known-object bookkeeping (obj->known twins, work_obj copies
  * for messaging) is knowledge/UI work (#24/#25) and is replaced by hooks.
  *
+ * Inscribe/uninscribe/refill (fuel) are ported below (cmd-obj.c
+ * do_cmd_inscribe/do_cmd_uninscribe/do_cmd_refill + refill_lamp,
+ * obj-util.c obj_can_refill/obj_has_inscrip). Autoinscribe
+ * (do_cmd_autoinscribe/apply_autoinscription) runs its guards and the
+ * carried/ignored checks but is a structural no-op until the per-kind
+ * note_aware/note_unaware registry and its knowledge-menu UI land (#24);
+ * see ObjCmdDeps.autoNote.
+ *
  * DEFERRED with their subsystems (ledgered in game-obj-cmd.yaml):
- * inscriptions commands (trivial setters, land with the UI), autoinscribe,
- * refill (fuel model), cast/study (player spells #22), the glyph-of-warding
- * push_object interaction (traps #21), command repetition, shapechange
- * gating, and the !t take-off confirmation prompt (get_check, UI).
+ * cast/study (player spells #22), the glyph-of-warding push_object
+ * interaction (traps #21), command repetition, and the !t take-off
+ * confirmation prompt (get_check, UI).
  */
 
 import type { Constants } from "../constants";
-import { EFFECT_ENTRIES, TMD } from "../generated";
+import { EFFECT_ENTRIES, OF, TMD } from "../generated";
 import { DDD } from "../loc";
 import { SKILL } from "../player/types";
 import { EffectBuilder } from "../effects/effect";
 import type { Effect, EffectBuilderInjections } from "../effects/effect";
 import { sourcePlayer } from "../effects/interpreter";
 import type { EffectRegistry } from "../effects/interpreter";
-import type { EffectRecordJson } from "../obj/types";
+import type { EffectRecordJson, ObjectKind } from "../obj/types";
 import type { GameObject, StackLimits } from "../obj/object";
 import {
   tvalIsEdible,
+  tvalIsFuel,
+  tvalIsLight,
   tvalIsPotion,
   tvalIsRod,
   tvalIsScroll,
@@ -38,6 +47,7 @@ import {
   tvalCanHaveTimeout,
 } from "../obj/object";
 import { FlavorKnowledge } from "../obj/knowledge";
+import { ignoreItemOk } from "../obj/ignore";
 import type { GameState, ItemTargetRef, PlayerCommand } from "./context";
 import { dropNear, floorObjectForUse, floorPile } from "./floor";
 import type { FloorEnv } from "./floor";
@@ -46,12 +56,15 @@ import {
   gearGet,
   gearObjectForUse,
   invenCarry,
+  invenCarryNum,
+  objectSplit,
   wieldObject,
   wieldSlot,
 } from "./gear";
 import { buildEffectContext } from "./effect-env";
 import type { EffectEnvDeps } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
+import { describeObject } from "./describe";
 import type { CastContext } from "./project-cast";
 import type { ActionRegistry } from "./player-turn";
 import { targetFix, targetGet, targetOkay, targetRelease } from "./target";
@@ -97,6 +110,14 @@ export interface ObjCmdDeps {
   /** Floor-pile seams (isTrap for drop placement). */
   floorEnv?: FloorEnv;
   env?: ObjCmdEnv;
+  /**
+   * get_autoinscription (obj-ignore.c L229): the per-kind note_aware /
+   * note_unaware autoinscription registry. Not modeled yet - there is no
+   * knowledge-menu UI to register one (#24) - so leaving this absent makes
+   * autoinscribe a structural no-op, exactly as upstream with no
+   * autoinscriptions configured for any kind.
+   */
+  autoNote?: (kind: ObjectKind, aware: boolean) => string | null;
 }
 
 function stackLimits(constants: Constants): StackLimits {
@@ -264,6 +285,148 @@ export function numberCharging(obj: GameObject): number {
 /** obj_can_zap (obj-util.c L709): any rod in the stack not charging? */
 export function objCanZap(obj: GameObject): boolean {
   return tvalCanHaveTimeout(obj.tval) && numberCharging(obj) < obj.number;
+}
+
+/* ------------------------------------------------------------------ *
+ * Inscriptions and refuelling (cmd-obj.c, obj-util.c, obj-ignore.c).
+ * ------------------------------------------------------------------ */
+
+/** obj_has_inscrip (obj-util.c L841): does this object carry an inscription? */
+export function objHasInscrip(obj: GameObject): boolean {
+  return !!obj.note;
+}
+
+/** The equipped light source, or null when no LIGHT slot is worn. */
+function equippedLight(state: GameState): GameObject | null {
+  const lightSlot = state.actor.player.body.slots.findIndex(
+    (s) => s.type === "LIGHT",
+  );
+  return lightSlot >= 0 ? state.runeEnv.slotObject(lightSlot) : null;
+}
+
+/**
+ * obj_can_refill (obj-util.c L743): is `obj` a valid fuel source for the
+ * currently equipped light - a flask of oil, or another TAKES_FUEL lantern
+ * still holding fuel (its timeout)?
+ */
+export function objCanRefill(state: GameState, obj: GameObject): boolean {
+  if (obj.flags.has(OF.NO_FUEL)) return false;
+
+  const light = equippedLight(state);
+  if (light && light.flags.has(OF.TAKES_FUEL)) {
+    if (tvalIsFuel(obj.tval)) return true;
+    if (
+      tvalIsLight(obj.tval) &&
+      obj.flags.has(OF.TAKES_FUEL) &&
+      obj.timeout > 0
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * refill_lamp (cmd-obj.c L1008): add `obj`'s fuel (its timeout for a donor
+ * lantern, or pval for a flask of oil) to `lamp`, capping at
+ * constants.fuelLamp. A stacked donor lantern splits off one empty unit
+ * (carried back if there's room, else dropped); a lone donor is emptied in
+ * place. A flask is consumed entirely (one unit, from the pack or floor).
+ * Recomputes the light radius (PU_TORCH) afterward.
+ */
+export function refillLamp(
+  state: GameState,
+  lamp: GameObject,
+  obj: GameObject,
+  opts: { handle?: number; fromFloor?: boolean },
+  deps: ObjCmdDeps,
+): void {
+  const env = deps.env ?? {};
+
+  lamp.timeout += obj.timeout ? obj.timeout : obj.pval;
+  env.msg?.("You fuel your lamp.");
+  if (lamp.timeout >= deps.constants.fuelLamp) {
+    lamp.timeout = deps.constants.fuelLamp;
+    env.msg?.("Your lamp is full.");
+  }
+
+  if (obj.flags.has(OF.TAKES_FUEL)) {
+    /* Refilled from a lantern: empty it (splitting one off if stacked). */
+    if (obj.number > 1) {
+      const used = objectSplit(obj, 1);
+      used.timeout = 0;
+      const carried = opts.handle !== undefined && !opts.fromFloor;
+      if (carried && invenCarryNum(state.gear, used, deps.constants) > 0) {
+        invenCarry(state.gear, used, stackLimits(deps.constants));
+      } else {
+        /* Overflow / floor donor: drop_near's own breakage roll (randint0)
+         * fires here exactly as upstream, even at chance=0 (a real, faithful
+         * RNG draw on this rare branch only - see obj-cmd.test.ts). */
+        dropNear(state, used, 0, state.actor.grid, false, deps.floorEnv);
+      }
+    } else {
+      obj.timeout = 0;
+    }
+  } else {
+    /* Refilled from a flask: consume one unit entirely. */
+    if (opts.fromFloor) {
+      floorObjectForUse(state, obj, 1);
+    } else if (opts.handle !== undefined) {
+      gearObjectForUse(state.gear, state.actor.player, opts.handle, 1);
+    }
+  }
+
+  /* PU_TORCH: force the light-radius recalc so a just-refuelled, previously
+   * spent (timeout 0) lantern stops reading as dark (player/calcs.ts). */
+  state.updateBonuses?.();
+}
+
+/** Is `obj` presently carried (pack or equipped), by identity? */
+function objIsCarried(state: GameState, obj: GameObject): boolean {
+  for (const [handle, stored] of state.gear.store) {
+    if (stored !== obj) continue;
+    return (
+      state.gear.pack.includes(handle) ||
+      state.actor.player.equipment.includes(handle)
+    );
+  }
+  return false;
+}
+
+/**
+ * apply_autoinscription (obj-ignore.c L242): put the kind's registered
+ * autoinscription on `obj`, unless it is already inscribed, not carried, or
+ * ignored. Also clears a stale unaware autoinscription once the kind
+ * becomes aware. Returns 1 when an inscription was applied, 0 otherwise
+ * (upstream's int return, kept for parity though callers ignore it).
+ *
+ * runes_autoinscribe (obj-ignore.c L259, rune-based autoinscription) rides
+ * the rune-knowledge system and is deferred to #24.
+ */
+export function applyAutoinscription(
+  state: GameState,
+  obj: GameObject,
+  deps: ObjCmdDeps,
+): number {
+  const aware = deps.flavor ? deps.flavor.isAware(obj.kind) : true;
+  const note = deps.autoNote?.(obj.kind, aware) ?? null;
+
+  /* Remove an unaware inscription once aware, if it no longer applies. */
+  if (aware && obj.note) {
+    const unawareNote = deps.autoNote?.(obj.kind, false) ?? null;
+    if (unawareNote && obj.note === unawareNote && (!note || obj.note !== note)) {
+      obj.note = null;
+    }
+  }
+
+  if (!note) return 0;
+  if (obj.note) return 0;
+  if (!objIsCarried(state, obj)) return 0;
+  if (ignoreItemOk(obj, state.ignore, aware)) return 0;
+
+  obj.note = note.length > 0 ? note : null;
+  deps.env?.msg?.(`You autoinscribe ${describeObject(state, obj)}.`);
+  return 1;
 }
 
 /** randcalc(obj->time, 0, RANDOMISE): the recharge time roll. */
@@ -703,4 +866,75 @@ export function installObjCommands(
       ),
     ),
   );
+
+  /* do_cmd_inscribe (cmd-obj.c L179): set the note. Upstream's
+   * quark_add("") does NOT return 0 (z-quark.c L31: it adds a new,
+   * non-zero, empty quark, so obj->note stays truthy and object_desc
+   * renders " {}"). This port intentionally maps "" -> null instead: it is
+   * a deliberate normalization (not literal parity) that keeps note's
+   * truthiness meaningful for objectStackable/objectCombine (object.ts
+   * L844/L920), which already compare/merge notes by truthiness. No
+   * energy; upstream's PN_COMBINE/PN_IGNORE notice + PR_INVEN/PR_EQUIP
+   * redraw are UI bookkeeping this port doesn't model (combine already runs
+   * lazily on the next inven_carry; ignore/display refresh is #25). */
+  registry.register("inscribe", gated((state, cmd) => {
+    const found = commandObject(state, cmd);
+    if (!found) return 0;
+    const raw = cmd.args?.["inscription"];
+    const text = typeof raw === "string" ? raw : "";
+    found.obj.note = text.length > 0 ? text : null;
+    return 0;
+  }));
+
+  /* do_cmd_uninscribe (cmd-obj.c L153). */
+  registry.register("uninscribe", gated((state, cmd) => {
+    const found = commandObject(state, cmd);
+    if (!found || !objHasInscrip(found.obj)) return 0;
+    found.obj.note = null;
+    deps.env?.msg?.("Inscription removed.");
+    return 0;
+  }));
+
+  /* do_cmd_autoinscribe (cmd-obj.c L219): not gated by
+   * player_get_resume_normal_shape - upstream just no-ops while
+   * shapechanged, with no resume prompt. */
+  registry.register("autoinscribe", (state, _cmd) => {
+    if (playerIsShapechanged(state)) return 0;
+    for (const obj of floorPile(state, state.actor.grid)) {
+      applyAutoinscription(state, obj, deps);
+    }
+    for (const obj of state.gear.store.values()) {
+      applyAutoinscription(state, obj, deps);
+    }
+    return 0;
+  });
+
+  /* do_cmd_refill (cmd-obj.c L1071): validate the equipped light, then
+   * refill it from the chosen fuel source. Half a turn on success. */
+  registry.register("refill", gated((state, cmd) => {
+    const light = equippedLight(state);
+    if (!light || !tvalIsLight(light.tval)) {
+      deps.env?.msg?.("You are not wielding a light.");
+      return 0;
+    }
+    if (light.flags.has(OF.NO_FUEL) || !light.flags.has(OF.TAKES_FUEL)) {
+      deps.env?.msg?.("Your light cannot be refilled.");
+      return 0;
+    }
+
+    const found = commandObject(state, cmd);
+    if (!found || !objCanRefill(state, found.obj)) return 0;
+
+    refillLamp(
+      state,
+      light,
+      found.obj,
+      {
+        fromFloor: found.fromFloor,
+        ...(found.handle !== undefined ? { handle: found.handle } : {}),
+      },
+      deps,
+    );
+    return Math.trunc(state.z.moveEnergy / 2);
+  }));
 }
