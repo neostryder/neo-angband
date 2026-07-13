@@ -163,6 +163,7 @@ export function promptText(
   title: string,
   initial = "",
   maxLen = 15,
+  footer = "[ type a name, Enter to accept, ESC to cancel ]",
 ): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     let buf = initial;
@@ -171,7 +172,7 @@ export function promptText(
       term.clear();
       term.print(0, HEADER_ROW, title.slice(0, cols - 1), TITLE);
       term.print(0, BODY_TOP, `> ${buf}_`.slice(0, cols - 1), FG);
-      term.print(0, rows - 1, "[ type a name, Enter to accept, ESC to cancel ]", DIM);
+      term.print(0, rows - 1, footer.slice(0, cols - 1), DIM);
     };
     const finish = (value: string | null): void => {
       window.removeEventListener("keydown", onKey, true);

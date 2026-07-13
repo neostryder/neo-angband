@@ -64,6 +64,10 @@ import {
   tvalIsRod,
   tvalIsWearable,
   tvalIsAmmo,
+  tvalIsLight,
+  objCanRefill,
+  objHasInscrip,
+  OF,
   sidebarModel,
   statusLineModel,
   createVisualsAnimator,
@@ -99,7 +103,7 @@ import { GlyphTerm } from "./term";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import { createTileRenderer } from "./tiles";
-import { showTextScreen, selectFromMenu, promptDirection, AIM_STAR } from "./overlay";
+import { showTextScreen, selectFromMenu, promptText, promptDirection, AIM_STAR } from "./overlay";
 import type { MenuItem } from "./overlay";
 import { runBirth } from "./birth";
 import { MessageLog } from "./messages";
@@ -706,6 +710,81 @@ async function takeOffItem(): Promise<void> {
   if (handle === undefined) return;
   say(actionLine("takeoff", gearGet(state.gear, handle)));
   commandBuffer.push({ code: "takeoff", args: { handle } });
+  advance();
+}
+
+// --- Inscribe / uninscribe / refuel (cmd-obj.c do_cmd_inscribe /
+// do_cmd_uninscribe / do_cmd_refill) ------------------------------------
+// All three route through selectTargetItem's aggregated pack+equip+floor
+// picker (USE_EQUIP|USE_INVEN|USE_QUIVER|USE_FLOOR upstream); the quiver
+// rides the pack in this gear model. Autoinscribe has no default key
+// upstream ships it only from the knowledge menu, whose per-kind registry
+// (#24) doesn't exist yet - so it stays a core-only no-op with no shell
+// entry until that lands.
+
+/** Inscribe (`{`): pick any item and set its inscription text. */
+async function inscribeItem(): Promise<void> {
+  const ref = await selectTargetItem({
+    prompt: "Inscribe which item? ",
+    reject: "You have nothing to inscribe.",
+    tester: () => true,
+    mode: { equip: true, inven: true, quiver: true, floor: true },
+  });
+  if (!ref) return;
+  const obj = targetRefObject(ref);
+  if (!obj) return;
+  const text = await promptText(
+    term,
+    `Inscribing ${objectName(state, obj)}.`,
+    obj.note ?? "",
+    40,
+    "[ type an inscription, Enter to accept, ESC to cancel ]",
+  );
+  if (text === null) return;
+  commandBuffer.push({ code: "inscribe", args: { ...ref, inscription: text } });
+  advance();
+}
+
+/** Uninscribe (`}`): pick from items that currently carry an inscription. */
+async function uninscribeItem(): Promise<void> {
+  const ref = await selectTargetItem({
+    prompt: "Uninscribe which item? ",
+    reject: "You have nothing you can uninscribe.",
+    tester: (o) => objHasInscrip(o),
+    mode: { equip: true, inven: true, quiver: true, floor: true },
+  });
+  if (!ref) return;
+  commandBuffer.push({ code: "uninscribe", args: { ...ref } });
+  advance();
+}
+
+/**
+ * Refuel (`F`): faithfully guard on the worn light before opening the fuel
+ * picker (do_cmd_refill's own "not wielding a light" / "cannot be
+ * refilled" messages, no turn spent on either), then choose a flask of oil
+ * or a spare lantern (obj_can_refill).
+ */
+async function refuelItem(): Promise<void> {
+  const player = state.actor.player;
+  const lightSlot = player.body.slots.findIndex((s) => s.type === "LIGHT");
+  const light =
+    lightSlot >= 0 ? gearGet(state.gear, player.equipment[lightSlot] ?? 0) : null;
+  if (!light || !tvalIsLight(light.tval)) {
+    say("You are not wielding a light.");
+    return;
+  }
+  if (light.flags.has(OF.NO_FUEL) || !light.flags.has(OF.TAKES_FUEL)) {
+    say("Your light cannot be refilled.");
+    return;
+  }
+  const ref = await selectTargetItem({
+    prompt: "Refuel with with fuel source? ",
+    reject: "You have nothing you can refuel with.",
+    tester: (o) => objCanRefill(state, o),
+    mode: { inven: true, quiver: true, floor: true },
+  });
+  if (!ref) return;
+  commandBuffer.push({ code: "refill", args: { ...ref } });
   advance();
 }
 
@@ -1523,6 +1602,9 @@ window.addEventListener("keydown", (ev) => {
       d: () => useItem("drop", () => true, "items"),
       A: () => activateItem(),
       t: () => takeOffItem(),
+      "{": () => inscribeItem(),
+      "}": () => uninscribeItem(),
+      F: () => refuelItem(),
       m: () => castSpell(),
       p: () => castSpell(),
       G: () => studySpell(),
@@ -1673,6 +1755,8 @@ function installTouchActionBar(): void {
     }],
     ["Inv", () => { void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))); }],
     ["Insp", () => { void openModal(() => inspectItem()); }],
+    ["Insc", () => { void openModal(() => inscribeItem()); }],
+    ["Fuel", () => { void openModal(() => refuelItem()); }],
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots })); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     ["Switch", () => { switchCharacter(); }],
