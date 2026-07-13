@@ -44,6 +44,13 @@ import {
   tvalIsMoney,
   COLOUR_L_RED,
   COLOUR_L_GREEN,
+  objectListCollect,
+  objectListSort,
+  objectListStandardCompare,
+  objectListEntryName,
+  objectListEntryLineAttribute,
+  OBJECT_LIST_SECTION_LOS,
+  OBJECT_LIST_SECTION_NO_LOS,
 } from "@neo-angband/core";
 import type {
   GameState,
@@ -391,6 +398,73 @@ export function lookLines(state: GameState): ScreenLine[] {
   const { items } = targetMenu(state);
   if (items.length === 0) return [{ text: "You see no monsters.", color: DIM }];
   return items.map((it) => ({ text: it.label, color: FG }));
+}
+
+/**
+ * The floor object list (']', ui-obj-list.c object_list_show_interactive):
+ * every object the player currently knows about on the level, split into a
+ * line-of-sight section and an out-of-view ("aware of") section, each row
+ * showing the glyph, knowledge-gated name and offset from the player.
+ *
+ * A pure read: objectListCollect/objectListSort/objectListEntryName draw no
+ * RNG and cost no turn. Unlike the terminal's object_list_format_section this
+ * never truncates or emits a "...and N others." line - the modal scrolls, so
+ * every entry is shown; behaviour-preserving since all upstream information
+ * still surfaces, just without the fixed-height cutoff.
+ */
+export function objectListLines(state: GameState): ScreenLine[] {
+  const list = objectListCollect(state);
+  objectListSort(list, objectListStandardCompare(state));
+
+  const entryLine = (entry: (typeof list.entries)[number]): ScreenLine => {
+    const glyph = entry.object ? entry.object.kind.dChar : "*";
+    const name = objectListEntryName(entry, state);
+    const dirY = entry.dy <= 0 ? "N" : "S";
+    const dirX = entry.dx <= 0 ? "W" : "E";
+    const loc = `${Math.abs(entry.dy)} ${dirY} ${Math.abs(entry.dx)} ${dirX}`;
+    return {
+      text: `${glyph} ${name}   ${loc}`,
+      color: colorToCss(objectListEntryLineAttribute(entry, state)),
+    };
+  };
+
+  const losTotal = list.totalEntries[OBJECT_LIST_SECTION_LOS]!;
+  const noLosTotal = list.totalEntries[OBJECT_LIST_SECTION_NO_LOS]!;
+
+  const lines: ScreenLine[] = [];
+
+  /* "You can see" section (object_list_format_section, prefix "You can see",
+   * show_others always false). */
+  if (losTotal === 0) {
+    lines.push({ text: "You can see no objects.", color: DIM });
+  } else {
+    lines.push({
+      text: `You can see ${losTotal} object${losTotal === 1 ? "" : "s"}:`,
+      color: LABEL,
+    });
+    for (const entry of list.entries) {
+      if (entry.count[OBJECT_LIST_SECTION_LOS]! > 0) lines.push(entryLine(entry));
+    }
+  }
+
+  /* "You are aware of" section: printed whenever any out-of-view entries
+   * exist, regardless of whether the LOS section was empty (matches
+   * object_list_format_textblock's unconditional second call). "other " is
+   * inserted only when LOS objects also exist (show_others). */
+  if (noLosTotal > 0) {
+    const showOthers = list.totalObjects[OBJECT_LIST_SECTION_LOS]! > 0;
+    const others = showOthers ? "other " : "";
+    lines.push({ text: "", color: FG });
+    lines.push({
+      text: `You are aware of ${noLosTotal} ${others}object${noLosTotal === 1 ? "" : "s"}:`,
+      color: LABEL,
+    });
+    for (const entry of list.entries) {
+      if (entry.count[OBJECT_LIST_SECTION_NO_LOS]! > 0) lines.push(entryLine(entry));
+    }
+  }
+
+  return lines;
 }
 
 /** The message-history lines (Ctrl-P): whole log, newest last. */
