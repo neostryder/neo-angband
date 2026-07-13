@@ -55,9 +55,14 @@ export interface TerrainRecordJson {
   "hurt-msg"?: string[];
   "die-msg"?: string[];
   "confused-msg"?: string[];
-  "look-prefix"?: string;
-  "look-in-preposition"?: string;
-  "resist-flag"?: string;
+  /*
+   * These three are single-token directives, but the spec (like every other
+   * `repeat: true` field) compiles them to a one-element string array rather
+   * than a bare string; joinLines/resolveResistFlag below unwrap that.
+   */
+  "look-prefix"?: string[];
+  "look-in-preposition"?: string[];
+  "resist-flag"?: string[];
 }
 
 function parseFlagNames(lines: string[] | undefined): FlagSet {
@@ -124,9 +129,9 @@ export class FeatureRegistry {
         hurtMsg: joinLines(rec["hurt-msg"]),
         dieMsg: joinLines(rec["die-msg"]),
         confusedMsg: joinLines(rec["confused-msg"]),
-        lookPrefix: rec["look-prefix"] ?? "",
-        lookInPreposition: rec["look-in-preposition"] ?? "",
-        resistFlag: resolveResistFlag(rec["resist-flag"]),
+        lookPrefix: joinLines(rec["look-prefix"]),
+        lookInPreposition: joinLines(rec["look-in-preposition"]),
+        resistFlag: resolveResistFlag(rec["resist-flag"]?.[0]),
       };
       this.byIdx[fidx] = feature;
       this.byCode.set(rec.code, feature);
