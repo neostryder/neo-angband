@@ -27,6 +27,13 @@ export class GlyphTerm {
   private rows = 24;
   private grid: (Glyph | null)[][] = [];
   onResize: ((size: TermSize) => void) | null = null;
+  /**
+   * The active modal's tap handler (see onCellTap). While set, a pointerdown
+   * on the canvas is consumed here (stopImmediatePropagation) so the in-world
+   * tap-to-move and long-press handlers - registered later on the same canvas
+   * - never double-fire underneath an open menu.
+   */
+  private tapCb: ((cell: { col: number; row: number }) => void) | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -52,6 +59,30 @@ export class GlyphTerm {
     // Some embeds start at 0x0 and never fire window resize; observe the
     // document element so the grid appears as soon as there is space.
     new ResizeObserver(refit).observe(document.documentElement);
+    // Tap plumbing for modals (onCellTap): registered ONCE here, ahead of the
+    // shell's own canvas pointerdown listeners (main.ts adds tap-to-move and
+    // long-press after constructing the term), so an active modal handler can
+    // consume the tap before the in-world handlers see it.
+    canvas.addEventListener("pointerdown", (ev) => {
+      if (!this.tapCb) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      const rect = canvas.getBoundingClientRect();
+      this.tapCb(this.cellAt(ev.clientX - rect.left, ev.clientY - rect.top));
+    });
+  }
+
+  /**
+   * Register (or clear, with null) the tap handler for the active modal: a
+   * pointer/touch tap on the canvas is mapped to its grid cell via cellAt()
+   * and delivered to `cb`. Exactly one handler is active at a time - each
+   * modal registers on open and MUST clear (or restore its parent's handler)
+   * on resolve, mirroring the window-keydown add/remove discipline. While a
+   * handler is registered the tap never reaches the in-world tap-to-move or
+   * long-press listeners.
+   */
+  onCellTap(cb: ((cell: { col: number; row: number }) => void) | null): void {
+    this.tapCb = cb;
   }
 
   size(): TermSize {

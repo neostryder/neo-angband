@@ -1,6 +1,6 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { showLevelMap, selectFromMenu, promptNumber } from "./overlay";
-import type { MenuItem } from "./overlay";
+import { showLevelMap, selectFromMenu, showTextScreen, promptNumber } from "./overlay";
+import type { MenuItem, ScreenLine } from "./overlay";
 import type { GlyphTerm } from "./term";
 import type { Overview } from "./mapview";
 
@@ -296,6 +296,198 @@ describe("selectFromMenu: detailToggleKey ('?' description toggle)", () => {
     });
     press(win, "b");
     expect(await done).toBe(1);
+  });
+});
+
+// --- selectFromMenu: tap-to-select + the S-tier opts (gap #58) -------------
+// GlyphTerm.onCellTap is the new term seam: a modal registers a handler on
+// open and clears it on resolve. The fake term here mimics that surface so
+// the overlay's tap logic is tested without a canvas.
+interface TapTerm extends GlyphTerm {
+  snapshot(): string[];
+  /** Simulate a tap that GlyphTerm would deliver for a canvas pointerdown. */
+  fireTap(col: number, row: number): void;
+  /** True while a modal has a registered tap handler. */
+  hasTapHandler(): boolean;
+}
+
+function makeTapTerm(cols = 40, rows = 12): TapTerm {
+  const base = makeTerm(cols, rows) as unknown as Record<string, unknown>;
+  let tapCb: ((cell: { col: number; row: number }) => void) | null = null;
+  base["onCellTap"] = (cb: typeof tapCb): void => {
+    tapCb = cb;
+  };
+  base["fireTap"] = (col: number, row: number): void => {
+    tapCb?.({ col, row });
+  };
+  base["hasTapHandler"] = (): boolean => tapCb !== null;
+  return base as unknown as TapTerm;
+}
+
+const BODY_TOP = 2; // overlay.ts's list top row
+
+describe("selectFromMenu: tap-to-select (gap #58 shared touch seam)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  function items(): MenuItem[] {
+    return [{ label: "Alpha" }, { label: "Beta" }, { label: "Gamma" }];
+  }
+
+  it("first tap on a row highlights it; a second tap selects it", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTapTerm();
+    const done = selectFromMenu(term, "Menu", items());
+    term.fireTap(3, BODY_TOP + 1); // row of "Beta": highlight only
+    expect(term.snapshot()[BODY_TOP + 1]).toContain(">b) Beta");
+    let resolved: number | null | undefined;
+    void done.then((v) => {
+      resolved = v;
+    });
+    await tick();
+    expect(resolved).toBeUndefined(); // still open after the first tap
+    term.fireTap(3, BODY_TOP + 1); // tap the highlighted row: select
+    expect(await done).toBe(1);
+  });
+
+  it("a tap on the footer row cancels like ESC", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTapTerm(40, 12);
+    const done = selectFromMenu(term, "Menu", items());
+    term.fireTap(0, 11); // rows-1 = the footer row
+    expect(await done).toBeNull();
+  });
+
+  it("a tap on a disabled row neither highlights nor selects", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTapTerm();
+    const list: MenuItem[] = [{ label: "Ok" }, { label: "No", disabled: true }];
+    const done = selectFromMenu(term, "Menu", list);
+    term.fireTap(3, BODY_TOP + 1);
+    term.fireTap(3, BODY_TOP + 1); // even a double tap on a disabled row
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+
+  it("tears the tap handler down on resolve (no leak into the game)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTapTerm();
+    const done = selectFromMenu(term, "Menu", items());
+    expect(term.hasTapHandler()).toBe(true);
+    press(win, "a");
+    await done;
+    expect(term.hasTapHandler()).toBe(false);
+    expect(() => term.fireTap(0, BODY_TOP)).not.toThrow();
+  });
+
+  it("keyboard-only callers on a term WITHOUT onCellTap still work (regression)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(); // the plain fake: no onCellTap at all
+    const done = selectFromMenu(term, "Menu", items());
+    press(win, "b");
+    expect(await done).toBe(1);
+  });
+});
+
+describe("selectFromMenu: subtitle / hint / initialCursor / onHighlight / footer", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("renders the subtitle on the row under the title", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 12);
+    void selectFromMenu(term, "Choose a race", [{ label: "Human" }], undefined, {
+      subtitle: "Race affects stats and skills.",
+    });
+    expect(term.snapshot()[1]).toBe("Race affects stats and skills.");
+  });
+
+  it("shows the highlighted row's hint above the footer and tracks the cursor", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 12);
+    void selectFromMenu(term, "Menu", [
+      { label: "First", hint: "hint one" },
+      { label: "Second", hint: "hint two" },
+    ]);
+    expect(term.snapshot()[10]).toBe("hint one"); // rows-2
+    press(win, "ArrowDown");
+    expect(term.snapshot()[10]).toBe("hint two");
+  });
+
+  it("initialCursor starts the cursor on that row; onHighlight reports moves", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 12);
+    const seen: number[] = [];
+    const done = selectFromMenu(
+      term,
+      "Menu",
+      [{ label: "A" }, { label: "B" }, { label: "C" }],
+      undefined,
+      { initialCursor: 2, onHighlight: (i) => seen.push(i) },
+    );
+    expect(term.snapshot()[BODY_TOP + 2]).toContain(">c) C");
+    press(win, "ArrowUp");
+    press(win, "Enter");
+    expect(await done).toBe(1);
+    expect(seen).toEqual([2, 1]);
+  });
+
+  it("opts.footer overrides the positional footer", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 12);
+    void selectFromMenu(term, "Menu", [{ label: "A" }], "[ positional ]", {
+      footer: "[ from opts ]",
+    });
+    expect(term.snapshot()[11]).toBe("[ from opts ]");
+  });
+});
+
+describe("showTextScreen: tap support (gap #58)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  function longLines(n: number): ScreenLine[] {
+    return Array.from({ length: n }, (_, i) => ({ text: `line ${i}` }));
+  }
+
+  it("taps scroll a scrolling screen (lower half down, upper half up)", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTapTerm(40, 12);
+    void showTextScreen(term, "Long", longLines(40));
+    expect(term.snapshot()[BODY_TOP]).toBe("line 0");
+    term.fireTap(0, 10); // lower half: page down
+    expect(term.snapshot()[BODY_TOP]).not.toBe("line 0");
+    term.fireTap(0, 3); // upper half: page back up
+    expect(term.snapshot()[BODY_TOP]).toBe("line 0");
+  });
+
+  it("a footer tap closes; a non-scrolling screen closes on any tap", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const scroller = makeTapTerm(40, 12);
+    const doneA = showTextScreen(scroller, "Long", longLines(40));
+    scroller.fireTap(0, 11); // footer row
+    await doneA;
+    expect(scroller.hasTapHandler()).toBe(false);
+
+    const short = makeTapTerm(40, 12);
+    const doneB = showTextScreen(short, "Short", longLines(2));
+    short.fireTap(5, BODY_TOP); // body tap, nothing to scroll: close
+    await doneB;
+    expect(short.hasTapHandler()).toBe(false);
   });
 });
 

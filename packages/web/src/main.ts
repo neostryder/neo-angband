@@ -8,8 +8,9 @@
  *
  * Layout follows the original: a left status sidebar (faithful HUD), a
  * message line across the top, a bottom status line, and the map filling the
- * rest of the viewport at any size. A new game opens the birth screen (choose
- * race / class / sex / name); resuming a save goes straight back into play.
+ * rest of the viewport at any size. A new game opens the staged birth screen
+ * (quickstart / race / class / roller / name / confirm, ui-birth.c order);
+ * resuming a save goes straight back into play.
  *
  * Live systems: movement + melee (with faithful "You hit/slay the X" messages),
  * item use (quaff/read/eat/wield/take-off/drop/devices/activate), spellcasting
@@ -153,6 +154,12 @@ import type { MenuItem, ScreenLine } from "./overlay";
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
 import type { Overview } from "./mapview";
 import { runBirth } from "./birth";
+import {
+  gameMenuEntries,
+  deathMenuEntries,
+  GAME_MENU_FOOTER,
+  DEATH_MENU_FOOTER,
+} from "./game-menu";
 import { MessageLog } from "./messages";
 import {
   inventoryLines,
@@ -232,8 +239,8 @@ const SAVE_KEY = "neo-angband-save";
 // reload via sessionStorage, then is cleared) so the reboot starts fresh
 // instead of auto-resuming the save it is about to overwrite.
 const FORCE_NEW_KEY = "neo-angband-force-new";
-// The chosen character identity (birth): race/class drive startGame; name/sex
-// are cosmetic. Persisted so a birthed character survives the reload that
+// The chosen character identity (birth): race/class drive startGame; the name
+// (and the roller record) are cosmetic. Persisted so a birthed character survives the reload that
 // rebuilds the game as that race/class, and so the next New Game reuses it as
 // defaults. A sessionStorage flag marks "birth already done this load" so the
 // post-birth reload does not reopen the birth screen.
@@ -243,7 +250,12 @@ interface StoredBirth {
   raceName: string;
   className: string;
   name: string;
-  sex: string;
+  /** Legacy field from the removed (non-upstream) sex birth stage; still read
+   * from older stored choices so their metadata keeps rendering. */
+  sex?: string;
+  /** The chosen stat roller ("point" / "roller", ui-birth.c BIRTH_ROLLER_CHOICE);
+   * absent in choices stored before the staged birth flow. */
+  roller?: string;
 }
 function readBirthChoice(): StoredBirth | null {
   try {
@@ -382,12 +394,39 @@ const birthPending = ((): boolean => {
 // the core save - it lives per-slot in the roster metadata - so a RESUMED
 // character takes its name from its own slot; only a brand-new character (no
 // stored name yet) falls back to the birth choice. Deriving it from BIRTH_KEY
-// alone would give every character the last-birthed name.
-const playerName = ((): string => {
+// alone would give every character the last-birthed name. Mutable because the
+// character sheet's 'c' (do_cmd_change_name) renames in place.
+let playerName = ((): string => {
   const id = getActiveId();
   const metaName = id ? getMeta(id)?.name : "";
   return metaName || birthChoice?.name || "";
 })();
+
+/** do_cmd_change_name's rename side effect: the new name flows into the
+ * roster metadata via the next save (metaFromState reads playerName). */
+function renamePlayer(n: string): void {
+  playerName = n;
+  persistSave();
+}
+
+/**
+ * The live deps for the character sheet: the real num_shots and the equipped
+ * launcher (get_panel_combat reads both; the "BOW" slot type matches
+ * calc_bonuses' own launcher pick in player/calcs.ts), plus the rename hook.
+ * NOTE: the EB column still reads the calc's stat_add, which only carries
+ * KNOWN-rune modifiers (full equipment stat_add is a deferred core slice), so
+ * unlearned gear shows +0 there - real data, not a display bug.
+ */
+function charSheetOpts(): {
+  numShots: number;
+  launcher: GameObject | null;
+  onRename: (n: string) => void;
+} {
+  const p = state.actor.player;
+  const bowSlot = p.body.slots.findIndex((s) => s.type === "BOW");
+  const launcher = bowSlot >= 0 ? gearGet(state.gear, p.equipment[bowSlot] ?? 0) : null;
+  return { numShots: state.actor.combat.numShots, launcher, onRename: renamePlayer };
+}
 
 // --- Visuals: color-cycle + flicker animation (task #27: ui-visuals.c) -----
 // The core animator turns a monster race + animation frame into the COLOUR_*
@@ -724,7 +763,7 @@ async function runContextMenuPlayer(): Promise<void> {
       advance();
       break;
     case "character":
-      await showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots });
+      await showCharacterSheet(term, state, playerName, charSheetOpts());
       break;
     case "other":
       await runContextMenuPlayerOther();
@@ -1854,56 +1893,122 @@ function switchCharacter(): void {
 }
 
 /**
- * The in-game menu (Escape): the discoverable home for the save/character
- * actions whose keys a new player will not know. Save and switch and new all
- * either stay in play or navigate away, so there is no nested-modal race.
+ * The in-game menu (Escape): the discoverable home for EVERY major screen and
+ * the save/character actions, so a player who knows no keys is never stuck.
+ * Row structure lives in game-menu.ts (gameMenuEntries); every row carries a
+ * hint naming its keyboard shortcut and is reachable by letter, arrows+Enter,
+ * or tap. New/Switch confirm first (the current hero is saved to its own slot
+ * either way). Save/switch/new all either stay in play or navigate away, so
+ * there is no nested-modal race. ESC resumes.
  */
 async function openGameMenu(): Promise<void> {
+  const entries = gameMenuEntries();
   const pick = await selectFromMenu(
     term,
     "Game menu",
-    [
-      { label: "Resume play" },
-      { label: "Save game" },
-      { label: "Ignore setup" },
-      { label: "Switch character" },
-      { label: "New character" },
-      { label: "Abilities" },
-      { label: "Compare equipment" },
-      { label: "Item actions" },
-    ],
-    "[ a-z to choose, ESC to resume ]",
+    entries.map((e) => e.item),
+    GAME_MENU_FOOTER,
   );
-  switch (pick) {
-    case 1:
+  if (pick === null) return; // ESC resumes
+  switch (entries[pick]?.action) {
+    case "character":
+      await showCharacterSheet(term, state, playerName, charSheetOpts());
+      break;
+    case "inventory":
+      await showTextScreen(term, "Inventory", inventoryLines(state));
+      break;
+    case "equipment":
+      await showTextScreen(term, "Equipment", equipmentLines(state));
+      break;
+    case "messages":
+      await showTextScreen(term, "Message history", messageHistoryLines(msglog));
+      break;
+    case "save":
       autosave(true);
       message = "Game saved. It will resume automatically next time.";
       render();
       break;
-    case 2:
-      await openIgnoreSetup();
+    case "options":
+      await runOptionsMenu(term, state, openIgnoreSetup);
+      autosave(true); // flush any option change to the per-slot save
       break;
-    case 3:
-      switchCharacter();
+    case "help":
+      await runHelp(term);
       break;
-    case 4:
-      persistSave(); // keep the current character in its slot, then birth anew
-      newGame();
-      break;
-    case 5:
+    case "abilities":
       await showAbilities(term, playerAbilities(state, {
         properties: players.properties,
         elementNames: (booted.registries.projections ?? []).slice(0, state.actor.player.race.elInfo.length).map((p) => p.name),
       }));
       break;
-    case 6:
+    case "equip-cmp":
       await showEquipCmp(term, state, equipCmpDeps());
       break;
-    case 7:
+    case "item-actions":
       await openItemActionsMenu();
       break;
+    case "switch":
+      // get_check-style confirmation (parallels ui-death.c's "Start a new
+      // game?") so a stray tap never yanks the player out of a live run.
+      if (await confirmYesNo("Switch character? (this hero is saved to its slot)")) {
+        switchCharacter();
+      }
+      break;
+    case "new":
+      if (await confirmYesNo("Start a new character? (this hero is saved to its slot)")) {
+        persistSave(); // keep the current character in its slot, then birth anew
+        newGame();
+      }
+      break;
     default:
-      break; // Resume play / ESC
+      break; // Resume play
+  }
+}
+
+/**
+ * death_screen's menu (ui-death.c L374), routed through the same shared menu
+ * component: Information / Messages / View scores / New Game with the
+ * upstream tag letters, looping until ESC (leave the tombstone view) or a
+ * confirmed New Game. Reached after the death score screen and again from
+ * Escape while dead.
+ */
+async function runDeathMenu(): Promise<void> {
+  for (;;) {
+    const entries = deathMenuEntries();
+    const pick = await selectFromMenu(
+      term,
+      "You have died.",
+      entries.map((e) => e.item),
+      DEATH_MENU_FOOTER,
+    );
+    if (pick === null) return;
+    switch (entries[pick]?.action) {
+      case "info":
+        await showCharacterSheet(term, state, playerName, charSheetOpts());
+        break;
+      case "messages":
+        await showTextScreen(term, "Message history", messageHistoryLines(msglog));
+        break;
+      case "scores":
+        await showPredictedScores(
+          term,
+          scoreStore,
+          state.actor.player,
+          { ...scoreBuildDeps("the dungeon"), deathTime: new Date() },
+          scoreNames,
+          true,
+        );
+        break;
+      case "new":
+        // death_new_game (ui-death.c L347): get_check("Start a new game? ").
+        if (await confirmYesNo("Start a new game?")) {
+          newGame();
+          return;
+        }
+        break;
+      default:
+        break;
+    }
   }
 }
 
@@ -2564,6 +2669,8 @@ function advance(): void {
       scoresOpen = false;
       void outcome; // slot/rejection reason available for a future death screen
       render();
+      // death_screen's menu follows the score display; Escape reopens it.
+      void openModal(() => runDeathMenu());
     });
   } else if (status === LOOP_STATUS.LEVEL_CHANGE) {
     // Generate the next level in place and keep playing.
@@ -2608,6 +2715,14 @@ window.addEventListener("keydown", (ev) => {
     void openModal(() => runHelp(term));
     return;
   }
+  // Escape while dead reopens the death menu (death_screen loops until New
+  // Game / quit upstream; here ESC parks on the tombstone map and Escape
+  // brings the menu back).
+  if (dead && ev.key === "Escape" && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+    ev.preventDefault();
+    void openModal(() => runDeathMenu());
+    return;
+  }
   if (dead) return;
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
     if (ev.key === "V") {
@@ -2639,9 +2754,7 @@ window.addEventListener("keydown", (ev) => {
     if (ev.key === "C") {
       ev.preventDefault();
       void openModal(() =>
-        showCharacterSheet(term, state, playerName, {
-          numShots: state.actor.combat.numShots,
-        }),
+        showCharacterSheet(term, state, playerName, charSheetOpts()),
       );
       return;
     }
@@ -2924,7 +3037,7 @@ function installTouchActionBar(): void {
     ["Insp", () => { void openModal(() => inspectItem()); }],
     ["Insc", () => { void openModal(() => inscribeItem()); }],
     ["Fuel", () => { void openModal(() => refuelItem()); }],
-    ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots })); }],
+    ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())); }],
     ["Hist", () => { void openModal(() => showTextScreen(term, "Player history", historyLines(state))); }],
     ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
     ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup)).then(() => autosave(true)); }],
@@ -3000,7 +3113,7 @@ term.onResize = () => render();
 render();
 
 // --- Birth: choose a character for a new game -------------------------------
-// A brand-new game opens the birth screen (race / class / sex / name). The
+// A brand-new game opens the staged birth screen (ui-birth.c stage order). The
 // engine has already built a default Human Warrior this load; when the player
 // chooses, we persist the choice and reload so startGame rebuilds as that
 // race/class (its stats and starting kit differ). A one-shot sessionStorage
@@ -3017,7 +3130,13 @@ async function maybeBirth(): Promise<void> {
   }
   if (justBirthed) return; // the choice from the previous load is already live
   await openModal(async () => {
-    const choice = await runBirth(term, players.races, players.classes);
+    // quickstart_allowed (ui-birth.c): offer the quick-start stage only when
+    // a previous character's choices exist to reuse.
+    const choice = await runBirth(term, players.races, players.classes, {
+      quickstart: birthChoice
+        ? { raceName: birthChoice.raceName, className: birthChoice.className }
+        : null,
+    });
     if (!choice) {
       say("Your adventure begins.");
       return;

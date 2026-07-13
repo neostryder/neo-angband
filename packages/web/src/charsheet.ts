@@ -1,41 +1,125 @@
 /**
- * The character screen (ui-player.c display_player). The core hands us the
- * faithful data models - statTable (the six-column Self/RB/CB/EB/Best/Cur stat
- * block) and characterPanels (topleft / misc / midleft / combat / skills) - and
- * this places them on screen.
+ * The character screen (ui-player.c display_player + do_cmd_change_name). The
+ * core hands us the faithful data models - statTable (the Self/RB/CB/EB/Best
+ * stat block) and characterPanels (topleft / misc / midleft / combat / skills)
+ * - and this places them on screen.
  *
- * Upstream display_player draws every panel side by side so the whole sheet
- * fits one 80x24 screen; a naive top-to-bottom list turns that into a 50-row
- * scroll with the combat and ability panels shoved off the bottom. So on a wide
- * terminal we reproduce the columnar layout (stats + identity + progress on the
- * left, combat + skills on the right, one screen, per-cell colour); on a narrow
- * one (a phone) we fall back to the scrolling list, which reads fine there.
+ * WIDE (cols >= WIDE_COLS): the upstream 80x24 mode-0 grid at its own anchors
+ * (panels[] table, ui-player.c L849): topleft at x=1,y=1; misc at x=21,y=1;
+ * the stat table at col 42 (header row 1, data rows 2-6); midleft x=1,y=9;
+ * combat x=29,y=9; skills x=52,y=9; player->history wrapped from row 19
+ * (display_player_xtra_info). Stat cells carry the upstream per-column colours
+ * (Self/Best L_GREEN, RB/CB/EB L_BLUE, drained value YELLOW - L469-507).
+ *
+ * NARROW (a phone): the scrolling single-column list (characterSheetLines,
+ * screens.ts) with the same 6-wide stat fields and blank-unless-drained Cur,
+ * scrolled by arrows / PageUp-Down / tap.
+ *
+ * Keys follow do_cmd_change_name (ui-player.c L1219): 'h'/Space/ArrowLeft =
+ * next mode, 'l'/ArrowRight = previous mode, 'c' = change name, 'f' = dump
+ * the character to a text file, ESC/Enter = return. Mode 1 (the resist /
+ * sustain / ability grid) uses the ui-entry.c system, which core explicitly
+ * excludes (char-sheet.ts L19-23), so it renders as a clearly labelled
+ * placeholder page rather than a faked grid.
+ *
+ * Pure display: no game mutation, no RNG. Renaming flows OUT through
+ * opts.onRename (the shell persists it); nothing here touches state.
  */
 
 import { characterPanels, statTable, colorToCss } from "@neo-angband/core";
 import type { GameState, GameObject } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
-import { characterSheetLines } from "./screens";
+import {
+  characterSheetLines,
+  charSheetDeps,
+  historyBlockLines,
+  statHeaderLine,
+  statRowLine,
+} from "./screens";
+import { promptText } from "./overlay";
+import type { ScreenLine } from "./overlay";
 
 const LABEL = "#9aa0b4";
 const FG = "#c8c8d4";
 const DIM = "#8a8a94";
 const TITLE = "#e8e8f0";
-const YELLOW = "#e0c040";
 
-/** Combat deps the shell can supply (shots / launcher) so the panel is exact. */
+/** Combat deps the shell can supply (shots / launcher) so the panel is exact,
+ * plus the change-name hook ('c', do_cmd_change_name). */
 export interface CharSheetOpts {
   numShots?: number;
   launcher?: GameObject | null;
+  /** Called with the new name after a successful 'c' rename; the shell
+   * persists it (roster metadata) - the sheet itself mutates nothing. */
+  onRename?: (name: string) => void;
 }
 
 /** Width at or above which the side-by-side layout is used; below it, the list. */
 const WIDE_COLS = 90;
 
+/** INFO_SCREENS (ui-player.c L1213): mode 0 = skills/history, 1 = flag grid. */
+const INFO_SCREENS = 2;
+
+/** The upstream panels[] anchors (ui-player.c L849-855). */
+const ANCHOR = {
+  topleft: { x: 1, y: 1, labelWidth: 6 },
+  misc: { x: 21, y: 1, labelWidth: 8 },
+  midleft: { x: 1, y: 9, labelWidth: 10 },
+  combat: { x: 29, y: 9, labelWidth: 13 },
+  skills: { x: 52, y: 9, labelWidth: 15 },
+} as const;
+
+/** The stat table column (display_player_stat_info L460) and header row. */
+const STAT_COL = 42;
+const STAT_HEADER_ROW = 1;
+
+/** History block row (display_player_xtra_info L872: Term_gotoxy(1, 19)). */
+const HISTORY_ROW = 19;
+
+/** Mode-1 placeholder (the ui-entry.c resist/ability grid is not ported). */
+function modeOnePlaceholder(): ScreenLine[] {
+  return [
+    { text: "Resistances & Abilities - not yet available", color: TITLE },
+    { text: "", color: FG },
+    {
+      text: "This page (the equipment resist / sustain / ability grid) awaits",
+      color: DIM,
+    },
+    { text: "the ui-entry.c port. Press 'h' to return to the main page.", color: DIM },
+  ];
+}
+
+/** player_safe_name: a filesystem-safe filename from the character's name. */
+function safeFileName(name: string): string {
+  const safe = name.replace(/[^A-Za-z0-9_-]+/gu, "_").replace(/^_+|_+$/gu, "");
+  return `${safe || "character"}.txt`;
+}
+
+/** 'f' (dump_save, reduced): download the sheet as a plain-text file. */
+function downloadDump(state: GameState, name: string): boolean {
+  try {
+    const text = characterSheetLines(state, name, 80)
+      .map((l) => l.text)
+      .join("\n");
+    const blob = new Blob([`${text}\n`], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = safeFileName(name);
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    return true;
+  } catch {
+    return false; // headless / storage-restricted: the sheet stays up
+  }
+}
+
 /**
  * Show the character sheet as a modal, repainting on resize so a window that
- * crosses the wide/narrow threshold re-picks its layout. Any of ESC / Enter /
- * Space closes it; the narrow list additionally scrolls with the arrows.
+ * crosses the wide/narrow threshold re-picks its layout. ESC / Enter closes
+ * it; 'h'/Space/ArrowLeft and 'l'/ArrowRight cycle the two display modes; 'c'
+ * renames; 'f' downloads a text dump; the narrow list scrolls with the arrows
+ * or a tap.
  */
 export function showCharacterSheet(
   term: GlyphTerm,
@@ -43,79 +127,90 @@ export function showCharacterSheet(
   name: string,
   opts: CharSheetOpts = {},
 ): Promise<void> {
-  const deps = {
-    ...(name ? { fullName: name } : {}),
+  let curName = name;
+  const mkDeps = () => ({
+    ...charSheetDeps(state, curName),
     ...(opts.numShots !== undefined ? { numShots: opts.numShots } : {}),
     ...(opts.launcher !== undefined ? { launcher: opts.launcher } : {}),
-  };
+  });
   return new Promise<void>((resolve) => {
     let top = 0; // scroll offset for the narrow list
+    let mode = 0; // 0 = skills/history, 1 = flag grid (placeholder)
+    let narrow = false; // what the last paint drew, for the tap handler
+
+    /** Paint one ScreenLine's runs (or plain text) at (x, y). */
+    const printLine = (x: number, y: number, line: ScreenLine): void => {
+      if (line.runs) {
+        let cx = x;
+        for (const run of line.runs) {
+          term.print(cx, y, run.text, run.color);
+          cx += run.text.length;
+        }
+      } else {
+        term.print(x, y, line.text, line.color ?? FG);
+      }
+    };
+
+    const title = (): string => {
+      const p = state.actor.player;
+      return `Character  -  ${curName || "(unnamed)"} the ${p.race.name} ${p.cls.name}, Level ${p.lev}`;
+    };
+
+    const wideFooter = (): string =>
+      `[ h/Space: page  c: name  f: dump  ESC: back ]  (page ${mode + 1}/${INFO_SCREENS})`;
 
     const paintWide = (): void => {
       term.clear();
-      const { cols } = term.size();
-      term.print(0, 0, "Character", TITLE);
+      const { cols, rows } = term.size();
+      term.print(0, 0, title().slice(0, cols - 1), TITLE);
+      const deps = mkDeps();
 
-      // Left column: stat table, then identity, then miscellany. statRow keeps
-      // the header and the data rows on identical column stops.
-      const statRow = (
-        label: string,
-        self: string,
-        rb: string,
-        cb: string,
-        eb: string,
-        best: string,
-        flag: string,
-        cur: string,
-      ): string =>
-        `${label.padEnd(5)}${self.padStart(5)} ${rb.padStart(4)} ` +
-        `${cb.padStart(4)} ${eb.padStart(4)} ${best.padStart(5)}${flag}${cur.padStart(5)}`;
-      let y = 2;
-      term.print(0, y++, statRow("Stat", "Self", "RB", "CB", "EB", "Best", " ", "Cur"), LABEL);
+      // Stat table at the upstream column stops, shared with the narrow list
+      // (statHeaderLine/statRowLine carry the per-column colours).
+      printLine(STAT_COL, STAT_HEADER_ROW, statHeaderLine());
+      let sy = STAT_HEADER_ROW + 1;
       for (const row of statTable(state, deps)) {
-        const flag = row.naturalMax ? "!" : " ";
-        const cur = row.drained ? row.reduced ?? row.best : row.best;
-        const text = statRow(
-          row.label.slice(0, 4),
-          row.natural,
-          row.raceBonus,
-          row.classBonus,
-          row.equipBonus,
-          row.best,
-          flag,
-          cur,
-        );
-        term.print(0, y++, text, row.drained ? YELLOW : FG);
+        printLine(STAT_COL, sy++, statRowLine(row));
       }
 
       const panels = characterPanels(state, deps);
       const byKey = (k: string) => panels.find((p) => p.key === k)?.lines ?? [];
 
-      // Left column continues below the stat block.
-      y += 1;
-      y = paintPanel(term, 0, y, 8, byKey("topleft"));
-      y += 1;
-      paintPanel(term, 0, y, 8, byKey("misc"));
-
-      // Middle column: level / experience / gold / burden / depth. The stat rows
-      // reach column ~40, so the middle column starts past them.
-      paintPanel(term, 44, 2, 11, byKey("midleft"));
-
-      // Right column: combat, then the ability skills. Placed only if it fits.
-      // labelWidth 15 clears the longest label ("Disarm - phys.").
-      const rightX = 66;
-      if (cols >= rightX + 24) {
-        let ry = paintPanel(term, rightX, 2, 15, byKey("combat"));
-        ry += 1;
-        paintPanel(term, rightX, ry, 15, byKey("skills"));
+      if (mode === 0) {
+        paintPanel(term, ANCHOR.topleft.x, ANCHOR.topleft.y, ANCHOR.topleft.labelWidth, byKey("topleft"));
+        paintPanel(term, ANCHOR.misc.x, ANCHOR.misc.y, ANCHOR.misc.labelWidth, byKey("misc"));
+        const midEnd = paintPanel(term, ANCHOR.midleft.x, ANCHOR.midleft.y, ANCHOR.midleft.labelWidth, byKey("midleft"));
+        const combatEnd = paintPanel(term, ANCHOR.combat.x, ANCHOR.combat.y, ANCHOR.combat.labelWidth, byKey("combat"));
+        const skillsEnd = paintPanel(term, ANCHOR.skills.x, ANCHOR.skills.y, ANCHOR.skills.labelWidth, byKey("skills"));
+        // History from row 19 (below the lowest panel if one ever grows).
+        let hy = Math.max(HISTORY_ROW, midEnd + 1, combatEnd + 1, skillsEnd + 1);
+        for (const line of historyBlockLines(state, cols)) {
+          if (hy >= rows - 1) break;
+          printLine(0, hy++, line);
+        }
+      } else {
+        // Mode 1 keeps the stat table + topleft panel (display_player L905)
+        // and labels the unported grid instead of faking it.
+        paintPanel(term, ANCHOR.topleft.x, ANCHOR.topleft.y, ANCHOR.topleft.labelWidth, byKey("topleft"));
+        let py = 9;
+        for (const line of modeOnePlaceholder()) {
+          if (py >= rows - 1) break;
+          printLine(1, py++, line);
+        }
       }
 
-      term.print(0, term.size().rows - 1, "[ Press ESC to return ]", DIM);
+      term.print(0, rows - 1, wideFooter().slice(0, cols - 1), DIM);
+    };
+
+    const narrowLines = (): ScreenLine[] => {
+      const { cols } = term.size();
+      if (mode === 1) return modeOnePlaceholder();
+      return characterSheetLines(state, curName, cols);
     };
 
     const paintNarrow = (): void => {
       const { cols, rows } = term.size();
-      const lines = characterSheetLines(state, name);
+      const lines = narrowLines();
       term.clear();
       term.print(0, 0, "Character".slice(0, cols - 1), TITLE);
       const bodyRows = rows - 3;
@@ -124,18 +219,62 @@ export function showCharacterSheet(
       for (let r = 0; r < bodyRows; r++) {
         const line = lines[top + r];
         if (!line) break;
-        term.print(0, 2 + r, line.text.slice(0, cols - 1), line.color ?? FG);
+        if (line.runs) {
+          let x = 0;
+          for (const run of line.runs) {
+            if (x >= cols - 1) break;
+            const chunk = run.text.slice(0, cols - 1 - x);
+            term.print(x, 2 + r, chunk, run.color);
+            x += chunk.length;
+          }
+        } else {
+          term.print(0, 2 + r, line.text.slice(0, cols - 1), line.color ?? FG);
+        }
       }
       const more =
         maxTop > 0
           ? `  (${top + 1}-${Math.min(top + bodyRows, lines.length)}/${lines.length})`
           : "";
-      term.print(0, rows - 1, `[ Press ESC to return ]${more}`.slice(0, cols - 1), DIM);
+      term.print(
+        0,
+        rows - 1,
+        `[ h: page  c: name  ESC: back ]${more}`.slice(0, cols - 1),
+        DIM,
+      );
     };
 
     const paint = (): void => {
-      if (term.size().cols >= WIDE_COLS) paintWide();
-      else paintNarrow();
+      narrow = term.size().cols < WIDE_COLS;
+      if (narrow) paintNarrow();
+      else paintWide();
+    };
+
+    const finish = (): void => {
+      window.removeEventListener("keydown", onKey, true);
+      term.onCellTap?.(null);
+      term.onResize = prevResize;
+      resolve();
+    };
+
+    const cycleMode = (delta: number): void => {
+      mode = (mode + delta + INFO_SCREENS) % INFO_SCREENS;
+      top = 0;
+      paint();
+    };
+
+    /** 'c' (change name): detach our listeners, run promptText, reattach. */
+    const changeName = (): void => {
+      window.removeEventListener("keydown", onKey, true);
+      term.onCellTap?.(null);
+      void promptText(term, "Enter your character's name", curName).then((entered) => {
+        if (entered !== null && entered.trim()) {
+          curName = entered.trim();
+          opts.onRename?.(curName);
+        }
+        window.addEventListener("keydown", onKey, true);
+        installTap();
+        paint();
+      });
     };
 
     const onKey = (ev: KeyboardEvent): void => {
@@ -146,10 +285,32 @@ export function showCharacterSheet(
       switch (ev.key) {
         case "Escape":
         case "Enter":
+          finish();
+          return;
+        // do_cmd_change_name (L1280-1289): h/Space/ArrowLeft cycle FORWARD,
+        // l/ArrowRight cycle BACKWARD. On the narrow list Space keeps its
+        // close behaviour and the arrows scroll, so only 'h'/'l' cycle there.
+        case "h":
+          cycleMode(+1);
+          return;
+        case "l":
+          cycleMode(-1);
+          return;
         case " ":
-          window.removeEventListener("keydown", onKey, true);
-          term.onResize = prevResize;
-          resolve();
+          if (narrow) finish();
+          else cycleMode(+1);
+          return;
+        case "ArrowLeft":
+          if (!narrow) cycleMode(+1);
+          return;
+        case "ArrowRight":
+          if (!narrow) cycleMode(-1);
+          return;
+        case "c":
+          changeName();
+          return;
+        case "f":
+          downloadDump(state, curName);
           return;
         case "ArrowDown":
           top += 1;
@@ -169,6 +330,27 @@ export function showCharacterSheet(
       paint();
     };
 
+    /** Tap: on the wide sheet a body tap flips the page (upstream's mouse
+     * button 1) and a footer tap closes; on the narrow list a tap scrolls
+     * (upper half up, lower half down) and the footer closes. */
+    const installTap = (): void => {
+      term.onCellTap?.((cell) => {
+        const { rows } = term.size();
+        if (cell.row === rows - 1) {
+          finish();
+          return;
+        }
+        if (!narrow) {
+          cycleMode(+1);
+          return;
+        }
+        const page = Math.max(1, rows - 4);
+        if (cell.row < Math.floor(rows / 2)) top = Math.max(0, top - page);
+        else top += page;
+        paint();
+      });
+    };
+
     // Repaint on resize so crossing the wide/narrow threshold re-lays out.
     const prevResize = term.onResize;
     term.onResize = (size) => {
@@ -176,6 +358,7 @@ export function showCharacterSheet(
       paint();
     };
     window.addEventListener("keydown", onKey, true);
+    installTap();
     paint();
   });
 }
