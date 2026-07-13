@@ -58,6 +58,7 @@ import {
   HIST,
   histHas,
   historyGetList,
+  loreDescription,
 } from "@neo-angband/core";
 import type {
   GameState,
@@ -71,6 +72,10 @@ import type {
   EgoItem,
   ObjectKind,
   ObjRegistry,
+  LoreDeps,
+  LoreText,
+  MonsterLore,
+  MonsterRace,
 } from "@neo-angband/core";
 import type { ScreenLine, MenuItem } from "./overlay";
 import { menuLetter } from "./overlay";
@@ -551,9 +556,39 @@ function strcmp(a: string, b: string): number {
 }
 
 /** Capitalized monster name ("small kobold" -> "Small kobold"). */
-function capMonName(mon: Monster): string {
+export function capMonName(mon: Monster): string {
   const n = mon.race.name;
   return `${n.charAt(0).toUpperCase()}${n.slice(1)}`;
+}
+
+/**
+ * loreDescription's flat run list ({text, color}, mon/lore-describe.ts) into
+ * a Textblock ({runs: [{text, attr}]}) so it can go through the same
+ * wrapRuns the object inspect viewer uses - same shape, different field
+ * name; no text is rewritten here.
+ */
+function loreTextToTextblock(text: LoreText): Textblock {
+  return { runs: text.map((r) => ({ text: r.text, attr: r.color })) };
+}
+
+/**
+ * The monster recall screen (ui-mon-lore.c lore_description, reached via 'r'
+ * in the look/target loop per ui-target.c's aux_monster recall toggle): the
+ * full learned memory for one race. `lore` must be the race's REAL lore
+ * record (getLore(state.lore, race)) - loreDescription itself gates every
+ * section on what is actually known, so passing a fully-known override here
+ * would leak unlearned information. `deps` is the caller's wired LoreDeps
+ * (recallDeps, main.ts) - notably breathProjection, without which breath
+ * damage renders as 0. loreDescription draws no RNG; this only wraps its
+ * runs to the terminal width, exactly like objectInfoTextblock's callers.
+ */
+export function monsterRecallLines(
+  race: MonsterRace,
+  lore: MonsterLore,
+  deps: LoreDeps,
+  cols: number,
+): ScreenLine[] {
+  return wrapRuns(loreTextToTextblock(loreDescription(race, lore, deps)), cols);
 }
 
 /**

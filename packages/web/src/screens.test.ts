@@ -29,6 +29,13 @@ import {
   FlagSet,
   bindProjections,
   PY_SPELL,
+  bindMonsters,
+  newMonsterLore,
+  RF,
+  RSF,
+  chanceOfMeleeHitBase,
+  getHitChance,
+  SKILL,
 } from "@neo-angband/core";
 import type {
   Textblock,
@@ -44,8 +51,17 @@ import type {
   ClassSpell,
   PlayerClass,
   MagicRealm,
+  MonsterPackRecords,
+  MonsterRace,
+  LoreDeps,
 } from "@neo-angband/core";
-import { wrapRuns, objectListLines, historyLines, spellBrowseLines } from "./screens";
+import {
+  wrapRuns,
+  objectListLines,
+  historyLines,
+  spellBrowseLines,
+  monsterRecallLines,
+} from "./screens";
 
 const WHITE = 1;
 const L_GREEN = 13;
@@ -581,5 +597,137 @@ describe("spellBrowseLines ('?' description panel, ui-spell.c spell_menu_browser
     spellBrowseLines(state, 0, testProjections, 200);
     spellBrowseLines(state, 0, testProjections, 200); // twice, in case a first-call-only branch hides a draw
     expect(state.rng.getState()).toEqual(before);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* monsterRecallLines ('r' in the look/target loop): the recall screen  */
+/* content, wired to the real shipped monster + projection data, the    */
+/* same fixture shape lore-describe.test.ts uses at the core layer -    */
+/* this checks the WEB-side wiring (recallDeps' breathProjection lookup */
+/* off world/projection.ts) rather than re-testing loreDescription      */
+/* itself, which core/src/mon/lore-describe.test.ts already covers.     */
+/* ------------------------------------------------------------------ */
+
+const monReg = bindMonsters({
+  pain: loadRecords("pain"),
+  blowMethods: loadRecords("blow_methods"),
+  blowEffects: loadRecords("blow_effects"),
+  monsterSpells: loadRecords("monster_spell"),
+  monsterBases: loadRecords("monster_base"),
+  monsters: loadRecords("monster"),
+  summons: loadRecords("summon"),
+  pits: loadRecords("pit"),
+} as MonsterPackRecords);
+
+const monProjections = bindProjections(loadRecords<ProjectionRecordJson>("projection"));
+
+/** A placeable, non-unique breathing race (has a BR_ spell), for the breath
+ * damage / knowledge-gating checks below. */
+const breathingRace = monReg.races.find(
+  (r) => r.spellFlags.has(RSF.BR_POIS) && r.avgHp > 0 && !r.flags.has(RF.UNIQUE),
+) as MonsterRace;
+
+/** recallDeps() (main.ts) without the breathProjection override - the
+ * caller-supplied LoreDeps every other field this fixture needs. */
+function baseRecallDeps(): LoreDeps {
+  return {
+    playerLevel: 10,
+    playerMaxDepth: 5,
+    playerSpeed: 110,
+    effectiveSpeed: false,
+    spells: monReg.spells,
+  };
+}
+
+/** baseRecallDeps() plus the real breath element table (world/projection.ts),
+ * exactly as recallDeps() wires it in main.ts. */
+function testRecallDeps(): LoreDeps {
+  return { ...baseRecallDeps(), breathProjection: (subtype) => monProjections[subtype] };
+}
+
+describe("monsterRecallLines ('r' recall screen, ui-mon-lore.c lore_description)", () => {
+  it("renders non-zero breath damage once armour is known, with breathProjection wired", () => {
+    const lore = newMonsterLore(breathingRace);
+    lore.spellFlags.on(RSF.BR_POIS);
+    lore.armourKnown = true;
+
+    const lines = monsterRecallLines(breathingRace, lore, testRecallDeps(), 200);
+    const text = lines.map((l) => l.text).join(" ");
+    expect(text).toMatch(/poison \(\d+\)/);
+    const match = /poison \((\d+)\)/.exec(text);
+    expect(Number(match?.[1])).toBeGreaterThan(0);
+  });
+
+  it("renders zero-suppressed breath damage (no '(N)' suffix) when breathProjection is not wired", () => {
+    const lore = newMonsterLore(breathingRace);
+    lore.spellFlags.on(RSF.BR_POIS);
+    lore.armourKnown = true;
+
+    const lines = monsterRecallLines(breathingRace, lore, baseRecallDeps(), 200);
+    const text = lines.map((l) => l.text).join(" ");
+    expect(text).toContain("poison");
+    expect(text).not.toMatch(/poison \(\d+\)/);
+  });
+
+  it("hides unlearned content: fresh lore shows none of the gated sections", () => {
+    const lore = newMonsterLore(breathingRace); // nothing observed yet
+    const lines = monsterRecallLines(breathingRace, lore, testRecallDeps(), 200);
+    const text = lines.map((l) => l.text).join(" ");
+    // Nothing is known about attacks/spells until observed in play.
+    expect(text).not.toMatch(/poison \(\d+\)/);
+    expect(text).toContain("No battles to the death are recalled.");
+    // The flavour text and title always show (upstream's non-spoiler recall
+    // always names/describes the race), but the toughness percentage line
+    // only appears once armour_known.
+    expect(text).not.toContain("chance to hit such a creature in melee");
+  });
+
+  it("shows the player's real melee-to-hit percentage when meleeHitPercent is wired from live combat state (mon-lore.c L1086-1094)", () => {
+    const lore = newMonsterLore(breathingRace);
+    lore.armourKnown = true;
+
+    // The exact expression recallDeps() (main.ts) wires meleeHitPercent to:
+    // getHitChance(chanceOfMeleeHitBase(state.actor.combat, state.actor.weapon), race.ac).
+    const combat = {
+      toH: 10,
+      toD: 5,
+      ac: 0,
+      toA: 0,
+      skills: (() => {
+        const s = new Array<number>(10).fill(0);
+        s[SKILL.TO_HIT_MELEE] = 20;
+        return s;
+      })(),
+      numBlows: 100,
+      ammoMult: 1,
+      numShots: 0,
+      ammoTval: 0,
+      blessWield: false,
+    };
+    const expectedPercent = getHitChance(chanceOfMeleeHitBase(combat, null), breathingRace.ac);
+    expect(expectedPercent).toBeGreaterThan(0);
+
+    const deps: LoreDeps = {
+      ...baseRecallDeps(),
+      meleeHitPercent: (race) => getHitChance(chanceOfMeleeHitBase(combat, null), race.ac),
+    };
+    const lines = monsterRecallLines(breathingRace, lore, deps, 200);
+    const text = lines.map((l) => l.text).join(" ");
+    expect(text).toContain("chance to hit such a creature in melee");
+    expect(text).toMatch(new RegExp(`${expectedPercent}%`));
+  });
+
+  it("is RNG-invariant: building the recall screen draws no random numbers", () => {
+    const rng = new Rng(20260713);
+    const before = rng.getState();
+
+    const lore = newMonsterLore(breathingRace);
+    lore.spellFlags.on(RSF.BR_POIS);
+    lore.armourKnown = true;
+    monsterRecallLines(breathingRace, lore, testRecallDeps(), 200);
+    monsterRecallLines(breathingRace, lore, testRecallDeps(), 80); // a second width, in case wrapping hides a draw
+
+    expect(rng.getState()).toEqual(before);
   });
 });
