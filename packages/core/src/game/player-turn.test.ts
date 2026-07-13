@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MFLAG, MON_TMD } from "../generated";
 import { loc } from "../loc";
 import {
   ActionRegistry,
@@ -44,6 +45,28 @@ describe("built-in player actions", () => {
     const spent = walkAction(state, { code: "walk", dir: 6 });
     expect(spent).toBe(state.z.moveEnergy);
     expect(mon.hp).toBeLessThan(200);
+    /* The player did not step onto the monster's grid. */
+    expect(state.actor.grid).toEqual(loc(15, 10));
+  });
+
+  it("walk into a camouflaged monster reveals it instead of attacking (move_player, cmd-cave.c L1071)", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = addMon(state, makeRace({ ac: 0 }), loc(16, 10), { hp: 200 });
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    mon.mTimed[MON_TMD.SLEEP] = 20;
+
+    let revealed: number | null = null;
+    state.becomeAware = (m) => {
+      revealed = m.midx;
+    };
+
+    const spent = walkAction(state, { code: "walk", dir: 6 });
+
+    expect(spent).toBe(state.z.moveEnergy);
+    expect(revealed).toBe(mon.midx);
+    expect(mon.hp).toBe(200); // not attacked
+    expect(mon.mTimed[MON_TMD.SLEEP]).toBe(0); // monster_wake(mon, false, 100)
+    expect(mon.mflag.has(MFLAG.AWARE)).toBe(true);
     /* The player did not step onto the monster's grid. */
     expect(state.actor.grid).toEqual(loc(15, 10));
   });

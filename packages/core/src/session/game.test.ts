@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { HIST, RF, TMD } from "../generated";
+import { HIST, MFLAG, RF, TMD } from "../generated";
 import { FlagSet } from "../bitflag";
 import { MFLAG_SIZE, RF_SIZE } from "../mon/types";
 import { runGameLoop, LOOP_STATUS } from "../game/loop";
@@ -159,6 +159,26 @@ describe("startGame (new-game assembly)", () => {
         expect(obj.grid).not.toBeNull();
       }
     }
+  });
+
+  it("wires state.becomeAware to the real become_aware (mimic reveal)", () => {
+    const { state } = startGame(pack, { seed: 123, depth: 5 });
+    let mon: (typeof state.monsters)[number] = null;
+    for (let i = 1; i < state.monsters.length; i++) {
+      const m = state.monsters[i];
+      if (m) {
+        mon = m;
+        break;
+      }
+    }
+    expect(mon).toBeTruthy();
+    expect(typeof state.becomeAware).toBe("function");
+
+    mon!.mflag.on(MFLAG.CAMOUFLAGE);
+    state.becomeAware!(mon!);
+    /* The real become_aware (game/known.ts) clears the flag - a stub that
+     * merely recorded the call would leave it set. */
+    expect(mon!.mflag.has(MFLAG.CAMOUFLAGE)).toBe(false);
   });
 
   it("wires the effect stack: monsters can cast and items are usable", () => {

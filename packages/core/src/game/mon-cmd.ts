@@ -111,7 +111,11 @@ export function monsterAttackMonster(
     /* Apply the damage (mon_take_nonplayer_hit: death without player
      * experience; the monster-target blow side effects reduce to it). */
     if (damage > 0) {
-      const res = monTakeHit(state.rng, tMon, damage, "", {});
+      const res = monTakeHit(state.rng, tMon, damage, "", {
+        /* become_aware: a commanded monster's blow can reveal a camouflaged
+         * target, same as any other monster-vs-monster hit. */
+        ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
+      });
       if (res.died) {
         if (monsterIsVisible(tMon)) {
           state.msg?.(`${tMon.race.name} dies.`);

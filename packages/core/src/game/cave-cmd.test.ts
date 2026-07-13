@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
-import { FEAT } from "../generated";
+import { FEAT, MFLAG, MON_TMD } from "../generated";
 import { loc } from "../loc";
 import { SKILL } from "../player/types";
 import { ObjRegistry } from "../obj/bind";
@@ -150,6 +150,27 @@ describe("open / close doors", () => {
     expect(energy).toBe(state.z.moveEnergy);
     expect(mon.hp).toBeLessThan(1000); // harness combat always connects
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.CLOSED);
+  });
+
+  it("a camouflaged monster in the way is revealed instead of attacked (do_cmd_open, cmd-cave.c L293-298)", () => {
+    const { state, run } = setup();
+    state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    const mon = addMon(state, makeRace({ ac: 0 }), loc(6, 5), { hp: 1000 });
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    mon.mTimed[MON_TMD.SLEEP] = 20;
+
+    let revealed: number | null = null;
+    state.becomeAware = (m) => {
+      revealed = m.midx;
+    };
+
+    const energy = run({ code: "open", dir: 6 });
+
+    expect(energy).toBe(state.z.moveEnergy);
+    expect(revealed).toBe(mon.midx);
+    expect(mon.hp).toBe(1000); // not attacked
+    expect(mon.mTimed[MON_TMD.SLEEP]).toBe(0); // monster_wake(mon, false, 100)
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.CLOSED); // door untouched
   });
 });
 

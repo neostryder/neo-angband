@@ -36,6 +36,8 @@ import { SKILL } from "../player/types";
 import { pyAttack } from "../combat/melee";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay";
 import { getLore } from "../mon/lore";
+import { monsterIsCamouflaged } from "../mon/predicate";
+import { monsterWake } from "../mon/take-hit";
 import { equipLearnOnMeleeAttack } from "../obj/knowledge";
 import { featIsTreasure } from "../world/chunk";
 import type { MakeDeps } from "../obj/make";
@@ -335,6 +337,25 @@ function attackBlocker(state: GameState, grid: Loc, env: CaveCmdEnv): void {
 }
 
 /**
+ * do_cmd_open / do_cmd_disarm's monster branch (cmd-cave.c L290-305 /
+ * L913-923): a camouflaged monster surprises the player instead of being
+ * attacked - become_aware reveals it, then monster_wake(mon, false, 100)
+ * wakes it, same as move_player. Close/tunnel/alter do not special-case
+ * camouflage upstream (they always py_attack), so they keep calling
+ * attackBlocker directly.
+ */
+function revealOrAttackBlocker(state: GameState, grid: Loc, env: CaveCmdEnv): void {
+  const target = squareMonster(state, grid);
+  if (!target) return;
+  if (monsterIsCamouflaged(target)) {
+    state.becomeAware?.(target);
+    monsterWake(state.rng, target, false, 100);
+    return;
+  }
+  attackBlocker(state, grid, env);
+}
+
+/**
  * Register open / close / tunnel / alter and the stair-checked descend /
  * ascend on the action registry.
  */
@@ -359,7 +380,7 @@ export function installCaveCommands(
     const chestObj = chestDeps ? chestCheck(state, grid, CHEST_QUERY.OPENABLE) : null;
 
     if (squareMonster(state, grid)) {
-      attackBlocker(state, grid, env);
+      revealOrAttackBlocker(state, grid, env);
     } else if (chestObj) {
       doCmdOpenChest(state, grid, chestObj, chestDeps!);
     } else {
@@ -406,7 +427,7 @@ export function installCaveCommands(
         const chestObj = chestCheck(state, grid, CHEST_QUERY.TRAPPED);
 
         if (squareMonster(state, grid)) {
-          attackBlocker(state, grid, env);
+          revealOrAttackBlocker(state, grid, env);
         } else if (chestObj) {
           doCmdDisarmChest(state, chestObj, chestDeps);
         } else if (priorDisarm) {

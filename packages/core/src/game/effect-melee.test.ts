@@ -186,6 +186,23 @@ describe("EF_CURSE (effect-handler-attack.c L1665)", () => {
     expect(used).toBe(false);
     expect(msgs).toContain("No monster selected!");
   });
+
+  it("reveals a camouflaged monster hit directly (aimed grid) via mon_take_hit's becomeAware hook", () => {
+    const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
+    const mon = addVisible(state, loc(14, 10), [], 50);
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    let revealed: number | null = null;
+    state.becomeAware = (m) => {
+      revealed = m.midx;
+    };
+    registry().effectSimple(
+      EF.CURSE,
+      env(state, undefined, { aimed: loc(14, 10) }),
+      { origin: sourcePlayer(), diceString: "20" },
+    );
+    expect(revealed).toBe(mon.midx);
+    expect(mon.hp).toBe(30);
+  });
 });
 
 describe("EF_JUMP_AND_BITE (effect-handler-attack.c L1710)", () => {

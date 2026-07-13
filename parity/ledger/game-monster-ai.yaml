@@ -40,19 +40,25 @@ notes: >-
   NOW WIRED (were deferred): spellcasting and breath via the state.monsterCast
   hook (make_ranged_attack, game/mon-ranged.ts), monster_group_rouse at the
   top of monster_turn, and group_monster_tracking in get_move's fallback
-  branch (both game/mon-group.ts).
-  DEFERRED (clear stubs, no behaviour yet): reproduction (monster_turn_multiply
-  / multiply_monster and the num_repro cap), item pickup and crush
-  (monster_turn_grab_objects, RF_TAKE_ITEM / KILL_ITEM), bodyguard tactics and
-  the group-surround fill (get_move_bodyguard), pack
-  ambush and "duck behind a wall" flight (get_move_find_hiding /
-  get_move_find_safety and the swerving get_move_flee -- the afraid branch here
-  just legs it in the reverse of the advance direction), damaging-terrain
-  avoidance and monster_take_terrain_damage, door open/bash and wall
-  kill/smash carving (OPEN_DOOR / BASH_DOOR / KILL_WALL / SMASH_WALL: those
-  monsters are blocked by the obstacle in this subset, only PASS_WALL phases
-  through), glyph / decoy / web handling, aggravation (OF_AGGRAVATE),
-  camouflage/mimic reveal (become_aware, monster_is_mimicking lie-in-wait).
+  branch (both game/mon-group.ts). Reproduction (monster_turn_multiply /
+  multiply_monster with the num_repro cap), item pickup and crush
+  (monster_turn_grab_objects, RF_TAKE_ITEM / KILL_ITEM), "duck behind a wall"
+  flight (get_move_find_safety and the swerving get_move_flee, replacing the
+  reverse-direction stub), door open/bash and wall kill/smash carving
+  (OPEN_DOOR / BASH_DOOR / KILL_WALL / SMASH_WALL), and aggravation
+  (OF_AGGRAVATE, read from playerState in monster_reduce_sleep) are all NOW
+  PORTED (game/monster-turn.ts + game/mon-place.ts). Camouflage/mimic reveal
+  (become_aware) is NOW PORTED (game/known.ts, installed via state.becomeAware):
+  monster_turn_try_push reveals a camouflaged blocker before it is trampled and
+  monster_turn itself reveals a camouflaged monster that did_something on its
+  turn.
+  DEFERRED (clear stubs, no behaviour yet): bodyguard tactics and the
+  group-surround fill (get_move_bodyguard), pack ambush and get_move_find_hiding
+  (in 4.2.6 its only caller is the out-of-scope ambush branch, so folding it
+  into the afraid chain would itself deviate from upstream RNG order),
+  damaging-terrain avoidance and monster_take_terrain_damage, glyph / decoy /
+  web handling, and monster_is_mimicking lie-in-wait (mimics are not placed as
+  objects yet).
   The monster-lore updates are DONE (mon-lore.yaml): melee counts each
   visible obvious/damaging blow's times_seen, notices deaths and runs
   lore_update, and monster_reduce_sleep counts wake/ignore on an obvious

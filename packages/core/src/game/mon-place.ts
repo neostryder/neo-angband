@@ -36,7 +36,7 @@ import type { Monster, MonsterGroupInfo } from "../mon/monster";
 import { turnEnergy } from "../mon/monster";
 import { createMonster } from "../mon/make";
 import type { MonAllocTable } from "../mon/make";
-import { monsterIsShapeUnique } from "../mon/predicate";
+import { monsterIsCamouflaged, monsterIsShapeUnique } from "../mon/predicate";
 import { monsterWake } from "../mon/take-hit";
 import type { SummonTable } from "../mon/summon";
 import { summonSpecificOkay } from "../mon/summon";
@@ -384,9 +384,10 @@ export function placeNewMonster(
  * before any draw (uniques never multiply and never touch the stream), then
  * scatter_ext draws (distance 1, needs LOS, square_isempty), then
  * place_new_monster (groupOk = false, so no friends/escort table draws - only
- * createMonster's sleep/hp/speed/energy/attr draws). The become_aware of a
- * revealed camouflaged child is DEFERRED (mimic / camouflage reveal is a
- * separate agent's concern and draws no RNG).
+ * createMonster's sleep/hp/speed/energy/attr draws). Fixing so multiplying a
+ * revealed camouflaged monster creates another revealed camouflaged monster
+ * (mon-move.c L1002-1011) draws no RNG - it just looks up the child that was
+ * placed a moment ago via square_monster, exactly as upstream does.
  */
 export function multiplyMonster(
   state: GameState,
@@ -410,15 +411,17 @@ export function multiplyMonster(
 
   /* Create a new monster (awake, no groups). */
   const info: MonsterGroupInfo = { index: 0, role: MON_GROUP.LEADER };
-  return placeNewMonster(
-    state,
-    spots[0] as Loc,
-    mon.race,
-    false,
-    false,
-    info,
-    deps,
-  );
+  const grid = spots[0] as Loc;
+  const result = placeNewMonster(state, grid, mon.race, false, false, info, deps);
+
+  if (result) {
+    const child = squareMonster(state, grid);
+    if (child && monsterIsCamouflaged(child) && !monsterIsCamouflaged(mon)) {
+      state.becomeAware?.(child);
+    }
+  }
+
+  return result;
 }
 
 /** pick_and_place_monster: place an appropriate monster (and group) at grid. */
