@@ -258,11 +258,84 @@ export function promptText(
   });
 }
 
+/**
+ * A digit-only numeric prompt (askfor_aux_numbers, ui-options.c L1026): shows
+ * the current value on its own line, accepts only digits/Backspace, Enter
+ * confirms (clamped to [min, max]), Escape cancels (resolves null). `subtitle`
+ * renders as a second line above the input, e.g. "Current hitpoint warning: 3
+ * (30%)" (do_cmd_hp_warn) or "Current base delay factor: 40 msec"
+ * (do_cmd_delay).
+ *
+ * The [min, max] clamp matches do_cmd_delay's `MIN(val, 255)` exactly, but
+ * do_cmd_hp_warn's ">9 resets to 0" rule is NOT a plain clamp (12 -> 0, not
+ * 9) - callers with that rule should pass a generous `max` (so this function
+ * never mis-clamps the raw value) and apply the >9 -> 0 reset themselves on
+ * the returned number.
+ */
+export function promptNumber(
+  term: GlyphTerm,
+  title: string,
+  current: number,
+  min: number,
+  max: number,
+  subtitle?: string,
+  maxLen = 3,
+): Promise<number | null> {
+  return new Promise<number | null>((resolve) => {
+    let buf = String(current);
+    const paint = (): void => {
+      const { cols, rows } = term.size();
+      term.clear();
+      term.print(0, HEADER_ROW, title.slice(0, cols - 1), TITLE);
+      let y = BODY_TOP;
+      if (subtitle) {
+        term.print(0, y, subtitle.slice(0, cols - 1), DIM);
+        y += 1;
+      }
+      term.print(0, y, `> ${buf}_`.slice(0, cols - 1), FG);
+      term.print(0, rows - 1, "[ digits, Enter to accept, ESC to cancel ]".slice(0, cols - 1), DIM);
+    };
+    const finish = (value: number | null): void => {
+      window.removeEventListener("keydown", onKey, true);
+      resolve(value);
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (ev.key === "Escape") return finish(null);
+      if (ev.key === "Enter") {
+        const n = buf.length > 0 ? Number.parseInt(buf, 10) : current;
+        const clamped = Math.max(min, Math.min(max, Number.isFinite(n) ? n : current));
+        return finish(clamped);
+      }
+      if (ev.key === "Backspace") {
+        buf = buf.slice(0, -1);
+        paint();
+        return;
+      }
+      if (/^[0-9]$/.test(ev.key) && buf.length < maxLen) {
+        buf += ev.key;
+        paint();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    paint();
+  });
+}
+
 /** One selectable row in a menu. Disabled rows show dimmed and cannot be picked. */
 export interface MenuItem {
   label: string;
   color?: string;
   disabled?: boolean;
+  /**
+   * An explicit tag letter (menu_action's own `.c` tag, e.g. option_actions[]'
+   * stable a/b/d/h in ui-options.c), overriding the default positional a,b,c..
+   * lettering. Matched case-insensitively (MN_CASELESS_TAGS, do_cmd_options'
+   * own menu flag) so pressing either case of the tag selects the row; rows
+   * without a tag keep the exact-case positional behaviour untouched.
+   */
+  tag?: string;
 }
 
 /**
@@ -319,7 +392,7 @@ export function selectFromMenu(
         const i = top + r;
         const it = items[i];
         if (!it) break;
-        const letter = menuLetter(i);
+        const letter = it.tag ?? menuLetter(i);
         const mark = i === cursor ? ">" : " ";
         const prefix = letter ? `${mark}${letter}) ` : `${mark}   `;
         const color = it.disabled ? DIM : i === cursor && extra?.cursorColor ? extra.cursorColor : it.color ?? FG;
@@ -383,6 +456,17 @@ export function selectFromMenu(
         return;
       }
       if (ev.key.length === 1) {
+        // MN_CASELESS_TAGS: an explicit per-item tag (see MenuItem.tag) is
+        // matched case-insensitively first, so a menu with stable upstream
+        // letters (do_cmd_options' a/b/d/h) works regardless of caps lock /
+        // shift. Untagged rows keep the original exact-case positional match
+        // (a..z then A..Z) so every existing caller is unaffected.
+        const lower = ev.key.toLowerCase();
+        const tagIdx = items.findIndex((it) => it.tag && it.tag.toLowerCase() === lower);
+        if (tagIdx >= 0) {
+          pick(tagIdx);
+          return;
+        }
         const idx = LETTERS.indexOf(ev.key);
         if (idx >= 0 && idx < items.length) pick(idx);
       }

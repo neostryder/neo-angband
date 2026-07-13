@@ -102,6 +102,13 @@ import {
   isLockedChest,
   squareIsOpenDoor,
   squareIsDiggable,
+  TF,
+  COLOUR_VIOLET,
+  COLOUR_WHITE,
+  COLOUR_YELLOW,
+  COLOUR_ORANGE,
+  COLOUR_L_RED,
+  COLOUR_RED,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -191,12 +198,16 @@ import {
 import { enterScore } from "@neo-angband/core";
 import { runStore } from "./shop";
 import { runHelp } from "./help";
+import { runOptionsMenu } from "./options";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
 
-// Original keyset (numpad + arrows) by default; see keymap.ts.
-const roguelikeKeys = false;
+// Original keyset (numpad + arrows) by default, or the roguelike keyset when
+// the player toggles "rogue_like_commands" on ('=' -> User interface options)
+// - read live at the resolveKey() call site below so a toggle takes effect on
+// the very next keypress, exactly like upstream's OPT(player,
+// rogue_like_commands) check. See keymap.ts.
 
 // Seed and depth are overridable via the URL query so a run is shareable and
 // reproducible (unmodded runs are deterministic - PORT_PLAN.md decision 22).
@@ -1975,22 +1986,43 @@ function dim(css: string): string {
   return `rgb(${scale(m[1]!)},${scale(m[2]!)},${scale(m[3]!)})`;
 }
 
-/** Glyph and color for a grid's terrain, resolving display mimics. */
-function terrainGlyph(x: number, y: number): { ch: string; css: string } {
+/**
+ * Glyph and color for a grid's terrain, resolving display mimics. Faithful to
+ * grid_get_attr (ui-map.c L108): a wall feature (TF_WALL, tested on the
+ * DISPLAYED/mimic-resolved feature, exactly as upstream tests g->f_idx after
+ * mimic resolution) gets a background wash when hybrid_walls or solid_walls
+ * is on - hybrid first (upstream checks it first too), a dark shade behind
+ * the glyph; solid, a background the same color as the glyph itself (a solid
+ * block of color). Neither option is on by default (both normal: false).
+ */
+function terrainGlyph(x: number, y: number): { ch: string; css: string; bg?: string } {
   const f = state.chunk.feature(loc(x, y));
   const disp = f.mimic !== null ? features.get(f.mimic) : f;
-  return { ch: disp.dChar, css: colorToCss(colorCharToAttr(disp.dAttr)) };
+  const css = colorToCss(colorCharToAttr(disp.dAttr));
+  if (disp.flags.has(TF["WALL"])) {
+    if (state.options?.get("hybrid_walls")) return { ch: disp.dChar, css, bg: dim(css) };
+    if (state.options?.get("solid_walls")) return { ch: disp.dChar, css, bg: css };
+  }
+  return { ch: disp.dChar, css };
 }
 
 /**
  * The display attr for a monster at the current animation frame. Faithful to
- * do_animation (ui-display.c): RF_ATTR_MULTI shimmers a random color, an
- * RF_ATTR_FLICKER monster color-cycles (race cycle, else the legacy flicker
- * cycle, else its static color), and everything else keeps its static attr.
+ * grid_data_as_text (ui-map.c L248): purple_uniques (checked FIRST, so it
+ * overrides multi/flicker animation for a unique) turns the monster violet;
+ * otherwise do_animation (ui-display.c) applies - RF_ATTR_MULTI shimmers a
+ * random color, an RF_ATTR_FLICKER monster color-cycles (race cycle, else the
+ * legacy flicker cycle, else its static color), and everything else keeps its
+ * static attr. animate_flicker gates the animation entirely (ui-display.c
+ * L1506: do_animation returns immediately when the option is off), so with it
+ * off a multi/flicker monster simply shows its static base color.
  */
 function monsterAttr(mon: (typeof state.monsters)[number]): number {
   const base = mon!.race.dAttr;
-  if (!animator) return base;
+  if (state.options?.get("purple_uniques") && mon!.race.flags.has(RF.UNIQUE)) {
+    return COLOUR_VIOLET;
+  }
+  if (!animator || !(state.options?.get("animate_flicker") ?? false)) return base;
   const anim = animateMonsterAttr(animator, {
     ridx: mon!.race.ridx,
     baseAttr: base,
@@ -2002,9 +2034,31 @@ function monsterAttr(mon: (typeof state.monsters)[number]): number {
   return anim ?? base;
 }
 
+/**
+ * The player's own '@' map glyph color. Faithful to grid_data_as_text's
+ * g->is_player branch (ui-map.c L282-327): with hp_changes_color on (the
+ * default, normal: true), the glyph's color tracks the player's HP decile -
+ * white at 90-100%, yellow 70-80%, orange 50-60%, light-red 30-40%, red
+ * 0-20%. Off, the player keeps a fixed neutral color (the shell's prior,
+ * unconditional behaviour).
+ */
+function playerMapAttr(): string {
+  if (!(state.options?.get("hp_changes_color") ?? true)) return "#e8e8f0";
+  const p = state.actor.player;
+  const pct10 = p.mhp > 0 ? Math.trunc((p.chp * 10) / p.mhp) : 10;
+  let color: number;
+  if (pct10 === 10 || pct10 === 9) color = COLOUR_WHITE;
+  else if (pct10 === 8 || pct10 === 7) color = COLOUR_YELLOW;
+  else if (pct10 === 6 || pct10 === 5) color = COLOUR_ORANGE;
+  else if (pct10 === 4 || pct10 === 3) color = COLOUR_L_RED;
+  else if (pct10 === 2 || pct10 === 1 || pct10 === 0) color = COLOUR_RED;
+  else color = COLOUR_WHITE; // out-of-range (negative/>10): upstream's default
+  return colorToCss(color);
+}
+
 /** True if any visible monster animates (drives the display frame timer). */
 function hasAnimatedVisibleMonster(): boolean {
-  if (!animator) return false;
+  if (!animator || !(state.options?.get("animate_flicker") ?? false)) return false;
   for (let i = 1; i < state.monsters.length; i++) {
     const mon = state.monsters[i];
     if (!mon) continue;
@@ -2131,6 +2185,14 @@ function renderStatusLine(originX: number, row: number, maxCols: number): void {
  * so the map fills the full width, with a one-line vitals header under the
  * message row. Roomy screens keep the classic left sidebar. Kept as a helper
  * so the touch handler maps a tapped cell back to a grid square identically.
+ *
+ * FLAGGED NO-OP: center_player (option, normal: false) is not read here. This
+ * always recenters the camera on the player every frame, which is upstream's
+ * center_player=ON behaviour; the OFF behaviour (verify_panel's panel-scroll -
+ * only recenter once the player nears a panel edge) has no backing
+ * implementation in this shell. The option is still listed and toggleable in
+ * the '=' menu (options.ts) and persists in the save, but toggling it
+ * currently has no visible effect - a real gap, not a silent one.
  */
 // 'L' locate (do_cmd_locate): while set, viewport() reports this panned
 // top-left instead of centering on the player - change_panel's effect on the
@@ -2286,7 +2348,7 @@ function render(targeting?: TargetingOverlay): void {
       }
 
       const t = terrainGlyph(gx, gy);
-      let drawn = { ch: t.ch, css: t.css };
+      let drawn: { ch: string; css: string; bg?: string } = t;
       const trap = trapAt.get(idx);
       if (trap) drawn = trap;
       const obj = objectAt.get(idx);
@@ -2294,7 +2356,16 @@ function render(targeting?: TargetingOverlay): void {
       const mon = monsterAt.get(idx);
       if (mon) drawn = mon;
       if (pathColour !== undefined) drawn = { ch: "*", css: colorToCss(pathColour) };
-      term.put(screenX, screenY, { ch: drawn.ch, fg: drawn.css, ...cursorBg });
+      // The wall shading (solid_walls/hybrid_walls) is terrain-only: any
+      // trap/object/monster covering the cell (or the cursor highlight,
+      // spread last below) fully overrides it, matching upstream drawing
+      // whatever is "on top" of the grid without the terrain's own bg.
+      term.put(screenX, screenY, {
+        ch: drawn.ch,
+        fg: drawn.css,
+        ...(drawn.bg !== undefined ? { bg: drawn.bg } : {}),
+        ...cursorBg,
+      });
     }
   }
 
@@ -2314,7 +2385,7 @@ function render(targeting?: TargetingOverlay): void {
       state.actor.grid.y === targeting.cursor.y;
     term.put(playerScreenX, playerScreenY, {
       ch: "@",
-      fg: "#e8e8f0",
+      fg: playerMapAttr(),
       ...(playerIsCursor ? { bg: CURSOR_BG } : {}),
     });
   }
@@ -2592,6 +2663,21 @@ window.addEventListener("keydown", (ev) => {
       void openModal(() => runLocate());
       return;
     }
+    // do_cmd_options ('=', ui-options.c): the full Options Menu (interface /
+    // birth toggles, ignore-setup, delay factor, hitpoint warning) - checked
+    // here, before the item-use verbs below, so '=' is never shadowed by
+    // ITEM_VERBS (sibling gap #51 temporarily bound '=' straight to
+    // openIgnoreSetup(); this reclaims it for the full menu, which now hosts
+    // ignore-setup as its own (i) sub-entry - openIgnoreSetup itself is
+    // unchanged and reused verbatim, not duplicated). autosave(true) flushes
+    // any option change to the per-slot save the moment the menu closes.
+    if (ev.key === "=") {
+      ev.preventDefault();
+      void openModal(() => runOptionsMenu(term, state, openIgnoreSetup)).then(() =>
+        autosave(true),
+      );
+      return;
+    }
     // Item-use verbs (original keyset: cmd-obj.c). Each opens a selection menu.
     const ITEM_VERBS: Record<string, () => Promise<void>> = {
       q: () => useItem("quaff", (o) => tvalIsPotion(o.tval), "potions"),
@@ -2627,7 +2713,6 @@ window.addEventListener("keydown", (ev) => {
       v: () => throwCmd(),
       o: () => openCmd(),
       D: () => disarmCmd(),
-      "=": () => openIgnoreSetup(),
     };
     const verb = ITEM_VERBS[ev.key];
     if (verb) {
@@ -2685,7 +2770,7 @@ window.addEventListener("keydown", (ev) => {
       return;
     }
   }
-  const binding = resolveKey(ev, roguelikeKeys);
+  const binding = resolveKey(ev, state.options?.get("rogue_like_commands") ?? false);
   if (!binding) return;
   ev.preventDefault();
   // Walking into a store entrance enters the shop (do_cmd_store) rather than
@@ -2714,6 +2799,10 @@ window.addEventListener("keydown", (ev) => {
 // (the "intelligent controller / mobile input" idea), not core.
 canvas.addEventListener("pointerdown", (ev) => {
   if (scoresOpen || dead || modalDepth > 0) return; // a modal owns input
+  // ui-context.c L1002: "if (!OPT(player, mouse_movement)) return;" gates
+  // click-to-move specifically (not the context menu below, which upstream
+  // never gates on this option). Defaults on (normal: true).
+  if (!(state.options?.get("mouse_movement") ?? true)) return;
   const rect = canvas.getBoundingClientRect();
   const { col, row } = term.cellAt(ev.clientX - rect.left, ev.clientY - rect.top);
   const vp = viewport();
@@ -2827,6 +2916,7 @@ function installTouchActionBar(): void {
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots })); }],
     ["Hist", () => { void openModal(() => showTextScreen(term, "Player history", historyLines(state))); }],
     ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
+    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup)).then(() => autosave(true)); }],
     ["Help", () => { void openModal(() => runHelp(term)); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     ["Switch", () => { switchCharacter(); }],
@@ -2885,7 +2975,12 @@ installWebSound(soundEvents, {
 // This is the emit half of decision (b): sound is first-class and fully wired;
 // audio only plays once a pack is pointed at via ?sounds=. state.sound is the
 // core seam (game/context.ts); combat/ranged/monster-message code calls it.
+// use_sound (normal: false, matching upstream's own shipped default) now has
+// a real toggle via '=' -> User interface options; gate the emit on it so
+// disabling the option actually silences audio, reading it live each call so
+// a mid-session toggle takes effect immediately.
 state.sound = (type: number): void => {
+  if (!(state.options?.get("use_sound") ?? false)) return;
   soundEvents.emit("sound", { msg: "", type });
 };
 

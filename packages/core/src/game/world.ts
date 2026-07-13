@@ -139,9 +139,11 @@ function worldTakeHitTarget(state: GameState): TakeHitTarget {
       state.isDead = v;
     },
     timed: p.timed,
-    hitpointWarn:
-      (state.options?.get("hitpoint_warn") as number | undefined) ??
-      DEFAULT_HITPOINT_WARN,
+    /* Bug fix (verify t2verify__options-settings-screen): "hitpoint_warn" is
+     * not a boolean option name (it is the scalar OptionState.hitpointWarn
+     * field), so the old `state.options?.get("hitpoint_warn")` always
+     * returned false and the low-hp warning threshold collapsed to 0. */
+    hitpointWarn: state.options?.hitpointWarn ?? DEFAULT_HITPOINT_WARN,
   };
 }
 

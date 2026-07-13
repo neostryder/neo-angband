@@ -84,7 +84,6 @@ export function helpCommandLines(): ScreenLine[] {
   lines.push(keyLine("F", "Fuel your lantern/torch"));
   lines.push(keyLine("I", "Inspect an item"));
   lines.push(keyLine("K", "Toggle ignoring off"));
-  lines.push(keyLine("=", "Ignore setup (quality/ego filters)"));
 
   lines.push(...header("Magic"));
   lines.push(keyLine("m / p", "Cast a spell / recite a prayer"));
@@ -109,6 +108,7 @@ export function helpCommandLines(): ScreenLine[] {
   lines.push(keyLine("l / x", "Look around"));
 
   lines.push(...header("Meta"));
+  lines.push(keyLine("=", "Options menu (interface/birth toggles, ignore setup)"));
   lines.push(keyLine("M", "Display map of entire level"));
   lines.push(keyLine("L", "Locate player on map"));
   lines.push(keyLine("C", "Character description"));
