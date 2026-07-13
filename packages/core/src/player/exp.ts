@@ -10,12 +10,13 @@
  *
  * Level changes ripple into derived state (hitpoints, spells, mana,
  * bonuses); the caller supplies that recomputation through ExpDeps.
- * onLevelChange, keeping this module free of the session's wiring.
+ * onLevelChange, keeping this module free of the session's wiring. Each
+ * level gained also fires ExpDeps.onGainLevel (history_add(HIST_GAIN_LEVEL),
+ * player.c L246-247), which the session wires to player/history.ts.
  *
- * DEFERRED (ledgered in parity/ledger/player-exp.yaml): history_add log
- * entries (char history, #25), the PU_/PR_ update masks (display), and
- * upstream's handle_stuff interleaving (the port recomputes once after the
- * loops settle).
+ * DEFERRED (ledgered in parity/ledger/player-exp.yaml): the PU_/PR_ update
+ * masks (display), and upstream's handle_stuff interleaving (the port
+ * recomputes once after the loops settle).
  */
 
 import type { Rng } from "../rng";
@@ -46,6 +47,14 @@ export interface ExpDeps {
    * from the new level. Runs once after the level loops settle.
    */
   onLevelChange?(p: Player): void;
+  /**
+   * history_add(HIST_GAIN_LEVEL) (player.c L246-247): fired once per level
+   * gained, inside the verbose block, immediately BEFORE the "Welcome to
+   * level %d." message. `lev` is the just-reached level (p.lev already
+   * incremented). Not called when verbose is false (a save-load replay of
+   * adjustLevel must not re-log levels already recorded).
+   */
+  onGainLevel?(p: Player, lev: number): void;
 }
 
 /** exp needed for level `lev` (adjust_level's table read with expfact). */
@@ -96,7 +105,10 @@ export function adjustLevel(p: Player, deps: ExpDeps, verbose = true): void {
   while (p.lev < PY_MAX_LEVEL && p.exp >= expToReach(p, p.lev + 1)) {
     p.lev++;
     if (p.lev > p.maxLev) p.maxLev = p.lev;
-    if (verbose) deps.msg?.(`Welcome to level ${p.lev}.`);
+    if (verbose) {
+      deps.onGainLevel?.(p, p.lev);
+      deps.msg?.(`Welcome to level ${p.lev}.`);
+    }
     /* effect_simple(EF_RESTORE_STAT) x5: drained stats come back. */
     for (let i = 0; i < STAT_MAX; i++) {
       if ((p.statCur[i] ?? 0) < (p.statMax[i] ?? 0)) {

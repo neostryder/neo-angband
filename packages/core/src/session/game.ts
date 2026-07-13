@@ -26,7 +26,7 @@
 import { loc } from "../loc";
 import type { Loc } from "../loc";
 import { SKILL } from "../player/types";
-import { EF, PF, RF, STAT, TMD } from "../generated";
+import { EF, HIST, PF, RF, STAT, TMD } from "../generated";
 import { bindPlayer } from "../player/bind";
 import type { PlayerPackRecords, PlayerRegistry } from "../player/bind";
 import { generatePlayer } from "../player/birth";
@@ -39,6 +39,8 @@ import {
 import type { PlayerState } from "../player/calcs";
 import { playerExpGain, playerKillExp } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
+import { historyAdd, historyFindArtifact } from "../player/history";
+import { artifactHistoryName, historyStamp } from "../game/history";
 import { makePlayerSideEffects } from "../game/player-side";
 import { makeMonBlowEnv } from "../game/mon-side";
 import { adj_dex_safe } from "../player/calcs";
@@ -448,6 +450,12 @@ function wireGame(
       /* Casters learn/forget spells at the new level. */
       calcSpells(p, derived.statInd);
     },
+    /* history_add(HIST_GAIN_LEVEL) (player.c L246-247), fired from inside
+     * adjustLevel's up-loop before the "Welcome to level" message. */
+    onGainLevel: (p, lev): void => {
+      const stamp = historyStamp(state);
+      historyAdd(p, `Reached level ${lev}`, HIST.GAIN_LEVEL, stamp.dlev, lev, stamp.turn);
+    },
   };
   // Monster-death loot deps (mon_create_drop + monster_death, game/mon-death.ts).
   // Assigned inside the projections block below once makeDeps, the object
@@ -465,6 +473,20 @@ function wireGame(
      * is session-lifetime; persisting it rides the save format (ledgered). */
     if (mon.race.flags.has(RF.UNIQUE)) {
       mon.race.maxNum = 0;
+      /* history_add(HIST_SLAY_UNIQUE) (mon-util.c L1099-1101), read BEFORE
+       * playerKillExp below so p.lev is the pre-kill level, matching
+       * upstream's history_add-before-player_exp_gain order. MDESC_DIED_FROM
+       * for a unique is just the race name (no article/pronoun swap), so no
+       * MDESC subsystem is needed here. */
+      const stamp = historyStamp(state);
+      historyAdd(
+        state.actor.player,
+        `Killed ${mon.race.name}`,
+        HIST.SLAY_UNIQUE,
+        stamp.dlev,
+        stamp.clev,
+        stamp.turn,
+      );
     }
     /* Generate treasure (monster_death, mon-util.c L1108) BEFORE the pkills /
      * tkills lore counting (L1118), so loreUpdate below sees any drop_gold /
@@ -482,6 +504,21 @@ function wireGame(
   };
   const expGain = (amount: number): void =>
     playerExpGain(state.actor.player, amount, expDeps);
+
+  // object_touch's history_find_artifact (obj-knowledge.c L960-972): fires
+  // when an artifact enters the pack (pickup.ts's playerPickupAux). The
+  // name builder is RNG-free (game/history.ts artifactHistoryName).
+  state.onArtifactFound = (art): void => {
+    const stamp = historyStamp(state);
+    historyFindArtifact(
+      state.actor.player,
+      art,
+      stamp.dlev,
+      stamp.clev,
+      stamp.turn,
+      (a) => artifactHistoryName(state, reg.objects, reg.constants, a),
+    );
+  };
 
   // The effect stack: with bound projections, monsters cast spells on
   // their turns (make_ranged_attack), items are usable (cmd-obj.c), the

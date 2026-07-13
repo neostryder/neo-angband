@@ -162,6 +162,48 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     expect(nameBefore).not.toContain(`of ${potionKind.name}`);
   });
 
+  it("round-trips the character history log (player.hist), incl. a LOST entry", () => {
+    const game = startGame(pack, { seed: 555, depth: 5 });
+    const p = game.state.actor.player;
+    /* Birth already logged HIST_PLAYER_BIRTH; add a level-up, an artifact
+     * find and a lost-artifact entry so every shape round-trips. */
+    const art = game.booted.registries.objects.artifacts.find(
+      (a) => a?.name === "of Galadriel",
+    )!;
+    const otherArt = game.booted.registries.objects.artifacts.find(
+      (a) => a && a.name !== "of Galadriel",
+    )!;
+    game.state.onArtifactFound?.(art);
+    game.state.onArtifactFound?.(otherArt);
+    // Manually lose the second artifact (no live trigger site is wired for
+    // this in the port yet - see parity/ledger/player-history.yaml) so the
+    // LOST rendering/round-trip path is exercised directly.
+    p.hist.push({
+      type: 0,
+      dlev: 1,
+      clev: 1,
+      aIdx: otherArt.aidx,
+      turn: 1,
+      event: "Missed something",
+    });
+    expect(p.hist.length).toBeGreaterThanOrEqual(3);
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game)));
+    const restored = loadGame(pack, saved);
+    expect(restored.state.actor.player.hist).toEqual(p.hist);
+  });
+
+  it("an old save without a `hist` field loads as an empty log", () => {
+    const game = startGame(pack, { seed: 555, depth: 5 });
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as {
+      player: Record<string, unknown>;
+    };
+    expect(Array.isArray(saved.player.hist)).toBe(true);
+    delete saved.player.hist; // simulate a pre-#56 savefile
+    const restored = loadGame(pack, saved as unknown as ReturnType<typeof saveGame>);
+    expect(restored.state.actor.player.hist).toEqual([]);
+  });
+
   it("resumes the exact RNG stream (the anti-save-scum posture)", () => {
     const game = startGame(pack, { seed: 42, depth: 3 });
     playTurns(game, 4);

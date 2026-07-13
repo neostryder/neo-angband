@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { STAT } from "../generated";
+import { HIST, STAT } from "../generated";
 import { Rng } from "../rng";
 import { bindPlayer } from "./bind";
 import type { PlayerPackRecords } from "./bind";
@@ -175,5 +175,17 @@ describe("full birth pipeline (Half-Troll Warrior)", () => {
     /* SKILL_TO_HIT_MELEE base: Half-Troll +20, Warrior +70 = 90; plus the
        per-level increment x_skills 45 * lev(1) / 10 = 4 => 94. */
     expect(player.skills[6]).toBe(94);
+  });
+
+  it("logs exactly one HIST_PLAYER_BIRTH entry (do_cmd_accept_character)", () => {
+    const { player } = birth(77);
+    expect(player.hist).toHaveLength(1);
+    const e = player.hist[0]!;
+    expect(e.type).toBe(1 << HIST.PLAYER_BIRTH);
+    expect(e.event).toBe("Began the quest to destroy Morgoth.");
+    expect(e.dlev).toBe(0);
+    expect(e.clev).toBe(1);
+    expect(e.turn).toBe(0);
+    expect(e.aIdx).toBe(0);
   });
 });

@@ -242,4 +242,30 @@ describe("doAutopickup / playerPickupItem", () => {
     expect(state.actor.player.au).toBe(75);
     expect(floorPile(state, loc(6, 5)).length).toBe(0);
   });
+
+  it("picking up an artifact fires state.onArtifactFound (object_touch)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const art = reg.artifacts.find((a) => a?.name === "of Galadriel")!;
+    const obj = underfoot(state, makeObj(TV.LIGHT, 0));
+    obj.artifact = art;
+
+    let seen: typeof art | null = null;
+    state.onArtifactFound = (a): void => {
+      seen = a;
+    };
+    const picked = playerPickupItem(state, null, deps);
+    expect(picked).toBe(1);
+    expect(seen).toBe(art);
+  });
+
+  it("picking up a non-artifact does NOT fire onArtifactFound", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    underfoot(state, makeObj(TV.POTION));
+    let fired = false;
+    state.onArtifactFound = (): void => {
+      fired = true;
+    };
+    playerPickupItem(state, null, deps);
+    expect(fired).toBe(false);
+  });
 });

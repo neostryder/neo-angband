@@ -37,22 +37,35 @@ notes: >-
   via the state.autoPickup hook - total energy per step+pickup is the same,
   only the command split differs. The web front end renders floor piles live
   from state.floor and binds 'g'.
+
+  object_touch (obj-knowledge.c L960-972, task #56): playerPickupAux fires
+  state.onArtifactFound when the picked object is an artifact, wired by the
+  session (session/game.ts) to player/history.ts's historyFindArtifact. The
+  hook lives on GameState rather than PickupEnv because main.ts calls
+  installPickup a second time (to add message hooks) after the session's
+  first call, which would otherwise silently drop an env-based hook - see
+  parity/ledger/player-history.yaml for the full history-log ledger.
 deferred:
   - The pickup menu (get_item over USE_FLOOR) is the chooseItem seam; the
     headless default picks the pile head, one object per 'g' press (ui #25
     supplies the real menu, restoring the recursive menu loop).
   - square_know_pile / OFLOOR_VISIBLE marking (knowledge #24): every object
-    on the grid is visible; unmarked objects cannot yet exist.
+    on the grid is visible; unmarked objects cannot yet exist. This also
+    means object_touch's find-ON-SIGHT path (square_know_pile calling it the
+    instant a pile becomes known, not only on pickup) is not reproduced;
+    only the pickup path fires state.onArtifactFound (ledgered in
+    player-history.yaml).
   - ignore_item_ok (obj-ignore #24): isIgnored hook, nothing ignored.
   - get_quantity partial-pickup prompt (ui): defaults to the carryable max.
   - Weight tracking (p->upkeep->total_weight) and PN_IGNORE notice - with
     the inventory upkeep layer.
 verified-by:
-  - game/pickup.test.ts (13 tests): inscription counting and =g<n> parsing;
+  - game/pickup.test.ts (16 tests): inscription counting and =g<n> parsing;
     gold collection into the purse leaving non-gold; auto_pickup_okay
     default-refuses, honours pickup_always, !g precedence, =g force, the
     pickup_inven pack match and the =g<n> pack-count cap; do_autopickup
     takes gold + =g items only; 'g' picks the single object; the chooseItem
     seam selects among several; the registered command charges
     move_energy/10 per object through processPlayer; stepping onto gold
-    auto-collects it through the walk wiring.
+    auto-collects it through the walk wiring; picking up an artifact fires
+    state.onArtifactFound and a non-artifact pickup does not.

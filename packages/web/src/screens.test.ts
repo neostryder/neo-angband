@@ -23,6 +23,7 @@ import {
   COLOUR_WHITE,
   COLOUR_L_RED,
   TV,
+  HIST,
 } from "@neo-angband/core";
 import type {
   Textblock,
@@ -35,7 +36,7 @@ import type {
   TerrainRecordJson,
   PlayerPackRecords,
 } from "@neo-angband/core";
-import { wrapRuns, objectListLines } from "./screens";
+import { wrapRuns, objectListLines, historyLines } from "./screens";
 
 const WHITE = 1;
 const L_GREEN = 13;
@@ -389,5 +390,45 @@ describe("objectListLines (']' object_list_show_interactive)", () => {
     objectListLines(state); // twice, in case a first-call-only branch hides a draw
     const after = state.rng.getState();
     expect(after).toEqual(before);
+  });
+});
+
+describe("historyLines (history_display, ui-history.c)", () => {
+  it("shows the placeholder for an empty log, with the faithful header", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const lines = historyLines(state);
+    expect(lines[0]!.text).toBe("      Turn   Depth  Note");
+    expect(lines[1]!.text).toBe("(no history yet)");
+  });
+
+  it("formats '%10ld%7d\'  %s' oldest-first, with ' (LOST)' on lost entries", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.actor.player.hist.push(
+      {
+        type: 1 << HIST.PLAYER_BIRTH,
+        dlev: 0,
+        clev: 1,
+        aIdx: 0,
+        turn: 0,
+        event: "Began the quest to destroy Morgoth.",
+      },
+      {
+        type: (1 << HIST.ARTIFACT_UNKNOWN) | (1 << HIST.ARTIFACT_LOST),
+        dlev: 3,
+        clev: 5,
+        aIdx: 9,
+        turn: 1234,
+        event: "Missed the Amulet of Testing",
+      },
+    );
+    const lines = historyLines(state);
+    // Header, then two entries, oldest-first.
+    expect(lines).toHaveLength(3);
+    expect(lines[1]!.text).toBe(
+      `${"0".padStart(10)}${"0".padStart(7)}'  Began the quest to destroy Morgoth.`,
+    );
+    expect(lines[2]!.text).toBe(
+      `${"1234".padStart(10)}${"150".padStart(7)}'  Missed the Amulet of Testing (LOST)`,
+    );
   });
 });
