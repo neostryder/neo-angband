@@ -51,19 +51,23 @@ notes: >-
   (become_aware) is NOW PORTED (game/known.ts, installed via state.becomeAware):
   monster_turn_try_push reveals a camouflaged blocker before it is trampled and
   monster_turn itself reveals a camouflaged monster that did_something on its
-  turn.
-  DEFERRED (clear stubs, no behaviour yet): bodyguard tactics and the
-  group-surround fill (get_move_bodyguard), pack ambush and get_move_find_hiding
-  (in 4.2.6 its only caller is the out-of-scope ambush branch, so folding it
-  into the afraid chain would itself deviate from upstream RNG order),
-  damaging-terrain avoidance and monster_take_terrain_damage, glyph / decoy /
-  web handling, and monster_is_mimicking lie-in-wait (mimics are not placed as
-  objects yet).
+  turn. Bodyguard tactics (get_move_bodyguard), pack-ambush lie-in-wait
+  (get_move_find_hiding wired into the RF_GROUP_AI branch), glyph attack /
+  decoy targeting+destroy / web struggle (monster_turn_attack_glyph,
+  square_isdecoyed, square_iswebbed), and damaging-terrain AVOIDANCE
+  (monster_hates_grid via chunk.isFiery + the feature resist flag, driving
+  advance/flee/find_safety/can_move/check_active) are NOW PORTED
+  (game/monster-turn.ts).
+  DEFERRED (clear stubs, no behaviour yet): group-surround fill (draws
+  randint0(8), left inert so it cannot perturb the RNG stream until ported),
+  monster_take_terrain_damage (the actual lava damage - blocked on
+  mon_take_nonplayer_hit -> monster_death/delete_monster_idx, and it fires from
+  process_monster not monster_turn), and monster_is_mimicking lie-in-wait
+  (mimics are not placed as objects yet).
   The monster-lore updates are DONE (mon-lore.yaml): melee counts each
   visible obvious/damaging blow's times_seen, notices deaths and runs
   lore_update, and monster_reduce_sleep counts wake/ignore on an obvious
-  sleeper. monster_hates_grid always
-  returns false (no damaging terrain modelled). cdis is refreshed by
+  sleeper. cdis is refreshed by
   updateMonsterDistances (context.ts) in lieu of update_mon; the AI reads the
   Chunk noise/scent heatmaps produced by world/flow.ts.
 verified-by:

@@ -55,15 +55,36 @@
  *   of an already-revealed breeder" (L1002-1011) is ported alongside it in
  *   game/mon-place.ts multiplyMonster. Draws no RNG.
  *
+ * NOW PORTED (this pass):
+ * - Group AI: get_move_bodyguard (a bodyguard stays adjacent to its group
+ *   leader, wired into the top of get_move_advance) and the RF_GROUP_AI pack
+ *   ambush branch of get_move (the open-grid count around the player, then
+ *   get_move_find_hiding - the flow/projectable ring scan that finds a hidden
+ *   grid to lie in wait). Both draw no RNG.
+ * - Damaging terrain (square_isdamaging is feat_is_fiery / lava in 4.2.6, and
+ *   lava with resist-flag IM_FIRE IS modelled): monster_hates_grid (avoid it in
+ *   advance/random/find_safety/bodyguard/can_move) and monster_taking_terrain_
+ *   damage (the get_move terrain-flight branch, the get_move_flee early-out, and
+ *   the monster_check_active activation). All draw no RNG.
+ * - Glyph: monster_turn_attack_glyph (a monster on a warded grid rolls
+ *   randint1(glyph_hardness) < level to break the ward). Decoy: monster is
+ *   decoyed -> target the decoy (get_move_advance / get_move), attack-allowed in
+ *   can_move, and square_destroy_decoy when stepped on (draws no RNG; the decoy
+ *   is disambiguated from a glyph of warding by cave->decoy since both traps
+ *   share the GLYPH flag). Web: a webbed monster passes / clears / is stuck by
+ *   RF_PASS_WEB / RF_CLEAR_WEB / pass-walls (draws no RNG).
+ *
  * DEFERRED (ledgered in parity/ledger/game-monster-ai.yaml):
- * - bodyguard tactics (get_move_bodyguard), group surround and pack ambush
- *   (get_move_find_hiding - its only caller is the out-of-scope pack branch,
- *   so it is left deferred with that branch), damaging-terrain flight /
- *   avoidance / activation, glyph/decoy/web handling, react_to_slay pickup
- *   safety, the confused-move / door-burst UI messages and disturb, and the
- *   remaining monster-lore updates. None of these draw RNG until taken, so
- *   they stay as inert conditionals in their upstream positions and the RNG
- *   order for the ported paths is unaffected.
+ * - monster_take_terrain_damage (the actual lava damage after the turn, called
+ *   from process_monster, not monster_turn): needs mon_take_nonplayer_hit
+ *   (monster_death / delete_monster_idx), which is not ported; only the
+ *   movement-driving predicate is ported here.
+ * - Group surround (mon-move.c L934): draws randint0(8), so porting it alone
+ *   would perturb the RNG stream; left as an inert deferred conditional.
+ * - react_to_slay pickup safety, the confused-move / door-burst / glyph-break /
+ *   decoy-destroy UI messages and disturb, and the remaining monster-lore
+ *   updates. None of these draw RNG until taken, so the RNG order for the ported
+ *   paths is unaffected.
  */
 
 import type { Loc } from "../loc";
@@ -75,10 +96,11 @@ import {
   distance,
   loc,
   locDiff,
+  locEq,
   locIsZero,
   locSum,
 } from "../loc";
-import { FEAT, MFLAG, MON_TMD, MSG, OF, RF, TF } from "../generated";
+import { FEAT, MFLAG, MON_TMD, MSG, OF, RF, SQUARE, TF, TRF } from "../generated";
 import type { Monster } from "../mon/monster";
 import { MON_GROUP } from "../mon/types";
 import {
@@ -102,10 +124,23 @@ import { tvalIsMoney } from "../obj/object";
 import { monMeleeAttack } from "../combat/mon-melee";
 import { equipLearnOnDefend } from "../obj/knowledge";
 import { los, squareIsView } from "../world/view";
+import { PROJECT, projectable } from "../world/project";
 import type { GameState } from "./context";
 import { monsterSwap, squareIsPlayer, squareMonster } from "./context";
 import { floorExcise, floorPile } from "./floor";
-import { groupMonsterTracking, monsterGroupRouse } from "./mon-group";
+import { squareIsEmptyLive } from "./mon-place";
+import {
+  squareIsPlayerTrap,
+  squareIsWarded,
+  squareIsWebbed,
+  squareRemoveAllTraps,
+  squareTrap,
+} from "./trap";
+import {
+  groupMonsterTracking,
+  monsterGroupLeader,
+  monsterGroupRouse,
+} from "./mon-group";
 
 /** enum monster_stagger. */
 export const STAGGER = {
@@ -263,11 +298,65 @@ function monsterCanMoveInto(
 }
 
 /**
- * monster_hates_grid: damaging terrain the monster can't survive. Damaging
- * terrain is not modelled yet, so this is always false (DEFERRED).
+ * square_isdamaging (cave-square.c L730) && the monster lacks the feature's
+ * resist_flag: the shared predicate behind monster_hates_grid and
+ * monster_taking_terrain_damage. square_isdamaging is feat_is_fiery in 4.2.6
+ * (lava only), so this is chunk.isFiery gated by the feature's resistFlag.
  */
-function monsterHatesGrid(_state: GameState, _mon: Monster, _grid: Loc): boolean {
-  return false;
+function damagingTerrainHurts(state: GameState, mon: Monster, grid: Loc): boolean {
+  if (!state.chunk.isFiery(grid)) return false;
+  return !mon.race.flags.has(state.chunk.feature(grid).resistFlag);
+}
+
+/**
+ * monster_hates_grid (mon-move.c L188): damaging terrain the monster can't
+ * survive. Draws no RNG.
+ */
+function monsterHatesGrid(state: GameState, mon: Monster, grid: Loc): boolean {
+  return damagingTerrainHurts(state, mon, grid);
+}
+
+/**
+ * monster_taking_terrain_damage (mon-util.c L1347): the monster is standing on
+ * damaging terrain it does not resist. Draws no RNG. NOTE: the actual damage
+ * application (monster_take_terrain_damage, mon-util.c L1327, called from
+ * process_monster after monster_turn) is DEFERRED - it needs mon_take_nonplayer_hit
+ * (monster_death / delete_monster_idx), which is not ported yet; this predicate
+ * only drives movement (flight / avoidance / activation).
+ */
+function monsterTakingTerrainDamage(state: GameState, mon: Monster): boolean {
+  return damagingTerrainHurts(state, mon, mon.grid);
+}
+
+/** cave->decoy is set and this grid holds it (square_isdecoyed, cave-square.c L757). */
+function squareIsDecoyed(state: GameState, grid: Loc): boolean {
+  const d = state.decoy;
+  return !!d && !locIsZero(d) && locEq(d, grid);
+}
+
+/**
+ * monster_is_decoyed (mon-predicate.c L308): a live decoy exists and the monster
+ * has line of sight to it. Draws no RNG.
+ */
+function monsterIsDecoyed(mon: Monster, state: GameState): boolean {
+  const d = state.decoy;
+  if (!d || locIsZero(d)) return false;
+  return los(state.chunk, mon.grid, d);
+}
+
+/**
+ * square_remove_all_traps_of_type by trap flag: remove every trap at `grid` that
+ * carries `flag` (glyph of warding / web / decoy all being distinguished only by
+ * their tidx, which we recover from the first matching trap). Uses the existing
+ * trap.ts helpers (squareTrap / squareRemoveAllTraps); draws no RNG.
+ */
+function removeTrapsWithFlag(state: GameState, grid: Loc, flag: number): void {
+  for (const t of squareTrap(state, grid)) {
+    if (t.flags.has(flag)) {
+      squareRemoveAllTraps(state, grid, t.tidx);
+      return;
+    }
+  }
 }
 
 /**
@@ -321,6 +410,60 @@ export function getMoveFindRange(mon: Monster, state: GameState): void {
 }
 
 /**
+ * get_move_bodyguard (mon-move.c L309): a bodyguard stays close to its group
+ * leader, but takes a step that is also closer to the player when it can. Sets
+ * mon.target.grid and returns true on success. Draws no RNG - the scan order is
+ * ddgrid_ddd and the tie-break is upstream's (first closer-to-leader grid, and a
+ * grid that is also closer to the player short-circuits the scan).
+ */
+export function getMoveBodyguard(mon: Monster, state: GameState): boolean {
+  const leader = monsterGroupLeader(state, mon);
+  if (!leader) return false;
+
+  const dist = distance(mon.grid, leader.grid);
+
+  /* If currently adjacent to the leader, we can afford a move. */
+  if (dist <= 1) return false;
+
+  /* If the leader's too out of sight and far away, save yourself. */
+  if (!los(state.chunk, mon.grid, leader.grid) && dist > 10) return false;
+
+  let best = loc(0, 0);
+  let found = false;
+
+  for (let i = 0; i < 8; i++) {
+    const grid = locSum(mon.grid, DDGRID_DDD[i] as Loc);
+    const newDist = distance(grid, leader.grid);
+    const charDist = distance(grid, state.actor.grid);
+
+    if (!state.chunk.inBounds(grid)) continue;
+
+    /* There's a monster blocking that we can't deal with. */
+    if (!monsterCanKill(state, mon, grid) && !monsterCanMoveInto(state, mon, grid)) {
+      continue;
+    }
+
+    /* There's damaging terrain. */
+    if (monsterHatesGrid(state, mon, grid)) continue;
+
+    /* Closer to the leader is always better. */
+    if (newDist < dist) {
+      best = grid;
+      found = true;
+      /* If there's a grid that's also closer to the player, that wins. */
+      if (charDist < mon.cdis) break;
+    }
+  }
+
+  if (found) {
+    mon.target = { grid: best, midx: mon.target.midx };
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * get_move_advance: set mon.target.grid to the grid to move toward and
  * return whether a good advance was found. `track` is set when the target
  * came from sound/scent tracking (a one-step goal).
@@ -330,9 +473,13 @@ function getMoveAdvance(
   state: GameState,
   track: { value: boolean },
 ): boolean {
-  const target = state.actor.grid;
+  const target =
+    monsterIsDecoyed(mon, state) && state.decoy ? state.decoy : state.actor.grid;
 
-  /* Bodyguard behaviour DEFERRED. */
+  /* Bodyguards are special. */
+  if (mon.groupInfo[PRIMARY_GROUP]?.role === MON_GROUP.BODYGUARD) {
+    if (getMoveBodyguard(mon, state)) return true;
+  }
 
   /* Pass-wall monsters head straight for the player (near-permwall
    * exception DEFERRED). */
@@ -529,10 +676,12 @@ function getMoveFlee(mon: Monster, state: GameState): boolean {
   let best = loc(0, 0);
   let bestScore = -1;
 
-  /* Terrain damage (which would make moving vital) is DEFERRED and always
-   * false, so these two early-outs always apply. */
-  if (mon.cdis >= mon.bestRange) return false;
-  if (!monsterCanHear(mon, state) && !monsterCanSmell(mon, state)) return false;
+  /* Taking damage from terrain makes moving vital; otherwise the two early-outs
+   * apply (player too far, or the monster can neither hear nor smell). */
+  if (!monsterTakingTerrainDamage(state, mon)) {
+    if (mon.cdis >= mon.bestRange) return false;
+    if (!monsterCanHear(mon, state) && !monsterCanSmell(mon, state)) return false;
+  }
 
   /* Check nearby grids, diagonals first. */
   for (let i = 7; i >= 0; i--) {
@@ -557,6 +706,61 @@ function getMoveFlee(mon: Monster, state: GameState): boolean {
   return true;
 }
 
+/**
+ * get_move_find_hiding (mon-move.c L613): a pack monster looks for a hidden grid
+ * (out of the player's view but projectable from the monster) to lie in wait and
+ * lure the player into the open. Prefers the closest such grid that is still at
+ * least `min` away from the player, spreading outward a distance ring at a time.
+ * Sets mon.target.grid and returns true on success. Pure scan - draws no RNG.
+ * `gdis` persists across rings (as upstream) but the per-ring success return
+ * makes that moot; the dist_offsets ring order fixes the tie-break.
+ */
+export function getMoveFindHiding(mon: Monster, state: GameState): boolean {
+  const c = state.chunk;
+  /* square_isempty on the live cave (no player trap / web). */
+  const preds = {
+    isPlayerTrap: (g: Loc): boolean => squareIsPlayerTrap(state, g),
+    isWebbed: (g: Loc): boolean => squareIsWebbed(state, g),
+    isWarded: (g: Loc): boolean => squareIsWarded(state, g),
+  };
+
+  /* Closest distance to get. */
+  const min = Math.trunc((distance(state.actor.grid, mon.grid) * 3) / 4) + 2;
+  let gdis = 999;
+
+  for (let d = 1; d < 10; d++) {
+    let best = loc(0, 0);
+    const ring = DIST_OFFSETS[d] as readonly Loc[];
+
+    for (const off of ring) {
+      const grid = locSum(mon.grid, off);
+
+      /* Skip illegal / occupied locations. */
+      if (!c.inBoundsFully(grid)) continue;
+      if (!squareIsEmptyLive(state, grid, preds)) continue;
+
+      /* Check for a hidden, available grid. */
+      if (
+        !squareIsView(c, grid) &&
+        projectable(c, mon.grid, grid, PROJECT.STOP, state.z.maxRange)
+      ) {
+        const dis = distance(grid, state.actor.grid);
+        if (dis < gdis && dis >= min) {
+          best = grid;
+          gdis = dis;
+        }
+      }
+    }
+
+    if (gdis < 999) {
+      mon.target = { grid: best, midx: mon.target.midx };
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /** The outcome of get_move. */
 interface MoveDecision {
   move: boolean;
@@ -573,6 +777,9 @@ interface MoveDecision {
  */
 export function getMove(mon: Monster, state: GameState): MoveDecision {
   const fleeRange = state.z.maxSight + state.z.fleeRange;
+  const target =
+    monsterIsDecoyed(mon, state) && state.decoy ? state.decoy : state.actor.grid;
+  const groupAi = mon.race.flags.has(RF.GROUP_AI);
   let grid: Loc = loc(0, 0);
   const track = { value: false };
   let done = false;
@@ -602,8 +809,41 @@ export function getMove(mon: Monster, state: GameState): MoveDecision {
     }
   }
 
-  /* Terrain-damage flight DEFERRED. Pack ambush (get_move_find_hiding)
-   * DEFERRED (out of scope; draws no RNG). */
+  /* Monster is taking damage from terrain - flee to safety (draws no RNG:
+   * find_safety and flee are pure scans). */
+  if (monsterTakingTerrainDamage(state, mon)) {
+    if (getMoveFindSafety(mon, state)) {
+      getMoveFlee(mon, state);
+      grid = locDiff(mon.target.grid, mon.grid);
+      done = true;
+    }
+  }
+
+  /* Normal animal packs try to get the player out of corridors: if the player
+   * is not in the open and is healthy, find a hiding place for an ambush
+   * (get_move_find_hiding draws no RNG). */
+  if (!done && groupAi && !monsterPassesWalls(mon)) {
+    let open = 0;
+    for (let i = 0; i < 8; i++) {
+      const test = locSum(target, DDGRID_DDD[i] as Loc);
+      if (!state.chunk.inBounds(test)) continue;
+      if (
+        state.chunk.isPassable(test) ||
+        state.chunk.sqinfoHas(test, SQUARE.ROOM)
+      ) {
+        open++;
+      }
+    }
+
+    const p = state.actor.player;
+    if (open < 5 && p.chp > Math.trunc(p.mhp / 2)) {
+      if (getMoveFindHiding(mon, state)) {
+        done = true;
+        grid = locDiff(mon.target.grid, mon.grid);
+        mon.mflag.off(MFLAG.TRACKING);
+      }
+    }
+  }
 
   /* Not hiding and monster is afraid. */
   if (!done && mon.minRange === fleeRange) {
@@ -622,7 +862,9 @@ export function getMove(mon: Monster, state: GameState): MoveDecision {
     done = true;
   }
 
-  /* Group surround DEFERRED. */
+  /* Group surround (mon-move.c L934) DEFERRED: it draws randint0(8) to pick a
+   * grid near the player, so porting it in isolation would perturb the RNG
+   * stream; left as an inert conditional in its upstream position. */
 
   if (locIsZero(grid)) return { move: false, dir: 0, tracking: track.value };
 
@@ -739,8 +981,8 @@ function monsterTurnCanMove(
 ): boolean {
   const lore = getLore(state.lore, mon.race);
 
-  /* Always allow an attack upon the player (decoy DEFERRED). */
-  if (squareIsPlayer(state, next)) return true;
+  /* Always allow an attack upon the player or decoy. */
+  if (squareIsPlayer(state, next) || squareIsDecoyed(state, next)) return true;
 
   /* Dangerous terrain in the way (monsterHatesGrid is DEFERRED: false). */
   if (!confused && monsterHatesGrid(state, mon, next)) return false;
@@ -978,17 +1220,63 @@ function monsterTurnGrabObjects(
 }
 
 /**
+ * monster_turn_attack_glyph (mon-move.c L1299): a monster on a warded grid tries
+ * to break the glyph of warding. Draws exactly one randint1(glyph_hardness); on
+ * a roll below the monster's level the ward breaks (the glyph trap is removed)
+ * and it returns true, else the ward holds and it returns false. The
+ * "rune of protection is broken!" message is UI (DEFERRED, no RNG).
+ */
+function monsterTurnAttackGlyph(
+  mon: Monster,
+  state: GameState,
+  next: Loc,
+): boolean {
+  if (state.rng.randint1(state.z.glyphHardness) < mon.race.level) {
+    removeTrapsWithFlag(state, next, TRF.GLYPH);
+    return true;
+  }
+  return false;
+}
+
+/**
  * monster_turn: the monster acts. A ranged attack (spell / breath) is attempted
  * first through the injected state.monsterCast hook (make_ranged_attack, wired by
  * game/mon-ranged.ts installMonsterCasting); when it spends the turn we stop
  * here, exactly as upstream's `if (make_ranged_attack(mon)) return;`.
- * Reproduction, item pickup, web/glyph/decoy, group behaviour and lore are
- * DEFERRED (see the module header); this ports the movement/attack core.
+ * Item pickup, group behaviour and lore are partially DEFERRED (see the module
+ * header); this ports the movement/attack core plus web/glyph/decoy handling.
  */
 export function monsterTurn(mon: Monster, state: GameState): void {
   let didSomething = false;
 
-  /* Web handling DEFERRED (out of scope; only draws RNG when webbed). */
+  /* If we're in a web, deal with that (mon-move.c L1519). Draws no RNG. */
+  if (squareIsWebbed(state, mon.grid)) {
+    const lore = getLore(state.lore, mon.race);
+    if (monsterIsVisible(mon)) {
+      lore.flags.on(RF.CLEAR_WEB);
+      lore.flags.on(RF.PASS_WEB);
+    }
+    /* If we can pass, no need to clear. */
+    if (!mon.race.flags.has(RF.PASS_WEB)) {
+      if (monsterIsVisible(mon)) {
+        lore.flags.on(RF.PASS_WALL);
+        lore.flags.on(RF.KILL_WALL);
+      }
+      if (mon.race.flags.has(RF.PASS_WALL)) {
+        /* Insubstantial monsters go right through. */
+      } else if (monsterPassesWalls(mon)) {
+        /* If you can destroy a wall, you can destroy a web. */
+        removeTrapsWithFlag(state, mon.grid, TRF.WEB);
+      } else if (mon.race.flags.has(RF.CLEAR_WEB)) {
+        /* Clearing costs a turn. */
+        removeTrapsWithFlag(state, mon.grid, TRF.WEB);
+        return;
+      } else {
+        /* Stuck. */
+        return;
+      }
+    }
+  }
 
   /* Let other group monsters know about the player. */
   monsterGroupRouse(state, mon);
@@ -1042,7 +1330,31 @@ export function monsterTurn(mon: Monster, state: GameState): void {
     if (canDid.value) didSomething = true;
     if (!canMove) continue;
 
-    /* Glyph / decoy DEFERRED. */
+    /* Try to break the glyph if there is one. This can happen multiple times
+     * per turn because failure does not break the loop. A decoy grid also
+     * carries the GLYPH trap flag, so exclude it here (it is handled next). */
+    if (
+      squareIsWarded(state, next) &&
+      !squareIsDecoyed(state, next) &&
+      !monsterTurnAttackGlyph(mon, state, next)
+    ) {
+      continue;
+    }
+
+    /* Break a decoy if there is one. */
+    if (squareIsDecoyed(state, next)) {
+      const lore = getLore(state.lore, mon.race);
+      if (monsterIsVisible(mon)) lore.flags.on(RF.NEVER_BLOW);
+      /* Some monsters never attack. */
+      if (mon.race.flags.has(RF.NEVER_BLOW)) continue;
+      /* Destroy the decoy (square_destroy_decoy, cave-square.c L1402): remove
+       * the decoy trap and clear cave->decoy. The "decoy is destroyed!" message
+       * is UI (DEFERRED, no RNG). */
+      removeTrapsWithFlag(state, next, TRF.GLYPH);
+      state.decoy = null;
+      didSomething = true;
+      break;
+    }
 
     if (squareIsPlayer(state, next)) {
       if (mon.race.flags.has(RF.NEVER_BLOW)) continue;
@@ -1198,8 +1510,9 @@ export function monsterCheckActive(mon: Monster, state: GameState): boolean {
     active = true;
   } else if (monsterCanSmell(mon, state)) {
     active = true;
+  } else if (monsterTakingTerrainDamage(state, mon)) {
+    active = true;
   }
-  /* Terrain-damage activation DEFERRED. */
   if (active) mon.mflag.on(MFLAG.ACTIVE);
   else mon.mflag.off(MFLAG.ACTIVE);
   return active;
