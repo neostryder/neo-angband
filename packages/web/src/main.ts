@@ -161,6 +161,7 @@ import {
 } from "./score";
 import { enterScore } from "@neo-angband/core";
 import { runStore } from "./shop";
+import { runHelp } from "./help";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
@@ -1893,6 +1894,14 @@ window.addEventListener("keydown", (ev) => {
     newGame();
     return;
   }
+  // Help ('?', do_cmd_help): allowed even after death, like N above - it is
+  // pure display (screen_save/screen_load bracket with no state mutation,
+  // ui-help.c:470-480), so a fallen hero can still read it.
+  if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key === "?") {
+    ev.preventDefault();
+    void openModal(() => runHelp(term));
+    return;
+  }
   if (dead) return;
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
     if (ev.key === "V") {
@@ -2126,6 +2135,7 @@ function installTouchActionBar(): void {
     ["Fuel", () => { void openModal(() => refuelItem()); }],
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots })); }],
     ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
+    ["Help", () => { void openModal(() => runHelp(term)); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     ["Switch", () => { switchCharacter(); }],
     ["New", () => { if (!dead) persistSave(); newGame(); }],
@@ -2145,7 +2155,7 @@ function installTouchActionBar(): void {
     });
     btn.addEventListener("click", (e) => {
       e.preventDefault();
-      if (dead && label !== "New") return;
+      if (dead && label !== "New" && label !== "Help") return;
       fn();
     });
     bar.appendChild(btn);
