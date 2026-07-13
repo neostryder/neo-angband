@@ -45,8 +45,20 @@ divergences:
     a full object_desc slice (a separate #25 item) drops in without re-collect.
   - The shared-instance / MAX_ITEMLIST realloc machinery is dropped (a fresh
     list each collect), as with the monster list.
+  - The "known artifact" gate (violet colour in
+    object_list_entry_line_attribute L336 and the artifacts-first branch of
+    compare_items obj-util.c L646-656) reads obj->known->artifact upstream, i.e.
+    the player's KNOWLEDGE the object is an artifact, not the raw obj->artifact.
+    The port maps this to the live object's OBJ_NOTICE.ASSESSED bit (the same
+    bit object_touch sets and objectKnownShadow gates known->artifact on in
+    obj/known-object.ts), via the local isKnownArtifact helper. An unassessed
+    floor artifact therefore falls through to the value / type branches and its
+    colour matches its still-unrevealed in-list name, instead of rendering
+    violet / sorting first while the name reads as an unknown item.
 verified-by:
-  - game/obj-list.test.ts (8 tests) - listing known floor objects with stack
+  - game/obj-list.test.ts (10 tests) - listing known floor objects with stack
     counts, skipping money, skipping session-ignored items, the sensed-unknown
-    entry, the NO_LOS section for a far object, the artifact-first /
-    worthless-last sort, the line colours, and the counted name.
+    entry, the NO_LOS section for a far object, the assessed-artifact-first /
+    worthless-last sort, a not-yet-assessed artifact NOT sorting as a known
+    artifact, the line colours, a not-yet-assessed artifact NOT colouring
+    violet, and the counted name.
