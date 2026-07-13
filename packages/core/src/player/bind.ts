@@ -127,6 +127,8 @@ export interface ClassSpellJson {
   fail: number;
   exp: number;
   effect?: unknown[];
+  /** desc: lines (player-spell.c spell->text), joined verbatim by joinLines. */
+  desc?: string[];
 }
 
 /** class.json book record. */
@@ -798,6 +800,7 @@ function bindClassMagic(
         exp: s.exp,
         realm,
         effectsRaw: s.effect ? [...s.effect] : [],
+        text: joinLines(s.desc),
       });
     }
     books.push({

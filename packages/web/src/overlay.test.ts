@@ -224,6 +224,81 @@ describe("selectFromMenu: MenuItem.tag (upstream-stable, case-insensitive)", () 
   });
 });
 
+// --- selectFromMenu's detailToggleKey ('?' spell-description toggle) ------
+// spell_menu_handler's '?' toggle (ui-spell.c L127-142, spell_menu_browser
+// L147-208): the detail pane only renders while toggled on, and the toggle
+// key itself never selects a row or closes the menu. Plain `detail` (no
+// toggleKey) must keep behaving exactly as before this gap - the curse-
+// removal and ability-browser callers rely on it always being shown.
+describe("selectFromMenu: detailToggleKey ('?' description toggle)", () => {
+  function items(): MenuItem[] {
+    return [{ label: "Alpha" }, { label: "Beta" }];
+  }
+  const detail = (): { text: string }[] => [{ text: "the detail line" }];
+
+  it("plain `detail` (no toggleKey) always renders, unaffected by this gap", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 12);
+    void selectFromMenu(term, "Menu", items(), undefined, { detail });
+    expect(term.snapshot().join("\n")).toContain("the detail line");
+  });
+
+  it("starts hidden by default and '?' reveals it without selecting a row", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 12);
+    const done = selectFromMenu(term, "Menu", items(), undefined, {
+      detail,
+      detailToggleKey: "?",
+    });
+    expect(term.snapshot().join("\n")).not.toContain("the detail line");
+    press(win, "?");
+    expect(term.snapshot().join("\n")).toContain("the detail line");
+    // The toggle key must not have picked a row or closed the menu.
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+
+  it("'?' toggles back off on a second press", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 12);
+    void selectFromMenu(term, "Menu", items(), undefined, {
+      detail,
+      detailToggleKey: "?",
+    });
+    press(win, "?");
+    expect(term.snapshot().join("\n")).toContain("the detail line");
+    press(win, "?");
+    expect(term.snapshot().join("\n")).not.toContain("the detail line");
+  });
+
+  it("detailInitiallyShown: true starts visible (textui_book_browse's pure-browse mode)", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 12);
+    void selectFromMenu(term, "Menu", items(), undefined, {
+      detail,
+      detailToggleKey: "?",
+      detailInitiallyShown: true,
+    });
+    expect(term.snapshot().join("\n")).toContain("the detail line");
+  });
+
+  it("normal letter selection still works with a toggle key configured", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = selectFromMenu(term, "Menu", items(), undefined, {
+      detail,
+      detailToggleKey: "?",
+    });
+    press(win, "b");
+    expect(await done).toBe(1);
+  });
+});
+
 // --- promptNumber (askfor_aux_numbers / do_cmd_hp_warn / do_cmd_delay) -----
 describe("promptNumber (digit-only prompt, ui-options.c askfor_aux_numbers)", () => {
   it("shows the current value, subtitle, and accepts digits then Enter", async () => {
