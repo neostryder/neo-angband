@@ -14,16 +14,22 @@
  * RSF value (index 0 is RSF_NONE, matching the enum), so the lookups mirror
  * upstream's mon_spell_types[index] exactly.
  *
- * The lore damage calculations (nonhp_dam / mon_spell_dam / mon_spell_lore_*)
- * are deferred with monster lore (#24): they roll spell-effect dice whose
- * expressions can reference the casting race (upstream's ref_race), which is
- * bound with the lore/recall layer.
+ * monSpellNonhpDamage (nonhp_dam, mon-spell.c L571) is the non-breath half of
+ * mon_spell_dam: the deterministic MAXIMISE sum of a spell's damaging effect
+ * dice, with each effect's SPELL_POWER expression (the only base value
+ * monster-spell damage dice reference) rebound to the calling race - upstream
+ * sets its global `ref_race` for the same duration. This is the seam the
+ * lore/recall layer (mon/lore-describe.ts) needed to wire mon_spell_lore_damage
+ * for real; breath damage keeps using breathDam below unchanged.
  */
 
+import { Dice } from "../dice";
+import { Expression } from "../expression";
 import { FlagSet } from "../bitflag";
 import { MON_SPELL_ENTRIES, MON_TMD, RSF } from "../generated";
+import type { RandomValue } from "../rng";
 import { RSF_SIZE } from "./types";
-import type { MonsterRace, MonsterSpell } from "./types";
+import type { MonsterRace, MonsterSpell, MonsterSpellEffect } from "./types";
 import type { Monster } from "./monster";
 import { monsterEffectLevel } from "./timed";
 
@@ -157,5 +163,68 @@ export interface BreathProjection {
 export function breathDam(proj: BreathProjection, hp: number): number {
   let dam = Math.trunc(hp / proj.divisor);
   if (dam > proj.damageCap) dam = proj.damageCap;
+  return dam;
+}
+
+/**
+ * randcalc(v, 0, MAXIMISE): base + dice*sides + mBonus. Level and RNG never
+ * enter the MAXIMISE branch (rng.ts damcalc / mBonusCalc), so this mirrors
+ * that arithmetic directly rather than threading an Rng through a display
+ * path (the same choice obj/object-info.ts makes for its own rvMax).
+ */
+function maximiseRandomValue(rv: RandomValue): number {
+  return rv.base + rv.dice * rv.sides + rv.mBonus;
+}
+
+/**
+ * FLAGGED ADDITION (#lore-damage): nonhp_dam (mon-spell.c L571), restricted to
+ * the MAXIMISE aspect mon_spell_lore_damage needs - deterministic, no RNG.
+ *
+ * Sums the MAXIMISE damage of every effect line except EF_TIMED_INC ("Timed
+ * effects increases don't count as damage in lore", upstream comment).
+ * EF_LASH is special-cased exactly as upstream: full damage from the race's
+ * first blow plus half from each of the rest (integer division per term,
+ * summed - not the total divided by two).
+ *
+ * Each non-LASH effect's dice is parsed fresh from its raw string and any
+ * SPELL_POWER expression rebound to `race` (the only base value monster-spell
+ * damage dice reference - see reference/lib/gamedata/monster_spell.txt),
+ * mirroring upstream's do_mon_spell / mon-cast.ts buildSpellEffectChain
+ * pattern of rebuilding the bound dice per caster rather than mutating the
+ * shared MonsterSpell record (which every race with that spell shares).
+ */
+export function monSpellNonhpDamage(
+  effects: readonly MonsterSpellEffect[],
+  race: MonsterRace,
+): number {
+  let dam = 0;
+
+  for (const effect of effects) {
+    if (effect.eff === "LASH") {
+      for (let i = 0; i < race.blows.length; i++) {
+        const blowDice = race.blows[i]!.dice;
+        if (!blowDice) continue;
+        const full = maximiseRandomValue(blowDice.randomValue());
+        dam += i === 0 ? full : Math.trunc(full / 2);
+      }
+      continue;
+    }
+
+    if (!effect.dice || effect.eff === "TIMED_INC" || effect.diceRaw === null) {
+      continue;
+    }
+
+    const dice = new Dice();
+    if (!dice.parseString(effect.diceRaw)) continue;
+    for (const x of effect.exprs) {
+      if (x.base.toUpperCase() !== "SPELL_POWER") continue;
+      const expr = new Expression();
+      expr.setBaseValue(() => race.spellPower);
+      expr.addOperationsString(x.expr);
+      dice.bindExpression(x.name, expr);
+    }
+    dam += maximiseRandomValue(dice.randomValue());
+  }
+
   return dam;
 }

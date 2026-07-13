@@ -18,8 +18,13 @@
  * spell&blow danger colors that upstream reads off the global player) is not
  * available in this module, so it is injected through the LoreDeps object.
  * Colors default to the datum's base lore color when no danger evaluator is
- * supplied; the two hit-chance callbacks and the spell damage callback are the
- * integration seams for the combat layer.
+ * supplied; the two hit-chance callbacks are the remaining integration seams
+ * for the combat layer (still default to 0 unwired). The spell damage
+ * callback (`spellLoreDamage`) is a full override only - its default
+ * computes the real mon_spell_lore_damage from the bound spell + race data
+ * (see monSpellLoreDamage below), needing just `breathProjection` from the
+ * caller for the one piece of breath damage that lives outside mon/ (the
+ * element's damage divisor/cap, world/projection.ts).
  */
 
 import { FlagSet, FLAG_START, NO_FLAG } from "../bitflag";
@@ -37,11 +42,20 @@ import {
   COLOUR_WHITE,
   colorTextToAttr,
 } from "../color";
-import { MON_RACE_FLAG_ENTRIES, RF } from "../generated";
+import { MON_RACE_FLAG_ENTRIES, PROJ, RF } from "../generated";
 import { createMonFlagMask, monsterFlagsKnown } from "./lore";
 import type { MonsterLore } from "./lore";
 import { EXTRACT_ENERGY } from "./monster";
-import { createMonSpellMask, monSpellHasDamage, monSpellIsValid, RST } from "./spell";
+import {
+  breathDam,
+  createMonSpellMask,
+  monSpellHasDamage,
+  monSpellIsBreath,
+  monSpellIsValid,
+  monSpellNonhpDamage,
+  RST,
+} from "./spell";
+import type { BreathProjection } from "./spell";
 import { RF_SIZE, RSF_SIZE } from "./types";
 import type { BlowEffect, MonsterRace, MonsterSpell } from "./types";
 
@@ -126,10 +140,22 @@ export interface LoreDeps {
   monsterHitPercent?: (race: MonsterRace, effect: BlowEffect) => number;
   /**
    * mon_spell_lore_damage(index, race, know_hp): the max damage shown next to
-   * a spell. DEFERRED: defaults to 0 (mon_spell_dam / nonhp_dam are not yet
-   * ported - see mon/spell.ts, which defers them for the same reason).
+   * a spell. Optional full override; when omitted, the default computes it
+   * from the bound spell + race data (mon/spell.ts's monSpellNonhpDamage for
+   * ordinary damaging spells, breathDam scaled by `breathProjection` below
+   * for breaths), exactly as mon-spell.c's mon_spell_lore_damage /
+   * mon_spell_dam / nonhp_dam.
    */
   spellLoreDamage?: (index: number, race: MonsterRace, knowHp: boolean) => number;
+  /**
+   * The breath element's damage divisor/cap (element->divisor /
+   * element->damage_cap, projection.txt), keyed by PROJ_ value - the one
+   * piece of breath damage that lives outside mon/ (world/projection.ts).
+   * Only consulted for breath-type spells' default damage. DEFERRED: damage
+   * shows as 0 when the caller does not supply it, like the other
+   * world-derived callbacks above.
+   */
+  breathProjection?: (subtype: number) => BreathProjection | undefined;
 }
 
 /* ------------------------------------------------------------------ *
@@ -345,7 +371,7 @@ export function loreAppendSpellClause(
     for (let i = 0; i < spells.length; i++) {
       const spell = spells[i]!;
       const color = spellColor(deps, race, spell);
-      const damage = monSpellLoreDamage(spell, race, knowHp, deps.spellLoreDamage);
+      const damage = monSpellLoreDamage(spell, race, knowHp, deps);
 
       if (i !== 0) {
         if (comma) b.append(",");
@@ -395,27 +421,46 @@ export function monSpellLoreDescription(
 }
 
 /**
- * mon_spell_lore_damage (mon-spell.c L698).
+ * mon_spell_lore_damage (mon-spell.c L698): the max damage shown next to a
+ * known spell, or 0 (which omits the "(N)" suffix, lore_append_spell_clause)
+ * when the spell has no damage or is not valid.
  *
- * DEFERRED: the actual damage number comes from mon_spell_dam / nonhp_dam
- * (mon-spell.c L637 / L571), which roll spell-effect dice whose expressions
- * reference the casting race (upstream ref_race) and, for breaths, read the
- * projections table. mon/spell.ts defers those for the same reason (the
- * spell-effect dice are parsed but their expressions are not yet bound to the
- * race). Until the combat layer supplies `spellLoreDamage`, this returns 0 and
- * the "(N)" is omitted, exactly as upstream does when damage is 0.
+ * `deps.spellLoreDamage` is a full override (the combat layer's escape
+ * hatch); otherwise this reproduces mon_spell_dam (mon-spell.c L637):
+ *   - a breath spell (monster_spell_is_breath) uses breath_dam against
+ *     hp = know_hp ? race->avg_hp : 0 (mon/spell.ts's breathDam, reused as
+ *     is - the same formula the live BREATH effect handler uses,
+ *     game/effect-attack.ts handleBREATH), scaled by the element the
+ *     spell's first effect targets (`deps.breathProjection`).
+ *   - any other damaging spell uses nonhp_dam (mon/spell.ts's
+ *     monSpellNonhpDamage), which does not depend on know_hp at all -
+ *     upstream's nonhp_dam takes no hp parameter, so this damage is shown as
+ *     soon as the spell itself is known (already gated by the caller
+ *     intersecting lore.spellFlags before this is ever called).
  */
 export function monSpellLoreDamage(
   index: number,
   race: MonsterRace,
   knowHp: boolean,
-  spellLoreDamage?: (index: number, race: MonsterRace, knowHp: boolean) => number,
+  deps: LoreDeps,
 ): number {
-  if (monSpellIsValid(index) && monSpellHasDamage(index)) {
-    if (spellLoreDamage) return spellLoreDamage(index, race, knowHp);
-    return 0;
+  if (!monSpellIsValid(index) || !monSpellHasDamage(index)) return 0;
+  if (deps.spellLoreDamage) return deps.spellLoreDamage(index, race, knowHp);
+
+  const spell = deps.spells.get(index);
+  if (!spell) return 0;
+
+  if (monSpellIsBreath(index)) {
+    const subtypeName = spell.effects[0]?.type;
+    const subtype = subtypeName ? (PROJ as Record<string, number>)[subtypeName] : undefined;
+    if (subtype === undefined) return 0;
+    const proj = deps.breathProjection?.(subtype);
+    if (!proj) return 0;
+    const hp = knowHp ? race.avgHp : 0;
+    return breathDam(proj, hp);
   }
-  return 0;
+
+  return monSpellNonhpDamage(spell.effects, race);
 }
 
 /** spell_color default (mon-lore.c L59): the spell level's base lore color. */
