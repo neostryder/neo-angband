@@ -36,6 +36,7 @@ import type { Monster, MonsterGroupInfo } from "../mon/monster";
 import { turnEnergy } from "../mon/monster";
 import { createMonster } from "../mon/make";
 import type { MonAllocTable } from "../mon/make";
+import { monsterIsShapeUnique } from "../mon/predicate";
 import { monsterWake } from "../mon/take-hit";
 import type { SummonTable } from "../mon/summon";
 import { summonSpecificOkay } from "../mon/summon";
@@ -123,6 +124,11 @@ function placeMonsterLive(state: GameState, grid: Loc, mon: Monster): number {
 
   /* update_mon's distance bookkeeping (visibility rides FOV consumers). */
   mon.cdis = distance(grid, state.actor.grid);
+
+  /* Count the number of "reproducers" (mon-make.c L1038): current race flag. */
+  if (mon.race.flags.has(RF.MULTIPLY)) {
+    state.numRepro = (state.numRepro ?? 0) + 1;
+  }
 
   /* Count racial occurrences. */
   (mon.originalRace ?? mon.race).curNum++;
@@ -368,6 +374,51 @@ export function placeNewMonster(
   }
 
   return true;
+}
+
+/**
+ * multiply_monster (mon-make.c L983): a breeder tries to spawn a copy of
+ * itself in a nearby empty grid. Returns true on a successful spawn.
+ *
+ * RNG order is preserved exactly: monster_is_shape_unique short-circuits
+ * before any draw (uniques never multiply and never touch the stream), then
+ * scatter_ext draws (distance 1, needs LOS, square_isempty), then
+ * place_new_monster (groupOk = false, so no friends/escort table draws - only
+ * createMonster's sleep/hp/speed/energy/attr draws). The become_aware of a
+ * revealed camouflaged child is DEFERRED (mimic / camouflage reveal is a
+ * separate agent's concern and draws no RNG).
+ */
+export function multiplyMonster(
+  state: GameState,
+  mon: Monster,
+  deps: MonPlaceDeps,
+): boolean {
+  /* Uniques can never multiply - tested before any RNG is drawn. */
+  if (monsterIsShapeUnique(mon)) return false;
+
+  /* Pick an empty location adjacent to the breeder. */
+  const spots = scatterExt(
+    state.chunk,
+    state.rng,
+    1,
+    mon.grid,
+    1,
+    true,
+    (_c, g) => squareIsEmptyLive(state, g, deps.preds),
+  );
+  if (spots.length === 0) return false;
+
+  /* Create a new monster (awake, no groups). */
+  const info: MonsterGroupInfo = { index: 0, role: MON_GROUP.LEADER };
+  return placeNewMonster(
+    state,
+    spots[0] as Loc,
+    mon.race,
+    false,
+    false,
+    info,
+    deps,
+  );
 }
 
 /** pick_and_place_monster: place an appropriate monster (and group) at grid. */
@@ -626,10 +677,18 @@ export function wipeMonsterCounts(state: GameState): void {
   }
 }
 
-/** Re-count racial occurrences from a freshly populated monster list. */
+/**
+ * Re-count racial occurrences from a freshly populated monster list, and
+ * rebuild cave->num_repro (mon-make.c wipe_mon_list sets it to 0 at wipe; the
+ * generated / loaded breeders are counted here so the reproduction cap sees
+ * every RF_MULTIPLY monster on the level, not only mid-game arrivals).
+ */
 export function countMonsterRaces(state: GameState): void {
+  state.numRepro = 0;
   for (let i = 1; i < state.monsters.length; i++) {
     const mon = state.monsters[i];
-    if (mon) (mon.originalRace ?? mon.race).curNum++;
+    if (!mon) continue;
+    (mon.originalRace ?? mon.race).curNum++;
+    if (mon.race.flags.has(RF.MULTIPLY)) state.numRepro++;
   }
 }

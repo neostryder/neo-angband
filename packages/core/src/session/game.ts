@@ -94,6 +94,7 @@ import {
 import { monsterIsVisible } from "../mon/predicate";
 import {
   countMonsterRaces,
+  multiplyMonster,
   pickAndPlaceDistantMonster,
   wipeMonsterCounts,
 } from "../game/mon-place";
@@ -906,6 +907,25 @@ function wireGame(
     groupDist: reg.constants.monsterGroupDist,
     ...(worldPreds ? { preds: worldPreds } : {}),
   };
+  // monster_turn_multiply's multiply_monster (mon-move.c): a breeder spawns a
+  // copy through the live placement path (reusing ambientPlaceDeps so the
+  // scatter / createMonster draws stay faithful). monster_turn_multiply itself
+  // (the cap / crowd / chance rolls) lives in game/monster-turn.ts.
+  state.monsterMultiply = (m): boolean =>
+    multiplyMonster(state, m, ambientPlaceDeps);
+
+  // Door-lock seams for monster_turn_can_move's locked-door branch: locks are
+  // "door lock" traps (#21), so these route through the trap system when live.
+  if (deps && lockKind) {
+    state.doorLockPower = (grid: Loc): number =>
+      squareDoorPower(state, grid, deps);
+    state.setDoorLock = (grid: Loc, power: number): void =>
+      squareSetDoorLock(state, grid, power, deps);
+    state.removeDoorLock = (grid: Loc): void => {
+      squareRemoveAllTraps(state, grid, lockKind.tidx);
+    };
+  }
+
   state.world = {
     timedTable: players.timed,
     timedHooks: {
