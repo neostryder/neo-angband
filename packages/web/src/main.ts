@@ -56,6 +56,8 @@ import {
   itemTargetRequest,
   spellByIndex,
   objNeedsAim,
+  playerKnowsCurse,
+  removeCurseDiceString,
   tvalIsPotion,
   tvalIsScroll,
   tvalIsEdible,
@@ -94,6 +96,12 @@ import {
   describeLookGrid,
   computePathColours,
   historyUnmaskUnknown,
+  playerAbilities,
+  chestCheck,
+  CHEST_QUERY,
+  isLockedChest,
+  squareIsOpenDoor,
+  squareIsDiggable,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -111,13 +119,23 @@ import type {
   Loc,
 } from "@neo-angband/core";
 import { GameEvents } from "@neo-angband/core";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks } from "./pack";
+import { showAbilities } from "./abilities";
+import { showEquipCmp } from "./equip-cmp";
+import {
+  buildCaveMenu,
+  buildObjectMenu,
+  buildPlayerMenu,
+  buildPlayerOtherMenu,
+  routeContextClick,
+} from "./context-menu";
+import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./context-menu";
 import { GlyphTerm } from "./term";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import { createTileRenderer } from "./tiles";
 import { showTextScreen, selectFromMenu, promptText, promptDirection, AIM_STAR } from "./overlay";
-import type { MenuItem } from "./overlay";
+import type { MenuItem, ScreenLine } from "./overlay";
 import { runBirth } from "./birth";
 import { MessageLog } from "./messages";
 import {
@@ -563,6 +581,384 @@ const inspectExtras: ObjectInfoExtras = {
   },
 };
 
+/** ui_entry* pack records (game/ui-entry.ts's buildUiEntryConfig input),
+ * loaded once for the equip-cmp screen (equipCmpSummary memoises the built
+ * UiEntryConfig itself, keyed on this same object). */
+const uiEntryPacks = loadUiEntryPacks();
+
+/** Deps showEquipCmp needs: the ui_entry packs plus the same object-info
+ * extras the Inspect command uses (item comparison textblocks). */
+function equipCmpDeps(): { packs: typeof uiEntryPacks; inspectExtras: ObjectInfoExtras } {
+  return { packs: uiEntryPacks, inspectExtras };
+}
+
+// --- Context menus (ui-context.c) -------------------------------------------
+// The right-click / long-press per-grid and per-item action menus. Entry
+// construction is pure (context-menu.ts); this section only gathers the live
+// game-state flags those builders need and dispatches the chosen action to
+// the SAME handlers the keyboard verbs use - no command is reimplemented
+// here. See context-menu.ts's header for which upstream entries are included
+// disabled (no backing shell feature yet) versus omitted outright.
+
+/** MenuEntry -> MenuItem, omitting `disabled` rather than setting it undefined
+ * (exactOptionalPropertyTypes). */
+function toMenuItems<A extends string>(entries: readonly MenuEntry<A>[]): MenuItem[] {
+  return entries.map((e) => (e.disabled ? { label: e.label, disabled: true } : { label: e.label }));
+}
+
+function contextPlayerCtx(): PlayerMenuCtx {
+  const player = state.actor.player;
+  const grid = state.actor.grid;
+  const floorObj = floorPile(state, grid)[0] ?? null;
+  return {
+    canCast: player.cls.magic.totalSpells > 0,
+    onUpStairs: state.chunk.isUpstairs(grid),
+    onDownStairs: state.chunk.isDownstairs(grid),
+    hasFloorObject: floorObj !== null,
+    canPickup: floorObj !== null,
+    centerPlayerOption: false,
+  };
+}
+
+async function runContextMenuPlayerOther(): Promise<void> {
+  const items = buildPlayerOtherMenu();
+  const idx = await selectFromMenu(
+    term,
+    "Other",
+    toMenuItems(items),
+  );
+  if (idx === null) return;
+  switch (items[idx]?.action) {
+    case "messages":
+      await showTextScreen(term, "Message history", messageHistoryLines(msglog));
+      break;
+    case "objects":
+      await showTextScreen(term, "Objects in view", objectListLines(state));
+      break;
+    case "ignore-setup":
+      await openIgnoreSetup();
+      break;
+    case "help":
+      await runHelp(term);
+      break;
+    case "abilities":
+      await showAbilities(
+        term,
+        playerAbilities(state, {
+          properties: players.properties,
+          elementNames: (booted.registries.projections ?? [])
+            .slice(0, state.actor.player.race.elInfo.length)
+            .map((p) => p.name),
+        }),
+      );
+      break;
+    case "equip-cmp":
+      await showEquipCmp(term, state, equipCmpDeps());
+      break;
+    default:
+      break;
+  }
+}
+
+/** context_menu_player (right-click / long-press the player's own tile). */
+async function runContextMenuPlayer(): Promise<void> {
+  const items = buildPlayerMenu(contextPlayerCtx());
+  const idx = await selectFromMenu(
+    term,
+    "Command for yourself",
+    toMenuItems(items),
+  );
+  if (idx === null) return;
+  switch (items[idx]?.action) {
+    case "cast":
+      await castSpell();
+      break;
+    case "go-up":
+      commandBuffer.push({ code: "ascend" });
+      advance();
+      break;
+    case "go-down":
+      commandBuffer.push({ code: "descend" });
+      advance();
+      break;
+    case "explore":
+      commandBuffer.push({ code: "explore" });
+      advance();
+      break;
+    case "rest":
+      commandBuffer.push({ code: "rest" });
+      advance();
+      break;
+    case "look":
+      if (await runTargetLoop(TARGET.LOOK, false, state.actor.grid.x, state.actor.grid.y)) {
+        say("Target Selected.");
+      }
+      break;
+    case "inventory":
+      await showTextScreen(term, "Inventory", inventoryLines(state));
+      break;
+    case "floor":
+    case "pickup":
+      commandBuffer.push({ code: "pickup" });
+      advance();
+      break;
+    case "character":
+      await showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots });
+      break;
+    case "other":
+      await runContextMenuPlayerOther();
+      break;
+    default:
+      break;
+  }
+}
+
+/** square_monster(cave, grid): is there a live monster occupying this grid? */
+function monsterAtGrid(grid: Loc): boolean {
+  return state.chunk.mon(grid) > 0;
+}
+
+function contextCaveCtx(grid: Loc, adjacent: boolean): CaveMenuCtx {
+  const player = state.actor.player;
+  const chestObj = adjacent ? chestCheck(state, grid, CHEST_QUERY.ANY) : null;
+  const trapList = state.traps.get(gridIndex(grid.x, grid.y)) ?? [];
+  return {
+    adjacent,
+    hasMonster: monsterAtGrid(grid),
+    canCast: player.cls.magic.totalSpells > 0,
+    canFire: state.actor.combat.ammoTval > 0,
+    chest: chestObj ? { locked: isLockedChest(chestObj) } : null,
+    isDisarmableTrap: trapList.some((t) => t.flags.has(TRF.VISIBLE)),
+    isOpenDoor: squareIsOpenDoor(state, grid),
+    isClosedDoor: state.chunk.isClosedDoor(grid),
+    isDiggable: squareIsDiggable(state, grid),
+  };
+}
+
+/** motion_dir (ui-context.c L633): the keypad direction from the player toward `grid`. */
+function motionDirTo(grid: Loc): number {
+  const dx = Math.sign(grid.x - state.actor.grid.x);
+  const dy = Math.sign(grid.y - state.actor.grid.y);
+  return (1 - dy) * 3 + (dx + 2);
+}
+
+/** context_menu_cave (right-click / long-press any other grid). */
+async function runContextMenuCave(grid: Loc, adjacent: boolean): Promise<void> {
+  const ctx = contextCaveCtx(grid, adjacent);
+  const items = buildCaveMenu(ctx);
+  const idx = await selectFromMenu(
+    term,
+    describeLookGrid(state, grid, TARGET.LOOK).text || "Command for that grid",
+    toMenuItems(items),
+  );
+  if (idx === null) return;
+  const dir = motionDirTo(grid);
+  switch (items[idx]?.action) {
+    case "look":
+      if (await runTargetLoop(TARGET.LOOK, false, grid.x, grid.y)) say("Target Selected.");
+      break;
+    case "use-on":
+      await useItem("use-staff", (o) => tvalIsStaff(o.tval), "usable items");
+      break;
+    case "cast-on":
+      await castSpell();
+      break;
+    case "alter":
+      commandBuffer.push({ code: "alter", dir });
+      advance();
+      break;
+    case "disarm-chest":
+    case "disarm-trap":
+      commandBuffer.push({ code: "disarm", dir });
+      advance();
+      break;
+    case "open-chest":
+    case "open-door":
+      commandBuffer.push({ code: "open", dir });
+      advance();
+      break;
+    case "lock":
+      commandBuffer.push({ code: "disarm", dir });
+      advance();
+      break;
+    case "close":
+      commandBuffer.push({ code: "close", dir });
+      advance();
+      break;
+    case "tunnel":
+      commandBuffer.push({ code: "tunnel", dir });
+      advance();
+      break;
+    case "walk":
+      commandBuffer.push({ code: "walk", dir });
+      advance();
+      break;
+    case "run":
+      commandBuffer.push({ code: "run", dir });
+      advance();
+      break;
+    case "pathfind":
+      commandBuffer.push({ code: "pathfind", args: { dest: { x: grid.x, y: grid.y } } });
+      advance();
+      break;
+    case "fire":
+      await fireCmd();
+      break;
+    case "throw":
+      await throwCmd();
+      break;
+    default:
+      break;
+  }
+}
+
+/** context_menu_object's use-kind classification (the tval switch at L691-722). */
+function objectUseKind(obj: GameObject): ObjectMenuCtx["useKind"] {
+  if (tvalIsWand(obj.tval)) return "wand";
+  if (tvalIsRod(obj.tval)) return "rod";
+  if (tvalIsStaff(obj.tval)) return "staff";
+  if (tvalIsScroll(obj.tval)) return "scroll";
+  if (tvalIsPotion(obj.tval)) return "potion";
+  if (tvalIsEdible(obj.tval)) return "food";
+  if (obj.activation) return "activatable";
+  return "other";
+}
+
+function isObjectEquipped(obj: GameObject, handle: number): boolean {
+  return state.actor.player.equipment.includes(handle);
+}
+
+/** context_menu_object: the per-item action menu (reached from the inventory/equipment picker). */
+async function runContextMenuObject(handle: number): Promise<void> {
+  const obj = gearGet(state.gear, handle);
+  if (!obj) return;
+  const isBook = playerObjectToBook(state.actor.player, obj) !== null;
+  const equipped = isObjectEquipped(obj, handle);
+  const ctx: ObjectMenuCtx = {
+    isBook,
+    canCast: state.actor.player.cls.magic.totalSpells > 0,
+    canStudy: state.actor.player.upkeep.newSpells > 0,
+    useKind: isBook ? "other" : objectUseKind(obj),
+    canFire: !isBook && tvalIsAmmo(obj.tval) && obj.tval === state.actor.combat.ammoTval,
+    canRefill: objCanRefill(state, obj),
+    isEquipped: equipped,
+    canWear: !equipped && tvalIsWearable(obj.tval),
+    canThrow: true,
+    hasInscription: objHasInscrip(obj),
+  };
+  const items = buildObjectMenu(ctx);
+  const idx = await selectFromMenu(
+    term,
+    `Command for ${objectName(state, obj)}`,
+    toMenuItems(items),
+  );
+  if (idx === null) return;
+  switch (items[idx]?.action) {
+    case "inspect": {
+      const name = objectName(state, obj);
+      const header = name.charAt(0).toUpperCase() + name.slice(1);
+      const tb = objectInfoTextblock(state, obj, inspectExtras);
+      await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
+      break;
+    }
+    case "cast":
+      await castSpell();
+      break;
+    case "study":
+      await studySpell();
+      break;
+    case "aim":
+      await dispatchItemVerb("aim-wand", handle, obj);
+      break;
+    case "zap":
+      await dispatchItemVerb("zap-rod", handle, obj);
+      break;
+    case "use-staff":
+      await dispatchItemVerb("use-staff", handle, obj);
+      break;
+    case "read":
+      await dispatchItemVerb("read", handle, obj);
+      break;
+    case "quaff":
+      await dispatchItemVerb("quaff", handle, obj);
+      break;
+    case "eat":
+      await dispatchItemVerb("eat", handle, obj);
+      break;
+    case "activate":
+      await dispatchItemVerb("activate", handle, obj);
+      break;
+    case "fire":
+      await fireCmd();
+      break;
+    case "refill":
+      await refuelItem();
+      break;
+    case "takeoff":
+      await dispatchItemVerb("takeoff", handle, obj);
+      break;
+    case "equip":
+      await dispatchItemVerb("wield", handle, obj);
+      break;
+    case "drop":
+      await dispatchItemVerb("drop", handle, obj);
+      break;
+    case "throw":
+      await throwCmd();
+      break;
+    case "inscribe":
+      await inscribeItem();
+      break;
+    case "uninscribe":
+      await uninscribeItem();
+      break;
+    default:
+      break;
+  }
+}
+
+/** A dedicated item picker into the per-item context menu (equip+pack), the
+ * discoverable home for context_menu_object until the inventory/equipment
+ * viewers grow their own second-tap/Enter hook into it. */
+async function openItemActionsMenu(): Promise<void> {
+  const { items, handles } = packMenu(state, () => true);
+  const player = state.actor.player;
+  for (let i = 0; i < player.body.count; i++) {
+    const handle = player.equipment[i] ?? 0;
+    if (!handle) continue;
+    const obj = gearGet(state.gear, handle);
+    if (!obj) continue;
+    items.push({ label: `${objectName(state, obj)} (worn)`, color: "#c8c8d4" });
+    handles.push(handle);
+  }
+  if (items.length === 0) {
+    say("You have nothing to act on.");
+    return;
+  }
+  const idx = await selectFromMenu(term, "Item actions - which item?", items);
+  if (idx === null) return;
+  const handle = handles[idx];
+  if (handle === undefined) return;
+  await runContextMenuObject(handle);
+}
+
+/** routeContextClick's classification, applied to a canvas client point. */
+function contextClickGrid(clientX: number, clientY: number): Loc | null {
+  const rect = canvas.getBoundingClientRect();
+  const { col, row } = term.cellAt(clientX - rect.left, clientY - rect.top);
+  const vp = viewport();
+  const sx = col - vp.mapOriginX;
+  const sy = row - vp.mapTop;
+  if (sx < 0 || sy < 0 || sx >= vp.mapCols || sy >= vp.mapRows) return null;
+  return loc(vp.camX + sx, vp.camY + sy);
+}
+
+async function dispatchContextClick(grid: Loc): Promise<void> {
+  const target = routeContextClick(state.actor.grid, grid);
+  if (target === "player") await runContextMenuPlayer();
+  else await runContextMenuCave(grid, target === "cave-adjacent");
+}
+
 /**
  * Inspect command ('I', textui_obj_examine): pick any inven / equip / floor
  * item, then show its combat / abilities / origin info in the scrollable
@@ -584,22 +980,50 @@ async function inspectItem(): Promise<void> {
   await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
 }
 
-/** The removable-curse indices of an object (item_tester_uncursable membership). */
+/**
+ * curse_menu's inclusion test (ui-curse.c L104-113): a curse is offered for
+ * removal only when its (true) power is in (0,100) - power>=100 is permanent
+ * - AND the player actually knows about it (player_knows_curse). Upstream
+ * reads the KNOWN twin's power for the gate; the port's playerKnowsCurse is
+ * exactly the condition under which the known power mirrors the true one
+ * (obj/known-object.ts objectKnownShadow), so testing the true power here is
+ * equivalent and avoids building the shadow object just for this menu.
+ */
 function removableCurses(obj: GameObject): number[] {
   const out: number[] = [];
+  const player = state.actor.player;
   obj.curses?.forEach((c, i) => {
-    if (i > 0 && c.power > 0 && c.power < 100) out.push(i);
+    if (i > 0 && c.power > 0 && c.power < 100 && playerKnowsCurse(player, i)) out.push(i);
   });
   return out;
 }
 
-/** get_curse: pick which removable curse to lift; null on ESC. */
-async function selectCurse(removable: number[]): Promise<number | null> {
+/**
+ * get_curse (curse_menu, ui-curse.c L91): pick which removable curse to lift;
+ * null on ESC. Faithful label ("<name> (curse strength <power>)", the true
+ * power per get_curse_display L47) and browse-hook description pane (the
+ * curse's capitalized desc, curse_menu_browser L67) below the list. Pure
+ * selection - no RNG; the removal roll happens once, later, in the already-
+ * ported EF_REMOVE_CURSE handler.
+ */
+async function selectCurse(removable: number[], obj: GameObject, diceString: string | null): Promise<number | null> {
   const curseTable = booted.registries.objects.curses;
-  const items: MenuItem[] = removable.map((i) => ({
-    label: curseTable[i]?.name ?? `curse ${i}`,
-  }));
-  const idx = await selectFromMenu(term, "Remove which curse?", items);
+  const items: MenuItem[] = removable.map((i) => {
+    const power = obj.curses?.[i]?.power ?? 0;
+    const name = curseTable[i]?.name ?? `curse ${i}`;
+    return { label: `${name} (curse strength ${power})` };
+  });
+  const header = diceString
+    ? `Remove which curse (spell strength ${diceString})?`
+    : "Remove which curse?";
+  const detail = (idx: number): ScreenLine[] => {
+    const i = removable[idx];
+    const desc = (i !== undefined ? curseTable[i]?.desc : undefined) ?? "";
+    if (!desc) return [];
+    const capped = desc.charAt(0).toUpperCase() + desc.slice(1);
+    return [{ text: `${capped}.`, color: "#c8c8d4" }];
+  };
+  const idx = await selectFromMenu(term, header, items, "[ a-z to choose, ESC to cancel ]", { detail });
   if (idx === null) return null;
   return removable[idx] ?? null;
 }
@@ -620,13 +1044,33 @@ async function prepareItemTarget(
   if (req.curses) {
     const obj = targetRefObject(ref);
     const removable = obj ? removableCurses(obj) : [];
-    if (removable.length > 1) {
-      const pick = await selectCurse(removable);
+    if (obj && removable.length > 1) {
+      const diceString = removeCurseDiceString(chain);
+      const pick = await selectCurse(removable, obj, diceString);
       if (pick === null) return "cancel";
       return { tgtitem: ref, tgtcurse: pick };
     }
   }
   return { tgtitem: ref };
+}
+
+/**
+ * Dispatch `code` on an already-chosen item (aim direction if needed,
+ * pre-resolve any item-target effect, then queue). Shared by useItem's own
+ * picker and the context menu's per-item action, which already knows the
+ * handle - it should not re-prompt for the item a second time.
+ */
+async function dispatchItemVerb(code: string, handle: number, obj: GameObject | null): Promise<void> {
+  const args: Record<string, unknown> = { handle };
+  if (obj && objNeedsAim(obj, { flavor: game.flavor })) {
+    const dir = await aimDir();
+    if (dir === null) return;
+    args["dir"] = dir;
+  }
+  if (obj && !(await applyItemTarget(obj, args))) return;
+  say(actionLine(code, obj));
+  commandBuffer.push({ code, args });
+  advance();
 }
 
 /** Select a pack item matching `filter`, then dispatch `code` for it. */
@@ -649,16 +1093,7 @@ async function useItem(
   const handle = handles[idx];
   if (handle === undefined) return;
   const obj = gearGet(state.gear, handle);
-  const args: Record<string, unknown> = { handle };
-  if (obj && objNeedsAim(obj, { flavor: game.flavor })) {
-    const dir = await aimDir();
-    if (dir === null) return;
-    args["dir"] = dir;
-  }
-  if (obj && !(await applyItemTarget(obj, args))) return;
-  say(actionLine(code, obj));
-  commandBuffer.push({ code, args });
-  advance();
+  await dispatchItemVerb(code, handle, obj);
 }
 
 /**
@@ -1402,6 +1837,9 @@ async function openGameMenu(): Promise<void> {
       { label: "Ignore setup" },
       { label: "Switch character" },
       { label: "New character" },
+      { label: "Abilities" },
+      { label: "Compare equipment" },
+      { label: "Item actions" },
     ],
     "[ a-z to choose, ESC to resume ]",
   );
@@ -1420,6 +1858,18 @@ async function openGameMenu(): Promise<void> {
     case 4:
       persistSave(); // keep the current character in its slot, then birth anew
       newGame();
+      break;
+    case 5:
+      await showAbilities(term, playerAbilities(state, {
+        properties: players.properties,
+        elementNames: (booted.registries.projections ?? []).slice(0, state.actor.player.race.elInfo.length).map((p) => p.name),
+      }));
+      break;
+    case 6:
+      await showEquipCmp(term, state, equipCmpDeps());
+      break;
+    case 7:
+      await openItemActionsMenu();
       break;
     default:
       break; // Resume play / ESC
@@ -2083,7 +2533,7 @@ window.addEventListener("keydown", (ev) => {
 // tapped square and queues a single walk. A richer controller is a future mod
 // (the "intelligent controller / mobile input" idea), not core.
 canvas.addEventListener("pointerdown", (ev) => {
-  if (scoresOpen || dead) return;
+  if (scoresOpen || dead || modalDepth > 0) return; // a modal owns input
   const rect = canvas.getBoundingClientRect();
   const { col, row } = term.cellAt(ev.clientX - rect.left, ev.clientY - rect.top);
   const vp = viewport();
@@ -2113,6 +2563,47 @@ canvas.addEventListener("pointerdown", (ev) => {
     commandBuffer.push({ code: "walk", dir });
   }
   advance();
+});
+
+// ---- Context menus (ui-context.c textui_process_click's mouse routing) ----
+// Desktop: the canvas 'contextmenu' event (the browser's own right-click) is
+// the router - compute the tapped grid exactly as the pointerdown handler
+// does, then classify and dispatch (routeContextClick, context-menu.ts).
+// Touch: a long-press (pointerdown held ~450ms, cancelled by move/lift/second
+// pointer) opens the same menu at the pressed cell, since a phone has no
+// right-click.
+canvas.addEventListener("contextmenu", (ev) => {
+  ev.preventDefault();
+  if (scoresOpen || dead || modalDepth > 0) return;
+  const grid = contextClickGrid(ev.clientX, ev.clientY);
+  if (!grid) return;
+  void openModal(() => dispatchContextClick(grid));
+});
+
+let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+let longPressGrid: Loc | null = null;
+function cancelLongPress(): void {
+  if (longPressTimer !== null) clearTimeout(longPressTimer);
+  longPressTimer = null;
+  longPressGrid = null;
+}
+canvas.addEventListener("pointerdown", (ev) => {
+  if (scoresOpen || dead || modalDepth > 0 || ev.pointerType !== "touch") return;
+  const grid = contextClickGrid(ev.clientX, ev.clientY);
+  if (!grid) return;
+  longPressGrid = grid;
+  longPressTimer = setTimeout(() => {
+    const g = longPressGrid;
+    cancelLongPress();
+    if (g) void openModal(() => dispatchContextClick(g));
+  }, 450);
+});
+canvas.addEventListener("pointerup", cancelLongPress);
+canvas.addEventListener("pointercancel", cancelLongPress);
+canvas.addEventListener("pointermove", (ev) => {
+  if (!longPressGrid) return;
+  const grid = contextClickGrid(ev.clientX, ev.clientY);
+  if (!grid || grid.x !== longPressGrid.x || grid.y !== longPressGrid.y) cancelLongPress();
 });
 
 // On touch devices (coarse pointer), add an on-screen bar for the discrete

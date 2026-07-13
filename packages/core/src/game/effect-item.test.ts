@@ -31,7 +31,10 @@ import {
   enchant,
   rechargeFailureChance,
   registerItemHandlers,
+  removeCurseDiceString,
 } from "./effect-item";
+import { Dice } from "../dice";
+import { effectNew } from "../effects/effect";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -318,6 +321,56 @@ describe("EF_REMOVE_CURSE (effect-handler-general.c L1051)", () => {
       }
     }
     expect(destroyed).toBeGreaterThan(0);
+  });
+});
+
+describe("removeCurseDiceString (effect-handler-general.c L1071-1085)", () => {
+  /** A REMOVE_CURSE effect node carrying the given un-rolled dice spec. */
+  function chainWith(diceString: string): ReturnType<typeof effectNew> {
+    const effect = effectNew(EF.REMOVE_CURSE);
+    const dice = new Dice();
+    dice.parseString(diceString);
+    effect.dice = dice;
+    return effect;
+  }
+
+  it("formats base+d(sides) for a single die with a base", () => {
+    expect(removeCurseDiceString(chainWith("2+d10"))).toBe("2+d10");
+  });
+
+  it("formats base+dice*d(sides) for multiple dice with a base", () => {
+    expect(removeCurseDiceString(chainWith("2+3d10"))).toBe("2+3d10");
+  });
+
+  it("formats d(sides) for a single die with no base", () => {
+    expect(removeCurseDiceString(chainWith("d10"))).toBe("d10");
+  });
+
+  it("formats dice*d(sides) for multiple dice with no base", () => {
+    expect(removeCurseDiceString(chainWith("3d10"))).toBe("3d10");
+  });
+
+  it("formats a bare base with no dice", () => {
+    expect(removeCurseDiceString(chainWith("50"))).toBe("50");
+  });
+
+  it("walks the chain to find the REMOVE_CURSE node, skipping others", () => {
+    const first = effectNew(EF.CLEAR_VALUE);
+    first.next = chainWith("2+3d10");
+    expect(removeCurseDiceString(first)).toBe("2+3d10");
+  });
+
+  it("returns null for a chain with no REMOVE_CURSE effect", () => {
+    expect(removeCurseDiceString(effectNew(EF.CLEAR_VALUE))).toBeNull();
+    expect(removeCurseDiceString(null)).toBeNull();
+  });
+
+  it("draws no RNG (pure read of the dice spec, not a roll - takes no Rng at all)", () => {
+    // removeCurseDiceString's signature has no rng parameter; this is a static
+    // proof it cannot draw, backed by the repeatable-result check below.
+    const effect = chainWith("2+3d10");
+    expect(removeCurseDiceString(effect)).toBe("2+3d10");
+    expect(removeCurseDiceString(effect)).toBe("2+3d10"); // stable across repeated calls
   });
 });
 

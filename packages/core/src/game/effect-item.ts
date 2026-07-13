@@ -198,6 +198,40 @@ export function itemTargetRequest(
 }
 
 /**
+ * The dice_string format built inline in effect_handler_REMOVE_CURSE
+ * (effect-handler-general.c L1071-1085), from the effect's un-rolled dice
+ * spec (base/dice/sides). Pure: does not draw the RNG (mirrors
+ * Dice.randomValue(), not Dice.roll()).
+ */
+function formatUncurseDiceString(v: import("../rng").RandomValue): string {
+  if (v.dice === 1 && v.base) return `${v.base}+d${v.sides}`;
+  if (v.dice && v.base) return `${v.base}+${v.dice}d${v.sides}`;
+  if (v.dice === 1) return `d${v.sides}`;
+  if (v.dice) return `${v.dice}d${v.sides}`;
+  return `${v.base}`;
+}
+
+/**
+ * The curse-removal picker's header needs the spell's "strength" dice
+ * formula (ui-curse.c curse_menu's `dice_string` parameter) BEFORE the effect
+ * runs, so the shell can show "Remove which curse (spell strength <dice>)?"
+ * while still pre-resolving the item/curse pick (preserving RNG order). This
+ * walks the already-built chain to the REMOVE_CURSE node and formats its raw
+ * (un-rolled) dice spec - a pure read, no RNG draw. Returns null when the
+ * chain has no REMOVE_CURSE effect.
+ */
+export function removeCurseDiceString(
+  chain: import("../effects/effect").Effect | null,
+): string | null {
+  for (let e = chain; e; e = e.next) {
+    if (e.index !== EF.REMOVE_CURSE) continue;
+    const rv = e.dice ? e.dice.randomValue() : { base: 0, dice: 0, sides: 0, mBonus: 0 };
+    return formatUncurseDiceString(rv);
+  }
+  return null;
+}
+
+/**
  * The item-effect seams, grouped on the game effect environment
  * (GameEffectEnv.item). getItem is upstream get_item / cmd_get_item; absent,
  * the choosing handlers return false unused (the cancel path). reg backs
