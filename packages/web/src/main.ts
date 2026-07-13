@@ -136,6 +136,7 @@ import {
   svalKindMenu,
   svalCategoryItems,
   SVAL_DEPENDENT,
+  objectListLines,
 } from "./screens";
 import { showCharacterSheet } from "./charsheet";
 import { runCharacterSelect } from "./charselect";
@@ -1913,6 +1914,13 @@ window.addEventListener("keydown", (ev) => {
       );
       return;
     }
+    if (ev.key === "]") {
+      ev.preventDefault();
+      void openModal(() =>
+        showTextScreen(term, "Objects in view", objectListLines(state)),
+      );
+      return;
+    }
     if (ev.key === "C") {
       ev.preventDefault();
       void openModal(() =>
@@ -2112,6 +2120,7 @@ function installTouchActionBar(): void {
       render();
     }],
     ["Inv", () => { void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))); }],
+    ["Objs", () => { void openModal(() => showTextScreen(term, "Objects in view", objectListLines(state))); }],
     ["Insp", () => { void openModal(() => inspectItem()); }],
     ["Insc", () => { void openModal(() => inscribeItem()); }],
     ["Fuel", () => { void openModal(() => refuelItem()); }],
