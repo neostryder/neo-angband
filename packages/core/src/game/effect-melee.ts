@@ -118,7 +118,11 @@ function effectHit(
   dam: number,
   note: string,
 ): boolean {
-  const result = monTakeHit(state.rng, mon, dam, note, {});
+  const result = monTakeHit(state.rng, mon, dam, note, {
+    /* become_aware: a direct-damage effect (EF_TAP_UNLIFE, EF_CURSE, ...)
+     * can reveal a camouflaged target, same as any other hit. */
+    ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
+  });
   if (result.died) {
     if (arenaInterceptDeath(state, mon)) return true;
     if (monsterIsVisible(mon)) say(ctx, `${mon.race.name}${note}`);

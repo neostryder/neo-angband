@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MON_TMD, RF } from "../generated";
+import { MFLAG, MON_TMD, RF } from "../generated";
 import { loc, locEq } from "../loc";
 import { distance } from "../loc";
 import type { Loc } from "../loc";
@@ -12,6 +12,7 @@ import { deleteMonster, squareMonster } from "./context";
 import type { GameState } from "./context";
 import { summonGroup } from "./mon-group";
 import {
+  multiplyMonster,
   placeNewMonster,
   placeNewMonsterOne,
   squareAllowsSummon,
@@ -315,5 +316,44 @@ describe("summoner group joining", () => {
     expect(summoned.groupInfo[GROUP_TYPE.PRIMARY]!.role).toBe(MON_GROUP.SUMMON);
     const group = summonGroup(state, summoner.midx);
     expect(summoned.groupInfo[GROUP_TYPE.PRIMARY]!.index).toBe(group!.index);
+  });
+});
+
+describe("multiplyMonster (mon-make.c multiply_monster, L983) - become_aware", () => {
+  it("reveals a camouflaged child when the (already-revealed) parent multiplies", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const race = makeRace({ flags: [RF.UNAWARE] });
+    const mon = addMon(state, race, loc(20, 10));
+    /* blankMonster leaves MFLAG_CAMOUFLAGE off - the parent is "already
+     * revealed", matching monster_is_camouflaged(mon) == false upstream. */
+
+    let revealedMidx: number | null = null;
+    state.becomeAware = (m) => {
+      revealedMidx = m.midx;
+    };
+
+    const ok = multiplyMonster(state, mon, deps(state));
+    expect(ok).toBe(true);
+
+    const child = state.monsters.find((m) => m && m !== mon && m.race === race);
+    expect(child).toBeTruthy();
+    expect(child!.mflag.has(MFLAG.CAMOUFLAGE)).toBe(true);
+    expect(revealedMidx).toBe(child!.midx);
+  });
+
+  it("does not reveal the child when the parent is itself still camouflaged", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const race = makeRace({ flags: [RF.UNAWARE] });
+    const mon = addMon(state, race, loc(20, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE); // parent still hidden
+
+    let called = false;
+    state.becomeAware = () => {
+      called = true;
+    };
+
+    const ok = multiplyMonster(state, mon, deps(state));
+    expect(ok).toBe(true);
+    expect(called).toBe(false);
   });
 });

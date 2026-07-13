@@ -259,4 +259,27 @@ describe("monster_attack_monster (mon-attack.c L765)", () => {
     expect(monsterAttackMonster(state, mon, target)).toBe(false);
     expect(target.hp).toBe(50);
   });
+
+  it("reveals a camouflaged target via mon_take_hit's becomeAware hook", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const blow = makeBlow("HIT", "HURT", "5d5");
+    const mon = addMon(
+      state,
+      makeRace({ level: 20, blows: [blow, blow, blow] }),
+      loc(5, 5),
+      { hp: 50 },
+    );
+    const target = addMon(state, makeRace({ ac: 0 }), loc(6, 5), { hp: 200 });
+    target.mflag.on(MFLAG.CAMOUFLAGE);
+
+    let revealed: number | null = null;
+    state.becomeAware = (m) => {
+      revealed = m.midx;
+    };
+
+    monsterAttackMonster(state, mon, target);
+
+    expect(revealed).toBe(target.midx);
+    expect(target.hp).toBeLessThan(200);
+  });
 });

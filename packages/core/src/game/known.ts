@@ -35,6 +35,9 @@ import {
   monsterIsVisible,
 } from "../mon/predicate";
 import { disturb } from "./player-path";
+import { describeObject } from "./describe";
+import { floorExcise, floorPile } from "./floor";
+import { ODESC } from "../obj/desc";
 import type { Monster } from "../mon/monster";
 import type { GameObject } from "../obj/object";
 import type { GameState } from "./context";
@@ -385,6 +388,61 @@ export function updateMon(
       mon.mflag.off(MFLAG.VIEW);
       /* Disturb on disappearance (but not for a camouflaged monster). */
       if (disturbNear(state) && !monsterIsCamouflaged(mon)) disturb(state);
+    }
+  }
+}
+
+/**
+ * become_aware (mon-util.c L711): reveal a camouflaged mimic. Clears
+ * MFLAG_CAMOUFLAGE and, when the race has RF_UNAWARE, learns that flag into
+ * its lore. If the monster was mimicking a floor object, names it (ODESC_BASE)
+ * in a message when its square is seen, breaks the mimicry link on both
+ * sides, removes the fake item from the floor, and refreshes the monster's
+ * own visibility now that mimicry no longer masks it (update_mon). A no-op
+ * monster that is not camouflaged. Draws no RNG.
+ *
+ * mon.mimickedObj is always 0 until object-mimic placement is ported (this
+ * file's noteSpots comment and game/project-obj.ts note the same gap), so the
+ * object branch below runs only for a hand-built Monster/GameObject pair in
+ * tests today; it is written to fire correctly the moment placement links
+ * mon.mimickedObj and the object's mimickingMIdx back-reference at the
+ * monster's grid.
+ *
+ * DEFERRED: RF_MIMIC_INV's "give the monster a copy of the object before
+ * deleting it" (mon-util.c L740-758) needs object_copy, which is not ported;
+ * every other step of become_aware runs. The upkeep/redraw bits
+ * (PU_UPDATE_VIEW | PU_MONSTERS, PR_MONLIST | PR_ITEMLIST, square_note_spot,
+ * square_light_spot) are presentation (#25), matching the redraw deferral
+ * already noted for updateMon above.
+ */
+export function becomeAware(state: GameState, mon: Monster): void {
+  if (!monsterIsCamouflaged(mon)) return;
+  mon.mflag.off(MFLAG.CAMOUFLAGE);
+
+  const lore = getLore(state.lore, mon.race);
+  if (mon.race.flags.has(RF.UNAWARE)) lore.flags.on(RF.UNAWARE);
+
+  if (mon.mimickedObj !== 0) {
+    const obj = floorPile(state, mon.grid).find(
+      (o) => o.mimickingMIdx === mon.midx,
+    );
+    if (obj && obj.grid) {
+      const name = describeObject(state, obj, ODESC.BASE);
+      if (squareIsSeen(state.chunk, obj.grid)) {
+        state.msg?.(`The ${name} was really a monster!`);
+      }
+
+      /* Clear the mimicry. */
+      obj.mimickingMIdx = 0;
+      mon.mimickedObj = 0;
+
+      /* RF_MIMIC_INV's give-a-copy branch is DEFERRED (no object_copy yet). */
+
+      /* Delete the mimicked object; lighting/noting done via update_mon. */
+      floorExcise(state, obj.grid, obj);
+
+      /* Since mimicry affects visibility, update that. */
+      updateMon(state, mon, false);
     }
   }
 }

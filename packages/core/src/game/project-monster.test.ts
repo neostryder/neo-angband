@@ -214,3 +214,45 @@ describe("projectMonster - obvious / wake", () => {
     expect(mon.mTimed[MON_TMD.SLEEP]).toBe(0);
   });
 });
+
+describe("projectMonster - become_aware (mimic reveal)", () => {
+  it("reveals a camouflaged monster hit by player damage (mon_take_hit's becomeAware)", () => {
+    const gs = makeState();
+    const mon = addMon(gs, plainRace, loc(16, 16), { hp: 50 });
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    let revealed: Monster | null = null;
+    const rec = recorder({ becomeAware: (m) => { revealed = m; } });
+    projectMonster(playerCtx(gs, rec.hooks), 0, loc(16, 16), 20, PROJ.FIRE, PROJECT.KILL);
+    expect(revealed).toBe(mon);
+    expect(mon.hp).toBe(30);
+  });
+
+  it("reveals a camouflaged in-view monster that stops an effect (PROJECT_STOP), even with no damage", () => {
+    const gs = makeState();
+    const mon = addMon(gs, plainRace, loc(14, 14), { hp: 50 });
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    mon.mflag.on(MFLAG.VIEW);
+    let revealed: Monster | null = null;
+    const rec = recorder({ becomeAware: (m) => { revealed = m; } });
+    projectMonster(
+      playerCtx(gs, rec.hooks),
+      0,
+      loc(14, 14),
+      0,
+      PROJ.FIRE,
+      PROJECT.KILL | PROJECT.STOP,
+    );
+    expect(revealed).toBe(mon);
+    expect(mon.hp).toBe(50);
+  });
+
+  it("does not call becomeAware for a normal (non-camouflaged) monster", () => {
+    const gs = makeState();
+    const mon = addMon(gs, plainRace, loc(15, 15), { hp: 50 });
+    let called = false;
+    const rec = recorder({ becomeAware: () => { called = true; } });
+    projectMonster(playerCtx(gs, rec.hooks), 0, loc(15, 15), 20, PROJ.FIRE, PROJECT.KILL);
+    expect(mon.hp).toBe(30);
+    expect(called).toBe(false);
+  });
+});

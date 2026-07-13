@@ -386,6 +386,18 @@ export interface GameState {
    */
   onPlayerKill?: (mon: Monster) => void;
   /**
+   * become_aware (mon-util.c L711, game/known.ts): reveal a camouflaged
+   * mimic - clears MFLAG_CAMOUFLAGE, learns RF_UNAWARE, and (once object-mimic
+   * placement is ported) drops the fake floor item. Installed by the session
+   * (wireGame) and threaded into every existing becomeAware? hook config
+   * (mon/take-hit.ts, game/project-monster.ts, game/mon-ranged.ts) plus the
+   * direct player/monster melee call sites (game/effect-melee.ts,
+   * game/mon-cmd.ts) and the player-adjacent bump paths (game/player-turn.ts
+   * walkAction, game/cave-cmd.ts attackBlocker). Absent, camouflaged monsters
+   * are attacked instead of unmasked - matching pre-#31 behaviour.
+   */
+  becomeAware?: (mon: Monster) => void;
+  /**
    * object_touch's history_find_artifact call (obj-knowledge.c L971): fires
    * when an artifact enters the pack for the first time. Installed by the
    * session (wireGame); pickup.ts's playerPickupAux calls it, keeping the

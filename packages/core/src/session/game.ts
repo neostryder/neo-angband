@@ -81,7 +81,7 @@ import { registerMeleeHandlers } from "../game/effect-melee";
 import { registerSummonHandlers } from "../game/effect-summon";
 import type { SummonEffectEnv } from "../game/effect-summon";
 import { registerDetectHandlers } from "../game/effect-detect";
-import { newKnownMap } from "../game/known";
+import { becomeAware, newKnownMap } from "../game/known";
 import { isDaytime } from "../game/world";
 import { newTargetState, targetSetMonster } from "../game/target";
 import {
@@ -464,6 +464,11 @@ function wireGame(
   // onPlayerKill / onMonsterDeath run only after wireGame has finished, so the
   // deferred assignment is always resolved by the time they fire.
   let deathDeps: MonsterDeathDeps | undefined;
+  /* become_aware (mon-util.c L711, game/known.ts): reveal a camouflaged
+   * mimic. Installed once here and threaded into every hit / cast / melee
+   * site below so a camouflaged monster unmasks wherever upstream calls
+   * become_aware, instead of the flag never clearing. */
+  state.becomeAware = (mon): void => becomeAware(state, mon);
   state.onPlayerKill = (mon): void => {
     /* Experience comes from the killed form (player_kill_monster computes
      * new_exp before monster_death's revert). */
@@ -646,6 +651,9 @@ function wireGame(
         monster: {
           /* Spell/device kills reward experience like melee kills. */
           onKill: (m): void => state.onPlayerKill?.(m),
+          /* become_aware: reveal a camouflaged monster hit by a projection
+           * (project_m) or that stopped an effect (PROJECT_STOP). */
+          becomeAware: (m): void => state.becomeAware?.(m),
           /* monster_death for a monster-vs-monster kill: no player reward, just
            * drops (project-mon.c fires monster_death for these too). */
           onMonsterDeath: (m): void => {
@@ -735,7 +743,13 @@ function wireGame(
       summon,
       monShape,
     };
-    installMonsterCasting(state, monSpellDeps);
+    installMonsterCasting(state, monSpellDeps, {
+      /* become_aware: a hidden caster reveals itself (mon-attack.c L454). */
+      becomeAware: (midx): void => {
+        const caster = state.monsters[midx];
+        if (caster) state.becomeAware?.(caster);
+      },
+    });
     /* do_cmd_mon_command: EF_COMMAND possession drives the monster. */
     installMonCommand(state, monSpellDeps);
 

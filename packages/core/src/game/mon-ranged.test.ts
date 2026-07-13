@@ -144,6 +144,43 @@ describe("installMonsterCasting (live monster turn)", () => {
   });
 });
 
+describe("makeRangedAttack - become_aware (mimic reveal)", () => {
+  it("calls config.becomeAware with the caster's midx when a camouflaged caster casts", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, casterRace([RSF.BR_FIRE], { innate: 100 }), loc(5, 6), {
+      hp: 300,
+    });
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    updateMonsterDistances(state);
+    let revealedMidx = -1;
+    const ran = makeRangedAttack(state, mon.midx, deps(state), {
+      becomeAware: (midx) => {
+        revealedMidx = midx;
+      },
+    });
+    expect(ran).toBe(true);
+    expect(revealedMidx).toBe(mon.midx);
+  });
+
+  it("installMonsterCasting threads becomeAware through a live monster turn", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.actor.player.chp = 200;
+    const mon = addMon(state, casterRace([RSF.BR_FIRE], { innate: 100 }), loc(5, 8), {
+      hp: 300,
+    });
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    updateMonsterDistances(state);
+    let revealed: number | null = null;
+    installMonsterCasting(state, deps(state), {
+      becomeAware: (midx) => {
+        revealed = midx;
+      },
+    });
+    monsterTurn(mon, state);
+    expect(revealed).toBe(mon.midx);
+  });
+});
+
 describe("removeBadSpells", () => {
   it("strips wasted spells by health, status and range", () => {
     const state = makeState({ playerGrid: loc(5, 5) });

@@ -113,6 +113,66 @@ describe("monster movement AI", () => {
   });
 });
 
+describe("camouflage/mimic reveal (become_aware)", () => {
+  it("reveals a camouflaged blocker before it is trampled (monster_turn_try_push, mon-move.c L1352)", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const strong = makeRace({ level: 20, mexp: 1000, flags: [RF.KILL_BODY] });
+    const weak = makeRace({ level: 1, mexp: 1 });
+    const mover = addMon(state, strong, loc(17, 10));
+    const blocker = addMon(state, weak, loc(16, 10));
+    const blockerIdx = blocker.midx;
+    blocker.mflag.on(MFLAG.CAMOUFLAGE);
+    state.chunk.sqinfoOn(mover.grid, SQUARE.VIEW);
+    updateMonsterDistances(state);
+
+    let revealed: number | null = null;
+    state.becomeAware = (m) => {
+      revealed = m.midx;
+    };
+
+    monsterTurn(mover, state);
+
+    expect(revealed).toBe(blockerIdx);
+    /* The stronger KILL_BODY monster trampled the weaker one. */
+    expect(state.monsters[blockerIdx]).toBeNull();
+  });
+
+  it("reveals a camouflaged monster that did something on its own turn (mon-move.c L1680)", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const race = makeRace({ level: 5, hearing: 30 });
+    const mon = addMon(state, race, loc(25, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    updateMonsterDistances(state);
+    makeNoise(state.chunk, { grid: state.actor.grid, covertTracks: false });
+
+    let revealed: number | null = null;
+    state.becomeAware = (m) => {
+      revealed = m.midx;
+    };
+
+    monsterTurn(mon, state);
+
+    expect(revealed).toBe(mon.midx);
+  });
+
+  it("does not call becomeAware for a normal (non-camouflaged) monster that moves", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const race = makeRace({ level: 5, hearing: 30 });
+    const mon = addMon(state, race, loc(25, 10));
+    updateMonsterDistances(state);
+    makeNoise(state.chunk, { grid: state.actor.grid, covertTracks: false });
+
+    let called = false;
+    state.becomeAware = () => {
+      called = true;
+    };
+
+    monsterTurn(mon, state);
+
+    expect(called).toBe(false);
+  });
+});
+
 describe("erratic movement (RAND_25 / RAND_50)", () => {
   const N = 2000;
 

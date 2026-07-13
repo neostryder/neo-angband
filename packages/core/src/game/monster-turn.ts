@@ -47,17 +47,23 @@
  * - Aggravation: monster_reduce_sleep consults player OF_AGGRAVATE first and
  *   wakes the monster (drawing monster_wake's randint0(100) instead of the
  *   notice roll), matching the upstream if/else.
+ * - Camouflage/mimic reveal: monster_turn_try_push reveals a camouflaged
+ *   blocker before it is trampled (mon-move.c L1352), and monster_turn itself
+ *   reveals a camouflaged mon that did_something on its turn (L1680), both via
+ *   the injected state.becomeAware hook (game/known.ts becomeAware, installed
+ *   by session/game.ts). monster_turn_multiply's "reveal a camouflaged child
+ *   of an already-revealed breeder" (L1002-1011) is ported alongside it in
+ *   game/mon-place.ts multiplyMonster. Draws no RNG.
  *
  * DEFERRED (ledgered in parity/ledger/game-monster-ai.yaml):
  * - bodyguard tactics (get_move_bodyguard), group surround and pack ambush
  *   (get_move_find_hiding - its only caller is the out-of-scope pack branch,
  *   so it is left deferred with that branch), damaging-terrain flight /
- *   avoidance / activation, glyph/decoy/web handling, camouflage/mimic reveal
- *   (become_aware, a separate agent), react_to_slay pickup safety, the
- *   confused-move / door-burst UI messages and disturb, and the remaining
- *   monster-lore updates. None of these draw RNG until taken, so they stay as
- *   inert conditionals in their upstream positions and the RNG order for the
- *   ported paths is unaffected.
+ *   avoidance / activation, glyph/decoy/web handling, react_to_slay pickup
+ *   safety, the confused-move / door-burst UI messages and disturb, and the
+ *   remaining monster-lore updates. None of these draw RNG until taken, so
+ *   they stay as inert conditionals in their upstream positions and the RNG
+ *   order for the ported paths is unaffected.
  */
 
 import type { Loc } from "../loc";
@@ -76,6 +82,7 @@ import { FEAT, MFLAG, MON_TMD, MSG, OF, RF, TF } from "../generated";
 import type { Monster } from "../mon/monster";
 import { MON_GROUP } from "../mon/types";
 import {
+  monsterIsCamouflaged,
   monsterIsObvious,
   monsterIsVisible,
   monsterPassesWalls,
@@ -846,8 +853,14 @@ function monsterTurnTryPush(
     monsterCanMoveInto(state, mon, next) && state.chunk.isPassable(mon.grid);
   if (!killOk && !moveOk) return false;
 
+  /* Reveal a camouflaged blocker (mon-move.c L1352) before it is potentially
+   * trampled. */
+  const victim = squareMonster(state, next);
+  if (victim && monsterIsCamouflaged(victim)) {
+    state.becomeAware?.(victim);
+  }
+
   if (killOk) {
-    const victim = squareMonster(state, next);
     if (victim) {
       state.monsters[victim.midx] = null;
       state.chunk.setMon(next, 0);
@@ -1082,6 +1095,12 @@ export function monsterTurn(mon: Monster, state: GameState): void {
     const amount = mon.mTimed[MON_TMD.FEAR] ?? 0;
     mon.mTimed[MON_TMD.FEAR] = 0;
     mon.mTimed[MON_TMD.HOLD] = (mon.mTimed[MON_TMD.HOLD] ?? 0) + amount;
+  }
+
+  /* If we see an unaware monster do something, become aware of it
+   * (mon-move.c L1680). */
+  if (didSomething && monsterIsCamouflaged(mon)) {
+    state.becomeAware?.(mon);
   }
 }
 
