@@ -18,7 +18,7 @@ upstream:
 counts:
   live-branches: [get_obj_num, apply_magic tohit/todam/toac/ego, make_object
                   core path, make_artifact, make_artifact_special, make_gold
-                  core path]
+                  core path, apply_magic chest branch (pick_chest_traps)]
 notes: >-
   Determinism verified: with a seeded Rng, get_obj_num at depths 5/20/50
   returns kinds whose alloc range includes the depth and distribution
@@ -36,7 +36,12 @@ deferred:
   - make_gold birth_no_selling value inflation (needs player options).
   - *value* computation and the per-level out-of-depth boost details tied
     to knowledge/pricing.
-  - pick_chest_traps (chest/trap domain).
+notes-chests: >-
+  pick_chest_traps (gap #49) is LIVE: apply_magic's chest branch now calls
+  obj/chest.ts's pickChestTraps, so generated chests carry a real lock/trap
+  pval instead of staying 0. See parity/ledger/game-chest.yaml (or the
+  cave-cmd / trap ledgers) for the rest of the chest domain (chest_check,
+  chest_trap, chest_death, the open/disarm commands in game/chest.ts).
 verified-by:
   - seeded allocation tests at multiple depths (legal-range + distribution)
   - apply_magic determinism test for fixed seed and level
@@ -44,3 +49,6 @@ verified-by:
     deep make_object special-artifact roll, already-created + birth_no_art +
     town-depth zero-RNG guards, ArtifactState snapshot/restore
   - game/mon-death.test.ts: a level-100 QUESTOR force-drops every QUEST_ART
+  - obj/chest.test.ts: pickChestTraps determinism (golden pval sequences for
+    a level-5 and a level>45 chest across seeds), pickOneChestTrap's
+    no-re-check quirk
