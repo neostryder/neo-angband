@@ -15,7 +15,7 @@
  * (called after the player moves, as game code calls update_view).
  */
 
-import { MON_TMD, TMD } from "../generated";
+import { MON_TMD, RF, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { distance, locEq } from "../loc";
 import type { Rng } from "../rng";
@@ -49,6 +49,10 @@ export interface GameConstants {
   fleeRange: number;
   /** z_info->turn_range (nearby monsters won't run away). */
   turnRange: number;
+  /** z_info->repro_monster_max (mon-gen:repro-max): breeder cap per level. */
+  reproMonsterMax: number;
+  /** z_info->repro_monster_rate (mon-play:mult-rate): 1/(k*rate) breed chance. */
+  reproMonsterRate: number;
   /** z_info->day_length (is_daytime; the town day/night cycle). */
   dayLength: number;
   /** z_info->food_value. */
@@ -82,6 +86,8 @@ export const DEFAULT_GAME_CONSTANTS: GameConstants = {
   maxRange: 20,
   fleeRange: 5,
   turnRange: 5,
+  reproMonsterMax: 100,
+  reproMonsterRate: 8,
   dayLength: 10000,
   foodValue: 100,
   foodStarve: 100,
@@ -256,6 +262,13 @@ export interface GameState {
   /** turn (game-world.c): the game-turn counter. */
   turn: number;
   /**
+   * cave->num_repro (cave.h): the count of RF_MULTIPLY breeders on the current
+   * level, the denominator gate of monster_turn_multiply's cap. Reset and
+   * recounted by countMonsterRaces on level load, bumped by placeMonsterLive
+   * and dropped by deleteMonster. Absent is treated as 0.
+   */
+  numRepro?: number;
+  /**
    * daycount (game-world.c): the number of store turnovers accrued while in
    * the dungeon; the town stores restock this many days on return. Persists in
    * the save. Absent is treated as 0.
@@ -315,6 +328,30 @@ export interface GameState {
    * installMonsterCasting (game/mon-ranged.ts); absent, monsters never cast.
    */
   monsterCast?: (mon: Monster, state: GameState) => boolean;
+  /**
+   * multiply_monster (mon-make.c L983): a breeder tries to spawn a copy in an
+   * adjacent empty grid, returning true on success. Installed by wireGame
+   * (session/game.ts) from game/mon-place.ts multiplyMonster; absent, breeders
+   * never actually reproduce (monster_turn_multiply still draws its cap /
+   * chance rolls, so the RNG stream is unchanged when it is wired).
+   */
+  monsterMultiply?: (mon: Monster) => boolean;
+  /**
+   * square_door_power (cave-square.c): the lock strength on a closed door
+   * (0 = unlocked). Door locks are the "door lock" trap (#21), so this seams
+   * back the trap system; installed by wireGame. Absent, every door reads as
+   * unlocked - the RNG-free path monster_turn_can_move already takes when no
+   * trap system is live.
+   */
+  doorLockPower?: (grid: Loc) => number;
+  /** square_set_door_lock: set a closed door's lock strength (trap #21 seam). */
+  setDoorLock?: (grid: Loc, power: number) => void;
+  /**
+   * square_open_door / square_smash_door remove the "door lock" trap before
+   * changing the feature; this seams that removal back to the trap system.
+   * Absent, the (harmless, feature-gated) lock trap is simply left in place.
+   */
+  removeDoorLock?: (grid: Loc) => void;
   /**
    * make_attack_normal's blow-effect environment (game/mon-side.ts): binds a
    * MonBlowEnv to an attacking monster so combat/mon-melee.ts applies the full
@@ -583,6 +620,11 @@ export function deleteMonster(state: GameState, midx: number): void {
    * without counting, so a naked decrement could go negative). */
   const race = mon.originalRace ?? mon.race;
   if (race.curNum > 0) race.curNum--;
+  /* Count the number of "reproducers" (mon-make.c L328): the current race's
+   * MULTIPLY flag decides, clamped for the same harness reason as curNum. */
+  if (mon.race.flags.has(RF.MULTIPLY) && (state.numRepro ?? 0) > 0) {
+    state.numRepro = (state.numRepro ?? 0) - 1;
+  }
   state.chunk.setMon(mon.grid, 0);
   state.monsters[midx] = null;
 }
