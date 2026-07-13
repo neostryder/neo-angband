@@ -29,6 +29,7 @@ import {
 } from "../color";
 import { PROJECT, projectable } from "../world/project";
 import { ODESC } from "../obj/desc";
+import { OBJ_NOTICE } from "../obj/knowledge";
 import { tvalIsMoney } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { describeObject } from "./describe";
@@ -163,6 +164,20 @@ function distanceCompare(a: ObjectListEntry, b: ObjectListEntry): number {
   return 0;
 }
 
+/**
+ * Whether the object is known to the player to be an artifact. Upstream gates
+ * this decision on the player's knowledge (obj->known->artifact, set by
+ * object_touch when the item is ASSESSED - obj-list.c object_is_known_artifact
+ * L336, compare_items obj-util.c L646-656), NOT on the raw obj->artifact. In
+ * the port's knowledge model that is the object's OBJ_NOTICE.ASSESSED bit (see
+ * objectKnownShadow in obj/known-object.ts). An unassessed floor artifact must
+ * not colour violet / sort first while its list name still reads as an unknown
+ * item.
+ */
+function isKnownArtifact(o: GameObject): boolean {
+  return o.artifact !== null && (o.notice & OBJ_NOTICE.ASSESSED) !== 0;
+}
+
 /** compare_types (obj-util.c L629): order by tval, then sval. */
 function compareTypes(a: GameObject, b: GameObject): number {
   if (a.tval === b.tval) return Math.sign(a.sval - b.sval);
@@ -180,7 +195,7 @@ export function objectListStandardCompare(
 ): ObjectListCompare {
   const aware = (o: GameObject) =>
     state.isAware ? state.isAware(o.kind) : true;
-  const isArtifact = (o: GameObject) => o.artifact !== null;
+  const isArtifact = isKnownArtifact;
 
   return (ea, eb) => {
     const ao = ea.object;
@@ -237,7 +252,7 @@ export function objectListEntryLineAttribute(
 ): number {
   const obj = entry.object;
   if (entry.unknown || obj === null) return COLOUR_RED;
-  if (obj.artifact !== null) return COLOUR_VIOLET;
+  if (isKnownArtifact(obj)) return COLOUR_VIOLET;
   if (state.isAware && !state.isAware(obj.kind)) return COLOUR_L_RED;
   if (obj.kind.cost === 0) return COLOUR_SLATE;
   return COLOUR_WHITE;

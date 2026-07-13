@@ -10,6 +10,7 @@ import {
 } from "../color";
 import type { Loc } from "../loc";
 import { ObjRegistry } from "../obj/bind";
+import { OBJ_NOTICE } from "../obj/knowledge";
 import type { ObjPackJson, ObjectKind } from "../obj/types";
 import { objectNew } from "../obj/object";
 import type { GameObject } from "../obj/object";
@@ -80,6 +81,8 @@ interface FakeOpts {
   cost?: number;
   number?: number;
   artifact?: Artifact | null;
+  /** obj->notice bits (OBJ_NOTICE.*); default 0 = unassessed. */
+  notice?: number;
 }
 
 /** Drop a minimal floor object at a grid and mark the grid as known. */
@@ -96,6 +99,7 @@ function putFloor(state: GameState, at: Loc, opts: FakeOpts = {}): GameObject {
     sval: opts.sval ?? 1,
     number: opts.number ?? 1,
     artifact: opts.artifact ?? null,
+    notice: opts.notice ?? 0,
     grid: at,
   } as unknown as GameObject;
 
@@ -159,13 +163,14 @@ describe("object_list_collect (obj-list.c L156)", () => {
 });
 
 describe("object_list sorting + colour", () => {
-  it("orders artifacts first, worthless last", () => {
+  it("orders assessed artifacts first, worthless last", () => {
     const state = makeState({ playerGrid: loc(20, 12) });
     putFloor(state, loc(21, 12), { name: "Worthless", cost: 0 });
     putFloor(state, loc(22, 12), { name: "Normal", cost: 50 });
     putFloor(state, loc(23, 12), {
       name: "Artifact",
       artifact: {} as Artifact,
+      notice: OBJ_NOTICE.ASSESSED,
     });
 
     const list = objectListCollect(state);
@@ -175,9 +180,33 @@ describe("object_list sorting + colour", () => {
     expect(names[names.length - 1]).toBe("Worthless");
   });
 
-  it("colours artifact violet, worthless slate, unknown red, else white", () => {
+  it("does not sort a not-yet-assessed artifact as a known artifact", () => {
+    /* obj-list.c compare_items gates on obj->known->artifact (the ASSESSED
+     * bit), not obj->artifact - an unassessed floor artifact must fall through
+     * to the normal branches, not jump to the front. Here the artifact is a
+     * worthless-cost kind, so it should sort LAST, not first. */
     const state = makeState({ playerGrid: loc(20, 12) });
-    const art = putFloor(state, loc(21, 12), { artifact: {} as Artifact });
+    putFloor(state, loc(21, 12), { name: "Normal", cost: 50 });
+    putFloor(state, loc(22, 12), {
+      name: "UnknownArtifact",
+      cost: 0,
+      artifact: {} as Artifact,
+      /* notice defaults to 0: not ASSESSED. */
+    });
+
+    const list = objectListCollect(state);
+    objectListSort(list, objectListStandardCompare(state));
+    const names = list.entries.map((e) => e.object!.kind.name);
+    expect(names[0]).toBe("Normal");
+    expect(names[names.length - 1]).toBe("UnknownArtifact");
+  });
+
+  it("colours assessed artifact violet, worthless slate, unknown red, else white", () => {
+    const state = makeState({ playerGrid: loc(20, 12) });
+    const art = putFloor(state, loc(21, 12), {
+      artifact: {} as Artifact,
+      notice: OBJ_NOTICE.ASSESSED,
+    });
     const worthless = putFloor(state, loc(22, 12), { cost: 0 });
     const normal = putFloor(state, loc(23, 12), { cost: 5 });
 
@@ -195,6 +224,24 @@ describe("object_list sorting + colour", () => {
         state,
       ),
     ).toBe(COLOUR_RED);
+  });
+
+  it("does not colour a not-yet-assessed artifact violet", () => {
+    /* Colour must match the name: an unassessed artifact whose in-list name
+     * reads as an unknown item must not render as a known-artifact (violet).
+     * It falls through to the value-based branches (here cost 5 => white). */
+    const state = makeState({ playerGrid: loc(20, 12) });
+    const unassessed = putFloor(state, loc(21, 12), {
+      artifact: {} as Artifact,
+      cost: 5,
+      /* notice defaults to 0: not ASSESSED. */
+    });
+    expect(
+      objectListEntryLineAttribute(
+        { object: unassessed, unknown: false, count: [1, 0], dx: 0, dy: 0 },
+        state,
+      ),
+    ).toBe(COLOUR_WHITE);
   });
 
   it("formats a stack name with its count through object_desc", () => {
