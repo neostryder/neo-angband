@@ -103,8 +103,15 @@ Legend: [x] done, [~] partial, [ ] gap. Tiers are recommended execution order.
   / swerve.
 - [ ] Monsters pick up / crush floor items (`TAKE_ITEM` / `KILL_ITEM`).
 - [ ] Thieving blows actually steal (`EAT_ITEM` / `EAT_GOLD` intents unconsumed).
-- [ ] Mimic reveal (`become_aware` is an uninstalled optional hook; camouflage
-  flag never cleared, so mimics never unmask in play).
+- [x] Mimic reveal (`become_aware`, `game/known.ts`): clears MFLAG_CAMOUFLAGE,
+  learns RF_UNAWARE, drops a mimicked floor object when present, and messages;
+  installed at every `becomeAware?` hook (mon/take-hit.ts, game/project-monster.ts,
+  game/mon-ranged.ts, game/effect-melee.ts, game/mon-cmd.ts) plus the direct
+  reveal-before-attack paths (game/player-turn.ts walkAction, game/cave-cmd.ts
+  open/disarm, game/monster-turn.ts trample/did-something, game/mon-place.ts
+  multiplyMonster's revealed-child fix). The RF_MIMIC_INV give-a-copy sub-branch
+  stays deferred (no object_copy port yet); object-mimic placement itself is
+  still unported so mon.mimickedObj is always 0 in live play.
 - [ ] Monster recall (lore) shows spell/breath NAMES but always `0` damage
   (`spellLoreDamage` dep never provided).
 

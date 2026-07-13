@@ -25,6 +25,8 @@ import type { Loc } from "../loc";
 import { pyAttack } from "../combat/melee";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay";
 import { getLore } from "../mon/lore";
+import { monsterIsCamouflaged } from "../mon/predicate";
+import { monsterWake } from "../mon/take-hit";
 import { equipLearnOnMeleeAttack } from "../obj/knowledge";
 import type { GameState, PlayerCommand } from "./context";
 import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context";
@@ -82,6 +84,14 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
 
   const target = squareMonster(state, next);
   if (target) {
+    /* move_player (cmd-cave.c L1071): a camouflaged monster in the way
+     * surprises the player instead of being attacked - reveal it and wake it,
+     * matching upstream's become_aware + monster_wake(mon, false, 100). */
+    if (monsterIsCamouflaged(target)) {
+      state.becomeAware?.(target);
+      monsterWake(state.rng, target, false, 100);
+      return state.z.moveEnergy;
+    }
     /* Learning from the attack (player-attack.c L822 equip_learn_on_melee_
      * attack; obj-slays.c learn_brand_slay_from_melee). The target is
      * treated as visible, matching the monVisible option below. */

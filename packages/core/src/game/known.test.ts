@@ -16,6 +16,7 @@ import { objectPrep } from "../obj/make";
 import type { GameObject } from "../obj/object";
 import { floorCarry, floorExcise, floorPile } from "./floor";
 import {
+  becomeAware,
   forgetMap,
   knownFeat,
   knownObject,
@@ -453,5 +454,112 @@ describe("squareIsInteresting (cave-square.c square_isinteresting, read against 
     state.chunk.setFeat(grid, FLOOR);
     squareMemorize(state, grid);
     expect(squareIsInteresting(state, grid)).toBe(false);
+  });
+});
+
+describe("becomeAware (mon-util.c become_aware, L711)", () => {
+  it("is a no-op for a monster that is not camouflaged", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    let msgs = 0;
+    state.msg = () => {
+      msgs++;
+    };
+    becomeAware(state, mon);
+    expect(mon.mflag.has(MFLAG.CAMOUFLAGE)).toBe(false);
+    expect(msgs).toBe(0);
+  });
+
+  it("clears MFLAG_CAMOUFLAGE and learns RF_UNAWARE into the race's lore", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const race = makeRace({ flags: [RF.UNAWARE] });
+    const mon = addMon(state, race, loc(12, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+
+    becomeAware(state, mon);
+
+    expect(mon.mflag.has(MFLAG.CAMOUFLAGE)).toBe(false);
+    expect(getLore(state.lore, race).flags.has(RF.UNAWARE)).toBe(true);
+  });
+
+  it("does not learn RF_UNAWARE for a race that lacks the flag", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const race = makeRace();
+    const mon = addMon(state, race, loc(12, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+
+    becomeAware(state, mon);
+
+    expect(getLore(state.lore, race).flags.has(RF.UNAWARE)).toBe(false);
+  });
+
+  it("removes a mimicked floor object, breaks the mimicry link both ways, and messages when the square is seen", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    mon.mimickedObj = 1; // any nonzero handle (mimic placement is not ported)
+    const obj = makeObj(TV.SWORD);
+    floorCarry(state, mon.grid, obj);
+    obj.mimickingMIdx = mon.midx;
+    lightAndView(state, mon.grid);
+
+    const msgs: string[] = [];
+    state.msg = (t) => msgs.push(t);
+
+    becomeAware(state, mon);
+
+    expect(mon.mflag.has(MFLAG.CAMOUFLAGE)).toBe(false);
+    expect(mon.mimickedObj).toBe(0);
+    expect(obj.mimickingMIdx).toBe(0);
+    expect(floorPile(state, mon.grid)).not.toContain(obj);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatch(/^The .+ was really a monster!$/);
+  });
+
+  it("still clears the mimicry link when the square is not seen, but sends no message", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    mon.mimickedObj = 1;
+    const obj = makeObj(TV.SWORD);
+    floorCarry(state, mon.grid, obj);
+    obj.mimickingMIdx = mon.midx;
+    /* Not memorized/seen: squareIsSeen reads SQUARE.SEEN, left unset here. */
+
+    const msgs: string[] = [];
+    state.msg = (t) => msgs.push(t);
+
+    becomeAware(state, mon);
+
+    expect(mon.mimickedObj).toBe(0);
+    expect(floorPile(state, mon.grid)).not.toContain(obj);
+    expect(msgs).toHaveLength(0);
+  });
+
+  it("leaves mon.mimickedObj as-is when no floor object matches the handle (defensive, unreached in play)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    mon.mimickedObj = 1;
+
+    becomeAware(state, mon);
+
+    expect(mon.mflag.has(MFLAG.CAMOUFLAGE)).toBe(false);
+    expect(mon.mimickedObj).toBe(1);
+  });
+
+  it("draws no RNG (rng.getState() is unchanged across a plain reveal and a mimic reveal)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace({ flags: [RF.UNAWARE] }), loc(12, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    mon.mimickedObj = 1;
+    const obj = makeObj(TV.SWORD);
+    floorCarry(state, mon.grid, obj);
+    obj.mimickingMIdx = mon.midx;
+    lightAndView(state, mon.grid);
+
+    const before = state.rng.getState();
+    becomeAware(state, mon);
+    expect(state.rng.getState()).toEqual(before);
   });
 });
