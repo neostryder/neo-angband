@@ -91,18 +91,25 @@ Legend: [x] done, [~] partial, [ ] gap. Tiers are recommended execution order.
   (no gender stage, per 4.2.6), faithful wide char-sheet columns/colors + history.
   Blocked follow-ups: EB equipment stat_add, get_history population, mode-1 grid.
 
-## Tier 3 - Monster behavior depth (all VERIFIED)
+## Tier 3 - Monster behavior depth  [PUNCHLIST ITEMS ALL PORTED + PUSHED]
 
-- [ ] Terrain manipulation by AUTONOMOUS monsters: OPEN/BASH door, KILL/SMASH
-  wall (only `PASS_WALL` phases through; open/bash/dig exists only on the
-  player-commanded/possessed path).
-- [ ] Breeders multiply (`multiply_monster` + `num_repro` cap; constants defined
-  but never read).
-- [ ] Aggravation (`OF_AGGRAVATE`) never consulted in game-turn code.
-- [~] Fleeing: afraid monsters walk straight away; no find_hiding / find_safety
-  / swerve.
-- [ ] Monsters pick up / crush floor items (`TAKE_ITEM` / `KILL_ITEM`).
-- [ ] Thieving blows actually steal (`EAT_ITEM` / `EAT_GOLD` intents unconsumed).
+- [x] Terrain manipulation by autonomous monsters: OPEN/BASH door, KILL/SMASH
+  wall in `game/monster-turn.ts` (`monster_turn_can_move` + the movement loop);
+  confused-bump self-stun included. (#65)
+- [x] Breeders multiply: `monster_turn_multiply` (called unconditionally, per the
+  C) + `multiplyMonster` (mon-place.ts) + the `num_repro` cap (repro_monster_max
+  =100, rate=8 from constants.txt). (#65)
+- [x] Aggravation (`OF_AGGRAVATE`) consulted in `monster_reduce_sleep` via
+  playerState. (#65)
+- [x] Fleeing: `get_move_find_safety` + swerving `get_move_flee` replace the
+  reverse-direction stub. `get_move_find_hiding` stays deferred faithfully - in
+  4.2.6 its only caller is the out-of-scope pack-ambush branch, so folding it in
+  would itself deviate from upstream RNG order (see #69). (#65)
+- [x] Monsters pick up / crush floor items: `monster_turn_grab_objects`
+  (TAKE_ITEM into heldObj, KILL_ITEM excised; gold/mimics/artifacts skipped). (#65)
+- [x] Thieving blows steal (`EAT_GOLD/ITEM/FOOD/LIGHT`) + blink-away: already
+  ported (mon-side.ts); verified line-by-line vs mon-blows.c + RNG-invariance
+  coverage added. (#66)
 - [x] Mimic reveal (`become_aware`, `game/known.ts`): clears MFLAG_CAMOUFLAGE,
   learns RF_UNAWARE, drops a mimicked floor object when present, and messages;
   installed at every `becomeAware?` hook (mon/take-hit.ts, game/project-monster.ts,
@@ -112,8 +119,11 @@ Legend: [x] done, [~] partial, [ ] gap. Tiers are recommended execution order.
   multiplyMonster's revealed-child fix). The RF_MIMIC_INV give-a-copy sub-branch
   stays deferred (no object_copy port yet); object-mimic placement itself is
   still unported so mon.mimickedObj is always 0 in live play.
-- [ ] Monster recall (lore) shows spell/breath NAMES but always `0` damage
-  (`spellLoreDamage` dep never provided).
+- [x] Monster recall spell/breath damage: `mon_spell_lore_damage` computed
+  (mon/lore-describe.ts, breath via breathDam + breathProjection, non-breath via
+  monSpellNonhpDamage) (#67); and surfaced by the recall viewer - look -> 'r' ->
+  recall via loreDescription/showTextScreen (#70). spellColor/blowColor by known
+  resist and the '~' knowledge-menu monster browser remain follow-ups.
 
 ## Tier 4 - Generation depth
 
