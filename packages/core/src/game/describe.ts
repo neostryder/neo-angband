@@ -12,7 +12,7 @@ import type { GameObject } from "../obj/object";
 import type { GameState } from "./context";
 
 /** Build the flavour-awareness view object_desc needs from the game state. */
-function knownDesc(state: GameState): KnownDesc {
+export function knownDescOf(state: GameState): KnownDesc {
   return {
     isAware: (kind) => (state.isAware ? state.isAware(kind) : false),
     /* object_flavor_was_tried: only affects the in-store "{tried}" marker.
@@ -47,7 +47,7 @@ export function describeObject(
     mode,
     state.actor.player,
     state.runeEnv,
-    knownDesc(state),
+    knownDescOf(state),
     altnum,
   );
 }

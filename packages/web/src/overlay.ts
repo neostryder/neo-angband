@@ -20,6 +20,14 @@ import type { GlyphTerm } from "./term";
 export interface ScreenLine {
   text: string;
   color?: string;
+  /**
+   * Optional per-run colouring: when present, the row is painted run by run
+   * (advancing the column) instead of as one `color` block. Used by the item
+   * inspection viewer, whose lines carry multiple colours (obj-info's
+   * L_GREEN / L_RED segments). `text` should still hold the concatenated
+   * characters so width / scroll bookkeeping stays correct.
+   */
+  runs?: { text: string; color: string }[];
 }
 
 const FG = "#c8c8d4";
@@ -60,7 +68,17 @@ export function showTextScreen(
       for (let r = 0; r < bodyRows; r++) {
         const line = lines[top + r];
         if (!line) break;
-        term.print(0, BODY_TOP + r, line.text.slice(0, cols - 1), line.color ?? FG);
+        if (line.runs) {
+          let x = 0;
+          for (const run of line.runs) {
+            if (x >= cols - 1) break;
+            const chunk = run.text.slice(0, cols - 1 - x);
+            term.print(x, BODY_TOP + r, chunk, run.color);
+            x += chunk.length;
+          }
+        } else {
+          term.print(0, BODY_TOP + r, line.text.slice(0, cols - 1), line.color ?? FG);
+        }
       }
       const more = maxTop > 0 ? `  (${top + 1}-${Math.min(top + bodyRows, lines.length)}/${lines.length})` : "";
       term.print(0, rows - 1, (footer + more).slice(0, cols - 1), DIM);
