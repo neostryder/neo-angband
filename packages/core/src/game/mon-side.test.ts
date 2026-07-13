@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ORIGIN, TMD, TV } from "../generated";
 import { STAT } from "../generated";
 import { loc } from "../loc";
@@ -292,5 +292,236 @@ describe("live monster melee - theft", () => {
     /* The stolen item is carried by the monster (drops on death). */
     expect(setup.mon.heldObj.length).toBe(1);
     expect(setup.mon.heldObj[0]!.tval).toBe(TV.FOOD);
+  });
+});
+
+/*
+ * The EAT_ handlers' own RNG draw order/count (mon-blows.c
+ * melee_effect_handler_EAT_GOLD / _EAT_ITEM / _EAT_FOOD / _EAT_LIGHT,
+ * steal_player_item), called directly on the MonBlowEnv so the draw counts
+ * aren't muddied by the to-hit / damage rolls in monMeleeAttack. Each pair of
+ * tests below covers a "steal happens" branch and a "nothing to steal"
+ * branch, per mon-blows.c: paralysis (TMD_PARALYZED) skips the saving-throw
+ * draw entirely (a false-first `&&` operand, matching C's short-circuit), and
+ * EAT_LIGHT always draws its "250+1d250" regardless of whether a light is
+ * actually worn.
+ */
+describe("live monster melee - EAT_ handler RNG order (mon-blows.c)", () => {
+  it("EAT_GOLD: paralysis skips the saving throw; the gold roll is the only draw", () => {
+    const state = makeState({ seed: 7 });
+    const mon = addMon(state, makeRace({ level: 50 }), loc(19, 12));
+    const msgs: string[] = [];
+    const env = buildEnvWithMsgs(state, mon, {}, msgs);
+    state.actor.player.au = 1000;
+    state.actor.player.timed[TMD.PARALYZED] = 1;
+
+    const randint0Spy = vi.spyOn(state.rng, "randint0");
+    const randint1Spy = vi.spyOn(state.rng, "randint1");
+
+    const blinked = env.eatGold();
+
+    expect(randint0Spy).not.toHaveBeenCalled();
+    expect(randint1Spy).toHaveBeenCalledTimes(1);
+    expect(randint1Spy).toHaveBeenCalledWith(25);
+    expect(blinked).toBe(true);
+    expect(state.actor.player.au).toBeLessThan(1000);
+    expect(mon.heldObj.length).toBeGreaterThan(0);
+  });
+
+  it("EAT_GOLD: still draws the gold roll (no blink) when the player is broke", () => {
+    const state = makeState({ seed: 7 });
+    const mon = addMon(state, makeRace({ level: 50 }), loc(19, 12));
+    const msgs: string[] = [];
+    const env = buildEnvWithMsgs(state, mon, {}, msgs);
+    state.actor.player.au = 0;
+    state.actor.player.timed[TMD.PARALYZED] = 1;
+
+    const randint0Spy = vi.spyOn(state.rng, "randint0");
+    const randint1Spy = vi.spyOn(state.rng, "randint1");
+
+    const blinked = env.eatGold();
+
+    expect(randint0Spy).not.toHaveBeenCalled();
+    expect(randint1Spy).toHaveBeenCalledTimes(1);
+    expect(blinked).toBe(false);
+    expect(state.actor.player.au).toBe(0);
+    expect(mon.heldObj.length).toBe(0);
+    expect(msgs).toContain("Nothing was stolen.");
+  });
+
+  it("EAT_GOLD: a successful saving throw draws the save plus the occasional-blink roll, no gold roll", () => {
+    const state = makeState({ seed: 7 });
+    const mon = addMon(state, makeRace({ level: 50 }), loc(19, 12));
+    const msgs: string[] = [];
+    const env = buildEnvWithMsgs(state, mon, {}, msgs);
+    state.actor.player.au = 1000;
+    /* lev 100 forces adj_dex_safe[dex] + lev >= 100 > any randint0(100). */
+    state.actor.player.lev = 100;
+
+    const randint0Spy = vi.spyOn(state.rng, "randint0");
+    const randint1Spy = vi.spyOn(state.rng, "randint1");
+
+    env.eatGold();
+
+    expect(randint0Spy).toHaveBeenCalledTimes(2);
+    expect(randint1Spy).not.toHaveBeenCalled();
+    expect(msgs).toContain("You quickly protect your money pouch!");
+    expect(state.actor.player.au).toBe(1000);
+  });
+
+  it("EAT_ITEM: paralysis skips the saving throw; steals the only pack item in one draw", () => {
+    const state = makeState({ seed: 11 });
+    const mon = addMon(state, makeRace({ level: 50 }), loc(19, 12));
+    const msgs: string[] = [];
+    const env = buildEnvWithMsgs(state, mon, { packSize: 1 }, msgs);
+    state.actor.player.timed[TMD.PARALYZED] = 1;
+
+    const food = objectPrep(
+      new Rng(9),
+      objReg,
+      constants,
+      objReg.kinds.find(
+        (k) => k.tval === TV.FOOD && k.kidx < objReg.ordinaryKindCount,
+      )!,
+      0,
+      "average",
+    );
+    food.number = 1;
+    const handle = gearAdd(state.gear, food);
+    state.gear.pack.push(handle);
+
+    const randint0Spy = vi.spyOn(state.rng, "randint0");
+
+    const result = env.eatItem();
+
+    expect(randint0Spy).toHaveBeenCalledTimes(1);
+    expect(randint0Spy).toHaveBeenCalledWith(1);
+    expect(result.blinked).toBe(true);
+    expect(state.gear.pack.length).toBe(0);
+    expect(mon.heldObj.length).toBe(1);
+  });
+
+  it("EAT_ITEM: an empty pack still burns all ten tries and steals nothing", () => {
+    const state = makeState({ seed: 11 });
+    const mon = addMon(state, makeRace({ level: 50 }), loc(19, 12));
+    const msgs: string[] = [];
+    const env = buildEnvWithMsgs(state, mon, { packSize: 5 }, msgs);
+    state.actor.player.timed[TMD.PARALYZED] = 1;
+
+    const randint0Spy = vi.spyOn(state.rng, "randint0");
+
+    const result = env.eatItem();
+
+    expect(randint0Spy).toHaveBeenCalledTimes(10);
+    expect(result.blinked).toBe(false);
+    expect(mon.heldObj.length).toBe(0);
+  });
+
+  it("EAT_ITEM: a successful saving throw draws exactly one roll and always blinks", () => {
+    const state = makeState({ seed: 11 });
+    const mon = addMon(state, makeRace({ level: 50 }), loc(19, 12));
+    const msgs: string[] = [];
+    const env = buildEnvWithMsgs(state, mon, {}, msgs);
+    state.actor.player.lev = 100;
+
+    const randint0Spy = vi.spyOn(state.rng, "randint0");
+
+    const result = env.eatItem();
+
+    expect(randint0Spy).toHaveBeenCalledTimes(1);
+    expect(result.blinked).toBe(true);
+    expect(msgs).toContain("You grab hold of your backpack!");
+  });
+
+  it("EAT_FOOD: eats the only edible pack item in one draw", () => {
+    const state = makeState({ seed: 13 });
+    const mon = addMon(state, makeRace({ level: 50 }), loc(19, 12));
+    const msgs: string[] = [];
+    const env = buildEnvWithMsgs(state, mon, { packSize: 1 }, msgs);
+
+    const food = objectPrep(
+      new Rng(9),
+      objReg,
+      constants,
+      objReg.kinds.find(
+        (k) => k.tval === TV.FOOD && k.kidx < objReg.ordinaryKindCount,
+      )!,
+      0,
+      "average",
+    );
+    food.number = 1;
+    const handle = gearAdd(state.gear, food);
+    state.gear.pack.push(handle);
+
+    const randint0Spy = vi.spyOn(state.rng, "randint0");
+
+    env.eatFood();
+
+    expect(randint0Spy).toHaveBeenCalledTimes(1);
+    expect(state.gear.pack.length).toBe(0);
+    expect(msgs.some((m) => m.includes("was eaten!"))).toBe(true);
+  });
+
+  it("EAT_FOOD: an empty pack burns all ten tries and eats nothing", () => {
+    const state = makeState({ seed: 13 });
+    const mon = addMon(state, makeRace({ level: 50 }), loc(19, 12));
+    const msgs: string[] = [];
+    const env = buildEnvWithMsgs(state, mon, { packSize: 5 }, msgs);
+
+    const randint0Spy = vi.spyOn(state.rng, "randint0");
+
+    env.eatFood();
+
+    expect(randint0Spy).toHaveBeenCalledTimes(10);
+    expect(msgs.length).toBe(0);
+  });
+
+  it("EAT_LIGHT: drains exactly one RNG value, identically whether or not a light is worn", () => {
+    /* No light equipped: the drain roll still happens (effect_calculate_value
+     * runs unconditionally before the "is there a light" check). */
+    const stateA = makeState({ seed: 21 });
+    const monA = addMon(stateA, makeRace({ level: 50 }), loc(19, 12));
+    const envA = buildEnvWithMsgs(stateA, monA, {}, []);
+    const spyA = vi.spyOn(stateA.rng, "randint1");
+
+    envA.eatLight();
+
+    expect(spyA).toHaveBeenCalledTimes(1);
+    expect(spyA).toHaveBeenCalledWith(250);
+
+    /* Same seed, a fueled light worn: same single draw, fuel is now spent. */
+    const stateB = makeState({ seed: 21 });
+    const monB = addMon(stateB, makeRace({ level: 50 }), loc(19, 12));
+    const msgsB: string[] = [];
+    const envB = buildEnvWithMsgs(stateB, monB, {}, msgsB);
+    const light = objectPrep(
+      new Rng(3),
+      objReg,
+      constants,
+      objReg.kinds.find(
+        (k) => k.tval === TV.LIGHT && k.kidx < objReg.ordinaryKindCount,
+      )!,
+      0,
+      "average",
+    );
+    light.timeout = 5000;
+    const handle = gearAdd(stateB.gear, light);
+    const lightSlot = stateB.actor.player.body.slots.findIndex(
+      (s) => s.type === "LIGHT",
+    );
+    stateB.actor.player.equipment[lightSlot] = handle;
+
+    const spyB = vi.spyOn(stateB.rng, "randint1");
+
+    envB.eatLight();
+
+    expect(spyB).toHaveBeenCalledTimes(1);
+    expect(spyB).toHaveBeenCalledWith(250);
+    expect(light.timeout).toBeLessThan(5000);
+    /* Same seed, same single draw either way: RNG consumption is invariant
+     * across the "light present" branch, exactly as effect_handler_DRAIN_LIGHT
+     * always calls effect_calculate_value before checking for an object. */
+    expect(stateB.rng.getState()).toEqual(stateA.rng.getState());
+    expect(msgsB).toContain("Your light dims.");
   });
 });
