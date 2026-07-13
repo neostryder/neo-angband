@@ -53,6 +53,8 @@ export interface GameConstants {
   reproMonsterMax: number;
   /** z_info->repro_monster_rate (mon-play:mult-rate): 1/(k*rate) breed chance. */
   reproMonsterRate: number;
+  /** z_info->glyph_hardness (mon-play:break-glyph): monster glyph-break roll. */
+  glyphHardness: number;
   /** z_info->day_length (is_daytime; the town day/night cycle). */
   dayLength: number;
   /** z_info->food_value. */
@@ -88,6 +90,7 @@ export const DEFAULT_GAME_CONSTANTS: GameConstants = {
   turnRange: 5,
   reproMonsterMax: 100,
   reproMonsterRate: 8,
+  glyphHardness: 550,
   dayLength: 10000,
   foodValue: 100,
   foodStarve: 100,

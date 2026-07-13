@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FEAT, MFLAG, MON_TMD, OF, RF, SQUARE, TV } from "../generated";
+import { FEAT, MFLAG, MON_TMD, OF, RF, SQUARE, TRF, TV } from "../generated";
+import { FlagSet } from "../bitflag";
 import { distance, loc } from "../loc";
 import type { Loc } from "../loc";
 import { makeNoise } from "../world/flow";
@@ -8,17 +9,44 @@ import { MON_GROUP } from "../mon/types";
 import { newOfFlags } from "../obj/types";
 import { objectNew } from "../obj/object";
 import type { GameObject } from "../obj/object";
+import { TRF_SIZE } from "../world/trap";
 import type { GameState } from "./context";
 import { updateMonsterDistances } from "./context";
 import { monsterAddToGroup, monsterGroupStart } from "./mon-group";
+import { squareIsWebbed } from "./trap";
 import {
   STAGGER,
+  getMoveBodyguard,
+  getMoveFindHiding,
+  monsterCheckActive,
   monsterTurn,
   monsterTurnMultiply,
   monsterTurnShouldStagger,
   processMonsterTimed,
 } from "./monster-turn";
-import { GRANITE, addMon, makeRace, makeBlow, makeState } from "./harness";
+import { GRANITE, featureReg, addMon, makeRace, makeBlow, makeState } from "./harness";
+
+const LAVA = featureReg.byCodeName("LAVA").fidx;
+
+/** Insert a bare trap carrying `flagIdx` at `grid` (bypasses the trap system). */
+function putTrap(state: GameState, grid: Loc, tidx: number, flagIdx: number): void {
+  const flags = new FlagSet(TRF_SIZE);
+  flags.on(flagIdx);
+  const trap = { tidx, grid, power: 0, timeout: 0, flags } as never;
+  state.traps.set(grid.y * state.chunk.width + grid.x, [trap]);
+}
+
+/** A monster placed east of the player, its grid marked in view (so it beelines). */
+function beeliner(
+  overrides: { level?: number; flags?: number[] } = {},
+): { state: GameState; mon: ReturnType<typeof addMon>; barrier: Loc } {
+  const state = makeState({ playerGrid: loc(15, 10) });
+  const race = makeRace({ level: overrides.level ?? 20, flags: overrides.flags ?? [] });
+  const mon = addMon(state, race, loc(17, 10), { hp: 40 });
+  state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+  updateMonsterDistances(state);
+  return { state, mon, barrier: loc(16, 10) };
+}
 
 /** A minimal floor object placed directly into the pile (bypasses floorCarry). */
 function putItem(state: GameState, grid: Loc, tval: number): GameObject {
@@ -415,6 +443,178 @@ describe("aggravation (monster_reduce_sleep)", () => {
     const { state, mon } = sleeper(false);
     processMonsterTimed(mon, state);
     expect(mon.mTimed[MON_TMD.SLEEP]).toBeGreaterThan(0);
+  });
+});
+
+describe("group AI: bodyguard (get_move_bodyguard)", () => {
+  function pack(guardGrid: Loc): {
+    state: GameState;
+    leader: ReturnType<typeof addMon>;
+    guard: ReturnType<typeof addMon>;
+  } {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const race = makeRace({ level: 10 });
+    const leader = addMon(state, race, loc(20, 10));
+    const guard = addMon(state, race, guardGrid);
+    monsterGroupStart(state, leader, GROUP_TYPE.PRIMARY);
+    const gi = leader.groupInfo[GROUP_TYPE.PRIMARY]!.index;
+    guard.groupInfo[GROUP_TYPE.PRIMARY]! = { index: gi, role: MON_GROUP.BODYGUARD };
+    monsterAddToGroup(state, guard, state.groups[gi]!);
+    updateMonsterDistances(state);
+    return { state, leader, guard };
+  }
+
+  it("targets a grid closer to its leader and draws no RNG", () => {
+    const { state, leader, guard } = pack(loc(23, 10));
+    const before = JSON.stringify(state.rng.getState());
+
+    expect(getMoveBodyguard(guard, state)).toBe(true);
+    expect(distance(guard.target.grid, leader.grid)).toBeLessThan(
+      distance(guard.grid, leader.grid),
+    );
+    expect(JSON.stringify(state.rng.getState())).toBe(before);
+  });
+
+  it("does not use a bodyguard move when already adjacent to its leader", () => {
+    const { state, guard } = pack(loc(21, 10));
+    expect(getMoveBodyguard(guard, state)).toBe(false);
+  });
+
+  it("a bodyguard steps toward its leader on its turn", () => {
+    const { state, leader, guard } = pack(loc(23, 10));
+    const before = distance(guard.grid, leader.grid);
+    monsterTurn(guard, state);
+    expect(distance(guard.grid, leader.grid)).toBeLessThan(before);
+  });
+});
+
+describe("group AI: pack ambush (get_move_find_hiding)", () => {
+  it("finds a hidden grid to lie in wait, drawing no RNG", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = addMon(state, makeRace({ level: 10, flags: [RF.GROUP_AI] }), loc(20, 10));
+    updateMonsterDistances(state);
+    const min = Math.trunc((distance(state.actor.grid, mon.grid) * 3) / 4) + 2;
+    const before = JSON.stringify(state.rng.getState());
+
+    expect(getMoveFindHiding(mon, state)).toBe(true);
+    /* Out of the player's view and far enough away to be a real ambush spot. */
+    expect(state.chunk.sqinfoHas(mon.target.grid, SQUARE.VIEW)).toBe(false);
+    expect(distance(mon.target.grid, state.actor.grid)).toBeGreaterThanOrEqual(min);
+    expect(JSON.stringify(state.rng.getState())).toBe(before);
+  });
+});
+
+describe("glyph handling (monster_turn_attack_glyph)", () => {
+  it("a high-level monster breaks a glyph of warding and steps onto it", () => {
+    const { state, mon, barrier } = beeliner({ level: 600 });
+    putTrap(state, barrier, 1, TRF.GLYPH);
+
+    monsterTurn(mon, state);
+
+    const key = barrier.y * state.chunk.width + barrier.x;
+    expect(state.traps.get(key)).toBeUndefined();
+    expect(mon.grid).toEqual(barrier);
+  });
+
+  it("a weak monster cannot break the glyph and never crosses it", () => {
+    const { state, mon, barrier } = beeliner({ level: 1 });
+    putTrap(state, barrier, 1, TRF.GLYPH);
+
+    monsterTurn(mon, state);
+
+    const key = barrier.y * state.chunk.width + barrier.x;
+    expect(state.traps.get(key)).toBeDefined();
+    expect(mon.grid).not.toEqual(barrier);
+  });
+});
+
+describe("decoy handling (square_isdecoyed / square_destroy_decoy)", () => {
+  it("a monster destroys a decoy it reaches and clears cave->decoy", () => {
+    const { state, mon, barrier } = beeliner({ level: 20 });
+    state.decoy = barrier;
+    /* The decoy trap carries the GLYPH flag, like a glyph of warding. */
+    putTrap(state, barrier, 2, TRF.GLYPH);
+
+    monsterTurn(mon, state);
+
+    expect(state.decoy).toBeNull();
+    const key = barrier.y * state.chunk.width + barrier.x;
+    expect(state.traps.get(key)).toBeUndefined();
+    /* Destroying the decoy spends the turn; the monster stays put. */
+    expect(mon.grid).toEqual(loc(17, 10));
+  });
+});
+
+describe("web handling (square_iswebbed)", () => {
+  function webbed(flags: number[]): {
+    state: GameState;
+    mon: ReturnType<typeof addMon>;
+  } {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = addMon(state, makeRace({ level: 10, hearing: 30, flags }), loc(20, 10));
+    state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+    putTrap(state, mon.grid, 3, TRF.WEB);
+    makeNoise(state.chunk, { grid: state.actor.grid, covertTracks: false });
+    updateMonsterDistances(state);
+    return { state, mon };
+  }
+
+  it("a PASS_WEB monster ignores the web and still moves", () => {
+    const { state, mon } = webbed([RF.PASS_WEB]);
+    const start = mon.grid;
+    monsterTurn(mon, state);
+    expect(squareIsWebbed(state, start)).toBe(true);
+    expect(mon.grid).not.toEqual(start);
+  });
+
+  it("a CLEAR_WEB monster clears the web and spends its turn", () => {
+    const { state, mon } = webbed([RF.CLEAR_WEB]);
+    const start = mon.grid;
+    monsterTurn(mon, state);
+    expect(squareIsWebbed(state, start)).toBe(false);
+    expect(mon.grid).toEqual(start);
+  });
+
+  it("a monster with no web ability is stuck and does nothing", () => {
+    const { state, mon } = webbed([]);
+    const start = mon.grid;
+    monsterTurn(mon, state);
+    expect(squareIsWebbed(state, start)).toBe(true);
+    expect(mon.grid).toEqual(start);
+  });
+});
+
+describe("damaging terrain (monster_hates_grid / taking_terrain_damage)", () => {
+  it("a monster on unresisted lava is active from terrain damage", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = addMon(state, makeRace({ level: 10 }), loc(30, 10));
+    state.chunk.setFeat(mon.grid, LAVA);
+    updateMonsterDistances(state);
+    expect(monsterCheckActive(mon, state)).toBe(true);
+  });
+
+  it("a fire-immune monster on lava is not activated by the terrain", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = addMon(state, makeRace({ level: 10, flags: [RF.IM_FIRE] }), loc(30, 10));
+    state.chunk.setFeat(mon.grid, LAVA);
+    updateMonsterDistances(state);
+    expect(monsterCheckActive(mon, state)).toBe(false);
+  });
+
+  it("a monster refuses to step into lava it cannot resist", () => {
+    const { state, mon, barrier } = beeliner({ level: 20 });
+    state.chunk.setFeat(barrier, LAVA);
+    updateMonsterDistances(state);
+    monsterTurn(mon, state);
+    expect(mon.grid).not.toEqual(barrier);
+  });
+
+  it("a fire-immune monster will walk into lava", () => {
+    const { state, mon, barrier } = beeliner({ level: 20, flags: [RF.IM_FIRE] });
+    state.chunk.setFeat(barrier, LAVA);
+    updateMonsterDistances(state);
+    monsterTurn(mon, state);
+    expect(mon.grid).toEqual(barrier);
   });
 });
 
