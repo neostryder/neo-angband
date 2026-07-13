@@ -22,7 +22,7 @@
  * tickMonsterMarks() until the world-clock port absorbs it.
  */
 
-import { MFLAG, OF, RF, SQUARE, TMD } from "../generated";
+import { FEAT, MFLAG, OF, RF, SQUARE, TF, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { loc } from "../loc";
 import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view";
@@ -103,6 +103,61 @@ export function knownFeat(state: GameState, grid: Loc): number {
 export function squareMemoryBad(state: GameState, grid: Loc): boolean {
   const known = state.known.feat[gi(state, grid)]!;
   return known >= 0 && known !== state.chunk.feat(grid);
+}
+
+/** The remembered feat at a grid, or FEAT_NONE ("unknown grid") if unknown. */
+function apparentFeat(state: GameState, grid: Loc): number {
+  const f = knownFeat(state, grid);
+  return f >= 0 ? f : FEAT.NONE;
+}
+
+/** The mimic-resolved feature backing the grid's remembered terrain. */
+function apparentFeature(state: GameState, grid: Loc) {
+  const f = state.chunk.features.get(apparentFeat(state, grid));
+  return f.mimic !== null ? state.chunk.features.get(f.mimic) : f;
+}
+
+/**
+ * square_apparent_name (cave-square.c): the mimic-resolved name of the
+ * grid's remembered terrain (the look/target UI's "You see <name>").
+ */
+export function squareApparentName(state: GameState, grid: Loc): string {
+  return apparentFeature(state, grid).name;
+}
+
+/**
+ * square_apparent_look_prefix (cave-square.c): the indefinite article (or a
+ * feature-specific override) that precedes squareApparentName. Overrides are
+ * reproduced verbatim from terrain.txt, trailing space and all - stores'
+ * "the entrance to the " carries one, LAVA's "some" does not (upstream data,
+ * not a port bug).
+ */
+export function squareApparentLookPrefix(state: GameState, grid: Loc): string {
+  const f = apparentFeature(state, grid);
+  if (f.lookPrefix) return f.lookPrefix;
+  const c = f.name.charAt(0).toLowerCase();
+  return "aeiou".includes(c) ? "an " : "a ";
+}
+
+/**
+ * square_apparent_look_in_preposition (cave-square.c): the preposition (or a
+ * feature-specific override) used for the player's own grid ("You are
+ * <preposition><name>."). Overrides are reproduced verbatim from terrain.txt
+ * (e.g. doors' "in" carries no trailing space, unlike the "on " default).
+ */
+export function squareApparentLookInPreposition(state: GameState, grid: Loc): string {
+  const f = apparentFeature(state, grid);
+  return f.lookInPreposition || "on ";
+}
+
+/**
+ * square_isinteresting (cave-square.c), read against the player's knowledge
+ * (as target_accept and the look UI's terrain handler do): a memorized grid
+ * whose feature carries TF_INTERESTING.
+ */
+export function squareIsInteresting(state: GameState, grid: Loc): boolean {
+  if (!squareIsKnown(state, grid)) return false;
+  return state.chunk.features.featHas(knownFeat(state, grid), TF.INTERESTING);
 }
 
 /** The remembered floor object at a grid, if any. */

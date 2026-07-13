@@ -21,7 +21,7 @@
  * health_track).
  */
 
-import { MON_TMD, TF, TMD } from "../generated";
+import { MON_TMD, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { loc } from "../loc";
 import type { Monster } from "../mon/monster";
@@ -35,7 +35,7 @@ import { PROJECT, projectable } from "../world/project";
 import { squareIsSeen } from "../world/view";
 import type { GameState } from "./context";
 import { monsterAt, squareMonster } from "./context";
-import { knownFeat, knownObject, squareIsKnown } from "./known";
+import { knownObject, squareIsInteresting } from "./known";
 import { squareIsVisibleTrap } from "./trap";
 
 /** Bit flags for target_get_monsters / target_set_closest (target.h). */
@@ -294,10 +294,7 @@ export function targetAccept(state: GameState, grid: Loc): boolean {
   if (knownObject(state, grid)) return true;
 
   /* Interesting memorized features. */
-  if (squareIsKnown(state, grid)) {
-    const feat = knownFeat(state, grid);
-    if (state.chunk.features.featHas(feat, TF.INTERESTING)) return true;
-  }
+  if (squareIsInteresting(state, grid)) return true;
 
   return false;
 }
