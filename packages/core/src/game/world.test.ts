@@ -13,9 +13,11 @@ import {
   processDamageOverTime,
   processFaintOrStarve,
   rechargeObjects,
+  worldTakeHit,
 } from "./world";
 import { processWorld } from "./loop";
 import { makeState, monReg } from "./harness";
+import { OptionState } from "../player/options";
 
 /** A minimal held object for the light / recharge upkeep tests. */
 function makeObj(tval: number, over: Partial<GameObject> = {}): GameObject {
@@ -90,6 +92,47 @@ describe("ambient monster generation", () => {
     expect(draws[0]).toBe(60);
     expect(draws[1]).toBe(40);
     if (placed) expect(after).toBe(before + 1);
+  });
+});
+
+describe("hitpoint warning (world.ts:142-144 bug fix)", () => {
+  // Regression for t2verify__options-settings-screen: worldTakeHitTarget used
+  // to read `state.options?.get("hitpoint_warn")`, but "hitpoint_warn" is not
+  // a boolean option name (it is the scalar OptionState.hitpointWarn field),
+  // so get() always returned false and the low-hp warning threshold
+  // collapsed to 0 (never fired). The fix reads state.options.hitpointWarn.
+  it("fires the low-hitpoint warning at the configured threshold", () => {
+    const worldMsgs: string[] = [];
+    const state = makeState({ worldMsgs });
+    state.options = new OptionState({ hitpointWarn: 3 }); // warn below 30%
+    const p = state.actor.player;
+    p.mhp = 100;
+    p.chp = 100;
+    worldTakeHit(state, 75, "testing"); // chp -> 25, below the 30 threshold
+    expect(p.chp).toBe(25);
+    expect(worldMsgs).toContain("*** LOW HITPOINT WARNING! ***");
+  });
+
+  it("does not warn above the configured threshold", () => {
+    const worldMsgs: string[] = [];
+    const state = makeState({ worldMsgs });
+    state.options = new OptionState({ hitpointWarn: 3 }); // threshold 30
+    const p = state.actor.player;
+    p.mhp = 100;
+    p.chp = 100;
+    worldTakeHit(state, 65, "testing"); // chp -> 35, still above 30
+    expect(worldMsgs).not.toContain("*** LOW HITPOINT WARNING! ***");
+  });
+
+  it("falls back to the shipped default (3) when no option store is present", () => {
+    const worldMsgs: string[] = [];
+    const state = makeState({ worldMsgs });
+    // state.options left undefined, as the worldless harness does by default.
+    const p = state.actor.player;
+    p.mhp = 100;
+    p.chp = 100;
+    worldTakeHit(state, 75, "testing"); // chp -> 25, default warn=3 -> threshold 30
+    expect(worldMsgs).toContain("*** LOW HITPOINT WARNING! ***");
   });
 });
 
