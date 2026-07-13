@@ -134,8 +134,17 @@ import { GlyphTerm } from "./term";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import { createTileRenderer } from "./tiles";
-import { showTextScreen, selectFromMenu, promptText, promptDirection, AIM_STAR } from "./overlay";
+import {
+  showTextScreen,
+  selectFromMenu,
+  promptText,
+  promptDirection,
+  AIM_STAR,
+  showLevelMap,
+} from "./overlay";
 import type { MenuItem, ScreenLine } from "./overlay";
+import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
+import type { Overview } from "./mapview";
 import { runBirth } from "./birth";
 import { MessageLog } from "./messages";
 import {
@@ -2026,6 +2035,45 @@ function monsterIndex(): Map<number, { ch: string; css: string }> {
   return map;
 }
 
+/**
+ * do_cmd_view_map's data ('M', ui-map.c display_map): the priority-resolved
+ * whole-level miniature, scaled to fit the current terminal (minus the
+ * 1-cell box border on each side). Reuses exactly the map-knowledge helpers
+ * render() itself reads (knownFeat/knownObject/features/monsterIndex/
+ * trapIndex) - buildOverview (mapview.ts) only does the scan/scale/priority
+ * arithmetic; no parallel glyph pipeline is built here. A pure read: no RNG,
+ * no state mutation.
+ */
+function buildOverviewForShell(): Overview {
+  const { cols, rows } = term.size();
+  const mapW = Math.min(cols - 2, state.chunk.width);
+  const mapH = Math.min(rows - 2, state.chunk.height);
+  const monsterAt = monsterIndex();
+  const trapAt = trapIndex();
+  return buildOverview({
+    width: state.chunk.width,
+    height: state.chunk.height,
+    mapW,
+    mapH,
+    knownFeatAt: (x, y) => knownFeat(state, loc(x, y)),
+    featureGlyph: (fidx) => {
+      const f = features.get(fidx);
+      const disp = f.mimic !== null ? features.get(f.mimic) : f;
+      return { ch: disp.dChar, css: colorToCss(colorCharToAttr(disp.dAttr)), priority: disp.priority };
+    },
+    objectGlyphAt: (x, y) => {
+      const mem = knownObject(state, loc(x, y));
+      if (!mem) return null;
+      return mem.ch === null
+        ? { ch: "*", css: "#8a8a94" }
+        : { ch: mem.ch, css: colorToCss(colorCharToAttr(mem.attr)) };
+    },
+    trapGlyphAt: (x, y) => trapAt.get(gridIndex(x, y)) ?? null,
+    monsterGlyphAt: (x, y) => monsterAt.get(gridIndex(x, y)) ?? null,
+    playerGrid: { x: state.actor.grid.x, y: state.actor.grid.y },
+  });
+}
+
 const SIDEBAR_W = 13; // classic Angband status column width.
 
 /** Display seams the engine model needs beyond GameState (timed-effect names,
@@ -2084,6 +2132,16 @@ function renderStatusLine(originX: number, row: number, maxCols: number): void {
  * message row. Roomy screens keep the classic left sidebar. Kept as a helper
  * so the touch handler maps a tapped cell back to a grid square identically.
  */
+// 'L' locate (do_cmd_locate): while set, viewport() reports this panned
+// top-left instead of centering on the player - change_panel's effect on the
+// camera. Named generically (not "target*") since a future look/cursor
+// scroll seam can reuse the same override. null outside locate mode.
+let locateCam: Loc | null = null;
+// True for the duration of the 'L' loop: gates the idle animation timer
+// (below) so a mid-locate repaint cannot wipe the sector banner it paints
+// over row 0 after every render() call.
+let locateActive = false;
+
 function viewport(focus?: Loc): {
   compact: boolean;
   mapOriginX: number;
@@ -2099,9 +2157,15 @@ function viewport(focus?: Loc): {
   const mapTop = compact ? 2 : 1; // message row (+ a vitals row when compact)
   const mapCols = cols - mapOriginX;
   const mapRows = rows - mapTop - 1; // the last row is the status line
-  const center = focus ?? state.actor.grid;
-  const camX = center.x - Math.floor(mapCols / 2);
-  const camY = center.y - Math.floor(mapRows / 2);
+  let camX: number, camY: number;
+  if (locateCam) {
+    camX = locateCam.x;
+    camY = locateCam.y;
+  } else {
+    const center = focus ?? state.actor.grid;
+    camX = center.x - Math.floor(mapCols / 2);
+    camY = center.y - Math.floor(mapRows / 2);
+  }
   return { compact, mapOriginX, mapTop, mapCols, mapRows, camX, camY };
 }
 
@@ -2235,18 +2299,25 @@ function render(targeting?: TargetingOverlay): void {
   }
 
   // The player: centered and bright when the camera follows the player;
-  // repositioned to its own grid (which may be off-center) while targeting.
-  const playerScreenX = mapOriginX + (state.actor.grid.x - camX);
-  const playerScreenY = mapTop + (state.actor.grid.y - camY);
-  const playerIsCursor =
-    !!targeting &&
-    state.actor.grid.x === targeting.cursor.x &&
-    state.actor.grid.y === targeting.cursor.y;
-  term.put(playerScreenX, playerScreenY, {
-    ch: "@",
-    fg: "#e8e8f0",
-    ...(playerIsCursor ? { bg: CURSOR_BG } : {}),
-  });
+  // repositioned to its own grid (which may be off-center) while targeting,
+  // or while 'L' locate has panned the camera away entirely - in which case
+  // the marker is simply not drawn, exactly as a panned real-terminal panel
+  // would show no player glyph when it scrolls out of the visible sector.
+  const playerDx = state.actor.grid.x - camX;
+  const playerDy = state.actor.grid.y - camY;
+  if (playerDx >= 0 && playerDx < mapCols && playerDy >= 0 && playerDy < mapRows) {
+    const playerScreenX = mapOriginX + playerDx;
+    const playerScreenY = mapTop + playerDy;
+    const playerIsCursor =
+      !!targeting &&
+      state.actor.grid.x === targeting.cursor.x &&
+      state.actor.grid.y === targeting.cursor.y;
+    term.put(playerScreenX, playerScreenY, {
+      ch: "@",
+      fg: "#e8e8f0",
+      ...(playerIsCursor ? { bg: CURSOR_BG } : {}),
+    });
+  }
 
   if (compact) renderCompactVitals(1, cols);
   else renderSidebar(rows);
@@ -2268,6 +2339,102 @@ function render(targeting?: TargetingOverlay): void {
     term.print(mapOriginX, 0, message.slice(0, mapCols - 1), "#c8c8d4");
     renderStatusLine(mapOriginX, rows - 1, mapCols);
   }
+}
+
+/**
+ * do_cmd_locate ('L', ui-knowledge.c): pan the live map viewport around the
+ * level in half-panel steps without moving the player, showing a "Map sector
+ * [r,c]" banner (locateSectorBanner, mapview.ts), until ESC / dir 5 exits and
+ * the camera recenters on the player (verify_panel). A pure read: no RNG, no
+ * turn spent, state.actor.grid never changes.
+ */
+async function runLocate(): Promise<void> {
+  const vp0 = viewport();
+  const start: Loc = loc(vp0.camX, vp0.camY);
+  locateCam = start;
+  locateActive = true;
+  const paintBanner = (): void => {
+    render();
+    const vp = viewport();
+    const banner = locateSectorBanner(
+      { x: vp.camX, y: vp.camY },
+      { x: start.x, y: start.y },
+      vp.mapCols,
+      vp.mapRows,
+    );
+    term.print(vp.mapOriginX, 0, banner.slice(0, vp.mapCols - 1), "#e0c040");
+  };
+  const panDir = (dir: number): void => {
+    const vp = viewport();
+    const next = panLocate(
+      { x: vp.camX, y: vp.camY },
+      dir,
+      vp.mapCols,
+      vp.mapRows,
+      state.chunk.width,
+      state.chunk.height,
+    );
+    locateCam = loc(next.x, next.y);
+    paintBanner();
+  };
+  await new Promise<void>((resolve) => {
+    const finish = (): void => {
+      window.removeEventListener("keydown", onKey, true);
+      canvas.removeEventListener("pointerdown", onTap);
+      locateCam = null;
+      locateActive = false;
+      render(); // verify_panel: recenter on the player
+      resolve();
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (ev.key === "Escape") {
+        finish();
+        return;
+      }
+      const arrows: Record<string, number> = {
+        ArrowUp: 8, ArrowDown: 2, ArrowLeft: 4, ArrowRight: 6,
+      };
+      let dir: number | null = null;
+      if (ev.key in arrows) dir = arrows[ev.key] ?? null;
+      else if (/^[1-9]$/.test(ev.key)) dir = Number(ev.key);
+      if (dir === null) return;
+      if (dir === 5) {
+        finish();
+        return;
+      }
+      panDir(dir);
+    };
+    // Touch: faithful to do_cmd_locate's mouse edge-panning (ui-knowledge.c) -
+    // a tap in the outer margin of the map pans that way; a tap on the map's
+    // own center exits (there is no right-click on a touchscreen).
+    const onTap = (ev: PointerEvent): void => {
+      const rect = canvas.getBoundingClientRect();
+      const { col, row } = term.cellAt(ev.clientX - rect.left, ev.clientY - rect.top);
+      const vp = viewport();
+      const sx = col - vp.mapOriginX;
+      const sy = row - vp.mapTop;
+      if (sx < 0 || sy < 0 || sx >= vp.mapCols || sy >= vp.mapRows) return; // outside the map
+      ev.preventDefault();
+      const marginX = Math.max(1, Math.floor(vp.mapCols / 20));
+      const marginY = Math.max(1, Math.floor(vp.mapRows / 20));
+      let dy = 0;
+      let dx = 0;
+      if (sy < marginY) dy = -1;
+      else if (sy >= vp.mapRows - marginY) dy = 1;
+      if (sx < marginX) dx = -1;
+      else if (sx >= vp.mapCols - marginX) dx = 1;
+      if (dx === 0 && dy === 0) {
+        finish();
+        return;
+      }
+      panDir((1 - dy) * 3 + (dx + 2));
+    };
+    window.addEventListener("keydown", onKey, true);
+    canvas.addEventListener("pointerdown", onTap);
+    paintBanner();
+  });
 }
 
 /** Advance the engine after queuing input, then repaint. */
@@ -2410,6 +2577,19 @@ window.addEventListener("keydown", (ev) => {
     if (ev.key === "I") {
       ev.preventDefault();
       void openModal(() => inspectItem());
+      return;
+    }
+    // Full-level map ('M', do_cmd_view_map) and locate/scroll ('L',
+    // do_cmd_locate). Both checked here, before resolveKey() below, so the
+    // roguelike keyset's 'l'->run-east binding never shadows capital 'L'.
+    if (ev.key === "M") {
+      ev.preventDefault();
+      void openModal(() => showLevelMap(term, buildOverviewForShell()));
+      return;
+    }
+    if (ev.key === "L") {
+      ev.preventDefault();
+      void openModal(() => runLocate());
       return;
     }
     // Item-use verbs (original keyset: cmd-obj.c). Each opens a selection menu.
@@ -2639,6 +2819,8 @@ function installTouchActionBar(): void {
     }],
     ["Inv", () => { void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))); }],
     ["Objs", () => { void openModal(() => showTextScreen(term, "Objects in view", objectListLines(state))); }],
+    ["Map", () => { void openModal(() => showLevelMap(term, buildOverviewForShell())); }],
+    ["Locate", () => { void openModal(() => runLocate()); }],
     ["Insp", () => { void openModal(() => inspectItem()); }],
     ["Insc", () => { void openModal(() => inscribeItem()); }],
     ["Fuel", () => { void openModal(() => refuelItem()); }],
@@ -2826,7 +3008,11 @@ if (import.meta.env.DEV) {
 // deterministic RNG. When no tile/animation data is present it simply idles.
 const ANIM_INTERVAL_MS = 250;
 setInterval(() => {
-  if (dead || scoresOpen) return;
+  // Skip while 'L' locate owns the view: render() would erase the sector
+  // banner it prints over row 0 and re-derive the player marker from the
+  // panned camera every 250ms for no benefit - simplest faithful stand-in
+  // for upstream's own single-threaded UI, where nothing repaints mid-command.
+  if (dead || scoresOpen || locateActive) return;
   // Surface tile-pack readiness once (the live map stays ASCII pending the
   // pref-file mapping; this confirms the catalog + load path are wired).
   if (tileset && tileset.ready && !tileNoteShown) {
