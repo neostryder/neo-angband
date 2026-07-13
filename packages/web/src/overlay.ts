@@ -84,6 +84,11 @@ export function showTextScreen(
       const more = maxTop > 0 ? `  (${top + 1}-${Math.min(top + bodyRows, lines.length)}/${lines.length})` : "";
       term.print(0, rows - 1, (footer + more).slice(0, cols - 1), DIM);
     };
+    const finish = (): void => {
+      window.removeEventListener("keydown", onKey, true);
+      term.onCellTap?.(null);
+      resolve();
+    };
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -93,8 +98,7 @@ export function showTextScreen(
         case "Escape":
         case "Enter":
         case " ":
-          window.removeEventListener("keydown", onKey, true);
-          resolve();
+          finish();
           return;
         case "ArrowDown":
           top += 1;
@@ -114,6 +118,22 @@ export function showTextScreen(
       paint();
     };
     window.addEventListener("keydown", onKey, true);
+    // Tap: footer row closes; when the content scrolls, a tap in the upper
+    // half pages up and in the lower half pages down; a non-scrolling screen
+    // closes on any tap (the touch analogue of "any of ESC/Enter/Space").
+    term.onCellTap?.((cell) => {
+      const { rows } = term.size();
+      const bodyRows = rows - BODY_TOP - 1;
+      const maxTop = Math.max(0, lines.length - bodyRows);
+      if (cell.row === rows - 1 || maxTop === 0) {
+        finish();
+        return;
+      }
+      const page = Math.max(1, rows - BODY_TOP - 2);
+      if (cell.row < Math.floor(rows / 2)) top = Math.max(0, top - page);
+      else top += page;
+      paint();
+    });
     paint();
   });
 }
@@ -336,6 +356,14 @@ export interface MenuItem {
    * without a tag keep the exact-case positional behaviour untouched.
    */
   tag?: string;
+  /**
+   * One-line help for THIS row, shown on a reserved line above the footer
+   * while the row is under the cursor (the game menu's action descriptions,
+   * char-select's roster detail, birth's per-race/class notes). When any item
+   * in the menu carries a hint, the hint line is reserved for all of them so
+   * the list never jumps as the cursor moves.
+   */
+  hint?: string;
 }
 
 /**
@@ -363,6 +391,18 @@ export interface SelectMenuOptions {
   detailToggleKey?: string;
   /** Initial toggle state when `detailToggleKey` is set (default false, matching spell_menu_new's cast/study call sites; textui_book_browse passes true). */
   detailInitiallyShown?: boolean;
+  /**
+   * A one-line subtitle under the title (upstream birthmenu_data.hint: the
+   * stage-wide "Race affects stats and skills..." line), rendered dim on the
+   * row the plain menu leaves blank - no layout shift for callers without it.
+   */
+  subtitle?: string;
+  /** Footer legend override; wins over the positional `footer` parameter. */
+  footer?: string;
+  /** Start the cursor on this row (skipped if it is disabled/out of range). */
+  initialCursor?: number;
+  /** Called with the cursor row on open and after every cursor move. */
+  onHighlight?: (index: number) => void;
 }
 
 /**
@@ -388,16 +428,31 @@ export function selectFromMenu(
   return new Promise<number | null>((resolve) => {
     let cursor = items.findIndex((it) => !it.disabled);
     if (cursor < 0) cursor = 0;
+    const wanted = extra?.initialCursor;
+    if (wanted !== undefined && wanted >= 0 && wanted < items.length && !items[wanted]?.disabled) {
+      cursor = wanted;
+    }
     let top = 0;
+    // Painted geometry, kept for the tap handler (a tapped screen row maps
+    // back to top + (row - listTop) using exactly what the last paint drew).
+    let paintedBodyRows = 1;
+    let listTop = BODY_TOP;
     const detail = extra?.detail;
     const toggleKey = extra?.detailToggleKey;
+    const hasHints = items.some((it) => it.hint !== undefined);
     let detailShown = toggleKey ? (extra?.detailInitiallyShown ?? false) : true;
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
       term.print(0, HEADER_ROW, title.slice(0, cols - 1), TITLE);
+      if (extra?.subtitle) {
+        term.print(0, HEADER_ROW + 1, extra.subtitle.slice(0, cols - 1), DIM);
+      }
       const detailLines = detail && detailShown ? detail(cursor) : [];
-      const bodyRows = Math.max(1, rows - BODY_TOP - 1 - detailLines.length);
+      const hintRows = hasHints ? 1 : 0;
+      const bodyRows = Math.max(1, rows - BODY_TOP - 1 - detailLines.length - hintRows);
+      paintedBodyRows = bodyRows;
+      listTop = BODY_TOP;
       if (cursor < top) top = cursor;
       if (cursor >= top + bodyRows) top = cursor - bodyRows + 1;
       for (let r = 0; r < bodyRows; r++) {
@@ -412,7 +467,7 @@ export function selectFromMenu(
       }
       let dy = BODY_TOP + bodyRows;
       for (const line of detailLines) {
-        if (dy >= rows - 1) break;
+        if (dy >= rows - 1 - hintRows) break;
         if (line.runs) {
           let x = 0;
           for (const run of line.runs) {
@@ -426,17 +481,27 @@ export function selectFromMenu(
         }
         dy++;
       }
-      term.print(0, rows - 1, footer.slice(0, cols - 1), DIM);
+      if (hasHints) {
+        const hint = items[cursor]?.hint ?? "";
+        if (hint) term.print(0, rows - 2, hint.slice(0, cols - 1), DIM);
+      }
+      term.print(0, rows - 1, (extra?.footer ?? footer).slice(0, cols - 1), DIM);
     };
     const finish = (value: number | null): void => {
       window.removeEventListener("keydown", onKey, true);
+      term.onCellTap?.(null);
       resolve(value);
+    };
+    const setCursor = (i: number): void => {
+      if (i === cursor) return;
+      cursor = i;
+      extra?.onHighlight?.(cursor);
     };
     const pick = (i: number): void => {
       const it = items[i];
       if (!it || it.disabled) return;
       if (extra?.browseOnly) {
-        cursor = i;
+        setCursor(i);
         paint();
         return;
       }
@@ -460,14 +525,14 @@ export function selectFromMenu(
       }
       if (ev.key === "ArrowDown") {
         for (let i = cursor + 1; i < items.length; i++) {
-          if (!items[i]?.disabled) { cursor = i; break; }
+          if (!items[i]?.disabled) { setCursor(i); break; }
         }
         paint();
         return;
       }
       if (ev.key === "ArrowUp") {
         for (let i = cursor - 1; i >= 0; i--) {
-          if (!items[i]?.disabled) { cursor = i; break; }
+          if (!items[i]?.disabled) { setCursor(i); break; }
         }
         paint();
         return;
@@ -489,6 +554,29 @@ export function selectFromMenu(
       }
     };
     window.addEventListener("keydown", onKey, true);
+    // Tap-to-select (MN_DBL_TAP): the first tap on a row highlights it, a tap
+    // on the already-highlighted row selects it; a tap on the footer row
+    // cancels, exactly like ESC. Registered per-modal and torn down in finish
+    // so it never leaks into the game underneath or a sibling modal.
+    term.onCellTap?.((cell) => {
+      const { rows } = term.size();
+      if (cell.row === rows - 1) {
+        finish(null);
+        return;
+      }
+      const r = cell.row - listTop;
+      if (r < 0 || r >= paintedBodyRows) return;
+      const i = top + r;
+      const it = items[i];
+      if (!it || it.disabled) return;
+      if (i === cursor) {
+        pick(i);
+        return;
+      }
+      setCursor(i);
+      paint();
+    });
+    extra?.onHighlight?.(cursor);
     paint();
   });
 }
