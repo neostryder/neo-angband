@@ -27,7 +27,7 @@ describe("helpCommandLines (curated command reference)", () => {
       "m", "p", "G",
       "q", "r", "E", "u", "a", "z", "A",
       "f", "v", "o", "D", "*", "'", "l", "x",
-      "C", "S", "N", "V", "Escape", "?",
+      "C", "S", "N", "V", "Escape", "?", "M", "L",
     ];
     for (const key of singleKeys) {
       expect(keyIsWired(key), `expected main.ts to wire up "${key}"`).toBe(true);
@@ -38,7 +38,7 @@ describe("helpCommandLines (curated command reference)", () => {
     const text = helpCommandLines().map((l) => l.text).join("\n");
     for (const forbidden of [
       "Rest for", "Set options", "Check knowledge", "Take notes",
-      "Dump screen", "Retire character", "wizard", "Deep Descent", "Locate player",
+      "Dump screen", "Retire character", "wizard", "Deep Descent",
     ]) {
       expect(text).not.toContain(forbidden);
     }
@@ -52,6 +52,8 @@ describe("helpCommandLines (curated command reference)", () => {
     expect(text).toContain("Quaff a potion");
     expect(text).toContain("Ctrl-P");
     expect(text).toContain("Escape");
+    expect(text).toContain("Display map of entire level");
+    expect(text).toContain("Locate player on map");
   });
 });
 

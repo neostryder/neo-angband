@@ -15,6 +15,7 @@
  */
 
 import type { GlyphTerm } from "./term";
+import type { Overview } from "./mapview";
 
 /** A single styled line of overlay text. `color` is a CSS color string. */
 export interface ScreenLine {
@@ -113,6 +114,65 @@ export function showTextScreen(
       paint();
     };
     window.addEventListener("keydown", onKey, true);
+    paint();
+  });
+}
+
+/**
+ * do_cmd_view_map ('M', ui-map.c): a modal, scaled whole-level overview -
+ * screen_save / display_map / "Hit any key to continue" / anykey /
+ * screen_load, mirroring showTextScreen's Promise + window-keydown shape.
+ * `overview` is the priority-resolved miniature buildOverview (mapview.ts)
+ * already produced; this only draws it (box border in COLOUR_WHITE, the
+ * player's '@' at its scaled cell, the centered footer) and resolves on any
+ * key or tap - it builds no rendering of its own.
+ */
+export function showLevelMap(term: GlyphTerm, overview: Overview): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const paint = (): void => {
+      const { cols, rows } = term.size();
+      term.clear();
+      const { mapW, mapH, cells, playerRow, playerCol } = overview;
+      if (mapW >= 1 && mapH >= 1) {
+        // window_make (ui-output.c): a '+' cornered box in COLOUR_WHITE
+        // around the interior, offsetting every interior cell by (+1,+1).
+        term.print(0, 0, `+${"-".repeat(mapW)}+`, TITLE);
+        term.print(0, mapH + 1, `+${"-".repeat(mapW)}+`, TITLE);
+        for (let r = 0; r < mapH; r++) {
+          term.print(0, r + 1, "|", TITLE);
+          term.print(mapW + 1, r + 1, "|", TITLE);
+        }
+        for (let r = 0; r < mapH; r++) {
+          const row = cells[r];
+          if (!row) continue;
+          for (let c = 0; c < mapW; c++) {
+            const g = row[c];
+            if (g) term.print(c + 1, r + 1, g.ch, g.css);
+          }
+        }
+        // The player is always drawn last, on top of whatever occupies its cell.
+        term.print(playerCol + 1, playerRow + 1, "@", TITLE);
+      }
+      const footer = "Hit any key to continue";
+      const fx = Math.max(0, Math.floor((cols - footer.length) / 2));
+      term.print(fx, rows - 1, footer.slice(0, cols - 1), DIM);
+    };
+    const finish = (): void => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("pointerdown", onTap, true);
+      resolve();
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      finish();
+    };
+    const onTap = (ev: Event): void => {
+      ev.preventDefault();
+      finish();
+    };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("pointerdown", onTap, true);
     paint();
   });
 }

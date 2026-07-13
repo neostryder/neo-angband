@@ -109,6 +109,8 @@ export function helpCommandLines(): ScreenLine[] {
   lines.push(keyLine("l / x", "Look around"));
 
   lines.push(...header("Meta"));
+  lines.push(keyLine("M", "Display map of entire level"));
+  lines.push(keyLine("L", "Locate player on map"));
   lines.push(keyLine("C", "Character description"));
   lines.push(keyLine("S", "Save the game"));
   lines.push(keyLine("N", "New character (also available after death)"));
