@@ -60,30 +60,36 @@ Legend: [x] done, [~] partial, [ ] gap. Tiers are recommended execution order.
   (`RF_TELEPATHY`), no infravision, no see-invisible. Invisible monsters are
   never revealed even with a see-invis item; ESP senses nothing out of LOS.
 
-## Tier 2 - Faithful features players actively use (all VERIFIED)
+## Tier 2 - Faithful features players actively use  [ALL 14 GAPS PORTED + PUSHED]
 
-- [ ] Item inspection (`I`) + `object_info` combat/slay/brand/digger text
-  (`core/game/describe.ts` only returns the name; no inspect command in shell).
-- [ ] Effect damage in spell/device menus ("3d8 fire") - menus show only
-  Lv/Mana/fail%; no `effect_avg_damage`/projection.
-- [ ] Chests: spawn but cannot be opened - no `do_cmd_open_chest`, no chest
-  traps, no chest loot.
-- [~] Object commands: use/quaff/read/wield/etc. work; inscribe / uninscribe /
-  autoinscribe / refill (fuel) are declared but unhandled, no shell keys.
-- [ ] Ignore configuration menu + `ignore_drop` (core only applies stored
-  settings; no UI).
-- [~] Interactive look/target `*` loop: a distance-sorted list picker works, but
-  no grid cycling, look-at-grid prompts, or path drawing.
-- [ ] Full-level map (`M`) and locate/scroll (`L`) - neither command exists.
-- [ ] Floor object list (`]`) - core `obj-list.ts` exists but shell has no key.
-- [ ] Options/settings screen (`=`) - values modeled in core, no UI to view/set;
-  also wire the readers that ignore their option (`rogue_like_commands`,
-  `solid_walls`, `purple_uniques`, `auto_more`, ...).
-- [ ] Help browser (`?`).
-- [ ] Character history: `history_add` runtime log (artifact finds, level
-  notes) not recorded + no history screen.
-- [~] Menus/screens: only a 4-item Escape menu (Resume/Save/Switch/New); no
-  curse-removal UI, equipment-comparison, abilities browser, or context menu.
+- [x] Item inspection (`I`) + `object_info` combat/slay/brand/digger text
+  (`obj/object-info.ts` + `game/object-inspect.ts`; `I` reuses selectTargetItem).
+- [x] Effect damage in spell/device menus ("3d8 fire") via `effects/effect-info.ts`
+  (`effect_avg_damage`/projection); per-row damage in the spell book menu.
+- [x] Chests: `obj/chest.ts` + `game/chest.ts` - open/disarm, chest traps
+  (`pickChestTraps` in make.ts), and chest loot; exploded chest drops nothing.
+- [x] Object commands: inscribe (`{`) / uninscribe (`}`) / autoinscribe /
+  refill (`F`) in `game/obj-cmd.ts`.
+- [x] Ignore configuration menu + `ignore_drop` (`obj/ignore.ts` +
+  `game/ignore-cmd.ts`; `=` temp toggle deprecated for options, `K` menu).
+- [x] Interactive look/target `*` loop: grid cycling + look-at-grid prompts in
+  `game/target-loop.ts` + main.ts rendering; `squareApparentName`.
+- [x] Full-level map (`M`) and locate/scroll (`L`) - `web/src/mapview.ts`.
+- [x] Floor object list (`]`) - `screens.ts` `objectListLines`.
+- [x] Options/settings screen (`=`) - `web/src/options.ts`; wired the ignored
+  readers (rogue_like_commands, use_sound [off by default, faithful], solid/hybrid
+  walls, purple_uniques, animate_flicker, mouse_movement, hp_changes_color).
+- [x] Help browser (`?`) - `web/src/help.ts` (describes the port's real keys).
+- [x] Character history: `player/history.ts` + `game/history.ts` runtime log
+  (birth/level/unique-kill/artifact/death) + `~` screen.
+- [x] Spell-description browse surface (`?` toggle in cast/study; spell->text
+  + avg-damage summary).
+- [x] Curse-removal UI / equipment-comparison / abilities browser / context menu
+  (`player/abilities.ts`, `game/equip-cmp.ts`, web abilities/equip-cmp/context-menu).
+- [x] S-tier menu / char-select / char-sheet polish: shared tap-aware menu
+  component (touch parity), discoverable game + death menus, staged birth flow
+  (no gender stage, per 4.2.6), faithful wide char-sheet columns/colors + history.
+  Blocked follow-ups: EB equipment stat_add, get_history population, mode-1 grid.
 
 ## Tier 3 - Monster behavior depth (all VERIFIED)
 
