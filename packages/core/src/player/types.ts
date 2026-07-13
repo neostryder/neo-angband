@@ -145,6 +145,14 @@ export interface ClassSpell {
   realm: MagicRealm;
   /** Raw effect records, preserved for later compilation (deferred). */
   effectsRaw: unknown[];
+  /**
+   * spell->text (player-spell.c): the spell's flavour description, joined
+   * verbatim from the class data's desc: lines (string_append semantics -
+   * concatenated with no separator, so each line must carry its own leading
+   * space where the upstream data wants one). Shown by the cast/study/browse
+   * menu's '?' toggle (ui-spell.c spell_menu_browser).
+   */
+  text: string;
 }
 
 /**
