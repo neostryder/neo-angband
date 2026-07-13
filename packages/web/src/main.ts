@@ -912,6 +912,28 @@ async function aimDir(): Promise<number | null> {
   }
 }
 
+// --- Open / disarm (do_cmd_open / do_cmd_disarm, chest branches - gap #49) --
+// A direction prompt like aimDir, but without the '*' target-picker path (open
+// and disarm are not aimed commands); 5 targets the player's own grid, for a
+// chest underfoot. The core resolves door-vs-chest (open) and
+// chest-vs-floor-trap (disarm) by what is actually there.
+
+/** Open (o): a door or a chest, by direction. */
+async function openCmd(): Promise<void> {
+  const dir = await promptDirection(term, "Open in which direction? (5 for here)");
+  if (dir === null || dir === AIM_STAR) return;
+  commandBuffer.push({ code: "open", dir });
+  advance();
+}
+
+/** Disarm (D): a trapped chest or a floor trap, by direction. */
+async function disarmCmd(): Promise<void> {
+  const dir = await promptDirection(term, "Disarm in which direction? (5 for here)");
+  if (dir === null || dir === AIM_STAR) return;
+  commandBuffer.push({ code: "disarm", dir });
+  advance();
+}
+
 // --- High scores (task #28: score.c / ui-score.c) -------------------------
 // A localStorage-backed ScoreStore (JSON) is the persistence seam; the core
 // owns the scoring/ordering/gating. `scoresOpen` gates the main keyhandler
@@ -1097,6 +1119,11 @@ state.updateFov = (): void => {
 // through state.nextCommand and returns INPUT when the buffer empties.
 const commandBuffer: PlayerCommand[] = [];
 state.nextCommand = (): PlayerCommand | null => commandBuffer.shift() ?? null;
+
+// Touch open/disarm: tapping the "Open"/"Disarm" action-bar button arms this,
+// so the NEXT canvas tap resolves to a direction for that command instead of
+// a walk (open/close cancel it without spending it on an unrelated tap).
+let pendingChestAction: "open" | "disarm" | null = null;
 
 function gridIndex(x: number, y: number): number {
   return y * state.chunk.width + x;
@@ -1504,6 +1531,8 @@ window.addEventListener("keydown", (ev) => {
       x: () => showTextScreen(term, "Look - monsters in view", lookLines(state)),
       f: () => fireCmd(),
       v: () => throwCmd(),
+      o: () => openCmd(),
+      D: () => disarmCmd(),
     };
     const verb = ITEM_VERBS[ev.key];
     if (verb) {
@@ -1588,10 +1617,26 @@ canvas.addEventListener("pointerdown", (ev) => {
   if (sx < 0 || sy < 0 || sx >= vp.mapCols || sy >= vp.mapRows) return; // HUD tap
   const dx = Math.sign(vp.camX + sx - state.actor.grid.x);
   const dy = Math.sign(vp.camY + sy - state.actor.grid.y);
-  if (dx === 0 && dy === 0) return; // tapped the player: no move
+  if (dx === 0 && dy === 0) {
+    // Tapped the player's own tile: no move, but a pending open/disarm
+    // resolves to dir 5 (a chest underfoot).
+    if (pendingChestAction) {
+      ev.preventDefault();
+      commandBuffer.push({ code: pendingChestAction, dir: 5 });
+      pendingChestAction = null;
+      advance();
+    }
+    return;
+  }
   ev.preventDefault();
   // Keypad direction: 7 8 9 / 4 5 6 / 1 2 3, so dir = (1-dy)*3 + (dx+2).
-  commandBuffer.push({ code: "walk", dir: (1 - dy) * 3 + (dx + 2) });
+  const dir = (1 - dy) * 3 + (dx + 2);
+  if (pendingChestAction) {
+    commandBuffer.push({ code: pendingChestAction, dir });
+    pendingChestAction = null;
+  } else {
+    commandBuffer.push({ code: "walk", dir });
+  }
   advance();
 });
 
@@ -1616,6 +1661,16 @@ function installTouchActionBar(): void {
     ["Get", () => { commandBuffer.push({ code: "pickup" }); advance(); }],
     ["Down >", () => { commandBuffer.push({ code: "descend" }); advance(); }],
     ["Up <", () => { commandBuffer.push({ code: "ascend" }); advance(); }],
+    ["Open", () => {
+      pendingChestAction = "open";
+      message = "Tap a direction (or yourself) to open.";
+      render();
+    }],
+    ["Disarm", () => {
+      pendingChestAction = "disarm";
+      message = "Tap a direction (or yourself) to disarm.";
+      render();
+    }],
     ["Inv", () => { void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))); }],
     ["Insp", () => { void openModal(() => inspectItem()); }],
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, { numShots: state.actor.combat.numShots })); }],

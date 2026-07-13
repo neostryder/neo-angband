@@ -17,10 +17,20 @@ upstream:
         success, rubble 10%-object and gold-vein treasure payouts placed
         onto the live floor piles via the object generator.
       - do_cmd_alter (L1005): monster -> attack, diggable -> tunnel,
-        closed door -> open dispatch.
+        closed door -> open dispatch (the chest/floor-trap-disarm
+        fallback branches are deferred - "alter" is not wired to a shell
+        key).
       - do_cmd_go_down (L101) / go_up (L56): the staircase-underfoot
         checks and the surface check before signalling a level change.
       - player_confuse_dir applied after the turn commits, as upstream.
+      - do_cmd_open (L235) / do_cmd_disarm (L858) chest branches (gap
+        #49): chest_check(CHEST_OPENABLE) before the door legality test
+        on open; a new "disarm" action tries chest_check(CHEST_TRAPPED)
+        first and merges with whatever "disarm" action trap.ts (#21)
+        already registered. Both re-resolve the chest at the
+        confusion-redirected grid, matching upstream. dir 5 (the
+        player's own grid) is allowed for these two actions only, for a
+        chest underfoot.
   - path: src/player-calcs.c
     items:
       - calc_digging_chances (L1651): the five difficulty formulas with
@@ -37,13 +47,14 @@ notes: >-
   is known). Registered by installCaveCommands; startGame wires it with the
   object generator.
 deferred:
-  - Locked / jammed doors, do_cmd_disarm and do_cmd_lock_door: door locks
-    are the "door lock" trap upstream - all land with trap.c (#21) through
-    the isLockedDoor / pickLock seams.
+  - Locked / jammed doors, do_cmd_lock_door: door locks are the "door lock"
+    trap upstream - all land with trap.c (#21) through the isLockedDoor /
+    pickLock seams; the disarm door-lock branch is not ported.
   - The swap-digger machinery (player_best_digger + the temporary
     calc_bonuses with a swapped weapon): digging reads the wielded state's
     DIGGING skill.
-  - Chests (chest_check / do_cmd_open_chest): the chest object model.
+  - do_cmd_alter_aux's chest and floor-trap-disarm fallback branches
+    (alter is not wired to a shell key).
   - do_cmd_steal (shapechanged players, #22); run / explore / pathfind /
     navigate (player-path.c, #24); command repetition and the count_feats
     single-target direction inference (UI); messages are hooks.
@@ -56,3 +67,9 @@ verified-by:
     spends the turn without progress; a gold vein pays out money onto the
     floor pile; permanent rock refuses; alter dispatches to open and
     tunnel; descend/ascend require the matching staircase (and depth).
+  - game/chest.test.ts: chest_check / count_chests over the 9-grid
+    neighbourhood, chest_trap's destroy-before-loot ordering, chest_death's
+    wooden/iron/steel counts and retry-on-null/chest, do_cmd_open_chest's
+    lock pick with blind/no_light/confused penalties, do_cmd_disarm_chest's
+    two-roll miss path, and both actions' dir-5 (chest underfoot) and
+    chest-vs-door / chest-vs-floor-trap dispatch through installCaveCommands.

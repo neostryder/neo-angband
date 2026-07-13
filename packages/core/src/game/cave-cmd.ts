@@ -2,7 +2,8 @@
  * Cave commands, ported from reference/src/cmd-cave.c (Angband 4.2.6):
  * opening and closing doors, tunneling (with the calc_digging_chances
  * player math and rubble / gold-vein payouts onto the live floor piles),
- * the alter dispatcher, and the stair commands with their terrain checks.
+ * chest open/disarm branches (do_cmd_open / do_cmd_disarm, gap #49), the
+ * alter dispatcher, and the stair commands with their terrain checks.
  *
  * Door LOCKS are traps upstream (the "door lock" trap kind holds the
  * power), so locked-door handling rides on the isLockedDoor / pickLock
@@ -11,12 +12,21 @@
  * knowledge (#24): everything is known here, matching the current FOV
  * front end.
  *
+ * Chests (game/chest.ts) plug in via the optional `chestDeps`; open gains
+ * a chest branch (chest_check(CHEST_OPENABLE) before the door test), and a
+ * new "disarm" action is registered that tries chest_check(CHEST_TRAPPED)
+ * first and falls through to whatever "disarm" action was already
+ * registered (the sibling floor-trap disarm, trap.ts #21) otherwise -
+ * merging rather than double-registering, since a stub or the real
+ * trap-disarm action is always present by the time this installs.
+ *
  * DEFERRED (ledgered in game-cave-cmd.yaml): the swap-digger machinery
  * (player_best_digger recalculating bonuses with the best pack digger -
- * digging uses the wielded state's DIGGING skill), chests (obj model),
- * do_cmd_steal (shapechange #22), command repetition and count_feats
- * direction inference (UI). Running and travel / explore (player-path
- * #24) are ported in game/player-path.ts.
+ * digging uses the wielded state's DIGGING skill), the door-lock branch of
+ * disarm (do_cmd_lock_door, rides the trap.c door-lock seams), do_cmd_steal
+ * (shapechange #22), command repetition and count_feats direction inference
+ * (UI). Running and travel / explore (player-path #24) are ported in
+ * game/player-path.ts.
  */
 
 import type { Loc } from "../loc";
@@ -30,6 +40,9 @@ import { equipLearnOnMeleeAttack } from "../obj/knowledge";
 import { featIsTreasure } from "../world/chunk";
 import type { MakeDeps } from "../obj/make";
 import { makeGold, makeObject } from "../obj/make";
+import { CHEST_QUERY } from "../obj/chest";
+import { chestCheck, doCmdDisarmChest, doCmdOpenChest } from "./chest";
+import type { ChestCmdDeps } from "./chest";
 import type { GameState, PlayerCommand } from "./context";
 import { arenaInterceptDeath, deleteMonster, squareMonster } from "./context";
 import { floorCarry } from "./floor";
@@ -53,6 +66,11 @@ export interface CaveCmdDeps {
   /** Object generation deps for rubble finds / gold veins; optional. */
   makeDeps?: MakeDeps;
   env?: CaveCmdEnv;
+  /**
+   * Chest deps (gap #49); absent, the open/disarm chest branches are
+   * skipped entirely (doors and floor traps behave exactly as before).
+   */
+  chestDeps?: ChestCmdDeps;
 }
 
 /* ------------------------------------------------------------------ *
@@ -276,6 +294,18 @@ function commandGrid(state: GameState, cmd: PlayerCommand): { grid: Loc; dir: nu
   return { grid: locSum(state.actor.grid, DDGRID[dir] as Loc), dir };
 }
 
+/** dir -> grid, but allowing 5 (the player's own grid) for a chest underfoot. */
+function chestDirGrid(state: GameState, dir: number): Loc {
+  return dir === 5 ? state.actor.grid : (locSum(state.actor.grid, DDGRID[dir] as Loc));
+}
+
+/** Resolve a command's target grid, allowing dir 5 for chest-capable actions. */
+function chestCommandGrid(state: GameState, cmd: PlayerCommand): { grid: Loc; dir: number } | null {
+  const dir = cmd.dir;
+  if (dir === undefined || dir < 1 || dir > 9) return null;
+  return { grid: chestDirGrid(state, dir), dir };
+}
+
 /** Attack the monster standing in the way (shared by open/close/tunnel). */
 function attackBlocker(state: GameState, grid: Loc, env: CaveCmdEnv): void {
   const target = squareMonster(state, grid);
@@ -313,16 +343,28 @@ export function installCaveCommands(
   deps: CaveCmdDeps = {},
 ): void {
   const env = deps.env ?? {};
+  const chestDeps = deps.chestDeps;
 
   registry.register("open", (state, cmd) => {
-    const at = commandGrid(state, cmd);
+    const at = chestCommandGrid(state, cmd);
     if (!at) return 0;
-    if (!openTest(state, at.grid, env)) return 0;
-    /* Apply confusion after the turn is committed. */
+    /* do_cmd_open (L268-276): a chest there skips the door legality test. */
+    const preChest = chestDeps ? chestCheck(state, at.grid, CHEST_QUERY.OPENABLE) : null;
+    if (!preChest && !openTest(state, at.grid, env)) return 0;
+
+    /* Apply confusion after the turn is committed, then re-resolve the
+     * chest at the (possibly redirected) grid, as upstream does. */
     const dir = playerConfuseDir(state, at.dir);
-    const grid = locSum(state.actor.grid, DDGRID[dir] as Loc);
-    if (squareMonster(state, grid)) attackBlocker(state, grid, env);
-    else openAux(state, grid, env);
+    const grid = chestDirGrid(state, dir);
+    const chestObj = chestDeps ? chestCheck(state, grid, CHEST_QUERY.OPENABLE) : null;
+
+    if (squareMonster(state, grid)) {
+      attackBlocker(state, grid, env);
+    } else if (chestObj) {
+      doCmdOpenChest(state, grid, chestObj, chestDeps!);
+    } else {
+      openAux(state, grid, env);
+    }
     return state.z.moveEnergy;
   });
 
@@ -343,6 +385,41 @@ export function installCaveCommands(
     return state.z.moveEnergy;
   });
 
+  /*
+   * do_cmd_disarm (L858): disarm a trapped chest, or fall through to
+   * whatever "disarm" action is already registered (trap.ts's floor-trap
+   * disarm, #21 - or the deferred stub if traps are not installed). A
+   * trapped chest at the target grid takes priority, mirroring upstream's
+   * chest-before-trap dispatch; capture the prior action BEFORE overwriting
+   * so this merges instead of shadowing it.
+   */
+  const priorDisarm = registry.get("disarm");
+  registry.register("disarm", (state, cmd) => {
+    if (chestDeps) {
+      const at = chestCommandGrid(state, cmd);
+      const preChest = at ? chestCheck(state, at.grid, CHEST_QUERY.TRAPPED) : null;
+      if (at && preChest) {
+        /* Apply confusion after the turn is committed, then re-resolve the
+         * chest at the (possibly redirected) grid, as upstream does. */
+        const dir = playerConfuseDir(state, at.dir);
+        const grid = chestDirGrid(state, dir);
+        const chestObj = chestCheck(state, grid, CHEST_QUERY.TRAPPED);
+
+        if (squareMonster(state, grid)) {
+          attackBlocker(state, grid, env);
+        } else if (chestObj) {
+          doCmdDisarmChest(state, chestObj, chestDeps);
+        } else if (priorDisarm) {
+          priorDisarm(state, { ...cmd, dir });
+        } else {
+          env.msg?.("You see nothing there to disarm.");
+        }
+        return state.z.moveEnergy;
+      }
+    }
+    return priorDisarm ? priorDisarm(state, cmd) : 0;
+  });
+
   registry.register("tunnel", (state, cmd) => {
     const at = commandGrid(state, cmd);
     if (!at) return 0;
@@ -354,7 +431,12 @@ export function installCaveCommands(
     return state.z.moveEnergy;
   });
 
-  /* do_cmd_alter: attack, tunnel, or open, by what is there. */
+  /*
+   * do_cmd_alter: attack, tunnel, or open, by what is there. DEFERRED: the
+   * chest and floor-trap-disarm branches upstream falls through to
+   * (do_cmd_alter_aux L969-992) - "alter" is not wired to a shell key yet,
+   * so this stays door/dig/attack-only until it is.
+   */
   registry.register("alter", (state, cmd) => {
     const at = commandGrid(state, cmd);
     if (!at) return 0;

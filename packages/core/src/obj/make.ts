@@ -25,10 +25,13 @@
  *   (out-of-depth roll then rarity roll, aidx ascending), copy the
  *   artifact's fixed data, and mark it created in the shared ArtifactState
  *   (aup_info[]). copy_artifact_data was already ported.
+ * - LIVE: pick_chest_traps for chests (obj/chest.ts), wired into apply_magic's
+ *   chest branch so generated chests carry a real lock/trap pval; the rest
+ *   of the chest domain (chest_check, chest_trap, chest_death, the open/
+ *   disarm commands) lives in game/chest.ts (gap #49).
  * - DEFERRED: make_object's book rejection (obj_kind_can_browse needs
- *   the player class), the *value out-parameter and its
- *   out-of-depth boost (object_value_real is obj-power), and
- *   pick_chest_traps for chests (chest domain); chest pvals stay 0.
+ *   the player class), and the *value out-parameter and its out-of-depth
+ *   boost (object_value_real is obj-power).
  * - DEFERRED: make_gold's birth_no_selling value inflation (player
  *   options).
  */
@@ -38,6 +41,7 @@ import { KF, OBJ_MOD, OF, TV } from "../generated";
 import type { Aspect, Rng } from "../rng";
 import type { ObjRegistry } from "./bind";
 import type { GameObject } from "./object";
+import { pickChestTraps } from "./chest";
 import {
   appendObjectCurse,
   copyBrands,
@@ -1030,8 +1034,6 @@ export interface MakeDeps {
  *
  * `depth` is the player/chunk depth make_artifact tests against (0 in
  * town); it is distinct from the object creation level `lev`.
- *
- * DEFERRED inside (see module docs): pick_chest_traps for chests.
  */
 export function applyMagic(
   rng: Rng,
@@ -1088,7 +1090,7 @@ export function applyMagic(
       }
     }
   } else if (tvalIsChest(obj.tval)) {
-    /* DEFERRED: pick_chest_traps (chest domain); pval stays as-is. */
+    obj.pval = pickChestTraps(rng, obj);
   }
 
   /* Apply minima from ego items if necessary */
