@@ -2303,9 +2303,12 @@ function buildRuin(
  * generation time: light (SQUARE_GLOW) every grid by day; by night keep only
  * non-floor / bright terrain lit. Shop doorways are always lit. The
  * player-knowledge side (square_memorize / square_forget) is a runtime concern
- * and is applied by the live game, not here.
+ * and is applied by the live game (game/known.ts caveIlluminateKnown), not
+ * here. Exported so the runtime day/night boundary (game/loop.ts
+ * processWorld, via the WorldClockEnv.caveIlluminate hook installed in
+ * session/game.ts) can reuse this exact flag pass.
  */
-function caveIlluminate(c: Chunk, daytime: boolean): void {
+export function caveIlluminate(c: Chunk, daytime: boolean): void {
   for (let y = 0; y < c.height; y++) {
     for (let x = 0; x < c.width; x++) {
       const grid = loc(x, y);

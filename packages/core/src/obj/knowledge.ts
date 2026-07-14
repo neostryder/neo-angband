@@ -1014,6 +1014,18 @@ export interface FlavorAwareDeps {
   requestIgnoreNotice(): void;
 }
 
+/**
+ * An inert FlavorAwareDeps for callers that have a FlavorKnowledge but no
+ * live ignore/notice environment (birth-time scripting, tests, or a caller
+ * that intentionally wants the bare aware-bit flip with none of the L2276-79
+ * side effects). Equivalent to the old bare setAware() call.
+ */
+export const NOOP_FLAVOR_AWARE_DEPS: FlavorAwareDeps = {
+  isIgnoredUnaware: () => false,
+  ignoreWhenAware: () => {},
+  requestIgnoreNotice: () => {},
+};
+
 export class FlavorKnowledge {
   private readonly awareKidx = new Set<number>();
   private readonly triedKidx = new Set<number>();

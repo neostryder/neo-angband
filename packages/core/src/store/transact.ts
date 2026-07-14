@@ -34,7 +34,8 @@ import {
   OSTACK_PACK,
   tvalCanHaveCharges,
 } from "../obj/object";
-import type { FlavorKnowledge } from "../obj/knowledge";
+import { NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge";
+import type { FlavorAwareDeps, FlavorKnowledge } from "../obj/knowledge";
 import type { Gear } from "../game/gear";
 import {
   gearObjectForUse,
@@ -77,6 +78,13 @@ function objCanTakeoff(obj: GameObject): boolean {
 export interface TxnKnowledge {
   /** When supplied, buying/selling makes the kind's flavor known. */
   flavor?: FlavorKnowledge;
+  /**
+   * The ignore/notice side effects of becoming aware (object_flavor_aware
+   * L2276-2279, #89). Only meaningful alongside `flavor`; the in-play caller
+   * (session/game.ts) supplies the real ignore-settings-backed deps, tests
+   * and other non-interactive callers fall back to NOOP_FLAVOR_AWARE_DEPS.
+   */
+  flavorDeps?: FlavorAwareDeps;
   /** object_flavor_is_aware(obj), fed to object_value in price_item. */
   aware: boolean;
   /** OPT(player, birth_no_selling): the shop pays 0 and keeps the item. */
@@ -154,8 +162,11 @@ export function storeBuy(
   /* Reduce the number of charges in the original store stack. */
   if (tvalCanHaveCharges(obj.tval)) obj.pval -= bought.pval;
 
-  /* Learn flavor (object_flavor_aware); runes are DEFERRED (task #13). */
-  if (know.flavor) know.flavor.setAware(bought.kind);
+  /* Learn flavor (object_flavor_aware, including the #89 ignore fix); runes
+   * are DEFERRED (task #13). */
+  if (know.flavor) {
+    know.flavor.objectFlavorAware(bought.kind, know.flavorDeps ?? NOOP_FLAVOR_AWARE_DEPS);
+  }
 
   /* Give it to the player. */
   invenCarry(gear, bought, packLimits(constants));
@@ -235,8 +246,11 @@ export function storeSell(
   /* Get some money. */
   player.au += price;
 
-  /* Learn flavor (object_flavor_aware); runes are DEFERRED (task #13). */
-  if (know.flavor) know.flavor.setAware(obj.kind);
+  /* Learn flavor (object_flavor_aware, including the #89 ignore fix); runes
+   * are DEFERRED (task #13). */
+  if (know.flavor) {
+    know.flavor.objectFlavorAware(obj.kind, know.flavorDeps ?? NOOP_FLAVOR_AWARE_DEPS);
+  }
 
   /* Take a proper copy of the now known-about object out of the gear. */
   const { obj: sold, noneLeft } = gearObjectForUse(gear, player, handle, amt);

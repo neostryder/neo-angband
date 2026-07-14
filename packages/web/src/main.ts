@@ -53,6 +53,7 @@ import {
   objectInfoTextblock,
   gearGet,
   floorPile,
+  invenCarryNum,
   buildObjectEffectChain,
   itemTargetRequest,
   spellByIndex,
@@ -769,8 +770,7 @@ async function runContextMenuPlayer(): Promise<void> {
       break;
     case "floor":
     case "pickup":
-      commandBuffer.push({ code: "pickup" });
-      advance();
+      await pickupCmd();
       break;
     case "character":
       await showCharacterSheet(term, state, playerName, charSheetOpts());
@@ -2144,11 +2144,28 @@ async function runDeathMenu(): Promise<void> {
   }
 }
 
+// menu_pickup_item (cmd-pickup.c L356-381): when several objects share the
+// player's grid, get_item shows a lettered picker before player_pickup_aux
+// runs. PickupEnv.chooseItem is synchronous (game/pickup.ts), so the menu is
+// resolved BEFORE the "pickup" command is enqueued (pickupCmd below); the
+// hook just hands back the already-chosen object on the next call.
+let pendingPickupChoice: GameObject | null = null;
+
 // Reinstall the pickup commands with message hooks so gold and item pickup
-// report on the message line.
+// report on the message line. Restores isIgnored (dropped by this reinstall
+// otherwise, since ActionRegistry.register replaces rather than merges) so
+// the picker below and playerPickupItem's own floor scan agree on what
+// counts as pickupable.
 installPickup(state, registry, {
   constants,
   env: {
+    isIgnored: (obj): boolean => state.isIgnored!(obj),
+    chooseItem: (list): GameObject | null => {
+      const choice = pendingPickupChoice;
+      pendingPickupChoice = null;
+      if (choice && list.includes(choice)) return choice;
+      return list[0] ?? null;
+    },
     onGold: (total, name, single): void => {
       say(`You have found ${total} gold pieces worth of ${single ? name : "treasures"}.`);
     },
@@ -2158,6 +2175,28 @@ installPickup(state, registry, {
     },
   },
 });
+
+/**
+ * do_cmd_pickup's menu path (cmd-pickup.c L449-470): when more than one
+ * object on the grid can be (at least partially) carried, show a lettered
+ * "Get which item?" picker and stash the choice for PickupEnv.chooseItem;
+ * otherwise just run the plain pickup command (single object, or none/gold
+ * only, all handled by playerPickupItem itself).
+ */
+async function pickupCmd(): Promise<void> {
+  const grid = state.actor.grid;
+  const canPickup = floorPile(state, grid).filter(
+    (o) => !state.isIgnored?.(o) && invenCarryNum(state.gear, o, constants) > 0,
+  );
+  if (canPickup.length > 1) {
+    const items = canPickup.map((o) => ({ label: objectName(state, o), color: "#c8c8d4" }));
+    const idx = await selectFromMenu(term, "Get which item?", items);
+    if (idx === null) return;
+    pendingPickupChoice = canPickup[idx] ?? null;
+  }
+  commandBuffer.push({ code: "pickup" });
+  advance();
+}
 
 const Z: ViewConstants = {
   maxSight: constants.maxSight,
@@ -2991,8 +3030,7 @@ window.addEventListener("keydown", (ev) => {
     }
     if (ev.key === "g") {
       ev.preventDefault();
-      commandBuffer.push({ code: "pickup" });
-      advance();
+      void openModal(pickupCmd);
       return;
     }
     if (ev.key === ">") {
@@ -3145,7 +3183,7 @@ function installTouchActionBar(): void {
     zIndex: "10",
   });
   const actions: Array<[string, () => void]> = [
-    ["Get", () => { commandBuffer.push({ code: "pickup" }); advance(); }],
+    ["Get", () => { void openModal(pickupCmd); }],
     ["Down >", () => { commandBuffer.push({ code: "descend" }); advance(); }],
     ["Up <", () => { commandBuffer.push({ code: "ascend" }); advance(); }],
     ["Open", () => {

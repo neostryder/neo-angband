@@ -82,7 +82,7 @@ import { registerMeleeHandlers } from "../game/effect-melee";
 import { registerSummonHandlers } from "../game/effect-summon";
 import type { SummonEffectEnv } from "../game/effect-summon";
 import { registerDetectHandlers } from "../game/effect-detect";
-import { becomeAware, newKnownMap } from "../game/known";
+import { becomeAware, caveIlluminateKnown, newKnownMap } from "../game/known";
 import { PY_EXERT, isDaytime, playerOverExert } from "../game/world";
 import { squareIsLit } from "../world/view";
 import { newTargetState, targetSetMonster } from "../game/target";
@@ -153,6 +153,7 @@ import {
   objectLearnOnWield,
   playerLearnInnate,
 } from "../obj/knowledge";
+import type { FlavorAwareDeps } from "../obj/knowledge";
 import { flavorInit } from "../obj/flavor";
 import { ELEM_MAX } from "../obj/types";
 import { ArtifactState, ObjAllocState } from "../obj/make";
@@ -308,6 +309,25 @@ interface WiredGame {
   registry: ActionRegistry;
   trapDeps: TrapDeps | null;
   flavor: FlavorKnowledge;
+}
+
+/**
+ * The real, in-play FlavorAwareDeps for object_flavor_aware's ignore fix
+ * (obj-knowledge.c L2276-2279, #89): reads the live ignore settings so a
+ * kind ignored while unaware keeps being ignored once identified, and flags
+ * player->upkeep->notice's PN_IGNORE (state.noticeIgnore) so a later
+ * ignore_drop() pass (#25 UI, not yet wired) can react. Shared by the two
+ * in-play becomes-aware sites: game/obj-cmd.ts's item-use knowledge gain
+ * (installObjCommands below) and store/transact.ts's buy/sell (makeStoreApi).
+ */
+function flavorAwareDeps(state: GameState): FlavorAwareDeps {
+  return {
+    isIgnoredUnaware: (kidx) => state.ignore.kindIsIgnoredUnaware(kidx),
+    ignoreWhenAware: (kidx) => state.ignore.kindIgnoreWhenAware(kidx),
+    requestIgnoreNotice: () => {
+      state.noticeIgnore = true;
+    },
+  };
 }
 
 /**
@@ -829,6 +849,7 @@ function wireGame(
       cast,
       envDeps,
       flavor,
+      flavorDeps: flavorAwareDeps(state),
       inject,
       ...(teleport ? { teleport } : {}),
       general,
@@ -1027,6 +1048,11 @@ function wireGame(
         s.chunk.depth,
         ambientPlaceDeps,
       ),
+    // cave_illuminate on the town dawn/nightfall boundary (game-world.c,
+    // called from processWorld in game/loop.ts): relights SQUARE_GLOW and
+    // updates player map knowledge (square_memorize/square_forget) to match.
+    caveIlluminate: (s: GameState, dawn: boolean): void =>
+      caveIlluminateKnown(s, dawn),
   };
 
   return { registry, trapDeps, flavor };
@@ -1541,8 +1567,14 @@ function makeStoreApi(
   const noSelling = (): boolean => options.get("birth_no_selling") ?? false;
   const txnKnow = (
     obj: GameObject,
-  ): { flavor: FlavorKnowledge; aware: boolean; noSelling: boolean } => ({
+  ): {
+    flavor: FlavorKnowledge;
+    flavorDeps: FlavorAwareDeps;
+    aware: boolean;
+    noSelling: boolean;
+  } => ({
     flavor,
+    flavorDeps: flavorAwareDeps(state),
     aware: flavor.isAware(obj.kind),
     noSelling: noSelling(),
   });
@@ -1553,7 +1585,7 @@ function makeStoreApi(
       const obj = state.gear.store.get(handle);
       const know = obj
         ? txnKnow(obj)
-        : { flavor, aware: false, noSelling: noSelling() };
+        : { flavor, flavorDeps: flavorAwareDeps(state), aware: false, noSelling: noSelling() };
       return storeSell(storeCtx(), store, handle, amt, state.actor.player, state.gear, know);
     },
     price: (store, obj, storeBuying, qty): number =>

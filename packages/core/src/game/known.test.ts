@@ -17,6 +17,7 @@ import type { GameObject } from "../obj/object";
 import { floorCarry, floorExcise, floorPile } from "./floor";
 import {
   becomeAware,
+  caveIlluminateKnown,
   forgetMap,
   knownFeat,
   knownObject,
@@ -95,6 +96,39 @@ describe("terrain memory (square_memorize / square_forget)", () => {
     /* The player still remembers floor. */
     expect(knownFeat(state, grid)).toBe(FLOOR);
     expect(squareMemoryBad(state, grid)).toBe(true);
+  });
+});
+
+describe("cave_illuminate (cave-map.c L555, runtime)", () => {
+  it("relights an interior floor grid at the day/night boundary and updates knowledge", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const floorGrid = loc(5, 5); // interior, surrounded by floor (openField)
+
+    /* Dawn: daytime lights every grid and (since it has a floor/stairs
+     * neighbor) memorizes it. */
+    caveIlluminateKnown(state, true);
+    expect(state.chunk.sqinfoHas(floorGrid, SQUARE.GLOW)).toBe(true);
+    expect(squareIsKnown(state, floorGrid)).toBe(true);
+    expect(knownFeat(state, floorGrid)).toBe(FLOOR);
+
+    /* Nightfall: a plain (non-bright) floor grid goes dark and is forgotten,
+     * exactly like cave_unlight(). */
+    caveIlluminateKnown(state, false);
+    expect(state.chunk.sqinfoHas(floorGrid, SQUARE.GLOW)).toBe(false);
+    expect(squareIsKnown(state, floorGrid)).toBe(false);
+
+    /* Dawn again: relit and re-memorized. */
+    caveIlluminateKnown(state, true);
+    expect(state.chunk.sqinfoHas(floorGrid, SQUARE.GLOW)).toBe(true);
+    expect(squareIsKnown(state, floorGrid)).toBe(true);
+  });
+
+  it("is RNG-free", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const before = state.rng.getState();
+    caveIlluminateKnown(state, true);
+    caveIlluminateKnown(state, false);
+    expect(state.rng.getState()).toEqual(before);
   });
 });
 
