@@ -20,8 +20,11 @@
  *   (OF_IMPACT / blow_after_effects), splash damage.
  * - Shape-change blow substitution; shield bash; the PF_COMBAT_REGEN mana
  *   reward. Monster fear generation and delayed fear messaging.
- * - O-combat (birth_percent_damage: o_melee_damage / o_critical_melee).
  * - Message text/formatting (the combat code returns the HitType key only).
+ *
+ * O-combat (birth_percent_damage) IS ported: oMeleeDamage / o_critical_melee,
+ * gated in pyAttackReal at the same point upstream branches (player-attack.c
+ * L803/L811/L826). With the option off the path is byte-identical to standard.
  */
 
 import type { Rng } from "../rng";
@@ -32,7 +35,13 @@ import type { Monster } from "../mon/monster";
 import type { Player } from "../player/player";
 import { SKILL } from "../player/types";
 import type { CritActor, HitType } from "./hit";
-import { BTH_PLUS_ADJ, criticalMelee, testHit } from "./hit";
+import {
+  BTH_PLUS_ADJ,
+  applyDeadliness,
+  criticalMelee,
+  oCriticalMelee,
+  testHit,
+} from "./hit";
 import {
   getMonsterBrandMultiplier,
   improveAttackModifier,
@@ -83,6 +92,13 @@ export interface MeleeOptions {
   energy?: number;
   /** z_info->move_energy (constants.txt; 100 upstream). */
   moveEnergy?: number;
+  /**
+   * OPT(p, birth_percent_damage): route damage through the O-combat path
+   * (oMeleeDamage) instead of the standard melee_damage + critical_melee.
+   * Off by default; when off, RNG draws are byte-identical to the standard
+   * path (the gate adds/reorders nothing).
+   */
+  percentDamage?: boolean;
 }
 
 /** The outcome of a single blow (py_attack_real). */
@@ -169,6 +185,79 @@ export function meleeDamage(
   return dmg;
 }
 
+/** The (possibly critical-boosted) damage of a single blow plus its message. */
+export interface DamageOutcome {
+  damage: number;
+  msg: HitType;
+}
+
+/**
+ * o_melee_damage (player-attack.c L501): the birth_percent_damage melee path.
+ * Deadliness and the slay/brand o_multiplier add extra SIDES to the damage
+ * dice; criticals add extra DICE. Unlike the standard path, the player's
+ * to-dam (player_damage_bonus) is folded in here via deadliness, so the caller
+ * must NOT add state.toD afterwards (upstream skips it under the option gate).
+ *
+ * RNG order, matching upstream exactly:
+ *  1. randint0(10000) - the fractional-sides roll (drawn even when unarmed).
+ *  2. (weapon only) o_critical_melee: randint1(chance_den) crit test, then on
+ *     a crit the one_in_ level walk.
+ *  3. damroll(dice, sides).
+ */
+export function oMeleeDamage(
+  rng: Rng,
+  state: PlayerCombatState,
+  mon: Monster,
+  weapon: GameObject | null,
+  brand: number,
+  slay: number,
+  brands: readonly (Brand | null)[],
+  slays: readonly (Slay | null)[],
+): DamageOutcome {
+  let dice = weapon ? weapon.dd : 1;
+  let add = 0;
+
+  /* Average value of a single damage die, x10. */
+  let dieAverage = Math.trunc((10 * ((weapon ? weapon.ds : 1) + 1)) / 2);
+
+  /* Slays/brands inflate the average (10x) and contribute a flat add. Melee
+   * prefers a slay over a brand (player-attack.c L512: `if (s) ... else if`). */
+  if (slay) {
+    const oMult = (slays[slay] as Slay).oMultiplier;
+    dieAverage *= oMult;
+    add = oMult - 10;
+  } else if (brand) {
+    const bmult = getMonsterBrandMultiplier(mon, brands[brand] as Brand, true);
+    dieAverage *= bmult;
+    add = bmult - 10;
+  } else {
+    dieAverage *= 10;
+  }
+
+  /* Apply deadliness (x100) from to_d + weapon to-dam. */
+  const deadliness = state.toD + (weapon ? objectToDam(weapon) : 0);
+  dieAverage = applyDeadliness(dieAverage, Math.min(deadliness, 150));
+
+  /* Sides per die, with a fractional-sides roll. */
+  let sides = 2 * dieAverage - 10000;
+  const extra = rng.randint0(10000) < sides % 10000;
+  sides = Math.trunc(sides / 10000);
+  sides += extra ? 1 : 0;
+
+  /* Criticals add dice (excluded for unarmed; upstream leaves msg at MSG_HIT). */
+  let msg: HitType = "HIT";
+  if (weapon) {
+    const crit = oCriticalMelee(rng, chanceOfMeleeHitBase(state, weapon), mon);
+    dice += crit.addDice;
+    msg = crit.msg;
+  }
+
+  let dmg = rng.damroll(dice, sides);
+  dmg += add;
+
+  return { damage: dmg, msg };
+}
+
 /**
  * mon_take_hit reduced to the port's scope: apply damage to the monster and
  * report whether it died (hp < 0 after the hit). Zero damage never kills.
@@ -229,35 +318,48 @@ export function pyAttackReal(
   }
 
   const weight = weapon ? objectWeightOne(weapon) : 0;
+  const oCombat = opts.percentDamage ?? false;
 
-  /* Best attack from all slays or brands on all non-launcher equipment. */
+  /* Best attack from all slays or brands on all non-launcher equipment.
+   * improve_attack_modifier reads birth_percent_damage internally to pick the
+   * comparison multiplier, so the O flag is threaded here too (no RNG). */
   const mod: AttackModifier = { brand: 0, slay: 0, verb: weapon ? "hit" : "punch" };
   for (const off of opts.offhand ?? []) {
-    improveAttackModifier(off, mon, brands, slays, mod, false);
+    improveAttackModifier(off, mon, brands, slays, mod, false, oCombat);
   }
   if (weapon) {
-    improveAttackModifier(weapon, mon, brands, slays, mod, false);
+    improveAttackModifier(weapon, mon, brands, slays, mod, false, oCombat);
   }
   /* improve_attack_modifier(p, NULL, ...) for temporary brands/slays: DEFERRED. */
 
-  /* Base damage, then criticals (excluded for unarmed combat). */
-  let dmg = meleeDamage(rng, mon, weapon, mod.brand, mod.slay, brands, slays);
-  let msg: HitType = "HIT";
-  if (weapon) {
-    const crit = criticalMelee(
-      rng,
-      critActor(p, state),
-      mon,
-      weight,
-      objectToHit(weapon),
-      dmg,
-    );
-    dmg = crit.damage;
-    msg = crit.msg;
+  /* Get the damage. The option gate matches upstream player-attack.c
+   * L803/L811/L826: the standard branch computes base damage, criticals, then
+   * adds player_damage_bonus; the O branch folds all of that into oMeleeDamage
+   * (to_d enters via deadliness) and skips the trailing state.toD. */
+  let dmg: number;
+  let msg: HitType;
+  if (!oCombat) {
+    dmg = meleeDamage(rng, mon, weapon, mod.brand, mod.slay, brands, slays);
+    msg = "HIT";
+    if (weapon) {
+      const crit = criticalMelee(
+        rng,
+        critActor(p, state),
+        mon,
+        weight,
+        objectToHit(weapon),
+        dmg,
+      );
+      dmg = crit.damage;
+      msg = crit.msg;
+    }
+    /* Apply the player damage bonus (player_damage_bonus = state->to_d). */
+    dmg += state.toD;
+  } else {
+    const o = oMeleeDamage(rng, state, mon, weapon, mod.brand, mod.slay, brands, slays);
+    dmg = o.damage;
+    msg = o.msg;
   }
-
-  /* Apply the player damage bonus (player_damage_bonus = state->to_d). */
-  dmg += state.toD;
 
   /* No negative damage; change verb if no damage done. */
   if (dmg <= 0) {
