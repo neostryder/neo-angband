@@ -25,7 +25,7 @@
 
 import { loc } from "../loc";
 import type { Loc } from "../loc";
-import { SKILL } from "../player/types";
+import { SKILL, STAT_MAX } from "../player/types";
 import { EF, HIST, PF, RF, STAT, TMD } from "../generated";
 import { bindPlayer } from "../player/bind";
 import type { PlayerPackRecords, PlayerRegistry } from "../player/bind";
@@ -254,6 +254,18 @@ export interface StartGameOptions extends BootLevelOptions {
   raceName?: string;
   /** Class name (case-insensitive). Default "Warrior". */
   className?: string;
+  /**
+   * Stat roller method (ui-birth.c BIRTH_ROLLER_CHOICE). "point" applies the
+   * point-based allocation in `birthStats` (no stat RNG); "roller" (the
+   * default when omitted) runs the classic get_stats roller.
+   */
+  roller?: "point" | "roller";
+  /**
+   * Point-based allocated base stats (STAT_MAX values), used only when
+   * `roller` is "point". Threaded into generatePlayer so the character is born
+   * with these stats and the stat stage draws no RNG.
+   */
+  birthStats?: readonly number[];
   /**
    * Birth / interface option choices, applied over the table defaults at
    * character creation (option.c options_init_defaults). Birth options become
@@ -1389,10 +1401,21 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     players.classes[0]!;
 
   const body = players.bodies[race.body] ?? players.bodies[0]!;
+  // Point-based birth: apply the chosen allocation (drawing no stat RNG) only
+  // when the roller method is "point" AND a full stat array was supplied;
+  // otherwise fall through to the classic roller (the unchanged default).
+  const usePointBuy =
+    opts.roller === "point" &&
+    opts.birthStats !== undefined &&
+    opts.birthStats.length === STAT_MAX;
   const birth = generatePlayer(
     race,
     cls,
-    { body, historyChart: players.historyChart(race) },
+    {
+      body,
+      historyChart: players.historyChart(race),
+      ...(usePointBuy ? { stats: opts.birthStats } : {}),
+    },
     booted.rng,
   );
 

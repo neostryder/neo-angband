@@ -267,6 +267,14 @@ interface StoredBirth {
   /** The chosen stat roller ("point" / "roller", ui-birth.c BIRTH_ROLLER_CHOICE);
    * absent in choices stored before the staged birth flow. */
   roller?: string;
+  /**
+   * The character's birth stats (STAT_MAX values): the point-based allocation
+   * for a point-buy character, and - refreshed after every birth from the born
+   * player's stat_birth - the save_roller_data snapshot that lets the next New
+   * Game's Quick-start restore this character's stats (load_roller_data)
+   * instead of regenerating them.
+   */
+  stats?: number[];
 }
 function readBirthChoice(): StoredBirth | null {
   try {
@@ -381,6 +389,13 @@ function bootGame(): ReturnType<typeof startGame> {
     ...(birthChoice
       ? { raceName: birthChoice.raceName, className: birthChoice.className }
       : {}),
+    // A stored stat array (a point-buy allocation, or the save_roller_data
+    // snapshot persisted after birth) is applied via the point-based path, so
+    // the character is rebuilt with exactly those stats and no stat RNG is
+    // drawn. Absent it, the classic roller runs (unchanged).
+    ...(birthChoice?.stats && birthChoice.stats.length === 5
+      ? { roller: "point" as const, birthStats: birthChoice.stats }
+      : {}),
   });
 }
 
@@ -412,6 +427,29 @@ let playerName = ((): string => {
   const metaName = id ? getMeta(id)?.name : "";
   return metaName || birthChoice?.name || "";
 })();
+
+// save_roller_data (player-birth.c): once a fresh character is actually born
+// (not a throwaway shown behind the picker, and not a resume), snapshot its
+// birth stats back into the stored choice so the next New Game's Quick-start
+// can restore this exact character (race, class, and stats) via load_roller_data
+// rather than regenerating. Refreshed for both roller methods, so even a classic
+// roll becomes reproducible on the following quickstart.
+if (bootedNew && !birthPending && !needsSelect) {
+  try {
+    const p = state.actor.player;
+    const prev = readBirthChoice();
+    const record: StoredBirth = {
+      raceName: prev?.raceName ?? p.race.name,
+      className: prev?.className ?? p.cls.name,
+      name: prev?.name ?? "",
+      stats: p.statBirth.slice(0, 5),
+      ...(prev?.roller ? { roller: prev.roller } : {}),
+    };
+    localStorage.setItem(BIRTH_KEY, JSON.stringify(record));
+  } catch {
+    /* storage disabled: quickstart simply falls back to regeneration */
+  }
+}
 
 /** do_cmd_change_name's rename side effect: the new name flows into the
  * roster metadata via the next save (metaFromState reads playerName). */
@@ -3302,7 +3340,13 @@ async function maybeBirth(): Promise<void> {
     // a previous character's choices exist to reuse.
     const choice = await runBirth(term, players.races, players.classes, {
       quickstart: birthChoice
-        ? { raceName: birthChoice.raceName, className: birthChoice.className }
+        ? {
+            raceName: birthChoice.raceName,
+            className: birthChoice.className,
+            ...(birthChoice.stats && birthChoice.stats.length === 5
+              ? { stats: birthChoice.stats }
+              : {}),
+          }
         : null,
     });
     if (!choice) {
