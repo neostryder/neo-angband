@@ -127,4 +127,41 @@ describe("Chunk", () => {
     expect(c.featCount[GRANITE]).toBe(54);
     expect(c.isGranite(loc(8, 5))).toBe(true);
   });
+
+  it("allowsFeel (square_allowsfeel): passable and not damaging", () => {
+    const c = new Chunk(reg, 4, 4);
+    c.setFeat(loc(1, 1), FLOOR);
+    expect(c.allowsFeel(loc(1, 1))).toBe(true);
+
+    c.setFeat(loc(2, 1), GRANITE);
+    expect(c.allowsFeel(loc(2, 1))).toBe(false); // impassable
+
+    c.setFeat(loc(3, 1), LAVA);
+    expect(c.isPassable(loc(3, 1))).toBe(true);
+    expect(c.isDamaging(loc(3, 1))).toBe(true);
+    expect(c.allowsFeel(loc(3, 1))).toBe(false); // passable but damaging
+  });
+
+  it("addToMonsterRating / addToObjRating accumulate and saturate at UINT32_MAX", () => {
+    const c = new Chunk(reg, 4, 4);
+    expect(c.monRating).toBe(0);
+    expect(c.objRating).toBe(0);
+
+    c.addToMonsterRating(100);
+    c.addToMonsterRating(25);
+    expect(c.monRating).toBe(125);
+
+    c.addToObjRating(64);
+    c.addToObjRating(36);
+    expect(c.objRating).toBe(100);
+
+    const UINT32_MAX = 4294967295;
+    c.monRating = UINT32_MAX - 5;
+    c.addToMonsterRating(1000);
+    expect(c.monRating).toBe(UINT32_MAX);
+
+    c.objRating = UINT32_MAX - 5;
+    c.addToObjRating(1000);
+    expect(c.objRating).toBe(UINT32_MAX);
+  });
 });

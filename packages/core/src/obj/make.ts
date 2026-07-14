@@ -29,19 +29,24 @@
  *   chest branch so generated chests carry a real lock/trap pval; the rest
  *   of the chest domain (chest_check, chest_trap, chest_death, the open/
  *   disarm commands) lives in game/chest.ts (gap #49).
+ * - LIVE: make_object's *value out-parameter (obj-power.c object_value_real)
+ *   and its 20%-per-level-OOD boost, exposed as the optional `outValue`
+ *   parameter (a faithful transcription of the C out-parameter). Feeds
+ *   gen/util.ts placeObject's obj_rating accumulation (gen-util.c L509-540).
  * - DEFERRED: make_object's book rejection (obj_kind_can_browse needs
- *   the player class), and the *value out-parameter and its out-of-depth
- *   boost (object_value_real is obj-power).
+ *   the player class).
  * - DEFERRED: make_gold's birth_no_selling value inflation (player
  *   options).
  */
 
 import type { Constants } from "../constants";
 import { KF, OBJ_MOD, OF, TV } from "../generated";
+import { INT_MAX } from "../guard";
 import type { Aspect, Rng } from "../rng";
 import type { ObjRegistry } from "./bind";
 import type { GameObject } from "./object";
 import { pickChestTraps } from "./chest";
+import { objectValueReal } from "./value";
 import {
   appendObjectCurse,
   copyBrands,
@@ -1102,6 +1107,17 @@ export function applyMagic(
 /** OBJ_MOD_SPEED index (STR..CON are 0..4, then the modifier list). */
 const OBJ_MOD_SPEED = OBJ_MOD.SPEED;
 
+/**
+ * make_object's `int32_t *value` out-parameter: the object's real value
+ * (object_value_real), boosted 20% per level out-of-depth for uncursed
+ * objects. A faithful transcription of the C out-parameter (mutated in
+ * place; omitted entirely when the caller passes nothing, drawing no extra
+ * work). gen-util.c place_object reads this as the level-feeling `rating`.
+ */
+export interface MakeObjectRating {
+  value: number;
+}
+
 /* ------------------------------------------------------------------ */
 /* make_object / make_gold                                              */
 /* ------------------------------------------------------------------ */
@@ -1112,9 +1128,9 @@ const OBJ_MOD_SPEED = OBJ_MOD.SPEED;
  * Live: the special-artifact chance roll (the attempt itself is the
  * deferred stub, so failing it upgrades the drop to `good` exactly as
  * upstream does when no special artifact can be made), kind selection,
- * prep, apply_magic, and stack generation. DEFERRED: book rejection
- * (needs the player class), the *value out-parameter and its
- * out-of-depth boost (obj-power).
+ * prep, apply_magic, stack generation, and (when `outValue` is supplied)
+ * the *value out-parameter with its out-of-depth boost. DEFERRED: book
+ * rejection (needs the player class).
  */
 export function makeObject(
   rng: Rng,
@@ -1125,13 +1141,17 @@ export function makeObject(
   extraRoll: boolean,
   tval: number,
   depth: number,
+  outValue?: MakeObjectRating,
 ): GameObject | null {
   const { reg, alloc, constants } = deps;
 
   /* Try to make a special artifact */
   if (rng.oneIn(good ? 10 : 1000)) {
     const special = makeArtifactSpecial(rng, deps, depth, tval);
-    if (special) return special;
+    if (special) {
+      if (outValue) outValue.value = objectValueReal(reg, special, 1);
+      return special;
+    }
     /* If we failed to make an artifact, the player gets a good item */
     good = true;
   }
@@ -1158,8 +1178,20 @@ export function makeObject(
     obj.number = obj.kind.base.maxStack;
   }
 
-  /* DEFERRED: *value computation and the 20%-per-level OOD boost
-   * (object_value_real lives in obj-power). */
+  /* Get the value, and boost 20% per level OOD for uncursed objects
+   * (obj-make.c make_object L1211-1231). Draws no RNG. */
+  if (outValue) {
+    outValue.value = objectValueReal(reg, obj, obj.number);
+
+    if (!obj.curses && kind.allocMin > depth) {
+      const ood = kind.allocMin - depth;
+      const frac = Math.trunc(Math.max(outValue.value, 0) / 5);
+      const adj =
+        frac <= Math.trunc(INT_MAX / ood) ? ood * frac : INT_MAX;
+      outValue.value =
+        outValue.value <= INT_MAX - adj ? outValue.value + adj : INT_MAX;
+    }
+  }
 
   return obj;
 }

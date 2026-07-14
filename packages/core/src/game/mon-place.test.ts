@@ -161,6 +161,34 @@ describe("placeNewMonsterOne (mon-make.c L1079, live)", () => {
     state.chunk.depth = 40;
     expect(placeNewMonsterOne(state, loc(16, 10), deep, false, info, d)).toBe(true);
   });
+
+  it("accumulates mon_rating exactly (level^2 + OOD bonus), item #74's add_to_monster_rating", () => {
+    /* Faithful to mon-make.c place_new_monster_one L1112-1126: this is the
+     * live-cave twin of gen/util.ts's placeNewMonsterOne. Since
+     * chunk.feeling is computed once at gen-end (gen/generate.ts
+     * generateLevel) and never recomputed, this post-gen accumulation is
+     * harmless bookkeeping - it must not disturb an already-shown feeling. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.chunk.depth = 5;
+    state.chunk.feeling = 42; /* stand-in for an already-computed feeling */
+    const race = makeRace({ level: 20 }); /* OOD: level(20) > depth(5) */
+
+    expect(state.chunk.monRating).toBe(0);
+    const ok = placeNewMonsterOne(
+      state,
+      loc(14, 10),
+      race,
+      false,
+      { index: 0, role: MON_GROUP.LEADER },
+      deps(state),
+    );
+    expect(ok).toBe(true);
+
+    const base = race.level * race.level;
+    const ood = (race.level - state.chunk.depth) * race.level * race.level;
+    expect(state.chunk.monRating).toBe(base + ood);
+    expect(state.chunk.feeling).toBe(42);
+  });
 });
 
 describe("placeNewMonster (mon-make.c L1360, live groups)", () => {

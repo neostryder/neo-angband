@@ -16,6 +16,7 @@
  * module; the flag bookkeeping they sit beside is ported.
  */
 
+import type { GameEvents } from "../events";
 import { SQUARE } from "../generated";
 import { DDGRID, DDGRID_DDD, distance, loc, locEq, locSum } from "../loc";
 import type { Loc } from "../loc";
@@ -438,10 +439,24 @@ function updateViewOne(
 
 /**
  * update_one: per-grid post pass. The knowledge side effects (trap
- * reveal, note/light spot, feeling display) are deferred; the flag and
- * feeling-count bookkeeping is ported.
+ * reveal, note/light spot) are deferred; the flag, feeling-count
+ * bookkeeping, and the feeling_need reveal signal are ported (cave-view.c
+ * L844-855): a FEEL grid newly seen increments feeling_squares, clears the
+ * flag, and at the feeling_need crossing fires the reveal (upstream's
+ * display_feeling(true) message is a UI concern - only the "reveal now"
+ * signal, GameEvents' `feeling` event, is emitted here). Upstream also
+ * guards this on `!p->upkeep->only_partial` (suppressing the redundant
+ * reveal right after a fresh level's initial full update); that flag is not
+ * modelled, so the event can fire once more than upstream on level entry -
+ * a presentation nicety, not a state divergence.
  */
-function updateOne(c: Chunk, grid: Loc, p: ViewerState): void {
+function updateOne(
+  c: Chunk,
+  grid: Loc,
+  p: ViewerState,
+  z: ViewConstants,
+  events?: GameEvents,
+): void {
   if (p.blind) {
     c.sqinfoOff(grid, SQUARE["SEEN"]);
     c.sqinfoOff(grid, SQUARE["CLOSE_PLAYER"]);
@@ -451,6 +466,9 @@ function updateOne(c: Chunk, grid: Loc, p: ViewerState): void {
     if (c.sqinfoHas(grid, SQUARE["FEEL"])) {
       c.feelingSquares++;
       c.sqinfoOff(grid, SQUARE["FEEL"]);
+      if (c.feelingSquares === z.feelingNeed) {
+        events?.signal("feeling");
+      }
     }
   }
 
@@ -463,6 +481,7 @@ export function updateView(
   p: ViewerState,
   z: ViewConstants,
   sources: readonly LightSource[] = [],
+  events?: GameEvents,
 ): void {
   markWasseen(c);
   calcLighting(c, p, sources, z);
@@ -480,7 +499,7 @@ export function updateView(
   }
   for (let y = 0; y < c.height; y++) {
     for (let x = 0; x < c.width; x++) {
-      updateOne(c, loc(x, y), p);
+      updateOne(c, loc(x, y), p, z, events);
     }
   }
 }

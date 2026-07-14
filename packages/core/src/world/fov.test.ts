@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { GameEvents } from "../events";
 import { SQUARE } from "../generated";
 import { loc } from "../loc";
 import { Chunk } from "./chunk";
@@ -120,5 +121,51 @@ describe("updateView", () => {
     expect(c.feelingSquares).toBe(2);
     updateView(c, p, Z);
     expect(c.feelingSquares).toBe(2);
+  });
+
+  it("does not fire the `feeling` event below feeling_need", () => {
+    const c = room(30, 20, 5, 5, 15, 12);
+    glowRect(c, 5, 5, 15, 12);
+    c.sqinfoOn(loc(7, 7), SQUARE["FEEL"]);
+    c.sqinfoOn(loc(8, 7), SQUARE["FEEL"]);
+    const p = viewer(6, 6);
+    const events = new GameEvents();
+    let fired = 0;
+    events.on("feeling", () => {
+      fired++;
+    });
+    updateView(c, p, Z, [], events);
+    expect(c.feelingSquares).toBe(2);
+    expect(fired).toBe(0);
+  });
+
+  it("fires the `feeling` event exactly once, at the feeling_need crossing (cave-view.c L844-855)", () => {
+    const c = room(30, 20, 5, 5, 15, 12);
+    glowRect(c, 5, 5, 15, 12);
+    /* Mark feeling_need (10) distinct FEEL squares inside the lit room. */
+    let marked = 0;
+    for (let y = 5; y <= 12 && marked < Z.feelingNeed; y++) {
+      for (let x = 5; x <= 15 && marked < Z.feelingNeed; x++) {
+        c.sqinfoOn(loc(x, y), SQUARE["FEEL"]);
+        marked++;
+      }
+    }
+    expect(marked).toBe(Z.feelingNeed);
+
+    const p = viewer(6, 6);
+    const events = new GameEvents();
+    let fired = 0;
+    events.on("feeling", () => {
+      fired++;
+    });
+
+    updateView(c, p, Z, [], events);
+    expect(c.feelingSquares).toBe(Z.feelingNeed);
+    expect(fired).toBe(1);
+
+    /* Nothing new to see on a second pass: no re-fire. */
+    updateView(c, p, Z, [], events);
+    expect(c.feelingSquares).toBe(Z.feelingNeed);
+    expect(fired).toBe(1);
   });
 });

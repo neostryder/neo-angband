@@ -34,7 +34,13 @@ import {
   type RoomTemplateRecordJson,
   type VaultRecordJson,
 } from "./room";
-import { generateLevel, type GenDeps } from "./generate";
+import {
+  calcMonFeeling,
+  calcObjFeeling,
+  generateLevel,
+  placeFeeling,
+  type GenDeps,
+} from "./generate";
 import { getVaultMonsters, monPitHook, resolvePits, setPitType } from "./gen-monster";
 import { RF } from "../generated";
 import { GROUP_TYPE } from "../mon/monster";
@@ -46,6 +52,7 @@ import {
   fillRectangle,
   generateRoom,
   placeNewMonster,
+  placeObject,
   type MonPlaceDeps,
 } from "./util";
 
@@ -741,5 +748,258 @@ describe("themed pits, nests and vault monsters", () => {
       /* placed on one of the racial-symbol grids. */
       expect(marks.has(`${m.grid.x},${m.grid.y}`)).toBe(true);
     }
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Level feeling lifecycle (item #74): gen-util.c place_object's obj_rating,
+ * mon-make.c place_new_monster_one's add_to_monster_rating, generate.c
+ * place_feeling / calc_obj_feeling / calc_mon_feeling.
+ * ------------------------------------------------------------------ */
+
+describe("level feeling: calc_obj_feeling / calc_mon_feeling ladders", () => {
+  function feelGen(depth: number): Gen {
+    const c = new Chunk(reg, 10, 10);
+    c.depth = depth;
+    const dun = new Dun(constants);
+    return new Gen(c, new Rng(1), reg, constants, dun, null, null);
+  }
+
+  it("both return 0 in town regardless of rating", () => {
+    const g = feelGen(0);
+    g.c.objRating = 999999;
+    g.c.monRating = 999999;
+    g.c.goodItem = true;
+    expect(calcObjFeeling(g, false)).toBe(0);
+    expect(calcObjFeeling(g, true)).toBe(0);
+    expect(calcMonFeeling(g)).toBe(0);
+  });
+
+  it("calc_obj_feeling: birth_lose_arts gives the special 'easily lost' feeling", () => {
+    const g = feelGen(10);
+    g.c.goodItem = true;
+    g.c.objRating = 0;
+    expect(calcObjFeeling(g, true)).toBe(10);
+    /* Without the option, the good-item floor applies instead. */
+    expect(calcObjFeeling(g, false)).toBe(60);
+  });
+
+  it("calc_obj_feeling: a good item floors the feeling at 60 when rating is low", () => {
+    const g = feelGen(1);
+    g.c.goodItem = true;
+    g.c.objRating = 5; /* x = 5 < 641 */
+    expect(calcObjFeeling(g, false)).toBe(60);
+  });
+
+  it("calc_obj_feeling ladder (depth 1, no good item)", () => {
+    const g = feelGen(1);
+    const cases: Array<[number, number]> = [
+      [200000, 20],
+      [50000, 30],
+      [15000, 40],
+      [3000, 50],
+      [700, 60],
+      [200, 70],
+      [50, 80],
+      [15, 90],
+      [5, 100],
+    ];
+    for (const [rating, expected] of cases) {
+      g.c.objRating = rating;
+      expect(calcObjFeeling(g, false)).toBe(expected);
+    }
+  });
+
+  it("calc_mon_feeling ladder (depth 1)", () => {
+    const g = feelGen(1);
+    const cases: Array<[number, number]> = [
+      [8000, 1],
+      [5000, 2],
+      [3000, 3],
+      [2000, 4],
+      [900, 5],
+      [500, 6],
+      [200, 7],
+      [60, 8],
+      [5, 9],
+    ];
+    for (const [rating, expected] of cases) {
+      g.c.monRating = rating;
+      expect(calcMonFeeling(g)).toBe(expected);
+    }
+  });
+});
+
+describe("level feeling: place_feeling", () => {
+  it("scatters up to feelingTotal FEEL marks on passable, non-damaging grids and resets feeling_squares", () => {
+    const c = new Chunk(reg, 25, 40);
+    c.depth = 5;
+    drawRectangle(c, 0, 0, 24, 39, FEAT.GRANITE, SQUARE.NONE, false);
+    fillRectangle(c, 1, 1, 23, 38, FEAT.FLOOR, SQUARE.NONE);
+    const dun = new Dun(constants);
+    const g = new Gen(c, new Rng(9), reg, constants, dun, null, null);
+    c.feelingSquares = 7;
+
+    placeFeeling(g);
+
+    let marked = 0;
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        const grid = loc(x, y);
+        if (c.sqinfoHas(grid, SQUARE.FEEL)) {
+          marked++;
+          expect(c.allowsFeel(grid)).toBe(true);
+        }
+      }
+    }
+    expect(marked).toBeGreaterThan(0);
+    expect(marked).toBeLessThanOrEqual(constants.feelingTotal);
+    expect(c.feelingSquares).toBe(0);
+  });
+});
+
+describe("level feeling: obj_rating / mon_rating accumulation", () => {
+  function objArena(depth: number, seed: number): Gen {
+    const c = new Chunk(reg, 30, 50);
+    c.depth = depth;
+    drawRectangle(c, 0, 0, 29, 49, FEAT.GRANITE, SQUARE.NONE, false);
+    fillRectangle(c, 1, 1, 28, 48, FEAT.FLOOR, SQUARE.NONE);
+    const dun = new Dun(constants);
+    const objReg = new ObjRegistry(objPack);
+    const objDeps: MakeDeps = {
+      reg: objReg,
+      alloc: new ObjAllocState(objReg, constants),
+      constants,
+      artifacts: new ArtifactState(objReg.artifacts.length),
+      noArtifacts: false,
+    };
+    return new Gen(c, new Rng(seed), reg, constants, dun, objDeps, null);
+  }
+
+  it("place_object accumulates a positive obj_rating, RNG-free beyond make_object's own draws", () => {
+    const g = objArena(10, 99);
+    expect(g.c.objRating).toBe(0);
+    let x = 1;
+    let y = 1;
+    for (let i = 0; i < 40; i++) {
+      placeObject(g, loc(x, y), 10, false, false, 0);
+      x += 1;
+      if (x > 47) {
+        x = 1;
+        y += 1;
+      }
+    }
+    expect(g.c.objRating).toBeGreaterThan(0);
+  });
+
+  it("place_object sets good_item when an artifact lands", () => {
+    let hit = false;
+    for (let seed = 1; seed < 4000 && !hit; seed++) {
+      const g = objArena(50, seed);
+      placeObject(g, loc(5, 5), 50, true, false, 0);
+      const placed = g.objects[0];
+      if (placed && placed.obj.artifact) {
+        hit = true;
+        expect(g.c.goodItem).toBe(true);
+      }
+    }
+    expect(hit).toBe(true);
+  });
+
+  it("place_new_monster_one accumulates mon_rating exactly (level^2, plus the OOD bonus)", () => {
+    const monReg = bindMonsters(monPack, { maxSight: constants.maxSight });
+    const race = monReg.races.find((r) => r.level > 10);
+    expect(race).toBeDefined();
+    if (!race) return;
+    const depth = Math.max(1, race.level - 5); /* guarantee race.level > depth (OOD) */
+
+    const c = new Chunk(reg, 25, 40);
+    c.depth = depth;
+    drawRectangle(c, 0, 0, 24, 39, FEAT.GRANITE, SQUARE.NONE, false);
+    fillRectangle(c, 1, 1, 23, 38, FEAT.FLOOR, SQUARE.NONE);
+    const dun = new Dun(constants);
+    const table = new MonAllocTable(monReg.races, { maxDepth: constants.maxDepth });
+    const g = new Gen(c, new Rng(321), reg, constants, dun, null, { table });
+
+    expect(g.c.monRating).toBe(0);
+    const ok = placeNewMonster(g, loc(20, 12), race, false, false, {
+      index: 0,
+      role: MON_GROUP.LEADER,
+    });
+    expect(ok).toBe(true);
+
+    const base = race.level * race.level;
+    expect(race.level).toBeGreaterThan(depth);
+    const ood = (race.level - depth) * race.level * race.level;
+    expect(g.c.monRating).toBe(base + ood);
+  });
+});
+
+describe("level feeling: full generation wiring (generate.c cave_generate L1235-1241)", () => {
+  it("town gets feeling 0 and no FEEL squares are drawn", () => {
+    const g = generateLevel(new Rng(7), 0, makeDeps());
+    expect(g.c.feeling).toBe(0);
+    for (let y = 0; y < g.c.height; y++) {
+      for (let x = 0; x < g.c.width; x++) {
+        expect(g.c.sqinfoHas(loc(x, y), SQUARE.FEEL)).toBe(false);
+      }
+    }
+  });
+
+  it("a dungeon level places FEEL squares and computes feeling from the calc functions", () => {
+    const g = generateLevel(new Rng(4242), 5, makeDeps());
+    let marked = 0;
+    for (let y = 0; y < g.c.height; y++) {
+      for (let x = 0; x < g.c.width; x++) {
+        if (g.c.sqinfoHas(loc(x, y), SQUARE.FEEL)) marked++;
+      }
+    }
+    expect(marked).toBeGreaterThan(0);
+    expect(marked).toBeLessThanOrEqual(constants.feelingTotal);
+    expect(g.c.feelingSquares).toBe(0);
+    expect(g.c.feeling).toBe(calcObjFeeling(g, false) + calcMonFeeling(g));
+  });
+
+  it("place_feeling's trailing draws do not alter room/monster/object content on a fixed seed", () => {
+    const seed = 20260709;
+    const depth = 5;
+    const withFeeling = generateLevel(new Rng(seed), depth, makeDeps());
+
+    const depsNoFeel = makeDeps();
+    depsNoFeel.constants = { ...depsNoFeel.constants, feelingTotal: 0 };
+    const withoutFeelingDraws = generateLevel(new Rng(seed), depth, depsNoFeel);
+
+    /* Terrain + player spot are byte-identical. */
+    expect(serialize(withFeeling)).toBe(serialize(withoutFeelingDraws));
+
+    /* Monster and object placement (grid + identity) are byte-identical. */
+    const monSig = (g: Gen): string =>
+      g.monsters.map((m) => `${m.grid.x},${m.grid.y}:${m.mon.race.ridx}`).join("|");
+    const objSig = (g: Gen): string =>
+      g.objects
+        .map((o) => `${o.grid.x},${o.grid.y}:${o.obj.kind.kidx}:${o.obj.number}`)
+        .join("|");
+    expect(monSig(withFeeling)).toBe(monSig(withoutFeelingDraws));
+    expect(objSig(withFeeling)).toBe(objSig(withoutFeelingDraws));
+
+    /* RNG-free rating accumulation matches too (it does not depend on
+     * feeling_total at all). */
+    expect(withFeeling.c.objRating).toBe(withoutFeelingDraws.c.objRating);
+    expect(withFeeling.c.monRating).toBe(withoutFeelingDraws.c.monRating);
+    expect(withFeeling.c.goodItem).toBe(withoutFeelingDraws.c.goodItem);
+
+    /* But the FEEL squares differ: the real run marks some, feeling_total=0
+     * marks none - proving the extra draws are strictly appended at gen-end
+     * and touch nothing but SQUARE_FEEL. */
+    let realMarks = 0;
+    let noneMarks = 0;
+    for (let y = 0; y < withFeeling.c.height; y++) {
+      for (let x = 0; x < withFeeling.c.width; x++) {
+        if (withFeeling.c.sqinfoHas(loc(x, y), SQUARE.FEEL)) realMarks++;
+        if (withoutFeelingDraws.c.sqinfoHas(loc(x, y), SQUARE.FEEL)) noneMarks++;
+      }
+    }
+    expect(realMarks).toBeGreaterThan(0);
+    expect(noneMarks).toBe(0);
   });
 });

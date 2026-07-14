@@ -12,6 +12,7 @@
 
 import { FlagSet } from "../bitflag";
 import { SQUARE, SQUARE_FLAG_ENTRIES, TF } from "../generated";
+import { UINT32_MAX } from "../guard";
 import type { Loc } from "../loc";
 import type { Feature, FeatureRegistry } from "./feature";
 
@@ -343,6 +344,16 @@ export class Chunk {
     return featIsProjectable(this.features, this.feat(grid));
   }
 
+  /** square_isdamaging: fiery terrain (lava etc). */
+  isDamaging(grid: Loc): boolean {
+    return this.isFiery(grid);
+  }
+
+  /** square_allowsfeel (cave-square.c L680): a legal level-feeling grid. */
+  allowsFeel(grid: Loc): boolean {
+    return this.isPassable(grid) && !this.isDamaging(grid);
+  }
+
   /** square_allows_los equivalent used by the LOS routine. */
   allowsLos(grid: Loc): boolean {
     if (!this.inBounds(grid)) return false;
@@ -360,6 +371,24 @@ export class Chunk {
 
   isWallSolid(grid: Loc): boolean {
     return this.sqinfoHas(grid, SQUARE["WALL_SOLID"]);
+  }
+
+  /**
+   * add_to_monster_rating (mon-make.c): saturating accumulate into
+   * mon_rating, ceiling at UINT32_MAX.
+   */
+  addToMonsterRating(part: number): void {
+    this.monRating =
+      this.monRating < UINT32_MAX - part ? this.monRating + part : UINT32_MAX;
+  }
+
+  /**
+   * place_object's obj_rating accumulation (gen-util.c L534-539): saturating
+   * accumulate, ceiling at UINT32_MAX.
+   */
+  addToObjRating(sqrating: number): void {
+    this.objRating =
+      this.objRating < UINT32_MAX - sqrating ? this.objRating + sqrating : UINT32_MAX;
   }
 
   /** fill the whole chunk with a feature (generation helper). */

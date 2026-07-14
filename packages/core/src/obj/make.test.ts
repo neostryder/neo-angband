@@ -13,7 +13,8 @@ import {
   objectPrep,
 } from "./make";
 import { ObjAllocState } from "./make";
-import type { MakeDeps } from "./make";
+import type { MakeDeps, MakeObjectRating } from "./make";
+import { objectValueReal } from "./value";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -225,6 +226,71 @@ describe("make_object special-artifact path", () => {
       }
     }
     expect(hit).toBe(true);
+  });
+});
+
+describe("make_object *value out-parameter (obj-make.c L1211-1231, item #74)", () => {
+  it("is untouched when the caller passes nothing (no extra work)", () => {
+    const deps = freshDeps();
+    const rng = new Rng(11);
+    const obj = makeObject(rng, deps, 10, false, false, false, 0, 10);
+    expect(obj).not.toBeNull();
+  });
+
+  it("special artifacts set outValue.value via object_value_real(obj, 1)", () => {
+    /* Mirrors the special-artifact scan above; the special path returns
+     * before the OOD boost, using quantity 1 (obj-make.c L1173). */
+    let hit = false;
+    for (let s = 1; s < 4000 && !hit; s++) {
+      const deps = freshDeps();
+      const rng = new Rng(s);
+      const rating: MakeObjectRating = { value: -1 };
+      const obj = makeObject(rng, deps, 100, true, false, false, 0, 100, rating);
+      if (obj && obj.artifact && isSpecial(obj.artifact)) {
+        hit = true;
+        expect(rating.value).toBe(objectValueReal(deps.reg, obj, 1));
+      }
+    }
+    expect(hit).toBe(true);
+  });
+
+  it("boosts the value 20% per level OOD for uncursed objects, matching the exact clamp arithmetic", () => {
+    /* Depth 0 guarantees kind.allocMin > depth for any kind with a positive
+     * allocMin, which is common; scan seeds for such a draw. */
+    const deps = freshDeps();
+    let checked = false;
+    for (let seed = 1; seed < 500 && !checked; seed++) {
+      const rng = new Rng(seed);
+      const rating: MakeObjectRating = { value: 0 };
+      const obj = makeObject(rng, deps, 5, false, false, false, 0, 0, rating);
+      if (!obj || obj.artifact) continue; /* skip the special-artifact path */
+      if (obj.curses) continue;
+      if (obj.kind.allocMin <= 0) continue;
+
+      const base = objectValueReal(deps.reg, obj, obj.number);
+      const ood = obj.kind.allocMin; /* - depth(0) */
+      const frac = Math.trunc(Math.max(base, 0) / 5);
+      expect(rating.value).toBe(base + ood * frac);
+      checked = true;
+    }
+    expect(checked).toBe(true);
+  });
+
+  it("skips the OOD boost for a cursed object even when allocMin > depth", () => {
+    /* Wearables can be cursed (rng.oneIn(20)); scan for one, at depth 0 so
+     * the boost condition (allocMin > depth) would otherwise fire. */
+    const deps = freshDeps();
+    let checked = false;
+    for (let seed = 1; seed < 4000 && !checked; seed++) {
+      const rng = new Rng(seed);
+      const rating: MakeObjectRating = { value: 0 };
+      const obj = makeObject(rng, deps, 5, false, false, false, 0, 0, rating);
+      if (!obj || obj.artifact || !obj.curses) continue;
+      if (obj.kind.allocMin <= 0) continue;
+      expect(rating.value).toBe(objectValueReal(deps.reg, obj, obj.number));
+      checked = true;
+    }
+    expect(checked).toBe(true);
   });
 });
 
