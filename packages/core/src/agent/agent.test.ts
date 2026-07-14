@@ -442,6 +442,35 @@ describe("pre-freeze gap closures", () => {
   });
 });
 
+describe("perceive: partial resolver degrades, never throws (W1.5)", () => {
+  it("omits monster raceId and item kindId when the resolver lacks them", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    addMon(state, makeRace(), loc(11, 10));
+    // A resolver bound only to objects/player - no monster races, no kinds.
+    const resolver = new ContentIdResolver({
+      objects: new ObjRegistry({
+        objectBase: { records: [] },
+        object: { records: [] },
+        egoItem: { records: [] },
+        artifact: { records: [] },
+        curse: { records: [] },
+        brand: { records: [] },
+        slay: { records: [] },
+        activation: { records: [] },
+        objectProperty: { records: [] },
+        flavor: { records: [] },
+      } as ObjPackJson),
+    });
+    const view = createAgentView(state, undefined, { resolver });
+    // The unbound ids are simply omitted - no throw (the frozen contract).
+    const mon = view.monsters().find((m) => m);
+    expect(mon).toBeDefined();
+    expect(mon?.raceId).toBeUndefined();
+    const item = view.inventory()[0];
+    if (item) expect(item.kindId).toBeUndefined();
+  });
+});
+
 describe("facade capability enforcement (W1.4)", () => {
   it("perceive: no caps is a trusted host - every domain is granted", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
