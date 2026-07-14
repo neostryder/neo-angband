@@ -138,8 +138,14 @@ export function loadRoomTemplates(records: RoomTemplateRecordJson[]): RoomTempla
   }));
 }
 
-/** Load vaults from parsed vault.json records. */
-export function loadVaults(records: VaultRecordJson[]): Vault[] {
+/**
+ * Load vaults from parsed vault.json records. `maxDepth` is z_info->max_depth
+ * (constants world:max-depth): a vault max-depth of 0 means "no maximum", so it
+ * defaults to maxDepth exactly like parse_vault_max_depth (generate.c L562).
+ * Without this, randomVault's `maxLev >= depth` filter hides every 0-max vault
+ * (128 of 161) from the dungeon.
+ */
+export function loadVaults(records: VaultRecordJson[], maxDepth: number): Vault[] {
   return records.map((r) => ({
     name: r.name,
     typ: r.type,
@@ -147,7 +153,7 @@ export function loadVaults(records: VaultRecordJson[]): Vault[] {
     hgt: r.rows,
     wid: r.columns,
     minLev: r["min-depth"] ?? 0,
-    maxLev: r["max-depth"] ?? 0,
+    maxLev: r["max-depth"] ? r["max-depth"] : maxDepth,
     rows: [...r.D],
     fewEntrances: hasFewEntrances(r.flags),
   }));

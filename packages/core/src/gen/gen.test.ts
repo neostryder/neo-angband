@@ -85,7 +85,7 @@ const reg = new FeatureRegistry(terrain);
 const constants = bindConstants(loadJson<ConstantsJson>("constants"));
 
 const roomTemplates = loadRoomTemplates(loadRecords<RoomTemplateRecordJson>("room_template"));
-const vaults = loadVaults(loadRecords<VaultRecordJson>("vault"));
+const vaults = loadVaults(loadRecords<VaultRecordJson>("vault"), constants.maxDepth);
 
 const objPack: ObjPackJson = {
   objectBase: loadJson("object_base"),
@@ -1549,5 +1549,20 @@ describe("build_room_of_chambers", () => {
     const g = roomGen(25, 25, 10, 1);
     const build = createRoomRegistry({ templates: roomTemplates, vaults }).get("room_of_chambers");
     expect(build(g, loc(12, 12), 0)).toBe(false);
+  });
+});
+
+describe("vault max-depth default (parse_vault_max_depth, generate.c L562)", () => {
+  it("treats max-depth 0 as no maximum (= constants.maxDepth), not 0", () => {
+    /* vault.txt has 128 of 161 vaults at max-depth:0; without the default they
+     * would be unreachable in the dungeon (randomVault filters maxLev >= depth). */
+    expect(vaults.length).toBeGreaterThan(100);
+    for (const v of vaults) {
+      expect(v.maxLev).toBeGreaterThanOrEqual(1);
+      expect(v.maxLev).toBeLessThanOrEqual(constants.maxDepth);
+    }
+    /* The defaulted (0 -> maxDepth) vaults are the majority. */
+    const defaulted = vaults.filter((v) => v.maxLev === constants.maxDepth);
+    expect(defaulted.length).toBeGreaterThan(vaults.length / 2);
   });
 });
