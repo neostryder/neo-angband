@@ -125,17 +125,30 @@ Legend: [x] done, [~] partial, [ ] gap. Tiers are recommended execution order.
   recall via loreDescription/showTextScreen (#70). spellColor/blowColor by known
   resist and the '~' knowledge-menu monster browser remain follow-ups.
 
-## Tier 4 - Generation depth
+## Tier 4 - Generation depth  [ALL PORTED + PUSHED]
 
-- [~] Town: functional lit/walled surface with all 8 shop entrances + stair +
-  player start, BUT compact placeholder layout, no townsfolk, no day/night.
-  Needs faithful `town_gen_layout` + population.
-- [ ] Themed pits/nests (`set_pit_type`/`mon_pit_hook`/`pit.txt`).
-- [ ] Level feelings (`place_feeling`/`calc_*_feeling`).
-- [ ] Vault racial-glyph monster restriction (`get_vault_monsters`).
-- [ ] Alternate generators (all delegate to `modified_gen`, disabled):
-  labyrinth, cavern, moria, lair, gauntlet, hard_centre, arena; + build_moria /
-  build_room_of_chambers / build_huge.
+- [x] Town: faithful `town_gen_layout` (starburst + lava streamers, lot-based
+  store placement, ruins, crossroads) + build_store/build_ruin + day/night
+  (`cave_illuminate`/`is_daytime`) + townsfolk (`town_monsters_day/night`).
+  RNG-exact incl. the h-basic.h MIN/MAX macro double-evaluation. (#72)
+- [x] Themed pits/nests (`set_pit_type`/`mon_pit_hook`/`pit.txt`): ordered
+  depth-sorted pit + disordered nest, the `mon_restrict`->`get_mon_num_prep`
+  filter machinery in `gen/gen-monster.ts`, obj-rarity drops. (#73)
+- [x] Vault racial-glyph monster restriction (`get_vault_monsters`) via
+  `mon_select`; folded in with pits/nests. (#75)
+- [x] Level feelings (`place_feeling`/`calc_obj_feeling`/`calc_mon_feeling`):
+  obj_rating (make_object value) + mon_rating (add_to_monster_rating, incl. the
+  room-builder v->rat / pit averages) accumulation, gen-end feeling calc, and
+  the runtime `feeling` reveal on stepping FEEL squares. (#74)
+- [x] Alternate generators - ALL SIX ported real (were `modified_gen` aliases)
+  + the room builders: labyrinth (Kruskal maze), cavern (cellular automaton),
+  moria, lair, gauntlet, hard_centre (+ vault_chunk / connect_caverns /
+  chunk_copy); build_moria / build_room_of_chambers (+ get_chamber_monsters) /
+  build_huge. `choose_profile` now loads the full weighted/forced pool so they
+  actually generate. (arena is quest-only -> deferred with the quest system.)
+  (#77-#81, enablement #80)
+- [x] Bugfix surfaced here: vault `max-depth:0` = "no maximum" (128/161 vaults
+  were unreachable in the dungeon under the old `?? 0` default).
 
 ## Tier 5 - Systems / edge / later (mostly ledger-sourced; re-verify before build)
 
