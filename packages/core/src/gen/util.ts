@@ -364,6 +364,11 @@ export function squareIsNoStairs(c: Chunk, grid: Loc): boolean {
   return c.sqinfoHas(grid, SQUARE.NO_STAIRS);
 }
 
+/** square_iswall_outer (cave-square.c L514): the SQUARE_WALL_OUTER flag alone. */
+export function squareIswallOuter(c: Chunk, grid: Loc): boolean {
+  return c.sqinfoHas(grid, SQUARE.WALL_OUTER);
+}
+
 /** square_is_granite_with_flag. */
 export function squareIsGraniteWithFlag(
   c: Chunk,
