@@ -11,11 +11,12 @@
  * choice down, exactly as upstream's cmd_get_spell resolves before the
  * command runs.
  *
- * DEFERRED (ledgered in game-spell-cmd.yaml): convert_mana_to_hp for
- * COMBAT_REGEN, player_over_exert's faint/CON drain on overcasting (the
- * mana still empties), the low-mana confirmation prompt (get_check, UI),
- * TMD_FASTCAST's 3/4-turn cast, and no_light in player_can_cast (light
- * model) - blindness still forbids casting.
+ * DEFERRED (ledgered in game-spell-cmd.yaml): the low-mana confirmation
+ * prompt (get_check, UI), TMD_FASTCAST's 3/4-turn cast, and no_light in
+ * player_can_cast (light model) - blindness still forbids casting.
+ * convert_mana_to_hp (PF_COMBAT_REGEN) and player_over_exert's faint/CON
+ * drain on overcasting are now wired (the latter through env.overExert,
+ * supplied by session/game.ts).
  */
 
 import { PF, TMD } from "../generated";
@@ -33,6 +34,7 @@ import {
   PY_SPELL,
 } from "../player/spell";
 import type { SpellChanceEnv } from "../player/spell";
+import { convertManaToHp } from "../player/combat-regen";
 import type { GameState, PlayerCommand } from "./context";
 import {
   buildObjectEffectChain,
@@ -165,7 +167,13 @@ export function spellCast(
       return false;
     }
 
-    /* convert_mana_to_hp for PF_COMBAT_REGEN is DEFERRED. */
+    /* Reward PF_COMBAT_REGEN characters with a small HP recovery from the
+     * mana just spent (player-spell.c L519-521). Deterministic - no RNG. */
+    const hasPf =
+      env.hasPf ?? ((pf: number): boolean => player.cls.pflags.has(pf));
+    if (hasPf(PF.COMBAT_REGEN)) {
+      convertManaToHp(player, spell.mana << 16);
+    }
 
     if (((player.spellFlags[spellIndex] ?? 0) & PY_SPELL.WORKED) === 0) {
       /* The spell worked. */
