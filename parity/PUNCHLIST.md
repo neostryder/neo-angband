@@ -176,13 +176,13 @@ Done this pass (each verified + pushed):
 - [x] UI-data packs `ui_entry*`/`visuals` - already compiled/consumed (ledger
   was stale); `ui_knowledge`/`old_class` intentionally out (front-end/retired).
 
+Also done this pass (Aaron: "close some deferrals first"):
+- [x] O-combat mode (`birth_percent_damage`): live melee+ranged damage/crit
+  path, gated so the default (OFF) path is byte-identical. (#91)
+- [x] Point-buy birth UI + engine threading + deeper quickstart (restores prior
+  stats); classic roller RNG unchanged. (#92)
+
 Deferred by design (non-default options or architectural - need Aaron's call):
-- [ ] O-combat mode (`birth_percent_damage`, OFF by default): the live damage
-  path is standard-only; the char-sheet estimate already uses O-combat. Large
-  (two damage + two crit formulas across melee/ranged).
-- [ ] Point-buy birth UI + true quickstart: the point-buy PRIMITIVES are done;
-  the interactive stat-allocation screen + roller-method engine threading, and
-  restoring full prior stats on quickstart, are not built (non-default method).
 - [ ] Randart name RNG parity + `birth_randarts` (OFF by default): the randart
   design pipeline/seed/persist is DONE and faithful, but names use a local
   syllable table, not `randname_make` + the Tolkien names datafile - so a
