@@ -11,23 +11,59 @@
  * completed as the Borg port, P8, drives them). Store verbs emit semantic codes
  * that the store API binds in P8; they are here so the contract is complete.
  *
- * Capability: command:add (enforced at controller install, controller.ts).
+ * Capability: command:add - enforced per verb when an AgentCapabilities is
+ * supplied (and still at controller install, controller.ts). With no caps (a
+ * trusted in-process host) every verb is granted.
  */
 
 import type { GameState } from "../game/context";
 import { targetSetLocation, targetSetMonster } from "../game/target";
 import { loc } from "../loc";
-import type { AgentActions, AgentCommand } from "./types";
+import { AgentCapabilityError } from "./types";
+import type { AgentActions, AgentCapabilities, AgentCommand } from "./types";
 
-/** Build the act facade bound to a live state. */
-export function createAgentActions(state: GameState): AgentActions {
+/**
+ * Wrap every act verb so it throws AgentCapabilityError unless the caller was
+ * granted "command:add". With no AgentCapabilities (a trusted in-process host)
+ * the facade is returned unchanged - every verb is granted.
+ */
+function gateActions(
+  actions: AgentActions,
+  caps: AgentCapabilities | undefined,
+): AgentActions {
+  if (!caps) return actions;
+  const guard = (): void => {
+    if (!caps.has("command:add")) {
+      throw new AgentCapabilityError(
+        `agent act: capability "command:add" is not granted`,
+      );
+    }
+  };
+  const out = {} as Record<string, (...args: unknown[]) => unknown>;
+  for (const [key, fn] of Object.entries(actions) as [
+    string,
+    (...args: unknown[]) => unknown,
+  ][]) {
+    out[key] = (...args: unknown[]): unknown => {
+      guard();
+      return fn(...args);
+    };
+  }
+  return out as unknown as AgentActions;
+}
+
+/** Build the act facade bound to a live state, gated by the given caps. */
+export function createAgentActions(
+  state: GameState,
+  caps?: AgentCapabilities,
+): AgentActions {
   const cmd = (code: string, args?: Record<string, unknown>): AgentCommand =>
     args ? { code, args } : { code };
   const dirCmd = (code: string, dir: number): AgentCommand => ({ code, dir });
   const itemCmd = (code: string, handle: number): AgentCommand =>
     cmd(code, { handle });
 
-  return {
+  const actions: AgentActions = {
     move: (dir) => dirCmd("walk", dir),
     melee: (dir) => dirCmd("walk", dir),
     hold: () => cmd("hold"),
@@ -73,4 +109,6 @@ export function createAgentActions(state: GameState): AgentActions {
 
     raw: (code, args) => cmd(code, args),
   };
+
+  return gateActions(actions, caps);
 }

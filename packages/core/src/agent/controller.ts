@@ -22,6 +22,7 @@
 import type { GameState, PlayerCommand } from "../game/context";
 import { createAgentView } from "./perceive";
 import { createAgentActions } from "./act";
+import { AgentCapabilityError } from "./types";
 import type {
   AgentCapabilities,
   AgentController,
@@ -29,8 +30,7 @@ import type {
   ControllerOptions,
 } from "./types";
 
-/** Thrown when a controller is installed without a capability it requires. */
-export class AgentCapabilityError extends Error {}
+export { AgentCapabilityError } from "./types";
 
 /** Capabilities every controller needs: read the whole state, drive commands. */
 const REQUIRED_CAPABILITIES = ["state:*.read", "command:add"] as const;
@@ -74,8 +74,8 @@ export function installController(
   if (opts.nondeterministic) opts.onNondeterministic?.();
 
   const buffer = makeMessageBuffer();
-  const view = createAgentView(state, buffer, opts.viewDeps);
-  const act = createAgentActions(state);
+  const view = createAgentView(state, buffer, opts.viewDeps, opts.capabilities);
+  const act = createAgentActions(state, opts.capabilities);
 
   const prevNextCommand = state.nextCommand;
   const prevMsg = state.msg;
