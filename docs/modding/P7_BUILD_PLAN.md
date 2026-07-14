@@ -68,6 +68,21 @@
 > kinds); (d) SpellView.fail is the base failure rate, not a live
 > stat/level-adjusted spellChance (that needs statInd threading). FREEZE
 > (0.1.0 -> 1.0) now awaits only the maintainer's ratification of this surface.
+>
+> UPDATE (2026-07-14d): FROZEN. The maintainer ratified the section-3 surface;
+> before freezing, three of the four documented gaps were closed at his request
+> (commit 454eda3): (1) live cast-failure - SpellView.chance = spell_chance when
+> state.statInd is present (base 'fail' kept); (2) namespaced player race/class
+> ids - ContentIdResolver now carries player races/classes and PlayerView exposes
+> playerRaceId/playerClassId when the resolver has them; (3) always-resolvable
+> curse names - ItemView.curses reads the always-present RuneEnv curse table
+> first. The fourth (monster 'poisoned') stays false: 4.2.6 has no monster poison
+> timed status, so it cannot be closed faithfully. AGENT_API_VERSION bumped
+> 0.1.0 -> 1.0.0 (commit 2e61b98); the contract is now add-only (new field = minor
+> bump, any change to an existing field/semantics = major). tsc clean, full
+> monorepo 2365 tests. **P7.7 IS DONE - the P7 -> P8 gate is passed.** Remaining
+> P7 tail: the small P7.3 registry-bind wiring (consume merged field-patches at
+> bind time). NEXT: P8 (the Borg) rides this frozen facade.
 
 > STATUS: BUILD PLAN (2026-07-14). This is the executable sequencing of work
 > that is already DESIGNED and RATIFIED in `../MODS.md` and `MOD_LIFECYCLE.md`
