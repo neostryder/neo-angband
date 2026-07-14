@@ -14,7 +14,15 @@
 > the facade is complete. Every later agent mod (third-party or AI) reuses that
 > exact contract.
 
-## The gate this rides on (already done)
+## Dependency: the Mod Integration Wave 1 (do first)
+
+A 2026-07-14 code audit found the mod substrate is BUILT-BUT-NOT-WIRED: the
+frozen agent controller runs only in tests, and the running host never installs
+it. P8's Borg rides `installController` in the real host, which is
+`MOD_INTEGRATION_PLAN.md` step W1.5. So Wave 1 of the integration plan lands
+BEFORE P8. See `MOD_INTEGRATION_PLAN.md`.
+
+## The gate this rides on (already done, but not yet wired - see W1.5)
 
 - PERCEIVE: `createAgentView(state, buffer?, deps?)` returns fresh plain data
   covering the full BORG_AS_MOD section-3 read surface (player, race/class
