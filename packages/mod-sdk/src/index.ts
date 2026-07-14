@@ -44,3 +44,5 @@ export type {
   RecordConflict,
   RecordOverride,
 } from "./conflicts.js";
+export { CapabilityError, CapabilitySet, parseCapability } from "./capabilities.js";
+export type { ParsedCapability } from "./capabilities.js";
