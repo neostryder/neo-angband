@@ -103,12 +103,17 @@ export function kindLocalId(tval: number, name: string): string {
  * The resolver.
  * ------------------------------------------------------------------ */
 
-/** The registries the resolver needs; a subset of CoreRegistries. */
+/**
+ * The registries the resolver needs; a subset of CoreRegistries. Only
+ * `objects` is required: the monster / feature / trap registries are optional
+ * so a caller that only serializes object references (a focused test) can build
+ * a partial resolver. Production (loadGame/saveGame) always passes the full set.
+ */
 export interface ContentIdRegistries {
   objects: ObjRegistry;
-  monsters: { races: readonly MonsterRace[] };
-  features: FeatureRegistry;
-  traps: readonly TrapKind[] | null;
+  monsters?: { races: readonly MonsterRace[] };
+  features?: FeatureRegistry;
+  traps?: readonly TrapKind[] | null;
 }
 
 /** One bidirectional index<->id table for a single entity kind. */
@@ -200,7 +205,7 @@ export class ContentIdResolver {
     }
 
     this.races = new IdTable(namespace);
-    for (const race of reg.monsters.races) {
+    for (const race of reg.monsters?.races ?? []) {
       this.races.add(race.ridx, slug(race.name));
     }
 
@@ -210,7 +215,7 @@ export class ContentIdResolver {
     }
 
     this.feats = new IdTable(namespace);
-    for (const feat of reg.features.allFeatures()) {
+    for (const feat of reg.features?.allFeatures() ?? []) {
       this.feats.add(feat.fidx, slug(feat.code));
     }
   }
@@ -300,6 +305,15 @@ export class ContentIdResolver {
     const id = this.feats.id(fidx);
     if (id === null) throw new Error(`mod/ids: unbound feature index ${fidx}`);
     return id;
+  }
+  /**
+   * The feature id for an index, or null when the index is not a bound feature
+   * (an unset terrain cell carries a sentinel like -1 that has no id). Used to
+   * build the terrain legend, which skips sentinels: they mean "no feature"
+   * and are pack-independent, so they never need remapping.
+   */
+  featIdOrNull(fidx: number): string | null {
+    return this.feats.id(fidx);
   }
   featIndex(id: string): number | undefined {
     return this.feats.index(id);

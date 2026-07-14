@@ -41,6 +41,7 @@ import {
   learnBrandSlayFromLaunch,
 } from "../combat/brand-slay";
 import { deserializePlayer, serializePlayer } from "../session/save";
+import { ContentIdResolver } from "../mod/ids";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -79,6 +80,9 @@ const players = bindPlayer({
 });
 
 const rng = new Rng(7);
+
+/** An object-only content-id resolver (enough for the rune round-trip). */
+const ids = new ContentIdResolver({ objects: reg });
 
 function makePlayerOf(raceName = "Human"): Player {
   const race = players.raceByName(raceName)!;
@@ -378,9 +382,9 @@ describe("rune knowledge in the save format", () => {
     p.objKnown.curses[2] = 1;
 
     const saved = JSON.parse(
-      JSON.stringify(serializePlayer(p)),
+      JSON.stringify(serializePlayer(p, ids)),
     ) as ReturnType<typeof serializePlayer>;
-    const restored = deserializePlayer(saved, players);
+    const restored = deserializePlayer(saved, players, reg, ids);
 
     expect(restored.objKnown.toA).toBe(1);
     expect(restored.objKnown.modifiers).toEqual(p.objKnown.modifiers);
@@ -401,12 +405,14 @@ describe("rune knowledge in the save format", () => {
   it("a legacy save (objKnownModifiers only) still loads", () => {
     const { p } = fixture();
     p.objKnown.modifiers[3] = 1;
-    const saved = serializePlayer(p) as unknown as Record<string, unknown>;
+    const saved = serializePlayer(p, ids) as unknown as Record<string, unknown>;
     saved.objKnownModifiers = [...p.objKnown.modifiers];
     delete saved.objKnown;
     const restored = deserializePlayer(
       saved as unknown as Parameters<typeof deserializePlayer>[0],
       players,
+      reg,
+      ids,
     );
     expect(restored.objKnown.modifiers[3]).toBe(1);
     expect(restored.objKnown.toA).toBe(0);
