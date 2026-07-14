@@ -1180,6 +1180,9 @@ function makeChangeLevel(
         state.artifacts,
         state.options?.get("birth_no_artifacts") ?? false,
       ),
+      /* is_daytime() only affects the town (depth 0) build; passed always so a
+       * RECALL back to town honours the day/night clock. */
+      { daytime: isDaytime(state.turn, state.z.dayLength) },
     );
     state.chunk = g.c;
     state.monsters = [null];

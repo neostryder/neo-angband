@@ -20,6 +20,7 @@ import { MonAllocTable } from "../mon/make";
 import {
   createDungeonProfiles,
   DungeonProfiles,
+  TOWN_STORE_FEATS,
   type DunProfile,
   type DunProfileRecordJson,
 } from "./cave";
@@ -331,6 +332,91 @@ describe("full level generation", () => {
     expect(g.c.isPassable(p)).toBe(true);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Faithful town generation (gen-cave.c town_gen_layout / town_gen).
+ * ------------------------------------------------------------------ */
+
+/** Serialize only the terrain grid + player spot (time-of-day independent). */
+function serializeFeats(g: Gen): string {
+  const c = g.c;
+  const feats: number[] = [];
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) feats.push(c.feat(loc(x, y)));
+  }
+  return `${c.width}x${c.height}|${g.playerSpot?.x},${g.playerSpot?.y}|${feats.join(",")}`;
+}
+
+/** An Rng that counts every consuming draw (Rand_div with m > 1). */
+class CountingRng extends Rng {
+  draws = 0;
+  override randDiv(m: number): number {
+    if (m > 1) this.draws++;
+    return super.randDiv(m);
+  }
+}
+
+describe("faithful town generation", () => {
+  it("is identical run-to-run for a fixed seed (determinism)", () => {
+    const a = generateLevel(new Rng(7), 0, makeDeps(), { daytime: true });
+    const b = generateLevel(new Rng(7), 0, makeDeps(), { daytime: true });
+    expect(serialize(a)).toBe(serialize(b));
+    expect(a.monsters.length).toBe(b.monsters.length);
+  });
+
+  it("lays all store entrances, one down stair, and the player on it", () => {
+    const g = generateLevel(new Rng(7), 0, makeDeps(), { daytime: true });
+    const c = g.c;
+
+    /* Exactly one down stair (the single north-wall crossroads head). */
+    expect(c.featCount[FEAT.MORE] ?? 0).toBe(1);
+
+    /* Player placed on that stair (player_place(c, p, pgrid)). */
+    const p = g.playerSpot as Loc;
+    expect(c.feat(p)).toBe(FEAT.MORE);
+    expect(c.inBoundsFully(p)).toBe(true);
+    expect(c.isPassable(p)).toBe(true);
+
+    /* All eight shop entrances present, exactly one of each feature. */
+    for (const feat of TOWN_STORE_FEATS) {
+      expect(c.featCount[feat] ?? 0).toBe(1);
+    }
+
+    /* Perimeter is permanent wall. */
+    for (let x = 0; x < c.width; x++) {
+      expect(c.isPerm(loc(x, 0))).toBe(true);
+      expect(c.isPerm(loc(x, c.height - 1))).toBe(true);
+    }
+  });
+
+  it("has a time-of-day-independent layout (illumination/residents come after)", () => {
+    /* cave_illuminate sets info flags and residents place monsters; neither
+     * touches terrain, so the feature grid + player spot are identical. */
+    const day = generateLevel(new Rng(11), 0, makeDeps(), { daytime: true });
+    const night = generateLevel(new Rng(11), 0, makeDeps(), { daytime: false });
+    expect(serializeFeats(day)).toBe(serializeFeats(night));
+  });
+
+  it("places town_monsters_day residents by day (a non-empty town)", () => {
+    expect(constants.townMonstersDay).toBe(4);
+    expect(constants.townMonstersNight).toBe(8);
+    const g = generateLevel(new Rng(7), 0, makeDeps(), { daytime: true });
+    /* The 4 daytime pick_and_place_distant_monster calls seed the town. */
+    expect(g.monsters.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("consumes the exact RNG draw count of the faithful layout", () => {
+    /* A regression guard on RNG draw ORDER and COUNT: any extra, missing or
+     * reordered draw in town_gen_layout / build_streamer / starburst /
+     * build_store / build_ruin / residents changes this number. */
+    const rng = new CountingRng(7);
+    generateLevel(rng, 0, makeDeps(), { daytime: true });
+    expect(rng.draws).toBe(TOWN_DRAW_COUNT_SEED7_DAY);
+  });
+});
+
+/** Observed faithful draw count for seed 7, daytime (layout + residents). */
+const TOWN_DRAW_COUNT_SEED7_DAY = 1567;
 
 /* ------------------------------------------------------------------ *
  * Mod-registered custom room builder (moddability pillar).

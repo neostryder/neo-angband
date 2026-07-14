@@ -44,6 +44,11 @@ export interface GenerateOptions {
   minWidth?: number;
   /** Generation attempts before giving up (upstream: 100). */
   maxTries?: number;
+  /**
+   * is_daytime() at generation time; only the town builder reads it (for
+   * cave_illuminate and the resident count). Defaults to daytime when omitted.
+   */
+  daytime?: boolean;
 }
 
 /** Clear the transient generation-only square flags on a finished level. */
@@ -99,6 +104,7 @@ export function generateLevel(
       objDeps: deps.objDeps,
       monDeps: deps.monDeps,
       rooms: deps.rooms,
+      ...(options.daytime !== undefined ? { daytime: options.daytime } : {}),
     };
 
     const built = builder(ctx);
