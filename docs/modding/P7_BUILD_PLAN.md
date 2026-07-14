@@ -1,5 +1,32 @@
 # P7 - Mod Substrate + Agent API: Build Plan
 
+> BUILD STATUS (2026-07-14): Phases 1, 3, 4, 5, 6 are DONE and pushed; phases
+> 2 and 7 remain. RECONCILIATION: the pure-function substrate already lived in
+> `packages/mod-sdk` (manifest / resolve / compose from the 2026-07-08 solo
+> work), so those phases EXTENDED it rather than creating new `packages/core/
+> src/mod/` files as first sketched below. What actually landed:
+> - P7.1 (string ids): NEW `packages/core/src/mod/ids.ts` (ContentIdResolver) +
+>   the whole save path converted to namespaced string ids; SAVE_VERSION 1->2,
+>   v1 saves rejected (no migration - pre-1.0, and P7.2 changes the format
+>   again). This one is in core because the save path needs the bound registries.
+> - Manifest lifecycle fields (engine, optionalDependencies, loadAfter/Before,
+>   saveSchema, capabilities, nondeterministic, ...) added to
+>   `packages/mod-sdk/src/manifest.ts`.
+> - P7.4 (resolve): `packages/mod-sdk/src/resolve.ts` extended with loadAfter/
+>   loadBefore, optionalDependencies, and version-range checks (new dependency-
+>   free `semver.ts`).
+> - P7.3 (compose): NEW `packages/mod-sdk/src/patch.ts` - field-level ops
+>   (set/merge/addFlag/removeFlag/add/mul) + same-field conflict detection.
+>   Additive; the coarse deep-merge composePacks is unchanged. Wiring merged
+>   field patches into registry bind is the one piece of P7.3 integration left.
+> - P7.5 (capabilities): NEW `packages/mod-sdk/src/capabilities.ts`.
+> - P7.6 (conflict report): NEW `packages/mod-sdk/src/conflicts.ts`.
+> REMAINING: P7.2 (namespaced save blocks + per-mod bags + quarantine, in core
+> save.ts) and P7.7 (the FROZEN perceive/act/controller facade = the P7->P8
+> gate). Both are correctness-critical and were left for a focused session.
+> DECISION FOR THE MAINTAINER: confirm the no-v1-save-migration call (existing
+> in-browser dev autosaves are dropped to a fresh game on next load).
+
 > STATUS: BUILD PLAN (2026-07-14). This is the executable sequencing of work
 > that is already DESIGNED and RATIFIED in `../MODS.md` and `MOD_LIFECYCLE.md`
 > (decision 19) and scoped in `../BORG_AS_MOD.md`. It invents no new design; it
