@@ -996,6 +996,24 @@ export function objectLearnUnknownRune(
  * effect being learned. object_value and object_value_base read is_aware to
  * decide between the real cost and a flat per-tval guess.
  */
+/**
+ * The player-side side effects object_flavor_aware fires beyond flipping the
+ * aware bit (obj-knowledge.c L2276-2279). Injected so FlavorKnowledge stays
+ * decoupled from the ignore subsystem (obj/ignore.ts IgnoreSettings) and the
+ * player's upkeep, mirroring how the rest of the port threads deps. The
+ * gear/store base_known sweep and floor re-light are NOT here: the former is
+ * covered by the on-demand known shadow, the latter is a display concern (see
+ * FlavorKnowledge.objectFlavorAware).
+ */
+export interface FlavorAwareDeps {
+  /** kind_is_ignored_unaware(kind) (obj-ignore.c): ignored while unidentified? */
+  isIgnoredUnaware(kidx: number): boolean;
+  /** kind_ignore_when_aware(kind) (obj-ignore.c): carry the ignore bit over. */
+  ignoreWhenAware(kidx: number): void;
+  /** p->upkeep->notice |= PN_IGNORE: request an ignore re-check of the pack. */
+  requestIgnoreNotice(): void;
+}
+
 export class FlavorKnowledge {
   private readonly awareKidx = new Set<number>();
   private readonly triedKidx = new Set<number>();
@@ -1017,17 +1035,55 @@ export class FlavorKnowledge {
   }
 
   /**
-   * object_flavor_aware core (L2266): mark a kind's flavor known; returns true
-   * when this made a change. The upstream side effects - revealing
-   * obj->known->effect, ignore/autoinscribe fixes, propagating
-   * object_set_base_known over gear and every store's stock, and refreshing
-   * floor tiles that change glyph on awareness - need the player, stores and
-   * cave and are DEFERRED (ledgered in obj-knowledge.yaml); they belong with
-   * the known-object and UI wiring.
+   * The aware-bit half of object_flavor_aware (L2272-2273): mark a kind's
+   * flavor known; returns true when this made a change. This is the pure
+   * primitive - it flips the bit and nothing else, so it is safe for birth
+   * aware-marking (flavor.ts) and savefile restore, which must NOT trigger the
+   * ignore re-check. Callers that are the player becoming aware in play should
+   * use objectFlavorAware() below, which layers on the awareness side effects.
    */
   setAware(kind: ObjectKind): boolean {
     if (this.awareKidx.has(kind.kidx)) return false;
     this.awareKidx.add(kind.kidx);
+    return true;
+  }
+
+  /**
+   * object_flavor_aware (obj-knowledge.c L2266): the player becomes aware of a
+   * flavoured kind AND the awareness side effects fire. Returns true when
+   * awareness newly changed (upstream is void; the port surfaces the change so
+   * callers can gate a message / redraw).
+   *
+   * What each upstream step maps to in the port's on-demand-shadow model:
+   * - kind->aware = true (L2272-2273): setAware below.
+   * - obj->known->effect = obj->effect (L2274): the port keeps NO persistent
+   *   obj->known twin; the known shadow is synthesised on demand and
+   *   objectSetBaseKnown (known-object.ts L157-170) already fills shadow.effect
+   *   from deps.isAware(kind). Once the bit above flips, every later synthesis
+   *   reveals the effect automatically - there is nothing to write here.
+   * - ignore/autoinscribe fix (L2276-2279): ported below via `deps`.
+   * - object_set_base_known over p->gear and every store's stock (L2281-2290):
+   *   a NO-OP in the port. Those are exactly the twins that are synthesised on
+   *   demand and re-read the freshly-flipped aware bit, so there is no stored
+   *   copy to re-sweep. (Building a persistent twin to sweep is the separate
+   *   DEFERRED obj->known item, out of scope here.)
+   * - floor-tile re-light for kinds that change glyph on awareness
+   *   (L2293-2312): a cave/display concern, outside packages/core/src/obj.
+   *
+   * @returns true iff the kind was not already aware.
+   */
+  objectFlavorAware(kind: ObjectKind, deps: FlavorAwareDeps): boolean {
+    /* if (obj->kind->aware) return; obj->kind->aware = true; (L2272-2273). The
+     * obj->known->effect reveal (L2274) is covered by the on-demand shadow. */
+    if (!this.setAware(kind)) return false;
+
+    /* Fix ignore/autoinscribe (L2276-2279): an item ignored while unaware keeps
+     * being ignored now that it is aware, then flag an ignore re-check. */
+    if (deps.isIgnoredUnaware(kind.kidx)) deps.ignoreWhenAware(kind.kidx);
+    deps.requestIgnoreNotice();
+
+    /* Gear/store base_known sweep (L2281-2290) and floor re-light (L2293-2312)
+     * are on-demand-covered / display-layer respectively; see the doc above. */
     return true;
   }
 
