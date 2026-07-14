@@ -90,6 +90,7 @@ export * from "./session/boot";
 export * from "./session/game";
 export * from "./session/save";
 export * from "./mod/save-blocks";
+export * from "./agent";
 export * from "./game/energy";
 export * from "./game/context";
 export * from "./game/monster-turn";
