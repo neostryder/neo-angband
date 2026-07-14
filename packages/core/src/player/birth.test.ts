@@ -189,3 +189,104 @@ describe("full birth pipeline (Half-Troll Warrior)", () => {
     expect(e.aIdx).toBe(0);
   });
 });
+
+describe("point-based birth (generatePlayer with a given stat array)", () => {
+  const race = reg.raceByName("Half-Troll");
+  const cls = reg.classByName("Warrior");
+  const body = reg.bodies[0];
+  // A valid point-buy allocation: STR 10->17 (8) + CON 10->16 (6) = 14 spent,
+  // so 6 points remain (gold bonus 6 * 50).
+  const alloc = [17, 10, 10, 10, 16];
+
+  function opts() {
+    if (!race || !cls || !body) throw new Error("missing fixtures");
+    return { race, cls, body };
+  }
+
+  it("uses the given stats verbatim (no roll) and honours the leftover-point gold", () => {
+    const { race, cls, body } = opts();
+    const { player } = generatePlayer(
+      race,
+      cls,
+      { body, historyChart: reg.historyChart(race), stats: alloc },
+      new Rng(4242),
+    );
+    for (let i = 0; i < 5; i++) {
+      expect(player.statMax[i]).toBe(alloc[i]);
+      expect(player.statCur[i]).toBe(alloc[i]);
+      expect(player.statBirth[i]).toBe(alloc[i]);
+      expect(player.statMap[i]).toBe(i);
+    }
+    /* get_money: start_gold + 50 * points_left (14 spent of 20 => 6 left). */
+    expect(player.au).toBe(START_GOLD + 50 * 6);
+    expect(player.auBirth).toBe(player.au);
+  });
+
+  it("draws ZERO stat RNG and skips EXACTLY the classic roller's draws", () => {
+    const { race, cls, body } = opts();
+    const seed = 9001;
+
+    // Classic path: consumes rollStats + rollHp + ahw + history.
+    const rngClassic = new Rng(seed);
+    generatePlayer(
+      race,
+      cls,
+      { body, historyChart: reg.historyChart(race) },
+      rngClassic,
+    );
+
+    // Point-based path: pre-advance a fresh RNG past exactly the stat rolls the
+    // classic path would have drawn, then run point-based (which draws none for
+    // stats). If point-based skips ONLY the stat rolls, both RNGs are left in
+    // byte-identical states after the shared downstream draws (rollHp, ahw,
+    // history) - proving the draw order/count is unchanged everywhere else.
+    const rngPoint = new Rng(seed);
+    rollStats(rngPoint); // the stat-roll draws point-based omits
+    generatePlayer(
+      race,
+      cls,
+      { body, historyChart: reg.historyChart(race), stats: alloc },
+      rngPoint,
+    );
+
+    expect(rngPoint.getState()).toEqual(rngClassic.getState());
+  });
+
+  it("leaves the classic path byte-identical to a bare rollStats for the seed", () => {
+    const { race, cls, body } = opts();
+    const seed = 555;
+    const { player } = generatePlayer(
+      race,
+      cls,
+      { body, historyChart: reg.historyChart(race) },
+      new Rng(seed),
+    );
+    // The classic roller still draws first from the same seed, so its stats
+    // match a standalone rollStats (regression guard: unchanged RNG contract).
+    expect(player.statMax.slice(0, 5)).toEqual(rollStats(new Rng(seed)));
+  });
+
+  it("classic birth is a stable snapshot for a fixed seed (regression)", () => {
+    const { race, cls, body } = opts();
+    const { player, history } = generatePlayer(
+      race,
+      cls,
+      { body, historyChart: reg.historyChart(race) },
+      new Rng(2026),
+    );
+    const a = generatePlayer(
+      race,
+      cls,
+      { body, historyChart: reg.historyChart(race) },
+      new Rng(2026),
+    );
+    expect(player.statMax).toEqual(a.player.statMax);
+    expect(player.mhp).toBe(a.player.mhp);
+    expect(player.age).toBe(a.player.age);
+    expect(player.ht).toBe(a.player.ht);
+    expect(player.wt).toBe(a.player.wt);
+    expect(history).toBe(a.history);
+    /* Classic path takes no gold bonus (0 leftover points). */
+    expect(player.au).toBe(START_GOLD);
+  });
+});

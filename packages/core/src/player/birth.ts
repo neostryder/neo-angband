@@ -229,6 +229,16 @@ export interface PlayerBirthOptions {
   historyChart: HistoryChart | null;
   /** Starting timed[FOOD] ceiling; defaults to PY_FOOD_FULL_DEFAULT. */
   foodFull?: number;
+  /**
+   * Point-based allocated base stats (STAT_MAX values, each in
+   * [BIRTH_STAT_BASE, 18]), the ui-birth.c BR_POINTBASED result. When present,
+   * these stats are applied faithfully through the point-buy primitives
+   * (reset_stats + buy_stat) and the classic roller is NOT run, so the stat
+   * stage draws ZERO RNG and the leftover-point gold bonus (get_money) is
+   * honoured. Omit for the classic roller (rollStats). Values below the base of
+   * 10 are clamped up to the base; values above 18 are capped by buy_stat.
+   */
+  stats?: readonly number[];
 }
 
 /** Result of the birth pipeline: the new player plus deferred references. */
@@ -256,8 +266,29 @@ export function generatePlayer(
 ): PlayerBirthResult {
   const player = blankPlayer(race, cls, options.body);
 
-  /* Stats: classic roller, then healed/birth copies with identity swap map. */
-  const statMax = rollStats(rng);
+  /*
+   * Stats: point-based (a given allocation, drawing ZERO RNG) or the classic
+   * roller. For point-based we replay the allocation through reset_stats +
+   * buy_stat so the resulting stats and the leftover-point pool (which sets the
+   * get_money gold bonus below) match ui-birth.c's point-buy exactly. For the
+   * classic path pointsLeft stays 0, so gold is start_gold and the RNG draw is
+   * the unchanged rollStats sequence.
+   */
+  let statMax: number[];
+  let pointsLeft = 0;
+  if (options.stats) {
+    const buy = resetStats();
+    for (let i = 0; i < STAT_MAX; i++) {
+      const target = options.stats[i] ?? BIRTH_STAT_BASE;
+      while ((buy.stats[i] ?? 0) < target && buyStat(buy, i)) {
+        /* raise this stat one point at a time, up to the target */
+      }
+    }
+    statMax = buy.stats;
+    pointsLeft = buy.pointsLeft;
+  } else {
+    statMax = rollStats(rng);
+  }
   for (let i = 0; i < STAT_MAX; i++) {
     player.statMax[i] = statMax[i] ?? 0;
     player.statCur[i] = statMax[i] ?? 0;
@@ -310,9 +341,12 @@ export function generatePlayer(
   const history = generateHistory(options.historyChart, rng);
   player.history = history;
 
-  /* Starting gold (get_money; roller path leaves 0 points, so no bonus). */
-  player.au = START_GOLD;
-  player.auBirth = START_GOLD;
+  /* Starting gold (get_money): start_gold + 50 * points_left. The classic
+   * roller leaves 0 points, so this is exactly START_GOLD there (unchanged);
+   * point-based awards the leftover-point bonus (recalculate_stats). */
+  const gold = birthGold(pointsLeft);
+  player.au = gold;
+  player.auBirth = gold;
 
   /* do_cmd_accept_character (player-birth.c L1241-1242): history_clear then
    * history_add(HIST_PLAYER_BIRTH). blankPlayer already leaves player.hist

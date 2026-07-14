@@ -120,11 +120,12 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     const record = (): void => {
       seen.push(term.snapshot().join("\n"));
     };
-    await tick(); record();
-    press(win, "a"); await tick(); record();
-    press(win, "a"); await tick(); record();
-    press(win, "a"); await tick(); record();
-    press(win, "Enter"); await tick(); record();
+    await tick(); record();                  // race
+    press(win, "a"); await tick(); record(); // -> class
+    press(win, "a"); await tick(); record(); // -> roller
+    press(win, "a"); await tick(); record(); // Point-based -> points screen
+    press(win, "Enter"); await tick(); record(); // accept allocation -> name
+    press(win, "Enter"); await tick(); record(); // empty name -> confirm
     press(win, "a");
     const choice = await done;
     expect(choice).not.toBeNull();
@@ -136,6 +137,8 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     // An empty name defaults to Adventurer, roller default is point-based.
     expect(choice!.name).toBe("Adventurer");
     expect(choice!.roller).toBe("point");
+    // With no adjustments made, the allocation is every stat at the base of 10.
+    expect(choice!.stats).toEqual([10, 10, 10, 10, 10]);
   });
 
   it("ESC on the class stage steps BACK to race with the prior cursor", async () => {
@@ -172,9 +175,9 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     const term = makeTerm();
     const done = runBirth(term, RACES, CLASSES);
     await tick();
-    press(win, "a"); await tick();
-    press(win, "a"); await tick();
-    press(win, "a"); await tick();
+    press(win, "a"); await tick(); // race Human
+    press(win, "a"); await tick(); // class Warrior
+    press(win, "b"); await tick(); // Standard roller -> straight to name
     for (const ch of "Bo") press(win, ch);
     press(win, "Enter");
     await tick();
@@ -186,6 +189,72 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     await tick();
     press(win, "a");
     expect((await done)!.name).toBe("Bo");
+  });
+});
+
+describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
+  it("buys stats, reports the choice, and takes the leftover-point gold path", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES);
+    await tick();
+    press(win, "a"); await tick(); // Human
+    press(win, "a"); await tick(); // Warrior
+    press(win, "a"); await tick(); // Point-based -> the allocation screen
+    expect(term.snapshot().join("\n")).toContain("allocate your stats");
+    expect(term.snapshot().join("\n")).toContain("Points left: 20 / 20");
+    expect(term.snapshot().join("\n")).toContain("Starting gold: 1600"); // 600 + 50*20
+    // Raise STR (cursor starts on row 0) by two points, then accept.
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    expect(term.snapshot().join("\n")).toContain("Points left: 18 / 20");
+    press(win, "Enter"); await tick(); // -> name
+    expect(term.snapshot()[0]).toContain("name");
+    press(win, "Enter"); await tick(); // empty name -> confirm
+    press(win, "a"); // begin
+    const choice = await done;
+    expect(choice!.roller).toBe("point");
+    expect(choice!.stats).toEqual([12, 10, 10, 10, 10]);
+  });
+
+  it("ESC from the allocation screen steps back to the roller choice", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES);
+    await tick();
+    press(win, "a"); await tick(); // Human
+    press(win, "a"); await tick(); // Warrior
+    press(win, "a"); await tick(); // Point-based -> allocation
+    expect(term.snapshot().join("\n")).toContain("allocate your stats");
+    press(win, "Escape"); await tick(); // BIRTH_BACK -> roller choice
+    expect(term.snapshot()[0]).toContain("choose a stat roller");
+    press(win, "Escape"); await tick(); // -> class
+    press(win, "Escape"); await tick(); // -> race
+    press(win, "Escape"); // stage 0 -> keep default
+    expect(await done).toBeNull();
+  });
+
+  it("'r' resets the pool after buying", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES);
+    await tick();
+    press(win, "a"); await tick();
+    press(win, "a"); await tick();
+    press(win, "a"); await tick(); // Point-based
+    press(win, "ArrowRight"); // buy STR
+    press(win, "ArrowRight");
+    expect(term.snapshot().join("\n")).toContain("Points left: 18 / 20");
+    press(win, "r"); // reset
+    expect(term.snapshot().join("\n")).toContain("Points left: 20 / 20");
+    press(win, "Escape"); await tick();
+    press(win, "Escape"); await tick();
+    press(win, "Escape"); await tick();
+    press(win, "Escape");
+    expect(await done).toBeNull();
   });
 });
 
@@ -208,6 +277,27 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const choice = await done;
     expect(choice!.raceName).toBe("Dwarf");
     expect(choice!.className).toBe("Mage");
+  });
+
+  it("restores the prior character's stats on quickstart (load_roller_data)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, {
+      quickstart: { raceName: "Dwarf", className: "Mage", stats: [17, 10, 10, 10, 16] },
+    });
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("same stats");
+    press(win, "a"); // quick-start
+    await tick();
+    press(win, "Enter"); // accept default name
+    await tick();
+    press(win, "a"); // confirm
+    const choice = await done;
+    expect(choice!.raceName).toBe("Dwarf");
+    expect(choice!.className).toBe("Mage");
+    expect(choice!.roller).toBe("point");
+    expect(choice!.stats).toEqual([17, 10, 10, 10, 16]);
   });
 
   it("ESC from the name stage steps back to quickstart, not to unseen menus", async () => {
