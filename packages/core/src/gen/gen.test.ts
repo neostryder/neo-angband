@@ -1003,3 +1003,150 @@ describe("level feeling: full generation wiring (generate.c cave_generate L1235-
     expect(noneMarks).toBe(0);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Moria / room of chambers / huge room builders (gen-room.c).
+ * ------------------------------------------------------------------ */
+
+/** A Gen backed by a granite-filled chunk (as during real cave layout). */
+function roomGen(width: number, height: number, depth: number, seed: number): Gen {
+  const deps = makeDeps();
+  const c = new Chunk(reg, height, width);
+  c.depth = depth;
+  fillRectangle(c, 0, 0, height - 1, width - 1, FEAT.GRANITE, SQUARE.NONE);
+  const dun = new Dun(constants);
+  return new Gen(c, new Rng(seed), reg, constants, dun, deps.objDeps, deps.monDeps);
+}
+
+function countFloor(g: Gen): number {
+  const c = g.c;
+  let n = 0;
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) if (c.isFloor(loc(x, y))) n++;
+  }
+  return n;
+}
+
+/** BFS-count floor grids reachable (8-connected, through broken/doors too). */
+function reachableFloor(g: Gen, start: Loc): number {
+  const c = g.c;
+  const passable = (grid: Loc): boolean =>
+    c.isFloor(grid) || c.isDoor(grid) || c.feat(grid) === FEAT.BROKEN;
+  const seen = new Uint8Array(c.width * c.height);
+  const stack: Loc[] = [start];
+  seen[start.y * c.width + start.x] = 1;
+  let count = 0;
+  const dirs = [loc(0, 1), loc(0, -1), loc(1, 0), loc(-1, 0), loc(1, 1), loc(-1, 1), loc(1, -1), loc(-1, -1)];
+  while (stack.length) {
+    const cur = stack.pop() as Loc;
+    if (c.isFloor(cur)) count++;
+    for (const d of dirs) {
+      const n = loc(cur.x + d.x, cur.y + d.y);
+      if (!c.inBounds(n)) continue;
+      const idx = n.y * c.width + n.x;
+      if (seen[idx]) continue;
+      if (!passable(n)) continue;
+      seen[idx] = 1;
+      stack.push(n);
+    }
+  }
+  return count;
+}
+
+describe("build_moria", () => {
+  it("builds a lit-or-dark starburst cave room, deterministic run-to-run", () => {
+    const a = roomGen(120, 60, 5, 12345);
+    const b = roomGen(120, 60, 5, 12345);
+    const build = createRoomRegistry({ templates: roomTemplates, vaults }).get("moria");
+    expect(build(a, loc(60, 30), 0)).toBe(true);
+    expect(build(b, loc(60, 30), 0)).toBe(true);
+    /* Produced a non-trivial floor region. */
+    expect(countFloor(a)).toBeGreaterThan(50);
+    /* Deterministic: identical terrain for the same seed. */
+    expect(serializeFeats(a)).toBe(serializeFeats(b));
+    /* Every floor grid the starburst lays is marked as room (SQUARE_ROOM). */
+    for (let y = 0; y < a.c.height; y++) {
+      for (let x = 0; x < a.c.width; x++) {
+        const grid = loc(x, y);
+        if (a.c.isFloor(grid)) expect(a.c.sqinfoHas(grid, SQUARE.ROOM)).toBe(true);
+      }
+    }
+  });
+});
+
+describe("build_huge", () => {
+  it("builds a huge connected starburst room at a seed that passes its 5% gate", () => {
+    /* Seed 30 passes the one_in_(20) gate for this footprint (verified). */
+    const g = roomGen(160, 70, 5, 30);
+    const build = createRoomRegistry({ templates: roomTemplates, vaults }).get("huge");
+    const ok = build(g, loc(80, 35), 0);
+    expect(ok).toBe(true);
+    /* Huge rooms are large. */
+    expect(countFloor(g)).toBeGreaterThan(400);
+    /* build_huge places no monsters itself. */
+    expect(g.monsters.length).toBe(0);
+    /* Deterministic run-to-run. */
+    const g2 = roomGen(160, 70, 5, 30);
+    build(g2, loc(80, 35), 0);
+    expect(serializeFeats(g)).toBe(serializeFeats(g2));
+  });
+
+  it("returns false when it is not the first non-staircase room", () => {
+    const g = roomGen(160, 70, 5, 30);
+    /* Simulate rooms already placed: cent_n - nstair_room exceeds the cap. */
+    g.dun.centN = 3;
+    g.dun.nstairRoom = 0;
+    const build = createRoomRegistry({ templates: roomTemplates, vaults }).get("huge");
+    /* Valid centre -> finding_space is false -> gate is (> 1). */
+    expect(build(g, loc(80, 35), 0)).toBe(false);
+  });
+});
+
+describe("build_room_of_chambers", () => {
+  it("builds a connected multi-chamber room and fills it with themed monsters", () => {
+    const g = roomGen(120, 60, 10, 1);
+    const build = createRoomRegistry({ templates: roomTemplates, vaults }).get("room_of_chambers");
+    const ok = build(g, loc(60, 30), 0);
+    expect(ok).toBe(true);
+
+    /* Hollowed chambers produced floor. */
+    const floors = countFloor(g);
+    expect(floors).toBeGreaterThan(50);
+
+    /* All floor is connected (unreached magma chambers become granite). */
+    let anyFloor: Loc | null = null;
+    for (let y = 0; y < g.c.height && !anyFloor; y++) {
+      for (let x = 0; x < g.c.width; x++) {
+        if (g.c.isFloor(loc(x, y))) { anyFloor = loc(x, y); break; }
+      }
+    }
+    expect(anyFloor).not.toBeNull();
+    expect(reachableFloor(g, anyFloor as Loc)).toBe(floors);
+
+    /* get_chamber_monsters placed themed monsters (bounded count). */
+    expect(g.monsters.length).toBeGreaterThan(0);
+    expect(g.monsters.length).toBeLessThan(constants.levelMonsterMax);
+    /* Every placed monster sits inside the room footprint. */
+    for (const m of g.monsters) {
+      expect(g.c.inBoundsFully(m.grid)).toBe(true);
+      expect(g.c.isFloor(m.grid)).toBe(true);
+    }
+  });
+
+  it("is deterministic run-to-run for a fixed seed", () => {
+    const a = roomGen(120, 60, 10, 7);
+    const b = roomGen(120, 60, 10, 7);
+    const build = createRoomRegistry({ templates: roomTemplates, vaults }).get("room_of_chambers");
+    expect(build(a, loc(60, 30), 0)).toBe(true);
+    expect(build(b, loc(60, 30), 0)).toBe(true);
+    expect(serializeFeats(a)).toBe(serializeFeats(b));
+    expect(a.monsters.length).toBe(b.monsters.length);
+  });
+
+  it("returns false cleanly when the room does not fit in the chunk", () => {
+    /* A 25x25 chunk cannot hold a >=20-tall room centred at (12,12). */
+    const g = roomGen(25, 25, 10, 1);
+    const build = createRoomRegistry({ templates: roomTemplates, vaults }).get("room_of_chambers");
+    expect(build(g, loc(12, 12), 0)).toBe(false);
+  });
+});

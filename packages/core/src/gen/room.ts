@@ -18,15 +18,16 @@
  * themed pit profile; vault racial glyphs likewise place any depth-appropriate
  * monster rather than a base-symbol-restricted one.
  *
- * STUBBED-AND-REGISTERED (return false): moria, room_of_chambers, huge. They
- * are registered so profiles referencing them fall through to another builder
- * exactly as room_build does on failure.
+ * PORTED (starburst + cellular builders): moria (build_moria), room_of_chambers
+ * (build_room_of_chambers, with make_chamber/hollow_out_room carving and the
+ * get_chamber_monsters themed fill) and huge (build_huge). Faithful RNG order.
  */
 
 import { FEAT, SQUARE } from "../generated";
 import type { Loc } from "../loc";
-import { loc } from "../loc";
+import { loc, DDGRID_DDD } from "../loc";
 import { tvalFindIdx } from "../obj/bind";
+import type { Chunk } from "../world/chunk";
 import type { Gen } from "./util";
 import {
   countNeighbors,
@@ -38,6 +39,7 @@ import {
   generateOpen,
   generatePlus,
   generateRoom,
+  generateStarburstRoom,
   locDiff,
   locSum,
   pickAndPlaceMonster,
@@ -45,6 +47,7 @@ import {
   placeNewMonster,
   placeObject,
   placeGold,
+  placeRandomDoor,
   placeRandomStairs,
   placeSecretDoor,
   placeTrap,
@@ -56,7 +59,7 @@ import {
   vaultObjects,
   vaultTraps,
 } from "./util";
-import { getVaultMonsters, monPitHook, setPitType } from "./gen-monster";
+import { getChamberMonsters, getVaultMonsters, monPitHook, setPitType } from "./gen-monster";
 import type { MonsterGroupInfo } from "../mon/monster";
 import type { MonsterRace } from "../mon/types";
 import { MON_GROUP } from "../mon/types";
@@ -1380,12 +1383,553 @@ function buildPit(g: Gen, centreIn: Loc, _rating: number): boolean {
 }
 
 /* ------------------------------------------------------------------ *
- * Stubbed-and-registered builders.
+ * Moria / room of chambers / huge (starburst + cellular builders).
  * ------------------------------------------------------------------ */
 
-/** DEFERRED (ledgered): build_moria, build_room_of_chambers, build_huge. */
-function buildStub(_g: Gen, _centre: Loc, _rating: number): boolean {
-  return false;
+/**
+ * build_moria (gen-room.c L3138): a moria-style starburst cave room, sometimes
+ * enlarged, sometimes long and narrow, occasionally sprinkled with rubble.
+ *
+ * RNG order (verified against gen-room.c L3138-3209):
+ *   randint1(35) [light], randint0(5) [height], randint0(5) [width];
+ *   the two-try space loop: per try one_in_(15) [large], else one_in_(4)
+ *   and (when !one_in_(4)) one_in_(15) + randint0(2)/randint0(3) [stretch];
+ *   generate_starburst_room; one_in_(10) [rubble] then 4x randint0(dim/4).
+ */
+function buildMoria(g: Gen, centreIn: Loc, _rating: number): boolean {
+  const c = g.c;
+  const light = c.depth <= g.rng.randint1(35);
+
+  /* Pick a room size. */
+  let height = 8 + g.rng.randint0(5);
+  let width = 10 + g.rng.randint0(5);
+
+  let centre = centreIn;
+  let placed = false;
+
+  /* Try twice to find space for a room. */
+  for (let i = 0; i < 2; i++) {
+    /* Really large room - only on first try. */
+    if (i === 0 && g.rng.oneIn(15)) {
+      height *= 1 + g.rng.randint1(2);
+      width *= 2 + g.rng.randint1(3);
+    } else if (!g.rng.oneIn(4)) {
+      /* Long, narrow room. Sometimes tall and thin. */
+      if (g.rng.oneIn(15)) height *= 2 + g.rng.randint0(2);
+      else width *= 2 + g.rng.randint0(3);
+    }
+
+    /* Find and reserve some space in the dungeon. Get center of room. */
+    if (centre.y >= c.height || centre.x >= c.width) {
+      const found = findSpace(g, height, width);
+      if (!found) {
+        if (i === 0) continue; /* Failed first attempt */
+        if (i === 1) return false; /* Failed second attempt */
+      } else {
+        centre = found;
+        placed = true;
+        break; /* Success */
+      }
+    } else {
+      placed = true;
+      break; /* Not finding space */
+    }
+  }
+  if (!placed) return false;
+
+  /* Locate the room. */
+  const y1 = centre.y - Math.trunc(height / 2);
+  const x1 = centre.x - Math.trunc(width / 2);
+  const y2 = y1 + height - 1;
+  const x2 = x1 + width - 1;
+
+  /* Generate starburst room. Return immediately if out of bounds. */
+  if (!generateStarburstRoom(g, y1, x1, y2, x2, light, FEAT.FLOOR, true)) {
+    return false;
+  }
+
+  /* Sometimes, the room may have rubble in it. */
+  if (g.rng.oneIn(10)) {
+    generateStarburstRoom(
+      g,
+      y1 + g.rng.randint0(Math.trunc(height / 4)),
+      x1 + g.rng.randint0(Math.trunc(width / 4)),
+      y2 - g.rng.randint0(Math.trunc(height / 4)),
+      x2 - g.rng.randint0(Math.trunc(width / 4)),
+      false,
+      FEAT.PASS_RUBBLE,
+      false,
+    );
+  }
+
+  return true;
+}
+
+/**
+ * make_inner_chamber_wall (gen-room.c L1739): mark a granite/magma grid that is
+ * not already an outer/solid wall as an inner wall. NEW carving helper.
+ */
+function makeInnerChamberWall(c: Chunk, y: number, x: number): void {
+  const grid = loc(x, y);
+  const feat = c.feat(grid);
+  if (feat !== FEAT.GRANITE && feat !== FEAT.MAGMA) return;
+  if (c.isWallOuter(grid)) return;
+  if (c.isWallSolid(grid)) return;
+  setMarkedGranite(c, grid, SQUARE.WALL_INNER);
+}
+
+/**
+ * make_chamber (gen-room.c L1761): fill a rectangle with magma, wrap it in
+ * inner wall, and punch one door into a random border grid (up to 20 tries).
+ * NEW carving helper. RNG: per door try one_in_(2) [axis], one_in_(2) [side],
+ * randint0(1 + span) [position].
+ */
+function makeChamber(
+  g: Gen,
+  y1: number,
+  x1: number,
+  y2: number,
+  x2: number,
+): void {
+  const c = g.c;
+
+  /* Fill with soft granite (will later be replaced with floor). */
+  fillRectangle(c, y1 + 1, x1 + 1, y2 - 1, x2 - 1, FEAT.MAGMA, SQUARE.NONE);
+
+  /* Generate inner walls over dungeon granite and magma. */
+  for (let y = y1; y <= y2; y++) {
+    makeInnerChamberWall(c, y, x1);
+    makeInnerChamberWall(c, y, x2);
+  }
+  for (let x = x1; x <= x2; x++) {
+    makeInnerChamberWall(c, y1, x);
+    makeInnerChamberWall(c, y2, x);
+  }
+
+  /* Try a few times to place a door. */
+  for (let i = 0; i < 20; i++) {
+    let x: number;
+    let y: number;
+    /* Pick a square along the edge, not a corner. */
+    if (g.rng.oneIn(2)) {
+      x = g.rng.oneIn(2) ? x1 : x2;
+      y = y1 + g.rng.randint0(1 + Math.abs(y2 - y1));
+    } else {
+      y = g.rng.oneIn(2) ? y1 : y2;
+      x = x1 + g.rng.randint0(1 + Math.abs(x2 - x1));
+    }
+
+    /* If not an inner wall square, try again. */
+    if (!c.isWallInner(loc(x, y))) continue;
+
+    /* Paranoia */
+    if (!c.inBoundsFully(loc(x, y))) continue;
+
+    /* Reset wall count */
+    let count = 0;
+
+    /*
+     * If square has not more than two adjacent walls, and no adjacent
+     * doors, place door.
+     */
+    for (let d = 0; d < 9; d++) {
+      const off = DDGRID_DDD[d] as Loc;
+      const adj = loc(x + off.x, y + off.y);
+
+      /* No doors beside doors. */
+      if (c.feat(adj) === FEAT.OPEN) break;
+
+      /* Count the inner walls. */
+      if (c.isWallInner(adj)) count++;
+
+      /* No more than two walls adjacent (plus the one we're on). */
+      if (count > 3) break;
+
+      /* Checked every direction? */
+      if (d === 8) {
+        /* Place an open door. */
+        c.setFeat(loc(x, y), FEAT.OPEN);
+        return;
+      }
+    }
+  }
+}
+
+/**
+ * hollow_out_room (gen-room.c L1846): flood-fill from a start grid, turning
+ * adjacent magma into floor and adjacent open doors into broken doors, then
+ * recursing. NEW carving helper. No RNG.
+ */
+function hollowOutRoom(c: Chunk, grid: Loc): void {
+  for (let d = 0; d < 9; d++) {
+    const off = DDGRID_DDD[d] as Loc;
+    const g1 = loc(grid.x + off.x, grid.y + off.y);
+    const feat = c.feat(g1);
+    if (feat === FEAT.MAGMA) {
+      c.setFeat(g1, FEAT.FLOOR);
+      hollowOutRoom(c, g1);
+    } else if (feat === FEAT.OPEN) {
+      c.setFeat(g1, FEAT.BROKEN);
+      hollowOutRoom(c, g1);
+    }
+  }
+}
+
+/**
+ * build_room_of_chambers (gen-room.c L3239): a large room subdivided into many
+ * irregular magma chambers, hollowed out and connected by doors/tunnels, then
+ * filled with themed monsters via get_chamber_monsters.
+ *
+ * RNG order (verified against gen-room.c L3239-3517):
+ *   randint0(45) [light], m_bonus(20,depth) [height], randint1(20) +
+ *   m_bonus(20,depth) [width]; find_space when needed; per chamber
+ *   randint0(4)+randint0(10)+randint0(4) [size] and 2x randint0 [corner] then
+ *   make_chamber; the deterministic door/hollow/wall cleanup passes (magma
+ *   spot loop draws 2x randint0 per try); place_random_door on broken doors;
+ *   finally get_chamber_monsters.
+ */
+function buildRoomOfChambers(g: Gen, centreIn: Loc, _rating: number): boolean {
+  const c = g.c;
+
+  /* Deeper in the dungeon, chambers are less likely to be lit. */
+  const light = g.rng.randint0(45) > c.depth;
+
+  /* Calculate a level-dependent room size. */
+  const height = 20 + g.rng.mBonus(20, c.depth);
+  const width = 20 + g.rng.randint1(20) + g.rng.mBonus(20, c.depth);
+
+  /* Find and reserve some space in the dungeon. Get center of room. */
+  let centre = centreIn;
+  if (centre.y >= c.height || centre.x >= c.width) {
+    const found = findSpace(g, height, width);
+    if (!found) return false;
+    centre = found;
+  }
+
+  /* Calculate the borders of the room. */
+  const y1 = centre.y - Math.trunc(height / 2);
+  const x1 = centre.x - Math.trunc(width / 2);
+  const y2 = centre.y + Math.trunc((height - 1) / 2);
+  const x2 = centre.x + Math.trunc((width - 1) / 2);
+
+  /* Make certain the room does not cross the dungeon edge. */
+  if (!c.inBounds(loc(x1, y1)) || !c.inBounds(loc(x2, y2))) return false;
+
+  /* Determine how much space we have. */
+  const area = Math.abs(y2 - y1) * Math.abs(x2 - x1);
+
+  /* Calculate the number of smaller chambers to make. */
+  const numChambers = 10 + Math.trunc(area / 80);
+
+  /* Build the chambers. */
+  for (let i = 0; i < numChambers; i++) {
+    /* Determine size of chamber. */
+    const size = 3 + g.rng.randint0(4);
+    const widthLocal = size + g.rng.randint0(10);
+    const heightLocal = size + g.rng.randint0(4);
+
+    /* Pick an upper-left corner at random. */
+    const cY1 = y1 + g.rng.randint0(1 + y2 - y1 - heightLocal);
+    const cX1 = x1 + g.rng.randint0(1 + x2 - x1 - widthLocal);
+
+    /* Determine lower-right corner of chamber. */
+    let cY2 = cY1 + heightLocal;
+    if (cY2 > y2) cY2 = y2;
+    let cX2 = cX1 + widthLocal;
+    if (cX2 > x2) cX2 = x2;
+
+    /* Make me a (magma filled) chamber. */
+    makeChamber(g, cY1, cX1, cY2, cX2);
+  }
+
+  /* Remove useless doors, fill in tiny, narrow rooms. */
+  for (let gy = y1; gy <= y2; gy++) {
+    for (let gx = x1; gx <= x2; gx++) {
+      const grid = loc(gx, gy);
+      let count = 0;
+
+      /* Stay legal. */
+      if (!c.inBoundsFully(grid)) continue;
+
+      /* Check all adjacent grids. */
+      for (let d = 0; d < 8; d++) {
+        const off = DDGRID_DDD[d] as Loc;
+        const grid1 = loc(gx + off.x, gy + off.y);
+        /* Count the walls and dungeon granite. */
+        if (
+          c.feat(grid1) === FEAT.GRANITE &&
+          !c.isWallOuter(grid1) &&
+          !c.isWallSolid(grid1)
+        ) {
+          count++;
+        }
+      }
+
+      /* Five adjacent walls: Change non-chamber to wall. */
+      if (count === 5 && c.feat(grid) !== FEAT.MAGMA) {
+        setMarkedGranite(c, grid, SQUARE.WALL_INNER);
+      } else if (count > 5) {
+        /* More than five adjacent walls: Change anything to wall. */
+        setMarkedGranite(c, grid, SQUARE.WALL_INNER);
+      }
+    }
+  }
+
+  /* Pick a random magma spot near the center of the room. */
+  let spot = loc(x1, y1);
+  for (let i = 0; i < 50; i++) {
+    spot = loc(
+      x1 + Math.trunc(Math.abs(x2 - x1) / 4) + g.rng.randint0(Math.trunc(Math.abs(x2 - x1) / 2)),
+      y1 + Math.trunc(Math.abs(y2 - y1) / 4) + g.rng.randint0(Math.trunc(Math.abs(y2 - y1) / 2)),
+    );
+    if (c.feat(spot) === FEAT.MAGMA) break;
+  }
+
+  /* Hollow out the first room. */
+  c.setFeat(spot, FEAT.FLOOR);
+  hollowOutRoom(c, spot);
+
+  /* Attempt to change every in-room magma grid to open floor. */
+  for (let iter = 0; iter < 100; iter++) {
+    /* Assume this run will do no useful work. */
+    let joy = false;
+
+    /* Make new doors and tunnels between magma and open floor. */
+    for (let gy = y1; gy < y2; gy++) {
+      for (let gx = x1; gx < x2; gx++) {
+        const grid = loc(gx, gy);
+        /* Current grid must be magma. */
+        if (c.feat(grid) !== FEAT.MAGMA) continue;
+
+        /* Stay legal. */
+        if (!c.inBoundsFully(grid)) continue;
+
+        /* Check only horizontal and vertical directions. */
+        for (let d = 0; d < 4; d++) {
+          const off = DDGRID_DDD[d] as Loc;
+          const grid1 = loc(gx + off.x, gy + off.y);
+
+          /* Need inner wall. */
+          if (!c.isWallInner(grid1)) continue;
+
+          /* Keep going in the same direction, if in bounds. */
+          const grid2 = loc(grid1.x + off.x, grid1.y + off.y);
+          if (!c.inBounds(grid2)) continue;
+
+          /* If we find open floor, place a door. */
+          if (c.feat(grid2) === FEAT.FLOOR) {
+            joy = true;
+
+            /* Make a broken door in the wall grid. */
+            c.setFeat(grid1, FEAT.BROKEN);
+
+            /* Hollow out the new room. */
+            c.setFeat(grid, FEAT.FLOOR);
+            hollowOutRoom(c, grid);
+
+            break;
+          }
+
+          /* If we find more inner wall... */
+          if (c.isWallInner(grid2)) {
+            /* ...Keep going in the same direction. */
+            const grid3 = loc(grid2.x + off.x, grid2.y + off.y);
+            if (!c.inBounds(grid3)) continue;
+
+            /* If we /now/ find floor, make a tunnel. */
+            if (c.feat(grid3) === FEAT.FLOOR) {
+              joy = true;
+
+              /* Turn both wall grids into floor. */
+              c.setFeat(grid1, FEAT.FLOOR);
+              c.setFeat(grid2, FEAT.FLOOR);
+
+              /* Hollow out the new room. */
+              c.setFeat(grid, FEAT.FLOOR);
+              hollowOutRoom(c, grid);
+
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    /* If we could find no work to do, stop. */
+    if (!joy) break;
+  }
+
+  /* Turn broken doors into a random kind of door, remove open doors. */
+  for (let gy = y1; gy <= y2; gy++) {
+    for (let gx = x1; gx <= x2; gx++) {
+      const grid = loc(gx, gy);
+      if (c.feat(grid) === FEAT.OPEN) {
+        setMarkedGranite(c, grid, SQUARE.WALL_INNER);
+      } else if (c.feat(grid) === FEAT.BROKEN) {
+        placeRandomDoor(g, grid);
+      }
+    }
+  }
+
+  /*
+   * Turn all walls and magma not adjacent to floor into dungeon granite.
+   * Turn all floors and adjacent grids into rooms, sometimes lighting them.
+   */
+  {
+    const gyStart = y1 - 1 > 0 ? y1 - 1 : 0;
+    const gyEnd = y2 + 2 < c.height ? y2 + 2 : c.height;
+    const gxStart = x1 - 1 > 0 ? x1 - 1 : 0;
+    const gxEnd = x2 + 2 < c.width ? x2 + 2 : c.width;
+    for (let gy = gyStart; gy < gyEnd; gy++) {
+      for (let gx = gxStart; gx < gxEnd; gx++) {
+        const grid = loc(gx, gy);
+
+        if (c.isWallInner(grid) || c.feat(grid) === FEAT.MAGMA) {
+          for (let d = 0; d < 9; d++) {
+            const off = DDGRID_DDD[d] as Loc;
+            const grid1 = loc(gx + off.x, gy + off.y);
+            /* Stay legal */
+            if (!c.inBounds(grid1)) continue;
+            /* No floors allowed */
+            if (c.feat(grid1) === FEAT.FLOOR) break;
+            /* Turn me into dungeon granite. */
+            if (d === 8) setMarkedGranite(c, grid, SQUARE.NONE);
+          }
+        }
+        if (c.isFloor(grid)) {
+          for (let d = 0; d < 9; d++) {
+            const off = DDGRID_DDD[d] as Loc;
+            const grid1 = loc(gx + off.x, gy + off.y);
+            /* Stay legal */
+            if (!c.inBounds(grid1)) continue;
+            /* Turn into room, forbid stairs. */
+            c.sqinfoOn(grid1, SQUARE.ROOM);
+            c.sqinfoOn(grid1, SQUARE.NO_STAIRS);
+            /* Illuminate if requested. */
+            if (light) c.sqinfoOn(grid1, SQUARE.GLOW);
+          }
+        }
+      }
+    }
+
+    /* Turn all inner wall grids adjacent to dungeon granite into outer walls. */
+    for (let gy = gyStart; gy < gyEnd; gy++) {
+      for (let gx = gxStart; gx < gxEnd; gx++) {
+        const grid = loc(gx, gy);
+        /* Stay legal. */
+        if (!c.inBoundsFully(grid)) continue;
+
+        if (c.isWallInner(grid)) {
+          for (let d = 0; d < 9; d++) {
+            const off = DDGRID_DDD[d] as Loc;
+            const grid1 = loc(gx + off.x, gy + off.y);
+            /* Look for dungeon granite */
+            if (
+              c.feat(grid1) === FEAT.GRANITE &&
+              !c.isWallInner(grid) &&
+              !c.isWallOuter(grid) &&
+              !c.isWallSolid(grid)
+            ) {
+              /* Turn me into outer wall. */
+              setMarkedGranite(c, grid, SQUARE.WALL_OUTER);
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /*** Now we get to place the monsters. ***/
+  getChamberMonsters(g, y1, x1, y2, x2, height * width);
+
+  /* Increase the level rating. */
+  c.addToMonsterRating(10);
+
+  return true;
+}
+
+/**
+ * build_huge (gen-room.c L3533): a single extreme-size starburst room, usually
+ * broken up with irregular rubble fields. Only built as the first non-staircase
+ * room, at a flat 5% chance.
+ *
+ * RNG order (verified against gen-room.c L3533-3605):
+ *   randint0(10) [height], randint0(50) [width]; the cent_n/nstair_room gate
+ *   (no RNG); one_in_(20) [5% gate]; one_in_(3) [light]; find_space when
+ *   needed; generate_starburst_room; randint1(5) [rubble gate] then
+ *   randint1(2) [count] and per field randint0(16)/randint0(24)/2x randint0.
+ */
+function buildHuge(g: Gen, centreIn: Loc, _rating: number): boolean {
+  const c = g.c;
+  const dun = g.dun;
+  const findingSpace = centreIn.y >= c.height || centreIn.x >= c.width;
+
+  const height = 30 + g.rng.randint0(10);
+  const width = 45 + g.rng.randint0(50);
+
+  /*
+   * Only try to build a huge room as the first non-staircase room. If not
+   * finding space, cent_n has already been incremented.
+   */
+  if (dun.centN - dun.nstairRoom > (findingSpace ? 0 : 1)) return false;
+
+  /* Flat 5% chance. */
+  if (!g.rng.oneIn(20)) return false;
+
+  /* This room is usually lit. */
+  const light = !g.rng.oneIn(3);
+
+  /* Find and reserve some space. Get center of room. */
+  let centre = centreIn;
+  if (findingSpace) {
+    const found = findSpace(g, height, width);
+    if (!found) return false;
+    centre = found;
+  }
+
+  /* Locate the room. */
+  const y1 = centre.y - Math.trunc(height / 2);
+  const x1 = centre.x - Math.trunc(width / 2);
+  const y2 = y1 + height - 1;
+  const x2 = x1 + width - 1;
+
+  /* Make a huge starburst room with optional light. */
+  if (!generateStarburstRoom(g, y1, x1, y2, x2, light, FEAT.FLOOR, false)) {
+    return false;
+  }
+
+  /* Often, add rubble to break things up a bit. */
+  if (g.rng.randint1(5) > 2) {
+    /* Determine how many rubble fields to add (between 1 and 6). */
+    const count = Math.trunc((height * width * g.rng.randint1(2)) / 1100);
+
+    /* Make the rubble fields. */
+    for (let i = 0; i < count; i++) {
+      const heightTmp = 8 + g.rng.randint0(16);
+      const widthTmp = 10 + g.rng.randint0(24);
+
+      /* Semi-random location. */
+      const y1Tmp = y1 + g.rng.randint0(height - heightTmp);
+      const x1Tmp = x1 + g.rng.randint0(width - widthTmp);
+      const y2Tmp = y1Tmp + heightTmp;
+      const x2Tmp = x1Tmp + widthTmp;
+
+      /* Make the rubble field. */
+      generateStarburstRoom(
+        g,
+        y1Tmp,
+        x1Tmp,
+        y2Tmp,
+        x2Tmp,
+        false,
+        FEAT.PASS_RUBBLE,
+        false,
+      );
+    }
+  }
+
+  return true;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1442,9 +1986,9 @@ export function createRoomRegistry(data: RoomData): RoomRegistry {
   r.register("large", buildLarge);
   r.register("nest", buildNest);
   r.register("pit", buildPit);
-  r.register("moria", buildStub);
-  r.register("room_of_chambers", buildStub);
-  r.register("huge", buildStub);
+  r.register("moria", buildMoria);
+  r.register("room_of_chambers", buildRoomOfChambers);
+  r.register("huge", buildHuge);
   r.register("template", (g, centre, rating) =>
     buildRoomTemplateType(g, centre, 1, rating, data.templates),
   );

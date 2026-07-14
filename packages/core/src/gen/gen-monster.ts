@@ -29,7 +29,7 @@
  */
 
 import { FlagSet } from "../bitflag";
-import { RF, RSF } from "../generated";
+import { RF, RSF, SQUARE } from "../generated";
 import { colorCharToAttr, colorTextToAttr } from "../color";
 import type { Rng } from "../rng";
 import type { MonsterBase, MonsterRace } from "../mon/types";
@@ -37,7 +37,7 @@ import { RF_SIZE, RSF_SIZE } from "../mon/types";
 import type { MonsterRegistry } from "../mon/bind";
 import type { MonAllocTable } from "../mon/make";
 import type { Gen } from "./util";
-import { loc, pickAndPlaceMonster, squareIsEmpty } from "./util";
+import { generateMark, loc, pickAndPlaceMonster, squareIsEmpty } from "./util";
 
 /* ------------------------------------------------------------------ *
  * Resolved pit profiles (pit_profile with names resolved to references).
@@ -473,4 +473,110 @@ export function getVaultMonsters(
 
   /* Clear any current monster restrictions. */
   table.prep(null);
+}
+
+/* ------------------------------------------------------------------ *
+ * get_chamber_monsters (room-of-chambers monster fill, gen-monster.c L344).
+ * ------------------------------------------------------------------ */
+
+/**
+ * get_chamber_monsters (gen-monster.c L344): fill a room of chambers with a
+ * creature race or type offering a challenge at the character's depth - similar
+ * to a monster pit, but over a wider range of monsters.
+ *
+ * RNG order, verified line-by-line against gen-monster.c L344-418:
+ *   1. one_in_(20)                              -> `random`
+ *   2. randint0(11)                             -> legal depth (c.depth + n - 5)
+ *   3. if !random: set_pit_type(depth, 0) in a while-loop until the chosen pit
+ *      has a name (each set_pit_type draws Rand_normal + one_in_ per candidate)
+ *   4. mon_restrict("random"|pit.name, depth', c.depth, true)
+ *      ("random" runs the 2500-try randint1 loop; a pit name draws nothing)
+ *   5. get_mon_num(depth', c.depth) gate draw
+ *   6. generate_mark(SQUARE_MON_RESTRICT) - no RNG
+ *   7. 300-try loop: randint0(1+|y2-y1|), randint0(1+|x2-x1|); on an empty
+ *      square draw randint0(3) for sleeping then pick_and_place_monster
+ *   8. mon_restrict(NULL) cleanup - no RNG
+ *
+ * `area` is height * width (upstream passes it for the monster-quantity scale).
+ * The name is used only by ROOM_LOG upstream (a no-op here), so it is dropped.
+ */
+export function getChamberMonsters(
+  g: Gen,
+  y1: number,
+  x1: number,
+  y2: number,
+  x2: number,
+  area: number,
+): void {
+  if (!g.monDeps || !g.monDeps.pits) return;
+  const c = g.c;
+  const table = g.monDeps.table;
+  const pits = g.monDeps.pits;
+  const races = table.allRaces;
+
+  const random = g.rng.oneIn(20);
+
+  /* Get a legal depth. */
+  let depth = c.depth + g.rng.randint0(11) - 5;
+
+  /* Choose a pit profile, using that depth. */
+  let chosenPit: ResolvedPit | null = null;
+  if (!random) {
+    for (;;) {
+      /* Choose a pit profile; retry until one with a name was saved. */
+      chosenPit = setPitType(g.rng, pits, depth, 0);
+      if (chosenPit.name) break;
+    }
+  }
+
+  /* Allow (slightly) tougher monsters. */
+  depth = c.depth + (c.depth < 60 ? Math.trunc(c.depth / 12) : 5);
+
+  /* Set monster generation restrictions. Occasionally random. */
+  if (random) {
+    if (!monRestrict(g.rng, table, races, pits, "random", depth, c.depth, true).ok) {
+      return;
+    }
+  } else {
+    if (
+      !monRestrict(g.rng, table, races, pits, (chosenPit as ResolvedPit).name, depth, c.depth, true).ok
+    ) {
+      return;
+    }
+  }
+
+  /* Build the monster probability table. */
+  if (!table.getMonNum(g.rng, depth, c.depth)) {
+    monRestrict(g.rng, table, races, pits, null, depth, c.depth, true);
+    return;
+  }
+
+  /* No normal monsters. */
+  generateMark(c, y1, x1, y2, x2, SQUARE.MON_RESTRICT);
+
+  /* Allow about a monster every 20-30 grids. */
+  let monstersLeft = Math.trunc(area / (30 - Math.trunc(c.depth / 10)));
+
+  /* Place the monsters. */
+  for (let i = 0; i < 300; i++) {
+    /* Check for early completion. */
+    if (!monstersLeft) break;
+
+    /* Pick a random in-room square. */
+    const y = y1 + g.rng.randint0(1 + Math.abs(y2 - y1));
+    const x = x1 + g.rng.randint0(1 + Math.abs(x2 - x1));
+
+    /* Require a passable square with no monster in it already. */
+    if (!squareIsEmpty(g, loc(x, y))) continue;
+
+    /* Place a single monster. Sleeping 2/3rds of the time. */
+    const sleep = g.rng.randint0(3) !== 0;
+    pickAndPlaceMonster(g, loc(x, y), c.depth, sleep, false);
+
+    /* One less monster to place. */
+    monstersLeft--;
+  }
+
+  /* Remove our restrictions. */
+  monRestrict(g.rng, table, races, pits, null, depth, c.depth, true);
 }
