@@ -19,9 +19,15 @@ import { MonAllocTable } from "../mon/make";
 
 import {
   cavernGen,
+  connectCaverns,
   createDungeonProfiles,
   DungeonProfiles,
+  gauntletGen,
   labyrinthGen,
+  lairGen,
+  loadDunProfile,
+  modifiedGen,
+  moriaGen,
   TOWN_STORE_FEATS,
   type CaveBuildContext,
   type DunProfile,
@@ -462,6 +468,171 @@ describe("cavern generator", () => {
     expect(serialize(a)).toBe(serialize(b));
     expect(a.monsters.length).toBe(b.monsters.length);
     expect(a.objects.length).toBe(b.objects.length);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * moria / lair / gauntlet generators (gen-cave.c). Registered but not enabled
+ * for choose() (#80), so each is driven directly via a CaveBuildContext using
+ * its own dungeon profile.
+ * ------------------------------------------------------------------ */
+
+/** builderCtx for a specific (possibly not-enabled) dungeon profile. */
+function builderCtxNamed(depth: number, seed: number, profileName: string): CaveBuildContext {
+  const deps = makeDeps();
+  const dun = new Dun(constants);
+  dun.quest = false;
+  dun.persist = false;
+  const rec = loadRecords<DunProfileRecordJson>("dungeon_profile").find(
+    (r) => r.name === profileName,
+  ) as DunProfileRecordJson;
+  const profile = loadDunProfile(rec);
+  return {
+    rng: new Rng(seed),
+    reg,
+    constants,
+    dun,
+    profile,
+    depth,
+    minHeight: 1,
+    minWidth: 1,
+    objDeps: deps.objDeps,
+    monDeps: deps.monDeps,
+    rooms: deps.rooms,
+  };
+}
+
+/** Assert the shared level invariants: player-on-floor, stairs, perimeter,
+ * full connectivity, and bounded/legal monsters and objects. */
+function assertLevelInvariants(g: Gen): void {
+  const c = g.c;
+  const p = g.playerSpot as Loc;
+  expect(p).not.toBeNull();
+  expect(c.inBoundsFully(p)).toBe(true);
+  expect(c.isFloor(p)).toBe(true);
+
+  expect(c.featCount[FEAT.MORE] ?? 0).toBeGreaterThanOrEqual(1);
+  expect(c.featCount[FEAT.LESS] ?? 0).toBeGreaterThanOrEqual(1);
+
+  for (let x = 0; x < c.width; x++) {
+    expect(c.isPerm(loc(x, 0))).toBe(true);
+    expect(c.isPerm(loc(x, c.height - 1))).toBe(true);
+  }
+  for (let y = 0; y < c.height; y++) {
+    expect(c.isPerm(loc(0, y))).toBe(true);
+    expect(c.isPerm(loc(c.width - 1, y))).toBe(true);
+  }
+
+  /* Fully connected: every traversable grid reachable from the player. */
+  expect(reachableCount(g, p)).toBe(totalTraversable(g));
+
+  expect(g.monsters.length).toBeGreaterThanOrEqual(1);
+  expect(g.monsters.length).toBeLessThan(constants.levelMonsterMax);
+  for (const m of g.monsters) expect(c.inBoundsFully(m.grid)).toBe(true);
+  for (const o of g.objects) expect(c.isObjectHolding(o.grid)).toBe(true);
+}
+
+describe("moria / lair / gauntlet generators", () => {
+  it("registers the real builders (not the modified alias), hard_centre deferred", () => {
+    const profiles = createDungeonProfiles(loadRecords<DunProfileRecordJson>("dungeon_profile"));
+    expect(profiles.builder("moria")).toBe(moriaGen);
+    expect(profiles.builder("lair")).toBe(lairGen);
+    expect(profiles.builder("gauntlet")).toBe(gauntletGen);
+    /* hard_centre still delegates to modified_gen (vault_chunk deferred). */
+    expect(profiles.builder("hard_centre")).toBe(modifiedGen);
+  });
+
+  it("moria_gen builds a connected modified-style level with cave dwellers", () => {
+    const built = moriaGen(builderCtxNamed(20, 246810, "moria"));
+    expect(built.error).toBeNull();
+    const g = built.gen as Gen;
+    expect(g).not.toBeNull();
+    assertLevelInvariants(g);
+  });
+
+  it("moria_gen is deterministic run-to-run for a fixed seed", () => {
+    const a = moriaGen(builderCtxNamed(20, 13579, "moria")).gen as Gen;
+    const b = moriaGen(builderCtxNamed(20, 13579, "moria")).gen as Gen;
+    expect(serialize(a)).toBe(serialize(b));
+    expect(a.monsters.length).toBe(b.monsters.length);
+    expect(a.objects.length).toBe(b.objects.length);
+  });
+
+  it("lair_gen joins a modified half to a themed cavern (connected, stairs)", () => {
+    const built = lairGen(builderCtxNamed(25, 55555, "lair"));
+    expect(built.error).toBeNull();
+    const g = built.gen as Gen;
+    expect(g).not.toBeNull();
+    assertLevelInvariants(g);
+  });
+
+  it("lair_gen is deterministic run-to-run for a fixed seed", () => {
+    const a = lairGen(builderCtxNamed(25, 24680, "lair")).gen as Gen;
+    const b = lairGen(builderCtxNamed(25, 24680, "lair")).gen as Gen;
+    expect(serialize(a)).toBe(serialize(b));
+    expect(a.monsters.length).toBe(b.monsters.length);
+    expect(a.objects.length).toBe(b.objects.length);
+  });
+
+  it("gauntlet_gen splits two caverns with an unmappable labyrinth (connected)", () => {
+    const built = gauntletGen(builderCtxNamed(30, 99887, "gauntlet"));
+    expect(built.error).toBeNull();
+    const g = built.gen as Gen;
+    expect(g).not.toBeNull();
+    assertLevelInvariants(g);
+    /* The labyrinth carries SQUARE_NO_MAP; the left cavern SQUARE_NO_TELEPORT. */
+    let noMap = 0;
+    let noTele = 0;
+    for (let y = 0; y < g.c.height; y++) {
+      for (let x = 0; x < g.c.width; x++) {
+        if (g.c.sqinfoHas(loc(x, y), SQUARE.NO_MAP)) noMap++;
+        if (g.c.sqinfoHas(loc(x, y), SQUARE.NO_TELEPORT)) noTele++;
+      }
+    }
+    expect(noMap).toBeGreaterThan(0);
+    expect(noTele).toBeGreaterThan(0);
+  });
+
+  it("gauntlet_gen is deterministic run-to-run for a fixed seed", () => {
+    const a = gauntletGen(builderCtxNamed(30, 31415, "gauntlet")).gen as Gen;
+    const b = gauntletGen(builderCtxNamed(30, 31415, "gauntlet")).gen as Gen;
+    expect(serialize(a)).toBe(serialize(b));
+    expect(a.monsters.length).toBe(b.monsters.length);
+    expect(a.objects.length).toBe(b.objects.length);
+  });
+});
+
+describe("connect_caverns (gen-cave.c L3249)", () => {
+  it("joins four separate caverns into one connected region", () => {
+    const w = 44;
+    const h = 22;
+    const c = new Chunk(reg, h, w);
+    c.depth = 10;
+    const dun = new Dun(constants);
+    const g = new Gen(c, new Rng(1), reg, constants, dun, null, null);
+
+    /* Perma border, granite interior. */
+    fillRectangle(c, 1, 1, h - 2, w - 2, FEAT.GRANITE, SQUARE.WALL_SOLID);
+    drawRectangle(c, 0, 0, h - 1, w - 1, FEAT.PERM, SQUARE.NONE, true);
+
+    /* Four floor pockets, well separated by granite (order: L, U, Lo, R). */
+    const carve = (y1: number, x1: number, y2: number, x2: number): void => {
+      for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) c.setFeat(loc(x, y), FEAT.FLOOR);
+    };
+    carve(2, 2, 19, 7); // left
+    carve(2, 16, 8, 27); // upper
+    carve(13, 16, 19, 27); // lower
+    carve(2, 36, 19, 41); // right
+
+    const floor: Loc[] = [loc(4, 10), loc(21, 5), loc(21, 16), loc(38, 10)];
+    /* Precondition: the four samples start in four distinct regions. */
+    expect(reachableCount(g, floor[0] as Loc)).toBeLessThan(totalTraversable(g));
+
+    connectCaverns(g, floor);
+
+    /* Every sample is now reachable from the first, 4-connected. */
+    const reachable = reachableCount(g, floor[0] as Loc);
+    expect(reachable).toBe(totalTraversable(g));
   });
 });
 
