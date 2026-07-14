@@ -82,11 +82,15 @@ change is that namespace:
   clean-uninstall guarantee: uninstalling removes a mod's active content
   without ever corrupting the save.
 
-[OPEN] Orphan policy alternatives if quarantine is too conservative:
-(a) offer the player a choice at load ("keep frozen" vs "purge N
-orphaned items permanently"); (b) auto-purge trivial cosmetic orphans
-but quarantine anything that affects progression. Recommend (a) surfaced
-as a one-time prompt, defaulting to keep.
+[DECIDED 2026-07-14, decision 8] Orphan policy: option (a) - on the first
+load after content is orphaned, surface a one-time per-save prompt offering
+"keep frozen" (default) vs "purge N orphaned items permanently". Quarantine
+stays the default and nothing is destroyed without an explicit, counted,
+one-time confirmation. Rejected (b) (auto-purge trivial cosmetic orphans):
+"trivial" and "cosmetic" are not reliably decidable by the engine, and silent
+deletion - even of cosmetics - violates the "nothing a player earned vanishes
+without a trace" guarantee. The prompt is per-save and one-time so it never
+nags; declining leaves everything quarantined and reversible.
 
 ### When a mod's content leaves the game (RATIFIED, decision 19)
 
@@ -422,3 +426,5 @@ repo carries sample mods that CI installs and runs.
 7. Uninstall recovery: stranded characters return to town, mod items are
    quarantined to the player's home and reactivate on reinstall, and a
    stash view surfaces everything quarantined or shadowed. [DECIDED]
+8. Orphan policy: quarantine by default with a one-time per-save keep/purge
+   prompt (keep default); no auto-purge. [DECIDED 2026-07-14]
