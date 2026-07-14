@@ -48,6 +48,17 @@ and is anchored by the scripted-plugin sandbox, the single largest piece.
 
 ---
 
+> PROGRESS (2026-07-14): W1.1, W1.2, W1.3 DONE and pushed. The base game now
+> loads through composeContentPacks as pack zero, and a bundled demo content
+> pack (packages/web/mods/demo-modtest, enable with ?mods=demo-modtest) provably
+> changes the running game: verified in-browser that it patches a core monster
+> (Grip -> "Grip, the Cyber-Hound", hp 25 -> 250) and adds a new one (Modberry
+> Slime), 624 -> 625 monsters, with the base game unchanged when disabled. DATA
+> deep-modding (creatures, items, races, classes, spells, traps, vaults, ... -
+> all the same compose model) is real. Remaining: W1.4 (capability enforcement),
+> W1.5 (install agent controller in host - the Borg seam), W1.6 (event bus turn
+> loop). SYSTEM modding (combat/AI/gen logic, new effect kinds) is Wave 2.
+
 ## Wave 1 - Integrate the substrate (before P8)
 
 Each W1.x is its own verified, pushed slice (typecheck + full vitest + origin
