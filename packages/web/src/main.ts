@@ -2178,7 +2178,7 @@ function viewerState(): ViewerState {
 // noteSpots is the engine's note_spot pass: it memorizes seen terrain and
 // floor piles into state.known and refreshes monster visibility flags.
 state.updateFov = (): void => {
-  updateView(state.chunk, viewerState(), Z);
+  updateView(state.chunk, viewerState(), Z, [], soundEvents);
   noteSpots(state);
 };
 
@@ -3214,6 +3214,8 @@ document.addEventListener("visibilitychange", () => {
 // default, so combat, spells, deaths and ranged attacks play out of the box;
 // override it with `?sounds=<base-url>`. Selection uses the game RNG so it is
 // deterministic. The live turn loop routes sound() through this bus (state.sound).
+// Also carries the "feeling" signal (updateFov below) since GameEvents is a
+// general multi-type bus, not a sound-only one.
 const soundEvents = new GameEvents();
 // Default to the bundled Dubtrain pack (public/sounds/, CC-BY 4.0) so sound
 // plays out of the box; a user/mod can override the pack with ?sounds=<url>.

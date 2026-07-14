@@ -18,6 +18,8 @@ export const INT_MIN = -2147483648;
 export const INT16_MAX = 32767;
 /** INT16_MIN. */
 export const INT16_MIN = -32768;
+/** UINT32_MAX: the saturating ceiling for chunk->obj_rating / mon_rating. */
+export const UINT32_MAX = 4294967295;
 
 /** add_guardi: a + b coerced into [INT_MIN, INT_MAX] on overflow. */
 export function addGuardi(a: number, b: number): number {

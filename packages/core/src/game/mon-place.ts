@@ -22,9 +22,15 @@
  * monster drops (mon_create_drop) - the drops are instead generated at death
  * in game/mon-death.ts (an accepted RNG-stream deviation documented there),
  * so no held pile is populated here; mimicked objects ride the
- * monster-inventory subsystem; level rating (add_to_monster_rating) and the
- * cheat_hear messages ride level feelings (#25); update_mon / monster-light
- * view refresh rides the FOV consumers.
+ * monster-inventory subsystem; the cheat_hear messages are UI-only;
+ * update_mon / monster-light view refresh rides the FOV consumers.
+ *
+ * add_to_monster_rating IS wired here (mon-make.c L1112-1126), matching
+ * upstream's single place_new_monster_one for both generation and live
+ * summons/breeders. Since chunk.feeling is computed once at gen-end
+ * (gen/generate.ts generateLevel) and never recomputed, these post-gen
+ * accumulations are harmless bookkeeping: they keep chunk.mon_rating byte-
+ * faithful to upstream but have no effect on an already-shown feeling.
  */
 
 import { MON_TMD, RF } from "../generated";
@@ -169,6 +175,15 @@ export function placeNewMonsterOne(
   /* Depth monsters may NOT be created out of depth. */
   if (race.flags.has(RF.FORCE_DEPTH) && state.chunk.depth < race.level) {
     return false;
+  }
+
+  /* Add to level feeling, note uniques for cheaters (mon-make.c
+   * L1112-1126). See the module docstring: harmless post-gen bookkeeping. */
+  state.chunk.addToMonsterRating(race.level * race.level);
+  if (race.level > state.chunk.depth) {
+    state.chunk.addToMonsterRating(
+      (race.level - state.chunk.depth) * race.level * race.level,
+    );
   }
 
   const mon = createMonster(state.rng, race, {
