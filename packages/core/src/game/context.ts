@@ -16,6 +16,7 @@
  */
 
 import { MON_TMD, RF, TMD } from "../generated";
+import type { GameEvents } from "../events";
 import type { Loc } from "../loc";
 import { distance, locEq } from "../loc";
 import type { Rng } from "../rng";
@@ -489,6 +490,13 @@ export interface GameState {
    * own message->sound map and dedup ride #26; this is only the emit seam.
    */
   sound?: (msgType: number) => void;
+  /**
+   * The game event bus (events.ts), when a host attaches one. Core-to-anything
+   * seam: the host routes messages/sound through it and mods subscribe (the
+   * capability-gated agent/events.ts subscribeEvents). Absent in the worldless
+   * harness; core never requires it.
+   */
+  events?: GameEvents;
   /**
    * The live town stores (store.c `stores`), indexed however the session
    * instantiates them; a shell looks a store up by its entrance feature. Set

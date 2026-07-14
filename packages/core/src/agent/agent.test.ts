@@ -20,6 +20,8 @@ import { AGENT_API_VERSION } from "./types";
 import { createAgentView } from "./perceive";
 import { createAgentActions } from "./act";
 import { AgentCapabilityError, installController } from "./controller";
+import { subscribeEvents } from "./events";
+import { GameEvents } from "../events";
 
 /** A capability set granting exactly the listed capabilities. */
 function grant(...caps: string[]): AgentCapabilities {
@@ -468,6 +470,31 @@ describe("perceive: partial resolver degrades, never throws (W1.5)", () => {
     expect(mon?.raceId).toBeUndefined();
     const item = view.inventory()[0];
     if (item) expect(item.kindId).toBeUndefined();
+  });
+});
+
+describe("event subscription seam (W1.6)", () => {
+  it("delivers events to a granted subscriber, blocks ungranted ones", () => {
+    const bus = new GameEvents();
+    const sub = subscribeEvents(bus, grant("event:message"));
+    let got = 0;
+    sub.on("message", () => {
+      got += 1;
+    });
+    bus.emit("message", { msg: "hi", type: 0 });
+    expect(got).toBe(1);
+    expect(() => sub.on("sound", () => undefined)).toThrow(AgentCapabilityError);
+  });
+
+  it("no caps is a trusted host - any event may be subscribed", () => {
+    const bus = new GameEvents();
+    const sub = subscribeEvents(bus);
+    let got = 0;
+    sub.on("sound", () => {
+      got += 1;
+    });
+    bus.emit("sound", { msg: "", type: 3 });
+    expect(got).toBe(1);
   });
 });
 
