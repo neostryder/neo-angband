@@ -48,6 +48,9 @@ importers:
       '@neo-angband/core':
         specifier: workspace:*
         version: link:../core
+      '@neo-angband/mod-sdk':
+        specifier: workspace:*
+        version: link:../mod-sdk
     devDependencies:
       vite:
         specifier: ^7.0.0
