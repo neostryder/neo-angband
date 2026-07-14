@@ -13,9 +13,10 @@
  *
  * Unported-subsystem seams (inert defaults): isIgnored (obj-ignore #24),
  * chooseItem (the multi-object pickup menu, ui #25 - defaults to the pile
- * head so 'g' picks one item per press), messages/disturb hooks, and
- * square_know_pile / OFLOOR_VISIBLE marking (knowledge #24 - everything on
- * the grid is visible).
+ * head when unwired, so 'g' picks one item per press; packages/web/src's
+ * pickupCmd wires a real lettered picker, reusing the same selectFromMenu
+ * as the other item menus), messages/disturb hooks, and square_know_pile /
+ * OFLOOR_VISIBLE marking (knowledge #24 - everything on the grid is visible).
  *
  * playerPickupAux fires state.onArtifactFound (object_touch's
  * history_find_artifact, obj-knowledge.c L960-972) when a picked object is

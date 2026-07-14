@@ -46,7 +46,8 @@ import {
   tvalIsWand,
   tvalCanHaveTimeout,
 } from "../obj/object";
-import { FlavorKnowledge } from "../obj/knowledge";
+import { FlavorKnowledge, NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge";
+import type { FlavorAwareDeps } from "../obj/knowledge";
 import { ignoreItemOk } from "../obj/ignore";
 import type { GameState, ItemTargetRef, PlayerCommand } from "./context";
 import { dropNear, floorObjectForUse, floorPile } from "./floor";
@@ -97,6 +98,13 @@ export interface ObjCmdDeps {
   envDeps: EffectEnvDeps;
   /** Per-game flavor knowledge; absent, everything counts as aware. */
   flavor?: FlavorKnowledge;
+  /**
+   * The ignore/notice side effects of becoming aware (object_flavor_aware
+   * L2276-2279, #89), used alongside `flavor`. The in-play caller
+   * (session/game.ts) supplies the real ignore-settings-backed deps; absent,
+   * falls back to NOOP_FLAVOR_AWARE_DEPS (the bare aware-bit flip).
+   */
+  flavorDeps?: FlavorAwareDeps;
   /** Extra effect-builder injections (summon/shape names, mod bases). */
   inject?: EffectBuilderInjections;
   /** Teleport-family seams (trap predicates; wired by game/trap.ts). */
@@ -677,11 +685,12 @@ export function useAux(
     /* Increase knowledge. */
     if (deps.flavor) {
       const knowObj = singleUsed ?? obj;
+      const flavorDeps = deps.flavorDeps ?? NOOP_FLAVOR_AWARE_DEPS;
       if (use === USE.SINGLE) {
         /* Single use items are automatically learned. */
-        if (!wasAware) deps.flavor.setAware(knowObj.kind);
+        if (!wasAware) deps.flavor.objectFlavorAware(knowObj.kind, flavorDeps);
       } else if (!wasAware && ident.value) {
-        deps.flavor.setAware(knowObj.kind);
+        deps.flavor.objectFlavorAware(knowObj.kind, flavorDeps);
       } else {
         deps.flavor.setTried(knowObj.kind);
       }
