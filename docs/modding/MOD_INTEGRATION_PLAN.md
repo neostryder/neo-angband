@@ -48,16 +48,21 @@ and is anchored by the scripted-plugin sandbox, the single largest piece.
 
 ---
 
-> PROGRESS (2026-07-14): W1.1, W1.2, W1.3 DONE and pushed. The base game now
-> loads through composeContentPacks as pack zero, and a bundled demo content
-> pack (packages/web/mods/demo-modtest, enable with ?mods=demo-modtest) provably
-> changes the running game: verified in-browser that it patches a core monster
-> (Grip -> "Grip, the Cyber-Hound", hp 25 -> 250) and adds a new one (Modberry
-> Slime), 624 -> 625 monsters, with the base game unchanged when disabled. DATA
-> deep-modding (creatures, items, races, classes, spells, traps, vaults, ... -
-> all the same compose model) is real. Remaining: W1.4 (capability enforcement),
-> W1.5 (install agent controller in host - the Borg seam), W1.6 (event bus turn
-> loop). SYSTEM modding (combat/AI/gen logic, new effect kinds) is Wave 2.
+> PROGRESS (2026-07-14): WAVE 1 COMPLETE (W1.1-W1.6), all pushed, 2382 tests.
+> - W1.1 composeContentPacks (mod-sdk): base game + mods through one pipeline.
+> - W1.2 base game loads as pack zero through compose (record-identical); verified.
+> - W1.3 host discovers bundled mods (packages/web/mods/<id>/, ?mods=<id>); demo
+>   demo-modtest provably patches a monster + adds one in the running game.
+> - W1.4 capability enforcement on the perceive/act facades (state:<domain>.read
+>   / command:add; wildcard-aware; absent caps = trusted host).
+> - W1.5 host installs the agent controller (?agent=<id>) - the Borg seam;
+>   demo-wanderer drives the real game through the frozen facade (verified: game
+>   turn 0 -> 30k+, capability-gated CapabilitySet.fromManifest). Fixed a latent
+>   frozen-facade bug (perceive threw on an unbound id; now omits per contract).
+> - W1.6 GameState.events bus; state.msg/sound route through it; capability-gated
+>   subscribeEvents mod-hook seam (event:<name>); verified msgCount 0 -> 2.
+> DATA + AGENT + HOOK modding are now real and proven end-to-end. NEXT: Wave 2
+> (SYSTEM modding: the scripted-plugin sandbox and registry exposure).
 
 ## Wave 1 - Integrate the substrate (before P8)
 
