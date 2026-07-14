@@ -9,9 +9,12 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ELEM, OBJ_MOD, OF, PF, STAT, TMD, TV } from "../generated";
 import { objectNew } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import type { ObjectKind } from "../obj/types";
+import type { CurseData, GameObject } from "../obj/object";
+import { newElemInfo, zeroRv } from "../obj/types";
+import type { Curse, CurseObject, ObjectKind } from "../obj/types";
+import { FlagSet } from "../bitflag";
 import { Rng } from "../rng";
+import { OF_SIZE } from "./types";
 import { bindPlayer } from "./bind";
 import type { PlayerPackRecords } from "./bind";
 import { generatePlayer } from "./birth";
@@ -623,6 +626,135 @@ describe("calcBonuses: player_flags_timed and fear", () => {
     p.timed[TMD.BOLD] = 10;
     const s = calcBonuses(p, { timedEffects: reg.timed });
     expect(s.flags.has(OF.PROT_FEAR)).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Per-object curse traversal (player-calcs.c:2009-2023)               */
+/* ------------------------------------------------------------------ */
+
+/** A zeroed curse template object (upstream curse->obj). */
+function newCurseTemplate(): CurseObject {
+  return {
+    weight: 0,
+    toH: 0,
+    toD: 0,
+    toA: 0,
+    flags: new FlagSet(OF_SIZE),
+    modifiers: [],
+    elInfo: newElemInfo(),
+    effect: null,
+    effectMsg: "",
+    time: zeroRv(),
+  };
+}
+
+/** A 1-based curse registry (index 0 null) with one curse at index 1. */
+function curseTableWith(obj: CurseObject): (Curse | null)[] {
+  return [
+    null,
+    {
+      index: 1,
+      name: "test_curse",
+      poss: [],
+      obj,
+      conflict: null,
+      conflictFlags: new FlagSet(OF_SIZE),
+      desc: "",
+    },
+  ];
+}
+
+describe("calcBonuses: per-object curse traversal", () => {
+  /* A curse template carrying combat, a flag, a resist and a modifier. */
+  const template = newCurseTemplate();
+  template.toA = 5;
+  template.toH = 2;
+  template.toD = 3;
+  template.flags.on(OF.SEE_INVIS);
+  (template.elInfo[ELEM.FIRE] as { resLevel: number }).resLevel = 1;
+  template.modifiers[OBJ_MOD.STEALTH] = 3;
+  const curses = curseTableWith(template);
+
+  /** A ring in the first RING slot carrying curse index 1 at `power`. */
+  function ringWithCurse(p: Player, power: number): (GameObject | null)[] {
+    const eq = emptyEquipment(p);
+    const ring = objectNew({} as ObjectKind);
+    const data: CurseData[] = [
+      { power: 0, timeout: 0 },
+      { power, timeout: 0 },
+    ];
+    ring.curses = data;
+    eq[ringSlot(p)] = ring;
+    return eq;
+  }
+
+  it("folds an ACTIVE curse's flag/combat/resist into the derived state", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    const off = calcBonuses(p, { equipment: ringWithCurse(p, 0), curses });
+    const on = calcBonuses(p, { equipment: ringWithCurse(p, 5), curses });
+
+    /* Combat (2005-2007): the ring is a non-weapon slot, so to_h/to_d apply
+       alongside to_a; the curse object contributes toA 5 / toH 2 / toD 3. */
+    expect(on.toA - off.toA).toBe(5);
+    expect(on.toH - off.toH).toBe(2);
+    expect(on.toD - off.toD).toBe(3);
+    /* Flags (1939) are NOT rune-gated: the curse's OF_SEE_INVIS shows up. */
+    expect(off.flags.has(OF.SEE_INVIS)).toBe(false);
+    expect(on.flags.has(OF.SEE_INVIS)).toBe(true);
+    /* Element info (1990-1991): the curse's fire resist folds in. */
+    expect(off.elInfo[ELEM.FIRE]?.resLevel).toBe(0);
+    expect(on.elInfo[ELEM.FIRE]?.resLevel).toBe(1);
+  });
+
+  it("keeps an INACTIVE curse (power 0) out of the derived state", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    const base = calcBonuses(p, { equipment: emptyEquipment(p), curses });
+    const off = calcBonuses(p, { equipment: ringWithCurse(p, 0), curses });
+    /* A power-0 curse is skipped exactly like no curse at all. */
+    expect(off.toA).toBe(base.toA);
+    expect(off.toH).toBe(base.toH);
+    expect(off.toD).toBe(base.toD);
+    expect(off.flags.has(OF.SEE_INVIS)).toBe(false);
+    expect(off.elInfo[ELEM.FIRE]?.resLevel).toBe(0);
+  });
+
+  it("rune-gates the curse object's modifiers like the worn item's", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    /* Rune unknown: the curse's +3 stealth modifier stays inert (obj_k gate,
+       1952-1953: obj->modifiers[STEALTH] * p->obj_k->modifiers[STEALTH]). */
+    const inert = calcBonuses(p, { equipment: ringWithCurse(p, 5), curses });
+    const baseStealth = calcBonuses(p, {
+      equipment: emptyEquipment(p),
+      curses,
+    }).skills[SKILL.STEALTH];
+    expect(inert.skills[SKILL.STEALTH]).toBe(baseStealth);
+    /* Learn the stealth rune: the curse modifier now folds in (+3). */
+    p.objKnown.modifiers[OBJ_MOD.STEALTH] = 1;
+    const learned = calcBonuses(p, { equipment: ringWithCurse(p, 5), curses });
+    expect((learned.skills[SKILL.STEALTH] ?? 0) - (baseStealth ?? 0)).toBe(3);
+  });
+
+  it("does nothing without the bound curse registry (templates unresolved)", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    const base = calcBonuses(p, { equipment: emptyEquipment(p) });
+    /* Same active curse, but no options.curses: the traversal has no table. */
+    const noReg = calcBonuses(p, { equipment: ringWithCurse(p, 5) });
+    expect(noReg.toA).toBe(base.toA);
+    expect(noReg.flags.has(OF.SEE_INVIS)).toBe(false);
+  });
+
+  it("draws no RNG (calc_bonuses is deterministic)", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    const rng = new Rng(9876);
+    const before = JSON.stringify(rng.getState());
+    calcBonuses(p, {
+      equipment: ringWithCurse(p, 5),
+      curses,
+      timedEffects: reg.timed,
+      update: true,
+    });
+    expect(JSON.stringify(rng.getState())).toBe(before);
   });
 });
 
