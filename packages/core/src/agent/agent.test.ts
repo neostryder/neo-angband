@@ -441,3 +441,50 @@ describe("pre-freeze gap closures", () => {
     expect(item?.curses).toEqual(["teleportation"]);
   });
 });
+
+describe("facade capability enforcement (W1.4)", () => {
+  it("perceive: no caps is a trusted host - every domain is granted", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const view = createAgentView(state);
+    expect(() => view.player()).not.toThrow();
+    expect(() => view.monsters()).not.toThrow();
+    expect(() => view.constants()).not.toThrow();
+  });
+
+  it("perceive: a narrow grant allows its domain and blocks the rest", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const view = createAgentView(state, undefined, {}, grant("state:monsters.read"));
+    expect(() => view.monsters()).not.toThrow();
+    expect(() => view.player()).toThrow(AgentCapabilityError);
+    expect(() => view.inventory()).toThrow(AgentCapabilityError);
+    expect(() => view.constants()).toThrow(AgentCapabilityError);
+  });
+
+  it("perceive: the state:*.read wildcard grants every domain", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const view = createAgentView(state, undefined, {}, grant("state:*.read"));
+    expect(() => view.player()).not.toThrow();
+    expect(() => view.monsters()).not.toThrow();
+    expect(() => view.cell(10, 10)).not.toThrow();
+    expect(() => view.inventory()).not.toThrow();
+    expect(() => view.constants()).not.toThrow();
+  });
+
+  it("act: no caps is a trusted host - every verb is granted", () => {
+    const state = makeState();
+    const act = createAgentActions(state);
+    expect(act.move(1)).toEqual({ code: "walk", dir: 1 });
+    expect(act.rest()).toEqual({ code: "rest" });
+  });
+
+  it("act: command:add is required per verb when caps are supplied", () => {
+    const state = makeState();
+    const withAdd = createAgentActions(state, grant("command:add"));
+    expect(withAdd.move(1)).toEqual({ code: "walk", dir: 1 });
+
+    const noAdd = createAgentActions(state, grant("state:*.read"));
+    expect(() => noAdd.move(1)).toThrow(AgentCapabilityError);
+    expect(() => noAdd.rest()).toThrow(AgentCapabilityError);
+    expect(() => noAdd.raw("hold")).toThrow(AgentCapabilityError);
+  });
+});
