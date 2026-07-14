@@ -114,6 +114,7 @@ import { monsterChangeShape, monsterRevertShape } from "../game/mon-shape";
 import type { MonShapeHooks } from "../mon/timed";
 import { installObjCommands } from "../game/obj-cmd";
 import { installCaveCommands } from "../game/cave-cmd";
+import { installSteal } from "../game/steal";
 import type { ChestCmdDeps } from "../game/chest";
 import {
   calcUnlockingChance,
@@ -956,6 +957,13 @@ function wireGame(
         : {}),
     },
     ...(chestDeps ? { chestDeps } : {}),
+  });
+
+  // steal (cmd-cave.c do_cmd_steal): the rogue / PF_STEAL lift-from-monster
+  // command. The PF_STEAL gate reads the live derived state (state.playerState).
+  installSteal(registry, {
+    constants: reg.constants,
+    msg: (text: string): void => state.msg?.(text),
   });
 
   // Running (player-path.c): the corridor / open-area running engine. It
