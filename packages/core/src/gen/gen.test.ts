@@ -335,13 +335,84 @@ describe("full level generation", () => {
     }
   });
 
+  it("generates fully-connected valid levels across the deep profile pool", () => {
+    /* Post-enablement, depth 30/60 select cavern/moria/labyrinth/lair/gauntlet/
+     * hard_centre (proven by the choose() test). Drive many seeds end-to-end
+     * through generateLevel and require every level to be valid + connected -
+     * catches any deep generator that disconnects or throws via the pipeline. */
+    const deps = makeDeps();
+    /* The player can reach a down staircase (the true playability guarantee).
+     * 8-directional, since the player moves diagonally and caverns connect
+     * diagonally. Angband does NOT guarantee every passable cell is reachable
+     * (vault interiors and stray fully-enclosed 1-cell pockets can be sealed),
+     * so this asserts descent-reachability, not total cell connectivity. */
+    const downStairReachable = (g: Gen, start: Loc): boolean => {
+      const c = g.c;
+      const trav = (gr: Loc): boolean => c.isPassable(gr) || c.isDoor(gr) || c.isRubble(gr);
+      const seen = new Uint8Array(c.width * c.height);
+      const stack: Loc[] = [start];
+      seen[start.y * c.width + start.x] = 1;
+      const d8 = [loc(0,1),loc(0,-1),loc(1,0),loc(-1,0),loc(1,1),loc(1,-1),loc(-1,1),loc(-1,-1)];
+      let found = c.feat(start) === FEAT.MORE;
+      while (stack.length && !found) {
+        const cur = stack.pop() as Loc;
+        for (const d of d8) {
+          const n = loc(cur.x + d.x, cur.y + d.y);
+          if (!c.inBounds(n)) continue;
+          const idx = n.y * c.width + n.x;
+          if (seen[idx] || !trav(n)) continue;
+          seen[idx] = 1;
+          if (c.feat(n) === FEAT.MORE) { found = true; break; }
+          stack.push(n);
+        }
+      }
+      return found;
+    };
+    for (const [depth, seeds] of [[30, 24], [60, 14]] as const) {
+      for (let s = 0; s < seeds; s++) {
+        const g = generateLevel(new Rng(9000 + depth * 100 + s), depth, deps);
+        const p = g.playerSpot as Loc;
+        expect(g.c.isPassable(p)).toBe(true);
+        expect(g.c.featCount[FEAT.MORE] ?? 0).toBeGreaterThanOrEqual(1);
+        /* The player can descend: a down staircase is reachable. */
+        expect(downStairReachable(g, p)).toBe(true);
+        expect(g.monsters.length).toBeGreaterThanOrEqual(1);
+        expect(g.monsters.length).toBeLessThan(constants.levelMonsterMax);
+      }
+    }
+  });
+
   it("selects town at depth 0 and a dungeon profile below", () => {
     const deps = makeDeps();
     expect(deps.profiles.choose(new Rng(1), 0).name).toBe("town");
     const names = new Set<string>();
     for (let s = 0; s < 40; s++) names.add(deps.profiles.choose(new Rng(s), 7).name);
-    /* Only classic/modified are enabled for dungeon depths. */
+    /* At depth 7 only classic/modified qualify (cavern min-level 15, moria
+     * needs depth>=10, labyrinth needs depth>=13, lair/gauntlet 20, hard 50). */
     for (const n of names) expect(["classic", "modified"]).toContain(n);
+  });
+
+  it("selects the full weighted/forced profile pool at depth (choose_profile)", () => {
+    const deps = makeDeps();
+    /* Deep enough that every alloc>0 profile qualifies (hard centre min 50),
+     * plus the labyrinth_check (>=13) and the depth 10-40 moria one_in_(40). */
+    const deep = new Set<string>();
+    for (let s = 0; s < 400; s++) deep.add(deps.profiles.choose(new Rng(s), 30).name);
+    /* The weighted pool (cavern/classic/modified) must all appear by depth 30. */
+    expect(deep.has("classic")).toBe(true);
+    expect(deep.has("modified")).toBe(true);
+    expect(deep.has("cavern")).toBe(true);
+    /* labyrinth (forced, >=13) and moria (depth 10-40) appear across seeds. */
+    expect(deep.has("labyrinth")).toBe(true);
+    expect(deep.has("moria")).toBe(true);
+    /* lair/gauntlet (alloc 1, min 20) qualify here; sampled across many seeds. */
+    const deeper = new Set<string>();
+    for (let s = 0; s < 800; s++) deeper.add(deps.profiles.choose(new Rng(s), 60).name);
+    expect(deeper.has("lair") || deeper.has("gauntlet") || deeper.has("hard centre")).toBe(true);
+    /* Every returned profile is a real registered builder (no throw). */
+    for (const n of [...deep, ...deeper]) {
+      expect(deps.profiles.hasBuilder(deps.profiles.find(n)!.builder)).toBe(true);
+    }
   });
 
   it("generates a walkable town at depth 0", () => {
