@@ -18,9 +18,12 @@ import type { MonsterPackRecords } from "../mon/bind";
 import { MonAllocTable } from "../mon/make";
 
 import {
+  cavernGen,
   createDungeonProfiles,
   DungeonProfiles,
+  labyrinthGen,
   TOWN_STORE_FEATS,
+  type CaveBuildContext,
   type DunProfile,
   type DunProfileRecordJson,
 } from "./cave";
@@ -339,6 +342,126 @@ describe("full level generation", () => {
     expect(g.c.featCount[FEAT.MORE] ?? 0).toBeGreaterThanOrEqual(1);
     const p = g.playerSpot as Loc;
     expect(g.c.isPassable(p)).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Standalone labyrinth + cavern generators (gen-cave.c labyrinth_gen /
+ * cavern_gen). These profiles are not enabled for choose(), so the builders
+ * are exercised directly through a hand-built CaveBuildContext.
+ * ------------------------------------------------------------------ */
+
+/** Build a CaveBuildContext for a direct builder invocation. */
+function builderCtx(depth: number, seed: number): CaveBuildContext {
+  const deps = makeDeps();
+  const dun = new Dun(constants);
+  dun.quest = false;
+  dun.persist = false;
+  /* labyrinth/cavern read no profile fields; any real profile suffices. */
+  const profile = deps.profiles.find("classic") as DunProfile;
+  return {
+    rng: new Rng(seed),
+    reg,
+    constants,
+    dun,
+    profile,
+    depth,
+    minHeight: 1,
+    minWidth: 1,
+    objDeps: deps.objDeps,
+    monDeps: deps.monDeps,
+    rooms: deps.rooms,
+  };
+}
+
+describe("labyrinth generator", () => {
+  it("registers labyrinthGen as the 'labyrinth' builder (not the modified alias)", () => {
+    const profiles = createDungeonProfiles(loadRecords<DunProfileRecordJson>("dungeon_profile"));
+    expect(profiles.builder("labyrinth")).toBe(labyrinthGen);
+    expect(profiles.builder("cavern")).toBe(cavernGen);
+  });
+
+  it("builds a connected maze with one up and one down stair, player on floor", () => {
+    const built = labyrinthGen(builderCtx(20, 12345));
+    expect(built.error).toBeNull();
+    const g = built.gen;
+    expect(g).not.toBeNull();
+    if (!g) return;
+    const c = g.c;
+
+    /* Player on passable floor, fully in bounds. */
+    const p = g.playerSpot as Loc;
+    expect(c.inBoundsFully(p)).toBe(true);
+    expect(c.isFloor(p)).toBe(true);
+
+    /* Exactly one up and one down stair (labyrinth places a single set). */
+    expect(c.featCount[FEAT.MORE] ?? 0).toBe(1);
+    expect(c.featCount[FEAT.LESS] ?? 0).toBe(1);
+
+    /* Perimeter is permanent wall. */
+    for (let x = 0; x < c.width; x++) {
+      expect(c.isPerm(loc(x, 0))).toBe(true);
+      expect(c.isPerm(loc(x, c.height - 1))).toBe(true);
+    }
+
+    /* The maze is fully connected (a Kruskal spanning tree). */
+    expect(reachableCount(g, p)).toBe(totalTraversable(g));
+
+    /* Placed monsters/objects are in bounds and on legal squares. */
+    expect(g.monsters.length).toBeLessThan(constants.levelMonsterMax);
+    for (const m of g.monsters) expect(c.inBoundsFully(m.grid)).toBe(true);
+    for (const o of g.objects) expect(c.isObjectHolding(o.grid)).toBe(true);
+  });
+
+  it("is deterministic run-to-run for a fixed seed", () => {
+    const a = labyrinthGen(builderCtx(20, 777)).gen as Gen;
+    const b = labyrinthGen(builderCtx(20, 777)).gen as Gen;
+    expect(serialize(a)).toBe(serialize(b));
+    expect(a.monsters.length).toBe(b.monsters.length);
+    expect(a.objects.length).toBe(b.objects.length);
+  });
+});
+
+describe("cavern generator", () => {
+  it("builds a fully connected cavern with stairs and bounded monsters", () => {
+    const built = cavernGen(builderCtx(15, 424242));
+    expect(built.error).toBeNull();
+    const g = built.gen;
+    expect(g).not.toBeNull();
+    if (!g) return;
+    const c = g.c;
+
+    /* Player on passable floor. */
+    const p = g.playerSpot as Loc;
+    expect(c.inBoundsFully(p)).toBe(true);
+    expect(c.isFloor(p)).toBe(true);
+
+    /* Down (1-3) and up (1-2) stairs were placed. */
+    expect(c.featCount[FEAT.MORE] ?? 0).toBeGreaterThanOrEqual(1);
+    expect(c.featCount[FEAT.LESS] ?? 0).toBeGreaterThanOrEqual(1);
+
+    /* Perimeter is permanent wall. */
+    for (let x = 0; x < c.width; x++) {
+      expect(c.isPerm(loc(x, 0))).toBe(true);
+      expect(c.isPerm(loc(x, c.height - 1))).toBe(true);
+    }
+
+    /* The CA + clear_small_regions + join_regions leave one connected cave. */
+    expect(reachableCount(g, p)).toBe(totalTraversable(g));
+
+    /* Monsters bounded and legally placed. */
+    expect(g.monsters.length).toBeGreaterThanOrEqual(1);
+    expect(g.monsters.length).toBeLessThan(constants.levelMonsterMax);
+    for (const m of g.monsters) expect(c.inBoundsFully(m.grid)).toBe(true);
+    for (const o of g.objects) expect(c.isObjectHolding(o.grid)).toBe(true);
+  });
+
+  it("is deterministic run-to-run for a fixed seed", () => {
+    const a = cavernGen(builderCtx(15, 909090)).gen as Gen;
+    const b = cavernGen(builderCtx(15, 909090)).gen as Gen;
+    expect(serialize(a)).toBe(serialize(b));
+    expect(a.monsters.length).toBe(b.monsters.length);
+    expect(a.objects.length).toBe(b.objects.length);
   });
 });
 

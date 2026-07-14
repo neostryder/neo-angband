@@ -12,11 +12,16 @@
  * string-keyed registry and dungeon profiles in a runtime-registrable list.
  * A mod can register a new builder key and add a profile that uses it.
  *
- * DEFERRED (ledgered in parity/ledger/gen-cave.yaml): labyrinth, cavern,
- * moria, lair, gauntlet and hard_centre builders (their builder keys are
- * registered but delegate to modified_gen); the town builder is a minimal
- * open level (full town generation with stores is a separate later task);
- * persistent-level connectors and the arena level.
+ * PORTED (standalone): labyrinth_gen and cavern_gen (with labyrinth_chunk's
+ * Kruskal maze, and init_cavern/mutate_cavern/clear_small_regions/cavern_chunk's
+ * cellular automaton). cavern_chunk's persistent-level `join` stair machinery is
+ * ported but dormant (dun.join is empty for non-persistent levels).
+ *
+ * DEFERRED (ledgered in parity/ledger/gen-cave.yaml): moria, lair, gauntlet and
+ * hard_centre builders (their builder keys are registered but delegate to
+ * modified_gen); the town builder is a minimal open level (full town generation
+ * with stores is a separate later task); persistent-level connectors and the
+ * arena level. connect_caverns is left for the hard_centre agent.
  */
 
 import type { Constants } from "../constants";
@@ -30,22 +35,31 @@ import type { MakeDeps } from "../obj/make";
 import type { RoomProfile, RoomRegistry } from "./room";
 import { roomBuild } from "./room";
 import {
+  CaveFinder,
   Dun,
   Gen,
+  type Connector,
   type MonPlaceDeps,
   allocObjects,
   allocStairs,
+  caveFind,
   correctDir,
+  countNeighbors,
   drawRectangle,
   fillRectangle,
   findNearbyGrid,
   generateStarburstRoom,
+  gridToI,
+  iToGrid,
   newPlayerSpot,
   nextGrid,
   pickAndPlaceDistantMonster,
+  placeClosedDoor,
   placeRandomDoor,
   randDir,
   setMarkedGranite,
+  shuffle,
+  squareIsEmpty,
   squareIsGraniteWithFlag,
   squareIsRoom,
   squareIsStrongWall,
@@ -53,6 +67,8 @@ import {
   SET_CORR,
   SET_ROOM,
   TYP_GOLD,
+  TYP_GOOD,
+  TYP_GREAT,
   TYP_OBJECT,
   TYP_RUBBLE,
   TYP_TRAP,
@@ -60,6 +76,7 @@ import {
   DIR_S,
   DIR_E,
   DIR_W,
+  DIR_SE,
   distance,
 } from "./util";
 
@@ -987,6 +1004,407 @@ export const modifiedGen: CaveBuilder = (ctx) => {
   return { gen: g, error: null };
 };
 
+/* ------------------------------------------------------------------ *
+ * Labyrinth generator (gen-cave.c labyrinth_chunk / labyrinth_gen).
+ * ------------------------------------------------------------------ */
+
+/**
+ * lab_get_adjoin: given an adjoining wall index i in a width-w labyrinth,
+ * return the two cell indices [a, b] it separates.
+ */
+function labGetAdjoin(i: number, w: number): [number, number] {
+  const grid = iToGrid(i, w);
+  if (grid.x % 2 === 0) {
+    return [gridToI(nextGrid(grid, DIR_N), w), gridToI(nextGrid(grid, DIR_S), w)];
+  }
+  return [gridToI(nextGrid(grid, DIR_W), w), gridToI(nextGrid(grid, DIR_E), w)];
+}
+
+/**
+ * lab_is_tunnel: true if grid is a straight (non-intersection) passage - the
+ * squares on one axis are open and on the other are walls. Doors count as open.
+ */
+function labIsTunnel(c: Chunk, grid: Loc): boolean {
+  const open = (g: Loc): boolean => c.isPassable(g) || c.isClosedDoor(g);
+  const west = open(nextGrid(grid, DIR_W));
+  const east = open(nextGrid(grid, DIR_E));
+  const north = open(nextGrid(grid, DIR_N));
+  const south = open(nextGrid(grid, DIR_S));
+  return north === south && west === east && north !== west;
+}
+
+/**
+ * labyrinth_chunk: build an h x w labyrinth (in a chunk sized h+2 x w+2 with a
+ * perma-rock border) using a randomized Kruskal's algorithm. NEW helpers:
+ * labGetAdjoin/labIsTunnel (the maze index math and tunnel test).
+ */
+function labyrinthChunk(
+  ctx: CaveBuildContext,
+  depth: number,
+  h: number,
+  w: number,
+  lit: boolean,
+  soft: boolean,
+): Gen {
+  const { rng, reg } = ctx;
+  const c = new Chunk(reg, h + 2, w + 2);
+  c.depth = depth;
+  const g = makeGen(ctx, c);
+
+  /* Number of squares in the labyrinth. */
+  const n = h * w;
+  /* sets[i] tracks connectedness; walls[i] is the shuffle list. */
+  const sets = new Array<number>(n);
+  const walls = new Array<number>(n);
+
+  /* Bound with perma-rock; fill the interior with rock. */
+  drawRectangle(c, 0, 0, h + 1, w + 1, FEAT.PERM, SQUARE.NONE, true);
+  if (soft) fillRectangle(c, 1, 1, h, w, FEAT.GRANITE, SQUARE.WALL_SOLID);
+  else fillRectangle(c, 1, 1, h, w, FEAT.PERM, SQUARE.NONE);
+
+  for (let i = 0; i < n; i++) {
+    walls[i] = i;
+    sets[i] = -1;
+  }
+
+  /* Cut out a grid of 1x1 "cells". next_grid(grid, DIR_SE) translates
+   * labyrinth-space (0-based) into chunk-space (offset by the border). */
+  for (let gy = 0; gy < h; gy += 2) {
+    for (let gx = 0; gx < w; gx += 2) {
+      const grid = loc(gx, gy);
+      const kLocal = gridToI(grid, w);
+      const diag = nextGrid(grid, DIR_SE);
+      sets[kLocal] = kLocal;
+      c.setFeat(diag, FEAT.FLOOR);
+      if (lit) c.sqinfoOn(diag, SQUARE.GLOW);
+    }
+  }
+
+  /* Shuffle the walls, then run randomized Kruskal's algorithm. */
+  shuffle(rng, walls, n);
+  for (let i = 0; i < n; i++) {
+    const j = walls[i] as number;
+    const grid = iToGrid(j, w);
+    if ((grid.x < 1 && grid.y < 1) || (grid.x > w - 2 && grid.y > h - 2)) continue;
+    if (grid.x % 2 === grid.y % 2) continue;
+
+    const [a, b] = labGetAdjoin(j, w);
+    if (sets[a] !== sets[b]) {
+      const sa = sets[a] as number;
+      const sb = sets[b] as number;
+      const diag = nextGrid(grid, DIR_SE);
+      c.setFeat(diag, FEAT.FLOOR);
+      if (lit) c.sqinfoOn(diag, SQUARE.GLOW);
+      for (let k = 0; k < n; k++) if (sets[k] === sb) sets[k] = sa;
+    }
+  }
+
+  /* Generate a closed door for every 100 squares in the labyrinth. */
+  const finder = new CaveFinder(loc(1, 1), loc(c.width - 2, c.height - 2));
+  let doors = Math.trunc(n / 100);
+  while (doors > 0) {
+    const grid = finder.get(rng);
+    if (!grid) break;
+    if (squareIsEmpty(g, grid) && labIsTunnel(c, grid)) {
+      placeClosedDoor(g, grid);
+      doors--;
+    }
+  }
+
+  /* Unlit labyrinths hold some good items; hard (non-diggable) ones some great. */
+  if (!lit) allocObjects(g, SET_BOTH, TYP_GOOD, rng.randNormal(3, 2), c.depth);
+  if (!soft) allocObjects(g, SET_BOTH, TYP_GREAT, rng.randNormal(2, 1), c.depth);
+
+  return g;
+}
+
+/** labyrinth_gen: build a labyrinth level. */
+export const labyrinthGen: CaveBuilder = (ctx) => {
+  const { rng, constants, dun, depth } = ctx;
+
+  /* The labyrinth area (excluding the enclosing walls) must be odd-sized. */
+  let h = 15 + rng.randint0(Math.trunc(depth / 10)) * 2;
+  let w = 51 + rng.randint0(Math.trunc(depth / 10)) * 2;
+
+  /* Most labyrinths are lit; many lit ones are known; most have soft walls. */
+  const lit = rng.randint0(depth) < 25 || rng.randint0(2) < 1;
+  const known = lit && rng.randint0(depth) < 25;
+  const soft = rng.randint0(depth) < 35 || rng.randint0(3) < 2;
+
+  /* No persistent levels of this type for now. */
+  if (dun.persist) {
+    return { gen: null, error: "no labyrinth levels in persistent dungeons" };
+  }
+
+  /* Enforce minimum dimensions. */
+  h = Math.max(h, ctx.minHeight);
+  w = Math.max(w, ctx.minWidth);
+
+  const g = labyrinthChunk(ctx, depth, h, w, lit, soft);
+  const c = g.c;
+
+  /* Determine the character location. */
+  const pspot = newPlayerSpot(g);
+  if (!pspot) return { gen: null, error: "could not place player" };
+  g.playerSpot = pspot;
+
+  /* A single set of up/down stairs, if not already present. */
+  if (!caveFind(c, rng, (cc, gr) => cc.isUpstairs(gr))) {
+    allocStairs(g, FEAT.LESS, 1, 0, false, dun.oneOffAbove, dun.quest);
+  }
+  if (!caveFind(c, rng, (cc, gr) => cc.isDownstairs(gr))) {
+    allocStairs(g, FEAT.MORE, 1, 0, false, dun.oneOffBelow, dun.quest);
+  }
+
+  /* Rubble, traps and monsters, scaled by labyrinth size. */
+  let k = Math.max(Math.min(Math.trunc(c.depth / 3), 10), 2);
+  k = Math.trunc((3 * k * (h * w)) / (constants.dungeonHgt * constants.dungeonWid));
+
+  allocObjects(g, SET_BOTH, TYP_RUBBLE, rng.randint1(k), c.depth);
+  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth);
+
+  let mcount = constants.levelMonsterMin + rng.randint1(8) + k;
+  for (; mcount > 0; mcount--) pickAndPlaceDistantMonster(g, pspot, 0, true, c.depth);
+
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(k * 6, 2), c.depth);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(k * 3, 2), c.depth);
+  allocObjects(g, SET_BOTH, TYP_GOOD, rng.randint1(2), c.depth);
+
+  /* known would set p->upkeep->light_level upstream (a UI reveal flag, no RNG
+   * and no layout effect); the port does not model player upkeep here. */
+  void known;
+
+  return { gen: g, error: null };
+};
+
+/* ------------------------------------------------------------------ *
+ * Cavern generator (gen-cave.c init_cavern / mutate_cavern /
+ * clear_small_regions / cavern_chunk / cavern_gen). Cellular-automaton cave.
+ * ------------------------------------------------------------------ */
+
+const MAX_CAVERN_TRIES = 10;
+
+/**
+ * init_cavern: fill the chunk with rock, then open `density` percent of the
+ * interior to floor at random. The `join` connector list (empty for
+ * non-persistent levels) builds in stairs surrounded by protected floor/rock;
+ * it is ported faithfully but dormant until persistent levels wire dun.join.
+ */
+function initCavern(g: Gen, density: number, join: Connector[]): void {
+  const c = g.c;
+  const rng = g.rng;
+  const h = c.height;
+  const w = c.width;
+  const size = h * w;
+  let count = Math.trunc((size * density) / 100);
+
+  /* Fill the entire chunk with rock. */
+  fillRectangle(c, 0, 0, h - 1, w - 1, FEAT.GRANITE, SQUARE.WALL_SOLID);
+
+  /* Add in the desired stairs (dormant for non-persistent levels). */
+  for (const j of join) {
+    if (
+      j.grid.y > 0 &&
+      j.grid.y < h - 1 &&
+      j.grid.x > 0 &&
+      j.grid.x < w - 1 &&
+      !c.isStairs(j.grid)
+    ) {
+      const bcrit = rng.randint0(h) + (j.grid.y > Math.trunc(h / 2) ? -10 : 10);
+      const rcrit = rng.randint0(w) + (j.grid.x > Math.trunc(w / 2) ? -10 : 10);
+      const offy = bcrit > j.grid.y ? 1 : -1;
+      const offx = rcrit > j.grid.x ? 1 : -1;
+
+      if (!c.isFloor(j.grid)) count--;
+      c.setFeat(j.grid, j.feat);
+
+      let adj = loc(j.grid.x + offx, j.grid.y + offy);
+      if (!c.isStairs(adj) && !c.isFloor(adj)) {
+        count--;
+        c.setFeat(adj, FEAT.FLOOR);
+      }
+      adj = loc(j.grid.x, j.grid.y + offy);
+      if (!c.isStairs(adj) && !c.isFloor(adj)) {
+        count--;
+        c.setFeat(adj, FEAT.FLOOR);
+      }
+      adj = loc(j.grid.x + offx, j.grid.y);
+      if (!c.isStairs(adj) && !c.isFloor(adj)) {
+        count--;
+        c.setFeat(adj, FEAT.FLOOR);
+      }
+      adj = loc(j.grid.x - offx, j.grid.y - offy);
+      if (c.isGranite(adj)) c.setFeat(adj, FEAT.PERM);
+      adj = loc(j.grid.x, j.grid.y - offy);
+      if (c.isGranite(adj)) c.setFeat(adj, FEAT.PERM);
+      adj = loc(j.grid.x - offx, j.grid.y);
+      if (c.isGranite(adj)) c.setFeat(adj, FEAT.PERM);
+    }
+  }
+
+  while (count > 0) {
+    const grid = loc(rng.randint1(w - 2), rng.randint1(h - 2));
+    if (c.isGranite(grid)) {
+      c.setFeat(grid, FEAT.FLOOR);
+      count--;
+    }
+  }
+}
+
+/** mutate_cavern: one pass of the (4,5) cellular-automaton rules. No RNG. */
+function mutateCavern(g: Gen): void {
+  const c = g.c;
+  const h = c.height;
+  const w = c.width;
+  const temp = new Int32Array(h * w);
+  const passable = (cc: Chunk, gr: Loc): boolean => cc.isPassable(gr);
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const grid = loc(x, y);
+      const count = 8 - countNeighbors(c, grid, passable, false);
+      const i = gridToI(grid, w);
+      if (c.isStairs(grid) || c.isPerm(grid)) temp[i] = c.feat(grid);
+      else if (count > 5) temp[i] = FEAT.GRANITE;
+      else if (count < 4) temp[i] = FEAT.FLOOR;
+      else temp[i] = c.feat(grid);
+    }
+  }
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const grid = loc(x, y);
+      const feat = temp[gridToI(grid, w)] as number;
+      if (feat === FEAT.GRANITE) setMarkedGranite(c, grid, SQUARE.WALL_SOLID);
+      else c.setFeat(grid, feat);
+    }
+  }
+}
+
+/**
+ * clear_small_regions: delete all open regions smaller than 9 squares (turning
+ * them back to granite). No stair-preservation here: join is empty for
+ * non-persistent levels, so no region carries a staircase to protect.
+ */
+function clearSmallRegions(g: Gen, colors: Int32Array, counts: Int32Array): void {
+  const c = g.c;
+  const size = c.height * c.width;
+  const deleted = new Uint8Array(size);
+
+  for (let i = 0; i < size; i++) {
+    if ((counts[i] as number) < 9) {
+      deleted[i] = 1;
+      counts[i] = 0;
+    }
+  }
+
+  for (let y = 1; y < c.height - 1; y++) {
+    for (let x = 1; x < c.width - 1; x++) {
+      const grid = loc(x, y);
+      const i = gridToI(grid, c.width);
+      if (!deleted[colors[i] as number]) continue;
+      colors[i] = 0;
+      setMarkedGranite(c, grid, SQUARE.WALL_SOLID);
+    }
+  }
+}
+
+/**
+ * cavern_chunk: build a cellular-automaton cavern, regenerating (up to
+ * MAX_CAVERN_TRIES times) until enough floor is open, then colour the regions,
+ * delete the small ones and join the rest into one connected cave. Returns null
+ * if no large-enough cavern could be made. Reuses the file's buildColors /
+ * joinRegion / countColors / firstColor region machinery.
+ */
+function cavernChunk(
+  ctx: CaveBuildContext,
+  depth: number,
+  h: number,
+  w: number,
+  join: Connector[],
+): Gen | null {
+  const { rng, reg } = ctx;
+  const size = h * w;
+  const limit = Math.trunc(size / 13);
+  const density = rng.randRange(25, 40);
+  const times = rng.randRange(3, 6);
+
+  const c = new Chunk(reg, h, w);
+  c.depth = depth;
+  const g = makeGen(ctx, c);
+
+  let tries = 0;
+  for (; tries < MAX_CAVERN_TRIES; tries++) {
+    initCavern(g, density, join);
+    for (let i = 0; i < times; i++) mutateCavern(g);
+    if ((c.featCount[FEAT.FLOOR] ?? 0) >= limit) break;
+  }
+  if (tries === MAX_CAVERN_TRIES) return null;
+
+  const colors = new Int32Array(size);
+  const counts = new Int32Array(size);
+  buildColors(g, colors, counts);
+  clearSmallRegions(g, colors, counts);
+  let num = countColors(counts);
+  while (num > 1) {
+    joinRegion(g, colors, counts, firstColor(counts), true);
+    num--;
+  }
+
+  /* Convert the permanent rock walls near stairs back to granite (dormant). */
+  for (const j of join) {
+    for (let i = 0; i < 8; i++) {
+      const adj = locSum(j.grid, DDGRID_DDD[i] as Loc);
+      if (c.inBounds(adj) && c.isPerm(adj)) setMarkedGranite(c, adj, SQUARE.WALL_SOLID);
+    }
+  }
+
+  return g;
+}
+
+/** cavern_gen: build a cavern level. */
+export const cavernGen: CaveBuilder = (ctx) => {
+  const { rng, constants, dun, depth } = ctx;
+
+  let h = rng.randRange(Math.trunc(constants.dungeonHgt / 2), Math.trunc((constants.dungeonHgt * 3) / 4));
+  let w = rng.randRange(Math.trunc(constants.dungeonWid / 2), Math.trunc((constants.dungeonWid * 3) / 4));
+
+  /* Enforce minimum dimensions. */
+  h = Math.max(h, ctx.minHeight);
+  w = Math.max(w, ctx.minWidth);
+
+  const g = cavernChunk(ctx, depth, h, w, dun.join);
+  if (!g) return { gen: null, error: "cavern chunk could not be created" };
+  const c = g.c;
+
+  /* Surround the level with perma-rock. */
+  drawRectangle(c, 0, 0, h - 1, w - 1, FEAT.PERM, SQUARE.NONE, true);
+
+  /* Place 1-3 down stairs and 1-2 up stairs near some walls. */
+  handleLevelStairs(g, dun.quest, rng.randRange(1, 3), rng.randRange(1, 2));
+
+  /* Rubble, traps and monsters, scaled (with a floor of 6) by cavern size. */
+  let k = Math.max(Math.min(Math.trunc(c.depth / 3), 10), 2);
+  k = Math.max(Math.trunc((4 * k * (h * w)) / (constants.dungeonHgt * constants.dungeonWid)), 6);
+
+  allocObjects(g, SET_BOTH, TYP_RUBBLE, rng.randint1(k), c.depth);
+  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth);
+
+  /* Determine the character location. */
+  const pspot = newPlayerSpot(g);
+  if (!pspot) return { gen: null, error: "could not place player" };
+  g.playerSpot = pspot;
+
+  let mcount = rng.randint1(8) + k;
+  for (; mcount > 0; mcount--) pickAndPlaceDistantMonster(g, pspot, 0, true, c.depth);
+
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(k, 2), c.depth + 5);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(Math.trunc(k / 2), 2), c.depth);
+  allocObjects(g, SET_BOTH, TYP_GOOD, rng.randint0(Math.trunc(k / 4)), c.depth);
+
+  return { gen: g, error: null };
+};
+
 /**
  * The eight town entrance features, in store order: the seven shops plus the
  * player's Home. Their FEAT_* indices are the store_at keys the store runtime
@@ -1640,10 +2058,10 @@ export function createDungeonProfiles(
   reg.registerBuilder("classic", classicGen);
   reg.registerBuilder("modified", modifiedGen);
   reg.registerBuilder("town", townGen);
+  reg.registerBuilder("labyrinth", labyrinthGen);
+  reg.registerBuilder("cavern", cavernGen);
   /* Deferred builders delegate to modified_gen (ledgered). */
   reg.registerBuilder("moria", modifiedGen);
-  reg.registerBuilder("labyrinth", modifiedGen);
-  reg.registerBuilder("cavern", modifiedGen);
   reg.registerBuilder("lair", modifiedGen);
   reg.registerBuilder("gauntlet", modifiedGen);
   reg.registerBuilder("hard_centre", modifiedGen);
