@@ -2619,10 +2619,12 @@ export class DungeonProfiles {
 }
 
 /**
- * Build the default dungeon-profile registry: cave builders for every upstream
- * key (classic/modified/town are real; the rest delegate to modified_gen and
- * are ledgered as deferred), and the town/classic/modified profiles enabled
- * for selection. Mods extend both via registerBuilder/addProfile.
+ * Build the default dungeon-profile registry: a real cave builder for every
+ * upstream key (town/classic/modified/labyrinth/cavern/moria/lair/gauntlet/
+ * hard_centre - all faithful ports now) plus every dungeon_profile.txt profile,
+ * loaded in file order so choose_profile's weighted selection matches upstream.
+ * Mods extend both via registerBuilder/addProfile. (arena is quest-only and not
+ * a dungeon profile; it lives with the deferred quest system.)
  */
 export function createDungeonProfiles(
   profileRecords: DunProfileRecordJson[],
@@ -2633,18 +2635,17 @@ export function createDungeonProfiles(
   reg.registerBuilder("town", townGen);
   reg.registerBuilder("labyrinth", labyrinthGen);
   reg.registerBuilder("cavern", cavernGen);
-  /* Real faithful builders (registered but not yet enabled for choose(); #80). */
   reg.registerBuilder("moria", moriaGen);
   reg.registerBuilder("lair", lairGen);
   reg.registerBuilder("gauntlet", gauntletGen);
   reg.registerBuilder("hard_centre", hardCentreGen);
 
-  /* Enable town, classic and modified for selection (the two working dungeon
-   * profiles plus the minimal town). Their room lists carry a rarity-0,
-   * cutoff-100 catch-all builder, so generation always terminates. */
-  const enabled = new Set(["town", "classic", "modified"]);
+  /* Load EVERY dungeon profile (choose_profile, generate.c L813): town at
+   * depth 0, quest -> classic, labyrinth_check and the depth 10-40 one_in_(40)
+   * moria as forced/special, then the weighted alloc/min-level pass over the
+   * rest. Profiles are added in dungeon_profile.txt order, which the weighted
+   * loop's running-total randint0 relies on for faithful selection + RNG. */
   for (const rec of profileRecords) {
-    if (!enabled.has(rec.name)) continue;
     reg.addProfile(loadDunProfile(rec));
   }
   return reg;
