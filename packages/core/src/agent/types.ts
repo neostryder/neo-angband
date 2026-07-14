@@ -29,7 +29,10 @@
  * proof the seam is complete end-to-end.
  */
 
-import type { PlayerCommand } from "../game/context";
+import type { GameConstants, PlayerCommand } from "../game/context";
+import type { ContentIdResolver } from "../mod/ids";
+import type { ObjRegistry } from "../obj/bind";
+import type { ObjectKind } from "../obj/types";
 
 /** The frozen agent-API version. Bump on any breaking change once frozen. */
 export const AGENT_API_VERSION = "0.1.0";
@@ -100,6 +103,18 @@ export interface PlayerView {
   status: PlayerStatusView;
   dead: boolean;
   winner: boolean;
+  /** Derived skills (SKILL order); length SKILL_MAX. */
+  skills: number[];
+  /** Current shapechange name, or null in the normal shape. */
+  shape: string | null;
+  /** OF_* codes from the derived player state's flag set (empty if absent). */
+  objectFlags: string[];
+  /** Infravision range in grids. */
+  seeInfra: number;
+  /** state->num_blows (hundredths of a blow; 0 if the combat state is absent). */
+  blows: number;
+  /** state->num_shots (tenths of a shot; 0 if the combat state is absent). */
+  shots: number;
 }
 
 /** A read-only view of a monster (BORG_AS_MOD section 3, Monsters). */
@@ -119,6 +134,19 @@ export interface MonsterView {
   afraid: boolean;
   confused: boolean;
   stunned: boolean;
+  /** race->level. */
+  level: number;
+  /**
+   * No MON_TMD_* poison timer exists upstream (monsters are never "poisoned"
+   * as a timed status in 4.2.6); always false. Kept for section-3 parity.
+   */
+  poisoned: boolean;
+  /** RF_* codes from race->flags. */
+  raceFlags: string[];
+  /** RSF_* codes from race->spellFlags. */
+  spellFlags: string[];
+  /** Namespaced race id, when a ContentIdResolver dep is supplied. */
+  raceId?: string;
 }
 
 /** A read-only view of one map cell (BORG_AS_MOD section 3, Dungeon grid). */
@@ -136,6 +164,13 @@ export interface CellView {
   monster: number;
   /** Number of floor objects on the square. */
   objectCount: number;
+  /** SQUARE_GLOW: the square is self-illuminating. */
+  glow: boolean;
+  /** A live trap pile occupies this square. */
+  trap: boolean;
+  /** Namespaced terrain-feature id, when a ContentIdResolver dep is supplied
+   * and the feature index is bound (never present for an unset sentinel). */
+  featCode?: string;
 }
 
 /** A read-only view of an object (BORG_AS_MOD section 3, Items). */
@@ -156,6 +191,77 @@ export interface ItemView {
   ds: number;
   ego: boolean;
   artifact: boolean;
+  /** OF_* codes on obj.flags. */
+  flags: string[];
+  /** Nonzero obj.modifiers entries, by OBJ_MOD code. */
+  modifiers: Array<{ code: string; value: number }>;
+  /** Brand codes active on this object (obj.brands[i] true). */
+  brands: string[];
+  /** Slay codes active on this object (obj.slays[i] true). */
+  slays: string[];
+  /** Nonzero resistances/vulnerabilities, by element name. */
+  resists: Array<{ element: string; level: number }>;
+  /**
+   * Names of active curses (power > 0). A curse whose name cannot be
+   * resolved (no registry dep supplied) falls back to its numeric index
+   * as a string.
+   */
+  curses: string[];
+  egoName: string | null;
+  artifactName: string | null;
+  activation: boolean;
+  timeout: number;
+  inscription: string | null;
+  /** Namespaced kind id, when a ContentIdResolver dep is supplied. */
+  kindId?: string;
+  /** objectValue for this stack, when a registry dep is supplied. */
+  value?: number;
+}
+
+/** One item in a store's stock (ItemView plus its slot and buy price). */
+export interface StoreItemView extends ItemView {
+  /** Position in the store's stock array. */
+  index: number;
+  /**
+   * The player's buy price (priceItem), when a registry dep is supplied.
+   * Omitted for the home (nothing is for sale) and when no registry dep is
+   * given.
+   */
+  price?: number;
+}
+
+/** A read-only view of a store (BORG_AS_MOD section 3, Stores). */
+export interface StoreView {
+  feat: number;
+  featName: string;
+  isHome: boolean;
+  owner: { name: string; purse: number };
+  stock: StoreItemView[];
+}
+
+/** A read-only view of one learnable/known spell. */
+export interface SpellView {
+  name: string;
+  /** Class-wide spell index. */
+  sidx: number;
+  /** Index of the owning book in the class's books array. */
+  bidx: number;
+  /** Required level to learn. */
+  level: number;
+  mana: number;
+  /** Base failure chance (before level/stat/status adjustments). */
+  fail: number;
+  learned: boolean;
+  worked: boolean;
+  forgotten: boolean;
+}
+
+/** A read-only view of one spellbook and its spells. */
+export interface SpellbookView {
+  tval: number;
+  name: string;
+  realm: string;
+  spells: SpellView[];
 }
 
 /** The current target, if any (BORG_AS_MOD section 3, set-target). */
@@ -189,6 +295,29 @@ export interface AgentView {
   target(): TargetView | null;
   /** Messages emitted since the previous decision (oldest first). */
   messages(): string[];
+  /** Live town stores, or [] when none (dungeon levels, worldless harness). */
+  stores(): StoreView[];
+  /** The player class's spellbooks; [] for a non-caster. */
+  spellbooks(): SpellbookView[];
+  /** A plain clone of the bound game constants (z_info). */
+  constants(): GameConstants;
+}
+
+/**
+ * Optional dependencies that unlock the richer perceive fields (namespaced
+ * ids, store pricing, object value). Every field degrades gracefully when
+ * absent: the corresponding optional ItemView/CellView/MonsterView fields are
+ * simply omitted, never thrown for.
+ */
+export interface AgentViewDeps {
+  /** Enables kindId / raceId / featCode namespaced-id fields. */
+  resolver?: ContentIdResolver;
+  /** Enables ItemView.value and StoreItemView.price. */
+  reg?: ObjRegistry;
+  /** object_flavor_is_aware(kind), for object value/price dispatch. */
+  aware?: (kind: ObjectKind) => boolean;
+  /** OPT(player, birth_no_selling), for store buy pricing. */
+  noSelling?: boolean;
 }
 
 /* ------------------------------------------------------------------ *
@@ -281,6 +410,8 @@ export interface ControllerOptions {
   nondeterministic?: boolean;
   /** Called once at install when nondeterministic is true, to trip the ratchet. */
   onNondeterministic?: () => void;
+  /** Optional deps threaded into createAgentView (namespaced ids, pricing). */
+  viewDeps?: AgentViewDeps;
 }
 
 /** A live agent binding: its facades plus a teardown that restores the loop. */
