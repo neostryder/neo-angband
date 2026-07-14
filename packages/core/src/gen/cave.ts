@@ -17,11 +17,17 @@
  * cellular automaton). cavern_chunk's persistent-level `join` stair machinery is
  * ported but dormant (dun.join is empty for non-persistent levels).
  *
- * DEFERRED (ledgered in parity/ledger/gen-cave.yaml): moria, lair, gauntlet and
- * hard_centre builders (their builder keys are registered but delegate to
- * modified_gen); the town builder is a minimal open level (full town generation
- * with stores is a separate later task); persistent-level connectors and the
- * arena level. connect_caverns is left for the hard_centre agent.
+ * PORTED (multi-region): moria_gen (modified-style with the moria profile +
+ * "Moria dwellers" restriction), lair_gen (a modified half joined to a themed
+ * cavern) and gauntlet_gen (two caverns split by an unmappable labyrinth), with
+ * the chunk_copy merge helper and connect_caverns. These four builder keys
+ * (moria/lair/gauntlet) are registered but NOT yet enabled for choose() (#80).
+ *
+ * DEFERRED: hard_centre_gen (its builder key still delegates to modified_gen):
+ * vault_chunk needs random_vault and the vault list from room.ts, which are not
+ * exposed on CaveBuildContext; connect_caverns is ported and unit-tested ready
+ * for when hard_centre is wired. The town builder's full store generation,
+ * persistent-level connectors and the arena level remain deferred.
  */
 
 import type { Constants } from "../constants";
@@ -33,7 +39,8 @@ import { Chunk, featIsBright } from "../world/chunk";
 import type { FeatureRegistry } from "../world/feature";
 import type { MakeDeps } from "../obj/make";
 import type { RoomProfile, RoomRegistry } from "./room";
-import { roomBuild } from "./room";
+import { roomBuild, symmetryTransform } from "./room";
+import { monRestrict, setPitType, spreadMonsters } from "./gen-monster";
 import {
   CaveFinder,
   Dun,
@@ -48,6 +55,7 @@ import {
   drawRectangle,
   fillRectangle,
   findNearbyGrid,
+  generateMark,
   generateStarburstRoom,
   gridToI,
   iToGrid,
@@ -688,6 +696,7 @@ function buildColorPoint(
   counts: Int32Array,
   grid: Loc,
   color: number,
+  diagonal: boolean,
 ): void {
   const w = g.c.width;
   const queue = new IntQueue();
@@ -695,13 +704,14 @@ function buildColorPoint(
   queue.push(grid.y * w + grid.x);
   counts[color] = 0;
   const ddd = ddgridDdd();
+  const nDir = diagonal ? 8 : 4;
   while (queue.length > 0) {
     const n1 = queue.pop();
     const g1 = loc(n1 % w, Math.trunc(n1 / w));
     if (ignorePoint(g, colors, g1)) continue;
     colors[n1] = color;
     counts[color] = (counts[color] as number) + 1;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < nDir; i++) {
       const off = ddd[i] as Loc;
       const g2 = loc(g1.x + off.x, g1.y + off.y);
       const n2 = g2.y * w + g2.x;
@@ -713,12 +723,22 @@ function buildColorPoint(
   }
 }
 
-function buildColors(g: Gen, colors: Int32Array, counts: Int32Array): void {
+/**
+ * build_colors: colour every NESW- (or, when `diagonal`, 8-)contiguous region.
+ * The port's long-standing callers (ensureConnectedness, cavernChunk) pass
+ * `diagonal = false`; connect_caverns passes `true` to match gen-cave.c.
+ */
+function buildColors(
+  g: Gen,
+  colors: Int32Array,
+  counts: Int32Array,
+  diagonal: boolean,
+): void {
   let color = 1;
   for (let y = 0; y < g.c.height; y++) {
     for (let x = 0; x < g.c.width; x++) {
       if (ignorePoint(g, colors, loc(x, y))) continue;
-      buildColorPoint(g, colors, counts, loc(x, y), color);
+      buildColorPoint(g, colors, counts, loc(x, y), color, diagonal);
       color++;
     }
   }
@@ -741,18 +761,25 @@ function fixColors(colors: Int32Array, counts: Int32Array, from: number, to: num
   counts[from] = 0;
 }
 
+/**
+ * join_region: tunnel `color`'s region to a neighbouring region. With
+ * `newColorArg === -1` (the default used by ensureConnectedness/cavernChunk)
+ * any nearest neighbour is accepted; connect_caverns passes a specific target
+ * colour to join two named caverns, matching gen-cave.c.
+ */
 function joinRegion(
   g: Gen,
   colors: Int32Array,
   counts: Int32Array,
   color: number,
+  newColorArg: number,
   allowVaultDisconnect: boolean,
 ): void {
   const w = g.c.width;
   const size = g.c.height * w;
   const queue = new IntQueue();
   const previous = new Int32Array(size).fill(-1);
-  let newColor = -1;
+  let newColor = newColorArg;
 
   for (let i = 0; i < size; i++) {
     if (colors[i] === color) {
@@ -804,12 +831,93 @@ export function ensureConnectedness(g: Gen, allowVaultDisconnect: boolean): void
   const size = g.c.height * g.c.width;
   const colors = new Int32Array(size);
   const counts = new Int32Array(size);
-  buildColors(g, colors, counts);
+  buildColors(g, colors, counts, false);
   let num = countColors(counts);
   while (num > 1) {
     const color = firstColor(counts);
-    joinRegion(g, colors, counts, color, allowVaultDisconnect);
+    joinRegion(g, colors, counts, color, -1, allowVaultDisconnect);
     num--;
+  }
+}
+
+/**
+ * connect_caverns (gen-cave.c L3249): join the four caverns that surround the
+ * hard-centre vault. `floor` holds one sample floor grid from each cavern in
+ * the order [left, upper, lower, right]. NEW helper.
+ */
+export function connectCaverns(g: Gen, floor: Loc[]): void {
+  const size = g.c.height * g.c.width;
+  const colors = new Int32Array(size);
+  const counts = new Int32Array(size);
+  const colorOfFloor = [0, 0, 0, 0];
+
+  /* Colour the regions (diagonally, as upstream), find each cavern's colour. */
+  buildColors(g, colors, counts, true);
+  for (let i = 0; i < 4; i++) {
+    const spot = gridToI(floor[i] as Loc, g.c.width);
+    colorOfFloor[i] = colors[spot] as number;
+  }
+
+  /* Join left and upper, right and lower. */
+  joinRegion(g, colors, counts, colorOfFloor[0] as number, colorOfFloor[1] as number, false);
+  joinRegion(g, colors, counts, colorOfFloor[2] as number, colorOfFloor[3] as number, false);
+
+  /* Re-read the (upper, lower) colours after those joins, then join the two
+   * big caverns. */
+  for (let i = 1; i < 3; i++) {
+    const spot = gridToI(floor[i] as Loc, g.c.width);
+    colorOfFloor[i] = colors[spot] as number;
+  }
+  joinRegion(g, colors, counts, colorOfFloor[1] as number, colorOfFloor[2] as number, false);
+}
+
+/**
+ * chunk_copy (gen-chunk.c L345): copy the source chunk's terrain, sqinfo,
+ * objects, traps, monsters and player spot into `dest` at offset (y0, x0) with
+ * the given rotation (reflect is always false for these builders). Draws no
+ * RNG. Monster indices are reassigned in `dest`; unique tracking transfers via
+ * attachMonster. NEW helper.
+ *
+ * NOTE: because each sub-chunk is a distinct Gen with its own unique-tracking,
+ * a unique could in principle be picked into two sibling sub-chunks before they
+ * are merged (upstream tracks r_info->cur_num globally). This is RNG-neutral
+ * and a pre-existing consequence of the port's per-chunk monster model.
+ */
+function chunkCopy(dest: Gen, src: Gen, y0: number, x0: number, rotate: number): void {
+  const h = src.c.height;
+  const w = src.c.width;
+
+  /* Terrain, sqinfo, player. */
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const srcGrid = loc(x, y);
+      const destGrid = symmetryTransform(srcGrid, y0, x0, h, w, rotate, false);
+      dest.c.setFeat(destGrid, src.c.feat(srcGrid));
+      dest.c.info(destGrid).copy(src.c.info(srcGrid));
+    }
+  }
+  if (src.playerSpot) {
+    dest.playerSpot = symmetryTransform(src.playerSpot, y0, x0, h, w, rotate, false);
+  }
+
+  /* Dungeon objects. */
+  for (const po of src.objects) {
+    const destGrid = symmetryTransform(po.grid, y0, x0, h, w, rotate, false);
+    po.obj.grid = destGrid;
+    dest.addObject(destGrid, po.obj);
+  }
+
+  /* Traps. */
+  for (const idx of src.trapGrids) {
+    const srcGrid = loc(idx % w, Math.trunc(idx / w));
+    const destGrid = symmetryTransform(srcGrid, y0, x0, h, w, rotate, false);
+    dest.markTrap(destGrid);
+  }
+
+  /* Monsters. */
+  for (const pm of src.monsters) {
+    const destGrid = symmetryTransform(pm.grid, y0, x0, h, w, rotate, false);
+    dest.attachMonster(destGrid, pm.mon, dest.nextMonIndex());
   }
 }
 
@@ -960,8 +1068,18 @@ function modifiedChunk(ctx: CaveBuildContext, height: number, width: number): Ge
   return g;
 }
 
-/** modified_gen. */
-export const modifiedGen: CaveBuilder = (ctx) => {
+/**
+ * modified_gen / moria_gen shared body (gen-cave.c L2872 / L3110). moria_gen is
+ * a modified-style level whose only differences are the profile (its own room
+ * list, incl. "moria room") and a mon_restrict("Moria dwellers") wrap around
+ * the monster placement loop. moria_chunk is byte-for-byte identical to
+ * modified_chunk, so both use modifiedChunk with the caller's profile.
+ *
+ * `restrict` is the pit-profile name to restrict monsters to (null for
+ * modified). mon_restrict for a named pit draws no RNG, so the null path is
+ * RNG-identical to the original modified_gen.
+ */
+function modifiedStyleGen(ctx: CaveBuildContext, restrict: string | null): CaveBuildResult {
   const { rng, constants, dun, depth } = ctx;
   const sp = sizePercent(rng, depth, dun.quest);
   let ySize = Math.trunc((constants.dungeonHgt * (sp - 5 + rng.randint0(10))) / 100);
@@ -995,14 +1113,29 @@ export const modifiedGen: CaveBuilder = (ctx) => {
   g.playerSpot = pspot;
 
   let mcount = constants.levelMonsterMin + rng.randint1(8) + k;
+  /* moria: restrict to cave dwellers. "Moria dwellers" is a pit name, so the
+   * restrict draws no RNG (races[] is unused for the named-pit path). */
+  const pits = ctx.monDeps?.pits;
+  if (restrict !== null && ctx.monDeps && pits) {
+    monRestrict(rng, ctx.monDeps.table, [], pits, restrict, c.depth, c.depth, true);
+  }
   for (; mcount > 0; mcount--) pickAndPlaceDistantMonster(g, pspot, 0, true, c.depth);
+  if (restrict !== null && ctx.monDeps && pits) {
+    monRestrict(rng, ctx.monDeps.table, [], pits, null, c.depth, c.depth, false);
+  }
 
   allocObjects(g, SET_ROOM, TYP_OBJECT, rng.randNormal(constants.roomItemAv, 3), c.depth);
   allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(constants.bothItemAv, 3), c.depth);
   allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(constants.bothGoldAv, 3), c.depth);
 
   return { gen: g, error: null };
-};
+}
+
+/** modified_gen. */
+export const modifiedGen: CaveBuilder = (ctx) => modifiedStyleGen(ctx, null);
+
+/** moria_gen (gen-cave.c L3110): an Oangband-style moria level. */
+export const moriaGen: CaveBuilder = (ctx) => modifiedStyleGen(ctx, "Moria dwellers");
 
 /* ------------------------------------------------------------------ *
  * Labyrinth generator (gen-cave.c labyrinth_chunk / labyrinth_gen).
@@ -1343,11 +1476,11 @@ function cavernChunk(
 
   const colors = new Int32Array(size);
   const counts = new Int32Array(size);
-  buildColors(g, colors, counts);
+  buildColors(g, colors, counts, false);
   clearSmallRegions(g, colors, counts);
   let num = countColors(counts);
   while (num > 1) {
-    joinRegion(g, colors, counts, firstColor(counts), true);
+    joinRegion(g, colors, counts, firstColor(counts), -1, true);
     num--;
   }
 
@@ -1401,6 +1534,259 @@ export const cavernGen: CaveBuilder = (ctx) => {
   allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(k, 2), c.depth + 5);
   allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(Math.trunc(k / 2), 2), c.depth);
   allocObjects(g, SET_BOTH, TYP_GOOD, rng.randint0(Math.trunc(k / 4)), c.depth);
+
+  return { gen: g, error: null };
+};
+
+/* ------------------------------------------------------------------ *
+ * Lair generator (gen-cave.c lair_gen L3534): a modified-style half joined to
+ * a themed-monster cavern half.
+ * ------------------------------------------------------------------ */
+
+export const lairGen: CaveBuilder = (ctx) => {
+  const { rng, reg, constants, dun, depth } = ctx;
+
+  /* Scale the level (identical ladder to modified/moria). */
+  const sp = sizePercent(rng, depth, dun.quest);
+  let ySize = Math.trunc((constants.dungeonHgt * (sp - 5 + rng.randint0(10))) / 100);
+  let xSize = Math.trunc((constants.dungeonWid * (sp - 5 + rng.randint0(10))) / 100);
+  ySize = Math.min(Math.max(ySize, ctx.minHeight), constants.dungeonHgt);
+  xSize = Math.min(Math.max(xSize, ctx.minWidth), constants.dungeonWid);
+  dun.blockHgt = ctx.profile.blockSize;
+  dun.blockWid = ctx.profile.blockSize;
+
+  /* Non-persistent: split the level down the middle. */
+  const leftWidth = Math.trunc(xSize / 2);
+  let normalWidth: number;
+  let normalOffset: number;
+  let lairWidth: number;
+  let lairOffset: number;
+  if (rng.oneIn(2)) {
+    /* Normal part on the left. */
+    normalWidth = leftWidth;
+    normalOffset = 0;
+    lairWidth = xSize - leftWidth;
+    lairOffset = leftWidth;
+  } else {
+    /* Lair part on the left. */
+    normalWidth = xSize - leftWidth;
+    normalOffset = leftWidth;
+    lairWidth = leftWidth;
+    lairOffset = 0;
+  }
+
+  const normal = modifiedChunk(ctx, ySize, normalWidth);
+  if (!normal) return { gen: null, error: "modified chunk could not be created" };
+
+  const lair = cavernChunk(ctx, depth, ySize, lairWidth, dun.join);
+  if (!lair) return { gen: null, error: "cavern chunk could not be created" };
+
+  /* General amount of rubble, traps and monsters (halved for lairs). */
+  const k = Math.trunc(Math.max(Math.min(Math.trunc(depth / 3), 10), 2) / 2);
+
+  /* Put the character in the normal half. */
+  const pspot = newPlayerSpot(normal);
+  if (!pspot) return { gen: null, error: "could not place player" };
+  normal.playerSpot = pspot;
+
+  /* A smallish number of monsters for the normal half. */
+  let nmon = rng.randint1(4) + k;
+  for (; nmon > 0; nmon--) {
+    pickAndPlaceDistantMonster(normal, pspot, 0, true, normal.c.depth);
+  }
+
+  /* Magma / quartz streamers in the normal half. */
+  for (let i = 0; i < ctx.profile.str.mag; i++) buildStreamer(normal, FEAT.MAGMA, ctx.profile.str.mc);
+  for (let i = 0; i < ctx.profile.str.qua; i++) buildStreamer(normal, FEAT.QUARTZ, ctx.profile.str.qc);
+
+  /* A larger number of themed monsters for the lair. */
+  const lairMon = constants.levelMonsterMin + rng.randint1(20) + k;
+  const pits = ctx.monDeps?.pits;
+  if (ctx.monDeps && pits) {
+    const table = ctx.monDeps.table;
+    const lairDepth = lair.c.depth;
+    let pit = pits[0];
+    for (;;) {
+      pit = setPitType(rng, pits, lairDepth, 0);
+      if (monRestrict(rng, table, [], pits, pit.name, lairDepth, lairDepth, true).ok) break;
+    }
+    spreadMonsters(
+      lair,
+      [],
+      pits,
+      pit.name,
+      lairDepth,
+      lairMon,
+      Math.trunc(lair.c.height / 2),
+      Math.trunc(lair.c.width / 2),
+      Math.trunc(lair.c.height / 2),
+      Math.trunc(lair.c.width / 2),
+    );
+    monRestrict(rng, table, [], pits, null, lairDepth, lairDepth, false);
+  }
+
+  /* Assemble the level. */
+  const c = new Chunk(reg, ySize, xSize);
+  c.depth = depth;
+  const g = makeGen(ctx, c);
+  chunkCopy(g, normal, 0, normalOffset, 0);
+  chunkCopy(g, lair, 0, lairOffset, 0);
+
+  /* Perma-rock border, then connect the two halves. */
+  drawRectangle(c, 0, 0, c.height - 1, c.width - 1, FEAT.PERM, SQUARE.NONE, true);
+  ensureConnectedness(g, true);
+
+  handleLevelStairs(g, dun.quest, rng.randRange(3, 4), rng.randRange(1, 2));
+
+  allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth);
+  allocObjects(g, SET_CORR, TYP_TRAP, Math.trunc(rng.randint1(k) / 5), c.depth);
+  allocObjects(g, SET_ROOM, TYP_OBJECT, rng.randNormal(constants.roomItemAv, 3), c.depth);
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(constants.bothItemAv, 3), c.depth);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(constants.bothGoldAv, 3), c.depth);
+
+  return { gen: g, error: null };
+};
+
+/* ------------------------------------------------------------------ *
+ * Gauntlet generator (gen-cave.c gauntlet_gen L3734): two caverns with an
+ * unmappable labyrinth "gauntlet" between them.
+ * ------------------------------------------------------------------ */
+
+export const gauntletGen: CaveBuilder = (ctx) => {
+  const { rng, reg, constants, dun, depth } = ctx;
+
+  const gauntletHgt = 2 * rng.randint1(5) + 3;
+  const gauntletWid = 2 * rng.randint1(10) + 19;
+  const ySize = constants.dungeonHgt - rng.randint0(25 - gauntletHgt);
+  /* labyrinth_chunk() yields something two grids wider than requested, hence
+   * the extra "- 2" below (see gen-cave.c L3746). */
+  const xSize =
+    Math.trunc((constants.dungeonWid - gauntletWid - 2) / 2) - rng.randint0(45 - gauntletWid);
+
+  /* No persistent levels of this type for now. */
+  if (dun.persist) {
+    return { gen: null, error: "no gauntlet levels in persistent dungeons" };
+  }
+
+  const gauntlet = labyrinthChunk(ctx, depth, gauntletHgt, gauntletWid, false, false);
+  const left = cavernChunk(ctx, depth, ySize, xSize, []);
+  if (!left) return { gen: null, error: "left cavern chunk could not be generated" };
+  const right = cavernChunk(ctx, depth, ySize, xSize, []);
+  if (!right) return { gen: null, error: "right cavern chunk could not be generated" };
+
+  /* Lines between the three pieces. */
+  const line1 = left.c.width;
+  const line2 = line1 + gauntlet.c.width;
+
+  /* Movement and mapping restrictions. */
+  generateMark(left.c, 0, 0, left.c.height - 1, left.c.width - 1, SQUARE.NO_TELEPORT);
+  generateMark(gauntlet.c, 0, 0, gauntlet.c.height - 1, gauntlet.c.width - 1, SQUARE.NO_MAP);
+  generateMark(gauntlet.c, 0, 0, gauntlet.c.height - 1, gauntlet.c.width - 1, SQUARE.NO_TELEPORT);
+
+  /* Down stairs in the right cavern, up stairs in the left. */
+  allocStairs(right, FEAT.MORE, rng.randRange(2, 3), 0, false, [], dun.quest);
+  allocStairs(left, FEAT.LESS, rng.randRange(1, 3), 0, false, [], dun.quest);
+
+  /* Open the left end of the gauntlet (adjacent to a non-perm wall). */
+  let tries = 0;
+  for (;;) {
+    const grid = loc(0, rng.randint1(gauntlet.c.height - 2));
+    if (tries >= 20) return { gen: null, error: "could not open entrance to the labyrinth" };
+    if (!gauntlet.c.isPerm(locSum(grid, loc(1, 0)))) {
+      gauntlet.c.setFeat(grid, FEAT.GRANITE);
+      break;
+    }
+    tries++;
+  }
+  /* Open the right end. */
+  tries = 0;
+  for (;;) {
+    const grid = loc(gauntlet.c.width - 1, rng.randint1(gauntlet.c.height - 2));
+    if (tries >= 20) return { gen: null, error: "could not open entrance to the labyrinth" };
+    if (!gauntlet.c.isPerm(locSum(grid, loc(-1, 0)))) {
+      gauntlet.c.setFeat(grid, FEAT.GRANITE);
+      break;
+    }
+    tries++;
+  }
+
+  const k = Math.trunc(Math.max(Math.min(Math.trunc(depth / 3), 10), 2) / 2);
+
+  /* Put the character in the arrival cavern. The port does not yet model
+   * p->upkeep->create_down_stair (set only during stair transitions); a
+   * freshly generated level arrives from the up-stairs (left) side. */
+  const createDownStair = false;
+  const arrival = createDownStair ? right : left;
+  const pspot = newPlayerSpot(arrival);
+  if (!pspot) return { gen: null, error: "could not place player" };
+  arrival.playerSpot = pspot;
+
+  /* Player location relative to each cavern (matching the chunk_copy offsets). */
+  let pLocInR: Loc;
+  let pLocInL: Loc;
+  if (arrival === right) {
+    pLocInR = pspot;
+    pLocInL = loc(line2 + pspot.x, pspot.y);
+  } else {
+    pLocInL = pspot;
+    pLocInR = loc(pspot.x - line2, pspot.y);
+  }
+
+  /* Monsters for the left cavern. */
+  let lmon = constants.levelMonsterMin + rng.randint1(4) + k;
+  for (; lmon > 0; lmon--) pickAndPlaceDistantMonster(left, pLocInL, 0, true, left.c.depth);
+
+  /* Monsters for the right cavern. */
+  let rmon = constants.levelMonsterMin + rng.randint1(4) + k;
+  for (; rmon > 0; rmon--) pickAndPlaceDistantMonster(right, pLocInR, 0, true, right.c.depth);
+
+  /* A larger number of themed monsters for the gauntlet. */
+  const gMon = constants.levelMonsterMin + rng.randint1(6) + k;
+  const pits = ctx.monDeps?.pits;
+  if (ctx.monDeps && pits) {
+    const table = ctx.monDeps.table;
+    const gDepth = gauntlet.c.depth;
+    let pit = pits[0];
+    for (;;) {
+      pit = setPitType(rng, pits, gDepth, 0);
+      if (monRestrict(rng, table, [], pits, pit.name, gDepth, gDepth, true).ok) break;
+    }
+    spreadMonsters(
+      gauntlet,
+      [],
+      pits,
+      pit.name,
+      gDepth,
+      gMon,
+      Math.trunc(gauntlet.c.height / 2),
+      Math.trunc(gauntlet.c.width / 2),
+      Math.trunc(gauntlet.c.height / 2),
+      Math.trunc(gauntlet.c.width / 2),
+    );
+    monRestrict(rng, table, [], pits, null, gDepth, gDepth, false);
+  }
+
+  /* Assemble the level. */
+  const c = new Chunk(reg, ySize, left.c.width + gauntlet.c.width + right.c.width);
+  c.depth = depth;
+  const g = makeGen(ctx, c);
+
+  fillRectangle(c, 0, 0, c.height - 1, c.width - 1, FEAT.GRANITE, SQUARE.NONE);
+  /* Permanent rock between the caverns. */
+  fillRectangle(c, 0, line1, c.height - 1, line2 - 1, FEAT.PERM, SQUARE.NONE);
+
+  chunkCopy(g, left, 0, 0, 0);
+  chunkCopy(g, gauntlet, Math.trunc((ySize - gauntlet.c.height) / 2), line1, 0);
+  chunkCopy(g, right, 0, line2, 0);
+
+  drawRectangle(c, 0, 0, c.height - 1, c.width - 1, FEAT.PERM, SQUARE.NONE, true);
+  ensureConnectedness(g, true);
+
+  allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth);
+  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth);
+  allocObjects(g, SET_ROOM, TYP_OBJECT, rng.randNormal(constants.roomItemAv, 3), c.depth);
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(constants.bothItemAv, 3), c.depth);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(constants.bothGoldAv, 3), c.depth);
 
   return { gen: g, error: null };
 };
@@ -2060,10 +2446,14 @@ export function createDungeonProfiles(
   reg.registerBuilder("town", townGen);
   reg.registerBuilder("labyrinth", labyrinthGen);
   reg.registerBuilder("cavern", cavernGen);
-  /* Deferred builders delegate to modified_gen (ledgered). */
-  reg.registerBuilder("moria", modifiedGen);
-  reg.registerBuilder("lair", modifiedGen);
-  reg.registerBuilder("gauntlet", modifiedGen);
+  /* Real faithful builders (registered but not yet enabled for choose(); #80). */
+  reg.registerBuilder("moria", moriaGen);
+  reg.registerBuilder("lair", lairGen);
+  reg.registerBuilder("gauntlet", gauntletGen);
+  /* hard_centre still delegates to modified_gen: its vault_chunk needs
+   * random_vault + the vault list, which live in room.ts (out of this agent's
+   * ownership) and are not exposed on CaveBuildContext. connect_caverns is
+   * ported and unit-tested for when hard_centre_gen is wired up. */
   reg.registerBuilder("hard_centre", modifiedGen);
 
   /* Enable town, classic and modified for selection (the two working dungeon
