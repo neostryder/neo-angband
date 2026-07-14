@@ -32,3 +32,5 @@ export type {
 export { createAgentView } from "./perceive";
 export { createAgentActions } from "./act";
 export { AgentCapabilityError, installController } from "./controller";
+export { subscribeEvents } from "./events";
+export type { AgentEventSubscription } from "./events";

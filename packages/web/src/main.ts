@@ -135,7 +135,7 @@ import type {
   LoreDeps,
 } from "@neo-angband/core";
 import { GameEvents } from "@neo-angband/core";
-import { installController, ContentIdResolver } from "@neo-angband/core";
+import { installController, ContentIdResolver, subscribeEvents } from "@neo-angband/core";
 import type { AgentController } from "@neo-angband/core";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks } from "./pack";
@@ -532,7 +532,13 @@ function say(text: string): void {
   msglog.push(text);
   message = msglog.latest();
 }
-state.msg = (text: string): void => say(text);
+state.msg = (text: string): void => {
+  // Route the message onto the event bus (W1.6) so mods can subscribe to
+  // "message", then render it. state.events is attached below; before that
+  // (early boot) the emit is simply skipped.
+  state.events?.emit("message", { msg: text, type: 0 });
+  say(text);
+};
 
 // Keypad direction deltas (1-9), for resolving a walk's destination grid.
 const DIR_DX = [0, -1, 0, 1, -1, 0, 1, -1, 0, 1];
@@ -3297,6 +3303,10 @@ document.addEventListener("visibilitychange", () => {
 // Also carries the "feeling" signal (updateFov below) since GameEvents is a
 // general multi-type bus, not a sound-only one.
 const soundEvents = new GameEvents();
+// The single game event bus lives on GameState (W1.6): sound() emits "sound"
+// here, msg() emits "message" (above), and mods subscribe through the
+// capability-gated subscribeEvents seam. One bus, many event types.
+state.events = soundEvents;
 // Default to the bundled Dubtrain pack (public/sounds/, CC-BY 4.0) so sound
 // plays out of the box; a user/mod can override the pack with ?sounds=<url>.
 const soundBase = params.get("sounds") ?? "sounds/";
@@ -3426,7 +3436,7 @@ if (agentId && agentMake) {
     name: agentId,
     version: "1.0.0",
     shape: "plugin",
-    capabilities: ["state:*.read", "command:add"],
+    capabilities: ["state:*.read", "command:add", "event:message", "event:sound"],
   });
   let armed = false;
   const latched: AgentController = (view, act) => {
@@ -3438,6 +3448,16 @@ if (agentId && agentMake) {
     capabilities: caps,
     viewDeps: { resolver, reg: booted.registries.objects },
   });
+  // Event hook (W1.6): the same agent subscribes to the game event bus through
+  // the capability-gated seam - proving mods can REACT to events, not only
+  // perceive/act. event:message / event:sound are granted above.
+  let agentMsgCount = 0;
+  if (state.events) {
+    const sub = subscribeEvents(state.events, caps);
+    sub.on("message", () => {
+      agentMsgCount += 1;
+    });
+  }
   let agentTicks = 0;
   let agentLastError: string | null = null;
   const AGENT_TICK_MS = 120;
@@ -3473,6 +3493,9 @@ if (agentId && agentMake) {
       },
       get lastError() {
         return agentLastError;
+      },
+      get msgCount() {
+        return agentMsgCount;
       },
     };
   }
@@ -3514,6 +3537,9 @@ if (import.meta.env.DEV) {
       state.updateFov?.(state);
       render();
     },
+    // Emit a message through the live sink (verification aid): exercises the
+    // W1.6 routing state.msg -> event bus -> subscribers.
+    msg: (text: string): void => state.msg?.(text),
   };
 }
 
