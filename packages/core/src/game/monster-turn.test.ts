@@ -10,7 +10,7 @@ import { newOfFlags } from "../obj/types";
 import { objectNew } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { TRF_SIZE } from "../world/trap";
-import type { GameState } from "./context";
+import type { GameState, RunState } from "./context";
 import { updateMonsterDistances } from "./context";
 import { monsterAddToGroup, monsterGroupStart } from "./mon-group";
 import { squareIsWebbed } from "./trap";
@@ -615,6 +615,69 @@ describe("damaging terrain (monster_hates_grid / taking_terrain_damage)", () => 
     updateMonsterDistances(state);
     monsterTurn(mon, state);
     expect(mon.grid).toEqual(barrier);
+  });
+});
+
+/** A running RunState with the given steps remaining. */
+function runningState(running: number): RunState {
+  return {
+    curDir: 0,
+    oldDir: 0,
+    openArea: true,
+    breakRight: false,
+    breakLeft: false,
+    running,
+    firstStep: false,
+    stepCount: 0,
+  };
+}
+
+describe("monster-turn disturb (mon-move.c disturb sites)", () => {
+  it("a visible monster acting in the player's view disturbs the run", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const race = makeRace({ level: 20 });
+    const mon = addMon(state, race, loc(17, 10), { hp: 40 });
+    /* Grid in view so it beelines; marked visible + in view to the player. */
+    state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+    mon.mflag.on(MFLAG.VISIBLE);
+    mon.mflag.on(MFLAG.VIEW);
+    updateMonsterDistances(state);
+    state.run = runningState(5);
+
+    monsterTurn(mon, state);
+
+    expect(mon.grid).not.toEqual(loc(17, 10)); // it moved (did something)
+    expect(state.run!.running).toBe(0); // disturb() cancelled the run
+  });
+
+  it("does not disturb the run when the acting monster is out of view", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const race = makeRace({ level: 20 });
+    const mon = addMon(state, race, loc(17, 10), { hp: 40 });
+    /* Beelines (grid in view) but not marked visible/in-view to the player. */
+    state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+    updateMonsterDistances(state);
+    state.run = runningState(5);
+
+    monsterTurn(mon, state);
+
+    expect(mon.grid).not.toEqual(loc(17, 10)); // it still moved
+    expect(state.run!.running).toBe(5); // but the run is not interrupted
+  });
+
+  it("a monster bursting a door open disturbs the run", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const race = makeRace({ level: 20, flags: [RF.BASH_DOOR] });
+    const mon = addMon(state, race, loc(17, 10), { hp: 40 });
+    state.chunk.setFeat(loc(16, 10), FEAT.CLOSED); // door between mon and player
+    state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW); // beelines toward the player
+    updateMonsterDistances(state);
+    state.run = runningState(5);
+
+    monsterTurn(mon, state);
+
+    expect(state.chunk.feat(loc(16, 10))).toBe(FEAT.BROKEN); // door burst
+    expect(state.run!.running).toBe(0); // disturb() from the burst
   });
 });
 

@@ -350,6 +350,15 @@ export interface GameState {
   /** square_set_door_lock: set a closed door's lock strength (trap #21 seam). */
   setDoorLock?: (grid: Loc, power: number) => void;
   /**
+   * player_best_digger (player-util.c L744) + the do_cmd_tunnel_aux /
+   * compute_rubble_penalty swap: the DIGGING skill the dig should use, having
+   * temporarily wielded the pack's best digger and recomputed calc_bonuses.
+   * Installed by wireGame (it closes over the live calc_bonuses options).
+   * RNG-free (input only). Absent (worldless harnesses), digging falls back to
+   * the wielded state's DIGGING skill, as before.
+   */
+  bestDiggerDigging?: () => number;
+  /**
    * square_open_door / square_smash_door remove the "door lock" trap before
    * changing the feature; this seams that removal back to the trap system.
    * Absent, the (harmless, feature-gated) lock trap is simply left in place.

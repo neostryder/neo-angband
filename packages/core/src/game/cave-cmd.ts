@@ -20,19 +20,24 @@
  * merging rather than double-registering, since a stub or the real
  * trap-disarm action is always present by the time this installs.
  *
- * DEFERRED (ledgered in game-cave-cmd.yaml): the swap-digger machinery
- * (player_best_digger recalculating bonuses with the best pack digger -
- * digging uses the wielded state's DIGGING skill), the door-lock branch of
- * disarm (do_cmd_lock_door, rides the trap.c door-lock seams), do_cmd_steal
- * (shapechange #22), command repetition and count_feats direction inference
- * (UI). Running and travel / explore (player-path #24) are ported in
- * game/player-path.ts.
+ * NOW PORTED (was deferred): the swap-digger machinery (player_best_digger,
+ * player/best-digger.ts, temporarily wields the pack's best digger and
+ * recomputes DIGGING via state.bestDiggerDigging - RNG-free, input-only to the
+ * dig roll) feeds tunnelAux; and do_cmd_lock_door (the door-lock branch of
+ * do_cmd_disarm plus a dedicated "lock" action) with the exact m_bonus /
+ * randint0(100) / randint1(i) RNG order, riding the trap.c door-lock seams
+ * (state.setDoorLock / env.isLockedDoor).
+ *
+ * DEFERRED (ledgered in game-cave-cmd.yaml): do_cmd_steal (shapechange #22),
+ * command repetition and count_feats direction inference (UI). Running and
+ * travel / explore (player-path #24) are ported in game/player-path.ts.
  */
 
 import type { Loc } from "../loc";
 import { DDGRID, locSum } from "../loc";
-import { FEAT, TF } from "../generated";
+import { FEAT, TF, TMD } from "../generated";
 import { SKILL } from "../player/types";
+import { squareIsSeen } from "../world/view";
 import { pyAttack } from "../combat/melee";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay";
 import { getLore } from "../mon/lore";
@@ -198,6 +203,75 @@ function closeAux(state: GameState, grid: Loc, env: CaveCmdEnv): boolean {
 }
 
 /* ------------------------------------------------------------------ *
+ * Door lock (do_cmd_lock_door, cmd-cave.c L732).
+ * ------------------------------------------------------------------ */
+
+/** no_light (cave-view.c L913): the player's own grid is not currently seen. */
+function noLight(state: GameState): boolean {
+  return !squareIsSeen(state.chunk, state.actor.grid);
+}
+
+/**
+ * do_cmd_lock_door (cmd-cave.c L732): try to lock a closed, unlocked door the
+ * player is adjacent to. Returns "may repeat" (a failed attempt with hope).
+ *
+ * RNG ORDER (exact, cmd-cave.c L741-777): the disarm-phys skill is penalized a
+ * factor of ten while blind / lightless and again while confused / hallucinating
+ * (drawing nothing), then in strict order:
+ *   1. power = m_bonus(7, depth)        -- the lock's strength (draws RNG)
+ *   2. randint0(100) < j                -- the success check
+ *   3. randint1(i) > 5                  -- only on failure, and only when i > 5
+ * On success the lock is set to `power` via square_set_door_lock (state.setDoorLock,
+ * the "door lock" trap #21 seam); with no trap system live the set is a no-op and
+ * the door stays (harmlessly) unlocked, matching the RNG-free monster path.
+ */
+function doCmdLockDoor(
+  state: GameState,
+  grid: Loc,
+  deps: CaveCmdDeps,
+): boolean {
+  const env = deps.env ?? {};
+
+  /* do_cmd_disarm_test (knowledge gate is #24, all known): a closed, unlocked
+     door must be there. A confusion redirect onto a non-door grid bails with
+     no draws, as do_cmd_disarm_test returning false does upstream. */
+  if (
+    !state.chunk.isClosedDoor(grid) ||
+    (env.isLockedDoor?.(grid) ?? false)
+  ) {
+    return false;
+  }
+
+  /* Get the "disarm" factor, penalizing some conditions (L741-747). */
+  let i = state.actor.combat.skills[SKILL.DISARM_PHYS] ?? 0;
+  const p = state.actor.player;
+  if ((p.timed[TMD.BLIND] ?? 0) > 0 || noLight(state)) i = Math.trunc(i / 10);
+  if ((p.timed[TMD.CONFUSED] ?? 0) > 0 || (p.timed[TMD.IMAGE] ?? 0) > 0) {
+    i = Math.trunc(i / 10);
+  }
+
+  /* Calculate lock "power" (L750), then the difficulty (L753-756). */
+  const power = state.rng.mBonus(7, state.chunk.depth);
+  let j = i - power;
+  if (j < 2) j = 2;
+
+  /* Success (L758-762). */
+  if (state.rng.randint0(100) < j) {
+    env.msg?.("You lock the door.");
+    state.setDoorLock?.(grid, power);
+    return false;
+  }
+
+  /* Failure -- keep trying (L764-771), else plain failure (L772-774). */
+  if (i > 5 && state.rng.randint1(i) > 5) {
+    env.msg?.("You failed to lock the door.");
+    return true;
+  }
+  env.msg?.("You failed to lock the door.");
+  return false;
+}
+
+/* ------------------------------------------------------------------ *
  * Tunnel.
  * ------------------------------------------------------------------ */
 
@@ -225,9 +299,10 @@ function twall(state: GameState, grid: Loc): boolean {
 }
 
 /**
- * do_cmd_tunnel_aux: one digging attempt. The swap-digger recalculation is
- * DEFERRED - the wielded state's DIGGING skill decides. Returns "may
- * repeat" (a failed dig with hope).
+ * do_cmd_tunnel_aux: one digging attempt. player_best_digger temporarily wields
+ * the pack's best digger and recomputes DIGGING (via state.bestDiggerDigging,
+ * RNG-free) to feed the roll; absent that hook the wielded DIGGING decides.
+ * Returns "may repeat" (a failed dig with hope).
  */
 function tunnelAux(
   state: GameState,
@@ -240,9 +315,13 @@ function tunnelAux(
   const gold = featIsTreasure(state.chunk.features, state.chunk.feat(grid));
   const rubble = state.chunk.isRubble(grid);
 
-  const chances = calcDiggingChances(
-    state.actor.combat.skills[SKILL.DIGGING] ?? 0,
-  );
+  /* player_best_digger (player-util.c L744): temporarily wield the pack's best
+   * digger and recompute DIGGING (RNG-free); the resulting skill feeds the
+   * existing randint0(1600) draw below. Absent the hook (worldless harness),
+   * the wielded state's DIGGING skill decides, as before. */
+  const diggingSkill =
+    state.bestDiggerDigging?.() ?? (state.actor.combat.skills[SKILL.DIGGING] ?? 0);
+  const chances = calcDiggingChances(diggingSkill);
   let digIdx = squareDigging(state, grid);
   if (digIdx < 1 || digIdx > DIGGING.MAX) digIdx = DIGGING.GRANITE + 1;
   const chance = chances[digIdx - 1] as number;
@@ -356,7 +435,28 @@ function revealOrAttackBlocker(state: GameState, grid: Loc, env: CaveCmdEnv): vo
 }
 
 /**
- * Register open / close / tunnel / alter and the stair-checked descend /
+ * do_cmd_disarm's tail for the lock branch (cmd-cave.c L900-930): spend the
+ * turn, apply confusion, then attack a monster in the way or lock the door.
+ * Shared by the "lock" action and the disarm command's closed-door branch.
+ */
+function lockDoorCommand(
+  state: GameState,
+  dir: number,
+  deps: CaveCmdDeps,
+  env: CaveCmdEnv,
+): number {
+  const cdir = playerConfuseDir(state, dir);
+  const grid = locSum(state.actor.grid, DDGRID[cdir] as Loc);
+  if (state.chunk.mon(grid) > 0) {
+    revealOrAttackBlocker(state, grid, env);
+  } else {
+    doCmdLockDoor(state, grid, deps);
+  }
+  return state.z.moveEnergy;
+}
+
+/**
+ * Register open / close / lock / tunnel / alter and the stair-checked descend /
  * ascend on the action registry.
  */
 export function installCaveCommands(
@@ -438,7 +538,39 @@ export function installCaveCommands(
         return state.z.moveEnergy;
       }
     }
+    /*
+     * do_cmd_disarm (L927-930): a closed, unlocked door is LOCKED rather than
+     * disarmed. Decided on the pre-confusion grid to pick the branch (as the
+     * chest branch and do_cmd_open do); lockDoorCommand applies confusion.
+     */
+    const doorAt = commandGrid(state, cmd);
+    if (
+      doorAt &&
+      state.chunk.isClosedDoor(doorAt.grid) &&
+      !(env.isLockedDoor?.(doorAt.grid) ?? false)
+    ) {
+      return lockDoorCommand(state, doorAt.dir, deps, env);
+    }
     return priorDisarm ? priorDisarm(state, cmd) : 0;
+  });
+
+  /*
+   * do_cmd_lock_door reached directly (cmd-cave.c L732): the port also exposes
+   * locking as its own "lock" action so a front end can bind a dedicated key,
+   * in addition to the disarm-command dispatch above. Both share lockDoorCommand
+   * and the exact do_cmd_lock_door RNG order.
+   */
+  registry.register("lock", (state, cmd) => {
+    const at = commandGrid(state, cmd);
+    if (!at) return 0;
+    if (
+      !state.chunk.isClosedDoor(at.grid) ||
+      (env.isLockedDoor?.(at.grid) ?? false)
+    ) {
+      env.msg?.("You see nothing there to lock.");
+      return 0;
+    }
+    return lockDoorCommand(state, at.dir, deps, env);
   });
 
   registry.register("tunnel", (state, cmd) => {

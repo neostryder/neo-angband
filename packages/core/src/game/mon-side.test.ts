@@ -525,3 +525,47 @@ describe("live monster melee - EAT_ handler RNG order (mon-blows.c)", () => {
     expect(msgsB).toContain("Your light dims.");
   });
 });
+
+describe("live monster melee - take_hit disturb (player-util.c L207)", () => {
+  it("a landing blow disturbs the player's run", () => {
+    const state = makeState({ seed: 7 });
+    const mon = addMon(state, makeRace({ level: 50 }), loc(19, 12));
+    const env = buildEnvWithMsgs(state, mon, {}, []);
+    state.run = {
+      curDir: 0,
+      oldDir: 0,
+      openArea: true,
+      breakRight: false,
+      breakLeft: false,
+      running: 5,
+      firstStep: false,
+      stepCount: 0,
+    };
+
+    /* take_hit's disturb() runs before the HP reduction, whenever dam > 0. */
+    env.takeHit(10);
+
+    expect(state.run!.running).toBe(0);
+    expect(state.actor.player.chp).toBe(990);
+  });
+
+  it("a zero-damage blow does not disturb the run (take_hit early-out)", () => {
+    const state = makeState({ seed: 7 });
+    const mon = addMon(state, makeRace({ level: 50 }), loc(19, 12));
+    const env = buildEnvWithMsgs(state, mon, {}, []);
+    state.run = {
+      curDir: 0,
+      oldDir: 0,
+      openArea: true,
+      breakRight: false,
+      breakLeft: false,
+      running: 5,
+      firstStep: false,
+      stepCount: 0,
+    };
+
+    env.takeHit(0);
+
+    expect(state.run!.running).toBe(5);
+  });
+});
