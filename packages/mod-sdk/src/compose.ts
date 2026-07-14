@@ -19,6 +19,7 @@
 
 import type { PackManifest, PackRef } from "./manifest.js";
 import { packRef } from "./manifest.js";
+import type { FieldPatch } from "./patch.js";
 
 export type JsonValue =
   | null
@@ -39,6 +40,13 @@ export interface FileContribution {
   replaces?: Record<string, JsonRecord>;
   /** Refs to delete from the composed game. */
   removes?: string[];
+  /**
+   * Field-level patches (see patch.ts): ordered field ops per target ref.
+   * Not yet applied by composePacks - this is the data the pre-launch
+   * conflict report (P7 phase 6) reads to find same-field collisions
+   * without the false-positive whole-record conflicts `patches` produces.
+   */
+  fieldPatches?: Record<string, FieldPatch>;
 }
 
 export interface PackContent {

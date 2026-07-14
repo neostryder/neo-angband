@@ -37,3 +37,10 @@ export type {
   FieldOp,
   FieldPatch,
 } from "./patch.js";
+export { computeConflictReport } from "./conflicts.js";
+export type {
+  ConflictReport,
+  FieldTouch,
+  RecordConflict,
+  RecordOverride,
+} from "./conflicts.js";
