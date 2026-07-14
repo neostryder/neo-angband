@@ -1,11 +1,21 @@
 /**
- * Loads pack zero (the compiled core content) into a GamePack the engine
- * can start. The pack JSON lives in @neo-angband/content; Vite's glob
- * import inlines every file into the bundle at build time, so the whole
- * game ships as one static asset with no runtime fetch.
+ * Loads the active pack set into a GamePack the engine can start.
+ *
+ * The compiled pack JSON lives in @neo-angband/content; Vite's glob import
+ * inlines every file into the bundle at build time, so the whole game ships as
+ * one static asset with no runtime fetch.
+ *
+ * As of MOD_INTEGRATION_PLAN.md Wave 1, the base game is no longer bound
+ * directly: it flows through the mod compose pipeline as "pack zero"
+ * (composeContentPacks -> merged per-file records -> GamePack -> core
+ * bindCore). With only core loaded the composed output is record-identical, so
+ * this is a no-op today; it is the seam mods plug into (W1.3). Core stays
+ * mod-sdk-agnostic - this host module owns the glue.
  */
 
 import type { GamePack, UiEntryPackRecords } from "@neo-angband/core";
+import { composeContentPacks } from "@neo-angband/mod-sdk";
+import type { LoadedPack, PackManifest } from "@neo-angband/mod-sdk";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
 // are the parsed JSON (the file's default export).
@@ -14,14 +24,65 @@ const files = import.meta.glob("../../content/pack/*.json", {
   import: "default",
 }) as Record<string, unknown>;
 
-function file(name: string): unknown {
-  const key = Object.keys(files).find((k) => k.endsWith(`/${name}.json`));
-  if (!key) throw new Error(`pack file not found: ${name}.json`);
-  return files[key];
+/** Parsed pack files keyed by basename without extension ("monster", ...). */
+const byName = new Map<string, unknown>();
+for (const [key, val] of Object.entries(files)) {
+  const m = /([^/]+)\.json$/.exec(key);
+  if (m && m[1]) byName.set(m[1], val);
 }
 
+function rawFile(name: string): unknown {
+  const f = byName.get(name);
+  if (f === undefined) throw new Error(`pack file not found: ${name}.json`);
+  return f;
+}
+
+/** The on-disk manifest (manifest.json) adapted to a PackManifest. */
+function coreManifest(): PackManifest {
+  const m = byName.get("manifest") as
+    | { id?: string; name?: string; version?: string; engine?: string }
+    | undefined;
+  return {
+    id: m?.id ?? "core",
+    name: m?.name ?? "Angband",
+    version: m?.version ?? "0.0.0",
+    shape: "content",
+    ...(m?.engine ? { engine: m.engine } : {}),
+  };
+}
+
+/** The base game as a LoadedPack: every record-bearing file, records-only. */
+function coreLoadedPack(): LoadedPack {
+  const contrib: Record<string, { records: unknown[] }> = {};
+  for (const [name, val] of byName) {
+    if (name === "manifest") continue;
+    const recs = (val as { records?: unknown[] }).records;
+    if (Array.isArray(recs)) contrib[name] = { records: recs };
+  }
+  return { manifest: coreManifest(), files: contrib } as unknown as LoadedPack;
+}
+
+/**
+ * The active pack set, composed once at module load. Today it is core alone;
+ * W1.3 discovers and appends enabled mod packs before this call. With one pack
+ * the merge is record-identical to the raw content.
+ */
+const composed = composeContentPacks([coreLoadedPack()]);
+
 function records(name: string): unknown[] {
-  return (file(name) as { records: unknown[] }).records;
+  const recs = composed.records[name];
+  if (!recs) throw new Error(`pack file not found: ${name}.json`);
+  return recs;
+}
+
+/**
+ * A whole-file object with its records replaced by the composed set, keeping
+ * any file-level header/source. Used for the files the binders consume as a
+ * `{ header?, records }` object rather than a bare record array (constants and
+ * the object sub-files).
+ */
+function composedFile(name: string): unknown {
+  return { ...(rawFile(name) as object), records: records(name) };
 }
 
 /**
@@ -79,7 +140,7 @@ export function loadUiEntryPacks(): UiEntryPackRecords {
 /** Assemble the parsed game pack for startGame (core content + player). */
 export function loadGamePack(): GamePack {
   return {
-    constants: file("constants"),
+    constants: composedFile("constants"),
     terrain: records("terrain"),
     roomTemplates: records("room_template"),
     vaults: records("vault"),
@@ -89,16 +150,16 @@ export function loadGamePack(): GamePack {
     names: records("names"),
     store: records("store"),
     obj: {
-      objectBase: file("object_base"),
-      object: file("object"),
-      egoItem: file("ego_item"),
-      artifact: file("artifact"),
-      curse: file("curse"),
-      brand: file("brand"),
-      slay: file("slay"),
-      activation: file("activation"),
-      objectProperty: file("object_property"),
-      flavor: file("flavor"),
+      objectBase: composedFile("object_base"),
+      object: composedFile("object"),
+      egoItem: composedFile("ego_item"),
+      artifact: composedFile("artifact"),
+      curse: composedFile("curse"),
+      brand: composedFile("brand"),
+      slay: composedFile("slay"),
+      activation: composedFile("activation"),
+      objectProperty: composedFile("object_property"),
+      flavor: composedFile("flavor"),
     },
     mon: {
       pain: records("pain"),
