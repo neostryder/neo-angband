@@ -130,6 +130,56 @@ describe("composePacks", () => {
     );
   });
 
+  it("applies field patches in load order after coarse patches", () => {
+    const a: PackContent = {
+      manifest: manifest("a", { core: "*" }),
+      files: {
+        monster: {
+          fieldPatches: {
+            "core:kobold": [
+              { op: "add", path: "hp", value: 4 },
+              { op: "addFlag", path: "flags", flag: "COLD" },
+            ],
+          },
+        },
+      },
+    };
+    const b: PackContent = {
+      manifest: manifest("b", { core: "*" }),
+      files: {
+        monster: {
+          fieldPatches: {
+            "core:kobold": [{ op: "mul", path: "hp", value: 2 }],
+          },
+        },
+      },
+    };
+    const kobold = composePacks([core, a, b]).get("monster")?.get("core:kobold");
+    // 8 (+4 from a) = 12, then (*2 from b) = 24; load order a before b.
+    expect(kobold?.value["hp"]).toBe(24);
+    expect(kobold?.value["flags"]).toEqual(["EVIL", "COLD"]);
+    expect(kobold?.value["blows"]).toEqual([{ method: "HIT" }]);
+    expect(kobold?.modifiedBy).toEqual(["a", "b"]);
+  });
+
+  it("field patches obey ownership and existence rules", () => {
+    const sneaky: PackContent = {
+      manifest: manifest("sneaky"), // no dependency on core declared
+      files: {
+        monster: { fieldPatches: { "core:kobold": [{ op: "add", path: "hp", value: 1 }] } },
+      },
+    };
+    expect(() => composePacks([core, sneaky])).toThrow(/without declaring core/);
+
+    const missing: PackContent = {
+      manifest: manifest("missing", { core: "*" }),
+      files: {
+        monster: { fieldPatches: { "core:nope": [{ op: "add", path: "hp", value: 1 }] } },
+      },
+    };
+    expect(() => composePacks([core, missing])).toThrow(/does not exist/);
+  });
+
   it("rejects unknown targets and duplicate adds", () => {
     const bad: PackContent = {
       manifest: manifest("bad", { core: "*" }),
