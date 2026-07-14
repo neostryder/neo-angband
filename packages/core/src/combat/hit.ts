@@ -6,9 +6,11 @@
  *
  * This module ports the DEFAULT (non-O) combat path: test_hit / hit_chance,
  * the melee/ranged critical chance-and-power formulas, and the critical-level
- * cutoff tables. The alternative "O-combat" path (birth_percent_damage:
- * o_critical_melee / o_critical_shot and their constants) is DEFERRED and
- * ledgered; it is a birth option, off by default.
+ * cutoff tables. It also ports the alternative "O-combat" path
+ * (birth_percent_damage): o_critical_melee / o_critical_shot, the o-*-critical
+ * constants (constants.txt), and apply_deadliness. The O path is a birth
+ * option, off by default; oMeleeDamage / oRangedDamage (melee.ts / ranged.ts)
+ * consume these behind that gate.
  *
  * All integer arithmetic reproduces C semantics (Math.trunc for the C `/`).
  */
@@ -289,4 +291,181 @@ export function criticalShot(
     RANGED_CRIT.powerWeightScl * weight + rng.randint1(RANGED_CRIT.powerRandom);
   const level = selectCritLevel(power, RANGED_CRIT_LEVELS);
   return { damage: level.add + level.mult * dam, msg: level.msg };
+}
+
+/* ------------------------------------------------------------------ *
+ * O-combat criticals (player-attack.c o_critical_melee / o_critical_shot)
+ *
+ * The O path adds extra DICE (not a flat multiplier) on a critical, and
+ * deadliness adds extra SIDES to each die. These constants are ported from
+ * constants.txt (o-melee-critical* / o-ranged-critical*), the same values the
+ * display estimate loads via z_info (constants.ts crit("o-melee-critical")).
+ * ------------------------------------------------------------------ */
+
+/** One O-combat critical severity level (constants.txt o-*-critical-level). */
+export interface OCritLevel {
+  /** one_in_(chance) to stop walking at this level (0 = never advances). */
+  chance: number;
+  /** Extra damage dice this level adds. */
+  dice: number;
+  /** Message key for this severity. */
+  msg: HitType;
+}
+
+/** o-melee-critical scale factors (constants.txt). */
+export const O_MELEE_CRIT = {
+  debuffToh: 10,
+  powerTohScaleNum: 1,
+  powerTohScaleDen: 3,
+  chancePowerScaleNum: 1,
+  chancePowerScaleDen: 1,
+  chanceAddDen: 240,
+} as const;
+
+/** o-melee-critical-level rows (constants.txt), head first. */
+export const O_MELEE_CRIT_LEVELS: readonly OCritLevel[] = [
+  { chance: 40, dice: 5, msg: "HIT_HI_SUPERB" },
+  { chance: 12, dice: 4, msg: "HIT_HI_GREAT" },
+  { chance: 3, dice: 3, msg: "HIT_SUPERB" },
+  { chance: 2, dice: 2, msg: "HIT_GREAT" },
+  { chance: 1, dice: 1, msg: "HIT_GOOD" },
+];
+
+/** o-ranged-critical scale factors (constants.txt). */
+export const O_RANGED_CRIT = {
+  debuffToh: 10,
+  powerLaunchedTohScaleNum: 1,
+  powerLaunchedTohScaleDen: 1,
+  powerThrownTohScaleNum: 3,
+  powerThrownTohScaleDen: 2,
+  chancePowerScaleNum: 1,
+  chancePowerScaleDen: 1,
+  chanceAddDen: 360,
+} as const;
+
+/** o-ranged-critical-level rows (constants.txt), head first. */
+export const O_RANGED_CRIT_LEVELS: readonly OCritLevel[] = [
+  { chance: 50, dice: 3, msg: "HIT_SUPERB" },
+  { chance: 10, dice: 2, msg: "HIT_GREAT" },
+  { chance: 1, dice: 1, msg: "HIT_GOOD" },
+];
+
+/** Result of an O-combat critical: extra dice + the severity message. */
+export interface OCritResult {
+  addDice: number;
+  msg: HitType;
+}
+
+/**
+ * Walk the O-critical-level list, exactly as upstream
+ * `while (this_l->next && !one_in_(this_l->chance)) this_l = this_l->next;`.
+ * Draws one_in_ (a randint0) at each non-terminal level until it stops.
+ */
+function selectOCritLevel(
+  rng: Rng,
+  levels: readonly OCritLevel[],
+): OCritResult {
+  let i = 0;
+  const last = levels.length - 1;
+  while (i < last && !rng.oneIn((levels[i] as OCritLevel).chance)) {
+    i++;
+  }
+  const lvl = levels[i] as OCritLevel;
+  return { addDice: lvl.dice, msg: lvl.msg };
+}
+
+/**
+ * o_critical_melee (player-attack.c L439): the crit-chance is a rational
+ * a*power / (b*power + c); on success, walk the level list for the added dice.
+ * `powerBase` is chance_of_melee_hit_base(p, obj) (computed by the caller).
+ *
+ * RNG: one randint1(chance_den) for the crit test, then (on a crit) the
+ * one_in_ level walk. Non-crit returns msg SHOOT_HIT, faithful to upstream.
+ */
+export function oCriticalMelee(
+  rng: Rng,
+  powerBase: number,
+  mon: DebuffTarget,
+): OCritResult {
+  let power = powerBase;
+  if (isDebuffed(mon)) power += O_MELEE_CRIT.debuffToh;
+  power = Math.trunc(
+    (power * O_MELEE_CRIT.powerTohScaleNum) / O_MELEE_CRIT.powerTohScaleDen,
+  );
+  const chanceNum = power * O_MELEE_CRIT.chancePowerScaleNum;
+  const chanceDen =
+    power * O_MELEE_CRIT.chancePowerScaleDen + O_MELEE_CRIT.chanceAddDen;
+  if (rng.randint1(chanceDen) <= chanceNum) {
+    return selectOCritLevel(rng, O_MELEE_CRIT_LEVELS);
+  }
+  return { addDice: 0, msg: "SHOOT_HIT" };
+}
+
+/**
+ * o_critical_shot (player-attack.c L351): as oCriticalMelee for shooting
+ * (launched) / throwing. `powerBase` is chance_of_missile_hit_base(p, missile,
+ * launcher). The power scale factor differs for launched vs thrown.
+ */
+export function oCriticalShot(
+  rng: Rng,
+  powerBase: number,
+  mon: DebuffTarget,
+  launched: boolean,
+): OCritResult {
+  let power = powerBase;
+  if (isDebuffed(mon)) power += O_RANGED_CRIT.debuffToh;
+  const num = launched
+    ? O_RANGED_CRIT.powerLaunchedTohScaleNum
+    : O_RANGED_CRIT.powerThrownTohScaleNum;
+  const den = launched
+    ? O_RANGED_CRIT.powerLaunchedTohScaleDen
+    : O_RANGED_CRIT.powerThrownTohScaleDen;
+  power = Math.trunc((power * num) / den);
+  const chanceNum = power * O_RANGED_CRIT.chancePowerScaleNum;
+  const chanceDen =
+    power * O_RANGED_CRIT.chancePowerScaleDen + O_RANGED_CRIT.chanceAddDen;
+  if (rng.randint1(chanceDen) <= chanceNum) {
+    return selectOCritLevel(rng, O_RANGED_CRIT_LEVELS);
+  }
+  return { addDice: 0, msg: "SHOOT_HIT" };
+}
+
+/* ------------------------------------------------------------------ *
+ * apply_deadliness (player-attack.c L231/L261)
+ *
+ * Ported faithfully here (rather than reused) because obj/object-info.ts - the
+ * display estimate's home for the same table - imports from this combat module,
+ * so combat cannot import back from it without a cycle. Both copies are
+ * verified against the constants; keep them in step.
+ * ------------------------------------------------------------------ */
+
+/** deadliness_conversion[151] (player-attack.c L231). */
+export const DEADLINESS_CONVERSION: readonly number[] = [
+  0, 5, 10, 14, 18, 22, 26, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66,
+  69, 72, 75, 78, 81, 84, 87, 90, 93, 96, 99, 102, 104, 107, 109, 112, 114, 117,
+  119, 122, 124, 127, 129, 132, 134, 137, 139, 142, 144, 147, 149, 152, 154,
+  157, 159, 162, 164, 167, 169, 172, 174, 176, 178, 180, 182, 184, 186, 188,
+  190, 192, 194, 196, 198, 200, 202, 204, 206, 208, 210, 212, 214, 216, 218,
+  220, 222, 224, 226, 228, 230, 232, 234, 236, 238, 240, 242, 244, 246, 248,
+  250, 251, 253, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+  255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+  255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+  255, 255, 255, 255, 255, 255, 255, 255, 255,
+];
+
+/**
+ * apply_deadliness (player-attack.c L261): scale die_average (x100) by the
+ * deadliness bonus. Returns the scaled value (upstream mutates in place).
+ */
+export function applyDeadliness(dieAverage: number, deadliness: number): number {
+  let dl = deadliness;
+  if (dl > 150) dl = 150;
+  if (dl < -150) dl = -150;
+  if (dl >= 0) {
+    const i = DEADLINESS_CONVERSION[dl] as number;
+    return dieAverage * (100 + i);
+  }
+  const i = DEADLINESS_CONVERSION[Math.abs(dl)] as number;
+  if (i >= 100) return 0;
+  return dieAverage * (100 - i);
 }

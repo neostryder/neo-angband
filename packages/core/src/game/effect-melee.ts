@@ -96,7 +96,10 @@ function playerBlow(state: GameState, mon: Monster): boolean {
     mon,
     state.brands,
     state.slays,
-    { monVisible: true },
+    {
+      monVisible: true,
+      percentDamage: state.options?.get("birth_percent_damage") ?? false,
+    },
   );
   equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
   if (blow.monsterDied && !arenaInterceptDeath(state, mon)) {

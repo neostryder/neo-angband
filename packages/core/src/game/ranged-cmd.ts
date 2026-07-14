@@ -87,14 +87,15 @@ function rangedHelper(
       Math.abs(grid.x - start.x),
       Math.abs(grid.y - start.y),
     );
+    const percentDamage = state.options?.get("birth_percent_damage") ?? false;
     const result = throwing
       ? makeRangedThrow(
           state.rng, player, state.actor.combat, missile, mon,
-          state.brands, state.slays, dist, monObvious,
+          state.brands, state.slays, dist, monObvious, percentDamage,
         )
       : makeRangedShot(
           state.rng, player, state.actor.combat, missile, launcher!, mon,
-          state.brands, state.slays, dist, monObvious,
+          state.brands, state.slays, dist, monObvious, percentDamage,
         );
 
     const oName = describeObject(state, missile, ODESC.FULL | ODESC.SINGULAR);

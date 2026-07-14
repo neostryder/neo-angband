@@ -406,7 +406,10 @@ function attackBlocker(state: GameState, grid: Loc, env: CaveCmdEnv): void {
     target,
     state.brands,
     state.slays,
-    { monVisible: true },
+    {
+      monVisible: true,
+      percentDamage: state.options?.get("birth_percent_damage") ?? false,
+    },
   );
   equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
   if (result.monsterDied && !arenaInterceptDeath(state, target)) {
