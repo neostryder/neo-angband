@@ -16,6 +16,7 @@
 export { ManifestError, packRef, slugify, validateManifest } from "./manifest.js";
 export type { Capability, PackManifest, PackRef, PackShape } from "./manifest.js";
 export { ResolveError, resolveLoadOrder } from "./resolve.js";
+export { satisfies, SemverError } from "./semver.js";
 export { ComposeError, composePacks, mergePatch } from "./compose.js";
 export type {
   ComposedRecord,
