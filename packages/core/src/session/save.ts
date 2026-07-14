@@ -48,6 +48,11 @@ import {
 } from "../save/integrity";
 import type { SaveIntegrity } from "../save/integrity";
 import type { ContentIdResolver } from "../mod/ids";
+import type {
+  ModBag,
+  OrphanStore,
+  SaveManifest,
+} from "../mod/save-blocks";
 
 /**
  * The save format version this build writes. Version 2 replaced every numeric
@@ -711,6 +716,32 @@ export interface SavedGame {
    * generation landed, which load with an all-false set.
    */
   artifactsCreated?: string[];
+  /**
+   * The manifest block (mod/save-blocks.ts, P7.2): the pack set + resolved load
+   * order + core-owned determinism mode that produced this save - its profile
+   * fingerprint. Optional: absent in saves written before the mod substrate,
+   * which load as core-only + deterministic (coreOnlyManifest).
+   */
+  manifest?: SaveManifest;
+  /**
+   * Per-mod private bags (mod:<id>), keyed by pack id: opaque JSON the engine
+   * never interprets, versioned by each mod's saveSchema. Absent when no mod
+   * persisted state. Round-tripped verbatim; migrated only by the owning mod.
+   */
+  mods?: Record<string, ModBag>;
+  /**
+   * The orphans store (orphans:<id>@<version>): entities quarantined because
+   * their defining pack is missing or shadowed (mod/save-blocks.ts). Frozen and
+   * inert, restored by rehydrateSave when the pack returns. Absent when nothing
+   * is quarantined.
+   */
+  orphans?: OrphanStore;
+  /**
+   * decision-8 seam: whether the one-time keep/purge orphan prompt has already
+   * been shown for this save. Core computes the orphan count; the UI shows the
+   * prompt once and sets this so it never nags again. Absent = not yet shown.
+   */
+  orphansAcknowledged?: boolean;
 }
 
 /** Serialized map knowledge (remembered terrain and floor objects). */

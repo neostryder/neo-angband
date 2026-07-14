@@ -197,6 +197,12 @@ import {
 } from "./save";
 import type { SavedGame } from "./save";
 import { ContentIdResolver } from "../mod/ids";
+import {
+  coreOnlyManifest,
+  quarantineSave,
+  rehydrateSave,
+} from "../mod/save-blocks";
+import type { ModBag, OrphanStore, SaveManifest } from "../mod/save-blocks";
 
 /**
  * The getItem seam body (cmd_get_item's "tgtitem" fast path, cmd-core.c L1060):
@@ -290,6 +296,21 @@ export interface StartedGame {
   flavor: FlavorKnowledge;
   /** seed_flavor: the seed flavor_init used, persisted so a reload matches. */
   seedFlavor: number;
+  /**
+   * The mod manifest (save-blocks.ts, P7.2): the pack set + resolved load order
+   * + core-owned determinism mode. A core-only game carries coreOnlyManifest();
+   * a loaded game carries the manifest the save was written with.
+   */
+  manifest: SaveManifest;
+  /** Per-mod private save bags (mod:<id>), round-tripped verbatim. */
+  mods: Record<string, ModBag>;
+  /**
+   * Quarantined entities (missing/shadowed packs), preserved across save/load
+   * so reinstalling a pack rehydrates its content. Empty for a core-only game.
+   */
+  orphans: OrphanStore;
+  /** decision-8: whether the one-time orphan keep/purge prompt has been shown. */
+  orphansAcknowledged: boolean;
   /** The player option store (option.c), persisted in the save. */
   options: OptionState;
   /**
@@ -1553,6 +1574,12 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     players,
     flavor: wired.flavor,
     seedFlavor,
+    /* A freshly-birthed game is core-only, deterministic, with no mod bags or
+     * quarantined content (P7.2). A future mod loader seeds a richer manifest. */
+    manifest: coreOnlyManifest(),
+    mods: {},
+    orphans: {},
+    orphansAcknowledged: false,
     options,
     randartSeed,
     changeLevel: makeChangeLevel(state, reg, wired.trapDeps),
@@ -1667,13 +1694,21 @@ function wornArmorWeight(
 /** Serialize a started game into the JSON save format (decision 9). */
 export function saveGame(game: StartedGame): SavedGame {
   const ids = new ContentIdResolver(game.booted.registries);
-  return serializeGame(
+  const save = serializeGame(
     game.state,
     game.flavor,
     game.seedFlavor,
     ids,
     game.randartSeed,
   );
+  /* The mod-lifecycle blocks (P7.2): the manifest fingerprint always travels
+   * with the save; the per-mod bags and any quarantined orphans ride along only
+   * when non-empty, so a core-only save stays clean. */
+  save.manifest = game.manifest;
+  if (Object.keys(game.mods).length > 0) save.mods = game.mods;
+  if (Object.keys(game.orphans).length > 0) save.orphans = game.orphans;
+  if (game.orphansAcknowledged) save.orphansAcknowledged = true;
+  return save;
 }
 
 /**
@@ -1682,13 +1717,33 @@ export function saveGame(game: StartedGame): SavedGame {
  * stream, the anti-save-scum posture), rewire the commands, and derive the
  * combat state from the restored player and gear.
  */
-export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
-  if (save.version !== SAVE_VERSION) {
-    throw new Error(`save: unsupported version ${save.version}`);
+export function loadGame(
+  pack: GamePack,
+  saveIn: SavedGame,
+  present: ReadonlySet<string> = new Set(["core"]),
+): StartedGame {
+  if (saveIn.version !== SAVE_VERSION) {
+    throw new Error(`save: unsupported version ${saveIn.version}`);
   }
   const reg = bindCore(pack);
   const players = bindPlayer(pack.player);
   registerBookKinds(reg.objects, players.classes);
+
+  // The mod-lifecycle blocks (P7.2). The manifest fingerprint is core-only for
+  // saves written before the mod substrate. Reconcile the mod set against the
+  // packs present now: first rehydrate any orphans whose pack has returned, then
+  // quarantine live entities whose defining pack is missing or shadowed - so the
+  // deserializers below only ever see ids the present packs can resolve, instead
+  // of throwing on a removed mod. `present` defaults to core-only; a future mod
+  // loader passes the actually-loaded namespace set.
+  const manifest = saveIn.manifest ?? coreOnlyManifest();
+  const isPresent = (ns: string): boolean => present.has(ns);
+  const quarantine = quarantineSave(
+    rehydrateSave(saveIn, isPresent),
+    manifest,
+    isPresent,
+  );
+  const save = quarantine.save;
 
   // The content-id resolver: every namespaced string id in the save resolves
   // back to a runtime index against this bound pack (mod/ids.ts). The feature
@@ -1851,6 +1906,10 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     players,
     flavor: wired.flavor,
     seedFlavor,
+    manifest,
+    mods: save.mods ?? {},
+    orphans: quarantine.orphans,
+    orphansAcknowledged: save.orphansAcknowledged ?? false,
     options,
     randartSeed,
     changeLevel: makeChangeLevel(state, reg, wired.trapDeps, {
