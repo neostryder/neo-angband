@@ -803,7 +803,10 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
 function buildVaultType(g: Gen, centre: Loc, typ: string, vaults: Vault[]): boolean {
   const v = randomVault(g, vaults, g.c.depth, typ);
   if (!v) return false;
-  return buildVault(g, centre, v);
+  if (!buildVault(g, centre, v)) return false;
+  /* Boost the rating (gen-room.c L1728). */
+  g.c.addToMonsterRating(v.rat);
+  return true;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1207,6 +1210,9 @@ function buildNest(g: Gen, centreIn: Loc, _rating: number): boolean {
   table.prep(null);
   if (empty) return false;
 
+  /* Increase the level rating (gen-room.c L2718). */
+  c.addToMonsterRating(sizeVary + Math.trunc(pit.ave / 20));
+
   /* Place some monsters (disordered scatter) and occasional objects. */
   const info: MonsterGroupInfo = { index: 0, role: MON_GROUP.LEADER };
   for (let y = y1; y <= y2; y++) {
@@ -1301,6 +1307,9 @@ function buildPit(g: Gen, centreIn: Loc, _rating: number): boolean {
   /* Select every other entry (the even-indexed picks). */
   const pick: MonsterRace[] = [];
   for (let i = 0; i < 8; i++) pick[i] = sorted[i * 2] as MonsterRace;
+
+  /* Increase the level rating (gen-room.c L2867). */
+  c.addToMonsterRating(3 + Math.trunc(pit.ave / 20));
 
   /* Fixed concentric placement. Center monster is the group leader. */
   const groupIndex = g.nextGroupIndex();
