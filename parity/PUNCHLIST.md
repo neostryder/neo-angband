@@ -150,25 +150,50 @@ Legend: [x] done, [~] partial, [ ] gap. Tiers are recommended execution order.
 - [x] Bugfix surfaced here: vault `max-depth:0` = "no maximum" (128/161 vaults
   were unreachable in the dungeon under the old `?? 0` default).
 
-## Tier 5 - Systems / edge / later (mostly ledger-sourced; re-verify before build)
+## Tier 5 - Systems / edge / later  [code-audited Jul 2026; buildable gaps CLOSED, deferrals flagged]
 
-- [ ] Quests: quest state not modelled.
-- [ ] Multi-item floor pickup menu (headless picks pile head now).
-- [ ] Inscription-driven ignore/pickup behavior.
-- [ ] Starting gold too high (`object_value_real` deduction at outfit; likely
-  quick now that obj-value is complete).
-- [ ] Point-buy birth roller + quickstart (classic roller works).
-- [ ] Overcast penalties, cast-in-dark penalty, `convert_mana_to_hp`.
-- [ ] Door lock/jam commands, running/pathfind key binding + `disturb()` from
-  external events, `do_cmd_steal`, swap-digger.
-- [ ] Day/night surface lighting; RECALL/CREATE_STAIRS persistence interplay.
-- [ ] O-combat mode, per-object curse traversal for bonuses, randart name RNG
-  parity + `birth_randarts` wiring.
-- [ ] Knowledge/ID depth: per-object `obj->known` twin, rune learn-by-use
-  populating `obj_k`, awareness-propagation side effects.
-- [ ] `color_table` translation matrix (accessibility/lighting modes).
-- [ ] UI-data packs still `planned`: `ui_entry*.json`, `ui_knowledge.json`,
-  `visuals.json`; `old_class.json` (retired data).
+Done this pass (each verified + pushed):
+- [x] Quests: full quest system (Sauron/Morgoth guardians, `quest_check` on
+  death via `onPlayerKill`, `is_quest` wired live, `total_winner` WIN CONDITION,
+  `build_quest_stairs`). (#86)
+- [x] Multi-item floor pickup menu: core seam was ready; web `chooseItem` menu
+  now wired (`menu_pickup_item`). (#90)
+- [x] Starting gold: `object_value_real` outfit deduction + au>=0 clamp. (birth)
+- [x] Spell penalties: overcast faint/CON (fixed an RNG-stream desync),
+  cast-in-dark UNLIGHT +25, `convert_mana_to_hp` (COMBAT_REGEN). (#82)
+- [x] Door lock (`do_cmd_lock_door`; jam/spike don't exist in 4.2.6),
+  `do_cmd_steal` (#88), swap-digger (`player_best_digger`), external `disturb()`
+  at monster-acts / door-burst / melee-hit sites. (#87)
+- [x] Day/night runtime relight (`cave_illuminate` hook installed + the
+  memorize/forget knowledge half). (#90)
+- [x] Per-object curse traversal in `calc_bonuses`. (#85)
+- [x] Awareness-propagation ignore-fix (`object_flavor_aware` -> ignore-when-
+  aware) + wired at in-play buy/sell/use sites. (#83, #89)
+- [x] `color_table` translation matrix + `get_color`. (#84)
+- [x] Inscription-driven ignore/pickup - was already DONE (audit).
+- [x] Running/pathfind/travel - engine was already DONE; only external
+  `disturb()` was the gap (now wired).
+- [x] UI-data packs `ui_entry*`/`visuals` - already compiled/consumed (ledger
+  was stale); `ui_knowledge`/`old_class` intentionally out (front-end/retired).
+
+Deferred by design (non-default options or architectural - need Aaron's call):
+- [ ] O-combat mode (`birth_percent_damage`, OFF by default): the live damage
+  path is standard-only; the char-sheet estimate already uses O-combat. Large
+  (two damage + two crit formulas across melee/ranged).
+- [ ] Point-buy birth UI + true quickstart: the point-buy PRIMITIVES are done;
+  the interactive stat-allocation screen + roller-method engine threading, and
+  restoring full prior stats on quickstart, are not built (non-default method).
+- [ ] Randart name RNG parity + `birth_randarts` (OFF by default): the randart
+  design pipeline/seed/persist is DONE and faithful, but names use a local
+  syllable table, not `randname_make` + the Tolkien names datafile - so a
+  randart set diverges from upstream. Needs a datafile-sourcing decision.
+- [ ] Persistent levels (`birth_levels_persist`, OFF by default): RECALL /
+  CREATE_STAIRS are faithful for the default (non-persistent) game; the
+  persistent-level store itself is unported. Large.
+- [ ] Per-object `obj->known` twin: the port uses an on-demand known-shadow
+  ("everything known" for descriptions) - a deliberate faithful approximation;
+  a stored per-object twin (notice markers, `object_fully_known`) is
+  architectural.
 
 ## Tracked hygiene task
 
