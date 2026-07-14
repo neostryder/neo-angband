@@ -46,7 +46,7 @@ import {
 import { GET_ANGLE_TO_GRID } from "../world/project";
 import type { FeatureRegistry } from "../world/feature";
 import type { GameObject } from "../obj/object";
-import type { MakeDeps } from "../obj/make";
+import type { MakeDeps, MakeObjectRating } from "../obj/make";
 import { makeGold, makeObject } from "../obj/make";
 import type { Monster, MonsterGroupInfo } from "../mon/monster";
 import { createMonster, type MonAllocTable } from "../mon/make";
@@ -1132,9 +1132,29 @@ export function placeObject(
   if (!g.c.inBounds(grid)) return;
   if (!squareCanPutItem(g, grid)) return;
   if (!g.objDeps) return;
-  const obj = makeObject(g.rng, g.objDeps, level, good, great, false, tval, g.c.depth);
+  const rating: MakeObjectRating = { value: 0 };
+  const obj = makeObject(
+    g.rng,
+    g.objDeps,
+    level,
+    good,
+    great,
+    false,
+    tval,
+    g.c.depth,
+    rating,
+  );
   if (!obj) return;
   g.addObject(grid, obj);
+
+  /* place_object's obj_rating accumulation (gen-util.c L509-540). Draws no
+   * RNG: rating.value is a pure recomputation of make_object's *value. */
+  if (obj.artifact) g.c.goodItem = true;
+  let r = rating.value;
+  if (r > 2_500_000) r = 2_500_000;
+  else if (r < -2_500_000) r = -2_500_000;
+  const scaled = Math.trunc(r / 100);
+  g.c.addToObjRating(scaled * scaled);
 }
 
 /** place_gold: make and place a money object. */
@@ -1399,6 +1419,14 @@ function placeNewMonsterOne(
 ): boolean {
   if (!g.c.inBounds(grid) || !squareIsEmpty(g, grid)) return false;
   if (g.uniqueAlreadyPlaced(race)) return false;
+
+  /* Add to level feeling (mon-make.c place_new_monster_one L1112-1126).
+   * Draws no RNG. */
+  g.c.addToMonsterRating(race.level * race.level);
+  if (race.level > g.c.depth) {
+    g.c.addToMonsterRating((race.level - g.c.depth) * race.level * race.level);
+  }
+
   const mon = createMonster(g.rng, race, {
     sleep,
     moveEnergy: g.constants.moveEnergy,
