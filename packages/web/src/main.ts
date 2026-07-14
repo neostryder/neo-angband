@@ -135,7 +135,11 @@ import type {
   LoreDeps,
 } from "@neo-angband/core";
 import { GameEvents } from "@neo-angband/core";
+import { installController, ContentIdResolver } from "@neo-angband/core";
+import type { AgentController } from "@neo-angband/core";
+import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks } from "./pack";
+import { DEMO_AGENTS } from "./agents/demo";
 import { showAbilities } from "./abilities";
 import { showEquipCmp } from "./equip-cmp";
 import {
@@ -3397,6 +3401,82 @@ async function bootMenus(): Promise<void> {
   await maybeBirth();
 }
 void bootMenus();
+
+// ---- Agent controller seam (W1.5) ----------------------------------------
+// A bundled in-process agent can drive the real game through the frozen
+// perceive/act facade via installController - the same seam the Borg (P8)
+// rides, no privileged access. Enable with ?agent=<id> (disabled by default).
+// The controller is latched to yield one command per tick (runGameLoop would
+// otherwise pull nextCommand until null and never return with an always-acting
+// agent); the tick interval is the agent's configurable speed. Ticks wait out
+// birth / menus / death (modalDepth, dead).
+const agentId = params.get("agent");
+const agentMake = agentId ? DEMO_AGENTS[agentId] : undefined;
+if (agentId && agentMake) {
+  const base = agentMake();
+  const resolver = new ContentIdResolver({
+    objects: booted.registries.objects,
+    playerRaces: players.races,
+    playerClasses: players.classes,
+  });
+  // A real CapabilitySet (mod-sdk) on the live path: a plugin-shape manifest
+  // granting exactly perceive + act, enforced by the facades (W1.4).
+  const caps = CapabilitySet.fromManifest({
+    id: agentId,
+    name: agentId,
+    version: "1.0.0",
+    shape: "plugin",
+    capabilities: ["state:*.read", "command:add"],
+  });
+  let armed = false;
+  const latched: AgentController = (view, act) => {
+    if (!armed) return null; // yield until the next tick re-arms one action
+    armed = false;
+    return base(view, act);
+  };
+  installController(state, latched, {
+    capabilities: caps,
+    viewDeps: { resolver, reg: booted.registries.objects },
+  });
+  let agentTicks = 0;
+  let agentLastError: string | null = null;
+  const AGENT_TICK_MS = 120;
+  const AGENT_TICK_CAP = 5000;
+  const agentTimer = setInterval(() => {
+    if (dead) {
+      clearInterval(agentTimer);
+      return;
+    }
+    if (scoresOpen || modalDepth > 0) return; // wait out birth / menus
+    armed = true;
+    // A buggy agent mod must not crash or hang the host: on a throw, stop the
+    // runner and record the error rather than letting it escape the timer.
+    try {
+      advance();
+    } catch (err) {
+      agentLastError = err instanceof Error ? err.message : String(err);
+      clearInterval(agentTimer);
+      return;
+    }
+    agentTicks += 1;
+    if (agentTicks >= AGENT_TICK_CAP) clearInterval(agentTimer);
+  }, AGENT_TICK_MS);
+  if (import.meta.env.DEV) {
+    (window as unknown as { __neoAgent?: unknown }).__neoAgent = {
+      id: agentId,
+      installed: true,
+      get ticks() {
+        return agentTicks;
+      },
+      get turn() {
+        return state.turn;
+      },
+      get lastError() {
+        return agentLastError;
+      },
+    };
+  }
+}
 
 // Dev-only diagnostic hook for automated verification; Vite strips this whole
 // block from the production bundle (import.meta.env.DEV is false there).

@@ -247,6 +247,10 @@ export class ContentIdResolver {
     if (id === null) throw new Error(`mod/ids: unbound kind index ${kidx}`);
     return id;
   }
+  /** The kind id for an index, or null when unbound (a partial resolver). */
+  kindIdOrNull(kidx: number): string | null {
+    return this.kinds.id(kidx);
+  }
   kindIndex(id: string): number | undefined {
     return this.kinds.index(id);
   }
@@ -306,6 +310,10 @@ export class ContentIdResolver {
     const id = this.races.id(ridx);
     if (id === null) throw new Error(`mod/ids: unbound race index ${ridx}`);
     return id;
+  }
+  /** The race id for an index, or null when unbound (a partial resolver). */
+  raceIdOrNull(ridx: number): string | null {
+    return this.races.id(ridx);
   }
   raceIndex(id: string): number | undefined {
     return this.races.index(id);
