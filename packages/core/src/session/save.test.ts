@@ -32,6 +32,7 @@ const pack: GamePack = {
   projection: loadRecords("projection"),
   trap: loadRecords("trap"),
   names: loadRecords("names"),
+  quest: loadRecords("quest"),
   obj: {
     objectBase: loadJson("object_base"),
     object: loadJson("object"),
@@ -160,6 +161,33 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     expect(nameAfter).toBe(nameBefore);
     /* Unaware: a flavoured word, not the real kind. */
     expect(nameBefore).not.toContain(`of ${potionKind.name}`);
+  });
+
+  it("round-trips the quest history and the total_winner flag", () => {
+    const game = startGame(pack, { seed: 321, depth: 3 });
+    const p = game.state.actor.player;
+    /* The birth reset seeded the Sauron/Morgoth quests. */
+    expect(p.quests).toHaveLength(2);
+    /* Simulate a completed first quest and a won game. */
+    p.quests[0]!.curNum = 1;
+    p.quests[0]!.level = 0;
+    p.totalWinner = true;
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game)));
+    const rs = loadGame(pack, saved).state;
+
+    expect(rs.actor.player.quests).toEqual(p.quests);
+    expect(rs.actor.player.totalWinner).toBe(true);
+  });
+
+  it("an old save without a `quests` field loads with no quests", () => {
+    const game = startGame(pack, { seed: 321, depth: 3 });
+    const saved = JSON.parse(JSON.stringify(saveGame(game)));
+    delete saved.player.quests;
+    delete saved.player.totalWinner;
+    const rs = loadGame(pack, saved).state;
+    expect(rs.actor.player.quests).toEqual([]);
+    expect(rs.actor.player.totalWinner).toBe(false);
   });
 
   it("round-trips the character history log (player.hist), incl. a LOST entry", () => {

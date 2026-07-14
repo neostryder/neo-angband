@@ -68,6 +68,26 @@ export interface PlayerObjectKnowledge {
   curses: number[];
 }
 
+/**
+ * One entry in the player's quest history (struct quest, player-quest.h),
+ * copied from the standard quest table at birth (player_quests_reset). The
+ * quest race is held as its ridx (a stable index into the monster registry,
+ * re-resolved on load) rather than a live MonsterRace reference, so the Player
+ * stays independent of the monster domain and serializes cleanly.
+ */
+export interface PlayerQuest {
+  /** quest->name: the guardian's display name ("Sauron", "Morgoth"). */
+  name: string;
+  /** quest->level: the dungeon depth this quest is fought on; 0 once done. */
+  level: number;
+  /** quest->race->ridx: the guardian monster race index. */
+  race: number;
+  /** quest->max_num: how many of the race must die to complete the quest. */
+  maxNum: number;
+  /** quest->cur_num: how many have died so far. */
+  curNum: number;
+}
+
 /** A blank, nothing-learned object-knowledge block (birth state). */
 export function blankObjKnowledge(): PlayerObjectKnowledge {
   return {
@@ -174,6 +194,19 @@ export interface Player {
    */
   objKnown: PlayerObjectKnowledge;
 
+  /**
+   * quests (player->quests, player-quest.h): the per-character quest history,
+   * seeded from the standard quest table at birth (player_quests_reset). A
+   * quest whose level is 0 is complete; when none remain, the game is won.
+   */
+  quests: PlayerQuest[];
+
+  /**
+   * total_winner (player->total_winner): set once every quest is complete
+   * (i.e. Morgoth is slain). The victory flag, persisted across saves.
+   */
+  totalWinner: boolean;
+
   /** Current shape (defaults to "normal"). */
   shape: Shape | null;
 
@@ -236,6 +269,8 @@ export function blankPlayer(
     body: { name: body.name, count: body.count, slots: body.slots.map((s) => ({ ...s })) },
     equipment: new Array<number>(body.count).fill(0),
     objKnown: blankObjKnowledge(),
+    quests: [],
+    totalWinner: false,
     shape: null,
     skills: new Array<number>(SKILL_MAX).fill(0),
     upkeep: { playing: false, newSpells: 0, totalWeight: 0 },
