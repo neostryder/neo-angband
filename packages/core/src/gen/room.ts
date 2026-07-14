@@ -26,6 +26,7 @@
 import { FEAT, SQUARE } from "../generated";
 import type { Loc } from "../loc";
 import { loc, DDGRID_DDD } from "../loc";
+import type { Rng } from "../rng";
 import { tvalFindIdx } from "../obj/bind";
 import type { Chunk } from "../world/chunk";
 import type { Gen } from "./util";
@@ -177,12 +178,12 @@ function randomRoomTemplate(
 }
 
 /** random_vault: reservoir pick of an in-depth vault of a given type. */
-function randomVault(g: Gen, vaults: Vault[], depth: number, typ: string): Vault | null {
+function randomVault(rng: Rng, vaults: Vault[], depth: number, typ: string): Vault | null {
   let r: Vault | null = null;
   let n = 1;
   for (const v of vaults) {
     if (v.typ === typ && v.minLev <= depth && v.maxLev >= depth) {
-      if (g.rng.oneIn(n)) r = v;
+      if (rng.oneIn(n)) r = v;
       n++;
     }
   }
@@ -804,12 +805,53 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
 }
 
 function buildVaultType(g: Gen, centre: Loc, typ: string, vaults: Vault[]): boolean {
-  const v = randomVault(g, vaults, g.c.depth, typ);
+  const v = randomVault(g.rng, vaults, g.c.depth, typ);
   if (!v) return false;
   if (!buildVault(g, centre, v)) return false;
   /* Boost the rating (gen-room.c L1728). */
   g.c.addToMonsterRating(v.rat);
   return true;
+}
+
+/**
+ * vault_chunk (gen-cave.c L3212): build a fresh chunk that consists only of a
+ * greater vault, filled around with granite. Picks a greater-vault type at the
+ * given depth (one_in_(2) chooses the "(new)" variant), sizes a sub-chunk to
+ * the vault, and builds the vault into it via build_vault. NEW exported helper.
+ *
+ * `makeSubGen(height, width, depth)` mints a Gen bound to a fresh sub-chunk of
+ * that size (supplied by the caller so Gen/Chunk construction stays in cave.ts
+ * and there is no circular import). The vault's name/type draws happen on the
+ * shared `rng` before the sub-chunk exists, so RNG order is preserved.
+ *
+ * Returns the built sub-chunk's Gen, or null on failure (no greater vault at
+ * depth, or build_vault failed). Faithful to the C control flow (return failure
+ * on either path); the C-side uncreate_artifacts/cave_free cleanup is not
+ * needed because the caller simply discards this sub-chunk on failure.
+ */
+export function vaultChunk(
+  rng: Rng,
+  vaults: Vault[],
+  depth: number,
+  makeSubGen: (height: number, width: number, depth: number) => Gen,
+): Gen | null {
+  const vname = rng.oneIn(2) ? "Greater vault (new)" : "Greater vault";
+  const v = randomVault(rng, vaults, depth, vname);
+  if (!v) return null;
+
+  const g = makeSubGen(v.hgt, v.wid, depth);
+  const c = g.c;
+
+  /* Fill with granite; the vault will override for the grids it sets. */
+  fillRectangle(c, 0, 0, v.hgt - 1, v.wid - 1, FEAT.GRANITE, SQUARE.NONE);
+
+  /* Build the vault in it. */
+  g.dun.centN = 0;
+  g.dun.resetEntranceData(c);
+  const built = buildVault(g, loc(Math.trunc(v.wid / 2), Math.trunc(v.hgt / 2)), v);
+  if (!built) return null;
+
+  return g;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1956,6 +1998,13 @@ export type RoomBuilder = (g: Gen, centre: Loc, rating: number) => boolean;
 export class RoomRegistry {
   private readonly map = new Map<string, RoomBuilder>();
 
+  constructor(private readonly data: RoomData) {}
+
+  /** The loaded vault list (used by hard_centre's vault_chunk). */
+  get vaults(): Vault[] {
+    return this.data.vaults;
+  }
+
   register(name: string, builder: RoomBuilder): void {
     this.map.set(name, builder);
   }
@@ -1977,7 +2026,7 @@ export class RoomRegistry {
 
 /** Create a registry populated with the upstream builders bound to data. */
 export function createRoomRegistry(data: RoomData): RoomRegistry {
-  const r = new RoomRegistry();
+  const r = new RoomRegistry(data);
   r.register("staircase", buildStaircase);
   r.register("simple", buildSimple);
   r.register("circular", buildCircular);
