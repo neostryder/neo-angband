@@ -407,6 +407,7 @@ function wireGame(
     derived = calcBonuses(p, {
       equipment,
       timedEffects: players.timed,
+      curses: reg.objects.curses,
       update: true,
       depth: state.chunk.depth,
       isDaytime: daytime,
@@ -1337,6 +1338,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   const pstate = calcBonuses(birth.player, {
     equipment,
     timedEffects: players.timed,
+    curses: reg.objects.curses,
     update: true,
   });
   const combat = toCombatState(pstate);
@@ -1599,6 +1601,7 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
   const pstate = calcBonuses(player, {
     equipment,
     timedEffects: players.timed,
+    curses: reg.objects.curses,
     update: true,
   });
   const combat = toCombatState(pstate);

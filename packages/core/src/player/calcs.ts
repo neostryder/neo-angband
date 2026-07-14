@@ -15,11 +15,13 @@
  * combat and resist contributions and derives blows from the wielded weapon.
  * calc_light and the timed effects (food, stun, bless, hero, shero,
  * fast/slow, temp resists, etc.) are now ported (calcLight + the
- * timedEffects-gated blocks in calcBonuses). Still DEFERRED (see the
+ * timedEffects-gated blocks in calcBonuses). The per-object curse-object
+ * traversal inside the equipment loop (2009-2023) is now ported: a worn item's
+ * active curses fold their template objects into the state (pass the bound
+ * Curse registry via CalcBonusesOptions.curses). Still DEFERRED (see the
  * calcBonuses notes and parity/ledger/player-calcs-bonuses.yaml):
  *   - the learn-by-use rune system that populates obj_k (equipment modifiers
- *     are rune-gated and inert at birth) and the per-object curse-object
- *     traversal inside the equipment loop
+ *     are rune-gated and inert at birth)
  *   - calc_mana
  * calc_shapechange is now ported (a non-normal player.shape stacks its
  * combat/skill/flag/modifier/resist package on the state).
@@ -46,6 +48,7 @@ import type {
 } from "./types";
 import type { Player } from "./player";
 import type { GameObject } from "../obj/object";
+import type { Curse, ElementInfo } from "../obj/types";
 import { tvalIsDigger, tvalIsLight } from "../obj/object";
 import { playerTimedGradeEq } from "./timed";
 import type { PlayerCombatState } from "../combat/melee";
@@ -562,6 +565,17 @@ export interface CalcBonusesOptions {
    */
   timedEffects?: readonly TimedEffect[];
   /**
+   * The bound curse registry (obj/bind.ts (Curse | null)[], 1-based, index 0
+   * null), i.e. upstream's global `curses[]` array of length z_info->curse_max.
+   * Drives the per-object curse-object traversal in the equipment loop
+   * (player-calcs.c:2009-2023): each worn item's active curses fold their own
+   * curse template object (modifiers/flags/toH/toD/toA/elInfo) into the state.
+   * Defaults to empty, which disables the traversal (no templates to resolve);
+   * the live call sites (game.ts refreshDerived/startGame/loadGame) pass
+   * reg.objects.curses.
+   */
+  curses?: readonly (Curse | null)[];
+  /**
    * calc_bonuses' `update` arg (player-calcs.c:1877): when true the derive is
    * allowed its faithful side effects -- zeroing p->timed[TMD_FASTCAST] on a
    * Stun/Heavy Stun grade (2141-2143/2148-2150) and the calc_light town
@@ -672,8 +686,9 @@ function calcLight(
  * of which are no-ops for the innate state:
  * - the learn-by-use rune system that populates obj_k: equipment modifiers
  *   are rune-gated (obj->modifiers * obj_k->modifiers) and UNKNOWN at birth
- *   (decision 25), so they contribute nothing until a rune is learned; and
- *   the per-object curse-object traversal in the equipment loop (1924-2025)
+ *   (decision 25), so they contribute nothing until a rune is learned. The
+ *   per-object curse-object traversal in the equipment loop (2009-2023) is
+ *   now ported (see options.curses)
  * - calc_light (2040-2041), the food-grade block (2094-2132) and the timed
  *   block (2134-2213) are now ported (calcLight + the timedEffects-gated
  *   blocks below); the launcher analysis (2254-2288) and weapon analysis
@@ -764,62 +779,83 @@ export function calcBonuses(
      birth, item modifiers contribute nothing until learned. The el_info and
      combat bonuses (to_a/to_h/to_d) are NOT rune-gated for the real state
      (upstream gates those only for the displayed known_state), so they apply
-     unconditionally here. Still DEFERRED (parity ledger): the per-object
-     curse-object traversal (2009-2023), so a cursed item contributes its own
-     object but not its attached curse objects; and the learn-by-use rune
-     system that populates obj_k (obj-knowledge.c), pending its own increment. */
+     unconditionally here.
+
+     Per-object curse traversal (2009-2023) IS ported: the inner while walks
+     from the worn item to each of its active curse objects, folding each
+     one's own template object (modifiers/flags/toH/toD/toA/elInfo) into the
+     state through the SAME loop body (applySource), in the exact upstream
+     accumulation order (worn item first, then its curses in ascending index
+     order). The curse template objects come from the bound registry
+     (options.curses == upstream's global curses[]); a curse object carries no
+     ac and no tval, matching the zeroed fields of the upstream curse struct
+     (curse ac is a guaranteed no-op, tval 0 makes tval_is_digger false).
+     Still DEFERRED (parity ledger): the learn-by-use rune system that
+     populates obj_k (obj-knowledge.c), pending its own increment. */
   const equipment = options.equipment ?? [];
+  const curseTable = options.curses ?? [];
   const knownMods = player.objKnown.modifiers;
-  for (let i = 0; i < player.body.count; i++) {
-    const obj = equipment[i] ?? null;
-    if (!obj) continue;
 
-    const slotType = player.body.slots[i]?.type;
-    const isWeaponSlot = slotType === "WEAPON";
-    const isBowSlot = slotType === "BOW";
-    if (isWeaponSlot) weapon = obj;
-    if (isBowSlot) launcher = obj;
-
+  /* The single loop body upstream applies to the worn item AND to each of its
+     curse objects (the do/while at 1930-2024). A worn GameObject satisfies
+     BonusSource directly; a curse template is adapted with ac 0 / tval 0 (the
+     upstream curse struct leaves those zero). Kept as one closure so the two
+     never diverge -- this is calc_bonuses' one loop body, not a fork. */
+  interface BonusSource {
+    flags: FlagSet;
+    modifiers: number[];
+    elInfo: readonly ElementInfo[];
+    ac: number;
+    toA: number;
+    toH: number;
+    toD: number;
+    tval: number;
+  }
+  const applySource = (
+    src: BonusSource,
+    isWeaponSlot: boolean,
+    isBowSlot: boolean,
+  ): void => {
     /* Extract the item flags (1933-1939). */
-    collectF.union(obj.flags);
+    collectF.union(src.flags);
 
     /* Apply modifiers (1941-1981), each multiplied by the learned-rune mask
        (obj->modifiers[X] * p->obj_k->modifiers[X]). The five stat modifiers
        share indices with STAT_* (OBJ_MOD_STR == STAT_STR == 0). */
     for (let s = 0; s < STAT_MAX; s++) {
       state.statAdd[s] =
-        (state.statAdd[s] ?? 0) + (obj.modifiers[s] ?? 0) * (knownMods[s] ?? 0);
+        (state.statAdd[s] ?? 0) + (src.modifiers[s] ?? 0) * (knownMods[s] ?? 0);
     }
     state.skills[SKILL.STEALTH] =
       (state.skills[SKILL.STEALTH] ?? 0) +
-      (obj.modifiers[OBJ_MOD.STEALTH] ?? 0) * (knownMods[OBJ_MOD.STEALTH] ?? 0);
+      (src.modifiers[OBJ_MOD.STEALTH] ?? 0) * (knownMods[OBJ_MOD.STEALTH] ?? 0);
     state.skills[SKILL.SEARCH] =
       (state.skills[SKILL.SEARCH] ?? 0) +
-      (obj.modifiers[OBJ_MOD.SEARCH] ?? 0) * 5 * (knownMods[OBJ_MOD.SEARCH] ?? 0);
+      (src.modifiers[OBJ_MOD.SEARCH] ?? 0) * 5 * (knownMods[OBJ_MOD.SEARCH] ?? 0);
     state.seeInfra +=
-      (obj.modifiers[OBJ_MOD.INFRA] ?? 0) * (knownMods[OBJ_MOD.INFRA] ?? 0);
+      (src.modifiers[OBJ_MOD.INFRA] ?? 0) * (knownMods[OBJ_MOD.INFRA] ?? 0);
 
     let dig = 0;
-    if (tvalIsDigger(obj.tval)) {
-      if (obj.flags.has(OF.DIG_1)) dig = 1;
-      else if (obj.flags.has(OF.DIG_2)) dig = 2;
-      else if (obj.flags.has(OF.DIG_3)) dig = 3;
+    if (tvalIsDigger(src.tval)) {
+      if (src.flags.has(OF.DIG_1)) dig = 1;
+      else if (src.flags.has(OF.DIG_2)) dig = 2;
+      else if (src.flags.has(OF.DIG_3)) dig = 3;
     }
-    dig += (obj.modifiers[OBJ_MOD.TUNNEL] ?? 0) * (knownMods[OBJ_MOD.TUNNEL] ?? 0);
+    dig += (src.modifiers[OBJ_MOD.TUNNEL] ?? 0) * (knownMods[OBJ_MOD.TUNNEL] ?? 0);
     state.skills[SKILL.DIGGING] = (state.skills[SKILL.DIGGING] ?? 0) + dig * 20;
 
     state.speed +=
-      (obj.modifiers[OBJ_MOD.SPEED] ?? 0) * (knownMods[OBJ_MOD.SPEED] ?? 0);
+      (src.modifiers[OBJ_MOD.SPEED] ?? 0) * (knownMods[OBJ_MOD.SPEED] ?? 0);
     state.damRed +=
-      (obj.modifiers[OBJ_MOD.DAM_RED] ?? 0) * (knownMods[OBJ_MOD.DAM_RED] ?? 0);
-    extraBlows += (obj.modifiers[OBJ_MOD.BLOWS] ?? 0) * (knownMods[OBJ_MOD.BLOWS] ?? 0);
-    extraShots += (obj.modifiers[OBJ_MOD.SHOTS] ?? 0) * (knownMods[OBJ_MOD.SHOTS] ?? 0);
-    extraMight += (obj.modifiers[OBJ_MOD.MIGHT] ?? 0) * (knownMods[OBJ_MOD.MIGHT] ?? 0);
-    extraMoves += (obj.modifiers[OBJ_MOD.MOVES] ?? 0) * (knownMods[OBJ_MOD.MOVES] ?? 0);
+      (src.modifiers[OBJ_MOD.DAM_RED] ?? 0) * (knownMods[OBJ_MOD.DAM_RED] ?? 0);
+    extraBlows += (src.modifiers[OBJ_MOD.BLOWS] ?? 0) * (knownMods[OBJ_MOD.BLOWS] ?? 0);
+    extraShots += (src.modifiers[OBJ_MOD.SHOTS] ?? 0) * (knownMods[OBJ_MOD.SHOTS] ?? 0);
+    extraMight += (src.modifiers[OBJ_MOD.MIGHT] ?? 0) * (knownMods[OBJ_MOD.MIGHT] ?? 0);
+    extraMoves += (src.modifiers[OBJ_MOD.MOVES] ?? 0) * (knownMods[OBJ_MOD.MOVES] ?? 0);
 
     /* Apply element info, noting vulnerabilities for later (1983-1993). */
     for (let jj = 0; jj < elemCount; jj++) {
-      const oel = obj.elInfo[jj];
+      const oel = src.elInfo[jj];
       const sel = state.elInfo[jj] as PlayerElementInfo;
       if (!oel) continue;
       if (oel.resLevel === -1) vuln[jj] = true;
@@ -827,15 +863,67 @@ export function calcBonuses(
     }
 
     /* Apply combat bonuses (1995-2007). The wielded weapon's and launcher's
-       own to_h/to_d are applied at attack time, not here. */
-    state.ac += obj.ac;
-    state.toA += obj.toA;
+       own to_h/to_d are applied at attack time, not here. A curse object's ac
+       is 0 (curse struct carries none). */
+    state.ac += src.ac;
+    state.toA += src.toA;
     if (!isWeaponSlot && !isBowSlot) {
-      state.toH += obj.toH;
-      state.toD += obj.toD;
+      state.toH += src.toH;
+      state.toD += src.toD;
     }
+  };
 
-    /* DEFERRED: the per-object curse-object traversal (2009-2023). */
+  for (let i = 0; i < player.body.count; i++) {
+    const worn = equipment[i] ?? null;
+    if (!worn) continue;
+
+    const slotType = player.body.slots[i]?.type;
+    const isWeaponSlot = slotType === "WEAPON";
+    const isBowSlot = slotType === "BOW";
+    /* weapon/launcher are the WORN items (upstream reads them by slot name
+       before the loop, 1885-1886); a curse object never becomes the weapon. */
+    if (isWeaponSlot) weapon = worn;
+    if (isBowSlot) launcher = worn;
+
+    /* curse := obj->curses, the worn item's curse_data array, held fixed while
+       we walk the item and its curse objects (1928, 2009-2023). */
+    const curse = worn.curses;
+    let obj: BonusSource | null = worn;
+    let index = 0;
+    while (obj) {
+      applySource(obj, isWeaponSlot, isBowSlot);
+
+      /* Move to any unprocessed curse object (2009-2023). Scan the worn item's
+         curse_data for the next active (power != 0) curse, resolving its
+         template object from the bound registry (curses[index].obj). The scan
+         bound is z_info->curse_max == curseTable.length. */
+      if (curse) {
+        index++;
+        obj = null;
+        while (index < curseTable.length) {
+          if (curse[index]?.power) {
+            const template = curseTable[index]?.obj;
+            obj = template
+              ? {
+                  flags: template.flags,
+                  modifiers: template.modifiers,
+                  elInfo: template.elInfo,
+                  ac: 0,
+                  toA: template.toA,
+                  toH: template.toH,
+                  toD: template.toD,
+                  tval: 0,
+                }
+              : null;
+            break;
+          } else {
+            index++;
+          }
+        }
+      } else {
+        obj = null;
+      }
+    }
   }
 
   /* Apply the collected flags (2027-2028). */
