@@ -62,12 +62,120 @@ function coreLoadedPack(): LoadedPack {
   return { manifest: coreManifest(), files: contrib } as unknown as LoadedPack;
 }
 
+/* ------------------------------------------------------------------ *
+ * Mods (W1.3): bundled packs under packages/web/mods/<id>/, disabled by
+ * default. Enable with ?mods=a,b (wins) or localStorage neo:enabledMods.
+ * The full mod-manager UI (enable/reorder/consent) is W2.4.
+ * ------------------------------------------------------------------ */
+
+const modManifestGlob = import.meta.glob("../mods/*/manifest.json", {
+  eager: true,
+  import: "default",
+}) as Record<string, unknown>;
+const modFileGlob = import.meta.glob("../mods/*/*.json", {
+  eager: true,
+  import: "default",
+}) as Record<string, unknown>;
+
+/** modId -> { manifest, files } gathered from packages/web/mods/<id>/. */
+function discoverMods(): Map<
+  string,
+  { manifest: unknown; files: Record<string, unknown> }
+> {
+  const mods = new Map<
+    string,
+    { manifest: unknown; files: Record<string, unknown> }
+  >();
+  for (const [key, val] of Object.entries(modManifestGlob)) {
+    const m = /\/mods\/([^/]+)\/manifest\.json$/.exec(key);
+    if (m && m[1]) mods.set(m[1], { manifest: val, files: {} });
+  }
+  for (const [key, val] of Object.entries(modFileGlob)) {
+    const m = /\/mods\/([^/]+)\/([^/]+)\.json$/.exec(key);
+    if (!m || !m[1] || !m[2] || m[2] === "manifest") continue;
+    const mod = mods.get(m[1]);
+    if (mod) mod.files[m[2]] = val;
+  }
+  return mods;
+}
+
+/** Enabled mod ids: URL ?mods=a,b wins; else localStorage; else none. */
+function enabledModIds(): string[] {
+  try {
+    const url = new URLSearchParams(location.search).get("mods");
+    if (url !== null) {
+      return url.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+  } catch {
+    /* no location (non-browser host) */
+  }
+  try {
+    const raw = localStorage.getItem("neo:enabledMods");
+    if (raw) {
+      const arr = JSON.parse(raw) as unknown;
+      if (Array.isArray(arr)) {
+        return arr.filter((s): s is string => typeof s === "string");
+      }
+    }
+  } catch {
+    /* no localStorage */
+  }
+  return [];
+}
+
+function modManifest(raw: unknown): PackManifest {
+  const m = raw as Partial<PackManifest> & { id?: string };
+  return {
+    id: m.id ?? "mod",
+    name: m.name ?? m.id ?? "mod",
+    version: m.version ?? "0.0.0",
+    shape: m.shape ?? "content",
+    ...(m.engine ? { engine: m.engine } : {}),
+    ...(m.dependencies ? { dependencies: m.dependencies } : {}),
+  };
+}
+
+/** The ordered LoadedPack set: core first, then each enabled mod. */
+function activePackSet(): LoadedPack[] {
+  const packs: LoadedPack[] = [coreLoadedPack()];
+  const mods = discoverMods();
+  for (const id of enabledModIds()) {
+    const mod = mods.get(id);
+    if (!mod) {
+      console.warn(`[mods] enabled mod "${id}" not found; skipping`);
+      continue;
+    }
+    packs.push({
+      manifest: modManifest(mod.manifest),
+      files: mod.files as unknown as LoadedPack["files"],
+    });
+  }
+  return packs;
+}
+
 /**
- * The active pack set, composed once at module load. Today it is core alone;
- * W1.3 discovers and appends enabled mod packs before this call. With one pack
- * the merge is record-identical to the raw content.
+ * The active pack set, composed once at module load. Core alone is
+ * record-identical; enabled mods add/patch/replace/remove through the
+ * mod-sdk compose engine.
  */
-const composed = composeContentPacks([coreLoadedPack()]);
+const composed = composeContentPacks(activePackSet());
+
+// DEV-only diagnostic: proves an enabled mod's changes reach the running
+// game's content. Stripped from production builds (import.meta.env.DEV).
+if (import.meta.env.DEV) {
+  const monsters = composed.records["monster"] as
+    | { name?: string; "hit-points"?: number }[]
+    | undefined;
+  const grip = monsters?.find(
+    (r) => typeof r.name === "string" && r.name.startsWith("Grip"),
+  );
+  (globalThis as Record<string, unknown>)["__neoPack"] = {
+    enabledMods: enabledModIds(),
+    monsterCount: monsters?.length ?? 0,
+    grip: grip ? { name: grip.name, hp: grip["hit-points"] } : null,
+    hasModberry: !!monsters?.some((r) => r.name === "Modberry Slime"),
+  };
+}
 
 function records(name: string): unknown[] {
   const recs = composed.records[name];

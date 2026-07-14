@@ -1,0 +1,28 @@
+{
+  "patches": {
+    "core:grip-farmer-maggot-s-dog": {
+      "name": "Grip, the Cyber-Hound",
+      "color": "r",
+      "hit-points": 250
+    }
+  },
+  "records": [
+    {
+      "name": "Modberry Slime",
+      "base": "canine",
+      "color": "v",
+      "speed": 110,
+      "hit-points": 40,
+      "hearing": 30,
+      "smell": 50,
+      "armor-class": 12,
+      "sleepiness": 80,
+      "depth": 1,
+      "rarity": 1,
+      "experience": 5,
+      "blow": [{ "method": "BITE", "effect": "HURT", "damage": "1d2" }],
+      "flags": ["RAND_25 | BASH_DOOR"],
+      "desc": ["A wobbling violet blob that proves a mod can ADD a monster."]
+    }
+  ]
+}

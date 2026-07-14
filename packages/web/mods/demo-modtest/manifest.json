@@ -1,0 +1,10 @@
+{
+  "id": "demo-modtest",
+  "name": "Modtest Demo (deep-mod proof)",
+  "version": "1.0.0",
+  "shape": "content",
+  "dependencies": { "core": "*" },
+  "author": "neostryder (RPGM Tools)",
+  "license": "GPL-2.0-only",
+  "description": "A bundled demo content pack that proves mods reach the running game: it patches a core monster and adds a new one. Disabled by default; enable with ?mods=demo-modtest."
+}
