@@ -24,7 +24,9 @@
 
 import { FEAT, MFLAG, OF, RF, SQUARE, TF, TMD } from "../generated";
 import type { Loc } from "../loc";
-import { loc } from "../loc";
+import { DDGRID_DDD, loc, locSum } from "../loc";
+import { featIsBright } from "../world/chunk";
+import { caveIlluminate } from "../gen/cave";
 import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view";
 import { getLore, loreCountU16 } from "../mon/lore";
 import {
@@ -87,6 +89,65 @@ export function squareMemorize(state: GameState, grid: Loc): void {
 export function squareForget(state: GameState, grid: Loc): void {
   state.known.feat[gi(state, grid)] = -1;
   state.known.objects.delete(gi(state, grid));
+}
+
+/**
+ * cave_illuminate (cave-map.c L555), the runtime version: the generation-time
+ * flag subset (gen/cave.ts caveIlluminate) plus the player-knowledge half
+ * (square_memorize / square_forget), gated per grid on the same "light" test
+ * upstream computes over the 9-entry ddgrid_ddd (the 8 neighbors plus self,
+ * cave.c L72-73): a floor or stairs grid nearby makes the boundary worth
+ * remembering. RNG-free.
+ *
+ * DEFERRED: PU_UPDATE_VIEW | PU_MONSTERS and the PR_MAP / PR_MONLIST /
+ * PR_ITEMLIST redraws (cave-map.c L608-612) - the front end's updateView +
+ * noteSpots pass already runs unconditionally after every state-changing
+ * action (packages/web/src/main.ts), so there is no separate dirty-flag
+ * mechanism to set here, matching the other knowledge-writing effect handlers
+ * (game/effect-detect.ts) which don't re-trigger it either.
+ */
+export function caveIlluminateKnown(state: GameState, daytime: boolean): void {
+  const c = state.chunk;
+
+  /* Apply light or darkness (the flag subset, shared with generation). */
+  caveIlluminate(c, daytime);
+
+  /* The player-knowledge half: memorize / forget gated on adjacency light. */
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      const grid = loc(x, y);
+
+      /* Skip grids with no surrounding floors or stairs. */
+      let light = false;
+      for (let d = 0; d < 9; d++) {
+        const aGrid = locSum(grid, DDGRID_DDD[d] as Loc);
+        if (!c.inBoundsFully(aGrid)) continue;
+        if (c.isFloor(aGrid) || c.isStairs(aGrid)) {
+          light = true;
+          break;
+        }
+      }
+
+      if (daytime || !c.isFloor(grid)) {
+        if (light) squareMemorize(state, grid);
+      } else if (!featIsBright(c.features, c.feat(grid))) {
+        /* Like cave_unlight(), forget "boring" grids. */
+        if (c.isFloor(grid)) squareForget(state, grid);
+      }
+    }
+  }
+
+  /* Light shop doorways. */
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      const grid = loc(x, y);
+      if (!c.isShop(grid)) continue;
+      for (let i = 0; i < 8; i++) {
+        const aGrid = locSum(grid, DDGRID_DDD[i] as Loc);
+        if (c.inBounds(aGrid)) squareMemorize(state, aGrid);
+      }
+    }
+  }
 }
 
 /** square_isknown: the player remembers some terrain here. */

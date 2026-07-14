@@ -208,6 +208,16 @@ export interface GameState {
    */
   isIgnored?: (obj: GameObject) => boolean;
   /**
+   * player->upkeep->notice's PN_IGNORE bit: object_flavor_aware's ignore fix
+   * (obj-knowledge.c L2279) raises this when a newly-aware kind carries its
+   * ignore-when-aware bit over, requesting an ignore_drop() re-check of the
+   * pack. Set by FlavorAwareDeps.requestIgnoreNotice (obj/knowledge.ts) at
+   * the in-play becomes-aware sites (store/transact.ts, game/obj-cmd.ts).
+   * Consuming/clearing this (running ignore_drop, #25 UI) is a shell concern
+   * and is not wired yet - ledgered like the rest of the ignore-drop UI.
+   */
+  noticeIgnore?: boolean;
+  /**
    * object_flavor_is_aware(kind): whether the player has identified this
    * kind's flavour. Installed by the session (wireGame) from flavor
    * knowledge, so presentation code (obj-list.c, #25) stays decoupled from

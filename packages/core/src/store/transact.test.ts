@@ -19,6 +19,8 @@ import { bindStoreRuntime, storeReset } from "./store";
 import type { Store, StoreMaintContext } from "./store";
 import { homeRetrieve, homeStash, storeBuy, storeSell } from "./transact";
 import type { StoreRecordJson } from "./types";
+import { FlavorKnowledge } from "../obj/knowledge";
+import type { FlavorAwareDeps } from "../obj/knowledge";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -260,5 +262,78 @@ describe("home stash / retrieve (store.c do_cmd_stash / do_cmd_retrieve)", () =>
 
     expect(home.stock.length).toBe(1);
     expect(home.stock[0]!.number).toBe(5);
+  });
+});
+
+describe("object_flavor_aware ignore fix at storeBuy/storeSell (#89)", () => {
+  /** A recording FlavorAwareDeps, standing in for the ignore module + player
+   * notice (session/game.ts's flavorAwareDeps). */
+  function makeDeps(ignoredUnaware: Set<number>): {
+    deps: FlavorAwareDeps;
+    awareIgnored: number[];
+    noticeRequests: number;
+  } {
+    const rec = { deps: undefined as unknown as FlavorAwareDeps, awareIgnored: [] as number[], noticeRequests: 0 };
+    rec.deps = {
+      isIgnoredUnaware: (kidx) => ignoredUnaware.has(kidx),
+      ignoreWhenAware: (kidx) => rec.awareIgnored.push(kidx),
+      requestIgnoreNotice: () => {
+        rec.noticeRequests++;
+      },
+    };
+    return rec;
+  }
+
+  it("storeBuy carries the ignore-while-unaware bit over on first awareness", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const general = stores.find((s) => s.feat === FEAT.STORE_GENERAL)!;
+    const item = general.stock[0]!;
+    player.au = 1_000_000;
+
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const rec = makeDeps(new Set([item.kind.kidx]));
+    expect(flavor.isAware(item.kind)).toBe(false);
+
+    const before = ctx.rng.getState();
+    const res = storeBuy(ctx, general, item, 1, player, gear, {
+      aware: false,
+      noSelling: false,
+      flavor,
+      flavorDeps: rec.deps,
+    });
+
+    expect(res.ok).toBe(true);
+    /* object_flavor_aware fired: the kind is now aware... */
+    expect(flavor.isAware(item.kind)).toBe(true);
+    /* ...and the #89 fix carried the ignore-while-unaware bit to "aware". */
+    expect(rec.awareIgnored).toEqual([item.kind.kidx]);
+    expect(rec.noticeRequests).toBe(1);
+    /* RNG-free: becoming aware draws nothing from the shared stream. */
+    expect(ctx.rng.getState()).toEqual(before);
+  });
+
+  it("storeSell fires the same ignore fix", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+    const sword = makeObj(TV.SWORD);
+    const handle = invenCarry(gear, sword, limits);
+    player.au = 0;
+
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const rec = makeDeps(new Set([sword.kind.kidx]));
+
+    const res = storeSell(ctx, weapon, handle, 1, player, gear, {
+      aware: false,
+      noSelling: false,
+      flavor,
+      flavorDeps: rec.deps,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(flavor.isAware(sword.kind)).toBe(true);
+    expect(rec.awareIgnored).toEqual([sword.kind.kidx]);
+    expect(rec.noticeRequests).toBe(1);
   });
 });

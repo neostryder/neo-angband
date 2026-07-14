@@ -11,6 +11,7 @@ import type { ObjPackJson } from "../obj/types";
 import { objectPrep } from "../obj/make";
 import type { GameObject } from "../obj/object";
 import { FlavorKnowledge } from "../obj/knowledge";
+import type { FlavorAwareDeps } from "../obj/knowledge";
 import { bindProjections } from "../world/projection";
 import type { ProjectionRecordJson } from "../world/projection";
 import { floorPile } from "./floor";
@@ -190,6 +191,62 @@ describe("useAux (cmd-obj.c use_aux)", () => {
 
     useAux(state, potion, USE.SINGLE, makeDeps(state, { flavor }), { handle: h });
     expect(flavor.isAware(potion.kind)).toBe(true);
+  });
+
+  it("becoming aware on use fires the #89 ignore fix via objectFlavorAware", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.actor.player.mhp = 30;
+    state.actor.player.chp = 10;
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    const h = carry(state, potion);
+
+    const awareIgnored: number[] = [];
+    let noticeRequests = 0;
+    const flavorDeps: FlavorAwareDeps = {
+      isIgnoredUnaware: (kidx) => kidx === potion.kind.kidx,
+      ignoreWhenAware: (kidx) => awareIgnored.push(kidx),
+      requestIgnoreNotice: () => {
+        noticeRequests++;
+      },
+    };
+
+    useAux(state, potion, USE.SINGLE, makeDeps(state, { flavor, flavorDeps }), {
+      handle: h,
+    });
+
+    expect(flavor.isAware(potion.kind)).toBe(true);
+    /* kind_ignore_when_aware carried the ignore-while-unaware bit over. */
+    expect(awareIgnored).toEqual([potion.kind.kidx]);
+    expect(noticeRequests).toBe(1);
+  });
+
+  it("is RNG-free: the aware-bit/ignore-fix bookkeeping draws no RNG beyond the effect itself", () => {
+    /* Two identically-seeded runs, one with flavor+flavorDeps wired and one
+     * with no flavor knowledge at all: the effect's own RNG draws are
+     * identical either way, so a mismatch would mean the awareness/ignore
+     * bookkeeping itself drew from the shared stream. */
+    function run(withFlavor: boolean): ReturnType<Rng["getState"]> {
+      const state = makeState({ playerGrid: loc(5, 5), seed: 42 });
+      state.actor.player.mhp = 30;
+      state.actor.player.chp = 10;
+      const potion = makeNamed("Cure Light Wounds", TV.POTION);
+      const h = carry(state, potion);
+      const over: Partial<ObjCmdDeps> = withFlavor
+        ? {
+            flavor: new FlavorKnowledge(reg.ordinaryKindCount),
+            flavorDeps: {
+              isIgnoredUnaware: () => true,
+              ignoreWhenAware: () => {},
+              requestIgnoreNotice: () => {},
+            },
+          }
+        : {};
+      useAux(state, potion, USE.SINGLE, makeDeps(state, over), { handle: h });
+      return state.rng.getState();
+    }
+
+    expect(run(true)).toEqual(run(false));
   });
 
   it("a staff use consumes a charge", () => {
