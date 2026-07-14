@@ -471,3 +471,65 @@ describe("string-id serialization (P7.1) decouples saves from registry order", (
     expect(restored.state.turn).toBe(game.state.turn);
   });
 });
+
+describe("mod-lifecycle save blocks (P7.2)", () => {
+  it("a core-only game writes a core-only manifest and no orphans/mods", () => {
+    const game = startGame(pack, { seed: 111, depth: 2 });
+    playTurns(game, 4);
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+
+    expect(saved.manifest?.loadOrder).toEqual(["core"]);
+    expect(saved.manifest?.determinism).toBe("deterministic");
+    /* Clean saves carry no bag / orphan blocks. */
+    expect(saved.mods).toBeUndefined();
+    expect(saved.orphans).toBeUndefined();
+
+    const restored = loadGame(pack, saved);
+    expect(restored.manifest.loadOrder).toEqual(["core"]);
+    expect(restored.orphansAcknowledged).toBe(false);
+  });
+
+  it("round-trips a per-mod bag verbatim through save and load", () => {
+    const game = startGame(pack, { seed: 222, depth: 1 });
+    /* A plugin persisted some private state; the engine must not touch it. */
+    game.mods = { frost: { schema: 3, data: { seenWyrms: 2, note: "cold" } } };
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+
+    expect(saved.mods).toEqual({
+      frost: { schema: 3, data: { seenWyrms: 2, note: "cold" } },
+    });
+    const restored = loadGame(pack, saved);
+    expect(restored.mods).toEqual({
+      frost: { schema: 3, data: { seenWyrms: 2, note: "cold" } },
+    });
+  });
+
+  it("quarantines mod-owned content whose pack is absent on load", () => {
+    const game = startGame(pack, { seed: 333, depth: 2 });
+    playTurns(game, 4);
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+
+    /* Forge a save that came from a run with a "frost" pack: a frost object on
+     * the floor and the manifest that names the pack. */
+    saved.manifest = {
+      packs: [
+        { id: "core", version: "0.1.0" },
+        { id: "frost", version: "1.0.0" },
+      ],
+      loadOrder: ["core", "frost"],
+      determinism: "deterministic",
+    };
+    saved.floor = [
+      ...saved.floor,
+      { x: 3, y: 3, objs: [{ kindId: "frost:ice-shard" } as never] },
+    ];
+
+    /* Loading against a pack that lacks frost (default present = core only)
+     * quarantines the frost object instead of throwing on its unknown kind. */
+    const restored = loadGame(pack, saved);
+    expect(restored.orphans["frost@1.0.0"]?.[0]?.ref).toBe("frost:ice-shard");
+    /* The frost pile is gone from the live floor. */
+    const w = restored.state.chunk.width;
+    expect(restored.state.floor.has(3 * w + 3)).toBe(false);
+  });
+});
