@@ -63,6 +63,32 @@ export interface AgentCapabilities {
   has(capability: string): boolean;
 }
 
+/**
+ * Thrown when a facade or controller is used without a capability it requires.
+ * Lives here (not controller.ts) so perceive/act can throw it without importing
+ * the controller (which imports them).
+ */
+export class AgentCapabilityError extends Error {}
+
+/**
+ * The perceive-facade domain each AgentView accessor reads, gated by
+ * "state:<domain>.read" (the "state:*.read" wildcard covers all). A view built
+ * with no AgentCapabilities is a trusted host and every domain is granted.
+ */
+export const AGENT_STATE_DOMAINS = {
+  turn: "turn",
+  player: "player",
+  monsters: "monsters",
+  map: "map",
+  inventory: "inventory",
+  floor: "floor",
+  target: "target",
+  messages: "messages",
+  stores: "stores",
+  spells: "spells",
+  constants: "constants",
+} as const;
+
 /* ------------------------------------------------------------------ *
  * PERCEIVE - the read surface.
  * ------------------------------------------------------------------ */

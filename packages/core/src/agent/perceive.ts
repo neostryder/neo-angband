@@ -33,8 +33,9 @@ import { objectValue } from "../obj/value";
 import { monsterIsVisible } from "../mon/predicate";
 import { PY_SPELL, spellChance } from "../player/spell";
 import { priceItem } from "../store/price";
-import { AGENT_API_VERSION } from "./types";
+import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types";
 import type {
+  AgentCapabilities,
   AgentView,
   AgentViewDeps,
   CellView,
@@ -352,44 +353,78 @@ function spellbookViews(state: GameState): SpellbookView[] {
  * object value); every field of AgentViewDeps is optional and degrades
  * gracefully when absent (see module docs).
  */
+/**
+ * Wrap an accessor so it throws AgentCapabilityError unless the caller was
+ * granted "state:<domain>.read" (the "state:*.read" wildcard covers all). With
+ * no AgentCapabilities (a trusted in-process host) the accessor is returned
+ * unchanged - every domain is granted.
+ */
+function gateRead<A extends unknown[], R>(
+  caps: AgentCapabilities | undefined,
+  domain: string,
+  fn: (...args: A) => R,
+): (...args: A) => R {
+  if (!caps) return fn;
+  const cap = `state:${domain}.read`;
+  return (...args: A): R => {
+    // Accept the specific domain or the explicit "state:*.read" wildcard, so
+    // enforcement holds for any AgentCapabilities, not only one that expands
+    // wildcards itself (mod-sdk CapabilitySet does; a bare stub may not).
+    if (!caps.has(cap) && !caps.has("state:*.read")) {
+      throw new AgentCapabilityError(
+        `agent perceive: capability "${cap}" is not granted`,
+      );
+    }
+    return fn(...args);
+  };
+}
+
 export function createAgentView(
   state: GameState,
   messageBuffer?: { drain(): string[] },
   deps: AgentViewDeps = {},
+  caps?: AgentCapabilities,
 ): AgentView {
+  const D = AGENT_STATE_DOMAINS;
   return {
     apiVersion: AGENT_API_VERSION,
-    turn: () => state.turn,
-    player: () => playerView(state, deps),
-    monsters: () => monsterViews(state, deps),
-    cell: (x, y) => cellView(state, x, y, deps),
-    mapBounds: () => ({ width: state.chunk.width, height: state.chunk.height }),
-    inventory: () => {
+    turn: gateRead(caps, D.turn, () => state.turn),
+    player: gateRead(caps, D.player, () => playerView(state, deps)),
+    monsters: gateRead(caps, D.monsters, () => monsterViews(state, deps)),
+    cell: gateRead(caps, D.map, (x: number, y: number) =>
+      cellView(state, x, y, deps),
+    ),
+    mapBounds: gateRead(caps, D.map, () => ({
+      width: state.chunk.width,
+      height: state.chunk.height,
+    })),
+    inventory: gateRead(caps, D.inventory, () => {
       const out: ItemView[] = [];
       for (const handle of state.gear.pack) {
         const obj = gearGet(state.gear, handle);
         if (obj) out.push(itemView(handle, obj, state, deps));
       }
       return out;
-    },
-    equipment: () =>
+    }),
+    equipment: gateRead(caps, D.inventory, () =>
       state.actor.player.equipment.map((handle) => {
         if (!handle) return null;
         const obj = gearGet(state.gear, handle);
         return obj ? itemView(handle, obj, state, deps) : null;
       }),
-    floorItems: (x, y) => {
+    ),
+    floorItems: gateRead(caps, D.floor, (x: number, y: number) => {
       const pile = state.floor.get(y * state.chunk.width + x) ?? [];
       return pile.map((obj) => itemView(0, obj, state, deps));
-    },
-    target: (): TargetView | null => {
+    }),
+    target: gateRead(caps, D.target, (): TargetView | null => {
       const t = state.target;
       if (!t.set && !t.fixed) return null;
       return { midx: t.midx, grid: { x: t.grid.x, y: t.grid.y } };
-    },
-    messages: () => messageBuffer?.drain() ?? [],
-    stores: () => storeViews(state, deps),
-    spellbooks: () => spellbookViews(state),
-    constants: () => ({ ...state.z }),
+    }),
+    messages: gateRead(caps, D.messages, () => messageBuffer?.drain() ?? []),
+    stores: gateRead(caps, D.stores, () => storeViews(state, deps)),
+    spellbooks: gateRead(caps, D.spells, () => spellbookViews(state)),
+    constants: gateRead(caps, D.constants, () => ({ ...state.z })),
   };
 }

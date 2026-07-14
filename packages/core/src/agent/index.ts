@@ -8,7 +8,7 @@
  * from here (see types.ts freeze note).
  */
 
-export { AGENT_API_VERSION } from "./types";
+export { AGENT_API_VERSION, AGENT_STATE_DOMAINS } from "./types";
 export type {
   AgentCapabilities,
   AgentCommand,
