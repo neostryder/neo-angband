@@ -51,6 +51,7 @@ import { makeGold, makeObject } from "../obj/make";
 import type { Monster, MonsterGroupInfo } from "../mon/monster";
 import { createMonster, type MonAllocTable } from "../mon/make";
 import type { MonsterRace } from "../mon/types";
+import type { ResolvedPit } from "./gen-monster";
 import { MON_GROUP } from "../mon/types";
 import { scatterExt } from "../world/scatter";
 
@@ -180,6 +181,12 @@ export class Dun {
 /** Monster placement dependencies. */
 export interface MonPlaceDeps {
   table: MonAllocTable;
+  /**
+   * Resolved pit profiles (set_pit_type / mon_pit_hook), when themed pit,
+   * nest and chamber generation is wired. Absent for bare unit-test contexts;
+   * builders that need theming bail (empty room) when it is missing.
+   */
+  pits?: ResolvedPit[];
 }
 
 /** Tunnel parameters read by build_tunnel (cave_profile.tun). */

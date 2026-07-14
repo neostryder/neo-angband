@@ -42,6 +42,7 @@ import {
   locSum,
   pickAndPlaceMonster,
   placeClosedDoor,
+  placeNewMonster,
   placeObject,
   placeGold,
   placeRandomStairs,
@@ -55,6 +56,10 @@ import {
   vaultObjects,
   vaultTraps,
 } from "./util";
+import { getVaultMonsters, monPitHook, setPitType } from "./gen-monster";
+import type { MonsterGroupInfo } from "../mon/monster";
+import type { MonsterRace } from "../mon/types";
+import { MON_GROUP } from "../mon/types";
 
 /* ------------------------------------------------------------------ *
  * Room and vault template data.
@@ -558,13 +563,6 @@ function isAlpha(ch: string): boolean {
   return /^[A-Za-z]$/.test(ch);
 }
 
-function vaultMonsterDepth(g: Gen, typ: string): number {
-  if (typ.includes("Lesser vault")) return g.c.depth + 2;
-  if (typ.includes("Medium vault")) return g.c.depth + 4;
-  if (typ.includes("Greater vault")) return g.c.depth + 6;
-  return g.c.depth;
-}
-
 /** build_vault: draw a vault from its grid text. */
 export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
   const c = g.c;
@@ -606,7 +604,8 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
   /* No random monsters in vaults. */
   generateMark(c, y1, x1, y2, x2, SQUARE.MON_RESTRICT);
 
-  const mdepth = vaultMonsterDepth(g, v.typ);
+  /* Racial monster symbols, collected in first-appearance order (max 30). */
+  const racialSymbol: string[] = [];
 
   /* First pass: features. */
   for (let y = 0; y < v.hgt; y++) {
@@ -672,8 +671,11 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
       const grid = symmetryTransform(loc(x, y), centre.y, centre.x, v.hgt, v.wid, rotate, reflect);
       if (t === " ") continue;
       if (isAlpha(t) && t !== "x" && t !== "X") {
-        /* Racial monster glyph (theming simplified). */
-        pickAndPlaceMonster(g, grid, mdepth, false);
+        /* Racial monster glyph: store the symbol, place later via
+         * get_vault_monsters (mon_select restriction, item #75). */
+        if (!racialSymbol.includes(t) && racialSymbol.length < 30) {
+          racialSymbol.push(t);
+        }
         continue;
       }
       switch (t) {
@@ -780,6 +782,21 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
       }
     }
   }
+
+  /* Place specified monsters (get_vault_monsters). The upstream loop reads
+   * the raw vault text linearly across the rectangle, so map the linear
+   * index back to the vault's original width. */
+  getVaultMonsters(
+    g,
+    racialSymbol,
+    v.typ,
+    (i) => glyphAt(v.rows, Math.trunc(i / v.wid), i % v.wid),
+    y1,
+    y2,
+    x1,
+    x2,
+  );
+
   return true;
 }
 
@@ -1133,18 +1150,31 @@ function buildLarge(g: Gen, centreIn: Loc, _rating: number): boolean {
 }
 
 /* ------------------------------------------------------------------ *
- * Nest / pit (faithful shell, simplified monster theming).
+ * Nest / pit (faithful themed monster generation, gen-room.c).
  * ------------------------------------------------------------------ */
 
-function buildNestOrPit(g: Gen, centreIn: Loc, width: number): Loc | null {
+/**
+ * build_nest (gen-room.c L2641): a rectangular moat around a room filled with
+ * a DISORDERED scatter of monsters drawn from 64 pit-hooked picks. Nests never
+ * contain uniques (mon_pit_hook rejects them).
+ */
+function buildNest(g: Gen, centreIn: Loc, _rating: number): boolean {
   const c = g.c;
+  if (!g.monDeps || !g.monDeps.pits) return false;
+  const table = g.monDeps.table;
+  const pits = g.monDeps.pits;
+
+  const sizeVary = g.rng.randint0(4);
   const height = 9;
+  const width = 11 + 2 * sizeVary;
+
   let centre = centreIn;
   if (centre.y >= c.height || centre.x >= c.width) {
     const found = findSpace(g, height + 2, width + 2);
-    if (!found) return null;
+    if (!found) return false;
     centre = found;
   }
+
   let y1 = centre.y - Math.trunc(height / 2);
   let y2 = centre.y + Math.trunc(height / 2);
   let x1 = centre.x - Math.trunc(width / 2);
@@ -1154,6 +1184,7 @@ function buildNestOrPit(g: Gen, centreIn: Loc, width: number): Loc | null {
   drawRectangle(c, y1 - 1, x1 - 1, y2 + 1, x2 + 1, FEAT.GRANITE, SQUARE.WALL_OUTER, false);
   fillRectangle(c, y1, x1, y2, x2, FEAT.FLOOR, SQUARE.NONE);
 
+  /* Advance to the center room. */
   y1 = y1 + 2;
   y2 = y2 - 2;
   x1 = x1 + 2;
@@ -1161,23 +1192,182 @@ function buildNestOrPit(g: Gen, centreIn: Loc, width: number): Loc | null {
   drawRectangle(c, y1 - 1, x1 - 1, y2 + 1, x2 + 1, FEAT.GRANITE, SQUARE.WALL_INNER, false);
   generateHole(g.rng, c, y1 - 1, x1 - 1, y2 + 1, x2 + 1, FEAT.CLOSED);
 
-  /* Fill the inner room with depth-appropriate monsters (theming simplified).
-   * Upstream pits/nests place with group_ok off (the pit IS the group). */
+  /* Decide on the pit type (nests are room type 2). */
+  const pit = setPitType(g.rng, pits, c.depth, 2);
+  const allocObj = pit.objRarity;
+
+  /* Prepare allocation table; pick 64 (hard) monster types. */
+  table.prep(monPitHook(pit));
+  const what: (MonsterRace | null)[] = [];
+  let empty = false;
+  for (let i = 0; i < 64; i++) {
+    what[i] = table.getMonNum(g.rng, c.depth + 10, c.depth);
+    if (!what[i]) empty = true;
+  }
+  table.prep(null);
+  if (empty) return false;
+
+  /* Place some monsters (disordered scatter) and occasional objects. */
+  const info: MonsterGroupInfo = { index: 0, role: MON_GROUP.LEADER };
   for (let y = y1; y <= y2; y++) {
     for (let x = x1; x <= x2; x++) {
-      pickAndPlaceMonster(g, loc(x, y), c.depth + 10, false, false);
+      const race = what[g.rng.randint0(64)] as MonsterRace;
+      placeNewMonster(g, loc(x, y), race, false, false, info);
+
+      /* Occasionally place an item, making it good 1/3 of the time. */
+      if (g.rng.randint0(100) < allocObj) {
+        placeObject(g, loc(x, y), c.depth + 10, g.rng.oneIn(3), false, 0);
+      }
     }
   }
-  return centre;
+  return true;
 }
 
-function buildNest(g: Gen, centre: Loc, _rating: number): boolean {
-  const sizeVary = g.rng.randint0(4);
-  return buildNestOrPit(g, centre, 11 + 2 * sizeVary) !== null;
-}
+/**
+ * build_pit (gen-room.c L2773): an ORDERED pit. 16 pit-hooked monsters are
+ * drawn, bubble-sorted by level, and the even entries used to fill the fixed
+ * concentric/mirrored pattern (what[7] centre, radiating out to what[0]).
+ * Pits never contain uniques.
+ *
+ *   #############
+ *   #11000000011#
+ *   #01234543210#
+ *   #01236763210#
+ *   #01234543210#
+ *   #11000000011#
+ *   #############
+ */
+function buildPit(g: Gen, centreIn: Loc, _rating: number): boolean {
+  const c = g.c;
+  if (!g.monDeps || !g.monDeps.pits) return false;
+  const table = g.monDeps.table;
+  const pits = g.monDeps.pits;
 
-function buildPit(g: Gen, centre: Loc, _rating: number): boolean {
-  return buildNestOrPit(g, centre, 15) !== null;
+  const height = 9;
+  const width = 15;
+
+  let centre = centreIn;
+  if (centre.y >= c.height || centre.x >= c.width) {
+    const found = findSpace(g, height + 2, width + 2);
+    if (!found) return false;
+    centre = found;
+  }
+
+  let y1 = centre.y - Math.trunc(height / 2);
+  let y2 = centre.y + Math.trunc(height / 2);
+  let x1 = centre.x - Math.trunc(width / 2);
+  let x2 = centre.x + Math.trunc(width / 2);
+
+  generateRoom(c, y1 - 1, x1 - 1, y2 + 1, x2 + 1, false);
+  drawRectangle(c, y1 - 1, x1 - 1, y2 + 1, x2 + 1, FEAT.GRANITE, SQUARE.WALL_OUTER, false);
+  fillRectangle(c, y1, x1, y2, x2, FEAT.FLOOR, SQUARE.NONE);
+
+  /* Advance to the center room. */
+  y1 = y1 + 2;
+  y2 = y2 - 2;
+  x1 = x1 + 2;
+  x2 = x2 - 2;
+  drawRectangle(c, y1 - 1, x1 - 1, y2 + 1, x2 + 1, FEAT.GRANITE, SQUARE.WALL_INNER, false);
+  generateHole(g.rng, c, y1 - 1, x1 - 1, y2 + 1, x2 + 1, FEAT.CLOSED);
+
+  /* Decide on the pit type (pits are room type 1). */
+  const pit = setPitType(g.rng, pits, c.depth, 1);
+  const allocObj = pit.objRarity;
+
+  /* Prepare allocation table; pick 16 (hard) monster types. */
+  table.prep(monPitHook(pit));
+  const what: (MonsterRace | null)[] = [];
+  let empty = false;
+  for (let i = 0; i < 16; i++) {
+    what[i] = table.getMonNum(g.rng, c.depth + 10, c.depth);
+    if (!what[i]) empty = true;
+  }
+  table.prep(null);
+  if (empty) return false;
+
+  /* Sort the 16 entries by level (bubble sort, stable on ties). */
+  const sorted = what as MonsterRace[];
+  for (let i = 0; i < 16 - 1; i++) {
+    for (let j = 0; j < 16 - 1; j++) {
+      const a = sorted[j] as MonsterRace;
+      const b = sorted[j + 1] as MonsterRace;
+      if (a.level > b.level) {
+        sorted[j] = b;
+        sorted[j + 1] = a;
+      }
+    }
+  }
+
+  /* Select every other entry (the even-indexed picks). */
+  const pick: MonsterRace[] = [];
+  for (let i = 0; i < 8; i++) pick[i] = sorted[i * 2] as MonsterRace;
+
+  /* Fixed concentric placement. Center monster is the group leader. */
+  const groupIndex = g.nextGroupIndex();
+  const cx = centre.x;
+  const cy = centre.y;
+  const leader: MonsterGroupInfo = { index: groupIndex, role: MON_GROUP.LEADER };
+  placeNewMonster(g, centre, pick[7] as MonsterRace, false, false, leader);
+
+  /* Remaining monsters are servants. */
+  const info: MonsterGroupInfo = { index: groupIndex, role: MON_GROUP.SERVANT };
+
+  /* Top and bottom rows (middle). */
+  for (let x = cx - 3; x <= cx + 3; x++) {
+    placeNewMonster(g, loc(x, cy - 2), pick[0] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(x, cy + 2), pick[0] as MonsterRace, false, false, info);
+  }
+
+  /* Corners. */
+  for (let x = cx - 5; x <= cx - 4; x++) {
+    placeNewMonster(g, loc(x, cy - 2), pick[1] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(x, cy + 2), pick[1] as MonsterRace, false, false, info);
+  }
+  for (let x = cx + 4; x <= cx + 5; x++) {
+    placeNewMonster(g, loc(x, cy - 2), pick[1] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(x, cy + 2), pick[1] as MonsterRace, false, false, info);
+  }
+
+  /* Middle columns. */
+  for (let y = cy - 1; y <= cy + 1; y++) {
+    placeNewMonster(g, loc(cx - 5, y), pick[0] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(cx + 5, y), pick[0] as MonsterRace, false, false, info);
+
+    placeNewMonster(g, loc(cx - 4, y), pick[1] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(cx + 4, y), pick[1] as MonsterRace, false, false, info);
+
+    placeNewMonster(g, loc(cx - 3, y), pick[2] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(cx + 3, y), pick[2] as MonsterRace, false, false, info);
+
+    placeNewMonster(g, loc(cx - 2, y), pick[3] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(cx + 2, y), pick[3] as MonsterRace, false, false, info);
+  }
+
+  /* Corners around the middle monster. */
+  placeNewMonster(g, loc(cx - 1, cy - 1), pick[4] as MonsterRace, false, false, info);
+  placeNewMonster(g, loc(cx + 1, cy - 1), pick[4] as MonsterRace, false, false, info);
+  placeNewMonster(g, loc(cx - 1, cy + 1), pick[4] as MonsterRace, false, false, info);
+  placeNewMonster(g, loc(cx + 1, cy + 1), pick[4] as MonsterRace, false, false, info);
+
+  /* Above/below the center monster. */
+  for (let x = cx - 1; x <= cx + 1; x++) {
+    placeNewMonster(g, loc(x, cy + 1), pick[5] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(x, cy - 1), pick[5] as MonsterRace, false, false, info);
+  }
+
+  /* Next to the center monster. */
+  placeNewMonster(g, loc(cx + 1, cy), pick[6] as MonsterRace, false, false, info);
+  placeNewMonster(g, loc(cx - 1, cy), pick[6] as MonsterRace, false, false, info);
+
+  /* Place some objects. */
+  for (let y = cy - 2; y <= cy + 2; y++) {
+    for (let x = cx - 9; x <= cx + 9; x++) {
+      if (g.rng.randint0(100) < allocObj) {
+        placeObject(g, loc(x, y), c.depth + 10, g.rng.oneIn(3), false, 0);
+      }
+    }
+  }
+  return true;
 }
 
 /* ------------------------------------------------------------------ *

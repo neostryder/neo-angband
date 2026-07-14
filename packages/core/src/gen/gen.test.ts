@@ -35,6 +35,8 @@ import {
   type VaultRecordJson,
 } from "./room";
 import { generateLevel, type GenDeps } from "./generate";
+import { getVaultMonsters, monPitHook, resolvePits, setPitType } from "./gen-monster";
+import { RF } from "../generated";
 import { GROUP_TYPE } from "../mon/monster";
 import { MON_GROUP } from "../mon/types";
 import {
@@ -109,7 +111,7 @@ function makeDeps(): GenDeps {
     oodChance: constants.oodMonsterChance,
     oodAmount: constants.oodMonsterAmount,
   });
-  const monDeps: MonPlaceDeps = { table };
+  const monDeps: MonPlaceDeps = { table, pits: resolvePits(monReg) };
 
   const rooms = createRoomRegistry({ templates: roomTemplates, vaults });
   const profiles = createDungeonProfiles(loadRecords<DunProfileRecordJson>("dungeon_profile"));
@@ -489,7 +491,7 @@ describe("mod-registered room builder", () => {
         artifacts: new ArtifactState(objReg.artifacts.length),
         noArtifacts: false,
       },
-      monDeps: { table },
+      monDeps: { table, pits: resolvePits(monReg) },
     };
 
     const g = generateLevel(new Rng(55), 5, deps);
@@ -600,5 +602,144 @@ describe("place_new_monster groups and friends", () => {
       }
     }
     throw new Error("no seed produced an escort in 20 tries");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Themed pits / nests (gen-room.c build_pit / build_nest) and vault
+ * racial-symbol monsters (gen-monster.c get_vault_monsters, item #75).
+ * ------------------------------------------------------------------ */
+
+describe("themed pits, nests and vault monsters", () => {
+  const monReg = bindMonsters(monPack, { maxSight: constants.maxSight });
+  const pits = resolvePits(monReg);
+  const rooms = createRoomRegistry({ templates: roomTemplates, vaults });
+
+  /** A large granite-bordered arena with obj + mon (+ pit) deps wired. */
+  function themedGen(depth: number, seed: number): Gen {
+    const c = new Chunk(reg, 25, 50);
+    c.depth = depth;
+    const dun = new Dun(constants);
+    const objReg = new ObjRegistry(objPack);
+    const objDeps: MakeDeps = {
+      reg: objReg,
+      alloc: new ObjAllocState(objReg, constants),
+      constants,
+      artifacts: new ArtifactState(objReg.artifacts.length),
+      noArtifacts: false,
+    };
+    const table = new MonAllocTable(monReg.races, { maxDepth: constants.maxDepth });
+    return new Gen(c, new Rng(seed), reg, constants, dun, objDeps, { table, pits });
+  }
+
+  function monSig(g: Gen): string {
+    return g.monsters
+      .map((m) => `${m.grid.x},${m.grid.y}:${m.mon.race.ridx}`)
+      .join("|");
+  }
+
+  it("set_pit_type is deterministic and respects room type", () => {
+    const a = setPitType(new Rng(99), pits, 40, 1);
+    const b = setPitType(new Rng(99), pits, 40, 1);
+    expect(a.name).toBe(b.name);
+    expect(a.roomType).toBe(1);
+    const nest = setPitType(new Rng(99), pits, 40, 2);
+    expect(nest.roomType).toBe(2);
+  });
+
+  it("mon_pit_hook accepts theme members and rejects uniques/off-theme", () => {
+    const orc = pits.find((p) => p.name === "Orc")!;
+    const hook = monPitHook(orc);
+    const orcRace = monReg.races.find(
+      (r) => r.base.name === "orc" && !r.flags.has(RF.UNIQUE),
+    )!;
+    expect(hook(orcRace)).toBe(true);
+    /* A unique orc (e.g. an orc boss) is rejected. */
+    const uniqueOrc = monReg.races.find(
+      (r) => r.base.name === "orc" && r.flags.has(RF.UNIQUE),
+    );
+    if (uniqueOrc) expect(hook(uniqueOrc)).toBe(false);
+    /* An off-base race is rejected. */
+    const nonOrc = monReg.races.find((r) => r.base.name !== "orc" && r.rarity)!;
+    expect(hook(nonOrc)).toBe(false);
+  });
+
+  it("builds a deterministic pit, depth-sorted with no uniques", () => {
+    const a = themedGen(30, 20260713);
+    const okA = rooms.get("pit")(a, loc(25, 12), 0);
+    expect(okA).toBe(true);
+    expect(a.monsters.length).toBeGreaterThan(0);
+
+    /* Run-to-run determinism for a fixed seed. */
+    const b = themedGen(30, 20260713);
+    rooms.get("pit")(b, loc(25, 12), 0);
+    expect(monSig(a)).toBe(monSig(b));
+
+    /* Pits never contain uniques. */
+    for (const m of a.monsters) {
+      expect(m.mon.race.flags.has(RF.UNIQUE)).toBe(false);
+    }
+
+    /* Ordered: the centre monster (placed first, what[7]) is the deepest;
+     * the first ring monster (placed second, what[0]) is the shallowest. */
+    expect(a.monsters[0]!.mon.race.level).toBeGreaterThanOrEqual(
+      a.monsters[1]!.mon.race.level,
+    );
+    /* The leader carries a group; the centre is at the room centre. */
+    expect(a.monsters[0]!.grid).toEqual(loc(25, 12));
+  });
+
+  it("builds a deterministic nest with no uniques (disordered fill)", () => {
+    const a = themedGen(20, 555);
+    const okA = rooms.get("nest")(a, loc(25, 12), 0);
+    expect(okA).toBe(true);
+    expect(a.monsters.length).toBeGreaterThan(0);
+
+    const b = themedGen(20, 555);
+    rooms.get("nest")(b, loc(25, 12), 0);
+    expect(monSig(a)).toBe(monSig(b));
+
+    for (const m of a.monsters) {
+      expect(m.mon.race.flags.has(RF.UNIQUE)).toBe(false);
+    }
+    /* Disordered: when the theme spans more than one level, the placed-order
+     * sequence of levels is not the monotonic radial ordering a pit produces. */
+    const levels = a.monsters.map((m) => m.mon.race.level);
+    if (new Set(levels).size > 1) {
+      const sortedAsc = levels.every((v, i) => i === 0 || levels[i - 1]! <= v);
+      expect(sortedAsc).toBe(false);
+    }
+  });
+
+  it("places vault racial-symbol monsters of the matching base (item #75)", () => {
+    /* Pick a real low-depth base symbol and require every placed monster to
+     * share that base template. */
+    const seed = monReg.races.find(
+      (r) => r.level > 0 && r.level <= 8 && /^[a-z]$/.test(r.base.glyph) && !r.flags.has(RF.UNIQUE),
+    )!;
+    const sym = seed.base.glyph;
+
+    const g = themedGen(6, 4242);
+    const c = g.c;
+    /* A floor arena so the placement squares are empty. */
+    for (let y = 1; y < c.height - 1; y++) {
+      for (let x = 1; x < c.width - 1; x++) c.setFeat(loc(x, y), FEAT.FLOOR);
+    }
+    /* Three grids in a 3-wide rectangle carry the racial symbol. */
+    const marks = new Set([`${10},${10}`, `${12},${10}`, `${11},${11}`]);
+    const w = 3;
+    const dataCharAt = (t: number): string => {
+      const gx = 10 + (t % w);
+      const gy = 10 + Math.trunc(t / w);
+      return marks.has(`${gx},${gy}`) ? sym : ".";
+    };
+    getVaultMonsters(g, [sym], "Lesser vault", dataCharAt, 10, 11, 10, 12);
+
+    expect(g.monsters.length).toBeGreaterThan(0);
+    for (const m of g.monsters) {
+      expect(m.mon.race.base.glyph).toBe(sym);
+      /* placed on one of the racial-symbol grids. */
+      expect(marks.has(`${m.grid.x},${m.grid.y}`)).toBe(true);
+    }
   });
 });

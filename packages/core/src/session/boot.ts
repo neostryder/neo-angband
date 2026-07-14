@@ -49,6 +49,7 @@ import type { TrapKind, TrapRecordJson } from "../world/trap";
 import { StoreRegistry } from "../store/bind";
 import type { StoreRecordJson } from "../store/types";
 import { iToGrid } from "../gen/util";
+import { resolvePits } from "../gen/gen-monster";
 
 /** The base content pack as parsed JSON (pack zero, or a merged pack). */
 export interface CorePack {
@@ -167,6 +168,7 @@ export function genDeps(
         oodChance: reg.constants.oodMonsterChance,
         oodAmount: reg.constants.oodMonsterAmount,
       }),
+      pits: resolvePits(reg.monsters),
     };
   }
   return {
