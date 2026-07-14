@@ -83,6 +83,17 @@
 > monorepo 2365 tests. **P7.7 IS DONE - the P7 -> P8 gate is passed.** Remaining
 > P7 tail: the small P7.3 registry-bind wiring (consume merged field-patches at
 > bind time). NEXT: P8 (the Borg) rides this frozen facade.
+>
+> UPDATE (2026-07-14e): P7.3 TAIL CLOSED (commit 6c06880). composePacks now
+> applies fieldPatches - it folds each pack's ops onto the target record in load
+> order, after that pack's coarse patches/replaces, with the same ownership and
+> existence guards; incremental applyFieldPatch per pack is provably identical to
+> composeFieldPatches over the ordered list, so the bind step now consumes the
+> merged field-patched records. The phase-6 conflict report still reads the same
+> fieldPatches data for pre-launch collision reporting. +2 compose tests; tsc
+> clean, full monorepo 2367 tests. **P7 IS COMPLETE** (all of P7.1-P7.7 plus the
+> integration tail). NEXT: P8 (the Borg) - to be planned per BORG_AS_MOD.md
+> sections 7-8, launched only with Aaron's go-ahead (large phase).
 
 > STATUS: BUILD PLAN (2026-07-14). This is the executable sequencing of work
 > that is already DESIGNED and RATIFIED in `../MODS.md` and `MOD_LIFECYCLE.md`
