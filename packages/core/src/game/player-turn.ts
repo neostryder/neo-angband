@@ -113,7 +113,10 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
       target,
       state.brands,
       state.slays,
-      { monVisible: true },
+      {
+        monVisible: true,
+        percentDamage: state.options?.get("birth_percent_damage") ?? false,
+      },
     );
     equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
     /* py_attack message slice: hand the blow-by-blow result to the shell for
