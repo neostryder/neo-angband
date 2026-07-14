@@ -19,6 +19,7 @@
 
 import type { PackManifest, PackRef } from "./manifest.js";
 import { packRef } from "./manifest.js";
+import { applyFieldPatch } from "./patch.js";
 import type { FieldPatch } from "./patch.js";
 
 export type JsonValue =
@@ -42,9 +43,12 @@ export interface FileContribution {
   removes?: string[];
   /**
    * Field-level patches (see patch.ts): ordered field ops per target ref.
-   * Not yet applied by composePacks - this is the data the pre-launch
-   * conflict report (P7 phase 6) reads to find same-field collisions
-   * without the false-positive whole-record conflicts `patches` produces.
+   * composePacks applies these in load order after the coarse `patches`/
+   * `replaces` for the same pack (each pack's ops fold onto the running
+   * value, which is identical to composeFieldPatches over the ordered
+   * list). The pre-launch conflict report (P7 phase 6) reads the same data
+   * to find same-field collisions without the false-positive whole-record
+   * conflicts `patches` produces.
    */
   fieldPatches?: Record<string, FieldPatch>;
 }
@@ -144,6 +148,23 @@ export function composePacks(
             kind === "patches" ? mergePatch(existing.value, body) : body;
           existing.modifiedBy.push(pid);
         }
+      }
+
+      for (const [refStr, ops] of Object.entries(contrib.fieldPatches ?? {})) {
+        const ref = refStr as PackRef;
+        const existing = table.get(ref);
+        if (!existing) {
+          throw new ComposeError(
+            `${pid}/${file}: fieldPatch target ${ref} does not exist`,
+          );
+        }
+        if (!mayModify(pack.manifest, ownerOf(ref))) {
+          throw new ComposeError(
+            `${pid}/${file}: cannot modify ${ref} without declaring ${ownerOf(ref)} as a dependency`,
+          );
+        }
+        existing.value = applyFieldPatch(existing.value, ops);
+        existing.modifiedBy.push(pid);
       }
 
       for (const refStr of contrib.removes ?? []) {
