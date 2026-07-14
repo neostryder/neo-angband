@@ -49,6 +49,7 @@ import {
 } from "../obj/object";
 import type { StackLimits } from "../obj/object";
 import { objectPrep } from "../obj/make";
+import { objectValueReal } from "../obj/value";
 import type { Player } from "../player/player";
 import type { PlayerBody } from "../player/types";
 
@@ -518,12 +519,20 @@ export function outfitPlayer(
     obj.number = num;
     obj.origin = ORIGIN.BIRTH;
 
-    /* DEFERRED: p->au -= object_value_real(obj, num) (obj-value.c). */
+    /* Deduct the cost of the item from starting cash (player-birth.c L654).
+     * object_value_real draws no RNG. Upstream prices from obj->known; the
+     * port has no known twin, so it prices the real object - the same
+     * approximation the store path uses (obj/value.ts). */
+    player.au -= objectValueReal(reg, obj, obj.number);
     /* DEFERRED: object knowledge (obj->known / flavor_aware / base_known). */
 
     /* Carry the item. */
     invenCarry(gear, obj, limits);
   }
+
+  /* Sanity check: never let the outfit drive starting gold negative
+   * (player-birth.c L662). */
+  if (player.au < 0) player.au = 0;
 
   /* Now try wielding everything. */
   wieldAll(gear, player);

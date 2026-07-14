@@ -250,6 +250,35 @@ describe("outfitPlayer (player-birth.c player_outfit)", () => {
     expect(packTvals).toContain(TV.SCROLL);
   });
 
+  it("deducts the outfit cost from starting gold (player-birth.c L654)", () => {
+    const reg = new ObjRegistry(pack.obj);
+    const rng = new Rng(42);
+    const gear = newGear();
+    const { race, cls, body } = humanWarrior();
+    const player = blankPlayer(race, cls, body);
+    player.au = 600;
+
+    outfitPlayer(gear, player, reg, rng, constants);
+
+    // The free kit has real value, so gold drops below the 600 roll but is
+    // never driven negative (the L662 sanity clamp).
+    expect(player.au).toBeLessThan(600);
+    expect(player.au).toBeGreaterThanOrEqual(0);
+  });
+
+  it("clamps starting gold to zero when the kit outvalues it", () => {
+    const reg = new ObjRegistry(pack.obj);
+    const rng = new Rng(42);
+    const gear = newGear();
+    const { race, cls, body } = humanWarrior();
+    const player = blankPlayer(race, cls, body);
+    player.au = 1;
+
+    outfitPlayer(gear, player, reg, rng, constants);
+
+    expect(player.au).toBe(0);
+  });
+
   it("with start_kit off gives only one food and one light", () => {
     const reg = new ObjRegistry(pack.obj);
     const rng = new Rng(7);
