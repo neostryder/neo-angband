@@ -39,6 +39,7 @@
 import { TVAL_ENTRIES } from "../generated";
 import type { ObjRegistry } from "../obj/bind";
 import type { MonsterRace } from "../mon/types";
+import type { PlayerClass, PlayerRace } from "../player/types";
 import type { FeatureRegistry } from "../world/feature";
 import type { TrapKind } from "../world/trap";
 
@@ -114,6 +115,14 @@ export interface ContentIdRegistries {
   monsters?: { races: readonly MonsterRace[] };
   features?: FeatureRegistry;
   traps?: readonly TrapKind[] | null;
+  /**
+   * Player races/classes are optional: the save format does not reference them
+   * by id (a character carries its own race/class record), but the agent
+   * perceive facade exposes namespaced player race/class ids when they are
+   * supplied here, so every entity in the agent contract has a stable id.
+   */
+  playerRaces?: readonly PlayerRace[];
+  playerClasses?: readonly PlayerClass[];
 }
 
 /** One bidirectional index<->id table for a single entity kind. */
@@ -167,6 +176,8 @@ export class ContentIdResolver {
   private readonly races: IdTable;
   private readonly traps: IdTable;
   private readonly feats: IdTable;
+  private readonly playerRaces: IdTable;
+  private readonly playerClasses: IdTable;
 
   constructor(reg: ContentIdRegistries, namespace: string = CORE_NS) {
     const { objects } = reg;
@@ -217,6 +228,16 @@ export class ContentIdResolver {
     this.feats = new IdTable(namespace);
     for (const feat of reg.features?.allFeatures() ?? []) {
       this.feats.add(feat.fidx, slug(feat.code));
+    }
+
+    this.playerRaces = new IdTable(namespace);
+    for (const race of reg.playerRaces ?? []) {
+      this.playerRaces.add(race.ridx, slug(race.name));
+    }
+
+    this.playerClasses = new IdTable(namespace);
+    for (const cls of reg.playerClasses ?? []) {
+      this.playerClasses.add(cls.cidx, slug(cls.name));
     }
   }
 
@@ -317,5 +338,33 @@ export class ContentIdResolver {
   }
   featIndex(id: string): number | undefined {
     return this.feats.index(id);
+  }
+
+  /* Player races (only bound when playerRaces was supplied). */
+  playerRaceId(ridx: number): string {
+    const id = this.playerRaces.id(ridx);
+    if (id === null) throw new Error(`mod/ids: unbound player race index ${ridx}`);
+    return id;
+  }
+  /** The player-race id for an index, or null when player races were not supplied. */
+  playerRaceIdOrNull(ridx: number): string | null {
+    return this.playerRaces.id(ridx);
+  }
+  playerRaceIndex(id: string): number | undefined {
+    return this.playerRaces.index(id);
+  }
+
+  /* Player classes (only bound when playerClasses was supplied). */
+  playerClassId(cidx: number): string {
+    const id = this.playerClasses.id(cidx);
+    if (id === null) throw new Error(`mod/ids: unbound player class index ${cidx}`);
+    return id;
+  }
+  /** The player-class id for an index, or null when player classes were not supplied. */
+  playerClassIdOrNull(cidx: number): string | null {
+    return this.playerClasses.id(cidx);
+  }
+  playerClassIndex(id: string): number | undefined {
+    return this.playerClasses.index(id);
   }
 }
