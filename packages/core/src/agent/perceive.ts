@@ -163,7 +163,10 @@ function itemView(
     timeout: obj.timeout,
     inscription: obj.note ?? null,
   };
-  if (deps.resolver) view.kindId = deps.resolver.kindId(obj.kind.kidx);
+  if (deps.resolver) {
+    const kindId = deps.resolver.kindIdOrNull(obj.kind.kidx);
+    if (kindId !== null) view.kindId = kindId;
+  }
   if (deps.reg) {
     const aware = deps.aware ?? ((): boolean => true);
     view.value = objectValue(deps.reg, obj, obj.number, aware(obj.kind));
@@ -250,7 +253,10 @@ function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
       raceFlags: raceFlagCodes(m.race.flags),
       spellFlags: spellFlagCodes(m.race.spellFlags),
     };
-    if (deps.resolver) view.raceId = deps.resolver.raceId(m.race.ridx);
+    if (deps.resolver) {
+      const raceId = deps.resolver.raceIdOrNull(m.race.ridx);
+      if (raceId !== null) view.raceId = raceId;
+    }
     out.push(view);
   }
   return out;
