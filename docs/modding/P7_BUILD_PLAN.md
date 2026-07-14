@@ -42,6 +42,32 @@
 > stock, race/class spell tables, object flag/brand/slay detail, namespaced
 > race/kind ids). Also outstanding: the small P7.3 registry-bind wiring
 > (consume merged field-patches at bind time).
+>
+> UPDATE (2026-07-14c): P7.7 PERCEIVE BREADTH DONE (still CANDIDATE 0.1.0).
+> The perceive facade now covers the full BORG_AS_MOD section-3 read surface:
+> rich ItemView (OF flag codes, nonzero modifiers, active brand/slay codes,
+> element resists, active curse names, ego/artifact names, activation, timeout,
+> inscription, plus optional namespaced kindId and objectValue), store + home
+> stock as StoreView/StoreItemView with player buy prices (priceItem), the class
+> spellbook/spell tables (SpellbookView/SpellView with learned/worked/forgotten),
+> richer PlayerView (skills, shape, derived objectFlags, seeInfra, blows/shots),
+> MonsterView (level, raceFlags, spellFlags, optional namespaced raceId),
+> CellView (glow, trap, optional featCode), and constants() (z_info clone). Every
+> second-breadth field that needs world context is behind an optional
+> `AgentViewDeps` ({resolver, reg, aware, noSelling}) threaded via
+> createAgentView(state, buffer?, deps?) and ControllerOptions.viewDeps, so the
+> worldless harness stays total (absent deps -> [] / false / omitted key, never a
+> throw). tsc clean; full monorepo 2362 tests (+8). Commit f8c9f49f7.
+>
+> Known section-3 gaps, deliberate and documented (NOT blockers, reachable via
+> the raw() escape hatch + numeric indices): (a) monster "poisoned" is always
+> false - 4.2.6 has no MON_TMD poison timed status (monsters are never poisoned
+> as a timed status upstream); (b) curse names fall back to the numeric index
+> string when no registry dep is supplied; (c) player race/class remain names
+> (no ContentIdResolver table exists for them, unlike monster races/object
+> kinds); (d) SpellView.fail is the base failure rate, not a live
+> stat/level-adjusted spellChance (that needs statInd threading). FREEZE
+> (0.1.0 -> 1.0) now awaits only the maintainer's ratification of this surface.
 
 > STATUS: BUILD PLAN (2026-07-14). This is the executable sequencing of work
 > that is already DESIGNED and RATIFIED in `../MODS.md` and `MOD_LIFECYCLE.md`
