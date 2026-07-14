@@ -16,12 +16,17 @@ export type {
   AgentController,
   AgentSession,
   AgentView,
+  AgentViewDeps,
   CellView,
   ControllerOptions,
   ItemView,
   MonsterView,
   PlayerStatusView,
   PlayerView,
+  SpellbookView,
+  SpellView,
+  StoreItemView,
+  StoreView,
   TargetView,
 } from "./types";
 export { createAgentView } from "./perceive";

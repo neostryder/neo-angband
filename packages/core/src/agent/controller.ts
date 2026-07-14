@@ -74,7 +74,7 @@ export function installController(
   if (opts.nondeterministic) opts.onNondeterministic?.();
 
   const buffer = makeMessageBuffer();
-  const view = createAgentView(state, buffer);
+  const view = createAgentView(state, buffer, opts.viewDeps);
   const act = createAgentActions(state);
 
   const prevNextCommand = state.nextCommand;
