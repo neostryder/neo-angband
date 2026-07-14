@@ -22,11 +22,12 @@
  * serves the in-process bundled Borg now and a sandboxed plugin later, with only
  * the transport (direct call vs postMessage) differing.
  *
- * FREEZE STATUS: this is a CANDIDATE contract (AGENT_API_VERSION 0.1.0). Per the
- * P7 plan it is frozen only once a sample agent exercises it AND the maintainer
- * ratifies the surface against the section-3 checklist. Until then, fields may
- * still be added/reshaped; the sample agent (agent.test.ts) is the executable
- * proof the seam is complete end-to-end.
+ * FREEZE STATUS: FROZEN at AGENT_API_VERSION 1.0.0 (ratified 2026-07-14, the
+ * P7 -> P8 gate). The sample agent (agent.test.ts) exercises the whole surface
+ * end-to-end and the maintainer ratified it against the BORG_AS_MOD section-3
+ * checklist. The contract is now stable: fields may be ADDED (a minor bump) but
+ * existing fields/semantics must not change without a major bump. P8 (the Borg)
+ * rides this facade as the completeness proof.
  */
 
 import type { GameConstants, PlayerCommand } from "../game/context";
@@ -34,8 +35,12 @@ import type { ContentIdResolver } from "../mod/ids";
 import type { ObjRegistry } from "../obj/bind";
 import type { ObjectKind } from "../obj/types";
 
-/** The frozen agent-API version. Bump on any breaking change once frozen. */
-export const AGENT_API_VERSION = "0.1.0";
+/**
+ * The frozen agent-API version (ratified 2026-07-14). Add-only from here: a new
+ * field is a minor bump (1.x), any change to an existing field/semantics is a
+ * major bump (2.0).
+ */
+export const AGENT_API_VERSION = "1.0.0";
 
 /**
  * A command an agent emits - identical to the engine's PlayerCommand (codes 1:1
