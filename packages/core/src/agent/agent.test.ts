@@ -1,9 +1,18 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { loc } from "../loc";
-import { MFLAG } from "../generated";
+import { FEAT, MFLAG, OF, RF, SQUARE, TV } from "../generated";
+import { bindConstants } from "../constants";
 import { runGameLoop } from "../game/loop";
 import { createDefaultRegistry } from "../game/player-turn";
-import { addMon, makeRace, makeState } from "../game/harness";
+import { addMon, makeRace, makeState, plReg } from "../game/harness";
+import { ObjRegistry } from "../obj/bind";
+import { objectPrep } from "../obj/make";
+import type { GameObject } from "../obj/object";
+import type { ObjPackJson } from "../obj/types";
+import type { Trap } from "../game/trap";
+import type { Store } from "../store/store";
+import { Rng } from "../rng";
 import type { AgentCapabilities } from "./types";
 import { AGENT_API_VERSION } from "./types";
 import { createAgentView } from "./perceive";
@@ -14,6 +23,52 @@ import { AgentCapabilityError, installController } from "./controller";
 function grant(...caps: string[]): AgentCapabilities {
   const set = new Set(caps);
   return { has: (c) => set.has(c) };
+}
+
+function loadJson<T>(name: string): T {
+  return JSON.parse(
+    readFileSync(
+      new URL(`../../../content/pack/${name}.json`, import.meta.url),
+      "utf8",
+    ),
+  ) as T;
+}
+
+const objPack: ObjPackJson = {
+  objectBase: loadJson("object_base"),
+  object: loadJson("object"),
+  egoItem: loadJson("ego_item"),
+  artifact: loadJson("artifact"),
+  curse: loadJson("curse"),
+  brand: loadJson("brand"),
+  slay: loadJson("slay"),
+  activation: loadJson("activation"),
+  objectProperty: loadJson("object_property"),
+  flavor: loadJson("flavor"),
+} as ObjPackJson;
+
+const objReg = new ObjRegistry(objPack);
+const objConstants = bindConstants(loadJson("constants"));
+
+/** A hand-built object of the given tval, cleared of flags/mods for tests. */
+function makeItem(tval: number): GameObject {
+  const kind = objReg.kinds.find(
+    (k) => k.tval === tval && k.kidx < objReg.ordinaryKindCount,
+  );
+  if (!kind) throw new Error(`no ordinary kind for tval ${tval}`);
+  const obj = objectPrep(new Rng(1), objReg, objConstants, kind, 0, "minimise");
+  obj.flags.wipe();
+  obj.ego = null;
+  obj.artifact = null;
+  obj.brands = null;
+  obj.slays = null;
+  obj.curses = null;
+  for (let i = 0; i < obj.modifiers.length; i++) obj.modifiers[i] = 0;
+  for (const e of obj.elInfo) {
+    e.resLevel = 0;
+    e.flags = 0;
+  }
+  return obj;
 }
 
 describe("perceive facade (AgentView)", () => {
@@ -176,5 +231,156 @@ describe("capability gating and determinism", () => {
       },
     });
     expect(flipped).toBe(1);
+  });
+});
+
+describe("flag-code mapping (guards the per-table offset)", () => {
+  it("maps a known OF_* flag on an item to its expected code", () => {
+    const state = makeState();
+    const obj = makeItem(TV.SWORD);
+    obj.flags.on(OF.SEE_INVIS);
+    state.gear.pack.push(1);
+    state.gear.store.set(1, obj);
+    const view = createAgentView(state);
+    expect(view.inventory()[0]?.flags).toContain("SEE_INVIS");
+  });
+
+  it("maps a known RF_* flag on a race to its expected code", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const race = makeRace({ flags: [RF.UNIQUE] });
+    addMon(state, race, loc(11, 10));
+    const view = createAgentView(state);
+    expect(view.monsters()[0]?.raceFlags).toContain("UNIQUE");
+  });
+});
+
+describe("ItemView rich fields", () => {
+  it("reports flags, modifiers, ego/artifact null, and inscription round-trip", () => {
+    const state = makeState();
+    const obj = makeItem(TV.SWORD);
+    obj.flags.on(OF.FREE_ACT);
+    obj.modifiers[0] = 3; /* OBJ_MOD STR (index 0). */
+    obj.note = "test-note";
+    state.gear.pack.push(1);
+    state.gear.store.set(1, obj);
+    const view = createAgentView(state);
+    const item = view.inventory()[0];
+
+    expect(item?.flags).toContain("FREE_ACT");
+    expect(item?.modifiers).toContainEqual({ code: "STR", value: 3 });
+    expect(item?.ego).toBe(false);
+    expect(item?.artifact).toBe(false);
+    expect(item?.egoName).toBeNull();
+    expect(item?.artifactName).toBeNull();
+    expect(item?.inscription).toBe("test-note");
+    expect(item?.activation).toBe(false);
+    expect(item?.timeout).toBe(0);
+    /* No deps supplied: kindId/value stay omitted. */
+    expect(item?.kindId).toBeUndefined();
+    expect(item?.value).toBeUndefined();
+  });
+});
+
+describe("MonsterView rich fields", () => {
+  it("reports level, raceFlags, and spellFlags from the race", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const race = makeRace({ level: 7, flags: [RF.UNIQUE, RF.MALE] });
+    addMon(state, race, loc(12, 10));
+    const view = createAgentView(state);
+    const mon = view.monsters()[0];
+
+    expect(mon?.level).toBe(7);
+    expect(mon?.raceFlags).toEqual(expect.arrayContaining(["UNIQUE", "MALE"]));
+    /* spellFlags mirrors race.spellFlags verbatim (empty for the test race). */
+    expect(mon?.spellFlags).toEqual([]);
+    expect(mon?.poisoned).toBe(false);
+    expect(mon?.raceId).toBeUndefined();
+  });
+});
+
+describe("CellView rich fields", () => {
+  it("reports glow and trap as plain booleans", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(10, 10);
+    const idx = grid.y * state.chunk.width + grid.x;
+
+    const before = createAgentView(state).cell(10, 10);
+    expect(before?.glow).toBe(false);
+    expect(before?.trap).toBe(false);
+
+    state.chunk.sqinfoOn(grid, SQUARE["GLOW"]);
+    state.traps.set(idx, [{} as unknown as Trap]);
+
+    const after = createAgentView(state).cell(10, 10);
+    expect(after?.glow).toBe(true);
+    expect(after?.trap).toBe(true);
+    expect(after?.featCode).toBeUndefined();
+  });
+});
+
+describe("spellbooks()", () => {
+  it("yields SpellView entries with learned=false at birth for a caster class", () => {
+    const state = makeState();
+    const caster = plReg.classes.find((c) => c.magic.totalSpells > 0);
+    if (!caster) throw new Error("no caster class in the bound pack");
+    state.actor.player.cls = caster;
+
+    const view = createAgentView(state);
+    const books = view.spellbooks();
+
+    expect(books.length).toBe(caster.magic.books.length);
+    expect(books[0]?.spells.length).toBeGreaterThan(0);
+    for (const book of books) {
+      expect(typeof book.realm).toBe("string");
+      expect(book.realm.length).toBeGreaterThan(0);
+      for (const spell of book.spells) {
+        expect(spell.learned).toBe(false);
+        expect(spell.worked).toBe(false);
+        expect(spell.forgotten).toBe(false);
+      }
+    }
+  });
+});
+
+describe("stores()", () => {
+  it("reports owner, isHome, and stock index without a registry dep", () => {
+    const state = makeState();
+    const obj = makeItem(TV.SWORD);
+    const store: Store = {
+      feat: FEAT.STORE_GENERAL,
+      featName: "STORE_GENERAL",
+      owners: [{ index: 0, name: "Bilbo", maxCost: 500 }],
+      owner: { index: 0, name: "Bilbo", maxCost: 500 },
+      alwaysTable: [],
+      normalTable: [],
+      buy: null,
+      turnover: 0,
+      normalStockMin: 0,
+      normalStockMax: 0,
+      stock: [obj],
+      stockSize: 10,
+    };
+    state.stores = [store];
+
+    const view = createAgentView(state);
+    const stores = view.stores();
+
+    expect(stores).toHaveLength(1);
+    expect(stores[0]?.owner.name).toBe("Bilbo");
+    expect(stores[0]?.owner.purse).toBe(500);
+    expect(stores[0]?.isHome).toBe(false);
+    expect(stores[0]?.stock[0]?.index).toBe(0);
+    /* No registry dep: price stays omitted, but the item fields are present. */
+    expect(stores[0]?.stock[0]?.price).toBeUndefined();
+    expect(stores[0]?.stock[0]?.label).toBe(obj.kind.name);
+  });
+});
+
+describe("constants()", () => {
+  it("returns a plain clone equal to state.z", () => {
+    const state = makeState();
+    const view = createAgentView(state);
+    expect(view.constants()).toEqual(state.z);
+    expect(view.constants()).not.toBe(state.z);
   });
 });
