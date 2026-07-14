@@ -71,6 +71,16 @@ export class MonAllocTable {
   readonly entries: MonAllocEntry[];
   private readonly races: MonsterRace[];
   private readonly oodChance: number;
+
+  /**
+   * Full race table (index 0 is the <player> placeholder). Exposed so callers
+   * that need the raw r_info array for mon_restrict("random") - e.g.
+   * get_chamber_monsters - can reuse the table's races without re-threading a
+   * separate array through MonPlaceDeps.
+   */
+  get allRaces(): MonsterRace[] {
+    return this.races;
+  }
   private readonly oodAmount: number;
   private readonly seasonalAllowed: boolean;
 
