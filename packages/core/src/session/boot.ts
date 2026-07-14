@@ -113,7 +113,7 @@ export function bindCore(pack: CorePack): CoreRegistries {
   const monsters = bindMonsters(pack.mon, { maxSight: constants.maxSight });
   const rooms = createRoomRegistry({
     templates: loadRoomTemplates(pack.roomTemplates),
-    vaults: loadVaults(pack.vaults),
+    vaults: loadVaults(pack.vaults, constants.maxDepth),
   });
   const profiles = createDungeonProfiles(pack.dungeonProfiles);
   const projections = pack.projection ? bindProjections(pack.projection) : null;
