@@ -12,6 +12,8 @@ import type { GameObject } from "../obj/object";
 import type { ObjPackJson } from "../obj/types";
 import type { Trap } from "../game/trap";
 import type { Store } from "../store/store";
+import { ContentIdResolver, coreId, slug } from "../mod/ids";
+import type { Curse } from "../obj/types";
 import { Rng } from "../rng";
 import type { AgentCapabilities } from "./types";
 import { AGENT_API_VERSION } from "./types";
@@ -382,5 +384,60 @@ describe("constants()", () => {
     const view = createAgentView(state);
     expect(view.constants()).toEqual(state.z);
     expect(view.constants()).not.toBe(state.z);
+  });
+});
+
+describe("pre-freeze gap closures", () => {
+  it("SpellView.chance is the live adjusted fail when statInd is present", () => {
+    const state = makeState();
+    const caster = plReg.classes.find((c) => c.magic.totalSpells > 0);
+    if (!caster) throw new Error("no caster class in the bound pack");
+    state.actor.player.cls = caster;
+    state.statInd = [10, 10, 10, 10, 10];
+
+    const spell = createAgentView(state).spellbooks()[0]?.spells[0];
+    expect(typeof spell?.chance).toBe("number");
+
+    /* Without statInd the live chance is omitted (base fail still present). */
+    delete state.statInd;
+    const bare = createAgentView(state).spellbooks()[0]?.spells[0];
+    expect(bare?.chance).toBeUndefined();
+    expect(typeof bare?.fail).toBe("number");
+  });
+
+  it("exposes namespaced player race/class ids when the resolver has them", () => {
+    const state = makeState();
+    const resolver = new ContentIdResolver({
+      objects: objReg,
+      playerRaces: plReg.races,
+      playerClasses: plReg.classes,
+    });
+    const p = createAgentView(state, undefined, { resolver }).player();
+    expect(p.playerRaceId).toBe(coreId(slug(state.actor.player.race.name)));
+    expect(p.playerClassId).toBe(coreId(slug(state.actor.player.cls.name)));
+
+    /* No resolver: the ids stay omitted. */
+    const bare = createAgentView(state).player();
+    expect(bare.playerRaceId).toBeUndefined();
+    expect(bare.playerClassId).toBeUndefined();
+  });
+
+  it("resolves curse names from the RuneEnv table, not the numeric index", () => {
+    const state = makeState();
+    const obj = makeItem(TV.SWORD);
+    obj.curses = [
+      { power: 0, timeout: 0 },
+      { power: 5, timeout: 0 },
+    ];
+    /* Install a named curse at index 1 on the always-present RuneEnv table. */
+    state.runeEnv = {
+      ...state.runeEnv,
+      curses: [null, { name: "teleportation" } as unknown as Curse],
+    };
+    state.gear.pack.push(1);
+    state.gear.store.set(1, obj);
+
+    const item = createAgentView(state).inventory()[0];
+    expect(item?.curses).toEqual(["teleportation"]);
   });
 });

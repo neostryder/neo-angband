@@ -103,6 +103,10 @@ export interface PlayerView {
   status: PlayerStatusView;
   dead: boolean;
   winner: boolean;
+  /** Namespaced player-race id, when a ContentIdResolver with player races is supplied. */
+  playerRaceId?: string;
+  /** Namespaced player-class id, when a ContentIdResolver with player classes is supplied. */
+  playerClassId?: string;
   /** Derived skills (SKILL order); length SKILL_MAX. */
   skills: number[];
   /** Current shapechange name, or null in the normal shape. */
@@ -251,6 +255,12 @@ export interface SpellView {
   mana: number;
   /** Base failure chance (before level/stat/status adjustments). */
   fail: number;
+  /**
+   * Live cast-failure percent (spell_chance: base fail adjusted by level,
+   * casting stat, low mana, fear, stun, amnesia). Present only when the
+   * derived stat indices (state.statInd) are available.
+   */
+  chance?: number;
   learned: boolean;
   worked: boolean;
   forgotten: boolean;
