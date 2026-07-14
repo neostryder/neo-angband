@@ -23,6 +23,7 @@ import {
   createDungeonProfiles,
   DungeonProfiles,
   gauntletGen,
+  hardCentreGen,
   labyrinthGen,
   lairGen,
   loadDunProfile,
@@ -532,14 +533,96 @@ function assertLevelInvariants(g: Gen): void {
   for (const o of g.objects) expect(c.isObjectHolding(o.grid)).toBe(true);
 }
 
-describe("moria / lair / gauntlet generators", () => {
-  it("registers the real builders (not the modified alias), hard_centre deferred", () => {
+/**
+ * hard_centre invariants. Unlike the cavern-only builders a greater vault sits
+ * at the centre; its interior may hold passable pockets sealed behind veins,
+ * permanent walls or inner walls that ensure_connectedness (faithfully) refuses
+ * to tunnel through. So the connectivity guarantee is over the CAVERN network,
+ * not the vault interior: every NON-vault traversable grid must be reachable
+ * from the player (this is exactly what connect_caverns + ensure_connectedness +
+ * chunk_copy are responsible for). The vault itself must be present and the
+ * player must stand on a non-vault floor.
+ */
+function assertHardCentreInvariants(g: Gen): void {
+  const c = g.c;
+  const p = g.playerSpot as Loc;
+  expect(p).not.toBeNull();
+  expect(c.inBoundsFully(p)).toBe(true);
+  expect(c.isFloor(p)).toBe(true);
+  expect(c.sqinfoHas(p, SQUARE.VAULT)).toBe(false);
+
+  /* Stairs present. */
+  expect(c.featCount[FEAT.MORE] ?? 0).toBeGreaterThanOrEqual(1);
+  expect(c.featCount[FEAT.LESS] ?? 0).toBeGreaterThanOrEqual(1);
+
+  /* Perimeter permanent rock. */
+  for (let x = 0; x < c.width; x++) {
+    expect(c.isPerm(loc(x, 0))).toBe(true);
+    expect(c.isPerm(loc(x, c.height - 1))).toBe(true);
+  }
+  for (let y = 0; y < c.height; y++) {
+    expect(c.isPerm(loc(0, y))).toBe(true);
+    expect(c.isPerm(loc(c.width - 1, y))).toBe(true);
+  }
+
+  /* The centre vault is present (chunk_copy carried its VAULT-flagged grids). */
+  let vaultCells = 0;
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      if (c.sqinfoHas(loc(x, y), SQUARE.VAULT)) vaultCells++;
+    }
+  }
+  expect(vaultCells).toBeGreaterThan(0);
+
+  /* The cavern network (non-vault traversable) is fully connected: BFS from the
+   * player must reach every non-vault traversable grid. */
+  const trav = (gr: Loc): boolean => c.isPassable(gr) || c.isDoor(gr) || c.isRubble(gr);
+  const reached = new Uint8Array(c.width * c.height);
+  const stack: Loc[] = [p];
+  reached[p.y * c.width + p.x] = 1;
+  const dirs = [loc(0, 1), loc(0, -1), loc(1, 0), loc(-1, 0)];
+  while (stack.length) {
+    const cur = stack.pop() as Loc;
+    for (const d of dirs) {
+      const n = loc(cur.x + d.x, cur.y + d.y);
+      if (!c.inBounds(n)) continue;
+      const idx = n.y * c.width + n.x;
+      if (reached[idx]) continue;
+      if (!trav(n)) continue;
+      reached[idx] = 1;
+      stack.push(n);
+    }
+  }
+  let nonVaultTotal = 0;
+  let nonVaultReached = 0;
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      const gr = loc(x, y);
+      if (!trav(gr) || c.sqinfoHas(gr, SQUARE.VAULT)) continue;
+      nonVaultTotal++;
+      if (reached[y * c.width + x]) nonVaultReached++;
+    }
+  }
+  expect(nonVaultTotal).toBeGreaterThan(0);
+  expect(nonVaultReached).toBe(nonVaultTotal);
+
+  /* Bounded, legal monsters and objects. */
+  expect(g.monsters.length).toBeGreaterThanOrEqual(1);
+  expect(g.monsters.length).toBeLessThan(constants.levelMonsterMax);
+  for (const m of g.monsters) expect(c.inBoundsFully(m.grid)).toBe(true);
+  for (const o of g.objects) expect(c.isObjectHolding(o.grid)).toBe(true);
+}
+
+describe("moria / lair / gauntlet / hard_centre generators", () => {
+  it("registers the real builders (not the modified alias)", () => {
     const profiles = createDungeonProfiles(loadRecords<DunProfileRecordJson>("dungeon_profile"));
     expect(profiles.builder("moria")).toBe(moriaGen);
     expect(profiles.builder("lair")).toBe(lairGen);
     expect(profiles.builder("gauntlet")).toBe(gauntletGen);
-    /* hard_centre still delegates to modified_gen (vault_chunk deferred). */
-    expect(profiles.builder("hard_centre")).toBe(modifiedGen);
+    /* hard_centre is now a real builder (vault_chunk ported), still not enabled
+     * for choose() (#80). */
+    expect(profiles.builder("hard_centre")).toBe(hardCentreGen);
+    expect(profiles.builder("hard_centre")).not.toBe(modifiedGen);
   });
 
   it("moria_gen builds a connected modified-style level with cave dwellers", () => {
@@ -599,6 +682,30 @@ describe("moria / lair / gauntlet generators", () => {
     expect(serialize(a)).toBe(serialize(b));
     expect(a.monsters.length).toBe(b.monsters.length);
     expect(a.objects.length).toBe(b.objects.length);
+  });
+
+  it("hard_centre_gen wraps a greater vault in four connected caverns", () => {
+    const built = hardCentreGen(builderCtxNamed(55, 222, "hard centre"));
+    expect(built.error).toBeNull();
+    const g = built.gen as Gen;
+    expect(g).not.toBeNull();
+    assertHardCentreInvariants(g);
+  });
+
+  it("hard_centre_gen is deterministic run-to-run for a fixed seed", () => {
+    const a = hardCentreGen(builderCtxNamed(55, 555, "hard centre")).gen as Gen;
+    const b = hardCentreGen(builderCtxNamed(55, 555, "hard centre")).gen as Gen;
+    expect(serialize(a)).toBe(serialize(b));
+    expect(a.monsters.length).toBe(b.monsters.length);
+    expect(a.objects.length).toBe(b.objects.length);
+  });
+
+  it("hard_centre_gen produces connected caverns for several seeds", () => {
+    for (const seed of [222, 555, 777]) {
+      const built = hardCentreGen(builderCtxNamed(55, seed, "hard centre"));
+      expect(built.error).toBeNull();
+      assertHardCentreInvariants(built.gen as Gen);
+    }
   });
 });
 

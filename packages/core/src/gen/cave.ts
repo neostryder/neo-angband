@@ -19,15 +19,14 @@
  *
  * PORTED (multi-region): moria_gen (modified-style with the moria profile +
  * "Moria dwellers" restriction), lair_gen (a modified half joined to a themed
- * cavern) and gauntlet_gen (two caverns split by an unmappable labyrinth), with
- * the chunk_copy merge helper and connect_caverns. These four builder keys
- * (moria/lair/gauntlet) are registered but NOT yet enabled for choose() (#80).
+ * cavern), gauntlet_gen (two caverns split by an unmappable labyrinth) and
+ * hard_centre_gen (a greater vault surrounded by four caverns), with the
+ * chunk_copy merge helper, connect_caverns and vault_chunk (room.ts). These
+ * four builder keys (moria/lair/gauntlet/hard_centre) are registered but NOT
+ * yet enabled for choose() (#80).
  *
- * DEFERRED: hard_centre_gen (its builder key still delegates to modified_gen):
- * vault_chunk needs random_vault and the vault list from room.ts, which are not
- * exposed on CaveBuildContext; connect_caverns is ported and unit-tested ready
- * for when hard_centre is wired. The town builder's full store generation,
- * persistent-level connectors and the arena level remain deferred.
+ * DEFERRED: the town builder's full store generation, persistent-level
+ * connectors and the arena level remain deferred.
  */
 
 import type { Constants } from "../constants";
@@ -39,7 +38,7 @@ import { Chunk, featIsBright } from "../world/chunk";
 import type { FeatureRegistry } from "../world/feature";
 import type { MakeDeps } from "../obj/make";
 import type { RoomProfile, RoomRegistry } from "./room";
-import { roomBuild, symmetryTransform } from "./room";
+import { roomBuild, symmetryTransform, vaultChunk } from "./room";
 import { monRestrict, setPitType, spreadMonsters } from "./gen-monster";
 import {
   CaveFinder,
@@ -50,6 +49,7 @@ import {
   allocObjects,
   allocStairs,
   caveFind,
+  caveFindInRange,
   correctDir,
   countNeighbors,
   drawRectangle,
@@ -69,6 +69,7 @@ import {
   shuffle,
   squareIsEmpty,
   squareIsGraniteWithFlag,
+  squareIswallOuter,
   squareIsRoom,
   squareIsStrongWall,
   SET_BOTH,
@@ -1791,6 +1792,192 @@ export const gauntletGen: CaveBuilder = (ctx) => {
   return { gen: g, error: null };
 };
 
+/* ------------------------------------------------------------------ *
+ * Hard-centre generator (gen-cave.c hard_centre_gen L3291): a greater vault at
+ * the centre, surrounded by four caverns (upper, lower, left, right) all joined
+ * together by connect_caverns and then to the vault by ensure_connectedness.
+ * ------------------------------------------------------------------ */
+
+export const hardCentreGen: CaveBuilder = (ctx) => {
+  const { rng, reg, constants, dun, depth } = ctx;
+
+  /* A factory that mints a Gen bound to a fresh sub-chunk (Gen/Chunk
+   * construction stays here; vault_chunk lives in room.ts). */
+  const makeSubGen = (h: number, w: number, d: number): Gen => {
+    const cc = new Chunk(reg, h, w);
+    cc.depth = d;
+    return makeGen(ctx, cc);
+  };
+
+  /* Make a greater vault for the centre (gen-cave.c L3295). */
+  const centre = vaultChunk(rng, ctx.rooms.vaults, depth, makeSubGen);
+  if (!centre) {
+    return { gen: null, error: "could not create the centre vault" };
+  }
+
+  /* No persistent levels of this type for now (gen-cave.c L3314). */
+  if (dun.persist) {
+    return { gen: null, error: "no hard centre levels in persistent dungeons" };
+  }
+
+  /*
+   * Carve out entrances to the vault.  Only use one if there aren't explicitly
+   * marked entrances since those vaults typically have empty space about them
+   * and the extra entrances aren't useful (gen-cave.c L3327).
+   */
+  const ent0 = dun.entN[0] ?? 0;
+  const k0 = 1 + (ent0 > 0 ? rng.randint1(3) : 0);
+  dun.wallN = 0;
+  for (let i = 0; i < k0; i++) {
+    let grid: Loc;
+    if (ent0 === 0) {
+      /* No explicitly marked entrances: look for a SQUARE_WALL_OUTER grid. */
+      const found = caveFind(centre.c, rng, (cc, gr) => squareIswallOuter(cc, gr));
+      if (!found) {
+        if (i === 0) {
+          return {
+            gen: null,
+            error: "no SQUARE_WALL_OUTER grid for an entrance to the centre vault",
+          };
+        }
+        break;
+      }
+      grid = found;
+    } else {
+      grid = chooseRandomEntrance(centre, 0, null, 0, dun.wall.slice(0, i));
+      if (grid.x === 0 && grid.y === 0) {
+        if (i === 0) {
+          return {
+            gen: null,
+            error: "random selection of entrance to the centre vault failed",
+          };
+        }
+        break;
+      }
+    }
+    /* Store position in dun->wall, mark neighbors invalid, and floor it. */
+    pierceOuterWall(centre, grid);
+    centre.c.setFeat(grid, FEAT.FLOOR);
+  }
+
+  /* Measure the vault, rotate to make it wider than it is high (L3368). */
+  let rotate = 0;
+  let centreCavernYpos: number;
+  let centreCavernHgt: number;
+  let centreCavernWid: number;
+  if (centre.c.height > centre.c.width) {
+    rotate = 1;
+    centreCavernYpos = Math.trunc((constants.dungeonHgt - centre.c.width) / 2);
+    centreCavernHgt = centre.c.width;
+    centreCavernWid = centre.c.height;
+  } else {
+    centreCavernYpos = Math.trunc((constants.dungeonHgt - centre.c.height) / 2);
+    centreCavernHgt = centre.c.height;
+    centreCavernWid = centre.c.width;
+  }
+  const upperCavernHgt = centreCavernYpos;
+  const lowerCavernHgt = constants.dungeonHgt - upperCavernHgt - centreCavernHgt;
+  const lowerCavernYpos = centreCavernYpos + centreCavernHgt;
+
+  /* Make the caverns (gen-cave.c L3385): upper, lower, then left, right. The
+   * upstream `join` argument is NULL for all four (non-persistent). */
+  const upperCavern = cavernChunk(ctx, depth, upperCavernHgt, centreCavernWid, []);
+  const lowerCavern = cavernChunk(ctx, depth, lowerCavernHgt, centreCavernWid, []);
+  const leftCavernWid = Math.trunc((constants.dungeonWid - centreCavernWid) / 2);
+  const rightCavernWid = constants.dungeonWid - leftCavernWid - centreCavernWid;
+  const leftCavern = cavernChunk(ctx, depth, constants.dungeonHgt, leftCavernWid, []);
+  const rightCavern = cavernChunk(ctx, depth, constants.dungeonHgt, rightCavernWid, []);
+
+  /* Return on failure (gen-cave.c L3398). The C-side artifact/monster cleanup
+   * is not needed here: the sub-chunks are simply discarded. */
+  if (!upperCavern || !lowerCavern || !leftCavern || !rightCavern) {
+    return { gen: null, error: "could not create one or more of the surrounding caverns" };
+  }
+
+  /* Make a cave to copy them into, and find a floor square in each cavern. */
+  const c = new Chunk(reg, constants.dungeonHgt, constants.dungeonWid);
+  c.depth = depth;
+  const g = makeGen(ctx, c);
+
+  const floor: Loc[] = [loc(0, 0), loc(0, 0), loc(0, 0), loc(0, 0)];
+  /* find_empty_range mirrors the C single reused `grid` local: on the (never
+   * hit in practice) failure it keeps the previous value. */
+  let grid = loc(0, 0);
+  const findEmptyRange = (tl: Loc, br: Loc): void => {
+    const found = caveFindInRange(c, rng, tl, br, (_cc, gr) => squareIsEmpty(g, gr));
+    if (found) grid = found;
+  };
+
+  /* Left. */
+  chunkCopy(g, leftCavern, 0, 0, 0);
+  findEmptyRange(loc(0, 0), loc(leftCavernWid - 1, constants.dungeonHgt - 1));
+  floor[0] = grid;
+
+  /* Upper. */
+  chunkCopy(g, upperCavern, 0, leftCavernWid, 0);
+  findEmptyRange(
+    loc(leftCavernWid, 0),
+    loc(leftCavernWid + centreCavernWid - 1, upperCavernHgt - 1),
+  );
+  floor[1] = grid;
+
+  /* Centre. */
+  chunkCopy(g, centre, centreCavernYpos, leftCavernWid, rotate);
+
+  /* Lower. */
+  chunkCopy(g, lowerCavern, lowerCavernYpos, leftCavernWid, 0);
+  findEmptyRange(
+    loc(leftCavernWid, lowerCavernYpos),
+    loc(leftCavernWid + centreCavernWid - 1, constants.dungeonHgt - 1),
+  );
+  floor[3] = grid;
+
+  /* Right. */
+  chunkCopy(g, rightCavern, 0, leftCavernWid + centreCavernWid, 0);
+  findEmptyRange(
+    loc(leftCavernWid + centreCavernWid, 0),
+    loc(constants.dungeonWid - 1, constants.dungeonHgt - 1),
+  );
+  floor[2] = grid;
+
+  /* Encase in perma-rock (gen-cave.c L3457). */
+  drawRectangle(c, 0, 0, c.height - 1, c.width - 1, FEAT.PERM, SQUARE.NONE, true);
+
+  /* Connect up all the caverns, then to the centre entrances. */
+  connectCaverns(g, floor);
+  ensureConnectedness(g, false);
+
+  const cavernArea =
+    (leftCavernWid + rightCavernWid) * constants.dungeonHgt +
+    centreCavernWid * (upperCavernHgt + lowerCavernHgt);
+
+  /* Place 2-3 down stairs and 1-2 up stairs near some walls (minsep 0, so the
+   * avoid-list is unused; NULL upstream). */
+  allocStairs(g, FEAT.MORE, rng.randRange(1, 3), 0, false, [], dun.quest);
+  allocStairs(g, FEAT.LESS, rng.randRange(1, 2), 0, false, [], dun.quest);
+
+  /* Generate some rubble, traps and monsters, scaled by total cavern size. */
+  let k = Math.max(Math.min(Math.trunc(c.depth / 3), 10), 2);
+  k = Math.trunc((k * cavernArea) / (constants.dungeonHgt * constants.dungeonWid));
+
+  allocObjects(g, SET_BOTH, TYP_RUBBLE, rng.randint1(k), c.depth);
+  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth);
+
+  /* Determine the character location. */
+  const pspot = newPlayerSpot(g);
+  if (!pspot) return { gen: null, error: "could not place player" };
+  g.playerSpot = pspot;
+
+  let mcount = rng.randint1(8) + k;
+  for (; mcount > 0; mcount--) pickAndPlaceDistantMonster(g, pspot, 0, true, c.depth);
+
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(k, 2), c.depth + 5);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(Math.trunc(k / 2), 2), c.depth);
+  allocObjects(g, SET_BOTH, TYP_GOOD, rng.randint0(Math.trunc(k / 4)), c.depth);
+
+  return { gen: g, error: null };
+};
+
 /**
  * The eight town entrance features, in store order: the seven shops plus the
  * player's Home. Their FEAT_* indices are the store_at keys the store runtime
@@ -2450,11 +2637,7 @@ export function createDungeonProfiles(
   reg.registerBuilder("moria", moriaGen);
   reg.registerBuilder("lair", lairGen);
   reg.registerBuilder("gauntlet", gauntletGen);
-  /* hard_centre still delegates to modified_gen: its vault_chunk needs
-   * random_vault + the vault list, which live in room.ts (out of this agent's
-   * ownership) and are not exposed on CaveBuildContext. connect_caverns is
-   * ported and unit-tested for when hard_centre_gen is wired up. */
-  reg.registerBuilder("hard_centre", modifiedGen);
+  reg.registerBuilder("hard_centre", hardCentreGen);
 
   /* Enable town, classic and modified for selection (the two working dungeon
    * profiles plus the minimal town). Their room lists carry a rarity-0,
