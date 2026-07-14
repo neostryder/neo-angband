@@ -31,7 +31,7 @@ import type { GameObject } from "../obj/object";
 import { OBJ_MOD_NAMES } from "../obj/bind";
 import { objectValue } from "../obj/value";
 import { monsterIsVisible } from "../mon/predicate";
-import { PY_SPELL } from "../player/spell";
+import { PY_SPELL, spellChance } from "../player/spell";
 import { priceItem } from "../store/price";
 import { AGENT_API_VERSION } from "./types";
 import type {
@@ -42,6 +42,7 @@ import type {
   MonsterView,
   PlayerView,
   SpellbookView,
+  SpellView,
   StoreItemView,
   StoreView,
   TargetView,
@@ -122,10 +123,14 @@ function itemView(
     for (let i = 0; i < obj.curses.length; i++) {
       const power = obj.curses[i]?.power ?? 0;
       if (power <= 0) continue;
-      /* Real curse names come from the bound registry (already threaded for
-       * pricing); fall back to the numeric index when no registry dep was
-       * supplied. */
-      curses.push(deps.reg?.curses[i]?.name ?? String(i));
+      /* Curse names resolve from the always-present RuneEnv curse table (real
+       * in production, inert [null] in the worldless harness), then the
+       * optional registry dep, then the numeric index as a last resort. */
+      curses.push(
+        state.runeEnv.curses[i]?.name ??
+          deps.reg?.curses[i]?.name ??
+          String(i),
+      );
     }
   }
 
@@ -165,11 +170,11 @@ function itemView(
   return view;
 }
 
-function playerView(state: GameState): PlayerView {
+function playerView(state: GameState, deps: AgentViewDeps): PlayerView {
   const p = state.actor.player;
   const combat = state.actor.combat;
   const playerState = state.playerState;
-  return {
+  const view: PlayerView = {
     race: p.race.name,
     cls: p.cls.name,
     level: p.lev,
@@ -210,6 +215,13 @@ function playerView(state: GameState): PlayerView {
     blows: combat.numBlows,
     shots: combat.numShots,
   };
+  if (deps.resolver) {
+    const raceId = deps.resolver.playerRaceIdOrNull(p.race.ridx);
+    if (raceId !== null) view.playerRaceId = raceId;
+    const classId = deps.resolver.playerClassIdOrNull(p.cls.cidx);
+    if (classId !== null) view.playerClassId = classId;
+  }
+  return view;
 }
 
 function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
@@ -307,13 +319,16 @@ function storeViews(state: GameState, deps: AgentViewDeps): StoreView[] {
 
 function spellbookViews(state: GameState): SpellbookView[] {
   const p = state.actor.player;
+  /* Live cast-failure needs the derived stat indices; absent (before the first
+   * calc_bonuses / worldless harness) the chance field is simply omitted. */
+  const statInd = state.statInd;
   return p.cls.magic.books.map((book) => ({
     tval: book.tvalIdx,
     name: book.name,
     realm: book.realm.name,
     spells: book.spells.map((s) => {
       const flags = p.spellFlags[s.sidx] ?? 0;
-      return {
+      const view: SpellView = {
         name: s.name,
         sidx: s.sidx,
         bidx: s.bidx,
@@ -324,6 +339,8 @@ function spellbookViews(state: GameState): SpellbookView[] {
         worked: (flags & PY_SPELL.WORKED) !== 0,
         forgotten: (flags & PY_SPELL.FORGOTTEN) !== 0,
       };
+      if (statInd) view.chance = spellChance(p, statInd, s.sidx);
+      return view;
     }),
   }));
 }
@@ -343,7 +360,7 @@ export function createAgentView(
   return {
     apiVersion: AGENT_API_VERSION,
     turn: () => state.turn,
-    player: () => playerView(state),
+    player: () => playerView(state, deps),
     monsters: () => monsterViews(state, deps),
     cell: (x, y) => cellView(state, x, y, deps),
     mapBounds: () => ({ width: state.chunk.width, height: state.chunk.height }),
