@@ -32,7 +32,7 @@ import type { Monster, MonsterGroupInfo } from "../mon/monster";
 import type { MonsterLore } from "../mon/lore";
 import type { MonsterRegistry } from "../mon/bind";
 import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
+import type { Player, PlayerQuest } from "../player/player";
 import type { PlayerRegistry } from "../player/bind";
 import type { HistoryInfo } from "../player/history";
 import type { TrapKind } from "../world/trap";
@@ -328,6 +328,15 @@ export interface SavedPlayer {
   shapeName: string | null;
   skills: number[];
   upkeep: { playing: boolean; newSpells: number; totalWeight: number };
+  /**
+   * quests (player-quest.h): the per-character quest history. Optional: absent
+   * in saves written before the quest system, which reload with no quests (and
+   * hence no win condition until re-birthed) - the SAVEFILE_IMPORT-tolerant
+   * posture matching the other late-added fields.
+   */
+  quests?: PlayerQuest[];
+  /** total_winner: the victory flag. Optional; absent saves load as false. */
+  totalWinner?: boolean;
 }
 
 export function serializePlayer(p: Player): SavedPlayer {
@@ -384,6 +393,8 @@ export function serializePlayer(p: Player): SavedPlayer {
     shapeName: p.shape ? p.shape.name : null,
     skills: [...p.skills],
     upkeep: { ...p.upkeep },
+    quests: p.quests.map((q) => ({ ...q })),
+    totalWinner: p.totalWinner,
   };
 }
 
@@ -455,6 +466,8 @@ export function deserializePlayer(
       : null;
   p.skills = [...data.skills];
   p.upkeep = { ...data.upkeep };
+  p.quests = data.quests ? data.quests.map((q) => ({ ...q })) : [];
+  p.totalWinner = data.totalWinner ?? false;
   return p;
 }
 

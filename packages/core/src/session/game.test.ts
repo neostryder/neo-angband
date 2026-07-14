@@ -36,6 +36,7 @@ const pack: GamePack = {
   projection: loadRecords("projection"),
   trap: loadRecords("trap"),
   names: loadRecords("names"),
+  quest: loadRecords("quest"),
   obj: {
     objectBase: loadJson("object_base"),
     object: loadJson("object"),
@@ -86,6 +87,16 @@ describe("startGame (new-game assembly)", () => {
     }
     // Monster slot 0 is unused; any placed monsters registered from 1.
     expect(state.monsters[0]).toBeNull();
+  });
+
+  it("seeds the standard quests at birth (player_quests_reset)", () => {
+    const { state } = startGame(pack, { seed: 123, depth: 1 });
+    const p = state.actor.player;
+    // The Sauron/Morgoth guardian quests are copied from the pack, zeroed.
+    expect(p.quests).toHaveLength(2);
+    expect(p.quests.map((q) => q.level).sort((a, b) => a - b)).toEqual([99, 100]);
+    expect(p.quests.every((q) => q.curNum === 0)).toBe(true);
+    expect(p.totalWinner).toBe(false);
   });
 
   it("defaults to Human Warrior, honouring race/class overrides", () => {
