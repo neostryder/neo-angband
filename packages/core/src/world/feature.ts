@@ -160,6 +160,11 @@ export class FeatureRegistry {
     return f;
   }
 
+  /** Every bound feature, in code-registration order (for id enumeration). */
+  allFeatures(): Feature[] {
+    return [...this.byCode.values()];
+  }
+
   /** lookup by full name (used by gamedata cross-references). */
   lookupByName(name: string): Feature | null {
     return this.byName.get(name) ?? null;
