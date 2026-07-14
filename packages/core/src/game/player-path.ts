@@ -16,14 +16,19 @@
  * the provider. One keypress therefore drives a whole run, and runGameLoop
  * interleaves it with monster and world turns exactly as upstream does.
  *
+ * EXTERNAL disturb(): disturb() (below) is exported and called from the upstream
+ * disturb() sites outside the per-step run_test checks - a monster becoming
+ * easily visible / leaving view (update_mon, game/known.ts), a visible monster
+ * acting in view or bursting a door (monster_turn / monster_turn_can_move,
+ * game/monster-turn.ts), and the player taking a melee blow (take_hit, wired
+ * through game/mon-side.ts; world DoTs and projections wire it in session/game.ts
+ * and game/project-player.ts). All are deterministic (no RNG).
+ *
  * DEFERRED (ledgered in game-player-path.yaml): pathfinding / travel
  * (find_path, prepare_pfdistances, path_nearest_known / _unknown - the A*
  * with door and rubble penalties) and the pathfinding branch of run_step
  * (upkeep->steps / step_count, the automatic open-door / tunnel-rubble
- * command pushes); disturb() from events OTHER than the per-step run_test
- * checks (a monster waking or approaching from behind, taking damage, a
- * message) rides the monster-AI / message layer - disturb() is exported so
- * those sites can call it; the OF_TRAP_IMMUNE half of player_is_trapsafe
+ * command pushes); the OF_TRAP_IMMUNE half of player_is_trapsafe
  * (#13 equipment flags); the running torch-radius recalculation (PU_TORCH)
  * and the run-into-trap-disarms nuance ride the light / trap layers.
  */
@@ -369,10 +374,11 @@ function lockedPenalty(state: GameState): number {
 
 /** compute_rubble_penalty: expected movement turns to dig through rubble. */
 function rubblePenalty(state: GameState): number {
-  /* The swap-to-best-digger recalculation is deferred (as in tunnelAux); the
-   * wielded DIGGING skill decides. */
+  /* player_best_digger (player-path.c L219-256): the swap-to-best-digger DIGGING
+   * (RNG-free), matching do_cmd_tunnel_aux. Absent the hook (worldless harness),
+   * the wielded DIGGING skill decides. */
   const chances = calcDiggingChances(
-    state.actor.combat.skills[SKILL.DIGGING] ?? 0,
+    state.bestDiggerDigging?.() ?? (state.actor.combat.skills[SKILL.DIGGING] ?? 0),
   );
   const r = chances[DIGGING.RUBBLE] as number;
   if (r <= 0) return PF_INF;

@@ -37,6 +37,7 @@ import {
   toDefenderState,
 } from "../player/calcs";
 import type { PlayerState } from "../player/calcs";
+import { playerBestDiggerDigging } from "../player/best-digger";
 import { playerExpGain, playerKillExp } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
 import { historyAdd, historyFindArtifact } from "../player/history";
@@ -443,6 +444,35 @@ function wireGame(
     if (p.csp > p.msp) p.csp = p.msp;
   };
   state.updateBonuses = refreshDerived;
+
+  // player_best_digger (player-util.c L744): digging temporarily wields the
+  // pack's best digger and recomputes calc_bonuses (update=false, no RNG) to
+  // read its DIGGING; this closes over the same calc_bonuses options as
+  // refreshDerived so the swapped derive matches upstream. Feeds the existing
+  // randint0(1600) dig roll (game/cave-cmd.ts tunnelAux, game/player-path.ts
+  // rubblePenalty) without adding or reordering any draw.
+  state.bestDiggerDigging = (): number => {
+    const p = state.actor.player;
+    const equipment = p.equipment.map((h) =>
+      h ? gearGet(state.gear, h) : null,
+    );
+    const weaponSlot = p.body.slots.findIndex((s) => s.type === "WEAPON");
+    const daytime = isDaytime(state.turn, state.z.dayLength);
+    return playerBestDiggerDigging(
+      equipment,
+      [...state.gear.store.values()],
+      weaponSlot,
+      (equip) =>
+        calcBonuses(p, {
+          equipment: equip,
+          timedEffects: players.timed,
+          curses: reg.objects.curses,
+          update: false,
+          depth: state.chunk.depth,
+          isDaytime: daytime,
+        }).skills[SKILL.DIGGING] ?? 0,
+    );
+  };
 
   // Experience (player.c): a level change recomputes the derived state
   // (upstream's PU_BONUS | PU_HP | PU_SPELLS), and a player kill rewards
