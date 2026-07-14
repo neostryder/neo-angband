@@ -185,6 +185,8 @@ import {
   SAVE_VERSION,
   deserializeChunk,
   deserializeFloor,
+  buildFeatRemap,
+  deserializeArtifactsCreated,
   deserializeGear,
   deserializeKnown,
   deserializeLore,
@@ -194,6 +196,7 @@ import {
   serializeGame,
 } from "./save";
 import type { SavedGame } from "./save";
+import { ContentIdResolver } from "../mod/ids";
 
 /**
  * The getItem seam body (cmd_get_item's "tgtitem" fast path, cmd-core.c L1060):
@@ -1663,7 +1666,14 @@ function wornArmorWeight(
 
 /** Serialize a started game into the JSON save format (decision 9). */
 export function saveGame(game: StartedGame): SavedGame {
-  return serializeGame(game.state, game.flavor, game.seedFlavor, game.randartSeed);
+  const ids = new ContentIdResolver(game.booted.registries);
+  return serializeGame(
+    game.state,
+    game.flavor,
+    game.seedFlavor,
+    ids,
+    game.randartSeed,
+  );
 }
 
 /**
@@ -1679,6 +1689,12 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
   const reg = bindCore(pack);
   const players = bindPlayer(pack.player);
   registerBookKinds(reg.objects, players.classes);
+
+  // The content-id resolver: every namespaced string id in the save resolves
+  // back to a runtime index against this bound pack (mod/ids.ts). The feature
+  // remap turns the save's terrain-legend indices into this pack's indices.
+  const ids = new ContentIdResolver(reg);
+  const featRemap = buildFeatRemap(save.featLegend, ids);
 
   // Restore the option store (older saves lack it: table defaults). Do this
   // before the artifact-set swap so birth_randarts is known.
@@ -1698,12 +1714,18 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
   // flags (built after swapRandartSet so aidx references align); older saves
   // predate the field and load with an all-false set (a fresh game's state).
   const artifacts = save.artifactsCreated
-    ? ArtifactState.restore(save.artifactsCreated)
+    ? ArtifactState.restore(
+        deserializeArtifactsCreated(
+          save.artifactsCreated,
+          reg.objects.artifacts.length,
+          ids,
+        ),
+      )
     : new ArtifactState(reg.objects.artifacts.length);
 
-  const chunk = deserializeChunk(save.chunk, reg.features);
-  const player = deserializePlayer(save.player, players);
-  const gear = deserializeGear(save.gear, reg.objects);
+  const chunk = deserializeChunk(save.chunk, reg.features, featRemap);
+  const player = deserializePlayer(save.player, players, reg.objects, ids);
+  const gear = deserializeGear(save.gear, reg.objects, ids);
 
   const equipment = player.equipment.map((h) => (h ? gearGet(gear, h) : null));
   const weaponSlot = player.body.slots.findIndex((s) => s.type === "WEAPON");
@@ -1739,23 +1761,23 @@ export function loadGame(pack: GamePack, save: SavedGame): StartedGame {
     actor,
     gear,
     monsters: save.monsters.map((m) =>
-      m ? deserializeMonster(m, reg.monsters, reg.objects) : null,
+      m ? deserializeMonster(m, reg.monsters, reg.objects, ids) : null,
     ),
     groups: save.groups.map((g) =>
       g ? { index: g.index, leader: g.leader, members: [...g.members] } : null,
     ),
-    floor: deserializeFloor(save.floor, reg.objects, chunk.width),
+    floor: deserializeFloor(save.floor, reg.objects, chunk.width, ids),
     traps: reg.traps
-      ? deserializeTraps(save.traps, reg.traps, chunk.width)
+      ? deserializeTraps(save.traps, reg.traps, chunk.width, ids)
       : new Map(),
-    known: deserializeKnown(save.known, chunk.width, chunk.height),
+    known: deserializeKnown(save.known, chunk.width, chunk.height, featRemap),
     /* The target is not persisted (as upstream: the savefile carries no
      * target and loading starts unset). */
     target: newTargetState(),
     ignore: new IgnoreSettings(),
     options,
     artifacts,
-    lore: deserializeLore(save.lore),
+    lore: deserializeLore(save.lore, ids),
     turn: save.turn,
     z: {
       ...DEFAULT_GAME_CONSTANTS,

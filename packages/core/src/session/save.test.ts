@@ -9,7 +9,8 @@ import type { ObjectKind } from "../obj/types";
 import { describeObject } from "../game/describe";
 import { loadGame, saveGame, startGame } from "./game";
 import type { GamePack, StartedGame } from "./game";
-import { decodeSavedGame, encodeSavedGame } from "./save";
+import { decodeSavedGame, encodeSavedGame, SAVE_VERSION } from "./save";
+import type { SavedGame } from "./save";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -274,7 +275,7 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
 
     const ok = decodeSavedGame(bytes);
     expect(ok.verified).toBe(true);
-    expect(ok.save?.version).toBe(1);
+    expect(ok.save?.version).toBe(SAVE_VERSION);
     expect(ok.save?.player.clsName).toBe("Warrior");
 
     /* Flip one payload byte: the digest no longer matches. */
@@ -412,5 +413,61 @@ describe("birth_randarts (obj-randart.c do_randart)", () => {
       expect(reArts[i]?.toD).toBe(rndArts[i]?.toD);
       expect(reArts[i]?.name).toBe(rndArts[i]?.name);
     }
+  });
+});
+
+describe("string-id serialization (P7.1) decouples saves from registry order", () => {
+  /** A pack whose monster records are reversed, shifting every ridx. */
+  function reversedMonsterPack(): GamePack {
+    return {
+      ...pack,
+      mon: { ...pack.mon, monsters: [...pack.mon.monsters].reverse() },
+    };
+  }
+
+  it("reloads a save against a reordered monster registry to the same races", () => {
+    const game = startGame(pack, { seed: 7, depth: 2 });
+    playTurns(game, 6);
+    const before = game.state.monsters
+      .filter((m): m is NonNullable<typeof m> => m !== null)
+      .map((m) => m.race.name);
+    expect(before.length).toBeGreaterThan(0);
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+
+    // Loading against the reversed pack: every ridx has shifted, so a numeric
+    // r_idx save would resolve to the wrong monsters. String ids must not.
+    const reorderedPack = reversedMonsterPack();
+    const restored = loadGame(reorderedPack, saved);
+    const after = restored.state.monsters
+      .filter((m): m is NonNullable<typeof m> => m !== null)
+      .map((m) => m.race.name);
+    expect(after).toEqual(before);
+
+    // Prove the reordering actually moved indices (else the test is vacuous):
+    // the same race resolves to a different ridx in the two packs.
+    const name = before[0]!;
+    const origRidx = game.booted.registries.monsters.races.find(
+      (r) => r.name === name,
+    )?.ridx;
+    const newRidx = restored.booted.registries.monsters.races.find(
+      (r) => r.name === name,
+    )?.ridx;
+    expect(origRidx).toBeDefined();
+    expect(newRidx).toBeDefined();
+    expect(newRidx).not.toBe(origRidx);
+  });
+
+  it("preserves the RNG stream across a reordered-registry reload", () => {
+    const game = startGame(pack, { seed: 7, depth: 2 });
+    playTurns(game, 6);
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const rngBefore = game.state.rng.getState();
+
+    const restored = loadGame(reversedMonsterPack(), saved);
+    // The persisted seeded stream (decision 22) resumes exactly - the
+    // anti-save-scum guarantee is independent of content ordering.
+    expect(restored.state.rng.getState()).toEqual(rngBefore);
+    expect(restored.state.turn).toBe(game.state.turn);
   });
 });
