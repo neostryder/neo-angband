@@ -70,6 +70,7 @@ export type CommandCode =
   | "autopickup"
   | "ignore"
   | "disarm"
+  | "lock"
   | "rest"
   | "tunnel"
   | "open"
@@ -154,9 +155,12 @@ export interface CommandInfo {
 
 /**
  * The upstream game_cmds[] table (verb, repeat_allowed, can_use_energy,
- * auto_repeat_n). Codes absent here (null, browse-spell, ignore) are
+ * auto_repeat_n). Codes absent here (null, browse-spell, ignore, lock) are
  * UI-side only and cannot be queued, exactly as upstream cmd_idx()
- * returning -1.
+ * returning -1. "lock" has no upstream game_cmd - do_cmd_lock_door is reached
+ * from do_cmd_disarm on a closed unlocked door - so the port keeps it off this
+ * closed-for-parity table and exposes it as an action-registry code instead
+ * (game/cave-cmd.ts), reachable both directly and via the disarm dispatch.
  */
 export const COMMAND_INFO: ReadonlyMap<CommandCode, CommandInfo> = new Map<
   CommandCode,

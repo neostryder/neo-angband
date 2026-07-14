@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
-import { FEAT, MFLAG, MON_TMD } from "../generated";
+import { FEAT, MFLAG, MON_TMD, SQUARE } from "../generated";
 import { loc } from "../loc";
+import type { Loc } from "../loc";
+import type { Rng } from "../rng";
 import { SKILL } from "../player/types";
 import { ObjRegistry } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
@@ -213,6 +215,143 @@ describe("tunnel", () => {
     state.chunk.setFeat(loc(6, 5), FEAT.PERM);
     expect(run({ code: "tunnel", dir: 6 })).toBe(0);
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.PERM);
+  });
+});
+
+describe("tunnel - player_best_digger swap", () => {
+  it("digs with the swapped-in best digger's DIGGING, not the wielded one", () => {
+    const { state, run } = setup();
+    setDigging(state, 0); // the wielded weapon cannot dig at all
+    /* A pack shovel would grant a strong DIGGING via calc_bonuses. */
+    state.bestDiggerDigging = (): number => 2000;
+    state.chunk.setFeat(loc(6, 5), FEAT.MAGMA);
+    run({ code: "tunnel", dir: 6 });
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.FLOOR);
+  });
+
+  it("without the swap hook only the wielded DIGGING decides (dig fails)", () => {
+    const { state, run } = setup();
+    setDigging(state, 0);
+    state.chunk.setFeat(loc(6, 5), FEAT.MAGMA);
+    run({ code: "tunnel", dir: 6 });
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.MAGMA);
+  });
+});
+
+/** Set one combat skill without disturbing the others. */
+function setSkill(state: GameState, skill: number, value: number): void {
+  state.actor.combat = {
+    ...state.actor.combat,
+    skills: state.actor.combat.skills.map((v, i) => (i === skill ? value : v)),
+  };
+}
+
+/** An Rng that records the m_bonus / randint0 / randint1 call order. */
+function recordingRng(seq: {
+  mBonus?: number;
+  randint0?: number[];
+  randint1?: number[];
+}): { rng: Rng; log: string[] } {
+  const log: string[] = [];
+  let i0 = 0;
+  let i1 = 0;
+  const rng = {
+    mBonus: (): number => {
+      log.push("mBonus");
+      return seq.mBonus ?? 0;
+    },
+    randint0: (): number => {
+      log.push("randint0");
+      return seq.randint0?.[i0++] ?? 0;
+    },
+    randint1: (): number => {
+      log.push("randint1");
+      return seq.randint1?.[i1++] ?? 1;
+    },
+  };
+  return { rng: rng as unknown as Rng, log };
+}
+
+/** A closed door at (6,5), the player's grid lit, and a door-lock recorder. */
+function lockSetup(rng: Rng): {
+  state: GameState;
+  run: (cmd: PlayerCommand) => number;
+  msgs: string[];
+  locked: Set<string>;
+  power: () => number;
+} {
+  const state = makeState({ playerGrid: loc(5, 5) });
+  state.rng = rng;
+  state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN); // no_light penalty off
+  state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+  const locked = new Set<string>();
+  let recorded = -1;
+  const key = (g: Loc): string => `${g.x},${g.y}`;
+  state.setDoorLock = (g: Loc, p: number): void => {
+    recorded = p;
+    locked.add(key(g));
+  };
+  const msgs: string[] = [];
+  const registry = createDefaultRegistry();
+  installCaveCommands(registry, {
+    env: {
+      msg: (t: string): void => {
+        msgs.push(t);
+      },
+      isLockedDoor: (g: Loc): boolean => locked.has(key(g)),
+    },
+  });
+  const run = (cmd: PlayerCommand): number => {
+    const commands = [cmd];
+    state.nextCommand = (): PlayerCommand | null => commands.shift() ?? null;
+    return processPlayer(state, registry).energyUsed;
+  };
+  return { state, run, msgs, locked, power: () => recorded };
+}
+
+describe("lock door (do_cmd_lock_door)", () => {
+  it("locks the door on success: m_bonus then randint0(100), sets the power", () => {
+    const { rng, log } = recordingRng({ mBonus: 3, randint0: [0] });
+    const { state, run, msgs, locked, power } = lockSetup(rng);
+    setSkill(state, SKILL.DISARM_PHYS, 30); // i=30, power=3, j=27; 0 < 27 => lock
+    const energy = run({ code: "lock", dir: 6 });
+    expect(energy).toBe(state.z.moveEnergy);
+    expect(log).toEqual(["mBonus", "randint0"]); // exact order, no retry draw
+    expect(power()).toBe(3);
+    expect(locked.has("6,5")).toBe(true);
+    expect(msgs).toContain("You lock the door.");
+  });
+
+  it("failure with a high skill draws the keep-trying randint1(i)", () => {
+    const { rng, log } = recordingRng({
+      mBonus: 3,
+      randint0: [50], // >= j (27) => failure
+      randint1: [10], // > 5 => keep trying
+    });
+    const { state, run, msgs, locked } = lockSetup(rng);
+    setSkill(state, SKILL.DISARM_PHYS, 30);
+    run({ code: "lock", dir: 6 });
+    expect(log).toEqual(["mBonus", "randint0", "randint1"]);
+    expect(locked.size).toBe(0); // door not locked
+    expect(msgs).toContain("You failed to lock the door.");
+  });
+
+  it("failure with a low skill (i <= 5) draws no randint1", () => {
+    const { rng, log } = recordingRng({ mBonus: 0, randint0: [50] });
+    const { state, run, locked } = lockSetup(rng);
+    setSkill(state, SKILL.DISARM_PHYS, 5); // i=5, j=5; 50 >= 5 fail, i not > 5
+    run({ code: "lock", dir: 6 });
+    expect(log).toEqual(["mBonus", "randint0"]);
+    expect(locked.size).toBe(0);
+  });
+
+  it("the disarm command locks a closed, unlocked door (do_cmd_disarm L927-930)", () => {
+    const { rng } = recordingRng({ mBonus: 4, randint0: [0] });
+    const { state, run, locked, power } = lockSetup(rng);
+    setSkill(state, SKILL.DISARM_PHYS, 30);
+    run({ code: "disarm", dir: 6 });
+    expect(locked.has("6,5")).toBe(true);
+    expect(power()).toBe(4);
   });
 });
 

@@ -54,6 +54,7 @@ import { gearObjectForUse } from "./gear";
 import { thrustAway } from "./thrust";
 import { teleportMonster } from "./effect-teleport";
 import type { TeleportEnv } from "./effect-teleport";
+import { disturb } from "./player-path";
 
 /** Everything the monster-blow handlers need beyond the GameState. */
 export interface MonBlowDeps {
@@ -141,6 +142,9 @@ export function makeMonBlowEnv(
       takeHit(deps.actor, reducedDam, mon.race.name, {
         rng: state.rng,
         onMessage: (text: string): void => msg(text),
+        /* take_hit (player-util.c L207): a blow that lands stops the player
+         * running / resting. disturb draws no RNG. */
+        onDisturb: (): void => disturb(state),
       });
     },
 

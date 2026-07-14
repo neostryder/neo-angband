@@ -127,6 +127,7 @@ import { los, squareIsView } from "../world/view";
 import { PROJECT, projectable } from "../world/project";
 import type { GameState } from "./context";
 import { monsterSwap, squareIsPlayer, squareMonster } from "./context";
+import { disturb } from "./player-path";
 import { floorExcise, floorPile } from "./floor";
 import { squareIsEmptyLive } from "./mon-place";
 import {
@@ -1065,7 +1066,10 @@ function monsterTurnCanMove(
       /* Closed or secret door -- always open or bash. */
       if (willBash) {
         squareSmashDoor(state, next);
-        /* "You hear a door burst open!" + disturb DEFERRED. */
+        /* "You hear a door burst open!" (mon-move.c L1269-1270): the message is
+         * UI (DEFERRED), but the disturb() is wired - a bursting door stops the
+         * player running / resting. disturb draws no RNG. */
+        disturb(state);
         if (confused) {
           if (monsterIsVisible(mon)) lore.flags.on(RF.BASH_DOOR);
           monsterSlightlyStunByMove(mon, state);
@@ -1400,6 +1404,19 @@ export function monsterTurn(mon: Monster, state: GameState): void {
     if (squareMonster(state, next) === mon) {
       monsterTurnGrabObjects(mon, state, next);
     }
+  }
+
+  /* Possible disturb (mon-move.c L1661-1670): a visible monster that acted in
+   * the player's view stops the player running / resting, gated by the
+   * disturb_near option (shipped default true). The did_something NEVER_MOVE
+   * lore learn rides the lore layer; disturb draws no RNG. */
+  if (
+    didSomething &&
+    monsterIsVisible(mon) &&
+    mon.mflag.has(MFLAG.VIEW) &&
+    (state.options?.get("disturb_near") ?? true)
+  ) {
+    disturb(state);
   }
 
   /* Out of options - monster is paralysed by fear (converts fear to hold). */
