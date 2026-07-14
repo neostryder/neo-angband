@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@neo-angband/content": "workspace:*",
-    "@neo-angband/core": "workspace:*"
+    "@neo-angband/core": "workspace:*",
+    "@neo-angband/mod-sdk": "workspace:*"
   },
   "devDependencies": {
     "vite": "^7.0.0",

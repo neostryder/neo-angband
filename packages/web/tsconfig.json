@@ -6,5 +6,9 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
   "include": ["src"],
-  "references": [{ "path": "../core" }, { "path": "../content" }]
+  "references": [
+    { "path": "../core" },
+    { "path": "../content" },
+    { "path": "../mod-sdk" }
+  ]
 }
