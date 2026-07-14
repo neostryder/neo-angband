@@ -48,6 +48,8 @@ import { bindTraps } from "../world/trap";
 import type { TrapKind, TrapRecordJson } from "../world/trap";
 import { StoreRegistry } from "../store/bind";
 import type { StoreRecordJson } from "../store/types";
+import { bindQuests } from "../game/quest";
+import type { Quest, QuestRecordJson } from "../game/quest";
 import { iToGrid } from "../gen/util";
 import { resolvePits } from "../gen/gen-monster";
 
@@ -76,6 +78,12 @@ export interface CorePack {
   names?: NameSectionJson[];
   /** store.json (the 8 town stores). Optional; without it the town has no shops. */
   store?: StoreRecordJson[];
+  /**
+   * quest.json (the Sauron/Morgoth guardian quests). Optional; without it the
+   * game has no quests and thus no win condition (headless tests / partial
+   * packs), so is_quest is always false and quest_check a no-op.
+   */
+  quest?: QuestRecordJson[];
 }
 
 /** One names.txt section: a list of lowercase words under a section index. */
@@ -103,6 +111,11 @@ export interface CoreRegistries {
   nameSections: Map<number, string[]>;
   /** Bound town stores (indexable by entrance feature), or null when none. */
   stores: StoreRegistry | null;
+  /**
+   * The standard quest table (player-quest.c quests[]), each guardian race
+   * resolved. Empty when the pack ships no quest.json.
+   */
+  quests: Quest[];
 }
 
 /** Bind a parsed pack into the full set of runtime registries. */
@@ -123,6 +136,7 @@ export function bindCore(pack: CorePack): CoreRegistries {
     nameSections.set(rec.section, rec.word);
   }
   const stores = pack.store ? new StoreRegistry(pack.store, objects) : null;
+  const quests = pack.quest ? bindQuests(pack.quest, monsters) : [];
   return {
     constants,
     features,
@@ -134,6 +148,7 @@ export function bindCore(pack: CorePack): CoreRegistries {
     traps,
     nameSections,
     stores,
+    quests,
   };
 }
 

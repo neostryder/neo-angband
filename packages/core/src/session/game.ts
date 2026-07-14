@@ -164,6 +164,7 @@ import { createDefaultRegistry } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
 import { disturb, installRunning } from "../game/player-path";
 import { bindCore, bootLevel, genDeps } from "./boot";
+import { isQuest, playerQuestsReset, questCheck } from "../game/quest";
 import type {
   BootedLevel,
   BootLevelOptions,
@@ -500,6 +501,12 @@ function wireGame(
      * tkills lore counting (L1118), so loreUpdate below sees any drop_gold /
      * drop_item that loreTreasure records. */
     if (deathDeps) monsterDeath(state, mon, deathDeps);
+    /* quest_check (player-quest.c L219, called at the end of monster_death,
+     * mon-util.c L1005): a slain guardian may finish a quest, build the
+     * escape stairs, and - when the last quest falls (Morgoth) - win the
+     * game. Placed here so every player-kill path (melee, ranged, spells,
+     * effects) triggers it exactly once through this single seam. */
+    questCheck(state, state.actor.player, mon);
     /* Recall even invisible uniques (mon-util.c L1118): count the kill
      * and refresh the derived lore (monster_race_track rides #25). */
     if (monsterIsVisible(mon) || mon.race.flags.has(RF.UNIQUE)) {
@@ -578,6 +585,11 @@ function wireGame(
           isPlayerTrap: preds.isPlayerTrap,
           isWarded: preds.isWarded,
           isWebbed: preds.isWebbed,
+          /* is_quest (player-quest.c L140): the real implementation behind the
+           * force_descend / teleport-level guards (effect-general.ts,
+           * effect-teleport.ts, effect-terrain.ts) - a quest level cannot be
+           * skipped or recalled away from. */
+          isQuest: (depth: number): boolean => isQuest(state.actor.player, depth),
           changeLevel: (targetDepth: number): void => {
             state.targetDepth = targetDepth;
             state.generateLevel = true;
@@ -1319,6 +1331,11 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     { body, historyChart: players.historyChart(race) },
     booted.rng,
   );
+
+  // player_quests_reset (player-quest.c L157, called from player_birth): copy
+  // the standard quest table into the fresh character's quest history so
+  // is_quest and quest_check see the Sauron/Morgoth guardians from turn one.
+  playerQuestsReset(birth.player, reg.quests);
 
   // Populate the gear store and wear the class starting kit (player_outfit +
   // wield_all) BEFORE deriving bonuses, so calc_bonuses sees the worn gear.
