@@ -18,6 +18,8 @@ export type { Capability, PackManifest, PackRef, PackShape } from "./manifest.js
 export { ResolveError, resolveLoadOrder } from "./resolve.js";
 export { satisfies, SemverError } from "./semver.js";
 export { ComposeError, composePacks, mergePatch } from "./compose.js";
+export { composeContentPacks } from "./loader.js";
+export type { ComposedContent, LoadedPack } from "./loader.js";
 export type {
   ComposedRecord,
   FileContribution,
