@@ -22,9 +22,9 @@
 import type { Constants } from "../constants";
 import { DUN_PROFILE_ENTRIES, FEAT, ROOM_ENTRIES, SQUARE } from "../generated";
 import type { Loc } from "../loc";
-import { loc } from "../loc";
+import { DDGRID_DDD, loc, locSum } from "../loc";
 import type { Rng } from "../rng";
-import { Chunk } from "../world/chunk";
+import { Chunk, featIsBright } from "../world/chunk";
 import type { FeatureRegistry } from "../world/feature";
 import type { MakeDeps } from "../obj/make";
 import type { RoomProfile, RoomRegistry } from "./room";
@@ -39,6 +39,7 @@ import {
   drawRectangle,
   fillRectangle,
   findNearbyGrid,
+  generateStarburstRoom,
   newPlayerSpot,
   nextGrid,
   pickAndPlaceDistantMonster,
@@ -195,6 +196,12 @@ export interface CaveBuildContext {
   objDeps: MakeDeps | null;
   monDeps: MonPlaceDeps | null;
   rooms: RoomRegistry;
+  /**
+   * is_daytime() at the moment of generation (game-world.c). Read only by the
+   * town builder for cave_illuminate and the resident count. Absent for
+   * dungeon levels; defaults to daytime (turn 0) when omitted.
+   */
+  daytime?: boolean;
 }
 
 export interface CaveBuildResult {
@@ -996,61 +1003,514 @@ export const TOWN_STORE_FEATS: readonly number[] = [
   FEAT.HOME,
 ];
 
+/* ------------------------------------------------------------------ *
+ * Faithful town generation (gen-cave.c town_gen_layout / town_gen).
+ *
+ * Every RNG draw is reproduced in the exact upstream order and count. The
+ * two subtleties that would otherwise diverge the seeded stream:
+ *  1. Angband's MIN/MAX (h-basic.h) are macros - (a)>(b)?(b):(a) etc - that
+ *     RE-EVALUATE the selected argument. When a randint0 lives inside a MIN/MAX
+ *     argument it is drawn once for the comparison and AGAIN when that branch
+ *     is chosen. macroMin/macroMax below model this with a thunk for the
+ *     side-effecting argument.
+ *  2. build_ruin's `!randint0(3)` is the first operand of an && so it is drawn
+ *     for every non-building grid before the floor/perimeter tests.
+ * ------------------------------------------------------------------ */
+
+/** MAX(a, b) = (a < b) ? b : a with the C-macro re-evaluation of b. */
+function macroMax(a: number, bThunk: () => number): number {
+  const b = bThunk();
+  return a < b ? bThunk() : a;
+}
+
+/** MIN(a, b) = (a > b) ? b : a with the C-macro re-evaluation of b. */
+function macroMin(a: number, bThunk: () => number): number {
+  const b = bThunk();
+  return a > b ? bThunk() : a;
+}
+
+interface LotBounds {
+  west: number;
+  north: number;
+  east: number;
+  south: number;
+}
+
+/** get_lot_bounds (gen-cave.c L2243): the grid bounds of a town lot. */
+function getLotBounds(
+  c: Chunk,
+  xroads: Loc,
+  lot: Loc,
+  lotWid: number,
+  lotHgt: number,
+): LotBounds {
+  /* 0 is the road; no lots. */
+  if (lot.x === 0 || lot.y === 0) return { west: 0, north: 0, east: 0, south: 0 };
+
+  let west: number;
+  let east: number;
+  let north: number;
+  let south: number;
+
+  if (lot.x < 0) {
+    west = Math.max(2, xroads.x - 1 + lot.x * lotWid);
+    east = Math.min(c.width - 3, xroads.x - 2 + (lot.x + 1) * lotWid);
+  } else {
+    west = Math.max(2, xroads.x + 2 + (lot.x - 1) * lotWid);
+    east = Math.min(c.width - 3, xroads.x + 1 + lot.x * lotWid);
+  }
+
+  if (lot.y < 0) {
+    north = Math.max(2, xroads.y + lot.y * lotHgt);
+    south = Math.min(c.height - 3, xroads.y - 1 + (lot.y + 1) * lotHgt);
+  } else {
+    north = Math.max(2, xroads.y + 2 + (lot.y - 1) * lotHgt);
+    south = Math.min(c.height - 3, xroads.y + 1 + lot.y * lotHgt);
+  }
+
+  return { west, north, east, south };
+}
+
+/** lot_is_clear (gen-cave.c L2273): the lot is big enough and all floor. */
+function lotIsClear(
+  c: Chunk,
+  xroads: Loc,
+  lot: Loc,
+  lotWid: number,
+  lotHgt: number,
+): boolean {
+  const b = getLotBounds(c, xroads, lot, lotWid, lotHgt);
+  if (b.east - b.west < lotWid - 1 || b.south - b.north < lotHgt - 1) return false;
+  for (let x = b.west; x <= b.east; x++) {
+    for (let y = b.north; y <= b.south; y++) {
+      if (!c.isFloor(loc(x, y))) return false;
+    }
+  }
+  return true;
+}
+
+/** lot_has_shop (gen-cave.c L2295): the lot already contains a shop entrance. */
+function lotHasShop(
+  c: Chunk,
+  xroads: Loc,
+  lot: Loc,
+  lotWid: number,
+  lotHgt: number,
+): boolean {
+  const b = getLotBounds(c, xroads, lot, lotWid, lotHgt);
+  for (let x = b.west; x <= b.east; x++) {
+    for (let y = b.north; y <= b.south; y++) {
+      if (c.isShop(loc(x, y))) return true;
+    }
+  }
+  return false;
+}
+
+/** build_store (gen-cave.c L2322): lay one store's building + door for shop n. */
+function buildStore(
+  g: Gen,
+  n: number,
+  xroads: Loc,
+  lot: Loc,
+  lotWid: number,
+  lotHgt: number,
+): void {
+  const c = g.c;
+  const rng = g.rng;
+  const { west: lotW, north: lotN, east: lotE, south: lotS } = getLotBounds(
+    c,
+    xroads,
+    lot,
+    lotWid,
+    lotHgt,
+  );
+
+  let doorX = 0;
+  let doorY = 0;
+  let buildW = 0;
+  let buildN = 0;
+  let buildE = 0;
+  let buildS = 0;
+
+  if (lot.x < -1 || lot.x > 1) {
+    /* on the east west street */
+    if (lot.y === -1) {
+      /* north side of street */
+      doorY = macroMax(lotN + 1, () => lotS - rng.randint0(2));
+      buildS = doorY;
+      buildN = doorY - 2;
+    } else {
+      /* south side */
+      doorY = macroMin(lotS - 1, () => lotN + rng.randint0(2));
+      buildN = doorY;
+      buildS = doorY + 2;
+    }
+
+    doorX = rng.randRange(lotW + 1, lotE - 2);
+    buildW = rng.randRange(Math.max(lotW, doorX - 2), doorX);
+    if (!c.isFloor(loc(buildW - 1, doorY))) {
+      buildW++;
+      doorX = Math.max(doorX, buildW);
+    }
+    buildE = rng.randRange(buildW + 2, Math.min(doorX + 2, lotE));
+    if (buildE - buildW > 1 && !c.isFloor(loc(buildE + 1, doorY))) {
+      buildE--;
+      doorX = Math.min(doorX, buildE);
+    }
+  } else if (lot.y < -1 || lot.y > 1) {
+    /* on the north - south street */
+    if (lot.x === -1) {
+      /* west side of street */
+      doorX = macroMax(lotW + 1, () => lotE - rng.randint0(2) - rng.randint0(2));
+      buildE = doorX;
+      buildW = doorX - 2;
+    } else {
+      /* east side */
+      doorX = macroMin(lotE - 1, () => lotW + rng.randint0(2) + rng.randint0(2));
+      buildW = doorX;
+      buildE = doorX + 2;
+    }
+
+    doorY = rng.randRange(lotN, lotS - 1);
+    buildN = rng.randRange(Math.max(lotN, doorY - 2), doorY);
+    if (!c.isFloor(loc(doorX, buildN - 1))) {
+      buildN++;
+      doorY = Math.max(doorY, buildN);
+    }
+    buildS = rng.randRange(Math.max(buildN + 1, doorY), Math.min(lotS, doorY + 2));
+    if (buildS - buildN > 1 && !c.isFloor(loc(doorX, buildS + 1))) {
+      buildS--;
+      doorY = Math.min(doorY, buildS);
+    }
+  } else {
+    /* corner store */
+    if (lot.x < 0) {
+      /* west side */
+      doorX = lotE - 1 - rng.randint0(2);
+      buildE = macroMin(lotE, () => doorX + rng.randint0(2));
+      buildW = rng.randRange(Math.max(lotW, doorX - 2), buildE - 2);
+    } else {
+      /* east side */
+      doorX = lotW + 1 + rng.randint0(2);
+      buildW = macroMax(lotW, () => doorX - rng.randint0(2));
+      buildE = rng.randRange(buildW + 2, Math.min(lotE, doorX + 2));
+    }
+
+    if (lot.y < 0) {
+      /* north side */
+      doorY = lotS - rng.randint0(2);
+      if (buildE === doorX || buildW === doorX) {
+        buildS = doorY + rng.randint0(2);
+      } else {
+        /* Avoid encapsulating door */
+        buildS = doorY;
+      }
+      buildN = Math.max(lotN, doorY - 2);
+      if (buildS - buildN > 1 && !c.isFloor(loc(doorX, buildN - 1))) {
+        buildN++;
+        doorY = Math.max(buildN, doorY);
+      }
+    } else {
+      /* south side */
+      doorY = lotN + rng.randint0(2);
+      if (buildE === doorX || buildW === doorX) {
+        buildN = doorY - rng.randint0(2);
+      } else {
+        /* Avoid encapsulating door */
+        buildN = doorY;
+      }
+      buildS = Math.min(lotS, doorY + 2);
+      if (buildS - buildN > 1 && !c.isFloor(loc(doorX, buildS + 1))) {
+        buildS--;
+        doorY = Math.min(buildS, doorY);
+      }
+    }
+
+    /* Avoid placing buildings without space between them */
+    if (lot.x < 0 && buildE - buildW > 1 && !c.isFloor(loc(buildW - 1, doorY))) {
+      buildW++;
+      doorX = Math.max(doorX, buildW);
+    } else if (
+      lot.x > 0 &&
+      buildE - buildW > 1 &&
+      !c.isFloor(loc(buildE + 1, doorY))
+    ) {
+      buildE--;
+      doorX = Math.min(doorX, buildE);
+    }
+  }
+
+  buildW = Math.max(buildW, lotW);
+  buildE = Math.min(buildE, lotE);
+  buildN = Math.max(buildN, lotN);
+  buildS = Math.min(buildS, lotS);
+
+  /* Build an invulnerable rectangular building */
+  fillRectangle(c, buildN, buildW, buildS, buildE, FEAT.PERM, SQUARE.NONE);
+
+  /* Clear previous contents, add a store door (the feature whose shopnum is
+   * n + 1; TOWN_STORE_FEATS is that store-index -> feature mapping). */
+  c.setFeat(loc(doorX, doorY), TOWN_STORE_FEATS[n]!);
+}
+
+/** build_ruin (gen-cave.c L2461): a ruined granite building spewing rubble. */
+function buildRuin(
+  g: Gen,
+  xroads: Loc,
+  lot: Loc,
+  lotWid: number,
+  lotHgt: number,
+): void {
+  const c = g.c;
+  const rng = g.rng;
+  const b = getLotBounds(c, xroads, lot, lotWid, lotHgt);
+  const lotWest = b.west;
+  const lotNorth = b.north;
+  const lotEast = b.east;
+  const lotSouth = b.south;
+
+  if (lotEast - lotWest < 1 || lotSouth - lotNorth < 1) return;
+
+  /* make a building */
+  const wid = rng.randRange(1, lotWid - 2);
+  const hgt = rng.randRange(1, lotHgt - 2);
+
+  const offsetX = rng.randRange(1, lotWid - 1 - wid);
+  const offsetY = rng.randRange(1, lotHgt - 1 - hgt);
+
+  const west = lotWest + offsetX;
+  const north = lotNorth + offsetY;
+  const south = lotSouth - (lotHgt - (hgt + offsetY));
+  const east = lotEast - (lotWid - (wid + offsetX));
+
+  fillRectangle(c, north, west, south, east, FEAT.GRANITE, SQUARE.NONE);
+
+  /* and then destroy it and spew rubble everywhere */
+  for (let x = lotWest; x <= lotEast; x++) {
+    for (let y = lotNorth; y <= lotSouth; y++) {
+      if (x >= west && x <= east && y >= north && y <= south) {
+        if (rng.randint0(4) === 0) {
+          c.setFeat(loc(x, y), FEAT.RUBBLE);
+        }
+      } else if (
+        rng.randint0(3) === 0 &&
+        c.isFloor(loc(x, y)) &&
+        /* Avoid placing rubble next to a store */
+        (x > lotWest || x === 2 || !c.isPerm(loc(x - 1, y))) &&
+        (x < lotEast || x === c.width - 2 || !c.isPerm(loc(x + 1, y))) &&
+        (y > lotNorth || y === 2 || !c.isPerm(loc(x, y - 1))) &&
+        (y < lotSouth || y === c.height - 2 || !c.isPerm(loc(x, y + 1)))
+      ) {
+        c.setFeat(loc(x, y), FEAT.PASS_RUBBLE);
+      }
+    }
+  }
+}
+
 /**
- * The town builder: a lit, walled surface with the eight store entrances laid
- * out on it, a down staircase, and the player. This is a compact, deterministic
- * layout rather than a full port of town_gen_layout (gen-cave.c L2515) - the
- * upstream starburst / lava / crossroads-lots / ruins are cosmetic and are
- * deferred (ledgered); the functional town (walk into a shop entrance to trade,
- * take the stair down to the dungeon) is complete. Store entrances are
- * non-passable terrain (a shell opens the shop when the player walks into one).
+ * cave_illuminate (cave-map.c L555), the RNG-free flag-setting subset used at
+ * generation time: light (SQUARE_GLOW) every grid by day; by night keep only
+ * non-floor / bright terrain lit. Shop doorways are always lit. The
+ * player-knowledge side (square_memorize / square_forget) is a runtime concern
+ * and is applied by the live game, not here.
+ */
+function caveIlluminate(c: Chunk, daytime: boolean): void {
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      const grid = loc(x, y);
+      if (daytime || !c.isFloor(grid)) {
+        c.sqinfoOn(grid, SQUARE.GLOW);
+      } else if (!featIsBright(c.features, c.feat(grid))) {
+        c.sqinfoOff(grid, SQUARE.GLOW);
+      }
+    }
+  }
+  /* Light shop doorways. */
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      const grid = loc(x, y);
+      if (!c.isShop(grid)) continue;
+      for (let i = 0; i < 8; i++) {
+        const a = locSum(grid, DDGRID_DDD[i] as Loc);
+        if (c.inBounds(a)) c.sqinfoOn(a, SQUARE.GLOW);
+      }
+    }
+  }
+}
+
+/**
+ * town_gen_layout (gen-cave.c L2515): build the town for the first time and
+ * return the north-wall crossroads head (pgrid) - where the single down stair
+ * sits and where the player is placed. Ported statement-by-statement so the
+ * RNG stream matches upstream draw-for-draw. Returns the player/stair grid.
+ */
+function townGenLayout(g: Gen): Loc {
+  const c = g.c;
+  const rng = g.rng;
+  const townWid = c.width; /* z_info->town_wid */
+  const townHgt = c.height; /* z_info->town_hgt */
+  const storeMax = TOWN_STORE_FEATS.length; /* z_info->store_max */
+
+  const numLava = 3 + rng.randint0(3);
+  const ruinsPercent = 80;
+  const maxAttempts = 100;
+
+  const lotHgt = 4;
+  const lotWid = 6;
+
+  /* Declared outside the retry loop; NOT reset on a retry (upstream). */
+  let maxStoreY = 0;
+  let minStoreX = townWid;
+  let maxStoreX = 0;
+
+  /* Create walls */
+  drawRectangle(c, 0, 0, c.height - 1, c.width - 1, FEAT.PERM, SQUARE.NONE, true);
+
+  let pgrid = loc(0, 0);
+  let xroads = loc(0, 0);
+  let success = false;
+
+  while (!success) {
+    /* Initialize to ROCK for build_streamer precondition */
+    for (let y = 1; y < c.height - 1; y++) {
+      for (let x = 1; x < c.width - 1; x++) {
+        c.setFeat(loc(x, y), FEAT.GRANITE);
+      }
+    }
+
+    /* Make some lava streamers */
+    for (let n = 0; n < 3 + numLava; n++) buildStreamer(g, FEAT.LAVA, 0);
+
+    /* Make a town-sized starburst room. */
+    generateStarburstRoom(g, 0, 0, c.height - 1, c.width - 1, false, FEAT.FLOOR, false);
+
+    /* Turn off room illumination flag */
+    for (let y = 1; y < c.height - 1; y++) {
+      for (let x = 1; x < c.width - 1; x++) {
+        c.sqinfoOff(loc(x, y), SQUARE.ROOM);
+      }
+    }
+
+    /* Stairs along north wall */
+    const px = rng.randSpread(Math.trunc(townWid / 2), Math.trunc(townWid / 6));
+    let py = 1;
+    while (!c.isFloor(loc(px, py)) && py < Math.trunc(townHgt / 4)) py++;
+    if (py >= Math.trunc(townHgt / 4)) continue;
+    pgrid = loc(px, py);
+
+    /* no lava next to stairs */
+    for (let x = px - 1; x <= px + 1; x++) {
+      for (let y = py - 1; y <= py + 1; y++) {
+        if (c.isFiery(loc(x, y))) c.setFeat(loc(x, y), FEAT.GRANITE);
+      }
+    }
+
+    const xrx = px;
+    const xry =
+      Math.trunc(townHgt / 2) -
+      rng.randint0(Math.trunc(townHgt / 4)) +
+      rng.randint0(Math.trunc(townHgt / 8));
+    xroads = loc(xrx, xry);
+
+    const lotMinX = Math.trunc((-1 * xrx) / lotWid);
+    const lotMaxX = Math.trunc((townWid - xrx) / lotWid);
+    const lotMinY = Math.trunc((-1 * xry) / lotHgt);
+    const lotMaxY = Math.trunc((townHgt - xry) / lotHgt);
+
+    /* place stores along the streets */
+    let numAttempts = 0;
+    let exhausted = false;
+    for (let n = 0; n < storeMax; n++) {
+      let storeLot = loc(0, 0);
+      let foundSpot = false;
+      while (!foundSpot && numAttempts < maxAttempts) {
+        numAttempts++;
+        if (rng.randint0(2)) {
+          /* east-west street */
+          const sx = rng.randRange(lotMinX, lotMaxX);
+          const sy = rng.randint0(2) ? 1 : -1;
+          storeLot = loc(sx, sy);
+        } else {
+          /* north-south street */
+          const sx = rng.randint0(2) ? 1 : -1;
+          const sy = rng.randRange(lotMinY, lotMaxY);
+          storeLot = loc(sx, sy);
+        }
+        if (storeLot.y === 0 || storeLot.x === 0) continue;
+        foundSpot = lotIsClear(c, xroads, storeLot, lotWid, lotHgt);
+      }
+      if (numAttempts >= maxAttempts) {
+        exhausted = true;
+        break;
+      }
+
+      maxStoreY = Math.max(maxStoreY, xry + lotHgt * storeLot.y);
+      minStoreX = Math.min(minStoreX, xrx + lotWid * storeLot.x);
+      maxStoreX = Math.max(maxStoreX, xrx + lotWid * storeLot.x);
+
+      buildStore(g, n, xroads, storeLot, lotWid, lotHgt);
+    }
+    if (exhausted) continue;
+
+    /* place ruins */
+    for (let x = lotMinX; x <= lotMaxX; x++) {
+      if (x === 0) continue; /* 0 is the street */
+      for (let y = lotMinY; y <= lotMaxY; y++) {
+        if (y === 0) continue;
+        if (rng.randint0(100) > ruinsPercent) continue;
+        if (rng.oneIn(2) && !lotHasShop(c, xroads, loc(x, y), lotWid, lotHgt)) {
+          buildRuin(g, xroads, loc(x, y), lotWid, lotHgt);
+        }
+      }
+    }
+    success = true;
+  }
+
+  /* clear the street */
+  c.setFeat(loc(pgrid.x, pgrid.y + 1), FEAT.FLOOR);
+  fillRectangle(c, pgrid.y + 2, pgrid.x - 1, maxStoreY, pgrid.x + 1, FEAT.FLOOR, SQUARE.NONE);
+  fillRectangle(c, xroads.y, minStoreX, xroads.y + 1, maxStoreX, FEAT.FLOOR, SQUARE.NONE);
+
+  /* Clear previous contents, add down stairs */
+  c.setFeat(pgrid, FEAT.MORE);
+
+  return pgrid;
+}
+
+/**
+ * The town builder (town_gen, gen-cave.c L2664): a faithful port of the
+ * first-time town layout (town_gen_layout) followed by day/night illumination
+ * and the resident townsfolk. Store entrances are non-passable shop terrain (a
+ * shell opens the shop when the player walks into one).
+ *
+ * DEFERRED: the chunk-persistence re-entry branch (town_gen L2682, a Tier-5
+ * RECALL/level-persistence concern) - the port regenerates the town on every
+ * entry, so only the first-time path is implemented. Day/night is honoured
+ * when the caller supplies ctx.daytime; when omitted it defaults to daytime
+ * (turn 0), which is the faithful state at birth.
  */
 export const townGen: CaveBuilder = (ctx) => {
-  const { constants, dun } = ctx;
-  dun.blockHgt = 1;
-  dun.blockWid = 1;
+  const { constants } = ctx;
   const c = new Chunk(ctx.reg, constants.townHgt, constants.townWid);
   c.depth = ctx.depth;
   const g = makeGen(ctx, c);
-  dun.rowBlocks = c.height;
-  dun.colBlocks = c.width;
-  dun.roomMap = alloc2dBool(dun.rowBlocks, dun.colBlocks);
-  dun.centN = 0;
-  dun.pitNum = 0;
-  dun.resetEntranceData(c);
+  const daytime = ctx.daytime ?? true;
 
-  fillRectangle(c, 0, 0, c.height - 1, c.width - 1, FEAT.GRANITE, SQUARE.NONE);
-  fillRectangle(c, 1, 1, c.height - 2, c.width - 2, FEAT.FLOOR, SQUARE.NONE);
-  for (let y = 1; y <= c.height - 2; y++) {
-    for (let x = 1; x <= c.width - 2; x++) {
-      c.sqinfoOn(loc(x, y), SQUARE.ROOM);
-      c.sqinfoOn(loc(x, y), SQUARE.GLOW);
-    }
-  }
-  drawRectangle(c, 0, 0, c.height - 1, c.width - 1, FEAT.PERM, SQUARE.NONE, true);
+  /* Build the layout and place the player at the crossroads head. */
+  const pgrid = townGenLayout(g);
+  g.playerSpot = pgrid;
 
-  /* Lay the eight entrances out in two rows of four, spaced across the town
-   * with an open street between them so every entrance is reachable. */
-  const cols = 4;
-  const rows = 2;
-  const stepX = Math.floor(c.width / (cols + 1));
-  const stepY = Math.floor(c.height / (rows + 1));
-  for (let i = 0; i < TOWN_STORE_FEATS.length; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = stepX * (col + 1);
-    const y = stepY * (row + 1);
-    const grid = loc(x, y);
-    c.setFeat(grid, TOWN_STORE_FEATS[i]!);
-    c.sqinfoOn(grid, SQUARE.GLOW);
+  /* Apply illumination. */
+  caveIlluminate(c, daytime);
+
+  /* Make some residents. */
+  const residents = daytime
+    ? constants.townMonstersDay
+    : constants.townMonstersNight;
+  for (let i = 0; i < residents; i++) {
+    pickAndPlaceDistantMonster(g, pgrid, 3, true, c.depth);
   }
 
-  /* One down staircase (all town stairs go down) placed on open floor. */
-  allocStairs(g, FEAT.MORE, 1, 0, false, [], false);
-
-  const pspot = newPlayerSpot(g);
-  if (!pspot) return { gen: null, error: "could not place player in town" };
-  g.playerSpot = pspot;
   return { gen: g, error: null };
 };
 

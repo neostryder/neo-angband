@@ -37,6 +37,13 @@ import {
 import type { Rng } from "../rng";
 import type { Constants } from "../constants";
 import type { Chunk } from "../world/chunk";
+import {
+  featIsBright,
+  featIsFloor,
+  featIsPassable,
+  featIsSmooth,
+} from "../world/chunk";
+import { GET_ANGLE_TO_GRID } from "../world/project";
 import type { FeatureRegistry } from "../world/feature";
 import type { GameObject } from "../obj/object";
 import type { MakeDeps } from "../obj/make";
@@ -801,6 +808,257 @@ export function setBorderingWalls(
       }
     }
   }
+}
+
+/**
+ * generate_starburst_room (gen-room.c L569): carve a rounded "starburst" of
+ * `feat` inside the rectangle (y1,x1)-(y2,x2). Ported verbatim, including the
+ * long/narrow-room subdivision recursion, the per-arc RNG draws, the
+ * make-denser randint1 for non-floor passable terrain, and the outer-wall
+ * marking pass. RNG draws are reproduced in exact upstream order and count.
+ * Used by the town builder (a town-sized FEAT_FLOOR starburst) and available
+ * to any builder needing lakes/caverns. Occupancy checks read the Gen (no
+ * monsters/objects exist yet during town layout, matching upstream).
+ */
+export function generateStarburstRoom(
+  g: Gen,
+  y1: number,
+  x1: number,
+  y2: number,
+  x2: number,
+  light: boolean,
+  feat: number,
+  specialOk: boolean,
+): boolean {
+  const c = g.c;
+  const rng = g.rng;
+  const reg = c.features;
+
+  /* Make certain the room does not cross the dungeon edge. */
+  if (!c.inBounds(loc(x1, y1)) || !c.inBounds(loc(x2, y2))) return false;
+  /* Robustness -- test sanity of input coordinates. */
+  if (y1 + 2 >= y2 || x1 + 2 >= x2) return false;
+
+  const height = 1 + y2 - y1;
+  const width = 1 + x2 - x1;
+
+  /* Handle long, narrow rooms by dividing them up. */
+  if (
+    height > Math.trunc((5 * width) / 2) ||
+    width > Math.trunc((5 * height) / 2)
+  ) {
+    let tmpAy = y2;
+    let tmpAx = x2;
+    if (height > width) tmpAy = y1 + Math.trunc((2 * height) / 3);
+    else tmpAx = x1 + Math.trunc((2 * width) / 3);
+    generateStarburstRoom(g, y1, x1, tmpAy, tmpAx, light, feat, false);
+
+    let tmpBy = y1;
+    let tmpBx = x1;
+    if (height > width) tmpBy = y1 + Math.trunc((1 * height) / 3);
+    else tmpBx = x1 + Math.trunc((1 * width) / 3);
+    generateStarburstRoom(g, tmpBy, tmpBx, y2, x2, light, feat, false);
+
+    if (featIsFloor(reg, feat)) {
+      /* Extend a corridor between the two room centres. */
+      for (
+        let y = Math.trunc((y1 + tmpAy) / 2);
+        y <= Math.trunc((tmpBy + y2) / 2);
+        y++
+      ) {
+        for (
+          let x = Math.trunc((x1 + tmpAx) / 2);
+          x <= Math.trunc((tmpBx + x2) / 2);
+          x++
+        ) {
+          c.setFeat(loc(x, y), feat);
+        }
+      }
+    } else {
+      /* Otherwise fill any gap between the two starbursts. */
+      let tmpCy1: number;
+      let tmpCx1: number;
+      let tmpCy2: number;
+      let tmpCx2: number;
+      if (height > width) {
+        tmpCy1 = y1 + Math.trunc((height - width) / 2);
+        tmpCx1 = x1;
+        tmpCy2 = tmpCy1 - Math.trunc((height - width) / 2);
+        tmpCx2 = x2;
+      } else {
+        tmpCy1 = y1;
+        tmpCx1 = x1 + Math.trunc((width - height) / 2);
+        tmpCy2 = y2;
+        tmpCx2 = tmpCx1 + Math.trunc((width - height) / 2);
+      }
+      generateStarburstRoom(g, tmpCy1, tmpCx1, tmpCy2, tmpCx2, light, feat, false);
+    }
+    return true;
+  }
+
+  /* Get a shrinkage ratio for large rooms, as the table is limited. */
+  let distConv: number;
+  if (width > 44 || height > 44) {
+    if (width > height) distConv = Math.trunc((10 * width) / 44);
+    else distConv = Math.trunc((10 * height) / 44);
+  } else {
+    distConv = 10;
+  }
+
+  /* arc[i] = [first degree of arc, maximum effect distance in arc]. */
+  const arc: number[][] = [];
+  let arcNum: number;
+  let makeCloverleaf = false;
+
+  if (specialOk && height > 10 && rng.randint0(20) === 0) {
+    arcNum = 12;
+    makeCloverleaf = true;
+  } else {
+    arcNum = 8 + Math.trunc((height * width) / 80);
+    arcNum = arcNum + 3 - rng.randint0(7);
+    if (arcNum < 8) arcNum = 8;
+    if (arcNum > 45) arcNum = 45;
+  }
+
+  const y0 = y1 + Math.trunc(height / 2);
+  const x0 = x1 + Math.trunc(width / 2);
+
+  let degreeFirst = 0;
+  for (let i = 0; i < arcNum; i++) {
+    /* Get the first degree for this arc (before advancing degreeFirst). */
+    const arc0 = degreeFirst;
+
+    /* Get a slightly randomized start degree for the next arc. */
+    degreeFirst += Math.trunc((180 + rng.randint0(arcNum)) / arcNum);
+    if (degreeFirst < Math.trunc((180 * (i + 1)) / arcNum)) {
+      degreeFirst = Math.trunc((180 * (i + 1)) / arcNum);
+    }
+    if (degreeFirst > Math.trunc(((180 + arcNum) * (i + 1)) / arcNum)) {
+      degreeFirst = Math.trunc(((180 + arcNum) * (i + 1)) / arcNum);
+    }
+
+    const centerOfArc = degreeFirst + arc0;
+
+    let arc1 = 0;
+    if (
+      (centerOfArc > 45 && centerOfArc < 135) ||
+      (centerOfArc > 225 && centerOfArc < 315)
+    ) {
+      arc1 = Math.trunc(height / 4) + rng.randint0(Math.trunc((height + 3) / 4));
+    } else if (
+      centerOfArc < 45 ||
+      centerOfArc > 315 ||
+      (centerOfArc < 225 && centerOfArc > 135)
+    ) {
+      arc1 = Math.trunc(width / 4) + rng.randint0(Math.trunc((width + 3) / 4));
+    } else if (i !== 0) {
+      if (makeCloverleaf) arc1 = 0;
+      else arc1 = (arc[i - 1] as number[])[1]! + 3 - rng.randint0(7);
+    }
+
+    /* Keep variability under control. */
+    if (!makeCloverleaf && i !== 0 && i !== arcNum - 1) {
+      const prev = (arc[i - 1] as number[])[1]!;
+      if (featIsSmooth(reg, feat)) {
+        if (arc1 > prev + 2) arc1 = prev + 2;
+        if (arc1 > prev - 2) arc1 = prev - 2;
+      } else {
+        if (arc1 > Math.trunc((3 * (prev + 1)) / 2)) {
+          arc1 = Math.trunc((3 * (prev + 1)) / 2);
+        }
+        if (arc1 < Math.trunc((2 * (prev - 1)) / 3)) {
+          arc1 = Math.trunc((2 * (prev - 1)) / 3);
+        }
+      }
+    }
+
+    /* Neaten up the final arc by comparing it to the first. */
+    if (i === arcNum - 1) {
+      const first = (arc[0] as number[])[1]!;
+      if (Math.abs(arc1 - first) > 3) {
+        if (arc1 > first) arc1 -= rng.randint0(arc1 - first);
+        else if (arc1 < first) arc1 += rng.randint0(first - arc1);
+      }
+    }
+
+    arc[i] = [arc0, arc1];
+  }
+
+  /* Precalculate check distance. */
+  const distCheck = Math.trunc((21 * distConv) / 10);
+
+  /* Change grids between (and not including) the edges. */
+  for (let y = y1 + 1; y < y2; y++) {
+    for (let x = x1 + 1; x < x2; x++) {
+      const grid = loc(x, y);
+
+      /* Do not touch vault grids or occupied grids. */
+      if (squareIsVault(c, grid)) continue;
+      if (c.mon(grid) !== 0) continue;
+      if (g.hasObject(grid)) continue;
+
+      const dist = distance(loc(x0, y0), grid);
+      if (dist >= distCheck) continue;
+
+      /* Convert and reorient the grid for table access. */
+      const ny = 20 + Math.trunc((10 * (y - y0)) / distConv);
+      const nx = 20 + Math.trunc((10 * (x - x0)) / distConv);
+      if (ny < 0 || ny > 40 || nx < 0 || nx > 40) continue;
+
+      const degree = (GET_ANGLE_TO_GRID[ny] as readonly number[])[nx]!;
+
+      for (let i = arcNum - 1; i >= 0; i--) {
+        if ((arc[i] as number[])[0]! <= degree) {
+          const maxDist = (arc[i] as number[])[1]!;
+          if (maxDist >= dist) {
+            if (featIsFloor(reg, feat) || !featIsPassable(reg, feat)) {
+              c.setFeat(grid, feat);
+              if (featIsFloor(reg, feat)) c.sqinfoOn(grid, SQUARE.ROOM);
+              else c.sqinfoOff(grid, SQUARE.ROOM);
+              if (light) c.sqinfoOn(grid, SQUARE.GLOW);
+              else if (!featIsBright(reg, c.feat(grid))) {
+                c.sqinfoOff(grid, SQUARE.GLOW);
+              }
+            } else {
+              /* Non-floor passable terrain: place only over floor. */
+              if (featIsSmooth(reg, feat)) {
+                if (c.isFloor(grid)) c.setFeat(grid, feat);
+              } else if (c.isFloor(grid) && rng.randint1(maxDist + 5) >= dist + 5) {
+                c.setFeat(grid, feat);
+              }
+              if (light) c.sqinfoOn(grid, SQUARE.GLOW);
+            }
+          }
+          /* Arc found; end search. */
+          break;
+        }
+      }
+    }
+  }
+
+  /*
+   * If we placed floors or dungeon granite, all dungeon granite next to
+   * floors becomes outer wall.
+   */
+  if (featIsFloor(reg, feat) || feat === FEAT.GRANITE) {
+    for (let y = y1 + 1; y < y2; y++) {
+      for (let x = x1 + 1; x < x2; x++) {
+        const grid = loc(x, y);
+        if (!c.isFloor(grid)) continue;
+        for (let d = 0; d < 8; d++) {
+          const g1 = locSum(grid, DDGRID_DDD[d] as Loc);
+          c.sqinfoOn(g1, SQUARE.ROOM);
+          c.sqinfoOn(g1, SQUARE.NO_STAIRS);
+          if (light) c.sqinfoOn(g1, SQUARE.GLOW);
+          if (c.feat(g1) === FEAT.GRANITE) {
+            setMarkedGranite(c, g1, SQUARE.WALL_OUTER);
+          }
+        }
+      }
+    }
+  }
+
+  return true;
 }
 
 /* ------------------------------------------------------------------ *
