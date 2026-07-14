@@ -21,11 +21,27 @@
 >   field patches into registry bind is the one piece of P7.3 integration left.
 > - P7.5 (capabilities): NEW `packages/mod-sdk/src/capabilities.ts`.
 > - P7.6 (conflict report): NEW `packages/mod-sdk/src/conflicts.ts`.
-> REMAINING: P7.2 (namespaced save blocks + per-mod bags + quarantine, in core
-> save.ts) and P7.7 (the FROZEN perceive/act/controller facade = the P7->P8
-> gate). Both are correctness-critical and were left for a focused session.
-> DECISION FOR THE MAINTAINER: confirm the no-v1-save-migration call (existing
-> in-browser dev autosaves are dropped to a fresh game on next load).
+> UPDATE (2026-07-14b): P7.2 DONE - NEW `packages/core/src/mod/save-blocks.ts`
+> adds the manifest block (pack set + load order + core-owned one-way
+> determinism ratchet), per-mod opaque bags (mod:<id>, migrateModBag seam), and
+> the orphans store (orphans:<id>@<version>) with pure quarantine/rehydrate over
+> the plain-JSON save; loadGame reconciles the mod set (rehydrate then
+> quarantine) before deserializing, so a removed mod degrades gracefully instead
+> of throwing. Quarantine is whole-entity granularity; finer sub-property
+> granularity and the P-UI recoveries (town-return, home stash view) are
+> documented follow-ups. No-v1-save-migration confirmed by the maintainer.
+>
+> P7.7 SPINE DONE (CANDIDATE, not yet frozen): NEW `packages/core/src/agent/`
+> (types/perceive/act/controller/index) - the three capability-gated facades
+> over the read model, ActionRegistry/PlayerCommand and the LOOP_STATUS.INPUT
+> seam. Perceive returns fresh plain data (read-only AND sandbox-serializable,
+> resolving the snapshot-vs-proxy fork). A sample agent drives commands
+> end-to-end through the public facade (agent.test.ts) = the acceptance-gate
+> verify. REMAINING before the maintainer-ratified FREEZE (AGENT_API_VERSION
+> 0.1.0 -> 1.0): broaden perceive to the full section-3 surface (store/home
+> stock, race/class spell tables, object flag/brand/slay detail, namespaced
+> race/kind ids). Also outstanding: the small P7.3 registry-bind wiring
+> (consume merged field-patches at bind time).
 
 > STATUS: BUILD PLAN (2026-07-14). This is the executable sequencing of work
 > that is already DESIGNED and RATIFIED in `../MODS.md` and `MOD_LIFECYCLE.md`
