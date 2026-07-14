@@ -400,6 +400,14 @@ UI next, marketplace last:
    the namespaced save blocks and per-mod bags, the field-level patch/
    merge composer, the load-order + dependency resolver, the capability
    model, and the conflict-report computation. These are engine seams.
+1b. THE JOINING STEP (added 2026-07-14, see MOD_INTEGRATION_PLAN.md): the
+   engine seams from item 1 must actually be wired into the running game -
+   a loader that resolves + composes the pack set at boot, capability
+   enforcement on the perceive/act facades, the agent controller installed
+   in the host, and the turn loop routed through the event bus. A
+   2026-07-14 audit found item 1's seams are built and tested but have no
+   runtime caller; this is Wave 1 of the integration plan and it precedes
+   the UI below.
 2. Next: the in-app mod manager UI (list, enable/disable, reorder,
    install-from-url, conflict view, capability consent, profiles).
 3. Future release: the marketplace backend and in-app browser, and an

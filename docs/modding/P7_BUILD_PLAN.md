@@ -94,6 +94,13 @@
 > clean, full monorepo 2367 tests. **P7 IS COMPLETE** (all of P7.1-P7.7 plus the
 > integration tail). NEXT: P8 (the Borg) - to be planned per BORG_AS_MOD.md
 > sections 7-8, launched only with Aaron's go-ahead (large phase).
+>
+> IMPORTANT (2026-07-14, audit): P7 built the substrate + froze the agent API,
+> but a code audit found the machinery is BUILT-BUT-NOT-WIRED - the running game
+> loads a single hard-coded pack and never calls composePacks/resolveLoadOrder/
+> installController (all have zero non-test callers). Making the substrate
+> actually affect a running game is the Mod Integration plan (Wave 1), which now
+> precedes P8. See MOD_INTEGRATION_PLAN.md.
 
 > STATUS: BUILD PLAN (2026-07-14). This is the executable sequencing of work
 > that is already DESIGNED and RATIFIED in `../MODS.md` and `MOD_LIFECYCLE.md`
