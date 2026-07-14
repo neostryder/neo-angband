@@ -82,7 +82,8 @@ import { registerSummonHandlers } from "../game/effect-summon";
 import type { SummonEffectEnv } from "../game/effect-summon";
 import { registerDetectHandlers } from "../game/effect-detect";
 import { becomeAware, newKnownMap } from "../game/known";
-import { isDaytime } from "../game/world";
+import { PY_EXERT, isDaytime, playerOverExert } from "../game/world";
+import { squareIsLit } from "../world/view";
 import { newTargetState, targetSetMonster } from "../game/target";
 import {
   getLore,
@@ -808,7 +809,20 @@ function wireGame(
         summon,
       },
       statInd: liveStatInd,
-      env: { expGain, msg: (text: string): void => state.msg?.(text) },
+      env: {
+        expGain,
+        msg: (text: string): void => state.msg?.(text),
+        // spell_chance's PF_UNLIGHT penalty (player-spell.c L417): the
+        // Necromancer's +25 fail on a lit square (square_islit(cave, p->grid)).
+        gridIsLit: (): boolean => squareIsLit(state.chunk, state.actor.grid),
+        // spell_cast overcast (player-spell.c L552-553): once mana empties,
+        // player_over_exert twice in the exact upstream order - FAINT then CON -
+        // so the RNG stream draws faithfully (playerOverExert draws per flag).
+        overExert: (oops: number): void => {
+          playerOverExert(state, PY_EXERT.FAINT, 100, 5 * oops + 1);
+          playerOverExert(state, PY_EXERT.CON, 50, 0);
+        },
+      },
     });
 
     // Player ranged attacks (fire launcher + ammo, throw an object). The hit
