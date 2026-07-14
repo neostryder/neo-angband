@@ -25,3 +25,15 @@ export type {
   JsonValue,
   PackContent,
 } from "./compose.js";
+export {
+  applyFieldPatch,
+  composeFieldPatches,
+  PatchError,
+  touchedFields,
+} from "./patch.js";
+export type {
+  ComposedPatch,
+  FieldConflict,
+  FieldOp,
+  FieldPatch,
+} from "./patch.js";
