@@ -98,30 +98,18 @@ describe("controller cycle", () => {
     expect(world.clock).toBe(2);
   });
 
-  it("melees an adjacent monster", () => {
+  // The foundation stub's fixed melee/step/hold policy was replaced by the
+  // faithful borg_think_dungeon ladder in P8.6; its priority behavior is
+  // covered in think.test.ts. Here we only assert the controller keeps driving
+  // the game (always yields a command on a live level, never stalls).
+  it("always produces a command on a live level (drives the game)", () => {
     const { controller } = createBorg();
     const view = makeScenarioView({
       player: { grid: { x: 5, y: 5 } },
-      monsters: [{ grid: { x: 6, y: 5 } }], // due east, adjacent
+      monsters: [{ grid: { x: 9, y: 5 } }],
     });
     const cmd = controller(view, makeFakeActions());
-    expect(cmd).toEqual({ code: "walk", dir: keypadDir(1, 0) });
-  });
-
-  it("steps toward a distant monster", () => {
-    const { controller } = createBorg();
-    const view = makeScenarioView({
-      player: { grid: { x: 5, y: 5 } },
-      monsters: [{ grid: { x: 9, y: 5 } }], // east, not adjacent
-    });
-    const cmd = controller(view, makeFakeActions());
-    expect(cmd).toEqual({ code: "walk", dir: keypadDir(1, 0) });
-  });
-
-  it("holds when there is nothing to do", () => {
-    const { controller } = createBorg();
-    const cmd = controller(makeScenarioView(), makeFakeActions());
-    expect(cmd).toEqual({ code: "hold" });
+    expect(cmd).not.toBeNull();
   });
 
   it("yields (null) when the player is dead", () => {

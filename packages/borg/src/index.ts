@@ -16,7 +16,11 @@ export * from "./world/model";
 export * from "./rng";
 export * from "./context";
 export * from "./perceive";
+export * from "./perceive-messages";
+export * from "./perceive-facts";
 export * from "./think";
+export * from "./think-session";
+export * from "./think-ladder";
 export * from "./controller";
 export * from "./harness";
 
