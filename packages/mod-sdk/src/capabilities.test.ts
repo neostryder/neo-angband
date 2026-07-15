@@ -70,7 +70,13 @@ describe("parseCapability: valid forms", () => {
   });
 
   it("parses registry:<domain> for each override domain", () => {
-    for (const domain of ["effect", "room", "command", "monster"] as const) {
+    for (const domain of [
+      "effect",
+      "room",
+      "command",
+      "monster",
+      "vocab",
+    ] as const) {
       expect(parseCapability(`registry:${domain}`)).toEqual({
         kind: "registry",
         domain,
@@ -216,6 +222,7 @@ describe("CapabilitySet: has / check", () => {
     expect(set.has("registry:room")).toBe(true);
     expect(set.has("registry:command")).toBe(true);
     expect(set.has("registry:monster")).toBe(true);
+    expect(set.has("registry:vocab")).toBe(true);
   });
 
   it("grants an exact network host and rejects a different host", () => {

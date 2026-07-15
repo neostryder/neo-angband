@@ -4,6 +4,6 @@
   "version": "1.0.0",
   "shape": "plugin",
   "engine": "4.2.x",
-  "capabilities": ["registry:effect", "registry:room", "registry:command", "registry:monster"],
+  "capabilities": ["registry:effect", "registry:room", "registry:command", "registry:monster", "registry:vocab"],
   "dependencies": { "core": "*" }
 }
