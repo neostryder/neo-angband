@@ -135,13 +135,14 @@ import type {
   LoreDeps,
 } from "@neo-angband/core";
 import { GameEvents } from "@neo-angband/core";
-import { installController, ContentIdResolver, subscribeEvents } from "@neo-angband/core";
+import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost } from "@neo-angband/core";
 import type { AgentController } from "@neo-angband/core";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks } from "./pack";
 import { DEMO_AGENTS } from "./agents/demo";
 import { discoverPlugins } from "./agents/sandbox/discover";
 import { installSandboxedController } from "./agents/sandbox/host";
+import { discoverTrustedPlugins } from "./agents/trusted/discover";
 import { showAbilities } from "./abilities";
 import { showEquipCmp } from "./equip-cmp";
 import {
@@ -407,6 +408,9 @@ function bootGame(): ReturnType<typeof startGame> {
 
 const game = bootGame();
 const { state, registry, booted, players } = game;
+// The effect interpreter (null on a worldless boot), surfaced for the trusted
+// mod registry facade (?trusted=<id>, W2.2).
+const effectRegistry = game.effects;
 const features = booted.registries.features;
 const constants = booted.registries.constants;
 // A birth is pending when this load started fresh but the character has not
@@ -3581,6 +3585,68 @@ if (pluginId) {
         },
         get lastError() {
           return pluginLastError;
+        },
+      };
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// W2.2: trusted in-process plugin. Where the Worker sandbox (?plugin=) is the
+// untrusted reactive tier, a trusted plugin overrides game SYSTEMS - effect
+// handlers, room builders, player-command actions, monster AI - through the
+// capability-gated ModRegistryHost. It runs in-process because those handlers
+// execute synchronously with live rng/chunk/player access the Worker boundary
+// cannot carry. Trust is explicit: it only gets the registry:* domains its
+// manifest declares (CapabilitySet gates each facade). Enable with
+// ?trusted=<id> (disabled by default). The full consent UI is W2.4.
+const trustedId = params.get("trusted");
+if (trustedId) {
+  const found = discoverTrustedPlugins().get(trustedId);
+  if (!found) {
+    console.warn(`[trusted] "${trustedId}" not found; skipping`);
+  } else {
+    const caps = CapabilitySet.fromManifest(found.manifest);
+    let trustedError: string | null = null;
+    const logs: string[] = [];
+    try {
+      const host = createModRegistryHost(
+        {
+          effects: effectRegistry,
+          rooms: booted.registries.rooms,
+          commands: registry,
+          state,
+        },
+        caps,
+      );
+      found.plugin.register(host, {
+        state,
+        id: trustedId,
+        log: (msg) => {
+          logs.push(msg);
+          console.info(`[trusted:${trustedId}] ${msg}`);
+        },
+      });
+    } catch (err) {
+      trustedError = err instanceof Error ? err.message : String(err);
+      console.error(`[trusted:${trustedId}] install failed:`, err);
+    }
+    if (import.meta.env.DEV) {
+      (window as unknown as { __neoTrusted?: unknown }).__neoTrusted = {
+        id: trustedId,
+        installed: trustedError === null,
+        capabilities: found.manifest.capabilities ?? [],
+        get logs() {
+          return [...logs];
+        },
+        get turn() {
+          return state.turn;
+        },
+        get monsterHook() {
+          return typeof state.monsterTurnHook === "function";
+        },
+        get lastError() {
+          return trustedError;
         },
       };
     }

@@ -89,6 +89,45 @@ and is anchored by the scripted-plugin sandbox, the single largest piece.
 > NEXT: W2.2 (expose Effect/Room/Command/Monster registries to sandboxed plugins
 > under the capability gate - overriding SYSTEMS, not just data).
 
+> PROGRESS (2026-07-14): W2.2 COMPLETE (registry override via a TRUSTED
+> in-process tier), pushed, 2415 tests. A plugin now overrides game SYSTEMS -
+> effect handlers, room builders, player-command actions, and monster AI - under
+> a capability gate.
+> - ARCHITECTURE DECISION (surfaced to and confirmed by Aaron): deep system
+>   override needs a SYNCHRONOUS handler with live rng/chunk/player access, deep
+>   in the turn. A Web Worker (W2.1) is async + isolated and cannot supply one
+>   (SharedArrayBuffer/Atomics needs cross-origin-isolation headers a static host
+>   cannot send, and would freeze the main thread per effect regardless). So deep
+>   override is a TRUSTED, in-process capability - as in every real modding
+>   system - with explicit per-capability manifest declaration + user consent.
+>   The untrusted Worker keeps the reactive perceive/act/event tier (W2.1).
+>   Electron was raised as a distribution track (easier install, filesystem mods,
+>   native perf); it is orthogonal - the same web app ships to Pages AND Electron
+>   and the W2.2 facade is identical on both. Electron wrapper is a later track.
+> - core/mod/registry-host.ts: createModRegistryHost({effects,rooms,commands,
+>   state}, caps) - four capability-gated facades. New caps registry:effect |
+>   registry:room | registry:command | registry:monster (+ registry:* wildcard),
+>   added to mod-sdk CapabilitySet. Absent caps = trusted host (all granted),
+>   matching the perceive/act/controller convention.
+> - The real seams: EffectRegistry.register (effects/interpreter.ts, already
+>   override-capable), RoomRegistry.register (gen/room.ts, open by design),
+>   ActionRegistry.register (game/player-turn.ts - the LIVE decision-13 player
+>   command seam; the cmd.ts CommandQueue is a faithful port the web loop does
+>   not drive), and a NEW GameState.monsterTurnHook consulted at the top of
+>   monsterTurn (returns true = takes the whole turn before any AI RNG; absent =
+>   byte-identical core AI). Session surfaces the EffectRegistry on StartedGame.
+> - Host: web ?trusted=<id> loads an in-process plugin (trusted/{runtime,
+>   discover}.ts, mods/<id>/trusted.ts), builds the gated host, calls
+>   plugin.register. demo-trusted overrides all four under all four caps.
+> - PROVEN LIVE: demo-trusted installed (all four facades exercised, lastError
+>   null); a brand-new "demo-wave" command (nonexistent in core) executed in the
+>   real turn loop and emitted its message. The monster-AI seam is proven by a
+>   core unit test WITH A CONTROL (hook true -> monster frozen; hook false ->
+>   monster closes on the player) because idle town monsters take no AI turns.
+> NEXT: W2.3 (vocabulary extension - new flags/stats/effect-kinds/room-keys from
+> packs at runtime), then W2.4 (in-app mod manager UI). Consider the Electron
+> distribution track alongside.
+
 ## Wave 1 - Integrate the substrate (before P8)
 
 Each W1.x is its own verified, pushed slice (typecheck + full vitest + origin
