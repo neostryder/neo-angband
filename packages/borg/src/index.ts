@@ -19,3 +19,7 @@ export * from "./perceive";
 export * from "./think";
 export * from "./controller";
 export * from "./harness";
+
+/* Decision subsystems (ported P8.1+). */
+export * from "./trait";
+export * from "./flow";
