@@ -1,0 +1,9 @@
+{
+  "id": "demo-sandbox",
+  "name": "Sandbox Demo Wanderer",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "engine": "4.2.x",
+  "capabilities": ["state:player.read", "state:monsters.read", "command:add"],
+  "dependencies": { "core": "*" }
+}

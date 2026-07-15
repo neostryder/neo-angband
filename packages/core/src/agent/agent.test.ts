@@ -225,6 +225,21 @@ describe("capability gating and determinism", () => {
     ).not.toThrow();
   });
 
+  it("installs with narrow read grants (least privilege), gating reads per domain", () => {
+    const state = makeState();
+    // A sandboxed plugin granted command:add + only the player domain (no
+    // state:*.read wildcard): install succeeds, and the perceive facade gates
+    // the ungranted domain at read time rather than the install requiring all.
+    const caps = grant("command:add", "state:player.read");
+    let session!: ReturnType<typeof installController>;
+    expect(() => {
+      session = installController(state, () => null, { capabilities: caps });
+    }).not.toThrow();
+    expect(() => session.view.player()).not.toThrow();
+    expect(() => session.view.monsters()).toThrow(AgentCapabilityError);
+    session.uninstall();
+  });
+
   it("trips the determinism ratchet hook for a nondeterministic controller", () => {
     const state = makeState();
     let flipped = 0;
