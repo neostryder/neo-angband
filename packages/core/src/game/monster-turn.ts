@@ -1251,6 +1251,12 @@ function monsterTurnAttackGlyph(
  * header); this ports the movement/attack core plus web/glyph/decoy handling.
  */
 export function monsterTurn(mon: Monster, state: GameState): void {
+  /* W2.2 mod seam: a trusted plugin may take this monster's turn over entirely.
+   * Absent (the default) this is a no-op and the ported AI runs unchanged. The
+   * hook runs before any AI RNG is drawn, so a mod that skips the turn leaves
+   * the seeded stream exactly where a "do nothing" monster would. */
+  if (state.monsterTurnHook?.(mon, state)) return;
+
   let didSomething = false;
 
   /* If we're in a web, deal with that (mon-move.c L1519). Draws no RNG. */

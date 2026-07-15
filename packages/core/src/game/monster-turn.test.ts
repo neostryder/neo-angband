@@ -119,6 +119,41 @@ describe("monster movement AI", () => {
     expect(mon.grid).toEqual(loc(20, 10));
   });
 
+  it("a mod AI hook returning true consumes the turn before the ported AI (W2.2 registry:monster)", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const race = makeRace({ level: 5, hearing: 30 });
+    const mon = addMon(state, race, loc(25, 10));
+    updateMonsterDistances(state);
+    makeNoise(state.chunk, { grid: state.actor.grid, covertTracks: false });
+    const start = { x: mon.grid.x, y: mon.grid.y };
+
+    let calls = 0;
+    state.monsterTurnHook = (m) => {
+      calls += 1;
+      return m === mon;
+    };
+    monsterTurn(mon, state);
+
+    expect(calls).toBe(1);
+    // The whole faithful AI was skipped: the monster did not close on the player.
+    expect({ x: mon.grid.x, y: mon.grid.y }).toEqual(start);
+  });
+
+  it("a mod AI hook returning false falls through to the faithful AI (control)", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const race = makeRace({ level: 5, hearing: 30 });
+    const mon = addMon(state, race, loc(25, 10));
+    updateMonsterDistances(state);
+    makeNoise(state.chunk, { grid: state.actor.grid, covertTracks: false });
+    const before = distance(mon.grid, state.actor.grid);
+
+    state.monsterTurnHook = () => false;
+    monsterTurn(mon, state);
+
+    // Same setup as the hold-true case, but the AI ran: the monster closed in.
+    expect(distance(mon.grid, state.actor.grid)).toBeLessThan(before);
+  });
+
   it("an aware monster's turn rouses sleeping group-mates (monster_group_rouse)", () => {
     const state = makeState({ playerGrid: loc(15, 10) });
     const race = makeRace({ level: 5, flags: [RF.NEVER_MOVE] });

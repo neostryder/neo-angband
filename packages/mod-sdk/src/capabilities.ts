@@ -27,6 +27,14 @@
  *                             extension for a plugin that genuinely needs
  *                             unrestricted egress, and reads the same way
  *                             the other wildcards do.
+ *  - "registry:<domain>"    - override a game SYSTEM registry from a TRUSTED
+ *                             in-process plugin (W2.2, core/mod/registry-host.ts):
+ *                             "registry:effect" | "registry:room" |
+ *                             "registry:command" | "registry:monster"; or the
+ *                             wildcard "registry:*" for all four. Distinct from
+ *                             "command:add": that adds a command via the act
+ *                             facade, this replaces what a command DOES (and the
+ *                             effect/room/AI logic behind the game).
  *
  * This module only surfaces `nondeterministic` from the manifest. The
  * save's determinism ratchet itself - flipping a save from DETERMINISTIC to
@@ -43,11 +51,14 @@ export type ParsedCapability =
   | { kind: "command"; action: "add" }
   | { kind: "event"; name: string }
   | { kind: "state"; domain: string; access: "read" }
-  | { kind: "network"; host: string };
+  | { kind: "network"; host: string }
+  | { kind: "registry"; domain: string };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
+/** The four override domains ModRegistryHost gates, plus the "*" wildcard. */
+const REGISTRY_RE = /^registry:(\*|effect|room|command|monster)$/;
 
 /**
  * Parse and validate a capability string against the vocabulary above,
@@ -71,6 +82,10 @@ export function parseCapability(cap: string): ParsedCapability {
   const network = NETWORK_RE.exec(cap);
   if (network) {
     return { kind: "network", host: network[1] as string };
+  }
+  const registry = REGISTRY_RE.exec(cap);
+  if (registry) {
+    return { kind: "registry", domain: registry[1] as string };
   }
   throw new CapabilityError(`unrecognized capability: "${cap}"`);
 }
@@ -96,6 +111,11 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       return (
         grant.kind === "network" &&
         (grant.host === "*" || grant.host === request.host)
+      );
+    case "registry":
+      return (
+        grant.kind === "registry" &&
+        (grant.domain === "*" || grant.domain === request.domain)
       );
   }
 }

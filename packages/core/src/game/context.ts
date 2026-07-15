@@ -437,6 +437,15 @@ export interface GameState {
    */
   onMelee?: (mon: Monster, result: MeleeAttack) => void;
   /**
+   * Monster-AI override hook (W2.2 mod seam). Consulted at the very top of
+   * monsterTurn (monster-turn.ts): returning true takes the monster's whole
+   * turn over (the ported AI is skipped for that monster this turn); returning
+   * false falls through to the faithful AI. Absent by default, so core
+   * behaviour is byte-identical. Installed by a trusted in-process plugin via
+   * ModRegistryHost.monsters.setTurnHook (mod/registry-host.ts).
+   */
+  monsterTurnHook?: (mon: Monster, state: GameState) => boolean;
+  /**
    * PU_BONUS | PU_HP | PU_MANA: recompute the derived state from the
    * current gear (equipment commands call this after changing what is
    * worn). Installed by the session (wireGame).

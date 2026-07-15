@@ -289,6 +289,13 @@ export interface StartGameOptions extends BootLevelOptions {
 export interface StartedGame {
   state: GameState;
   registry: ActionRegistry;
+  /**
+   * The effect interpreter (null on a worldless boot). Surfaced so a host can
+   * build the trusted-mod registry facade (mod/registry-host.ts, W2.2) for
+   * effect-handler overrides. The room registry lives on booted.registries.rooms
+   * and the command seam is `registry` above.
+   */
+  effects: EffectRegistry | null;
   /** The generated world (features, placed objects, registries) for rendering. */
   booted: BootedLevel;
   players: PlayerRegistry;
@@ -345,6 +352,12 @@ interface WiredGame {
   registry: ActionRegistry;
   trapDeps: TrapDeps | null;
   flavor: FlavorKnowledge;
+  /**
+   * The effect interpreter, or null on a worldless boot (no projections). Kept
+   * on the wired result so the host can hand it to a trusted mod's registry
+   * facade (W2.2, mod/registry-host.ts) for effect-handler overrides.
+   */
+  effects: EffectRegistry | null;
 }
 
 /**
@@ -628,6 +641,9 @@ function wireGame(
   // the same effect interpreter.
   let trapDeps: TrapDeps | null = null;
   let chestDeps: ChestCmdDeps | null = null;
+  /* Hoisted so the wired result can surface it to the host (W2.2 mod facade);
+   * assigned inside the projections block below, null on a worldless boot. */
+  let effectRegistry: EffectRegistry | null = null;
   const makeDeps: MakeDeps = {
     reg: reg.objects,
     alloc: new ObjAllocState(reg.objects, reg.constants),
@@ -637,6 +653,7 @@ function wireGame(
   };
   if (reg.projections) {
     const effects = new EffectRegistry();
+    effectRegistry = effects;
     registerCoreHandlers(effects);
     registerAttackHandlers(effects);
     registerMonsterHandlers(effects);
@@ -1091,7 +1108,7 @@ function wireGame(
       caveIlluminateKnown(s, dawn),
   };
 
-  return { registry, trapDeps, flavor };
+  return { registry, trapDeps, flavor, effects: effectRegistry };
 }
 
 /** The parts of a generated level that populate a GameState. */
@@ -1570,6 +1587,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   return {
     state,
     registry: wired.registry,
+    effects: wired.effects,
     booted,
     players,
     flavor: wired.flavor,
@@ -1902,6 +1920,7 @@ export function loadGame(
   return {
     state,
     registry: wired.registry,
+    effects: wired.effects,
     booted,
     players,
     flavor: wired.flavor,
