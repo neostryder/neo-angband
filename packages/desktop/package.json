@@ -1,0 +1,32 @@
+{
+  "name": "@neo-angband/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optional Electron desktop wrapper: the same web app as a native, offline, installable app",
+  "license": "GPL-2.0-only",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "pnpm --filter @neo-angband/web bundle && electron .",
+    "dist": "pnpm --filter @neo-angband/web bundle && electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "org.neoangband.desktop",
+    "productName": "Neo Angband",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "../web/dist-web/**/*"
+    ],
+    "win": { "target": "nsis" },
+    "mac": { "target": "dmg", "category": "public.app-category.games" },
+    "linux": { "target": ["AppImage", "deb"], "category": "Game" }
+  }
+}
