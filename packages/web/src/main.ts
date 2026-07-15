@@ -143,6 +143,7 @@ import { defaultModStore, buildCatalog, consentSatisfied } from "./mod-store";
 import { runModManager } from "./mods";
 import { initA11y } from "./a11y";
 import { DEMO_AGENTS } from "./agents/demo";
+import { createBorg, makeCoreResolvers } from "@neo-angband/borg";
 import { discoverPlugins } from "./agents/sandbox/discover";
 import { installSandboxedController } from "./agents/sandbox/host";
 import { discoverTrustedPlugins } from "./agents/trusted/discover";
@@ -3388,6 +3389,13 @@ render();
 // character was built. Resuming a save never births.
 async function maybeBirth(): Promise<void> {
   if (!bootedNew) return;
+  // An autoplayer (the Borg, ?agent=) boots straight into play: skip the modal
+  // birth screen and let it drive the default (or last-birthed) character, so it
+  // never stalls waiting for a human to click through character creation.
+  if (params.get("agent")) {
+    say("The Borg awakens.");
+    return;
+  }
   let justBirthed = false;
   try {
     justBirthed = sessionStorage.getItem(BIRTH_DONE_KEY) === "1";
@@ -3468,9 +3476,19 @@ void bootMenus();
 // agent); the tick interval is the agent's configurable speed. Ticks wait out
 // birth / menus / death (modalDepth, dead).
 const agentId = params.get("agent");
-const agentMake = agentId ? DEMO_AGENTS[agentId] : undefined;
-if (agentId && agentMake) {
-  const base = agentMake();
+// The bundled Borg (P8) is the flagship in-process agent: a faithful autoplayer.
+// It is not a DEMO_AGENTS factory (it needs the live monster registry to build
+// its danger resolver), so it is constructed here with makeCoreResolvers.
+const isBorg = agentId === "borg";
+const agentMake = agentId && !isBorg ? DEMO_AGENTS[agentId] : undefined;
+if (agentId && (agentMake || isBorg)) {
+  const base: AgentController = isBorg
+    ? createBorg({
+        resolvers: makeCoreResolvers({
+          races: booted.registries.monsters.races,
+        }),
+      }).controller
+    : agentMake!();
   const resolver = new ContentIdResolver({
     objects: booted.registries.objects,
     playerRaces: players.races,
@@ -3507,7 +3525,18 @@ if (agentId && agentMake) {
   }
   let agentTicks = 0;
   let agentLastError: string | null = null;
-  const AGENT_TICK_MS = 120;
+  // Configurable speed (borgs are configurable-speed, fast by default). Accepts
+  // ?speed=fast|normal|slow or a raw millisecond interval; the Borg defaults to
+  // fast, the demo agents to normal.
+  const AGENT_TICK_MS = ((): number => {
+    const raw = (params.get("speed") ?? "").toLowerCase();
+    if (raw === "fast") return 40;
+    if (raw === "normal") return 120;
+    if (raw === "slow") return 400;
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 10 && n <= 5000) return n;
+    return isBorg ? 40 : 120;
+  })();
   const AGENT_TICK_CAP = 5000;
   const agentTimer = setInterval(() => {
     if (dead) {

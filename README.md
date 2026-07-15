@@ -8,8 +8,10 @@ rebuilding the engine for the web era.
 offline PWA, self-hosted as a static site, or as a desktop app - see
 [how to play and install](docs/INSTALL.md). The mod framework (content packs,
 an in-app mod manager, sandboxed and trusted plugins, runtime vocabulary
-extension) is feature-complete. See the [port plan](docs/PORT_PLAN.md) for the
-roadmap and what remains.
+extension) is feature-complete, and the bundled **Borg** - a faithful port of
+Angband's automatic player - rides it as the completeness proof (add
+`?agent=borg` to watch it play; see [docs/modding/BORG.md](docs/modding/BORG.md)).
+See the [port plan](docs/PORT_PLAN.md) for the roadmap and what remains.
 
 ## What this is
 
