@@ -4,20 +4,34 @@
  * (reference/src/borg/borg-update.c) adapted from the C borg's screen-scrape to
  * our clean perceive facade.
  *
- * FIDELITY NOTE. The C borg re-derives monster/object identity from on-screen
- * symbols and consumes parsed game messages; that symbol-ambiguity and the
- * message pipeline (borg_parse, observe_kill_move) are behaviorally load-bearing
- * and are completed by P8.6 (think ladder + borg_update). This foundation
- * establishes the data flow and the staleness model faithfully: it folds the
- * perceivable map, monsters, and floor objects into borg_grids / borg_kills /
- * borg_takes, marks grids MARK/VIEW/GLOW, tracks when-last-seen, and detects
- * level changes. Decision subsystems read BorgWorld, never the live engine.
+ * FIDELITY MODEL. The C borg re-derives monster/object identity from on-screen
+ * symbols (observe_kill_move / borg_locate_kill) because it only sees glyphs;
+ * the frozen AgentView instead hands the port exact monster ids and per-cell
+ * visibility, so the symbol-correlation guessing is unnecessary and the port
+ * updates records in place by m_idx. What IS behaviorally load-bearing - and is
+ * ported faithfully here - is:
+ *   - the known-map fog-of-war (only seen/remembered grids are recorded),
+ *   - the staleness model: records persist after leaving view and expire on the
+ *     2000-borg-turn clock (borg-update.c:1553 / :1591),
+ *   - deletion of floor objects under the borg and while hallucinating
+ *     (borg-update.c:1583),
+ *   - message consumption (deaths / blinks) pruning tracked monsters
+ *     (borg-update.c:2785, via perceive-messages.ts).
+ * The per-level facts (unique/scary/morgoth/summoner) are derived by
+ * borg_near_monster_type (perceive-facts.ts), which the think ladder invokes at
+ * the faithful point (borg-think-dungeon.c:1268).
+ *
+ * Decision subsystems read BorgWorld, never the live engine.
  */
 
 import type { AgentView } from "@neo-angband/core";
 import { BORG_MARK, BORG_VIEW, BORG_GLOW } from "./world/grid";
 import type { BorgWorld } from "./world/model";
 import { makeLevelFacts } from "./world/model";
+import { borgReactMessages } from "./perceive-messages";
+
+/** borg_update expires a tracked record after this many borg-turns unseen. */
+export const BORG_EXPIRE_TURNS = 2000;
 
 /** Track the depth we last perceived, to detect level changes. */
 interface PerceiveMemo {
@@ -41,6 +55,10 @@ export function perceive(
 ): void {
   const p = view.player();
 
+  /* Old position, for the "delete objects I just stepped off" rule. */
+  const oldX = world.self.c.x;
+  const oldY = world.self.c.y;
+
   // Level change: depth changed (or first sight) -> forget the old level.
   if (!memo.initialized || p.depth !== memo.lastDepth) {
     world.wipeLevel();
@@ -54,8 +72,14 @@ export function perceive(
   world.facts.depth = p.depth;
 
   ingestMap(world, view);
-  ingestMonsters(world, view);
-  ingestFloor(world, view);
+  const visibleIds = ingestMonsters(world, view);
+  ingestFloor(world, view, oldX, oldY);
+
+  // Consume the message stream (drains view.messages() exactly once). The C
+  // also force-deletes all records while hallucinating (borg-update.c:1557);
+  // PlayerView exposes no hallucination flag, so that branch is omitted (the
+  // borg simply trusts the exact-id view it is given).
+  borgReactMessages(world, view.messages(), visibleIds);
 
   world.seeded = true;
 }
@@ -88,16 +112,22 @@ function ingestMap(world: BorgWorld, view: AgentView): void {
 }
 
 /**
- * Rebuild the monster-tracking list from perceivable monsters. Monsters no
- * longer visible keep their record (with a stale `when`) until the expiry pass
- * (P8.6) removes them, matching the C borg's follow/forget behavior.
+ * Rebuild the monster-tracking list from perceivable monsters, updating records
+ * in place by m_idx (belief accumulation). Records for monsters no longer
+ * visible are preserved and expire on the 2000-turn clock, matching the C borg's
+ * follow / forget behavior (borg-update.c:1541-1567).
+ *
+ * Returns the set of game m_idx values visible this tick (for message pruning).
  */
-function ingestMonsters(world: BorgWorld, view: AgentView): void {
+function ingestMonsters(world: BorgWorld, view: AgentView): Set<number> {
   // Clear the grid.kill back-pointers; rebuilt below from live positions.
   for (const [, k] of world.kills.entries()) {
     if (world.map.inBounds(k.pos.x, k.pos.y)) {
       world.map.at(k.pos.x, k.pos.y).kill = 0;
     }
+    // Clear per-tick flags (borg-update.c:1549).
+    k.seen = false;
+    k.used = false;
   }
 
   // Index existing records by game m_idx so we update in place (preserving the
@@ -107,9 +137,10 @@ function ingestMonsters(world: BorgWorld, view: AgentView): void {
     if (k.mIdx !== 0) byMidx.set(k.mIdx, i);
   }
 
-  let uniques = 0;
+  const visibleIds = new Set<number>();
   for (const m of view.monsters()) {
     if (!m.visible) continue;
+    visibleIds.add(m.id);
 
     let idx = byMidx.get(m.id);
     if (idx === undefined) {
@@ -138,26 +169,44 @@ function ingestMonsters(world: BorgWorld, view: AgentView): void {
     if (world.map.inBounds(m.grid.x, m.grid.y)) {
       world.map.at(m.grid.x, m.grid.y).kill = idx;
     }
-    // RF_UNIQUE detection is refined in P8.6; count raceFlags marker for now.
-    if (m.raceFlags.includes("UNIQUE")) uniques += 1;
   }
 
-  world.facts.uniqueOnLevel = uniques;
+  // Expiry pass: forget records unseen for >= 2000 borg-turns
+  // (borg-update.c:1553). Visible records were just refreshed (when == clock).
+  for (const [i, k] of world.kills.entries()) {
+    if (world.clock - k.when < BORG_EXPIRE_TURNS) continue;
+    world.kills.delete(i);
+  }
+
+  return visibleIds;
 }
 
 /**
- * Fold floor objects into the take-tracking list. Identity resolution to a real
- * k_idx and want/junk valuation happen in P8.5; here we record presence, tval,
+ * Fold floor objects into the take-tracking list, updating in place by position
+ * so unseen objects persist and expire on the 2000-turn clock, and deleting
+ * objects under the borg (or its previous grid) as the C does
+ * (borg-update.c:1569-1601). Identity resolution to a real k_idx and want/junk
+ * valuation happen in the item subsystem (P8.5); here we record presence, tval,
  * and position so flow-to-item (P8.1) has targets.
  */
-function ingestFloor(world: BorgWorld, view: AgentView): void {
+function ingestFloor(
+  world: BorgWorld,
+  view: AgentView,
+  oldX: number,
+  oldY: number,
+): void {
   // Clear grid.take back-pointers; rebuilt below.
   for (const [, t] of world.takes.entries()) {
     if (world.map.inBounds(t.pos.x, t.pos.y)) {
       world.map.at(t.pos.x, t.pos.y).take = 0;
     }
   }
-  world.takes.wipe();
+
+  // Index existing records by position for in-place update.
+  const byPos = new Map<string, number>();
+  for (const [i, t] of world.takes.entries()) {
+    byPos.set(`${t.pos.x},${t.pos.y}`, i);
+  }
 
   const bounds = view.mapBounds();
   const maxY = Math.min(bounds.height, world.map.height);
@@ -171,17 +220,40 @@ function ingestFloor(world: BorgWorld, view: AgentView): void {
       const head = items[0];
       if (!head) continue;
 
-      const idx = world.takes.alloc();
+      const key = `${x},${y}`;
+      let idx = byPos.get(key);
+      if (idx === undefined) {
+        idx = world.takes.alloc();
+        byPos.set(key, idx);
+      }
       const t = world.takes.at(idx);
-      // kIdx is a nonzero "present, unresolved" marker until P8.5 binds the
-      // real object kind; tval carries the broad category for early filtering.
+      // kIdx is a nonzero "present, unresolved" marker until the item subsystem
+      // binds the real object kind; tval carries the broad category.
       t.kIdx = head.tval > 0 ? head.tval : 1;
       t.tval = head.tval;
       t.known = false;
       t.pos.x = x;
       t.pos.y = y;
       t.when = world.clock;
-      if (world.map.inBounds(x, y)) world.map.at(x, y).take = idx;
+    }
+  }
+
+  // Delete objects under the borg / its old grid, then expire stale ones
+  // (borg-update.c:1583-1600), then rebuild the surviving back-pointers.
+  for (const [i, t] of world.takes.entries()) {
+    const underMe =
+      (t.pos.x === world.self.c.x && t.pos.y === world.self.c.y) ||
+      (t.pos.x === oldX && t.pos.y === oldY);
+    if (underMe) {
+      world.takes.delete(i);
+      continue;
+    }
+    if (world.clock - t.when >= BORG_EXPIRE_TURNS) {
+      world.takes.delete(i);
+      continue;
+    }
+    if (world.map.inBounds(t.pos.x, t.pos.y)) {
+      world.map.at(t.pos.x, t.pos.y).take = i;
     }
   }
 }
