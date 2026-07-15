@@ -135,7 +135,7 @@ import type {
   LoreDeps,
 } from "@neo-angband/core";
 import { GameEvents } from "@neo-angband/core";
-import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost } from "@neo-angband/core";
+import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, VocabularyRegistry } from "@neo-angband/core";
 import type { AgentController } from "@neo-angband/core";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks } from "./pack";
@@ -3609,6 +3609,10 @@ if (trustedId) {
     const caps = CapabilitySet.fromManifest(found.manifest);
     let trustedError: string | null = null;
     const logs: string[] = [];
+    // This mod's own vocabulary (W2.3): declared terms + per-entity values. A
+    // real host restores it from / persists it to the mod's save bag; here it
+    // starts empty each boot and the mod repopulates it in register().
+    const trustedVocab = new VocabularyRegistry();
     try {
       const host = createModRegistryHost(
         {
@@ -3616,6 +3620,7 @@ if (trustedId) {
           rooms: booted.registries.rooms,
           commands: registry,
           state,
+          vocab: trustedVocab,
         },
         caps,
       );
@@ -3647,6 +3652,10 @@ if (trustedId) {
         },
         get lastError() {
           return trustedError;
+        },
+        // W2.3: the mod's declared vocabulary + stored values (its bag content).
+        get vocab() {
+          return trustedVocab.toJSON();
         },
       };
     }

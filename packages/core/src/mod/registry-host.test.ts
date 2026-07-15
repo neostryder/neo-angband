@@ -12,6 +12,7 @@ import { ActionRegistry } from "../game/player-turn";
 import type { GameState } from "../game/context";
 import type { RoomRegistry } from "../gen/room";
 import { createModRegistryHost } from "./registry-host";
+import { VocabularyRegistry } from "./vocabulary";
 
 /** An exact-match capability set (mirrors CapabilitySet's has()). */
 function grant(...caps: string[]): { has: (c: string) => boolean } {
@@ -22,13 +23,16 @@ function grant(...caps: string[]): { has: (c: string) => boolean } {
 function targets() {
   const rooms = { register: vi.fn() } as unknown as RoomRegistry;
   const state = {} as GameState;
+  const vocab = new VocabularyRegistry();
   return {
     effects: new EffectRegistry(),
     rooms,
     commands: new ActionRegistry(),
     state,
+    vocab,
     _rooms: rooms,
     _state: state,
+    _vocab: vocab,
   };
 }
 
@@ -45,6 +49,12 @@ describe("createModRegistryHost - trusted host (no capabilities)", () => {
     expect(host.commands.has("mod:dance")).toBe(true);
     expect(() => host.monsters.setTurnHook(() => true)).not.toThrow();
     expect(t._state.monsterTurnHook).toBeTypeOf("function");
+    // W2.3 vocab domain is granted too.
+    expect(() =>
+      host.vocab.define({ kind: "stat", term: "demo:luck" }),
+    ).not.toThrow();
+    host.vocab.setValue("player", "demo:luck", 7);
+    expect(host.vocab.getValue("player", "demo:luck")).toBe(7);
   });
 });
 
@@ -66,6 +76,9 @@ describe("createModRegistryHost - capability gating", () => {
     expect(() => host.monsters.setTurnHook(() => true)).toThrow(
       /registry:monster/,
     );
+    expect(() =>
+      host.vocab.define({ kind: "flag", term: "mod:cursed" }),
+    ).toThrow(/registry:vocab/);
   });
 
   it("gates each domain independently and only at call time", () => {

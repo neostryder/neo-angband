@@ -16,6 +16,11 @@
  * - monsters (GameState.monsterTurnHook, game/monster-turn.ts): install a hook
  *   consulted at the top of every monster's turn; returning true takes the turn
  *   over entirely - overriding monster AI. Gated by "registry:monster".
+ * - vocab    (VocabularyRegistry, mod/vocabulary.ts): declare genuinely NEW
+ *   vocabulary terms (flags, stats, any mod-coined kind) and store per-entity
+ *   values for them - extending the game's vocabulary, not just recombining it
+ *   (W2.3). Mod-owned and persisted in the mod's save bag; core never reads it.
+ *   Gated by "registry:vocab".
  *
  * WHY IN-PROCESS AND TRUSTED (the W2.2 architecture decision): every one of
  * these handlers executes SYNCHRONOUSLY with live access to the rng, the chunk,
@@ -46,6 +51,8 @@ import type { RoomBuilder, RoomRegistry } from "../gen/room";
 import type { ActionRegistry, PlayerAction } from "../game/player-turn";
 import type { GameState } from "../game/context";
 import type { Monster } from "../mon/monster";
+import type { JsonValue } from "./save-blocks";
+import type { VocabKind, VocabTerm, VocabularyRegistry } from "./vocabulary";
 
 /** The capability each registry facade requires (registry:<domain>). */
 export const REGISTRY_CAPABILITIES = {
@@ -53,6 +60,7 @@ export const REGISTRY_CAPABILITIES = {
   room: "registry:room",
   command: "registry:command",
   monster: "registry:monster",
+  vocab: "registry:vocab",
 } as const;
 
 export type RegistryDomain = keyof typeof REGISTRY_CAPABILITIES;
@@ -75,6 +83,8 @@ export interface RegistryTargets {
   commands?: ActionRegistry | null;
   /** The game state, for installing the monster-AI turn hook. */
   state?: GameState | null;
+  /** This mod's vocabulary registry (declared terms + per-entity values). */
+  vocab?: VocabularyRegistry | null;
 }
 
 /** The effect-override facade (gated by registry:effect). */
@@ -113,6 +123,27 @@ export interface MonsterFacade {
 }
 
 /**
+ * The vocabulary-extension facade (gated by registry:vocab). Declares NEW terms
+ * (flags / stats / any mod-coined kind) and stores per-entity values for them -
+ * the W2.3 seam. Delegates to the mod's own VocabularyRegistry (mod/vocabulary.ts),
+ * which the host persists into the mod's save bag; core never reads these terms.
+ */
+export interface VocabFacade {
+  /** Declare a new term; throws on a duplicate (same kind + term). */
+  define(term: VocabTerm): void;
+  /** Whether a term is declared in a kind. */
+  has(kind: VocabKind, term: string): boolean;
+  /** All declared terms, optionally filtered to one kind. */
+  list(kind?: VocabKind): VocabTerm[];
+  /** Set an entity's value for a declared term (throws if undeclared). */
+  setValue(entity: string, term: string, value: JsonValue): void;
+  /** Get an entity's value for a term, or undefined when unset. */
+  getValue(entity: string, term: string): JsonValue | undefined;
+  /** A plain snapshot of one entity's term values. */
+  valuesOf(entity: string): { [term: string]: JsonValue };
+}
+
+/**
  * The capability-gated registry host handed to a trusted in-process plugin.
  * Each facade throws AgentCapabilityError on first use if the corresponding
  * registry:<domain> capability was not granted, and a plain Error if the host
@@ -123,6 +154,7 @@ export interface ModRegistryHost {
   readonly rooms: RoomFacade;
   readonly commands: CommandFacade;
   readonly monsters: MonsterFacade;
+  readonly vocab: VocabFacade;
 }
 
 /** Absent capabilities => trusted host, all granted (perceive/act convention). */
@@ -194,6 +226,32 @@ export function createModRegistryHost(
         const state = requireTarget(targets.state, "monster");
         if (hook) state.monsterTurnHook = hook;
         else delete state.monsterTurnHook;
+      },
+    },
+    vocab: {
+      define(term): void {
+        requireCap(capabilities, "vocab");
+        requireTarget(targets.vocab, "vocab").define(term);
+      },
+      has(kind, term): boolean {
+        requireCap(capabilities, "vocab");
+        return requireTarget(targets.vocab, "vocab").has(kind, term);
+      },
+      list(kind): VocabTerm[] {
+        requireCap(capabilities, "vocab");
+        return requireTarget(targets.vocab, "vocab").list(kind);
+      },
+      setValue(entity, term, value): void {
+        requireCap(capabilities, "vocab");
+        requireTarget(targets.vocab, "vocab").setValue(entity, term, value);
+      },
+      getValue(entity, term): JsonValue | undefined {
+        requireCap(capabilities, "vocab");
+        return requireTarget(targets.vocab, "vocab").getValue(entity, term);
+      },
+      valuesOf(entity): { [term: string]: JsonValue } {
+        requireCap(capabilities, "vocab");
+        return requireTarget(targets.vocab, "vocab").valuesOf(entity);
       },
     },
   };
