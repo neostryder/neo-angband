@@ -68,6 +68,22 @@ describe("parseCapability: valid forms", () => {
       host: "*",
     });
   });
+
+  it("parses registry:<domain> for each override domain", () => {
+    for (const domain of ["effect", "room", "command", "monster"] as const) {
+      expect(parseCapability(`registry:${domain}`)).toEqual({
+        kind: "registry",
+        domain,
+      });
+    }
+  });
+
+  it("parses the registry:* wildcard", () => {
+    expect(parseCapability("registry:*")).toEqual({
+      kind: "registry",
+      domain: "*",
+    });
+  });
 });
 
 describe("parseCapability: rejects garbage", () => {
@@ -95,6 +111,11 @@ describe("parseCapability: rejects garbage", () => {
 
   it("rejects a bare unprefixed string", () => {
     expect(() => parseCapability("party.read")).toThrow(CapabilityError);
+  });
+
+  it("rejects an unknown registry domain", () => {
+    expect(() => parseCapability("registry:player")).toThrow(CapabilityError);
+    expect(() => parseCapability("registry:")).toThrow(CapabilityError);
   });
 
   it("names the bad capability in the error message", () => {
@@ -177,6 +198,24 @@ describe("CapabilitySet: has / check", () => {
       manifest("plugin", { capabilities: ["state:party.read"] }),
     );
     expect(set.has("state:*.read")).toBe(false);
+  });
+
+  it("grants an exact registry domain and rejects a different one", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["registry:effect"] }),
+    );
+    expect(set.has("registry:effect")).toBe(true);
+    expect(set.has("registry:monster")).toBe(false);
+  });
+
+  it("registry:* grants every override domain", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["registry:*"] }),
+    );
+    expect(set.has("registry:effect")).toBe(true);
+    expect(set.has("registry:room")).toBe(true);
+    expect(set.has("registry:command")).toBe(true);
+    expect(set.has("registry:monster")).toBe(true);
   });
 
   it("grants an exact network host and rejects a different host", () => {

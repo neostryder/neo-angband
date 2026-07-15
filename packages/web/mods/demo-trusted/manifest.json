@@ -1,0 +1,9 @@
+{
+  "id": "demo-trusted",
+  "name": "Trusted Demo (system override)",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "engine": "4.2.x",
+  "capabilities": ["registry:effect", "registry:room", "registry:command", "registry:monster"],
+  "dependencies": { "core": "*" }
+}
