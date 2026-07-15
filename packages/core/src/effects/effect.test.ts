@@ -18,6 +18,7 @@ import {
   statNameToIdx,
   timedNameToIdx,
 } from "./effect";
+import { EffectRegistry } from "./interpreter";
 import { monTimedNameToIdx } from "../mon/timed";
 
 describe("effectLookup", () => {
@@ -281,5 +282,31 @@ describe("EffectBuilder", () => {
       .build();
     expect(chain?.index).toBe("MOD_SPARKLE");
     expect(chain?.subtype).toBe(4);
+  });
+
+  it("resolves a mod effect NAME via the live-game wiring (isRegistered)", () => {
+    // Mirrors the exact inject the running game installs (session/game.ts):
+    // lookupEffect = (name) => effects.isRegistered(name) ? name : null. A mod
+    // registers a string effect code through the W2.2 ModRegistryHost.effects
+    // facade; W2.3 lets that same code be NAMED in effect/pack text and resolve.
+    // NOTE: effect text is colon-delimited (name:type:radius:other), so an
+    // effect code that is NAMED in text must be colon-free (like upstream EF_
+    // names); the registry itself still accepts any string key for direct
+    // dispatch. A mod exposes a colon-free alias for its text-nameable effects.
+    const effects = new EffectRegistry();
+    effects.register("DEMO_PULSE", { handler: () => true, desc: "demo" });
+    const wire = (name: string): string | null =>
+      effects.isRegistered(name) ? name : null;
+
+    const chain = new EffectBuilder({ lookupEffect: wire })
+      .effect("DEMO_PULSE")
+      .build();
+    expect(chain?.index).toBe("DEMO_PULSE");
+
+    // Control: an unregistered mod name is rejected exactly as before the mod
+    // (byte-identical core behavior when no mod declares the vocabulary).
+    expect(() =>
+      new EffectBuilder({ lookupEffect: wire }).effect("DEMO_ABSENT"),
+    ).toThrow(/PARSE_ERROR_INVALID_EFFECT/);
   });
 });
