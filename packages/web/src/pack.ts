@@ -99,6 +99,22 @@ function discoverMods(): Map<
   return mods;
 }
 
+/**
+ * The manifests of every bundled CONTENT/tiles mod under packages/web/mods/,
+ * for the mod-manager catalog (W2.4). Normalized via modManifest so callers get
+ * a real PackManifest; the manager merges these with the plugin/trusted lists.
+ */
+export function discoverContentModManifests(): PackManifest[] {
+  const out: PackManifest[] = [];
+  for (const [, mod] of discoverMods()) {
+    const m = modManifest(mod.manifest);
+    // Plugins are surfaced by discoverPlugins/discoverTrustedPlugins; here we
+    // list only content/tiles packs so the catalog does not double-count.
+    if (m.shape !== "plugin") out.push(m);
+  }
+  return out;
+}
+
 /** Enabled mod ids: URL ?mods=a,b wins; else localStorage; else none. */
 function enabledModIds(): string[] {
   try {
