@@ -4,8 +4,12 @@ A modern TypeScript port of [Angband](https://github.com/angband/angband),
 the classic dungeon-crawling roguelike - holding strongly to its roots while
 rebuilding the engine for the web era.
 
-**Status: Phase 0 (bootstrap).** Not yet playable. See the
-[port plan](docs/PORT_PLAN.md) for the roadmap.
+**Status: playable.** The full game runs in the browser, as an installable
+offline PWA, self-hosted as a static site, or as a desktop app - see
+[how to play and install](docs/INSTALL.md). The mod framework (content packs,
+an in-app mod manager, sandboxed and trusted plugins, runtime vocabulary
+extension) is feature-complete. See the [port plan](docs/PORT_PLAN.md) for the
+roadmap and what remains.
 
 ## What this is
 
