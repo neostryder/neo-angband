@@ -24,8 +24,25 @@ import { FEAT } from "@neo-angband/core";
 import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid";
 import type { BorgGrid } from "../world/grid";
 import type { BorgWorld } from "../world/model";
+import {
+  BI,
+  CLASS_WARRIOR,
+  CLASS_MAGE,
+  CLASS_PRIEST,
+  CLASS_NECROMANCER,
+} from "../trait/trait-index";
+import { BORG_DIG } from "../trait/tables";
 
 export { FEAT };
+/**
+ * BI_* trait indices, the class ordinals, and BORG_DIG - re-exported from the
+ * canonical definitions the self-model (P8.3) owns (trait/trait-index.ts and
+ * trait/tables.ts, transcribed from borg-trait.h / borg-flow.h). The flow
+ * subsystem reads a subset; sharing the one definition keeps the ordinals and
+ * thresholds in a single place. Until borg_notice runs, trait[] is empty and
+ * trait() below reads default to 0 (the borg_init zero state = "unknown/none").
+ */
+export { BI, CLASS_WARRIOR, CLASS_MAGE, CLASS_PRIEST, CLASS_NECROMANCER };
 
 /** borg-flow.h: number of grids in the flow circular queue. */
 export const AUTO_FLOW_MAX = 1536;
@@ -33,55 +50,14 @@ export const AUTO_FLOW_MAX = 1536;
 /** borg-flow.h: number of grids in the temp scanning array. */
 export const AUTO_TEMP_MAX = 9000;
 
-/** borg-flow.h dig thresholds (mirror calc_digging_chances()). */
-export const BORG_DIG = 10;
+/** borg-flow.h dig thresholds (mirror calc_digging_chances()). BORG_DIG itself
+ * is imported from trait/tables.ts (single definition). */
 export const BORG_DIG_MOD = 20;
 export const BORG_DIG_HARD = 40;
+export { BORG_DIG };
 
-/**
- * Trait indices (borg-trait.h). Only the subset the flow subsystem reads.
- * Values are the exact enum ordinals so they align with the P8.3 trait[] array.
- */
-export const BI = {
-  CLASS: 25,
-  LIGHT: 26,
-  CURHP: 27,
-  MAXHP: 28,
-  CURSP: 30,
-  MAXSP: 31,
-  CLEVEL: 35,
-  MAXCLEVEL: 36,
-  FOOD: 39,
-  GOLD: 45,
-  FAST_SHOTS: 53,
-  DISP: 54,
-  DISM: 55,
-  DEV: 56,
-  DIG: 63,
-  IFIRE: 64,
-  CDEPTH: 105,
-  MAXDEPTH: 106,
-  ISWEAK: 108,
-  ISHUNGRY: 109,
-  ISCUT: 116,
-  ISSTUN: 117,
-  ISHEAVYSTUN: 118,
-  ISBLIND: 112,
-  ISAFRAID: 113,
-  ISCONFUSED: 114,
-  ISIMAGE: 120,
-  AMMO_TVAL: 152,
-  AMISSILES: 155,
-  CRSFEAR: 186,
-  WS_EVIL: 194,
-  WB_POIS: 209,
-} as const;
-
-/** Player class ordinals (borg-trait.h). */
-export const CLASS_WARRIOR = 0;
-export const CLASS_MAGE = 1;
-export const CLASS_PRIEST = 3;
-export const CLASS_NECROMANCER = 4;
+/* Player class ordinals (CLASS_WARRIOR/MAGE/PRIEST/NECROMANCER) are imported
+ * and re-exported above from trait/trait-index.ts (single definition). */
 
 /** Read a derived trait, defaulting to 0 when the self-model has not set it. */
 export function trait(world: BorgWorld, bi: number): number {
