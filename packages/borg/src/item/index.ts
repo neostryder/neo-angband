@@ -22,7 +22,12 @@
  */
 
 export * from "./svals";
-export * from "./deps";
+/* deps.ts holds mostly internal helpers (trait/danger/itemLevel/... imported
+ * directly by the item modules). Only the public seam + slot/device helpers are
+ * re-exported; `trait` in particular is NOT (it also lives in flow/think, so a
+ * flat root re-export would clash). */
+export type { ItemDeps } from "./deps";
+export { borgSlot, hasSlot, deviceFail } from "./deps";
 export * from "./magic";
 export * from "./item-use";
 export * from "./item-id";
