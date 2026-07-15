@@ -31,3 +31,6 @@ export * from "./danger";
 export * from "./item";
 export * from "./fight";
 export * from "./store";
+
+/* Host wiring: build real resolver seams from the engine's monster registry. */
+export * from "./resolvers";

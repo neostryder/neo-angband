@@ -50,6 +50,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest}"],
+        // The main bundle now includes the full engine + the bundled Borg
+        // autoplayer, pushing the JS chunk past workbox's 2 MiB precache
+        // default. Raise the cap so the offline PWA precaches the whole app.
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
     }),
   ],
