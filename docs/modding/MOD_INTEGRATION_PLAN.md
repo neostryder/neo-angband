@@ -127,6 +127,47 @@ and is anchored by the scripted-plugin sandbox, the single largest piece.
 > NEXT: W2.3 (vocabulary extension - new flags/stats/effect-kinds/room-keys from
 > packs at runtime), then W2.4 (in-app mod manager UI). Consider the Electron
 > distribution track alongside.
+>
+> PROGRESS (2026-07-14): W2.3 COMPLETE (vocabulary extension), pushed, 2422 tests.
+> A pack can now introduce GENUINELY NEW vocabulary at runtime, per family:
+> - EFFECT KINDS: EffectRegistry already dispatches string effect codes; W2.3
+>   wired session/game.ts's EffectBuilderInjections.lookupEffect to
+>   effects.isRegistered so a mod effect NAME resolves in effect/pack text (not
+>   just by direct code). Only fires after effect_lookup fails a core name, so
+>   core effect text is byte-identical. CONSTRAINT (documented, found via test):
+>   effect text is colon-delimited (name:type:radius:other), so a text-nameable
+>   mod effect code must be COLON-FREE (like upstream EF_ names); the registry
+>   still accepts any string key for direct dispatch.
+> - ROOM KEYS: already open strings (RoomRegistry validates lazily at get); a mod
+>   builder key dispatches identically. Proven in W2.2 (demo:void).
+> - FLAGS + STATS: ARCHITECTURE DECISION (best-judgment, faithfulness-first; to be
+>   reviewed with Aaron). The faithful engine stores flags in fixed-capacity
+>   bitsets (bitflag.ts, sized from RF_MAX/OF_MAX at bind) and stats in fixed
+>   arity (STAT_MAX=5, with the OBJ_MOD offset + str/int/wis/dex/con names baked
+>   across calcs/char-sheet/randart/birth). Growing that arity to admit a mod flag
+>   or a 6th stat would fight the byte-identical guarantee AND be capacity-bounded.
+>   So mod flags/stats live in a PARALLEL, mod-owned store (core/mod/vocabulary.ts
+>   VocabularyRegistry): a mod DECLARES terms (any kind) and stores per-entity
+>   VALUES, serialized into its own save bag (engine never interprets it). This is
+>   UNBOUNDED and byte-identical to core when unused. The honest trade: unmodified
+>   core code paths do not read a mod term - but core cannot know what a brand-new
+>   stat MEANS anyway, so the mod supplies both the term AND its behaviour,
+>   consuming its values through the W2.2 hooks (AI/effect/command) it controls.
+>   The core-arity path (reserved-headroom bitsets so unmodified core reads mod
+>   flags) is deliberately NOT built; noted as possible future work if a concrete
+>   need appears.
+> - core/mod/registry-host.ts: NEW vocab facade + registry:vocab capability
+>   (+ registry:* covers it); mod-sdk CapabilitySet vocabulary extended.
+> - PROVEN: 6 vocabulary unit tests (declare/value/persist round-trip) + 1 effect-
+>   name wiring test with a control; PROVEN LIVE via ?trusted=demo-trusted - the
+>   mod declared a brand-new stat (demo:luck) and flag (demo:cursed) and stored
+>   player demo:luck=10 (window.__neoTrusted.vocab), installed clean under
+>   registry:vocab. Turn-loop consumption (hook reads/writes the terms) is proven
+>   by core unit tests since idle town monsters take no AI turns.
+> NEXT: W2.4 (in-app mod manager UI), then P8 (the Borg). Ship criteria EXPANDED
+> by Aaron (2026-07-14): optional Electron wrapper + how-to docs (Electron / PWA
+> install / static hosting) + a parity matrix (play + mods + a11y) across all
+> three surfaces; accessibility is now first-class.
 
 ## Wave 1 - Integrate the substrate (before P8)
 
