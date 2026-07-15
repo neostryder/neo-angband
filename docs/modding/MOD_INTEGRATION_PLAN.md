@@ -164,10 +164,38 @@ and is anchored by the scripted-plugin sandbox, the single largest piece.
 >   player demo:luck=10 (window.__neoTrusted.vocab), installed clean under
 >   registry:vocab. Turn-loop consumption (hook reads/writes the terms) is proven
 >   by core unit tests since idle town monsters take no AI turns.
-> NEXT: W2.4 (in-app mod manager UI), then P8 (the Borg). Ship criteria EXPANDED
-> by Aaron (2026-07-14): optional Electron wrapper + how-to docs (Electron / PWA
-> install / static hosting) + a parity matrix (play + mods + a11y) across all
-> three surfaces; accessibility is now first-class.
+>
+> PROGRESS (2026-07-15): W2.4 COMPLETE (in-app mod manager), pushed, 2434 tests.
+> THE MOD FRAMEWORK IS NOW FEATURE-COMPLETE (W1 + W2.1-2.4); only P8 (the Borg)
+> remains before it rides the finished framework.
+> - web/src/mod-store.ts: ModStore over a StorageLike - the enabled set (shares
+>   pack.ts's neo:enabledMods key+schema), per-mod capability CONSENT, and named
+>   PROFILES; pure buildCatalog merges content/sandbox/trusted manifests with
+>   enable+consent state; consentSatisfied. web/src/capability-describe.ts:
+>   plain-language consent copy per capability, flagging elevated grants
+>   (system override / network / broad reads). Both fully unit-tested.
+> - web/src/mods.ts: runModManager - a canvas overlay (overlay.ts helpers,
+>   launched via openModal) to list mods, enable/disable, reorder load order,
+>   consent to plugin capabilities, view P7.6 conflicts (humanLines), and manage
+>   profiles. Hung off the Escape game menu ("Mods" row, game-menu.ts).
+> - INSTALL-FROM-URL is surfaced HONESTLY: the static web build inlines mods at
+>   build time and has no runtime code loader, so the row explains that URL/folder
+>   install is a DESKTOP (Electron) capability rather than faking it - documenting
+>   the surface difference, not leaving a dead button. (This is a concrete item
+>   the Electron ship track must deliver for full cross-surface mod parity.)
+> - main.ts: the ?plugin/?trusted URL blocks refactored into installSandbox/
+>   installTrusted; boot now ALSO auto-installs every persisted-enabled, CONSENTED
+>   plugin (content already composes via pack.ts from the same key). So the
+>   manager's choices actually take effect on reload.
+> - PROVEN: +12 unit tests (mod-store 8, capability-describe 4). PROVEN LIVE: with
+>   NO ?trusted url param, a persisted+consented trusted plugin auto-installs at
+>   boot (window.__neoTrusted installed, vocab declared); revoking its consent in
+>   the store makes boot skip it. Clean boot, no console errors.
+> NEXT: P8 (the Borg) rides the finished framework. In parallel, the EXPANDED ship
+> track (Aaron, 2026-07-14): optional Electron wrapper + how-to docs (Electron /
+> PWA install / static hosting) + a parity matrix (play + mods + a11y) across all
+> three surfaces; accessibility first-class; Electron must also deliver the
+> filesystem/URL mod install the web build cannot.
 
 ## Wave 1 - Integrate the substrate (before P8)
 
