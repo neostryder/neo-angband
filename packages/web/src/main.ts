@@ -141,6 +141,7 @@ import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, discoverContentModManifests, modConflictLines } from "./pack";
 import { defaultModStore, buildCatalog, consentSatisfied } from "./mod-store";
 import { runModManager } from "./mods";
+import { initA11y } from "./a11y";
 import { DEMO_AGENTS } from "./agents/demo";
 import { discoverPlugins } from "./agents/sandbox/discover";
 import { installSandboxedController } from "./agents/sandbox/host";
@@ -230,6 +231,9 @@ import { runOptionsMenu } from "./options";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
+// Accessibility bridge: mirrors messages to an ARIA live region and labels the
+// canvas, since the canvas itself is opaque to screen readers (a11y.ts).
+const a11y = initA11y(canvas);
 
 // Original keyset (numpad + arrows) by default, or the roguelike keyset when
 // the player toggles "rogue_like_commands" on ('=' -> User interface options)
@@ -539,6 +543,8 @@ function say(text: string): void {
   if (!text) return;
   msglog.push(text);
   message = msglog.latest();
+  // Mirror to the screen-reader live region (the canvas is invisible to AT).
+  a11y.announce(text);
 }
 state.msg = (text: string): void => {
   // Route the message onto the event bus (W1.6) so mods can subscribe to
