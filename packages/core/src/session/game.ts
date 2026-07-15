@@ -747,6 +747,14 @@ function wireGame(
         players.shapes.findIndex(
           (s) => s.name.toLowerCase() === name.toLowerCase(),
         ),
+      /* W2.3 vocabulary extension: resolve effect NAMES beyond the upstream EF
+       * set so a mod can name its own effect codes in pack/effect text. Only
+       * reached after effect_lookup fails (a non-core name), so core effect
+       * text is byte-identical; a string EffectCode dispatches to itself via
+       * the EffectRegistry (mods register string codes through the W2.2
+       * ModRegistryHost.effects facade). Unknown names still return null ->
+       * PARSE_ERROR_INVALID_EFFECT, exactly as before. */
+      lookupEffect: (name) => (effects.isRegistered(name) ? name : null),
     };
     // project_o / project_f world access; trapDeps joins it below once the
     // trap system is wired (the mutual reference is deliberate).
