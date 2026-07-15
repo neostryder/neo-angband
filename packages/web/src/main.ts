@@ -140,6 +140,8 @@ import type { AgentController } from "@neo-angband/core";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks } from "./pack";
 import { DEMO_AGENTS } from "./agents/demo";
+import { discoverPlugins } from "./agents/sandbox/discover";
+import { installSandboxedController } from "./agents/sandbox/host";
 import { showAbilities } from "./abilities";
 import { showEquipCmp } from "./equip-cmp";
 import {
@@ -3498,6 +3500,90 @@ if (agentId && agentMake) {
         return agentMsgCount;
       },
     };
+  }
+}
+
+// ---- Scripted-plugin sandbox seam (W2.1) ---------------------------------
+// A scripted plugin runs as UNTRUSTED code in a Web Worker and drives the game
+// through the same frozen perceive/act facade - but across a thread boundary,
+// so it can never touch GameState directly. The host serializes only the
+// capability-granted view domains (serialize.ts), the worker neuters network
+// globals unless granted, and every returned command flows back through the
+// live capability-gated act facade. This is the SYSTEM-modding tier's runtime;
+// P8's Borg can ride either this or the in-process seam. Enable with
+// ?plugin=<id> (disabled by default). Same latch-free pump as the agent seam:
+// the async bridge yields null until the worker replies, then the next tick
+// executes the pending command (host.ts).
+const pluginId = params.get("plugin");
+if (pluginId) {
+  const found = discoverPlugins().get(pluginId);
+  if (!found) {
+    console.warn(`[plugins] "${pluginId}" not found; skipping`);
+  } else {
+    const resolver = new ContentIdResolver({
+      objects: booted.registries.objects,
+      playerRaces: players.races,
+      playerClasses: players.classes,
+    });
+    const caps = CapabilitySet.fromManifest(found.manifest);
+    let pluginTicks = 0;
+    let pluginReady = false;
+    let pluginLastError: string | null = null;
+    const sb = installSandboxedController(state, found.createWorker(), {
+      caps,
+      capabilityStrings: found.manifest.capabilities ?? [],
+      pluginUrl: pluginId,
+      viewDeps: { resolver, reg: booted.registries.objects },
+      onReady: () => {
+        pluginReady = true;
+      },
+      onError: (phase, msg) => {
+        pluginLastError = `${phase}: ${msg}`;
+      },
+    });
+    const PLUGIN_TICK_MS = 120;
+    const PLUGIN_TICK_CAP = 5000;
+    const pluginTimer = setInterval(() => {
+      if (dead) {
+        clearInterval(pluginTimer);
+        sb.uninstall();
+        return;
+      }
+      if (scoresOpen || modalDepth > 0) return; // wait out birth / menus
+      // A crashing pump must not wedge the host: stop and record on a throw.
+      try {
+        advance();
+      } catch (err) {
+        pluginLastError = err instanceof Error ? err.message : String(err);
+        clearInterval(pluginTimer);
+        sb.uninstall();
+        return;
+      }
+      pluginTicks += 1;
+      if (pluginTicks >= PLUGIN_TICK_CAP) {
+        clearInterval(pluginTimer);
+        sb.uninstall();
+      }
+    }, PLUGIN_TICK_MS);
+    if (import.meta.env.DEV) {
+      (window as unknown as { __neoPlugin?: unknown }).__neoPlugin = {
+        id: pluginId,
+        installed: true,
+        capabilities: found.manifest.capabilities ?? [],
+        get ready() {
+          return pluginReady;
+        },
+        get ticks() {
+          return pluginTicks;
+        },
+        get turn() {
+          return state.turn;
+        },
+        get lastError() {
+          return pluginLastError;
+        },
+      };
+    }
   }
 }
 

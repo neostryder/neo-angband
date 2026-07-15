@@ -6,11 +6,15 @@
  * exactly that seam, hands it a perceive view and the act facade, and taps the
  * message sink so the view can report "messages since the last decision".
  *
- * Capability gating (MOD_LIFECYCLE section 4): a controller needs state:*.read
- * (perceive) and command:add (act). When a CapabilitySet is supplied and lacks
- * one, install throws an author-facing error. With no CapabilitySet (an
- * in-process trusted host, e.g. the bundled Borg before the sandbox), all are
- * granted.
+ * Capability gating (MOD_LIFECYCLE section 4): a controller must be able to ACT,
+ * so command:add is required at install; when a CapabilitySet is supplied and
+ * lacks it, install throws an author-facing error. Read access is NOT required
+ * as a blanket state:*.read wildcard - that would defeat least privilege for a
+ * controller that legitimately reads only a subset of domains (the sandboxed-
+ * plugin case, W2.1). Reads are gated per domain by the perceive facade (W1.4):
+ * a controller that reads a domain it was not granted throws at read time. With
+ * no CapabilitySet (an in-process trusted host, e.g. the bundled Borg before the
+ * sandbox), everything is granted.
  *
  * Determinism (the core-owned one-way ratchet, save-blocks.ts): a controller
  * that declares nondeterministic:true trips the ratchet once via
@@ -32,8 +36,12 @@ import type {
 
 export { AgentCapabilityError } from "./types";
 
-/** Capabilities every controller needs: read the whole state, drive commands. */
-const REQUIRED_CAPABILITIES = ["state:*.read", "command:add"] as const;
+/**
+ * Capabilities every controller needs at install: it must be able to drive
+ * commands. Read access is enforced per domain by the perceive facade at read
+ * time, not required wholesale here (see the file header on least privilege).
+ */
+const REQUIRED_CAPABILITIES = ["command:add"] as const;
 
 function requireCapabilities(caps: AgentCapabilities): void {
   for (const cap of REQUIRED_CAPABILITIES) {

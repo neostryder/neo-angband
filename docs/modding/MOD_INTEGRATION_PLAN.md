@@ -61,8 +61,33 @@ and is anchored by the scripted-plugin sandbox, the single largest piece.
 >   frozen-facade bug (perceive threw on an unbound id; now omits per contract).
 > - W1.6 GameState.events bus; state.msg/sound route through it; capability-gated
 >   subscribeEvents mod-hook seam (event:<name>); verified msgCount 0 -> 2.
-> DATA + AGENT + HOOK modding are now real and proven end-to-end. NEXT: Wave 2
-> (SYSTEM modding: the scripted-plugin sandbox and registry exposure).
+> DATA + AGENT + HOOK modding are now real and proven end-to-end.
+
+> PROGRESS (2026-07-14): W2.1 COMPLETE (scripted-plugin Web Worker sandbox),
+> pushed, 2402 tests. UNTRUSTED plugin code now drives the running game across a
+> real Worker boundary, capability-scoped, never touching GameState.
+> - protocol.ts: host<->worker message envelope + ViewSnapshot (structured-clone
+>   safe); reserved codes carry the two set-target verbs across the thread.
+> - serialize.ts: perceive-side gate - only capability-granted domains are put in
+>   the snapshot (sparse map = seen/remembered cells + floor objects).
+> - worker-runtime.ts (runs IN the worker): definePlugin author API, AgentView
+>   reconstruction (ungranted domain throws on read), pure act command builder,
+>   network globals neutered as an import side effect (restored only for
+>   network:*). createRuntimeHandler is transport-injectable for tests.
+> - host.ts: the async<->sync bridge - the controller yields null until the
+>   worker replies, then surfaces the pending command; set-target commands apply
+>   to live target.c and re-request transparently. Reuses the W1.5 tick pump.
+> - discover.ts: bundled plugins via Vite ?worker glob (one module worker each).
+> - demo-sandbox: a bundled plugin granted ONLY player+monsters read + command:add
+>   (deliberately narrow, to prove least privilege). Verified live: resumed a
+>   character and the sandboxed plugin drove the game turn 0 -> 1850+, zero
+>   errors, player moving, from inside the Worker.
+> - Fixed installController: it required the state:*.read wildcard at install,
+>   which defeated least privilege for a controller that reads only a subset.
+>   Now it requires command:add; reads are gated per domain by the perceive
+>   facade at read time (W1.4). Backward compatible; new test added.
+> NEXT: W2.2 (expose Effect/Room/Command/Monster registries to sandboxed plugins
+> under the capability gate - overriding SYSTEMS, not just data).
 
 ## Wave 1 - Integrate the substrate (before P8)
 
