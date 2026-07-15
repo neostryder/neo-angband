@@ -30,8 +30,10 @@
  *  - "registry:<domain>"    - override a game SYSTEM registry from a TRUSTED
  *                             in-process plugin (W2.2, core/mod/registry-host.ts):
  *                             "registry:effect" | "registry:room" |
- *                             "registry:command" | "registry:monster"; or the
- *                             wildcard "registry:*" for all four. Distinct from
+ *                             "registry:command" | "registry:monster" |
+ *                             "registry:vocab"; or the wildcard "registry:*"
+ *                             for all of them. "registry:vocab" (W2.3) declares
+ *                             NEW vocabulary (flags/stats/any kind). Distinct from
  *                             "command:add": that adds a command via the act
  *                             facade, this replaces what a command DOES (and the
  *                             effect/room/AI logic behind the game).
@@ -57,8 +59,8 @@ export type ParsedCapability =
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
-/** The four override domains ModRegistryHost gates, plus the "*" wildcard. */
-const REGISTRY_RE = /^registry:(\*|effect|room|command|monster)$/;
+/** The override domains ModRegistryHost gates, plus the "*" wildcard. */
+const REGISTRY_RE = /^registry:(\*|effect|room|command|monster|vocab)$/;
 
 /**
  * Parse and validate a capability string against the vocabulary above,

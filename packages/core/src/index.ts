@@ -92,6 +92,7 @@ export * from "./session/save";
 export * from "./mod/save-blocks";
 export * from "./mod/ids";
 export * from "./mod/registry-host";
+export * from "./mod/vocabulary";
 export * from "./agent";
 export * from "./game/energy";
 export * from "./game/context";

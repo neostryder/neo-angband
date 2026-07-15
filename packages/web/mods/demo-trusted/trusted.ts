@@ -25,17 +25,38 @@ import { defineTrustedPlugin } from "../../src/agents/trusted/runtime";
 
 export default defineTrustedPlugin({
   register(host, ctx) {
+    // W2.3 vocabulary extension: declare genuinely NEW vocabulary the base game
+    // has no concept of - a sixth "stat" (luck) and a monster "flag" (cursed) -
+    // and store per-entity VALUES for them. These live in the mod's own store
+    // (persisted to its save bag), NOT in the faithful bitset/stat arrays, so
+    // core stays byte-identical; the mod itself gives them meaning below.
+    host.vocab.define({ kind: "stat", term: "demo:luck", label: "Luck", meta: { max: 20 } });
+    host.vocab.define({ kind: "flag", term: "demo:cursed", label: "Cursed" });
+    host.vocab.setValue("player", "demo:luck", 10);
+    ctx.log(
+      `vocabulary extended: declared ${host.vocab
+        .list()
+        .map((t) => `${t.kind}:${t.term}`)
+        .join(", ")}; player demo:luck=${host.vocab.getValue("player", "demo:luck")}`,
+    );
+
     // Monster AI override: return true to consume the whole turn before any AI
     // RNG is drawn, so every monster simply stands still. This wholly replaces
     // the ported movement/attack AI - logic, not data. The counter + one-time
     // message make it observable that the hook is actually consulted by the live
     // turn loop (a DEV verification aid).
     let hookCalls = 0;
-    host.monsters.setTurnHook((_mon, s) => {
+    host.monsters.setTurnHook((mon, s) => {
       hookCalls += 1;
       if (hookCalls === 1) {
         s.msg("[demo-trusted] monster AI override active: monsters are frozen");
       }
+      // Consume the NEW vocabulary in the live turn loop: tag this monster with
+      // the mod's "cursed" flag and let its "luck" feed the player's luck stat.
+      // Nothing in core understands these terms; the mod defines and reads them.
+      host.vocab.setValue(`mon:${mon.midx}`, "demo:cursed", true);
+      const luck = Number(host.vocab.getValue("player", "demo:luck") ?? 0);
+      host.vocab.setValue("player", "demo:luck", luck + 1);
       (globalThis as { __trustedHookCalls?: number }).__trustedHookCalls = hookCalls;
       return true;
     });
