@@ -23,3 +23,5 @@ export * from "./harness";
 /* Decision subsystems (ported P8.1+). */
 export * from "./trait";
 export * from "./flow";
+export * from "./danger";
+export * from "./item";
