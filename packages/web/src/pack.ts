@@ -14,8 +14,12 @@
  */
 
 import type { GamePack, UiEntryPackRecords } from "@neo-angband/core";
-import { composeContentPacks } from "@neo-angband/mod-sdk";
-import type { LoadedPack, PackManifest } from "@neo-angband/mod-sdk";
+import {
+  composeContentPacks,
+  computeConflictReport,
+  resolveLoadOrder,
+} from "@neo-angband/mod-sdk";
+import type { LoadedPack, PackContent, PackManifest } from "@neo-angband/mod-sdk";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
 // are the parsed JSON (the file's default export).
@@ -113,6 +117,40 @@ export function discoverContentModManifests(): PackManifest[] {
     if (m.shape !== "plugin") out.push(m);
   }
   return out;
+}
+
+/**
+ * The human-readable conflict lines (P7.6) for a chosen enabled CONTENT set,
+ * for the mod-manager conflicts pane. Builds the ordered LoadedPack set for the
+ * given ids (core + enabled content mods), resolves load order, and runs
+ * computeConflictReport, returning its prebuilt humanLines. Add-only mods and a
+ * single contributor produce none. Returns the error text (not a throw) when a
+ * dependency is missing or the order cannot resolve, so the UI can show it.
+ */
+export function modConflictLines(enabledIds: readonly string[]): string[] {
+  const mods = discoverMods();
+  const packs: LoadedPack[] = [coreLoadedPack()];
+  for (const id of enabledIds) {
+    const mod = mods.get(id);
+    if (!mod) continue;
+    const manifest = modManifest(mod.manifest);
+    if (manifest.shape === "plugin") continue; // plugins contribute no records
+    packs.push({
+      manifest,
+      files: mod.files as unknown as LoadedPack["files"],
+    });
+  }
+  try {
+    const ordered = resolveLoadOrder(packs.map((p) => p.manifest));
+    const byId = new Map(packs.map((p) => [p.manifest.id, p]));
+    const contents = ordered.map((m) => {
+      const p = byId.get(m.id) as LoadedPack;
+      return { manifest: p.manifest, files: p.files } as unknown as PackContent;
+    });
+    return computeConflictReport(contents).records.flatMap((r) => r.humanLines);
+  } catch (e) {
+    return [e instanceof Error ? e.message : String(e)];
+  }
 }
 
 /** Enabled mod ids: URL ?mods=a,b wins; else localStorage; else none. */

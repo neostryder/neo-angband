@@ -138,7 +138,9 @@ import { GameEvents } from "@neo-angband/core";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, VocabularyRegistry } from "@neo-angband/core";
 import type { AgentController } from "@neo-angband/core";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, discoverContentModManifests, modConflictLines } from "./pack";
+import { defaultModStore, buildCatalog, consentSatisfied } from "./mod-store";
+import { runModManager } from "./mods";
 import { DEMO_AGENTS } from "./agents/demo";
 import { discoverPlugins } from "./agents/sandbox/discover";
 import { installSandboxedController } from "./agents/sandbox/host";
@@ -2084,6 +2086,36 @@ function switchCharacter(): void {
  * either way). Save/switch/new all either stay in play or navigate away, so
  * there is no nested-modal race. ESC resumes.
  */
+/**
+ * The in-app mod manager (W2.4). Builds a live catalog from the three discovery
+ * sources + the persisted store, and reloads on Apply so content re-composes
+ * (pack.ts) and enabled plugins re-install (boot). Content-mod enablement and
+ * plugin consent both persist through defaultModStore.
+ */
+async function openModManager(): Promise<void> {
+  const store = defaultModStore();
+  await runModManager(term, {
+    store,
+    listCatalog: () =>
+      buildCatalog({
+        content: discoverContentModManifests(),
+        sandbox: [...discoverPlugins().values()].map((p) => p.manifest),
+        trusted: [...discoverTrustedPlugins().values()].map((p) => p.manifest),
+        enabled: store.getEnabled(),
+        consents: store.getConsents(),
+      }),
+    conflictLines: () => modConflictLines(store.getEnabled()),
+    requestReload: () => {
+      try {
+        autosave(true); // keep the live hero before the page re-composes
+      } catch {
+        /* best-effort */
+      }
+      location.reload();
+    },
+  });
+}
+
 async function openGameMenu(): Promise<void> {
   const entries = gameMenuEntries();
   const pick = await selectFromMenu(
@@ -2117,6 +2149,9 @@ async function openGameMenu(): Promise<void> {
     case "options":
       await runOptionsMenu(term, state, openIgnoreSetup);
       autosave(true); // flush any option change to the per-slot save
+      break;
+    case "mods":
+      await openModManager();
       break;
     case "help":
       await runHelp(term);
@@ -3518,12 +3553,16 @@ if (agentId && agentMake) {
 // ?plugin=<id> (disabled by default). Same latch-free pump as the agent seam:
 // the async bridge yields null until the worker replies, then the next tick
 // executes the pending command (host.ts).
-const pluginId = params.get("plugin");
-if (pluginId) {
+// Tracks which plugin ids are already installed (URL param wins) so the
+// persisted-enable pass (W2.4) does not double-install one.
+const installedPluginIds = new Set<string>();
+
+function installSandbox(pluginId: string): void {
   const found = discoverPlugins().get(pluginId);
   if (!found) {
     console.warn(`[plugins] "${pluginId}" not found; skipping`);
   } else {
+    installedPluginIds.add(pluginId);
     const resolver = new ContentIdResolver({
       objects: booted.registries.objects,
       playerRaces: players.races,
@@ -3598,14 +3637,14 @@ if (pluginId) {
 // capability-gated ModRegistryHost. It runs in-process because those handlers
 // execute synchronously with live rng/chunk/player access the Worker boundary
 // cannot carry. Trust is explicit: it only gets the registry:* domains its
-// manifest declares (CapabilitySet gates each facade). Enable with
-// ?trusted=<id> (disabled by default). The full consent UI is W2.4.
-const trustedId = params.get("trusted");
-if (trustedId) {
+// manifest declares (CapabilitySet gates each facade). Enable via ?trusted=<id>
+// or by enabling it (with consent) in the mod manager (W2.4).
+function installTrusted(trustedId: string): void {
   const found = discoverTrustedPlugins().get(trustedId);
   if (!found) {
     console.warn(`[trusted] "${trustedId}" not found; skipping`);
   } else {
+    installedPluginIds.add(trustedId);
     const caps = CapabilitySet.fromManifest(found.manifest);
     let trustedError: string | null = null;
     const logs: string[] = [];
@@ -3660,6 +3699,50 @@ if (trustedId) {
       };
     }
   }
+}
+
+// URL params install a specific plugin for one-off testing (they win).
+const pluginId = params.get("plugin");
+if (pluginId) installSandbox(pluginId);
+const trustedId = params.get("trusted");
+if (trustedId) installTrusted(trustedId);
+
+// W2.4: install every mod the player enabled in the manager whose capabilities
+// they consented to. Content mods take effect through pack.ts (composed at load
+// from the same neo:enabledMods key); this is the plugin half - a persisted,
+// consented enable installs the plugin at boot without a URL param. A plugin
+// enabled but not yet consented is skipped (the manager gates consent on enable,
+// but this second-checks so a hand-edited store can never bypass it).
+try {
+  const modStore = defaultModStore();
+  const enabledIds = modStore.getEnabled();
+  if (enabledIds.length > 0) {
+    const consents = modStore.getConsents();
+    const sandboxMods = discoverPlugins();
+    const trustedMods = discoverTrustedPlugins();
+    for (const id of enabledIds) {
+      if (installedPluginIds.has(id)) continue;
+      const sb = sandboxMods.get(id);
+      if (sb) {
+        if (consentSatisfied(sb.manifest.capabilities ?? [], consents[id] ?? [])) {
+          installSandbox(id);
+        } else {
+          console.warn(`[mods] "${id}" enabled but capabilities not consented; skipping`);
+        }
+        continue;
+      }
+      const tr = trustedMods.get(id);
+      if (tr) {
+        if (consentSatisfied(tr.manifest.capabilities ?? [], consents[id] ?? [])) {
+          installTrusted(id);
+        } else {
+          console.warn(`[mods] "${id}" enabled but capabilities not consented; skipping`);
+        }
+      }
+    }
+  }
+} catch (err) {
+  console.warn("[mods] persisted-enable auto-install failed:", err);
 }
 
 // Dev-only diagnostic hook for automated verification; Vite strips this whole
