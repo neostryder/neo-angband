@@ -27,6 +27,7 @@ export type GameMenuAction =
   | "knowledge"
   | "save"
   | "options"
+  | "mods"
   | "help"
   | "abilities"
   | "equip-cmp"
@@ -76,6 +77,10 @@ export function gameMenuEntries(): GameMenuEntry[] {
     {
       action: "options",
       item: { label: "Options", hint: "Interface, birth, and item-ignoring options ('=')." },
+    },
+    {
+      action: "mods",
+      item: { label: "Mods", hint: "Enable, order, and consent to mods; view conflicts and profiles." },
     },
     {
       action: "help",
