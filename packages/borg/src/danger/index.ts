@@ -29,15 +29,15 @@ export * from "./globals";
 export * from "./fear";
 export * from "./state";
 
-/* Geometry helpers, excluding names that also live in the flow subsystem
- * (trait, ddx_ddd, ddy_ddd) to keep the package-root barrel conflict-free. */
+/* Geometry helpers, excluding names that also live in the flow/think subsystems
+ * (trait, ddx_ddd, ddy_ddd, distance, borgCaveFloorBold, borgCaveFloorGrid) to
+ * keep the package-root barrel conflict-free. Those duplicates are already
+ * exported from flow/think; danger uses its own copies internally via direct
+ * imports from ./geometry. */
 export {
-  distance,
   borgDistance,
   squareInBounds,
   squareInBoundsFully,
-  borgCaveFloorBold,
-  borgCaveFloorGrid,
   borgFeatureProtected,
   borgLos,
   borgIncMotion,
