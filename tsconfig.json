@@ -4,6 +4,7 @@
     { "path": "packages/core" },
     { "path": "packages/content" },
     { "path": "packages/mod-sdk" },
+    { "path": "packages/borg" },
     { "path": "packages/linoleum" },
     { "path": "packages/cli" },
     { "path": "packages/web" }
