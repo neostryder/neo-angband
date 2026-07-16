@@ -1,7 +1,7 @@
 module: EF_SINGLE_COMBAT (effect-melee.ts) + the arena lifecycle
   (session/game.ts makeChangeLevel, mon/take-hit.ts onArenaDeath,
   game/context.ts arenaInterceptDeath) and the arena guards
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/effect-handler-attack.c

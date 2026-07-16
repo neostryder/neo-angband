@@ -3,9 +3,11 @@
 Baseline: Angband `4.2.6`. Every status below was VERIFIED by reading the actual
 TypeScript function bodies (Jul 2026 audit), NOT by trusting the parity ledger -
 which was found to be stale in both directions (it marked shipped features
-"deferred" and vice versa). This file, not `ledger/*.yaml`, is the source of
-truth for the gap-closing effort until the ledger is reconciled (a tracked task
-below).
+"deferred" and vice versa). RECONCILED (B3, 2026-07-16): the ledger
+(`ledger/*.yaml`) has since been corrected against this file and the code, so it
+again matches reality and serves as the rebase map. This file remains the
+human-readable narrative of the gap-closing effort; the ledger is the
+machine-readable provenance/rebase index.
 
 Legend: [x] done, [~] partial, [ ] gap. Tiers are recommended execution order.
 
@@ -197,11 +199,18 @@ Deferred by design (non-default options or architectural - need Aaron's call):
 
 ## Tracked hygiene task
 
-- [ ] **Reconcile the parity ledger** (`ledger/*.yaml`) against this verified
-  list: correct stale `status`/`deferred` fields (e.g. ranged/stores/recall/
-  breath/projection-defense/encumbrance are DONE; add `savefile.c` cross-ref;
-  close `session-save.yaml`'s "single save only"). The ledger is the rebase map
-  for future upstream releases, so it must match reality.
+- [x] **Reconcile the parity ledger** (`ledger/*.yaml`) against this verified
+  list (B3, 2026-07-16): stale `status`/`deferred` fields corrected against the
+  code (ranged/stores/recall/breath/projection-defense/encumbrance and the whole
+  per-turn world clock are DONE; calc_light/calc_mana/shapechange/curse-traversal
+  are live; the item-effect chooser is wired; color_table/get_color ported).
+  Status vocabulary standardized to planned | partial | ported | verified, where
+  `verified` requires a real `verified-by` (a packages/**/*.test.ts or the B1
+  harness). Modules with a genuine remaining deferral kept `partial`
+  (game-monster-ai: monster_take_terrain_damage; player-birth: generate_stats
+  auto-spend; store-bind: bookseller town-book expansion at store_init;
+  world-kernel: render-layer grid_data/map_info). The ledger is the rebase map
+  for future upstream releases; see docs/REBASE_RUNBOOK.md.
 
 ## Not ported by design (N-A)
 

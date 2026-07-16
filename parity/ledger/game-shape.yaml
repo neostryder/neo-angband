@@ -2,7 +2,7 @@ module: packages/core/src/game/mon-shape.ts + the player-shape binding
   (player/bind.ts bindShape), calc_shapechange (player/calcs.ts),
   EF_SHAPECHANGE (effect-general.ts), shape_learn_on_assume
   (obj/knowledge.ts) and the resume-normal-shape gates (obj-cmd.ts)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/init.c

@@ -5,7 +5,7 @@ module: packages/core/src/obj/ignore.ts (the ignore predicate engine +
   session/save.ts) + the configuration UI (packages/web/src/screens.ts
   quality/ego/sval menu builders, packages/web/src/main.ts's '=' / 'K'
   handlers and the ignore_drop shell pass)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/obj-ignore.c

@@ -58,12 +58,14 @@ notes: >-
   (monster_hates_grid via chunk.isFiery + the feature resist flag, driving
   advance/flee/find_safety/can_move/check_active) are NOW PORTED
   (game/monster-turn.ts).
-  DEFERRED (clear stubs, no behaviour yet): group-surround fill (draws
-  randint0(8), left inert so it cannot perturb the RNG stream until ported),
-  monster_take_terrain_damage (the actual lava damage - blocked on
-  mon_take_nonplayer_hit -> monster_death/delete_monster_idx, and it fires from
-  process_monster not monster_turn), and monster_is_mimicking lie-in-wait
-  (mimics are not placed as objects yet).
+  Group-surround fill (mon-move.c L932, draws randint0(8)) and the pack-ambush
+  get_move_find_hiding lie-in-wait are now PORTED at their exact upstream
+  positions (closure A5), and object-mimic placement/reveal is ported (closure
+  A4), so monster_is_mimicking lie-in-wait is reachable.
+  STILL DEFERRED (why this entry stays partial): monster_take_terrain_damage
+  (the actual lava damage - blocked on mon_take_nonplayer_hit ->
+  monster_death/delete_monster_idx, and it fires from process_monster not
+  monster_turn; scheduler.ts marks the site DEFERRED).
   The monster-lore updates are DONE (mon-lore.yaml): melee counts each
   visible obvious/damaging blow's times_seen, notices deaths and runs
   lore_update, and monster_reduce_sleep counts wake/ignore on an obvious

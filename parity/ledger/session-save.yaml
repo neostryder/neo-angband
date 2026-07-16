@@ -1,6 +1,6 @@
 module: packages/core/src/session/save.ts (+ saveGame / loadGame / changeLevel
   in session/game.ts)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/save.c, src/load.c
