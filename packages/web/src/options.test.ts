@@ -336,7 +336,7 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
   });
 });
 
-describe("RNG invariance (Aaron's #1 anxiety)", () => {
+describe("RNG invariance (the maintainer's #1 anxiety)", () => {
   afterEach(() => {
     delete (globalThis as { window?: unknown }).window;
   });
