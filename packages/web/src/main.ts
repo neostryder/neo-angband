@@ -121,6 +121,7 @@ import {
 import type {
   GamePack,
   GameObject,
+  ObjectKind,
   PlayerCommand,
   ViewConstants,
   ViewerState,
@@ -205,6 +206,7 @@ import {
   objectListLines,
   monsterRecallLines,
   monsterKnowledgeMenu,
+  autoinscriptionMenu,
   capRaceName,
 } from "./screens";
 import { showCharacterSheet } from "./charsheet";
@@ -1316,9 +1318,10 @@ async function takeOffItem(): Promise<void> {
 // All three route through selectTargetItem's aggregated pack+equip+floor
 // picker (USE_EQUIP|USE_INVEN|USE_QUIVER|USE_FLOOR upstream); the quiver
 // rides the pack in this gear model. Autoinscribe has no default key
-// upstream ships it only from the knowledge menu, whose per-kind registry
-// (#24) doesn't exist yet - so it stays a core-only no-op with no shell
-// entry until that lands.
+// upstream ships it only from the knowledge menu; the per-kind note registry
+// it drives is managed via '~' -> "Set object autoinscriptions"
+// (showAutoinscriptionManager), and applyAutoinscription then applies the
+// registered notes on the do_cmd_autoinscribe pass.
 
 /** Inscribe (`{`): pick any item and set its inscription text. */
 async function inscribeItem(): Promise<void> {
@@ -1801,11 +1804,55 @@ async function showMonsterRecall(mon: Monster): Promise<void> {
 async function openKnowledgeMenu(): Promise<void> {
   const idx = await selectFromMenu(term, "Display current knowledge", [
     { label: "Display monster knowledge" },
+    { label: "Set object autoinscriptions" },
     { label: "Display character history" },
   ]);
   if (idx === 0) await showMonsterKnowledge();
-  else if (idx === 1)
+  else if (idx === 1) await showAutoinscriptionManager();
+  else if (idx === 2)
     await showTextScreen(term, "Player history", historyLines(state));
+}
+
+/**
+ * The per-kind autoinscription manager (ui-knowledge.c's object-knowledge
+ * browser + its `{` set-inscription action, get_autoinscription/
+ * add_autoinscription): a scrollable list of every kind the player is aware
+ * of, each showing its current aware note; picking one edits that kind's note
+ * (Enter accepts, an empty string clears it). Loops back to the list after each
+ * edit until ESC, like the upstream browser.
+ *
+ * The list-select loop already owns input under the modal gate selectFromMenu /
+ * promptText raise (each is a capturing overlay); no direct advance() is
+ * needed since setting a note spends no turn (as do_cmd_inscribe). Writes go
+ * straight to the live registry, so they take effect immediately and ride the
+ * next save.
+ */
+async function showAutoinscriptionManager(): Promise<void> {
+  const registry = state.autoinscribe;
+  if (!registry) return; // worldless / not wired: nothing to manage
+  const kinds = booted.registries.objects.kinds;
+  const isAware = (kind: ObjectKind): boolean =>
+    game.flavor ? game.flavor.isAware(kind) : true;
+  for (;;) {
+    const { items, rows } = autoinscriptionMenu(kinds, isAware, registry);
+    if (items.length === 0) {
+      say("You are not aware of any object kinds yet.");
+      return;
+    }
+    const idx = await selectFromMenu(term, "Autoinscribe which kind?", items);
+    if (idx === null) return;
+    const row = rows[idx];
+    if (!row) return;
+    const text = await promptText(
+      term,
+      `Autoinscription for ${row.kind.name.replace(/[~&]/g, " ").trim()}.`,
+      row.note,
+      40,
+      "[ type a note, Enter to accept (empty clears), ESC to cancel ]",
+    );
+    if (text === null) continue; // ESC: leave this kind's note unchanged
+    registry.set(row.kind.kidx, text, true);
+  }
 }
 
 /**

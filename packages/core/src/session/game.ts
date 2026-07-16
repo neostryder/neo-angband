@@ -153,6 +153,7 @@ import {
   painMessageCode,
 } from "../game/mon-message";
 import {
+  AutoinscriptionRegistry,
   FlavorKnowledge,
   makeRuneEnv,
   OBJ_NOTICE,
@@ -189,6 +190,7 @@ import { generateLevel } from "../gen/generate";
 import { iToGrid } from "../gen/util";
 import {
   SAVE_VERSION,
+  deserializeAutoinscriptions,
   deserializeChunk,
   deserializeFloor,
   buildFeatRemap,
@@ -932,6 +934,11 @@ function wireGame(
       envDeps,
       flavor,
       flavorDeps: flavorAwareDeps(state),
+      /* get_autoinscription (obj-ignore.c L229): read the per-game per-kind
+       * note registry so a note registered through the knowledge-menu manager
+       * is applied by applyAutoinscription. */
+      autoNote: (kind, aware): string | null =>
+        state.autoinscribe?.get(kind.kidx, aware) ?? null,
       inject,
       ...(teleport ? { teleport } : {}),
       general,
@@ -1737,6 +1744,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     known: newKnownMap(booted.chunk.width, booted.chunk.height),
     target: newTargetState(),
     ignore: new IgnoreSettings(),
+    autoinscribe: new AutoinscriptionRegistry(),
     options,
     artifacts,
     lore: new Map(),
@@ -2091,6 +2099,7 @@ export function loadGame(
      * target and loading starts unset). */
     target: newTargetState(),
     ignore: new IgnoreSettings(),
+    autoinscribe: new AutoinscriptionRegistry(),
     options,
     artifacts,
     lore: deserializeLore(save.lore, ids),
@@ -2143,6 +2152,11 @@ export function loadGame(
    * what the player has actually identified. */
   wired.flavor.restore(save.flavor);
   if (save.ignore) state.ignore.restore(save.ignore);
+  /* Per-kind autoinscriptions (obj-ignore.c note_aware/note_unaware): absent in
+   * saves written before this block, which load with an empty registry. */
+  if (save.autoinscriptions && state.autoinscribe) {
+    deserializeAutoinscriptions(save.autoinscriptions, state.autoinscribe, ids);
+  }
 
   // A renderer-facing view of the restored level (no generation ran).
   const booted: BootedLevel = {

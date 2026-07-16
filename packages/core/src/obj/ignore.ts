@@ -22,9 +22,13 @@
  * ignore_drop's scan lives in game/ignore-cmd.ts (ignoreDropTargets), since it
  * needs the live GameState/gear this module deliberately stays free of.
  *
- * DEFERRED (ledgered in obj-ignore.yaml): autoinscription (obj-ignore.c's
- * rune/kind note machinery) and the per-item context ignore menu - both
- * out of scope for this gap.
+ * AUTOINSCRIPTION: the per-kind note machinery (get_autoinscription /
+ * add_autoinscription / remove_autoinscription, obj-ignore.c L229/L322/L294)
+ * now lives in obj/knowledge.ts (AutoinscriptionRegistry) and is applied by
+ * game/obj-cmd.ts's applyAutoinscription. The separate rune-based
+ * autoinscription (runes_autoinscribe, obj-ignore.c L217) rides the rune
+ * knowledge system and remains DEFERRED (ledgered in obj-ignore.yaml), as
+ * does the per-item context ignore menu.
  */
 
 import { TV } from "../generated";

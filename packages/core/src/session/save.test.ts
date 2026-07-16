@@ -378,6 +378,40 @@ describe("option store persistence (option.c)", () => {
   });
 });
 
+describe("autoinscription registry persistence (obj-ignore.c note_aware/note_unaware)", () => {
+  const dagger = (game: StartedGame): ObjectKind =>
+    game.booted.registries.objects.kinds.find(
+      (k) => k.name === "& Dagger~" && k.tval === TV.SWORD,
+    ) as ObjectKind;
+
+  it("round-trips per-kind autoinscriptions through save/load", () => {
+    const game = startGame(pack, { seed: 777, depth: 2 });
+    const kind = dagger(game);
+    game.state.autoinscribe!.set(kind.kidx, "@w1", true);
+    game.state.autoinscribe!.set(kind.kidx, "@x9", false);
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    expect(saved.autoinscriptions).toBeDefined();
+    const restored = loadGame(pack, saved);
+    const rk = dagger(restored);
+    expect(restored.state.autoinscribe!.get(rk.kidx, true)).toBe("@w1");
+    expect(restored.state.autoinscribe!.get(rk.kidx, false)).toBe("@x9");
+  });
+
+  it("omits the block entirely when nothing is registered", () => {
+    const game = startGame(pack, { seed: 778, depth: 1 });
+    expect(saveGame(game).autoinscriptions).toBeUndefined();
+  });
+
+  it("a save without the block loads with an empty registry (back-compat)", () => {
+    const game = startGame(pack, { seed: 779, depth: 1 });
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    delete saved.autoinscriptions;
+    const restored = loadGame(pack, saved);
+    expect(restored.state.autoinscribe!.get(dagger(restored).kidx, true)).toBeUndefined();
+  });
+});
+
 describe("birth_randarts (obj-randart.c do_randart)", () => {
   it("swaps the artifact set and persists the seed reproducibly", () => {
     const standard = startGame(pack, { seed: 88, depth: 2 });

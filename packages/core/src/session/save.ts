@@ -27,6 +27,7 @@ import type { ChunkSquaresData } from "../world/chunk";
 import type { GameObject } from "../obj/object";
 import type { ObjRegistry } from "../obj/bind";
 import type { ElementInfo } from "../obj/types";
+import type { AutoinscriptionRegistry } from "../obj/knowledge";
 import { blankMonster, GROUP_MAX } from "../mon/monster";
 import type { Monster, MonsterGroupInfo } from "../mon/monster";
 import type { MonsterLore } from "../mon/lore";
@@ -766,6 +767,22 @@ export interface SavedGame {
    * with an empty cache (back-compat, like every other optional field here).
    */
   levelCache?: SavedStoredLevel[];
+  /**
+   * The per-kind autoinscription registry (obj-ignore.c note_aware/note_unaware,
+   * obj/knowledge.ts AutoinscriptionRegistry). Keyed by the namespaced kind id
+   * (like every other content reference, MOD_LIFECYCLE decision 1) so notes
+   * survive pack reordering. Optional / absent when nothing is registered:
+   * older saves and the default (no autoinscriptions) load with an empty
+   * registry, back-compat like every other optional field here.
+   */
+  autoinscriptions?: SavedAutoinscription[];
+}
+
+/** One serialized per-kind autoinscription entry (namespaced kind id + notes). */
+export interface SavedAutoinscription {
+  kindId: string;
+  aware?: string;
+  unaware?: string;
 }
 
 /** Serialized map knowledge (remembered terrain and floor objects). */
@@ -867,6 +884,9 @@ export function serializeGame(
   const chunk = state.chunk.snapshotSquares();
   const knownFeat = Array.from(state.known.feat);
   const savedLevelCache = serializeLevelCache(state.levelCache, ids);
+  const autoinscriptions = state.autoinscribe
+    ? serializeAutoinscriptions(state.autoinscribe, ids)
+    : undefined;
   return {
     version: SAVE_VERSION,
     player: serializePlayer(state.actor.player, ids),
@@ -908,6 +928,7 @@ export function serializeGame(
         }
       : {}),
     ...(savedLevelCache ? { levelCache: savedLevelCache } : {}),
+    ...(autoinscriptions ? { autoinscriptions } : {}),
     known: {
       feat: knownFeat,
       objects: Array.from(state.known.objects.entries()).map(([i, m]) => [
@@ -990,6 +1011,47 @@ export function deserializeLore(
     });
   }
   return store;
+}
+
+/**
+ * Serialize the per-kind autoinscription registry (obj/knowledge.ts): every
+ * kind with a registered note, keyed by its namespaced kind id (mod-stable,
+ * like serializeObject). Returns undefined when nothing is registered, so a
+ * clean game omits the block entirely. A kind whose id no longer resolves
+ * (unbound in this pack) is dropped.
+ */
+export function serializeAutoinscriptions(
+  registry: AutoinscriptionRegistry,
+  ids: ContentIdResolver,
+): SavedAutoinscription[] | undefined {
+  const out: SavedAutoinscription[] = [];
+  for (const [kidx, note] of registry.entries()) {
+    const kindId = ids.kindIdOrNull(kidx);
+    if (kindId === null) continue; // kind unbound in this pack: drop
+    const entry: SavedAutoinscription = { kindId };
+    if (note.aware !== undefined) entry.aware = note.aware;
+    if (note.unaware !== undefined) entry.unaware = note.unaware;
+    out.push(entry);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/**
+ * Restore serialized autoinscriptions into a registry (absent in older saves:
+ * nothing to restore). A kind whose id is gone (its defining pack was removed)
+ * is dropped, exactly like deserializeLore drops a removed race's memory.
+ */
+export function deserializeAutoinscriptions(
+  data: SavedAutoinscription[],
+  registry: AutoinscriptionRegistry,
+  ids: ContentIdResolver,
+): void {
+  for (const entry of data) {
+    const kidx = ids.kindIndex(entry.kindId);
+    if (kidx === undefined) continue; // kind gone (mod removed): drop its notes
+    if (entry.aware !== undefined) registry.set(kidx, entry.aware, true);
+    if (entry.unaware !== undefined) registry.set(kidx, entry.unaware, false);
+  }
 }
 
 /**

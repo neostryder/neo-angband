@@ -12,6 +12,7 @@ import {
   newKnownMap,
   newTargetState,
   IgnoreSettings,
+  AutoinscriptionRegistry,
   makeRuneEnv,
   DEFAULT_GAME_CONSTANTS,
   placePlayer,
@@ -64,6 +65,7 @@ import {
   monsterRecallLines,
   knownMonsterEntries,
   monsterKnowledgeMenu,
+  autoinscriptionMenu,
 } from "./screens";
 
 const WHITE = 1;
@@ -830,5 +832,61 @@ describe("monsterKnowledgeMenu ('~' -> Monsters selection list)", () => {
     // The killed race carries its "(N killed)" tally.
     const killedItem = items[rows.findIndex((r) => r.race.ridx === killed.ridx)]!;
     expect(killedItem.label).toContain("(4 killed)");
+  });
+});
+
+describe("autoinscriptionMenu ('~' -> Set object autoinscriptions)", () => {
+  const dagger = objReg.kinds.find(
+    (k) => k.name === "& Dagger~" && k.tval === TV.SWORD,
+  ) as ObjectKind;
+  const tulwar = objReg.kinds.find(
+    (k) => k.name === "& Tulwar~" && k.tval === TV.SWORD,
+  ) as ObjectKind;
+
+  it("lists aware kinds and shows the current aware note in braces", () => {
+    const registry = new AutoinscriptionRegistry();
+    registry.set(dagger.kidx, "@w1", true);
+    const awareSet = new Set([dagger.kidx, tulwar.kidx]);
+    const { items, rows } = autoinscriptionMenu(
+      objReg.kinds,
+      (k) => awareSet.has(k.kidx),
+      registry,
+    );
+    expect(rows.length).toBe(2);
+    const di = rows.findIndex((r) => r.kind.kidx === dagger.kidx);
+    const ti = rows.findIndex((r) => r.kind.kidx === tulwar.kidx);
+    expect(rows[di]!.note).toBe("@w1");
+    expect(items[di]!.label).toContain("{@w1}");
+    expect(rows[ti]!.note).toBe("");
+    expect(items[ti]!.label).not.toContain("{");
+  });
+
+  it("excludes kinds the player is not aware of", () => {
+    const registry = new AutoinscriptionRegistry();
+    const { rows } = autoinscriptionMenu(
+      objReg.kinds,
+      (k) => k.kidx === dagger.kidx,
+      registry,
+    );
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.kind.kidx).toBe(dagger.kidx);
+  });
+
+  it("a note set through the registry (as the manager does) persists into the rebuilt list", () => {
+    const registry = new AutoinscriptionRegistry();
+    const awareSet = new Set([dagger.kidx]);
+    const isAware = (k: ObjectKind): boolean => awareSet.has(k.kidx);
+    /* showAutoinscriptionManager does exactly this on Enter: registry.set. */
+    registry.set(dagger.kidx, "@v1", true);
+    let built = autoinscriptionMenu(objReg.kinds, isAware, registry);
+    let row = built.rows.findIndex((r) => r.kind.kidx === dagger.kidx);
+    expect(built.rows[row]!.note).toBe("@v1");
+    expect(built.items[row]!.label).toContain("{@v1}");
+    /* An empty string clears it (manager's clear path). */
+    registry.set(dagger.kidx, "", true);
+    built = autoinscriptionMenu(objReg.kinds, isAware, registry);
+    row = built.rows.findIndex((r) => r.kind.kidx === dagger.kidx);
+    expect(built.rows[row]!.note).toBe("");
+    expect(built.items[row]!.label).not.toContain("{");
   });
 });
