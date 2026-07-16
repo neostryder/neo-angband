@@ -13,18 +13,27 @@
  * onto the port's fields. desc.ts then reads the shadow exactly where upstream
  * reads obj->known, so names come out identical for identical knowledge.
  *
- * DEFERRED / synthesis notes (each ledgered inline):
- * - Player.objKnown (PlayerObjectKnowledge) has NO dd/ds/ac runes; upstream
- *   p->obj_k->dd/ds/ac are the "know dice / know ac" runes. They are
- *   approximated here by the object's ASSESSED bit (1 when assessed, else 0),
- *   which is when upstream learns them in practice. See objectSetBaseKnown.
+ * Synthesis notes (each ledgered inline):
+ * - p->obj_k->dd/ds/ac (the "know dice"/"know ac" runes) are now real fields on
+ *   Player.objKnown, ALWAYS 1: player_outfit (player-birth.c L584-596) grants
+ *   them as obvious knowledge at birth and nothing ever learns them by use. The
+ *   shadow multiplies the object's base dd/ds/ac by them exactly as upstream
+ *   (obj-knowledge.c L830-838, L1039-1041), so base dice and armour of even an
+ *   unidentified item are known from the start. See objectSetBaseKnown.
  * - The shadow has no independent `notice`; upstream obj->known->notice's
- *   ASSESSED bit is mirrored from the real object's notice (the port keeps the
- *   assessed state only on the live object).
+ *   ASSESSED bit is mirrored from the real object's notice. Under on-demand
+ *   synthesis this is provably byte-identical to a persistent twin that carried
+ *   its own notice: the only consumer of shadow.notice is its ASSESSED bit,
+ *   read back within this same call, and it equals obj's ASSESSED bit because
+ *   the port keeps the assessed state on the live object. So this is exact, not
+ *   an approximation.
  * - object_flavor_aware side effects in player_know_object's jewelry and
- *   special-artifact branches (L1163-1175) mutate the shared FlavorKnowledge
- *   and propagate over gear/stores; that awareness side effect is DEFERRED
- *   (KnownDesc is read-only). The shadow's own fields are unaffected.
+ *   special-artifact branches (L1163-1175) are a knowledge-UPDATE, not part of
+ *   describing an object. Firing them here would let a display path mutate the
+ *   player's knowledge, so they are deliberately NOT fired in this synthesis;
+ *   they are wired into the port's knowledge-update sites instead
+ *   (playerKnowObjectAwareness in knowledge.ts, called from
+ *   objectLearnUnknownRune). The shadow's own fields are unaffected.
  * - known->artifact: upstream object_touch (L963) sets it when the object is
  *   ASSESSED (touched / picked up), so the shadow gates obj.artifact on the
  *   ASSESSED notice bit - the artifact name reveals on touch while its powers
@@ -123,18 +132,19 @@ function newCurseData(n: number): CurseData[] {
 /**
  * object_set_base_known (obj-knowledge.c L820): set the basic details a player
  * always knows once an object is seen - kind/tval/sval/weight/number, the
- * generic dice and ac (gated by the "know dice"/"know ac" runes, approximated
- * by `assessed`), the standard to-hit for armour, launcher multipliers, and the
- * pval/effect for aware flavours and unflavored non-wearables.
+ * generic dice and ac (gated by the "know dice"/"know ac" runes p->obj_k->dd/
+ * ds/ac, which are always 1 from birth), the standard to-hit for armour,
+ * launcher multipliers, and the pval/effect for aware flavours and unflavored
+ * non-wearables.
  *
  * Mutates `shadow` in place.
  */
 function objectSetBaseKnown(
   shadow: GameObject,
   obj: GameObject,
+  p: Player,
   env: RuneEnv,
   deps: KnownDesc,
-  assessed: boolean,
 ): void {
   shadow.kind = obj.kind; // L823
   shadow.tval = obj.tval; // L824
@@ -142,11 +152,10 @@ function objectSetBaseKnown(
   shadow.weight = obj.weight; // L826
   shadow.number = obj.number; // L827
 
-  /* DEFERRED: p->obj_k->dd/ds/ac absent; approximated by ASSESSED. */
-  const knowDice = assessed ? 1 : 0;
-  if (!shadow.dd) shadow.dd = obj.kind.dd * knowDice; // L830-832
-  if (!shadow.ds) shadow.ds = obj.kind.ds * knowDice; // L833-835
-  if (!shadow.ac) shadow.ac = obj.kind.ac * knowDice; // L836-838
+  /* Generic dice and ac, gated by the dd/ds/ac runes (always 1 from birth). */
+  if (!shadow.dd) shadow.dd = obj.kind.dd * p.objKnown.dd; // L830-832
+  if (!shadow.ds) shadow.ds = obj.kind.ds * p.objKnown.ds; // L833-835
+  if (!shadow.ac) shadow.ac = obj.kind.ac * p.objKnown.ac; // L836-838
   if (objectHasStandardToH(env, obj)) {
     shadow.toH = obj.kind.toH.base; // L839-841
   }
@@ -339,19 +348,20 @@ export function objectKnownShadow(
 ): GameObject {
   const shadow = objectNew(obj.kind);
   const assessed = (obj.notice & OBJ_NOTICE.ASSESSED) !== 0;
-  /* The port keeps assessed state on the live object; mirror it (see docs). */
+  /* The port keeps assessed state on the live object; mirror it (see docs -
+   * byte-identical to a twin's own notice under on-demand synthesis). */
   shadow.notice = obj.notice;
 
-  objectSetBaseKnown(shadow, obj, env, deps, assessed);
+  objectSetBaseKnown(shadow, obj, p, env, deps);
 
   /* Distant / unassessed objects just get base properties (L1033-1035). */
   if (!assessed) return shadow;
 
-  /* Dice, and the pval for anything but chests (L1039-1043). */
-  const knowDice = assessed ? 1 : 0;
-  shadow.dd = obj.dd * knowDice;
-  shadow.ds = obj.ds * knowDice;
-  shadow.ac = obj.ac * knowDice;
+  /* Dice (gated by the dd/ds/ac runes, always 1), and the pval for anything but
+   * chests (L1039-1043). */
+  shadow.dd = obj.dd * p.objKnown.dd;
+  shadow.ds = obj.ds * p.objKnown.ds;
+  shadow.ac = obj.ac * p.objKnown.ac;
   if (!tvalIsChest(obj.tval)) shadow.pval = obj.pval;
 
   /* Combat details (L1046-1049). */
@@ -444,8 +454,11 @@ export function objectKnownShadow(
   shadow.ego = playerKnowsEgo(p, obj.ego, obj, env) ? obj.ego : null;
 
   /* Jewellery / special-artifact awareness (L1163-1175): the
-   * object_flavor_aware side effect is DEFERRED (KnownDesc is read-only);
-   * the shadow's fields are unaffected by it. */
+   * object_flavor_aware side effect is a knowledge-UPDATE and is deliberately
+   * NOT fired here - this is a display-only synthesis and must never mutate the
+   * player's knowledge. It is wired at the knowledge-update sites instead
+   * (playerKnowObjectAwareness, knowledge.ts). The shadow's fields are
+   * unaffected by it. */
 
   /* Ensure effect is known as if object_set_base_known had run (L1178-1182). */
   const flavored = kindHasFlavor(obj);

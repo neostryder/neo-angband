@@ -33,15 +33,18 @@ Legend: [ ] open, [~] in progress, [x] done.
   `reference/lib/gamedata/names.txt` into a corpus, build the prob table, and
   have randart naming call `randnameMake` with the exact upstream draw order.
   Verify a fixed-seed randart set matches upstream names.
-- [ ] **A3. obj->known exact** (decision 25). `obj/known-object.ts` faithfully
-  ports object_set_base_known + player_know_object but with three residual
-  approximations, all to be closed: (a) `p->obj_k->dd/ds/ac` "know dice/ac"
-  runes are approximated by the ASSESSED bit -- add the real dd/ds/ac runes to
-  PlayerObjectKnowledge; (b) the object_flavor_aware side effects in the
-  jewelry/special-artifact branches (obj-knowledge.c L1163-1175) are deferred --
-  wire them; (c) the shadow mirrors the live object's `notice` rather than
-  carrying its own. Decide: keep on-demand synthesis but make it byte-identical,
-  OR adopt the persistent per-object twin upstream uses. Exact behavior required.
+- [x] **A3. obj->known exact** (decision 25). All three residual approximations
+  closed, keeping the on-demand synthesis (proven byte-identical, no persistent
+  twin needed): (a) real `obj_k->dd/ds/ac` runes added to PlayerObjectKnowledge,
+  always 1 from birth (player_outfit obvious knowledge), serialized with a
+  default-1 back-compat reader; the shadow multiplies base dd/ds/ac by them
+  (obj-knowledge.c L830-838, L1039-1041) so base dice/AC of unidentified items
+  show exactly as upstream. (b) the object_flavor_aware side effects
+  (L1163-1175) are wired as a knowledge-UPDATE via playerKnowObjectAwareness,
+  fired from objectLearnUnknownRune (gated on ASSESSED, matching upstream
+  player_know_object's L1033 early return) and NEVER from the display-only
+  shadow. (c) notice-mirroring documented as provably byte-identical under
+  on-demand synthesis. Core 2030 green, golden tests added (known-object.test.ts).
 - [x] **A4. Object-mimic appearance exact** (#71). Object-mimic PLACEMENT is
   unported (`mon.mimickedObj` is always 0 in live play), and the RF_MIMIC_INV
   give-a-copy branch is deferred (needs object_copy). Port both so mimicked
