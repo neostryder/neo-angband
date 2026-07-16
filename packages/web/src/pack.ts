@@ -208,11 +208,11 @@ function activePackSet(): LoadedPack[] {
       continue;
     }
     const manifest = modManifest(mod.manifest);
-    // Plugins (sandbox/trusted) contribute no content records; they are
-    // installed separately in main.ts boot. Skipping them here keeps them out
-    // of the content compose pipeline (composeContentPacks expects packs with
-    // record files).
-    if (manifest.shape === "plugin") continue;
+    // Only content-shape mods contribute records to the compose pipeline.
+    // Plugins (sandbox/trusted) are installed separately in main.ts boot; tiles
+    // packs are loaded by the tile subsystem (tiles.ts). Both would confuse
+    // composeContentPacks (which expects record files), so skip them here.
+    if (manifest.shape !== "content") continue;
     packs.push({
       manifest,
       files: mod.files as unknown as LoadedPack["files"],
