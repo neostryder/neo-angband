@@ -78,6 +78,11 @@ describe("EF_IDENTIFY (effect-handler-general.c L1945)", () => {
   it("learns one unknown rune of the chosen item", () => {
     const state = makeState({ playerGrid: loc(10, 10), seed: 31 });
     const p = state.actor.player;
+    /* Combat runes are known from birth (do_cmd_accept_character); clear them so
+     * the sword's to-damage rune below is genuinely unknown for IDENTIFY. */
+    p.objKnown.toA = 0;
+    p.objKnown.toH = 0;
+    p.objKnown.toD = 0;
     const sword = makeObj(TV.SWORD);
     sword.toD = 5; /* an unknown to-damage rune */
     sword.toH = 0;

@@ -38,11 +38,16 @@ export interface PlayerUpkeep {
  * obj_k: the player's cumulative object-knowledge, i.e. the learned "rune"
  * mask (ported from struct player's obj_k, a struct object used as a knowledge
  * template). Every rune variety is modelled: the modifier runes gate real play
- * (calc_bonuses multiplies equipped modifiers by them), while the combat,
- * element, flag, brand, slay and curse runes are learned by use exactly as
- * upstream (obj-knowledge.c) and will additionally feed the DISPLAYED
- * known_state when the display system lands. All runes UNKNOWN at birth
- * except the racial innates (player_learn_innate).
+ * (calc_bonuses multiplies equipped modifiers by them), while the element, flag,
+ * brand, slay and curse runes are learned by use exactly as upstream
+ * (obj-knowledge.c) and will additionally feed the DISPLAYED known_state when
+ * the display system lands. Most runes are UNKNOWN at birth; the exceptions,
+ * all set at birth exactly as upstream, are the racial innates
+ * (player_learn_innate), the dice/ac runes (obvious knowledge from
+ * player_outfit) and the three combat runes to_a/to_h/to_d, which
+ * do_cmd_accept_character marks known unconditionally ("Hack - player knows all
+ * combat runes", player-birth.c L1264-1267), so their learn-by-use paths are
+ * vestigial in real play.
  */
 export interface PlayerObjectKnowledge {
   /**
@@ -52,7 +57,12 @@ export interface PlayerObjectKnowledge {
    * exactly as upstream (PORT_PLAN.md decision 25).
    */
   modifiers: number[];
-  /** obj_k->to_a / to_h / to_d: the three combat runes (0 or 1). */
+  /**
+   * obj_k->to_a / to_h / to_d: the three combat runes (0 or 1). Like dd/ds/ac
+   * these are NOT learned by use in real play: do_cmd_accept_character sets all
+   * three to 1 at birth ("Hack - player knows all combat runes", player-birth.c
+   * L1264-1267), so an item's +to-hit/+to-dam/+AC show even when unidentified.
+   */
   toA: number;
   toH: number;
   toD: number;
@@ -103,9 +113,12 @@ export interface PlayerQuest {
 export function blankObjKnowledge(): PlayerObjectKnowledge {
   return {
     modifiers: new Array<number>(OBJ_MOD_MAX).fill(0),
-    toA: 0,
-    toH: 0,
-    toD: 0,
+    /* Combat runes: do_cmd_accept_character sets all three to 1 at birth
+     * ("Hack - player knows all combat runes", player-birth.c L1264-1267), so
+     * they are known from the start and their learn-by-use paths never fire. */
+    toA: 1,
+    toH: 1,
+    toD: 1,
     /* Obvious knowledge from player_outfit (player-birth.c L584-596): the dice
      * and ac runes are set at birth, never learned by use, so always 1. */
     dd: 1,
