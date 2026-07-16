@@ -93,7 +93,7 @@
 > fieldPatches data for pre-launch collision reporting. +2 compose tests; tsc
 > clean, full monorepo 2367 tests. **P7 IS COMPLETE** (all of P7.1-P7.7 plus the
 > integration tail). NEXT: P8 (the Borg) - to be planned per BORG_AS_MOD.md
-> sections 7-8, launched only with Aaron's go-ahead (large phase).
+> sections 7-8, launched only with the maintainer's go-ahead (large phase).
 >
 > IMPORTANT (2026-07-14, audit): P7 built the substrate + froze the agent API,
 > but a code audit found the machinery is BUILT-BUT-NOT-WIRED - the running game
