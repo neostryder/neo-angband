@@ -2,7 +2,7 @@ module: packages/core/src/game/player-path.ts (running + pathfinding) +
   the internal command queue (game/context.ts cmdQueue, player-turn.ts
   processPlayer drain) and the run / pathfind / explore action wiring
   (session/game.ts)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/player-path.c

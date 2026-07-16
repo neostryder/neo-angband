@@ -1,5 +1,5 @@
 module: packages/core/src/game/obj-list.ts (the object-list view model)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/obj-list.c

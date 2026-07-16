@@ -1,5 +1,5 @@
 module: packages/core/src/player/ (types.ts, bind.ts, player.ts)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/player.h

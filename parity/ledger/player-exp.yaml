@@ -1,6 +1,6 @@
 module: packages/core/src/player/exp.ts (+ the session wiring in
   session/game.ts and the kill sites in game/)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/player.c

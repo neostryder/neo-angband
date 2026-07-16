@@ -1,5 +1,5 @@
 module: packages/core/src/effects
-status: machinery ported, handler skeleton
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/effects.h

@@ -1,5 +1,5 @@
 module: packages/core/src/bitflag.ts
-status: ported
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/z-bitflag.c

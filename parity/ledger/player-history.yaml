@@ -2,7 +2,7 @@ module: packages/core/src/player/history.ts (+ the game-layer stamp/name
   builder in game/history.ts, the trigger wiring in session/game.ts,
   player/birth.ts and player/exp.ts, and the web display in
   packages/web/src/screens.ts)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/player-history.h

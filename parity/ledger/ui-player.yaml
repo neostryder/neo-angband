@@ -1,5 +1,5 @@
 module: packages/core/src/game/char-sheet.ts (characterPanels / statTable)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/ui-player.c

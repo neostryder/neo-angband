@@ -1,5 +1,5 @@
 module: packages/core/src/player/calcs.ts (calcBonuses / calcBlows / adapters)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/player-calcs.c
@@ -61,28 +61,26 @@ notes: >-
   inert until their rune is learned. The to_a/to_h/to_d and el_info
   contributions are NOT rune-gated for the real state (upstream gates them only
   for the displayed known_state, known_only=true), so they apply
-  unconditionally here, matching the !known_only branch. Two inputs remain
-  DEFERRED: the learn-by-use rune system that POPULATES obj_k (obj-knowledge.c)
-  -- until it lands, learned runes are set explicitly and no in-play item yet
-  carries modifiers, so the gate is not yet observable in normal play; and the
-  per-object curse-object traversal (2009-2023), so a cursed item contributes
-  its own object but not its attached curse objects. Still fully DEFERRED
-  elsewhere in calc_bonuses:
-  calc_shapechange (1798-1853, called 2030-2032) -- the "normal" shape adds
-  all zeros so skipping it is behavior-identical, non-normal shapes deferred;
-  calc_light (1598-, called 2040-2041) -- cur_light stays 0; food effects
-  (2094-2132) and the other timed effects (2134-2213) -- no timed-effect
-  model yet, and a just-born player is in the "Fed" grade for which upstream
-  is a no-op; calc_mana (1480-, called 2322) -- msp stays at its birth value
-  0, so the ported PF_NO_MANA check (2323-2325) currently sets NO_MANA for
-  every class, correct for warriors and self-correcting for casters once
-  calc_mana lands; the known_only object-knowledge variant and the
-  update=false hypothetical-blows index shift (1891-1893, 2077-2088) --
-  birth-UI only, calcBonuses is the update=true real-state path. calcSkills
-  was extended with the adj_dex_dis / adj_int_dis disarm terms (2240-2241) it
-  previously omitted, making it agree with calcBonuses for the innate case.
-  The upkeep total_weight the encumbrance check reads is 0 until the inventory
-  weight model lands.
+  unconditionally here, matching the !known_only branch. The learn-by-use rune
+  system that POPULATES obj_k is now ported (obj-knowledge.c, see
+  obj-knowledge.yaml), and the per-object curse-object traversal (2009-2023) is
+  now LIVE (each worn item's active curses fold their template object into the
+  state; #85). The rest of calc_bonuses is now ported too:
+  calc_shapechange (1798-1853, called 2030-2032) -- a non-normal player.shape
+  stacks its combat/flags/modifiers/skills/resists (the "normal" shape adds
+  zeros, behavior-identical); calc_light (1598-, called 2040-2041) --
+  cur_light is now derived from the wielded light; food effects (2094-2132)
+  and the other timed effects (2134-2213) run through the ported timed model
+  (haste/hero/bless/slow fold into speed and to-hit/dam/ac); calc_mana
+  (1480-2322) is ported in player/spell.ts (calcMana, wired at birth and on
+  level change, see player-spell.yaml), and the PF_NO_MANA check reads the
+  computed msp. The encumbrance overweight speed penalty reads the live
+  weight_limit (calcs.ts weight block). DEFERRED only: the known_only
+  object-knowledge display variant and the update=false hypothetical-blows
+  index shift (1891-1893, 2077-2088) -- birth-UI display paths; calcBonuses is
+  the update=true real-state path. calcSkills was extended with the
+  adj_dex_dis / adj_int_dis disarm terms (2240-2241) it previously omitted,
+  making it agree with calcBonuses for the innate case.
 verified-by:
   - bonuses.test.ts, all expected values hand-derived from the C tables for
     a level-1 Human Warrior with natural stats 16/12/11/15/14 -- stat_use

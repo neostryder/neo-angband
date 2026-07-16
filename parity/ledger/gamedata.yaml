@@ -437,31 +437,36 @@ upstream:
 notes: ""
 ---
 module: packages/content/pack/ui_entry.json
-status: planned
+status: ported
 baseline: 4.2.6
 upstream:
   - path: lib/gamedata/ui_entry.txt
   - path: src/ui-entry.c
 notes: >-
-  Deferred: front-end/UI concern, not part of the core rules pack.
+  Compiled and consumed: packages/content/src/specs/ui-entry.ts builds this
+  pack record and game/ui-entry.ts binds it (see ui-entry.yaml). The terminal
+  draw half stays with each shell.
 ---
 module: packages/content/pack/ui_entry_base.json
-status: planned
+status: ported
 baseline: 4.2.6
 upstream:
   - path: lib/gamedata/ui_entry_base.txt
   - path: src/ui-entry.c
 notes: >-
-  Deferred: front-end/UI concern, not part of the core rules pack.
+  Compiled and consumed by buildUiEntryConfig (see ui-entry.yaml). The
+  terminal draw half stays with each shell.
 ---
 module: packages/content/pack/ui_entry_renderer.json
-status: planned
+status: ported
 baseline: 4.2.6
 upstream:
   - path: lib/gamedata/ui_entry_renderer.txt
   - path: src/ui-entry-renderers.c
 notes: >-
-  Deferred: front-end/UI concern, not part of the core rules pack.
+  Compiled and consumed by buildUiEntryConfig (see ui-entry.yaml). The
+  symbol/color renderer mapping is bound; the terminal draw half stays with
+  each shell.
 ---
 module: packages/content/pack/ui_knowledge.json
 status: planned
@@ -473,14 +478,15 @@ notes: >-
   Deferred: front-end/UI concern, not part of the core rules pack.
 ---
 module: packages/content/pack/visuals.json
-status: planned
+status: ported
 baseline: 4.2.6
 upstream:
   - path: lib/gamedata/visuals.txt
   - path: src/ui-visuals.c
 notes: >-
-  Deferred: front-end/UI concern (color cycling), not part of the core
-  rules pack.
+  Compiled to a singleton record and consumed by the visuals engine
+  (color cycling / flicker; see graphics-visuals.yaml). pack.test.ts pins
+  the compilation.
 ---
 module: packages/content/pack/old_class.json
 status: planned

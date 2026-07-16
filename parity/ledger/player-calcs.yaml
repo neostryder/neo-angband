@@ -1,5 +1,5 @@
 module: packages/core/src/player/calcs.ts
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/player-calcs.c
@@ -29,10 +29,10 @@ notes: >-
   and level-based portion of calc_bonuses skill computation. The full innate
   calc_bonuses (to_a/to_d/to_h, speed, num_blows via calc_blows, pflags,
   element info) is ported as calcBonuses/calcBlows and ledgered separately
-  in player-calcs-bonuses.yaml together with its DEFERRED list (equipment,
-  timed effects, shapechange, launcher/weapon analysis, calc_mana,
-  calc_light). adj_mag_* and the not-yet-consumed adj_* tables (safe/fix)
-  are ported so the deferred calculations can consume them unchanged later.
+  in player-calcs-bonuses.yaml (equipment, timed effects, shapechange,
+  launcher/weapon analysis, calc_light and the curse traversal are all now
+  live there; calc_mana rides player-spell.yaml). adj_mag_* and the adj_*
+  tables (safe/fix) are ported so those calculations consume them unchanged.
 verified-by:
   - calcs.test.ts: every ported table has STAT_RANGE (38) entries; C spot
     values for adj_con_mhp, adj_str_blow, adj_dex_ta, adj_int_dev, adj_str_td,

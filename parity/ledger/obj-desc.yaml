@@ -1,7 +1,7 @@
 module: packages/core/src/obj/desc.ts (object_desc) +
   packages/core/src/obj/known-object.ts (the per-object known shadow) +
   packages/core/src/game/describe.ts (the game-layer adapter)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/obj-desc.c

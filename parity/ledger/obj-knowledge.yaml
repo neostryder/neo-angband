@@ -1,6 +1,6 @@
 module: packages/core/src/obj/knowledge.ts (+ learn_brand_slay_* in
   combat/brand-slay.ts and the game-layer call sites)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/obj-knowledge.c

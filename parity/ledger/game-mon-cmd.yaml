@@ -1,6 +1,6 @@
 module: packages/core/src/game/mon-cmd.ts (+ EF_COMMAND in
   effect-general.ts and the lifecycle sites)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/effect-handler-general.c

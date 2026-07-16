@@ -1,5 +1,5 @@
 module: packages/core/src/game/trap.ts (+ packages/core/src/world/trap.ts)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/trap.c

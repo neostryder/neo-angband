@@ -1,5 +1,5 @@
 module: packages/core/src/game/thrust.ts
-status: complete
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/project-mon.c

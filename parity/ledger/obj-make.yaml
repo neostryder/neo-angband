@@ -1,5 +1,5 @@
 module: packages/core/src/obj/make.ts
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/obj-make.c

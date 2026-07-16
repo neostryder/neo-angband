@@ -1,7 +1,7 @@
 module: packages/core/src/obj/flavor.ts (flavor_init + FlavorAssignment) +
   packages/core/src/obj/randname.ts (the Markov name generator) +
   session/boot.ts + session/game.ts wiring + the save format seed
-status: complete
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/obj-util.c

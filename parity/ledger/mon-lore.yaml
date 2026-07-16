@@ -1,6 +1,6 @@
 module: packages/core/src/mon/lore.ts (+ the counter call sites in game/
   and session/)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/mon-lore.c
