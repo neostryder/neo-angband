@@ -223,6 +223,15 @@ export interface GameState {
    */
   ignore: import("../obj/ignore").IgnoreSettings;
   /**
+   * The per-kind autoinscription registry (obj-ignore.c note_aware/note_unaware,
+   * obj/knowledge.ts AutoinscriptionRegistry). Notes registered through the
+   * knowledge-menu manager are applied by game/obj-cmd.ts's applyAutoinscription
+   * (wired via ObjCmdDeps.autoNote in session/game.ts) and persist in the save.
+   * Optional so the worldless harness (game/harness.ts) stays total: absent,
+   * autoinscribe is a no-op.
+   */
+  autoinscribe?: import("../obj/knowledge").AutoinscriptionRegistry;
+  /**
    * ignore_item_ok(obj): whether an object is currently ignored. Installed by
    * the session (wireGame) with the flavor-awareness lookup baked in; absent,
    * nothing is ignored.

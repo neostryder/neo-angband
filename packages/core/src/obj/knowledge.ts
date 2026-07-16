@@ -1146,6 +1146,100 @@ export class FlavorKnowledge {
 }
 
 /**
+ * The per-kind autoinscription registry (object.h L241-242's
+ * kind->note_aware / kind->note_unaware). Upstream these two quark strings
+ * live on the shared object_kind template and are global to the running game;
+ * this port keeps them out of the immutable bound registry - like
+ * FlavorKnowledge and IgnoreSettings - in a per-game store keyed by kind index
+ * (kidx), so a bound ObjRegistry stays reusable across games and the notes ride
+ * the save.
+ *
+ * get(kidx, aware) is get_autoinscription (obj-ignore.c L229): the aware note
+ * when the kind is aware, else the unaware note. set() is
+ * add_autoinscription / remove_autoinscription (obj-ignore.c L322 / L294): a
+ * non-empty note registers that slot, an empty note clears it (upstream's
+ * NULL-inscription -> remove_autoinscription path).
+ *
+ * This is the KIND-note half only. The separate rune-based autoinscription
+ * (runes_autoinscribe, obj-ignore.c L217) rides the rune-knowledge system and
+ * stays ledger-deferred (#24).
+ */
+export class AutoinscriptionRegistry {
+  /** kind->note_aware / note_unaware, keyed by kidx. Absent slot == no note. */
+  private readonly notes = new Map<number, { aware?: string; unaware?: string }>();
+
+  /** get_autoinscription(kind, aware) (obj-ignore.c L229). */
+  get(kidx: number, aware: boolean): string | undefined {
+    const rec = this.notes.get(kidx);
+    if (!rec) return undefined;
+    return aware ? rec.aware : rec.unaware;
+  }
+
+  /**
+   * add_autoinscription (obj-ignore.c L322) / remove_autoinscription (L294):
+   * register the aware or unaware note for a kind. An empty note clears that
+   * slot (upstream's null-inscription branch); a kind with neither slot set is
+   * dropped from the map entirely.
+   */
+  set(kidx: number, note: string, aware: boolean): void {
+    const rec = this.notes.get(kidx) ?? {};
+    if (note.length > 0) {
+      if (aware) rec.aware = note;
+      else rec.unaware = note;
+    } else if (aware) {
+      delete rec.aware;
+    } else {
+      delete rec.unaware;
+    }
+    if (rec.aware === undefined && rec.unaware === undefined) {
+      this.notes.delete(kidx);
+    } else {
+      this.notes.set(kidx, rec);
+    }
+  }
+
+  /** remove_autoinscription (obj-ignore.c L294): clear both slots for a kind. */
+  clear(kidx: number): void {
+    this.notes.delete(kidx);
+  }
+
+  /** Every kind with a registered note (either slot), for the management UI. */
+  entries(): Array<[number, { aware?: string; unaware?: string }]> {
+    return Array.from(this.notes.entries()).map(([kidx, rec]) => [
+      kidx,
+      { ...rec },
+    ]);
+  }
+}
+
+/**
+ * get_autoinscription (obj-ignore.c L229) as a free function over the registry,
+ * mirroring the upstream signature: the aware note when the kind is aware, else
+ * the unaware note; undefined when the kind has no note for that awareness.
+ */
+export function getAutoinscription(
+  registry: AutoinscriptionRegistry,
+  kidx: number,
+  aware: boolean,
+): string | undefined {
+  return registry.get(kidx, aware);
+}
+
+/**
+ * add_autoinscription / remove_autoinscription (obj-ignore.c L322 / L294) as a
+ * free function over the registry: register `note` for the aware or unaware
+ * slot; an empty note clears it.
+ */
+export function setAutoinscription(
+  registry: AutoinscriptionRegistry,
+  kidx: number,
+  note: string,
+  aware: boolean,
+): void {
+  registry.set(kidx, note, aware);
+}
+
+/**
  * The object_flavor_aware side effect of player_know_object (obj-knowledge.c
  * L1163-1175). This is the awareness-UPDATE half of player_know_object, split
  * out so it can be fired at the port's knowledge-update sites - upstream the
