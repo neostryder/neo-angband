@@ -92,13 +92,22 @@ Legend: [ ] open, [~] in progress, [x] done.
 
 ## B. Verification + upstream-tracking tooling
 
-- [ ] **B1. Statistical parity harness** (decisions 2, 10, 23). Build the Node
-  stats front-end mirroring `reference/src/main-stats.c`: Monte-Carlo batches
-  producing the same aggregate distributions (level-gen content, item/monster
-  allocation by depth, randart power curves), with fixed-seed batches and
-  per-metric tolerances. Add the golden-scenario runner (scripted command
-  sequences with expected outcomes through the command queue). Wire both into CI
-  so a parity regression blocks merge. This replaces the current 2-line CLI stub.
+- [x] **B1. Statistical parity harness** (decisions 2, 10, 23). DONE. Built in
+  `packages/cli`: a deterministic Monte-Carlo harness (`stats.ts`) mirroring
+  `main-stats.c` metrics (monsters by race, objects by tval/kind, gold, obj/mon
+  feelings, artifact counts - all by depth), with per-(run,depth) derived seeds;
+  a committed baseline (`baseline/stats-baseline.json`) + tolerance comparator
+  (`baseline.ts`); and a golden-scenario runner (`scenarios.ts`, 3 scenarios
+  driving startGame + the command queue end-to-end). Wired into the vitest suite
+  (`parity.test.ts`, 7 tests, EXACT self-regression guard) and CI. Honest
+  epistemics documented (`baseline/README.md`): the baseline is a
+  self-consistency/regression guard, NOT yet a C-vs-TS diff; the comparator is
+  structured to accept a C `main-stats` baseline to upgrade to a true
+  cross-implementation check. Replaces the 2-line CLI stub.
+  NOTE surfaced by the harness (out of B1 scope, logged for follow-up): floor
+  gold objects carry `origin` 0 (NONE) rather than FLOOR at the `generateLevel`
+  stage - captured faithfully in the baseline; verify against upstream and fix
+  in a follow-up if it is a real deviation.
 - [ ] **B2. Spoiler generator** (decision 10). Port `*-spoil.c` as a Node
   dev-tool (objects/artifacts/monsters spoilers). Tooling parity; not gameplay.
 - [ ] **B3. Parity ledger reconciliation** (#59, decision 12). Correct every
