@@ -56,6 +56,17 @@ export interface PlayerObjectKnowledge {
   toA: number;
   toH: number;
   toD: number;
+  /**
+   * obj_k->dd / ds / ac: the "know dice" / "know ac" runes (0 or 1). Unlike the
+   * combat runes these are NOT learned by use - player_outfit (player-birth.c
+   * L584-596) gives them as obvious object knowledge at birth, so they are
+   * ALWAYS 1. object_set_base_known / player_know_object multiply the object's
+   * base dd/ds/ac by them (obj-knowledge.c L830-838, L1039-1041), so base
+   * damage dice and armour of even an unidentified item are known from the start.
+   */
+  dd: number;
+  ds: number;
+  ac: number;
   /** obj_k->el_info[ELEM_MAX]: resLevel 1 = element rune known. */
   elInfo: ElementInfo[];
   /** obj_k->flags: OF_* rune knowledge. */
@@ -95,6 +106,11 @@ export function blankObjKnowledge(): PlayerObjectKnowledge {
     toA: 0,
     toH: 0,
     toD: 0,
+    /* Obvious knowledge from player_outfit (player-birth.c L584-596): the dice
+     * and ac runes are set at birth, never learned by use, so always 1. */
+    dd: 1,
+    ds: 1,
+    ac: 1,
     elInfo: newElemInfo(),
     flags: newOfFlags(),
     brands: [],

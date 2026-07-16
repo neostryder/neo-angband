@@ -29,7 +29,7 @@
 import { FLAG_START, FlagSet, NO_FLAG } from "../bitflag";
 import type { RandomValue } from "../rng";
 import type { GameObject } from "./object";
-import { sameMonstersSlain, tvalIsBodyArmor } from "./object";
+import { sameMonstersSlain, tvalIsBodyArmor, tvalIsJewelry } from "./object";
 import type {
   Brand,
   Curse,
@@ -959,9 +959,16 @@ export function objectFindUnknownRune(
 }
 
 /**
- * object_learn_unknown_rune: learn a random unknown rune from the object;
- * with none left the object is marked assessed. Returns whether a rune was
- * learned.
+ * object_learn_unknown_rune (obj-knowledge.c L1798): learn a random unknown
+ * rune from the object; with none left the object is marked assessed. Returns
+ * whether a rune was learned.
+ *
+ * Upstream both branches end in player_know_object (directly at L1806, or via
+ * player_learn_rune -> update_player_object_knowledge at L1811), which fires the
+ * object_flavor_aware side effect for the object. The port synthesises the
+ * known shadow on demand for display, so that awareness half is fired here (a
+ * knowledge-UPDATE site) via playerKnowObjectAwareness. `flavor` is optional so
+ * callers with no flavor environment (older tests) keep the bare rune-learn.
  */
 export function objectLearnUnknownRune(
   rng: { randint0(m: number): number },
@@ -969,15 +976,23 @@ export function objectLearnUnknownRune(
   env: RuneEnv,
   obj: GameObject,
   runes: readonly Rune[],
+  flavor?: FlavorKnowledge,
+  flavorDeps: FlavorAwareDeps = NOOP_FLAVOR_AWARE_DEPS,
 ): boolean {
   const i = objectFindUnknownRune(rng, p, env, obj, runes);
+  let learned: boolean;
   if (i < 0) {
     /* No unknown runes: assessed (player_know_object rides the known
      * twin, which the port's rune model replaces). */
     obj.notice |= OBJ_NOTICE.ASSESSED;
-    return false;
+    learned = false;
+  } else {
+    learned = playerLearnRune(p, env, runes[i]!, true);
   }
-  return playerLearnRune(p, env, runes[i]!, true);
+  /* player_know_object's awareness side effect (L1163-1175), fired for this
+   * object at the knowledge-update site (never in the display-only shadow). */
+  if (flavor) playerKnowObjectAwareness(p, env, obj, runes, flavor, flavorDeps);
+  return learned;
 }
 
 /**
@@ -1035,6 +1050,14 @@ export class FlavorKnowledge {
    * index are INSTA_ART dummies and are never marked tried.
    */
   constructor(private readonly ordinaryKindCount: number) {}
+
+  /**
+   * z_info->ordinary_kind_max: kinds at or above this index are special-artifact
+   * dummies (see obj-knowledge.c L1168's kidx >= ordinary_kind_max test).
+   */
+  get ordinaryKindMax(): number {
+    return this.ordinaryKindCount;
+  }
 
   /** object_flavor_is_aware(obj): is the player aware of this kind's flavor? */
   isAware(kind: ObjectKind): boolean {
@@ -1119,5 +1142,48 @@ export class FlavorKnowledge {
     this.triedKidx.clear();
     for (const k of data.aware) this.awareKidx.add(k);
     for (const k of data.tried) this.triedKidx.add(k);
+  }
+}
+
+/**
+ * The object_flavor_aware side effect of player_know_object (obj-knowledge.c
+ * L1163-1175). This is the awareness-UPDATE half of player_know_object, split
+ * out so it can be fired at the port's knowledge-update sites - upstream the
+ * whole of player_know_object writes the obj->known twin AND fires this; the
+ * port synthesises the twin on demand for display, so ONLY this awareness half
+ * needs a home, and it must never live on the display path (describing an item
+ * must not mutate the player's knowledge).
+ *
+ * player_know_object early-returns for a not-yet-assessed object (L1033) before
+ * ever reaching these branches, so this mirrors that gate: awareness fires only
+ * once the object is ASSESSED. Then:
+ * - jewellery whose non-curse runes are all known becomes aware (L1163-1167);
+ * - a special artifact that isn't jewellery (kidx >= ordinary_kind_max) becomes
+ *   aware outright (L1168-1175).
+ *
+ * object_flavor_aware itself early-returns when the kind is already aware, so
+ * re-firing across repeated rune-learns is a no-op.
+ */
+export function playerKnowObjectAwareness(
+  p: Player,
+  env: RuneEnv,
+  obj: GameObject,
+  runes: readonly Rune[],
+  flavor: FlavorKnowledge,
+  flavorDeps: FlavorAwareDeps,
+): void {
+  /* player_know_object's early return at L1033: no awareness for the unassessed. */
+  if ((obj.notice & OBJ_NOTICE.ASSESSED) === 0) return;
+
+  if (tvalIsJewelry(obj.tval)) {
+    /* object_non_curse_runes_known(obj) (L678): every non-curse rune the object
+     * carries is known to the player. */
+    const nonCurse = runes.filter((r) => r.variety !== "curse");
+    if (objectRunesKnown(p, env, obj, nonCurse)) {
+      flavor.objectFlavorAware(obj.kind, flavorDeps); // L1166
+    }
+  } else if (obj.kind.kidx >= flavor.ordinaryKindMax) {
+    /* Special artifact that isn't jewelry (L1168-1175). */
+    flavor.objectFlavorAware(obj.kind, flavorDeps); // L1174
   }
 }

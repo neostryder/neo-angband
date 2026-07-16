@@ -462,6 +462,14 @@ export interface SavedPlayer {
     toA: number;
     toH: number;
     toD: number;
+    /**
+     * obj_k->dd / ds / ac (the "know dice"/"know ac" runes). Optional: saves
+     * written before these fields existed omit them; the reader defaults each
+     * to 1 (obvious birth knowledge, always correct - see player_outfit).
+     */
+    dd?: number;
+    ds?: number;
+    ac?: number;
     elInfo: ElementInfo[];
     flags: number[];
     /** Ids of the brand runes the player has learned. */
@@ -534,6 +542,9 @@ export function serializePlayer(
       toA: p.objKnown.toA,
       toH: p.objKnown.toH,
       toD: p.objKnown.toD,
+      dd: p.objKnown.dd,
+      ds: p.objKnown.ds,
+      ac: p.objKnown.ac,
       elInfo: p.objKnown.elInfo.map((e) => ({ ...e })),
       flags: Array.from(p.objKnown.flags.bits),
       /* The learned runes save as the ids of the known brands/slays/curses. */
@@ -603,6 +614,11 @@ export function deserializePlayer(
       toA: data.objKnown.toA,
       toH: data.objKnown.toH,
       toD: data.objKnown.toD,
+      /* Default to 1 for pre-field saves: dd/ds/ac are obvious birth knowledge
+       * (player_outfit), always 1, so an absent value restores exactly. */
+      dd: data.objKnown.dd ?? 1,
+      ds: data.objKnown.ds ?? 1,
+      ac: data.objKnown.ac ?? 1,
       elInfo: data.objKnown.elInfo.map((e) => ({ ...e })),
       flags: new FlagSet(Uint8Array.from(data.objKnown.flags)),
       brands: deserializeBrandList(data.objKnown.brands, objReg, ids) ?? [],
