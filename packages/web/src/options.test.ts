@@ -14,8 +14,9 @@ describe("'=' key wiring (main.ts drift guard)", () => {
   it("binds '=' to an explicit branch that opens the options menu", () => {
     expect(MAIN_TS_SOURCE).toMatch(/ev\.key === "="/);
     // The explicit '=' branch calls runOptionsMenu, passing openIgnoreSetup
-    // through so ignore-setup is reused, not duplicated.
-    expect(MAIN_TS_SOURCE).toMatch(/runOptionsMenu\(term, state, openIgnoreSetup\)/);
+    // through so ignore-setup is reused, not duplicated (a trailing
+    // tileModeMenu arg wires the Phase-4 graphics selector).
+    expect(MAIN_TS_SOURCE).toMatch(/runOptionsMenu\(term, state, openIgnoreSetup/);
   });
 
   it("ITEM_VERBS no longer binds '=' directly to openIgnoreSetup (reclaimed)", () => {
@@ -244,6 +245,51 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     await tick();
     expect(state.options!.hitpointWarn).toBe(5);
     press(win, "Escape");
+  });
+
+  it("(g) graphics tile-mode selector lists modes and applies a choice", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(100, 40);
+    let applied: number | null = null;
+    let cur = 0;
+    const tiles = {
+      modes: [
+        { grafID: 0, menuname: "None (ASCII)" },
+        { grafID: 1, menuname: "Original Tiles" },
+        { grafID: 3, menuname: "David Gervais' tiles" },
+      ],
+      current: () => cur,
+      apply: async (id: number): Promise<void> => {
+        applied = id;
+        cur = id;
+      },
+    };
+    const done = runOptionsMenu(term, makeState(), async () => {}, tiles);
+    // The top menu now shows the graphics row.
+    let snap = term.snapshot().join("\n");
+    expect(snap).toContain("g) Graphics (tiles) mode");
+    press(win, "g");
+    await tick();
+    snap = term.snapshot().join("\n");
+    expect(snap).toContain("Graphics (tiles) mode");
+    expect(snap).toContain("Original Tiles");
+    expect(snap).toContain("David Gervais' tiles");
+    // Positional 'c' selects the 3rd row (David Gervais, grafID 3).
+    press(win, "c");
+    await tick();
+    expect(applied).toBe(3);
+    press(win, "Escape"); // exit top menu
+    await done;
+  });
+
+  it("without a tiles config, the graphics row is absent (default)", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    void runOptionsMenu(term, makeState(), async () => {});
+    const snap = term.snapshot().join("\n");
+    expect(snap).not.toContain("Graphics (tiles) mode");
   });
 
   it("ESC at the top menu resolves the whole screen", async () => {
