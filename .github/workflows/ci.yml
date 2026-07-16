@@ -22,3 +22,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test
+      # Parity harness (packages/cli): the parity.test.ts guard runs inside
+      # `pnpm test` above; this runs the golden scenarios as a standalone Node
+      # program too, so a break in the runnable harness (loader, entry wiring)
+      # surfaces in CI even if the vitest path stays green.
+      - run: pnpm --filter @neo-angband/cli scenarios
