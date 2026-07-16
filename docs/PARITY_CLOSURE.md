@@ -169,12 +169,31 @@ Legend: [ ] open, [~] in progress, [x] done.
 
 ## D. Save-architecture robustness (core, enables mods later)
 
-- [ ] **D1. Mod dehydrate/rehydrate on uninstall/reinstall** (decision 19).
-  Removing mods mid-game must drop the save back to an essentially vanilla state
-  while keeping the mod's save content DEHYDRATED in the savefile; re-adding the
-  mod simply REHYDRATES it. Harden and prove the namespaced save-block
-  quarantine/restore path end-to-end (round-trip test: play modded -> uninstall
-  -> vanilla-clean + dehydrated blob preserved -> reinstall -> full restore).
+- [x] **D1. Mod dehydrate/rehydrate on uninstall/reinstall** (decision 19).
+  DONE. The quarantine/rehydrate algorithm existed (mod/save-blocks.ts, P7.2)
+  with unit tests over hand-built fixtures; D1 added the end-to-end proof on a
+  REAL save (startGame + serializeGame with frost-namespaced mod content injected
+  into every id-bearing collection) and hardened the one real gap it surfaced:
+  `quarantineSave` swept every LIVE-level collection but ignored `save.levelCache`
+  (A1's `birth_levels_persist` frozen levels), whose stored levels carry their
+  own monster/held-object/floor/trap collections - a mod entity frozen there
+  survived quarantine and reached `deserializeLevelCache` on load, which HARD
+  THROWS on an unresolvable id (empirically confirmed: `loadGame` threw
+  `unknown object kind frost:cache-charm`). Fix: a levelCache quarantine pass
+  mirroring the live-level logic (whole mod monsters + held-object pruning +
+  per-level group repair; floor + trap pruning) with four new OrphanKinds
+  (cacheMonster/cacheHeldObject/cacheFloorObject/cacheTrap) whose locus carries
+  the cache depth, plus matching rehydrate reinsert cases; additive only (the 20
+  existing unit tests pass unchanged). The new integration test
+  (dehydrate-roundtrip.test.ts) proves: (a) vanilla-clean - a full-save walk
+  finds no mod id outside the orphan store AND `loadGame` succeeds with core-only
+  present; (b) blob verbatim - each orphan payload deep-equals the removed
+  entity; (c) count; (d) full restore on reinstall; (e) round-trip fidelity
+  differs from the original ONLY by the two ratified degradations (monster group
+  cohesion; equipped item returns to pack). Verified out-of-scope-by-design and
+  documented: mod terrain features (can't hole the map) and sub-property mod ids
+  on core entities (whole-entity granularity; deserializers drop those silently).
+  Core 2039 green, tsc clean.
 
 ## E. Web-shell defects (core-adjacent, close now)
 
