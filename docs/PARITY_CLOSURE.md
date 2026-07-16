@@ -73,22 +73,22 @@ Legend: [ ] open, [~] in progress, [x] done.
   `stat_add`, and the char-sheet mode-1 grid. Also wire the remaining
   `history_add` triggers (#64: artifact loss, find-on-sight, store buy).
 
-## A-followup. Surfaced during A3 (needs the maintainer's ruling, not yet actioned)
+## A-followup. Surfaced during A3
 
-- [ ] **A7. Combat runes known at birth?** Upstream `do_cmd_accept_character`
-  (player-birth.c L1265-1267) sets `obj_k->to_a/to_h/to_d = 1` unconditionally
-  at birth ("Hack - player knows all combat runes"), so upstream shows an item's
-  full +to-hit / +to-dam / +AC immediately, even unidentified. The port instead
-  models these three as learn-by-use runes starting at 0 (documented in
-  player.ts: "All runes UNKNOWN at birth except the racial innates"). This is a
-  real parity deviation but ALSO looks like an intentional port design choice, so
-  it contradicts "no deviation was deliberate" and needs the maintainer's explicit ruling
-  before change: (i) match upstream exactly (combat bonuses visible from birth,
-  making the learn-by-use combat path vestigial), or (ii) keep the port's
-  learn-by-use combat runes as a ratified deliberate deviation. Impact of (i):
-  touches birth init + several learn-by-use tests. NOT part of A3 (which covered
-  only dd/ds/ac + flavor-aware); dd/ds/ac are unambiguously always-1 and were
-  fixed. Recommend raising at the closure review.
+- [x] **A7. Combat runes known at birth.** DONE (the maintainer's ruling 2026-07-16: "do
+  whatever upstream game does; it was not intentional"). `blankObjKnowledge` now
+  sets `to_a/to_h/to_d = 1` at birth exactly as upstream
+  `do_cmd_accept_character` ("Hack - player knows all combat runes",
+  player-birth.c L1264-1267), so an item's +to-hit / +to-dam / +AC show
+  immediately even when unidentified. The learn-by-use combat paths
+  (equip_learn_* / missile_learn_*) are preserved but vestigial in real play,
+  matching upstream (the runes stay in the machinery, just pre-known). Tests
+  updated: the learn-by-use and rune-enumeration tests now zero the combat runes
+  explicitly to exercise the machinery in isolation; the object-desc test now
+  asserts bonuses show from birth (and hide only if the rune is cleared); the
+  legacy-save reader defaults combat runes to the upstream birth state (known);
+  a new golden test asserts all three are 1 at birth. Core 2035 green, web+cli
+  217 green.
 
 ## B. Verification + upstream-tracking tooling
 

@@ -166,6 +166,13 @@ describe("object_learn_on_wield (obj-knowledge.c L1820)", () => {
 });
 
 describe("combat rune learning (equip_learn_* / missile_learn_*)", () => {
+  /*
+   * In real play the three combat runes are known from birth
+   * (do_cmd_accept_character, player-birth.c L1264-1267), so these learn-by-use
+   * paths are vestigial. Each test zeroes the relevant rune first to exercise
+   * the underlying rune machinery in isolation, exactly as it would fire if the
+   * birth hack were ever removed (upstream: "Maybe make them not runes? NRM").
+   */
   it("being hit teaches the to-armor rune from worn armor", () => {
     const { p, eq, env } = fixture();
     const armor = objectNew(kindOfTval(TV.SOFT_ARMOR));
@@ -173,7 +180,7 @@ describe("combat rune learning (equip_learn_* / missile_learn_*)", () => {
     const slot = p.body.slots.findIndex((s) => s.type === "BODY_ARMOR");
     eq[slot] = armor;
 
-    expect(p.objKnown.toA).toBe(0);
+    p.objKnown.toA = 0;
     equipLearnOnDefend(p, env);
     expect(p.objKnown.toA).toBe(1);
   });
@@ -186,6 +193,8 @@ describe("combat rune learning (equip_learn_* / missile_learn_*)", () => {
     const slot = p.body.slots.findIndex((s) => s.type === "WEAPON");
     eq[slot] = weapon;
 
+    p.objKnown.toH = 0;
+    p.objKnown.toD = 0;
     equipLearnOnMeleeAttack(p, env);
     expect(p.objKnown.toH).toBe(1);
     expect(p.objKnown.toD).toBe(1);
@@ -198,6 +207,8 @@ describe("combat rune learning (equip_learn_* / missile_learn_*)", () => {
     weapon.toD = 0;
     eq[p.body.slots.findIndex((s) => s.type === "WEAPON")] = weapon;
 
+    p.objKnown.toH = 0;
+    p.objKnown.toD = 0;
     equipLearnOnMeleeAttack(p, env);
     expect(p.objKnown.toH).toBe(0);
     expect(p.objKnown.toD).toBe(0);
@@ -208,7 +219,16 @@ describe("combat rune learning (equip_learn_* / missile_learn_*)", () => {
     const arrow = objectNew(kindOfTval(TV.ARROW));
     arrow.toH = 3;
     arrow.toD = 3;
+    p.objKnown.toH = 0;
+    p.objKnown.toD = 0;
     missileLearnOnRangedAttack(p, env, arrow);
+    expect(p.objKnown.toH).toBe(1);
+    expect(p.objKnown.toD).toBe(1);
+  });
+
+  it("all three combat runes are known at birth (upstream birth hack)", () => {
+    const { p } = fixture();
+    expect(p.objKnown.toA).toBe(1);
     expect(p.objKnown.toH).toBe(1);
     expect(p.objKnown.toD).toBe(1);
   });
@@ -415,7 +435,9 @@ describe("rune knowledge in the save format", () => {
       ids,
     );
     expect(restored.objKnown.modifiers[3]).toBe(1);
-    expect(restored.objKnown.toA).toBe(0);
+    /* A legacy save predating combat-rune serialization loads to the upstream
+     * birth default: combat runes known (do_cmd_accept_character L1264-1267). */
+    expect(restored.objKnown.toA).toBe(1);
   });
 });
 
@@ -471,6 +493,11 @@ describe("the rune list (init_rune) and per-object enumeration", () => {
   it("objectHasRune / playerKnowsRune track an enchanted weapon", () => {
     const { p, env } = fixture();
     const runes = buildRuneList(env);
+    /* Combat runes are known from birth (do_cmd_accept_character); zero them to
+     * exercise the rune-enumeration machinery on a genuinely unknown rune. */
+    p.objKnown.toA = 0;
+    p.objKnown.toH = 0;
+    p.objKnown.toD = 0;
     const obj = objectNew(kindOfTval(TV.SWORD));
     obj.toD = 5;
     obj.toH = 3; /* nonstandard to-hit: a second combat rune */
@@ -496,6 +523,11 @@ describe("the rune list (init_rune) and per-object enumeration", () => {
   it("objectLearnUnknownRune learns a random unknown rune with its message", () => {
     const { p, env, messages } = fixture();
     const runes = buildRuneList(env);
+    /* Combat runes are known from birth (do_cmd_accept_character); zero them so
+     * the to-damage rune below is genuinely unknown and learnable here. */
+    p.objKnown.toA = 0;
+    p.objKnown.toH = 0;
+    p.objKnown.toD = 0;
     const obj = objectNew(kindOfTval(TV.SWORD));
     obj.toD = 5;
     /* Learn to-hit so only the to-damage rune remains. */
