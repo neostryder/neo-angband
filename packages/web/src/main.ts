@@ -141,6 +141,17 @@ import type {
 import { GameEvents } from "@neo-angband/core";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, VocabularyRegistry } from "@neo-angband/core";
 import type { AgentController } from "@neo-angband/core";
+import {
+  getGraphicsMode,
+  GRAPHICS_MODE_CATALOG,
+  GRAPHICS_NONE,
+  LIGHTING,
+  tileForFeature,
+  tileForMonster,
+  tileForObject,
+  tileForTrap,
+} from "@neo-angband/core";
+import type { TileAtlas, TileMap, TilePrefsDeps } from "@neo-angband/core";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, discoverContentModManifests, modConflictLines } from "./pack";
 import { defaultModStore, buildCatalog, consentSatisfied } from "./mod-store";
@@ -162,9 +173,16 @@ import {
 } from "./context-menu";
 import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./context-menu";
 import { GlyphTerm } from "./term";
+import type { TileDraw } from "./term";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
-import { createTileRenderer } from "./tiles";
+import {
+  createTileRenderer,
+  isTile,
+  loadTilePrefs,
+  tileCode,
+  type TileSet,
+} from "./tiles";
 import {
   showTextScreen,
   selectFromMenu,
@@ -234,6 +252,7 @@ import { enterScore } from "@neo-angband/core";
 import { runStore } from "./shop";
 import { runHelp } from "./help";
 import { runOptionsMenu } from "./options";
+import type { TileModeMenu } from "./options";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
@@ -528,18 +547,104 @@ if (animator) {
 let animFrame = 0;
 const displayRandint1 = (n: number): number => 1 + Math.floor(Math.random() * n);
 
-// --- Optional tiles (task #27: grafmode.c catalog) -------------------------
-// NO tile art ships with the repo (the packs carry their own, partly
-// non-commercial, licenses). Point the game at your own pack with
-// `?tiles=<base-url>&graf=<id>`; with nothing configured this is null and the
-// map renders as pure ASCII (the default). The attr/char -> tile-atlas pref
-// mapping (graf-*.prf) is a separate subsystem, so the live map stays ASCII
-// for now; this proves the load path and the catalog lookup are wired.
-const tileset = createTileRenderer({
-  baseUrl: params.get("tiles") ?? "",
-  grafID: Number(params.get("graf")) || 0,
-});
-let tileNoteShown = false;
+// --- Optional graphics tiles (task C1: bundled upstream tilesets) -----------
+// Four freely-licensed upstream packs ship under public/tiles/<dir>/ (see
+// CREDITS.md); ASCII (mode 0) is the default. A mode is chosen in the Options
+// menu (persisted to localStorage) or via a `?graf=<id>` URL override; a
+// user-supplied pack base URL can be given with `?tiles=<url>` (e.g. the
+// deliberately-unbundled Shockbolt set). When a mode is active the live map
+// blits tiles: each visible cell's entity (feature/monster/object/trap) is
+// looked up in the pack's graf/flvr pref TileMap (core visuals/tile-prefs) and
+// drawn from the atlas; a missing mapping or a not-yet-loaded image degrades to
+// the ASCII glyph, so tiles never blank or crash the map.
+const TILE_MODE_KEY = "neo-angband:graf";
+// Bundled packs live at public/tiles/; a ?tiles= override points elsewhere.
+const tilesBaseUrl = params.get("tiles") || "tiles";
+const tileDeps: TilePrefsDeps = {
+  features: booted.registries.features,
+  objects: booted.registries.objects,
+  monsters: booted.registries.monsters,
+  traps: booted.registries.traps,
+};
+
+/** The persisted/URL-selected graphics mode id (GRAPHICS_NONE = ASCII). */
+function readTileMode(): number {
+  const fromUrl = Number(params.get("graf"));
+  if (fromUrl) return fromUrl;
+  const stored = Number(localStorage.getItem(TILE_MODE_KEY));
+  return Number.isFinite(stored) && stored > 0 ? stored : GRAPHICS_NONE;
+}
+
+let tileset: TileSet | null = null;
+let tileMap: TileMap | null = null;
+let currentGrafID = GRAPHICS_NONE;
+
+/**
+ * Load (or clear, with GRAPHICS_NONE) a graphics mode: build its atlas TileSet
+ * and parse its graf/flvr prefs into a TileMap, then repaint. Async and
+ * best-effort - any fetch/parse/image failure leaves the map ASCII. Exposed for
+ * the Options tile-mode selector; it also persists the choice.
+ */
+async function applyTileMode(grafID: number, persist = false): Promise<void> {
+  currentGrafID = grafID;
+  if (persist) {
+    if (grafID && grafID !== GRAPHICS_NONE) {
+      localStorage.setItem(TILE_MODE_KEY, String(grafID));
+    } else {
+      localStorage.removeItem(TILE_MODE_KEY);
+    }
+  }
+  const mode =
+    grafID && grafID !== GRAPHICS_NONE ? getGraphicsMode(grafID) : undefined;
+  if (!mode || mode.grafID === GRAPHICS_NONE) {
+    tileset = null;
+    tileMap = null;
+    render();
+    return;
+  }
+  const ts = createTileRenderer({ baseUrl: tilesBaseUrl, grafID });
+  if (ts) ts.onReady = () => render();
+  tileset = ts;
+  tileMap = null;
+  render();
+  const map = await loadTilePrefs(tilesBaseUrl, mode, tileDeps);
+  // Ignore a stale load if the mode changed while we were fetching.
+  if (currentGrafID === grafID) {
+    tileMap = map;
+    render();
+  }
+}
+
+/**
+ * Decode a pref TileMap atlas cell into a blit callback for the terminal, or
+ * undefined when there is no usable tile (no atlas entry, no/uninitialised
+ * tileset, or the attr/char is an ASCII pair rather than a tile). The terminal
+ * falls back to the ASCII glyph whenever this is undefined or the blit fails.
+ */
+function tileDrawFor(atlas: TileAtlas | null): TileDraw | undefined {
+  const ts = tileset;
+  if (!atlas || !ts || !ts.ready) return undefined;
+  if (!isTile(atlas.attr, atlas.char)) return undefined;
+  const code = tileCode(atlas.attr, atlas.char);
+  return {
+    draw: (ctx, px, py, w, h) => ts.drawTile(ctx, px, py, w, h, code),
+  };
+}
+
+// The tile-mode selector rows for the Options menu (Phase 4): ASCII plus the
+// four BUNDLED packs (grafID 1..4). Shockbolt (5,6) is deliberately omitted -
+// its assets are not bundled (bespoke licence); a user can still select it via
+// the ?tiles=<url>&graf=5 URL override with their own copy.
+const tileModeMenu: TileModeMenu = {
+  modes: [
+    { grafID: GRAPHICS_NONE, menuname: "None (ASCII)" },
+    ...GRAPHICS_MODE_CATALOG.filter(
+      (m) => m.grafID >= 1 && m.grafID <= 4,
+    ).map((m) => ({ grafID: m.grafID, menuname: m.menuname })),
+  ],
+  current: () => currentGrafID,
+  apply: (grafID: number) => applyTileMode(grafID, true),
+};
 
 let message =
   loadedNote ||
@@ -2249,7 +2354,7 @@ async function openGameMenu(): Promise<void> {
       render();
       break;
     case "options":
-      await runOptionsMenu(term, state, openIgnoreSetup);
+      await runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu);
       autosave(true); // flush any option change to the per-slot save
       break;
     case "mods":
@@ -2426,15 +2531,27 @@ function gridIndex(x: number, y: number): number {
   return y * state.chunk.width + x;
 }
 
+/** A composed map cell: an ASCII glyph plus an optional graphics tile. */
+interface CellGlyph {
+  ch: string;
+  css: string;
+  bg?: string;
+  tile?: TileDraw;
+}
+
 // Revealed traps draw under objects and monsters (upstream layer order).
-function trapIndex(): Map<number, { ch: string; css: string }> {
-  const map = new Map<number, { ch: string; css: string }>();
+function trapIndex(): Map<number, CellGlyph> {
+  const map = new Map<number, CellGlyph>();
   for (const list of state.traps.values()) {
     for (const t of list) {
       if (!t.flags.has(TRF.VISIBLE) || !t.kind.glyph.trim()) continue;
+      const tile = tileMap
+        ? tileDrawFor(tileForTrap(tileMap, t.kind.tidx, LIGHTING.LOS))
+        : undefined;
       map.set(gridIndex(t.grid.x, t.grid.y), {
         ch: t.kind.glyph,
         css: colorToCss(colorCharToAttr(t.kind.color)),
+        ...(tile ? { tile } : {}),
       });
     }
   }
@@ -2443,14 +2560,18 @@ function trapIndex(): Map<number, { ch: string; css: string }> {
 
 // Live floor items from the engine's piles (pile head = newest, drawn on
 // top exactly as upstream lists the first object).
-function objectIndex(): Map<number, { ch: string; css: string }> {
-  const map = new Map<number, { ch: string; css: string }>();
+function objectIndex(): Map<number, CellGlyph> {
+  const map = new Map<number, CellGlyph>();
   for (const pile of state.floor.values()) {
     const o = pile[0];
     if (!o || !o.grid) continue;
+    const tile = tileMap
+      ? tileDrawFor(tileForObject(tileMap, o.kind))
+      : undefined;
     map.set(gridIndex(o.grid.x, o.grid.y), {
       ch: o.kind.dChar,
       css: colorToCss(colorCharToAttr(o.kind.dAttr)),
+      ...(tile ? { tile } : {}),
     });
   }
   return map;
@@ -2473,15 +2594,26 @@ function dim(css: string): string {
  * the glyph; solid, a background the same color as the glyph itself (a solid
  * block of color). Neither option is on by default (both normal: false).
  */
-function terrainGlyph(x: number, y: number): { ch: string; css: string; bg?: string } {
+function terrainGlyph(
+  x: number,
+  y: number,
+  lighting: number = LIGHTING.LOS,
+): CellGlyph {
   const f = state.chunk.feature(loc(x, y));
   const disp = f.mimic !== null ? features.get(f.mimic) : f;
   const css = colorToCss(colorCharToAttr(disp.dAttr));
+  // A terrain tile (per the pack's feat mapping at this lighting) takes over
+  // the cell; when the pack does not map this feat, the ASCII glyph shows.
+  const tile = tileMap
+    ? tileDrawFor(tileForFeature(tileMap, disp.fidx, lighting))
+    : undefined;
   if (disp.flags.has(TF["WALL"])) {
-    if (state.options?.get("hybrid_walls")) return { ch: disp.dChar, css, bg: dim(css) };
-    if (state.options?.get("solid_walls")) return { ch: disp.dChar, css, bg: css };
+    if (state.options?.get("hybrid_walls"))
+      return { ch: disp.dChar, css, bg: dim(css), ...(tile ? { tile } : {}) };
+    if (state.options?.get("solid_walls"))
+      return { ch: disp.dChar, css, bg: css, ...(tile ? { tile } : {}) };
   }
-  return { ch: disp.dChar, css };
+  return { ch: disp.dChar, css, ...(tile ? { tile } : {}) };
 }
 
 /**
@@ -2553,15 +2685,19 @@ function hasAnimatedVisibleMonster(): boolean {
  * monsters the player can see (or has detected - MFLAG MARK) are drawn;
  * noteSpots maintains the flags after every FOV refresh.
  */
-function monsterIndex(): Map<number, { ch: string; css: string }> {
-  const map = new Map<number, { ch: string; css: string }>();
+function monsterIndex(): Map<number, CellGlyph> {
+  const map = new Map<number, CellGlyph>();
   for (let i = 1; i < state.monsters.length; i++) {
     const mon = state.monsters[i];
     if (!mon) continue;
     if (!mon.mflag.has(MFLAG.VISIBLE) && !mon.mflag.has(MFLAG.MARK)) continue;
+    const tile = tileMap
+      ? tileDrawFor(tileForMonster(tileMap, mon.race.ridx))
+      : undefined;
     map.set(gridIndex(mon.grid.x, mon.grid.y), {
       ch: mon.race.dChar,
       css: colorToCss(monsterAttr(mon)),
+      ...(tile ? { tile } : {}),
     });
   }
   return map;
@@ -2800,10 +2936,18 @@ function render(targeting?: TargetingOverlay): void {
         }
         const f = features.get(kf);
         const disp = f.mimic !== null ? features.get(f.mimic) : f;
+        // Remembered (out-of-view) terrain is the LIT lighting variant
+        // (cave-map.c map_info: the default for known, non-in-view grids). A
+        // mapped tile shows at full brightness (upstream does not dim tiles);
+        // absent a tile, the ASCII glyph is drawn dim as before.
+        const memTile = tileMap
+          ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT))
+          : undefined;
         term.put(screenX, screenY, {
           ch: disp.dChar,
           fg: dim(colorToCss(colorCharToAttr(disp.dAttr))),
           ...cursorBg,
+          ...(memTile ? { tile: memTile } : {}),
         });
         /* Remembered / sensed objects persist on the map in full color. */
         const mem = knownObject(state, loc(gx, gy));
@@ -2818,15 +2962,21 @@ function render(targeting?: TargetingOverlay): void {
         }
         /* Detected monsters show even out of view - that is the point. */
         const marked = monsterAt.get(idx);
-        if (marked) term.put(screenX, screenY, { ch: marked.ch, fg: marked.css, ...cursorBg });
+        if (marked)
+          term.put(screenX, screenY, {
+            ch: marked.ch,
+            fg: marked.css,
+            ...cursorBg,
+            ...(marked.tile ? { tile: marked.tile } : {}),
+          });
         if (pathColour !== undefined) {
           term.put(screenX, screenY, { ch: "*", fg: colorToCss(pathColour), ...cursorBg });
         }
         continue;
       }
 
-      const t = terrainGlyph(gx, gy);
-      let drawn: { ch: string; css: string; bg?: string } = t;
+      const t = terrainGlyph(gx, gy, LIGHTING.LOS);
+      let drawn: CellGlyph = t;
       const trap = trapAt.get(idx);
       if (trap) drawn = trap;
       const obj = objectAt.get(idx);
@@ -2837,12 +2987,15 @@ function render(targeting?: TargetingOverlay): void {
       // The wall shading (solid_walls/hybrid_walls) is terrain-only: any
       // trap/object/monster covering the cell (or the cursor highlight,
       // spread last below) fully overrides it, matching upstream drawing
-      // whatever is "on top" of the grid without the terrain's own bg.
+      // whatever is "on top" of the grid without the terrain's own bg. A
+      // graphics tile (drawn.tile), when present and loaded, blits over the
+      // cell; the terminal falls back to ch/fg if the atlas is not ready.
       term.put(screenX, screenY, {
         ch: drawn.ch,
         fg: drawn.css,
         ...(drawn.bg !== undefined ? { bg: drawn.bg } : {}),
         ...cursorBg,
+        ...(drawn.tile ? { tile: drawn.tile } : {}),
       });
     }
   }
@@ -3155,7 +3308,7 @@ window.addEventListener("keydown", (ev) => {
     // any option change to the per-slot save the moment the menu closes.
     if (ev.key === "=") {
       ev.preventDefault();
-      void openModal(() => runOptionsMenu(term, state, openIgnoreSetup)).then(() =>
+      void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu)).then(() =>
         autosave(true),
       );
       return;
@@ -3397,7 +3550,7 @@ function installTouchActionBar(): void {
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())); }],
     ["Hist", () => { void openModal(() => showTextScreen(term, "Player history", historyLines(state))); }],
     ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
-    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup)).then(() => autosave(true)); }],
+    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu)).then(() => autosave(true)); }],
     ["Help", () => { void openModal(() => runHelp(term)); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     ["Switch", () => { switchCharacter(); }],
@@ -3474,6 +3627,11 @@ state.sound = (type: number): void => {
 state.updateFov(state);
 term.onResize = () => render();
 render();
+
+// Boot the persisted/URL-selected graphics mode (ASCII if none). Async and
+// best-effort: fetches the pack image + prefs and repaints when ready, leaving
+// the map ASCII on any failure.
+void applyTileMode(readTileMode());
 
 // --- Birth: choose a character for a new game -------------------------------
 // A brand-new game opens the staged birth screen (ui-birth.c stage order). The
@@ -3894,6 +4052,17 @@ if (import.meta.env.DEV) {
     },
     size: () => term.size(),
     screen: () => term.snapshot(),
+    // Tile-rendering diagnostics (task C1): the active mode, whether its atlas
+    // and pref map are loaded, and how many cells the last render blitted as
+    // tiles (proves the map render chose tiles, not ASCII).
+    tiles: () => ({
+      grafID: currentGrafID,
+      mode: tileset?.mode.menuname ?? null,
+      atlasReady: !!tileset && tileset.ready,
+      mapLoaded: !!tileMap,
+      tileCells: term.tileCellCount(),
+    }),
+    setTileMode: (id: number): Promise<void> => applyTileMode(id, true),
     messages: () => msglog.all().map((m) => m.text),
     monsters: () =>
       state.monsters
@@ -3930,13 +4099,6 @@ setInterval(() => {
   // panned camera every 250ms for no benefit - simplest faithful stand-in
   // for upstream's own single-threaded UI, where nothing repaints mid-command.
   if (dead || scoresOpen || locateActive) return;
-  // Surface tile-pack readiness once (the live map stays ASCII pending the
-  // pref-file mapping; this confirms the catalog + load path are wired).
-  if (tileset && tileset.ready && !tileNoteShown) {
-    tileNoteShown = true;
-    message = `Tile pack loaded (${tileset.mode.menuname}); map remains ASCII for now.`;
-    render();
-  }
   if (!hasAnimatedVisibleMonster()) return;
   animFrame = (animFrame + 1) & 0xff; // uint8_t flicker counter
   render();

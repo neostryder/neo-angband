@@ -178,12 +178,32 @@ Legend: [ ] open, [~] in progress, [x] done.
 
 ## C. Presentation parity
 
-- [ ] **C1. Upstream graphics parity.** Ensure the tile-graphics support that
-  ships in upstream 4.2.6 is fully available in-port: selectable tile modes and
-  the freely-licensed upstream tilesets loadable through the ported grafmode /
-  ui-visuals pipeline (system was ported in #27). This is DISTINCT from the
-  Linoleum mod (per-object images, variant pools), which is built only AFTER the
-  port hits 100% parity.
+- [x] **C1. Upstream graphics parity.** DONE (the maintainer's ruling 2026-07-16: bundle
+  the freely-licensed packs). The #27 grafmode catalog existed but the live map
+  could not render tiles - the load-bearing gap was the `graf-*.prf` pref-map
+  subsystem (ui-prefs.c). Closed in four phases: (1) ported the pref parser
+  (core `visuals/tile-prefs.ts`) - feat / monster / object / flavor / trap / GF
+  line types + `%` include, resolving through the real registries
+  (lookup_feat_code, race-by-name, tval+sval, projName, lookup_trap), returning a
+  queryable TileMap; 13 tests over real rows from the bundled packs. (2) bundled
+  the four freely-licensed upstream packs (old 8x8, adam-bolt 16x16, gervais
+  32x32, nomad 8x16 - png + graf/flvr/xtra prf, 2.2 MB) under
+  packages/web/public/tiles/ with a CREDITS.md attribution file (Gervais CC-BY
+  3.0, Bolt any-purpose, old/nomad GPLv2/Angband); Shockbolt DELIBERATELY
+  EXCLUDED (bespoke license, not commercial-safe) - still usable via the
+  `?tiles=&graf=5/6` URL override. (3) wired the render path to blit a tile per
+  visible cell when a mode is active (seen terrain at LOS, remembered at LIT,
+  traps/objects/monsters by index), falling back to ASCII on any miss/failure.
+  (4) added the `g) Graphics (tiles) mode` selector to the Options menu,
+  persisted to localStorage and restored at boot; the URL override still wins.
+  Verified: core 2066 green, web 215 green, tsc clean; the live map blits 137
+  cells as tiles with a pack active and 0 in ASCII mode (JS-level assertion -
+  the preview's canvas readback is broken so a screenshot could not be captured,
+  a tooling limitation not a code gap). Faithful caveats, documented: lighting
+  simplified to LOS/LIT (matches Angband default options; TORCH/DARK variants are
+  parsed but not render-selected), and flavor tiles are parsed + lookupable but
+  the remembered-object display + `M` minimap stay ASCII by design. DISTINCT from
+  the Linoleum mod (#45), untouched.
 
 ## D. Save-architecture robustness (core, enables mods later)
 

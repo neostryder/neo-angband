@@ -309,10 +309,47 @@ async function runHitpointWarnPrompt(term: GlyphTerm, state: GameState): Promise
  * main.ts, not duplicated here), and the two numeric setters. Loops (like
  * upstream's menu_select) until ESC backs all the way out to the game.
  */
+/**
+ * The graphics tile-mode selector wiring (task C1). Upstream chooses a graphics
+ * mode outside do_cmd_options (the SDL/main menu), but the web shell has no
+ * such menu, so the choice lives here as an extra Options row. The caller
+ * (main.ts) owns the actual tileset/pref load + localStorage persistence and
+ * passes it in, exactly as openIgnoreSetup is injected.
+ */
+export interface TileModeMenu {
+  /** Selectable modes in menu order, including the None (ASCII) entry. */
+  modes: readonly { grafID: number; menuname: string }[];
+  /** The currently active grafID (GRAPHICS_NONE = ASCII). */
+  current: () => number;
+  /** Apply + persist a chosen grafID (reloads the tileset and repaints). */
+  apply: (grafID: number) => Promise<void>;
+}
+
+/** do_cmd_options row (g): pick a graphics tile set (or ASCII). */
+async function runTileModePage(
+  term: GlyphTerm,
+  tiles: TileModeMenu,
+): Promise<void> {
+  const cur = tiles.current();
+  const items: MenuItem[] = tiles.modes.map((m) => ({
+    label: m.grafID === cur ? `${m.menuname}  (current)` : m.menuname,
+  }));
+  const idx = await selectFromMenu(
+    term,
+    "Graphics (tiles) mode",
+    items,
+    "[ choose a tile set, ESC to keep current ]",
+  );
+  if (idx === null) return;
+  const chosen = tiles.modes[idx];
+  if (chosen && chosen.grafID !== cur) await tiles.apply(chosen.grafID);
+}
+
 export async function runOptionsMenu(
   term: GlyphTerm,
   state: GameState,
   openIgnoreSetup: () => Promise<void>,
+  tiles?: TileModeMenu,
 ): Promise<void> {
   const items: MenuItem[] = [
     { label: "User interface options", tag: "a" },
@@ -321,12 +358,14 @@ export async function runOptionsMenu(
     { label: "Set base delay factor", tag: "d" },
     { label: "Set hitpoint warning", tag: "h" },
   ];
+  if (tiles) items.push({ label: "Graphics (tiles) mode", tag: "g" });
+  const tagHint = tiles ? "a/b/i/d/h/g" : "a/b/i/d/h";
   for (;;) {
     const idx = await selectFromMenu(
       term,
       "Options Menu",
       items,
-      "[ a/b/i/d/h to choose, ESC to return ]",
+      `[ ${tagHint} to choose, ESC to return ]`,
     );
     if (idx === null) return;
     switch (items[idx]?.tag) {
@@ -344,6 +383,9 @@ export async function runOptionsMenu(
         break;
       case "h":
         await runHitpointWarnPrompt(term, state);
+        break;
+      case "g":
+        if (tiles) await runTileModePage(term, tiles);
         break;
       default:
         break;

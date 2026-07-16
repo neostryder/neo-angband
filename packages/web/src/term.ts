@@ -5,10 +5,29 @@
  * replacing the glyph painter.
  */
 
+/**
+ * An optional graphics tile attached to a cell. When present (and its draw
+ * succeeds) the cell is blitted as a tile instead of drawing the ASCII glyph;
+ * draw returns false when the atlas image is not ready, so the cell falls back
+ * to its ch/fg text. Kept as a small interface so the terminal stays decoupled
+ * from the tileset implementation (tiles.ts).
+ */
+export interface TileDraw {
+  draw(
+    ctx: CanvasRenderingContext2D,
+    px: number,
+    py: number,
+    w: number,
+    h: number,
+  ): boolean;
+}
+
 export interface Glyph {
   ch: string;
   fg: string;
   bg?: string;
+  /** When set, blit this tile in place of the ASCII glyph (ASCII on failure). */
+  tile?: TileDraw;
 }
 
 export interface TermSize {
@@ -158,6 +177,19 @@ export class GlyphTerm {
     );
   }
 
+  /**
+   * The number of grid cells currently carrying a graphics tile. Used by
+   * automated verification to confirm the render path chose tiles over ASCII
+   * without pixel-scraping the canvas.
+   */
+  tileCellCount(): number {
+    let n = 0;
+    for (const row of this.grid) {
+      for (const g of row) if (g?.tile) n++;
+    }
+    return n;
+  }
+
   put(x: number, y: number, glyph: Glyph): void {
     if (y < 0 || y >= this.rows || x < 0 || x >= this.cols) return;
     const row = this.grid[y];
@@ -180,6 +212,12 @@ export class GlyphTerm {
     const py = y * this.cellH;
     this.ctx.fillStyle = g?.bg ?? "#101014";
     this.ctx.fillRect(px, py, this.cellW, this.cellH);
+    // Graphics tile: blit it over the cell background; only if the blit
+    // succeeds do we skip the ASCII glyph. A not-ready atlas returns false and
+    // the cell degrades to its text glyph, so tiles never blank the map out.
+    if (g?.tile && g.tile.draw(this.ctx, px, py, this.cellW, this.cellH)) {
+      return;
+    }
     if (g && g.ch !== " ") {
       this.ctx.fillStyle = g.fg;
       this.ctx.fillText(g.ch, px, py + Math.floor(this.cellH * 0.1));
