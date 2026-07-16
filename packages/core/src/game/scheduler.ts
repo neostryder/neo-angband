@@ -21,7 +21,7 @@ import type { Monster } from "../mon/monster";
 import { turnEnergy } from "./energy";
 import type { GameState } from "./context";
 import { updateMonsterDistances } from "./context";
-import { monsterEffectLevel } from "../mon/timed";
+import { monDecTimed, monsterEffectLevel } from "../mon/timed";
 import {
   monsterCheckActive,
   monsterTurn,
@@ -37,6 +37,41 @@ export function regenMonster(mon: Monster, num: number): void {
   frac *= num;
   mon.hp += frac;
   if (mon.hp > mon.maxhp) mon.hp = mon.maxhp;
+}
+
+/**
+ * restore_monsters (mon-move.c L2007): let the monsters on a level that was
+ * frozen under birth_levels_persist recover over the turns that elapsed while
+ * it was out of play. `numTurns = turn - cave->turn` (the game turn now minus
+ * the freeze turn stamped on the chunk). Each monster regenerates 1/100-hp per
+ * 100 elapsed turns, and its timed effects are reduced by the energy it would
+ * have gained over the elapsed turns (num_turns * turn_energy(mspeed) /
+ * move_energy). Processed high slot to low, exactly as upstream. Only called
+ * on the persist restore path; the numTurns <= 0 guard is defensive (the game
+ * turn never runs backwards, and status_red > 0 already gates the timed loop).
+ */
+export function restoreMonsters(state: GameState, numTurns: number): void {
+  if (numTurns <= 0) return;
+  const moveEnergy = state.z.moveEnergy;
+  for (let i = state.monsters.length - 1; i >= 1; i--) {
+    const mon = state.monsters[i];
+    if (!mon) continue;
+
+    /* Regenerate. */
+    regenMonster(mon, Math.trunc(numTurns / 100));
+
+    /* Handle timed effects. */
+    const statusRed = Math.trunc(
+      (numTurns * turnEnergy(mon.mspeed, moveEnergy)) / moveEnergy,
+    );
+    if (statusRed > 0) {
+      for (let status = 0; status < mon.mTimed.length; status++) {
+        if (mon.mTimed[status]) {
+          monDecTimed(state.rng, mon, status, statusRed, 0);
+        }
+      }
+    }
+  }
 }
 
 /** The monster's net speed after FAST / SLOW timed effects. */
