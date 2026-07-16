@@ -35,7 +35,16 @@
  * granularity keyed on each entity's PRIMARY definition id - a monster's race,
  * an object's kind, a trap's kind, a lore record's race, a created-artifact id -
  * which is the "a whole frost:frost-wyrm on the level" / "an item whose
- * definition came from the missing mod" case the design centres on. Finer
+ * definition came from the missing mod" case the design centres on. This sweep
+ * covers every id-bearing collection a real SavedGame can carry that entity in:
+ * the live level (monsters + held objects, gear store / pack / equipment, floor
+ * piles, traps, lore, created artifacts) AND the birth_levels_persist
+ * frozen-level cache (save.levelCache), whose stored levels carry the same
+ * monster / held-object / floor / trap collections - a mod entity frozen there
+ * would otherwise reach deserializeLevelCache on load and throw (D1). Terrain
+ * features (the chunk feat grid / legend) are deliberately NOT quarantined:
+ * removing a terrain cell would tear a hole in the map, so a mod feature is a
+ * separate hard-incompatibility concern, not a quarantine case. Finer
  * sub-property granularity (a mod ego or brand on an otherwise-core object, a
  * mod origin-race on a core object) degrades to the base entity and is a
  * documented follow-up. The player-facing recoveries built ON TOP of this store
@@ -109,7 +118,14 @@ export type OrphanKind =
   | "floorObject"
   | "trap"
   | "lore"
-  | "artifactCreated";
+  | "artifactCreated"
+  /* The birth_levels_persist frozen-level cache mirrors the live level's
+   * id-bearing collections (a mod entity can hide there too), so it gets its
+   * own quarantine/rehydrate. These carry the cache DEPTH in their locus. */
+  | "cacheMonster"
+  | "cacheHeldObject"
+  | "cacheFloorObject"
+  | "cacheTrap";
 
 /** One quarantined entity: frozen verbatim, tagged for the stash view + rehydrate. */
 export interface OrphanEntry {
@@ -481,6 +497,106 @@ export function quarantineSave(
     out.artifactsCreated = keptArts;
   }
 
+  /* --- Frozen-level cache (birth_levels_persist, #30). Each cached level
+   * carries the same id-bearing collections as the live level, so a mod entity
+   * can hide there exactly as on the live level. Quarantine each cached level
+   * the same way, tagging every orphan's locus with the cache DEPTH so rehydrate
+   * restores it to the right frozen level. Without this pass a mod monster /
+   * held object / floor object / trap frozen in the cache would survive
+   * quarantine and reach deserializeLevelCache on load, throwing on its
+   * unresolvable id (PORT_PLAN decision 19, MOD_LIFECYCLE section 6). --- */
+  if (out.levelCache) {
+    for (const level of out.levelCache) {
+      const depth = level.depth;
+      const cacheRemovedMidx = new Set<number>();
+      for (let i = 0; i < level.monsters.length; i++) {
+        const m = level.monsters[i];
+        if (!m) continue;
+        const rns = namespaceOf(m.raceId);
+        const ons = m.originalRaceId ? namespaceOf(m.originalRaceId) : null;
+        const missing =
+          rns !== null && !present(rns)
+            ? rns
+            : ons !== null && !present(ons)
+              ? ons
+              : null;
+        if (missing !== null) {
+          stash(orphans, missing, versionOf(missing), {
+            kind: "cacheMonster",
+            ref: m.raceId,
+            data: m as unknown as JsonValue,
+            locus: { depth, index: i },
+          });
+          level.monsters[i] = null;
+          cacheRemovedMidx.add(m.midx);
+          quarantined++;
+          continue;
+        }
+        const { kept, orphaned } = partitionObjects(m.heldObj, present);
+        if (orphaned.length > 0) {
+          m.heldObj = kept;
+          for (const { obj, ns } of orphaned) {
+            stash(orphans, ns, versionOf(ns), {
+              kind: "cacheHeldObject",
+              ref: obj.kindId,
+              data: obj as unknown as JsonValue,
+              locus: { depth, midx: m.midx },
+            });
+            quarantined++;
+          }
+        }
+      }
+      /* Same group repair as the live level: drop quarantined members, null a
+       * group whose leader left. (The rehydrate degradation - a restored cache
+       * monster does not rebuild its group - is the documented live-level one.) */
+      if (cacheRemovedMidx.size > 0) {
+        level.groups = level.groups.map((g) => {
+          if (!g) return g;
+          if (cacheRemovedMidx.has(g.leader)) return null;
+          return {
+            ...g,
+            members: g.members.filter((mi) => !cacheRemovedMidx.has(mi)),
+          };
+        });
+      }
+      level.floor = level.floor
+        .map((pile) => {
+          const { kept, orphaned } = partitionObjects(pile.objs, present);
+          for (const { obj, ns } of orphaned) {
+            stash(orphans, ns, versionOf(ns), {
+              kind: "cacheFloorObject",
+              ref: obj.kindId,
+              data: obj as unknown as JsonValue,
+              locus: { depth, x: pile.x, y: pile.y },
+            });
+            quarantined++;
+          }
+          return { ...pile, objs: kept };
+        })
+        .filter((pile) => pile.objs.length > 0);
+      level.traps = level.traps
+        .map((cell) => {
+          const keptTraps: typeof cell.traps = [];
+          for (const t of cell.traps) {
+            const ns = namespaceOf(t.trapId);
+            if (ns !== null && !present(ns)) {
+              stash(orphans, ns, versionOf(ns), {
+                kind: "cacheTrap",
+                ref: t.trapId,
+                data: t as unknown as JsonValue,
+                locus: { depth, x: cell.x, y: cell.y },
+              });
+              quarantined++;
+            } else {
+              keptTraps.push(t);
+            }
+          }
+          return { ...cell, traps: keptTraps };
+        })
+        .filter((cell) => cell.traps.length > 0);
+    }
+  }
+
   const merged = mergeOrphans(out.orphans ?? {}, orphans);
   if (orphanCount(merged) > 0) out.orphans = merged;
   return { save: out, orphans: merged, quarantined };
@@ -543,6 +659,62 @@ function reinsert(save: SavedGame, entry: OrphanEntry): void {
     case "artifactCreated": {
       const id = entry.locus as string;
       (save.artifactsCreated ??= []).push(id);
+      return;
+    }
+    case "cacheMonster": {
+      const { depth, index } = entry.locus as { depth: number; index: number };
+      const level = save.levelCache?.find((l) => l.depth === depth);
+      if (!level) return;
+      const mon = entry.data as unknown as NonNullable<
+        NonNullable<SavedGame["levelCache"]>[number]["monsters"][number]
+      >;
+      if (
+        index >= 0 &&
+        index < level.monsters.length &&
+        level.monsters[index] === null
+      ) {
+        level.monsters[index] = mon;
+      } else {
+        level.monsters.push(mon);
+      }
+      return;
+    }
+    case "cacheHeldObject": {
+      const { depth, midx } = entry.locus as { depth: number; midx: number };
+      const level = save.levelCache?.find((l) => l.depth === depth);
+      if (!level) return;
+      const host = level.monsters.find((m) => m !== null && m.midx === midx);
+      if (host) {
+        host.heldObj.push(entry.data as unknown as (typeof host.heldObj)[number]);
+      }
+      return;
+    }
+    case "cacheFloorObject": {
+      const { depth, x, y } = entry.locus as {
+        depth: number;
+        x: number;
+        y: number;
+      };
+      const level = save.levelCache?.find((l) => l.depth === depth);
+      if (!level) return;
+      const obj = entry.data as unknown as (typeof level.floor)[number]["objs"][number];
+      const pile = level.floor.find((p) => p.x === x && p.y === y);
+      if (pile) pile.objs.push(obj);
+      else level.floor.push({ x, y, objs: [obj] });
+      return;
+    }
+    case "cacheTrap": {
+      const { depth, x, y } = entry.locus as {
+        depth: number;
+        x: number;
+        y: number;
+      };
+      const level = save.levelCache?.find((l) => l.depth === depth);
+      if (!level) return;
+      const trap = entry.data as unknown as (typeof level.traps)[number]["traps"][number];
+      const cell = level.traps.find((c) => c.x === x && c.y === y);
+      if (cell) cell.traps.push(trap);
+      else level.traps.push({ x, y, traps: [trap] });
       return;
     }
   }
