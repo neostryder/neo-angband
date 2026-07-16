@@ -35,7 +35,7 @@
 
 import type { Loc } from "../loc";
 import { DDGRID, locSum } from "../loc";
-import { FEAT, TF, TMD } from "../generated";
+import { FEAT, ORIGIN, TF, TMD } from "../generated";
 import { SKILL } from "../player/types";
 import { squareIsSeen } from "../world/view";
 import { pyAttack } from "../combat/melee";
@@ -343,6 +343,9 @@ function tunnelAux(
           state.chunk.depth,
         );
         if (obj) {
+          /* cmd-cave.c L600: rubble finds carry ORIGIN_RUBBLE. */
+          obj.origin = ORIGIN.RUBBLE;
+          obj.originDepth = state.chunk.depth;
           floorCarry(state, grid, obj);
           env.msg?.("You have found something!");
         }
@@ -350,6 +353,9 @@ function tunnelAux(
     } else if (gold && deps.makeDeps) {
       /* Found treasure. */
       const money = makeGold(state.rng, deps.makeDeps, state.chunk.depth, "any");
+      /* cmd-cave.c L613: dug-out gold carries ORIGIN_FLOOR. */
+      money.origin = ORIGIN.FLOOR;
+      money.originDepth = state.chunk.depth;
       floorCarry(state, grid, money);
       env.msg?.("You have found something digging!");
     } else {

@@ -23,7 +23,7 @@
  * get_chamber_monsters themed fill) and huge (build_huge). Faithful RNG order.
  */
 
-import { FEAT, SQUARE } from "../generated";
+import { FEAT, ORIGIN, SQUARE } from "../generated";
 import type { Loc } from "../loc";
 import { loc, DDGRID_DDD } from "../loc";
 import type { Rng } from "../rng";
@@ -466,7 +466,8 @@ export function buildRoomTemplate(
           break;
         case "8":
           if (g.rng.randint0(100) < 80 || g.dun.persist) {
-            placeObject(g, grid, c.depth, false, false, 0);
+            /* build_room_template '8' (gen-room.c L1211): ORIGIN_SPECIAL. */
+            placeObject(g, grid, c.depth, false, false, 0, ORIGIN.SPECIAL);
           } else {
             placeRandomStairs(g, grid, g.dun.quest);
           }
@@ -474,7 +475,8 @@ export function buildRoomTemplate(
         case "9":
           break;
         case "[":
-          placeObject(g, grid, c.depth, false, false, tval);
+          /* build_room_template '[' (gen-room.c L1226): ORIGIN_SPECIAL. */
+          placeObject(g, grid, c.depth, false, false, tval, ORIGIN.SPECIAL);
           break;
         case "1":
         case "2":
@@ -650,7 +652,8 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
           if (g.rng.oneIn(4)) placeTrap(g, grid);
           break;
         case "&":
-          if (g.rng.randint0(100) < 75) placeObject(g, grid, c.depth, false, false, 0);
+          /* build_vault '&' (gen-room.c L1474): ORIGIN_VAULT. */
+          if (g.rng.randint0(100) < 75) placeObject(g, grid, c.depth, false, false, 0, ORIGIN.VAULT);
           else if (g.rng.oneIn(4)) placeTrap(g, grid);
           break;
         case "<":
@@ -693,7 +696,8 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
           if (g.rng.oneIn(2)) {
             pickAndPlaceMonster(g, grid, c.depth, true);
           } else if (g.rng.oneIn(2)) {
-            placeObject(g, grid, c.depth, g.rng.oneIn(8), false, 0);
+            /* build_vault '1' (gen-room.c L1543): ORIGIN_VAULT. */
+            placeObject(g, grid, c.depth, g.rng.oneIn(8), false, 0, ORIGIN.VAULT);
           } else if (g.rng.oneIn(4)) {
             placeTrap(g, grid);
           }
@@ -702,37 +706,45 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
           pickAndPlaceMonster(g, grid, c.depth + 5, true);
           break;
         case "3":
-          placeObject(g, grid, c.depth + 3, false, false, 0);
+          /* build_vault '3' (gen-room.c L1556): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 3, false, false, 0, ORIGIN.VAULT);
           break;
         case "4":
           if (g.rng.oneIn(2)) pickAndPlaceMonster(g, grid, c.depth + 3, true);
-          if (g.rng.oneIn(2)) placeObject(g, grid, c.depth + 7, false, false, 0);
+          /* build_vault '4' (gen-room.c L1564): ORIGIN_VAULT. */
+          if (g.rng.oneIn(2)) placeObject(g, grid, c.depth + 7, false, false, 0, ORIGIN.VAULT);
           break;
         case "5":
-          placeObject(g, grid, c.depth + 7, false, false, 0);
+          /* build_vault '5' (gen-room.c L1569): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 7, false, false, 0, ORIGIN.VAULT);
           break;
         case "6":
           pickAndPlaceMonster(g, grid, c.depth + 11, true);
           break;
         case "7":
-          placeObject(g, grid, c.depth + 15, false, false, 0);
+          /* build_vault '7' (gen-room.c L1576): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 15, false, false, 0, ORIGIN.VAULT);
           break;
         case "0":
           pickAndPlaceMonster(g, grid, c.depth + 20, true);
           break;
         case "9":
           pickAndPlaceMonster(g, grid, c.depth + 9, true);
-          placeObject(g, grid, c.depth + 7, true, false, 0);
+          /* build_vault '9' (gen-room.c L1586): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 7, true, false, 0, ORIGIN.VAULT);
           break;
         case "8":
           pickAndPlaceMonster(g, grid, c.depth + 40, true);
-          placeObject(g, grid, c.depth + 20, true, true, 0);
+          /* build_vault '8' (gen-room.c L1594): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 20, true, true, 0, ORIGIN.VAULT);
           break;
         case "~":
-          placeObject(g, grid, c.depth + 5, false, false, TV_CHEST);
+          /* build_vault '~' (gen-room.c L1599): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 5, false, false, TV_CHEST, ORIGIN.VAULT);
           break;
         case "$":
-          placeGold(g, grid, c.depth);
+          /* build_vault '$' (gen-room.c L1602): ORIGIN_VAULT. */
+          placeGold(g, grid, c.depth, ORIGIN.VAULT);
           break;
         case "]": {
           const temp = g.rng.oneIn(3) ? g.rng.randint1(9) : g.rng.randint1(8);
@@ -748,35 +760,44 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
             TV_HARD_ARMOR,
             TV_DRAG_ARMOR,
           ][temp] as number;
-          placeObject(g, grid, c.depth + 3, true, false, tval);
+          /* build_vault ']' (gen-room.c L1617): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 3, true, false, tval, ORIGIN.VAULT);
           break;
         }
         case "|": {
           const temp = g.rng.randint1(4);
           const tval = [0, TV_SWORD, TV_POLEARM, TV_HAFTED, TV_BOW][temp] as number;
-          placeObject(g, grid, c.depth + 3, true, false, tval);
+          /* build_vault '|' (gen-room.c L1630): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 3, true, false, tval, ORIGIN.VAULT);
           break;
         }
         case "=":
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_RING);
+          /* build_vault '=' (gen-room.c L1635): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_RING, ORIGIN.VAULT);
           break;
         case '"':
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_AMULET);
+          /* build_vault '"' (gen-room.c L1638): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_AMULET, ORIGIN.VAULT);
           break;
         case "!":
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_POTION);
+          /* build_vault '!' (gen-room.c L1641): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_POTION, ORIGIN.VAULT);
           break;
         case "?":
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_SCROLL);
+          /* build_vault '?' (gen-room.c L1644): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_SCROLL, ORIGIN.VAULT);
           break;
         case "_":
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_STAFF);
+          /* build_vault '_' (gen-room.c L1647): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_STAFF, ORIGIN.VAULT);
           break;
         case "-":
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, g.rng.oneIn(2) ? TV_WAND : TV_ROD);
+          /* build_vault '-' (gen-room.c L1650): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, g.rng.oneIn(2) ? TV_WAND : TV_ROD, ORIGIN.VAULT);
           break;
         case ",":
-          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_FOOD);
+          /* build_vault ',' (gen-room.c L1655): ORIGIN_VAULT. */
+          placeObject(g, grid, c.depth + 3, g.rng.oneIn(4), false, TV_FOOD, ORIGIN.VAULT);
           break;
         case "#":
           if (countNeighbors(c, grid, squareIsRoom, false) === 8) {
@@ -1064,7 +1085,8 @@ function buildCrossed(g: Gen, centreIn: Loc, _rating: number): boolean {
     case 3:
       drawRectangle(c, y1b, x1a, y2b, x2a, FEAT.GRANITE, SQUARE.WALL_INNER, false);
       generateHole(g.rng, c, y1b, x1a, y2b, x2a, FEAT.SECRET);
-      placeObject(g, centre, c.depth, false, false, 0);
+      /* build_crossed case 3 (gen-room.c L2315): ORIGIN_SPECIAL. */
+      placeObject(g, centre, c.depth, false, false, 0, ORIGIN.SPECIAL);
       vaultMonsters(g, centre, c.depth + 2, g.rng.randint0(2) + 3);
       vaultTraps(g, centre, 4, 4, g.rng.randint0(3) + 2);
       break;
@@ -1133,7 +1155,8 @@ function buildLarge(g: Gen, centreIn: Loc, _rating: number): boolean {
       }
       vaultMonsters(g, centre, c.depth + 2, g.rng.randint1(3) + 2);
       if (g.rng.randint0(100) < 80 || g.dun.persist) {
-        placeObject(g, centre, c.depth, false, false, 0);
+        /* build_large case 2 (gen-room.c L2472): ORIGIN_SPECIAL. */
+        placeObject(g, centre, c.depth, false, false, 0, ORIGIN.SPECIAL);
       } else {
         placeRandomStairs(g, centre, g.dun.quest);
       }
@@ -1158,8 +1181,9 @@ function buildLarge(g: Gen, centreIn: Loc, _rating: number): boolean {
         placeSecretDoor(c, loc(centre.x + 3, centre.y - 3 + g.rng.randint1(2) * 2));
         vaultMonsters(g, loc(centre.x - 2, centre.y), c.depth + 2, g.rng.randint1(2));
         vaultMonsters(g, loc(centre.x + 2, centre.y), c.depth + 2, g.rng.randint1(2));
-        if (g.rng.oneIn(3)) placeObject(g, loc(centre.x - 2, centre.y), c.depth, false, false, 0);
-        if (g.rng.oneIn(3)) placeObject(g, loc(centre.x + 2, centre.y), c.depth, false, false, 0);
+        /* build_large case 3 (gen-room.c L2531/L2534): ORIGIN_SPECIAL. */
+        if (g.rng.oneIn(3)) placeObject(g, loc(centre.x - 2, centre.y), c.depth, false, false, 0, ORIGIN.SPECIAL);
+        if (g.rng.oneIn(3)) placeObject(g, loc(centre.x + 2, centre.y), c.depth, false, false, 0, ORIGIN.SPECIAL);
       }
       break;
     }
@@ -1273,7 +1297,8 @@ function buildNest(g: Gen, centreIn: Loc, _rating: number): boolean {
 
       /* Occasionally place an item, making it good 1/3 of the time. */
       if (g.rng.randint0(100) < allocObj) {
-        placeObject(g, loc(x, y), c.depth + 10, g.rng.oneIn(3), false, 0);
+        /* build_nest/build_pit (gen-room.c L2730/L2957): ORIGIN_PIT. */
+        placeObject(g, loc(x, y), c.depth + 10, g.rng.oneIn(3), false, 0, ORIGIN.PIT);
       }
     }
   }
@@ -1423,7 +1448,8 @@ function buildPit(g: Gen, centreIn: Loc, _rating: number): boolean {
   for (let y = cy - 2; y <= cy + 2; y++) {
     for (let x = cx - 9; x <= cx + 9; x++) {
       if (g.rng.randint0(100) < allocObj) {
-        placeObject(g, loc(x, y), c.depth + 10, g.rng.oneIn(3), false, 0);
+        /* build_nest/build_pit (gen-room.c L2730/L2957): ORIGIN_PIT. */
+        placeObject(g, loc(x, y), c.depth + 10, g.rng.oneIn(3), false, 0, ORIGIN.PIT);
       }
     }
   }
