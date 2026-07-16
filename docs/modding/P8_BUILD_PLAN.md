@@ -1,6 +1,6 @@
 # P8 - The Borg as a Bundled Mod: Build Plan
 
-> STATUS: BUILD PLAN (2026-07-14, DRAFT - awaiting Aaron's ratification of the
+> STATUS: BUILD PLAN (2026-07-14, DRAFT - awaiting the maintainer's ratification of the
 > sequencing and cost posture before any large agent spend). This turns the
 > ratified scope in `../BORG_AS_MOD.md` (sections 7-8) into an ordered build on
 > the now-FROZEN agent API (AGENT_API_VERSION 1.0.0, the P7 -> P8 gate). It
@@ -94,16 +94,16 @@ shops, and dies or wins - driven entirely through the public agent API, with no
 privileged core access. A Borg that plays correctly proves the agent API is
 complete.
 
-## Cost posture [CANDIDATE - for Aaron's ratification]
+## Cost posture [CANDIDATE - for the maintainer's ratification]
 
-Fable is expensive to Aaron's usage; use it sparingly. Proposed posture:
+Fable is expensive to the maintainer's usage; use it sparingly. Proposed posture:
 - P8.1 (skeleton), P8.2 (Tier A), P8.9 (formulas): mechanical/near-1:1 - build
   with Opus directly or a bounded Sonnet implementer against a locked spec.
 - P8.3 (Tier B scoring): deterministic but fidelity-sensitive - Opus, with an
   independent verify pass.
 - P8.4 / P8.6 / P8.8 (danger, combat, think - the fidelity cluster): the only
   places Fable is worth its cost, and only for the hardest single files. PROMPT
-  AARON before launching Fable or any very-long-run agent, per standing rule.
+  the maintainer before launching Fable or any very-long-run agent, per standing rule.
 
 ## Recommended first step
 
@@ -111,4 +111,4 @@ Build P8.1 (the walking skeleton + headless harness) with cheap models now. It
 is small, proves the frozen facade actually drives a real game, and surfaces any
 remaining facade gap immediately - before a single line of the expensive
 danger/combat/think work. Everything after P8.1 is sequenced by the phase map
-above and gated on Aaron's cost-posture ratification.
+above and gated on the maintainer's cost-posture ratification.

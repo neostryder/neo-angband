@@ -93,7 +93,7 @@ and is anchored by the scripted-plugin sandbox, the single largest piece.
 > in-process tier), pushed, 2415 tests. A plugin now overrides game SYSTEMS -
 > effect handlers, room builders, player-command actions, and monster AI - under
 > a capability gate.
-> - ARCHITECTURE DECISION (surfaced to and confirmed by Aaron): deep system
+> - ARCHITECTURE DECISION (surfaced to and confirmed by the maintainer): deep system
 >   override needs a SYNCHRONOUS handler with live rng/chunk/player access, deep
 >   in the turn. A Web Worker (W2.1) is async + isolated and cannot supply one
 >   (SharedArrayBuffer/Atomics needs cross-origin-isolation headers a static host
@@ -141,7 +141,7 @@ and is anchored by the scripted-plugin sandbox, the single largest piece.
 > - ROOM KEYS: already open strings (RoomRegistry validates lazily at get); a mod
 >   builder key dispatches identically. Proven in W2.2 (demo:void).
 > - FLAGS + STATS: ARCHITECTURE DECISION (best-judgment, faithfulness-first; to be
->   reviewed with Aaron). The faithful engine stores flags in fixed-capacity
+>   reviewed with the maintainer). The faithful engine stores flags in fixed-capacity
 >   bitsets (bitflag.ts, sized from RF_MAX/OF_MAX at bind) and stats in fixed
 >   arity (STAT_MAX=5, with the OBJ_MOD offset + str/int/wis/dex/con names baked
 >   across calcs/char-sheet/randart/birth). Growing that arity to admit a mod flag
@@ -192,7 +192,7 @@ and is anchored by the scripted-plugin sandbox, the single largest piece.
 >   boot (window.__neoTrusted installed, vocab declared); revoking its consent in
 >   the store makes boot skip it. Clean boot, no console errors.
 > NEXT: P8 (the Borg) rides the finished framework. In parallel, the EXPANDED ship
-> track (Aaron, 2026-07-14): optional Electron wrapper + how-to docs (Electron /
+> track (the maintainer, 2026-07-14): optional Electron wrapper + how-to docs (Electron /
 > PWA install / static hosting) + a parity matrix (play + mods + a11y) across all
 > three surfaces; accessibility first-class; Electron must also deliver the
 > filesystem/URL mod install the web build cannot.
@@ -279,7 +279,7 @@ corresponding action.
    no Fable.
 2. P8 (the Borg) rides W1.5 - see `P8_BUILD_PLAN.md`.
 3. Wave 2, W2.1 first (the sandbox is the gate for the rest). W2.1/W2.2/W2.3 are
-   the substantial builds; PROMPT AARON before launching Fable or any very-long-
+   the substantial builds; PROMPT the maintainer before launching Fable or any very-long-
    run agent there, per the standing rule (Fable is expensive to his usage).
 
 ## Relation to existing docs
