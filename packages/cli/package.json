@@ -11,7 +11,8 @@
     "build": "tsc",
     "stats": "node --import ./register.mjs dist/main-stats.js",
     "stats:baseline": "node --import ./register.mjs dist/main-baseline.js",
-    "scenarios": "node --import ./register.mjs dist/main-scenarios.js"
+    "scenarios": "node --import ./register.mjs dist/main-scenarios.js",
+    "spoil": "node --import ./register.mjs dist/main-spoil.js"
   },
   "dependencies": {
     "@neo-angband/core": "workspace:*"
