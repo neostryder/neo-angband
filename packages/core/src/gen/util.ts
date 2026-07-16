@@ -23,7 +23,7 @@
  *   once per level without mutating the shared registry.
  */
 
-import { FEAT, RF, SQUARE } from "../generated";
+import { FEAT, ORIGIN, RF, SQUARE } from "../generated";
 import type { Loc } from "../loc";
 import {
   DDGRID,
@@ -1126,6 +1126,16 @@ export function placeRandomStairs(g: Gen, grid: Loc, quest: boolean): void {
  * Object placement (place_object / place_gold), via ./obj.
  * ------------------------------------------------------------------ */
 
+/**
+ * convert_depth_to_origin (obj-util.c L686): clamp a depth to a uint8
+ * origin_depth.
+ */
+export function convertDepthToOrigin(depth: number): number {
+  if (depth < 0) return 0;
+  if (depth > 255) return 255;
+  return depth;
+}
+
 /** place_object: make and place an object, if object deps are available. */
 export function placeObject(
   g: Gen,
@@ -1134,6 +1144,7 @@ export function placeObject(
   good: boolean,
   great: boolean,
   tval: number,
+  origin: number,
 ): void {
   if (!g.c.inBounds(grid)) return;
   if (!squareCanPutItem(g, grid)) return;
@@ -1151,6 +1162,9 @@ export function placeObject(
     rating,
   );
   if (!obj) return;
+  /* gen-util.c L511-512: origin uses c->depth (the chunk depth), not level. */
+  obj.origin = origin;
+  obj.originDepth = convertDepthToOrigin(g.c.depth);
   g.addObject(grid, obj);
 
   /* place_object's obj_rating accumulation (gen-util.c L509-540). Draws no
@@ -1164,11 +1178,14 @@ export function placeObject(
 }
 
 /** place_gold: make and place a money object. */
-export function placeGold(g: Gen, grid: Loc, level: number): void {
+export function placeGold(g: Gen, grid: Loc, level: number, origin: number): void {
   if (!g.c.inBounds(grid)) return;
   if (!squareCanPutItem(g, grid)) return;
   if (!g.objDeps) return;
   const money = makeGold(g.rng, g.objDeps, level, "any");
+  /* gen-util.c L560-561: gold origin_depth uses level, not c->depth. */
+  money.origin = origin;
+  money.originDepth = convertDepthToOrigin(level);
   g.addObject(grid, money);
 }
 
@@ -1190,6 +1207,7 @@ export function allocObject(
   set: number,
   typ: number,
   depth: number,
+  origin: number,
 ): boolean {
   const finder = new CaveFinder(loc(1, 1), loc(g.c.width - 2, g.c.height - 2));
   for (;;) {
@@ -1207,16 +1225,16 @@ export function allocObject(
           placeTrap(g, grid);
           break;
         case TYP_GOLD:
-          placeGold(g, grid, depth);
+          placeGold(g, grid, depth, origin);
           break;
         case TYP_OBJECT:
-          placeObject(g, grid, depth, false, false, 0);
+          placeObject(g, grid, depth, false, false, 0, origin);
           break;
         case TYP_GOOD:
-          placeObject(g, grid, depth, true, false, 0);
+          placeObject(g, grid, depth, true, false, 0, origin);
           break;
         case TYP_GREAT:
-          placeObject(g, grid, depth, true, true, 0);
+          placeObject(g, grid, depth, true, true, 0, origin);
           break;
       }
       return true;
@@ -1231,10 +1249,11 @@ export function allocObjects(
   typ: number,
   num: number,
   depth: number,
+  origin: number,
 ): number {
   let missed = 0;
   for (let k = 0; k < num; k++) {
-    if (!allocObject(g, set, typ, depth)) missed++;
+    if (!allocObject(g, set, typ, depth, origin)) missed++;
   }
   return missed;
 }
@@ -1375,8 +1394,9 @@ export function vaultObjects(g: Gen, grid: Loc, depth: number, num: number): voi
       const near = findNearbyGrid(g.c, g.rng, grid, 2, 3);
       if (!near) continue;
       if (!squareCanPutItem(g, near)) continue;
-      if (g.rng.randint0(100) < 75) placeObject(g, near, depth, false, false, 0);
-      else placeGold(g, near, depth);
+      /* vault_objects (gen-util.c L839/L841): objects SPECIAL, gold VAULT. */
+      if (g.rng.randint0(100) < 75) placeObject(g, near, depth, false, false, 0, ORIGIN.SPECIAL);
+      else placeGold(g, near, depth, ORIGIN.VAULT);
       break;
     }
   }

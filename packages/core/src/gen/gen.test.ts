@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
 import type { ConstantsJson } from "../constants";
-import { FEAT, SQUARE } from "../generated";
+import { FEAT, ORIGIN, SQUARE } from "../generated";
 import { loc } from "../loc";
 import type { Loc } from "../loc";
 import { Rng } from "../rng";
@@ -1505,7 +1505,7 @@ describe("level feeling: obj_rating / mon_rating accumulation", () => {
     let x = 1;
     let y = 1;
     for (let i = 0; i < 40; i++) {
-      placeObject(g, loc(x, y), 10, false, false, 0);
+      placeObject(g, loc(x, y), 10, false, false, 0, ORIGIN.FLOOR);
       x += 1;
       if (x > 47) {
         x = 1;
@@ -1519,7 +1519,7 @@ describe("level feeling: obj_rating / mon_rating accumulation", () => {
     let hit = false;
     for (let seed = 1; seed < 4000 && !hit; seed++) {
       const g = objArena(50, seed);
-      placeObject(g, loc(5, 5), 50, true, false, 0);
+      placeObject(g, loc(5, 5), 50, true, false, 0, ORIGIN.FLOOR);
       const placed = g.objects[0];
       if (placed && placed.obj.artifact) {
         hit = true;

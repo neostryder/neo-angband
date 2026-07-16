@@ -90,6 +90,31 @@ Legend: [ ] open, [~] in progress, [x] done.
   a new golden test asserts all three are 1 at birth. Core 2035 green, web+cli
   217 green.
 
+- [x] **A8. Object origin threaded through level generation.** DONE (the maintainer's
+  ruling 2026-07-16: "correct this if it is not aligned with the original
+  game"). The generation object-placement path never set `origin` /
+  `originDepth`, so every generated floor object and gold carried
+  ORIGIN.NONE (0) instead of the upstream origin (surfaced by the B1 harness's
+  floor-gold observation). Fix: threaded an `origin` parameter through
+  `placeObject` / `placeGold` / `allocObject` / `allocObjects` (gen/util.ts),
+  preserving the two upstream asymmetries exactly - place_object stamps
+  `origin_depth = convert_depth_to_origin(c->depth)` (gen-util.c L512) while
+  place_gold uses the passed `level` (L561) - and set `vaultObjects` to
+  ORIGIN.SPECIAL (objects) / ORIGIN.VAULT (gold). Every caller in gen/cave.ts
+  and gen/room.ts now passes the exact upstream origin, matched call-site by
+  call-site against gen-cave.c / gen-room.c: FLOOR (standard/modified/moria/
+  lair/gauntlet), LABYRINTH (labyrinth), CAVERN (cavern + hard_centre cavern
+  pass), VAULT (build_vault), SPECIAL (room templates / crossed / large),
+  PIT (nests/pits). Also fixed the in-play tunnel paths (game/cave-cmd.ts):
+  dug-out gold -> ORIGIN.FLOOR (cmd-cave.c L613), rubble finds -> ORIGIN.RUBBLE
+  (L600). Verified byte-for-byte RNG neutrality: setting origin draws no RNG,
+  and the regenerated B1 baseline differs ONLY in `goldByOrigin` (per-depth gold
+  totals preserved exactly; gold moved from 0 into FLOOR/VAULT). The residual
+  origin-0 gold is gold-mimics, which upstream ALSO leaves at origin 0
+  (mon_create_mimicked_object, mon-make.c L916-925, stamps ORIGIN_DROP_MIMIC
+  only in the non-money branch) - so that is faithful, not a defect. Core 2035
+  green, cli 7 green (parity self-regression guard against the new baseline).
+
 ## B. Verification + upstream-tracking tooling
 
 - [x] **B1. Statistical parity harness** (decisions 2, 10, 23). DONE. Built in

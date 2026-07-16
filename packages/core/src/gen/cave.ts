@@ -30,7 +30,7 @@
  */
 
 import type { Constants } from "../constants";
-import { DUN_PROFILE_ENTRIES, FEAT, ROOM_ENTRIES, SQUARE } from "../generated";
+import { DUN_PROFILE_ENTRIES, FEAT, ORIGIN, ROOM_ENTRIES, SQUARE } from "../generated";
 import type { Loc } from "../loc";
 import { DDGRID_DDD, loc, locSum } from "../loc";
 import type { Rng } from "../rng";
@@ -1010,8 +1010,8 @@ export const classicGen: CaveBuilder = (ctx) => {
   handleLevelStairs(g, dun.quest, rng.randRange(3, 4), rng.randRange(1, 2));
 
   const k = Math.max(Math.min(Math.trunc(c.depth / 3), 10), 2);
-  allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth);
-  allocObjects(g, SET_CORR, TYP_TRAP, Math.trunc(rng.randint1(k) / 5), c.depth);
+  allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth, 0);
+  allocObjects(g, SET_CORR, TYP_TRAP, Math.trunc(rng.randint1(k) / 5), c.depth, 0);
 
   const pspot = newPlayerSpot(g);
   if (!pspot) return { gen: null, error: "could not place player" };
@@ -1020,9 +1020,9 @@ export const classicGen: CaveBuilder = (ctx) => {
   let mcount = constants.levelMonsterMin + rng.randint1(8) + k;
   for (; mcount > 0; mcount--) pickAndPlaceDistantMonster(g, pspot, 0, true, c.depth);
 
-  allocObjects(g, SET_ROOM, TYP_OBJECT, rng.randNormal(constants.roomItemAv, 3), c.depth);
-  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(constants.bothItemAv, 3), c.depth);
-  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(constants.bothGoldAv, 3), c.depth);
+  allocObjects(g, SET_ROOM, TYP_OBJECT, rng.randNormal(constants.roomItemAv, 3), c.depth, ORIGIN.FLOOR);
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(constants.bothItemAv, 3), c.depth, ORIGIN.FLOOR);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(constants.bothGoldAv, 3), c.depth, ORIGIN.FLOOR);
 
   return { gen: g, error: null };
 };
@@ -1106,8 +1106,8 @@ function modifiedStyleGen(ctx: CaveBuildContext, restrict: string | null): CaveB
   handleLevelStairs(g, dun.quest, rng.randRange(3, 4), rng.randRange(1, 2));
 
   const k = Math.max(Math.min(Math.trunc(c.depth / 3), 10), 2);
-  allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth);
-  allocObjects(g, SET_CORR, TYP_TRAP, Math.trunc(rng.randint1(k) / 5), c.depth);
+  allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth, 0);
+  allocObjects(g, SET_CORR, TYP_TRAP, Math.trunc(rng.randint1(k) / 5), c.depth, 0);
 
   const pspot = newPlayerSpot(g);
   if (!pspot) return { gen: null, error: "could not place player" };
@@ -1125,9 +1125,9 @@ function modifiedStyleGen(ctx: CaveBuildContext, restrict: string | null): CaveB
     monRestrict(rng, ctx.monDeps.table, [], pits, null, c.depth, c.depth, false);
   }
 
-  allocObjects(g, SET_ROOM, TYP_OBJECT, rng.randNormal(constants.roomItemAv, 3), c.depth);
-  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(constants.bothItemAv, 3), c.depth);
-  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(constants.bothGoldAv, 3), c.depth);
+  allocObjects(g, SET_ROOM, TYP_OBJECT, rng.randNormal(constants.roomItemAv, 3), c.depth, ORIGIN.FLOOR);
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(constants.bothItemAv, 3), c.depth, ORIGIN.FLOOR);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(constants.bothGoldAv, 3), c.depth, ORIGIN.FLOOR);
 
   return { gen: g, error: null };
 }
@@ -1246,8 +1246,8 @@ function labyrinthChunk(
   }
 
   /* Unlit labyrinths hold some good items; hard (non-diggable) ones some great. */
-  if (!lit) allocObjects(g, SET_BOTH, TYP_GOOD, rng.randNormal(3, 2), c.depth);
-  if (!soft) allocObjects(g, SET_BOTH, TYP_GREAT, rng.randNormal(2, 1), c.depth);
+  if (!lit) allocObjects(g, SET_BOTH, TYP_GOOD, rng.randNormal(3, 2), c.depth, ORIGIN.LABYRINTH);
+  if (!soft) allocObjects(g, SET_BOTH, TYP_GREAT, rng.randNormal(2, 1), c.depth, ORIGIN.LABYRINTH);
 
   return g;
 }
@@ -1294,15 +1294,15 @@ export const labyrinthGen: CaveBuilder = (ctx) => {
   let k = Math.max(Math.min(Math.trunc(c.depth / 3), 10), 2);
   k = Math.trunc((3 * k * (h * w)) / (constants.dungeonHgt * constants.dungeonWid));
 
-  allocObjects(g, SET_BOTH, TYP_RUBBLE, rng.randint1(k), c.depth);
-  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth);
+  allocObjects(g, SET_BOTH, TYP_RUBBLE, rng.randint1(k), c.depth, 0);
+  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth, 0);
 
   let mcount = constants.levelMonsterMin + rng.randint1(8) + k;
   for (; mcount > 0; mcount--) pickAndPlaceDistantMonster(g, pspot, 0, true, c.depth);
 
-  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(k * 6, 2), c.depth);
-  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(k * 3, 2), c.depth);
-  allocObjects(g, SET_BOTH, TYP_GOOD, rng.randint1(2), c.depth);
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(k * 6, 2), c.depth, ORIGIN.LABYRINTH);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(k * 3, 2), c.depth, ORIGIN.LABYRINTH);
+  allocObjects(g, SET_BOTH, TYP_GOOD, rng.randint1(2), c.depth, ORIGIN.LABYRINTH);
 
   /* known would set p->upkeep->light_level upstream (a UI reveal flag, no RNG
    * and no layout effect); the port does not model player upkeep here. */
@@ -1521,8 +1521,8 @@ export const cavernGen: CaveBuilder = (ctx) => {
   let k = Math.max(Math.min(Math.trunc(c.depth / 3), 10), 2);
   k = Math.max(Math.trunc((4 * k * (h * w)) / (constants.dungeonHgt * constants.dungeonWid)), 6);
 
-  allocObjects(g, SET_BOTH, TYP_RUBBLE, rng.randint1(k), c.depth);
-  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth);
+  allocObjects(g, SET_BOTH, TYP_RUBBLE, rng.randint1(k), c.depth, 0);
+  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth, 0);
 
   /* Determine the character location. */
   const pspot = newPlayerSpot(g);
@@ -1532,9 +1532,9 @@ export const cavernGen: CaveBuilder = (ctx) => {
   let mcount = rng.randint1(8) + k;
   for (; mcount > 0; mcount--) pickAndPlaceDistantMonster(g, pspot, 0, true, c.depth);
 
-  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(k, 2), c.depth + 5);
-  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(Math.trunc(k / 2), 2), c.depth);
-  allocObjects(g, SET_BOTH, TYP_GOOD, rng.randint0(Math.trunc(k / 4)), c.depth);
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(k, 2), c.depth + 5, ORIGIN.CAVERN);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(Math.trunc(k / 2), 2), c.depth, ORIGIN.CAVERN);
+  allocObjects(g, SET_BOTH, TYP_GOOD, rng.randint0(Math.trunc(k / 4)), c.depth, ORIGIN.CAVERN);
 
   return { gen: g, error: null };
 };
@@ -1639,11 +1639,11 @@ export const lairGen: CaveBuilder = (ctx) => {
 
   handleLevelStairs(g, dun.quest, rng.randRange(3, 4), rng.randRange(1, 2));
 
-  allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth);
-  allocObjects(g, SET_CORR, TYP_TRAP, Math.trunc(rng.randint1(k) / 5), c.depth);
-  allocObjects(g, SET_ROOM, TYP_OBJECT, rng.randNormal(constants.roomItemAv, 3), c.depth);
-  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(constants.bothItemAv, 3), c.depth);
-  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(constants.bothGoldAv, 3), c.depth);
+  allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth, 0);
+  allocObjects(g, SET_CORR, TYP_TRAP, Math.trunc(rng.randint1(k) / 5), c.depth, 0);
+  allocObjects(g, SET_ROOM, TYP_OBJECT, rng.randNormal(constants.roomItemAv, 3), c.depth, ORIGIN.FLOOR);
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(constants.bothItemAv, 3), c.depth, ORIGIN.FLOOR);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(constants.bothGoldAv, 3), c.depth, ORIGIN.FLOOR);
 
   return { gen: g, error: null };
 };
@@ -1783,11 +1783,11 @@ export const gauntletGen: CaveBuilder = (ctx) => {
   drawRectangle(c, 0, 0, c.height - 1, c.width - 1, FEAT.PERM, SQUARE.NONE, true);
   ensureConnectedness(g, true);
 
-  allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth);
-  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth);
-  allocObjects(g, SET_ROOM, TYP_OBJECT, rng.randNormal(constants.roomItemAv, 3), c.depth);
-  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(constants.bothItemAv, 3), c.depth);
-  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(constants.bothGoldAv, 3), c.depth);
+  allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth, 0);
+  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth, 0);
+  allocObjects(g, SET_ROOM, TYP_OBJECT, rng.randNormal(constants.roomItemAv, 3), c.depth, ORIGIN.FLOOR);
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(constants.bothItemAv, 3), c.depth, ORIGIN.FLOOR);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(constants.bothGoldAv, 3), c.depth, ORIGIN.FLOOR);
 
   return { gen: g, error: null };
 };
@@ -1960,8 +1960,8 @@ export const hardCentreGen: CaveBuilder = (ctx) => {
   let k = Math.max(Math.min(Math.trunc(c.depth / 3), 10), 2);
   k = Math.trunc((k * cavernArea) / (constants.dungeonHgt * constants.dungeonWid));
 
-  allocObjects(g, SET_BOTH, TYP_RUBBLE, rng.randint1(k), c.depth);
-  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth);
+  allocObjects(g, SET_BOTH, TYP_RUBBLE, rng.randint1(k), c.depth, 0);
+  allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth, 0);
 
   /* Determine the character location. */
   const pspot = newPlayerSpot(g);
@@ -1971,9 +1971,9 @@ export const hardCentreGen: CaveBuilder = (ctx) => {
   let mcount = rng.randint1(8) + k;
   for (; mcount > 0; mcount--) pickAndPlaceDistantMonster(g, pspot, 0, true, c.depth);
 
-  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(k, 2), c.depth + 5);
-  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(Math.trunc(k / 2), 2), c.depth);
-  allocObjects(g, SET_BOTH, TYP_GOOD, rng.randint0(Math.trunc(k / 4)), c.depth);
+  allocObjects(g, SET_BOTH, TYP_OBJECT, rng.randNormal(k, 2), c.depth + 5, ORIGIN.CAVERN);
+  allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(Math.trunc(k / 2), 2), c.depth, ORIGIN.CAVERN);
+  allocObjects(g, SET_BOTH, TYP_GOOD, rng.randint0(Math.trunc(k / 4)), c.depth, ORIGIN.CAVERN);
 
   return { gen: g, error: null };
 };
