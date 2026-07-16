@@ -404,9 +404,16 @@ export class Chunk {
    * A JSON-safe snapshot of every square (features, info flags, light,
    * monster occupancy) plus the chunk scalars, for savefiles. Noise and
    * scent heatmaps are transient (upstream does not save them either;
-   * they rebuild on the first turn).
+   * they rebuild on the first turn) - so `includeFlow` defaults to false and
+   * the faithful payload omits them.
+   *
+   * bug-fixes #4605 ("Noise and scent not saved"): with includeFlow set (the
+   * bug-fixes mod's bugfix.noiseScentSave rule, passed from the save layer),
+   * the noise and scent heatmaps ARE serialized, so save/reload no longer
+   * changes monster tracking versus uninterrupted play. Absent in the payload
+   * (the faithful default) => restoreSquares leaves them zeroed, as before.
    */
-  snapshotSquares(): ChunkSquaresData {
+  snapshotSquares(includeFlow = false): ChunkSquaresData {
     return {
       name: this.name,
       turn: this.turn,
@@ -422,6 +429,9 @@ export class Chunk {
       infos: this.infos.map((f) => Array.from(f.bits)),
       lights: Array.from(this.lights),
       mons: Array.from(this.mons),
+      ...(includeFlow
+        ? { noise: Array.from(this.noise), scent: Array.from(this.scent) }
+        : {}),
     };
   }
 
@@ -447,6 +457,12 @@ export class Chunk {
       this.lights[i] = data.lights[i] as number;
       this.mons[i] = data.mons[i] as number;
     }
+    /* bug-fixes #4605: restore the noise/scent heatmaps when the save carried
+     * them (bugfix.noiseScentSave). Self-describing: a faithful save omits
+     * both, so this is skipped and the transient heatmaps stay zeroed and
+     * rebuild on the first turn, exactly as before. */
+    if (data.noise) this.noise.set(data.noise);
+    if (data.scent) this.scent.set(data.scent);
   }
 }
 
@@ -466,4 +482,8 @@ export interface ChunkSquaresData {
   infos: number[][];
   lights: number[];
   mons: number[];
+  /** bug-fixes #4605: the noise heatmap, present only when bugfix.noiseScentSave is on. */
+  noise?: number[];
+  /** bug-fixes #4605: the scent heatmap, present only when bugfix.noiseScentSave is on. */
+  scent?: number[];
 }

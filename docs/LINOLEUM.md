@@ -25,8 +25,9 @@ A converted pack directory looks like this:
 <pack-key>/
   manifest.txt              pack id, format, resolution, map registrations
   maps/
-    targets.txt             selector -> asset/family mappings
+    targets.txt             selector -> asset/family/pool mappings
     families.txt            family effect metadata (only when authored)
+    pools.txt               variant-pool definitions (only when authored)
   images/<resolution>/      one PNG per asset, deterministic names
   graf-*.prf, xtra-*.prf,   the original legacy pref files, mirrored so the
   flvr-*.prf                mode keeps loading local legacy mapping truth
@@ -40,7 +41,11 @@ format:png
 resolution:8
 map:targets:maps/targets.txt
 map:families:maps/families.txt
+map:pools:maps/pools.txt
 ```
+
+`map:families:` and `map:pools:` lines are present only when the pack actually
+authors that kind of metadata; a legacy-only export omits both.
 
 ## Target map and selector syntax
 
@@ -51,11 +56,19 @@ target:<type>:<selector>:<kind>:<value>
 ```
 
 - `type` is one of `feat`, `trap`, `GF`, `monster`, `object`, `flavor`.
-- `kind` is `asset` (value = PNG base name under `images/<resolution>/`) or
-  `family` (value = a family id from `maps/families.txt`).
+- `kind` is one of:
+  - `asset` - value is a PNG base name under `images/<resolution>/`;
+  - `family` - value is a family id from `maps/families.txt`;
+  - `pool` - value is a pool id from `maps/pools.txt` (a set of candidate
+    assets resolved per grid; see "Variant pools" below).
 - Selectors may contain colons (for example `GF:ELEC:0` or
   `object:light:Wooden Torch`), so lines are parsed by fixed head/tail
   fields, not by splitting freely.
+
+**Per-object images.** Object kinds are addressed by their own selectors
+(`object:<tval>:<name>`, e.g. `object:light:Wooden Torch`), so each object kind
+already resolves to its own `asset`. A per-object rule may instead point at a
+`pool`, giving one object kind a set of interchangeable images.
 
 Two selector layers coexist in the same file:
 
@@ -86,6 +99,46 @@ family:feat_less_lit_0_fx:pulse:168,255,1400
 Asset names are deterministic: the lowercased `type:selector` string is
 slugged (`[^a-z0-9]+` runs become `_`), capped at 61 characters with an
 md5-derived suffix when needed, and given a trailing `_0`.
+
+## Variant pools
+
+A `pool`-kind target maps one selector to a POOL of candidate assets instead of
+exactly one, so a feature or object kind can vary its appearance across the map.
+Pools are declared in `maps/pools.txt` (registered with `map:pools:` in the
+manifest):
+
+```
+pool:floor_variants:selection:stable
+pool:floor_variants:member:feat_floor_lit_0
+pool:floor_variants:member:feat_floor_dark_0
+pool:floor_variants:member:feat_floor_los_0
+```
+
+and bound to a selector with a `pool` target rule:
+
+```
+target:feat:FLOOR:pool:floor_variants
+target:object:light:Wooden Torch:pool:torch_variants
+```
+
+Every `member` is an ordinary asset base name under `images/<resolution>/`; a
+pool member must be an asset the pack already produced (the converter fails the
+build otherwise). A pool declares one of two deterministic **selection rules**
+(the runtime resolves a pool to a single member with the pure `selectPoolMember`
+in `packages/linoleum/src/targets.ts`):
+
+- `stable` (default) - an md5-derived index of `"<poolId>:<x>,<y>"`, so a given
+  grid cell always draws the same variant (spatial variety that is stable across
+  redraws and identical on every machine, so it never touches the game RNG).
+- `index` - an explicit ordinal (for example an object's stack position),
+  falling back to the linear `x + y` when no ordinal is supplied, taken modulo
+  the member count and wrapped non-negative.
+
+Pools and per-object pool rules are **additive**: a pack that authors none
+converts byte-identically to the legacy-only export, so the parity tests are
+unaffected. They are enabled per pack through the converter's `authoring`
+option (`ConvertOptions.authoring[<packKey>]`, with `pools` and `targets`
+arrays); a legacy tileset carries no pools of its own.
 
 ## Running the converter
 

@@ -313,6 +313,32 @@ export function loadUiEntryPacks(): UiEntryPackRecords {
   } as unknown as UiEntryPackRecords;
 }
 
+/**
+ * The composed INTERFACE-option defaults contributed by enabled content mods
+ * (the bundled qol mod ships packages/web/mods/qol/options.json). Each such
+ * options.json holds records of the form { interfaceDefaults: { name: bool } };
+ * they flow through composeContentPacks like every other file, and this merges
+ * every contributed record's interfaceDefaults in composed order (later records
+ * win). Returns {} when no options file is contributed (no qol mod enabled), so
+ * threading it into startGame is a no-op that keeps new characters on the table
+ * defaults. Core re-filters this to INTERFACE-only options defensively, so a
+ * bad entry here can never change a rules/scoring option.
+ */
+export function loadComposedInterfaceDefaults(): Record<string, boolean> {
+  const recs = composed.records["options"] as
+    | { interfaceDefaults?: Record<string, unknown> }[]
+    | undefined;
+  const out: Record<string, boolean> = {};
+  for (const rec of recs ?? []) {
+    const defs = rec?.interfaceDefaults;
+    if (!defs || typeof defs !== "object") continue;
+    for (const [name, value] of Object.entries(defs)) {
+      if (typeof value === "boolean") out[name] = value;
+    }
+  }
+  return out;
+}
+
 /** Assemble the parsed game pack for startGame (core content + player). */
 export function loadGamePack(): GamePack {
   return {

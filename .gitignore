@@ -13,6 +13,7 @@ reference/build*/
 # Linoleum converter output (default CLI out dir and test output)
 /build/
 .test-out/
+.test-out-authoring/
 
 # Shockbolt tileset: bespoke license (copyright Raymond Gaustadnes), NOT
 # CC-BY. Permitted only with Angband proper and only non-commercially, and
@@ -20,3 +21,9 @@ reference/build*/
 # porting reference but never distributed; users self-convert via linoleum
 # pulling from the official Angband repo.
 reference/lib/tiles/shockbolt/
+
+# Stray compiled output from plugin sources under mods/ (source is *.ts)
+packages/web/mods/**/*.js
+packages/web/mods/**/*.d.ts
+packages/web/mods/**/*.js.map
+packages/web/mods/**/*.d.ts.map

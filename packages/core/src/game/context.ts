@@ -484,6 +484,18 @@ export interface GameState {
    */
   monsterTurnHook?: (mon: Monster, state: GameState) => boolean;
   /**
+   * Named boolean "mod rule" flags (the bug-fixes mod seam, decision 24).
+   * DEFAULT ABSENT/EMPTY, so faithful core reads every flag as false and is
+   * byte-identical to 4.2.6 with no mod enabled. A TRUSTED in-process plugin
+   * turns individual flags on through ModRegistryHost.rules (mod/registry-host.ts,
+   * capability "registry:rules"); each ported core function keeps the faithful
+   * 4.2.6 branch as the default and an off-by-default corrected branch guarded
+   * by modRuleEnabled(state, "<flag>"). Removing the mod clears the flags and
+   * returns core to faithful, buggy-as-shipped behaviour. Read only through
+   * modRuleEnabled so the "absent = faithful" contract is enforced in one place.
+   */
+  modRules?: Record<string, boolean>;
+  /**
    * PU_BONUS | PU_HP | PU_MANA: recompute the derived state from the
    * current gear (equipment commands call this after changing what is
    * worn). Installed by the session (wireGame).
@@ -621,6 +633,17 @@ export interface RunState {
   stepCount: number;
   /** player->upkeep->path_dest: the travel destination (kept across disturb). */
   pathDest?: Loc;
+}
+
+/**
+ * Whether a named "mod rule" flag is enabled (the bug-fixes mod seam). The
+ * single reader for state.modRules: absent map or absent/false flag both mean
+ * OFF, which is the faithful 4.2.6 branch everywhere it is consulted. A core
+ * function reads it as `if (modRuleEnabled(state, "bugfix.x")) { corrected }
+ * else { faithful 4.2.6 }`, so core is byte-identical when no mod set the flag.
+ */
+export function modRuleEnabled(state: GameState, name: string): boolean {
+  return state.modRules?.[name] === true;
 }
 
 /** cave_monster_max(cave): one past the highest occupied monster slot. */
