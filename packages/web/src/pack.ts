@@ -20,6 +20,7 @@ import {
   resolveLoadOrder,
 } from "@neo-angband/mod-sdk";
 import type { LoadedPack, PackContent, PackManifest } from "@neo-angband/mod-sdk";
+import { resolveEnabledIds } from "./mod-store";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
 // are the parsed JSON (the file's default export).
@@ -153,28 +154,35 @@ export function modConflictLines(enabledIds: readonly string[]): string[] {
   }
 }
 
-/** Enabled mod ids: URL ?mods=a,b wins; else localStorage; else none. */
+/**
+ * Enabled mod ids, via the shared resolver (mod-store.resolveEnabledIds):
+ * URL ?mods=a,b wins; else the saved set in localStorage; else - on a first run
+ * with no saved set - the DEFAULT_ENABLED_MODS that are actually discovered.
+ * Distinguishing "no saved key" (first run -> defaults) from an empty array
+ * (user turned everything off) is why this reads the raw key itself.
+ */
 function enabledModIds(): string[] {
+  let url: string[] | null = null;
   try {
-    const url = new URLSearchParams(location.search).get("mods");
-    if (url !== null) {
-      return url.split(",").map((s) => s.trim()).filter(Boolean);
-    }
+    const raw = new URLSearchParams(location.search).get("mods");
+    if (raw !== null) url = raw.split(",").map((s) => s.trim()).filter(Boolean);
   } catch {
     /* no location (non-browser host) */
   }
+  let stored: string[] | null = null;
   try {
     const raw = localStorage.getItem("neo:enabledMods");
-    if (raw) {
+    if (raw !== null) {
       const arr = JSON.parse(raw) as unknown;
       if (Array.isArray(arr)) {
-        return arr.filter((s): s is string => typeof s === "string");
+        stored = arr.filter((s): s is string => typeof s === "string");
       }
     }
   } catch {
     /* no localStorage */
   }
-  return [];
+  const discovered = [...discoverMods().keys()];
+  return resolveEnabledIds({ url, stored, discovered });
 }
 
 function modManifest(raw: unknown): PackManifest {
@@ -199,8 +207,14 @@ function activePackSet(): LoadedPack[] {
       console.warn(`[mods] enabled mod "${id}" not found; skipping`);
       continue;
     }
+    const manifest = modManifest(mod.manifest);
+    // Plugins (sandbox/trusted) contribute no content records; they are
+    // installed separately in main.ts boot. Skipping them here keeps them out
+    // of the content compose pipeline (composeContentPacks expects packs with
+    // record files).
+    if (manifest.shape === "plugin") continue;
     packs.push({
-      manifest: modManifest(mod.manifest),
+      manifest,
       files: mod.files as unknown as LoadedPack["files"],
     });
   }

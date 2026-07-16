@@ -11,6 +11,8 @@ import {
   ModStore,
   buildCatalog,
   consentSatisfied,
+  resolveEnabledIds,
+  DEFAULT_ENABLED_MODS,
   type StorageLike,
 } from "./mod-store";
 
@@ -60,6 +62,49 @@ describe("ModStore - enabled set", () => {
   it("degrades to empty with no storage", () => {
     const store = new ModStore(null);
     store.setEnabled(["a"]);
+    expect(store.getEnabled()).toEqual([]);
+  });
+});
+
+describe("resolveEnabledIds + hasStoredEnabled", () => {
+  it("first run (no stored key) enables the discovered default bundled mods", () => {
+    const discovered = [...DEFAULT_ENABLED_MODS, "demo-x"];
+    expect(resolveEnabledIds({ url: null, stored: null, discovered })).toEqual([
+      ...DEFAULT_ENABLED_MODS,
+    ]);
+  });
+
+  it("intersects defaults with what is actually discovered", () => {
+    const only = DEFAULT_ENABLED_MODS[0]!;
+    expect(
+      resolveEnabledIds({ url: null, stored: null, discovered: [only] }),
+    ).toEqual([only]);
+  });
+
+  it("honors a stored set verbatim, including an empty one (all off)", () => {
+    const discovered = [...DEFAULT_ENABLED_MODS];
+    expect(resolveEnabledIds({ url: null, stored: [], discovered })).toEqual([]);
+    expect(
+      resolveEnabledIds({ url: null, stored: ["qol"], discovered }),
+    ).toEqual(["qol"]);
+  });
+
+  it("lets a URL override win over both stored and defaults", () => {
+    expect(
+      resolveEnabledIds({
+        url: ["demo-modtest"],
+        stored: ["qol"],
+        discovered: [...DEFAULT_ENABLED_MODS, "demo-modtest"],
+      }),
+    ).toEqual(["demo-modtest"]);
+  });
+
+  it("hasStoredEnabled distinguishes first run from an explicit empty set", () => {
+    const s = fakeStorage();
+    const store = new ModStore(s);
+    expect(store.hasStoredEnabled()).toBe(false);
+    store.setEnabled([]);
+    expect(store.hasStoredEnabled()).toBe(true);
     expect(store.getEnabled()).toEqual([]);
   });
 });
