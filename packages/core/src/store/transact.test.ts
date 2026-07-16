@@ -181,6 +181,9 @@ describe("storeSell (store.c do_cmd_sell)", () => {
     expect(res.price!).toBeGreaterThan(0);
     expect(player.au).toBe(res.price);
     expect(res.noneLeft).toBe(true);
+    /* The store accepted it (do_cmd_sell L1985): drives the artifact-lost
+     * history only when this is false (store discarded it). */
+    expect(res.carried).toBe(true);
     expect(gear.pack.length).toBe(0);
     /* The store now holds the sold sword. */
     expect(weapon.stock.some((o) => o.tval === TV.SWORD)).toBe(true);

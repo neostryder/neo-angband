@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { KF } from "../generated";
 import { ObjRegistry } from "./bind";
 import type { ObjPackJson } from "./types";
-import { doRandart } from "./randart";
+import { doRandart, artifactGenName, RANDNAME_TOLKIEN } from "./randart";
+import { buildProb } from "./randname";
 import { collectArtifactData, artifactPower } from "./randart-data";
 import { Rng } from "../rng";
 import type { Artifact } from "./types";
@@ -116,6 +117,78 @@ describe("do_randart (obj-randart.c L3154)", () => {
     if (!oneRing) return; /* pack without it: nothing to assert */
     const arts = doRandart(reg, 31337);
     expect(arts.some((a) => a?.name.includes("One Ring"))).toBe(true);
+  });
+});
+
+/**
+ * The RANDNAME_TOLKIEN corpus (names.txt section 1), as compiled into the
+ * content pack. build_prob is order-insensitive, so the parser's list reversal
+ * is irrelevant here.
+ */
+interface NamesJson {
+  records: { section: number; word: string[] }[];
+}
+function loadTolkienWords(): string[] {
+  const names = loadJson<NamesJson>("names");
+  const sec = names.records.find((r) => r.section === RANDNAME_TOLKIEN);
+  return sec ? sec.word : [];
+}
+
+describe("artifact_gen_name (obj-randart.c L2713)", () => {
+  /*
+   * Golden vectors from an INDEPENDENT Python oracle
+   * (scratchpad/oracle.py: a from-scratch reimplementation of the quick LCRNG
+   * z-rand.c, build_prob + randname_make randname.c, my_strcap + one_in_(3)
+   * obj-randart.c) fed the same names.json section-1 corpus. Matching these
+   * byte-for-byte cross-verifies that artifactGenName reproduces upstream's
+   * artifact_gen_name for a given RNG state and the real Tolkien word list.
+   */
+  const GOLDEN: Record<number, string[]> = {
+    1: ["'Dolmir'", "of Alarn", "of Eruth", "'Borost'", "'Nedrin'", "of Mithil", "of Aerufin", "'Aldir'"],
+    42: ["of Garyar", "of Calannar", "'Glair'", "of Amardorim", "'Duinas'", "of Istar", "of Tirya", "of Rastir"],
+    4242: ["of Turthalda", "of Calaiad", "of Lantand", "'Gormelob'", "of Mendiryar", "of Nelmablur", "of Vanwe", "of Maren"],
+    31337: ["'Galen'", "'Ondambar'", "'Norim'", "'Gwede'", "of Glirith", "of Narevori", "of Hallos", "of Finangor"],
+    777: ["'Loste'", "of Naran", "of Arament", "'Nienya'", "of Ekkas", "of Huros", "of Hunel", "of Amoros"],
+  };
+
+  it("has the expected corpus size (names.txt section 1)", () => {
+    expect(loadTolkienWords().length).toBe(601);
+  });
+
+  it("matches the independent oracle for the real Tolkien corpus", () => {
+    const probs = buildProb(loadTolkienWords());
+    for (const [seedStr, expected] of Object.entries(GOLDEN)) {
+      const rng = new Rng(Number(seedStr), { quick: true });
+      const got = expected.map(() => artifactGenName(rng, probs));
+      expect(got, `seed ${seedStr}`).toEqual(expected);
+    }
+  });
+
+  it("wraps names as \"'Word'\" or \"of Word\" with a capitalized first letter", () => {
+    const probs = buildProb(loadTolkienWords());
+    const rng = new Rng(12345, { quick: true });
+    for (let i = 0; i < 50; i++) {
+      const name = artifactGenName(rng, probs);
+      const m = /^(?:'([A-Z][a-z]*)'|of ([A-Z][a-z]*))$/.exec(name);
+      expect(m, name).not.toBeNull();
+      const word = (m![1] ?? m![2]) as string;
+      expect(word.length).toBeGreaterThanOrEqual(5);
+      expect(word.length).toBeLessThanOrEqual(9);
+    }
+  });
+
+  it("is corpus-driven: passing the corpus changes the generated set", () => {
+    const reg = makeReg();
+    const withCorpus = doRandart(reg, 4242, loadTolkienWords());
+    const withoutCorpus = doRandart(reg, 4242);
+    const names = (arts: (Artifact | null)[]) =>
+      arts.filter((a): a is Artifact => !!a).map((a) => a.name);
+    /* Faithful names appear only on the corpus path. */
+    expect(names(withCorpus)).not.toEqual(names(withoutCorpus));
+    /* And the corpus path is itself deterministic. */
+    expect(names(doRandart(reg, 4242, loadTolkienWords()))).toEqual(
+      names(withCorpus),
+    );
   });
 });
 

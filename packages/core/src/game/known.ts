@@ -24,7 +24,7 @@
 
 import { FEAT, MFLAG, OF, RF, SQUARE, TF, TMD } from "../generated";
 import type { Loc } from "../loc";
-import { DDGRID_DDD, loc, locSum } from "../loc";
+import { DDGRID_DDD, loc, locEq, locSum } from "../loc";
 import { featIsBright } from "../world/chunk";
 import { caveIlluminate } from "../gen/cave";
 import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view";
@@ -40,8 +40,10 @@ import { disturb } from "./player-path";
 import { describeObject } from "./describe";
 import { floorExcise, floorPile } from "./floor";
 import { ODESC } from "../obj/desc";
+import { monsterCarry } from "../mon/make";
 import type { Monster } from "../mon/monster";
 import type { GameObject } from "../obj/object";
+import { objectCopy } from "../obj/object";
 import type { GameState } from "./context";
 
 /**
@@ -255,6 +257,22 @@ export function squareKnowPile(
   grid: Loc,
   pred?: (obj: GameObject) => boolean,
 ): void {
+  /* object_touch (cave-square.c square_know_pile L1177-1181, obj-knowledge.c
+   * object_touch L971): only the pile on the player's OWN grid is "touched",
+   * which auto-notices any artifact and logs the find (history_find_artifact).
+   * A detected/lit pile at a distance is only "seen", never touched, so it does
+   * not count as found - hence the player-grid gate here. */
+  if (locEq(grid, state.actor.grid)) {
+    const pile = state.floor.get(gi(state, grid));
+    if (pile) {
+      for (const obj of pile) {
+        if ((!pred || pred(obj)) && obj.artifact) {
+          state.onArtifactFound?.(obj.artifact);
+        }
+      }
+    }
+  }
+
   const head = pileHead(state, grid, pred);
   if (head) {
     state.known.objects.set(gi(state, grid), {
@@ -462,19 +480,19 @@ export function updateMon(
  * own visibility now that mimicry no longer masks it (update_mon). A no-op
  * monster that is not camouflaged. Draws no RNG.
  *
- * mon.mimickedObj is always 0 until object-mimic placement is ported (this
- * file's noteSpots comment and game/project-obj.ts note the same gap), so the
- * object branch below runs only for a hand-built Monster/GameObject pair in
- * tests today; it is written to fire correctly the moment placement links
- * mon.mimickedObj and the object's mimickingMIdx back-reference at the
- * monster's grid.
+ * Object-mimic placement is wired for live-placed (summoned / bred) mimics
+ * via game/mon-place.ts monCreateMimickedObject, which links mon.mimickedObj
+ * and the object's mimickingMIdx back-reference at the monster's grid; the
+ * object branch below fires for those and for any hand-built Monster/
+ * GameObject pair in tests. (SEAM: generation-spawned mimics still need the
+ * handoff to call monCreateMimickedObject - see that function's docstring.)
  *
- * DEFERRED: RF_MIMIC_INV's "give the monster a copy of the object before
- * deleting it" (mon-util.c L740-758) needs object_copy, which is not ported;
- * every other step of become_aware runs. The upkeep/redraw bits
- * (PU_UPDATE_VIEW | PU_MONSTERS, PR_MONLIST | PR_ITEMLIST, square_note_spot,
- * square_light_spot) are presentation (#25), matching the redraw deferral
- * already noted for updateMon above.
+ * RF_MIMIC_INV's "give the monster a copy of the object before deleting it"
+ * (mon-util.c L740-758) is now ported via obj/object.ts objectCopy (memcpy, no
+ * RNG); only the known twin is DEFERRED with the knowledge subsystem. The
+ * upkeep/redraw bits (PU_UPDATE_VIEW | PU_MONSTERS, PR_MONLIST | PR_ITEMLIST,
+ * square_note_spot, square_light_spot) are presentation (#25), matching the
+ * redraw deferral already noted for updateMon above.
  */
 export function becomeAware(state: GameState, mon: Monster): void {
   if (!monsterIsCamouflaged(mon)) return;
@@ -497,7 +515,17 @@ export function becomeAware(state: GameState, mon: Monster): void {
       obj.mimickingMIdx = 0;
       mon.mimickedObj = 0;
 
-      /* RF_MIMIC_INV's give-a-copy branch is DEFERRED (no object_copy yet). */
+      /* Give a copy of the object to the monster if appropriate
+       * (mon-util.c L740-758). object_copy is a memcpy (draws no RNG); the
+       * known twin (given->known) is DEFERRED with the knowledge subsystem
+       * (obj/object.ts module docs), so only the base object is copied. The
+       * port's monsterCarry always succeeds (it prepends to heldObj), so the
+       * upstream carry-failed delete branch (L751-757) is unreachable and
+       * omitted. */
+      if (mon.race.flags.has(RF.MIMIC_INV)) {
+        const given = objectCopy(obj);
+        monsterCarry(mon.heldObj, given, mon.midx);
+      }
 
       /* Delete the mimicked object; lighting/noting done via update_mon. */
       floorExcise(state, obj.grid, obj);

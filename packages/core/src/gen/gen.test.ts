@@ -9,13 +9,14 @@ import { Rng } from "../rng";
 import { Chunk } from "../world/chunk";
 import { FeatureRegistry } from "../world/feature";
 import type { TerrainRecordJson } from "../world/feature";
-import { ObjRegistry } from "../obj/bind";
+import { ObjRegistry, tvalFindIdx } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
-import { ArtifactState, ObjAllocState } from "../obj/make";
+import { applyMagic, ArtifactState, objectPrep, ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import { bindMonsters } from "../mon/bind";
 import type { MonsterPackRecords } from "../mon/bind";
-import { MonAllocTable } from "../mon/make";
+import { createMonster, MonAllocTable } from "../mon/make";
+import { createMimickedObject } from "../game/mon-place";
 
 import {
   cavernGen,
@@ -55,6 +56,7 @@ import { getVaultMonsters, monPitHook, resolvePits, setPitType } from "./gen-mon
 import { RF } from "../generated";
 import { GROUP_TYPE } from "../mon/monster";
 import { MON_GROUP } from "../mon/types";
+import type { MonsterRace } from "../mon/types";
 import {
   Dun,
   Gen,
@@ -1081,6 +1083,155 @@ describe("place_new_monster groups and friends", () => {
       }
     }
     throw new Error("no seed produced an escort in 20 tries");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Generation-spawned object-mimics (mon-make.c place_monster L1044-1051,
+ * mon_create_mimicked_object L899). The generation placement path is the twin
+ * of place_new_monster_one -> place_monster, so the mimic's fake object must be
+ * created here, at the position that corresponds to just after mon_create_drop
+ * (which draws zero RNG for the drop-less vanilla mimic races).
+ * ------------------------------------------------------------------ */
+
+describe("generation object-mimics (mon-make.c place_monster L1044-1051)", () => {
+  const monReg = bindMonsters(monPack, { maxSight: constants.maxSight });
+  const table = new MonAllocTable(monReg.races, { maxDepth: constants.maxDepth });
+  const mimicObjReg = new ObjRegistry(objPack);
+
+  /** An open floor arena with obj + mon deps wired. */
+  function mimicGen(depth: number, seed: number): Gen {
+    const c = new Chunk(reg, 25, 40);
+    c.depth = depth;
+    drawRectangle(c, 0, 0, 24, 39, FEAT.GRANITE, SQUARE.NONE, false);
+    fillRectangle(c, 1, 1, 23, 38, FEAT.FLOOR, SQUARE.NONE);
+    const dun = new Dun(constants);
+    const objDeps: MakeDeps = {
+      reg: mimicObjReg,
+      alloc: new ObjAllocState(mimicObjReg, constants),
+      constants,
+      artifacts: new ArtifactState(mimicObjReg.artifacts.length),
+      noArtifacts: false,
+    };
+    return new Gen(c, new Rng(seed), reg, constants, dun, objDeps, { table });
+  }
+
+  function mimicRace(name: string): MonsterRace {
+    const r = monReg.races.find((x) => x.name === name);
+    if (!r || r.mimicKinds.length === 0) {
+      throw new Error(`no object-mimic race "${name}" in the pack`);
+    }
+    return r;
+  }
+
+  it("links a generated object-mimic to a fake object on its own grid", () => {
+    const g = mimicGen(3, 42);
+    const grid = loc(20, 12);
+    const ok = placeNewMonster(
+      g,
+      grid,
+      mimicRace("creeping copper coins"),
+      false,
+      false,
+      { index: 0, role: MON_GROUP.LEADER },
+    );
+    expect(ok).toBe(true);
+    expect(g.monsters).toHaveLength(1);
+
+    const mon = g.monsters[0]!.mon;
+    expect(mon.mimickedObj).not.toBe(0);
+
+    /* Exactly one generated object, on the monster's grid, linked back by
+     * the monster's (generation = live) midx. */
+    expect(g.objects).toHaveLength(1);
+    const fake = g.objects[0]!;
+    expect(fake.grid).toEqual(grid);
+    expect(fake.obj.mimickingMIdx).toBe(mon.midx);
+    expect(g.hasObject(grid)).toBe(true);
+  });
+
+  it("a non-mimic monster gets no fake object and mimickedObj stays 0", () => {
+    const g = mimicGen(3, 42);
+    const plain = monReg.races.find((r) => r.name === "filthy street urchin")!;
+    /* group_ok=false so the urchin's friends line draws nothing. */
+    const ok = placeNewMonster(g, loc(20, 12), plain, false, false, {
+      index: 0,
+      role: MON_GROUP.LEADER,
+    });
+    expect(ok).toBe(true);
+    expect(g.objects).toHaveLength(0);
+    expect(g.monsters[0]!.mon.mimickedObj).toBe(0);
+  });
+
+  it("draws the mimic object in exactly upstream generation-RNG order", () => {
+    const g = mimicGen(3, 99);
+    const race = mimicRace("potion mimic"); // 6 kinds -> reservoir draws
+    const grid = loc(20, 12);
+
+    /* Attach the monster directly so the snapshot lands at exactly the
+     * create-drop position (i.e. after createMonster's draws), isolating the
+     * mimic object's stream from the monster-construction stream. */
+    const mon = createMonster(g.rng, race, {
+      sleep: false,
+      moveEnergy: constants.moveEnergy,
+      groupIndex: 0,
+      groupRole: MON_GROUP.LEADER,
+    });
+    g.attachMonster(grid, mon, g.nextMonIndex());
+
+    const snapshot = g.rng.getState();
+    createMimickedObject(
+      {
+        depth: g.c.depth,
+        rng: g.rng,
+        makeDeps: g.objDeps!,
+        carry: (cg, o) => {
+          g.addObject(cg, o);
+          return true;
+        },
+      },
+      mon,
+    );
+    const fake = g.objects[g.objects.length - 1]!.obj;
+    const endState = g.rng.getState();
+
+    /* Independent replay of the exact C sequence from the same snapshot. */
+    g.rng.setState(snapshot);
+    const resolve = (m: { tval: string; sval: string }) => {
+      const tval = tvalFindIdx(m.tval);
+      return mimicObjReg.lookupKind(tval, mimicObjReg.lookupSval(tval, m.sval))!;
+    };
+    const kinds = race.mimicKinds;
+    let kind = resolve(kinds[0]!);
+    let i = 1;
+    for (const mk of kinds) {
+      if (g.rng.oneIn(i)) kind = resolve(mk);
+      i++;
+    }
+    const expected = objectPrep(
+      g.rng,
+      mimicObjReg,
+      constants,
+      kind,
+      race.level,
+      "randomise",
+    );
+    applyMagic(
+      g.rng,
+      g.objDeps!,
+      expected,
+      race.level,
+      true,
+      false,
+      false,
+      false,
+      g.c.depth,
+    );
+
+    /* Same draw sequence (final RNG states match) and same selected kind. */
+    expect(endState).toEqual(g.rng.getState());
+    expect(fake.kind).toBe(kind);
+    expect(fake.sval).toBe(expected.sval);
   });
 });
 

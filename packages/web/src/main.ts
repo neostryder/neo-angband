@@ -52,6 +52,9 @@ import {
   describeObject,
   objectInfoTextblock,
   gearGet,
+  buildLoreColorState,
+  spellColorFor,
+  blowColorFor,
   floorPile,
   invenCarryNum,
   buildObjectEffectChain,
@@ -487,11 +490,17 @@ function charSheetOpts(): {
   numShots: number;
   launcher: GameObject | null;
   onRename: (n: string) => void;
+  uiEntryPacks: typeof uiEntryPacks;
 } {
   const p = state.actor.player;
   const bowSlot = p.body.slots.findIndex((s) => s.type === "BOW");
   const launcher = bowSlot >= 0 ? gearGet(state.gear, p.equipment[bowSlot] ?? 0) : null;
-  return { numShots: state.actor.combat.numShots, launcher, onRename: renamePlayer };
+  return {
+    numShots: state.actor.combat.numShots,
+    launcher,
+    onRename: renamePlayer,
+    uiEntryPacks,
+  };
 }
 
 // --- Visuals: color-cycle + flicker animation (task #27: ui-visuals.c) -----
@@ -1731,22 +1740,26 @@ function targetHelpLines(useFreeMode: boolean): string[] {
  * chance_of_melee_hit_base/chance_of_monster_hit_base + hit_chance, no RNG),
  * and the breath element damage table (world/projection.ts) - the one piece
  * of breath lore damage that lives outside mon/, without which breath
- * damage would render as 0. spellColor/blowColor (the player-resistance-
- * aware danger recolouring) and spellLoreDamage are left at loreDescription's
- * own documented defaults - real player-state-aware recolouring is a
- * separate, larger feature (mon-lore.c spell_color/blow_color read the
- * player's known elemental resistances/protections), tracked as a follow-up
- * rather than half-built here.
+ * damage would render as 0. spellColor/blowColor recolour each listed spell /
+ * blow by whether the player resists it (mon-lore.c spell_color/blow_color,
+ * ported in mon/lore-describe.ts): buildLoreColorState reads the live derived
+ * player_state (known resists/protections/save skill/stat_ind, already
+ * rune-gated per decision 25) plus the pack and light slot, then spellColorFor
+ * / blowColorFor apply the exact upstream danger buckets.
  */
 function recallDeps(): LoreDeps {
   const player = state.actor.player;
   const projections = booted.registries.projections;
+  const spells = booted.registries.monsters.spells;
+  const colorState = buildLoreColorState(state, players.timed);
   return {
     playerLevel: player.lev,
     playerMaxDepth: player.maxDepth,
     playerSpeed: state.actor.speed,
     effectiveSpeed: state.options?.get("effective_speed") ?? false,
-    spells: booted.registries.monsters.spells,
+    spells,
+    spellColor: (race, spellIndex) => spellColorFor(race, spellIndex, spells, colorState),
+    blowColor: (effect) => blowColorFor(effect, colorState),
     meleeHitPercent: (race) =>
       getHitChance(chanceOfMeleeHitBase(state.actor.combat, state.actor.weapon), race.ac),
     monsterHitPercent: (race, effect) =>

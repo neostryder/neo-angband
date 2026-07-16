@@ -26,8 +26,21 @@
  * opts.onRename (the shell persists it); nothing here touches state.
  */
 
-import { characterPanels, statTable, colorToCss } from "@neo-angband/core";
-import type { GameState, GameObject } from "@neo-angband/core";
+import {
+  characterPanels,
+  statTable,
+  colorToCss,
+  buildUiEntryConfig,
+  characterGrid,
+  gearGet,
+} from "@neo-angband/core";
+import type {
+  GameState,
+  GameObject,
+  UiEntryConfig,
+  UiEntryPackRecords,
+  UiGridPanel,
+} from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
 import {
   characterSheetLines,
@@ -52,6 +65,12 @@ export interface CharSheetOpts {
   /** Called with the new name after a successful 'c' rename; the shell
    * persists it (roster metadata) - the sheet itself mutates nothing. */
   onRename?: (name: string) => void;
+  /**
+   * The ui_entry pack records (loadUiEntryPacks). When supplied, mode 1 renders
+   * the real resist / ability / hindrance / modifier / sustain grid
+   * (core characterGrid); without them it falls back to a labelled placeholder.
+   */
+  uiEntryPacks?: UiEntryPackRecords;
 }
 
 /** Width at or above which the side-by-side layout is used; below it, the list. */
@@ -76,17 +95,68 @@ const STAT_HEADER_ROW = 1;
 /** History block row (display_player_xtra_info L872: Term_gotoxy(1, 19)). */
 const HISTORY_ROW = 19;
 
-/** Mode-1 placeholder (the ui-entry.c resist/ability grid is not ported). */
+/** Mode-1 placeholder, only used when no ui_entry packs were supplied. */
 function modeOnePlaceholder(): ScreenLine[] {
   return [
-    { text: "Resistances & Abilities - not yet available", color: TITLE },
+    { text: "Resistances & Abilities - unavailable (no ui_entry packs)", color: TITLE },
     { text: "", color: FG },
-    {
-      text: "This page (the equipment resist / sustain / ability grid) awaits",
-      color: DIM,
-    },
-    { text: "the ui-entry.c port. Press 'h' to return to the main page.", color: DIM },
+    { text: "Press 'h' to return to the main page.", color: DIM },
   ];
+}
+
+/** Human titles for the four resist regions (configure_char_sheet L187). */
+const PANEL_TITLES: Record<string, string> = {
+  resistances: "Resistances",
+  abilities: "Abilities",
+  hindrances: "Hindrances",
+  modifiers: "Modifiers",
+};
+
+/** Stat sustain labels (display_player_sust_info, one row per STAT). */
+const STAT_LABELS = ["Str", "Int", "Wis", "Dex", "Con"] as const;
+
+/**
+ * characterGridLines: render the mode-1 grid (core characterGrid) as scrollable
+ * ScreenLines. Each row is the entry label (coloured by its combined value)
+ * followed by one cell per equipment slot then the player "@" column, exactly
+ * the display_resistance_panel / display_player_sust_info data - the Term
+ * placement is this shell's business (game/ui-entry.ts's documented split).
+ */
+function characterGridLines(state: GameState, config: UiEntryConfig): ScreenLine[] {
+  const { resistPanels, statModPanel } = characterGrid(state, config);
+  const p = state.actor.player;
+  const lines: ScreenLine[] = [];
+
+  /* Equippy header: one glyph per body slot, then '@' for the player column. */
+  const equippy: { text: string; color: string }[] = [{ text: " ".repeat(7), color: LABEL }];
+  for (let i = 0; i < p.body.count; i++) {
+    const obj = gearGet(state.gear, p.equipment[i] ?? 0);
+    equippy.push({ text: obj ? obj.kind.dChar : ".", color: obj ? FG : DIM });
+  }
+  equippy.push({ text: "@", color: TITLE });
+  lines.push({ text: equippy.map((r) => r.text).join(""), color: FG, runs: equippy });
+
+  const pushPanel = (panel: UiGridPanel, title: string, labelFor: (i: number) => string): void => {
+    lines.push({ text: "", color: FG });
+    lines.push({ text: title, color: TITLE });
+    panel.rows.forEach((row, i) => {
+      const label = (row.label || labelFor(i)).padEnd(7).slice(0, 7);
+      const runs: { text: string; color: string }[] = [
+        { text: label, color: colorToCss(row.labelColor) },
+      ];
+      for (const cell of row.cells) {
+        runs.push({ text: cell.symbol, color: colorToCss(cell.color) });
+      }
+      lines.push({ text: runs.map((r) => r.text).join(""), color: FG, runs });
+    });
+  };
+
+  for (const panel of resistPanels) {
+    pushPanel(panel, PANEL_TITLES[panel.key] ?? panel.key, () => "");
+  }
+  pushPanel(statModPanel, "Sustains", (i) => STAT_LABELS[i] ?? "");
+
+  return lines;
 }
 
 /** player_safe_name: a filesystem-safe filename from the character's name. */
@@ -133,9 +203,14 @@ export function showCharacterSheet(
     ...(opts.numShots !== undefined ? { numShots: opts.numShots } : {}),
     ...(opts.launcher !== undefined ? { launcher: opts.launcher } : {}),
   });
+  /* Build the ui_entry config once (mode 1 grid); null without packs. */
+  const gridConfig = opts.uiEntryPacks ? buildUiEntryConfig(opts.uiEntryPacks) : null;
+  const modeOneLines = (): ScreenLine[] =>
+    gridConfig ? characterGridLines(state, gridConfig) : modeOnePlaceholder();
+
   return new Promise<void>((resolve) => {
-    let top = 0; // scroll offset for the narrow list
-    let mode = 0; // 0 = skills/history, 1 = flag grid (placeholder)
+    let top = 0; // scroll offset for the narrow list / mode-1 grid
+    let mode = 0; // 0 = skills/history, 1 = resist/ability/sustain grid
     let narrow = false; // what the last paint drew, for the tap handler
 
     /** Paint one ScreenLine's runs (or plain text) at (x, y). */
@@ -189,13 +264,18 @@ export function showCharacterSheet(
           printLine(0, hy++, line);
         }
       } else {
-        // Mode 1 keeps the stat table + topleft panel (display_player L905)
-        // and labels the unported grid instead of faking it.
-        paintPanel(term, ANCHOR.topleft.x, ANCHOR.topleft.y, ANCHOR.topleft.labelWidth, byKey("topleft"));
-        let py = 9;
-        for (const line of modeOnePlaceholder()) {
-          if (py >= rows - 1) break;
-          printLine(1, py++, line);
+        // Mode 1: the resist / ability / hindrance / modifier / sustain grid
+        // (display_player_flag_info). The stat table stays top-right; the grid
+        // scrolls at the left since it exceeds 24 rows (its Term draw is the
+        // shell's per game/ui-entry.ts).
+        const lines = modeOneLines();
+        const bodyRows = rows - 3;
+        const maxTop = Math.max(0, lines.length - bodyRows);
+        if (top > maxTop) top = maxTop;
+        for (let r = 0; r < bodyRows; r++) {
+          const line = lines[top + r];
+          if (!line) break;
+          printLine(0, 2 + r, line);
         }
       }
 
@@ -204,7 +284,7 @@ export function showCharacterSheet(
 
     const narrowLines = (): ScreenLine[] => {
       const { cols } = term.size();
-      if (mode === 1) return modeOnePlaceholder();
+      if (mode === 1) return modeOneLines();
       return characterSheetLines(state, curName, cols);
     };
 

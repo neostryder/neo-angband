@@ -773,8 +773,9 @@ interface MoveDecision {
 
 /**
  * get_move: decide whether and where the monster wants to step. Returns the
- * side_dirs row index for the movement loop. Group AI (pack luring and
- * surround) is DEFERRED; the afraid branch legs it directly away.
+ * side_dirs row index for the movement loop. The RF_GROUP_AI pack-ambush branch
+ * (get_move_find_hiding) is ported; only the group-surround branch (L934, which
+ * draws randint0(8)) stays DEFERRED so the RNG stream is not perturbed.
  */
 export function getMove(mon: Monster, state: GameState): MoveDecision {
   const fleeRange = state.z.maxSight + state.z.fleeRange;

@@ -366,6 +366,60 @@ export function objectNew(kind: ObjectKind): GameObject {
   };
 }
 
+/**
+ * object_copy (obj-pile.c L713): prepare a fresh object as a copy of `src`.
+ * Upstream memcpy's the whole struct, then deep-copies the heap-allocated
+ * slay, brand and curse arrays and detaches the pile links (prev/next). This
+ * port models a pile as world-layer state (GameObject carries no prev/next),
+ * so the "detach" is implicit; every per-instance array C stores inline in
+ * struct object (flags, modifiers, el_info) or on the heap (slays, brands,
+ * curses) is cloned so the copy shares no mutable state with the source, while
+ * the content-registry pointers (kind, ego, artifact, and the kind-owned
+ * effect chain and activation) stay shared exactly as the memcpy'd pointers
+ * do. Draws no RNG.
+ *
+ * DEFERRED: the obj->known twin (obj-knowledge.c) is not modelled in this port
+ * (see the module docs), so the known-object half of become_aware's copy
+ * (mon-util.c L745-750) has nothing to copy here.
+ */
+export function objectCopy(src: GameObject): GameObject {
+  return {
+    kind: src.kind,
+    ego: src.ego,
+    artifact: src.artifact,
+    grid: src.grid ? { ...src.grid } : null,
+    tval: src.tval,
+    sval: src.sval,
+    pval: src.pval,
+    weight: src.weight,
+    dd: src.dd,
+    ds: src.ds,
+    ac: src.ac,
+    toA: src.toA,
+    toH: src.toH,
+    toD: src.toD,
+    flags: src.flags.clone(),
+    modifiers: [...src.modifiers],
+    elInfo: src.elInfo.map((e) => ({ ...e })),
+    brands: src.brands ? [...src.brands] : null,
+    slays: src.slays ? [...src.slays] : null,
+    curses: src.curses ? src.curses.map((c) => ({ ...c })) : null,
+    effect: src.effect,
+    effectMsg: src.effectMsg,
+    activation: src.activation,
+    time: { ...src.time },
+    timeout: src.timeout,
+    number: src.number,
+    notice: src.notice,
+    heldMIdx: src.heldMIdx,
+    mimickingMIdx: src.mimickingMIdx,
+    origin: src.origin,
+    originDepth: src.originDepth,
+    originRace: src.originRace,
+    note: src.note,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* obj-slays.c copy helpers                                             */
 /* ------------------------------------------------------------------ */

@@ -202,6 +202,12 @@ export interface SellResult {
   sold?: GameObject;
   /** True when the whole pack stack was sold. */
   noneLeft?: boolean;
+  /**
+   * Whether store_carry accepted the sold object (do_cmd_sell L1985-1998).
+   * false means the store discarded it as worthless / no-room; the caller uses
+   * this to fire history_lose_artifact for a sold artifact the store rejected.
+   */
+  carried?: boolean;
 }
 
 /**
@@ -255,10 +261,12 @@ export function storeSell(
   /* Take a proper copy of the now known-about object out of the gear. */
   const { obj: sold, noneLeft } = gearObjectForUse(gear, player, handle, amt);
 
-  /* The store gets that object (or, if worthless/no room, discards it). */
-  storeCarry(rng, reg, constants, store, sold, true);
+  /* The store gets that object (or, if worthless/no room, discards it). The
+   * caller reads `carried` (whether store_carry accepted it) so it can fire
+   * history_lose_artifact for a rejected artifact (do_cmd_sell L1985-1998). */
+  const carried = storeCarry(rng, reg, constants, store, sold, true) !== null;
 
-  return { ok: true, price, sold, noneLeft };
+  return { ok: true, price, sold, noneLeft, carried };
 }
 
 /* ------------------------------------------------------------------ */

@@ -592,6 +592,8 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
     const player = ctx.env.player;
     if (player?.applyDamageReduction) dam = player.applyDamageReduction(dam);
     say(ctx, "There is a bang and a flash!");
+    /* Artifacts are marked as lost (effect-handler-general.c L220-222). */
+    if (obj.artifact) state.onArtifactLost?.(obj.artifact);
     destroyOneItem(state, obj);
     player?.takeHit?.(dam, "Failed uncursing");
   } else {

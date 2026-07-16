@@ -99,6 +99,41 @@ describe("terrain memory (square_memorize / square_forget)", () => {
   });
 });
 
+describe("square_know_pile find-on-sight (object_touch, obj-knowledge.c L971)", () => {
+  const firstArtifact = reg.artifacts.find((a) => a) ?? null;
+
+  function artifactObj(): GameObject {
+    const obj = makeObj(TV.SWORD);
+    obj.artifact = firstArtifact;
+    return obj;
+  }
+
+  it("logs an artifact the player steps onto (its own grid)", () => {
+    const pgrid = loc(10, 10);
+    const state = makeState({ playerGrid: pgrid });
+    const found: unknown[] = [];
+    state.onArtifactFound = (a) => found.push(a);
+
+    floorCarry(state, pgrid, artifactObj());
+    squareKnowPile(state, pgrid);
+
+    expect(found).toEqual([firstArtifact]);
+  });
+
+  it("does NOT log an artifact merely seen at a distance", () => {
+    const pgrid = loc(10, 10);
+    const far = loc(5, 5);
+    const state = makeState({ playerGrid: pgrid });
+    const found: unknown[] = [];
+    state.onArtifactFound = (a) => found.push(a);
+
+    floorCarry(state, far, artifactObj());
+    squareKnowPile(state, far);
+
+    expect(found).toEqual([]);
+  });
+});
+
 describe("cave_illuminate (cave-map.c L555, runtime)", () => {
   it("relights an interior floor grid at the day/night boundary and updates knowledge", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
@@ -595,5 +630,51 @@ describe("becomeAware (mon-util.c become_aware, L711)", () => {
     const before = state.rng.getState();
     becomeAware(state, mon);
     expect(state.rng.getState()).toEqual(before);
+  });
+
+  it("RF_MIMIC_INV: gives the monster a copy of the object, still deletes the floor item, draws no RNG (mon-util.c L740-758)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace({ flags: [RF.MIMIC_INV] }), loc(12, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    mon.mimickedObj = 1;
+    const obj = makeObj(TV.SWORD);
+    obj.pval = 7;
+    floorCarry(state, mon.grid, obj);
+    obj.mimickingMIdx = mon.midx;
+    lightAndView(state, mon.grid);
+
+    const before = state.rng.getState();
+    becomeAware(state, mon);
+
+    /* object_copy draws no RNG. */
+    expect(state.rng.getState()).toEqual(before);
+    /* The floor item is gone and the mimicry is cleared both ways. */
+    expect(floorPile(state, mon.grid)).not.toContain(obj);
+    expect(obj.mimickingMIdx).toBe(0);
+    expect(mon.mimickedObj).toBe(0);
+    /* The monster now holds an independent, value-equal copy. */
+    expect(mon.heldObj).toHaveLength(1);
+    const held = mon.heldObj[0]!;
+    expect(held).not.toBe(obj);
+    expect(held.kind).toBe(obj.kind);
+    expect(held.pval).toBe(7);
+    expect(held.heldMIdx).toBe(mon.midx);
+    expect(held.mimickingMIdx).toBe(0);
+  });
+
+  it("does NOT give a copy when the race lacks RF_MIMIC_INV", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace({ flags: [RF.UNAWARE] }), loc(12, 10));
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    mon.mimickedObj = 1;
+    const obj = makeObj(TV.SWORD);
+    floorCarry(state, mon.grid, obj);
+    obj.mimickingMIdx = mon.midx;
+    lightAndView(state, mon.grid);
+
+    becomeAware(state, mon);
+
+    expect(floorPile(state, mon.grid)).not.toContain(obj);
+    expect(mon.heldObj).toHaveLength(0);
   });
 });

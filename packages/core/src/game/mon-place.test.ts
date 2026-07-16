@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD, RF } from "../generated";
+import { MFLAG, MON_TMD, ORIGIN, RF, TV } from "../generated";
+import { bindConstants } from "../constants";
 import { loc, locEq } from "../loc";
 import { distance } from "../loc";
 import type { Loc } from "../loc";
@@ -8,10 +10,25 @@ import { SummonTable } from "../mon/summon";
 import { MON_GROUP } from "../mon/types";
 import type { MonsterRace } from "../mon/types";
 import { GROUP_TYPE } from "../mon/monster";
+import { ObjRegistry } from "../obj/bind";
+import type { ObjPackJson } from "../obj/types";
+import {
+  applyMagic,
+  ArtifactState,
+  makeGold,
+  ObjAllocState,
+  objectPrep,
+} from "../obj/make";
+import type { MakeDeps } from "../obj/make";
+import { tvalIsMoney } from "../obj/object";
+import { tvalFindIdx } from "../obj/bind";
 import { deleteMonster, squareMonster } from "./context";
 import type { GameState } from "./context";
 import { summonGroup } from "./mon-group";
+import { floorPile } from "./floor";
 import {
+  createMimickedObject,
+  monCreateMimickedObject,
   multiplyMonster,
   placeNewMonster,
   placeNewMonsterOne,
@@ -19,10 +36,55 @@ import {
   summonSpecific,
   wipeMonsterCounts,
 } from "./mon-place";
-import type { MonPlaceDeps, SummonDeps } from "./mon-place";
+import type { MimicDeps, MonPlaceDeps, SummonDeps } from "./mon-place";
+import { Rng } from "../rng";
+import type { GameObject } from "../obj/object";
 import { GRANITE, addMon, makeRace, makeState, monReg } from "./harness";
 
 const summons = new SummonTable(monReg.summons, monReg.bases);
+
+function loadJson<T>(name: string): T {
+  return JSON.parse(
+    readFileSync(
+      new URL(`../../../content/pack/${name}.json`, import.meta.url),
+      "utf8",
+    ),
+  ) as T;
+}
+
+const objReg = new ObjRegistry({
+  objectBase: loadJson("object_base"),
+  object: loadJson("object"),
+  egoItem: loadJson("ego_item"),
+  artifact: loadJson("artifact"),
+  curse: loadJson("curse"),
+  brand: loadJson("brand"),
+  slay: loadJson("slay"),
+  activation: loadJson("activation"),
+  objectProperty: loadJson("object_property"),
+  flavor: loadJson("flavor"),
+} as ObjPackJson);
+const objConstants = bindConstants(loadJson("constants"));
+
+function makeMimicDeps(): MimicDeps {
+  const makeDeps: MakeDeps = {
+    reg: objReg,
+    alloc: new ObjAllocState(objReg, objConstants),
+    constants: objConstants,
+    artifacts: new ArtifactState(objReg.artifacts.length),
+    noArtifacts: false,
+  };
+  return { makeDeps };
+}
+
+/** A real object-mimic race from the pack, by display name. */
+function mimicRace(name: string): MonsterRace {
+  const race = monReg.races.find((r) => r.name === name);
+  if (!race || race.mimicKinds.length === 0) {
+    throw new Error(`no object-mimic race "${name}" in the pack`);
+  }
+  return race;
+}
 
 function makeTable(): MonAllocTable {
   return new MonAllocTable(monReg.races, { maxDepth: 128 });
@@ -383,5 +445,243 @@ describe("multiplyMonster (mon-make.c multiply_monster, L983) - become_aware", (
     const ok = multiplyMonster(state, mon, deps(state));
     expect(ok).toBe(true);
     expect(called).toBe(false);
+  });
+});
+
+describe("mon_create_mimicked_object (mon-make.c L899)", () => {
+  it("places a gold mimic's fake coin on the floor and links both sides", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.chunk.depth = 3;
+    const race = mimicRace("creeping copper coins"); // single money kind
+    const grid = loc(14, 10);
+
+    const ok = placeNewMonsterOne(
+      state,
+      grid,
+      race,
+      false,
+      { index: 0, role: MON_GROUP.LEADER },
+      deps(state, { mimic: makeMimicDeps() }),
+    );
+    expect(ok).toBe(true);
+
+    const mon = squareMonster(state, grid)!;
+    const pile = floorPile(state, grid);
+    expect(pile).toHaveLength(1);
+    const fake = pile[0]!;
+    expect(tvalIsMoney(fake.tval)).toBe(true);
+    expect(fake.mimickingMIdx).toBe(mon.midx);
+    expect(mon.mimickedObj).not.toBe(0);
+  });
+
+  it("prepped item mimic carries ORIGIN_DROP_MIMIC and the chunk depth", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.chunk.depth = 4;
+    const race = mimicRace("potion mimic");
+    const grid = loc(14, 10);
+
+    placeNewMonsterOne(
+      state,
+      grid,
+      race,
+      false,
+      { index: 0, role: MON_GROUP.LEADER },
+      deps(state, { mimic: makeMimicDeps() }),
+    );
+
+    const fake = floorPile(state, grid)[0]!;
+    expect(fake.tval).toBe(TV.POTION);
+    expect(fake.origin).toBe(ORIGIN.DROP_MIMIC);
+    expect(fake.originDepth).toBe(4);
+    expect(fake.number).toBe(1);
+  });
+
+  it("draws RNG in exactly upstream order (reservoir one_in_ loop, then object make)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.chunk.depth = 3;
+    const race = mimicRace("potion mimic"); // 6 kinds -> reservoir draws
+    const grid = loc(14, 10);
+    const mon = addMon(state, race, grid); // no RNG drawn
+    const mdeps = makeMimicDeps();
+
+    const snapshot = state.rng.getState();
+    monCreateMimickedObject(state, mon, mdeps);
+    const fake = floorPile(state, grid)[0]!;
+    const endState = state.rng.getState();
+
+    /* Independent replay of the exact C sequence from the same snapshot. */
+    state.rng.setState(snapshot);
+    const kinds = race.mimicKinds;
+    const resolve = (m: { tval: string; sval: string }) => {
+      const tval = tvalFindIdx(m.tval);
+      return objReg.lookupKind(tval, objReg.lookupSval(tval, m.sval))!;
+    };
+    let kind = resolve(kinds[0]!);
+    let i = 1;
+    for (const mk of kinds) {
+      if (state.rng.oneIn(i)) kind = resolve(mk);
+      i++;
+    }
+    const expected = objectPrep(
+      state.rng,
+      objReg,
+      objConstants,
+      kind,
+      race.level,
+      "randomise",
+    );
+    applyMagic(
+      state.rng,
+      mdeps.makeDeps,
+      expected,
+      race.level,
+      true,
+      false,
+      false,
+      false,
+      state.chunk.depth,
+    );
+
+    /* Same draw sequence (final RNG states match) and same selected kind. */
+    expect(endState).toEqual(state.rng.getState());
+    expect(fake.kind).toBe(kind);
+    expect(fake.sval).toBe(expected.sval);
+  });
+
+  it("makeGold uses the chunk depth and the mimic kind's coin type", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.chunk.depth = 6;
+    const race = mimicRace("creeping copper coins");
+    const grid = loc(14, 10);
+    const mon = addMon(state, race, grid);
+    const mdeps = makeMimicDeps();
+
+    const snapshot = state.rng.getState();
+    monCreateMimickedObject(state, mon, mdeps);
+    const fake = floorPile(state, grid)[0]!;
+    const endState = state.rng.getState();
+
+    /* Replay: single kind -> one_in_(1) draws nothing, then makeGold. */
+    state.rng.setState(snapshot);
+    const m = race.mimicKinds[0]!;
+    const tval = tvalFindIdx(m.tval);
+    const kind = objReg.lookupKind(tval, objReg.lookupSval(tval, m.sval))!;
+    const gold = makeGold(state.rng, mdeps.makeDeps, state.chunk.depth, kind.name);
+    expect(endState).toEqual(state.rng.getState());
+    expect(fake.kind).toBe(gold.kind);
+    expect(fake.pval).toBe(gold.pval);
+  });
+
+  it("floor cannot hold: RF_MIMIC_INV gives the object to the monster, else discards; mimicry cleared", () => {
+    /* A mimic race that also carries the fake item when the floor is full. */
+    const base = mimicRace("potion mimic");
+    const invRace: MonsterRace = { ...base, flags: base.flags.clone() };
+    invRace.flags.on(RF.MIMIC_INV);
+
+    for (const [race, expectHeld] of [
+      [invRace, true],
+      [base, false],
+    ] as const) {
+      const state = makeState({ playerGrid: loc(10, 10) });
+      state.chunk.depth = 3;
+      const grid = loc(14, 10);
+      const mon = addMon(state, race, grid);
+      /* Make the grid unable to hold objects so floor_carry fails. */
+      state.chunk.setFeat(grid, GRANITE);
+
+      monCreateMimickedObject(state, mon, makeMimicDeps());
+
+      expect(floorPile(state, grid)).toHaveLength(0);
+      expect(mon.mimickedObj).toBe(0);
+      if (expectHeld) {
+        expect(mon.heldObj).toHaveLength(1);
+        expect(mon.heldObj[0]!.mimickingMIdx).toBe(0);
+        expect(mon.heldObj[0]!.heldMIdx).toBe(mon.midx);
+      } else {
+        expect(mon.heldObj).toHaveLength(0);
+      }
+    }
+  });
+
+  it("is inert when the caller supplies no mimic deps (mon.mimickedObj stays 0)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const race = mimicRace("creeping copper coins");
+    const grid = loc(14, 10);
+
+    placeNewMonsterOne(
+      state,
+      grid,
+      race,
+      false,
+      { index: 0, role: MON_GROUP.LEADER },
+      deps(state), // no `mimic`
+    );
+
+    const mon = squareMonster(state, grid)!;
+    expect(mon.mimickedObj).toBe(0);
+    expect(floorPile(state, grid)).toHaveLength(0);
+  });
+});
+
+describe("createMimickedObject (GameState-free core, used by the gen path)", () => {
+  it("draws from the target's own RNG/carry, not the live floor or state.rng", () => {
+    /* The generation path calls createMimickedObject with g.rng and a
+     * side-table carry (no live GameState). Prove the core is decoupled:
+     * it must draw from the supplied RNG and park the object via the supplied
+     * carry, leaving state.rng and state.floor untouched. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.chunk.depth = 3;
+    const race = mimicRace("creeping copper coins");
+    const grid = loc(14, 10);
+    const mon = addMon(state, race, grid); // no RNG drawn
+
+    const stateRngBefore = state.rng.getState();
+    const parked: Array<{ grid: Loc; obj: GameObject }> = [];
+    const ownRng = new Rng(12345);
+
+    createMimickedObject(
+      {
+        depth: state.chunk.depth,
+        rng: ownRng,
+        makeDeps: makeMimicDeps().makeDeps,
+        carry: (g, obj) => {
+          parked.push({ grid: g, obj });
+          return true;
+        },
+      },
+      mon,
+    );
+
+    /* The live state was not touched at all. */
+    expect(state.rng.getState()).toEqual(stateRngBefore);
+    expect(floorPile(state, grid)).toHaveLength(0);
+
+    /* The object went to the supplied carry, linked to the monster. */
+    expect(parked).toHaveLength(1);
+    expect(parked[0]!.grid).toEqual(grid);
+    expect(parked[0]!.obj.mimickingMIdx).toBe(mon.midx);
+    expect(mon.mimickedObj).not.toBe(0);
+  });
+
+  it("carry failure clears the mimicry (matches floor_carry rejection)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.chunk.depth = 3;
+    const race = mimicRace("potion mimic");
+    const grid = loc(14, 10);
+    const mon = addMon(state, race, grid);
+
+    createMimickedObject(
+      {
+        depth: state.chunk.depth,
+        rng: new Rng(7),
+        makeDeps: makeMimicDeps().makeDeps,
+        carry: () => false, // the grid cannot hold the object
+      },
+      mon,
+    );
+
+    expect(mon.mimickedObj).toBe(0);
+    /* No RF_MIMIC_INV on "potion mimic", so the object is dropped. */
+    expect(mon.heldObj).toHaveLength(0);
   });
 });

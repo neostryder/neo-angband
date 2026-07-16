@@ -18,16 +18,29 @@
  *   with randart_seed, i.e. it draws from the "quick" LCRNG, not the WELL
  *   stream. This port creates its Rng in quick mode to match the draw stream
  *   (new Rng(seed, { quick: true })).
- * - artifact_gen_name / wordlist (DEFERRED): upstream builds a Markov-chain
- *   name from the RANDNAME_TOLKIEN word list in the names datafile
- *   (randname.c randname_make + name_sections). Neither randname_make nor the
- *   names datafile is ported, so this module cannot reproduce the exact
- *   upstream name stream. artifactGenName instead assembles a plausible
- *   Tolkien-flavoured name deterministically from the Rng (a small syllable
- *   table, length bounded by MIN_NAME_LEN..MAX_NAME_LEN), then applies the
- *   upstream one_in_(3) "'Name'" vs "of Name" wrapper. This keeps do_randart
- *   reproducible for a given seed within this port, but its names and its RNG
- *   draw count for names differ from upstream Angband. Noted as a deferral.
+ * - artifact_gen_name / wordlist (FAITHFUL when the TOLKIEN corpus is supplied):
+ *   upstream builds a Markov-chain name from the RANDNAME_TOLKIEN word list in
+ *   the names datafile (randname.c randname_make + name_sections). randname_make
+ *   and build_prob are ported faithfully in randname.ts, and the corpus ships in
+ *   the content pack as names.json section 1 (loaded into
+ *   CoreRegistries.nameSections at boot). doRandart now accepts that word list
+ *   (tolkienWords); artifactGenName then calls randnameMake(RANDNAME_TOLKIEN,
+ *   MIN_NAME_LEN, MAX_NAME_LEN) exactly like upstream artifact_gen_name
+ *   (obj-randart.c L2713), so the name draws consume the same RNG values in the
+ *   same order and the generated names match upstream. This is verified against
+ *   an independent Python oracle in randart.test.ts.
+ *
+ *   SEAM (game path not yet faithful): the in-game caller
+ *   session/game.ts swapRandartSet() calls doRandart(reg.objects, seed) and does
+ *   NOT thread the corpus, because reg.objects is an ObjRegistry which does not
+ *   carry nameSections (that map lives on CoreRegistries). Wiring the corpus at
+ *   that call site (or onto ObjRegistry) requires editing files outside this
+ *   module's ownership (session/game.ts or obj/bind.ts). Until that one-line
+ *   change lands, doRandart falls back to a local syllable table (randNameFallback
+ *   below) so the game path never breaks and never infinite-loops on an empty
+ *   corpus - but its name draw count then differs from upstream. To close the
+ *   gap fully, game.ts should call
+ *   doRandart(reg.objects, seed, reg.nameSections.get(RANDNAME_TOLKIEN)).
  * - Spoiler file (DEFERRED): upstream do_randart optionally writes randart.txt
  *   (create_file / write_randart_entry, obj-randart.c L3057-L3215) and always
  *   writes randart.log. Both are spoiler/log dumps that never affect any
@@ -54,6 +67,7 @@ import { KF, TV } from "../generated";
 import { Rng } from "../rng";
 import type { ObjRegistry } from "./bind";
 import { tvalFindName } from "./bind";
+import { buildProb, randnameMake, type NameProbs } from "./randname";
 import {
   addAbility,
   getBaseItem,
@@ -85,6 +99,12 @@ const MAX_TRIES = 200;
 /** MIN_NAME_LEN / MAX_NAME_LEN (obj-randart.h L31-L32). */
 const MIN_NAME_LEN = 5;
 const MAX_NAME_LEN = 9;
+
+/**
+ * RANDNAME_TOLKIEN (randname.h L26): the names.txt section index whose word list
+ * feeds artifact_gen_name (obj-randart.c L2717). Section 1 in names.json.
+ */
+export const RANDNAME_TOLKIEN = 1;
 
 /* ------------------------------------------------------------------ */
 /* copy_artifact (obj-randart.c L2676)                                 */
@@ -172,8 +192,20 @@ function cloneArtifact(src: Artifact): Artifact {
 /* ------------------------------------------------------------------ */
 
 /**
- * Tolkien-flavoured syllable fragments, standing in for the RANDNAME_TOLKIEN
- * word list in the names datafile (which is not ported). See the module note.
+ * my_strcap (z-util.c L529): capitalize only the first character, leaving the
+ * rest untouched. randnameMake returns an all-lowercase word, so this matches
+ * upstream exactly.
+ */
+function myStrcap(word: string): string {
+  if (word.length === 0) return word;
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+/**
+ * Tolkien-flavoured syllable fragments used ONLY as the seam fallback when no
+ * RANDNAME_TOLKIEN corpus is supplied to doRandart (see module SEAM note). This
+ * is NOT the upstream algorithm; it keeps the game path deterministic and
+ * crash-free until game.ts threads the real corpus.
  */
 const NAME_SYLLABLES: readonly string[] = [
   "an", "ar", "el", "en", "or", "ith", "gal", "dor", "mir", "las",
@@ -182,12 +214,12 @@ const NAME_SYLLABLES: readonly string[] = [
 ];
 
 /**
- * Build a plausible name deterministically from the Rng, standing in for
- * randname.c randname_make(RANDNAME_TOLKIEN, ...). Fragments are drawn until
- * the length reaches MIN_NAME_LEN, then clamped to MAX_NAME_LEN. Deterministic
- * and bounded; not a faithful reproduction of the upstream Markov chain.
+ * Seam fallback (non-faithful): assemble a plausible name from the syllable
+ * table. Fragments are drawn until the length reaches MIN_NAME_LEN, then clamped
+ * to MAX_NAME_LEN. Deterministic and bounded; used only when doRandart has no
+ * corpus.
  */
-function randName(rng: Rng): string {
+function randNameFallback(rng: Rng): string {
   let word = "";
   while (word.length < MIN_NAME_LEN) {
     word += NAME_SYLLABLES[rng.randint0(NAME_SYLLABLES.length)]!;
@@ -197,14 +229,22 @@ function randName(rng: Rng): string {
 }
 
 /**
- * artifact_gen_name (obj-randart.c L2713): generate a random artifact name. The
- * upstream artifact argument is unused; the word list is deferred (see module
- * note). my_strcap capitalizes the first letter, then one_in_(3) selects the
- * "'Name'" form over "of Name".
+ * artifact_gen_name (obj-randart.c L2713): generate a random artifact name.
+ * Faithful to upstream: draw a Markov word from the RANDNAME_TOLKIEN corpus via
+ * randnameMake(MIN_NAME_LEN, MAX_NAME_LEN) (obj-randart.c L2717), my_strcap the
+ * first letter (L2719), then one_in_(3) selects the "'Name'" form over
+ * "of Name" (L2721-L2724). The upstream `struct artifact *a` argument is unused.
+ *
+ * `probs` is the precomputed transition table (build_prob over the corpus). When
+ * null (seam fallback, no corpus), the syllable table is used instead - this is
+ * NOT upstream-faithful and consumes a different number of RNG draws.
  */
-export function artifactGenName(rng: Rng): string {
-  const word = randName(rng);
-  const capped = word.charAt(0).toUpperCase() + word.slice(1);
+export function artifactGenName(rng: Rng, probs: NameProbs | null): string {
+  const word =
+    probs !== null
+      ? randnameMake(rng, MIN_NAME_LEN, MAX_NAME_LEN, probs)
+      : randNameFallback(rng);
+  const capped = myStrcap(word);
   if (rng.oneIn(3)) return `'${capped}'`;
   return `of ${capped}`;
 }
@@ -244,6 +284,7 @@ export function designArtifact(
   tv: number,
   aidx: number,
   rng: Rng,
+  nameProbs: NameProbs | null,
 ): number {
   /* Defensive guard (upstream relies on aidx staying in range). */
   if (aidx < 1 || aidx >= arts.length) return aidx;
@@ -267,7 +308,7 @@ export function designArtifact(
   );
 
   /* Choose a name. */
-  const newName = artifactGenName(rng);
+  const newName = artifactGenName(rng, nameProbs);
 
   /* Skip fixed artifacts (stale-kind quirk preserved: kindAtEntry). */
   while (
@@ -425,6 +466,7 @@ export function createArtifactSet(
   arts: (Artifact | null)[],
   data: ArtifactSetData,
   rng: Rng,
+  nameProbs: NameProbs | null,
 ): void {
   let aidx = 1;
   const tvalTotal = new Array<number>(TV_MAX).fill(0);
@@ -442,7 +484,7 @@ export function createArtifactSet(
     /* Multiple passes through tvals until all have enough artifacts. */
     for (let i = 0; i < TV_MAX; i++) {
       if (tvalTotal[i]! > 0) {
-        aidx = designArtifact(reg, arts, data, i, aidx, rng);
+        aidx = designArtifact(reg, arts, data, i, aidx, rng, nameProbs);
         tvalTotal[i]!--;
         aidx++;
         notDone = true;
@@ -452,7 +494,7 @@ export function createArtifactSet(
 
   /* Allocate remaining artifacts at random. */
   while (aidx < arts.length - 1) {
-    aidx = designArtifact(reg, arts, data, TV.NULL, aidx, rng);
+    aidx = designArtifact(reg, arts, data, TV.NULL, aidx, rng, nameProbs);
     aidx++;
   }
 }
@@ -477,9 +519,21 @@ export function createArtifactSet(
 export function doRandart(
   reg: ObjRegistry,
   randartSeed: number,
+  tolkienWords?: readonly string[],
 ): (Artifact | null)[] {
   /* Prepare to use the Angband "simple" (quick LCRNG) RNG. */
   const rng = new Rng(randartSeed, { quick: true });
+
+  /*
+   * Build the RANDNAME_TOLKIEN transition table once (build_prob is cached
+   * per-type upstream, randname.c L94-L103; here we build it once per run).
+   * When no corpus is supplied (the current game-path seam), fall back to the
+   * non-faithful syllable generator (see module SEAM note). An empty word list
+   * is treated as "no corpus" because build_prob/randname_make would otherwise
+   * loop forever on an empty table.
+   */
+  const nameProbs: NameProbs | null =
+    tolkienWords && tolkienWords.length > 0 ? buildProb(tolkienWords) : null;
 
   /* Store the original power ratings and determine generation probabilities. */
   const data = collectArtifactData(reg, rng);
@@ -490,7 +544,7 @@ export function doRandart(
   );
 
   /* Generate the random artifacts. */
-  createArtifactSet(reg, arts, data, rng);
+  createArtifactSet(reg, arts, data, rng, nameProbs);
 
   return arts;
 }

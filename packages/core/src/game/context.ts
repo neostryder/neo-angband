@@ -429,6 +429,15 @@ export interface GameState {
    */
   onArtifactFound?: (art: import("../obj/types").Artifact) => void;
   /**
+   * history_lose_artifact (player-history.c L246): fires when a known artifact
+   * is lost - destroyed by an effect (effect-handler-attack/general.c),
+   * abandoned on a regenerated level (generate.c), or discarded by a store the
+   * player sold it to (store.c do_cmd_sell / store_delete_random / store_maint).
+   * Installed by the session (wireGame); marks the artifact's history entry
+   * "Missed", or logs a fresh one.
+   */
+  onArtifactLost?: (art: import("../obj/types").Artifact) => void;
+  /**
    * py_attack's message slice: runs after the player melees a monster, with
    * the full blow-by-blow result (hits, damage, crit HitType, and whether the
    * monster died). The combat code returns only HitType keys - the text is a UI

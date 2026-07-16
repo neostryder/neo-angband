@@ -138,12 +138,30 @@ The same game everywhere. This table is the honest, per-surface difference list
 Notes:
 1. The web build inlines every mod at build time and has no runtime code loader,
    so it cannot fetch and run a mod from a URL. The in-app mod manager says so
-   rather than showing a dead button. Bundled mods are fully manageable.
+   rather than showing a dead button. Bundled mods are fully manageable. (A
+   runtime mod-loader that lets a plain static site or PWA load user content-pack
+   and sandboxed-plugin mods from a file picker / drag-drop is a planned mods-
+   phase feature; it is an implementation gap, not a platform limitation.)
 2. The desktop build serves a user `mods/` folder; loading runtime mods from it
    is the next desktop increment (the serving seam is already in place).
 3. GitHub Pages and most static hosts cannot send custom headers, so cross-
    origin isolation is unavailable there. It is never required - the trusted
    in-process mod tier works on every surface.
+
+### Saves are per-surface
+
+Your character save lives in **IndexedDB, scoped to the specific app/origin you
+play on**. That means a character created in a browser tab is not automatically
+visible in the installed PWA on a different origin, in the Electron desktop app,
+or on a different host - each is its own storage sandbox. This is normal browser
+behavior, not data loss.
+
+To move a character between surfaces, use the built-in **save export / import**:
+export your character to a file from one surface and import it on another. Export
+/ import is a first-class, free primitive on every surface (it is also the manual
+alternative to the paid cross-device save-sync feature). Keep an exported copy as
+a backup, since a single character save is overwritten in place (terminal death,
+no restore points - faithful to the original).
 
 ---
 
