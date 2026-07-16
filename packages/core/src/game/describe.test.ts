@@ -62,7 +62,7 @@ describe("describeObject / object_desc (obj-desc.c L607)", () => {
     );
   });
 
-  it("hides combat bonuses until their runes are known", () => {
+  it("shows combat bonuses from birth, and hides them only if the rune is cleared", () => {
     const state = freshState();
     const kind = makeKind("& Dagger~", TV.SWORD, { dd: 1, ds: 4 });
     const obj = makeObj(kind, {
@@ -71,15 +71,17 @@ describe("describeObject / object_desc (obj-desc.c L607)", () => {
       notice: OBJ_NOTICE.ASSESSED,
     });
 
-    /* Blank knowledge: the +to_h,+to_d rune is unknown, so no (+5,+3). */
-    const hidden = describeObject(state, obj, ODESC.PREFIX | ODESC.FULL);
-    expect(hidden).not.toContain("+5");
-
-    /* Learn the combat runes: the bonuses now show. */
-    state.actor.player.objKnown.toH = 1;
-    state.actor.player.objKnown.toD = 1;
+    /* Combat runes are known from birth (do_cmd_accept_character, player-birth.c
+     * L1264-1267), so the +to_h,+to_d show even on an unidentified item. */
     const shown = describeObject(state, obj, ODESC.PREFIX | ODESC.FULL);
     expect(shown).toContain("+5,+3");
+
+    /* The gating machinery is still real: clear the runes and the bonuses
+     * vanish (the known-shadow multiplies each bonus by obj_k->to_h/to_d). */
+    state.actor.player.objKnown.toH = 0;
+    state.actor.player.objKnown.toD = 0;
+    const hidden = describeObject(state, obj, ODESC.PREFIX | ODESC.FULL);
+    expect(hidden).not.toContain("+5");
   });
 
   it("does not leak a flavoured kind's identity while unaware", () => {
