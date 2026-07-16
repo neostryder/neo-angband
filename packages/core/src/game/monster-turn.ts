@@ -79,8 +79,6 @@
  *   from process_monster, not monster_turn): needs mon_take_nonplayer_hit
  *   (monster_death / delete_monster_idx), which is not ported; only the
  *   movement-driving predicate is ported here.
- * - Group surround (mon-move.c L934): draws randint0(8), so porting it alone
- *   would perturb the RNG stream; left as an inert deferred conditional.
  * - react_to_slay pickup safety, the confused-move / door-burst / glyph-break /
  *   decoy-destroy UI messages and disturb, and the remaining monster-lore
  *   updates. None of these draw RNG until taken, so the RNG order for the ported
@@ -774,8 +772,8 @@ interface MoveDecision {
 /**
  * get_move: decide whether and where the monster wants to step. Returns the
  * side_dirs row index for the movement loop. The RF_GROUP_AI pack-ambush branch
- * (get_move_find_hiding) is ported; only the group-surround branch (L934, which
- * draws randint0(8)) stays DEFERRED so the RNG stream is not perturbed.
+ * (get_move_find_hiding) and the group-surround branch (mon-move.c L932, which
+ * draws randint0(8)) are both ported, so the RNG draw order matches upstream.
  */
 export function getMove(mon: Monster, state: GameState): MoveDecision {
   const fleeRange = state.z.maxSight + state.z.fleeRange;
@@ -864,9 +862,28 @@ export function getMove(mon: Monster, state: GameState): MoveDecision {
     done = true;
   }
 
-  /* Group surround (mon-move.c L934) DEFERRED: it draws randint0(8) to pick a
-   * grid near the player, so porting it in isolation would perturb the RNG
-   * stream; left as an inert conditional in its upstream position. */
+  /* Monster groups try to surround the player if they're in sight
+   * (mon-move.c L932). When not already adjacent (cdis > 1) it draws
+   * randint0(8) to pick a pseudo-random starting direction, then fills the
+   * first empty grid near the player from there; if none is empty grid1 keeps
+   * the last computed offset (matching the C loop's fall-through). */
+  if (!done && groupAi && squareIsView(state.chunk, mon.grid)) {
+    let grid1: Loc = mon.target.grid;
+    if (mon.cdis > 1) {
+      const preds = {
+        isPlayerTrap: (g: Loc): boolean => squareIsPlayerTrap(state, g),
+        isWebbed: (g: Loc): boolean => squareIsWebbed(state, g),
+        isWarded: (g: Loc): boolean => squareIsWarded(state, g),
+      };
+      const tmp = state.rng.randint0(8);
+      for (let i = 0; i < 8; i++) {
+        grid1 = locSum(target, DDGRID_DDD[(tmp + i) % 8] as Loc);
+        if (!squareIsEmptyLive(state, grid1, preds)) continue;
+        break;
+      }
+    }
+    grid = locDiff(grid1, mon.grid);
+  }
 
   if (locIsZero(grid)) return { move: false, dir: 0, tracking: track.value };
 

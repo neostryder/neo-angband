@@ -26,7 +26,7 @@ Legend: [ ] open, [~] in progress, [x] done.
   transition (regenerate vs restore). Extend the save format to serialize the
   chunk cache. Must be exact parity for UNMODDED saves. Reference:
   `reference/src/gen-chunk.c`, `generate.c` (prepare_next_level).
-- [ ] **A2. Identical randart names** (decision 25). `obj/randart.ts` uses a
+- [x] **A2. Identical randart names** (decision 25). `obj/randart.ts` uses a
   local syllable table; upstream `artifact_gen_name` (obj-randart.c L2713) calls
   `randname_make(RANDNAME_TOLKIEN, ...)`. `randname_make` is ALREADY ported
   (`obj/randname.ts`). Fix: compile the RANDNAME_TOLKIEN section of
@@ -42,17 +42,18 @@ Legend: [ ] open, [~] in progress, [x] done.
   wire them; (c) the shadow mirrors the live object's `notice` rather than
   carrying its own. Decide: keep on-demand synthesis but make it byte-identical,
   OR adopt the persistent per-object twin upstream uses. Exact behavior required.
-- [ ] **A4. Object-mimic appearance exact** (#71). Object-mimic PLACEMENT is
+- [x] **A4. Object-mimic appearance exact** (#71). Object-mimic PLACEMENT is
   unported (`mon.mimickedObj` is always 0 in live play), and the RF_MIMIC_INV
   give-a-copy branch is deferred (needs object_copy). Port both so mimicked
   objects spawn and reveal exactly as upstream. Reference: `mon-make.c`,
   `gen-monster.c`, `mon-move.c` reveal path.
-- [ ] **A5. get_move_find_hiding + pack-ambush** (mon-move.c). Port
-  `get_move_find_hiding` (L613) AND its caller, the `group_ai` ambush branch
-  (L890-907), exactly. Porting these makes the RNG draw order MATCH upstream --
-  omitting them is the deviation. Remove the "deferred faithfully" note in the
-  punchlist once done.
-- [ ] **A6. Zero UI-lore gaps.** Close every deferred lore/display item so
+- [x] **A5. get_move_find_hiding + pack-ambush + group-surround** (mon-move.c).
+  `get_move_find_hiding` (L613), the `group_ai` ambush branch (L889-915), AND
+  the group-surround branch (L932, which draws `randint0(8)`) are all ported at
+  their exact upstream positions, so the RNG draw order matches upstream. Golden
+  tests cover the hiding-square selection, the boxed-in ambush diversion, and
+  the surround fill (skip-filled + fall-through). Done.
+- [x] **A6. Zero UI-lore gaps.** Close every deferred lore/display item so
   monster/object knowledge presentation matches upstream: spell/blow color by
   KNOWN resist (mon-lore.c spellColor/blowColor), the `~` knowledge-menu monster
   browser, `get_history` population on the character sheet, EB equipment

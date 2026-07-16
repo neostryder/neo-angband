@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FEAT, MFLAG, MON_TMD, OF, RF, SQUARE, TRF, TV } from "../generated";
 import { FlagSet } from "../bitflag";
-import { distance, loc } from "../loc";
+import { distance, loc, locDiff } from "../loc";
 import type { Loc } from "../loc";
 import { makeNoise } from "../world/flow";
 import { GROUP_TYPE } from "../mon/monster";
@@ -18,6 +18,7 @@ import {
   STAGGER,
   getMove,
   getMoveBodyguard,
+  getMoveChooseDirection,
   getMoveFindHiding,
   monsterCheckActive,
   monsterTurn,
@@ -570,8 +571,9 @@ describe("group AI: pack ambush (get_move_find_hiding)", () => {
    * pack monster to a hiding square. We box the player in so open < 5, mark the
    * monster's grid in view so get_move_advance beelines (no RNG on that path),
    * and confirm the branch overrides the advance target with the L613 hiding
-   * square, clears MFLAG_TRACKING, and draws no RNG (the whole path is a pure
-   * scan; the RNG-drawing surround branch at L934 stays deferred).
+   * square, clears MFLAG_TRACKING, and draws no RNG (the pack-ambush scan is
+   * pure; the monster's grid is not in view here, so the RNG-drawing surround
+   * branch at L932 does not run).
    */
   it("get_move diverts a boxed-in player's attacker to the ambush square", () => {
     const state = makeState({ playerGrid: loc(15, 10) });
@@ -612,6 +614,42 @@ describe("group AI: pack ambush (get_move_find_hiding)", () => {
 
     /* Advance beelines straight at the player; no ambush diversion. */
     expect(mon.target.grid).toEqual(loc(15, 10));
+  });
+
+  /**
+   * Group surround (mon-move.c L932): a healthy player in the OPEN and in the
+   * monster's line of sight triggers the surround branch. We occupy 7 of the
+   * player's 8 neighbours with filler monsters, leaving only (15,9) empty.
+   * Monsters do not change passability, so the pack-ambush open-count stays
+   * >= 5 and that branch is skipped; the monster is not afraid; and its grid is
+   * in view. cdis (5) > 1, so the branch draws randint0(8) for a start offset
+   * and then fills the first EMPTY neighbour of the player -- which, whatever
+   * the roll, can only be (15,9). The chosen step is therefore deterministic
+   * and cross-checks the port's square_isempty skip + fall-through.
+   */
+  it("surrounds a player in the open, filling the one empty neighbour (golden)", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = addMon(state, makeRace({ level: 10, flags: [RF.GROUP_AI] }), loc(20, 10));
+    state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+    const filler = makeRace({ level: 1 });
+    for (const g of [
+      loc(14, 9), loc(16, 9),
+      loc(14, 10), loc(16, 10),
+      loc(14, 11), loc(15, 11), loc(16, 11),
+    ]) {
+      addMon(state, filler, g);
+    }
+    updateMonsterDistances(state);
+    const before = JSON.stringify(state.rng.getState());
+
+    const decision = getMove(mon, state);
+
+    /* The branch executed and drew from the RNG (randint0(8)). */
+    expect(JSON.stringify(state.rng.getState())).not.toBe(before);
+    /* It steered toward the only empty neighbour of the player, (15,9). */
+    const expectedDir = getMoveChooseDirection(locDiff(loc(15, 9), mon.grid), state.turn);
+    expect(decision.move).toBe(true);
+    expect(decision.dir).toBe(expectedDir);
   });
 });
 
