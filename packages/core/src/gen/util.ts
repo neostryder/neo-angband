@@ -50,6 +50,7 @@ import type { MakeDeps, MakeObjectRating } from "../obj/make";
 import { makeGold, makeObject } from "../obj/make";
 import type { Monster, MonsterGroupInfo } from "../mon/monster";
 import { createMonster, type MonAllocTable } from "../mon/make";
+import { createMimickedObject } from "../game/mon-place";
 import type { MonsterRace } from "../mon/types";
 import type { ResolvedPit } from "./gen-monster";
 import { MON_GROUP } from "../mon/types";
@@ -1412,8 +1413,9 @@ export function vaultTraps(
 
 /**
  * place_new_monster_one, reduced to the generation-time subset: build the
- * monster and attach it if the grid is free. The live-cave concerns (mimicked
- * objects, drops, level rating, update_mon) attach with their subsystems.
+ * monster and attach it if the grid is free. The live-cave concerns (drops,
+ * update_mon) attach with their subsystems; object-mimic creation IS wired
+ * here (see below).
  */
 function placeNewMonsterOne(
   g: Gen,
@@ -1439,6 +1441,39 @@ function placeNewMonsterOne(
     groupRole: info.role,
   });
   g.attachMonster(grid, mon, g.nextMonIndex());
+
+  /* Make mimics start mimicking (mon-make.c place_monster L1044-1051): the
+   * generation placement path is the twin of place_new_monster_one ->
+   * place_monster, so the mimic object is created here, at the position that
+   * corresponds to just after mon_create_drop. Every vanilla mimic race carries
+   * no drops, so mon_create_drop draws zero RNG for them - the mimic object's
+   * draws therefore land at the same generation-RNG position as upstream,
+   * whether or not the port defers drops. Upstream's `origin` gate is implicit:
+   * generation placement always passes a nonzero origin (ORIGIN_DROP), so the
+   * gate reduces to a nonempty mimic_kinds. The object is parked on the Gen
+   * side-table (no live floor yet); session/game.ts populateFromLevel re-carries
+   * it via floor_carry and installs the monster with its mimicked_obj link, the
+   * generation midx matching the live midx it is re-assigned. Inert unless the
+   * generation supplies object-make deps. */
+  if (g.objDeps && race.mimicKinds.length > 0) {
+    createMimickedObject(
+      {
+        depth: g.c.depth,
+        rng: g.rng,
+        makeDeps: g.objDeps,
+        /* floor_carry during generation: the mimic monster sits on an empty
+         * floor grid (squareIsEmpty required no object), so the object parks
+         * with no stacking. Fails only on a non-object-holding grid, exactly
+         * as floor_carry's square_isobject_holding gate. */
+        carry: (cgrid, obj) => {
+          if (!g.c.isObjectHolding(cgrid)) return false;
+          g.addObject(cgrid, obj);
+          return true;
+        },
+      },
+      mon,
+    );
+  }
   return true;
 }
 

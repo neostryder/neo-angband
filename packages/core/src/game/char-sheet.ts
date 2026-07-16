@@ -114,8 +114,9 @@ export interface CharSheetDeps {
   seeInfra?: number;
   /**
    * player->state.stat_add[STAT_MAX] (display_player_stat_info L496): the
-   * equipment stat bonuses. Default all-zero (no computed player_state; the
-   * equipment contribution is deferred like display.ts's statUse).
+   * equipment stat bonuses. The live shell passes state.playerState.statAdd
+   * (calc_bonuses' rune-gated equipment stat_add); the all-zero default applies
+   * only when no computed player_state is supplied (a bare headless call).
    */
   statAdd?: readonly number[];
   /**

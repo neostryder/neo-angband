@@ -42,7 +42,7 @@ import {
   COLOUR_WHITE,
   colorTextToAttr,
 } from "../color";
-import { MON_RACE_FLAG_ENTRIES, PROJ, RF } from "../generated";
+import { EF, MON_RACE_FLAG_ENTRIES, OF, PROJ, RF } from "../generated";
 import { createMonFlagMask, monsterFlagsKnown } from "./lore";
 import type { MonsterLore } from "./lore";
 import { EXTRACT_ENERGY } from "./monster";
@@ -477,6 +477,200 @@ function blowColor(deps: LoreDeps, effect: BlowEffect): number {
   if (deps.blowColor) return deps.blowColor(effect);
   const attr = colorTextToAttr(effect.loreColorBase);
   return attr < 0 ? COLOUR_WHITE : attr;
+}
+
+/* ------------------------------------------------------------------ *
+ * spell_color / blow_color (mon-lore.c L59-276): the player-resistance-
+ * aware danger recolouring of a monster's listed spells and blows.
+ *
+ * Upstream reads these off the global player's known_state (the rune-gated
+ * resists / protections / save skill / stat_ind) and scans the pack; here the
+ * live known-state is injected as LoreColorState so the module stays pure.
+ * The UI layer wires spellColorFor/blowColorFor as LoreDeps.spellColor /
+ * blowColor (main.ts recallDeps), so a monster's spells/blows are coloured by
+ * whether the player actually resists them, exactly as ui-mon-lore.c renders.
+ * ------------------------------------------------------------------ */
+
+/**
+ * The player known-state inputs spell_color / blow_color read (mon-lore.c
+ * p->known_state and the pack scans). Built by the UI layer from the live
+ * derived player_state so the recolouring reflects worn (known) resistances.
+ */
+export interface LoreColorState {
+  /** known_state.skills[SKILL_SAVE] (mon-lore.c L82). */
+  saveSkill: number;
+  /** known_state.el_info[elem].res_level, by PROJ_/ELEM_ index (3 == immune). */
+  resLevel: (elem: number) => number;
+  /** of_has(known_state.flags, OF_*), by OF_ index. */
+  hasFlag: (of: number) => boolean;
+  /**
+   * player_inc_check(p, subtype, true) for an EF_TIMED_INC subtype: whether the
+   * given timed effect (a TMD_ name) could land on the player (mon-lore.c L92).
+   */
+  incCheck: (timedName: string) => boolean;
+  /** p->lev + adj_dex_safe[stat_ind[STAT_DEX]] >= 100 (theft blows, L208). */
+  theftSafe: boolean;
+  /** A pack item that can hold charges and has pval > 0 (drain-charges, L216). */
+  hasChargeItem: boolean;
+  /** A pack item that is edible (eat-food blows, L231). */
+  hasEdible: boolean;
+  /** The wielded light burns fuel: obj && timeout && !OF_NO_FUEL (eat-light, L246). */
+  lightBurning: boolean;
+}
+
+/**
+ * A lore colour name -> attr, with unknown/unset mapped to COLOUR_DARK (0) to
+ * match the zero-initialised lore_attr_resist / lore_attr_immune the C tests
+ * with `!level->lore_attr_resist` (mon-lore.c L75, L183).
+ */
+function loreAttrOrDark(name: string): number {
+  const a = colorTextToAttr(name);
+  return a < 0 ? COLOUR_DARK : a;
+}
+
+/**
+ * A base lore colour name -> attr, unknown mapped to COLOUR_WHITE (the same
+ * default the plain spellColor/blowColor helpers above use).
+ */
+function loreAttrOrWhite(name: string): number {
+  const a = colorTextToAttr(name);
+  return a < 0 ? COLOUR_WHITE : a;
+}
+
+/** spell_color (mon-lore.c L59): the danger colour of a monster spell. */
+export function spellColorFor(
+  race: MonsterRace,
+  spellIndex: number,
+  spells: ReadonlyMap<number, MonsterSpell>,
+  st: LoreColorState,
+): number {
+  const spell = spells.get(spellIndex);
+  /* No spell (L67). */
+  if (!spell) return COLOUR_DARK;
+
+  /* Get the right level (L70-72). */
+  const level = spellLevelFor(spell, race);
+  const base = loreAttrOrWhite(level.loreColorBase);
+  const resist = loreAttrOrDark(level.loreColorResist);
+  const immune = loreAttrOrDark(level.loreColorImmune);
+
+  /* Unresistable spells just use the default color (L74-77). */
+  if (!resist && !immune) return base;
+
+  const eff = spell.effects[0];
+  const effIndex = eff ? (EF as Record<string, number>)[eff.eff] : undefined;
+
+  /* Spells with a save (L80-115). */
+  if (level.saveMessage) {
+    if (st.saveSkill < 100) {
+      if (effIndex === EF.TELEPORT_LEVEL) {
+        /* Special case - teleport level (L83-89). */
+        return st.resLevel(PROJ.NEXUS) > 0 ? resist : base;
+      }
+      if (effIndex === EF.TIMED_INC) {
+        /* Simple timed effects (L90-96). */
+        return st.incCheck(eff?.type ?? "") ? base : resist;
+      }
+      if (immune) {
+        /* Multiple timed effects plus damage (L97-105). */
+        for (const e of spell.effects) {
+          if ((EF as Record<string, number>)[e.eff] !== EF.TIMED_INC) continue;
+          if (st.incCheck(e.type ?? "")) return base;
+        }
+        return resist;
+      }
+      /* Straight damage (L106-108). */
+      return base;
+    }
+    if (immune) return immune; /* L110-111 */
+    return resist; /* L112-113 */
+  }
+
+  /* Bolts, balls and breaths (L117-166). */
+  if (effIndex === EF.BOLT || effIndex === EF.BALL || effIndex === EF.BREATH) {
+    const subtype = eff?.type ? (PROJ as Record<string, number>)[eff.type] : undefined;
+    switch (subtype) {
+      /* Special case - sound (L123-131). */
+      case PROJ.SOUND:
+        if (st.resLevel(PROJ.SOUND) > 0) return immune;
+        if (st.hasFlag(OF.PROT_STUN)) return resist;
+        return base;
+      /* Special case - nexus (L133-141). */
+      case PROJ.NEXUS:
+        if (st.resLevel(PROJ.NEXUS) > 0) return immune;
+        if (st.saveSkill >= 100) return resist;
+        return base;
+      /* Elements that stun or confuse (L143-155). */
+      case PROJ.FORCE:
+      case PROJ.ICE:
+      case PROJ.PLASMA:
+      case PROJ.WATER:
+        if (!st.hasFlag(OF.PROT_STUN)) return base;
+        if (!st.hasFlag(OF.PROT_CONF) && subtype === PROJ.WATER) return base;
+        return resist;
+      /* All other elements (L157-164). */
+      default: {
+        if (subtype === undefined) return base;
+        const rl = st.resLevel(subtype);
+        if (rl === 3) return immune;
+        if (rl > 0) return resist;
+        return base;
+      }
+    }
+  }
+
+  return base; /* L168 */
+}
+
+/** blow_color (mon-lore.c L178): the danger colour of a monster melee blow. */
+export function blowColorFor(effect: BlowEffect, st: LoreColorState): number {
+  const base = loreAttrOrWhite(effect.loreColorBase);
+  const resist = loreAttrOrDark(effect.loreColorResist);
+  const immune = loreAttrOrDark(effect.loreColorImmune);
+
+  /* Some blows just use the default color (L182-185). */
+  if (!resist && !immune) return base;
+
+  /* Effects with immunities are straightforward (L187-204). proj_name_to_idx
+   * of the blow's element name gives the el_info slot (the loop L191-195 just
+   * finds i == that index for ACID..COLD). */
+  if (immune) {
+    const i = (PROJ as Record<string, number>)[effect.name];
+    const rl = i === undefined ? 0 : st.resLevel(i);
+    if (rl === 3) return immune;
+    if (rl > 0) return resist;
+    return base;
+  }
+
+  /* Now look at what player attributes can protect from the effects (L206-273). */
+  switch (effect.effectType) {
+    case "theft":
+      return st.theftSafe ? resist : base;
+    case "drain":
+      return st.hasChargeItem ? base : resist;
+    case "eat-food":
+      return st.hasEdible ? base : resist;
+    case "eat-light":
+      return st.lightBurning ? base : resist;
+    case "element": {
+      const i = effect.resist ? (PROJ as Record<string, number>)[effect.resist] : undefined;
+      return i !== undefined && st.resLevel(i) > 0 ? resist : base;
+    }
+    case "flag": {
+      const of = effect.resist ? (OF as Record<string, number>)[effect.resist] : undefined;
+      return of !== undefined && st.hasFlag(of) ? resist : base;
+    }
+    case "all_sustains":
+      return st.hasFlag(OF.SUST_STR) &&
+        st.hasFlag(OF.SUST_INT) &&
+        st.hasFlag(OF.SUST_WIS) &&
+        st.hasFlag(OF.SUST_DEX) &&
+        st.hasFlag(OF.SUST_CON)
+        ? resist
+        : base;
+    default:
+      return base; /* L275 */
+  }
 }
 
 /* ------------------------------------------------------------------ *

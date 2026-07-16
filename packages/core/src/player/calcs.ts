@@ -355,7 +355,7 @@ export function calcSkills(
  * because the deferred launcher/weapon weight analysis will need it.
  */
 export interface PlayerState {
-  /** stat_add[STAT_MAX]: equipment stat bonuses (equipment DEFERRED: 0). */
+  /** stat_add[STAT_MAX]: equipment stat bonuses (rune-gated, decision 25). */
   statAdd: number[];
   /** stat_ind[STAT_MAX]: indices into the adj_* stat tables. */
   statInd: number[];
