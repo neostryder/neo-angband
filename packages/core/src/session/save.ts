@@ -36,7 +36,7 @@ import type { Player, PlayerQuest } from "../player/player";
 import type { PlayerRegistry } from "../player/bind";
 import type { HistoryInfo } from "../player/history";
 import type { TrapKind } from "../world/trap";
-import type { GameState, MonsterGroup } from "../game/context";
+import type { GameState, MonsterGroup, StoredLevel } from "../game/context";
 import type { Trap } from "../game/trap";
 import type { Gear } from "../game/gear";
 import { newKnownMap } from "../game/known";
@@ -758,6 +758,14 @@ export interface SavedGame {
    * prompt once and sets this so it never nags again. Absent = not yet shown.
    */
   orphansAcknowledged?: boolean;
+  /**
+   * birth_levels_persist (#30) frozen-level cache (game/context.ts StoredLevel),
+   * one entry per cached depth, reusing the same chunk / monster / floor / trap /
+   * known serializers as the current level. Optional / absent when the option is
+   * off (the default) or no level has been frozen: older and default saves load
+   * with an empty cache (back-compat, like every other optional field here).
+   */
+  levelCache?: SavedStoredLevel[];
 }
 
 /** Serialized map knowledge (remembered terrain and floor objects). */
@@ -858,6 +866,7 @@ export function serializeGame(
   }
   const chunk = state.chunk.snapshotSquares();
   const knownFeat = Array.from(state.known.feat);
+  const savedLevelCache = serializeLevelCache(state.levelCache, ids);
   return {
     version: SAVE_VERSION,
     player: serializePlayer(state.actor.player, ids),
@@ -898,6 +907,7 @@ export function serializeGame(
           ),
         }
       : {}),
+    ...(savedLevelCache ? { levelCache: savedLevelCache } : {}),
     known: {
       feat: knownFeat,
       objects: Array.from(state.known.objects.entries()).map(([i, m]) => [
@@ -1125,6 +1135,133 @@ export function deserializeChunk(
   }
   chunk.restoreSquares(data);
   return chunk;
+}
+
+/* ------------------------------------------------------------------ *
+ * birth_levels_persist frozen-level cache (game/context.ts StoredLevel).
+ * ------------------------------------------------------------------ */
+
+/** One serialized frozen level: the same field-set as the current level. */
+export interface SavedStoredLevel {
+  depth: number;
+  /** Game turn the level was frozen at (restore_monsters recovery baseline). */
+  turn: number;
+  chunk: ChunkSquaresData;
+  featLegend?: Array<[number, string]>;
+  monsters: Array<SavedMonster | null>;
+  groups: Array<MonsterGroup | null>;
+  floor: Array<{ x: number; y: number; objs: SavedObject[] }>;
+  traps: Array<{ x: number; y: number; traps: SavedTrap[] }>;
+  known: SavedKnown;
+  decoy?: { x: number; y: number } | null;
+}
+
+/** Serialize one frozen level, reusing the current-level serializers. */
+function serializeStoredLevel(
+  depth: number,
+  level: StoredLevel,
+  ids: ContentIdResolver,
+): SavedStoredLevel {
+  const floor: SavedStoredLevel["floor"] = [];
+  for (const pile of level.floor.values()) {
+    const head = pile[0];
+    if (!head || !head.grid) continue;
+    floor.push({
+      x: head.grid.x,
+      y: head.grid.y,
+      objs: pile.map((o) => serializeObject(o, ids)),
+    });
+  }
+  const traps: SavedStoredLevel["traps"] = [];
+  for (const list of level.traps.values()) {
+    const head = list[0];
+    if (!head) continue;
+    traps.push({
+      x: head.grid.x,
+      y: head.grid.y,
+      traps: list.map((t) => ({
+        trapId: ids.trapId(t.tidx),
+        grid: { x: t.grid.x, y: t.grid.y },
+        power: t.power,
+        timeout: t.timeout,
+        flags: Array.from(t.flags.bits),
+      })),
+    });
+  }
+  const chunk = level.chunk.snapshotSquares();
+  const knownFeat = Array.from(level.known.feat);
+  return {
+    depth,
+    turn: level.turn,
+    chunk,
+    featLegend: buildFeatLegend(chunk.feats, knownFeat, ids),
+    monsters: level.monsters.map((m) => (m ? serializeMonster(m, ids) : null)),
+    groups: level.groups.map((g) =>
+      g ? { index: g.index, leader: g.leader, members: [...g.members] } : null,
+    ),
+    floor,
+    traps,
+    known: {
+      feat: knownFeat,
+      objects: Array.from(level.known.objects.entries()).map(([i, m]) => [
+        i,
+        { ch: m.ch, attr: m.attr },
+      ]),
+    },
+    decoy: level.decoy ? { x: level.decoy.x, y: level.decoy.y } : null,
+  };
+}
+
+/** Serialize the whole frozen-level cache (empty / absent => omitted). */
+export function serializeLevelCache(
+  cache: Map<number, StoredLevel> | undefined,
+  ids: ContentIdResolver,
+): SavedStoredLevel[] | undefined {
+  if (!cache || cache.size === 0) return undefined;
+  return Array.from(cache.entries()).map(([depth, level]) =>
+    serializeStoredLevel(depth, level, ids),
+  );
+}
+
+/**
+ * Rebuild the frozen-level cache (absent in older / default saves: empty).
+ * Reuses the current-level deserializers so a cached level round-trips exactly
+ * like the live one, including per-level feature-legend remapping.
+ */
+export function deserializeLevelCache(
+  data: SavedStoredLevel[] | undefined,
+  features: Chunk["features"],
+  monsters: MonsterRegistry,
+  objects: ObjRegistry,
+  traps: readonly TrapKind[] | null | undefined,
+  ids: ContentIdResolver,
+): Map<number, StoredLevel> {
+  const cache = new Map<number, StoredLevel>();
+  if (!data) return cache;
+  for (const entry of data) {
+    const featRemap = buildFeatRemap(entry.featLegend, ids);
+    const chunk = deserializeChunk(entry.chunk, features, featRemap);
+    chunk.turn = entry.turn;
+    cache.set(entry.depth, {
+      chunk,
+      monsters: entry.monsters.map((m) =>
+        m ? deserializeMonster(m, monsters, objects, ids) : null,
+      ),
+      groups: entry.groups.map((g) =>
+        g
+          ? { index: g.index, leader: g.leader, members: [...g.members] }
+          : null,
+      ),
+      floor: deserializeFloor(entry.floor, objects, chunk.width, ids),
+      traps: traps
+        ? deserializeTraps(entry.traps, traps, chunk.width, ids)
+        : new Map(),
+      known: deserializeKnown(entry.known, chunk.width, chunk.height, featRemap),
+      decoy: entry.decoy ? loc(entry.decoy.x, entry.decoy.y) : null,
+      turn: entry.turn,
+    });
+  }
+  return cache;
 }
 
 /* ------------------------------------------------------------------ *

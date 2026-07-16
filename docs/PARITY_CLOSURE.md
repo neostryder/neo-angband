@@ -20,12 +20,22 @@ Legend: [ ] open, [~] in progress, [x] done.
 
 ## A. Core gameplay parity gaps
 
-- [ ] **A1. Persistent levels** (`birth_levels_persist`, decision 8). Port
-  `gen-chunk.c`: the chunk store (`chunk_list`/`chunk_find`), `chunk_write`/
-  `chunk_read` snapshot+restore, and the persist-aware branch in level
-  transition (regenerate vs restore). Extend the save format to serialize the
-  chunk cache. Must be exact parity for UNMODDED saves. Reference:
-  `reference/src/gen-chunk.c`, `generate.c` (prepare_next_level).
+- [x] **A1. Persistent levels** (`birth_levels_persist`, decision 8). DONE.
+  Generalized the proven in-memory arena-stash into a depth-keyed, serializable
+  `state.levelCache`, gated on the option (OFF by default, so default play is
+  unchanged). On leaving a persistent level: compact_monsters + clear player
+  marker + stamp freeze-turn + store (cave_store, generate.c L1366); wipe/
+  artifact-loss skipped under persist. On entering: if cached, restore the
+  level, run the ported `restore_monsters` (regen + timed reduction over elapsed
+  turns), sanitize_player_loc + player_place, and remove from cache (else
+  generate fresh). Save format extended with an optional `levelCache` reusing
+  the existing chunk/monster/group/floor/trap/known serializers (absent =>
+  empty, back-compat). Golden tests: re-entry identity (layout + monsters),
+  fresh-when-off, monster recovery, save round-trip. Core 2034 green.
+  DEFERRED (documented): exact stair-connector matching on FIRST-visit
+  generation of a persistent level (dun->persist / join connectors stay
+  dormant) - re-entry identity is exact; only a first visit's arrival stair is
+  approximate.
 - [x] **A2. Identical randart names** (decision 25). `obj/randart.ts` uses a
   local syllable table; upstream `artifact_gen_name` (obj-randart.c L2713) calls
   `randname_make(RANDNAME_TOLKIEN, ...)`. `randname_make` is ALREADY ported
