@@ -1845,6 +1845,11 @@ function runTargetLoop(
   startY?: number,
 ): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
+    // The loop owns input for its lifetime: raise the modal gate so the
+    // canvas tap-to-move / long-press / context handlers (all gated on
+    // modalDepth) stand down and taps cannot leak through to move the player
+    // or advance the game while targeting (#62).
+    modalDepth++;
     const targets = targetGetMonsters(state, mode);
     let ui = initTargetLoopUi(state, startX, startY);
     // The visible monster (if any) the cursor is currently on, tracked by
@@ -1878,8 +1883,35 @@ function runTargetLoop(
 
     const finish = (): void => {
       window.removeEventListener("keydown", onKey, true);
+      canvas.removeEventListener("pointerdown", onTap);
+      modalDepth--; // release the input gate raised for this loop
       render();
       resolve(targetIsSet(state));
+    };
+
+    // Touch: a tap on a map cell moves the cursor there (leaving interesting
+    // mode); a tap on the cell the cursor already sits on confirms, exactly as
+    // target.c's mouse routing selects on a click of the current grid. Routed
+    // through stepTargetLoop's 't' path so monster-vs-location selection stays
+    // identical to the keyboard.
+    const onTap = (ev: PointerEvent): void => {
+      const grid = contextClickGrid(ev.clientX, ev.clientY);
+      if (!grid) return; // tap outside the map (HUD): ignore, do not leak
+      ev.preventDefault();
+      const cur = currentLoopGrid(ui, targets);
+      if (grid.x === cur.x && grid.y === cur.y) {
+        const step = stepTargetLoop(state, targets, ui, "t");
+        ui = step.ui;
+        if (step.bell) state.sound?.(MSG.BELL);
+        if (step.done) {
+          finish();
+          return;
+        }
+        paint();
+        return;
+      }
+      ui = { ...ui, x: grid.x, y: grid.y, showInteresting: false };
+      paint();
     };
 
     const onKey = (ev: KeyboardEvent): void => {
@@ -1895,8 +1927,10 @@ function runTargetLoop(
           return;
         }
         window.removeEventListener("keydown", onKey, true);
+        canvas.removeEventListener("pointerdown", onTap);
         void showMonsterRecall(mon).then(() => {
           window.addEventListener("keydown", onKey, true);
+          canvas.addEventListener("pointerdown", onTap);
           paint();
         });
         return;
@@ -1912,6 +1946,7 @@ function runTargetLoop(
     };
 
     window.addEventListener("keydown", onKey, true);
+    canvas.addEventListener("pointerdown", onTap);
     paint();
   });
 }

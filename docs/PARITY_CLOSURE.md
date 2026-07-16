@@ -164,8 +164,19 @@ Legend: [ ] open, [~] in progress, [x] done.
 
 ## E. Web-shell defects (core-adjacent, close now)
 
-- [ ] **E1. Canvas taps leak through modals** (#62). `pointerdown` ignores
-  `modalDepth`; taps pass through open modals. Fix + touch target-loop.
+- [x] **E1. Canvas taps leak through modals** (#62). DONE. The interactive
+  target/look loop (`runTargetLoop`) added its own keydown listener but never
+  raised `modalDepth`, so the canvas tap-to-move / long-press / context handlers
+  (all gated on `modalDepth > 0`) stayed live - a tap while targeting walked the
+  player and advanced the game. Fix: `runTargetLoop` now raises `modalDepth` for
+  its whole lifetime (released in `finish`, and around the `r` recall detour so a
+  tap cannot repaint the map under the recall screen). Also added the missing
+  touch scheme to the loop: a tap on a map cell moves the cursor there (leaving
+  interesting mode); a tap on the cell the cursor already sits on confirms,
+  routed through `stepTargetLoop`'s `t` path so monster-vs-location selection is
+  identical to the keyboard (target.c mouse routing). The main-shell canvas
+  handlers already guarded `modalDepth`; verified. Web 210 green, core 2035, tsc
+  clean; shell boots clean.
 - [ ] **E2. Autoinscribe management UI** (#61). Per-kind note registry + UI.
 
 ## Explicitly deferred to the MODS phase (NOT part of core closure)
