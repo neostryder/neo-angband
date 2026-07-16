@@ -14,13 +14,15 @@
  * advances.
  *
  * process_world here wires the periodic upkeep this task owns: HP and mana
- * regeneration (the exact fixed-point 2^16 formulas) and the player timed
- * array countdown (decrease_timeouts). Monster timeouts count down inside
- * process_monster_timed (monster-turn.ts). Monster-list compaction, ambient
- * sound / day-night town cycle, random creature generation, damage-over-time
- * (poison/cut/starvation), food digestion, light, noise/scent laydown,
- * inventory recharge and word-of-recall / deep-descent are DEFERRED (ledgered
- * in parity/ledger/game-loop.yaml).
+ * regeneration (the exact fixed-point 2^16 formulas), the player timed array
+ * countdown (decrease_timeouts, routed through playerDecTimed for grade / wear-
+ * off messages), food digestion, light-source fuel burn, damage-over-time
+ * (poison / cut / black-breath / starvation), inventory recharge, ambient
+ * creature generation, and the word-of-recall / deep-descent countdowns - see
+ * processWorld below. Monster timeouts count down inside process_monster_timed
+ * (monster-turn.ts); the day-night town cycle relight is handled in
+ * session/game.ts. Remaining ledgered items are noted in
+ * parity/ledger/game-loop.yaml.
  */
 
 import { MON_TMD, PF, STAT, TMD } from "../generated";
