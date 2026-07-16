@@ -133,8 +133,22 @@ Legend: [ ] open, [~] in progress, [x] done.
   gold objects carry `origin` 0 (NONE) rather than FLOOR at the `generateLevel`
   stage - captured faithfully in the baseline; verify against upstream and fix
   in a follow-up if it is a real deviation.
-- [ ] **B2. Spoiler generator** (decision 10). Port `*-spoil.c` as a Node
-  dev-tool (objects/artifacts/monsters spoilers). Tooling parity; not gameplay.
+- [x] **B2. Spoiler generator** (decision 10). DONE. Ported all four upstream
+  spoiler functions (wiz-spoil.c) as a `packages/cli` dev-tool following the
+  main-stats pattern: `spoilers.ts` (spoilObjDesc / spoilArtifact / spoilMonDesc
+  / spoilMonInfo, pure text dumps reusing the port's real objectDesc /
+  objectValue / objectInfo / objectPower / loreDescription code - no re-derived
+  formatting, no hardcoded data), `main-spoil.ts` (--kind obj|artifact|mon-desc|
+  mon-info|all, --out FILE), a `spoil` package script, and a 17-test structural
+  guard (spoil.test.ts). Deterministic: each generator boots one fixed-seed
+  headless startGame purely for bound registries + a fully-known player shadow;
+  object construction uses a throwaway Rng at the maximise aspect (no entropy),
+  so output is byte-stable. Documented degradations tied to pre-existing core
+  deferrals: randart seed reported as 0 (standard set dumped, not a randart
+  run); timed/summon activation strings fall back to a generic label; monster
+  "chance to hit" and per-blow percentages render 0% (meleeHitPercent is a core
+  DEFERRED). cli 24 green (7 parity + 17 spoiler), tsc clean, tool runs
+  end-to-end. No core exports added.
 - [ ] **B3. Parity ledger reconciliation** (#59, decision 12). Correct every
   stale `status`/`deferred` field in `parity/ledger/*.yaml` against verified
   reality (PUNCHLIST.md). The ledger is the rebase map; it must match the code.
