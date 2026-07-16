@@ -26,6 +26,54 @@ const ENABLED_KEY = "neo:enabledMods";
 const CONSENT_KEY = "neo:modConsents";
 const PROFILES_KEY = "neo:modProfiles";
 
+/**
+ * The committed, first-party BUNDLED mods that ship enabled by default
+ * (PORT_PLAN.md decisions 18, 23: the official mods are bundled and on by
+ * default, each fully removable). Order is the default load order. Only ids
+ * that are actually DISCOVERED at runtime take effect, so a host that ships
+ * without one of these dirs stays byte-identical (the resolver intersects with
+ * the discovered set). The demo mods (demo-*) are deliberately NOT here - they
+ * stay opt-in.
+ */
+export const DEFAULT_ENABLED_MODS: readonly string[] = [
+  "bug-fixes",
+  "qol",
+  "linoleum",
+];
+
+/**
+ * First-party bundled mods whose capabilities are implicitly consented on first
+ * run: they ship inside the app, so shipping them IS the trust decision (a
+ * third-party plugin still requires explicit per-capability consent). The user
+ * can still revoke consent afterwards in the manager - this only seeds the
+ * initial state so a default-on trusted bundled mod actually installs at boot.
+ */
+export const FIRST_PARTY_MOD_IDS: readonly string[] = DEFAULT_ENABLED_MODS;
+
+/**
+ * Resolve the effective enabled-mod id list from the three input sources, in
+ * precedence order. Pure, so both the content composer (pack.ts, at module
+ * load) and the plugin auto-installer (main.ts boot) resolve identically.
+ *
+ * - `url` (?mods=a,b): a one-off testing override; when non-null it wins
+ *   verbatim (even when empty, meaning "no mods").
+ * - `stored` (localStorage neo:enabledMods): the user's saved set. null means
+ *   the key is ABSENT (first run) - distinct from an empty array (user turned
+ *   everything off). When present it is authoritative.
+ * - else first run: the DEFAULT_ENABLED_MODS, intersected with `discovered` so
+ *   only mods that exist are enabled.
+ */
+export function resolveEnabledIds(opts: {
+  url: string[] | null;
+  stored: string[] | null;
+  discovered: readonly string[];
+}): string[] {
+  if (opts.url !== null) return opts.url;
+  if (opts.stored !== null) return opts.stored;
+  const have = new Set(opts.discovered);
+  return DEFAULT_ENABLED_MODS.filter((id) => have.has(id));
+}
+
 /** The minimal Storage surface used here (localStorage in the browser). */
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -101,6 +149,20 @@ export class ModStore {
     return Array.isArray(arr)
       ? arr.filter((s): s is string => typeof s === "string")
       : [];
+  }
+
+  /**
+   * Whether the enabled-set key exists in storage. Distinguishes first run (no
+   * key -> defaults apply) from "user turned everything off" (key present, empty
+   * array). Tolerates a null/failing storage (treated as absent).
+   */
+  hasStoredEnabled(): boolean {
+    if (!this.storage) return false;
+    try {
+      return this.storage.getItem(ENABLED_KEY) !== null;
+    } catch {
+      return false;
+    }
   }
 
   setEnabled(ids: readonly string[]): void {
