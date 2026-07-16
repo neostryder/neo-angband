@@ -63,6 +63,23 @@ Legend: [ ] open, [~] in progress, [x] done.
   `stat_add`, and the char-sheet mode-1 grid. Also wire the remaining
   `history_add` triggers (#64: artifact loss, find-on-sight, store buy).
 
+## A-followup. Surfaced during A3 (needs the maintainer's ruling, not yet actioned)
+
+- [ ] **A7. Combat runes known at birth?** Upstream `do_cmd_accept_character`
+  (player-birth.c L1265-1267) sets `obj_k->to_a/to_h/to_d = 1` unconditionally
+  at birth ("Hack - player knows all combat runes"), so upstream shows an item's
+  full +to-hit / +to-dam / +AC immediately, even unidentified. The port instead
+  models these three as learn-by-use runes starting at 0 (documented in
+  player.ts: "All runes UNKNOWN at birth except the racial innates"). This is a
+  real parity deviation but ALSO looks like an intentional port design choice, so
+  it contradicts "no deviation was deliberate" and needs the maintainer's explicit ruling
+  before change: (i) match upstream exactly (combat bonuses visible from birth,
+  making the learn-by-use combat path vestigial), or (ii) keep the port's
+  learn-by-use combat runes as a ratified deliberate deviation. Impact of (i):
+  touches birth init + several learn-by-use tests. NOT part of A3 (which covered
+  only dd/ds/ac + flavor-aware); dd/ds/ac are unambiguously always-1 and were
+  fixed. Recommend raising at the closure review.
+
 ## B. Verification + upstream-tracking tooling
 
 - [ ] **B1. Statistical parity harness** (decisions 2, 10, 23). Build the Node
