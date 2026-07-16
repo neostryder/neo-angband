@@ -6,8 +6,12 @@ upstream `.png` atlas and its pref files (`graf-*.prf` the attr/char -> tile
 map, `flvr-*.prf` the flavour map, `xtra-*.prf` the extra/overdraw map), copied
 verbatim from Angband 4.2.6 `lib/tiles/`.
 
-ASCII is always the default; a tile pack is opt-in (Options menu, or the
-`?tiles=<url>&graf=<id>` URL override).
+These four packs are registered by the bundled **neo-linoleum** tiles mod
+(`packages/web/mods/linoleum`, id `linoleum`, by neostryder / RPGM Tools), which
+is the registry of record for which graphics sets the Options tile-mode selector
+offers. It is enabled by default and fully removable; graphics are surfaced only
+while it is enabled. ASCII is always the default; a tile pack is opt-in (Options
+menu, or the `?tiles=<url>&graf=<id>` URL override).
 
 ## Packs and their licences
 

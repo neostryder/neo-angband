@@ -38,6 +38,7 @@ import type { PlayerRegistry } from "../player/bind";
 import type { HistoryInfo } from "../player/history";
 import type { TrapKind } from "../world/trap";
 import type { GameState, MonsterGroup, StoredLevel } from "../game/context";
+import { modRuleEnabled } from "../game/context";
 import type { Trap } from "../game/trap";
 import type { Gear } from "../game/gear";
 import { newKnownMap } from "../game/known";
@@ -881,7 +882,11 @@ export function serializeGame(
       })),
     });
   }
-  const chunk = state.chunk.snapshotSquares();
+  /* bug-fixes #4605 (bugfix.noiseScentSave): persist the live level's noise /
+   * scent heatmaps when the mod's rule is on; faithful saves omit them. */
+  const chunk = state.chunk.snapshotSquares(
+    modRuleEnabled(state, "bugfix.noiseScentSave"),
+  );
   const knownFeat = Array.from(state.known.feat);
   const savedLevelCache = serializeLevelCache(state.levelCache, ids);
   const autoinscriptions = state.autoinscribe

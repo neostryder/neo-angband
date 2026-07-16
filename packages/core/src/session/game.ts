@@ -51,6 +51,7 @@ import {
   DEFAULT_GAME_CONSTANTS,
   addMonster,
   deleteMonster,
+  modRuleEnabled,
   placePlayer,
   updateMonsterDistances,
 } from "../game/context";
@@ -183,7 +184,7 @@ import type {
 } from "./boot";
 import { Rng } from "../rng";
 import type { Player } from "../player/player";
-import { OptionState } from "../player/options";
+import { OptionState, filterInterfaceOverrides } from "../player/options";
 import type { OptionName } from "../player/options";
 import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart";
 import { generateLevel } from "../gen/generate";
@@ -290,6 +291,15 @@ export interface StartGameOptions extends BootLevelOptions {
    * the immutable birth snapshot; the rest seed the live option store.
    */
   optionOverrides?: Partial<Record<OptionName, boolean>>;
+  /**
+   * Host-supplied INTERFACE-option defaults for a NEW character, threaded from
+   * the web/cli host (e.g. the bundled qol content mod's options.json). Applied
+   * UNDER optionOverrides so an explicit birth/interface choice still wins, and
+   * defensively filtered to INTERFACE-type options only (filterInterfaceOverrides)
+   * so a mod can never change a rules/scoring option. Undefined or empty leaves
+   * the new-character options byte-identical to the table defaults.
+   */
+  interfaceDefaults?: Readonly<Record<string, boolean>>;
   /** op_ptr->hitpoint_warn (0..9). Default 3 (DEFAULT_HITPOINT_WARN). */
   hitpointWarn?: number;
 }
@@ -590,21 +600,31 @@ function wireGame(
     /* player_kill_monster: dead uniques stay dead (max_num = 0). The flag
      * is session-lifetime; persisting it rides the save format (ledgered). */
     if (mon.race.flags.has(RF.UNIQUE)) {
+      /* bug-fixes #4245 ("Unique coming back to life?"): a unique can produce
+       * multiple "Killed X" kill-history entries via shape-change / projection
+       * death paths (the misleading death MESSAGE was fixed by PR #6245, in the
+       * 4.2.6 baseline, but its author states that does NOT fix the multiple-
+       * history-entries defect). With bugfix.uniqueKillHistory on, a second kill
+       * of an already-dead unique (race.maxNum already 0) does not log a duplicate
+       * entry; faithful 4.2.6 logs one per lethal blow. Read BEFORE max_num=0. */
+      const alreadyDead = mon.race.maxNum === 0;
       mon.race.maxNum = 0;
       /* history_add(HIST_SLAY_UNIQUE) (mon-util.c L1099-1101), read BEFORE
        * playerKillExp below so p.lev is the pre-kill level, matching
        * upstream's history_add-before-player_exp_gain order. MDESC_DIED_FROM
        * for a unique is just the race name (no article/pronoun swap), so no
        * MDESC subsystem is needed here. */
-      const stamp = historyStamp(state);
-      historyAdd(
-        state.actor.player,
-        `Killed ${mon.race.name}`,
-        HIST.SLAY_UNIQUE,
-        stamp.dlev,
-        stamp.clev,
-        stamp.turn,
-      );
+      if (!(alreadyDead && modRuleEnabled(state, "bugfix.uniqueKillHistory"))) {
+        const stamp = historyStamp(state);
+        historyAdd(
+          state.actor.player,
+          `Killed ${mon.race.name}`,
+          HIST.SLAY_UNIQUE,
+          stamp.dlev,
+          stamp.clev,
+          stamp.turn,
+        );
+      }
     }
     /* Generate treasure (monster_death, mon-util.c L1108) BEFORE the pkills /
      * tkills lore counting (L1118), so loreUpdate below sees any drop_gold /
@@ -673,6 +693,12 @@ function wireGame(
     constants: reg.constants,
     artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
     noArtifacts: state.options?.get("birth_no_artifacts") ?? false,
+    /* bug-fixes seam (#4510): read state.modRules LIVE, not captured, so a
+     * trusted plugin that turns rules on at boot (after wireGame builds this)
+     * is still seen. Empty/absent => makeArtifact's faithful branch. */
+    get modRules() {
+      return state.modRules;
+    },
   };
   if (reg.projections) {
     const effects = new EffectRegistry();
@@ -1623,8 +1649,19 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // The player option store (option.c options_init_defaults): seeded from
   // OPTION_ENTRIES defaults, with the birth/interface choices applied. Built
   // before level generation so birth_randarts can swap the artifact set first.
+  // Host-supplied interface defaults (qol mod) seed the option store UNDER the
+  // birth/interface choices, and are filtered to INTERFACE-type options so a
+  // content mod can never touch a rules/scoring option. With neither supplied,
+  // no overrides are passed and the store is byte-identical to the table.
+  const interfaceDefaults = opts.interfaceDefaults
+    ? filterInterfaceOverrides(opts.interfaceDefaults)
+    : undefined;
+  const mergedOverrides =
+    interfaceDefaults || opts.optionOverrides
+      ? { ...(interfaceDefaults ?? {}), ...(opts.optionOverrides ?? {}) }
+      : undefined;
   const options = new OptionState({
-    ...(opts.optionOverrides ? { overrides: opts.optionOverrides } : {}),
+    ...(mergedOverrides ? { overrides: mergedOverrides } : {}),
     ...(opts.hitpointWarn !== undefined ? { hitpointWarn: opts.hitpointWarn } : {}),
   });
 

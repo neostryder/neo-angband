@@ -1,0 +1,14 @@
+{
+  "records": [
+    {
+      "interfaceDefaults": {
+        "show_damage": true,
+        "show_flavors": true,
+        "center_player": true,
+        "purple_uniques": true,
+        "effective_speed": true,
+        "notify_recharge": true
+      }
+    }
+  ]
+}

@@ -164,4 +164,40 @@ describe("Chunk", () => {
     c.addToObjRating(1000);
     expect(c.objRating).toBe(UINT32_MAX);
   });
+
+  describe("bug-fixes #4605 - noise/scent save via snapshotSquares(includeFlow)", () => {
+    function chunkWithFlow(): Chunk {
+      const c = new Chunk(reg, 5, 5);
+      c.fill(FLOOR);
+      c.noise[2 * 5 + 2] = 7;
+      c.noise[2 * 5 + 3] = 9;
+      c.scent[2 * 5 + 2] = 3;
+      c.scent[3 * 5 + 2] = 5;
+      return c;
+    }
+
+    it("faithful (includeFlow=false): omits heatmaps; restore leaves them zeroed", () => {
+      const src = chunkWithFlow();
+      const data = src.snapshotSquares();
+      expect(data.noise).toBeUndefined();
+      expect(data.scent).toBeUndefined();
+
+      const dst = new Chunk(reg, 5, 5);
+      dst.restoreSquares(data);
+      expect(Array.from(dst.noise).every((v) => v === 0)).toBe(true);
+      expect(Array.from(dst.scent).every((v) => v === 0)).toBe(true);
+    });
+
+    it("corrected (includeFlow=true): persists and restores both heatmaps exactly", () => {
+      const src = chunkWithFlow();
+      const data = src.snapshotSquares(true);
+      expect(data.noise).toEqual(Array.from(src.noise));
+      expect(data.scent).toEqual(Array.from(src.scent));
+
+      const dst = new Chunk(reg, 5, 5);
+      dst.restoreSquares(data);
+      expect(Array.from(dst.noise)).toEqual(Array.from(src.noise));
+      expect(Array.from(dst.scent)).toEqual(Array.from(src.scent));
+    });
+  });
 });

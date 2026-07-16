@@ -913,6 +913,22 @@ export function makeArtifact(
   }
 
   if (obj.artifact) {
+    /* bug-fixes #4510 ("Duplicate artifacts"): the shared ArtifactState already
+     * makes duplication impossible by construction for freshly-selected
+     * artifacts (the loop above skips any isCreated one). This defensive
+     * re-check closes the remaining window: an object handed to make_artifact
+     * that ALREADY carries an artifact (the loop's `!obj->artifact` guard skips
+     * the scan) whose flag is set - re-committing it would copy the artifact
+     * data and re-mark it created a second time. With bugfix.duplicateArtifact
+     * on, that is refused (single source of truth = ArtifactState); faithful
+     * 4.2.6 re-commits it. */
+    if (
+      deps.modRules?.["bugfix.duplicateArtifact"] &&
+      deps.artifacts.isCreated(obj.artifact.aidx)
+    ) {
+      obj.artifact = null;
+      return false;
+    }
     copyArtifactData(rng, reg, obj, obj.artifact);
     deps.artifacts.markCreated(obj.artifact.aidx, true);
     return true;
@@ -1031,6 +1047,13 @@ export interface MakeDeps {
   artifacts: ArtifactState;
   /** OPT(player, birth_no_artifacts): suppress all artifact creation. */
   noArtifacts: boolean;
+  /**
+   * GameState.modRules (the bug-fixes mod seam), threaded so the pure obj
+   * layer can consult a named rule without a GameState. Absent => every rule
+   * reads false and creation is faithful 4.2.6. Used by makeArtifact's
+   * bugfix.duplicateArtifact defensive re-check.
+   */
+  modRules?: Record<string, boolean> | undefined;
 }
 
 /**

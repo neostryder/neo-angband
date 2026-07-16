@@ -331,6 +331,56 @@ describe("startGame (new-game assembly)", () => {
     expect(p.hist.filter((e) => histHas(e.type, HIST.SLAY_UNIQUE))).toHaveLength(1);
   });
 
+  it("bug-fixes #4245: a re-kill of an already-dead unique logs one entry with the flag, two without", () => {
+    /* A single shared race object so the first kill's max_num=0 persists into
+     * the second kill (alreadyDead). The mon is otherwise the synthetic shape
+     * the faithful unique test above uses. */
+    const uniqueFlags = new FlagSet(RF_SIZE);
+    uniqueFlags.on(RF.UNIQUE);
+    const race = {
+      ridx: 2,
+      name: "Grip, Farmer Maggot's Dog",
+      mexp: 1,
+      level: 1,
+      flags: uniqueFlags,
+      blows: [],
+      drops: [],
+      maxNum: 1,
+    };
+    const mon = () =>
+      ({
+        race,
+        originalRace: null,
+        midx: 0,
+        grid: { x: 20, y: 12 },
+        heldObj: [],
+        mflag: new FlagSet(MFLAG_SIZE),
+      }) as unknown as Parameters<NonNullable<typeof game.state.onPlayerKill>>[0];
+
+    /* FAITHFUL (flag OFF): two lethal blows => two "Killed" entries. */
+    let game = startGame(pack, { seed: 4242, depth: 1 });
+    race.maxNum = 1;
+    game.state.onPlayerKill?.(mon());
+    game.state.onPlayerKill?.(mon());
+    expect(
+      game.state.actor.player.hist.filter((e) =>
+        histHas(e.type, HIST.SLAY_UNIQUE),
+      ),
+    ).toHaveLength(2);
+
+    /* CORRECTED (flag ON): the second (already-dead) kill logs nothing. */
+    game = startGame(pack, { seed: 4242, depth: 1 });
+    game.state.modRules = { "bugfix.uniqueKillHistory": true };
+    race.maxNum = 1;
+    game.state.onPlayerKill?.(mon());
+    game.state.onPlayerKill?.(mon());
+    expect(
+      game.state.actor.player.hist.filter((e) =>
+        histHas(e.type, HIST.SLAY_UNIQUE),
+      ),
+    ).toHaveLength(1);
+  });
+
   it("picking up an artifact logs HIST_ARTIFACT_KNOWN with the spoiled name, RNG-untouched", () => {
     const game = startGame(pack, { seed: 4242, depth: 1 });
     const { state, registry } = game;

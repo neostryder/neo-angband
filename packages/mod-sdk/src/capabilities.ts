@@ -31,9 +31,14 @@
  *                             in-process plugin (W2.2, core/mod/registry-host.ts):
  *                             "registry:effect" | "registry:room" |
  *                             "registry:command" | "registry:monster" |
- *                             "registry:vocab"; or the wildcard "registry:*"
- *                             for all of them. "registry:vocab" (W2.3) declares
- *                             NEW vocabulary (flags/stats/any kind). Distinct from
+ *                             "registry:vocab" | "registry:rules"; or the
+ *                             wildcard "registry:*" for all of them.
+ *                             "registry:vocab" (W2.3) declares NEW vocabulary
+ *                             (flags/stats/any kind). "registry:rules" (decision
+ *                             24) toggles the named core "mod rule" flags the
+ *                             bundled bug-fixes mod uses to switch a ported core
+ *                             function from its faithful 4.2.6 branch to a
+ *                             corrected one (GameState.modRules). Distinct from
  *                             "command:add": that adds a command via the act
  *                             facade, this replaces what a command DOES (and the
  *                             effect/room/AI logic behind the game).
@@ -60,7 +65,7 @@ const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
-const REGISTRY_RE = /^registry:(\*|effect|room|command|monster|vocab)$/;
+const REGISTRY_RE = /^registry:(\*|effect|room|command|monster|vocab|rules)$/;
 
 /**
  * Parse and validate a capability string against the vocabulary above,

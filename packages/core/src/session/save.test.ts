@@ -269,6 +269,33 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     expect(restored.state.turn).toBeGreaterThan(before);
   });
 
+  it("bug-fixes #4605: noise/scent persist only with bugfix.noiseScentSave on", () => {
+    /* FAITHFUL (flag OFF): the heatmaps are transient and a reload starts them
+     * empty, so a live scent trail is lost across save/reload. */
+    const faithful = startGame(pack, { seed: 808, depth: 3 });
+    playTurns(faithful, 4);
+    faithful.state.chunk.scent[
+      faithful.state.actor.grid.y * faithful.state.chunk.width +
+        faithful.state.actor.grid.x
+    ] = 42;
+    const savedOff = JSON.parse(JSON.stringify(saveGame(faithful)));
+    expect(savedOff.chunk.scent).toBeUndefined();
+    expect(savedOff.chunk.noise).toBeUndefined();
+    const reOff = loadGame(pack, savedOff).state;
+    expect(Array.from(reOff.chunk.scent).every((v) => v === 0)).toBe(true);
+
+    /* CORRECTED (flag ON): the heatmaps ride the save and restore exactly. */
+    const fixed = startGame(pack, { seed: 808, depth: 3 });
+    fixed.state.modRules = { "bugfix.noiseScentSave": true };
+    playTurns(fixed, 4);
+    const savedOn = JSON.parse(JSON.stringify(saveGame(fixed)));
+    expect(savedOn.chunk.scent).toBeDefined();
+    expect(savedOn.chunk.noise).toBeDefined();
+    const reOn = loadGame(pack, savedOn).state;
+    expect(Array.from(reOn.chunk.scent)).toEqual(Array.from(fixed.state.chunk.scent));
+    expect(Array.from(reOn.chunk.noise)).toEqual(Array.from(fixed.state.chunk.noise));
+  });
+
   it("stamped bytes verify and detect tampering", () => {
     const game = startGame(pack, { seed: 7, depth: 1 });
     const bytes = encodeSavedGame(saveGame(game));

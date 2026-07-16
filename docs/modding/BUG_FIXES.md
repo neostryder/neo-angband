@@ -1,10 +1,14 @@
 # Bundled bug-fix mod (`bug-fixes`)
 
-> STATUS: DESIGN OF RECORD. This page is the source of truth and public
-> changelog for the bundled bug-fix mod. The loadable mod package and its
-> patches follow (1) the mod runtime (PORT_PLAN.md phase P7) and (2) the
-> core system each fix touches; several targets below are blocked on systems
-> the port has not yet built. Nothing here changes core behavior today.
+> STATUS: DESIGN OF RECORD + CHANGELOG. This page is the source of truth and
+> public changelog for the bundled bug-fix mod. The mod package now exists
+> (`packages/web/mods/bug-fixes/`, a TRUSTED `plugin`-shape pack) and carries
+> the fixes marked IMPLEMENTED below. Each fix lives in ported core as its
+> faithful 4.2.6 branch plus an off-by-default corrected branch guarded by a
+> named `GameState.modRules` flag (core, `game/context.ts` `modRuleEnabled`);
+> the plugin turns those flags on at register() through the capability-gated
+> `ModRegistryHost.rules` facade (capability `registry:rules`). With the mod
+> disabled no flag is set and core is byte-identical to 4.2.6.
 
 ## Why this mod exists
 
@@ -43,11 +47,19 @@ this mod.
 
 ## Status legend
 
+- `IMPLEMENTED` - the mod carries this fix: a gated corrected branch is in core
+  and the plugin enables its flag. The Implementation note names the core file
+  and the flag; a vitest control asserts faithful 4.2.6 behavior with the flag
+  off.
 - `SPECIFIED` - fix understood and referenced; patch not yet written because
   the core system it touches is not yet ported (blocked-on noted).
 - `READY` - the core system exists; the patch can be implemented now.
 - `NO UPSTREAM FIX` - a genuine, still-open upstream bug with no accepted fix;
   carried as a known issue, with our own mitigation optional.
+
+The mod's flags (each `bugfix.*` set by `packages/web/mods/bug-fixes/trusted.ts`):
+`bugfix.uniqueKillHistory` (#4245), `bugfix.noiseScentSave` (#4605),
+`bugfix.objectListOrder` (#4664), `bugfix.duplicateArtifact` (#4510).
 
 ---
 
@@ -78,6 +90,12 @@ this mod.
   store to keep the raw note and moves expansion to the display layer, mirror-
   ing the helper above.
 - Blocked-on: the notes command + player-history subsystem (not yet ported).
+- Port status (2026-07-16): DEFERRED. The player-history STORE is ported
+  (`player/history.ts`, event text faithfully truncated to 79 chars =
+  `event[80]`), but `do_cmd_note` (the `/say` `/me` note command, cmd-misc.c)
+  and the `ui-history.c` display-expansion layer are shell concerns and are NOT
+  ported, so there is no live truncation site to gate yet. When the note command
+  lands, the fix (store raw text, expand at display) belongs there.
 - Note: #6665 is a maintainer-authored alternate that is still unreviewed and
   unmerged, so this entry tracks the PR for its eventual merge commit rather
   than freezing on today's diff.
@@ -101,6 +119,15 @@ this mod.
 - Port relevance: directly reinforces the port's no-save-scum policy
   (decision 16). This mod applies the loader-side `maintain = false` behavior.
 - Blocked-on: the town/store system AND the save system (neither yet ported).
+- Port status (2026-07-16): DEFERRED - structurally prevented, no gate needed.
+  The port's `storeCarry` (`store/store.ts`) already takes the `maintain`
+  parameter from the fix and gates the charge re-roll on it. More to the point,
+  the port does NOT persist store stock: it is regenerated per town visit
+  (`session/game.ts` `refreshTownStores`) and a reload resumes the exact RNG
+  state (decision 22), so re-entering a store after save/reload reproduces the
+  identical stock and charges. There is no `rd_stores_aux` -> `store_carry`
+  load path to re-roll, so the save-scum this fix targets cannot occur. If a
+  persisted-stock loader is ever added, it must call `storeCarry(... false)`.
 
 ### 3. Stack-charge scramble on drop/pickup (`SPECIFIED`)
 
@@ -118,8 +145,16 @@ this mod.
   guard so a full destination stack refuses a partial merge.
 - Blocked-on: inventory/object-pile stacking (partially present via gear; the
   full pile-merge path is not yet ported).
+- Port status (2026-07-16): DEFERRED. The partial-merge path this fix guards
+  (`inven_can_stack_partial` / `object_absorb_partial`) is not wired into live
+  play: `objectAbsorbPartial` (`obj/object.ts`) exists but is unused, and every
+  live merge site (floor / gear / store / monster) uses full-stack
+  `objectMergeable`, which already refuses a merge whose combined total exceeds
+  `max_stack` (leaving two stacks). So the charge scramble cannot occur, and
+  there is no ported `can_stack_partial` precondition to add the guard to. When
+  the partial path is wired, add the destination-at-`max_stack` guard there.
 
-### 4. Object list ordering is not a strict total order (`SPECIFIED`)
+### 4. Object list ordering is not a strict total order (`IMPLEMENTED`)
 
 - References: issue **#4664** ("Object list is not always correctly ordered",
   open). Candidate fix PR **#4668** was CLOSED WITHOUT MERGING (no effect on
@@ -131,9 +166,19 @@ this mod.
   (stable tiebreak on a total key) so the list is deterministic - and re-derive
   the true root cause, since #4668 showed the two-unknowns case alone did not
   explain every report.
-- Blocked-on: the object-list UI / sorting layer (not yet ported).
+- Implementation: `packages/core/src/game/obj-list.ts`
+  (`objectListStandardCompare`), flag `bugfix.objectListOrder`. Port status: the
+  port's comparator is already a lexicographic strict weak order and feeds a
+  guaranteed-STABLE `Array.sort`, and it already returns 0 for the two-unknowns
+  case - so the port does not exhibit the qsort instability #4664 reports. The
+  flag adds a deterministic geometric total-key tiebreak (dy then dx) after the
+  distance tiebreak, making the order a strict TOTAL order that stays correct
+  even under a non-stable sort. Off => the faithful distance-only tiebreak.
+  Tests in `game/obj-list.test.ts` (control: equal-distance distinct entries are
+  order-equivalent with the flag off; corrected: the total key breaks the tie
+  antisymmetrically).
 
-### 5. Unique monster "returns" in the kill history (`SPECIFIED`, partial upstream)
+### 5. Unique monster "returns" in the kill history (`IMPLEMENTED`, partial upstream)
 
 - References: issue **#4245** ("Unique coming back to life?", open). The
   misleading death MESSAGE was fixed by PR **#6245** (merge commit
@@ -145,8 +190,16 @@ this mod.
   overwrites `original_race` without a null-check.
 - Port fix approach: when monster shape-change + death bookkeeping is ported,
   guard `original_race` and dedupe unique-death history entries.
-- Blocked-on: monster shape-change + death/history bookkeeping (not yet
-  ported).
+- Implementation: `packages/core/src/session/game.ts` (`onPlayerKill`, the
+  ported `player_kill_monster` / `HIST_SLAY_UNIQUE` slice), flag
+  `bugfix.uniqueKillHistory`. The port's `monsterChangeShape`
+  (`game/mon-shape.ts`) already carries the `original_race` null-check upstream's
+  `monster_change_shape` lacks. This flag closes the remaining defect: a lethal
+  blow on a unique whose `race.maxNum` is already 0 (an already-dead unique
+  re-reached via a shape-change / projection death path) no longer logs a
+  duplicate "Killed X" entry. Off => faithful 4.2.6 logs one per lethal blow.
+  Tests in `session/game.test.ts` (control: two kills log two entries with the
+  flag off; corrected: the second, already-dead kill logs nothing).
 
 ### 6. Pile integrity failure crash (`NO UPSTREAM FIX`)
 
@@ -168,14 +221,27 @@ this mod.
   window and the recall buffer draw from one source so they cannot diverge.
 - Blocked-on: the message-log display layer (currently on-screen ledgered).
 
-### 8. Noise and scent not saved (`SPECIFIED`)
+### 8. Noise and scent not saved (`IMPLEMENTED`)
 
 - References: issue **#4605** ("Noise and scent not saved", open). Low
   severity, genuine determinism gap; no upstream fix.
 - Problem: player noise/scent fields are not persisted, so save/reload can
   change monster tracking behavior versus uninterrupted play.
 - Port fix approach: persist the noise/scent fields in the save block.
-- Blocked-on: the save system + the noise/scent flow model (not yet ported).
+- Implementation: `packages/core/src/world/chunk.ts`
+  (`snapshotSquares(includeFlow)` / `restoreSquares`, with optional `noise` /
+  `scent` on `ChunkSquaresData`) plus `packages/core/src/session/save.ts` (the
+  live-level snapshot passes `modRuleEnabled(state, "bugfix.noiseScentSave")`),
+  flag `bugfix.noiseScentSave`. The port models noise/scent as `Chunk` heatmaps
+  (`world/flow.ts`) that faithful core does NOT save (matching 4.2.6). With the
+  flag on they ride the save and restore exactly, so a reload preserves the
+  scent trail instead of starting it empty. The payload is self-describing:
+  a faithful save omits both, so restore leaves them zeroed (rebuilt on the
+  first turn) - back-compatible. The frozen `levelCache` snapshot stays faithful
+  (out-of-play levels carry no live trail; they rebuild flow on re-entry).
+  Tests in `world/chunk.test.ts` (snapshot/restore round-trip) and
+  `session/save.test.ts` (full save round-trip: heatmaps absent + lost with the
+  flag off, present + restored with it on).
 - Note: complements the port's local-determinism guarantee (decision 22).
 
 ### 9. RNG perturbed by loading, general case (`SPECIFIED`)
@@ -207,8 +273,13 @@ this mod.
   full pack, mis-fires `pack_overflow()` and opens a minor no-turn drop
   exploit.
 - Blocked-on: inventory/quiver + inscription commands (not yet ported).
+- Port status (2026-07-16): DEFERRED. The quiver model and the
+  inscription-driven `calc_inventory` / `pack_overflow` recomputation this bug
+  lives in are not ported (the quiver path in `game/gear.ts` is explicitly a
+  documented deferral), so there is no live mis-fire site to gate. Revisit when
+  the quiver + inscription commands land.
 
-### 12. Duplicate artifacts (`NO UPSTREAM FIX`)
+### 12. Duplicate artifacts (`IMPLEMENTED`, no upstream fix)
 
 - References: issue **#4510** (open). Maintainer tightened artifact
   created/uncreated marking in commit `5c799b61a` (2020) but never found the
@@ -216,7 +287,22 @@ this mod.
 - Port fix approach: the port's artifact-generation path can enforce a single
   source of truth for "this artifact exists", making duplication impossible by
   construction; optional mitigation is a defensive re-check on creation.
-- Blocked-on: artifact generation (not yet ported).
+- Implementation: `packages/core/src/obj/make.ts` (`makeArtifact`; `MakeDeps`
+  gains an optional live `modRules`, threaded from `state.modRules` at the
+  live generation deps in `session/game.ts`), flag `bugfix.duplicateArtifact`.
+  Port status: duplication is already impossible by construction for
+  freshly-selected artifacts - the shared `ArtifactState` (`aup_info[]`, threaded
+  through every `MakeDeps`) is the single source of truth and `make_artifact`
+  already skips any `isCreated` candidate. The flag adds the defensive re-check
+  the design calls for on the one remaining window: an object handed to
+  `make_artifact` that ALREADY carries an artifact whose created-flag is set
+  (the C `!obj->artifact` loop guard skips the scan, so control reaches the
+  commit block) is refused rather than re-committed and re-marked a second time.
+  Off => faithful 4.2.6 re-commits it. Store generation deps
+  (`allowArtifacts=false`) do not thread the flag - artifact creation is inert
+  there. Tests in `obj/make.test.ts` (control: an already-created carried
+  artifact is re-committed with the flag off; corrected: it is refused and
+  cleared with the flag on).
 
 ---
 
