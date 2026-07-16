@@ -10,7 +10,12 @@ import { ObjRegistry } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
 import { objectPrep } from "../obj/make";
 import type { GameObject } from "../obj/object";
-import { FlavorKnowledge } from "../obj/knowledge";
+import {
+  AutoinscriptionRegistry,
+  FlavorKnowledge,
+  getAutoinscription,
+  setAutoinscription,
+} from "../obj/knowledge";
 import type { FlavorAwareDeps } from "../obj/knowledge";
 import { bindProjections } from "../world/projection";
 import type { ProjectionRecordJson } from "../world/projection";
@@ -512,6 +517,153 @@ describe("autoinscribe (cmd-obj.c do_cmd_autoinscribe / obj-ignore.c apply_autoi
     const result = applyAutoinscription(state, potion, deps);
     expect(potion.note).toBeNull();
     expect(result).toBe(0);
+  });
+});
+
+describe("AutoinscriptionRegistry (obj-ignore.c note_aware/note_unaware)", () => {
+  it("get_autoinscription returns the aware note when aware, else the unaware note", () => {
+    const dagger = kindByName("& Dagger~", TV.SWORD);
+    const registry = new AutoinscriptionRegistry();
+    registry.set(dagger.kidx, "@w1", true);
+    registry.set(dagger.kidx, "@x9", false);
+    /* obj-ignore.c L233-236: aware -> note_aware, else note_unaware. */
+    expect(registry.get(dagger.kidx, true)).toBe("@w1");
+    expect(registry.get(dagger.kidx, false)).toBe("@x9");
+    /* The free-function form mirrors the same selection. */
+    expect(getAutoinscription(registry, dagger.kidx, true)).toBe("@w1");
+    expect(getAutoinscription(registry, dagger.kidx, false)).toBe("@x9");
+  });
+
+  it("returns undefined for a kind with no registered note", () => {
+    const dagger = kindByName("& Dagger~", TV.SWORD);
+    const registry = new AutoinscriptionRegistry();
+    expect(registry.get(dagger.kidx, true)).toBeUndefined();
+    expect(registry.get(dagger.kidx, false)).toBeUndefined();
+  });
+
+  it("an empty note clears only that slot (add_autoinscription null path, L327/L294)", () => {
+    const dagger = kindByName("& Dagger~", TV.SWORD);
+    const registry = new AutoinscriptionRegistry();
+    setAutoinscription(registry, dagger.kidx, "@w1", true);
+    setAutoinscription(registry, dagger.kidx, "@x9", false);
+    setAutoinscription(registry, dagger.kidx, "", true); // clear aware only
+    expect(registry.get(dagger.kidx, true)).toBeUndefined();
+    expect(registry.get(dagger.kidx, false)).toBe("@x9");
+    /* Clearing the last slot drops the kind from entries entirely. */
+    setAutoinscription(registry, dagger.kidx, "", false);
+    expect(registry.get(dagger.kidx, false)).toBeUndefined();
+    expect(registry.entries()).toEqual([]);
+  });
+
+  it("clear() removes both slots for a kind", () => {
+    const dagger = kindByName("& Dagger~", TV.SWORD);
+    const registry = new AutoinscriptionRegistry();
+    registry.set(dagger.kidx, "@w1", true);
+    registry.set(dagger.kidx, "@x9", false);
+    registry.clear(dagger.kidx);
+    expect(registry.get(dagger.kidx, true)).toBeUndefined();
+    expect(registry.get(dagger.kidx, false)).toBeUndefined();
+  });
+
+  it("entries lists every kind with a note (for the management UI)", () => {
+    const dagger = kindByName("& Dagger~", TV.SWORD);
+    const tulwar = kindByName("& Tulwar~", TV.SWORD);
+    const registry = new AutoinscriptionRegistry();
+    registry.set(dagger.kidx, "@w1", true);
+    registry.set(tulwar.kidx, "@w2", true);
+    const map = new Map(registry.entries());
+    expect(map.get(dagger.kidx)?.aware).toBe("@w1");
+    expect(map.get(tulwar.kidx)?.aware).toBe("@w2");
+    expect(map.size).toBe(2);
+  });
+});
+
+describe("applyAutoinscription wired to a live AutoinscriptionRegistry", () => {
+  /** Wire deps.autoNote to a registry exactly as session/game.ts does. */
+  function registryDeps(
+    state: GameState,
+    registry: AutoinscriptionRegistry,
+    over: Partial<ObjCmdDeps> = {},
+  ): ObjCmdDeps {
+    return makeDeps(state, {
+      autoNote: (kind, aware) => registry.get(kind.kidx, aware) ?? null,
+      ...over,
+    });
+  }
+
+  it("applies a registered aware note end-to-end to a carried, uninscribed, non-ignored item", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const dagger = makeNamed("& Dagger~", TV.SWORD);
+    carry(state, dagger);
+    const registry = new AutoinscriptionRegistry();
+    registry.set(dagger.kind.kidx, "@w1", true);
+    const msgs: string[] = [];
+    const deps = registryDeps(state, registry, { env: { msg: (t) => msgs.push(t) } });
+    expect(applyAutoinscription(state, dagger, deps)).toBe(1);
+    expect(dagger.note).toBe("@w1");
+    expect(msgs.some((m) => m.startsWith("You autoinscribe"))).toBe(true);
+  });
+
+  it("does not re-inscribe an already-inscribed item", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const dagger = makeNamed("& Dagger~", TV.SWORD);
+    dagger.note = "@keep";
+    carry(state, dagger);
+    const registry = new AutoinscriptionRegistry();
+    registry.set(dagger.kind.kidx, "@w1", true);
+    expect(applyAutoinscription(state, dagger, registryDeps(state, registry))).toBe(0);
+    expect(dagger.note).toBe("@keep");
+  });
+
+  it("skips an item that is not carried", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const dagger = makeNamed("& Dagger~", TV.SWORD);
+    const registry = new AutoinscriptionRegistry();
+    registry.set(dagger.kind.kidx, "@w1", true);
+    expect(applyAutoinscription(state, dagger, registryDeps(state, registry))).toBe(0);
+    expect(dagger.note).toBeNull();
+  });
+
+  it("skips an ignored item (ignore_item_ok)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const dagger = makeNamed("& Dagger~", TV.SWORD);
+    carry(state, dagger);
+    /* Mark this individual object ignored (OBJ_NOTICE_IGNORE). */
+    dagger.notice |= 0x04;
+    const registry = new AutoinscriptionRegistry();
+    registry.set(dagger.kind.kidx, "@w1", true);
+    expect(applyAutoinscription(state, dagger, registryDeps(state, registry))).toBe(0);
+    expect(dagger.note).toBeNull();
+  });
+
+  it("clears a stale unaware note once the kind becomes aware (registry-backed)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    carry(state, potion);
+    const registry = new AutoinscriptionRegistry();
+    /* An unaware note was applied earlier; only the unaware slot is set. */
+    registry.set(potion.kind.kidx, "@q1", false);
+    potion.note = "@q1";
+    flavor.setAware(potion.kind); // now aware, and there is no aware note
+    const deps = registryDeps(state, registry, { flavor });
+    expect(applyAutoinscription(state, potion, deps)).toBe(0);
+    /* obj-ignore.c L252-256: the stale unaware note is cleared. */
+    expect(potion.note).toBeNull();
+  });
+
+  it("applies the aware note through the do_cmd_autoinscribe command over the floor + pack", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const dagger = makeNamed("& Dagger~", TV.SWORD);
+    const h = carry(state, dagger);
+    const registry = new AutoinscriptionRegistry();
+    registry.set(dagger.kind.kidx, "@w1", true);
+    const cmdRegistry = createDefaultRegistry();
+    installObjCommands(cmdRegistry, registryDeps(state, registry));
+    const commands = [{ code: "autoinscribe", args: {} }];
+    state.nextCommand = () => commands.shift() ?? null;
+    processPlayer(state, cmdRegistry);
+    expect(gearGet(state.gear, h)?.note).toBe("@w1");
   });
 });
 

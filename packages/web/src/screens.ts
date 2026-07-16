@@ -69,6 +69,7 @@ import type {
   TextRun,
   ProjectionInfo,
   IgnoreSettings,
+  AutoinscriptionRegistry,
   EgoItem,
   ObjectKind,
   ObjRegistry,
@@ -654,6 +655,57 @@ export function monsterKnowledgeMenu(
   const items: MenuItem[] = rows.map(({ race, lore }) => {
     const kills = lore.pkills > 0 ? `  (${lore.pkills} killed)` : "";
     return { label: `${capRaceName(race)}${kills}`, color: colorToCss(race.dAttr) };
+  });
+  return { items, rows };
+}
+
+/** An object kind base name, with the ~/& object_desc markers stripped. */
+function kindBaseName(kind: ObjectKind): string {
+  return kind.name.replace(/[~&]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** An aware object kind paired with its current aware autoinscription note. */
+export interface AutoinscribeRow {
+  kind: ObjectKind;
+  /** The kind's current aware note (get_autoinscription), "" when unset. */
+  note: string;
+}
+
+/**
+ * The per-kind autoinscription manager list (ui-knowledge.c's object-knowledge
+ * browser + the `{` set-inscription action, get_autoinscription at L1898/2113):
+ * every kind the player is aware of, each row showing the kind name and its
+ * current aware autoinscription in braces. Picking a row lets the caller edit
+ * that kind's aware note. Sorted by tval then ordinal name, matching the object
+ * browser's within-group order; a parallel row list carries the kind so the
+ * caller can set the note by kidx.
+ *
+ * Aware kinds only (the spec's "list aware kinds"): an unaware flavoured kind
+ * has no true name to show, and upstream keys the `{` action off kind->aware.
+ * The unaware-note slot the registry also supports is not exposed here.
+ */
+export function autoinscriptionMenu(
+  kinds: readonly ObjectKind[],
+  isAware: (kind: ObjectKind) => boolean,
+  registry: AutoinscriptionRegistry,
+): { items: MenuItem[]; rows: AutoinscribeRow[] } {
+  const rows: AutoinscribeRow[] = [];
+  for (const kind of kinds) {
+    if (!kind.name) continue; // the k_info[0] blank
+    if (!isAware(kind)) continue;
+    rows.push({ kind, note: registry.get(kind.kidx, true) ?? "" });
+  }
+  rows.sort((a, b) => {
+    const c = a.kind.tval - b.kind.tval;
+    if (c) return c;
+    return strcmp(kindBaseName(a.kind), kindBaseName(b.kind));
+  });
+  const items: MenuItem[] = rows.map(({ kind, note }) => {
+    const name = kindBaseName(kind);
+    return {
+      label: note ? `${name}  {${note}}` : name,
+      color: colorToCss(colorCharToAttr(kind.dAttr)),
+    };
   });
   return { items, rows };
 }

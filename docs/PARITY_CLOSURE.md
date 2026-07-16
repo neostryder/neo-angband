@@ -210,7 +210,23 @@ Legend: [ ] open, [~] in progress, [x] done.
   identical to the keyboard (target.c mouse routing). The main-shell canvas
   handlers already guarded `modalDepth`; verified. Web 210 green, core 2035, tsc
   clean; shell boots clean.
-- [ ] **E2. Autoinscribe management UI** (#61). Per-kind note registry + UI.
+- [x] **E2. Autoinscribe management UI** (#61). DONE. The per-kind
+  autoinscription note registry was a documented stub (`getAutoinscription`
+  always returned nothing, so autoinscribe was a structural no-op). Built it as
+  save-side player knowledge: an `AutoinscriptionRegistry` (obj/knowledge.ts)
+  keyed in memory by `kidx` (matching FlavorKnowledge / IgnoreSettings) with
+  `get(kidx, aware)` / `set(kidx, note, aware)` faithful to get_autoinscription
+  / add/remove_autoinscription (obj-ignore.c L229 / L294 / L322: aware->aware
+  note else unaware; empty note clears). Wired obj-cmd.ts's `autoNote` seam to
+  it so `applyAutoinscription` (with every upstream guard intact) now applies
+  configured notes. Serialized as an OPTIONAL save block keyed by namespaced
+  kind id (mod-stable), absent => empty (back-compat, like ignore/levelCache).
+  Web: a management surface reached via `~` knowledge menu -> "Set object
+  autoinscriptions" - lists aware kinds with their current note, edits via the
+  same promptText the `{` inscribe command uses, empty clears; modalDepth-correct
+  (E1 pattern). Rune autoinscription (runes_autoinscribe) remains the ledgered
+  deferral; only kind notes are in scope for #61. Core 2053 green, web 213 green,
+  tsc clean.
 
 ## Explicitly deferred to the MODS phase (NOT part of core closure)
 

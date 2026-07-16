@@ -14,10 +14,11 @@
  * Inscribe/uninscribe/refill (fuel) are ported below (cmd-obj.c
  * do_cmd_inscribe/do_cmd_uninscribe/do_cmd_refill + refill_lamp,
  * obj-util.c obj_can_refill/obj_has_inscrip). Autoinscribe
- * (do_cmd_autoinscribe/apply_autoinscription) runs its guards and the
- * carried/ignored checks but is a structural no-op until the per-kind
- * note_aware/note_unaware registry and its knowledge-menu UI land (#24);
- * see ObjCmdDeps.autoNote.
+ * (do_cmd_autoinscribe/apply_autoinscription) applies the per-kind
+ * note_aware/note_unaware registry (obj/knowledge.ts AutoinscriptionRegistry,
+ * wired through ObjCmdDeps.autoNote by session/game.ts). The separate
+ * rune-based autoinscription (runes_autoinscribe, obj-ignore.c L217) rides the
+ * rune knowledge system and stays deferred (#24).
  *
  * DEFERRED with their subsystems (ledgered in game-obj-cmd.yaml):
  * cast/study (player spells #22), the glyph-of-warding push_object
@@ -120,10 +121,11 @@ export interface ObjCmdDeps {
   env?: ObjCmdEnv;
   /**
    * get_autoinscription (obj-ignore.c L229): the per-kind note_aware /
-   * note_unaware autoinscription registry. Not modeled yet - there is no
-   * knowledge-menu UI to register one (#24) - so leaving this absent makes
-   * autoinscribe a structural no-op, exactly as upstream with no
-   * autoinscriptions configured for any kind.
+   * note_unaware autoinscription lookup. session/game.ts wires this to the
+   * per-game AutoinscriptionRegistry (obj/knowledge.ts), so a note registered
+   * through the knowledge-menu manager (web) is applied on autoinscribe. Left
+   * absent by worldless callers (game/harness.ts), which makes autoinscribe a
+   * no-op exactly as upstream with no autoinscriptions configured.
    */
   autoNote?: (kind: ObjectKind, aware: boolean) => string | null;
 }
