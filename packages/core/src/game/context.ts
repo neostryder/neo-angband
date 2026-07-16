@@ -153,6 +153,26 @@ export interface MonsterGroup {
 }
 
 /**
+ * A dungeon level frozen under birth_levels_persist (#30): the exact per-level
+ * field-set changeLevel shuffles, plus the game turn it was frozen at. This is
+ * the serializable, depth-keyed generalization of session/game.ts' in-memory
+ * arena stash (upstream's cave_store into the chunk_list, generate.c L1017).
+ * `turn` is the freeze turn (cave_store stamps chunk->turn, generate.c L1032),
+ * read by restore_monsters (mon-move.c L2007) to recover the monsters over the
+ * turns elapsed while the level was out of play.
+ */
+export interface StoredLevel {
+  chunk: Chunk;
+  monsters: Array<Monster | null>;
+  groups: Array<MonsterGroup | null>;
+  floor: Map<number, GameObject[]>;
+  traps: Map<number, import("./trap").Trap[]>;
+  known: import("./known").KnownMap;
+  decoy: Loc | null;
+  turn: number;
+}
+
+/**
  * The full mutable game state. `turn` is the upstream int32 game-turn counter;
  * `monsters` is indexed by midx with index 0 unused. Signals mirror the
  * upstream player->upkeep flags the loop branches on.
@@ -473,6 +493,16 @@ export interface GameState {
    * traps; cleared when the decoy trap is destroyed or the level changes.
    */
   decoy?: Loc | null;
+  /**
+   * birth_levels_persist (#30) frozen-level cache, keyed by depth. The standard
+   * dungeon has exactly one level per depth, so `depth` (a number) is the
+   * faithful identity for upstream's level NAME key (chunk_find_name of
+   * level_by_depth(depth)->name, generate.c L1414); town is depth 0. Populated
+   * only while the option is on; the whole persist path in changeLevel is gated
+   * on the option, so default play never reads or writes it. Serialized in the
+   * save (session/save.ts); absent / empty means no frozen levels.
+   */
+  levelCache?: Map<number, StoredLevel>;
   /**
    * The preset target-item reference for an item-choosing effect (the port of
    * cmd_get_item's "tgtitem" command argument, cmd-core.c L1056). Set by the

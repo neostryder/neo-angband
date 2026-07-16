@@ -55,7 +55,7 @@ import {
   updateMonsterDistances,
 } from "../game/context";
 import { Chunk } from "../world/chunk";
-import { FEAT } from "../generated";
+import { FEAT, SQUARE } from "../generated";
 import { blankMonster } from "../mon/monster";
 import { MON_GROUP } from "../mon/types";
 import type {
@@ -83,7 +83,8 @@ import { registerSummonHandlers } from "../game/effect-summon";
 import type { SummonEffectEnv } from "../game/effect-summon";
 import { registerDetectHandlers } from "../game/effect-detect";
 import { becomeAware, caveIlluminateKnown, newKnownMap } from "../game/known";
-import { PY_EXERT, isDaytime, playerOverExert } from "../game/world";
+import { PY_EXERT, compactMonsters, isDaytime, playerOverExert } from "../game/world";
+import { restoreMonsters } from "../game/scheduler";
 import { squareIsLit } from "../world/view";
 import { newTargetState, targetSetMonster } from "../game/target";
 import {
@@ -98,6 +99,7 @@ import {
   countMonsterRaces,
   multiplyMonster,
   pickAndPlaceDistantMonster,
+  squareIsEmptyLive,
   wipeMonsterCounts,
 } from "../game/mon-place";
 import type { MonPlaceDeps } from "../game/mon-place";
@@ -121,6 +123,9 @@ import {
   installTraps,
   placeTrap,
   squareDoorPower,
+  squareIsPlayerTrap,
+  squareIsWarded,
+  squareIsWebbed,
   squareRemoveAllTraps,
   squareSetDoorLock,
   trapPredicates,
@@ -190,6 +195,7 @@ import {
   deserializeArtifactsCreated,
   deserializeGear,
   deserializeKnown,
+  deserializeLevelCache,
   deserializeLore,
   deserializeMonster,
   deserializePlayer,
@@ -1199,6 +1205,92 @@ function populateFromLevel(
   }
 }
 
+/** square_isarrivable (cave-square.c L613) on the live cave: no occupant, no
+ * player trap / web, and a floor or stair (a legal player arrival square). */
+function squareIsArrivable(state: GameState, grid: Loc): boolean {
+  const c = state.chunk;
+  if (c.mon(grid) !== 0) return false;
+  if (squareIsPlayerTrap(state, grid)) return false;
+  if (squareIsWebbed(state, grid)) return false;
+  return c.isFloor(grid) || c.isStairs(grid);
+}
+
+/**
+ * sanitize_player_loc (generate.c L1265): keep the player's grid if it is a
+ * legal arrival square (in bounds, arrivable, not a vault); otherwise pick a
+ * random empty non-vault square, then fall back to a full linear scan (keeping
+ * a vault square only as a last resort). A faithful port including the RNG
+ * draws - reached only on the birth_levels_persist restore path. Mutates
+ * state.actor.grid in place, as upstream mutates p->grid.
+ */
+function sanitizePlayerLoc(state: GameState): void {
+  const c = state.chunk;
+  const preds = {
+    isPlayerTrap: (g: Loc): boolean => squareIsPlayerTrap(state, g),
+    isWebbed: (g: Loc): boolean => squareIsWebbed(state, g),
+    isWarded: (g: Loc): boolean => squareIsWarded(state, g),
+  };
+  const isVault = (g: Loc): boolean => c.sqinfoHas(g, SQUARE.VAULT);
+
+  /* Allow direct transfer if the retained grid is teleportable. */
+  const grid = state.actor.grid;
+  if (
+    c.inBoundsFully(grid) &&
+    squareIsArrivable(state, grid) &&
+    !isVault(grid)
+  ) {
+    return;
+  }
+
+  /* A bunch of random locations. */
+  for (let attempt = 1000; attempt > 0; attempt--) {
+    const tx = state.rng.randint0(c.width - 1) + 1;
+    const ty = state.rng.randint0(c.height - 1) + 1;
+    const g = loc(tx, ty);
+    if (squareIsEmptyLive(state, g, preds) && !isVault(g)) {
+      state.actor.grid = g;
+      return;
+    }
+  }
+
+  /* Whelp, that didn't work: scan the whole dungeon linearly from a random
+   * start, remembering the last empty vault square as a fallback. */
+  const ix = state.rng.randint0(c.width - 1) + 1;
+  const iy = state.rng.randint0(c.height - 1) + 1;
+  let tx = ix + 1;
+  let ty = iy;
+  if (tx >= c.width - 1) {
+    tx = 1;
+    ty = ty + 1;
+    if (ty >= c.height - 1) ty = 1;
+  }
+  let vx = 1;
+  let vy = 1;
+  for (;;) {
+    const g = loc(tx, ty);
+    if (squareIsEmptyLive(state, g, preds)) {
+      if (!isVault(g)) {
+        state.actor.grid = g;
+        return;
+      }
+      /* A vault, but remember it just in case. */
+      vy = ty;
+      vx = tx;
+    }
+    /* Oops, tried every tile. */
+    if (tx === ix && ty === iy) break;
+    tx = tx + 1;
+    if (tx >= c.width - 1) {
+      tx = 1;
+      ty = ty + 1;
+      if (ty >= c.height - 1) ty = 1;
+    }
+  }
+
+  /* Fallback vault location (or at least a non-crashy square). */
+  state.actor.grid = loc(vx, vy);
+}
+
 /**
  * dungeon_change_level + prepare_next_level: generate a fresh level at
  * `depth` from the state's own RNG stream and swap it into the state in
@@ -1330,14 +1422,95 @@ function makeChangeLevel(
     if (depth > state.actor.player.maxDepth) {
       state.actor.player.maxDepth = depth;
     }
+
+    /* birth_levels_persist (#30, off by default): when on, the level being
+     * left is frozen into a depth-keyed cache and a previously-frozen target
+     * level is restored instead of regenerated (prepare_next_level's persist
+     * branch, generate.c L1347-1556). The whole branch is gated on the option,
+     * so default play runs the original fresh-level path below unchanged. The
+     * key is `depth` - the faithful identity for upstream's level NAME
+     * (chunk_find_name of level_by_depth(depth)->name); see StoredLevel. */
+    const persist = state.options?.get("birth_levels_persist") ?? false;
+    const currentDepth = state.chunk.depth;
+
     /* wipe_mon_list: the old level's monsters forget their racial counts
-     * before the new level allocates against them. */
-    wipeMonsterCounts(state);
+     * before the new level allocates against them. Under persist the old level
+     * (and its monsters) survives in the cache with its counts intact, exactly
+     * as the persist branch skips cave_clear/wipe_mon_list. */
+    if (!persist) {
+      wipeMonsterCounts(state);
+    }
     /* Forget the target and the tracked monster (game-world.c L1010),
      * and release any commanded monster (L1065). */
     targetSetMonster(state, null);
     state.healthWho = null;
     state.actor.player.timed[TMD.COMMAND] = 0;
+
+    if (persist) {
+      const cache = (state.levelCache ??= new Map());
+
+      /* Freeze the level being left (cave_store, generate.c L1366).
+       * compact_monsters(cave, 0) is the RNG-free "too many holes" pass; the
+       * player marker is cleared (L1362, non-arena - arena freezing keeps it
+       * and is handled by the arena stash above); the freeze turn is stamped on
+       * the chunk (cave_store L1032) for restore_monsters. Persistent levels
+       * keep their artifacts, so the non-persist artifact-loss loop below is
+       * skipped on this path. */
+      compactMonsters(state, 0);
+      state.chunk.setMon(state.actor.grid, 0);
+      state.chunk.turn = state.turn;
+      cache.set(currentDepth, {
+        chunk: state.chunk,
+        monsters: state.monsters,
+        groups: state.groups,
+        floor: state.floor,
+        traps: state.traps,
+        known: state.known,
+        decoy: state.decoy ?? null,
+        turn: state.turn,
+      });
+
+      /* Enter a previously-frozen target level: assign it back and let its
+       * monsters recover over the elapsed turns (prepare_next_level
+       * L1414-1506). chunk_find_name is the depth lookup here. */
+      const stored = cache.get(depth);
+      if (stored) {
+        cache.delete(depth); // chunk_list_remove (L1505)
+        state.chunk = stored.chunk;
+        state.monsters = stored.monsters;
+        state.groups = stored.groups;
+        state.floor = stored.floor;
+        state.traps = stored.traps;
+        state.known = stored.known;
+        state.decoy = stored.decoy;
+
+        /* restore_monsters (mon-move.c L2007): HP regen + timed reduction over
+         * the turns the level was frozen (turn - chunk->freeze-turn). */
+        restoreMonsters(state, state.turn - stored.turn);
+
+        /* Place the player (prepare_next_level non-arena, L1497-1501): sanitize
+         * the retained grid into a legal arrival square, then player_place.
+         * DEFERRAL: exact stair-connector matching (dun->persist / one_off_*
+         * join connectors, generate.c L1147-1152) is applied by upstream only
+         * when GENERATING a persistent level, not when restoring one - a
+         * restored level uses this same sanitize+place, so the round-trip is
+         * faithful. The connector wiring for FIRST-visit generation stays
+         * dormant (cave.ts): a first visit arrives at the fresh level's normal
+         * playerSpot, which is a valid stair/empty grid. Level identity on
+         * re-entry is exact; only the first-visit arrival stair is approximate. */
+        sanitizePlayerLoc(state);
+        placePlayer(state, state.actor.grid);
+
+        refreshTownStores(state, reg);
+        delete state.targetDepth;
+        state.updateFov?.(state);
+        return;
+      }
+      /* First visit to this depth: fall through to fresh generation. The old
+       * level is already frozen; counts were not wiped and artifacts are not
+       * lost (both skipped above / below under persist). */
+    }
+
     const g = generateLevel(
       state.rng,
       depth,
@@ -1360,8 +1533,9 @@ function makeChangeLevel(
     /* Artifacts left on the abandoned level are lost (generate.c L1383-1394):
      * a known one (or any, under birth_lose_arts) is logged as missed. The
      * created-mark reset that lets an unknown one regenerate rides artifact
-     * upkeep (#24). Runs before the floor is cleared below. */
-    {
+     * upkeep (#24). Runs before the floor is cleared below. This is the
+     * NON-persist branch only: a frozen persistent level keeps its artifacts. */
+    if (!persist) {
       const loseArts = state.options?.get("birth_lose_arts") ?? false;
       for (const pile of state.floor.values()) {
         for (const obj of pile) {
@@ -1566,6 +1740,9 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     options,
     artifacts,
     lore: new Map(),
+    /* birth_levels_persist (#30) frozen-level cache; empty until a level is
+     * left with the option on (the whole persist path is option-gated). */
+    levelCache: new Map(),
     turn: 0,
     z: {
       ...DEFAULT_GAME_CONSTANTS,
@@ -1900,6 +2077,16 @@ export function loadGame(
       ? deserializeTraps(save.traps, reg.traps, chunk.width, ids)
       : new Map(),
     known: deserializeKnown(save.known, chunk.width, chunk.height, featRemap),
+    /* birth_levels_persist (#30) frozen-level cache; empty in saves written
+     * before the field or with the option off (back-compat). */
+    levelCache: deserializeLevelCache(
+      save.levelCache,
+      reg.features,
+      reg.monsters,
+      reg.objects,
+      reg.traps,
+      ids,
+    ),
     /* The target is not persisted (as upstream: the savefile carries no
      * target and loading starts unset). */
     target: newTargetState(),
