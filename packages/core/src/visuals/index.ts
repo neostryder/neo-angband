@@ -12,3 +12,4 @@
 
 export * from "./engine";
 export * from "./grafmode";
+export * from "./tile-prefs";

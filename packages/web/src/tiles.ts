@@ -12,16 +12,22 @@
  * fails to load, createTileRenderer returns null and the game renders as pure
  * ASCII. Nothing here can crash the game - every failure path degrades.
  *
- * NOTE ON SCOPE: turning a game glyph (attr/char) into a tile atlas position
- * needs the graf-*.prf pref mapping (ui-prefs.c), a separate subsystem not in
- * this slice. So this module provides the tileset LOAD path and the classic
- * tile-code blit primitive; wiring the live map to draw tiles awaits the
- * pref-file port. The double-height (overdraw) test lives in core
- * (isDoubleHeightTile).
+ * The attr/char -> tile-atlas pref mapping (graf-*.prf, ui-prefs.c) is ported
+ * in core (visuals/tile-prefs.ts). This module provides the tileset image LOAD
+ * path, the classic tile-code blit primitive, and loadTilePrefs, which fetches
+ * a pack's graf/flvr/xtra pref files and parses them into a core TileMap; the
+ * live map render (main.ts) looks each cell's entity up in that map and blits
+ * the tile, falling back to ASCII. The double-height (overdraw) test lives in
+ * core (isDoubleHeightTile).
  */
 
-import { getGraphicsMode, GRAPHICS_NONE } from "@neo-angband/core";
-import type { GraphicsMode } from "@neo-angband/core";
+import {
+  getGraphicsMode,
+  GRAPHICS_NONE,
+  parseTilePrefsInto,
+  TileMap,
+} from "@neo-angband/core";
+import type { GraphicsMode, TilePrefsDeps } from "@neo-angband/core";
 
 /**
  * The classic Angband tile encoding: a cell is a tile (not an ASCII glyph)
@@ -54,6 +60,8 @@ export class TileSet {
   readonly cellHeight: number;
   private image: HTMLImageElement | null = null;
   private loaded = false;
+  /** Called once the atlas image has finished loading (for a repaint). */
+  onReady: (() => void) | null = null;
 
   constructor(mode: GraphicsMode, url: string) {
     this.mode = mode;
@@ -63,6 +71,7 @@ export class TileSet {
       const img = new Image();
       img.addEventListener("load", () => {
         this.loaded = true;
+        this.onReady?.();
       });
       img.addEventListener("error", () => {
         this.loaded = false;
@@ -141,4 +150,48 @@ export function createTileRenderer(options: TileRendererOptions): TileSet | null
   const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   const url = `${base}${mode.directory}/${mode.file}`;
   return new TileSet(mode, url);
+}
+
+/**
+ * Fetch a graphics mode's pref files and parse them into a core TileMap. The
+ * mode's `pref` (graf-*.prf) is fetched first; its `%:<file>` include lines
+ * (ui-prefs.c process_pref_file) pull in the pack's flvr-*.prf and xtra-*.prf,
+ * which are pre-fetched here so the synchronous parser's loadFile resolver can
+ * satisfy them. Returns null on any fetch failure - the caller then keeps the
+ * map ASCII. Never throws.
+ */
+export async function loadTilePrefs(
+  baseUrl: string,
+  mode: GraphicsMode,
+  deps: TilePrefsDeps,
+): Promise<TileMap | null> {
+  if (!mode.pref || mode.pref === "none") return null;
+  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  const dir = `${base}${mode.directory}/`;
+  const fetchText = async (name: string): Promise<string | null> => {
+    try {
+      const r = await fetch(dir + name);
+      return r.ok ? await r.text() : null;
+    } catch {
+      return null;
+    }
+  };
+  const grafText = await fetchText(mode.pref);
+  if (grafText === null) return null;
+
+  // Pre-fetch every referenced include so the sync parser can resolve them.
+  const includes = new Map<string, string>();
+  for (const m of grafText.matchAll(/^%:(.+)$/gm)) {
+    const name = (m[1] ?? "").trim();
+    if (!name || includes.has(name)) continue;
+    const text = await fetchText(name);
+    if (text !== null) includes.set(name, text);
+  }
+
+  const map = new TileMap();
+  parseTilePrefsInto(map, grafText, {
+    ...deps,
+    loadFile: (name: string) => includes.get(name) ?? null,
+  });
+  return map;
 }

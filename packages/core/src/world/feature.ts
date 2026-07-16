@@ -170,6 +170,16 @@ export class FeatureRegistry {
     return this.byName.get(name) ?? null;
   }
 
+  /**
+   * lookup_feat_code (cave.c L315): the feature with the given list-terrain.h
+   * code, or null (the C returns -1). Non-throwing companion to byCodeName,
+   * used by the graphics pref parser where an unknown code is skipped rather
+   * than fatal.
+   */
+  lookupByCode(code: string): Feature | null {
+    return this.byCode.get(code) ?? null;
+  }
+
   count(): number {
     return this.byCode.size;
   }
