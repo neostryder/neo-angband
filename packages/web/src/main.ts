@@ -154,7 +154,13 @@ import {
 import type { TileAtlas, TileMap, TilePrefsDeps } from "@neo-angband/core";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, discoverContentModManifests, modConflictLines } from "./pack";
-import { defaultModStore, buildCatalog, consentSatisfied } from "./mod-store";
+import {
+  defaultModStore,
+  buildCatalog,
+  consentSatisfied,
+  resolveEnabledIds,
+  FIRST_PARTY_MOD_IDS,
+} from "./mod-store";
 import { runModManager } from "./mods";
 import { initA11y } from "./a11y";
 import { DEMO_AGENTS } from "./agents/demo";
@@ -4003,11 +4009,37 @@ if (trustedId) installTrusted(trustedId);
 // but this second-checks so a hand-edited store can never bypass it).
 try {
   const modStore = defaultModStore();
+  const sandboxMods = discoverPlugins();
+  const trustedMods = discoverTrustedPlugins();
+
+  // First run (no saved enabled-set): materialize the default bundled mods so
+  // they are ON out of the box (decision 23) and the mod manager reflects them,
+  // and pre-consent the first-party bundled plugins to their declared caps so a
+  // default-on trusted/sandbox bundled mod actually installs. pack.ts already
+  // composed content with the same defaults this load; this persists them + the
+  // consent so later manager edits (including disabling) stick. Third-party
+  // plugins still require explicit consent.
+  if (!modStore.hasStoredEnabled()) {
+    const discovered = [
+      ...discoverContentModManifests().map((m) => m.id),
+      ...sandboxMods.keys(),
+      ...trustedMods.keys(),
+    ];
+    const defaults = resolveEnabledIds({ url: null, stored: null, discovered });
+    modStore.setEnabled(defaults);
+    for (const id of defaults) {
+      if (!FIRST_PARTY_MOD_IDS.includes(id)) continue;
+      const caps =
+        sandboxMods.get(id)?.manifest.capabilities ??
+        trustedMods.get(id)?.manifest.capabilities ??
+        [];
+      if (caps.length > 0) modStore.setConsent(id, caps);
+    }
+  }
+
   const enabledIds = modStore.getEnabled();
   if (enabledIds.length > 0) {
     const consents = modStore.getConsents();
-    const sandboxMods = discoverPlugins();
-    const trustedMods = discoverTrustedPlugins();
     for (const id of enabledIds) {
       if (installedPluginIds.has(id)) continue;
       const sb = sandboxMods.get(id);
