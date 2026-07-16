@@ -1,0 +1,10 @@
+{
+  "id": "qol",
+  "name": "Quality of Life",
+  "version": "1.0.0",
+  "shape": "content",
+  "dependencies": { "core": "*" },
+  "author": "neostryder (RPGM Tools)",
+  "license": "GPL-2.0-only",
+  "description": "Bundled, default-on, fully-removable quality-of-life mod. UI-level only with ZERO rules changes: it ships recommended INTERFACE-option defaults for NEW characters (show_damage, show_flavors, center_player, purple_uniques, effective_speed, notify_recharge). Existing saves are unaffected; disabling it reverts new characters to the stock table defaults. See docs/modding/QOL.md."
+}

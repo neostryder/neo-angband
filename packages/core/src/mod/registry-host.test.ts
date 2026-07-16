@@ -121,3 +121,30 @@ describe("createModRegistryHost - delegation and targets", () => {
     );
   });
 });
+
+describe("createModRegistryHost - rules facade (bug-fixes seam)", () => {
+  it("enable/disable/isEnabled toggle GameState.modRules", () => {
+    const t = targets();
+    const host = createModRegistryHost(t);
+    // Default: absent modRules reads as off.
+    expect(host.rules.isEnabled("bugfix.x")).toBe(false);
+    expect(t._state.modRules).toBeUndefined();
+
+    host.rules.enable("bugfix.x");
+    expect(host.rules.isEnabled("bugfix.x")).toBe(true);
+    expect(t._state.modRules).toEqual({ "bugfix.x": true });
+
+    host.rules.disable("bugfix.x");
+    expect(host.rules.isEnabled("bugfix.x")).toBe(false);
+    expect(t._state.modRules).toEqual({});
+  });
+
+  it("is gated by registry:rules", () => {
+    const t = targets();
+    const host = createModRegistryHost(t, grant("registry:monster"));
+    expect(() => host.rules.enable("bugfix.x")).toThrow(/registry:rules/);
+    const ok = createModRegistryHost(t, grant("registry:rules"));
+    expect(() => ok.rules.enable("bugfix.x")).not.toThrow();
+    expect(t._state.modRules?.["bugfix.x"]).toBe(true);
+  });
+});

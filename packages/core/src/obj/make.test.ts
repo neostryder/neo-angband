@@ -294,6 +294,38 @@ describe("make_object *value out-parameter (obj-make.c L1211-1231, item #74)", (
   });
 });
 
+describe("make_artifact - bug-fixes #4510 duplicate-artifact defensive re-check", () => {
+  /* An object that already carries an artifact whose created-flag is set: the
+   * make_artifact scan is skipped (its `!obj->artifact` guard), so control
+   * falls to the commit block. Faithful 4.2.6 re-commits it (a duplicate);
+   * bugfix.duplicateArtifact refuses. */
+  function preCarried(): { deps: MakeDeps; obj: ReturnType<typeof objectPrep>; art: Artifact } {
+    const art = uniqueNormalArt();
+    const kind = reg.lookupKind(art.tval, art.sval)!;
+    const rng = new Rng(1);
+    const obj = objectPrep(rng, reg, constants, kind, art.allocMin, "randomise");
+    obj.artifact = art;
+    const deps = freshDeps();
+    deps.artifacts.markCreated(art.aidx, true); /* already created elsewhere */
+    return { deps, obj, art };
+  }
+
+  it("faithful (flag OFF): re-commits an already-created carried artifact", () => {
+    const { deps, obj, art } = preCarried();
+    const ok = makeArtifact(new Rng(1), deps, obj, art.allocMin);
+    expect(ok).toBe(true);
+    expect(obj.artifact?.aidx).toBe(art.aidx);
+  });
+
+  it("corrected (flag ON): refuses the duplicate and clears the artifact", () => {
+    const { deps, obj, art } = preCarried();
+    deps.modRules = { "bugfix.duplicateArtifact": true };
+    const ok = makeArtifact(new Rng(1), deps, obj, art.allocMin);
+    expect(ok).toBe(false);
+    expect(obj.artifact).toBeNull();
+  });
+});
+
 describe("ArtifactState persistence", () => {
   it("snapshot/restore round-trips created flags", () => {
     const s = new ArtifactState(reg.artifacts.length);

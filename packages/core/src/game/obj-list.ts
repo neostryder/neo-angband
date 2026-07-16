@@ -33,6 +33,7 @@ import { OBJ_NOTICE } from "../obj/knowledge";
 import { tvalIsMoney } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { describeObject } from "./describe";
+import { modRuleEnabled } from "./context";
 import type { GameState } from "./context";
 
 /** Which part of the list an entry falls under. */
@@ -196,6 +197,16 @@ export function objectListStandardCompare(
   const aware = (o: GameObject) =>
     state.isAware ? state.isAware(o.kind) : true;
   const isArtifact = isKnownArtifact;
+  /* bug-fixes #4664 ("Object list is not always correctly ordered"): upstream's
+   * compare_items (obj-util.c) is not a strict weak order for qsort, so the
+   * list can come out unstable/wrong. The port's comparator is already a
+   * lexicographic strict weak order and it feeds a STABLE Array.sort, so ties
+   * keep collect order - but distance-only tiebreaks still leave distinct
+   * entries at equal distance formally equivalent. With bugfix.objectListOrder
+   * on, a deterministic geometric total-key tiebreak (dy then dx) makes the
+   * order a strict TOTAL order that is stable even under a non-stable sort.
+   * PR #4668 was closed unmerged, so there is no accepted upstream fix. */
+  const totalKeyTiebreak = modRuleEnabled(state, "bugfix.objectListOrder");
 
   return (ea, eb) => {
     const ao = ea.object;
@@ -224,6 +235,10 @@ export function objectListStandardCompare(
     else result = compareTypes(ao!, bo!);
 
     if (result === 0) result = distanceCompare(ea, eb);
+    if (result === 0 && totalKeyTiebreak) {
+      /* Deterministic geometric key: nearer-to-top first, then leftmost. */
+      result = Math.sign(ea.dy - eb.dy) || Math.sign(ea.dx - eb.dx);
+    }
     return result;
   };
 }

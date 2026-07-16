@@ -61,6 +61,7 @@ export const REGISTRY_CAPABILITIES = {
   command: "registry:command",
   monster: "registry:monster",
   vocab: "registry:vocab",
+  rules: "registry:rules",
 } as const;
 
 export type RegistryDomain = keyof typeof REGISTRY_CAPABILITIES;
@@ -144,6 +145,24 @@ export interface VocabFacade {
 }
 
 /**
+ * The core "mod rule" facade (gated by registry:rules). Toggles the named
+ * boolean flags on GameState.modRules that switch a ported core function from
+ * its faithful 4.2.6 branch to a corrected one (the bundled bug-fixes mod,
+ * decision 24). Delegates to the live GameState the host wired in, so a flag a
+ * plugin sets here is read by core through modRuleEnabled(state, name); with no
+ * plugin setting any flag, state.modRules is absent and core is byte-identical
+ * to 4.2.6. It operates on the same `state` target the monster-AI facade uses.
+ */
+export interface RulesFacade {
+  /** Turn a named core rule flag on. */
+  enable(name: string): void;
+  /** Turn a named core rule flag off (back to the faithful 4.2.6 branch). */
+  disable(name: string): void;
+  /** Whether a named rule flag is currently on. */
+  isEnabled(name: string): boolean;
+}
+
+/**
  * The capability-gated registry host handed to a trusted in-process plugin.
  * Each facade throws AgentCapabilityError on first use if the corresponding
  * registry:<domain> capability was not granted, and a plain Error if the host
@@ -155,6 +174,7 @@ export interface ModRegistryHost {
   readonly commands: CommandFacade;
   readonly monsters: MonsterFacade;
   readonly vocab: VocabFacade;
+  readonly rules: RulesFacade;
 }
 
 /** Absent capabilities => trusted host, all granted (perceive/act convention). */
@@ -226,6 +246,23 @@ export function createModRegistryHost(
         const state = requireTarget(targets.state, "monster");
         if (hook) state.monsterTurnHook = hook;
         else delete state.monsterTurnHook;
+      },
+    },
+    rules: {
+      enable(name): void {
+        requireCap(capabilities, "rules");
+        const state = requireTarget(targets.state, "rules");
+        (state.modRules ??= {})[name] = true;
+      },
+      disable(name): void {
+        requireCap(capabilities, "rules");
+        const state = requireTarget(targets.state, "rules");
+        if (state.modRules) delete state.modRules[name];
+      },
+      isEnabled(name): boolean {
+        requireCap(capabilities, "rules");
+        const state = requireTarget(targets.state, "rules");
+        return state.modRules?.[name] === true;
       },
     },
     vocab: {

@@ -143,7 +143,6 @@ import { installController, ContentIdResolver, subscribeEvents, createModRegistr
 import type { AgentController } from "@neo-angband/core";
 import {
   getGraphicsMode,
-  GRAPHICS_MODE_CATALOG,
   GRAPHICS_NONE,
   LIGHTING,
   tileForFeature,
@@ -153,7 +152,7 @@ import {
 } from "@neo-angband/core";
 import type { TileAtlas, TileMap, TilePrefsDeps } from "@neo-angband/core";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, discoverContentModManifests, modConflictLines } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadComposedInterfaceDefaults, discoverContentModManifests, modConflictLines } from "./pack";
 import {
   defaultModStore,
   buildCatalog,
@@ -184,6 +183,7 @@ import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import {
   createTileRenderer,
+  discoverEnabledTileModes,
   isTile,
   loadTilePrefs,
   tileCode,
@@ -430,6 +430,11 @@ function bootGame(): ReturnType<typeof startGame> {
   return startGame(pack, {
     seed,
     depth,
+    // The qol bundled mod's recommended INTERFACE-option defaults (empty when
+    // that mod is disabled), applied only to a brand-new character and filtered
+    // to INTERFACE-type options in core (never birth/cheat/score). Existing
+    // saves are untouched (options come from the save on resume).
+    interfaceDefaults: loadComposedInterfaceDefaults(),
     ...(birthChoice
       ? { raceName: birthChoice.raceName, className: birthChoice.className }
       : {}),
@@ -638,15 +643,19 @@ function tileDrawFor(atlas: TileAtlas | null): TileDraw | undefined {
 }
 
 // The tile-mode selector rows for the Options menu (Phase 4): ASCII plus the
-// four BUNDLED packs (grafID 1..4). Shockbolt (5,6) is deliberately omitted -
-// its assets are not bundled (bespoke licence); a user can still select it via
-// the ?tiles=<url>&graf=5 URL override with their own copy.
+// packs contributed by enabled `tiles`-shape mods. The neo-linoleum bundled mod
+// (default-on) registers the four freely-licensed packs (grafID 1..4); disabling
+// or removing it drops them back to ASCII-only, which is the point of shipping
+// graphics AS a removable mod. Shockbolt (5,6) is never bundled or surfaced (its
+// assets carry a bespoke licence); a user can still select it via the
+// ?tiles=<url>&graf=5 URL override with their own copy.
 const tileModeMenu: TileModeMenu = {
   modes: [
     { grafID: GRAPHICS_NONE, menuname: "None (ASCII)" },
-    ...GRAPHICS_MODE_CATALOG.filter(
-      (m) => m.grafID >= 1 && m.grafID <= 4,
-    ).map((m) => ({ grafID: m.grafID, menuname: m.menuname })),
+    ...discoverEnabledTileModes().map((m) => ({
+      grafID: m.grafID,
+      menuname: m.menuname,
+    })),
   ],
   current: () => currentGrafID,
   apply: (grafID: number) => applyTileMode(grafID, true),

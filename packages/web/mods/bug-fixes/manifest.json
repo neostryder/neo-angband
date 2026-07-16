@@ -1,0 +1,12 @@
+{
+  "id": "bug-fixes",
+  "name": "Bug Fixes (unofficial patch set)",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "engine": "4.2.x",
+  "capabilities": ["registry:rules"],
+  "dependencies": { "core": "*" },
+  "author": "neostryder (RPGM Tools)",
+  "license": "GPL-2.0-only",
+  "description": "Bundled, opt-in fixes for upstream Angband 4.2.6 crash / data-corruption / save-load / determinism / logic-error bugs, in the model of an unofficial patch. Every fix is gated by a named core rule flag and OFF in core; removing this mod returns the game to faithful, buggy-as-shipped 4.2.6 behaviour. See docs/modding/BUG_FIXES.md."
+}

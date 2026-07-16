@@ -255,3 +255,45 @@ describe("object_list sorting + colour", () => {
     );
   });
 });
+
+describe("objectListStandardCompare - bug-fixes #4664 total-key tiebreak", () => {
+  /* Two DISTINCT entries of the same kind at the SAME squared distance from the
+   * player but different offsets: compareTypes ties, distanceCompare ties. */
+  function sameDistancePair(): [
+    import("./obj-list").ObjectListEntry,
+    import("./obj-list").ObjectListEntry,
+  ] {
+    const obj = {
+      kind: { name: "Ration of Food", dChar: ",", dAttr: "w", cost: 3 },
+      tval: 80,
+      sval: 1,
+      number: 1,
+      artifact: null,
+      notice: 0,
+    } as unknown as GameObject;
+    // (dx=3, dy=4) and (dx=4, dy=3) are both 25 units away.
+    const a = { object: obj, unknown: false, count: [1, 0], dx: 3, dy: 4 };
+    const b = { object: obj, unknown: false, count: [1, 0], dx: 4, dy: 3 };
+    return [a as never, b as never];
+  }
+
+  it("faithful (flag OFF): equal-distance distinct entries are order-equivalent", () => {
+    const state = makeState({ playerGrid: loc(20, 12) });
+    const [a, b] = sameDistancePair();
+    const cmp = objectListStandardCompare(state);
+    expect(cmp(a, b)).toBe(0);
+    expect(cmp(b, a)).toBe(0);
+  });
+
+  it("corrected (flag ON): a deterministic geometric total-key breaks the tie", () => {
+    const state = makeState({ playerGrid: loc(20, 12) });
+    state.modRules = { "bugfix.objectListOrder": true };
+    const [a, b] = sameDistancePair();
+    const cmp = objectListStandardCompare(state);
+    // a has dy=4, b has dy=3: nearer-to-top (smaller dy) sorts first, so b < a.
+    expect(cmp(a, b)).toBeGreaterThan(0);
+    expect(cmp(b, a)).toBeLessThan(0);
+    // Antisymmetry holds (strict total order): sign(cmp(a,b)) == -sign(cmp(b,a)).
+    expect(Math.sign(cmp(a, b))).toBe(-Math.sign(cmp(b, a)));
+  });
+});

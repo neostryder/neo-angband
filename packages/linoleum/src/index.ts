@@ -31,5 +31,21 @@ export type {
   ConvertSummary,
   EffectProfile,
   ExportEntry,
+  PackAuthoring,
   PackResult,
 } from "./convert.js";
+export {
+  formatPoolLines,
+  formatTargetRule,
+  parsePoolsFile,
+  parseTargetLine,
+  parseTargetsFile,
+  selectPoolMember,
+} from "./targets.js";
+export type {
+  PoolDefinition,
+  PoolGridContext,
+  PoolSelection,
+  TargetKind,
+  TargetRule,
+} from "./targets.js";

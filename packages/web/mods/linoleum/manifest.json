@@ -1,0 +1,17 @@
+{
+  "id": "linoleum",
+  "name": "neo-linoleum",
+  "version": "1.0.0",
+  "shape": "tiles",
+  "engine": "4.2.x",
+  "author": "neostryder (RPGM Tools)",
+  "license": "mixed; see packages/web/public/tiles/CREDITS.md",
+  "description": "Bundled freely-licensed graphics tile packs. Registers the Original, Adam Bolt, David Gervais, and Nomad tilesets so a graphics mode can be picked in Options (not only via ?tiles=/?graf= URL). Shockbolt is deliberately excluded (bespoke licence). ASCII stays the default; each pack is opt-in. Default-on and fully removable.",
+  "dependencies": { "core": "*" },
+  "tilePacks": [
+    { "grafID": 1, "key": "old", "path": "tiles/old" },
+    { "grafID": 2, "key": "adam-bolt", "path": "tiles/adam-bolt" },
+    { "grafID": 3, "key": "gervais", "path": "tiles/gervais" },
+    { "grafID": 4, "key": "nomad", "path": "tiles/nomad" }
+  ]
+}
