@@ -40,7 +40,7 @@ import type { PlayerState } from "../player/calcs";
 import { playerBestDiggerDigging } from "../player/best-digger";
 import { playerExpGain, playerKillExp } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
-import { historyAdd, historyFindArtifact } from "../player/history";
+import { historyAdd, historyFindArtifact, historyLoseArtifact } from "../player/history";
 import { artifactHistoryName, historyStamp } from "../game/history";
 import { makePlayerSideEffects } from "../game/player-side";
 import { makeMonBlowEnv } from "../game/mon-side";
@@ -150,6 +150,7 @@ import {
 import {
   FlavorKnowledge,
   makeRuneEnv,
+  OBJ_NOTICE,
   objectLearnOnWield,
   playerLearnInnate,
 } from "../obj/knowledge";
@@ -178,7 +179,7 @@ import { Rng } from "../rng";
 import type { Player } from "../player/player";
 import { OptionState } from "../player/options";
 import type { OptionName } from "../player/options";
-import { doRandart } from "../obj/randart";
+import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart";
 import { generateLevel } from "../gen/generate";
 import { iToGrid } from "../gen/util";
 import {
@@ -626,6 +627,20 @@ function wireGame(
   state.onArtifactFound = (art): void => {
     const stamp = historyStamp(state);
     historyFindArtifact(
+      state.actor.player,
+      art,
+      stamp.dlev,
+      stamp.clev,
+      stamp.turn,
+      (a) => artifactHistoryName(state, reg.objects, reg.constants, a),
+    );
+  };
+
+  // history_lose_artifact (player-history.c L246): an artifact is destroyed,
+  // abandoned on a regenerated level, or discarded by a store. RNG-free name.
+  state.onArtifactLost = (art): void => {
+    const stamp = historyStamp(state);
+    historyLoseArtifact(
       state.actor.player,
       art,
       stamp.dlev,
@@ -1342,6 +1357,23 @@ function makeChangeLevel(
     state.chunk = g.c;
     state.monsters = [null];
     state.groups = [null];
+    /* Artifacts left on the abandoned level are lost (generate.c L1383-1394):
+     * a known one (or any, under birth_lose_arts) is logged as missed. The
+     * created-mark reset that lets an unknown one regenerate rides artifact
+     * upkeep (#24). Runs before the floor is cleared below. */
+    {
+      const loseArts = state.options?.get("birth_lose_arts") ?? false;
+      for (const pile of state.floor.values()) {
+        for (const obj of pile) {
+          if (
+            obj.artifact &&
+            (loseArts || (obj.notice & OBJ_NOTICE.ASSESSED) !== 0)
+          ) {
+            state.onArtifactLost?.(obj.artifact);
+          }
+        }
+      }
+    }
     state.floor = new Map();
     state.traps = new Map();
     state.known = newKnownMap(g.c.width, g.c.height);
@@ -1665,7 +1697,14 @@ function makeStoreApi(
       const know = obj
         ? txnKnow(obj)
         : { flavor, flavorDeps: flavorAwareDeps(state), aware: false, noSelling: noSelling() };
-      return storeSell(storeCtx(), store, handle, amt, state.actor.player, state.gear, know);
+      const result = storeSell(storeCtx(), store, handle, amt, state.actor.player, state.gear, know);
+      /* do_cmd_sell: selling an artifact reveals it (history_find_artifact,
+       * store.c L1928); if the store then discards it, it is lost (L1992). */
+      if (result.ok && result.sold?.artifact) {
+        state.onArtifactFound?.(result.sold.artifact);
+        if (result.carried === false) state.onArtifactLost?.(result.sold.artifact);
+      }
+      return result;
     },
     price: (store, obj, storeBuying, qty): number =>
       priceItem(
@@ -1689,7 +1728,16 @@ function makeStoreApi(
  * ObjRegistry (built fresh by bindCore), never a shared global.
  */
 function swapRandartSet(reg: CoreRegistries, seed: number): void {
-  const randarts = doRandart(reg.objects, seed);
+  /* Thread the RANDNAME_TOLKIEN corpus (names.json section 1, loaded into
+   * CoreRegistries.nameSections at boot) so artifact_gen_name draws faithful
+   * Markov names via randnameMake instead of the local syllable fallback -
+   * this also keeps the RNG draw count identical to upstream for the whole set
+   * (obj-randart.c L2713-L2724). */
+  const randarts = doRandart(
+    reg.objects,
+    seed,
+    reg.nameSections.get(RANDNAME_TOLKIEN),
+  );
   reg.objects.artifacts.length = 0;
   reg.objects.artifacts.push(...randarts);
 }

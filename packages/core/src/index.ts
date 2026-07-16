@@ -125,6 +125,7 @@ export * from "./game/mon-list";
 export * from "./game/obj-list";
 export * from "./game/display";
 export * from "./game/char-sheet";
+export * from "./game/lore-color";
 export * from "./game/ui-entry";
 export * from "./game/equip-cmp";
 export * from "./game/mon-shape";

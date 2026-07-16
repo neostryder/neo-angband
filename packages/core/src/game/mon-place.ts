@@ -21,9 +21,16 @@
  * DEFERRED (ledgered in parity/ledger/game-mon-place.yaml): placement-time
  * monster drops (mon_create_drop) - the drops are instead generated at death
  * in game/mon-death.ts (an accepted RNG-stream deviation documented there),
- * so no held pile is populated here; mimicked objects ride the
- * monster-inventory subsystem; the cheat_hear messages are UI-only;
+ * so no held pile is populated here; the cheat_hear messages are UI-only;
  * update_mon / monster-light view refresh rides the FOV consumers.
+ *
+ * Object-mimic placement (mon_create_mimicked_object) IS ported here and
+ * fires from placeMonsterLive for live-placed (summoned / bred) mimics when
+ * the caller supplies MonPlaceDeps.mimic. SEAM: generation-spawned mimics are
+ * built by gen/util.ts and installed by session/game.ts populateFromLevel,
+ * neither of which yet calls monCreateMimickedObject (nor threads the
+ * object-make deps), so generated object-mimics still spawn with
+ * mon.mimickedObj = 0 until that handoff is wired.
  *
  * add_to_monster_rating IS wired here (mon-make.c L1112-1126), matching
  * upstream's single place_new_monster_one for both generation and live
@@ -33,23 +40,32 @@
  * faithful to upstream but have no effect on an already-shown feeling.
  */
 
-import { MON_TMD, RF } from "../generated";
+import { MON_TMD, ORIGIN, RF } from "../generated";
+import type { Rng } from "../rng";
 import type { Loc } from "../loc";
 import { DDGRID_DDD, distance, locEq, locSum } from "../loc";
 import type { MonsterBase, MonsterGroupRole, MonsterRace } from "../mon/types";
 import { MON_GROUP } from "../mon/types";
 import type { Monster, MonsterGroupInfo } from "../mon/monster";
 import { turnEnergy } from "../mon/monster";
-import { createMonster } from "../mon/make";
+import { createMonster, monsterCarry } from "../mon/make";
 import type { MonAllocTable } from "../mon/make";
 import { monsterIsCamouflaged, monsterIsShapeUnique } from "../mon/predicate";
 import { monsterWake } from "../mon/take-hit";
 import type { SummonTable } from "../mon/summon";
 import { summonSpecificOkay } from "../mon/summon";
+import { applyMagic, makeGold, objectPrep } from "../obj/make";
+import type { MakeDeps } from "../obj/make";
+import { tvalIsMoney } from "../obj/object";
+import type { GameObject } from "../obj/object";
+import { tvalFindIdx } from "../obj/bind";
+import type { ObjectKind } from "../obj/types";
 import { scatterExt } from "../world/scatter";
 import { los } from "../world/view";
 import { monsterMax, monsterSwap, squareMonster } from "./context";
 import type { GameState } from "./context";
+import { floorCarry } from "./floor";
+import type { FloorEnv } from "./floor";
 import { monsterGroupAssign, summonGroup } from "./mon-group";
 
 /** Everything live placement needs beyond the state. */
@@ -69,6 +85,43 @@ export interface MonPlaceDeps {
   groupMax?: number;
   /** z_info->monster_group_dist (mon-gen:group-dist, 5). */
   groupDist?: number;
+  /**
+   * Object-make deps for mon_create_mimicked_object (mon-make.c L899). Absent
+   * (worldless / monster-only harnesses, and every current caller until the
+   * generation-handoff seam is wired), object-mimics are placed as bare
+   * monsters with no fake item - exactly the pre-mimic behaviour - and
+   * mon.mimickedObj stays 0.
+   */
+  mimic?: MimicDeps;
+}
+
+/** Everything mon_create_mimicked_object needs beyond the state and monster. */
+export interface MimicDeps {
+  /** Object-make deps (makeGold / objectPrep / applyMagic share the RNG). */
+  makeDeps: MakeDeps;
+  /** floor_carry env (ignore / stacking hooks); defaults to inert. */
+  floorEnv?: FloorEnv;
+}
+
+/**
+ * The minimal, GameState-free surface mon_create_mimicked_object needs so BOTH
+ * the live cave (this module) and level generation (gen/util.ts) can build a
+ * mimic's fake object off the same code. The two paths differ only in how the
+ * object is carried: the live path calls floor_carry on the running state; the
+ * generation path parks it on the Gen side-table that populateFromLevel later
+ * re-carries. Neither carry draws RNG, so the object's draws (reservoir sample
+ * + make_gold / object_prep + apply_magic) land at the same stream position on
+ * either path.
+ */
+export interface MimicTarget {
+  /** c->depth: the depth make_gold / origin_depth read. */
+  depth: number;
+  /** The stream to draw from (live state.rng or generation g.rng). */
+  rng: Rng;
+  /** make_gold / object_prep / apply_magic dependencies. */
+  makeDeps: MakeDeps;
+  /** floor_carry(c, mon->grid, obj): put obj at grid, true iff it went. */
+  carry: (grid: Loc, obj: GameObject) => boolean;
 }
 
 /** square_isopen on the live cave: floor with no occupant (player counts). */
@@ -107,7 +160,12 @@ export function squareAllowsSummon(
  * monster into the first free slot (or a fresh one), mark its square, join
  * its group and count its race. Returns the midx.
  */
-function placeMonsterLive(state: GameState, grid: Loc, mon: Monster): number {
+function placeMonsterLive(
+  state: GameState,
+  grid: Loc,
+  mon: Monster,
+  deps: MonPlaceDeps,
+): number {
   if (state.monsters.length === 0) state.monsters.push(null);
   let midx = 0;
   for (let i = 1; i < state.monsters.length; i++) {
@@ -139,7 +197,129 @@ function placeMonsterLive(state: GameState, grid: Loc, mon: Monster): number {
   /* Count racial occurrences. */
   (mon.originalRace ?? mon.race).curNum++;
 
+  /* Make mimics start mimicking (mon-make.c place_monster L1048-1051). The
+   * upstream origin gate is implicit here: every live placement carries an
+   * origin (ORIGIN_DROP etc.), and generated mimics ride the generation
+   * handoff seam. mon_create_drop (L1044-1046) is deferred to death (module
+   * docstring); object-mimic races carry no RF_DROP_* / drops in vanilla, so
+   * its RNG draws would be zero at this point - the mimic object's draws land
+   * at the same stream position as upstream for every mimic race. Inert unless
+   * the caller supplies object-make deps. */
+  if (deps.mimic && mon.race.mimicKinds.length > 0) {
+    monCreateMimickedObject(state, mon, deps.mimic);
+  }
+
   return midx;
+}
+
+/**
+ * mon_create_mimicked_object (mon-make.c L899): create the fake floor item an
+ * object-mimic imitates and link it to the monster. Reservoir-samples one of
+ * the race's mimic_kinds (one_in_(i) over i = 1..n; the first draw, one_in_(1),
+ * draws no RNG and always selects the first kind), makes a gold object for a
+ * money kind or a prepped-and-magicked item otherwise (RNG order identical to
+ * upstream), links both sides of the mimicry, and drops it on the monster's
+ * grid via floor_carry. If the floor cannot hold it the mimicry is cleared and
+ * the item is either given to the monster (RF_MIMIC_INV) or discarded.
+ *
+ * The port has no object oidx registry, so mon.mimickedObj is a nonzero
+ * presence marker (1); the live mon<->obj link is carried by
+ * obj.mimickingMIdx === mon.midx, which is what become_aware reads and the save
+ * format persists. C's list_object (oidx bookkeeping) is DEFERRED with the
+ * floor object list (game/floor.ts module docs). convert_depth_to_origin(
+ * c->depth) is the port's direct state.chunk.depth (matching mon-death.ts /
+ * effect-item.ts). Draws RNG exactly as upstream.
+ */
+export function createMimickedObject(target: MimicTarget, mon: Monster): void {
+  const { reg, constants } = target.makeDeps;
+
+  /* Resolve a MonsterMimic (tval/sval names) to an object kind. Upstream
+   * resolves these to object_kind pointers at parse time; the port stores the
+   * names (mon/bind.ts) and looks them up here. */
+  const resolveKind = (m: { tval: string; sval: string }): ObjectKind => {
+    const tval = tvalFindIdx(m.tval);
+    const sval = tval >= 0 ? reg.lookupSval(tval, m.sval) : -1;
+    const kind = tval >= 0 ? reg.lookupKind(tval, sval) : null;
+    if (!kind) throw new Error(`mon: mimic kind ${m.tval}:${m.sval} not found`);
+    return kind;
+  };
+
+  /* Pick a random object kind to mimic (reservoir sample, i starts at 1). */
+  const kinds = mon.race.mimicKinds;
+  let kind = resolveKind(kinds[0] as { tval: string; sval: string });
+  let i = 1;
+  for (const mk of kinds) {
+    if (target.rng.oneIn(i)) kind = resolveKind(mk);
+    i++;
+  }
+
+  let obj: GameObject;
+  if (tvalIsMoney(kind.tval)) {
+    obj = makeGold(target.rng, target.makeDeps, target.depth, kind.name);
+  } else {
+    obj = objectPrep(
+      target.rng,
+      reg,
+      constants,
+      kind,
+      mon.race.level,
+      "randomise",
+    );
+    applyMagic(
+      target.rng,
+      target.makeDeps,
+      obj,
+      mon.race.level,
+      true,
+      false,
+      false,
+      false,
+      target.depth,
+    );
+    obj.number = 1;
+    obj.origin = ORIGIN.DROP_MIMIC;
+    obj.originDepth = target.depth;
+  }
+
+  obj.mimickingMIdx = mon.midx;
+  mon.mimickedObj = 1;
+
+  /* Put the object on the floor if it goes, otherwise no mimicry. */
+  if (target.carry(mon.grid, obj)) {
+    /* list_object: oidx bookkeeping DEFERRED (game/floor.ts). */
+  } else {
+    /* Clear the mimicry. */
+    obj.mimickingMIdx = 0;
+    mon.mimickedObj = 0;
+
+    if (mon.race.flags.has(RF.MIMIC_INV)) {
+      /* Give the object to the monster if appropriate. */
+      monsterCarry(mon.heldObj, obj, mon.midx);
+    }
+    /* Otherwise object_delete: drop the reference (no pile to excise). */
+  }
+}
+
+/**
+ * Live-cave mon_create_mimicked_object: a thin wrapper that binds the running
+ * GameState to the shared, GameState-free createMimickedObject core. The carry
+ * is the live floor_carry (no RNG), so this stays byte- and RNG-identical to
+ * the pre-refactor function for every live-placed mimic.
+ */
+export function monCreateMimickedObject(
+  state: GameState,
+  mon: Monster,
+  deps: MimicDeps,
+): void {
+  createMimickedObject(
+    {
+      depth: state.chunk.depth,
+      rng: state.rng,
+      makeDeps: deps.makeDeps,
+      carry: (grid, obj) => floorCarry(state, grid, obj, deps.floorEnv),
+    },
+    mon,
+  );
 }
 
 /**
@@ -192,7 +372,7 @@ export function placeNewMonsterOne(
     groupIndex: info.index,
     groupRole: info.role,
   });
-  placeMonsterLive(state, grid, mon);
+  placeMonsterLive(state, grid, mon, deps);
   return true;
 }
 

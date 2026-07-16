@@ -41,7 +41,7 @@ import type {
 } from "../effects/interpreter";
 import { monsterIsSmart, monsterIsStupid, monsterIsVisible } from "../mon/predicate";
 import { monsterWake } from "../mon/take-hit";
-import { equipLearnElement } from "../obj/knowledge";
+import { equipLearnElement, OBJ_NOTICE } from "../obj/knowledge";
 import { featIsBright } from "../world/chunk";
 import type { GameState } from "./context";
 import {
@@ -406,8 +406,18 @@ const handleDESTRUCTION: EffectHandler = (ctx) => {
 
       /* Destroy any grid that isn't a permanent wall */
       if (!c.isPerm(grid)) {
-        /* Artifact created-mark preservation rides artifact upkeep (#24). */
+        /* Deal with artifacts (effect-handler-attack.c L1220-1235): a known
+         * artifact (or any, under birth_lose_arts) is logged as lost. The
+         * created-mark preservation that lets an unknown one regenerate rides
+         * artifact upkeep (#24). */
+        const loseArts = state.options?.get("birth_lose_arts") ?? false;
         for (const obj of [...floorPile(state, grid)]) {
+          if (
+            obj.artifact &&
+            (loseArts || (obj.notice & OBJ_NOTICE.ASSESSED) !== 0)
+          ) {
+            state.onArtifactLost?.(obj.artifact);
+          }
           floorExcise(state, grid, obj);
         }
         /* square_destroy */

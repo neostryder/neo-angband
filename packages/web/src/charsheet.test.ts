@@ -64,6 +64,15 @@ const featureReg = new FeatureRegistry(loadRecords<TerrainRecordJson>("terrain")
 const FLOOR = featureReg.byCodeName("FLOOR").fidx;
 const GRANITE = featureReg.byCodeName("GRANITE").fidx;
 
+/** The ui_entry pack records that drive the mode-1 grid (loadUiEntryPacks). */
+const uiEntryPacks = {
+  uiEntry: loadRecords("ui_entry"),
+  uiEntryBase: loadRecords("ui_entry_base"),
+  uiEntryRenderer: loadRecords("ui_entry_renderer"),
+  objectProperty: loadRecords("object_property"),
+  playerProperty: loadRecords("player_property"),
+} as unknown as import("@neo-angband/core").UiEntryPackRecords;
+
 const players = bindPlayer({
   races: loadRecords("p_race"),
   classes: loadRecords("class"),
@@ -326,7 +335,9 @@ describe("showCharacterSheet: do_cmd_change_name keys", () => {
   it("h/Space/ArrowLeft cycle forward, l/ArrowRight backward (L1280-1289)", () => {
     const { state, win, term } = setup();
     void showCharacterSheet(term, state, "Fred");
-    const placeholder = "Resistances & Abilities - not yet available";
+    // Marker present in mode 1 (both the no-packs placeholder and the real grid)
+    // but never in the mode-0 skills/history page.
+    const placeholder = "Resistances & Abilities";
     expect(term.snapshot().join("\n")).not.toContain(placeholder);
     press(win, "h"); // mode 0 -> 1
     expect(term.snapshot().join("\n")).toContain(placeholder);
@@ -343,13 +354,32 @@ describe("showCharacterSheet: do_cmd_change_name keys", () => {
     press(win, "Escape");
   });
 
-  it("the mode-1 page is a labelled placeholder, not a faked resist grid", () => {
+  it("mode 1 shows a placeholder without ui_entry packs", () => {
     const { state, win, term } = setup();
     void showCharacterSheet(term, state, "Fred");
     press(win, "h");
     const text = term.snapshot().join("\n");
-    expect(text).toContain("Resistances & Abilities - not yet available");
-    expect(text).toContain("ui-entry");
+    expect(text).toContain("unavailable");
+    press(win, "Escape");
+  });
+
+  it("mode 1 renders the real resist/ability/sustain grid when packs are supplied", () => {
+    const { state, win, term } = setup();
+    void showCharacterSheet(term, state, "Fred", { uiEntryPacks });
+    press(win, "h");
+    const text = term.snapshot().join("\n");
+    // The resist regions and the player "@" column render (the lower panels -
+    // hindrances/modifiers/sustains - scroll into view below the fold).
+    expect(text).toContain("Resistances");
+    expect(text).toContain("Abilities");
+    expect(text).toContain("@");
+    expect(text).toContain("Acid:"); // a real resist row label
+    // Not the placeholder fallback.
+    expect(text).not.toContain("unavailable");
+
+    // Page down to reveal the sustain panel at the bottom of the grid.
+    for (let i = 0; i < 4; i++) press(win, "PageDown");
+    expect(term.snapshot().join("\n")).toContain("Sustains");
     press(win, "Escape");
   });
 

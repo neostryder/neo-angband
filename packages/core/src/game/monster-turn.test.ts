@@ -16,6 +16,7 @@ import { monsterAddToGroup, monsterGroupStart } from "./mon-group";
 import { squareIsWebbed } from "./trap";
 import {
   STAGGER,
+  getMove,
   getMoveBodyguard,
   getMoveFindHiding,
   monsterCheckActive,
@@ -536,6 +537,81 @@ describe("group AI: pack ambush (get_move_find_hiding)", () => {
     expect(state.chunk.sqinfoHas(mon.target.grid, SQUARE.VIEW)).toBe(false);
     expect(distance(mon.target.grid, state.actor.grid)).toBeGreaterThanOrEqual(min);
     expect(JSON.stringify(state.rng.getState())).toBe(before);
+  });
+
+  /**
+   * Golden square derived by hand from mon-move.c L613-666 on the harness's
+   * all-floor field (no SQUARE_VIEW anywhere, so !square_isview is always true;
+   * every interior grid is empty and projectable from the monster).
+   *
+   * Player P=(15,10), monster M=(20,10). distance() is Angband's octagonal
+   * metric max + min/2 (cave-view.c L38). distance(P,M) = 5, so
+   *   min = 5 * 3 / 4 + 2 = 3 + 2 = 5   (integer division, L620).
+   * Ring d=1 (dist_offsets, the 8 neighbours) is scanned in this exact order
+   * (dx,dy = x_offsets[i],y_offsets[i]); dis = distance(grid, P):
+   *   (19,9) dis 4  <min   (20,9) dis 5  -> best, gdis=5   (21,9) dis 6
+   *   (19,10) dis 4 <min   (21,10) dis 6                   (19,11) dis 4 <min
+   *   (20,11) dis 5 (not < gdis)         (21,11) dis 6
+   * gdis < 999 after ring 1, so the scan returns with target = (20,9): the
+   * FIRST grid at the closest allowed distance, straight north of the monster.
+   */
+  it("selects the exact upstream hiding square (20,9) by hand", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = addMon(state, makeRace({ level: 10, flags: [RF.GROUP_AI] }), loc(20, 10));
+    updateMonsterDistances(state);
+
+    expect(getMoveFindHiding(mon, state)).toBe(true);
+    expect(mon.target.grid).toEqual(loc(20, 9));
+  });
+
+  /**
+   * get_move's pack-ambush branch (mon-move.c L889-915): a healthy player who
+   * is NOT in the open (fewer than 5 passable/room grids around them) lures a
+   * pack monster to a hiding square. We box the player in so open < 5, mark the
+   * monster's grid in view so get_move_advance beelines (no RNG on that path),
+   * and confirm the branch overrides the advance target with the L613 hiding
+   * square, clears MFLAG_TRACKING, and draws no RNG (the whole path is a pure
+   * scan; the RNG-drawing surround branch at L934 stays deferred).
+   */
+  it("get_move diverts a boxed-in player's attacker to the ambush square", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    /* Wall the player into a 2-open pocket: only N and S stay passable. */
+    for (const g of [
+      loc(14, 9), loc(15, 9), loc(16, 9),
+      loc(14, 10), loc(16, 10),
+      loc(14, 11), loc(16, 11),
+    ]) {
+      state.chunk.setFeat(g, GRANITE);
+    }
+    const mon = addMon(state, makeRace({ level: 10, flags: [RF.GROUP_AI] }), loc(20, 10));
+    state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+    updateMonsterDistances(state);
+    const before = JSON.stringify(state.rng.getState());
+
+    const decision = getMove(mon, state);
+
+    expect(mon.target.grid).toEqual(loc(20, 9));
+    expect(mon.mflag.has(MFLAG.TRACKING)).toBe(false);
+    /* Grid diff (20,9)-(20,10) = (0,-1): a step north toward the ambush spot. */
+    expect(decision.move).toBe(true);
+    expect(JSON.stringify(state.rng.getState())).toBe(before);
+  });
+
+  /**
+   * The complement of the branch condition: a player standing in the open (>= 5
+   * passable grids around them) is NOT ambushed, so get_move keeps the plain
+   * beeline target set by get_move_advance instead of the hiding square.
+   */
+  it("get_move does not ambush a player standing in the open", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = addMon(state, makeRace({ level: 10, flags: [RF.GROUP_AI] }), loc(20, 10));
+    state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+    updateMonsterDistances(state);
+
+    getMove(mon, state);
+
+    /* Advance beelines straight at the player; no ambush diversion. */
+    expect(mon.target.grid).toEqual(loc(15, 10));
   });
 });
 

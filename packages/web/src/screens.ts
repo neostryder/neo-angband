@@ -245,11 +245,10 @@ export function equipmentMenu(state: GameState): { items: MenuItem[]; handles: n
 
 /**
  * The CharSheetDeps the shell can actually supply: the name plus the live
- * computed player_state (calc_bonuses) where one exists. statAdd currently
- * carries only the KNOWN-rune equipment modifiers the calc computes (the full
- * equipment stat_add slice is deferred in player/calcs.ts), so EB may still
- * read +0 on a fresh character; the sheet reads whatever the calc produced
- * rather than claiming more.
+ * computed player_state (calc_bonuses) where one exists. statAdd is the real
+ * equipment stat_add the calc derives (rune-gated per decision 25, so an
+ * as-yet-unidentified +STR ring reads +0 until its rune is learned, exactly as
+ * upstream's known_state), and it feeds the EB column of the stat table.
  */
 export function charSheetDeps(
   state: GameState,
@@ -296,8 +295,9 @@ function wrapPlain(text: string, width: number): string[] {
 /**
  * The player-history block (display_player_xtra_info, ui-player.c L858):
  * player->history wrapped (upstream text_out_wrap = 72) and indented one
- * column, in COLOUR_WHITE. Empty history renders nothing (a fresh character
- * has "" until birth background generation - get_history - is ported).
+ * column, in COLOUR_WHITE. The background paragraph is generated at birth
+ * (get_history / generateHistory, wired through generatePlayer); empty history
+ * still renders nothing so a headless / pre-birth character degrades cleanly.
  */
 export function historyBlockLines(state: GameState, cols = 80): ScreenLine[] {
   const history = state.actor.player.history.trim();
