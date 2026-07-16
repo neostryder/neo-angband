@@ -53,6 +53,15 @@ export interface GameEffectEnv {
   general?: GeneralEffectEnv;
   /** Item-targeting seams: get_item and the ego/curse tables (effect-item.ts). */
   item?: ItemEffectEnv;
+  /**
+   * Per-game flavor knowledge, so an item-identifying effect (EF_IDENTIFY ->
+   * object_learn_unknown_rune -> player_know_object) can fire the
+   * object_flavor_aware side effect. Absent, awareness is left unchanged (the
+   * worldless rule); the ignore/notice consequences ride flavorDeps.
+   */
+  flavor?: import("../obj/knowledge").FlavorKnowledge;
+  /** object_flavor_aware's ignore/notice side effects, used with `flavor`. */
+  flavorDeps?: import("../obj/knowledge").FlavorAwareDeps;
   /** Summoning seams: the summon table and live placement (effect-summon.ts). */
   summon?: SummonEffectEnv;
   /**

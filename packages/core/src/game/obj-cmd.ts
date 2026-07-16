@@ -649,6 +649,10 @@ export function useAux(
       ...(deps.general ? { general: deps.general } : {}),
       ...(deps.item ? { item: deps.item } : {}),
       ...(deps.summon ? { summon: deps.summon } : {}),
+      /* Flavor knowledge for item-identifying effects (EF_IDENTIFY fires the
+       * object_flavor_aware side effect of player_know_object). */
+      ...(deps.flavor ? { flavor: deps.flavor } : {}),
+      ...(deps.flavorDeps ? { flavorDeps: deps.flavorDeps } : {}),
     });
     const ident = { value: false };
     targetFix(state);

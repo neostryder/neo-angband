@@ -921,8 +921,18 @@ const handleIDENTIFY: EffectHandler = (ctx) => {
     env.item?.getItem?.(requestForEffect(EF.IDENTIFY, 0, state)!) ?? null;
   if (!obj) return false;
 
-  /* Identify the object. */
-  objectLearnUnknownRune(state.rng, player, state.runeEnv, obj, runes);
+  /* Identify the object. When flavor knowledge is wired (in-play), learning the
+   * rune also fires player_know_object's object_flavor_aware side effect for
+   * this object (jewelry with all non-curse runes known / a special artifact). */
+  objectLearnUnknownRune(
+    state.rng,
+    player,
+    state.runeEnv,
+    obj,
+    runes,
+    env.flavor,
+    env.flavorDeps,
+  );
   return true;
 };
 
