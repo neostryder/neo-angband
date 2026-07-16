@@ -149,14 +149,32 @@ Legend: [ ] open, [~] in progress, [x] done.
   "chance to hit" and per-blow percentages render 0% (meleeHitPercent is a core
   DEFERRED). cli 24 green (7 parity + 17 spoiler), tsc clean, tool runs
   end-to-end. No core exports added.
-- [ ] **B3. Parity ledger reconciliation** (#59, decision 12). Correct every
-  stale `status`/`deferred` field in `parity/ledger/*.yaml` against verified
-  reality (PUNCHLIST.md). The ledger is the rebase map; it must match the code.
-- [ ] **B4. Upstream rebase runbook** (decision 12). Document the tight,
-  repeatable process: pull new upstream tag -> diff vs pinned `reference/`
-  baseline -> map changed files/functions through the ledger to affected port
-  modules -> generate migration worklist -> port + re-verify against B1 -> advance
-  the pinned tag. Depends on B3.
+- [x] **B3. Parity ledger reconciliation** (#59, decision 12). DONE. Reconciled
+  all 101 `parity/ledger/*.yaml` against verified reality (PUNCHLIST.md + actual
+  port code + the A1-A8/B/D/E closures + a real `verified-by` test on disk).
+  96 files edited; final distribution across 146 docs: verified 94, ported 46,
+  partial 4, planned 2. Every `verified` doc now cites a real
+  `packages/**/*.test.ts` (107 distinct cited files, all confirmed present) or
+  the B1 harness; status vocabulary standardized on planned|partial|ported|
+  verified. Stale-in-both-directions cases fixed (e.g. game-loop, calc_bonuses,
+  color, game-effect-item were shipped-but-marked-partial; 4 gamedata records
+  were done-but-marked-planned). Genuinely-still-partial modules left honest and
+  listed (monster-terrain-damage, point-buy auto-spend, bookseller always-books,
+  world-kernel render stubs). PUNCHLIST.md header updated (ledger no longer
+  stale). One minor code-comment defect surfaced for follow-up: loop.ts L21-22
+  header docstring still lists world-clock features as DEFERRED that are
+  implemented below it (comment only, no functional issue).
+- [x] **B4. Upstream rebase runbook** (decision 12). DONE. New
+  `docs/REBASE_RUNBOOK.md`: a six-step loop - advance `reference/` to the new tag
+  (keeping a `reference.old/` snapshot), diff to enumerate changed files then
+  functions/tables/gamedata records, use the reconciled ledger as a reverse index
+  (`grep -rl "path: src/<file>.c" parity/ledger` -> pin by `items:` -> read
+  `module:`), build a dependency-ordered migration worklist, re-port + re-verify
+  against the module's vitest tests AND the B1 statistical guard (regenerate the
+  baseline only for legitimate generation changes), then advance the pinned tag
+  and re-derive touched entries' `baseline:`/`status:`. Includes a worked
+  micro-example tracing a hypothetical `player-calcs.c weight_limit` change
+  through `player-calcs-bonuses.yaml` to `player/calcs.ts`.
 
 ## C. Presentation parity
 

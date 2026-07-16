@@ -1,6 +1,6 @@
 module: packages/core/src/game/display.ts (sidebarModel / statusLineModel) +
   packages/core/src/player/calcs.ts (player_hp_attr / player_sp_attr)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/ui-display.c

@@ -1,5 +1,5 @@
 module: packages/core/src/game/effect-item.ts
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/effect-handler-general.c
@@ -54,11 +54,13 @@ upstream:
 notes: >-
   Registered by registerItemHandlers over the core stubs. The object
   chooser (upstream get_item / cmd_get_item "tgtitem") is the injected
-  ItemEffectEnv.getItem seam; wireGame supplies the ego/curse tables and
-  makeDeps but no chooser yet (the item menu rides presentation, #25), so
-  the choosing effects return false unused - exactly the upstream cancel
-  path, and the scroll/spell is not consumed. destroyOneItem covers both
-  gear (gear_object_for_use) and floor piles.
+  ItemEffectEnv.getItem seam; wireGame now supplies the ego/curse tables,
+  makeDeps AND a live chooser (getItem -> resolveTargetItem, session/
+  game.ts), so enchant / identify / recharge / remove-curse / brand-ammo /
+  create-arrows / tap-device all resolve in production and consume the
+  scroll/spell (a cancelled pick returns false unused, matching the upstream
+  cancel path). destroyOneItem covers both gear (gear_object_for_use) and
+  floor piles.
 deferred:
   - ODESC_BASE / ODESC_FULL descriptions and gear letters ride the display
     layer (#25); the kind's base name is used. obj->known->to_h/to_d/to_a

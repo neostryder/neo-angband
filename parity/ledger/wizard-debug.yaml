@@ -1,5 +1,5 @@
 module: packages/core/src/game/wizard.ts (the do_cmd_wiz_* command surface)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/cmd-wizard.c

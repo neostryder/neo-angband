@@ -1,6 +1,6 @@
 module: packages/core/src/obj/randart-data.ts + randart-build.ts +
   randart.ts (the random artifact generator)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/obj-randart.c

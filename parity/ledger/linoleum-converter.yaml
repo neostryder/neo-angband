@@ -1,5 +1,5 @@
 module: packages/linoleum/src/convert.ts
-status: ported
+status: verified
 baseline: 4.2.6
 upstream:
   # NOTE: the baseline for this module is NOT the 4.2.6 C tree. The Linoleum

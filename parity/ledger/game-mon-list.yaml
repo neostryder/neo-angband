@@ -1,5 +1,5 @@
 module: packages/core/src/game/mon-list.ts (the monster-list view model)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/mon-list.c

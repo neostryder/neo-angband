@@ -1,5 +1,5 @@
 module: packages/core/src/obj/ (types.ts, bind.ts, object.ts)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/object.h

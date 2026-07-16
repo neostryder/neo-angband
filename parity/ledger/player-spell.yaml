@@ -1,5 +1,5 @@
 module: packages/core/src/player/spell.ts (+ packages/core/src/game/spell-cmd.ts)
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/player-spell.c

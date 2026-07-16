@@ -1,5 +1,5 @@
 module: packages/core/src/color.ts
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/z-color.h
@@ -9,10 +9,12 @@ upstream:
       - angband_color_table (RGB values; leading mode byte dropped)
       - color_table index chars and names
       - color_char_to_attr / color_text_to_attr
+      - color_table[].color_translate matrix + get_color (#84)
 notes: >-
-  Pending: the color_table translation matrix (mono/vga/blind/lighter/
-  darker/highlight/metallic/misc) used by lighting and accessibility
-  modes; port it alongside the modules that consume it. colorToCss is a
-  port-only front-end convenience.
+  The color_table translation matrix (mono/vga/blind/lighter/darker/
+  highlight/metallic/misc) and get_color are now ported (#84). colorToCss
+  is a port-only front-end convenience.
 verified-by:
   - unit tests (order, RGB spot checks, unique attr chars, lookups)
+  - color.test.ts pins the color_translate matrix (z-color.c L66-155) and
+    getColor applying the translate column n times

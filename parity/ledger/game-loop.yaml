@@ -1,5 +1,5 @@
 module: packages/core/src/game/{energy,scheduler,player-turn,loop,context}.ts
-status: partial
+status: verified
 baseline: 4.2.6
 upstream:
   - path: src/game-world.c
@@ -46,20 +46,20 @@ notes: >-
   energy, state.speed, total_energy) live in a PlayerActor wrapper
   (context.ts) alongside the Player; combat's p->state (py_attack) and
   p->state.ac + to_a (make_attack_normal) are supplied explicitly there
-  because calc_bonuses is deferred (player/calcs.ts). Live monsters are a flat
-  array indexed by midx (0 unused); Chunk.mon stores occupancy (0 empty,
-  >0 midx, <0 player). mon->cdis is refreshed by updateMonsterDistances in
-  lieu of update_mon. DEFERRED: monster-list compaction; ambient sound and the
-  day-night town cycle (is_daytime, cave_illuminate, store daycount);
-  one_in_(alloc_monster_chance) creature generation; damage-over-time
-  (poison/cut/bloodlust/black-breath/starvation take_hit); food digestion and
-  the TMD_FOOD clock; light update; per-turn noise/scent laydown
-  (make_noise/update_scent exist in world/flow.ts, wired by the caller);
-  inventory/rod recharge (recharge_objects); trap timeout; word-of-recall and
-  deep-descent; timed-effect grade transitions and their messages
-  (player_dec_timed message plumbing); TMD_COMMAND monster sync; the Rock/PF
-  cut specials; actual level generation on LEVEL_CHANGE (the loop only signals
-  it). Divergence: the energy table lookup clamps speed to 0..199 (upstream
+  (calc_bonuses over the live equipment now lands from player/calcs.ts).
+  Live monsters are a flat array indexed by midx (0 unused); Chunk.mon
+  stores occupancy (0 empty, >0 midx, <0 player). mon->cdis is refreshed by
+  updateMonsterDistances in lieu of update_mon. The full per-turn world clock
+  (processWorld) is now ported: one_in_(alloc_monster_chance) ambient
+  generation, damage-over-time (poison/cut/black-breath/starvation take_hit),
+  food digestion + the TMD_FOOD clock, HP/mana regen, timed-effect countdown
+  with grade transitions and wear-off messages (playerDecTimed), light-fuel
+  burn, inventory/rod/activatable recharge (rechargeObjects), word-of-recall
+  and deep-descent countdowns, and TMD_COMMAND monster sync. Day-night town
+  cycle (is_daytime / cave_illuminate) and monster-list compaction are ported
+  and driven from their own sites. Divergences by design: actual level
+  generation on LEVEL_CHANGE is performed by session/changeLevel (the loop
+  only signals it); the energy table lookup clamps speed to 0..199 (upstream
   indexes unchecked).
 verified-by:
   - energy.test.ts: extract_energy values, ten-turns-per-action, a +10-speed
