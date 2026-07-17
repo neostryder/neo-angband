@@ -34,8 +34,18 @@ import type {
   EffectRegistry,
   Source,
 } from "../effects/interpreter";
+import {
+  damageEffectApplyToPlayer,
+  handleDAMAGE as baseHandleDAMAGE,
+} from "../effects/handlers";
 import { gameEnv } from "./effect-game-env";
 import type { GameEffectEnv } from "./effect-game-env";
+import {
+  caveFindDecoy,
+  destroyDecoy,
+  monTakeNonplayerHit,
+  monsterTargetMonster,
+} from "./effect-mon-origin";
 import {
   castAlter,
   castArc,
@@ -545,11 +555,54 @@ const handleWONDER: EffectHandler = (ctx) => {
   return true;
 };
 
+/**
+ * EF_DAMAGE (effect-handler-attack.c L456): deal damage from the current
+ * monster or trap to the player. The game-layer override adds the SRC_MONSTER
+ * sub-branches the worldless base cannot reach: a monster casting at another
+ * monster (monster_target_monster -> mon_take_nonplayer_hit) or at the
+ * player's decoy (square_destroy_decoy). Everything else (player / trap /
+ * object / chest / none origins, and a monster origin that falls through to
+ * the player) delegates to the base handler so the player take_hit path stays
+ * single-sourced.
+ */
+const handleDAMAGE: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env || ctx.origin.what !== "monster") return baseHandleDAMAGE(ctx);
+
+  const { state } = env;
+  const dam = effectCalculateValue(ctx, false);
+
+  /* Always ID */
+  ctx.ident = true;
+
+  const tMon = monsterTargetMonster(state, ctx.origin.monster);
+
+  /* Damage another monster. */
+  if (tMon) {
+    monTakeNonplayerHit(env, tMon, dam);
+    return true;
+  }
+
+  /* Destroy a decoy. */
+  if (caveFindDecoy(state)) {
+    destroyDecoy(state, env.general?.trapDeps, (t) => state.msg?.(t));
+    return true;
+  }
+
+  /* Otherwise damage the player. monster_desc(MDESC_DIED_FROM) is deferred
+   * (8.9); the caster's race name stands in as the death cause. */
+  const mon = state.monsters[ctx.origin.monster];
+  const killer = mon ? mon.race.name : "a monster";
+  damageEffectApplyToPlayer(ctx, dam, killer);
+  return true;
+};
+
 /** The attack handlers, keyed by upstream EF code. */
 const ATTACK_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   number,
   EffectHandler
 >([
+  [EF.DAMAGE, handleDAMAGE],
   [EF.BOLT, handleBOLT],
   [EF.BEAM, handleBEAM],
   [EF.BOLT_OR_BEAM, handleBOLT_OR_BEAM],

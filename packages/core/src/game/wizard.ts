@@ -37,10 +37,20 @@
  * dump_level_map port their DATA half only - they return the grids or map the
  * shell would highlight or write, not the drawing.
  *
- * DEFERRED (see parity/ledger/wizard-debug.yaml for the full list with
- * reasons): the wiz-spoil.c spoiler generators, the three Monte-Carlo stats
- * collectors (do_cmd_wiz_collect_*), and the pure interactive shells
- * do_cmd_wiz_play_item / _display_item / _stat_item / _edit_player_start.
+ * The item / player debug shells whose non-UI halves are engine data or state
+ * changes are ported here too (their Term rendering and menu loops stay with the
+ * shell, WP-14): wizDisplayItem (wiz_display_item DATA), wizPlayItemBegin /
+ * wizPlayItemReject / wizPlayItemAccept (the do_cmd_wiz_play_item session
+ * snapshot / restore / commit), wizStatItem (do_cmd_wiz_stat_item's make_object
+ * rarity sampler) and wizEditPlayerStart (do_cmd_wiz_edit_player_start's batch
+ * stat/gold/exp apply). The NOSCORE_* cheat-flag model and the markNoscore seam
+ * (15.3) live here as well.
+ *
+ * DEFERRED (see parity/ledger/wizard-debug.yaml): the wiz-spoil.c spoiler
+ * generators and the three Monte-Carlo collectors (do_cmd_wiz_collect_*) are
+ * dev-tooling ports that live in packages/cli (spoilers.ts, stats.ts,
+ * wiz-stats.ts) alongside the other headless generation harnesses, not in this
+ * engine module.
  */
 
 import { EF, KF, ORIGIN, PROJ, TMD } from "../generated";
@@ -57,8 +67,18 @@ import {
   objectPrep,
 } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
-import { appendObjectCurse, removeObjectCurse, tvalIsMoney } from "../obj/object";
+import {
+  appendObjectCurse,
+  objectCopy,
+  objectWeightOne,
+  removeObjectCurse,
+  tvalIsMoney,
+} from "../obj/object";
 import type { GameObject } from "../obj/object";
+import { objectValue } from "../obj/value";
+import { OBJ_NOTICE, objectLearnOnWield } from "../obj/knowledge";
+import { OBJ_MOD_MAX } from "../obj/types";
+import type { FlagSet } from "../bitflag";
 import type { Artifact, Curse, ObjectKind } from "../obj/types";
 import type { FlavorKnowledge } from "../obj/knowledge";
 import { MON_GROUP } from "../mon/types";
@@ -135,6 +155,16 @@ export interface WizardDeps {
   artifacts?: readonly (Artifact | null)[];
   /** The full curse list (reg.curses), for curse_item. */
   curses?: readonly (Curse | null)[];
+  /**
+   * Mark the character's savefile-invalidating cheat flags (player->noscore).
+   * Optional seam: player.ts does not yet carry a noscore field (owned by the
+   * gear/player work package) and save.ts persists it (owned by the save/load
+   * work package), so this module cannot write the flag directly. When a caller
+   * supplies the hook, the noscore actions here call it with the NOSCORE_* bits
+   * upstream would OR in; when it is absent the marking is a no-op (see the
+   * WIRING-NEEDED items in the ledger). Bits come from the NOSCORE constants.
+   */
+  markNoscore?: (bits: number) => void;
   /** msg(): command feedback. */
   msg?: (text: string) => void;
 }
@@ -142,6 +172,52 @@ export interface WizardDeps {
 /** requireWizard: the gate. Returns false (and no-ops) when not in wizard mode. */
 export function wizardEnabled(deps: WizardDeps): boolean {
   return deps.wizard === true;
+}
+
+/* ------------------------------------------------------------------ *
+ * NOSCORE cheat flags (player.h L92-100).
+ * ------------------------------------------------------------------ */
+
+/**
+ * NOSCORE_*: the "ways in which players can be marked as cheaters" bit model
+ * (player.h L92-100). Stored on player->noscore (a uint16), persisted in the
+ * savefile (save.c L622 wr_u16b / load.c L965 rd_u16b) and re-asserted from the
+ * savefile's own wizard flag on load (savefile.c L650). A set cheat bit
+ * invalidates the high-score entry (score.c L289). The bit values match
+ * upstream exactly so a loaded uint16 is interpreted identically.
+ */
+export const NOSCORE = {
+  /** Character used wizard mode (wiz-debug.c L32, cmd-misc.c L51). */
+  WIZARD: 0x0002,
+  /** Character used a debug command / debug options (player-util.c L1303). */
+  DEBUG: 0x0008,
+  /** Character jumped levels (cmd-wizard.c L1366); transient, cleared after
+   * the jump completes (generate.c L824-828). Does NOT invalidate the score. */
+  JUMPING: 0x0010,
+  /** Character was played by the Borg (cmd-misc.c L140, main-win.c L3396). */
+  BORG: 0x0020,
+} as const;
+
+/**
+ * The cheat bits that invalidate a high-score entry (score.c L289-298:
+ * NOSCORE_WIZARD | NOSCORE_DEBUG, and NOSCORE_BORG when SCORE_BORGS is not
+ * defined - the port's baseline). NOSCORE_JUMPING is deliberately absent: it is
+ * a transient generation marker, not a scoring disqualifier.
+ */
+export const NOSCORE_SCORE_INVALIDATING =
+  NOSCORE.WIZARD | NOSCORE.DEBUG | NOSCORE.BORG;
+
+/** markNoscore (obj-mark analogue): OR cheat bits into a noscore value. Pure. */
+export function markNoscore(current: number, bits: number): number {
+  return (current | bits) & 0xffff;
+}
+
+/**
+ * noscoreInvalidatesScore (score.c L289): true when the character's cheat flags
+ * disqualify it from the high-score table.
+ */
+export function noscoreInvalidatesScore(noscore: number): boolean {
+  return (noscore & NOSCORE_SCORE_INVALIDATING) !== 0;
 }
 
 /* ------------------------------------------------------------------ *
@@ -691,6 +767,8 @@ export function wizJumpLevel(
   if (!wizardEnabled(deps)) return false;
   const level = params.level;
   if (level < 0 || level >= state.z.maxDepth) return false;
+  /* player->noscore |= NOSCORE_JUMPING (cmd-wizard.c L1366). */
+  deps.markNoscore?.(NOSCORE.JUMPING);
   deps.msg?.(`You jump to dungeon level ${level}.`);
   state.targetDepth = level;
   state.generateLevel = true;
@@ -987,6 +1065,8 @@ export function wizWizardLight(state: GameState, deps: WizardDeps): boolean {
 export function wizCheatDeath(state: GameState, deps: WizardDeps): boolean {
   if (!wizardEnabled(deps) || !deps.effect) return false;
   const p = state.actor.player;
+  /* player->noscore |= NOSCORE_WIZARD (wiz-debug.c L32). */
+  deps.markNoscore?.(NOSCORE.WIZARD);
   p.age = 1;
   state.isDead = false;
   p.chp = p.mhp;
@@ -1018,6 +1098,311 @@ const CHEAT_DEATH_TIMED: readonly number[] = [
   TMD.STUN,
   TMD.CUT,
 ];
+
+/* ------------------------------------------------------------------ *
+ * Item debug shells (cmd-wizard.c): the non-UI engine / data halves.
+ * The Term rendering (wiz_display_item's prt / prt_binary flag grid) and the
+ * command-queue menu loops stay with the shell (WP-14); these return the data
+ * the shell needs or perform the concrete state change it drives.
+ * ------------------------------------------------------------------ */
+
+/**
+ * The DATA half of wiz_display_item (cmd-wizard.c L190-283): the scalar item
+ * facts the debug panel prints. The Term_clear / prt line layout and the
+ * vertical prt_binary flag grid are the shell's; this returns the values.
+ *
+ * `all` chooses whether the combat-plus fields (to-hit / to-dam / to-ac) and
+ * the flag set come from the fully-real object or from what is known: upstream
+ * reads object_to_hit(all ? obj : obj->known) and object_flags[_known](obj).
+ * The port's known twin is a GameObject, supplied as `known`; when `all` is
+ * false and `known` is given, the "+" fields and flagsKnown read from it.
+ * object_flags(obj) is just a copy of obj.flags (obj-util.c L353); the "known"
+ * flag set is the twin's flags (obj.flags when no twin is threaded).
+ */
+export interface WizItemDisplay {
+  /** obj->dd (always from the real object). */
+  dd: number;
+  /** obj->ds. */
+  ds: number;
+  /** object_to_hit(all ? obj : obj->known). */
+  toH: number;
+  /** object_to_dam(all ? obj : obj->known). */
+  toD: number;
+  /** obj->ac. */
+  ac: number;
+  /** object_to_ac(all ? obj : obj->known). */
+  toA: number;
+  /** obj->kind->kidx. */
+  kidx: number;
+  tval: number;
+  sval: number;
+  /** object_weight_one(obj). */
+  weight: number;
+  /** obj->timeout. */
+  timeout: number;
+  /** obj->number. */
+  number: number;
+  /** obj->pval. */
+  pval: number;
+  /** obj->artifact ? aidx : 0 (upstream "name1"). */
+  name1: number;
+  /** obj->ego ? eidx : -1 (upstream "egoidx"). */
+  egoidx: number;
+  /** object_value(obj, 1). */
+  cost: number;
+  /** object_flags(obj): the full flag set (== obj.flags). */
+  flags: FlagSet;
+  /** object_flags_known(obj): the known flag set (the twin's, or obj's). */
+  flagsKnown: FlagSet;
+}
+
+export function wizDisplayItem(
+  obj: GameObject,
+  deps: WizardDeps,
+  opts: { all?: boolean; known?: GameObject | null } = {},
+): WizItemDisplay | null {
+  if (!wizardEnabled(deps) || !deps.makeDeps) return null;
+  const all = opts.all ?? true;
+  const known = opts.known ?? null;
+  /* The object the "+" combat fields and the known flag set are read from. */
+  const view = all ? obj : known ?? obj;
+  return {
+    dd: obj.dd,
+    ds: obj.ds,
+    toH: view.toH,
+    toD: view.toD,
+    ac: obj.ac,
+    toA: view.toA,
+    kidx: obj.kind.kidx,
+    tval: obj.tval,
+    sval: obj.sval,
+    weight: objectWeightOne(obj, deps.curses),
+    timeout: obj.timeout,
+    number: obj.number,
+    pval: obj.pval,
+    name1: obj.artifact ? obj.artifact.aidx : 0,
+    egoidx: obj.ego ? obj.ego.eidx : -1,
+    cost: objectValue(deps.makeDeps.reg, obj, 1, true),
+    flags: obj.flags,
+    flagsKnown: (known ?? obj).flags,
+  };
+}
+
+/**
+ * wizPlayItemBegin (do_cmd_wiz_play_item, cmd-wizard.c L1642-1645): snapshot the
+ * object so the [t]weak / [r]eroll / [c]urse edits can be rejected. Upstream
+ * allocates a fresh object and object_copy()s the working item into it; the port
+ * uses objectCopy (obj/object.ts) which produces the same value snapshot.
+ * Returns the preserved copy the shell hands back to Accept / Reject.
+ */
+export function wizPlayItemBegin(
+  obj: GameObject,
+  deps: WizardDeps,
+): GameObject | null {
+  if (!wizardEnabled(deps)) return null;
+  return objectCopy(obj);
+}
+
+/** The mutable item properties wiz_play_item's reject restores (object_copy). */
+function restoreItemFields(dst: GameObject, src: GameObject): void {
+  dst.kind = src.kind;
+  dst.ego = src.ego;
+  dst.artifact = src.artifact;
+  dst.tval = src.tval;
+  dst.sval = src.sval;
+  dst.pval = src.pval;
+  dst.weight = src.weight;
+  dst.dd = src.dd;
+  dst.ds = src.ds;
+  dst.ac = src.ac;
+  dst.toA = src.toA;
+  dst.toH = src.toH;
+  dst.toD = src.toD;
+  dst.flags.copy(src.flags);
+  for (let i = 0; i < dst.modifiers.length; i++) {
+    dst.modifiers[i] = src.modifiers[i] as number;
+  }
+  for (let i = 0; i < dst.elInfo.length; i++) {
+    const d = dst.elInfo[i]!;
+    const s = src.elInfo[i]!;
+    d.resLevel = s.resLevel;
+    d.flags = s.flags;
+  }
+  dst.brands = src.brands ? [...src.brands] : null;
+  dst.slays = src.slays ? [...src.slays] : null;
+  dst.curses = src.curses ? src.curses.map((c) => ({ ...c })) : null;
+  dst.effect = src.effect;
+  dst.effectMsg = src.effectMsg;
+  dst.activation = src.activation;
+  dst.time = { ...src.time };
+  dst.timeout = src.timeout;
+  dst.number = src.number;
+  dst.notice = src.notice;
+  dst.origin = src.origin;
+  dst.originDepth = src.originDepth;
+  dst.originRace = src.originRace;
+}
+
+/**
+ * wizPlayItemReject (do_cmd_wiz_play_item, cmd-wizard.c L1822-1843): the play
+ * session was abandoned with changes; copy the preserved original back onto the
+ * working object in place. Upstream restores the pile links after object_copy;
+ * the port mutates the existing object (its pile membership is by array position
+ * in floor/gear, not per-object links), so no link fix-up is needed.
+ */
+export function wizPlayItemReject(
+  obj: GameObject,
+  original: GameObject,
+  deps: WizardDeps,
+): boolean {
+  if (!wizardEnabled(deps)) return false;
+  restoreItemFields(obj, original);
+  return true;
+}
+
+/**
+ * wizPlayItemAccept (do_cmd_wiz_play_item, cmd-wizard.c L1679-1718): commit the
+ * changes. When the item actually changed and is equipped, upstream clears the
+ * known WORN notice and re-runs object_learn_on_wield so the panel reflects the
+ * edited properties. The total_weight / redraw upkeep is UI (the shell's). The
+ * caller supplies whether the item is worn (the slot it was picked from).
+ */
+export function wizPlayItemAccept(
+  state: GameState,
+  obj: GameObject,
+  params: { changed: boolean; equipped: boolean },
+  deps: WizardDeps,
+): boolean {
+  if (!wizardEnabled(deps)) return false;
+  if (params.changed && params.equipped) {
+    obj.notice &= ~OBJ_NOTICE_WORN;
+    objectLearnOnWield(state.actor.player, obj, state.runeEnv);
+  }
+  return true;
+}
+
+/** OBJ_NOTICE_WORN: the "has been worn" learn gate cleared on accept. */
+const OBJ_NOTICE_WORN = OBJ_NOTICE.WORN;
+
+/** The classification of one make_object roll against the target (stat_item). */
+export interface WizStatItemResult {
+  /** Rolls actually performed. */
+  rolls: number;
+  /** Same tval/sval, all modifiers and to_a/to_h/to_d equal. */
+  matches: number;
+  /** Same or better across every tested property, and strictly better once. */
+  better: number;
+  /** Same or worse across every tested property, and strictly worse once. */
+  worse: number;
+  /** Same tval/sval but neither strictly better nor worse (a mix). */
+  other: number;
+}
+
+/**
+ * do_cmd_wiz_stat_item (cmd-wizard.c L2386-2562): roll `nRolls` items with
+ * make_object at `level` and classify each as match / better / worse / other
+ * against the target object. `roll` is 0 normal, 1 good, 2 excellent (good +
+ * great). The interrupt polling and the running Term readout are UI and are
+ * omitted; the classification math, RNG draw order and the artifact-preserve
+ * quirk are faithful.
+ *
+ * Upstream quirk preserved (L2504-2506, L2559-2561): it marks the TARGET
+ * object's artifact uncreated before each roll (so make_object may regenerate
+ * it) and re-marks it created at the end - note it tests obj->artifact, the
+ * target's, not the rolled test object's, exactly as upstream does.
+ */
+export function wizStatItem(
+  state: GameState,
+  params: { obj: GameObject; roll: number; level: number; nRolls?: number },
+  deps: WizardDeps,
+): WizStatItemResult | null {
+  if (!wizardEnabled(deps) || !deps.makeDeps) return null;
+  const { obj } = params;
+  const good = params.roll >= 1;
+  const great = params.roll >= 2;
+  const level = params.level;
+  const n = params.nRolls ?? TEST_ROLL;
+
+  let matches = 0;
+  let better = 0;
+  let worse = 0;
+  let other = 0;
+  let i = 0;
+  for (; i < n; i++) {
+    /* make_object(cave, level, good, great, false, NULL, 0). */
+    const test = makeObject(state.rng, deps.makeDeps, level, good, great, false, 0, level);
+
+    /* Allow the target artifact to be regenerated (L2504-2506). */
+    if (obj.artifact) deps.makeDeps.artifacts.markCreated(obj.artifact.aidx, false);
+
+    if (!test) continue;
+
+    /* Same tval and sval? (L2512-2516) */
+    if (obj.tval !== test.tval || obj.sval !== test.sval) continue;
+
+    /* Compare modifiers (L2518-2528). */
+    let isMatch = true;
+    let isBetter = true;
+    let isWorse = true;
+    for (let j = 0; j < OBJ_MOD_MAX; j++) {
+      const tm = test.modifiers[j] as number;
+      const om = obj.modifiers[j] as number;
+      if (tm !== om) {
+        isMatch = false;
+        if (tm < om) isBetter = false;
+        else isWorse = false;
+      }
+    }
+
+    if (isMatch && test.toA === obj.toA && test.toH === obj.toH && test.toD === obj.toD) {
+      matches++;
+    } else if (isBetter && test.toA >= obj.toA && test.toH >= obj.toH && test.toD >= obj.toD) {
+      better++;
+    } else if (isWorse && test.toA <= obj.toA && test.toH <= obj.toH && test.toD <= obj.toD) {
+      worse++;
+    } else {
+      other++;
+    }
+  }
+
+  /* Normally leave a single artifact created (L2559-2561). */
+  if (obj.artifact) deps.makeDeps.artifacts.markCreated(obj.artifact.aidx, true);
+
+  return { rolls: i, matches, better, worse, other };
+}
+
+/** TEST_ROLL (cmd-wizard.c L2385): the default sample size. */
+const TEST_ROLL = 100000;
+
+/**
+ * do_cmd_wiz_edit_player_start (cmd-wizard.c L1202-1239): the batch player
+ * editor. Upstream chains a queued CMD_WIZ_EDIT_PLAYER_STAT per stat plus a
+ * gold and an exp edit through the edit_player_state machine; the queue
+ * plumbing is UI. The engine effect is: apply the six stat edits, the gold
+ * edit, and the exp edit. Each field is optional; a supplied value is applied
+ * through the already-ported per-field editor (same clamps), so an absent field
+ * is left unchanged (the shell's "cancel this stage" path).
+ */
+export function wizEditPlayerStart(
+  state: GameState,
+  params: {
+    stats?: readonly (number | undefined)[];
+    gold?: number;
+    exp?: number;
+  },
+  deps: WizardDeps,
+): boolean {
+  if (!wizardEnabled(deps)) return false;
+  if (params.stats) {
+    for (let stat = 0; stat < STAT_MAX && stat < params.stats.length; stat++) {
+      const v = params.stats[stat];
+      if (v !== undefined) wizEditPlayerStat(state, { stat, value: v }, deps);
+    }
+  }
+  if (params.gold !== undefined) wizEditPlayerGold(state, { value: params.gold }, deps);
+  if (params.exp !== undefined) wizEditPlayerExp(state, { value: params.exp }, deps);
+  return true;
+}
 
 /* ------------------------------------------------------------------ *
  * The map QUERY commands (DATA half only; the highlight redraw is the shell's).

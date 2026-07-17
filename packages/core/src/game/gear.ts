@@ -11,21 +11,21 @@
  *
  * LIVE vs DEFERRED (ledgered in parity/ledger/game-gear.yaml):
  * - LIVE: slot_by_type (empty-preferring), wield_slot (full tval switch),
- *   inven_carry's merge-or-add, wield_all's split-and-wear, player_outfit's
- *   start-item roll + prep + carry + wield (start_kit honoured).
- * - DEFERRED: p->au -= object_value_real(obj, number) starting-gold
- *   deduction (obj-value.c not ported, so starting gold is HIGHER than
- *   upstream until it lands); eopts birth-option exclusion (birth options
- *   not modelled - treated as "no exclusions", which equals upstream with
- *   default birth options); the pack_size overflow enforcement (a birth kit
- *   never overflows); the display knowledge twin (obj->known) and equip_cnt
- *   UI counter; the take-off / inventory-command layer; and the quiver.
- *   Wielding DOES learn modifier runes (obj-knowledge.c object_learn_on_wield,
- *   the only knowledge that changes real bonuses); see obj/knowledge.ts.
+ *   inven_carry's merge-or-add with quiver stack-mode routing, wield_all's
+ *   split-and-wear, player_outfit's start-item roll + prep + carry + wield
+ *   (birth_start_kit + eopts exclusion honoured), the real quiver subsystem
+ *   (object_is_in_quiver, preferred_quiver_slot, quiver_absorb_num,
+ *   calc_inventory's quiver assignment, pack_slots_used quiver accounting),
+ *   combine_pack + inven_can_stack_partial, and minus_ac armour damage.
+ * - DEFERRED: the pack_size overflow enforcement (pack_overflow); the display
+ *   knowledge twin (obj->known) and equip_cnt UI counter; the inven[] display
+ *   reorder half of calc_inventory (gear.pack already IS the listing, unsorted
+ *   here). Wielding DOES learn modifier runes (obj-knowledge.c
+ *   object_learn_on_wield); see obj/knowledge.ts.
  */
 
 import type { Constants } from "../constants";
-import { ORIGIN, TV } from "../generated";
+import { ELEM, OF, ORIGIN, TV } from "../generated";
 import type { Rng } from "../rng";
 import type { ObjRegistry } from "../obj/bind";
 import { tvalFindIdx } from "../obj/bind";
@@ -34,11 +34,14 @@ import { objectLearnOnWield } from "../obj/knowledge";
 import {
   distributeCharges,
   objectAbsorb,
+  objectAbsorbPartial,
   objectMergeable,
   objectStackable,
   OSTACK_PACK,
+  OSTACK_QUIVER,
   tvalCanHaveCharges,
   tvalCanHaveTimeout,
+  tvalIsAmmo,
   tvalIsBodyArmor,
   tvalIsFood,
   tvalIsHeadArmor,
@@ -48,8 +51,11 @@ import {
   tvalIsRing,
 } from "../obj/object";
 import type { StackLimits } from "../obj/object";
+import { EL_INFO_IGNORE } from "../obj/types";
 import { objectPrep } from "../obj/make";
 import { objectValueReal } from "../obj/value";
+import { earlierObject } from "../player/calcs";
+import type { EarlierObjectOpts } from "../player/calcs";
 import type { Player } from "../player/player";
 import type { PlayerBody } from "../player/types";
 
@@ -68,13 +74,31 @@ export interface Gear {
   store: Map<number, GameObject>;
   /** The next handle to assign (always >= 1). */
   next: number;
-  /** Ordered non-equipped handles (upstream p->gear minus equipment). */
+  /**
+   * Ordered non-equipped handles: the port's stand-in for upstream's master
+   * gear list minus the equipment (upstream p->gear minus body slots). This is
+   * the raw storage ordering AND the pack listing; ammo/throwing handles that
+   * calc_inventory has routed into the quiver stay in this list (exactly as an
+   * upstream quiver object stays on p->gear) and are additionally referenced by
+   * `quiver` below - use objectIsInQuiver to tell them apart.
+   */
   pack: number[];
+  /**
+   * upkeep->quiver[z_info->quiver_size]: the COMPUTED quiver view, one handle
+   * per slot (0 = empty), filled by calcInventory. Optional so that a Gear built
+   * without it (e.g. a save-load reconstruction, before calcInventory runs)
+   * type-checks; it is a derived view and is rebuilt by calcInventory rather
+   * than persisted. Empty/absent means the pre-quiver behaviour (ammo behaves
+   * as a plain pack stack). Kept on Gear alongside `pack` (the inven view's
+   * home) rather than on Player, mirroring how the port already keeps the pack
+   * listing here while Player holds only equipment[] handles.
+   */
+  quiver?: number[];
 }
 
-/** A fresh, empty gear store. */
+/** A fresh, empty gear store (empty quiver; calcInventory sizes it). */
 export function newGear(): Gear {
-  return { store: new Map<number, GameObject>(), next: 1, pack: [] };
+  return { store: new Map<number, GameObject>(), next: 1, pack: [], quiver: [] };
 }
 
 /** Store an object under a fresh handle and return it (no pack insertion). */
@@ -213,28 +237,165 @@ export function wieldSlot(
 }
 
 /* ------------------------------------------------------------------ */
+/* Quiver membership and slot preference (obj-gear.c)                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * object_is_in_quiver (obj-gear.c L163-174): is the object referenced by
+ * `handle` currently held in one of the computed quiver slots? A zero handle
+ * (empty slot / no object) is never in the quiver.
+ */
+export function objectIsInQuiver(gear: Gear, handle: number): boolean {
+  if (handle === 0) return false;
+  return (gear.quiver ?? []).includes(handle);
+}
+
+/**
+ * preferred_quiver_slot (obj-gear.c L1396-1427): the quiver slot an object's
+ * inscription asks for, or -1 when it is not quiver-appropriate or not
+ * inscribed with a matching @f/@v (fire / throw) key. The fire key depends on
+ * the keyset: 't' under rogue-like commands, else 'f'; the throw key is always
+ * 'v' (upstream hardwires these because cmd_lookup_key is in the UI layer).
+ */
+export function preferredQuiverSlot(obj: GameObject, rogueLike = false): number {
+  let desiredSlot = -1;
+  if (obj.note && (tvalIsAmmo(obj.tval) || obj.flags.has(OF.THROWING))) {
+    const fireKey = rogueLike ? "t" : "f";
+    const throwKey = "v";
+    let s = obj.note.indexOf("@");
+    while (s !== -1) {
+      const k = obj.note[s + 1];
+      if (k === fireKey || k === throwKey) {
+        /* s[2] - '0': the single digit slot after the key. */
+        desiredSlot = (obj.note.charCodeAt(s + 2) || 0) - "0".charCodeAt(0);
+        break;
+      }
+      s = obj.note.indexOf("@", s + 1);
+    }
+  }
+  return desiredSlot;
+}
+
+/* ------------------------------------------------------------------ */
+/* minus_ac (obj-gear.c L376-438)                                       */
+/* ------------------------------------------------------------------ */
+
+/** The non-armour equipment slot types minus_ac skips (obj-gear.c L387-391). */
+function slotIsArmour(type: string | undefined): boolean {
+  return (
+    type !== undefined &&
+    type !== "WEAPON" &&
+    type !== "BOW" &&
+    type !== "RING" &&
+    type !== "AMULET" &&
+    type !== "LIGHT"
+  );
+}
+
+/** Optional message / naming hooks for minusAc. */
+export interface MinusAcEnv {
+  /** msg(): the "Your %s is damaged!" / "is unaffected!" lines. */
+  msg?: (text: string) => void;
+  /** object_desc(ODESC_BASE): the bare armour name; defaults to kind.name. */
+  describe?: (obj: GameObject) => string;
+  /** PU_BONUS trigger fired after a to_a decrement (calc_bonuses refresh). */
+  updateBonuses?: () => void;
+}
+
+/**
+ * minus_ac (obj-gear.c L376-438): acid has hit the player, so attempt to
+ * damage a piece of worn armour. Counts the armour slots, draws one at random
+ * with the exact upstream reverse one_in_(count--) scan, and (if that item can
+ * still lose armour) either reports it resists (EL_INFO_IGNORE on ELEM_ACID)
+ * or decrements its to_a and prints the damage message. Returns whether there
+ * was any effect (a piece was picked and had ac + to_a > 0), matching upstream
+ * so the caller can halve the elemental damage.
+ *
+ * The RNG draw order is preserved bit-for-bit: the forward count loop, then
+ * the reverse pick loop consuming one_in_(count--) per armour slot until it
+ * breaks. `obj->known->to_a = obj->to_a` (L425-426) is DEFERRED - the port has
+ * no per-object known twin (obj-knowledge #4.8); obj_k->to_a is 1 at birth so
+ * the real to_a is already the shown value.
+ */
+export function minusAc(
+  player: Player,
+  gear: Gear,
+  rng: Rng,
+  env: MinusAcEnv = {},
+): boolean {
+  const body = player.body;
+
+  /* Avoid crash during monster power calculations (L382): no gear, no effect. */
+  if (gear.pack.length === 0 && player.equipment.every((h) => h === 0)) {
+    return false;
+  }
+
+  /* Count the armour slots (L384-395). */
+  let count = 0;
+  for (let i = 0; i < body.count; i++) {
+    if (slotIsArmour(body.slots[i]?.type)) count++;
+  }
+
+  /* Pick one at random with the reverse one_in_(count--) scan (L397-407). */
+  let picked = body.count;
+  for (let i = body.count - 1; i >= 0; i--) {
+    if (!slotIsArmour(body.slots[i]?.type)) continue;
+    if (rng.oneIn(count--)) {
+      picked = i;
+      break;
+    }
+  }
+
+  /* Get the item in the picked slot (L410). */
+  const handle = picked < body.count ? (player.equipment[picked] ?? 0) : 0;
+  const obj = handle !== 0 ? (gear.store.get(handle) ?? null) : null;
+
+  /* If we can still damage the item (L412-433). */
+  if (obj && obj.ac + obj.toA > 0) {
+    const name = env.describe ? env.describe(obj) : obj.kind.name;
+    const acidEl = obj.elInfo[ELEM.ACID];
+    if (acidEl && (acidEl.flags & EL_INFO_IGNORE) !== 0) {
+      env.msg?.(`Your ${name} is unaffected!`);
+    } else {
+      env.msg?.(`Your ${name} is damaged!`);
+      obj.toA--;
+      /* DEFERRED: obj->known->to_a = obj->to_a (no known twin, #4.8). */
+      env.updateBonuses?.(); /* PU_BONUS */
+    }
+    /* There was an effect. */
+    return true;
+  }
+
+  /* No damage or effect (L435-436). */
+  return false;
+}
+
+/* ------------------------------------------------------------------ */
 /* inven_carry                                                          */
 /* ------------------------------------------------------------------ */
 
 /**
- * inven_carry (obj-gear.c L821): add an object to the pack. If a pack stack
- * is object_mergeable with the incoming object, object_absorb into it and
- * return that stack's handle; otherwise store the object under a fresh
- * pack handle and return it.
+ * inven_carry (obj-gear.c L821-925): add an object to the gear. If a
+ * non-equipped stack is object_mergeable with the incoming object, object_absorb
+ * into it and return that stack's handle; otherwise store the object under a
+ * fresh gear handle and return it. The merge test uses OSTACK_QUIVER when the
+ * candidate stack is currently in the quiver (obj-gear.c L832-834) and
+ * OSTACK_PACK otherwise, so a quiver stack honours the stricter quiver caps.
  *
- * FAITHFUL-ENOUGH: everything in the pack merges under OSTACK_PACK; the
- * quiver stack-mode and the pack_size overflow enforcement are DEFERRED (a
- * birth kit has no quiver and never overflows). See the module ledger.
+ * The subsequent calc_inventory (upstream's update_stuff after PU_INVEN) is a
+ * SEPARATE step here - callers run calcInventory when they want the quiver
+ * re-derived. The pack_size overflow enforcement (pack_overflow) is DEFERRED.
  */
 export function invenCarry(
   gear: Gear,
   obj: GameObject,
   limits: StackLimits,
 ): number {
-  /* Check for combining with an existing pack stack. */
+  /* Check for combining with an existing non-equipped stack. */
   for (const handle of gear.pack) {
     const stack = gear.store.get(handle);
-    if (stack && objectMergeable(stack, obj, OSTACK_PACK, limits)) {
+    const mode = objectIsInQuiver(gear, handle) ? OSTACK_QUIVER : OSTACK_PACK;
+    if (stack && objectMergeable(stack, obj, mode, limits)) {
       objectAbsorb(stack, obj, ORIGIN.MIXED);
       return handle;
     }
@@ -251,19 +412,123 @@ export function invenCarry(
 /* ------------------------------------------------------------------ */
 
 /**
- * pack_slots_used (obj-gear.c L257): the number of pack slots occupied.
- * Upstream discounts equipped and quivered gear; here equipped objects are
- * not in `pack` and the quiver is DEFERRED, so this is simply pack.length.
+ * pack_slots_used (obj-gear.c L257-296): the number of pack slots occupied.
+ * Equipped items don't count (they are absent from `pack`); ammo / throwing
+ * items assigned to the quiver aggregate by weighted count into quiver slots
+ * of quiver_slot_size, so a non-empty quiver frees up whole pack slots. When
+ * the quiver is empty this equals pack.length (every item is a pack slot).
  */
-export function packSlotsUsed(gear: Gear): number {
-  return gear.pack.length;
+export function packSlotsUsed(gear: Gear, constants: Constants): number {
+  let packSlots = 0;
+  let quiverAmmo = 0;
+
+  for (const handle of gear.pack) {
+    const obj = gear.store.get(handle);
+    if (!obj) continue;
+    let found = false;
+    if (tvalIsAmmo(obj.tval) || obj.flags.has(OF.THROWING)) {
+      if (objectIsInQuiver(gear, handle)) {
+        quiverAmmo +=
+          obj.number * (tvalIsAmmo(obj.tval) ? 1 : constants.thrownQuiverMult);
+        found = true;
+      }
+    }
+    /* Count regular slots. */
+    if (!found) packSlots++;
+  }
+
+  /* Full slots, plus one for any remainder. */
+  packSlots += Math.trunc(quiverAmmo / constants.quiverSlotSize);
+  if (quiverAmmo % constants.quiverSlotSize) packSlots++;
+
+  return packSlots;
 }
 
 /**
- * inven_carry_num (obj-gear.c L749): how many of `obj` the pack can accept.
- * A free pack slot takes the whole incoming stack; otherwise the remainder
- * is squeezed into partially-full stackable slots. The quiver path is
- * DEFERRED (no quiver in this model), so num_to_quiver is always 0.
+ * quiver_absorb_num (obj-gear.c L649-744): how many of `obj` the quiver can
+ * take, and how many additional pack slots that costs. Reads the current
+ * computed quiver (gear.quiver) exactly as upstream reads p->upkeep->quiver.
+ * `nAddPack` is the number of extra pack slots the quiver may claim; the return
+ * carries the leftover (nAddPack minus the slots consumed) alongside nToQuiver.
+ */
+export function quiverAbsorbNum(
+  gear: Gear,
+  obj: GameObject,
+  constants: Constants,
+  nAddPack: number,
+  rogueLike = false,
+): { nToQuiver: number; nAddPack: number } {
+  const ammo = tvalIsAmmo(obj.tval);
+
+  /* Must be ammo or good for throwing (L655). */
+  if (ammo || obj.flags.has(OF.THROWING)) {
+    let quiverCount = 0;
+    let spaceFree = 0;
+    let nEmpty = 0;
+    const desiredSlot = preferredQuiverSlot(obj, rogueLike);
+    let displaces = false;
+    const qSize = constants.quiverSize;
+    const qSlot = constants.quiverSlotSize;
+    const quiver = gear.quiver ?? [];
+
+    /* Count the current space this object could go into (L660-710). */
+    for (let i = 0; i < qSize; i++) {
+      const qHandle = quiver[i] ?? 0;
+      const quiverObj = qHandle !== 0 ? gear.store.get(qHandle) : undefined;
+      if (quiverObj) {
+        const mult = tvalIsAmmo(quiverObj.tval) ? 1 : constants.thrownQuiverMult;
+        quiverCount += quiverObj.number * mult;
+        if (objectStackable(quiverObj, obj, OSTACK_PACK)) {
+          spaceFree += qSlot - quiverObj.number * mult;
+        } else if (
+          desiredSlot === i &&
+          preferredQuiverSlot(quiverObj, rogueLike) !== i
+        ) {
+          /* The added object prefers this slot, but it is occupied by a stack
+           * that could be displaced elsewhere if a slot is available. */
+          displaces = true;
+          if (ammo) {
+            spaceFree += qSlot - quiverObj.number * mult;
+          } else {
+            spaceFree += qSlot;
+          }
+        }
+      } else {
+        nEmpty++;
+        /* Ammo fits any empty slot; a non-ammo throwing item only its
+         * preferred slot (L699-708). */
+        if (ammo || desiredSlot === i) {
+          spaceFree += qSlot;
+        }
+      }
+    }
+
+    /* Only addable if there is free space and we either displace a pile with an
+     * empty slot available or don't displace at all (L712-738). */
+    if (spaceFree && ((displaces && nEmpty) || !displaces)) {
+      const mult = ammo ? 1 : constants.thrownQuiverMult;
+      const remainder = quiverCount % qSlot;
+      let limitFromPack = remainder ? qSlot - remainder : 0;
+      if (nAddPack > 0) limitFromPack += nAddPack * qSlot;
+
+      spaceFree = Math.min(spaceFree, limitFromPack);
+      const nToQuiver = Math.min(obj.number, Math.trunc(spaceFree / mult));
+      const usedPack =
+        nAddPack -
+        Math.trunc((nToQuiver * mult + qSlot - 1 - remainder) / qSlot);
+      return { nToQuiver, nAddPack: usedPack };
+    }
+  }
+
+  /* Not suitable for the quiver or no space (L742-743). */
+  return { nToQuiver: 0, nAddPack };
+}
+
+/**
+ * inven_carry_num (obj-gear.c L749-780): how many of `obj` the gear can accept
+ * across quiver and pack. The quiver absorbs what it can first; then a free
+ * pack slot takes the rest, or the remainder squeezes into partially-full
+ * stackable pack slots.
  */
 export function invenCarryNum(
   gear: Gear,
@@ -273,13 +538,16 @@ export function invenCarryNum(
   /* Treasure can always be picked up (never reached via a store). */
   if (tvalIsMoney(obj.tval)) return obj.number;
 
-  const nFreeSlot = constants.packSize - packSlotsUsed(gear);
+  const nFreeSlot = constants.packSize - packSlotsUsed(gear, constants);
 
-  /* A free slot holds everything (quiver DEFERRED: nothing goes there). */
-  if (nFreeSlot > 0) return obj.number;
+  /* Absorb as many as we can in the quiver (L760). */
+  const { nToQuiver } = quiverAbsorbNum(gear, obj, constants, nFreeSlot);
 
-  /* See if we can add to partially-full inventory slots. */
-  let numLeft = obj.number;
+  /* The quiver will get everything, or the pack can hold what's left. */
+  if (nToQuiver === obj.number || nFreeSlot > 0) return obj.number;
+
+  /* See if we can add to partially-full inventory slots (L767-776). */
+  let numLeft = obj.number - nToQuiver;
   for (const handle of gear.pack) {
     const stack = gear.store.get(handle);
     if (stack && objectStackable(stack, obj, OSTACK_PACK)) {
@@ -289,6 +557,232 @@ export function invenCarryNum(
   }
 
   return obj.number - Math.max(numLeft, 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* calc_inventory (player-calcs.c) and combine_pack (obj-gear.c)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Hooks calc_inventory / combine_pack need beyond the gear: the keyset (for
+ * preferred_quiver_slot), the earlier_object tiebreak inputs (ammo_tval /
+ * object_value / awareness / browsability), and the reorder messages.
+ */
+export interface CalcInventoryOpts extends EarlierObjectOpts {
+  /** rogue_like_commands: the fire key preferred_quiver_slot looks for. */
+  rogueLike?: boolean;
+  /** character_dungeon: gates the "You re-arrange your quiver." message. */
+  characterDungeon?: boolean;
+  /** msg(): the re-arrange / combine notices. */
+  msg?: (text: string) => void;
+}
+
+/** Build EarlierObjectOpts (ammo tiebreak) from the calc-inventory opts. */
+function earlierOpts(opts: CalcInventoryOpts): EarlierObjectOpts {
+  const e: EarlierObjectOpts = { store: false };
+  if (opts.ammoTval !== undefined) e.ammoTval = opts.ammoTval;
+  if (opts.objectValue) e.objectValue = opts.objectValue;
+  if (opts.isAware) e.isAware = opts.isAware;
+  if (opts.canBrowse) e.canBrowse = opts.canBrowse;
+  return e;
+}
+
+/**
+ * calc_inventory (player-calcs.c:1023-1238), quiver half: rebuild gear.quiver
+ * from the current non-equipped gear. First place inscribed items in their
+ * preferred slots (splitting a stack that overflows quiver_slot_size, with the
+ * excess going back to the pack), then fill the remaining slots in earlier_object
+ * order with ammo. The pack/inven[] array-building half of upstream is a no-op
+ * here: gear.pack already IS the ordered non-equipped listing and is not
+ * re-sorted (display ordering is a UI concern).
+ *
+ * Split remainders are appended to gear.pack via object_split, exactly as
+ * upstream's gear_insert_end. `n_stack_split <= n_pack_remaining` guards splits
+ * so the pack can overflow by at most one slot, matching upstream.
+ */
+export function calcInventory(
+  gear: Gear,
+  constants: Constants,
+  opts: CalcInventoryOpts = {},
+): void {
+  const qSize = constants.quiverSize;
+  const qSlot = constants.quiverSlotSize;
+  const rogueLike = opts.rogueLike ?? false;
+  let nStackSplit = 0;
+  const nPackRemaining = constants.packSize - packSlotsUsed(gear, constants);
+
+  /* Copy the current quiver, then empty it (L1053-1061). */
+  const oldQuiver: number[] = [];
+  for (let i = 0; i < qSize; i++) oldQuiver[i] = gear.quiver[i] ?? 0;
+  gear.quiver = new Array<number>(qSize).fill(0);
+
+  const assigned = new Set<number>();
+
+  /* Fill quiver.  First, allocate inscribed items (L1063-1117). */
+  for (const handle of [...gear.pack]) {
+    const current = gear.store.get(handle);
+    if (!current) continue;
+    const prefslot = preferredQuiverSlot(current, rogueLike);
+    if (prefslot >= 0 && prefslot < qSize && (gear.quiver[prefslot] ?? 0) === 0) {
+      const mult = tvalIsAmmo(current.tval) ? 1 : constants.thrownQuiverMult;
+      let toQuiver = false;
+      if (current.number * mult <= qSlot) {
+        toQuiver = true;
+      } else {
+        const nsplit = Math.trunc(qSlot / mult);
+        if (nsplit > 0 && nStackSplit <= nPackRemaining) {
+          /* Split off the portion that goes to the pack; the quiver stack is
+           * earlier in the gear list so it stays preferred (L1091-1102). */
+          const rem = objectSplit(current, current.number - nsplit);
+          gear.pack.push(gearAdd(gear, rem));
+          nStackSplit++;
+          toQuiver = true;
+        }
+      }
+      if (toQuiver) {
+        gear.quiver[prefslot] = handle;
+        assigned.add(handle);
+      }
+    }
+  }
+
+  /* Now fill the rest of the slots in order (L1119-1172). */
+  for (let i = 0; i < qSize; i++) {
+    if ((gear.quiver[i] ?? 0) !== 0) continue;
+
+    let first: GameObject | null = null;
+    let firstHandle = 0;
+    for (const handle of gear.pack) {
+      if (assigned.has(handle)) continue;
+      const current = gear.store.get(handle);
+      if (!current || !tvalIsAmmo(current.tval)) continue;
+      /* Only assign if, when a split is needed, there is room for it. */
+      if (
+        current.number <= qSlot ||
+        (qSlot > 0 && nStackSplit <= nPackRemaining)
+      ) {
+        if (earlierObject(first, current, earlierOpts(opts))) {
+          first = current;
+          firstHandle = handle;
+        }
+      }
+    }
+
+    /* Nothing left in the gear. */
+    if (!first) break;
+
+    /* Put it in the slot, splitting (if needed) to fit (L1159-1168). */
+    if (first.number > qSlot) {
+      const rem = objectSplit(first, first.number - qSlot);
+      gear.pack.push(gearAdd(gear, rem));
+      nStackSplit++;
+    }
+    gear.quiver[i] = firstHandle;
+    assigned.add(firstHandle);
+  }
+
+  /* Note reordering (L1174-1182). */
+  if (opts.characterDungeon) {
+    for (let i = 0; i < qSize; i++) {
+      if ((oldQuiver[i] ?? 0) !== 0 && gear.quiver[i] !== oldQuiver[i]) {
+        opts.msg?.("You re-arrange your quiver.");
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * inven_can_stack_partial (obj-gear.c L1183-1236): can obj1 and obj2 be merged
+ * into two uneven stacks, with obj1 the (maximised) leading stack? Refuses when
+ * obj1 is already at its per-stack limit, and (for a quiver->pack move) when the
+ * quiver has no room, to avoid combining then re-splitting in calc_inventory.
+ */
+function invenCanStackPartial(
+  gear: Gear,
+  obj1: GameObject,
+  obj2: GameObject,
+  mode1: number,
+  mode2: number,
+  constants: Constants,
+): boolean {
+  const cmode = mode1 | mode2;
+  if (!objectStackable(obj1, obj2, cmode)) return false;
+
+  /* Verify the numbers suit uneven stacks (L1196-1233). OSTACK_STORE absorbs
+   * without limit; the port's combine_pack never passes it. */
+  if (mode1 & OSTACK_QUIVER) {
+    const qlimit = Math.trunc(
+      constants.quiverSlotSize /
+        (tvalIsAmmo(obj1.tval) ? 1 : constants.thrownQuiverMult),
+    );
+    if (obj1.number === qlimit) return false;
+    /* Moving items INTO the quiver: also check the overall quiver limits. */
+    if (mode2 & ~OSTACK_QUIVER) {
+      const nFreeSlot = constants.packSize - packSlotsUsed(gear, constants);
+      const { nToQuiver } = quiverAbsorbNum(gear, obj2, constants, nFreeSlot);
+      if (nToQuiver <= 0) return false;
+    }
+  } else if (obj1.number === obj1.kind.base.maxStack) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * combine_pack (obj-gear.c L1242-1323): sweep the gear from the back, merging
+ * each stack fully into an earlier compatible stack where possible, else moving
+ * items between stacks into two uneven stacks (inven_can_stack_partial). Runs
+ * calc_inventory afterward. Returns whether any full combine happened (upstream
+ * shows "You combine some items in your pack." and disables command repeat).
+ */
+export function combinePack(
+  gear: Gear,
+  constants: Constants,
+  opts: CalcInventoryOpts = {},
+): boolean {
+  const limits: StackLimits = {
+    quiverSlotSize: constants.quiverSlotSize,
+    thrownQuiverMult: constants.thrownQuiverMult,
+  };
+  let displayMessage = false;
+
+  /* Combine the pack (backwards) over a snapshot; removals mutate gear.pack. */
+  for (const h1 of [...gear.pack].reverse()) {
+    const obj1 = gear.store.get(h1);
+    if (!obj1) continue;
+    const idx1 = gear.pack.indexOf(h1);
+    if (idx1 < 0) continue;
+
+    /* Scan the items above obj1 (L1256). */
+    for (let k = 0; k < idx1; k++) {
+      const h2 = gear.pack[k]!;
+      const obj2 = gear.store.get(h2);
+      if (!obj2) continue;
+      const mode2 = objectIsInQuiver(gear, h2) ? OSTACK_QUIVER : OSTACK_PACK;
+
+      if (objectMergeable(obj2, obj1, mode2, limits)) {
+        objectAbsorb(obj2, obj1, ORIGIN.MIXED);
+        gear.pack.splice(idx1, 1);
+        gear.store.delete(h1);
+        displayMessage = true;
+        break;
+      }
+
+      const mode1 = objectIsInQuiver(gear, h1) ? OSTACK_QUIVER : OSTACK_PACK;
+      if (invenCanStackPartial(gear, obj2, obj1, mode2, mode1, constants)) {
+        /* Shuffling items between stacks - no message (L1282-1287). */
+        objectAbsorbPartial(obj2, obj1, mode2, mode1, limits, ORIGIN.MIXED);
+        break;
+      }
+    }
+  }
+
+  calcInventory(gear, constants, opts);
+
+  if (displayMessage) opts.msg?.("You combine some items in your pack.");
+  return displayMessage;
 }
 
 /**
@@ -329,6 +823,12 @@ export interface GearForUse {
  * clears its body slot. Either way the handle leaves the store map.
  */
 function gearExcise(gear: Gear, player: Player, handle: number): void {
+  /* Clear any stale quiver reference (calc_inventory rebuilds it). */
+  if (gear.quiver) {
+    const qi = gear.quiver.indexOf(handle);
+    if (qi >= 0) gear.quiver[qi] = 0;
+  }
+
   const pi = gear.pack.indexOf(handle);
   if (pi >= 0) {
     gear.pack.splice(pi, 1);
@@ -448,10 +948,43 @@ export function wieldAll(gear: Gear, player: Player): void {
 /** Options for the birth starting kit. */
 export interface OutfitOptions {
   /**
-   * birth_start_kit (default true): with the full kit every start_item is
-   * granted; without it only a single food and a single light source.
+   * birth_start_kit: with the full kit every start_item is granted; without it
+   * only a single food and a single light source. An explicit value overrides
+   * the option lookup; when omitted, it is read from `opt("birth_start_kit")`
+   * if `opt` is supplied, else defaults to true (player-birth.c L612).
    */
   startKit?: boolean;
+  /**
+   * OPT(p, name): the player's birth-option accessor, used to honour
+   * birth_start_kit (gap 1.6) and the per-start-item eopts birth-option
+   * exclusion (gap 1.8, player-birth.c L619-637). Absent = no options set,
+   * i.e. full kit and no exclusions (equivalent to upstream's defaults).
+   */
+  opt?: (name: string) => boolean;
+}
+
+/**
+ * Evaluate a start_item's eopts birth-option exclusion (player-birth.c
+ * L619-637): each token is an option name, optionally "NOT-" prefixed
+ * (init.c L3619-3634 stores +ind / -ind). A plain option excludes the item
+ * when it is SET; a NOT- option excludes it when it is UNSET. Returns true if
+ * the item should be included. With no accessor, nothing is excluded.
+ */
+function startItemIncluded(
+  eopts: readonly string[],
+  opt: ((name: string) => boolean) | undefined,
+): boolean {
+  if (eopts.length === 0 || !opt) return true;
+  for (const token of eopts) {
+    const negated = token.startsWith("NOT-");
+    const name = negated ? token.slice(4) : token;
+    if (negated) {
+      if (!opt(name)) return false;
+    } else {
+      if (opt(name)) return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -459,19 +992,18 @@ export interface OutfitOptions {
  * starting equipment and wield everything wieldable.
  *
  * For each class start_item: roll the count in [min, max] via the project
- * Rng (rand_range), look the kind up by tval/sval name, honour the start_kit
- * option, prep it with MINIMISE at level 0 (object_prep), set number and
- * ORIGIN_BIRTH, carry it (invenCarry), and finally wield_all.
+ * Rng (rand_range), look the kind up by tval/sval name, honour birth_start_kit
+ * (gap 1.6) and the eopts birth-option exclusion (gap 1.8), prep it with
+ * MINIMISE at level 0 (object_prep), set number and ORIGIN_BIRTH, carry it
+ * (invenCarry), and finally wield_all.
  *
  * wield_all learns each worn item's modifier runes (object_learn_on_wield);
  * for a default class kit those items carry no modifiers, so obj_k stays
  * empty at birth exactly as upstream.
  *
- * DEFERRED (see the module ledger): the p->au -= object_value_real(obj, num)
- * starting-gold deduction (obj-value.c not ported); the eopts birth-option
- * exclusion (birth options not modelled - treated as no exclusions, which
- * equals upstream with default birth options); and the display half of the
- * obj-knowledge block (object_flavor_aware / object_set_base_known / obj->known).
+ * DEFERRED (see the module ledger): the display half of the obj-knowledge
+ * block (object_flavor_aware / object_set_base_known / obj->known); and the
+ * post-outfit calc_inventory (the caller runs it once the quiver is wired).
  */
 export function outfitPlayer(
   gear: Gear,
@@ -481,7 +1013,8 @@ export function outfitPlayer(
   constants: Constants,
   opts: OutfitOptions = {},
 ): void {
-  const startKit = opts.startKit ?? true;
+  const startKit =
+    opts.startKit ?? (opts.opt ? opts.opt("birth_start_kit") : true);
   const limits: StackLimits = {
     quiverSlotSize: constants.quiverSlotSize,
     thrownQuiverMult: constants.thrownQuiverMult,
@@ -512,7 +1045,10 @@ export function outfitPlayer(
       num = 1;
     }
 
-    /* DEFERRED: eopts birth-option exclusion (treated as no exclusions). */
+    /* Exclude if configured to do so based on birth options (player-birth.c
+     * L619-637). RNG order is preserved: rand_range(num) is drawn above, before
+     * any continue, exactly as upstream. */
+    if (!startItemIncluded(si.eopts, opts.opt)) continue;
 
     /* Prepare a new item. */
     const obj = objectPrep(rng, reg, constants, kind, 0, "minimise");

@@ -8,16 +8,22 @@
  * cost, plus a per-charge premium for wands and staves.
  *
  * object_value dispatches by flavor-awareness (supplied by the caller's
- * FlavorKnowledge) and item class. DEFERRED (ledgered in
- * parity/ledger/obj-value.yaml): the obj->known partial-knowledge twin. Until
- * the known-object model lands, object_value prices the real object for
- * variable-power items, which is exactly correct for a fully-known item (store
- * stock, identified gear) and over-values only an item with still-unknown runes.
+ * FlavorKnowledge) and item class. For variable-power items upstream prices the
+ * obj->known partial-knowledge twin (obj-power.c L1257-1259); a caller that
+ * supplies an ObjectValueKnowledge context makes object_value synthesise that
+ * twin (the port's on-demand known shadow) and price it, so an item with
+ * still-unknown runes is valued from what the player actually knows. A caller
+ * with no context prices the real object, which is exact for a fully-known item
+ * (store stock, identified gear) and over-values only an item with unknown runes.
  */
 
 import { OF, TV } from "../generated";
 import { INT_MAX, INT_MIN } from "../guard";
+import type { Player } from "../player/player";
 import type { ObjRegistry } from "./bind";
+import type { KnownDesc } from "./known-object";
+import { objectKnownShadow } from "./known-object";
+import type { RuneEnv } from "./knowledge";
 import {
   tvalCanHaveCharges,
   tvalCanHaveFlavor,
@@ -163,24 +169,42 @@ export function objectValueReal(
 }
 
 /**
+ * The knowledge context object_value needs to synthesise the obj->known twin
+ * (the port's on-demand known shadow) for a variable-power item, mirroring
+ * upstream's object_value_real(obj->known) at obj-power.c L1258-1259.
+ */
+export interface ObjectValueKnowledge {
+  /** The pricing player (upstream `player`; obj->known is built from p->obj_k). */
+  p: Player;
+  /** The rune/curse registries the shadow synthesis reads. */
+  env: RuneEnv;
+  /** Flavour-awareness deps the shadow synthesis reads. */
+  deps: KnownDesc;
+}
+
+/**
  * object_value (obj-power.c L1253): the price of an item (qty one or a stack),
  * including plusses and charges, never noticing unknown bonuses.
  *
  * `aware` is object_flavor_is_aware(obj), supplied by the caller's
- * FlavorKnowledge. Upstream dispatches variable-power items to
- * object_value_real(obj->known); with the known twin not modelled, this values
- * the real object, which is exact for a fully-known item (store stock,
- * identified gear) and over-values only an item with still-unknown runes.
+ * FlavorKnowledge. For a variable-power item upstream prices obj->known
+ * (L1258-1259): when `known` is supplied this synthesises that twin from the
+ * player's rune knowledge and prices it (so unknown runes are not paid for);
+ * without it the real object is priced (exact for a fully-known item).
  */
 export function objectValue(
   reg: ObjRegistry,
   obj: GameObject,
   qty: number,
   aware: boolean,
+  known?: ObjectValueKnowledge,
 ): number {
   /* Variable-power items are assessed by what is known about them. */
   if (tvalHasVariablePower(obj.tval)) {
-    return objectValueReal(reg, obj, qty);
+    const priced = known
+      ? objectKnownShadow(obj, known.p, known.env, known.deps)
+      : obj;
+    return objectValueReal(reg, priced, qty);
   }
   /* Flavoured kinds the player is aware of price at their real cost. */
   if (tvalCanHaveFlavor(obj.kind.tval) && aware) {

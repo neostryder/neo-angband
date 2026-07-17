@@ -42,7 +42,10 @@ import {
   featIsFloor,
   featIsPassable,
   featIsSmooth,
+  featIsTrapHolding,
 } from "../world/chunk";
+import type { TrapKind } from "../world/trap";
+import { pickTrapKind } from "../game/trap";
 import { GET_ANGLE_TO_GRID } from "../world/project";
 import type { FeatureRegistry } from "../world/feature";
 import type { GameObject } from "../obj/object";
@@ -217,6 +220,19 @@ export interface PlacedObject {
   obj: GameObject;
 }
 
+/**
+ * A trap chosen at generation time (place_trap, trap.c:356): the grid plus the
+ * pick_trap-selected kind index and the randcalc-rolled power. The live level
+ * populate path instantiates these directly (game/trap.ts installTrap) so the
+ * pick / power RNG draws are spent during generation, matching upstream's draw
+ * order, instead of being re-rolled at populate time.
+ */
+export interface GenTrap {
+  grid: Loc;
+  tidx: number;
+  power: number;
+}
+
 export interface PlacedMonster {
   grid: Loc;
   mon: Monster;
@@ -236,8 +252,22 @@ export class Gen {
   readonly objOccupied = new Set<number>();
   /** grid index -> square holds a trap (player trap for gen purposes). */
   readonly trapGrids = new Set<number>();
+  /**
+   * Traps whose kind and power were chosen at generation time (place_trap).
+   * Populated only when trapKinds are threaded in; the populate path prefers
+   * these to trapGrids so the pick / power draws are not spent twice.
+   */
+  readonly traps: GenTrap[] = [];
   /** Doors rolled locked at generation (grid + 1d7 lock power). */
   readonly lockedDoors: Array<{ grid: Loc; power: number }> = [];
+  /**
+   * Stair connectors of the finished level (generate.c:1203-1214 chunk->join):
+   * every staircase grid + its feature. A persistent-level dungeon feeds the
+   * NEXT level's get_join_info from these so up/down stairs line up across
+   * depths. Populated by generateLevel; consumed only when persistent levels
+   * are wired (gap 9.4).
+   */
+  readonly joins: Connector[] = [];
   /** ridx of uniques already placed on this level. */
   private readonly placedUniques = new Set<number>();
   private monCounter = 0;
@@ -258,6 +288,13 @@ export class Gen {
     readonly objDeps: MakeDeps | null,
     /** Monster-placement dependencies, or null to skip monster placement. */
     readonly monDeps: MonPlaceDeps | null,
+    /**
+     * The trap kind table (trap_info). When present, place_trap picks the kind
+     * and rolls the power at generation time (gap 9.2); when null (bare
+     * unit-test contexts), only the trap grid is recorded and the pick is
+     * deferred to the live populate path.
+     */
+    readonly trapKinds: readonly TrapKind[] | null = null,
   ) {}
 
   get depth(): number {
@@ -1101,9 +1138,45 @@ export function placeRandomDoor(g: Gen, grid: Loc): void {
   else placeClosedDoor(g, grid);
 }
 
-/** place_trap: record the grid (trap objects are a deferred domain). */
+/**
+ * square_player_trap_allowed at generation time (trap.c:255): no existing
+ * trap, no object, and trap-holding terrain.
+ */
+function genPlayerTrapAllowed(g: Gen, grid: Loc): boolean {
+  if (g.hasTrap(grid)) return false;
+  if (g.hasObject(grid)) return false;
+  return featIsTrapHolding(g.reg, g.c.feat(grid));
+}
+
+/**
+ * place_trap(c, grid, -1, c->depth) at generation time (trap.c:356): pick a
+ * random player trap kind by rarity and roll its power, spending both RNG
+ * draws in the generation stream (gap 9.2). When the trap kind table is not
+ * threaded in (unit-test contexts), only the grid is recorded and the pick is
+ * deferred to the live populate path.
+ */
 export function placeTrap(g: Gen, grid: Loc): void {
+  if (!g.trapKinds) {
+    g.markTrap(grid);
+    return;
+  }
+
+  /* The -1 index means "choose a random player trap", so the terrain must
+   * be trap-allowed (trap.c:361-363). */
+  if (!genPlayerTrapAllowed(g, grid)) return;
+
+  const tidx = pickTrapKind(g.rng, g.trapKinds, g.c.depth, {
+    depth: g.c.depth,
+    maxDepth: g.constants.maxDepth,
+    isQuest: g.dun.quest,
+    persist: g.dun.persist,
+  });
+  if (tidx < 0) return;
+
+  const kind = g.trapKinds[tidx]!;
+  const power = g.rng.randcalc(kind.power, g.c.depth, "randomise");
   g.markTrap(grid);
+  g.traps.push({ grid, tidx, power });
 }
 
 /** place_stairs: choose the stair terrain honoring town / max-depth rules. */
@@ -1730,46 +1803,8 @@ export function vaultMonsters(g: Gen, grid: Loc, depth: number, num: number): vo
   }
 }
 
-/**
- * spread_monsters: place num monsters spread over a rectangle of effect.
- * Monster theming via type is simplified to any depth-appropriate monster.
- */
-export function spreadMonsters(
-  g: Gen,
-  depth: number,
-  num: number,
-  y0: number,
-  x0: number,
-  dy: number,
-  dx: number,
-): void {
-  if (!g.monDeps) return;
-  const startCount = g.monsters.length;
-  let count = 0;
-  for (let i = 0; count < num && i < 50; i++) {
-    let x = x0;
-    let y = y0;
-    if (dy === 0 && dx === 0) {
-      if (!g.c.inBounds(loc(x, y))) return;
-    } else {
-      let ok = false;
-      for (let j = 0; j < 10; j++) {
-        y = g.rng.randSpread(y0, dy);
-        x = g.rng.randSpread(x0, dx);
-        if (g.c.inBounds(loc(x, y))) {
-          ok = true;
-          break;
-        }
-      }
-      if (!ok) return;
-    }
-    if (!squareIsEmpty(g, loc(x, y))) continue;
-    pickAndPlaceMonster(g, loc(x, y), depth, true);
-    if (g.monsters.length - startCount > num * 2) break;
-    count++;
-    i = 0;
-  }
-}
+/* spread_monsters lives in gen/gen-monster.ts (the faithful themed port); the
+ * simplified copy that once shadowed it here has been removed (gap 9.8). */
 
 /* ------------------------------------------------------------------ *
  * Shared helpers re-exported for builders.

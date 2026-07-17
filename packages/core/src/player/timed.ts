@@ -20,15 +20,82 @@
  * - The on_begin_effect / on_end_effect chains dispatched on a 0<->positive
  *   transition (they would recurse into the effect interpreter) are invoked via
  *   the optional onTransition hook.
- * - The "don't mention effects that duplicate known player state" notify
- *   suppression (temp_resist / oflag_syn) needs obj_k element / flag knowledge
- *   and is deferred; it only silences a message, never changes the value.
- * - print_custom_message's weapon-name substitution is deferred; messages are
- *   emitted verbatim (none of the ported effects substitute).
  * - disturb + PR_/PU_ redraw + handle_stuff collapse into the onNotify hook.
+ *
+ * Ported (obj-util.c:1118 print_custom_message, player-timed.c:828-843,945-953):
+ * - print_custom_message's {name}/{kind}/{s}/{is} weapon-name substitution
+ *   (obj-util.c:1118) runs on every emitted message via the optional
+ *   hooks.weapon descriptor; with no weapon the tags resolve to the obj == NULL
+ *   forms ("hands", no "s", "are"), matching a bare-handed player.
+ * - The temp_resist / oflag_syn "already matches known state" notify
+ *   suppression (player-timed.c:828-843) runs when hooks supplies the obj_k
+ *   knowledge queries; absent them (obj_k twin deferred, gap 4.8) no message is
+ *   suppressed. It only silences a message, never changes the value.
+ * - player_inc_check's equip_learn / update_smart_learn / "You resist the
+ *   effect!" side effects (player-timed.c:945-953) run through the optional
+ *   PlayerIncCheckHooks; absent them the check stays a pure predicate.
  */
 
 import type { TimedEffect, TimedGrade } from "./types";
+
+/**
+ * The equipped-weapon descriptor print_custom_message (obj-util.c:1118)
+ * substitutes into a status message's {tags}. `name` is object_desc(
+ * ODESC_PREFIX | ODESC_BASE), `kind` is object_kind_name, `number` is the
+ * stack size (drives {s} / {is}). Undefined means no weapon (the obj == NULL
+ * path: "hands", no verb "s", "are").
+ */
+export interface TimedWeaponDesc {
+  name: string;
+  kind: string;
+  number: number;
+}
+
+/**
+ * print_custom_message (obj-util.c:1118): substitute the object tags in a
+ * status string. {name} -> weapon name or "hands"; {kind} -> weapon kind or
+ * "hands"; {s} -> "s" for a single weapon, else ""; {is} -> "is" for a single
+ * weapon, else "are" (also "are" with no weapon). Text without tags is returned
+ * unchanged.
+ */
+export function substituteTimedMessage(
+  text: string,
+  weapon?: TimedWeaponDesc,
+): string {
+  if (text.indexOf("{") < 0) return text;
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const open = text.indexOf("{", i);
+    if (open < 0) {
+      out += text.slice(i);
+      break;
+    }
+    out += text.slice(i, open);
+    /* Scan an all-alpha tag body ending in '}'. */
+    let j = open + 1;
+    while (j < text.length && /[A-Za-z]/.test(text[j]!)) j++;
+    if (text[j] === "}") {
+      const tag = text.slice(open + 1, j);
+      /* msg_tag_lookup: name/kind (4 chars), then "s", then "is". */
+      if (tag.startsWith("name")) {
+        out += weapon ? weapon.name : "hands";
+      } else if (tag.startsWith("kind")) {
+        out += weapon ? weapon.kind : "hands";
+      } else if (tag.startsWith("s")) {
+        if (weapon && weapon.number === 1) out += "s";
+      } else if (tag.startsWith("is")) {
+        out += !weapon || weapon.number > 1 ? "are" : "is";
+      }
+      i = j + 1;
+    } else {
+      /* Invalid tag: skip the '{' and continue after it. */
+      out += "{";
+      i = open + 1;
+    }
+  }
+  return out;
+}
 
 /** The minimal player shape this module mutates: the timed-duration array. */
 export interface PlayerTimedTarget {
@@ -56,10 +123,37 @@ export interface PlayerIncCheckQueries {
   timedActive(name: string): boolean;
 }
 
+/**
+ * obj_k knowledge queries for player_set_timed's notify suppression
+ * (player-timed.c:828-843). When present, a message that only duplicates
+ * already-known player state is silenced. The obj_k twin is deferred (gap 4.8),
+ * so callers usually omit this and no message is suppressed.
+ */
+export interface TimedNotifyQueries {
+  /** p->obj_k->el_info[elem].res_level != 0 (element resist is known). */
+  knownResist(elem: number): boolean;
+  /** player_is_immune(p, elem). */
+  isImmune(elem: number): boolean;
+  /** of_has(p->obj_k->flags, of) (the object flag's presence is known). */
+  knownFlag(of: number): boolean;
+  /** player_of_has_not_timed(p, of): has the flag from a non-timed source. */
+  hasFlagNotTimed(of: number): boolean;
+}
+
 /** The consequences a duration change can trigger, all optional. */
 export interface PlayerTimedHooks {
   /** Emit a status message (print_custom_message). */
   onMessage?: PlayerTimedMessageSink;
+  /**
+   * The equipped weapon, for print_custom_message's {name}/{kind}/{s}/{is}
+   * substitution. Omit for a bare-handed player (the obj == NULL tag forms).
+   */
+  weapon?: TimedWeaponDesc;
+  /**
+   * obj_k queries for the temp_resist / oflag_syn notify suppression. Omit to
+   * suppress nothing (the obj_k twin is deferred).
+   */
+  notifyQueries?: TimedNotifyQueries;
   /**
    * disturb + redraw/update + handle_stuff, run once when notify is true;
    * `disturb` (from can_disturb) says whether the player is actually disturbed.
@@ -109,23 +203,56 @@ export function playerTimedGradeEq(
 }
 
 /**
+ * The learning / message side effects of a non-lore player_inc_check
+ * (player-timed.c:945-953), all optional. Present them for a real effect
+ * application; omit them for a lore-only check (the port's lore path passes no
+ * hooks, matching the C `lore` branch that skips them).
+ */
+export interface PlayerIncCheckHooks {
+  /** cave->mon_current > 0: the effect originates from a monster action. */
+  monsterSource?: boolean;
+  /** equip_learn_flag(p, of): learn the object flag from worn gear. */
+  equipLearnFlag?: (name: string) => void;
+  /** equip_learn_element(p, elem): learn the element resist from worn gear. */
+  equipLearnElement?: (name: string) => void;
+  /** update_smart_learn(mon, p, of, 0, -1): teach the monster the player flag. */
+  updateSmartLearn?: (name: string) => void;
+  /** msg("You resist the effect!") when a monster's effect is resisted. */
+  resistMessage?: () => void;
+}
+
+/**
  * player_inc_check: whether a timed effect is allowed to increase, given the
  * player's resistances and flags. Returns false when a fail condition inhibits
- * it. Learning / "You resist!" side effects are deferred (lore, messages).
+ * it. With `hooks` (a real, non-lore check) it also runs the learning and
+ * "You resist the effect!" side effects (player-timed.c:945-953): the object /
+ * element flag is learned from worn gear on every OBJECT / RESIST / VULN check,
+ * a monster source is taught via update_smart_learn, and a resisted monster
+ * effect prints the resist message.
  */
 export function playerIncCheck(
   effect: TimedEffect,
   queries: PlayerIncCheckQueries,
+  hooks?: PlayerIncCheckHooks,
 ): boolean {
   for (const f of effect.fail) {
     switch (f.code) {
       case TMD_FAIL_FLAG_OBJECT:
-        if (queries.objectFlag(f.flag)) return false;
+        /* Learn the flag from worn gear and teach a monster source, then
+         * inhibit if the player has the flag (with a message from a monster). */
+        hooks?.equipLearnFlag?.(f.flag);
+        if (hooks?.monsterSource) hooks.updateSmartLearn?.(f.flag);
+        if (queries.objectFlag(f.flag)) {
+          if (hooks?.monsterSource) hooks.resistMessage?.();
+          return false;
+        }
         break;
       case TMD_FAIL_FLAG_RESIST:
+        hooks?.equipLearnElement?.(f.flag);
         if (queries.resistLevel(f.flag) > 0) return false;
         break;
       case TMD_FAIL_FLAG_VULN:
+        hooks?.equipLearnElement?.(f.flag);
         if (queries.resistLevel(f.flag) < 0) return false;
         break;
       case TMD_FAIL_FLAG_PLAYER:
@@ -178,28 +305,52 @@ export function playerSetTimed(
   }
 
   /*
-   * The temp_resist / oflag_syn "already matches known state" notify
-   * suppression is deferred (needs obj_k knowledge); it only silences a
-   * message and never changes the value.
+   * Don't mention effects which already match the known player state
+   * (player-timed.c:828-843): a temporary resist the player is known to be
+   * immune to, or a flag synonym the player is known to have from worn gear.
+   * Only silences a message; never changes the value. Requires the obj_k twin
+   * queries (deferred, gap 4.8), so with none supplied nothing is suppressed.
    */
+  const q = hooks.notifyQueries;
+  if (q) {
+    if (
+      effect.tempResist !== -1 &&
+      q.knownResist(effect.tempResist) &&
+      q.isImmune(effect.tempResist)
+    ) {
+      notify = false;
+    }
+    if (
+      effect.oflagSyn &&
+      effect.oflagDup !== 0 &&
+      q.knownFlag(effect.oflagDup) &&
+      q.hasFlagNotTimed(effect.oflagDup)
+    ) {
+      notify = false;
+    }
+  }
+
+  /* print_custom_message: substitute weapon-name tags in every status line. */
+  const say = (text: string, msgt: string): void =>
+    hooks.onMessage?.(substituteTimedMessage(text, hooks.weapon), msgt);
 
   /* Always mention going up a grade, otherwise on request. */
   if (newGrade.grade > currentGrade.grade) {
-    if (newGrade.upMsg) hooks.onMessage?.(newGrade.upMsg, effect.msgt);
+    if (newGrade.upMsg) say(newGrade.upMsg, effect.msgt);
     notify = true;
   } else if (newGrade.grade < currentGrade.grade && newGrade.downMsg) {
-    hooks.onMessage?.(newGrade.downMsg, effect.msgt);
+    say(newGrade.downMsg, effect.msgt);
     notify = true;
   } else if (notify) {
     if (v === 0) {
       /* Finishing */
-      if (effect.onEnd) hooks.onMessage?.(effect.onEnd, "RECOVER");
+      if (effect.onEnd) say(effect.onEnd, "RECOVER");
     } else if (old > v && effect.onDecrease) {
       /* Decrementing */
-      hooks.onMessage?.(effect.onDecrease, effect.msgt);
+      say(effect.onDecrease, effect.msgt);
     } else if (v > old && effect.onIncrease) {
       /* Incrementing */
-      hooks.onMessage?.(effect.onIncrease, effect.msgt);
+      say(effect.onIncrease, effect.msgt);
     }
   }
 

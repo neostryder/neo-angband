@@ -5,19 +5,30 @@ import { Rng } from "../rng";
 import { bindPlayer } from "./bind";
 import type { PlayerPackRecords } from "./bind";
 import {
+  BIRTH_MESSAGE_RECALL_BANNER,
   BIRTH_STAT_COSTS,
   MAX_BIRTH_POINTS,
   START_GOLD,
   birthGold,
   buyStat,
+  findRomanSuffixStart,
+  flavorSetAllAware,
   generateHistory,
   generatePlayer,
+  generateStats,
+  incrementNameSuffix,
+  intToRoman,
+  optionsInitCheat,
   pointBuyCost,
   resetStats,
   rollStats,
+  romanToInt,
   sellStat,
 } from "./birth";
 import { calcHitpoints, modifyStatValue, statUseToIndex } from "./calcs";
+import { OptionState } from "./options";
+import { FlavorKnowledge } from "../obj/knowledge";
+import type { ObjectKind } from "../obj/types";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(
@@ -86,6 +97,65 @@ describe("point-buy (player-birth.c cost table)", () => {
   it("gold is start_gold + 50 per leftover point", () => {
     expect(birthGold(0)).toBe(START_GOLD);
     expect(birthGold(20)).toBe(START_GOLD + 1000);
+  });
+});
+
+describe("generate_stats (point-buy auto-allocation, player-birth.c:816-973)", () => {
+  const warrior = reg.classByName("Warrior");
+  const mage = reg.classByName("Mage");
+  const human = reg.raceByName("Human");
+
+  it("is deterministic and never overspends the pool", () => {
+    if (!human || !warrior) return;
+    const a = generateStats(human, warrior);
+    const b = generateStats(human, warrior);
+    expect(a.stats).toEqual(b.stats);
+    expect(a.pointsLeft).toBe(b.pointsLeft);
+    expect(a.pointsLeft).toBeGreaterThanOrEqual(0);
+    /* spent + left conserves the whole pool. */
+    const spent = a.pointsSpent.reduce((s, v) => s + v, 0);
+    expect(spent + a.pointsLeft).toBe(MAX_BIRTH_POINTS);
+    /* Every stat stays inside the point-buy band [10, 18]. */
+    for (const v of a.stats) {
+      expect(v).toBeGreaterThanOrEqual(10);
+      expect(v).toBeLessThanOrEqual(18);
+    }
+  });
+
+  it("buys base STR to 17 for a warrior (step 0) and invests CON (step 3)", () => {
+    if (!human || !warrior) return;
+    const s = generateStats(human, warrior).stats;
+    /* Step 0 always buys STR up to 17 (affordable at 8 points). */
+    expect(s[STAT.STR]).toBe(17);
+    /* A warrior spends the remaining pool on CON (up to base 16) and DEX. */
+    expect(s[STAT.CON]).toBeGreaterThan(10);
+    expect(s[STAT.DEX]).toBeGreaterThanOrEqual(10);
+  });
+
+  it("invests the spell-stat (INT) for a caster (step 3)", () => {
+    if (!human || !mage) return;
+    const s = generateStats(human, mage).stats;
+    /* Mage: pure caster, spell_stat = INT, gets a heavy share of the pool. */
+    expect(s[STAT.INT]).toBeGreaterThan(10);
+  });
+
+  it("feeds generatePlayer verbatim through the point-buy path", () => {
+    const race = reg.raceByName("Half-Troll");
+    const cls = reg.classByName("Warrior");
+    const body = reg.bodies[0];
+    if (!race || !cls || !body) return;
+    const alloc = generateStats(race, cls);
+    const { player } = generatePlayer(
+      race,
+      cls,
+      { body, historyChart: reg.historyChart(race), stats: [...alloc.stats] },
+      new Rng(4242),
+    );
+    for (let i = 0; i < STAT.CON + 1; i++) {
+      expect(player.statBirth[i]).toBe(alloc.stats[i]);
+    }
+    /* get_money: the leftover-point gold bonus matches the allocation. */
+    expect(player.au).toBe(birthGold(alloc.pointsLeft));
   });
 });
 
@@ -288,5 +358,156 @@ describe("point-based birth (generatePlayer with a given stat array)", () => {
     expect(history).toBe(a.history);
     /* Classic path takes no gold bonus (0 leftover points). */
     expect(player.au).toBe(START_GOLD);
+  });
+});
+
+describe("standard roller (generatePlayer rolledStats, do_cmd_roll_stats)", () => {
+  const race = reg.raceByName("Half-Troll");
+  const cls = reg.classByName("Warrior");
+  const body = reg.bodies[0];
+  /* Values a real roll can produce but point-buy cannot: an 8, and three 17s
+     (unaffordable in one allocation) - proving rolledStats bypasses the buy. */
+  const rolled = [8, 17, 17, 17, 12];
+
+  it("applies rolled stats verbatim (no clamp) and awards start_gold only", () => {
+    if (!race || !cls || !body) return;
+    const { player } = generatePlayer(
+      race,
+      cls,
+      { body, historyChart: reg.historyChart(race), rolledStats: rolled },
+      new Rng(4242),
+    );
+    for (let i = 0; i < STAT.CON + 1; i++) {
+      expect(player.statMax[i]).toBe(rolled[i]);
+      expect(player.statCur[i]).toBe(rolled[i]);
+      expect(player.statBirth[i]).toBe(rolled[i]);
+    }
+    /* Roller leaves 0 leftover points -> exactly start_gold. */
+    expect(player.au).toBe(START_GOLD);
+  });
+
+  it("draws ZERO stat RNG (same downstream state as pre-skipping the roll)", () => {
+    if (!race || !cls || !body) return;
+    const seed = 9001;
+    const rngClassic = new Rng(seed);
+    generatePlayer(race, cls, { body, historyChart: reg.historyChart(race) }, rngClassic);
+
+    const rngRolled = new Rng(seed);
+    rollStats(rngRolled); // the stat-roll draws the rolled path omits
+    generatePlayer(
+      race,
+      cls,
+      { body, historyChart: reg.historyChart(race), rolledStats: rolled },
+      rngRolled,
+    );
+    expect(rngRolled.getState()).toEqual(rngClassic.getState());
+  });
+});
+
+describe("history override (generatePlayer historyOverride, do_cmd_choose_history)", () => {
+  const race = reg.raceByName("Human");
+  const cls = reg.classByName("Warrior");
+  const body = reg.bodies[0];
+
+  it("overrides the stored history but keeps the RNG stream identical", () => {
+    if (!race || !cls || !body) return;
+    const seed = 321;
+    const edited = "A wandering scholar with a mysterious past.";
+    const rngA = new Rng(seed);
+    const withOverride = generatePlayer(
+      race,
+      cls,
+      { body, historyChart: reg.historyChart(race), historyOverride: edited },
+      rngA,
+    );
+    const rngB = new Rng(seed);
+    const without = generatePlayer(
+      race,
+      cls,
+      { body, historyChart: reg.historyChart(race) },
+      rngB,
+    );
+    expect(withOverride.history).toBe(edited);
+    expect(withOverride.player.history).toBe(edited);
+    /* The get_history walk still ran (same RNG draws), so ahw etc. match. */
+    expect(rngA.getState()).toEqual(rngB.getState());
+    expect(withOverride.player.age).toBe(without.player.age);
+  });
+});
+
+describe("roman-numeral dynastic suffixes (player-birth.c:1329-1481)", () => {
+  it("int_to_roman matches upstream for representative values", () => {
+    expect(intToRoman(1)).toBe("I");
+    expect(intToRoman(4)).toBe("IV");
+    expect(intToRoman(9)).toBe("IX");
+    expect(intToRoman(14)).toBe("XIV");
+    expect(intToRoman(40)).toBe("XL");
+    expect(intToRoman(1984)).toBe("MCMLXXXIV");
+    /* No roman numeral for non-positive integers (returns 0/null upstream). */
+    expect(intToRoman(0)).toBeNull();
+    expect(intToRoman(-3)).toBeNull();
+    /* Too small a buffer aborts (upstream returns 0). */
+    expect(intToRoman(1984, 4)).toBeNull();
+  });
+
+  it("roman_to_int is the inverse for well-formed numerals", () => {
+    expect(romanToInt("I")).toBe(1);
+    expect(romanToInt("IV")).toBe(4);
+    expect(romanToInt("XIV")).toBe(14);
+    expect(romanToInt("MCMLXXXIV")).toBe(1984);
+    /* Empty / non-roman input -> -1. */
+    expect(romanToInt("")).toBe(-1);
+    expect(romanToInt("Bob")).toBe(-1);
+  });
+
+  it("find_roman_suffix_start locates a trailing numeral only after a space", () => {
+    /* "Aragorn II": suffix "II" starts at index 8. */
+    expect(findRomanSuffixStart("Aragorn II")).toBe(8);
+    /* No space -> no suffix. */
+    expect(findRomanSuffixStart("Aragorn")).toBeNull();
+    /* Non-roman trailing word -> no suffix. */
+    expect(findRomanSuffixStart("Aragorn Two")).toBeNull();
+  });
+
+  it("increments an existing suffix (Name II -> Name III), else unchanged", () => {
+    expect(incrementNameSuffix("Aragorn II")).toBe("Aragorn III");
+    expect(incrementNameSuffix("Beorn IV")).toBe("Beorn V");
+    /* A name with no roman suffix is returned unchanged. */
+    expect(incrementNameSuffix("Frodo")).toBe("Frodo");
+    expect(incrementNameSuffix("Sam Gamgee")).toBe("Sam Gamgee");
+  });
+});
+
+describe("acceptance-flow helpers (do_cmd_accept_character)", () => {
+  it("options_init_cheat clears cheat options and their score twins", () => {
+    const opts = new OptionState({ overrides: { cheat_hear: true } });
+    /* The cheat override forces its score twin on (option_set coupling). */
+    expect(opts.get("cheat_hear")).toBe(true);
+    expect(opts.anyScoreSet()).toBe(true);
+    optionsInitCheat(opts);
+    expect(opts.get("cheat_hear")).toBe(false);
+    expect(opts.get("score_hear")).toBe(false);
+    expect(opts.anyScoreSet()).toBe(false);
+  });
+
+  it("flavor_set_all_aware marks every flavoured kind aware, and only those", () => {
+    const flavor = new FlavorKnowledge(100);
+    const kinds = [{ kidx: 1 }, { kidx: 2 }, { kidx: 3 }] as ObjectKind[];
+    /* kidx 2 is unflavoured (e.g. food/torch): it must not be force-awared. */
+    flavorSetAllAware(flavor, kinds, (k) => k.kidx !== 2);
+    expect(flavor.isAware(kinds[0]!)).toBe(true);
+    expect(flavor.isAware(kinds[1]!)).toBe(false);
+    expect(flavor.isAware(kinds[2]!)).toBe(true);
+  });
+
+  it("exposes the exact five-line message-recall separator banner", () => {
+    /* player-birth.c:1245-1249, verbatim including the padded spaces. */
+    expect(BIRTH_MESSAGE_RECALL_BANNER).toEqual([
+      " ",
+      "  ",
+      "====================",
+      "  ",
+      " ",
+    ]);
   });
 });

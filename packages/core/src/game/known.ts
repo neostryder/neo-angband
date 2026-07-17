@@ -39,6 +39,7 @@ import {
 import { disturb } from "./player-path";
 import { describeObject } from "./describe";
 import { floorExcise, floorPile } from "./floor";
+import { noteSpotRevealTrap } from "./trap";
 import { ODESC } from "../obj/desc";
 import { monsterCarry } from "../mon/make";
 import type { Monster } from "../mon/monster";
@@ -564,6 +565,9 @@ export function noteSpots(state: GameState): void {
       if (!squareIsSeen(c, grid)) continue;
       squareMemorize(state, grid);
       squareKnowPile(state, grid);
+      /* Notice secret traps on the newly-seen grid (cave-map.c square_note_spot
+       * L236-238 / cave-view.c update_one L840-842). */
+      noteSpotRevealTrap(state, grid);
     }
   }
 

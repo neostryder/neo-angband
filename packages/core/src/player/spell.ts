@@ -268,7 +268,12 @@ export interface SpellChanceEnv {
   hasPf?: (pf: number) => boolean;
   /** square_islit(cave, player->grid) for the UNLIGHT penalty. */
   gridIsLit?: () => boolean;
-  /** player_of_has(OF_AFRAID): fear from any source (timed or equip). */
+  /**
+   * player_of_has(p, OF_AFRAID) (player-spell.c:424): fear from ANY source -
+   * the timed TMD_AFRAID synonym OR an OF_AFRAID object/intrinsic flag. The
+   * game caller passes the computed player_state flags here; when omitted the
+   * fallback reads timed[TMD_AFRAID] only, which misses equipment-borne fear.
+   */
   afraid?: () => boolean;
 }
 
@@ -306,7 +311,9 @@ export function spellChance(
   /* Necromancers are punished by being on lit squares. */
   if (hasPf(PF.UNLIGHT) && (env.gridIsLit?.() ?? false)) chance += 25;
 
-  /* Fear makes spells harder (before minfail). */
+  /* Fear makes spells harder (before minfail). Upstream reads player_of_has(
+   * OF_AFRAID); the fallback below covers only the timed synonym, so the game
+   * caller supplies env.afraid from the computed player_state flags. */
   const afraid = env.afraid ?? ((): boolean => (player.timed[TMD.AFRAID] ?? 0) > 0);
   if (afraid()) chance += 20;
 

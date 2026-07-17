@@ -383,7 +383,7 @@ export function designArtifact(
 
     /* Add an ability. */
     addAbility(reg, art, power, artFreq, data, rng);
-    removeContradictory(reg, art);
+    removeContradictory(reg, art, data.timedFoil, data.activationSummarize);
 
     /* Check the power, handle negative power. */
     ap = artifactPower(reg, art);
@@ -394,7 +394,7 @@ export function designArtifact(
 
     /* Curse the designated artifacts. */
     if (hurtMe) {
-      makeBad(reg, art, artLevel, rng);
+      makeBad(reg, art, artLevel, rng, data.timedFoil);
       if (rng.oneIn(3)) {
         hurtMe = false;
       }

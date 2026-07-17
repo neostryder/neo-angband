@@ -13,6 +13,21 @@
  * onto the port's fields. desc.ts then reads the shadow exactly where upstream
  * reads obj->known, so names come out identical for identical knowledge.
  *
+ * The progressive-ID entry points (obj-knowledge.c L860-1013) are ported to fit
+ * this on-demand model:
+ * - object_set_base_known is exported here for callers/tests.
+ * - object_touch / object_grab (objectTouch / objectGrab) mark the live object
+ *   ASSESSED - the bit that gates the fuller shadow - and fire the artifact-log
+ *   and flavour-awareness side effects; the twin's own field writes are
+ *   subsumed by objectKnownShadow. Their live call sites (stepping onto / over
+ *   a floor pile, grabbing a monster's drop, quake/destruction object rubble)
+ *   live in the world/game layer -> emitted as WIRING-NEEDED.
+ * - object_see / object_sense (the known-cave floor OBJECT LIST) and
+ *   update_player_object_knowledge (the twin re-sync + autoinscribe + inventory
+ *   redraw) are world/UI concerns handled by game/known.ts (squareKnowPile /
+ *   squareSensePile) and the port's knowledge-update sites, not a per-object
+ *   twin; there is no separate obj-layer body for them.
+ *
  * Synthesis notes (each ledgered inline):
  * - p->obj_k->dd/ds/ac (the "know dice"/"know ac" runes) are now real fields on
  *   Player.objKnown, ALWAYS 1: player_outfit (player-birth.c L584-596) grants
@@ -91,6 +106,13 @@ export interface KnownDesc {
    * (the upstream default), matching a game whose option is unset.
    */
   showFlavors?(): boolean;
+  /**
+   * ignore_item_ok(p, obj) (obj-ignore.c L622): whether the object is eligible
+   * for ignoring right now, for the " {ignore}" / "ignore" description markers
+   * (obj-desc.c L537, L630). Optional; when absent the markers are omitted (a
+   * caller with no ignore environment, e.g. an omniscient/spoiled describe).
+   */
+  ignoreItemOk?(obj: GameObject): boolean;
 }
 
 /**
@@ -139,7 +161,7 @@ function newCurseData(n: number): CurseData[] {
  *
  * Mutates `shadow` in place.
  */
-function objectSetBaseKnown(
+export function objectSetBaseKnown(
   shadow: GameObject,
   obj: GameObject,
   p: Player,
@@ -500,4 +522,65 @@ export function objectKnownShadow(
  */
 export function objectIsKnownArtifact(shadow: GameObject): boolean {
   return shadow.artifact !== null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Progressive object-knowledge hooks (obj-knowledge.c L860-1013)       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The side effects object_touch / object_grab fire beyond marking the object
+ * assessed, injected so this obj-layer helper stays free of the player-history
+ * ledger and the flavour/rune knowledge-update path.
+ */
+export interface ObjectTouchDeps {
+  /**
+   * history_find_artifact (obj-knowledge.c L971): log that the player has now
+   * seen artifact `aidx`. Fired only for an artifact object.
+   */
+  onArtifactFound?(aidx: number): void;
+  /**
+   * player_know_object's flavour-awareness side effect (obj-knowledge.c
+   * L967 -> L1163-1175), i.e. playerKnowObjectAwareness(p, env, obj, ...) built
+   * by the caller. The rest of player_know_object (the obj->known twin writes)
+   * is synthesised on demand by objectKnownShadow, so only this awareness half
+   * needs firing here.
+   */
+  onKnow?(obj: GameObject): void;
+}
+
+/**
+ * object_touch (obj-knowledge.c L960): gain knowledge from being on the same
+ * square as an object (or picking it up). Upstream sets obj->known->artifact,
+ * marks obj->known ASSESSED, runs player_know_object, and logs a found artifact.
+ *
+ * The port keeps ASSESSED on the LIVE object (the fuller known shadow is gated
+ * by it - objectKnownShadow L350, desc.ts) and synthesises obj->known on
+ * demand, so this reduces to: set ASSESSED (which also reveals the artifact
+ * name via the shadow's assessed gate), fire the awareness half of
+ * player_know_object, then log the artifact. Draws no RNG.
+ */
+export function objectTouch(obj: GameObject, deps: ObjectTouchDeps = {}): void {
+  /* obj->known->artifact = obj->artifact (L963) is subsumed by the shadow's
+   * ASSESSED gate (objectKnownShadow L477); marking ASSESSED is enough. */
+  obj.notice |= OBJ_NOTICE.ASSESSED; // L964
+
+  /* player_know_object(p, obj) (L967): only the awareness side effect needs a
+   * home here (the twin is on-demand). */
+  deps.onKnow?.(obj);
+
+  /* Log artifacts if found (L970-971). */
+  if (obj.artifact) deps.onArtifactFound?.(obj.artifact.aidx);
+}
+
+/**
+ * object_grab (obj-knowledge.c L978): gain knowledge from grabbing an object
+ * off a monster. Upstream's body is known-cave floor-list bookkeeping (making /
+ * relocating the obj->known twin and its object_set_base_known fill) followed by
+ * object_touch (L1012). In the port the known-cave floor list is maintained by
+ * the world layer (game/known.ts squareKnowPile / object_see) and the twin is
+ * on demand, so grabbing reduces to object_touch. Draws no RNG.
+ */
+export function objectGrab(obj: GameObject, deps: ObjectTouchDeps = {}): void {
+  objectTouch(obj, deps);
 }

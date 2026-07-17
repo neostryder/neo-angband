@@ -21,12 +21,16 @@
  * "Moria dwellers" restriction), lair_gen (a modified half joined to a themed
  * cavern), gauntlet_gen (two caverns split by an unmappable labyrinth) and
  * hard_centre_gen (a greater vault surrounded by four caverns), with the
- * chunk_copy merge helper, connect_caverns and vault_chunk (room.ts). These
- * four builder keys (moria/lair/gauntlet/hard_centre) are registered but NOT
- * yet enabled for choose() (#80).
+ * chunk_copy merge helper, connect_caverns and vault_chunk (room.ts). All four
+ * builder keys (moria/lair/gauntlet/hard_centre) are registered AND selectable:
+ * choose() runs the same weighted profile loop as choose_profile (generate.c
+ * L866-878), so any profile with alloc > 0 - moria and the multi-region
+ * builders included - is picked by depth exactly as upstream.
  *
- * DEFERRED: the town builder's full store generation, persistent-level
- * connectors and the arena level remain deferred.
+ * DEFERRED: the town builder's full store generation and persistent-level
+ * connectors remain deferred. The single-combat arena level is generated in
+ * the session layer (session/game.ts, matching arena_gen at gen-cave.c:3984),
+ * as upstream also special-cases it outside the normal builder loop.
  */
 
 import type { Constants } from "../constants";
@@ -36,6 +40,7 @@ import { DDGRID_DDD, loc, locSum } from "../loc";
 import type { Rng } from "../rng";
 import { Chunk, featIsBright } from "../world/chunk";
 import type { FeatureRegistry } from "../world/feature";
+import type { TrapKind } from "../world/trap";
 import type { MakeDeps } from "../obj/make";
 import type { RoomProfile, RoomRegistry } from "./room";
 import { roomBuild, symmetryTransform, vaultChunk } from "./room";
@@ -221,6 +226,11 @@ export interface CaveBuildContext {
   minWidth: number;
   objDeps: MakeDeps | null;
   monDeps: MonPlaceDeps | null;
+  /**
+   * The trap kind table (trap_info). When present, place_trap picks the kind
+   * and rolls the power during generation (gap 9.2); null for bare test builds.
+   */
+  trapKinds?: readonly TrapKind[] | null;
   rooms: RoomRegistry;
   /**
    * is_daytime() at the moment of generation (game-world.c). Read only by the
@@ -913,6 +923,11 @@ function chunkCopy(dest: Gen, src: Gen, y0: number, x0: number, rotate: number):
     const srcGrid = loc(idx % w, Math.trunc(idx / w));
     const destGrid = symmetryTransform(srcGrid, y0, x0, h, w, rotate, false);
     dest.markTrap(destGrid);
+  }
+  /* Trap descriptors (kind + power) rolled at generation time (gap 9.2). */
+  for (const t of src.traps) {
+    const destGrid = symmetryTransform(t.grid, y0, x0, h, w, rotate, false);
+    dest.traps.push({ grid: destGrid, tidx: t.tidx, power: t.power });
   }
 
   /* Monsters. */
@@ -2524,7 +2539,16 @@ function handleLevelStairs(g: Gen, quest: boolean, downCount: number, upCount: n
  * ------------------------------------------------------------------ */
 
 function makeGen(ctx: CaveBuildContext, c: Chunk): Gen {
-  const g = new Gen(c, ctx.rng, ctx.reg, ctx.constants, ctx.dun, ctx.objDeps, ctx.monDeps);
+  const g = new Gen(
+    c,
+    ctx.rng,
+    ctx.reg,
+    ctx.constants,
+    ctx.dun,
+    ctx.objDeps,
+    ctx.monDeps,
+    ctx.trapKinds ?? null,
+  );
   /* Attach the current profile's tunnel/streamer parameters for the tunnel
    * and streamer helpers (they are read-only during a build). */
   g.profileTun = ctx.profile.tun;

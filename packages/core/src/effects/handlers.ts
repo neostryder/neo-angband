@@ -47,54 +47,66 @@ const handleRANDOM: EffectHandler = () => true;
 const handleSELECT: EffectHandler = () => true;
 
 /**
- * EF_DAMAGE: deal damage from the origin to the player.
- * Partial: the monster-origin branches that damage a targeted monster or
- * destroy a decoy need the monster/world domains and are deferred; killer
- * descriptions for monster/trap/object/chest origins need their
- * registries and use placeholders until then.
+ * The take_hit tail of EF_DAMAGE (effect-handler-attack.c L513): apply damage
+ * reduction, the optional "you take N damage" line, and take_hit with the
+ * resolved killer. Exported so the game-layer EF_DAMAGE override
+ * (game/effect-attack.ts) shares the exact player path without re-rolling the
+ * damage dice.
  */
-const handleDAMAGE: EffectHandler = (context) => {
-  let dam = effectCalculateValue(context, false);
+export function damageEffectApplyToPlayer(
+  context: EffectHandlerContext,
+  dam: number,
+  killer: string,
+): void {
+  const player = context.env.player;
+  if (!player || !player.takeHit) return;
+
+  let d = dam;
+  if (player.applyDamageReduction) {
+    d = player.applyDamageReduction(d);
+  }
+  if (d && context.env.showDamage) {
+    msg(context, `You take ${d} damage.`);
+  }
+  player.takeHit(d, killer);
+}
+
+/** killer_desc for a non-monster EF_DAMAGE origin (attack.c L466 switch). */
+export function damageEffectKiller(context: EffectHandlerContext): string {
+  switch (context.origin.what) {
+    case "monster":
+      /* monster_desc(MDESC_DIED_FROM) is deferred (8.9); the game override
+       * supplies the race-name stand-in. */
+      return "a monster";
+    case "trap":
+      return "a trap";
+    case "object":
+      /* Must be a cursed weapon */
+      return "an object";
+    case "chestTrap":
+      return "a chest trap";
+    case "player":
+      return context.msg ?? "yourself";
+    case "none":
+      return "a bug";
+  }
+}
+
+/**
+ * EF_DAMAGE: deal damage from the origin to the player.
+ * Worldless path: the monster-origin branches that damage a targeted monster or
+ * destroy a decoy need the monster/world domains, so the game-layer override
+ * (game/effect-attack.ts registerAttackHandlers) supplies them; this base
+ * handler runs unchanged for the player/trap/object/chest/none origins and for
+ * a monster origin when no game world is attached.
+ */
+export const handleDAMAGE: EffectHandler = (context) => {
+  const dam = effectCalculateValue(context, false);
 
   /* Always ID */
   context.ident = true;
 
-  let killer: string;
-  switch (context.origin.what) {
-    case "monster":
-      /* t_mon / decoy branches deferred (world domain). */
-      killer = "a monster";
-      break;
-    case "trap":
-      killer = "a trap";
-      break;
-    case "object":
-      /* Must be a cursed weapon */
-      killer = "an object";
-      break;
-    case "chestTrap":
-      killer = "a chest trap";
-      break;
-    case "player":
-      killer = context.msg ?? "yourself";
-      break;
-    case "none":
-      killer = "a bug";
-      break;
-  }
-
-  const player = context.env.player;
-  if (!player || !player.takeHit) return true;
-
-  /* Hit the player */
-  if (player.applyDamageReduction) {
-    dam = player.applyDamageReduction(dam);
-  }
-  if (dam && context.env.showDamage) {
-    msg(context, `You take ${dam} damage.`);
-  }
-  player.takeHit(dam, killer);
-
+  damageEffectApplyToPlayer(context, dam, damageEffectKiller(context));
   return true;
 };
 
@@ -234,20 +246,17 @@ const handleTIMED_SET: EffectHandler = (context) => {
 };
 
 /**
- * EF_TIMED_INC: extend a player status condition; if context.other is
- * set, increase by that amount when the player already has the status.
- * Partial: the decoy-destruction and monster-target branches need the
- * world/monster domains and are deferred.
+ * The player-condition tail of EF_TIMED_INC (effect-handler-general.c L630):
+ * extend the timed status, honouring context.other's "top up if already held"
+ * amount. Exported so the game-layer override (game/effect-general.ts) shares
+ * the exact player path without re-rolling the value.
  */
-const handleTIMED_INC: EffectHandler = (context) => {
-  const amount = effectCalculateValue(context, false);
-
-  context.ident = true;
-
-  /* Decoy / targeted-monster branches deferred (world domain). */
-
+export function timedIncEffectApplyToPlayer(
+  context: EffectHandlerContext,
+  amount: number,
+): void {
   const timed = context.env.player?.timed;
-  if (!timed) return true;
+  if (!timed) return;
 
   const disturb = notPlayerOrUnaware(context);
   if (!timed.timed(context.subtype) || !context.other) {
@@ -255,6 +264,23 @@ const handleTIMED_INC: EffectHandler = (context) => {
   } else {
     timed.incTimed(context.subtype, context.other, true, disturb, true);
   }
+}
+
+/**
+ * EF_TIMED_INC: extend a player status condition; if context.other is
+ * set, increase by that amount when the player already has the status.
+ * Worldless path: the decoy-destruction and monster-target (TMD->MON_TMD)
+ * branches need the world/monster domains, so the game-layer override
+ * (game/effect-general.ts registerGeneralHandlers) supplies them; this base
+ * handler runs unchanged for a player origin and for a monster origin when no
+ * game world is attached.
+ */
+export const handleTIMED_INC: EffectHandler = (context) => {
+  const amount = effectCalculateValue(context, false);
+
+  context.ident = true;
+
+  timedIncEffectApplyToPlayer(context, amount);
   return true;
 };
 
