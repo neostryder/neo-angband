@@ -116,7 +116,8 @@ import { installMonCommand } from "../game/mon-cmd";
 import { monsterChangeShape, monsterRevertShape } from "../game/mon-shape";
 import type { MonShapeHooks } from "../mon/timed";
 import { installObjCommands } from "../game/obj-cmd";
-import { installCaveCommands } from "../game/cave-cmd";
+import { installCaveCommands, movementAutoDig } from "../game/cave-cmd";
+import type { CaveCmdDeps } from "../game/cave-cmd";
 import { installSteal } from "../game/steal";
 import type { ChestCmdDeps } from "../game/chest";
 import {
@@ -184,7 +185,7 @@ import type {
 } from "./boot";
 import { Rng } from "../rng";
 import type { Player } from "../player/player";
-import { OptionState, filterInterfaceOverrides } from "../player/options";
+import { OptionState } from "../player/options";
 import type { OptionName } from "../player/options";
 import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart";
 import { generateLevel } from "../gen/generate";
@@ -291,17 +292,19 @@ export interface StartGameOptions extends BootLevelOptions {
    * the immutable birth snapshot; the rest seed the live option store.
    */
   optionOverrides?: Partial<Record<OptionName, boolean>>;
-  /**
-   * Host-supplied INTERFACE-option defaults for a NEW character, threaded from
-   * the web/cli host (e.g. the bundled qol content mod's options.json). Applied
-   * UNDER optionOverrides so an explicit birth/interface choice still wins, and
-   * defensively filtered to INTERFACE-type options only (filterInterfaceOverrides)
-   * so a mod can never change a rules/scoring option. Undefined or empty leaves
-   * the new-character options byte-identical to the table defaults.
-   */
-  interfaceDefaults?: Readonly<Record<string, boolean>>;
   /** op_ptr->hitpoint_warn (0..9). Default 3 (DEFAULT_HITPOINT_WARN). */
   hitpointWarn?: number;
+  /**
+   * The effective "mod rule" flags to seed GameState.modRules with (the
+   * declarative bundled-mod seam: the host resolves each enabled mod's
+   * manifest `rules` against the player's saved choices and passes the result
+   * here). Each flag gates an off-by-default corrected branch in ported core,
+   * read through modRuleEnabled; an absent/empty map leaves core byte-identical
+   * to faithful 4.2.6. The qol / bug-fixes mods populate this; disabling them
+   * (or turning a rule off in the menu) drops the flag and restores faithful
+   * behaviour.
+   */
+  modRules?: Readonly<Record<string, boolean>>;
 }
 
 /** A started game: the loop's state and registry, plus what a renderer needs. */
@@ -1069,7 +1072,7 @@ function wireGame(
   // open/disarm through game/chest.ts when the effect stack is live.
   const lockKind = trapDeps ? lookupTrap(trapDeps.kinds, "door lock") : null;
   const deps = trapDeps; // narrow for the closures
-  installCaveCommands(registry, {
+  const caveDeps: CaveCmdDeps = {
     makeDeps,
     env: {
       // Route open/close/tunnel/chest messages to the game's message sink
@@ -1093,7 +1096,14 @@ function wireGame(
         : {}),
     },
     ...(chestDeps ? { chestDeps } : {}),
-  });
+  };
+  installCaveCommands(registry, caveDeps);
+
+  // QoL auto-dig (bundled `qol` mod, flag "qol.autoDig"): walking into known
+  // diggable terrain the player can dig begins one tunnel attempt. walkAction
+  // consults this before its no-energy bump; movementAutoDig is a no-op (returns
+  // 0, no RNG) unless the flag is on, so faithful play is byte-identical.
+  state.autoDigStep = (s, grid): number => movementAutoDig(s, grid, caveDeps);
 
   // steal (cmd-cave.c do_cmd_steal): the rogue / PF_STEAL lift-from-monster
   // command. The PF_STEAL gate reads the live derived state (state.playerState).
@@ -1649,19 +1659,13 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // The player option store (option.c options_init_defaults): seeded from
   // OPTION_ENTRIES defaults, with the birth/interface choices applied. Built
   // before level generation so birth_randarts can swap the artifact set first.
-  // Host-supplied interface defaults (qol mod) seed the option store UNDER the
-  // birth/interface choices, and are filtered to INTERFACE-type options so a
-  // content mod can never touch a rules/scoring option. With neither supplied,
-  // no overrides are passed and the store is byte-identical to the table.
-  const interfaceDefaults = opts.interfaceDefaults
-    ? filterInterfaceOverrides(opts.interfaceDefaults)
-    : undefined;
-  const mergedOverrides =
-    interfaceDefaults || opts.optionOverrides
-      ? { ...(interfaceDefaults ?? {}), ...(opts.optionOverrides ?? {}) }
-      : undefined;
+  // Every Angband option (show_damage, center_player, auto_more, ...) ships in
+  // core with its faithful upstream default (OPTION_ENTRIES.normal); the player
+  // changes them in the options menu exactly as upstream. Only explicit birth /
+  // interface CHOICES (birth screen, point-buy) are applied here as overrides,
+  // so with none supplied the store is byte-identical to the table.
   const options = new OptionState({
-    ...(mergedOverrides ? { overrides: mergedOverrides } : {}),
+    ...(opts.optionOverrides ? { overrides: opts.optionOverrides } : {}),
     ...(opts.hitpointWarn !== undefined ? { hitpointWarn: opts.hitpointWarn } : {}),
   });
 
@@ -1784,6 +1788,10 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     autoinscribe: new AutoinscriptionRegistry(),
     options,
     artifacts,
+    /* Effective mod-rule flags (declarative bundled-mod seam): absent/empty =
+     * faithful 4.2.6. Seeded a copy so later menu toggles mutate this map, not
+     * the caller's. */
+    ...(opts.modRules ? { modRules: { ...opts.modRules } } : {}),
     lore: new Map(),
     /* birth_levels_persist (#30) frozen-level cache; empty until a level is
      * left with the option on (the whole persist path is option-gated). */
@@ -2013,10 +2021,22 @@ export function saveGame(game: StartedGame): SavedGame {
  * stream, the anti-save-scum posture), rewire the commands, and derive the
  * combat state from the restored player and gear.
  */
+/** Options for loadGame (client settings not stored in the savefile). */
+export interface LoadGameOptions {
+  /**
+   * The effective "mod rule" flags to seed GameState.modRules with, recomputed
+   * by the host from the enabled mods' manifest `rules` and the player's saved
+   * choices (the same resolution startGame uses). A client setting, not part of
+   * the save; absent/empty = faithful 4.2.6.
+   */
+  modRules?: Readonly<Record<string, boolean>>;
+}
+
 export function loadGame(
   pack: GamePack,
   saveIn: SavedGame,
   present: ReadonlySet<string> = new Set(["core"]),
+  opts: LoadGameOptions = {},
 ): StartedGame {
   if (saveIn.version !== SAVE_VERSION) {
     throw new Error(`save: unsupported version ${saveIn.version}`);
@@ -2139,6 +2159,11 @@ export function loadGame(
     autoinscribe: new AutoinscriptionRegistry(),
     options,
     artifacts,
+    /* Effective mod-rule flags (declarative bundled-mod seam): the host
+     * recomputes these from the enabled mods + saved choices and passes them on
+     * load, so they are a client setting (like the enabled-mod set), not part of
+     * the savefile. Absent/empty = faithful 4.2.6. */
+    ...(opts.modRules ? { modRules: { ...opts.modRules } } : {}),
     lore: deserializeLore(save.lore, ids),
     turn: save.turn,
     z: {

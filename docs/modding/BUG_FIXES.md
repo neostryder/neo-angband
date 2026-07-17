@@ -1,14 +1,26 @@
 # Bundled bug-fix mod (`bug-fixes`)
 
 > STATUS: DESIGN OF RECORD + CHANGELOG. This page is the source of truth and
-> public changelog for the bundled bug-fix mod. The mod package now exists
-> (`packages/web/mods/bug-fixes/`, a TRUSTED `plugin`-shape pack) and carries
-> the fixes marked IMPLEMENTED below. Each fix lives in ported core as its
-> faithful 4.2.6 branch plus an off-by-default corrected branch guarded by a
-> named `GameState.modRules` flag (core, `game/context.ts` `modRuleEnabled`);
-> the plugin turns those flags on at register() through the capability-gated
-> `ModRegistryHost.rules` facade (capability `registry:rules`). With the mod
-> disabled no flag is set and core is byte-identical to 4.2.6.
+> public changelog for the bundled bug-fix mod. The mod package
+> (`packages/web/mods/bug-fixes/`) is a plain `content`-shape pack with NO plugin
+> code and NO capabilities: it DECLARES its fixes in `manifest.json` under
+> `rules` (flag / title / description / default:false). Each fix lives in ported
+> core as its faithful 4.2.6 branch plus an off-by-default corrected branch
+> guarded by a named `GameState.modRules` flag (core, `game/context.ts`
+> `modRuleEnabled`). The host resolves the enabled mods' declared rules against
+> the player's saved choices and seeds `GameState.modRules`; the in-app
+> **Fixes & tweaks** menu (in the mod manager) lists each fix and toggles it.
+> Bug fixes default OFF (opt-in), so with the mod enabled but a fix untouched -
+> and with the mod disabled - core is byte-identical to 4.2.6. See
+> `docs/modding/MOD_SEAMS.md` for the seam contract.
+>
+> The menu lists only fixes with a real, functional gate today - the four marked
+> `IMPLEMENTED` below. The `SPECIFIED` entries have no live gate yet (see each
+> entry's Port status): two (#2, #3) are impossible by construction in the port
+> so there is no buggy behaviour to toggle, and two (#1, #11) live in vanilla
+> subsystems the port has not reproduced yet (the `/say` note command; the quiver
+> + inscription recompute) - those are CORE PARITY gaps to close before the fix
+> can be offered as a toggle, not mod work.
 
 ## Why this mod exists
 
@@ -20,11 +32,12 @@ re-sync into a rebase over local patches.
 
 Instead, every such fix ships in this single BUNDLED, opt-in mod - the model
 players know from the Skyrim / Bethesda unofficial patches. It is a
-`plugin`-shape pack (docs/MODS.md), id `bug-fixes`, depending on `core`. It is
-enabled by default and fully removable; removing it returns the game to
-faithful, buggy-as-shipped 4.2.6 behavior. It is authored and maintained by
-neostryder (RPGM Tools) as its own standalone pack, separate from the
-neo-linoleum tile mod (decision 26).
+`content`-shape pack (docs/MODS.md) that declares core rule flags, id
+`bug-fixes`, depending on `core`. The mod is enabled by default but every fix is
+OFF by default (opt-in per fix in the Fixes & tweaks menu); with a fix off - or
+the mod removed - the game is faithful, buggy-as-shipped 4.2.6. It is authored
+and maintained by neostryder (RPGM Tools) as its own standalone pack, separate
+from the neo-linoleum tile mod (decision 26).
 
 Balance and subjective changes are NOT bug fixes and do not belong here; they
 live in the QoL mod (decision 18) or their own mod. This page tracks only
@@ -57,7 +70,8 @@ this mod.
 - `NO UPSTREAM FIX` - a genuine, still-open upstream bug with no accepted fix;
   carried as a known issue, with our own mitigation optional.
 
-The mod's flags (each `bugfix.*` set by `packages/web/mods/bug-fixes/trusted.ts`):
+The mod's flags (each `bugfix.*` declared in
+`packages/web/mods/bug-fixes/manifest.json` under `rules`, default OFF):
 `bugfix.uniqueKillHistory` (#4245), `bugfix.noiseScentSave` (#4605),
 `bugfix.objectListOrder` (#4664), `bugfix.duplicateArtifact` (#4510).
 
