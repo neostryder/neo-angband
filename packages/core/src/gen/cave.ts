@@ -958,6 +958,44 @@ function alloc2dBool(rows: number, cols: number): boolean[][] {
   return m;
 }
 
+/**
+ * build_staircase_rooms (gen-cave.c:908-936): for a persistent level, place a
+ * 1x1 staircase room at each seeded stair connector (dun.join) so up/down
+ * stairs line up with the already-generated adjacent levels. Locates the
+ * "staircase room" profile in the active dungeon profile (upstream asserts it
+ * exists), then for each join sets dun.currJoin and builds the room at the
+ * connector's block coords ((grid - 1) / block, via room_build's
+ * finds-own-space path - buildStaircase reads dun.currJoin for the real grid).
+ * RNG-free: the staircase builder draws no RNG. Only called under dun.persist,
+ * so a default (non-persistent) game never runs it and generation is unchanged.
+ */
+function buildStaircaseRooms(g: Gen, ctx: CaveBuildContext): void {
+  const dun = g.dun;
+  const profile = ctx.profile.roomProfiles.find((rp) => rp.name === "staircase room");
+  if (!profile) {
+    throw new Error("gen: build_staircase_rooms: no 'staircase room' profile");
+  }
+  for (const join of dun.join) {
+    dun.currJoin = join;
+    if (
+      !roomBuild(
+        g,
+        Math.trunc((join.grid.y - 1) / dun.blockHgt),
+        Math.trunc((join.grid.x - 1) / dun.blockWid),
+        profile,
+        true,
+        ctx.rooms,
+      )
+    ) {
+      throw new Error(
+        `gen: build_staircase_rooms: failed to place staircase room at ` +
+          `row=${join.grid.y} col=${join.grid.x}`,
+      );
+    }
+    dun.nstairRoom++;
+  }
+}
+
 /** classic_gen. */
 export const classicGen: CaveBuilder = (ctx) => {
   const { rng, reg, constants, dun, profile, depth } = ctx;
@@ -976,6 +1014,10 @@ export const classicGen: CaveBuilder = (ctx) => {
   dun.pitNum = 0;
   dun.centN = 0;
   dun.resetEntranceData(c);
+
+  /* Persistent levels (gen-cave.c:1183-1186): place the staircase rooms that
+   * align with the adjacent levels before the ordinary rooms. Off by default. */
+  if (dun.persist) buildStaircaseRooms(g, ctx);
 
   let built = 0;
   while (built < numRooms) {
@@ -1058,6 +1100,11 @@ function modifiedChunk(ctx: CaveBuildContext, height: number, width: number): Ge
   dun.pitNum = 0;
   dun.centN = 0;
   dun.resetEntranceData(c);
+
+  /* Persistent levels (gen-cave.c:2770-2773 / 3016-3019): both modified_chunk
+   * and moria_chunk place their staircase rooms here before the ordinary rooms.
+   * Off by default. */
+  if (dun.persist) buildStaircaseRooms(g, ctx);
 
   let nAttempt = 0;
   for (;;) {
@@ -2530,14 +2577,27 @@ export const townGen: CaveBuilder = (ctx) => {
 };
 
 /* ------------------------------------------------------------------ *
- * Stairs (handle_level_stairs) - non-persistent path.
+ * Stairs (handle_level_stairs, gen-cave.c:943-967).
  * ------------------------------------------------------------------ */
 
 function handleLevelStairs(g: Gen, quest: boolean, downCount: number, upCount: number): void {
-  /* Non-persistent minsep: a quarter of the shorter dimension. */
-  const minsep = Math.max(Math.trunc(Math.min(g.c.width, g.c.height) / 4), 0);
-  allocStairs(g, FEAT.MORE, downCount, minsep, false, g.dun.oneOffBelow, quest);
-  allocStairs(g, FEAT.LESS, upCount, minsep, false, g.dun.oneOffAbove, quest);
+  const dun = g.dun;
+  const persistent = dun.persist;
+  /*
+   * For persistent levels, require the stairs be at least four grids apart so
+   * the connecting level's staircase rooms won't overlap; for both cases also
+   * require 1/4 of the shorter dimension so they don't all land in one room.
+   */
+  const minsep = Math.max(Math.trunc(Math.min(g.c.width, g.c.height) / 4), persistent ? 4 : 0);
+  /* For a persistent level whose neighbour already exists, that neighbour's
+   * staircase rooms already placed the matching stairs here via the seeded
+   * dun.join, so skip alloc_stairs for that direction (gen-cave.c:959-966). */
+  if (!persistent || !dun.hasAdjacentBelow) {
+    allocStairs(g, FEAT.MORE, downCount, minsep, false, dun.oneOffBelow, quest);
+  }
+  if (!persistent || !dun.hasAdjacentAbove) {
+    allocStairs(g, FEAT.LESS, upCount, minsep, false, dun.oneOffAbove, quest);
+  }
 }
 
 /* ------------------------------------------------------------------ *

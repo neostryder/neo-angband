@@ -1855,6 +1855,12 @@ function makeChangeLevel(
         questSpawns: questSpawnsForDepth(state, reg, depth),
         persist,
         ...(joinInfo ? { joinInfo } : {}),
+        /* chunk_find_adjacent (gen-chunk.c:147): whether the neighbour levels
+         * already exist in the frozen-level cache, so handle_level_stairs skips
+         * the alloc_stairs for a direction the neighbour already seeded. Passed
+         * unconditionally; only read under persist. */
+        hasAdjacentAbove: persistCache?.has(depth - 1) ?? false,
+        hasAdjacentBelow: persistCache?.has(depth + 1) ?? false,
       },
     );
     /* chunk->join (generate.c L1203-1214): remember this level's stair
