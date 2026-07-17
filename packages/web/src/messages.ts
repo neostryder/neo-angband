@@ -81,3 +81,42 @@ export class MessageLog {
 export function format(m: LoggedMessage): string {
   return m.count > 1 ? `${m.text} (x${m.count})` : m.text;
 }
+
+/**
+ * Pack a turn's messages onto the top line the way display_message / msg_flush
+ * do (ui-input.c L487-595): messages SHARE the top line, separated by a space,
+ * until the next one would push the running column past (width - 8). At that
+ * point the line so far is a completed "page" - upstream caps it with the
+ * L_BLUE "-more-" prompt (msg_flush, L388-400) and waits for a keypress before
+ * starting the next line. This returns the sequence of page strings; the caller
+ * shows each and pauses with "-more-" BETWEEN pages (the final page just
+ * persists on the top line, exactly as the last message does in play). When
+ * auto_more (or a keymap's auto-more) is set, msg_flush skips the anykey(), so
+ * the caller shows only the final page with no pauses.
+ *
+ * The threshold reproduces upstream's column arithmetic: message_column tracks
+ * the next free column INCLUDING the trailing space after each message (column
+ * += n + 1), and the overflow test is `message_column && message_column + n >
+ * w - 8`. A single message longer than the line is not split further here (the
+ * web top line truncates on render); upstream's intra-message split loop is the
+ * only divergence, and it is cosmetic.
+ */
+export function paginateMessages(msgs: readonly LoggedMessage[], width: number): string[] {
+  const wrap = Math.max(1, width - 8); // upstream w - 8
+  const pages: string[] = [];
+  let line = "";
+  let column = 0; // message_column: includes the trailing space per message
+  for (const m of msgs) {
+    const text = format(m);
+    const n = text.length;
+    if (column > 0 && column + n > wrap) {
+      pages.push(line);
+      line = "";
+      column = 0;
+    }
+    line = line === "" ? text : `${line} ${text}`;
+    column += n + 1;
+  }
+  if (line !== "") pages.push(line);
+  return pages;
+}
