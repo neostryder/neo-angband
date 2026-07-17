@@ -245,6 +245,13 @@ import {
   monsterListScreenLines,
 } from "./screens";
 import { showCharacterSheet, dumpCharacterFile } from "./charsheet";
+import {
+  showRuneKnowledge,
+  showFeatureKnowledge,
+  showTrapKnowledge,
+  artifactKnowledgeGroups,
+  runGroupedBrowser,
+} from "./knowledge";
 import { runCharacterSelect } from "./charselect";
 import {
   listRoster,
@@ -267,6 +274,7 @@ import {
 } from "./score";
 import { enterScore, noscoreInvalidatesScore, BIRTH_MESSAGE_RECALL_BANNER } from "@neo-angband/core";
 import { markNoscore } from "@neo-angband/core";
+import { ArtifactState } from "@neo-angband/core";
 import type { WizardDeps } from "@neo-angband/core";
 import { runWizardToggle, runWizardDebugMenu } from "./wizard";
 import type { WizardUiCtx } from "./wizard";
@@ -1964,24 +1972,82 @@ async function showMonsterRecall(mon: Monster): Promise<void> {
 }
 
 /**
- * The knowledge menu ('~', ui-knowledge.c do_cmd_knowledge_menu): upstream's
- * home for browsing everything the character has learned. Only the two
- * sections the port has data for are wired - monster knowledge (this task)
- * and the character history that '~' used to open directly, preserved here as
- * an entry. Object / artifact / ego / rune / feature knowledge are the larger
- * follow-up the context-menu.ts header tracks; they are omitted (not shown
- * disabled) until their per-kind knowledge registries exist.
+ * The knowledge menu ('~', ui-knowledge.c reset_main_knowledge_menu
+ * L3593-3688): upstream's home for browsing everything the character has
+ * learned. The entries appear in the exact upstream order (pre-store actions,
+ * then the store contents, then the post-store actions). Browsers whose core
+ * knowledge state is not yet ported are shown greyed rather than omitted, so
+ * the menu keeps its faithful shape:
+ *   - Object knowledge and Ego item knowledge need per-kind/ego `everseen`
+ *     tracking (not modelled in core yet - obj/desc.ts L629); greyed.
+ *   - Shapechange effects needs the shape-lore textblock chain (not ported);
+ *     greyed.
+ *   - Store/home contents (L3662-3676) pairs with Home persistence (12.1) and
+ *     is out of this package's scope; omitted for now.
+ *   - Hall of fame has no shell score screen yet; greyed.
+ * Wired: rune (14.10), artifact (14.11), monster, feature + trap (14.13),
+ * character history, and equippable comparison. The port's interim
+ * autoinscription manager (upstream lives inside the object browser via '{')
+ * is retained as a trailing entry so that functionality is not lost while the
+ * object browser awaits `everseen`.
  */
 async function openKnowledgeMenu(): Promise<void> {
-  const idx = await selectFromMenu(term, "Display current knowledge", [
+  const p = state.actor.player;
+  const items: MenuItem[] = [
+    { label: "Display object knowledge", disabled: true },
+    { label: "Display rune knowledge" },
+    { label: "Display artifact knowledge" },
+    { label: "Display ego item knowledge", disabled: true },
     { label: "Display monster knowledge" },
-    { label: "Set object autoinscriptions" },
+    { label: "Display feature knowledge" },
+    { label: "Display trap knowledge" },
+    { label: "Display shapechange effects", disabled: true },
+    { label: "Display hall of fame", disabled: true },
     { label: "Display character history" },
-  ]);
-  if (idx === 0) await showMonsterKnowledge();
-  else if (idx === 1) await showAutoinscriptionManager();
-  else if (idx === 2)
-    await showTextScreen(term, "Player history", historyLines(state));
+    { label: "Display equippable comparison" },
+    { label: "Set object autoinscriptions" },
+  ];
+  for (;;) {
+    const idx = await selectFromMenu(term, "Display current knowledge", items);
+    if (idx === null) return;
+    switch (idx) {
+      case 1:
+        await showRuneKnowledge(term, state.runeEnv, p);
+        break;
+      case 2: {
+        const groups = artifactKnowledgeGroups(
+          booted.registries.objects.artifacts,
+          booted.registries.objects.bases,
+          p,
+          state.artifacts ?? new ArtifactState(booted.registries.objects.artifacts.length),
+        );
+        await runGroupedBrowser(term, "artifacts", groups, async (art) => {
+          await showTextScreen(term, art.name, [{ text: art.name, color: "#8ab8ff" }]);
+        });
+        break;
+      }
+      case 4:
+        await showMonsterKnowledge();
+        break;
+      case 5:
+        await showFeatureKnowledge(term, booted.registries.features);
+        break;
+      case 6:
+        if (booted.registries.traps) await showTrapKnowledge(term, booted.registries.traps);
+        break;
+      case 9:
+        await showTextScreen(term, "Player history", historyLines(state));
+        break;
+      case 10:
+        await showEquipCmp(term, state, equipCmpDeps());
+        break;
+      case 11:
+        await showAutoinscriptionManager();
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 /**
