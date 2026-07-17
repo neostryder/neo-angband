@@ -354,6 +354,15 @@ export interface GameState {
    */
   run?: RunState;
 
+  /**
+   * player->upkeep->resting + the file-static player_turns_rested
+   * (player-util.c:1417,1472). count mirrors upkeep->resting (>0 = timed turns
+   * left, or a REST_ special: COMPLETE=-2, ALL_POINTS=-1, SOME_POINTS=-3);
+   * turnsRested gates the x2 regen. Set/tracked by the web rest command
+   * (packages/web main.ts driveRest); absent when not resting.
+   */
+  resting?: { count: number; turnsRested: number };
+
   /* --- injected hooks --- */
   /**
    * cmdq: the internal command queue (cmd-core.c). Self-continuing commands

@@ -84,9 +84,9 @@ function queueCommand(state: GameState, cmd: PlayerCommand): void {
 }
 
 /**
- * disturb(): stop running / pathfinding, free the path steps and flush the
- * queued continuations. path_dest is deliberately kept so the pathfinding
- * auto-open / auto-tunnel branch can re-issue the travel. The rest-cancel,
+ * disturb(): stop running / pathfinding, cancel any rest, free the path steps
+ * and flush the queued continuations. path_dest is deliberately kept so the
+ * pathfinding auto-open / auto-tunnel branch can re-issue the travel. The
  * sound and redraw halves ride their subsystems (deferred).
  */
 export function disturb(state: GameState): void {
@@ -95,6 +95,10 @@ export function disturb(state: GameState): void {
     delete state.run.steps;
     state.run.stepCount = 0;
   }
+  /* disturb() clears player->upkeep->resting (player-util.c:1560). The web
+   * rest command owns the live lifecycle, but any engine-side disturb during a
+   * queue-driven rest must also cancel it. */
+  if (state.resting) delete state.resting;
   if (state.cmdQueue) state.cmdQueue.length = 0;
 }
 

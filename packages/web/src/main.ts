@@ -117,6 +117,9 @@ import {
   getLore,
   chanceOfMeleeHitBase,
   getHitChance,
+  historyAdd,
+  historyStamp,
+  HIST,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -966,8 +969,7 @@ async function runContextMenuPlayer(): Promise<void> {
       advance();
       break;
     case "rest":
-      commandBuffer.push({ code: "rest" });
-      advance();
+      await restCmd();
       break;
     case "look":
       if (await runTargetLoop(TARGET.LOOK, false, state.actor.grid.x, state.actor.grid.y)) {
@@ -2206,6 +2208,290 @@ async function disarmCmd(): Promise<void> {
   advance();
 }
 
+/** Tunnel (T / ^T): dig through a wall / rubble / vein, by direction. */
+async function tunnelCmd(): Promise<void> {
+  const dir = await promptDirection(term, "Tunnel in which direction?");
+  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  commandBuffer.push({ code: "tunnel", dir });
+  advance();
+}
+
+/** Close (c): a door, by direction (do_cmd_close). */
+async function closeCmd(): Promise<void> {
+  const dir = await promptDirection(term, "Close in which direction? (5 for here)");
+  if (dir === null || dir === AIM_STAR) return;
+  commandBuffer.push({ code: "close", dir });
+  advance();
+}
+
+/**
+ * Alter (+ , do_cmd_alter): the one command that resolves attack-vs-tunnel-vs-
+ * disarm-vs-open from the grid's live contents (do_cmd_alter_aux). A real
+ * direction is required (no self).
+ */
+async function alterCmd(): Promise<void> {
+  const dir = await promptDirection(term, "Alter in which direction?");
+  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  commandBuffer.push({ code: "alter", dir });
+  advance();
+}
+
+/**
+ * Steal (s / roguelike 's', do_cmd_steal): the rogue / PF_STEAL lift-from-
+ * monster command. cmd_get_direction requires a real direction; the core
+ * do_cmd_steal_aux (game/steal.ts) resolves confusion, attacks/steals from
+ * the monster there, or "You spin around." on an empty grid.
+ * C: cmd-cave.c:1039 do_cmd_steal, ui-game.c:216.
+ */
+async function stealCmd(): Promise<void> {
+  const dir = await promptDirection(term, "Steal in which direction?");
+  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  commandBuffer.push({ code: "steal", dir });
+  advance();
+}
+
+// --- Take notes (: , do_cmd_note, cmd-misc.c:88) --------------------------
+// Records a note into the character history log (HIST_USER_INPUT) and echoes
+// it. Two "cute" forms are honoured exactly: "/say X" -> '<name> says: "X"',
+// "/me X" -> '<name> X'. Everything else becomes 'Note: X'. The stored entry
+// keeps the "-- " prefix; the echoed line drops it (msg("%s", &note[3])).
+async function noteCmd(): Promise<void> {
+  const tmp = await promptText(
+    term,
+    "Note: ",
+    "",
+    69, // char tmp[70]: 69 chars + terminator
+    "[ type a note, Enter to accept, ESC to cancel ]",
+  );
+  if (tmp === null) return;
+  // Ignore empty notes / notes beginning with a space (cmd-misc.c:100).
+  if (!tmp[0] || tmp[0] === " ") return;
+
+  let note: string;
+  if (tmp.startsWith("/say ")) {
+    note = `-- ${playerName} says: "${tmp.slice(5)}"`;
+  } else if (tmp.startsWith("/me")) {
+    note = `-- ${playerName}${tmp.slice(3)}`;
+  } else {
+    note = `-- Note: ${tmp}`;
+  }
+
+  // Display the note without the "-- " prefix (cmd-misc.c:111).
+  say(note.slice(3));
+
+  // Add a history entry (the full note, with prefix). historyStamp supplies
+  // history_add_with_flags's dlev/clev/turn off live state (game/history.ts).
+  const stamp = historyStamp(state);
+  historyAdd(state.actor.player, note, HIST.USER_INPUT, stamp.dlev, stamp.clev, stamp.turn);
+  render();
+}
+
+// --- Rest (R, do_cmd_rest / textui_cmd_rest) ------------------------------
+// The full N-turn / conditional rest, replacing the single-turn hold stub
+// (gap 11.1). Faithful to cmd-cave.c:1619 do_cmd_rest and ui-command.c:191
+// textui_cmd_rest. The rest loop drives one game turn per iteration through the
+// live loop (advance), so process_world regenerates HP/SP and monsters act.
+//
+// RESTING STATE + THE CORE REGEN SEAMS: player_is_resting /
+// player_resting_can_regenerate (loop.ts) gate rest's x2 regen bonus and the
+// noise/scent-update suppression. WP-9 left those seams dormant (return false);
+// they must read a live resting counter off GameState. This command sets/tracks
+// that counter (state.resting) each turn; the seam reads are a core lock and are
+// listed as WIRING-NEEDED (loop.ts + context.ts) in the WP-11 report. Until the
+// orchestrator applies that wiring the rest still runs to completion faithfully,
+// only without the x2 speed-up.
+
+// REST_ special counts (player-util.h:53-55) and the regen threshold (:61).
+const REST_COMPLETE = -2; // '&' rest until fully recovered / nothing to do
+const REST_ALL_POINTS = -1; // '*' rest until HP and SP are both full
+const REST_SOME_POINTS = -3; // '!' rest until HP or SP is full
+const REST_REQUIRED_FOR_REGEN = 5;
+// player_resting_repeat_count (player-util.c:1523): the last count entered, so
+// re-issuing rest with n == 1 repeats it.
+let restRepeatCount = 0;
+
+/** player_resting_is_special (player-util.c:1381). */
+function restingIsSpecial(count: number): boolean {
+  return (
+    count === REST_COMPLETE ||
+    count === REST_ALL_POINTS ||
+    count === REST_SOME_POINTS
+  );
+}
+
+/**
+ * GameState carries a live resting counter for the loop.ts regen seams. The
+ * field is a core lock (context.ts, WP-9/WP-10 territory); this local shape
+ * lets the web command set it type-safely today and is byte-compatible with the
+ * WIRING-NEEDED core addition. { count } mirrors upkeep->resting; { turnsRested }
+ * mirrors the file-static player_turns_rested.
+ */
+interface RestingState {
+  count: number;
+  turnsRested: number;
+}
+type StateWithRest = typeof state & { resting?: RestingState };
+
+/**
+ * player_resting_complete_special (player-util.c:1495): decide whether a
+ * conditional rest is finished. Returns true when resting should stop.
+ */
+function restingCompleteSpecial(count: number): boolean {
+  const p = state.actor.player;
+  const t = p.timed;
+  if (count === REST_ALL_POINTS) {
+    return p.chp === p.mhp && p.csp === p.msp;
+  }
+  if (count === REST_COMPLETE) {
+    return (
+      p.chp === p.mhp &&
+      (p.csp === p.msp || playerHasCombatRegen()) &&
+      !(t[TMD.BLIND] ?? 0) &&
+      !(t[TMD.CONFUSED] ?? 0) &&
+      !(t[TMD.POISONED] ?? 0) &&
+      !(t[TMD.AFRAID] ?? 0) &&
+      !(t[TMD.TERROR] ?? 0) &&
+      !(t[TMD.STUN] ?? 0) &&
+      !(t[TMD.CUT] ?? 0) &&
+      !(t[TMD.SLOW] ?? 0) &&
+      !(t[TMD.PARALYZED] ?? 0) &&
+      !(t[TMD.IMAGE] ?? 0) &&
+      !p.wordRecall &&
+      !p.deepDescent
+    );
+  }
+  if (count === REST_SOME_POINTS) {
+    return p.chp === p.mhp || p.csp === p.msp;
+  }
+  return false;
+}
+
+/** player_has(p, PF_COMBAT_REGEN): the Blackguard mana-degen class flag, read
+ * off the live derived player state (calc_bonuses' pflags union). */
+function playerHasCombatRegen(): boolean {
+  return state.playerState?.pflags.has(PF.COMBAT_REGEN) ?? false;
+}
+
+/** Any visible monster interrupts rest (disturb on visible monster). */
+function anyVisibleMonster(): boolean {
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (mon && mon.mflag.has(MFLAG.VISIBLE)) return true;
+  }
+  return false;
+}
+
+/**
+ * textui_cmd_rest (ui-command.c:191): prompt for the rest duration, then run it.
+ * The prompt string and its option letters are reproduced exactly.
+ */
+async function restCmd(): Promise<void> {
+  const input = await promptText(
+    term,
+    "Rest (0-9999, '!' for HP or SP, '*' for HP and SP, '&' as needed): ",
+    "&",
+    4, // char out_val[5]: 4 chars + terminator
+    "[ Enter to accept, ESC to cancel ]",
+  );
+  if (input === null) return;
+  const first = input[0];
+  let n: number;
+  if (first === "&") n = REST_COMPLETE;
+  else if (first === "*") n = REST_ALL_POINTS;
+  else if (first === "!") n = REST_SOME_POINTS;
+  else {
+    const turns = parseInt(input, 10);
+    if (!Number.isFinite(turns) || turns <= 0) return;
+    n = Math.min(turns, 9999);
+  }
+  await driveRest(n);
+}
+
+/**
+ * do_cmd_rest (cmd-cave.c:1619) driven turn by turn. Each iteration is one call
+ * to do_cmd_rest: player_resting_step_turn (spend a turn, decrement the count,
+ * bump the rested counter) then process_world via advance(); the loop continues
+ * while player_is_resting, mirroring the engine's cmdq_push(CMD_REST) self-
+ * continuation. disturb() equivalents (a visible monster, damage taken, a
+ * level/death transition) cancel the rest, matching player_resting_cancel.
+ */
+async function driveRest(nArg: number): Promise<void> {
+  let n = nArg;
+  const p = state.actor.player;
+
+  // Sanity: only the specified negative values are valid (cmd-cave.c:1628).
+  if (n < 0 && !restingIsSpecial(n)) return;
+
+  // First-turn upkeep (cmd-cave.c:1632-1642): remember an entered count, or
+  // reuse the remembered one when repeating (n == 1).
+  if (n > 1) restRepeatCount = n;
+  else if (n === 1) n = restRepeatCount;
+
+  // player_resting_set_count + the "stop if told to" guard (cmd-cave.c:1645).
+  if (n === 0 || (n < 0 && !restingIsSpecial(n))) return;
+
+  const rest: RestingState = { count: Math.min(n, 9999), turnsRested: 0 };
+  (state as StateWithRest).resting = rest;
+
+  // Any keypress interrupts the rest (upstream flushes input -> disturb). The
+  // main key handler is gated by the modal wrapper, so this capturing listener
+  // is what catches the stop key while resting.
+  let interrupted = false;
+  const onStopKey = (ev: KeyboardEvent): void => {
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    interrupted = true;
+  };
+  window.addEventListener("keydown", onStopKey, true);
+  // Transient status only (upstream shows a "Rest" state flag, not a message);
+  // set the top line directly rather than logging it into message history.
+  message = "Resting... (press any key to stop)";
+  render();
+
+  try {
+    for (;;) {
+      // Interruptions before spending the turn (a keypress, a monster already
+      // in view, or the world moved us off the level): disturb().
+      if (dead || interrupted || anyVisibleMonster()) break;
+
+      const hpBefore = p.chp;
+      const spBefore = p.csp;
+
+      // player_resting_step_turn (player-util.c:1472): decrement the timed
+      // count, bump the rested counter; the seams read these during advance().
+      if (rest.count > 0) rest.count -= 1;
+      rest.turnsRested += 1;
+
+      // Take the turn: one hold action drives one player turn plus the world
+      // catching up (process_world regenerates; monsters act).
+      commandBuffer.push({ code: "hold" });
+      advance();
+
+      if (dead || state.generateLevel) break;
+
+      // Damage taken this turn disturbs the rest (take_hit's disturb()).
+      if (p.chp < hpBefore || p.csp < spBefore) break;
+
+      // A monster that just came into view disturbs the rest.
+      if (anyVisibleMonster()) break;
+
+      // Conditional-rest completion (player_resting_complete_special).
+      if (restingIsSpecial(rest.count) && restingCompleteSpecial(rest.count)) break;
+
+      // Timed rest exhausted (player_resting_count == 0, not special).
+      if (rest.count === 0 && !restingIsSpecial(rest.count)) break;
+
+      // Yield so the render/animation loop can paint between turns.
+      await new Promise<void>((r) => setTimeout(r, 0));
+    }
+  } finally {
+    window.removeEventListener("keydown", onStopKey, true);
+    delete (state as StateWithRest).resting;
+    void REST_REQUIRED_FOR_REGEN; // seam threshold; read by loop.ts (WIRING-NEEDED)
+    render();
+  }
+}
+
 // --- High scores (task #28: score.c / ui-score.c) -------------------------
 // A localStorage-backed ScoreStore (JSON) is the persistence seam; the core
 // owns the scoring/ordering/gating. `scoresOpen` gates the main keyhandler
@@ -3276,6 +3562,25 @@ window.addEventListener("keydown", (ev) => {
     return;
   }
   if (dead) return;
+  // Ctrl-key command aliases (cmd_action / cmd_util faithful bindings that use a
+  // control modifier). Checked before the modifier-free block below.
+  if (ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+    // Dig a tunnel (^T, cmd_action alias of 'T').
+    if (ev.key === "t" || ev.key === "T") {
+      ev.preventDefault();
+      void openModal(tunnelCmd);
+      return;
+    }
+    // Save (^S, cmd_util "Save and don't quit"): same autosave 'S' triggers.
+    if (ev.key === "s" || ev.key === "S") {
+      ev.preventDefault();
+      autosave(true);
+      message = "Game saved. It will resume automatically next time.";
+      render();
+      return;
+    }
+    return;
+  }
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
     if (ev.key === "V") {
       ev.preventDefault();
@@ -3385,6 +3690,18 @@ window.addEventListener("keydown", (ev) => {
       v: () => throwCmd(),
       o: () => openCmd(),
       D: () => disarmCmd(),
+      // do_cmd_rest / textui_cmd_rest (cmd_action 'R').
+      R: () => restCmd(),
+      // do_cmd_steal (cmd_hidden 's').
+      s: () => stealCmd(),
+      // do_cmd_note (cmd_hidden ':').
+      ":": () => noteCmd(),
+      // do_cmd_close (cmd_action 'c').
+      c: () => closeCmd(),
+      // do_cmd_tunnel (cmd_action 'T').
+      T: () => tunnelCmd(),
+      // do_cmd_alter (cmd_hidden '+').
+      "+": () => alterCmd(),
     };
     const verb = ITEM_VERBS[ev.key];
     if (verb) {
@@ -3424,6 +3741,25 @@ window.addEventListener("keydown", (ev) => {
       ev.preventDefault();
       commandBuffer.push({ code: "ascend" });
       advance();
+      return;
+    }
+    // Stand still (',', CMD_HOLD, cmd_hidden): spend a turn in place.
+    if (ev.key === ",") {
+      ev.preventDefault();
+      commandBuffer.push({ code: "hold" });
+      advance();
+      return;
+    }
+    // Start running ('.', CMD_RUN, cmd_hidden original keyset): a direction,
+    // then the run self-continues via the loop until run_test stops it.
+    if (ev.key === ".") {
+      ev.preventDefault();
+      void openModal(async () => {
+        const dir = await promptDirection(term, "Run in which direction?");
+        if (dir === null || dir === AIM_STAR || dir === 5) return;
+        commandBuffer.push({ code: "run", dir });
+        advance();
+      });
       return;
     }
     if (ev.key === "S") {
