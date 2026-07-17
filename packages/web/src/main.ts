@@ -89,6 +89,7 @@ import {
   targetOkay,
   targetGetMonsters,
   targetIsSet,
+  targetGet,
   TARGET,
   TMD,
   ignoreDropTargets,
@@ -252,8 +253,7 @@ import {
   showObjectKnowledge,
   showEgoKnowledge,
   showShapeKnowledge,
-  artifactKnowledgeGroups,
-  runGroupedBrowser,
+  showArtifactKnowledge,
   type ObjectBrowserDeps,
 } from "./knowledge";
 import { runCharacterSelect } from "./charselect";
@@ -564,6 +564,8 @@ function charSheetOpts(): {
   launcher: GameObject | null;
   onRename: (n: string) => void;
   uiEntryPacks: typeof uiEntryPacks;
+  inspectExtras: ObjectInfoExtras;
+  seedRandart: number;
 } {
   const p = state.actor.player;
   const bowSlot = p.body.slots.findIndex((s) => s.type === "BOW");
@@ -573,6 +575,9 @@ function charSheetOpts(): {
     launcher,
     onRename: renamePlayer,
     uiEntryPacks,
+    // The char-dump extras ('f'): object_info_chardump blocks + [Randart seed].
+    inspectExtras,
+    seedRandart: game.randartSeed,
   };
 }
 
@@ -2057,33 +2062,29 @@ async function openKnowledgeMenu(): Promise<void> {
       case 1:
         await showRuneKnowledge(term, state.runeEnv, p);
         break;
-      case 2: {
-        // artifact_is_known exact gate (ui-knowledge.c L1687): created AND no
-        // live unidentified copy exists. find_artifact scans allWorldObjects.
-        const exact = {
-          worldObjects: () => allWorldObjects(),
-          isCreated: (aidx: number) => state.artifacts?.isCreated(aidx) ?? false,
-          wizard: wizardMode,
-        };
-        const groups = artifactKnowledgeGroups(
-          booted.registries.objects.artifacts,
-          booted.registries.objects.bases,
-          p,
-          state.artifacts ?? new ArtifactState(booted.registries.objects.artifacts.length),
-          exact,
-        );
-        await runGroupedBrowser(term, "artifacts", groups, async (art) => {
-          // desc_art_fake (ui-knowledge.c L1610): make_fake_artifact +
-          // object_info(OINFO_NONE) recall is deferred; show the name + lore text.
-          const lines = [{ text: art.name, color: "#8ab8ff" }];
-          if (art.text) {
-            lines.push({ text: "", color: "#c8c8d4" });
-            lines.push({ text: art.text, color: "#c8c8d4" });
-          }
-          await showTextScreen(term, art.name, lines);
+      case 2:
+        // do_cmd_knowledge_artifacts (ui-knowledge.c L1740). The exact
+        // artifact_is_known gate (L1687): created AND no live unidentified copy
+        // exists (find_artifact scans allWorldObjects). The recall is the full
+        // desc_art_fake (make_fake_artifact + object_info(OINFO_NONE)).
+        await showArtifactKnowledge(term, {
+          state,
+          reg: booted.registries.objects,
+          constants: booted.registries.constants,
+          player: p,
+          artState:
+            state.artifacts ??
+            new ArtifactState(booted.registries.objects.artifacts.length),
+          inspectExtras,
+          runeEnv: state.runeEnv,
+          exact: {
+            worldObjects: () => allWorldObjects(),
+            isCreated: (aidx: number) => state.artifacts?.isCreated(aidx) ?? false,
+            wizard: wizardMode,
+          },
+          seedRandart: game.randartSeed,
         });
         break;
-      }
       case 3:
         // do_cmd_knowledge_ego_items (ui-knowledge.c L1827): everseen egos.
         await showEgoKnowledge(
@@ -3038,6 +3039,18 @@ function wizardCtx(): WizardUiCtx {
       game.changeLevel(depth);
       state.generateLevel = false;
     },
+    // do_cmd_wiz_teleport_to's cmd_get_point: reuse the interactive look/target
+    // loop (target_set_interactive) to pick a destination grid, then read it
+    // back via targetGet. Returns null when the loop is cancelled.
+    pickGrid: async () => {
+      const ok = await runTargetLoop(
+        TARGET.LOOK,
+        false,
+        state.actor.grid.x,
+        state.actor.grid.y,
+      );
+      return ok ? targetGet(state) : null;
+    },
   };
 }
 
@@ -3295,8 +3308,19 @@ async function runDeathMenu(): Promise<void> {
         await showTextScreen(term, "Message history", messageHistoryLines(msglog));
         break;
       case "dump":
-        // death_file (ui-death.c L162): dump the character to a text file.
-        if (dumpCharacterFile(state, playerName)) say("Character dump successful.");
+        // death_file (ui-death.c L162): dump the character to a text file. The
+        // full write_character_dump extras (flag grids, per-item object info,
+        // last messages, killer, randart seed) go in for the death dump.
+        if (
+          dumpCharacterFile(state, playerName, {
+            uiEntryPacks,
+            inspectExtras,
+            messages: msglog.all().map((m) => m.text),
+            diedFrom: state.actor.player.diedFrom || "the dungeon",
+            seedRandart: game.randartSeed,
+          })
+        )
+          say("Character dump successful.");
         else say("Character dump failed!");
         break;
       case "scores":
