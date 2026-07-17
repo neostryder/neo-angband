@@ -199,6 +199,44 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     expect(restored.kindSeen(otherKind)).toBe(false);
   });
 
+  it("marks everseen in live play (describe) and round-trips it through save/load", () => {
+    const game = startGame(pack, { seed: 888, depth: 3, className: "Warrior" });
+    const reg = game.booted.registries;
+
+    // Start-item kinds are everseen from birth (player-birth.c L658).
+    const startObj = [...game.state.gear.store.values()][0]!;
+    expect(game.everseen.kindSeen(startObj.kind)).toBe(true);
+
+    // An aware, non-flavoured kind that is not in the kit is not yet everseen.
+    const kind = reg.objects.kinds.find(
+      (k) =>
+        k.kidx < reg.objects.ordinaryKindCount &&
+        game.flavor.isAware(k) &&
+        !game.everseen.kindSeen(k) &&
+        !(game.state.hasFlavor?.(k) ?? false),
+    )!;
+    expect(kind).toBeDefined();
+    expect(game.everseen.kindSeen(kind)).toBe(false);
+
+    // Describing it in live play marks it everseen (obj-desc.c L637 via
+    // knownDescOf's markKindSeen hook).
+    const obj = objectNew(kind);
+    obj.tval = kind.tval;
+    obj.sval = kind.sval;
+    obj.number = 1;
+    describeObject(game.state, obj);
+    expect(game.everseen.kindSeen(kind)).toBe(true);
+
+    // Round-trips through the game-level saveGame/loadGame path.
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    expect(saved.everseen).toBeDefined();
+    expect(saved.everseen!.kinds).toContain(kind.kidx);
+    expect(saved.everseen!.kinds).toContain(startObj.kind.kidx);
+    const rs = loadGame(pack, saved);
+    expect(rs.everseen.kindSeen(kind)).toBe(true);
+    expect(rs.everseen.kindSeen(startObj.kind)).toBe(true);
+  });
+
   it("round-trips the quest history and the total_winner flag", () => {
     const game = startGame(pack, { seed: 321, depth: 3 });
     const p = game.state.actor.player;
