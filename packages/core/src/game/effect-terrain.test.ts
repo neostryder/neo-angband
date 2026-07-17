@@ -242,6 +242,26 @@ describe("EF_LIGHT_AREA / EF_DARKEN_AREA (effect-handler-general.c L3026)", () =
     });
     expect(state.actor.player.timed[TMD.BLIND] ?? 0).toBe(0);
   });
+
+  it("a monster targeting another monster darkens that monster's room (5.4)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    /* The victim's room, lit and away from the player. */
+    markRoom(state, 14, 14, 18, 18);
+    lightRoom(state, loc(16, 16), true);
+    const victim = addMon(state, makeRace(), loc(16, 16));
+    const caster = addMon(state, makeRace(), loc(12, 12));
+    caster.target.midx = victim.midx;
+
+    const msgs: string[] = [];
+    registry().effectSimple(EF.DARKEN_AREA, env(state, {}, msgs), {
+      origin: sourceMonster(caster.midx),
+    });
+    /* The victim's room goes dark, targeting it rather than the player. */
+    expect(state.chunk.sqinfoHas(loc(16, 16), SQUARE.GLOW)).toBe(false);
+    expect(msgs.some((m) => m.startsWith("Darkness surrounds the "))).toBe(true);
+    expect(msgs).not.toContain("Darkness surrounds you.");
+    expect(state.actor.player.timed[TMD.BLIND] ?? 0).toBe(0);
+  });
 });
 
 describe("EF_LIGHT_LEVEL / EF_DARKEN_LEVEL (effect-handler-general.c L3003)", () => {

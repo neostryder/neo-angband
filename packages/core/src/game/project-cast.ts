@@ -35,7 +35,7 @@
 
 import { TMD } from "../generated";
 import { DIR_TARGET } from "../effects/interpreter";
-import { DDGRID, DDGRID_DDD, loc, locSum } from "../loc";
+import { DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc";
 import type { Loc } from "../loc";
 import { monsterIsVisible } from "../mon/predicate";
 import { PROJECT, project } from "../world/project";
@@ -50,7 +50,7 @@ import type { ProjectionInfo } from "../world/projection";
 import type { DamageReduction } from "../player/take-hit";
 import { monsterMax } from "./context";
 import type { GameState } from "./context";
-import { monsterGetTarget } from "./effect-mon-origin";
+import { destroyDecoy, monsterGetTarget } from "./effect-mon-origin";
 import { projectMonster } from "./project-monster";
 import type { ProjectMonsterHooks } from "./project-monster";
 import { projectPlayer } from "./project-player";
@@ -281,7 +281,17 @@ export function castProjection(
 
   const projectHooks: ProjectHooks = {
     onMonster: (dist, g, d, t, f) => projectMonster(monCtx, dist, g, d, t, f),
-    onPlayer: (dist, g, d, t, self) => projectPlayer(plCtx, dist, g, d, t, self),
+    onPlayer: (dist, g, d, t, self) => {
+      /* project_p (project-player.c L822): a damaging projection that reaches
+       * the player's decoy grid destroys it, whether or not the player is
+       * there. */
+      if (d && state.decoy && locEq(g, state.decoy)) {
+        destroyDecoy(state, cctx.worldEnv?.trapDeps, (text) =>
+          cctx.worldEnv?.msg?.(text),
+        );
+      }
+      return projectPlayer(plCtx, dist, g, d, t, self);
+    },
     playerIsDead: () => cctx.playerActor.isDead,
     ...(hooks.onTrackMonster ? { onTrackMonster: hooks.onTrackMonster } : {}),
     ...(hooks.onBolt ? { onBolt: hooks.onBolt } : {}),

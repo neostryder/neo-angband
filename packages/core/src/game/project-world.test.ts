@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ELEM, FEAT, PROJ, SQUARE, TRF, TV } from "../generated";
+import type { Monster } from "../mon/monster";
 import { loc } from "../loc";
 import { EL_INFO_HATES, EL_INFO_IGNORE } from "../obj/types";
 import type { ObjectKind } from "../obj/types";
@@ -8,7 +9,7 @@ import { objectNew } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { bindTraps, lookupTrap } from "../world/trap";
 import type { TrapRecordJson } from "../world/trap";
-import { makeState } from "./harness";
+import { addMon, makeState, monReg } from "./harness";
 import { floorCarry, floorPile } from "./floor";
 import { gearAdd } from "./gear";
 import { placeTrap, squareTrap } from "./trap";
@@ -88,6 +89,49 @@ describe("project_o (project-obj.c)", () => {
     projectObject(state, 0, grid, 20, PROJ.MANA);
     expect(floorPile(state, grid)).toHaveLength(0);
   });
+
+  it("KILL_TRAP unlocks a locked floor chest without destroying it (6.5)", () => {
+    const state = makeState();
+    const grid = loc(5, 5);
+    const chest = makeObj(TV.CHEST);
+    chest.pval = 5; /* a positive pval marks a locked chest */
+    floorCarry(state, grid, chest);
+    projectObject(state, 0, grid, 0, PROJ.KILL_TRAP);
+    expect(chest.pval).toBe(-5); /* unlock_chest negates the pval */
+    expect(floorPile(state, grid)).toContain(chest);
+  });
+
+  it("protected_obj is spared from its own projection (6.7)", () => {
+    const state = makeState();
+    const grid = loc(5, 5);
+    const caster = makeObj(TV.SCROLL, [ELEM.FIRE]);
+    const other = makeObj(TV.SCROLL, [ELEM.FIRE]);
+    floorCarry(state, grid, caster);
+    floorCarry(state, grid, other);
+    projectObject(state, 0, grid, 20, PROJ.FIRE, { protectedObj: caster });
+    const left = floorPile(state, grid);
+    expect(left).toContain(caster); /* the projecting object survives */
+    expect(left).not.toContain(other); /* everything else burns */
+  });
+
+  it("reveals a mimicking monster instead of destroying its fake item (6.6)", () => {
+    const state = makeState();
+    const grid = loc(5, 5);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN); /* so the reveal fires */
+    const race = monReg.races.find((r) => r.rarity > 0)!;
+    const mon = addMon(state, race, loc(6, 6), { hp: 20 });
+    const fake = makeObj(TV.SCROLL, [ELEM.FIRE]);
+    fake.mimickingMIdx = mon.midx;
+    floorCarry(state, grid, fake);
+
+    let revealed: Monster | null = null;
+    state.becomeAware = (m) => {
+      revealed = m;
+    };
+    projectObject(state, 0, grid, 20, PROJ.FIRE);
+    expect(revealed).toBe(mon);
+    expect(floorPile(state, grid)).toContain(fake); /* not destroyed */
+  });
 });
 
 describe("inven_damage (project-obj.c L42)", () => {
@@ -136,6 +180,18 @@ describe("project_f (project-feat.c)", () => {
     expect(state.chunk.sqinfoHas(grid, SQUARE.GLOW)).toBe(true);
     projectFeature(state, 0, grid, 0, PROJ.DARK_WEAK);
     expect(state.chunk.sqinfoHas(grid, SQUARE.GLOW)).toBe(false);
+  });
+
+  it("empty feature handlers never report obvious, even when observed (6.8)", () => {
+    const state = makeState();
+    const grid = loc(4, 4);
+    state.chunk.sqinfoOn(grid, SQUARE.VIEW); /* observed by the player */
+    /* A damage type observes at a viewed grid... */
+    expect(projectFeature(state, 0, grid, 20, PROJ.ACID)).toBe(true);
+    /* ...but the monster-directed types have empty feature handlers. */
+    expect(projectFeature(state, 0, grid, 20, PROJ.MON_CONF)).toBe(false);
+    expect(projectFeature(state, 0, grid, 20, PROJ.AWAY_ALL)).toBe(false);
+    expect(projectFeature(state, 0, grid, 20, PROJ.TURN_UNDEAD)).toBe(false);
   });
 
   it("KILL_WALL melts granite but never permanent rock", () => {

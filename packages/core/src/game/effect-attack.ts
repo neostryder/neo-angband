@@ -15,12 +15,12 @@
  * attachGameEnv, effect-game-env.ts); with no such env they no-op (the
  * worldless rule).
  *
- * The player path is complete. The monster-origin refinements that belong to
- * the monster-spell layer are deferred there (#19): confused-direction /
- * target-monster / decoy targeting (resolveAimedTarget targets the player),
- * breath_dam for monster breath (the dice value is used until then), and the
- * powerful-monster ball radius bonus (applied here from monsterIsPowerful for
- * ball, left to #19 for breath diameter). Trap / object / chest origins for
+ * Both the player and monster paths are complete. resolveAimedTarget
+ * (project-cast.ts) resolves a monster caster's aim through monsterGetTarget:
+ * confusion's random-direction draw, then a targeted monster, the decoy, or
+ * the player. LASH picks its target directly (no get_target draw). breath_dam
+ * scales a monster breath by the breather's hitpoints, and the powerful-monster
+ * radius bonus is applied for ball/breath. Trap / object / chest origins for
  * attack projections are rare and resolve to a bare source.
  */
 
@@ -44,6 +44,7 @@ import {
   caveFindDecoy,
   destroyDecoy,
   monTakeNonplayerHit,
+  monsterIsDecoyed,
   monsterTargetMonster,
 } from "./effect-mon-origin";
 import {
@@ -305,8 +306,9 @@ const handleSTAR_BALL: EffectHandler = (ctx) => {
  * EF_LASH: crack a whip, or spit at the player - a finite-length beam whose
  * element comes from the monster's first blow (lash_type, default MISSILE)
  * and whose damage sums the full first blow plus half of every other blow.
- * Monsters only; the monster-vs-monster target and decoy branches ride the
- * monster-spell layer (#19), so the target is the player.
+ * Monsters only. LASH picks its target directly (not through get_target, so
+ * no confused-direction draw): another targeted monster, else the player's
+ * decoy if the caster can see it, else the player.
  */
 const handleLASH: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
@@ -320,7 +322,18 @@ const handleLASH: EffectHandler = (ctx) => {
   if (!mon) return false;
 
   const source = sourceFor(env, ctx.origin);
-  const target = state.actor.grid;
+
+  /* Target player or monster? (project-cast marks the non-player source so
+   * PROJECT_PLAY is set, matching the upstream flg |= PROJECT_PLAY.) */
+  const tMon = monsterTargetMonster(state, ctx.origin.monster);
+  let target: Loc;
+  if (tMon) {
+    target = tMon.grid;
+  } else if (monsterIsDecoyed(state, mon)) {
+    target = caveFindDecoy(state) ?? state.actor.grid;
+  } else {
+    target = state.actor.grid;
+  }
 
   /* Paranoia */
   let rad = ctx.radius;

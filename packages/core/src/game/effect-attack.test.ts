@@ -177,6 +177,31 @@ describe("attack effect handlers - dispatch through the registry", () => {
     expect(ident.value).toBe(true);
   });
 
+  it("EF_LASH targets another monster when the caster is aiming at it (5.3)", () => {
+    const state = makeState({ playerGrid: loc(15, 15), seed: 8 });
+    state.actor.player.chp = 1000;
+    const dice = new Dice();
+    dice.parseString("10d1");
+    const blow = {
+      method: { name: "HIT" },
+      effect: { name: "HURT", lashType: "FIRE" },
+      dice,
+      diceRaw: "10d1",
+    } as unknown as MonsterRace["blows"][number];
+    const race = { ...makeRace(), blows: [blow, blow] };
+    const caster = addMon(state, race, loc(5, 8), { hp: 50 });
+    const victim = addMon(state, plainRace, loc(5, 7), { hp: 50 });
+    caster.target.midx = victim.midx;
+
+    registry().effectSimple(EF.LASH, env(state), {
+      origin: sourceMonster(caster.midx),
+      radius: 3,
+    });
+    /* The lash strikes the targeted monster, sparing the distant player. */
+    expect(victim.hp).toBeLessThan(50);
+    expect(state.actor.player.chp).toBe(1000);
+  });
+
   it("EF_LASH from a player source fails (monsters only)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const ran = registry().effectSimple(EF.LASH, env(state), {

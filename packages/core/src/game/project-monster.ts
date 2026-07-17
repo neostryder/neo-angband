@@ -278,8 +278,8 @@ function monsterAttack(
   const mon = ctx.mon;
   let dam = ctx.dam;
 
-  /* "Unique" monsters can only be killed by the player. */
-  if (monsterIsUnique(mon) && dam > mon.hp) dam = mon.hp;
+  /* "Unique" or arena monsters can only be killed by the player. */
+  if ((monsterIsUnique(mon) || state.arenaLevel) && dam > mon.hp) dam = mon.hp;
 
   /* Wake the monster up, don't notice the player. */
   monsterWake(state.rng, mon, false, 0);
