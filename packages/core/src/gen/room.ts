@@ -694,7 +694,8 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
       switch (t) {
         case "1":
           if (g.rng.oneIn(2)) {
-            pickAndPlaceMonster(g, grid, c.depth, true);
+            /* build_vault '1' (gen-room.c L1540-1541): ORIGIN_DROP_VAULT. */
+            pickAndPlaceMonster(g, grid, c.depth, true, true, ORIGIN.DROP_VAULT);
           } else if (g.rng.oneIn(2)) {
             /* build_vault '1' (gen-room.c L1543): ORIGIN_VAULT. */
             placeObject(g, grid, c.depth, g.rng.oneIn(8), false, 0, ORIGIN.VAULT);
@@ -703,14 +704,16 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
           }
           break;
         case "2":
-          pickAndPlaceMonster(g, grid, c.depth + 5, true);
+          pickAndPlaceMonster(g, grid, c.depth + 5, true, true, ORIGIN.DROP_VAULT);
           break;
         case "3":
           /* build_vault '3' (gen-room.c L1556): ORIGIN_VAULT. */
           placeObject(g, grid, c.depth + 3, false, false, 0, ORIGIN.VAULT);
           break;
         case "4":
-          if (g.rng.oneIn(2)) pickAndPlaceMonster(g, grid, c.depth + 3, true);
+          if (g.rng.oneIn(2)) {
+            pickAndPlaceMonster(g, grid, c.depth + 3, true, true, ORIGIN.DROP_VAULT);
+          }
           /* build_vault '4' (gen-room.c L1564): ORIGIN_VAULT. */
           if (g.rng.oneIn(2)) placeObject(g, grid, c.depth + 7, false, false, 0, ORIGIN.VAULT);
           break;
@@ -719,22 +722,22 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
           placeObject(g, grid, c.depth + 7, false, false, 0, ORIGIN.VAULT);
           break;
         case "6":
-          pickAndPlaceMonster(g, grid, c.depth + 11, true);
+          pickAndPlaceMonster(g, grid, c.depth + 11, true, true, ORIGIN.DROP_VAULT);
           break;
         case "7":
           /* build_vault '7' (gen-room.c L1576): ORIGIN_VAULT. */
           placeObject(g, grid, c.depth + 15, false, false, 0, ORIGIN.VAULT);
           break;
         case "0":
-          pickAndPlaceMonster(g, grid, c.depth + 20, true);
+          pickAndPlaceMonster(g, grid, c.depth + 20, true, true, ORIGIN.DROP_VAULT);
           break;
         case "9":
-          pickAndPlaceMonster(g, grid, c.depth + 9, true);
+          pickAndPlaceMonster(g, grid, c.depth + 9, true, true, ORIGIN.DROP_VAULT);
           /* build_vault '9' (gen-room.c L1586): ORIGIN_VAULT. */
           placeObject(g, grid, c.depth + 7, true, false, 0, ORIGIN.VAULT);
           break;
         case "8":
-          pickAndPlaceMonster(g, grid, c.depth + 40, true);
+          pickAndPlaceMonster(g, grid, c.depth + 40, true, true, ORIGIN.DROP_VAULT);
           /* build_vault '8' (gen-room.c L1594): ORIGIN_VAULT. */
           placeObject(g, grid, c.depth + 20, true, true, 0, ORIGIN.VAULT);
           break;
@@ -1293,7 +1296,7 @@ function buildNest(g: Gen, centreIn: Loc, _rating: number): boolean {
   for (let y = y1; y <= y2; y++) {
     for (let x = x1; x <= x2; x++) {
       const race = what[g.rng.randint0(64)] as MonsterRace;
-      placeNewMonster(g, loc(x, y), race, false, false, info);
+      placeNewMonster(g, loc(x, y), race, false, false, info, ORIGIN.DROP_PIT);
 
       /* Occasionally place an item, making it good 1/3 of the time. */
       if (g.rng.randint0(100) < allocObj) {
@@ -1392,57 +1395,58 @@ function buildPit(g: Gen, centreIn: Loc, _rating: number): boolean {
   const cx = centre.x;
   const cy = centre.y;
   const leader: MonsterGroupInfo = { index: groupIndex, role: MON_GROUP.LEADER };
-  placeNewMonster(g, centre, pick[7] as MonsterRace, false, false, leader);
+  /* build_pit centre (gen-room.c L2875): ORIGIN_DROP_PIT. */
+  placeNewMonster(g, centre, pick[7] as MonsterRace, false, false, leader, ORIGIN.DROP_PIT);
 
   /* Remaining monsters are servants. */
   const info: MonsterGroupInfo = { index: groupIndex, role: MON_GROUP.SERVANT };
 
   /* Top and bottom rows (middle). */
   for (let x = cx - 3; x <= cx + 3; x++) {
-    placeNewMonster(g, loc(x, cy - 2), pick[0] as MonsterRace, false, false, info);
-    placeNewMonster(g, loc(x, cy + 2), pick[0] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(x, cy - 2), pick[0] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+    placeNewMonster(g, loc(x, cy + 2), pick[0] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
   }
 
   /* Corners. */
   for (let x = cx - 5; x <= cx - 4; x++) {
-    placeNewMonster(g, loc(x, cy - 2), pick[1] as MonsterRace, false, false, info);
-    placeNewMonster(g, loc(x, cy + 2), pick[1] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(x, cy - 2), pick[1] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+    placeNewMonster(g, loc(x, cy + 2), pick[1] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
   }
   for (let x = cx + 4; x <= cx + 5; x++) {
-    placeNewMonster(g, loc(x, cy - 2), pick[1] as MonsterRace, false, false, info);
-    placeNewMonster(g, loc(x, cy + 2), pick[1] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(x, cy - 2), pick[1] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+    placeNewMonster(g, loc(x, cy + 2), pick[1] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
   }
 
   /* Middle columns. */
   for (let y = cy - 1; y <= cy + 1; y++) {
-    placeNewMonster(g, loc(cx - 5, y), pick[0] as MonsterRace, false, false, info);
-    placeNewMonster(g, loc(cx + 5, y), pick[0] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(cx - 5, y), pick[0] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+    placeNewMonster(g, loc(cx + 5, y), pick[0] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
 
-    placeNewMonster(g, loc(cx - 4, y), pick[1] as MonsterRace, false, false, info);
-    placeNewMonster(g, loc(cx + 4, y), pick[1] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(cx - 4, y), pick[1] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+    placeNewMonster(g, loc(cx + 4, y), pick[1] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
 
-    placeNewMonster(g, loc(cx - 3, y), pick[2] as MonsterRace, false, false, info);
-    placeNewMonster(g, loc(cx + 3, y), pick[2] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(cx - 3, y), pick[2] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+    placeNewMonster(g, loc(cx + 3, y), pick[2] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
 
-    placeNewMonster(g, loc(cx - 2, y), pick[3] as MonsterRace, false, false, info);
-    placeNewMonster(g, loc(cx + 2, y), pick[3] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(cx - 2, y), pick[3] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+    placeNewMonster(g, loc(cx + 2, y), pick[3] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
   }
 
   /* Corners around the middle monster. */
-  placeNewMonster(g, loc(cx - 1, cy - 1), pick[4] as MonsterRace, false, false, info);
-  placeNewMonster(g, loc(cx + 1, cy - 1), pick[4] as MonsterRace, false, false, info);
-  placeNewMonster(g, loc(cx - 1, cy + 1), pick[4] as MonsterRace, false, false, info);
-  placeNewMonster(g, loc(cx + 1, cy + 1), pick[4] as MonsterRace, false, false, info);
+  placeNewMonster(g, loc(cx - 1, cy - 1), pick[4] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+  placeNewMonster(g, loc(cx + 1, cy - 1), pick[4] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+  placeNewMonster(g, loc(cx - 1, cy + 1), pick[4] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+  placeNewMonster(g, loc(cx + 1, cy + 1), pick[4] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
 
   /* Above/below the center monster. */
   for (let x = cx - 1; x <= cx + 1; x++) {
-    placeNewMonster(g, loc(x, cy + 1), pick[5] as MonsterRace, false, false, info);
-    placeNewMonster(g, loc(x, cy - 1), pick[5] as MonsterRace, false, false, info);
+    placeNewMonster(g, loc(x, cy + 1), pick[5] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+    placeNewMonster(g, loc(x, cy - 1), pick[5] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
   }
 
   /* Next to the center monster. */
-  placeNewMonster(g, loc(cx + 1, cy), pick[6] as MonsterRace, false, false, info);
-  placeNewMonster(g, loc(cx - 1, cy), pick[6] as MonsterRace, false, false, info);
+  placeNewMonster(g, loc(cx + 1, cy), pick[6] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
+  placeNewMonster(g, loc(cx - 1, cy), pick[6] as MonsterRace, false, false, info, ORIGIN.DROP_PIT);
 
   /* Place some objects. */
   for (let y = cy - 2; y <= cy + 2; y++) {

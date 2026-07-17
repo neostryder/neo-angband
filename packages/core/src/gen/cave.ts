@@ -1637,6 +1637,9 @@ export const lairGen: CaveBuilder = (ctx) => {
       Math.trunc(lair.c.width / 2),
       Math.trunc(lair.c.height / 2),
       Math.trunc(lair.c.width / 2),
+      /* spread_monsters (gen-cave.c L3671-3673): lair monsters carry
+       * ORIGIN_CAVERN, which monster_death does NOT count for lore treasure. */
+      ORIGIN.CAVERN,
     );
     monRestrict(rng, table, [], pits, null, lairDepth, lairDepth, false);
   }
@@ -1778,6 +1781,9 @@ export const gauntletGen: CaveBuilder = (ctx) => {
       Math.trunc(gauntlet.c.width / 2),
       Math.trunc(gauntlet.c.height / 2),
       Math.trunc(gauntlet.c.width / 2),
+      /* spread_monsters (gen-cave.c L3918): gauntlet monsters carry
+       * ORIGIN_CAVERN (not counted by monster_death for lore treasure). */
+      ORIGIN.CAVERN,
     );
     monRestrict(rng, table, [], pits, null, gDepth, gDepth, false);
   }

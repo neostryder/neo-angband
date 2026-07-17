@@ -18,19 +18,22 @@
  * session layer keeps the counts consistent across level changes
  * (wipe_mon_list decrements for every live monster).
  *
- * DEFERRED (ledgered in parity/ledger/game-mon-place.yaml): placement-time
- * monster drops (mon_create_drop) - the drops are instead generated at death
- * in game/mon-death.ts (an accepted RNG-stream deviation documented there),
- * so no held pile is populated here; the cheat_hear messages are UI-only;
- * update_mon / monster-light view refresh rides the FOV consumers.
+ * Placement-time monster drops (mon_create_drop) ARE wired here: placeMonsterLive
+ * calls the shared createDrop core (game/mon-death.ts) when origin != 0, exactly
+ * as place_monster does (mon-make.c L1044-1046), filling the monster's held pile
+ * so monster_death can spill it on death. Live callers thread the true origin
+ * (ORIGIN_DROP for ambient spawns and pickAndPlaceDistantMonster, DROP_SUMMON for
+ * summons, DROP_BREED for breeders, DROP_WIZARD for the debug spawn). Inert when
+ * the caller omits MonPlaceDeps.makeDeps (monster-only harnesses). The cheat_hear
+ * messages are UI-only; update_mon / monster-light view refresh rides the FOV
+ * consumers.
  *
  * Object-mimic placement (mon_create_mimicked_object) IS ported here and
  * fires from placeMonsterLive for live-placed (summoned / bred) mimics when
- * the caller supplies MonPlaceDeps.mimic. SEAM: generation-spawned mimics are
- * built by gen/util.ts and installed by session/game.ts populateFromLevel,
- * neither of which yet calls monCreateMimickedObject (nor threads the
- * object-make deps), so generated object-mimics still spawn with
- * mon.mimickedObj = 0 until that handoff is wired.
+ * the caller supplies MonPlaceDeps.mimic. Generation-spawned mimics ARE built by
+ * gen/util.ts placeNewMonsterOne (createMimickedObject) and installed by
+ * session/game.ts populateFromLevel; the two paths draw at the same RNG-stream
+ * position because every vanilla mimic race carries no drops.
  *
  * add_to_monster_rating IS wired here (mon-make.c L1112-1126), matching
  * upstream's single place_new_monster_one for both generation and live
@@ -56,6 +59,8 @@ import type { SummonTable } from "../mon/summon";
 import { summonSpecificOkay } from "../mon/summon";
 import { applyMagic, makeGold, objectPrep } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
+import type { LoreStore } from "../mon/lore";
+import { createDrop } from "./mon-death";
 import { tvalIsMoney } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { tvalFindIdx } from "../obj/bind";
@@ -93,6 +98,20 @@ export interface MonPlaceDeps {
    * mon.mimickedObj stays 0.
    */
   mimic?: MimicDeps;
+  /**
+   * Object-make deps for mon_create_drop (mon-make.c L1044). When present,
+   * placeMonsterLive generates the monster's held-object drops at placement, as
+   * upstream place_monster does when origin != 0. Absent (monster-only
+   * harnesses / tests that do not exercise loot), no drops are drawn and no held
+   * pile is populated - so those contexts stay RNG-identical to the pre-wiring
+   * behaviour.
+   */
+  makeDeps?: MakeDeps;
+  /**
+   * Lore store for mon_create_drop's unique theft reduction (mon-make.c L778).
+   * Absent => thefts treated as 0 (a never-stolen-from monster).
+   */
+  lore?: LoreStore;
 }
 
 /** Everything mon_create_mimicked_object needs beyond the state and monster. */
@@ -165,6 +184,7 @@ function placeMonsterLive(
   grid: Loc,
   mon: Monster,
   deps: MonPlaceDeps,
+  origin: number,
 ): number {
   if (state.monsters.length === 0) state.monsters.push(null);
   let midx = 0;
@@ -197,14 +217,30 @@ function placeMonsterLive(
   /* Count racial occurrences. */
   (mon.originalRace ?? mon.race).curNum++;
 
+  /* Create the monster's drop, if any (mon-make.c place_monster L1044-1046):
+   * generate the held-object pile at placement when origin != 0, exactly where
+   * upstream draws it - BEFORE mon_create_mimicked_object below. Inert unless
+   * the caller supplies object-make deps. */
+  if (origin !== ORIGIN.NONE && deps.makeDeps) {
+    createDrop(
+      {
+        rng: state.rng,
+        depth: state.chunk.depth,
+        makeDeps: deps.makeDeps,
+        lore: deps.lore ?? null,
+      },
+      mon,
+      origin,
+    );
+  }
+
   /* Make mimics start mimicking (mon-make.c place_monster L1048-1051). The
    * upstream origin gate is implicit here: every live placement carries an
    * origin (ORIGIN_DROP etc.), and generated mimics ride the generation
-   * handoff seam. mon_create_drop (L1044-1046) is deferred to death (module
-   * docstring); object-mimic races carry no RF_DROP_* / drops in vanilla, so
-   * its RNG draws would be zero at this point - the mimic object's draws land
-   * at the same stream position as upstream for every mimic race. Inert unless
-   * the caller supplies object-make deps. */
+   * handoff seam. Object-mimic races carry no RF_DROP_* / drops in vanilla, so
+   * mon_create_drop above draws zero RNG for them - the mimic object's draws
+   * land at the same stream position as upstream for every mimic race. Inert
+   * unless the caller supplies object-make deps. */
   if (deps.mimic && mon.race.mimicKinds.length > 0) {
     monCreateMimickedObject(state, mon, deps.mimic);
   }
@@ -333,6 +369,7 @@ export function placeNewMonsterOne(
   sleep: boolean,
   info: MonsterGroupInfo,
   deps: MonPlaceDeps,
+  origin: number = ORIGIN.DROP,
 ): boolean {
   if (!state.chunk.inBounds(grid)) return false;
 
@@ -372,7 +409,7 @@ export function placeNewMonsterOne(
     groupIndex: info.index,
     groupRole: info.role,
   });
-  placeMonsterLive(state, grid, mon, deps);
+  placeMonsterLive(state, grid, mon, deps, origin);
   return true;
 }
 
@@ -388,6 +425,7 @@ function placeNewMonsterGroup(
   info: MonsterGroupInfo,
   total: number,
   deps: MonPlaceDeps,
+  origin: number,
 ): boolean {
   total = Math.min(total, deps.groupMax ?? 25);
 
@@ -402,7 +440,7 @@ function placeNewMonsterGroup(
       /* Walls and monsters block flow. */
       if (!squareIsEmptyLive(state, tryGrid, deps.preds)) continue;
 
-      if (placeNewMonsterOne(state, tryGrid, race, sleep, info, deps)) {
+      if (placeNewMonsterOne(state, tryGrid, race, sleep, info, deps, origin)) {
         locList.push(tryGrid);
       }
     }
@@ -420,6 +458,7 @@ function placeFriends(
   sleep: boolean,
   info: MonsterGroupInfo,
   deps: MonPlaceDeps,
+  origin: number,
 ): boolean {
   /* Find the difference between current dungeon depth and monster level. */
   const levelDifference = state.chunk.depth - friendsRace.level + 5;
@@ -446,7 +485,16 @@ function placeFriends(
   if (total > 0) {
     /* Handle friends same as original monster. */
     if (race.ridx === friendsRace.ridx) {
-      return placeNewMonsterGroup(state, grid, race, sleep, info, total, deps);
+      return placeNewMonsterGroup(
+        state,
+        grid,
+        race,
+        sleep,
+        info,
+        total,
+        deps,
+        origin,
+      );
     }
 
     /* Find a nearby place to put the other groups. */
@@ -462,7 +510,15 @@ function placeFriends(
     if (spots.length > 0) {
       const start = spots[0] as Loc;
       /* Place the monsters. */
-      let success = placeNewMonsterOne(state, start, friendsRace, sleep, info, deps);
+      let success = placeNewMonsterOne(
+        state,
+        start,
+        friendsRace,
+        sleep,
+        info,
+        deps,
+        origin,
+      );
       if (total > 1) {
         success = placeNewMonsterGroup(
           state,
@@ -472,6 +528,7 @@ function placeFriends(
           info,
           total,
           deps,
+          origin,
         );
       }
       return success;
@@ -506,6 +563,7 @@ export function placeNewMonster(
   groupOk: boolean,
   groupInfo: MonsterGroupInfo,
   deps: MonPlaceDeps,
+  origin: number = ORIGIN.DROP,
 ): boolean {
   const info: MonsterGroupInfo = { ...groupInfo };
 
@@ -514,7 +572,9 @@ export function placeNewMonster(
   if (!info.index) info.index = nextGroupIndex(state);
 
   /* Place one monster, or fail. */
-  if (!placeNewMonsterOne(state, grid, race, sleep, info, deps)) return false;
+  if (!placeNewMonsterOne(state, grid, race, sleep, info, deps, origin)) {
+    return false;
+  }
 
   /* We're done unless the group flag is set. */
   if (!groupOk) return true;
@@ -531,7 +591,17 @@ export function placeNewMonster(
 
     /* Place them. */
     if (friends.race) {
-      placeFriends(state, grid, race, friends.race, total, sleep, info, deps);
+      placeFriends(
+        state,
+        grid,
+        race,
+        friends.race,
+        total,
+        sleep,
+        info,
+        deps,
+        origin,
+      );
     }
   }
 
@@ -565,7 +635,17 @@ export function placeNewMonster(
     info.role = friendsBase.role;
 
     /* Place them. */
-    placeFriends(state, grid, race, friendsRace, total, sleep, info, deps);
+    placeFriends(
+      state,
+      grid,
+      race,
+      friendsRace,
+      total,
+      sleep,
+      info,
+      deps,
+      origin,
+    );
   }
 
   return true;
@@ -607,7 +687,18 @@ export function multiplyMonster(
   /* Create a new monster (awake, no groups). */
   const info: MonsterGroupInfo = { index: 0, role: MON_GROUP.LEADER };
   const grid = spots[0] as Loc;
-  const result = placeNewMonster(state, grid, mon.race, false, false, info, deps);
+  const result = placeNewMonster(
+    state,
+    grid,
+    mon.race,
+    false,
+    false,
+    info,
+    deps,
+    /* multiply_monster (mon-move.c L999-1000): breeder spawns carry
+     * ORIGIN_DROP_BREED. */
+    ORIGIN.DROP_BREED,
+  );
 
   if (result) {
     const child = squareMonster(state, grid);
@@ -627,11 +718,12 @@ export function pickAndPlaceMonster(
   sleep: boolean,
   groupOkay: boolean,
   deps: MonPlaceDeps,
+  origin: number = ORIGIN.DROP,
 ): boolean {
   const race = deps.table.getMonNum(state.rng, depth, state.chunk.depth);
   if (!race) return false;
   const info: MonsterGroupInfo = { index: 0, role: MON_GROUP.LEADER };
-  return placeNewMonster(state, grid, race, sleep, groupOkay, info, deps);
+  return placeNewMonster(state, grid, race, sleep, groupOkay, info, deps, origin);
 }
 
 /**
@@ -809,8 +901,11 @@ export function summonSpecific(
     }
   }
 
-  /* Attempt to place the monster (awake, don't allow groups). */
-  if (!placeNewMonster(state, near, race, false, false, info, deps)) return 0;
+  /* Attempt to place the monster (awake, don't allow groups). Summons carry
+   * ORIGIN_DROP_SUMMON (mon-summon.c L449-450). */
+  if (!placeNewMonster(state, near, race, false, false, info, deps, ORIGIN.DROP_SUMMON)) {
+    return 0;
+  }
 
   /* Success: the monster is on the summon grid. */
   const mon = squareMonster(state, near) as Monster;

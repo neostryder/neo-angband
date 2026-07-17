@@ -4,15 +4,18 @@
  * mon_take_nonplayer_hit / monster_take_terrain_damage (L1193, L1327), Angband
  * 4.2.6.
  *
- * DROP TIMING (faithful): drops are generated at PLACEMENT (monCreateDrop, called
- * from game/mon-place.ts place_new_monster_one) and carried onto the monster's
- * held pile via monster_carry, stamped with the placement origin (ORIGIN.DROP for
- * live spawns; DROP_PIT / DROP_VAULT / DROP_SUMMON for the matching generation
- * contexts). monster_death merely drops that pile to the floor. This matches the
- * upstream RNG-stream position (drops draw during level generation, not at death)
- * and preserves the true drop origins - the earlier "generate at death" deviation
- * is RESCINDED. WIRING-NEEDED: mon-place.ts must call monCreateDrop at placement
- * (see the WP-2 report); until it does, monsters carry no generated loot.
+ * DROP TIMING (faithful): drops are generated at PLACEMENT and carried onto the
+ * monster's held pile via monster_carry, stamped with the placement origin
+ * (ORIGIN.DROP for live spawns; DROP_PIT / DROP_VAULT / DROP_SPECIAL / DROP for
+ * the matching generation contexts, DROP_SUMMON / DROP_BREED / DROP_WIZARD for
+ * live summons / breeders / wizard). place_monster calls mon_create_drop when
+ * origin != 0 (mon-make.c L1044-1046); the port mirrors that in BOTH placement
+ * paths: the GameState-free `createDrop` core here is invoked from
+ * game/mon-place.ts placeMonsterLive (live spawns) and gen/util.ts
+ * placeNewMonsterOne (level generation). monster_death merely drops that pile to
+ * the floor. This matches the upstream RNG-stream position (drops draw during
+ * level generation, not at death) and preserves the true drop origins - the
+ * earlier "generate at death" deviation is RESCINDED.
  *
  * mon_take_nonplayer_hit is the shared "a non-player source hurt this monster"
  * primitive (terrain, monster-vs-monster) that funnels through monster_death and
@@ -84,13 +87,39 @@ function isDropOrigin(origin: number): boolean {
 }
 
 /**
+ * The minimal, GameState-free surface mon_create_drop needs so BOTH the live
+ * cave (game/mon-place.ts placeMonsterLive) and level generation (gen/util.ts
+ * placeNewMonsterOne) build a monster's drops off the same code, matching
+ * upstream where place_monster (mon-make.c L1044) is the single call site both
+ * generation and live placement funnel through. The two paths differ only in
+ * which stream they draw from (live state.rng vs generation g.rng) and which
+ * depth they read; the held-pile carry (monster_carry) never draws RNG, so the
+ * object's draws land at the same stream position on either path.
+ */
+export interface DropTarget {
+  /** c->depth: origin_depth and the make_object / make_gold creation level. */
+  depth: number;
+  /** The stream to draw from (live state.rng or generation g.rng). */
+  rng: Rng;
+  /** make_object / make_gold / apply_magic / object_prep dependencies. */
+  makeDeps: MakeDeps;
+  /**
+   * The lore store, for the unique theft reduction (mon-make.c L778-780).
+   * Absent / null => thefts treated as 0, which is faithful for a freshly
+   * generated monster that has not been stolen from (and every standalone /
+   * unit-test harness with no lore).
+   */
+  lore?: LoreStore | null;
+}
+
+/**
  * mon_create_drop (mon-make.c L751): generate a monster's gold/items at
  * PLACEMENT and carry them onto its held pile (monster_carry), stamped with the
  * placement `origin` (ORIGIN.DROP for live spawns, DROP_PIT / DROP_VAULT /
- * DROP_SUMMON for the corresponding generation contexts). Returns whether
+ * DROP_SPECIAL for the corresponding generation contexts). Returns whether
  * anything was carried. monster_death (below) later drops this pile.
  *
- * RNG DRAW ORDER (all via state.rng), faithful to mon_create_drop:
+ * RNG DRAW ORDER (all via target.rng), faithful to mon_create_drop:
  *  1. mon_create_drop_count non-maximize (mon-make.c L775 / L721-734): the DROP_*
  *     rolls and the specified-drop loop (which draws even though its count is
  *     discarded here) - see mon/make.ts monCreateDropCount.
@@ -107,19 +136,20 @@ function isDropOrigin(origin: number): boolean {
  * monster_carry never fails here (the port's held pile is unbounded), so
  * upstream's mark-uncreated / object_wipe rollback path is unreachable.
  */
-export function monCreateDrop(
-  state: GameState,
+export function createDrop(
+  target: DropTarget,
   mon: Monster,
   origin: number,
-  deps: MonsterDeathDeps,
 ): boolean {
-  const rng: Rng = state.rng;
-  const { makeDeps, reg } = deps;
-  const depth = state.chunk.depth;
+  const rng: Rng = target.rng;
+  const { makeDeps, depth } = target;
+  const reg = makeDeps.reg;
 
   /* effective_race (mon-make.c L767): the pre-shapechange race, if any. */
   const effectiveRace = mon.originalRace ?? mon.race;
-  const lore = getLore(deps.lore, mon.race);
+  /* thefts (mon-make.c L779): only uniques that have been stolen from care;
+   * absent lore (fresh generation) => 0, as a never-stolen-from monster. */
+  const thefts = target.lore ? getLore(target.lore, mon.race).thefts : 0;
 
   const great = effectiveRace.flags.has(RF.DROP_GREAT);
   const good = great || effectiveRace.flags.has(RF.DROP_GOOD);
@@ -131,7 +161,7 @@ export function monCreateDrop(
 
   /* Uniques that have been stolen from get their quantity reduced (L778). */
   if (monsterIsUnique(mon)) {
-    number = Math.max(0, number - lore.thefts);
+    number = Math.max(0, number - thefts);
   }
 
   /* Unique bonus to the effective monster level (L783-787). */
@@ -221,6 +251,31 @@ export function monCreateDrop(
   }
 
   return any;
+}
+
+/**
+ * Live-cave mon_create_drop: a thin wrapper binding the running GameState to the
+ * shared, GameState-free createDrop core (state.rng, state.chunk.depth,
+ * deps.makeDeps, deps.lore). RNG- and byte-identical to the pre-refactor
+ * function for every live-placed monster; the generation path calls createDrop
+ * directly off the Gen context (gen/util.ts).
+ */
+export function monCreateDrop(
+  state: GameState,
+  mon: Monster,
+  origin: number,
+  deps: MonsterDeathDeps,
+): boolean {
+  return createDrop(
+    {
+      rng: state.rng,
+      depth: state.chunk.depth,
+      makeDeps: deps.makeDeps,
+      lore: deps.lore,
+    },
+    mon,
+    origin,
+  );
 }
 
 /**
