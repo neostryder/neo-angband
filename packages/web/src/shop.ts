@@ -9,12 +9,54 @@
  * and gold, so a purchase or sale is reflected immediately.
  */
 
-import { describeObject, ODESC } from "@neo-angband/core";
+import {
+  describeObject,
+  ODESC,
+  gearGet,
+  invenCarryNum,
+  tvalIsWearable,
+  tvalIsAmmo,
+  tvalIsLight,
+  tvalIsChest,
+  FEAT,
+} from "@neo-angband/core";
 import type { GameObject, StartedGame, Store } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
-import { selectFromMenu } from "./overlay";
+import { selectFromMenu, promptNumber } from "./overlay";
 import type { MenuItem } from "./overlay";
 import { objectColor, objectName, packMenu } from "./screens";
+
+/**
+ * find_inven (store.c L1515-1644): the quantity of `obj`'s stackable equivalent
+ * already carried in the (non-equipped) pack, for the "(you have N)" hint in the
+ * buy/take-how-many prompt. Chests never stack (return 0); food/potions/scrolls/
+ * devices match on kind alone; wearables and ammo additionally require identical
+ * bonuses, artifact/ego identity, light fuel, and base values; all cases then
+ * require equal object flags. The port has no separate quiver yet (gap 4.1), so
+ * only the pack is scanned - a faithful subset (the quiver would only add ammo).
+ * The upstream modifier-compare loop is a known no-op (its `continue` restarts
+ * the inner loop, never skipping the item), so it is intentionally omitted here.
+ */
+export function findInven(game: StartedGame, obj: GameObject): number {
+  if (tvalIsChest(obj.tval)) return 0;
+  const state = game.state;
+  const needsBonusMatch = tvalIsWearable(obj.tval) || tvalIsAmmo(obj.tval);
+  let num = 0;
+  for (const handle of state.gear.pack) {
+    const g = gearGet(state.gear, handle);
+    if (!g || g.kind !== obj.kind) continue;
+    if (needsBonusMatch) {
+      if (obj.toH !== g.toH || obj.toD !== g.toD || obj.toA !== g.toA) continue;
+      if (obj.artifact !== g.artifact) continue;
+      if (obj.ego !== g.ego) continue;
+      if (tvalIsLight(obj.tval) && obj.timeout !== g.timeout) continue;
+      if (obj.ac !== g.ac || obj.dd !== g.dd || obj.ds !== g.ds) continue;
+    }
+    if (!obj.flags.isEqual(g.flags)) continue;
+    num += g.number;
+  }
+  return num;
+}
 
 /** A single-line name for a store-stock object (store items are fully known). */
 function stockName(game: StartedGame, obj: GameObject): string {
@@ -67,6 +109,7 @@ export async function runStore(
   game: StartedGame,
   store: Store,
   say: (text: string) => void,
+  constants: Parameters<typeof invenCarryNum>[2],
 ): Promise<void> {
   for (;;) {
     const player = game.state.actor.player;
@@ -95,7 +138,46 @@ export async function runStore(
 
     const obj = store.stock[pick];
     if (!obj) continue;
-    const result = game.buy(store, obj, 1);
+    // Quantity selection, faithful to store_purchase (ui-store.c L611-682): a
+    // single-item stack buys one with no prompt; a multi-item stack works out
+    // the maximum the player can afford and carry, then asks "Buy/Take how
+    // many?" with the find_inven "(you have N)" owned count appended.
+    const isHome = store.feat === FEAT.HOME;
+    let amt = 1;
+    if (obj.number !== 1) {
+      if (isHome) {
+        amt = obj.number;
+      } else {
+        const priceOne = game.price(store, obj, false, 1);
+        if (player.au < priceOne) {
+          say("You do not have enough gold for this item.");
+          continue;
+        }
+        amt = priceOne === 0 ? obj.number : Math.trunc(player.au / priceOne);
+        if (amt > obj.number) amt = obj.number;
+      }
+      amt = Math.min(amt, invenCarryNum(game.state.gear, obj, constants));
+      if (amt <= 0) {
+        say("You cannot carry that many items.");
+        continue;
+      }
+      // find_inven owned count; suppressed for an unaware flavour outside the
+      // Home so a purchase does not leak the flavour's identity (ui-store.c L669).
+      const aware = game.flavor ? game.flavor.isAware(obj.kind) : true;
+      const owned = !aware && !isHome ? 0 : findInven(game, obj);
+      const have = owned ? ` (you have ${owned})` : "";
+      const picked = await promptNumber(
+        term,
+        `${isHome ? "Take" : "Buy"} how many?${have}`,
+        amt,
+        1,
+        amt,
+        `(max ${amt})`,
+      );
+      if (picked === null || picked <= 0) continue;
+      amt = picked;
+    }
+    const result = game.buy(store, obj, amt);
     if (!result.ok) {
       const why: Record<string, string> = {
         "not-in-stock": "That item is no longer in stock.",

@@ -14,15 +14,18 @@
  *       but since this screen only runs IN-GAME (birth itself is birth.ts's
  *       concern), it is always the read-only OPT_PAGE_BIRTH view: "You can
  *       only modify these options at character birth."
+ *   (x) Cheat options - option_toggle_menu(OP_CHEAT), maintainer-confirmed IN
+ *       SCOPE 2026-07-16 (the earlier "decision 16 omission" was rescinded).
+ *       Toggling a cheat option on couples its score_* twin on in OptionState,
+ *       invalidating the character's score exactly as upstream option_set does.
  *   (i) Item ignoring setup - do_cmd_options_item, already built as
  *       openIgnoreSetup() (main.ts); this screen only calls it, so '='
  *       reclaims ownership of the top-level menu while sibling gap #51's
  *       ignore-setup work is reused verbatim, not duplicated.
  *   (d) Set base delay factor - do_cmd_delay
  *   (h) Set hitpoint warning - do_cmd_hp_warn
- * Omitted (documented, not silently dropped): (x) Cheat options - decision 16
- * (no save-scum) argues against exposing cheat_live etc. from the in-game
- * menu; (w) Subwindow setup / (o) Sidebar mode - no subwindows/SIDEBAR_MODE
+ * Omitted (documented, not silently dropped):
+ *   (w) Subwindow setup / (o) Sidebar mode - no subwindows/SIDEBAR_MODE
  * modelled; ({) Auto-inscription / (e) keymaps / (c) colours / (v) visuals /
  * (s/t/u/p) pref-file dump-load - no filesystem, the core save IS the
  * persistence; (m) Set movement delay - lazymove_delay is not modelled in
@@ -56,10 +59,8 @@
  *   - view_yellow_light - torchlit-terrain yellow tinting (grid_get_attr's
  *     ATTR_LIGHT path) is not modelled in the shell's terrain coloring.
  *   - center_player - see viewport()'s own doc comment in main.ts.
- *   - auto_more - this shell has no "-more-" pause to suppress in the first
- *     place (say() overwrites the message line with no pause), so the option
- *     has nothing to gate yet.
- * Wired (real behaviour, see main.ts): rogue_like_commands, use_sound,
+ * Wired (real behaviour, see main.ts): auto_more (gates the -more- message
+ * pager pumpMessages, main.ts), rogue_like_commands, use_sound,
  * solid_walls, hybrid_walls, purple_uniques, animate_flicker, mouse_movement,
  * hp_changes_color. Already wired before this gap (unchanged here):
  * pickup_always, pickup_inven, show_flavors, show_damage, disturb_near,
@@ -95,7 +96,10 @@ export interface OptionRow {
  * birth FLOW itself, birth.ts, is the only writer, and that is a sibling
  * concern, not this screen).
  */
-function pageRows(state: GameState, page: "INTERFACE" | "BIRTH"): OptionRow[] {
+function pageRows(
+  state: GameState,
+  page: "INTERFACE" | "BIRTH" | "CHEAT",
+): OptionRow[] {
   return OPTION_ENTRIES.filter((e) => e.type === page).map((e) => ({
     name: e.name,
     description: e.description,
@@ -261,6 +265,28 @@ async function runBirthPage(term: GlyphTerm, state: GameState): Promise<void> {
 }
 
 /**
+ * (x) Cheat options (option_toggle_menu(OP_CHEAT), ui-options.c L2042):
+ * maintainer-confirmed IN SCOPE 2026-07-16. Every CHEAT-type row (cheat_hear,
+ * cheat_room, cheat_xtra, cheat_live), editable exactly like the interface
+ * page. Turning any cheat option ON forces its score_* twin ON in the core
+ * OptionState (option_set, option.c L162-164), which trips anyScoreSet() so the
+ * character is no longer eligible for the high-score table (enter_score's
+ * "cheating" gate, score.c L277) - the same score invalidation upstream
+ * applies. That coupling lives in OptionState.set, so this screen just calls it.
+ */
+async function runCheatPage(term: GlyphTerm, state: GameState): Promise<void> {
+  await optionToggleScreen(
+    term,
+    "Cheat options",
+    pageRows(state, "CHEAT"),
+    (name, value) => {
+      state.options?.set(name, value);
+    },
+    false,
+  );
+}
+
+/**
  * (d) Set base delay factor (do_cmd_delay, ui-options.c L1057): 0-255,
  * MIN(val, 255)-clamped - promptNumber's generic [min, max] clamp is exactly
  * upstream's rule here (unlike hitpoint warning, see runHitpointWarnPrompt).
@@ -354,12 +380,13 @@ export async function runOptionsMenu(
   const items: MenuItem[] = [
     { label: "User interface options", tag: "a" },
     { label: "Birth (difficulty) options", tag: "b" },
+    { label: "Cheat options", tag: "x" },
     { label: "Item ignoring setup", tag: "i" },
     { label: "Set base delay factor", tag: "d" },
     { label: "Set hitpoint warning", tag: "h" },
   ];
   if (tiles) items.push({ label: "Graphics (tiles) mode", tag: "g" });
-  const tagHint = tiles ? "a/b/i/d/h/g" : "a/b/i/d/h";
+  const tagHint = tiles ? "a/b/x/i/d/h/g" : "a/b/x/i/d/h";
   for (;;) {
     const idx = await selectFromMenu(
       term,
@@ -374,6 +401,9 @@ export async function runOptionsMenu(
         break;
       case "b":
         await runBirthPage(term, state);
+        break;
+      case "x":
+        await runCheatPage(term, state);
         break;
       case "i":
         await openIgnoreSetup();

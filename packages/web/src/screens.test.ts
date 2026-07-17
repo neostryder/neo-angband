@@ -18,12 +18,16 @@ import {
   placePlayer,
   ObjRegistry,
   objectNew,
+  gearAdd,
   COLOUR_RED,
   COLOUR_SLATE,
   COLOUR_VIOLET,
   COLOUR_WHITE,
   COLOUR_L_RED,
   COLOUR_L_GREEN,
+  COLOUR_YELLOW,
+  COLOUR_L_BLUE,
+  COLOUR_L_DARK,
   TV,
   HIST,
   STAT,
@@ -40,6 +44,7 @@ import {
   chanceOfMeleeHitBase,
   getHitChance,
   SKILL,
+  PF_SIZE,
 } from "@neo-angband/core";
 import type {
   Textblock,
@@ -65,6 +70,11 @@ import {
   objectListLines,
   historyLines,
   spellBrowseLines,
+  bookSpellMenu,
+  inventoryLines,
+  objectWeightColumn,
+  deviceFailColumn,
+  deviceMenu,
   monsterRecallLines,
   knownMonsterEntries,
   monsterKnowledgeMenu,
@@ -514,7 +524,7 @@ function makeTestClass(spells: ClassSpell[]): PlayerClass {
     hitdie: 0,
     expFactor: 0,
     flags: new FlagSet(1),
-    pflags: new FlagSet(1),
+    pflags: new FlagSet(PF_SIZE),
     maxAttacks: 1,
     minWeight: 0,
     attMultiply: 1,
@@ -610,6 +620,158 @@ describe("spellBrowseLines ('?' description panel, ui-spell.c spell_menu_browser
     spellBrowseLines(state, 0, testProjections, 200);
     spellBrowseLines(state, 0, testProjections, 200); // twice, in case a first-call-only branch hides a draw
     expect(state.rng.getState()).toEqual(before);
+  });
+});
+
+/** Add a real kind to the pack (weight seeded from the kind), return the obj. */
+function addPack(state: GameState, kindName: string, number = 1): GameObject {
+  const kind = objReg.kinds.find((k) => k.name === kindName) as ObjectKind;
+  const obj = objectNew(kind);
+  obj.tval = kind.tval;
+  obj.sval = kind.sval;
+  obj.number = number;
+  obj.weight = kind.weight;
+  const handle = gearAdd(state.gear, obj);
+  state.gear.pack.push(handle);
+  return obj;
+}
+
+describe("objectWeightColumn (OLIST_WEIGHT, ui-object.c L234-239)", () => {
+  it("formats the total stack weight as '%4d.%1d lb'", () => {
+    // 2 x 35 tenths = 70 tenths = 7.0 lb.
+    expect(objectWeightColumn({ number: 2, weight: 35 } as GameObject)).toBe(
+      "   7.0 lb",
+    );
+  });
+
+  it("uses the per-one weight times the stack count", () => {
+    expect(objectWeightColumn({ number: 1, weight: 123 } as GameObject)).toBe(
+      "  12.3 lb",
+    );
+  });
+});
+
+describe("inventoryLines weight column (14.20)", () => {
+  it("appends the 'lb' weight column to each carried item", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const food = objReg.kinds.find((k) => k.tval === TV.FOOD) as ObjectKind;
+    addPack(state, food.name, 2);
+    const lines = inventoryLines(state);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.text).toMatch(/\d+\.\d lb$/);
+  });
+});
+
+describe("deviceFailColumn (OLIST_FAIL, ui-object.c L212-221)", () => {
+  it("shows a right-aligned '%% fail' figure once the effect is known (aware)", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const wand = objReg.kinds.find((k) => k.tval === TV.WAND) as ObjectKind;
+    const obj = objectNew(wand);
+    obj.tval = wand.tval;
+    const col = deviceFailColumn(state, obj, () => true);
+    expect(col).toMatch(/^\s*\d+% fail$/);
+  });
+
+  it("shows '    ? fail' when the device's effect is not yet known (unaware)", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const wand = objReg.kinds.find((k) => k.tval === TV.WAND) as ObjectKind;
+    const obj = objectNew(wand);
+    obj.tval = wand.tval;
+    expect(deviceFailColumn(state, obj, () => false)).toBe("    ? fail");
+  });
+
+  it("is empty for a non-failing object (obj_can_fail false)", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const potion = objReg.kinds.find((k) => k.tval === TV.POTION) as ObjectKind;
+    const obj = objectNew(potion);
+    obj.tval = potion.tval;
+    expect(deviceFailColumn(state, obj, () => true)).toBe("");
+  });
+});
+
+describe("deviceMenu (device use picker with the FAIL% column, 14.21)", () => {
+  it("labels each device with its fail column", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const wand = objReg.kinds.find((k) => k.tval === TV.WAND) as ObjectKind;
+    addPack(state, wand.name);
+    const { items, handles } = deviceMenu(
+      state,
+      (o) => o.tval === TV.WAND,
+      () => true,
+    );
+    expect(handles).toHaveLength(1);
+    expect(items[0]!.label).toMatch(/\d+% fail$/);
+  });
+});
+
+/**
+ * bookSpellMenu (spell_menu_display, ui-spell.c L64-121): the six-way state
+ * classification and its column layout, exercised via the two-spell test class.
+ */
+describe("bookSpellMenu (cast/study state labels + colours, 14.22/14.24)", () => {
+  const TEST_BOOK = { tval: 0, sval: 0, number: 1 } as unknown as GameObject;
+
+  it("a WORKED learned spell shows its damage info in white and is castable", () => {
+    const state = makeSpellTestState();
+    state.actor.player.lev = 5;
+    state.actor.player.spellFlags[0] = PY_SPELL.LEARNED | PY_SPELL.WORKED;
+    const { items, sidx } = bookSpellMenu(state, TEST_BOOK, "cast");
+    expect(sidx).toContain(0);
+    const row = items[sidx.indexOf(0)]!;
+    expect(row.color).toBe(colorToCss(COLOUR_WHITE));
+    expect(row.disabled).toBe(false);
+    // Faithful column layout: "<name(30)><lvl:2> <mana:4> <fail:3>%<comment>".
+    expect(row.label).toMatch(/^Test Bolt {21}\s*\d+ +\d+ +\d+%/);
+  });
+
+  it("a learned-but-untried spell shows ' untried' in light green", () => {
+    const state = makeSpellTestState();
+    state.actor.player.lev = 5;
+    state.actor.player.spellFlags[0] = PY_SPELL.LEARNED;
+    const { items, sidx } = bookSpellMenu(state, TEST_BOOK, "cast");
+    const row = items[sidx.indexOf(0)]!;
+    expect(row.label).toContain(" untried");
+    expect(row.color).toBe(colorToCss(COLOUR_L_GREEN));
+  });
+
+  it("a forgotten spell shows ' forgotten' in yellow", () => {
+    const state = makeSpellTestState();
+    state.actor.player.lev = 5;
+    state.actor.player.spellFlags[0] = PY_SPELL.LEARNED | PY_SPELL.FORGOTTEN;
+    const { items, sidx } = bookSpellMenu(state, TEST_BOOK, "cast");
+    const row = items[sidx.indexOf(0)]!;
+    expect(row.label).toContain(" forgotten");
+    expect(row.color).toBe(colorToCss(COLOUR_YELLOW));
+  });
+
+  it("an unlearned but learnable spell shows ' unknown' in light blue", () => {
+    const state = makeSpellTestState();
+    state.actor.player.lev = 5; // level-1 spell is within reach
+    state.actor.player.spellFlags[0] = 0;
+    const { items, sidx } = bookSpellMenu(state, TEST_BOOK, "cast");
+    const row = items[sidx.indexOf(0)]!;
+    expect(row.label).toContain(" unknown");
+    expect(row.color).toBe(colorToCss(COLOUR_L_BLUE));
+    expect(row.disabled).toBe(true); // not okay to cast
+  });
+
+  it("a too-high-level spell shows ' difficult' in red", () => {
+    const state = makeSpellTestState();
+    state.actor.player.lev = 0; // below the level-1 spell
+    state.actor.player.spellFlags[0] = 0;
+    const { items, sidx } = bookSpellMenu(state, TEST_BOOK, "cast");
+    const row = items[sidx.indexOf(0)]!;
+    expect(row.label).toContain(" difficult");
+    expect(row.color).toBe(colorToCss(COLOUR_RED));
+  });
+
+  it("a level>=99 spell renders the bare '(illegible)' in L_DARK", () => {
+    const state = makeSpellTestState();
+    state.actor.player.cls.magic.books[0]!.spells[0]!.level = 99;
+    const { items, sidx } = bookSpellMenu(state, TEST_BOOK, "cast");
+    const row = items[sidx.indexOf(0)]!;
+    expect(row.label).toBe("(illegible)");
+    expect(row.color).toBe(colorToCss(COLOUR_L_DARK));
   });
 });
 

@@ -211,13 +211,15 @@ import {
   GAME_MENU_FOOTER,
   DEATH_MENU_FOOTER,
 } from "./game-menu";
-import { MessageLog } from "./messages";
+import { MessageLog, paginateMessages } from "./messages";
 import {
   inventoryLines,
   equipmentLines,
   messageHistoryLines,
   historyLines,
   packMenu,
+  deviceMenu,
+  deviceFailColumn,
   equipmentMenu,
   magicBooks,
   bookSpellMenu,
@@ -1368,13 +1370,22 @@ async function dispatchItemVerb(code: string, handle: number, obj: GameObject | 
   advance();
 }
 
+/** Device-use verbs whose picker shows the OLIST_FAIL failure column. */
+const DEVICE_VERBS = new Set(["aim-wand", "zap-rod", "use-staff"]);
+
+/** kind-awareness closure for the device FAIL% gate (object_effect_is_known). */
+const isKindAware = (kind: ObjectKind): boolean =>
+  game.flavor ? game.flavor.isAware(kind) : true;
+
 /** Select a pack item matching `filter`, then dispatch `code` for it. */
 async function useItem(
   code: string,
   filter: (obj: GameObject) => boolean,
   emptyNoun: string,
 ): Promise<void> {
-  const { items, handles } = packMenu(state, filter);
+  const { items, handles } = DEVICE_VERBS.has(code)
+    ? deviceMenu(state, filter, isKindAware)
+    : packMenu(state, filter);
   if (items.length === 0) {
     say(`You have no ${emptyNoun}.`);
     return;
@@ -1424,7 +1435,11 @@ async function activateItem(): Promise<void> {
     if (!handle) continue;
     const obj = gearGet(state.gear, handle);
     if (!obj || !obj.activation) continue;
-    items.push({ label: describeObject(state, obj), color: "#c8c8d4" });
+    // OLIST_FAIL failure column for activatable gear (ui-object.c L212-221).
+    const fail = deviceFailColumn(state, obj, isKindAware);
+    const name = describeObject(state, obj);
+    const label = fail ? `${name.padEnd(40).slice(0, 40)} ${fail}` : name;
+    items.push({ label, color: "#c8c8d4" });
     handles.push(handle);
   }
   if (items.length === 0) {
@@ -3617,7 +3632,66 @@ async function runLocate(): Promise<void> {
 }
 
 /** Advance the engine after queuing input, then repaint. */
+// -more- prompt subsystem (ui-input.c msg_flush / display_message L385-595).
+// A turn's messages share the top line until the running column would pass
+// (width - 8); paginateMessages (messages.ts) splits them into the pages
+// upstream would each cap with the L_BLUE "-more-" prompt. auto_more (the core
+// option, list-options.h) suppresses the waits (msg_flush's anykey() guard,
+// L395), so the pager shows only the final page. The final page always just
+// persists on the top line (no trailing -more-), exactly as the last message
+// does in normal play.
+const MORE_COLOR = "#4040ff"; // COLOUR_L_BLUE
+
+/** Wait for any keypress or tap (anykey, ui-input.c) - the -more- gate. */
+function waitAnyKey(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const done = (ev: Event): void => {
+      ev.preventDefault();
+      if (ev.type === "keydown") (ev as KeyboardEvent).stopImmediatePropagation();
+      window.removeEventListener("keydown", done, true);
+      window.removeEventListener("pointerdown", done, true);
+      resolve();
+    };
+    window.addEventListener("keydown", done, true);
+    window.addEventListener("pointerdown", done, true);
+  });
+}
+
+/**
+ * Page the messages logged during the turn that started at log length `preLen`,
+ * pausing with "-more-" between pages unless auto_more is set. A single page
+ * (the common case) needs no pause - render() has already put it on the top
+ * line - so this returns immediately. Runs inside a modal so the game key
+ * handler stands down while the player reads.
+ */
+async function pumpMessages(preLen: number): Promise<void> {
+  const fresh = msglog.all().slice(preLen);
+  const pages = paginateMessages(fresh, term.size().cols);
+  if (pages.length <= 1) return;
+  const last = pages[pages.length - 1] ?? "";
+  if (state.options?.get("auto_more")) {
+    message = last;
+    render();
+    return;
+  }
+  await openModal(async () => {
+    const { mapOriginX } = viewport();
+    for (let i = 0; i < pages.length; i++) {
+      const page = pages[i] ?? "";
+      message = page;
+      render();
+      if (i < pages.length - 1) {
+        term.print(mapOriginX + page.length + 1, 0, "-more-", MORE_COLOR);
+        await waitAnyKey();
+      }
+    }
+  });
+  message = last;
+  render();
+}
+
 function advance(): void {
+  const preLen = msglog.all().length; // messages before this turn, for -more-
   const status = runGameLoop(state, registry);
   if (status === LOOP_STATUS.DEAD) {
     dead = true;
@@ -3673,6 +3747,9 @@ function advance(): void {
   }
   autosave(); // throttled: keep the session recoverable during active play
   render();
+  // -more- gating: page this turn's messages, pausing between screenfuls unless
+  // auto_more is set. Skipped on death (the tombstone/menu modal owns the flow).
+  if (!dead) void pumpMessages(preLen);
 }
 
 window.addEventListener("keydown", (ev) => {
@@ -3947,7 +4024,7 @@ window.addEventListener("keydown", (ev) => {
     const dest = loc(state.actor.grid.x + dx, state.actor.grid.y + dy);
     const store = state.stores?.find((s) => s.feat === state.chunk.feat(dest));
     if (store) {
-      void openModal(() => runStore(term, game, store, say));
+      void openModal(() => runStore(term, game, store, say, constants));
       return;
     }
   }
