@@ -35,10 +35,12 @@ import type { Rng } from "../rng";
 import type { Brand, Slay } from "../obj/types";
 import type { GameObject } from "../obj/object";
 import { objectWeightOne } from "../obj/object";
+import { MON_TMD } from "../generated";
 import type { Monster } from "../mon/monster";
 import { monsterIsLiving } from "../mon/predicate";
-import { monTakeHit } from "../mon/take-hit";
+import { monTakeHit, monsterWake } from "../mon/take-hit";
 import type { MonTakeHitHooks } from "../mon/take-hit";
+import { MON_TMD_FLG_NOTIFY, monClearTimed } from "../mon/timed";
 import type { Player } from "../player/player";
 import { SKILL } from "../player/types";
 import { adj_dex_th, adj_str_td } from "../player/calcs";
@@ -114,10 +116,22 @@ export interface MeleeEffectHooks {
   overExertCon?: () => void;
   /** player_of_has(p, OF_IMPACT): earthquake brand present. */
   impact?: boolean;
+  /** equip_learn_flag(p, OF_IMPACT), run when the quake condition trips. */
+  learnImpact?: () => void;
   /** effect_simple(EF_EARTHQUAKE, rad 10) at the player; draws its own RNG. */
   earthquake?: () => void;
   /** square_monster(cave, grid) == null after the quake (monster gone/moved). */
   monsterGone?: () => boolean;
+  /**
+   * PF_COMBAT_REGEN: reward the player with 5% of max SP before the blows
+   * (player-attack.c L1002); present only when the player has the flag.
+   */
+  combatRegen?: () => void;
+  /**
+   * PF_SHIELD_BASH (player-attack.c L1009): present only when the player has
+   * the flag; the bash also needs a visible monster.
+   */
+  shieldBash?: ShieldBashDeps;
   /**
    * player_is_shapechanged: the shape's blow verbs (p->shape->blows). When
    * present a random one replaces the attack verb, drawing randint0(len).
@@ -166,7 +180,14 @@ export interface MeleeBlow {
   brand: number;
   /** Slay index used (0 = none). */
   slay: number;
+  /** The monster was killed by the blow (mon_take_hit died). */
   monsterDied: boolean;
+  /**
+   * The upstream `stop` value: the monster died, OR the impact quake removed
+   * or moved it (blow_after_effects). Ends the blow loop; equals monsterDied
+   * whenever no earthquake hook fires.
+   */
+  stopAttack: boolean;
   /** The blow newly frightened the monster (mon_take_hit's *fear out-param). */
   fear: boolean;
 }
@@ -182,6 +203,12 @@ export interface MeleeAttack {
    * the "flees in terror" line.
    */
   monsterFled: boolean;
+  /**
+   * p->upkeep->energy_use as py_attack leaves it: blow_energy per blow landed
+   * plus any shield-bash stumble. May be less than a full move_energy (e.g.
+   * two 40-energy blows leave 80), exactly as upstream.
+   */
+  energyUsed: number;
 }
 
 function skill(state: PlayerCombatState, idx: number): number {
@@ -345,16 +372,16 @@ export function pyAttackReal(
   if (opts.afraid) {
     return {
       hit: false, damage: 0, msg: "MISS", verb: "afraid",
-      brand: 0, slay: 0, monsterDied: false, fear: false,
+      brand: 0, slay: 0, monsterDied: false, stopAttack: false, fear: false,
     };
   }
 
-  /* Disturb the monster: monster_wake + clear Hold (player-attack.c L759). */
+  /* Disturb the monster: monster_wake(mon, false, 100) + clear any Hold
+   * (player-attack.c L759-760). Draws randint0(100); mon_take_hit's own
+   * non-fatal wake later re-draws, exactly as upstream. */
+  monsterWake(rng, mon, false, 100);
+  monClearTimed(rng, mon, MON_TMD.HOLD, MON_TMD_FLG_NOTIFY);
   const th = h?.takeHit;
-  if (th) {
-    /* Reuse mon_take_hit's wake path only for the damage step; the pre-hit
-     * wake is folded there. becomeAware is handled inside mon_take_hit. */
-  }
 
   /* See if the player hit. */
   const success = testHit(
@@ -367,7 +394,7 @@ export function pyAttackReal(
     if (h?.bloodlust && rng.oneIn(50)) h.overExertScramble?.();
     return {
       hit: false, damage: 0, msg: "MISS", verb: weapon ? "hit" : "punch",
-      brand: 0, slay: 0, monsterDied: false, fear: false,
+      brand: 0, slay: 0, monsterDied: false, stopAttack: false, fear: false,
     };
   }
 
@@ -417,9 +444,11 @@ export function pyAttackReal(
   }
 
   /* Splash damage and earthquakes (player-attack.c L814): splash is computed
-   * upstream but blow_after_effects ignores it; do_quake needs OF_IMPACT and
-   * dmg > 50. */
+   * upstream (weight * dmg / 100) but blow_after_effects ignores its splash
+   * parameter - an upstream quirk, so nothing to apply. do_quake needs
+   * OF_IMPACT and dmg > 50, and learns the flag immediately (L818). */
   const doQuake = Boolean(h?.impact) && dmg > 50;
+  if (doQuake) h?.learnImpact?.();
 
   /* Substitute shape-specific blows for shapechanged players (L830): a random
    * shape blow verb replaces the attack verb (drawn even at zero damage). */
@@ -446,7 +475,8 @@ export function pyAttackReal(
   /* Damage, check for hp drain, fear and death (player-attack.c L867). */
   const drain = Math.min(mon.hp, dmg);
   const res = monTakeHit(rng, mon, dmg, null, th ?? {});
-  let stop = res.died;
+  const died = res.died;
+  let stop = died;
   let fear = res.fear;
 
   /* Small chance of bloodlust side-effects on a hit (player-attack.c L871). */
@@ -474,15 +504,161 @@ export function pyAttackReal(
     verb: mod.verb,
     brand: mod.brand,
     slay: mod.slay,
-    monsterDied: stop,
+    monsterDied: died,
+    stopAttack: stop,
     fear,
   };
 }
 
 /**
- * py_attack: land blows until the next blow would exceed the energy available
- * for a single turn, or the monster dies. blow_energy = 100 * move_energy /
- * num_blows; energy defaults to a full turn's worth.
+ * The player-state / equipment inputs attempt_shield_bash reads beyond the
+ * combat state (player-attack.c:897-978). Present on MeleeEffectHooks only when
+ * the player has PF_SHIELD_BASH.
+ */
+export interface ShieldBashDeps {
+  /** slot_object(p, slot_by_name(p, "arm")): the equipped shield, if any. */
+  shield: GameObject | null;
+  /** state->stat_ind[STAT_DEX] (indexes adj_dex_th). */
+  dexInd: number;
+  /** state->stat_ind[STAT_STR] (indexes adj_str_td). */
+  strInd: number;
+  /** p->wt: the player's body weight. */
+  playerWt: number;
+  /** p->upkeep->total_weight: carried weight. */
+  totalWeight: number;
+  /** OPT(p, show_damage): append " (N)" to the bash message. */
+  showDamage?: boolean;
+  /** msg sink for "You get in a shield bash!" / "WHAMM!" / "You stumble!". */
+  msg?: (text: string) => void;
+  /** mon_inc_timed(mon, MON_TMD_STUN, dur, 0). */
+  stunMonster?: (mon: Monster, dur: number) => void;
+  /** mon_inc_timed(mon, MON_TMD_CONF, dur, 0). */
+  confuseMonster?: (mon: Monster, dur: number) => void;
+}
+
+/** The outcome of a shield bash attempt. */
+interface ShieldBashResult {
+  /** The bash killed the monster (py_attack returns immediately). */
+  died: boolean;
+  /** mon_take_hit's fear out-param from the bash damage. */
+  fear: boolean;
+  /** Stumble energy: energy_lost * move_energy / 100 added to energy_use. */
+  energyLost: number;
+}
+
+/**
+ * attempt_shield_bash (player-attack.c L897): before the blows, a shield-bash
+ * character may slam the monster with the shield - damage, stun/confusion
+ * rolls, and a possible stumble that costs part of the turn. Duration rolls
+ * for stun/confusion are drawn whenever their condition trips, even if the
+ * caller supplies no monster-timed hook, keeping the RNG stream faithful.
+ */
+function attemptShieldBash(
+  rng: Rng,
+  p: Player,
+  state: PlayerCombatState,
+  weapon: GameObject | null,
+  mon: Monster,
+  deps: ShieldBashDeps,
+  takeHit: MonTakeHitHooks,
+  moveEnergy: number,
+): ShieldBashResult {
+  const none: ShieldBashResult = { died: false, fear: false, energyLost: 0 };
+  const shield = deps.shield;
+  const nblows = Math.trunc(state.numBlows / 100);
+
+  /* Bashing chance depends on melee skill, DEX, and a level bonus. */
+  let bashChance =
+    Math.trunc(skill(state, SKILL.TO_HIT_MELEE) / 8) +
+    Math.trunc((adj_dex_th[deps.dexInd] ?? 0) / 2);
+
+  /* No shield, no bash. */
+  if (!shield) return none;
+
+  /* Monster is too pathetic, don't bother. */
+  if (mon.race.level < Math.trunc(p.lev / 2)) return none;
+
+  /* Players bash more often when they see a real need. */
+  if (!weapon) {
+    /* Unarmed... */
+    bashChance *= 4;
+  } else if (weapon.dd * weapon.ds * nblows < shield.dd * shield.ds * 3) {
+    /* ... or armed with a puny weapon. */
+    bashChance *= 2;
+  }
+
+  /* Try to get in a shield bash. */
+  if (bashChance <= rng.randint0(200 + mon.race.level)) {
+    return none;
+  }
+
+  /* Calculate attack quality, a mix of momentum and accuracy. */
+  const bashQuality =
+    Math.trunc(skill(state, SKILL.TO_HIT_MELEE) / 4) +
+    Math.trunc(deps.playerWt / 8) +
+    Math.trunc(deps.totalWeight / 80) +
+    Math.trunc(objectWeightOne(shield) / 2);
+
+  /* Calculate damage. Big shields are deadly. */
+  let bashDam = rng.damroll(shield.dd, shield.ds);
+
+  /* Multiply by quality and experience factors. */
+  bashDam *= Math.trunc(bashQuality / 40) + Math.trunc(p.lev / 14);
+
+  /* Strength bonus. */
+  bashDam += adj_str_td[deps.strInd] ?? 0;
+
+  /* Paranoia. */
+  if (bashDam <= 0) return none;
+  bashDam = Math.min(bashDam, 125);
+
+  deps.msg?.(
+    deps.showDamage
+      ? `You get in a shield bash! (${bashDam})`
+      : "You get in a shield bash!",
+  );
+
+  /* Encourage the player to keep wearing that heavy shield. */
+  if (rng.randint1(bashDam) > 30 + rng.randint1(Math.trunc(bashDam / 2))) {
+    deps.msg?.("WHAMM!");
+  }
+
+  /* Damage, check for fear and death. */
+  const res = monTakeHit(rng, mon, bashDam, null, takeHit);
+  if (res.died) return { died: true, fear: false, energyLost: 0 };
+  const fear = res.fear;
+
+  /* Stunning (duration drawn whenever the condition trips). */
+  if (bashQuality + p.lev > rng.randint1(200 + mon.race.level * 8)) {
+    const dur = rng.randint0(Math.trunc(p.lev / 5)) + 4;
+    deps.stunMonster?.(mon, dur);
+  }
+
+  /* Confusion. */
+  if (bashQuality + p.lev > rng.randint1(300 + mon.race.level * 12)) {
+    const dur = rng.randint0(Math.trunc(p.lev / 5)) + 4;
+    deps.confuseMonster?.(mon, dur);
+  }
+
+  /* The player will sometimes stumble. */
+  let energyLost = 0;
+  if (35 + (adj_dex_th[deps.dexInd] ?? 0) < rng.randint1(60)) {
+    const lost = rng.randint1(50) + 25;
+    /* Lose 26-75% of a turn due to stumbling after shield bash. */
+    deps.msg?.("You stumble!");
+    energyLost = Math.trunc((lost * moveEnergy) / 100);
+  }
+
+  return { died: false, fear, energyLost };
+}
+
+/**
+ * py_attack (player-attack.c L988): land blows until the next blow would
+ * exceed the energy available for a single turn, or the monster dies.
+ * blow_energy = 100 * move_energy / num_blows; energy defaults to a full
+ * turn's worth. Runs the PF_COMBAT_REGEN mana reward and the shield bash
+ * before the blow loop, accumulates the fear flag across blows, and reports
+ * the delayed "flees in terror" condition and the energy actually used.
  */
 export function pyAttack(
   rng: Rng,
@@ -501,19 +677,52 @@ export function pyAttack(
     1,
     Math.trunc((100 * moveEnergy) / state.numBlows),
   );
+  const h = opts.hooks;
+  const monVisible = opts.monVisible ?? true;
 
   const blows: MeleeBlow[] = [];
   let totalDamage = 0;
   let slain = false;
+  let fear = false;
   let used = 0;
 
+  /* Reward BGs with 5% of max SPs, min 1/2 point (player-attack.c L1002). */
+  h?.combatRegen?.();
+
+  /* Player attempts a shield bash if they can, and if monster is visible and
+   * not too pathetic (player-attack.c L1009). */
+  if (h?.shieldBash && monVisible) {
+    const bash = attemptShieldBash(
+      rng, p, state, weapon, mon, h.shieldBash, h.takeHit ?? {}, moveEnergy,
+    );
+    if (bash.died) {
+      /* Monster may die: py_attack returns without any blows. */
+      return {
+        blows, totalDamage, monsterDied: true, monsterFled: false,
+        energyUsed: used,
+      };
+    }
+    fear = fear || bash.fear;
+    used += bash.energyLost;
+  }
+
+  let died = false;
   while (availEnergy - used >= blowEnergy && !slain) {
     const blow = pyAttackReal(rng, p, state, weapon, mon, brands, slays, opts);
     blows.push(blow);
     totalDamage += blow.damage;
-    if (blow.monsterDied) slain = true;
+    fear = fear || blow.fear;
+    if (blow.monsterDied) {
+      died = true;
+      /* py_attack_real: if (stop) (*fear) = false clears the shared flag. */
+      fear = false;
+    }
+    if (blow.stopAttack) slain = true;
     used += blowEnergy;
   }
 
-  return { blows, totalDamage, monsterDied: slain };
+  /* Hack - delay fear messages (player-attack.c L1023). */
+  const monsterFled = fear && monVisible;
+
+  return { blows, totalDamage, monsterDied: died, monsterFled, energyUsed: used };
 }

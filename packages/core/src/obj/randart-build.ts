@@ -47,12 +47,7 @@ import { ART_IDX } from "../generated/randart-properties";
 import type { Rng } from "../rng";
 import type { ObjRegistry } from "./bind";
 import type { CurseTimedFoil } from "./object";
-import {
-  copyBrands,
-  copySlays,
-  curseTimedIncFoiled,
-  sameMonstersSlain,
-} from "./object";
+import { copyBrands, copySlays, curseTimedIncFoiled } from "./object";
 import { INHIBIT_POWER } from "./power";
 import type { ArtifactSetData } from "./randart-data";
 import type {
@@ -1526,7 +1521,7 @@ export function removeContradictoryActivation(
           let maxmult = 1;
           for (let i = 1; i < reg.slays.length; i++) {
             if (!art.slays?.[i]) continue;
-            if (!sameMonstersSlain(reg.slays, i, p.idx)) continue;
+            if (!sameMonstersSlain(reg, i, p.idx)) continue;
             maxmult = Math.max(reg.slays[i]!.multiplier, maxmult);
           }
           if (maxmult < reg.slays[p.idx]!.multiplier) redundant = false;

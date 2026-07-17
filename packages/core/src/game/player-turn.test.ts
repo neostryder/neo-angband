@@ -43,7 +43,10 @@ describe("built-in player actions", () => {
     const mon = addMon(state, makeRace({ ac: 0 }), loc(16, 10), { hp: 200 });
 
     const spent = walkAction(state, { code: "walk", dir: 6 });
-    expect(spent).toBe(state.z.moveEnergy);
+    /* py_attack energy (player-attack.c:991,1017-1019): blow_energy =
+     * 100 * move_energy / num_blows = 33; three blows fit a turn -> 99,
+     * NOT a flat move_energy. */
+    expect(spent).toBe(99);
     expect(mon.hp).toBeLessThan(200);
     /* The player did not step onto the monster's grid. */
     expect(state.actor.grid).toEqual(loc(15, 10));

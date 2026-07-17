@@ -426,3 +426,55 @@ export function playerClearTimed(
 ): boolean {
   return playerSetTimed(p, effect, 0, notify, canDisturb, hooks);
 }
+
+/* ------------------------------------------------------------------ *
+ * Temporary brands and slays (obj-slays.c:287-317).
+ * ------------------------------------------------------------------ */
+
+/**
+ * The raw player_timed pack fields naming a temporary brand/slay (the
+ * `brand:` / `slay:` directives, player-timed.c:361-405). The bound
+ * TimedEffect does not carry them, so the wiring passes the raw pack records
+ * (in TMD order) alongside the brand/slay tables.
+ */
+export interface TimedTempBrandSlayRecord {
+  brand?: readonly string[];
+  slay?: readonly string[];
+}
+
+/**
+ * player_has_temporary_brand / player_has_temporary_slay (obj-slays.c:287-317)
+ * over the live timed array: an active timed effect whose data binds the
+ * brand/slay index grants it temporarily. The records' brand/slay codes are
+ * resolved against the bound tables once, mirroring the temp_brand/temp_slay
+ * fields upstream stamps at parse time (player-timed.c:380,403).
+ */
+export function buildTempBrandSlay(
+  p: PlayerTimedTarget,
+  records: readonly TimedTempBrandSlayRecord[],
+  brands: readonly ({ code: string } | null)[],
+  slays: readonly ({ code: string } | null)[],
+): { hasBrand(idx: number): boolean; hasSlay(idx: number): boolean } {
+  const tempBrand = records.map((r) => {
+    const code = r.brand?.[0];
+    return code ? brands.findIndex((b) => b !== null && b.code === code) : -1;
+  });
+  const tempSlay = records.map((r) => {
+    const code = r.slay?.[0];
+    return code ? slays.findIndex((s) => s !== null && s.code === code) : -1;
+  });
+  return {
+    hasBrand(idx: number): boolean {
+      for (let i = 0; i < tempBrand.length; i++) {
+        if (tempBrand[i] === idx && p.timed[i]) return true;
+      }
+      return false;
+    },
+    hasSlay(idx: number): boolean {
+      for (let i = 0; i < tempSlay.length; i++) {
+        if (tempSlay[i] === idx && p.timed[i]) return true;
+      }
+      return false;
+    },
+  };
+}

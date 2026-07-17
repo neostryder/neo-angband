@@ -26,12 +26,15 @@
 import { Dice } from "../dice";
 import { Expression } from "../expression";
 import { FlagSet } from "../bitflag";
-import { MON_SPELL_ENTRIES, MON_TMD, RSF } from "../generated";
-import type { RandomValue } from "../rng";
+import { ELEM, MON_SPELL_ENTRIES, MON_TMD, OF, PF, RSF } from "../generated";
+import type { RandomValue, Rng } from "../rng";
+import { ELEM_MAX } from "../obj/types";
+import type { TimedFailLike } from "../obj/object";
 import { RSF_SIZE } from "./types";
 import type { MonsterRace, MonsterSpell, MonsterSpellEffect } from "./types";
 import type { Monster } from "./monster";
 import { monsterEffectLevel } from "./timed";
+import { monsterIsSmart, monsterIsStupid } from "./predicate";
 
 /**
  * RST_ spell-type bitflags (mon-spell.h). RST_DAMAGE is the composite of the
@@ -164,6 +167,191 @@ export function breathDam(proj: BreathProjection, hp: number): number {
   let dam = Math.trunc(hp / proj.divisor);
   if (dam > proj.damageCap) dam = proj.damageCap;
   return dam;
+}
+
+/** TMD_FAIL_ codes (player-timed.h), for the unset_spells fail-table scan. */
+const TMD_FAIL_FLAG_OBJECT = 1;
+const TMD_FAIL_FLAG_RESIST = 2;
+const TMD_FAIL_FLAG_VULN = 3;
+const TMD_FAIL_FLAG_PLAYER = 4;
+
+/**
+ * unset_spells (mon-spell.c L470): turn off spells with a side effect or
+ * projection type resisted by what the monster knows about the player, subject
+ * to intelligence and chance. `flags` / `pflags` / `el` are the monster's
+ * ai-memorized view of the player (known_pstate copies); `timedFail` resolves a
+ * TMD_ name to its fail-condition table (the bound player-timed data).
+ *
+ * RNG order preserved exactly, including the C short-circuit quirks:
+ * - every elemental (BOLT/BALL/BREATH) spell present draws one randint0(100),
+ *   even when the learn chance is 0;
+ * - a non-smart monster draws one_in_(3) per EFFECT LINE of every non-elemental
+ *   spell (the `(smart || !one_in_(3)) && index == EF_TIMED_INC` gate is
+ *   evaluated left-to-right for every effect), and one_in_(2) likewise for the
+ *   drain-mana gate.
+ * Upstream indexes el[] by the raw projection subtype; for the handful of
+ * non-element breath subtypes (TIME / INERTIA / GRAVITY / PLASMA / MANA /
+ * WATER) that read past the element table in C, the port treats the resist
+ * level as 0 (an unreproducible out-of-bounds read; the draw still happens).
+ */
+export function unsetSpells(
+  rng: Rng,
+  spells: FlagSet,
+  flags: FlagSet,
+  pflags: FlagSet,
+  el: Int16Array,
+  mon: Monster,
+  spellTable: ReadonlyMap<number, MonsterSpell>,
+  timedFail: (tmdName: string) => readonly TimedFailLike[] | null,
+): void {
+  const smart = monsterIsSmart(mon);
+
+  for (let index = RSF.NONE + 1; index < RSF.MAX; index++) {
+    const spell = spellTable.get(index);
+    if (!spell) continue;
+    if (!spells.has(index)) continue;
+
+    const types = MON_SPELL_TYPES[index]!;
+
+    if (types & (RST.BOLT | RST.BALL | RST.BREATH)) {
+      /* First we test the elemental spells. */
+      const typeName = spell.effects[0]?.type ?? "";
+      const element = (ELEM as Record<string, number>)[typeName];
+      const resLevel =
+        element !== undefined && element < ELEM_MAX ? (el[element] ?? 0) : 0;
+      const learnChance = resLevel * (smart ? 50 : 25);
+      if (rng.randint0(100) < learnChance) {
+        spells.off(index);
+      }
+    } else {
+      /* Now others with resisted effects. */
+      let stopped = false;
+      for (const effect of spell.effects) {
+        /* Timed effects: the intelligence/chance gate draws for every
+         * effect line of a non-smart monster (C short-circuit order). */
+        const timedGate = smart || !rng.oneIn(3);
+        if (timedGate && effect.eff === "TIMED_INC") {
+          let resisted = false;
+          for (const f of timedFail(effect.type ?? "") ?? []) {
+            if (resisted) break;
+            switch (f.code) {
+              case TMD_FAIL_FLAG_OBJECT: {
+                const of = (OF as Record<string, number>)[f.flag];
+                if (of !== undefined && flags.has(of)) resisted = true;
+                break;
+              }
+              case TMD_FAIL_FLAG_RESIST: {
+                const e = (ELEM as Record<string, number>)[f.flag];
+                if (e !== undefined && (el[e] ?? 0) > 0) resisted = true;
+                break;
+              }
+              case TMD_FAIL_FLAG_VULN: {
+                const e = (ELEM as Record<string, number>)[f.flag];
+                if (e !== undefined && (el[e] ?? 0) < 0) resisted = true;
+                break;
+              }
+              case TMD_FAIL_FLAG_PLAYER: {
+                const pf = (PF as Record<string, number>)[f.flag];
+                if (pf !== undefined && pflags.has(pf)) resisted = true;
+                break;
+              }
+              /* TMD_FAIL_FLAG_TIMED_EFFECT: the monster does not track the
+               * player's timed effects; do nothing. */
+              default:
+                break;
+            }
+          }
+          if (resisted) {
+            stopped = true;
+            break;
+          }
+        }
+
+        /* Mana drain (the chance gate draws per effect for non-smart). */
+        const manaGate = smart || rng.oneIn(2);
+        if (
+          manaGate &&
+          effect.eff === "DRAIN_MANA" &&
+          pflags.has(PF.NO_MANA)
+        ) {
+          stopped = true;
+          break;
+        }
+      }
+      if (stopped) spells.off(index);
+    }
+  }
+}
+
+/** The player-side seams update_smart_learn drives (mon-util.c L788). */
+export interface SmartLearnEnv {
+  /** OPT(p, birth_ai_learn). */
+  aiLearn: boolean;
+  /** equip_learn_flag(p, flag). */
+  equipLearnFlag: (of: number) => void;
+  /** equip_learn_element(p, element). */
+  equipLearnElement: (elem: number) => void;
+  /** player_of_has(p, flag). */
+  playerOfHas: (of: number) => boolean;
+  /** pf_has(p->state.pflags, pflag). */
+  playerPfHas: (pf: number) => boolean;
+  /** p->state.el_info[element].res_level. */
+  playerResLevel: (elem: number) => number;
+}
+
+/**
+ * update_smart_learn (mon-util.c L788): the monster learns an "observed"
+ * resistance or other player property (or its absence). The player always
+ * learns the corresponding rune (equip_learn_*); the monster's known_pstate is
+ * only updated under birth_ai_learn, for non-stupid monsters, with the
+ * one_in_(2) non-smart and one_in_(100) failure draws in upstream order.
+ * Robust to `element` being an arbitrary PROJ_ index, as upstream.
+ */
+export function updateSmartLearn(
+  rng: Rng,
+  mon: Monster,
+  env: SmartLearnEnv,
+  flag: number,
+  pflag: number,
+  element: number,
+): void {
+  const elementOk = element >= 0 && element < ELEM_MAX;
+
+  /* Sanity check. */
+  if (!flag && !elementOk) return;
+
+  /* Anything a monster might learn, the player should learn. */
+  if (flag) env.equipLearnFlag(flag);
+  if (elementOk) env.equipLearnElement(element);
+
+  /* Not allowed to learn. */
+  if (!env.aiLearn) return;
+
+  /* Too stupid to learn anything. */
+  if (monsterIsStupid(mon)) return;
+
+  /* Not intelligent, only learn sometimes. */
+  if (!monsterIsSmart(mon) && rng.oneIn(2)) return;
+
+  /* Analyze the knowledge; fail very rarely. */
+  if (rng.oneIn(100)) return;
+
+  /* Learn the flag. */
+  if (flag) {
+    if (env.playerOfHas(flag)) mon.knownPstate.flags.on(flag);
+    else mon.knownPstate.flags.off(flag);
+  }
+
+  /* Learn the pflag (upstream writes it with of_on/of_off; same bit ops). */
+  if (pflag) {
+    if (env.playerPfHas(pflag)) mon.knownPstate.pflags.on(pflag);
+    else mon.knownPstate.pflags.off(pflag);
+  }
+
+  /* Learn the element. */
+  if (elementOk) {
+    mon.knownPstate.elInfo[element] = env.playerResLevel(element);
+  }
 }
 
 /**

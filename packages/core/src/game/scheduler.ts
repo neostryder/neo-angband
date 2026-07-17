@@ -23,8 +23,7 @@ import { turnEnergy } from "./energy";
 import type { GameState } from "./context";
 import { updateMonsterDistances } from "./context";
 import { monDecTimed, monsterEffectLevel } from "../mon/timed";
-import { monsterTakeTerrainDamage } from "./mon-death";
-import type { NonplayerHitDeps } from "./mon-death";
+import { getNonplayerHitDeps, monsterTakeTerrainDamage } from "./mon-death";
 import {
   monsterCheckActive,
   monsterTurn,
@@ -119,12 +118,17 @@ export function processMonsters(state: GameState, minimumEnergy: number): void {
     /* Use up "some" energy. */
     mon.energy -= state.z.moveEnergy;
 
-    /* Mimics lie in wait: DEFERRED. */
+    /* Mimics lie in wait (mon-move.c L1947). */
+    if (monsterIsMimicking(mon)) continue;
 
     if (monsterCheckActive(mon, state)) {
       if (processMonsterTimed(mon, state)) continue;
       monsterTurn(mon, state);
-      /* monster_take_terrain_damage after the turn: DEFERRED. */
+      /* For symmetry with the player, the monster takes terrain damage
+       * after its turn (mon-move.c L1972). Needs the death deps installed
+       * by the session (installNonplayerHitDeps); inert otherwise. */
+      const deps = getNonplayerHitDeps(state);
+      if (deps) monsterTakeTerrainDamage(state, mon, deps);
     }
   }
 }

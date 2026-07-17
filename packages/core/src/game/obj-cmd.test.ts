@@ -14,6 +14,7 @@ import {
   AutoinscriptionRegistry,
   FlavorKnowledge,
   getAutoinscription,
+  NOOP_FLAVOR_AWARE_DEPS,
   setAutoinscription,
 } from "../obj/knowledge";
 import type { FlavorAwareDeps } from "../obj/knowledge";
@@ -196,6 +197,49 @@ describe("useAux (cmd-obj.c use_aux)", () => {
 
     useAux(state, potion, USE.SINGLE, makeDeps(state, { flavor }), { handle: h });
     expect(flavor.isAware(potion.kind)).toBe(true);
+  });
+
+  it("first identify-by-use grants object_learn_on_use XP (obj-knowledge.c L1925-1936)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const p = state.actor.player;
+    p.mhp = 30;
+    p.chp = 10;
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    const h = carry(state, potion);
+    const gains: number[] = [];
+    useAux(
+      state,
+      potion,
+      USE.SINGLE,
+      makeDeps(state, { flavor, expGain: (n) => gains.push(n) }),
+      { handle: h },
+    );
+    /* player_exp_gain(p, (lev + p->lev / 2) / p->lev), lev = kind level. */
+    const expected = Math.trunc(
+      (potion.kind.level + Math.trunc(p.lev / 2)) / p.lev,
+    );
+    expect(gains).toEqual([expected]);
+  });
+
+  it("an already-aware use grants no learn-on-use XP", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const p = state.actor.player;
+    p.mhp = 30;
+    p.chp = 10;
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    flavor.objectFlavorAware(potion.kind, NOOP_FLAVOR_AWARE_DEPS);
+    const h = carry(state, potion);
+    const gains: number[] = [];
+    useAux(
+      state,
+      potion,
+      USE.SINGLE,
+      makeDeps(state, { flavor, expGain: (n) => gains.push(n) }),
+      { handle: h },
+    );
+    expect(gains).toEqual([]);
   });
 
   it("becoming aware on use fires the #89 ignore fix via objectFlavorAware", () => {

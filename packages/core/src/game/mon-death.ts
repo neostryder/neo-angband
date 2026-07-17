@@ -46,6 +46,7 @@ import type { LoreStore } from "../mon/lore";
 import { getLore, loreTreasure } from "../mon/lore";
 import type { GameState } from "./context";
 import { deleteMonster } from "./context";
+import { monsterPrimaryGroupSize } from "./mon-group";
 import { monsterRevertShape } from "./mon-shape";
 import { formatMonsterMessage, formatPainMessage } from "./mon-message";
 import type { FloorEnv } from "./floor";
@@ -294,6 +295,27 @@ export interface NonplayerHitDeps extends MonsterDeathDeps {
 }
 
 /**
+ * The per-state registry the scheduler reads for terrain damage
+ * (monster_take_terrain_damage runs inside process_monsters, which has no deps
+ * of its own). The session installs the deps once after building the death
+ * deps; absent, terrain damage is inert (the pre-port behaviour).
+ */
+const NONPLAYER_HIT_DEPS = new WeakMap<GameState, NonplayerHitDeps>();
+
+/** Install the mon_take_nonplayer_hit deps for a state (session wiring). */
+export function installNonplayerHitDeps(
+  state: GameState,
+  deps: NonplayerHitDeps,
+): void {
+  NONPLAYER_HIT_DEPS.set(state, deps);
+}
+
+/** The installed mon_take_nonplayer_hit deps for a state, or null. */
+export function getNonplayerHitDeps(state: GameState): NonplayerHitDeps | null {
+  return NONPLAYER_HIT_DEPS.get(state) ?? null;
+}
+
+/**
  * mon_take_nonplayer_hit (mon-util.c L1193): inflict `dam` on `tMon` from a
  * non-player source (terrain, another monster). Uniques/arena monsters cannot
  * be killed this way (damage is capped to leave them alive). Wakes the monster
@@ -349,9 +371,9 @@ export function monTakeNonplayerHit(
     }
   }
 
-  /* Sometimes a monster gets scared by damage. */
+  /* Sometimes a monster gets scared by damage (group fear-save per member). */
   if (!tMon.mTimed[MON_TMD.FEAR] && dam > 0) {
-    monsterScaredByDamage(rng, tMon, dam);
+    monsterScaredByDamage(rng, tMon, dam, monsterPrimaryGroupSize(state, tMon));
   }
 
   return false;

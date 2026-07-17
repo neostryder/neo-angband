@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { FEAT, MFLAG, MON_TMD, OF, RF, SQUARE, TRF, TV } from "../generated";
+import { FEAT, MFLAG, MON_TMD, OF, RF, RSF, SQUARE, TMD, TRF, TV } from "../generated";
 import { FlagSet } from "../bitflag";
+import { Rng } from "../rng";
 import { distance, loc, locDiff } from "../loc";
 import type { Loc } from "../loc";
 import { makeNoise } from "../world/flow";
 import { GROUP_TYPE } from "../mon/monster";
-import { MON_GROUP } from "../mon/types";
+import { MON_GROUP, RSF_SIZE } from "../mon/types";
 import { newOfFlags } from "../obj/types";
 import { objectNew } from "../obj/object";
 import type { GameObject } from "../obj/object";
@@ -20,11 +21,14 @@ import {
   getMoveBodyguard,
   getMoveChooseDirection,
   getMoveFindHiding,
+  getMoveFindRange,
   monsterCheckActive,
+  monsterNearPermwall,
   monsterTurn,
   monsterTurnMultiply,
   monsterTurnShouldStagger,
   processMonsterTimed,
+  shortRange,
 } from "./monster-turn";
 import { GRANITE, featureReg, addMon, makeRace, makeBlow, makeState } from "./harness";
 
@@ -846,5 +850,185 @@ describe("monster-turn RNG-order determinism", () => {
       return trail.join("|");
     }
     expect(run(777)).toBe(run(777));
+  });
+});
+
+describe("get_move_find_range best_range (mon-move.c L285-300)", () => {
+  function rangedMon(
+    state: ReturnType<typeof makeState>,
+    opts: { freqSpell?: number; freqInnate?: number; spells?: number[] },
+  ): ReturnType<typeof addMon> {
+    const race = makeRace({ level: 20 });
+    race.freqSpell = opts.freqSpell ?? 0;
+    race.freqInnate = opts.freqInnate ?? 0;
+    const flags = new FlagSet(RSF_SIZE);
+    for (const s of opts.spells ?? []) flags.on(s);
+    race.spellFlags = flags;
+    const mon = addMon(state, race, loc(25, 10), { hp: 40 });
+    updateMonsterDistances(state);
+    return mon;
+  }
+
+  it("a plain melee monster keeps best_range == min_range", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = rangedMon(state, {});
+    getMoveFindRange(mon, state);
+    expect(mon.bestRange).toBe(mon.minRange);
+  });
+
+  it("an infrequent spellcaster (freq_spell > 24) sits back +3", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = rangedMon(state, { freqSpell: 30, spells: [RSF.BA_FIRE] });
+    getMoveFindRange(mon, state);
+    expect(mon.bestRange).toBe(mon.minRange + 3);
+  });
+
+  it("a healthy breather with freq_innate > 24 clamps best_range at >= 1", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = rangedMon(state, { freqInnate: 30, spells: [RSF.BR_FIRE] });
+    mon.hp = mon.maxhp; /* over half health */
+    getMoveFindRange(mon, state);
+    /* MAX(1, best_range): with min_range 1 the value stays 1 (no +3). */
+    expect(mon.bestRange).toBe(Math.max(1, mon.minRange));
+  });
+
+  it("an archer (RST_ARCHERY, freq_innate < 4) prefers +3 distance", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = rangedMon(state, { freqInnate: 2, spells: [RSF.ARROW] });
+    getMoveFindRange(mon, state);
+    expect(mon.bestRange).toBe(mon.minRange + 3);
+  });
+});
+
+describe("monster_near_permwall (mon-move.c L65) and the PASS_WALL beeline", () => {
+  const PERM = featureReg.byCodeName("PERM").fidx;
+
+  it("is false when the player is projectable (no wall in the way)", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = addMon(state, makeRace({ level: 10, flags: [RF.PASS_WALL] }), loc(20, 10));
+    updateMonsterDistances(state);
+    expect(monsterNearPermwall(mon, state)).toBe(false);
+    /* projectable short-circuits before the randint0(99) draw: the stream is
+     * untouched, so the next draw equals a fresh probe's first draw. */
+    expect(state.rng.randint0(1000000)).toBe(new Rng(1).randint0(1000000));
+  });
+
+  it("is true when a permanent wall blocks the direct rock path", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    /* A full PERM column between monster and player. */
+    for (let y = 1; y < 24; y++) state.chunk.setFeat(loc(18, y), PERM);
+    const mon = addMon(state, makeRace({ level: 10, flags: [RF.PASS_WALL] }), loc(22, 10));
+    updateMonsterDistances(state);
+    expect(monsterNearPermwall(mon, state)).toBe(true);
+  });
+
+  it("with plain granite in the way, flows only on the 5% roll", () => {
+    const seed = 12345;
+    const state = makeState({ playerGrid: loc(15, 10), seed });
+    for (let y = 1; y < 24; y++) state.chunk.setFeat(loc(18, y), GRANITE);
+    const mon = addMon(state, makeRace({ level: 10, flags: [RF.PASS_WALL] }), loc(22, 10));
+    updateMonsterDistances(state);
+    /* The first draw after the failed projectable is randint0(99): the
+     * outcome tracks the C branch exactly for this seed. */
+    const probe = new Rng(seed);
+    const expected = probe.randint0(99) < 5;
+    expect(monsterNearPermwall(mon, state)).toBe(expected);
+  });
+
+  it("a PASS_WALL monster near perm walls falls back to the flow instead of beelining", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    /* A perm wall across the direct path, with a gap to the south so noise
+     * can flow around it. */
+    for (let y = 1; y < 19; y++) state.chunk.setFeat(loc(18, y), PERM);
+    const race = makeRace({ level: 10, flags: [RF.PASS_WALL], hearing: 60 });
+    const mon = addMon(state, race, loc(22, 10));
+    updateMonsterDistances(state);
+    /* Noise flows around the perm wall; the monster follows it rather than
+     * targeting the player's grid directly through the wall. */
+    makeNoise(state.chunk, { grid: state.actor.grid, covertTracks: false });
+    const decision = getMove(mon, state);
+    expect(decision.move).toBe(true);
+    /* It tracked (sound), not beelined. */
+    expect(decision.tracking).toBe(true);
+  });
+});
+
+describe("TMD_COVERTRACKS hides a distant player (mon-move.c L95)", () => {
+  it("a monster beyond max_sight / 4 loses sight of a covered player", () => {
+    const base = (): { state: GameState; mon: ReturnType<typeof addMon> } => {
+      const state = makeState({ playerGrid: loc(5, 10) });
+      const race = makeRace({ level: 10, hearing: 0, smell: 0 });
+      const mon = addMon(state, race, loc(25, 10));
+      state.chunk.sqinfoOn(mon.grid, SQUARE.VIEW);
+      updateMonsterDistances(state);
+      return { state, mon };
+    };
+
+    /* Without covering tracks: beelines at the player's grid. */
+    const plain = base();
+    getMove(plain.mon, plain.state);
+    expect(plain.mon.target.grid).toEqual(plain.state.actor.grid);
+
+    /* Covering tracks at distance 20 > max_sight / 4: cannot see. */
+    const covered = base();
+    covered.state.actor.player.timed[TMD.COVERTRACKS] = 10;
+    getMove(covered.mon, covered.state);
+    expect(covered.mon.target.grid).not.toEqual(covered.state.actor.grid);
+  });
+
+  it("shortRange quarters max_range while covering tracks", () => {
+    const state = makeState();
+    expect(shortRange(state)).toBe(state.z.maxRange);
+    state.actor.player.timed[TMD.COVERTRACKS] = 5;
+    expect(shortRange(state)).toBe(Math.trunc(state.z.maxRange / 4));
+  });
+});
+
+describe("react_to_slay pickup safety (mon-move.c L1420)", () => {
+  function slayState(raceFlags: number[]): {
+    state: GameState;
+    mon: ReturnType<typeof addMon>;
+    barrier: Loc;
+  } {
+    const built = beeliningWest({ flags: [RF.TAKE_ITEM, ...raceFlags] });
+    /* Register an anti-evil slay in slot 1 of the state's slay table. */
+    (built.state.slays as unknown[]).push({
+      index: 1,
+      code: "EVIL_2",
+      name: "evil creatures",
+      base: null,
+      meleeVerb: "smite",
+      rangeVerb: "deeply pierces",
+      raceFlag: RF.EVIL,
+      multiplier: 2,
+      oMultiplier: 15,
+      power: 0,
+    });
+    return built;
+  }
+
+  it("a monster will not grab an object bearing a slay that hurts it", () => {
+    const { state, mon, barrier } = slayState([RF.EVIL]);
+    const item = putItem(state, barrier, TV.SWORD);
+    item.slays = [false, true];
+
+    monsterTurn(mon, state);
+
+    expect(mon.grid).toEqual(barrier);
+    /* The item stays on the floor; nothing is carried. */
+    const pile = state.floor.get(barrier.y * state.chunk.width + barrier.x);
+    expect(pile).toEqual([item]);
+    expect(mon.heldObj).toHaveLength(0);
+  });
+
+  it("a non-evil monster grabs the same object freely", () => {
+    const { state, mon, barrier } = slayState([]);
+    const item = putItem(state, barrier, TV.SWORD);
+    item.slays = [false, true];
+
+    monsterTurn(mon, state);
+
+    expect(mon.grid).toEqual(barrier);
+    expect(mon.heldObj).toContain(item);
   });
 });
