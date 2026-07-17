@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
 import { EF, KF, SQUARE, TMD, TV } from "../generated";
+import { OBJ_NOTICE } from "../obj/knowledge";
 import { loc } from "../loc";
 import {
   EffectRegistry,
@@ -41,26 +42,38 @@ import { updateMonsterDistances } from "./context";
 import type { GameState } from "./context";
 import { FLOOR, addMon, makeRace, makeState, monReg, plReg } from "./harness";
 import {
+  NOSCORE,
+  NOSCORE_SCORE_INVALIDATING,
+  markNoscore,
+  noscoreInvalidatesScore,
   wizAcquire,
   wizAdvance,
   wizBanish,
+  wizCheatDeath,
   wizCreateObj,
   wizCreateTrap,
   wizCureAll,
   wizCurseItem,
   wizDetectAllMonsters,
+  wizDisplayItem,
   wizDumpLevelMap,
   wizEditPlayerExp,
   wizEditPlayerGold,
+  wizEditPlayerStart,
   wizEditPlayerStat,
+  wizJumpLevel,
   wizLearnObjectKinds,
   wizMagicMap,
   wizPeekFlow,
+  wizPlayItemAccept,
+  wizPlayItemBegin,
+  wizPlayItemReject,
   wizQueryFeature,
   wizQuerySquareFlag,
   wizRecallMonster,
   wizRerate,
   wizRerollItem,
+  wizStatItem,
   wizSummonNamed,
   wizTeleportRandom,
   wizWipeRecall,
@@ -496,5 +509,168 @@ describe("map-query DATA commands", () => {
     const rows = wizDumpLevelMap(state, wizDeps(state, true));
     expect(rows.length).toBe(15);
     expect(rows[0]!.length).toBe(20);
+  });
+});
+
+/** A prepped, average non-artifact sword for the item-shell tests. */
+function makeSword(state: GameState): GameObject {
+  const kind = objReg.kinds.find(
+    (k) => k.tval === TV.SWORD && k.kidx < objReg.ordinaryKindCount,
+  )!;
+  return objectPrep(state.rng, objReg, constants, kind, 5, "average");
+}
+
+describe("wiz_display_item DATA half (cmd-wizard.c L190)", () => {
+  it("returns the scalar item facts the debug panel prints", () => {
+    const state = makeState();
+    const obj = makeSword(state);
+    const disp = wizDisplayItem(obj, wizDeps(state, true), { all: true });
+    expect(disp).not.toBeNull();
+    expect(disp!.dd).toBe(obj.dd);
+    expect(disp!.ds).toBe(obj.ds);
+    expect(disp!.kidx).toBe(obj.kind.kidx);
+    expect(disp!.tval).toBe(obj.tval);
+    expect(disp!.sval).toBe(obj.sval);
+    expect(disp!.number).toBe(obj.number);
+    /* No artifact / ego on a plain sword: name1 == 0, egoidx == -1. */
+    expect(disp!.name1).toBe(0);
+    expect(disp!.egoidx).toBe(-1);
+  });
+
+  it("is gated: no wizard mode returns null", () => {
+    const state = makeState();
+    const obj = makeSword(state);
+    expect(wizDisplayItem(obj, wizDeps(state, false))).toBeNull();
+  });
+});
+
+describe("do_cmd_wiz_play_item begin / reject / accept (cmd-wizard.c L1642)", () => {
+  it("reject restores the snapshotted item after an edit", () => {
+    const state = makeState();
+    const obj = makeSword(state);
+    const deps = wizDeps(state, true);
+    const original = wizPlayItemBegin(obj, deps)!;
+    expect(original).not.toBeNull();
+    obj.toH = 99;
+    obj.toD = 88;
+    wizPlayItemReject(obj, original, deps);
+    expect(obj.toH).toBe(original.toH);
+    expect(obj.toD).toBe(original.toD);
+  });
+
+  it("accept re-runs wield learning on a changed equipped item", () => {
+    /* Upstream clears the WORN gate then re-runs object_learn_on_wield so the
+     * edited properties are re-learned; the learn re-marks WORN. Starting
+     * unworn, an accepted equipped edit therefore ends up WORN-marked. */
+    const state = makeState();
+    const obj = makeSword(state);
+    expect(obj.notice & OBJ_NOTICE.WORN).toBe(0);
+    const ran = wizPlayItemAccept(
+      state,
+      obj,
+      { changed: true, equipped: true },
+      wizDeps(state, true),
+    );
+    expect(ran).toBe(true);
+    expect(obj.notice & OBJ_NOTICE.WORN).toBe(OBJ_NOTICE.WORN);
+  });
+
+  it("accept is a no-op when nothing changed", () => {
+    const state = makeState();
+    const obj = makeSword(state);
+    const ran = wizPlayItemAccept(
+      state,
+      obj,
+      { changed: false, equipped: true },
+      wizDeps(state, true),
+    );
+    expect(ran).toBe(true);
+    expect(obj.notice & OBJ_NOTICE.WORN).toBe(0);
+  });
+});
+
+describe("do_cmd_wiz_stat_item (cmd-wizard.c L2386)", () => {
+  it("classifies every same-tval roll as match/better/worse/other", () => {
+    const state = makeState();
+    const obj = makeSword(state);
+    const res = wizStatItem(
+      state,
+      { obj, roll: 0, level: 1, nRolls: 300 },
+      wizDeps(state, true),
+    );
+    expect(res).not.toBeNull();
+    expect(res!.rolls).toBe(300);
+    /* Only same-tval/sval rolls are bucketed; the buckets cannot exceed the
+     * number of rolls performed. */
+    const bucketed = res!.matches + res!.better + res!.worse + res!.other;
+    expect(bucketed).toBeLessThanOrEqual(res!.rolls);
+  });
+});
+
+describe("do_cmd_wiz_edit_player_start (cmd-wizard.c L1202)", () => {
+  it("applies the batch stat / gold / exp edits with their clamps", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    wizEditPlayerStart(
+      state,
+      { stats: [200, undefined, 1], gold: 4242, exp: 1500 },
+      wizDeps(state, true),
+    );
+    expect(p.statMax[0]).toBe(118); /* clamped high. */
+    expect(p.statMax[2]).toBe(3); /* clamped low. */
+    expect(p.au).toBe(4242);
+    expect(p.exp).toBe(1500);
+  });
+});
+
+describe("NOSCORE cheat-flag model (player.h L95-99, score.c L289)", () => {
+  it("mirrors the upstream bit values exactly", () => {
+    expect(NOSCORE.WIZARD).toBe(0x0002);
+    expect(NOSCORE.DEBUG).toBe(0x0008);
+    expect(NOSCORE.JUMPING).toBe(0x0010);
+    expect(NOSCORE.BORG).toBe(0x0020);
+    expect(NOSCORE_SCORE_INVALIDATING).toBe(
+      NOSCORE.WIZARD | NOSCORE.DEBUG | NOSCORE.BORG,
+    );
+  });
+
+  it("markNoscore ORs bits and masks to 16 bits", () => {
+    expect(markNoscore(0, NOSCORE.WIZARD)).toBe(0x0002);
+    expect(markNoscore(NOSCORE.WIZARD, NOSCORE.DEBUG)).toBe(0x000a);
+    expect(markNoscore(0x1_0000, NOSCORE.BORG)).toBe(0x0020);
+  });
+
+  it("only WIZARD/DEBUG/BORG invalidate the score, not JUMPING", () => {
+    expect(noscoreInvalidatesScore(NOSCORE.WIZARD)).toBe(true);
+    expect(noscoreInvalidatesScore(NOSCORE.DEBUG)).toBe(true);
+    expect(noscoreInvalidatesScore(NOSCORE.BORG)).toBe(true);
+    expect(noscoreInvalidatesScore(NOSCORE.JUMPING)).toBe(false);
+    expect(noscoreInvalidatesScore(0)).toBe(false);
+  });
+
+  it("wizJumpLevel marks NOSCORE_JUMPING through the seam", () => {
+    const state = makeState();
+    const bits: number[] = [];
+    const deps: WizardDeps = {
+      ...wizDeps(state, true),
+      markNoscore: (b) => bits.push(b),
+    };
+    const ran = wizJumpLevel(state, { level: 5 }, deps);
+    expect(ran).toBe(true);
+    expect(bits).toContain(NOSCORE.JUMPING);
+  });
+
+  it("wizCheatDeath marks NOSCORE_WIZARD through the seam", () => {
+    const state = makeState();
+    state.isDead = true;
+    const bits: number[] = [];
+    const deps: WizardDeps = {
+      ...wizDeps(state, true),
+      markNoscore: (b) => bits.push(b),
+    };
+    const ran = wizCheatDeath(state, deps);
+    expect(ran).toBe(true);
+    expect(bits).toContain(NOSCORE.WIZARD);
+    expect(state.isDead).toBe(false);
   });
 });
