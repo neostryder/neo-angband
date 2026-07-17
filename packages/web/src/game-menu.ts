@@ -10,10 +10,10 @@
  *
  * The death menu follows ui-death.c death_actions (L356-367) with its stable
  * MN_CASELESS_TAGS letters, reduced to the actions this port implements:
- * Information (i), Messages (m), View scores (v), New Game (n). File dump /
- * Examine items / History / Spoilers / Quit are upstream rows with no web
- * backing yet (quit is meaningless in a browser tab) and are omitted rather
- * than shown dead.
+ * Information (i), Messages (m), File dump (f), View scores (v), History (h),
+ * New Game (n). Examine items (x) needs the get_item examine loop, Spoilers (s)
+ * is the CLI-only randart spoiler generator, and Quit (q) is meaningless in a
+ * browser tab; those three upstream rows are omitted rather than shown dead.
  */
 
 import type { MenuItem } from "./overlay";
@@ -109,7 +109,13 @@ export function gameMenuEntries(): GameMenuEntry[] {
   ];
 }
 
-export type DeathMenuAction = "info" | "messages" | "scores" | "new";
+export type DeathMenuAction =
+  | "info"
+  | "messages"
+  | "dump"
+  | "scores"
+  | "history"
+  | "new";
 
 export interface DeathMenuEntry {
   action: DeathMenuAction;
@@ -124,15 +130,23 @@ export function deathMenuEntries(): DeathMenuEntry[] {
   return [
     {
       action: "info",
-      item: { label: "Information", tag: "i", hint: "The final character sheet." },
+      item: { label: "Information", tag: "i", hint: "The final character sheet and gear." },
     },
     {
       action: "messages",
       item: { label: "Messages", tag: "m", hint: "The last messages of the run." },
     },
     {
+      action: "dump",
+      item: { label: "File dump", tag: "f", hint: "Download the character dump as text." },
+    },
+    {
       action: "scores",
       item: { label: "View scores", tag: "v", hint: "The Hall of Fame." },
+    },
+    {
+      action: "history",
+      item: { label: "History", tag: "h", hint: "The character's life history." },
     },
     {
       action: "new",
