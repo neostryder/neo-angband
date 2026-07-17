@@ -1,21 +1,22 @@
 /**
- * The new-character INTERFACE-defaults seam (StartGameOptions.interfaceDefaults),
- * the mechanism behind the bundled qol content mod. Proves:
- *  (a) a new character born with interfaceDefaults gets those INTERFACE values;
- *  (b) without them, the character gets the stock OPTION_ENTRIES table defaults;
- *  (c) the seam REFUSES to change any BIRTH / CHEAT / SCORE option even when one
- *      is present in the supplied data (the defensive filterInterfaceOverrides).
+ * Two things this suite pins after the mod-scope reset (2026-07-16):
  *
- * The exact option set the qol mod ships lives in packages/web/mods/qol/
- * options.json + docs/modding/QOL.md; this test pins the seam behaviour, not
- * that particular list.
+ *  1. FAITHFUL CORE OPTIONS. Every upstream Angband option ships in core with
+ *     its upstream default (OPTION_ENTRIES.normal) - the qol mod does NOT
+ *     redefine option defaults (that was the earlier mistake). A new character
+ *     gets exactly the table defaults; there is no interface-defaults override
+ *     seam any more.
+ *
+ *  2. THE modRules SEAM. startGame / loadGame accept the host-resolved mod-rule
+ *     flags and seed GameState.modRules with a COPY; absent = faithful (no map).
+ *     This is the declarative bundled-mod mechanism (qol / bug-fixes).
  */
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { startGame } from "./game";
 import type { GamePack } from "./game";
-import { OptionState, filterInterfaceOverrides } from "../player/options";
+import { OPTION_ENTRIES } from "../generated/options";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -73,95 +74,57 @@ const pack: GamePack = {
   },
 } as unknown as GamePack;
 
-// The qol mod's recommended INTERFACE-option defaults (all `normal:false` in
-// the table, so flipping them to true is observable).
-const QOL_DEFAULTS: Record<string, boolean> = {
-  show_damage: true,
-  show_flavors: true,
-  center_player: true,
-  purple_uniques: true,
-  effective_speed: true,
-  notify_recharge: true,
-};
-
-describe("startGame interfaceDefaults seam (qol mod mechanism)", () => {
-  it("(a) a new character with interfaceDefaults gets the QoL INTERFACE values", () => {
-    const { state } = startGame(pack, {
-      seed: 123,
-      depth: 1,
-      interfaceDefaults: QOL_DEFAULTS,
-    });
-    const opts = state.options!;
-    for (const name of Object.keys(QOL_DEFAULTS)) {
-      expect(opts.get(name)).toBe(true);
-    }
-  });
-
-  it("(b) without interfaceDefaults a new character keeps the stock table defaults", () => {
+describe("faithful core option defaults", () => {
+  it("a new character gets the upstream OPTION_ENTRIES.normal default for every option", () => {
     const { state } = startGame(pack, { seed: 123, depth: 1 });
     const opts = state.options!;
-    // Every one of these is `normal:false` in OPTION_ENTRIES.
-    for (const name of Object.keys(QOL_DEFAULTS)) {
-      expect(opts.get(name)).toBe(false);
+    for (const entry of OPTION_ENTRIES) {
+      expect(opts.get(entry.name)).toBe(entry.normal);
     }
   });
 
-  it("(c) the seam refuses BIRTH/CHEAT/SCORE options present in the data", () => {
-    const { state } = startGame(pack, {
-      seed: 123,
-      depth: 1,
-      interfaceDefaults: {
-        // A legitimate interface default is still applied...
-        show_damage: true,
-        // ...but these rules/scoring options must be ignored by the filter.
-        birth_randarts: true,
-        birth_no_artifacts: true,
-        cheat_hear: true,
-        score_hear: true,
-      },
-    });
+  it("options that were briefly mislabelled QoL are plain core options at their upstream default", () => {
+    const { state } = startGame(pack, { seed: 123, depth: 1 });
     const opts = state.options!;
-    expect(opts.get("show_damage")).toBe(true); // interface: applied
-    expect(opts.get("birth_randarts")).toBe(false); // birth: table default
-    expect(opts.get("birth_no_artifacts")).toBe(false);
-    expect(opts.get("cheat_hear")).toBe(false); // cheat: never set
-    expect(opts.get("score_hear")).toBe(false); // score: never set
-    // The scoring gate is untouched: no score_* option was flipped.
-    expect(opts.anyScoreSet()).toBe(false);
+    // These are all upstream INTERFACE options; core ships them at the exact
+    // upstream default, whatever it is (the qol mod must not touch them).
+    for (const name of [
+      "show_damage",
+      "show_flavors",
+      "center_player",
+      "purple_uniques",
+      "effective_speed",
+      "notify_recharge",
+      "auto_more",
+    ]) {
+      const entry = OPTION_ENTRIES.find((e) => e.name === name)!;
+      expect(opts.get(name)).toBe(entry.normal);
+    }
   });
 });
 
-describe("filterInterfaceOverrides (defensive gate)", () => {
-  it("keeps only INTERFACE-type options and drops everything else", () => {
-    const filtered = filterInterfaceOverrides({
-      show_damage: true,
-      purple_uniques: false,
-      birth_randarts: true, // BIRTH
-      cheat_hear: true, // CHEAT
-      score_hear: true, // SCORE
-      does_not_exist: true, // unknown
+describe("startGame modRules seam (declarative bundled-mod mechanism)", () => {
+  it("seeds GameState.modRules from opts.modRules", () => {
+    const { state } = startGame(pack, {
+      seed: 123,
+      depth: 1,
+      modRules: { "qol.autoDig": true, "bugfix.duplicateArtifact": true },
     });
-    expect(filtered).toEqual({ show_damage: true, purple_uniques: false });
+    expect(state.modRules).toEqual({
+      "qol.autoDig": true,
+      "bugfix.duplicateArtifact": true,
+    });
   });
 
-  it("ignores non-boolean values", () => {
-    const filtered = filterInterfaceOverrides({
-      show_damage: "yes" as unknown as boolean,
-      show_flavors: 1 as unknown as boolean,
-      center_player: true,
-    });
-    expect(filtered).toEqual({ center_player: true });
+  it("leaves modRules absent (faithful 4.2.6) when none are supplied", () => {
+    const { state } = startGame(pack, { seed: 123, depth: 1 });
+    expect(state.modRules).toBeUndefined();
   });
 
-  it("an OptionState built from the filter matches a direct new-character build", () => {
-    const viaFilter = new OptionState({
-      overrides: filterInterfaceOverrides({
-        show_damage: true,
-        cheat_hear: true, // must be dropped
-      }),
-    });
-    expect(viaFilter.get("show_damage")).toBe(true);
-    expect(viaFilter.get("cheat_hear")).toBe(false);
-    expect(viaFilter.anyScoreSet()).toBe(false);
+  it("copies the map so later menu toggles do not mutate the caller's object", () => {
+    const supplied = { "qol.autoDig": true };
+    const { state } = startGame(pack, { seed: 123, depth: 1, modRules: supplied });
+    state.modRules!["qol.autoDig"] = false;
+    expect(supplied["qol.autoDig"]).toBe(true); // caller's copy untouched
   });
 });

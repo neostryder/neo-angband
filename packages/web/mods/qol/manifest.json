@@ -6,5 +6,13 @@
   "dependencies": { "core": "*" },
   "author": "neostryder (RPGM Tools)",
   "license": "GPL-2.0-only",
-  "description": "Bundled, default-on, fully-removable quality-of-life mod. UI-level only with ZERO rules changes: it ships recommended INTERFACE-option defaults for NEW characters (show_damage, show_flavors, center_player, purple_uniques, effective_speed, notify_recharge). Existing saves are unaffected; disabling it reverts new characters to the stock table defaults. See docs/modding/QOL.md."
+  "description": "Bundled, default-on, fully-removable quality-of-life mod. It adds NEW conveniences that are not part of faithful Angband (the built-in Angband options ship in core with their upstream defaults and are NOT touched here). Every tweak is a named, described toggle in the in-app Fixes & tweaks menu; QoL tweaks are ON by default. See docs/modding/QOL.md.",
+  "rules": [
+    {
+      "flag": "qol.autoDig",
+      "title": "Auto-dig on walk",
+      "description": "Walking into a rubble pile or mineral vein you can tunnel through starts digging automatically, instead of just bumping into it. You still stop after each attempt and never step onto the dug-out square in the same move.",
+      "default": true
+    }
+  ]
 }

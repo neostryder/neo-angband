@@ -1,65 +1,62 @@
 /**
- * The bundled qol content mod's DATA + its pack.ts passthrough.
- *
- * Ties the on-disk mod (packages/web/mods/qol/) to the zero-rules-changes
- * guarantee: every option it presets must be an INTERFACE option (never a
- * BIRTH / CHEAT / SCORE option), so filterInterfaceOverrides is a no-op on
- * clean mod data. Also exercises loadComposedInterfaceDefaults, the pack.ts
- * accessor the host threads into startGame.
+ * The bundled qol content mod after the mod-scope reset: a content mod that
+ * DECLARES quality-of-life rule toggles (PackManifest.rules), all ON by default.
+ * It must NOT touch built-in Angband options (those ship in core at their
+ * upstream defaults). This ties the on-disk manifest to that contract and checks
+ * pack.ts surfaces its rule declaration for the Fixes & tweaks menu / resolver.
  */
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { OPTION_ENTRIES, filterInterfaceOverrides } from "@neo-angband/core";
-import { loadComposedInterfaceDefaults } from "./pack";
+import { validateManifest } from "@neo-angband/mod-sdk";
+import { loadEnabledModRuleDecls } from "./pack";
+import { resolveModRules } from "./mod-store";
 
-const OPTION_TYPE = new Map<string, string>(
-  OPTION_ENTRIES.map((e) => [e.name, e.type]),
+const manifest = validateManifest(
+  JSON.parse(readFileSync(new URL("../mods/qol/manifest.json", import.meta.url), "utf8")),
 );
 
-function readQolOptionDefaults(): Record<string, boolean> {
-  const raw = JSON.parse(
-    readFileSync(new URL("../mods/qol/options.json", import.meta.url), "utf8"),
-  ) as { records?: { interfaceDefaults?: Record<string, boolean> }[] };
-  const out: Record<string, boolean> = {};
-  for (const rec of raw.records ?? []) {
-    Object.assign(out, rec.interfaceDefaults ?? {});
-  }
-  return out;
-}
-
-describe("qol mod data (zero rules changes)", () => {
-  it("the manifest is a bundled content mod credited to the handle only", () => {
-    const m = JSON.parse(
-      readFileSync(new URL("../mods/qol/manifest.json", import.meta.url), "utf8"),
-    ) as Record<string, string>;
-    expect(m.id).toBe("qol");
-    expect(m.shape).toBe("content");
-    expect(m.author).toBe("neostryder (RPGM Tools)");
-    expect(m.license).toBe("GPL-2.0-only");
+describe("qol bundled mod", () => {
+  it("is a content mod with no capabilities, credited to the handle only", () => {
+    expect(manifest.id).toBe("qol");
+    expect(manifest.shape).toBe("content");
+    expect(manifest.capabilities).toBeUndefined();
+    expect(manifest.author).toBe("neostryder (RPGM Tools)");
+    expect(manifest.license).toBe("GPL-2.0-only");
   });
 
-  it("every preset option exists and is an INTERFACE option (never BIRTH/CHEAT/SCORE)", () => {
-    const defaults = readQolOptionDefaults();
-    expect(Object.keys(defaults).length).toBeGreaterThan(0);
-    for (const [name, value] of Object.entries(defaults)) {
-      expect(typeof value).toBe("boolean");
-      expect(OPTION_TYPE.get(name)).toBe("INTERFACE");
+  it("declares the auto-dig tweak, ON by default", () => {
+    const rules = manifest.rules ?? [];
+    const autoDig = rules.find((r) => r.flag === "qol.autoDig");
+    expect(autoDig).toBeDefined();
+    expect(autoDig!.default).toBe(true); // QoL tweaks are on by default
+    expect(autoDig!.title.length).toBeGreaterThan(0);
+    expect(autoDig!.description.length).toBeGreaterThan(0);
+  });
+
+  it("declares no built-in Angband option defaults (those live in faithful core)", () => {
+    // The manifest must carry rules only; it must not smuggle option overrides.
+    expect(manifest).not.toHaveProperty("interfaceDefaults");
+    for (const r of manifest.rules ?? []) {
+      // Every rule is a mod-owned flag, namespaced - never a bare option name.
+      expect(r.flag).toMatch(/^qol\./);
     }
-  });
-
-  it("the mod's data survives the core defensive filter unchanged (it is clean)", () => {
-    const defaults = readQolOptionDefaults();
-    expect(filterInterfaceOverrides(defaults)).toEqual(defaults);
   });
 });
 
-describe("loadComposedInterfaceDefaults (pack.ts passthrough)", () => {
-  it("surfaces the qol mod's interface defaults (default-on, discovered)", () => {
-    const composed = loadComposedInterfaceDefaults();
-    const onDisk = readQolOptionDefaults();
-    for (const [name, value] of Object.entries(onDisk)) {
-      expect(composed[name]).toBe(value);
-    }
+describe("pack.ts rule discovery + resolution", () => {
+  it("surfaces the qol mod's auto-dig rule (default-on, discovered)", () => {
+    const decls = loadEnabledModRuleDecls();
+    const autoDig = decls.find((d) => d.rule.flag === "qol.autoDig");
+    expect(autoDig).toBeDefined();
+    expect(autoDig!.modId).toBe("qol");
+  });
+
+  it("resolveModRules honours the default and a saved choice", () => {
+    const decls = [{ rule: { flag: "qol.autoDig", default: true } }];
+    expect(resolveModRules(decls, {})).toEqual({ "qol.autoDig": true });
+    expect(resolveModRules(decls, { "qol.autoDig": false })).toEqual({
+      "qol.autoDig": false,
+    });
   });
 });
