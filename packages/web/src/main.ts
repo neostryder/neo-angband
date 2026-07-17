@@ -265,6 +265,14 @@ import {
   showPredictedScores,
 } from "./score";
 import { enterScore, noscoreInvalidatesScore, BIRTH_MESSAGE_RECALL_BANNER } from "@neo-angband/core";
+import {
+  markNoscore,
+  ObjAllocState,
+  ArtifactState,
+} from "@neo-angband/core";
+import type { WizardDeps, MakeDeps } from "@neo-angband/core";
+import { runWizardToggle, runWizardDebugMenu } from "./wizard";
+import type { WizardUiCtx } from "./wizard";
 import { runStore } from "./shop";
 import { runHelp } from "./help";
 import { runOptionsMenu } from "./options";
@@ -2644,6 +2652,68 @@ async function openHallOfFame(): Promise<void> {
   render();
 }
 
+// ---- Wizard / debug mode (WP-14, gaps 15.1-15.3) -------------------------
+// Wizard mode is a per-session client flag (upstream arg_wizard / player->wizard
+// is a launch/runtime toggle, not part of the save); the noscore cheat bits it
+// sets DO persist on player.noscore (WP-10 save) and gate the score (WP-12).
+let wizardMode = false;
+
+/**
+ * Assemble the WizardDeps the debug menu dispatches through. markNoscore is the
+ * WP-10 handoff hook: it ORs the NOSCORE_* bits into the live player.noscore
+ * (persisted by save.ts, read by the score gate via noscoreInvalidatesScore).
+ *
+ * The object/monster creation bundles (makeDeps/monPlace) are the sanctioned
+ * genDeps construction (session/boot.ts genDeps) rebuilt from the bound
+ * registries + the game's shared ArtifactState, so wizard-created content marks
+ * the same artifact flags as the rest of the game. The effect interpreter,
+ * ExpDeps, TrapDeps and the LIVE MonPlaceDeps (summon) are assembled privately
+ * inside session/game.ts wireGame and are not surfaced on StartedGame yet, so
+ * they are omitted here (their commands report "not available" until that seam
+ * lands - see the WP-14 WIRING-NEEDED note); the engine actions no-op when
+ * their bundle is absent.
+ */
+function buildWizardDeps(): WizardDeps {
+  const reg = booted.registries;
+  const player = state.actor.player;
+  const noArtifacts = state.options?.get("birth_no_artifacts") ?? false;
+  const makeDeps: MakeDeps = {
+    reg: reg.objects,
+    alloc: new ObjAllocState(reg.objects, reg.constants),
+    constants: reg.constants,
+    artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
+    noArtifacts,
+  };
+  return {
+    wizard: wizardMode,
+    msg: say,
+    // WP-10 handoff: OR the cheat bits into the live, persisted player.noscore.
+    markNoscore: (bits: number): void => {
+      player.noscore = markNoscore(player.noscore, bits);
+    },
+    makeDeps,
+    ...(game.flavor ? { flavor: game.flavor } : {}),
+    races: reg.monsters.races,
+    artifacts: reg.objects.artifacts,
+    curses: reg.objects.curses,
+  };
+}
+
+/** The runtime context the wizard UI needs (state + deps + shell callbacks). */
+function wizardCtx(): WizardUiCtx {
+  return {
+    term,
+    state,
+    deps: buildWizardDeps(),
+    say,
+    refresh: () => render(),
+    changeLevel: (depth: number): void => {
+      game.changeLevel(depth);
+      state.generateLevel = false;
+    },
+  };
+}
+
 /** The roster metadata for the current character, drawn from the live game. */
 function metaFromState(id: string): CharMeta {
   const p = state.actor.player;
@@ -3807,6 +3877,23 @@ window.addEventListener("keydown", (ev) => {
       autosave(true);
       message = "Game saved. It will resume automatically next time.";
       render();
+      return;
+    }
+    // Toggle wizard mode (^W, do_cmd_wizard / ui-game.c L222). First entry
+    // confirms and marks player.noscore |= NOSCORE_WIZARD (15.1 / cmd-misc.c).
+    if (ev.key === "w" || ev.key === "W") {
+      ev.preventDefault();
+      void openModal(async () => {
+        wizardMode = await runWizardToggle(wizardCtx(), wizardMode);
+      });
+      return;
+    }
+    // Debug command menu (^A, "Debug mode commands" / ui-game.c L225). Only
+    // available in wizard mode; first use runs the debug confirm + NOSCORE_DEBUG
+    // marking (15.2 / player_can_debug_prereq).
+    if (ev.key === "a" || ev.key === "A") {
+      ev.preventDefault();
+      void openModal(() => runWizardDebugMenu(wizardCtx()));
       return;
     }
     return;
