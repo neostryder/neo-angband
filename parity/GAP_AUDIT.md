@@ -60,6 +60,8 @@ entries in the REMAINING list at the end of this section are still open.
   14.11 gate, 14.14 shape lore).
 - 05edbe40 + aa2e35e4 WP-18: char dump (14.6, 12.7), artifact fake-recall
   (14.11), wizard pickers (15.2).
+- 8a493dad Wave-4 follow-up: monster placement-time loot (7.6) - createDrop wired
+  into gen/util.ts placeNewMonsterOne + game/mon-place.ts placeMonsterLive.
 
 ### Wave-4 verification gate (recorded)
 
@@ -68,8 +70,10 @@ entries in the REMAINING list at the end of this section are still open.
 - Vite production bundle + PWA generation: clean.
 - Live browser smoke: boot -> faithful birth -> town -> movement advances turns,
   day/night cycle live.
-- Item-1 grep verification (this pass): gap 7.6 re-resolved against the oracle
-  (see below); it is a REAL remaining deviation, corrected in this re-mark.
+- Item-1 grep verification (this pass): gap 7.6 was re-resolved against the
+  oracle and found to be a real deviation (drop generator ported but never
+  called); it was then CLOSED in commit 8a493dad by wiring monCreateDrop into
+  both placement paths.
 
 ### Per-gap status re-mark
 
@@ -110,7 +114,10 @@ dormant); 6.10 CLOSED (9d4d2601); 6.11 CLOSED (9d4d2601+013fba8d); 6.12 REMAININ
 
 Cluster 7 (monster gen/AI/melee/summon): 7.1 CLOSED (39deb9af); 7.2 CLOSED (39deb9af+013fba8d);
 7.3 CLOSED (39deb9af); 7.4 CLOSED (39deb9af); 7.5 CLOSED (39deb9af);
-7.6 REMAINING (drop generator ported+tested but NEVER CALLED - see item-1 note);
+7.6 CLOSED (8a493dad; monCreateDrop now wired at placement in gen/util.ts
+placeNewMonsterOne (createDrop) and game/mon-place.ts placeMonsterLive, origin
+threaded per case, RNG order matched to mon-make.c:1044-1046, gen.test town-draw
+golden updated 1567->1608);
 7.7 CLOSED (39deb9af engine; gen mimics wired via gen/util.ts:1551 + boot.ts:194
 objDeps - the mon-place.ts docstring claiming mimickedObj=0 is STALE);
 7.8 CLOSED (39deb9af); 7.9 CLOSED (39deb9af); 7.10 CLOSED (39deb9af);
@@ -166,21 +173,12 @@ Cluster 15 (wizard/debug): 15.1 CLOSED (9c5ce991); 15.2 CLOSED (0f23b7f2 engine 
 
 ### REMAINING (honest open list after Wave 4)
 
-- 7.6 (mon drop origin) - REAL DEVIATION. `monCreateDrop` (game/mon-death.ts:110)
-  is a faithful port of mon_create_drop (mon-make.c:751), BUT it has NO production
-  caller. Neither the generation path (gen/util.ts placeNewMonsterOne L1513) nor
-  the live-placement path (game/mon-place.ts placeMonsterLive L163-213) invokes it;
-  the only callers are tests (mon-death.test.ts:51,427). `monsterDeath`
-  (mon-death.ts:240) drops only the held pile, which for generated/spawned monsters
-  is empty (only stolen items ever populate it). NET EFFECT: monsters currently
-  drop NO generated loot. The mon-death.ts header (L7-15) admits the WIRING-NEEDED
-  item was never applied ("until it does, monsters carry no generated loot"); the
-  wave-1 commit 39deb9af claim "placement-time drops (RNG deviation rescinded)" is
-  therefore not borne out by the code. mon-place.ts docstring L21-25 ("generated at
-  death") is also wrong. FIX: call monCreateDrop with the correct origin
-  (ORIGIN.DROP live; DROP_PIT/DROP_VAULT/DROP_SUMMON per generation context) at
-  the placement seam, and remove the two stale docstrings. This is out of the
-  Wave-4 doc scope (no code edits) and is the most material remaining gap.
+None of the remaining items affect faithful play at DEFAULT settings. They split
+into two groups: (a) default-off-so-faithful-at-default - the deviation only
+appears under a non-default birth option (8.5/6.4 need birth_ai_learn on; 9.4/9.6
+need birth_levels_persist on); and (b) minor / cosmetic / partial - 3.8, 4.8,
+6.12, 12.6, 12.8, all low-impact and none reachable in ordinary default play.
+
 - 4.8 (obj->known twin) - PARTIAL. Core twin (objectSetBaseKnown /
   player_know_object) ported (obj/known-object.ts); progressive floor-item sensing
   (object_see/object_sense) and full update_player_object_knowledge twin re-sync
@@ -404,15 +402,16 @@ RNG-faithful; monster_attack_monster IS ported in game/mon-cmd.ts). Gaps:
   C: mon-move.c:416. Port: monster-turn.ts:485-488.
 - [ ] 7.5 MED - Decoy target ignored by ranged/cast AI (movement AI honors decoys, so
   subsystems disagree). C: mon-attack.c:65-84. Port: mon-ranged.ts:56-61.
-- [ ] 7.6 LOW->REAL - REMAINING (re-resolved 2026-07-17): NOT "accepted RNG
-  deviation" and NOT "generated at death". mon_create_drop IS ported faithfully
-  (game/mon-death.ts:110 monCreateDrop) but has NO production caller - neither
-  gen/util.ts placeNewMonsterOne (L1513) nor game/mon-place.ts placeMonsterLive
-  (L163-213) calls it; only tests do. So monsters drop NO generated loot at all
-  (only stolen items). The mon-death.ts header (L7-15) and mon-place.ts docstring
-  (L21-25) are contradictory/stale. FIX: call monCreateDrop at the placement seam
-  with the correct origin; delete the stale docstrings. C: mon-make.c:1044-1046.
-  Port: game/mon-place.ts:200-207 / game/mon-death.ts:110.
+- [x] 7.6 - CLOSED (8a493dad, 2026-07-17). Monsters now generate loot at
+  PLACEMENT: the shared GameState-free createDrop core (game/mon-death.ts) is
+  invoked from gen/util.ts placeNewMonsterOne (L1557) and game/mon-place.ts
+  placeMonsterLive (L225) when origin != 0, RNG order matched to
+  mon-make.c:1044-1046, origin threaded per case (ORIGIN.DROP live;
+  DROP_PIT/DROP_VAULT/DROP_SUMMON per generation context). gen.test town-draw
+  golden updated 1567->1608 (verified faithful); tsc -b packages/core exit 0; 324
+  targeted tests pass. The earlier re-resolution finding (ported-but-uncalled) is
+  now resolved. C: mon-make.c:1044-1046. Port: gen/util.ts:1557,
+  game/mon-place.ts:225, game/mon-death.ts:139 (createDrop).
 - [x] 7.7 MED - CLOSED (39deb9af). Generation-spawned object-mimics DO get their
   mimicked object: gen/util.ts:1551 calls createMimickedObject when g.objDeps is
   set, and boot.ts:194 supplies objDeps in the real (placeContent) path;

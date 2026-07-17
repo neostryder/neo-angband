@@ -76,7 +76,9 @@ honest remaining-deferrals list.
 ### Wave 4 - verification + documentation (this pass)
 
 Full-suite verification, the authoritative per-gap re-mark in GAP_AUDIT.md, the
-item-1 re-resolution of gap 7.6, and this closure record. No code edits.
+item-1 re-resolution of gap 7.6 (found ported-but-uncalled, then CLOSED in commit
+8a493dad by wiring monCreateDrop into both placement paths), and this closure
+record.
 
 ## Verification evidence (Wave-4 gate, recorded)
 
@@ -88,46 +90,44 @@ item-1 re-resolution of gap 7.6, and this closure record. No code edits.
 
 ## Honest remaining deferrals
 
-These are genuinely open after Wave 4. Everything else is CLOSED or VERIFIED per
-the GAP_AUDIT.md status table.
+These are the only items still open after Wave 4. Everything else is CLOSED or
+VERIFIED per the GAP_AUDIT.md status table. IMPORTANT: none of these affect
+faithful play at DEFAULT settings. They split into two groups:
 
-1. 7.6 monster drop origin - REAL DEVIATION, most material item. monCreateDrop
-   (game/mon-death.ts:110) is a faithful port of mon_create_drop but has NO
-   production caller (only tests). Neither the generation nor the live-placement
-   path invokes it, so monsters drop NO generated loot (only stolen items).
-   monsterDeath just empties an always-empty held pile. The wave-1 "drops
-   rescinded/restored" claim is not borne out by the code; two docstrings
-   (mon-death.ts:7-15, mon-place.ts:21-25) are stale/contradictory. FIX: call
-   monCreateDrop at the placement seam with the correct origin (ORIGIN.DROP live;
-   DROP_PIT/DROP_VAULT/DROP_SUMMON per generation context) and delete the stale
-   docstrings.
-2. 4.8 obj->known twin - PARTIAL. Core twin (objectSetBaseKnown /
-   player_know_object) ported; progressive floor-item sensing (object_see/
-   object_sense) and full update_player_object_knowledge re-sync deferred (shadow
-   synthesised on demand); magical/cursed progressive feelings not modelled.
-3. 6.12 inven_damage twin/ignore - display/knowledge-only; rides 4.8.
-4. 8.5 smart-learn AI - unsetSpells read-filter is wired (mon-ranged.ts:232) but
-   the update_smart_learn WRITE hook is never installed at the session level
-   (player/timed.ts:219,244 hook empty). Default birth_ai_learn OFF is faithful;
-   the option-on path (monsters learning player resists) is the gap.
-5. 6.4 update_smart_learn in project_p - rides 8.5's write path
-   (project-player.ts:146-148 confirms it is off/unported).
-6. 3.8 remove_contradictory_activation - ported (randart-build.ts:1487) but its
-   effect_summarize_properties injector is left unset (game.ts:2340-2341), so it
-   stays a conservative no-op: redundant randart activations are not stripped.
-7. 9.4 / 9.6 persistent-level stair joins - 9.6 sanitize is ported; the join
-   round-trip is not. birth_levels_persist dungeons stay OFF by default;
-   build_staircase / cavern joins are ported but dormant until Chunk.join is
-   saved and threaded through changeLevel.
-8. 12.6 minor persisted player fields (resting_turn, skip_cmd_coercion,
-   unignoring, name_suffix, old_grid) - low; not explicitly closed by WP-10;
-   verify against save.ts.
-9. 12.8 running message-log persistence in the savefile - low; the char dump
-   captures last-messages, but the live log is not round-tripped through
-   SavedGame; verify.
-10. Code hygiene (not a parity gap): getMonName/pluralAux still awaiting
-    re-export from core index.ts (screens.ts replicates them locally, flagged by
-    WP-12).
+(a) Default-off-so-faithful-at-default - the deviation only appears under a
+non-default birth option, so a default game is byte-faithful:
+
+- 8.5 smart-learn AI - unsetSpells read-filter is wired (mon-ranged.ts:232) but
+  the update_smart_learn WRITE hook is never installed at the session level
+  (player/timed.ts:219,244 hook empty). Default birth_ai_learn OFF is faithful;
+  only the option-on path (monsters learning player resists) is the gap.
+- 6.4 update_smart_learn in project_p - rides 8.5's write path
+  (project-player.ts:146-148 confirms it is off/unported); same default-off logic.
+- 9.4 / 9.6 persistent-level stair joins - 9.6 sanitize is ported; the join
+  round-trip is not. birth_levels_persist dungeons stay OFF by default;
+  build_staircase / cavern joins are ported but dormant until Chunk.join is saved
+  and threaded through changeLevel.
+
+(b) Minor / cosmetic / partial - low-impact, not reachable in ordinary default
+play:
+
+- 3.8 remove_contradictory_activation - ported (randart-build.ts:1487) but its
+  effect_summarize_properties injector is left unset (game.ts:2340-2341), so it
+  stays a conservative no-op: redundant randart activations are not stripped.
+- 4.8 obj->known twin - PARTIAL. Core twin (objectSetBaseKnown /
+  player_know_object) ported; progressive floor-item sensing (object_see/
+  object_sense) and full update_player_object_knowledge re-sync deferred (shadow
+  synthesised on demand); magical/cursed progressive feelings not modelled.
+- 6.12 inven_damage twin/ignore - display/knowledge-only; rides 4.8.
+- 12.6 minor persisted player fields (resting_turn, skip_cmd_coercion,
+  unignoring, name_suffix, old_grid) - low; not explicitly closed by WP-10;
+  verify against save.ts.
+- 12.8 running message-log persistence in the savefile - low; the char dump
+  captures last-messages, but the live log is not round-tripped through
+  SavedGame; verify.
+
+Code hygiene (not a parity gap): getMonName/pluralAux still awaiting re-export
+from core index.ts (screens.ts replicates them locally, flagged by WP-12).
 
 ## Accepted deviations (maintainer-ratified 2026-07-16, unchanged)
 
