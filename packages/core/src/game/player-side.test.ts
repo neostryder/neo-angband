@@ -93,6 +93,22 @@ describe("project-player side effects (project-player.c handlers)", () => {
     expect(prot.actor.player.objKnown.flags.has(OF.PROT_STUN)).toBe(true);
   });
 
+  it("DARK_WEAK briefly blinds, or messages when DARK is resisted (6.1)", () => {
+    const state = makeState({ seed: 71 });
+    sideFx(state)({ dam: 20, typ: PROJ.DARK_WEAK, power: 0 });
+    expect(state.actor.player.timed[TMD.BLIND]!).toBeGreaterThan(0);
+
+    const resisted = makeState({ seed: 71 });
+    const msgs: string[] = [];
+    sideFx(resisted, { resists: { [ELEM.DARK]: 1 }, msgs })({
+      dam: 20,
+      typ: PROJ.DARK_WEAK,
+      power: 0,
+    });
+    expect(resisted.actor.player.timed[TMD.BLIND]!).toBe(0);
+    expect(msgs).toContain("You resist the effect!");
+  });
+
   it("NETHER drains experience unless HOLD_LIFE resists (and is learned)", () => {
     const state = makeState({ seed: 24 });
     const p = state.actor.player;

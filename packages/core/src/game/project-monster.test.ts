@@ -186,6 +186,28 @@ describe("projectMonster - monster source", () => {
     expect(gs.monsters[vidx]).toBeNull();
   });
 
+  it("caps monster-vs-monster damage on an arena level (6.10)", () => {
+    /* project-mon.c L1044: on an arena level a non-player attack can only
+     * reduce a monster to 0 hp, never kill it (as for uniques). */
+    const gs = makeState();
+    gs.arenaLevel = true;
+    const caster = addMon(gs, plainRace, loc(5, 5), { hp: 50 });
+    const victim = addMon(gs, plainRace, loc(6, 6), { hp: 10 });
+    const vidx = victim.midx;
+    const rec = recorder();
+    const pctx: ProjectMonsterCtx = {
+      state: gs,
+      projections,
+      origin: { isPlayer: false, monster: caster.midx, grid: caster.grid, charm: false },
+      hooks: rec.hooks,
+    };
+    const res = projectMonster(pctx, 0, loc(6, 6), 40, PROJ.FIRE, PROJECT.KILL);
+    expect(res.didHit).toBe(true);
+    expect(rec.state.monsterDeaths).toBe(0);
+    expect(gs.monsters[vidx]).not.toBeNull();
+    expect(victim.hp).toBe(0);
+  });
+
   it("does not kill a same-race breather target under PROJECT_SAFE", () => {
     const gs = makeState();
     const caster = addMon(gs, plainRace, loc(5, 5), { hp: 50 });

@@ -8,12 +8,16 @@
  * projections converting floor to lava and lava to floor/rubble, plus the
  * observe-only elemental handlers.
  *
+ * expose_to_sun / is_daytime are ported (exposeToSun below): the KILL_WALL,
+ * KILL_DOOR, FIRE and COLD/ICE handlers re-expose freshly changed surface
+ * terrain to the sun, guarded on cave->depth == 0. That guard never fires yet
+ * (the port has no surface/town), so the branch is dormant but faithful.
+ *
  * DEFERRED (ledgered in parity/ledger/game-project-feat.yaml):
  * - square_forget / square_unmark and the PU_UPDATE_VIEW | PU_MONSTERS
  *   redraw requests: the core keeps no player square-memory yet (the web
  *   renderer holds its own explored set); FOV refresh rides the state
  *   updateFov hook the loop already runs after player actions.
- * - expose_to_sun / is_daytime: no town or day-night cycle (depth 0) yet.
  * - square_isbright's daytime interplay for DARK on the surface.
  * - The decoy branch of trap handling (decoys ride mon-desire, #24).
  */
@@ -21,8 +25,9 @@
 import type { Loc } from "../loc";
 import { FEAT, ORIGIN, PROJ, SQUARE, TMD } from "../generated";
 import { squareIsSeen, squareIsView } from "../world/view";
-import { featIsTreasure } from "../world/chunk";
+import { featIsBright, featIsTreasure } from "../world/chunk";
 import { lookupTrap } from "../world/trap";
+import { isDaytime } from "./world";
 import type { GameState } from "./context";
 import { squareIsEmpty, squareIsPlayer, squareMonster } from "./context";
 import { dropNear, floorExcise, floorPile, floorCarry } from "./floor";
@@ -72,6 +77,21 @@ export function pushObject(state: GameState, grid: Loc): void {
     dropNear(state, obj, 0, grid, false);
   }
   c.setFeat(grid, featOld);
+}
+
+/**
+ * expose_to_sun (cave-map.c L621): on the surface, freshly revealed terrain
+ * either lights up (daytime, or a non-floor grid) or goes dark (night floor
+ * that is not intrinsically bright). Only ever called on the surface
+ * (cave->depth == 0), which the port cannot reach yet, so this is dormant.
+ */
+function exposeToSun(state: GameState, grid: Loc, daytime: boolean): void {
+  const c = state.chunk;
+  if (daytime || !c.isFloor(grid)) {
+    c.sqinfoOn(grid, SQUARE.GLOW);
+  } else if (!featIsBright(c.features, c.feat(grid))) {
+    c.sqinfoOff(grid, SQUARE.GLOW);
+  }
 }
 
 /** square_disable_trap: every player trap at the grid seizes up a while. */
@@ -187,6 +207,8 @@ export function projectFeature(
         }
         c.setFeat(grid, FEAT.FLOOR);
       }
+      /* On the surface, new terrain may be exposed to the sun. */
+      if (c.depth === 0) exposeToSun(state, grid, isDaytime(state.turn, state.z.dayLength));
       state.updateFov?.(state);
       break;
     }
@@ -198,6 +220,8 @@ export function projectFeature(
           obvious = true;
         }
         c.setFeat(grid, FEAT.FLOOR);
+        /* On the surface, new terrain may be exposed to the sun. */
+        if (c.depth === 0) exposeToSun(state, grid, isDaytime(state.turn, state.z.dayLength));
         state.updateFov?.(state);
       }
       break;
@@ -262,6 +286,7 @@ export function projectFeature(
       /* Can create lava if extremely powerful. */
       if (dam > state.rng.randint1(1800) + 600 && c.isFloor(grid)) {
         c.setFeat(grid, FEAT.LAVA);
+        if (c.depth === 0) exposeToSun(state, grid, isDaytime(state.turn, state.z.dayLength));
         pushObject(state, grid);
       }
       break;
@@ -281,11 +306,42 @@ export function projectFeature(
         } else {
           c.setFeat(grid, FEAT.PASS_RUBBLE);
         }
+        if (c.depth === 0) exposeToSun(state, grid, isDaytime(state.turn, state.z.dayLength));
       }
       break;
     }
 
-    /* The remaining projections only give the player a chance to observe. */
+    /* The monster-directed projections have empty feature handlers upstream:
+     * they never touch terrain and never set obvious (project-feat.c:581-675),
+     * so the player observes nothing from them at the grid level. */
+    case PROJ.AWAY_UNDEAD:
+    case PROJ.AWAY_EVIL:
+    case PROJ.AWAY_SPIRIT:
+    case PROJ.AWAY_ALL:
+    case PROJ.TURN_UNDEAD:
+    case PROJ.TURN_EVIL:
+    case PROJ.TURN_LIVING:
+    case PROJ.TURN_ALL:
+    case PROJ.DISP_UNDEAD:
+    case PROJ.DISP_EVIL:
+    case PROJ.DISP_ALL:
+    case PROJ.SLEEP_UNDEAD:
+    case PROJ.SLEEP_EVIL:
+    case PROJ.SLEEP_ALL:
+    case PROJ.MON_CLONE:
+    case PROJ.MON_POLY:
+    case PROJ.MON_HEAL:
+    case PROJ.MON_SPEED:
+    case PROJ.MON_SLOW:
+    case PROJ.MON_CONF:
+    case PROJ.MON_HOLD:
+    case PROJ.MON_STUN:
+    case PROJ.MON_DRAIN:
+    case PROJ.MON_CRUSH:
+      break;
+
+    /* The remaining (damage / elemental) projections only give the player a
+     * chance to observe. */
     default: {
       if (observed(state, grid)) obvious = true;
       break;

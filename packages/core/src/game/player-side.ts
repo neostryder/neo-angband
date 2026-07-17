@@ -23,12 +23,13 @@
  * feel it" message variant is folded to the save message.
  */
 
-import { ELEM, OF, PROJ, STAT, TMD } from "../generated";
+import { ELEM, OF, PF, PROJ, STAT, TMD } from "../generated";
 import { DDGRID_DDD, locEq, locSum } from "../loc";
 import { SKILL, STAT_MAX } from "../player/types";
 import type { ProjectionInfo } from "../world/projection";
 import type { TimedEffect } from "../player/types";
-import { playerIncTimed } from "../player/timed";
+import { playerIncCheck, playerIncTimed } from "../player/timed";
+import type { PlayerIncCheckQueries } from "../player/timed";
 import type { Player } from "../player/player";
 import { playerExpLose, playerStatDec } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
@@ -110,6 +111,37 @@ export function makePlayerSideEffects(
   /** Immunity / resist reads from the derived state. */
   const isImmune = (elem: number): boolean => deps.actor.resistLevel(elem) === 3;
   const resists = (elem: number): boolean => deps.actor.resistLevel(elem) > 0;
+
+  /**
+   * player_inc_check (project-player.c:259,328) as a pure predicate: whether a
+   * timed increase would be allowed by the player's resists/flags, used to gate
+   * the LIGHT "dazzled" / SOUND "disorients" messages so they are not shown when
+   * the confusion is resisted. Queries mirror buildFailRuneEnv (game/mon-cast.ts).
+   * The learning / smart-learn / resist-message side effects of the non-lore
+   * check ride the timed-effect wiring (gap 2.8).
+   */
+  const incCheckQueries: PlayerIncCheckQueries = {
+    objectFlag: (name): boolean => {
+      const i = (OF as Record<string, number>)[name];
+      return i !== undefined && (state.playerState?.flags.has(i) ?? false);
+    },
+    resistLevel: (name): number => {
+      const i = (ELEM as Record<string, number>)[name];
+      return i !== undefined ? (state.playerState?.elInfo[i]?.resLevel ?? 0) : 0;
+    },
+    playerFlag: (name): boolean => {
+      const i = (PF as Record<string, number>)[name];
+      return i !== undefined && (state.playerState?.pflags.has(i) ?? false);
+    },
+    timedActive: (name): boolean => {
+      const i = (TMD as Record<string, number>)[name];
+      return i !== undefined && (p().timed[i] ?? 0) > 0;
+    },
+  };
+  const incCheck = (idx: number): boolean => {
+    const effect = deps.timed[idx];
+    return effect ? playerIncCheck(effect, incCheckQueries) : true;
+  };
 
   /** The drain-stat slice (effect_simple(EF_DRAIN_STAT)): sustain saves. */
   const drainStat = (stat: number): void => {
@@ -221,7 +253,8 @@ export function makePlayerSideEffects(
         }
         incTimed(TMD.BLIND, 2 + rng.randint1(5), true);
         if (dam > 300) {
-          msg("You are dazzled!");
+          /* Check for resistance before issuing the message. */
+          if (incCheck(TMD.CONFUSED)) msg("You are dazzled!");
           incTimed(TMD.CONFUSED, 2 + rng.randint1(Math.trunc(dam / 100)), true);
         }
         break;
@@ -248,6 +281,19 @@ export function makePlayerSideEffects(
         }
         break;
       }
+      case PROJ.DARK_WEAK: {
+        /* project-player.c project_player_handler_DARK_WEAK: unlit races
+         * resist silently; everyone else who resists gets the message; the
+         * rest are briefly blinded. */
+        if (resists(ELEM.DARK)) {
+          if (!(state.playerState?.pflags.has(PF.UNLIGHT) ?? false)) {
+            msg("You resist the effect!");
+          }
+          break;
+        }
+        incTimed(TMD.BLIND, 3 + rng.randint1(5), true);
+        break;
+      }
       case PROJ.SOUND: {
         if (resists(ELEM.SOUND)) {
           msg("You resist the effect!");
@@ -259,7 +305,8 @@ export function makePlayerSideEffects(
           equipLearnFlag(p(), state.runeEnv, OF.PROT_STUN);
         }
         if (dam > 300) {
-          msg("The noise disorients you.");
+          /* Check for resistance before issuing the message. */
+          if (incCheck(TMD.CONFUSED)) msg("The noise disorients you.");
           incTimed(TMD.CONFUSED, 2 + rng.randint1(Math.trunc(dam / 100)), true);
         }
         break;

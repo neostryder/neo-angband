@@ -126,13 +126,20 @@ export function projectPlayer(
   const blind = actor.timed[TMD.BLIND]! > 0;
   let seen = !blind;
 
+  /* The "decoy has been hit" branch (project-player.c L822) runs before the
+   * player-here check; it is applied at the cast layer (project-cast.ts
+   * castProjection onPlayer wrapper), which has the live GameState and the
+   * decoy grid, since this driver is deliberately state-free. */
+
   /* No player here. */
   if (!locEq(grid, pctx.playerGrid)) return false;
 
   /* Don't affect the projector unless explicitly allowed. */
   if (origin.isPlayer && !self) return false;
 
-  /* A projection from an unseen monster is not seen. */
+  /* A projection from an unseen monster is not seen. (update_smart_learn -
+   * project-player.c L852, "the monster sees what is going on" - rides the AI
+   * smart-learn subsystem, which is unported and off by default: gap 8.5.) */
   if (origin.isMonster && origin.monsterVisible === false) seen = false;
 
   /* Let the player know what is going on when they cannot see it. */

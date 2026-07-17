@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG, MON_TMD, OF, RF, TV } from "../generated";
+import { EF, MFLAG, MON_TMD, OF, RF, TMD, TV } from "../generated";
 import { loc, locEq } from "../loc";
 import {
   EffectRegistry,
@@ -398,6 +398,48 @@ describe("stat / exp / mana handlers (effect-handler-general.c)", () => {
     });
     expect(p.csp).toBe(10); /* untouched */
     expect(state.decoy).toBeNull();
+  });
+
+  it("EF_TIMED_INC from a monster destroys the player's decoy (5.2)", () => {
+    const state = makeState({ playerGrid: loc(5, 5), seed: 61 });
+    const r = registry();
+    r.effectSimple(EF.GLYPH, env(state), {
+      origin: sourcePlayer(),
+      subtype: GLYPH_DECOY,
+    });
+    expect(state.decoy).toBeTruthy();
+    const race = monReg.races.find((rr) => rr.rarity > 0)!;
+    const mon = addMon(state, race, loc(3, 3), { hp: 50 });
+
+    r.effectSimple(EF.TIMED_INC, env(state, { monCurrent: mon.midx }), {
+      origin: sourceMonster(mon.midx),
+      subtype: TMD.CONFUSED,
+      diceString: "10",
+    });
+    expect(state.decoy).toBeNull();
+    /* The player is not confused: the decoy soaked it. */
+    expect(state.actor.player.timed[TMD.CONFUSED]!).toBe(0);
+  });
+
+  it("EF_TIMED_INC maps a monster-vs-monster effect to MON_TMD (5.2)", () => {
+    const state = makeState({ playerGrid: loc(20, 20), seed: 62 });
+    const race = monReg.races.find((rr) => rr.rarity > 0)!;
+    const caster = addMon(state, race, loc(5, 5), { hp: 50 });
+    const victim = addMon(state, race, loc(6, 6), { hp: 50 });
+    caster.target.midx = victim.midx;
+
+    registry().effectSimple(
+      EF.TIMED_INC,
+      env(state, { monCurrent: caster.midx }),
+      {
+        origin: sourceMonster(caster.midx),
+        subtype: TMD.CONFUSED,
+        diceString: "10",
+      },
+    );
+    /* TMD_CONFUSED -> MON_TMD_CONF on the target monster; the player is spared. */
+    expect(victim.mTimed[MON_TMD.CONF]!).toBeGreaterThan(0);
+    expect(state.actor.player.timed[TMD.CONFUSED]!).toBe(0);
   });
 
   it("SCRAMBLE_STATS permutes the stats and UNSCRAMBLE_STATS restores them", () => {

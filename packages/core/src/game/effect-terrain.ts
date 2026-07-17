@@ -26,8 +26,7 @@
  * - Artifact created-mark preservation in DESTRUCTION rides artifact
  *   upkeep (#24); EARTHQUAKE's square_changeable artifact check is ported.
  * - MDESC monster names and MON_MSG grammar ride the display layer (#25);
- *   the race name stands in for the quake messages.
- * - DARKEN_AREA's monster-target (#19) and decoy (#24) branches.
+ *   the race name stands in for the quake and DARKEN_AREA target messages.
  */
 
 import { ELEM, FEAT, EF, MON_TMD, RF, SQUARE, TF, TMD } from "../generated";
@@ -43,6 +42,12 @@ import { monsterIsSmart, monsterIsStupid, monsterIsVisible } from "../mon/predic
 import { monsterWake } from "../mon/take-hit";
 import { equipLearnElement, OBJ_NOTICE } from "../obj/knowledge";
 import { featIsBright } from "../world/chunk";
+import { los } from "../world/view";
+import {
+  caveFindDecoy,
+  monsterIsDecoyed,
+  monsterTargetMonster,
+} from "./effect-mon-origin";
 import type { GameState } from "./context";
 import {
   deleteMonster,
@@ -322,17 +327,57 @@ const handleLIGHT_AREA: EffectHandler = (ctx) => {
 };
 
 /**
- * EF_DARKEN_AREA: darken the room around the player. The monster-target
- * (#19) and decoy (#24) branches are deferred with their subsystems; the
- * player-cast form blinds an unresisting caster.
+ * EF_DARKEN_AREA: darken the room around the player, a targeted monster, or
+ * the player's decoy (effect-handler-general.c EF_DARKEN_AREA). A monster
+ * caster targeting another monster darkens its room; a decoyed caster darkens
+ * the decoy's room (and the effect is unseen if the decoy is out of sight or
+ * the player is blind). The player-cast form blinds an unresisting caster.
+ * (monster_desc MDESC_TARG is deferred (8.9); the race name stands in.)
  */
 const handleDARKEN_AREA: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const { state } = env;
-  const target = state.actor.grid;
+  let target = state.actor.grid;
+  let message = !((state.actor.player.timed[TMD.BLIND] ?? 0) > 0);
+  let decoyUnseen = false;
 
-  if (!((state.actor.player.timed[TMD.BLIND] ?? 0) > 0)) {
+  const mon =
+    ctx.origin.what === "monster"
+      ? (state.monsters[ctx.origin.monster] ?? null)
+      : null;
+
+  /* Check for monster targeting another monster. */
+  const tMon =
+    ctx.origin.what === "monster"
+      ? monsterTargetMonster(state, ctx.origin.monster)
+      : null;
+  if (tMon) {
+    target = tMon.grid;
+    if (message) {
+      say(ctx, `Darkness surrounds the ${tMon.race.name}.`);
+      message = false;
+    }
+  }
+
+  /* Check for a decoy. */
+  if (mon && monsterIsDecoyed(state, mon)) {
+    const decoy = caveFindDecoy(state);
+    if (decoy) target = decoy;
+    if (
+      !decoy ||
+      !los(state.chunk, state.actor.grid, decoy) ||
+      (state.actor.player.timed[TMD.BLIND] ?? 0) > 0
+    ) {
+      decoyUnseen = true;
+    }
+    if (message && !decoyUnseen) {
+      say(ctx, "Darkness surrounds the decoy.");
+      message = false;
+    }
+  }
+
+  if (message) {
     say(ctx, "Darkness surrounds you.");
   }
 
@@ -348,8 +393,8 @@ const handleDARKEN_AREA: EffectHandler = (ctx) => {
     ctx.env.player?.timed?.incTimed(TMD.BLIND, amount, true, !ctx.aware, true);
   }
 
-  /* Assume seen */
-  ctx.ident = true;
+  /* Assume seen (unless the decoy was out of sight). */
+  ctx.ident = !decoyUnseen;
   return true;
 };
 

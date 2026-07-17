@@ -41,6 +41,10 @@ import {
   sourcePlayer,
 } from "../effects/interpreter";
 import {
+  handleTIMED_INC as baseHandleTIMED_INC,
+  timedIncEffectApplyToPlayer,
+} from "../effects/handlers";
+import {
   equipLearnFlag,
   shapeLearnOnAssume,
   sustainFlag,
@@ -72,6 +76,11 @@ import { squareIsView } from "../world/view";
 import { lookupTrap } from "../world/trap";
 import type { GameState } from "./context";
 import { gameEnv } from "./effect-game-env";
+import {
+  caveFindDecoy,
+  destroyDecoy,
+  monsterTargetMonster,
+} from "./effect-mon-origin";
 import { floorPile } from "./floor";
 import { castProjection, playerCastSource } from "./project-cast";
 import { pushObject } from "./project-feat";
@@ -670,6 +679,69 @@ const handleUNSCRAMBLE_STATS: EffectHandler = (ctx) => {
 };
 
 /**
+ * The player TMD -> monster MON_TMD map used when a monster's EF_TIMED_INC
+ * targets another monster (effect-handler-general.c L594-624). Subtypes with
+ * no monster analogue are absent, so the effect is skipped for them, exactly
+ * as the upstream default switch case does nothing.
+ */
+const TMD_TO_MON_TMD: Readonly<Record<number, number>> = {
+  [TMD.CONFUSED]: MON_TMD.CONF,
+  [TMD.SLOW]: MON_TMD.SLOW,
+  [TMD.PARALYZED]: MON_TMD.HOLD,
+  [TMD.BLIND]: MON_TMD.STUN,
+  [TMD.AFRAID]: MON_TMD.FEAR,
+  [TMD.AMNESIA]: MON_TMD.SLEEP,
+};
+
+/**
+ * EF_TIMED_INC (effect-handler-general.c L575): extend a timed condition. The
+ * game-layer override adds the SRC_MONSTER sub-branches the worldless base
+ * cannot reach: a monster attack destroying the player's decoy
+ * (square_destroy_decoy, gated on cave->mon_current > 0), or a monster
+ * targeting another monster (monster_target_monster -> the TMD -> MON_TMD map
+ * -> mon_inc_timed). Everything else (player origin, or a monster origin that
+ * falls through to the player) delegates to the base handler so the player
+ * player_inc_timed path stays single-sourced.
+ */
+const handleTIMED_INC: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env || ctx.origin.what !== "monster") return baseHandleTIMED_INC(ctx);
+
+  const { state } = env;
+  const amount = effectCalculateValue(ctx, false);
+
+  ctx.ident = true;
+
+  /* Destroy the decoy if it's a monster attack. */
+  if ((env.monCurrent ?? 0) > 0 && caveFindDecoy(state)) {
+    destroyDecoy(state, env.general?.trapDeps, (t) => say(ctx, t));
+    return true;
+  }
+
+  /* A monster targeting another monster maps the player TMD to a MON_TMD. */
+  const tMon = monsterTargetMonster(state, ctx.origin.monster);
+  if (tMon) {
+    const monEffect = TMD_TO_MON_TMD[ctx.subtype];
+    if (monEffect !== undefined) {
+      monIncTimed(
+        state.rng,
+        tMon,
+        monEffect,
+        Math.max(amount, 0),
+        0,
+        undefined,
+        env.monShape,
+      );
+    }
+    return true;
+  }
+
+  /* Otherwise the player is the target. */
+  timedIncEffectApplyToPlayer(ctx, amount);
+  return true;
+};
+
+/**
  * EF_MON_TIMED_INC: extend a monster status condition on the casting
  * monster (effect-handler-general.c L667).
  */
@@ -932,6 +1004,7 @@ const GENERAL_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.DRAIN_MANA, handleDRAIN_MANA],
   [EF.SCRAMBLE_STATS, handleSCRAMBLE_STATS],
   [EF.UNSCRAMBLE_STATS, handleUNSCRAMBLE_STATS],
+  [EF.TIMED_INC, handleTIMED_INC],
   [EF.MON_TIMED_INC, handleMON_TIMED_INC],
 ]);
 
