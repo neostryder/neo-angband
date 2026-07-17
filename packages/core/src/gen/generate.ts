@@ -23,14 +23,24 @@
  */
 
 import type { Constants } from "../constants";
-import { SQUARE } from "../generated";
+import { FEAT, RF, SQUARE } from "../generated";
+import { MON_GROUP } from "../mon/types";
+import type { MonsterRace } from "../mon/types";
 import type { Rng } from "../rng";
 import type { FeatureRegistry } from "../world/feature";
+import type { TrapKind } from "../world/trap";
 import { loc } from "../loc";
 import type { MakeDeps } from "../obj/make";
 import type { CaveBuildContext, DungeonProfiles } from "./cave";
 import type { RoomRegistry } from "./room";
-import { Dun, Gen, type MonPlaceDeps } from "./util";
+import {
+  Dun,
+  Gen,
+  findEmpty,
+  placeNewMonster,
+  type Connector,
+  type MonPlaceDeps,
+} from "./util";
 
 /** Everything the generator needs beyond an RNG and a depth. */
 export interface GenDeps {
@@ -42,6 +52,13 @@ export interface GenDeps {
   objDeps: MakeDeps | null;
   /** Monster-placement dependencies, or null to skip monster placement. */
   monDeps: MonPlaceDeps | null;
+  /**
+   * The trap kind table (trap_info). When present, place_trap picks the kind
+   * and rolls the power at generation time (gap 9.2), and the returned Gen's
+   * `traps` list carries the choices for the populate path to instantiate
+   * directly. Omitted/null keeps the deferred bare-grid behaviour.
+   */
+  trapKinds?: readonly TrapKind[] | null;
 }
 
 export interface GenerateOptions {
@@ -63,6 +80,116 @@ export interface GenerateOptions {
    * option's shipped default (list-options.h birth_lose_arts).
    */
   birthLoseArts?: boolean;
+  /**
+   * Quest guardians to place on this level (generate.c L1172-1191). The caller
+   * (session changeLevel) resolves the player's quests whose level == depth to
+   * their races; generateLevel places max_num of each (a unique already alive,
+   * cur_num > 0, is skipped). Empty/omitted on non-quest levels.
+   */
+  questSpawns?: readonly QuestSpawn[];
+  /**
+   * OPT(player, birth_levels_persist): mark this build as a persistent-level
+   * dungeon (generate.c L1148-1150). Off by default; when on, the builders'
+   * dun.persist branches (staircase joins, always-lit persistent rooms) run.
+   */
+  persist?: boolean;
+  /**
+   * get_join_info's result (generate.c L893-992): connectors seeded from the
+   * saved stair joins of adjacent levels so up/down stairs line up. The caller
+   * (session change-level) resolves adjacent frozen levels and passes their
+   * joins through getJoinInfo. Only consulted under `persist`.
+   */
+  joinInfo?: JoinInfo;
+}
+
+/** One quest guardian to place: the resolved race and how many to spawn. */
+export interface QuestSpawn {
+  race: MonsterRace;
+  maxNum: number;
+}
+
+/** The connectors get_join_info seeds onto a persistent level's dun_data. */
+export interface JoinInfo {
+  join: Connector[];
+  oneOffAbove: Connector[];
+  oneOffBelow: Connector[];
+}
+
+/**
+ * The saved stair joins (chunk->join) of the levels adjacent to the target
+ * depth, resolved by the caller from the frozen-level cache. An entry that is
+ * `undefined` means that level has never been generated; an empty array means
+ * it exists but recorded no stairs of the relevant kind.
+ */
+export interface AdjacentJoins {
+  /** Level depth-1 (get_join_info: its FEAT_MORE become our FEAT_LESS). */
+  above?: readonly Connector[];
+  /** Level depth-2 (its FEAT_MORE become one_off_above FEAT_MORE). */
+  twoAbove?: readonly Connector[];
+  /** Level depth+1 (its FEAT_LESS become our FEAT_MORE). */
+  below?: readonly Connector[];
+  /** Level depth+2 (its FEAT_LESS become one_off_below FEAT_LESS). */
+  twoBelow?: readonly Connector[];
+}
+
+/**
+ * get_join_info (generate.c L893-992): build the connector seed for a level
+ * from the join lists of its (already-generated) neighbours, so a persistent
+ * dungeon keeps up/down stairs aligned across depths. Pure - the caller
+ * resolves which neighbours exist and supplies their saved joins. Connectors
+ * are prepended (unshift), matching upstream's linked-list insertion order.
+ */
+export function getJoinInfo(adj: AdjacentJoins): JoinInfo {
+  const join: Connector[] = [];
+  const oneOffAbove: Connector[] = [];
+  const oneOffBelow: Connector[] = [];
+
+  /* Level above: its down staircases become our up staircases. */
+  if (adj.above) {
+    for (const j of adj.above) {
+      if (j.feat === FEAT.MORE) join.unshift({ grid: j.grid, feat: FEAT.LESS });
+    }
+  } else if (adj.twoAbove) {
+    /* No level above, but one two levels up: remember its down staircases so
+     * our up staircases won't conflict if that level is later generated. */
+    for (const j of adj.twoAbove) {
+      if (j.feat === FEAT.MORE) {
+        oneOffAbove.unshift({ grid: j.grid, feat: FEAT.MORE });
+      }
+    }
+  }
+
+  /* Level below: its up staircases become our down staircases. */
+  if (adj.below) {
+    for (const j of adj.below) {
+      if (j.feat === FEAT.LESS) join.unshift({ grid: j.grid, feat: FEAT.MORE });
+    }
+  } else if (adj.twoBelow) {
+    for (const j of adj.twoBelow) {
+      if (j.feat === FEAT.LESS) {
+        oneOffBelow.unshift({ grid: j.grid, feat: FEAT.LESS });
+      }
+    }
+  }
+
+  return { join, oneOffAbove, oneOffBelow };
+}
+
+/**
+ * Collect the finished level's staircases as join connectors
+ * (generate.c L1203-1214 populating chunk->join): each stair grid plus its
+ * feature. RNG-free; the per-connector SQUARE info copy upstream also makes is
+ * a deferred detail (the port's Connector carries grid + feat). Feeds the next
+ * level's getJoinInfo when persistent levels are wired.
+ */
+export function collectJoins(g: Gen): void {
+  const c = g.c;
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      const grid = loc(x, y);
+      if (c.isStairs(grid)) g.joins.push({ grid, feat: c.feat(grid) });
+    }
+  }
 }
 
 /** Clear the transient generation-only square flags on a finished level. */
@@ -148,6 +275,27 @@ export function calcMonFeeling(g: Gen): number {
 }
 
 /**
+ * chunk_validate_objects (gen-chunk.c:514): assert the finished level holds no
+ * malformed objects (tval == 0) on the floor or in any monster's inventory. A
+ * pure validation pass drawing no RNG; a tval-0 object indicates a generation
+ * bug, so this throws exactly where upstream's assert would abort.
+ */
+export function chunkValidateObjects(g: Gen): void {
+  for (const po of g.objects) {
+    if (po.obj.tval === 0) {
+      throw new Error("gen: chunk_validate_objects: floor object with tval 0");
+    }
+  }
+  for (const pm of g.monsters) {
+    for (const held of pm.mon.heldObj) {
+      if (held.tval === 0) {
+        throw new Error("gen: chunk_validate_objects: held object with tval 0");
+      }
+    }
+  }
+}
+
+/**
  * cave_generate: build one valid dungeon level, retrying on builder failure
  * or maxima overflow. Returns the finished Gen context.
  */
@@ -169,7 +317,15 @@ export function generateLevel(
     error = null;
     const dun = new Dun(deps.constants);
     dun.quest = quest;
-    dun.persist = false;
+    /* Persistent levels (generate.c L1148-1153): seed the stair connectors from
+     * adjacent levels before building so the dun.persist branches line stairs
+     * up. Off by default, leaving dun.join empty and every builder unchanged. */
+    dun.persist = options.persist ?? false;
+    if (dun.persist && options.joinInfo) {
+      dun.join = [...options.joinInfo.join];
+      dun.oneOffAbove = [...options.joinInfo.oneOffAbove];
+      dun.oneOffBelow = [...options.joinInfo.oneOffBelow];
+    }
 
     const profile = deps.profiles.choose(rng, depth, { quest });
     const builder = deps.profiles.builder(profile.builder);
@@ -185,6 +341,7 @@ export function generateLevel(
       minWidth,
       objDeps: deps.objDeps,
       monDeps: deps.monDeps,
+      trapKinds: deps.trapKinds ?? null,
       rooms: deps.rooms,
       ...(options.daytime !== undefined ? { daytime: options.daytime } : {}),
     };
@@ -211,6 +368,28 @@ export function generateLevel(
     throw new Error(`gen: cave_generate failed: ${error ?? "unknown"}`);
   }
 
+  /* Record the level's stair connectors (generate.c L1203-1214) so a
+   * persistent dungeon can align the next level's stairs. RNG-free. */
+  collectJoins(result);
+
+  /* Ensure quest monsters (generate.c L1170-1191). Run once on the accepted
+   * level, before the feeling calc (quest monsters count toward mon_rating).
+   * A unique guardian already alive elsewhere (cur_num > 0) is not re-placed,
+   * matching upstream. Sleep=true, group_ok=true, ORIGIN_DROP as in C. */
+  if (options.questSpawns && options.questSpawns.length > 0) {
+    for (const q of options.questSpawns) {
+      if (q.race.flags.has(RF.UNIQUE) && q.race.curNum > 0) continue;
+      for (let n = 0; n < q.maxNum; n++) {
+        const grid = findEmpty(result);
+        if (!grid) break;
+        placeNewMonster(result, grid, q.race, true, true, {
+          index: 0,
+          role: MON_GROUP.LEADER,
+        });
+      }
+    }
+  }
+
   /* Place dungeon squares to trigger feeling (not in town), then compute the
    * final feeling (generate.c L1235-1241). Runs once, after the retry loop
    * above has resolved to a successful level; place_feeling's draws are
@@ -221,6 +400,9 @@ export function generateLevel(
   }
   result.c.feeling =
     calcObjFeeling(result, options.birthLoseArts ?? false) + calcMonFeeling(result);
+
+  /* Validate the dungeon (generate.c L1244): no malformed objects survive. */
+  chunkValidateObjects(result);
 
   return result;
 }

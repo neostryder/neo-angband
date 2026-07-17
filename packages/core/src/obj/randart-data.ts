@@ -39,7 +39,8 @@ import { ELEM, KF, OBJ_MOD, OF, TV } from "../generated";
 import { ART_IDX } from "../generated/randart-properties";
 import type { Rng } from "../rng";
 import type { ObjRegistry } from "./bind";
-import type { CurseData } from "./object";
+import type { CurseData, CurseTimedFoil } from "./object";
+import type { ActivationSummarizer } from "./randart-build";
 import {
   copyBrands,
   copySlays,
@@ -112,6 +113,21 @@ export interface ArtifactSetData {
 
   /* Artifact rarities. */
   baseArtAlloc: number[];
+
+  /**
+   * The player-timed failure tables (timed effect NAME -> fail directives) for
+   * artifact_curse_conflicts' TIMED_INC foil rejection (obj-curse.c L267-296).
+   * Built by the game from the bound TimedEffect[]; absent => the foil branch
+   * is skipped (curses still filtered by explicit conflict flags). See gap 3.3.
+   */
+  timedFoil?: CurseTimedFoil | undefined;
+  /**
+   * effect_summarize_properties (effects-info.c) for
+   * remove_contradictory_activation's redundancy check (obj-randart.c L2420,
+   * gap 3.8). Lives in the effects domain; injected here. Absent => a redundant
+   * activation is never stripped (conservative). Wired from the effects layer.
+   */
+  activationSummarize?: ActivationSummarizer | undefined;
 }
 
 /* ------------------------------------------------------------------ */

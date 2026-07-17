@@ -23,8 +23,10 @@
  *   upstream; since chests never copy pval to the known shadow (L355 below /
  *   known-object.ts), the "(<trap>)" segment only ever fires for an empty
  *   chest ("(empty)") under the current knowledge simplification (#24).
- * - ignore_item_ok / the "{ignore}" and gold "{ignore}" markers: no ignore
- *   subsystem in the port yet; omitted.
+ * - ignore_item_ok / the "{ignore}" and gold "{ignore}" markers (obj-desc.c
+ *   L537, L630): emitted when the caller supplies KnownDesc.ignoreItemOk (a
+ *   thin wrapper over obj/ignore.ts ignore_item_ok); omitted for an omniscient
+ *   or ignore-less describe.
  * - obj->kind->everseen / obj->ego->everseen "seen" mutations (L633-637): the
  *   bound registries are immutable and everseen is not modelled; skipped (a
  *   side effect, not name output).
@@ -530,8 +532,8 @@ function objDescCharges(
 
 /**
  * obj_desc_inscrip (obj-desc.c L514): player inscription plus game markers
- * (empty / tried / cursed / ??). DEFERRED: the "ignore" marker (no ignore
- * subsystem).
+ * (empty / tried / cursed / ignore / ??). The "ignore" marker is emitted when
+ * KnownDesc.ignoreItemOk is supplied (obj-desc.c L536-538).
  */
 function objDescInscrip(
   obj: GameObject,
@@ -551,7 +553,8 @@ function objDescInscrip(
 
   if (shadow.curses) u.push("cursed");
 
-  /* DEFERRED: ignore_item_ok -> "ignore" marker. */
+  /* Note ignore (obj-desc.c L536-538): ignore_item_ok(p, obj). */
+  if (p && deps.ignoreItemOk?.(obj)) u.push("ignore");
 
   if (
     !objectRunesKnownUpstream(obj, shadow, p, env) &&
@@ -616,10 +619,11 @@ export function objectDesc(
   /* is_unknown() placeholder path (L621-625): DEFERRED to the game-list layer;
    * object_desc always gets a real object here. */
 
-  /* Cash gets a straightforward description (L627-630).
-   * DEFERRED: the trailing " {ignore}" marker (no ignore subsystem). */
+  /* Cash gets a straightforward description (L627-630), with a trailing
+   * " {ignore}" when ignore_item_ok(p, obj). */
   if (tvalIsMoney(obj.tval)) {
-    return `${obj.pval} gold pieces worth of ${obj.kind.name}`;
+    const ignore = p && deps.ignoreItemOk?.(obj) ? " {ignore}" : "";
+    return `${obj.pval} gold pieces worth of ${obj.kind.name}${ignore}`;
   }
 
   /* L633-637 everseen mutations: DEFERRED (immutable registry). */

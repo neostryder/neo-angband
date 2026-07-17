@@ -32,10 +32,13 @@ import {
 import type { FlagSet } from "../bitflag";
 import { getLore, loreCountU16, loreCountU8 } from "../mon/lore";
 import type { Monster } from "../mon/monster";
-import { squareIsEmpty } from "./context";
+import { squareIsEmpty, squareMonster } from "./context";
 import type { GameState } from "./context";
 import { doMonSpell } from "./mon-cast";
 import type { DoMonSpellDeps } from "./mon-cast";
+import { monsterIsDecoyed } from "./monster-turn";
+import { disturb } from "./player-path";
+import { MDESC_STANDARD, monsterDesc } from "../mon/desc";
 
 /** Extra configuration for make_ranged_attack beyond the do_mon_spell deps. */
 export interface MakeRangedAttackConfig {
@@ -50,13 +53,18 @@ export interface MakeRangedAttackConfig {
 }
 
 /**
- * monster_get_target_dist_grid: the distance to and grid of the monster's
- * target. Decoys are not modelled, so the target is always the player.
+ * monster_get_target_dist_grid (mon-attack.c L65): the distance to and grid of
+ * the monster's target, accounting for a player decoy - a decoyed monster aims
+ * at the decoy grid, otherwise at the player.
  */
 function targetDist(state: GameState, mon: Monster): number {
+  if (monsterIsDecoyed(mon, state) && state.decoy) {
+    return distance(mon.grid, state.decoy);
+  }
   return mon.cdis;
 }
-function targetGrid(state: GameState): Loc {
+function targetGrid(state: GameState, mon: Monster): Loc {
+  if (monsterIsDecoyed(mon, state) && state.decoy) return state.decoy;
   return state.actor.grid;
 }
 
@@ -76,6 +84,58 @@ export function summonPossible(state: GameState, grid: Loc): boolean {
     }
   }
   return false;
+}
+
+/** MAX_KIN_RADIUS / MAX_KIN_DISTANCE (mon-util.c L841-842). */
+const MAX_KIN_RADIUS = 5;
+const MAX_KIN_DISTANCE = 5;
+
+/**
+ * get_injured_kin (mon-util.c L849): the monster at `grid` if it is a different,
+ * same-base, injured monster in line of sight within MAX_KIN_DISTANCE, else null.
+ */
+function getInjuredKin(state: GameState, mon: Monster, grid: Loc): Monster | null {
+  if (grid.x === mon.grid.x && grid.y === mon.grid.y) return null;
+  const kin = squareMonster(state, grid);
+  if (!kin) return null;
+  if (kin.race.base !== mon.race.base) return null;
+  if (!los(state.chunk, mon.grid, grid)) return null;
+  if (kin.hp === kin.maxhp) return null;
+  if (distance(mon.grid, grid) > MAX_KIN_DISTANCE) return null;
+  return kin;
+}
+
+/**
+ * find_any_nearby_injured_kin (mon-util.c L885): whether any injured same-base
+ * monster is within MAX_KIN_RADIUS. Drives the RSF_HEAL_KIN prune.
+ */
+export function findAnyNearbyInjuredKin(state: GameState, mon: Monster): boolean {
+  for (let y = mon.grid.y - MAX_KIN_RADIUS; y <= mon.grid.y + MAX_KIN_RADIUS; y++) {
+    for (let x = mon.grid.x - MAX_KIN_RADIUS; x <= mon.grid.x + MAX_KIN_RADIUS; x++) {
+      if (getInjuredKin(state, mon, { x, y })) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * choose_nearby_injured_kin (mon-util.c L907): reservoir-sample (k = 1) one
+ * injured same-base monster in LOS around `mon`, or null. Exported for the
+ * RSF_HEAL_KIN effect handler (effects/), which heals the chosen kin.
+ */
+export function chooseNearbyInjuredKin(state: GameState, mon: Monster): Monster | null {
+  let nseen = 0;
+  let found: Monster | null = null;
+  for (let y = mon.grid.y - MAX_KIN_RADIUS; y <= mon.grid.y + MAX_KIN_RADIUS; y++) {
+    for (let x = mon.grid.x - MAX_KIN_RADIUS; x <= mon.grid.x + MAX_KIN_RADIUS; x++) {
+      const kin = getInjuredKin(state, mon, { x, y });
+      if (kin) {
+        nseen++;
+        if (state.rng.randint0(nseen) === 0) found = kin;
+      }
+    }
+  }
+  return found;
 }
 
 /** monster_spell_failrate: the chance a (non-innate) spell fizzles. */
@@ -109,8 +169,12 @@ export function removeBadSpells(
   /* Don't heal if full. */
   if (mon.hp >= mon.maxhp) f.off(RSF.HEAL);
 
-  /* Don't heal others with no injured kin nearby (groups, #19). */
-  if (f.has(RSF.HEAL_KIN) && !(config.hasInjuredKin?.(mon.midx) ?? false)) {
+  /* Don't heal others with no injured kin nearby. A caller override wins;
+   * otherwise scan for injured same-base kin in LOS (find_any_nearby_injured_kin). */
+  const hasKin = config.hasInjuredKin
+    ? config.hasInjuredKin(mon.midx)
+    : findAnyNearbyInjuredKin(state, mon);
+  if (f.has(RSF.HEAL_KIN) && !hasKin) {
     f.off(RSF.HEAL_KIN);
   }
 
@@ -163,7 +227,7 @@ export function monsterCanCast(
 ): boolean {
   let chance = innate ? mon.race.freqInnate : mon.race.freqSpell;
   const tdist = targetDist(state, mon);
-  const tgrid = targetGrid(state);
+  const tgrid = targetGrid(state, mon);
 
   /* Cannot cast when nice, or with no frequency. */
   if (mon.mflag.has(MFLAG.NICE)) return false;
@@ -222,7 +286,7 @@ export function makeRangedAttack(
     removeBadSpells(state, mon, f, config);
 
     /* A bolt needs a clear, stopping path to the target. */
-    const tgrid = targetGrid(state);
+    const tgrid = targetGrid(state, mon);
     if (
       testSpells(f, RST.BOLT) &&
       !projectable(state.chunk, mon.grid, tgrid, PROJECT.STOP, maxRange)
@@ -247,11 +311,18 @@ export function makeRangedAttack(
   /* Spell failure (innate attacks never fail). */
   const failrate = monsterSpellFailrate(mon);
   if (!monSpellIsInnate(thrown) && state.rng.randint0(100) < failrate) {
-    config.failMessage?.(midx);
+    /* "X tries to cast a spell, but fails." (mon-attack.c L460). The name is
+     * monster_desc(mon, MDESC_STANDARD); a caller-supplied override wins. */
+    if (config.failMessage) {
+      config.failMessage(midx);
+    } else {
+      state.msg?.(`${monsterDesc(mon, MDESC_STANDARD)} tries to cast a spell, but fails.`);
+    }
     return true;
   }
 
-  /* Cast it. */
+  /* Cast the spell (disturb the player first, mon-attack.c L465). */
+  disturb(state);
   doMonSpell(state, midx, thrown, seen, deps);
 
   /* Remember what the monster did (mon-attack.c L460). */

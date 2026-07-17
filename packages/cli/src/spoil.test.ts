@@ -81,20 +81,26 @@ describe("spoil_mon_desc (brief monster table)", () => {
     expect(text).toMatch(/Name\s+Lev\s+Rar\s+Spd/);
   });
 
-  it("includes uniques ([U]), questors ([Q]) and ordinary monsters", () => {
+  it("includes uniques ([U]) and ordinary monsters", () => {
     expect(text).toContain("[U] Farmer Maggot");
-    // Morgoth is a QUESTOR (that check precedes UNIQUE), so he is tagged [Q].
-    expect(text).toContain("[Q] Morgoth, Lord of Darkness");
     expect(text).toMatch(/The .*(urchin|cat|kobold)/i);
+  });
+
+  it("excludes the last race per wiz-spoil.c's i < r_max - 1 bound", () => {
+    // spoil_mon_desc scans i=1..r_max-2, dropping the final race (Morgoth).
+    // spoil_mon_info uses the full range, so Morgoth appears there instead.
+    expect(text).not.toContain("Morgoth, Lord of Darkness");
+    expect(spoilMonInfo(pack)).toContain("Morgoth, Lord of Darkness");
   });
 
   it("is sorted by depth (first data row is a very shallow monster)", () => {
     const lines = text.split("\n");
-    // First few data rows are level <= a couple; Morgoth (deepest) is far below.
-    const morgothIdx = lines.findIndex((l) => l.includes("Morgoth"));
+    // The deepest brief-table monster (Vampire-Sauron, now the last kept race)
+    // sorts far below a very shallow one like the filthy street urchin.
+    const deepIdx = lines.findIndex((l) => l.includes("Vampire-Sauron"));
     const urchinIdx = lines.findIndex((l) => l.includes("urchin"));
     expect(urchinIdx).toBeGreaterThan(0);
-    expect(morgothIdx).toBeGreaterThan(urchinIdx);
+    expect(deepIdx).toBeGreaterThan(urchinIdx);
   });
 
   it("is deterministic", () => {

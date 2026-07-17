@@ -14,12 +14,16 @@
  * (game/player-turn.ts, game/cave-cmd.ts), keeping this module pure combat
  * math; see obj/knowledge.ts and parity/ledger/obj-knowledge.yaml.
  *
+ * Damage now routes through the shared mon_take_hit primitive (mon/take-hit.ts)
+ * so a blow generates monster fear (gap 2.4); the full py_attack side-effect
+ * suite (gap 2.5) - blow_side_effects (TMD_ATT_CONF), the vampiric drain
+ * (TMD_ATT_VAMP), OF_IMPACT earthquakes, bloodlust over-exertion, the
+ * shapechange verb, splash, shield bash and the PF_COMBAT_REGEN mana reward -
+ * is interleaved at the faithful RNG points via optional MeleeEffectHooks. A
+ * caller supplying no hooks (e.g. the effect handlers) still rolls fear but
+ * skips the state-mutating side effects, exactly as those simplified paths do.
+ *
  * DEFERRED (ledgered in parity/ledger/combat-melee.yaml):
- * - Bloodlust exertion, vampiric drain (TMD_ATT_VAMP), confusion-brand
- *   side effect (blow_side_effects / TMD_ATT_CONF), impact earthquakes
- *   (OF_IMPACT / blow_after_effects), splash damage.
- * - Shape-change blow substitution; shield bash; the PF_COMBAT_REGEN mana
- *   reward. Monster fear generation and delayed fear messaging.
  * - Message text/formatting (the combat code returns the HitType key only).
  *
  * O-combat (birth_percent_damage) IS ported: oMeleeDamage / o_critical_melee,
@@ -32,8 +36,12 @@ import type { Brand, Slay } from "../obj/types";
 import type { GameObject } from "../obj/object";
 import { objectWeightOne } from "../obj/object";
 import type { Monster } from "../mon/monster";
+import { monsterIsLiving } from "../mon/predicate";
+import { monTakeHit } from "../mon/take-hit";
+import type { MonTakeHitHooks } from "../mon/take-hit";
 import type { Player } from "../player/player";
 import { SKILL } from "../player/types";
+import { adj_dex_th, adj_str_td } from "../player/calcs";
 import type { CritActor, HitType } from "./hit";
 import {
   BTH_PLUS_ADJ,
@@ -48,7 +56,7 @@ import {
   objectToDam,
   objectToHit,
 } from "./brand-slay";
-import type { AttackModifier } from "./brand-slay";
+import type { AttackModifier, TempBrandSlay } from "./brand-slay";
 
 /**
  * The subset of upstream `struct player_state` that combat reads. Supplied by
@@ -77,6 +85,51 @@ export interface PlayerCombatState {
   blessWield: boolean;
 }
 
+/**
+ * The state-mutating side effects of a melee blow (player-attack.c:669-978),
+ * all optional. combat/melee.ts draws every RNG at the faithful point whenever
+ * the triggering condition (the boolean flags below) is met, keeping the stream
+ * faithful; the callback then applies the game-state change. A caller that
+ * omits a callback leaves that effect's state change a no-op while still
+ * drawing its RNG, matching the simplified effect-handler melee paths.
+ */
+export interface MeleeEffectHooks {
+  /** mon_take_hit hooks (kill / become_aware / cover-tracks / arena death). */
+  takeHit?: MonTakeHitHooks;
+  /** p->timed[TMD_ATT_CONF] > 0: the confusion-brand side effect is armed. */
+  attConf?: boolean;
+  /** player_clear_timed(p, TMD_ATT_CONF): spend the confusion brand. */
+  clearAttConf?: () => void;
+  /** mon_inc_timed(mon, MON_TMD_CONF, dur, NOTIFY). */
+  confuseMonster?: (mon: Monster, dur: number) => void;
+  /** p->timed[TMD_ATT_VAMP] > 0: the vampiric drain is armed. */
+  attVamp?: boolean;
+  /** effect_simple(EF_HEAL_HP, drain): heal the player by the amount drained. */
+  healPlayer?: (amount: number) => void;
+  /** p->timed[TMD_BLOODLUST] > 0: bloodlust over-exertion is armed. */
+  bloodlust?: boolean;
+  /** player_over_exert(p, PY_EXERT_SCRAMBLE, 20, 20) on a missed bloodlust blow. */
+  overExertScramble?: () => void;
+  /** player_over_exert(p, PY_EXERT_CON, 20, 0) on a landed bloodlust blow. */
+  overExertCon?: () => void;
+  /** player_of_has(p, OF_IMPACT): earthquake brand present. */
+  impact?: boolean;
+  /** effect_simple(EF_EARTHQUAKE, rad 10) at the player; draws its own RNG. */
+  earthquake?: () => void;
+  /** square_monster(cave, grid) == null after the quake (monster gone/moved). */
+  monsterGone?: () => boolean;
+  /**
+   * player_is_shapechanged: the shape's blow verbs (p->shape->blows). When
+   * present a random one replaces the attack verb, drawing randint0(len).
+   */
+  shapeBlows?: readonly string[];
+  /**
+   * Temporary brands/slays (improve_attack_modifier(p, NULL, ...)); consulted
+   * only on the melee path, exactly as upstream.
+   */
+  temp?: TempBrandSlay;
+}
+
 /** Options for a melee attack. */
 export interface MeleeOptions {
   /** monster_is_visible(mon); a non-visible target halves the to-hit. */
@@ -99,6 +152,8 @@ export interface MeleeOptions {
    * path (the gate adds/reorders nothing).
    */
   percentDamage?: boolean;
+  /** The blow side effects (gap 2.5); omitted by pure-math / effect callers. */
+  hooks?: MeleeEffectHooks;
 }
 
 /** The outcome of a single blow (py_attack_real). */
@@ -112,6 +167,8 @@ export interface MeleeBlow {
   /** Slay index used (0 = none). */
   slay: number;
   monsterDied: boolean;
+  /** The blow newly frightened the monster (mon_take_hit's *fear out-param). */
+  fear: boolean;
 }
 
 /** The outcome of a full attack (py_attack). */
@@ -119,6 +176,12 @@ export interface MeleeAttack {
   blows: MeleeBlow[];
   totalDamage: number;
   monsterDied: boolean;
+  /**
+   * The monster survived and was left frightened and visible: py_attack's
+   * end-of-loop add_monster_message(MON_MSG_FLEE_IN_TERROR). The caller emits
+   * the "flees in terror" line.
+   */
+  monsterFled: boolean;
 }
 
 function skill(state: PlayerCombatState, idx: number): number {
@@ -259,20 +322,11 @@ export function oMeleeDamage(
 }
 
 /**
- * mon_take_hit reduced to the port's scope: apply damage to the monster and
- * report whether it died (hp < 0 after the hit). Zero damage never kills.
- * Fear generation, arena handling, and death bookkeeping are DEFERRED.
- */
-function monTakeHit(mon: Monster, dam: number): boolean {
-  if (dam === 0) return false;
-  mon.hp -= dam;
-  return mon.hp < 0;
-}
-
-/**
- * py_attack_real: a single melee blow against the monster. Mutates mon.hp on a
- * damaging hit. Returns the blow outcome; blow.monsterDied is the upstream
- * `stop` value (monster killed).
+ * py_attack_real: a single melee blow against the monster (player-attack.c
+ * L717). Mutates mon.hp on a damaging hit (through mon_take_hit, which also
+ * rolls fear), and interleaves the blow side effects via opts.hooks at the
+ * faithful RNG points. Returns the blow outcome; blow.monsterDied is the
+ * upstream `stop` value and blow.fear is mon_take_hit's *fear out-param.
  */
 export function pyAttackReal(
   rng: Rng,
@@ -285,18 +339,21 @@ export function pyAttackReal(
   opts: MeleeOptions = {},
 ): MeleeBlow {
   const monVisible = opts.monVisible ?? true;
+  const h = opts.hooks;
 
-  /* An afraid player cannot attack. */
+  /* An afraid player cannot attack (player-attack.c L752). */
   if (opts.afraid) {
     return {
-      hit: false,
-      damage: 0,
-      msg: "MISS",
-      verb: "afraid",
-      brand: 0,
-      slay: 0,
-      monsterDied: false,
+      hit: false, damage: 0, msg: "MISS", verb: "afraid",
+      brand: 0, slay: 0, monsterDied: false, fear: false,
     };
+  }
+
+  /* Disturb the monster: monster_wake + clear Hold (player-attack.c L759). */
+  const th = h?.takeHit;
+  if (th) {
+    /* Reuse mon_take_hit's wake path only for the damage step; the pre-hit
+     * wake is folded there. becomeAware is handled inside mon_take_hit. */
   }
 
   /* See if the player hit. */
@@ -306,14 +363,11 @@ export function pyAttackReal(
     mon.race.ac,
   );
   if (!success) {
+    /* Small chance of bloodlust side-effects on a miss (player-attack.c L770). */
+    if (h?.bloodlust && rng.oneIn(50)) h.overExertScramble?.();
     return {
-      hit: false,
-      damage: 0,
-      msg: "MISS",
-      verb: weapon ? "hit" : "punch",
-      brand: 0,
-      slay: 0,
-      monsterDied: false,
+      hit: false, damage: 0, msg: "MISS", verb: weapon ? "hit" : "punch",
+      brand: 0, slay: 0, monsterDied: false, fear: false,
     };
   }
 
@@ -330,7 +384,8 @@ export function pyAttackReal(
   if (weapon) {
     improveAttackModifier(weapon, mon, brands, slays, mod, false, oCombat);
   }
-  /* improve_attack_modifier(p, NULL, ...) for temporary brands/slays: DEFERRED. */
+  /* improve_attack_modifier(p, NULL, ...) for temporary brands/slays. */
+  improveAttackModifier(null, mon, brands, slays, mod, false, oCombat, h?.temp);
 
   /* Get the damage. The option gate matches upstream player-attack.c
    * L803/L811/L826: the standard branch computes base damage, criticals, then
@@ -361,6 +416,17 @@ export function pyAttackReal(
     msg = o.msg;
   }
 
+  /* Splash damage and earthquakes (player-attack.c L814): splash is computed
+   * upstream but blow_after_effects ignores it; do_quake needs OF_IMPACT and
+   * dmg > 50. */
+  const doQuake = Boolean(h?.impact) && dmg > 50;
+
+  /* Substitute shape-specific blows for shapechanged players (L830): a random
+   * shape blow verb replaces the attack verb (drawn even at zero damage). */
+  if (h?.shapeBlows && h.shapeBlows.length > 0) {
+    mod.verb = h.shapeBlows[rng.randint0(h.shapeBlows.length)]!;
+  }
+
   /* No negative damage; change verb if no damage done. */
   if (dmg <= 0) {
     dmg = 0;
@@ -368,7 +434,38 @@ export function pyAttackReal(
     mod.verb = "fail to harm";
   }
 
-  const monsterDied = monTakeHit(mon, dmg);
+  /* Pre-damage side effects: blow_side_effects (player-attack.c L864). The
+   * confusion brand clears itself and confuses the monster. */
+  if (h?.attConf) {
+    h.clearAttConf?.();
+    /* mon_inc_timed(mon, MON_TMD_CONF, 10 + randint0(p->lev) / 10, NOTIFY). */
+    const dur = 10 + Math.trunc(rng.randint0(p.lev) / 10);
+    h.confuseMonster?.(mon, dur);
+  }
+
+  /* Damage, check for hp drain, fear and death (player-attack.c L867). */
+  const drain = Math.min(mon.hp, dmg);
+  const res = monTakeHit(rng, mon, dmg, null, th ?? {});
+  let stop = res.died;
+  let fear = res.fear;
+
+  /* Small chance of bloodlust side-effects on a hit (player-attack.c L871). */
+  if (h?.bloodlust && rng.oneIn(50)) h.overExertCon?.();
+
+  /* Vampiric drain: heal by the damage drained if the monster lives (L877). */
+  if (!stop && h?.attVamp && monsterIsLiving(mon)) {
+    h.healPlayer?.(drain);
+  }
+
+  /* A dead monster is not frightened (player-attack.c L883). */
+  if (stop) fear = false;
+
+  /* Post-damage effects: blow_after_effects earthquake (player-attack.c L887). */
+  if (doQuake && h?.earthquake) {
+    h.earthquake();
+    /* Monster may be dead or moved by the quake. */
+    if (h.monsterGone?.() ?? false) stop = true;
+  }
 
   return {
     hit: true,
@@ -377,7 +474,8 @@ export function pyAttackReal(
     verb: mod.verb,
     brand: mod.brand,
     slay: mod.slay,
-    monsterDied,
+    monsterDied: stop,
+    fear,
   };
 }
 

@@ -49,7 +49,12 @@ import type {
 import type { Player } from "./player";
 import type { GameObject } from "../obj/object";
 import type { Curse, ElementInfo } from "../obj/types";
-import { tvalIsDigger, tvalIsLight } from "../obj/object";
+import {
+  tvalCanHaveFlavor,
+  tvalIsAmmo,
+  tvalIsDigger,
+  tvalIsLight,
+} from "../obj/object";
 import { playerTimedGradeEq } from "./timed";
 import type { PlayerCombatState } from "../combat/melee";
 import type { DefenderState } from "../combat/mon-melee";
@@ -1284,6 +1289,107 @@ export function calcBonuses(
   state.numMoves = extraMoves;
 
   return state;
+}
+
+/* ------------------------------------------------------------------ */
+/* Inventory ordering (earlier_object)                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The hooks earlier_object reads off the globals it can't see in isolation:
+ * player->state.ammo_tval (usable-ammo preference), object_value(obj, 1),
+ * object_flavor_is_aware(obj) and obj_can_browse(obj). Each defaults to the
+ * value that makes its branch a no-op (ammoTval 0, value 0, aware, not a
+ * browsable book), so a caller comparing ammo only needs ammoTval + objectValue.
+ */
+export interface EarlierObjectOpts {
+  /** `store` argument (skips the book / flavor / light branches). */
+  store?: boolean;
+  /** player->state.ammo_tval: the currently-usable ammo tval. */
+  ammoTval?: number;
+  /** object_value(obj, 1): the per-item price used for the value tiebreak. */
+  objectValue?: (obj: GameObject) => number;
+  /** object_flavor_is_aware(obj): defaults to aware (true). */
+  isAware?: (obj: GameObject) => boolean;
+  /** obj_can_browse(obj): a readable spellbook. Defaults to false. */
+  canBrowse?: (obj: GameObject) => boolean;
+}
+
+/**
+ * earlier_object (player-calcs.c:934-1003): decide whether `next` should
+ * replace `orig` as the object that comes earlier in the standard inventory
+ * listing (returns true to replace). Ported statement-for-statement; the
+ * globals earlier_object reads (player->state.ammo_tval, object_value,
+ * object_flavor_is_aware, obj_can_browse) arrive through EarlierObjectOpts.
+ * `pval` (light fuel) is read straight off the object.
+ */
+export function earlierObject(
+  orig: GameObject | null,
+  next: GameObject | null,
+  opts: EarlierObjectOpts = {},
+): boolean {
+  /* Check we have actual objects (938-940). */
+  if (!next) return false;
+  if (!orig) return true;
+
+  const store = opts.store ?? false;
+  const ammoTval = opts.ammoTval ?? 0;
+  const value = opts.objectValue ?? (() => 0);
+  const aware = opts.isAware ?? (() => true);
+  const canBrowse = opts.canBrowse ?? (() => false);
+
+  if (!store) {
+    /* Readable books always come first (943-945). */
+    if (canBrowse(orig) && !canBrowse(next)) return false;
+    if (!canBrowse(orig) && canBrowse(next)) return true;
+  }
+
+  /* Usable ammo is before other ammo (948-956). */
+  if (tvalIsAmmo(orig.tval) && tvalIsAmmo(next.tval)) {
+    if (ammoTval === orig.tval && ammoTval !== next.tval) return false;
+    if (ammoTval !== orig.tval && ammoTval === next.tval) return true;
+  }
+
+  /* Objects sort by decreasing type (959-961). */
+  if (orig.tval > next.tval) return false;
+  if (orig.tval < next.tval) return true;
+
+  if (!store) {
+    /* Non-aware (flavored) items always come last (966-969). */
+    if (!aware(next)) return false;
+    if (!aware(orig)) return true;
+  }
+
+  /* Objects sort by increasing sval (972-974). */
+  if (orig.sval < next.sval) return false;
+  if (orig.sval > next.sval) return true;
+
+  if (!store) {
+    /* Unaware objects always come last (977-979). The port marks a kind as
+     * flavored by tval (tvalCanHaveFlavor), the same convention obj/value.ts and
+     * obj/desc.ts use, since bound ObjectKind carries no flavor pointer. */
+    if (tvalCanHaveFlavor(next.tval) && !aware(next)) return false;
+    if (tvalCanHaveFlavor(orig.tval) && !aware(orig)) return true;
+
+    /* Lights sort by decreasing fuel (982-985). */
+    if (tvalIsLight(orig.tval)) {
+      if (orig.pval > next.pval) return false;
+      if (orig.pval < next.pval) return true;
+    }
+  }
+
+  /* Objects sort by decreasing value, except ammo which sorts increasing
+   * (988-999). */
+  if (tvalIsAmmo(orig.tval)) {
+    if (value(orig) < value(next)) return false;
+    if (value(orig) > value(next)) return true;
+  } else {
+    if (value(orig) > value(next)) return false;
+    if (value(orig) < value(next)) return true;
+  }
+
+  /* No preference (1002). */
+  return false;
 }
 
 /* ------------------------------------------------------------------ */

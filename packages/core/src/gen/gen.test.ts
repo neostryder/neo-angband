@@ -1788,3 +1788,37 @@ describe("vault max-depth default (parse_vault_max_depth, generate.c L562)", () 
     expect(defaulted.length).toBeGreaterThan(vaults.length / 2);
   });
 });
+
+describe("quest monster placement (generate.c cave_generate L1170-1191)", () => {
+  const monReg = bindMonsters(monPack, { maxSight: constants.maxSight });
+  /* Any concrete race serves as a stand-in guardian; placement passes the race
+   * object directly, so it need not be in the allocation table. */
+  const guardian = monReg.races.find((r) => !r.flags.has(RF.UNIQUE)) ?? monReg.races[1];
+
+  it("spawns max_num guardians when questSpawns is supplied", () => {
+    const g = generateLevel(new Rng(2026_0716), 5, makeDeps(), {
+      questSpawns: [{ race: guardian, maxNum: 2 }],
+    });
+    const placed = g.monsters.filter((m) => m.mon.race === guardian);
+    expect(placed.length).toBe(2);
+  });
+
+  it("spawns no guardian without questSpawns (regression: the bug we fixed)", () => {
+    const g = generateLevel(new Rng(2026_0716), 5, makeDeps());
+    expect(g.monsters.some((m) => m.mon.race === guardian)).toBe(false);
+  });
+
+  it("skips a unique guardian already alive (cur_num > 0)", () => {
+    const uniq = monReg.races.find((r) => r.flags.has(RF.UNIQUE));
+    expect(uniq).toBeDefined();
+    uniq!.curNum = 1;
+    try {
+      const g = generateLevel(new Rng(4242), 10, makeDeps(), {
+        questSpawns: [{ race: uniq!, maxNum: 1 }],
+      });
+      expect(g.monsters.some((m) => m.mon.race === uniq)).toBe(false);
+    } finally {
+      uniq!.curNum = 0;
+    }
+  });
+});

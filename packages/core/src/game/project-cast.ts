@@ -50,6 +50,7 @@ import type { ProjectionInfo } from "../world/projection";
 import type { DamageReduction } from "../player/take-hit";
 import { monsterMax } from "./context";
 import type { GameState } from "./context";
+import { monsterGetTarget } from "./effect-mon-origin";
 import { projectMonster } from "./project-monster";
 import type { ProjectMonsterHooks } from "./project-monster";
 import { projectPlayer } from "./project-player";
@@ -196,17 +197,16 @@ export function basicPlayerActor(
 }
 
 /**
- * The portable branches of get_target (effect-handler-attack.c L38) for the
- * aimed bolt/beam family. Returns the target grid and whether PROJECT_PLAY
- * should be set (get_target sets it for monster and no-source projections so
- * they can hit the player).
+ * get_target (effect-handler-attack.c L38) for the aimed bolt/beam family.
+ * Returns the target grid and whether PROJECT_PLAY should be set (get_target
+ * sets it for monster and no-source projections so they can hit the player).
  *
  * - SRC_PLAYER: DIR_TARGET with an acquired target aims at it; otherwise the
  *   adjacent grid in `dir`. The target system (target_okay / target_get) is
  *   deferred (#24), so the acquired grid is passed in as `aimed`.
- * - SRC_MONSTER: aims at the player. The confused-direction, target-monster
- *   and decoy branches need monster-spell targeting and decoys (#19+); #19
- *   resolves those and passes the grid in directly.
+ * - SRC_MONSTER: monsterGetTarget resolves confusion's random direction (one
+ *   randint1(100) draw always made, matching the upstream RNG stream), then a
+ *   targeted monster, the decoy, or the player.
  * - default (SRC_NONE / trap / object): aims at the player, sets PROJECT_PLAY.
  */
 export function resolveAimedTarget(
@@ -219,7 +219,10 @@ export function resolveAimedTarget(
     if (dir === DIR_TARGET && aimed) return { grid: aimed, play: false };
     return { grid: locSum(state.actor.grid, DDGRID[dir] ?? loc(0, 0)), play: false };
   }
-  /* Monster and no-source projections target the player and may hit them. */
+  if (source.isMonster) {
+    return { grid: monsterGetTarget(state, state.rng, source.monster), play: true };
+  }
+  /* No-source projections target the player and may hit them. */
   return { grid: state.actor.grid, play: true };
 }
 

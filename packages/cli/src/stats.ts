@@ -27,6 +27,16 @@
  *    and a single flaky cell cannot shift every deeper level.
  *
  * Determinism: NO wall-clock, NO Math.random. Every draw traces to baseSeed.
+ *
+ * Relationship to wiz-stats.c (the in-game statistics collector behind the
+ * do_cmd_wiz_collect_* commands): main-stats.c and wiz-stats.c are two
+ * implementations of the same Monte-Carlo concept - main-stats.c is the
+ * standalone headless tool (SQLite output), wiz-stats.c is the in-game version
+ * (text log). This module tracks main-stats.c, the natural oracle for a
+ * headless TS harness. The wiz-stats.c-only surfaces (the diving / clearing
+ * object+monster collector, pit_stats, disconnect_stats) are ported alongside
+ * it in wiz-stats.ts, reusing this module's collectLevel / DepthMetrics so the
+ * object+monster tallies stay defined in exactly one place.
  */
 
 import {
@@ -174,7 +184,7 @@ function bump(rec: Record<string, number>, key: number, by = 1): void {
 }
 
 /** Fresh, all-zero per-depth aggregate. */
-function emptyDepth(): DepthMetrics {
+export function emptyDepth(): DepthMetrics {
   return {
     levels: 0,
     monsterTotal: 0,
@@ -208,7 +218,7 @@ function applyRandarts(reg: CoreRegistries, seed: number): void {
  * skipped exactly as log_all_objects L619 skips them (they are never naturally
  * generated - stores, birth kit, cheat).
  */
-function collectLevel(
+export function collectLevel(
   m: DepthMetrics,
   g: ReturnType<typeof generateLevel>,
 ): void {

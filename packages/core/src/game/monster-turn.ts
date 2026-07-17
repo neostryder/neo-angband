@@ -337,7 +337,7 @@ function squareIsDecoyed(state: GameState, grid: Loc): boolean {
  * monster_is_decoyed (mon-predicate.c L308): a live decoy exists and the monster
  * has line of sight to it. Draws no RNG.
  */
-function monsterIsDecoyed(mon: Monster, state: GameState): boolean {
+export function monsterIsDecoyed(mon: Monster, state: GameState): boolean {
   const d = state.decoy;
   if (!d || locIsZero(d)) return false;
   return los(state.chunk, mon.grid, d);

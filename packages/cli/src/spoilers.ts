@@ -425,13 +425,22 @@ export function spoilArtifact(pack: GamePack): string {
 
 /**
  * The spoilable races: every named monster except the reserved `<player>`
- * template at index 0 (upstream skips r_info[0]; the port carries no trailing
- * ghost slot, so nothing is dropped at the tail). Sorted by cmp_monsters.
+ * template at index 0 (races[0], upstream's r_info[0]). Sorted by cmp_monsters
+ * (ui-knowledge.c cmp_level -> cmp_mexp: level, then experience, then index).
+ *
+ * `excludeLast` reproduces spoil_mon_desc's `i < z_info->r_max - 1` bound
+ * (wiz-spoil.c L535): the brief monster table drops the final race (Morgoth,
+ * the deepest) from the SET before sorting. spoil_mon_info uses the full
+ * `i < z_info->r_max` range (L672), so its caller leaves excludeLast false.
  */
-function spoilableRaces(reg: SpoilCtx["reg"]): MonsterRace[] {
+function spoilableRaces(
+  reg: SpoilCtx["reg"],
+  excludeLast = false,
+): MonsterRace[] {
   const races = reg.monsters.races;
+  const end = excludeLast ? races.length - 1 : races.length;
   const who: MonsterRace[] = [];
-  for (let i = 1; i < races.length; i++) {
+  for (let i = 1; i < end; i++) {
     const race = races[i];
     if (race && race.name) who.push(race);
   }
@@ -441,9 +450,10 @@ function spoilableRaces(reg: SpoilCtx["reg"]): MonsterRace[] {
   return who;
 }
 
-/** attr_to_text (mon-util.c): the colour name for a display attr. */
+/** attr_to_text (z-color.c L208): the colour name for a display attr; the
+ * out-of-range fallback is "Icky" (L213), not the color table's own name. */
 function attrToText(attr: number): string {
-  return COLOR_TABLE[attr]?.name ?? "Icky Thing";
+  return COLOR_TABLE[attr]?.name ?? "Icky";
 }
 
 /** The [Q]/[U]/The name prefix used by both monster spoilers. */
@@ -490,7 +500,8 @@ export function spoilMonDesc(pack: GamePack): string {
   out += row("Name", "Lev", "Rar", "Spd", "Hp", "Ac", "Visual Info");
   out += row("----", "---", "---", "---", "--", "--", "-----------");
 
-  for (const race of spoilableRaces(ctx.reg)) {
+  /* spoil_mon_desc scans i=1..r_max-2 (wiz-spoil.c L535): drop the last race. */
+  for (const race of spoilableRaces(ctx.reg, true)) {
     const nam = monsterName(race, (p) => `${p}${race.name}`);
     /* The "Visual Info" column reuses the exp buffer: colour name + symbol. */
     const vis = `${attrToText(race.dAttr)} '${race.dChar}'`;
