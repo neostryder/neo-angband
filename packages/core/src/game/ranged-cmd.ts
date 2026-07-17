@@ -39,7 +39,7 @@ import { gearGet, gearObjectForUse } from "./gear";
 import { dropNear } from "./floor";
 import { squareMonster, deleteMonster, arenaInterceptDeath } from "./context";
 import type { GameState, PlayerCommand } from "./context";
-import { targetOkay, targetGet } from "./target";
+import { targetOkay, targetGet, targetSetClosest, TARGET } from "./target";
 import { describeObject } from "./describe";
 import { formatMonsterMessage, formatPainMessage, monMessageSoundType } from "./mon-message";
 import type { ActionRegistry } from "./player-turn";
@@ -221,6 +221,49 @@ export function installRangedCommands(registry: ActionRegistry): void {
 
     const shots = Math.max(10, state.actor.combat.numShots);
     return Math.trunc((state.z.moveEnergy * 10) / shots);
+  });
+
+  /**
+   * do_cmd_fire_at_nearest (player-attack.c:1412): the "fire at nearest visible
+   * monster" convenience (h in the original keyset, TAB in roguelike). Requires
+   * a usable launcher, picks the first eligible ammo from the quiver, targets
+   * the closest valid foe with TARGET_KILL | TARGET_QUIET (no "No Available
+   * Target." message on failure), then reuses do_cmd_fire with DIR_TARGET.
+   */
+  const fireHandler = registry.get("fire");
+  registry.register("fire-at-nearest", (state, _cmd: PlayerCommand) => {
+    const player = state.actor.player;
+
+    /* Require a usable launcher (player-attack.c:1417-1421). */
+    const bowSlot = player.body.slots.findIndex((s) => s.type === "BOW");
+    const launcher =
+      bowSlot >= 0 ? gearGet(state.gear, player.equipment[bowSlot] ?? 0) : null;
+    if (!launcher || !state.actor.combat.ammoTval) {
+      state.msg?.("You have nothing to fire with.");
+      return 0;
+    }
+
+    /* Find first eligible ammo in the quiver (player-attack.c:1423-1431). */
+    let ammoHandle = -1;
+    for (const h of state.gear.quiver ?? []) {
+      if (!h) continue;
+      const o = gearGet(state.gear, h);
+      if (!o || o.tval !== state.actor.combat.ammoTval) continue;
+      ammoHandle = h;
+      break;
+    }
+    if (ammoHandle < 0) {
+      state.msg?.("You have no ammunition in the quiver to fire.");
+      return 0;
+    }
+
+    /* Require a foe (player-attack.c:1440). */
+    if (!targetSetClosest(state, TARGET.KILL | TARGET.QUIET)) return 0;
+
+    /* Fire! dir = DIR_TARGET (player-attack.c:1413,1443-1445). */
+    return fireHandler
+      ? fireHandler(state, { code: "fire", args: { handle: ammoHandle, dir: 5 } })
+      : 0;
   });
 
   registry.register("throw", (state, cmd: PlayerCommand) => {

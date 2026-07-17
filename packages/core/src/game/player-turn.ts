@@ -380,6 +380,21 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
   return energyPerMove(state) + pickupCost;
 }
 
+/**
+ * jump (do_cmd_jump, cmd-cave.c:1319): "walk into a trap" - identical to
+ * do_cmd_walk except move_player is called with disarm=false, so a disarmable
+ * trap in the target grid is stepped onto and triggered rather than disarmed.
+ * The port's walkAction does not yet implement do_cmd_walk's disarm-on-walk
+ * branch (cmd-cave.c:1311-1312, deferred: trap consequences run in
+ * onPlayerMoved -> hit_trap on any step), so a step onto a trap already
+ * triggers it; jump therefore shares walkAction's body. Kept as a distinct
+ * action so a front end can bind the faithful CMD_JUMP keys (W / -) and so the
+ * distinction survives once walk gains its disarm branch.
+ */
+export function jumpAction(state: GameState, cmd: PlayerCommand): number {
+  return walkAction(state, cmd);
+}
+
 /** hold / rest: stay put and spend a full turn. */
 export function holdAction(state: GameState, _cmd: PlayerCommand): number {
   return state.z.moveEnergy;
@@ -435,6 +450,7 @@ export const STUBBED_COMMANDS: readonly string[] = [
 export function createDefaultRegistry(): ActionRegistry {
   const reg = new ActionRegistry();
   reg.register("walk", walkAction);
+  reg.register("jump", jumpAction);
   reg.register("hold", holdAction);
   reg.register("rest", holdAction);
   reg.register("descend", descendAction);
