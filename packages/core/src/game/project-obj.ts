@@ -5,16 +5,16 @@
  * EL_INFO_HATES / EL_INFO_IGNORE bits), and inven_damage (the pack-side
  * casualty roll elemental hits on the player make).
  *
+ * KILL_TRAP's chest unlock (is_locked_chest / unlock_chest), the mimic reveal
+ * on object destruction (obj->mimicking_m_idx -> become_aware via
+ * state.becomeAware) and the protected_obj parameter (the object that created
+ * the projection, so it does not destroy itself) are ported here.
+ *
  * DEFERRED (ledgered in parity/ledger/game-project-obj.yaml):
- * - KILL_TRAP's chest unlock (is_locked_chest / unlock_chest): chests ride
- *   with obj-chest.c (#24).
- * - Mimic reveal (obj->mimicking_m_idx -> become_aware): mimics are not in
- *   the live loop yet.
- * - The protected_obj parameter (the object that created the projection);
- *   the engine's onObject hook does not thread it, and no live caller
- *   projects from an object yet.
  * - obj->known twin updates in inven_damage (display-only) and the ignore
- *   checks (ignore_item_ok, #24); gear_to_label lettering in messages.
+ *   checks (ignore_item_ok, gap 4.8/#24); gear_to_label lettering in messages.
+ *   square_isseen stands in for obj->known visibility, matching the rest of
+ *   this driver.
  */
 
 import type { Loc } from "../loc";
@@ -22,6 +22,7 @@ import { ELEM, PROJ } from "../generated";
 import { EL_INFO_HATES, EL_INFO_IGNORE } from "../obj/types";
 import type { GameObject } from "../obj/object";
 import { tvalIsAmmo, tvalIsArmor, tvalIsRod, tvalIsWeapon } from "../obj/object";
+import { isLockedChest, unlockChest } from "../obj/chest";
 import { ODESC } from "../obj/desc";
 import { squareIsSeen } from "../world/view";
 import type { GameState } from "./context";
@@ -32,6 +33,13 @@ import { gearObjectForUse } from "./gear";
 /** The world seams project_o/project_f need beyond the GameState. */
 export interface ProjectWorldEnv {
   msg?(text: string): void;
+  /**
+   * protected_obj (project-obj.c L537): the object that created the
+   * projection, which must not destroy itself. Absent when the projection has
+   * no object source (the common case; no live caller projects from an object
+   * yet).
+   */
+  protectedObj?: GameObject;
 }
 
 /** VERB_AGREEMENT over an object stack. */
@@ -103,8 +111,9 @@ function runObjectHandler(typ: number, obj: GameObject): ObjHandlerResult {
       out.doKill = true;
       out.noteKill = verbAgree(obj.number, "is destroyed", "are destroyed");
       break;
-    /* KILL_TRAP's chest unlock: DEFERRED (chests, #24). Every other
-     * projection has no object effect, exactly as the upstream stubs. */
+    /* KILL_TRAP's chest unlock is handled in projectObject (it mutates the
+     * object and messages instead of destroying it). Every other projection
+     * has no object effect, exactly as the upstream stubs. */
     default:
       break;
   }
@@ -127,7 +136,22 @@ export function projectObject(
 
   /* Scan a snapshot: destruction mutates the pile. */
   for (const obj of [...floorPile(state, grid)]) {
-    const { doKill, ignore, noteKill } = runObjectHandler(typ, obj);
+    /* KILL_TRAP unlocks a locked chest instead of destroying it. */
+    if (typ === PROJ.KILL_TRAP) {
+      if (isLockedChest(obj)) {
+        unlockChest(obj);
+        /* obj->known && !ignore_item_ok (gap 4.8): square_isseen stands in. */
+        if (squareIsSeen(state.chunk, grid)) {
+          env.msg?.("Click!");
+          obvious = true;
+        }
+      }
+      continue;
+    }
+
+    const { doKill: rawKill, ignore, noteKill } = runObjectHandler(typ, obj);
+    /* protected_obj never destroys itself. */
+    const doKill = rawKill && obj !== env.protectedObj;
     if (!doKill) continue;
 
     const seen = squareIsSeen(state.chunk, grid);
@@ -140,8 +164,14 @@ export function projectObject(
           `The ${describeObject(state, obj, ODESC.BASE)} ${verbAgree(obj.number, "is", "are")} unaffected!`,
         );
       }
+    } else if (obj.mimickingMIdx) {
+      /* Reveal a mimic instead of destroying its fake item. */
+      if (obvious) {
+        const mon = state.monsters[obj.mimickingMIdx];
+        if (mon) state.becomeAware?.(mon);
+      }
     } else {
-      /* Mimic reveal: DEFERRED (mimics not live). */
+      /* Describe the destruction if the player can see it. */
       if (seen && noteKill) {
         env.msg?.(`The ${describeObject(state, obj, ODESC.BASE)} ${noteKill}!`);
       }
