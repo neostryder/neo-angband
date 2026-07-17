@@ -9,6 +9,7 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { runBirth } from "./birth";
 import type { GlyphTerm } from "./term";
+import type { PlayerClass, PlayerRace } from "@neo-angband/core";
 
 interface FakeWindow {
   addEventListener(type: string, fn: (ev: Event) => void, capture?: boolean): void;
@@ -61,15 +62,18 @@ async function tick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+// The birth menus read only .name and .statAdj from a race/class, so these
+// minimal stand-ins are cast to the full record types (the fields the flow
+// touches are all present; the rest are never read on these paths).
 const RACES = [
   { name: "Human", statAdj: [0, 0, 0, 0, 0] },
   { name: "Half-Elf", statAdj: [0, 1, -1, 1, -1] },
   { name: "Dwarf", statAdj: [2, -3, 2, -2, 2] },
-];
+] as unknown as PlayerRace[];
 const CLASSES = [
   { name: "Warrior", statAdj: [3, -2, -2, 2, 2] },
   { name: "Mage", statAdj: [-3, 3, 0, 1, -2] },
-];
+] as unknown as PlayerClass[];
 
 afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
@@ -94,7 +98,10 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     expect(term.snapshot()[0]).toContain("choose a stat roller");
     expect(term.snapshot()[1]).toContain("Point-based is recommended");
     expect(term.snapshot().join("\n")).toContain("Standard roller");
-    press(win, "b"); // Standard roller
+    press(win, "b"); // Standard roller -> the interactive roll screen
+    await tick();
+    expect(term.snapshot()[0]).toContain("standard roller");
+    press(win, "Enter"); // accept the roll -> name (roller_command:986)
     await tick();
     expect(term.snapshot()[0]).toContain("name");
     for (const ch of "Durin") press(win, ch);
@@ -103,12 +110,19 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     // FINAL_CONFIRM: an explicit accept step.
     expect(term.snapshot()[0]).toContain("Durin the Dwarf Mage");
     press(win, "a"); // Begin the adventure
-    expect(await done).toEqual({
-      raceName: "Dwarf",
-      className: "Mage",
-      name: "Durin",
-      roller: "roller",
-    });
+    const choice = await done;
+    expect(choice!.raceName).toBe("Dwarf");
+    expect(choice!.className).toBe("Mage");
+    expect(choice!.name).toBe("Durin");
+    expect(choice!.roller).toBe("roller");
+    // The accepted standard-roller stats ride as rolledStats (natural 8..17).
+    expect(choice!.rolledStats).toHaveLength(5);
+    for (const s of choice!.rolledStats!) {
+      expect(s).toBeGreaterThanOrEqual(8);
+      expect(s).toBeLessThanOrEqual(17);
+    }
+    // Point-buy `stats` is absent on the standard-roller path.
+    expect(choice).not.toHaveProperty("stats");
   });
 
   it("never shows a sex/gender stage (removed: not in 4.2.6 ui-birth.c)", async () => {
@@ -177,7 +191,8 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     await tick();
     press(win, "a"); await tick(); // race Human
     press(win, "a"); await tick(); // class Warrior
-    press(win, "b"); await tick(); // Standard roller -> straight to name
+    press(win, "b"); await tick(); // Standard roller -> the roll screen
+    press(win, "Enter"); await tick(); // accept the roll -> name
     for (const ch of "Bo") press(win, ch);
     press(win, "Enter");
     await tick();
@@ -340,6 +355,148 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     expect(term.snapshot()[0]).toContain("choose a race");
     press(win, "Escape");
     expect(await done).toBeNull();
+  });
+});
+
+describe("runBirth: standard roller screen (roller_command)", () => {
+  it("reroll exposes the 'previous roll' option, prev swaps it back", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const done = runBirth(term, RACES, CLASSES);
+    await tick();
+    press(win, "a"); await tick(); // Human
+    press(win, "a"); await tick(); // Warrior
+    press(win, "b"); await tick(); // Standard roller -> roll screen
+    // Before any reroll the previous-roll clause is absent (roller_command:901).
+    expect(term.snapshot().join("\n")).not.toContain("previous roll");
+    press(win, "r"); // reroll: save prev, roll fresh (do_cmd_roll_stats)
+    expect(term.snapshot().join("\n")).toContain("previous roll");
+    press(win, "p"); // do_cmd_prev_stats: swap in the stored previous roll
+    press(win, "Enter"); await tick(); // accept -> name
+    expect(term.snapshot()[0]).toContain("name");
+    press(win, "Enter"); await tick(); // default name -> confirm
+    press(win, "a");
+    const choice = await done;
+    expect(choice!.roller).toBe("roller");
+    expect(choice!.rolledStats).toHaveLength(5);
+  });
+
+  it("ESC from the roll screen steps back to the roller choice", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const done = runBirth(term, RACES, CLASSES);
+    await tick();
+    press(win, "a"); await tick(); // Human
+    press(win, "a"); await tick(); // Warrior
+    press(win, "b"); await tick(); // Standard roller -> roll screen
+    expect(term.snapshot()[0]).toContain("standard roller");
+    press(win, "Escape"); await tick(); // BIRTH_BACK -> roller choice
+    expect(term.snapshot()[0]).toContain("choose a stat roller");
+    press(win, "Escape"); await tick();
+    press(win, "Escape"); await tick();
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+});
+
+describe("runBirth: menu_question '*' random and '@' finish", () => {
+  it("'*' on the race menu picks a random race and advances to class", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const done = runBirth(term, RACES, CLASSES);
+    await tick();
+    press(win, "*"); // select a race at random (ui-birth.c:841)
+    await tick();
+    expect(term.snapshot()[0]).toContain("choose a class");
+    press(win, "Escape"); await tick(); // back to race
+    press(win, "Escape"); // stage 0 -> keep default
+    expect(await done).toBeNull();
+  });
+
+  it("'@' finishes the character at random and jumps to confirm", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    // finish_with_random_choices seeds a default point-buy via generate_stats,
+    // which reads calc_blows (minWeight/attMultiply/maxAttacks) and the class
+    // magic realm, so the '@' path needs fully-formed classes.
+    const FULL_CLASSES = [
+      {
+        name: "Warrior",
+        statAdj: [3, -2, -2, 2, 2],
+        minWeight: 30,
+        attMultiply: 5,
+        maxAttacks: 6,
+        magic: { totalSpells: 0, books: [] },
+      },
+      {
+        name: "Mage",
+        statAdj: [-3, 3, 0, 1, -2],
+        minWeight: 40,
+        attMultiply: 2,
+        maxAttacks: 4,
+        magic: { totalSpells: 1, books: [{ realm: { stat: 1 } }] },
+      },
+    ];
+    const done = runBirth(
+      term,
+      RACES,
+      FULL_CLASSES as unknown as typeof CLASSES,
+    );
+    await tick();
+    press(win, "@"); // finish with random choices (ui-birth.c:851)
+    await tick();
+    // finish_with_random_choices jumps to BIRTH_FINAL_CONFIRM.
+    expect(term.snapshot()[0]).toContain(" the ");
+    press(win, "a"); // begin
+    const choice = await done;
+    expect(choice).not.toBeNull();
+    // The default point-buy (generate_stats) supplies the stats.
+    expect(choice!.roller).toBe("point");
+    expect(choice!.stats).toHaveLength(5);
+  });
+});
+
+describe("runBirth: history-edit stage (get_history_command)", () => {
+  it("accepts the supplied background and rides it as `history`", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const done = runBirth(term, RACES, CLASSES, {
+      historyFor: () => "You are the only child of a Serf.",
+    });
+    await tick();
+    press(win, "a"); await tick(); // Human
+    press(win, "a"); await tick(); // Warrior
+    press(win, "a"); await tick(); // Point-based
+    press(win, "Enter"); await tick(); // accept allocation -> name
+    press(win, "Enter"); await tick(); // default name -> history stage
+    expect(term.snapshot().join("\n")).toContain("Accept character history?");
+    expect(term.snapshot().join("\n")).toContain("only child of a Serf");
+    press(win, "a"); await tick(); // "Accept this background" -> confirm
+    press(win, "a"); // begin
+    const choice = await done;
+    expect(choice!.history).toBe("You are the only child of a Serf.");
+  });
+
+  it("without historyFor the history stage is skipped (name -> confirm)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const done = runBirth(term, RACES, CLASSES);
+    await tick();
+    press(win, "a"); await tick(); // Human
+    press(win, "a"); await tick(); // Warrior
+    press(win, "a"); await tick(); // Point-based
+    press(win, "Enter"); await tick(); // accept -> name
+    press(win, "Enter"); await tick(); // default name -> confirm directly
+    expect(term.snapshot()[0]).toContain(" the ");
+    press(win, "a");
+    const choice = await done;
+    expect(choice).not.toHaveProperty("history");
   });
 });
 

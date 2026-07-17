@@ -556,10 +556,18 @@ export async function runBirth(
       }
 
       case "race": {
+        // menu_question (ui-birth.c:437-441): the race menu carries '*'
+        // (select at random) and '@' (finish with random choices) as the two
+        // trailing rows, appended after the real races.
+        const raceItems: MenuItem[] = [
+          ...races.map((x) => ({ label: x.name })),
+          RANDOM_ROW,
+          FINISH_ROW,
+        ];
         const pick = await selectFromMenu(
           term,
           "Create a character  -  choose a race",
-          races.map((x) => ({ label: x.name })),
+          raceItems,
           backStack.length === 0 ? FOOTER_FIRST : FOOTER,
           {
             subtitle: RACE_HINT,
@@ -571,6 +579,18 @@ export async function runBirth(
           if (!goBack()) return null;
           break;
         }
+        if (pick === races.length) {
+          // '*' random pick, then advance to class (menu_question:841-847).
+          raceIdx = rollRng.randint0(races.length);
+          raceName = races[raceIdx]?.name ?? "Human";
+          advance("class");
+          break;
+        }
+        if (pick === races.length + 1) {
+          // '@' finish the rest of the character at random (menu_question:851).
+          finishRandom("race");
+          break;
+        }
         raceIdx = pick;
         raceName = races[pick]?.name ?? "Human";
         advance("class");
@@ -578,10 +598,15 @@ export async function runBirth(
       }
 
       case "class": {
+        const classItems: MenuItem[] = [
+          ...classes.map((x) => ({ label: x.name })),
+          RANDOM_ROW,
+          FINISH_ROW,
+        ];
         const pick = await selectFromMenu(
           term,
           `Race: ${raceName}  -  choose a class`,
-          classes.map((x) => ({ label: x.name })),
+          classItems,
           FOOTER,
           {
             subtitle: CLASS_HINT,
@@ -591,6 +616,17 @@ export async function runBirth(
         );
         if (pick === null) {
           if (!goBack()) return null;
+          break;
+        }
+        if (pick === classes.length) {
+          // '*' random class, then advance to the roller (menu_question:841-847).
+          classIdx = rollRng.randint0(classes.length);
+          className = classes[classIdx]?.name ?? "Warrior";
+          advance("roller");
+          break;
+        }
+        if (pick === classes.length + 1) {
+          finishRandom("class");
           break;
         }
         classIdx = pick;
@@ -613,8 +649,9 @@ export async function runBirth(
         }
         rollerIdx = pick;
         // BR_POINTBASED (row 0) opens the allocation screen; the standard
-        // roller (row 1) rolls engine-side and jumps straight to naming.
-        advance(pick === 0 ? "points" : "name");
+        // roller (row 1) opens the interactive roll screen (menu_question
+        // ui-birth.c:813-817: cursor -> CMD_ROLL_STATS then BIRTH_ROLLER).
+        advance(pick === 0 ? "points" : "roll");
         break;
       }
 
@@ -636,12 +673,28 @@ export async function runBirth(
         break;
       }
 
+      case "roll": {
+        // The standard-roller screen (roller_command, ui-birth.c:872-999):
+        // accept -> BIRTH_NAME_CHOICE (L986), ESC -> BIRTH_BACK (L970).
+        const race = races[raceIdx] ?? { name: raceName };
+        const cls = classes[classIdx] ?? { name: className };
+        const result = await standardRoller(term, race, cls, rollRng);
+        if (result === null) {
+          if (!goBack()) return null;
+          break;
+        }
+        rolledStats = result;
+        advance("name");
+        break;
+      }
+
       case "name": {
         const entered = await promptText(
           term,
           "Enter your character's name",
           name,
-          15,
+          // PLAYER_NAME_LEN (option.h:23 = 32) allows 31 usable characters.
+          31,
           "[ type a name, Enter to accept, ESC to go back ]",
         );
         if (entered === null) {
@@ -649,6 +702,28 @@ export async function runBirth(
           break;
         }
         name = entered.trim();
+        // BIRTH_HISTORY_CHOICE follows naming (ui-birth.c:1723) when the shell
+        // supplies get_history; otherwise history is generated engine-side and
+        // we go straight to the final confirm.
+        advance(opts.historyFor ? "history" : "confirm");
+        break;
+      }
+
+      case "history": {
+        const historyFor = opts.historyFor;
+        if (!historyFor) {
+          advance("confirm");
+          break;
+        }
+        // get_history_command (ui-birth.c:1498-1540): show the generated
+        // background for accept/edit; ESC (-1 from edit_text) steps back.
+        const text = historyText ?? historyFor(raceName);
+        const result = await historyStage(term, name || "Adventurer", text);
+        if (result === null) {
+          if (!goBack()) return null;
+          break;
+        }
+        historyText = result;
         advance("confirm");
         break;
       }
@@ -673,6 +748,12 @@ export async function runBirth(
             name: finalName,
             roller: point ? "point" : "roller",
             ...(point && pointStats ? { stats: pointStats } : {}),
+            // The accepted standard-roller stats ride as `rolledStats` (applied
+            // via generatePlayer's rolledStats path, NOT point-buy).
+            ...(!point && rolledStats ? { rolledStats } : {}),
+            // The edited background (do_cmd_choose_history), when the history
+            // stage ran; applied via generatePlayer's historyOverride.
+            ...(historyText !== null ? { history: historyText } : {}),
           };
         }
         if (!goBack()) return null;
