@@ -210,28 +210,25 @@ Per-gap re-mark:
 - 12.8 CLOSED (0e8b56a5). Running message log round-trips through SavedGame;
   upstream quirk (repeat-counts not persisted) preserved.
 - 9.6 VERIFIED already faithful (sanitize_player_loc).
-- 9.4 CLOSED for the data round-trip (0e8b56a5); ONE sub-item DEFERRED (below).
+- 9.4 CLOSED. Data round-trip in 0e8b56a5; the first-visit staircase-room
+  PLACEMENT driver + adjacency alloc_stairs skip in 50f386d6 (gen/cave.ts
+  buildStaircaseRooms per gen-cave.c:908-936; handleLevelStairs persistent path
+  per gen-cave.c:943-967; Dun.hasAdjacentAbove/Below threaded from the level
+  cache). Gated on birth_levels_persist; default generation byte-identical.
 
 ### REMAINING (honest open list after the close-everything pass)
 
-Exactly ONE sub-item is still open, and it does not affect faithful play at
-DEFAULT settings (birth_levels_persist is off by default):
+NONE. Every gap in this audit is now CLOSED or VERIFIED-already-faithful. The
+last deferral (the 9.4 staircase-room placement driver) was closed in commit
+50f386d6. Verification after the final commit: core+web+cli `tsc -b` exit 0;
+full `vitest run` = 222 files / 3218 tests pass; vite production bundle + PWA
+clean; the CLI parity self-regression guard passes unchanged (default
+generation unperturbed - all option-gated work sits behind birth_ai_learn /
+birth_levels_persist, both off by default).
 
-- 9.4 (persistent-level staircase-room PLACEMENT) - DEFERRED sub-item. The join
-  data round-trip is done: chunk->join is populated (correct prepend order),
-  persisted through StoredLevel + the savefile, and getJoinInfo is seeded from
-  cached neighbours on first visit, all gated on birth_levels_persist. What
-  remains is the first-visit staircase-room DRIVER (gen-cave.c:908-936, iterate
-  dun.join -> buildStaircase) plus the adjacency-based alloc_stairs skip
-  (gen-cave.c:943-967), which both need the session's frozen-level cache threaded
-  into the generator (GenerateOptions/Dun hasAdjacentAbove/Below - machinery
-  files gen/generate.ts + gen/util.ts). Until then, persistent-level first visits
-  generate a valid, playable level with normal stairs but do not align a new
-  level's up-stair to the departure down-stair. Exact remaining edits are in the
-  wiring report; the consumer (gen/cave.ts buildStaircaseRooms) is ready to add
-  once the two machinery fields land.
-
-Everything else is CLOSED or VERIFIED per the tables above.
+The only remaining differences from upstream are the maintainer-ratified
+accepted deviations below (terminal-only subwindow mechanics, the deliberate
+U/X per-type verb split, and the additive mod system).
 
 ---
 
