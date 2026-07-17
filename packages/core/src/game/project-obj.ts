@@ -10,11 +10,18 @@
  * state.becomeAware) and the protected_obj parameter (the object that created
  * the projection, so it does not destroy itself) are ported here.
  *
- * DEFERRED (ledgered in parity/ledger/game-project-obj.yaml):
- * - obj->known twin updates in inven_damage (display-only) and the ignore
- *   checks (ignore_item_ok, gap 4.8/#24); gear_to_label lettering in messages.
- *   square_isseen stands in for obj->known visibility, matching the rest of
- *   this driver.
+ * Knowledge / ignore integration (gap 6.12, C project-obj.c L86-90, L146,
+ * L537, L546-569):
+ * - inven_damage's obj->known->to_h / to_d / to_a writes (L86-90, L103-104) are
+ *   subsumed by the on-demand known shadow: objectKnownShadow reads the live
+ *   obj->to_* gated by p->obj_k, so decrementing them here is reflected in every
+ *   later describe without a separate twin write (there is no persistent twin to
+ *   update, and no known twin to object_delete on destruction).
+ * - inven_damage now labels the casualty with gear_to_label (L143) and project_o
+ *   gates its "unaffected" / destruction / "Click!" messages on
+ *   ignore_item_ok (state.isIgnored, L363-364, L546-569). square_isseen still
+ *   stands in for the obj->known visibility half, matching the rest of this
+ *   driver (the persistent floor twin is game/known.ts' reduced glyph memory).
  */
 
 import type { Loc } from "../loc";
@@ -28,7 +35,31 @@ import { squareIsSeen } from "../world/view";
 import type { GameState } from "./context";
 import { describeObject } from "./describe";
 import { floorExcise, floorPile } from "./floor";
+import type { Gear } from "./gear";
 import { gearObjectForUse } from "./gear";
+
+/**
+ * gear_to_label's label alphabet (obj-gear.c L446): a-z minus the roguelike
+ * cardinal-movement keys h/j/k/l, then A-Z.
+ */
+const GEAR_LABELS = "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/**
+ * gear_to_label (obj-gear.c L443), reduced to the pack items inven_damage can
+ * touch (equipment is exempt, so its slot letters are never needed): a quiver
+ * handle takes its slot digit (I2D, L456-460), otherwise a pack handle takes its
+ * listing letter (L462-466). Upstream reads the sorted upkeep->inven[] view; the
+ * port's inven[] reorder is deferred (game/gear.ts), so the raw pack ordering -
+ * the port's stand-in for the listing everywhere else - supplies the index.
+ * Returns "" when the handle is neither (upstream's '\0').
+ */
+function gearToLabel(gear: Gear, handle: number): string {
+  const qi = gear.quiver?.indexOf(handle) ?? -1;
+  if (qi >= 0) return String(qi);
+  const pi = gear.pack.indexOf(handle);
+  if (pi >= 0 && pi < GEAR_LABELS.length) return GEAR_LABELS[pi]!;
+  return "";
+}
 
 /** The world seams project_o/project_f need beyond the GameState. */
 export interface ProjectWorldEnv {
@@ -140,8 +171,13 @@ export function projectObject(
     if (typ === PROJ.KILL_TRAP) {
       if (isLockedChest(obj)) {
         unlockChest(obj);
-        /* obj->known && !ignore_item_ok (gap 4.8): square_isseen stands in. */
-        if (squareIsSeen(state.chunk, grid)) {
+        /* project_object_handler_KILL_TRAP L363-364: obj->known &&
+         * !ignore_item_ok(player, obj). The chest's known->pval reveal (L365)
+         * rides the on-demand shadow; squareIsSeen stands in for obj->known. */
+        if (
+          squareIsSeen(state.chunk, grid) &&
+          !(state.isIgnored?.(obj) ?? false)
+        ) {
           env.msg?.("Click!");
           obvious = true;
         }
@@ -154,25 +190,28 @@ export function projectObject(
     const doKill = rawKill && obj !== env.protectedObj;
     if (!doKill) continue;
 
-    const seen = squareIsSeen(state.chunk, grid);
-    if (seen) obvious = true;
+    /* Upstream gates the observed effect on obj->known && !ignore_item_ok(player,
+     * obj) && square_isseen (L546-547); squareIsSeen stands in for obj->known. */
+    const notIgnored = !(state.isIgnored?.(obj) ?? false);
+    const observed = squareIsSeen(state.chunk, grid) && notIgnored;
+    if (observed) obvious = true;
 
     if (obj.artifact || ignore) {
-      /* Artifacts and ignoring objects resist. */
-      if (seen) {
+      /* Artifacts and ignoring objects resist (L554-560). */
+      if (observed) {
         env.msg?.(
           `The ${describeObject(state, obj, ODESC.BASE)} ${verbAgree(obj.number, "is", "are")} unaffected!`,
         );
       }
     } else if (obj.mimickingMIdx) {
-      /* Reveal a mimic instead of destroying its fake item. */
+      /* Reveal a mimic instead of destroying its fake item (L561-565). */
       if (obvious) {
         const mon = state.monsters[obj.mimickingMIdx];
         if (mon) state.becomeAware?.(mon);
       }
     } else {
-      /* Describe the destruction if the player can see it. */
-      if (seen && noteKill) {
+      /* Describe the destruction if it is observed (L566-571). */
+      if (observed && noteKill) {
         env.msg?.(`The ${describeObject(state, obj, ODESC.BASE)} ${noteKill}!`);
       }
       floorExcise(state, grid, obj);
@@ -216,6 +255,9 @@ export function invenDamage(
 
     if (tvalIsWeapon(obj.tval) && !tvalIsAmmo(obj.tval)) {
       if (state.rng.randint0(10000) < cperc) {
+        /* obj->to_h-- / obj->to_d-- (L85, L88). The known-twin writes at L86-90
+         * (gated on p->obj_k->to_h / to_d) are subsumed by the on-demand shadow,
+         * which reads the live obj->to_* under the same p->obj_k gate. */
         obj.toH--;
         obj.toD--;
         damage = true;
@@ -224,6 +266,8 @@ export function invenDamage(
       }
     } else if (tvalIsArmor(obj.tval)) {
       if (state.rng.randint0(10000) < cperc) {
+        /* obj->to_a-- (L102); the L103-104 known->to_a write is likewise
+         * subsumed by the on-demand shadow. */
         obj.toA--;
         damage = true;
       } else {
@@ -252,8 +296,10 @@ export function invenDamage(
             ? "Some of y"
             : "One of y"
         : "Y";
+    /* "%sour %s (%c) %s %s!" (L139-145): the (%c) is gear_to_label. */
+    const label = gearToLabel(gear, handle);
     env.msg?.(
-      `${prefix}our ${describeObject(state, obj, ODESC.BASE)} ${amt > 1 ? "were" : "was"} ${
+      `${prefix}our ${describeObject(state, obj, ODESC.BASE)} (${label}) ${amt > 1 ? "were" : "was"} ${
         damage ? "damaged" : "destroyed"
       }!`,
     );

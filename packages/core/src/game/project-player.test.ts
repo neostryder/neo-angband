@@ -173,3 +173,53 @@ describe("projectPlayer - messages and side effects", () => {
     expect(seenPower).toBe(80);
   });
 });
+
+describe("projectPlayer - smart learn (update_smart_learn, project-player.c L852)", () => {
+  it("teaches a monster source the player's resist to the projection type", () => {
+    const a = actor();
+    const learned: number[] = [];
+    projectPlayer(
+      ctx(a, { smartLearn: (typ) => learned.push(typ) }),
+      0,
+      PLAYER_GRID,
+      40,
+      PROJ.FIRE,
+      false,
+    );
+    expect(learned).toEqual([PROJ.FIRE]);
+  });
+
+  it("still fires when the player is immune (before the damage gate, C L852 < L895)", () => {
+    const a = actor({ resistLevel: (t) => (t === PROJ.FIRE ? 3 : 0) });
+    const learned: number[] = [];
+    projectPlayer(
+      ctx(a, { smartLearn: (typ) => learned.push(typ) }),
+      0,
+      PLAYER_GRID,
+      40,
+      PROJ.FIRE,
+      false,
+    );
+    expect(a.chp).toBe(100); /* immune: no damage */
+    expect(learned).toEqual([PROJ.FIRE]); /* but the monster still learns */
+  });
+
+  it("does not fire for a player-source projection (only SRC_MONSTER, C L841)", () => {
+    const a = actor();
+    const playerSrc: ProjectPlayerSource = {
+      isPlayer: true,
+      isMonster: false,
+      killer: "yourself",
+    };
+    const learned: number[] = [];
+    projectPlayer(
+      ctx(a, { smartLearn: (typ) => learned.push(typ) }, playerSrc),
+      0,
+      PLAYER_GRID,
+      50,
+      PROJ.FIRE,
+      true,
+    );
+    expect(learned).toEqual([]);
+  });
+});

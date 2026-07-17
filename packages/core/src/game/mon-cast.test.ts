@@ -1,10 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG, PROJ, RF, RSF, TMD } from "../generated";
+import { EF, MFLAG, OF, PROJ, RF, RSF, TMD } from "../generated";
+import { FlagSet } from "../bitflag";
 import { EffectRegistry } from "../effects/interpreter";
 import { registerCoreHandlers } from "../effects/handlers";
 import { loc } from "../loc";
 import { Rng } from "../rng";
+import { OptionState } from "../player/options";
+import { OF_SIZE, PF_SIZE } from "../player/types";
+import { ELEM_MAX } from "../obj/types";
+import type { PlayerState } from "../player/calcs";
 import { bindProjections } from "../world/projection";
 import type { ProjectionRecordJson } from "../world/projection";
 import { addMon, makeState, makeRace, monReg, plReg } from "./harness";
@@ -14,7 +19,12 @@ import type { CastContext } from "./project-cast";
 import { registerAttackHandlers } from "./effect-attack";
 import { registerMonsterHandlers } from "./effect-monster";
 import { registerTeleportHandlers } from "./effect-teleport";
-import { buildMonSpellHooks, buildSpellEffectChain, doMonSpell } from "./mon-cast";
+import {
+  buildFailRuneEnv,
+  buildMonSpellHooks,
+  buildSpellEffectChain,
+  doMonSpell,
+} from "./mon-cast";
 import type { DoMonSpellDeps } from "./mon-cast";
 
 const projections = bindProjections(
@@ -237,5 +247,68 @@ describe("buildMonSpellHooks (mon-spell.c L368-383 wiring)", () => {
       doMonSpell(state, mon.midx, RSF.TELE_LEVEL, true, deps(state, { saveSkill: 100, hooks }));
       expect(nexus).toBe(1);
     }
+  });
+});
+
+describe("smart-learn write path (update_smart_learn, player-timed.c L947)", () => {
+  /* A minimal derived state carrying the object flags / resists player_inc_check
+   * reads (its full PlayerState is calc_bonuses output, deferred here). */
+  function withPlayerFlags(state: GameState, of: number[]): void {
+    const flags = new FlagSet(OF_SIZE);
+    for (const f of of) flags.on(f);
+    state.playerState = {
+      flags,
+      pflags: new FlagSet(PF_SIZE),
+      elInfo: Array.from({ length: ELEM_MAX }, () => ({ resLevel: 0 })),
+    } as unknown as PlayerState;
+  }
+
+  /* AFRAID's fail table is fail:1:PROT_FEAR (player_timed.txt) - a
+   * TMD_FAIL_FLAG_OBJECT foil, so player_inc_check's OBJECT branch runs the
+   * monster-source update_smart_learn(mon, p, OF_PROT_FEAR, 0, -1). */
+  it("a fail-rune check teaches the caster the player's object-flag foil", () => {
+    /* Smart monster: update_smart_learn draws only the 1-in-100 fail; pick a
+     * seed where that first draw does not fire so the memory is written. */
+    let seed = 1;
+    while (new Rng(seed).oneIn(100)) seed++;
+    const state = makeState({ playerGrid: loc(5, 5), seed });
+    state.options = new OptionState({ overrides: { birth_ai_learn: true } });
+    withPlayerFlags(state, [OF.PROT_FEAR]);
+    const mon = addMon(state, makeRace({ flags: [RF.SMART] }), loc(5, 6));
+
+    buildFailRuneEnv(state, plReg.timed).incCheck("AFRAID", mon);
+    expect(mon.knownPstate.flags.has(OF.PROT_FEAR)).toBe(true);
+  });
+
+  it("learns nothing when birth_ai_learn is off (default)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    withPlayerFlags(state, [OF.PROT_FEAR]);
+    const mon = addMon(state, makeRace({ flags: [RF.SMART] }), loc(5, 6));
+
+    buildFailRuneEnv(state, plReg.timed).incCheck("AFRAID", mon);
+    expect(mon.knownPstate.flags.has(OF.PROT_FEAR)).toBe(false);
+  });
+
+  it("doMonSpell threads the caster into spell_check_for_fail_rune on a save", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = caster(state);
+    let captured: number | null = null;
+    /* SCARE (EF_TIMED_INC:AFRAID) has a save message; saveSkill 100 forces the
+     * save, taking the fail-rune branch that now receives the caster. */
+    doMonSpell(
+      state,
+      mon.midx,
+      RSF.SCARE,
+      true,
+      deps(state, {
+        saveSkill: 100,
+        hooks: {
+          failRune: (_spell, m): void => {
+            captured = m.midx;
+          },
+        },
+      }),
+    );
+    expect(captured).toBe(mon.midx);
   });
 });

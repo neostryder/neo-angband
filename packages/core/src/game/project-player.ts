@@ -97,6 +97,15 @@ export interface ProjectPlayerHooks {
   takeHit?: TakeHitHooks;
   /** OPT(player, show_damage). */
   showDamage?: boolean;
+  /**
+   * update_smart_learn(mon, player, 0, 0, typ) (project-player.c L852): the
+   * source monster learns the player's resist to this projection type. Injected
+   * (not done in the driver) because it needs the live monster and derived
+   * player state, and the driver is deliberately state-free. The engine
+   * (updateSmartLearn, mon/spell.ts) gates every action - and every RNG draw -
+   * on birth_ai_learn, so with the option off this is a pure no-op.
+   */
+  smartLearn?: (typ: number) => void;
 }
 
 /** Everything the per-grid player driver needs. */
@@ -143,10 +152,16 @@ export function projectPlayer(
   /* Don't affect the projector unless explicitly allowed. */
   if (origin.isPlayer && !self) return false;
 
-  /* A projection from an unseen monster is not seen. (update_smart_learn -
-   * project-player.c L852, "the monster sees what is going on" - rides the AI
-   * smart-learn subsystem, which is unported and off by default: gap 8.5.) */
+  /* A projection from an unseen monster is not seen. */
   if (origin.isMonster && origin.monsterVisible === false) seen = false;
+
+  /* "Monster sees what is going on": the source monster learns the player's
+   * resist to this projection type (update_smart_learn, project-player.c L852).
+   * Called here in the faithful position - inside the SRC_MONSTER branch, before
+   * the blind message and adjust_dam - so the engine's birth_ai_learn RNG draws
+   * keep upstream order. The binding to the live monster / player state is
+   * injected (game/project-cast.ts) because this driver is state-free. */
+  if (origin.isMonster) hooks.smartLearn?.(typ);
 
   /* Let the player know what is going on when they cannot see it. */
   if (!seen) {
