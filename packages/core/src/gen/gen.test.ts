@@ -891,15 +891,19 @@ describe("faithful town generation", () => {
   it("consumes the exact RNG draw count of the faithful layout", () => {
     /* A regression guard on RNG draw ORDER and COUNT: any extra, missing or
      * reordered draw in town_gen_layout / build_streamer / starburst /
-     * build_store / build_ruin / residents changes this number. */
+     * build_store / build_ruin / residents changes this number. Includes each
+     * resident's mon_create_drop at placement (mon-make.c place_monster
+     * L1044-1046; town residents are placed with ORIGIN_DROP via
+     * pick_and_place_distant_monster, mon-make.c L1515). */
     const rng = new CountingRng(7);
     generateLevel(rng, 0, makeDeps(), { daytime: true });
     expect(rng.draws).toBe(TOWN_DRAW_COUNT_SEED7_DAY);
   });
 });
 
-/** Observed faithful draw count for seed 7, daytime (layout + residents). */
-const TOWN_DRAW_COUNT_SEED7_DAY = 1567;
+/** Observed faithful draw count for seed 7, daytime (layout + residents,
+ * including each resident's placement-time mon_create_drop draws). */
+const TOWN_DRAW_COUNT_SEED7_DAY = 1608;
 
 /* ------------------------------------------------------------------ *
  * Mod-registered custom room builder (moddability pillar).

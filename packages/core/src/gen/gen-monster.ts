@@ -29,7 +29,7 @@
  */
 
 import { FlagSet } from "../bitflag";
-import { RF, RSF, SQUARE } from "../generated";
+import { ORIGIN, RF, RSF, SQUARE } from "../generated";
 import { colorCharToAttr, colorTextToAttr } from "../color";
 import type { Rng } from "../rng";
 import type { MonsterBase, MonsterRace } from "../mon/types";
@@ -354,6 +354,7 @@ export function spreadMonsters(
   x0: number,
   dy: number,
   dx: number,
+  origin: number,
 ): void {
   if (!g.monDeps) return;
   const table = g.monDeps.table;
@@ -405,7 +406,7 @@ export function spreadMonsters(
     if (!squareIsEmpty(g, loc(x, y))) continue;
 
     /* Place the monster (sleeping, allow groups). */
-    pickAndPlaceMonster(g, loc(x, y), depth, true, true);
+    pickAndPlaceMonster(g, loc(x, y), depth, true, true, origin);
 
     /* Rein in monster groups and escorts a little. */
     if (g.monsters.length - startMonNum > num * 2) break;
@@ -465,7 +466,8 @@ export function getVaultMonsters(
     for (let y = y1; y <= y2; y++) {
       for (let x = x1; x <= x2; x++, t++) {
         if (dataCharAt(t) === sym) {
-          pickAndPlaceMonster(g, loc(x, y), depth, false, false);
+          /* get_vault_monsters (gen-monster.c L322-323): ORIGIN_DROP_SPECIAL. */
+          pickAndPlaceMonster(g, loc(x, y), depth, false, false, ORIGIN.DROP_SPECIAL);
         }
       }
     }
@@ -571,7 +573,8 @@ export function getChamberMonsters(
 
     /* Place a single monster. Sleeping 2/3rds of the time. */
     const sleep = g.rng.randint0(3) !== 0;
-    pickAndPlaceMonster(g, loc(x, y), c.depth, sleep, false);
+    /* get_chamber_monsters (gen-monster.c L409-410): ORIGIN_DROP_SPECIAL. */
+    pickAndPlaceMonster(g, loc(x, y), c.depth, sleep, false, ORIGIN.DROP_SPECIAL);
 
     /* One less monster to place. */
     monstersLeft--;

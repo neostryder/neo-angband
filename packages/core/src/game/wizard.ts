@@ -975,7 +975,19 @@ export function wizSummonNamed(
       deps.msg?.("Could not place monster.");
       return false;
     }
-    if (placeNewMonster(state, spots[0]!, params.race, true, true, info, deps.monPlace)) {
+    /* wiz_create_monster (cmd-wizard.c L2614-2615): ORIGIN_DROP_WIZARD. */
+    if (
+      placeNewMonster(
+        state,
+        spots[0]!,
+        params.race,
+        true,
+        true,
+        info,
+        deps.monPlace,
+        ORIGIN.DROP_WIZARD,
+      )
+    ) {
       return true;
     }
   }
