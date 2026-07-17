@@ -19,17 +19,26 @@
  * upstream do-while around cmdq_pop.
  */
 
-import { TMD } from "../generated";
-import { DDGRID } from "../loc";
+import { MON_MSG, MON_TMD, OF, PF, STAT, TMD } from "../generated";
+import { DDGRID, DDGRID_DDD, locSum } from "../loc";
 import type { Loc } from "../loc";
 import { pyAttack } from "../combat/melee";
+import type { MeleeAttack, MeleeEffectHooks } from "../combat/melee";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay";
+import type { TempBrandSlay } from "../combat/brand-slay";
 import { getLore } from "../mon/lore";
+import type { Monster } from "../mon/monster";
 import { monsterIsCamouflaged } from "../mon/predicate";
 import { monsterWake } from "../mon/take-hit";
-import { equipLearnOnMeleeAttack } from "../obj/knowledge";
+import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed";
+import { equipLearnFlag, equipLearnOnMeleeAttack } from "../obj/knowledge";
+import { playerClearTimed } from "../player/timed";
 import type { GameState, PlayerCommand } from "./context";
 import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context";
+import { gearGet } from "./gear";
+import { playerAdjustManaPrecise } from "./loop";
+import { formatMonsterMessage } from "./mon-message";
+import { PY_EXERT, playerOverExert } from "./world";
 
 /**
  * A player action: mutate the state for `cmd` and return the energy spent
@@ -71,6 +80,254 @@ function commandOffset(cmd: PlayerCommand): Loc | null {
 }
 
 /**
+ * The wiring-supplied dependencies for the melee blow side effects (gap 2.5):
+ * pieces player-turn cannot build from GameState alone. Installed by the
+ * session on the state object (see installMeleeSideEffects); every field is
+ * optional, and absent fields degrade to the pre-wiring behaviour.
+ */
+export interface MeleeSideDeps {
+  /** effect_simple(EF_EARTHQUAKE, source_player(), "0", 0, 10) (L688). */
+  earthquake?: () => void;
+  /** effect_simple(EF_HEAL_HP, source_player(), drain) (L878). */
+  healHp?: (amount: number) => void;
+  /** player_has_temporary_brand/slay over the live timed effects. */
+  temp?: TempBrandSlay;
+}
+
+/** The state extension carrying the wiring-installed melee side deps. */
+type MeleeSideHost = GameState & { meleeSideDeps?: MeleeSideDeps };
+
+/** Install the melee side-effect dependencies on the state (session wiring). */
+export function installMeleeSideEffects(
+  state: GameState,
+  deps: MeleeSideDeps,
+): void {
+  (state as MeleeSideHost).meleeSideDeps = deps;
+}
+
+/** player_has over the computed player state, else race/class pflags. */
+function playerHasPf(state: GameState, pf: number): boolean {
+  const ps = state.playerState;
+  if (ps) return ps.pflags.has(pf);
+  const p = state.actor.player;
+  return p.race.pflags.has(pf) || p.cls.pflags.has(pf);
+}
+
+/** player_of_has over the computed player state flags (equip + innate). */
+function playerOfHasFlag(state: GameState, of: number): boolean {
+  return state.playerState?.flags.has(of) ?? false;
+}
+
+/**
+ * Build the py_attack side-effect hooks (player-attack.c:669-1012) for an
+ * attack on `mon` at its current grid: the confusion brand, vampiric drain,
+ * bloodlust over-exertion, impact quake, shapechange verbs, shield bash and
+ * COMBAT_REGEN reward, each reading the live GameState. Wiring-dependent
+ * pieces (earthquake / heal effects, temporary brands) come from the
+ * installed MeleeSideDeps.
+ */
+export function buildMeleeHooks(state: GameState, mon: Monster): MeleeEffectHooks {
+  const p = state.actor.player;
+  const deps = (state as MeleeSideHost).meleeSideDeps ?? {};
+  const grid = mon.grid;
+
+  const hooks: MeleeEffectHooks = {
+    takeHit: {
+      ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
+    },
+    /* Confusion attack (blow_side_effects, player-attack.c:672-677). */
+    attConf: (p.timed[TMD.ATT_CONF] ?? 0) > 0,
+    clearAttConf: (): void => {
+      /* player_clear_timed(p, TMD_ATT_CONF, true, false): route through the
+       * grade machinery for the on-end message when the world env is wired. */
+      const eff = state.world?.timedTable?.[TMD.ATT_CONF];
+      if (eff) {
+        playerClearTimed(p, eff, true, false, state.world?.timedHooks ?? {});
+      } else {
+        p.timed[TMD.ATT_CONF] = 0;
+      }
+    },
+    confuseMonster: (m, dur): void => {
+      monIncTimed(state.rng, m, MON_TMD.CONF, dur, MON_TMD_FLG_NOTIFY);
+    },
+    /* Vampiric drain (player-attack.c:877-881). */
+    attVamp: (p.timed[TMD.ATT_VAMP] ?? 0) > 0,
+    healPlayer: (amount): void => {
+      if (deps.healHp) {
+        deps.healHp(amount);
+        return;
+      }
+      /* EF_HEAL_HP fallback: constant amount, no RNG. */
+      if (p.chp >= p.mhp || amount <= 0) return;
+      p.chp += amount;
+      if (p.chp >= p.mhp) {
+        p.chp = p.mhp;
+        p.chpFrac = 0;
+      }
+      if (amount < 5) state.msg?.("You feel a little better.");
+      else if (amount < 15) state.msg?.("You feel better.");
+      else if (amount < 35) state.msg?.("You feel much better.");
+      else state.msg?.("You feel very good.");
+    },
+    /* Bloodlust over-exertion (player-attack.c:770-774, 871-874). */
+    bloodlust: (p.timed[TMD.BLOODLUST] ?? 0) > 0,
+    overExertScramble: (): void => {
+      state.msg?.("You feel strange...");
+      playerOverExert(state, PY_EXERT.SCRAMBLE, 20, 20);
+    },
+    overExertCon: (): void => {
+      state.msg?.("You feel something give way!");
+      playerOverExert(state, PY_EXERT.CON, 20, 0);
+    },
+    /* Impact earthquakes (player-attack.c:816-819, blow_after_effects). */
+    impact: playerOfHasFlag(state, OF.IMPACT),
+    learnImpact: (): void => {
+      equipLearnFlag(p, state.runeEnv, OF.IMPACT);
+    },
+    ...(deps.earthquake
+      ? {
+          earthquake: deps.earthquake,
+          monsterGone: (): boolean => squareMonster(state, grid) !== mon,
+        }
+      : {}),
+    ...(deps.temp ? { temp: deps.temp } : {}),
+  };
+
+  /* Shapechange blow substitution (player-attack.c:831-838). */
+  if (p.shape && p.shape.name !== "normal" && p.shape.blows.length > 0) {
+    hooks.shapeBlows = p.shape.blows;
+  }
+
+  /* Reward BGs with 5% of max SPs, min 1/2 point (player-attack.c:1002). */
+  if (playerHasPf(state, PF.COMBAT_REGEN)) {
+    hooks.combatRegen = (): void => {
+      const spGain = Math.trunc((Math.max(p.msp, 10) * 16384) / 5);
+      playerAdjustManaPrecise(p, spGain);
+    };
+  }
+
+  /* Shield bash (player-attack.c:897-978, attempt_shield_bash). */
+  if (playerHasPf(state, PF.SHIELD_BASH)) {
+    const armSlot = p.body.slots.findIndex((s) => s.type === "SHIELD");
+    const shield =
+      armSlot >= 0 ? gearGet(state.gear, p.equipment[armSlot] ?? 0) : null;
+    hooks.shieldBash = {
+      shield,
+      dexInd: state.statInd?.[STAT.DEX] ?? 0,
+      strInd: state.statInd?.[STAT.STR] ?? 0,
+      playerWt: p.wt,
+      totalWeight: p.upkeep.totalWeight,
+      showDamage: state.options?.get("show_damage") ?? false,
+      msg: (text): void => state.msg?.(text),
+      stunMonster: (m, dur): void => {
+        monIncTimed(state.rng, m, MON_TMD.STUN, dur, 0);
+      },
+      confuseMonster: (m, dur): void => {
+        monIncTimed(state.rng, m, MON_TMD.CONF, dur, 0);
+      },
+    };
+  }
+
+  return hooks;
+}
+
+/**
+ * The shared player-melee path: learn-on-attack wrapping, py_attack with the
+ * full side-effect hooks, the delayed "flees in terror" message, and kill
+ * handling. Returns the energy used (py_attack's energy_use). Used by the walk
+ * command and the bloodlust random attack.
+ */
+export function attackMonster(state: GameState, target: Monster): number {
+  /* Learning from the attack (player-attack.c L822 equip_learn_on_melee_
+   * attack; obj-slays.c learn_brand_slay_from_melee). The target is
+   * treated as visible, matching the monVisible option below. */
+  const deps = (state as MeleeSideHost).meleeSideDeps ?? {};
+  learnBrandSlayFromMelee(
+    state.actor.player,
+    state.runeEnv,
+    state.actor.weapon,
+    {
+      race: target.race,
+      visible: true,
+      lore: getLore(state.lore, target.race),
+    },
+    deps.temp,
+  );
+  const result: MeleeAttack = pyAttack(
+    state.rng,
+    state.actor.player,
+    state.actor.combat,
+    state.actor.weapon,
+    target,
+    state.brands,
+    state.slays,
+    {
+      monVisible: true,
+      percentDamage: state.options?.get("birth_percent_damage") ?? false,
+      /* avail_energy = MIN(p->energy, move_energy); process_player only runs
+       * with energy >= move_energy, so the full-turn default is upstream's
+       * value at every real call site. */
+      moveEnergy: state.z.moveEnergy,
+      hooks: buildMeleeHooks(state, target),
+    },
+  );
+  equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
+  /* py_attack message slice: hand the blow-by-blow result to the shell for
+   * faithful "You hit/miss/slay the X" text (combat returns HitType keys
+   * only). Before deletion so the monster name is still resolvable. */
+  state.onMelee?.(target, result);
+  /* Hack - delay fear messages (player-attack.c:1023). */
+  if (result.monsterFled) {
+    const flee = formatMonsterMessage(target, MON_MSG.FLEE_IN_TERROR);
+    if (flee) state.msg?.(flee);
+  }
+  if (result.monsterDied && !arenaInterceptDeath(state, target)) {
+    state.onPlayerKill?.(target);
+    deleteMonster(state, target.midx);
+  }
+  return result.energyUsed;
+}
+
+/**
+ * energy_per_move (player-util.c:323-328): the energy one step costs, taking
+ * extra moves (state->num_moves, OBJ_MOD_MOVES) into account.
+ */
+export function energyPerMove(state: GameState): number {
+  const num = state.playerState?.numMoves ?? 0;
+  const energy = state.z.moveEnergy;
+  return Math.trunc((energy * (1 + Math.abs(num) - num)) / (1 + Math.abs(num)));
+}
+
+/**
+ * player_attack_random_monster (player-util.c:794-813): melee a random
+ * adjacent monster ("You angrily lash out at a nearby foe!"). Draws the
+ * starting direction BEFORE the confusion check, as upstream declares
+ * `dir = randint0(8)` in the initializer. Returns the energy used, or -1 when
+ * no monster was attacked (the command proceeds normally).
+ */
+export function playerAttackRandomMonster(state: GameState): number {
+  const p = state.actor.player;
+  let dir = state.rng.randint0(8);
+
+  /* Confused players get a free pass. */
+  if ((p.timed[TMD.CONFUSED] ?? 0) > 0) return -1;
+
+  /* Look for a monster, attack. */
+  for (let i = 0; i < 8; i++, dir++) {
+    const grid = locSum(state.actor.grid, DDGRID_DDD[dir % 8]!);
+    const mon = squareMonster(state, grid);
+    if (mon && !monsterIsCamouflaged(mon)) {
+      /* Upstream sets energy_use = move_energy here, but py_attack resets it
+       * to zero and re-accumulates per blow (an upstream quirk preserved:
+       * the assignment is dead). */
+      state.msg?.("You angrily lash out at a nearby foe!");
+      return attackMonster(state, mon);
+    }
+  }
+  return -1;
+}
+
+/**
  * walk: melee an adjacent monster (py_attack) or step onto a passable grid,
  * refreshing FOV via the injected hook. Returns move_energy when the turn is
  * spent, 0 when blocked by a wall (a bump uses no energy).
@@ -92,42 +349,10 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
       monsterWake(state.rng, target, false, 100);
       return state.z.moveEnergy;
     }
-    /* Learning from the attack (player-attack.c L822 equip_learn_on_melee_
-     * attack; obj-slays.c learn_brand_slay_from_melee). The target is
-     * treated as visible, matching the monVisible option below. */
-    learnBrandSlayFromMelee(
-      state.actor.player,
-      state.runeEnv,
-      state.actor.weapon,
-      {
-        race: target.race,
-        visible: true,
-        lore: getLore(state.lore, target.race),
-      },
-    );
-    const result = pyAttack(
-      state.rng,
-      state.actor.player,
-      state.actor.combat,
-      state.actor.weapon,
-      target,
-      state.brands,
-      state.slays,
-      {
-        monVisible: true,
-        percentDamage: state.options?.get("birth_percent_damage") ?? false,
-      },
-    );
-    equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
-    /* py_attack message slice: hand the blow-by-blow result to the shell for
-     * faithful "You hit/miss/slay the X" text (combat returns HitType keys
-     * only). Before deletion so the monster name is still resolvable. */
-    state.onMelee?.(target, result);
-    if (result.monsterDied && !arenaInterceptDeath(state, target)) {
-      state.onPlayerKill?.(target);
-      deleteMonster(state, target.midx);
-    }
-    return state.z.moveEnergy;
+    /* py_attack: the shared melee path with the full blow side-effect suite.
+     * Energy is py_attack's own energy_use (blow_energy per blow), which may
+     * be less than a full turn, exactly as upstream. */
+    return attackMonster(state, target);
   }
 
   /* Bump into a wall: no step, no energy (disturb/knowledge DEFERRED).
@@ -150,7 +375,9 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
   /* Trap / terrain consequences of the step (move_player -> hit_trap). */
   state.onPlayerMoved?.(state, next);
 
-  return state.z.moveEnergy + pickupCost;
+  /* energy_per_move (cmd-cave.c move_player L1163 via player-util.c:323):
+   * extra-moves items make steps cheaper (gap 2.3). */
+  return energyPerMove(state) + pickupCost;
 }
 
 /** hold / rest: stay put and spend a full turn. */
@@ -216,6 +443,24 @@ export function createDefaultRegistry(): ActionRegistry {
   return reg;
 }
 
+/**
+ * Command codes whose upstream game_cmds entry has can_use_energy = false
+ * (cmd-core.c game_cmds): these skip the pre-command bloodlust coercion roll.
+ * Every other code maps to an energy-capable command and draws the roll.
+ */
+const NON_COERCION_COMMANDS: ReadonlySet<string> = new Set([
+  "inscribe",
+  "uninscribe",
+  "autoinscribe",
+  "sell",
+  "stash",
+  "buy",
+  "retrieve",
+  "retire",
+  "help",
+  "repeat",
+]);
+
 /** The result of pumping the player's command queue. */
 export interface PlayerTurnResult {
   /** The provider had no command ready: the loop should return for input. */
@@ -253,6 +498,30 @@ export function processPlayer(
     const action = commanding
       ? state.monCommand!
       : (registry.get(cmd.code) ?? stubAction);
+
+    /* Occasional attack instead for bloodlust-affected characters
+     * (cmd-core.c:373): before an energy-capable command executes, the
+     * coercion roll is drawn (unconditionally, even at zero bloodlust,
+     * matching upstream's randint0(200) < timed[TMD_BLOODLUST]); on success
+     * the command is dropped and a random adjacent monster is attacked.
+     * skip_cmd_coercion is not modelled (save gap 12.6, WP-10). */
+    if (!commanding && !NON_COERCION_COMMANDS.has(cmd.code)) {
+      if (
+        state.rng.randint0(200) <
+        (state.actor.player.timed[TMD.BLOODLUST] ?? 0)
+      ) {
+        const spent = playerAttackRandomMonster(state);
+        if (spent >= 0) {
+          if (spent > 0) {
+            state.actor.energy -= spent;
+            state.actor.totalEnergy += spent;
+            energyUsed = spent;
+          }
+          continue;
+        }
+      }
+    }
+
     const use = action(state, cmd);
     if (use > 0) {
       state.actor.energy -= use;

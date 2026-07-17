@@ -55,11 +55,15 @@ export function monsterWake(
  * monster_scared_by_damage (mon-util.c L1137): pain can reduce, cancel, or
  * newly cause fear. Returns true only when the hit newly frightens the monster.
  * Called after the monster's hp has already been reduced by `dam`.
+ * `primaryGroupSize` is monster_primary_group_size(cave, mon), threaded into
+ * monster_can_be_scared's per-member group fear save; game callers pass the
+ * live group size (game/mon-group.ts), worldless callers default to 1 (lone).
  */
 export function monsterScaredByDamage(
   rng: Rng,
   mon: Monster,
   dam: number,
+  primaryGroupSize = 1,
 ): boolean {
   const currentFear = mon.mTimed[MON_TMD.FEAR]!;
 
@@ -75,7 +79,7 @@ export function monsterScaredByDamage(
       monClearTimed(rng, mon, MON_TMD.FEAR, MON_TMD_FLG_NOMESSAGE);
       return false;
     }
-  } else if (monsterCanBeScared(rng, mon)) {
+  } else if (monsterCanBeScared(rng, mon, primaryGroupSize)) {
     /* Percentage of fully healthy. */
     const percentage = Math.floor((100 * mon.hp) / mon.maxhp);
 
@@ -123,6 +127,12 @@ export interface MonTakeHitHooks {
    * callers while state.arenaLevel is set.
    */
   onArenaDeath?: (mon: Monster) => void;
+  /**
+   * monster_primary_group_size(cave, mon) for the fear roll's per-member
+   * group save (mon-predicate.c L296). Game callers pass the live size
+   * (game/mon-group.ts monsterPrimaryGroupSize); absent, 1 (a lone monster).
+   */
+  primaryGroupSize?: () => number;
 }
 
 /** The outcome of a hit: whether the monster died and whether it took fright. */
@@ -178,5 +188,8 @@ export function monTakeHit(
   }
 
   /* Not dead yet; did it get frightened? */
-  return { died: false, fear: monsterScaredByDamage(rng, mon, dam) };
+  return {
+    died: false,
+    fear: monsterScaredByDamage(rng, mon, dam, hooks.primaryGroupSize?.() ?? 1),
+  };
 }

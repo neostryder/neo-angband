@@ -34,6 +34,7 @@ import { ODESC } from "../obj/desc";
 import { projectPath } from "../world/project";
 import { monsterIsObvious, monsterIsDestroyed } from "../mon/predicate";
 import { monTakeHit } from "../mon/take-hit";
+import { playerClearTimed } from "../player/timed";
 import { gearGet, gearObjectForUse } from "./gear";
 import { dropNear } from "./floor";
 import { squareMonster, deleteMonster, arenaInterceptDeath } from "./context";
@@ -164,11 +165,16 @@ function rangedHelper(
     break;
   }
 
-  /* Terminate piercing (player-attack.c:1217): the powershot stance is spent
-   * after a single shot. Cleared directly (RNG-free), as with other ATT_*
-   * stances in the game layer. */
+  /* Terminate piercing (player-attack.c:1217): player_clear_timed(p,
+   * TMD_POWERSHOT, true, false) - routed through the grade machinery for the
+   * on-end message when the world env is wired (RNG-free either way). */
   if ((player.timed[TMD.POWERSHOT] ?? 0) > 0) {
-    player.timed[TMD.POWERSHOT] = 0;
+    const eff = state.world?.timedTable?.[TMD.POWERSHOT];
+    if (eff) {
+      playerClearTimed(player, eff, true, false, state.world?.timedHooks ?? {});
+    } else {
+      player.timed[TMD.POWERSHOT] = 0;
+    }
   }
 
   return { hit, landing };

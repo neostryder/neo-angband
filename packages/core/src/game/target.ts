@@ -13,8 +13,8 @@
  * the aimed seam (obj-cmd / spell-cmd resolve DIR_TARGET through
  * targetOkay + targetGet exactly as the upstream handlers do).
  *
- * Reductions, ledgered in parity/ledger/game-target.yaml: monster names in
- * messages are the race name (MDESC rides #25), panel restriction is an
+ * Reductions, ledgered in parity/ledger/game-target.yaml: monster names use
+ * the full monster_desc grammar (mon/desc.ts), panel restriction is an
  * injected predicate defaulting to "everything" (panels are UI state),
  * ignore_known_item_ok treats no known objects as ignored (ignore is a
  * later #24 slice), and monster_race_track is lore's (healthWho covers
@@ -24,6 +24,7 @@
 import { MON_TMD, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { loc } from "../loc";
+import { MDESC, monsterDesc } from "../mon/desc";
 import type { Monster } from "../mon/monster";
 import {
   monsterIsDestroyed,
@@ -408,11 +409,11 @@ export function targetSetClosest(
     return false;
   }
 
-  /* Target the monster (MDESC_CAPITAL: the race name stands in). */
+  /* Target the monster: monster_desc(mon, MDESC_CAPITAL | MDESC_COMMA)
+   * (target.c L523). */
   if (!(mode & TARGET.QUIET)) {
-    const name = mon!.race.name;
     state.msg?.(
-      `${name.charAt(0).toUpperCase()}${name.slice(1)} is targeted.`,
+      `${monsterDesc(mon!, MDESC.CAPITAL | MDESC.COMMA)} is targeted.`,
     );
   }
 

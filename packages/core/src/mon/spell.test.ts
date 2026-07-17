@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MON_TMD, RSF } from "../generated";
+import { MON_TMD, RF, RSF } from "../generated";
+import { Rng } from "../rng";
 import { FlagSet } from "../bitflag";
 import { bindMonsters } from "./bind";
 import type { MonsterPackRecords } from "./bind";
@@ -21,7 +22,9 @@ import {
   monSpellIsInnate,
   monSpellIsValid,
   testSpells,
+  updateSmartLearn,
 } from "./spell";
+import type { SmartLearnEnv } from "./spell";
 
 function packJson<T>(name: string): T[] {
   return (
@@ -127,5 +130,84 @@ describe("breath_dam", () => {
     expect(breathDam({ divisor: 3, damageCap: 1600 }, 300)).toBe(100);
     expect(breathDam({ divisor: 3, damageCap: 50 }, 300)).toBe(50); // capped
     expect(breathDam({ divisor: 3, damageCap: 1600 }, 8)).toBe(2); // integer div
+  });
+});
+
+describe("updateSmartLearn (mon-util.c L788)", () => {
+  const smartRace = (): MonsterRace => {
+    const r = reg.races.find((rr) => rr.flags.has(RF.SMART))!;
+    return r;
+  };
+  const stupidRace = (): MonsterRace => {
+    const r = reg.races.find((rr) => rr.flags.has(RF.STUPID))!;
+    return r;
+  };
+
+  function env(over: Partial<SmartLearnEnv> = {}): {
+    env: SmartLearnEnv;
+    learned: { flags: number[]; elems: number[] };
+  } {
+    const learned = { flags: [] as number[], elems: [] as number[] };
+    return {
+      env: {
+        aiLearn: true,
+        equipLearnFlag: (of) => learned.flags.push(of),
+        equipLearnElement: (e) => learned.elems.push(e),
+        playerOfHas: () => true,
+        playerPfHas: () => true,
+        playerResLevel: () => 3,
+        ...over,
+      },
+      learned,
+    };
+  }
+
+  it("the player always learns the rune, even with ai_learn off", () => {
+    const mon = blankMonster(smartRace());
+    const { env: e, learned } = env({ aiLearn: false });
+    updateSmartLearn(new Rng(1), mon, e, 5, 0, 2);
+    expect(learned.flags).toEqual([5]);
+    expect(learned.elems).toEqual([2]);
+    /* But the monster memory stays blank. */
+    expect(mon.knownPstate.flags.has(5)).toBe(false);
+    expect(mon.knownPstate.elInfo[2]).toBe(0);
+  });
+
+  it("a smart monster memorizes flag, pflag and element (barring the 1-in-100 fail)", () => {
+    /* Pick a seed whose one_in_(100) does not fire (smart: no 1-in-2 draw). */
+    let seed = 1;
+    while (new Rng(seed).oneIn(100)) seed++;
+    const mon = blankMonster(smartRace());
+    const { env: e } = env();
+    updateSmartLearn(new Rng(seed), mon, e, 5, 3, 2);
+    expect(mon.knownPstate.flags.has(5)).toBe(true);
+    expect(mon.knownPstate.pflags.has(3)).toBe(true);
+    expect(mon.knownPstate.elInfo[2]).toBe(3);
+  });
+
+  it("learning the absence of a property clears the memory bit", () => {
+    let seed = 1;
+    while (new Rng(seed).oneIn(100)) seed++;
+    const mon = blankMonster(smartRace());
+    mon.knownPstate.flags.on(5);
+    const { env: e } = env({ playerOfHas: () => false });
+    updateSmartLearn(new Rng(seed), mon, e, 5, 0, -1);
+    expect(mon.knownPstate.flags.has(5)).toBe(false);
+  });
+
+  it("a stupid monster never memorizes", () => {
+    const mon = blankMonster(stupidRace());
+    const { env: e } = env();
+    updateSmartLearn(new Rng(1), mon, e, 5, 0, 2);
+    expect(mon.knownPstate.flags.has(5)).toBe(false);
+  });
+
+  it("no flag and no valid element is a no-op (sanity check)", () => {
+    const mon = blankMonster(smartRace());
+    const { env: e, learned } = env();
+    updateSmartLearn(new Rng(1), mon, e, 0, 3, -1);
+    expect(learned.flags).toHaveLength(0);
+    expect(learned.elems).toHaveLength(0);
+    expect(mon.knownPstate.pflags.has(3)).toBe(false);
   });
 });

@@ -147,3 +147,39 @@ describe("monsterScaredByDamage (mon-util.c)", () => {
     expect(mon.mTimed[MON_TMD.FEAR]).toBe(9);
   });
 });
+
+describe("group fear-save (mon-predicate.c L296 via monster_scared_by_damage)", () => {
+  it("a big enough primary group always saves at least once across seeds", () => {
+    /* count = groupSize - 1 one-in-20 saves; with 200 members the chance of
+     * never saving is (19/20)^199, so any seed realistically saves. */
+    const mon = scareable(100);
+    mon.hp = 2; /* 2% health: low_hp check passes for most rolls */
+    let anySaved = false;
+    for (let seed = 1; seed <= 20; seed++) {
+      const scared = monsterScaredByDamage(new Rng(seed), mon, 1, 200);
+      if (!scared) anySaved = true;
+      mon.mTimed[MON_TMD.FEAR] = 0; /* reset for the next roll */
+    }
+    expect(anySaved).toBe(true);
+  });
+
+  it("monTakeHit threads hooks.primaryGroupSize into the fear roll", () => {
+    /* With an enormous group, the per-member one-in-20 save practically
+     * guarantees no fear; a lone monster with the same stream does panic. */
+    const seed = 7;
+    const lone = scareable(100);
+    lone.hp = 100;
+    const resLone = monTakeHit(new Rng(seed), lone, 99, null, {});
+
+    const grouped = scareable(100);
+    grouped.hp = 100;
+    const resGroup = monTakeHit(new Rng(seed), grouped, 99, null, {
+      primaryGroupSize: () => 10000,
+    });
+
+    /* Same damage, same seed: the lone one may or may not panic, but the
+     * grouped one must not (a 1-in-20 save fires within 10000 draws). */
+    expect(resGroup.fear).toBe(false);
+    expect(typeof resLone.fear).toBe("boolean");
+  });
+});

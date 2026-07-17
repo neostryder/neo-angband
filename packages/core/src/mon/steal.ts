@@ -75,8 +75,14 @@ export function getRandomMonsterObject(
 export interface StealEnv {
   /** msg(): route messages to the game's sink. */
   msg(text: string): void;
-  /** monster_desc(mon): the reduced port name is the race name (MDESC, #25). */
+  /** monster_desc(mon, MDESC_TARG) (mon-util.c L1438): the victim's name. */
   monName(mon: Monster): string;
+  /**
+   * monster_desc(mon, MDESC_STANDARD) (mon-util.c L1524): the re-described,
+   * capitalised name for the bungle "cries out in anger" line. Defaults to
+   * monName when absent.
+   */
+  monNameStandard?(mon: Monster): string;
   /** player->state.skills[SKILL_STEALTH]. */
   readonly stealthSkill: number;
   /** adj_dex_th[player->state.stat_ind[STAT_DEX]]. */
@@ -210,7 +216,9 @@ export function stealMonsterItem(
     } else {
       /* Bungled it. */
       monsterWake(rng, mon, true, 100);
-      env.msg(`${env.monName(mon)} cries out in anger!`);
+      env.msg(
+        `${(env.monNameStandard ?? env.monName)(mon)} cries out in anger!`,
+      );
       env.wakeAll?.(mon);
     }
 

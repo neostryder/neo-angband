@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
-import { KF } from "../generated";
+import { KF, TV } from "../generated";
+import { bindPlayer } from "../player/bind";
+import { registerBookKinds } from "../player/spell";
 import { Rng } from "../rng";
 import { ObjRegistry } from "./bind";
 import type { Artifact, ObjPackJson } from "./types";
@@ -9,6 +11,7 @@ import {
   ArtifactState,
   makeArtifact,
   makeArtifactSpecial,
+  makeGold,
   makeObject,
   objectPrep,
 } from "./make";
@@ -40,6 +43,10 @@ const objPack: ObjPackJson = {
 
 const reg = new ObjRegistry(objPack);
 const constants = bindConstants(loadJson("constants"));
+
+function loadRecords<T>(name: string): T[] {
+  return loadJson<{ records: T[] }>(name).records;
+}
 
 function freshDeps(noArtifacts = false): MakeDeps {
   return {
@@ -338,4 +345,124 @@ describe("ArtifactState persistence", () => {
     restored.reset();
     expect(restored.isCreated(3)).toBe(false);
   });
+});
+
+describe("make_object unreadable-book rejection (obj-make.c L1185-1195, gap 3.5)", () => {
+  /* Book kinds are created from the class book definitions (init.c
+   * write_book_kind), not object.txt - build a dedicated registry with them
+   * registered so get_obj_num can return books at all. */
+  const bookReg = new ObjRegistry(objPack);
+  registerBookKinds(
+    bookReg,
+    bindPlayer({
+      races: loadRecords("p_race"),
+      classes: loadRecords("class"),
+      properties: loadRecords("player_property"),
+      timed: loadRecords("player_timed"),
+      shapes: loadRecords("shape"),
+      bodies: loadRecords("body"),
+      history: loadRecords("history"),
+      realms: loadRecords("realm"),
+    }).classes,
+  );
+
+  function bookDeps(): MakeDeps {
+    return {
+      reg: bookReg,
+      alloc: new ObjAllocState(bookReg, constants),
+      constants,
+      artifacts: new ArtifactState(bookReg.artifacts.length),
+      noArtifacts: true,
+    };
+  }
+
+  it("with no class predicate every book is accepted on the first pick", () => {
+    const obj = makeObject(
+      new Rng(11), bookDeps(), 20, false, false, false, TV.MAGIC_BOOK, 20,
+    );
+    expect(obj).not.toBeNull();
+    expect(obj!.tval).toBe(TV.MAGIC_BOOK);
+  });
+
+  it("rejects unreadable books, returning null after three failed draws", () => {
+    /* canBrowseBook false: every pick is a rejected book. Find a seed whose
+     * three one_in_(5) escapes all miss, so the loop exhausts its tries. */
+    let nullSeed = -1;
+    let acceptSeed = -1;
+    for (let s = 1; s < 200 && (nullSeed < 0 || acceptSeed < 0); s++) {
+      const obj = makeObject(
+        new Rng(s),
+        { ...bookDeps(), canBrowseBook: () => false },
+        20, false, false, false, TV.MAGIC_BOOK, 20,
+      );
+      if (obj === null && nullSeed < 0) nullSeed = s;
+      if (obj !== null && acceptSeed < 0) acceptSeed = s;
+    }
+
+    /* Both branches are reachable: exhaustion -> null, one_in_(5) -> book. */
+    expect(nullSeed).toBeGreaterThan(0);
+    expect(acceptSeed).toBeGreaterThan(0);
+
+    /* The same null seed yields a book when the class can read it - the
+     * rejection loop (not kind scarcity) caused the null. */
+    const readable = makeObject(
+      new Rng(nullSeed),
+      { ...bookDeps(), canBrowseBook: () => true },
+      20, false, false, false, TV.MAGIC_BOOK, 20,
+    );
+    expect(readable).not.toBeNull();
+
+    /* A one_in_(5)-accepted item is still a book (L1188 break keeps kind). */
+    const accepted = makeObject(
+      new Rng(acceptSeed),
+      { ...bookDeps(), canBrowseBook: () => false },
+      20, false, false, false, TV.MAGIC_BOOK, 20,
+    );
+    expect(accepted!.tval).toBe(TV.MAGIC_BOOK);
+  });
+
+  it("never consults the predicate for non-book kinds", () => {
+    let asked = 0;
+    const obj = makeObject(
+      new Rng(11),
+      { ...freshDeps(true), canBrowseBook: () => (asked++, false) },
+      5, false, false, false, TV.POTION, 5,
+    );
+    expect(obj).not.toBeNull();
+    expect(asked).toBe(0);
+  });
+});
+
+describe("make_gold birth_no_selling inflation (obj-make.c L1310-1312, gap 3.7)", () => {
+  it("multiplies the dungeon gold value by 5 with no_selling on", () => {
+    /* Find a seed where the 5x product stays under SHRT_MAX so the cap's
+     * randint0(200) draw fires on neither run. */
+    let seed = -1;
+    for (let s = 1; s < 100 && seed < 0; s++) {
+      const plain = makeGold(new Rng(s), freshDeps(true), 5, "any", 5);
+      if (plain.pval * 5 < 32767) seed = s;
+    }
+    expect(seed).toBeGreaterThan(0);
+
+    const plain = makeGold(new Rng(seed), freshDeps(true), 5, "any", 5);
+    const inflated = makeGold(
+      new Rng(seed),
+      { ...freshDeps(true), noSelling: true },
+      5, "any", 5,
+    );
+    expect(inflated.pval).toBe(plain.pval * 5);
+    /* money_kind is chosen on the pre-inflation value (L1307 before L1310). */
+    expect(inflated.kind).toBe(plain.kind);
+  });
+
+  it("does not inflate town gold (player->depth == 0)", () => {
+    const plain = makeGold(new Rng(9), freshDeps(true), 0, "any", 0);
+    const town = makeGold(
+      new Rng(9),
+      { ...freshDeps(true), noSelling: true },
+      0, "any", 0,
+    );
+    expect(town.pval).toBe(plain.pval);
+  });
+
 });

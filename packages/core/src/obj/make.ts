@@ -55,6 +55,7 @@ import {
   copySlays,
   objectNew,
   tvalCanHaveCharges,
+  tvalIsBook,
   tvalIsAmmo,
   tvalIsArmor,
   tvalIsChest,

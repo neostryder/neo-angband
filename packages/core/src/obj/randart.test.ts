@@ -1,9 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { KF } from "../generated";
+import { ELEM, KF, OF } from "../generated";
 import { ObjRegistry } from "./bind";
 import type { ObjPackJson } from "./types";
+import { buildCurseTimedFoil } from "./object";
 import { doRandart, artifactGenName, RANDNAME_TOLKIEN } from "./randart";
+import {
+  EFPROP,
+  removeContradictory,
+  removeContradictoryActivation,
+} from "./randart-build";
 import { buildProb } from "./randname";
 import { collectArtifactData, artifactPower } from "./randart-data";
 import { Rng } from "../rng";
@@ -212,5 +218,187 @@ describe("collect_artifact_data (obj-randart.c L1059)", () => {
     const reg = makeReg();
     const art = reg.artifacts.find((a) => a) as Artifact;
     expect(artifactPower(reg, art)).toBeGreaterThan(0);
+  });
+});
+
+describe("artifact curse TIMED_INC foil (obj-curse.c L267-296, gap 3.3)", () => {
+  const foil = buildCurseTimedFoil([
+    { name: "PARALYZED", fail: [{ code: 1, flag: "FREE_ACT" }] },
+    { name: "POISONED", fail: [{ code: 2, flag: "POIS" }] },
+  ]);
+
+  function cursedArt(reg: ObjRegistry, curseName: string): Artifact {
+    const art = reg.artifacts.find((a): a is Artifact => a !== null)!;
+    const idx = reg.curses.findIndex((c) => c?.name === curseName);
+    expect(idx).toBeGreaterThan(0);
+    art.curses = new Array<number>(reg.curses.length).fill(0);
+    art.curses[idx] = 10;
+    return art;
+  }
+
+  it("remove_contradictory strips a paralysis curse from a FREE_ACT artifact", () => {
+    const reg = makeReg();
+    const art = cursedArt(reg, "paralysis");
+    art.flags.on(OF.FREE_ACT);
+    removeContradictory(reg, art, foil);
+    /* check_artifact_curses freed the now-empty curse array. */
+    expect(art.curses).toBeNull();
+  });
+
+  it("remove_contradictory strips a poison curse from a poison-resisting artifact", () => {
+    const reg = makeReg();
+    const art = cursedArt(reg, "poison");
+    art.flags.off(OF.FREE_ACT);
+    art.elInfo[ELEM.POIS]!.resLevel = 1;
+    removeContradictory(reg, art, foil);
+    expect(art.curses).toBeNull();
+  });
+
+  it("keeps the curse when nothing foils it", () => {
+    const reg = makeReg();
+    const art = cursedArt(reg, "paralysis");
+    art.flags.off(OF.FREE_ACT);
+    const idx = reg.curses.findIndex((c) => c?.name === "paralysis");
+    removeContradictory(reg, art, foil);
+    expect(art.curses?.[idx]).toBe(10);
+  });
+
+  it("without the foil tables the old (pre-gap-3.3) keep behaviour holds", () => {
+    const reg = makeReg();
+    const art = cursedArt(reg, "paralysis");
+    art.flags.on(OF.FREE_ACT);
+    const idx = reg.curses.findIndex((c) => c?.name === "paralysis");
+    removeContradictory(reg, art);
+    expect(art.curses?.[idx]).toBe(10);
+  });
+});
+
+describe("remove_contradictory_activation (obj-randart.c L2420, gap 3.8)", () => {
+  function actArt(reg: ObjRegistry): Artifact {
+    const art = reg.artifacts.find(
+      (a): a is Artifact => a !== null && a.activation !== null,
+    );
+    if (!art) throw new Error("no activated artifact in pack");
+    return art;
+  }
+
+  const prop = (kind: number, idx: number, min = 0, max = 0) => ({
+    kind,
+    idx,
+    reslevelMin: min,
+    reslevelMax: max,
+  });
+
+  it("keeps the activation when there is no summarizer (conservative)", () => {
+    const reg = makeReg();
+    const art = actArt(reg);
+    removeContradictoryActivation(reg, art);
+    expect(art.activation).not.toBeNull();
+  });
+
+  it("keeps the activation when a sub-effect is unsummarizable (L2431-2436)", () => {
+    const reg = makeReg();
+    const art = actArt(reg);
+    removeContradictoryActivation(reg, art, () => ({
+      props: [],
+      unsummarizedCount: 1,
+    }));
+    expect(art.activation).not.toBeNull();
+  });
+
+  it("strips an activation that only duplicates an object flag (CONFLICT_FLAG)", () => {
+    const reg = makeReg();
+    const art = actArt(reg);
+    art.flags.on(OF.FREE_ACT);
+    removeContradictoryActivation(reg, art, () => ({
+      props: [prop(EFPROP.CONFLICT_FLAG, OF.FREE_ACT)],
+      unsummarizedCount: 0,
+    }));
+    expect(art.activation).toBeNull();
+  });
+
+  it("keeps a flag-granting activation when the artifact lacks the flag", () => {
+    const reg = makeReg();
+    const art = actArt(reg);
+    art.flags.off(OF.FREE_ACT);
+    removeContradictoryActivation(reg, art, () => ({
+      props: [prop(EFPROP.OBJECT_FLAG_EXACT, OF.FREE_ACT)],
+      unsummarizedCount: 0,
+    }));
+    expect(art.activation).not.toBeNull();
+  });
+
+  it("EFPROP_OBJECT_FLAG (flag plus more) is never redundant (L2480-2490)", () => {
+    const reg = makeReg();
+    const art = actArt(reg);
+    art.flags.on(OF.FREE_ACT);
+    removeContradictoryActivation(reg, art, () => ({
+      props: [prop(EFPROP.OBJECT_FLAG, OF.FREE_ACT)],
+      unsummarizedCount: 0,
+    }));
+    expect(art.activation).not.toBeNull();
+  });
+
+  it("resist window: in-window res_level keeps, out-of-window strips (L2469-2478)", () => {
+    const reg = makeReg();
+    const kept = actArt(reg);
+    kept.elInfo[ELEM.FIRE]!.resLevel = 1; /* within [-1, 1] */
+    removeContradictoryActivation(reg, kept, () => ({
+      props: [prop(EFPROP.RESIST, ELEM.FIRE, -1, 1)],
+      unsummarizedCount: 0,
+    }));
+    expect(kept.activation).not.toBeNull();
+
+    const reg2 = makeReg();
+    const stripped = actArt(reg2);
+    stripped.elInfo[ELEM.FIRE]!.resLevel = 3; /* outside [-1, 1] */
+    removeContradictoryActivation(reg2, stripped, () => ({
+      props: [prop(EFPROP.RESIST, ELEM.FIRE, -1, 1)],
+      unsummarizedCount: 0,
+    }));
+    expect(stripped.activation).toBeNull();
+  });
+
+  it("brand redundancy compares multipliers over shared resist flags (L2442-2454)", () => {
+    const reg = makeReg();
+    /* Two brands with the same resist flag and different multipliers. */
+    let weak = -1;
+    let strong = -1;
+    for (let i = 1; i < reg.brands.length && strong < 0; i++) {
+      for (let j = 1; j < reg.brands.length; j++) {
+        if (i === j) continue;
+        if (
+          reg.brands[i]!.resistFlag === reg.brands[j]!.resistFlag &&
+          reg.brands[i]!.multiplier < reg.brands[j]!.multiplier
+        ) {
+          weak = i;
+          strong = j;
+          break;
+        }
+      }
+    }
+    expect(strong).toBeGreaterThan(0);
+
+    /* Artifact carries the stronger brand; a weaker branded activation is
+     * redundant and stripped. */
+    const art = actArt(reg);
+    art.brands = new Array<boolean>(reg.brands.length).fill(false);
+    art.brands[strong] = true;
+    removeContradictoryActivation(reg, art, () => ({
+      props: [prop(EFPROP.BRAND, weak)],
+      unsummarizedCount: 0,
+    }));
+    expect(art.activation).toBeNull();
+
+    /* Carrying only the weaker brand keeps a stronger branded activation. */
+    const reg2 = makeReg();
+    const art2 = actArt(reg2);
+    art2.brands = new Array<boolean>(reg2.brands.length).fill(false);
+    art2.brands[weak] = true;
+    removeContradictoryActivation(reg2, art2, () => ({
+      props: [prop(EFPROP.BRAND, strong)],
+      unsummarizedCount: 0,
+    }));
+    expect(art2.activation).not.toBeNull();
   });
 });
