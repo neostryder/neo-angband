@@ -7,13 +7,13 @@
  * monster, the player, the chunk) and drives the effect stack.
  *
  * The default-play path is complete: the frequency / range / line-of-sight gate
- * (monster_can_cast), the "ineffective spell" pruning (remove_bad_spells: heal /
- * haste / teleport-to / whip / spit by range and status), the clean-bolt and
- * summon-room checks, the random pick and the spell-failure roll. The pieces
- * that ride on subsystems not yet ported are injected or deferred: the
- * birth_ai_learn knowledge filter (unset_spells), RSF_HEAL_KIN's injured-kin
- * scan (monster groups), the monster-lore updates and become_aware (lore, #24),
- * the decoy target and the monster-vs-monster witness path.
+ * (monster_can_cast, honouring a player decoy via monster_get_target_dist_grid),
+ * the "ineffective spell" pruning (remove_bad_spells: heal / haste / teleport-to
+ * / whip / spit by range and status, RSF_HEAL_KIN's injured-kin scan, and the
+ * birth_ai_learn knowledge filter unset_spells), the clean-bolt and summon-room
+ * checks, the random pick, the spell-failure roll with its "tries to cast a
+ * spell, but fails." line, and the disturb before the cast. Still injected:
+ * become_aware (lore) and the monster-vs-monster witness path.
  */
 
 import { MFLAG, MON_TMD, RSF, TMD } from "../generated";
@@ -28,7 +28,10 @@ import {
   ignoreSpells,
   monSpellIsInnate,
   testSpells,
+  unsetSpells,
 } from "../mon/spell";
+import type { TimedFailLike } from "../obj/object";
+import { ELEM_MAX } from "../obj/types";
 import type { FlagSet } from "../bitflag";
 import { getLore, loreCountU16, loreCountU8 } from "../mon/lore";
 import type { Monster } from "../mon/monster";
@@ -154,28 +157,33 @@ export function monsterSpellFailrate(mon: Monster): number {
 }
 
 /**
- * remove_bad_spells: strip spells that would be wasted this turn (a full-health
- * caster's heal, an out-of-range whip, a teleport-to when adjacent, ...). The
- * birth_ai_learn knowledge filter (unset_spells) is deferred.
+ * remove_bad_spells (mon-attack.c L153): strip spells that would be wasted this
+ * turn (a full-health caster's heal, an out-of-range whip, a teleport-to when
+ * adjacent, ...), then - under birth_ai_learn - filter out spells the monster
+ * has learned the player resists (unset_spells over its known_pstate memory).
+ * `deps` carries the bound spell table and timed data the ai_learn block needs;
+ * without it (worldless harnesses) the block is skipped, matching ai_learn off.
  */
 export function removeBadSpells(
   state: GameState,
   mon: Monster,
   f: FlagSet,
   config: MakeRangedAttackConfig,
+  deps?: Pick<DoMonSpellDeps, "spells" | "envDeps">,
 ): void {
   const tdist = targetDist(state, mon);
 
   /* Don't heal if full. */
   if (mon.hp >= mon.maxhp) f.off(RSF.HEAL);
 
-  /* Don't heal others with no injured kin nearby. A caller override wins;
-   * otherwise scan for injured same-base kin in LOS (find_any_nearby_injured_kin). */
-  const hasKin = config.hasInjuredKin
-    ? config.hasInjuredKin(mon.midx)
-    : findAnyNearbyInjuredKin(state, mon);
-  if (f.has(RSF.HEAL_KIN) && !hasKin) {
-    f.off(RSF.HEAL_KIN);
+  /* Don't heal others with no injured kin nearby (find_any_nearby_injured_kin,
+   * scanned only when HEAL_KIN is set, as the C && short-circuits). A caller
+   * override wins over the live scan. */
+  if (f.has(RSF.HEAL_KIN)) {
+    const hasKin = config.hasInjuredKin
+      ? config.hasInjuredKin(mon.midx)
+      : findAnyNearbyInjuredKin(state, mon);
+    if (!hasKin) f.off(RSF.HEAL_KIN);
   }
 
   /* Don't haste if already well-hasted. */
@@ -190,6 +198,40 @@ export function removeBadSpells(
   /* Don't use the reach attacks when the player is too far. */
   if (tdist > 2) f.off(RSF.WHIP);
   if (tdist > 3) f.off(RSF.SPIT);
+
+  /* Update acquired knowledge (mon-attack.c L192-227), under birth_ai_learn. */
+  if (deps && (state.options?.get("birth_ai_learn") ?? false)) {
+    /* Occasionally forget player status. */
+    if (state.rng.oneIn(20)) {
+      mon.knownPstate.flags.wipe();
+      mon.knownPstate.pflags.wipe();
+      mon.knownPstate.elInfo.fill(0);
+    }
+
+    /* Use the memorized info. */
+    const aiFlags = mon.knownPstate.flags.clone();
+    const aiPflags = mon.knownPstate.pflags.clone();
+    let knowSomething = !aiFlags.isEmpty() || !aiPflags.isEmpty();
+
+    const el = new Int16Array(ELEM_MAX);
+    for (let i = 0; i < ELEM_MAX; i++) {
+      el[i] = mon.knownPstate.elInfo[i] ?? 0;
+      if (el[i] !== 0) knowSomething = true;
+    }
+
+    /* Cancel out certain flags based on knowledge. */
+    if (knowSomething) {
+      const timedFail = (name: string): readonly TimedFailLike[] | null => {
+        const idx = (TMD as Record<string, number>)[name];
+        if (idx === undefined) return null;
+        for (const t of deps.envDeps.timedTable) {
+          if (t.index === idx) return t.fail;
+        }
+        return null;
+      };
+      unsetSpells(state.rng, f, aiFlags, aiPflags, el, mon, deps.spells, timedFail);
+    }
+  }
 }
 
 /**
@@ -283,7 +325,7 @@ export function makeRangedAttack(
 
   /* Non-stupid monsters filter out ineffective spells. */
   if (!monsterIsStupid(mon)) {
-    removeBadSpells(state, mon, f, config);
+    removeBadSpells(state, mon, f, config, deps);
 
     /* A bolt needs a clear, stopping path to the target. */
     const tgrid = targetGrid(state, mon);

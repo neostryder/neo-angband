@@ -39,6 +39,11 @@ import type { CastContext } from "./project-cast";
 import type { GameState } from "./context";
 import { spellMessageText } from "./mon-message";
 import { disturb } from "./player-path";
+import { ELEM, OF, PF, TMD } from "../generated";
+import { equipLearnElement } from "../obj/knowledge";
+import { playerIncCheck } from "../player/timed";
+import type { PlayerIncCheckQueries } from "../player/timed";
+import type { TimedEffect } from "../player/types";
 
 /** Hooks for the UI / lore consequences of casting a monster spell. */
 export interface MonSpellHooks {
@@ -141,6 +146,54 @@ function spellCheckForFailRune(spell: MonsterSpell, env: FailRuneEnv): void {
       env.incCheck(e.type ?? "");
     }
   }
+}
+
+/**
+ * buildFailRuneEnv: the spell_check_for_fail_rune seams over the live state -
+ * equip_learn_element(player, ELEM_NEXUS) for a teleport-level save, and a
+ * real player_inc_check(player, subtype, false) (with its own equip-learn side
+ * effects) for each EF_TIMED_INC, resolved against the bound timed table and
+ * the derived player state. Mirrors the query construction the lore layer uses
+ * (game/lore-color.ts); absent derived state, the queries read as "nothing".
+ */
+export function buildFailRuneEnv(
+  state: GameState,
+  timedTable: readonly TimedEffect[],
+): FailRuneEnv {
+  const p = state.actor.player;
+  const queries: PlayerIncCheckQueries = {
+    objectFlag: (name): boolean => {
+      const i = (OF as Record<string, number>)[name];
+      return i !== undefined && (state.playerState?.flags.has(i) ?? false);
+    },
+    resistLevel: (name): number => {
+      const i = (ELEM as Record<string, number>)[name];
+      return i !== undefined
+        ? (state.playerState?.elInfo[i]?.resLevel ?? 0)
+        : 0;
+    },
+    playerFlag: (name): boolean => {
+      const i = (PF as Record<string, number>)[name];
+      return i !== undefined && (state.playerState?.pflags.has(i) ?? false);
+    },
+    timedActive: (name): boolean => {
+      const i = (TMD as Record<string, number>)[name];
+      return i !== undefined && (p.timed[i] ?? 0) > 0;
+    },
+  };
+  const byIndex = new Map<number, TimedEffect>();
+  for (const e of timedTable) byIndex.set(e.index, e);
+  return {
+    learnNexus: (): void => {
+      equipLearnElement(p, state.runeEnv, ELEM.NEXUS);
+    },
+    incCheck: (timedName): void => {
+      const idx = (TMD as Record<string, number>)[timedName];
+      if (idx === undefined) return;
+      const eff = byIndex.get(idx);
+      if (eff) playerIncCheck(eff, queries);
+    },
+  };
 }
 
 /**

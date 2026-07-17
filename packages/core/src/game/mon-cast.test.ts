@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, PROJ, RF, RSF, TMD } from "../generated";
+import { EF, MFLAG, PROJ, RF, RSF, TMD } from "../generated";
 import { EffectRegistry } from "../effects/interpreter";
 import { registerCoreHandlers } from "../effects/handlers";
 import { loc } from "../loc";
@@ -14,7 +14,7 @@ import type { CastContext } from "./project-cast";
 import { registerAttackHandlers } from "./effect-attack";
 import { registerMonsterHandlers } from "./effect-monster";
 import { registerTeleportHandlers } from "./effect-teleport";
-import { buildSpellEffectChain, doMonSpell } from "./mon-cast";
+import { buildMonSpellHooks, buildSpellEffectChain, doMonSpell } from "./mon-cast";
 import type { DoMonSpellDeps } from "./mon-cast";
 
 const projections = bindProjections(
@@ -150,5 +150,92 @@ describe("buildSpellEffectChain", () => {
     expect(chain!.subtype).toBe(PROJ.ARROW);
     // D = 80 / 8 + 1 = 11, so 11d7; maximised = 77.
     expect(chain!.dice!.evaluate(new Rng(1), 0, "maximise")).toBe(77);
+  });
+});
+
+describe("buildMonSpellHooks (mon-spell.c L368-383 wiring)", () => {
+  it("routes the spell_message text through state.msg and disturbs the run", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const messages: string[] = [];
+    state.msg = (t): void => {
+      messages.push(t);
+    };
+    state.run = {
+      curDir: 6,
+      oldDir: 6,
+      openArea: true,
+      breakRight: false,
+      breakLeft: false,
+      running: 5,
+      firstStep: false,
+      stepCount: 0,
+    };
+    const mon = caster(state);
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    const hooks = buildMonSpellHooks(state);
+    doMonSpell(state, mon.midx, RSF.BR_FIRE, true, deps(state, { hooks }));
+
+    /* BR_FIRE message-vis is "{name} breathes fire." in monster_spell.txt. */
+    expect(messages.some((m) => m.includes("breathes fire"))).toBe(true);
+    expect(messages[0]!.startsWith("The ")).toBe(true);
+    /* disturb(player) ran (mon-spell.c L368). */
+    expect(state.run.running).toBe(0);
+  });
+
+  it("an unseen caster produces the blind-message variant", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const messages: string[] = [];
+    state.msg = (t): void => {
+      messages.push(t);
+    };
+    const mon = caster(state); /* not VISIBLE */
+
+    const hooks = buildMonSpellHooks(state);
+    doMonSpell(state, mon.midx, RSF.BR_FIRE, false, deps(state, { hooks }));
+
+    /* The blind message names nobody ("You hear..." / "Something breathes"). */
+    expect(messages.length).toBeGreaterThan(0);
+    expect(messages[0]!.includes("The ")).toBe(false);
+  });
+
+  it("a save shows the save message and learns the fail rune", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const messages: string[] = [];
+    state.msg = (t): void => {
+      messages.push(t);
+    };
+    const mon = caster(state);
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    let nexus = 0;
+    const incChecked: string[] = [];
+    const hooks = buildMonSpellHooks(state, {
+      failRune: {
+        learnNexus: (): void => {
+          nexus++;
+        },
+        incCheck: (name): void => {
+          incChecked.push(name);
+        },
+      },
+    });
+    /* SCARE is EF_TIMED_INC:AFRAID with a save message. */
+    doMonSpell(state, mon.midx, RSF.SCARE, true, deps(state, { saveSkill: 100, hooks }));
+
+    /* message-save:You fight off a sense of dread. (monster_spell.txt SCARE) */
+    expect(messages).toContain("You fight off a sense of dread.");
+    /* The cast line itself also fired ({name} conjures up scary horrors.). */
+    expect(messages.some((m) => m.includes("conjures up scary horrors"))).toBe(true);
+    /* spell_check_for_fail_rune: the TIMED_INC subtype was checked. */
+    expect(incChecked).toContain("AFRAID");
+    expect(nexus).toBe(0);
+
+    /* TPORT (teleport-level family): a save learns ELEM_NEXUS. */
+    const tele = monReg.spells.get(RSF.TELE_LEVEL);
+    if (tele) {
+      doMonSpell(state, mon.midx, RSF.TELE_LEVEL, true, deps(state, { saveSkill: 100, hooks }));
+      expect(nexus).toBe(1);
+    }
   });
 });

@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD, RF, RSF } from "../generated";
+import { ELEM, MFLAG, MON_TMD, RF, RSF } from "../generated";
 import { FlagSet } from "../bitflag";
+import { Rng } from "../rng";
 import { EffectRegistry } from "../effects/interpreter";
 import { registerCoreHandlers } from "../effects/handlers";
 import { loc, locEq } from "../loc";
@@ -21,6 +22,8 @@ import { monsterTurn } from "./monster-turn";
 import type { DoMonSpellDeps } from "./mon-cast";
 import {
   chooseAttackSpell,
+  chooseNearbyInjuredKin,
+  findAnyNearbyInjuredKin,
   installMonsterCasting,
   makeRangedAttack,
   monsterCanCast,
@@ -239,5 +242,160 @@ describe("monsterSpellFailrate", () => {
     expect(monsterSpellFailrate(clever)).toBe(base + 20);
     clever.mTimed[MON_TMD.CONF] = 5;
     expect(monsterSpellFailrate(clever)).toBe(base + 20 + 50);
+  });
+});
+
+describe("decoy targeting (monster_get_target_dist_grid, mon-attack.c L65)", () => {
+  it("a decoyed monster measures range and path to the decoy", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    /* Player far out of the 20-grid cast range; decoy adjacent. */
+    const mon = addMon(state, casterRace([RSF.BA_FIRE], { spell: 100 }), loc(35, 20));
+    state.decoy = loc(34, 20);
+    updateMonsterDistances(state); /* cdis to the player is huge */
+    expect(mon.cdis).toBeGreaterThan(20);
+    /* With the decoy in LOS the effective target distance is 1: castable. */
+    expect(monsterCanCast(state, mon, false, 20)).toBe(true);
+
+    /* Without the decoy the player is out of range: not castable. */
+    state.decoy = null;
+    expect(monsterCanCast(state, mon, false, 20)).toBe(false);
+  });
+
+  it("removeBadSpells prunes TELE_TO by decoy distance, not player distance", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, casterRace([RSF.TELE_TO]), loc(20, 10));
+    state.decoy = loc(21, 10); /* adjacent decoy */
+    updateMonsterDistances(state); /* player is far (tdist would be > 1) */
+    const f = mon.race.spellFlags.clone();
+    removeBadSpells(state, mon, f, {});
+    /* tdist == 1 via the decoy: TELE_TO is stripped. */
+    expect(f.has(RSF.TELE_TO)).toBe(false);
+  });
+});
+
+describe("RSF_HEAL_KIN injured-kin scan (mon-util.c L885)", () => {
+  it("keeps HEAL_KIN only when an injured same-base monster is in LOS nearby", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const healer = addMon(state, casterRace([RSF.HEAL_KIN]), loc(20, 10));
+    updateMonsterDistances(state);
+
+    /* No kin at all: pruned. */
+    let f = healer.race.spellFlags.clone();
+    removeBadSpells(state, healer, f, {});
+    expect(f.has(RSF.HEAL_KIN)).toBe(false);
+
+    /* A healthy kin nearby: still pruned (no injury). */
+    const kin = addMon(state, makeRace({ level: 5 }), loc(22, 10), { hp: 30 });
+    kin.race.base = healer.race.base;
+    updateMonsterDistances(state);
+    f = healer.race.spellFlags.clone();
+    removeBadSpells(state, healer, f, {});
+    expect(f.has(RSF.HEAL_KIN)).toBe(false);
+
+    /* The kin is injured: kept. */
+    kin.hp = Math.trunc(kin.maxhp / 2);
+    f = healer.race.spellFlags.clone();
+    removeBadSpells(state, healer, f, {});
+    expect(f.has(RSF.HEAL_KIN)).toBe(true);
+  });
+
+  it("chooseNearbyInjuredKin picks the injured kin", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const healer = addMon(state, casterRace([RSF.HEAL_KIN]), loc(20, 10));
+    const kin = addMon(state, makeRace({ level: 5 }), loc(22, 10), { hp: 30 });
+    kin.race.base = healer.race.base;
+    kin.hp = 3;
+    updateMonsterDistances(state);
+    expect(chooseNearbyInjuredKin(state, healer)).toBe(kin);
+    expect(findAnyNearbyInjuredKin(state, healer)).toBe(true);
+  });
+});
+
+describe("spell failure message + disturb (mon-attack.c L460, L465)", () => {
+  it("prints 'tries to cast a spell, but fails.' with the monster_desc name", () => {
+    /* A frightened caster has failrate 25 - 1 + 20 = 44; scan seeds for one
+     * that fails the cast, then assert the default message. */
+    for (let seed = 1; seed < 60; seed++) {
+      const state = makeState({ playerGrid: loc(5, 5), seed });
+      const messages: string[] = [];
+      state.msg = (t): void => {
+        messages.push(t);
+      };
+      const mon = addMon(state, casterRace([RSF.BA_FIRE], { spell: 100 }), loc(5, 7), {
+        hp: 300,
+      });
+      mon.mflag.on(MFLAG.VISIBLE);
+      mon.mTimed[MON_TMD.FEAR] = 10;
+      updateMonsterDistances(state);
+      const ran = makeRangedAttack(state, mon.midx, deps(state));
+      expect(ran).toBe(true);
+      const fail = messages.find((m) => m.endsWith("tries to cast a spell, but fails."));
+      if (fail) {
+        /* MDESC_STANDARD: capitalised definite name. */
+        expect(fail.startsWith("The ")).toBe(true);
+        return;
+      }
+    }
+    throw new Error("no seed produced a spell failure");
+  });
+
+  it("a successful cast disturbs the player's run (disturb before do_mon_spell)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const mon = addMon(state, casterRace([RSF.BR_FIRE], { innate: 100 }), loc(5, 7), {
+      hp: 300,
+    });
+    updateMonsterDistances(state);
+    state.run = {
+      curDir: 6,
+      oldDir: 6,
+      openArea: true,
+      breakRight: false,
+      breakLeft: false,
+      running: 5,
+      firstStep: false,
+      stepCount: 0,
+    };
+    const ran = makeRangedAttack(state, mon.midx, deps(state));
+    expect(ran).toBe(true);
+    expect(state.run.running).toBe(0);
+  });
+});
+
+describe("birth_ai_learn unset_spells filter (mon-attack.c L192, mon-spell.c L470)", () => {
+  it("a smart monster that knows the player is fire-immune drops its fire ball", () => {
+    /* Pick a seed whose first draw does NOT trigger the one_in_(20)
+     * knowledge-forget, so the memory survives to the filter. */
+    let seed = 1;
+    while (new Rng(seed).oneIn(20)) seed++;
+    const state = makeState({ playerGrid: loc(5, 5), seed });
+    state.options = {
+      get: (name: string) => name === "birth_ai_learn",
+    } as never;
+    const race = casterRace([RSF.BA_FIRE, RSF.BA_COLD]);
+    race.flags.on(RF.SMART);
+    const mon = addMon(state, race, loc(5, 10));
+    /* The monster has learned total fire immunity (res_level 3). */
+    mon.knownPstate.elInfo[ELEM.FIRE] = 3;
+    updateMonsterDistances(state);
+
+    /* smart: learn_chance = 3 * 50 = 150 > any randint0(100): always dropped. */
+    const f = mon.race.spellFlags.clone();
+    removeBadSpells(state, mon, f, {}, deps(state));
+    expect(f.has(RSF.BA_FIRE)).toBe(false);
+    /* Cold is unknown (res 0): learn chance 0, kept. */
+    expect(f.has(RSF.BA_COLD)).toBe(true);
+  });
+
+  it("without the option (or with nothing known) the spells are untouched", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const race = casterRace([RSF.BA_FIRE]);
+    race.flags.on(RF.SMART);
+    const mon = addMon(state, race, loc(5, 10));
+    mon.knownPstate.elInfo[ELEM.FIRE] = 3;
+    updateMonsterDistances(state);
+    /* Option off: no filtering even though the memory is set. */
+    const f = mon.race.spellFlags.clone();
+    removeBadSpells(state, mon, f, {}, deps(state));
+    expect(f.has(RSF.BA_FIRE)).toBe(true);
   });
 });

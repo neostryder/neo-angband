@@ -27,6 +27,8 @@ import { MON_TIMED_ENTRIES, RF } from "../generated";
 import { MON_TMD } from "../generated";
 import type { Monster } from "./monster";
 import { monsterIsObvious, monsterIsUnique } from "./predicate";
+import type { LoreStore } from "./lore";
+import { getLore, loreLearnFlagIfVisible } from "./lore";
 
 /** mon-timed.h flags. */
 export const MON_TMD_FLG_NOTIFY = 0x01;
@@ -85,7 +87,25 @@ function savingThrow(rng: Rng, mon: Monster, timer: number): boolean {
   return rng.randint0(100) < resistChance;
 }
 
-/** does_resist: NOFAIL override, then flag immunity, then the optional save. */
+/**
+ * The lore store the resist branch learns into (lore_learn_flag_if_visible,
+ * mon-timed.c L108). does_resist has no deps parameter upstream (get_lore is a
+ * global), so the port registers the session's store against its Rng - the one
+ * shared object every timed call threads - via installMonTimedLore. Worldless
+ * harnesses that never install one simply skip the lore learn (the pre-port
+ * behaviour); the resist outcome is identical either way.
+ */
+const TIMED_LORE_STORES = new WeakMap<object, LoreStore>();
+
+/** Register the lore store learning timed-resist flags for this rng/session. */
+export function installMonTimedLore(rng: Rng, lore: LoreStore): void {
+  TIMED_LORE_STORES.set(rng, lore);
+}
+
+/**
+ * does_resist (mon-timed.c L89): NOFAIL override, then flag immunity (learning
+ * the resist flag into visible lore, mon-timed.c L107-110), then the save.
+ */
 function doesResist(
   rng: Rng,
   mon: Monster,
@@ -98,9 +118,14 @@ function doesResist(
   /* The game can override the monster's innate resistance. */
   if (flag & MON_TMD_FLG_NOFAIL) return false;
 
-  /* Resistance from a monster race flag (lore learn DEFERRED). */
+  /* Check resistances from monster flags: a visible monster shrugging the
+   * effect off via its race flag teaches that flag. */
   const rflag = resistFlagIndex(effect.resistFlag);
-  if (rflag >= 0 && mon.race.flags.has(rflag)) return true;
+  if (rflag >= 0 && mon.race.flags.has(rflag)) {
+    const store = TIMED_LORE_STORES.get(rng);
+    if (store) loreLearnFlagIfVisible(getLore(store, mon.race), mon, rflag);
+    return true;
+  }
 
   /* Some effects get a saving throw; others do not. */
   return effect.save ? savingThrow(rng, mon, timer) : false;

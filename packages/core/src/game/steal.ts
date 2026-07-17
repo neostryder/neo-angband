@@ -32,6 +32,7 @@ import { SKILL } from "../player/types";
 import { adj_dex_th } from "../player/calcs";
 import type { GameObject, StackLimits } from "../obj/object";
 import { objectWeightOne, tvalIsMoney } from "../obj/object";
+import { MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc";
 import type { Monster } from "../mon/monster";
 import { monsterWake } from "../mon/take-hit";
 import { stealMonsterItem } from "../mon/steal";
@@ -88,7 +89,9 @@ function makeStealEnv(state: GameState, deps: StealCmdDeps): StealEnv {
 
   return {
     msg,
-    monName: (mon) => mon.race.name,
+    /* monster_desc(mon, MDESC_TARG) / MDESC_STANDARD (mon-util.c L1438/1524). */
+    monName: (mon) => monsterDesc(mon, MDESC_TARG),
+    monNameStandard: (mon) => monsterDesc(mon, MDESC_STANDARD),
     stealthSkill: state.actor.combat.skills[SKILL.STEALTH] ?? 0,
     dexToHit: adj_dex_th[state.statInd?.[STAT.DEX] ?? 0] ?? 0,
     playerSpeed: state.actor.speed,

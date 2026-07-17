@@ -589,6 +589,20 @@ export interface TimedFailLike {
 export type CurseTimedFoil = ReadonlyMap<string, readonly TimedFailLike[]>;
 
 /**
+ * Build the CurseTimedFoil map from the bound player-timed table (upstream
+ * timed_effects[]: the curse checks index it by the TIMED_INC subtype). Keyed
+ * by effect NAME because the port's curse effect records carry the subtype as
+ * its name string ("POISONED"). One-liner for the game wiring; draws no RNG.
+ */
+export function buildCurseTimedFoil(
+  timed: readonly { name: string; fail: readonly TimedFailLike[] }[],
+): CurseTimedFoil {
+  const map = new Map<string, readonly TimedFailLike[]>();
+  for (const t of timed) map.set(t.name, t.fail);
+  return map;
+}
+
+/**
  * curse_conflicts helper for the TIMED_INC foil branch of append_object_curse
  * (obj-curse.c L159-188) and artifact_curse_conflicts (L267-296): a curse whose
  * effect is TIMED_INC is rejected when an existing property of the item would
@@ -960,6 +974,82 @@ export function objectSimilar(
   }
 
   return true;
+}
+
+/**
+ * The gear view object_pack_total needs, injected so this pure helper stays
+ * free of the player/gear domain (obj-gear.c owns the live gear list).
+ */
+export interface PackTotalGear {
+  /** p->gear in upstream list order. */
+  gear: readonly GameObject[];
+  /** object_is_equipped(p->body, obj). */
+  isEquipped(obj: GameObject): boolean;
+  /**
+   * gear_to_label(p, obj): 'a'-'z' for pack, '0'-'9' for quiver, equip labels
+   * otherwise; return "" for an unlabelled object (upstream '\0').
+   */
+  gearToLabel(obj: GameObject): string;
+}
+
+/**
+ * object_pack_total (obj-gear.c L189): the total number of items in the
+ * player's non-equipped gear that are like `obj`, and the first such stack
+ * (quiver digits taking precedence over pack letters, lowest label first).
+ * `ignoreInscrip` selects object_similar (inscriptions ignored) over
+ * object_stackable. Draws no RNG.
+ */
+export function objectPackTotal(
+  view: PackTotalGear,
+  obj: GameObject,
+  ignoreInscrip: boolean,
+): { total: number; first: GameObject | null } {
+  let total = 0;
+  let first: GameObject | null = null;
+  let firstLabel = "";
+
+  for (const cursor of view.gear) {
+    let like: boolean;
+    if (cursor === obj) {
+      /* object_similar() excludes cursor == obj so if obj is not equipped,
+       * account for it here (L202-207). */
+      like = !view.isEquipped(obj);
+    } else if (ignoreInscrip) {
+      like = objectSimilar(obj, cursor, OSTACK_PACK);
+    } else {
+      like = objectStackable(obj, cursor, OSTACK_PACK);
+    }
+    if (!like) continue;
+
+    total += cursor.number;
+
+    /* Track the first stack (L215-244): quiver digits beat pack letters,
+     * then lowest label wins within each class. */
+    const testLabel = view.gearToLabel(cursor);
+    if (!first) {
+      first = cursor;
+      firstLabel = testLabel;
+    } else if (testLabel >= "a" && testLabel <= "z") {
+      if (
+        firstLabel === "" ||
+        (firstLabel >= "a" && firstLabel <= "z" && testLabel < firstLabel)
+      ) {
+        first = cursor;
+        firstLabel = testLabel;
+      }
+    } else if (testLabel >= "0" && testLabel <= "9") {
+      if (
+        firstLabel === "" ||
+        (firstLabel >= "a" && firstLabel <= "z") ||
+        (firstLabel >= "0" && firstLabel <= "9" && testLabel < firstLabel)
+      ) {
+        first = cursor;
+        firstLabel = testLabel;
+      }
+    }
+  }
+
+  return { total, first };
 }
 
 /** object_stackable: object_similar plus compatible inscriptions. */

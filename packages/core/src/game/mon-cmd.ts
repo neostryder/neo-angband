@@ -18,7 +18,9 @@
  * monster-target side effects reduce to their damage).
  */
 
-import { FEAT, MON_TMD, RF, TMD } from "../generated";
+import { FEAT, MON_MSG, MON_TMD, RF, TMD } from "../generated";
+import { MDESC, MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc";
+import { formatMonsterMessage } from "./mon-message";
 import { DDGRID, loc, locSum } from "../loc";
 import type { Loc } from "../loc";
 import type { Monster } from "../mon/monster";
@@ -39,6 +41,7 @@ import {
 } from "../combat/mon-melee";
 import type { GameState, PlayerCommand } from "./context";
 import { deleteMonster, monsterSwap, squareMonster } from "./context";
+import { monsterPrimaryGroupSize } from "./mon-group";
 import { doMonSpell } from "./mon-cast";
 import type { DoMonSpellDeps } from "./mon-cast";
 import { chooseAttackSpell } from "./mon-ranged";
@@ -74,7 +77,9 @@ export function monsterAttackMonster(
 
   const rlev = mon.race.level >= 1 ? mon.race.level : 1;
   const stunned = (mon.mTimed[MON_TMD.STUN] ?? 0) > 0;
-  const name = mon.race.name;
+  /* Get the monster names (or "it") (mon-attack.c L778-779). */
+  const name = monsterDesc(mon, MDESC_STANDARD);
+  const tName = monsterDesc(tMon, MDESC_TARG);
 
   for (const blow of mon.race.blows) {
     if (!blow.method) break;
@@ -94,7 +99,7 @@ export function monsterAttackMonster(
     if (!hit) {
       /* Visible monster missed monster, so notify if appropriate. */
       if (monsterIsVisible(mon) && blow.method.miss) {
-        state.msg?.(`${name} misses ${tMon.race.name}.`);
+        state.msg?.(`${name} misses ${tName}.`);
       }
       continue;
     }
@@ -115,10 +120,14 @@ export function monsterAttackMonster(
         /* become_aware: a commanded monster's blow can reveal a camouflaged
          * target, same as any other monster-vs-monster hit. */
         ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
+        /* The fear roll's per-member group save (mon-predicate.c L296). */
+        primaryGroupSize: () => monsterPrimaryGroupSize(state, tMon),
       });
       if (res.died) {
+        /* add_monster_message(t_mon, MON_MSG_DIE): the MON_MSG grammar. */
         if (monsterIsVisible(tMon)) {
-          state.msg?.(`${tMon.race.name} dies.`);
+          const text = formatMonsterMessage(tMon, MON_MSG.DIE);
+          if (text) state.msg?.(text);
         }
         deleteMonster(state, tMon.midx);
         continue;
@@ -182,7 +191,9 @@ function commandedWalk(
 ): boolean {
   const c = state.chunk;
   const lore = getLore(state.lore, mon.race);
-  const name = mon.race.name;
+  /* monster_desc(mon, MDESC_CAPITAL | MDESC_IND_HID | MDESC_COMMA)
+   * (cmd-cave.c L1798). */
+  const name = monsterDesc(mon, MDESC.CAPITAL | MDESC.IND_HID | MDESC.COMMA);
   const grid = locSum(mon.grid, DDGRID[dir] ?? loc(0, 0));
   let canMove = false;
   let hasHit = false;

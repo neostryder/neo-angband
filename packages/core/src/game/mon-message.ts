@@ -16,7 +16,7 @@
 import { MON_MESSAGE_ENTRIES, MON_MSG, MSG, RF } from "../generated";
 import type { Loc } from "../loc";
 import type { Monster } from "../mon/monster";
-import type { MonsterAltMsg, MonsterSpell } from "../mon/types";
+import type { MonsterAltMsg, MonsterRace, MonsterSpell } from "../mon/types";
 import { MDESC, MDESC_TARG, monsterDesc, pluralAux } from "../mon/desc";
 
 /**

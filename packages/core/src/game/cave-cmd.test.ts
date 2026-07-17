@@ -310,13 +310,18 @@ function lockSetup(rng: Rng): {
 }
 
 describe("lock door (do_cmd_lock_door)", () => {
+  /* Every energy-capable command now draws the bloodlust-coercion roll
+   * before executing (cmd-core.c:373 randint0(200) < timed[TMD_BLOODLUST]),
+   * so the sequences start with one extra randint0 (scripted 199: never
+   * coerces at zero bloodlust). */
   it("locks the door on success: m_bonus then randint0(100), sets the power", () => {
-    const { rng, log } = recordingRng({ mBonus: 3, randint0: [0] });
+    const { rng, log } = recordingRng({ mBonus: 3, randint0: [199, 0] });
     const { state, run, msgs, locked, power } = lockSetup(rng);
     setSkill(state, SKILL.DISARM_PHYS, 30); // i=30, power=3, j=27; 0 < 27 => lock
     const energy = run({ code: "lock", dir: 6 });
     expect(energy).toBe(state.z.moveEnergy);
-    expect(log).toEqual(["mBonus", "randint0"]); // exact order, no retry draw
+    /* Coercion roll, then exact lock order with no retry draw. */
+    expect(log).toEqual(["randint0", "mBonus", "randint0"]);
     expect(power()).toBe(3);
     expect(locked.has("6,5")).toBe(true);
     expect(msgs).toContain("You lock the door.");
@@ -325,23 +330,23 @@ describe("lock door (do_cmd_lock_door)", () => {
   it("failure with a high skill draws the keep-trying randint1(i)", () => {
     const { rng, log } = recordingRng({
       mBonus: 3,
-      randint0: [50], // >= j (27) => failure
+      randint0: [199, 50], // coercion miss; 50 >= j (27) => failure
       randint1: [10], // > 5 => keep trying
     });
     const { state, run, msgs, locked } = lockSetup(rng);
     setSkill(state, SKILL.DISARM_PHYS, 30);
     run({ code: "lock", dir: 6 });
-    expect(log).toEqual(["mBonus", "randint0", "randint1"]);
+    expect(log).toEqual(["randint0", "mBonus", "randint0", "randint1"]);
     expect(locked.size).toBe(0); // door not locked
     expect(msgs).toContain("You failed to lock the door.");
   });
 
   it("failure with a low skill (i <= 5) draws no randint1", () => {
-    const { rng, log } = recordingRng({ mBonus: 0, randint0: [50] });
+    const { rng, log } = recordingRng({ mBonus: 0, randint0: [199, 50] });
     const { state, run, locked } = lockSetup(rng);
     setSkill(state, SKILL.DISARM_PHYS, 5); // i=5, j=5; 50 >= 5 fail, i not > 5
     run({ code: "lock", dir: 6 });
-    expect(log).toEqual(["mBonus", "randint0"]);
+    expect(log).toEqual(["randint0", "mBonus", "randint0"]);
     expect(locked.size).toBe(0);
   });
 

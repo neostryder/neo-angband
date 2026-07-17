@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
 import { TV } from "../generated";
+import { bindPlayer } from "../player/bind";
+import { blankPlayer } from "../player/player";
+import type { Player } from "../player/player";
 import { ObjRegistry } from "./bind";
+import type { KnownDesc } from "./known-object";
+import type { RuneEnv } from "./knowledge";
+import { makeRuneEnv, OBJ_NOTICE, playerLearnAllRunes } from "./knowledge";
 import { objectPrep } from "./make";
 import type { ObjPackJson } from "./types";
 import { objectValue, objectValueBase, objectValueReal } from "./value";
@@ -128,5 +134,80 @@ describe("object_value (obj-power.c dispatch)", () => {
   it("prices a variable-power item by object_power regardless of awareness", () => {
     const cloak = make(TV.CLOAK);
     expect(objectValue(reg, cloak, 1, false)).toBe(objectValueReal(reg, cloak, 1));
+  });
+});
+
+describe("object_value via the known twin (obj-power.c L1257-1259, gap 3.4)", () => {
+  const players = bindPlayer({
+    races: loadJson<{ records: unknown[] }>("p_race").records,
+    classes: loadJson<{ records: unknown[] }>("class").records,
+    properties: loadJson<{ records: unknown[] }>("player_property").records,
+    timed: loadJson<{ records: unknown[] }>("player_timed").records,
+    shapes: loadJson<{ records: unknown[] }>("shape").records,
+    bodies: loadJson<{ records: unknown[] }>("body").records,
+    history: loadJson<{ records: unknown[] }>("history").records,
+    realms: loadJson<{ records: unknown[] }>("realm").records,
+  } as Parameters<typeof bindPlayer>[0]);
+
+  function makePlayer(): Player {
+    const race = players.raceByName("Human")!;
+    const cls = players.classByName("Warrior")!;
+    return blankPlayer(race, cls, players.bodies[race.body]!);
+  }
+
+  function makeEnv(): RuneEnv {
+    const rng = new Rng(7);
+    return makeRuneEnv(
+      () => null,
+      (v) => rng.randcalcVaries(v),
+      {
+        brands: reg.brands,
+        slays: reg.slays,
+        curses: reg.curses,
+        properties: reg.properties,
+        elementNames: ["acid", "lightning", "fire", "frost"],
+        msg: () => {},
+      },
+    );
+  }
+
+  const deps: KnownDesc = { isAware: () => false, isTried: () => false };
+
+  it("prices an assessed item with unknown combat runes below its real value", () => {
+    const sword = make(TV.SWORD);
+    sword.toH = 8;
+    sword.toD = 8;
+    sword.notice |= OBJ_NOTICE.ASSESSED;
+    const p = makePlayer();
+    const env = makeEnv();
+
+    const knownPrice = objectValue(reg, sword, 1, false, { p, env, deps });
+    const realPrice = objectValue(reg, sword, 1, false);
+    /* The fresh player knows no to-hit/to-dam runes, so the twin carries
+     * zeroes there and the priced power is lower. */
+    expect(knownPrice).toBeLessThan(realPrice);
+  });
+
+  it("prices a fully-known item exactly like the real object", () => {
+    const sword = make(TV.SWORD);
+    sword.toH = 8;
+    sword.toD = 8;
+    sword.notice |= OBJ_NOTICE.ASSESSED;
+    const p = makePlayer();
+    const env = makeEnv();
+    playerLearnAllRunes(p, env);
+
+    expect(objectValue(reg, sword, 1, false, { p, env, deps })).toBe(
+      objectValue(reg, sword, 1, false),
+    );
+  });
+
+  it("constant-price kinds are unaffected by the knowledge context", () => {
+    const potion = make(TV.POTION);
+    const p = makePlayer();
+    const env = makeEnv();
+    expect(objectValue(reg, potion, 2, false, { p, env, deps })).toBe(
+      objectValue(reg, potion, 2, false),
+    );
   });
 });

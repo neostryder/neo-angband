@@ -14,6 +14,8 @@ import type { Loc } from "../loc";
 import { loc } from "../loc";
 import { MON_TMD } from "../generated";
 import type { GameObject } from "../obj/object";
+import { ELEM_MAX, OF_SIZE } from "../obj/types";
+import { PF_SIZE } from "../player/types";
 import type { MonsterGroupRole, MonsterRace } from "./types";
 import { MFLAG_SIZE, MON_GROUP } from "./types";
 
@@ -34,6 +36,21 @@ export interface MonsterGroupInfo {
 export interface MonsterTarget {
   grid: Loc;
   midx: number;
+}
+
+/**
+ * monster.known_pstate (monster.h): what the monster has learned about the
+ * player under birth_ai_learn - observed object flags, player (class/race)
+ * flags and elemental resist levels. Written by update_smart_learn
+ * (mon/spell.ts) and read by remove_bad_spells' unset_spells filter.
+ */
+export interface MonKnownPstate {
+  /** of-flags observed on the player (OF_ index space). */
+  flags: FlagSet;
+  /** player flags observed (PF_ index space). */
+  pflags: FlagSet;
+  /** el_info[elem].res_level observed, indexed by ELEM_. */
+  elInfo: Int16Array;
 }
 
 /** struct monster (monster.h), world references as numeric handles. */
@@ -69,6 +86,8 @@ export interface Monster {
   groupInfo: MonsterGroupInfo[];
   minRange: number;
   bestRange: number;
+  /** known_pstate: the birth_ai_learn player-knowledge memory. */
+  knownPstate: MonKnownPstate;
 }
 
 /** A zeroed monster of the given race (memset in place_new_monster_one). */
@@ -96,6 +115,11 @@ export function blankMonster(race: MonsterRace): Monster {
     groupInfo,
     minRange: 0,
     bestRange: 0,
+    knownPstate: {
+      flags: new FlagSet(OF_SIZE),
+      pflags: new FlagSet(PF_SIZE),
+      elInfo: new Int16Array(ELEM_MAX),
+    },
   };
 }
 

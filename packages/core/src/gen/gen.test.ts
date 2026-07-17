@@ -1793,7 +1793,8 @@ describe("quest monster placement (generate.c cave_generate L1170-1191)", () => 
   const monReg = bindMonsters(monPack, { maxSight: constants.maxSight });
   /* Any concrete race serves as a stand-in guardian; placement passes the race
    * object directly, so it need not be in the allocation table. */
-  const guardian = monReg.races.find((r) => !r.flags.has(RF.UNIQUE)) ?? monReg.races[1];
+  const guardian = monReg.races.find((r) => !r.flags.has(RF.UNIQUE));
+  if (!guardian) throw new Error("test setup: no non-unique race in pack");
 
   it("spawns max_num guardians when questSpawns is supplied", () => {
     const g = generateLevel(new Rng(2026_0716), 5, makeDeps(), {

@@ -1,14 +1,18 @@
 /**
- * Monster death loot (game/mon-death.ts): mon_create_drop generation fused with
- * monster_death's drop-to-floor, driven over a harness GameState with a real
- * bound object registry. Covers the drop-count range, the gold/item split, good
- * / unique specifics, ORIGIN tagging, invisible-monster handling, stolen-object
- * drops, and a fixed-seed determinism snapshot (the RNG-order regression guard).
+ * Monster drops and death (game/mon-death.ts): monCreateDrop (mon-make.c
+ * mon_create_drop, run at PLACEMENT) and monster_death's drop-to-floor, driven
+ * over a harness GameState with a real bound object registry. Covers the
+ * drop-count range, the gold/item split, good / unique specifics, ORIGIN
+ * tagging (including the true DROP_PIT / DROP_VAULT / DROP_SUMMON placement
+ * origins, mon-make.c L1044-1046), invisible-monster handling, stolen-object
+ * drops, mimicked-object deletion (mon-util.c L957), mon_take_nonplayer_hit
+ * and monster_take_terrain_damage (mon-util.c L1193/L1327), and a fixed-seed
+ * determinism snapshot (the RNG-order regression guard).
  */
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { KF, MFLAG, ORIGIN, RF } from "../generated";
+import { FEAT, KF, MFLAG, MON_MSG, ORIGIN, RF } from "../generated";
 import { loc } from "../loc";
 import { Rng } from "../rng";
 import { bindConstants } from "../constants";
@@ -23,9 +27,30 @@ import { monCreateDropCount, monsterCarry } from "../mon/make";
 import { getLore } from "../mon/lore";
 import type { MonsterDrop } from "../mon/types";
 import type { GameState } from "./context";
-import { monsterDeath } from "./mon-death";
+import type { Monster } from "../mon/monster";
+import {
+  monCreateDrop,
+  monsterDeath,
+  monsterTakeTerrainDamage,
+  monTakeNonplayerHit,
+} from "./mon-death";
 import type { MonsterDeathDeps } from "./mon-death";
 import { addMon, makeRace, makeState } from "./harness";
+
+/**
+ * The upstream sequence for a monster whose drops were generated at placement
+ * and that now dies: mon_create_drop (place_new_monster_one) then
+ * monster_death. Placement origin defaults to ORIGIN.DROP (a live spawn).
+ */
+function dropsThenDeath(
+  state: GameState,
+  mon: Monster,
+  deps: MonsterDeathDeps,
+  origin: number = ORIGIN.DROP,
+): void {
+  monCreateDrop(state, mon, origin, deps);
+  monsterDeath(state, mon, deps);
+}
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -142,7 +167,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
     const mon = addMon(state, race, loc(20, 12));
     mon.mflag.on(MFLAG.VISIBLE);
 
-    monsterDeath(state, mon, deathDeps(state));
+    dropsThenDeath(state, mon, deathDeps(state));
 
     const objs = allFloorObjects(state);
     expect(objs.length).toBeGreaterThan(0);
@@ -165,7 +190,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
     const mon = addMon(state, race, loc(20, 12));
     mon.mflag.on(MFLAG.VISIBLE);
 
-    monsterDeath(state, mon, deathDeps(state));
+    dropsThenDeath(state, mon, deathDeps(state));
 
     const objs = allFloorObjects(state);
     expect(objs.length).toBeGreaterThan(0);
@@ -185,7 +210,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
     const mon = addMon(state, race, loc(20, 12));
     mon.mflag.on(MFLAG.VISIBLE);
 
-    monsterDeath(state, mon, deathDeps(state));
+    dropsThenDeath(state, mon, deathDeps(state));
 
     const objs = allFloorObjects(state);
     expect(objs.length).toBeGreaterThan(0);
@@ -204,7 +229,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
     mon.mflag.on(MFLAG.VISIBLE);
     const rationSval = objReg.lookupSval(TV.FOOD, "Ration of Food");
 
-    monsterDeath(state, mon, deathDeps(state));
+    dropsThenDeath(state, mon, deathDeps(state));
 
     const objs = allFloorObjects(state);
     const ration = objs.find(
@@ -225,7 +250,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
     const mon = addMon(state, race, loc(20, 12));
     mon.mflag.on(MFLAG.VISIBLE);
 
-    monsterDeath(state, mon, deathDeps(state));
+    dropsThenDeath(state, mon, deathDeps(state));
 
     const objs = allFloorObjects(state);
     expect(objs.some((o) => o.tval === TV.FOOD)).toBe(true);
@@ -248,7 +273,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
     monsterCarry(mon.heldObj, stolen, mon.midx);
     expect(mon.heldObj.length).toBe(1);
 
-    monsterDeath(state, mon, deathDeps(state));
+    dropsThenDeath(state, mon, deathDeps(state));
 
     const objs = allFloorObjects(state);
     const dropped = objs.find((o) => o === stolen);
@@ -265,7 +290,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
     const mon = addMon(state, race, loc(20, 12));
     /* Not visible, not unique. */
 
-    monsterDeath(state, mon, deathDeps(state));
+    dropsThenDeath(state, mon, deathDeps(state));
 
     const objs = allFloorObjects(state);
     expect(objs.length).toBeGreaterThan(0);
@@ -282,7 +307,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
     const mon = addMon(state, race, loc(20, 12));
     mon.mflag.on(MFLAG.VISIBLE);
 
-    monsterDeath(state, mon, deathDeps(state));
+    dropsThenDeath(state, mon, deathDeps(state));
 
     const lore = getLore(state.lore, race);
     expect(lore.dropGold).toBeGreaterThan(0);
@@ -298,7 +323,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
     mon.mflag.on(MFLAG.VISIBLE);
 
     const before = state.rng.randint0(1000000);
-    monsterDeath(state, mon, deathDeps(state));
+    dropsThenDeath(state, mon, deathDeps(state));
     const after = state.rng.randint0(1000000);
 
     expect(allFloorObjects(state).length).toBe(0);
@@ -337,7 +362,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
       artifacts: new ArtifactState(objReg.artifacts.length),
       noArtifacts: false,
     };
-    monsterDeath(state, mon, {
+    dropsThenDeath(state, mon, {
       makeDeps: localDeps,
       reg: objReg,
       floorEnv: {},
@@ -369,7 +394,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
       });
       const mon = addMon(state, race, loc(20, 12));
       mon.mflag.on(MFLAG.VISIBLE);
-      monsterDeath(state, mon, deathDeps(state));
+      dropsThenDeath(state, mon, deathDeps(state));
       return allFloorObjects(state);
     };
 
@@ -389,5 +414,160 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
     expect(shape(a)).toEqual(shape(b));
     /* And it actually produced loot (the specified ration plus generics). */
     expect(a.length).toBeGreaterThan(0);
+  });
+
+  it("monCreateDrop runs at placement onto the held pile, preserving the placement origin (mon-make.c L1044-1046)", () => {
+    const state = makeState({ seed: 77 });
+    state.chunk.depth = 12;
+    const race = makeRace({ level: 15, flags: [RF.DROP_4, RF.ONLY_GOLD] });
+    const mon = addMon(state, race, loc(20, 12));
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    /* Placement in a pit context: origin ORIGIN_DROP_PIT. */
+    const any = monCreateDrop(state, mon, ORIGIN.DROP_PIT, deathDeps(state));
+    expect(any).toBe(true);
+    /* The drops sit on the monster's held pile, not the floor. */
+    expect(mon.heldObj.length).toBeGreaterThan(0);
+    expect(allFloorObjects(state).length).toBe(0);
+    expect(mon.heldObj.every((o) => o.origin === ORIGIN.DROP_PIT)).toBe(true);
+
+    /* Death drops them, still tagged DROP_PIT, and counts them for lore. */
+    monsterDeath(state, mon, deathDeps(state));
+    const objs = allFloorObjects(state);
+    expect(objs.length).toBeGreaterThan(0);
+    expect(objs.every((o) => o.origin === ORIGIN.DROP_PIT)).toBe(true);
+    expect(getLore(state.lore, race).dropGold).toBeGreaterThan(0);
+  });
+
+  it("monsterDeath itself draws no generation RNG (drops moved to placement)", () => {
+    /* Two identical states; one carries a pre-generated drop, one does not.
+     * monsterDeath's only draws are dropNear tie-breaks per held object, so
+     * with an empty pile the stream is untouched. */
+    const state = makeState({ seed: 55 });
+    const race = makeRace({ level: 10, flags: [RF.DROP_4, RF.ONLY_GOLD] });
+    const mon = addMon(state, race, loc(20, 12));
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    /* No monCreateDrop call: the held pile is empty. */
+    monsterDeath(state, mon, deathDeps(state));
+    const after = state.rng.randint0(1000000);
+    const probe = new Rng(55);
+    expect(after).toBe(probe.randint0(1000000));
+    expect(allFloorObjects(state).length).toBe(0);
+  });
+
+  it("monsterDeath deletes the mimicked object from the floor (mon-util.c L957-961)", () => {
+    const state = makeState({ seed: 15 });
+    const race = makeRace({ level: 5 });
+    const mon = addMon(state, race, loc(20, 12));
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    /* Fake the mimicry linkage the way mon_create_mimicked_object does. */
+    const rationSval = objReg.lookupSval(TV.FOOD, "Ration of Food");
+    const kind = objReg.lookupKind(TV.FOOD, rationSval)!;
+    const fake = objectPrep(state.rng, objReg, constants, kind, 0, "minimise");
+    fake.mimickingMIdx = mon.midx;
+    mon.mimickedObj = 1;
+    const key = mon.grid.y * state.chunk.width + mon.grid.x;
+    state.floor.set(key, [fake]);
+
+    monsterDeath(state, mon, deathDeps(state));
+
+    /* The fake floor item is gone and the linkage cleared. */
+    expect(allFloorObjects(state)).not.toContain(fake);
+    expect(mon.mimickedObj).toBe(0);
+  });
+});
+
+describe("monTakeNonplayerHit (mon-util.c L1193)", () => {
+  it("kills a normal monster: die message, death drops, deletion", () => {
+    const state = makeState({ seed: 42 });
+    const messages: string[] = [];
+    state.msg = (t): void => {
+      messages.push(t);
+    };
+    const race = makeRace({ level: 10 });
+    const mon = addMon(state, race, loc(20, 12));
+    mon.mflag.on(MFLAG.VISIBLE);
+    mon.hp = 5;
+    mon.maxhp = 30;
+    const midx = mon.midx;
+
+    const died = monTakeNonplayerHit(state, mon, 50, MON_MSG.NONE, MON_MSG.DIE, deathDeps(state));
+
+    expect(died).toBe(true);
+    /* MON_MSG code 5 is a die-family message rendered with the subject. */
+    expect(messages.length).toBeGreaterThan(0);
+    /* delete_monster_idx: the slot is cleared. */
+    expect(state.monsters[midx]).toBeFalsy();
+  });
+
+  it("caps damage on a unique: hp reaches 0 but it survives", () => {
+    const state = makeState({ seed: 43 });
+    const race = makeRace({ level: 30, flags: [RF.UNIQUE] });
+    const mon = addMon(state, race, loc(20, 12));
+    mon.hp = 12;
+    mon.maxhp = 100;
+
+    const died = monTakeNonplayerHit(state, mon, 500, MON_MSG.NONE, MON_MSG.DIE, deathDeps(state));
+
+    expect(died).toBe(false);
+    expect(mon.hp).toBe(0);
+    expect(state.monsters[mon.midx]).toBe(mon);
+  });
+
+  it("a survivor wakes without becoming aware (monster_wake chance 0)", () => {
+    const state = makeState({ seed: 44 });
+    const race = makeRace({ level: 10 });
+    const mon = addMon(state, race, loc(20, 12));
+    mon.hp = 50;
+    mon.maxhp = 50;
+    mon.mTimed[0] = 100; /* MON_TMD_SLEEP */
+
+    monTakeNonplayerHit(state, mon, 3, MON_MSG.NONE, MON_MSG.DIE, deathDeps(state));
+
+    expect(mon.mTimed[0]).toBe(0);
+    /* awareChance 0: never AWARE from a nonplayer hit. */
+    expect(mon.mflag.has(MFLAG.AWARE)).toBe(false);
+  });
+});
+
+describe("monsterTakeTerrainDamage (mon-util.c L1327)", () => {
+  it("is a no-op off fiery terrain", () => {
+    const state = makeState({ seed: 50 });
+    const race = makeRace({ level: 10 });
+    const mon = addMon(state, race, loc(20, 12));
+    mon.hp = 40;
+    mon.maxhp = 40;
+
+    monsterTakeTerrainDamage(state, mon, deathDeps(state));
+    expect(mon.hp).toBe(40);
+  });
+
+  it("burns a non-IM_FIRE monster on lava for 100 + 1d100", () => {
+    const state = makeState({ seed: 51 });
+    const race = makeRace({ level: 10 });
+    const mon = addMon(state, race, loc(20, 12));
+    mon.hp = 400;
+    mon.maxhp = 400;
+    state.chunk.setFeat(mon.grid, FEAT.LAVA);
+
+    monsterTakeTerrainDamage(state, mon, deathDeps(state));
+
+    const dam = 400 - mon.hp;
+    expect(dam).toBeGreaterThanOrEqual(101);
+    expect(dam).toBeLessThanOrEqual(200);
+  });
+
+  it("spares a monster with the terrain's resist flag (RF_IM_FIRE)", () => {
+    const state = makeState({ seed: 52 });
+    const race = makeRace({ level: 10, flags: [RF.IM_FIRE] });
+    const mon = addMon(state, race, loc(20, 12));
+    mon.hp = 40;
+    mon.maxhp = 40;
+    state.chunk.setFeat(mon.grid, FEAT.LAVA);
+
+    monsterTakeTerrainDamage(state, mon, deathDeps(state));
+    expect(mon.hp).toBe(40);
   });
 });

@@ -613,8 +613,9 @@ export function calcInventory(
 
   /* Copy the current quiver, then empty it (L1053-1061). */
   const oldQuiver: number[] = [];
-  for (let i = 0; i < qSize; i++) oldQuiver[i] = gear.quiver[i] ?? 0;
-  gear.quiver = new Array<number>(qSize).fill(0);
+  for (let i = 0; i < qSize; i++) oldQuiver[i] = gear.quiver?.[i] ?? 0;
+  const quiver = new Array<number>(qSize).fill(0);
+  gear.quiver = quiver;
 
   const assigned = new Set<number>();
 
@@ -623,7 +624,7 @@ export function calcInventory(
     const current = gear.store.get(handle);
     if (!current) continue;
     const prefslot = preferredQuiverSlot(current, rogueLike);
-    if (prefslot >= 0 && prefslot < qSize && (gear.quiver[prefslot] ?? 0) === 0) {
+    if (prefslot >= 0 && prefslot < qSize && (quiver[prefslot] ?? 0) === 0) {
       const mult = tvalIsAmmo(current.tval) ? 1 : constants.thrownQuiverMult;
       let toQuiver = false;
       if (current.number * mult <= qSlot) {
@@ -640,7 +641,7 @@ export function calcInventory(
         }
       }
       if (toQuiver) {
-        gear.quiver[prefslot] = handle;
+        quiver[prefslot] = handle;
         assigned.add(handle);
       }
     }
@@ -648,7 +649,7 @@ export function calcInventory(
 
   /* Now fill the rest of the slots in order (L1119-1172). */
   for (let i = 0; i < qSize; i++) {
-    if ((gear.quiver[i] ?? 0) !== 0) continue;
+    if ((quiver[i] ?? 0) !== 0) continue;
 
     let first: GameObject | null = null;
     let firstHandle = 0;
@@ -677,14 +678,14 @@ export function calcInventory(
       gear.pack.push(gearAdd(gear, rem));
       nStackSplit++;
     }
-    gear.quiver[i] = firstHandle;
+    quiver[i] = firstHandle;
     assigned.add(firstHandle);
   }
 
   /* Note reordering (L1174-1182). */
   if (opts.characterDungeon) {
     for (let i = 0; i < qSize; i++) {
-      if ((oldQuiver[i] ?? 0) !== 0 && gear.quiver[i] !== oldQuiver[i]) {
+      if ((oldQuiver[i] ?? 0) !== 0 && quiver[i] !== oldQuiver[i]) {
         opts.msg?.("You re-arrange your quiver.");
         break;
       }

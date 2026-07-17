@@ -520,6 +520,7 @@ export function doRandart(
   reg: ObjRegistry,
   randartSeed: number,
   tolkienWords?: readonly string[],
+  extras?: Pick<ArtifactSetData, "timedFoil" | "activationSummarize">,
 ): (Artifact | null)[] {
   /* Prepare to use the Angband "simple" (quick LCRNG) RNG. */
   const rng = new Rng(randartSeed, { quick: true });
@@ -535,8 +536,15 @@ export function doRandart(
   const nameProbs: NameProbs | null =
     tolkienWords && tolkienWords.length > 0 ? buildProb(tolkienWords) : null;
 
-  /* Store the original power ratings and determine generation probabilities. */
+  /* Store the original power ratings and determine generation probabilities.
+   * `extras` threads the curse TIMED_INC foil tables (gap 3.3) and the
+   * activation redundancy summarizer (gap 3.8); absent, both checks are
+   * skipped as before. */
   const data = collectArtifactData(reg, rng);
+  if (extras?.timedFoil) data.timedFoil = extras.timedFoil;
+  if (extras?.activationSummarize) {
+    data.activationSummarize = extras.activationSummarize;
+  }
 
   /* Work on a fresh copy so the registry's standard artifacts are preserved. */
   const arts: (Artifact | null)[] = reg.artifacts.map((a) =>

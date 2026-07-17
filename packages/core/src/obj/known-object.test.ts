@@ -17,7 +17,7 @@ import {
   playerKnowObjectAwareness,
 } from "./knowledge";
 import type { RuneEnv } from "./knowledge";
-import { objectKnownShadow } from "./known-object";
+import { objectGrab, objectKnownShadow, objectTouch } from "./known-object";
 import type { KnownDesc } from "./known-object";
 import { deserializePlayer, serializePlayer } from "../session/save";
 import type { SavedPlayer } from "../session/save";
@@ -285,5 +285,66 @@ describe("player_know_object awareness side effect (obj-knowledge.c L1163-1175)"
 
     objectKnownShadow(obj, p, env, knownDescOf(flavor));
     expect(flavor.isAware(kind)).toBe(false); // unchanged by a describe call
+  });
+});
+
+describe("object_touch / object_grab (obj-knowledge.c L960-1013, gap 4.8)", () => {
+  it("object_touch marks the object ASSESSED (L964)", () => {
+    const obj = mkObj(ordinaryKind((k) => !tvalIsJewelry(k.tval)));
+    expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(0);
+    objectTouch(obj);
+    expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(OBJ_NOTICE.ASSESSED);
+  });
+
+  it("fires the player_know_object awareness hook (L967)", () => {
+    const obj = mkObj(ordinaryKind(() => true));
+    const known: unknown[] = [];
+    objectTouch(obj, { onKnow: (o) => known.push(o) });
+    expect(known).toEqual([obj]);
+  });
+
+  it("logs a touched artifact via history_find_artifact (L970-971)", () => {
+    const art = reg.artifacts.find((a) => a !== null)!;
+    const obj = mkObj(ordinaryKind(() => true));
+    obj.artifact = art;
+    const found: number[] = [];
+    objectTouch(obj, { onArtifactFound: (aidx) => found.push(aidx) });
+    expect(found).toEqual([art.aidx]);
+  });
+
+  it("does not log non-artifacts", () => {
+    const obj = mkObj(ordinaryKind(() => true));
+    const found: number[] = [];
+    objectTouch(obj, { onArtifactFound: (aidx) => found.push(aidx) });
+    expect(found).toEqual([]);
+  });
+
+  it("the ASSESSED bit reveals the artifact name through the known shadow (L963)", () => {
+    const art = reg.artifacts.find((a) => a !== null)!;
+    const obj = mkObj(ordinaryKind(() => true));
+    obj.artifact = art;
+    const p = makePlayer();
+    const env = makeEnv();
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const deps = knownDescOf(flavor);
+
+    expect(objectKnownShadow(obj, p, env, deps).artifact).toBeNull();
+    objectTouch(obj);
+    expect(objectKnownShadow(obj, p, env, deps).artifact).toBe(art);
+  });
+
+  it("object_grab reduces to object_touch in the on-demand twin model (L1012)", () => {
+    const art = reg.artifacts.find((a) => a !== null)!;
+    const obj = mkObj(ordinaryKind(() => true));
+    obj.artifact = art;
+    const found: number[] = [];
+    const known: unknown[] = [];
+    objectGrab(obj, {
+      onArtifactFound: (aidx) => found.push(aidx),
+      onKnow: (o) => known.push(o),
+    });
+    expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(OBJ_NOTICE.ASSESSED);
+    expect(found).toEqual([art.aidx]);
+    expect(known).toEqual([obj]);
   });
 });

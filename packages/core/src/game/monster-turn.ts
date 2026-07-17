@@ -98,13 +98,15 @@ import {
   locIsZero,
   locSum,
 } from "../loc";
-import { FEAT, MFLAG, MON_TMD, MSG, OF, RF, SQUARE, TF, TRF } from "../generated";
+import { FEAT, MFLAG, MON_TMD, MSG, OF, RF, SQUARE, TF, TMD, TRF } from "../generated";
 import type { Monster } from "../mon/monster";
 import { MON_GROUP } from "../mon/types";
 import {
+  monsterBreathes,
   monsterIsCamouflaged,
   monsterIsObvious,
   monsterIsVisible,
+  monsterLovesArchery,
   monsterPassesWalls,
 } from "../mon/predicate";
 import {
@@ -119,10 +121,11 @@ import { monsterCarry } from "../mon/make";
 import { monsterWake } from "../mon/take-hit";
 import { monIncTimed, monsterEffectLevel } from "../mon/timed";
 import { tvalIsMoney } from "../obj/object";
+import type { GameObject } from "../obj/object";
 import { monMeleeAttack } from "../combat/mon-melee";
 import { equipLearnOnDefend } from "../obj/knowledge";
 import { los, squareIsView } from "../world/view";
-import { PROJECT, projectable } from "../world/project";
+import { PROJECT, projectPath, projectable } from "../world/project";
 import type { GameState } from "./context";
 import { monsterSwap, squareIsPlayer, squareMonster } from "./context";
 import { disturb } from "./player-path";
@@ -246,11 +249,61 @@ function scentAt(state: GameState, grid: Loc): number {
   return state.chunk.scent[grid.y * state.chunk.width + grid.x] ?? 0;
 }
 
-/** monster_can_see_player: the monster's grid is in the player's view. */
+/**
+ * monster_can_see_player (mon-move.c L92): the monster's grid is in the
+ * player's view, and a player covering tracks (TMD_COVERTRACKS) is unseen
+ * beyond max_sight / 4.
+ */
 function monsterCanSeePlayer(mon: Monster, state: GameState): boolean {
   if (!squareIsView(state.chunk, mon.grid)) return false;
-  /* TMD_COVERTRACKS far-out-of-range case DEFERRED (needs player timed). */
+  if (
+    (state.actor.player.timed[TMD.COVERTRACKS] ?? 0) > 0 &&
+    mon.cdis > Math.trunc(state.z.maxSight / 4)
+  ) {
+    return false;
+  }
   return true;
+}
+
+/**
+ * The PROJECT_SHORT projection range (project.c L370-373): max_range, quartered
+ * while the player covers tracks (TMD_COVERTRACKS). The port's projectable takes
+ * the range from the caller, so PROJECT.SHORT callers pass this.
+ */
+export function shortRange(state: GameState): number {
+  return (state.actor.player.timed[TMD.COVERTRACKS] ?? 0) > 0
+    ? Math.trunc(state.z.maxRange / 4)
+    : state.z.maxRange;
+}
+
+/**
+ * monster_near_permwall (mon-move.c L65): whether a PASS_WALL / KILL_WALL
+ * monster should use the flow code instead of beelining - the player is out of
+ * (short) projection range and the direct PROJECT_ROCK path hits a permanent
+ * wall before reaching the player. Draws randint0(99) for the "occasionally
+ * flow for a turn anyway" 5% branch, exactly at the upstream stream position.
+ */
+export function monsterNearPermwall(mon: Monster, state: GameState): boolean {
+  const c = state.chunk;
+
+  /* If player is in LOS, there's no need to go around walls. */
+  if (projectable(c, mon.grid, state.actor.grid, PROJECT.SHORT, shortRange(state))) {
+    return false;
+  }
+
+  /* PASS_WALL & KILL_WALL monsters occasionally flow for a turn anyway. */
+  if (state.rng.randint0(99) < 5) return true;
+
+  /* Find the shortest path. */
+  const path = projectPath(c, state.z.maxSight, mon.grid, state.actor.grid, PROJECT.ROCK);
+
+  /* See if we can "see" the player without hitting permanent wall. */
+  for (const g of path) {
+    if (c.isPerm(g)) return true;
+    if (squareIsPlayer(state, g)) return false;
+  }
+
+  return false;
 }
 
 /** monster_can_hear: race hearing beats the local noise (minus stealth/3). */
@@ -359,9 +412,10 @@ function removeTrapsWithFlag(state: GameState, grid: Loc, flag: number): void {
 }
 
 /**
- * get_move_find_range: set mon.minRange (flee distance) and mon.bestRange.
- * The archer/breather/spellcaster best_range tweaks are DEFERRED with the
- * ranged AI; best_range is left equal to min_range.
+ * get_move_find_range (mon-move.c L207): set mon.minRange (flee distance) and
+ * mon.bestRange (preferred combat distance) - archers sit back +3, breathers
+ * with high innate frequency like point blank, other frequent casters sit back
+ * +3 (mon-move.c L287-300).
  */
 export function getMoveFindRange(mon: Monster, state: GameState): void {
   const p = state.actor.player;
@@ -405,7 +459,23 @@ export function getMoveFindRange(mon: Monster, state: GameState): void {
     mon.minRange = 1;
   }
 
+  /* Now find the preferred range (mon-move.c L285-300). */
   mon.bestRange = mon.minRange;
+
+  /* Archers are quite happy at a good distance. */
+  if (monsterLovesArchery(mon)) {
+    mon.bestRange += 3;
+  }
+
+  if (mon.race.freqInnate > 24) {
+    /* Breathers like point blank range. */
+    if (monsterBreathes(mon) && mon.hp > Math.trunc(mon.maxhp / 2)) {
+      mon.bestRange = Math.max(1, mon.bestRange);
+    }
+  } else if (mon.race.freqSpell > 24) {
+    /* Other spell casters will sit back and cast. */
+    mon.bestRange += 3;
+  }
 }
 
 /**
@@ -480,9 +550,9 @@ function getMoveAdvance(
     if (getMoveBodyguard(mon, state)) return true;
   }
 
-  /* Pass-wall monsters head straight for the player (near-permwall
-   * exception DEFERRED). */
-  if (monsterPassesWalls(mon)) {
+  /* If the monster can pass through nearby walls, do that (mon-move.c
+   * L416): beeline unless a permanent wall blocks the direct path. */
+  if (monsterPassesWalls(mon) && !monsterNearPermwall(mon, state)) {
     mon.target = { grid: target, midx: mon.target.midx };
     return true;
   }
@@ -1221,9 +1291,9 @@ function monsterTurnGrabObjects(
     /* Skip mimicked objects. */
     if (obj.mimickingMIdx) continue;
 
-    /* Artifacts are "safe" - a monster cannot pick them up. react_to_slay
-     * (an object that would hurt the monster) is DEFERRED and draws no RNG. */
-    const safe = obj.artifact ? true : false;
+    /* Artifacts are "safe" - a monster cannot pick them up; so are objects
+     * that would hurt the monster (react_to_slay, mon-move.c L1420). */
+    const safe = (obj.artifact ? true : false) || reactToSlay(state, obj, mon);
 
     if (safe) {
       /* Only a message for take_item (DEFERRED). */
@@ -1239,6 +1309,25 @@ function monsterTurnGrabObjects(
       floorExcise(state, next, obj);
     }
   }
+}
+
+/**
+ * react_to_slay (obj-slays.c L435) over the bound slay table: the object
+ * carries a slay that affects this monster (react_to_specific_slay: a matching
+ * race flag or base name). Draws no RNG. Duplicated from the combat module's
+ * private react_to_specific_slay (combat/brand-slay.ts) because the two sit in
+ * different domains and neither exports the helper.
+ */
+function reactToSlay(state: GameState, obj: GameObject, mon: Monster): boolean {
+  if (!obj.slays) return false;
+  for (let i = 0; i < state.slays.length; i++) {
+    const s = state.slays[i];
+    if (!s || !obj.slays[i]) continue;
+    if (!s.name) continue;
+    if (s.raceFlag && mon.race.flags.has(s.raceFlag)) return true;
+    if (s.base && s.base === mon.race.base.name) return true;
+  }
+  return false;
 }
 
 /**

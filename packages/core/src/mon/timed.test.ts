@@ -140,3 +140,90 @@ describe("mon_inc/dec/clear_timed (mon-timed.c)", () => {
     expect(monTimedNameToIdx("NOPE")).toBe(-1);
   });
 });
+
+describe("timed-resist lore learning (mon-timed.c L107-110)", () => {
+  it("a visible monster resisting via its race flag teaches that flag", async () => {
+    const { installMonTimedLore } = await import("./timed");
+    const { getLore } = await import("./lore");
+
+    const race = raceWhere((r) => r.flags.has(RF.NO_SLEEP));
+    const mon = blankMonster(race);
+    mon.mflag.on(MFLAG.VISIBLE);
+    const r = rng();
+    const lore = new Map();
+    installMonTimedLore(r, lore);
+
+    const affected = monIncTimed(r, mon, MON_TMD.SLEEP, 50);
+
+    expect(affected).toBe(false); /* RF_NO_SLEEP: resisted */
+    expect(getLore(lore, race).flags.has(RF.NO_SLEEP)).toBe(true);
+  });
+
+  it("an invisible monster's resist teaches nothing", async () => {
+    const { installMonTimedLore } = await import("./timed");
+    const { getLore } = await import("./lore");
+
+    const race = raceWhere((r) => r.flags.has(RF.NO_SLEEP));
+    const mon = blankMonster(race); /* not visible */
+    const r = rng();
+    const lore = new Map();
+    installMonTimedLore(r, lore);
+
+    monIncTimed(r, mon, MON_TMD.SLEEP, 50);
+    expect(getLore(lore, race).flags.has(RF.NO_SLEEP)).toBe(false);
+  });
+
+  it("without an installed store the resist still stands (no lore)", () => {
+    const race = raceWhere((r) => r.flags.has(RF.NO_SLEEP));
+    const mon = blankMonster(race);
+    mon.mflag.on(MFLAG.VISIBLE);
+    expect(monIncTimed(new Rng(5), mon, MON_TMD.SLEEP, 50)).toBe(false);
+  });
+});
+
+describe("MON_TMD_CHANGED shapechange hooks (mon-timed.c L195-207)", () => {
+  it("drives change on set and revert on expiry when hooks are threaded", () => {
+    const mon = plainMonster();
+    const r = rng();
+    let changed = 0;
+    let reverted = 0;
+    const shape = {
+      change: (): boolean => {
+        changed++;
+        return true;
+      },
+      revert: (): boolean => {
+        reverted++;
+        return true;
+      },
+    };
+
+    monIncTimed(r, mon, MON_TMD.CHANGED, 10, MON_TMD_FLG_NOFAIL, undefined, shape);
+    expect(changed).toBe(1);
+    expect(mon.mTimed[MON_TMD.CHANGED]).toBeGreaterThan(0);
+
+    monClearTimed(r, mon, MON_TMD.CHANGED, MON_TMD_FLG_NOFAIL, undefined, shape);
+    expect(reverted).toBe(1);
+    expect(mon.mTimed[MON_TMD.CHANGED]).toBe(0);
+  });
+
+  it("a failed change restores the old timer with MON_MSG_SHAPE_FAIL", () => {
+    const mon = plainMonster();
+    const r = rng();
+    const notes: string[] = [];
+    const shape = { change: (): boolean => false, revert: (): boolean => true };
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    monIncTimed(
+      r,
+      mon,
+      MON_TMD.CHANGED,
+      10,
+      MON_TMD_FLG_NOFAIL,
+      (_m, note) => notes.push(note),
+      shape,
+    );
+    expect(mon.mTimed[MON_TMD.CHANGED]).toBe(0);
+    expect(notes).toContain("MON_MSG_SHAPE_FAIL");
+  });
+});
