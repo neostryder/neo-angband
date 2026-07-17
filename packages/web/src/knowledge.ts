@@ -19,9 +19,13 @@
 import {
   buildRuneList,
   playerKnowsRune,
+  runeDesc,
+  shapeLoreLines,
   colorToCss,
   colorCharToAttr,
   historyIsArtifactKnown,
+  artifactIsKnown as coreArtifactIsKnown,
+  KF,
   TF,
   TRF,
   TV,
@@ -31,10 +35,16 @@ import type {
   Player,
   Artifact,
   ObjectBase,
+  ObjectKind,
+  EgoItem,
   Feature,
   FeatureRegistry,
   TrapKind,
   ArtifactState,
+  ArtifactKnownEnv,
+  EverseenKnowledge,
+  Shape,
+  ShapeLoreEnv,
 } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
 import { selectFromMenu, showTextScreen, type MenuItem, type ScreenLine } from "./overlay";
@@ -242,18 +252,22 @@ export function runeKnowledgeGroups(
 
 /**
  * rune_lore (ui-knowledge.c L2216-2230): the recall for one rune - its
- * capitalized name and description. The port's Rune record carries the name
- * but not rune_desc (the description text is not modelled in core), so the
- * recall shows the capitalized name and its group; when a description becomes
- * available in core it slots in here.
+ * capitalized name (my_strcap) on the first line, then rune_desc(oid) on the
+ * next. rune_desc is now ported in core (obj/knowledge.ts), computed per
+ * variety, so the description matches the oracle exactly.
  */
-function runeRecallLines(rune: Rune): ScreenLine[] {
+function runeRecallLines(
+  rune: Rune,
+  runeEnv: Parameters<typeof buildRuneList>[0],
+): ScreenLine[] {
   const cap = rune.name.charAt(0).toUpperCase() + rune.name.slice(1);
-  return [
-    { text: cap, color: "#8ab8ff" },
-    { text: "", color: FG },
-    { text: `Rune type: ${RUNE_GROUP_TEXT[runeGroupIndex(rune.variety)]}`, color: FG },
-  ];
+  const desc = runeDesc(runeEnv, rune);
+  const lines: ScreenLine[] = [{ text: cap, color: "#8ab8ff" }];
+  if (desc) {
+    lines.push({ text: "", color: FG });
+    lines.push({ text: desc, color: FG });
+  }
+  return lines;
 }
 
 export async function showRuneKnowledge(
@@ -264,7 +278,7 @@ export async function showRuneKnowledge(
   const { title, groups } = runeKnowledgeGroups(buildRuneList(runeEnv), player);
   await runGroupedBrowser(term, title, groups, async (rune) => {
     const cap = rune.name.charAt(0).toUpperCase() + rune.name.slice(1);
-    await showTextScreen(term, cap, runeRecallLines(rune));
+    await showTextScreen(term, cap, runeRecallLines(rune, runeEnv));
   });
 }
 
@@ -376,10 +390,15 @@ export function trapKnowledgeGroups(traps: readonly TrapKind[]): KnowledgeGroup<
 export async function showTrapKnowledge(term: GlyphTerm, traps: readonly TrapKind[]): Promise<void> {
   await runGroupedBrowser(term, "traps", trapKnowledgeGroups(traps), async (trap) => {
     const cap = trap.desc.charAt(0).toUpperCase() + trap.desc.slice(1);
-    // trap_lore (L2588-2605) prints trap->text; the port's TrapKind stores only
-    // the short desc (the long paragraph is not compiled into the trap record),
-    // so the recall shows the description name alone.
-    await showTextScreen(term, cap, [{ text: cap, color: "#8ab8ff" }]);
+    // trap_lore (ui-knowledge.c L2588-2605): capitalized desc then trap->text.
+    // Upstream only opens the recall when trap->text is non-empty (L2590); a
+    // trap with no paragraph shows just the title, matching that guard.
+    const lines: ScreenLine[] = [{ text: cap, color: "#8ab8ff" }];
+    if (trap.text) {
+      lines.push({ text: "", color: FG });
+      lines.push({ text: trap.text, color: FG });
+    }
+    await showTextScreen(term, cap, lines);
   });
 }
 
@@ -388,37 +407,46 @@ export async function showTrapKnowledge(term: GlyphTerm, traps: readonly TrapKin
 // ---------------------------------------------------------------------------
 
 /**
- * artifact_is_known, non-leaking web variant (ui-knowledge.c L1688-1707): the
- * oracle shows an artifact when it is_artifact_created AND no unidentified copy
- * exists live in the world (find_artifact + object_is_known_artifact). The port
- * exposes is_artifact_created (ArtifactState) but not the live-object world scan
- * or object_is_known_artifact, so a created-only gate would leak an artifact
- * that was just generated but never seen/identified. To honour the no-leak rule
- * this uses the strictly safe subset: an artifact the player's history records
- * as KNOWN (history_is_artifact_known, player-history.c L139-153). Exact-parity
- * (created + world-scan) is tracked as WIRING-NEEDED.
+ * artifact_is_known (ui-knowledge.c L1687-1707): the oracle lists an artifact
+ * when it is_artifact_created AND no unidentified copy exists live in the world
+ * (find_artifact + object_is_known_artifact). That exact gate is now ported in
+ * core (obj/artifact-known.ts); pass its `exact` env (a world-object scan +
+ * is_artifact_created + wizard) to use it verbatim.
+ *
+ * Without the `exact` env this falls back to the strictly-safe subset - an
+ * artifact the player's history records as KNOWN (history_is_artifact_known,
+ * player-history.c L139-153) - which never leaks, so a caller that has not yet
+ * assembled the world scan still gets a correct (if narrower) list.
  */
-export function artifactIsKnown(art: Artifact, player: Player, _state: ArtifactState): boolean {
+export function artifactIsKnown(
+  art: Artifact,
+  player: Player,
+  _state: ArtifactState,
+  exact?: ArtifactKnownEnv,
+): boolean {
   if (!art.name) return false;
+  if (exact) return coreArtifactIsKnown(art, exact);
   return historyIsArtifactKnown(player, art);
 }
 
 /**
  * do_cmd_knowledge_artifacts (ui-knowledge.c L1740-1763): the known artifacts,
  * grouped by obj_group_order[tval] and sorted within a group by sval then name
- * (a_cmp_tval, L1656-1673). Membership is artifactIsKnown (see the note there).
+ * (a_cmp_tval, L1656-1673). Membership is artifactIsKnown (see the note there);
+ * pass `exact` for the exact created-and-not-live-unidentified gate.
  */
 export function artifactKnowledgeGroups(
   artifacts: readonly (Artifact | null)[],
   bases: readonly (ObjectBase | undefined)[],
   player: Player,
   state: ArtifactState,
+  exact?: ArtifactKnownEnv,
 ): KnowledgeGroup<Artifact>[] {
   const order = buildObjGroupOrder(bases);
   const byGid = new Map<number, KnowledgeRow<Artifact>[]>();
   for (const art of artifacts) {
     if (!art) continue;
-    if (!artifactIsKnown(art, player, state)) continue;
+    if (!artifactIsKnown(art, player, state, exact)) continue;
     const gid = order[art.tval] ?? -1;
     if (gid < 0) continue;
     if (!byGid.has(gid)) byGid.set(gid, []);
@@ -433,5 +461,213 @@ export function artifactKnowledgeGroups(
       return strcmp(a.member.name, b.member.name);
     });
     return { name: objGroupName(gid), rows };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Object knowledge (14.9) - textui_browse_object_knowledge, ui-knowledge.c L2139
+// ---------------------------------------------------------------------------
+
+/**
+ * The per-kind knowledge the object browser reads. Mirrors the object_kind
+ * fields upstream reads: object_flavor_is_aware / _was_tried (FlavorKnowledge),
+ * kind->everseen (EverseenKnowledge), kind->flavor != NULL (hasFlavor), and
+ * object_kind_name (kindName, the leak-safe name: real name when aware, flavour
+ * text when an unidentified flavoured kind, per obj-desc.c L48).
+ */
+export interface ObjectBrowserDeps {
+  isAware(kind: ObjectKind): boolean;
+  wasTried(kind: ObjectKind): boolean;
+  everseen(kind: ObjectKind): boolean;
+  hasFlavor(kind: ObjectKind): boolean;
+  /** object_kind_name(kind, aware): the display name, never leaking a flavour. */
+  kindName(kind: ObjectKind, aware: boolean): string;
+}
+
+/** o_cmp_tval within-group order (ui-knowledge.c L1984-2024). */
+function objCmpTval(a: ObjectKind, b: ObjectKind, deps: ObjectBrowserDeps): number {
+  /* aware has low sort weight: aware kinds sort first (return -c). */
+  const c = (deps.isAware(a) ? 1 : 0) - (deps.isAware(b) ? 1 : 0);
+  if (c) return -c;
+  switch (a.tval) {
+    case TV["LIGHT"]:
+    case TV["MAGIC_BOOK"]:
+    case TV["PRAYER_BOOK"]:
+    case TV["NATURE_BOOK"]:
+    case TV["SHADOW_BOOK"]:
+    case TV["OTHER_BOOK"]:
+    case TV["DRAG_ARMOR"]:
+      break; // leave sorted by sval
+    default:
+      if (deps.isAware(a)) return strcmp(a.name, b.name);
+      /* Then in tried order, then by flavour text (approximated by kindName's
+       * unaware output - the leak-safe flavour string). */
+      const t = (deps.wasTried(a) ? 1 : 0) - (deps.wasTried(b) ? 1 : 0);
+      if (t) return -t;
+      return strcmp(deps.kindName(a, false), deps.kindName(b, false));
+  }
+  return a.sval - b.sval;
+}
+
+/**
+ * textui_browse_object_knowledge (ui-knowledge.c L2139-2168): every kind that
+ * is everseen OR flavoured (so an unfound flavour still lists by its flavour
+ * name), excluding INSTA_ART special-artifact dummies and kinds whose tval has
+ * no display group. Grouped by obj_group_order, sorted within a group by
+ * o_cmp_tval. The label is object_kind_name plus " {tried}" for a tried-but-
+ * unaware flavour (display_object L1915-1916).
+ */
+export function objectKnowledgeGroups(
+  kinds: readonly ObjectKind[],
+  bases: readonly (ObjectBase | undefined)[],
+  deps: ObjectBrowserDeps,
+): KnowledgeGroup<ObjectKind>[] {
+  const order = buildObjGroupOrder(bases);
+  const byGid = new Map<number, ObjectKind[]>();
+  for (const kind of kinds) {
+    if (!kind) continue;
+    const listed = deps.everseen(kind) || deps.hasFlavor(kind);
+    if (!listed) continue;
+    if (kind.kindFlags.has(KF.INSTA_ART)) continue;
+    const gid = order[kind.tval] ?? -1;
+    if (gid < 0) continue;
+    if (!byGid.has(gid)) byGid.set(gid, []);
+    byGid.get(gid)!.push(kind);
+  }
+  const gids = Array.from(byGid.keys()).sort((a, b) => a - b);
+  return gids.map((gid) => {
+    const members = byGid.get(gid)!;
+    members.sort((a, b) => objCmpTval(a, b, deps));
+    const rows: KnowledgeRow<ObjectKind>[] = members.map((kind) => {
+      const aware = !deps.hasFlavor(kind) || deps.isAware(kind);
+      let label = deps.kindName(kind, aware);
+      if (deps.wasTried(kind) && !aware) label += " {tried}";
+      return { label, color: FG, member: kind };
+    });
+    return { name: objGroupName(gid), rows };
+  });
+}
+
+export async function showObjectKnowledge(
+  term: GlyphTerm,
+  kinds: readonly ObjectKind[],
+  bases: readonly (ObjectBase | undefined)[],
+  deps: ObjectBrowserDeps,
+): Promise<void> {
+  const groups = objectKnowledgeGroups(kinds, bases, deps);
+  await runGroupedBrowser(term, "known objects", groups, async (kind) => {
+    const aware = !deps.hasFlavor(kind) || deps.isAware(kind);
+    const title = deps.kindName(kind, aware);
+    // desc_obj_fake (ui-knowledge.c L1938) shows object_info(OINFO_FAKE); the
+    // computed flag/combat lines are deferred, so the recall shows the name and
+    // the kind's flavour/description text when known.
+    const lines: ScreenLine[] = [{ text: title, color: "#8ab8ff" }];
+    if (aware && kind.text) {
+      lines.push({ text: "", color: FG });
+      lines.push({ text: kind.text, color: FG });
+    }
+    await showTextScreen(term, title, lines);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Ego item knowledge (14.12) - do_cmd_knowledge_ego_items, ui-knowledge.c L1827
+// ---------------------------------------------------------------------------
+
+/**
+ * do_cmd_knowledge_ego_items (ui-knowledge.c L1827-1875): every ego the player
+ * has everseen, expanded into one entry per object-group its poss_items span
+ * (default_join), grouped by obj_group_order and sorted by group then name
+ * (e_cmp_tval L1810-1824). Membership is ego->everseen (L1847).
+ */
+export function egoKnowledgeGroups(
+  egos: readonly EgoItem[],
+  kinds: readonly ObjectKind[],
+  bases: readonly (ObjectBase | undefined)[],
+  everseen: EverseenKnowledge,
+): KnowledgeGroup<EgoItem>[] {
+  const order = buildObjGroupOrder(bases);
+  const byGid = new Map<number, EgoItem[]>();
+  for (const ego of egos) {
+    if (!ego || !ego.name) continue;
+    if (!everseen.egoSeen(ego)) continue;
+    /* The set of display groups this ego can appear in (its poss_items' tvals),
+     * matching the default_join expansion. */
+    const gids = new Set<number>();
+    for (const kidx of ego.possItems) {
+      const tval = kinds[kidx]?.tval;
+      if (tval === undefined) continue;
+      const gid = order[tval] ?? -1;
+      if (gid >= 0) gids.add(gid);
+    }
+    for (const gid of gids) {
+      if (!byGid.has(gid)) byGid.set(gid, []);
+      byGid.get(gid)!.push(ego);
+    }
+  }
+  const gids = Array.from(byGid.keys()).sort((a, b) => a - b);
+  return gids.map((gid) => {
+    const rows = byGid
+      .get(gid)!
+      .sort((a, b) => strcmp(a.name, b.name))
+      .map((ego) => ({ label: ego.name, color: FG, member: ego }));
+    return { name: objGroupName(gid), rows };
+  });
+}
+
+export async function showEgoKnowledge(
+  term: GlyphTerm,
+  egos: readonly EgoItem[],
+  kinds: readonly ObjectKind[],
+  bases: readonly (ObjectBase | undefined)[],
+  everseen: EverseenKnowledge,
+): Promise<void> {
+  const groups = egoKnowledgeGroups(egos, kinds, bases, everseen);
+  await runGroupedBrowser(term, "ego items", groups, async (ego) => {
+    // desc_ego_fake (ui-knowledge.c L1789) shows object_info_ego's flag lines;
+    // those computed lines are deferred, so the recall shows the ego name and
+    // its lore text when the record carries one.
+    const lines: ScreenLine[] = [{ text: ego.name, color: "#8ab8ff" }];
+    if (ego.text) {
+      lines.push({ text: "", color: FG });
+      lines.push({ text: ego.text, color: FG });
+    }
+    await showTextScreen(term, ego.name, lines);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Shapechange knowledge (14.14) - do_cmd_knowledge_shapechange, ui-knowledge.c
+// L3142
+// ---------------------------------------------------------------------------
+
+/**
+ * do_cmd_knowledge_shapechange (ui-knowledge.c L3142-3260): every shape except
+ * "normal" (count_interesting_shapes L2675), sorted alphabetically by name
+ * (compare_shape_names, my_stricmp - case-insensitive L2696). Each recall is
+ * the ported shape_lore textblock (core shapeLoreLines).
+ */
+export function shapeKnowledgeRows(shapes: readonly Shape[]): Shape[] {
+  return shapes
+    .filter((s) => s.name !== "normal")
+    .sort((a, b) => strcmp(a.name.toLowerCase(), b.name.toLowerCase()));
+}
+
+export async function showShapeKnowledge(
+  term: GlyphTerm,
+  shapes: readonly Shape[],
+  env: ShapeLoreEnv,
+): Promise<void> {
+  const rows = shapeKnowledgeRows(shapes);
+  if (rows.length === 0) return;
+  const groups: KnowledgeGroup<Shape>[] = [
+    { name: "Shapes", rows: rows.map((s) => ({ label: s.name, color: FG, member: s })) },
+  ];
+  await runGroupedBrowser(term, "shapes", groups, async (shape) => {
+    const lines = shapeLoreLines(shape, env).map((text, i) => ({
+      text,
+      color: i === 0 ? "#8ab8ff" : FG,
+    }));
+    await showTextScreen(term, shape.name, lines);
   });
 }
