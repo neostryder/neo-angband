@@ -33,10 +33,19 @@ import {
   buildUiEntryConfig,
   characterGrid,
   gearGet,
+  describeObject,
+  makeObjectInfoDeps,
+  objectInfo,
+  textblockToString,
+  ODESC,
+  OINFO,
+  OPTION_ENTRIES,
+  PARITY_BASELINE,
 } from "@neo-angband/core";
 import type {
   GameState,
   GameObject,
+  ObjectInfoExtras,
   UiEntryConfig,
   UiEntryPackRecords,
   UiGridPanel,
@@ -46,6 +55,7 @@ import {
   characterSheetLines,
   charSheetDeps,
   historyBlockLines,
+  historyLines,
   statHeaderLine,
   statRowLine,
 } from "./screens";
@@ -69,8 +79,18 @@ export interface CharSheetOpts {
    * The ui_entry pack records (loadUiEntryPacks). When supplied, mode 1 renders
    * the real resist / ability / hindrance / modifier / sustain grid
    * (core characterGrid); without them it falls back to a labelled placeholder.
+   * Also feeds the flag-grid section of the character dump ('f').
    */
   uiEntryPacks?: UiEntryPackRecords;
+  /**
+   * The object-info extras (projections / constants / race origins). When
+   * supplied, the dump's equipment / inventory / quiver / home listings carry
+   * the object_info_chardump block for each item; without them, only the item
+   * name is written.
+   */
+  inspectExtras?: ObjectInfoExtras;
+  /** seed_randart (write_character_dump L1185), for the [Randart seed] line. */
+  seedRandart?: number;
 }
 
 /** Width at or above which the side-by-side layout is used; below it, the list. */
@@ -165,21 +185,269 @@ function safeFileName(name: string): string {
   return `${safe || "character"}.txt`;
 }
 
+/** The optional data the full dump needs beyond the GameState. */
+export interface CharDumpExtras {
+  /** ui_entry packs, for the resist/ability/hindrance/modifier flag grids. */
+  uiEntryPacks?: UiEntryPackRecords;
+  /** object-info extras, for the per-item object_info_chardump blocks. */
+  inspectExtras?: ObjectInfoExtras;
+  /**
+   * The last messages, oldest-first (write_character_dump L1063-1078). Present
+   * only for the death dump; when supplied the [Last Messages] block is written
+   * (the newest 15) followed by the "Killed by" / "Retired" line.
+   */
+  messages?: readonly string[];
+  /** player->died_from (L1075); "Retiring" prints "Retired.". */
+  diedFrom?: string;
+  /** seed_randart (L1187), for the [Randart seed] block under birth_randarts. */
+  seedRandart?: number;
+}
+
+/** I2A / 'a'-'z' running label for a dump listing. */
+function dumpLabel(i: number): string {
+  return String.fromCharCode(97 + i);
+}
+
+/**
+ * textblock_to_file(tb, f, indent, wrap) (z-textblock.c): word-wrap `text` to
+ * the wrap column, each line prefixed by `indent` spaces. Used for
+ * object_info_chardump (indent 5, wrap 72).
+ */
+function wrapChardump(text: string, indent = 5, wrap = 72): string[] {
+  const pad = " ".repeat(indent);
+  const width = Math.max(1, wrap - indent);
+  const out: string[] = [];
+  for (const src of text.split("\n")) {
+    const line = src.replace(/\s+$/u, "");
+    if (line === "") {
+      out.push("");
+      continue;
+    }
+    let cur = "";
+    for (const word of line.split(/\s+/u)) {
+      if (cur === "") {
+        cur = word;
+      } else if (cur.length + 1 + word.length <= width) {
+        cur += ` ${word}`;
+      } else {
+        out.push(pad + cur);
+        cur = word;
+      }
+    }
+    if (cur !== "") out.push(pad + cur);
+  }
+  return out;
+}
+
+/**
+ * One dump item line: "<label>) <name>" plus the object_info_chardump block
+ * (object_info_out with OINFO_TERSE | OINFO_SUBJ, wrapped at indent 5 / col 72).
+ * Without inspectExtras the info block is omitted (name only).
+ */
+function dumpItemLines(
+  state: GameState,
+  obj: GameObject,
+  label: string,
+  extras: CharDumpExtras,
+): string[] {
+  const name = describeObject(state, obj, ODESC.PREFIX | ODESC.FULL);
+  const lines = [`${label}) ${name}`];
+  if (extras.inspectExtras) {
+    const tb = objectInfo(
+      obj,
+      OINFO.TERSE | OINFO.SUBJ,
+      makeObjectInfoDeps(state, obj, extras.inspectExtras),
+    );
+    for (const l of wrapChardump(textblockToString(tb))) lines.push(l);
+  }
+  return lines;
+}
+
+/**
+ * The flag-grid section (write_character_dump L983-1057): the Resistances /
+ * Abilities grid then the Hindrances / Modifiers grid, each a side-by-side pair
+ * of characterGrid panels. Returns [] when no ui_entry packs are available.
+ */
+function flagGridSection(state: GameState, packs?: UiEntryPackRecords): string[] {
+  if (!packs) return [];
+  const { resistPanels } = characterGrid(state, buildUiEntryConfig(packs));
+  const byKey = (k: string): UiGridPanel | undefined =>
+    resistPanels.find((p) => p.key === k);
+  const resistances = byKey("resistances");
+  const abilities = byKey("abilities");
+  const hindrances = byKey("hindrances");
+  const modifiers = byKey("modifiers");
+  if (!resistances || !abilities || !hindrances || !modifiers) return [];
+
+  const bodyCount = state.actor.player.body.count;
+  /* Region width = 6-char label + ':' + one cell per body slot + the player
+   * column; the upstream "%-20s" header assumes the default body (12 -> 20). */
+  const col = Math.max(20, bodyCount + 8);
+  const rowText = (panel: UiGridPanel, i: number): string => {
+    const row = panel.rows[i];
+    if (!row) return "";
+    return row.label + row.cells.map((c) => c.symbol).join("");
+  };
+  const pair = (
+    left: UiGridPanel,
+    right: UiGridPanel,
+    leftHdr: string,
+    rightHdr: string,
+  ): string[] => {
+    const out = [leftHdr.padEnd(col) + rightHdr];
+    const n = Math.max(left.rows.length, right.rows.length);
+    for (let i = 0; i < n; i++) {
+      const line = (rowText(left, i).padEnd(col) + rowText(right, i)).replace(
+        /\s+$/u,
+        "",
+      );
+      out.push(line);
+    }
+    return out;
+  };
+
+  const out: string[] = [];
+  out.push(...pair(resistances, abilities, "Resistances", "Abilities"));
+  out.push(""); // L1022 blank between the two grids
+  out.push(...pair(hindrances, modifiers, "Hindrances", "Modifiers"));
+  return out;
+}
+
+/**
+ * write_character_dump (ui-player.c L925-1189): the full character dump, in the
+ * exact upstream section order - the character sheet, the resist/ability flag
+ * grids, (last messages when dead), equipment, inventory, quiver, home (when
+ * anything is there), the history ledger, the options, and the randart seed.
+ *
+ * Home persistence is a known gap (12.1); when no live home store is available
+ * the [Home Inventory] block is skipped, matching upstream's `if
+ * (home->stock_num)` guard on an empty home.
+ */
+export function buildCharacterDump(
+  state: GameState,
+  name: string,
+  extras: CharDumpExtras = {},
+): string {
+  const p = state.actor.player;
+  const out: string[] = [];
+
+  /* Header (L951). */
+  out.push(`  [Angband ${PARITY_BASELINE} Character Dump]`, "");
+
+  /* The character sheet - display_player(0) (L954-980). */
+  for (const l of characterSheetLines(state, name, 80)) out.push(l.text);
+
+  /* The resist / ability / hindrance / modifier flag grids (L983-1057). */
+  const grids = flagGridSection(state, extras.uiEntryPacks);
+  if (grids.length > 0) {
+    out.push("");
+    out.push(...grids);
+  }
+  out.push("", ""); // L1060
+
+  /* Last messages, only when dead (L1063-1078). */
+  if (extras.messages && extras.messages.length > 0) {
+    out.push("  [Last Messages]", "");
+    for (const m of extras.messages.slice(-15)) out.push(`> ${m}`);
+    out.push("");
+    if (extras.diedFrom === "Retiring") out.push("Retired.", "");
+    else out.push(`Killed by ${extras.diedFrom ?? "the dungeon"}.`, "");
+  }
+
+  /* Equipment (L1081-1092). */
+  out.push("  [Character Equipment]", "");
+  {
+    let label = 0;
+    for (let i = 0; i < p.body.count; i++) {
+      const obj = gearGet(state.gear, p.equipment[i] ?? 0);
+      if (!obj) continue;
+      out.push(...dumpItemLines(state, obj, dumpLabel(label++), extras));
+    }
+  }
+  out.push("", "");
+
+  /* Inventory (L1094-1105). */
+  out.push("", "", "  [Character Inventory]", "");
+  {
+    let label = 0;
+    for (const handle of state.gear.pack) {
+      const obj = gearGet(state.gear, handle);
+      if (!obj) continue;
+      out.push(...dumpItemLines(state, obj, dumpLabel(label++), extras));
+    }
+  }
+  out.push("", "");
+
+  /* Quiver (L1107-1118). */
+  out.push("", "", "  [Character Quiver]", "");
+  {
+    let label = 0;
+    for (const handle of state.gear.quiver ?? []) {
+      if (!handle) continue;
+      const obj = gearGet(state.gear, handle);
+      if (!obj) continue;
+      out.push(...dumpItemLines(state, obj, dumpLabel(label++), extras));
+    }
+  }
+  out.push("", "");
+
+  /* Home inventory (L1120-1139): skipped when no live home store (12.1). */
+
+  /* Character history ledger - dump_history (ui-history.c L128). */
+  out.push("[Player history]");
+  for (const l of historyLines(state)) {
+    if (l.text === "(no history yet)") continue;
+    out.push(l.text);
+  }
+  out.push("", "");
+
+  /* Options (L1146-1179): the User interface and Birth pages. */
+  out.push("  [Options]", "");
+  for (const [title, type] of [
+    ["User interface", "INTERFACE"],
+    ["Birth", "BIRTH"],
+  ] as const) {
+    out.push(`  [${title}]`, "");
+    for (const entry of OPTION_ENTRIES) {
+      if (entry.type !== type) continue;
+      const desc = entry.description;
+      const padded = desc.length < 45 ? desc + " ".repeat(45 - desc.length) : desc;
+      const val = state.options ? state.options.get(entry.name) : entry.normal;
+      out.push(`${padded}: ${val ? "yes" : "no "} (${entry.name})`);
+    }
+    out.push("");
+  }
+
+  /* Randart seed (L1181-1188). */
+  if (state.options?.get("birth_randarts") && extras.seedRandart !== undefined) {
+    out.push("  [Randart seed]", "");
+    out.push((extras.seedRandart >>> 0).toString(16).padStart(8, "0"), "");
+  }
+
+  return out.join("\n");
+}
+
 /**
  * death_file (ui-death.c L162-188) / the char sheet's 'f': download the
  * character dump as a text file. Exported so the death menu's "File dump" row
  * shares the exact same output as the in-life dump.
  */
-export function dumpCharacterFile(state: GameState, name: string): boolean {
-  return downloadDump(state, name);
+export function dumpCharacterFile(
+  state: GameState,
+  name: string,
+  extras: CharDumpExtras = {},
+): boolean {
+  return downloadDump(state, name, extras);
 }
 
-/** 'f' (dump_save, reduced): download the sheet as a plain-text file. */
-function downloadDump(state: GameState, name: string): boolean {
+/** 'f' (dump_save): download the full character dump as a plain-text file. */
+function downloadDump(
+  state: GameState,
+  name: string,
+  extras: CharDumpExtras = {},
+): boolean {
   try {
-    const text = characterSheetLines(state, name, 80)
-      .map((l) => l.text)
-      .join("\n");
+    const text = buildCharacterDump(state, name, extras);
     const blob = new Blob([`${text}\n`], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -399,7 +667,11 @@ export function showCharacterSheet(
           changeName();
           return;
         case "f":
-          downloadDump(state, curName);
+          downloadDump(state, curName, {
+            ...(opts.uiEntryPacks !== undefined ? { uiEntryPacks: opts.uiEntryPacks } : {}),
+            ...(opts.inspectExtras !== undefined ? { inspectExtras: opts.inspectExtras } : {}),
+            ...(opts.seedRandart !== undefined ? { seedRandart: opts.seedRandart } : {}),
+          });
           return;
         case "ArrowDown":
           top += 1;
