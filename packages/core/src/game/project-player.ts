@@ -41,8 +41,14 @@ export interface PlayerProjActor extends TakeHitTarget {
   resistLevel(type: number): number;
   /** state.dam_red / state.perc_dam_red. */
   reduction: DamageReduction;
-  /** minus_ac(p): whether acid damage is halved by damageable armour. */
-  minusAc: boolean;
+  /**
+   * minus_ac(p) (obj-gear.c L376-438): attempt to damage a worn armour piece to
+   * an acid hit, returning whether acid damage should be halved. This is a
+   * callback, not a flag, because it has the armour-damage side effect and must
+   * fire exactly once per acid projection (project-player.c L69), so project_p
+   * calls it only inside adjust_dam's PROJ_ACID branch.
+   */
+  minusAc: () => boolean;
 }
 
 /** The projection source, resolved for the player driver. */
@@ -151,6 +157,12 @@ export function projectPlayer(
   /* Adjust damage for resistance/immunity/vulnerability (ICE uses COLD res). */
   const resType = typ === PROJ.ICE ? PROJ.COLD : typ;
   const resLevel = typ < ELEM_MAX ? actor.resistLevel(resType) : 0;
+  /* minus_ac(p) is consulted only inside adjust_dam's PROJ_ACID branch, after
+   * the immune short-circuit (project-player.c L65-70); calling it here fires
+   * the armour-damage side effect exactly when upstream's does. resLevel 3 is
+   * immune (RESIST_IMMUNE), which returns 0 before minus_ac in the C. */
+  const acidMinusAc =
+    typ === PROJ.ACID && resLevel !== 3 ? actor.minusAc() : false;
   let d = adjustDam(
     rng,
     pctx.projections,
@@ -158,7 +170,7 @@ export function projectPlayer(
     dam,
     "randomise",
     resLevel,
-    actor.minusAc,
+    acidMinusAc,
   );
 
   if (d) {

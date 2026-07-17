@@ -38,12 +38,8 @@ import { DDGRID, locSum } from "../loc";
 import { FEAT, ORIGIN, TF, TMD } from "../generated";
 import { SKILL } from "../player/types";
 import { squareIsSeen } from "../world/view";
-import { pyAttack } from "../combat/melee";
-import { learnBrandSlayFromMelee } from "../combat/brand-slay";
-import { getLore } from "../mon/lore";
 import { monsterIsCamouflaged } from "../mon/predicate";
 import { monsterWake } from "../mon/take-hit";
-import { equipLearnOnMeleeAttack } from "../obj/knowledge";
 import { featIsTreasure } from "../world/chunk";
 import type { MakeDeps } from "../obj/make";
 import { makeGold, makeObject } from "../obj/make";
@@ -51,10 +47,11 @@ import { CHEST_QUERY } from "../obj/chest";
 import { chestCheck, doCmdDisarmChest, doCmdOpenChest } from "./chest";
 import type { ChestCmdDeps } from "./chest";
 import type { GameState, PlayerCommand } from "./context";
-import { arenaInterceptDeath, deleteMonster, modRuleEnabled, squareMonster } from "./context";
+import { modRuleEnabled, squareMonster } from "./context";
 import { squareIsKnown } from "./known";
 import { floorCarry } from "./floor";
 import { playerConfuseDir } from "./obj-cmd";
+import { attackMonster } from "./player-turn";
 import type { ActionRegistry } from "./player-turn";
 
 /** Hooks for messages and unported subsystems; all optional. */
@@ -456,30 +453,12 @@ function attackBlocker(state: GameState, grid: Loc, env: CaveCmdEnv): void {
   const target = squareMonster(state, grid);
   if (!target) return;
   env.msg?.("There is a monster in the way!");
-  learnBrandSlayFromMelee(
-    state.actor.player,
-    state.runeEnv,
-    state.actor.weapon,
-    { race: target.race, visible: true, lore: getLore(state.lore, target.race) },
-  );
-  const result = pyAttack(
-    state.rng,
-    state.actor.player,
-    state.actor.combat,
-    state.actor.weapon,
-    target,
-    state.brands,
-    state.slays,
-    {
-      monVisible: true,
-      percentDamage: state.options?.get("birth_percent_damage") ?? false,
-    },
-  );
-  equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
-  if (result.monsterDied && !arenaInterceptDeath(state, target)) {
-    state.onPlayerKill?.(target);
-    deleteMonster(state, target.midx);
-  }
+  /* Route through the full py_attack path (player-turn.ts attackMonster) so
+   * open/close/tunnel/alter into a monster gets the complete melee side-effect
+   * suite - shield bash, vampiric/confusion/impact brands, temporary
+   * brands/slays, fear generation and kill handling (gap 2.5b). A bare pyAttack
+   * here previously skipped all of it. */
+  attackMonster(state, target);
 }
 
 /**
