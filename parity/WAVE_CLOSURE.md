@@ -99,30 +99,19 @@ failing on HEAD since 8a493dad), e41d8388 (8.10 re-export), 0e8b56a5 (8.5/6.4,
 core+web+cli tsc exit 0; full vitest = 222 files / 3214 tests pass; vite bundle +
 PWA clean.
 
-CLOSED in this pass: 3.8, 4.8, 6.4, 6.12, 8.5, 8.10, 12.6, 12.8, and the 9.4/9.6
-join data round-trip. 8.5/6.4 gate on birth_ai_learn and 9.4 on
-birth_levels_persist, so default play stays byte-faithful.
+CLOSED in this pass: 3.8, 4.8, 6.4, 6.12, 8.5, 8.10, 12.6, 12.8, and 9.4/9.6
+(both the join data round-trip and the first-visit staircase-room placement
+driver + adjacency alloc_stairs skip, commit 50f386d6). 8.5/6.4 gate on
+birth_ai_learn and 9.4 on birth_levels_persist, so default play stays
+byte-faithful.
 
 ## Honest remaining deferrals
 
-Exactly ONE sub-item remains open, and it does not affect faithful play at
-DEFAULT settings (birth_levels_persist is off by default):
-
-- 9.4 persistent-level staircase-room PLACEMENT (sub-item). The join DATA
-  round-trip is done: chunk->join is populated with the correct prepend order,
-  persisted through StoredLevel + the savefile, and getJoinInfo is seeded from
-  cached neighbours on first visit (all gated on birth_levels_persist). What
-  remains is the first-visit staircase-room DRIVER (gen-cave.c:908-936) plus the
-  adjacency-based alloc_stairs skip (gen-cave.c:943-967), which both need the
-  session's frozen-level cache threaded into the generator as
-  GenerateOptions/Dun hasAdjacentAbove/Below (machinery files gen/generate.ts +
-  gen/util.ts). Until then, a persistent-level first visit generates a valid,
-  playable level with normal stairs but does not align a new level's up-stair to
-  the departure down-stair. The consumer (gen/cave.ts buildStaircaseRooms) is
-  ready to add once the two machinery fields land; exact edits are recorded in
-  the wiring report / GAP_AUDIT.md.
-
-Everything else is CLOSED or VERIFIED per the GAP_AUDIT.md status tables.
+NONE. Every gap in GAP_AUDIT.md is now CLOSED or VERIFIED-already-faithful. The
+only remaining differences from upstream are the maintainer-ratified accepted
+deviations below. Verification after the final commit: core+web+cli tsc exit 0;
+full vitest = 222 files / 3218 tests pass; vite bundle + PWA clean; the CLI
+parity self-regression guard passes unchanged (default generation unperturbed).
 
 ## Accepted deviations (maintainer-ratified 2026-07-16, unchanged)
 
