@@ -26,6 +26,12 @@ import {
   spellChance,
   spellOkayToCast,
   spellOkayToStudy,
+  getUseDeviceChance,
+  kindHasFlavor,
+  tvalIsWearable,
+  tvalCanHaveFailure,
+  COLOUR_L_DARK,
+  COLOUR_RED,
   targetGetMonsters,
   squareMonster,
   lookMonDesc,
@@ -195,7 +201,91 @@ export function packMenu(
   return { items, handles };
 }
 
-/** The inventory viewer lines (i): every pack item, lettered. */
+/**
+ * The OLIST_WEIGHT column (ui-object.c L234-239): the total weight of a stack,
+ * "%4d.%1d lb" where weight = number * object_weight_one (obj->weight, stored in
+ * tenths of a pound). Right-hand column, appended after the item name.
+ */
+export function objectWeightColumn(obj: GameObject): string {
+  const weight = obj.number * obj.weight;
+  return `${String(Math.trunc(weight / 10)).padStart(4)}.${weight % 10} lb`;
+}
+
+/**
+ * Pad `name` to a fixed field then append the weight column, so the "Nn.n lb"
+ * figures line up down the list exactly as OLIST_WEIGHT's ex_offset column does.
+ */
+function withWeight(state: GameState, obj: GameObject): string {
+  const name = objectName(state, obj);
+  return `${name.padEnd(45).slice(0, 45)} ${objectWeightColumn(obj)}`;
+}
+
+/**
+ * object_effect_is_known via the objectSetBaseKnown effect gate
+ * (known-object.ts L188-201, from obj-knowledge.c L846-856): the player knows a
+ * used object's effect when it is a flavoured kind they are aware of, an
+ * unflavoured non-wearable, or a wearable whose kind carries a standard
+ * activation they are aware of. Replicated inline (rather than synthesising the
+ * whole known twin per menu row) so the device picker can gate its FAIL% column
+ * exactly as OLIST_FAIL does.
+ */
+function deviceEffectKnown(obj: GameObject, isAware: (k: ObjectKind) => boolean): boolean {
+  const flavored = kindHasFlavor(obj);
+  const aware = isAware(obj.kind);
+  if (aware && flavored) return true;
+  if (!tvalIsWearable(obj.tval) && !flavored) return true;
+  if (tvalIsWearable(obj.tval) && obj.kind.effect && aware) return true;
+  return false;
+}
+
+/** obj_can_fail (obj-util.c L913): a device tval, or a wieldable (activation). */
+function objCanFail(obj: GameObject): boolean {
+  return tvalCanHaveFailure(obj.tval) || tvalIsWearable(obj.tval);
+}
+
+/**
+ * The FAIL% column of a device/activation use picker (ui-object.c L212-221,
+ * OLIST_FAIL): "%4d%% fail" where fail = (9 + get_use_device_chance(obj)) / 10,
+ * or "    ? fail" when the object's effect is not yet known. Empty string for a
+ * non-failing object (obj_can_fail false).
+ */
+export function deviceFailColumn(
+  state: GameState,
+  obj: GameObject,
+  isAware: (k: ObjectKind) => boolean,
+): string {
+  if (!objCanFail(obj)) return "";
+  if (!deviceEffectKnown(obj, isAware)) return "    ? fail";
+  const fail = Math.trunc((9 + getUseDeviceChance(state, obj)) / 10);
+  return `${String(fail).padStart(4)}% fail`;
+}
+
+/**
+ * A device/activation use picker (aim-wand / zap-rod / use-staff / activate):
+ * packMenu plus the OLIST_FAIL failure column, so the player sees each item's
+ * device-fail chance before committing, exactly as the upstream item menu does.
+ */
+export function deviceMenu(
+  state: GameState,
+  filter: (obj: GameObject) => boolean,
+  isAware: (k: ObjectKind) => boolean,
+): { items: MenuItem[]; handles: number[] } {
+  const items: MenuItem[] = [];
+  const handles: number[] = [];
+  for (const handle of state.gear.pack) {
+    const obj = gearGet(state.gear, handle);
+    if (!obj) continue;
+    if (!filter(obj)) continue;
+    const fail = deviceFailColumn(state, obj, isAware);
+    const name = objectName(state, obj);
+    const label = fail ? `${name.padEnd(40).slice(0, 40)} ${fail}` : name;
+    items.push({ label, color: objectColor(obj) });
+    handles.push(handle);
+  }
+  return { items, handles };
+}
+
+/** The inventory viewer lines (i): every pack item, lettered, with weight. */
 export function inventoryLines(state: GameState): ScreenLine[] {
   const lines: ScreenLine[] = [];
   let i = 0;
@@ -203,7 +293,7 @@ export function inventoryLines(state: GameState): ScreenLine[] {
     const obj = gearGet(state.gear, handle);
     if (!obj) continue;
     lines.push({
-      text: `${menuLetter(i)}) ${objectName(state, obj)}`,
+      text: `${menuLetter(i)}) ${withWeight(state, obj)}`,
       color: objectColor(obj),
     });
     i++;
@@ -224,7 +314,7 @@ export function equipmentLines(state: GameState): ScreenLine[] {
     const label = (slot?.name ?? `slot ${i}`).padEnd(12);
     if (obj) {
       lines.push({
-        text: `${menuLetter(i)}) ${label} ${objectName(state, obj)}`,
+        text: `${menuLetter(i)}) ${label} ${withWeight(state, obj)}`,
         color: objectColor(obj),
       });
     } else {
@@ -428,12 +518,44 @@ export function magicBooks(state: GameState): { items: MenuItem[]; handles: numb
 }
 
 /**
- * The spell list of a book as a menu, faithful to the cast/study spell picker
- * (textui_book_browse columns: name, level, mana, fail%). `mode` decides which
- * spells are selectable: "cast" enables learned spells (low-mana ones stay
- * castable but are flagged, matching upstream's over-exert), "study" enables
- * only spells okay to study (right level, not yet known). Returns the parallel
- * class-wide sidx list so the caller dispatches cast/study by args.spell.
+ * spell_menu_display's per-state comment + colour (ui-spell.c L81-103). The
+ * same six-way classification drives both the cast and the study/browse menus
+ * (spell_menu_display is shared): (illegible) L_DARK, " forgotten" YELLOW, a
+ * WORKED spell's damage info WHITE, " untried" L_GREEN, " unknown" L_BLUE,
+ * " difficult" RED. `info` is the get_spell_info() comment appended only for a
+ * cast-and-worked spell (the caller supplies it, since building the effect
+ * chain needs the state).
+ */
+function spellStateDisplay(
+  player: GameState["actor"]["player"],
+  spell: { level: number },
+  idx: number,
+  info: string,
+): { comment: string; attr: number; illegible: boolean } {
+  const flags = player.spellFlags[idx] ?? 0;
+  if (spell.level >= 99) return { comment: "", attr: COLOUR_L_DARK, illegible: true };
+  if ((flags & PY_SPELL.FORGOTTEN) !== 0)
+    return { comment: " forgotten", attr: COLOUR_YELLOW, illegible: false };
+  if ((flags & PY_SPELL.LEARNED) !== 0) {
+    if ((flags & PY_SPELL.WORKED) !== 0)
+      return { comment: info, attr: COLOUR_WHITE, illegible: false };
+    return { comment: " untried", attr: COLOUR_L_GREEN, illegible: false };
+  }
+  if (spell.level <= player.lev)
+    return { comment: " unknown", attr: COLOUR_L_BLUE, illegible: false };
+  return { comment: " difficult", attr: COLOUR_RED, illegible: false };
+}
+
+/**
+ * The spell list of a book as a menu, faithful to spell_menu_display
+ * (ui-spell.c L64-121): each row is "<name padded to 30><lvl:2> <mana:4>
+ * <fail:3>%<comment>", coloured by the spell's state, or the bare "(illegible)"
+ * for a level>=99 spell. `mode` decides which rows are SELECTABLE (is_valid):
+ * "cast" enables spell_okay_to_cast (learned, not forgotten - low-mana spells
+ * stay castable via over-exert), "study" enables spell_okay_to_study. Every row
+ * is shown regardless (only selection is gated), matching the shared display.
+ * Returns the parallel class-wide sidx list so the caller dispatches by
+ * args.spell.
  */
 export function bookSpellMenu(
   state: GameState,
@@ -447,46 +569,36 @@ export function bookSpellMenu(
   for (const idx of spellCollectFromBook(player, bookObj)) {
     const spell = spellByIndex(player.cls, idx);
     if (!spell) continue;
-    const name = spell.name.padEnd(20).slice(0, 20);
-    const lv = String(spell.level).padStart(2);
-    const mana = String(spell.mana).padStart(2);
-    let disabled = false;
-    let tail: string;
-    if (mode === "cast") {
-      if (!spellOkayToCast(player, idx)) {
-        disabled = true;
-        tail = "  (unknown)";
-      } else {
-        const fail = String(spellChance(player, statInd, idx)).padStart(2);
-        const low = spell.mana > player.csp ? " low mana" : "";
-        /*
-         * spell_menu_display (ui-spell.c L88-92): once a learned spell has
-         * been cast successfully at least once (WORKED), append its
-         * get_spell_info() comment (" dam 3d4", " heal 15", ...).
-         */
-        let info = "";
-        if (((player.spellFlags[idx] ?? 0) & PY_SPELL.WORKED) !== 0) {
-          const chain = buildObjectEffectChain(
-            spell.effectsRaw as EffectRecordJson[],
-            state,
-          );
-          info = getSpellInfo(chain, {
-            playerLevel: player.lev,
-            maxRange: state.z.maxRange,
-          });
-        }
-        tail = ` ${fail}%${low}${info}`;
-      }
-    } else {
-      disabled = !spellOkayToStudy(player, idx);
-      const fail = String(spell.fail).padStart(2);
-      tail = disabled ? "  (cannot learn)" : ` ${fail}%`;
+    /*
+     * get_spell_info() comment (ui-spell.c L90): a WORKED spell's damage/heal
+     * summary (" dam 3d4", " heal 15", ...). Built here since it needs the
+     * effect chain + state; spellStateDisplay only appends it for cast+worked.
+     */
+    let info = "";
+    if (((player.spellFlags[idx] ?? 0) & PY_SPELL.WORKED) !== 0) {
+      const chain = buildObjectEffectChain(
+        spell.effectsRaw as EffectRecordJson[],
+        state,
+      );
+      info = getSpellInfo(chain, {
+        playerLevel: player.lev,
+        maxRange: state.z.maxRange,
+      });
     }
-    items.push({
-      label: `${name} Lv ${lv} Mana ${mana}${tail}`,
-      disabled,
-      color: DIM,
-    });
+    const { comment, attr, illegible } = spellStateDisplay(player, spell, idx, info);
+    const disabled =
+      mode === "cast" ? !spellOkayToCast(player, idx) : !spellOkayToStudy(player, idx);
+    let label: string;
+    if (illegible) {
+      label = "(illegible)";
+    } else {
+      const name = spell.name.padEnd(30).slice(0, 30);
+      const lv = String(spell.level).padStart(2);
+      const mana = String(spell.mana).padStart(4);
+      const fail = String(spellChance(player, statInd, idx)).padStart(3);
+      label = `${name}${lv} ${mana} ${fail}%${comment}`;
+    }
+    items.push({ label, disabled, color: colorToCss(attr) });
     sidx.push(idx);
   }
   return { items, sidx };

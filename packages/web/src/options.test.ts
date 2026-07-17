@@ -179,6 +179,43 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     press(win, "Escape");
   });
 
+  it("(x) cheat page lists CHEAT options and toggling one trips anyScoreSet()", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(100, 40);
+    const state = makeState();
+    expect(state.options!.anyScoreSet()).toBe(false);
+    const done = runOptionsMenu(term, state, async () => {});
+    press(win, "x"); // Cheat options (option_toggle_menu(OP_CHEAT))
+    await tick();
+    let snap = term.snapshot().join("\n");
+    expect(snap).toContain("Cheat options");
+    expect(snap).toContain("(cheat_hear)"); // first CHEAT row
+    expect(snap).not.toContain("(score_hear)"); // score twins are not listed
+    expect(snap).not.toContain("(rogue_like_commands)"); // no interface rows
+    // 'y' sets cheat_hear true (advancing the cursor); option_set couples the
+    // score_hear twin on, so the character is no longer score-eligible.
+    press(win, "y");
+    expect(state.options!.get("cheat_hear")).toBe(true);
+    expect(state.options!.get("score_hear")).toBe(true);
+    expect(state.options!.anyScoreSet()).toBe(true);
+    snap = term.snapshot().join("\n");
+    expect(snap).toMatch(/cheat_hear\)/);
+    expect(snap).toContain(": yes");
+    press(win, "Escape"); // back to the top menu
+    await tick();
+    press(win, "Escape"); // exit
+    await done;
+  });
+
+  it("top menu lists the (x) Cheat options entry with its upstream letter", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    void runOptionsMenu(term, makeState(), async () => {});
+    expect(term.snapshot().join("\n")).toContain("x) Cheat options");
+  });
+
   it("(i) delegates to the injected openIgnoreSetup (reused, not duplicated)", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
