@@ -100,6 +100,16 @@ export interface GenerateOptions {
    * joins through getJoinInfo. Only consulted under `persist`.
    */
   joinInfo?: JoinInfo;
+  /**
+   * chunk_find_adjacent (gen-chunk.c:147) for this depth: whether the adjacent
+   * persistent level above/below has already been generated. Only consulted
+   * under `persist`; handle_level_stairs (gen-cave.c:959-966) skips alloc_stairs
+   * for a direction whose neighbour exists (its staircase rooms already placed
+   * the matching stairs here via the seeded joinInfo). Harmless when persist is
+   * off - the gated stair path ignores them.
+   */
+  hasAdjacentAbove?: boolean;
+  hasAdjacentBelow?: boolean;
 }
 
 /** One quest guardian to place: the resolved race and how many to spawn. */
@@ -334,6 +344,11 @@ export function generateLevel(
       dun.oneOffAbove = [...options.joinInfo.oneOffAbove];
       dun.oneOffBelow = [...options.joinInfo.oneOffBelow];
     }
+    /* chunk_find_adjacent (gen-chunk.c:147) seed: whether the neighbour levels
+     * already exist, so handle_level_stairs skips the matching alloc_stairs.
+     * Only read under dun.persist. */
+    dun.hasAdjacentAbove = options.hasAdjacentAbove ?? false;
+    dun.hasAdjacentBelow = options.hasAdjacentBelow ?? false;
 
     const profile = deps.profiles.choose(rng, depth, { quest });
     const builder = deps.profiles.builder(profile.builder);

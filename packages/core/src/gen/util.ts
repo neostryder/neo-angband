@@ -152,6 +152,15 @@ export class Dun {
   currJoin: Connector | null = null;
   nstairRoom = 0;
 
+  /**
+   * Whether an adjacent persistent level already exists above/below this one
+   * (gen-chunk.c:147 chunk_find_adjacent). Only consulted under `persist`, by
+   * handle_level_stairs (gen-cave.c:959-966): when the neighbour exists its
+   * staircase rooms already seed dun.join here, so alloc_stairs is skipped for
+   * that direction. Off by default, leaving the non-persistent path unchanged. */
+  hasAdjacentAbove = false;
+  hasAdjacentBelow = false;
+
   constructor(private readonly constants: Constants) {}
 
   get levelRoomMax(): number {
