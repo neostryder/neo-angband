@@ -47,11 +47,6 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
         text: "Add new vocabulary - flags, stats, and other terms",
         elevated: false,
       };
-    case "rules":
-      return {
-        text: "Toggle bundled bug-fix rules (switch core functions to corrected branches)",
-        elevated: false,
-      };
     default:
       return { text: `Override the "${domain}" game system`, elevated: true };
   }

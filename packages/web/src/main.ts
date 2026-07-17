@@ -152,12 +152,13 @@ import {
 } from "@neo-angband/core";
 import type { TileAtlas, TileMap, TilePrefsDeps } from "@neo-angband/core";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadComposedInterfaceDefaults, discoverContentModManifests, modConflictLines } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines } from "./pack";
 import {
   defaultModStore,
   buildCatalog,
   consentSatisfied,
   resolveEnabledIds,
+  resolveModRules,
   FIRST_PARTY_MOD_IDS,
 } from "./mod-store";
 import { runModManager } from "./mods";
@@ -389,6 +390,18 @@ let bootedNew = false;
 let resumedActive = false;
 let needsSelect = false;
 const birthChoice = readBirthChoice();
+
+/**
+ * The effective mod-rule flags for this session: every enabled mod's declared
+ * rules resolved against the player's saved Fixes & tweaks choices
+ * (choice ?? default). Seeds GameState.modRules at start/load so the qol /
+ * bug-fixes tweaks take effect. Empty (faithful core) when no rule-declaring mod
+ * is enabled or all rules sit at an off default.
+ */
+function activeModRules(): Record<string, boolean> {
+  return resolveModRules(loadEnabledModRuleDecls(), defaultModStore().getRuleChoices());
+}
+
 function bootGame(): ReturnType<typeof startGame> {
   // Start fresh only when explicitly asked: `?new`, an explicit `?seed=` (a
   // request for a specific reproducible run), or the in-game New Character
@@ -412,7 +425,9 @@ function bootGame(): ReturnType<typeof startGame> {
             ? "Welcome back. Your game was restored."
             : "Welcome back. (WARNING: save integrity check failed.)";
           resumedActive = true;
-          return loadGame(pack, decoded.save);
+          return loadGame(pack, decoded.save, new Set(["core"]), {
+            modRules: activeModRules(),
+          });
         }
       } catch {
         loadedNote = "Could not read the save; starting a new game.";
@@ -430,11 +445,11 @@ function bootGame(): ReturnType<typeof startGame> {
   return startGame(pack, {
     seed,
     depth,
-    // The qol bundled mod's recommended INTERFACE-option defaults (empty when
-    // that mod is disabled), applied only to a brand-new character and filtered
-    // to INTERFACE-type options in core (never birth/cheat/score). Existing
-    // saves are untouched (options come from the save on resume).
-    interfaceDefaults: loadComposedInterfaceDefaults(),
+    // The effective mod-rule flags (qol / bug-fixes tweaks) for this session:
+    // enabled mods' declared rules resolved against the player's saved choices.
+    // Empty => faithful core. Upstream OPTIONS are NOT set here - they ship in
+    // core at their upstream defaults and come from the save on resume.
+    modRules: activeModRules(),
     ...(birthChoice
       ? { raceName: birthChoice.raceName, className: birthChoice.className }
       : {}),
@@ -2327,6 +2342,13 @@ async function openModManager(): Promise<void> {
         consents: store.getConsents(),
       }),
     conflictLines: () => modConflictLines(store.getEnabled()),
+    // Fixes & tweaks: the enabled mods' declared rules, and a live-apply that
+    // writes the running game's GameState.modRules so a toggle takes effect at
+    // once (no reload). modRuleEnabled reads `=== true`, so a false value is off.
+    ruleDecls: () => loadEnabledModRuleDecls(),
+    applyRuleLive: (flag, on) => {
+      (game.state.modRules ??= {})[flag] = on;
+    },
     requestReload: () => {
       try {
         autosave(true); // keep the live hero before the page re-composes

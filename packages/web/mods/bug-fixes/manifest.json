@@ -2,11 +2,36 @@
   "id": "bug-fixes",
   "name": "Bug Fixes (unofficial patch set)",
   "version": "1.0.0",
-  "shape": "plugin",
+  "shape": "content",
   "engine": "4.2.x",
-  "capabilities": ["registry:rules"],
   "dependencies": { "core": "*" },
   "author": "neostryder (RPGM Tools)",
   "license": "GPL-2.0-only",
-  "description": "Bundled, opt-in fixes for upstream Angband 4.2.6 crash / data-corruption / save-load / determinism / logic-error bugs, in the model of an unofficial patch. Every fix is gated by a named core rule flag and OFF in core; removing this mod returns the game to faithful, buggy-as-shipped 4.2.6 behaviour. See docs/modding/BUG_FIXES.md."
+  "description": "Bundled, opt-in fixes for upstream Angband 4.2.6 bugs, in the model of an unofficial patch. Every fix is a named toggle in the in-app Fixes & tweaks menu and is OFF by default; core stays faithful to 4.2.6 (bugs included) unless you turn a fix on. See docs/modding/BUG_FIXES.md for the upstream issue/PR/commit each cites.",
+  "rules": [
+    {
+      "flag": "bugfix.uniqueKillHistory",
+      "title": "No duplicate unique kills in history (#4245)",
+      "description": "A unique reached again through a shape-change or projection death path no longer logs a second 'Killed X' entry in your character history.",
+      "default": false
+    },
+    {
+      "flag": "bugfix.noiseScentSave",
+      "title": "Save noise and scent trails (#4605)",
+      "description": "Persists the noise and scent heatmaps in the save, so monsters track you identically after a save/reload as they would have without one.",
+      "default": false
+    },
+    {
+      "flag": "bugfix.objectListOrder",
+      "title": "Strict object-list ordering (#4664)",
+      "description": "Gives the floor object list a deterministic total order (a geometric tiebreak after distance), so equal-distance items never reorder unexpectedly.",
+      "default": false
+    },
+    {
+      "flag": "bugfix.duplicateArtifact",
+      "title": "Prevent duplicate artifacts (#4510)",
+      "description": "Adds a defensive re-check so an object already carrying a created artifact can never be committed as that artifact a second time.",
+      "default": false
+    }
+  ]
 }

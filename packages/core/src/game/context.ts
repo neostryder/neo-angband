@@ -432,6 +432,16 @@ export interface GameState {
    */
   onPlayerMoved?: (state: GameState, grid: Loc) => void;
   /**
+   * QoL auto-dig seam (the bundled `qol` mod, flag "qol.autoDig"): consulted by
+   * walkAction (game/player-turn.ts) when a walk is blocked by a wall, BEFORE
+   * the faithful no-energy bump. Returns the energy spent starting a dig (a full
+   * move), or 0 to fall through to the bump. Installed by the session
+   * (movementAutoDig, game/cave-cmd.ts); it itself returns 0 without drawing RNG
+   * unless the "qol.autoDig" flag is on and the grid is diggable, so an absent
+   * hook or an off flag keeps movement byte-identical to faithful 4.2.6.
+   */
+  autoDigStep?: (state: GameState, grid: Loc) => number;
+  /**
    * player_kill_monster's reward slice: runs when the PLAYER kills a
    * monster, before it is deleted (experience now; drops/lore/quests join
    * it with their subsystems). Installed by the session (wireGame).
@@ -484,15 +494,17 @@ export interface GameState {
    */
   monsterTurnHook?: (mon: Monster, state: GameState) => boolean;
   /**
-   * Named boolean "mod rule" flags (the bug-fixes mod seam, decision 24).
-   * DEFAULT ABSENT/EMPTY, so faithful core reads every flag as false and is
-   * byte-identical to 4.2.6 with no mod enabled. A TRUSTED in-process plugin
-   * turns individual flags on through ModRegistryHost.rules (mod/registry-host.ts,
-   * capability "registry:rules"); each ported core function keeps the faithful
-   * 4.2.6 branch as the default and an off-by-default corrected branch guarded
-   * by modRuleEnabled(state, "<flag>"). Removing the mod clears the flags and
-   * returns core to faithful, buggy-as-shipped behaviour. Read only through
-   * modRuleEnabled so the "absent = faithful" contract is enforced in one place.
+   * Named boolean "mod rule" flags (the declarative bundled-mod seam behind the
+   * qol / bug-fixes mods). DEFAULT ABSENT/EMPTY, so faithful core reads every
+   * flag as false and is byte-identical to 4.2.6 with no mod enabled. The HOST
+   * resolves each enabled mod's manifest `rules` (PackManifest.rules: flag /
+   * title / description / default) against the player's saved Fixes & tweaks
+   * choices and seeds this map at startGame / loadGame (opts.modRules); the menu
+   * can also toggle a flag live. Each ported core function keeps the faithful
+   * 4.2.6 branch as the default and an off-by-default corrected/new branch guarded
+   * by modRuleEnabled(state, "<flag>"). Disabling the mod (or a rule) drops the
+   * flag and returns core to faithful behaviour. Read only through modRuleEnabled
+   * so the "absent = faithful" contract is enforced in one place.
    */
   modRules?: Record<string, boolean>;
   /**

@@ -29,6 +29,7 @@ import {
 } from "./overlay";
 import type { GlyphTerm } from "./term";
 import type { CatalogMod, ModStore } from "./mod-store";
+import type { ModRuleDecl } from "./pack";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
 
 const C_ENABLED = "#7fd07f";
@@ -49,6 +50,17 @@ export interface ModManagerDeps {
   conflictLines: () => string[];
   /** Apply pending changes by reloading (recompose content + reinstall plugins). */
   requestReload: () => void;
+  /**
+   * The rule declarations of the currently ENABLED mods (qol / bug-fixes), for
+   * the Fixes & tweaks menu. Absent / empty when no enabled mod declares rules.
+   */
+  ruleDecls?: () => ModRuleDecl[];
+  /**
+   * Apply a rule toggle to the LIVE running game immediately (writes
+   * GameState.modRules), so a tweak takes effect without a reload. Absent when
+   * no game is running (the choice still persists and applies on next start).
+   */
+  applyRuleLive?: (flag: string, on: boolean) => void;
 }
 
 /** The one-line badge for a catalog row: enabled state + any warning. */
@@ -268,6 +280,67 @@ async function manageProfiles(
   }
 }
 
+/**
+ * The Fixes & tweaks menu: every toggleable rule the enabled mods declare
+ * (qol / bug-fixes), grouped by mod, each with its description and an on/off
+ * box. Toggling writes the player's choice to the store and, when a game is
+ * running, applies it live (deps.applyRuleLive) so it takes effect immediately;
+ * otherwise it applies on the next character. Rules default per the mod (QoL on,
+ * bug fixes off); a fresh install shows those defaults with no saved choices.
+ */
+async function manageFixesAndTweaks(
+  term: GlyphTerm,
+  deps: ModManagerDeps,
+): Promise<void> {
+  const getDecls = deps.ruleDecls ?? ((): ModRuleDecl[] => []);
+  for (;;) {
+    const decls = getDecls();
+    if (decls.length === 0) {
+      await showTextScreen(term, "Fixes & tweaks", [
+        { text: "No enabled mod contributes toggleable fixes or tweaks.", color: C_DIM },
+        { text: "", color: C_FG },
+        { text: "Enable the Quality of Life or Bug Fixes mod to see options here.", color: C_FG },
+      ]);
+      return;
+    }
+    const choices = deps.store.getRuleChoices();
+    const items: MenuItem[] = decls.map(({ modName, rule }) => {
+      const on = choices[rule.flag] ?? rule.default;
+      return {
+        label: `${on ? "[x]" : "[ ]"} ${rule.title}`,
+        color: on ? C_ENABLED : C_DISABLED,
+        hint: `${modName} - ${rule.description}`,
+      };
+    });
+    const pick = await selectFromMenu(term, "Fixes & tweaks", items, "[ Enter toggles; ESC to go back ]", {
+      detail: (i) => {
+        const d = decls[i];
+        return d
+          ? [
+              { text: d.rule.title, color: C_TITLE },
+              { text: `From: ${d.modName}`, color: C_DIM },
+              { text: "", color: C_FG },
+              { text: d.rule.description, color: C_FG },
+              { text: "", color: C_FG },
+              {
+                text: `Default when the mod is on: ${d.rule.default ? "enabled" : "disabled"}.`,
+                color: C_DIM,
+              },
+            ]
+          : [];
+      },
+      detailToggleKey: "?",
+      detailInitiallyShown: true,
+    });
+    if (pick === null) return;
+    const d = decls[pick];
+    if (!d) continue;
+    const now = choices[d.rule.flag] ?? d.rule.default;
+    deps.store.setRuleChoice(d.rule.flag, !now);
+    deps.applyRuleLive?.(d.rule.flag, !now);
+  }
+}
+
 /** The honest install-from-URL surface (no runtime loader in the web build). */
 async function installFromUrl(term: GlyphTerm): Promise<void> {
   const url = await promptText(term, "Install mod from URL", "https://", 200);
@@ -300,7 +373,7 @@ export async function runModManager(
   for (;;) {
     const catalog = deps.listCatalog();
     const items: MenuItem[] = catalog.map(rowLabel);
-    type ActionKind = "conflicts" | "profiles" | "install" | "reload" | "done";
+    type ActionKind = "fixes" | "conflicts" | "profiles" | "install" | "reload" | "done";
     type RowKind = { kind: "mod"; id: string } | { kind: ActionKind };
     const rowKinds: RowKind[] = catalog.map((m) => ({
       kind: "mod" as const,
@@ -317,6 +390,10 @@ export async function runModManager(
       items.push({ label, color, ...(hint ? { hint } : {}) });
       rowKinds.push({ kind });
     };
+    const ruleCount = deps.ruleDecls ? deps.ruleDecls().length : 0;
+    if (ruleCount > 0) {
+      addAction("Fixes & tweaks...", "fixes", C_ENABLED, `Turn the ${ruleCount} bundled fix/tweak toggle(s) on or off.`);
+    }
     addAction("View conflicts", "conflicts", C_FG, "Which enabled content mods contest the same records.");
     addAction("Profiles...", "profiles", C_FG, "Save / apply / delete named mod setups.");
     addAction("Install from URL...", "install", C_DIM, "Desktop-only; explains the web-build limit.");
@@ -343,6 +420,8 @@ export async function runModManager(
     if (!rk || rk.kind === "done") break;
     if (rk.kind === "mod" && "id" in rk) {
       if (await manageMod(term, deps, rk.id)) dirty = true;
+    } else if (rk.kind === "fixes") {
+      await manageFixesAndTweaks(term, deps);
     } else if (rk.kind === "conflicts") {
       await viewConflicts(term, deps);
     } else if (rk.kind === "profiles") {

@@ -130,8 +130,15 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
     return state.z.moveEnergy;
   }
 
-  /* Bump into a wall: no step, no energy (disturb/knowledge DEFERRED). */
-  if (!state.chunk.isPassable(next)) return 0;
+  /* Bump into a wall: no step, no energy (disturb/knowledge DEFERRED).
+   * QoL auto-dig (mod seam): walking into known diggable terrain the player can
+   * dig begins one tunnel attempt instead of a no-op bump. autoDigStep returns 0
+   * without drawing RNG unless the qol.autoDig flag is on and the grid qualifies,
+   * so faithful core (no mod / flag off) still just bumps. */
+  if (!state.chunk.isPassable(next)) {
+    const dug = state.autoDigStep?.(state, next) ?? 0;
+    return dug > 0 ? dug : 0;
+  }
 
   movePlayer(state, next);
   if (state.updateFov) state.updateFov(state);

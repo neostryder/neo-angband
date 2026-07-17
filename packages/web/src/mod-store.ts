@@ -25,6 +25,7 @@ import type { PackManifest } from "@neo-angband/mod-sdk";
 const ENABLED_KEY = "neo:enabledMods";
 const CONSENT_KEY = "neo:modConsents";
 const PROFILES_KEY = "neo:modProfiles";
+const RULE_CHOICES_KEY = "neo:modRuleChoices";
 
 /**
  * The committed, first-party BUNDLED mods that ship enabled by default
@@ -238,6 +239,30 @@ export class ModStore {
     }
   }
 
+  /* --- Rule choices (Fixes & tweaks menu) ---------------------------- */
+
+  /**
+   * The player's explicit per-flag overrides for mod rules ("qol.autoDig",
+   * "bugfix.*"). A flag ABSENT here means "use the mod's declared default", so
+   * this stores only deliberate deviations - a fresh install has none and every
+   * rule sits at its manifest default (QoL on, bug fixes off).
+   */
+  getRuleChoices(): Record<string, boolean> {
+    const obj = readJson<Record<string, unknown>>(this.storage, RULE_CHOICES_KEY, {});
+    const out: Record<string, boolean> = {};
+    for (const [flag, v] of Object.entries(obj)) {
+      if (typeof v === "boolean") out[flag] = v;
+    }
+    return out;
+  }
+
+  /** Record the player's explicit choice for one rule flag. */
+  setRuleChoice(flag: string, on: boolean): void {
+    const all = this.getRuleChoices();
+    all[flag] = on;
+    writeJson(this.storage, RULE_CHOICES_KEY, all);
+  }
+
   /* --- Profiles ------------------------------------------------------ */
 
   getProfiles(): Record<string, ModProfile> {
@@ -284,6 +309,25 @@ export class ModStore {
     writeJson(this.storage, CONSENT_KEY, prof.consents);
     return true;
   }
+}
+
+/**
+ * Resolve the effective GameState.modRules map from the enabled mods' declared
+ * rules and the player's saved choices: for each declared rule, the effective
+ * value is `choices[flag] ?? rule.default`. Later declarations with the same
+ * flag win (enabled/load order). Pure, so the host and the unit tests resolve
+ * identically. The result is what startGame / loadGame get as opts.modRules; an
+ * empty result (no rule-declaring mod enabled) leaves core faithful.
+ */
+export function resolveModRules(
+  decls: readonly { rule: { flag: string; default: boolean } }[],
+  choices: Readonly<Record<string, boolean>>,
+): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const { rule } of decls) {
+    out[rule.flag] = choices[rule.flag] ?? rule.default;
+  }
+  return out;
 }
 
 /** True when every capability in `required` is present in `consented`. */

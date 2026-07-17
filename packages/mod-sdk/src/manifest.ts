@@ -12,6 +12,31 @@ export type PackRef = `${string}:${string}`;
 export type PackShape = "content" | "tiles" | "plugin";
 
 /**
+ * One player-toggleable "rule" a pack contributes: a named core rule flag
+ * (GameState.modRules, read through modRuleEnabled) plus the human-facing
+ * label / description / default the in-app "Fixes & tweaks" menu renders.
+ *
+ * This is the DECLARATIVE seam the bundled qol and bug-fixes mods use: the
+ * corrected behaviour lives in ported core as an off-by-default branch guarded
+ * by `flag`; the mod merely declares the flag exists, what it does, and whether
+ * it defaults on. The host resolves each enabled mod's rules against the
+ * player's saved choices and applies the result to GameState.modRules - no mod
+ * code runs, so a rules-only mod is a plain `content` pack with no capabilities.
+ * With the mod disabled the flag is never set and core is byte-identical to the
+ * faithful 4.2.6 branch.
+ */
+export interface PackRule {
+  /** The GameState.modRules flag this rule toggles (e.g. "qol.autoDig"). */
+  flag: string;
+  /** Short menu label (e.g. "Auto-dig"). */
+  title: string;
+  /** One- or two-line description shown under the toggle in the menu. */
+  description: string;
+  /** Whether the rule is ON by default when the mod is enabled. */
+  default: boolean;
+}
+
+/**
  * A capability a scripted plugin requests (MOD_LIFECYCLE section 4). The
  * runtime grants only what a `shape: plugin` pack declares and the user
  * approves; content and tile packs request none. The vocabulary
@@ -58,6 +83,13 @@ export interface PackManifest {
   saveSchema?: number;
   /** Capabilities a `shape: plugin` pack requests (see Capability). */
   capabilities?: Capability[];
+  /**
+   * Player-toggleable core rule flags this pack contributes (see PackRule). The
+   * bundled qol / bug-fixes mods use this to declare their fixes/tweaks for the
+   * in-app "Fixes & tweaks" menu; the host applies (choice ?? default) to
+   * GameState.modRules. Absent for a pack that changes no core rules.
+   */
+  rules?: PackRule[];
   /**
    * Declares the pack deliberately nondeterministic (a wall-clock event, an
    * external agent, live multiplayer). Trips the save's determinism ratchet
@@ -133,6 +165,7 @@ export function validateManifest(value: unknown): PackManifest {
   ) {
     throw new ManifestError(`manifest ${id}: nondeterministic must be a boolean`);
   }
+  validateRules(m["rules"], id);
   for (const key of ["engine", "repository", "changelog"] as const) {
     if (m[key] !== undefined && typeof m[key] !== "string") {
       throw new ManifestError(`manifest ${id}: ${key} must be a string`);
@@ -155,6 +188,37 @@ function validateDepMap(deps: unknown, id: string, field: string): void {
       throw new ManifestError(
         `manifest ${id}: ${field} ${dep} constraint must be a string`,
       );
+    }
+  }
+}
+
+/** Validate the optional `rules` array (PackRule[]); throws ManifestError. */
+function validateRules(value: unknown, id: string): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: rules must be an array`);
+  }
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new ManifestError(`manifest ${id}: each rule must be an object`);
+    }
+    const r = entry as Record<string, unknown>;
+    if (typeof r["flag"] !== "string" || r["flag"].length === 0) {
+      throw new ManifestError(`manifest ${id}: rule flag must be a non-empty string`);
+    }
+    if (seen.has(r["flag"])) {
+      throw new ManifestError(`manifest ${id}: duplicate rule flag ${r["flag"]}`);
+    }
+    seen.add(r["flag"]);
+    if (typeof r["title"] !== "string" || r["title"].length === 0) {
+      throw new ManifestError(`manifest ${id}: rule ${r["flag"]} title must be a non-empty string`);
+    }
+    if (typeof r["description"] !== "string") {
+      throw new ManifestError(`manifest ${id}: rule ${r["flag"]} description must be a string`);
+    }
+    if (typeof r["default"] !== "boolean") {
+      throw new ManifestError(`manifest ${id}: rule ${r["flag"]} default must be a boolean`);
     }
   }
 }

@@ -51,7 +51,8 @@ import { CHEST_QUERY } from "../obj/chest";
 import { chestCheck, doCmdDisarmChest, doCmdOpenChest } from "./chest";
 import type { ChestCmdDeps } from "./chest";
 import type { GameState, PlayerCommand } from "./context";
-import { arenaInterceptDeath, deleteMonster, squareMonster } from "./context";
+import { arenaInterceptDeath, deleteMonster, modRuleEnabled, squareMonster } from "./context";
+import { squareIsKnown } from "./known";
 import { floorCarry } from "./floor";
 import { playerConfuseDir } from "./obj-cmd";
 import type { ActionRegistry } from "./player-turn";
@@ -369,6 +370,63 @@ function tunnelAux(
   }
   env.msg?.("You chip away futilely.");
   return false;
+}
+
+/* ------------------------------------------------------------------ *
+ * QoL: auto-dig on walk (mod seam, flag "qol.autoDig").
+ *
+ * Ported from AIngband's do_cmd_movement_tunnel_test / move_player change
+ * (cmd-cave.c: "walking or running into known diggable terrain begins
+ * tunneling when the player can dig the target terrain"). This is NOT in
+ * faithful 4.2.6 - it ships as an opt-in feature of the bundled `qol` content
+ * mod, gated by the named flag so core is byte-identical when the flag is off
+ * (the flag is absent unless the qol mod set it, and even when the qol mod is
+ * enabled the player can turn it off in the Fixes & tweaks menu).
+ * ------------------------------------------------------------------ */
+
+/** do_cmd_tunnel_chance: the player's success chance (out of 1600) at `grid`. */
+function tunnelChance(state: GameState, grid: Loc): number {
+  const diggingSkill =
+    state.bestDiggerDigging?.() ?? (state.actor.combat.skills[SKILL.DIGGING] ?? 0);
+  const chances = calcDiggingChances(diggingSkill);
+  let digIdx = squareDigging(state, grid);
+  if (digIdx < 1 || digIdx > DIGGING.MAX) digIdx = DIGGING.GRANITE + 1;
+  return chances[digIdx - 1] ?? 0;
+}
+
+/**
+ * do_cmd_movement_tunnel_test (AIngband): a grid the player should tunnel into
+ * when they try to WALK into it - known, not permanent rock, impassable,
+ * diggable, and diggable with a positive success chance given the current
+ * weapon / best pack digger. RNG-free (input only).
+ */
+export function movementTunnelTest(state: GameState, grid: Loc): boolean {
+  if (!squareIsKnown(state, grid)) return false;
+  if (state.chunk.isPerm(grid)) return false;
+  if (state.chunk.isPassable(grid)) return false;
+  if (!squareIsDiggable(state, grid)) return false;
+  return tunnelChance(state, grid) > 0;
+}
+
+/**
+ * The QoL auto-dig step, installed as state.autoDigStep by the session and
+ * consulted by walkAction (game/player-turn.ts) when a walk is blocked by a
+ * wall. When the "qol.autoDig" flag is off (faithful default) it returns 0
+ * WITHOUT drawing any RNG, so the walk falls through to the normal no-energy
+ * bump and core is byte-identical to 4.2.6. When on and the blocked grid passes
+ * movementTunnelTest, it performs one do_cmd_tunnel_aux attempt (the same dig
+ * roll and payouts as the tunnel command) and spends a full move (AIngband:
+ * energy_use = move_energy), returning that energy.
+ */
+export function movementAutoDig(
+  state: GameState,
+  grid: Loc,
+  deps: CaveCmdDeps,
+): number {
+  if (!modRuleEnabled(state, "qol.autoDig")) return 0;
+  if (!movementTunnelTest(state, grid)) return 0;
+  tunnelAux(state, grid, deps);
+  return state.z.moveEnergy;
 }
 
 /* ------------------------------------------------------------------ *

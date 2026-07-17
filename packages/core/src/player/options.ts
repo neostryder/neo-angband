@@ -73,31 +73,6 @@ const CHEAT_NAMES: ReadonlySet<string> = new Set(
 const SCORE_NAMES: ReadonlySet<string> = new Set(
   OPTION_ENTRIES.filter((e) => e.type === "SCORE").map((e) => e.name),
 );
-const INTERFACE_NAMES: ReadonlySet<string> = new Set(
-  OPTION_ENTRIES.filter((e) => e.type === "INTERFACE").map((e) => e.name),
-);
-
-/**
- * Keep only INTERFACE-type options from a host-supplied name -> boolean map,
- * dropping anything that is not a known INTERFACE option (BIRTH / CHEAT /
- * SCORE / SPECIAL options, and unknown names). This is the defensive gate the
- * new-character seam uses when applying mod-supplied interface defaults: a
- * content mod (e.g. the bundled qol mod) can only ever preset display /
- * convenience options, never a rules or scoring option, even if its data
- * mistakenly lists one. Rules and scoring stay byte-identical to the table.
- */
-export function filterInterfaceOverrides(
-  overrides: Readonly<Record<string, unknown>>,
-): Partial<Record<OptionName, boolean>> {
-  const out: Record<string, boolean> = {};
-  for (const [name, value] of Object.entries(overrides)) {
-    if (typeof value === "boolean" && INTERFACE_NAMES.has(name)) {
-      out[name] = value;
-    }
-  }
-  return out as Partial<Record<OptionName, boolean>>;
-}
-
 /** clamp hitpoint_warn into the legal 0..9 band. */
 function clampWarn(v: number): number {
   if (!Number.isFinite(v)) return DEFAULT_HITPOINT_WARN;

@@ -194,6 +194,11 @@ function modManifest(raw: unknown): PackManifest {
     shape: m.shape ?? "content",
     ...(m.engine ? { engine: m.engine } : {}),
     ...(m.dependencies ? { dependencies: m.dependencies } : {}),
+    ...(m.capabilities ? { capabilities: m.capabilities } : {}),
+    ...(m.nondeterministic !== undefined ? { nondeterministic: m.nondeterministic } : {}),
+    ...(m.rules ? { rules: m.rules } : {}),
+    ...(m.author ? { author: m.author } : {}),
+    ...(m.license ? { license: m.license } : {}),
   };
 }
 
@@ -314,26 +319,33 @@ export function loadUiEntryPacks(): UiEntryPackRecords {
 }
 
 /**
- * The composed INTERFACE-option defaults contributed by enabled content mods
- * (the bundled qol mod ships packages/web/mods/qol/options.json). Each such
- * options.json holds records of the form { interfaceDefaults: { name: bool } };
- * they flow through composeContentPacks like every other file, and this merges
- * every contributed record's interfaceDefaults in composed order (later records
- * win). Returns {} when no options file is contributed (no qol mod enabled), so
- * threading it into startGame is a no-op that keeps new characters on the table
- * defaults. Core re-filters this to INTERFACE-only options defensively, so a
- * bad entry here can never change a rules/scoring option.
+ * One player-toggleable rule an ENABLED mod declares (PackManifest.rules), with
+ * the id/name of the mod that declares it - the input the host uses both to
+ * resolve GameState.modRules (choice ?? default) and to render the Fixes &
+ * tweaks menu grouped by mod. Only ENABLED mods contribute, in enabled/load
+ * order (so a later mod's rule with the same flag wins, like content records).
  */
-export function loadComposedInterfaceDefaults(): Record<string, boolean> {
-  const recs = composed.records["options"] as
-    | { interfaceDefaults?: Record<string, unknown> }[]
-    | undefined;
-  const out: Record<string, boolean> = {};
-  for (const rec of recs ?? []) {
-    const defs = rec?.interfaceDefaults;
-    if (!defs || typeof defs !== "object") continue;
-    for (const [name, value] of Object.entries(defs)) {
-      if (typeof value === "boolean") out[name] = value;
+export interface ModRuleDecl {
+  modId: string;
+  modName: string;
+  rule: import("@neo-angband/mod-sdk").PackRule;
+}
+
+/**
+ * The rule declarations of every ENABLED mod (any shape), in enabled order.
+ * Feeds mod-store.resolveModRules (to seed state.modRules) and the mod manager's
+ * Fixes & tweaks menu. Returns [] when no enabled mod declares rules - so a game
+ * with the qol / bug-fixes mods off carries no modRules and core is faithful.
+ */
+export function loadEnabledModRuleDecls(): ModRuleDecl[] {
+  const mods = discoverMods();
+  const out: ModRuleDecl[] = [];
+  for (const id of enabledModIds()) {
+    const mod = mods.get(id);
+    if (!mod) continue;
+    const manifest = modManifest(mod.manifest);
+    for (const rule of manifest.rules ?? []) {
+      out.push({ modId: manifest.id, modName: manifest.name, rule });
     }
   }
   return out;

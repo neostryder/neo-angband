@@ -31,17 +31,16 @@
  *                             in-process plugin (W2.2, core/mod/registry-host.ts):
  *                             "registry:effect" | "registry:room" |
  *                             "registry:command" | "registry:monster" |
- *                             "registry:vocab" | "registry:rules"; or the
- *                             wildcard "registry:*" for all of them.
- *                             "registry:vocab" (W2.3) declares NEW vocabulary
- *                             (flags/stats/any kind). "registry:rules" (decision
- *                             24) toggles the named core "mod rule" flags the
- *                             bundled bug-fixes mod uses to switch a ported core
- *                             function from its faithful 4.2.6 branch to a
- *                             corrected one (GameState.modRules). Distinct from
- *                             "command:add": that adds a command via the act
- *                             facade, this replaces what a command DOES (and the
- *                             effect/room/AI logic behind the game).
+ *                             "registry:vocab"; or the wildcard "registry:*"
+ *                             for all of them. "registry:vocab" (W2.3) declares
+ *                             NEW vocabulary (flags/stats/any kind). Distinct
+ *                             from "command:add": that adds a command via the
+ *                             act facade, this replaces what a command DOES (and
+ *                             the effect/room/AI logic behind the game).
+ *                             (The named-core-rule flags the bundled qol /
+ *                             bug-fixes mods use, GameState.modRules, are a
+ *                             DECLARATIVE manifest field - PackManifest.rules -
+ *                             applied by the host, so they need no capability.)
  *
  * This module only surfaces `nondeterministic` from the manifest. The
  * save's determinism ratchet itself - flipping a save from DETERMINISTIC to
@@ -65,7 +64,7 @@ const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
-const REGISTRY_RE = /^registry:(\*|effect|room|command|monster|vocab|rules)$/;
+const REGISTRY_RE = /^registry:(\*|effect|room|command|monster|vocab)$/;
 
 /**
  * Parse and validate a capability string against the vocabulary above,
