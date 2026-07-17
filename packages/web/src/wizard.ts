@@ -58,11 +58,27 @@ import {
   wizPlayItemReject,
   wizPlayItemAccept,
   SQUARE,
+  EF,
+  effectLookup,
+  effectSubtype,
+  sourcePlayer,
+  buildEffectContext,
+  attachGameEnv,
 } from "@neo-angband/core";
-import type { GameState, WizardDeps, MonsterRace, GameObject } from "@neo-angband/core";
+import type {
+  GameState,
+  WizardDeps,
+  WizEffectDeps,
+  MonsterRace,
+  GameObject,
+  EffectContext,
+  EffectEnvDeps,
+  CastContext,
+  Loc,
+} from "@neo-angband/core";
 import { gearGet } from "@neo-angband/core";
 import { GlyphTerm } from "./term";
-import { selectFromMenu, promptNumber, showTextScreen } from "./overlay";
+import { selectFromMenu, promptNumber, promptText, showTextScreen } from "./overlay";
 import type { MenuItem, ScreenLine } from "./overlay";
 import { packMenu } from "./screens";
 
@@ -82,6 +98,62 @@ export interface WizardUiCtx {
   refresh: () => void;
   /** dungeon_change_level: regenerate at the pending targetDepth (jump-level). */
   changeLevel?: (depth: number) => void;
+  /**
+   * The on-map grid picker (the shell's targeting/look UI), used by the
+   * teleport "To location" command (do_cmd_wiz_teleport_to). Returns the chosen
+   * grid, or null on ESC. Absent, the command falls back to numeric coordinate
+   * prompts so it still functions before the picker is wired.
+   */
+  pickGrid?: () => Promise<Loc | null>;
+}
+
+/* ------------------------------------------------------------------ *
+ * effect_simple plumbing for the effect-driven debug commands (a web-side
+ * mirror of game/wizard.ts's private effContext/runSimple, since those are not
+ * exported). Every field comes from the WizEffectDeps bundle the shell already
+ * hands the wizard UI via deps.effect.
+ * ------------------------------------------------------------------ */
+
+/** effContext (cmd-wizard.c effect plumbing): assemble an EffectContext. */
+function wizEffectContext(state: GameState, eff: WizEffectDeps): EffectContext {
+  const base = buildEffectContext(state, eff.envDeps as EffectEnvDeps);
+  return attachGameEnv(base, {
+    state,
+    cast: eff.cast as CastContext,
+    ...(eff.teleport ? { teleport: eff.teleport } : {}),
+    ...(eff.general ? { general: eff.general } : {}),
+    ...(eff.item ? { item: eff.item } : {}),
+    ...(eff.summon ? { summon: eff.summon } : {}),
+  });
+}
+
+/** Parameters for a wizard effect_simple call (mirrors EffectSimpleParams). */
+interface WizEffectParams {
+  diceString?: string;
+  subtype?: number;
+  radius?: number;
+  other?: number;
+  y?: number;
+  x?: number;
+}
+
+/** effect_simple(index, source_player(), ...): run one effect from the debug UI. */
+function runWizEffect(
+  state: GameState,
+  eff: WizEffectDeps,
+  index: number,
+  p: WizEffectParams,
+): boolean {
+  const ctx = wizEffectContext(state, eff);
+  return eff.registry.effectSimple(index, ctx, {
+    origin: sourcePlayer(),
+    diceString: p.diceString ?? "0",
+    subtype: p.subtype ?? 0,
+    radius: p.radius ?? 0,
+    other: p.other ?? 0,
+    y: p.y ?? 0,
+    x: p.x ?? 0,
+  });
 }
 
 /* ------------------------------------------------------------------ *
@@ -428,9 +500,7 @@ async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<void> {
 
     /* ---- Teleport ---- */
     case "tele-to":
-      // do_cmd_wiz_teleport_to targets a grid; effect bundle required.
-      if (!deps.effect) return unavailable(ctx);
-      say("Teleport-to needs an on-map target picker (follow-up).");
+      await runTeleportTo(ctx);
       break;
     case "tele-near":
       if (!deps.effect) return unavailable(ctx);
@@ -468,8 +538,7 @@ async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<void> {
       wizHitAllLos(state, deps);
       break;
     case "perform-effect":
-      if (!deps.effect) return unavailable(ctx);
-      say("The interactive effect picker is a follow-up.");
+      await runPerformEffect(ctx);
       break;
     case "graphics-demo":
       say("The graphics demo is a terminal-tile diagnostic (not ported).");
@@ -588,6 +657,96 @@ async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<void> {
 /* ------------------------------------------------------------------ *
  * Interactive sub-flows.
  * ------------------------------------------------------------------ */
+
+/** EF_MAX (list-effects.h): one past the last effect code. */
+const EF_MAX = Object.keys(EF).length;
+
+/**
+ * do_cmd_wiz_teleport_to (cmd-wizard.c L2673): pick a destination grid, and if
+ * it is passable, effect_simple(EF_TELEPORT_TO) to it; otherwise report it is
+ * impassable. The grid comes from the shell's targeting UI (ctx.pickGrid) when
+ * wired, else from numeric coordinate prompts.
+ */
+async function runTeleportTo(ctx: WizardUiCtx): Promise<void> {
+  const { term, state, deps, say } = ctx;
+  if (!deps.effect) return unavailable(ctx);
+
+  let grid: Loc | null;
+  if (ctx.pickGrid) {
+    grid = await ctx.pickGrid();
+  } else {
+    const cur = state.actor.grid;
+    const x = await promptNumber(term, "Teleport to which column (x)?", cur.x, 0, 9999, undefined, 4);
+    if (x === null) return;
+    const y = await promptNumber(term, "Teleport to which row (y)?", cur.y, 0, 9999, undefined, 4);
+    if (y === null) return;
+    grid = { x, y };
+  }
+  if (!grid) return;
+
+  /* square_ispassable(cave, grid) (L2682). */
+  if (!state.chunk.isPassable(grid)) {
+    say("The square you are aiming for is impassable.");
+    return;
+  }
+  runWizEffect(state, deps.effect, EF.TELEPORT_TO, { y: grid.y, x: grid.x });
+}
+
+/**
+ * do_cmd_wiz_perform_effect (cmd-wizard.c L1524): prompt for an effect (name or
+ * index), its dice, its subtype, and the radius / other / y / x parameters,
+ * then effect_simple() it from a player source. Mirrors the upstream prompt
+ * order and wording exactly.
+ */
+async function runPerformEffect(ctx: WizardUiCtx): Promise<void> {
+  const { term, state, deps, say } = ctx;
+  if (!deps.effect) return unavailable(ctx);
+
+  /* "Do which effect: " - a name or a number (L1537-1548). */
+  const nameEntry = await promptText(term, "Do which effect (name or number)? ", "", 30);
+  if (nameEntry === null) return;
+  const trimmed = nameEntry.trim();
+  let index: number;
+  const parsed = Number.parseInt(trimmed, 10);
+  if (trimmed !== "" && String(parsed) === trimmed) index = parsed;
+  else index = effectLookup(trimmed);
+  if (index <= EF.NONE || index >= EF_MAX) {
+    say("No effect found.");
+    return;
+  }
+
+  /* "Enter damage dice (eg 1+2d6M2): "; empty -> "0" (L1551-1555). */
+  const diceEntry = await promptText(term, "Enter damage dice (eg 1+2d6M2): ", "0", 30);
+  const diceString = diceEntry && diceEntry.trim() ? diceEntry.trim() : "0";
+
+  /* "Enter name or number for effect subtype: " -> effect_subtype (L1557-1564). */
+  let subtype = 0;
+  const subEntry = await promptText(term, "Enter name or number for effect subtype: ", "0", 30);
+  if (subEntry !== null && subEntry.trim() !== "") {
+    const st = effectSubtype(index, subEntry.trim(), deps.effect.inject);
+    subtype = st === -1 ? 0 : st;
+  }
+
+  /* The four get_quantity prompts, default 100 (L1567-1570). */
+  const radius = await promptNumber(term, "Enter second parameter (radius): ", 100, 0, 100, undefined, 3);
+  if (radius === null) return;
+  const other = await promptNumber(term, "Enter third parameter (other): ", 100, 0, 100, undefined, 3);
+  if (other === null) return;
+  const y = await promptNumber(term, "Enter y parameter: ", 100, 0, 100, undefined, 3);
+  if (y === null) return;
+  const x = await promptNumber(term, "Enter x parameter: ", 100, 0, 100, undefined, 3);
+  if (x === null) return;
+
+  const ident = runWizEffect(state, deps.effect, index, {
+    diceString,
+    subtype,
+    radius,
+    other,
+    y,
+    x,
+  });
+  if (ident) say("Identified!");
+}
 
 /** do_cmd_wiz_edit_player_start: batch-edit a stat or gold (exp needs ExpDeps). */
 async function runEditPlayer(ctx: WizardUiCtx): Promise<void> {
