@@ -159,12 +159,14 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
 });
 
 describe("deathMenuEntries (ui-death.c death_actions, reduced)", () => {
-  it("keeps the upstream tag letters i/m/v/n and hints on every row", () => {
+  it("keeps the upstream tag letters i/m/f/v/h/n and hints on every row", () => {
     const entries = deathMenuEntries();
     expect(entries.map((e) => [e.action, e.item.tag])).toEqual([
       ["info", "i"],
       ["messages", "m"],
+      ["dump", "f"],
       ["scores", "v"],
+      ["history", "h"],
       ["new", "n"],
     ]);
     for (const e of entries) {
@@ -182,7 +184,7 @@ describe("deathMenuEntries (ui-death.c death_actions, reduced)", () => {
       const term = makeTerm();
       const done = selectFromMenu(term, "You have died.", entries.map((e) => e.item));
       press(win, "v");
-      expect(await done).toBe(2); // View scores
+      expect(await done).toBe(3); // View scores
     }
     {
       const win = makeFakeWindow();
@@ -190,7 +192,7 @@ describe("deathMenuEntries (ui-death.c death_actions, reduced)", () => {
       const term = makeTerm();
       const done = selectFromMenu(term, "You have died.", entries.map((e) => e.item));
       press(win, "N");
-      expect(await done).toBe(3); // New Game, uppercase tag
+      expect(await done).toBe(5); // New Game, uppercase tag
     }
   });
 });

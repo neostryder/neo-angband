@@ -59,6 +59,16 @@ import {
   histHas,
   historyGetList,
   loreDescription,
+  monsterListCollect,
+  monsterListSort,
+  monsterListStandardCompare,
+  monsterListCompareExp,
+  monsterListEntryLineColor,
+  MONSTER_LIST_SECTION_LOS,
+  MONSTER_LIST_SECTION_ESP,
+  COLOUR_ORANGE,
+  RF,
+  TMD,
 } from "@neo-angband/core";
 import type {
   GameState,
@@ -1062,6 +1072,315 @@ export const SVAL_DEPENDENT: readonly { tval: number; desc: string }[] = [
   { tval: TV.FLASK, desc: "Flasks of oil" },
   { tval: TV.GOLD, desc: "Money" },
 ];
+
+/* ------------------------------------------------------------------ *
+ * Death / tombstone screens (ui-death.c).
+ * ------------------------------------------------------------------ */
+
+/**
+ * dead.txt (lib/screens): the ASCII tombstone drawn by display_exit_screen
+ * (ui-death.c L74-84). The centred character fields overwrite the interior
+ * (columns 8..38) at rows 7..18. Embedded verbatim rather than fetched at
+ * runtime (the screens/ pack is not shipped to the web) - do not reflow.
+ */
+const DEAD_TOMB_ART: readonly string[] = [
+  "",
+  "                                                                              ",
+  "            _______________________",
+  "           /                       \\         ___",
+  "          /                         \\ ___   /   \\",
+  "         /            RIP            \\   \\  :   :",
+  "        /                             \\  : _;,,,;_",
+  "       /                               \\,;_",
+  "      |                                 |   ___",
+  "      |                                 |  /   \\",
+  "      |                                 |  :   :",
+  "      |                                 | _;,,,;_   ____",
+  "      |                                 |          /    \\",
+  "      |                                 |          :    :",
+  "      |                                 |          :    :",
+  "      |                                 |         _;,,,,;_",
+  "      |                                 |",
+  "      |                                 |",
+  "      |                                 |",
+  "     *|   *     *     *    *   *     *  | *",
+  "_____)/\\\\_)_/___(\\/___(//_\\)/_\\//__\\\\(/_|_)__________________________",
+];
+
+/**
+ * crown.txt (lib/screens): the winner crown drawn by display_winner
+ * (ui-death.c L127-152). The first file line ("25") is the width hint and is
+ * not embedded here; the remaining art lines follow.
+ */
+const CROWN_ART: readonly string[] = [
+  "",
+  "",
+  "            #",
+  "          #####",
+  "            #",
+  "      ,,,  $$$  ,,,",
+  " ,,=$   \\\"$$$$$\\\"   $=,,",
+  ",$$        $$$        $$,",
+  "*>         <*>         <*",
+  "$$         $$$         $$",
+  '"$$        $$$        $$"',
+  ' "$$       $$$       $$"',
+  "  *#########*#########*",
+  "  *#########*#########*",
+  "",
+  "",
+  "    Veni, Vidi, Vici!",
+  "I came, I saw, I conquered!",
+  "",
+];
+
+/**
+ * put_str_centred (ui-death.c L40-56): centre `text` in the column band
+ * [x1, x2] over `line`, overwriting the art beneath it (spaces are extended as
+ * needed). x = x1 + ((x2 - x1) / 2 - len / 2), integer arithmetic exactly as
+ * the C.
+ */
+function overwriteCentred(line: string, x1: number, x2: number, text: string): string {
+  const x = x1 + (Math.trunc((x2 - x1) / 2) - Math.trunc(text.length / 2));
+  const col = Math.max(0, x);
+  const padded = line.length < col ? line + " ".repeat(col - line.length) : line;
+  return padded.slice(0, col) + text + padded.slice(col + text.length);
+}
+
+/** The fields display_exit_screen centres over the tombstone. */
+export interface TombstoneDeps {
+  fullName: string;
+  /** class->title[(lev-1)/5], or "Magnificent" when a winner. */
+  title: string;
+  className: string;
+  level: number;
+  exp: number;
+  gold: number;
+  depth: number;
+  diedFrom: string;
+  totalWinner: boolean;
+  /** streq(died_from, "Retiring"): swaps the "Killed"/"by" lines for "Retired". */
+  retired?: boolean;
+  /** ctime(&death_time) truncated to 24 chars ("%-.24s", ui-death.c L112). */
+  deathTime: string;
+}
+
+/**
+ * ctime()-style stamp ("Www Mmm dd hh:mm:ss yyyy", 24 chars) from a Date, for
+ * the tombstone's "on <date>" line (ui-death.c L112, %-.24s of ctime).
+ */
+export function ctimeStamp(d: Date): string {
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  const p2 = (n: number): string => String(n).padStart(2, "0");
+  const dow = days[d.getDay()];
+  const mon = months[d.getMonth()];
+  const day = String(d.getDate()).padStart(2, " ");
+  const time = `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+  return `${dow} ${mon} ${day} ${time} ${d.getFullYear()}`;
+}
+
+/**
+ * display_exit_screen (ui-death.c L63-113): the tombstone art with the centred
+ * character epitaph. Fields sit in the band [8, 39] at the upstream rows
+ * (name 7, "the" 8, title 9, class 11, Level 12, Exp 13, AU 14, killed 15/16,
+ * date 18), each centred by put_str_centred.
+ */
+export function tombstoneLines(deps: TombstoneDeps): ScreenLine[] {
+  const art = DEAD_TOMB_ART.slice();
+  const put = (row: number, text: string): void => {
+    art[row] = overwriteCentred(art[row] ?? "", 8, 8 + 31, text);
+  };
+  put(7, deps.fullName);
+  put(8, "the");
+  put(9, deps.totalWinner ? "Magnificent" : deps.title);
+  put(11, deps.className);
+  put(12, `Level: ${deps.level}`);
+  put(13, `Exp: ${deps.exp}`);
+  put(14, `AU: ${deps.gold}`);
+  if (deps.retired) {
+    put(15, `Retired on Level ${deps.depth}`);
+  } else {
+    put(15, `Killed on Level ${deps.depth}`);
+    put(16, `by ${deps.diedFrom}.`);
+  }
+  put(18, `on ${deps.deathTime.slice(0, 24)}`);
+  return art.map((text) => ({ text, color: FG }));
+}
+
+/**
+ * display_winner (ui-death.c L119-156): the crown, centred, followed by the
+ * "All Hail the Mighty Champion!" banner. Shown before the tombstone for a
+ * total_winner.
+ */
+export function winnerLines(cols = 80): ScreenLine[] {
+  const width = 25; // crown.txt's declared width hint (first file line)
+  const left = Math.max(0, Math.trunc(cols / 2) - Math.trunc(width / 2));
+  const pad = " ".repeat(left);
+  const lines: ScreenLine[] = CROWN_ART.map((l) => ({
+    text: l ? pad + l : "",
+    color: FG,
+  }));
+  const hail = "All Hail the Mighty Champion!";
+  const hx = Math.max(0, Math.trunc(cols / 2) - Math.trunc(hail.length / 2));
+  lines.push({ text: " ".repeat(hx) + hail, color: FG });
+  return lines;
+}
+
+/* ------------------------------------------------------------------ *
+ * "List visible monsters" screen ([) - ui-mon-list.c.
+ * ------------------------------------------------------------------ */
+
+/**
+ * plural_aux (mon-desc.c L27) / get_mon_name (mon-desc.c L44): the "N race(s)"
+ * label the monster list prints. Replicated here because mon/desc.ts is not yet
+ * re-exported from the core package index (see WIRING-NEEDED); swap for the core
+ * getMonName export once available.
+ */
+function pluralAuxLocal(name: string): string {
+  if (name.length === 0) return name;
+  return name + (name[name.length - 1] === "s" ? "es" : "s");
+}
+function getMonNameLocal(race: MonsterRace, num: number): string {
+  if (race.flags.has(RF.UNIQUE)) return `[U] ${race.name}`;
+  const prefix = `${String(num).padStart(3, " ")} `;
+  if (num === 1) return prefix + race.name;
+  if (race.plural !== null && race.plural !== undefined) return prefix + race.plural;
+  return prefix + pluralAuxLocal(race.name);
+}
+
+/** utf8_clipto-style clip to `n` visible chars (ASCII port). */
+function clipTo(s: string, n: number): string {
+  return n <= 0 ? "" : s.slice(0, n);
+}
+
+/**
+ * monster_list_format_section (ui-mon-list.c L57-190): one section (LOS or ESP)
+ * as a header line plus per-race rows. `prefix` is "You can see" / "You are
+ * aware of"; `others` inserts "other " for the ESP header when the LOS section
+ * had monsters. Rows show the race glyph, the "N race(s)" name, an (asleep) tag,
+ * and - for a lone monster - the "dy N/S dx E/W" offset right-aligned.
+ */
+function monsterListSectionLines(
+  list: ReturnType<typeof monsterListCollect>,
+  section: number,
+  prefix: string,
+  others: boolean,
+  maxWidth: number,
+  playerDepth: number,
+): ScreenLine[] {
+  const out: ScreenLine[] = [];
+  const total = list.totalMonsters[section] ?? 0;
+  if (total === 0) {
+    out.push({ text: `${prefix} no monsters.`, color: FG });
+    return out;
+  }
+  const otherWord = others ? "other " : "";
+  const plural = total === 1 ? "" : "s";
+  out.push({
+    text: `${prefix} ${total} ${otherWord}monster${plural}:`,
+    color: FG,
+  });
+
+  for (const entry of list.entries) {
+    const count = entry.count[section] ?? 0;
+    if (count === 0) continue;
+
+    let location = "";
+    if (count === 1) {
+      const dy = entry.dy[section] ?? 0;
+      const dx = entry.dx[section] ?? 0;
+      const d1 = dy <= 0 ? "N" : "S";
+      const d2 = dx <= 0 ? "W" : "E";
+      location = ` ${Math.abs(dy)} ${d1} ${Math.abs(dx)} ${d2}`;
+    }
+
+    /* full_width = max_width - 2 (glyph+space) - loc - 1 (upstream fudge). */
+    const fullWidth = Math.max(1, maxWidth - 2 - location.length - 1);
+
+    const asleepN = entry.asleep[section] ?? 0;
+    let asleep = "";
+    if (asleepN > 0 && count > 1) asleep = ` (${asleepN} asleep)`;
+    else if (asleepN === 1 && count === 1) asleep = " (asleep)";
+
+    let name = getMonNameLocal(entry.race, count);
+    name = clipTo(name, Math.max(0, fullWidth - asleep.length)) + asleep;
+
+    const lineColor = colorToCss(monsterListEntryLineColor(entry, playerDepth));
+    const glyphColor = colorToCss(entry.attr || entry.race.dAttr);
+    const paddedName = name.padEnd(fullWidth, " ");
+    out.push({
+      text: `${entry.race.dChar} ${paddedName}${location}`,
+      color: lineColor,
+      runs: [
+        { text: entry.race.dChar, color: glyphColor },
+        { text: " ", color: lineColor },
+        { text: paddedName, color: lineColor },
+        { text: location, color: lineColor },
+      ],
+    });
+  }
+  return out;
+}
+
+/**
+ * monster_list_format_textblock (ui-mon-list.c L249-312): the whole visible-
+ * monster list - the LOS section always, the ESP section when any monster is
+ * known only by telepathy. Hallucination replaces the list wholesale
+ * (monster_list_format_special L209-228). Sort is by depth, or by experience
+ * when `sortExp` (the 'x' toggle, L410).
+ */
+export function monsterListScreenLines(
+  state: GameState,
+  cols = 80,
+  sortExp = false,
+): ScreenLine[] {
+  const p = state.actor.player;
+  if ((p.timed[TMD.IMAGE] ?? 0) > 0) {
+    return [
+      {
+        text: "Your hallucinations are too wild to see things clearly.",
+        color: colorToCss(COLOUR_ORANGE),
+      },
+    ];
+  }
+
+  const list = monsterListCollect(state);
+  monsterListSort(
+    list,
+    sortExp ? monsterListCompareExp(p.lev) : monsterListStandardCompare,
+  );
+
+  const maxWidth = Math.max(20, cols - 1);
+  const depth = state.chunk.depth;
+  const lines = monsterListSectionLines(
+    list,
+    MONSTER_LIST_SECTION_LOS,
+    "You can see",
+    false,
+    maxWidth,
+    depth,
+  );
+
+  if ((list.totalEntries[MONSTER_LIST_SECTION_ESP] ?? 0) > 0) {
+    const showOthers = (list.totalMonsters[MONSTER_LIST_SECTION_LOS] ?? 0) > 0;
+    lines.push({ text: "", color: FG });
+    lines.push(
+      ...monsterListSectionLines(
+        list,
+        MONSTER_LIST_SECTION_ESP,
+        "You are aware of",
+        showOthers,
+        maxWidth,
+        depth,
+      ),
+    );
+  }
+  return lines;
+}
 
 /**
  * ignore_tval (ui-options.c L1699): the eligible categories - only tvals

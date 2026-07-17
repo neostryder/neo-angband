@@ -34,6 +34,9 @@ import {
   newMonsterLore,
   RF,
   RSF,
+  MFLAG,
+  MON_TMD,
+  TMD,
   chanceOfMeleeHitBase,
   getHitChance,
   SKILL,
@@ -66,7 +69,12 @@ import {
   knownMonsterEntries,
   monsterKnowledgeMenu,
   autoinscriptionMenu,
+  tombstoneLines,
+  winnerLines,
+  ctimeStamp,
+  monsterListScreenLines,
 } from "./screens";
+import type { Monster } from "@neo-angband/core";
 
 const WHITE = 1;
 const L_GREEN = 13;
@@ -888,5 +896,149 @@ describe("autoinscriptionMenu ('~' -> Set object autoinscriptions)", () => {
     row = built.rows.findIndex((r) => r.kind.kidx === dagger.kidx);
     expect(built.rows[row]!.note).toBe("");
     expect(built.items[row]!.label).not.toContain("{");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Death / tombstone screens (ui-death.c display_exit_screen/winner)  */
+/* ------------------------------------------------------------------ */
+
+describe("tombstoneLines (display_exit_screen, ui-death.c L63-113)", () => {
+  const baseDeps = {
+    fullName: "Frodo",
+    title: "Rookie",
+    className: "Warrior",
+    level: 3,
+    exp: 42,
+    gold: 100,
+    depth: 5,
+    diedFrom: "a giant white mouse",
+    totalWinner: false,
+    deathTime: "Wed Jun 30 21:49:08 1993",
+  };
+
+  it("centres the epitaph fields over the tombstone rows", () => {
+    const lines = tombstoneLines(baseDeps);
+    // Fields sit at rows 7,8,9,11..16,18 (put_str_centred line sequence).
+    expect(lines[7]!.text).toContain("Frodo");
+    expect(lines[8]!.text).toContain("the");
+    expect(lines[9]!.text).toContain("Rookie");
+    expect(lines[11]!.text).toContain("Warrior");
+    expect(lines[12]!.text).toContain("Level: 3");
+    expect(lines[13]!.text).toContain("Exp: 42");
+    expect(lines[14]!.text).toContain("AU: 100");
+    expect(lines[15]!.text).toContain("Killed on Level 5");
+    expect(lines[16]!.text).toContain("by a giant white mouse.");
+    expect(lines[18]!.text).toContain("on Wed Jun 30 21:49:08 1993");
+  });
+
+  it("centres within the [8,39] band (put_str_centred x = 23 - len/2)", () => {
+    const lines = tombstoneLines(baseDeps);
+    // "Frodo" length 5 -> x = 8 + (15 - 2) = 21.
+    const idx = lines[7]!.text.indexOf("Frodo");
+    expect(idx).toBe(21);
+  });
+
+  it("shows 'Magnificent' as the title for a total winner", () => {
+    const lines = tombstoneLines({ ...baseDeps, totalWinner: true });
+    expect(lines[9]!.text).toContain("Magnificent");
+    expect(lines[9]!.text).not.toContain("Rookie");
+  });
+
+  it("swaps to the retirement wording when retired", () => {
+    const lines = tombstoneLines({ ...baseDeps, retired: true, diedFrom: "Retiring" });
+    expect(lines[15]!.text).toContain("Retired on Level 5");
+    // No "by <killer>." line when retired (row 16 keeps only the tomb border).
+    expect(lines[16]!.text).not.toContain("by ");
+  });
+
+  it("is pure ASCII everywhere", () => {
+    for (const l of tombstoneLines(baseDeps)) {
+      expect(l.text).toMatch(/^[\x00-\x7f]*$/);
+    }
+  });
+});
+
+describe("winnerLines (display_winner, ui-death.c L119-156)", () => {
+  it("ends with the 'All Hail the Mighty Champion!' banner", () => {
+    const lines = winnerLines(80);
+    const last = lines[lines.length - 1]!;
+    expect(last.text).toContain("All Hail the Mighty Champion!");
+  });
+
+  it("includes the crown art body", () => {
+    const text = winnerLines(80).map((l) => l.text).join("\n");
+    expect(text).toContain("I came, I saw, I conquered!");
+  });
+});
+
+describe("ctimeStamp (ctime() %-.24s, ui-death.c L112)", () => {
+  it("formats a Date as a 24-char ctime string", () => {
+    // 1993-06-30 21:49:08 local.
+    const d = new Date(1993, 5, 30, 21, 49, 8);
+    const s = ctimeStamp(d);
+    expect(s).toMatch(/^\w{3} \w{3} [ \d]\d \d\d:\d\d:\d\d 1993$/);
+    expect(s.length).toBeLessThanOrEqual(24);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Monster list screen ([) - ui-mon-list.c format                     */
+/* ------------------------------------------------------------------ */
+
+/** A minimal visible monster of a real race, for the list format checks. */
+function fakeVisibleMon(race: MonsterRace, at: Loc): Monster {
+  const mflag = new FlagSet(8);
+  mflag.on(MFLAG.VISIBLE);
+  return {
+    race,
+    grid: at,
+    mflag,
+    mTimed: new Array(32).fill(0),
+    attr: 0,
+  } as unknown as Monster;
+}
+
+describe("monsterListScreenLines ([, ui-mon-list.c)", () => {
+  const kobold = monReg.races.find(
+    (r) => r.name === "kobold" && !r.flags.has(RF.UNIQUE),
+  ) as MonsterRace;
+
+  it("reports 'no monsters' when nothing is visible", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const lines = monsterListScreenLines(state, 80);
+    expect(lines[0]!.text).toBe("You can see no monsters.");
+  });
+
+  it("groups visible monsters into the LOS header + a race row", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.monsters.push(fakeVisibleMon(kobold, loc(22, 12)));
+    state.monsters.push(fakeVisibleMon(kobold, loc(23, 12)));
+    const lines = monsterListScreenLines(state, 80);
+    expect(lines[0]!.text).toBe("You can see 2 monsters:");
+    // The race row carries the "N race(s)" name and the glyph run.
+    const row = lines[1]!;
+    expect(row.text).toContain("kobolds");
+    expect(row.runs?.[0]?.text).toBe(kobold.dChar);
+  });
+
+  it("shows the single-monster direction offset and (asleep) tag", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const m = fakeVisibleMon(kobold, loc(23, 15)); // 3 E, 3 S
+    m.mTimed[MON_TMD.SLEEP] = 500;
+    state.monsters.push(m);
+    const lines = monsterListScreenLines(state, 80);
+    expect(lines[0]!.text).toBe("You can see 1 monster:");
+    expect(lines[1]!.text).toContain("(asleep)");
+    expect(lines[1]!.text).toMatch(/3 S 3 E\s*$/);
+  });
+
+  it("replaces the whole list while hallucinating (TMD_IMAGE)", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.monsters.push(fakeVisibleMon(kobold, loc(22, 12)));
+    state.actor.player.timed[TMD.IMAGE] = 10;
+    const lines = monsterListScreenLines(state, 80);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.text).toContain("hallucinations are too wild");
   });
 });
