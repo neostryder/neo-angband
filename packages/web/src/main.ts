@@ -120,6 +120,7 @@ import {
   historyAdd,
   historyStamp,
   HIST,
+  displayFeeling,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -2404,6 +2405,195 @@ async function noteCmd(): Promise<void> {
   render();
 }
 
+/**
+ * Fire at nearest (h / TAB, do_cmd_fire_at_nearest, player-attack.c:1412): the
+ * quick-fire convenience. All the work is in the core "fire-at-nearest" action
+ * (find first quiver ammo, target_set_closest, reuse do_cmd_fire with
+ * DIR_TARGET); the shell only pushes the command and lets the loop run it.
+ * C: ui-game.c:151.
+ */
+function fireAtNearestCmd(): void {
+  commandBuffer.push({ code: "fire-at-nearest" });
+  advance();
+}
+
+/**
+ * Walk into a trap (W / -, do_cmd_jump, cmd-cave.c:1319): a deliberate step in
+ * a direction that steps onto and triggers a disarmable trap instead of
+ * disarming it (CMD_JUMP). Requires a real direction (cmd_get_direction).
+ * C: ui-game.c:153.
+ */
+async function jumpCmd(): Promise<void> {
+  const dir = await promptDirection(term, "Walk into a trap in which direction?");
+  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  commandBuffer.push({ code: "jump", dir });
+  advance();
+}
+
+/**
+ * Identify symbol (/, do_cmd_query_symbol, ui-knowledge.c:4467): prompt for a
+ * display character (or a special list key), collect every monster race the
+ * player has memory of whose glyph matches (char_matches_key), then browse the
+ * matching races' recall sorted by level or kills. A free action (no turn).
+ * C: ui-game.c:183.
+ */
+async function querySymbolCmd(): Promise<void> {
+  // get_com_ex: one keypress. control+A/N/U select the full / unique-only /
+  // non-unique-only lists (ui-knowledge.c:4490-4498); any other key is a
+  // literal symbol to match. Captured directly so a control combo is readable.
+  const sym = await new Promise<{ all: boolean; uniq: boolean; norm: boolean; ch: string } | null>(
+    (resolve) => {
+      const { rows, cols } = term.size();
+      term.print(
+        0,
+        rows - 1,
+        "Enter character to be identified, or control+[ANU]: ".slice(0, cols - 1),
+        "#e0c040",
+      );
+      const finish = (v: { all: boolean; uniq: boolean; norm: boolean; ch: string } | null): void => {
+        window.removeEventListener("keydown", onKey, true);
+        resolve(v);
+      };
+      const onKey = (ev: KeyboardEvent): void => {
+        if (ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") return;
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        if (ev.key === "Escape") return finish(null);
+        if (ev.ctrlKey) {
+          const k = ev.key.toLowerCase();
+          if (k === "a") return finish({ all: true, uniq: false, norm: false, ch: "" });
+          if (k === "u") return finish({ all: true, uniq: true, norm: false, ch: "" });
+          if (k === "n") return finish({ all: true, uniq: false, norm: true, ch: "" });
+          return; // other control keys are ignored, awaiting a valid choice
+        }
+        if (ev.key.length === 1) return finish({ all: false, uniq: false, norm: false, ch: ev.key });
+      };
+      window.addEventListener("keydown", onKey, true);
+    },
+  );
+  render();
+  if (!sym) return;
+
+  // Collect matching monsters: any race with memory (all_known || sights) whose
+  // glyph matches, honouring the unique / non-unique filters (L4510-4528).
+  const races = booted.registries.monsters.races;
+  const matches: { race: MonsterRace; lore: MonsterLore }[] = [];
+  for (const race of races) {
+    if (!race.name) continue; // r_info[0] blank
+    const lore = state.lore.get(race.ridx);
+    if (!lore) continue; // never sighted
+    if (!lore.allKnown && lore.sights <= 0) continue;
+    if (sym.norm && race.flags.has(RF.UNIQUE)) continue;
+    if (sym.uniq && !race.flags.has(RF.UNIQUE)) continue;
+    if (!sym.all && race.dChar !== sym.ch) continue;
+    matches.push({ race, lore: getLore(state.lore, race) });
+  }
+
+  // No monsters to recall: silent return (L4530-4535).
+  if (matches.length === 0) return;
+
+  // Prompt sort order: y = by level, k = by kills, anything else aborts
+  // (L4538-4557). ESC on the menu = the "nope" branch.
+  const sortIdx = await selectFromMenu(term, "Recall details?", [
+    { label: "Sort by level" },
+    { label: "Sort by kills" },
+  ]);
+  if (sortIdx === null) return;
+  if (sortIdx === 1) {
+    matches.sort((a, b) => a.lore.pkills - b.lore.pkills || a.race.level - b.race.level);
+  } else {
+    matches.sort((a, b) => a.race.level - b.race.level || strcmpName(a.race, b.race));
+  }
+
+  // Browse from the end (highest), like the upstream idx = num - 1 walk; a
+  // selectable list stands in for the ESC/space paging, each pick showing that
+  // race's recall (monster_race_track + lore_show).
+  for (;;) {
+    const items = matches.map(({ race, lore }) => ({
+      label: `${capRaceName(race)}${lore.pkills > 0 ? `  (${lore.pkills} killed)` : ""}`,
+    }));
+    const idx = await selectFromMenu(term, "Recall which monster?", items);
+    if (idx === null) return;
+    const row = matches[idx];
+    if (!row) return;
+    await showRaceRecall(row.race, getLore(state.lore, row.race));
+  }
+}
+
+/** strcmp on race names (the query-symbol level-sort tiebreak, L1258-1262). */
+function strcmpName(a: MonsterRace, b: MonsterRace): number {
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+}
+
+/**
+ * Repeat level feeling (^F, do_cmd_feeling -> display_feeling(false),
+ * cmd-cave.c:1777): re-emit the current level feeling text. A free action.
+ * C: ui-game.c:186.
+ */
+function feelingCmd(): void {
+  displayFeeling(state, { feelingNeed: constants.feelingNeed });
+  render();
+}
+
+/**
+ * Show previous message (^O, do_cmd_message_one, ui-knowledge.c:3819): print the
+ * single most recent message, prefixed "> ", on the top line. A free action.
+ * C: ui-game.c:187.
+ */
+function showPrevMessageCmd(): void {
+  const latest = msglog.latest();
+  message = latest ? `> ${latest}` : "> ";
+  render();
+}
+
+/**
+ * Display quiver listing (|, do_cmd_quiver, ui-game.c:163): show the quiver
+ * slots and their ammo. The quiver is the real computed gear.quiver view (the
+ * WP-4 quiver subsystem); each slot is tagged by its digit, exactly as
+ * upstream's quiver tags.
+ */
+function quiverLines(): ScreenLine[] {
+  const lines: ScreenLine[] = [];
+  const quiver = state.gear.quiver ?? [];
+  quiver.forEach((handle, slot) => {
+    if (!handle) return;
+    const obj = gearGet(state.gear, handle);
+    if (!obj) return;
+    lines.push({ text: `${slot}) ${objectName(state, obj)}`, color: "#c8c8d4" });
+  });
+  if (lines.length === 0) lines.push({ text: "(quiver empty)", color: "#8a8a94" });
+  return lines;
+}
+
+/**
+ * Retire character (Q, textui_cmd_retire, ui-command.c:162 -> do_cmd_retire,
+ * cmd-misc.c:73): the faithful retire confirmation, then mark the character
+ * dead with died_from "Retiring" and run the shell's death/tombstone flow (the
+ * retire tombstone is retire.txt upstream; showTombstone already branches on
+ * the "Retiring" cause). C: ui-game.c:200.
+ */
+async function retireCmd(): Promise<void> {
+  const player = state.actor.player;
+  if (player.totalWinner) {
+    if (!(await confirmYesNo("Do you want to retire?"))) return;
+  } else {
+    if (!(await confirmYesNo("Do you really want to retire?"))) return;
+    // Special verification: type the '@' sign (ui-command.c:178-182).
+    const verify = await promptText(
+      term,
+      "Please verify RETIRING THIS CHARACTER by typing the '@' sign:",
+      "",
+      1,
+      "[ type @ to confirm, ESC to cancel ]",
+    );
+    if (verify !== "@") return;
+  }
+  // do_cmd_retire (cmd-misc.c:76-77): treated as dead with died_from "Retiring".
+  player.diedFrom = "Retiring";
+  state.isDead = true;
+  advance();
+}
+
 // --- Rest (R, do_cmd_rest / textui_cmd_rest) ------------------------------
 // The full N-turn / conditional rest, replacing the single-turn hold stub
 // (gap 11.1). Faithful to cmd-cave.c:1619 do_cmd_rest and ui-command.c:191
@@ -3068,7 +3258,27 @@ state.updateFov = (): void => {
 // Feed player commands to the loop from a small buffer; runGameLoop pulls
 // through state.nextCommand and returns INPUT when the buffer empties.
 const commandBuffer: PlayerCommand[] = [];
-state.nextCommand = (): PlayerCommand | null => commandBuffer.shift() ?? null;
+// CMD_REPEAT memory (cmd-core.c:247-258): the last non-repeat command handed to
+// the loop, so 'n' / ^V can re-dispatch it with its stored args (direction,
+// item, target). Recorded as the loop consumes commands so it survives the
+// async prompt each shell command runs before pushing.
+let lastRepeatCmd: PlayerCommand | null = null;
+state.nextCommand = (): PlayerCommand | null => {
+  const cmd = commandBuffer.shift() ?? null;
+  if (cmd && cmd.code !== "repeat") lastRepeatCmd = cmd;
+  return cmd;
+};
+
+/**
+ * Repeat previous command (n / ^V, CMD_REPEAT, cmd-core.c:283-316): re-run the
+ * last command with its stored arguments. Does nothing (like cmdq_push's silent
+ * error) when there is no remembered command. C: ui-game.c:223.
+ */
+function repeatLastCommand(): void {
+  if (!lastRepeatCmd) return;
+  commandBuffer.push({ ...lastRepeatCmd });
+  advance();
+}
 
 // Touch open/disarm: tapping the "Open"/"Disarm" action-bar button arms this,
 // so the NEXT canvas tap resolves to a direction for that command instead of
@@ -3882,6 +4092,32 @@ window.addEventListener("keydown", (ev) => {
       void openModal(() => runWizardDebugMenu(wizardCtx()));
       return;
     }
+    // Repeat level feeling (^F, do_cmd_feeling / ui-game.c:186): a free action.
+    if (ev.key === "f" || ev.key === "F") {
+      ev.preventDefault();
+      feelingCmd();
+      return;
+    }
+    // Show previous message (^O, do_cmd_message_one / ui-game.c:187): free.
+    if (ev.key === "o" || ev.key === "O") {
+      ev.preventDefault();
+      showPrevMessageCmd();
+      return;
+    }
+    // Repeat previous command (^V, CMD_REPEAT / ui-game.c:223).
+    if (ev.key === "v" || ev.key === "V") {
+      ev.preventDefault();
+      repeatLastCommand();
+      return;
+    }
+    return;
+  }
+  // Fire at nearest (TAB, do_cmd_fire_at_nearest / ui-game.c:151): the roguelike
+  // keyset key, valid in both keysets (never a movement key). Checked before the
+  // modifier-free letter block so TAB is not swallowed as a focus change.
+  if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key === "Tab") {
+    ev.preventDefault();
+    fireAtNearestCmd();
     return;
   }
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
@@ -4083,6 +4319,46 @@ window.addEventListener("keydown", (ev) => {
       // (so a player who does not know the keys is never stuck).
       ev.preventDefault();
       void openModal(openGameMenu);
+      return;
+    }
+    // Faithful keyset-sensitive bindings. In the roguelike keyset 'h'/'n'/'W'
+    // are movement or locate, so those forms are bound only in the original
+    // keyset; their keyset-independent aliases (TAB above, '-', ^V) always work.
+    const roguelike = state.options?.get("rogue_like_commands") ?? false;
+    // Fire at nearest (h, original keyset, do_cmd_fire_at_nearest / ui-game.c:151).
+    if (!roguelike && ev.key === "h") {
+      ev.preventDefault();
+      fireAtNearestCmd();
+      return;
+    }
+    // Walk into a trap (W original keyset / '-' both, do_cmd_jump / ui-game.c:153).
+    if (ev.key === "-" || (!roguelike && ev.key === "W")) {
+      ev.preventDefault();
+      void openModal(jumpCmd);
+      return;
+    }
+    // Repeat previous command (n, original keyset, CMD_REPEAT / ui-game.c:223).
+    if (!roguelike && ev.key === "n") {
+      ev.preventDefault();
+      repeatLastCommand();
+      return;
+    }
+    // Identify symbol (/, do_cmd_query_symbol / ui-game.c:183): free action.
+    if (ev.key === "/") {
+      ev.preventDefault();
+      void openModal(querySymbolCmd);
+      return;
+    }
+    // Display quiver listing (|, do_cmd_quiver / ui-game.c:163): free action.
+    if (ev.key === "|") {
+      ev.preventDefault();
+      void openModal(() => showTextScreen(term, "Quiver", quiverLines()));
+      return;
+    }
+    // Retire character (Q, textui_cmd_retire / ui-game.c:200).
+    if (ev.key === "Q") {
+      ev.preventDefault();
+      void openModal(retireCmd);
       return;
     }
   }
