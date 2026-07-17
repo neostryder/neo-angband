@@ -28,8 +28,10 @@
  *   thin wrapper over obj/ignore.ts ignore_item_ok); omitted for an omniscient
  *   or ignore-less describe.
  * - obj->kind->everseen / obj->ego->everseen "seen" mutations (L633-637): the
- *   bound registries are immutable and everseen is not modelled; skipped (a
- *   side effect, not name output).
+ *   bound registries are immutable, so these bits live in a per-game
+ *   EverseenKnowledge (obj/knowledge.ts) and are set through the optional
+ *   KnownDesc.markKindSeen / markEgoSeen deps hooks, mirroring the upstream
+ *   `!spoil`-guarded mutation. A pure Set insert; no RNG, no name output.
  * - The is_unknown() placeholder path (obj->kind != obj->known->kind) is a
  *   game-list-layer concern in the port; object_desc always gets a real
  *   object, so that branch is skipped (module docs of object.ts).
@@ -626,13 +628,20 @@ export function objectDesc(
     return `${obj.pval} gold pieces worth of ${obj.kind.name}${ignore}`;
   }
 
-  /* L633-637 everseen mutations: DEFERRED (immutable registry). */
-
   /* Build the known shadow. An omniscient observer (p == null) or a spoiled
    * description treats the object as fully known: the real object serves as
    * its own shadow, so every knowledge read resolves to the true value. */
   const omniscient = p === null || spoil;
   const shadow = omniscient ? obj : objectKnownShadow(obj, p, env, deps);
+
+  /* L633-637: "Egos and kinds whose name we know are seen." Mark the per-game
+   * everseen flags via the deps hooks, guarded by the upstream `!spoil` (here
+   * `!omniscient`, which also covers the null-player case where there is no
+   * store to mark). Pure Set inserts - no RNG, no effect on the name output. */
+  if (!omniscient) {
+    if (shadow.ego) deps.markEgoSeen?.(shadow.ego);
+    if (deps.isAware(obj.kind)) deps.markKindSeen?.(obj.kind);
+  }
 
   const assessed = (obj.notice & OBJ_NOTICE.ASSESSED) !== 0;
   const gates: CombatGates = omniscient

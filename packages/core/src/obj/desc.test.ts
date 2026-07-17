@@ -173,3 +173,49 @@ describe("object_desc ignore markers (obj-desc.c L536-538, L627-630; gap 4.5)", 
     expect(name).not.toContain("ignore");
   });
 });
+
+describe("object_desc everseen marking (obj-desc.c L633-637)", () => {
+  const markingDeps = (
+    markedKinds: number[],
+    markedEgos: number[],
+  ): KnownDesc => ({
+    isAware: () => true,
+    isTried: () => false,
+    markKindSeen: (kind) => markedKinds.push(kind.kidx),
+    markEgoSeen: (ego) => markedEgos.push(ego.eidx),
+  });
+
+  it("marks an aware kind everseen for a real, non-spoiled describe", () => {
+    const kinds: number[] = [];
+    const egos: number[] = [];
+    const obj = mkObj(ordinaryKind((k) => k.tval === TV.LIGHT));
+    objectDesc(obj, ODESC.PREFIX | ODESC.FULL, makePlayer(), makeEnv(), markingDeps(kinds, egos));
+    expect(kinds).toContain(obj.kind.kidx);
+  });
+
+  it("does NOT mark on a spoiled describe (upstream !spoil guard)", () => {
+    const kinds: number[] = [];
+    const egos: number[] = [];
+    const obj = mkObj(ordinaryKind((k) => k.tval === TV.LIGHT));
+    objectDesc(
+      obj,
+      ODESC.PREFIX | ODESC.FULL | ODESC.SPOIL,
+      makePlayer(),
+      makeEnv(),
+      markingDeps(kinds, egos),
+    );
+    expect(kinds).toEqual([]);
+  });
+
+  it("does NOT mark on an omniscient (p == null) describe and stays RNG-free", () => {
+    const kinds: number[] = [];
+    const egos: number[] = [];
+    const obj = mkObj(ordinaryKind((k) => k.tval === TV.LIGHT));
+    const rng = new Rng(4242);
+    const before = rng.getState();
+    objectDesc(obj, ODESC.PREFIX | ODESC.FULL, null, makeEnv(), markingDeps(kinds, egos));
+    expect(kinds).toEqual([]);
+    expect(egos).toEqual([]);
+    expect(rng.getState()).toEqual(before); // marking never draws from the RNG
+  });
+});

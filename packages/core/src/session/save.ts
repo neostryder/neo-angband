@@ -712,6 +712,13 @@ export interface SavedGame {
   isDead: boolean;
   flavor: { aware: number[]; tried: number[] };
   /**
+   * kind->everseen / ego->everseen (save.c L397, L533): the per-game "ever
+   * seen" flags for object kinds (by kidx) and egos (by eidx). Optional: absent
+   * in saves written before everseen tracking, which reload with an empty set
+   * (the object browser then falls back to flavour-aware membership only).
+   */
+  everseen?: { kinds: number[]; egos: number[] };
+  /**
    * seed_flavor (game-world.c): the seed flavor_init used to assign object
    * colours/titles. Optional: absent in saves written before flavour
    * assignment, which reload with a stable seed-0 assignment.
@@ -896,6 +903,7 @@ export function serializeGame(
   seedFlavor: number,
   ids: ContentIdResolver,
   randartSeed = 0,
+  everseen?: { snapshot(): { kinds: number[]; egos: number[] } },
 ): SavedGame {
   const floor: SavedGame["floor"] = [];
   for (const pile of state.floor.values()) {
@@ -962,6 +970,7 @@ export function serializeGame(
     playing: state.playing,
     isDead: state.isDead,
     flavor: flavor.snapshot(),
+    ...(everseen ? { everseen: everseen.snapshot() } : {}),
     seedFlavor,
     ...(state.options ? { options: state.options.snapshot() } : {}),
     ...(randartSeed ? { randartSeed } : {}),

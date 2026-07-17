@@ -78,7 +78,7 @@ import {
   playerKnowsCurse,
   playerKnowsSlay,
 } from "./knowledge";
-import type { ObjectKind, ElementInfo } from "./types";
+import type { ObjectKind, EgoItem, ElementInfo } from "./types";
 import { ELEM_MAX, OBJ_MOD_MAX } from "./types";
 
 /**
@@ -113,6 +113,19 @@ export interface KnownDesc {
    * caller with no ignore environment, e.g. an omniscient/spoiled describe).
    */
   ignoreItemOk?(obj: GameObject): boolean;
+  /**
+   * obj->kind->everseen = true (obj-desc.c L637): mark the kind as seen once the
+   * player is aware of its flavour. Optional; when absent (omniscient/spoiled or
+   * a caller with no EverseenKnowledge) the mutation is skipped, matching the
+   * upstream `!spoil` guard. A pure Set insert - no RNG, no ordering dependency.
+   */
+  markKindSeen?(kind: ObjectKind): void;
+  /**
+   * obj->ego->everseen = true (obj-desc.c L634): mark the ego as seen once the
+   * known shadow carries an ego (the ego's name is known). Optional; same
+   * skip-on-absent semantics as markKindSeen.
+   */
+  markEgoSeen?(ego: EgoItem): void;
 }
 
 /**

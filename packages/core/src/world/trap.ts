@@ -27,6 +27,12 @@ export interface TrapKind {
   name: string;
   /** Longer description used by lookup_trap ("spiked pit"). */
   desc: string;
+  /**
+   * trap->text (trap.c parse_trap_desc / init.c L1887): the long recall
+   * paragraph shown by trap_lore (ui-knowledge.c L2588). Compiled from the
+   * JSON `desc` lines; empty when the record has none.
+   */
+  text: string;
   glyph: string;
   color: string;
   /** appear: rarity (0 = never placed randomly), min depth, max number. */
@@ -109,6 +115,7 @@ export function bindTraps(records: readonly TrapRecordJson[]): TrapKind[] {
     tidx,
     name: rec.name.name,
     desc: rec.name.desc,
+    text: joined(rec.desc),
     glyph: rec.graphics.glyph,
     color: rec.graphics.color,
     rarity: rec.appear?.rarity ?? 0,
