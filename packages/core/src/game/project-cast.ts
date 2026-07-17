@@ -164,6 +164,9 @@ export function basicPlayerActor(
     resistLevel?: (type: number) => number;
     /** state.dam_red / perc_dam_red from the live derived state. */
     reduction?: () => DamageReduction;
+    /** minus_ac(p): damage a worn armour piece to acid, returning the halving
+     * flag (obj-gear.c L376-438). Default no armour effect. */
+    minusAc?: () => boolean;
   } = {},
 ): PlayerProjActor {
   const p = state.actor.player;
@@ -192,7 +195,7 @@ export function basicPlayerActor(
     get reduction(): DamageReduction {
       return opts.reduction ? opts.reduction() : { damRed: 0, percDamRed: 0 };
     },
-    minusAc: false,
+    minusAc: opts.minusAc ?? ((): boolean => false),
   };
 }
 

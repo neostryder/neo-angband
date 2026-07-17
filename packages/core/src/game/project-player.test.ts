@@ -35,7 +35,7 @@ function actor(overrides: Partial<PlayerProjActor> = {}): PlayerProjActor {
     hitpointWarn: 3,
     resistLevel: () => 0,
     reduction: { damRed: 0, percDamRed: 0 },
-    minusAc: false,
+    minusAc: () => false,
     ...overrides,
   };
 }

@@ -26,10 +26,14 @@
 import { loc } from "../loc";
 import type { Loc } from "../loc";
 import { SKILL, STAT_MAX } from "../player/types";
-import { EF, HIST, PF, RF, STAT, TMD } from "../generated";
+import { EF, ELEM, HIST, OF, PF, RF, STAT, TMD } from "../generated";
 import { bindPlayer } from "../player/bind";
 import type { PlayerPackRecords, PlayerRegistry } from "../player/bind";
-import { generatePlayer } from "../player/birth";
+import {
+  generatePlayer,
+  optionsInitCheat,
+  flavorSetAllAware,
+} from "../player/birth";
 import {
   calcBonuses,
   calcHitpoints,
@@ -46,7 +50,7 @@ import { makePlayerSideEffects } from "../game/player-side";
 import { makeMonBlowEnv } from "../game/mon-side";
 import { adj_dex_safe } from "../player/calcs";
 import { buildEffectContext } from "../game/effect-env";
-import { sourceMonster } from "../effects/interpreter";
+import { sourceMonster, sourcePlayer } from "../effects/interpreter";
 import {
   DEFAULT_GAME_CONSTANTS,
   addMonster,
@@ -84,7 +88,7 @@ import { registerSummonHandlers } from "../game/effect-summon";
 import type { SummonEffectEnv } from "../game/effect-summon";
 import { registerDetectHandlers } from "../game/effect-detect";
 import { becomeAware, caveIlluminateKnown, newKnownMap } from "../game/known";
-import { PY_EXERT, compactMonsters, isDaytime, playerOverExert } from "../game/world";
+import { PY_EXERT, compactMonsters, isDaytime, playerOfHasWorld, playerOverExert } from "../game/world";
 import { restoreMonsters } from "../game/scheduler";
 import { squareIsLit } from "../world/view";
 import { newTargetState, targetSetMonster } from "../game/target";
@@ -112,9 +116,11 @@ import { basicPlayerActor } from "../game/project-cast";
 import type { CastContext } from "../game/project-cast";
 import type { EffectEnvDeps } from "../game/effect-env";
 import { installMonsterCasting } from "../game/mon-ranged";
+import { buildMonSpellHooks, buildFailRuneEnv } from "../game/mon-cast";
 import { installMonCommand } from "../game/mon-cmd";
 import { monsterChangeShape, monsterRevertShape } from "../game/mon-shape";
 import type { MonShapeHooks } from "../mon/timed";
+import { installMonTimedLore } from "../mon/timed";
 import { installObjCommands } from "../game/obj-cmd";
 import { installCaveCommands, movementAutoDig } from "../game/cave-cmd";
 import type { CaveCmdDeps } from "../game/cave-cmd";
@@ -161,19 +167,28 @@ import {
   OBJ_NOTICE,
   objectLearnOnWield,
   playerLearnInnate,
+  playerLearnAllRunes,
 } from "../obj/knowledge";
 import type { FlavorAwareDeps } from "../obj/knowledge";
 import { flavorInit } from "../obj/flavor";
 import { ELEM_MAX } from "../obj/types";
 import { ArtifactState, ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
-import { monsterDeath } from "../game/mon-death";
+import { monsterDeath, installNonplayerHitDeps } from "../game/mon-death";
 import type { MonsterDeathDeps } from "../game/mon-death";
 import type { ProjectFeatEnv } from "../game/project-feat";
-import { newGear, outfitPlayer, gearGet } from "../game/gear";
-import type { GameObject } from "../obj/object";
-import { createDefaultRegistry } from "../game/player-turn";
+import { newGear, outfitPlayer, gearGet, minusAc as applyMinusAc } from "../game/gear";
+import { objectValue as computeObjectValue } from "../obj/value";
+import type { GameObject, CurseTimedFoil } from "../obj/object";
+import { buildCurseTimedFoil } from "../obj/object";
+import { createDefaultRegistry, installMeleeSideEffects } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
+import { buildTempBrandSlay } from "../player/timed";
+import type {
+  TimedTempBrandSlayRecord,
+  PlayerIncCheckQueries,
+  TimedWeaponDesc,
+} from "../player/timed";
 import { disturb, installRunning } from "../game/player-path";
 import { bindCore, bootLevel, genDeps } from "./boot";
 import { isQuest, playerQuestsReset, questCheck } from "../game/quest";
@@ -286,6 +301,19 @@ export interface StartGameOptions extends BootLevelOptions {
    * with these stats and the stat stage draws no RNG.
    */
   birthStats?: readonly number[];
+  /**
+   * A standard-roller result the shell's roller UI rolled and the player
+   * accepted (do_cmd_roll_stats, player-birth.c:1159-1193): the STAT_MAX natural
+   * stat values, applied VERBATIM by generatePlayer (no point-buy clamp, no
+   * stat RNG). Used when `roller` is "roller"/omitted; wins over `birthStats`.
+   */
+  rolledStats?: readonly number[];
+  /**
+   * An edited character background the shell's history stage produced
+   * (do_cmd_choose_history, player-birth.c:1219-1230). Replaces the get_history
+   * text on the player; the history walk still runs so the RNG order is intact.
+   */
+  history?: string;
   /**
    * Birth / interface option choices, applied over the table defaults at
    * character creation (option.c options_init_defaults). Birth options become
@@ -415,6 +443,7 @@ function wireGame(
   players: PlayerRegistry,
   pstate: PlayerState,
   seedFlavor: number,
+  pack: GamePack,
 ): WiredGame {
   // Live commands over the floor piles: 'g'et + autopickup on stepping.
   const registry = createDefaultRegistry();
@@ -690,6 +719,13 @@ function wireGame(
   /* Hoisted so the wired result can surface it to the host (W2.2 mod facade);
    * assigned inside the projections block below, null on a worldless boot. */
   let effectRegistry: EffectRegistry | null = null;
+  /* obj_kind_can_browse(kind) for the birthed class (obj-tval.c): the set of
+   * this character's readable spellbook kinds (tval,sval), stamped by
+   * registerBookKinds. make_object uses it to reject unreadable books (gap 3.5).
+   * Empty for a non-caster class, so it rejects every book (faithful). */
+  const classBookKeys = new Set(
+    state.actor.player.cls.magic.books.map((b) => `${b.tvalIdx},${b.sval}`),
+  );
   const makeDeps: MakeDeps = {
     reg: reg.objects,
     alloc: new ObjAllocState(reg.objects, reg.constants),
@@ -702,6 +738,16 @@ function wireGame(
     get modRules() {
       return state.modRules;
     },
+    /* append_object_curse TIMED_INC foil (obj-curse.c L159-188, gap 3.2):
+     * reject a curse an existing item property would foil, built from the bound
+     * player-timed fail tables. */
+    timedFoil: buildCurseTimedFoil(players.timed),
+    /* obj_kind_can_browse book rejection (obj-make.c L1187-1194, gap 3.5). */
+    canBrowseBook: (kind): boolean =>
+      classBookKeys.has(`${kind.tval},${kind.sval}`),
+    /* make_gold birth_no_selling 5x dungeon inflation (obj-make.c L1310-1312,
+     * gap 3.7). */
+    noSelling: state.options?.get("birth_no_selling") ?? false,
   };
   if (reg.projections) {
     const effects = new EffectRegistry();
@@ -819,6 +865,15 @@ function wireGame(
         damRed: derived.damRed,
         percDamRed: derived.percDamRed,
       }),
+      /* minus_ac (obj-gear.c L376-438 / project-player.c L69): a live acid hit
+       * damages a random worn armour piece and halves the damage (gap 6.2/4.2).
+       * Called by project_p only inside adjust_dam's PROJ_ACID branch, so the
+       * armour-damage side effect and its RNG draws fire exactly as upstream. */
+      minusAc: (): boolean =>
+        applyMinusAc(state.actor.player, state.gear, state.rng, {
+          msg: (text: string): void => state.msg?.(text),
+          updateBonuses: (): void => state.updateBonuses?.(),
+        }),
     });
     const cast: CastContext = {
       projections: reg.projections,
@@ -889,12 +944,38 @@ function wireGame(
         },
       },
     };
+    /* player_inc_check resolvers (player-timed.c:945-953, gaps 2.8/6.11): read
+     * the LIVE derived state so EF_TIMED_INC on the player is foiled by a worn
+     * resist ("You resist the effect!") and the resisted LIGHT/SOUND messages
+     * are gated. Absent, every increase was allowed. Same shape as
+     * buildFailRuneEnv / makePlayerSideEffects. */
+    const incQueries: PlayerIncCheckQueries = {
+      objectFlag: (name): boolean => {
+        const i = (OF as Record<string, number>)[name];
+        return i !== undefined && (state.playerState?.flags.has(i) ?? false);
+      },
+      resistLevel: (name): number => {
+        const i = (ELEM as Record<string, number>)[name];
+        return i !== undefined
+          ? (state.playerState?.elInfo[i]?.resLevel ?? 0)
+          : 0;
+      },
+      playerFlag: (name): boolean => {
+        const i = (PF as Record<string, number>)[name];
+        return i !== undefined && (state.playerState?.pflags.has(i) ?? false);
+      },
+      timedActive: (name): boolean => {
+        const i = (TMD as Record<string, number>)[name];
+        return i !== undefined && (state.actor.player.timed[i] ?? 0) > 0;
+      },
+    };
     const envDeps: EffectEnvDeps = {
       timedTable: players.timed,
       // Effect status/damage messages ("You feel better", "You feel yourself
       // yanked upwards!") route to the game's message sink so a shell shows
       // them; absent, they would drop.
       onMessage: (text: string): void => state.msg?.(text),
+      incQueries,
     };
 
     /* monster_change_shape / monster_revert_shape, driving the
@@ -909,6 +990,11 @@ function wireGame(
       revert: (m) => monsterRevertShape(state, m),
     };
 
+    /* spell_message {type}/{oftype} tags resolve the caster's lash projection
+     * name to its lash_desc (mon-spell.c L47-274 tag substitution). */
+    const projLashDesc = new Map<string, string | null>();
+    for (const proj of reg.projections) projLashDesc.set(proj.name, proj.lashDesc);
+
     const monSpellDeps = {
       registry: effects,
       cast,
@@ -920,6 +1006,14 @@ function wireGame(
       general,
       summon,
       monShape,
+      /* do_mon_spell UI/lore hooks (8.1/8.2/8.11): announce the cast
+       * (spell_message, mon-spell.c L369), print the save message, and learn
+       * the foil rune on a save (spell_check_for_fail_rune, L383). Without this
+       * a monster's spells were silent. */
+      hooks: buildMonSpellHooks(state, {
+        lashDesc: (name: string): string | null => projLashDesc.get(name) ?? null,
+        failRune: buildFailRuneEnv(state, players.timed),
+      }),
     };
     installMonsterCasting(state, monSpellDeps, {
       /* become_aware: a hidden caster reveals itself (mon-attack.c L454). */
@@ -930,6 +1024,22 @@ function wireGame(
     });
     /* do_cmd_mon_command: EF_COMMAND possession drives the monster. */
     installMonCommand(state, monSpellDeps);
+
+    /* mon_take_nonplayer_hit deps (mon-util.c L1193, gaps 5.1/7.2): monster-vs-
+     * monster and terrain (lava) damage route through the full non-player hit
+     * path - die/pain messages, loot via monster_death, fear rolls. The
+     * scheduler reads these for monster_take_terrain_damage; without them
+     * terrain damage was inert. */
+    installNonplayerHitDeps(state, {
+      ...deathDeps,
+      message: (text: string): void => state.msg?.(text),
+    });
+
+    /* does_resist lore (mon-timed.c L107-110, gap 8.6): when a monster resists a
+     * timed effect via a race flag, learn that flag into visible lore. The
+     * timed layer has no deps param (get_lore is a global upstream), so register
+     * the session's lore store against its Rng. */
+    installMonTimedLore(state.rng, state.lore);
 
     /* make_attack_normal's blow-effect environment (game/mon-side.ts): the
      * monster-melee analog of the player onSideEffects hook, so a melee blow
@@ -974,9 +1084,45 @@ function wireGame(
       item,
       summon,
       floorEnv,
+      /* object_learn_on_use XP (obj-knowledge.c L1925-1936, gap 4.3): a first
+       * identify-by-use rewards experience via the same ExpDeps hook as
+       * spell/trap/chest use. */
+      expGain,
+      /* calc_inventory quiver inputs (gap 4.1a): the earlier_object ammo value
+       * tiebreak (object_value, ammo is always aware), the preferred_quiver_slot
+       * keyset (rogue_like_commands) and the character_dungeon re-arrange
+       * message gate (true in live play). ammoTval falls back to the live
+       * derived state.playerState.ammoTval inside calcInvOpts. */
+      objectValue: (obj: GameObject): number =>
+        computeObjectValue(reg.objects, obj, 1, true),
+      rogueLike: state.options?.get("rogue_like_commands") ?? false,
+      characterDungeon: true,
       // Route object/effect messages (msg / msgt / activation_message) to the
       // game's message sink so a shell shows them; absent, they would drop.
       env: { msg: (text: string): void => state.msg?.(text) },
+    });
+
+    /* Player melee blow side effects (player-attack.c:669-1012, gap 2.5/3.6):
+     * the OF_IMPACT earthquake (effect_simple(EF_EARTHQUAKE, source_player, 10)
+     * L688) and the temporary brand/slay predicate (player_has_temporary_brand/
+     * slay over the live timed array, obj-slays.c:287-317). Without these the
+     * quake never fired and brand/slay potions gave no melee multiplier. The
+     * brand/slay directives live in the player_timed pack records (untyped on
+     * PlayerTimedRecordJson but present in the data), in TMD index order. */
+    installMeleeSideEffects(state, {
+      earthquake: (): void => {
+        effects.effectSimple(EF.EARTHQUAKE, buildEffectContext(state, envDeps), {
+          origin: sourcePlayer(),
+          subtype: 0,
+          radius: 10,
+        });
+      },
+      temp: buildTempBrandSlay(
+        state.actor.player,
+        pack.player.timed as unknown as readonly TimedTempBrandSlayRecord[],
+        reg.objects.brands,
+        reg.objects.slays,
+      ),
     });
 
     // Player spellcasting (cast / study) for casting classes.
@@ -995,6 +1141,14 @@ function wireGame(
       env: {
         expGain,
         msg: (text: string): void => state.msg?.(text),
+        // spell_chance fear penalty (player-spell.c:424, gap 2.11): +20 fail
+        // from fear of ANY source - player_of_has(OF_AFRAID) folds the timed
+        // TMD_AFRAID synonym and any equipment/intrinsic OF_AFRAID; the timed
+        // check is kept as a belt-and-braces superset. The fallback saw only
+        // the timed synonym, missing equipment-borne fear.
+        afraid: (): boolean =>
+          playerOfHasWorld(state, OF.AFRAID) ||
+          (state.actor.player.timed[TMD.AFRAID] ?? 0) > 0,
         // spell_chance's PF_UNLIGHT penalty (player-spell.c L417): the
         // Necromancer's +25 fail on a lit square (square_islit(cave, p->grid)).
         gridIsLit: (): boolean => squareIsLit(state.chunk, state.actor.grid),
@@ -1157,6 +1311,22 @@ function wireGame(
       onMessage: (text: string): void => state.msg?.(text),
       onNotify: (_idx: number, canDisturb: boolean): void => {
         if (canDisturb) disturb(state);
+      },
+      /* print_custom_message weapon substitution (obj-util.c:1118, gap 2.9):
+       * the {name}/{kind}/{s}/{is} tags in weapon-related timed messages (the
+       * temporary-brand on-begin/on-end lines) resolve against the CURRENTLY
+       * wielded weapon, so a getter keeps it live across wield/takeoff. name /
+       * kind use the ODESC_BASE approximation (kind name) already adopted across
+       * the port (obj-knowledge.ts). No weapon => the obj == NULL tag forms. */
+      get weapon(): TimedWeaponDesc {
+        const w = state.actor.weapon;
+        /* No weapon => the obj == NULL tag forms. A sentinel with name/kind
+         * "hands" and number 2 reproduces substituteTimedMessage's obj == NULL
+         * output byte-for-byte ({name}/{kind} -> "hands", {s} -> "", {is} ->
+         * "are"), so exactOptionalPropertyTypes is satisfied without a getter
+         * that returns undefined. */
+        if (!w) return { name: "hands", kind: "hands", number: 2 };
+        return { name: w.kind.name, kind: w.kind.name, number: w.number };
       },
     },
     takeHitHooks: {
@@ -1655,6 +1825,8 @@ function refreshTownStores(state: GameState, reg: CoreRegistries): void {
        * for consistency with the rest of the game's MakeDeps. */
       artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
       noArtifacts: state.options?.get("birth_no_artifacts") ?? false,
+      /* class book-rejection / curse-foil / no-selling generation foils. */
+      ...genFoilFields(state),
     };
     state.stores = createTownStores(
       reg.stores.stores,
@@ -1696,6 +1868,17 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     ...(opts.hitpointWarn !== undefined ? { hitpointWarn: opts.hitpointWarn } : {}),
   });
 
+  // options_init_cheat (player-birth.c:1234, gap 1.12) DEFERRED: the faithful
+  // call clears every cheat option and its score twin at acceptance, but the
+  // port's optionOverrides seam injects cheat options at birth (a mechanism
+  // with no upstream equivalent - upstream sets cheat options in-game, never at
+  // birth), and session/save.test.ts (WP-10 lock) relies on a birth-injected
+  // cheat_hear surviving. Calling optionsInitCheat here clears it and reddens
+  // that test. Needs a maintainer decision on whether birth-time cheat
+  // overrides should survive; see the WP-9 report. optionsInitCheat is imported
+  // and unit-tested (player/birth.test.ts); only the accept-flow call is held.
+  void optionsInitCheat;
+
   // OPT(player, birth_randarts) (obj-randart.c do_randart): replace the
   // standard artifact set with a random one BEFORE the starting level is
   // generated, so its drops come from the randart set. The seed is derived
@@ -1705,7 +1888,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   let randartSeed = 0;
   if (options.get("birth_randarts")) {
     randartSeed = new Rng(opts.seed ?? 1).randint0(0x10000000);
-    swapRandartSet(reg, randartSeed);
+    swapRandartSet(reg, randartSeed, buildCurseTimedFoil(players.timed));
   }
 
   // aup_info[] (obj-make.c): the game's shared artifact-created registry.
@@ -1738,13 +1921,20 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     opts.roller === "point" &&
     opts.birthStats !== undefined &&
     opts.birthStats.length === STAT_MAX;
+  // The accepted standard-roller stats ride opts.rolledStats (gap, birth
+  // thread-through): applied verbatim, they draw no stat RNG, so the character
+  // is born with exactly the set the roller UI showed.
+  const useRolledStats =
+    opts.rolledStats !== undefined && opts.rolledStats.length === STAT_MAX;
   const birth = generatePlayer(
     race,
     cls,
     {
       body,
       historyChart: players.historyChart(race),
+      ...(useRolledStats ? { rolledStats: opts.rolledStats } : {}),
       ...(usePointBuy ? { stats: opts.birthStats } : {}),
+      ...(opts.history !== undefined ? { historyOverride: opts.history } : {}),
     },
     booted.rng,
   );
@@ -1757,7 +1947,12 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // Populate the gear store and wear the class starting kit (player_outfit +
   // wield_all) BEFORE deriving bonuses, so calc_bonuses sees the worn gear.
   const gear = newGear();
-  outfitPlayer(gear, birth.player, reg.objects, booted.rng, reg.constants);
+  // player_outfit (player-birth.c L612-637): thread the birth-option accessor so
+  // birth_start_kit (gap 1.6) and the per-start-item eopts exclusion (gap 1.8)
+  // are honoured; without it every character got the full class kit.
+  outfitPlayer(gear, birth.player, reg.objects, booted.rng, reg.constants, {
+    opt: (name: string): boolean => options.get(name) ?? false,
+  });
 
   // Resolve the worn objects by body slot; calc_bonuses reads them for the
   // equipment analysis, and the wielded weapon drives melee (py_attack).
@@ -1854,7 +2049,23 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // seed_flavor (player-birth.c L1291): drawn once at birth from the game RNG
   // and persisted, so the object colours/titles stay stable across reloads.
   const seedFlavor = booted.rng.randint0(0x10000000);
-  const wired = wireGame(state, reg, players, pstate, seedFlavor);
+  const wired = wireGame(state, reg, players, pstate, seedFlavor, pack);
+
+  // birth_know_runes (player-birth.c L1261-1262): a birth_know_runes character
+  // knows every rune for ID-on-walkover (gap 1.5). No RNG. Before
+  // player_learn_innate, matching the C acceptance order.
+  if (options.get("birth_know_runes")) {
+    playerLearnAllRunes(birth.player, state.runeEnv);
+  }
+
+  // birth_know_flavors (player-birth.c L1295-1296): a birth_know_flavors
+  // character is aware of every flavoured kind for auto-ID of consumables (gap
+  // 1.5). flavor_init already ran inside wireGame. No RNG.
+  if (options.get("birth_know_flavors")) {
+    flavorSetAllAware(wired.flavor, reg.objects.kinds, (k) =>
+      state.hasFlavor ? state.hasFlavor(k) : false,
+    );
+  }
 
   // Racial rune knowledge (player-birth.c L1274 player_learn_innate) and the
   // starting kit's obvious runes (L495 object_learn_on_wield): the outfit
@@ -1928,6 +2139,8 @@ function makeStoreApi(
       /* allowArtifacts=false in store generation; inert but shared. */
       artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
       noArtifacts: state.options?.get("birth_no_artifacts") ?? false,
+      /* class book-rejection / curse-foil / no-selling generation foils. */
+      ...genFoilFields(state),
     },
     maxDepth: state.actor.player.maxDepth,
     stores: state.stores ?? [],
@@ -1984,16 +2197,48 @@ function makeStoreApi(
  * keep resolving; only the artifact properties change. Mutates the per-game
  * ObjRegistry (built fresh by bindCore), never a shared global.
  */
-function swapRandartSet(reg: CoreRegistries, seed: number): void {
+/**
+ * The player-class-and-timed dependent object-generation foils shared by every
+ * live MakeDeps built after wireGame (store stock): append_object_curse's
+ * TIMED_INC foil (gap 3.2), obj_kind_can_browse book rejection (gap 3.5) and
+ * make_gold's birth_no_selling inflation (gap 3.7). The dungeon/loot makeDeps
+ * in wireGame builds these inline from players.timed (state.world is not set
+ * yet at that point). Reads the LIVE timed table so it stays correct.
+ */
+function genFoilFields(
+  state: GameState,
+): Pick<MakeDeps, "timedFoil" | "canBrowseBook" | "noSelling"> {
+  const keys = new Set(
+    state.actor.player.cls.magic.books.map((b) => `${b.tvalIdx},${b.sval}`),
+  );
+  return {
+    timedFoil: buildCurseTimedFoil(state.world?.timedTable ?? []),
+    canBrowseBook: (kind): boolean => keys.has(`${kind.tval},${kind.sval}`),
+    noSelling: state.options?.get("birth_no_selling") ?? false,
+  };
+}
+
+function swapRandartSet(
+  reg: CoreRegistries,
+  seed: number,
+  timedFoil?: CurseTimedFoil,
+): void {
   /* Thread the RANDNAME_TOLKIEN corpus (names.json section 1, loaded into
    * CoreRegistries.nameSections at boot) so artifact_gen_name draws faithful
    * Markov names via randnameMake instead of the local syllable fallback -
    * this also keeps the RNG draw count identical to upstream for the whole set
    * (obj-randart.c L2713-L2724). */
+  /* artifact_curse_conflicts TIMED_INC foil (obj-randart.c L2530, gap 3.3):
+   * thread the player-timed fail tables so a randart curse an item property
+   * would foil is rejected / removable. The activation-redundancy summarizer
+   * (gap 3.8, effect_summarize_properties) is not ported (effects domain), so
+   * it is left unset - remove_contradictory_activation stays a conservative
+   * no-op. */
   const randarts = doRandart(
     reg.objects,
     seed,
     reg.nameSections.get(RANDNAME_TOLKIEN),
+    timedFoil ? { timedFoil } : undefined,
   );
   reg.objects.artifacts.length = 0;
   reg.objects.artifacts.push(...randarts);
@@ -2105,7 +2350,7 @@ export function loadGame(
   // randarts (do_randart preserves indices). Off / seed 0: the standard set.
   const randartSeed = save.randartSeed ?? 0;
   if (options.get("birth_randarts") && randartSeed) {
-    swapRandartSet(reg, randartSeed);
+    swapRandartSet(reg, randartSeed, buildCurseTimedFoil(players.timed));
   }
 
   // aup_info[] (load.c): the artifact-created registry. Restore the saved
@@ -2235,7 +2480,7 @@ export function loadGame(
   /* seed_flavor from the save (load.c L960). Older saves predate it; fall
    * back to 0 so flavor_init still produces a stable per-load assignment. */
   const seedFlavor = save.seedFlavor ?? 0;
-  const wired = wireGame(state, reg, players, pstate, seedFlavor);
+  const wired = wireGame(state, reg, players, pstate, seedFlavor, pack);
   /* restore() replaces the aware/tried sets, so it must run AFTER flavor_init's
    * aware-marking of non-flavoured kinds - the save is the source of truth for
    * what the player has actually identified. */
