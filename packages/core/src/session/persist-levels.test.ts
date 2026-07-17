@@ -194,4 +194,73 @@ describe("birth_levels_persist (A1 persistent levels)", () => {
     );
     expect(cached!.monsters.filter((m) => m).length).toBe(frozenMons);
   });
+
+  it("round-trips a level's stair connectors (chunk->join) through save/load", () => {
+    const game = startGame(pack, {
+      seed: 77,
+      depth: 3,
+      optionOverrides: { birth_levels_persist: true },
+    });
+    const state = game.state;
+
+    /* Take the fresh-generation path (bootLevel does not set currentJoins), so
+     * a dungeon level with real stairs populates state.currentJoins. */
+    game.changeLevel(5);
+    expect(state.currentJoins).toBeDefined();
+    expect(state.currentJoins!.length).toBeGreaterThan(0);
+    const joins = state.currentJoins!.map((j) => ({
+      x: j.grid.x,
+      y: j.grid.y,
+      feat: j.feat,
+    }));
+
+    /* Descend again: depth 5 is frozen with its join list. */
+    game.changeLevel(6);
+    const frozen5 = state.levelCache!.get(5)!;
+    expect(
+      frozen5.join.map((j) => ({ x: j.grid.x, y: j.grid.y, feat: j.feat })),
+    ).toEqual(joins);
+
+    /* Save + load through real JSON; the frozen join survives. */
+    const saved = JSON.parse(JSON.stringify(saveGame(game)));
+    const restored = loadGame(pack, saved);
+    const cached5 = restored.state.levelCache!.get(5)!;
+    expect(
+      cached5.join.map((j) => ({ x: j.grid.x, y: j.grid.y, feat: j.feat })),
+    ).toEqual(joins);
+    /* The in-play level (depth 6) round-trips its currentJoins too. */
+    expect(restored.state.currentJoins).toBeDefined();
+    expect(
+      restored.state.currentJoins!.map((j) => ({
+        x: j.grid.x,
+        y: j.grid.y,
+        feat: j.feat,
+      })),
+    ).toEqual(
+      state.currentJoins!.map((j) => ({
+        x: j.grid.x,
+        y: j.grid.y,
+        feat: j.feat,
+      })),
+    );
+  });
+
+  it("does not touch join state or the savefile when the option is OFF", () => {
+    const game = startGame(pack, { seed: 77, depth: 3 });
+    const state = game.state;
+    expect(state.options?.get("birth_levels_persist")).toBe(false);
+
+    /* A fresh dungeon level with the option off must not capture currentJoins,
+     * so the savefile stays byte-identical to today (no join keys). */
+    game.changeLevel(5);
+    expect(state.currentJoins).toBeUndefined();
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game)));
+    expect(saved.currentJoins).toBeUndefined();
+    expect(saved.levelCache).toBeUndefined();
+
+    /* A clean load leaves currentJoins unset. */
+    const restored = loadGame(pack, saved);
+    expect(restored.state.currentJoins).toBeUndefined();
+  });
 });

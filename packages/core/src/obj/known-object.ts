@@ -22,11 +22,20 @@
  *   subsumed by objectKnownShadow. Their live call sites (stepping onto / over
  *   a floor pile, grabbing a monster's drop, quake/destruction object rubble)
  *   live in the world/game layer -> emitted as WIRING-NEEDED.
- * - object_see / object_sense (the known-cave floor OBJECT LIST) and
+ * - object_see / object_sense are ported here (objectSee / objectSense) as
+ *   obj-layer bodies over an injected KnownFloorDeps, matching the
+ *   objectTouch / objectGrab pattern: the object-knowledge decisions (new exact
+ *   memory vs upgrade-from-sensed vs number refresh; the money/item sensed
+ *   marker) live here, while the world layer (game/known.ts squareKnowPile /
+ *   squareSensePile) supplies the reduced grid-keyed floor memory the deps
+ *   read and write. Their live call sites are emitted as WIRING-NEEDED.
  *   update_player_object_knowledge (the twin re-sync + autoinscribe + inventory
- *   redraw) are world/UI concerns handled by game/known.ts (squareKnowPile /
- *   squareSensePile) and the port's knowledge-update sites, not a per-object
- *   twin; there is no separate obj-layer body for them.
+ *   redraw) remains a world/UI concern handled at the port's knowledge-update
+ *   sites, not a per-object twin.
+ * - The progressive-sensing gate player_know_object applies before any ID
+ *   (obj-knowledge.c L1027-1035: unseen / only-sensed objects get nothing, seen
+ *   objects get base properties) is modelled by objectKnownShadow's optional
+ *   KnownState argument (default SEEN keeps the pre-existing behaviour).
  *
  * Synthesis notes (each ledgered inline):
  * - p->obj_k->dd/ds/ac (the "know dice"/"know ac" runes) are now real fields on
@@ -68,6 +77,7 @@ import {
   tvalIsChest,
   tvalIsJewelry,
   tvalIsLauncher,
+  tvalIsMoney,
   tvalIsWearable,
 } from "./object";
 import type { RuneEnv } from "./knowledge";
@@ -80,6 +90,21 @@ import {
 } from "./knowledge";
 import type { ObjectKind, EgoItem, ElementInfo } from "./types";
 import { ELEM_MAX, OBJ_MOD_MAX } from "./types";
+
+/**
+ * The player's floor-knowledge state for a single object, the three cases
+ * player_know_object branches on before granting any ID (obj-knowledge.c
+ * L1027-1035): UNSEEN is obj->known == NULL (nothing recorded), SENSED is
+ * obj->known->kind != obj->kind (a fake unknown-item / unknown-treasure marker
+ * from object_sense), SEEN is an exact memory whose kind matches. Only SEEN
+ * objects reach object_set_base_known and the fuller rune-knowledge fill.
+ */
+export const KNOWN_STATE = {
+  UNSEEN: 0,
+  SENSED: 1,
+  SEEN: 2,
+} as const;
+export type KnownState = (typeof KNOWN_STATE)[keyof typeof KNOWN_STATE];
 
 /**
  * The flavour-awareness view object_desc / the shadow synthesis need. Upstream
@@ -373,6 +398,13 @@ export function objectFullyKnown(
  * player_know_object (L1022) onto the port's fields; the shadow is a fresh
  * GameObject holding only what the player knows.
  *
+ * `state` is the object's floor-knowledge state (player_know_object's L1027-1035
+ * pre-ID gate): an UNSEEN or only-SENSED object gets no ID at all - upstream
+ * returns before object_set_base_known, so its shadow is a bare object_new with
+ * nothing known. Defaults to SEEN, the state of every object the current callers
+ * describe (a pack / store / targeted object always has an exact known twin), so
+ * the pre-existing behaviour is unchanged.
+ *
  * @returns a shadow GameObject to be read wherever upstream reads obj->known.
  */
 export function objectKnownShadow(
@@ -380,8 +412,16 @@ export function objectKnownShadow(
   p: Player,
   env: RuneEnv,
   deps: KnownDesc,
+  state: KnownState = KNOWN_STATE.SEEN,
 ): GameObject {
   const shadow = objectNew(obj.kind);
+
+  /* Unseen (obj->known == NULL) or only-sensed (obj->known->kind != obj->kind):
+   * player_know_object returns before object_set_base_known (L1029-1030), so no
+   * property - not even the base dice/ac - is known. object_set_base_known runs
+   * only once object_see has recorded the real kind (L916 / L936). */
+  if (state !== KNOWN_STATE.SEEN) return shadow;
+
   const assessed = (obj.notice & OBJ_NOTICE.ASSESSED) !== 0;
   /* The port keeps assessed state on the live object; mirror it (see docs -
    * byte-identical to a twin's own notice under on-demand synthesis). */
@@ -596,4 +636,79 @@ export function objectTouch(obj: GameObject, deps: ObjectTouchDeps = {}): void {
  */
 export function objectGrab(obj: GameObject, deps: ObjectTouchDeps = {}): void {
   objectTouch(obj, deps);
+}
+
+/* ------------------------------------------------------------------ */
+/* Progressive floor-item sensing (obj-knowledge.c L862-955)            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The reduced known-cave floor accessor object_see / object_sense operate
+ * through. Upstream both walk p->cave->objects[obj->oidx] (the per-object known
+ * twin) and the known floor piles (square_holds_object / pile_insert_end /
+ * square_excise_object). The port keeps the player's floor knowledge as a
+ * grid-keyed glyph memory (game/known.ts KnownObjectMemory) rather than a
+ * per-object twin, so the world layer supplies these operations; the
+ * object-knowledge decisions stay here, matching the objectTouch pattern.
+ */
+export interface KnownFloorDeps {
+  /**
+   * The knowledge state recorded for obj's grid: UNSEEN (no memory /
+   * p->cave->objects[obj->oidx] absent or moved off this pile), SENSED (a fake
+   * unknown-item / unknown-treasure marker), or SEEN (an exact memory whose
+   * kind matches obj).
+   */
+  state(obj: GameObject): KnownState;
+  /**
+   * object_set_base_known + list the known object (obj-knowledge.c L914-927 /
+   * L936): record an EXACT memory of obj at its grid, replacing any sensed
+   * marker and relocating it onto the current floor pile.
+   */
+  setSeen(obj: GameObject): void;
+  /**
+   * object_sense's fake-kind assignment (L884-896): record a SENSED marker at
+   * obj's grid - unknown_gold_kind for money, unknown_item_kind otherwise.
+   */
+  setSensed(obj: GameObject, isMoney: boolean): void;
+  /**
+   * known_obj->number = obj->number (L938): refresh the remembered count of an
+   * already-exact memory whose kind still matches.
+   */
+  setNumber(obj: GameObject): void;
+}
+
+/**
+ * object_sense (obj-knowledge.c L862): gain knowledge from SENSING an object on
+ * the floor (detection / telepathy of an item you cannot see). Upstream makes a
+ * new fake "unknown item" / "unknown treasure" known-object where none exists
+ * (or the old one has moved) and attaches it to the known floor pile; a grid
+ * that already carries an exact or sensed memory is left as is. Draws no RNG.
+ */
+export function objectSense(obj: GameObject, deps: KnownFloorDeps): void {
+  /* Make a new sensed marker only where nothing is recorded (L868-897); an
+   * existing exact or sensed memory already covers this grid. tval_is_money
+   * chooses unknown_gold_kind over unknown_item_kind (L886-892). */
+  if (deps.state(obj) === KNOWN_STATE.UNSEEN) {
+    deps.setSensed(obj, tvalIsMoney(obj.tval));
+  }
+}
+
+/**
+ * object_see (obj-knowledge.c L903): gain knowledge from SEEING an object on the
+ * floor. Upstream makes a new exact known-object (object_set_base_known) where
+ * none exists (L909-927), upgrades a sensed marker to exact when the real kind
+ * is now visible (known_obj->kind != obj->kind, L934-936), or just refreshes the
+ * remembered number when an exact memory already matches (L937-939); then it
+ * relocates the memory onto the current floor pile. Draws no RNG.
+ */
+export function objectSee(obj: GameObject, deps: KnownFloorDeps): void {
+  switch (deps.state(obj)) {
+    case KNOWN_STATE.UNSEEN: /* Brand-new exact memory (L909-927). */
+    case KNOWN_STATE.SENSED: /* Sensed -> exact: the kind is now known (L934-936). */
+      deps.setSeen(obj);
+      break;
+    default: /* SEEN: same kind, just refresh the count (L937-939). */
+      deps.setNumber(obj);
+      break;
+  }
 }

@@ -27,7 +27,8 @@ import { sourceMonster } from "../effects/interpreter";
 import type { EffectRegistry } from "../effects/interpreter";
 import { testHit } from "../combat/hit";
 import { checkHit } from "../combat/mon-melee";
-import { chanceOfSpellHit } from "../mon/spell";
+import { chanceOfSpellHit, updateSmartLearn } from "../mon/spell";
+import type { SmartLearnEnv } from "../mon/spell";
 import type { MonsterSpell } from "../mon/types";
 import type { Monster } from "../mon/monster";
 import type { Loc } from "../loc";
@@ -40,9 +41,9 @@ import type { GameState } from "./context";
 import { spellMessageText } from "./mon-message";
 import { disturb } from "./player-path";
 import { ELEM, OF, PF, TMD } from "../generated";
-import { equipLearnElement } from "../obj/knowledge";
+import { equipLearnElement, equipLearnFlag } from "../obj/knowledge";
 import { playerIncCheck } from "../player/timed";
-import type { PlayerIncCheckQueries } from "../player/timed";
+import type { PlayerIncCheckHooks, PlayerIncCheckQueries } from "../player/timed";
 import type { TimedEffect } from "../player/types";
 
 /** Hooks for the UI / lore consequences of casting a monster spell. */
@@ -59,7 +60,7 @@ export interface MonSpellHooks {
   /** The message shown when the player saves against the spell. */
   saveMessage?: (text: string) => void;
   /** spell_check_for_fail_rune: learn a rune a save implies (lore, #24). */
-  failRune?: (spell: MonsterSpell) => void;
+  failRune?: (spell: MonsterSpell, mon: Monster) => void;
   /** A spell whose effect chain could not be built (deferred subtype). */
   unresolved?: (spell: MonsterSpell, err: unknown) => void;
 }
@@ -115,8 +116,12 @@ export function buildSpellEffectChain(
 export interface FailRuneEnv {
   /** equip_learn_element(player, ELEM_NEXUS): a save vs teleport-level. */
   learnNexus: () => void;
-  /** player_inc_check(player, subtype, false) for an EF_TIMED_INC subtype. */
-  incCheck: (timedName: string) => void;
+  /**
+   * player_inc_check(player, subtype, false) for an EF_TIMED_INC subtype. The
+   * casting monster is the current monster (cave->mon_current), so this is a
+   * monster-source check: an object-flag foil teaches it via update_smart_learn.
+   */
+  incCheck: (timedName: string, mon: Monster) => void;
 }
 
 /** Everything buildMonSpellHooks needs to wire the UI/lore consequences. */
@@ -138,14 +143,66 @@ export interface MonSpellHooksDeps {
  * for a teleport-level effect, and the timed-effect foil for each EF_TIMED_INC.
  * The effect names are the bound EF_ names on each spell effect line.
  */
-function spellCheckForFailRune(spell: MonsterSpell, env: FailRuneEnv): void {
+function spellCheckForFailRune(
+  spell: MonsterSpell,
+  mon: Monster,
+  env: FailRuneEnv,
+): void {
   for (const e of spell.effects) {
     if (e.eff === "TELEPORT_LEVEL") {
       env.learnNexus();
     } else if (e.eff === "TIMED_INC") {
-      env.incCheck(e.type ?? "");
+      env.incCheck(e.type ?? "", mon);
     }
   }
+}
+
+/**
+ * buildSmartLearnEnv: the update_smart_learn player-side seams (mon-util.c L788)
+ * over the live derived state - equip_learn_flag / equip_learn_element,
+ * player_of_has, pf_has and the element resist level - gated by OPT(player,
+ * birth_ai_learn). Shared by the fail-rune path (spell_check_for_fail_rune,
+ * below) and the monster-projection path (project_p, project-player.c L852). The
+ * engine (updateSmartLearn, mon/spell.ts) draws no RNG when birth_ai_learn is
+ * off, so an env with aiLearn false is a pure equip-learn.
+ */
+export function buildSmartLearnEnv(state: GameState): SmartLearnEnv {
+  const p = state.actor.player;
+  return {
+    aiLearn: state.options?.get("birth_ai_learn") ?? false,
+    equipLearnFlag: (of): void => equipLearnFlag(p, state.runeEnv, of),
+    equipLearnElement: (elem): void => equipLearnElement(p, state.runeEnv, elem),
+    playerOfHas: (of): boolean => state.playerState?.flags.has(of) ?? false,
+    playerPfHas: (pf): boolean => state.playerState?.pflags.has(pf) ?? false,
+    playerResLevel: (elem): number =>
+      state.playerState?.elInfo[elem]?.resLevel ?? 0,
+  };
+}
+
+/**
+ * buildMonsterIncHooks: the monster-source side of player_inc_check for a
+ * specific caster (player-timed.c L946-948). On a TMD_FAIL_FLAG_OBJECT foil the
+ * caster learns the flag via update_smart_learn(mon, p, of, 0, -1); the engine's
+ * own equip_learn_flag (mon-util.c L797) learns the rune, so the flag is learned
+ * once per foil (upstream's outer + inner equip_learn_flag pair is idempotent).
+ * Shared by the fail-rune (save) path here and by the effect-application (no
+ * save) path (see the WIRING note in this module's design comment / report).
+ * Gated internally by birth_ai_learn, so it draws no RNG when the option is off.
+ */
+export function buildMonsterIncHooks(
+  state: GameState,
+  mon: Monster,
+): PlayerIncCheckHooks {
+  const smartEnv = buildSmartLearnEnv(state);
+  return {
+    monsterSource: true,
+    updateSmartLearn: (name): void => {
+      const of = (OF as Record<string, number>)[name];
+      if (of !== undefined) {
+        updateSmartLearn(state.rng, mon, smartEnv, of, 0, -1);
+      }
+    },
+  };
 }
 
 /**
@@ -155,6 +212,12 @@ function spellCheckForFailRune(spell: MonsterSpell, env: FailRuneEnv): void {
  * effects) for each EF_TIMED_INC, resolved against the bound timed table and
  * the derived player state. Mirrors the query construction the lore layer uses
  * (game/lore-color.ts); absent derived state, the queries read as "nothing".
+ *
+ * Because spell_check_for_fail_rune runs mid-cast, cave->mon_current is the
+ * caster, so player_inc_check(lore=false) is a monster-source check: an
+ * object-flag foil fires update_smart_learn(mon, p, of, 0, -1) (player-timed.c
+ * L947) via the monster-source hook. That is gap 8.5's WRITE path on the save
+ * branch; with birth_ai_learn off the engine no-ops (no memory write, no RNG).
  */
 export function buildFailRuneEnv(
   state: GameState,
@@ -187,11 +250,14 @@ export function buildFailRuneEnv(
     learnNexus: (): void => {
       equipLearnElement(p, state.runeEnv, ELEM.NEXUS);
     },
-    incCheck: (timedName): void => {
+    incCheck: (timedName, mon): void => {
       const idx = (TMD as Record<string, number>)[timedName];
       if (idx === undefined) return;
       const eff = byIndex.get(idx);
-      if (eff) playerIncCheck(eff, queries);
+      if (!eff) return;
+      /* Monster-source player_inc_check: an object-flag foil teaches the caster
+       * via update_smart_learn (player-timed.c L947). */
+      playerIncCheck(eff, queries, buildMonsterIncHooks(state, mon));
     },
   };
 }
@@ -225,7 +291,10 @@ export function buildMonSpellHooks(
     saveMessage: (text): void => state.msg?.(text),
     /* spell_check_for_fail_rune (L383): learn the foil rune on a save. */
     ...(deps.failRune
-      ? { failRune: (spell): void => spellCheckForFailRune(spell, deps.failRune!) }
+      ? {
+          failRune: (spell, mon): void =>
+            spellCheckForFailRune(spell, mon, deps.failRune!),
+        }
       : {}),
   };
 }
@@ -283,7 +352,7 @@ export function doMonSpell(
     state.rng.randint0(100) < deps.saveSkill
   ) {
     deps.hooks?.saveMessage?.(level.saveMessage);
-    deps.hooks?.failRune?.(spell);
+    deps.hooks?.failRune?.(spell, mon);
     return true;
   }
 
@@ -306,7 +375,16 @@ export function doMonSpell(
     return true;
   }
 
-  const ctx = attachGameEnv(buildEffectContext(state, deps.envDeps), {
+  /* Thread the monster-source player_inc_check hooks so update_smart_learn
+   * (mon-util.c L788) fires on the no-save application branch (a timed effect
+   * the player's gear foils). With birth_ai_learn off, updateSmartLearn returns
+   * before any RNG draw, so this is a no-op by default. */
+  const ctx = attachGameEnv(
+    buildEffectContext(state, {
+      ...deps.envDeps,
+      incHooks: buildMonsterIncHooks(state, mon),
+    }),
+    {
     state,
     cast: deps.cast,
     monCurrent: midx,
