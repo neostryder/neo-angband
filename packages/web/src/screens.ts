@@ -73,7 +73,7 @@ import {
   MONSTER_LIST_SECTION_LOS,
   MONSTER_LIST_SECTION_ESP,
   COLOUR_ORANGE,
-  RF,
+  getMonName,
   TMD,
 } from "@neo-angband/core";
 import type {
@@ -1346,24 +1346,6 @@ export function winnerLines(cols = 80): ScreenLine[] {
  * "List visible monsters" screen ([) - ui-mon-list.c.
  * ------------------------------------------------------------------ */
 
-/**
- * plural_aux (mon-desc.c L27) / get_mon_name (mon-desc.c L44): the "N race(s)"
- * label the monster list prints. Replicated here because mon/desc.ts is not yet
- * re-exported from the core package index (see WIRING-NEEDED); swap for the core
- * getMonName export once available.
- */
-function pluralAuxLocal(name: string): string {
-  if (name.length === 0) return name;
-  return name + (name[name.length - 1] === "s" ? "es" : "s");
-}
-function getMonNameLocal(race: MonsterRace, num: number): string {
-  if (race.flags.has(RF.UNIQUE)) return `[U] ${race.name}`;
-  const prefix = `${String(num).padStart(3, " ")} `;
-  if (num === 1) return prefix + race.name;
-  if (race.plural !== null && race.plural !== undefined) return prefix + race.plural;
-  return prefix + pluralAuxLocal(race.name);
-}
-
 /** utf8_clipto-style clip to `n` visible chars (ASCII port). */
 function clipTo(s: string, n: number): string {
   return n <= 0 ? "" : s.slice(0, n);
@@ -1418,7 +1400,7 @@ function monsterListSectionLines(
     if (asleepN > 0 && count > 1) asleep = ` (${asleepN} asleep)`;
     else if (asleepN === 1 && count === 1) asleep = " (asleep)";
 
-    let name = getMonNameLocal(entry.race, count);
+    let name = getMonName(entry.race, count);
     name = clipTo(name, Math.max(0, fullWidth - asleep.length)) + asleep;
 
     const lineColor = colorToCss(monsterListEntryLineColor(entry, playerDepth));
