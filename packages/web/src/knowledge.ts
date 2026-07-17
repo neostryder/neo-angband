@@ -25,6 +25,17 @@ import {
   colorCharToAttr,
   historyIsArtifactKnown,
   artifactIsKnown as coreArtifactIsKnown,
+  makeFakeArtifact,
+  makeObjectInfoDeps,
+  objectInfo,
+  objectDesc,
+  knownDescOf,
+  blankObjKnowledge,
+  playerLearnAllRunes,
+  textblockToString,
+  OINFO,
+  ODESC,
+  OBJ_NOTICE,
   KF,
   TF,
   TRF,
@@ -45,6 +56,11 @@ import type {
   EverseenKnowledge,
   Shape,
   ShapeLoreEnv,
+  GameState,
+  ObjRegistry,
+  Constants,
+  RuneEnv,
+  ObjectInfoExtras,
 } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
 import { selectFromMenu, showTextScreen, type MenuItem, type ScreenLine } from "./overlay";
@@ -461,6 +477,163 @@ export function artifactKnowledgeGroups(
       return strcmp(a.member.name, b.member.name);
     });
     return { name: objGroupName(gid), rows };
+  });
+}
+
+/**
+ * The deps showArtifactKnowledge needs beyond the artifact list: the live game
+ * state, the object registry (base-kind lookup for make_fake_artifact), the
+ * z_info constants, the player, the created-flag state, the object-info extras
+ * (projections / race origins), the rune env, and the optional exact
+ * artifact_is_known env.
+ */
+export interface ArtifactKnowledgeDeps {
+  state: GameState;
+  reg: ObjRegistry;
+  constants: Constants;
+  player: Player;
+  artState: ArtifactState;
+  inspectExtras: ObjectInfoExtras;
+  runeEnv: RuneEnv;
+  exact?: ArtifactKnownEnv;
+  /** seed_randart (do_cmd_knowledge_artifacts L1756), for the title under
+   * birth_randarts. Absent -> the plain "artifacts" title. */
+  seedRandart?: number;
+}
+
+const RECALL_TITLE = "#8ab8ff";
+
+/**
+ * desc_art_fake (ui-knowledge.c L1610-1654): the artifact-knowledge recall.
+ * Upstream builds a fake artifact object (make_fake_artifact), points its known
+ * twin at either a base twin (kind + artifact only) or - when the character's
+ * history records the artifact as fully known (history_is_artifact_known,
+ * L1636) - a full object_copy, then dumps object_info(obj, OINFO_NONE) under
+ * object_desc(ODESC_PREFIX|ODESC_FULL|ODESC_CAPITAL).
+ *
+ * The port synthesises the known-shadow on demand from the player's rune
+ * knowledge (obj/known-object.ts), so this reproduces the two twin states with
+ * a scratch player whose object-knowledge is set to match:
+ * - fully known: every rune learned (playerLearnAllRunes) + the object marked
+ *   ASSESSED, so the shadow reveals the full mechanics, exactly as the
+ *   object_copy twin would;
+ * - base only: a zeroed object-knowledge (not even the birth-known dice/combat
+ *   runes) and the object left un-assessed, so the shadow exposes only the base
+ *   item, exactly as C's raw OBJECT_NULL twin. The artifact flavour paragraph
+ *   still shows in this branch (known_obj->artifact is set, L1631), so it is
+ *   prepended explicitly since the un-assessed shadow carries no artifact.
+ *
+ * DETERMINISM: make_fake_artifact draws its curse-timeout RNG from a dedicated
+ * throwaway stream (obj/artifact-fake.ts), never the game RNG, so browsing an
+ * artifact never perturbs the game state. The scratch player is a shallow clone
+ * with its own object-knowledge block, so the live player's knowledge is never
+ * mutated.
+ */
+export function artifactFakeRecall(
+  deps: ArtifactKnowledgeDeps,
+  art: Artifact,
+): { title: string; lines: ScreenLine[] } {
+  const { state, reg, constants, player, runeEnv, inspectExtras } = deps;
+
+  const obj = makeFakeArtifact(reg, constants, art);
+  if (!obj) {
+    /* No base kind: make_fake_artifact returns false (L737); show the name. */
+    const lines: ScreenLine[] = [{ text: art.name, color: RECALL_TITLE }];
+    if (art.text) {
+      lines.push({ text: "", color: FG });
+      lines.push({ text: art.text, color: FG });
+    }
+    return { title: art.name, lines };
+  }
+
+  const fullyKnown = historyIsArtifactKnown(player, art);
+
+  /* A fully-known scratch player for the header name (the artifact name is not
+   * a spoiler; object_desc reads the known twin's artifact for it). */
+  const namePlayer: Player = { ...player, objKnown: blankObjKnowledge() };
+  playerLearnAllRunes(namePlayer, runeEnv);
+  const nameState: GameState = {
+    ...state,
+    actor: { ...state.actor, player: namePlayer },
+    isAware: () => true,
+  };
+  const savedNotice = obj.notice;
+  obj.notice |= OBJ_NOTICE.ASSESSED;
+  const title = objectDesc(
+    obj,
+    ODESC.PREFIX | ODESC.FULL | ODESC.CAPITAL,
+    namePlayer,
+    runeEnv,
+    knownDescOf(nameState),
+  );
+
+  /* Now build the body under the branch-appropriate knowledge. */
+  const scratchKnown = blankObjKnowledge();
+  if (fullyKnown) {
+    /* object_copy(known_obj, obj): everything known. */
+    playerLearnAllRunes({ ...player, objKnown: scratchKnown } as Player, runeEnv);
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+  } else {
+    /* Base twin: zero even the birth-known dice/combat runes so only the base
+     * item shows, and leave the object un-assessed. */
+    scratchKnown.toA = 0;
+    scratchKnown.toH = 0;
+    scratchKnown.toD = 0;
+    scratchKnown.dd = 0;
+    scratchKnown.ds = 0;
+    scratchKnown.ac = 0;
+    obj.notice = savedNotice & ~OBJ_NOTICE.ASSESSED;
+  }
+  const scratchPlayer: Player = { ...player, objKnown: scratchKnown };
+  const scratchState: GameState = {
+    ...state,
+    actor: { ...state.actor, player: scratchPlayer },
+    isAware: () => true,
+  };
+
+  const tb = objectInfo(obj, OINFO.NONE, makeObjectInfoDeps(scratchState, obj, inspectExtras));
+  const bodyText = textblockToString(tb);
+
+  const lines: ScreenLine[] = [];
+  /* Base branch: the artifact flavour paragraph (known_obj->artifact set). */
+  if (!fullyKnown && art.text) {
+    lines.push({ text: art.text, color: FG });
+    lines.push({ text: "", color: FG });
+  }
+  for (const raw of bodyText.split("\n")) {
+    lines.push({ text: raw.replace(/\s+$/u, ""), color: FG });
+  }
+  /* Trim leading blank lines object_info emits before the first real line. */
+  while (lines.length > 1 && lines[0]!.text === "") lines.shift();
+
+  return { title, lines };
+}
+
+/**
+ * do_cmd_knowledge_artifacts (ui-knowledge.c L1740): the grouped artifact
+ * browser with the desc_art_fake recall wired in. Membership + grouping come
+ * from artifactKnowledgeGroups; the recall is the full faithful object_info
+ * dump (artifactFakeRecall).
+ */
+export async function showArtifactKnowledge(
+  term: GlyphTerm,
+  deps: ArtifactKnowledgeDeps,
+): Promise<void> {
+  const groups = artifactKnowledgeGroups(
+    deps.reg.artifacts,
+    deps.reg.bases,
+    deps.player,
+    deps.artState,
+    deps.exact,
+  );
+  const seed = deps.seedRandart ?? 0;
+  const title =
+    deps.state.options?.get("birth_randarts") && deps.seedRandart !== undefined
+      ? `artifacts (seed ${(seed >>> 0).toString(16).padStart(8, "0")})`
+      : "artifacts";
+  await runGroupedBrowser(term, title, groups, async (art) => {
+    const recall = artifactFakeRecall(deps, art);
+    await showTextScreen(term, recall.title, recall.lines);
   });
 }
 

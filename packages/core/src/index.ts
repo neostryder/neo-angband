@@ -59,6 +59,7 @@ export * from "./obj/knowledge";
 export * from "./obj/ignore";
 export * from "./obj/known-object";
 export * from "./obj/artifact-known";
+export * from "./obj/artifact-fake";
 export * from "./obj/desc";
 export * from "./obj/object-info";
 export * from "./obj/randname";
