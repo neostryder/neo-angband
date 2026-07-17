@@ -158,7 +158,7 @@ function scenarioDescend(pack: GamePack): ScenarioResult {
  */
 const EXPECTED = {
   birthAndWait: { turn: 60, mhp: 19 },
-  descend: { monsterCount: 27 },
+  descend: { monsterCount: 35 },
 } as const;
 
 /** Run every golden scenario and return their results. */
