@@ -20,6 +20,7 @@ import { createMimickedObject } from "../game/mon-place";
 
 import {
   cavernGen,
+  classicGen,
   connectCaverns,
   createDungeonProfiles,
   DungeonProfiles,
@@ -422,6 +423,91 @@ describe("full level generation", () => {
     expect(g.c.featCount[FEAT.MORE] ?? 0).toBeGreaterThanOrEqual(1);
     const p = g.playerSpot as Loc;
     expect(g.c.isPassable(p)).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Persistent-level staircase rooms (gen-cave.c:908-967
+ * build_staircase_rooms + handle_level_stairs persistent path). The whole
+ * feature is gated on dun.persist (birth_levels_persist, OFF by default), so
+ * these tests drive classicGen directly with dun.persist toggled and assert
+ * that with persist OFF nothing changes.
+ * ------------------------------------------------------------------ */
+
+describe("persistent-level staircase rooms", () => {
+  it("places a staircase room at each seeded join connector (persist on)", () => {
+    /* Seed one up-join and one down-join at fixed grids; classicGen builds on
+     * the full 66x198 dungeon, so both grids are well inside. */
+    const ctx = builderCtx(1, 424242);
+    ctx.dun.persist = true;
+    ctx.dun.join = [
+      { grid: loc(20, 20), feat: FEAT.LESS },
+      { grid: loc(120, 40), feat: FEAT.MORE },
+    ];
+
+    const res = classicGen(ctx);
+    expect(res.gen).not.toBeNull();
+    const g = res.gen as Gen;
+
+    /* build_staircase_rooms ran once per join (gen-cave.c:934). */
+    expect(g.dun.nstairRoom).toBe(2);
+    /* Each connector grid carries its stair feature (buildStaircase setFeat). */
+    expect(g.c.feat(loc(20, 20))).toBe(FEAT.LESS);
+    expect(g.c.feat(loc(120, 40))).toBe(FEAT.MORE);
+  });
+
+  it("skips alloc_stairs for a direction whose adjacent level exists", () => {
+    /* Up: neighbour above already exists (gen-cave.c:963-966) and seeded no
+     * up-join here, so the finished level has zero up staircases; down stairs
+     * are still allocated normally. */
+    const up = builderCtx(1, 51515);
+    up.dun.persist = true;
+    up.dun.hasAdjacentAbove = true;
+    up.dun.join = [];
+    const gUp = classicGen(up).gen as Gen;
+    expect(gUp).not.toBeNull();
+    expect(gUp.c.featCount[FEAT.LESS] ?? 0).toBe(0);
+    expect(gUp.c.featCount[FEAT.MORE] ?? 0).toBeGreaterThanOrEqual(1);
+
+    /* Down: mirror case (gen-cave.c:959-962). */
+    const down = builderCtx(1, 51515);
+    down.dun.persist = true;
+    down.dun.hasAdjacentBelow = true;
+    down.dun.join = [];
+    const gDown = classicGen(down).gen as Gen;
+    expect(gDown).not.toBeNull();
+    expect(gDown.c.featCount[FEAT.MORE] ?? 0).toBe(0);
+    expect(gDown.c.featCount[FEAT.LESS] ?? 0).toBeGreaterThanOrEqual(1);
+  });
+
+  it("changes nothing when persist is off (regression guard)", () => {
+    /* Even with joinInfo and the adjacency flags supplied, persist:false must
+     * yield a byte-identical level and build zero staircase rooms - a default
+     * game is untouched. */
+    const plain = generateLevel(new Rng(31337), 3, makeDeps());
+    const withPersistInputs = generateLevel(new Rng(31337), 3, makeDeps(), {
+      persist: false,
+      joinInfo: {
+        join: [{ grid: loc(20, 20), feat: FEAT.LESS }],
+        oneOffAbove: [],
+        oneOffBelow: [],
+      },
+      hasAdjacentAbove: true,
+      hasAdjacentBelow: true,
+    });
+    expect(serialize(withPersistInputs)).toBe(serialize(plain));
+    expect(withPersistInputs.dun.nstairRoom).toBe(0);
+  });
+
+  it("does not run build_staircase_rooms when persist is off", () => {
+    /* Direct classicGen with dun.persist false and a non-empty join list: the
+     * gated call is skipped, so no staircase rooms are placed. */
+    const ctx = builderCtx(1, 424242);
+    ctx.dun.persist = false;
+    ctx.dun.join = [{ grid: loc(20, 20), feat: FEAT.LESS }];
+    const g = classicGen(ctx).gen as Gen;
+    expect(g).not.toBeNull();
+    expect(g.dun.nstairRoom).toBe(0);
   });
 });
 
