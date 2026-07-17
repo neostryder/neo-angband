@@ -7,6 +7,7 @@ import type { PlayerCommand } from "../game/context";
 import { objectNew } from "../obj/object";
 import type { ObjectKind } from "../obj/types";
 import { describeObject } from "../game/describe";
+import { NOSCORE } from "../game/wizard";
 import { loadGame, saveGame, startGame } from "./game";
 import type { GamePack, StartedGame } from "./game";
 import { decodeSavedGame, encodeSavedGame, SAVE_VERSION } from "./save";
@@ -34,6 +35,7 @@ const pack: GamePack = {
   trap: loadRecords("trap"),
   names: loadRecords("names"),
   quest: loadRecords("quest"),
+  store: loadRecords("store"),
   obj: {
     objectBase: loadJson("object_base"),
     object: loadJson("object"),
@@ -365,6 +367,23 @@ describe("option store persistence (option.c)", () => {
     expect(game.randartSeed).toBe(0);
   });
 
+  it("1.12: a normal birth clears cheat options (options_init_cheat) yet an explicit override survives", () => {
+    /* No cheat override: options_init_cheat leaves the score table clean. */
+    const clean = startGame(pack, { seed: 91, depth: 2 });
+    expect(clean.state.options!.get("cheat_hear")).toBe(false);
+    expect(clean.state.options!.anyScoreSet()).toBe(false);
+
+    /* An explicit birth-time cheat override is re-applied AFTER the clear, so it
+     * still wins (the port-only seam the maintainer decision preserves). */
+    const cheated = startGame(pack, {
+      seed: 91,
+      depth: 2,
+      optionOverrides: { cheat_hear: true },
+    });
+    expect(cheated.state.options!.get("cheat_hear")).toBe(true);
+    expect(cheated.state.options!.get("score_hear")).toBe(true);
+  });
+
   it("round-trips option values, hitpoint_warn and the birth snapshot", () => {
     const game = startGame(pack, {
       seed: 7,
@@ -402,6 +421,118 @@ describe("option store persistence (option.c)", () => {
     const restored = loadGame(pack, saved);
     expect(restored.state.options!.get("pickup_inven")).toBe(true);
     expect(restored.state.options!.hitpointWarn).toBe(3);
+  });
+});
+
+describe("store + home persistence (store.c wr_stores/rd_stores, gap 12.1/12.2)", () => {
+  const dagger = (game: StartedGame): ObjectKind =>
+    game.booted.registries.objects.kinds.find(
+      (k) => k.name === "& Dagger~" && k.tval === TV.SWORD,
+    ) as ObjectKind;
+
+  it("persists the home stash, shop stock and the current owner across save/load", () => {
+    const game = startGame(pack, { seed: 4242, depth: 0 });
+    const stores = game.state.stores!;
+    expect(stores.length).toBeGreaterThan(0);
+
+    /* Stash a dagger in the home (FEAT_HOME) - the gap-12.1 data-loss case. */
+    const home = stores.find((s) => s.feat === FEAT.HOME)!;
+    const kind = dagger(game);
+    const stashed = objectNew(kind);
+    stashed.tval = kind.tval;
+    stashed.sval = kind.sval;
+    stashed.number = 1;
+    home.stock.push(stashed);
+
+    /* A stocked non-home shop with a chosen proprietor. */
+    const shop = stores.find(
+      (s) => s.feat !== FEAT.HOME && s.stock.length > 0,
+    )!;
+    const shopFeat = shop.feat;
+    const ownerIndex = shop.owner.index;
+    const shopCount = shop.stock.length;
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    expect(saved.stores).toBeDefined();
+
+    const rs = loadGame(pack, saved).state;
+    const rHome = rs.stores!.find((s) => s.feat === FEAT.HOME)!;
+    expect(rHome.stock).toHaveLength(1);
+    expect(rHome.stock[0]!.kind.name).toBe(kind.name);
+
+    const rShop = rs.stores!.find((s) => s.feat === shopFeat)!;
+    expect(rShop.stock).toHaveLength(shopCount);
+    expect(rShop.owner.index).toBe(ownerIndex);
+  });
+
+  it("round-trips the accrued daycount (store_update, gap 12.3)", () => {
+    /* A dungeon save: refreshTownStores leaves daycount untouched (town entry
+     * consumes it), so the raw value round-trips. */
+    const game = startGame(pack, { seed: 4243, depth: 2 });
+    game.state.daycount = 5;
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    expect(saved.daycount).toBe(5);
+    const rs = loadGame(pack, saved).state;
+    expect(rs.daycount).toBe(5);
+  });
+
+  it("an old save without a `stores` field re-stocks fresh on load (back-compat)", () => {
+    const game = startGame(pack, { seed: 4244, depth: 0 });
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    delete saved.stores;
+    delete saved.daycount;
+    const rs = loadGame(pack, saved).state;
+    /* In town, refreshTownStores lazily rebuilds the shops. */
+    expect(rs.stores).toBeDefined();
+    expect(rs.stores!.length).toBeGreaterThan(0);
+  });
+});
+
+describe("player full_name / died_from / noscore (gaps 12.4/12.5/15.3)", () => {
+  it("round-trips full_name, died_from and the noscore mask", () => {
+    const game = startGame(pack, { seed: 606, depth: 2 });
+    const p = game.state.actor.player;
+    p.fullName = "Aranweth";
+    p.diedFrom = "a fruit bat";
+    p.noscore = NOSCORE.WIZARD | NOSCORE.DEBUG;
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const rp = loadGame(pack, saved).state.actor.player;
+    expect(rp.fullName).toBe("Aranweth");
+    expect(rp.diedFrom).toBe("a fruit bat");
+    expect(rp.noscore).toBe(NOSCORE.WIZARD | NOSCORE.DEBUG);
+  });
+
+  it("an old save without the fields loads with clean defaults", () => {
+    const game = startGame(pack, { seed: 607, depth: 2 });
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const sp = saved.player as unknown as Record<string, unknown>;
+    delete sp.fullName;
+    delete sp.diedFrom;
+    delete sp.noscore;
+    const rp = loadGame(pack, saved).state.actor.player;
+    expect(rp.fullName).toBe("");
+    expect(rp.diedFrom).toBe("");
+    expect(rp.noscore).toBe(0);
+  });
+
+  it("wizard-mode load of a dead character resurrects and marks NOSCORE_WIZARD (savefile.c:647-651)", () => {
+    const game = startGame(pack, { seed: 608, depth: 2 });
+    const p = game.state.actor.player;
+    p.chp = 0;
+    game.state.isDead = true;
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+
+    /* A normal load leaves the dead character dead and unflagged. */
+    const normal = loadGame(pack, saved).state;
+    expect(normal.isDead).toBe(true);
+    expect(normal.actor.player.noscore & NOSCORE.WIZARD).toBe(0);
+
+    /* A wizard-mode load resurrects it (HP refilled) and flags it a cheater. */
+    const wiz = loadGame(pack, saved, undefined, { wizard: true }).state;
+    expect(wiz.isDead).toBe(false);
+    expect(wiz.actor.player.chp).toBe(wiz.actor.player.mhp);
+    expect(wiz.actor.player.noscore & NOSCORE.WIZARD).toBe(NOSCORE.WIZARD);
   });
 });
 

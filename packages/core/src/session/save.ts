@@ -41,6 +41,8 @@ import type { GameState, MonsterGroup, StoredLevel } from "../game/context";
 import { modRuleEnabled } from "../game/context";
 import type { Trap } from "../game/trap";
 import type { Gear } from "../game/gear";
+import type { Store } from "../store/store";
+import type { BoundStore } from "../store/types";
 import { newKnownMap } from "../game/known";
 import type { KnownMap } from "../game/known";
 import {
@@ -445,6 +447,22 @@ export interface SavedPlayer {
   auBirth: number;
   htBirth: number;
   wtBirth: number;
+  /**
+   * full_name (save.c:422): the character's name. Optional: absent in saves
+   * written before the field, which load with an empty name (buildScore falls
+   * back to the empty string exactly as before this field existed).
+   */
+  fullName?: string;
+  /**
+   * died_from (save.c:424): the cause-of-death string. Optional: absent saves
+   * load with an empty string.
+   */
+  diedFrom?: string;
+  /**
+   * noscore (save.c:623, wr_u16b): the cheater bit mask. Optional: absent saves
+   * load as 0 (a clean, scored character).
+   */
+  noscore?: number;
   history: string;
   /**
    * hist (player-history.h struct player_history): the runtime auto-history
@@ -536,6 +554,9 @@ export function serializePlayer(
     auBirth: p.auBirth,
     htBirth: p.htBirth,
     wtBirth: p.wtBirth,
+    fullName: p.fullName,
+    diedFrom: p.diedFrom,
+    noscore: p.noscore,
     history: p.history,
     hist: p.hist.map((e) => ({ ...e })),
     equipment: [...p.equipment],
@@ -607,6 +628,11 @@ export function deserializePlayer(
   p.auBirth = data.auBirth;
   p.htBirth = data.htBirth;
   p.wtBirth = data.wtBirth;
+  /* full_name / died_from / noscore (load.c:661, load.c:966): absent in saves
+   * predating the fields, which restore the blankPlayer defaults ("" / "" / 0). */
+  p.fullName = data.fullName ?? "";
+  p.diedFrom = data.diedFrom ?? "";
+  p.noscore = data.noscore ?? 0;
   p.history = data.history;
   p.hist = data.hist ? data.hist.map((e) => ({ ...e })) : [];
   p.equipment = [...data.equipment];
@@ -710,6 +736,21 @@ export interface SavedGame {
    * winning after a reload exits to a fresh level of the same depth.
    */
   arena?: { oldGrid: { x: number; y: number } };
+  /**
+   * The town stores (store.c wr_stores, save.c:744-765): every shop's current
+   * proprietor and full stock, in registry order - including FEAT_HOME, whose
+   * stock is the player's home stash (gap 12.1: the home stash must survive
+   * save/load). Optional: absent in saves written before store persistence and
+   * in saves taken before the player ever reached town, which reload and
+   * re-stock fresh (the pre-fix behaviour). See serializeStores.
+   */
+  stores?: SavedStore[];
+  /**
+   * daycount (game-world.c / save.c:963): store turnovers accrued while in the
+   * dungeon, consumed by store_update on the return to town (gap 12.3). Optional
+   * / 0 when no days have elapsed.
+   */
+  daycount?: number;
   /**
    * The player's ignore settings (obj-ignore.c). Optional: absent in saves
    * written before ignoring, which load with everything shown.
@@ -934,6 +975,13 @@ export function serializeGame(
       : {}),
     ...(savedLevelCache ? { levelCache: savedLevelCache } : {}),
     ...(autoinscriptions ? { autoinscriptions } : {}),
+    /* Town stores + accrued daycount (wr_stores / save.c:963). Persisted so the
+     * home stash and shop stock survive save/load (gaps 12.1/12.2/12.3). */
+    ...(() => {
+      const stores = serializeStores(state.stores, ids);
+      return stores ? { stores } : {};
+    })(),
+    ...(state.daycount ? { daycount: state.daycount } : {}),
     known: {
       feat: knownFeat,
       objects: Array.from(state.known.objects.entries()).map(([i, m]) => [
@@ -1169,6 +1217,73 @@ export function deserializeTraps(
     );
   }
   return traps;
+}
+
+/* ------------------------------------------------------------------ *
+ * Town stores (store.c wr_stores / rd_stores, save.c:744-765).
+ * ------------------------------------------------------------------ */
+
+/** One serialized store: its proprietor index and its full stock, in order. */
+export interface SavedStore {
+  /** store->owner->oidx (save.c:754): the current proprietor's index. */
+  ownerIndex: number;
+  /** store->stock (save.c:761), head-first; the home stash for FEAT_HOME. */
+  stock: SavedObject[];
+}
+
+/**
+ * Serialize the live town stores (wr_stores): each shop's proprietor and stock,
+ * in registry order. Returns undefined when the game has no stores yet (never
+ * reached town), so a fresh dungeon-start save omits the block entirely.
+ */
+export function serializeStores(
+  stores: readonly Store[] | undefined,
+  ids: ContentIdResolver,
+): SavedStore[] | undefined {
+  if (!stores || stores.length === 0) return undefined;
+  return stores.map((store) => ({
+    ownerIndex: store.owner.index,
+    stock: store.stock.map((o) => serializeObject(o, ids)),
+  }));
+}
+
+/**
+ * Rebuild the live town stores (rd_stores): re-bind each store's immutable
+ * tables from the pack (owners, stocking tables, buy list, bounds) and overlay
+ * the saved proprietor + stock. Matches upstream's positional keying (store i
+ * <-> saved i). Draws NO RNG - the caller has already restored the exact
+ * stream, so store restore must not perturb it (decision 22). A saved store
+ * beyond the current registry length is dropped; a registry store with no saved
+ * counterpart keeps an empty, default-owner shell (re-stocked on town entry).
+ */
+export function deserializeStores(
+  bound: readonly BoundStore[],
+  saved: SavedStore[] | undefined,
+  reg: ObjRegistry,
+  ids: ContentIdResolver,
+  storeInvenMax: number,
+): Store[] {
+  return bound.map((b, i): Store => {
+    const s = saved?.[i];
+    const owner =
+      (s ? b.owners.find((o) => o.index === s.ownerIndex) : undefined) ??
+      b.owners[0];
+    if (!owner) throw new Error(`save: store ${b.featName} has no owners`);
+    return {
+      feat: b.feat,
+      featName: b.featName,
+      owners: b.owners,
+      owner,
+      alwaysTable: b.alwaysTable,
+      normalTable: b.normalTable,
+      buy: b.buy,
+      turnover: b.turnover,
+      normalStockMin: b.normalStockMin,
+      normalStockMax: b.normalStockMax,
+      stock: s ? s.stock.map((o) => deserializeObject(o, reg, ids)) : [],
+      stockSize: storeInvenMax,
+    };
+  });
 }
 
 /** aup_info id list -> the boolean[] by aidx that ArtifactState.restore wants. */

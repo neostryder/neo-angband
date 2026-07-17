@@ -198,6 +198,27 @@ export interface Player {
   htBirth: number;
   wtBirth: number;
 
+  /**
+   * player->full_name (save.c:422): the character's name. Persisted and fed to
+   * the high-score table (buildScore's `who`). Empty until birth naming.
+   */
+  fullName: string;
+
+  /**
+   * player->died_from (save.c:424): the cause-of-death string ("Interrupting"
+   * while alive, then the killer's name / "Retiring" / etc.). Persisted and fed
+   * to the high-score table (buildScore's `how`) and enter_score's gating.
+   */
+  diedFrom: string;
+
+  /**
+   * player->noscore (player.h:92-100): the "ways a player can be marked a
+   * cheater" bit mask (NOSCORE_WIZARD | NOSCORE_DEBUG | ...). Persisted as u16
+   * (save.c:623). Any of the score-invalidating bits keeps the character off
+   * the high-score table (noscoreInvalidatesScore, game/wizard.ts). 0 = clean.
+   */
+  noscore: number;
+
   /** Player history text (the birth background/bio paragraph). */
   history: string;
 
@@ -293,6 +314,9 @@ export function blankPlayer(
     auBirth: 0,
     htBirth: 0,
     wtBirth: 0,
+    fullName: "",
+    diedFrom: "",
+    noscore: 0,
     history: "",
     hist: [],
     body: { name: body.name, count: body.count, slots: body.slots.map((s) => ({ ...s })) },
