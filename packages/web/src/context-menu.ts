@@ -13,16 +13,16 @@
  *
  * Entries whose backing feature is not (yet) part of this shell are included
  * DISABLED rather than omitted, so the menu's shape stays recognisable even
- * where the action is not wired: Steal (CMD_STEAL) and Jump Onto a trap
- * (CMD_JUMP) have no core command; Recall Info has no monster-lore viewer;
- * the knowledge menu, full map, monster list and options screen do not exist
- * yet. A single generic "Use" (upstream's CMD_USE, one key that auto-detects
- * wand/rod/staff/activatable) has no equivalent either, since this port
- * exposes those as separate per-type verbs (aim/zap/use-staff/activate) -
- * context_menu_object below offers all four directly instead. Explore and
- * Rest ARE wired (session/game.ts's installRunning / createDefaultRegistry),
- * though "rest" is currently just a single-turn hold, not upstream's N-turn
- * prompt - the port's own current limitation, not this gap's.
+ * where the action is not wired: Jump Onto a trap (CMD_JUMP) has no core
+ * command; Recall Info has no monster-lore viewer; the knowledge menu, full
+ * map, monster list and options screen do not exist yet. A single generic
+ * "Use" (upstream's CMD_USE, one key that auto-detects wand/rod/staff/
+ * activatable) has no equivalent either, since this port exposes those as
+ * separate per-type verbs (aim/zap/use-staff/activate) - context_menu_object
+ * below offers all four directly instead. Explore and Rest ARE wired
+ * (session/game.ts's installRunning / createDefaultRegistry); Rest now runs
+ * the full do_cmd_rest N-turn / conditional prompt (main.ts restCmd), and
+ * Steal (CMD_STEAL, game/steal.ts) is reachable from the 's' key.
  */
 
 export interface MenuEntry<A extends string> {
@@ -68,9 +68,8 @@ export function buildPlayerMenu(ctx: PlayerMenuCtx): MenuEntry<PlayerMenuAction>
   out.push({ label: "Go Up", action: "go-up", disabled: !ctx.onUpStairs });
   out.push({ label: "Go Down", action: "go-down", disabled: !ctx.onDownStairs });
   out.push({ label: "Explore", action: "explore" }); // installRunning's exploreAction (session/game.ts)
-  // "rest" is registered but currently aliased to a single-turn hold
-  // (player-turn.ts createDefaultRegistry), not the upstream N-turn prompt;
-  // still faithful to dispatch - it does whatever the port's "rest" does.
+  // "Rest" opens the full do_cmd_rest prompt (main.ts restCmd): N turns, '&' as
+  // needed, '*' HP+SP, '!' HP or SP - matching textui_cmd_rest.
   out.push({ label: "Rest", action: "rest" });
   out.push({ label: "Look", action: "look" });
   out.push({ label: "Inventory", action: "inventory" });
@@ -159,9 +158,11 @@ export interface CaveMenuCtx {
 /**
  * context_menu_cave (L426-649). "Attack" vs "Alter" (L462) collapse to one
  * action - the core "alter" command already resolves attack-vs-alter from
- * the grid's live contents, matching do_cmd_alter. Steal and Jump Onto are
- * included disabled (no CMD_STEAL/CMD_JUMP in this port); Recall Info is
- * omitted entirely (no monster-lore viewer to open - see the module header).
+ * the grid's live contents, matching do_cmd_alter. Jump Onto is included
+ * disabled (no CMD_JUMP in this port); Recall Info is omitted entirely (no
+ * monster-lore viewer to open - see the module header). Steal (CMD_STEAL) is
+ * keyboard-only upstream (cmd_hidden), so like the original it is not a cave-
+ * menu entry - it is bound to the 's' key (main.ts stealCmd).
  */
 export function buildCaveMenu(ctx: CaveMenuCtx): MenuEntry<CaveMenuAction>[] {
   const out: MenuEntry<CaveMenuAction>[] = [{ label: "Look At", action: "look" }];

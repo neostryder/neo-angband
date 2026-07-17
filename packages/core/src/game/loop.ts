@@ -146,24 +146,37 @@ export function playerAdjustManaPrecise(p: Player, spGain: number): number {
   return p.csp * 65536 + p.cspFrac - old32;
 }
 
+/* player-util.h:61: REST_REQUIRED_FOR_REGEN. */
+const REST_REQUIRED_FOR_REGEN = 5;
+
+/**
+ * player-util.c:1381: the conditional REST_ modes (COMPLETE=-2, ALL_POINTS=-1,
+ * SOME_POINTS=-3) rest until a condition is met rather than for a fixed count.
+ */
+function playerRestingIsSpecial(count: number): boolean {
+  return count === -1 || count === -2 || count === -3;
+}
+
 /**
  * player_resting_can_regenerate (player-util.c:1461): the player earns the x2
  * regeneration bonus once REST_REQUIRED_FOR_REGEN turns of the current rest
  * have elapsed, or immediately for the conditional REST_ modes. The rest
- * command subsystem (WP-11) is not built yet, so this seam returns false today
- * (the player is never resting), which is behaviourally faithful. WP-11 wires
- * the live resting count in here. No RNG.
+ * command (WP-11, web) sets state.resting; absent when not resting. No RNG.
  */
-function playerRestingCanRegenerate(_state: GameState): boolean {
-  return false;
+function playerRestingCanRegenerate(state: GameState): boolean {
+  const r = state.resting;
+  if (!r) return false;
+  return r.turnsRested >= REST_REQUIRED_FOR_REGEN || playerRestingIsSpecial(r.count);
 }
 
 /**
  * player_is_resting (player-util.c:1397): true while a rest command is running.
- * Gates the noise/scent update below. Same WP-11 seam as above; false today.
+ * Gates the noise/scent update below. Driven by state.resting (WP-11, web).
  */
-function playerIsResting(_state: GameState): boolean {
-  return false;
+function playerIsResting(state: GameState): boolean {
+  const r = state.resting;
+  if (!r) return false;
+  return r.count > 0 || playerRestingIsSpecial(r.count);
 }
 
 /**
