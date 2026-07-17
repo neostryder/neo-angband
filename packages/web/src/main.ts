@@ -249,8 +249,12 @@ import {
   showRuneKnowledge,
   showFeatureKnowledge,
   showTrapKnowledge,
+  showObjectKnowledge,
+  showEgoKnowledge,
+  showShapeKnowledge,
   artifactKnowledgeGroups,
   runGroupedBrowser,
+  type ObjectBrowserDeps,
 } from "./knowledge";
 import { runCharacterSelect } from "./charselect";
 import {
@@ -1991,17 +1995,34 @@ async function showMonsterRecall(mon: Monster): Promise<void> {
  * is retained as a trailing entry so that functionality is not lost while the
  * object browser awaits `everseen`.
  */
+/**
+ * Every live object find_artifact scans (ui-knowledge.c L1537): floor piles,
+ * player gear, monster-held objects, store stock and stored (cached) level
+ * chunks. Feeds the artifact browser's exact created-and-not-live-unidentified
+ * gate (obj/artifact-known.ts).
+ */
+function* allWorldObjects(): Iterable<GameObject> {
+  for (const pile of state.floor.values()) yield* pile;
+  yield* state.gear.store.values();
+  for (const mon of state.monsters) if (mon) yield* mon.heldObj;
+  for (const store of state.stores ?? []) yield* store.stock;
+  for (const level of state.levelCache?.values() ?? []) {
+    for (const pile of level.floor.values()) yield* pile;
+    for (const mon of level.monsters) if (mon) yield* mon.heldObj;
+  }
+}
+
 async function openKnowledgeMenu(): Promise<void> {
   const p = state.actor.player;
   const items: MenuItem[] = [
-    { label: "Display object knowledge", disabled: true },
+    { label: "Display object knowledge" },
     { label: "Display rune knowledge" },
     { label: "Display artifact knowledge" },
-    { label: "Display ego item knowledge", disabled: true },
+    { label: "Display ego item knowledge" },
     { label: "Display monster knowledge" },
     { label: "Display feature knowledge" },
     { label: "Display trap knowledge" },
-    { label: "Display shapechange effects", disabled: true },
+    { label: "Display shapechange effects" },
     { label: "Display hall of fame", disabled: true },
     { label: "Display character history" },
     { label: "Display equippable comparison" },
@@ -2011,21 +2032,68 @@ async function openKnowledgeMenu(): Promise<void> {
     const idx = await selectFromMenu(term, "Display current knowledge", items);
     if (idx === null) return;
     switch (idx) {
+      case 0: {
+        // textui_browse_object_knowledge (ui-knowledge.c L2139): everseen ||
+        // flavoured kinds. kindName is object_kind_name (obj-desc.c L48), never
+        // leaking an unidentified flavoured kind's real name.
+        const objDeps: ObjectBrowserDeps = {
+          isAware: (k) => game.flavor.isAware(k),
+          wasTried: (k) => game.flavor.wasTried(k),
+          everseen: (k) => game.everseen.kindSeen(k),
+          hasFlavor: (k) => state.hasFlavor?.(k) ?? false,
+          kindName: (k, aware) =>
+            !aware && (state.hasFlavor?.(k) ?? false)
+              ? (state.flavorText?.(k) ?? "")
+              : k.name.replace(/[~&]/g, " ").trim(),
+        };
+        await showObjectKnowledge(
+          term,
+          booted.registries.objects.kinds,
+          booted.registries.objects.bases,
+          objDeps,
+        );
+        break;
+      }
       case 1:
         await showRuneKnowledge(term, state.runeEnv, p);
         break;
       case 2: {
+        // artifact_is_known exact gate (ui-knowledge.c L1687): created AND no
+        // live unidentified copy exists. find_artifact scans allWorldObjects.
+        const exact = {
+          worldObjects: () => allWorldObjects(),
+          isCreated: (aidx: number) => state.artifacts?.isCreated(aidx) ?? false,
+          wizard: wizardMode,
+        };
         const groups = artifactKnowledgeGroups(
           booted.registries.objects.artifacts,
           booted.registries.objects.bases,
           p,
           state.artifacts ?? new ArtifactState(booted.registries.objects.artifacts.length),
+          exact,
         );
         await runGroupedBrowser(term, "artifacts", groups, async (art) => {
-          await showTextScreen(term, art.name, [{ text: art.name, color: "#8ab8ff" }]);
+          // desc_art_fake (ui-knowledge.c L1610): make_fake_artifact +
+          // object_info(OINFO_NONE) recall is deferred; show the name + lore text.
+          const lines = [{ text: art.name, color: "#8ab8ff" }];
+          if (art.text) {
+            lines.push({ text: "", color: "#c8c8d4" });
+            lines.push({ text: art.text, color: "#c8c8d4" });
+          }
+          await showTextScreen(term, art.name, lines);
         });
         break;
       }
+      case 3:
+        // do_cmd_knowledge_ego_items (ui-knowledge.c L1827): everseen egos.
+        await showEgoKnowledge(
+          term,
+          booted.registries.objects.egos,
+          booted.registries.objects.kinds,
+          booted.registries.objects.bases,
+          game.everseen,
+        );
+        break;
       case 4:
         await showMonsterKnowledge();
         break;
@@ -2035,6 +2103,23 @@ async function openKnowledgeMenu(): Promise<void> {
       case 6:
         if (booted.registries.traps) await showTrapKnowledge(term, booted.registries.traps);
         break;
+      case 7: {
+        // do_cmd_knowledge_shapechange (ui-knowledge.c L3142). The change-effect
+        // (effect_describe) and triggering-spell tails are not assembled here
+        // yet, so the recall shows the pure field summaries.
+        const shapeEnv = {
+          properties: booted.registries.objects.properties,
+          elementNames: (booted.registries.projections ?? []).map((pr) => pr.name),
+          playerAbilities: players.properties
+            .filter((pr) => pr.type === "player" && pr.code)
+            .map((pr) => ({
+              index: (PF as Record<string, number>)[pr.code!]!,
+              desc: pr.desc,
+            })),
+        };
+        await showShapeKnowledge(term, players.shapes, shapeEnv);
+        break;
+      }
       case 9:
         await showTextScreen(term, "Player history", historyLines(state));
         break;

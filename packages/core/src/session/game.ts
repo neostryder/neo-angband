@@ -165,6 +165,7 @@ import {
 import {
   AutoinscriptionRegistry,
   FlavorKnowledge,
+  EverseenKnowledge,
   makeRuneEnv,
   OBJ_NOTICE,
   objectLearnOnWield,
@@ -354,6 +355,11 @@ export interface StartedGame {
   players: PlayerRegistry;
   /** Per-game flavor knowledge (aware/tried), for the save format. */
   flavor: FlavorKnowledge;
+  /**
+   * Per-game everseen knowledge (kind/ego "ever seen"), for the object + ego
+   * knowledge browsers and the save format.
+   */
+  everseen: EverseenKnowledge;
   /** seed_flavor: the seed flavor_init used, persisted so a reload matches. */
   seedFlavor: number;
   /**
@@ -425,6 +431,7 @@ interface WiredGame {
   registry: ActionRegistry;
   trapDeps: TrapDeps | null;
   flavor: FlavorKnowledge;
+  everseen: EverseenKnowledge;
   /**
    * The effect interpreter, or null on a worldless boot (no projections). Kept
    * on the wired result so the host can hand it to a trusted mod's registry
@@ -474,6 +481,12 @@ function wireGame(
   const registry = createDefaultRegistry();
 
   const flavor = new FlavorKnowledge(reg.objects.ordinaryKindCount);
+
+  // kind/ego everseen (object_kind/ego_item everseen): one per-game store, read
+  // by the object + ego knowledge browsers and marked on live describes via
+  // knownDescOf (game/describe.ts) and for bought start items (startGame).
+  const everseen = new EverseenKnowledge();
+  state.everseen = everseen;
 
   // flavor_init (obj-util.c): assign each flavoured kind a colour/adjective and
   // mark the non-flavoured ordinary kinds aware. Deterministic in seedFlavor,
@@ -1406,7 +1419,7 @@ function wireGame(
     ...(trapDeps ? { trapDeps } : {}),
   };
 
-  return { registry, trapDeps, flavor, effects: effectRegistry, wizardBundles };
+  return { registry, trapDeps, flavor, everseen, effects: effectRegistry, wizardBundles };
 }
 
 /** The parts of a generated level that populate a GameState. */
@@ -2135,6 +2148,13 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   const seedFlavor = booted.rng.randint0(0x10000000);
   const wired = wireGame(state, reg, players, pstate, seedFlavor, pack);
 
+  // kind->everseen = true for each bought start item (player-birth.c L658). At
+  // birth the gear holds only the starting kit, so marking every carried kind
+  // is exactly the start-item set. Pure Set insert, no RNG.
+  for (const obj of state.gear.store.values()) {
+    wired.everseen.markKind(obj.kind);
+  }
+
   // birth_know_runes (player-birth.c L1261-1262): a birth_know_runes character
   // knows every rune for ID-on-walkover (gap 1.5). No RNG. Before
   // player_learn_innate, matching the C acceptance order.
@@ -2183,6 +2203,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     booted,
     players,
     flavor: wired.flavor,
+    everseen: wired.everseen,
     seedFlavor,
     /* A freshly-birthed game is core-only, deterministic, with no mod bags or
      * quarantined content (P7.2). A future mod loader seeds a richer manifest. */
@@ -2361,6 +2382,7 @@ export function saveGame(game: StartedGame): SavedGame {
     game.seedFlavor,
     ids,
     game.randartSeed,
+    game.everseen,
   );
   /* The mod-lifecycle blocks (P7.2): the manifest fingerprint always travels
    * with the save; the per-mod bags and any quarantined orphans ride along only
@@ -2606,6 +2628,9 @@ export function loadGame(
    * aware-marking of non-flavoured kinds - the save is the source of truth for
    * what the player has actually identified. */
   wired.flavor.restore(save.flavor);
+  /* kind/ego everseen (save.c L397/L533): absent in saves written before
+   * everseen tracking, which load with an empty set. */
+  if (save.everseen) wired.everseen.restore(save.everseen);
   if (save.ignore) state.ignore.restore(save.ignore);
   /* Per-kind autoinscriptions (obj-ignore.c note_aware/note_unaware): absent in
    * saves written before this block, which load with an empty registry. */
@@ -2636,6 +2661,7 @@ export function loadGame(
     booted,
     players,
     flavor: wired.flavor,
+    everseen: wired.everseen,
     seedFlavor,
     manifest,
     mods: save.mods ?? {},

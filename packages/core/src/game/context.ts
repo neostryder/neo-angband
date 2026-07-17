@@ -283,6 +283,15 @@ export interface GameState {
    */
   artifacts?: import("../obj/make").ArtifactState;
   /**
+   * kind->everseen / ego->everseen (object_kind/ego_item; save.c L397/L533):
+   * the per-game "ever seen" flags for object kinds and egos, marked the first
+   * time the player sees an item whose name they know (obj-desc.c L633-637) and
+   * for each bought start item (player-birth.c L658). Read by the object/ego
+   * knowledge browsers; installed by wireGame; serialized in the save. Optional
+   * so the worldless harness stays total (absent = nothing ever seen).
+   */
+  everseen?: import("../obj/knowledge").EverseenKnowledge;
+  /**
    * The live derived player state (upstream p->state), the result of the last
    * calc_bonuses. update_mon (game/known.ts) reads its OF flag set (telepathy /
    * see-invisible) and see_infra to compute monster visibility. Reassigned by

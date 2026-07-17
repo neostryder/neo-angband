@@ -27,6 +27,15 @@ export function knownDescOf(state: GameState): KnownDesc {
      * Absent seams leave object_desc on its tval-only fallback. */
     ...(state.hasFlavor ? { hasFlavor: state.hasFlavor } : {}),
     ...(state.flavorText ? { flavorText: state.flavorText } : {}),
+    /* kind->everseen / ego->everseen (obj-desc.c L633-637): a live describe of
+     * an item whose name the player knows marks it seen for the object/ego
+     * knowledge browsers. Pure Set insert, no RNG. Absent (worldless) = no-op. */
+    ...(state.everseen
+      ? {
+          markKindSeen: (kind) => state.everseen!.markKind(kind),
+          markEgoSeen: (ego) => state.everseen!.markEgo(ego),
+        }
+      : {}),
   };
 }
 
