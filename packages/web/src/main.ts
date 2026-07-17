@@ -265,12 +265,8 @@ import {
   showPredictedScores,
 } from "./score";
 import { enterScore, noscoreInvalidatesScore, BIRTH_MESSAGE_RECALL_BANNER } from "@neo-angband/core";
-import {
-  markNoscore,
-  ObjAllocState,
-  ArtifactState,
-} from "@neo-angband/core";
-import type { WizardDeps, MakeDeps } from "@neo-angband/core";
+import { markNoscore } from "@neo-angband/core";
+import type { WizardDeps } from "@neo-angband/core";
 import { runWizardToggle, runWizardDebugMenu } from "./wizard";
 import type { WizardUiCtx } from "./wizard";
 import { runStore } from "./shop";
@@ -2663,27 +2659,16 @@ let wizardMode = false;
  * WP-10 handoff hook: it ORs the NOSCORE_* bits into the live player.noscore
  * (persisted by save.ts, read by the score gate via noscoreInvalidatesScore).
  *
- * The object/monster creation bundles (makeDeps/monPlace) are the sanctioned
- * genDeps construction (session/boot.ts genDeps) rebuilt from the bound
- * registries + the game's shared ArtifactState, so wizard-created content marks
- * the same artifact flags as the rest of the game. The effect interpreter,
- * ExpDeps, TrapDeps and the LIVE MonPlaceDeps (summon) are assembled privately
- * inside session/game.ts wireGame and are not surfaced on StartedGame yet, so
- * they are omitted here (their commands report "not available" until that seam
- * lands - see the WP-14 WIRING-NEEDED note); the engine actions no-op when
- * their bundle is absent.
+ * The engine bundles (makeDeps with its real generation foils, expDeps with the
+ * real onLevelChange/onGainLevel, the effect interpreter, TrapDeps and the live
+ * MonPlaceDeps) come straight from game.wizardBundles - assembled once inside
+ * session/game.ts wireGame, the single source of truth for that wiring, so the
+ * web shell never re-derives them. The shell only adds the wizard flag, the
+ * message sink, the markNoscore hook and the pure registry data.
  */
 function buildWizardDeps(): WizardDeps {
   const reg = booted.registries;
   const player = state.actor.player;
-  const noArtifacts = state.options?.get("birth_no_artifacts") ?? false;
-  const makeDeps: MakeDeps = {
-    reg: reg.objects,
-    alloc: new ObjAllocState(reg.objects, reg.constants),
-    constants: reg.constants,
-    artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
-    noArtifacts,
-  };
   return {
     wizard: wizardMode,
     msg: say,
@@ -2691,7 +2676,8 @@ function buildWizardDeps(): WizardDeps {
     markNoscore: (bits: number): void => {
       player.noscore = markNoscore(player.noscore, bits);
     },
-    makeDeps,
+    // The real engine bundles (effect / expDeps / trapDeps / monPlace / makeDeps).
+    ...game.wizardBundles,
     ...(game.flavor ? { flavor: game.flavor } : {}),
     races: reg.monsters.races,
     artifacts: reg.objects.artifacts,

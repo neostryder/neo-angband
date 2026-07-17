@@ -149,6 +149,7 @@ import {
 import { installSpellCommands } from "../game/spell-cmd";
 import { installRangedCommands } from "../game/ranged-cmd";
 import { markNoscore, NOSCORE } from "../game/wizard";
+import type { WizardDeps } from "../game/wizard";
 import { createTownStores, storeUpdate } from "../store/store";
 import type { Store, StoreMaintContext } from "../store/store";
 import { storeBuy, storeSell } from "../store/transact";
@@ -386,6 +387,12 @@ export interface StartedGame {
    */
   changeLevel: (depth: number) => void;
   /**
+   * The wizard/debug engine bundles (WP-14 / gap 15.2): effect interpreter,
+   * ExpDeps, TrapDeps, live MonPlaceDeps and MakeDeps for the interactive debug
+   * command menu. Assembled inside wireGame (single source of truth).
+   */
+  wizardBundles: WizardBundle;
+  /**
    * do_cmd_buy: purchase `amt` of a store-stock object into the player's pack
    * (store/transact.ts), with the deps and knowledge closed over. Town only.
    */
@@ -399,6 +406,20 @@ export interface StartedGame {
   price: (store: Store, obj: GameObject, storeBuying: boolean, qty: number) => number;
 }
 
+/**
+ * The wizard/debug engine bundles (WP-14 / gap 15.2): the effect interpreter,
+ * ExpDeps, TrapDeps, the live MonPlaceDeps and MakeDeps that the interactive
+ * wizard commands (game/wizard.ts) dispatch through. Assembled once inside
+ * wireGame - the single source of truth for this wiring - and surfaced on
+ * StartedGame so the web debug menu (packages/web wizard.ts) never re-derives
+ * them. A subset of WizardDeps: the shell adds the wizard flag, msg, the
+ * markNoscore hook and the pure registry data (races/artifacts/curses).
+ */
+export type WizardBundle = Pick<
+  WizardDeps,
+  "makeDeps" | "expDeps" | "effect" | "trapDeps" | "monPlace"
+>;
+
 /** What the shared command/effect wiring returns. */
 interface WiredGame {
   registry: ActionRegistry;
@@ -410,6 +431,8 @@ interface WiredGame {
    * facade (W2.2, mod/registry-host.ts) for effect-handler overrides.
    */
   effects: EffectRegistry | null;
+  /** The wizard/debug engine bundles (WP-14), for the debug command menu. */
+  wizardBundles: WizardBundle;
 }
 
 /**
@@ -721,6 +744,10 @@ function wireGame(
   /* Hoisted so the wired result can surface it to the host (W2.2 mod facade);
    * assigned inside the projections block below, null on a worldless boot. */
   let effectRegistry: EffectRegistry | null = null;
+  /* The wizard/debug effect bundle (WP-14): the same effect_simple stack items
+   * and spells run through, assembled once the block's locals exist. undefined
+   * on a worldless boot, where the wizard effect commands are inert anyway. */
+  let wizardEffect: WizardDeps["effect"] = undefined;
   /* obj_kind_can_browse(kind) for the birthed class (obj-tval.c): the set of
    * this character's readable spellbook kinds (tval,sval), stamped by
    * registerBookKinds. make_object uses it to reject unreadable books (gap 3.5).
@@ -978,6 +1005,21 @@ function wireGame(
       // them; absent, they would drop.
       onMessage: (text: string): void => state.msg?.(text),
       incQueries,
+    };
+
+    /* The wizard/debug effect bundle (WP-14): identical to the object-command
+     * and trap effect bundles - registry + the game-env pieces effect_simple
+     * needs. The interactive debug commands (cure/detect/map/teleport/summon-
+     * random/hit-los) run their effect_simple calls over exactly this stack. */
+    wizardEffect = {
+      registry: effects,
+      cast,
+      envDeps,
+      inject,
+      ...(teleport ? { teleport } : {}),
+      general,
+      item,
+      summon,
     };
 
     /* monster_change_shape / monster_revert_shape, driving the
@@ -1352,7 +1394,19 @@ function wireGame(
       caveIlluminateKnown(s, dawn),
   };
 
-  return { registry, trapDeps, flavor, effects: effectRegistry };
+  /* Surface the wizard/debug engine bundles (WP-14): all four locals are in
+   * scope here (makeDeps L731, expDeps L603, trapDeps hoisted, wizardEffect
+   * assigned in the projections block, ambientPlaceDeps the live MonPlaceDeps).
+   * Null bundles are omitted so WizardDeps' optional fields stay absent. */
+  const wizardBundles: WizardBundle = {
+    makeDeps,
+    expDeps,
+    monPlace: ambientPlaceDeps,
+    ...(wizardEffect ? { effect: wizardEffect } : {}),
+    ...(trapDeps ? { trapDeps } : {}),
+  };
+
+  return { registry, trapDeps, flavor, effects: effectRegistry, wizardBundles };
 }
 
 /** The parts of a generated level that populate a GameState. */
@@ -2139,6 +2193,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     options,
     randartSeed,
     changeLevel: makeChangeLevel(state, reg, wired.trapDeps),
+    wizardBundles: wired.wizardBundles,
     ...makeStoreApi(state, reg, wired.flavor, options),
   };
 }
@@ -2591,6 +2646,7 @@ export function loadGame(
     changeLevel: makeChangeLevel(state, reg, wired.trapDeps, {
       inArena: !!save.arena,
     }),
+    wizardBundles: wired.wizardBundles,
     ...makeStoreApi(state, reg, wired.flavor, options),
   };
 }
