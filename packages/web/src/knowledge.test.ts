@@ -4,8 +4,16 @@
  * sort order and membership gating against the C oracle cited per function.
  */
 import { describe, it, expect } from "vitest";
-import { TV, TF, TRF } from "@neo-angband/core";
-import type { Feature, FeatureRegistry, TrapKind, ObjectBase } from "@neo-angband/core";
+import { TV, TF, TRF, KF } from "@neo-angband/core";
+import type {
+  Feature,
+  FeatureRegistry,
+  TrapKind,
+  ObjectBase,
+  ObjectKind,
+  EgoItem,
+  EverseenKnowledge,
+} from "@neo-angband/core";
 import {
   buildObjGroupOrder,
   objGroupName,
@@ -14,6 +22,9 @@ import {
   groupsToMenu,
   featureKnowledgeGroups,
   trapKnowledgeGroups,
+  objectKnowledgeGroups,
+  egoKnowledgeGroups,
+  type ObjectBrowserDeps,
   type KnowledgeGroup,
 } from "./knowledge";
 
@@ -114,6 +125,106 @@ describe("trapOrder + trapKnowledgeGroups (do_cmd_knowledge_traps, ui-knowledge.
     expect(traps.rows.map((r) => r.member.desc)).toEqual(["dart trap", "spiked pit"]);
     const all = groups.flatMap((g) => g.rows.map((r) => r.member.desc));
     expect(all).not.toContain("x");
+  });
+});
+
+/** A kind with the fields the object browser reads. */
+function kind(
+  kidx: number,
+  tval: number,
+  sval: number,
+  name: string,
+  insta = false,
+): ObjectKind {
+  const set = new Set<number>(insta ? [KF.INSTA_ART] : []);
+  return {
+    kidx,
+    tval,
+    sval,
+    name,
+    text: "",
+    kindFlags: { has: (f: number) => set.has(f) },
+  } as unknown as ObjectKind;
+}
+
+describe("objectKnowledgeGroups (textui_browse_object_knowledge, ui-knowledge.c L2139)", () => {
+  const rings = () => basesWith([TV["RING"], TV["POTION"]]);
+
+  it("lists everseen OR flavoured kinds, excludes INSTA_ART, never leaks unaware names", () => {
+    const seenRing = kind(1, TV["RING"], 0, "Ring of Power");
+    const flavPotionAware = kind(2, TV["POTION"], 0, "Cure Light Wounds");
+    const flavPotionUnaware = kind(3, TV["POTION"], 1, "Cure Serious Wounds");
+    const unseenNoFlavor = kind(4, TV["RING"], 2, "Ring of Speed");
+    const instaArt = kind(5, TV["RING"], 3, "The One Ring", true);
+
+    const aware = new Set([1, 2]); // ring + first potion are aware
+    const flavored = new Set([2, 3]); // potions carry a flavour
+    const everseen = new Set([1]); // only the ring is everseen
+    const deps: ObjectBrowserDeps = {
+      isAware: (k) => aware.has(k.kidx),
+      wasTried: () => false,
+      everseen: (k) => everseen.has(k.kidx),
+      hasFlavor: (k) => flavored.has(k.kidx),
+      // Leak-safe: unaware flavoured kind shows a flavour word, not its name.
+      kindName: (k, a) => (a ? k.name : `Flavour${k.kidx}`),
+    };
+
+    const groups = objectKnowledgeGroups(
+      [seenRing, flavPotionAware, flavPotionUnaware, unseenNoFlavor, instaArt],
+      rings(),
+      deps,
+    );
+    const labels = groups.flatMap((g) => g.rows.map((r) => r.label));
+    // everseen ring + both flavoured potions listed
+    expect(labels).toContain("Ring of Power");
+    expect(labels).toContain("Cure Light Wounds");
+    // unaware potion shows its flavour, NOT the real kind name (no leak)
+    expect(labels).toContain("Flavour3");
+    expect(labels).not.toContain("Cure Serious Wounds");
+    // unseen non-flavour kind and the INSTA_ART are absent
+    expect(labels).not.toContain("Ring of Speed");
+    expect(labels).not.toContain("The One Ring");
+  });
+
+  it("appends ' {tried}' to a tried-but-unaware flavoured kind", () => {
+    const potion = kind(3, TV["POTION"], 1, "Potion X");
+    const deps: ObjectBrowserDeps = {
+      isAware: () => false,
+      wasTried: () => true,
+      everseen: () => false,
+      hasFlavor: () => true,
+      kindName: () => "Smoky",
+    };
+    const groups = objectKnowledgeGroups([potion], basesWith([TV["POTION"]]), deps);
+    const labels = groups.flatMap((g) => g.rows.map((r) => r.label));
+    expect(labels).toContain("Smoky {tried}");
+  });
+});
+
+describe("egoKnowledgeGroups (do_cmd_knowledge_ego_items, ui-knowledge.c L1827)", () => {
+  const egoOf = (eidx: number, name: string, possKidx: number[]): EgoItem =>
+    ({ eidx, name, text: "", possItems: new Set(possKidx) }) as unknown as EgoItem;
+
+  it("lists only everseen egos, expanded across their poss_items groups", () => {
+    const kinds = [
+      kind(0, TV["SWORD"], 0, "sword"),
+      kind(1, TV["BOW"], 0, "bow"),
+    ];
+    const bases = basesWith([TV["SWORD"], TV["BOW"]]);
+    const seenEidx = new Set([10]);
+    const everseen = {
+      egoSeen: (e: EgoItem) => seenEidx.has(e.eidx),
+    } as unknown as EverseenKnowledge;
+
+    const egoSeen = egoOf(10, "of Slaying", [0, 1]); // spans Sword + Bow groups
+    const egoUnseen = egoOf(11, "of Hidden", [0]);
+
+    const groups = egoKnowledgeGroups([egoSeen, egoUnseen], kinds, bases, everseen);
+    const names = groups.flatMap((g) => g.rows.map((r) => r.member.name));
+    // The seen ego appears once per possible group (Sword + Bow).
+    expect(names.filter((n) => n === "of Slaying").length).toBe(2);
+    // The unseen ego never appears (no leak).
+    expect(names).not.toContain("of Hidden");
   });
 });
 

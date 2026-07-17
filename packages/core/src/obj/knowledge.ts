@@ -33,6 +33,7 @@ import { sameMonstersSlain, tvalIsBodyArmor, tvalIsJewelry } from "./object";
 import type {
   Brand,
   Curse,
+  EgoItem,
   ObjectKind,
   ObjectProperty,
   Slay,
@@ -829,6 +830,42 @@ export function buildRuneList(env: RuneEnv): Rune[] {
   return runes;
 }
 
+/**
+ * rune_desc (obj-knowledge.c L344-403): the recall description of a rune. The
+ * text is computed per variety (no per-rune desc field in the data pack), so
+ * this ports the C switch verbatim. Combat runes have fixed strings keyed by
+ * COMBAT_RUNE_TO_A/H/D (obj-knowledge.h L35-37); curse runes read the curse's
+ * own desc (curses[index].desc) formatted as "Object %s."; every other variety
+ * substitutes the rune's name into its template. Returns "" for an out-of-range
+ * curse (the C default falls through to NULL).
+ */
+export function runeDesc(env: RuneEnv, rune: Rune): string {
+  switch (rune.variety) {
+    case "combat":
+      if (rune.index === 0)
+        return "Object magically increases the player's armor class";
+      if (rune.index === 1)
+        return "Object magically increases the player's chance to hit";
+      if (rune.index === 2)
+        return "Object magically increases the player's damage";
+      return "";
+    case "mod":
+      return `Object gives the player a magical bonus to ${rune.name}.`;
+    case "resist":
+      return `Object affects the player's resistance to ${rune.name}.`;
+    case "brand":
+      return `Object brands the player's attacks with ${rune.name}.`;
+    case "slay":
+      return `Object makes the player's attacks against ${rune.name} more powerful.`;
+    case "curse": {
+      const desc = env.curses[rune.index]?.desc;
+      return desc ? `Object ${desc}.` : "";
+    }
+    case "flag":
+      return `Object gives the player the property of ${rune.name}.`;
+  }
+}
+
 /** player_knows_rune over the typed knowledge stores. */
 export function playerKnowsRune(p: Player, rune: Rune): boolean {
   switch (rune.variety) {
@@ -1142,6 +1179,66 @@ export class FlavorKnowledge {
     this.triedKidx.clear();
     for (const k of data.aware) this.awareKidx.add(k);
     for (const k of data.tried) this.triedKidx.add(k);
+  }
+}
+
+/**
+ * The per-game "everseen" knowledge (object.h struct object_kind.everseen and
+ * struct ego_item.everseen). Upstream these bits live on the shared kind/ego
+ * templates and are global to the running game; this port keeps them out of the
+ * immutable bound registry - exactly like FlavorKnowledge - in a per-game store
+ * keyed by kind index (kidx) and ego index (eidx), so a bound ObjRegistry stays
+ * reusable across games and the flags ride the save (save.c L397, L533).
+ *
+ * A kind or ego is marked everseen the first time the player sees an item whose
+ * name they know: object_desc sets obj->kind->everseen once the flavour is
+ * aware, and obj->ego->everseen once the ego is identified (obj-desc.c
+ * L633-637), plus player-birth.c L658 marks each bought start-item's kind. The
+ * object-knowledge browser lists a kind when it is everseen OR flavoured
+ * (ui-knowledge.c L2157); the ego browser lists an ego when it is everseen
+ * (L1847).
+ *
+ * Marking is a pure Set insert: it draws no RNG and does not depend on draw
+ * order, so wiring it into object_desc/generation cannot perturb determinism.
+ */
+export class EverseenKnowledge {
+  private readonly seenKidx = new Set<number>();
+  private readonly seenEidx = new Set<number>();
+
+  /** obj->kind->everseen: has the player ever seen this kind (name known)? */
+  kindSeen(kind: ObjectKind): boolean {
+    return this.seenKidx.has(kind.kidx);
+  }
+
+  /** obj->ego->everseen: has the player ever seen this ego (identified)? */
+  egoSeen(ego: EgoItem): boolean {
+    return this.seenEidx.has(ego.eidx);
+  }
+
+  /** obj->kind->everseen = true (obj-desc.c L637 / player-birth.c L658). */
+  markKind(kind: ObjectKind): void {
+    this.seenKidx.add(kind.kidx);
+  }
+
+  /** obj->ego->everseen = true (obj-desc.c L634). */
+  markEgo(ego: EgoItem): void {
+    this.seenEidx.add(ego.eidx);
+  }
+
+  /** A JSON-safe snapshot of the seen kidx/eidx sets, for savefiles. */
+  snapshot(): { kinds: number[]; egos: number[] } {
+    return {
+      kinds: Array.from(this.seenKidx),
+      egos: Array.from(this.seenEidx),
+    };
+  }
+
+  /** Restore a snapshot() payload (replacing the current knowledge). */
+  restore(data: { kinds: number[]; egos: number[] }): void {
+    this.seenKidx.clear();
+    this.seenEidx.clear();
+    for (const k of data.kinds) this.seenKidx.add(k);
+    for (const e of data.egos) this.seenEidx.add(e);
   }
 }
 

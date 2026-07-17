@@ -5,6 +5,9 @@ import { runGameLoop, LOOP_STATUS } from "../game/loop";
 import { monsterGroupsVerify } from "../game/mon-group";
 import type { PlayerCommand } from "../game/context";
 import { objectNew } from "../obj/object";
+import { EverseenKnowledge } from "../obj/knowledge";
+import { ContentIdResolver } from "../mod/ids";
+import { serializeGame } from "./save";
 import type { ObjectKind } from "../obj/types";
 import { describeObject } from "../game/describe";
 import { NOSCORE } from "../game/wizard";
@@ -164,6 +167,36 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     expect(nameAfter).toBe(nameBefore);
     /* Unaware: a flavoured word, not the real kind. */
     expect(nameBefore).not.toContain(`of ${potionKind.name}`);
+  });
+
+  it("round-trips the per-game everseen sets (kind + ego, save.c L397/L533)", () => {
+    const game = startGame(pack, { seed: 777, depth: 4 });
+    const reg = game.booted.registries;
+    const kind = reg.objects.kinds.find((k) => k && k.tval === TV.SWORD)!;
+    const ego = reg.objects.egos.find((e) => e && e.name)!;
+
+    /* Mark a kind and an ego as everseen. */
+    const everseen = new EverseenKnowledge();
+    everseen.markKind(kind);
+    everseen.markEgo(ego);
+
+    /* Serialize through serializeGame (the everseen param) + real JSON. */
+    const ids = new ContentIdResolver(reg);
+    const saved = JSON.parse(
+      JSON.stringify(serializeGame(game.state, game.flavor, game.seedFlavor, ids, 0, everseen)),
+    ) as SavedGame;
+    expect(saved.everseen).toBeDefined();
+    expect(saved.everseen!.kinds).toContain(kind.kidx);
+    expect(saved.everseen!.egos).toContain(ego.eidx);
+
+    /* Restore into a fresh store and confirm both survive by index. */
+    const restored = new EverseenKnowledge();
+    restored.restore(saved.everseen!);
+    expect(restored.kindSeen(kind)).toBe(true);
+    expect(restored.egoSeen(ego)).toBe(true);
+    /* An unmarked kind stays unseen. */
+    const otherKind = reg.objects.kinds.find((k) => k && k.kidx !== kind.kidx)!;
+    expect(restored.kindSeen(otherKind)).toBe(false);
   });
 
   it("round-trips the quest history and the total_winner flag", () => {
