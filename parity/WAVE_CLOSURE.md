@@ -88,46 +88,41 @@ record.
 - Live browser smoke: boot -> faithful birth -> town -> movement advances turns,
   day/night cycle live.
 
+## Close-everything pass (2026-07-17)
+
+Per the maintainer directive "close everything", the deferrals that Wave 4 left
+open were all closed. See GAP_AUDIT.md "Close-everything pass" for the per-gap
+re-mark. Commits: 787d28d5 (fix: regenerate CLI parity baselines after the 7.6
+loot-draw stream change - the self-regression guard + "descend" golden had been
+failing on HEAD since 8a493dad), e41d8388 (8.10 re-export), 0e8b56a5 (8.5/6.4,
+4.8/6.12, 3.8, 12.6/12.8, 9.4/9.6 data round-trip). Verification after the pass:
+core+web+cli tsc exit 0; full vitest = 222 files / 3214 tests pass; vite bundle +
+PWA clean.
+
+CLOSED in this pass: 3.8, 4.8, 6.4, 6.12, 8.5, 8.10, 12.6, 12.8, and the 9.4/9.6
+join data round-trip. 8.5/6.4 gate on birth_ai_learn and 9.4 on
+birth_levels_persist, so default play stays byte-faithful.
+
 ## Honest remaining deferrals
 
-These are the only items still open after Wave 4. Everything else is CLOSED or
-VERIFIED per the GAP_AUDIT.md status table. IMPORTANT: none of these affect
-faithful play at DEFAULT settings. They split into two groups:
+Exactly ONE sub-item remains open, and it does not affect faithful play at
+DEFAULT settings (birth_levels_persist is off by default):
 
-(a) Default-off-so-faithful-at-default - the deviation only appears under a
-non-default birth option, so a default game is byte-faithful:
+- 9.4 persistent-level staircase-room PLACEMENT (sub-item). The join DATA
+  round-trip is done: chunk->join is populated with the correct prepend order,
+  persisted through StoredLevel + the savefile, and getJoinInfo is seeded from
+  cached neighbours on first visit (all gated on birth_levels_persist). What
+  remains is the first-visit staircase-room DRIVER (gen-cave.c:908-936) plus the
+  adjacency-based alloc_stairs skip (gen-cave.c:943-967), which both need the
+  session's frozen-level cache threaded into the generator as
+  GenerateOptions/Dun hasAdjacentAbove/Below (machinery files gen/generate.ts +
+  gen/util.ts). Until then, a persistent-level first visit generates a valid,
+  playable level with normal stairs but does not align a new level's up-stair to
+  the departure down-stair. The consumer (gen/cave.ts buildStaircaseRooms) is
+  ready to add once the two machinery fields land; exact edits are recorded in
+  the wiring report / GAP_AUDIT.md.
 
-- 8.5 smart-learn AI - unsetSpells read-filter is wired (mon-ranged.ts:232) but
-  the update_smart_learn WRITE hook is never installed at the session level
-  (player/timed.ts:219,244 hook empty). Default birth_ai_learn OFF is faithful;
-  only the option-on path (monsters learning player resists) is the gap.
-- 6.4 update_smart_learn in project_p - rides 8.5's write path
-  (project-player.ts:146-148 confirms it is off/unported); same default-off logic.
-- 9.4 / 9.6 persistent-level stair joins - 9.6 sanitize is ported; the join
-  round-trip is not. birth_levels_persist dungeons stay OFF by default;
-  build_staircase / cavern joins are ported but dormant until Chunk.join is saved
-  and threaded through changeLevel.
-
-(b) Minor / cosmetic / partial - low-impact, not reachable in ordinary default
-play:
-
-- 3.8 remove_contradictory_activation - ported (randart-build.ts:1487) but its
-  effect_summarize_properties injector is left unset (game.ts:2340-2341), so it
-  stays a conservative no-op: redundant randart activations are not stripped.
-- 4.8 obj->known twin - PARTIAL. Core twin (objectSetBaseKnown /
-  player_know_object) ported; progressive floor-item sensing (object_see/
-  object_sense) and full update_player_object_knowledge re-sync deferred (shadow
-  synthesised on demand); magical/cursed progressive feelings not modelled.
-- 6.12 inven_damage twin/ignore - display/knowledge-only; rides 4.8.
-- 12.6 minor persisted player fields (resting_turn, skip_cmd_coercion,
-  unignoring, name_suffix, old_grid) - low; not explicitly closed by WP-10;
-  verify against save.ts.
-- 12.8 running message-log persistence in the savefile - low; the char dump
-  captures last-messages, but the live log is not round-tripped through
-  SavedGame; verify.
-
-Code hygiene (not a parity gap): getMonName/pluralAux still awaiting re-export
-from core index.ts (screens.ts replicates them locally, flagged by WP-12).
+Everything else is CLOSED or VERIFIED per the GAP_AUDIT.md status tables.
 
 ## Accepted deviations (maintainer-ratified 2026-07-16, unchanged)
 

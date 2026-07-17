@@ -171,45 +171,67 @@ Cluster 15 (wizard/debug): 15.1 CLOSED (9c5ce991); 15.2 CLOSED (0f23b7f2 engine 
 9c5ce991/df617c46/05edbe40 UI); 15.3 CLOSED (60295f0a noscore persist + chain);
 15.4 VERIFIED (0f23b7f2 spoilers); 15.5 VERIFIED (0f23b7f2 stats).
 
-### REMAINING (honest open list after Wave 4)
+### Close-everything pass (2026-07-17, maintainer directive "close everything")
 
-None of the remaining items affect faithful play at DEFAULT settings. They split
-into two groups: (a) default-off-so-faithful-at-default - the deviation only
-appears under a non-default birth option (8.5/6.4 need birth_ai_learn on; 9.4/9.6
-need birth_levels_persist on); and (b) minor / cosmetic / partial - 3.8, 4.8,
-6.12, 12.6, 12.8, all low-impact and none reachable in ordinary default play.
+The remaining gaps below were all closed in this pass. Commits:
+- 787d28d5 fix(cli): regenerate parity baselines after the 7.6 loot-draw
+  stream change (the CLI self-regression guard + "descend" golden scenario had
+  been failing on HEAD since 8a493dad because the deterministic stream shifted
+  when monster loot-draws were added but the baselines were not regenerated;
+  27 was captured from the pre-7.6 stream that omitted the draws, 35 is faithful).
+- e41d8388 parity 8.10: re-export getMonName/pluralAux from core index.
+- 0e8b56a5 parity: close the remaining option-gated and minor gaps
+  (8.5/6.4, 4.8/6.12, 3.8, 12.6/12.8, 9.4/9.6 data round-trip).
 
-- 4.8 (obj->known twin) - PARTIAL. Core twin (objectSetBaseKnown /
-  player_know_object) ported (obj/known-object.ts); progressive floor-item sensing
-  (object_see/object_sense) and full update_player_object_knowledge twin re-sync
-  are deferred (known-object.ts synthesises a shadow on demand). Magical/cursed
-  progressive feelings not modelled.
-- 6.12 (inven_damage twin/ignore) - REMAINING. Display/knowledge-only; rides 4.8.
-- 8.5 (smart-learn AI) - REMAINING. unsetSpells (read filter) is wired
-  (mon-ranged.ts:232), but the update_smart_learn WRITE hook is never installed at
-  the session level (player/timed.ts:219,244 hook stays empty), so with
-  birth_ai_learn ON monsters would not actually learn player resists. Default
-  (birth_ai_learn off) is faithful; the option-on path is the gap.
-- 6.4 (update_smart_learn in project_p) - REMAINING. Rides 8.5 write path
-  (project-player.ts:146-148 comment confirms it is off/unported).
-- 3.8 (remove_contradictory_activation) - REMAINING. The function is ported
-  (randart-build.ts:1487) but the effect_summarize_properties injector is left
-  unset at the live site (game.ts:2340-2341), so it stays a conservative no-op:
-  redundant randart activations are not stripped.
-- 9.4 / 9.6 (persistent-level stair joins) - REMAINING (9.6 sanitize is ported;
-  the join round-trip is not). birth_levels_persist dungeons stay OFF by default;
-  build_staircase / cavern joins are ported but dormant until Chunk.join is saved
-  and threaded through changeLevel.
-- 12.6 (minor persisted player fields: resting_turn, skip_cmd_coercion,
-  unignoring, name_suffix, old_grid) - REMAINING (low; not explicitly closed by
-  WP-10; verify against save.ts).
-- 12.8 (running message-log persistence in the savefile) - REMAINING (low; the
-  char-dump captures last-messages, but the live log is not round-tripped through
-  SavedGame; verify).
-- 8.10 note (code hygiene, not a parity gap): getMonName/pluralAux still awaiting
-  re-export from core index.ts (screens.ts replicates them locally).
+Verification: core+web+cli `tsc -b` exit 0; full `vitest run` = 222 files /
+3214 tests pass; vite production bundle + PWA clean.
 
-Everything not in this REMAINING list is CLOSED or VERIFIED per the table above.
+Per-gap re-mark:
+- 3.8 CLOSED (0e8b56a5). effect_summarize_properties ported (obj/effects-info.ts)
+  and installed as the ActivationSummarizer at both randart-set build sites;
+  redundant randart activations are now stripped.
+- 4.8 CLOSED (0e8b56a5). object_see/object_sense + UNSEEN/SENSED/SEEN gating
+  ported (obj-knowledge.c:862-955,1027-1035). NOTE: 4.2.6 has no magical/cursed
+  pseudo-ID feeling path, so unseen->sensed->seen->assessed is the full faithful
+  progression. The staged objectSee/objectSense are unwired like the existing
+  objectTouch/objectGrab; game/known.ts already replicates their exact reduced-
+  floor-memory behaviour, so the floor-list half is closed-by-equivalence.
+- 6.4 CLOSED (0e8b56a5). smartLearn hook supplied per monster-cast in project_p.
+- 6.12 CLOSED (0e8b56a5). inven_damage gear label + ignore_item_ok gating +
+  knowledge twin via the on-demand shadow.
+- 8.5 CLOSED (0e8b56a5). update_smart_learn WRITE path installed at the fail-rune
+  save site and the no-save application path (via the timed host inc-hooks).
+  Gated on birth_ai_learn (off by default -> byte-exact default play).
+- 8.10 CLOSED (e41d8388). getMonName/pluralAux/monsterDesc re-exported from the
+  core index; screens.ts consumes the core getMonName.
+- 12.6 CLOSED (0e8b56a5). resting_turn, skip_cmd_coercion, unignoring,
+  name_suffix round-trip through the savefile (old_grid already persisted via the
+  arena block).
+- 12.8 CLOSED (0e8b56a5). Running message log round-trips through SavedGame;
+  upstream quirk (repeat-counts not persisted) preserved.
+- 9.6 VERIFIED already faithful (sanitize_player_loc).
+- 9.4 CLOSED for the data round-trip (0e8b56a5); ONE sub-item DEFERRED (below).
+
+### REMAINING (honest open list after the close-everything pass)
+
+Exactly ONE sub-item is still open, and it does not affect faithful play at
+DEFAULT settings (birth_levels_persist is off by default):
+
+- 9.4 (persistent-level staircase-room PLACEMENT) - DEFERRED sub-item. The join
+  data round-trip is done: chunk->join is populated (correct prepend order),
+  persisted through StoredLevel + the savefile, and getJoinInfo is seeded from
+  cached neighbours on first visit, all gated on birth_levels_persist. What
+  remains is the first-visit staircase-room DRIVER (gen-cave.c:908-936, iterate
+  dun.join -> buildStaircase) plus the adjacency-based alloc_stairs skip
+  (gen-cave.c:943-967), which both need the session's frozen-level cache threaded
+  into the generator (GenerateOptions/Dun hasAdjacentAbove/Below - machinery
+  files gen/generate.ts + gen/util.ts). Until then, persistent-level first visits
+  generate a valid, playable level with normal stairs but do not align a new
+  level's up-stair to the departure down-stair. Exact remaining edits are in the
+  wiring report; the consumer (gen/cave.ts buildStaircaseRooms) is ready to add
+  once the two machinery fields land.
+
+Everything else is CLOSED or VERIFIED per the tables above.
 
 ---
 
