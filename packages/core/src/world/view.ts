@@ -438,8 +438,13 @@ function updateViewOne(
 }
 
 /**
- * update_one: per-grid post pass. The knowledge side effects (trap
- * reveal, note/light spot) are deferred; the flag, feeling-count
+ * update_one: per-grid post pass. The knowledge side effects (note/light
+ * spot) live in the knowledge pass instead: the passive trap reveal that
+ * upstream runs here (cave-view.c L840-842 square_reveal_trap on a newly seen
+ * grid, gap 10.4) needs the trap subsystem on GameState, which this pure
+ * geometry module cannot reach, so it runs from game/known.ts noteSpots
+ * (noteSpotRevealTrap) immediately after updateView - same net timing, traps
+ * spotted before being stepped on. The flag, feeling-count
  * bookkeeping, and the feeling_need reveal signal are ported (cave-view.c
  * L844-855): a FEEL grid newly seen increments feeling_squares, clears the
  * flag, and at the feeling_need crossing fires the reveal (upstream's
