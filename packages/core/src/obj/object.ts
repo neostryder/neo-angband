@@ -17,8 +17,9 @@
  *   isUnique callback (defaults to "not unique") until the monster
  *   domain lands.
  * - append_object_curse's "effect foiled by an existing property" check
- *   needs the player-timed registry (timed_effects[].fail); it is
- *   skipped, the conflict and conflict-flag checks are live.
+ *   consumes the player-timed failure tables (timed_effects[].fail) when a
+ *   CurseTimedFoil is supplied (see curseTimedIncFoiled); callers with no
+ *   timed data fall back to the conflict and conflict-flag checks only.
  *
  * Held/holder references are numeric handles (0 = none), grids are Loc
  * or null; piles are managed by the world layer, so the prev/next
@@ -26,7 +27,7 @@
  */
 
 import type { FlagSet } from "../bitflag";
-import { OF, TV } from "../generated";
+import { ELEM, OF, TV } from "../generated";
 import { addGuardi16 } from "../guard";
 import type { Loc } from "../loc";
 import type { RandomValue, Rng } from "../rng";
@@ -565,11 +566,78 @@ function checkObjectCurses(obj: GameObject): void {
   obj.curses = null;
 }
 
+/** TMD_FAIL_ codes (player-timed.h) checked by the curse foil branch. */
+const TMD_FAIL_FLAG_OBJECT = 1;
+const TMD_FAIL_FLAG_RESIST = 2;
+const TMD_FAIL_FLAG_VULN = 3;
+
+/** One player-timed fail directive (player/types.ts TimedFail): code + flag. */
+export interface TimedFailLike {
+  /** TMD_FAIL_FLAG_* code (only OBJECT/RESIST/VULN are consulted here). */
+  code: number;
+  /** OF_ (object flag) or ELEM_ (element) name, without the prefix. */
+  flag: string;
+}
+
 /**
- * append_object_curse. The upstream check that rejects curses whose
- * TIMED_INC effect is foiled by an existing object property needs the
- * player-timed registry and is DEFERRED (see module docs); the curse
- * conflict and conflict-flag rejections are live.
+ * The player-timed failure tables the curse foil check reads, keyed by a
+ * timed effect's subtype NAME (the TIMED_INC effect record's `type` field,
+ * e.g. "POISONED"). Maps that name to the effect's `fail` directives. Built by
+ * the game from the bound TimedEffect[] (player/bind.ts): each entry's
+ * `.name -> .fail`. Kept as a plain map so the obj layer needs no player import.
+ */
+export type CurseTimedFoil = ReadonlyMap<string, readonly TimedFailLike[]>;
+
+/**
+ * curse_conflicts helper for the TIMED_INC foil branch of append_object_curse
+ * (obj-curse.c L159-188) and artifact_curse_conflicts (L267-296): a curse whose
+ * effect is TIMED_INC is rejected when an existing property of the item would
+ * foil that timed effect - the item already has the OF flag the effect fails
+ * against (TMD_FAIL_FLAG_OBJECT), resists the element it fails against
+ * (TMD_FAIL_FLAG_RESIST), or is vulnerable to it (TMD_FAIL_FLAG_VULN). Codes
+ * TMD_FAIL_FLAG_PLAYER/TIMED_EFFECT are intentionally not consulted upstream.
+ *
+ * `flags`/`elInfo` are passed separately so the same check serves a GameObject
+ * (append_object_curse) and an Artifact (artifact_curse_conflicts). Draws no RNG.
+ */
+export function curseTimedIncFoiled(
+  c: Curse,
+  flags: FlagSet,
+  elInfo: readonly ElementInfo[],
+  foil: CurseTimedFoil,
+): boolean {
+  /* c->obj->effect && c->obj->effect->index == effect_lookup("TIMED_INC"):
+   * upstream inspects only the head effect of the curse's chain. */
+  const eff = c.obj.effect?.[0];
+  if (!eff || eff.eff !== "TIMED_INC") return false;
+  const subtype = eff.type;
+  if (subtype === undefined) return false;
+  const fails = foil.get(subtype);
+  if (!fails) return false;
+
+  for (const f of fails) {
+    if (f.code === TMD_FAIL_FLAG_OBJECT) {
+      const idx = OF[f.flag as keyof typeof OF];
+      if (idx !== undefined && flags.has(idx)) return true;
+    } else if (f.code === TMD_FAIL_FLAG_RESIST) {
+      const el = ELEM[f.flag as keyof typeof ELEM];
+      if (el !== undefined && (elInfo[el]?.resLevel ?? 0) > 0) return true;
+    } else if (f.code === TMD_FAIL_FLAG_VULN) {
+      const el = ELEM[f.flag as keyof typeof ELEM];
+      if (el !== undefined && (elInfo[el]?.resLevel ?? 0) < 0) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * append_object_curse (obj-curse.c L143): attach curse `pick` at `power`,
+ * rejecting a curse that conflicts with an existing curse, is foiled by a
+ * property of the object (its TIMED_INC effect fails against a flag/resist the
+ * item already has - `timedFoil`, obj-curse.c L159-188), or explicitly
+ * conflicts with an object flag. When `timedFoil` is omitted the foil branch is
+ * skipped (curse conflict + conflict-flag rejections stay live), matching a
+ * caller with no player-timed data.
  */
 export function appendObjectCurse(
   rng: Rng,
@@ -577,6 +645,7 @@ export function appendObjectCurse(
   pick: number,
   power: number,
   curses: readonly (Curse | null)[],
+  timedFoil?: CurseTimedFoil,
 ): boolean {
   const c = curses[pick] as Curse;
   if (!obj.curses) obj.curses = newCurseData(curses.length);
@@ -590,7 +659,12 @@ export function appendObjectCurse(
     }
   }
 
-  /* DEFERRED: timed-effect foil check (needs timed_effects[].fail). */
+  /* Reject curses with effects foiled by an existing object property
+   * (obj-curse.c L159-188). */
+  if (timedFoil && curseTimedIncFoiled(c, obj.flags, obj.elInfo, timedFoil)) {
+    checkObjectCurses(obj);
+    return false;
+  }
 
   /* Reject curses which explicitly conflict with an object property */
   for (const flag of c.conflictFlags) {

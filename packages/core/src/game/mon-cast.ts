@@ -30,12 +30,15 @@ import { checkHit } from "../combat/mon-melee";
 import { chanceOfSpellHit } from "../mon/spell";
 import type { MonsterSpell } from "../mon/types";
 import type { Monster } from "../mon/monster";
+import type { Loc } from "../loc";
 import { buildEffectContext } from "./effect-env";
 import type { EffectEnvDeps } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
 import type { TeleportEnv } from "./effect-teleport";
 import type { CastContext } from "./project-cast";
 import type { GameState } from "./context";
+import { spellMessageText } from "./mon-message";
+import { disturb } from "./player-path";
 
 /** Hooks for the UI / lore consequences of casting a monster spell. */
 export interface MonSpellHooks {
@@ -101,6 +104,77 @@ export function buildSpellEffectChain(
     for (const x of e.exprs) builder.expr(x.name, x.base, x.expr);
   }
   return builder.build();
+}
+
+/** The spell_check_for_fail_rune seams (mon-spell.c L291). */
+export interface FailRuneEnv {
+  /** equip_learn_element(player, ELEM_NEXUS): a save vs teleport-level. */
+  learnNexus: () => void;
+  /** player_inc_check(player, subtype, false) for an EF_TIMED_INC subtype. */
+  incCheck: (timedName: string) => void;
+}
+
+/** Everything buildMonSpellHooks needs to wire the UI/lore consequences. */
+export interface MonSpellHooksDeps {
+  /**
+   * projections[type].lash_desc for the {type}/{oftype} message tags, keyed by
+   * the projection name the caster's first blow's lash_type resolves to.
+   */
+  lashDesc?: (projectionName: string) => string | null;
+  /** panel_contains for the "(offscreen)" naming tag; default on-screen. */
+  panelContains?: (grid: Loc) => boolean;
+  /** spell_check_for_fail_rune seams (equip_learn_element + player_inc_check). */
+  failRune?: FailRuneEnv;
+}
+
+/**
+ * spell_check_for_fail_rune (mon-spell.c L291): after the player saves against a
+ * spell, learn the object rune that would also have prevented it - ELEM_NEXUS
+ * for a teleport-level effect, and the timed-effect foil for each EF_TIMED_INC.
+ * The effect names are the bound EF_ names on each spell effect line.
+ */
+function spellCheckForFailRune(spell: MonsterSpell, env: FailRuneEnv): void {
+  for (const e of spell.effects) {
+    if (e.eff === "TELEPORT_LEVEL") {
+      env.learnNexus();
+    } else if (e.eff === "TIMED_INC") {
+      env.incCheck(e.type ?? "");
+    }
+  }
+}
+
+/**
+ * buildMonSpellHooks: assemble the MonSpellHooks do_mon_spell fires - the
+ * disturb (mon-spell.c L368), the cast message (spell_message, L369), the
+ * saving-throw message and its fail-rune learning (L382-383). Installed via
+ * installMonsterCasting so a monster's cast actually announces itself and, on a
+ * save, teaches the runes upstream would.
+ */
+export function buildMonSpellHooks(
+  state: GameState,
+  deps: MonSpellHooksDeps = {},
+): MonSpellHooks {
+  return {
+    /* disturb(player): a cast interrupts the player's rest / run (L368). */
+    disturb: () => disturb(state),
+    /* spell_message (L369): the seen/blind/miss cast line. */
+    message: (mon, spell, seen, hits): void => {
+      const targetMon =
+        mon.target.midx > 0 ? (state.monsters[mon.target.midx] ?? null) : null;
+      const out = spellMessageText(mon, spell, seen, hits, {
+        targetMon,
+        ...(deps.panelContains ? { panelContains: deps.panelContains } : {}),
+        ...(deps.lashDesc ? { lashDesc: deps.lashDesc } : {}),
+      });
+      if (out) state.msg?.(out.text);
+    },
+    /* The save message (L382). */
+    saveMessage: (text): void => state.msg?.(text),
+    /* spell_check_for_fail_rune (L383): learn the foil rune on a save. */
+    ...(deps.failRune
+      ? { failRune: (spell): void => spellCheckForFailRune(spell, deps.failRune!) }
+      : {}),
+  };
 }
 
 /**

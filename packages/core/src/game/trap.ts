@@ -18,8 +18,9 @@
 
 import type { Loc } from "../loc";
 import { DDGRID, locEq, locSum } from "../loc";
+import type { Rng } from "../rng";
 import { SKILL } from "../player/types";
-import { TMD, TRF } from "../generated";
+import { OF, TMD, TRF } from "../generated";
 import { checkHit } from "../combat/mon-melee";
 import { equipLearnFlag } from "../obj/knowledge";
 import { featIsTrapHolding } from "../world/chunk";
@@ -197,6 +198,68 @@ export function squarePlayerTrapAllowed(
   return featIsTrapHolding(state.chunk.features, state.chunk.feat(grid));
 }
 
+/** The level context pick_trap reads for its trapdoor legality guards. */
+export interface TrapLevelCtx {
+  /** c->depth (player->depth): town has no traps. */
+  depth: number;
+  /** z_info->max_depth: no trap doors on the deepest level. */
+  maxDepth: number;
+  /** is_quest(player->depth): no trap doors on quest levels. */
+  isQuest: boolean;
+  /** OPT(player, birth_levels_persist): no trap doors with persistent levels. */
+  persist: boolean;
+}
+
+/**
+ * pick_trap core (trap.c:275-345): cumulative-rarity selection of a player
+ * trap kind at a trap level, drawing exactly one randint0. Pure - the caller
+ * supplies the RNG and level context, so both the live placer (pickTrap) and
+ * the generation-time placer (gen/util.ts placeTrap) share one implementation
+ * and one draw order. The feature is assumed floor / trap-holding in the
+ * ported subset, so C's `feat_is_floor(feat) && !TRF_FLOOR` branch reduces to
+ * an unconditional TRF_FLOOR requirement. Returns the t_idx or -1.
+ */
+export function pickTrapKind(
+  rng: Rng,
+  kinds: readonly TrapKind[],
+  trapLevel: number,
+  ctx: TrapLevelCtx,
+): number {
+  /* No traps in town. */
+  if (ctx.depth === 0) return -1;
+
+  const probs: number[] = [];
+  let probMax = 0;
+  for (const kind of kinds) {
+    probs[kind.tidx] = probMax;
+    if (!kind.name) continue;
+    if (!kind.rarity) continue;
+    if (!kind.flags.has(TRF.TRAP)) continue;
+    if (kind.minDepth > trapLevel) continue;
+
+    /* Floor features need floor-capable traps. */
+    if (!kind.flags.has(TRF.FLOOR)) continue;
+
+    /* Check legality of trapdoors (trap.c:308-320). */
+    if (kind.flags.has(TRF.DOWN)) {
+      if (ctx.isQuest) continue;
+      if (ctx.depth >= ctx.maxDepth - 1) continue;
+      /* No trap doors with persistent levels (for now). */
+      if (ctx.persist) continue;
+    }
+
+    probs[kind.tidx] = probMax + Math.trunc(100 / kind.rarity);
+    probMax = probs[kind.tidx] as number;
+  }
+  if (probMax === 0) return -1;
+
+  const pick = rng.randint0(probMax);
+  for (const kind of kinds) {
+    if (pick < (probs[kind.tidx] ?? 0)) return kind.tidx;
+  }
+  return -1;
+}
+
 /**
  * pick_trap: choose a player-trap kind for a feature at a trap level, by
  * cumulative rarity. Returns the t_idx or -1.
@@ -209,36 +272,12 @@ export function pickTrap(
 ): number {
   const env = deps.env ?? {};
   void feat; /* Only floor features are trappable in the ported subset. */
-  if (state.chunk.depth === 0) return -1;
-
-  const probs: number[] = [];
-  let probMax = 0;
-  for (const kind of deps.kinds) {
-    probs[kind.tidx] = probMax;
-    if (!kind.name) continue;
-    if (!kind.rarity) continue;
-    if (!kind.flags.has(TRF.TRAP)) continue;
-    if (kind.minDepth > trapLevel) continue;
-
-    /* Floor features need floor-capable traps. */
-    if (!kind.flags.has(TRF.FLOOR)) continue;
-
-    /* Check legality of trapdoors. */
-    if (kind.flags.has(TRF.DOWN)) {
-      if (env.isQuest?.(state.chunk.depth)) continue;
-      if (state.chunk.depth >= state.z.maxDepth - 1) continue;
-    }
-
-    probs[kind.tidx] = probMax + Math.trunc(100 / kind.rarity);
-    probMax = probs[kind.tidx] as number;
-  }
-  if (probMax === 0) return -1;
-
-  const pick = state.rng.randint0(probMax);
-  for (const kind of deps.kinds) {
-    if (pick < (probs[kind.tidx] ?? 0)) return kind.tidx;
-  }
-  return -1;
+  return pickTrapKind(state.rng, deps.kinds, trapLevel, {
+    depth: state.chunk.depth,
+    maxDepth: state.z.maxDepth,
+    isQuest: env.isQuest?.(state.chunk.depth) ?? false,
+    persist: state.options?.get("birth_levels_persist") ?? false,
+  });
 }
 
 /**
@@ -259,11 +298,33 @@ export function placeTrap(
   if (tIdx < 0) return;
   const kind = deps.kinds[tIdx]!;
 
+  /* Don't allow trap doors in single combat arenas (trap.c:370-374). */
+  if (state.arenaLevel && kind.flags.has(TRF.DOWN)) return;
+
+  installTrap(state, grid, tIdx, state.rng.randcalc(kind.power, trapLevel, "randomise"), deps);
+}
+
+/**
+ * place_trap's allocation half (trap.c:376-393) with the kind and power
+ * already chosen: prepend a new trap instance to the grid's list. Used by
+ * placeTrap after its pick_trap / randcalc draws, and directly by the level
+ * populate path when the kind and power were rolled at generation time
+ * (gen/util.ts placeTrap), so those draws are not spent twice.
+ */
+export function installTrap(
+  state: GameState,
+  grid: Loc,
+  tIdx: number,
+  power: number,
+  deps: TrapDeps,
+): void {
+  const kind = deps.kinds[tIdx];
+  if (!kind) return;
   const trap: Trap = {
     tidx: tIdx,
     kind,
     grid,
-    power: state.rng.randcalc(kind.power, trapLevel, "randomise"),
+    power,
     timeout: 0,
     flags: kind.flags.clone(),
   };
@@ -303,6 +364,23 @@ export function squareRevealTrap(
 }
 
 /**
+ * square_note_spot's secret-trap revelation (cave-map.c:236-238) and the
+ * per-grid update_one pass (cave-view.c:840-842): when a grid becomes seen, a
+ * secret player trap on it is revealed if the SEARCH skill beats its power
+ * (always=false). Called from the note_spot pass (game/known.ts noteSpots) so
+ * invisible traps are spotted before being stepped on, matching upstream. The
+ * "You have found a trap" message rides the game's message seam (state.msg);
+ * squareRevealTrap reads only that env hook, never deps.kinds here.
+ */
+export function noteSpotRevealTrap(state: GameState, grid: Loc): void {
+  if (!squareIsPlayerTrap(state, grid)) return;
+  squareRevealTrap(state, grid, false, {
+    kinds: [],
+    ...(state.msg ? { env: { msg: state.msg } } : {}),
+  });
+}
+
+/**
  * hit_trap: trigger the player traps on a grid. `delayed` selects
  * TRF_DELAY traps (1), immediate traps (0), or all (-1).
  */
@@ -319,9 +397,16 @@ export function hitTrap(
     const isDelay = trap.kind.flags.has(TRF.DELAY) ? 1 : 0;
     if (delayed !== isDelay && delayed !== -1) continue;
 
-    /* player_is_trapsafe (OF_TRAP_IMMUNE / shape flags, hook). */
-    if (env.playerHasFlag?.(-1 /* trapsafe sentinel unused */)) {
-      /* Reserved; trap-safety lands with rune knowledge. */
+    /* player_is_trapsafe (player-util.c:1073): TMD_TRAPSAFE or OF_TRAP_IMMUNE.
+     * A trap-immune player learns the rune on the flag's source; the trap
+     * becomes visible and does not fire (trap.c:515-523). */
+    const trapImmune = env.playerHasFlag?.(OF.TRAP_IMMUNE) ?? false;
+    if ((state.actor.player.timed[TMD.TRAPSAFE] ?? 0) > 0 || trapImmune) {
+      if (trapImmune) {
+        equipLearnFlag(state.actor.player, state.runeEnv, OF.TRAP_IMMUNE);
+      }
+      trap.flags.on(TRF.VISIBLE);
+      continue;
     }
 
     env.disturb?.();

@@ -33,10 +33,11 @@
  *   and its 20%-per-level-OOD boost, exposed as the optional `outValue`
  *   parameter (a faithful transcription of the C out-parameter). Feeds
  *   gen/util.ts placeObject's obj_rating accumulation (gen-util.c L509-540).
- * - DEFERRED: make_object's book rejection (obj_kind_can_browse needs
- *   the player class).
- * - DEFERRED: make_gold's birth_no_selling value inflation (player
- *   options).
+ * - LIVE (opt-in via MakeDeps): make_object's unreadable-book rejection
+ *   (obj_kind_can_browse) via deps.canBrowseBook, append_object_curse's
+ *   TIMED_INC foil via deps.timedFoil, and make_gold's birth_no_selling 5x
+ *   inflation via deps.noSelling. Each is faithful 4.2.6 when its dep is
+ *   supplied and a no-op (the prior behaviour) when it is absent.
  */
 
 import type { Constants } from "../constants";
@@ -44,7 +45,7 @@ import { KF, OBJ_MOD, OF, TV } from "../generated";
 import { INT_MAX } from "../guard";
 import type { Aspect, Rng } from "../rng";
 import type { ObjRegistry } from "./bind";
-import type { GameObject } from "./object";
+import type { CurseTimedFoil, GameObject } from "./object";
 import { pickChestTraps } from "./chest";
 import { objectValueReal } from "./value";
 import {
@@ -1008,6 +1009,7 @@ export function applyCurse(
   reg: ObjRegistry,
   obj: GameObject,
   lev: number,
+  timedFoil?: CurseTimedFoil,
 ): number {
   let maxCurses = rng.randint1(4);
   const power = rng.randint1(9) + 10 * rng.mBonus(9, lev);
@@ -1022,7 +1024,7 @@ export function applyCurse(
       const pick = rng.randint1(reg.curseMax - 1);
       const curse = reg.curses[pick];
       if (curse && curse.poss[obj.tval]) {
-        if (appendObjectCurse(rng, obj, pick, power, reg.curses)) {
+        if (appendObjectCurse(rng, obj, pick, power, reg.curses, timedFoil)) {
           newLev += rng.randint1(1 + Math.trunc(power / 10));
         }
         break;
@@ -1054,6 +1056,26 @@ export interface MakeDeps {
    * bugfix.duplicateArtifact defensive re-check.
    */
   modRules?: Record<string, boolean> | undefined;
+  /**
+   * The player-timed failure tables (timed effect NAME -> fail directives),
+   * for append_object_curse's TIMED_INC foil rejection (obj-curse.c L159-188).
+   * Built by the game from the bound TimedEffect[] (name -> fail). Absent =>
+   * the foil branch is skipped (faithful pre-4.8 behaviour). See gap 3.2.
+   */
+  timedFoil?: CurseTimedFoil | undefined;
+  /**
+   * obj_kind_can_browse(kind) for the current player (obj-tval.c): whether the
+   * player's class can read/browse the spellbook kind. make_object rejects most
+   * books the player cannot read (obj-make.c L1187-1194). Absent => every book
+   * is browsable (faithful when no class is bound). See gap 3.5.
+   */
+  canBrowseBook?: ((kind: ObjectKind) => boolean) | undefined;
+  /**
+   * OPT(player, birth_no_selling): with no-selling on, make_gold inflates the
+   * value 5x in the dungeon (obj-make.c L1310-1312). Absent/false => faithful
+   * default. See gap 3.7.
+   */
+  noSelling?: boolean | undefined;
 }
 
 /**
@@ -1102,7 +1124,7 @@ export function applyMagic(
 
   /* Give it a chance to be cursed */
   if (rng.oneIn(20) && tvalIsWearable(obj.tval)) {
-    lev = applyCurse(rng, reg, obj, lev);
+    lev = applyCurse(rng, reg, obj, lev, deps.timedFoil);
   }
 
   /* Apply magic */
@@ -1182,11 +1204,29 @@ export function makeObject(
   /* Base level for the object */
   const base = good ? lev + 10 : lev;
 
-  /* Choose an object kind. DEFERRED: upstream rejects most books the
-   * player cannot read (obj_kind_can_browse); no player classes are
-   * bound yet, so every book is browsable here and the retry loop
-   * always accepts its first pick. */
-  const kind = alloc.getObjNum(rng, constants, base, good || great, tval);
+  /* Try to choose an object kind; reject most books the player can't read
+   * (obj-make.c L1185-1195). Each rejected book costs a get_obj_num draw and,
+   * one time in five, is accepted anyway. Without a class predicate
+   * (deps.canBrowseBook) every book is browsable and the loop takes its first
+   * pick, matching a class-less caller. */
+  let kind: ObjectKind | null = null;
+  let tries = 3;
+  while (tries) {
+    kind = alloc.getObjNum(rng, constants, base, good || great, tval);
+    if (
+      kind &&
+      deps.canBrowseBook &&
+      tvalIsBook(kind.tval) &&
+      !deps.canBrowseBook(kind)
+    ) {
+      if (rng.oneIn(5)) break;
+      kind = null;
+      tries--;
+      continue;
+    } else {
+      break;
+    }
+  }
   if (!kind) return null;
 
   /* Make the object, prep it and apply magic */
@@ -1223,14 +1263,20 @@ export function makeObject(
 const SHRT_MAX = 32767;
 
 /**
- * make_gold: make a money object. DEFERRED: the birth_no_selling
- * inflation (player options).
+ * make_gold: make a money object.
+ *
+ * `playerDepth` is upstream's player->depth (0 in town), used only for the
+ * birth_no_selling inflation (obj-make.c L1310-1312: value *= 5 when no-selling
+ * is on and the player is in the dungeon). It is distinct from `lev` (the
+ * generation level driving the value roll); when omitted it defaults to `lev`,
+ * which equals the current level's depth at every real call site.
  */
 export function makeGold(
   rng: Rng,
   deps: MakeDeps,
   lev: number,
   coinType: string,
+  playerDepth?: number,
 ): GameObject {
   const { reg, alloc, constants } = deps;
 
@@ -1244,6 +1290,11 @@ export function makeGold(
 
   const kind = alloc.moneyKind(constants, coinType, value);
   const newGold = objectPrep(rng, reg, constants, kind, lev, "randomise");
+
+  /* If we're playing with no_selling, increase the value (obj-make.c
+   * L1310-1312). money_kind above is chosen on the pre-inflation value. */
+  const depth = playerDepth ?? lev;
+  if (deps.noSelling && depth) value *= 5;
 
   /* Cap gold at max short */
   if (value >= SHRT_MAX) {

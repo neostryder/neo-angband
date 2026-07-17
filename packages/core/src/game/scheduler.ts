@@ -18,10 +18,13 @@
 
 import { MFLAG, MON_TMD, RF } from "../generated";
 import type { Monster } from "../mon/monster";
+import { monsterIsMimicking } from "../mon/predicate";
 import { turnEnergy } from "./energy";
 import type { GameState } from "./context";
 import { updateMonsterDistances } from "./context";
 import { monDecTimed, monsterEffectLevel } from "../mon/timed";
+import { monsterTakeTerrainDamage } from "./mon-death";
+import type { NonplayerHitDeps } from "./mon-death";
 import {
   monsterCheckActive,
   monsterTurn,

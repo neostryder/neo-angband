@@ -46,10 +46,21 @@ import { ELEM, KF, OBJ_MOD, OF, STAT_ENTRIES, TV } from "../generated";
 import { ART_IDX } from "../generated/randart-properties";
 import type { Rng } from "../rng";
 import type { ObjRegistry } from "./bind";
-import { copyBrands, copySlays } from "./object";
+import type { CurseTimedFoil } from "./object";
+import {
+  copyBrands,
+  copySlays,
+  curseTimedIncFoiled,
+  sameMonstersSlain,
+} from "./object";
 import { INHIBIT_POWER } from "./power";
 import type { ArtifactSetData } from "./randart-data";
-import type { Artifact, ElementInfo, ObjectKind } from "./types";
+import type {
+  Artifact,
+  EffectRecordJson,
+  ElementInfo,
+  ObjectKind,
+} from "./types";
 import {
   EL_INFO_IGNORE,
   ELEM_BASE_MIN,
@@ -1364,16 +1375,25 @@ function cursesConflict(
 
 /**
  * artifact_curse_conflicts (obj-curse.c L262): whether curse `pick` is foiled
- * by an existing artifact property. Only the explicit conflict-flags branch is
- * ported; the TIMED_INC "effect foiled by a resist/flag" branch depends on the
- * timed-effects failure tables (not ported) and is omitted (approximation).
+ * by an existing artifact property - its TIMED_INC effect fails against a
+ * flag/resist/vulnerability the artifact already has (obj-curse.c L267-296,
+ * consulted only when `timedFoil` is supplied), or it explicitly conflicts with
+ * an artifact flag. Draws no RNG.
  */
 function artifactCurseConflicts(
   reg: ObjRegistry,
   art: Artifact,
   pick: number,
+  timedFoil?: CurseTimedFoil,
 ): boolean {
   const c = reg.curses[pick]!;
+
+  /* Reject curses with effects foiled by an existing artifact property. */
+  if (timedFoil && curseTimedIncFoiled(c, art.flags, art.elInfo, timedFoil)) {
+    checkArtifactCurses(art);
+    return true;
+  }
+
   for (const flag of c.conflictFlags) {
     if (art.flags.has(flag)) {
       checkArtifactCurses(art);
@@ -1392,6 +1412,7 @@ function appendArtifactCurse(
   art: Artifact,
   pick: number,
   power: number,
+  timedFoil?: CurseTimedFoil,
 ): boolean {
   if (!art.curses) art.curses = new Array<number>(reg.curses.length).fill(0);
 
@@ -1404,7 +1425,7 @@ function appendArtifactCurse(
   }
 
   /* Reject curses foiled by an existing artifact property. */
-  if (artifactCurseConflicts(reg, art, pick)) {
+  if (artifactCurseConflicts(reg, art, pick, timedFoil)) {
     checkArtifactCurses(art);
     return false;
   }
@@ -1421,16 +1442,121 @@ function appendArtifactCurse(
 /* ------------------------------------------------------------------ */
 
 /**
- * remove_contradictory_activation (obj-randart.c L2420): remove the activation
- * when it is redundant with (or conflicts with) the artifact's other
- * properties. Upstream determines redundancy via effect_summarize_properties
- * (effects-info.c), which is not ported; that routine consumes no RNG and only
- * ever nulls the activation when it is fully redundant, so this port is a
- * conservative no-op (an activation is never treated as redundant). Noted as an
- * approximation.
+ * enum effect_object_property_kind (effects-info.h L40): the kind of object
+ * property an activation effect grants, as summarized for redundancy checks.
  */
-export function removeContradictoryActivation(art: Artifact): void {
-  void art;
+export const EFPROP = {
+  OBJECT_FLAG_EXACT: 0,
+  OBJECT_FLAG: 1,
+  RESIST: 2,
+  CURE_FLAG: 3,
+  CURE_RESIST: 4,
+  CONFLICT_FLAG: 5,
+  CONFLICT_RESIST: 6,
+  CONFLICT_VULN: 7,
+  BRAND: 8,
+  SLAY: 9,
+} as const;
+
+/** struct effect_object_property (effects-info.h L53): one summarized property. */
+export interface EffectObjectProperty {
+  /** EFPROP_* kind. */
+  kind: number;
+  /** OF_ / ELEM_ / brand / slay index, per `kind`. */
+  idx: number;
+  /** For the resist/vuln kinds: the res_level window that makes it redundant. */
+  reslevelMin: number;
+  reslevelMax: number;
+}
+
+/**
+ * effect_summarize_properties (effects-info.c L898): summarize the object
+ * properties an activation's effect chain grants, plus a count of sub-effects
+ * that map to no object property. This lives in the effects domain (out of this
+ * work package's lock) and is injected so remove_contradictory_activation can
+ * measure redundancy. When no summarizer is supplied the activation is never
+ * treated as redundant (a conservative no-op).
+ */
+export type ActivationSummarizer = (
+  effect: readonly EffectRecordJson[],
+) => { props: EffectObjectProperty[]; unsummarizedCount: number };
+
+/**
+ * remove_contradictory_activation (obj-randart.c L2420): drop the activation
+ * when everything it does is already provided by (or in conflict with) the
+ * artifact's other properties. Upstream summarizes the activation via
+ * effect_summarize_properties; the port injects that summarizer (see
+ * ActivationSummarizer / gap 3.8 WIRING-NEEDED). The redundancy switch below is
+ * a faithful transcription; it draws no RNG.
+ */
+export function removeContradictoryActivation(
+  reg: ObjRegistry,
+  art: Artifact,
+  summarize?: ActivationSummarizer,
+): void {
+  if (!art.activation || !art.activation.effect) return;
+
+  /* Without the effects-domain summarizer we cannot prove redundancy; keep the
+   * activation (conservative). */
+  if (!summarize) return;
+
+  const { props, unsummarizedCount } = summarize(art.activation.effect);
+  let redundant = true;
+
+  if (unsummarizedCount > 0) {
+    /* The activation does at least one thing with no object-property twin. */
+    redundant = false;
+  } else {
+    for (const p of props) {
+      if (!redundant) break;
+      switch (p.kind) {
+        case EFPROP.BRAND: {
+          let maxmult = 1;
+          for (let i = 1; i < reg.brands.length; i++) {
+            if (!art.brands?.[i]) continue;
+            if (reg.brands[i]!.resistFlag !== reg.brands[p.idx]!.resistFlag) {
+              continue;
+            }
+            maxmult = Math.max(reg.brands[i]!.multiplier, maxmult);
+          }
+          if (maxmult < reg.brands[p.idx]!.multiplier) redundant = false;
+          break;
+        }
+        case EFPROP.SLAY: {
+          let maxmult = 1;
+          for (let i = 1; i < reg.slays.length; i++) {
+            if (!art.slays?.[i]) continue;
+            if (!sameMonstersSlain(reg.slays, i, p.idx)) continue;
+            maxmult = Math.max(reg.slays[i]!.multiplier, maxmult);
+          }
+          if (maxmult < reg.slays[p.idx]!.multiplier) redundant = false;
+          break;
+        }
+        case EFPROP.RESIST:
+        case EFPROP.CONFLICT_RESIST:
+        case EFPROP.CONFLICT_VULN: {
+          const res = art.elInfo[p.idx]?.resLevel ?? 0;
+          if (res >= p.reslevelMin && res <= p.reslevelMax) redundant = false;
+          break;
+        }
+        case EFPROP.OBJECT_FLAG:
+          /* Does more than the flag; keep it (also screens HERO/SHERO). */
+          redundant = false;
+          break;
+        case EFPROP.OBJECT_FLAG_EXACT:
+        case EFPROP.CURE_FLAG:
+        case EFPROP.CONFLICT_FLAG:
+          if (!art.flags.has(p.idx)) redundant = false;
+          break;
+        default:
+          /* Something unexpected; assume the effect is useful. */
+          redundant = false;
+          break;
+      }
+    }
+  }
+
+  if (redundant) art.activation = null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1443,7 +1569,12 @@ export function removeContradictoryActivation(art: Artifact): void {
  * drain-exp vs hold-life), remove conflicting curses, and drop a redundant
  * activation.
  */
-export function removeContradictory(reg: ObjRegistry, art: Artifact): void {
+export function removeContradictory(
+  reg: ObjRegistry,
+  art: Artifact,
+  timedFoil?: CurseTimedFoil,
+  activationSummarize?: ActivationSummarizer,
+): void {
   if (art.flags.has(OF.AGGRAVATE)) art.modifiers[OBJ_MOD.STEALTH] = 0;
 
   if (art.modifiers[OBJ_MOD.STR]! < 0) art.flags.off(OF.SUST_STR);
@@ -1457,7 +1588,7 @@ export function removeContradictory(reg: ObjRegistry, art: Artifact): void {
   /* Remove any conflicting curses. */
   if (art.curses) {
     for (let i = 1; i < reg.curses.length; i++) {
-      if (artifactCurseConflicts(reg, art, i)) {
+      if (artifactCurseConflicts(reg, art, i, timedFoil)) {
         if (art.curses) art.curses[i] = 0;
         checkArtifactCurses(art);
       }
@@ -1465,7 +1596,7 @@ export function removeContradictory(reg: ObjRegistry, art: Artifact): void {
     }
   }
 
-  removeContradictoryActivation(art);
+  removeContradictoryActivation(reg, art, activationSummarize);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1491,7 +1622,7 @@ export function addAbility(
   addAbilityAux(reg, art, r, targetPower, data, rng);
 
   /* Remove contradictory or redundant powers. */
-  removeContradictory(reg, art);
+  removeContradictory(reg, art, data.timedFoil, data.activationSummarize);
 
   /* Adding WIS to sharp weapons always blesses them. */
   if (
@@ -1517,6 +1648,7 @@ export function addCurse(
   art: Artifact,
   level: number,
   rng: Rng,
+  timedFoil?: CurseTimedFoil,
 ): boolean {
   if (art.flags.has(OF.BLESSED)) return false;
 
@@ -1530,7 +1662,7 @@ export function addCurse(
       maxTries--;
       continue;
     }
-    return appendArtifactCurse(reg, art, pick, power);
+    return appendArtifactCurse(reg, art, pick, power, timedFoil);
   }
   return false;
 }
@@ -1549,6 +1681,7 @@ export function makeBad(
   art: Artifact,
   level: number,
   rng: Rng,
+  timedFoil?: CurseTimedFoil,
 ): void {
   let num = rng.randint1(2);
 
@@ -1569,7 +1702,7 @@ export function makeBad(
   if (art.toD > 0 && rng.oneIn(4)) art.toD = -art.toD;
 
   while (num) {
-    addCurse(reg, art, level, rng);
+    addCurse(reg, art, level, rng, timedFoil);
     num--;
   }
 }

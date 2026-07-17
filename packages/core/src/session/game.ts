@@ -188,7 +188,7 @@ import type { Player } from "../player/player";
 import { OptionState } from "../player/options";
 import type { OptionName } from "../player/options";
 import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart";
-import { generateLevel } from "../gen/generate";
+import { generateLevel, type QuestSpawn } from "../gen/generate";
 import { iToGrid } from "../gen/util";
 import {
   SAVE_VERSION,
@@ -1568,6 +1568,7 @@ function makeChangeLevel(
       {
         daytime: isDaytime(state.turn, state.z.dayLength),
         birthLoseArts: state.options?.get("birth_lose_arts") ?? false,
+        questSpawns: questSpawnsForDepth(state, reg, depth),
       },
     );
     state.chunk = g.c;
@@ -1610,6 +1611,32 @@ function makeChangeLevel(
     delete state.targetDepth;
     state.updateFov?.(state);
   };
+}
+
+/**
+ * Resolve the quest guardians to place on a freshly generated level
+ * (generate.c L1170-1191). Returns one QuestSpawn per active quest whose
+ * level == depth, mapping the stored race index to its MonsterRace. A
+ * completed quest has level 0 (never a dungeon depth), so it is naturally
+ * excluded. The unique-already-alive (cur_num > 0) skip is applied inside
+ * generateLevel, matching upstream's placement-time check.
+ */
+function questSpawnsForDepth(
+  state: GameState,
+  reg: CoreRegistries,
+  depth: number,
+): QuestSpawn[] {
+  if (depth <= 0) return [];
+  const quests = state.actor.player.quests;
+  if (!quests || quests.length === 0) return [];
+  const spawns: QuestSpawn[] = [];
+  for (const q of quests) {
+    if (q.level !== depth) continue;
+    const race = reg.monsters.races[q.race];
+    if (!race) continue;
+    spawns.push({ race, maxNum: q.maxNum });
+  }
+  return spawns;
 }
 
 /**

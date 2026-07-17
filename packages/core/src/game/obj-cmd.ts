@@ -55,6 +55,8 @@ import { dropNear, floorObjectForUse, floorPile } from "./floor";
 import type { FloorEnv } from "./floor";
 import type { TeleportEnv } from "./effect-teleport";
 import {
+  calcInventory,
+  combinePack,
   gearGet,
   gearObjectForUse,
   invenCarry,
@@ -63,6 +65,7 @@ import {
   wieldObject,
   wieldSlot,
 } from "./gear";
+import type { CalcInventoryOpts } from "./gear";
 import { buildEffectContext } from "./effect-env";
 import type { EffectEnvDeps } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
@@ -128,6 +131,37 @@ export interface ObjCmdDeps {
    * no-op exactly as upstream with no autoinscriptions configured.
    */
   autoNote?: (kind: ObjectKind, aware: boolean) => string | null;
+  /**
+   * player_exp_gain hook (player.c L269): object_learn_on_use rewards the
+   * player with experience on a first identify-by-use (obj-knowledge.c
+   * L1925-1936, gap 4.3). session/game.ts wires this to playerExpGain with the
+   * real ExpDeps (the same hook already threaded into spell/trap/chest); absent
+   * for worldless callers, where the XP side-channel is simply skipped.
+   */
+  expGain?: (amount: number) => void;
+  /**
+   * calc_inventory (player-calcs.c) inputs used to re-derive the quiver after a
+   * wield / takeoff / drop (upstream's PU_INVEN -> update_stuff): the earlier_object
+   * ammo tiebreak (ammoTval / objectValue), the preferred_quiver_slot keyset
+   * (rogueLike) and the re-arrange message gate (characterDungeon). All optional;
+   * absent hooks fall back to gear-order ammo assignment with no messages.
+   */
+  ammoTval?: () => number;
+  objectValue?: (obj: GameObject) => number;
+  rogueLike?: boolean;
+  characterDungeon?: boolean;
+}
+
+/** Build calc_inventory options from the object-command deps (gap 4.1). */
+function calcInvOpts(state: GameState, deps: ObjCmdDeps): CalcInventoryOpts {
+  const o: CalcInventoryOpts = {};
+  if (deps.env?.msg) o.msg = deps.env.msg;
+  if (deps.rogueLike) o.rogueLike = deps.rogueLike;
+  if (deps.characterDungeon) o.characterDungeon = deps.characterDungeon;
+  const at = deps.ammoTval?.() ?? state.playerState?.ammoTval;
+  if (at !== undefined) o.ammoTval = at;
+  if (deps.objectValue) o.objectValue = deps.objectValue;
+  return o;
 }
 
 function stackLimits(constants: Constants): StackLimits {
@@ -551,6 +585,23 @@ export function playerConfuseDir(state: GameState, dir: number): number {
   return dir;
 }
 
+/**
+ * object_learn_on_use (obj-knowledge.c L1925-1936), XP slice (gap 4.3): the
+ * flavor-awareness half is handled by the caller (objectFlavorAware); this adds
+ * the experience reward player_exp_gain(p, (lev + p->lev/2)/p->lev) with lev the
+ * used object's KIND level. Integer division throughout, exactly as upstream.
+ */
+function objectLearnOnUseXp(
+  state: GameState,
+  obj: GameObject,
+  deps: ObjCmdDeps,
+): void {
+  if (!deps.expGain) return;
+  const p = state.actor.player;
+  const lev = obj.kind.level;
+  deps.expGain(Math.trunc((lev + Math.trunc(p.lev / 2)) / p.lev));
+}
+
 /** The result of useAux, for the command wrappers. */
 export interface UseResult {
   /** The effect ran (or the device fizzled) and the turn is spent. */
@@ -694,9 +745,13 @@ export function useAux(
       const flavorDeps = deps.flavorDeps ?? NOOP_FLAVOR_AWARE_DEPS;
       if (use === USE.SINGLE) {
         /* Single use items are automatically learned. */
-        if (!wasAware) deps.flavor.objectFlavorAware(knowObj.kind, flavorDeps);
+        if (!wasAware) {
+          deps.flavor.objectFlavorAware(knowObj.kind, flavorDeps);
+          objectLearnOnUseXp(state, knowObj, deps);
+        }
       } else if (!wasAware && ident.value) {
         deps.flavor.objectFlavorAware(knowObj.kind, flavorDeps);
+        objectLearnOnUseXp(state, knowObj, deps);
       } else {
         deps.flavor.setTried(knowObj.kind);
       }
@@ -818,7 +873,11 @@ export function installObjCommands(
     }
     if (handle === undefined) return 0;
     const slot = invenWield(state, handle);
-    return slot >= 0 ? state.z.moveEnergy : 0;
+    if (slot < 0) return 0;
+    /* inven_wield runs combine_pack (obj-gear.c L1009), which re-derives the
+     * quiver via calc_inventory. */
+    combinePack(state.gear, deps.constants, calcInvOpts(state, deps));
+    return state.z.moveEnergy;
   }));
 
   /* do_cmd_takeoff: energy is half a turn. */
@@ -826,9 +885,10 @@ export function installObjCommands(
     const args = cmd.args ?? {};
     const handle = typeof args["handle"] === "number" ? args["handle"] : null;
     if (handle === null) return 0;
-    return invenTakeoff(state, handle)
-      ? Math.trunc(state.z.moveEnergy / 2)
-      : 0;
+    if (!invenTakeoff(state, handle)) return 0;
+    /* inven_takeoff sets PU_INVEN (obj-gear.c L1060) -> calc_inventory. */
+    calcInventory(state.gear, deps.constants, calcInvOpts(state, deps));
+    return Math.trunc(state.z.moveEnergy / 2);
   }));
 
   /* do_cmd_drop: energy is half a turn. */
@@ -840,9 +900,10 @@ export function installObjCommands(
     if (!obj) return 0;
     const amt =
       typeof args["quantity"] === "number" ? args["quantity"] : obj.number;
-    return invenDrop(state, handle, amt, deps.floorEnv)
-      ? Math.trunc(state.z.moveEnergy / 2)
-      : 0;
+    if (!invenDrop(state, handle, amt, deps.floorEnv)) return 0;
+    /* gear_object_for_use sets PU_INVEN (obj-gear.c L617) -> calc_inventory. */
+    calcInventory(state.gear, deps.constants, calcInvOpts(state, deps));
+    return Math.trunc(state.z.moveEnergy / 2);
   }));
 
   registry.register(

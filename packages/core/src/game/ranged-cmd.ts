@@ -11,29 +11,36 @@
  * the UI resolves before the command runs, exactly as cmd_get_item /
  * cmd_get_target do upstream.
  *
- * DEFERRED (ledgered in parity/ledger/ranged-cmd.yaml): TMD_POWERSHOT piercing
- * (pierce stays 1), the out-of-range "Fire anyway?" prompt (UI), missile /
- * equipment learn-on-attack (knowledge), the show_damage " (N)" suffix, the
- * invisible-monster "finds a mark" branch, and the crit-flavour line (the hit
- * verb still varies). The throw range uses a compact weight bound.
+ * Ported here (player-attack.c ranged_helper): TMD_POWERSHOT piercing
+ * (player-attack.c:1092-1095,1198-1201,1217-1219), the ay+ax/2 distance to-hit
+ * penalty (cave-view.c:38 via loc.ts distance, gap 2.6), and the full
+ * mon_take_hit routing so ranged hits generate fear, "flees in terror", and
+ * message_pain (player-attack.c:1191-1195, gap 2.4).
+ *
+ * DEFERRED (ledgered in parity/ledger/ranged-cmd.yaml): the out-of-range "Fire
+ * anyway?" prompt (UI), missile / equipment learn-on-attack (knowledge), the
+ * show_damage " (N)" suffix, the invisible-monster "finds a mark" branch, and
+ * the crit-flavour line (the hit verb still varies). The throw range uses a
+ * compact weight bound.
  */
 
-import { MON_MSG, MSG, RF } from "../generated";
-import { loc } from "../loc";
+import { MON_MSG, MSG, RF, TMD } from "../generated";
+import { distance, loc } from "../loc";
 import type { Loc } from "../loc";
 import { makeRangedShot, makeRangedThrow, breakageChance } from "../combat/ranged";
-import { objectWeightOne, tvalIsAmmo } from "../obj/object";
+import { objectWeightOne, tvalIsAmmo, tvalIsSharpMissile } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { ODESC } from "../obj/desc";
 import { projectPath } from "../world/project";
 import { monsterIsObvious, monsterIsDestroyed } from "../mon/predicate";
+import { monTakeHit } from "../mon/take-hit";
 import { gearGet, gearObjectForUse } from "./gear";
 import { dropNear } from "./floor";
 import { squareMonster, deleteMonster, arenaInterceptDeath } from "./context";
 import type { GameState, PlayerCommand } from "./context";
 import { targetOkay, targetGet } from "./target";
 import { describeObject } from "./describe";
-import { formatMonsterMessage, monMessageSoundType } from "./mon-message";
+import { formatMonsterMessage, formatPainMessage, monMessageSoundType } from "./mon-message";
 import type { ActionRegistry } from "./player-turn";
 
 /* Keypad direction deltas (ddx/ddy), indexed by keypad digit 1..9. */
@@ -72,6 +79,13 @@ function rangedHelper(
 
   const path = projectPath(state.chunk, range, start, target, 0);
 
+  /* Piercing: TMD_POWERSHOT lets a sharp missile pass through ammo_mult
+   * monsters (player-attack.c:1092-1095); every other shot stops at one. */
+  let pierce = 1;
+  if ((player.timed[TMD.POWERSHOT] ?? 0) > 0 && tvalIsSharpMissile(missile.tval)) {
+    pierce = state.actor.combat.ammoMult;
+  }
+
   let hit = false;
   let landing = start;
   for (const grid of path) {
@@ -83,10 +97,9 @@ function rangedHelper(
     if (!mon) continue;
 
     const monObvious = monsterIsObvious(mon);
-    const dist = Math.max(
-      Math.abs(grid.x - start.x),
-      Math.abs(grid.y - start.y),
-    );
+    /* Distance penalty uses the ay + ax/2 metric (cave-view.c:38), not the
+     * Chebyshev max, so diagonal shots are penalized faithfully (gap 2.6). */
+    const dist = distance(start, grid);
     const percentDamage = state.options?.get("birth_percent_damage") ?? false;
     const result = throwing
       ? makeRangedThrow(
@@ -113,21 +126,49 @@ function rangedHelper(
         state.msg?.(`Your ${oName} ${result.verb} ${mName}.`);
       }
       state.sound?.(MSG.SHOOT_HIT);
-      mon.hp -= dmg;
-      if (mon.hp < 0 && !arenaInterceptDeath(state, mon)) {
-        const dieMsg = monsterIsDestroyed(mon) ? MON_MSG.DESTROYED : MON_MSG.DIE;
-        const text = formatMonsterMessage(mon, dieMsg);
-        if (text) state.msg?.(text);
-        state.sound?.(monMessageSoundType(dieMsg));
-        state.onPlayerKill?.(mon);
-        deleteMonster(state, mon.midx);
+
+      /* Route damage through mon_take_hit so a survivor rolls fear and a kill
+       * is handled uniformly (player-attack.c:1191). Death messaging stays
+       * explicit here (empty note), matching the port's ranged death lines. */
+      const res = monTakeHit(state.rng, mon, dmg, "", {
+        ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
+        ...(state.arenaLevel
+          ? { onArenaDeath: (m) => void arenaInterceptDeath(state, m) }
+          : {}),
+      });
+      if (res.died) {
+        if (!state.arenaLevel) {
+          const dieMsg = monsterIsDestroyed(mon) ? MON_MSG.DESTROYED : MON_MSG.DIE;
+          const text = formatMonsterMessage(mon, dieMsg);
+          if (text) state.msg?.(text);
+          state.sound?.(monMessageSoundType(dieMsg));
+          state.onPlayerKill?.(mon);
+          deleteMonster(state, mon.midx);
+        }
+      } else {
+        /* message_pain, then the delayed flee message (player-attack.c:1192). */
+        const pain = formatPainMessage(mon, dmg);
+        if (pain) state.msg?.(pain);
+        if (res.fear && monsterIsObvious(mon)) {
+          const flee = formatMonsterMessage(mon, MON_MSG.FLEE_IN_TERROR);
+          if (flee) state.msg?.(flee);
+        }
       }
     } else {
       state.msg?.(`The ${oName} misses ${mName}.`);
     }
 
-    /* No piercing (TMD_POWERSHOT deferred): stop at the first monster. */
+    /* Stop the missile, or reduce its piercing effect (player-attack.c:1198). */
+    pierce--;
+    if (pierce > 0) continue;
     break;
+  }
+
+  /* Terminate piercing (player-attack.c:1217): the powershot stance is spent
+   * after a single shot. Cleared directly (RNG-free), as with other ATT_*
+   * stances in the game layer. */
+  if ((player.timed[TMD.POWERSHOT] ?? 0) > 0) {
+    player.timed[TMD.POWERSHOT] = 0;
   }
 
   return { hit, landing };
