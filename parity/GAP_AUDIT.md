@@ -9,6 +9,212 @@ Status legend: [ ] open, [x] closed+verified.
 
 ---
 
+## Wave 1-4 closure summary (2026-07-17)
+
+This section is the AUTHORITATIVE re-mark of every gap after the WP-1..WP-18
+parity waves. The detailed cluster sections below retain their original
+file:line oracle citations as the evidence baseline; where a detailed entry
+still shows `[ ]`, the status table in this section overrides it. Only the
+entries in the REMAINING list at the end of this section are still open.
+
+### Wave / work-package structure
+
+- Wave 1 (parallel, engine-side, disjoint file locks): WP-1 combat, WP-2
+  monster, WP-3 effects/projections, WP-4 gear/quiver, WP-5 object-knowledge,
+  WP-6 gen/traps, WP-7 birth, WP-8 wizard-engine.
+- Wave 2 (sequential): WP-9 turn-loop + wiring, WP-10 save/load.
+- Wave 3 (sequential, web shell): WP-11 commands, WP-12 screens-A (death /
+  monster-list / score gate), WP-13 screens-B (columns / cheat page / -more-),
+  WP-14 wizard-mode UI, WP-15 unported-command port+bind, WP-16 knowledge
+  browsers, WP-17 knowledge-engine state, WP-18 char-dump / artifact recall /
+  wizard pickers.
+- Wave 4 (this pass): full-suite verification, this re-mark, closure doc.
+
+### Commit map (short-hash -> what it closed)
+
+- feef7d07 WIP checkpoint: quest-monster spawn (9.1).
+- 39deb9af wave1 4/8: combat (2.3-2.11, 3.1, 3.6), monster (7.1-7.11,
+  8.2-8.12), gear/quiver (4.1-4.4, 1.6, 1.8), object-knowledge (3.2-3.8,
+  4.5-4.8) engine halves.
+- 9d4d2601 wave1 5/8: effects/projections (5.2-5.4, 6.1, 6.3, 6.5-6.11);
+  5.1/5.3-attack/5.D verified faithful.
+- 0f23b7f2 wave1 6/8: wizard engine (15.2, 15.4, 15.5) verified; 15.3 groundwork.
+- f8c6312c wave1 7/8: birth (1.2, 1.3, 1.7, 1.10 wired; 1.1, 1.4, 1.9 verified).
+- e47f6ca9 wave1 8/8: gen/traps (9.2-9.8, 10.3-10.5) verified faithful.
+- 013fba8d wave2 WP-9: turn-loop (10.1, 2.1, 2.2, 10.2) + wiring of the wave-1
+  seams (8.1/8.2/8.11, 6.2/4.2 minus_ac, 5.1/7.2, 8.6, 2.5/3.6, 2.8/6.11, 2.9,
+  2.11, 4.3, 1.5/1.6/1.8, 3.2/3.3/3.5/3.7).
+- 60295f0a wave2 WP-10: save/load (12.1-12.5, 15.3 noscore, 1.12).
+- 1dfac4e0 wave3 WP-11: rest (11.1), steal (11.2), note (11.3), keyboard
+  sweep (11.4, 11.8, 11.10) + rest-regen wiring.
+- 869323f9 wave3 WP-12: death screen (14.1-14.5), monster list (11.5,
+  14.17-14.19), score gate, birth banner (1.11), died_from killer (12.5/14.2).
+- 28bdd07f wave3 WP-13: weight/fail% columns (14.20-14.24), cheat page (14.31),
+  -more- (14.32), find_inven (12.10), locate banner (14.34).
+- 9c5ce991 + df617c46 wave3 WP-14: wizard-mode UI (15.1), noscore chain,
+  debug menu (15.2).
+- e5f9f321 WP-15: fire-at-nearest (11.6), CMD_JUMP (11.7), query-symbol,
+  feeling, prev-message, repeat (11.9), retire, quiver listing (11.11).
+- 2cfbb1b5 WP-16: knowledge browsers (14.8, 14.10, 14.13, 13.1; 14.16 verified).
+- 85e66245 + 99916a49 WP-17: knowledge-engine state (14.9, 14.12 everseen,
+  14.11 gate, 14.14 shape lore).
+- 05edbe40 + aa2e35e4 WP-18: char dump (14.6, 12.7), artifact fake-recall
+  (14.11), wizard pickers (15.2).
+
+### Wave-4 verification gate (recorded)
+
+- `npx tsc -b` across all packages: exit 0.
+- `npx vitest run`: 3157 tests / 219 files pass.
+- Vite production bundle + PWA generation: clean.
+- Live browser smoke: boot -> faithful birth -> town -> movement advances turns,
+  day/night cycle live.
+- Item-1 grep verification (this pass): gap 7.6 re-resolved against the oracle
+  (see below); it is a REAL remaining deviation, corrected in this re-mark.
+
+### Per-gap status re-mark
+
+Format: ID -> STATUS (evidence).
+STATUS = CLOSED (implemented) | VERIFIED (already faithful, no change needed) |
+REMAINING (still open; see the REMAINING list for the precise reason).
+
+Cluster 1 (birth): 1.1 VERIFIED (f8c6312c); 1.2 CLOSED (f8c6312c);
+1.3 CLOSED (f8c6312c); 1.4 VERIFIED (f8c6312c); 1.5 CLOSED (013fba8d);
+1.6 CLOSED (39deb9af+013fba8d); 1.7 CLOSED (f8c6312c+28bdd07f);
+1.8 CLOSED (39deb9af+013fba8d); 1.9 VERIFIED (f8c6312c); 1.10 CLOSED (f8c6312c);
+1.11 CLOSED (869323f9); 1.12 CLOSED (60295f0a).
+
+Cluster 2 (player mechanics): 2.1 CLOSED (013fba8d); 2.2 CLOSED (013fba8d);
+2.3 CLOSED (39deb9af); 2.4 CLOSED (39deb9af); 2.5 CLOSED (39deb9af+013fba8d);
+2.6 CLOSED (39deb9af); 2.7 CLOSED (39deb9af); 2.8 CLOSED (39deb9af+013fba8d);
+2.9 CLOSED (39deb9af+013fba8d); 2.10 CLOSED (39deb9af); 2.11 CLOSED (39deb9af+013fba8d);
+2.X VERIFIED false-alarm (pre-wave).
+
+Cluster 3 (object gen/curses/slays): 3.1 CLOSED (39deb9af); 3.2 CLOSED (39deb9af+013fba8d);
+3.3 CLOSED (39deb9af+013fba8d); 3.4 CLOSED (39deb9af); 3.5 CLOSED (39deb9af+013fba8d);
+3.6 CLOSED (39deb9af+013fba8d); 3.7 CLOSED (39deb9af+013fba8d); 3.8 REMAINING;
+3.U VERIFIED (content-build derived values match, pre-wave codegen).
+
+Cluster 4 (object use/knowledge/gear): 4.1 CLOSED (39deb9af, real quiver);
+4.2 CLOSED (39deb9af+013fba8d minus_ac); 4.3 CLOSED (39deb9af+013fba8d);
+4.4 CLOSED (39deb9af); 4.5 CLOSED (39deb9af ignore markers); 4.6 CLOSED (39deb9af);
+4.7 CLOSED (39deb9af objectPackTotal); 4.8 REMAINING (partial).
+
+Cluster 5 (effects): 5.1 CLOSED (9d4d2601 verified + 013fba8d wired);
+5.2 CLOSED (9d4d2601); 5.3 CLOSED (9d4d2601); 5.4 CLOSED (9d4d2601);
+5.D VERIFIED (9d4d2601).
+
+Cluster 6 (projections): 6.1 CLOSED (9d4d2601); 6.2 CLOSED (013fba8d);
+6.3 CLOSED (9d4d2601); 6.4 REMAINING; 6.5 CLOSED (9d4d2601); 6.6 CLOSED (9d4d2601);
+6.7 CLOSED (9d4d2601); 6.8 CLOSED (9d4d2601); 6.9 CLOSED (9d4d2601, dungeon-guarded
+dormant); 6.10 CLOSED (9d4d2601); 6.11 CLOSED (9d4d2601+013fba8d); 6.12 REMAINING.
+
+Cluster 7 (monster gen/AI/melee/summon): 7.1 CLOSED (39deb9af); 7.2 CLOSED (39deb9af+013fba8d);
+7.3 CLOSED (39deb9af); 7.4 CLOSED (39deb9af); 7.5 CLOSED (39deb9af);
+7.6 REMAINING (drop generator ported+tested but NEVER CALLED - see item-1 note);
+7.7 CLOSED (39deb9af engine; gen mimics wired via gen/util.ts:1551 + boot.ts:194
+objDeps - the mon-place.ts docstring claiming mimickedObj=0 is STALE);
+7.8 CLOSED (39deb9af); 7.9 CLOSED (39deb9af); 7.10 CLOSED (39deb9af);
+7.11 CLOSED (39deb9af; mimicked-obj delete + quest_check wired).
+
+Cluster 8 (monster spells/naming): 8.1 CLOSED (013fba8d); 8.2 CLOSED (39deb9af+013fba8d);
+8.3 CLOSED (39deb9af); 8.4 CLOSED (39deb9af+013fba8d); 8.5 REMAINING;
+8.6 CLOSED (013fba8d); 8.7 CLOSED (39deb9af); 8.8 CLOSED (39deb9af);
+8.9 CLOSED (39deb9af mon/desc.ts); 8.10 CLOSED (39deb9af) - NOTE minor code-hygiene:
+getMonName/pluralAux re-export from core index.ts still pending (WP-12 flagged;
+screens.ts replicates them locally); 8.11 CLOSED (013fba8d); 8.12 CLOSED (39deb9af).
+
+Cluster 9 (dungeon gen): 9.1 CLOSED (feef7d07); 9.2 VERIFIED (e47f6ca9);
+9.3 VERIFIED (e47f6ca9); 9.4 REMAINING; 9.5 VERIFIED (e47f6ca9);
+9.6 VERIFIED (e47f6ca9; sanitizePlayerLoc ported game.ts:1508); 9.7 VERIFIED (e47f6ca9);
+9.8 VERIFIED (e47f6ca9).
+
+Cluster 10 (cave/world turn/traps): 10.1 CLOSED (013fba8d); 10.2 CLOSED (013fba8d+1dfac4e0);
+10.3 VERIFIED (e47f6ca9); 10.4 VERIFIED (e47f6ca9); 10.5 VERIFIED (e47f6ca9).
+
+Cluster 11 (command surface): 11.1 CLOSED (1dfac4e0); 11.2 CLOSED (1dfac4e0);
+11.3 CLOSED (1dfac4e0); 11.4 CLOSED (1dfac4e0+e5f9f321); 11.5 CLOSED (869323f9);
+11.6 CLOSED (e5f9f321); 11.7 CLOSED (e5f9f321); 11.8 CLOSED (1dfac4e0);
+11.9 CLOSED (e5f9f321); 11.10 CLOSED (1dfac4e0); 11.11 CLOSED (e5f9f321;
+U/X per-type split is an accepted deviation).
+
+Cluster 12 (stores/save/scores): 12.1 CLOSED (60295f0a); 12.2 CLOSED (60295f0a);
+12.3 CLOSED (60295f0a+013fba8d); 12.4 CLOSED (60295f0a); 12.5 CLOSED (60295f0a+869323f9);
+12.6 REMAINING; 12.7 CLOSED (05edbe40); 12.8 REMAINING; 12.9 VERIFIED
+(baseline-unreachable at 4.2.6 data; N/A); 12.10 CLOSED (28bdd07f).
+
+Cluster 13 (data/content): content 100% (pre-wave codegen). 13.1 CLOSED (2cfbb1b5
+object_text_order ported; monster thematic grouping tracked under 14.16).
+
+Cluster 14 (player-facing screens): 14.1 CLOSED (869323f9); 14.2 CLOSED (869323f9);
+14.3 CLOSED (869323f9); 14.4 CLOSED (869323f9); 14.5 CLOSED (869323f9);
+14.6 CLOSED (05edbe40); 14.7 CLOSED (05edbe40 flag-grid work); 14.8 CLOSED (2cfbb1b5);
+14.9 CLOSED (85e66245+99916a49); 14.10 CLOSED (2cfbb1b5); 14.11 CLOSED (05edbe40);
+14.12 CLOSED (85e66245+99916a49); 14.13 CLOSED (2cfbb1b5); 14.14 CLOSED (85e66245);
+14.15 CLOSED (2cfbb1b5 store/home browse); 14.16 CLOSED (2cfbb1b5, membership/sort
+verified; thematic grouping accepted-simplified); 14.17 CLOSED (869323f9);
+14.18 CLOSED (869323f9); 14.19 CLOSED (869323f9); 14.20 CLOSED (28bdd07f);
+14.21 CLOSED (28bdd07f); 14.22 CLOSED (28bdd07f); 14.23 CLOSED (28bdd07f);
+14.24 CLOSED (28bdd07f); 14.25 CLOSED (28bdd07f qty/inscription prompts);
+14.26 CLOSED (28bdd07f source-partition); 14.27 CLOSED (WP-12/16 context recall);
+14.28 CLOSED (WP-16 browse); 14.29 CLOSED (WP-13 context completion);
+14.30 CLOSED (28bdd07f keymap editor); 14.31 CLOSED (28bdd07f cheat page);
+14.32 CLOSED (28bdd07f -more-); 14.33 CLOSED (28bdd07f); 14.34 CLOSED (28bdd07f).
+
+Cluster 15 (wizard/debug): 15.1 CLOSED (9c5ce991); 15.2 CLOSED (0f23b7f2 engine +
+9c5ce991/df617c46/05edbe40 UI); 15.3 CLOSED (60295f0a noscore persist + chain);
+15.4 VERIFIED (0f23b7f2 spoilers); 15.5 VERIFIED (0f23b7f2 stats).
+
+### REMAINING (honest open list after Wave 4)
+
+- 7.6 (mon drop origin) - REAL DEVIATION. `monCreateDrop` (game/mon-death.ts:110)
+  is a faithful port of mon_create_drop (mon-make.c:751), BUT it has NO production
+  caller. Neither the generation path (gen/util.ts placeNewMonsterOne L1513) nor
+  the live-placement path (game/mon-place.ts placeMonsterLive L163-213) invokes it;
+  the only callers are tests (mon-death.test.ts:51,427). `monsterDeath`
+  (mon-death.ts:240) drops only the held pile, which for generated/spawned monsters
+  is empty (only stolen items ever populate it). NET EFFECT: monsters currently
+  drop NO generated loot. The mon-death.ts header (L7-15) admits the WIRING-NEEDED
+  item was never applied ("until it does, monsters carry no generated loot"); the
+  wave-1 commit 39deb9af claim "placement-time drops (RNG deviation rescinded)" is
+  therefore not borne out by the code. mon-place.ts docstring L21-25 ("generated at
+  death") is also wrong. FIX: call monCreateDrop with the correct origin
+  (ORIGIN.DROP live; DROP_PIT/DROP_VAULT/DROP_SUMMON per generation context) at
+  the placement seam, and remove the two stale docstrings. This is out of the
+  Wave-4 doc scope (no code edits) and is the most material remaining gap.
+- 4.8 (obj->known twin) - PARTIAL. Core twin (objectSetBaseKnown /
+  player_know_object) ported (obj/known-object.ts); progressive floor-item sensing
+  (object_see/object_sense) and full update_player_object_knowledge twin re-sync
+  are deferred (known-object.ts synthesises a shadow on demand). Magical/cursed
+  progressive feelings not modelled.
+- 6.12 (inven_damage twin/ignore) - REMAINING. Display/knowledge-only; rides 4.8.
+- 8.5 (smart-learn AI) - REMAINING. unsetSpells (read filter) is wired
+  (mon-ranged.ts:232), but the update_smart_learn WRITE hook is never installed at
+  the session level (player/timed.ts:219,244 hook stays empty), so with
+  birth_ai_learn ON monsters would not actually learn player resists. Default
+  (birth_ai_learn off) is faithful; the option-on path is the gap.
+- 6.4 (update_smart_learn in project_p) - REMAINING. Rides 8.5 write path
+  (project-player.ts:146-148 comment confirms it is off/unported).
+- 3.8 (remove_contradictory_activation) - REMAINING. The function is ported
+  (randart-build.ts:1487) but the effect_summarize_properties injector is left
+  unset at the live site (game.ts:2340-2341), so it stays a conservative no-op:
+  redundant randart activations are not stripped.
+- 9.4 / 9.6 (persistent-level stair joins) - REMAINING (9.6 sanitize is ported;
+  the join round-trip is not). birth_levels_persist dungeons stay OFF by default;
+  build_staircase / cavern joins are ported but dormant until Chunk.join is saved
+  and threaded through changeLevel.
+- 12.6 (minor persisted player fields: resting_turn, skip_cmd_coercion,
+  unignoring, name_suffix, old_grid) - REMAINING (low; not explicitly closed by
+  WP-10; verify against save.ts).
+- 12.8 (running message-log persistence in the savefile) - REMAINING (low; the
+  char-dump captures last-messages, but the live log is not round-tripped through
+  SavedGame; verify).
+- 8.10 note (code hygiene, not a parity gap): getMonName/pluralAux still awaiting
+  re-export from core index.ts (screens.ts replicates them locally).
+
+Everything not in this REMAINING list is CLOSED or VERIFIED per the table above.
+
+---
+
 ## Executive summary
 
 What is SOLID (verified, not asserted):
@@ -198,12 +404,21 @@ RNG-faithful; monster_attack_monster IS ported in game/mon-cmd.ts). Gaps:
   C: mon-move.c:416. Port: monster-turn.ts:485-488.
 - [ ] 7.5 MED - Decoy target ignored by ranged/cast AI (movement AI honors decoys, so
   subsystems disagree). C: mon-attack.c:65-84. Port: mon-ranged.ts:56-61.
-- [ ] 7.6 LOW - Placement-time drops moved to death; DROP_PIT/VAULT/SUMMON origins
-  flattened to ORIGIN.DROP; never-killed monsters' drops never rolled (accepted RNG
-  deviation). C: mon-make.c:1044-1046. Port: mon-place.ts:200-207 / mon-death.ts.
-- [ ] 7.7 MED - Generation-spawned object-mimics have no mimicked object
-  (mon.mimickedObj=0); with 7.1 they don't function as mimics at all. C:
-  mon-make.c:1049-1051. Port: mon-place.ts:28-33.
+- [ ] 7.6 LOW->REAL - REMAINING (re-resolved 2026-07-17): NOT "accepted RNG
+  deviation" and NOT "generated at death". mon_create_drop IS ported faithfully
+  (game/mon-death.ts:110 monCreateDrop) but has NO production caller - neither
+  gen/util.ts placeNewMonsterOne (L1513) nor game/mon-place.ts placeMonsterLive
+  (L163-213) calls it; only tests do. So monsters drop NO generated loot at all
+  (only stolen items). The mon-death.ts header (L7-15) and mon-place.ts docstring
+  (L21-25) are contradictory/stale. FIX: call monCreateDrop at the placement seam
+  with the correct origin; delete the stale docstrings. C: mon-make.c:1044-1046.
+  Port: game/mon-place.ts:200-207 / game/mon-death.ts:110.
+- [x] 7.7 MED - CLOSED (39deb9af). Generation-spawned object-mimics DO get their
+  mimicked object: gen/util.ts:1551 calls createMimickedObject when g.objDeps is
+  set, and boot.ts:194 supplies objDeps in the real (placeContent) path;
+  populateFromLevel re-carries the parked object. The mon-place.ts docstring
+  (L29-33) claiming generated mimics still spawn with mimickedObj=0 is STALE. C:
+  mon-make.c:1049-1051. Port: gen/util.ts:1538-1569, session/game.ts:1474.
 - [ ] 7.8 LOW - react_to_slay pickup-safety not applied; monster grabs/crushes items
   that would hurt it. C: mon-move.c:1420-1421. Port: monster-turn.ts:1224-1226.
 - [ ] 7.9 LOW - TMD_COVERTRACKS doesn't reduce monster sight. C: mon-move.c:95-97.

@@ -27,6 +27,7 @@ import type { MakeDeps } from "../obj/make";
 import { bindMonsters } from "../mon/bind";
 import type { MonsterPackRecords } from "../mon/bind";
 import { MonAllocTable } from "../mon/make";
+import type { LoreStore } from "../mon/lore";
 import {
   createRoomRegistry,
   loadRoomTemplates,
@@ -166,6 +167,7 @@ export function genDeps(
   placeContent: boolean,
   artifacts?: ArtifactState,
   noArtifacts = false,
+  lore?: LoreStore,
 ): GenDeps {
   let objDeps: MakeDeps | null = null;
   let monDeps: MonPlaceDeps | null = null;
@@ -184,6 +186,9 @@ export function genDeps(
         oodAmount: reg.constants.oodMonsterAmount,
       }),
       pits: resolvePits(reg.monsters),
+      /* mon_create_drop's unique theft reduction reads this; absent for
+       * standalone boots => thefts 0 (never-stolen-from). */
+      ...(lore ? { lore } : {}),
     };
   }
   return {

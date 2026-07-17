@@ -1342,6 +1342,11 @@ function wireGame(
     groupMax: reg.constants.monsterGroupMax,
     groupDist: reg.constants.monsterGroupDist,
     ...(worldPreds ? { preds: worldPreds } : {}),
+    /* mon_create_drop at live placement (summons, breeders, ambient spawns,
+     * wizard): build the held pile so monster_death spills it. makeDeps makes
+     * the objects; lore feeds the unique theft reduction. */
+    makeDeps,
+    lore: state.lore,
   };
   // monster_turn_multiply's multiply_monster (mon-move.c): a breeder spawns a
   // copy through the live placement path (reusing ambientPlaceDeps so the
@@ -1801,6 +1806,8 @@ function makeChangeLevel(
         true,
         state.artifacts,
         state.options?.get("birth_no_artifacts") ?? false,
+        /* mon_create_drop's unique theft reduction reads the live lore store. */
+        state.lore,
       ),
       /* is_daytime() only affects the town (depth 0) build; passed always so a
        * RECALL back to town honours the day/night clock. */

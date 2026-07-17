@@ -54,6 +54,8 @@ import { makeGold, makeObject } from "../obj/make";
 import type { Monster, MonsterGroupInfo } from "../mon/monster";
 import { createMonster, type MonAllocTable } from "../mon/make";
 import { createMimickedObject } from "../game/mon-place";
+import { createDrop } from "../game/mon-death";
+import type { LoreStore } from "../mon/lore";
 import type { MonsterRace } from "../mon/types";
 import type { ResolvedPit } from "./gen-monster";
 import { MON_GROUP } from "../mon/types";
@@ -191,6 +193,13 @@ export interface MonPlaceDeps {
    * builders that need theming bail (empty room) when it is missing.
    */
   pits?: ResolvedPit[];
+  /**
+   * The shared lore store, for mon_create_drop's unique theft reduction
+   * (mon-make.c L778). Threaded by the session so a regenerated unique that was
+   * stolen from keeps its reduced drop count; absent (standalone bootLevel /
+   * unit tests) => thefts treated as 0, faithful for a never-stolen-from unique.
+   */
+  lore?: LoreStore;
 }
 
 /** Tunnel parameters read by build_tunnel (cave_profile.tun). */
@@ -1516,6 +1525,7 @@ function placeNewMonsterOne(
   race: MonsterRace,
   sleep: boolean,
   info: MonsterGroupInfo,
+  origin: number = ORIGIN.DROP,
 ): boolean {
   if (!g.c.inBounds(grid) || !squareIsEmpty(g, grid)) return false;
   if (g.uniqueAlreadyPlaced(race)) return false;
@@ -1535,19 +1545,39 @@ function placeNewMonsterOne(
   });
   g.attachMonster(grid, mon, g.nextMonIndex());
 
-  /* Make mimics start mimicking (mon-make.c place_monster L1044-1051): the
+  /* Create the monster's drop, if any (mon-make.c place_monster L1044-1046):
+   * generation placement is the twin of place_new_monster_one -> place_monster,
+   * which draws mon_create_drop here (before mon_create_mimicked_object) when
+   * origin != 0. Every generation placement passes a nonzero origin, so the
+   * gate reduces to having object-make deps. The generated held pile rides on
+   * the Monster object through populateFromLevel into the live cave, where
+   * monster_death later drops it. thefts come from the shared lore store when
+   * the session threads it (g.monDeps.lore); absent, a never-stolen-from 0. */
+  if (g.objDeps && origin !== ORIGIN.NONE) {
+    createDrop(
+      {
+        rng: g.rng,
+        depth: g.c.depth,
+        makeDeps: g.objDeps,
+        lore: g.monDeps?.lore ?? null,
+      },
+      mon,
+      origin,
+    );
+  }
+
+  /* Make mimics start mimicking (mon-make.c place_monster L1048-1051): the
    * generation placement path is the twin of place_new_monster_one ->
-   * place_monster, so the mimic object is created here, at the position that
-   * corresponds to just after mon_create_drop. Every vanilla mimic race carries
-   * no drops, so mon_create_drop draws zero RNG for them - the mimic object's
-   * draws therefore land at the same generation-RNG position as upstream,
-   * whether or not the port defers drops. Upstream's `origin` gate is implicit:
-   * generation placement always passes a nonzero origin (ORIGIN_DROP), so the
-   * gate reduces to a nonempty mimic_kinds. The object is parked on the Gen
-   * side-table (no live floor yet); session/game.ts populateFromLevel re-carries
-   * it via floor_carry and installs the monster with its mimicked_obj link, the
-   * generation midx matching the live midx it is re-assigned. Inert unless the
-   * generation supplies object-make deps. */
+   * place_monster, so the mimic object is created here, just after
+   * mon_create_drop. Every vanilla mimic race carries no drops, so
+   * mon_create_drop above draws zero RNG for them - the mimic object's draws
+   * therefore land at the same generation-RNG position as upstream. Upstream's
+   * `origin` gate is implicit: generation placement always passes a nonzero
+   * origin (ORIGIN_DROP), so the gate reduces to a nonempty mimic_kinds. The
+   * object is parked on the Gen side-table (no live floor yet); session/game.ts
+   * populateFromLevel re-carries it via floor_carry and installs the monster
+   * with its mimicked_obj link, the generation midx matching the live midx it
+   * is re-assigned. Inert unless the generation supplies object-make deps. */
   if (g.objDeps && race.mimicKinds.length > 0) {
     createMimickedObject(
       {
@@ -1581,6 +1611,7 @@ function placeNewMonsterGroup(
   sleep: boolean,
   info: MonsterGroupInfo,
   total: number,
+  origin: number,
 ): boolean {
   total = Math.min(total, g.constants.monsterGroupMax);
 
@@ -1595,7 +1626,7 @@ function placeNewMonsterGroup(
       /* Walls and monsters block flow. */
       if (!squareIsEmpty(g, tryGrid)) continue;
 
-      if (placeNewMonsterOne(g, tryGrid, race, sleep, info)) {
+      if (placeNewMonsterOne(g, tryGrid, race, sleep, info, origin)) {
         locList.push(tryGrid);
       }
     }
@@ -1612,6 +1643,7 @@ function placeFriends(
   total: number,
   sleep: boolean,
   info: MonsterGroupInfo,
+  origin: number,
 ): boolean {
   /* Find the difference between current dungeon depth and monster level. */
   const levelDifference = g.c.depth - friendsRace.level + 5;
@@ -1641,7 +1673,7 @@ function placeFriends(
   if (total > 0) {
     /* Handle friends same as original monster. */
     if (race.ridx === friendsRace.ridx) {
-      return placeNewMonsterGroup(g, grid, race, sleep, info, total);
+      return placeNewMonsterGroup(g, grid, race, sleep, info, total, origin);
     }
 
     /* Find a nearby place to put the other groups. */
@@ -1657,9 +1689,17 @@ function placeFriends(
     if (spots.length > 0) {
       const start = spots[0] as Loc;
       /* Place the monsters. */
-      let success = placeNewMonsterOne(g, start, friendsRace, sleep, info);
+      let success = placeNewMonsterOne(g, start, friendsRace, sleep, info, origin);
       if (total > 1) {
-        success = placeNewMonsterGroup(g, start, friendsRace, sleep, info, total);
+        success = placeNewMonsterGroup(
+          g,
+          start,
+          friendsRace,
+          sleep,
+          info,
+          total,
+          origin,
+        );
       }
       return success;
     }
@@ -1680,6 +1720,7 @@ export function placeNewMonster(
   sleep: boolean,
   groupOk: boolean,
   groupInfo: MonsterGroupInfo,
+  origin: number = ORIGIN.DROP,
 ): boolean {
   if (!g.monDeps) return false;
   const info: MonsterGroupInfo = { ...groupInfo };
@@ -1689,7 +1730,7 @@ export function placeNewMonster(
   if (!info.index) info.index = g.nextGroupIndex();
 
   /* Place one monster, or fail. */
-  if (!placeNewMonsterOne(g, grid, race, sleep, info)) return false;
+  if (!placeNewMonsterOne(g, grid, race, sleep, info, origin)) return false;
 
   /* We're done unless the group flag is set. */
   if (!groupOk) return true;
@@ -1706,7 +1747,7 @@ export function placeNewMonster(
 
     /* Place them. */
     if (friends.race) {
-      placeFriends(g, grid, race, friends.race, total, sleep, info);
+      placeFriends(g, grid, race, friends.race, total, sleep, info, origin);
     }
   }
 
@@ -1733,7 +1774,7 @@ export function placeNewMonster(
     info.role = friendsBase.role;
 
     /* Place them. */
-    placeFriends(g, grid, race, friendsRace, total, sleep, info);
+    placeFriends(g, grid, race, friendsRace, total, sleep, info, origin);
   }
 
   return true;
@@ -1746,12 +1787,13 @@ export function pickAndPlaceMonster(
   depth: number,
   sleep: boolean,
   groupOkay = true,
+  origin: number = ORIGIN.DROP,
 ): boolean {
   if (!g.monDeps) return false;
   const race = g.monDeps.table.getMonNum(g.rng, depth, g.c.depth);
   if (!race) return false;
   const info: MonsterGroupInfo = { index: 0, role: MON_GROUP.LEADER };
-  return placeNewMonster(g, grid, race, sleep, groupOkay, info);
+  return placeNewMonster(g, grid, race, sleep, groupOkay, info, origin);
 }
 
 /** pick_and_place_distant_monster: place one monster far from the player. */
@@ -1797,7 +1839,8 @@ export function vaultMonsters(g: Gen, grid: Loc, depth: number, num: number): vo
         squareIsEmpty(g, gr),
       );
       if (near.length === 0) continue;
-      pickAndPlaceMonster(g, near[0] as Loc, depth, true);
+      /* vault_monsters (gen-util.c L914): ORIGIN_DROP_SPECIAL. */
+      pickAndPlaceMonster(g, near[0] as Loc, depth, true, true, ORIGIN.DROP_SPECIAL);
       break;
     }
   }
