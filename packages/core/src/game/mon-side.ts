@@ -21,7 +21,7 @@
  * impact); ledgered in parity/ledger/combat-melee.yaml.
  */
 
-import { ORIGIN, OF, STAT, TMD } from "../generated";
+import { ORIGIN, OF, PROJ, STAT, TMD } from "../generated";
 import { SKILL } from "../player/types";
 import type { Loc } from "../loc";
 import type { Monster } from "../mon/monster";
@@ -157,14 +157,20 @@ export function makeMonBlowEnv(
     },
 
     elementalDam(proj: number, dam: number): number {
+      /* minus_ac(p) is consulted only for ACID after the immune short-circuit
+       * (adjust_dam / project-player.c L65-70), so a monster's acid blow damages
+       * a worn armour piece exactly once. resLevel 3 is immune (RESIST_IMMUNE). */
+      const resLevel = deps.actor.resistLevel(proj);
+      const acidMinusAc =
+        proj === PROJ.ACID && resLevel !== 3 ? deps.actor.minusAc() : false;
       return adjustDam(
         state.rng,
         deps.projections,
         proj,
         dam,
         "randomise",
-        deps.actor.resistLevel(proj),
-        deps.actor.minusAc,
+        resLevel,
+        acidMinusAc,
       );
     },
 

@@ -25,9 +25,11 @@
  * parity/ledger/game-loop.yaml.
  */
 
-import { MON_TMD, PF, STAT, TMD } from "../generated";
+import { MON_TMD, OF, PF, STAT, TMD } from "../generated";
 import { TMD_MAX } from "../player/types";
 import { los } from "../world/view";
+import { makeNoise, updateScent } from "../world/flow";
+import { convertManaToHp } from "../player/combat-regen";
 import {
   MON_TMD_FLG_NOTIFY,
   monClearTimed,
@@ -35,7 +37,7 @@ import {
 } from "../mon/timed";
 import { getCommandedMonster } from "./mon-cmd";
 import { adj_con_fix, calcStatIndices } from "../player/calcs";
-import { equipLearnAfterTime } from "../obj/knowledge";
+import { equipLearnAfterTime, equipLearnFlag } from "../obj/knowledge";
 import { playerClearTimed, playerDecTimed, playerTimedGradeEq } from "../player/timed";
 import { tickMonsterMarks } from "./known";
 import {
@@ -45,6 +47,7 @@ import {
   isDaytime,
   playAmbientSound,
   playerHasWorld,
+  playerOfHasWorld,
   playerUpdateLight,
   processDamageOverTime,
   processExpDrain,
@@ -108,11 +111,16 @@ export function playerAdjustHpPrecise(p: Player, hpGain: number): void {
 }
 
 /**
- * player_adjust_mana_precise (positive-gain path): add sp_gain (in 2^16ths)
- * to csp/csp_frac, clamped to [0, msp].
+ * player_adjust_mana_precise: add sp_gain (in 2^16ths) to csp/csp_frac,
+ * clamped to [0, msp]. Returns the amount actually applied in 2^16ths (which
+ * differs from sp_gain when the clamp bites); the PF_COMBAT_REGEN mana degen
+ * path in player_regen_mana feeds the returned (negative) delta to
+ * convert_mana_to_hp. Faithful to player-util.c:585-653 - the C recomputes the
+ * applied delta as new_32 - old_32 whenever the clamp fires, which for the
+ * non-overflow range in play is simply (final - old_32) in every case.
  */
-export function playerAdjustManaPrecise(p: Player, spGain: number): void {
-  if (spGain === 0) return;
+export function playerAdjustManaPrecise(p: Player, spGain: number): number {
+  if (spGain === 0) return 0;
   const old32 = p.csp * 65536 + p.cspFrac;
   const new32 = old32 + spGain;
   if (new32 < 0) {
@@ -135,16 +143,38 @@ export function playerAdjustManaPrecise(p: Player, spGain: number): void {
     p.csp = 0;
     p.cspFrac = 0;
   }
+  return p.csp * 65536 + p.cspFrac - old32;
 }
 
 /**
- * player_regen_hp: default (food-tier) HP regeneration. The equipment-derived
- * modifiers (OF_REGEN / OF_IMPAIR_HP), resting bonus and Rock/PF specials are
- * DEFERRED; the food-tier percent, the fed-bonus scaling, and the
- * paralyse/poison/stun/cut zeroing are ported.
+ * player_resting_can_regenerate (player-util.c:1461): the player earns the x2
+ * regeneration bonus once REST_REQUIRED_FOR_REGEN turns of the current rest
+ * have elapsed, or immediately for the conditional REST_ modes. The rest
+ * command subsystem (WP-11) is not built yet, so this seam returns false today
+ * (the player is never resting), which is behaviourally faithful. WP-11 wires
+ * the live resting count in here. No RNG.
+ */
+function playerRestingCanRegenerate(_state: GameState): boolean {
+  return false;
+}
+
+/**
+ * player_is_resting (player-util.c:1397): true while a rest command is running.
+ * Gates the noise/scent update below. Same WP-11 seam as above; false today.
+ */
+function playerIsResting(_state: GameState): boolean {
+  return false;
+}
+
+/**
+ * player_regen_hp (player-util.c:436-481): one turn of HP regeneration. The
+ * food-tier base percent, the up-to-1/3 fed bonus, the OF_REGEN x2 and resting
+ * x2 speed-ups, the OF_IMPAIR_HP halving, and the paralyse/poison/stun/cut
+ * zeroing, then the fixed-point adjust and the change-driven equip learning.
  */
 export function playerRegenHp(state: GameState): void {
   const p = state.actor.player;
+  const oldChp = p.chp;
   const food = p.timed[TMD.FOOD] ?? 0;
   let percent = 0;
   if (food >= state.z.foodWeak) percent = PY_REGEN_NORMAL;
@@ -155,6 +185,13 @@ export function playerRegenHp(state: GameState): void {
   const fedPct = Math.trunc(food / state.z.foodValue);
   percent = Math.trunc((percent * (100 + Math.trunc(fedPct / 3))) / 100);
 
+  /* Various things speed up regeneration. */
+  if (playerOfHasWorld(state, OF.REGEN)) percent *= 2;
+  if (playerRestingCanRegenerate(state)) percent *= 2;
+
+  /* Some things slow it down. */
+  if (playerOfHasWorld(state, OF.IMPAIR_HP)) percent = Math.trunc(percent / 2);
+
   /* Things that interfere with physical healing. */
   if (p.timed[TMD.PARALYZED] ?? 0) percent = 0;
   if (p.timed[TMD.POISONED] ?? 0) percent = 0;
@@ -163,18 +200,54 @@ export function playerRegenHp(state: GameState): void {
 
   const hpGain = p.mhp * percent + PY_REGEN_HPBASE;
   playerAdjustHpPrecise(p, hpGain);
+
+  /* Notice changes. */
+  if (oldChp !== p.chp) {
+    equipLearnFlag(p, state.runeEnv, OF.REGEN);
+    equipLearnFlag(p, state.runeEnv, OF.IMPAIR_HP);
+  }
 }
 
 /**
- * player_regen_mana: default mana regeneration (PY_REGEN_NORMAL + base). The
- * PF_COMBAT_REGEN / OF_ modifiers and the resting bonus are DEFERRED.
+ * player_regen_mana (player-util.c:487-530): one turn of mana regeneration.
+ * PF_COMBAT_REGEN (Blackguard) suppresses the OF_REGEN / resting speed-ups
+ * while above half HP, then degenerates mana (percent /= -2) and converts the
+ * lost SP to HP at double efficiency; otherwise OF_IMPAIR_MANA halves the gain.
  */
 export function playerRegenMana(state: GameState): void {
   const p = state.actor.player;
-  const percent = PY_REGEN_NORMAL;
+  const oldCsp = p.csp;
+  let percent = PY_REGEN_NORMAL;
+  const combatRegen = playerHasWorld(state, PF.COMBAT_REGEN);
+
+  /* Various things speed up regeneration, but shouldn't punish healthy BGs. */
+  if (!(combatRegen && p.chp > Math.trunc(p.mhp / 2))) {
+    if (playerOfHasWorld(state, OF.REGEN)) percent *= 2;
+    if (playerRestingCanRegenerate(state)) percent *= 2;
+  }
+
+  /* Some things slow it down. */
+  if (combatRegen) {
+    percent = Math.trunc(percent / -2);
+  } else if (playerOfHasWorld(state, OF.IMPAIR_MANA)) {
+    percent = Math.trunc(percent / 2);
+  }
+
+  /* Regenerate mana. */
   let spGain = p.msp * percent;
   if (percent >= 0) spGain += PY_REGEN_MNBASE;
-  playerAdjustManaPrecise(p, spGain);
+  spGain = playerAdjustManaPrecise(p, spGain);
+
+  /* SP degen heals BGs at double efficiency vs casting. */
+  if (spGain < 0 && combatRegen) {
+    convertManaToHp(p, -spGain * 2);
+  }
+
+  /* Notice changes. */
+  if (oldCsp !== p.csp) {
+    equipLearnFlag(p, state.runeEnv, OF.REGEN);
+    equipLearnFlag(p, state.runeEnv, OF.IMPAIR_MANA);
+  }
 }
 
 /**
@@ -329,8 +402,19 @@ export function processWorld(state: GameState): void {
   /* Process light (PU_TORCH). */
   playerUpdateLight(state);
 
-  /* Update noise and scent (not if resting): DEFERRED (no RNG; the AI does not
-   * read the noise / scent floods yet, ledgered in parity/ledger). */
+  /* Update noise and scent (not if resting) - game-world.c:731-735. The
+   * monster movement AI reads these floods (monster-turn.ts:257-269) to track
+   * the player through corridors and around corners once LOS breaks. Neither
+   * make_noise nor update_scent draws RNG, so the seeded stream is unaffected.
+   * The resting guard rides the WP-11 seam (false today). */
+  if (!playerIsResting(state)) {
+    const src = {
+      grid: state.actor.grid,
+      covertTracks: (p.timed[TMD.COVERTRACKS] ?? 0) > 0,
+    };
+    makeNoise(state.chunk, src);
+    updateScent(state.chunk, src);
+  }
 
   /*** Process Inventory ***/
 
