@@ -17,8 +17,16 @@ import {
   playerKnowObjectAwareness,
 } from "./knowledge";
 import type { RuneEnv } from "./knowledge";
-import { objectGrab, objectKnownShadow, objectTouch } from "./known-object";
-import type { KnownDesc } from "./known-object";
+import {
+  KNOWN_STATE,
+  objectGrab,
+  objectKnownShadow,
+  objectSee,
+  objectSense,
+  objectTouch,
+} from "./known-object";
+import type { KnownDesc, KnownFloorDeps, KnownState } from "./known-object";
+import { TV } from "../generated";
 import { deserializePlayer, serializePlayer } from "../session/save";
 import type { SavedPlayer } from "../session/save";
 import { ContentIdResolver } from "../mod/ids";
@@ -346,5 +354,102 @@ describe("object_touch / object_grab (obj-knowledge.c L960-1013, gap 4.8)", () =
     expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(OBJ_NOTICE.ASSESSED);
     expect(found).toEqual([art.aidx]);
     expect(known).toEqual([obj]);
+  });
+});
+
+describe("objectKnownShadow progressive-sensing gate (obj-knowledge.c L1027-1035, gap 4.8)", () => {
+  const setup = () => {
+    const p = makePlayer();
+    const env = makeEnv();
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const kind = ordinaryKind((k) => k.dd > 0 && k.ds > 0 && k.ac === 0);
+    return { p, env, deps: knownDescOf(flavor), obj: mkObj(kind), kind };
+  };
+
+  it("a SEEN object gets base properties (the default state)", () => {
+    const { p, env, deps, obj, kind } = setup();
+    const shadow = objectKnownShadow(obj, p, env, deps);
+    expect(shadow.dd).toBe(kind.dd);
+    expect(shadow.ds).toBe(kind.ds);
+  });
+
+  it("an only-SENSED object gets no ID at all (L1030)", () => {
+    const { p, env, deps, obj } = setup();
+    const shadow = objectKnownShadow(obj, p, env, deps, KNOWN_STATE.SENSED);
+    /* player_know_object returns before object_set_base_known - not even the
+     * base dice are filled. */
+    expect(shadow.dd).toBe(0);
+    expect(shadow.ds).toBe(0);
+    expect(shadow.ac).toBe(0);
+  });
+
+  it("an UNSEEN object gets no ID at all (L1029)", () => {
+    const { p, env, deps, obj } = setup();
+    const shadow = objectKnownShadow(obj, p, env, deps, KNOWN_STATE.UNSEEN);
+    expect(shadow.dd).toBe(0);
+    expect(shadow.ds).toBe(0);
+  });
+});
+
+describe("object_see / object_sense (obj-knowledge.c L862-955, gap 4.8)", () => {
+  /** A reduced known-cave floor that tracks one grid's KnownState. */
+  function fakeFloor(initial: KnownState = KNOWN_STATE.UNSEEN) {
+    let st: KnownState = initial;
+    const calls: string[] = [];
+    const deps: KnownFloorDeps = {
+      state: () => st,
+      setSeen: () => {
+        st = KNOWN_STATE.SEEN;
+        calls.push("seen");
+      },
+      setSensed: (_obj, isMoney) => {
+        st = KNOWN_STATE.SENSED;
+        calls.push(isMoney ? "sensed-money" : "sensed-item");
+      },
+      setNumber: () => {
+        calls.push("number");
+      },
+    };
+    return { deps, calls, state: () => st };
+  }
+
+  it("progresses unseen -> sensed -> seen -> number", () => {
+    const obj = mkObj(ordinaryKind(() => true));
+    const floor = fakeFloor();
+
+    objectSense(obj, floor.deps); /* L862: new sensed marker */
+    expect(floor.state()).toBe(KNOWN_STATE.SENSED);
+
+    objectSee(obj, floor.deps); /* L934-936: sensed -> exact */
+    expect(floor.state()).toBe(KNOWN_STATE.SEEN);
+
+    objectSee(obj, floor.deps); /* L937-939: exact -> just refresh number */
+    expect(floor.state()).toBe(KNOWN_STATE.SEEN);
+
+    expect(floor.calls).toEqual(["sensed-item", "seen", "number"]);
+  });
+
+  it("object_see on an unseen object makes an exact memory directly (L909-927)", () => {
+    const obj = mkObj(ordinaryKind(() => true));
+    const floor = fakeFloor();
+    objectSee(obj, floor.deps);
+    expect(floor.state()).toBe(KNOWN_STATE.SEEN);
+    expect(floor.calls).toEqual(["seen"]);
+  });
+
+  it("object_sense leaves an already-known grid untouched (L868-869)", () => {
+    const obj = mkObj(ordinaryKind(() => true));
+    const floor = fakeFloor(KNOWN_STATE.SEEN);
+    objectSense(obj, floor.deps);
+    expect(floor.state()).toBe(KNOWN_STATE.SEEN);
+    expect(floor.calls).toEqual([]);
+  });
+
+  it("object_sense marks money with the treasure kind (L886-888)", () => {
+    const obj = mkObj(ordinaryKind(() => true));
+    obj.tval = TV.GOLD;
+    const floor = fakeFloor();
+    objectSense(obj, floor.deps);
+    expect(floor.calls).toEqual(["sensed-money"]);
   });
 });

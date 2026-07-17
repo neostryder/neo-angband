@@ -38,6 +38,7 @@ import {
   playerSetTimed,
 } from "../player/timed";
 import type {
+  PlayerIncCheckHooks,
   PlayerIncCheckQueries,
   PlayerTimedHooks,
 } from "../player/timed";
@@ -70,6 +71,10 @@ export interface EffectEnvDeps {
   showDamage?: boolean;
   /** player_inc_check resolvers; when absent every increase is allowed. */
   incQueries?: PlayerIncCheckQueries;
+  /** player_inc_check side hooks (equip-learn + monster-source smart-learn);
+   * threaded for monster-source casts (mon-cast.ts) so update_smart_learn runs
+   * on the no-save branch. Absent for player-side effects. */
+  incHooks?: PlayerIncCheckHooks;
   /** Extra player-timed hooks (onNotify / onTransition). */
   timedHooks?: PlayerTimedHooks;
   /** take_hit consequences (onDeath, combatRegen, ...). */
@@ -124,7 +129,10 @@ export function buildTimedHost(
     ...(deps.onMessage ? { onMessage: (t: string) => deps.onMessage!(t) } : {}),
     ...(deps.timedHooks ?? {}),
     ...(deps.incQueries
-      ? { incCheck: (idx: number) => playerIncCheck(effect(idx), deps.incQueries!) }
+      ? {
+          incCheck: (idx: number) =>
+            playerIncCheck(effect(idx), deps.incQueries!, deps.incHooks),
+        }
       : {}),
   };
 

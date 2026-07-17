@@ -725,6 +725,10 @@ function say(text: string): void {
   a11y.announce(text);
 }
 state.msg = (text: string): void => {
+  // Persist the message into the core's rolling log (gap 12.8, wr_messages) so
+  // it survives save/load. Additive: the event-bus routing and shell rendering
+  // below are untouched. The central sink carries no MSG_* type, so log as 0.
+  state.messages?.add(text, 0);
   // Route the message onto the event bus (W1.6) so mods can subscribe to
   // "message", then render it. state.events is attached below; before that
   // (early boot) the emit is simply skipped.

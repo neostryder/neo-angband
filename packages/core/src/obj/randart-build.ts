@@ -28,10 +28,12 @@
  *   names are held in a small local table (BASE_ELEMENT_PROJ_NAMES) mirroring
  *   projection.txt / projection.json; noted as an approximation.
  * - remove_contradictory_activation depends on effect_summarize_properties
- *   (effects-info.c), which is not ported. Since that routine consumes no RNG
- *   and only ever nulls an activation when it is fully redundant with the
- *   artifact's other properties, it is implemented as a conservative no-op
- *   (activations are never treated as redundant). Noted as an approximation.
+ *   (effects-info.c). That summarizer lives in the effects domain, so it is
+ *   ported in ./effects-info.ts (makeActivationSummarizer) and injected here as
+ *   the ActivationSummarizer seam. It consumes no RNG and only ever nulls an
+ *   activation when it is fully redundant with the artifact's other properties.
+ *   When no summarizer is supplied this stays a conservative no-op (activations
+ *   are never treated as redundant).
  * - artifact_curse_conflicts's TIMED_INC "effect foiled by an existing
  *   property" branch depends on the timed-effects failure tables (not ported);
  *   only the explicit conflict-flags branch is ported. This affects only the

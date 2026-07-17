@@ -53,6 +53,8 @@ import type { GameState } from "./context";
 import { destroyDecoy, monsterGetTarget } from "./effect-mon-origin";
 import { projectMonster } from "./project-monster";
 import type { ProjectMonsterHooks } from "./project-monster";
+import { updateSmartLearn } from "../mon/spell";
+import { buildSmartLearnEnv } from "./mon-cast";
 import { projectPlayer } from "./project-player";
 import { projectObject } from "./project-obj";
 import { projectFeature } from "./project-feat";
@@ -279,7 +281,24 @@ export function castProjection(
       ...(source.isTrap !== undefined ? { isTrap: source.isTrap } : {}),
     },
     power: source.power ?? 0,
-    hooks: hooks.player ?? {},
+    /* update_smart_learn (mon-util.c L788): a monster-source projection that
+     * hits the player lets the monster learn the player's resist/flag for that
+     * GF type. Merge the per-cast smartLearn hook onto the player hooks for
+     * monster sources only. With birth_ai_learn off, updateSmartLearn returns
+     * before drawing RNG (equipLearn* aside), so default play is unchanged. */
+    hooks: {
+      ...(hooks.player ?? {}),
+      ...(source.isMonster && source.monster > 0
+        ? {
+            smartLearn: (typ: number): void => {
+              const mon = state.monsters[source.monster];
+              if (mon) {
+                updateSmartLearn(state.rng, mon, buildSmartLearnEnv(state), 0, 0, typ);
+              }
+            },
+          }
+        : {}),
+    },
   };
 
   const projectHooks: ProjectHooks = {

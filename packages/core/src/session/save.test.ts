@@ -7,7 +7,8 @@ import type { PlayerCommand } from "../game/context";
 import { objectNew } from "../obj/object";
 import { EverseenKnowledge } from "../obj/knowledge";
 import { ContentIdResolver } from "../mod/ids";
-import { serializeGame } from "./save";
+import { serializeGame, serializeMessages, deserializeMessages } from "./save";
+import { MessageLog } from "../msg";
 import type { ObjectKind } from "../obj/types";
 import { describeObject } from "../game/describe";
 import { NOSCORE } from "../game/wizard";
@@ -676,6 +677,139 @@ describe("birth_randarts (obj-randart.c do_randart)", () => {
       expect(reArts[i]?.toD).toBe(rndArts[i]?.toD);
       expect(reArts[i]?.name).toBe(rndArts[i]?.name);
     }
+  });
+});
+
+describe("minor persisted player fields (gap 12.6, wr_player)", () => {
+  it("round-trips resting_turn / skip_cmd_coercion / unignoring / name_suffix through serializeGame", () => {
+    const game = startGame(pack, { seed: 12, depth: 2 });
+    game.state.restingTurn = 37;
+    game.state.skipCmdCoercion = 2;
+    game.state.unignoring = 1;
+    game.state.nameSuffix = 3;
+
+    const ids = new ContentIdResolver(game.booted.registries);
+    const saved = JSON.parse(
+      JSON.stringify(
+        serializeGame(game.state, game.flavor, game.seedFlavor, ids, 0, game.everseen),
+      ),
+    ) as SavedGame;
+
+    expect(saved.restingTurn).toBe(37);
+    expect(saved.skipCmdCoercion).toBe(2);
+    expect(saved.unignoring).toBe(1);
+    expect(saved.nameSuffix).toBe(3);
+  });
+
+  it("omits the minor player fields when at their defaults (a clean save stays clean)", () => {
+    const game = startGame(pack, { seed: 13, depth: 2 });
+    const ids = new ContentIdResolver(game.booted.registries);
+    const saved = serializeGame(
+      game.state,
+      game.flavor,
+      game.seedFlavor,
+      ids,
+      0,
+      game.everseen,
+    );
+    expect(saved.restingTurn).toBeUndefined();
+    expect(saved.skipCmdCoercion).toBeUndefined();
+    expect(saved.unignoring).toBeUndefined();
+    expect(saved.nameSuffix).toBeUndefined();
+  });
+});
+
+describe("running message-log persistence (gap 12.8, wr_messages/rd_messages)", () => {
+  it("round-trips the log oldest-first, newest preserved (save.c:349 order)", () => {
+    const log = new MessageLog();
+    log.add("a", 0);
+    log.add("b", 1);
+    log.add("c", 0);
+
+    const data = serializeMessages(log);
+    /* Serialized oldest-first, exactly as wr_messages writes them. */
+    expect(data).toEqual([
+      { str: "a", type: 0 },
+      { str: "b", type: 1 },
+      { str: "c", type: 0 },
+    ]);
+
+    const restored = deserializeMessages(data);
+    expect(restored.num()).toBe(3);
+    /* Newest is age 0 after the reload (message_add prepends). */
+    expect(restored.str(0)).toBe("c");
+    expect(restored.type(1)).toBe(1);
+    expect(restored.str(2)).toBe("a");
+  });
+
+  it("an empty or absent log serializes to nothing and restores empty", () => {
+    expect(serializeMessages(new MessageLog())).toBeUndefined();
+    expect(serializeMessages(undefined)).toBeUndefined();
+    expect(deserializeMessages(undefined).num()).toBe(0);
+  });
+
+  it("caps the dump at the 80 newest messages (save.c:345)", () => {
+    const log = new MessageLog();
+    for (let i = 0; i < 100; i++) log.add(`m${i}`, 0);
+
+    const data = serializeMessages(log)!;
+    expect(data.length).toBe(80);
+    /* The 80 newest (m20..m99), oldest-of-the-kept first. */
+    expect(data[0]).toEqual({ str: "m20", type: 0 });
+    expect(data[79]).toEqual({ str: "m99", type: 0 });
+
+    const restored = deserializeMessages(data);
+    expect(restored.num()).toBe(80);
+    expect(restored.str(0)).toBe("m99");
+    expect(restored.str(79)).toBe("m20");
+  });
+
+  it("does not persist repeat counts (upstream quirk: reload resets counts to 1)", () => {
+    const log = new MessageLog();
+    log.add("boom", 0);
+    log.add("boom", 0);
+    log.add("boom", 0);
+    /* Live: one collapsed entry with count 3. */
+    expect(log.num()).toBe(1);
+    expect(log.count(0)).toBe(3);
+
+    /* wr_messages writes only str+type, so the count is lost across a reload. */
+    const restored = deserializeMessages(serializeMessages(log));
+    expect(restored.num()).toBe(1);
+    expect(restored.count(0)).toBe(1);
+  });
+
+  it("serializeGame carries the message block from GameState.messages", () => {
+    const game = startGame(pack, { seed: 99, depth: 2 });
+    const log = new MessageLog();
+    log.add("You hit the kobold.", 0);
+    game.state.messages = log;
+
+    const ids = new ContentIdResolver(game.booted.registries);
+    const saved = JSON.parse(
+      JSON.stringify(
+        serializeGame(game.state, game.flavor, game.seedFlavor, ids, 0, game.everseen),
+      ),
+    ) as SavedGame;
+
+    expect(saved.messages).toEqual([{ str: "You hit the kobold.", type: 0 }]);
+    const restored = deserializeMessages(saved.messages);
+    expect(restored.str(0)).toBe("You hit the kobold.");
+  });
+
+  it("omits the message block entirely when the log is empty", () => {
+    const game = startGame(pack, { seed: 100, depth: 2 });
+    game.state.messages = new MessageLog();
+    const ids = new ContentIdResolver(game.booted.registries);
+    const saved = serializeGame(
+      game.state,
+      game.flavor,
+      game.seedFlavor,
+      ids,
+      0,
+      game.everseen,
+    );
+    expect(saved.messages).toBeUndefined();
   });
 });
 

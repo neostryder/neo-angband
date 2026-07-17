@@ -39,6 +39,7 @@ import type { HistoryInfo } from "../player/history";
 import type { TrapKind } from "../world/trap";
 import type { GameState, MonsterGroup, StoredLevel } from "../game/context";
 import { modRuleEnabled } from "../game/context";
+import { MessageLog } from "../msg";
 import type { Trap } from "../game/trap";
 import type { Gear } from "../game/gear";
 import type { Store } from "../store/store";
@@ -759,6 +760,37 @@ export interface SavedGame {
    */
   daycount?: number;
   /**
+   * player->resting_turn (save.c:507; wr_player): the cumulative count of player
+   * turns spent resting. Gap 12.6. Optional / omitted when 0 (a character that
+   * has never rested), which loads back as 0. See GameState.restingTurn.
+   */
+  restingTurn?: number;
+  /**
+   * player->skip_cmd_coercion (save.c:490; wr_player): the bloodlust command
+   * -coercion skip state (0/1/2). Gap 12.6. Optional / omitted when 0.
+   */
+  skipCmdCoercion?: number;
+  /**
+   * player->unignoring (save.c:491; wr_player): the temporary "show ignored
+   * items" toggle. Gap 12.6. Optional / omitted when 0 (ignoring active).
+   */
+  unignoring?: number;
+  /**
+   * player->opts.name_suffix (save.c:432; wr_player): the numeric name suffix
+   * for the high-score table. Gap 12.6. Optional / omitted when 0.
+   */
+  nameSuffix?: number;
+  /**
+   * The rolling message log (wr_messages/rd_messages, save.c:339-353 /
+   * load.c:471-495). Gap 12.8. Each entry is text + MSG_* type, in the savefile's
+   * oldest-first order and capped at the 80 newest messages (save.c:345). The
+   * per-entry repeat count is NOT persisted - upstream wr_messages writes only
+   * message_str/message_type, so a reload collapses through message_add and every
+   * count resets to 1 (the quirk is preserved). Optional / omitted for an empty
+   * log and in saves written before message persistence, which load empty.
+   */
+  messages?: SavedMessage[];
+  /**
    * The player's ignore settings (obj-ignore.c). Optional: absent in saves
    * written before ignoring, which load with everything shown.
    */
@@ -817,6 +849,12 @@ export interface SavedGame {
    */
   levelCache?: SavedStoredLevel[];
   /**
+   * GameState.currentJoins: the in-play level's stair connectors (chunk->join,
+   * generate.c L1203-1214), so a first-visit persistent level can align stairs
+   * with the level just left. Absent when the option is off / no joins recorded.
+   */
+  currentJoins?: Array<{ x: number; y: number; feat: number }>;
+  /**
    * The per-kind autoinscription registry (obj-ignore.c note_aware/note_unaware,
    * obj/knowledge.ts AutoinscriptionRegistry). Keyed by the namespaced kind id
    * (like every other content reference, MOD_LIFECYCLE decision 1) so notes
@@ -832,6 +870,53 @@ export interface SavedAutoinscription {
   kindId: string;
   aware?: string;
   unaware?: string;
+}
+
+/**
+ * One serialized message-log entry (wr_messages, save.c:350-351): the message
+ * text and its MSG_* type. The repeat count is intentionally NOT stored -
+ * upstream persists only message_str/message_type, so counts do not survive a
+ * reload (see SavedGame.messages).
+ */
+export interface SavedMessage {
+  str: string;
+  type: number;
+}
+
+/**
+ * Serialize the rolling message log (wr_messages, save.c:339-353): the newest
+ * `cap` messages (default 80, the upstream limit) written oldest-first, each as
+ * text + type. Returns undefined for an empty / absent log so a clean save omits
+ * the block. Faithful to the C: the per-entry repeat count is dropped, so a
+ * reload recollapses through MessageLog.add and every count resets to 1.
+ */
+export function serializeMessages(
+  log: MessageLog | undefined,
+  cap = 80,
+): SavedMessage[] | undefined {
+  if (!log || log.num() === 0) return undefined;
+  const num = Math.min(log.num(), cap);
+  const out: SavedMessage[] = [];
+  /* save.c:349 dumps oldest-of-the-kept first (i = num - 1 down to 0). */
+  for (let age = num - 1; age >= 0; age--) {
+    out.push({ str: log.str(age), type: log.type(age) });
+  }
+  return out;
+}
+
+/**
+ * Rebuild a message log from its saved form (rd_messages, load.c:471-495):
+ * re-add each entry oldest-first via MessageLog.add, exactly as upstream calls
+ * message_add in a forward loop. An absent block (older save / empty log) yields
+ * a fresh empty log.
+ */
+export function deserializeMessages(
+  data: SavedMessage[] | undefined,
+): MessageLog {
+  const log = new MessageLog();
+  if (!data) return log;
+  for (const m of data) log.add(m.str, m.type);
+  return log;
 }
 
 /** Serialized map knowledge (remembered terrain and floor objects). */
@@ -983,6 +1068,17 @@ export function serializeGame(
         }
       : {}),
     ...(savedLevelCache ? { levelCache: savedLevelCache } : {}),
+    /* chunk->join of the level in play (gap 9.4/9.6): persisted so a first-visit
+     * persistent level aligns its stairs after a reload. Omitted when empty. */
+    ...(state.currentJoins && state.currentJoins.length > 0
+      ? {
+          currentJoins: state.currentJoins.map((j) => ({
+            x: j.grid.x,
+            y: j.grid.y,
+            feat: j.feat,
+          })),
+        }
+      : {}),
     ...(autoinscriptions ? { autoinscriptions } : {}),
     /* Town stores + accrued daycount (wr_stores / save.c:963). Persisted so the
      * home stash and shop stock survive save/load (gaps 12.1/12.2/12.3). */
@@ -991,6 +1087,18 @@ export function serializeGame(
       return stores ? { stores } : {};
     })(),
     ...(state.daycount ? { daycount: state.daycount } : {}),
+    /* Minor persisted player fields (gap 12.6, wr_player). Omitted when at their
+     * defaults so a clean save stays clean and old saves load with 0. */
+    ...(state.restingTurn ? { restingTurn: state.restingTurn } : {}),
+    ...(state.skipCmdCoercion ? { skipCmdCoercion: state.skipCmdCoercion } : {}),
+    ...(state.unignoring ? { unignoring: state.unignoring } : {}),
+    ...(state.nameSuffix ? { nameSuffix: state.nameSuffix } : {}),
+    /* Running message log (gap 12.8, wr_messages): the 80 newest messages,
+     * oldest-first. Omitted for an empty log. */
+    ...(() => {
+      const messages = serializeMessages(state.messages);
+      return messages ? { messages } : {};
+    })(),
     known: {
       feat: knownFeat,
       objects: Array.from(state.known.objects.entries()).map(([i, m]) => [
@@ -1345,6 +1453,8 @@ export interface SavedStoredLevel {
   traps: Array<{ x: number; y: number; traps: SavedTrap[] }>;
   known: SavedKnown;
   decoy?: { x: number; y: number } | null;
+  /** chunk->join stair connectors (generate.c L1203-1214); absent in old saves. */
+  join?: Array<{ x: number; y: number; feat: number }>;
 }
 
 /** Serialize one frozen level, reusing the current-level serializers. */
@@ -1400,6 +1510,7 @@ function serializeStoredLevel(
       ]),
     },
     decoy: level.decoy ? { x: level.decoy.x, y: level.decoy.y } : null,
+    join: level.join.map((j) => ({ x: j.grid.x, y: j.grid.y, feat: j.feat })),
   };
 }
 
@@ -1450,6 +1561,8 @@ export function deserializeLevelCache(
       known: deserializeKnown(entry.known, chunk.width, chunk.height, featRemap),
       decoy: entry.decoy ? loc(entry.decoy.x, entry.decoy.y) : null,
       turn: entry.turn,
+      /* chunk->join stair connectors; tolerate absence for pre-field saves. */
+      join: (entry.join ?? []).map((j) => ({ grid: loc(j.x, j.y), feat: j.feat })),
     });
   }
   return cache;

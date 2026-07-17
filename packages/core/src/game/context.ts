@@ -17,8 +17,10 @@
 
 import { MON_TMD, RF, TMD } from "../generated";
 import type { GameEvents } from "../events";
+import type { MessageLog } from "../msg";
 import type { Loc } from "../loc";
 import { distance, locEq } from "../loc";
+import type { Connector } from "../gen/util";
 import type { Rng } from "../rng";
 import type { Chunk } from "../world/chunk";
 import type { Player } from "../player/player";
@@ -170,6 +172,12 @@ export interface StoredLevel {
   known: import("./known").KnownMap;
   decoy: Loc | null;
   turn: number;
+  /**
+   * chunk->join (generate.c L1203-1214): the level's stair connectors, so a
+   * re-entered / adjacent persistent level can align up/down stairs via
+   * getJoinInfo. Empty when the level recorded no stairs (or for old saves).
+   */
+  join: Connector[];
 }
 
 /**
@@ -326,6 +334,50 @@ export interface GameState {
    * the save. Absent is treated as 0.
    */
   daycount?: number;
+  /**
+   * player->resting_turn (player.h:554, u32; save.c:507): the cumulative count
+   * of player turns spent resting, shown on the character sheet (ui-player.c:836)
+   * and reset only at birth (player-birth.c:449). DISTINCT from resting.turnsRested
+   * (the per-session file-static player_turns_rested that gates the x2 regen):
+   * resting_turn accumulates for the character's whole life. Bumped once per rested
+   * turn (player-util.c:1487). Persists in the save; absent is treated as 0.
+   * The live producer (the rest command) lives outside this module - see the
+   * WIRING-NEEDED note in session/save.ts.
+   */
+  restingTurn?: number;
+  /**
+   * player->skip_cmd_coercion (player.h:560, u8; save.c:490): the bloodlust
+   * command-coercion skip state (0/1/2) - set when a bloodlust-forced command was
+   * cancelled so the next command is not re-coerced (cmd-core.c:367-385) and
+   * decremented by the world clock (game-world.c:856-901). Persists in the save;
+   * absent is treated as 0. Live producer is outside this module (WIRING-NEEDED).
+   */
+  skipCmdCoercion?: number;
+  /**
+   * player->unignoring (player.h:558, u8; save.c:491): the temporary "show
+   * ignored items" toggle (ui-object.c:1841; consulted by obj-ignore.c:624-640
+   * and the status line ui-display.c:1282). Persists in the save; absent is
+   * treated as 0 (ignoring active). Live producer is outside this module
+   * (the UI toggle - WIRING-NEEDED).
+   */
+  unignoring?: number;
+  /**
+   * player->opts.name_suffix (option.h:68, u8; save.c:432): the numeric suffix
+   * appended to the character name for the high-score table when names collide.
+   * Set at birth. Persists in the save; absent is treated as 0. Live producer is
+   * outside this module (the birth/score path - WIRING-NEEDED).
+   */
+  nameSuffix?: number;
+  /**
+   * The rolling message log (message.c file-statics; msg.ts MessageLog),
+   * persisted in the savefile (wr_messages/rd_messages, save.c:339-353 /
+   * load.c:471-495). Upstream is a global; the port holds the live instance
+   * here so it can be serialized. Absent in the worldless harness and in saves
+   * written before message persistence, which load with an empty log. The live
+   * append path (routing msg()/msgt() into this log) lives outside this module
+   * (session wiring - WIRING-NEEDED).
+   */
+  messages?: MessageLog;
   z: GameConstants;
   /** Object domain tables for player melee brands/slays (index 0 = none). */
   brands: readonly (Brand | null)[];
@@ -554,6 +606,14 @@ export interface GameState {
    * save (session/save.ts); absent / empty means no frozen levels.
    */
   levelCache?: Map<number, StoredLevel>;
+  /**
+   * chunk->join for the level currently in play (generate.c L1203-1214),
+   * captured from generateLevel / restored from the frozen cache. Frozen into
+   * StoredLevel.join on level change and persisted (session/save.ts) so a
+   * first-visit persistent level can seed its stairs from adjacent levels.
+   * Only meaningful under birth_levels_persist; undefined otherwise.
+   */
+  currentJoins?: Connector[];
   /**
    * The preset target-item reference for an item-choosing effect (the port of
    * cmd_get_item's "tgtitem" command argument, cmd-core.c L1056). Set by the

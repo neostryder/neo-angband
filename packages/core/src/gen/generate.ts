@@ -181,13 +181,21 @@ export function getJoinInfo(adj: AdjacentJoins): JoinInfo {
  * feature. RNG-free; the per-connector SQUARE info copy upstream also makes is
  * a deferred detail (the port's Connector carries grid + feat). Feeds the next
  * level's getJoinInfo when persistent levels are wired.
+ *
+ * Order matters: upstream PREPENDS each stair (new->next = chunk->join;
+ * chunk->join = new, L1212-1213), so chunk->join ends up in reverse scan order
+ * (head = last grid scanned). getJoinInfo below re-prepends when it reads a
+ * neighbour's list, so this reverse-scan order is what makes the resulting
+ * dun.join come out in forward scan order exactly as C's does. Prepending here
+ * (unshift) rather than pushing is therefore required for stair-room build
+ * order on a first-visit persistent level to match upstream.
  */
 export function collectJoins(g: Gen): void {
   const c = g.c;
   for (let y = 0; y < c.height; y++) {
     for (let x = 0; x < c.width; x++) {
       const grid = loc(x, y);
-      if (c.isStairs(grid)) g.joins.push({ grid, feat: c.feat(grid) });
+      if (c.isStairs(grid)) g.joins.unshift({ grid, feat: c.feat(grid) });
     }
   }
 }

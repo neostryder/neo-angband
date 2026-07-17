@@ -25,6 +25,7 @@
 
 import { loc } from "../loc";
 import type { Loc } from "../loc";
+import { MessageLog } from "../msg";
 import { SKILL, STAT_MAX } from "../player/types";
 import { EF, ELEM, HIST, OF, PF, RF, STAT, TMD } from "../generated";
 import { bindPlayer } from "../player/bind";
@@ -206,7 +207,10 @@ import type { Player } from "../player/player";
 import { OptionState } from "../player/options";
 import type { OptionName } from "../player/options";
 import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart";
-import { generateLevel, type QuestSpawn } from "../gen/generate";
+import { makeActivationSummarizer } from "../obj/effects-info";
+import type { RawTimedRecord } from "../obj/effects-info";
+import type { ActivationSummarizer } from "../obj/randart-build";
+import { generateLevel, getJoinInfo, type QuestSpawn } from "../gen/generate";
 import { iToGrid } from "../gen/util";
 import {
   SAVE_VERSION,
@@ -219,6 +223,7 @@ import {
   deserializeKnown,
   deserializeLevelCache,
   deserializeLore,
+  deserializeMessages,
   deserializeMonster,
   deserializePlayer,
   deserializeStores,
@@ -477,6 +482,13 @@ function wireGame(
   seedFlavor: number,
   pack: GamePack,
 ): WiredGame {
+  // Rolling message log (message.c file-statics; gap 12.8). Shared producer for
+  // both new-game and load paths: startGame arrives with no log so this creates
+  // it; loadGame already restored one via deserializeMessages, so preserve it
+  // (??=) rather than clobber. The shell's message sink (state.msg) appends here
+  // in addition to its existing routing.
+  state.messages ??= new MessageLog();
+
   // Live commands over the floor piles: 'g'et + autopickup on stepping.
   const registry = createDefaultRegistry();
 
@@ -1755,6 +1767,9 @@ function makeChangeLevel(
         known: state.known,
         decoy: state.decoy ?? null,
         turn: state.turn,
+        /* chunk->join (generate.c L1203-1214): freeze the level's stair
+         * connectors so a later first-visit neighbour can align its stairs. */
+        join: state.currentJoins ?? [],
       });
 
       /* Enter a previously-frozen target level: assign it back and let its
@@ -1770,6 +1785,9 @@ function makeChangeLevel(
         state.traps = stored.traps;
         state.known = stored.known;
         state.decoy = stored.decoy;
+        /* Restore the level's stair connectors so a subsequent departure
+         * re-freezes them and adjacent first-visits keep aligning. */
+        state.currentJoins = stored.join;
 
         /* restore_monsters (mon-move.c L2007): HP regen + timed reduction over
          * the turns the level was frozen (turn - chunk->freeze-turn). */
@@ -1798,6 +1816,26 @@ function makeChangeLevel(
        * lost (both skipped above / below under persist). */
     }
 
+    /* birth_levels_persist first-visit generation (generate.c L1147-1152): seed
+     * this fresh level's stair connectors from the frozen adjacent levels so
+     * up/down stairs line up, and mark the build persistent so dun.persist
+     * branches run. Off by default: persist is false, joinInfo stays undefined,
+     * and generateLevel builds exactly as before. */
+    const persistCache = state.levelCache;
+    let joinInfo: ReturnType<typeof getJoinInfo> | undefined;
+    if (persist && persistCache) {
+      const above = persistCache.get(depth - 1)?.join;
+      const twoAbove = persistCache.get(depth - 2)?.join;
+      const below = persistCache.get(depth + 1)?.join;
+      const twoBelow = persistCache.get(depth + 2)?.join;
+      joinInfo = getJoinInfo({
+        ...(above ? { above } : {}),
+        ...(twoAbove ? { twoAbove } : {}),
+        ...(below ? { below } : {}),
+        ...(twoBelow ? { twoBelow } : {}),
+      });
+    }
+
     const g = generateLevel(
       state.rng,
       depth,
@@ -1815,8 +1853,15 @@ function makeChangeLevel(
         daytime: isDaytime(state.turn, state.z.dayLength),
         birthLoseArts: state.options?.get("birth_lose_arts") ?? false,
         questSpawns: questSpawnsForDepth(state, reg, depth),
+        persist,
+        ...(joinInfo ? { joinInfo } : {}),
       },
     );
+    /* chunk->join (generate.c L1203-1214): remember this level's stair
+     * connectors for freezing and adjacent-level alignment. Gated on persist so
+     * that with birth_levels_persist off the field stays unset and the savefile
+     * is byte-identical to today (no currentJoins key emitted). */
+    if (persist) state.currentJoins = g.joins;
     state.chunk = g.c;
     state.monsters = [null];
     state.groups = [null];
@@ -1992,7 +2037,12 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   let randartSeed = 0;
   if (options.get("birth_randarts")) {
     randartSeed = new Rng(opts.seed ?? 1).randint0(0x10000000);
-    swapRandartSet(reg, randartSeed, buildCurseTimedFoil(players.timed));
+    swapRandartSet(
+      reg,
+      randartSeed,
+      buildCurseTimedFoil(players.timed),
+      buildActivationSummarizer(pack, reg),
+    );
   }
 
   // aup_info[] (obj-make.c): the game's shared artifact-created registry.
@@ -2331,10 +2381,29 @@ function genFoilFields(
   };
 }
 
+/**
+ * Build the effect_summarize_properties summarizer (effects-info.c L898)
+ * injected into remove_contradictory_activation (obj-randart.c L2420, gap 3.8).
+ * Draws no RNG; only ever nulls a redundant activation.
+ */
+function buildActivationSummarizer(
+  pack: GamePack,
+  reg: CoreRegistries,
+): ActivationSummarizer {
+  return makeActivationSummarizer({
+    timedRecords: pack.player.timed as unknown as readonly RawTimedRecord[],
+    brands: reg.objects.brands,
+    slays: reg.objects.slays,
+    ofIndex: (n) => (OF as Record<string, number>)[n] ?? 0,
+    elemIndex: (n) => (ELEM as Record<string, number>)[n] ?? -1,
+  });
+}
+
 function swapRandartSet(
   reg: CoreRegistries,
   seed: number,
   timedFoil?: CurseTimedFoil,
+  activationSummarize?: ActivationSummarizer,
 ): void {
   /* Thread the RANDNAME_TOLKIEN corpus (names.json section 1, loaded into
    * CoreRegistries.nameSections at boot) so artifact_gen_name draws faithful
@@ -2344,14 +2413,16 @@ function swapRandartSet(
   /* artifact_curse_conflicts TIMED_INC foil (obj-randart.c L2530, gap 3.3):
    * thread the player-timed fail tables so a randart curse an item property
    * would foil is rejected / removable. The activation-redundancy summarizer
-   * (gap 3.8, effect_summarize_properties) is not ported (effects domain), so
-   * it is left unset - remove_contradictory_activation stays a conservative
-   * no-op. */
+   * (gap 3.8, effect_summarize_properties) is threaded via activationSummarize
+   * so remove_contradictory_activation can drop a redundant activation
+   * (obj-randart.c L2420); absent, it stays a conservative no-op. */
   const randarts = doRandart(
     reg.objects,
     seed,
     reg.nameSections.get(RANDNAME_TOLKIEN),
-    timedFoil ? { timedFoil } : undefined,
+    timedFoil || activationSummarize
+      ? { timedFoil, activationSummarize }
+      : undefined,
   );
   reg.objects.artifacts.length = 0;
   reg.objects.artifacts.push(...randarts);
@@ -2472,7 +2543,12 @@ export function loadGame(
   // randarts (do_randart preserves indices). Off / seed 0: the standard set.
   const randartSeed = save.randartSeed ?? 0;
   if (options.get("birth_randarts") && randartSeed) {
-    swapRandartSet(reg, randartSeed, buildCurseTimedFoil(players.timed));
+    swapRandartSet(
+      reg,
+      randartSeed,
+      buildCurseTimedFoil(players.timed),
+      buildActivationSummarizer(pack, reg),
+    );
   }
 
   // aup_info[] (load.c): the artifact-created registry. Restore the saved
@@ -2576,6 +2652,25 @@ export function loadGame(
         }
       : {}),
     ...(save.daycount ? { daycount: save.daycount } : {}),
+    /* Player-side transient scalars (save.c: wr_player). Absent in older saves
+     * / falsy defaults load as unset, matching a fresh character. */
+    ...(save.restingTurn ? { restingTurn: save.restingTurn } : {}),
+    ...(save.skipCmdCoercion ? { skipCmdCoercion: save.skipCmdCoercion } : {}),
+    ...(save.unignoring ? { unignoring: save.unignoring } : {}),
+    ...(save.nameSuffix ? { nameSuffix: save.nameSuffix } : {}),
+    /* Running message log (rd_messages, load.c:471-495, gap 12.8): re-add each
+     * saved entry oldest-first; older saves without the field load empty. */
+    messages: deserializeMessages(save.messages),
+    /* chunk->join of the level in play (gap 9.4/9.6): restore the stair
+     * connectors so a first-visit persistent level still aligns after reload. */
+    ...(save.currentJoins
+      ? {
+          currentJoins: save.currentJoins.map((j) => ({
+            grid: loc(j.x, j.y),
+            feat: j.feat,
+          })),
+        }
+      : {}),
     turn: save.turn,
     z: {
       ...DEFAULT_GAME_CONSTANTS,

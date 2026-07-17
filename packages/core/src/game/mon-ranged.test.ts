@@ -6,6 +6,10 @@ import { Rng } from "../rng";
 import { EffectRegistry } from "../effects/interpreter";
 import { registerCoreHandlers } from "../effects/handlers";
 import { loc, locEq } from "../loc";
+import { OptionState } from "../player/options";
+import { OF_SIZE, PF_SIZE } from "../player/types";
+import { ELEM_MAX } from "../obj/types";
+import { updateSmartLearn } from "../mon/spell";
 import { bindProjections } from "../world/projection";
 import type { ProjectionRecordJson } from "../world/projection";
 import { RSF_SIZE } from "../mon/types";
@@ -19,6 +23,7 @@ import { registerAttackHandlers } from "./effect-attack";
 import { registerMonsterHandlers } from "./effect-monster";
 import { registerTeleportHandlers } from "./effect-teleport";
 import { monsterTurn } from "./monster-turn";
+import { buildSmartLearnEnv } from "./mon-cast";
 import type { DoMonSpellDeps } from "./mon-cast";
 import {
   chooseAttackSpell,
@@ -397,5 +402,58 @@ describe("birth_ai_learn unset_spells filter (mon-attack.c L192, mon-spell.c L47
     const f = mon.race.spellFlags.clone();
     removeBadSpells(state, mon, f, {}, deps(state));
     expect(f.has(RSF.BA_FIRE)).toBe(true);
+  });
+});
+
+describe("smart-learn write then read (update_smart_learn -> unset_spells)", () => {
+  /* Minimal derived state carrying the resist update_smart_learn copies. */
+  function withResist(state: GameState, elem: number, level: number): void {
+    const elInfo = Array.from({ length: ELEM_MAX }, () => ({ resLevel: 0 }));
+    elInfo[elem] = { resLevel: level };
+    state.playerState = {
+      flags: new FlagSet(OF_SIZE),
+      pflags: new FlagSet(PF_SIZE),
+      elInfo,
+    } as never;
+  }
+
+  it("with ai_learn on, a monster learns the resist and then drops the spell", () => {
+    /* Smart monster: update_smart_learn draws only the 1-in-100 fail. */
+    let seed = 1;
+    while (new Rng(seed).oneIn(100)) seed++;
+    const state = makeState({ playerGrid: loc(5, 5), seed });
+    state.options = new OptionState({ overrides: { birth_ai_learn: true } });
+    withResist(state, ELEM.FIRE, 3); /* total fire immunity */
+    const race = casterRace([RSF.BA_FIRE, RSF.BA_COLD]);
+    race.flags.on(RF.SMART);
+    const mon = addMon(state, race, loc(5, 10));
+    updateMonsterDistances(state);
+
+    /* WRITE: the monster observes the player's fire resist. */
+    updateSmartLearn(state.rng, mon, buildSmartLearnEnv(state), 0, 0, ELEM.FIRE);
+    expect(mon.knownPstate.elInfo[ELEM.FIRE]).toBe(3);
+
+    /* READ: remove_bad_spells -> unset_spells drops the now-useless fire ball
+     * (smart learn_chance = 3 * 50 = 150 > any randint0(100)); cold survives. */
+    const f = mon.race.spellFlags.clone();
+    removeBadSpells(state, mon, f, {}, deps(state));
+    expect(f.has(RSF.BA_FIRE)).toBe(false);
+    expect(f.has(RSF.BA_COLD)).toBe(true);
+  });
+
+  it("with ai_learn off, nothing is learned and nothing is filtered", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    withResist(state, ELEM.FIRE, 3);
+    const race = casterRace([RSF.BA_FIRE]);
+    race.flags.on(RF.SMART);
+    const mon = addMon(state, race, loc(5, 10));
+    updateMonsterDistances(state);
+
+    updateSmartLearn(state.rng, mon, buildSmartLearnEnv(state), 0, 0, ELEM.FIRE);
+    expect(mon.knownPstate.elInfo[ELEM.FIRE]).toBe(0); /* not learned */
+
+    const f = mon.race.spellFlags.clone();
+    removeBadSpells(state, mon, f, {}, deps(state));
+    expect(f.has(RSF.BA_FIRE)).toBe(true); /* not filtered */
   });
 });
