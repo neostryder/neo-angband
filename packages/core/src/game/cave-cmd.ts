@@ -79,6 +79,96 @@ export interface CaveCmdDeps {
 }
 
 /* ------------------------------------------------------------------ *
+ * Level feeling (do_cmd_feeling / display_feeling, cmd-cave.c L1687).
+ * ------------------------------------------------------------------ */
+
+/** obj_feeling_text[] (cmd-cave.c L1687): the 11 object-feeling strings. */
+const OBJ_FEELING_TEXT = [
+  "Looks like any other level.",
+  "you sense an item of wondrous power!",
+  "there are superb treasures here.",
+  "there are excellent treasures here.",
+  "there are very good treasures here.",
+  "there are good treasures here.",
+  "there may be something worthwhile here.",
+  "there may not be much interesting here.",
+  "there aren't many treasures here.",
+  "there are only scraps of junk here.",
+  "there is naught but cobwebs here.",
+] as const;
+
+/** mon_feeling_text[] (cmd-cave.c L1707): the 10 monster-feeling strings. */
+const MON_FEELING_TEXT = [
+  "You are still uncertain about this place",
+  "Omens of death haunt this place",
+  "This place seems murderous",
+  "This place seems terribly dangerous",
+  "You feel anxious about this place",
+  "You feel nervous about this place",
+  "This place does not seem too risky",
+  "This place seems reasonably safe",
+  "This seems a tame, sheltered place",
+  "This seems a quiet, peaceful place",
+] as const;
+
+/**
+ * display_feeling (cmd-cave.c L1729) via do_cmd_feeling (L1777): re-emit the
+ * current level feeling. `objOnly` reproduces display_feeling(true), the
+ * object-only line shown the moment the object feeling is first discovered;
+ * do_cmd_feeling (^F) calls it with objOnly = false. Cold-hearted characters
+ * (birth_feelings off) get nothing; the town gets the fixed line; a level not
+ * yet explored to feeling_need grids gets only the monster feeling, otherwise
+ * the joined "<mon>, and/yet <obj>" line with the exact conjunction rule.
+ * feelingNeed defaults to the shipped constants.txt world:feeling-need (10),
+ * matching the display-model default (display.ts).
+ */
+export function displayFeeling(
+  state: GameState,
+  opts: { objOnly?: boolean; feelingNeed?: number } = {},
+): void {
+  const chunk = state.chunk;
+  const objOnly = opts.objOnly ?? false;
+  const feelingNeed = opts.feelingNeed ?? 10;
+
+  /* Don't show feelings for cold-hearted characters (L1736). */
+  if (!(state.options?.get("birth_feelings") ?? true)) return;
+
+  /* No useful feeling in town (L1739). */
+  if (!chunk.depth) {
+    state.msg?.("Looks like a typical town.");
+    return;
+  }
+
+  let objFeeling = Math.trunc(chunk.feeling / 10);
+  let monFeeling = chunk.feeling - 10 * objFeeling;
+
+  /* Display only the object feeling when it's first discovered (L1745). The
+   * disturb(player) upstream pairs with the reveal path (view.ts), not ^F. */
+  if (objOnly) {
+    state.msg?.(`You feel that ${OBJ_FEELING_TEXT[objFeeling] ?? ""}`);
+    return;
+  }
+
+  /* Players automatically get a monster feeling (L1752). */
+  if (chunk.feelingSquares < feelingNeed) {
+    state.msg?.(`${MON_FEELING_TEXT[monFeeling] ?? ""}.`);
+    return;
+  }
+
+  /* Verify the feelings (L1758-1762). */
+  if (objFeeling >= OBJ_FEELING_TEXT.length) objFeeling = OBJ_FEELING_TEXT.length - 1;
+  if (monFeeling >= MON_FEELING_TEXT.length) monFeeling = MON_FEELING_TEXT.length - 1;
+
+  /* Decide the conjunction (L1765-1769). */
+  const join =
+    (monFeeling <= 5 && objFeeling > 6) || (monFeeling > 5 && objFeeling <= 6)
+      ? ", yet"
+      : ", and";
+
+  state.msg?.(`${MON_FEELING_TEXT[monFeeling]}${join} ${OBJ_FEELING_TEXT[objFeeling]}`);
+}
+
+/* ------------------------------------------------------------------ *
  * Door predicates (cave-square.c) over the feature flags.
  * ------------------------------------------------------------------ */
 
