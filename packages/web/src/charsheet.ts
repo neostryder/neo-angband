@@ -165,6 +165,15 @@ function safeFileName(name: string): string {
   return `${safe || "character"}.txt`;
 }
 
+/**
+ * death_file (ui-death.c L162-188) / the char sheet's 'f': download the
+ * character dump as a text file. Exported so the death menu's "File dump" row
+ * shares the exact same output as the in-life dump.
+ */
+export function dumpCharacterFile(state: GameState, name: string): boolean {
+  return downloadDump(state, name);
+}
+
 /** 'f' (dump_save, reduced): download the sheet as a plain-text file. */
 function downloadDump(state: GameState, name: string): boolean {
   try {

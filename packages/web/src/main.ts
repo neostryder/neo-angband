@@ -236,8 +236,12 @@ import {
   monsterKnowledgeMenu,
   autoinscriptionMenu,
   capRaceName,
+  tombstoneLines,
+  winnerLines,
+  ctimeStamp,
+  monsterListScreenLines,
 } from "./screens";
-import { showCharacterSheet } from "./charsheet";
+import { showCharacterSheet, dumpCharacterFile } from "./charsheet";
 import { runCharacterSelect } from "./charselect";
 import {
   listRoster,
@@ -258,7 +262,7 @@ import {
   registryNameResolver,
   showPredictedScores,
 } from "./score";
-import { enterScore } from "@neo-angband/core";
+import { enterScore, noscoreInvalidatesScore, BIRTH_MESSAGE_RECALL_BANNER } from "@neo-angband/core";
 import { runStore } from "./shop";
 import { runHelp } from "./help";
 import { runOptionsMenu } from "./options";
@@ -703,6 +707,16 @@ state.msg = (text: string): void => {
   state.events?.emit("message", { msg: text, type: 0 });
   say(text);
 };
+
+// BIRTH_MESSAGE_RECALL_BANNER (player-birth.c L1245-1249, 1.11/WP-7 handoff):
+// at character acceptance, upstream pushes five padded lines into the message
+// buffer so a new character's log opens below a visible divider. In this shell
+// character acceptance IS a genuine new-game boot (bootedNew, the character
+// chosen and not the roster picker). Pushed straight into the log (not via say)
+// so it seeds the Ctrl-P history without overwriting the welcome status line.
+if (bootedNew && !birthPending && !needsSelect) {
+  for (const line of BIRTH_MESSAGE_RECALL_BANNER) msglog.push(line);
+}
 
 // Keypad direction deltas (1-9), for resolving a walk's destination grid.
 const DIR_DX = [0, -1, 0, 1, -1, 0, 1, -1, 0, 1];
@@ -2017,6 +2031,91 @@ async function showMonsterKnowledge(): Promise<void> {
 }
 
 /**
+ * do_cmd_monlist ('[', ui-mon-list.c monster_list_show_interactive L388): the
+ * "list visible monsters" screen. Renders monsterListScreenLines (the faithful
+ * LOS/ESP sections with counts, asleep tags, and single-monster offsets), and
+ * loops on 'x' to toggle sort-by-experience (L410,456); scrolls with the
+ * arrows / PageUp-Down; ESC/Enter/Space (or a footer tap) closes. Pure display.
+ */
+function showMonsterList(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let sortExp = false;
+    let top = 0;
+    const HEADER_ROW = 0;
+    const BODY_TOP = 1;
+    const paint = (): void => {
+      const { cols, rows } = term.size();
+      term.clear();
+      const lines = monsterListScreenLines(state, cols, sortExp);
+      term.print(0, HEADER_ROW, "Visible monsters".slice(0, cols - 1), "#e8e8f0");
+      const bodyRows = rows - BODY_TOP - 1;
+      const maxTop = Math.max(0, lines.length - bodyRows);
+      if (top > maxTop) top = maxTop;
+      for (let r = 0; r < bodyRows; r++) {
+        const line = lines[top + r];
+        if (!line) break;
+        if (line.runs) {
+          let x = 0;
+          for (const run of line.runs) {
+            if (x >= cols - 1) break;
+            const chunk = run.text.slice(0, cols - 1 - x);
+            term.print(x, BODY_TOP + r, chunk, run.color);
+            x += chunk.length;
+          }
+        } else {
+          term.print(0, BODY_TOP + r, line.text.slice(0, cols - 1), line.color ?? "#c8c8d4");
+        }
+      }
+      const toggle = sortExp
+        ? "Press 'x' to turn OFF 'sort by exp'"
+        : "Press 'x' to turn ON 'sort by exp'";
+      term.print(0, rows - 1, `[ ${toggle}  ESC: back ]`.slice(0, cols - 1), "#8a8a94");
+    };
+    const finish = (): void => {
+      window.removeEventListener("keydown", onKey, true);
+      term.onCellTap?.(null);
+      resolve();
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      const { rows } = term.size();
+      const page = Math.max(1, rows - BODY_TOP - 2);
+      switch (ev.key) {
+        case "Escape":
+        case "Enter":
+        case " ":
+          finish();
+          return;
+        case "x":
+        case "X":
+          sortExp = !sortExp;
+          top = 0;
+          break;
+        case "ArrowDown":
+          top += 1;
+          break;
+        case "ArrowUp":
+          top = Math.max(0, top - 1);
+          break;
+        case "PageDown":
+          top += page;
+          break;
+        case "PageUp":
+          top = Math.max(0, top - page);
+          break;
+        default:
+          return;
+      }
+      paint();
+    };
+    window.addEventListener("keydown", onKey, true);
+    term.onCellTap?.(() => finish());
+    paint();
+  });
+}
+
+/**
  * target_set_interactive: the interactive map-cursor browse loop. Owns the
  * keyboard like promptDirection/selectFromMenu (its own capturing keydown
  * listener) - the caller gates the main handler via openModal. Returns
@@ -2505,8 +2604,13 @@ function scoreBuildDeps(diedFrom: string): {
   diedFrom: string;
   turn: number;
   depth: number;
+  fullName: string;
 } {
-  return { diedFrom, turn: state.turn, depth: state.chunk.depth };
+  // score.c buildScore's `who` column is player->full_name (12.4/WP-10). It is
+  // "" until death sets it; fall back to the shell's cosmetic name so a
+  // predicted (still-alive) Hall-of-Fame row is not blank.
+  const fullName = state.actor.player.fullName || playerName || "";
+  return { diedFrom, turn: state.turn, depth: state.chunk.depth, fullName };
 }
 
 /** Open the Hall of Fame around the current character (predict_score). */
@@ -2717,6 +2821,39 @@ async function openGameMenu(): Promise<void> {
 }
 
 /**
+ * display_winner + display_exit_screen (ui-death.c L374-387): the winner crown
+ * (total_winner only) then the tombstone epitaph, each a press-to-continue
+ * screen. Shown once when the character dies, before the death menu.
+ */
+async function showTombstone(diedFrom: string): Promise<void> {
+  const p = state.actor.player;
+  if (p.totalWinner) {
+    await showTextScreen(
+      term,
+      "",
+      winnerLines(term.size().cols),
+      "[ Press ESC to continue ]",
+    );
+  }
+  const title = p.cls.titles[Math.trunc((p.lev - 1) / 5)] ?? "";
+  const retired = diedFrom === "Retiring";
+  const lines = tombstoneLines({
+    fullName: p.fullName || playerName || "",
+    title,
+    className: p.cls.name,
+    level: p.lev,
+    exp: p.exp,
+    gold: p.au,
+    depth: state.chunk.depth,
+    diedFrom,
+    totalWinner: p.totalWinner,
+    retired,
+    deathTime: ctimeStamp(new Date()),
+  });
+  await showTextScreen(term, "", lines, "[ Press ESC to continue ]");
+}
+
+/**
  * death_screen's menu (ui-death.c L374), routed through the same shared menu
  * component: Information / Messages / View scores / New Game with the
  * upstream tag letters, looping until ESC (leave the tombstone view) or a
@@ -2735,20 +2872,37 @@ async function runDeathMenu(): Promise<void> {
     if (pick === null) return;
     switch (entries[pick]?.action) {
       case "info":
+        // death_info (ui-death.c L193-278): the final character sheet, then the
+        // OLIST_DEATH gear walk (equipment, inventory) as press-to-continue
+        // screens. Quiver/home pages are the remaining pieces of L227-275.
         await showCharacterSheet(term, state, playerName, charSheetOpts());
+        await showTextScreen(term, "You are using:", equipmentLines(state));
+        await showTextScreen(term, "You are carrying:", inventoryLines(state));
         break;
       case "messages":
         await showTextScreen(term, "Message history", messageHistoryLines(msglog));
+        break;
+      case "dump":
+        // death_file (ui-death.c L162): dump the character to a text file.
+        if (dumpCharacterFile(state, playerName)) say("Character dump successful.");
+        else say("Character dump failed!");
         break;
       case "scores":
         await showPredictedScores(
           term,
           scoreStore,
           state.actor.player,
-          { ...scoreBuildDeps("the dungeon"), deathTime: new Date() },
+          {
+            ...scoreBuildDeps(state.actor.player.diedFrom || "the dungeon"),
+            deathTime: new Date(),
+          },
           scoreNames,
           true,
         );
+        break;
+      case "history":
+        // death_history (ui-death.c L331): history_display.
+        await showTextScreen(term, "Player history", historyLines(state));
         break;
       case "new":
         // death_new_game (ui-death.c L347): get_check("Start a new game? ").
@@ -3480,35 +3634,34 @@ function advance(): void {
     // HIST_PLAYER_DEATH entry (verified: zero uses in reference/src).
     historyUnmaskUnknown(state.actor.player);
     message = "You have died. (Press 'N' or refresh to start a new game.)";
-    // Enter the character on the high-score table (enter_score) and show the
-    // Hall of Fame. died_from is a placeholder: the engine does not yet surface
-    // the killer to the shell (take-hit's onDeath hook has it; wiring it onto
-    // GameState is deferred), so the cause defaults here.
-    const diedFrom = "the dungeon";
-    // --- OPTIONS (task #30) --- the cheat/score gate now reads the wired
-    // option store (score.c L277: any OP_SCORE option set = "cheating"). A
-    // clean character trips nothing, so behaviour is unchanged by default. The
-    // noscore/wizard gate stays a shell concern (no wizard mode on the web).
+    // Enter the character on the high-score table (enter_score). died_from is
+    // the real killer recorded on the player at take-hit (12.5/WP-10); it falls
+    // back only if the engine never set it.
+    const player = state.actor.player;
+    const diedFrom = player.diedFrom || "the dungeon";
+    // enter_score gating (score.c L272-302): a cheater (any OP_SCORE option
+    // set), a wizard/debug character (noscore bits, 15.3/WP-10), and a
+    // non-winning interrupted/retiring death are not scored. noscoreInvalidates-
+    // Score reads the persisted Player.noscore bits; fullName feeds the score's
+    // `who` column.
     const outcome = enterScore(
       scoreStore,
       state.actor.player,
       { ...scoreBuildDeps(diedFrom), deathTime: new Date() },
-      { diedFrom, cheated: state.options?.anyScoreSet() ?? false },
+      {
+        diedFrom,
+        cheated: state.options?.anyScoreSet() ?? false,
+        noscore: noscoreInvalidatesScore(player.noscore),
+        totalWinner: player.totalWinner,
+      },
     );
-    scoresOpen = true;
-    void showPredictedScores(
-      term,
-      scoreStore,
-      state.actor.player,
-      { ...scoreBuildDeps(diedFrom), deathTime: new Date() },
-      scoreNames,
-      true,
-    ).then(() => {
-      scoresOpen = false;
-      void outcome; // slot/rejection reason available for a future death screen
-      render();
-      // death_screen's menu follows the score display; Escape reopens it.
-      void openModal(() => runDeathMenu());
+    void outcome; // slot/rejection reason available for a future death screen
+    // death_screen (ui-death.c L374): the winner crown + tombstone first, then
+    // the death menu (whose "View scores" opens the Hall of Fame). Escape
+    // reopens the menu.
+    void openModal(async () => {
+      await showTombstone(diedFrom);
+      await runDeathMenu();
     });
   } else if (status === LOOP_STATUS.LEVEL_CHANGE) {
     // Generate the next level in place and keep playing.
@@ -3606,6 +3759,12 @@ window.addEventListener("keydown", (ev) => {
       void openModal(() =>
         showTextScreen(term, "Objects in view", objectListLines(state)),
       );
+      return;
+    }
+    // do_cmd_monlist ('[', ui-game.c L180): the visible-monster list screen.
+    if (ev.key === "[") {
+      ev.preventDefault();
+      void openModal(showMonsterList);
       return;
     }
     if (ev.key === "C") {
