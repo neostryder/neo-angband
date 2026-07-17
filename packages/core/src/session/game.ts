@@ -148,8 +148,9 @@ import {
 } from "../player/spell";
 import { installSpellCommands } from "../game/spell-cmd";
 import { installRangedCommands } from "../game/ranged-cmd";
-import { createTownStores } from "../store/store";
-import type { Store } from "../store/store";
+import { markNoscore, NOSCORE } from "../game/wizard";
+import { createTownStores, storeUpdate } from "../store/store";
+import type { Store, StoreMaintContext } from "../store/store";
 import { storeBuy, storeSell } from "../store/transact";
 import type { BuyResult, SellResult } from "../store/transact";
 import { priceItem } from "../store/price";
@@ -218,6 +219,7 @@ import {
   deserializeLore,
   deserializeMonster,
   deserializePlayer,
+  deserializeStores,
   deserializeTraps,
   serializeGame,
 } from "./save";
@@ -1810,32 +1812,55 @@ function questSpawnsForDepth(
 }
 
 /**
- * store_init / store_reset on entering town: build and stock the eight shops
- * when the active level is the town (depth 0), and clear them in the dungeon.
- * Stock is regenerated per visit (save-persistence of store stock is a
- * documented parity gap). No-op when the pack ships no stores.
+ * store_init / store_reset / store_update lifecycle (store.c). The stores
+ * (including FEAT_HOME) are PERSISTENT global state, created once and kept alive
+ * for the whole game - they are NOT wiped on descent, so the home stash and
+ * shop stock survive across levels and save/load (gap 12.1). First creation
+ * (store_reset) fills every non-home shop; each subsequent return to town runs
+ * store_update, catching the shops up on the days that elapsed in the dungeon
+ * and occasionally shuffling a shopkeeper (gaps 12.2/12.3), consuming daycount.
+ * No-op when the pack ships no stores; a loaded save's restored stores skip the
+ * first-creation branch and (in town, daycount 0) leave the RNG stream untouched.
  */
 function refreshTownStores(state: GameState, reg: CoreRegistries): void {
-  if (state.chunk.depth === 0 && reg.stores) {
-    const storeDeps: MakeDeps = {
-      reg: reg.objects,
-      alloc: new ObjAllocState(reg.objects, reg.constants),
-      constants: reg.constants,
-      /* Stores pass allowArtifacts=false, so these are inert here; shared
-       * for consistency with the rest of the game's MakeDeps. */
-      artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
-      noArtifacts: state.options?.get("birth_no_artifacts") ?? false,
-      /* class book-rejection / curse-foil / no-selling generation foils. */
-      ...genFoilFields(state),
-    };
+  if (!reg.stores) return;
+  const storeDeps: MakeDeps = {
+    reg: reg.objects,
+    alloc: new ObjAllocState(reg.objects, reg.constants),
+    constants: reg.constants,
+    /* Stores pass allowArtifacts=false, so these are inert here; shared
+     * for consistency with the rest of the game's MakeDeps. */
+    artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
+    noArtifacts: state.options?.get("birth_no_artifacts") ?? false,
+    /* class book-rejection / curse-foil / no-selling generation foils. */
+    ...genFoilFields(state),
+  };
+  if (!state.stores) {
+    /* First time in town: store_init + store_reset. Build and stock every shop
+     * once. Gated on depth 0 so a game that begins in the dungeon (tests, or a
+     * future non-town start) draws no store RNG until town is actually reached -
+     * preserving the exact stream and the pre-fix behaviour. */
+    if (state.chunk.depth !== 0) return;
     state.stores = createTownStores(
       reg.stores.stores,
       storeDeps,
       state.rng,
       state.actor.player.maxDepth,
     );
-  } else {
-    delete state.stores;
+    return;
+  }
+  /* Stores already exist (persisted across levels). On the return to town run
+   * store_update over the accrued days, then zero daycount (store.c:1462). In
+   * the dungeon the stores are simply left as-is (home stash preserved). */
+  if (state.chunk.depth === 0) {
+    const ctx: StoreMaintContext = {
+      rng: state.rng,
+      deps: storeDeps,
+      maxDepth: state.actor.player.maxDepth,
+      stores: state.stores,
+    };
+    storeUpdate(ctx, state.daycount ?? 0);
+    state.daycount = 0;
   }
 }
 
@@ -1868,16 +1893,21 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     ...(opts.hitpointWarn !== undefined ? { hitpointWarn: opts.hitpointWarn } : {}),
   });
 
-  // options_init_cheat (player-birth.c:1234, gap 1.12) DEFERRED: the faithful
-  // call clears every cheat option and its score twin at acceptance, but the
-  // port's optionOverrides seam injects cheat options at birth (a mechanism
-  // with no upstream equivalent - upstream sets cheat options in-game, never at
-  // birth), and session/save.test.ts (WP-10 lock) relies on a birth-injected
-  // cheat_hear surviving. Calling optionsInitCheat here clears it and reddens
-  // that test. Needs a maintainer decision on whether birth-time cheat
-  // overrides should survive; see the WP-9 report. optionsInitCheat is imported
-  // and unit-tested (player/birth.test.ts); only the accept-flow call is held.
-  void optionsInitCheat;
+  // options_init_cheat (player-birth.c:1234, gap 1.12): at character accept,
+  // clear every cheat option and its score twin, THEN re-apply the port-only
+  // birth optionOverrides seam AFTER the clear. Maintainer-decided faithful
+  // ordering: a NORMAL birth matches upstream exactly (cheat options default
+  // off, so this clear is a no-op), while an EXPLICIT birth-time cheat override
+  // (the port-only seam with no upstream equivalent) still survives because it
+  // is re-applied last. Birth options were already frozen into the snapshot at
+  // construction, so re-applying them here is a harmless no-op (set() is locked
+  // for birth options); only the interface/cheat/score overrides take effect.
+  optionsInitCheat(options);
+  if (opts.optionOverrides) {
+    for (const [name, value] of Object.entries(opts.optionOverrides)) {
+      if (value !== undefined) options.set(name, value);
+    }
+  }
 
   // OPT(player, birth_randarts) (obj-randart.c do_randart): replace the
   // standard artifact set with a random one BEFORE the starting level is
@@ -2302,6 +2332,14 @@ export interface LoadGameOptions {
    * the save; absent/empty = faithful 4.2.6.
    */
   modRules?: Readonly<Record<string, boolean>>;
+  /**
+   * arg_wizard (savefile.c:631 savefile_load's cheat_death parameter): the game
+   * was launched in wizard mode. Loading a DEAD character this way resurrects it
+   * (savefile.c:647-651) and marks it NOSCORE_WIZARD so it stays off the score
+   * table. A client/launch setting, not part of the save. The web wizard-mode
+   * entry (WP-14) passes this; a normal load leaves it false.
+   */
+  wizard?: boolean;
 }
 
 export function loadGame(
@@ -2437,6 +2475,23 @@ export function loadGame(
      * the savefile. Absent/empty = faithful 4.2.6. */
     ...(opts.modRules ? { modRules: { ...opts.modRules } } : {}),
     lore: deserializeLore(save.lore, ids),
+    /* Town stores + accrued daycount (rd_stores, gaps 12.1/12.2/12.3). Restored
+     * from the save (never re-rolled) so the home stash and shop stock survive;
+     * deserializeStores draws no RNG, so the resumed stream stays exact. Absent
+     * in older saves / saves taken before reaching town: left undefined here and
+     * lazily created by refreshTownStores on the next town entry (back-compat). */
+    ...(save.stores && reg.stores
+      ? {
+          stores: deserializeStores(
+            reg.stores.stores,
+            save.stores,
+            reg.objects,
+            ids,
+            reg.constants.storeInvenMax,
+          ),
+        }
+      : {}),
+    ...(save.daycount ? { daycount: save.daycount } : {}),
     turn: save.turn,
     z: {
       ...DEFAULT_GAME_CONSTANTS,
@@ -2469,6 +2524,17 @@ export function loadGame(
    * carries the monsters, not the registry-side counters). Killed-unique
    * max_num zeroes are not yet persisted (ledgered with mon-place). */
   countMonsterRaces(state);
+
+  /* savefile.c:647-651: loading a DEAD character with the wizard/cheat-death
+   * launch flag set resurrects it (is_dead cleared, HP refilled) and flags it
+   * NOSCORE_WIZARD, keeping it off the high-score table (gap 15.3). A normal
+   * load (wizard off) leaves a dead character dead. */
+  if (save.isDead && opts.wizard) {
+    player.chp = player.mhp;
+    player.chpFrac = 0;
+    player.noscore = markNoscore(player.noscore, NOSCORE.WIZARD);
+    state.isDead = false;
+  }
 
   /* A save taken in single combat resumes it (the stashed pre-arena
    * level is gone: winning exits to a fresh level of the same depth). */

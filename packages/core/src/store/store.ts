@@ -575,6 +575,36 @@ export function storeMaint(ctx: StoreMaintContext, store: Store): void {
 }
 
 /**
+ * store_update (L1422): on the return to town, catch the stores up on the days
+ * that elapsed while the player was in the dungeon. For each accrued day, run
+ * store_maint on every non-home store, then occasionally (one_in_(store_shuffle))
+ * shuffle one random non-home shopkeeper. The home is never maintained. The
+ * caller zeroes daycount afterwards (upstream sets `daycount = 0` at the end).
+ *
+ * RNG order is faithful: all maintenance draws for the day precede the single
+ * shuffle-chance draw, and the store picked to shuffle is randint0(n_non_home).
+ */
+export function storeUpdate(ctx: StoreMaintContext, daycount: number): void {
+  const shuffle = ctx.deps.constants.storeShuffle;
+  let dc = daycount;
+  while (dc-- > 0) {
+    /* Maintain each shop (except home). */
+    for (const store of ctx.stores) {
+      if (store.feat === FEAT.HOME) continue;
+      storeMaint(ctx, store);
+    }
+    /* Sometimes, shuffle the shop-keepers. */
+    if (ctx.rng.oneIn(shuffle)) {
+      const nonHome = ctx.stores.filter((s) => s.feat !== FEAT.HOME);
+      if (nonHome.length > 0) {
+        const n = ctx.rng.randint0(nonHome.length);
+        storeShuffle(ctx.rng, nonHome[n]!);
+      }
+    }
+  }
+}
+
+/**
  * store_reset (L340): (re)initialise every non-home store's stock, running
  * store_maint ten times to fill it. Home is left empty.
  */
