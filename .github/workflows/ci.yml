@@ -9,6 +9,10 @@ on:
     paths-ignore:
       - "reference/**"
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -21,6 +25,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm lint
+      # Catch Vite/PWA build breaks on PRs, not just at deploy time.
+      - run: pnpm --dir packages/web bundle
       - run: pnpm test
       # Parity harness (packages/cli): the parity.test.ts guard runs inside
       # `pnpm test` above; this runs the golden scenarios as a standalone Node

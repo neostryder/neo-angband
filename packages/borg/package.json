@@ -4,6 +4,7 @@
   "private": true,
   "description": "The Borg: a faithful port of Angband 4.2.6's automatic player, as a bundled mod riding the frozen perceive/act agent API",
   "license": "GPL-2.0-only",
+  "author": "neostryder (RPGM Tools)",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

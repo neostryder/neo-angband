@@ -4,6 +4,7 @@
   "private": true,
   "description": "Terminal front-end and developer harness (headless runs, stats, golden scenarios)",
   "license": "GPL-2.0-only",
+  "author": "neostryder (RPGM Tools)",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

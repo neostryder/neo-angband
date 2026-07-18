@@ -4,6 +4,7 @@
   "private": true,
   "description": "The core content pack: Angband 4.2.6 gamedata compiled to schema-validated pack format",
   "license": "GPL-2.0-only",
+  "author": "neostryder (RPGM Tools)",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
