@@ -284,6 +284,75 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     press(win, "Escape");
   });
 
+  it("(m) sets the movement delay into core OptionState.lazymoveDelay", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const state = makeState();
+    expect(state.options!.lazymoveDelay).toBe(0);
+    void runOptionsMenu(term, state, async () => {});
+    press(win, "m");
+    await tick();
+    const snap = term.snapshot().join("\n");
+    expect(snap).toContain("Current movement delay: 0 (0 msec)");
+    press(win, "Backspace"); // clear the prefilled "0"
+    press(win, "5");
+    press(win, "Enter");
+    await tick();
+    expect(state.options!.lazymoveDelay).toBe(5);
+    press(win, "Escape");
+  });
+
+  it("top menu lists (m) Set movement delay with its upstream letter", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    void runOptionsMenu(term, makeState(), async () => {});
+    expect(term.snapshot().join("\n")).toContain("m) Set movement delay");
+  });
+
+  it("(o) sidebar mode row appears only when injected and cycles on any key", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    let idx = 0;
+    const cycled: number[] = [];
+    const sidebar = {
+      modes: ["Left", "Top", "None"] as const,
+      current: () => idx,
+      set: (i: number) => {
+        idx = i;
+        cycled.push(i);
+      },
+    };
+    // tiles omitted (undefined), sidebar injected as the 5th arg.
+    void runOptionsMenu(term, makeState(), async () => {}, undefined, sidebar);
+    let snap = term.snapshot().join("\n");
+    expect(snap).toContain("o) Set sidebar mode");
+    press(win, "o");
+    await tick();
+    snap = term.snapshot().join("\n");
+    expect(snap).toContain("Command: Sidebar Mode");
+    expect(snap).toContain("Current mode: Left");
+    press(win, "x"); // any key cycles Left -> Top
+    expect(idx).toBe(1);
+    snap = term.snapshot().join("\n");
+    expect(snap).toContain("Current mode: Top");
+    press(win, "Shift"); // a bare modifier is not a cycle
+    expect(cycled).toEqual([1]);
+    press(win, "Escape"); // back to the top menu
+    await tick();
+    press(win, "Escape"); // exit
+  });
+
+  it("without a sidebar config, the (o) sidebar row is absent (default)", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    void runOptionsMenu(term, makeState(), async () => {});
+    expect(term.snapshot().join("\n")).not.toContain("o) Set sidebar mode");
+  });
+
   it("(g) graphics tile-mode selector lists modes and applies a choice", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
