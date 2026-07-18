@@ -9,6 +9,9 @@
 | `@neo-angband/mod-sdk` | Pack schemas, validation, and tooling for the mod ecosystem. |
 | `@neo-angband/web` | Web + PWA front-end (v1 target): modern glyph-first renderer. |
 | `@neo-angband/cli` | Terminal front-end and dev harness (golden scenarios, stats runs). |
+| `@neo-angband/desktop` | Optional Electron desktop wrapper around the same web bundle. |
+| `@neo-angband/linoleum` | Linoleum tile-pack converter (neo-linoleum). |
+| `@neo-angband/borg` | The bundled Borg autoplayer mod. |
 | `reference/` | The original C tree at parity baseline 4.2.6, buildable, read-only. |
 | `parity/` | Machine-readable provenance ledger mapping port modules to upstream sources. |
 

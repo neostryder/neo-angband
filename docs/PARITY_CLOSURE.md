@@ -268,6 +268,11 @@ Legend: [ ] open, [~] in progress, [x] done.
 
 ## Explicitly deferred to the MODS phase (NOT part of core closure)
 
+> SUPERSEDED: this deferral list is historical. The items below are now built -
+> the qol and bug-fixes mods, the three bundled packs, and the Borg gap-closure
+> all ship. See `docs/modding/MOD_INTEGRATION_PLAN.md` and
+> `docs/modding/BORG.md`. The checklist is kept for provenance only.
+
 - QoL mod (the maintainer builds after core), bug-fixes mod (decision 24), Linoleum mod
   extension (#45; after 100% port), the beyond-parity NPC/quest/shop mods
   (decision 14), the three bundled mod packs (decisions 18/23), and the runtime

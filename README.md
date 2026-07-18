@@ -46,6 +46,9 @@ quality-of-life only - the game itself stays faithful.
 | `packages/mod-sdk` | Pack schemas, validation, mod tooling |
 | `packages/web` | Web + PWA front-end (v1 target) |
 | `packages/cli` | Terminal front-end and dev/stats harness |
+| `packages/desktop` | Optional Electron desktop wrapper |
+| `packages/linoleum` | Linoleum tile-pack converter (neo-linoleum) |
+| `packages/borg` | The bundled Borg autoplayer mod |
 | `docs/` | Port documentation (plan, architecture, parity, mods) |
 | `parity/` | Provenance ledger mapping port modules to upstream sources |
 | `reference/` | The original C tree at tag 4.2.6, buildable, with original docs |
@@ -72,10 +75,11 @@ maintainers and three decades of contributors whose work this builds on.
 
 Built and maintained by [neostryder](https://github.com/neostryder) at RPGM
 Tools. The bundled mods are by the same author: the
-[Linoleum](docs/LINOLEUM.md) tile packs and the
-[bug-fixes](docs/modding/BUG_FIXES.md) quality-of-life patch set - both ship
-as standalone mods, not as part of the parity core. All honor, as above, to
-the upstream Angband maintainers and contributors whose work this builds on.
+[neo-linoleum](docs/LINOLEUM.md) tile packs, the
+[qol](docs/modding/QOL.md) quality-of-life tweaks, and the
+[bug-fixes](docs/modding/BUG_FIXES.md) bug-fix patch set - all ship as
+standalone mods, not as part of the parity core. All honor, as above, to the
+upstream Angband maintainers and contributors whose work this builds on.
 
 ## License
 

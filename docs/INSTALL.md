@@ -99,6 +99,11 @@ This produces platform installers in `packages/desktop/dist-desktop/`
 electron-builder. Run it on the target OS (cross-building, especially for macOS,
 has its own toolchain requirements).
 
+**Signing.** The produced macOS `.dmg` and Windows `.exe` are unsigned, so a
+first run may hit Gatekeeper (macOS) or SmartScreen (Windows). Signing and
+notarization require developer certificates and are left to whoever cuts a
+distribution.
+
 ### What the desktop build adds
 
 - **Offline and native by default** - no browser, no address bar; launches like
@@ -133,7 +138,7 @@ The same game everywhere. This table is the honest, per-surface difference list
 | Untrusted sandbox (Worker) mods | Yes | Yes | Yes | Yes |
 | Install mods from a URL / folder | No (1) | No (1) | No (1) | Planned (2) |
 | SharedArrayBuffer / cross-origin isolation | Only with COOP/COEP headers | Same as host | Only if host sends COOP/COEP (3) | Yes (built in) |
-| Accessibility (screen reader, keyboard, scaling) | Yes | Yes | Yes | Yes |
+| Accessibility (screen reader, keyboard, in-app scaling) | Yes (4) | Yes (4) | Yes (4) | Yes (4) |
 
 Notes:
 1. The web build inlines every mod at build time and has no runtime code loader,
@@ -147,6 +152,11 @@ Notes:
 3. GitHub Pages and most static hosts cannot send custom headers, so cross-
    origin isolation is unavailable there. It is never required - the trusted
    in-process mod tier works on every surface.
+4. The layout is responsive to any viewport and the game offers its own in-app
+   text/tile scaling. Browser pinch-zoom, however, is intentionally disabled on
+   the game canvas (the page sets a fixed `maximum-scale=1, user-scalable=no`
+   viewport) so a stray pinch does not blur or misalign the grid - use the
+   in-app scaling instead.
 
 ### Saves are per-surface
 
