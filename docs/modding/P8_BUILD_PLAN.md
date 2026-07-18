@@ -94,21 +94,20 @@ shops, and dies or wins - driven entirely through the public agent API, with no
 privileged core access. A Borg that plays correctly proves the agent API is
 complete.
 
-## Cost posture [CANDIDATE - for the maintainer's ratification]
+## Build posture
 
-Fable is expensive to the maintainer's usage; use it sparingly. Proposed posture:
-- P8.1 (skeleton), P8.2 (Tier A), P8.9 (formulas): mechanical/near-1:1 - build
-  with Opus directly or a bounded Sonnet implementer against a locked spec.
-- P8.3 (Tier B scoring): deterministic but fidelity-sensitive - Opus, with an
+Build the phases in dependency order, giving the hardest fidelity clusters the
+most scrutiny:
+- P8.1 (skeleton), P8.2 (Tier A), P8.9 (formulas): mechanical, near-1:1 ports
+  against a locked spec.
+- P8.3 (Tier B scoring): deterministic but fidelity-sensitive - add an
   independent verify pass.
-- P8.4 / P8.6 / P8.8 (danger, combat, think - the fidelity cluster): the only
-  places Fable is worth its cost, and only for the hardest single files. PROMPT
-  the maintainer before launching Fable or any very-long-run agent, per standing rule.
+- P8.4 / P8.6 / P8.8 (danger, combat, think - the fidelity cluster): the
+  hardest single files, worth the most care.
 
 ## Recommended first step
 
-Build P8.1 (the walking skeleton + headless harness) with cheap models now. It
-is small, proves the frozen facade actually drives a real game, and surfaces any
-remaining facade gap immediately - before a single line of the expensive
-danger/combat/think work. Everything after P8.1 is sequenced by the phase map
-above and gated on the maintainer's cost-posture ratification.
+Build P8.1 (the walking skeleton + headless harness) first. It is small, proves
+the frozen facade actually drives a real game, and surfaces any remaining facade
+gap immediately - before a single line of the danger/combat/think work.
+Everything after P8.1 is sequenced by the phase map above.

@@ -1,6 +1,6 @@
 /**
  * QoL auto-dig (the bundled `qol` mod, flag "qol.autoDig"), ported from
- * AIngband's do_cmd_movement_tunnel_test / move_player change. Walking into
+ * neostryder's Angband fork (do_cmd_movement_tunnel_test / move_player change). Walking into
  * known diggable terrain the player can dig begins one tunnel attempt instead
  * of the faithful no-energy bump. Gated so core is byte-identical when the flag
  * is off (no mod / turned off in the Fixes & tweaks menu).
@@ -44,7 +44,7 @@ describe("QoL auto-dig on walk", () => {
     state.modRules = { "qol.autoDig": true };
     const spent = walkAction(state, { code: "walk", dir: 6 });
     expect(spent).toBe(state.z.moveEnergy);
-    expect(state.actor.grid).toEqual(loc(15, 10)); // AIngband: dig, don't step
+    expect(state.actor.grid).toEqual(loc(15, 10)); // source fork: dig, don't step
     expect(state.chunk.isRubble(loc(16, 10))).toBe(false); // dug out (skill 200)
   });
 

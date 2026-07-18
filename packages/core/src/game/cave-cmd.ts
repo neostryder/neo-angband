@@ -462,8 +462,9 @@ function tunnelAux(
 /* ------------------------------------------------------------------ *
  * QoL: auto-dig on walk (mod seam, flag "qol.autoDig").
  *
- * Ported from AIngband's do_cmd_movement_tunnel_test / move_player change
- * (cmd-cave.c: "walking or running into known diggable terrain begins
+ * Ported from neostryder's Angband fork (do_cmd_movement_tunnel_test /
+ * move_player change; cmd-cave.c: "walking or running into known diggable
+ * terrain begins
  * tunneling when the player can dig the target terrain"). This is NOT in
  * faithful 4.2.6 - it ships as an opt-in feature of the bundled `qol` content
  * mod, gated by the named flag so core is byte-identical when the flag is off
@@ -482,7 +483,7 @@ function tunnelChance(state: GameState, grid: Loc): number {
 }
 
 /**
- * do_cmd_movement_tunnel_test (AIngband): a grid the player should tunnel into
+ * do_cmd_movement_tunnel_test (neostryder's Angband fork): a grid the player should tunnel into
  * when they try to WALK into it - known, not permanent rock, impassable,
  * diggable, and diggable with a positive success chance given the current
  * weapon / best pack digger. RNG-free (input only).
@@ -502,7 +503,7 @@ export function movementTunnelTest(state: GameState, grid: Loc): boolean {
  * WITHOUT drawing any RNG, so the walk falls through to the normal no-energy
  * bump and core is byte-identical to 4.2.6. When on and the blocked grid passes
  * movementTunnelTest, it performs one do_cmd_tunnel_aux attempt (the same dig
- * roll and payouts as the tunnel command) and spends a full move (AIngband:
+ * roll and payouts as the tunnel command) and spends a full move (source fork:
  * energy_use = move_energy), returning that energy.
  */
 export function movementAutoDig(
