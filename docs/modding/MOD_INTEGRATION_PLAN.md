@@ -273,14 +273,12 @@ corresponding action.
 
 ---
 
-## Sequencing and cost posture [CANDIDATE - ratify before big spend]
+## Sequencing
 
-1. Wave 1 in order (W1.1 -> W1.6), each pushed. Cheap to moderate; Opus/Sonnet,
-   no Fable.
+1. Wave 1 in order (W1.1 -> W1.6), each pushed.
 2. P8 (the Borg) rides W1.5 - see `P8_BUILD_PLAN.md`.
 3. Wave 2, W2.1 first (the sandbox is the gate for the rest). W2.1/W2.2/W2.3 are
-   the substantial builds; PROMPT the maintainer before launching Fable or any very-long-
-   run agent there, per the standing rule (Fable is expensive to his usage).
+   the substantial builds.
 
 ## Relation to existing docs
 - `../MODS.md` - the ratified moddability vision this realizes.

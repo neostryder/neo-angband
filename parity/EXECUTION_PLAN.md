@@ -24,8 +24,8 @@ sessions, one per WP.
    an edit outside your lock, implement everything you can inside it, and end
    your report with a WIRING-NEEDED item: exact file, location, and the code to
    insert. The wave-2/3 wiring packages apply those.
-4. Do NOT commit. Do not run the dev server. Do not touch reference/**,
-   rpgm/**, or anything outside C:\Repositories\neo-angband.
+4. Do NOT commit. Do not run the dev server. Do not touch reference/** or
+   anything outside this repository.
 5. Tests: every gap closed gets vitest coverage citing the C lines it locks in.
    Extend the existing *.test.ts conventions.
 6. Verification gate before you finish: `npx tsc -b packages/core` exits 0
