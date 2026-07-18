@@ -19,8 +19,9 @@ import {
   tvalIsLight,
   tvalIsChest,
   FEAT,
+  earlierObject,
 } from "@neo-angband/core";
-import type { GameObject, StartedGame, Store } from "@neo-angband/core";
+import type { GameObject, StartedGame, Store, EarlierObjectOpts } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
 import { selectFromMenu, promptNumber } from "./overlay";
 import type { MenuItem } from "./overlay";
@@ -100,9 +101,42 @@ async function sellFlow(
 }
 
 /**
- * Run the store screen for `store` until the player leaves (ESC). Buying picks
- * from the stock; 's' switches to selling from the pack. Returns when the
- * player leaves the shop.
+ * store_stock_list (store.c:779-808): order the stock for display by repeatedly
+ * choosing the earlier_object-earliest remaining item (a selection sort), in
+ * store mode for a real shop and full-inventory mode for the Home. Upstream's
+ * store_carry / home_carry insert at the pile head and do NOT sort - ordering is
+ * purely a display concern (earlier_object: usable ammo first, then decreasing
+ * tval, increasing sval, decreasing value / ammo increasing). The value key
+ * uses the per-item buy price as the object_value proxy; within one owner it is
+ * monotonic in object_value, so the equal-tval/equal-sval ties resolve the same.
+ */
+export function sortStoreStock(game: StartedGame, store: Store): GameObject[] {
+  const opts: EarlierObjectOpts = {
+    store: store.feat !== FEAT.HOME,
+    ammoTval: game.state.actor.combat.ammoTval,
+    objectValue: (o) => game.price(store, o, false, 1),
+  };
+  const remaining = [...store.stock];
+  const out: GameObject[] = [];
+  while (remaining.length > 0) {
+    let firstIdx = 0;
+    for (let i = 1; i < remaining.length; i++) {
+      if (earlierObject(remaining[firstIdx] ?? null, remaining[i] ?? null, opts)) {
+        firstIdx = i;
+      }
+    }
+    const chosen = remaining[firstIdx];
+    if (chosen) out.push(chosen);
+    remaining.splice(firstIdx, 1);
+  }
+  return out;
+}
+
+/**
+ * Run the store screen for `store` until the player leaves (ESC). Stock is
+ * shown in store_stock_list order. Buying picks a stock row by its letter, or
+ * p/g buys the highlighted row; s/d sells from the pack; ESC leaves - the store
+ * command keys of ui-store.c:1097-1120.
  */
 export async function runStore(
   term: GlyphTerm,
@@ -113,7 +147,8 @@ export async function runStore(
 ): Promise<void> {
   for (;;) {
     const player = game.state.actor.player;
-    const items: MenuItem[] = store.stock.map((obj) => {
+    const displayStock = sortStoreStock(game, store);
+    const items: MenuItem[] = displayStock.map((obj) => {
       // Per-item price (buying one at a time), like the store's price column.
       const price = game.price(store, obj, false, 1);
       return {
@@ -127,7 +162,21 @@ export async function runStore(
       term,
       title,
       [...items, sellRow],
-      "[ a-z to buy, ESC to leave the shop ]",
+      "[ a-z or p/g buy, s/d sell, ESC leave ]",
+      {
+        // Store command keys (ui-store.c:1097-1120), which take precedence over
+        // positional letters: p/g buy the highlighted stock row, s/d sell from
+        // the pack, l/x examine (not yet implemented - consumed so they do not
+        // misfire as positional selections). ESC leaves via selectFromMenu.
+        commands: {
+          p: (c) => (c < displayStock.length ? c : null),
+          g: (c) => (c < displayStock.length ? c : null),
+          s: () => items.length,
+          d: () => items.length,
+          l: () => null,
+          x: () => null,
+        },
+      },
     );
     if (pick === null) return;
 
@@ -136,7 +185,7 @@ export async function runStore(
       continue;
     }
 
-    const obj = store.stock[pick];
+    const obj = displayStock[pick];
     if (!obj) continue;
     // Quantity selection, faithful to store_purchase (ui-store.c L611-682): a
     // single-item stack buys one with no prompt; a multi-item stack works out

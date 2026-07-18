@@ -453,6 +453,107 @@ describe("selectFromMenu: subtitle / hint / initialCursor / onHighlight / footer
   });
 });
 
+// --- menuNav numpad navigation + the store command-key layer ---------------
+// The reference drives every menu cursor through target_dir_allow
+// (ui-target.c:99-108): keypad digits and arrows are interchangeable, and for a
+// vertical list keypad 7/8/9 move up, 1/2/3 down. event.key is the DIGIT when
+// NumLock is on (the default), so a menu that only read Arrow* names was dead to
+// the numpad - the "controls dead in menus" bug. The command layer is the store
+// screen's p/g buy, s/d sell keys (ui-store.c:1097-1120) laid over selection.
+describe("selectFromMenu: numpad navigation + command keys", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("numpad digits 8/2 move the cursor like ArrowUp/ArrowDown (NumLock-on)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = selectFromMenu(term, "Menu", [{ label: "A" }, { label: "B" }, { label: "C" }]);
+    press(win, "2"); // numpad down -> B
+    press(win, "2"); // -> C
+    press(win, "8"); // numpad up -> B
+    press(win, "Enter");
+    expect(await done).toBe(1);
+  });
+
+  it("numpad 7/9 count as up and 1/3 as down (ddy-only, like the reference)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = selectFromMenu(term, "Menu", [{ label: "A" }, { label: "B" }, { label: "C" }]);
+    press(win, "3"); // down-ish -> B
+    press(win, "3"); // -> C
+    press(win, "7"); // up-ish -> B
+    press(win, "Enter");
+    expect(await done).toBe(1);
+  });
+
+  it("a command key runs its handler and picks the returned row index", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    // Mirrors the store: 's' sells (the last row), 'g' buys the highlighted row.
+    const done = selectFromMenu(
+      term,
+      "Store",
+      [{ label: "Sword" }, { label: "Shield" }, { label: "Sell..." }],
+      undefined,
+      { commands: { s: () => 2, g: (c) => c } },
+    );
+    press(win, "s");
+    expect(await done).toBe(2);
+  });
+
+  it("a command key takes precedence over the same key's positional selection", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    // 'b' is positionally row 1, but as a command it buys the cursor row (0).
+    const done = selectFromMenu(term, "Menu", [{ label: "A" }, { label: "B" }], undefined, {
+      commands: { b: (c) => c },
+    });
+    press(win, "b");
+    expect(await done).toBe(0);
+  });
+
+  it("a command returning null consumes the key without resolving the menu", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = selectFromMenu(term, "Menu", [{ label: "A" }, { label: "B" }], undefined, {
+      commands: { x: () => null },
+    });
+    let resolved: number | null | undefined;
+    void done.then((v) => {
+      resolved = v;
+    });
+    press(win, "x");
+    await tick();
+    expect(resolved).toBeUndefined(); // still open
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+});
+
+describe("showTextScreen: numpad scrolling (menuNav)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("numpad 2/8 scroll the list like ArrowDown/ArrowUp", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12) as GlyphTerm & { snapshot(): string[] };
+    void showTextScreen(term, "Long", Array.from({ length: 40 }, (_, i) => ({ text: `line ${i}` })));
+    expect(term.snapshot()[BODY_TOP]).toBe("line 0");
+    press(win, "2"); // numpad down
+    expect(term.snapshot()[BODY_TOP]).toBe("line 1");
+    press(win, "8"); // numpad up
+    expect(term.snapshot()[BODY_TOP]).toBe("line 0");
+  });
+});
+
 describe("showTextScreen: tap support (gap #58)", () => {
   afterEach(() => {
     delete (globalThis as { window?: unknown }).window;

@@ -71,7 +71,7 @@
 import { OPTION_ENTRIES, DEFAULT_HITPOINT_WARN, DEFAULT_DELAY_FACTOR } from "@neo-angband/core";
 import type { GameState } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
-import { selectFromMenu, promptNumber } from "./overlay";
+import { selectFromMenu, promptNumber, menuNav } from "./overlay";
 import type { MenuItem } from "./overlay";
 
 const FG = "#c8c8d4";
@@ -198,13 +198,16 @@ export function optionToggleScreen(
       ev.preventDefault();
       ev.stopImmediatePropagation();
       if (ev.key === "Escape") return finish();
-      if (ev.key === "ArrowDown") {
-        if (rows.length > 0) cursor = (cursor + 1) % rows.length;
+      // Arrows AND numpad digits move the cursor (menuNav), so the numpad works
+      // here regardless of NumLock; up/down wrap as before.
+      const nav = menuNav(ev);
+      if (nav === "up" || nav === "pageup" || nav === "home") {
+        if (rows.length > 0) cursor = (cursor - 1 + rows.length) % rows.length;
         paint();
         return;
       }
-      if (ev.key === "ArrowUp") {
-        if (rows.length > 0) cursor = (cursor - 1 + rows.length) % rows.length;
+      if (nav === "down" || nav === "pagedown" || nav === "end") {
+        if (rows.length > 0) cursor = (cursor + 1) % rows.length;
         paint();
         return;
       }

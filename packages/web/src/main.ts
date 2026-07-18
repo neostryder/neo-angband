@@ -31,6 +31,8 @@
  */
 
 import {
+  Rng,
+  generateHistory,
   startGame,
   saveGame,
   loadGame,
@@ -202,11 +204,13 @@ import {
   promptDirection,
   AIM_STAR,
   showLevelMap,
+  menuNav,
 } from "./overlay";
 import type { MenuItem, ScreenLine } from "./overlay";
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
 import type { Overview } from "./mapview";
 import { runBirth } from "./birth";
+import type { BirthDeps } from "./birth";
 import {
   gameMenuEntries,
   deathMenuEntries,
@@ -346,6 +350,15 @@ interface StoredBirth {
    * instead of regenerating them.
    */
   stats?: number[];
+  /**
+   * The accepted standard-roller natural stats (BR_NORMAL); applied verbatim by
+   * generatePlayer's rolledStats path (NOT the point-buy clamp) when the roller
+   * method was "roller".
+   */
+  rolledStats?: number[];
+  /** An edited character background (do_cmd_choose_history); replaces the
+   * generated get_history text on the born player. */
+  history?: string;
 }
 function readBirthChoice(): StoredBirth | null {
   try {
@@ -486,6 +499,16 @@ function bootGame(): ReturnType<typeof startGame> {
     ...(birthChoice?.stats && birthChoice.stats.length === 5
       ? { roller: "point" as const, birthStats: birthChoice.stats }
       : {}),
+    // The accepted standard-roller stats ride the rolledStats path (verbatim,
+    // no point-buy clamp), used when no point-buy allocation was stored.
+    ...(!(birthChoice?.stats && birthChoice.stats.length === 5) &&
+    birthChoice?.rolledStats &&
+    birthChoice.rolledStats.length === 5
+      ? { roller: "roller" as const, rolledStats: birthChoice.rolledStats }
+      : {}),
+    // An edited character background (do_cmd_choose_history) overrides the
+    // engine-generated get_history text.
+    ...(birthChoice?.history ? { history: birthChoice.history } : {}),
   });
 }
 
@@ -2257,32 +2280,26 @@ function showMonsterList(): Promise<void> {
       ev.stopImmediatePropagation();
       const { rows } = term.size();
       const page = Math.max(1, rows - BODY_TOP - 2);
-      switch (ev.key) {
-        case "Escape":
-        case "Enter":
-        case " ":
-          finish();
-          return;
-        case "x":
-        case "X":
-          sortExp = !sortExp;
-          top = 0;
-          break;
-        case "ArrowDown":
-          top += 1;
-          break;
-        case "ArrowUp":
-          top = Math.max(0, top - 1);
-          break;
-        case "PageDown":
-          top += page;
-          break;
-        case "PageUp":
-          top = Math.max(0, top - page);
-          break;
-        default:
-          return;
+      if (ev.key === "Escape" || ev.key === "Enter" || ev.key === " ") {
+        finish();
+        return;
       }
+      if (ev.key === "x" || ev.key === "X") {
+        sortExp = !sortExp;
+        top = 0;
+        paint();
+        return;
+      }
+      // Arrows AND numpad digits scroll (menuNav), so the numpad is not dead
+      // in this list when NumLock is on.
+      const nav = menuNav(ev);
+      if (!nav) return;
+      if (nav === "up") top = Math.max(0, top - 1);
+      else if (nav === "down") top += 1;
+      else if (nav === "pageup") top = Math.max(0, top - page);
+      else if (nav === "pagedown") top += page;
+      else if (nav === "home") top = 0;
+      else if (nav === "end") top += page; // clamped in paint()
       paint();
     };
     window.addEventListener("keydown", onKey, true);
@@ -4794,6 +4811,31 @@ async function maybeBirth(): Promise<void> {
     /* sessionStorage unavailable: fall through and show birth. */
   }
   if (justBirthed) return; // the choice from the previous load is already live
+  // Registry-backed data for the birth informational panels (race/class help
+  // blocks + the full display_player(0) sheet), plus get_history for the
+  // background stage. The birth screen holds neither the bodies/history charts
+  // nor the player_property list, so the shell supplies them.
+  const elementNames = (booted.registries.projections ?? []).map((p) => p.name);
+  const birthDeps: BirthDeps = {
+    bodyFor: (raceName) => {
+      const race = players.raceByName(raceName);
+      return race ? players.bodies[race.body] ?? null : null;
+    },
+    historyChartFor: (raceName) => {
+      const race = players.raceByName(raceName);
+      return race ? players.historyChart(race) : null;
+    },
+    properties: players.properties,
+    elementNames,
+  };
+  const historyFor = (raceName: string): string => {
+    const race = players.raceByName(raceName);
+    if (!race) return "";
+    return generateHistory(
+      players.historyChart(race),
+      new Rng(((Date.now() >>> 0) ^ 0x1a2b3c4d) >>> 0),
+    );
+  };
   await openModal(async () => {
     // quickstart_allowed (ui-birth.c): offer the quick-start stage only when
     // a previous character's choices exist to reuse.
@@ -4807,6 +4849,8 @@ async function maybeBirth(): Promise<void> {
               : {}),
           }
         : null,
+      deps: birthDeps,
+      historyFor,
     });
     if (!choice) {
       say("Your adventure begins.");
