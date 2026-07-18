@@ -26,12 +26,17 @@
       "preload.cjs",
       "../web/dist-web/**/*"
     ],
-    "win": { "target": "nsis" },
-    "mac": { "target": "dmg", "category": "public.app-category.games" },
+    "win": { "target": "nsis", "icon": "build/icon.ico" },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.games",
+      "icon": "build/icon.png"
+    },
     "linux": {
       "target": ["AppImage", "deb"],
       "category": "Game",
-      "maintainer": "neostryder <neostryder@users.noreply.github.com>"
+      "maintainer": "neostryder <neostryder@users.noreply.github.com>",
+      "icon": "build/icon.png"
     }
   }
 }
