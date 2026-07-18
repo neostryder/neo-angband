@@ -501,15 +501,20 @@ describe("runBirth: history-edit stage (get_history_command)", () => {
 });
 
 describe("runBirth: per-row race/class stat detail (race_help/class_help)", () => {
-  it("shows the highlighted race's stat adjustments and updates on move", async () => {
+  it("shows the highlighted race's help block and updates on move", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
     const done = runBirth(term, RACES, CLASSES);
     await tick();
-    expect(term.snapshot().join("\n")).toContain("STR +0");
-    press(win, "ArrowDown"); // Half-Elf
-    expect(term.snapshot().join("\n")).toContain("INT +1");
+    // race_help (ui-birth.c L241-302): the stat-adjustment table
+    // (stat_names_reduced) plus the skill_help block.
+    const human = term.snapshot().join("\n");
+    expect(human).toMatch(/Str:\s+\+0/);
+    expect(human).toContain("Hit/Shoot/Throw:");
+    expect(human).toContain("Infravision:");
+    press(win, "ArrowDown"); // Half-Elf: INT +1
+    expect(term.snapshot().join("\n")).toMatch(/Int:\s+\+1/);
     press(win, "Escape");
     expect(await done).toBeNull();
   });

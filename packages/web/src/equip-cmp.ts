@@ -36,7 +36,7 @@ import type {
   UiEntryPackRecords,
 } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
-import { showTextScreen, selectFromMenu } from "./overlay";
+import { showTextScreen, selectFromMenu, menuNav } from "./overlay";
 import type { ScreenLine } from "./overlay";
 import { wrapRuns } from "./screens";
 
@@ -215,6 +215,16 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
       ev.stopImmediatePropagation();
       const { rows } = term.size();
       const page = Math.max(1, rows - ITEMS_TOP - 2);
+      const last = Math.max(0, model.items.length - 1);
+      // Arrows AND numpad digits move the cursor (menuNav), so the numpad is
+      // not dead here when NumLock is on; horizontal arrows still column-scroll.
+      const nav = menuNav(ev);
+      if (nav === "up") { cursor = Math.max(0, cursor - 1); paint(); return; }
+      if (nav === "down") { cursor = Math.min(last, cursor + 1); paint(); return; }
+      if (nav === "pageup") { cursor = Math.max(0, cursor - page); paint(); return; }
+      if (nav === "pagedown") { cursor = Math.min(last, cursor + page); paint(); return; }
+      if (nav === "home") { cursor = 0; paint(); return; }
+      if (nav === "end") { cursor = last; paint(); return; }
       switch (ev.key) {
         case "Escape":
           window.removeEventListener("keydown", onKey, true);
