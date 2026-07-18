@@ -10,7 +10,7 @@ One YAML file per port module under `ledger/`. Schema:
 
 ```yaml
 module: packages/core/src/rng.ts        # port artifact
-status: planned | in-progress | ported | verified
+status: planned | partial | ported | verified
 baseline: 4.2.6                         # upstream tag this entry is pinned to
 upstream:
   - path: src/z-rand.c                  # relative to reference/
