@@ -655,6 +655,15 @@ export interface ObjectBrowserDeps {
   hasFlavor(kind: ObjectKind): boolean;
   /** object_kind_name(kind, aware): the display name, never leaking a flavour. */
   kindName(kind: ObjectKind, aware: boolean): string;
+  /**
+   * The `{` inscribe action inside the object-knowledge browser
+   * (ui-knowledge.c:2101-2123): set/update/clear the highlighted kind's
+   * autoinscription. Optional so existing callers/tests still compile; when
+   * present, `{` is bound in the browser and invokes this for the highlighted
+   * kind. The callback owns the "Inscribe with: " prompt and the registry
+   * write (see main.ts). The browser awaits it, then repaints.
+   */
+  setAutoinscription?(kind: ObjectKind): Promise<void> | void;
 }
 
 /** o_cmp_tval within-group order (ui-knowledge.c L1984-2024). */
@@ -728,7 +737,7 @@ export async function showObjectKnowledge(
   deps: ObjectBrowserDeps,
 ): Promise<void> {
   const groups = objectKnowledgeGroups(kinds, bases, deps);
-  await runGroupedBrowser(term, "known objects", groups, async (kind) => {
+  const recall = async (kind: ObjectKind): Promise<void> => {
     const aware = !deps.hasFlavor(kind) || deps.isAware(kind);
     const title = deps.kindName(kind, aware);
     // desc_obj_fake (ui-knowledge.c L1938) shows object_info(OINFO_FAKE); the
@@ -740,7 +749,47 @@ export async function showObjectKnowledge(
       lines.push({ text: kind.text, color: FG });
     }
     await showTextScreen(term, title, lines);
-  });
+  };
+
+  // Without the `{` inscribe callback the shared grouped browser suffices.
+  const inscribe = deps.setAutoinscription;
+  if (!inscribe) {
+    await runGroupedBrowser(term, "known objects", groups, recall);
+    return;
+  }
+
+  // With `{` bound (ui-knowledge.c:2101-2123: "Inscribe with: " sets the
+  // highlighted kind's autoinscription), drive the browser locally so the
+  // async prompt can run between repaints. `{` resolves the menu on the
+  // cursor row, we run the callback, then re-open on the same row - exactly
+  // like the upstream screen_save/screen_load round the prompt.
+  const { items, members } = groupsToMenu(groups);
+  if (items.length === 0) return;
+  let cursor: number | undefined;
+  for (;;) {
+    let inscribeRow: number | null = null;
+    const idx = await selectFromMenu(term, "known objects", items, undefined, {
+      ...(cursor !== undefined ? { initialCursor: cursor } : {}),
+      onHighlight: (i) => {
+        cursor = i;
+      },
+      footer: "[ a-z to choose, { to inscribe, ESC to cancel ]",
+      commands: {
+        "{": (cur) => {
+          inscribeRow = cur;
+          return cur;
+        },
+      },
+    });
+    if (idx === null) return;
+    const member = members[idx];
+    if (member == null) continue; // a header row; ignore
+    if (inscribeRow !== null) {
+      await inscribe(member); // owns the "Inscribe with: " prompt + registry write
+      continue; // re-open (repaint) on the same cursor row
+    }
+    await recall(member);
+  }
 }
 
 // ---------------------------------------------------------------------------

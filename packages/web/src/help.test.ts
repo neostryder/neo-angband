@@ -13,9 +13,9 @@ const HELP_TS_SOURCE = readFileSync(new URL("./help.ts", import.meta.url), "utf8
 function keyIsWired(key: string): boolean {
   const esc = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const patterns = [
-    new RegExp(`^\\s*${esc}: `, "m"), // unquoted ITEM_VERBS entry, e.g. "q: () =>"
-    new RegExp(`^\\s*"${esc}": `, "m"), // quoted ITEM_VERBS entry, e.g. "\"{\": () =>"
-    new RegExp(`ev\\.key === "${esc}"`), // an explicit `if (ev.key === "X")` branch
+    new RegExp(`o: "${esc}"`), // original-keyset command-table entry, e.g. `{ o: "q", ...`
+    new RegExp(`r: "${esc}"`), // roguelike-keyset command-table entry
+    new RegExp(`ev\\.key === "${esc}"`), // an explicit `if (ev.key === "X")` branch (N/?/Escape/ctrl)
   ];
   return patterns.some((re) => re.test(MAIN_TS_SOURCE));
 }

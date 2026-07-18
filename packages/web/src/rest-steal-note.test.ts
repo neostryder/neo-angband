@@ -38,13 +38,13 @@ describe("WP-11 rest command (do_cmd_rest / textui_cmd_rest)", () => {
   });
 
   it("binds 'R' to the rest command (cmd_action ui-game.c:142)", () => {
-    expect(MAIN_TS).toMatch(/R: \(\) => restCmd\(\)/);
+    expect(MAIN_TS).toMatch(/o: "R", act: \(\) => void openModal\(restCmd\)/);
   });
 });
 
 describe("WP-11 steal command (do_cmd_steal, cmd-cave.c:1039)", () => {
   it("binds 's' to the steal command (ui-game.c:216)", () => {
-    expect(MAIN_TS).toMatch(/s: \(\) => stealCmd\(\)/);
+    expect(MAIN_TS).toMatch(/o: "s", act: \(\) => void openModal\(stealCmd\)/);
   });
   it("pushes the ported 'steal' core action with a direction", () => {
     expect(MAIN_TS).toMatch(/code: "steal", dir/);
@@ -53,7 +53,7 @@ describe("WP-11 steal command (do_cmd_steal, cmd-cave.c:1039)", () => {
 
 describe("WP-11 note command (do_cmd_note, cmd-misc.c:88)", () => {
   it("binds ':' to the note command (ui-game.c:211)", () => {
-    expect(MAIN_TS).toMatch(/":": \(\) => noteCmd\(\)/);
+    expect(MAIN_TS).toMatch(/o: ":", act: \(\) => void openModal\(noteCmd\)/);
   });
   it("prompts 'Note: ' (cmd-misc.c:98)", () => {
     expect(MAIN_TS).toContain('"Note: "');
@@ -74,19 +74,22 @@ describe("WP-11 note command (do_cmd_note, cmd-misc.c:88)", () => {
 });
 
 describe("WP-11 keyboard-parity sweep (ui-game.c cmd_* tables)", () => {
-  it("binds tunnel 'T' and ^T (cmd_action)", () => {
-    expect(MAIN_TS).toMatch(/T: \(\) => tunnelCmd\(\)/);
+  it("binds tunnel 'T' (original) and ^T (cmd_action)", () => {
+    // Original-keyset 'T' tunnels; the roguelike keyset uses ^T (r: null keeps
+    // roguelike 'T' free for Take off).
+    expect(MAIN_TS).toMatch(/o: "T", r: null, act: \(\) => void openModal\(tunnelCmd\)/);
     expect(MAIN_TS).toMatch(/void openModal\(tunnelCmd\)/);
   });
   it("binds close 'c' (cmd_action)", () => {
-    expect(MAIN_TS).toMatch(/c: \(\) => closeCmd\(\)/);
+    expect(MAIN_TS).toMatch(/o: "c", act: \(\) => void openModal\(closeCmd\)/);
   });
   it("binds alter '+' (cmd_hidden)", () => {
-    expect(MAIN_TS).toMatch(/"\+": \(\) => alterCmd\(\)/);
+    expect(MAIN_TS).toMatch(/o: "\+", act: \(\) => void openModal\(alterCmd\)/);
   });
-  it("binds stand-still ',' (CMD_HOLD) and run '.' (CMD_RUN)", () => {
-    expect(MAIN_TS).toMatch(/ev\.key === ","/);
-    expect(MAIN_TS).toMatch(/ev\.key === "\."/);
+  it("binds stand-still ',' (CMD_HOLD) and run '.' (CMD_RUN), swapped in roguelike", () => {
+    // CMD_RUN {'.',','} and CMD_HOLD {',','.'} swap between keysets.
+    expect(MAIN_TS).toMatch(/o: "\.", r: ",", act: \(\) => void openModal\(runDirCmd\)/);
+    expect(MAIN_TS).toMatch(/o: ",", r: "\.", act: \(\) => holdCmd\(\)/);
     expect(MAIN_TS).toMatch(/code: "run", dir/);
   });
   it("binds ^S as a save alias (cmd_util)", () => {

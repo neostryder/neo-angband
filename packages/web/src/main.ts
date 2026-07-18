@@ -76,9 +76,12 @@ import {
   tvalIsLight,
   objCanRefill,
   objHasInscrip,
+  objectIsIgnored,
   OF,
   sidebarModel,
   statusLineModel,
+  PARITY_BASELINE,
+  ENGINE_VERSION,
   createVisualsAnimator,
   animateMonsterAttr,
   RF,
@@ -242,7 +245,6 @@ import {
   objectListLines,
   monsterRecallLines,
   monsterKnowledgeMenu,
-  autoinscriptionMenu,
   capRaceName,
   tombstoneLines,
   winnerLines,
@@ -286,7 +288,14 @@ import { ArtifactState } from "@neo-angband/core";
 import type { WizardDeps } from "@neo-angband/core";
 import { runWizardToggle, runWizardDebugMenu } from "./wizard";
 import type { WizardUiCtx } from "./wizard";
-import { runStore } from "./shop";
+import { runStore, sortStoreStock } from "./shop";
+import {
+  showIgnoreItemMenu,
+  ignoreItemMenuCtx,
+  buildIgnoreItemMenu,
+  applyIgnoreItemChoice,
+} from "./ignore-menu";
+import type { Store } from "@neo-angband/core";
 import { runHelp } from "./help";
 import { runOptionsMenu } from "./options";
 import type { TileModeMenu } from "./options";
@@ -1241,6 +1250,7 @@ async function runContextMenuObject(handle: number): Promise<void> {
     canWear: !equipped && tvalIsWearable(obj.tval),
     canThrow: true,
     hasInscription: objHasInscrip(obj),
+    isIgnored: objectIsIgnored(obj, state.ignore, isKindAware(obj.kind)),
   };
   const items = buildObjectMenu(ctx);
   const idx = await selectFromMenu(
@@ -1308,6 +1318,21 @@ async function runContextMenuObject(handle: number): Promise<void> {
     case "uninscribe":
       await uninscribeItem();
       break;
+    case "ignore": {
+      // context_menu_object's CMD_IGNORE (ui-context.c:770,868): open the same
+      // per-item ignore menu textui_cmd_ignore_menu shows, for this known item.
+      const entries = buildIgnoreItemMenu(ignoreItemMenuCtx(obj, state, game));
+      const pick = await selectFromMenu(
+        term,
+        "(Enter to select, ESC) Ignore:",
+        entries.map((e) => ({ label: e.label })),
+      );
+      if (pick !== null && entries[pick]) {
+        applyIgnoreItemChoice(entries[pick]!.action, obj, state, game);
+        await applyIgnoreDrop();
+      }
+      break;
+    }
     default:
       break;
   }
@@ -1583,10 +1608,10 @@ async function takeOffItem(): Promise<void> {
 // All three route through selectTargetItem's aggregated pack+equip+floor
 // picker (USE_EQUIP|USE_INVEN|USE_QUIVER|USE_FLOOR upstream); the quiver
 // rides the pack in this gear model. Autoinscribe has no default key
-// upstream ships it only from the knowledge menu; the per-kind note registry
-// it drives is managed via '~' -> "Set object autoinscriptions"
-// (showAutoinscriptionManager), and applyAutoinscription then applies the
-// registered notes on the do_cmd_autoinscribe pass.
+// upstream ships it only from the object-knowledge browser's `{` action
+// (ui-knowledge.c:2101-2123, wired via ObjectBrowserDeps.setAutoinscription),
+// and applyAutoinscription then applies the registered notes on the
+// do_cmd_autoinscribe pass.
 
 /** Inscribe (`{`): pick any item and set its inscription text. */
 async function inscribeItem(): Promise<void> {
@@ -2164,167 +2189,187 @@ function* allWorldObjects(): Iterable<GameObject> {
 
 async function openKnowledgeMenu(): Promise<void> {
   const p = state.actor.player;
-  const items: MenuItem[] = [
-    { label: "Display object knowledge" },
-    { label: "Display rune knowledge" },
-    { label: "Display artifact knowledge" },
-    { label: "Display ego item knowledge" },
-    { label: "Display monster knowledge" },
-    { label: "Display feature knowledge" },
-    { label: "Display trap knowledge" },
-    { label: "Display shapechange effects" },
-    { label: "Display hall of fame" },
-    { label: "Display character history" },
-    { label: "Display equippable comparison" },
-    { label: "Set object autoinscriptions" },
-  ];
+  // Entries are built in the exact reference order (ui-knowledge.c:3597-3676):
+  // the fixed pre-store block, then one "Display <store>'s contents" entry per
+  // store, then the fixed post-store block. Each label/handler is pushed in
+  // lockstep so the dynamic store entries never desync the dispatch.
+  const items: MenuItem[] = [];
+  const actions: (() => Promise<void>)[] = [];
+  const add = (label: string, run: () => Promise<void>, disabled = false): void => {
+    items.push(disabled ? { label, disabled: true } : { label });
+    actions.push(run);
+  };
+  // Grayed unless something is known (ui-knowledge.c:3751-3799 MN_ACT_GRAYED).
+  const monKnown =
+    monsterKnowledgeMenu(booted.registries.monsters.races, state.lore).items.length > 0;
+  const egoKnown = booted.registries.objects.egos.some((e) => game.everseen.egoSeen(e));
+
+  // Pre-store block (pre_store_actions[], ui-knowledge.c:3597-3606).
+  add("Display object knowledge", async () => {
+    // textui_browse_object_knowledge (ui-knowledge.c L2139): everseen ||
+    // flavoured kinds. kindName is object_kind_name (obj-desc.c L48), never
+    // leaking an unidentified flavoured kind's real name.
+    const objDeps: ObjectBrowserDeps = {
+      isAware: (k) => game.flavor.isAware(k),
+      wasTried: (k) => game.flavor.wasTried(k),
+      everseen: (k) => game.everseen.kindSeen(k),
+      hasFlavor: (k) => state.hasFlavor?.(k) ?? false,
+      kindName: (k, aware) =>
+        !aware && (state.hasFlavor?.(k) ?? false)
+          ? (state.flavorText?.(k) ?? "")
+          : k.name.replace(/[~&]/g, " ").trim(),
+      // `{` inside the browser (ui-knowledge.c:2101-2123): "Inscribe with: "
+      // sets/updates the kind's autoinscription (empty clears). Default note is
+      // get_autoinscription(k, k->aware); the write is add_autoinscription with
+      // the kind's aware bit.
+      setAutoinscription: async (k) => {
+        const registry = state.autoinscribe;
+        if (!registry) return;
+        const aware = game.flavor.isAware(k);
+        const text = await promptText(
+          term,
+          "Inscribe with: ",
+          registry.get(k.kidx, aware) ?? "",
+          40,
+          "[ type a note, Enter to accept (empty clears), ESC to cancel ]",
+        );
+        if (text === null) return; // ESC: leave the kind's note unchanged
+        registry.set(k.kidx, text, aware);
+      },
+    };
+    await showObjectKnowledge(
+      term,
+      booted.registries.objects.kinds,
+      booted.registries.objects.bases,
+      objDeps,
+    );
+  });
+  add("Display rune knowledge", () => showRuneKnowledge(term, state.runeEnv, p));
+  add("Display artifact knowledge", () =>
+    // do_cmd_knowledge_artifacts (ui-knowledge.c L1740). The exact
+    // artifact_is_known gate (L1687): created AND no live unidentified copy.
+    showArtifactKnowledge(term, {
+      state,
+      reg: booted.registries.objects,
+      constants: booted.registries.constants,
+      player: p,
+      artState:
+        state.artifacts ?? new ArtifactState(booted.registries.objects.artifacts.length),
+      inspectExtras,
+      runeEnv: state.runeEnv,
+      exact: {
+        worldObjects: () => allWorldObjects(),
+        isCreated: (aidx: number) => state.artifacts?.isCreated(aidx) ?? false,
+        wizard: wizardMode,
+      },
+      seedRandart: game.randartSeed,
+    }),
+  );
+  add(
+    "Display ego item knowledge",
+    () =>
+      // do_cmd_knowledge_ego_items (ui-knowledge.c L1827): everseen egos.
+      showEgoKnowledge(
+        term,
+        booted.registries.objects.egos,
+        booted.registries.objects.kinds,
+        booted.registries.objects.bases,
+        game.everseen,
+      ),
+    !egoKnown,
+  );
+  add("Display monster knowledge", () => showMonsterKnowledge(), !monKnown);
+  add("Display feature knowledge", () =>
+    showFeatureKnowledge(term, booted.registries.features),
+  );
+  add("Display trap knowledge", async () => {
+    if (booted.registries.traps) await showTrapKnowledge(term, booted.registries.traps);
+  });
+  add("Display shapechange effects", () => {
+    // do_cmd_knowledge_shapechange (ui-knowledge.c L3142).
+    const shapeEnv = {
+      properties: booted.registries.objects.properties,
+      elementNames: (booted.registries.projections ?? []).map((pr) => pr.name),
+      playerAbilities: players.properties
+        .filter((pr) => pr.type === "player" && pr.code)
+        .map((pr) => ({
+          index: (PF as Record<string, number>)[pr.code!]!,
+          desc: pr.desc,
+        })),
+    };
+    return showShapeKnowledge(term, players.shapes, shapeEnv);
+  });
+
+  // Per-store block (ui-knowledge.c:3662-3676): "Display <store>'s contents",
+  // one entry per store, with a " (N)" shortcut suffix for the first nine.
+  const stores = state.stores ?? [];
+  const storeStart = items.length;
+  const storeCommands: Record<string, () => number> = {};
+  stores.forEach((store, j) => {
+    const feat = features.get(store.feat);
+    const name = feat?.name ?? store.featName;
+    const apos = name.endsWith("s") ? "'" : "'s";
+    const shortcut = j < 9 ? ` (${j + 1})` : "";
+    add(`Display ${name}${apos} contents${shortcut}`, () => showStoreKnowledge(store));
+    if (j < 9) storeCommands[String(j + 1)] = () => storeStart + j;
+  });
+
+  // Post-store block (post_store_actions[], ui-knowledge.c:3609-3613).
+  add("Display hall of fame", () => openHallOfFame());
+  add("Display character history", () =>
+    showTextScreen(term, "Player history", historyLines(state)),
+  );
+  add("Display equippable comparison", () => showEquipCmp(term, state, equipCmpDeps()));
+
   for (;;) {
-    const idx = await selectFromMenu(term, "Display current knowledge", items);
+    const idx = await selectFromMenu(
+      term,
+      "Display current knowledge",
+      items,
+      undefined,
+      Object.keys(storeCommands).length ? { commands: storeCommands } : undefined,
+    );
     if (idx === null) return;
-    switch (idx) {
-      case 0: {
-        // textui_browse_object_knowledge (ui-knowledge.c L2139): everseen ||
-        // flavoured kinds. kindName is object_kind_name (obj-desc.c L48), never
-        // leaking an unidentified flavoured kind's real name.
-        const objDeps: ObjectBrowserDeps = {
-          isAware: (k) => game.flavor.isAware(k),
-          wasTried: (k) => game.flavor.wasTried(k),
-          everseen: (k) => game.everseen.kindSeen(k),
-          hasFlavor: (k) => state.hasFlavor?.(k) ?? false,
-          kindName: (k, aware) =>
-            !aware && (state.hasFlavor?.(k) ?? false)
-              ? (state.flavorText?.(k) ?? "")
-              : k.name.replace(/[~&]/g, " ").trim(),
-        };
-        await showObjectKnowledge(
-          term,
-          booted.registries.objects.kinds,
-          booted.registries.objects.bases,
-          objDeps,
-        );
-        break;
-      }
-      case 1:
-        await showRuneKnowledge(term, state.runeEnv, p);
-        break;
-      case 2:
-        // do_cmd_knowledge_artifacts (ui-knowledge.c L1740). The exact
-        // artifact_is_known gate (L1687): created AND no live unidentified copy
-        // exists (find_artifact scans allWorldObjects). The recall is the full
-        // desc_art_fake (make_fake_artifact + object_info(OINFO_NONE)).
-        await showArtifactKnowledge(term, {
-          state,
-          reg: booted.registries.objects,
-          constants: booted.registries.constants,
-          player: p,
-          artState:
-            state.artifacts ??
-            new ArtifactState(booted.registries.objects.artifacts.length),
-          inspectExtras,
-          runeEnv: state.runeEnv,
-          exact: {
-            worldObjects: () => allWorldObjects(),
-            isCreated: (aidx: number) => state.artifacts?.isCreated(aidx) ?? false,
-            wizard: wizardMode,
-          },
-          seedRandart: game.randartSeed,
-        });
-        break;
-      case 3:
-        // do_cmd_knowledge_ego_items (ui-knowledge.c L1827): everseen egos.
-        await showEgoKnowledge(
-          term,
-          booted.registries.objects.egos,
-          booted.registries.objects.kinds,
-          booted.registries.objects.bases,
-          game.everseen,
-        );
-        break;
-      case 4:
-        await showMonsterKnowledge();
-        break;
-      case 5:
-        await showFeatureKnowledge(term, booted.registries.features);
-        break;
-      case 6:
-        if (booted.registries.traps) await showTrapKnowledge(term, booted.registries.traps);
-        break;
-      case 7: {
-        // do_cmd_knowledge_shapechange (ui-knowledge.c L3142). The change-effect
-        // (effect_describe) and triggering-spell tails are not assembled here
-        // yet, so the recall shows the pure field summaries.
-        const shapeEnv = {
-          properties: booted.registries.objects.properties,
-          elementNames: (booted.registries.projections ?? []).map((pr) => pr.name),
-          playerAbilities: players.properties
-            .filter((pr) => pr.type === "player" && pr.code)
-            .map((pr) => ({
-              index: (PF as Record<string, number>)[pr.code!]!,
-              desc: pr.desc,
-            })),
-        };
-        await showShapeKnowledge(term, players.shapes, shapeEnv);
-        break;
-      }
-      case 8:
-        // do_cmd_knowledge_scores (ui-knowledge.c L3610): the score table.
-        await openHallOfFame();
-        break;
-      case 9:
-        await showTextScreen(term, "Player history", historyLines(state));
-        break;
-      case 10:
-        await showEquipCmp(term, state, equipCmpDeps());
-        break;
-      case 11:
-        await showAutoinscriptionManager();
-        break;
-      default:
-        break;
-    }
+    const run = actions[idx];
+    if (run) await run();
   }
 }
 
 /**
- * The per-kind autoinscription manager (ui-knowledge.c's object-knowledge
- * browser + its `{` set-inscription action, get_autoinscription/
- * add_autoinscription): a scrollable list of every kind the player is aware
- * of, each showing its current aware note; picking one edits that kind's note
- * (Enter accepts, an empty string clears it). Loops back to the list after each
- * edit until ESC, like the upstream browser.
- *
- * The list-select loop already owns input under the modal gate selectFromMenu /
- * promptText raise (each is a capturing overlay); no direct advance() is
- * needed since setting a note spends no turn (as do_cmd_inscribe). Writes go
- * straight to the live registry, so they take effect immediately and ride the
- * next save.
+ * do_cmd_knowledge_store (ui-knowledge.c:3522 -> textui_store_knowledge,
+ * ui-store.c:1217): a read-only view of a store's stock. Reproduces the
+ * store_display_frame layout - owner line, the "Store Inventory"/"Weight"/
+ * "Price" header (Home shows "Home Inventory" with no Price), then the stock in
+ * store_stock_list order with each item's weight and per-item buy price.
  */
-async function showAutoinscriptionManager(): Promise<void> {
-  const registry = state.autoinscribe;
-  if (!registry) return; // worldless / not wired: nothing to manage
-  const kinds = booted.registries.objects.kinds;
-  const isAware = (kind: ObjectKind): boolean =>
-    game.flavor ? game.flavor.isAware(kind) : true;
-  for (;;) {
-    const { items, rows } = autoinscriptionMenu(kinds, isAware, registry);
-    if (items.length === 0) {
-      say("You are not aware of any object kinds yet.");
-      return;
-    }
-    const idx = await selectFromMenu(term, "Autoinscribe which kind?", items);
-    if (idx === null) return;
-    const row = rows[idx];
-    if (!row) return;
-    const text = await promptText(
-      term,
-      `Autoinscription for ${row.kind.name.replace(/[~&]/g, " ").trim()}.`,
-      row.note,
-      40,
-      "[ type a note, Enter to accept (empty clears), ESC to cancel ]",
-    );
-    if (text === null) continue; // ESC: leave this kind's note unchanged
-    registry.set(row.kind.kidx, text, true);
+async function showStoreKnowledge(store: Store): Promise<void> {
+  const feat = features.get(store.feat);
+  const featLabel = feat?.name ?? store.featName;
+  const isHome = (feat?.code ?? store.featName).toUpperCase().includes("HOME");
+  const stock = sortStoreStock(game, store);
+  const lines: ScreenLine[] = [];
+  lines.push({ text: isHome ? "Your Home" : store.owner.name });
+  lines.push({ text: "" });
+  lines.push({
+    text: isHome
+      ? `${"Home Inventory".padEnd(52)}Weight`
+      : `${"Store Inventory".padEnd(52)}${"Weight".padEnd(10)}Price`,
+  });
+  if (stock.length === 0) {
+    lines.push({ text: "" });
+    lines.push({ text: isHome ? "  (Your home is empty.)" : "  (The shelves are bare.)" });
   }
+  stock.forEach((obj, i) => {
+    const name = describeObject(state, obj);
+    const wgt = obj.weight;
+    const weightStr = `${Math.trunc(wgt / 10)}.${wgt % 10} lb`;
+    const priceStr = isHome ? "" : String(game.price(store, obj, false, 1));
+    const tag = String.fromCharCode(97 + (i % 26));
+    lines.push({
+      text: `${tag}) ${name.padEnd(46).slice(0, 46)} ${weightStr.padStart(8)}  ${priceStr.padStart(9)}`.trimEnd(),
+    });
+  });
+  await showTextScreen(term, featLabel, lines);
 }
 
 /**
@@ -3598,6 +3643,187 @@ function repeatLastCommand(): void {
   advance();
 }
 
+/**
+ * Use an item (U original / X roguelike, CMD_USE, cmd-obj.c do_cmd_use /
+ * ui-game.c:133): pick any usable item, then run the type-appropriate command
+ * (aim a wand, zap a rod, use a staff, read, quaff, eat, or activate a worn
+ * item). This is the single generic verb the original keyset binds to 'U'.
+ */
+async function useGenericCmd(): Promise<void> {
+  const codeFor = (o: GameObject): string | null => {
+    if (tvalIsWand(o.tval)) return "aim-wand";
+    if (tvalIsRod(o.tval)) return "zap-rod";
+    if (tvalIsStaff(o.tval)) return "use-staff";
+    if (tvalIsScroll(o.tval)) return "read";
+    if (tvalIsPotion(o.tval)) return "quaff";
+    if (tvalIsEdible(o.tval)) return "eat";
+    return null;
+  };
+  const rows: MenuItem[] = [];
+  const picks: { code: string; handle: number }[] = [];
+  // Usable pack items (devices + consumables), then worn activatables. The
+  // faithful obj_can_use tester (cmd-obj.c) admits exactly these.
+  const { items, handles } = packMenu(state, (o) => codeFor(o) !== null);
+  for (let i = 0; i < items.length; i++) {
+    const handle = handles[i];
+    const obj = handle === undefined ? null : gearGet(state.gear, handle);
+    const code = obj ? codeFor(obj) : null;
+    if (handle === undefined || !obj || !code) continue;
+    rows.push(items[i]!);
+    picks.push({ code, handle });
+  }
+  const player = state.actor.player;
+  for (let i = 0; i < player.body.count; i++) {
+    const handle = player.equipment[i] ?? 0;
+    if (!handle) continue;
+    const obj = gearGet(state.gear, handle);
+    if (!obj || !obj.activation) continue;
+    rows.push({ label: describeObject(state, obj), color: "#c8c8d4" });
+    picks.push({ code: "activate", handle });
+  }
+  if (rows.length === 0) {
+    say("You have no items to use.");
+    return;
+  }
+  const idx = await selectFromMenu(term, "Use which item?", rows);
+  if (idx === null) return;
+  const pick = picks[idx];
+  if (!pick) return;
+  await dispatchItemVerb(pick.code, pick.handle, gearGet(state.gear, pick.handle));
+}
+
+/**
+ * Swap weapon (x, original keyset only): the default pref.prf keymap maps 'x'
+ * to the macro "w0" - i.e. wield the pack item inscribed @0 / @w0. Wields the
+ * first matching item; falls back to the wield picker when none is tagged.
+ */
+async function swapWeaponCmd(): Promise<void> {
+  const player = state.actor.player;
+  const equipped = new Set<number>();
+  for (let i = 0; i < player.body.count; i++) {
+    const h = player.equipment[i] ?? 0;
+    if (h) equipped.add(h);
+  }
+  for (const [handle, obj] of state.gear.store) {
+    if (equipped.has(handle) || !tvalIsWearable(obj.tval)) continue;
+    const note = obj.note ?? "";
+    if (/@w?0/.test(note)) {
+      say(actionLine("wield", obj));
+      commandBuffer.push({ code: "wield", args: { handle } });
+      advance();
+      return;
+    }
+  }
+  // No @0-tagged item: fall back to the normal wield selection.
+  await useItem("wield", (o) => tvalIsWearable(o.tval), "items you can wear or wield");
+}
+
+/** Walk one step (;, CMD_WALK, cmd_hidden): prompt a direction, then step. */
+async function walkStepCmd(): Promise<void> {
+  const dir = await promptDirection(term, "Walk in which direction?");
+  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  commandBuffer.push({ code: "walk", dir });
+  advance();
+}
+
+/** Start running (CMD_RUN): prompt a direction, then run until run_test stops. */
+async function runDirCmd(): Promise<void> {
+  const dir = await promptDirection(term, "Run in which direction?");
+  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  commandBuffer.push({ code: "run", dir });
+  advance();
+}
+
+/** Stand still (CMD_HOLD, cmd_hidden): spend a turn in place. */
+function holdCmd(): void {
+  commandBuffer.push({ code: "hold" });
+  advance();
+}
+
+/** Start exploring (p, CMD_EXPLORE, cmd_hidden): the auto-explore command. */
+function exploreCmd(): void {
+  commandBuffer.push({ code: "explore" });
+  advance();
+}
+
+/**
+ * Center the map on the player (^L / @, do_cmd_center_map, cmd_hidden:221).
+ * Clears any locate-mode pan so the camera snaps back to the player.
+ */
+function centerMapCmd(): void {
+  locateCam = null;
+  render();
+}
+
+/** Redraw the screen (^R, do_cmd_redraw, cmd_util:201). */
+function redrawCmd(): void {
+  render();
+}
+
+/**
+ * Save and quit (^X, textui_quit, cmd_util:199): flush the save, then return to
+ * the game menu (the web build's "exit to main menu" - switch character / new
+ * character / resume all live there). Faithful to save-then-leave-play.
+ */
+function saveQuitCmd(): void {
+  autosave(true);
+  message = "Game saved.";
+  void openModal(openGameMenu);
+}
+
+/**
+ * Save a screen dump () , do_cmd_save_screen, cmd_util:203): the web analog of
+ * the html/text dump is a PNG of the current canvas, downloaded locally. Purely
+ * player-initiated by the keypress.
+ */
+function screenDumpCmd(): void {
+  try {
+    const url = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "neo-angband-screen.png";
+    a.click();
+    say("Screen dump saved.");
+  } catch {
+    say("Screen dump failed.");
+  }
+}
+
+/**
+ * Ignore an item (k original / ^D both, CMD_IGNORE, cmd_item_manage:165):
+ * picks an item then opens the faithful per-item ignore menu. Body wired to
+ * ./ignore-menu (task 155).
+ */
+async function ignoreItemCmd(): Promise<void> {
+  await showIgnoreItemMenu(term, state, game, say, applyIgnoreDrop);
+}
+
+/**
+ * Load a single pref line (", do_cmd_pref, cmd_hidden:213): prompts for a raw
+ * pref-file command. The web build configures via the '=' options menu rather
+ * than a pref-file grammar, so unrecognized lines are reported rather than
+ * silently dropped, keeping the key live and faithful in shape.
+ */
+async function prefLineCmd(): Promise<void> {
+  const line = await promptText(term, "Pref:", "", 80, "[ enter a pref command, ESC to cancel ]");
+  if (line === null || line.trim() === "") return;
+  say("Pref command not recognized.");
+}
+
+/** Version info (V, do_cmd_version, cmd_hidden:212). Pure display. */
+function versionCmd(): void {
+  void openModal(() =>
+    showTextScreen(term, "Version", [
+      { text: "" },
+      { text: `  Neo Angband ${ENGINE_VERSION}` },
+      { text: `  A faithful port of Angband ${PARITY_BASELINE}.` },
+      { text: "" },
+      { text: "  Credits: neostryder / RPGM Tools." },
+      { text: "  Angband is maintained by the Angband development team." },
+    ]),
+  );
+}
+
 // Touch open/disarm: tapping the "Open"/"Disarm" action-bar button arms this,
 // so the NEXT canvas tap resolves to a direction for that command instead of
 // a walk (open/close cancel it without spending it on an unrelated tap).
@@ -3858,7 +4084,11 @@ function renderSidebar(rows: number): void {
 /**
  * Render the bottom status line from statusLineModel (ui-display.c), the active
  * indicators (level feeling, timed effects, DTrap, terrain, ...) laid left to
- * right with a one-column gap, exactly the status_handlers[] order.
+ * right in status_handlers[] order. Segments render back-to-back with NO extra
+ * gap: each segment's text already bakes exactly one trailing gap column, so
+ * its width equals the reference handler's return value (update_statusline_aux
+ * advances col by that width). Idle prt_state reserves one blank column, which
+ * statusLineModel emits as a single-space run.
  */
 function renderStatusLine(originX: number, row: number, maxCols: number): void {
   let x = originX;
@@ -3869,7 +4099,6 @@ function renderStatusLine(originX: number, row: number, maxCols: number): void {
       term.print(x, row, text, colorToCss(run.color));
       x += run.text.length;
     }
-    if (ind.runs.length > 0) x += 1; // inter-indicator gap
   }
 }
 
@@ -4380,6 +4609,10 @@ window.addEventListener("keydown", (ev) => {
     return;
   }
   if (dead) return;
+  // The active keyset (rogue_like_commands). Every command below resolves its
+  // key through this exactly like cmd_info's key[0] (original) / key[1]
+  // (roguelike) pair, so no binding differs from the reference.
+  const roguelike = state.options?.get("rogue_like_commands") ?? false;
   // Ctrl-key command aliases (cmd_action / cmd_util faithful bindings that use a
   // control modifier). Checked before the modifier-free block below.
   if (ev.ctrlKey && !ev.altKey && !ev.metaKey) {
@@ -4432,259 +4665,139 @@ window.addEventListener("keydown", (ev) => {
       repeatLastCommand();
       return;
     }
-    return;
-  }
-  // Fire at nearest (TAB, do_cmd_fire_at_nearest / ui-game.c:151): the roguelike
-  // keyset key, valid in both keysets (never a movement key). Checked before the
-  // modifier-free letter block so TAB is not swallowed as a focus change.
-  if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key === "Tab") {
-    ev.preventDefault();
-    fireAtNearestCmd();
+    // Save and quit (^X, textui_quit / cmd_util:199). The browser reserves some
+    // Ctrl combos, but the game takes ownership so its bindings never differ.
+    if (ev.key === "x" || ev.key === "X") {
+      ev.preventDefault();
+      saveQuitCmd();
+      return;
+    }
+    // Redraw the screen (^R, do_cmd_redraw / cmd_util:201).
+    if (ev.key === "r" || ev.key === "R") {
+      ev.preventDefault();
+      redrawCmd();
+      return;
+    }
+    // Center map on the player (^L original keyset, do_cmd_center_map /
+    // cmd_hidden:221). In the roguelike keyset ^L is alter-east, so ^L centers
+    // only in the original keyset; the roguelike center-map key is '@' (below).
+    if (!roguelike && (ev.key === "l" || ev.key === "L")) {
+      ev.preventDefault();
+      centerMapCmd();
+      return;
+    }
+    // Ignore an item (^D, CMD_IGNORE / cmd_item_manage:165): the roguelike-keyset
+    // key, valid in both keysets. Opens the same per-item ignore menu as 'k'.
+    if (ev.key === "d" || ev.key === "D") {
+      ev.preventDefault();
+      void openModal(ignoreItemCmd);
+      return;
+    }
     return;
   }
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
-    if (ev.key === "V") {
-      ev.preventDefault();
-      void openHallOfFame();
-      return;
+    // TAB never moves focus off the game canvas (it is a roguelike command key).
+    if (ev.key === "Tab") ev.preventDefault();
+    // The full command table, faithful to ui-game.c's cmd_info arrays. Each row
+    // carries its original-keyset key (`o`) and, where the roguelike keyset
+    // differs, its roguelike key (`r`). `r: null` means the command has no plain
+    // roguelike key (it moves to a control key, handled above), so that letter
+    // stays free for roguelike movement; `o: null` means original has no binding
+    // (a roguelike-only key). This mirrors cmd_lookup exactly - no key differs.
+    const COMMANDS: { o?: string | null; r?: string | null; act: () => void }[] = [
+      // Item commands (cmd_item, ui-game.c:118-133).
+      { o: "{", act: () => void openModal(inscribeItem) },
+      { o: "}", act: () => void openModal(uninscribeItem) },
+      { o: "w", act: () => void openModal(() => useItem("wield", (t) => tvalIsWearable(t.tval), "items you can wear or wield")) },
+      { o: "t", r: "T", act: () => void openModal(takeOffItem) },
+      { o: "I", act: () => void openModal(() => inspectItem()) },
+      { o: "d", act: () => void openModal(() => useItem("drop", () => true, "items")) },
+      { o: "f", r: "t", act: () => void openModal(fireCmd) },
+      { o: "u", r: "Z", act: () => void openModal(() => useItem("use-staff", (t) => tvalIsStaff(t.tval), "staves")) },
+      { o: "a", r: "z", act: () => void openModal(() => useItem("aim-wand", (t) => tvalIsWand(t.tval), "wands")) },
+      { o: "z", r: "a", act: () => void openModal(() => useItem("zap-rod", (t) => tvalIsRod(t.tval), "rods")) },
+      { o: "A", act: () => void openModal(activateItem) },
+      { o: "E", act: () => void openModal(() => useItem("eat", (t) => tvalIsEdible(t.tval), "food")) },
+      { o: "q", act: () => void openModal(() => useItem("quaff", (t) => tvalIsPotion(t.tval), "potions")) },
+      { o: "r", act: () => void openModal(() => useItem("read", (t) => tvalIsScroll(t.tval), "scrolls")) },
+      { o: "F", act: () => void openModal(refuelItem) },
+      { o: "U", r: "X", act: () => void openModal(useGenericCmd) },
+      // General actions (cmd_action, ui-game.c:141-153).
+      { o: "D", act: () => void openModal(disarmCmd) },
+      { o: "R", act: () => void openModal(restCmd) },
+      { o: "l", r: "x", act: () => void openModal(async () => { if (await runTargetLoop(TARGET.LOOK, true)) say("Target Selected."); }) },
+      // Swap weapon: the original keyset maps 'x' to the pref.prf "w0" macro
+      // (wield the item inscribed @0). The roguelike keyset uses 'x' for Look
+      // (the look row above), so this binds 'x' only in the original keyset.
+      { o: "x", r: null, act: () => void openModal(swapWeaponCmd) },
+      { o: "*", act: () => void openModal(async () => { if (await runTargetLoop(TARGET.KILL, true)) say("Target Selected."); else say("Target Aborted."); }) },
+      { o: "'", act: () => { targetSetClosest(state, TARGET.KILL); render(); } },
+      // Tunnel: 'T' in the original keyset; the roguelike keyset uses ^T (handled
+      // above) since roguelike 'T' is Take off.
+      { o: "T", r: null, act: () => void openModal(tunnelCmd) },
+      { o: "<", act: () => { commandBuffer.push({ code: "ascend" }); advance(); } },
+      { o: ">", act: () => { commandBuffer.push({ code: "descend" }); advance(); } },
+      { o: "o", act: () => void openModal(openCmd) },
+      { o: "c", act: () => void openModal(closeCmd) },
+      { o: "h", r: "Tab", act: () => fireAtNearestCmd() },
+      { o: "v", act: () => void openModal(throwCmd) },
+      { o: "W", r: "-", act: () => void openModal(jumpCmd) },
+      // Item management (cmd_item_manage, ui-game.c:161-165).
+      { o: "e", act: () => void openModal(() => showTextScreen(term, "Equipment", equipmentLines(state))) },
+      { o: "i", act: () => void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))) },
+      { o: "|", act: () => void openModal(() => showTextScreen(term, "Quiver", quiverLines())) },
+      { o: "g", act: () => void openModal(pickupCmd) },
+      // Ignore: 'k' in the original keyset; roguelike uses ^D (handled above) so
+      // roguelike 'k' stays free for movement.
+      { o: "k", r: null, act: () => void openModal(ignoreItemCmd) },
+      // Information commands (cmd_info, ui-game.c:173-185).
+      { o: "b", r: "P", act: () => void openModal(browseCmd) },
+      { o: "G", act: () => void openModal(studySpell) },
+      { o: "S", act: () => void openModal(showAbilitiesScreen) },
+      { o: "m", act: () => void openModal(castSpell) },
+      { o: "M", act: () => void openModal(() => showLevelMap(term, buildOverviewForShell())) },
+      { o: "K", r: "O", act: () => { state.ignore.unignoring = !state.ignore.unignoring; void openModal(() => applyIgnoreDrop()); } },
+      { o: "]", act: () => void openModal(() => showTextScreen(term, "Objects in view", objectListLines(state))) },
+      { o: "[", act: () => void openModal(showMonsterList) },
+      { o: "L", r: "W", act: () => void openModal(() => runLocate()) },
+      { o: "/", act: () => void openModal(querySymbolCmd) },
+      { o: "C", act: () => void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())) },
+      { o: "~", act: () => void openModal(openKnowledgeMenu) },
+      // Utility/assorted (cmd_util, ui-game.c:196-203).
+      { o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu)).then(() => autosave(true)); } },
+      { o: "Q", act: () => void openModal(retireCmd) },
+      { o: ")", act: () => screenDumpCmd() },
+      // Hidden commands (cmd_hidden, ui-game.c:211-223).
+      { o: ":", act: () => void openModal(noteCmd) },
+      { o: "V", act: () => versionCmd() },
+      { o: '"', act: () => void openModal(prefLineCmd) },
+      { o: "+", act: () => void openModal(alterCmd) },
+      { o: "s", act: () => void openModal(stealCmd) },
+      { o: ";", act: () => void openModal(walkStepCmd) },
+      // Run/stand: the two keys swap between keysets (CMD_RUN {'.',','} and
+      // CMD_HOLD {',','.'}), so '.' runs and ',' stands in the original keyset,
+      // and the reverse in the roguelike keyset.
+      { o: ".", r: ",", act: () => void openModal(runDirCmd) },
+      { o: ",", r: ".", act: () => holdCmd() },
+      { o: "p", act: () => exploreCmd() },
+      // Repeat: 'n' in the original keyset; roguelike uses ^V (handled above).
+      { o: "n", r: null, act: () => repeatLastCommand() },
+      // Center map: roguelike '@' (original uses ^L, handled above).
+      { o: null, r: "@", act: () => centerMapCmd() },
+    ];
+    for (const c of COMMANDS) {
+      const key = roguelike ? (c.r === undefined ? c.o : c.r) : c.o;
+      if (key != null && ev.key === key) {
+        ev.preventDefault();
+        c.act();
+        return;
+      }
     }
-    if (ev.key === "i") {
-      ev.preventDefault();
-      void openModal(() =>
-        showTextScreen(term, "Inventory", inventoryLines(state)),
-      );
-      return;
-    }
-    if (ev.key === "e") {
-      ev.preventDefault();
-      void openModal(() =>
-        showTextScreen(term, "Equipment", equipmentLines(state)),
-      );
-      return;
-    }
-    if (ev.key === "]") {
-      ev.preventDefault();
-      void openModal(() =>
-        showTextScreen(term, "Objects in view", objectListLines(state)),
-      );
-      return;
-    }
-    // do_cmd_monlist ('[', ui-game.c L180): the visible-monster list screen.
-    if (ev.key === "[") {
-      ev.preventDefault();
-      void openModal(showMonsterList);
-      return;
-    }
-    if (ev.key === "C") {
-      ev.preventDefault();
-      void openModal(() =>
-        showCharacterSheet(term, state, playerName, charSheetOpts()),
-      );
-      return;
-    }
-    // The knowledge menu ('~', do_cmd_knowledge_menu): monster recall plus the
-    // character history '~' used to open directly. See openKnowledgeMenu.
-    if (ev.key === "~") {
-      ev.preventDefault();
-      void openModal(openKnowledgeMenu);
-      return;
-    }
-    if (ev.key === "I") {
-      ev.preventDefault();
-      void openModal(() => inspectItem());
-      return;
-    }
-    // Full-level map ('M', do_cmd_view_map) and locate/scroll ('L',
-    // do_cmd_locate). Both checked here, before resolveKey() below, so the
-    // roguelike keyset's 'l'->run-east binding never shadows capital 'L'.
-    if (ev.key === "M") {
-      ev.preventDefault();
-      void openModal(() => showLevelMap(term, buildOverviewForShell()));
-      return;
-    }
-    if (ev.key === "L") {
-      ev.preventDefault();
-      void openModal(() => runLocate());
-      return;
-    }
-    // do_cmd_options ('=', ui-options.c): the full Options Menu (interface /
-    // birth toggles, ignore-setup, delay factor, hitpoint warning) - checked
-    // here, before the item-use verbs below, so '=' is never shadowed by
-    // ITEM_VERBS (sibling gap #51 temporarily bound '=' straight to
-    // openIgnoreSetup(); this reclaims it for the full menu, which now hosts
-    // ignore-setup as its own (i) sub-entry - openIgnoreSetup itself is
-    // unchanged and reused verbatim, not duplicated). autosave(true) flushes
-    // any option change to the per-slot save the moment the menu closes.
-    if (ev.key === "=") {
-      ev.preventDefault();
-      void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu)).then(() =>
-        autosave(true),
-      );
-      return;
-    }
-    // Item-use verbs (original keyset: cmd-obj.c). Each opens a selection menu.
-    const ITEM_VERBS: Record<string, () => Promise<void>> = {
-      q: () => useItem("quaff", (o) => tvalIsPotion(o.tval), "potions"),
-      r: () => useItem("read", (o) => tvalIsScroll(o.tval), "scrolls"),
-      E: () => useItem("eat", (o) => tvalIsEdible(o.tval), "food"),
-      u: () => useItem("use-staff", (o) => tvalIsStaff(o.tval), "staves"),
-      a: () => useItem("aim-wand", (o) => tvalIsWand(o.tval), "wands"),
-      z: () => useItem("zap-rod", (o) => tvalIsRod(o.tval), "rods"),
-      w: () => useItem("wield", (o) => tvalIsWearable(o.tval), "items you can wear or wield"),
-      d: () => useItem("drop", () => true, "items"),
-      A: () => activateItem(),
-      t: () => takeOffItem(),
-      "{": () => inscribeItem(),
-      "}": () => uninscribeItem(),
-      F: () => refuelItem(),
-      m: () => castSpell(),
-      p: () => castSpell(),
-      G: () => studySpell(),
-      // Browse a book (b / P, textui_spell_browse / ui-game.c:173).
-      b: () => browseCmd(),
-      P: () => browseCmd(),
-      // textui_target: the interactive '*' loop in TARGET_KILL mode.
-      "*": async () => {
-        if (await runTargetLoop(TARGET.KILL, true)) say("Target Selected.");
-        else say("Target Aborted.");
-      },
-      // do_cmd_look: the same loop in TARGET_LOOK mode (read-only browse
-      // that can still 't'-target); only messages on a successful pick.
-      l: async () => {
-        if (await runTargetLoop(TARGET.LOOK, true)) say("Target Selected.");
-      },
-      x: async () => {
-        if (await runTargetLoop(TARGET.LOOK, true)) say("Target Selected.");
-      },
-      f: () => fireCmd(),
-      v: () => throwCmd(),
-      o: () => openCmd(),
-      D: () => disarmCmd(),
-      // do_cmd_rest / textui_cmd_rest (cmd_action 'R').
-      R: () => restCmd(),
-      // do_cmd_steal (cmd_hidden 's').
-      s: () => stealCmd(),
-      // do_cmd_note (cmd_hidden ':').
-      ":": () => noteCmd(),
-      // do_cmd_close (cmd_action 'c').
-      c: () => closeCmd(),
-      // do_cmd_tunnel (cmd_action 'T').
-      T: () => tunnelCmd(),
-      // do_cmd_alter (cmd_hidden '+').
-      "+": () => alterCmd(),
-    };
-    const verb = ITEM_VERBS[ev.key];
-    if (verb) {
-      ev.preventDefault();
-      void openModal(verb);
-      return;
-    }
-    // Toggle ignoring off (K, textui_cmd_toggle_ignore): a free action, then
-    // the same ignore_drop pass PN_IGNORE would trigger upstream (a no-op
-    // re-enabling ignoring surfaces nothing new to drop; disabling it while
-    // gear is already flagged ignored has nothing to do either way).
-    if (ev.key === "K") {
-      ev.preventDefault();
-      state.ignore.unignoring = !state.ignore.unignoring;
-      void openModal(() => applyIgnoreDrop());
-      return;
-    }
-    if (ev.key === "'") {
-      // Target the closest target-able monster (a free action, no turn spent).
-      ev.preventDefault();
-      targetSetClosest(state, TARGET.KILL);
-      render();
-      return;
-    }
-    if (ev.key === "g") {
-      ev.preventDefault();
-      void openModal(pickupCmd);
-      return;
-    }
-    if (ev.key === ">") {
-      ev.preventDefault();
-      commandBuffer.push({ code: "descend" });
-      advance();
-      return;
-    }
-    if (ev.key === "<") {
-      ev.preventDefault();
-      commandBuffer.push({ code: "ascend" });
-      advance();
-      return;
-    }
-    // Stand still (',', CMD_HOLD, cmd_hidden): spend a turn in place.
-    if (ev.key === ",") {
-      ev.preventDefault();
-      commandBuffer.push({ code: "hold" });
-      advance();
-      return;
-    }
-    // Start running ('.', CMD_RUN, cmd_hidden original keyset): a direction,
-    // then the run self-continues via the loop until run_test stops it.
-    if (ev.key === ".") {
-      ev.preventDefault();
-      void openModal(async () => {
-        const dir = await promptDirection(term, "Run in which direction?");
-        if (dir === null || dir === AIM_STAR || dir === 5) return;
-        commandBuffer.push({ code: "run", dir });
-        advance();
-      });
-      return;
-    }
-    // View abilities (S, do_cmd_abilities / ui-game.c:175). Faithful binding;
-    // saving lives on ^S and the Escape game menu (the game also autosaves), so
-    // 'S' is free for its canonical use.
-    if (ev.key === "S") {
-      ev.preventDefault();
-      void openModal(showAbilitiesScreen);
-      return;
-    }
+    // The game menu: the discoverable home for save / switch / new character
+    // (so a player who does not know the keys is never stuck).
     if (ev.key === "Escape") {
-      // The game menu: the discoverable home for save / switch / new character
-      // (so a player who does not know the keys is never stuck).
       ev.preventDefault();
       void openModal(openGameMenu);
-      return;
-    }
-    // Faithful keyset-sensitive bindings. In the roguelike keyset 'h'/'n'/'W'
-    // are movement or locate, so those forms are bound only in the original
-    // keyset; their keyset-independent aliases (TAB above, '-', ^V) always work.
-    const roguelike = state.options?.get("rogue_like_commands") ?? false;
-    // Fire at nearest (h, original keyset, do_cmd_fire_at_nearest / ui-game.c:151).
-    if (!roguelike && ev.key === "h") {
-      ev.preventDefault();
-      fireAtNearestCmd();
-      return;
-    }
-    // Walk into a trap (W original keyset / '-' both, do_cmd_jump / ui-game.c:153).
-    if (ev.key === "-" || (!roguelike && ev.key === "W")) {
-      ev.preventDefault();
-      void openModal(jumpCmd);
-      return;
-    }
-    // Repeat previous command (n, original keyset, CMD_REPEAT / ui-game.c:223).
-    if (!roguelike && ev.key === "n") {
-      ev.preventDefault();
-      repeatLastCommand();
-      return;
-    }
-    // Identify symbol (/, do_cmd_query_symbol / ui-game.c:183): free action.
-    if (ev.key === "/") {
-      ev.preventDefault();
-      void openModal(querySymbolCmd);
-      return;
-    }
-    // Display quiver listing (|, do_cmd_quiver / ui-game.c:163): free action.
-    if (ev.key === "|") {
-      ev.preventDefault();
-      void openModal(() => showTextScreen(term, "Quiver", quiverLines()));
-      return;
-    }
-    // Retire character (Q, textui_cmd_retire / ui-game.c:200).
-    if (ev.key === "Q") {
-      ev.preventDefault();
-      void openModal(retireCmd);
       return;
     }
   }

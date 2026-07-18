@@ -249,13 +249,15 @@ export interface ObjectMenuCtx {
   canWear: boolean;
   canThrow: boolean;
   hasInscription: boolean;
+  /** object_is_ignored(obj) (ui-context.c:770): drives the Ignore/Unignore label. */
+  isIgnored: boolean;
 }
 
 /**
  * context_menu_object (L654-900), minus Browse (obj_can_browse's read-only
- * spellbook view has no port screen yet) and per-instance Ignore/Unignore
- * (this port's ignore system is quality/ego/kind-based, not per-object - see
- * openIgnoreSetup; there is no single "ignore just this stack" command).
+ * spellbook view has no port screen yet). The Ignore/Unignore entry
+ * (ui-context.c:770) opens the same per-item ignore menu as the 'k' / ^D
+ * command (textui_cmd_ignore_menu; see web/src/ignore-menu.ts).
  */
 export function buildObjectMenu(ctx: ObjectMenuCtx): MenuEntry<ObjectMenuAction>[] {
   const out: MenuEntry<ObjectMenuAction>[] = [{ label: "Inspect", action: "inspect" }];
@@ -301,7 +303,7 @@ export function buildObjectMenu(ctx: ObjectMenuCtx): MenuEntry<ObjectMenuAction>
   if (ctx.canThrow) out.push({ label: "Throw", action: "throw" });
   out.push({ label: "Inscribe", action: "inscribe" });
   if (ctx.hasInscription) out.push({ label: "Uninscribe", action: "uninscribe" });
-  out.push({ label: "Ignore", action: "ignore", disabled: true });
+  out.push({ label: ctx.isIgnored ? "Unignore" : "Ignore", action: "ignore" });
 
   return out;
 }
