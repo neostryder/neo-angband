@@ -14,7 +14,8 @@
  * - Defaults are read straight from OPTION_ENTRIES (do not hand-copy the
  *   table): each option is seeded from its `normal` field.
  * - hitpoint_warn is the 0..9 integer op_ptr->hitpoint_warn (DEFAULT 3), kept
- *   alongside the booleans. delay_factor (default 40) is carried too.
+ *   alongside the booleans. delay_factor (default 40) and lazymove_delay
+ *   (player->opts.lazymove_delay, default 0, uint8) are carried too.
  * - Birth options (type BIRTH) are chosen at character creation and then
  *   locked: an immutable snapshot is captured at construction, and set()
  *   refuses to change a birth option afterwards (upstream shows them
@@ -37,6 +38,13 @@ export const DEFAULT_HITPOINT_WARN = 3;
 /** option.c options_init_defaults: op_ptr->delay_factor default (ms). */
 export const DEFAULT_DELAY_FACTOR = 40;
 
+/**
+ * player->opts.lazymove_delay default. options_init_defaults does NOT set it,
+ * so it keeps the struct-zero value (0 = no lazy-move disturbance pause).
+ * ui-options.c do_cmd_lazymove_delay clamps it to a uint8 (MIN(delay, 255)).
+ */
+export const DEFAULT_LAZYMOVE_DELAY = 0;
+
 /** A plain map of option name -> boolean value (the serialized form). */
 export type OptionValues = Record<string, boolean>;
 
@@ -48,6 +56,8 @@ export interface OptionStateData {
   hitpointWarn: number;
   /** op_ptr->delay_factor. */
   delayFactor: number;
+  /** player->opts.lazymove_delay (0..255). */
+  lazymoveDelay: number;
   /** The immutable birth-option snapshot (birth_* only). */
   birth: OptionValues;
 }
@@ -60,6 +70,8 @@ export interface OptionInit {
   hitpointWarn?: number;
   /** op_ptr->delay_factor. Default 40. */
   delayFactor?: number;
+  /** player->opts.lazymove_delay (0..255). Default 0. */
+  lazymoveDelay?: number;
 }
 
 /** The set of option names, and the birth subset, derived once from the table. */
@@ -78,6 +90,11 @@ function clampWarn(v: number): number {
   if (!Number.isFinite(v)) return DEFAULT_HITPOINT_WARN;
   return Math.max(0, Math.min(9, Math.trunc(v)));
 }
+/** clamp a uint8 option (lazymove_delay) into 0..255, MIN(delay, 255)-style. */
+function clampByte(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(255, Math.trunc(v)));
+}
 
 /**
  * The option store: a name -> boolean map seeded from OPTION_ENTRIES.normal,
@@ -90,6 +107,8 @@ export class OptionState {
   hitpointWarn: number;
   /** op_ptr->delay_factor. */
   delayFactor: number;
+  /** player->opts.lazymove_delay (0..255). */
+  lazymoveDelay: number;
   /** The birth_* values chosen at creation, frozen (immutable after birth). */
   private readonly birth: OptionValues;
 
@@ -106,6 +125,7 @@ export class OptionState {
     }
     this.hitpointWarn = clampWarn(init.hitpointWarn ?? DEFAULT_HITPOINT_WARN);
     this.delayFactor = init.delayFactor ?? DEFAULT_DELAY_FACTOR;
+    this.lazymoveDelay = clampByte(init.lazymoveDelay ?? DEFAULT_LAZYMOVE_DELAY);
     /* Freeze the birth-option snapshot: the birth_* values are locked now. */
     const birth: OptionValues = {};
     for (const name of BIRTH_NAMES) birth[name] = this.values[name] ?? false;
@@ -187,6 +207,7 @@ export class OptionState {
       values: { ...this.values },
       hitpointWarn: this.hitpointWarn,
       delayFactor: this.delayFactor,
+      lazymoveDelay: this.lazymoveDelay,
       birth: { ...this.birth },
     };
   }
@@ -203,6 +224,7 @@ export class OptionState {
     }
     state.hitpointWarn = clampWarn(data.hitpointWarn ?? DEFAULT_HITPOINT_WARN);
     state.delayFactor = data.delayFactor ?? DEFAULT_DELAY_FACTOR;
+    state.lazymoveDelay = clampByte(data.lazymoveDelay ?? DEFAULT_LAZYMOVE_DELAY);
     /* Restore the frozen birth snapshot (default table values if absent). */
     const birth = data.birth ?? {};
     const restored: OptionValues = {};
