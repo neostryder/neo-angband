@@ -45,6 +45,57 @@ export function menuLetter(i: number): string {
   return LETTERS[i] ?? "";
 }
 
+/** Coarse vertical navigation intent for a scrollable list or lettered menu. */
+export type MenuNav = "up" | "down" | "pageup" | "pagedown" | "home" | "end";
+
+/**
+ * Menu/list navigation intent from a key event, or null when the key is not
+ * navigation. The reference drives every menu cursor through target_dir_allow
+ * (ui-target.c:99-108) -> process_dir, where numpad digits and arrow keys are
+ * interchangeable directions; for a vertical list only the y component matters,
+ * so keypad 7/8/9 move up and 1/2/3 move down (ddy[7..9]=-1, ddy[1..3]=+1),
+ * while 4/6 (pure horizontal) do nothing. We mirror that here so the numpad
+ * works in menus regardless of NumLock: event.key is the digit when NumLock is
+ * ON and an Arrow* name when OFF, and event.code is Numpad* in both states (our
+ * belt-and-suspenders). This is the single helper every overlay handler shares
+ * so the "numpad is dead in menus" asymmetry cannot creep back in per-screen.
+ */
+export function menuNav(ev: KeyboardEvent): MenuNav | null {
+  switch (ev.key) {
+    case "ArrowUp":
+      return "up";
+    case "ArrowDown":
+      return "down";
+    case "PageUp":
+      return "pageup";
+    case "PageDown":
+      return "pagedown";
+    case "Home":
+      return "home";
+    case "End":
+      return "end";
+    default:
+      break;
+  }
+  const digit = /^[1-9]$/u.test(ev.key)
+    ? ev.key
+    : /^Numpad[1-9]$/u.test(ev.code)
+      ? ev.code.slice(6)
+      : "";
+  switch (digit) {
+    case "7":
+    case "8":
+    case "9":
+      return "up";
+    case "1":
+    case "2":
+    case "3":
+      return "down";
+    default:
+      return null;
+  }
+}
+
 /**
  * A scrollable full-screen text viewer (inventory, equipment, character sheet,
  * message history, help). Renders `title` at the top and `lines` below it,
@@ -94,27 +145,22 @@ export function showTextScreen(
       ev.stopImmediatePropagation();
       const { rows } = term.size();
       const page = Math.max(1, rows - BODY_TOP - 2);
-      switch (ev.key) {
-        case "Escape":
-        case "Enter":
-        case " ":
-          finish();
-          return;
-        case "ArrowDown":
-          top += 1;
-          break;
-        case "ArrowUp":
-          top = Math.max(0, top - 1);
-          break;
-        case "PageDown":
-          top += page;
-          break;
-        case "PageUp":
-          top = Math.max(0, top - page);
-          break;
-        default:
-          return;
+      if (ev.key === "Escape" || ev.key === "Enter" || ev.key === " ") {
+        finish();
+        return;
       }
+      // Scroll with arrows AND numpad digits (menuNav): the numpad must drive
+      // scrollable lists regardless of NumLock, not just the arrow keys.
+      const bodyRows = rows - BODY_TOP - 1;
+      const maxTop = Math.max(0, lines.length - bodyRows);
+      const nav = menuNav(ev);
+      if (!nav) return;
+      if (nav === "up") top = Math.max(0, top - 1);
+      else if (nav === "down") top += 1;
+      else if (nav === "pageup") top = Math.max(0, top - page);
+      else if (nav === "pagedown") top += page;
+      else if (nav === "home") top = 0;
+      else if (nav === "end") top = maxTop;
       paint();
     };
     window.addEventListener("keydown", onKey, true);
@@ -397,6 +443,18 @@ export interface SelectMenuOptions {
    * row the plain menu leaves blank - no layout shift for callers without it.
    */
   subtitle?: string;
+  /**
+   * A command-key layer laid over the a-z selection letters, mirroring the
+   * store menu's command keys (ui-store.c:1097-1120: p/g buy, s/d sell, l/x
+   * examine). Checked BEFORE positional-letter selection and cursor nav, so a
+   * command key takes precedence over the same letter's positional meaning
+   * (upstream guarantees the command and selection key sets never intersect).
+   * The handler receives the current cursor row; returning a number resolves
+   * the menu with THAT row index (respecting disabled), returning null/void
+   * consumes the key without resolving (the caller handled it, e.g. opened its
+   * own sub-flow, or it was a no-op).
+   */
+  commands?: Record<string, (cursor: number) => number | null | void>;
   /** Footer legend override; wins over the positional `footer` parameter. */
   footer?: string;
   /** Start the cursor on this row (skipped if it is disabled/out of range). */
@@ -507,6 +565,19 @@ export function selectFromMenu(
       }
       finish(i);
     };
+    const commands = extra?.commands;
+    const moveUp = (): void => {
+      for (let i = cursor - 1; i >= 0; i--) if (!items[i]?.disabled) { setCursor(i); return; }
+    };
+    const moveDown = (): void => {
+      for (let i = cursor + 1; i < items.length; i++) if (!items[i]?.disabled) { setCursor(i); return; }
+    };
+    const toHome = (): void => {
+      for (let i = 0; i < items.length; i++) if (!items[i]?.disabled) { setCursor(i); return; }
+    };
+    const toEnd = (): void => {
+      for (let i = items.length - 1; i >= 0; i--) if (!items[i]?.disabled) { setCursor(i); return; }
+    };
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -523,32 +594,43 @@ export function selectFromMenu(
         pick(cursor);
         return;
       }
-      if (ev.key === "ArrowDown") {
-        for (let i = cursor + 1; i < items.length; i++) {
-          if (!items[i]?.disabled) { setCursor(i); break; }
+      // Command-key layer (store buy/sell/examine, ui-store.c:1097-1120) sits
+      // above positional selection AND cursor nav, so a command letter beats
+      // both meanings (upstream keeps the two key sets disjoint).
+      if (commands && ev.key.length === 1) {
+        const cmd = commands[ev.key] ?? commands[ev.key.toLowerCase()];
+        if (cmd) {
+          const res = cmd(cursor);
+          if (typeof res === "number") pick(res);
+          return;
         }
-        paint();
-        return;
-      }
-      if (ev.key === "ArrowUp") {
-        for (let i = cursor - 1; i >= 0; i--) {
-          if (!items[i]?.disabled) { setCursor(i); break; }
-        }
-        paint();
-        return;
       }
       if (ev.key.length === 1) {
         // MN_CASELESS_TAGS: an explicit per-item tag (see MenuItem.tag) is
-        // matched case-insensitively first, so a menu with stable upstream
-        // letters (do_cmd_options' a/b/d/h) works regardless of caps lock /
-        // shift. Untagged rows keep the original exact-case positional match
-        // (a..z then A..Z) so every existing caller is unaffected.
+        // matched case-insensitively before nav so a tag letter/digit is
+        // honoured rather than swallowed as a cursor move. Untagged rows keep
+        // the original exact-case positional match (a..z then A..Z).
         const lower = ev.key.toLowerCase();
         const tagIdx = items.findIndex((it) => it.tag && it.tag.toLowerCase() === lower);
         if (tagIdx >= 0) {
           pick(tagIdx);
           return;
         }
+      }
+      // Cursor navigation: arrows AND numpad digits (menuNav), so the numpad
+      // drives menus regardless of NumLock (the "controls dead in menus" bug).
+      const nav = menuNav(ev);
+      if (nav) {
+        if (nav === "up") moveUp();
+        else if (nav === "down") moveDown();
+        else if (nav === "pageup") for (let i = 0; i < paintedBodyRows; i++) moveUp();
+        else if (nav === "pagedown") for (let i = 0; i < paintedBodyRows; i++) moveDown();
+        else if (nav === "home") toHome();
+        else if (nav === "end") toEnd();
+        paint();
+        return;
+      }
+      if (ev.key.length === 1) {
         const idx = LETTERS.indexOf(ev.key);
         if (idx >= 0 && idx < items.length) pick(idx);
       }

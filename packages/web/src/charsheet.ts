@@ -18,9 +18,11 @@
  * Keys follow do_cmd_change_name (ui-player.c L1219): 'h'/Space/ArrowLeft =
  * next mode, 'l'/ArrowRight = previous mode, 'c' = change name, 'f' = dump
  * the character to a text file, ESC/Enter = return. Mode 1 (the resist /
- * sustain / ability grid) uses the ui-entry.c system, which core explicitly
- * excludes (char-sheet.ts L19-23), so it renders as a clearly labelled
- * placeholder page rather than a faked grid.
+ * ability / hindrance / modifier + sustain grid) is built from the core
+ * characterGrid (ui-entry.c) data: wide mode tiles the four flag regions and
+ * the sustains block side by side to fill the screen (display_player_flag_info,
+ * ui-player.c:222-232 / 379-443); narrow mode stacks them into a scroll list.
+ * Only when no ui_entry packs are supplied does it fall back to a notice.
  *
  * Pure display: no game mutation, no RNG. Renaming flows OUT through
  * opts.onRename (the shell persists it); nothing here touches state.
@@ -59,7 +61,7 @@ import {
   statHeaderLine,
   statRowLine,
 } from "./screens";
-import { promptText } from "./overlay";
+import { promptText, menuNav } from "./overlay";
 import type { ScreenLine } from "./overlay";
 
 const LABEL = "#9aa0b4";
@@ -135,47 +137,77 @@ const PANEL_TITLES: Record<string, string> = {
 /** Stat sustain labels (display_player_sust_info, one row per STAT). */
 const STAT_LABELS = ["Str", "Int", "Wis", "Dex", "Con"] as const;
 
-/**
- * characterGridLines: render the mode-1 grid (core characterGrid) as scrollable
- * ScreenLines. Each row is the entry label (coloured by its combined value)
- * followed by one cell per equipment slot then the player "@" column, exactly
- * the display_resistance_panel / display_player_sust_info data - the Term
- * placement is this shell's business (game/ui-entry.ts's documented split).
- */
-function characterGridLines(state: GameState, config: UiEntryConfig): ScreenLine[] {
-  const { resistPanels, statModPanel } = characterGrid(state, config);
-  const p = state.actor.player;
-  const lines: ScreenLine[] = [];
+/** res_nlabel: the 6-char label column of a flag region (configure_char_sheet
+ * L223, res_nlabel = 6). A region is label(6) + one cell per body slot + the
+ * '@' player column, so its width is res_nlabel + body.count + 1. */
+const RES_LABEL_WIDTH = 6;
 
-  /* Equippy header: one glyph per body slot, then '@' for the player column. */
-  const equippy: { text: string; color: string }[] = [{ text: " ".repeat(7), color: LABEL }];
+/**
+ * buildGridBlock: render ONE characterGrid panel (a resist / ability /
+ * hindrance / modifier region, or the sustains block) as a self-contained
+ * ScreenLine block - a title, the slot-letter header, the equippy glyph row,
+ * then one row per entry (a 6-char label in its own colour + one cell per
+ * equipment slot + the '@' player column), matching display_resistance_panel /
+ * display_player_sust_info (ui-player.c:379-421). The caller blits the block at
+ * whatever (x, y) the layout wants - wide mode tiles four of these across the
+ * screen, narrow mode stacks them.
+ */
+function buildGridBlock(
+  state: GameState,
+  panel: UiGridPanel,
+  title: string,
+  statLabels?: readonly string[],
+): ScreenLine[] {
+  const p = state.actor.player;
+  const out: ScreenLine[] = [];
+  out.push({ text: title, color: TITLE });
+
+  /* Slot-letter header: label pad, a letter per body slot, then '@'. */
+  let hdr = " ".repeat(RES_LABEL_WIDTH);
+  for (let i = 0; i < p.body.count; i++) hdr += String.fromCharCode(97 + i);
+  hdr += "@";
+  out.push({ text: hdr, color: LABEL });
+
+  /* Equippy row: the item glyph in each slot (or '.'), blank under '@'. */
+  const equippy: { text: string; color: string }[] = [
+    { text: " ".repeat(RES_LABEL_WIDTH), color: LABEL },
+  ];
   for (let i = 0; i < p.body.count; i++) {
     const obj = gearGet(state.gear, p.equipment[i] ?? 0);
     equippy.push({ text: obj ? obj.kind.dChar : ".", color: obj ? FG : DIM });
   }
-  equippy.push({ text: "@", color: TITLE });
-  lines.push({ text: equippy.map((r) => r.text).join(""), color: FG, runs: equippy });
+  equippy.push({ text: " ", color: FG });
+  out.push({ text: equippy.map((r) => r.text).join(""), color: FG, runs: equippy });
 
-  const pushPanel = (panel: UiGridPanel, title: string, labelFor: (i: number) => string): void => {
-    lines.push({ text: "", color: FG });
-    lines.push({ text: title, color: TITLE });
-    panel.rows.forEach((row, i) => {
-      const label = (row.label || labelFor(i)).padEnd(7).slice(0, 7);
-      const runs: { text: string; color: string }[] = [
-        { text: label, color: colorToCss(row.labelColor) },
-      ];
-      for (const cell of row.cells) {
-        runs.push({ text: cell.symbol, color: colorToCss(cell.color) });
-      }
-      lines.push({ text: runs.map((r) => r.text).join(""), color: FG, runs });
-    });
-  };
+  /* One row per entry: 6-char label (own colour) + a cell per slot + player. */
+  panel.rows.forEach((row, i) => {
+    const label = (row.label || statLabels?.[i] || "").padEnd(RES_LABEL_WIDTH).slice(0, RES_LABEL_WIDTH);
+    const runs: { text: string; color: string }[] = [
+      { text: label, color: colorToCss(row.labelColor) },
+    ];
+    for (const cell of row.cells) {
+      runs.push({ text: cell.symbol, color: colorToCss(cell.color) });
+    }
+    out.push({ text: runs.map((r) => r.text).join(""), color: FG, runs });
+  });
+  return out;
+}
 
+/**
+ * characterGridLines: the NARROW (phone) mode-1 layout - the flag regions and
+ * the sustains block stacked vertically into one scrollable column. Wide mode
+ * does not use this; it tiles the same buildGridBlock blocks side by side.
+ */
+function characterGridLines(state: GameState, config: UiEntryConfig): ScreenLine[] {
+  const { resistPanels, statModPanel } = characterGrid(state, config);
+  const lines: ScreenLine[] = [];
   for (const panel of resistPanels) {
-    pushPanel(panel, PANEL_TITLES[panel.key] ?? panel.key, () => "");
+    for (const l of buildGridBlock(state, panel, PANEL_TITLES[panel.key] ?? panel.key)) {
+      lines.push(l);
+    }
+    lines.push({ text: "", color: FG });
   }
-  pushPanel(statModPanel, "Sustains", (i) => STAT_LABELS[i] ?? "");
-
+  for (const l of buildGridBlock(state, statModPanel, "Sustains", STAT_LABELS)) lines.push(l);
   return lines;
 }
 
@@ -540,20 +572,36 @@ export function showCharacterSheet(
           if (hy >= rows - 1) break;
           printLine(0, hy++, line);
         }
+      } else if (!gridConfig) {
+        // No ui_entry packs: a labelled notice instead of a faked grid.
+        let y = 2;
+        for (const line of modeOnePlaceholder()) printLine(0, y++, line);
       } else {
-        // Mode 1: the resist / ability / hindrance / modifier / sustain grid
-        // (display_player_flag_info). The stat table stays top-right; the grid
-        // scrolls at the left since it exceeds 24 rows (its Term draw is the
-        // shell's per game/ui-entry.ts).
-        const lines = modeOneLines();
-        const bodyRows = rows - 3;
-        const maxTop = Math.max(0, lines.length - bodyRows);
-        if (top > maxTop) top = maxTop;
-        for (let r = 0; r < bodyRows; r++) {
-          const line = lines[top + r];
-          if (!line) break;
-          printLine(0, 2 + r, line);
-        }
+        // Mode 1: the resist / ability / hindrance / modifier grid + sustains,
+        // laid out as side-by-side blocks that FILL the screen, mirroring
+        // configure_char_sheet + display_player (ui-player.c:222-232, 379-443)
+        // - four flag regions tiled left-to-right at res_cols stride, the
+        // sustains block above them, and the stat table kept top-right. (The
+        // old code stacked them into one narrow scrolling column - the bug.)
+        const { resistPanels, statModPanel } = characterGrid(state, gridConfig);
+        const blit = (block: ScreenLine[], x: number, y0: number): number => {
+          let y = y0;
+          for (const line of block) {
+            if (y >= rows - 1) break;
+            printLine(x, y, line);
+            y += 1;
+          }
+          return y;
+        };
+        // Sustains top-left (display_player_sust_info); regions tile below it.
+        const afterSust = blit(buildGridBlock(state, statModPanel, "Sustains", STAT_LABELS), 0, 2);
+        const regionRow = afterSust + 1;
+        // res_regions[i].col = i * (res_cols + 1); res_cols = 6 + body.count + 1
+        // (label + one cell per slot + the '@' player column).
+        const stride = RES_LABEL_WIDTH + state.actor.player.body.count + 1 + 1;
+        resistPanels.forEach((panel, i) => {
+          blit(buildGridBlock(state, panel, PANEL_TITLES[panel.key] ?? panel.key), i * stride, regionRow);
+        });
       }
 
       term.print(0, rows - 1, wideFooter().slice(0, cols - 1), DIM);
@@ -673,20 +721,20 @@ export function showCharacterSheet(
             ...(opts.seedRandart !== undefined ? { seedRandart: opts.seedRandart } : {}),
           });
           return;
-        case "ArrowDown":
-          top += 1;
+        default: {
+          // Arrows AND numpad digits scroll (menuNav), so the numpad is not
+          // dead here when NumLock is on. ArrowLeft/Right (cycle) are handled
+          // above; menuNav only reports vertical intent (4/6 stay page cycles).
+          const nav = menuNav(ev);
+          if (!nav) return;
+          if (nav === "up") top = Math.max(0, top - 1);
+          else if (nav === "down") top += 1;
+          else if (nav === "pageup") top = Math.max(0, top - page);
+          else if (nav === "pagedown") top += page;
+          else if (nav === "home") top = 0;
+          else if (nav === "end") top += page; // clamped in paint()
           break;
-        case "ArrowUp":
-          top = Math.max(0, top - 1);
-          break;
-        case "PageDown":
-          top += page;
-          break;
-        case "PageUp":
-          top = Math.max(0, top - page);
-          break;
-        default:
-          return;
+        }
       }
       paint();
     };
