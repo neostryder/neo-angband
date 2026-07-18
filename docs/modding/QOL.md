@@ -47,13 +47,13 @@ OFF) by the bug-fix mod.
 
 ### `qol.autoDig` - Auto-dig on walk (default ON)
 
-Ported from AIngband's `do_cmd_movement_tunnel_test` / `move_player` change.
+Ported from neostryder's Angband fork (`do_cmd_movement_tunnel_test` / `move_player` change).
 Walking into a rubble pile or mineral vein you can currently tunnel through
 (a known, non-permanent, impassable, diggable grid with a positive dig chance
 given your weapon / best pack digger) starts one dig attempt and spends a move,
 instead of the faithful no-energy "there is a wall in the way" bump. You never
 step onto the dug-out grid in the same move, and each walk is a single attempt
-(you keep walking to keep digging), matching AIngband.
+(you keep walking to keep digging), matching the source fork.
 
 - Core: `packages/core/src/game/cave-cmd.ts` (`movementTunnelTest`,
   `movementAutoDig`, reusing the ported `do_cmd_tunnel_aux` dig roll and
