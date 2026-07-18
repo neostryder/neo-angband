@@ -25,8 +25,10 @@
  * hidden/closed. 'S' saves on demand; 'N' rolls a new character (allowed after
  * death, reusing the same save slot - faithful to the original's death flow).
  *
- * The render surface is responsive: it fills the viewport at any size and, on
- * narrow (phone / portrait) screens, drops the sidebar for a compact layout.
+ * The render surface is responsive: it fills the viewport at any size. The
+ * sidebar mode ('=' -> (o), SIDEBAR_MODE) picks Left (the classic status
+ * column), Top (a one-line vitals header), or None; a narrow (phone / portrait)
+ * screen that cannot fit the Left column falls back to Top.
  * Touch devices get tap-to-move plus an on-screen action bar.
  */
 
@@ -298,7 +300,7 @@ import {
 import type { Store } from "@neo-angband/core";
 import { runHelp } from "./help";
 import { runOptionsMenu } from "./options";
-import type { TileModeMenu } from "./options";
+import type { TileModeMenu, SidebarModeMenu } from "./options";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
@@ -739,6 +741,36 @@ const tileModeMenu: TileModeMenu = {
   apply: (grafID: number) => applyTileMode(grafID, true),
 };
 
+// Sidebar mode (do_cmd_sidebar_mode, ui-options.c): SIDEBAR_MODE is a UI-term
+// display setting (angband_term[0]->sidebar_mode), not a player option, so it
+// lives here in the web layer and persists to localStorage (upstream saves it
+// to a pref file, not the savefile). Left = the classic 13-column status
+// column; Top = a one-line vitals header over a full-width map; None = no
+// vitals furniture at all. viewport() reads this to pick the layout.
+const SIDEBAR_MODE_KEY = "neo-angband:sidebar-mode";
+const SIDEBAR_MODES = ["Left", "Top", "None"] as const; // SIDEBAR_LEFT/TOP/NONE
+type SidebarLayout = "left" | "top" | "none";
+
+function readSidebarMode(): number {
+  const stored = Number(localStorage.getItem(SIDEBAR_MODE_KEY));
+  return Number.isInteger(stored) && stored >= 0 && stored < SIDEBAR_MODES.length
+    ? stored
+    : 0; // default SIDEBAR_LEFT
+}
+let sidebarMode = readSidebarMode();
+
+const sidebarModeMenu: SidebarModeMenu = {
+  modes: SIDEBAR_MODES,
+  current: () => sidebarMode,
+  set: (index: number) => {
+    const n = SIDEBAR_MODES.length;
+    sidebarMode = ((index % n) + n) % n;
+    if (sidebarMode === 0) localStorage.removeItem(SIDEBAR_MODE_KEY);
+    else localStorage.setItem(SIDEBAR_MODE_KEY, String(sidebarMode));
+    render();
+  },
+};
+
 let message =
   loadedNote ||
   `Welcome. Move (numpad/arrows/tap); 'g' get, '>' descend, 'i' inventory, 'e' equip, 'C' character, 'S' save, 'N' new, 'V' scores. (seed ${seed})`;
@@ -1011,7 +1043,7 @@ async function runContextMenuPlayerOther(): Promise<void> {
       await openIgnoreSetup();
       break;
     case "options":
-      await runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu);
+      await runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu, sidebarModeMenu);
       autosave(true);
       break;
     case "help":
@@ -3394,7 +3426,7 @@ async function openGameMenu(): Promise<void> {
       render();
       break;
     case "options":
-      await runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu);
+      await runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu, sidebarModeMenu);
       autosave(true); // flush any option change to the per-slot save
       break;
     case "mods":
@@ -4103,11 +4135,13 @@ function renderStatusLine(originX: number, row: number, maxCols: number): void {
 }
 
 /**
- * The map viewport geometry for the current terminal size. Narrow (phone /
- * portrait) viewports use a COMPACT layout: the 13-column sidebar is dropped
- * so the map fills the full width, with a one-line vitals header under the
- * message row. Roomy screens keep the classic left sidebar. Kept as a helper
- * so the touch handler maps a tapped cell back to a grid square identically.
+ * The map viewport geometry for the current terminal size and sidebar mode
+ * (SIDEBAR_MODE, set via '=' -> (o)). Left keeps the classic 13-column status
+ * column; Top drops it for a full-width map with a one-line vitals header under
+ * the message row; None drops all vitals furniture for a full-width, full-height
+ * map. A narrow (phone / portrait) screen cannot fit the Left column, so a Left
+ * choice falls back to Top there. Kept as a helper so the touch handler maps a
+ * tapped cell back to a grid square identically.
  *
  * FLAGGED NO-OP: center_player (option, normal: false) is not read here. This
  * always recenters the camera on the player every frame, which is upstream's
@@ -4128,6 +4162,7 @@ let locateCam: Loc | null = null;
 let locateActive = false;
 
 function viewport(focus?: Loc): {
+  layout: SidebarLayout;
   compact: boolean;
   mapOriginX: number;
   mapTop: number;
@@ -4137,9 +4172,18 @@ function viewport(focus?: Loc): {
   camY: number;
 } {
   const { cols, rows } = term.size();
-  const compact = cols < 48;
-  const mapOriginX = compact ? 0 : SIDEBAR_W;
-  const mapTop = compact ? 2 : 1; // message row (+ a vitals row when compact)
+  // The user's sidebar mode ('=' -> (o), SIDEBAR_MODE) picks the layout: Left =
+  // the classic 13-column column, Top = a one-line vitals header, None = no
+  // furniture. A 13-column column needs a roomy width, so on a genuinely narrow
+  // (phone / portrait) screen a Left choice falls back to Top - a browser
+  // necessity upstream's fixed terminal never faces. Top/None hold at any width.
+  const tiny = cols < 48;
+  const mode = SIDEBAR_MODES[sidebarMode] ?? "Left";
+  const layout: SidebarLayout =
+    mode === "None" ? "none" : mode === "Top" ? "top" : tiny ? "top" : "left";
+  const compact = layout !== "left";
+  const mapOriginX = layout === "left" ? SIDEBAR_W : 0;
+  const mapTop = layout === "top" ? 2 : 1; // Top adds a vitals row under the msg row
   const mapCols = cols - mapOriginX;
   const mapRows = rows - mapTop - 1; // the last row is the status line
   let camX: number, camY: number;
@@ -4151,7 +4195,7 @@ function viewport(focus?: Loc): {
     camX = center.x - Math.floor(mapCols / 2);
     camY = center.y - Math.floor(mapRows / 2);
   }
-  return { compact, mapOriginX, mapTop, mapCols, mapRows, camX, camY };
+  return { layout, compact, mapOriginX, mapTop, mapCols, mapRows, camX, camY };
 }
 
 /** Selected sidebar fields shown inline on the compact-layout vitals row. */
@@ -4199,7 +4243,7 @@ function render(targeting?: TargetingOverlay): void {
   const { cols, rows } = term.size();
   term.clear();
 
-  const { compact, mapOriginX, mapTop, mapCols, mapRows, camX, camY } =
+  const { layout, mapOriginX, mapTop, mapCols, mapRows, camX, camY } =
     viewport(targeting?.cursor);
   const monsterAt = monsterIndex();
   const objectAt = objectIndex();
@@ -4330,8 +4374,10 @@ function render(targeting?: TargetingOverlay): void {
     });
   }
 
-  if (compact) renderCompactVitals(1, cols);
-  else renderSidebar(rows);
+  if (layout === "top") renderCompactVitals(1, cols);
+  else if (layout === "left") renderSidebar(rows);
+  // layout === "none": no vitals furniture at all - a full-width, full-height
+  // map (vitals still reachable via the 'C' character screen / status line).
 
   if (targeting) {
     // The look description takes the message row; the bottom status row
@@ -4779,7 +4825,7 @@ window.addEventListener("keydown", (ev) => {
       { o: "C", act: () => void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())) },
       { o: "~", act: () => void openModal(openKnowledgeMenu) },
       // Utility/assorted (cmd_util, ui-game.c:196-203).
-      { o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu)).then(() => autosave(true)); } },
+      { o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu, sidebarModeMenu)).then(() => autosave(true)); } },
       { o: "Q", act: () => void openModal(retireCmd) },
       { o: ")", act: () => screenDumpCmd() },
       // Hidden commands (cmd_hidden, ui-game.c:211-223).
@@ -4962,7 +5008,7 @@ function installTouchActionBar(): void {
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())); }],
     ["Hist", () => { void openModal(() => showTextScreen(term, "Player history", historyLines(state))); }],
     ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
-    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu)).then(() => autosave(true)); }],
+    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu, sidebarModeMenu)).then(() => autosave(true)); }],
     ["Help", () => { void openModal(() => runHelp(term)); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     ["Switch", () => { switchCharacter(); }],

@@ -24,12 +24,17 @@
  *       ignore-setup work is reused verbatim, not duplicated.
  *   (d) Set base delay factor - do_cmd_delay
  *   (h) Set hitpoint warning - do_cmd_hp_warn
+ *   (m) Set movement delay - do_cmd_lazymove_delay, backed by the core
+ *       OptionState.lazymoveDelay scalar (saved and restored like delayFactor);
+ *       see runLazymoveDelayPrompt for the modelled-but-inert-effect note.
+ *   (o) Set sidebar mode - do_cmd_sidebar_mode. Upstream's SIDEBAR_MODE is a
+ *       UI-term display global (angband_term[0]->sidebar_mode), NOT a player
+ *       option, so it lives in the web layer (main.ts, localStorage) and is
+ *       injected here exactly like the graphics tile-mode selector below.
  * Omitted (documented, not silently dropped):
- *   (w) Subwindow setup / (o) Sidebar mode - no subwindows/SIDEBAR_MODE
- * modelled; ({) Auto-inscription / (e) keymaps / (c) colours / (v) visuals /
- * (s/t/u/p) pref-file dump-load - no filesystem, the core save IS the
- * persistence; (m) Set movement delay - lazymove_delay is not modelled in
- * OptionState (see options.ts's own doc comment).
+ *   (w) Subwindow setup - no subwindows modelled; ({) Auto-inscription /
+ * (e) keymaps / (c) colours / (v) visuals / (s/t/u/p) pref-file dump-load -
+ * no filesystem, the core save IS the persistence.
  *
  * PERSISTENCE: every toggle/setter here calls straight into the live
  * OptionState (state.options), which is already serialized into the core
@@ -68,7 +73,12 @@
  * construction.
  */
 
-import { OPTION_ENTRIES, DEFAULT_HITPOINT_WARN, DEFAULT_DELAY_FACTOR } from "@neo-angband/core";
+import {
+  OPTION_ENTRIES,
+  DEFAULT_HITPOINT_WARN,
+  DEFAULT_DELAY_FACTOR,
+  DEFAULT_LAZYMOVE_DELAY,
+} from "@neo-angband/core";
 import type { GameState } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
 import { selectFromMenu, promptNumber, menuNav } from "./overlay";
@@ -330,6 +340,94 @@ async function runHitpointWarnPrompt(term: GlyphTerm, state: GameState): Promise
 }
 
 /**
+ * (m) Set movement delay (do_cmd_lazymove_delay, ui-options.c L1162):
+ * player->opts.lazymove_delay, MIN(delay, 255)-clamped - promptNumber's [0, 255]
+ * clamp is exactly upstream's rule (same as the base delay factor). Upstream
+ * shows "Current movement delay: %d (%d msec)" with the msec being value*10.
+ *
+ * FLAGGED NO-OP EFFECT: the value is fully modelled in core OptionState and
+ * round-trips through the save, but toggling it has no visible effect in this
+ * shell. Upstream lazymove_delay feeds inkey_scan (ui-input.c L1565/1690) to
+ * pace disturbance checks during repeated "lazy" movement; the web input loop
+ * is event-driven (keydown -> command), not that polling subsystem, so there
+ * is nothing to pace. Persisting the value now means a future input-timing
+ * port can honour it without a save-format change - a real gap, not a silent
+ * one (mirrors center_player etc. in viewport()'s doc comment, main.ts).
+ */
+async function runLazymoveDelayPrompt(term: GlyphTerm, state: GameState): Promise<void> {
+  const current = state.options?.lazymoveDelay ?? DEFAULT_LAZYMOVE_DELAY;
+  const val = await promptNumber(
+    term,
+    "Command: Movement Delay Factor",
+    current,
+    0,
+    255,
+    `Current movement delay: ${current} (${current * 10} msec)`,
+  );
+  if (val === null || !state.options) return;
+  state.options.lazymoveDelay = val;
+}
+
+/**
+ * (o) Set sidebar mode selector (do_cmd_sidebar_mode, ui-options.c L1085).
+ * SIDEBAR_MODE is a UI-term display setting (Left / Top / None), not a player
+ * option, so the state + persistence live in the web layer and are injected
+ * here (like TileModeMenu). `current()` reads the active mode index, `set()`
+ * persists + applies it. The caller (main.ts) owns the layout + localStorage.
+ */
+export interface SidebarModeMenu {
+  /** Mode names in cycle order: Left, Top, None (SIDEBAR_LEFT/TOP/NONE). */
+  modes: readonly string[];
+  /** The active mode index. */
+  current: () => number;
+  /** Apply + persist a chosen mode index (repaints the live layout). */
+  set: (index: number) => void;
+}
+
+/**
+ * do_cmd_sidebar_mode's loop (ui-options.c L1085): show the current mode and
+ * cycle Left -> Top -> None -> Left on any key, ESC to return. Upstream mutates
+ * SIDEBAR_MODE live on each cycle; set() does the same (persist + repaint).
+ */
+async function runSidebarModePage(
+  term: GlyphTerm,
+  sidebar: SidebarModeMenu,
+): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const paint = (): void => {
+      const { cols } = term.size();
+      term.clear();
+      term.print(0, 0, "Command: Sidebar Mode".slice(0, cols - 1), TITLE);
+      const name = sidebar.modes[sidebar.current()] ?? "?";
+      term.print(0, 2, `Current mode: ${name}`.slice(0, cols - 1), FG);
+      term.print(
+        0,
+        4,
+        "[ any key: cycle Left/Top/None, ESC to return ]".slice(0, cols - 1),
+        DIM,
+      );
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (ev.key === "Escape") {
+        window.removeEventListener("keydown", onKey, true);
+        resolve();
+        return;
+      }
+      // A bare modifier press is not a command (upstream inkey() never returns
+      // one); ignore so it does not count as a cycle.
+      if (["Shift", "Control", "Alt", "Meta"].includes(ev.key)) return;
+      const n = sidebar.modes.length;
+      if (n > 0) sidebar.set((sidebar.current() + 1) % n);
+      paint();
+    };
+    window.addEventListener("keydown", onKey, true);
+    paint();
+  });
+}
+
+/**
  * do_cmd_options ('=', ui-options.c L2066): the top-level Options Menu loop.
  * Reuses selectFromMenu (extended with per-item stable tags, see overlay.ts's
  * MenuItem.tag) for the page list, so upstream's a/b/i/d/h letters stay
@@ -379,7 +477,11 @@ export async function runOptionsMenu(
   state: GameState,
   openIgnoreSetup: () => Promise<void>,
   tiles?: TileModeMenu,
+  sidebar?: SidebarModeMenu,
 ): Promise<void> {
+  // Upstream order (option_actions[], ui-options.c L2038): a, b, x, i, then the
+  // numeric setters d, h, m, and o. The (g) graphics row is a web-only addition
+  // (upstream picks graphics outside this menu), kept last.
   const items: MenuItem[] = [
     { label: "User interface options", tag: "a" },
     { label: "Birth (difficulty) options", tag: "b" },
@@ -387,9 +489,12 @@ export async function runOptionsMenu(
     { label: "Item ignoring setup", tag: "i" },
     { label: "Set base delay factor", tag: "d" },
     { label: "Set hitpoint warning", tag: "h" },
+    { label: "Set movement delay", tag: "m" },
   ];
+  if (sidebar) items.push({ label: "Set sidebar mode", tag: "o" });
   if (tiles) items.push({ label: "Graphics (tiles) mode", tag: "g" });
-  const tagHint = tiles ? "a/b/x/i/d/h/g" : "a/b/x/i/d/h";
+  // Derive the hint from the live rows so it can never drift out of sync.
+  const tagHint = items.map((i) => i.tag).join("/");
   for (;;) {
     const idx = await selectFromMenu(
       term,
@@ -416,6 +521,12 @@ export async function runOptionsMenu(
         break;
       case "h":
         await runHitpointWarnPrompt(term, state);
+        break;
+      case "m":
+        await runLazymoveDelayPrompt(term, state);
+        break;
+      case "o":
+        if (sidebar) await runSidebarModePage(term, sidebar);
         break;
       case "g":
         if (tiles) await runTileModePage(term, tiles);

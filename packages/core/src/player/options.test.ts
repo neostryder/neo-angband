@@ -3,8 +3,10 @@ import { OPTION_ENTRIES } from "../generated/options";
 import {
   DEFAULT_DELAY_FACTOR,
   DEFAULT_HITPOINT_WARN,
+  DEFAULT_LAZYMOVE_DELAY,
   OptionState,
 } from "./options";
+import type { OptionStateData } from "./options";
 
 describe("OptionState defaults (option.c options_init_defaults)", () => {
   it("seeds every option from OPTION_ENTRIES.normal", () => {
@@ -22,10 +24,21 @@ describe("OptionState defaults (option.c options_init_defaults)", () => {
     expect(DEFAULT_DELAY_FACTOR).toBe(40);
   });
 
+  it("defaults lazymove_delay to 0 (options_init_defaults never sets it)", () => {
+    expect(new OptionState().lazymoveDelay).toBe(DEFAULT_LAZYMOVE_DELAY);
+    expect(DEFAULT_LAZYMOVE_DELAY).toBe(0);
+  });
+
   it("clamps hitpoint_warn into 0..9", () => {
     expect(new OptionState({ hitpointWarn: 20 }).hitpointWarn).toBe(9);
     expect(new OptionState({ hitpointWarn: -5 }).hitpointWarn).toBe(0);
     expect(new OptionState({ hitpointWarn: 7 }).hitpointWarn).toBe(7);
+  });
+
+  it("clamps lazymove_delay into 0..255 (do_cmd_lazymove_delay MIN(delay,255))", () => {
+    expect(new OptionState({ lazymoveDelay: 300 }).lazymoveDelay).toBe(255);
+    expect(new OptionState({ lazymoveDelay: -5 }).lazymoveDelay).toBe(0);
+    expect(new OptionState({ lazymoveDelay: 42 }).lazymoveDelay).toBe(42);
   });
 
   it("reports an unknown option as false", () => {
@@ -104,6 +117,7 @@ describe("OptionState serialize / restore round trip", () => {
     const opts = new OptionState({
       overrides: { birth_randarts: true, cheat_hear: true },
       hitpointWarn: 5,
+      lazymoveDelay: 7,
     });
     opts.set("effective_speed", true);
 
@@ -115,6 +129,7 @@ describe("OptionState serialize / restore round trip", () => {
     }
     expect(restored.hitpointWarn).toBe(5);
     expect(restored.delayFactor).toBe(DEFAULT_DELAY_FACTOR);
+    expect(restored.lazymoveDelay).toBe(7);
     expect(restored.birthValue("birth_randarts")).toBe(true);
     expect(restored.get("score_hear")).toBe(true);
     expect(restored.get("effective_speed")).toBe(true);
@@ -125,16 +140,20 @@ describe("OptionState serialize / restore round trip", () => {
   });
 
   it("fills missing options from the table default (old saves)", () => {
-    /* Simulate a save that predates a later option: only a subset present. */
+    /* Simulate a save that predates a later option: only a subset present.
+     * lazymoveDelay is also absent (it postdates the first save format), so
+     * this doubles as the old-save back-compat check for that scalar. */
     const partial = {
       values: { pickup_always: true },
       hitpointWarn: 3,
       delayFactor: 40,
       birth: {},
-    };
+    } as unknown as OptionStateData;
     const restored = OptionState.restore(partial);
     expect(restored.get("pickup_always")).toBe(true);
     /* pickup_inven ships true and was absent -> table default. */
     expect(restored.get("pickup_inven")).toBe(true);
+    /* lazymove_delay was absent -> its default (0). */
+    expect(restored.lazymoveDelay).toBe(0);
   });
 });
