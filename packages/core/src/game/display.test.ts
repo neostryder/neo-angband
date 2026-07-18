@@ -83,13 +83,15 @@ describe("sidebar level / exp labels (ui-display.c L207/L226)", () => {
     p.exp = 0;
     p.maxExp = 0;
     let exp = field(sidebarModel(state), "exp");
-    expect(exp[0]?.text).toBe("NXT");
+    /* Label padded to width 4 so the value run starts at col+4 (L245/L248). */
+    expect(exp[0]?.text).toBe("NXT ");
+    expect(exp[0]?.text.length).toBe(4);
     expect(exp[1]?.color).toBe(COLOUR_L_GREEN);
 
     p.exp = 50;
     p.maxExp = 100;
     exp = field(sidebarModel(state), "exp");
-    expect(exp[0]?.text).toBe("Nxt");
+    expect(exp[0]?.text).toBe("Nxt ");
     expect(exp[1]?.color).toBe(COLOUR_YELLOW);
   });
 });
@@ -121,20 +123,35 @@ describe("sidebar speed (prt_speed_aux, ui-display.c L475)", () => {
   });
 });
 
-describe("sidebar stat drain (prt_stat, ui-display.c L153)", () => {
+describe("sidebar stat drain (prt_stat, ui-display.c:153-171)", () => {
   it("uses the reduced label + yellow when a stat is drained, full label + green otherwise", () => {
     const state = makeState();
     const p = state.actor.player;
     p.statCur[STAT.STR] = 18;
     p.statMax[STAT.STR] = 18;
     let str = field(sidebarModel(state, { statUse: p.statCur }), "str");
-    expect(str[0]?.text).toBe("STR: ");
+    /* Label padded to width 6 so the value run starts at col+6 (L161/L165). */
+    expect(str[0]?.text).toBe("STR:  ");
     expect(str[1]?.color).toBe(COLOUR_L_GREEN);
 
     p.statCur[STAT.STR] = 16; /* drained below the max */
     str = field(sidebarModel(state, { statUse: p.statCur }), "str");
-    expect(str[0]?.text).toBe("Str: ");
+    expect(str[0]?.text).toBe("Str:  ");
     expect(str[1]?.color).toBe(COLOUR_YELLOW);
+  });
+
+  it("places the value at col+6 with a blank at col 5, and the '!' at col+3 (L169-170)", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    p.statCur[STAT.STR] = 18 + 100;
+    p.statMax[STAT.STR] = 18 + 100; /* natural maximum -> '!' overwrite */
+    const str = field(sidebarModel(state, { statUse: p.statCur }), "str");
+    const label = str[0]?.text ?? "";
+    expect(label.length).toBe(6); /* value begins at index 6 */
+    expect(label[3]).toBe("!"); /* put_str("!", col + 3) */
+    expect(label[5]).toBe(" "); /* blank column at col 5 */
+    expect(str[1]?.text).toBe("18/100"); /* six-char cnv_stat value of stat_use 118 */
+    expect(str[1]?.text.length).toBe(6);
   });
 });
 
@@ -166,6 +183,8 @@ describe("status level feeling (prt_level_feeling, ui-display.c L1053)", () => {
     const lf = field(statusLineModel(state), "level_feeling");
     expect(lf[0]).toEqual({ text: "LF:", color: COLOUR_WHITE });
     expect(lf[3]).toEqual({ text: "?", color: COLOUR_WHITE });
+    /* One trailing gap column baked in (return == ... + strlen(obj) + 1, L1121). */
+    expect(lf[4]).toEqual({ text: " ", color: COLOUR_WHITE });
   });
 
   it("shows reversed danger/treasure symbols and colours once explored", () => {
@@ -186,16 +205,52 @@ describe("status level feeling (prt_level_feeling, ui-display.c L1053)", () => {
   });
 });
 
-describe("status state (prt_state, ui-display.c L957)", () => {
-  it("renders a ten-char rest count and a repeat count", () => {
+describe("status state (prt_state, ui-display.c:957-1017)", () => {
+  it("renders a ten-char rest field plus one trailing gap, and a repeat count", () => {
     const state = makeState();
+    /* return == strlen(text) + 1 (L1016): the 10-char field gets one trailing gap. */
     let st = field(statusLineModel(state, { isResting: true, restingCount: 5 }), "state");
-    expect(st[0]?.text).toBe("Rest     5");
-    expect(st[0]?.text.length).toBe(10);
+    expect(st[0]?.text).toBe("Rest     5 ");
+    expect(st[0]?.text.length).toBe(11);
     expect(st[0]?.color).toBe(COLOUR_WHITE);
 
     st = field(statusLineModel(state, { nRepeats: 5 }), "state");
-    expect(st[0]?.text).toBe("Repeat   5");
+    expect(st[0]?.text).toBe("Repeat   5 ");
+  });
+
+  it("reserves a single blank column when idle (return == strlen(\"\") + 1)", () => {
+    const state = makeState();
+    const st = field(statusLineModel(state), "state");
+    expect(st).toEqual([{ text: " ", color: COLOUR_WHITE }]);
+  });
+});
+
+describe("status segments bake exactly one trailing gap (update_statusline_aux widths)", () => {
+  it("unignore returns 'Unignoring ' (strlen + 1, L1285)", () => {
+    const state = makeState();
+    const runs = field(statusLineModel(state, { unignoring: true }), "unignore");
+    expect(runs).toEqual([{ text: "Unignoring ", color: COLOUR_WHITE }]);
+  });
+
+  it("recall returns 'Recall ' (sizeof \"Recall\" == 7, L929)", () => {
+    const state = makeState();
+    state.actor.player.wordRecall = 10;
+    const runs = field(statusLineModel(state), "recall");
+    expect(runs).toEqual([{ text: "Recall ", color: COLOUR_WHITE }]);
+  });
+
+  it("descent returns 'Descent ' (sizeof \"Descent\" == 8, L943)", () => {
+    const state = makeState();
+    state.actor.player.deepDescent = 5;
+    const runs = field(statusLineModel(state), "descent");
+    expect(runs).toEqual([{ text: "Descent ", color: COLOUR_WHITE }]);
+  });
+
+  it("study returns 'Study (N) ' (strlen + 1, L1241)", () => {
+    const state = makeState();
+    state.actor.player.upkeep.newSpells = 2;
+    const runs = field(statusLineModel(state), "study");
+    expect(runs[0]?.text).toBe("Study (2) ");
   });
 });
 
@@ -203,7 +258,9 @@ describe("skipped indicators and handler-table order", () => {
   it("returns empty runs for inactive status indicators", () => {
     const state = makeState();
     const model = statusLineModel(state);
-    for (const key of ["moves", "unignore", "recall", "descent", "state", "study", "tmd", "dtrap"]) {
+    /* "state" is excluded: idle prt_state still reserves one blank column
+       (return == strlen("") + 1 == 1, L1016), so it is never empty. */
+    for (const key of ["moves", "unignore", "recall", "descent", "study", "tmd", "dtrap"]) {
       expect(field(model, key)).toEqual([]);
     }
   });

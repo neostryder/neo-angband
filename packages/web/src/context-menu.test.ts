@@ -183,7 +183,16 @@ describe("buildObjectMenu (ui-context.c context_menu_object L654)", () => {
     canWear: false,
     canThrow: false,
     hasInscription: false,
+    isIgnored: false,
   };
+
+  it("labels the ignore entry Ignore normally and Unignore when the item is ignored (ui-context.c:770)", () => {
+    expect(buildObjectMenu(base).find((i) => i.action === "ignore")!.label).toBe("Ignore");
+    expect(buildObjectMenu(base).find((i) => i.action === "ignore")!.disabled).toBeFalsy();
+    expect(
+      buildObjectMenu({ ...base, isIgnored: true }).find((i) => i.action === "ignore")!.label,
+    ).toBe("Unignore");
+  });
 
   it("always offers Inspect, Drop, and Inscribe", () => {
     const items = buildObjectMenu(base);
