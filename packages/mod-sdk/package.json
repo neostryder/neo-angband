@@ -4,6 +4,7 @@
   "private": true,
   "description": "Pack schemas, validation, and tooling for Neo Angband mods (content packs, tile packs, scripted plugins)",
   "license": "GPL-2.0-only",
+  "author": "neostryder (RPGM Tools)",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -4,6 +4,7 @@
   "private": true,
   "description": "Optional Electron desktop wrapper: the same web app as a native, offline, installable app",
   "license": "GPL-2.0-only",
+  "author": "neostryder (RPGM Tools)",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
@@ -27,6 +28,10 @@
     ],
     "win": { "target": "nsis" },
     "mac": { "target": "dmg", "category": "public.app-category.games" },
-    "linux": { "target": ["AppImage", "deb"], "category": "Game" }
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Game",
+      "maintainer": "neostryder <neostryder@users.noreply.github.com>"
+    }
   }
 }

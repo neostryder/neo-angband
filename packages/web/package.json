@@ -4,6 +4,7 @@
   "private": true,
   "description": "Web + PWA front-end: modern glyph-first renderer on a single responsive surface",
   "license": "GPL-2.0-only",
+  "author": "neostryder (RPGM Tools)",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
