@@ -12,7 +12,7 @@ const MAIN_TS_SOURCE = readFileSync(new URL("./main.ts", import.meta.url), "utf8
 
 describe("'=' key wiring (main.ts drift guard)", () => {
   it("binds '=' to an explicit branch that opens the options menu", () => {
-    expect(MAIN_TS_SOURCE).toMatch(/ev\.key === "="/);
+    expect(MAIN_TS_SOURCE).toMatch(/o: "=", act:/);
     // The explicit '=' branch calls runOptionsMenu, passing openIgnoreSetup
     // through so ignore-setup is reused, not duplicated (a trailing
     // tileModeMenu arg wires the Phase-4 graphics selector).
@@ -24,7 +24,7 @@ describe("'=' key wiring (main.ts drift guard)", () => {
   });
 
   it("'K' (quick unignore toggle) is untouched", () => {
-    expect(MAIN_TS_SOURCE).toMatch(/ev\.key === "K"/);
+    expect(MAIN_TS_SOURCE).toMatch(/o: "K", r: "O"/);
   });
 });
 

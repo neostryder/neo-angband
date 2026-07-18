@@ -6,10 +6,16 @@
  * with Term_* at a fixed row/column. This module ports only the computation:
  * for every sidebar field and status-line indicator it returns the ordered
  * list of coloured text runs. The terminal draw half - row/column positioning,
- * the inter-indicator gap (each status handler advances col by strlen + 1),
  * the "%-11s" / "%-13s" field padding of prt_speed / prt_depth, and the
  * screen-size priority culling of update_sidebar (L844) - stays with each
  * front-end shell.
+ *
+ * The status-line handlers return a width (col += return in
+ * update_statusline_aux) that already includes exactly ONE trailing gap column
+ * after each active segment; an idle prt_state still reserves one column. Each
+ * status builder below bakes that single trailing gap into its runs text, so a
+ * shell renders the segments back-to-back with NO external gap and reproduces
+ * the reference layout exactly.
  *
  * sidebarModel returns the 18 real fields of side_handlers[] (L810, the four
  * NULL spacer rows are not fields), in table order. statusLineModel returns
@@ -336,7 +342,13 @@ function field(text: string): DisplayRun[] {
   return text ? [{ text, color: COLOUR_L_BLUE }] : [];
 }
 
-/** prt_stat (ui-display.c L153) for one stat index. */
+/**
+ * prt_stat (ui-display.c:153-171) for one stat index. The 5-char label is drawn
+ * at col 0, but the 6-char cnv_stat value is drawn at col+6 (c_put_str at
+ * col + 6, L161/L165) - there is a blank column at col 5. We reproduce that gap
+ * by padding the label run to width 6 so the following value run begins at col
+ * 6 exactly. The "!" natural-maximum indicator still overwrites index 3.
+ */
 function statRuns(player: Player, stat: number, deps: ResolvedDeps): DisplayRun[] {
   const cur = player.statCur[stat] ?? 0;
   const max = player.statMax[stat] ?? 0;
@@ -345,13 +357,13 @@ function statRuns(player: Player, stat: number, deps: ResolvedDeps): DisplayRun[
     ? STAT_NAMES_REDUCED[stat] ?? ""
     : STAT_NAMES[stat] ?? "";
   /* Natural maximum indicator: put_str("!", col + 3) overwrites the label's
-     fourth character (L169). */
+     fourth character (L169-170). */
   if (max === 18 + 100) {
     label = label.slice(0, 3) + "!" + label.slice(4);
   }
   const value = cnvStat(deps.statUse[stat] ?? 0);
   return [
-    { text: label, color: COLOUR_WHITE },
+    { text: label.padEnd(6), color: COLOUR_WHITE },
     { text: value, color: drained ? COLOUR_YELLOW : COLOUR_L_GREEN },
   ];
 }
@@ -366,7 +378,12 @@ function levelRuns(player: Player): DisplayRun[] {
   ];
 }
 
-/** prt_exp (ui-display.c L226). */
+/**
+ * prt_exp (ui-display.c:226-250). The 3-char label ("EXP"/"NXT"/"Exp"/"Nxt") is
+ * drawn at col 0, but the 8-char "%8ld" value is drawn at col+4 (c_put_str at
+ * col + 4, L245/L248) - there is a blank column at col 3. We pad the label run
+ * to width 4 so the value run begins at col 4 exactly.
+ */
 function expRuns(player: Player): DisplayRun[] {
   const levMax = player.lev === PY_MAX_LEVEL;
   let xp = player.exp;
@@ -378,7 +395,7 @@ function expRuns(player: Player): DisplayRun[] {
   const atMax = player.exp >= player.maxExp;
   const label = levMax ? (atMax ? "EXP" : "Exp") : atMax ? "NXT" : "Nxt";
   return [
-    { text: label, color: COLOUR_WHITE },
+    { text: label.padEnd(4), color: COLOUR_WHITE },
     { text: value, color: atMax ? COLOUR_L_GREEN : COLOUR_YELLOW },
   ];
 }
@@ -537,7 +554,13 @@ const MON_FEELING_COLOR = [
   COLOUR_BLUE,
 ] as const;
 
-/** prt_level_feeling (ui-display.c L1053). */
+/**
+ * prt_level_feeling (ui-display.c:1053-1124). Draws "LF:<mon>-<obj>"; the
+ * reference return width is new_col - col == 3 + strlen(mon) + 1 + strlen(obj)
+ * + 1 (L1121-1123), i.e. the text plus exactly ONE trailing gap column. We bake
+ * that single gap in with a trailing " " run so the segment renders with no
+ * external gap.
+ */
 function levelFeelingRuns(state: GameState, deps: ResolvedDeps): DisplayRun[] {
   if (!deps.birthFeelings) return [];
   const depth = state.chunk.depth;
@@ -566,6 +589,7 @@ function levelFeelingRuns(state: GameState, deps: ResolvedDeps): DisplayRun[] {
     { text: monStr, color: monColor },
     { text: "-", color: COLOUR_WHITE },
     { text: objStr, color: objColor },
+    { text: " ", color: COLOUR_WHITE },
   ];
 }
 
@@ -588,24 +612,36 @@ function movesRuns(deps: ResolvedDeps): DisplayRun[] {
   return [];
 }
 
-/** prt_unignore (ui-display.c L1280). */
+/**
+ * prt_unignore (ui-display.c:1280-1289). Draws "Unignoring", returns
+ * strlen(str) + 1 (L1285) - the text width includes one trailing gap column. We
+ * bake that gap into the text ("Unignoring ").
+ */
 function unignoreRuns(deps: ResolvedDeps): DisplayRun[] {
   return deps.unignoring
-    ? [{ text: "Unignoring", color: COLOUR_WHITE }]
+    ? [{ text: "Unignoring ", color: COLOUR_WHITE }]
     : [];
 }
 
-/** prt_recall (ui-display.c L925). */
+/**
+ * prt_recall (ui-display.c:925-933). Draws "Recall", returns sizeof "Recall" ==
+ * 7 (L929) - the text width includes one trailing gap column. We bake that gap
+ * into the text ("Recall ").
+ */
 function recallRuns(player: Player): DisplayRun[] {
   return player.wordRecall
-    ? [{ text: "Recall", color: COLOUR_WHITE }]
+    ? [{ text: "Recall ", color: COLOUR_WHITE }]
     : [];
 }
 
-/** prt_descent (ui-display.c L939). */
+/**
+ * prt_descent (ui-display.c:939-947). Draws "Descent", returns sizeof "Descent"
+ * == 8 (L943) - the text width includes one trailing gap column. We bake that
+ * gap into the text ("Descent ").
+ */
 function descentRuns(player: Player): DisplayRun[] {
   return player.deepDescent
-    ? [{ text: "Descent", color: COLOUR_WHITE }]
+    ? [{ text: "Descent ", color: COLOUR_WHITE }]
     : [];
 }
 
@@ -615,8 +651,12 @@ function i2d(n: number): string {
 }
 
 /**
- * prt_state (ui-display.c L957): "Rest" plus a ten-char count field, or the
- * repeat count. The rest field is always exactly ten characters wide.
+ * prt_state (ui-display.c:957-1017): "Rest" plus a ten-char count field, or the
+ * repeat count. The rest field is always exactly ten characters wide. The
+ * reference returns strlen(text) + 1 (L1016) - the width always includes one
+ * trailing gap column, and when idle (text == "") it still returns 1, reserving
+ * a single blank column. We bake the gap in: an active state emits its field
+ * plus a trailing space; an idle state emits a single space run.
  */
 function stateRuns(deps: ResolvedDeps): DisplayRun[] {
   let text = "";
@@ -663,15 +703,20 @@ function stateRuns(deps: ResolvedDeps): DisplayRun[] {
         ? `Rep. ${rjust(Math.trunc(n / 100), 3)}00`
         : `Repeat ${rjust(n, 3)}`;
   }
-  return text ? [{ text, color: COLOUR_WHITE }] : [];
+  /* strlen(text) + 1: bake the one trailing gap in; idle reserves one column. */
+  return [{ text: text ? `${text} ` : " ", color: COLOUR_WHITE }];
 }
 
-/** prt_study (ui-display.c L1226). */
+/**
+ * prt_study (ui-display.c:1226-1245). Draws "Study (%d)", returns strlen(text)
+ * + 1 (L1241) - the text width includes one trailing gap column. We bake that
+ * gap into the text ("Study (N) ").
+ */
 function studyRuns(player: Player, deps: ResolvedDeps): DisplayRun[] {
   const n = player.upkeep.newSpells;
   if (!n) return [];
   const color = deps.bookHasUnlearnedSpells ? COLOUR_WHITE : COLOUR_L_DARK;
-  return [{ text: `Study (${n})`, color }];
+  return [{ text: `Study (${n}) `, color }];
 }
 
 /**
@@ -751,8 +796,10 @@ function terrainRuns(state: GameState): DisplayRun[] {
 /**
  * statusLineModel: the 11 status_handlers[] indicators in table order. An
  * indicator upstream returns 0 for is represented by an empty runs array
- * (shells skip it). The inter-indicator gap (col += return + 1) is a draw-half
- * concern.
+ * (shells skip it). Each active segment bakes its single trailing gap column
+ * into its runs (matching the reference return width), so shells render the
+ * segments back-to-back with no external gap; idle prt_state reserves one blank
+ * column.
  */
 export function statusLineModel(
   state: GameState,
