@@ -977,28 +977,39 @@ async function runContextMenuPlayerOther(): Promise<void> {
   );
   if (idx === null) return;
   switch (items[idx]?.action) {
+    case "knowledge":
+      await openKnowledgeMenu();
+      break;
+    case "map":
+      await showLevelMap(term, buildOverviewForShell());
+      break;
     case "messages":
       await showTextScreen(term, "Message history", messageHistoryLines(msglog));
+      break;
+    case "monsters":
+      await showMonsterList();
       break;
     case "objects":
       await showTextScreen(term, "Objects in view", objectListLines(state));
       break;
+    case "toggle-ignore":
+      // textui_cmd_toggle_ignore (the K command): flip unignoring, then run the
+      // same ignore_drop pass.
+      state.ignore.unignoring = !state.ignore.unignoring;
+      await applyIgnoreDrop();
+      break;
     case "ignore-setup":
       await openIgnoreSetup();
+      break;
+    case "options":
+      await runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu);
+      autosave(true);
       break;
     case "help":
       await runHelp(term);
       break;
     case "abilities":
-      await showAbilities(
-        term,
-        playerAbilities(state, {
-          properties: players.properties,
-          elementNames: (booted.registries.projections ?? [])
-            .slice(0, state.actor.player.race.elInfo.length)
-            .map((p) => p.name),
-        }),
-      );
+      await showAbilitiesScreen();
       break;
     case "equip-cmp":
       await showEquipCmp(term, state, equipCmpDeps());
@@ -1073,6 +1084,7 @@ function contextCaveCtx(grid: Loc, adjacent: boolean): CaveMenuCtx {
     hasMonster: monsterAtGrid(grid),
     canCast: player.cls.magic.totalSpells > 0,
     canFire: state.actor.combat.ammoTval > 0,
+    canSteal: player.cls.pflags.has(PF.STEAL),
     chest: chestObj ? { locked: isLockedChest(chestObj) } : null,
     isDisarmableTrap: trapList.some((t) => t.flags.has(TRF.VISIBLE)),
     isOpenDoor: squareIsOpenDoor(state, grid),
@@ -1103,11 +1115,44 @@ async function runContextMenuCave(grid: Loc, adjacent: boolean): Promise<void> {
     case "look":
       if (await runTargetLoop(TARGET.LOOK, false, grid.x, grid.y)) say("Target Selected.");
       break;
-    case "use-on":
-      await useItem("use-staff", (o) => tvalIsStaff(o.tval), "usable items");
+    case "recall": {
+      // lore_show_interactive on the grid's monster (ui-context.c L607-615).
+      const mon = state.monsters[state.chunk.mon(grid)];
+      if (mon) await showMonsterRecall(mon);
       break;
+    }
+    case "use-on": {
+      // CMD_USE with DIR_TARGET (ui-context.c L639): use any usable device on
+      // the target, not staves alone. This port has no single generic CMD_USE
+      // command, so pick from all devices (wand/rod/staff) and dispatch each to
+      // its own per-type verb (the aimDir prompt lets the player pick the grid).
+      const { items, handles } = packMenu(
+        state,
+        (o) => tvalIsWand(o.tval) || tvalIsRod(o.tval) || tvalIsStaff(o.tval),
+      );
+      if (items.length === 0) {
+        say("You have no usable items.");
+        break;
+      }
+      const useIdx = await selectFromMenu(term, "Use which item?", items);
+      if (useIdx === null) break;
+      const useHandle = handles[useIdx];
+      if (useHandle === undefined) break;
+      const useObj = gearGet(state.gear, useHandle);
+      const useCode = useObj && tvalIsWand(useObj.tval)
+        ? "aim-wand"
+        : useObj && tvalIsRod(useObj.tval)
+          ? "zap-rod"
+          : "use-staff";
+      await dispatchItemVerb(useCode, useHandle, useObj ?? null);
+      break;
+    }
     case "cast-on":
       await castSpell();
+      break;
+    case "steal":
+      commandBuffer.push({ code: "steal", dir });
+      advance();
       break;
     case "alter":
       commandBuffer.push({ code: "alter", dir });
@@ -1116,6 +1161,11 @@ async function runContextMenuCave(grid: Loc, adjacent: boolean): Promise<void> {
     case "disarm-chest":
     case "disarm-trap":
       commandBuffer.push({ code: "disarm", dir });
+      advance();
+      break;
+    case "jump-trap":
+      // Jump Onto (CMD_JUMP, ui-context.c L484): step onto and set off the trap.
+      commandBuffer.push({ code: "jump", dir });
       advance();
       break;
     case "open-chest":
@@ -1765,15 +1815,22 @@ async function openIgnoreSetup(): Promise<void> {
 // exactly like aimed items. Per-spell effect/fail messages arrive through the
 // message seam (state.msg) the same way item effects do.
 
-/** Pick one of the player's usable spellbooks, or null if none/cancelled. */
-async function chooseBook(verb: string): Promise<number | null> {
+/**
+ * Pick one of the player's usable spellbooks, or null if none/cancelled. The
+ * prompt is "<Verb> which book?" (ui-spell.c:388) and the empty message is the
+ * per-command form (defaults to the cast wording).
+ */
+async function chooseBook(
+  verb: string,
+  emptyMsg = "You have no books that you can use.",
+): Promise<number | null> {
   const { items, handles } = magicBooks(state);
   if (items.length === 0) {
-    say("You have no books that you can use.");
+    say(emptyMsg);
     return null;
   }
   if (items.length === 1) return handles[0] ?? null;
-  const idx = await selectFromMenu(term, `${verb} from which book?`, items);
+  const idx = await selectFromMenu(term, `${verb} which book?`, items);
   if (idx === null) return null;
   return handles[idx] ?? null;
 }
@@ -1782,25 +1839,30 @@ async function chooseBook(verb: string): Promise<number | null> {
 async function castSpell(): Promise<void> {
   const player = state.actor.player;
   if (!player.cls.magic.totalSpells) {
-    say("You cannot cast spells.");
+    // player_can_cast, no magic (player-util.c:1091).
+    say("You cannot pray or produce magics.");
     return;
   }
-  const handle = await chooseBook("Cast");
+  const handle = await chooseBook("Cast", "There are no spells you can cast.");
   if (handle === null) return;
   const bookObj = gearGet(state.gear, handle);
   if (!bookObj) return;
   const { items, sidx } = bookSpellMenu(state, bookObj, "cast");
   if (items.every((it) => it.disabled)) {
-    say("You don't know any spells in that book.");
+    say("That book has no spells that you can cast.");
     return;
   }
-  const verb = playerObjectToBook(player, bookObj)?.realm.verb ?? "cast";
+  const realm = playerObjectToBook(player, bookObj)?.realm;
+  const verb = realm?.verb ?? "cast";
+  const noun = realm?.spellNoun ?? "spell";
   const pick = await selectFromMenu(
     term,
-    `${verb[0]?.toUpperCase()}${verb.slice(1)} which spell?`,
+    // "%s which %s? ('?' to toggle description)" (ui-spell.c:285).
+    `${verb[0]?.toUpperCase()}${verb.slice(1)} which ${noun}? ('?' to toggle description)`,
     items,
     "[ a-z to choose a spell, ? to toggle description, ESC to cancel ]",
     {
+      subtitle: SPELL_HEADER,
       detail: (i) =>
         spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, term.size().cols),
       detailToggleKey: "?",
@@ -1836,14 +1898,18 @@ async function castSpell(): Promise<void> {
 async function studySpell(): Promise<void> {
   const player = state.actor.player;
   if (!player.cls.magic.totalSpells) {
-    say("You cannot learn spells.");
+    // player_can_cast, no magic (player-util.c:1091).
+    say("You cannot pray or produce magics.");
     return;
   }
   if (player.upkeep.newSpells <= 0) {
-    say("You cannot learn any new spells.");
+    say("You cannot learn any new spells!");
     return;
   }
-  const handle = await chooseBook("Study");
+  const handle = await chooseBook(
+    "Study",
+    "You cannot learn any new spells from the books you have.",
+  );
   if (handle === null) return;
   const args: Record<string, unknown> = { handle };
   if (player.cls.pflags.has(PF.CHOOSE_SPELLS)) {
@@ -1851,15 +1917,18 @@ async function studySpell(): Promise<void> {
     if (!bookObj) return;
     const { items, sidx } = bookSpellMenu(state, bookObj, "study");
     if (items.every((it) => it.disabled)) {
-      say("You cannot learn any spells from that book yet.");
+      say("That book has no spells that you can learn.");
       return;
     }
+    const noun = playerObjectToBook(player, bookObj)?.realm.spellNoun ?? "spell";
     const pick = await selectFromMenu(
       term,
-      "Study which spell?",
+      // "Study which %s? ('?' to toggle description)" (study path, ui-spell.c).
+      `Study which ${noun}? ('?' to toggle description)`,
       items,
       "[ a-z to choose a spell, ? to toggle description, ESC to cancel ]",
       {
+        subtitle: SPELL_HEADER,
         detail: (i) =>
           spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, term.size().cols),
         detailToggleKey: "?",
@@ -1872,6 +1941,43 @@ async function studySpell(): Promise<void> {
   }
   commandBuffer.push({ code: "study", args });
   advance();
+}
+
+/**
+ * Spell-list column header (ui-spell.c:249, m->header), aligned to the port's
+ * row format (name padded 30, then Lv/Mana/Fail/Info). Shown as the menu's
+ * subtitle for cast / study / browse.
+ */
+const SPELL_HEADER = `${"Name".padEnd(30)}Lv Mana Fail Info`;
+
+/**
+ * Browse (b / P, textui_spell_browse / ui-spell.c:334): a read-only view of a
+ * book's spells with their descriptions shown. No spell is cast and no turn is
+ * spent - ESC leaves. Any readable book qualifies (a non-caster simply has
+ * "no books that you can read").
+ */
+async function browseCmd(): Promise<void> {
+  const handle = await chooseBook("Browse", "You have no books that you can read.");
+  if (handle === null) return;
+  const bookObj = gearGet(state.gear, handle);
+  if (!bookObj) return;
+  const { items, sidx } = bookSpellMenu(state, bookObj, "cast");
+  // Read-only: every row is viewable (drop the cast-gate disabling) and the
+  // description is shown from the start (spell_menu_new show_description=true).
+  await selectFromMenu(
+    term,
+    "Browse which spell?",
+    items.map((it) => ({ ...it, disabled: false })),
+    "[ a-z or arrows to view, ? to toggle description, ESC to exit ]",
+    {
+      subtitle: SPELL_HEADER,
+      browseOnly: true,
+      detail: (i) =>
+        spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, term.size().cols),
+      detailToggleKey: "?",
+      detailInitiallyShown: true,
+    },
+  );
 }
 
 // --- Ranged attacks (do_cmd_fire / do_cmd_throw) ----------------------------
@@ -2007,6 +2113,19 @@ async function showMonsterRecall(mon: Monster): Promise<void> {
   await showRaceRecall(mon.race, getLore(state.lore, mon.race));
 }
 
+/** View abilities (do_cmd_abilities, ui-game.c:175 - the 'S' key). */
+async function showAbilitiesScreen(): Promise<void> {
+  await showAbilities(
+    term,
+    playerAbilities(state, {
+      properties: players.properties,
+      elementNames: (booted.registries.projections ?? [])
+        .slice(0, state.actor.player.race.elInfo.length)
+        .map((p) => p.name),
+    }),
+  );
+}
+
 /**
  * The knowledge menu ('~', ui-knowledge.c reset_main_knowledge_menu
  * L3593-3688): upstream's home for browsing everything the character has
@@ -2020,8 +2139,7 @@ async function showMonsterRecall(mon: Monster): Promise<void> {
  *     greyed.
  *   - Store/home contents (L3662-3676) pairs with Home persistence (12.1) and
  *     is out of this package's scope; omitted for now.
- *   - Hall of fame has no shell score screen yet; greyed.
- * Wired: rune (14.10), artifact (14.11), monster, feature + trap (14.13),
+ * Wired: hall of fame (openHallOfFame), rune (14.10), artifact (14.11), monster, feature + trap (14.13),
  * character history, and equippable comparison. The port's interim
  * autoinscription manager (upstream lives inside the object browser via '{')
  * is retained as a trailing entry so that functionality is not lost while the
@@ -2055,7 +2173,7 @@ async function openKnowledgeMenu(): Promise<void> {
     { label: "Display feature knowledge" },
     { label: "Display trap knowledge" },
     { label: "Display shapechange effects" },
-    { label: "Display hall of fame", disabled: true },
+    { label: "Display hall of fame" },
     { label: "Display character history" },
     { label: "Display equippable comparison" },
     { label: "Set object autoinscriptions" },
@@ -2148,6 +2266,10 @@ async function openKnowledgeMenu(): Promise<void> {
         await showShapeKnowledge(term, players.shapes, shapeEnv);
         break;
       }
+      case 8:
+        // do_cmd_knowledge_scores (ui-knowledge.c L3610): the score table.
+        await openHallOfFame();
+        break;
       case 9:
         await showTextScreen(term, "Player history", historyLines(state));
         break;
@@ -3713,7 +3835,7 @@ function displayDeps() {
  */
 function renderSidebar(rows: number): void {
   const fields = sidebarModel(state, displayDeps());
-  const spacerAfter = new Set(["con", "sp", "health"]);
+  const spacerAfter = new Set(["con", "sp"]);
   let y = 0;
   for (const f of fields) {
     if (y >= rows) break;
@@ -3726,6 +3848,10 @@ function renderSidebar(rows: number): void {
     }
     y++;
     if (spacerAfter.has(f.key)) y++;
+    // side_handlers[] has TWO NULL spacer slots between prt_health and prt_speed
+    // (ui-display.c:823-832, indices 20 and 22), so the health bar is separated
+    // from Speed/Depth by two blank rows, not one.
+    if (f.key === "health") y += 2;
   }
 }
 
@@ -4414,6 +4540,9 @@ window.addEventListener("keydown", (ev) => {
       m: () => castSpell(),
       p: () => castSpell(),
       G: () => studySpell(),
+      // Browse a book (b / P, textui_spell_browse / ui-game.c:173).
+      b: () => browseCmd(),
+      P: () => browseCmd(),
       // textui_target: the interactive '*' loop in TARGET_KILL mode.
       "*": async () => {
         if (await runTargetLoop(TARGET.KILL, true)) say("Target Selected.");
@@ -4503,11 +4632,12 @@ window.addEventListener("keydown", (ev) => {
       });
       return;
     }
+    // View abilities (S, do_cmd_abilities / ui-game.c:175). Faithful binding;
+    // saving lives on ^S and the Escape game menu (the game also autosaves), so
+    // 'S' is free for its canonical use.
     if (ev.key === "S") {
       ev.preventDefault();
-      autosave(true);
-      message = "Game saved. It will resume automatically next time.";
-      render();
+      void openModal(showAbilitiesScreen);
       return;
     }
     if (ev.key === "Escape") {
