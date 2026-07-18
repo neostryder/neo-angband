@@ -4616,8 +4616,10 @@ window.addEventListener("keydown", (ev) => {
   // Ctrl-key command aliases (cmd_action / cmd_util faithful bindings that use a
   // control modifier). Checked before the modifier-free block below.
   if (ev.ctrlKey && !ev.altKey && !ev.metaKey) {
-    // Dig a tunnel (^T, cmd_action alias of 'T').
-    if (ev.key === "t" || ev.key === "T") {
+    // Dig a tunnel (^T): the roguelike-keyset alias of Tunnel, whose original
+    // key is the plain 'T' (ui-game.c:146 { 'T', KTRL('T') }). Roguelike 'T' is
+    // Take off, so tunnel moves to ^T there; in the original keyset ^T is unbound.
+    if (roguelike && (ev.key === "t" || ev.key === "T")) {
       ev.preventDefault();
       void openModal(tunnelCmd);
       return;
@@ -4659,8 +4661,20 @@ window.addEventListener("keydown", (ev) => {
       showPrevMessageCmd();
       return;
     }
-    // Repeat previous command (^V, CMD_REPEAT / ui-game.c:223).
-    if (ev.key === "v" || ev.key === "V") {
+    // Do autopickup (^G, CMD_AUTOPICKUP / ui-game.c:224): pick up everything on
+    // the grid that needs no action - gold, plus =g / pickup_always items - a
+    // single key active in both keysets. Distinct from 'g' (interactive pickup);
+    // the core doAutopickup path is registered as the "autopickup" command.
+    if (ev.key === "g" || ev.key === "G") {
+      ev.preventDefault();
+      commandBuffer.push({ code: "autopickup" });
+      advance();
+      return;
+    }
+    // Repeat previous command (^V): the roguelike-keyset alias of Repeat, whose
+    // original key is the plain 'n' (ui-game.c:223 { 'n', KTRL('V') }). Roguelike
+    // 'n' is a movement key, so repeat moves to ^V; original-keyset ^V is unbound.
+    if (roguelike && (ev.key === "v" || ev.key === "V")) {
       ev.preventDefault();
       repeatLastCommand();
       return;
@@ -4686,9 +4700,10 @@ window.addEventListener("keydown", (ev) => {
       centerMapCmd();
       return;
     }
-    // Ignore an item (^D, CMD_IGNORE / cmd_item_manage:165): the roguelike-keyset
-    // key, valid in both keysets. Opens the same per-item ignore menu as 'k'.
-    if (ev.key === "d" || ev.key === "D") {
+    // Ignore an item (^D): the roguelike-keyset alias of Ignore, whose original
+    // key is the plain 'k' (ui-game.c:165 { 'k', KTRL('D') }). Roguelike 'k' is a
+    // movement key, so ignore moves to ^D; in the original keyset ^D is unbound.
+    if (roguelike && (ev.key === "d" || ev.key === "D")) {
       ev.preventDefault();
       void openModal(ignoreItemCmd);
       return;
