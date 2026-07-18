@@ -75,6 +75,7 @@ import {
   COLOUR_ORANGE,
   getMonName,
   TMD,
+  EQUIP_SLOT_ENTRIES,
 } from "@neo-angband/core";
 import type {
   GameState,
@@ -96,12 +97,42 @@ import type {
   MonsterRace,
 } from "@neo-angband/core";
 import type { ScreenLine, MenuItem } from "./overlay";
-import { menuLetter } from "./overlay";
 import { MessageLog, format as formatMessage } from "./messages";
 
 const FG = "#c8c8d4";
 const DIM = "#8a8a94";
 const LABEL = "#9aa0b4";
+
+/**
+ * all_letters_nohjkl (ui-menu.c L40-41): the object-list selection letters,
+ * deliberately skipping the roguelike movement keys h,j,k,l. build_obj_list
+ * (ui-object.c L292) and gear_to_label (obj-gear.c L446) label the
+ * inventory/equipment/floor object lists with these; the quiver alone uses
+ * digits (I2D). menuLetter (overlay.ts) is the full a..z run other menus need,
+ * so object lists get this dedicated letter set instead.
+ */
+const ALL_LETTERS_NOHJKL = "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/** The i-th object-list selection letter (all_letters_nohjkl[i]). */
+function objLetter(i: number): string {
+  return ALL_LETTERS_NOHJKL[i] ?? "";
+}
+
+/**
+ * equip_mention (obj-gear.c L301-313): the brief "how it is carried" string for
+ * an equipment slot, from list-equip-slots.h's mention column - "Wielding",
+ * "Shooting", "Light source", "On body"/"On back"/etc. For a name_in_desc slot
+ * (ring/amulet/armour) the mention carries a %s that C fills with the slot's own
+ * name via format(), giving "On right hand", "Around neck", "On head", ... We
+ * reproduce that substitution here. The heavy_wield/heavy_shoot branch (which
+ * swaps in heavy_describe) is a describe-path detail not surfaced by these
+ * listings, so it is intentionally omitted.
+ */
+function equipMention(slot: { type: string; name: string }): string {
+  const entry = EQUIP_SLOT_ENTRIES.find((e) => e.name === slot.type);
+  if (!entry) return "";
+  return entry.named ? entry.mention.replace("%s", slot.name) : entry.mention;
+}
 
 /** Coalesce a run of coloured chars into a ScreenLine with per-run colours. */
 function charsToLine(chars: { ch: string; color: string }[]): ScreenLine {
@@ -195,7 +226,8 @@ export function packMenu(
     const obj = gearGet(state.gear, handle);
     if (!obj) continue;
     if (filter && !filter(obj)) continue;
-    items.push({ label: objectName(state, obj), color: objectColor(obj) });
+    /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292). */
+    items.push({ label: objectName(state, obj), color: objectColor(obj), tag: objLetter(items.length) });
     handles.push(handle);
   }
   return { items, handles };
@@ -279,7 +311,8 @@ export function deviceMenu(
     const fail = deviceFailColumn(state, obj, isAware);
     const name = objectName(state, obj);
     const label = fail ? `${name.padEnd(40).slice(0, 40)} ${fail}` : name;
-    items.push({ label, color: objectColor(obj) });
+    /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292). */
+    items.push({ label, color: objectColor(obj), tag: objLetter(items.length) });
     handles.push(handle);
   }
   return { items, handles };
@@ -293,7 +326,8 @@ export function inventoryLines(state: GameState): ScreenLine[] {
     const obj = gearGet(state.gear, handle);
     if (!obj) continue;
     lines.push({
-      text: `${menuLetter(i)}) ${withWeight(state, obj)}`,
+      /* all_letters_nohjkl display letter (ui-object.c L292). */
+      text: `${objLetter(i)}) ${withWeight(state, obj)}`,
       color: objectColor(obj),
     });
     i++;
@@ -311,10 +345,12 @@ export function equipmentLines(state: GameState): ScreenLine[] {
     const slot = slots[i];
     const handle = player.equipment[i] ?? 0;
     const obj = handle ? gearGet(state.gear, handle) : null;
-    const label = (slot?.name ?? `slot ${i}`).padEnd(12);
+    /* equip_mention padded to 14 (build_obj_list "%s%*s", 14 - u8len; ui-object.c L304-318). */
+    const label = (slot ? equipMention(slot) : `slot ${i}`).padEnd(14).slice(0, 14);
     if (obj) {
       lines.push({
-        text: `${menuLetter(i)}) ${label} ${withWeight(state, obj)}`,
+        /* all_letters_nohjkl display letter for the slot index (obj-gear.c L446). */
+        text: `${objLetter(i)}) ${label} ${withWeight(state, obj)}`,
         color: objectColor(obj),
       });
     } else {
@@ -336,8 +372,11 @@ export function equipmentMenu(state: GameState): { items: MenuItem[]; handles: n
     if (!obj) continue;
     const slot = player.body.slots[i];
     items.push({
-      label: `${(slot?.name ?? "").padEnd(12)} ${objectName(state, obj)}`,
+      /* equip_mention padded to 14 (ui-object.c L304-318); slot-index letter,
+       * skipping h,j,k,l, matching gear_to_label (obj-gear.c L446). */
+      label: `${(slot ? equipMention(slot) : "").padEnd(14).slice(0, 14)} ${objectName(state, obj)}`,
       color: objectColor(obj),
+      tag: objLetter(i),
     });
     handles.push(handle);
   }
@@ -511,7 +550,8 @@ export function magicBooks(state: GameState): { items: MenuItem[]; handles: numb
     const obj = gearGet(state.gear, handle);
     if (!obj || !tvalIsBook(obj.tval)) continue;
     if (!playerObjectToBook(player, obj)) continue;
-    items.push({ label: objectName(state, obj), color: objectColor(obj) });
+    /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292). */
+    items.push({ label: objectName(state, obj), color: objectColor(obj), tag: objLetter(items.length) });
     handles.push(handle);
   }
   return { items, handles };

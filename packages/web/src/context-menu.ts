@@ -11,18 +11,14 @@
  * owns the live GameState and every existing verb handler (castSpell,
  * useItem, fireCmd, ...) these menus reuse rather than reimplement.
  *
- * Entries whose backing feature is not (yet) part of this shell are included
- * DISABLED rather than omitted, so the menu's shape stays recognisable even
- * where the action is not wired: Jump Onto a trap (CMD_JUMP) has no core
- * command; Recall Info has no monster-lore viewer; the knowledge menu, full
- * map, monster list and options screen do not exist yet. A single generic
- * "Use" (upstream's CMD_USE, one key that auto-detects wand/rod/staff/
- * activatable) has no equivalent either, since this port exposes those as
- * separate per-type verbs (aim/zap/use-staff/activate) - context_menu_object
- * below offers all four directly instead. Explore and Rest ARE wired
- * (session/game.ts's installRunning / createDefaultRegistry); Rest now runs
- * the full do_cmd_rest N-turn / conditional prompt (main.ts restCmd), and
- * Steal (CMD_STEAL, game/steal.ts) is reachable from the 's' key.
+ * Every backing feature these menus reference is now wired in main.ts: Jump
+ * Onto (jumpCmd), Recall Info (showMonsterRecall), Steal (stealCmd), the
+ * knowledge menu (openKnowledgeMenu), full map (showLevelMap), monster list
+ * (showMonsterList), options (runOptionsMenu) and the ignore toggle. A single
+ * generic "Use" (upstream's CMD_USE, one key that auto-detects wand/rod/staff/
+ * activatable) is the one deliberate omission: this port exposes those as
+ * separate per-type verbs (aim/zap/use-staff/activate), and context_menu_object
+ * below offers all four directly instead.
  */
 
 export interface MenuEntry<A extends string> {
@@ -68,10 +64,12 @@ export function buildPlayerMenu(ctx: PlayerMenuCtx): MenuEntry<PlayerMenuAction>
   out.push({ label: "Go Up", action: "go-up", disabled: !ctx.onUpStairs });
   out.push({ label: "Go Down", action: "go-down", disabled: !ctx.onDownStairs });
   out.push({ label: "Explore", action: "explore" }); // installRunning's exploreAction (session/game.ts)
+  // "Look" precedes "Rest" (ui-context.c L289 before L292) - the entry order
+  // sets the auto-assigned quick-select letters, so the order must match.
+  out.push({ label: "Look", action: "look" });
   // "Rest" opens the full do_cmd_rest prompt (main.ts restCmd): N turns, '&' as
   // needed, '*' HP+SP, '!' HP or SP - matching textui_cmd_rest.
   out.push({ label: "Rest", action: "rest" });
-  out.push({ label: "Look", action: "look" });
   out.push({ label: "Inventory", action: "inventory" });
   if (ctx.hasFloorObject) {
     out.push({ label: "Floor", action: "floor" });
@@ -101,18 +99,20 @@ export type PlayerOtherAction =
  * The "Other" submenu. Abilities and Compare-equipment are this port's own
  * discoverable homes for the two new screens (no vanilla keybinding exists
  * for either - see the gap's risk note); everything else mirrors upstream's
- * labels, disabled where the shell has no such screen yet.
+ * labels. Knowledge, Show Map, Show Monster List, Toggle Ignored and Options
+ * are all wired now (openKnowledgeMenu / showLevelMap / showMonsterList /
+ * the K ignore toggle / runOptionsMenu in main.ts), so none are disabled.
  */
 export function buildPlayerOtherMenu(): MenuEntry<PlayerOtherAction>[] {
   return [
-    { label: "Knowledge", action: "knowledge", disabled: true },
-    { label: "Show Map", action: "map", disabled: true },
+    { label: "Knowledge", action: "knowledge" },
+    { label: "Show Map", action: "map" },
     { label: "Show Messages", action: "messages" },
-    { label: "Show Monster List", action: "monsters", disabled: true },
+    { label: "Show Monster List", action: "monsters" },
     { label: "Show Object List", action: "objects" },
-    { label: "Toggle Ignored", action: "toggle-ignore", disabled: true },
+    { label: "Toggle Ignored", action: "toggle-ignore" },
     { label: "Ignore setup", action: "ignore-setup" },
-    { label: "Options", action: "options", disabled: true },
+    { label: "Options", action: "options" },
     { label: "Commands", action: "help" },
     { label: "Abilities", action: "abilities" },
     { label: "Compare equipment", action: "equip-cmp" },
@@ -125,9 +125,11 @@ export function buildPlayerOtherMenu(): MenuEntry<PlayerOtherAction>[] {
 
 export type CaveMenuAction =
   | "look"
+  | "recall"
   | "use-on"
   | "cast-on"
   | "alter"
+  | "steal"
   | "disarm-chest"
   | "open-chest"
   | "disarm-trap"
@@ -147,6 +149,8 @@ export interface CaveMenuCtx {
   hasMonster: boolean;
   canCast: boolean;
   canFire: boolean;
+  /** player_has(player, PF_STEAL): the rogue steal ability. */
+  canSteal: boolean;
   /** chest_check(player, grid, CHEST_ANY) not ignored. */
   chest: { locked: boolean } | null;
   isDisarmableTrap: boolean;
@@ -158,14 +162,16 @@ export interface CaveMenuCtx {
 /**
  * context_menu_cave (L426-649). "Attack" vs "Alter" (L462) collapse to one
  * action - the core "alter" command already resolves attack-vs-alter from
- * the grid's live contents, matching do_cmd_alter. Jump Onto is included
- * disabled (no CMD_JUMP in this port); Recall Info is omitted entirely (no
- * monster-lore viewer to open - see the module header). Steal (CMD_STEAL) is
- * keyboard-only upstream (cmd_hidden), so like the original it is not a cave-
- * menu entry - it is bound to the 's' key (main.ts stealCmd).
+ * the grid's live contents, matching do_cmd_alter. "Recall Info" (L450-453,
+ * key '/') is shown whenever the grid holds a monster and opens the lore
+ * viewer (main.ts showMonsterRecall). Steal (L478-480) is a cave-menu entry
+ * when the grid holds a monster and the player has PF_STEAL. Jump Onto
+ * (CMD_JUMP, main.ts jumpCmd) is now wired, so it is enabled.
  */
 export function buildCaveMenu(ctx: CaveMenuCtx): MenuEntry<CaveMenuAction>[] {
   const out: MenuEntry<CaveMenuAction>[] = [{ label: "Look At", action: "look" }];
+  // Recall Info sits right after Look At when a monster is present (L450-453).
+  if (ctx.hasMonster) out.push({ label: "Recall Info", action: "recall" });
   out.push({ label: "Use Item On", action: "use-on" });
   if (ctx.canCast) out.push({ label: "Cast On", action: "cast-on" });
 
@@ -179,9 +185,11 @@ export function buildCaveMenu(ctx: CaveMenuCtx): MenuEntry<CaveMenuAction>[] {
         out.push({ label: "Open Disarmed Chest", action: "open-chest" });
       }
     }
+    // Steal follows the chest block, before trap disarm (L478-480).
+    if (ctx.hasMonster && ctx.canSteal) out.push({ label: "Steal", action: "steal" });
     if (ctx.isDisarmableTrap) {
       out.push({ label: "Disarm", action: "disarm-trap" });
-      out.push({ label: "Jump Onto", action: "jump-trap", disabled: true }); // no CMD_JUMP yet
+      out.push({ label: "Jump Onto", action: "jump-trap" }); // CMD_JUMP -> jumpCmd
     }
     if (ctx.isOpenDoor) {
       out.push({ label: "Close", action: "close" });

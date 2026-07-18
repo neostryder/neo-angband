@@ -77,18 +77,23 @@ describe("buildPlayerMenu (ui-context.c context_menu_player L248)", () => {
 });
 
 describe("buildPlayerOtherMenu (ui-context.c context_menu_player_2 L84)", () => {
-  it("offers the wired shell features and disables the unbuilt ones", () => {
+  it("offers every submenu feature enabled (all are wired now)", () => {
     const items = buildPlayerOtherMenu();
-    expect(items.find((i) => i.action === "messages")!.disabled).toBeFalsy();
-    expect(items.find((i) => i.action === "objects")!.disabled).toBeFalsy();
-    expect(items.find((i) => i.action === "ignore-setup")!.disabled).toBeFalsy();
-    expect(items.find((i) => i.action === "help")!.disabled).toBeFalsy();
-    expect(items.find((i) => i.action === "abilities")!.disabled).toBeFalsy();
-    expect(items.find((i) => i.action === "equip-cmp")!.disabled).toBeFalsy();
-    expect(items.find((i) => i.action === "knowledge")!.disabled).toBe(true);
-    expect(items.find((i) => i.action === "map")!.disabled).toBe(true);
-    expect(items.find((i) => i.action === "monsters")!.disabled).toBe(true);
-    expect(items.find((i) => i.action === "options")!.disabled).toBe(true);
+    for (const action of [
+      "messages",
+      "objects",
+      "ignore-setup",
+      "help",
+      "abilities",
+      "equip-cmp",
+      "knowledge",
+      "map",
+      "monsters",
+      "toggle-ignore",
+      "options",
+    ]) {
+      expect(items.find((i) => i.action === action)!.disabled).toBeFalsy();
+    }
   });
 });
 
@@ -98,12 +103,28 @@ describe("buildCaveMenu (ui-context.c context_menu_cave L426)", () => {
     hasMonster: false,
     canCast: false,
     canFire: false,
+    canSteal: false,
     chest: null,
     isDisarmableTrap: false,
     isOpenDoor: false,
     isClosedDoor: false,
     isDiggable: false,
   };
+
+  it("adds Recall Info right after Look At only when a monster is present", () => {
+    expect(buildCaveMenu(base).some((i) => i.action === "recall")).toBe(false);
+    const withMon = buildCaveMenu({ ...base, hasMonster: true });
+    expect(withMon[0]!.action).toBe("look");
+    expect(withMon[1]!.action).toBe("recall");
+  });
+
+  it("offers Steal only when a monster is present and the player has PF_STEAL", () => {
+    expect(buildCaveMenu({ ...base, hasMonster: true }).some((i) => i.action === "steal")).toBe(false);
+    expect(buildCaveMenu({ ...base, canSteal: true }).some((i) => i.action === "steal")).toBe(false);
+    expect(
+      buildCaveMenu({ ...base, hasMonster: true, canSteal: true }).some((i) => i.action === "steal"),
+    ).toBe(true);
+  });
 
   it("labels the alter entry Attack when a monster is present, Alter otherwise", () => {
     expect(buildCaveMenu(base).find((i) => i.action === "alter")!.label).toBe("Alter");
@@ -120,10 +141,10 @@ describe("buildCaveMenu (ui-context.c context_menu_cave L426)", () => {
     expect(unlocked.filter((i) => i.action === "open-chest")).toHaveLength(1);
   });
 
-  it("offers Disarm and a disabled Jump Onto for a disarmable trap", () => {
+  it("offers Disarm and an enabled Jump Onto for a disarmable trap", () => {
     const items = buildCaveMenu({ ...base, isDisarmableTrap: true });
     expect(items.find((i) => i.action === "disarm-trap")!.disabled).toBeFalsy();
-    expect(items.find((i) => i.action === "jump-trap")!.disabled).toBe(true);
+    expect(items.find((i) => i.action === "jump-trap")!.disabled).toBeFalsy();
   });
 
   it("offers Close on an open door, Open+Lock on a closed door, Tunnel on diggable terrain", () => {

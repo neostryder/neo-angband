@@ -101,13 +101,19 @@ const WIDE_COLS = 90;
 /** INFO_SCREENS (ui-player.c L1213): mode 0 = skills/history, 1 = flag grid. */
 const INFO_SCREENS = 2;
 
-/** The upstream panels[] anchors (ui-player.c L849-855). */
+/**
+ * The upstream panels[] anchors (ui-player.c L849-855). `width` is the region
+ * width and `alignRight` mirrors the table's `!align_left`: only `topleft` is
+ * left-adjusted, so its values sit just after the label; the other four have
+ * their values right-justified to the region's right edge (display_panel
+ * L619-622: `Term_putstr(col+w-len, ...)` when not left-adjusted).
+ */
 const ANCHOR = {
-  topleft: { x: 1, y: 1, labelWidth: 6 },
-  misc: { x: 21, y: 1, labelWidth: 8 },
-  midleft: { x: 1, y: 9, labelWidth: 10 },
-  combat: { x: 29, y: 9, labelWidth: 13 },
-  skills: { x: 52, y: 9, labelWidth: 15 },
+  topleft: { x: 1, y: 1, labelWidth: 6, width: 40, alignRight: false },
+  misc: { x: 21, y: 1, labelWidth: 8, width: 18, alignRight: true },
+  midleft: { x: 1, y: 9, labelWidth: 10, width: 24, alignRight: true },
+  combat: { x: 29, y: 9, labelWidth: 13, width: 19, alignRight: true },
+  skills: { x: 52, y: 9, labelWidth: 15, width: 20, alignRight: true },
 } as const;
 
 /** The stat table column (display_player_stat_info L460) and header row. */
@@ -561,11 +567,11 @@ export function showCharacterSheet(
       const byKey = (k: string) => panels.find((p) => p.key === k)?.lines ?? [];
 
       if (mode === 0) {
-        paintPanel(term, ANCHOR.topleft.x, ANCHOR.topleft.y, ANCHOR.topleft.labelWidth, byKey("topleft"));
-        paintPanel(term, ANCHOR.misc.x, ANCHOR.misc.y, ANCHOR.misc.labelWidth, byKey("misc"));
-        const midEnd = paintPanel(term, ANCHOR.midleft.x, ANCHOR.midleft.y, ANCHOR.midleft.labelWidth, byKey("midleft"));
-        const combatEnd = paintPanel(term, ANCHOR.combat.x, ANCHOR.combat.y, ANCHOR.combat.labelWidth, byKey("combat"));
-        const skillsEnd = paintPanel(term, ANCHOR.skills.x, ANCHOR.skills.y, ANCHOR.skills.labelWidth, byKey("skills"));
+        paintPanel(term, ANCHOR.topleft, byKey("topleft"));
+        paintPanel(term, ANCHOR.misc, byKey("misc"));
+        const midEnd = paintPanel(term, ANCHOR.midleft, byKey("midleft"));
+        const combatEnd = paintPanel(term, ANCHOR.combat, byKey("combat"));
+        const skillsEnd = paintPanel(term, ANCHOR.skills, byKey("skills"));
         // History from row 19 (below the lowest panel if one ever grows).
         let hy = Math.max(HISTORY_ROW, midEnd + 1, combatEnd + 1, skillsEnd + 1);
         for (const line of historyBlockLines(state, cols)) {
@@ -773,18 +779,23 @@ export function showCharacterSheet(
 }
 
 /**
- * Draw one characterPanels panel as a label/value column at (x, y): the label
- * left-justified to `labelWidth` in the label colour, the value after it in the
+ * Draw one characterPanels panel as a label/value column at the anchor's (x, y):
+ * the label left-justified to `labelWidth` in the label colour, the value in the
  * row's own colour. Blank separators advance a row; label-only lines (section
  * headers such as "Turns used:") print bare. Returns the next free row.
+ *
+ * Value placement mirrors display_panel (ui-player.c L619-622): a left-adjusted
+ * panel (only `topleft`, per panels[] L850-856) prints the value just after the
+ * label; a right-adjusted panel prints it so its last char lands at the region's
+ * right edge (`col + w - len`), clamped so it never overlaps the label.
  */
 function paintPanel(
   term: GlyphTerm,
-  x: number,
-  y: number,
-  labelWidth: number,
+  region: { x: number; y: number; labelWidth: number; width: number; alignRight: boolean },
   lines: readonly { label: string; value: string; color: number }[],
 ): number {
+  const { x, labelWidth, width, alignRight } = region;
+  let y = region.y;
   for (const ln of lines) {
     if (!ln.label && !ln.value) {
       y += 1;
@@ -796,7 +807,14 @@ function paintPanel(
       continue;
     }
     term.print(x, y, label.padEnd(labelWidth), LABEL);
-    term.print(x + labelWidth + 1, y, ln.value, colorToCss(ln.color));
+    // Left-adjusted: value just after the label. Right-adjusted: value's last
+    // char at the region's right edge (x + width - len), clamped so it never
+    // collides with the label (falls back to just-after-label if it would).
+    const afterLabel = x + labelWidth + 1;
+    const valueX = alignRight
+      ? Math.max(afterLabel, x + width - ln.value.length)
+      : afterLabel;
+    term.print(valueX, y, ln.value, colorToCss(ln.color));
     y += 1;
   }
   return y;
