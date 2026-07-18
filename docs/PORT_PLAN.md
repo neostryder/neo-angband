@@ -30,7 +30,7 @@ documentation lives here under `docs/`.
    later).
 3. **V1 target**: web + PWA. The classic multi-terminal-window interface is
    replaced by one modern, responsive, fullscreen-friendly surface. Classic
-   keymaps preserved, fully remappable. Desktop (Tauri) and terminal builds
+   keymaps preserved, fully remappable. Desktop (Electron) and terminal builds
    follow from the same headless core.
 4. **Enhancement budget for v1**: UI-level quality-of-life only (message log,
    searchable knowledge, item comparison, recaps). Zero rules changes.

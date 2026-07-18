@@ -1,11 +1,15 @@
 # The Borg as a Bundled Mod - Scope and Plan
 
-> STATUS: SCOPING (2026-07-11). This is the plan of record for task P8 (the
-> Borg). It supersedes any earlier framing of the Borg as an in-core subsystem:
-> the Borg ships as a BUNDLED MOD built on the mod framework's perceive/act API,
-> not as core code. Its behavior is a faithful port of Angband 4.2.6's `borg/`.
-> The same agent API that hosts it is the contract any third-party agent mod
-> uses to drive the game. Nothing here is built yet; this defines what to build.
+> STATUS: IMPLEMENTED. What this document scoped is now built: the Borg ships
+> as a BUNDLED MOD (`packages/borg`) built on the mod framework's perceive/act
+> API, not as core code, and the framework itself is feature-complete. For the
+> shipped Borg - how to run it and how it works - see
+> [docs/modding/BORG.md](modding/BORG.md); for the framework it rides, see
+> [docs/modding/MOD_INTEGRATION_PLAN.md](modding/MOD_INTEGRATION_PLAN.md). This
+> document is retained as the design rationale of record for task P8 (the Borg):
+> the Borg ships as a faithful port of Angband 4.2.6's `borg/`, and the same
+> agent API that hosts it is the contract any third-party agent mod uses to
+> drive the game.
 
 ## 1. The decision
 
@@ -123,15 +127,17 @@ The same frozen facade is what every other agent mod builds on. Freezing it is
 the point of building the Borg first: the Borg exercises the entire surface, so
 if the Borg plays faithfully, the surface is complete.
 
-## 6. The gap
+## 6. The gap (now closed)
 
-The mod framework is fully **designed** (`docs/MODS.md`,
-`docs/modding/MOD_LIFECYCLE.md`) but **not built**: there is no plugin runtime,
-no sandbox, no capability enforcement, no read-only `GameState` facade, and no
-controller registration. Borg-as-mod therefore depends on building that
-substrate first. In the plan this is P7 (mod ecosystem hardening); P8 (the
-Borg) rides on it. The Borg is the forcing function that makes the substrate
-concrete and correct rather than speculative.
+This section described a gap that has since been closed. The mod framework this
+document planned is now built: the plugin runtime, sandbox, capability
+enforcement, read-only `GameState` facade, and controller registration all
+exist, and the Borg rides them as a bundled mod (`packages/borg`). In the plan
+this substrate was P7 (mod ecosystem hardening); P8 (the Borg) rode on it, and
+the Borg was the forcing function that made the substrate concrete and correct
+rather than speculative. It was fully **designed** first (`docs/MODS.md`,
+`docs/modding/MOD_LIFECYCLE.md`); it is now **built** (see
+`docs/modding/MOD_INTEGRATION_PLAN.md` and `docs/modding/BORG.md`).
 
 ## 7. The Borg port plan
 
