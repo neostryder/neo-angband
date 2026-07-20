@@ -191,7 +191,6 @@ const ROLLER_COL = 36;
 const PB_TITLE = "#e8e8f0";
 const PB_FG = "#c8c8d4";
 const PB_DIM = "#8a8a94";
-const PB_HI = "#e0c040";
 
 /* The core palette colours the upstream birth menus use, as CSS. */
 const CSS_L_BLUE = colorToCss(COLOUR_L_BLUE);
@@ -567,13 +566,12 @@ function pointBuyStats(
         const eb = 0; // player->state.stat_add[i]: no equipment at birth.
         const best = modifyStatValue(self, rb + cb + eb);
         drawScreenLine(term, tableCol, STAT_ROW0 + i, birthStatRow(i, self, rb, cb, eb, best));
-        // Cost ("%4d", ui-birth.c:1066); the current stat's cost is highlighted
-        // to stand in for the terminal cursor parked at COSTS_COL (L1123).
+        // Cost ("%4d", ui-birth.c:1066), plain white for every row.
         term.print(
           tableCol + COST_OFFSET,
           STAT_ROW0 + i,
           String(buy.pointsSpent[i] ?? 0).padStart(4),
-          i === cursor ? PB_HI : CSS_WHITE,
+          CSS_WHITE,
         );
       }
       // "Total Cost: NN/NN" (ui-birth.c:1070) at TOTAL_COL, row COSTS_ROW+STAT_MAX.
