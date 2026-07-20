@@ -205,16 +205,18 @@ import {
 import {
   showTextScreen,
   selectFromMenu,
+  itemSelect,
   promptText,
   promptDirection,
   AIM_STAR,
   showLevelMap,
   menuNav,
 } from "./overlay";
-import type { MenuItem, ScreenLine } from "./overlay";
+import type { MenuItem, ItemMenuSource, ScreenLine } from "./overlay";
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
 import type { Overview } from "./mapview";
 import { runBirth } from "./birth";
+import { showTitleScreen } from "./news";
 import type { BirthDeps } from "./birth";
 import {
   gameMenuEntries,
@@ -231,12 +233,13 @@ import {
   packMenu,
   deviceMenu,
   deviceFailColumn,
-  equipmentMenu,
+  objLetter,
   magicBooks,
   bookSpellMenu,
   spellBrowseLines,
   targetMenu,
   objectName,
+  objectColor,
   wrapRuns,
   qualityIgnoreMenu,
   qualityLevelItems,
@@ -343,6 +346,11 @@ const FORCE_NEW_KEY = "neo-angband-force-new";
 // post-birth reload does not reopen the birth screen.
 const BIRTH_KEY = "neo-angband-birth";
 const BIRTH_DONE_KEY = "neo-angband-birth-done";
+// The boot title/news screen shows on every genuine launch (main-win.c:5475:
+// the GUI ports display news.txt and wait). Internal reloads that continue an
+// already-made choice (New/Switch/resume-a-slot) set this one-shot flag so the
+// title is not shown again on that continuation reload.
+const SKIP_TITLE_KEY = "neo-angband-skip-title";
 interface StoredBirth {
   raceName: string;
   className: string;
@@ -912,46 +920,92 @@ function targetRefObject(ref: ItemTargetRef): GameObject | null {
 }
 
 /**
- * An async lettered picker over the sources req.mode allows (inventory, worn
- * equipment, the floor pile under the player), each filtered by req.tester.
- * The quiver rides the pack in this gear model, so USE_QUIVER is covered by the
- * inventory pass. Returns the chosen ref, or null on ESC / an empty menu.
+ * Build the get_item sources (command_wrk lists) the request allows - Inven,
+ * Equip, Floor, in upstream display order - each filtered by req.tester, with a
+ * parallel ItemTargetRef list per source so the itemSelect result maps back to
+ * the right handle / floor index. The quiver rides the pack in this gear model,
+ * so USE_QUIVER folds into the inventory pass. `deviceFail` shows the OLIST_FAIL
+ * failure column on the inventory rows (device-use pickers).
  */
-async function selectTargetItem(req: ItemRequest): Promise<ItemTargetRef | null> {
-  const items: MenuItem[] = [];
-  const refs: ItemTargetRef[] = [];
-  if (req.mode.inven || req.mode.quiver) {
-    const { items: packItems, handles } = packMenu(state, req.tester);
-    packItems.forEach((it, i) => {
-      items.push(it);
-      refs.push({ handle: handles[i]! });
-    });
+function buildItemSources(
+  tester: (o: GameObject) => boolean,
+  mode: { inven?: boolean; quiver?: boolean; equip?: boolean; floor?: boolean },
+  deviceFail = false,
+): { sources: ItemMenuSource[]; refs: ItemTargetRef[][] } {
+  const sources: ItemMenuSource[] = [];
+  const refs: ItemTargetRef[][] = [];
+  if (mode.inven || mode.quiver) {
+    const { items, handles } = deviceFail
+      ? deviceMenu(state, tester, isKindAware)
+      : packMenu(state, tester);
+    if (items.length > 0) {
+      sources.push({ label: "Inven", items });
+      refs.push(handles.map((h) => ({ handle: h })));
+    }
   }
-  if (req.mode.equip) {
+  if (mode.equip) {
     const player = state.actor.player;
+    const items: MenuItem[] = [];
+    const eRefs: ItemTargetRef[] = [];
     for (let i = 0; i < player.body.count; i++) {
       const handle = player.equipment[i] ?? 0;
       if (!handle) continue;
       const obj = gearGet(state.gear, handle);
-      if (!obj || !req.tester(obj)) continue;
-      items.push({ label: objectName(state, obj), color: "#c8c8d4" });
-      refs.push({ handle });
+      if (!obj || !tester(obj)) continue;
+      items.push({ label: objectName(state, obj), color: objectColor(obj), tag: objLetter(items.length) });
+      eRefs.push({ handle });
+    }
+    if (items.length > 0) {
+      sources.push({ label: "Equip", items });
+      refs.push(eRefs);
     }
   }
-  if (req.mode.floor) {
+  if (mode.floor) {
+    const items: MenuItem[] = [];
+    const fRefs: ItemTargetRef[] = [];
     floorPile(state, state.actor.grid).forEach((obj, i) => {
-      if (!req.tester(obj)) return;
-      items.push({ label: `${objectName(state, obj)} (on floor)`, color: "#c8c8d4" });
-      refs.push({ floor: i });
+      if (!tester(obj)) return;
+      items.push({ label: objectName(state, obj), color: objectColor(obj), tag: objLetter(items.length) });
+      fRefs.push({ floor: i });
     });
+    if (items.length > 0) {
+      sources.push({ label: "Floor", items });
+      refs.push(fRefs);
+    }
   }
-  if (items.length === 0) {
-    say(req.reject);
+  return { sources, refs };
+}
+
+/**
+ * The faithful get_item picker (textui_get_item, ui-object.c): shows the prompt
+ * and "(Inven: a-c, / for Equip, - for floor, ESC)" header over the allowed
+ * sources and resolves the chosen ItemTargetRef, or null on ESC / an empty
+ * menu. Used by the item-target effect chooser and the item-command pickers.
+ */
+async function selectItemFrom(
+  prompt: string,
+  tester: (o: GameObject) => boolean,
+  mode: { inven?: boolean; quiver?: boolean; equip?: boolean; floor?: boolean },
+  reject: string,
+  deviceFail = false,
+): Promise<ItemTargetRef | null> {
+  const { sources, refs } = buildItemSources(tester, mode, deviceFail);
+  if (sources.length === 0) {
+    say(reject);
     return null;
   }
-  const idx = await selectFromMenu(term, req.prompt.trim(), items);
-  if (idx === null) return null;
-  return refs[idx] ?? null;
+  const chosen = await itemSelect(term, prompt.trim(), sources);
+  if (chosen === null) return null;
+  return refs[chosen.source]?.[chosen.index] ?? null;
+}
+
+/**
+ * The item-target effect chooser (cmd_get_item "tgtitem"): resolve req into an
+ * ItemTargetRef through the faithful picker. The quiver rides the pack, so
+ * USE_QUIVER is covered by the inventory pass.
+ */
+async function selectTargetItem(req: ItemRequest): Promise<ItemTargetRef | null> {
+  return selectItemFrom(req.prompt, req.tester, req.mode, req.reject);
 }
 
 /** The registry data the object-info engine needs; stable for the session. */
@@ -1539,21 +1593,18 @@ async function useItem(
   filter: (obj: GameObject) => boolean,
   emptyNoun: string,
 ): Promise<void> {
-  const { items, handles } = DEVICE_VERBS.has(code)
-    ? deviceMenu(state, filter, isKindAware)
-    : packMenu(state, filter);
-  if (items.length === 0) {
-    say(`You have no ${emptyNoun}.`);
-    return;
-  }
-  const idx = await selectFromMenu(
-    term,
+  // The pack picker (the quiver rides the pack in this gear model). Floor items
+  // are not offered here because the command dispatch is keyed on a gear handle,
+  // which floor piles lack; the faithful "(Inven: a-c, ESC)" header still shows.
+  const ref = await selectItemFrom(
     `${VERB_LABEL[code] ?? "Use"} which item?`,
-    items,
+    filter,
+    { inven: true },
+    `You have no ${emptyNoun}.`,
+    DEVICE_VERBS.has(code),
   );
-  if (idx === null) return;
-  const handle = handles[idx];
-  if (handle === undefined) return;
+  if (ref === null || !("handle" in ref)) return;
+  const handle = ref.handle;
   const obj = gearGet(state.gear, handle);
   await dispatchItemVerb(code, handle, obj);
 }
@@ -1619,17 +1670,17 @@ async function activateItem(): Promise<void> {
   advance();
 }
 
-/** Take off an equipped item (t): pick from filled equipment slots. */
+/** Take off an equipped item (t): pick from filled equipment slots via the
+ * faithful get_item picker (USE_EQUIP -> "(Equip: a-c, ESC)"). */
 async function takeOffItem(): Promise<void> {
-  const { items, handles } = equipmentMenu(state);
-  if (items.length === 0) {
-    say("You are not wearing anything you can take off.");
-    return;
-  }
-  const idx = await selectFromMenu(term, "Take off which item?", items);
-  if (idx === null) return;
-  const handle = handles[idx];
-  if (handle === undefined) return;
+  const ref = await selectItemFrom(
+    "Take off which item?",
+    () => true,
+    { equip: true },
+    "You are not wearing anything you can take off.",
+  );
+  if (ref === null || !("handle" in ref)) return;
+  const handle = ref.handle;
   say(actionLine("takeoff", gearGet(state.gear, handle)));
   commandBuffer.push({ code: "takeoff", args: { handle } });
   advance();
@@ -2049,18 +2100,14 @@ async function fireCmd(): Promise<void> {
     say("You have nothing to fire with.");
     return;
   }
-  const { items, handles } = packMenu(
-    state,
+  const ref = await selectItemFrom(
+    "Fire which ammunition?",
     (o) => tvalIsAmmo(o.tval) && o.tval === tval,
+    { inven: true },
+    "You have no ammunition for your weapon.",
   );
-  if (items.length === 0) {
-    say("You have no ammunition for your weapon.");
-    return;
-  }
-  const idx = await selectFromMenu(term, "Fire which ammunition?", items);
-  if (idx === null) return;
-  const handle = handles[idx];
-  if (handle === undefined) return;
+  if (ref === null || !("handle" in ref)) return;
+  const handle = ref.handle;
   const dir = await aimDir();
   if (dir === null) return;
   commandBuffer.push({ code: "fire", args: { handle, dir } });
@@ -2069,15 +2116,14 @@ async function fireCmd(): Promise<void> {
 
 /** Throw (v): pick any pack item, aim, and hurl it. */
 async function throwCmd(): Promise<void> {
-  const { items, handles } = packMenu(state, () => true);
-  if (items.length === 0) {
-    say("You have nothing to throw.");
-    return;
-  }
-  const idx = await selectFromMenu(term, "Throw which item?", items);
-  if (idx === null) return;
-  const handle = handles[idx];
-  if (handle === undefined) return;
+  const ref = await selectItemFrom(
+    "Throw which item?",
+    () => true,
+    { inven: true },
+    "You have nothing to throw.",
+  );
+  if (ref === null || !("handle" in ref)) return;
+  const handle = ref.handle;
   const dir = await aimDir();
   if (dir === null) return;
   commandBuffer.push({ code: "throw", args: { handle, dir } });
@@ -3331,6 +3377,7 @@ function newGame(): void {
   // overwrite any existing one
   try {
     sessionStorage.setItem(FORCE_NEW_KEY, "1");
+    sessionStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
   } catch {
     /* ignore storage errors; the reload below still starts fresh via ?new */
   }
@@ -3343,6 +3390,11 @@ function newGame(): void {
 function switchCharacter(): void {
   persistSave();
   setActiveId(null); // boot finds no active character -> shows the select screen
+  try {
+    sessionStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
+  } catch {
+    /* storage disabled: the title simply shows again, which is harmless */
+  }
   const url = new URL(location.href);
   url.searchParams.delete("new");
   url.searchParams.delete("seed");
@@ -5038,14 +5090,22 @@ function installTouchActionBar(): void {
 }
 if (window.matchMedia?.("(pointer: coarse)").matches) installTouchActionBar();
 
-// ---- Session continuity: force a save when the tab is hidden or closed ----
-// Mobile browsers may kill a backgrounded tab without warning; pagehide and the
-// hidden visibility state are the reliable last-chance hooks to flush the save.
-window.addEventListener("pagehide", () => {
+// ---- Session continuity + anti-scum: force a save on every exit path -------
+// A refresh, navigation, tab-hide or close all force-flush the in-progress game
+// to its slot BEFORE the page unloads, so reloading resumes the exact same
+// state instead of an earlier one - you cannot refresh your way out of a bad
+// turn (decision 16: no save-scumming; death is terminal). beforeunload is the
+// canonical refresh/navigation hook; pagehide and the hidden visibility state
+// are the last-chance hooks for mobile browsers that may kill a backgrounded
+// tab without firing beforeunload. All three route through persistSave, which
+// is a no-op for a throwaway pre-birth game (birthPending) and a dead hero.
+function flushSaveOnExit(): void {
   if (!dead) persistSave();
-});
+}
+window.addEventListener("beforeunload", flushSaveOnExit);
+window.addEventListener("pagehide", flushSaveOnExit);
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden" && !dead) persistSave();
+  if (document.visibilityState === "hidden") flushSaveOnExit();
 });
 
 // ---- Sound subsystem wiring (faithful to init_sound + EVENT_SOUND) ----
@@ -5176,15 +5236,45 @@ async function maybeBirth(): Promise<void> {
 /** Reload to resume the chosen character (clears the fresh-start params). */
 function resumeSelected(id: string): void {
   setActiveId(id);
+  try {
+    sessionStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
+  } catch {
+    /* storage disabled: the title simply shows again, which is harmless */
+  }
   const url = new URL(location.href);
   url.searchParams.delete("new");
   url.searchParams.delete("seed");
   location.assign(url.toString());
 }
 
-// Boot-time flow: a resumed character plays immediately; otherwise pick from
-// the roster (when other characters are saved) or birth a brand-new one.
+/**
+ * The title / news screen (news.txt), shown once per genuine launch before any
+ * game interaction - the faithful stand-in for the GUI ports displaying
+ * news.txt and waiting on "[Choose 'New' or 'Open' from the 'File' menu]"
+ * (main-win.c:5475). Skipped only on internal continuation reloads: an
+ * autoplayer boot (?agent), the post-birth rebuild (BIRTH_DONE peeked, not
+ * cleared - maybeBirth still owns clearing it), and New/Switch/resume-a-slot
+ * (SKIP_TITLE, set by those actions and cleared here).
+ */
+async function maybeTitle(): Promise<void> {
+  if (params.get("agent")) return;
+  try {
+    if (sessionStorage.getItem(SKIP_TITLE_KEY) === "1") {
+      sessionStorage.removeItem(SKIP_TITLE_KEY);
+      return;
+    }
+    if (sessionStorage.getItem(BIRTH_DONE_KEY) === "1") return; // post-birth rebuild
+  } catch {
+    /* sessionStorage unavailable: fall through and show the title */
+  }
+  await openModal(() => showTitleScreen(term));
+}
+
+// Boot-time flow: the title screen first, then a resumed character plays
+// immediately; otherwise pick from the roster (when other characters are saved)
+// or birth a brand-new one.
 async function bootMenus(): Promise<void> {
+  await maybeTitle();
   if (resumedActive) return;
   if (needsSelect) {
     await openModal(async () => {
