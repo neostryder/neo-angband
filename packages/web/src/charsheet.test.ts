@@ -363,23 +363,25 @@ describe("showCharacterSheet: do_cmd_change_name keys", () => {
     press(win, "Escape");
   });
 
-  it("mode 1 renders the real resist/ability/sustain grid when packs are supplied", () => {
+  it("mode 1 renders the real resist/ability/sustain grid, faithful to display_player(1)", () => {
     const { state, win, term } = setup();
     void showCharacterSheet(term, state, "Fred", { uiEntryPacks });
     press(win, "h");
-    const text = term.snapshot().join("\n");
-    // The resist regions and the player "@" column render (the lower panels -
-    // hindrances/modifiers/sustains - scroll into view below the fold).
-    expect(text).toContain("Resistances");
-    expect(text).toContain("Abilities");
+    const snap = term.snapshot();
+    const text = snap.join("\n");
+    // display_player mode 1 draws panels[0] (topleft) too (ui-player.c:906-908).
+    expect(slice(snap, 1, 1, 4)).toBe("Name");
+    // The four flag regions tile across, each with its real row labels + the
+    // player "@" column; the sustains block sits left of the stat table with
+    // the exact upstream slot-letter header (all_letters_nohjkl, skips h/j/k/l).
+    expect(text).toContain("Acid:");
     expect(text).toContain("@");
-    expect(text).toContain("Acid:"); // a real resist row label
-    // Not the placeholder fallback.
+    expect(text).toContain("abcdefgimnop@");
+    // No placeholder, and NO on-screen region titles - those live only in the
+    // character dump (write_character_dump), never on the interactive screen.
     expect(text).not.toContain("unavailable");
-
-    // Page down to reveal the sustain panel at the bottom of the grid.
-    for (let i = 0; i < 4; i++) press(win, "PageDown");
-    expect(term.snapshot().join("\n")).toContain("Sustains");
+    expect(text).not.toContain("Resistances");
+    expect(text).not.toContain("Sustains");
     press(win, "Escape");
   });
 

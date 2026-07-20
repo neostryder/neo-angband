@@ -120,6 +120,22 @@ const ANCHOR = {
 const STAT_COL = 42;
 const STAT_HEADER_ROW = 1;
 
+/** Sustains block column (display_player_sust_info L541: col = 26); its header
+ * sits on STAT_HEADER_ROW and its five stat rows below, left of the stat table. */
+const SUST_COL = 26;
+
+/** display_player mode-1 flag-region anchors (configure_char_sheet L229-231 /
+ * display_resistance_panel L399-401): region i starts at col i*(res_cols+1) =
+ * i*20 for the default 12-slot body; within it the equippy row is first, the
+ * slot-letter header next, data rows below. The regions begin at row 2+STAT_MAX. */
+const RES_REGION_STRIDE = 20;
+const RES_REGION_ROW = 2 + 5; // 2 + STAT_MAX
+
+/** all_letters_nohjkl (ui-menu.c:41): the equipment slot-letter set, skipping
+ * h/j/k/l, used for the flag-grid and sustains column headers. */
+const ALL_LETTERS_NOHJKL =
+  "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
 /** History block row (display_player_xtra_info L872: Term_gotoxy(1, 19)). */
 const HISTORY_ROW = 19;
 
@@ -140,9 +156,6 @@ const PANEL_TITLES: Record<string, string> = {
   modifiers: "Modifiers",
 };
 
-/** Stat sustain labels (display_player_sust_info, one row per STAT). */
-const STAT_LABELS = ["Str", "Int", "Wis", "Dex", "Con"] as const;
-
 /** res_nlabel: the 6-char label column of a flag region (configure_char_sheet
  * L223, res_nlabel = 6). A region is label(6) + one cell per body slot + the
  * '@' player column, so its width is res_nlabel + body.count + 1. */
@@ -158,42 +171,69 @@ const RES_LABEL_WIDTH = 6;
  * whatever (x, y) the layout wants - wide mode tiles four of these across the
  * screen, narrow mode stacks them.
  */
-function buildGridBlock(
-  state: GameState,
-  panel: UiGridPanel,
-  title: string,
-  statLabels?: readonly string[],
-): ScreenLine[] {
+function buildGridBlock(state: GameState, panel: UiGridPanel): ScreenLine[] {
   const p = state.actor.player;
   const out: ScreenLine[] = [];
-  out.push({ text: title, color: TITLE });
 
-  /* Slot-letter header: label pad, a letter per body slot, then '@'. */
-  let hdr = " ".repeat(RES_LABEL_WIDTH);
-  for (let i = 0; i < p.body.count; i++) hdr += String.fromCharCode(97 + i);
-  hdr += "@";
-  out.push({ text: hdr, color: LABEL });
-
-  /* Equippy row: the item glyph in each slot (or '.'), blank under '@'. */
+  /* Equippy row FIRST (display_resistance_panel L399: equippy at row++, then
+   * the letter header): 6-char label pad, the item glyph in each slot (a BLANK
+   * when empty, matching display_player_equippy's L' '), blank under '@'. */
   const equippy: { text: string; color: string }[] = [
     { text: " ".repeat(RES_LABEL_WIDTH), color: LABEL },
   ];
   for (let i = 0; i < p.body.count; i++) {
     const obj = gearGet(state.gear, p.equipment[i] ?? 0);
-    equippy.push({ text: obj ? obj.kind.dChar : ".", color: obj ? FG : DIM });
+    equippy.push({ text: obj ? obj.kind.dChar : " ", color: FG });
   }
   equippy.push({ text: " ", color: FG });
   out.push({ text: equippy.map((r) => r.text).join(""), color: FG, runs: equippy });
 
+  /* Slot-letter header (L401: "      abcdefgimnop@"): 6-char pad, one
+   * all_letters_nohjkl letter per body slot, then '@'. */
+  let hdr = " ".repeat(RES_LABEL_WIDTH);
+  for (let i = 0; i < p.body.count; i++) hdr += ALL_LETTERS_NOHJKL[i] ?? "";
+  hdr += "@";
+  out.push({ text: hdr, color: LABEL });
+
   /* One row per entry: 6-char label (own colour) + a cell per slot + player. */
-  panel.rows.forEach((row, i) => {
-    const label = (row.label || statLabels?.[i] || "").padEnd(RES_LABEL_WIDTH).slice(0, RES_LABEL_WIDTH);
+  panel.rows.forEach((row) => {
+    const label = (row.label || "").padEnd(RES_LABEL_WIDTH).slice(0, RES_LABEL_WIDTH);
     const runs: { text: string; color: string }[] = [
       { text: label, color: colorToCss(row.labelColor) },
     ];
     for (const cell of row.cells) {
       runs.push({ text: cell.symbol, color: colorToCss(cell.color) });
     }
+    out.push({ text: runs.map((r) => r.text).join(""), color: FG, runs });
+  });
+  return out;
+}
+
+/**
+ * buildSustainBlock: the stat-modifier / sustain block (display_player_sust_info,
+ * ui-player.c:521-568). Unlike a resist region it has NO equippy row and NO
+ * row labels (ui_entry_renderer_apply is called with label=NULL): just the
+ * "abcdefgimnop@" header (no 6-char pad) and one cell-only row per stat, the
+ * player '@' column blanked (L563: vals[body.count] = 0).
+ */
+function buildSustainBlock(state: GameState, panel: UiGridPanel): ScreenLine[] {
+  const p = state.actor.player;
+  const out: ScreenLine[] = [];
+  let hdr = "";
+  for (let i = 0; i < p.body.count; i++) hdr += ALL_LETTERS_NOHJKL[i] ?? "";
+  hdr += "@";
+  out.push({ text: hdr, color: LABEL });
+  panel.rows.forEach((row) => {
+    const runs: { text: string; color: string }[] = [];
+    row.cells.forEach((cell, ci) => {
+      /* Player column (last cell) carries only the sustain state; L563 forces
+       * its stat-modifier value to 0, so it renders as the empty symbol. */
+      const isPlayer = ci === p.body.count;
+      runs.push({
+        text: isPlayer && /[0-9+-]/u.test(cell.symbol) ? "." : cell.symbol,
+        color: colorToCss(cell.color),
+      });
+    });
     out.push({ text: runs.map((r) => r.text).join(""), color: FG, runs });
   });
   return out;
@@ -207,13 +247,16 @@ function buildGridBlock(
 function characterGridLines(state: GameState, config: UiEntryConfig): ScreenLine[] {
   const { resistPanels, statModPanel } = characterGrid(state, config);
   const lines: ScreenLine[] = [];
+  // NARROW (phone) mode only: a section title precedes each block so the
+  // stacked scroll list stays legible. The wide layout (the upstream screen)
+  // draws no such titles - upstream shows them only in the character dump.
   for (const panel of resistPanels) {
-    for (const l of buildGridBlock(state, panel, PANEL_TITLES[panel.key] ?? panel.key)) {
-      lines.push(l);
-    }
+    lines.push({ text: PANEL_TITLES[panel.key] ?? panel.key, color: TITLE });
+    for (const l of buildGridBlock(state, panel)) lines.push(l);
     lines.push({ text: "", color: FG });
   }
-  for (const l of buildGridBlock(state, statModPanel, "Sustains", STAT_LABELS)) lines.push(l);
+  lines.push({ text: "Sustains", color: TITLE });
+  for (const l of buildSustainBlock(state, statModPanel)) lines.push(l);
   return lines;
 }
 
@@ -546,8 +589,10 @@ export function showCharacterSheet(
       return `Character  -  ${curName || "(unnamed)"} the ${p.race.name} ${p.cls.name}, Level ${p.lev}`;
     };
 
+    // do_cmd_change_name prompt (ui-player.c:1229), verbatim and identical in
+    // both display modes; 'h' cycles the pages.
     const wideFooter = (): string =>
-      `[ h/Space: page  c: name  f: dump  ESC: back ]  (page ${mode + 1}/${INFO_SCREENS})`;
+      "['c' to change name, 'f' to file, 'h' to change mode, or ESC]";
 
     const paintWide = (): void => {
       term.clear();
@@ -583,34 +628,33 @@ export function showCharacterSheet(
         let y = 2;
         for (const line of modeOnePlaceholder()) printLine(0, y++, line);
       } else {
-        // Mode 1: the resist / ability / hindrance / modifier grid + sustains,
-        // laid out as side-by-side blocks that FILL the screen, mirroring
-        // configure_char_sheet + display_player (ui-player.c:222-232, 379-443)
-        // - four flag regions tiled left-to-right at res_cols stride, the
-        // sustains block above them, and the stat table kept top-right. (The
-        // old code stacked them into one narrow scrolling column - the bug.)
+        // Mode 1 (display_player mode 1, ui-player.c:905-914): the topleft
+        // Name/Race/Class/Title/HP/SP panel, the stat table (already drawn
+        // above), the sustains block, and the four flag regions - each at its
+        // exact upstream anchor, with NO on-screen region titles (upstream
+        // shows those only in the character dump).
+        paintPanel(term, ANCHOR.topleft, byKey("topleft"));
         const { resistPanels, statModPanel } = characterGrid(state, gridConfig);
-        const blit = (block: ScreenLine[], x: number, y0: number): number => {
+        const blit = (block: ScreenLine[], x: number, y0: number): void => {
           let y = y0;
           for (const line of block) {
             if (y >= rows - 1) break;
             printLine(x, y, line);
             y += 1;
           }
-          return y;
         };
-        // Sustains top-left (display_player_sust_info); regions tile below it.
-        const afterSust = blit(buildGridBlock(state, statModPanel, "Sustains", STAT_LABELS), 0, 2);
-        const regionRow = afterSust + 1;
-        // res_regions[i].col = i * (res_cols + 1); res_cols = 6 + body.count + 1
-        // (label + one cell per slot + the '@' player column).
-        const stride = RES_LABEL_WIDTH + state.actor.player.body.count + 1 + 1;
+        // Sustains (display_player_sust_info, col 26): the "abcdefgimnop@"
+        // header on the stat-header row, its five stat rows on the stat rows,
+        // just left of the stat table.
+        blit(buildSustainBlock(state, statModPanel), SUST_COL, STAT_HEADER_ROW);
+        // Four flag regions tiled left-to-right (cols 0/20/40/60), each with an
+        // equippy row / letter header / data rows from row 2+STAT_MAX.
         resistPanels.forEach((panel, i) => {
-          blit(buildGridBlock(state, panel, PANEL_TITLES[panel.key] ?? panel.key), i * stride, regionRow);
+          blit(buildGridBlock(state, panel), i * RES_REGION_STRIDE, RES_REGION_ROW);
         });
       }
 
-      term.print(0, rows - 1, wideFooter().slice(0, cols - 1), DIM);
+      term.print(2, rows - 1, wideFooter().slice(0, cols - 3), DIM);
     };
 
     const narrowLines = (): ScreenLine[] => {
@@ -649,7 +693,7 @@ export function showCharacterSheet(
       term.print(
         0,
         rows - 1,
-        `[ h: page  c: name  ESC: back ]${more}`.slice(0, cols - 1),
+        `['c' to change name, 'f' to file, 'h' to change mode, or ESC]${more}`.slice(0, cols - 1),
         DIM,
       );
     };

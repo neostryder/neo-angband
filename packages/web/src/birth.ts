@@ -41,7 +41,7 @@
 
 import { selectFromMenu, promptText, menuNav } from "./overlay";
 import type { MenuItem, ScreenLine } from "./overlay";
-import { characterSheetLines } from "./screens";
+import { characterSheetLines, statHeaderLine, statRowLine } from "./screens";
 import type { GlyphTerm } from "./term";
 import {
   BIRTH_STAT_BASE,
@@ -54,6 +54,12 @@ import {
   calcBonuses,
   classMagicRealms,
   cnvStat,
+  colorToCss,
+  COLOUR_L_BLUE,
+  COLOUR_L_GREEN,
+  COLOUR_L_WHITE,
+  COLOUR_WHITE,
+  COLOUR_YELLOW,
   generatePlayer,
   generateStats,
   modifyStatValue,
@@ -158,16 +164,135 @@ const CLASS_HINT = "Class affects stats, skills, and other character traits.";
 const ROLLER_HINT =
   "Choose how to generate your intrinsic stats. Point-based is recommended.";
 
-const FOOTER = "[ a-z to choose, tap a row, ESC to go back ]";
 const FOOTER_FIRST = "[ a-z to choose, tap a row, ESC to keep the default ]";
 
 const STAT_ABBR = ["STR", "INT", "WIS", "DEX", "CON"] as const;
+
+/**
+ * all_letters_nohjkl (ui-menu.c:41): the birth menus tag rows from this set,
+ * which skips h/j/k/l so those keys stay free as movement keys. So an 11-race
+ * list is tagged a,b,c,d,e,f,g,i,m,n,o and a 9-class list a,b,c,d,e,f,g,i,m.
+ */
+const ALL_LETTERS_NOHJKL =
+  "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/* Birth screen layout constants (ui-birth.c L154-173). */
+const HEADER_ROW = 1;
+const QUESTION_ROW = 7;
+const TABLE_ROW = 9;
+const QUESTION_COL = 2;
+const RACE_COL = 2;
+const RACE_AUX_COL = 19;
+const CLASS_COL = 19;
+const CLASS_AUX_COL = 36;
+const ROLLER_COL = 36;
 
 /* Overlay palette (shared with overlay.ts's screen primitives). */
 const PB_TITLE = "#e8e8f0";
 const PB_FG = "#c8c8d4";
 const PB_DIM = "#8a8a94";
 const PB_HI = "#e0c040";
+
+/* The core palette colours the upstream birth menus use, as CSS. */
+const CSS_L_BLUE = colorToCss(COLOUR_L_BLUE);
+const CSS_L_GREEN = colorToCss(COLOUR_L_GREEN);
+const CSS_YELLOW = colorToCss(COLOUR_YELLOW);
+const CSS_WHITE = colorToCss(COLOUR_WHITE);
+const CSS_L_WHITE = colorToCss(COLOUR_L_WHITE);
+
+/**
+ * BIRTH_MENU_HELPTEXT (ui-birth.c L623-630): the second header line, split into
+ * colour runs so the listed keys draw Light Green and the rest White. The
+ * word-wrapper (wrapColored) keeps each run's colour as it packs words.
+ */
+const HELP_TITLE = "Please select your character traits from the menus below:";
+const HELP_PARTS: readonly { text: string; green: boolean }[] = [
+  { text: "Use the ", green: false },
+  { text: "movement keys", green: true },
+  { text: " to scroll the menu, ", green: false },
+  { text: "Enter", green: true },
+  { text: " to select the current menu item, '", green: false },
+  { text: "*", green: true },
+  { text: "' for a random menu item, '", green: false },
+  { text: "@", green: true },
+  { text: "' to finish the character with random selections, '", green: false },
+  { text: "ESC", green: true },
+  { text: "' to step back through the birth process, '", green: false },
+  { text: "=", green: true },
+  { text: "' for the birth options, '", green: false },
+  { text: "?", green: true },
+  { text: "' for help, or '", green: false },
+  { text: "Ctrl-X", green: true },
+  { text: "' to quit.", green: false },
+];
+
+/**
+ * Word-wrap a run-coloured sentence to `width`, preserving each run's colour.
+ * Words break only on spaces; a word carries its (possibly multi-colour) runs
+ * intact. Returns at most `maxLines` ScreenLines with per-run colour.
+ */
+function wrapColored(
+  parts: readonly { text: string; green: boolean }[],
+  width: number,
+  maxLines: number,
+): ScreenLine[] {
+  type Run = { text: string; color: string };
+  const words: { runs: Run[]; len: number }[] = [];
+  let cur: Run[] = [];
+  let curLen = 0;
+  const flushWord = (): void => {
+    if (curLen > 0) {
+      words.push({ runs: cur, len: curLen });
+      cur = [];
+      curLen = 0;
+    }
+  };
+  for (const p of parts) {
+    const color = p.green ? CSS_L_GREEN : CSS_WHITE;
+    let seg = "";
+    for (const ch of p.text) {
+      if (ch === " ") {
+        if (seg) {
+          cur.push({ text: seg, color });
+          curLen += seg.length;
+          seg = "";
+        }
+        flushWord();
+      } else {
+        seg += ch;
+      }
+    }
+    if (seg) {
+      cur.push({ text: seg, color });
+      curLen += seg.length;
+    }
+  }
+  flushWord();
+
+  const lines: ScreenLine[] = [];
+  let lineRuns: Run[] = [];
+  let lineLen = 0;
+  const pushLine = (): void => {
+    lines.push({
+      text: lineRuns.map((r) => r.text).join(""),
+      runs: lineRuns,
+    });
+    lineRuns = [];
+    lineLen = 0;
+  };
+  for (const w of words) {
+    const sep = lineLen > 0 ? 1 : 0;
+    if (lineLen > 0 && lineLen + sep + w.len > width) pushLine();
+    if (lineLen > 0) {
+      lineRuns.push({ text: " ", color: CSS_WHITE });
+      lineLen += 1;
+    }
+    lineRuns.push(...w.runs);
+    lineLen += w.len;
+  }
+  if (lineLen > 0) pushLine();
+  return lines.slice(0, maxLines);
+}
 
 /** "%+d"-style signed adjustment (empty adj slot reads as +0). */
 function signed(n: number): string {
@@ -289,28 +414,99 @@ function previewState(player: Player, ps: PlayerState): GameState {
  */
 const PREVIEW_SEED = 0x50524556; // "PREV"
 
-/** Right-hand column for the preview sheet drawn beside the roller / point-buy
- * panels, and the minimum width at which it is shown (narrower layouts keep the
- * compact panel so the phone view is not crowded). */
-const SHEET_COL = 39;
-const SHEET_MIN_COLS = 72;
+/**
+ * Birth roller / point-buy layout (ui-birth.c point_based_start L1074-1086,
+ * roller_command): display_player_xtra_info draws the character panels on the
+ * LEFT (from col 0) and display_player_stat_info draws the stat table on the
+ * RIGHT at col 42 (ui-player.c:460). The cost column sits at COSTS_COL (42+32)
+ * and the "Total Cost" line at TOTAL_COL (42+19), ui-birth.c:1008-1009.
+ */
+const STAT_TABLE_COL = 42;
+const STAT_HEADER_ROW = 1;
+const STAT_ROW0 = 2; // COSTS_ROW / display_player_stat_info row.
+const COST_OFFSET = 32; // COSTS_COL - 42.
+const TOTAL_OFFSET = 19; // TOTAL_COL - 42.
+/** Width the character panels are drawn (and history wrapped) to on the left,
+ * so nothing reaches the stat table at col 42. */
+const INFO_W = 40;
+/** Minimum terminal width for the faithful two-column layout (stat table at
+ * col 42): point-buy needs the cost column at cols 74-77, the roller only the
+ * Best column at cols 66-71. Below these, the table falls back to col 0 with no
+ * side panels (the phone layout). */
+const POINTBUY_WIDE_MIN = 78;
+const ROLLER_WIDE_MIN = 72;
 
 /**
- * display_player(0) alongside the roller / point-buy screens (ui-birth.c L894 /
- * L1074): the derived sheet drawn in a right-hand column, skipping its own stat
- * block (the interactive left panel already shows Self/RB/CB/Best) so the
- * HP/SP, combat, skills and gold panels surface and repaint on every reroll or
- * stat buy/sell. Drawn only when the terminal is wide enough.
+ * display_player_xtra_info alongside the roller / point-buy stat table
+ * (ui-birth.c L894 / L1083): the derived character panels drawn in the LEFT
+ * column (from `startRow`), skipping the sheet's own stat block (the stat table
+ * is drawn separately on the right) so the name, HP/SP, combat, skills, gold
+ * and background surface and repaint on every reroll or stat buy/sell. Each
+ * line is clipped to INFO_W so it never collides with the stat table.
  */
-function drawSideSheet(term: GlyphTerm, lines: ScreenLine[] | null): void {
-  const { cols, rows } = term.size();
-  if (!lines || cols < SHEET_MIN_COLS) return;
+function drawInfoColumn(
+  term: GlyphTerm,
+  lines: ScreenLine[] | null,
+  startRow: number,
+): void {
+  const { rows } = term.size();
+  if (!lines) return;
   const skip = 1 + STAT_MAX + 1; // stat header + STAT_MAX stat rows + separator
-  let y = 3;
+  let y = startRow;
   for (let i = skip; i < lines.length && y < rows - 1; i++, y++) {
     const line = lines[i];
-    if (line) drawScreenLine(term, SHEET_COL, y, line);
+    if (!line) continue;
+    // Clip to INFO_W by rendering into a bounded view (drawScreenLine clips to
+    // the terminal width; we additionally cap the run text at INFO_W columns).
+    drawScreenLine(term, 0, y, clipLine(line, INFO_W));
   }
+}
+
+/** Clip a (possibly run-coloured) ScreenLine to at most `width` columns. */
+function clipLine(line: ScreenLine, width: number): ScreenLine {
+  if (!line.runs) {
+    return { text: line.text.slice(0, width), ...(line.color ? { color: line.color } : {}) };
+  }
+  const runs: { text: string; color: string }[] = [];
+  let used = 0;
+  for (const run of line.runs) {
+    if (used >= width) break;
+    const chunk = run.text.slice(0, width - used);
+    runs.push({ text: chunk, color: run.color });
+    used += chunk.length;
+  }
+  return {
+    text: runs.map((r) => r.text).join(""),
+    ...(line.color ? { color: line.color } : {}),
+    runs,
+  };
+}
+
+/**
+ * One display_player_stat_info row (ui-player.c L469-507) built from raw birth
+ * values, rendered through the shared statRowLine so the Self/RB/CB/EB/Best
+ * columns and colours match the character sheet exactly. Birth stats are never
+ * drained or at the 18/100 natural cap, so reduced/naturalMax are always off.
+ */
+function birthStatRow(
+  i: number,
+  self: number,
+  rb: number,
+  cb: number,
+  eb: number,
+  best: number,
+): ScreenLine {
+  return statRowLine({
+    label: `${STAT_ABBR[i] ?? "???"}: `,
+    natural: cnvStat(self).trim(),
+    raceBonus: signed(rb),
+    classBonus: signed(cb),
+    equipBonus: signed(eb),
+    best: cnvStat(best).trim(),
+    reduced: null,
+    naturalMax: false,
+    drained: false,
+  });
 }
 
 /**
@@ -351,32 +547,61 @@ function pointBuyStats(
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
-      term.print(0, 0, `${race.name} ${cls.name}  -  allocate your stats`.slice(0, cols - 1), PB_TITLE);
-      term.print(0, 1, "Point-based: spend the pool to raise your intrinsic stats.".slice(0, cols - 1), PB_DIM);
-      // Column header, aligned with the rows below.
-      term.print(0, 3, "     Self   RB   CB     Best   Cost".slice(0, cols - 1), PB_DIM);
+      // Faithful two-column layout when wide enough: character panels on the
+      // left, stat table on the right at col 42 (ui-birth.c point_based_start).
+      // Narrower falls back to the table at col 0 with no side panels.
+      const wide = cols >= POINTBUY_WIDE_MIN;
+      const tableCol = wide ? STAT_TABLE_COL : 0;
+      // display_player_xtra_info on the left (repaints with the live stats).
+      const infoLines = wide && sheet ? sheet(buy.stats) : null;
+      if (infoLines) drawInfoColumn(term, infoLines, STAT_HEADER_ROW);
+      // display_player_stat_info (ui-player.c L449-509): Self, RB, CB, EB, Best
+      // via the shared renderer, then the birth Cost column at COSTS_COL. EB is
+      // +0 at birth (no equipment) but is a real column, not omitted.
+      drawScreenLine(term, tableCol, STAT_HEADER_ROW, statHeaderLine());
+      term.print(tableCol + COST_OFFSET, STAT_HEADER_ROW, "Cost", CSS_WHITE);
       for (let i = 0; i < STAT_MAX; i++) {
         const self = buy.stats[i] ?? BIRTH_STAT_BASE;
         const rb = raceAdj[i] ?? 0;
         const cb = clsAdj[i] ?? 0;
-        const best = modifyStatValue(self, rb + cb);
-        const mark = i === cursor ? ">" : " ";
-        const abbr = STAT_ABBR[i] ?? "???";
-        const row =
-          `${mark} ${abbr} ${cnvStat(self)} ` +
-          `${signed(rb).padStart(4)} ${signed(cb).padStart(4)} ` +
-          `${cnvStat(best)} ${String(buy.pointsSpent[i] ?? 0).padStart(4)}`;
-        term.print(0, 4 + i, row.slice(0, cols - 1), i === cursor ? PB_HI : PB_FG);
+        const eb = 0; // player->state.stat_add[i]: no equipment at birth.
+        const best = modifyStatValue(self, rb + cb + eb);
+        drawScreenLine(term, tableCol, STAT_ROW0 + i, birthStatRow(i, self, rb, cb, eb, best));
+        // Cost ("%4d", ui-birth.c:1066); the current stat's cost is highlighted
+        // to stand in for the terminal cursor parked at COSTS_COL (L1123).
+        term.print(
+          tableCol + COST_OFFSET,
+          STAT_ROW0 + i,
+          String(buy.pointsSpent[i] ?? 0).padStart(4),
+          i === cursor ? PB_HI : CSS_WHITE,
+        );
       }
-      const y = 4 + STAT_MAX + 1;
-      term.print(0, y, `Points left: ${buy.pointsLeft} / ${MAX_BIRTH_POINTS}`.slice(0, cols - 1), PB_FG);
-      term.print(0, y + 1, `Starting gold: ${birthGold(buy.pointsLeft)}`.slice(0, cols - 1), PB_FG);
-      // display_player(0) beside the allocation (repaints with the live stats).
-      drawSideSheet(term, sheet ? sheet(buy.stats) : null);
+      // "Total Cost: NN/NN" (ui-birth.c:1070) at TOTAL_COL, row COSTS_ROW+STAT_MAX.
+      const spent = MAX_BIRTH_POINTS - buy.pointsLeft;
       term.print(
-        0,
+        tableCol + TOTAL_OFFSET,
+        STAT_ROW0 + STAT_MAX,
+        `Total Cost: ${String(spent).padStart(2)}/${String(MAX_BIRTH_POINTS).padStart(2)}`,
+        CSS_WHITE,
+      );
+      // Starting gold: shown in the left panels when they render
+      // (display_player_xtra_info gold row); drawn inline whenever the panels are
+      // absent (the compact fallback, or no registry deps) so it is never lost.
+      if (!infoLines) {
+        term.print(
+          tableCol + TOTAL_OFFSET,
+          STAT_ROW0 + STAT_MAX + 1,
+          `Starting gold: ${birthGold(buy.pointsLeft)}`.slice(0, cols - 1),
+          PB_FG,
+        );
+      }
+      // point_based_start prompt (ui-birth.c:1076), centered horizontally.
+      const prompt =
+        "[up/down to move, left/right to modify, 'r' to reset, 'Enter' to accept]";
+      term.print(
+        Math.max(0, Math.floor(cols / 2 - prompt.length / 2)),
         rows - 1,
-        "[ up/down move, left/right or -/+ adjust, r reset, Enter accept, ESC back ]".slice(0, cols - 1),
+        prompt.slice(0, cols - 1),
         PB_DIM,
       );
     };
@@ -438,7 +663,7 @@ function pointBuyStats(
         finish([...buy.stats]);
         return;
       }
-      const i = cell.row - 4;
+      const i = cell.row - 2;
       if (i >= 0 && i < STAT_MAX) {
         cursor = i;
         paint();
@@ -476,28 +701,35 @@ function standardRoller(
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
-      term.print(0, 0, `${race.name} ${cls.name}  -  standard roller`.slice(0, cols - 1), PB_TITLE);
-      term.print(0, 1, "Roll for your intrinsic stats, or reroll for a new set.".slice(0, cols - 1), PB_DIM);
-      term.print(0, 3, "     Self   RB   CB     Best".slice(0, cols - 1), PB_DIM);
+      // Faithful two-column layout when wide enough: character panels on the
+      // left, stat table on the right at col 42 (roller_command). Narrower falls
+      // back to the table at col 0 with no side panels.
+      const wide = cols >= ROLLER_WIDE_MIN;
+      const tableCol = wide ? STAT_TABLE_COL : 0;
+      // display_player_xtra_info on the left (repaints on every reroll).
+      if (wide) drawInfoColumn(term, sheet ? sheet(current) : null, STAT_HEADER_ROW);
+      // display_player_stat_info (ui-player.c L449-509): Self, RB, CB, EB, Best
+      // via the shared renderer. EB is +0 at birth but is a real column.
+      drawScreenLine(term, tableCol, STAT_HEADER_ROW, statHeaderLine());
       for (let i = 0; i < STAT_MAX; i++) {
         const self = current[i] ?? 0;
         const rb = raceAdj[i] ?? 0;
         const cb = clsAdj[i] ?? 0;
-        const best = modifyStatValue(self, rb + cb);
-        const abbr = STAT_ABBR[i] ?? "???";
-        const row =
-          `  ${abbr} ${cnvStat(self)} ` +
-          `${signed(rb).padStart(4)} ${signed(cb).padStart(4)} ${cnvStat(best)}`;
-        term.print(0, 4 + i, row.slice(0, cols - 1), PB_FG);
+        const eb = 0; // player->state.stat_add[i]: no equipment at birth.
+        const best = modifyStatValue(self, rb + cb + eb);
+        drawScreenLine(term, tableCol, STAT_ROW0 + i, birthStatRow(i, self, rb, cb, eb, best));
       }
-      // display_player(0) beside the roll (repaints on every reroll).
-      drawSideSheet(term, sheet ? sheet(current) : null);
-      // The prompt mirrors roller_command's assembled string (L900-903): the
-      // previous-roll clause only appears once a reroll has happened.
+      // roller_command's assembled prompt (ui-birth.c:900-903): the previous-roll
+      // clause only appears once a reroll has happened. Centered horizontally.
       const prompt = prevRoll
-        ? "[ 'r'/space reroll, 'p' previous roll, Enter accept, ESC back ]"
-        : "[ 'r'/space reroll, Enter accept, ESC back ]";
-      term.print(0, rows - 1, prompt.slice(0, cols - 1), PB_DIM);
+        ? "['r' to reroll, 'p' for previous roll or 'Enter' to accept]"
+        : "['r' to reroll or 'Enter' to accept]";
+      term.print(
+        Math.max(0, Math.floor(cols / 2 - prompt.length / 2)),
+        rows - 1,
+        prompt.slice(0, cols - 1),
+        PB_DIM,
+      );
     };
     const finish = (value: number[] | null): void => {
       window.removeEventListener("keydown", onKey, true);
@@ -542,6 +774,178 @@ function standardRoller(
     term.onCellTap?.((cell) => {
       const { rows } = term.size();
       if (cell.row === rows - 1) finish([...current]);
+    });
+    paint();
+  });
+}
+
+/** One selectable birth-menu row: its tag letter and its display name. */
+interface BirthRow {
+  tag: string;
+  name: string;
+}
+
+/** A prior, already-chosen menu kept visible in its column (ui-birth.c keeps
+ * the race column up while choosing the class, etc.), the chosen row highlighted. */
+interface FrozenColumn {
+  col: number;
+  rows: readonly BirthRow[];
+  selected: number;
+}
+
+/** The active menu column: the one with the moving cursor and the aux panel. */
+interface ActiveColumn {
+  col: number;
+  auxCol?: number;
+  rows: readonly BirthRow[];
+  initialCursor: number;
+  detail?: (index: number) => ScreenLine[];
+  /** Whether '@' (finish with random choices) applies at this stage. */
+  allowFinish: boolean;
+}
+
+/** The outcome of a birth menu (see menu_question, ui-birth.c:784): a concrete
+ * pick, '*' random, '@' finish-with-random, or ESC / left-arrow step-back. */
+type BirthMenuResult =
+  | { kind: "pick"; index: number }
+  | { kind: "random" }
+  | { kind: "finish" }
+  | { kind: "back" };
+
+/**
+ * The faithful multi-column birth menu (ui-birth.c menu_question +
+ * birthmenu_display + print_menu_instructions): draws the two-line instruction
+ * header (rows 1-6), the yellow stage hint (QUESTION_ROW=7), any already-chosen
+ * prior columns with their selection highlighted, the active column with a
+ * cursor, and the aux info panel for the highlighted active row. Handles up/down
+ * (numpad via menuNav), Enter / tag-letter to select, '*' random, '@' finish
+ * (when allowed), '='/'?' as recognized no-ops, ESC / left-arrow to step back,
+ * and tap-to-select. Resolves a BirthMenuResult.
+ */
+function birthMenu(
+  term: GlyphTerm,
+  hint: string,
+  frozen: readonly FrozenColumn[],
+  active: ActiveColumn,
+): Promise<BirthMenuResult> {
+  return new Promise<BirthMenuResult>((resolve) => {
+    const count = active.rows.length;
+    let cursor = Math.min(Math.max(active.initialCursor, 0), Math.max(0, count - 1));
+
+    const drawColumn = (
+      col: number,
+      rows: readonly BirthRow[],
+      selected: number,
+    ): void => {
+      const { rows: termRows } = term.size();
+      for (let i = 0; i < rows.length && TABLE_ROW + i < termRows; i++) {
+        const r = rows[i];
+        if (!r) continue;
+        // birthmenu_display (ui-birth.c L202-209): the current row draws in the
+        // cursor colour (white), the rest in the normal menu colour.
+        term.print(
+          col,
+          TABLE_ROW + i,
+          `${r.tag}) ${r.name}`,
+          i === selected ? CSS_WHITE : CSS_L_WHITE,
+        );
+      }
+    };
+
+    const paint = (): void => {
+      const { cols, rows } = term.size();
+      term.clear();
+      // print_menu_instructions (ui-birth.c L635): the light-blue title line at
+      // (QUESTION_COL, HEADER_ROW), a blank line, then the wrapped key legend.
+      term.print(
+        QUESTION_COL,
+        HEADER_ROW,
+        HELP_TITLE.slice(0, cols - 1 - QUESTION_COL),
+        CSS_L_BLUE,
+      );
+      const wrapped = wrapColored(
+        HELP_PARTS,
+        Math.max(10, cols - QUESTION_COL - 1),
+        QUESTION_ROW - (HEADER_ROW + 2),
+      );
+      for (let i = 0; i < wrapped.length; i++) {
+        const line = wrapped[i];
+        if (line) drawScreenLine(term, QUESTION_COL, HEADER_ROW + 2 + i, line);
+      }
+      // The stage hint in yellow at (QUESTION_COL, QUESTION_ROW) (ui-birth.c:795).
+      term.print(
+        QUESTION_COL,
+        QUESTION_ROW,
+        hint.slice(0, cols - 1 - QUESTION_COL),
+        CSS_YELLOW,
+      );
+      // The prior chosen columns, then the active column with its cursor.
+      for (const f of frozen) drawColumn(f.col, f.rows, f.selected);
+      drawColumn(active.col, active.rows, cursor);
+      // The aux info panel for the highlighted active row (race_help/class_help).
+      if (active.auxCol != null && active.detail) {
+        const lines = active.detail(cursor);
+        for (let i = 0; i < lines.length && TABLE_ROW + i < rows; i++) {
+          const line = lines[i];
+          if (line) drawScreenLine(term, active.auxCol, TABLE_ROW + i, line);
+        }
+      }
+    };
+
+    const finish = (res: BirthMenuResult): void => {
+      window.removeEventListener("keydown", onKey, true);
+      term.onCellTap?.(null);
+      resolve(res);
+    };
+
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      const nav = menuNav(ev);
+      if (nav === "up" || nav === "pageup" || nav === "home") {
+        cursor = (cursor + count - 1) % count;
+        paint();
+        return;
+      }
+      if (nav === "down" || nav === "pagedown" || nav === "end") {
+        cursor = (cursor + 1) % count;
+        paint();
+        return;
+      }
+      switch (ev.key) {
+        case "Escape":
+        case "ArrowLeft":
+          // ESC or left-arrow = BIRTH_BACK (menu_question L804-811).
+          finish({ kind: "back" });
+          return;
+        case "Enter":
+          finish({ kind: "pick", index: cursor });
+          return;
+        case "*":
+          finish({ kind: "random" });
+          return;
+        case "@":
+          if (active.allowFinish) finish({ kind: "finish" });
+          return;
+        case "=":
+        case "?":
+          // Recognized keys (birth options / help): no-ops in this port.
+          return;
+        default:
+          break;
+      }
+      // Tag-letter selection (all_letters_nohjkl), case-insensitive.
+      if (ev.key.length === 1) {
+        const lower = ev.key.toLowerCase();
+        const idx = active.rows.findIndex((r) => r.tag.toLowerCase() === lower);
+        if (idx >= 0) finish({ kind: "pick", index: idx });
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    // Touch: tap a row in the active column to select it.
+    term.onCellTap?.((cell) => {
+      const i = cell.row - TABLE_ROW;
+      if (i >= 0 && i < count) finish({ kind: "pick", index: i });
     });
     paint();
   });
@@ -881,18 +1285,17 @@ export async function runBirth(
     return characterSheetLines(previewState(player, ps), o.sheetName, cols);
   };
 
-  // menu_question '*' (random pick) and '@' (finish with random choices),
-  // ui-birth.c:841/851: appended to the race/class menus as tagged rows.
-  const RANDOM_ROW: MenuItem = {
-    label: "Random",
-    tag: "*",
-    hint: "Pick this at random ( * ).",
-  };
-  const FINISH_ROW: MenuItem = {
-    label: "Finish randomly",
-    tag: "@",
-    hint: "Complete the rest of the character with random choices ( @ ).",
-  };
+  // The race/class menu rows, tagged from all_letters_nohjkl (ui-menu.c:41), so
+  // the letters skip h/j/k/l (which stay free as movement keys). '*' random and
+  // '@' finish are KEY COMMANDS (menu_question, ui-birth.c:841/851), not rows.
+  const raceRows: BirthRow[] = races.map((r, i) => ({
+    tag: ALL_LETTERS_NOHJKL[i] ?? "",
+    name: r.name,
+  }));
+  const classRows: BirthRow[] = classes.map((c, i) => ({
+    tag: ALL_LETTERS_NOHJKL[i] ?? "",
+    name: c.name,
+  }));
 
   // finish_with_random_choices (ui-birth.c:660-777): fill every remaining
   // choice from `fromStage` onward at random and jump to the final confirm. A
@@ -971,123 +1374,146 @@ export async function runBirth(
       }
 
       case "race": {
-        // menu_question (ui-birth.c:437-441): the race menu carries '*'
-        // (select at random) and '@' (finish with random choices) as the two
-        // trailing rows, appended after the real races.
-        const raceItems: MenuItem[] = [
-          ...races.map((x) => ({ label: x.name })),
-          RANDOM_ROW,
-          FINISH_ROW,
-        ];
-        const pick = await selectFromMenu(
-          term,
-          "Create a character  -  choose a race",
-          raceItems,
-          backStack.length === 0 ? FOOTER_FIRST : FOOTER,
-          {
-            subtitle: RACE_HINT,
-            initialCursor: raceIdx,
-            detail: raceDetail,
-          },
-        );
-        if (pick === null) {
-          if (!goBack()) return null;
-          break;
+        // The race menu: active column at RACE_COL, race_help aux at RACE_AUX_COL.
+        const res = await birthMenu(term, RACE_HINT, [], {
+          col: RACE_COL,
+          auxCol: RACE_AUX_COL,
+          rows: raceRows,
+          initialCursor: raceIdx,
+          detail: raceDetail,
+          allowFinish: true,
+        });
+        switch (res.kind) {
+          case "back":
+            if (!goBack()) return null;
+            break;
+          case "random":
+            // '*' random pick, then advance to class (menu_question:841-847).
+            raceIdx = rollRng.randint0(races.length);
+            raceName = races[raceIdx]?.name ?? "Human";
+            advance("class");
+            break;
+          case "finish":
+            // '@' finish the rest of the character at random (menu_question:851).
+            finishRandom("race");
+            break;
+          case "pick":
+            raceIdx = res.index;
+            raceName = races[res.index]?.name ?? "Human";
+            advance("class");
+            break;
         }
-        if (pick === races.length) {
-          // '*' random pick, then advance to class (menu_question:841-847).
-          raceIdx = rollRng.randint0(races.length);
-          raceName = races[raceIdx]?.name ?? "Human";
-          advance("class");
-          break;
-        }
-        if (pick === races.length + 1) {
-          // '@' finish the rest of the character at random (menu_question:851).
-          finishRandom("race");
-          break;
-        }
-        raceIdx = pick;
-        raceName = races[pick]?.name ?? "Human";
-        advance("class");
         break;
       }
 
       case "class": {
-        const classItems: MenuItem[] = [
-          ...classes.map((x) => ({ label: x.name })),
-          RANDOM_ROW,
-          FINISH_ROW,
-        ];
-        const pick = await selectFromMenu(
+        // The class menu: the chosen race column stays at RACE_COL, the class
+        // column is active at CLASS_COL, class_help aux at CLASS_AUX_COL.
+        const res = await birthMenu(
           term,
-          `Race: ${raceName}  -  choose a class`,
-          classItems,
-          FOOTER,
+          CLASS_HINT,
+          [{ col: RACE_COL, rows: raceRows, selected: raceIdx }],
           {
-            subtitle: CLASS_HINT,
+            col: CLASS_COL,
+            auxCol: CLASS_AUX_COL,
+            rows: classRows,
             initialCursor: classIdx,
             detail: classDetailFor(raceIdx),
+            allowFinish: true,
           },
         );
-        if (pick === null) {
-          if (!goBack()) return null;
-          break;
+        switch (res.kind) {
+          case "back":
+            if (!goBack()) return null;
+            break;
+          case "random":
+            classIdx = rollRng.randint0(classes.length);
+            className = classes[classIdx]?.name ?? "Warrior";
+            advance("roller");
+            break;
+          case "finish":
+            finishRandom("class");
+            break;
+          case "pick":
+            classIdx = res.index;
+            className = classes[res.index]?.name ?? "Warrior";
+            advance("roller");
+            break;
         }
-        if (pick === classes.length) {
-          // '*' random class, then advance to the roller (menu_question:841-847).
-          classIdx = rollRng.randint0(classes.length);
-          className = classes[classIdx]?.name ?? "Warrior";
-          advance("roller");
-          break;
-        }
-        if (pick === classes.length + 1) {
-          finishRandom("class");
-          break;
-        }
-        classIdx = pick;
-        className = classes[pick]?.name ?? "Warrior";
-        advance("roller");
         break;
       }
 
       case "roller": {
-        const pick = await selectFromMenu(
+        // The roller menu: race and class columns stay visible, the roller
+        // choice is active at ROLLER_COL. No '@' finish at this stage.
+        const rollerRows: BirthRow[] = [
+          { tag: ALL_LETTERS_NOHJKL[0] ?? "a", name: "Point-based" },
+          { tag: ALL_LETTERS_NOHJKL[1] ?? "b", name: "Standard roller" },
+        ];
+        const res = await birthMenu(
           term,
-          `${raceName} ${className}  -  choose a stat roller`,
-          [{ label: "Point-based" }, { label: "Standard roller" }],
-          FOOTER,
-          { subtitle: ROLLER_HINT, initialCursor: rollerIdx },
+          ROLLER_HINT,
+          [
+            { col: RACE_COL, rows: raceRows, selected: raceIdx },
+            { col: CLASS_COL, rows: classRows, selected: classIdx },
+          ],
+          {
+            col: ROLLER_COL,
+            rows: rollerRows,
+            initialCursor: rollerIdx,
+            allowFinish: false,
+          },
         );
-        if (pick === null) {
-          if (!goBack()) return null;
-          break;
+        switch (res.kind) {
+          case "back":
+            if (!goBack()) return null;
+            break;
+          case "finish":
+            // '@' is disabled at the roller stage; ignore if it ever arrives.
+            break;
+          case "random":
+            rollerIdx = rollRng.randint0(2);
+            advance(rollerIdx === 0 ? "points" : "roll");
+            break;
+          case "pick":
+            rollerIdx = res.index;
+            // BR_POINTBASED (row 0) opens the allocation screen; the standard
+            // roller (row 1) opens the interactive roll screen (menu_question
+            // ui-birth.c:813-817: cursor -> CMD_ROLL_STATS then BIRTH_ROLLER).
+            advance(res.index === 0 ? "points" : "roll");
+            break;
         }
-        rollerIdx = pick;
-        // BR_POINTBASED (row 0) opens the allocation screen; the standard
-        // roller (row 1) opens the interactive roll screen (menu_question
-        // ui-birth.c:813-817: cursor -> CMD_ROLL_STATS then BIRTH_ROLLER).
-        advance(pick === 0 ? "points" : "roll");
         break;
       }
 
       case "points": {
-        const race = races[raceIdx] ?? { name: raceName };
-        const cls = classes[classIdx] ?? { name: className };
+        const raceRec = races[raceIdx];
+        const clsRec = classes[classIdx];
+        const race = raceRec ?? { name: raceName };
+        const cls = clsRec ?? { name: className };
         // The live derived sheet for the current allocation (repaints per edit).
         const sheet = (stats: readonly number[]): ScreenLine[] | null =>
           buildSheet(
             races[raceIdx],
             classes[classIdx],
             { stats, sheetName: name },
-            term.size().cols,
+            INFO_W,
           );
-        const result = await pointBuyStats(
-          term,
-          race,
-          cls,
-          pointStats ?? undefined,
-          sheet,
-        );
+        // do_cmd_choose_race/choose_class (player-birth.c:1100-1112) seed the
+        // point-buy with generate_stats' recommended per-class spread, so the
+        // screen opens with points already spent (Total Cost NN/NN), not at the
+        // bare base. Re-entry (ESC then forward) restores the prior allocation.
+        // Guarded: generate_stats reads the full race/class records, so a
+        // minimal stub (tests) falls back to the base pool.
+        let seed = pointStats ?? undefined;
+        if (!seed && raceRec && clsRec) {
+          try {
+            seed = [...generateStats(raceRec, clsRec).stats];
+          } catch {
+            seed = undefined; // incomplete records: start at the base pool
+          }
+        }
+        const result = await pointBuyStats(term, race, cls, seed, sheet);
         if (result === null) {
           if (!goBack()) return null;
           break;
@@ -1108,7 +1534,7 @@ export async function runBirth(
             races[raceIdx],
             classes[classIdx],
             { rolledStats: roll, sheetName: name },
-            term.size().cols,
+            INFO_W,
           );
         const result = await standardRoller(term, race, cls, rollRng, sheet);
         if (result === null) {

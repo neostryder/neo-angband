@@ -114,7 +114,7 @@ const LABEL = "#9aa0b4";
 const ALL_LETTERS_NOHJKL = "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /** The i-th object-list selection letter (all_letters_nohjkl[i]). */
-function objLetter(i: number): string {
+export function objLetter(i: number): string {
   return ALL_LETTERS_NOHJKL[i] ?? "";
 }
 
