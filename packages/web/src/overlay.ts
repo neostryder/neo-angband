@@ -662,3 +662,203 @@ export function selectFromMenu(
     paint();
   });
 }
+
+/** One source (command_wrk) of the get_item picker: its upstream label
+ * ("Inven" | "Equip" | "Quiver" | "Floor") and the lettered rows it offers
+ * (tags already assigned - a-z via all_letters_nohjkl, or 0-9 for the quiver). */
+export interface ItemMenuSource {
+  label: string;
+  items: readonly MenuItem[];
+}
+
+/** The effective selection tag for row `i` of a source (its explicit tag, or
+ * the positional all-letters letter as a fallback). */
+function sourceTag(src: ItemMenuSource, i: number): string {
+  return src.items[i]?.tag ?? menuLetter(i);
+}
+
+/**
+ * Build the get_item header (menu_header, ui-object.c L764-914): the current
+ * source's "Label: a-c," range, then the legality legends for the OTHER
+ * sources in upstream order (Equip/Inven via '/', Quiver via '|', floor via
+ * '-'), then " ESC", all wrapped in "(...)".
+ */
+function itemMenuHeader(
+  sources: readonly ItemMenuSource[],
+  cur: number,
+): string {
+  const src = sources[cur];
+  if (!src) return "()";
+  const nonEmpty = (label: string): boolean =>
+    sources.some((s, i) => i !== cur && s.label === label && s.items.length > 0);
+  let out = `${src.label}:`;
+  if (src.items.length > 0) {
+    out += ` ${sourceTag(src, 0)}-${sourceTag(src, src.items.length - 1)},`;
+  }
+  // The "/" legend names the other main carry source (Inven <-> Equip).
+  if (src.label === "Inven" && nonEmpty("Equip")) out += " / for Equip,";
+  else if (src.label !== "Inven" && nonEmpty("Inven")) out += " / for Inven,";
+  else if (src.label !== "Equip" && nonEmpty("Equip")) out += " / for Equip,";
+  if (src.label !== "Quiver" && nonEmpty("Quiver")) out += " | for Quiver,";
+  if (src.label !== "Floor" && nonEmpty("Floor")) out += " - for floor,";
+  out += " ESC";
+  return `(${out})`;
+}
+
+/**
+ * The faithful get_item selection menu (textui_get_item / item_menu,
+ * ui-object.c L1142-1315): draws the prompt and the "(Inven: a-c, / for Equip,
+ * - for floor, ESC)" header (menu_header), the current source's lettered list,
+ * and switches sources with '/', '|' and '-' (m->switch_keys "/|-", L1158).
+ * Select by tag letter/digit, cursor + Enter, or tap; ESC cancels. Resolves the
+ * chosen { source, index } as indices into the ORIGINAL `sources` array (so the
+ * caller maps back to the right handle / floor ref), or null on ESC / empty.
+ */
+export function itemSelect(
+  term: GlyphTerm,
+  prompt: string,
+  sources: readonly ItemMenuSource[],
+  initialSource = 0,
+): Promise<{ source: number; index: number } | null> {
+  return new Promise((resolve) => {
+    const firstNonEmpty = (): number => sources.findIndex((s) => s.items.length > 0);
+    let cur =
+      sources[initialSource]?.items.length ? initialSource : firstNonEmpty();
+    if (cur < 0) {
+      resolve(null);
+      return;
+    }
+    let cursor = 0;
+    let top = 0;
+    let paintedBodyRows = 1;
+    const listTop = 1; // area.row = 1 (item_menu L1201).
+
+    const src = (): ItemMenuSource => sources[cur]!;
+
+    const paint = (): void => {
+      const { cols, rows } = term.size();
+      term.clear();
+      // Prompt then header on the top line (show_prompt + menu header).
+      const head = itemMenuHeader(sources, cur);
+      term.print(0, HEADER_ROW, prompt.slice(0, cols - 1), TITLE);
+      const hx = Math.min(prompt.length + 1, cols - 1);
+      term.print(hx, HEADER_ROW, head.slice(0, cols - 1 - hx), DIM);
+      const rowsList = src().items;
+      const bodyRows = Math.max(1, rows - listTop - 1);
+      paintedBodyRows = bodyRows;
+      if (cursor < top) top = cursor;
+      if (cursor >= top + bodyRows) top = cursor - bodyRows + 1;
+      for (let r = 0; r < bodyRows; r++) {
+        const i = top + r;
+        const it = rowsList[i];
+        if (!it) break;
+        const mark = i === cursor ? ">" : " ";
+        const tag = sourceTag(src(), i);
+        const color = it.disabled ? DIM : it.color ?? FG;
+        term.print(0, listTop + r, `${mark}${tag}) ${it.label}`.slice(0, cols - 1), color);
+      }
+      term.print(
+        0,
+        rows - 1,
+        "[ a-z/0-9 to choose, / | - to switch, ESC to cancel ]".slice(0, cols - 1),
+        DIM,
+      );
+    };
+
+    const finish = (value: { source: number; index: number } | null): void => {
+      window.removeEventListener("keydown", onKey, true);
+      term.onCellTap?.(null);
+      resolve(value);
+    };
+    const pick = (i: number): void => {
+      const it = src().items[i];
+      if (!it || it.disabled) return;
+      finish({ source: cur, index: i });
+    };
+    const switchTo = (label: string): void => {
+      const next = sources.findIndex((s) => s.label === label && s.items.length > 0);
+      if (next < 0 || next === cur) return;
+      cur = next;
+      cursor = 0;
+      top = 0;
+      paint();
+    };
+    // The switch key logic mirrors menu_header's legends: '/' toggles the main
+    // carry sources, '|' jumps to the quiver, '-' to the floor.
+    const doSwitchSlash = (): void => {
+      if (src().label === "Inven") switchTo("Equip");
+      else if (sources.some((s, i) => i !== cur && s.label === "Inven" && s.items.length > 0))
+        switchTo("Inven");
+      else switchTo("Equip");
+    };
+
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (ev.key === "Escape") {
+        finish(null);
+        return;
+      }
+      if (ev.key === "/") {
+        doSwitchSlash();
+        return;
+      }
+      if (ev.key === "|") {
+        switchTo("Quiver");
+        return;
+      }
+      if (ev.key === "-") {
+        switchTo("Floor");
+        return;
+      }
+      if (ev.key === "Enter") {
+        pick(cursor);
+        return;
+      }
+      if (ev.key.length === 1) {
+        // Tag letter/digit select (MN_PVT_TAGS), case-insensitive.
+        const lower = ev.key.toLowerCase();
+        const rowsList = src().items;
+        for (let i = 0; i < rowsList.length; i++) {
+          if (sourceTag(src(), i).toLowerCase() === lower) {
+            pick(i);
+            return;
+          }
+        }
+      }
+      const nav = menuNav(ev);
+      if (nav) {
+        const n = src().items.length;
+        if (n > 0) {
+          if (nav === "up") cursor = (cursor + n - 1) % n;
+          else if (nav === "down") cursor = (cursor + 1) % n;
+          else if (nav === "pageup") cursor = Math.max(0, cursor - paintedBodyRows);
+          else if (nav === "pagedown") cursor = Math.min(n - 1, cursor + paintedBodyRows);
+          else if (nav === "home") cursor = 0;
+          else if (nav === "end") cursor = n - 1;
+        }
+        paint();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    term.onCellTap?.((cell) => {
+      const { rows } = term.size();
+      if (cell.row === rows - 1) {
+        finish(null);
+        return;
+      }
+      const r = cell.row - listTop;
+      if (r < 0 || r >= paintedBodyRows) return;
+      const i = top + r;
+      const it = src().items[i];
+      if (!it || it.disabled) return;
+      if (i === cursor) {
+        pick(i);
+        return;
+      }
+      cursor = i;
+      paint();
+    });
+    paint();
+  });
+}

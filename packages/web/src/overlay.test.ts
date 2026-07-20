@@ -1,6 +1,12 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { showLevelMap, selectFromMenu, showTextScreen, promptNumber } from "./overlay";
-import type { MenuItem, ScreenLine } from "./overlay";
+import {
+  showLevelMap,
+  selectFromMenu,
+  itemSelect,
+  showTextScreen,
+  promptNumber,
+} from "./overlay";
+import type { MenuItem, ItemMenuSource, ScreenLine } from "./overlay";
 import type { GlyphTerm } from "./term";
 import type { Overview } from "./mapview";
 
@@ -633,5 +639,78 @@ describe("promptNumber (digit-only prompt, ui-options.c askfor_aux_numbers)", ()
     press(win, "-");
     press(win, "Escape");
     expect(await done).toBeNull();
+  });
+});
+
+describe("itemSelect (get_item picker: menu_header + source switching)", () => {
+  const inven: ItemMenuSource = {
+    label: "Inven",
+    items: [
+      { label: "a Potion of Cure Light Wounds", tag: "a" },
+      { label: "a Scroll of Phase Door", tag: "b" },
+    ],
+  };
+  const equip: ItemMenuSource = {
+    label: "Equip",
+    items: [{ label: "a Long Sword", tag: "a" }],
+  };
+  const floor: ItemMenuSource = {
+    label: "Floor",
+    items: [{ label: "a Wooden Torch", tag: "a" }],
+  };
+
+  it("shows the prompt and the '(Inven: a-b, / for Equip, - for floor, ESC)' header", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = itemSelect(term, "Quaff which item?", [inven, equip, floor]);
+    const head = term.snapshot()[0] ?? "";
+    expect(head).toContain("Quaff which item?");
+    expect(head).toContain("(Inven: a-b, / for Equip, - for floor, ESC)");
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+
+  it("selects by tag letter, resolving {source, index} into the original list", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = itemSelect(term, "Quaff which item?", [inven, equip, floor]);
+    press(win, "b"); // the Phase Door scroll
+    expect(await done).toEqual({ source: 0, index: 1 });
+  });
+
+  it("switches to Equip with '/' (header becomes 'Equip: ... / for Inven')", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = itemSelect(term, "Wield which item?", [inven, equip, floor]);
+    press(win, "/"); // USE_INVEN -> USE_EQUIP
+    const head = term.snapshot()[0] ?? "";
+    expect(head).toContain("(Equip: a-a, / for Inven, - for floor, ESC)");
+    press(win, "a"); // the Long Sword, now in the Equip source
+    expect(await done).toEqual({ source: 1, index: 0 });
+  });
+
+  it("switches to the floor with '-' and back, and ESC cancels", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = itemSelect(term, "Get which item?", [inven, floor]);
+    press(win, "-"); // -> USE_FLOOR
+    expect(term.snapshot()[0] ?? "").toContain("(Floor: a-a, / for Inven, ESC)");
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+
+  it("opens on the first non-empty source when the initial one is empty", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const empty: ItemMenuSource = { label: "Inven", items: [] };
+    const done = itemSelect(term, "Take off which item?", [empty, equip], 0);
+    expect(term.snapshot()[0] ?? "").toContain("(Equip: a-a,");
+    press(win, "a");
+    expect(await done).toEqual({ source: 1, index: 0 });
   });
 });
