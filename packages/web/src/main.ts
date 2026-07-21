@@ -304,6 +304,13 @@ import type { Store } from "@neo-angband/core";
 import { runHelp } from "./help";
 import { runOptionsMenu } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
+import { installAutoUpdate } from "./pwa";
+import { installBuildStamp } from "./build-stamp";
+
+// PWA freshness (reload onto a newly deployed build) and the always-on build
+// stamp: both are page chrome, independent of the game, so install them first.
+installAutoUpdate();
+installBuildStamp();
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
@@ -460,6 +467,23 @@ function activeModRules(): Record<string, boolean> {
   return resolveModRules(loadEnabledModRuleDecls(), defaultModStore().getRuleChoices());
 }
 
+/**
+ * True when this load is an internal continuation rather than a genuine launch:
+ * the autoplayer boot (?agent), or a reload triggered by an in-app action that
+ * already passed the title (resumeSelected / switchCharacter / mod-apply set
+ * SKIP_TITLE_KEY). Genuine launches - a fresh visit, a refresh, or a reopened
+ * tab - are NOT continuations, so they always route through the title and the
+ * character select rather than dropping straight back into a save.
+ */
+function isContinuation(): boolean {
+  if (params.get("agent")) return true;
+  try {
+    return sessionStorage.getItem(SKIP_TITLE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function bootGame(): ReturnType<typeof startGame> {
   // Start fresh only when explicitly asked: `?new`, an explicit `?seed=` (a
   // request for a specific reproducible run), or the in-game New Character
@@ -475,7 +499,14 @@ function bootGame(): ReturnType<typeof startGame> {
   if (!forcedNew) {
     const activeId = getActiveId();
     const stored = activeId ? readSlotSave(activeId) : null;
-    if (stored) {
+    // Auto-resume the active character ONLY on an internal continuation: the
+    // player chose Continue from the title's character select (resumeSelected
+    // sets SKIP_TITLE), or the autoplayer boot (?agent). A GENUINE launch - a
+    // fresh visit, a refresh, or a reopened tab - never drops straight into a
+    // save; it always shows the title, then the character select. That is what
+    // makes every launch open fresh and reinforces the anti-scum rule that a
+    // refresh returns to the title, not to the live game.
+    if (stored && isContinuation()) {
       try {
         const decoded = decodeSavedGame(b64ToBytes(stored));
         if (decoded.save) {
@@ -491,9 +522,10 @@ function bootGame(): ReturnType<typeof startGame> {
         loadedNote = "Could not read the save; starting a new game.";
       }
     }
-    // Nothing to auto-resume: if other characters are saved, the select screen
-    // (bootMenus) picks one; the game started here is a throwaway shown behind
-    // it and must NOT claim a slot, so no active id is set in that case.
+    // Not resuming: if any characters are saved, the title's character select
+    // (bootMenus) picks one - Continue or New; the game started here is a
+    // throwaway shown behind it and must NOT claim a slot, so no active id is
+    // set in that case.
     if (livingRoster().length > 0) needsSelect = true;
   }
   bootedNew = true;
@@ -3439,6 +3471,9 @@ async function openModManager(): Promise<void> {
     requestReload: () => {
       try {
         autosave(true); // keep the live hero before the page re-composes
+        // Applying mods mid-game is a continuation, not a genuine launch: skip
+        // the title and resume the same character once the page re-composes.
+        sessionStorage.setItem(SKIP_TITLE_KEY, "1");
       } catch {
         /* best-effort */
       }
