@@ -30,6 +30,16 @@ notes: >-
   serialized. This inserted the previously-missing artifact-scan draws back
   into the stream, but no existing seeded fixture shifted (candidate draws
   only occur on a tval+sval match or an eligible special).
+
+  Mod-guard RNG neutrality (D1=B, audit 02): make_artifact carries the only
+  RNG-drawing mod guard in core - the bug-fixes #4510 duplicate-artifact
+  re-check. Its `deps.modRules?.["bugfix.duplicateArtifact"]` test is the first
+  operand of the &&, so on the disabled path (map absent, or flag false) it
+  short-circuits before isCreated and before the guarded early return, falling
+  through to copy_artifact_data exactly as faithful 4.2.6 does - no draw is
+  added, dropped, or reordered. Only the ENABLED flag (opt-in) may skip the
+  copy_artifact_data draw. Wired live via the makeDeps modRules getter
+  (session/game.ts ~L801).
 deferred:
   - make_object book rejection (obj_kind_can_browse needs the player class
     spell realm); the reroll loop runs but the guard is inert for now.
