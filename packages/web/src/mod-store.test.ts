@@ -13,6 +13,7 @@ import {
   consentSatisfied,
   resolveEnabledIds,
   DEFAULT_ENABLED_MODS,
+  FIRST_PARTY_MOD_IDS,
   type StorageLike,
 } from "./mod-store";
 
@@ -67,22 +68,25 @@ describe("ModStore - enabled set", () => {
 });
 
 describe("resolveEnabledIds + hasStoredEnabled", () => {
-  it("first run (no stored key) enables the discovered default bundled mods", () => {
-    const discovered = [...DEFAULT_ENABLED_MODS, "demo-x"];
-    expect(resolveEnabledIds({ url: null, stored: null, discovered })).toEqual([
-      ...DEFAULT_ENABLED_MODS,
-    ]);
+  it("first run (no stored key) enables nothing - the faithful no-mod base game", () => {
+    // Parity mandate (audit 06 MOD-11): DEFAULT_ENABLED_MODS is empty, so a
+    // fresh install boots pure Angband 4.2.6 with zero mods on, regardless of
+    // which bundled mods were discovered.
+    expect(DEFAULT_ENABLED_MODS).toEqual([]);
+    const discovered = ["bug-fixes", "qol", "linoleum", "demo-x"];
+    expect(resolveEnabledIds({ url: null, stored: null, discovered })).toEqual(
+      [],
+    );
   });
 
-  it("intersects defaults with what is actually discovered", () => {
-    const only = DEFAULT_ENABLED_MODS[0]!;
-    expect(
-      resolveEnabledIds({ url: null, stored: null, discovered: [only] }),
-    ).toEqual([only]);
+  it("keeps the first-party identity list separate from the (empty) default-enable list", () => {
+    // Bundled mods are trusted-when-enabled but NOT on by default.
+    expect(FIRST_PARTY_MOD_IDS).toContain("qol");
+    expect(DEFAULT_ENABLED_MODS).not.toContain("qol");
   });
 
   it("honors a stored set verbatim, including an empty one (all off)", () => {
-    const discovered = [...DEFAULT_ENABLED_MODS];
+    const discovered = ["bug-fixes", "qol", "linoleum"];
     expect(resolveEnabledIds({ url: null, stored: [], discovered })).toEqual([]);
     expect(
       resolveEnabledIds({ url: null, stored: ["qol"], discovered }),
@@ -94,7 +98,7 @@ describe("resolveEnabledIds + hasStoredEnabled", () => {
       resolveEnabledIds({
         url: ["demo-modtest"],
         stored: ["qol"],
-        discovered: [...DEFAULT_ENABLED_MODS, "demo-modtest"],
+        discovered: ["bug-fixes", "qol", "linoleum", "demo-modtest"],
       }),
     ).toEqual(["demo-modtest"]);
   });

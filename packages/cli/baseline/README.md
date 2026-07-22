@@ -1,56 +1,93 @@
-# Parity baseline
+# Parity baselines
 
-`stats-baseline.json` is a Monte-Carlo statistics report (see
-`../src/stats.ts`) captured **from the TypeScript port itself** at the pinned
-parameters in `BASELINE_PARAMS` (`../src/stats.ts`): `runs=3`, `depths=1..8`,
-`seed=1337`, Human Warrior, no randarts.
+Two baselines live here, and they prove very different things. Do not conflate
+them.
 
-## What it proves
+## `c-stats-baseline.json` - REAL upstream parity (ground truth)
 
-- **Self-consistency / regression.** The port is bit-exact for a fixed seed, so
-  a fresh batch at these parameters must reproduce this file **integer for
-  integer**. The parity test (`../src/parity.test.ts`) enforces that with the
-  `EXACT` tolerance. Any future change that shifts the generation or allocation
-  distributions - a reordered RNG draw, a changed allocation table, a new
-  monster/object, a tweaked feeling ladder - makes the fresh batch diverge and
-  fails CI.
+Imported from the compiled **C Angband 4.2.6 `main-stats`** tool
+(`meta.generatedBy = "c-main-stats"`). This is upstream output, so the port is
+diffed AGAINST it - it is the actual cross-implementation parity check the audit
+(07 AUX-2) asked for. Enforced by `../src/parity-c.test.ts` with the
+`STATISTICAL` tolerance and `normalizeByLevels` (the C and TS RNG streams differ
+by design under D1 = B, so per-level RATES match, not exact integers).
 
-## What it does NOT prove
+Coverage: the cleanly-keyed generation metrics - monsters (total + per race),
+level feelings (obj/mon), and gold (total + per origin). The object-kind
+distribution is not yet imported (C splits it across several detail tables with a
+remapped index); that is a documented next increment.
 
-- **It is not a C-vs-TS distribution diff.** This baseline was produced by the
-  port, so it cannot catch a bug the port and its baseline share. It is a
-  self-regression guard, not a cross-implementation parity check. Do not read a
-  green parity test as "verified equal to Angband 4.2.6" - only as "unchanged
-  from the last accepted port behavior".
+### Known honest deltas (surfaced by this harness, tracked for a later phase)
 
-## Regenerating (after an intentional change)
+These persist as the run count grows, so they are real, not sampling noise:
+
+- **Depth-6 monster density ~10% low** in the port vs upstream. Every other
+  depth's density and every monster species distribution match within tolerance.
+- **Gold-by-origin classification differs.** Gold totals are close, but the port
+  assigns some gold to different `ORIGIN_*` buckets than upstream (e.g. origin 12
+  at several depths). The gold TOTAL is guarded loosely so a gross gold
+  regression cannot hide behind this; the per-origin split is a tracked finding.
+
+## `stats-baseline.json` - self-regression guard (NOT parity)
+
+A Monte-Carlo report (`../src/stats.ts`) captured **from the TypeScript port
+itself** at `BASELINE_PARAMS` (`runs=3`, `depths=1..8`, `seed=1337`, Human
+Warrior). The port is bit-exact for a fixed seed, so a fresh batch must reproduce
+this file integer-for-integer; `../src/parity.test.ts` enforces that with `EXACT`
+tolerance. It catches drift from the port's own last-accepted behavior - a
+reordered draw, a changed table, a new monster. It **cannot** catch a bug the
+port and its own baseline share, so it is NOT evidence of parity with Angband
+4.2.6. Only `c-stats-baseline.json` is that.
+
+Regenerate after an intentional generator change (and review the diff):
 
 ```
 pnpm --filter @neo-angband/cli build
 pnpm --filter @neo-angband/cli stats:baseline
 ```
 
-Review the diff before committing: it is the exact behavioral delta of your
-change to the generator's output distributions.
+## Reproducing the C baseline
 
-## Upgrading to a true C-vs-TS parity check
+The C `main-stats` front end is not in the browser build; you build it from the
+read-only oracle in `reference/` with a C toolchain. This was done on Windows
+with the MSYS2 mingw64 toolchain (gcc, ninja, sqlite3, ncursesw), which CMake
+finds automatically.
 
-The comparator (`../src/baseline.ts`) is deliberately implementation-agnostic:
-it diffs two `StatsReport`s and keys off nothing port-specific. To turn this
-into a real parity check against the C oracle:
+1. **Build a stats-enabled Angband out-of-tree** (do NOT build inside
+   `reference/`; it is the read-only oracle). The GCU front end is enabled only
+   so CMake does not force the Windows front end, which would disable stats:
 
-1. Build the C `main-stats` tool from `reference/` with `USE_STATS` defined and
-   run it: `angband -mstats -- -n<runs> -q` (see `reference/src/main-stats.c`
-   `init_stats`, the `-n/-r/-s/-C/-R` options). It writes a SQLite database.
-2. Export the same metrics this harness collects (monsters by race by depth,
-   `obj_feelings` / `mon_feelings` by depth, gold by origin, item counts) from
-   that database into this JSON shape (`StatsReport`), setting
-   `meta.generatedBy` to `"c-main-stats"`.
-3. Drop it in as `stats-baseline.json` (or load it alongside) and compare with
-   the `STATISTICAL` tolerance preset and `normalizeByLevels: true` - the C and
-   TS RNG streams differ, so only the **distributions** can match (within
-   tolerance, per-level rates), never the exact integers. Tune the per-metric
-   tolerances as the real distributions are brought into agreement.
+   ```
+   cmake -S <copy-of-reference> -B <build> -G Ninja \
+     -DSUPPORT_GCU_FRONTEND=ON -DSUPPORT_STATS_FRONTEND=ON -DSUPPORT_BORG=OFF
+   ninja -C <build>
+   ```
 
-Until step 3 is done, the parity claim this harness backs is precisely the
-self-regression guarantee above - stated honestly so nobody overclaims parity.
+   Note: upstream `src/stats/db.c` names the output DB with a colon
+   (`...T%02d:%02d.db`), which is an illegal filename on Windows, so
+   `sqlite3_open` fails there. Build from a COPY of the source with that colon
+   changed to a hyphen (a Windows-only tooling fix; zero gameplay effect). The
+   oracle stays untouched.
+
+2. **Run it** from the build's game dir (writes `lib/user/stats/<timestamp>.db`):
+
+   ```
+   ./angband -mstats -- -n200 -q
+   ```
+
+   (`-n` runs, `-r` randarts, `-q` quiet - see `reference/src/main-stats.c`
+   `init_stats`. Each run descends every level once, so a depth's sample count
+   equals the run count.)
+
+3. **Import it** to this JSON (sqlite3 CLI must be on PATH, or set `$NEO_SQLITE3`):
+
+   ```
+   pnpm --filter @neo-angband/cli build
+   node --import ./register.mjs dist/main-cimport.js <stats.db> 20
+   ```
+
+   Review the human-readable diff against the current port any time with:
+
+   ```
+   node --import ./register.mjs dist/main-cparity.js 100 8
+   ```

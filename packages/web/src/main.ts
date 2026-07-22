@@ -305,12 +305,13 @@ import { runHelp } from "./help";
 import { runOptionsMenu } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
 import { installAutoUpdate } from "./pwa";
-import { installBuildStamp } from "./build-stamp";
 
-// PWA freshness (reload onto a newly deployed build) and the always-on build
-// stamp: both are page chrome, independent of the game, so install them first.
+// PWA freshness: silently reload onto a newly deployed build (a ratified
+// browser-shell necessity, D2). Page chrome, independent of the game, so it
+// installs first. No on-screen build stamp or network "commits behind" fetch -
+// those were removed for parity (audit 05 FEAT-3): the base game shows nothing
+// that upstream Angband does not.
 installAutoUpdate();
-installBuildStamp();
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
