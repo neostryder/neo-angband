@@ -266,4 +266,22 @@ describe("attack effect handlers - dispatch through the registry", () => {
     expect(state.actor.player.chp).toBeLessThan(100);
     expect(r1Args).not.toContain(100);
   });
+
+  it("EF_STRIKE reverts to the player grid when the target is unreachable (A5)", () => {
+    const state = makeState({ playerGrid: loc(10, 10), seed: 7 });
+    /* A monster adjacent to the player, and an aim at a granite border grid
+     * that is not projectable from the player. With the fallback the strike
+     * centres on the player and catches the neighbour; without it, the blast
+     * lands on the wall and the neighbour is untouched. */
+    const mon = addMon(state, plainRace, loc(11, 10), { hp: 50 });
+    /* effect_simple defaults dir to DIR_TARGET, so the aimed grid is consulted. */
+    registry().effectSimple(EF.STRIKE, env(state, { aimed: loc(0, 0) }), {
+      origin: sourcePlayer(),
+      diceString: "40",
+      subtype: PROJ.FIRE,
+      radius: 1,
+    });
+    expect(mon.hp).toBeLessThan(50);
+  });
+
 });

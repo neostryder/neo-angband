@@ -18,7 +18,6 @@
  *   redraw requests: the core keeps no player square-memory yet (the web
  *   renderer holds its own explored set); FOV refresh rides the state
  *   updateFov hook the loop already runs after player actions.
- * - square_isbright's daytime interplay for DARK on the surface.
  * - The decoy branch of trap handling (decoys ride mon-desire, #24).
  */
 
@@ -36,8 +35,8 @@ import { squareIsSecretDoor } from "./cave-cmd";
 import {
   placeTrap,
   squareDoorPower,
+  squareIsDisarmableTrap,
   squareIsTrap,
-  squareIsVisibleTrap,
   squareRemoveAllTraps,
   squareRevealTrap,
   squareTrap,
@@ -130,8 +129,14 @@ export function projectFeature(
 
     case PROJ.DARK_WEAK:
     case PROJ.DARK: {
-      /* Turn off the light (no surface daytime yet: depth > 0 always). */
-      c.sqinfoOff(grid, SQUARE.GLOW);
+      /* Turn off the light, but NOT a naturally bright feature (lava) and NOT
+       * a daylit surface grid (project-feat.c L73:
+       * (depth != 0 || !is_daytime()) && !square_isbright). PR2. */
+      const daylit =
+        c.depth === 0 && isDaytime(state.turn, state.z.dayLength);
+      if (!daylit && !featIsBright(c.features, c.feat(grid))) {
+        c.sqinfoOff(grid, SQUARE.GLOW);
+      }
       if (squareIsView(c, grid)) {
         obvious = true;
         state.updateFov?.(state);
@@ -233,8 +238,11 @@ export function projectFeature(
         c.setFeat(grid, FEAT.CLOSED);
         if (squareIsSeen(c, grid)) obvious = true;
       }
-      /* Disable traps, unlock doors. */
-      if (squareIsVisibleTrap(state, grid)) {
+      /* Disable traps, unlock doors. Gate on square_isdisarmabletrap
+       * (project-feat.c L230): enabled + visible + player trap, so an
+       * already-disabled or non-player visible trap falls through to the
+       * door-lock branch instead of "seizing up" again. PR1. */
+      if (squareIsDisarmableTrap(state, grid)) {
         if (squareIsSeen(c, grid)) {
           env.msg?.("The trap seizes up.");
           obvious = true;

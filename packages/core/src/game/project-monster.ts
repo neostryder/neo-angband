@@ -322,8 +322,9 @@ function applySideEffects(
   const mon = ctx.mon;
 
   if (ctx.doPoly) {
-    /* Uniques cannot be polymorphed. */
-    if (monsterIsUnique(mon)) {
+    /* Uniques cannot be polymorphed, nor can anything on an arena level
+     * (project-mon.c L1197: monster_is_unique(mon) || player->arena_level). PR3. */
+    if (monsterIsUnique(mon) || state.arenaLevel) {
       if (seen) hooks.message?.(mon, MON_MSG.UNAFFECTED);
       return;
     }

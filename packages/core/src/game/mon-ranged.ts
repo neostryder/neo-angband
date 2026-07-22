@@ -36,6 +36,7 @@ import type { FlagSet } from "../bitflag";
 import { getLore, loreCountU16, loreCountU8 } from "../mon/lore";
 import type { Monster } from "../mon/monster";
 import { squareIsEmpty, squareMonster } from "./context";
+import { squareIsWarded } from "./trap";
 import type { GameState } from "./context";
 import { doMonSpell } from "./mon-cast";
 import type { DoMonSpellDeps } from "./mon-cast";
@@ -72,17 +73,21 @@ function targetGrid(state: GameState, mon: Monster): Loc {
 }
 
 /**
- * summon_possible: whether a summoned creature could appear near a grid (an
- * empty floor grid within 2, in line of sight). Glyph-of-warding and arena
- * exclusions are deferred (traps #21 / arenas not modelled).
+ * summon_possible (mon-attack.c L238): whether a summoned creature could appear
+ * near a grid - an empty floor grid within 2, in line of sight, that is NOT a
+ * glyph of warding. No summons at all on an arena level. S01.
  */
 export function summonPossible(state: GameState, grid: Loc): boolean {
+  /* No summons in arenas (L243). */
+  if (state.arenaLevel) return false;
   const c = state.chunk;
   for (let y = grid.y - 2; y <= grid.y + 2; y++) {
     for (let x = grid.x - 2; x <= grid.x + 2; x++) {
       const near = { x, y };
       if (!c.inBounds(near)) continue;
       if (distance(grid, near) > 2) continue;
+      /* Hack: no summon on a glyph of warding (L257). */
+      if (squareIsWarded(state, near)) continue;
       if (squareIsEmpty(state, near) && los(c, grid, near)) return true;
     }
   }
@@ -279,10 +284,17 @@ export function monsterCanCast(
   if ((state.actor.player.timed[TMD.TAUNT] ?? 0) > 0) chance = Math.trunc(chance / 2);
   if (tdist === mon.bestRange) chance *= 2;
 
-  /* Only cast occasionally, in range, with a clear path. */
+  /* Only cast occasionally, in range, with a clear path. The range check uses
+   * the full max_range, but the PROJECT_SHORT path is quartered while the player
+   * is covering their tracks (project.c L373: COVERTRACKS halves max_range twice).
+   * The port's projectable does not self-quarter, so pass the reduced range. S02. */
   if (state.rng.randint0(100) >= chance) return false;
   if (tdist > maxRange) return false;
-  if (!projectable(state.chunk, mon.grid, tgrid, PROJECT.SHORT, maxRange)) {
+  const shortRange =
+    (state.actor.player.timed[TMD.COVERTRACKS] ?? 0) > 0
+      ? Math.trunc(maxRange / 4)
+      : maxRange;
+  if (!projectable(state.chunk, mon.grid, tgrid, PROJECT.SHORT, shortRange)) {
     return false;
   }
 
