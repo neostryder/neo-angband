@@ -128,3 +128,42 @@ describe("startGame modRules seam (declarative bundled-mod mechanism)", () => {
     expect(supplied["qol.autoDig"]).toBe(true); // caller's copy untouched
   });
 });
+
+describe("RNG neutrality: the empty mod system does not perturb the stream (Phase 3 / D1=B)", () => {
+  /*
+   * The hard rule (docs/PARITY.md): with no RNG-altering mod loaded, no hook,
+   * seam, or guard may add, drop, or reorder a single draw. A fixed-seed run
+   * with the mod system PRESENT-but-empty must draw exactly as it does with the
+   * mod system ABSENT. This is the live-path integration guard over the whole
+   * of startGame (level generation is by far the largest RNG consumer and
+   * exercises the object pipeline, including the make_artifact mod guard wired
+   * live through GameState.modRules). Because the RNG state is a pure function
+   * of the entire draw history, byte-identical end states prove an identical
+   * draw sequence.
+   */
+
+  /* Every bundled-mod rule flag, all explicitly OFF (mod system present, no
+   * behavior-changing mod enabled) - the neutral default install. */
+  const ALL_FLAGS_OFF: Record<string, boolean> = {
+    "bugfix.duplicateArtifact": false,
+    "qol.autoDig": false,
+    "bugfix.uniqueKillHistory": false,
+    "bugfix.noiseScentSave": false,
+    "bugfix.objectListOrder": false,
+  };
+
+  it("startGame draws the identical RNG stream whether modRules is absent or all-false", () => {
+    const absent = startGame(pack, { seed: 20260722, depth: 2 });
+    const empty = startGame(pack, {
+      seed: 20260722,
+      depth: 2,
+      modRules: ALL_FLAGS_OFF,
+    });
+
+    const a = absent.state.rng.getState();
+    const b = empty.state.rng.getState();
+    // Sanity: a real WELL table was advanced (not a vacuous empty comparison).
+    expect(a.state.length).toBeGreaterThan(0);
+    expect(b).toEqual(a);
+  });
+});

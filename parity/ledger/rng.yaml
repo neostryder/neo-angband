@@ -40,8 +40,31 @@ notes: >-
   Each individual stream is exact. Not ported: Rand_init (time/pid seeding,
   a front-end concern) and Rand_simple (time-based, non-deterministic by
   design); front ends seed streams explicitly instead.
+
+  Accepted divergence, sibling argument-evaluation order (audit 02 G01/G02,
+  D1=B): upstream C leaves the evaluation order of sibling function-argument
+  draws unspecified. A stock GCC/MinGW build (official Windows Angband) tends
+  to evaluate right-to-left; the port evaluates left-to-right. Under D1=B this
+  is accepted, not a defect - it shifts which specific values a seed produces
+  but changes neither the rules nor the outcome distribution. The port does
+  not flip argument order to chase a particular compiler's stream.
+
+  RNG neutrality (the hard rule, docs/PARITY.md): with no RNG-altering mod
+  loaded, no hook, seam, or guard may add, drop, or reorder a single draw. A
+  fixed-seed run with the mod system present-but-empty draws exactly as it does
+  with the mod system absent. Mods may perturb the stream only when enabled
+  (opt-in, off by default). Every core mod guard reads state.modRules through
+  modRuleEnabled (context.ts); the flag-absent and flag-false branches are the
+  faithful 4.2.6 path. Only make_artifact (obj/make.ts, seam #4510) draws RNG
+  under a guard, and its modRules check short-circuits before any draw on the
+  disabled path (see parity/ledger/obj-make.yaml).
 verified-by:
   - golden vectors from an independent Python re-implementation of z-rand.c
     (packages/core/scripts/gen-rng-vectors.py -> packages/core/vectors/
     rng-vectors.json), replayed exactly in packages/core/src/rng.test.ts
     across seeds 1, 42, 123456789, 0xDEADBEEF, quick mode, and rand_fix
+  - RNG neutrality (mod-absent vs no-mod present-but-empty): session/
+    qol-defaults.test.ts asserts startGame draws a byte-identical RNG end state
+    with modRules absent vs every bundled-mod flag present-and-false; obj/
+    make.test.ts records the make_artifact draw sequence and asserts the two
+    disabled variants are identical when an artifact commits
