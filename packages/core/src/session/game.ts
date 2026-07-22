@@ -2725,9 +2725,24 @@ export function loadGame(
   };
 
   /* Rebuild the racial counts from the restored monster list (the save
-   * carries the monsters, not the registry-side counters). Killed-unique
-   * max_num zeroes are not yet persisted (ledgered with mon-place). */
+   * carries the monsters, not the registry-side counters). */
   countMonsterRaces(state);
+
+  /* SV-01 (load.c:532-535 rd_monster_memory, "ensure dead uniques stay dead"):
+   * a fresh registry starts every UNIQUE at maxNum=1, and countMonsterRaces
+   * above only rebuilds curNum from the live monster list - so a unique the
+   * player already killed (restored lore pkills>0, but no live copy) would bind
+   * back at maxNum=1 and could respawn / be re-killed after a reload. Re-derive
+   * maxNum=0 for those uniques, exactly as upstream does on load. */
+  for (const race of reg.monsters.races) {
+    if (!race) continue;
+    if (
+      race.flags.has(RF.UNIQUE) &&
+      (state.lore.get(race.ridx)?.pkills ?? 0) > 0
+    ) {
+      race.maxNum = 0;
+    }
+  }
 
   /* savefile.c:647-651: loading a DEAD character with the wizard/cheat-death
    * launch flag set resurrects it (is_dead cleared, HP refilled) and flags it

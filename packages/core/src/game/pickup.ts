@@ -18,19 +18,19 @@
  * as the other item menus), messages/disturb hooks, and square_know_pile /
  * OFLOOR_VISIBLE marking (knowledge #24 - everything on the grid is visible).
  *
- * playerPickupAux fires state.onArtifactFound (object_touch's
- * history_find_artifact, obj-knowledge.c L960-972) when a picked object is
- * an artifact. Upstream also calls object_touch from square_know_pile the
- * instant an artifact's pile becomes known - i.e. on sight, not only on
- * pickup - which square_know_pile's reduced port (game/known.ts, #24 above)
- * does not yet reproduce; find-on-sight is deferred (ledgered in
- * parity/ledger/player-history.yaml). historyFindArtifact's per-aidx
- * de-dupe keeps both paths safe once find-on-sight lands.
+ * playerPickupAux calls object_touch (obj-knowledge.c L960-972) when an object
+ * enters the pack: it marks the object ASSESSED (revealing its combat bracket
+ * and artifact name) and fires state.onArtifactFound (history_find_artifact).
+ * Find-on-sight is also wired now: square_know_pile's reduced port
+ * (game/known.ts) touches the pile on the player's own grid, so an artifact is
+ * found the instant its grid becomes known, not only on pickup.
+ * historyFindArtifact's per-aidx de-dupe keeps both paths safe.
  */
 
 import type { Constants } from "../constants";
 import type { GameObject, StackLimits } from "../obj/object";
 import { OSTACK_PACK, objectStackable, tvalIsMoney } from "../obj/object";
+import { objectTouch } from "../obj/known-object";
 import type { GameState } from "./context";
 import { floorExcise, floorObjectForUse, floorPile } from "./floor";
 import { invenCarry, invenCarryNum } from "./gear";
@@ -230,11 +230,15 @@ function playerPickupAux(
     const { usable } = floorObjectForUse(state, obj, num);
     invenCarry(state.gear, usable, limits);
   }
-  /* object_touch (obj-knowledge.c L960-972): auto-notice artifacts on entry
-   * to the pack and log the find (history_find_artifact). Read through the
-   * state-level hook (not PickupEnv) so it survives a later installPickup
-   * call that only supplies message hooks (main.ts's "reinstall"). */
-  if (obj.artifact) state.onArtifactFound?.(obj.artifact);
+  /* object_touch (obj-knowledge.c L960-972; cmd-pickup.c L322 also touches the
+   * grid pile on pickup): mark the object ASSESSED so it reveals its combat
+   * bracket and, if an artifact, its name on entry to the pack; auto-notice the
+   * artifact and log the find (history_find_artifact). onArtifactFound is read
+   * through the state-level hook (not PickupEnv) so it survives a later
+   * installPickup call that only supplies message hooks (main.ts's "reinstall").
+   * (ASSESSED is idempotent, so re-touching an item already seen on the grid via
+   * squareKnowPile is harmless.) */
+  objectTouch(obj, { onArtifactFound: () => state.onArtifactFound?.(obj.artifact!) });
   env.onPickup?.(obj);
 }
 
