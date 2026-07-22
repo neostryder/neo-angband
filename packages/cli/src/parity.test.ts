@@ -1,11 +1,16 @@
 /**
- * Parity regression test - the vitest guard that `npx vitest run` picks up.
+ * SELF-REGRESSION guard - NOT an upstream parity check.
  *
  * It (1) re-runs a small fixed-seed stats batch and asserts it reproduces the
- * committed baseline EXACTLY (the port is bit-exact for a fixed seed, so any
- * drift in generation/allocation distributions fails here), and (2) runs the
- * golden scenarios and asserts every one passes. Keep the batch small - the
- * full sweep stays a manual/CI script (pnpm --filter @neo-angband/cli stats).
+ * committed PORT-CAPTURED baseline EXACTLY (the port is bit-exact for a fixed
+ * seed, so any drift in the port's own generation/allocation distributions
+ * fails here), and (2) runs the golden scenarios and asserts every one passes.
+ *
+ * These baselines and expected constants were captured from the port itself, so
+ * a green run here means "unchanged from the last accepted port behavior", NOT
+ * "equal to Angband 4.2.6". The real cross-implementation parity check lives in
+ * parity-c.test.ts (diffs the port against C main-stats output). Keep this batch
+ * small - the full sweep stays a manual/CI script (pnpm --filter cli stats).
  */
 
 import { describe, expect, it } from "vitest";
