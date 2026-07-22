@@ -643,17 +643,22 @@ export function objectDesc(
     if (deps.isAware(obj.kind)) deps.markKindSeen?.(obj.kind);
   }
 
-  const assessed = (obj.notice & OBJ_NOTICE.ASSESSED) !== 0;
   const gates: CombatGates = omniscient
     ? { toA: true, toH: true, toD: true, ac: true, dice: true }
     : {
         toA: !!p.objKnown.toA,
         toH: !!p.objKnown.toH,
         toD: !!p.objKnown.toD,
-        /* DEFERRED: p->obj_k->ac and dd/ds runes absent; approximated by the
-         * ASSESSED bit (when upstream learns them in practice). */
-        ac: assessed,
-        dice: assessed,
+        /* obj-desc.c L381-382,420: the base damage-dice bracket gates on
+         * p->obj_k->dd && ds and the raw armour bracket on p->obj_k->ac - the
+         * "know dice"/"know ac" runes, NOT the ASSESSED bit (only the to_h/to_d/
+         * to_a BONUS brackets need ASSESSED, gated inside objDescCombat). Those
+         * runes are granted at birth by player_outfit (player-birth.c L584-596)
+         * and never learned by use, so in practice both are always known and an
+         * unidentified weapon/armour shows its (XdY)/[N] from the start, exactly
+         * as upstream. */
+        ac: !!p.objKnown.ac,
+        dice: !!(p.objKnown.dd && p.objKnown.ds),
       };
 
   const aware = deps.isAware(obj.kind) || (mode & ODESC.STORE) !== 0 || spoil;
