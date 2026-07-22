@@ -39,6 +39,7 @@ import { packMenu, objectName, SVAL_DEPENDENT } from "./screens";
 import { selectFromMenu } from "./overlay";
 import type { MenuItem } from "./overlay";
 import type { GlyphTerm } from "./term";
+import { UI_TEXT } from "./ui-colors";
 
 /**
  * The seven selectable actions (ui-object.c:1701-1709 anonymous enum). Kept as
@@ -305,12 +306,12 @@ async function pickIgnoreItem(
     if (!handle) continue;
     const obj = gearGet(state.gear, handle);
     if (!obj) continue;
-    items.push({ label: objectName(state, obj), color: "#c8c8d4" });
+    items.push({ label: objectName(state, obj), color: UI_TEXT });
     objs.push(obj);
   }
 
   floorPile(state, state.actor.grid).forEach((obj) => {
-    items.push({ label: `${objectName(state, obj)} (on floor)`, color: "#c8c8d4" });
+    items.push({ label: `${objectName(state, obj)} (on floor)`, color: UI_TEXT });
     objs.push(obj);
   });
 

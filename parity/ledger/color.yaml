@@ -14,7 +14,35 @@ notes: >-
   The color_table translation matrix (mono/vga/blind/lighter/darker/
   highlight/metallic/misc) and get_color are now ported (#84). colorToCss
   is a port-only front-end convenience.
+notes-rend2: >-
+  REND-2 / COLOR-* (WO-5): the web shell now routes ALL terminal-glyph chrome
+  through this palette. packages/web/src/ui-colors.ts defines the semantic
+  chrome colours as colorToCss(COLOUR_*), anchored to the reference (NOT chosen
+  by eye): normal menu row = COLOUR_WHITE, cursor/selected row = COLOUR_L_BLUE,
+  greyed = COLOUR_SLATE (curs_attrs[2][2], ui-menu.c L29-32); menu title /
+  header / prompt = COLOUR_WHITE (ui-menu.c L603-611); hint/emphasis =
+  COLOUR_YELLOW (ui-birth.c L795); "-more-" = COLOUR_L_BLUE (#00ffff);
+  terminal background = COLOUR_DARK (#000000). Every invented pastel hex
+  (#c8c8d4/#8a8a94/#e8e8f0/#9aa0b4/#5fafff/#8ab8ff/#e0c040/#4040ff/#101014...)
+  across birth/charsheet/charselect/equip-cmp/help/ignore-menu/knowledge/mods/
+  options/overlay/score/screens/main/term was replaced. Two real parity bugs
+  were fixed en route: birth.ts drew the cursor race row COLOUR_WHITE and other
+  rows COLOUR_L_WHITE (curs_attrs is exactly the reverse: cursor = L_BLUE, rest
+  = WHITE), and MORE_COLOR was #4040ff while its own comment said L_BLUE
+  (#00ffff). Deliberately palette-exempt (annotated at each site, NOT terminal
+  glyphs): the remembered-terrain dim() rgb tint (map lighting; a faithful pass
+  routes through getColor(ATTR_DARK)), the look/target CURSOR_BG cell highlight
+  (browser analogue of the hardware cursor), and the DOM coarse-pointer touch
+  buttons (D2 HTML affordance).
 verified-by:
   - unit tests (order, RGB spot checks, unique attr chars, lookups)
   - color.test.ts pins the color_translate matrix (z-color.c L66-155) and
     getColor applying the translate column n times
+  - web/ui-colors.test.ts: the palette-lint (static half of the REND-2 gate) -
+    fails the build if any web/src #rrggbb literal is outside COLOR_TABLE
+    (except lines marked palette-exempt), and pins WHITE/SLATE/L_BLUE values.
+  - Live half (GlyphTerm.snapshotColored, the appearance-parity oracle whose
+    per-cell {glyph,fg} matches the C do_cmd_save_screen dump byte-for-byte):
+    the running birth screen shows the instruction header and cursor row in
+    #00ffff (L_BLUE), every other race row in #ffffff (WHITE), the stage hint
+    in #ffff00 (YELLOW), and ZERO off-palette foregrounds on screen.

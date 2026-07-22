@@ -319,14 +319,14 @@ describe("objectListLines (']' object_list_show_interactive)", () => {
   it("reports 'You can see no objects.' on an empty level", () => {
     const state = makeTestState({ playerGrid: loc(20, 12) });
     const lines = objectListLines(state);
-    expect(lines).toEqual([{ text: "You can see no objects.", color: "#8a8a94" }]);
+    expect(lines).toEqual([{ text: "You can see no objects.", color: colorToCss(COLOUR_SLATE) }]);
   });
 
   it("singular header + direction label for a single LOS object", () => {
     const state = makeTestState({ playerGrid: loc(20, 12) });
     putRealFloor(state, loc(20, 10), "& Wooden Torch~"); // dy=-2,dx=0 -> "2 N 0 W"
     const lines = objectListLines(state);
-    expect(lines[0]).toEqual({ text: "You can see 1 object:", color: "#9aa0b4" });
+    expect(lines[0]).toEqual({ text: "You can see 1 object:", color: colorToCss(COLOUR_WHITE) });
     expect(lines).toHaveLength(2);
     expect(lines[1]!.text).toBe("~ a Wooden Torch (0 turns)   2 N 0 W");
   });
@@ -336,7 +336,7 @@ describe("objectListLines (']' object_list_show_interactive)", () => {
     putRealFloor(state, loc(22, 12), "& Ration~ of Food"); // dx=2  (TV.FOOD)
     putRealFloor(state, loc(21, 12), "& Wooden Torch~"); // dx=1   (TV.LIGHT)
     const lines = objectListLines(state);
-    expect(lines[0]).toEqual({ text: "You can see 2 objects:", color: "#9aa0b4" });
+    expect(lines[0]).toEqual({ text: "You can see 2 objects:", color: colorToCss(COLOUR_WHITE) });
     /* compare_types sorts by tval then sval; FOOD < LIGHT numerically is not
      * guaranteed, so just assert both entries render, each with its own
      * direction string, and that the count header matches. */
@@ -352,9 +352,9 @@ describe("objectListLines (']' object_list_show_interactive)", () => {
     putRealFloor(state, loc(40, 12), "& Ration~ of Food");
     const lines = objectListLines(state);
     expect(lines).toEqual([
-      { text: "You can see no objects.", color: "#8a8a94" },
-      { text: "", color: "#c8c8d4" },
-      expect.objectContaining({ text: "You are aware of 1 object:", color: "#9aa0b4" }),
+      { text: "You can see no objects.", color: colorToCss(COLOUR_SLATE) },
+      { text: "", color: colorToCss(COLOUR_WHITE) },
+      expect.objectContaining({ text: "You are aware of 1 object:", color: colorToCss(COLOUR_WHITE) }),
       expect.anything(),
     ]);
   });
@@ -372,11 +372,11 @@ describe("objectListLines (']' object_list_show_interactive)", () => {
     void torch;
 
     const lines = objectListLines(state);
-    expect(lines[0]).toEqual({ text: "You can see 1 object:", color: "#9aa0b4" });
+    expect(lines[0]).toEqual({ text: "You can see 1 object:", color: colorToCss(COLOUR_WHITE) });
     expect(lines[1]!.text).toContain("Torch");
     expect(lines[1]!.text.endsWith("0 N 1 E")).toBe(true);
-    expect(lines[2]).toEqual({ text: "", color: "#c8c8d4" });
-    expect(lines[3]).toEqual({ text: "You are aware of 1 other object:", color: "#9aa0b4" });
+    expect(lines[2]).toEqual({ text: "", color: colorToCss(COLOUR_WHITE) });
+    expect(lines[3]).toEqual({ text: "You are aware of 1 other object:", color: colorToCss(COLOUR_WHITE) });
     expect(lines[4]!.text.endsWith("0 N 35 E")).toBe(true);
     expect(lines[4]!.text).not.toContain("Torch");
     expect(lines).toHaveLength(5);
@@ -386,7 +386,7 @@ describe("objectListLines (']' object_list_show_interactive)", () => {
     const state = makeTestState({ playerGrid: loc(20, 12) });
     senseUnknown(state, loc(21, 12));
     const lines = objectListLines(state);
-    expect(lines[0]).toEqual({ text: "You can see 1 object:", color: "#9aa0b4" });
+    expect(lines[0]).toEqual({ text: "You can see 1 object:", color: colorToCss(COLOUR_WHITE) });
     expect(lines[1]!.text).toBe("* (unknown)   0 N 1 E");
     expect(lines[1]!.color).toBe(colorToCss(COLOUR_RED));
   });
@@ -397,7 +397,7 @@ describe("objectListLines (']' object_list_show_interactive)", () => {
     const junk = putFakeFloor(state, loc(22, 12));
     state.isIgnored = (o) => o === junk;
     const lines = objectListLines(state);
-    expect(lines).toEqual([{ text: "You can see no objects.", color: "#8a8a94" }]);
+    expect(lines).toEqual([{ text: "You can see no objects.", color: colorToCss(COLOUR_SLATE) }]);
   });
 
   it("colours: normal white, worthless slate, known-artifact violet, unaware l_red, unknown red", () => {

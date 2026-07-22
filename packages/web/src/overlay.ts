@@ -31,9 +31,11 @@ export interface ScreenLine {
   runs?: { text: string; color: string }[];
 }
 
-const FG = "#c8c8d4";
-const DIM = "#8a8a94";
-const TITLE = "#e8e8f0";
+import { UI_TEXT, UI_DIM, UI_GOLD } from "./ui-colors";
+
+const FG = UI_TEXT;
+const DIM = UI_DIM;
+const TITLE = UI_TEXT;
 const HEADER_ROW = 0;
 const BODY_TOP = 2;
 
@@ -259,7 +261,7 @@ export function promptDirection(
 ): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
     const { rows, cols } = term.size();
-    term.print(0, rows - 1, prompt.slice(0, cols - 1), "#e0c040");
+    term.print(0, rows - 1, prompt.slice(0, cols - 1), UI_GOLD);
     const finish = (value: number | null): void => {
       window.removeEventListener("keydown", onKey, true);
       resolve(value);

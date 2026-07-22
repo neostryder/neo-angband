@@ -202,10 +202,11 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     await tick();
     expect(term.snapshot()[7]).toContain("Race affects stats");
     // The cursor re-enters on the previously chosen race (Half-Elf, row 10),
-    // drawn in the white cursor colour (birthmenu_display).
+    // drawn in the light-blue cursor colour (curs_attrs[CURS_KNOWN][1],
+    // ui-menu.c L29-32).
     const heRow = rowOf(term, "b) Half-Elf");
     expect(heRow).toBe(10);
-    expect(term.colorAt(2, heRow)).toBe(colorToCss(COLOUR_WHITE));
+    expect(term.colorAt(2, heRow)).toBe(colorToCss(COLOUR_L_BLUE));
     press(win, "Escape"); // stage 0: abandon, keep the default
     expect(await done).toBeNull();
   });
@@ -309,12 +310,13 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
     await tick();
     press(win, "c"); // Dwarf
     await tick();
-    // The race column stays at RACE_COL=2 with Dwarf highlighted, the class
-    // column is drawn at CLASS_COL=19.
+    // The race column stays at RACE_COL=2 with Dwarf highlighted in the
+    // light-blue cursor colour (curs_attrs[CURS_KNOWN][1]); the class column
+    // is drawn at CLASS_COL=19.
     const snap = term.snapshot();
     const dwarfRow = rowOf(term, "c) Dwarf");
     expect(dwarfRow).toBe(11);
-    expect(term.colorAt(2, dwarfRow)).toBe(colorToCss(COLOUR_WHITE));
+    expect(term.colorAt(2, dwarfRow)).toBe(colorToCss(COLOUR_L_BLUE));
     expect(snap[9]?.slice(19)).toContain("a) Warrior");
     press(win, "Escape"); await tick();
     press(win, "Escape");

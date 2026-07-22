@@ -39,10 +39,11 @@ import type { GlyphTerm } from "./term";
 import { showTextScreen, selectFromMenu, menuNav } from "./overlay";
 import type { ScreenLine } from "./overlay";
 import { wrapRuns } from "./screens";
+import { UI_TEXT, UI_DIM, UI_GOLD, UI_CURSOR } from "./ui-colors";
 
-const FG = "#c8c8d4";
-const DIM = "#8a8a94";
-const TITLE = "#e8e8f0";
+const FG = UI_TEXT;
+const DIM = UI_DIM;
+const TITLE = UI_TEXT;
 const HEADER_ROW = 0;
 const LABEL_ROW0 = 1;
 const LABEL_ROW1 = 2;
@@ -110,7 +111,7 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
-      term.print(0, HEADER_ROW, dlgMsg || "Equipment comparison".slice(0, cols - 1), dlgMsg ? "#e0c040" : TITLE);
+      term.print(0, HEADER_ROW, dlgMsg || "Equipment comparison".slice(0, cols - 1), dlgMsg ? UI_GOLD : TITLE);
       dlgMsg = "";
 
       const colIdx = viewColumns();
@@ -129,7 +130,7 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
       });
 
       // The "@" combined row.
-      term.print(0, COMBINED_ROW, "@".padEnd(NAME_COL + NAME_WIDTH), "#e0c040");
+      term.print(0, COMBINED_ROW, "@".padEnd(NAME_COL + NAME_WIDTH), UI_GOLD);
       visible.forEach((ci, vi) => {
         const cell = model.combinedCells[ci];
         if (!cell) return;
@@ -147,7 +148,7 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
         const selected = i === cursor;
         term.put(0, y, { ch: item.equippyCh, fg: colorToCss(item.equippyAttr) });
         term.print(2, y, SRC_CHAR[item.src] ?? "?", DIM);
-        term.print(NAME_COL, y, item.shortName.padEnd(NAME_WIDTH).slice(0, NAME_WIDTH), selected ? "#5fafff" : FG);
+        term.print(NAME_COL, y, item.shortName.padEnd(NAME_WIDTH).slice(0, NAME_WIDTH), selected ? UI_CURSOR : FG);
         visible.forEach((ci, vi) => {
           const cell = item.cells[ci];
           if (!cell) return;
@@ -199,7 +200,7 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
 
     const runSelect = async (): Promise<void> => {
       if (model.items.length === 0) return;
-      const items = model.items.map((it, i) => ({ label: `${it.shortName}`, color: i === cursor ? "#5fafff" : FG }));
+      const items = model.items.map((it, i) => ({ label: `${it.shortName}`, color: i === cursor ? UI_CURSOR : FG }));
       const first = await selectFromMenu(term, "Select first item to compare (ESC to skip)", items);
       if (first === null) return;
       const second = await selectFromMenu(
