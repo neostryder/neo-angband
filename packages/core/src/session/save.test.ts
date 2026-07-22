@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, TV } from "../generated";
+import { FEAT, RF, TV } from "../generated";
+import { getLore } from "../mon/lore";
 import { runGameLoop, LOOP_STATUS } from "../game/loop";
 import { monsterGroupsVerify } from "../game/mon-group";
 import type { PlayerCommand } from "../game/context";
@@ -168,6 +169,36 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     expect(nameAfter).toBe(nameBefore);
     /* Unaware: a flavoured word, not the real kind. */
     expect(nameBefore).not.toContain(`of ${potionKind.name}`);
+  });
+
+  it("keeps a killed unique dead across a reload (SV-01, load.c:532-535)", () => {
+    const game = startGame(pack, { seed: 606, depth: 4, className: "Warrior" });
+    const state = game.state;
+    const races = game.booted.registries.monsters.races;
+
+    /* Pick two distinct uniques: one we "kill", one we leave alone. */
+    const uniques = races.filter((r) => r && r.flags.has(RF.UNIQUE));
+    const killed = uniques[0]!;
+    const spared = uniques[1]!;
+    expect(killed.name).not.toBe(spared.name);
+
+    /* Simulate having killed `killed`: record a player-kill in its lore and
+     * make sure no live copy remains on the level (so it is truly gone). */
+    getLore(state.lore, killed).pkills = 1;
+    for (let i = 1; i < state.monsters.length; i++) {
+      const mon = state.monsters[i];
+      if (mon && mon.race.ridx === killed.ridx) state.monsters[i] = null;
+    }
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game)));
+    const restored = loadGame(pack, saved);
+    const rRaces = restored.booted.registries.monsters.races;
+    const rKilled = rRaces.find((r) => r && r.ridx === killed.ridx)!;
+    const rSpared = rRaces.find((r) => r && r.ridx === spared.ridx)!;
+
+    /* The killed unique may never respawn; the untouched one is still alive. */
+    expect(rKilled.maxNum).toBe(0);
+    expect(rSpared.maxNum).toBe(1);
   });
 
   it("round-trips the per-game everseen sets (kind + ego, save.c L397/L533)", () => {

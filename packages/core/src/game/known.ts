@@ -45,6 +45,7 @@ import { monsterCarry } from "../mon/make";
 import type { Monster } from "../mon/monster";
 import type { GameObject } from "../obj/object";
 import { objectCopy } from "../obj/object";
+import { objectTouch } from "../obj/known-object";
 import type { GameState } from "./context";
 
 /**
@@ -259,16 +260,22 @@ export function squareKnowPile(
   pred?: (obj: GameObject) => boolean,
 ): void {
   /* object_touch (cave-square.c square_know_pile L1177-1181, obj-knowledge.c
-   * object_touch L971): only the pile on the player's OWN grid is "touched",
-   * which auto-notices any artifact and logs the find (history_find_artifact).
-   * A detected/lit pile at a distance is only "seen", never touched, so it does
-   * not count as found - hence the player-grid gate here. */
+   * object_touch L960-972): only the pile on the player's OWN grid is "touched",
+   * which marks each object ASSESSED (revealing its combat bracket and, for an
+   * artifact, its name - the shadow gates both on ASSESSED), auto-notices the
+   * artifact, and logs the find (history_find_artifact). A detected/lit pile at
+   * a distance is only "seen", never touched, so it does not count as found -
+   * hence the player-grid gate here. (player_know_object's flavour-awareness
+   * side effect - object_touch's onKnow - is the cross-object rune-learn sweep
+   * KN-03; wired in Phase 2, not here.) */
   if (locEq(grid, state.actor.grid)) {
     const pile = state.floor.get(gi(state, grid));
     if (pile) {
       for (const obj of pile) {
-        if ((!pred || pred(obj)) && obj.artifact) {
-          state.onArtifactFound?.(obj.artifact);
+        if (!pred || pred(obj)) {
+          objectTouch(obj, {
+            onArtifactFound: () => state.onArtifactFound?.(obj.artifact!),
+          });
         }
       }
     }

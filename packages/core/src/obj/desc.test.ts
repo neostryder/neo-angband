@@ -9,7 +9,8 @@ import { Rng } from "../rng";
 import { bindPlayer } from "../player/bind";
 import { blankPlayer } from "../player/player";
 import type { Player } from "../player/player";
-import { TV } from "../generated";
+import { KF, TV } from "../generated";
+import { OBJ_NOTICE } from "./knowledge";
 import { ObjRegistry } from "./bind";
 import type { ObjPackJson, ObjectKind } from "./types";
 import { objectNew } from "./object";
@@ -217,5 +218,57 @@ describe("object_desc everseen marking (obj-desc.c L633-637)", () => {
     expect(kinds).toEqual([]);
     expect(egos).toEqual([]);
     expect(rng.getState()).toEqual(before); // marking never draws from the RNG
+  });
+});
+
+/**
+ * OD-01: the base damage-dice bracket "(XdY)" gates on p->obj_k->dd && ds
+ * (obj-desc.c L381-382), which is emitted BEFORE the ASSESSED early-return
+ * (L392-393) - so it must NOT wait on ASSESSED. Those "know dice" runes are
+ * granted at birth (player_outfit, player-birth.c L584-596) and never learned by
+ * use, so a real player (blankObjKnowledge sets dd=ds=ac=1) sees the base dice
+ * of even an UNIDENTIFIED item. The port previously gated the dice bracket on
+ * ASSESSED, hiding it until identify.
+ *
+ * The combat-BONUS and armour brackets (L395-427) are AFTER the ASSESSED
+ * early-return, so they correctly still require ASSESSED - the two assertions
+ * below guard both halves of the boundary.
+ */
+describe("object_desc dice bracket gates on obj_k->dd/ds, not ASSESSED (OD-01)", () => {
+  const plainDeps: KnownDesc = { isAware: () => true, isTried: () => false };
+  const diceWeapon = () =>
+    mkObj(
+      ordinaryKind(
+        (k) => k.kindFlags.has(KF.SHOW_DICE) && k.dd > 0 && k.ds > 0,
+      ),
+    );
+
+  it("shows an unidentified weapon's damage dice but NOT its combat bonus", () => {
+    const obj = diceWeapon();
+    obj.notice = 0; // NOT assessed
+    const name = objectDesc(
+      obj,
+      ODESC.PREFIX | ODESC.FULL,
+      makePlayer(),
+      makeEnv(),
+      plainDeps,
+    );
+    expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(0);
+    expect(name).toContain(`(${obj.dd}d${obj.ds})`); // dice: before the gate
+    expect(name).not.toContain("(+0,+0)"); // bonus: after the ASSESSED gate
+  });
+
+  it("adds the combat-bonus bracket once the weapon is assessed", () => {
+    const obj = diceWeapon();
+    obj.notice = OBJ_NOTICE.ASSESSED;
+    const name = objectDesc(
+      obj,
+      ODESC.PREFIX | ODESC.FULL,
+      makePlayer(),
+      makeEnv(),
+      plainDeps,
+    );
+    expect(name).toContain(`(${obj.dd}d${obj.ds})`);
+    expect(name).toContain("(+0,+0)");
   });
 });
