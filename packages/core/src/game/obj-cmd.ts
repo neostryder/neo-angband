@@ -693,6 +693,11 @@ export function useAux(
     const ctx = attachGameEnv(buildEffectContext(state, deps.envDeps), {
       state,
       cast: deps.cast,
+      /* take_hit consequences for effects that rebound damage onto the player
+       * (EF_BANISH), so such a death records died_from too. */
+      ...(deps.envDeps.takeHitHooks
+        ? { takeHitHooks: deps.envDeps.takeHitHooks }
+        : {}),
       /* target_get inside the handlers: a DIR_TARGET cast re-reads the
        * live target per handler, as upstream. */
       get aimed() {

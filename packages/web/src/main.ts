@@ -5689,6 +5689,9 @@ if (import.meta.env.DEV) {
     },
     size: () => term.size(),
     screen: () => term.snapshot(),
+    // Appearance-parity snapshot: glyph + CSS colour per cell, for the UI /
+    // colour parity harness to diff against a captured C html_screenshot dump.
+    screenColored: () => term.snapshotColored(),
     // Tile-rendering diagnostics (task C1): the active mode, whether its atlas
     // and pref map are loaded, and how many cells the last render blitted as
     // tiles (proves the map render chose tiles, not ASCII).

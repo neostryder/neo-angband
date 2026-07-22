@@ -488,6 +488,12 @@ function runTrapEffect(
     {
       state,
       cast: deps.effects.cast,
+      /* take_hit consequences so a trap effect that damages the player records
+       * died_from + shows the death chain (the trap's EF_DAMAGE also reaches
+       * this via ctx.player.takeHit / envDeps.takeHitHooks). */
+      ...(deps.effects.envDeps.takeHitHooks
+        ? { takeHitHooks: deps.effects.envDeps.takeHitHooks }
+        : {}),
       ...(deps.effects.teleport ? { teleport: deps.effects.teleport } : {}),
       ...(deps.effects.general ? { general: deps.effects.general } : {}),
       ...(deps.effects.item ? { item: deps.effects.item } : {}),
