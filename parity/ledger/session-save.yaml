@@ -50,6 +50,32 @@ notes: >-
   ?continue=1, and deletes the save on death (decision 16: death is
   terminal). Noise/scent heatmaps are transient (upstream does not save
   them either - known upstream issue 4605); they rebuild on the next turn.
+notes-mod-lifecycle: >-
+  Mid-game mod add/update/remove (decision 19, MOD_LIFECYCLE). loadGame ALWAYS
+  reconciles the save's mod-lifecycle blocks against the packs present now:
+  quarantineSave(rehydrateSave(saveIn, present), manifest, present) - it
+  rehydrates orphans whose pack has returned, then quarantines live entities
+  whose defining pack is now missing, so the deserializers only ever see ids the
+  present packs can resolve (game.ts ~L2599). The reconciliation is keyed
+  entirely off `present`, the set of namespaces the bound pack can resolve.
+  Robustness of each mid-game path: (1) a live rule toggle writes
+  state.modRules[flag] and modRuleEnabled reads it live, and every core guard's
+  disabled path is byte-faithful (only make_artifact draws under a guard, and it
+  short-circuits before any draw - see rng.yaml / obj-make.yaml); (2) enable /
+  disable / version-change of a whole mod routes through an autosave + reload,
+  and the reload's loadGame reconciles as above; (3) the bugfix.noiseScentSave
+  serialization-format flag is SELF-DESCRIBING on load (chunk.restoreSquares
+  reads the noise/scent arrays only when the save carried them, never off the
+  live flag), so a format written under one flag value loads correctly after the
+  flag changes across a mod add/remove; (4) per-mod private save bags and the
+  determinism ratchet survive an uninstall verbatim. WIRING FIX: the web host
+  must pass `present` = core + every enabled CONTENT mod namespace
+  (pack.presentNamespaces(), derived from the same activePackSet the pack is
+  composed from); it previously hardcoded core-only at the load call site, which
+  would have quarantined a still-enabled content mod's live world entities on the
+  first reload after enabling it. Bundled mods (qol / bug-fixes / neo-linoleum /
+  Borg) add no save-serialized content ids, so the bug was latent, but it is the
+  exact add-a-content-mod-mid-game hazard.
 deferred:
   - Multiple save slots / per-character files and the quit-to-title flow
     (boot/title UX, decision 21 / #25).
@@ -72,3 +98,11 @@ verified-by:
     level round-trips its depth.
   - Browser-verified: 'S' writes the stamped save to localStorage and
     ?continue=1 resumes it and plays on with no console errors.
+  - mod/dehydrate-roundtrip.test.ts (4 tests): the full quarantine/rehydrate
+    lifecycle over a real modded save proves loadGame drops to a loadable
+    vanilla state when a content mod is removed and fully restores it when the
+    mod returns (the mid-game remove/re-add reconciliation math).
+  - web/mid-game-mods.test.ts: pins the host wiring - presentNamespaces() always
+    includes core, is core-only on a fresh (no-mod) install, and includes an
+    enabled content mod's namespace so loadGame keeps its live content instead of
+    quarantining it.

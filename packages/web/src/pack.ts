@@ -227,11 +227,30 @@ function activePackSet(): LoadedPack[] {
 }
 
 /**
- * The active pack set, composed once at module load. Core alone is
- * record-identical; enabled mods add/patch/replace/remove through the
- * mod-sdk compose engine.
+ * The active pack set, snapshotted once at module load, and the pack composed
+ * from it. Core alone is record-identical; enabled mods add/patch/replace/remove
+ * through the mod-sdk compose engine. Both `composed` and presentNamespaces()
+ * derive from this ONE snapshot so the namespaces reported present always match
+ * the pack the game is actually bound to (they must never drift).
  */
-const composed = composeContentPacks(activePackSet());
+const activePacks = activePackSet();
+const composed = composeContentPacks(activePacks);
+
+/**
+ * The namespaces whose content the running pack can resolve: core plus every
+ * enabled CONTENT mod's id. This is the `present` set loadGame needs to
+ * reconcile a save's mod-lifecycle blocks (mod/save-blocks.ts): it rehydrates
+ * orphans whose pack is present again and quarantines live entities whose pack
+ * is now missing. Passing anything narrower (e.g. hardcoded core-only) would
+ * make loadGame quarantine a still-enabled content mod's live entities on every
+ * reload - the add-a-content-mod-mid-game hazard. Plugin-shape mods contribute
+ * no content ids (they are skipped by activePackSet), and their private save
+ * bags round-trip verbatim regardless of this set, so content ids are the whole
+ * concern here.
+ */
+export function presentNamespaces(): ReadonlySet<string> {
+  return new Set(activePacks.map((p) => p.manifest.id));
+}
 
 // DEV-only diagnostic: proves an enabled mod's changes reach the running
 // game's content. Stripped from production builds (import.meta.env.DEV).
