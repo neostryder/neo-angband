@@ -164,7 +164,7 @@ import {
 } from "@neo-angband/core";
 import type { TileAtlas, TileMap, TilePrefsDeps } from "@neo-angband/core";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines, presentNamespaces } from "./pack";
 import {
   defaultModStore,
   buildCatalog,
@@ -515,7 +515,13 @@ function bootGame(): ReturnType<typeof startGame> {
             ? "Welcome back. Your game was restored."
             : "Welcome back. (WARNING: save integrity check failed.)";
           resumedActive = true;
-          return loadGame(pack, decoded.save, new Set(["core"]), {
+          // present = core + every enabled CONTENT mod's namespace (pack.ts),
+          // so loadGame reconciles the save's mod-lifecycle blocks correctly:
+          // a still-enabled mod's live content is NOT quarantined, and a mod
+          // that was removed since the save has its content quarantined (and
+          // rehydrated if re-enabled). Hardcoding core-only here would strip a
+          // content mod's world entities on the first reload after enabling it.
+          return loadGame(pack, decoded.save, presentNamespaces(), {
             modRules: activeModRules(),
           });
         }
