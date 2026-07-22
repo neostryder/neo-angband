@@ -27,3 +27,9 @@ packages/web/mods/**/*.js
 packages/web/mods/**/*.d.ts
 packages/web/mods/**/*.js.map
 packages/web/mods/**/*.d.ts.map
+
+# Local-only parity remediation breadcrumb: points at the private planning
+# workspace, so it must never be committed to this public repo. The authoritative
+# public methodology lives in docs/PARITY.md; the per-module provenance map is
+# parity/ledger/.
+parity/PARITY_REMEDIATION_2026-07-21.md
