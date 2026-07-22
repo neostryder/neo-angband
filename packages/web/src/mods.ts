@@ -31,14 +31,15 @@ import type { GlyphTerm } from "./term";
 import type { CatalogMod, ModStore } from "./mod-store";
 import type { ModRuleDecl } from "./pack";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
+import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD } from "./ui-colors";
 
-const C_ENABLED = "#7fd07f";
-const C_DISABLED = "#8a8a94";
-const C_WARN = "#e0c060";
-const C_DANGER = "#e08a8a";
-const C_FG = "#c8c8d4";
-const C_DIM = "#8a8a94";
-const C_TITLE = "#e8e8f0";
+const C_ENABLED = UI_GOOD;
+const C_DISABLED = UI_DIM;
+const C_WARN = UI_GOLD;
+const C_DANGER = UI_BAD;
+const C_FG = UI_TEXT;
+const C_DIM = UI_DIM;
+const C_TITLE = UI_TEXT;
 
 /** What the manager needs from the host (discovery + reload are browser-only). */
 export interface ModManagerDeps {
