@@ -16,7 +16,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MSG } from "../generated";
+import { MSG, PF } from "../generated";
 import { startGame } from "../session/game";
 import type { GamePack, StartedGame } from "../session/game";
 import { worldTakeHit } from "./world";
@@ -135,5 +135,39 @@ describe("take_hit consequences are wired into the live game (audit 01 P1)", () 
 
     expect(state.isDead).toBe(true);
     expect(state.actor.player.diedFrom).toBe(mon!.race.name);
+  });
+});
+
+describe("PF_COMBAT_REGEN mana reward is wired into take_hit (audit 01 C1)", () => {
+  it("a COMBAT_REGEN character gains rage-mana from a non-excluded hit", () => {
+    const { game } = startCaptured(7007, 2);
+    const p = game.state.actor.player;
+    /* Grant the flag on the live derived state and give the caster mana room. */
+    game.state.playerState!.pflags.on(PF.COMBAT_REGEN);
+    p.msp = 20;
+    p.csp = 0;
+    p.cspFrac = 0;
+    p.mhp = 100;
+    p.chp = 100;
+
+    worldTakeHit(game.state, 20, "a giant white mouse");
+
+    expect(game.state.isDead).toBe(false);
+    expect(p.csp).toBeGreaterThan(0); // sp_gain = (MAX(msp,10)*65536)/mhp*dam
+  });
+
+  it("no reward for poison / fatal wound / starvation killers", () => {
+    const { game } = startCaptured(7007, 2);
+    const p = game.state.actor.player;
+    game.state.playerState!.pflags.on(PF.COMBAT_REGEN);
+    p.msp = 20;
+    p.csp = 0;
+    p.cspFrac = 0;
+    p.mhp = 100;
+    p.chp = 100;
+
+    worldTakeHit(game.state, 20, "poison");
+
+    expect(p.csp).toBe(0);
   });
 });

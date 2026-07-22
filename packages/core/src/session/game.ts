@@ -47,12 +47,13 @@ import { playerExpGain, playerKillExp } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
 import { historyAdd, historyFindArtifact, historyLoseArtifact } from "../player/history";
 import { artifactHistoryName, historyStamp } from "../game/history";
-import { makePlayerSideEffects } from "../game/player-side";
+import { makePlayerSideEffects, makeIncCheckQueries } from "../game/player-side";
 import { makeTakeHitHooks } from "../game/take-hit-hooks";
 import { makeMonBlowEnv } from "../game/mon-side";
 import { adj_dex_safe } from "../player/calcs";
 import { buildEffectContext } from "../game/effect-env";
-import { sourceMonster, sourcePlayer } from "../effects/interpreter";
+import { attachGameEnv } from "../game/effect-game-env";
+import { sourceMonster, sourceNone, sourcePlayer } from "../effects/interpreter";
 import {
   DEFAULT_GAME_CONSTANTS,
   addMonster,
@@ -188,7 +189,7 @@ import type { GameObject, CurseTimedFoil } from "../obj/object";
 import { buildCurseTimedFoil } from "../obj/object";
 import { createDefaultRegistry, installMeleeSideEffects } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
-import { buildTempBrandSlay } from "../player/timed";
+import { buildTempBrandSlay, playerIncCheck } from "../player/timed";
 import type {
   TimedTempBrandSlayRecord,
   PlayerIncCheckQueries,
@@ -811,6 +812,14 @@ function wireGame(
    * onDeath is what finally records died_from + clears total_winner on death
    * (audit 01 P1 CRITICAL). */
   const sharedTakeHitHooks = makeTakeHitHooks(state);
+  /* on_begin_effect / on_end_effect dispatch for timed transitions (audit 01
+   * T2, player-timed.c:873-891). Assigned inside the projections block where the
+   * effect registry + env exist, and read by the world-clock timedHooks
+   * (function-body scope, like sharedTakeHitHooks). Undefined when no effect
+   * stack is built (headless save inspection); then transitions run no chain. */
+  let runTimedTransition:
+    | ((idx: number, begin: boolean, canDisturb: boolean) => void)
+    | undefined;
   if (reg.projections) {
     const effects = new EffectRegistry();
     effectRegistry = effects;
@@ -1018,26 +1027,7 @@ function wireGame(
      * resist ("You resist the effect!") and the resisted LIGHT/SOUND messages
      * are gated. Absent, every increase was allowed. Same shape as
      * buildFailRuneEnv / makePlayerSideEffects. */
-    const incQueries: PlayerIncCheckQueries = {
-      objectFlag: (name): boolean => {
-        const i = (OF as Record<string, number>)[name];
-        return i !== undefined && (state.playerState?.flags.has(i) ?? false);
-      },
-      resistLevel: (name): number => {
-        const i = (ELEM as Record<string, number>)[name];
-        return i !== undefined
-          ? (state.playerState?.elInfo[i]?.resLevel ?? 0)
-          : 0;
-      },
-      playerFlag: (name): boolean => {
-        const i = (PF as Record<string, number>)[name];
-        return i !== undefined && (state.playerState?.pflags.has(i) ?? false);
-      },
-      timedActive: (name): boolean => {
-        const i = (TMD as Record<string, number>)[name];
-        return i !== undefined && (state.actor.player.timed[i] ?? 0) > 0;
-      },
-    };
+    const incQueries: PlayerIncCheckQueries = makeIncCheckQueries(state);
     const envDeps: EffectEnvDeps = {
       timedTable: players.timed,
       // Effect status/damage messages ("You feel better", "You feel yourself
@@ -1045,10 +1035,50 @@ function wireGame(
       // them; absent, they would drop.
       onMessage: (text: string): void => state.msg?.(text),
       incQueries,
+      /* on_begin_effect / on_end_effect (audit 01 T2): the interpreter timed
+       * path (a SCRAMBLE / SPRINT potion or spell) must run the chain too, not
+       * just the world clock. The thunk reads runTimedTransition (assigned just
+       * below) at call time, so SCRAMBLE_STATS fires when the potion lands. */
+      timedHooks: {
+        onTransition: (idx: number, begin: boolean, canDisturb: boolean): void =>
+          runTimedTransition?.(idx, begin, canDisturb),
+      },
       /* The shared take_hit consequences, so effect-driven player damage (traps,
        * EF_DAMAGE, activations, monster casts via mon-cast) shows the message
        * chain and records died_from on death, exactly like melee/projection. */
       takeHitHooks: sharedTakeHitHooks,
+    };
+
+    /* on_begin_effect / on_end_effect chain runner (audit 01 T2): dispatch the
+     * bound chain of the timed effect at `idx` through the live effect stack.
+     * Upstream (player-timed.c:878-889) uses source_none() when can_disturb is
+     * true and source_player() otherwise, so any TIMED_INC in the chain honors
+     * disturbance. Runs SCRAMBLE's SCRAMBLE_STATS / UNSCRAMBLE_STATS and
+     * SPRINT's ending TIMED_INC_NO_RES:SLOW; a no-op for effects with no chain. */
+    runTimedTransition = (idx, begin, canDisturb): void => {
+      const eff = players.timed[idx];
+      const chain = begin ? eff?.onBeginEffect : eff?.onEndEffect;
+      if (!chain) return;
+      const origin = canDisturb ? sourceNone() : sourcePlayer();
+      for (const step of chain) {
+        /* The chain effects (SCRAMBLE_STATS etc.) read the full game env, so the
+         * context must be attachGameEnv-wrapped exactly like the trap/obj-cmd
+         * paths - a bare buildEffectContext leaves gameEnv() null and they no-op. */
+        const ctx = attachGameEnv(buildEffectContext(state, envDeps), {
+          state,
+          cast,
+          takeHitHooks: sharedTakeHitHooks,
+          ...(teleport ? { teleport } : {}),
+          general,
+          item,
+          summon,
+        });
+        effects.effectSimple(step.effect, ctx, {
+          origin,
+          subtype: step.subtype,
+          ...(step.dice !== undefined ? { diceString: step.dice } : {}),
+        });
+      }
     };
 
     /* The wizard/debug effect bundle (WP-14): identical to the object-command
@@ -1398,12 +1428,29 @@ function wireGame(
     };
   }
 
+  /* player_inc_check for the world clock's over-exertion / DoT timed increases
+   * (audit 01 T1, player-timed.c:1056): the game-turn callers (world.ts inc with
+   * check=true - fainting SCRAMBLE, over-cast CONFUSED/IMAGE) previously passed
+   * hooks lacking incCheck, so timed.ts defaulted to ALLOW and PROT_CONF /
+   * RES_CHAOS / RES_NEXUS were ignored on that path. Shares makeIncCheckQueries
+   * with the effect-interpreter env, reading the live derived state. */
+  const worldIncQueries = makeIncCheckQueries(state);
   state.world = {
     timedTable: players.timed,
     timedHooks: {
       onMessage: (text: string): void => state.msg?.(text),
       onNotify: (_idx: number, canDisturb: boolean): void => {
         if (canDisturb) disturb(state);
+      },
+      incCheck: (idx: number): boolean => {
+        const eff = players.timed[idx];
+        return eff ? playerIncCheck(eff, worldIncQueries) : true;
+      },
+      /* on_begin_effect / on_end_effect dispatch (audit 01 T2): when a timed
+       * effect starts or lapses on the world clock (e.g. SPRINT ends -> SLOW,
+       * SCRAMBLE ends -> UNSCRAMBLE_STATS), run its bound chain. */
+      onTransition: (idx: number, begin: boolean, canDisturb: boolean): void => {
+        runTimedTransition?.(idx, begin, canDisturb);
       },
       /* print_custom_message weapon substitution (obj-util.c:1118, gap 2.9):
        * the {name}/{kind}/{s}/{is} tags in weapon-related timed messages (the
