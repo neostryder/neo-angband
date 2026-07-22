@@ -126,7 +126,8 @@ describe("ranged to-hit distance metric (cave-view.c:38-46, gap 2.6)", () => {
    * (+6,+6). ay + ax/2 distance = 9 -> chance 11 -> hit needs a 10000-scaled
    * roll >= 6537; the Chebyshev distance (6 -> chance 14) would need only
    * >= 5243. rand_fix 60 rolls 5999: a hit under Chebyshev, a MISS under the
-   * faithful metric.
+   * faithful metric. Upstream prints nothing on a ranged miss (player-attack.c
+   * has no else branch, R3), so a clean miss leaves no message and no damage.
    */
   it("a marginal diagonal shot misses under the ay + ax/2 penalty", () => {
     const msgs: string[] = [];
@@ -145,7 +146,8 @@ describe("ranged to-hit distance metric (cave-view.c:38-46, gap 2.6)", () => {
 
     fire(state, handle, 3); /* south-east */
     expect(mon.hp).toBe(5000);
-    expect(msgs.some((m) => m.includes("misses"))).toBe(true);
+    /* R3: a miss is silent - no "Your ..." hit line, no miss line. */
+    expect(msgs).toEqual([]);
   });
 });
 

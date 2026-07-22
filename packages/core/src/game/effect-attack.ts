@@ -229,7 +229,14 @@ const handleARC: EffectHandler = (ctx) => {
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
-  const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
+  /* A1 (effect-handler-attack.c:811-814): a monster ARC targets the player's
+   * grid directly with NO random draw - unlike BREATH/BOLT/BALL it has no
+   * confused-dir / target-monster branch. Routing it through resolveAimedTarget
+   * (monsterGetTarget) would inject a spurious randint1(100) and desync the RNG.
+   * Player and no-source cases keep the ordinary target resolution. */
+  const grid = source.isMonster
+    ? env.state.actor.grid
+    : resolveAimedTarget(env.state, source, ctx.dir, env.aimed).grid;
   if (castArc(env.state, env.cast, source, grid, dam, ctx.subtype, ctx.radius, ctx.other))
     ctx.ident = true;
   return true;
@@ -240,7 +247,11 @@ const handleSHORT_BEAM: EffectHandler = (ctx) => {
   if (!env) return true;
   const dam = effectCalculateValue(ctx, false);
   const source = sourceFor(env, ctx.origin);
-  const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
+  /* A2 (effect-handler-attack.c:868-870): as with ARC, a monster SHORT_BEAM
+   * targets the player's grid directly with no random draw. */
+  const grid = source.isMonster
+    ? env.state.actor.grid
+    : resolveAimedTarget(env.state, source, ctx.dir, env.aimed).grid;
   const addons = source.isPlayer && ctx.other > 0;
   const rad = ctx.radius + (addons ? Math.trunc(playerLevel(env) / ctx.other) : 0);
   if (castShortBeam(env.state, env.cast, source, grid, dam, ctx.subtype, rad))
