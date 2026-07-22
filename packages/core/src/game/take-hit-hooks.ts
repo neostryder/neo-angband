@@ -30,10 +30,11 @@
  * is a visual no-op. It is deliberately omitted (matching the melee reference).
  */
 
-import { MSG } from "../generated";
+import { MSG, PF } from "../generated";
 import type { TakeHitHooks } from "../player/take-hit";
 import type { GameState } from "./context";
 import { disturb } from "./player-path";
+import { playerAdjustManaPrecise } from "./loop";
 
 /** Build the shared, complete player take_hit consequences for `state`. */
 export function makeTakeHitHooks(state: GameState): TakeHitHooks {
@@ -60,6 +61,21 @@ export function makeTakeHitHooks(state: GameState): TakeHitHooks {
        * and clears the active slot. */
       p.diedFrom = killer;
       p.totalWinner = false;
+    },
+    /* PF_COMBAT_REGEN mana reward (player-util.c L216-222, audit 01 C1): a
+     * Blackguard turns lost hitpoints into rage-mana. take_hit already excludes
+     * poison / fatal wound / starvation before calling this, so only the flag
+     * gate and the formula remain. sp_gain = (MAX(msp,10)*65536)/mhp*dam,
+     * left-associative integer arithmetic, through player_adjust_mana_precise
+     * (no RNG). Absent p->mhp is never 0 in play. */
+    combatRegenReward: (dam: number): void => {
+      const p = state.actor.player;
+      const hasFlag =
+        state.playerState?.pflags.has(PF.COMBAT_REGEN) ??
+        (p.race.pflags.has(PF.COMBAT_REGEN) || p.cls.pflags.has(PF.COMBAT_REGEN));
+      if (!hasFlag || p.mhp <= 0) return;
+      const spGain = Math.trunc((Math.max(p.msp, 10) * 65536) / p.mhp) * dam;
+      playerAdjustManaPrecise(p, spGain);
     },
   };
 }

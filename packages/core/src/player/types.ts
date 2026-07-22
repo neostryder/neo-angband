@@ -275,6 +275,20 @@ export interface TimedFail {
   flag: string;
 }
 
+/**
+ * One step of an on-begin-effect / on-end-effect chain (player-timed.c
+ * parse_player_timed_effect). The effect code and subtype are resolved at bind
+ * time; the dice string, when present, overrides the effect's own dice.
+ */
+export interface TimedEffectStep {
+  /** EF_ effect code (generated EF enum value). */
+  effect: number;
+  /** effect_subtype(effect, type) result (param2 / subtype), or 0 for none. */
+  subtype: number;
+  /** effect-dice string, or undefined to use the effect's default dice. */
+  dice?: string;
+}
+
 /** struct timed_effect_data (player-timed.c), bound from player_timed.json. */
 export interface TimedEffect {
   /** TMD_ index; matches the generated TMD enum. */
@@ -312,6 +326,18 @@ export interface TimedEffect {
   oflagSyn: boolean;
   grades: TimedGrade[];
   fail: TimedFail[];
+  /**
+   * on_begin_effect (player-timed.c:875): the effect chain dispatched when the
+   * effect starts (a 0 -> positive transition), e.g. SCRAMBLE's SCRAMBLE_STATS.
+   * Undefined when the effect defines none.
+   */
+  onBeginEffect?: TimedEffectStep[];
+  /**
+   * on_end_effect (player-timed.c:884): the chain dispatched when the effect
+   * lapses (positive -> 0), e.g. SCRAMBLE's UNSCRAMBLE_STATS and SPRINT's
+   * ending TIMED_INC_NO_RES:SLOW. Undefined when the effect defines none.
+   */
+  onEndEffect?: TimedEffectStep[];
 }
 
 /**

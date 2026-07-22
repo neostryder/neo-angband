@@ -50,6 +50,35 @@ import {
 import type { TeleportEnv } from "./effect-teleport";
 import { thrustAway } from "./thrust";
 
+/**
+ * makeIncCheckQueries: the player_inc_check fail-condition resolvers over the
+ * live derived state (player-timed.c:923-1024). Shared by makePlayerSideEffects,
+ * the effect-interpreter env, and the world-clock timed hooks so the over-
+ * exertion / EF_TIMED_INC resist gate reads one source of truth. Object/player
+ * flags and element resists come from state.playerState (the last calc_bonuses);
+ * the timed check reads the live duration array.
+ */
+export function makeIncCheckQueries(state: GameState): PlayerIncCheckQueries {
+  return {
+    objectFlag: (name): boolean => {
+      const i = (OF as Record<string, number>)[name];
+      return i !== undefined && (state.playerState?.flags.has(i) ?? false);
+    },
+    resistLevel: (name): number => {
+      const i = (ELEM as Record<string, number>)[name];
+      return i !== undefined ? (state.playerState?.elInfo[i]?.resLevel ?? 0) : 0;
+    },
+    playerFlag: (name): boolean => {
+      const i = (PF as Record<string, number>)[name];
+      return i !== undefined && (state.playerState?.pflags.has(i) ?? false);
+    },
+    timedActive: (name): boolean => {
+      const i = (TMD as Record<string, number>)[name];
+      return i !== undefined && (state.actor.player.timed[i] ?? 0) > 0;
+    },
+  };
+}
+
 /** Everything the side-effect handlers need beyond the GameState. */
 export interface PlayerSideDeps {
   /** The bound timed-effect registry (players.timed), TMD-indexed. */
@@ -120,24 +149,7 @@ export function makePlayerSideEffects(
    * The learning / smart-learn / resist-message side effects of the non-lore
    * check ride the timed-effect wiring (gap 2.8).
    */
-  const incCheckQueries: PlayerIncCheckQueries = {
-    objectFlag: (name): boolean => {
-      const i = (OF as Record<string, number>)[name];
-      return i !== undefined && (state.playerState?.flags.has(i) ?? false);
-    },
-    resistLevel: (name): number => {
-      const i = (ELEM as Record<string, number>)[name];
-      return i !== undefined ? (state.playerState?.elInfo[i]?.resLevel ?? 0) : 0;
-    },
-    playerFlag: (name): boolean => {
-      const i = (PF as Record<string, number>)[name];
-      return i !== undefined && (state.playerState?.pflags.has(i) ?? false);
-    },
-    timedActive: (name): boolean => {
-      const i = (TMD as Record<string, number>)[name];
-      return i !== undefined && (p().timed[i] ?? 0) > 0;
-    },
-  };
+  const incCheckQueries = makeIncCheckQueries(state);
   const incCheck = (idx: number): boolean => {
     const effect = deps.timed[idx];
     return effect ? playerIncCheck(effect, incCheckQueries) : true;
