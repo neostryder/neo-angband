@@ -210,4 +210,60 @@ describe("attack effect handlers - dispatch through the registry", () => {
     });
     expect(ran).toBe(false);
   });
+
+  /**
+   * A1/A2 (effect-handler-attack.c:811-814, 868-870): a monster-sourced ARC and
+   * SHORT_BEAM target the player's grid DIRECTLY with no random draw - unlike
+   * BALL/BREATH they have no confused-dir / target-monster branch. The old port
+   * routed them through monsterGetTarget, which draws randint1(100) (and, when
+   * confused, randint1(9)), desyncing the RNG and possibly mis-aiming. These
+   * assert the player is hit AND the RNG state is untouched by targeting.
+   */
+  /**
+   * The target-resolution draw removed by A1/A2 is monsterGetTarget's
+   * `randint1(100)` accuracy roll (effect-mon-origin.ts). The fire projection
+   * against a bare actor never rolls randint1(100) itself, so recording every
+   * randint1 argument and asserting 100 never appears is a precise guard: it
+   * fails the moment the monster path is re-routed through monsterGetTarget.
+   */
+  function spyRandint1(state: GameState): number[] {
+    const args: number[] = [];
+    const real = state.rng.randint1.bind(state.rng);
+    state.rng.randint1 = (n: number): number => {
+      args.push(n);
+      return real(n);
+    };
+    return args;
+  }
+
+  it("EF_ARC from a monster hits the player with no spurious targeting draw (A1)", () => {
+    const state = makeState({ playerGrid: loc(10, 10), seed: 7 });
+    state.actor.player.chp = 100;
+    const mon = addMon(state, plainRace, loc(10, 13), { hp: 50 });
+    const r1Args = spyRandint1(state);
+    registry().effectSimple(EF.ARC, env(state), {
+      origin: sourceMonster(mon.midx),
+      diceString: "30",
+      subtype: PROJ.FIRE,
+      radius: 6,
+      other: 60,
+    });
+    expect(state.actor.player.chp).toBeLessThan(100);
+    expect(r1Args).not.toContain(100); /* no monsterGetTarget accuracy roll */
+  });
+
+  it("EF_SHORT_BEAM from a monster hits the player with no spurious targeting draw (A2)", () => {
+    const state = makeState({ playerGrid: loc(10, 10), seed: 7 });
+    state.actor.player.chp = 100;
+    const mon = addMon(state, plainRace, loc(10, 13), { hp: 50 });
+    const r1Args = spyRandint1(state);
+    registry().effectSimple(EF.SHORT_BEAM, env(state), {
+      origin: sourceMonster(mon.midx),
+      diceString: "30",
+      subtype: PROJ.FIRE,
+      radius: 6,
+    });
+    expect(state.actor.player.chp).toBeLessThan(100);
+    expect(r1Args).not.toContain(100);
+  });
 });

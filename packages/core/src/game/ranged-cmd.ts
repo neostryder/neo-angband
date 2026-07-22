@@ -20,13 +20,13 @@
  * DEFERRED (ledgered in parity/ledger/ranged-cmd.yaml): the out-of-range "Fire
  * anyway?" prompt (UI), missile / equipment learn-on-attack (knowledge), the
  * show_damage " (N)" suffix, the invisible-monster "finds a mark" branch, and
- * the crit-flavour line (the hit verb still varies). The throw range uses a
- * compact weight bound.
+ * the crit-flavour line (the hit verb still varies).
  */
 
-import { MON_MSG, MSG, RF, TMD } from "../generated";
+import { MON_MSG, MSG, RF, STAT, TMD } from "../generated";
 import { distance, loc } from "../loc";
 import type { Loc } from "../loc";
+import { adj_str_blow } from "../player/calcs";
 import { makeRangedShot, makeRangedThrow, breakageChance } from "../combat/ranged";
 import { objectWeightOne, tvalIsAmmo, tvalIsSharpMissile } from "../obj/object";
 import type { GameObject } from "../obj/object";
@@ -95,7 +95,12 @@ function rangedHelper(
     landing = grid;
 
     const mon = squareMonster(state, grid);
-    if (!mon) continue;
+    if (!mon) {
+      /* Stop if non-projectable but passable (player-attack.c:1204-1206): the
+       * missile breaks against terrain it cannot pass through, e.g. rubble. */
+      if (!state.chunk.isProjectable(grid)) break;
+      continue;
+    }
 
     const monObvious = monsterIsObvious(mon);
     /* Distance penalty uses the ay + ax/2 metric (cave-view.c:38), not the
@@ -155,9 +160,9 @@ function rangedHelper(
           if (flee) state.msg?.(flee);
         }
       }
-    } else {
-      state.msg?.(`The ${oName} misses ${mName}.`);
     }
+    /* No else: ranged_helper prints nothing on a miss (player-attack.c:1132
+     * has an if(result.success) block and no else branch), R3. */
 
     /* Stop the missile, or reduce its piercing effect (player-attack.c:1198). */
     pierce--;
@@ -210,8 +215,11 @@ export function installRangedCommands(registry: ActionRegistry): void {
     /* Take one missile out of the stack. */
     const { obj: missile } = gearObjectForUse(state.gear, player, handle, 1);
 
+    /* Fire range (player-attack.c:1310): MIN(6 + 2 * ammo_mult, max_range) -
+     * the LAUNCHER damage multiplier (state.ammo_mult), not the shots-per-turn
+     * rate of fire. */
     const range = Math.min(
-      6 + 2 * Math.trunc(state.actor.combat.numShots / 10),
+      6 + 2 * state.actor.combat.ammoMult,
       state.z.maxRange,
     );
     const { hit, landing } = rangedHelper(state, missile, launcher, dir, range, false);
@@ -280,12 +288,14 @@ export function installRangedCommands(registry: ActionRegistry): void {
     const dir = typeof args["dir"] === "number" ? args["dir"] : (cmd.dir ?? 5);
     const { obj: missile } = gearObjectForUse(state.gear, player, handle, 1);
 
-    /* Heavier objects do not fly as far (do_cmd_throw's weight bound). */
+    /* Throw range (player-attack.c:1366,1402-1403): str = adj_str_blow[
+     * stat_ind[STAT_STR]]; weight = MAX(object_weight_one(obj), 10); range =
+     * MIN(((str + 20) * 10) / weight, 10). Heavier objects fly less far. The
+     * hard cap is 10 (NOT z_info->max_range), and the STR-blow adjustment - not
+     * player level - drives it. */
+    const str = adj_str_blow[state.statInd?.[STAT.STR] ?? 0] ?? 0;
     const weight = Math.max(objectWeightOne(missile), 10);
-    const range = Math.min(
-      Math.trunc((2 * player.lev + 40) / weight) + 1,
-      state.z.maxRange,
-    );
+    const range = Math.min(Math.trunc(((str + 20) * 10) / weight), 10);
 
     const { hit, landing } = rangedHelper(state, missile, null, dir, range, true);
     dropNear(state, missile, breakageChance(missile, hit), landing, true, {});
