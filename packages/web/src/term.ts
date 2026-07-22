@@ -22,6 +22,8 @@
  * to its ch/fg text. Kept as a small interface so the terminal stays decoupled
  * from the tileset implementation (tiles.ts).
  */
+import { UI_BG } from "./ui-colors";
+
 export interface TileDraw {
   draw(
     ctx: CanvasRenderingContext2D,
@@ -318,7 +320,7 @@ export class GlyphTerm {
     const g = this.grid[y]?.[x] ?? null;
     const px = this.offsetX + x * this.cellW;
     const py = this.offsetY + y * this.cellH;
-    this.ctx.fillStyle = g?.bg ?? "#101014";
+    this.ctx.fillStyle = g?.bg ?? UI_BG;
     this.ctx.fillRect(px, py, this.cellW, this.cellH);
     // Graphics tile: blit it over the cell background; only if the blit
     // succeeds do we skip the ASCII glyph. A not-ready atlas returns false and
@@ -333,7 +335,7 @@ export class GlyphTerm {
   }
 
   redraw(): void {
-    this.ctx.fillStyle = "#101014";
+    this.ctx.fillStyle = UI_BG;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     for (let y = 0; y < this.rows; y++) {
       for (let x = 0; x < this.cols; x++) {

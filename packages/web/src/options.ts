@@ -83,11 +83,13 @@ import type { GameState } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
 import { selectFromMenu, promptNumber, menuNav } from "./overlay";
 import type { MenuItem } from "./overlay";
+import { UI_TEXT, UI_DIM } from "./ui-colors";
 
-const FG = "#c8c8d4";
-const DIM = "#8a8a94";
-const TITLE = "#e8e8f0";
-const LOCKED = "#5a5a64";
+const FG = UI_TEXT;
+const DIM = UI_DIM;
+const TITLE = UI_TEXT;
+// Birth-locked options draw greyed (curs_attrs greyed row == COLOUR_SLATE).
+const LOCKED = UI_DIM;
 
 /** One row of the interface/birth toggle screen. */
 export interface OptionRow {

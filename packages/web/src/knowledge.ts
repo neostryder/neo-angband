@@ -64,9 +64,10 @@ import type {
 } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
 import { selectFromMenu, showTextScreen, type MenuItem, type ScreenLine } from "./overlay";
+import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
 
-const FG = "#c8c8d4";
-const TITLE_COLOR = "#e8e8f0";
+const FG = UI_TEXT;
+const TITLE_COLOR = UI_TEXT;
 
 /**
  * strcmp: ordinal (byte-order) comparison matching upstream's C library
@@ -183,7 +184,7 @@ export function groupsToMenu<T>(
   const members: (T | null)[] = [];
   for (const group of groups) {
     if (group.rows.length === 0) continue;
-    items.push({ label: group.name, color: "#8a8a94", disabled: true });
+    items.push({ label: group.name, color: UI_DIM, disabled: true });
     members.push(null);
     for (const row of group.rows) {
       items.push({ label: `  ${row.label}`, color: row.color });
@@ -278,7 +279,7 @@ function runeRecallLines(
 ): ScreenLine[] {
   const cap = rune.name.charAt(0).toUpperCase() + rune.name.slice(1);
   const desc = runeDesc(runeEnv, rune);
-  const lines: ScreenLine[] = [{ text: cap, color: "#8ab8ff" }];
+  const lines: ScreenLine[] = [{ text: cap, color: UI_CURSOR }];
   if (desc) {
     lines.push({ text: "", color: FG });
     lines.push({ text: desc, color: FG });
@@ -355,7 +356,7 @@ export function featureKnowledgeGroups(reg: FeatureRegistry): KnowledgeGroup<Fea
 export async function showFeatureKnowledge(term: GlyphTerm, reg: FeatureRegistry): Promise<void> {
   await runGroupedBrowser(term, "features", featureKnowledgeGroups(reg), async (feat) => {
     const cap = feat.name.charAt(0).toUpperCase() + feat.name.slice(1);
-    const lines: ScreenLine[] = [{ text: cap, color: "#8ab8ff" }];
+    const lines: ScreenLine[] = [{ text: cap, color: UI_CURSOR }];
     if (feat.desc) {
       lines.push({ text: "", color: FG });
       lines.push({ text: feat.desc, color: FG });
@@ -409,7 +410,7 @@ export async function showTrapKnowledge(term: GlyphTerm, traps: readonly TrapKin
     // trap_lore (ui-knowledge.c L2588-2605): capitalized desc then trap->text.
     // Upstream only opens the recall when trap->text is non-empty (L2590); a
     // trap with no paragraph shows just the title, matching that guard.
-    const lines: ScreenLine[] = [{ text: cap, color: "#8ab8ff" }];
+    const lines: ScreenLine[] = [{ text: cap, color: UI_CURSOR }];
     if (trap.text) {
       lines.push({ text: "", color: FG });
       lines.push({ text: trap.text, color: FG });
@@ -501,7 +502,7 @@ export interface ArtifactKnowledgeDeps {
   seedRandart?: number;
 }
 
-const RECALL_TITLE = "#8ab8ff";
+const RECALL_TITLE = UI_CURSOR;
 
 /**
  * desc_art_fake (ui-knowledge.c L1610-1654): the artifact-knowledge recall.
@@ -743,7 +744,7 @@ export async function showObjectKnowledge(
     // desc_obj_fake (ui-knowledge.c L1938) shows object_info(OINFO_FAKE); the
     // computed flag/combat lines are deferred, so the recall shows the name and
     // the kind's flavour/description text when known.
-    const lines: ScreenLine[] = [{ text: title, color: "#8ab8ff" }];
+    const lines: ScreenLine[] = [{ text: title, color: UI_CURSOR }];
     if (aware && kind.text) {
       lines.push({ text: "", color: FG });
       lines.push({ text: kind.text, color: FG });
@@ -849,7 +850,7 @@ export async function showEgoKnowledge(
     // desc_ego_fake (ui-knowledge.c L1789) shows object_info_ego's flag lines;
     // those computed lines are deferred, so the recall shows the ego name and
     // its lore text when the record carries one.
-    const lines: ScreenLine[] = [{ text: ego.name, color: "#8ab8ff" }];
+    const lines: ScreenLine[] = [{ text: ego.name, color: UI_CURSOR }];
     if (ego.text) {
       lines.push({ text: "", color: FG });
       lines.push({ text: ego.text, color: FG });
@@ -888,7 +889,7 @@ export async function showShapeKnowledge(
   await runGroupedBrowser(term, "shapes", groups, async (shape) => {
     const lines = shapeLoreLines(shape, env).map((text, i) => ({
       text,
-      color: i === 0 ? "#8ab8ff" : FG,
+      color: i === 0 ? UI_CURSOR : FG,
     }));
     await showTextScreen(term, shape.name, lines);
   });

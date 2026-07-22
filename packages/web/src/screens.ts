@@ -98,10 +98,11 @@ import type {
 } from "@neo-angband/core";
 import type { ScreenLine, MenuItem } from "./overlay";
 import { MessageLog, format as formatMessage } from "./messages";
+import { UI_TEXT, UI_DIM, UI_GOLD } from "./ui-colors";
 
-const FG = "#c8c8d4";
-const DIM = "#8a8a94";
-const LABEL = "#9aa0b4";
+const FG = UI_TEXT;
+const DIM = UI_DIM;
+const LABEL = UI_TEXT;
 
 /**
  * all_letters_nohjkl (ui-menu.c L40-41): the object-list selection letters,
@@ -972,7 +973,7 @@ export function messageHistoryLines(log: MessageLog): ScreenLine[] {
 }
 
 /** ARTIFACT_KNOWN entries get a gold highlight (a web-native enhancement). */
-const HIST_KNOWN_GOLD = "#e0c040";
+const HIST_KNOWN_GOLD = UI_GOLD;
 
 /**
  * The character auto-history lines (history_display, ui-history.c L38-73):

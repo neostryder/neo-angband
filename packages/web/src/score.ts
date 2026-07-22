@@ -25,6 +25,7 @@ import {
   SCORE_DETAIL_INDENT,
   colorToCss,
 } from "@neo-angband/core";
+import { UI_TEXT, UI_DIM } from "./ui-colors";
 import type {
   HighScore,
   ScoreStore,
@@ -132,10 +133,10 @@ export function showScoreScreen(
           21,
           0,
           `${VERSION_NAME} Hall of Fame (from position ${k + 1})`,
-          "#c8c8d4",
+          UI_TEXT,
         );
       } else {
-        term.print(30, 0, `${VERSION_NAME} Hall of Fame`, "#c8c8d4");
+        term.print(30, 0, `${VERSION_NAME} Hall of Fame`, UI_TEXT);
       }
 
       const rows: ScoreRow[] = scorePageRows(scores, k, count, highlight, names);
@@ -149,7 +150,7 @@ export function showScoreScreen(
       const prompt = allowScrolling
         ? "[Press ESC to exit, up for prior page, any other key for next page.]"
         : "[Press ESC to exit, any other key to page forward till done.]";
-      term.print(allowScrolling ? 6 : 9, 23, prompt, "#8a8a94");
+      term.print(allowScrolling ? 6 : 9, 23, prompt, UI_DIM);
     };
 
     const onKey = (ev: KeyboardEvent): void => {

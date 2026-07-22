@@ -63,11 +63,12 @@ import {
 } from "./screens";
 import { promptText, menuNav } from "./overlay";
 import type { ScreenLine } from "./overlay";
+import { UI_TEXT, UI_DIM } from "./ui-colors";
 
-const LABEL = "#9aa0b4";
-const FG = "#c8c8d4";
-const DIM = "#8a8a94";
-const TITLE = "#e8e8f0";
+const LABEL = UI_TEXT;
+const FG = UI_TEXT;
+const DIM = UI_DIM;
+const TITLE = UI_TEXT;
 
 /** Combat deps the shell can supply (shots / launcher) so the panel is exact,
  * plus the change-name hook ('c', do_cmd_change_name). */

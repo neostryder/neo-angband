@@ -14,9 +14,10 @@ import type { CharMeta } from "./roster";
 import type { GlyphTerm } from "./term";
 import { selectFromMenu } from "./overlay";
 import type { MenuItem } from "./overlay";
+import { UI_TEXT, UI_DIM } from "./ui-colors";
 
-const DIM = "#8a8a94";
-const FG = "#c8c8d4";
+const DIM = UI_DIM;
+const FG = UI_TEXT;
 
 export type SelectResult =
   | { action: "resume"; id: string }

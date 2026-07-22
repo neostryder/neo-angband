@@ -174,6 +174,7 @@ import {
   FIRST_PARTY_MOD_IDS,
 } from "./mod-store";
 import { runModManager } from "./mods";
+import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG, UI_MORE } from "./ui-colors";
 import { initA11y } from "./a11y";
 import { DEMO_AGENTS } from "./agents/demo";
 import { createBorg, makeCoreResolvers } from "@neo-angband/borg";
@@ -1474,7 +1475,7 @@ async function openItemActionsMenu(): Promise<void> {
     if (!handle) continue;
     const obj = gearGet(state.gear, handle);
     if (!obj) continue;
-    items.push({ label: `${objectName(state, obj)} (worn)`, color: "#c8c8d4" });
+    items.push({ label: `${objectName(state, obj)} (worn)`, color: UI_TEXT });
     handles.push(handle);
   }
   if (items.length === 0) {
@@ -1567,7 +1568,7 @@ async function selectCurse(removable: number[], obj: GameObject, diceString: str
     const desc = (i !== undefined ? curseTable[i]?.desc : undefined) ?? "";
     if (!desc) return [];
     const capped = desc.charAt(0).toUpperCase() + desc.slice(1);
-    return [{ text: `${capped}.`, color: "#c8c8d4" }];
+    return [{ text: `${capped}.`, color: UI_TEXT }];
   };
   const idx = await selectFromMenu(term, header, items, "[ a-z to choose, ESC to cancel ]", { detail });
   if (idx === null) return null;
@@ -1685,7 +1686,7 @@ async function activateItem(): Promise<void> {
     const fail = deviceFailColumn(state, obj, isKindAware);
     const name = describeObject(state, obj);
     const label = fail ? `${name.padEnd(40).slice(0, 40)} ${fail}` : name;
-    items.push({ label, color: "#c8c8d4" });
+    items.push({ label, color: UI_TEXT });
     handles.push(handle);
   }
   if (items.length === 0) {
@@ -2530,7 +2531,7 @@ function showMonsterList(): Promise<void> {
       const { cols, rows } = term.size();
       term.clear();
       const lines = monsterListScreenLines(state, cols, sortExp);
-      term.print(0, HEADER_ROW, "Visible monsters".slice(0, cols - 1), "#e8e8f0");
+      term.print(0, HEADER_ROW, "Visible monsters".slice(0, cols - 1), UI_TEXT);
       const bodyRows = rows - BODY_TOP - 1;
       const maxTop = Math.max(0, lines.length - bodyRows);
       if (top > maxTop) top = maxTop;
@@ -2546,13 +2547,13 @@ function showMonsterList(): Promise<void> {
             x += chunk.length;
           }
         } else {
-          term.print(0, BODY_TOP + r, line.text.slice(0, cols - 1), line.color ?? "#c8c8d4");
+          term.print(0, BODY_TOP + r, line.text.slice(0, cols - 1), line.color ?? UI_TEXT);
         }
       }
       const toggle = sortExp
         ? "Press 'x' to turn OFF 'sort by exp'"
         : "Press 'x' to turn ON 'sort by exp'";
-      term.print(0, rows - 1, `[ ${toggle}  ESC: back ]`.slice(0, cols - 1), "#8a8a94");
+      term.print(0, rows - 1, `[ ${toggle}  ESC: back ]`.slice(0, cols - 1), UI_DIM);
     };
     const finish = (): void => {
       window.removeEventListener("keydown", onKey, true);
@@ -2905,7 +2906,7 @@ async function querySymbolCmd(): Promise<void> {
         0,
         rows - 1,
         "Enter character to be identified, or control+[ANU]: ".slice(0, cols - 1),
-        "#e0c040",
+        UI_GOLD,
       );
       const finish = (v: { all: boolean; uniq: boolean; norm: boolean; ch: string } | null): void => {
         window.removeEventListener("keydown", onKey, true);
@@ -3016,9 +3017,9 @@ function quiverLines(): ScreenLine[] {
     if (!handle) return;
     const obj = gearGet(state.gear, handle);
     if (!obj) return;
-    lines.push({ text: `${slot}) ${objectName(state, obj)}`, color: "#c8c8d4" });
+    lines.push({ text: `${slot}) ${objectName(state, obj)}`, color: UI_TEXT });
   });
-  if (lines.length === 0) lines.push({ text: "(quiver empty)", color: "#8a8a94" });
+  if (lines.length === 0) lines.push({ text: "(quiver empty)", color: UI_DIM });
   return lines;
 }
 
@@ -3712,7 +3713,7 @@ async function pickupCmd(): Promise<void> {
     (o) => !state.isIgnored?.(o) && invenCarryNum(state.gear, o, constants) > 0,
   );
   if (canPickup.length > 1) {
-    const items = canPickup.map((o) => ({ label: objectName(state, o), color: "#c8c8d4" }));
+    const items = canPickup.map((o) => ({ label: objectName(state, o), color: UI_TEXT }));
     const idx = await selectFromMenu(term, "Get which item?", items);
     if (idx === null) return;
     pendingPickupChoice = canPickup[idx] ?? null;
@@ -3804,7 +3805,7 @@ async function useGenericCmd(): Promise<void> {
     if (!handle) continue;
     const obj = gearGet(state.gear, handle);
     if (!obj || !obj.activation) continue;
-    rows.push({ label: describeObject(state, obj), color: "#c8c8d4" });
+    rows.push({ label: describeObject(state, obj), color: UI_TEXT });
     picks.push({ code: "activate", handle });
   }
   if (rows.length === 0) {
@@ -4005,10 +4006,16 @@ function objectIndex(): Map<number, CellGlyph> {
   return map;
 }
 
-/** Darken a #rrggbb color for remembered-but-unseen terrain. */
+/**
+ * Darken a #rrggbb color for remembered-but-unseen terrain. This is map
+ * lighting, not UI chrome: it deliberately produces an off-palette rgb() tint
+ * (the browser analogue of the darkness/torchlight remap). A faithful pass
+ * would route this through getColor(attr, ATTR_DARK) instead; tracked as map
+ * work, not REND-2. palette-exempt: computed tint + defensive fallback.
+ */
 function dim(css: string): string {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(css);
-  if (!m) return "#3a3a44";
+  if (!m) return "#3a3a44"; // palette-exempt: unreachable defensive fallback
   const scale = (h: string): number => Math.round(parseInt(h, 16) * 0.38);
   return `rgb(${scale(m[1]!)},${scale(m[2]!)},${scale(m[3]!)})`;
 }
@@ -4081,7 +4088,7 @@ function monsterAttr(mon: (typeof state.monsters)[number]): number {
  * unconditional behaviour).
  */
 function playerMapAttr(): string {
-  if (!(state.options?.get("hp_changes_color") ?? true)) return "#e8e8f0";
+  if (!(state.options?.get("hp_changes_color") ?? true)) return UI_TEXT;
   const p = state.actor.player;
   const pct10 = p.mhp > 0 ? Math.trunc((p.chp * 10) / p.mhp) : 10;
   let color: number;
@@ -4161,7 +4168,7 @@ function buildOverviewForShell(): Overview {
       const mem = knownObject(state, loc(x, y));
       if (!mem) return null;
       return mem.ch === null
-        ? { ch: "*", css: "#8a8a94" }
+        ? { ch: "*", css: UI_DIM }
         : { ch: mem.ch, css: colorToCss(colorCharToAttr(mem.attr)) };
     },
     trapGlyphAt: (x, y) => trapAt.get(gridIndex(x, y)) ?? null,
@@ -4330,8 +4337,13 @@ interface TargetingOverlay {
   helpLines: string[];
 }
 
-/** The cursor cell's highlight background, so the described grid is obvious. */
-const CURSOR_BG = "#3a4a6a";
+/**
+ * The look/target cursor cell's highlight background, so the described grid is
+ * obvious. This is the browser analogue of the terminal hardware cursor (a
+ * cell highlight), not text chrome; a faithful reverse-video/box-outline pass
+ * is tracked as cursor-rendering work, not REND-2.
+ */
+const CURSOR_BG = "#3a4a6a"; // palette-exempt: map cursor highlight background
 
 function render(targeting?: TargetingOverlay): void {
   const { cols, rows } = term.size();
@@ -4377,7 +4389,7 @@ function render(targeting?: TargetingOverlay): void {
           if (pathColour !== undefined) {
             term.put(screenX, screenY, { ch: "*", fg: colorToCss(pathColour), ...cursorBg });
           } else if (isCursor) {
-            term.put(screenX, screenY, { ch: " ", fg: "#101014", ...cursorBg });
+            term.put(screenX, screenY, { ch: " ", fg: UI_BG, ...cursorBg });
           }
           continue;
         }
@@ -4403,7 +4415,7 @@ function render(targeting?: TargetingOverlay): void {
             screenX,
             screenY,
             mem.ch === null
-              ? { ch: "*", fg: "#8a8a94", ...cursorBg }
+              ? { ch: "*", fg: UI_DIM, ...cursorBg }
               : { ch: mem.ch, fg: colorToCss(colorCharToAttr(mem.attr)), ...cursorBg },
           );
         }
@@ -4477,17 +4489,17 @@ function render(targeting?: TargetingOverlay): void {
     // The look description takes the message row; the bottom status row
     // becomes the help prompt/text, exactly as target_set_interactive owns
     // both while it runs.
-    term.print(mapOriginX, 0, targeting.desc.slice(0, mapCols - 1), "#e0c040");
+    term.print(mapOriginX, 0, targeting.desc.slice(0, mapCols - 1), UI_GOLD);
     if (targeting.help) {
       const n = targeting.helpLines.length;
       targeting.helpLines.forEach((line, i) => {
-        term.print(mapOriginX, rows - n + i, line.slice(0, mapCols - 1), "#c8c8d4");
+        term.print(mapOriginX, rows - n + i, line.slice(0, mapCols - 1), UI_TEXT);
       });
     } else {
-      term.print(mapOriginX, rows - 1, "Press '?' for help.".slice(0, mapCols - 1), "#8a8a94");
+      term.print(mapOriginX, rows - 1, "Press '?' for help.".slice(0, mapCols - 1), UI_DIM);
     }
   } else {
-    term.print(mapOriginX, 0, message.slice(0, mapCols - 1), "#c8c8d4");
+    term.print(mapOriginX, 0, message.slice(0, mapCols - 1), UI_TEXT);
     renderStatusLine(mapOriginX, rows - 1, mapCols);
   }
 }
@@ -4513,7 +4525,7 @@ async function runLocate(): Promise<void> {
       vp.mapCols,
       vp.mapRows,
     );
-    term.print(vp.mapOriginX, 0, banner.slice(0, vp.mapCols - 1), "#e0c040");
+    term.print(vp.mapOriginX, 0, banner.slice(0, vp.mapCols - 1), UI_GOLD);
   };
   const panDir = (dir: number): void => {
     const vp = viewport();
@@ -4597,7 +4609,7 @@ async function runLocate(): Promise<void> {
 // L395), so the pager shows only the final page. The final page always just
 // persists on the top line (no trailing -more-), exactly as the last message
 // does in normal play.
-const MORE_COLOR = "#4040ff"; // COLOUR_L_BLUE
+const MORE_COLOR = UI_MORE; // COLOUR_L_BLUE (#00ffff)
 
 /** Wait for any keypress or tap (anykey, ui-input.c) - the -more- gate. */
 function waitAnyKey(): Promise<void> {
@@ -5114,9 +5126,11 @@ function installTouchActionBar(): void {
     Object.assign(btn.style, {
       pointerEvents: "auto",
       padding: "8px 12px",
+      // palette-exempt: DOM coarse-pointer touch button (D2 browser affordance,
+      // a translucent HTML overlay, not a terminal glyph).
       background: "rgba(20,20,28,0.82)",
-      color: "#c8c8d4",
-      border: "1px solid #3a3a44",
+      color: UI_TEXT,
+      border: "1px solid #3a3a44", // palette-exempt: DOM touch-button border
       borderRadius: "6px",
       font: "14px system-ui, sans-serif",
       touchAction: "manipulation",

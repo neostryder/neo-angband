@@ -43,6 +43,7 @@ import { selectFromMenu, promptText, menuNav } from "./overlay";
 import type { MenuItem, ScreenLine } from "./overlay";
 import { characterSheetLines, statHeaderLine, statRowLine } from "./screens";
 import type { GlyphTerm } from "./term";
+import { UI_TEXT, UI_DIM } from "./ui-colors";
 import {
   BIRTH_STAT_BASE,
   MAX_BIRTH_POINTS,
@@ -57,7 +58,6 @@ import {
   colorToCss,
   COLOUR_L_BLUE,
   COLOUR_L_GREEN,
-  COLOUR_L_WHITE,
   COLOUR_WHITE,
   COLOUR_YELLOW,
   generatePlayer,
@@ -188,16 +188,15 @@ const CLASS_AUX_COL = 36;
 const ROLLER_COL = 36;
 
 /* Overlay palette (shared with overlay.ts's screen primitives). */
-const PB_TITLE = "#e8e8f0";
-const PB_FG = "#c8c8d4";
-const PB_DIM = "#8a8a94";
+const PB_TITLE = UI_TEXT;
+const PB_FG = UI_TEXT;
+const PB_DIM = UI_DIM;
 
 /* The core palette colours the upstream birth menus use, as CSS. */
 const CSS_L_BLUE = colorToCss(COLOUR_L_BLUE);
 const CSS_L_GREEN = colorToCss(COLOUR_L_GREEN);
 const CSS_YELLOW = colorToCss(COLOUR_YELLOW);
 const CSS_WHITE = colorToCss(COLOUR_WHITE);
-const CSS_L_WHITE = colorToCss(COLOUR_L_WHITE);
 
 /**
  * BIRTH_MENU_HELPTEXT (ui-birth.c L623-630): the second header line, split into
@@ -839,13 +838,15 @@ function birthMenu(
       for (let i = 0; i < rows.length && TABLE_ROW + i < termRows; i++) {
         const r = rows[i];
         if (!r) continue;
-        // birthmenu_display (ui-birth.c L202-209): the current row draws in the
-        // cursor colour (white), the rest in the normal menu colour.
+        // birthmenu_display (ui-birth.c L207-208) draws each row with
+        // c_put_str(curs_attrs[CURS_KNOWN][0 != cursor], ...). curs_attrs
+        // (ui-menu.c L29-32) is { COLOUR_WHITE, COLOUR_L_BLUE } for a known
+        // row, so the cursor row is L_BLUE and every other row is WHITE.
         term.print(
           col,
           TABLE_ROW + i,
           `${r.tag}) ${r.name}`,
-          i === selected ? CSS_WHITE : CSS_L_WHITE,
+          i === selected ? CSS_L_BLUE : CSS_WHITE,
         );
       }
     };

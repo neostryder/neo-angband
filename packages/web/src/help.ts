@@ -37,10 +37,11 @@
 import type { GlyphTerm } from "./term";
 import { showTextScreen, selectFromMenu } from "./overlay";
 import type { ScreenLine } from "./overlay";
+import { UI_TEXT, UI_DIM } from "./ui-colors";
 
-const FG = "#c8c8d4";
-const DIM = "#8a8a94";
-const LABEL = "#9aa0b4";
+const FG = UI_TEXT;
+const DIM = UI_DIM;
+const LABEL = UI_TEXT;
 
 /** One row: `key` padded to a fixed column, then its description. */
 function keyLine(key: string, desc: string): ScreenLine {
