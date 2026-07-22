@@ -333,6 +333,73 @@ describe("make_artifact - bug-fixes #4510 duplicate-artifact defensive re-check"
   });
 });
 
+describe("RNG neutrality of the make_artifact mod guard (Phase 3 / D1=B)", () => {
+  /**
+   * The hard rule (docs/PARITY.md): with no RNG-altering mod loaded, no guard
+   * may add, drop, or reorder a single draw. make_artifact is the ONLY
+   * mod-guarded core function that draws RNG (the duplicate-artifact re-check,
+   * obj/make.c seam #4510, guards the copy_artifact_data draw). This pins that
+   * the mod-system-ABSENT path (modRules undefined) and the no-mod
+   * PRESENT-but-empty path (every bundled-mod flag present and false) draw the
+   * IDENTICAL sequence for a fixed seed. It fails if the guard is ever moved so
+   * the disabled branch consumes RNG, or the mod system's mere presence perturbs
+   * the stream.
+   */
+
+  /** Records every draw through randDiv, the single funnel for all RNG values. */
+  class RecordingRng extends Rng {
+    readonly draws: Array<[number, number]> = [];
+    override randDiv(m: number): number {
+      const r = super.randDiv(m);
+      this.draws.push([m, r]);
+      return r;
+    }
+  }
+
+  /* Every bundled-mod rule flag, all explicitly OFF: the "no-mod but mod system
+   * present" state that must be byte-identical to the mod system being absent. */
+  const ALL_FLAGS_OFF: Record<string, boolean> = {
+    "bugfix.duplicateArtifact": false,
+    "qol.autoDig": false,
+    "bugfix.uniqueKillHistory": false,
+    "bugfix.noiseScentSave": false,
+    "bugfix.objectListOrder": false,
+  };
+
+  /** Prep an object of a unique-base artifact's kind, then run make_artifact. */
+  function runAt(
+    seed: number,
+    modRules?: Record<string, boolean>,
+  ): { ok: boolean; draws: Array<[number, number]> } {
+    const art = uniqueNormalArt();
+    const kind = reg.lookupKind(art.tval, art.sval)!;
+    const depth = art.allocMin; /* in [allocMin, allocMax]: only the rarity roll */
+    const deps = freshDeps();
+    if (modRules) deps.modRules = modRules;
+    const rng = new RecordingRng(seed);
+    const obj = objectPrep(rng, reg, constants, kind, depth, "randomise");
+    const ok = makeArtifact(rng, deps, obj, depth);
+    return { ok, draws: rng.draws };
+  }
+
+  it("mod-absent and no-mod(all flags off) draw the identical sequence when an artifact commits", () => {
+    /* A seed on which the artifact is actually promoted, so copy_artifact_data
+     * runs and the guarded commit block draws RNG (a meaningful, non-empty run). */
+    let winSeed = -1;
+    for (let s = 1; s < 500 && winSeed < 0; s++) {
+      if (runAt(s).ok) winSeed = s;
+    }
+    expect(winSeed).toBeGreaterThan(0);
+
+    const absent = runAt(winSeed, undefined);
+    const empty = runAt(winSeed, ALL_FLAGS_OFF);
+    expect(absent.ok).toBe(true);
+    expect(empty.ok).toBe(true);
+    expect(absent.draws.length).toBeGreaterThan(0);
+    expect(empty.draws).toEqual(absent.draws);
+  });
+});
+
 describe("ArtifactState persistence", () => {
   it("snapshot/restore round-trips created flags", () => {
     const s = new ArtifactState(reg.artifacts.length);
