@@ -46,6 +46,15 @@ export interface CompareOptions {
    * Required for a C-vs-TS diff (different run counts); off for the self-guard.
    */
   normalizeByLevels: boolean;
+  /**
+   * Restrict the scalar metrics compared (default: all of SCALAR_KEYS). A
+   * C-vs-TS diff scopes this to the metrics the C baseline actually populates
+   * (the C import omits object totals), so an unpopulated field is not a false
+   * diff. Ignored keys are simply not checked.
+   */
+  scalarKeys?: readonly (keyof DepthMetrics)[];
+  /** Restrict the record metrics compared (default: all of RECORD_KEYS). */
+  recordKeys?: readonly (keyof DepthMetrics)[];
 }
 
 /** EXACT: the self-regression default - the port must reproduce every integer. */
@@ -113,6 +122,8 @@ export function compareReports(
 ): CompareResult {
   const tol = options.tolerance ?? EXACT_TOLERANCE;
   const normalize = options.normalizeByLevels ?? false;
+  const scalarKeys = options.scalarKeys ?? SCALAR_KEYS;
+  const recordKeys = options.recordKeys ?? RECORD_KEYS;
   const diffs: Diff[] = [];
   const structural: string[] = [];
 
@@ -132,12 +143,12 @@ export function compareReports(
     const f = fresh.depths[depth];
     if (!b || !f) continue;
 
-    for (const key of SCALAR_KEYS) {
+    for (const key of scalarKeys) {
       /* Under normalization `levels` is the divisor, so comparing it as a rate
        * is meaningless (always 1); compare it raw only when not normalizing. */
       if (key === "levels" && normalize) continue;
-      const bv = rate(b, b[key]);
-      const fv = rate(f, f[key]);
+      const bv = rate(b, b[key] as number);
+      const fv = rate(f, f[key] as number);
       if (!within(bv, fv, tol)) {
         diffs.push({
           path: `depths.${depth}.${key}`,
@@ -148,7 +159,7 @@ export function compareReports(
       }
     }
 
-    for (const key of RECORD_KEYS) {
+    for (const key of recordKeys) {
       const br = b[key] as Record<string, number>;
       const fr = f[key] as Record<string, number>;
       const allKeys = new Set([...Object.keys(br), ...Object.keys(fr)]);
@@ -179,6 +190,26 @@ export const BASELINE_URL = new URL(
 /** Load and parse the committed baseline. */
 export function loadBaseline(): StatsReport {
   return JSON.parse(readFileSync(BASELINE_URL, "utf8")) as StatsReport;
+}
+
+/**
+ * The committed REAL upstream baseline, imported from the C main-stats tool
+ * (meta.generatedBy = "c-main-stats"). This - unlike stats-baseline.json - is
+ * ground truth from Angband 4.2.6, so the port is diffed AGAINST it. Produced
+ * by main-cimport.ts; see baseline/README.md.
+ */
+export const C_BASELINE_URL = new URL(
+  "../baseline/c-stats-baseline.json",
+  import.meta.url,
+);
+
+/** Load the committed C baseline, or null if it has not been generated. */
+export function loadCBaseline(): StatsReport | null {
+  try {
+    return JSON.parse(readFileSync(C_BASELINE_URL, "utf8")) as StatsReport;
+  } catch {
+    return null;
+  }
 }
 
 /** Overwrite the committed baseline with `content` (used by the regen script). */

@@ -28,28 +28,31 @@ const PROFILES_KEY = "neo:modProfiles";
 const RULE_CHOICES_KEY = "neo:modRuleChoices";
 
 /**
- * The committed, first-party BUNDLED mods that ship enabled by default
- * (PORT_PLAN.md decisions 18, 23: the official mods are bundled and on by
- * default, each fully removable). Order is the default load order. Only ids
- * that are actually DISCOVERED at runtime take effect, so a host that ships
- * without one of these dirs stays byte-identical (the resolver intersects with
- * the discovered set). The demo mods (demo-*) are deliberately NOT here - they
- * stay opt-in.
+ * Mods enabled on a fresh install. EMPTY by parity mandate: the default
+ * experience is the faithful no-mod Angband 4.2.6 base game, and every mod -
+ * including the first-party bundled ones - is opt-in (audit 06 MOD-11; parity
+ * runbook Phase 0). No mod may be enabled by default, because a default-on mod
+ * that changes any rule (e.g. qol.autoDig) perturbs the base game and its RNG.
+ * The bundled mods still ship with the app and appear in the manager; the user
+ * turns them on deliberately. Only ids actually DISCOVERED at runtime take
+ * effect, so the resolver intersects with the discovered set.
  */
-export const DEFAULT_ENABLED_MODS: readonly string[] = [
+export const DEFAULT_ENABLED_MODS: readonly string[] = [];
+
+/**
+ * The first-party BUNDLED mods (identity, NOT a default-enable list). When the
+ * user enables one of these in the manager, its capabilities are implicitly
+ * consented because it ships inside the app - shipping it IS the trust decision
+ * (a third-party plugin still requires explicit per-capability consent). This
+ * list is deliberately decoupled from DEFAULT_ENABLED_MODS: bundled mods are
+ * trusted-when-enabled but are NOT on by default (parity). The demo mods
+ * (demo-*) are not first-party and always require explicit consent.
+ */
+export const FIRST_PARTY_MOD_IDS: readonly string[] = [
   "bug-fixes",
   "qol",
   "linoleum",
 ];
-
-/**
- * First-party bundled mods whose capabilities are implicitly consented on first
- * run: they ship inside the app, so shipping them IS the trust decision (a
- * third-party plugin still requires explicit per-capability consent). The user
- * can still revoke consent afterwards in the manager - this only seeds the
- * initial state so a default-on trusted bundled mod actually installs at boot.
- */
-export const FIRST_PARTY_MOD_IDS: readonly string[] = DEFAULT_ENABLED_MODS;
 
 /**
  * Resolve the effective enabled-mod id list from the three input sources, in

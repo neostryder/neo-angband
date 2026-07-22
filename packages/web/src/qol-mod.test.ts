@@ -1,9 +1,11 @@
 /**
- * The bundled qol content mod after the mod-scope reset: a content mod that
- * DECLARES quality-of-life rule toggles (PackManifest.rules), all ON by default.
- * It must NOT touch built-in Angband options (those ship in core at their
- * upstream defaults). This ties the on-disk manifest to that contract and checks
- * pack.ts surfaces its rule declaration for the Fixes & tweaks menu / resolver.
+ * The bundled qol content mod: a content mod that DECLARES quality-of-life rule
+ * toggles (PackManifest.rules), each ON by default WHEN THE MOD IS ENABLED. Per
+ * the parity mandate the mod itself is OPT-IN (not enabled by default), so a
+ * fresh install surfaces none of its rules and the base game is untouched. It
+ * must NOT touch built-in Angband options (those ship in core at their upstream
+ * defaults). This ties the on-disk manifest to that contract and checks pack.ts
+ * surfaces its rule declaration only once the mod is enabled.
  */
 
 import { readFileSync } from "node:fs";
@@ -45,11 +47,43 @@ describe("qol bundled mod", () => {
 });
 
 describe("pack.ts rule discovery + resolution", () => {
-  it("surfaces the qol mod's auto-dig rule (default-on, discovered)", () => {
+  it("surfaces no mod rules on a fresh install (faithful no-mod default)", () => {
+    // DEFAULT_ENABLED_MODS is empty (parity), so with nothing stored no mod is
+    // enabled and no rule - including qol.autoDig - is injected into the base.
+    let hadStorage = false;
+    try {
+      localStorage.removeItem("neo:enabledMods");
+      hadStorage = true;
+    } catch {
+      /* no storage in this env: enabledModIds falls back to empty defaults */
+    }
+    void hadStorage;
     const decls = loadEnabledModRuleDecls();
-    const autoDig = decls.find((d) => d.rule.flag === "qol.autoDig");
-    expect(autoDig).toBeDefined();
-    expect(autoDig!.modId).toBe("qol");
+    expect(decls.find((d) => d.rule.flag === "qol.autoDig")).toBeUndefined();
+  });
+
+  it("surfaces the qol auto-dig rule once qol is explicitly enabled", () => {
+    // qol is opt-in; enabling it must make its declared rule discoverable.
+    let hasStorage = false;
+    try {
+      localStorage.setItem("neo:enabledMods", JSON.stringify(["qol"]));
+      hasStorage = true;
+    } catch {
+      /* no storage: the enabled->discovery path is unit-covered below */
+    }
+    if (!hasStorage) return;
+    try {
+      const decls = loadEnabledModRuleDecls();
+      const autoDig = decls.find((d) => d.rule.flag === "qol.autoDig");
+      expect(autoDig).toBeDefined();
+      expect(autoDig!.modId).toBe("qol");
+    } finally {
+      try {
+        localStorage.removeItem("neo:enabledMods");
+      } catch {
+        /* ignore */
+      }
+    }
   });
 
   it("resolveModRules honours the default and a saved choice", () => {
