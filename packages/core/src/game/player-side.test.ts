@@ -290,4 +290,81 @@ describe("project-player side effects (project-player.c handlers)", () => {
       p.exp < expBefore || p.statCur.some((v, i) => v < (statsBefore[i] ?? 0));
     expect(drained).toBe(true);
   });
+
+  it("EF_DRAIN_STAT (FIRE) uses the 'You feel very %s.' message (P3)", () => {
+    const state = makeState({ seed: 4 });
+    const p = state.actor.player;
+    for (let i = 0; i < 5; i++) {
+      p.statCur[i] = 15;
+      p.statMax[i] = 15;
+    }
+    const msgs: string[] = [];
+    /* Huge dam makes every randint0(dam) > 500 side-effect gate fire. */
+    sideFx(state, { msgs })({ dam: 200000, typ: PROJ.FIRE, power: 90 });
+    expect(msgs.some((m) => m === "You feel very weak.")).toBe(true);
+    /* NOT the project_player_drain_stats phrasing. */
+    expect(msgs.some((m) => m.startsWith("You're not as"))).toBe(false);
+    expect(p.statCur[0]!).toBeLessThan(15);
+  });
+
+  it("EF_DRAIN_STAT respects a sustain with its own message (P3)", () => {
+    const state = makeState({ seed: 4 });
+    equipWithFlag(state, OF.SUST_STR);
+    const p = state.actor.player;
+    for (let i = 0; i < 5; i++) {
+      p.statCur[i] = 15;
+      p.statMax[i] = 15;
+    }
+    const msgs: string[] = [];
+    sideFx(state, { msgs })({ dam: 200000, typ: PROJ.FIRE, power: 90 });
+    expect(
+      msgs.some((m) =>
+        m === "You feel very weak for a moment, but the feeling passes.",
+      ),
+    ).toBe(true);
+    expect(p.statCur[0]!).toBe(15); // STR sustained.
+  });
+
+  it("TIME's random stat drain uses 'You're not as %s...' with NO sustain (P3)", () => {
+    /* Search for a seed whose TIME roll takes the project_player_drain_stats(2)
+     * branch (one_in(2) false, one_in(5) false), then assert its parity. */
+    const perStat = /^You're not as (strong|bright|wise|agile|hale) as you used to be\.\.\.$/;
+    let hit = false;
+    for (let seed = 1; seed <= 80 && !hit; seed++) {
+      const state = makeState({ seed });
+      equipWithFlag(state, OF.SUST_STR); // must NOT protect this path.
+      const p = state.actor.player;
+      p.exp = 0;
+      p.maxExp = 0;
+      for (let i = 0; i < 5; i++) {
+        p.statCur[i] = 15;
+        p.statMax[i] = 15;
+      }
+      const msgs: string[] = [];
+      sideFx(state, { msgs })({ dam: 30, typ: PROJ.TIME, power: 0 });
+      if (!msgs.some((m) => perStat.test(m))) continue;
+      hit = true;
+      /* The EF_DRAIN_STAT phrasing must NOT appear on this path. */
+      expect(msgs.some((m) => m.startsWith("You feel very"))).toBe(false);
+      /* Points drained even though STR is sustained (this path ignores sustain). */
+      const total = p.statCur.reduce((a, v) => a + v, 0);
+      expect(total).toBeLessThan(75);
+    }
+    expect(hit, "a seed should hit the TIME drain-2-stats branch").toBe(true);
+  });
+
+  it("COLD life-drain resisted by HOLD_LIFE is SILENT (P4)", () => {
+    const state = makeState({ seed: 4 });
+    equipWithFlag(state, OF.HOLD_LIFE);
+    const p = state.actor.player;
+    p.exp = 5000;
+    p.maxExp = 5000;
+    p.lev = 20;
+    const msgs: string[] = [];
+    sideFx(state, { msgs })({ dam: 200000, typ: PROJ.COLD, power: 90 });
+    /* HOLD_LIFE branch prints NO "You resist the effect!" and drains no exp. */
+    expect(msgs).not.toContain("You resist the effect!");
+    expect(p.exp).toBe(5000);
+    expect(p.objKnown.flags.has(OF.HOLD_LIFE)).toBe(true);
+  });
 });

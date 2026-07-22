@@ -57,6 +57,7 @@ import {
   castLash,
   castLine,
   castProjectLos,
+  castProjection,
   castShortBeam,
   castSpot,
   castSphere,
@@ -70,6 +71,7 @@ import {
   resolveAimedTarget,
 } from "./project-cast";
 import type { CastSource } from "./project-cast";
+import { PROJECT, projectable } from "../world/project";
 
 /** Build a CastSource from the effect origin. */
 function sourceFor(env: GameEffectEnv, origin: Source): CastSource {
@@ -215,6 +217,12 @@ const handleBREATH: EffectHandler = (ctx) => {
       const proj = env.cast.projections[ctx.subtype];
       if (proj) dam = breathDam(proj, mon.hp);
     }
+  } else if (source.isPlayer) {
+    /* A3 (effect-handler-attack.c:740-741): a player breath announces itself.
+     * msgt channel rides projections[type].msgt (display); the text is the
+     * parity artifact. */
+    const proj = env.cast.projections[ctx.subtype];
+    if (proj) ctx.env.messages?.msg(`You breathe ${proj.desc}.`);
   }
 
   const opts: { radius?: number; powerful?: boolean } = { powerful };
@@ -287,8 +295,23 @@ const handleSTRIKE: EffectHandler = (ctx) => {
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
   const source = sourceFor(env, ctx.origin);
-  /* STRIKE targets the acquired grid if projectable, else the player. */
-  const target = source.isPlayer && ctx.dir === DIR_TARGET && env.aimed ? env.aimed : env.state.actor.grid;
+  /* STRIKE targets the acquired grid, but reverts to the player if that grid is
+   * not projectable from the player (effect-handler-attack.c L1012-1016). A5. */
+  let target = env.state.actor.grid;
+  if (source.isPlayer && ctx.dir === DIR_TARGET && env.aimed) {
+    target = env.aimed;
+    if (
+      !projectable(
+        env.state.chunk,
+        env.state.actor.grid,
+        target,
+        PROJECT.NONE,
+        env.state.z.maxRange,
+      )
+    ) {
+      target = env.state.actor.grid;
+    }
+  }
   if (castStrike(env.state, env.cast, source, target, dam, ctx.subtype, ctx.radius))
     ctx.ident = true;
   return true;
@@ -388,8 +411,39 @@ const handleTOUCH: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, true);
+  const rad = ctx.radius ? ctx.radius : 1;
+
+  /* A4 (effect-handler-attack.c:416-434): a monster TOUCH does not always hit
+   * the player - it strikes the player's decoy (trap-sourced), or another
+   * monster it is targeting, before falling through to the player. The grid ball
+   * uses GRID|KILL|HIDE|ITEM|THRU. */
+  if (ctx.origin.what === "monster") {
+    const { state } = env;
+    const flg =
+      PROJECT.GRID | PROJECT.KILL | PROJECT.HIDE | PROJECT.ITEM | PROJECT.THRU;
+    const decoy = caveFindDecoy(state);
+    if (decoy) {
+      const trapSource: CastSource = {
+        isPlayer: false,
+        isMonster: false,
+        monster: 0,
+        grid: decoy,
+        isTrap: true,
+        killer: "a trap",
+      };
+      return castProjection(state, env.cast, trapSource, decoy, dam, ctx.subtype, flg, rad);
+    }
+    const tMon = monsterTargetMonster(state, ctx.origin.monster);
+    if (tMon) {
+      /* C sources the ball at mon->target.midx (the target monster itself),
+       * not the caster (effect-handler-attack.c L431). */
+      const monSource = monsterCastSource(state, tMon.midx);
+      return castProjection(state, env.cast, monSource, tMon.grid, dam, ctx.subtype, flg, rad);
+    }
+  }
+
   const source = sourceFor(env, ctx.origin);
-  if (castTouch(env.state, env.cast, source, dam, ctx.subtype, ctx.radius, false))
+  if (castTouch(env.state, env.cast, source, dam, ctx.subtype, rad, false))
     ctx.ident = true;
   return true;
 };

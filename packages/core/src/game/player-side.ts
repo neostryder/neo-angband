@@ -18,9 +18,10 @@
  * blink (teleportPlayer 5), NEXUS's teleport-to-caster / teleport-level /
  * teleport-200 three-way, and FORCE's knockback via thrust_away
  * (game/thrust.ts) from the origin grid; DISEN runs disenchantEquipment
- * (game/effect-general.ts). DEFERRED (ledgered in
- * parity/ledger/game-player-side.yaml): the drain-stat "sustain but still
- * feel it" message variant is folded to the save message.
+ * (game/effect-general.ts). The two upstream stat-drain paths are kept
+ * distinct: drainStat is effect_simple(EF_DRAIN_STAT) (sustain saves with the
+ * "You feel very %s..." messages), drainStatsRandom is
+ * project_player_drain_stats (no sustain, always "You're not as %s...").
  */
 
 import { ELEM, OF, PF, PROJ, STAT, TMD } from "../generated";
@@ -35,6 +36,9 @@ import { playerExpLose, playerStatDec } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
 import { equipLearnFlag } from "../obj/knowledge";
 import { adjustDam } from "../world/projection";
+import { ODESC } from "../obj/desc";
+import { minusAc } from "./gear";
+import { describeObject } from "./describe";
 import type { GameState } from "./context";
 import type {
   PlayerProjActor,
@@ -104,6 +108,19 @@ const STAT_ADJECTIVE: readonly string[] = [
   "hale",
 ];
 
+/**
+ * desc_stat(stat, false): the negative adjective per stat (object_property.txt
+ * neg-adjective), used by EF_DRAIN_STAT's "You feel very %s." messages
+ * (effect-handler-general.c L820/L840). STR/INT/WIS/DEX/CON order.
+ */
+const STAT_NEG_ADJECTIVE: readonly string[] = [
+  "weak",
+  "stupid",
+  "naive",
+  "clumsy",
+  "sickly",
+];
+
 /** player_of_has: the racial flags plus every equipped item's. */
 function playerOfHas(state: GameState, flag: number): boolean {
   const p = state.actor.player;
@@ -155,22 +172,49 @@ export function makePlayerSideEffects(
     return effect ? playerIncCheck(effect, incCheckQueries) : true;
   };
 
-  /** The drain-stat slice (effect_simple(EF_DRAIN_STAT)): sustain saves. */
+  /**
+   * effect_simple(EF_DRAIN_STAT) slice (effect-handler-general.c L803-846): the
+   * sustain saves the stat with "You feel very %s for a moment, but the feeling
+   * passes.", otherwise the stat drops with "You feel very %s." (the dice value
+   * is 0 at these call sites, so there is no bonus damage / take_hit). Both
+   * branches learn the sustain rune. P3.
+   */
   const drainStat = (stat: number): void => {
+    const flag = OF.SUST_STR + stat;
+    const negAdj = STAT_NEG_ADJECTIVE[stat] ?? "bad";
     if (sustained(state, stat)) {
-      equipLearnFlag(p(), state.runeEnv, OF.SUST_STR + stat);
+      equipLearnFlag(p(), state.runeEnv, flag);
+      msg(`You feel very ${negAdj} for a moment, but the feeling passes.`);
       return;
     }
     if (playerStatDec(p(), stat, false)) {
-      msg(`You're not as ${STAT_ADJECTIVE[stat] ?? "good"} as you used to be...`);
+      equipLearnFlag(p(), state.runeEnv, flag);
+      msg(`You feel very ${negAdj}.`);
     }
   };
 
-  /** Life drain with the HOLD_LIFE gate (and its rune learning). */
+  /**
+   * project_player_drain_stats(num) (project-player.c L111-130): drain `num`
+   * random stats with NO sustain check and ALWAYS the "You're not as %s as you
+   * used to be..." line - distinct from EF_DRAIN_STAT above. Used by TIME. Draws
+   * randint1(5) per point exactly as upstream (stat pick doubles as the word). P3.
+   */
+  const drainStatsRandom = (num: number): void => {
+    for (let i = 0; i < num; i++) {
+      const stat = state.rng.randint1(5) - 1;
+      msg(`You're not as ${STAT_ADJECTIVE[stat] ?? "good"} as you used to be...`);
+      playerStatDec(p(), stat, false);
+    }
+  };
+
+  /**
+   * Life drain with the HOLD_LIFE gate. The resisted branch only learns the
+   * HOLD_LIFE rune - it prints NO message (project-player.c COLD L204-205 /
+   * DARK: equip_learn_flag only). P4.
+   */
   const drainLife = (amount: number, text: string): void => {
     if (playerOfHas(state, OF.HOLD_LIFE)) {
       equipLearnFlag(p(), state.runeEnv, OF.HOLD_LIFE);
-      msg("You resist the effect!");
     } else {
       msg(text);
       playerExpLose(p(), amount, false, deps.expDeps);
@@ -241,6 +285,14 @@ export function makePlayerSideEffects(
               const acidDam = Math.trunc(dam / 5);
               msg("The venom stings your skin!");
               invenDamage(state, ELEM.ACID, acidDam, { msg });
+              /* adjust_dam(PROJ_ACID) calls minus_ac(p): a real armour-damage
+               * roll (message + to_a-- + PU_BONUS) that also halves the sting
+               * (project-player.c L232 -> adjust_dam L69). P2. */
+              const hitAc = minusAc(p(), state.gear, state.rng, {
+                msg,
+                describe: (o) => describeObject(state, o, ODESC.BASE),
+                updateBonuses: () => state.updateBonuses?.(),
+              });
               xtra += adjustDam(
                 state.rng,
                 deps.projections,
@@ -248,6 +300,7 @@ export function makePlayerSideEffects(
                 acidDam,
                 "randomise",
                 deps.actor.resistLevel(ELEM.ACID),
+                hitAc,
               );
             }
           }
@@ -473,10 +526,8 @@ export function makePlayerSideEffects(
           msg("You feel your life force draining away!");
           playerExpLose(p(), drain, false, deps.expDeps);
         } else if (!rng.oneIn(5)) {
-          /* Drain two random stats. */
-          for (let i = 0; i < 2; i++) {
-            drainStat(rng.randint1(5) - 1);
-          }
+          /* Drain two random stats (project_player_drain_stats(2): no sustain). */
+          drainStatsRandom(2);
         } else {
           msg("You're not as powerful as you used to be...");
           for (let i = 0; i < STAT_MAX; i++) playerStatDec(p(), i, false);

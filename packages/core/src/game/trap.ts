@@ -132,6 +132,25 @@ export function squareIsVisibleTrap(state: GameState, grid: Loc): boolean {
   return squareTrapFlag(state, grid, TRF.VISIBLE);
 }
 
+/**
+ * square_isdisabledtrap (cave-square.c L823): a known (visible) player trap that
+ * is currently on a disable timeout.
+ */
+export function squareIsDisabledTrap(state: GameState, grid: Loc): boolean {
+  return (
+    squareIsVisibleTrap(state, grid) && squareTrapTimeout(state, grid, -1) > 0
+  );
+}
+
+/**
+ * square_isdisarmabletrap (cave-square.c L832): a visible, enabled player trap -
+ * the gate KILL_TRAP and the disarm command require (not merely "visible").
+ */
+export function squareIsDisarmableTrap(state: GameState, grid: Loc): boolean {
+  if (squareIsDisabledTrap(state, grid)) return false;
+  return squareIsVisibleTrap(state, grid) && squareIsPlayerTrap(state, grid);
+}
+
 /** square_iswarded / square_iswebbed. */
 export function squareIsWarded(state: GameState, grid: Loc): boolean {
   return squareTrapFlag(state, grid, TRF.GLYPH);

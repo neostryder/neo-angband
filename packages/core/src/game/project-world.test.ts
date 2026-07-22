@@ -175,6 +175,8 @@ describe("inven_damage (project-obj.c L42)", () => {
 describe("project_f (project-feat.c)", () => {
   it("LIGHT_WEAK lights the grid; DARK_WEAK darkens it", () => {
     const state = makeState();
+    /* Underground: the daylit-surface guard (project-feat.c L73) never fires. */
+    state.chunk.depth = 1;
     const grid = loc(4, 4);
     projectFeature(state, 0, grid, 0, PROJ.LIGHT_WEAK);
     expect(state.chunk.sqinfoHas(grid, SQUARE.GLOW)).toBe(true);
