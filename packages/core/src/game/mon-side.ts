@@ -54,7 +54,7 @@ import { gearObjectForUse } from "./gear";
 import { thrustAway } from "./thrust";
 import { teleportMonster } from "./effect-teleport";
 import type { TeleportEnv } from "./effect-teleport";
-import { disturb } from "./player-path";
+import { makeTakeHitHooks } from "./take-hit-hooks";
 
 /** Everything the monster-blow handlers need beyond the GameState. */
 export interface MonBlowDeps {
@@ -117,6 +117,9 @@ export function makeMonBlowEnv(
 ): (mon: Monster) => MonBlowEnv {
   const msg = (t: string): void => deps.msg?.(t);
   const p = (): Player => state.actor.player;
+  /* The one shared take_hit consequences (message chain + died_from on death),
+   * identical to the projection and effect paths. */
+  const takeHitHooks = makeTakeHitHooks(state);
 
   /* The pack object at inven[index] (null when the slot is empty). */
   const packItem = (
@@ -139,13 +142,12 @@ export function makeMonBlowEnv(
     },
 
     takeHit(reducedDam: number): void {
-      takeHit(deps.actor, reducedDam, mon.race.name, {
-        rng: state.rng,
-        onMessage: (text: string): void => msg(text),
-        /* take_hit (player-util.c L207): a blow that lands stops the player
-         * running / resting. disturb draws no RNG. */
-        onDisturb: (): void => disturb(state),
-      });
+      /* The one shared take_hit consequences object, so a melee blow that kills
+       * records died_from + total_winner and shows the death / low-hp chain the
+       * same way projections and effects do (audit 01 P1 CRITICAL). Previously
+       * this site wired only onMessage + onDisturb, so a melee death was scored
+       * with an unknown killer. */
+      takeHit(deps.actor, reducedDam, mon.race.name, takeHitHooks);
     },
 
     get playerDied(): boolean {

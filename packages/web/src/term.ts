@@ -35,6 +35,13 @@ export interface TermSize {
   rows: number;
 }
 
+/** One serialized grid cell for appearance-parity snapshots (snapshotColored). */
+export interface ColoredCell {
+  ch: string;
+  fg: string;
+  bg?: string;
+}
+
 const FONT_STACK =
   '"Cascadia Mono", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace';
 
@@ -174,6 +181,30 @@ export class GlyphTerm {
   snapshot(): string[] {
     return this.grid.map((row) =>
       row.map((g) => (g && g.ch ? g.ch : " ")).join("").replace(/\s+$/u, ""),
+    );
+  }
+
+  /**
+   * The current grid as a full rectangular array of coloured cells (glyph +
+   * CSS foreground, and background when set). This is the appearance-parity
+   * counterpart of snapshot(): the port stores each cell's colour as the CSS
+   * string colorToCss(COLOUR_*) produces (i.e. "#rrggbb"), which is the same
+   * form the C oracle's html_screenshot (ui-command.c do_cmd_save_screen) emits
+   * per cell, so a cell-by-cell (glyph, fg, bg) diff against a captured C screen
+   * dump is exact - both sides derive from the byte-identical palette
+   * (core/color.ts COLOR_TABLE == reference z-color.c angband_color_table).
+   * Empty cells normalise to a blank glyph with no colour so trailing padding
+   * compares equal regardless of how a screen was drawn.
+   */
+  snapshotColored(): ColoredCell[][] {
+    return this.grid.map((row) =>
+      row.map((g) =>
+        g && g.ch
+          ? g.bg !== undefined
+            ? { ch: g.ch, fg: g.fg, bg: g.bg }
+            : { ch: g.ch, fg: g.fg }
+          : { ch: " ", fg: "" },
+      ),
     );
   }
 

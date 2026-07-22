@@ -55,6 +55,28 @@ mod-neutral**:
 3. **RNG-neutrality regression.** A fixed-seed draw-sequence test asserts that
    the no-mod path and the mod-system-absent path are identical (see the hard
    rule above).
+4. **Appearance / UI parity (deterministic screen + table diff).** Statistics
+   alone cannot catch a wrong glyph, colour, column, or label, so appearance has
+   its own deterministic lane, built the same way as lane 2 (a committed
+   upstream-captured baseline the port is diffed against):
+   - **Static appearance tables** need no runtime and are exact: the colour
+     table (`core/color.ts` `COLOR_TABLE` vs `reference/src/z-color.c`
+     `angband_color_table` + the `color_translate` matrix), the default keymaps
+     (`web/src/keymap.ts` vs `reference/lib/customize/pref.prf`), and the
+     user-facing message / format strings.
+   - **Screen-grid diff.** The port is bit-exact for a fixed seed (lane 2), so
+     its rendered 80x24 grid is fully reproducible. `GlyphTerm.snapshotColored()`
+     serializes glyph + CSS colour per cell in the SAME `#rrggbb` form the C
+     oracle's `html_screenshot` (`do_cmd_save_screen`, `ui-command.c`) emits, and
+     both sides derive from the byte-identical palette, so a cell-by-cell (glyph,
+     fg, bg) diff is exact. Canonical screens (birth, character sheet, store,
+     inventory, message log, death / tombstone, and a fixed-seed dungeon view)
+     are captured once from the C oracle as golden dumps, committed like
+     `c-stats-baseline.json`, and the port's fixed-seed render is diffed against
+     them. `window.__neo.screenColored()` exposes the live grid for the driver.
+   - Oracle-capture caveat: the C screen dump needs a buffer-keeping front end
+     (GCU), not `main-test.c` (which drives scripted input but keeps no screen
+     buffer).
 
 ### Honest status of the harness
 
