@@ -30,12 +30,14 @@ import {
   ELEMENT_ENTRIES,
   OBJECT_MODIFIER_ENTRIES,
   STAT_ENTRIES,
+  EF,
   ELEM,
   OF,
   PF,
   STAT,
   TMD,
 } from "../generated";
+import { effectSubtype } from "../effects/effect";
 import {
   OF_SIZE,
   PF_SIZE,
@@ -58,6 +60,7 @@ import type {
   Shape,
   StartItem,
   TimedEffect,
+  TimedEffectStep,
   TimedFail,
   TimedGrade,
 } from "./types";
@@ -218,6 +221,16 @@ export interface TimedFlagSynonymJson {
   exact: number;
 }
 
+/** player_timed.json on-begin-effect / on-end-effect chain step. */
+export interface TimedEffectChainJson {
+  /** EF_ effect name. */
+  eff: string;
+  /** subtype/type name (the `type:` directive), or absent. */
+  type?: string;
+  /** effect dice string (the `effect-dice:` directive), or absent. */
+  "effect-dice"?: string;
+}
+
 /** player_timed.json record. */
 export interface PlayerTimedRecordJson {
   name: string;
@@ -234,6 +247,10 @@ export interface PlayerTimedRecordJson {
   resist?: string;
   /** Object flag(s) duplicated while active; only the first is bound. */
   "flag-synonym"?: TimedFlagSynonymJson[];
+  /** Effect chain dispatched when the effect starts (0 -> positive). */
+  "on-begin-effect"?: TimedEffectChainJson[];
+  /** Effect chain dispatched when the effect lapses (positive -> 0). */
+  "on-end-effect"?: TimedEffectChainJson[];
 }
 
 /** shape.json record (bound raw beyond name; see Shape). */
@@ -670,6 +687,30 @@ function bindTimed(records: PlayerTimedRecordJson[]): TimedEffect[] {
         : 0;
     const oflagSyn = synonym !== undefined && synonym.exact !== 0;
 
+    /*
+     * on_begin_effect / on_end_effect (parse_player_timed_effect): resolve each
+     * chain step's EF_ code and its subtype (effect_subtype) at bind time, and
+     * keep any effect-dice override. Only SPRINT (on-end TIMED_INC_NO_RES:SLOW)
+     * and SCRAMBLE (SCRAMBLE_STATS / UNSCRAMBLE_STATS) use these in stock data.
+     */
+    const parseChain = (
+      recs: TimedEffectChainJson[] | undefined,
+    ): TimedEffectStep[] | undefined => {
+      if (!recs || recs.length === 0) return undefined;
+      return recs.map((r) => {
+        const effect = (EF as Record<string, number>)[r.eff];
+        if (effect === undefined) {
+          throw new Error(`player_timed ${rec.name}: unknown effect ${r.eff}`);
+        }
+        const subtype = r.type !== undefined ? effectSubtype(effect, r.type) : 0;
+        const step: TimedEffectStep = { effect, subtype };
+        if (r["effect-dice"] !== undefined) step.dice = r["effect-dice"];
+        return step;
+      });
+    };
+    const onBeginEffect = parseChain(rec["on-begin-effect"]);
+    const onEndEffect = parseChain(rec["on-end-effect"]);
+
     out.push({
       index,
       name: rec.name,
@@ -685,6 +726,8 @@ function bindTimed(records: PlayerTimedRecordJson[]): TimedEffect[] {
       oflagSyn,
       grades,
       fail,
+      ...(onBeginEffect ? { onBeginEffect } : {}),
+      ...(onEndEffect ? { onEndEffect } : {}),
     });
   }
   return out;

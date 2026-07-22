@@ -162,8 +162,10 @@ export interface PlayerTimedHooks {
   /**
    * Dispatch the effect's on_begin_effect / on_end_effect chain on a
    * 0 <-> positive transition (begin = true when the effect starts).
+   * canDisturb mirrors player_set_timed's argument: upstream runs the chain
+   * with source_none() when it is true and source_player() otherwise.
    */
-  onTransition?: (idx: number, begin: boolean) => void;
+  onTransition?: (idx: number, begin: boolean, canDisturb: boolean) => void;
   /** player_inc_check result; when absent, every increase is allowed. */
   incCheck?: (idx: number) => boolean;
 }
@@ -354,11 +356,11 @@ export function playerSetTimed(
     }
   }
 
-  /* Dispatch effects for 0 <-> positive transitions. */
+  /* Dispatch effects for 0 <-> positive transitions (player-timed.c:873-891). */
   if (v > 0 && !old) {
-    hooks.onTransition?.(idx, true);
+    hooks.onTransition?.(idx, true, canDisturb);
   } else if (v === 0) {
-    hooks.onTransition?.(idx, false);
+    hooks.onTransition?.(idx, false, canDisturb);
   }
 
   /* Use the value */
