@@ -360,6 +360,26 @@ describe("invenCarryNum with a quiver (obj-gear.c inven_carry_num)", () => {
     const arrows = makeObj(TV.ARROW, 25);
     expect(invenCarryNum(gear, arrows, constants)).toBe(25);
   });
+
+  /**
+   * GR-01 (obj-gear.c:760-765): when the quiver expands into the last free pack
+   * slot but still cannot hold the whole incoming stack, the >0 test must use
+   * the DECREMENTED free-slot count (nAddPack), not the pre-call value. With one
+   * free pack slot and a 60-arrow stack, the quiver absorbs 40 (one slot's worth,
+   * consuming the last pack slot), so only 40 can be carried - the old code read
+   * the stale nFreeSlot=1 and wrongly reported all 60.
+   */
+  it("does not over-report capacity when the quiver eats the last pack slot", () => {
+    const gear = newGear();
+    /* Fill 22 of 23 pack slots with non-ammo items (leaving one free). */
+    for (let i = 0; i < 22; i++) packAdd(gear, makeObj(TV.LIGHT, 1, i + 1));
+    expect(packSlotsUsed(gear, constants)).toBe(22); // nFreeSlot == 1
+
+    /* A 60-arrow stack: the quiver takes 40 (one slot, expanding into the last
+     * free pack slot); the remaining 20 have nowhere to go. */
+    const arrows = makeObj(TV.ARROW, 60);
+    expect(invenCarryNum(gear, arrows, constants)).toBe(40);
+  });
 });
 
 /* ------------------------------------------------------------------ */

@@ -540,11 +540,16 @@ export function invenCarryNum(
 
   const nFreeSlot = constants.packSize - packSlotsUsed(gear, constants);
 
-  /* Absorb as many as we can in the quiver (L760). */
-  const { nToQuiver } = quiverAbsorbNum(gear, obj, constants, nFreeSlot);
+  /* Absorb as many as we can in the quiver (L760). quiver_absorb_num DECREMENTS
+   * the free-slot count by the pack slots the quiver expands into (via
+   * &n_free_slot); the port returns that decremented value as nAddPack. GR-01:
+   * the >0 test must use the decremented nAddPack, not the pre-call nFreeSlot,
+   * or capacity is over-reported when the quiver eats free pack slots but still
+   * cannot hold the whole stack. */
+  const { nToQuiver, nAddPack } = quiverAbsorbNum(gear, obj, constants, nFreeSlot);
 
-  /* The quiver will get everything, or the pack can hold what's left. */
-  if (nToQuiver === obj.number || nFreeSlot > 0) return obj.number;
+  /* The quiver will get everything, or the pack can hold what's left (L763). */
+  if (nToQuiver === obj.number || nAddPack > 0) return obj.number;
 
   /* See if we can add to partially-full inventory slots (L767-776). */
   let numLeft = obj.number - nToQuiver;
