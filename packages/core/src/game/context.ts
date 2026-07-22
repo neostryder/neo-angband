@@ -29,6 +29,7 @@ import type { MeleeAttack, PlayerCombatState } from "../combat/melee";
 import type { DefenderState } from "../combat/mon-melee";
 import type { GameObject } from "../obj/object";
 import type { Brand, Slay } from "../obj/types";
+import type { FlavorAwareDeps, FlavorKnowledge } from "../obj/knowledge";
 import type { Gear } from "./gear";
 import type { Store } from "../store/store";
 import { NORMAL_ENERGY } from "./energy";
@@ -299,6 +300,20 @@ export interface GameState {
    * so the worldless harness stays total (absent = nothing ever seen).
    */
   everseen?: import("../obj/knowledge").EverseenKnowledge;
+  /**
+   * The per-game flavor-awareness store (FlavorKnowledge). Installed by wireGame
+   * so the game-layer knowledge sweep (game/known.ts updatePlayerObjectKnowledge,
+   * the port of update_player_object_knowledge) can flip a kind aware when a
+   * rune-learn completes a carried jewel's non-curse runes. Absent in the
+   * worldless harness, where the sweep is a no-op (no flavor store to mutate).
+   */
+  flavorKnown?: FlavorKnowledge;
+  /**
+   * The in-play FlavorAwareDeps object_flavor_aware needs (the ignore-fix
+   * side-channel). Installed by wireGame alongside flavorKnown; absent, the
+   * sweep passes the no-op deps.
+   */
+  flavorAwareDeps?: FlavorAwareDeps;
   /**
    * The live derived player state (upstream p->state), the result of the last
    * calc_bonuses. update_mon (game/known.ts) reads its OF flag set (telepathy /

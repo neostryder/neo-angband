@@ -97,7 +97,7 @@ import { placeTrap, squareIsTrap, squareIsWebbed } from "./trap";
 import type { TrapDeps } from "./trap";
 import { pushObject } from "./project-feat";
 import { wizLightLevel } from "./effect-terrain";
-import { squareIsKnown } from "./known";
+import { squareIsKnown, updatePlayerObjectKnowledge } from "./known";
 import { buildEffectContext } from "./effect-env";
 import type { EffectEnvDeps } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
@@ -1289,6 +1289,7 @@ export function wizPlayItemAccept(
   if (params.changed && params.equipped) {
     obj.notice &= ~OBJ_NOTICE_WORN;
     objectLearnOnWield(state.actor.player, obj, state.runeEnv);
+    updatePlayerObjectKnowledge(state); /* player_learn_rune sweep (L1373). */
   }
   return true;
 }

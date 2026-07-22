@@ -52,6 +52,7 @@ import {
 } from "../obj/knowledge";
 import { ODESC } from "../obj/desc";
 import { describeObject } from "./describe";
+import { updatePlayerObjectKnowledge } from "./known";
 import type { ObjRegistry } from "../obj/bind";
 import { egoApplyMagic, makeObject } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
@@ -933,6 +934,10 @@ const handleIDENTIFY: EffectHandler = (ctx) => {
     env.flavor,
     env.flavorDeps,
   );
+  /* player_learn_rune's update_player_object_knowledge tail-call (L1373): the
+   * learned rune may now complete another carried/floor jewel's runes, so sweep
+   * all of them for awareness + the "You have ... (a)." reveal (KN-03/KN-04). */
+  updatePlayerObjectKnowledge(state);
   return true;
 };
 
