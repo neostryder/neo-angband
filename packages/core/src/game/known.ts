@@ -44,8 +44,15 @@ import { ODESC } from "../obj/desc";
 import { monsterCarry } from "../mon/make";
 import type { Monster } from "../mon/monster";
 import type { GameObject } from "../obj/object";
-import { objectCopy } from "../obj/object";
-import { objectTouch } from "../obj/known-object";
+import { objectCopy, tvalIsJewelry } from "../obj/object";
+import { objectTouch, playerKnowsEgo } from "../obj/known-object";
+import {
+  NOOP_FLAVOR_AWARE_DEPS,
+  OBJ_NOTICE,
+  buildRuneList,
+  objectRunesKnown,
+  playerKnowObjectAwareness,
+} from "../obj/knowledge";
 import type { GameState } from "./context";
 
 /**
@@ -266,8 +273,8 @@ export function squareKnowPile(
    * artifact, and logs the find (history_find_artifact). A detected/lit pile at
    * a distance is only "seen", never touched, so it does not count as found -
    * hence the player-grid gate here. (player_know_object's flavour-awareness
-   * side effect - object_touch's onKnow - is the cross-object rune-learn sweep
-   * KN-03; wired in Phase 2, not here.) */
+   * side effect is the cross-object rune-learn sweep - updatePlayerObjectKnowledge
+   * below - fired at the live rune-learn sites, not here.) */
   if (locEq(grid, state.actor.grid)) {
     const pile = state.floor.get(gi(state, grid));
     if (pile) {
@@ -290,6 +297,128 @@ export function squareKnowPile(
   } else if (!pileHead(state, grid)) {
     /* Nothing at all here: any memory is stale. */
     state.known.objects.delete(gi(state, grid));
+  }
+}
+
+/**
+ * gear_to_label's label alphabet (obj-gear.c L446): a-z minus the roguelike
+ * cardinal-movement keys h/j/k/l, then A-Z. Equipment slot index and pack
+ * listing index both index straight into it (L452, L465).
+ */
+const GEAR_LABELS = "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/**
+ * gear_to_label (obj-gear.c L443) for a held handle: a quiver handle takes its
+ * slot digit (I2D, L456-460), otherwise a pack handle takes its listing letter
+ * (L462-466). Equipment is handled by the caller (it knows the body slot).
+ * Upstream reads the sorted upkeep->inven[] view; the port's inven[] reorder is
+ * deferred (game/gear.ts), so the raw pack ordering supplies the index, exactly
+ * as project-obj.ts's gearToLabel already does. "" when neither (upstream '\0').
+ */
+function gearPackLabel(state: GameState, handle: number): string {
+  const qi = state.gear.quiver?.indexOf(handle) ?? -1;
+  if (qi >= 0) return String(qi);
+  const pi = state.gear.pack.indexOf(handle);
+  if (pi >= 0 && pi < GEAR_LABELS.length) return GEAR_LABELS[pi]!;
+  return "";
+}
+
+/**
+ * update_player_object_knowledge (obj-knowledge.c L1218): after any rune-learn,
+ * re-run player_know_object over every object the player can currently see or
+ * hold, so a newly-learned rune propagates awareness across ALL of them - not
+ * just the object that taught it. This is the sweep the audit's KN-03 flagged
+ * missing: e.g. wielding a Ring of Strength learns the STR modifier rune, and it
+ * is this sweep (not object_learn_on_wield itself) that then makes the ring's
+ * kind flavour-aware, so it stops reading as an unidentified "Steel Ring".
+ *
+ * The port keeps rune knowledge in typed player stores and synthesises each
+ * object's known-twin on demand for display, so the only persistent side effect
+ * that needs a home here is player_know_object's awareness half (L1163-1198): a
+ * carried/floor jewel whose non-curse runes are now all known becomes
+ * flavour-aware (L1163-1167, KN-03), a special artifact becomes aware outright
+ * (L1168-1175), and a first reveal of a name/ego prints "You have %s (%c)." /
+ * "On the ground: %s." (L1184-1198, KN-04).
+ *
+ * Scope vs upstream: flavour awareness is per-KIND and global to the game (the
+ * shared FlavorKnowledge), so making a kind aware from a carried jewel already
+ * covers every store / curse-template instance of that kind - the port need only
+ * sweep the player's gear and the floor, not the store/curse lists C also walks
+ * purely to rewrite their per-object display twins. Called at the live rune-learn
+ * sites (wield, being hit, identify), exactly where C's player_learn_rune
+ * tail-calls it (L1373).
+ */
+export function updatePlayerObjectKnowledge(state: GameState): void {
+  const flavor = state.flavorKnown;
+  if (!flavor) return; // worldless harness: no flavour store to mutate.
+  const flavorDeps = state.flavorAwareDeps ?? NOOP_FLAVOR_AWARE_DEPS;
+  const env = state.runeEnv;
+  const p = state.actor.player;
+  const runes = buildRuneList(env);
+  const nonCurse = runes.filter((r) => r.variety !== "curse");
+
+  const know = (obj: GameObject, report: (name: string) => void): void => {
+    /* player_know_object early return (L1033): the unassessed get no ID. */
+    if ((obj.notice & OBJ_NOTICE.ASSESSED) === 0) return;
+
+    /* seen defaults true (L1025); a first name/ego reveal sets it false. */
+    let seen = true;
+
+    /* Ego branch (L1156-1161): a newly-known ego reports unless its ego was
+     * already everseen. */
+    if (obj.ego && playerKnowsEgo(p, obj.ego, obj, env)) {
+      seen = state.everseen ? state.everseen.egoSeen(obj.ego) : true;
+    }
+
+    /* Jewelry / special-artifact awareness (L1163-1175). playerKnowObjectAwareness
+     * fires object_flavor_aware for both; the `seen` reads below mirror its
+     * conditions (from the same objectRunesKnown / kidx tests) purely to decide
+     * whether to print the report. */
+    if (tvalIsJewelry(obj.tval)) {
+      if (objectRunesKnown(p, env, obj, nonCurse)) {
+        seen = obj.artifact
+          ? true
+          : state.everseen
+            ? state.everseen.kindSeen(obj.kind)
+            : true;
+      }
+    } else if (obj.kind.kidx >= flavor.ordinaryKindMax) {
+      seen = true; // L1173: special artifacts never report from this branch.
+    }
+
+    /* The awareness mutation itself (idempotent across repeated sweeps). */
+    playerKnowObjectAwareness(p, env, obj, runes, flavor, flavorDeps);
+
+    /* Report on new stuff (L1184-1198). describeObject marks kind/ego everseen
+     * (obj-desc.c L633-637), exactly as C's object_desc does at L1190. */
+    if (!seen) report(describeObject(state, obj, ODESC.PREFIX | ODESC.FULL));
+  };
+
+  /* Level objects first (L1223-1226: cave->objects), matching C's order so a
+   * floor instance wins the first-reveal report over a carried one of the same
+   * (now-everseen) kind. */
+  for (const pile of state.floor.values()) {
+    for (const obj of pile) {
+      know(obj, (name) => state.msg?.(`On the ground: ${name}.`));
+    }
+  }
+
+  /* Player objects (L1229 walks p->gear; the port splits it into equipment +
+   * pack). */
+  const equip = p.equipment;
+  for (let slot = 0; slot < equip.length; slot++) {
+    const handle = equip[slot] ?? 0;
+    if (!handle) continue;
+    const obj = state.gear.store.get(handle);
+    if (!obj) continue;
+    const label = GEAR_LABELS[slot] ?? ""; // equipped_item_slot -> label (L452).
+    know(obj, (name) => state.msg?.(`You have ${name} (${label}).`));
+  }
+  for (const handle of state.gear.pack) {
+    const obj = state.gear.store.get(handle);
+    if (!obj) continue;
+    const label = gearPackLabel(state, handle);
+    know(obj, (name) => state.msg?.(`You have ${name} (${label}).`));
   }
 }
 

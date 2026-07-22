@@ -124,6 +124,7 @@ import { tvalIsMoney } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { monMeleeAttack } from "../combat/mon-melee";
 import { equipLearnOnDefend } from "../obj/knowledge";
+import { updatePlayerObjectKnowledge } from "./known";
 import { los, squareIsView } from "../world/view";
 import { PROJECT, projectPath, projectable } from "../world/project";
 import type { GameState } from "./context";
@@ -1482,8 +1483,11 @@ export function monsterTurn(mon: Monster, state: GameState): void {
         state.actor.defense,
         state.monBlowEnv ? { env: state.monBlowEnv(mon) } : {},
       );
-      /* Being attacked teaches the to-armor rune (mon-attack.c L530). */
+      /* Being attacked teaches the to-armor rune (mon-attack.c L530). Its
+       * player_learn_rune tail-calls update_player_object_knowledge (L1373), so
+       * sweep carried/floor objects for any awareness the new rune completes. */
       equipLearnOnDefend(state.actor.player, state.runeEnv);
+      updatePlayerObjectKnowledge(state);
       if (result.playerDied || state.actor.player.chp < 0) {
         state.isDead = true;
         state.playing = false;

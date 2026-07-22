@@ -70,6 +70,7 @@ import { buildEffectContext } from "./effect-env";
 import type { EffectEnvDeps } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
 import { describeObject } from "./describe";
+import { updatePlayerObjectKnowledge } from "./known";
 import type { CastContext } from "./project-cast";
 import type { ActionRegistry } from "./player-turn";
 import { targetFix, targetGet, targetOkay, targetRelease } from "./target";
@@ -209,6 +210,11 @@ export function invenWield(state: GameState, handle: number): number {
   if (oldHandle !== 0) invenTakeoff(state, oldHandle);
 
   const worn = wieldObject(state.gear, player, handle, state.runeEnv);
+  /* object_learn_on_wield's player_learn_rune tail-calls
+   * update_player_object_knowledge (obj-knowledge.c L1373): the wield learns the
+   * obvious runes, and the sweep is what turns that into cross-object awareness
+   * (e.g. a worn Ring of Strength becoming flavour-aware - KN-03). */
+  updatePlayerObjectKnowledge(state);
   state.updateBonuses?.(); /* PU_BONUS */
   return worn;
 }

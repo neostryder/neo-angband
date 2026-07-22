@@ -529,6 +529,13 @@ function wireGame(
   // decoupled from the flavor store just like isIgnored.
   state.isAware = (kind) => flavor.isAware(kind);
 
+  // The flavor store + its object_flavor_aware side-channel, exposed so the
+  // game-layer knowledge sweep (game/known.ts updatePlayerObjectKnowledge, the
+  // port of update_player_object_knowledge) can flip a kind aware when a
+  // rune-learn completes a carried jewel's runes (KN-03).
+  state.flavorKnown = flavor;
+  state.flavorAwareDeps = flavorAwareDeps(state);
+
   installPickup(state, registry, {
     constants: reg.constants,
     env: { isIgnored: (obj) => state.isIgnored!(obj) },
