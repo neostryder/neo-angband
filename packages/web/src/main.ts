@@ -1099,7 +1099,7 @@ function contextPlayerCtx(): PlayerMenuCtx {
     onDownStairs: state.chunk.isDownstairs(grid),
     hasFloorObject: floorObj !== null,
     canPickup: floorObj !== null,
-    centerPlayerOption: false,
+    centerPlayerOption: state.options?.get("center_player") ?? false,
   };
 }
 
@@ -3344,6 +3344,7 @@ function wizardCtx(): WizardUiCtx {
     changeLevel: (depth: number): void => {
       game.changeLevel(depth);
       state.generateLevel = false;
+      panelCam = null; // new level: recentre the camera on the player
     },
     // do_cmd_wiz_teleport_to's cmd_get_point: reuse the interactive look/target
     // loop (target_set_interactive) to pick a destination grid, then read it
@@ -3879,6 +3880,7 @@ function exploreCmd(): void {
  */
 function centerMapCmd(): void {
   locateCam = null;
+  panelCam = null; // center_panel: force the next verify to recentre on player
   render();
 }
 
@@ -4244,13 +4246,13 @@ function renderStatusLine(originX: number, row: number, maxCols: number): void {
  * choice falls back to Top there. Kept as a helper so the touch handler maps a
  * tapped cell back to a grid square identically.
  *
- * FLAGGED NO-OP: center_player (option, normal: false) is not read here. This
- * always recenters the camera on the player every frame, which is upstream's
- * center_player=ON behaviour; the OFF behaviour (verify_panel's panel-scroll -
- * only recenter once the player nears a panel edge) has no backing
- * implementation in this shell. The option is still listed and toggleable in
- * the '=' menu (options.ts) and persists in the save, but toggling it
- * currently has no visible effect - a real gap, not a silent one.
+ * Camera model: verifyPanel() (verify_panel / modify_panel, ui-output.c
+ * L529-670) owns the persistent map offset panelCam. center_player=OFF (the
+ * normal default) panel-scrolls - the offset holds until the player comes
+ * within 3 grids of an edge, then it re-centres by half a screen; ON re-centres
+ * every turn. Both clamp to the level bounds (modify_panel). viewport() below
+ * is a pure reader of that offset (plus the 'L' locate pan and an explicit
+ * focus centre); verifyPanel() is the sole mutator, called once per render().
  */
 // 'L' locate (do_cmd_locate): while set, viewport() reports this panned
 // top-left instead of centering on the player - change_panel's effect on the
@@ -4261,6 +4263,10 @@ let locateCam: Loc | null = null;
 // (below) so a mid-locate repaint cannot wipe the sector banner it paints
 // over row 0 after every render() call.
 let locateActive = false;
+// The persistent map viewport top-left (upstream term offset_y/offset_x). null
+// before the first verifyPanel() and after a level change / center-map command,
+// so the next verify centres on the player. verifyPanel() is the only writer.
+let panelCam: Loc | null = null;
 
 function viewport(focus?: Loc): {
   layout: SidebarLayout;
@@ -4289,14 +4295,56 @@ function viewport(focus?: Loc): {
   const mapRows = rows - mapTop - 1; // the last row is the status line
   let camX: number, camY: number;
   if (locateCam) {
+    // 'L' locate: report the panned sector top-left (change_panel).
     camX = locateCam.x;
     camY = locateCam.y;
+  } else if (focus) {
+    // Explicit centre (e.g. targeting focus): centre on the given grid.
+    camX = focus.x - Math.floor(mapCols / 2);
+    camY = focus.y - Math.floor(mapRows / 2);
+  } else if (panelCam) {
+    // Normal play: the offset verifyPanel() maintains (verify_panel).
+    camX = panelCam.x;
+    camY = panelCam.y;
   } else {
-    const center = focus ?? state.actor.grid;
-    camX = center.x - Math.floor(mapCols / 2);
-    camY = center.y - Math.floor(mapRows / 2);
+    // No offset yet (pre-first-verify coordinate lookups): centre on player.
+    camX = state.actor.grid.x - Math.floor(mapCols / 2);
+    camY = state.actor.grid.y - Math.floor(mapRows / 2);
   }
   return { layout, compact, mapOriginX, mapTop, mapCols, mapRows, camX, camY };
+}
+
+/**
+ * verify_panel (ui-output.c L563-670): keep the map offset (panelCam) so the
+ * player stays on screen. center_player=OFF (normal) panel-scrolls - the offset
+ * only moves once the player is within 3 grids of an edge, then re-centres by
+ * half a screen; ON re-centres whenever the player leaves the exact centre.
+ * modify_panel (L529) then clamps the offset to the level bounds. Called once
+ * per render() so every viewport() reader in a frame sees the same offset.
+ */
+function verifyPanel(): void {
+  const vp = viewport(); // for mapCols / mapRows / layout; camX/camY ignored
+  const { mapCols, mapRows } = vp;
+  const py = state.actor.grid.y;
+  const px = state.actor.grid.x;
+  const panelH = Math.floor(mapRows / 2);
+  const panelW = Math.floor(mapCols / 2);
+  const centered = state.options?.get("center_player") ?? false;
+  let wy = panelCam ? panelCam.y : py - panelH;
+  let wx = panelCam ? panelCam.x : px - panelW;
+
+  // Scroll vertically: recentre when centered and off-centre, else only when
+  // within 3 grids of the top/bottom edge (verify_panel_int).
+  if (centered && py !== wy + panelH) wy = py - panelH;
+  else if (py < wy + 3 || py >= wy + mapRows - 3) wy = py - panelH;
+
+  if (centered && px !== wx + panelW) wx = px - panelW;
+  else if (px < wx + 3 || px >= wx + mapCols - 3) wx = px - panelW;
+
+  // modify_panel clamp: keep the offset inside the level.
+  wy = Math.max(0, Math.min(wy, Math.max(0, state.chunk.height - mapRows)));
+  wx = Math.max(0, Math.min(wx, Math.max(0, state.chunk.width - mapCols)));
+  panelCam = { x: wx, y: wy };
 }
 
 /** Selected sidebar fields shown inline on the compact-layout vitals row. */
@@ -4346,6 +4394,9 @@ interface TargetingOverlay {
 const CURSOR_BG = "#3a4a6a"; // palette-exempt: map cursor highlight background
 
 function render(targeting?: TargetingOverlay): void {
+  // verify_panel before drawing so every viewport() reader in this frame sees
+  // the same offset. Skipped in 'L' locate mode, where locateCam pans instead.
+  if (!locateCam) verifyPanel();
   const { cols, rows } = term.size();
   term.clear();
 
