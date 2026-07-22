@@ -158,6 +158,9 @@ export function chestTrap(
         const ctx = attachGameEnv(buildEffectContext(state, deps.effects.envDeps), {
           state,
           cast: deps.effects.cast,
+          ...(deps.effects.envDeps.takeHitHooks
+            ? { takeHitHooks: deps.effects.envDeps.takeHitHooks }
+            : {}),
           ...(deps.effects.teleport ? { teleport: deps.effects.teleport } : {}),
           ...(deps.effects.general ? { general: deps.effects.general } : {}),
           ...(deps.effects.item ? { item: deps.effects.item } : {}),

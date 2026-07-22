@@ -144,6 +144,11 @@ export function spellCast(
     const ctx = attachGameEnv(buildEffectContext(state, deps.effects.envDeps), {
       state,
       cast: deps.effects.cast,
+      /* take_hit consequences for effects that rebound damage onto the player
+       * (EF_BANISH), so such a death records died_from too. */
+      ...(deps.effects.envDeps.takeHitHooks
+        ? { takeHitHooks: deps.effects.envDeps.takeHitHooks }
+        : {}),
       /* target_get inside the handlers: a DIR_TARGET cast re-reads the
        * live target per handler, as upstream. */
       get aimed() {

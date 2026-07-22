@@ -48,6 +48,7 @@ import type { ExpDeps } from "../player/exp";
 import { historyAdd, historyFindArtifact, historyLoseArtifact } from "../player/history";
 import { artifactHistoryName, historyStamp } from "../game/history";
 import { makePlayerSideEffects } from "../game/player-side";
+import { makeTakeHitHooks } from "../game/take-hit-hooks";
 import { makeMonBlowEnv } from "../game/mon-side";
 import { adj_dex_safe } from "../player/calcs";
 import { buildEffectContext } from "../game/effect-env";
@@ -803,6 +804,13 @@ function wireGame(
      * gap 3.7). */
     noSelling: state.options?.get("birth_no_selling") ?? false,
   };
+  /* The one complete player take_hit consequences object, shared by every
+   * damage site (projections, melee via mon-side, effects via envDeps, DoT /
+   * terrain via state.world). Defined out here so both the projections block
+   * and the state.world assignment below reference the same object. Wiring
+   * onDeath is what finally records died_from + clears total_winner on death
+   * (audit 01 P1 CRITICAL). */
+  const sharedTakeHitHooks = makeTakeHitHooks(state);
   if (reg.projections) {
     const effects = new EffectRegistry();
     effectRegistry = effects;
@@ -987,6 +995,13 @@ function wireGame(
         player: {
           /* OPT(player, show_damage): the extra "you take N damage" lines. */
           showDamage: state.options?.get("show_damage") ?? false,
+          /* project_p's own messages ("You are hit by ...!") and disturb, plus
+           * the full take_hit consequences. Without these a breath / spell that
+           * damaged or killed the player was silent and never recorded the
+           * killer (audit 01 P1 CRITICAL). */
+          message: (text: string): void => state.msg?.(text),
+          onDisturb: (): void => disturb(state),
+          takeHit: sharedTakeHitHooks,
           onSideEffects: makePlayerSideEffects(state, {
             timed: players.timed,
             actor: playerActor,
@@ -1030,6 +1045,10 @@ function wireGame(
       // them; absent, they would drop.
       onMessage: (text: string): void => state.msg?.(text),
       incQueries,
+      /* The shared take_hit consequences, so effect-driven player damage (traps,
+       * EF_DAMAGE, activations, monster casts via mon-cast) shows the message
+       * chain and records died_from on death, exactly like melee/projection. */
+      takeHitHooks: sharedTakeHitHooks,
     };
 
     /* The wizard/debug effect bundle (WP-14): identical to the object-command
@@ -1403,10 +1422,10 @@ function wireGame(
         return { name: w.kind.name, kind: w.kind.name, number: w.number };
       },
     },
-    takeHitHooks: {
-      onMessage: (text: string): void => state.msg?.(text),
-      onDisturb: (): void => disturb(state),
-    },
+    /* The same shared consequences drive the world clock's DoT ticks, terrain
+     * (lava) damage and over-exertion, so poison / a fatal wound / starvation
+     * death records died_from and shows the full chain too. */
+    takeHitHooks: sharedTakeHitHooks,
     expDeps,
     spawnAmbientMonster: (s: GameState): boolean =>
       pickAndPlaceDistantMonster(
