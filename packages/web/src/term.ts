@@ -23,7 +23,7 @@
  * from the tileset implementation (tiles.ts).
  */
 import { UI_BG } from "./ui-colors";
-import { FONT_8X12, type BitmapFontData } from "./font-8x12";
+import { FONT_16X24, type BitmapFontData } from "./font-16x24";
 
 export interface TileDraw {
   draw(
@@ -56,8 +56,8 @@ export interface ColoredCell {
 }
 
 // Fallback vector font (FONT-1): the terminal blits the original Angband
-// 8x12 bitmap glyphs (font-8x12.ts, from 8X12x.FON) for code points 0-255, the
-// faithful default. This stack is used only for glyphs the bitmap font lacks
+// 16x24 bitmap glyphs (font-16x24.ts, from 16X24x.FON) for code points 0-255,
+// the faithful default. This stack is used only for glyphs the bitmap font lacks
 // (e.g. any code point >= 256 a mod might print) and while measuring is needed.
 const FONT_STACK =
   '"Cascadia Mono", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace';
@@ -106,11 +106,11 @@ export class GlyphTerm {
   private offsetY = 0;
   private grid: (Glyph | null)[][] = [];
   /**
-   * The active bitmap font (FONT-1). Non-null (the default FONT_8X12) means the
+   * The active bitmap font (FONT-1). Non-null (the default FONT_16X24) means the
    * terminal blits the original Angband glyphs; null falls back to FONT_STACK
    * fillText everywhere (a mod / test escape hatch).
    */
-  private font: BitmapFontData | null = FONT_8X12;
+  private font: BitmapFontData | null = FONT_16X24;
   /**
    * Tinted native-resolution glyph cache, keyed "code:fg". Each entry is an
    * (font.w x font.h) canvas with the glyph's set pixels painted in fg and the
@@ -142,7 +142,7 @@ export class GlyphTerm {
       reflow: boolean;
       /**
        * The bitmap font to blit (FONT-1). Omit for the faithful default
-       * (FONT_8X12); pass null to disable bitmap blitting and use FONT_STACK.
+       * (FONT_16X24); pass null to disable bitmap blitting and use FONT_STACK.
        */
       bitmapFont?: BitmapFontData | null;
     } = {
@@ -249,7 +249,7 @@ export class GlyphTerm {
    * offset to 0 (it clips rather than reflowing - reflow is the mobile opt-in).
    */
   private fitFixed(w: number, h: number): void {
-    // Bitmap font: scale the native 8x12 cell UNIFORMLY (preserving its aspect)
+    // Bitmap font: scale the native 16x24 cell UNIFORMLY (preserving its aspect)
     // by the largest factor at which the whole 80x24 grid still fits, then
     // centre it - a letterboxed terminal. A uniform scale keeps the glyphs
     // undistorted; nearest-neighbour (imageSmoothingEnabled=false) keeps them
@@ -464,7 +464,7 @@ export class GlyphTerm {
       return;
     }
     if (g && g.ch !== " ") {
-      // FONT-1: blit the original 8x12 bitmap glyph, tinted to fg and scaled to
+      // FONT-1: blit the original 16x24 bitmap glyph, tinted to fg and scaled to
       // the cell (nearest-neighbour). Falls back to FONT_STACK fillText for any
       // glyph the bitmap font lacks (code >= 256, blank, or a rare colour form).
       const code = g.ch.codePointAt(0) ?? 0;
