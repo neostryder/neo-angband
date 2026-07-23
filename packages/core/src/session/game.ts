@@ -1978,6 +1978,16 @@ function makeChangeLevel(
       trapDeps,
     );
     refreshTownStores(state, reg);
+    /* town_gen -> cave_illuminate (gen-cave.c / cave-map.c L555): the town is
+     * illuminated at generation. The chunk-flag half already ran in the town
+     * builder (gen/cave.ts caveIlluminate); this applies the player-KNOWLEDGE
+     * half against the freshly built known map so a daytime town is fully
+     * memorized (visible from anywhere on entry, exactly like the C town) and a
+     * night town forgets its boring floors. Town only (depth 0); dungeon levels
+     * start dark. Runs on both birth and recall-to-town. */
+    if (depth === 0) {
+      caveIlluminateKnown(state, isDaytime(state.turn, state.z.dayLength));
+    }
     delete state.targetDepth;
     state.updateFov?.(state);
   };
@@ -2331,6 +2341,15 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     wired.trapDeps,
   );
   refreshTownStores(state, reg);
+  /* town_gen -> cave_illuminate (gen-cave.c / cave-map.c L555): the birth town
+   * is illuminated at generation. The chunk-flag half ran in the town builder;
+   * this applies the player-KNOWLEDGE half so a daytime town is fully memorized
+   * (visible from the spawn corner on entry, exactly like the C town) and a
+   * night town forgets its boring floors. Town only (booted depth 0); the level
+   * changer (changeLevel) does the same for recall-to-town. */
+  if (booted.depth === 0) {
+    caveIlluminateKnown(state, isDaytime(state.turn, state.z.dayLength));
+  }
 
   return {
     state,
