@@ -661,8 +661,10 @@ function wireGame(
     rng: state.rng,
     onLevelChange: (p): void => {
       refreshDerived();
-      /* Casters learn/forget spells at the new level. */
-      calcSpells(p, derived.statInd);
+      /* Casters learn/forget spells at the new level; calcSpells announces the
+       * new allowance ("You can learn N more spells.") on a change, as C's
+       * calc_bonuses->calc_spells does (player-calcs.c:1465). */
+      calcSpells(p, derived.statInd, (text) => state.msg?.(text));
     },
     /* history_add(HIST_GAIN_LEVEL) (player.c L246-247), fired from inside
      * adjustLevel's up-loop before the "Welcome to level" message. */

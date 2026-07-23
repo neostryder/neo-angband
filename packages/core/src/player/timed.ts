@@ -89,8 +89,8 @@ export function substituteTimedMessage(
       }
       i = j + 1;
     } else {
-      /* Invalid tag: skip the '{' and continue after it. */
-      out += "{";
+      /* Invalid tag: drop the '{' and continue after it (obj-util.c:1178
+         sets string = next + 1, never copying the stray brace). */
       i = open + 1;
     }
   }
