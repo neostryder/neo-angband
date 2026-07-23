@@ -31,7 +31,7 @@ export interface ScreenLine {
   runs?: { text: string; color: string }[];
 }
 
-import { UI_TEXT, UI_DIM, UI_GOLD } from "./ui-colors";
+import { UI_TEXT, UI_DIM } from "./ui-colors";
 
 const FG = UI_TEXT;
 const DIM = UI_DIM;
@@ -245,25 +245,83 @@ export function showLevelMap(term: GlyphTerm, overview: Overview): Promise<void>
   });
 }
 
-/** promptDirection sentinel: the player pressed '*' to pick a target. */
+/** getAimDir sentinel: the player pressed '*' (or <click>) to pick a target. */
 export const AIM_STAR = -1;
+/** getAimDir sentinel: the player pressed "'" to target the closest monster. */
+export const AIM_CLOSEST = -2;
+
+/** Keypad direction from an arrow key (ddd/ddx/ddy convention), else 0. */
+const ARROW_DIR: Record<string, number> = {
+  ArrowUp: 8, ArrowDown: 2, ArrowLeft: 4, ArrowRight: 6,
+};
 
 /**
- * get_aim_dir: prompt for a keypad direction (1-9). Resolves to the keypad
- * digit, or null if cancelled. Accepts numpad/number keys and the arrows; 5 is
- * DIR_TARGET (use the current target), and '*' resolves to AIM_STAR so the
- * caller can open the target picker. A one-line banner shows over the game so
- * the player keeps their bearings while aiming.
+ * Clear the row-0 prompt line (prt("", 0, 0) in the reference). The next frame
+ * repaints the message line, but blanking here keeps a cancelled prompt from
+ * lingering when the caller returns without rendering.
  */
-export function promptDirection(
+function clearPromptRow(term: GlyphTerm): void {
+  const { cols } = term.size();
+  term.print(0, 0, " ".repeat(cols - 1), FG);
+}
+
+/**
+ * textui_get_rep_dir (ui-input.c L1487): a "repeated"/movement direction for
+ * open / close / tunnel / disarm / alter / walk / run / jump / steal. Draws the
+ * single shared prompt at row 0 in white (prt) and accepts keypad 1-9 and the
+ * arrows; ESC cancels. `allow5` mirrors the C allow_5 flag: when false, keypad
+ * 5 is equivalent to escape (returns null). It does NOT accept '*' - aiming is
+ * a separate function (get_aim_dir). Resolves the keypad digit, or null.
+ */
+export function getRepDir(
   term: GlyphTerm,
-  prompt = "Aim: 1-9 direction, 5/* to target, ESC to cancel",
+  allow5 = false,
 ): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
-    const { rows, cols } = term.size();
-    term.print(0, rows - 1, prompt.slice(0, cols - 1), UI_GOLD);
+    const { cols } = term.size();
+    term.print(0, 0, "Direction or <click> (Escape to cancel)? ".slice(0, cols - 1), FG);
     const finish = (value: number | null): void => {
       window.removeEventListener("keydown", onKey, true);
+      clearPromptRow(term);
+      resolve(value);
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (ev.key === "Escape") return finish(null);
+      let dir = 0;
+      if (ev.key in ARROW_DIR) dir = ARROW_DIR[ev.key] ?? 0;
+      else if (/^[1-9]$/.test(ev.key)) dir = Number(ev.key);
+      if (dir === 0) return; // bell(): ignore non-direction keys
+      if (dir === 5 && !allow5) return finish(null); // "5 is equivalent to escape"
+      finish(dir);
+    };
+    window.addEventListener("keydown", onKey, true);
+  });
+}
+
+/**
+ * textui_get_aim_dir (ui-input.c L1608): an aiming direction for fire / throw /
+ * aim / zap / attack spells. Draws one of two row-0 white prompts depending on
+ * whether a target is already set (target_okay). Accepts keypad 1-9 and arrows
+ * (a compass direction), '*' or <click> to open the target picker (AIM_STAR),
+ * "'" for the closest monster (AIM_CLOSEST), and 5/t/0/. to use the current
+ * target (returns 5, DIR_TARGET) - the last only when a target is set. ESC
+ * cancels. Resolves the keypad digit, a sentinel, 5, or null.
+ */
+export function getAimDir(
+  term: GlyphTerm,
+  targetOkay: boolean,
+): Promise<number | null> {
+  return new Promise<number | null>((resolve) => {
+    const { cols } = term.size();
+    const prompt = targetOkay
+      ? "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? "
+      : "Direction ('*' or <click> to target, \"'\" for closest, Escape to cancel)? ";
+    term.print(0, 0, prompt.slice(0, cols - 1), FG);
+    const finish = (value: number | null): void => {
+      window.removeEventListener("keydown", onKey, true);
+      clearPromptRow(term);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -271,11 +329,16 @@ export function promptDirection(
       ev.stopImmediatePropagation();
       if (ev.key === "Escape") return finish(null);
       if (ev.key === "*") return finish(AIM_STAR);
-      const arrows: Record<string, number> = {
-        ArrowUp: 8, ArrowDown: 2, ArrowLeft: 4, ArrowRight: 6,
-      };
-      if (ev.key in arrows) return finish(arrows[ev.key] ?? null);
-      if (/^[1-9]$/.test(ev.key)) return finish(Number(ev.key));
+      if (ev.key === "'") return finish(AIM_CLOSEST);
+      if (ev.key === "t" || ev.key === "5" || ev.key === "0" || ev.key === ".") {
+        if (targetOkay) return finish(5); // DIR_TARGET
+        return; // bell(): no target to use
+      }
+      let dir = 0;
+      if (ev.key in ARROW_DIR) dir = ARROW_DIR[ev.key] ?? 0;
+      else if (/^[1-9]$/.test(ev.key)) dir = Number(ev.key);
+      if (dir === 0 || dir === 5) return; // bell(): 5 handled above
+      finish(dir);
     };
     window.addEventListener("keydown", onKey, true);
   });
