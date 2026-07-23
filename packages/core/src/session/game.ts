@@ -183,7 +183,7 @@ import type { MakeDeps } from "../obj/make";
 import { monsterDeath, installNonplayerHitDeps } from "../game/mon-death";
 import type { MonsterDeathDeps } from "../game/mon-death";
 import type { ProjectFeatEnv } from "../game/project-feat";
-import { newGear, outfitPlayer, gearGet, minusAc as applyMinusAc } from "../game/gear";
+import { newGear, outfitPlayer, gearGet, calcInventory, minusAc as applyMinusAc } from "../game/gear";
 import { objectValue as computeObjectValue } from "../obj/value";
 import type { GameObject, CurseTimedFoil } from "../obj/object";
 import { buildCurseTimedFoil } from "../obj/object";
@@ -2423,6 +2423,22 @@ function makeStoreApi(
     stores: state.stores ?? [],
   });
   const noSelling = (): boolean => options.get("birth_no_selling") ?? false;
+  /* update_stuff's PU_INVEN after a gear change (obj-gear.c: inven_carry /
+   * gear_object_for_use both set PU_INVEN): rebuild the computed quiver so
+   * bought/sold ammo is routed into (or out of) the quiver, exactly as the
+   * wield/takeoff/use paths already do (obj-cmd.ts). Without this a purchased
+   * bolt stays displayed in the pack instead of the quiver. Mirrors the
+   * calc_inventory opts assembled for the object commands above. */
+  const refreshQuiver = (): void => {
+    calcInventory(state.gear, reg.constants, {
+      store: false,
+      objectValue: (obj: GameObject): number =>
+        computeObjectValue(reg.objects, obj, 1, true),
+      rogueLike: state.options?.get("rogue_like_commands") ?? false,
+      characterDungeon: true,
+      msg: (text: string): void => state.msg?.(text),
+    });
+  };
   const txnKnow = (
     obj: GameObject,
   ): {
@@ -2437,8 +2453,11 @@ function makeStoreApi(
     noSelling: noSelling(),
   });
   return {
-    buy: (store, obj, amt): BuyResult =>
-      storeBuy(storeCtx(), store, obj, amt, state.actor.player, state.gear, txnKnow(obj)),
+    buy: (store, obj, amt): BuyResult => {
+      const result = storeBuy(storeCtx(), store, obj, amt, state.actor.player, state.gear, txnKnow(obj));
+      if (result.ok) refreshQuiver();
+      return result;
+    },
     sell: (store, handle, amt): SellResult => {
       const obj = state.gear.store.get(handle);
       const know = obj
@@ -2451,6 +2470,7 @@ function makeStoreApi(
         state.onArtifactFound?.(result.sold.artifact);
         if (result.carried === false) state.onArtifactLost?.(result.sold.artifact);
       }
+      if (result.ok) refreshQuiver();
       return result;
     },
     price: (store, obj, storeBuying, qty): number =>
