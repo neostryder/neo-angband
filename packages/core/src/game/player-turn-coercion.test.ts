@@ -109,10 +109,31 @@ describe("bloodlust command coercion (cmd-core.c:371-374)", () => {
     addMon(state, makeRace({ ac: 0 }), loc(14, 10), { hp: 500 });
     state.actor.player.timed[TMD.BLOODLUST] = 200;
     state.actor.player.timed[TMD.CONFUSED] = 5;
+    /* do_cmd_walk now applies player_confuse_dir; fix the RNG so the 25%
+     * "keep direction" branch is taken (randint0(100) -> 99 >= 75), leaving the
+     * step heading east. The point of the test is that the bloodlust coercion
+     * took the confused free pass (player_attack_random_monster returned false)
+     * and the walk COMMAND ran rather than a random attack. */
+    state.rng.randFix(100);
 
     processPlayer(state, createDefaultRegistry());
     /* player_attack_random_monster returned false: the walk ran. */
     expect(state.actor.grid).toEqual(loc(16, 10));
+  });
+
+  it("confusion redirects the walk and reports it (player_confuse_dir, cmd-cave.c:1301)", () => {
+    const msgs: string[] = [];
+    const state = makeState({ playerGrid: loc(15, 10) });
+    state.msg = (t): void => {
+      msgs.push(t);
+    };
+    state.actor.player.timed[TMD.CONFUSED] = 5;
+    /* randint0(100) -> 0 (< 75) redirects; randint0(8) -> 0 picks DDD[0] = 2
+     * (south), so the eastward walk becomes a step south to (15, 11). */
+    state.rng.randFix(0);
+    walkAction(state, { code: "walk", dir: 6 });
+    expect(msgs).toContain("You are confused.");
+    expect(state.actor.grid).toEqual(loc(15, 11));
   });
 
   it("no coercion at zero bloodlust", () => {

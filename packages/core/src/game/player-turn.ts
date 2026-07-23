@@ -36,6 +36,7 @@ import { playerClearTimed } from "../player/timed";
 import type { GameState, PlayerCommand } from "./context";
 import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context";
 import { gearGet } from "./gear";
+import { playerConfuseDir } from "./obj-cmd";
 import { playerAdjustManaPrecise } from "./loop";
 import { formatMonsterMessage } from "./mon-message";
 import { PY_EXERT, playerOverExert } from "./world";
@@ -70,13 +71,6 @@ export class ActionRegistry {
   codes(): string[] {
     return Array.from(this.actions.keys());
   }
-}
-
-/** The direction offset for a keypad command (5 / missing => no move). */
-function commandOffset(cmd: PlayerCommand): Loc | null {
-  const dir = cmd.dir;
-  if (dir === undefined || dir < 1 || dir > 9 || dir === 5) return null;
-  return DDGRID[dir] as Loc;
 }
 
 /**
@@ -333,11 +327,25 @@ export function playerAttackRandomMonster(state: GameState): number {
  * spent, 0 when blocked by a wall (a bump uses no energy).
  */
 export function walkAction(state: GameState, cmd: PlayerCommand): number {
-  const offset = commandOffset(cmd);
-  if (!offset) return 0;
+  const rawDir = cmd.dir;
+  if (rawDir === undefined || rawDir < 1 || rawDir > 9 || rawDir === 5) return 0;
+
+  /* do_cmd_walk (cmd-cave.c L1299-1302): confusion randomises the direction.
+   * When it redirects ("You are confused."), the move spends a full turn even
+   * if it dead-ends against a wall (energy_use is set to move_energy before the
+   * walkability test). The bump-open wrapper (installCaveCommands) applies
+   * confusion up front and sets confusedApplied so the RNG is drawn once; a
+   * direct caller (jump, borg, tests) rolls it here. */
+  let dir = rawDir;
+  let confused = false;
+  if (!cmd.confusedApplied) {
+    dir = playerConfuseDir(state, rawDir);
+    confused = dir !== rawDir;
+  }
+  const offset = DDGRID[dir] as Loc;
 
   const next: Loc = { x: state.actor.grid.x + offset.x, y: state.actor.grid.y + offset.y };
-  if (!state.chunk.inBounds(next)) return 0;
+  if (!state.chunk.inBounds(next)) return confused ? state.z.moveEnergy : 0;
 
   const target = squareMonster(state, next);
   if (target) {
@@ -375,7 +383,9 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
           : "There is a wall in the way!",
       );
     }
-    return 0;
+    /* A confused redirect into a wall still spends the turn (cmd-cave.c
+     * L1300-1302); a deliberate bump refunds all energy. */
+    return confused ? state.z.moveEnergy : 0;
   }
 
   movePlayer(state, next);

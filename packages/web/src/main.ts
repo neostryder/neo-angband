@@ -1672,6 +1672,28 @@ async function dispatchItemVerb(code: string, handle: number, obj: GameObject | 
   advance();
 }
 
+/**
+ * Dispatch `code` on an item chosen from ANY source (pack handle or floor pile
+ * index). The floor branch queues args.floor, which resolveCommandItem
+ * (game/obj-cmd.ts) turns back into the live floor object with fromFloor=true -
+ * the faithful "act straight off the floor" path (USE_FLOOR, cmd-obj.c). This is
+ * what the item-command '-' floor toggle selects.
+ */
+async function dispatchItemRef(code: string, ref: ItemTargetRef): Promise<void> {
+  const obj = targetRefObject(ref);
+  const args: Record<string, unknown> =
+    "handle" in ref ? { handle: ref.handle } : { floor: ref.floor };
+  if (obj && objNeedsAim(obj, { flavor: game.flavor })) {
+    const dir = await aimDir();
+    if (dir === null) return;
+    args["dir"] = dir;
+  }
+  if (obj && !(await applyItemTarget(obj, args))) return;
+  say(actionLine(code, obj));
+  commandBuffer.push({ code, args });
+  advance();
+}
+
 /** Device-use verbs whose picker shows the OLIST_FAIL failure column. */
 const DEVICE_VERBS = new Set(["aim-wand", "zap-rod", "use-staff"]);
 
@@ -1690,21 +1712,23 @@ async function useItem(
   filter: (obj: GameObject) => boolean,
   prompt: string,
   emptyMsg: string,
+  mode: { inven?: boolean; equip?: boolean; quiver?: boolean; floor?: boolean } = {
+    inven: true,
+  },
 ): Promise<void> {
-  // The pack picker (the quiver rides the pack in this gear model). Floor items
-  // are not offered here because the command dispatch is keyed on a gear handle,
-  // which floor piles lack; the faithful "(Inven: a-c, ESC)" header still shows.
+  // The item picker over the command's faithful cmd_get_item sources (cmd-obj.c):
+  // most consumable / device / wield verbs include USE_FLOOR, so a floor item
+  // can be chosen straight off the ground (the '-' floor toggle). The floor
+  // branch dispatches args.floor rather than a gear handle.
   const ref = await selectItemFrom(
     prompt,
     filter,
-    { inven: true },
+    mode,
     emptyMsg,
     DEVICE_VERBS.has(code),
   );
-  if (ref === null || !("handle" in ref)) return;
-  const handle = ref.handle;
-  const obj = gearGet(state.gear, handle);
-  await dispatchItemVerb(code, handle, obj);
+  if (ref === null) return;
+  await dispatchItemRef(code, ref);
 }
 
 /**
@@ -3983,6 +4007,54 @@ async function pickupCmd(): Promise<void> {
   advance();
 }
 
+/**
+ * see_floor_items (ui-display.c L2581), fired by EVENT_SEEFLOOR from
+ * do_cmd_autopickup (cmd-pickup.c L484) after every step and do_cmd_hold
+ * (cmd-cave.c L1610): announce what remains on the player's grid once autopickup
+ * has taken what it will. A single object gets the "You see X." message; a pile
+ * defers to the floor list screen. Ignored objects are skipped, matching
+ * scan_floor's OFLOOR_SENSE | OFLOOR_VISIBLE (ignore_item_ok). A pending screen
+ * is returned so advance() can open it after this turn's messages are paged.
+ */
+let pendingFloorPile: GameObject[] | null = null;
+/** Set before a hold turn so advance() runs the floor look (do_cmd_hold). */
+let seeFloorRequested = false;
+
+function seeFloorItems(): void {
+  const grid = state.actor.grid;
+  const pile = floorPile(state, grid).filter((o) => !state.isIgnored?.(o));
+  if (pile.length === 0) return;
+  const blind = (state.actor.player.timed[TMD.BLIND] ?? 0) > 0;
+  const canPickup = pile.some((o) => invenCarryNum(state.gear, o, constants) > 0);
+  if (pile.length === 1) {
+    const obj = pile[0]!;
+    // p = "see" (or "feel" when blind, "have no room for" when the pack is full),
+    // ui-display.c L2589/L2612-L2615. describeObject is ODESC_PREFIX | ODESC_FULL.
+    const verb = !canPickup ? "have no room for" : blind ? "feel" : "see";
+    say(`You ${verb} ${describeObject(state, obj)}.`);
+  } else {
+    // Multiple objects: upstream shows the show_floor screen; defer it.
+    pendingFloorPile = pile;
+  }
+}
+
+/** show_floor for the pile under the player (ui-display.c L2637-L2647): the
+ * "You see:" list shown when more than one object is on the grid. */
+async function showFloorPileScreen(pile: GameObject[]): Promise<void> {
+  const blind = (state.actor.player.timed[TMD.BLIND] ?? 0) > 0;
+  const canPickup = pile.some((o) => invenCarryNum(state.gear, o, constants) > 0);
+  const header = !canPickup
+    ? "You have no room for the following objects:"
+    : blind
+      ? "You feel something on the floor:"
+      : "You see:";
+  const lines: ScreenLine[] = pile.map((o, i) => ({
+    text: `${objLetter(i)}) ${objectName(state, o)}`,
+    color: objectColor(o, state),
+  }));
+  await showTextScreen(term, header, lines);
+}
+
 const Z: ViewConstants = {
   maxSight: constants.maxSight,
   feelingNeed: constants.feelingNeed,
@@ -4108,6 +4180,7 @@ async function swapWeaponCmd(): Promise<void> {
     (o) => tvalIsWearable(o.tval),
     "Wear or wield which item?",
     "You have nothing to wear or wield.",
+    { inven: true, floor: true, quiver: true },
   );
 }
 
@@ -4127,9 +4200,11 @@ async function runDirCmd(): Promise<void> {
   advance();
 }
 
-/** Stand still (CMD_HOLD, cmd_hidden): spend a turn in place. */
+/** Stand still (CMD_HOLD, cmd_hidden): spend a turn in place. do_cmd_hold
+ * (cmd-cave.c L1610) then looks at the floor, so request the see-floor pass. */
 function holdCmd(): void {
   commandBuffer.push({ code: "hold" });
+  seeFloorRequested = true;
   advance();
 }
 
@@ -4990,6 +5065,10 @@ async function pumpMessages(preLen: number): Promise<void> {
 
 function advance(): void {
   const preLen = msglog.all().length; // messages before this turn, for -more-
+  const beforeX = state.actor.grid.x;
+  const beforeY = state.actor.grid.y;
+  const seeFloorReq = seeFloorRequested; // do_cmd_hold requested a floor look
+  seeFloorRequested = false;
   const status = runGameLoop(state, registry);
   if (status === LOOP_STATUS.DEAD) {
     dead = true;
@@ -5045,11 +5124,27 @@ function advance(): void {
     // by the core descend/ascend command (cmd-cave.c:134/87) into the message
     // log, so it flows through the -more- pager and Ctrl-P; no shell fabrication.
   }
+  // EVENT_SEEFLOOR (cmd-pickup.c L484 after a step; cmd-cave.c L1610 on hold):
+  // announce the floor pile once autopickup has run. Detect a step by the grid
+  // change; the explicit hold request covers standing still on items. Skipped on
+  // death and level change (arrival on a new level is not a step onto its floor).
+  const moved = state.actor.grid.x !== beforeX || state.actor.grid.y !== beforeY;
+  if (!dead && status !== LOOP_STATUS.LEVEL_CHANGE && (moved || seeFloorReq)) {
+    seeFloorItems();
+  }
   autosave(); // throttled: keep the session recoverable during active play
   render();
   // -more- gating: page this turn's messages, pausing between screenfuls unless
   // auto_more is set. Skipped on death (the tombstone/menu modal owns the flow).
-  if (!dead) void pumpMessages(preLen);
+  if (!dead) {
+    void pumpMessages(preLen).then(() => {
+      // A multi-object pile shows the floor list after its message is paged.
+      const pile = pendingFloorPile;
+      pendingFloorPile = null;
+      if (pile) return openModal(() => showFloorPileScreen(pile));
+      return undefined;
+    });
+  }
 }
 
 window.addEventListener("keydown", (ev) => {
@@ -5215,18 +5310,18 @@ window.addEventListener("keydown", (ev) => {
       // Item commands (cmd_item, ui-game.c:118-133).
       { o: "{", act: () => void openModal(inscribeItem) },
       { o: "}", act: () => void openModal(uninscribeItem) },
-      { o: "w", act: () => void openModal(() => useItem("wield", (t) => tvalIsWearable(t.tval), "Wear or wield which item?", "You have nothing to wear or wield.")) },
+      { o: "w", act: () => void openModal(() => useItem("wield", (t) => tvalIsWearable(t.tval), "Wear or wield which item?", "You have nothing to wear or wield.", { inven: true, floor: true, quiver: true })) },
       { o: "t", r: "T", act: () => void openModal(takeOffItem) },
       { o: "I", act: () => void openModal(() => inspectItem()) },
       { o: "d", act: () => void openModal(() => useItem("drop", () => true, "Drop which item?", "You have nothing to drop.")) },
       { o: "f", r: "t", act: () => void openModal(fireCmd) },
-      { o: "u", r: "Z", act: () => void openModal(() => useItem("use-staff", (t) => tvalIsStaff(t.tval), "Use which staff? ", "You have no staves to use.")) },
-      { o: "a", r: "z", act: () => void openModal(() => useItem("aim-wand", (t) => tvalIsWand(t.tval), "Aim which wand? ", "You have no wands to aim.")) },
-      { o: "z", r: "a", act: () => void openModal(() => useItem("zap-rod", (t) => tvalIsRod(t.tval), "Zap which rod? ", "You have no rods to zap.")) },
+      { o: "u", r: "Z", act: () => void openModal(() => useItem("use-staff", (t) => tvalIsStaff(t.tval), "Use which staff? ", "You have no staves to use.", { inven: true, floor: true })) },
+      { o: "a", r: "z", act: () => void openModal(() => useItem("aim-wand", (t) => tvalIsWand(t.tval), "Aim which wand? ", "You have no wands to aim.", { inven: true, floor: true })) },
+      { o: "z", r: "a", act: () => void openModal(() => useItem("zap-rod", (t) => tvalIsRod(t.tval), "Zap which rod? ", "You have no rods to zap.", { inven: true, floor: true })) },
       { o: "A", act: () => void openModal(activateItem) },
-      { o: "E", act: () => void openModal(() => useItem("eat", (t) => tvalIsEdible(t.tval), "Eat which food? ", "You have no food to eat.")) },
-      { o: "q", act: () => void openModal(() => useItem("quaff", (t) => tvalIsPotion(t.tval), "Quaff which potion? ", "You have no potions from which to quaff.")) },
-      { o: "r", act: () => void openModal(() => useItem("read", (t) => tvalIsScroll(t.tval), "Read which scroll? ", "You have no scrolls to read.")) },
+      { o: "E", act: () => void openModal(() => useItem("eat", (t) => tvalIsEdible(t.tval), "Eat which food? ", "You have no food to eat.", { inven: true, floor: true })) },
+      { o: "q", act: () => void openModal(() => useItem("quaff", (t) => tvalIsPotion(t.tval), "Quaff which potion? ", "You have no potions from which to quaff.", { inven: true, floor: true })) },
+      { o: "r", act: () => void openModal(() => useItem("read", (t) => tvalIsScroll(t.tval), "Read which scroll? ", "You have no scrolls to read.", { inven: true, floor: true })) },
       { o: "F", act: () => void openModal(refuelItem) },
       { o: "U", r: "X", act: () => void openModal(useGenericCmd) },
       // General actions (cmd_action, ui-game.c:141-153).

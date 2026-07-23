@@ -616,16 +616,32 @@ export function installCaveCommands(
   const bumpOpen =
     (prior: ReturnType<typeof registry.get>) =>
     (state: GameState, cmd: PlayerCommand): number => {
-      const at = commandGrid(state, cmd);
-      if (
-        at &&
-        state.chunk.isClosedDoor(at.grid) &&
-        !squareMonster(state, at.grid)
-      ) {
-        openAux(state, at.grid, env);
+      /* move_player confusion (cmd-cave.c L1299-1302): apply it once, up front,
+       * so the bump-open branch and the delegated step both use the redirected
+       * direction and player_confuse_dir draws the RNG exactly once. The
+       * delegated action is told confusion was already applied (confusedApplied)
+       * so it does not re-roll. */
+      let dir = cmd.dir;
+      let confused = false;
+      if (dir !== undefined && dir >= 1 && dir <= 9) {
+        const rolled = playerConfuseDir(state, dir);
+        confused = rolled !== dir;
+        dir = rolled;
+      }
+      const cmd2: PlayerCommand = { ...cmd, confusedApplied: true };
+      if (dir !== undefined) cmd2.dir = dir;
+      const grid =
+        dir !== undefined && dir >= 1 && dir <= 9 && dir !== 5
+          ? locSum(state.actor.grid, DDGRID[dir] as Loc)
+          : null;
+      if (grid && state.chunk.isClosedDoor(grid) && !squareMonster(state, grid)) {
+        openAux(state, grid, env);
         return state.z.moveEnergy;
       }
-      return prior ? prior(state, cmd) : 0;
+      const used = prior ? prior(state, cmd2) : 0;
+      /* A confused redirect that dead-ends (bump / edge) still spends a full
+       * turn; walkAction returns 0 in that case since confusedApplied is set. */
+      return confused && used === 0 ? state.z.moveEnergy : used;
     };
   const priorWalk = registry.get("walk");
   if (priorWalk) registry.register("walk", bumpOpen(priorWalk));
