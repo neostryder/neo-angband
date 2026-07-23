@@ -23,6 +23,7 @@
  * from the tileset implementation (tiles.ts).
  */
 import { UI_BG } from "./ui-colors";
+import { FONT_8X12, type BitmapFontData } from "./font-8x12";
 
 export interface TileDraw {
   draw(
@@ -54,8 +55,36 @@ export interface ColoredCell {
   bg?: string;
 }
 
+// Fallback vector font (FONT-1): the terminal blits the original Angband
+// 8x12 bitmap glyphs (font-8x12.ts, from 8X12x.FON) for code points 0-255, the
+// faithful default. This stack is used only for glyphs the bitmap font lacks
+// (e.g. any code point >= 256 a mod might print) and while measuring is needed.
 const FONT_STACK =
   '"Cascadia Mono", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace';
+
+/** Parse a CSS colour (#rgb, #rrggbb, or rgb(r,g,b)) to [r,g,b], or null. */
+function parseRgb(css: string): [number, number, number] | null {
+  if (css.startsWith("#")) {
+    const hex = css.slice(1);
+    if (hex.length === 3) {
+      const r = parseInt(hex[0]! + hex[0]!, 16);
+      const g = parseInt(hex[1]! + hex[1]!, 16);
+      const b = parseInt(hex[2]! + hex[2]!, 16);
+      return [r, g, b];
+    }
+    if (hex.length === 6) {
+      return [
+        parseInt(hex.slice(0, 2), 16),
+        parseInt(hex.slice(2, 4), 16),
+        parseInt(hex.slice(4, 6), 16),
+      ];
+    }
+    return null;
+  }
+  const m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/u.exec(css);
+  if (m) return [Number(m[1]), Number(m[2]), Number(m[3])];
+  return null;
+}
 
 /** The fixed main-term dimensions (ui-term.c main term). */
 const FIXED_COLS = 80;
@@ -76,6 +105,19 @@ export class GlyphTerm {
   private offsetX = 0;
   private offsetY = 0;
   private grid: (Glyph | null)[][] = [];
+  /**
+   * The active bitmap font (FONT-1). Non-null (the default FONT_8X12) means the
+   * terminal blits the original Angband glyphs; null falls back to FONT_STACK
+   * fillText everywhere (a mod / test escape hatch).
+   */
+  private font: BitmapFontData | null = FONT_8X12;
+  /**
+   * Tinted native-resolution glyph cache, keyed "code:fg". Each entry is an
+   * (font.w x font.h) canvas with the glyph's set pixels painted in fg and the
+   * rest transparent; paintCell scales it to the cell with smoothing off, so
+   * the cache is independent of cell size and survives resizes.
+   */
+  private glyphCache = new Map<string, HTMLCanvasElement | null>();
   onResize: ((size: TermSize) => void) | null = null;
   /**
    * The active modal's tap handler (see onCellTap). While set, a pointerdown
@@ -98,6 +140,11 @@ export class GlyphTerm {
        * default) the grid is the fixed 80x24 main term, letterboxed.
        */
       reflow: boolean;
+      /**
+       * The bitmap font to blit (FONT-1). Omit for the faithful default
+       * (FONT_8X12); pass null to disable bitmap blitting and use FONT_STACK.
+       */
+      bitmapFont?: BitmapFontData | null;
     } = {
       // The responsive floor, used only in reflow (mobile opt-in) mode.
       minCols: 32,
@@ -109,6 +156,7 @@ export class GlyphTerm {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("canvas 2d context unavailable");
     this.ctx = ctx;
+    if (options.bitmapFont !== undefined) this.font = options.bitmapFont;
     this.fit();
     const refit = () => {
       this.fit();
@@ -174,6 +222,9 @@ export class GlyphTerm {
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Bitmap glyphs (and pixel tiles) scale by nearest-neighbour so they stay
+    // crisp; smoothing would blur the classic font into mush.
+    this.ctx.imageSmoothingEnabled = false;
 
     if (this.options.reflow) {
       this.fitReflow(w, h);
@@ -185,6 +236,9 @@ export class GlyphTerm {
       new Array<Glyph | null>(this.cols).fill(null),
     );
     this.ctx.textBaseline = "top";
+    // Sync the fallback vector font to the current cell (used only for glyphs
+    // the bitmap font lacks). Harmless when a bitmap glyph is blitted instead.
+    this.ctx.font = `${Math.max(8, Math.floor(this.cellH * 0.82))}px ${FONT_STACK}`;
     this.redraw();
   }
 
@@ -195,6 +249,26 @@ export class GlyphTerm {
    * offset to 0 (it clips rather than reflowing - reflow is the mobile opt-in).
    */
   private fitFixed(w: number, h: number): void {
+    // Bitmap font: scale the native 8x12 cell UNIFORMLY (preserving its aspect)
+    // by the largest factor at which the whole 80x24 grid still fits, then
+    // centre it - a letterboxed terminal. A uniform scale keeps the glyphs
+    // undistorted; nearest-neighbour (imageSmoothingEnabled=false) keeps them
+    // crisp even at a fractional factor.
+    if (this.font) {
+      const scale = Math.min(
+        w / (this.font.w * FIXED_COLS),
+        h / (this.font.h * FIXED_ROWS),
+      );
+      const cellW = Math.max(4, Math.floor(this.font.w * scale));
+      const cellH = Math.max(6, Math.floor(this.font.h * scale));
+      this.cellW = cellW;
+      this.cellH = cellH;
+      this.cols = FIXED_COLS;
+      this.rows = FIXED_ROWS;
+      this.offsetX = Math.max(0, Math.floor((w - cellW * FIXED_COLS) / 2));
+      this.offsetY = Math.max(0, Math.floor((h - cellH * FIXED_ROWS) / 2));
+      return;
+    }
     const MIN_FONT = 8;
     const MAX_FONT = 48;
     let fontPx = MAX_FONT;
@@ -223,6 +297,20 @@ export class GlyphTerm {
 
   /** Responsive grid (reflow opt-in): the pre-REND-1 behavior. */
   private fitReflow(w: number, h: number): void {
+    // Bitmap font: integer-scale the native cell, then derive the grid from the
+    // window (honouring the minCols/minRows floor).
+    if (this.font) {
+      const scale = Math.max(1, Math.round(this.options.fontPx / this.font.h));
+      const cellW = this.font.w * scale;
+      const cellH = this.font.h * scale;
+      this.cellW = cellW;
+      this.cellH = cellH;
+      this.cols = Math.max(this.options.minCols, Math.floor(w / cellW));
+      this.rows = Math.max(this.options.minRows, Math.floor(h / cellH));
+      this.offsetX = 0;
+      this.offsetY = 0;
+      return;
+    }
     let fontPx = this.options.fontPx;
     this.ctx.font = `${fontPx}px ${FONT_STACK}`;
     let cellW = Math.ceil(this.ctx.measureText("M").width);
@@ -316,6 +404,53 @@ export class GlyphTerm {
     }
   }
 
+  /**
+   * A native-resolution (font.w x font.h) canvas of glyph `code` tinted `fg`,
+   * cached by "code:fg". Set pixels are painted fg (opaque), the rest stay
+   * transparent, so paintCell can scale it into the cell over the background.
+   * Returns null when there is no bitmap font, the code is out of range, the
+   * glyph is blank, or the colour cannot be parsed (caller falls back to text).
+   */
+  private tintedGlyph(code: number, fg: string): HTMLCanvasElement | null {
+    const font = this.font;
+    if (!font || code < 0 || code >= font.glyphs.length) return null;
+    const key = `${code}:${fg}`;
+    const cached = this.glyphCache.get(key);
+    if (cached !== undefined) return cached;
+    const rows = font.glyphs[code];
+    const rgb = rows ? parseRgb(fg) : null;
+    if (!rows || !rgb || rows.every((r) => r === 0)) {
+      this.glyphCache.set(key, null);
+      return null;
+    }
+    const { w, h } = font;
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const gctx = c.getContext("2d");
+    if (!gctx) {
+      this.glyphCache.set(key, null);
+      return null;
+    }
+    const img = gctx.createImageData(w, h);
+    const [r, gr, b] = rgb;
+    for (let ry = 0; ry < h; ry++) {
+      const mask = rows[ry] ?? 0;
+      for (let rx = 0; rx < w; rx++) {
+        if ((mask >> (w - 1 - rx)) & 1) {
+          const o = (ry * w + rx) * 4;
+          img.data[o] = r;
+          img.data[o + 1] = gr;
+          img.data[o + 2] = b;
+          img.data[o + 3] = 255;
+        }
+      }
+    }
+    gctx.putImageData(img, 0, 0);
+    this.glyphCache.set(key, c);
+    return c;
+  }
+
   private paintCell(x: number, y: number): void {
     const g = this.grid[y]?.[x] ?? null;
     const px = this.offsetX + x * this.cellW;
@@ -329,8 +464,17 @@ export class GlyphTerm {
       return;
     }
     if (g && g.ch !== " ") {
-      this.ctx.fillStyle = g.fg;
-      this.ctx.fillText(g.ch, px, py + Math.floor(this.cellH * 0.1));
+      // FONT-1: blit the original 8x12 bitmap glyph, tinted to fg and scaled to
+      // the cell (nearest-neighbour). Falls back to FONT_STACK fillText for any
+      // glyph the bitmap font lacks (code >= 256, blank, or a rare colour form).
+      const code = g.ch.codePointAt(0) ?? 0;
+      const glyph = this.tintedGlyph(code, g.fg);
+      if (glyph) {
+        this.ctx.drawImage(glyph, px, py, this.cellW, this.cellH);
+      } else {
+        this.ctx.fillStyle = g.fg;
+        this.ctx.fillText(g.ch, px, py + Math.floor(this.cellH * 0.1));
+      }
     }
   }
 

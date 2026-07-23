@@ -1,0 +1,57 @@
+module: packages/web/src/term.ts (GlyphTerm) + packages/web/src/font-8x12.ts
+status: verified
+baseline: 4.2.6
+upstream:
+  - path: src/ui-term.c
+    items:
+      - main term is a fixed 80x24 addressable grid; every screen (status rows
+        22/23, message row 0, right-aligned inventory, store column stops) is
+        drawn against that exact matrix. REND-1: GlyphTerm presents the same
+        fixed 80x24 grid, drawn at the largest cell that fits and CENTRED
+        (letterboxed), exactly as a real terminal letterboxes a fixed character
+        matrix in a larger window. Viewport reflow is an explicit opt-in
+        (`reflow: true`) for a future mobile QoL mod, not the base.
+      - t->sidebar_mode default SIDEBAR_LEFT (ui-term.c L3225); SIDEBAR_LEFT=0 /
+        SIDEBAR_TOP=1 / SIDEBAR_NONE (ui-term.h L246-249); do_cmd_sidebar_mode
+        (ui-options.c L1085, menu entry L2050) cycles all three; persisted in
+        the savefile (save.c L323 / load.c L442). REND-4: the web shell mirrors
+        this faithfully - default Left, all three user-selectable via '=' (o) -
+        so Top/None are NOT removed on desktop (that would DIVERGE from C). The
+        only web addition is a non-destructive reflow (D3): on a genuinely
+        narrow screen (cols < 48) a Left choice renders as Top because the
+        13-column sidebar cannot fit; the stored SIDEBAR_MODE is untouched.
+  - path: src/main-win.c
+    items:
+      - DEFAULT_FONT "8X12x.FON" (L254): the Windows front end blits a fixed
+        8x12 bitmap font as its default. FONT-1: GlyphTerm blits the ORIGINAL
+        glyphs (font-8x12.ts, extracted from reference/lib/fonts/8x12x.fon by
+        packages/web/scripts/extract-fon.py) for code points 0-255, tinted per
+        attr and nearest-neighbour scaled to the cell - the faithful default in
+        place of the previous system-monospace (Cascadia/Consolas) stack. The
+        vector FONT_STACK remains only as a fallback for glyphs the bitmap font
+        lacks (code >= 256). The cell is a UNIFORM scale of the native 8x12 box
+        so glyphs are undistorted; the grid stays letterboxed (REND-1).
+notes: >-
+  Front-end (browser canvas) parity for the terminal itself. The 8x12 .fon is a
+  Windows NE executable wrapping a FNT v2 bitmap; extract-fon.py reads the first
+  RT_FONT resource and emits font-8x12.ts (256 CP437 glyphs, each H row masks,
+  MSB = leftmost pixel). reference/ is untracked, so the extractor is a dev-time
+  regeneration step and font-8x12.ts is what ships.
+licence: >-
+  The .fon glyphs are GPL: reference/docs/copying.rst L48 states the font files
+  are by Leon Marrick and/or Sheldon Simms III and/or Nick McConnell, all of
+  whom agreed to their Angband work being released under the GPL. This is the
+  same copyleft basis the whole port stands on; the author attribution is kept
+  in font-8x12.ts and the extractor per GPL. Surfaced to Aaron for the
+  commercial-safety posture; mods may ship additional/alternative fonts later.
+verified-by:
+  - web/font-8x12.test.ts: pins the 8x12 metrics, the 256-glyph CP437 table,
+    the all-zero blanks (space / a control code), and the exact bitmaps for
+    '@','A','#','.' - fails if the extractor or committed data drifts.
+  - extract-fon.py is idempotent: re-running it over 8x12x.fon reproduces
+    font-8x12.ts byte-for-byte.
+  - Live appearance oracle (real Chrome against the dev server, the visual-
+    parity mechanism): the play screen and the birth/menu screens render the
+    original blocky 8x12 glyphs (not the former smooth monospace), undistorted
+    and letterboxed, with the REND-2 palette intact (cyan header/cursor, white
+    body, yellow hints, green vitals).
