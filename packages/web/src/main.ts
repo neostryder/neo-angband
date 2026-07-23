@@ -210,6 +210,7 @@ import {
   promptText,
   getRepDir,
   getAimDir,
+  getCheck,
   AIM_STAR,
   AIM_CLOSEST,
   showLevelMap,
@@ -1825,15 +1826,14 @@ async function refuelItem(): Promise<void> {
 // pass on every press (a no-op when nothing is currently ignored).
 let ignoreConfigChanged = false;
 
-/** get_check: a plain Yes/No confirmation; ESC counts as "No". */
-async function confirmYesNo(title: string): Promise<boolean> {
-  const idx = await selectFromMenu(
-    term,
-    title,
-    [{ label: "Yes" }, { label: "No" }],
-    "[ a-z to choose, ESC = No ]",
-  );
-  return idx === 0;
+/**
+ * get_check (textui_get_check): an inline row-0 "<prompt>[y/n] " confirmation,
+ * single key, y/Y only; anything else (incl. ESC) is "No". The prompt should
+ * carry its own trailing space where the reference does, since get_check
+ * appends "[y/n] " verbatim.
+ */
+function confirmYesNo(title: string): Promise<boolean> {
+  return getCheck(term, title);
 }
 
 /**
@@ -1851,7 +1851,7 @@ async function applyIgnoreDrop(): Promise<void> {
     if (!obj) continue;
     if (target.equipped) {
       const name = objectName(state, obj);
-      const yes = await confirmYesNo(`Really take off and drop ${name}?`);
+      const yes = await confirmYesNo(`Really take off and drop ${name}? `);
       if (!yes) {
         obj.note = obj.note ? `${obj.note}!d` : "!d";
         continue;
@@ -3053,7 +3053,7 @@ function quiverLines(): ScreenLine[] {
 async function retireCmd(): Promise<void> {
   const player = state.actor.player;
   if (player.totalWinner) {
-    if (!(await confirmYesNo("Do you want to retire?"))) return;
+    if (!(await confirmYesNo("Do you want to retire? "))) return;
   } else {
     if (!(await confirmYesNo("Do you really want to retire?"))) return;
     // Special verification: type the '@' sign (ui-command.c:178-182).

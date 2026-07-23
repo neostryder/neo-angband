@@ -165,7 +165,7 @@ describe("runWizardToggle (15.1 / cmd-misc.c L37-68)", () => {
     // The two "first time" messages were pushed before the confirm.
     expect(said).toContain(WIZARD_ENTRY_MSG_1);
     expect(said).toContain(WIZARD_ENTRY_MSG_2);
-    press(win, "a"); // select "Yes"
+    press(win, "y"); // get_check: confirm Yes
     const next = await done;
     expect(next).toBe(true);
     expect(player.noscore & NOSCORE.WIZARD).toBe(NOSCORE.WIZARD);
@@ -180,7 +180,7 @@ describe("runWizardToggle (15.1 / cmd-misc.c L37-68)", () => {
     const { ctx, said, player } = makeCtx(win, 0);
     const done = runWizardToggle(ctx, false);
     await tick();
-    press(win, "b"); // select "No"
+    press(win, "n"); // get_check: anything but y/Y is "No"
     const next = await done;
     expect(next).toBe(false);
     expect(player.noscore).toBe(0);
@@ -214,7 +214,7 @@ describe("runWizardDebugMenu debug gate (15.2 / player-util.c L1296)", () => {
     await tick();
     expect(said).toContain(DEBUG_CONFIRM_MSG_1);
     expect(said).toContain(DEBUG_CONFIRM_MSG_2);
-    press(win, "b"); // decline the debug confirm -> menu never opens
+    press(win, "n"); // decline the debug confirm -> menu never opens
     await done;
     expect(player.noscore & NOSCORE.DEBUG).toBe(0);
   });

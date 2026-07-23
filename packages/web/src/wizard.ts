@@ -78,7 +78,7 @@ import type {
 } from "@neo-angband/core";
 import { gearGet } from "@neo-angband/core";
 import { GlyphTerm } from "./term";
-import { selectFromMenu, promptNumber, promptText, showTextScreen } from "./overlay";
+import { selectFromMenu, promptNumber, promptText, showTextScreen, getCheck } from "./overlay";
 import type { MenuItem, ScreenLine } from "./overlay";
 import { packMenu } from "./screens";
 
@@ -176,15 +176,9 @@ export const DEBUG_CONFIRM_MSG_2 =
   "Your machine may crash, and your savefile may become corrupted!";
 export const DEBUG_CONFIRM = "Are you sure you want to use the debug commands? ";
 
-/** get_check: a plain Yes/No confirmation; ESC counts as "No" (see main.ts). */
-async function confirmYesNo(term: GlyphTerm, title: string): Promise<boolean> {
-  const idx = await selectFromMenu(
-    term,
-    title,
-    [{ label: "Yes" }, { label: "No" }],
-    "[ a-z to choose, ESC = No ]",
-  );
-  return idx === 0;
+/** get_check (textui_get_check): inline row-0 "<prompt>[y/n] ", y/Y only. */
+function confirmYesNo(term: GlyphTerm, title: string): Promise<boolean> {
+  return getCheck(term, title);
 }
 
 /* ------------------------------------------------------------------ *
