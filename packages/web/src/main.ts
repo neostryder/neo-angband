@@ -4592,7 +4592,11 @@ async function runLocate(): Promise<void> {
       vp.mapCols,
       vp.mapRows,
     );
-    term.print(vp.mapOriginX, 0, banner.slice(0, vp.mapCols - 1), UI_GOLD);
+    // do_cmd_locate -> get_com_ex (ui-input.c): the sector banner is a row-0
+    // command prompt, drawn full-width from col 0 in white (prt), not offset by
+    // the sidebar (REND-5) nor gold.
+    const cols = term.size().cols;
+    term.print(0, 0, banner.slice(0, cols - 1), UI_TEXT);
   };
   const panDir = (dir: number): void => {
     const vp = viewport();
@@ -4711,13 +4715,15 @@ async function pumpMessages(preLen: number): Promise<void> {
     return;
   }
   await openModal(async () => {
-    const { mapOriginX } = viewport();
     for (let i = 0; i < pages.length; i++) {
       const page = pages[i] ?? "";
       message = page;
       render();
       if (i < pages.length - 1) {
-        term.print(mapOriginX + page.length + 1, 0, "-more-", MORE_COLOR);
+        // msg_flush(message_column + split + 1) (ui-input.c L575): the -more-
+        // prompt sits one column after the message text, which now starts at
+        // col 0 (REND-5), so no sidebar offset.
+        term.print(page.length + 1, 0, "-more-", MORE_COLOR);
         await waitAnyKey();
       }
     }
