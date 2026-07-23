@@ -644,6 +644,10 @@ export async function runStore(
       return;
     }
     if (isHome) storeSay(`You drop ${name}.`);
+    // do_cmd_sell (store.c L1966-1969): under birth_no_selling the shop pays
+    // nothing and only identifies the item, so it reports "You had ..." rather
+    // than a zero-gold sale.
+    else if (noSelling) storeSay(`You had ${name}.`);
     else storeSay(`You sold ${name} for ${result.price} gold.`);
     refreshStock();
   };

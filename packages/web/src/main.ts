@@ -5044,10 +5044,19 @@ window.addEventListener("keydown", (ev) => {
     );
     return;
   }
-  // New character (N): allowed even after death, so a fallen hero rolls a new
-  // character into the same save slot (faithful to the original's death -> new
-  // character flow). Confirm only while alive, since death already ends the run.
-  if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key === "N") {
+  // New character (N): a web affordance in the ORIGINAL keyset, where N is
+  // otherwise unbound. In the ROGUELIKE keyset N is run-SE (pref.prf:327-328,
+  // keymap dir 3), so it must fall through to resolveKey there instead of
+  // starting a new character. Allowed even after death, so a fallen hero rolls
+  // a new character into the same save slot (faithful to the death -> new
+  // character flow).
+  if (
+    !ev.ctrlKey &&
+    !ev.altKey &&
+    !ev.metaKey &&
+    ev.key === "N" &&
+    !(state.options?.get("rogue_like_commands") ?? false)
+  ) {
     // New character. With the roster this is non-destructive: the current
     // character is flushed to its own slot first, so it stays playable via the
     // select screen; no "you will lose your character" prompt is needed.
