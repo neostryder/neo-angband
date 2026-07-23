@@ -512,9 +512,12 @@ function bootGame(): ReturnType<typeof startGame> {
       try {
         const decoded = decodeSavedGame(b64ToBytes(stored));
         if (decoded.save) {
+          // Faithful: a clean resume shows no "welcome" line (the original just
+          // restores the game). Only a failed integrity check - a web-storage
+          // failure mode with no C analog - surfaces a warning.
           loadedNote = decoded.verified
-            ? "Welcome back. Your game was restored."
-            : "Welcome back. (WARNING: save integrity check failed.)";
+            ? ""
+            : "WARNING: save integrity check failed.";
           resumedActive = true;
           // present = core + every enabled CONTENT mod's namespace (pack.ts),
           // so loadGame reconciles the save's mod-lifecycle blocks correctly:
@@ -819,9 +822,14 @@ const sidebarModeMenu: SidebarModeMenu = {
   },
 };
 
-let message =
-  loadedNote ||
-  `Welcome. Move (numpad/arrows/tap); 'g' get, '>' descend, 'i' inventory, 'e' equip, 'C' character, 'S' save, 'N' new, 'V' scores. (seed ${seed})`;
+// Faithful: a freshly-born character enters town with a BLANK message line.
+// player-birth.c (L1240-1249) clears the message buffer and pushes a five-line
+// birth divider ending in " ", so nothing is shown on the top line at start;
+// there is no tutorial/welcome hint in the original. loadedNote is empty on a
+// clean new game or a clean resume, and carries only a web-only load-failure
+// warning (corrupt/undecodable save) - a situation with no C analog - so that
+// the player is told when their browser-stored save could not be trusted.
+let message = loadedNote;
 let dead = false;
 
 // The message log: every message the engine emits this session, for the top
@@ -853,7 +861,8 @@ state.msg = (text: string): void => {
 // buffer so a new character's log opens below a visible divider. In this shell
 // character acceptance IS a genuine new-game boot (bootedNew, the character
 // chosen and not the roster picker). Pushed straight into the log (not via say)
-// so it seeds the Ctrl-P history without overwriting the welcome status line.
+// so it seeds the Ctrl-P history, leaving the top status line blank as in the
+// original (the divider's last entry is a space).
 if (bootedNew && !birthPending && !needsSelect) {
   for (const line of BIRTH_MESSAGE_RECALL_BANNER) msglog.push(line);
 }
@@ -4197,7 +4206,10 @@ function displayDeps() {
 function renderSidebar(rows: number): void {
   const fields = sidebarModel(state, displayDeps());
   const spacerAfter = new Set(["con", "sp"]);
-  let y = 0;
+  // The sidebar starts at row 1 (ui-display.c:866 `for (i = 0, row = 1; ...)`),
+  // leaving row 0 as the full-width message line and aligning the first field
+  // with the map's top row (ROW_MAP = row_top_map[SIDEBAR_LEFT] = 1, ui-term.c).
+  let y = 1;
   for (const f of fields) {
     if (y >= rows) break;
     let x = 0;
@@ -4291,7 +4303,9 @@ function viewport(focus?: Loc): {
   const compact = layout !== "left";
   const mapOriginX = layout === "left" ? SIDEBAR_W : 0;
   const mapTop = layout === "top" ? 2 : 1; // Top adds a vitals row under the msg row
-  const mapCols = cols - mapOriginX;
+  // SCREEN_WID reserves the rightmost column (ui-term.h: (wid - COL_MAP - 1)),
+  // so the visible map is 66 cols in Left mode / 79 in Top/None, matching C.
+  const mapCols = cols - mapOriginX - 1;
   const mapRows = rows - mapTop - 1; // the last row is the status line
   let camX: number, camY: number;
   if (locateCam) {
@@ -4540,7 +4554,7 @@ function render(targeting?: TargetingOverlay): void {
     // The look description takes the message row; the bottom status row
     // becomes the help prompt/text, exactly as target_set_interactive owns
     // both while it runs.
-    term.print(mapOriginX, 0, targeting.desc.slice(0, mapCols - 1), UI_GOLD);
+    term.print(0, 0, targeting.desc.slice(0, cols - 1), UI_GOLD);
     if (targeting.help) {
       const n = targeting.helpLines.length;
       targeting.helpLines.forEach((line, i) => {
@@ -4550,7 +4564,9 @@ function render(targeting?: TargetingOverlay): void {
       term.print(mapOriginX, rows - 1, "Press '?' for help.".slice(0, mapCols - 1), UI_DIM);
     }
   } else {
-    term.print(mapOriginX, 0, message.slice(0, mapCols - 1), UI_TEXT);
+    // The message line owns the full width of row 0 from col 0 (c_prt at 0,0),
+    // above the sidebar (which starts at row 1) - not indented to the map.
+    term.print(0, 0, message.slice(0, cols - 1), UI_TEXT);
     renderStatusLine(mapOriginX, rows - 1, mapCols);
   }
 }
@@ -5745,7 +5761,7 @@ try {
 // block from the production bundle (import.meta.env.DEV is false there).
 if (import.meta.env.DEV) {
   (window as unknown as { __neo?: unknown }).__neo = {
-    resumed: loadedNote.startsWith("Welcome back"),
+    resumed: resumedActive,
     get turn() {
       return state.turn;
     },

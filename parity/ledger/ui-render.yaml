@@ -11,6 +11,18 @@ upstream:
         (letterboxed), exactly as a real terminal letterboxes a fixed character
         matrix in a larger window. Viewport reflow is an explicit opt-in
         (`reflow: true`) for a future mobile QoL mod, not the base.
+      - REND-5 (frame geometry): row 0 is the full-width message line drawn from
+        col 0 (c_prt at 0,0); the left sidebar starts at ROW 1
+        (ui-display.c:866 `for (i = 0, row = 1; ...)`), aligned with the map top
+        ROW_MAP=row_top_map[SIDEBAR_LEFT]=1 (ui-term.c:305). The map reserves the
+        rightmost column (SCREEN_WID = wid - COL_MAP - 1, ui-term.h): 66 map cols
+        in Left mode (13..78), 79 in Top/None. Fixed a shell bug where the
+        sidebar began at row 0 (shifting the whole frame up one row and indenting
+        the message line to col 13); now aligned with C. row_top_map={1,4,1},
+        row_bottom_map={1,0,0}, col_map={13,0,0} for {LEFT,TOP,NONE}. The sidebar
+        field order matches side_handlers[] exactly: race, title, class, level,
+        exp, gold, equippy, str/int/wis/dex/con, [gap], ac, hp, sp, [gaps],
+        health, [gaps], speed, depth.
       - t->sidebar_mode default SIDEBAR_LEFT (ui-term.c L3225); SIDEBAR_LEFT=0 /
         SIDEBAR_TOP=1 / SIDEBAR_NONE (ui-term.h L246-249); do_cmd_sidebar_mode
         (ui-options.c L1085, menu entry L2050) cycles all three; persisted in
