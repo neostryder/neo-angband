@@ -5,12 +5,16 @@ import {
   itemSelect,
   showTextScreen,
   promptNumber,
+  getRepDir,
+  getAimDir,
+  AIM_STAR,
+  AIM_CLOSEST,
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ScreenLine } from "./overlay";
 import type { GlyphTerm } from "./term";
 import type { Overview } from "./mapview";
 
-// showTextScreen/selectFromMenu/promptDirection already exercise this repo's
+// showTextScreen/selectFromMenu/getRepDir already exercise this repo's
 // keydown-listener modal pattern end to end (see help.test.ts); showLevelMap
 // (do_cmd_view_map, 'M') is new and gets the same treatment here, plus the
 // touch-dismiss path (a synthetic pointerdown) it adds on top of that pattern.
@@ -712,5 +716,157 @@ describe("itemSelect (get_item picker: menu_header + source switching)", () => {
     expect(term.snapshot()[0] ?? "").toContain("(Equip: a-a,");
     press(win, "a");
     expect(await done).toEqual({ source: 1, index: 0 });
+  });
+});
+
+describe("getRepDir (textui_get_rep_dir)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("draws the single shared prompt at row 0 (prt, white)", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    void getRepDir(term);
+    expect(term.snapshot()[0] ?? "").toBe("Direction or <click> (Escape to cancel)?");
+  });
+
+  it("resolves a keypad digit and clears the prompt row", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = getRepDir(term);
+    press(win, "8");
+    expect(await done).toBe(8);
+    expect(term.snapshot()[0] ?? "").toBe(""); // prt("", 0, 0)
+  });
+
+  it("maps arrow keys to keypad directions", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = getRepDir(term);
+    press(win, "ArrowLeft");
+    expect(await done).toBe(4);
+  });
+
+  it("Escape cancels (null)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = getRepDir(term);
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+
+  it("keypad 5 is escape when allow5 is false", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = getRepDir(term); // allow5 defaults false
+    press(win, "5");
+    expect(await done).toBeNull();
+  });
+
+  it("keypad 5 resolves to 5 when allow5 is true", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = getRepDir(term, true);
+    press(win, "5");
+    expect(await done).toBe(5);
+  });
+
+  it("ignores '*' (aiming is a separate function)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    let resolved = false;
+    const done = getRepDir(term).then((v) => { resolved = true; return v; });
+    press(win, "*"); // bell(): ignored
+    await tick();
+    expect(resolved).toBe(false);
+    press(win, "2");
+    expect(await done).toBe(2);
+  });
+});
+
+describe("getAimDir (textui_get_aim_dir)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("shows the no-target prompt variant when no target is set", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80);
+    void getAimDir(term, false);
+    expect(term.snapshot()[0] ?? "").toBe(
+      "Direction ('*' or <click> to target, \"'\" for closest, Escape to cancel)?",
+    );
+  });
+
+  it("shows the have-target prompt variant when a target is set", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80);
+    void getAimDir(term, true);
+    expect(term.snapshot()[0] ?? "").toBe(
+      "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)?",
+    );
+  });
+
+  it("'*' resolves to AIM_STAR", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80);
+    const done = getAimDir(term, false);
+    press(win, "*");
+    expect(await done).toBe(AIM_STAR);
+  });
+
+  it("\"'\" resolves to AIM_CLOSEST", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80);
+    const done = getAimDir(term, false);
+    press(win, "'");
+    expect(await done).toBe(AIM_CLOSEST);
+  });
+
+  it("5/t/0/. use the current target (dir 5) only when a target is set", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80);
+    const done = getAimDir(term, true);
+    press(win, "t");
+    expect(await done).toBe(5);
+  });
+
+  it("5/t/0/. bell (ignored) when no target is set", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80);
+    let resolved = false;
+    const done = getAimDir(term, false).then((v) => { resolved = true; return v; });
+    press(win, "5");
+    press(win, "t");
+    await tick();
+    expect(resolved).toBe(false);
+    press(win, "6");
+    expect(await done).toBe(6);
+  });
+
+  it("resolves a compass direction and Escape cancels", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80);
+    const d1 = getAimDir(term, false);
+    press(win, "9");
+    expect(await d1).toBe(9);
+    const d2 = getAimDir(term, false);
+    press(win, "Escape");
+    expect(await d2).toBeNull();
   });
 });
