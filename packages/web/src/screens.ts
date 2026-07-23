@@ -18,6 +18,7 @@ import {
   statTable,
   colorToCss,
   colorCharToAttr,
+  colorTextToAttr,
   ODESC,
   tvalIsBook,
   playerObjectToBook,
@@ -200,9 +201,27 @@ export function wrapRuns(tb: Textblock, cols: number): ScreenLine[] {
   return out;
 }
 
-/** The display CSS color for an object (its kind's flavour/base attr). */
-export function objectColor(obj: GameObject): string {
-  return colorToCss(colorCharToAttr(obj.kind.dAttr));
+/**
+ * The display CSS colour for an object row in a list (inventory / equipment /
+ * quiver / floor / store). Faithful to show_obj (ui-object.c L178-188) and
+ * store_display_entry (ui-store.c L294): the row is coloured by the object
+ * BASE's attr (kind->base->attr), NOT the kind d_attr or the flavour (those
+ * drive the map glyph, a separate path). base.attr is a colour NAME
+ * ("light umber") from object_base.txt, so it resolves by name.
+ *
+ * show_obj additionally slates an unreadable spellbook; store_display_entry
+ * does not. That rule is therefore applied only when a caller passes `state`
+ * (the inventory lists do; the store calls without it).
+ */
+export function objectColor(obj: GameObject, state?: GameState): string {
+  if (
+    state &&
+    tvalIsBook(obj.tval) &&
+    !playerObjectToBook(state.actor.player, obj)
+  ) {
+    return colorToCss(colorTextToAttr("slate"));
+  }
+  return colorToCss(colorTextToAttr(obj.kind.base.attr));
 }
 
 /** knowledge-gated full name of a gear object, e.g. "a Potion of Cure Light Wounds". */
@@ -231,7 +250,7 @@ export function packMenu(
     if (!obj) continue;
     if (filter && !filter(obj)) continue;
     /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292). */
-    items.push({ label: objectName(state, obj), color: objectColor(obj), tag: objLetter(items.length) });
+    items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length) });
     handles.push(handle);
   }
   return { items, handles };
@@ -316,7 +335,7 @@ export function deviceMenu(
     const name = objectName(state, obj);
     const label = fail ? `${name.padEnd(40).slice(0, 40)} ${fail}` : name;
     /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292). */
-    items.push({ label, color: objectColor(obj), tag: objLetter(items.length) });
+    items.push({ label, color: objectColor(obj, state), tag: objLetter(items.length) });
     handles.push(handle);
   }
   return { items, handles };
@@ -332,7 +351,7 @@ export function inventoryLines(state: GameState): ScreenLine[] {
     lines.push({
       /* all_letters_nohjkl display letter (ui-object.c L292). */
       text: `${objLetter(i)}) ${withWeight(state, obj)}`,
-      color: objectColor(obj),
+      color: objectColor(obj, state),
     });
     i++;
   }
@@ -355,7 +374,7 @@ export function equipmentLines(state: GameState): ScreenLine[] {
       lines.push({
         /* all_letters_nohjkl display letter for the slot index (obj-gear.c L446). */
         text: `${objLetter(i)}) ${label} ${withWeight(state, obj)}`,
-        color: objectColor(obj),
+        color: objectColor(obj, state),
       });
     } else {
       lines.push({ text: `   ${label} (nothing)`, color: DIM });
@@ -379,7 +398,7 @@ export function equipmentMenu(state: GameState): { items: MenuItem[]; handles: n
       /* equip_mention padded to 14 (ui-object.c L304-318); slot-index letter,
        * skipping h,j,k,l, matching gear_to_label (obj-gear.c L446). */
       label: `${(slot ? equipMention(slot) : "").padEnd(14).slice(0, 14)} ${objectName(state, obj)}`,
-      color: objectColor(obj),
+      color: objectColor(obj, state),
       tag: objLetter(i),
     });
     handles.push(handle);
@@ -555,7 +574,7 @@ export function magicBooks(state: GameState): { items: MenuItem[]; handles: numb
     if (!obj || !tvalIsBook(obj.tval)) continue;
     if (!playerObjectToBook(player, obj)) continue;
     /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292). */
-    items.push({ label: objectName(state, obj), color: objectColor(obj), tag: objLetter(items.length) });
+    items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length) });
     handles.push(handle);
   }
   return { items, handles };
