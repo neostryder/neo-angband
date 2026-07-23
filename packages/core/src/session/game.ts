@@ -1691,6 +1691,14 @@ function makeChangeLevel(
   let inArena = opts.inArena ?? false;
 
   return (depth: number): void => {
+    /* Consume the pending arrival-stair request (create_up_stair /
+     * create_down_stair) exactly once, on every path - the equivalent of
+     * player_place clearing the flags (player-util.c:1585-1586). Only a fresh
+     * generation below acts on it; arena/recall/persist-restore paths clear it
+     * without laying a stair, exactly as upstream leaves the flags unset. */
+    const pendingStair = state.arrivalStair ?? null;
+    delete state.arrivalStair;
+
     /* --- Arena entry: EF_SINGLE_COMBAT fired the change. --- */
     if (state.arenaLevel && !inArena) {
       const mon = state.healthWho;
@@ -1934,6 +1942,14 @@ function makeChangeLevel(
          * unconditionally; only read under persist. */
         hasAdjacentAbove: persistCache?.has(depth - 1) ?? false,
         hasAdjacentBelow: persistCache?.has(depth + 1) ?? false,
+        /* birth_connect_stairs (gen-util.c:427-433): lay the arrival stair the
+         * stair command requested ("up" after a descent, "down" after an
+         * ascent), unless the option is off. Recall/first-spawn leave
+         * pendingStair null, so no arrival stair is laid. */
+        ...(pendingStair &&
+        (state.options?.get("birth_connect_stairs") ?? true)
+          ? { createStair: pendingStair }
+          : {}),
       },
     );
     /* chunk->join (generate.c L1203-1214): remember this level's stair

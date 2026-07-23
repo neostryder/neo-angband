@@ -238,6 +238,13 @@ export interface CaveBuildContext {
    * dungeon levels; defaults to daytime (turn 0) when omitted.
    */
   daytime?: boolean;
+  /**
+   * birth_connect_stairs arrival stair (gen-util.c:427-433): the builder passes
+   * this to new_player_spot so the player lands on an up stair after a descent
+   * ("up") or a down stair after an ascent ("down"). null (recall / arena /
+   * first spawn) lays no stair.
+   */
+  createStair?: "down" | "up" | null;
 }
 
 export interface CaveBuildResult {
@@ -1070,7 +1077,7 @@ export const classicGen: CaveBuilder = (ctx) => {
   allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth, 0);
   allocObjects(g, SET_CORR, TYP_TRAP, Math.trunc(rng.randint1(k) / 5), c.depth, 0);
 
-  const pspot = newPlayerSpot(g);
+  const pspot = newPlayerSpot(g, ctx.createStair ?? null);
   if (!pspot) return { gen: null, error: "could not place player" };
   g.playerSpot = pspot;
 
@@ -1171,7 +1178,7 @@ function modifiedStyleGen(ctx: CaveBuildContext, restrict: string | null): CaveB
   allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth, 0);
   allocObjects(g, SET_CORR, TYP_TRAP, Math.trunc(rng.randint1(k) / 5), c.depth, 0);
 
-  const pspot = newPlayerSpot(g);
+  const pspot = newPlayerSpot(g, ctx.createStair ?? null);
   if (!pspot) return { gen: null, error: "could not place player" };
   g.playerSpot = pspot;
 
@@ -1340,7 +1347,7 @@ export const labyrinthGen: CaveBuilder = (ctx) => {
   const c = g.c;
 
   /* Determine the character location. */
-  const pspot = newPlayerSpot(g);
+  const pspot = newPlayerSpot(g, ctx.createStair ?? null);
   if (!pspot) return { gen: null, error: "could not place player" };
   g.playerSpot = pspot;
 
@@ -1587,7 +1594,7 @@ export const cavernGen: CaveBuilder = (ctx) => {
   allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth, 0);
 
   /* Determine the character location. */
-  const pspot = newPlayerSpot(g);
+  const pspot = newPlayerSpot(g, ctx.createStair ?? null);
   if (!pspot) return { gen: null, error: "could not place player" };
   g.playerSpot = pspot;
 
@@ -1648,7 +1655,7 @@ export const lairGen: CaveBuilder = (ctx) => {
   const k = Math.trunc(Math.max(Math.min(Math.trunc(depth / 3), 10), 2) / 2);
 
   /* Put the character in the normal half. */
-  const pspot = newPlayerSpot(normal);
+  const pspot = newPlayerSpot(normal, ctx.createStair ?? null);
   if (!pspot) return { gen: null, error: "could not place player" };
   normal.playerSpot = pspot;
 
@@ -1778,12 +1785,12 @@ export const gauntletGen: CaveBuilder = (ctx) => {
 
   const k = Math.trunc(Math.max(Math.min(Math.trunc(depth / 3), 10), 2) / 2);
 
-  /* Put the character in the arrival cavern. The port does not yet model
-   * p->upkeep->create_down_stair (set only during stair transitions); a
-   * freshly generated level arrives from the up-stairs (left) side. */
-  const createDownStair = false;
+  /* Put the character in the arrival cavern (gen-cave.c:3857): the right cavern
+   * (down stairs) when arriving via create_down_stair (an ascent), else the
+   * left (up stairs). new_player_spot then lays the matching arrival stair. */
+  const createDownStair = ctx.createStair === "down";
   const arrival = createDownStair ? right : left;
-  const pspot = newPlayerSpot(arrival);
+  const pspot = newPlayerSpot(arrival, ctx.createStair ?? null);
   if (!pspot) return { gen: null, error: "could not place player" };
   arrival.playerSpot = pspot;
 
@@ -2032,7 +2039,7 @@ export const hardCentreGen: CaveBuilder = (ctx) => {
   allocObjects(g, SET_CORR, TYP_TRAP, rng.randint1(k), c.depth, 0);
 
   /* Determine the character location. */
-  const pspot = newPlayerSpot(g);
+  const pspot = newPlayerSpot(g, ctx.createStair ?? null);
   if (!pspot) return { gen: null, error: "could not place player" };
   g.playerSpot = pspot;
 

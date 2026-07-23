@@ -41,6 +41,7 @@
 
 import { selectFromMenu, promptText, menuNav } from "./overlay";
 import type { MenuItem, ScreenLine } from "./overlay";
+import { runBirthOptionsEditor } from "./options";
 import { characterSheetLines, statHeaderLine, statRowLine } from "./screens";
 import type { GlyphTerm } from "./term";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
@@ -101,6 +102,10 @@ export interface BirthChoice {
    * the history-edit stage ran (gated on BirthOpts.historyFor). Applied via
    * generatePlayer's `historyOverride`; see the WIRING-NEEDED note. */
   history?: string;
+  /** birth_* options set via '=' during birth (do_cmd_options_birth). Applied
+   * as startGame optionOverrides so they are frozen into the new character at
+   * construction. Absent/empty means every birth option keeps its default. */
+  birthOptions?: Record<string, boolean>;
 }
 
 interface Named {
@@ -155,6 +160,9 @@ export interface BirthOpts {
    * compact stat-only detail; the menus and control flow are unaffected.
    */
   deps?: BirthDeps;
+  /** birth_* options carried over from the previous character, used to seed the
+   * '=' birth-options editor so a New Game defaults to the last choices. */
+  birthOptions?: Record<string, boolean>;
 }
 
 /* setup_menus' stage hints (ui-birth.c L565/578/586), verbatim. */
@@ -807,7 +815,10 @@ type BirthMenuResult =
   | { kind: "pick"; index: number }
   | { kind: "random" }
   | { kind: "finish" }
-  | { kind: "back" };
+  | { kind: "back" }
+  /** '=' opened the birth-options screen (do_cmd_options_birth, ui-birth.c:848);
+   * the caller re-shows the same stage afterwards (next = current). */
+  | { kind: "options" };
 
 /**
  * The faithful multi-column birth menu (ui-birth.c menu_question +
@@ -927,8 +938,13 @@ function birthMenu(
           if (active.allowFinish) finish({ kind: "finish" });
           return;
         case "=":
+          // '=' opens the birth-options screen (ui-birth.c:848-850,
+          // do_cmd_options_birth); the runBirth loop shows it and re-enters
+          // this same stage (next = current).
+          finish({ kind: "options" });
+          return;
         case "?":
-          // Recognized keys (birth options / help): no-ops in this port.
+          // Help is not wired into birth in this port: a recognized no-op.
           return;
         default:
           break;
@@ -1132,6 +1148,27 @@ export async function runBirth(
   const advance = (next: Stage): void => {
     backStack.push(stage);
     stage = next;
+  };
+
+  // birth_* options chosen via '=' during birth (do_cmd_options_birth). Applied
+  // as startGame optionOverrides after acceptance. Empty => every default kept.
+  const birthOptions: Record<string, boolean> = { ...(opts.birthOptions ?? {}) };
+  // Wrap birthMenu so '=' opens the editable birth-options screen and then
+  // re-shows the SAME stage (ui-birth.c:848-850, next = current), for every
+  // menu_question stage without threading the option state into each.
+  const askMenu = async (
+    hint: string,
+    frozen: readonly FrozenColumn[],
+    active: ActiveColumn,
+  ): Promise<BirthMenuResult> => {
+    for (;;) {
+      const res = await birthMenu(term, hint, frozen, active);
+      if (res.kind === "options") {
+        await runBirthOptionsEditor(term, birthOptions);
+        continue;
+      }
+      return res;
+    }
   };
 
   // Cursor memory per stage, so stepping back re-enters at the prior row.
@@ -1374,7 +1411,7 @@ export async function runBirth(
 
       case "race": {
         // The race menu: active column at RACE_COL, race_help aux at RACE_AUX_COL.
-        const res = await birthMenu(term, RACE_HINT, [], {
+        const res = await askMenu(RACE_HINT, [], {
           col: RACE_COL,
           auxCol: RACE_AUX_COL,
           rows: raceRows,
@@ -1408,8 +1445,7 @@ export async function runBirth(
       case "class": {
         // The class menu: the chosen race column stays at RACE_COL, the class
         // column is active at CLASS_COL, class_help aux at CLASS_AUX_COL.
-        const res = await birthMenu(
-          term,
+        const res = await askMenu(
           CLASS_HINT,
           [{ col: RACE_COL, rows: raceRows, selected: raceIdx }],
           {
@@ -1449,8 +1485,7 @@ export async function runBirth(
           { tag: ALL_LETTERS_NOHJKL[0] ?? "a", name: "Point-based" },
           { tag: ALL_LETTERS_NOHJKL[1] ?? "b", name: "Standard roller" },
         ];
-        const res = await birthMenu(
-          term,
+        const res = await askMenu(
           ROLLER_HINT,
           [
             { col: RACE_COL, rows: raceRows, selected: raceIdx },
@@ -1625,6 +1660,9 @@ export async function runBirth(
             // The edited background (do_cmd_choose_history), when the history
             // stage ran; applied via generatePlayer's historyOverride.
             ...(historyText !== null ? { history: historyText } : {}),
+            // birth_* options set via '=' (do_cmd_options_birth), applied as
+            // startGame optionOverrides. Omitted when none were changed.
+            ...(Object.keys(birthOptions).length > 0 ? { birthOptions } : {}),
           };
         }
         if (!goBack()) return null;

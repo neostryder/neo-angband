@@ -20,10 +20,13 @@
  * ('f' fire ammo, 'v' throw), inventory (i), equipment (e), the character sheet
  * (C), the message history (Ctrl-P), pickup ('g'), stairs with real level
  * regeneration ('>'/'<'), and JSON save/continue.
- * The game AUTO-RESUMES the stored save on load (a plain refresh continues where
- * you left off); it autosaves during play, on level change, and when the tab is
- * hidden/closed. 'S' saves on demand; 'N' rolls a new character (allowed after
- * death, reusing the same save slot - faithful to the original's death flow).
+ * A genuine launch (fresh visit, refresh, reopened tab) always shows the title
+ * then the character-select screen - it never drops straight into a save, the
+ * web analog of the original's savefile-select menu (anti-scum: a refresh
+ * returns to the title, not the live game). It autosaves during play, on level
+ * change, and when the tab is hidden/closed. 'S' saves on demand; 'N' rolls a
+ * new character (allowed after death, reusing the same save slot - faithful to
+ * the original's death flow).
  *
  * The render surface is responsive: it fills the viewport at any size. The
  * sidebar mode ('=' -> (o), SIDEBAR_MODE) picks Left (the classic status
@@ -75,6 +78,7 @@ import {
   tvalIsRod,
   tvalIsWearable,
   tvalIsAmmo,
+  tvalIsMeleeWeapon,
   tvalIsLight,
   objCanRefill,
   objHasInscrip,
@@ -308,7 +312,7 @@ import {
 } from "./ignore-menu";
 import type { Store } from "@neo-angband/core";
 import { runHelp } from "./help";
-import { runOptionsMenu } from "./options";
+import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
 import { installAutoUpdate } from "./pwa";
 
@@ -334,7 +338,16 @@ const a11y = initA11y(canvas);
 // Seed and depth are overridable via the URL query so a run is shareable and
 // reproducible (unmodded runs are deterministic - PORT_PLAN.md decision 22).
 const params = new URLSearchParams(location.search);
-const seed = Number(params.get("seed")) || 20260708;
+// A genuine new game must draw a FRESH, unpredictable master seed - the port's
+// analog of C's Rand_init() (z-rand.c:131-154 mixes time()+pid once at startup,
+// called from init.c:4543). Without this every new character replayed the exact
+// same dungeon, flavors, and randarts. An explicit ?seed= still overrides, for
+// shareable/reproducible runs and the autoplayer (PORT_PLAN.md decision 22).
+const seedParam = params.get("seed");
+const seed =
+  seedParam !== null && seedParam !== "" && Number.isFinite(Number(seedParam))
+    ? Number(seedParam)
+    : crypto.getRandomValues(new Uint32Array(1))[0] || 1;
 // A new character starts in town (depth 0), faithful to the original, so the
 // shops are the first thing you can visit. Overridable via ?depth= (0 is
 // honoured explicitly rather than falling through to a dungeon default).
@@ -344,10 +357,11 @@ const depth = depthParam !== null && depthParam !== "" ? Number(depthParam) : 0;
 const pack: GamePack = loadGamePack();
 
 // Saves live in localStorage as stamped bytes (decision 16b tamper
-// deterrent), base64-wrapped. The stored game AUTO-RESUMES on load so a plain
-// refresh continues where you left off; `?new=1` (or an explicit `?seed=`, a
-// request for a specific reproducible run) starts fresh, as does the in-game
-// New Game action. Death clears the save (decision 16: death is terminal).
+// deterrent), base64-wrapped. A genuine load shows the title + character select
+// and the player chooses Continue (the web analog of the original's savefile
+// menu); it never silently auto-resumes. Only an internal continuation
+// (resumeSelected's SKIP_TITLE, or the ?agent autoplayer) restores directly.
+// Death clears the save (decision 16: death is terminal).
 const SAVE_KEY = "neo-angband-save";
 // A one-shot flag the New Game action sets before reloading (survives the
 // reload via sessionStorage, then is cleared) so the reboot starts fresh
@@ -392,6 +406,9 @@ interface StoredBirth {
   /** An edited character background (do_cmd_choose_history); replaces the
    * generated get_history text on the born player. */
   history?: string;
+  /** birth_* options set via '=' during birth (do_cmd_options_birth), applied
+   * as startGame optionOverrides so they freeze into the new character. */
+  birthOptions?: Record<string, boolean>;
 }
 function readBirthChoice(): StoredBirth | null {
   try {
@@ -576,6 +593,12 @@ function bootGame(): ReturnType<typeof startGame> {
     // An edited character background (do_cmd_choose_history) overrides the
     // engine-generated get_history text.
     ...(birthChoice?.history ? { history: birthChoice.history } : {}),
+    // birth_* options chosen via '=' during birth (do_cmd_options_birth): applied
+    // as overrides and frozen into the new character's OptionState (game.ts:2115).
+    ...(birthChoice?.birthOptions &&
+    Object.keys(birthChoice.birthOptions).length > 0
+      ? { optionOverrides: birthChoice.birthOptions }
+      : {}),
   });
 }
 
@@ -1147,7 +1170,7 @@ async function runContextMenuPlayerOther(): Promise<void> {
       await openIgnoreSetup();
       break;
     case "options":
-      await runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu, sidebarModeMenu);
+      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu);
       autosave(true);
       break;
     case "help":
@@ -1992,7 +2015,10 @@ async function chooseBook(
     say(emptyMsg);
     return null;
   }
-  if (items.length === 1) return handles[0] ?? null;
+  // No single-book shortcut: upstream get_item (ui-object.c:1494) always renders
+  // the "<Verb> which book?" selection, even for one candidate, so browse/cast/
+  // study never silently jump past the book prompt. The player presses the
+  // book's letter (or ESC) exactly as in the original.
   const idx = await selectFromMenu(term, `${verb} which book?`, items);
   if (idx === null) return null;
   return handles[idx] ?? null;
@@ -2175,19 +2201,45 @@ async function fireCmd(): Promise<void> {
   advance();
 }
 
-/** Throw (v): pick any pack item, aim, and hurl it. */
+/**
+ * Throw (v): do_cmd_throw (player-attack.c:1363). The item picker spans
+ * equipment | quiver | inventory | floor, filtered by obj_can_throw
+ * (obj-util.c:803) - any non-equipped item, or an equipped melee weapon that
+ * can be taken off. Select the item, THEN aim; the core handler takes off a
+ * wielded weapon and pulls a floor item as needed.
+ */
 async function throwCmd(): Promise<void> {
+  const player = state.actor.player;
+  const equipped = new Set<number>(
+    player.equipment.filter((h): h is number => !!h),
+  );
+  // Reverse-map object identity to gear handle so the tester can tell an
+  // equipped weapon from a pack/quiver/floor item (the pack list already holds
+  // quiver items, so USE_QUIVER is covered by the inventory pass).
+  const handleOf = new Map<GameObject, number>();
+  for (const [h, o] of state.gear.store) handleOf.set(o, h);
+  const canThrow = (o: GameObject): boolean => {
+    const h = handleOf.get(o);
+    const isEquipped = h !== undefined && equipped.has(h);
+    // obj_can_throw: not equipped, or an equipped melee weapon that is not stuck
+    // (obj_can_takeoff = !OF_STICKY, obj-util.c:795).
+    if (!isEquipped) return true;
+    return tvalIsMeleeWeapon(o.tval) && !(o.flags?.has(OF.STICKY) ?? false);
+  };
   const ref = await selectItemFrom(
     "Throw which item?",
-    () => true,
-    { inven: true },
+    canThrow,
+    { inven: true, equip: true, floor: true },
     "You have nothing to throw.",
   );
-  if (ref === null || !("handle" in ref)) return;
-  const handle = ref.handle;
+  if (ref === null) return;
   const dir = await aimDir();
   if (dir === null) return;
-  commandBuffer.push({ code: "throw", args: { handle, dir } });
+  if ("handle" in ref) {
+    commandBuffer.push({ code: "throw", args: { handle: ref.handle, dir } });
+  } else {
+    commandBuffer.push({ code: "throw", args: { floor: ref.floor, dir } });
+  }
   advance();
 }
 
@@ -3702,12 +3754,17 @@ async function openGameMenu(): Promise<void> {
       break;
     case "save":
       autosave(true);
-      message = "Game saved. It will resume automatically next time.";
+      message = "Saving game... done.";
       render();
       break;
     case "options":
-      await runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu, sidebarModeMenu);
+      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu);
       autosave(true); // flush any option change to the per-slot save
+      break;
+    case "graphics":
+      // Tile-set selection: upstream picks graphics in the frontend menu bar,
+      // not in '=' (do_cmd_options). The web analog lives here in the game menu.
+      await runTileModePage(term, tileModeMenu);
       break;
     case "mods":
       await openModManager();
@@ -4965,7 +5022,9 @@ function advance(): void {
     game.changeLevel(target);
     state.generateLevel = false;
     autosave(true); // a fresh level is a natural save point
-    message = `You enter a maze of staircases... (depth ${state.chunk.depth})`;
+    // The stair message ("You enter a maze of down/up staircases.") is emitted
+    // by the core descend/ascend command (cmd-cave.c:134/87) into the message
+    // log, so it flows through the -more- pager and Ctrl-P; no shell fabrication.
   }
   autosave(); // throttled: keep the session recoverable during active play
   render();
@@ -5033,7 +5092,7 @@ window.addEventListener("keydown", (ev) => {
     if (ev.key === "s" || ev.key === "S") {
       ev.preventDefault();
       autosave(true);
-      message = "Game saved. It will resume automatically next time.";
+      message = "Saving game... done.";
       render();
       return;
     }
@@ -5184,7 +5243,7 @@ window.addEventListener("keydown", (ev) => {
       { o: "C", act: () => void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())) },
       { o: "~", act: () => void openModal(openKnowledgeMenu) },
       // Utility/assorted (cmd_util, ui-game.c:196-203).
-      { o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu, sidebarModeMenu)).then(() => autosave(true)); } },
+      { o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu)).then(() => autosave(true)); } },
       { o: "Q", act: () => void openModal(retireCmd) },
       { o: ")", act: () => screenDumpCmd() },
       // Hidden commands (cmd_hidden, ui-game.c:211-223).
@@ -5381,7 +5440,7 @@ function installTouchActionBar(): void {
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())); }],
     ["Hist", () => { void openModal(() => showTextScreen(term, "Player history", historyLines(state))); }],
     ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
-    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, tileModeMenu, sidebarModeMenu)).then(() => autosave(true)); }],
+    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu)).then(() => autosave(true)); }],
     ["Help", () => { void openModal(() => runHelp(term)); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     ["Switch", () => { switchCharacter(); }],
@@ -5540,6 +5599,9 @@ async function maybeBirth(): Promise<void> {
         : null,
       deps: birthDeps,
       historyFor,
+      // Seed the '=' birth-options editor with the previous character's choices
+      // so a New Game defaults to them (as upstream keeps the last birth opts).
+      ...(birthChoice?.birthOptions ? { birthOptions: birthChoice.birthOptions } : {}),
     });
     if (!choice) {
       say("Your adventure begins.");

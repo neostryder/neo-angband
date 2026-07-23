@@ -36,7 +36,8 @@ import { monsterIsObvious, monsterIsDestroyed } from "../mon/predicate";
 import { monTakeHit } from "../mon/take-hit";
 import { playerClearTimed } from "../player/timed";
 import { gearGet, gearObjectForUse } from "./gear";
-import { dropNear } from "./floor";
+import { dropNear, floorPile, floorObjectForUse } from "./floor";
+import { invenTakeoff } from "./obj-cmd";
 import { squareMonster, deleteMonster, arenaInterceptDeath } from "./context";
 import type { GameState, PlayerCommand } from "./context";
 import { targetOkay, targetGet, targetSetClosest, TARGET } from "./target";
@@ -279,15 +280,35 @@ export function installRangedCommands(registry: ActionRegistry): void {
     const player = state.actor.player;
     const args = cmd.args ?? {};
 
+    /* do_cmd_throw resolves the missile from equip | quiver | inven | floor
+     * (player-attack.c:1384-1389). A floor index takes USE_FLOOR; otherwise a
+     * gear handle covers pack/quiver/equipment. */
+    const floorIdx = typeof args["floor"] === "number" ? args["floor"] : -1;
     const handle = typeof args["handle"] === "number" ? args["handle"] : -1;
-    const src = handle >= 0 ? gearGet(state.gear, handle) : null;
-    if (!src) {
-      state.msg?.("You have nothing to throw.");
-      return 0;
-    }
-
     const dir = typeof args["dir"] === "number" ? args["dir"] : (cmd.dir ?? 5);
-    const { obj: missile } = gearObjectForUse(state.gear, player, handle, 1);
+
+    let missile: GameObject;
+    if (floorIdx >= 0) {
+      const src = floorPile(state, state.actor.grid)[floorIdx] ?? null;
+      if (!src) {
+        state.msg?.("You have nothing to throw.");
+        return 0;
+      }
+      missile = floorObjectForUse(state, src, 1).usable;
+    } else {
+      const src = handle >= 0 ? gearGet(state.gear, handle) : null;
+      if (!src) {
+        state.msg?.("You have nothing to throw.");
+        return 0;
+      }
+      /* Auto-takeoff a wielded weapon before throwing it (player-attack.c:1397-
+       * 1400): obj_can_throw only lets an equipped melee weapon through, so a
+       * hit here is exactly that case. */
+      if (player.equipment.includes(handle)) {
+        invenTakeoff(state, handle);
+      }
+      missile = gearObjectForUse(state.gear, player, handle, 1).obj;
+    }
 
     /* Throw range (player-attack.c:1366,1402-1403): str = adj_str_blow[
      * stat_ind[STAT_STR]]; weight = MAX(object_weight_one(obj), 10); range =
