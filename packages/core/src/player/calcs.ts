@@ -22,7 +22,9 @@
  * calcBonuses notes and parity/ledger/player-calcs-bonuses.yaml):
  *   - the learn-by-use rune system that populates obj_k (equipment modifiers
  *     are rune-gated and inert at birth)
- *   - calc_mana
+ * calc_mana (player-calcs.c:2322) is ported (player/spell.ts calcMana) and
+ * invoked by the session layer (session/game.ts) right after this pass, split
+ * across the calc/session seam; msp is populated there.
  * calc_shapechange is now ported (a non-normal player.shape stacks its
  * combat/skill/flag/modifier/resist package on the state).
  */
@@ -398,13 +400,13 @@ export interface PlayerState {
   seeInfra: number;
   /** Radius of light (calc_light; 0 when no light source is wielded). */
   curLight: number;
-  /** Heavy weapon (weapon analysis DEFERRED: false). */
+  /** Heavy weapon (weapon analysis, player-calcs.c:2291-2319). */
   heavyWield: boolean;
-  /** Heavy shooter (launcher analysis DEFERRED: false). */
+  /** Heavy shooter (launcher analysis, player-calcs.c:2254-2288). */
   heavyShoot: boolean;
-  /** Blessed (or blunt) weapon (weapon analysis DEFERRED: false). */
+  /** Blessed (or blunt) weapon (weapon analysis, player-calcs.c:2291-2319). */
   blessWield: boolean;
-  /** Mana draining armour (calc_mana DEFERRED: false). */
+  /** Mana draining armour: set by calcMana in the session layer, not here. */
   cumberArmor: boolean;
   /** Status flags from race and items (OF_*). */
   flags: FlagSet;
@@ -698,9 +700,9 @@ function calcLight(
  *   block (2134-2213) are now ported (calcLight + the timedEffects-gated
  *   blocks below); the launcher analysis (2254-2288) and weapon analysis
  *   (2291-2319) are ported and the wielded weapon drives num_blows/digging
- * - calc_mana (2322): deferred; the PF_NO_MANA check (2323-2325) is ported
- *   and reads p->msp, which stays at its birth value of 0 until calc_mana
- *   lands
+ * - calc_mana (2322): ported (player/spell.ts calcMana) but called by the
+ *   session layer just after this pass, not inline; the PF_NO_MANA check
+ *   (2323-2325) is ported here and reads p->msp populated by that call
  * - the known_only object-knowledge variant and the !update hypothetical
  *   blows index shift (1891-1893, 2077-2088): birth-UI only
  */

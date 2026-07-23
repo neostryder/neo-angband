@@ -630,6 +630,10 @@ export function castStar(
   typ: number,
 ): boolean {
   const flg = PROJECT.THRU | PROJECT.BEAM | PROJECT.GRID | PROJECT.KILL;
+  /* Describe unless blind (effect-handler-attack.c:1041). */
+  if (!(cctx.playerActor.timed[TMD.BLIND]! > 0)) {
+    cctx.worldEnv?.msg?.("Light shoots in all directions!");
+  }
   let notice = false;
   for (const off of DDGRID_DDD) {
     const target = locSum(state.actor.grid, off);

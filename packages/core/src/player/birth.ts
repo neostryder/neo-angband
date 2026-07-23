@@ -19,7 +19,8 @@
  *
  * DEFERRED (see parity/ledger/player-birth.yaml):
  *   - starting inventory objects (returned as tval/sval kind-name refs only)
- *   - calc_mana (msp/csp left at 0)
+ * calc_mana runs in the session layer after birth (session/game.ts calls
+ * calcMana), so msp/csp are left at 0 here and populated there.
  */
 
 import type { Rng } from "../rng";
@@ -522,7 +523,7 @@ export function generatePlayer(
   player.mhp = calcHitpoints(player.playerHp[0] ?? 0, 1, conInd);
   player.chp = player.mhp;
   player.chpFrac = 0;
-  /* Mana is deferred (calc_mana). */
+  /* Mana: calcMana runs in the session layer after birth; born at 0 here. */
   player.msp = 0;
   player.csp = 0;
   player.cspFrac = 0;

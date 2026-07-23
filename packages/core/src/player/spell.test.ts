@@ -169,6 +169,21 @@ describe("learning (player_spells_init / spell_learn / calc_spells)", () => {
     const tooHard = mage.magic.books[0]!.spells.find((s) => s.level > 1)!;
     expect(spellOkayToStudy(p, tooHard.sidx)).toBe(false);
   });
+
+  it("calcSpells announces the new allowance on a change and is silent otherwise", () => {
+    const p = mkPlayer();
+    const statInd = new Array<number>(5).fill(0);
+    statInd[mage.magic.books[0]!.realm.stat] = 10;
+    /* new_spells goes 0 -> 1, so it announces (player-calcs.c:1465), singular. */
+    const msgs: string[] = [];
+    calcSpells(p, statInd, (t) => msgs.push(t));
+    expect(p.upkeep.newSpells).toBe(1);
+    expect(msgs).toEqual(["You can learn 1 more spell."]);
+    /* Re-running with the same inputs: no change, so no message. */
+    msgs.length = 0;
+    calcSpells(p, statInd, (t) => msgs.push(t));
+    expect(msgs).toEqual([]);
+  });
 });
 
 describe("spellChance (player-spell.c L382)", () => {

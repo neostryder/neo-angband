@@ -25,6 +25,7 @@ import type { EffectRecordJson } from "../obj/types";
 import type { Player } from "../player/player";
 import {
   calcSpells,
+  classMagicRealms,
   spellByIndex,
   spellChance,
   spellLearn,
@@ -271,7 +272,16 @@ export function installSpellCommands(
     if (!playerCanCast(state, env)) return 0;
     const player = state.actor.player;
     if (player.upkeep.newSpells <= 0) {
-      env.msg?.("You cannot learn any new spells.");
+      /* player_can_study (player-util.c:1125-1151): "You cannot learn any new
+         %s!" where %s lists the class realms' spell_noun, pluralised, joined
+         by ", " and a final " or ". */
+      const realms = classMagicRealms(player.cls);
+      let noun = realms.length > 0 ? `${realms[0]!.spellNoun}s` : "spells";
+      for (let i = 1; i < realms.length; i++) {
+        noun += i < realms.length - 1 ? ", " : " or ";
+        noun += `${realms[i]!.spellNoun}s`;
+      }
+      env.msg?.(`You cannot learn any new ${noun}!`);
       return 0;
     }
 
@@ -300,7 +310,9 @@ export function installSpellCommands(
       }
     }
     if (spellIndex < 0) {
-      env.msg?.("You cannot learn any spells from that book.");
+      /* do_cmd_study_book (cmd-obj.c:1233): "You cannot learn any %ss in that
+         book." with the book realm's spell_noun. */
+      env.msg?.(`You cannot learn any ${book.realm.spellNoun}s in that book.`);
       return 0;
     }
 

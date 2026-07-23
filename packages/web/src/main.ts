@@ -5268,9 +5268,11 @@ document.addEventListener("visibilitychange", () => {
 
 // ---- Sound subsystem wiring (faithful to init_sound + EVENT_SOUND) ----
 // The core SoundEngine subscribes to the "sound" event and plays a sample from
-// the pack. The Dubtrain pack (CC-BY 4.0) ships in public/sounds/ as the
-// default, so combat, spells, deaths and ranged attacks play out of the box;
-// override it with `?sounds=<base-url>`. Selection uses the game RNG so it is
+// the pack. The Dubtrain pack (CC-BY 4.0) ships bundled in public/sounds/ as the
+// default pack, so combat, spells, deaths and ranged attacks have samples ready;
+// they are only heard when the use_sound option is ON (OFF by default, faithful
+// to upstream - see the use_sound gate below). Override the pack with
+// `?sounds=<base-url>`. Selection uses the game RNG so it is
 // deterministic. The live turn loop routes sound() through this bus (state.sound).
 // Also carries the "feeling" signal (updateFov below) since GameEvents is a
 // general multi-type bus, not a sound-only one.
@@ -5279,8 +5281,8 @@ const soundEvents = new GameEvents();
 // here, msg() emits "message" (above), and mods subscribe through the
 // capability-gated subscribeEvents seam. One bus, many event types.
 state.events = soundEvents;
-// Default to the bundled Dubtrain pack (public/sounds/, CC-BY 4.0) so sound
-// plays out of the box; a user/mod can override the pack with ?sounds=<url>.
+// Default to the bundled Dubtrain pack (public/sounds/, CC-BY 4.0); samples are
+// heard only when use_sound is enabled (off by default). Override with ?sounds=<url>.
 const soundBase = params.get("sounds") ?? "sounds/";
 installWebSound(soundEvents, {
   baseUrl: soundBase,
