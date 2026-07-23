@@ -310,6 +310,32 @@ export function objFlagMaskById(env: RuneEnv, id: number): FlagSet {
   return mask;
 }
 
+/**
+ * player_outfit's obvious-flag knowledge (player-birth.c L597-602): at birth the
+ * player knows every LIGHT / DIG / THROW / CURSE_ONLY subtype object flag. These
+ * are the non-rune "on wield" flags (init_rune skips their subtypes), so without
+ * this a mundane torch / digger / thrown item would read as not-fully-known and
+ * show a spurious "{??}" in stores and lists. Marking them known here makes such
+ * items fully known the moment they are seen, exactly as upstream. Mutates the
+ * passed flag set in place.
+ */
+export function learnBirthObviousFlags(
+  known: FlagSet,
+  properties: readonly (ObjectProperty | null)[],
+): void {
+  for (const prop of properties) {
+    if (!prop || prop.type !== OBJ_PROPERTY.FLAG) continue;
+    if (
+      prop.subtype === OFT.LIGHT ||
+      prop.subtype === OFT.DIG ||
+      prop.subtype === OFT.THROW ||
+      prop.subtype === OFT.CURSE_ONLY
+    ) {
+      known.on(prop.propIndex);
+    }
+  }
+}
+
 /** sustain_flag(stat): the OF_SUST_* flag for a stat (contiguous block). */
 export function sustainFlag(stat: number): number {
   if (stat < 0 || stat >= STAT_MAX) return -1;

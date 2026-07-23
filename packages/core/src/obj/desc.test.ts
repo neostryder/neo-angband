@@ -272,3 +272,50 @@ describe("object_desc dice bracket gates on obj_k->dd/ds, not ASSESSED (OD-01)",
     expect(name).toContain("(+0,+0)");
   });
 });
+
+/**
+ * obj_desc_aware (obj-desc.c L565): in ODESC_STORE mode a mundane item whose
+ * runes are all known shows NO "{??}"; only an item with an unlearned rune does.
+ * Store stock is created ASSESSED (store.c L1216-1219), and the player knows the
+ * combat runes from birth (player-birth.c L1265-1267), so an enchanted-but-plain
+ * weapon like "Broad Sword (+5,+4)" must have runes-known and no marker. This is
+ * the parity fix for the spurious "{??}" Aaron saw on mundane store weapons.
+ */
+describe("object_desc store {??} only on unlearned runes (OD-STORE)", () => {
+  const storeDeps: KnownDesc = { isAware: () => true, isTried: () => false };
+
+  it("shows no {??} for a mundane enchanted weapon assessed in a store", () => {
+    const obj = mkObj(ordinaryKind((k) => k.tval === TV.SWORD));
+    obj.notice = OBJ_NOTICE.ASSESSED; // store stock is assessed
+    obj.toH = 5;
+    obj.toD = 4;
+    const name = objectDesc(
+      obj,
+      ODESC.PREFIX | ODESC.FULL | ODESC.STORE,
+      makePlayer(),
+      makeEnv(),
+      storeDeps,
+    );
+    expect(name).toContain("(+5,+4)");
+    expect(name).not.toContain("{??}");
+  });
+
+  it("still shows {??} when a combat rune is not known", () => {
+    // A player who has NOT learned the to-hit rune sees the enchanted weapon as
+    // not-fully-known: the shadow's to_h (0) diverges from the real +5.
+    const p = makePlayer();
+    p.objKnown.toH = 0;
+    const obj = mkObj(ordinaryKind((k) => k.tval === TV.SWORD));
+    obj.notice = OBJ_NOTICE.ASSESSED;
+    obj.toH = 5;
+    obj.toD = 4;
+    const name = objectDesc(
+      obj,
+      ODESC.PREFIX | ODESC.FULL | ODESC.STORE,
+      p,
+      makeEnv(),
+      storeDeps,
+    );
+    expect(name).toContain("{??}");
+  });
+});
