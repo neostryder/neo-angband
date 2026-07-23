@@ -1,0 +1,302 @@
+{
+  "file": "ui_knowledge",
+  "source": "lib/gamedata/ui_knowledge.txt",
+  "records": [
+    {
+      "monster-category": "Uniques",
+      "mcat-include-flag": [
+        "UNIQUE"
+      ]
+    },
+    {
+      "monster-category": "Not Fully Known",
+      "mcat-include-other": [
+        "not-fully-known"
+      ]
+    },
+    {
+      "monster-category": "Ainur",
+      "mcat-include-base": [
+        "ainu"
+      ]
+    },
+    {
+      "monster-category": "Ants",
+      "mcat-include-base": [
+        "ant"
+      ]
+    },
+    {
+      "monster-category": "Bats",
+      "mcat-include-base": [
+        "bat"
+      ]
+    },
+    {
+      "monster-category": "Birds",
+      "mcat-include-base": [
+        "bird"
+      ]
+    },
+    {
+      "monster-category": "Canines",
+      "mcat-include-base": [
+        "canine"
+      ]
+    },
+    {
+      "monster-category": "Centipede",
+      "mcat-include-base": [
+        "centipede"
+      ]
+    },
+    {
+      "monster-category": "Demons",
+      "mcat-include-base": [
+        "minor demon",
+        "major demon"
+      ]
+    },
+    {
+      "monster-category": "Dragons",
+      "mcat-include-base": [
+        "dragon",
+        "ancient dragon"
+      ]
+    },
+    {
+      "monster-category": "Elementals/Vortices",
+      "mcat-include-base": [
+        "vortex",
+        "elemental"
+      ]
+    },
+    {
+      "monster-category": "Eyes/Beholders",
+      "mcat-include-base": [
+        "eye"
+      ]
+    },
+    {
+      "monster-category": "Felines",
+      "mcat-include-base": [
+        "feline"
+      ]
+    },
+    {
+      "monster-category": "Ghosts",
+      "mcat-include-base": [
+        "ghost"
+      ]
+    },
+    {
+      "monster-category": "Giants/Ogres",
+      "mcat-include-base": [
+        "ogre",
+        "giant"
+      ]
+    },
+    {
+      "monster-category": "Golems",
+      "mcat-include-base": [
+        "golem"
+      ]
+    },
+    {
+      "monster-category": "Harpies/Hybrids",
+      "mcat-include-base": [
+        "hybrid"
+      ]
+    },
+    {
+      "monster-category": "Hominids (Elves, Dwarves)",
+      "mcat-include-base": [
+        "humanoid"
+      ]
+    },
+    {
+      "monster-category": "Hydras",
+      "mcat-include-base": [
+        "hydra"
+      ]
+    },
+    {
+      "monster-category": "Icky Things",
+      "mcat-include-base": [
+        "icky thing"
+      ]
+    },
+    {
+      "monster-category": "Insects",
+      "mcat-include-base": [
+        "dragon fly",
+        "insect"
+      ]
+    },
+    {
+      "monster-category": "Jellies",
+      "mcat-include-base": [
+        "jelly"
+      ]
+    },
+    {
+      "monster-category": "Killer Beetles",
+      "mcat-include-base": [
+        "killer beetle"
+      ]
+    },
+    {
+      "monster-category": "Kobolds",
+      "mcat-include-base": [
+        "kobold"
+      ]
+    },
+    {
+      "monster-category": "Lichs",
+      "mcat-include-base": [
+        "lich"
+      ]
+    },
+    {
+      "monster-category": "Men",
+      "mcat-include-base": [
+        "townsfolk",
+        "person"
+      ]
+    },
+    {
+      "monster-category": "Mimics",
+      "mcat-include-base": [
+        "lurker",
+        "creeping coins",
+        "mimic"
+      ]
+    },
+    {
+      "monster-category": "Molds",
+      "mcat-include-base": [
+        "mold"
+      ]
+    },
+    {
+      "monster-category": "Mushroom Patches",
+      "mcat-include-base": [
+        "mushroom"
+      ]
+    },
+    {
+      "monster-category": "Nagas",
+      "mcat-include-base": [
+        "naga"
+      ]
+    },
+    {
+      "monster-category": "Orcs",
+      "mcat-include-base": [
+        "orc"
+      ]
+    },
+    {
+      "monster-category": "Quadrupeds",
+      "mcat-include-base": [
+        "quadruped"
+      ]
+    },
+    {
+      "monster-category": "Quylthulgs",
+      "mcat-include-base": [
+        "quylthulg"
+      ]
+    },
+    {
+      "monster-category": "Reptiles/Amphibians",
+      "mcat-include-base": [
+        "reptile"
+      ]
+    },
+    {
+      "monster-category": "Rodents",
+      "mcat-include-base": [
+        "rodent"
+      ]
+    },
+    {
+      "monster-category": "Scorpions/Spiders",
+      "mcat-include-base": [
+        "spider"
+      ]
+    },
+    {
+      "monster-category": "Skeletons/Drujs",
+      "mcat-include-base": [
+        "skeleton"
+      ]
+    },
+    {
+      "monster-category": "Snakes",
+      "mcat-include-base": [
+        "snake"
+      ]
+    },
+    {
+      "monster-category": "Trees/Ents",
+      "mcat-include-base": [
+        "tree"
+      ]
+    },
+    {
+      "monster-category": "Trolls",
+      "mcat-include-base": [
+        "troll"
+      ]
+    },
+    {
+      "monster-category": "Vampires",
+      "mcat-include-base": [
+        "vampire"
+      ]
+    },
+    {
+      "monster-category": "Wights/Wraiths",
+      "mcat-include-base": [
+        "wraith"
+      ]
+    },
+    {
+      "monster-category": "Worms/Worm Masses",
+      "mcat-include-base": [
+        "worm"
+      ]
+    },
+    {
+      "monster-category": "Xorns/Xarens",
+      "mcat-include-base": [
+        "xorn"
+      ]
+    },
+    {
+      "monster-category": "Yeeks",
+      "mcat-include-base": [
+        "yeek"
+      ]
+    },
+    {
+      "monster-category": "Yeti",
+      "mcat-include-base": [
+        "yeti"
+      ]
+    },
+    {
+      "monster-category": "Zephyr Hounds",
+      "mcat-include-base": [
+        "zephyr hound"
+      ]
+    },
+    {
+      "monster-category": "Zombies",
+      "mcat-include-base": [
+        "zombie"
+      ]
+    }
+  ]
+}

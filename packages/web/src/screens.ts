@@ -77,6 +77,7 @@ import {
   getMonName,
   TMD,
   EQUIP_SLOT_ENTRIES,
+  monsterKnowledgeGroups,
 } from "@neo-angband/core";
 import type {
   GameState,
@@ -96,6 +97,7 @@ import type {
   LoreStore,
   MonsterLore,
   MonsterRace,
+  MonsterCategory,
 } from "@neo-angband/core";
 import type { ScreenLine, MenuItem } from "./overlay";
 import { MessageLog, format as formatMessage } from "./messages";
@@ -825,6 +827,35 @@ export function monsterKnowledgeMenu(
     return { label: `${capRaceName(race)}${kills}`, color: colorToCss(race.dAttr) };
   });
   return { items, rows };
+}
+
+/** A thematic monster-knowledge category with its ordered known members. */
+export interface MonsterKnowledgeGroupView {
+  name: string;
+  rows: KnownMonsterRow[];
+}
+
+/**
+ * do_cmd_knowledge_monsters (ui-knowledge.c L1382): the two-pane thematic
+ * browser's data - the ui_knowledge.txt categories, each holding the known
+ * races it matches (a race joins EVERY category it matches, per the C), in
+ * m_cmp_race order, with empty categories dropped. Falls back to the flat
+ * level/name list when the pack ships no categories.
+ */
+export function monsterKnowledgeGroupViews(
+  races: readonly MonsterRace[],
+  store: LoreStore,
+  categories: readonly MonsterCategory[],
+): MonsterKnowledgeGroupView[] {
+  const flat = knownMonsterEntries(races, store);
+  if (categories.length === 0) {
+    return flat.length > 0 ? [{ name: "Monsters", rows: flat }] : [];
+  }
+  const known = flat.map((r) => ({ race: r.race, lore: r.lore, allKnown: r.lore.allKnown }));
+  return monsterKnowledgeGroups(categories, known).map((g) => ({
+    name: g.name,
+    rows: g.members.map((m) => ({ race: m.race, lore: m.lore })),
+  }));
 }
 
 /** An object kind base name, with the ~/& object_desc markers stripped. */
