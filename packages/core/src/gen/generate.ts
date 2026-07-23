@@ -110,6 +110,15 @@ export interface GenerateOptions {
    */
   hasAdjacentAbove?: boolean;
   hasAdjacentBelow?: boolean;
+  /**
+   * birth_connect_stairs (gen-util.c:427-433, new_player_spot): lay an arrival
+   * staircase on the player's start grid - "up" after a descent, "down" after
+   * an ascent - so connected stairs line up. The caller (session changeLevel)
+   * resolves it from the pending stair command, already gated on the
+   * birth_connect_stairs option; null (recall / arena / first spawn) lays no
+   * stair, exactly as upstream leaves create_up_stair/create_down_stair unset.
+   */
+  createStair?: "down" | "up" | null;
 }
 
 /** One quest guardian to place: the resolved race and how many to spawn. */
@@ -366,6 +375,7 @@ export function generateLevel(
       monDeps: deps.monDeps,
       trapKinds: deps.trapKinds ?? null,
       rooms: deps.rooms,
+      createStair: options.createStair ?? null,
       ...(options.daytime !== undefined ? { daytime: options.daytime } : {}),
     };
 

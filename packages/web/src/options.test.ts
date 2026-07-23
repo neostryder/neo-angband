@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
 import { OptionState, Rng } from "@neo-angband/core";
 import type { GameState } from "@neo-angband/core";
-import { runOptionsMenu } from "./options";
+import { runOptionsMenu, runTileModePage } from "./options";
 import type { GlyphTerm } from "./term";
 
 // main.ts's own keydown handler is the ground truth for how '=' is wired;
@@ -325,8 +325,8 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
         cycled.push(i);
       },
     };
-    // tiles omitted (undefined), sidebar injected as the 5th arg.
-    void runOptionsMenu(term, makeState(), async () => {}, undefined, sidebar);
+    // sidebar injected as the 4th arg (graphics is no longer an '=' row).
+    void runOptionsMenu(term, makeState(), async () => {}, sidebar);
     let snap = term.snapshot().join("\n");
     expect(snap).toContain("o) Set sidebar mode");
     press(win, "o");
@@ -353,7 +353,7 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     expect(term.snapshot().join("\n")).not.toContain("o) Set sidebar mode");
   });
 
-  it("(g) graphics tile-mode selector lists modes and applies a choice", async () => {
+  it("runTileModePage lists modes and applies a choice (frontend Graphics menu)", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(100, 40);
@@ -371,31 +371,26 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
         cur = id;
       },
     };
-    const done = runOptionsMenu(term, makeState(), async () => {}, tiles);
-    // The top menu now shows the graphics row.
-    let snap = term.snapshot().join("\n");
-    expect(snap).toContain("g) Graphics (tiles) mode");
-    press(win, "g");
-    await tick();
-    snap = term.snapshot().join("\n");
+    const done = runTileModePage(term, tiles);
+    const snap = term.snapshot().join("\n");
     expect(snap).toContain("Graphics (tiles) mode");
     expect(snap).toContain("Original Tiles");
     expect(snap).toContain("David Gervais' tiles");
     // Positional 'c' selects the 3rd row (David Gervais, grafID 3).
     press(win, "c");
-    await tick();
-    expect(applied).toBe(3);
-    press(win, "Escape"); // exit top menu
     await done;
+    expect(applied).toBe(3);
   });
 
-  it("without a tiles config, the graphics row is absent (default)", () => {
+  it("the '=' options menu never lists graphics (upstream puts it in the frontend)", () => {
+    // ui-options.c:2038 option_actions[] has no graphics entry; graphics lives in
+    // the platform frontend's menu bar (the web shell's in-game Graphics menu).
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
     void runOptionsMenu(term, makeState(), async () => {});
     const snap = term.snapshot().join("\n");
-    expect(snap).not.toContain("Graphics (tiles) mode");
+    expect(snap).not.toContain("Graphics");
   });
 
   it("ESC at the top menu resolves the whole screen", async () => {

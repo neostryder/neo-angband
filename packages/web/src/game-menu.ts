@@ -27,6 +27,7 @@ export type GameMenuAction =
   | "knowledge"
   | "save"
   | "options"
+  | "graphics"
   | "mods"
   | "help"
   | "abilities"
@@ -77,6 +78,10 @@ export function gameMenuEntries(): GameMenuEntry[] {
     {
       action: "options",
       item: { label: "Options", hint: "Interface, birth, and item-ignoring options ('=')." },
+    },
+    {
+      action: "graphics",
+      item: { label: "Graphics", hint: "Choose a tile set or ASCII (upstream's frontend Graphics menu)." },
     },
     {
       action: "mods",
