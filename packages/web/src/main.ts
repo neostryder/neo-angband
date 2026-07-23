@@ -5068,7 +5068,21 @@ window.addEventListener("keydown", (ev) => {
     const dest = loc(state.actor.grid.x + dx, state.actor.grid.y + dy);
     const store = state.stores?.find((s) => s.feat === state.chunk.feat(dest));
     if (store) {
-      void openModal(() => runStore(term, game, store, say, constants));
+      const feat = features.get(store.feat);
+      void openModal(() =>
+        runStore(term, game, store, say, constants, {
+          featureName: feat?.name ?? store.featName,
+          rogueLike: state.options?.get("rogue_like_commands") ?? false,
+          // store_examine (ui-store.c L749): the object_info screen for a fully
+          // known store item, header capitalised as ODESC_CAPITAL does.
+          examine: async (obj) => {
+            const name = objectName(state, obj);
+            const header = name.charAt(0).toUpperCase() + name.slice(1);
+            const tb = objectInfoTextblock(state, obj, inspectExtras);
+            await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
+          },
+        }),
+      );
       return;
     }
   }
