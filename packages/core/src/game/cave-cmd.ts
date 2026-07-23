@@ -748,9 +748,14 @@ export function installCaveCommands(
   /* do_cmd_go_down / go_up: require the matching staircase underfoot. */
   registry.register("descend", (state) => {
     if (!state.chunk.isDownstairs(state.actor.grid)) {
-      env.msg?.("There is no down staircase here.");
+      env.msg?.("I see no down staircase here.");
       return 0;
     }
+    /* Success (cmd-cave.c:134): the stair message, typed MSG_STAIRS_DOWN, goes
+     * through the message log so it reaches the -more- pager and Ctrl-P. */
+    env.msg?.("You enter a maze of down staircases.");
+    /* create_up_stair = true (cmd-cave.c:137): arrive on an up staircase. */
+    state.arrivalStair = "up";
     state.targetDepth = state.chunk.depth + 1;
     state.generateLevel = true;
     return state.z.moveEnergy;
@@ -758,13 +763,17 @@ export function installCaveCommands(
 
   registry.register("ascend", (state) => {
     if (!state.chunk.isUpstairs(state.actor.grid)) {
-      env.msg?.("There is no up staircase here.");
+      env.msg?.("I see no up staircase here.");
       return 0;
     }
     if (state.chunk.depth === 0) {
       env.msg?.("You are already on the surface.");
       return 0;
     }
+    /* Success (cmd-cave.c:87): typed MSG_STAIRS_UP. */
+    env.msg?.("You enter a maze of up staircases.");
+    /* create_down_stair = true (cmd-cave.c:91): arrive on a down staircase. */
+    state.arrivalStair = "down";
     state.targetDepth = state.chunk.depth - 1;
     state.generateLevel = true;
     return state.z.moveEnergy;

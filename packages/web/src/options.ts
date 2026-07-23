@@ -223,6 +223,19 @@ export function optionToggleScreen(
         paint();
         return;
       }
+      // Horizontal arrows mirror the C scroll-skin (ui-menu.c:224-243): LEFT
+      // (ddx<0 -> EVT_ESCAPE) steps back out of the menu, RIGHT (ddx>0 ->
+      // EVT_SELECT) toggles the current option. Numpad 4/6 are identical
+      // (target_dir), matched via ev.code so NumLock state is irrelevant. Left
+      // (escape) is unconditional; right (toggle) is refused on read-only rows
+      // by setAt, so the in-game locked birth page stays read-only.
+      if (ev.key === "ArrowLeft" || ev.code === "Numpad4") return finish();
+      if (ev.key === "ArrowRight" || ev.code === "Numpad6") {
+        const row = rows[cursor];
+        if (row) setAt(cursor, !row.value);
+        paint();
+        return;
+      }
       if (readOnly) return; // MN_NO_TAGS: no command/jump keys at all.
       if (ev.key === "y" || ev.key === "Y") {
         if (setAt(cursor, true)) advance();
@@ -276,6 +289,39 @@ async function runBirthPage(term: GlyphTerm, state: GameState): Promise<void> {
       /* read-only: optionToggleScreen never calls onToggle while readOnly. */
     },
     true,
+  );
+}
+
+/**
+ * The EDITABLE birth-options screen shown DURING birth (do_cmd_options_birth,
+ * reached by '=' at the quickstart prompt and in every menu_question stage,
+ * ui-birth.c:126,848; option_toggle_menu(OPT_PAGE_BIRTH + 10) makes the page
+ * editable, ui-options.c:377). Unlike the in-game '=' Birth page (read-only,
+ * because birth options lock once play starts), this writes the player's
+ * pre-birth choices into `store`, a plain name->boolean map the caller applies
+ * as startGame optionOverrides when the character is created. Seeded from the
+ * table defaults (OPTION_ENTRIES.normal) for any option the store has not set.
+ */
+export async function runBirthOptionsEditor(
+  term: GlyphTerm,
+  store: Record<string, boolean>,
+): Promise<void> {
+  const rows: OptionRow[] = OPTION_ENTRIES.filter((e) => e.type === "BIRTH").map(
+    (e) => ({
+      name: e.name,
+      description: e.description,
+      value: store[e.name] ?? e.normal,
+      locked: false,
+    }),
+  );
+  await optionToggleScreen(
+    term,
+    "Birth options",
+    rows,
+    (name, value) => {
+      store[name] = value;
+    },
+    false,
   );
 }
 
@@ -440,10 +486,12 @@ async function runSidebarModePage(
  */
 /**
  * The graphics tile-mode selector wiring (task C1). Upstream chooses a graphics
- * mode outside do_cmd_options (the SDL/main menu), but the web shell has no
- * such menu, so the choice lives here as an extra Options row. The caller
- * (main.ts) owns the actual tileset/pref load + localStorage persistence and
- * passes it in, exactly as openIgnoreSetup is injected.
+ * mode OUTSIDE do_cmd_options - the SDL2/Windows frontends put "Graphics" in
+ * their always-available window menu bar, not in the '=' options command
+ * (ui-options.c:2038 has no graphics entry). The web shell mirrors that: this
+ * selector is reached from the in-game menu (the web analog of the frontend
+ * menu bar), NOT from '='. The caller (main.ts) owns the actual tileset/pref
+ * load + localStorage persistence and passes it in, like openIgnoreSetup.
  */
 export interface TileModeMenu {
   /** Selectable modes in menu order, including the None (ASCII) entry. */
@@ -454,8 +502,12 @@ export interface TileModeMenu {
   apply: (grafID: number) => Promise<void>;
 }
 
-/** do_cmd_options row (g): pick a graphics tile set (or ASCII). */
-async function runTileModePage(
+/**
+ * Pick a graphics tile set (or ASCII). Reached from the in-game menu (the web
+ * analog of the SDL/Windows frontend's "Graphics" menu bar), NOT from '=' -
+ * upstream selects graphics outside do_cmd_options.
+ */
+export async function runTileModePage(
   term: GlyphTerm,
   tiles: TileModeMenu,
 ): Promise<void> {
@@ -478,12 +530,12 @@ export async function runOptionsMenu(
   term: GlyphTerm,
   state: GameState,
   openIgnoreSetup: () => Promise<void>,
-  tiles?: TileModeMenu,
   sidebar?: SidebarModeMenu,
 ): Promise<void> {
   // Upstream order (option_actions[], ui-options.c L2038): a, b, x, i, then the
-  // numeric setters d, h, m, and o. The (g) graphics row is a web-only addition
-  // (upstream picks graphics outside this menu), kept last.
+  // numeric setters d, h, m, and o. There is deliberately NO graphics entry -
+  // upstream picks graphics in the frontend menu bar, not in do_cmd_options; the
+  // web shell mirrors that by placing tile selection in the in-game menu.
   const items: MenuItem[] = [
     { label: "User interface options", tag: "a" },
     { label: "Birth (difficulty) options", tag: "b" },
@@ -494,7 +546,6 @@ export async function runOptionsMenu(
     { label: "Set movement delay", tag: "m" },
   ];
   if (sidebar) items.push({ label: "Set sidebar mode", tag: "o" });
-  if (tiles) items.push({ label: "Graphics (tiles) mode", tag: "g" });
   // Derive the hint from the live rows so it can never drift out of sync.
   const tagHint = items.map((i) => i.tag).join("/");
   for (;;) {
@@ -529,9 +580,6 @@ export async function runOptionsMenu(
         break;
       case "o":
         if (sidebar) await runSidebarModePage(term, sidebar);
-        break;
-      case "g":
-        if (tiles) await runTileModePage(term, tiles);
         break;
       default:
         break;

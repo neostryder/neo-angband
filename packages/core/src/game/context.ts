@@ -417,6 +417,16 @@ export interface GameState {
    */
   targetDepth?: number;
   /**
+   * player->upkeep->create_up_stair / create_down_stair (cmd-cave.c:90-91,
+   * 137-138): the arrival staircase the NEXT generated level must lay under the
+   * player, so a down-stair lands you on an up-stair and vice versa
+   * (birth_connect_stairs). Set only by the stair commands - "up" mirrors
+   * create_up_stair (set on descent), "down" mirrors create_down_stair (set on
+   * ascent). new_player_spot lays it and player_place clears it; recall/arena
+   * level changes leave it unset (no arrival stair), exactly as upstream.
+   */
+  arrivalStair?: "up" | "down" | null;
+  /**
    * player->upkeep->arena_level: the player is in (or headed to) single
    * combat. Set by EF_SINGLE_COMBAT; cleared by the arena exit.
    */
