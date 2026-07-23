@@ -362,7 +362,20 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
    * so faithful core (no mod / flag off) still just bumps. */
   if (!state.chunk.isPassable(next)) {
     const dug = state.autoDigStep?.(state, next) ?? 0;
-    return dug > 0 ? dug : 0;
+    if (dug > 0) return dug;
+    /* do_cmd_walk_test (cmd-cave.c L1240-1253): bumping a known wall or rubble
+     * gives a MSG_HITWALL message. A closed door is NOT messaged here - the
+     * walk override (installCaveCommands) opens it (move_player's alter branch);
+     * this stays silent for a door so the base action is a safe fallback when
+     * the override is absent (borg / unit tests). */
+    if (!state.chunk.isClosedDoor(next)) {
+      state.msg?.(
+        state.chunk.isRubble(next)
+          ? "There is a pile of rubble in the way!"
+          : "There is a wall in the way!",
+      );
+    }
+    return 0;
   }
 
   movePlayer(state, next);
