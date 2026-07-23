@@ -1277,7 +1277,7 @@ async function runContextMenuCave(grid: Loc, adjacent: boolean): Promise<void> {
         say("You have no usable items.");
         break;
       }
-      const useIdx = await selectFromMenu(term, "Use which item?", items);
+      const useIdx = await selectFromMenu(term, "Use which item? ", items);
       if (useIdx === null) break;
       const useHandle = handles[useIdx];
       if (useHandle === undefined) break;
@@ -1753,7 +1753,7 @@ async function takeOffItem(): Promise<void> {
 /** Inscribe (`{`): pick any item and set its inscription text. */
 async function inscribeItem(): Promise<void> {
   const ref = await selectTargetItem({
-    prompt: "Inscribe which item? ",
+    prompt: "Inscribe which item?",
     reject: "You have nothing to inscribe.",
     tester: () => true,
     mode: { equip: true, inven: true, quiver: true, floor: true },
@@ -1776,7 +1776,7 @@ async function inscribeItem(): Promise<void> {
 /** Uninscribe (`}`): pick from items that currently carry an inscription. */
 async function uninscribeItem(): Promise<void> {
   const ref = await selectTargetItem({
-    prompt: "Uninscribe which item? ",
+    prompt: "Uninscribe which item?",
     reject: "You have nothing you can uninscribe.",
     tester: (o) => objHasInscrip(o),
     mode: { equip: true, inven: true, quiver: true, floor: true },
@@ -3833,7 +3833,7 @@ async function useGenericCmd(): Promise<void> {
     say("You have no items to use.");
     return;
   }
-  const idx = await selectFromMenu(term, "Use which item?", rows);
+  const idx = await selectFromMenu(term, "Use which item? ", rows);
   if (idx === null) return;
   const pick = picks[idx];
   if (!pick) return;
