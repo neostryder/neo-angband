@@ -7,6 +7,7 @@ import {
   promptNumber,
   getRepDir,
   getAimDir,
+  getCheck,
   AIM_STAR,
   AIM_CLOSEST,
 } from "./overlay";
@@ -868,5 +869,71 @@ describe("getAimDir (textui_get_aim_dir)", () => {
     const d2 = getAimDir(term, false);
     press(win, "Escape");
     expect(await d2).toBeNull();
+  });
+});
+
+describe("getCheck (textui_get_check)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("draws '<prompt>[y/n] ' at row 0", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40);
+    void getCheck(term, "Are you sure? ");
+    expect(term.snapshot()[0] ?? "").toBe("Are you sure? [y/n]"); // trailing space trimmed by snapshot
+  });
+
+  it("appends [y/n] with no extra space when the prompt has none (verbatim strnfmt)", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40);
+    void getCheck(term, "Do you really want to retire?");
+    expect(term.snapshot()[0] ?? "").toBe("Do you really want to retire?[y/n]");
+  });
+
+  it("returns true for 'y' and clears the row", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40);
+    const done = getCheck(term, "Confirm? ");
+    press(win, "y");
+    expect(await done).toBe(true);
+    expect(term.snapshot()[0] ?? "").toBe("");
+  });
+
+  it("returns true for 'Y'", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40);
+    const done = getCheck(term, "Confirm? ");
+    press(win, "Y");
+    expect(await done).toBe(true);
+  });
+
+  it("returns false for 'n', any other key, and Escape", async () => {
+    for (const k of ["n", "q", "Escape"]) {
+      const win = makeFakeWindow();
+      (globalThis as { window?: unknown }).window = win;
+      const term = makeTerm(40);
+      const done = getCheck(term, "Confirm? ");
+      press(win, k);
+      expect(await done).toBe(false);
+      delete (globalThis as { window?: unknown }).window;
+    }
+  });
+
+  it("ignores a lone modifier keydown (Shift before Y is not an immediate No)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40);
+    let resolved = false;
+    const done = getCheck(term, "Confirm? ").then((v) => { resolved = true; return v; });
+    press(win, "Shift");
+    await tick();
+    expect(resolved).toBe(false);
+    press(win, "y");
+    expect(await done).toBe(true);
   });
 });
