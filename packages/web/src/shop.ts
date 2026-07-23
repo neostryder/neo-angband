@@ -73,12 +73,21 @@ async function sellFlow(
 ): Promise<void> {
   const { items, handles } = packMenu(game.state);
   if (items.length === 0) {
-    say("You have nothing to sell.");
+    // store_sell reject (ui-store.c L499), shared by shops and the Home.
+    say("You have nothing that I want. ");
     return;
   }
+  // store_sell prompt (ui-store.c L500/L509): Home drops, no_selling gives.
+  const noSelling = game.state.options?.get("birth_no_selling") ?? false;
+  const sellPrompt =
+    store.feat === FEAT.HOME
+      ? "Drop which item? "
+      : noSelling
+        ? "Give which item? "
+        : "Sell which item? ";
   const idx = await selectFromMenu(
     term,
-    "Sell which item?",
+    sellPrompt,
     items,
     "[ a-z to sell, ESC to cancel ]",
   );
