@@ -928,10 +928,6 @@ async function openModal(fn: () => Promise<void>): Promise<void> {
 // get_aim_dir when a dir is supplied. The obj commands were installed without a
 // message env, so the shell narrates the action here for feedback; the real
 // per-effect messages arrive when the core message seam lands (task #42).
-const VERB_LABEL: Record<string, string> = {
-  quaff: "Quaff", read: "Read", eat: "Eat", "use-staff": "Use", "aim-wand": "Aim",
-  "zap-rod": "Zap", activate: "Activate", wield: "Wear/Wield", drop: "Drop",
-};
 function actionLine(code: string, obj: GameObject | null): string {
   const name = obj ? describeObject(state, obj) : "the item";
   switch (code) {
@@ -1522,7 +1518,7 @@ async function dispatchContextClick(grid: Loc): Promise<void> {
  */
 async function inspectItem(): Promise<void> {
   const ref = await selectTargetItem({
-    prompt: "Inspect which item? ",
+    prompt: "Examine which item?",
     reject: "You have nothing to examine.",
     tester: () => true,
     mode: { equip: true, inven: true, quiver: true, floor: true },
@@ -1636,20 +1632,26 @@ const DEVICE_VERBS = new Set(["aim-wand", "zap-rod", "use-staff"]);
 const isKindAware = (kind: ObjectKind): boolean =>
   game.flavor ? game.flavor.isAware(kind) : true;
 
-/** Select a pack item matching `filter`, then dispatch `code` for it. */
+/**
+ * Select a pack item matching `filter`, then dispatch `code` for it. `prompt`
+ * and `emptyMsg` are the EXACT cmd-obj.c strings for this command (the C
+ * cmd_get_item prompt / "no item" message), not a generic template - so the
+ * picker header and the empty-pack line read verbatim as upstream.
+ */
 async function useItem(
   code: string,
   filter: (obj: GameObject) => boolean,
-  emptyNoun: string,
+  prompt: string,
+  emptyMsg: string,
 ): Promise<void> {
   // The pack picker (the quiver rides the pack in this gear model). Floor items
   // are not offered here because the command dispatch is keyed on a gear handle,
   // which floor piles lack; the faithful "(Inven: a-c, ESC)" header still shows.
   const ref = await selectItemFrom(
-    `${VERB_LABEL[code] ?? "Use"} which item?`,
+    prompt,
     filter,
     { inven: true },
-    `You have no ${emptyNoun}.`,
+    emptyMsg,
     DEVICE_VERBS.has(code),
   );
   if (ref === null || !("handle" in ref)) return;
@@ -1699,10 +1701,10 @@ async function activateItem(): Promise<void> {
     handles.push(handle);
   }
   if (items.length === 0) {
-    say("You have nothing to activate.");
+    say("You have no items to activate.");
     return;
   }
-  const idx = await selectFromMenu(term, "Activate which item?", items);
+  const idx = await selectFromMenu(term, "Activate which item? ", items);
   if (idx === null) return;
   const handle = handles[idx];
   if (handle === undefined) return;
@@ -1723,10 +1725,10 @@ async function activateItem(): Promise<void> {
  * faithful get_item picker (USE_EQUIP -> "(Equip: a-c, ESC)"). */
 async function takeOffItem(): Promise<void> {
   const ref = await selectItemFrom(
-    "Take off which item?",
+    "Take off or unwield which item?",
     () => true,
     { equip: true },
-    "You are not wearing anything you can take off.",
+    "You have nothing to take off or unwield.",
   );
   if (ref === null || !("handle" in ref)) return;
   const handle = ref.handle;
@@ -3852,7 +3854,12 @@ async function swapWeaponCmd(): Promise<void> {
     }
   }
   // No @0-tagged item: fall back to the normal wield selection.
-  await useItem("wield", (o) => tvalIsWearable(o.tval), "items you can wear or wield");
+  await useItem(
+    "wield",
+    (o) => tvalIsWearable(o.tval),
+    "Wear or wield which item?",
+    "You have nothing to wear or wield.",
+  );
 }
 
 /** Walk one step (;, CMD_WALK, cmd_hidden): prompt a direction, then step. */
@@ -4948,18 +4955,18 @@ window.addEventListener("keydown", (ev) => {
       // Item commands (cmd_item, ui-game.c:118-133).
       { o: "{", act: () => void openModal(inscribeItem) },
       { o: "}", act: () => void openModal(uninscribeItem) },
-      { o: "w", act: () => void openModal(() => useItem("wield", (t) => tvalIsWearable(t.tval), "items you can wear or wield")) },
+      { o: "w", act: () => void openModal(() => useItem("wield", (t) => tvalIsWearable(t.tval), "Wear or wield which item?", "You have nothing to wear or wield.")) },
       { o: "t", r: "T", act: () => void openModal(takeOffItem) },
       { o: "I", act: () => void openModal(() => inspectItem()) },
-      { o: "d", act: () => void openModal(() => useItem("drop", () => true, "items")) },
+      { o: "d", act: () => void openModal(() => useItem("drop", () => true, "Drop which item?", "You have nothing to drop.")) },
       { o: "f", r: "t", act: () => void openModal(fireCmd) },
-      { o: "u", r: "Z", act: () => void openModal(() => useItem("use-staff", (t) => tvalIsStaff(t.tval), "staves")) },
-      { o: "a", r: "z", act: () => void openModal(() => useItem("aim-wand", (t) => tvalIsWand(t.tval), "wands")) },
-      { o: "z", r: "a", act: () => void openModal(() => useItem("zap-rod", (t) => tvalIsRod(t.tval), "rods")) },
+      { o: "u", r: "Z", act: () => void openModal(() => useItem("use-staff", (t) => tvalIsStaff(t.tval), "Use which staff? ", "You have no staves to use.")) },
+      { o: "a", r: "z", act: () => void openModal(() => useItem("aim-wand", (t) => tvalIsWand(t.tval), "Aim which wand? ", "You have no wands to aim.")) },
+      { o: "z", r: "a", act: () => void openModal(() => useItem("zap-rod", (t) => tvalIsRod(t.tval), "Zap which rod? ", "You have no rods to zap.")) },
       { o: "A", act: () => void openModal(activateItem) },
-      { o: "E", act: () => void openModal(() => useItem("eat", (t) => tvalIsEdible(t.tval), "food")) },
-      { o: "q", act: () => void openModal(() => useItem("quaff", (t) => tvalIsPotion(t.tval), "potions")) },
-      { o: "r", act: () => void openModal(() => useItem("read", (t) => tvalIsScroll(t.tval), "scrolls")) },
+      { o: "E", act: () => void openModal(() => useItem("eat", (t) => tvalIsEdible(t.tval), "Eat which food? ", "You have no food to eat.")) },
+      { o: "q", act: () => void openModal(() => useItem("quaff", (t) => tvalIsPotion(t.tval), "Quaff which potion? ", "You have no potions from which to quaff.")) },
+      { o: "r", act: () => void openModal(() => useItem("read", (t) => tvalIsScroll(t.tval), "Read which scroll? ", "You have no scrolls to read.")) },
       { o: "F", act: () => void openModal(refuelItem) },
       { o: "U", r: "X", act: () => void openModal(useGenericCmd) },
       // General actions (cmd_action, ui-game.c:141-153).
