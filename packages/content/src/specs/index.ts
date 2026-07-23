@@ -1,8 +1,8 @@
 /**
  * The full set of compiled gamedata files, in compile (and manifest) order.
  *
- * Deferred (not compiled): ui_knowledge.txt (front-end concern) and
- * old_class.txt (retired data kept upstream for reference only).
+ * Deferred (not compiled): old_class.txt (retired data kept upstream for
+ * reference only).
  */
 
 import type { FileSpec } from "../records.js";
@@ -44,7 +44,14 @@ import {
   pitSpec,
 } from "./mon-init.js";
 import { dungeonProfileSpec, roomTemplateSpec, vaultSpec } from "./generate.js";
-import { chestTrapSpec, playerTimedSpec, questSpec, storeSpec, summonSpec } from "./misc.js";
+import {
+  chestTrapSpec,
+  playerTimedSpec,
+  questSpec,
+  storeSpec,
+  summonSpec,
+  uiKnowledgeSpec,
+} from "./misc.js";
 import { uiEntryBaseSpec, uiEntryRendererSpec, uiEntrySpec } from "./ui-entry.js";
 import { visualsSpec } from "./visuals.js";
 
@@ -91,5 +98,6 @@ export const gamedataSpecs: readonly FileSpec[] = [
   uiEntryRendererSpec,
   uiEntryBaseSpec,
   uiEntrySpec,
+  uiKnowledgeSpec,
   visualsSpec,
 ];

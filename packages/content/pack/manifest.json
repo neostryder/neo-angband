@@ -46,6 +46,7 @@
     "ui_entry_renderer.json",
     "ui_entry_base.json",
     "ui_entry.json",
+    "ui_knowledge.json",
     "visuals.json"
   ]
 }

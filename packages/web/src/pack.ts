@@ -382,6 +382,7 @@ export function loadGamePack(): GamePack {
     trap: records("trap"),
     names: records("names"),
     store: records("store"),
+    uiKnowledge: records("ui_knowledge"),
     obj: {
       objectBase: composedFile("object_base"),
       object: composedFile("object"),

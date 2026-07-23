@@ -26,6 +26,8 @@ import { ArtifactState, ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import { bindMonsters } from "../mon/bind";
 import type { MonsterPackRecords } from "../mon/bind";
+import { bindMonsterCategories } from "../mon/knowledge-groups";
+import type { MonsterCategory, UiKnowledgeRecordJson } from "../mon/knowledge-groups";
 import { MonAllocTable } from "../mon/make";
 import type { LoreStore } from "../mon/lore";
 import {
@@ -85,6 +87,12 @@ export interface CorePack {
    * packs), so is_quest is always false and quest_check a no-op.
    */
   quest?: QuestRecordJson[];
+  /**
+   * ui_knowledge.json (thematic monster-knowledge categories for the '~' ->
+   * Monsters browser). Optional; without it the browser has no categories and
+   * every known monster falls into the "***Unclassified***" catch-all.
+   */
+  uiKnowledge?: UiKnowledgeRecordJson[];
 }
 
 /** One names.txt section: a list of lowercase words under a section index. */
@@ -117,6 +125,11 @@ export interface CoreRegistries {
    * resolved. Empty when the pack ships no quest.json.
    */
   quests: Quest[];
+  /**
+   * Thematic monster-knowledge categories (ui_knowledge.txt), in file order.
+   * Empty when the pack ships no ui_knowledge.json.
+   */
+  monsterCategories: MonsterCategory[];
 }
 
 /** Bind a parsed pack into the full set of runtime registries. */
@@ -138,6 +151,7 @@ export function bindCore(pack: CorePack): CoreRegistries {
   }
   const stores = pack.store ? new StoreRegistry(pack.store, objects) : null;
   const quests = pack.quest ? bindQuests(pack.quest, monsters) : [];
+  const monsterCategories = bindMonsterCategories(pack.uiKnowledge ?? []);
   return {
     constants,
     features,
@@ -150,6 +164,7 @@ export function bindCore(pack: CorePack): CoreRegistries {
     nameSections,
     stores,
     quests,
+    monsterCategories,
   };
 }
 

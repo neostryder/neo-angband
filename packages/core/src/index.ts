@@ -48,6 +48,7 @@ export * from "./mon/timed";
 export * from "./mon/take-hit";
 export * from "./mon/spell";
 export * from "./mon/desc";
+export * from "./mon/knowledge-groups";
 export * from "./mon/project-mon";
 export * from "./obj/types";
 export * from "./obj/bind";
