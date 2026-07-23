@@ -106,3 +106,22 @@ export const storeSpec: FileSpec = {
     { fmt: "buy-flag sym flag str base", repeat: true },
   ],
 };
+
+/**
+ * ui_knowledge.txt: the thematic monster-knowledge categories for the '~' ->
+ * Monsters browser (upstream ui-knowledge.c init_ui_knowledge_parser). Each
+ * 'monster-category' begins a category; the mcat-include-* directives attach
+ * to it. The reserved "***Unclassified***" catch-all is appended by the
+ * consumer, not the file (finish_ui_knowledge_parser).
+ */
+export const uiKnowledgeSpec: FileSpec = {
+  name: "ui_knowledge",
+  upstream: ["src/ui-knowledge.c"],
+  recordStart: "monster-category",
+  directives: [
+    { fmt: "monster-category str name" },
+    { fmt: "mcat-include-base str name", repeat: true },
+    { fmt: "mcat-include-flag ?str flags", repeat: true },
+    { fmt: "mcat-include-other str name", repeat: true },
+  ],
+};
