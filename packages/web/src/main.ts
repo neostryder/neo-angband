@@ -208,6 +208,7 @@ import {
   selectFromMenu,
   itemSelect,
   promptText,
+  getKeyInline,
   getRepDir,
   getAimDir,
   getCheck,
@@ -3056,13 +3057,11 @@ async function retireCmd(): Promise<void> {
     if (!(await confirmYesNo("Do you want to retire? "))) return;
   } else {
     if (!(await confirmYesNo("Do you really want to retire?"))) return;
-    // Special verification: type the '@' sign (ui-command.c:178-182).
-    const verify = await promptText(
+    // Special verification: one inline keypress at row 0, proceed only on '@'
+    // (ui-command.c:178-182 prt/inkey, NOT a full-screen line editor).
+    const verify = await getKeyInline(
       term,
-      "Please verify RETIRING THIS CHARACTER by typing the '@' sign:",
-      "",
-      1,
-      "[ type @ to confirm, ESC to cancel ]",
+      "Please verify RETIRING THIS CHARACTER by typing the '@' sign: ",
     );
     if (verify !== "@") return;
   }

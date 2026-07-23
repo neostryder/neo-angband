@@ -375,6 +375,34 @@ export function getCheck(term: GlyphTerm, prompt: string): Promise<boolean> {
 }
 
 /**
+ * A single inline keypress over the current screen (prt(prompt, 0, 0); inkey()).
+ * Draws `prompt` at row 0 in white, reads ONE key (lone Shift/Ctrl/Alt/Meta
+ * ignored), clears row 0, and resolves the key string - the faithful shape of
+ * the retire '@' verification (ui-command.c L178-182) and any other "type this
+ * exact key to confirm" prompt, which do NOT open a full-screen line editor.
+ */
+export function getKeyInline(term: GlyphTerm, prompt: string): Promise<string> {
+  return new Promise<string>((resolve) => {
+    const { cols } = term.size();
+    term.print(0, 0, prompt.slice(0, cols - 1), FG);
+    const finish = (key: string): void => {
+      window.removeEventListener("keydown", onKey, true);
+      clearPromptRow(term);
+      resolve(key);
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") {
+        return;
+      }
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      finish(ev.key);
+    };
+    window.addEventListener("keydown", onKey, true);
+  });
+}
+
+/**
  * A single-line text input (get_string / textui_get_name). Renders a prompt and
  * the editable buffer; Enter confirms, Escape cancels (resolves null), Backspace
  * deletes. Resolves the entered string (possibly empty) or null on cancel.

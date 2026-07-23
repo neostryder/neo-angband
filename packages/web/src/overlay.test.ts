@@ -8,6 +8,7 @@ import {
   getRepDir,
   getAimDir,
   getCheck,
+  getKeyInline,
   AIM_STAR,
   AIM_CLOSEST,
 } from "./overlay";
@@ -935,5 +936,44 @@ describe("getCheck (textui_get_check)", () => {
     expect(resolved).toBe(false);
     press(win, "y");
     expect(await done).toBe(true);
+  });
+});
+
+describe("getKeyInline (prt + inkey, retire '@' verify)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("draws the prompt at row 0 and resolves the pressed key, clearing the row", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = getKeyInline(term, "Please verify RETIRING THIS CHARACTER by typing the '@' sign: ");
+    expect(term.snapshot()[0] ?? "").toBe("Please verify RETIRING THIS CHARACTER by typing the '@' sign:");
+    press(win, "@");
+    expect(await done).toBe("@");
+    expect(term.snapshot()[0] ?? "").toBe("");
+  });
+
+  it("resolves a non-'@' key too (caller decides), so ESC cancels retire", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = getKeyInline(term, "Confirm: ");
+    press(win, "Escape");
+    expect(await done).toBe("Escape");
+  });
+
+  it("ignores lone modifier keydowns", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    let resolved = false;
+    const done = getKeyInline(term, "Confirm: ").then((k) => { resolved = true; return k; });
+    press(win, "Shift");
+    await tick();
+    expect(resolved).toBe(false);
+    press(win, "@");
+    expect(await done).toBe("@");
   });
 });
