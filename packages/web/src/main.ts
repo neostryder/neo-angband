@@ -1025,7 +1025,7 @@ function buildItemSources(
       if (!handle) continue;
       const obj = gearGet(state.gear, handle);
       if (!obj || !tester(obj)) continue;
-      items.push({ label: objectName(state, obj), color: objectColor(obj), tag: objLetter(items.length) });
+      items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length) });
       eRefs.push({ handle });
     }
     if (items.length > 0) {
@@ -1038,7 +1038,7 @@ function buildItemSources(
     const fRefs: ItemTargetRef[] = [];
     floorPile(state, state.actor.grid).forEach((obj, i) => {
       if (!tester(obj)) return;
-      items.push({ label: objectName(state, obj), color: objectColor(obj), tag: objLetter(items.length) });
+      items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length) });
       fRefs.push({ floor: i });
     });
     if (items.length > 0) {
