@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { newGear, gearAdd, objectNew, TV, FEAT } from "@neo-angband/core";
 import type { GameObject, ObjectKind, StartedGame, Store } from "@neo-angband/core";
-import { findInven, sortStoreStock } from "./shop";
+import { findInven, sortStoreStock, wrapCssRuns, SEL_ORIGINAL, SEL_ROGUE } from "./shop";
 
 /**
  * find_inven (store.c L1515-1644): the count of a stackable equivalent already
@@ -98,5 +98,57 @@ describe("sortStoreStock (store_stock_list display order)", () => {
     const dear = stockObj(5, 3, 99);
     const { game, store } = storeWith([cheap, dear]);
     expect(sortStoreStock(game, store)).toEqual([dear, cheap]);
+  });
+});
+
+/**
+ * The store selection strings must match store_menu_set_selections
+ * (ui-store.c L797-806) verbatim, both keysets: they tag / pick stock rows and
+ * are deliberately disjoint from the command keys (p/g/s/d/l/x/...), so a
+ * selection letter can never fire a command. Verified live in-browser
+ * (a,c,f,h,j,m,n,o,q,r,u,v on the General Store), pinned here against drift.
+ */
+describe("store selection strings (store_menu_set_selections)", () => {
+  it("matches the original keyset string exactly", () => {
+    expect(SEL_ORIGINAL).toBe("acfhjmnoqruvyzABDFGHJKLMNOPQRSTUVWXYZ");
+  });
+  it("matches the roguelike keyset string exactly", () => {
+    expect(SEL_ROGUE).toBe("abcfmnoqrtuvyzABDFGHJKLMNOQRSUVWXYZ");
+  });
+  it("never intersects the store command keys (p/g/s/d/l/x and I)", () => {
+    for (const sel of [SEL_ORIGINAL, SEL_ROGUE]) {
+      for (const cmd of "pgsdlxI") expect(sel.includes(cmd)).toBe(false);
+    }
+  });
+});
+
+/**
+ * store_display_help word-wraps the command legend (text_out) to the store
+ * width, carrying each run's colour across the break. wrapCssRuns is that
+ * wrapper; check it breaks on spaces, keeps colours, and never exceeds width.
+ */
+describe("wrapCssRuns (store help legend wrapping)", () => {
+  it("wraps on spaces without exceeding the width", () => {
+    const runs = [{ text: "one two three four five", color: "#fff" }];
+    const lines = wrapCssRuns(runs, 9);
+    for (const ln of lines) {
+      const len = ln.reduce((n, r) => n + r.text.length, 0);
+      expect(len).toBeLessThanOrEqual(9);
+    }
+    // Reassembling the lines yields the original words in order.
+    expect(lines.map((ln) => ln.map((r) => r.text).join("")).join(" ")).toBe(
+      "one two three four five",
+    );
+  });
+
+  it("preserves per-run colours across a wrap boundary", () => {
+    const runs = [
+      { text: "green ", color: "#0f0" },
+      { text: "white words here", color: "#fff" },
+    ];
+    const lines = wrapCssRuns(runs, 8);
+    const flat = lines.flat();
+    expect(flat.some((r) => r.color === "#0f0" && r.text.includes("green"))).toBe(true);
+    expect(flat.some((r) => r.color === "#fff")).toBe(true);
   });
 });
