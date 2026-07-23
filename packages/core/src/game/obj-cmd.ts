@@ -837,7 +837,25 @@ function useCommand(
     const found = commandObject(state, cmd);
     if (!found || !filter(found.obj)) return 0;
     if (use === USE.TIMEOUT && !objCanZap(found.obj)) {
-      deps.env?.msg?.("That item is still charging.");
+      /* do_cmd_zap_rod (cmd-obj.c L852) and do_cmd_activate (L886) use
+       * distinct still-charging wording. */
+      deps.env?.msg?.(
+        tvalIsRod(found.obj.tval)
+          ? "That rod is still charging."
+          : "That item is still charging.",
+      );
+      return 0;
+    }
+    if (use === USE.CHARGE && found.obj.pval <= 0) {
+      /* do_cmd_aim_wand (cmd-obj.c L817-820) / do_cmd_use_staff (L783-786)
+       * pre-check obj_has_charges and return BEFORE use_aux, so an empty
+       * device costs no turn (checkDevices' "... no charges left." path in
+       * useAux would otherwise burn one). */
+      deps.env?.msg?.(
+        tvalIsWand(found.obj.tval)
+          ? "That wand has no charges."
+          : "That staff has no charges.",
+      );
       return 0;
     }
     const dir = commandDir(cmd);

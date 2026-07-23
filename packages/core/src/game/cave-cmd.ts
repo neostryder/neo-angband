@@ -767,7 +767,8 @@ export function installCaveCommands(
       return 0;
     }
     if (state.chunk.depth === 0) {
-      env.msg?.("You are already on the surface.");
+      /* do_cmd_go_up (cmd-cave.c:78-79): can't ascend past the top level. */
+      env.msg?.("You can't go up from here!");
       return 0;
     }
     /* Success (cmd-cave.c:87): typed MSG_STAIRS_UP. */
