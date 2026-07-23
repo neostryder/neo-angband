@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
 import { FEAT, TV } from "../generated";
 import { ObjRegistry } from "../obj/bind";
+import { OBJ_NOTICE, learnBirthObviousFlags, makeRuneEnv } from "../obj/knowledge";
+import { ODESC, objectDesc } from "../obj/desc";
+import { bindPlayer } from "../player/bind";
+import { blankPlayer } from "../player/player";
 import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import type { GameObject } from "../obj/object";
@@ -80,6 +84,66 @@ describe("store maintenance (store.c store_reset/store_maint)", () => {
     }
     // Home is never maintained.
     expect(home.stock.length).toBe(0);
+  });
+
+  it("marks every stocked item ASSESSED so mundane items show no {??}", () => {
+    // store.c L1216-1219 / L1274-1276: store stock is created with
+    // obj->known->notice |= OBJ_NOTICE_ASSESSED and player_know_object, i.e. the
+    // player knows everything about it. The port keeps the assessed bit on the
+    // live object, where objectKnownShadow reads it to fill combat/mod details.
+    // Without it, a mundane enchanted item (e.g. "Broad Sword (+5,+4)") would
+    // wrongly show a "{??}" not-fully-known marker in the store; only an ego item
+    // with an unlearned rune should. This asserts the bit is set on all stock.
+    const { ctx, stores } = context();
+    storeReset(ctx);
+    for (const store of stores) {
+      if (store.feat === FEAT.HOME) continue;
+      for (const obj of store.stock) {
+        expect(
+          obj.notice & OBJ_NOTICE.ASSESSED,
+          `${obj.kind.name} in store ${store.feat} not ASSESSED`,
+        ).toBe(OBJ_NOTICE.ASSESSED);
+      }
+    }
+  });
+
+  it("shows no {??} on mundane light/dig/thrown store stock (birth-known flags)", () => {
+    // player-birth.c L597-602: player_outfit marks every LIGHT / DIG / THROW /
+    // CURSE_ONLY subtype flag known at birth (they are non-rune "on wield"
+    // flags). Without that a store torch (LIGHT_2), digger (DIG_1) or thrown
+    // item (THROWING) would read as not-fully-known and show a spurious "{??}".
+    // A birthed player must see them clean; only genuine unlearned runes flag.
+    const players = bindPlayer({
+      races: loadRecords("p_race"),
+      classes: loadRecords("class"),
+      properties: loadRecords("player_property"),
+      timed: loadRecords("player_timed"),
+      shapes: loadRecords("shape"),
+      bodies: loadRecords("body"),
+      history: loadRecords("history"),
+      realms: loadRecords("realm"),
+    });
+    const race = players.raceByName("Human")!;
+    const p = blankPlayer(race, players.classByName("Warrior")!, players.bodies[race.body]!);
+    learnBirthObviousFlags(p.objKnown.flags, reg.properties);
+
+    const rng = new Rng(1234);
+    const env = makeRuneEnv(() => null, (v) => rng.randcalcVaries(v), {
+      brands: reg.brands, slays: reg.slays, curses: reg.curses,
+      properties: reg.properties, elementNames: ["acid", "lightning", "fire", "frost"],
+      msg: () => {},
+    });
+    const deps = { isAware: () => true, isTried: () => false };
+    const { ctx, stores } = context();
+    storeReset(ctx);
+    const gen = stores.find((s) => s.feat === FEAT.STORE_GENERAL)!;
+    const mode = ODESC.PREFIX | ODESC.FULL | ODESC.STORE;
+    for (const obj of gen.stock) {
+      // Mundane stock (no ego, no brands/slays, no non-flag runes) must be clean.
+      if (obj.ego || obj.brands || obj.slays) continue;
+      const name = objectDesc(obj, mode, p, env, deps);
+      expect(name, `${obj.kind.name} should not show {??}`).not.toContain("{??}");
+    }
   });
 
   it("always carries its staples at a full stack", () => {
