@@ -12,6 +12,8 @@ import { gearGet } from "../game/gear";
 import { histHas, historyIsArtifactKnown } from "../player/history";
 import { floorCarry } from "../game/floor";
 import { objectPrep } from "../obj/make";
+import { squareIsKnown } from "../game/known";
+import { loc } from "../loc";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -87,6 +89,27 @@ describe("startGame (new-game assembly)", () => {
     }
     // Monster slot 0 is unused; any placed monsters registered from 1.
     expect(state.monsters[0]).toBeNull();
+  });
+
+  it("memorizes the whole daytime town on birth (town_gen -> cave_illuminate)", () => {
+    // Birth defaults to the town (depth 0) at turn 0, which is daytime. The C
+    // town_gen calls cave_illuminate, memorizing every lit town grid so the
+    // whole town is visible on entry - not just the FOV bubble around the
+    // spawn. Every floor grid must therefore be known immediately at birth.
+    const { state } = startGame(pack, { seed: 123, depth: 0 });
+    expect(state.chunk.depth).toBe(0);
+    let floors = 0;
+    let knownFloors = 0;
+    for (let y = 0; y < state.chunk.height; y++) {
+      for (let x = 0; x < state.chunk.width; x++) {
+        const g = loc(x, y);
+        if (!state.chunk.isFloor(g)) continue;
+        floors++;
+        if (squareIsKnown(state, g)) knownFloors++;
+      }
+    }
+    expect(floors).toBeGreaterThan(100);
+    expect(knownFloors).toBe(floors);
   });
 
   it("seeds the standard quests at birth (player_quests_reset)", () => {
