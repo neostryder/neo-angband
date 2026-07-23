@@ -203,7 +203,8 @@ export function installRangedCommands(registry: ActionRegistry): void {
     const handle = typeof args["handle"] === "number" ? args["handle"] : -1;
     const src = handle >= 0 ? gearGet(state.gear, handle) : null;
     if (!src || !tvalIsAmmo(src.tval)) {
-      state.msg?.("You have no ammunition to fire.");
+      /* player-attack.c:1325 cmd_get_item error string (obj_can_fire filter). */
+      state.msg?.("You have no suitable ammunition to fire.");
       return 0;
     }
     if (src.tval !== state.actor.combat.ammoTval) {

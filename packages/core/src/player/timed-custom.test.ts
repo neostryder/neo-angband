@@ -107,9 +107,11 @@ describe("print_custom_message substitution (obj-util.c:1118-1185)", () => {
     );
   });
 
-  it("leaves text without tags and invalid tags intact", () => {
+  it("leaves tagless text intact and drops the stray brace of an invalid tag", () => {
     expect(substituteTimedMessage("You feel safe.", sword)).toBe("You feel safe.");
-    expect(substituteTimedMessage("a {b7} c", sword)).toBe("a {b7} c");
+    /* obj-util.c:1176-1178: an invalid tag sets string = next + 1, dropping the
+       '{' and re-reading the rest as plain text ("a {b7} c" -> "a b7} c"). */
+    expect(substituteTimedMessage("a {b7} c", sword)).toBe("a b7} c");
   });
 
   it("player_set_timed routes messages through the substitution", () => {

@@ -383,6 +383,9 @@ export function calcSpells(
   const numTotal = magic.totalSpells;
   if (!numTotal) return;
 
+  /* Save the new_spells value (player-calcs.c:1288) for the change check. */
+  const oldSpells = player.upkeep.newSpells;
+
   /* Determine the number of spells allowed. */
   let levels = player.lev - magic.spellFirst + 1;
   if (levels < 0) levels = 0;
@@ -449,6 +452,22 @@ export function calcSpells(
   }
   if (player.upkeep.newSpells > learnable) {
     player.upkeep.newSpells = learnable;
+  }
+
+  /* Spell count changed: announce the new allowance (player-calcs.c:1433-1466).
+     The realm spell_noun list is pluralised only when >1 new spell. The
+     old!=new guard means load/boot recalcs (newSpells restored from save) stay
+     silent - only a real change (level-up, stat shift) speaks. */
+  if (oldSpells !== player.upkeep.newSpells && player.upkeep.newSpells > 0) {
+    const realms = classMagicRealms(player.cls);
+    const plural = player.upkeep.newSpells > 1;
+    const suffix = plural ? "s" : "";
+    let buf = realms.length > 0 ? `${realms[0]!.spellNoun}${suffix}` : "spells";
+    for (let i = 1; i < realms.length; i++) {
+      buf += i < realms.length - 1 ? ", " : " or ";
+      buf += `${realms[i]!.spellNoun}${suffix}`;
+    }
+    msg?.(`You can learn ${player.upkeep.newSpells} more ${buf}.`);
   }
 }
 
