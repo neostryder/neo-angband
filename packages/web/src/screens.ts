@@ -24,6 +24,7 @@ import {
   spellCollectFromBook,
   spellByIndex,
   spellChance,
+  makeSpellChanceEnv,
   spellOkayToCast,
   spellOkayToStudy,
   getUseDeviceChance,
@@ -607,6 +608,10 @@ export function bookSpellMenu(
   const statInd = state.statInd ?? [];
   const items: MenuItem[] = [];
   const sidx: number[] = [];
+  /* Same SpellChanceEnv the cast path uses, so the shown fail rate includes
+     the OF_AFRAID and Necromancer PF_UNLIGHT penalties (ui-spell.c uses the
+     same spell_chance for display and cast). */
+  const chanceEnv = makeSpellChanceEnv(state);
   for (const idx of spellCollectFromBook(player, bookObj)) {
     const spell = spellByIndex(player.cls, idx);
     if (!spell) continue;
@@ -636,7 +641,7 @@ export function bookSpellMenu(
       const name = spell.name.padEnd(30).slice(0, 30);
       const lv = String(spell.level).padStart(2);
       const mana = String(spell.mana).padStart(4);
-      const fail = String(spellChance(player, statInd, idx)).padStart(3);
+      const fail = String(spellChance(player, statInd, idx, chanceEnv)).padStart(3);
       label = `${name}${lv} ${mana} ${fail}%${comment}`;
     }
     items.push({ label, disabled, color: colorToCss(attr) });

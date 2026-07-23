@@ -30,17 +30,11 @@
  *   same order and the generated names match upstream. This is verified against
  *   an independent Python oracle in randart.test.ts.
  *
- *   SEAM (game path not yet faithful): the in-game caller
- *   session/game.ts swapRandartSet() calls doRandart(reg.objects, seed) and does
- *   NOT thread the corpus, because reg.objects is an ObjRegistry which does not
- *   carry nameSections (that map lives on CoreRegistries). Wiring the corpus at
- *   that call site (or onto ObjRegistry) requires editing files outside this
- *   module's ownership (session/game.ts or obj/bind.ts). Until that one-line
- *   change lands, doRandart falls back to a local syllable table (randNameFallback
- *   below) so the game path never breaks and never infinite-loops on an empty
- *   corpus - but its name draw count then differs from upstream. To close the
- *   gap fully, game.ts should call
- *   doRandart(reg.objects, seed, reg.nameSections.get(RANDNAME_TOLKIEN)).
+ *   Game path: session/game.ts swapRandartSet() threads the corpus -
+ *   doRandart(reg.objects, seed, reg.nameSections.get(RANDNAME_TOLKIEN))
+ *   (game.ts:2511-2514) - so the in-game randart names draw faithfully too.
+ *   randNameFallback (a local syllable table) is retained only as a defensive
+ *   guard for callers that pass no corpus (it never runs on the wired paths).
  * - Spoiler file (DEFERRED): upstream do_randart optionally writes randart.txt
  *   (create_file / write_randart_entry, obj-randart.c L3057-L3215) and always
  *   writes randart.log. Both are spoiler/log dumps that never affect any

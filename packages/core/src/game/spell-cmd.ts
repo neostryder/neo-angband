@@ -19,8 +19,10 @@
  * supplied by session/game.ts).
  */
 
-import { PF, TMD } from "../generated";
+import { OF, PF, TMD } from "../generated";
 import { sourcePlayer } from "../effects/interpreter";
+import { playerOfHasWorld } from "./world";
+import { squareIsLit } from "../world/view";
 import type { EffectRecordJson } from "../obj/types";
 import type { Player } from "../player/player";
 import {
@@ -111,6 +113,25 @@ export function playerCanCast(state: GameState, env: SpellCmdEnv = {}): boolean 
     return false;
   }
   return true;
+}
+
+/**
+ * makeSpellChanceEnv: the SpellChanceEnv (fear + lit-square inputs) shared by
+ * the cast path (spell_cast) and the fail-chance DISPLAY path (get_spell_info,
+ * ui-spell.c), so a shown fail rate always equals the cast fail rate. C uses
+ * the SAME spell_chance for both; when the display path omits these the shown
+ * rate drops the OF_AFRAID (+20) and Necromancer PF_UNLIGHT (+25) penalties.
+ * player_of_has(OF_AFRAID) folds the timed TMD_AFRAID synonym plus any
+ * equipment/intrinsic fear; square_islit(cave, p->grid) drives PF_UNLIGHT
+ * (player-spell.c:417,424).
+ */
+export function makeSpellChanceEnv(state: GameState): SpellChanceEnv {
+  return {
+    afraid: (): boolean =>
+      playerOfHasWorld(state, OF.AFRAID) ||
+      (state.actor.player.timed[TMD.AFRAID] ?? 0) > 0,
+    gridIsLit: (): boolean => squareIsLit(state.chunk, state.actor.grid),
+  };
 }
 
 /**

@@ -390,7 +390,9 @@ const handleDRAIN_STAT: EffectHandler = (ctx) => {
     const player = ctx.env.player;
     if (player?.applyDamageReduction) dam = player.applyDamageReduction(dam);
     equipLearnFlag(p, state.runeEnv, flag);
-    say(ctx, `You feel very ${descStat(env.general, stat, false)}.`);
+    /* show_damage " (N)" suffix (effect-handler-general.c L837-841). */
+    const damText = dam > 0 && ctx.env.showDamage ? ` (${dam})` : "";
+    say(ctx, `You feel very ${descStat(env.general, stat, false)}.${damText}`);
     if (player?.takeHit) player.takeHit(dam, "stat drain");
     state.updateBonuses?.();
   }

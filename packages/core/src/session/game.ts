@@ -91,9 +91,8 @@ import { registerSummonHandlers } from "../game/effect-summon";
 import type { SummonEffectEnv } from "../game/effect-summon";
 import { registerDetectHandlers } from "../game/effect-detect";
 import { becomeAware, caveIlluminateKnown, newKnownMap } from "../game/known";
-import { PY_EXERT, compactMonsters, isDaytime, playerOfHasWorld, playerOverExert } from "../game/world";
+import { PY_EXERT, compactMonsters, isDaytime, playerOverExert } from "../game/world";
 import { restoreMonsters } from "../game/scheduler";
-import { squareIsLit } from "../world/view";
 import { newTargetState, targetSetMonster } from "../game/target";
 import {
   getLore,
@@ -149,7 +148,7 @@ import {
   playerSpellsInit,
   registerBookKinds,
 } from "../player/spell";
-import { installSpellCommands } from "../game/spell-cmd";
+import { installSpellCommands, makeSpellChanceEnv } from "../game/spell-cmd";
 import { installRangedCommands } from "../game/ranged-cmd";
 import { markNoscore, NOSCORE } from "../game/wizard";
 import type { WizardDeps } from "../game/wizard";
@@ -169,6 +168,7 @@ import {
   AutoinscriptionRegistry,
   FlavorKnowledge,
   EverseenKnowledge,
+  equipLearnElement,
   makeRuneEnv,
   OBJ_NOTICE,
   objectLearnOnWield,
@@ -1028,6 +1028,11 @@ function wireGame(
             lifeDrainPercent: reg.constants.lifeDrainPercent,
             ...(teleport ? { teleport } : {}),
           }),
+          /* adjust_dam(actual=true) equip_learn_element (project-player.c
+           * L60-62, audit 01 P5): being hit by an element teaches the resist
+           * rune on worn gear. No RNG. */
+          equipLearnElement: (resType: number): void =>
+            equipLearnElement(state.actor.player, state.runeEnv, resType),
         },
       },
     };
@@ -1268,17 +1273,10 @@ function wireGame(
       env: {
         expGain,
         msg: (text: string): void => state.msg?.(text),
-        // spell_chance fear penalty (player-spell.c:424, gap 2.11): +20 fail
-        // from fear of ANY source - player_of_has(OF_AFRAID) folds the timed
-        // TMD_AFRAID synonym and any equipment/intrinsic OF_AFRAID; the timed
-        // check is kept as a belt-and-braces superset. The fallback saw only
-        // the timed synonym, missing equipment-borne fear.
-        afraid: (): boolean =>
-          playerOfHasWorld(state, OF.AFRAID) ||
-          (state.actor.player.timed[TMD.AFRAID] ?? 0) > 0,
-        // spell_chance's PF_UNLIGHT penalty (player-spell.c L417): the
-        // Necromancer's +25 fail on a lit square (square_islit(cave, p->grid)).
-        gridIsLit: (): boolean => squareIsLit(state.chunk, state.actor.grid),
+        // spell_chance fear + PF_UNLIGHT inputs (player-spell.c:417,424),
+        // shared with the fail-chance DISPLAY path so the shown rate matches
+        // the cast rate (see makeSpellChanceEnv).
+        ...makeSpellChanceEnv(state),
         // spell_cast overcast (player-spell.c L552-553): once mana empties,
         // player_over_exert twice in the exact upstream order - FAINT then CON -
         // so the RNG stream draws faithfully (playerOverExert draws per flag).

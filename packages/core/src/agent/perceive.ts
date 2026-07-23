@@ -32,6 +32,7 @@ import { OBJ_MOD_NAMES } from "../obj/bind";
 import { objectValue } from "../obj/value";
 import { monsterIsVisible } from "../mon/predicate";
 import { PY_SPELL, spellChance } from "../player/spell";
+import { makeSpellChanceEnv } from "../game/spell-cmd";
 import { priceItem } from "../store/price";
 import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types";
 import type {
@@ -329,6 +330,9 @@ function spellbookViews(state: GameState): SpellbookView[] {
   /* Live cast-failure needs the derived stat indices; absent (before the first
    * calc_bonuses / worldless harness) the chance field is simply omitted. */
   const statInd = state.statInd;
+  /* Same env as the cast/display paths so the perceived fail rate carries the
+     OF_AFRAID / PF_UNLIGHT penalties (spell_chance is shared upstream). */
+  const chanceEnv = makeSpellChanceEnv(state);
   return p.cls.magic.books.map((book) => ({
     tval: book.tvalIdx,
     name: book.name,
@@ -346,7 +350,7 @@ function spellbookViews(state: GameState): SpellbookView[] {
         worked: (flags & PY_SPELL.WORKED) !== 0,
         forgotten: (flags & PY_SPELL.FORGOTTEN) !== 0,
       };
-      if (statInd) view.chance = spellChance(p, statInd, s.sidx);
+      if (statInd) view.chance = spellChance(p, statInd, s.sidx, chanceEnv);
       return view;
     }),
   }));
