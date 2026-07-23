@@ -584,8 +584,17 @@ export function playerGetResumeNormalShape(
  */
 export function playerConfuseDir(state: GameState, dir: number): number {
   if ((state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) {
+    let newDir = dir;
     if (dir === 5 || state.rng.randint0(100) < 75) {
-      return DDD[state.rng.randint0(8)] as number;
+      /* Random direction. */
+      newDir = DDD[state.rng.randint0(8)] as number;
+    }
+    /* player-util.c L1369: emit "You are confused." and report the change only
+     * when the direction actually changed (a same-direction roll is silent).
+     * The RNG draw above is unconditional whenever confused, matching C. */
+    if (newDir !== dir) {
+      state.msg?.("You are confused.");
+      return newDir;
     }
   }
   return dir;
