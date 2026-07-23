@@ -135,23 +135,28 @@ const handleBEAM: EffectHandler = (ctx) => {
  * noticing an effect (project() reporting something visible happened). The
  * two are distinct upstream codes purely to aid effect descriptions.
  */
-const handleBOLT_STATUS: EffectHandler = (ctx) => {
-  const env = gameEnv(ctx);
-  if (!env) return true;
-  const dam = effectCalculateValue(ctx, true);
-  const source = sourceFor(env, ctx.origin);
-  const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
-  if (castBolt(env.state, env.cast, source, grid, dam, ctx.subtype))
-    ctx.ident = true;
-  return true;
-};
+const handleBoltStatusFlagged =
+  (extraFlg: number): EffectHandler =>
+  (ctx) => {
+    const env = gameEnv(ctx);
+    if (!env) return true;
+    const dam = effectCalculateValue(ctx, true);
+    const source = sourceFor(env, ctx.origin);
+    const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
+    if (castBolt(env.state, env.cast, source, grid, dam, ctx.subtype, extraFlg))
+      ctx.ident = true;
+    return true;
+  };
+
+const handleBOLT_STATUS: EffectHandler = handleBoltStatusFlagged(0);
 
 /**
- * EF_BOLT_AWARE: as BOLT_STATUS; upstream adds PROJECT_AWARE when the caster
- * is aware of the effect (notice for unseen grids - a display refinement,
- * #25).
+ * EF_BOLT_AWARE (effect-handler-attack.c:398-406): as BOLT_STATUS, but adds
+ * PROJECT_AWARE when the caster is aware of the effect, so the hit registers as
+ * "obvious" (project-mon.c:1339) and does not try to ID its own source.
  */
-const handleBOLT_AWARE: EffectHandler = (ctx) => handleBOLT_STATUS(ctx);
+const handleBOLT_AWARE: EffectHandler = (ctx) =>
+  handleBoltStatusFlagged(ctx.aware ? PROJECT.AWARE : 0)(ctx);
 
 const handleBOLT_OR_BEAM: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
@@ -462,13 +467,22 @@ const makeProjectLos = (aware: boolean): EffectHandler => (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
   const dam = effectCalculateValue(ctx, ctx.other ? true : false);
-  const source =
-    ctx.origin.what === "player" ? playerCastSource(env.state) : sourceFor(env, ctx.origin);
-  const opts: { originGrid?: Loc; excludeMonster?: number } = {};
+  /* A6/A9 (effect-handler-attack.c:1088-1159). PROJECT_LOS: LOS from the
+   * ORIGIN's grid (origin_get_loc - the monster's grid when a monster casts
+   * it). PROJECT_LOS_AWARE: gates on square_isview (the player's FOV) and adds
+   * PROJECT_AWARE when the caster is aware. Both ALWAYS project from
+   * source_player() (the "hack - NRM"): damage is attributed to the player. */
+  const opts: {
+    originGrid?: Loc;
+    excludeMonster?: number;
+    useView?: boolean;
+    aware?: boolean;
+  } = aware
+    ? { useView: true, aware: ctx.aware }
+    : { originGrid: sourceFor(env, ctx.origin).grid };
   if (env.monCurrent !== undefined) opts.excludeMonster = env.monCurrent;
-  castProjectLos(env.state, env.cast, source, dam, ctx.subtype, opts);
+  castProjectLos(env.state, env.cast, playerCastSource(env.state), dam, ctx.subtype, opts);
   ctx.ident = true;
-  void aware; /* PROJECT_LOS_AWARE only affects awareness-gated notice (UI). */
   return true;
 };
 

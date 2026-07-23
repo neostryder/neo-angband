@@ -551,9 +551,14 @@ export function invenCarryNum(
   /* The quiver will get everything, or the pack can hold what's left (L763). */
   if (nToQuiver === obj.number || nAddPack > 0) return obj.number;
 
-  /* See if we can add to partially-full inventory slots (L767-776). */
+  /* See if we can add to partially-full inventory slots (L767-776). GR-02:
+   * upstream iterates p->upkeep->inven[], which EXCLUDES ammo already sitting
+   * in the quiver; gear.pack still carries those handles, so a stackable
+   * quiver ammo stack would be double-counted as pack free space. Skip any
+   * handle that is in the quiver. */
   let numLeft = obj.number - nToQuiver;
   for (const handle of gear.pack) {
+    if (objectIsInQuiver(gear, handle)) continue;
     const stack = gear.store.get(handle);
     if (stack && objectStackable(stack, obj, OSTACK_PACK)) {
       numLeft -= stack.kind.base.maxStack - stack.number;

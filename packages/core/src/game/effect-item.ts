@@ -575,10 +575,9 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
     /* Curse is permanent */
     return false;
   } else if (strength >= curse.power) {
-    /* Successfully removed this curse */
+    /* Successfully removed this curse. uncurse_object (effect-handler-general.c
+       L192-196) emits NO message on success - only the failure branches do. */
     removeObjectCurse(obj, pick);
-    const name = env.item?.reg?.curses[pick]?.name ?? "";
-    say(ctx, `The ${name} curse is removed!`);
   } else if (!obj.flags.has(OF.FRAGILE)) {
     /* Failure to remove, object is now fragile */
     say(
@@ -592,7 +591,9 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
     let dam = state.rng.damroll(5, 5);
     const player = ctx.env.player;
     if (player?.applyDamageReduction) dam = player.applyDamageReduction(dam);
-    say(ctx, "There is a bang and a flash!");
+    /* show_damage " (N)" suffix (effect-handler-general.c L212-216). */
+    const damText = dam > 0 && ctx.env.showDamage ? ` (${dam})` : "";
+    say(ctx, `There is a bang and a flash!${damText}`);
     /* Artifacts are marked as lost (effect-handler-general.c L220-222). */
     if (obj.artifact) state.onArtifactLost?.(obj.artifact);
     destroyOneItem(state, obj);

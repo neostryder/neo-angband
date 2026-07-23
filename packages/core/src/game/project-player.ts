@@ -106,6 +106,13 @@ export interface ProjectPlayerHooks {
    * on birth_ai_learn, so with the option off this is a pure no-op.
    */
   smartLearn?: (typ: number) => void;
+  /**
+   * equip_learn_element(p, res_type) from adjust_dam(actual=true)
+   * (project-player.c L60-62): being hit by an element teaches the player the
+   * resist rune on worn gear that mitigated it (res_type is the ICE->COLD
+   * remapped type). No RNG. Injected because it needs the live player + runeEnv.
+   */
+  equipLearnElement?: (resType: number) => void;
 }
 
 /** Everything the per-grid player driver needs. */
@@ -171,6 +178,9 @@ export function projectPlayer(
 
   /* Adjust damage for resistance/immunity/vulnerability (ICE uses COLD res). */
   const resType = typ === PROJ.ICE ? PROJ.COLD : typ;
+  /* adjust_dam(actual=true) (project-player.c L60-62): learn the mitigating
+   * resist rune. Fired before the immune short-circuit, exactly as upstream. */
+  if (resType < ELEM_MAX) hooks.equipLearnElement?.(resType);
   const resLevel = typ < ELEM_MAX ? actor.resistLevel(resType) : 0;
   /* minus_ac(p) is consulted only inside adjust_dam's PROJ_ACID branch, after
    * the immune short-circuit (project-player.c L65-70); calling it here fires

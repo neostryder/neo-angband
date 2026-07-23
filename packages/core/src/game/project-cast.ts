@@ -45,7 +45,7 @@ import type {
   ProjectHooks,
   ProjectParams,
 } from "../world/project";
-import { los } from "../world/view";
+import { los, squareIsView } from "../world/view";
 import type { ProjectionInfo } from "../world/projection";
 import type { DamageReduction } from "../player/take-hit";
 import { monsterMax } from "./context";
@@ -357,9 +357,14 @@ export function castBolt(
   target: Loc,
   dam: number,
   typ: number,
+  extraFlg = 0,
 ): boolean {
   let flg = PROJECT.STOP | PROJECT.KILL | PROJECT.THRU;
   if (!source.isPlayer) flg |= PROJECT.PLAY;
+  /* BOLT_AWARE adds PROJECT_AWARE when the caster is aware of the effect
+     (effect-handler-attack.c:402), so the hit is "obvious" and does not try to
+     ID its source. */
+  flg |= extraFlg;
   return castProjection(state, cctx, source, target, dam, typ, flg, 0);
 }
 
@@ -724,9 +729,18 @@ export function castProjectLos(
   source: CastSource,
   dam: number,
   typ: number,
-  opts: { originGrid?: Loc; excludeMonster?: number } = {},
+  opts: {
+    originGrid?: Loc;
+    excludeMonster?: number;
+    useView?: boolean;
+    aware?: boolean;
+  } = {},
 ): boolean {
-  const flg = PROJECT.JUMP | PROJECT.KILL | PROJECT.HIDE;
+  /* PROJECT_LOS_AWARE (effect-handler-attack.c:1125-1159) adds PROJECT_AWARE
+     when the caster is aware and gates on square_isview (the player's field of
+     view) instead of los() from the origin. */
+  let flg = PROJECT.JUMP | PROJECT.KILL | PROJECT.HIDE;
+  if (opts.aware) flg |= PROJECT.AWARE;
   const originGrid = opts.originGrid ?? state.actor.grid;
   const exclude = opts.excludeMonster ?? 0;
   let notice = false;
@@ -735,7 +749,10 @@ export function castProjectLos(
     const mon = state.monsters[i];
     if (!mon) continue;
     if (i === exclude) continue;
-    if (!los(state.chunk, originGrid, mon.grid)) continue;
+    const visible = opts.useView
+      ? squareIsView(state.chunk, mon.grid)
+      : los(state.chunk, originGrid, mon.grid);
+    if (!visible) continue;
     if (castProjection(state, cctx, source, mon.grid, dam, typ, flg, 0)) notice = true;
   }
   return notice;

@@ -154,8 +154,9 @@ describe("generate_stats (point-buy auto-allocation, player-birth.c:816-973)", (
     for (let i = 0; i < STAT.CON + 1; i++) {
       expect(player.statBirth[i]).toBe(alloc.stats[i]);
     }
-    /* get_money: the leftover-point gold bonus matches the allocation. */
-    expect(player.au).toBe(birthGold(alloc.pointsLeft));
+    /* get_money (player-birth.c:392,1255) resets au to start_gold at accept,
+       discarding the point-buy leftover-gold preview (birthGold). */
+    expect(player.au).toBe(START_GOLD);
   });
 });
 
@@ -287,8 +288,9 @@ describe("point-based birth (generatePlayer with a given stat array)", () => {
       expect(player.statBirth[i]).toBe(alloc[i]);
       expect(player.statMap[i]).toBe(i);
     }
-    /* get_money: start_gold + 50 * points_left (14 spent of 20 => 6 left). */
-    expect(player.au).toBe(START_GOLD + 50 * 6);
+    /* get_money (player-birth.c:392,1255) sets au = au_birth = start_gold at
+       accept, so the 6 leftover points grant no gold bonus in play. */
+    expect(player.au).toBe(START_GOLD);
     expect(player.auBirth).toBe(player.au);
   });
 
