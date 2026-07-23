@@ -345,6 +345,36 @@ export function getAimDir(
 }
 
 /**
+ * textui_get_check (ui-input.c L1255): an inline yes/no confirmation. Builds
+ * "%.70s[y/n] " (the prompt truncated to 70 chars, then "[y/n] "), draws it at
+ * row 0 in white (prt), and reads a single key. Returns true only for 'y'/'Y';
+ * every other key - including Escape - is "no", exactly as the reference. Pure
+ * modifier keydowns (Shift/Ctrl/Alt/Meta) are ignored so a Shift+Y chord is
+ * not read as an immediate "no".
+ */
+export function getCheck(term: GlyphTerm, prompt: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const { cols } = term.size();
+    const buf = `${prompt.slice(0, 70)}[y/n] `;
+    term.print(0, 0, buf.slice(0, cols - 1), FG);
+    const finish = (value: boolean): void => {
+      window.removeEventListener("keydown", onKey, true);
+      clearPromptRow(term);
+      resolve(value);
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") {
+        return; // a modifier alone is not an answer
+      }
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      finish(ev.key === "y" || ev.key === "Y");
+    };
+    window.addEventListener("keydown", onKey, true);
+  });
+}
+
+/**
  * A single-line text input (get_string / textui_get_name). Renders a prompt and
  * the editable buffer; Enter confirms, Escape cancels (resolves null), Backspace
  * deletes. Resolves the entered string (possibly empty) or null on cancel.
