@@ -603,6 +603,25 @@ function bootGame(): ReturnType<typeof startGame> {
 }
 
 const game = bootGame();
+// Strip the one-shot boot params (?new / ?seed / ?depth) from the visible URL
+// once they have been consumed. They are read into `params` / `seed` / `depth`
+// at module load (never re-read from location), so removing them here is safe
+// and prevents a plain browser refresh from re-triggering forcedNew - which
+// would reroll the active character (and clobber its slot) instead of resuming.
+// A refresh now returns to the title + character select, the intended anti-scum
+// behaviour. resumeSelected / switchCharacter already clear these on their own
+// reloads; this covers the birth and New-Character reloads that leave ?new set.
+try {
+  const u = new URL(location.href);
+  if (u.searchParams.has("new") || u.searchParams.has("seed") || u.searchParams.has("depth")) {
+    u.searchParams.delete("new");
+    u.searchParams.delete("seed");
+    u.searchParams.delete("depth");
+    history.replaceState(null, "", u.toString());
+  }
+} catch {
+  /* history/URL unavailable: harmless, the params just linger */
+}
 const { state, registry, booted, players } = game;
 // The effect interpreter (null on a worldless boot), surfaced for the trusted
 // mod registry facade (?trusted=<id>, W2.2).

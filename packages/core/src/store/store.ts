@@ -40,6 +40,7 @@ import {
   tvalIsLight,
   tvalIsWeapon,
 } from "../obj/object";
+import { OBJ_NOTICE } from "../obj/knowledge";
 import type { ObjectKind } from "../obj/types";
 import { objectValue, objectValueReal } from "../obj/value";
 import type { Rng } from "../rng";
@@ -479,6 +480,12 @@ export function storeCreateRandom(ctx: StoreMaintContext, store: Store): boolean
       continue;
     }
 
+    /* The player knows everything about store stock (store.c L1216-1219:
+     * obj->known->notice |= OBJ_NOTICE_ASSESSED; player_know_object). The port
+     * keeps the assessed bit on the live object, where objectKnownShadow reads
+     * it to fill combat/mod details, so a mundane enchanted item shows its
+     * (+h,+d)/[+a] with no "{??}" and only unlearned ego runes flag "{??}". */
+    obj.notice |= OBJ_NOTICE.ASSESSED;
     obj.origin = ORIGIN.NONE;
 
     /* Black markets have expensive tastes. */
@@ -508,6 +515,8 @@ export function storeCreateItem(
   const reg = ctx.deps.reg;
   const constants = ctx.deps.constants;
   const obj = objectPrep(ctx.rng, reg, constants, kind, 0, "randomise");
+  /* Store stock is fully assessed (store.c L1274-1276); see storeCreateRandom. */
+  obj.notice |= OBJ_NOTICE.ASSESSED;
   obj.origin = ORIGIN.NONE;
   return storeCarry(ctx.rng, reg, constants, store, obj, true);
 }

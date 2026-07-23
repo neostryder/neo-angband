@@ -30,7 +30,7 @@ import type { Rng } from "../rng";
 import type { ObjRegistry } from "../obj/bind";
 import { tvalFindIdx } from "../obj/bind";
 import type { GameObject } from "../obj/object";
-import { objectLearnOnWield } from "../obj/knowledge";
+import { learnBirthObviousFlags, objectLearnOnWield } from "../obj/knowledge";
 import {
   distributeCharges,
   objectAbsorb,
@@ -1034,6 +1034,13 @@ export function outfitPlayer(
   /* Currently carrying nothing (running total is owned by the calc/inventory
    * side, which is DEFERRED; we mirror only the reset upstream performs). */
   player.upkeep.totalWeight = 0;
+
+  /* Give the player obvious object knowledge (player-birth.c L597-602): the
+   * LIGHT / DIG / THROW / CURSE_ONLY subtype flags are known from birth. Without
+   * this a mundane torch / digger / thrown item would read as not-fully-known
+   * and show a spurious "{??}" in stores and lists. (The dd/ds/ac and combat
+   * runes from the same upstream block are set in blankObjKnowledge.) */
+  learnBirthObviousFlags(player.objKnown.flags, reg.properties);
 
   /* Modifier runes are learned per item at wield_all (below); the display
    * half of the knowledge block (flavor_aware / base_known) is DEFERRED. */
