@@ -108,6 +108,16 @@ describe("open / close doors", () => {
     expect(squareIsOpenDoor(state, loc(6, 5))).toBe(true);
   });
 
+  it("walking into a closed door opens it without stepping (move_player bump-to-open, cmd-cave.c L1079-1083)", () => {
+    const { state, run } = setup();
+    state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    const energy = run({ code: "walk", dir: 6 });
+    expect(energy).toBe(state.z.moveEnergy);
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.OPEN);
+    /* The alter branch opens the door and returns; the player stays put. */
+    expect(state.actor.grid).toEqual(loc(5, 5));
+  });
+
   it("closes an open door", () => {
     const { state, run } = setup();
     state.chunk.setFeat(loc(6, 5), FEAT.OPEN);
