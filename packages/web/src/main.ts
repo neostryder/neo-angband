@@ -208,8 +208,10 @@ import {
   selectFromMenu,
   itemSelect,
   promptText,
-  promptDirection,
+  getRepDir,
+  getAimDir,
   AIM_STAR,
+  AIM_CLOSEST,
   showLevelMap,
   menuNav,
 } from "./overlay";
@@ -2606,7 +2608,7 @@ function showMonsterList(): Promise<void> {
 
 /**
  * target_set_interactive: the interactive map-cursor browse loop. Owns the
- * keyboard like promptDirection/selectFromMenu (its own capturing keydown
+ * keyboard like getAimDir/selectFromMenu (its own capturing keydown
  * listener) - the caller gates the main handler via openModal. Returns
  * target_is_set() once the loop finishes (selection or cancel).
  */
@@ -2757,18 +2759,25 @@ async function chooseTarget(): Promise<boolean> {
   return true;
 }
 
-// get_aim_dir: a keypad direction (1-9), or DIR_TARGET (5). '*' opens the
-// interactive target loop and, once a monster is chosen, fires at it (dir 5).
-// Re-prompts if the player backs out of the loop without choosing.
+// get_aim_dir (ui-input.c L1608): a keypad direction (1-9), or DIR_TARGET (5).
+// '*'/<click> opens the interactive target loop; "'" targets the closest
+// monster; 5/t/0/. use the current target. Re-prompts (bell) if the player
+// backs out of the picker or asks for a target with none set/available.
 async function aimDir(): Promise<number | null> {
   for (;;) {
-    const d = await promptDirection(term);
+    const d = await getAimDir(term, targetOkay(state));
     if (d === null) return null;
     if (d === AIM_STAR) {
       const chosen = await runTargetLoop(TARGET.KILL, false);
       render();
       if (chosen) return 5;
       continue;
+    }
+    if (d === AIM_CLOSEST) {
+      const chosen = targetSetClosest(state, TARGET.KILL);
+      render();
+      if (chosen) return 5;
+      continue; // bell(): no monster in line of sight
     }
     return d;
   }
@@ -2780,34 +2789,34 @@ async function aimDir(): Promise<number | null> {
 // chest underfoot. The core resolves door-vs-chest (open) and
 // chest-vs-floor-trap (disarm) by what is actually there.
 
-/** Open (o): a door or a chest, by direction. */
+/** Open (o): a door or a chest, by direction (do_cmd_open, allow_5 for a chest underfoot). */
 async function openCmd(): Promise<void> {
-  const dir = await promptDirection(term, "Open in which direction? (5 for here)");
-  if (dir === null || dir === AIM_STAR) return;
+  const dir = await getRepDir(term, true);
+  if (dir === null) return;
   commandBuffer.push({ code: "open", dir });
   advance();
 }
 
-/** Disarm (D): a trapped chest or a floor trap, by direction. */
+/** Disarm (D): a trapped chest or a floor trap, by direction (do_cmd_disarm, allow_5 for a chest underfoot). */
 async function disarmCmd(): Promise<void> {
-  const dir = await promptDirection(term, "Disarm in which direction? (5 for here)");
-  if (dir === null || dir === AIM_STAR) return;
+  const dir = await getRepDir(term, true);
+  if (dir === null) return;
   commandBuffer.push({ code: "disarm", dir });
   advance();
 }
 
 /** Tunnel (T / ^T): dig through a wall / rubble / vein, by direction. */
 async function tunnelCmd(): Promise<void> {
-  const dir = await promptDirection(term, "Tunnel in which direction?");
-  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  const dir = await getRepDir(term);
+  if (dir === null) return;
   commandBuffer.push({ code: "tunnel", dir });
   advance();
 }
 
-/** Close (c): a door, by direction (do_cmd_close). */
+/** Close (c): a door, by direction (do_cmd_close, allow_5 = false). */
 async function closeCmd(): Promise<void> {
-  const dir = await promptDirection(term, "Close in which direction? (5 for here)");
-  if (dir === null || dir === AIM_STAR) return;
+  const dir = await getRepDir(term);
+  if (dir === null) return;
   commandBuffer.push({ code: "close", dir });
   advance();
 }
@@ -2818,8 +2827,8 @@ async function closeCmd(): Promise<void> {
  * direction is required (no self).
  */
 async function alterCmd(): Promise<void> {
-  const dir = await promptDirection(term, "Alter in which direction?");
-  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  const dir = await getRepDir(term);
+  if (dir === null) return;
   commandBuffer.push({ code: "alter", dir });
   advance();
 }
@@ -2832,8 +2841,8 @@ async function alterCmd(): Promise<void> {
  * C: cmd-cave.c:1039 do_cmd_steal, ui-game.c:216.
  */
 async function stealCmd(): Promise<void> {
-  const dir = await promptDirection(term, "Steal in which direction?");
-  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  const dir = await getRepDir(term);
+  if (dir === null) return;
   commandBuffer.push({ code: "steal", dir });
   advance();
 }
@@ -2893,8 +2902,8 @@ function fireAtNearestCmd(): void {
  * C: ui-game.c:153.
  */
 async function jumpCmd(): Promise<void> {
-  const dir = await promptDirection(term, "Walk into a trap in which direction?");
-  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  const dir = await getRepDir(term);
+  if (dir === null) return;
   commandBuffer.push({ code: "jump", dir });
   advance();
 }
@@ -3864,16 +3873,16 @@ async function swapWeaponCmd(): Promise<void> {
 
 /** Walk one step (;, CMD_WALK, cmd_hidden): prompt a direction, then step. */
 async function walkStepCmd(): Promise<void> {
-  const dir = await promptDirection(term, "Walk in which direction?");
-  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  const dir = await getRepDir(term);
+  if (dir === null) return;
   commandBuffer.push({ code: "walk", dir });
   advance();
 }
 
 /** Start running (CMD_RUN): prompt a direction, then run until run_test stops. */
 async function runDirCmd(): Promise<void> {
-  const dir = await promptDirection(term, "Run in which direction?");
-  if (dir === null || dir === AIM_STAR || dir === 5) return;
+  const dir = await getRepDir(term);
+  if (dir === null) return;
   commandBuffer.push({ code: "run", dir });
   advance();
 }
