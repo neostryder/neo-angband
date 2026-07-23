@@ -713,6 +713,13 @@ export interface PlayerCommand {
   code: string;
   /** Keypad direction 1..9 for movement commands. */
   dir?: number;
+  /**
+   * Set by the move-command wrapper (installCaveCommands' bump-open) once it has
+   * already run player_confuse_dir on `dir`: walkAction then uses `dir` as-is
+   * rather than re-rolling confusion, so the RNG is drawn exactly once per move
+   * (cmd-cave.c L1299-1302, matching do_cmd_walk).
+   */
+  confusedApplied?: boolean;
   /** Free-form arguments a mod-registered action may read. */
   args?: Readonly<Record<string, unknown>>;
 }
