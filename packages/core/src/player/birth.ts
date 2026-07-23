@@ -467,18 +467,16 @@ export function generatePlayer(
   /*
    * Stats: point-based (a given allocation, drawing ZERO RNG) or the classic
    * roller. For point-based we replay the allocation through reset_stats +
-   * buy_stat so the resulting stats and the leftover-point pool (which sets the
-   * get_money gold bonus below) match ui-birth.c's point-buy exactly. For the
-   * classic path pointsLeft stays 0, so gold is start_gold and the RNG draw is
-   * the unchanged rollStats sequence.
+   * buy_stat so the resulting stats match ui-birth.c's point-buy exactly. The
+   * leftover-point pool no longer affects gold (get_money resets au to
+   * start_gold at accept, see below). For the classic path the RNG draw is the
+   * unchanged rollStats sequence.
    */
   let statMax: number[];
-  let pointsLeft = 0;
   if (options.rolledStats) {
     /* Standard roller: the accepted natural stats are applied verbatim (no
-     * point-buy clamp, no RNG). pointsLeft stays 0, so get_money below awards
-     * exactly start_gold - matching do_cmd_roll_stats, which zeroes the points
-     * (player-birth.c:1183-1187). */
+     * point-buy clamp, no RNG). do_cmd_roll_stats zeroes the points
+     * (player-birth.c:1183-1187) and get_money awards start_gold either way. */
     statMax = new Array<number>(STAT_MAX)
       .fill(0)
       .map((_, i) => options.rolledStats?.[i] ?? 0);
@@ -491,7 +489,6 @@ export function generatePlayer(
       }
     }
     statMax = buy.stats;
-    pointsLeft = buy.pointsLeft;
   } else {
     statMax = rollStats(rng);
   }
@@ -550,12 +547,15 @@ export function generatePlayer(
   const history = options.historyOverride ?? rolledHistory;
   player.history = history;
 
-  /* Starting gold (get_money): start_gold + 50 * points_left. The classic
-   * roller leaves 0 points, so this is exactly START_GOLD there (unchanged);
-   * point-based awards the leftover-point bonus (recalculate_stats). */
-  const gold = birthGold(pointsLeft);
-  player.au = gold;
-  player.auBirth = gold;
+  /* Starting gold. do_cmd_accept_character (player-birth.c:1255) calls
+   * get_money AFTER the interactive point-buy screen, and get_money (L392)
+   * unconditionally sets au = au_birth = z_info->start_gold, DISCARDING the
+   * "start_gold + 50 * points_left" preview that recalculate_stats (L693)
+   * showed during birth. So every accepted character starts with exactly
+   * START_GOLD regardless of leftover points. birthGold(pointsLeft) is kept
+   * for the point-buy screen's live gold preview only, never the final value. */
+  player.au = START_GOLD;
+  player.auBirth = START_GOLD;
 
   /* do_cmd_accept_character (player-birth.c L1241-1242): history_clear then
    * history_add(HIST_PLAYER_BIRTH). blankPlayer already leaves player.hist

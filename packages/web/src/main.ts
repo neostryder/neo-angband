@@ -2033,6 +2033,13 @@ async function castSpell(): Promise<void> {
   if (pick === null) return;
   const spell = sidx[pick];
   if (spell === undefined) return;
+  const spellData = spellByIndex(player.cls, spell);
+  /* Verify "dangerous" spells (cmd-obj.c:1139-1152): if the spell costs more
+   * mana than the player has, warn and confirm; ESC/no aborts with no turn. */
+  if (spellData && spellData.mana > player.csp) {
+    say(`You do not have enough mana to ${verb} this ${noun}.`);
+    if (!(await confirmYesNo("Attempt it anyway? "))) return;
+  }
   const args: Record<string, unknown> = { spell };
   if (spellNeedsAim(player, spell)) {
     const dir = await aimDir();
@@ -2042,7 +2049,6 @@ async function castSpell(): Promise<void> {
   /* Enchant / Identify / Brand / Remove-Curse spells pick a target item. A
    * cancelled picker aborts the whole cast (no mana, no turn - the spell's
    * effect_do returns false before any mana is spent). */
-  const spellData = spellByIndex(player.cls, spell);
   if (spellData) {
     const chain = buildObjectEffectChain(
       spellData.effectsRaw as EffectRecordJson[],
