@@ -603,6 +603,35 @@ export function installCaveCommands(
   const env = deps.env ?? {};
   const chestDeps = deps.chestDeps;
 
+  /*
+   * move_player's bump-to-open (cmd-cave.c L1079-1083): walking (or jumping)
+   * into a known closed door opens it via do_cmd_alter_aux instead of a silent
+   * no-op - the primary way players open doors. Only the closed-door case is
+   * intercepted here; a monster in the doorway, an ordinary step, autopickup
+   * and wall/rubble bumps stay with the base walk/jump action (delegated). A
+   * disarmable trap under a walking player (disarm-on-walk) and the standing-
+   * in-a-web clear are separate move_player branches still routed through the
+   * base action - tracked, not silently dropped.
+   */
+  const bumpOpen =
+    (prior: ReturnType<typeof registry.get>) =>
+    (state: GameState, cmd: PlayerCommand): number => {
+      const at = commandGrid(state, cmd);
+      if (
+        at &&
+        state.chunk.isClosedDoor(at.grid) &&
+        !squareMonster(state, at.grid)
+      ) {
+        openAux(state, at.grid, env);
+        return state.z.moveEnergy;
+      }
+      return prior ? prior(state, cmd) : 0;
+    };
+  const priorWalk = registry.get("walk");
+  if (priorWalk) registry.register("walk", bumpOpen(priorWalk));
+  const priorJump = registry.get("jump");
+  if (priorJump) registry.register("jump", bumpOpen(priorJump));
+
   registry.register("open", (state, cmd) => {
     const at = chestCommandGrid(state, cmd);
     if (!at) return 0;
