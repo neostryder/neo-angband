@@ -73,7 +73,7 @@ import type {
   PlayerCommand,
 } from "../game/context";
 import { monsterGroupAssign, monsterGroupsVerify } from "../game/mon-group";
-import { floorCarry, floorPile } from "../game/floor";
+import { floorCarry, floorObjectForUse, floorPile } from "../game/floor";
 import { installPickup } from "../game/pickup";
 import { IgnoreSettings, ignoreItemOk } from "../obj/ignore";
 import { EffectRegistry } from "../effects/interpreter";
@@ -154,7 +154,7 @@ import { markNoscore, NOSCORE } from "../game/wizard";
 import type { WizardDeps } from "../game/wizard";
 import { createTownStores, storeUpdate, storeWillBuy } from "../store/store";
 import type { Store, StoreMaintContext } from "../store/store";
-import { storeBuy, storeSell } from "../store/transact";
+import { storeBuy, storeSell, storeSellFloor } from "../store/transact";
 import type { BuyResult, SellResult } from "../store/transact";
 import { priceItem } from "../store/price";
 import {
@@ -410,8 +410,18 @@ export interface StartedGame {
    * (store/transact.ts), with the deps and knowledge closed over. Town only.
    */
   buy: (store: Store, obj: GameObject, amt: number) => BuyResult;
-  /** do_cmd_sell: sell `amt` of the pack object at `handle` to the store. */
+  /**
+   * do_cmd_sell: sell `amt` of the gear object at `handle` to the store. The
+   * handle may name a pack, equipped, or quiver object (ui-store.c L487 get_mode
+   * USE_INVEN|USE_EQUIP|USE_QUIVER); a stuck equipped item is refused.
+   */
   sell: (store: Store, handle: number, amt: number) => SellResult;
+  /**
+   * do_cmd_sell for a FLOOR object (ui-store.c L487 USE_FLOOR): sell `amt` of the
+   * floor pile object `obj` (at the player's grid) to the store. Detached via
+   * floor_object_for_use rather than a gear handle.
+   */
+  sellFloor: (store: Store, obj: GameObject, amt: number) => SellResult;
   /**
    * price_item for display: the per-item price the player pays (storeBuying
    * false) or is offered (storeBuying true).
@@ -2407,7 +2417,7 @@ function makeStoreApi(
   reg: CoreRegistries,
   flavor: FlavorKnowledge,
   options: OptionState,
-): Pick<StartedGame, "buy" | "sell" | "price" | "willBuy"> {
+): Pick<StartedGame, "buy" | "sell" | "sellFloor" | "price" | "willBuy"> {
   const storeCtx = (): {
     rng: typeof state.rng;
     deps: MakeDeps;
@@ -2472,6 +2482,27 @@ function makeStoreApi(
       const result = storeSell(storeCtx(), store, handle, amt, state.actor.player, state.gear, know);
       /* do_cmd_sell: selling an artifact reveals it (history_find_artifact,
        * store.c L1928); if the store then discards it, it is lost (L1992). */
+      if (result.ok && result.sold?.artifact) {
+        state.onArtifactFound?.(result.sold.artifact);
+        if (result.carried === false) state.onArtifactLost?.(result.sold.artifact);
+      }
+      if (result.ok) refreshQuiver();
+      return result;
+    },
+    sellFloor: (store, obj, amt): SellResult => {
+      const result = storeSellFloor(
+        storeCtx(),
+        store,
+        obj,
+        amt,
+        state.actor.player,
+        txnKnow(obj),
+        (n) => {
+          const { usable, noneLeft } = floorObjectForUse(state, obj, n);
+          return { obj: usable, noneLeft };
+        },
+      );
+      /* do_cmd_sell artifact reveal / loss, exactly as the gear-handle path. */
       if (result.ok && result.sold?.artifact) {
         state.onArtifactFound?.(result.sold.artifact);
         if (result.carried === false) state.onArtifactLost?.(result.sold.artifact);
