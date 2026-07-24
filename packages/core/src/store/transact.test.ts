@@ -17,7 +17,7 @@ import { StoreRegistry } from "./bind";
 import { priceItem } from "./price";
 import { bindStoreRuntime, storeReset } from "./store";
 import type { Store, StoreMaintContext } from "./store";
-import { homeRetrieve, homeStash, storeBuy, storeSell } from "./transact";
+import { homeRetrieve, homeStash, purchaseAnalyze, storeBuy, storeSell } from "./transact";
 import type { StoreRecordJson } from "./types";
 import { FlavorKnowledge } from "../obj/knowledge";
 import type { FlavorAwareDeps } from "../obj/knowledge";
@@ -224,6 +224,54 @@ describe("storeSell (store.c do_cmd_sell)", () => {
     /* The item still leaves the pack and lands in the store. */
     expect(gear.pack.length).toBe(0);
     expect(weapon.stock.some((o) => o.tval === TV.SWORD)).toBe(true);
+  });
+
+  it("does not react under birth_no_selling (do_cmd_sell L1966)", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+    const handle = invenCarry(gear, makeObj(TV.SWORD), limits);
+    const res = storeSell(ctx, weapon, handle, 1, player, gear, {
+      aware: true,
+      noSelling: true,
+    });
+    expect(res.ok).toBe(true);
+    expect(res.reaction).toBeUndefined();
+  });
+
+  it("a real sale sets a reaction bucket or none, never for the Home", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+    const home = stores.find((s) => s.feat === FEAT.HOME)!;
+
+    const h1 = invenCarry(gear, makeObj(TV.SWORD), limits);
+    const real = storeSell(ctx, weapon, h1, 1, player, gear, NO_SELL);
+    expect(real.ok).toBe(true);
+    /* Computed (do_cmd_sell L1972); the exact bucket is price/value/guess
+     * dependent, so assert it is a valid bucket or undefined. */
+    expect([undefined, "worthless", "bad", "good", "great"]).toContain(real.reaction);
+
+    const h2 = invenCarry(gear, makeObj(TV.SWORD), limits);
+    const homeSale = storeSell(ctx, home, h2, 1, player, gear, NO_SELL);
+    expect(homeSale.ok).toBe(true);
+    expect(homeSale.reaction).toBeUndefined(); // the Home never reacts
+  });
+});
+
+describe("purchase_analyze (store.c L491-508)", () => {
+  it("classifies the shopkeeper reaction from price / value / guess", () => {
+    /* value <= 0 && price > value -> worthless (bought junk). */
+    expect(purchaseAnalyze(5, 0, 0)).toBe("worthless");
+    expect(purchaseAnalyze(1, -3, 0)).toBe("worthless");
+    /* value < guess && price > value -> bad (cheaper than thought, overpaid). */
+    expect(purchaseAnalyze(50, 40, 100)).toBe("bad");
+    /* value > guess && value < 4*guess && price < value -> good bargain. */
+    expect(purchaseAnalyze(30, 60, 40)).toBe("good");
+    /* value > guess && price < value (and not the good band) -> great. */
+    expect(purchaseAnalyze(30, 500, 40)).toBe("great");
+    /* No reaction: a fair deal where value > 0, value == guess. */
+    expect(purchaseAnalyze(50, 50, 50)).toBeUndefined();
   });
 });
 

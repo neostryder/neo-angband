@@ -117,6 +117,106 @@ export function sortStoreStock(game: StartedGame, store: Store): GameObject[] {
 export const SEL_ORIGINAL = "acfhjmnoqruvyzABDFGHJKLMNOPQRSTUVWXYZ";
 export const SEL_ROGUE = "abcfmnoqrtuvyzABDFGHJKLMNOQRSUVWXYZ";
 
+/* ------------------------------------------------------------------ */
+/* Shopkeeper flavor (comment arrays + greeting)                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * comment_welcome (ui-store.c L60-72): the greeting a shopkeeper gives on entry,
+ * indexed by the player's level tier. First %s is the owner's short name, the
+ * second (when present) the character identifier. Index 0 ("") is unreachable
+ * here because prt_welcome gates on player->lev > 5 (tier >= 1).
+ */
+const COMMENT_WELCOME = [
+  "",
+  "%s nods to you.",
+  "%s says hello.",
+  '%s: "See anything you like, adventurer?"',
+  '%s: "How may I help you, %s?"',
+  '%s: "Welcome back, %s."',
+  '%s: "A pleasure to see you again, %s."',
+  '%s: "How may I be of assistance, good %s?"',
+  '%s: "You do honour to my humble store, noble %s."',
+  '%s: "I and my family are entirely at your service, %s."',
+];
+/** comment_accept (store.c L453-461): one_in_(3) on a purchase (do_cmd_buy L1717). */
+const COMMENT_ACCEPT = ["Okay.", "Fine.", "Accepted!", "Agreed!", "Done!", "Taken!"];
+/** purchase_analyze reaction arrays (store.c L435-479). */
+const COMMENT_WORTHLESS = [
+  "Arrgghh!",
+  "You bastard!",
+  "You hear someone sobbing...",
+  "The shopkeeper howls in agony!",
+  "The shopkeeper wails in anguish!",
+  "The shopkeeper beats his head against the counter.",
+];
+const COMMENT_BAD = [
+  "Damn!",
+  "You fiend!",
+  "The shopkeeper curses at you.",
+  "The shopkeeper glares at you.",
+];
+const COMMENT_GOOD = [
+  "Cool!",
+  "You've made my day!",
+  "The shopkeeper sniggers.",
+  "The shopkeeper giggles.",
+  "The shopkeeper laughs loudly.",
+];
+const COMMENT_GREAT = [
+  "Yipee!",
+  "I think I'll retire!",
+  "The shopkeeper jumps for joy.",
+  "The shopkeeper smiles gleefully.",
+  "Wow.  I'm going to name my new villa in your honour.",
+];
+const REACTION_COMMENTS: Record<string, string[]> = {
+  worthless: COMMENT_WORTHLESS,
+  bad: COMMENT_BAD,
+  good: COMMENT_GOOD,
+  great: COMMENT_GREAT,
+};
+
+/*
+ * These comments are pure cosmetic flavor. Like every other flavor draw in the
+ * port (do_animation flicker, RF_ATTR_MULTI colour; see main.ts and
+ * parity/ledger/graphics-visuals.yaml), they are selected with DISPLAY
+ * randomness (Math.random), NOT the game's state.rng - so entering a shop never
+ * perturbs the deterministic game stream or the Borg golden master. Upstream
+ * draws these from the main RNG, but shopping is not part of any golden replay,
+ * and the port's ratified policy keeps flavor off the game RNG.
+ */
+const flavorPick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)] as T;
+const flavorOneIn = (n: number): boolean => Math.floor(Math.random() * n) === 0;
+
+/**
+ * prt_welcome (ui-store.c L139-177): a real shop's entry greeting. 50% of the
+ * time it says nothing; otherwise, for a character above level 5, it picks a
+ * comment_welcome line by level tier and substitutes the owner's short name and
+ * a character identifier (class title / full name / "valued customer"). The
+ * hint branch (ui-store.c L156) is skipped: the port loads no hints list, so
+ * upstream's `if (hints && one_in_(3))` is unreachable. Returns null for no
+ * greeting. Uses display randomness (see flavorPick).
+ */
+function prtWelcome(store: Store, player: StartedGame["state"]["actor"]["player"]): string | null {
+  if (flavorOneIn(2)) return null;
+  if (player.lev <= 5) return null;
+  const shortName = store.owner.name.split(" ")[0] ?? store.owner.name;
+  let i = Math.floor((player.lev - 1) / 5);
+  i = Math.min(i, COMMENT_WELCOME.length - 1);
+  let ident: string;
+  if (i % 2 && Math.floor(Math.random() * 2)) {
+    ident = player.cls.titles[Math.floor((player.lev - 1) / 5)] ?? "valued customer";
+  } else if (Math.floor(Math.random() * 2)) {
+    ident = player.fullName || "valued customer";
+  } else {
+    ident = "valued customer";
+  }
+  /* format(comment_welcome[i], short_name, player_name): first %s owner, second
+   * (if any) the identifier. */
+  return (COMMENT_WELCOME[i] as string).replace("%s", shortName).replace("%s", ident);
+}
+
 /** Callbacks the store screen needs from the shell (kept out of core, decision 21). */
 export interface StoreScreenDeps {
   /** f_info[store->feat].name, e.g. "General Store" (store_display_frame). */
@@ -336,6 +436,14 @@ export async function runStore(
     statusMsg = text;
     say(text);
   };
+
+  /* prt_welcome (ui-store.c L1292-1294 in use_store): a real shop greets the
+   * character once on entry; the Home does not. Shown on the message line, where
+   * it persists until the first command clears it (statusMsg). */
+  if (!isHome) {
+    const welcome = prtWelcome(store, game.state.actor.player);
+    if (welcome) storeSay(welcome);
+  }
 
   // Layout geometry, recomputed each paint from the (fixed) term size and the
   // current help state, mirroring store_display_recalc.
@@ -594,6 +702,10 @@ export async function runStore(
     const bought = result.bought
       ? describeObject(game.state, result.bought, ODESC.PREFIX | ODESC.FULL)
       : "the item";
+    /* comment_accept (do_cmd_buy L1717): one_in_(3) before the sale line, real
+     * shops only (the Home retrieves via do_cmd_retrieve, no comment). Logged so
+     * the "You bought ..." line remains the message shown on row 0. */
+    if (!isHome && flavorOneIn(3)) say(flavorPick(COMMENT_ACCEPT));
     storeSay(`You bought ${bought} for ${result.price} gold.`);
     refreshStock();
   };
@@ -654,7 +766,14 @@ export async function runStore(
     // nothing and only identifies the item, so it reports "You had ..." rather
     // than a zero-gold sale.
     else if (noSelling) storeSay(`You had ${name}.`);
-    else storeSay(`You sold ${name} for ${result.price} gold.`);
+    else {
+      storeSay(`You sold ${name} for ${result.price} gold.`);
+      /* purchase_analyze (do_cmd_sell L1972): the shopkeeper reacts after the
+       * sale line. Core classified the reaction (SellResult.reaction) from the
+       * price/value/guess; the shell prints one random comment_* line. */
+      const arr = result.reaction ? REACTION_COMMENTS[result.reaction] : undefined;
+      if (arr) storeSay(flavorPick(arr));
+    }
     refreshStock();
   };
 
