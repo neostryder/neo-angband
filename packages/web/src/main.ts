@@ -925,10 +925,6 @@ if (bootedNew && !birthPending && !needsSelect) {
   for (const line of BIRTH_MESSAGE_RECALL_BANNER) msglog.push(line);
 }
 
-// Keypad direction deltas (1-9), for resolving a walk's destination grid.
-const DIR_DX = [0, -1, 0, 1, -1, 0, 1, -1, 0, 1];
-const DIR_DY = [0, 1, 1, 1, 0, 0, 0, -1, -1, -1];
-
 // py_attack text (player-attack.c): the combat code returns HitType keys only,
 // leaving the wording to the UI. Render the classic "You hit the kobold." plus
 // the crit flavour and the kill line, faithful to melee_hit_types + mon_take_hit.
@@ -5094,6 +5090,39 @@ async function pumpMessages(preLen: number): Promise<void> {
   render();
 }
 
+/**
+ * Open the shop screen for the store whose entrance the player is standing on
+ * (do_cmd_store via EVENT_ENTER_STORE). Faithful entry is a post-move / hold
+ * consequence, not a keypress: the caller detects the player landed on (or is
+ * holding on) a shop tile. Because shop tiles carry no objects, the sell picker's
+ * USE_FLOOR source is naturally empty here.
+ */
+function enterStoreModal(store: Store): Promise<void> {
+  const feat = features.get(store.feat);
+  return openModal(() =>
+    runStore(term, game, store, say, constants, {
+      featureName: feat?.name ?? store.featName,
+      rogueLike: state.options?.get("rogue_like_commands") ?? false,
+      // store_examine (ui-store.c L749): the object_info screen for a fully
+      // known store item, header capitalised as ODESC_CAPITAL does.
+      examine: async (obj) => {
+        const name = objectName(state, obj);
+        const header = name.charAt(0).toUpperCase() + name.slice(1);
+        const tb = objectInfoTextblock(state, obj, inspectExtras);
+        await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
+      },
+      sellPick: storeSellPick,
+    }),
+  );
+}
+
+/** The store the player is currently standing on (square_shopnum), or null. */
+function storeAtPlayer(): Store | null {
+  return (
+    state.stores?.find((s) => s.feat === state.chunk.feat(state.actor.grid)) ?? null
+  );
+}
+
 function advance(): void {
   const preLen = msglog.all().length; // messages before this turn, for -more-
   const beforeX = state.actor.grid.x;
@@ -5160,7 +5189,16 @@ function advance(): void {
   // change; the explicit hold request covers standing still on items. Skipped on
   // death and level change (arrival on a new level is not a step onto its floor).
   const moved = state.actor.grid.x !== beforeX || state.actor.grid.y !== beforeY;
-  if (!dead && status !== LOOP_STATUS.LEVEL_CHANGE && (moved || seeFloorReq)) {
+  // EVENT_ENTER_STORE (player_handle_post_move, player-util.c:1602; do_cmd_hold,
+  // cmd-cave.c:1592): stepping onto - or standing still on - a shop door opens
+  // the store. Gate on the step/hold this turn (not merely "on a shop tile") so
+  // it fires once from the move, exactly like upstream, and does not re-open every
+  // turn the player idles on the door after leaving.
+  const enterShop =
+    !dead && status !== LOOP_STATUS.LEVEL_CHANGE && (moved || seeFloorReq)
+      ? storeAtPlayer()
+      : null;
+  if (!dead && status !== LOOP_STATUS.LEVEL_CHANGE && (moved || seeFloorReq) && !enterShop) {
     seeFloorItems();
   }
   autosave(); // throttled: keep the session recoverable during active play
@@ -5169,6 +5207,9 @@ function advance(): void {
   // auto_more is set. Skipped on death (the tombstone/menu modal owns the flow).
   if (!dead) {
     void pumpMessages(preLen).then(() => {
+      // Entering a store is the post-move consequence; it takes precedence over a
+      // floor look (shop tiles hold no objects, so there is no pile anyway).
+      if (enterShop) return enterStoreModal(enterShop);
       // A multi-object pile shows the floor list after its message is paged.
       const pile = pendingFloorPile;
       pendingFloorPile = null;
@@ -5452,33 +5493,15 @@ window.addEventListener("keydown", (ev) => {
   const binding = resolveKey(ev, state.options?.get("rogue_like_commands") ?? false);
   if (!binding) return;
   ev.preventDefault();
-  // Walking into a store entrance enters the shop (do_cmd_store) rather than
-  // moving - the town's shops are non-passable store-feature tiles.
-  if (binding.kind === "walk") {
-    const dx = DIR_DX[binding.dir] ?? 0;
-    const dy = DIR_DY[binding.dir] ?? 0;
-    const dest = loc(state.actor.grid.x + dx, state.actor.grid.y + dy);
-    const store = state.stores?.find((s) => s.feat === state.chunk.feat(dest));
-    if (store) {
-      const feat = features.get(store.feat);
-      void openModal(() =>
-        runStore(term, game, store, say, constants, {
-          featureName: feat?.name ?? store.featName,
-          rogueLike: state.options?.get("rogue_like_commands") ?? false,
-          // store_examine (ui-store.c L749): the object_info screen for a fully
-          // known store item, header capitalised as ODESC_CAPITAL does.
-          examine: async (obj) => {
-            const name = objectName(state, obj);
-            const header = name.charAt(0).toUpperCase() + name.slice(1);
-            const tb = objectInfoTextblock(state, obj, inspectExtras);
-            await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
-          },
-          sellPick: storeSellPick,
-        }),
-      );
-      return;
-    }
-  }
+  // Shops are PASSABLE store-feature tiles (terrain.txt): walking into one steps
+  // the player ONTO the door (move_player -> monster_swap, cmd-cave.c:1184), and
+  // the store opens as a post-move consequence (player_handle_post_move ->
+  // EVENT_ENTER_STORE, player-util.c:1602). That entry trigger lives in advance()
+  // so it fires from the step, not this handler - the walk flows to the core like
+  // any other move. Because shop tiles never carry objects (no OBJECT flag), the
+  // player stands on an empty grid inside the store, which is why store_sell's
+  // USE_FLOOR source is always empty (there is no selling of floor items).
+  //
   // A run binding starts a run; the engine self-continues via cmdQueue until
   // run_test stops it (runGameLoop returns INPUT), so one keypress runs.
   commandBuffer.push({ code: binding.kind, dir: binding.dir });

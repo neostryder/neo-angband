@@ -63,6 +63,22 @@ describe("FeatureRegistry", () => {
     expect(down.flags.has(TF["DOWNSTAIR"])).toBe(true);
   });
 
+  it("shops are PASSABLE doors that never hold objects", () => {
+    // terrain.txt: every SHOP entrance carries PASSABLE (so move_player steps the
+    // player onto the door, triggering EVENT_ENTER_STORE in player_handle_post_move)
+    // but NOT OBJECT - shop tiles never carry a floor pile. That invariant is why
+    // store_sell's USE_FLOOR source is always empty (there is no selling of floor
+    // items): the seller is always standing on an object-less shop door.
+    const shops = terrain.records
+      .map((r) => reg.byCodeName(r.code))
+      .filter((f) => f.flags.has(TF["SHOP"]));
+    expect(shops.length).toBeGreaterThan(0);
+    for (const f of shops) {
+      expect(f.flags.has(TF["PASSABLE"])).toBe(true);
+      expect(f.flags.has(TF["OBJECT"])).toBe(false);
+    }
+  });
+
   it("resolves mimic references to feature indices", () => {
     const mimicking = terrain.records.filter((r) => r.mimic !== undefined);
     expect(mimicking.length).toBe(1);
