@@ -301,6 +301,7 @@ import {
 import { enterScore, noscoreInvalidatesScore, BIRTH_MESSAGE_RECALL_BANNER } from "@neo-angband/core";
 import { markNoscore } from "@neo-angband/core";
 import { ArtifactState } from "@neo-angband/core";
+import { walkTerrainPrompt } from "@neo-angband/core";
 import type { WizardDeps } from "@neo-angband/core";
 import { runWizardToggle, runWizardDebugMenu } from "./wizard";
 import type { WizardUiCtx } from "./wizard";
@@ -1401,8 +1402,7 @@ async function runContextMenuCave(grid: Loc, adjacent: boolean): Promise<void> {
       advance();
       break;
     case "walk":
-      commandBuffer.push({ code: "walk", dir });
-      advance();
+      void queueWalk(dir);
       break;
     case "run":
       commandBuffer.push({ code: "run", dir });
@@ -4213,12 +4213,36 @@ async function swapWeaponCmd(): Promise<void> {
   );
 }
 
+/**
+ * Queue a single walk step, first running move_player's damaging-terrain confirm
+ * (walkTerrainPrompt -> cmd-cave.c L1156-1180): a deliberate step into lava that
+ * would cost more than a third of current HP prompts "Really step in?" and, on
+ * "no", cancels the move with no turn spent (step=false, energy_use=0). Every
+ * keyboard/mouse/touch walk routes through here so the confirm is consistent; a
+ * non-fiery (or cheap) step queues immediately. The confirm runs inside a modal
+ * so the main key handler stands down and getCheck owns the single keypress.
+ */
+async function queueWalk(dir: number): Promise<void> {
+  const prompt = walkTerrainPrompt(state, dir);
+  if (prompt !== null) {
+    let ok = false;
+    await openModal(async () => {
+      ok = await confirmYesNo(prompt);
+    });
+    if (!ok) {
+      render(); // clear the [y/n] prompt row; no move, no turn
+      return;
+    }
+  }
+  commandBuffer.push({ code: "walk", dir });
+  advance();
+}
+
 /** Walk one step (;, CMD_WALK, cmd_hidden): prompt a direction, then step. */
 async function walkStepCmd(): Promise<void> {
   const dir = await getRepDir(term);
   if (dir === null) return;
-  commandBuffer.push({ code: "walk", dir });
-  advance();
+  await queueWalk(dir);
 }
 
 /** Start running (CMD_RUN): prompt a direction, then run until run_test stops. */
@@ -5185,6 +5209,15 @@ function advance(): void {
   const beforeY = state.actor.grid.y;
   const seeFloorReq = seeFloorRequested; // do_cmd_hold requested a floor look
   seeFloorRequested = false;
+  // Clear the top message line when the player commits a turn-taking command,
+  // mirroring C erasing row 0 on the next command (ui-input.c prt("",0,0) in
+  // textui_get_rep_dir L1586 + msg_flag=false in textui_get_command L1893). Any
+  // message this turn emits re-fills `message` via say() during runGameLoop
+  // (before render below), so new messages still show; a message-less move
+  // leaves row 0 blank instead of stranding the previous line (e.g. "You have
+  // killed a rat.") across every subsequent step. Free-action/prompt commands
+  // that set `message` directly do not call advance(), so they are unaffected.
+  message = "";
   const status = runGameLoop(state, registry);
   if (status === LOOP_STATUS.DEAD) {
     dead = true;
@@ -5564,6 +5597,12 @@ window.addEventListener("keydown", (ev) => {
   //
   // A run binding starts a run; the engine self-continues via cmdQueue until
   // run_test stops it (runGameLoop returns INPUT), so one keypress runs.
+  // A plain walk routes through queueWalk so a step into lava gets move_player's
+  // "Really step in?" confirm before the turn is spent (cmd-cave.c L1156-1180).
+  if (binding.kind === "walk" && typeof binding.dir === "number") {
+    void queueWalk(binding.dir);
+    return;
+  }
   commandBuffer.push({ code: binding.kind, dir: binding.dir });
   advance();
 });
@@ -5605,10 +5644,10 @@ canvas.addEventListener("pointerdown", (ev) => {
   if (pendingChestAction) {
     commandBuffer.push({ code: pendingChestAction, dir });
     pendingChestAction = null;
+    advance();
   } else {
-    commandBuffer.push({ code: "walk", dir });
+    void queueWalk(dir); // lava confirm on a tap-to-step, like the keyboard walk
   }
-  advance();
 });
 
 // ---- Context menus (ui-context.c textui_process_click's mouse routing) ----

@@ -23,6 +23,7 @@
  */
 
 import { ELEM, MSG, OF, PF, PROJ, RF, STAT, TMD } from "../generated";
+import type { Loc } from "../loc";
 import type { GameObject } from "../obj/object";
 import { tvalIsLight } from "../obj/object";
 import { equipLearnElement, equipLearnFlag } from "../obj/knowledge";
@@ -175,24 +176,28 @@ export function worldTakeHit(state: GameState, dam: number, killer: string): voi
 }
 
 /**
- * player_take_terrain_damage (player-util.c:913-966): fiery terrain (lava) burns
- * the player once per acted turn while they stand on it (called at the
- * game-world.c:864 seam, after the command uses energy). base 100+randint1(100),
- * adjust_dam for the live fire resistance (actual=true learns the mitigating
- * rune), OF_FEATHER halves, then damage reduction, the feature hurt message,
- * inven_damage(PROJ_FIRE) on the RAW damage, and take_hit with the die message.
- * Returns true if the player died. No-ops without a bound projection table.
+ * player_check_terrain_damage (player-util.c:913-935): the fire damage a step
+ * onto fiery terrain (lava) would inflict right now. base 100+randint1(100),
+ * adjust_dam for the live fire resistance, OF_FEATHER halves. `actual` mirrors
+ * C's parameter: when true the mitigating fire-resist rune is learned
+ * (equip_learn_element, the actual damage path); when false (move_player's
+ * pre-move threshold/confirm check) nothing is learned. The RNG drawn is
+ * IDENTICAL either way, so calling this once for the pre-move check and once for
+ * the post-turn damage reproduces C's faithful double draw. Zero when the grid
+ * is not fiery or without a bound projection table.
  */
-export function playerTakeTerrainDamage(state: GameState): boolean {
-  const grid = state.actor.grid;
-  if (!state.chunk.isFiery(grid)) return false;
+export function playerCheckTerrainDamage(
+  state: GameState,
+  grid: Loc,
+  actual: boolean,
+): number {
+  if (!state.chunk.isFiery(grid)) return 0;
   const projections = state.world?.projections;
-  if (!projections) return false;
+  if (!projections) return 0;
 
-  const feat = state.chunk.feature(grid);
   const res = state.playerState?.elInfo[ELEM.FIRE]?.resLevel ?? 0;
   /* adjust_dam(actual=true): learn the fire-resist rune from the mitigation. */
-  equipLearnElement(state.actor.player, state.runeEnv, PROJ.FIRE);
+  if (actual) equipLearnElement(state.actor.player, state.runeEnv, PROJ.FIRE);
   let dam = adjustDam(
     state.rng,
     projections,
@@ -203,8 +208,23 @@ export function playerTakeTerrainDamage(state: GameState): boolean {
   );
   /* Feather fall makes one lightfooted (player-util.c:926). */
   if (playerOfHasWorld(state, OF.FEATHER)) dam = Math.trunc(dam / 2);
+  return dam;
+}
+
+/**
+ * player_take_terrain_damage (player-util.c:913-966): fiery terrain (lava) burns
+ * the player once per acted turn while they stand on it (called at the
+ * game-world.c:864 seam, after the command uses energy). Draws the actual fire
+ * damage via playerCheckTerrainDamage(actual=true), then damage reduction, the
+ * feature hurt message, inven_damage(PROJ_FIRE) on the RAW damage, and take_hit
+ * with the die message. Returns true if the player died.
+ */
+export function playerTakeTerrainDamage(state: GameState): boolean {
+  const grid = state.actor.grid;
+  const dam = playerCheckTerrainDamage(state, grid, true);
   if (dam <= 0) return false;
 
+  const feat = state.chunk.feature(grid);
   /* Inventory damage is on the RAW incoming damage; the player takes the
    * reduced amount (player-util.c:954-965). */
   const reduced = applyWorldDamageReduction(state, dam);

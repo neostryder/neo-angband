@@ -40,7 +40,7 @@ import { gearGet } from "./gear";
 import { playerConfuseDir } from "./obj-cmd";
 import { playerAdjustManaPrecise } from "./loop";
 import { formatMonsterMessage } from "./mon-message";
-import { PY_EXERT, playerOverExert } from "./world";
+import { PY_EXERT, playerCheckTerrainDamage, playerOverExert } from "./world";
 
 /**
  * A player action: mutate the state for `cmd` and return the energy spent
@@ -333,6 +333,52 @@ export function playerAttackRandomMonster(state: GameState): number {
  * refreshing FOV via the injected hook. Returns move_energy when the turn is
  * spent, 0 when blocked by a wall (a bump uses no energy).
  */
+/**
+ * move_player's pre-step damaging-terrain check (cmd-cave.c L1156-1180), factored
+ * out for the web shell to run BEFORE it queues a walk so it can block on the
+ * yes/no confirm (the core walk action is synchronous and cannot await UI).
+ *
+ * Returns the feature's walk_msg when a deliberate (non-running) step onto fiery
+ * terrain (lava) would cost more than a third of current HP, so the shell prompts
+ * "Really step in?" and, on "no", cancels the move without spending a turn; null
+ * otherwise. Faithful conditions: only when the target grid is actually stepped
+ * onto (not a wall bump, not a monster attack) and the player is not confused
+ * (a confused player is never prompted). Like C, playerCheckTerrainDamage(false)
+ * is drawn whenever an unconfused player steps onto fiery terrain - prompt or not
+ * - which, with the post-turn damage draw, reproduces C's double draw; it learns
+ * no rune. The running-into-lava run_msg branch is a documented follow-up.
+ */
+export function walkTerrainPrompt(
+  state: GameState,
+  rawDir: number,
+): string | null {
+  if (rawDir < 1 || rawDir > 9 || rawDir === 5) return null;
+  /* move_player only checks damaging terrain when not confused (cmd-cave.c
+   * L1157); a confused player is never prompted and draws no terrain-check RNG
+   * here (the randomised direction and any damage happen later in walkAction). */
+  if ((state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) return null;
+
+  const offset = DDGRID[rawDir] as Loc;
+  const next: Loc = {
+    x: state.actor.grid.x + offset.x,
+    y: state.actor.grid.y + offset.y,
+  };
+  if (!state.chunk.inBounds(next)) return null;
+  /* The confirm is on move_player's actual-step branch, after the monster-attack
+   * and wall branches: no prompt when attacking a monster or bumping a wall. */
+  if (squareMonster(state, next)) return null;
+  if (!state.chunk.isPassable(next)) return null;
+  if (!state.chunk.isFiery(next)) return null;
+
+  const dam = playerCheckTerrainDamage(state, next, false);
+  /* Non-running walk: prompt only when the step costs more than a third of the
+   * player's current HP (cmd-cave.c L1174-1177). */
+  if (dam > Math.trunc(state.actor.player.chp / 3)) {
+    return state.chunk.feature(next).walkMsg;
+  }
+  return null;
+}
+
 export function walkAction(state: GameState, cmd: PlayerCommand): number {
   const rawDir = cmd.dir;
   if (rawDir === undefined || rawDir < 1 || rawDir > 9 || rawDir === 5) return 0;

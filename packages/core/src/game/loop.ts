@@ -39,7 +39,7 @@ import { getCommandedMonster } from "./mon-cmd";
 import { adj_con_fix, calcStatIndices } from "../player/calcs";
 import { equipLearnAfterTime, equipLearnFlag } from "../obj/knowledge";
 import { playerClearTimed, playerDecTimed, playerTimedGradeEq } from "../player/timed";
-import { tickMonsterMarks } from "./known";
+import { tickMonsterMarks, updateMonsters } from "./known";
 import {
   caveMonsterCount,
   compactMonsters,
@@ -508,6 +508,12 @@ function playerTurnsWhileEnergised(
 ): LoopStatus | null {
   while (state.actor.energy >= state.z.moveEnergy) {
     processMonsters(state, state.actor.energy + 1);
+    /* handle_stuff runs update_monsters after monster movement (game-world.c
+     * process_player -> handle_stuff): a monster that just stepped into view
+     * gets its MFLAG_VISIBLE/VIEW set now and fires disturb-on-appearance
+     * (known.ts updateMon), so a run/rest is interrupted before the player's
+     * next turn instead of one step late. Geometric, no RNG. */
+    updateMonsters(state, false);
     const s = loopStop(state);
     if (s) return s;
 
@@ -561,6 +567,10 @@ export function runGameLoop(
 
     processMonsters(state, 0);
     resetMonsters(state);
+    /* Refresh monster visibility after the world's monster turns too, so a
+     * monster stepping into view during the rest/world phase disturbs the
+     * player (C handle_stuff after process_monsters(0)). */
+    updateMonsters(state, false);
     const s2 = loopStop(state);
     if (s2) return s2;
 

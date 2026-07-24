@@ -1,10 +1,14 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { FlagSet } from "../bitflag";
-import { MFLAG, MON_TMD, OF } from "../generated";
+import { MFLAG, MON_TMD, OF, TMD } from "../generated";
 import { OF_SIZE, PF_SIZE } from "../player/types";
 import type { PlayerState } from "../player/calcs";
 import { MDESC, monsterDesc } from "../mon/desc";
 import { loc } from "../loc";
+import { Rng } from "../rng";
+import { bindProjections } from "../world/projection";
+import type { ProjectionRecordJson } from "../world/projection";
 import {
   ActionRegistry,
   attackMonster,
@@ -13,9 +17,41 @@ import {
   holdAction,
   processPlayer,
   walkAction,
+  walkTerrainPrompt,
 } from "./player-turn";
-import { GRANITE, addMon, makeRace, makeState } from "./harness";
+import { playerCheckTerrainDamage } from "./world";
+import { GRANITE, addMon, featureReg, makeRace, makeState } from "./harness";
 import type { GameState, PlayerCommand } from "./context";
+
+const terrainProjections = bindProjections(
+  (
+    JSON.parse(
+      readFileSync(
+        new URL("../../../content/pack/projection.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { records: ProjectionRecordJson[] }
+  ).records,
+);
+const LAVA = featureReg.byCodeName("LAVA").fidx;
+const LAVA_WALK_MSG = "The lava will scald you!  Really step in? ";
+
+/** Wire the fire-damage machinery move_player's terrain check needs: neutral
+ * fire resistance, no feather fall, no damage reduction, and the projection
+ * table, plus the player's current HP. */
+function wireFireTerrain(state: GameState, chp: number): void {
+  state.playerState = {
+    flags: new FlagSet(OF_SIZE),
+    pflags: new FlagSet(PF_SIZE),
+    elInfo: Array.from({ length: 32 }, () => ({ resLevel: 0 })),
+    damRed: 0,
+    percDamRed: 0,
+    seeInfra: 0,
+  } as unknown as PlayerState;
+  state.actor.player.chp = chp;
+  /* makeState always wires state.world; add the projection table it needs. */
+  if (state.world) state.world.projections = terrainProjections;
+}
 
 /** Give the player the OF_AFRAID flag, as calc_bonuses would when fear is up. */
 function setAfraid(state: GameState): void {
@@ -207,5 +243,68 @@ describe("action registry dispatch", () => {
     const state = makeState({ commands: [{ code: "anything" }] });
     const res = processPlayer(state, reg);
     expect(res.needsInput).toBe(true);
+  });
+});
+
+describe("walkTerrainPrompt (move_player damaging-terrain confirm, cmd-cave.c L1156-1180)", () => {
+  it("prompts the lava walk-msg when the step would cost more than a third of HP", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    state.chunk.setFeat(loc(16, 10), LAVA);
+    wireFireTerrain(state, 3); // chp/3 = 1; lava is 100+d100, far above
+
+    expect(walkTerrainPrompt(state, 6)).toBe(LAVA_WALK_MSG);
+  });
+
+  it("does not prompt when the fiery step costs a third or less of current HP", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    state.chunk.setFeat(loc(16, 10), LAVA);
+    wireFireTerrain(state, 900); // chp/3 = 300 >= the 200 max lava damage
+
+    expect(walkTerrainPrompt(state, 6)).toBeNull();
+  });
+
+  it("never prompts (and draws no terrain-check RNG) while confused", () => {
+    const seed = 42;
+    const state = makeState({ playerGrid: loc(15, 10), seed });
+    state.chunk.setFeat(loc(16, 10), LAVA);
+    wireFireTerrain(state, 3);
+    state.actor.player.timed[TMD.CONFUSED] = 20;
+
+    expect(walkTerrainPrompt(state, 6)).toBeNull();
+    /* The RNG stream is untouched: the next draw matches a fresh same-seed Rng,
+     * proving player_check_terrain_damage was skipped for a confused player. */
+    expect(state.rng.randint1(100)).toBe(new Rng(seed).randint1(100));
+  });
+
+  it("does not prompt when a monster occupies the target grid (attack, not step)", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    state.chunk.setFeat(loc(16, 10), LAVA);
+    wireFireTerrain(state, 3);
+    addMon(state, makeRace({ ac: 0 }), loc(16, 10), { hp: 20 });
+
+    expect(walkTerrainPrompt(state, 6)).toBeNull();
+  });
+
+  it("does not prompt when the target grid is a wall (bump, not step)", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    state.chunk.setFeat(loc(16, 10), GRANITE);
+    wireFireTerrain(state, 3);
+
+    expect(walkTerrainPrompt(state, 6)).toBeNull();
+  });
+
+  it("draws identical RNG for the check and the actual damage (C's faithful double draw)", () => {
+    const check = makeState({ playerGrid: loc(15, 10), seed: 7 });
+    check.chunk.setFeat(loc(16, 10), LAVA);
+    wireFireTerrain(check, 3);
+
+    const actual = makeState({ playerGrid: loc(15, 10), seed: 7 });
+    actual.chunk.setFeat(loc(16, 10), LAVA);
+    wireFireTerrain(actual, 3);
+
+    const damCheck = playerCheckTerrainDamage(check, loc(16, 10), false);
+    const damActual = playerCheckTerrainDamage(actual, loc(16, 10), true);
+    expect(damCheck).toBeGreaterThan(0);
+    expect(damActual).toBe(damCheck);
   });
 });
