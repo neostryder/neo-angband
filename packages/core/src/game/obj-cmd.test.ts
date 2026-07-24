@@ -484,6 +484,27 @@ describe("inscribe / uninscribe (cmd-obj.c do_cmd_inscribe/do_cmd_uninscribe)", 
   });
 });
 
+describe("eat food (cmd-obj.c do_cmd_eat / use_aux)", () => {
+  it("prints the kind's effect_msg on eating (cmd-obj.c:497 obj->kind->effect_msg)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const food = makeNamed("& Handful~ of Dried Fruits", TV.FOOD);
+    const h = carry(state, food);
+    const msgs: string[] = [];
+    const registry = createDefaultRegistry();
+    installObjCommands(
+      registry,
+      makeDeps(state, { env: { msg: (t) => msgs.push(t) } }),
+    );
+
+    const commands = [{ code: "eat", args: { handle: h } }];
+    state.nextCommand = () => commands.shift() ?? null;
+    processPlayer(state, registry);
+    /* Regression: use_aux read the always-empty instance obj.effectMsg instead
+     * of obj.kind.effectMsg, so this message was silently dropped. */
+    expect(msgs).toContain("That tastes good.");
+  });
+});
+
 describe("autoinscribe (cmd-obj.c do_cmd_autoinscribe / obj-ignore.c apply_autoinscription)", () => {
   it("is a structural no-op with no per-kind registry configured (no #24 UI yet)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
