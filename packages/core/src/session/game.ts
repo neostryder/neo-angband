@@ -533,6 +533,7 @@ function wireGame(
   });
   state.hasFlavor = (kind) => flavorAssignment.hasFlavor(kind);
   state.flavorText = (kind) => flavorAssignment.text(kind);
+  state.flavorGlyph = (kind) => flavorAssignment.get(kind);
 
   // ignore_item_ok (obj-ignore.c): the player's ignore settings resolved with
   // live flavor awareness. Everything reads it through state.isIgnored so the
@@ -640,6 +641,9 @@ function wireGame(
     if (p.csp > p.msp) p.csp = p.msp;
   };
   state.updateBonuses = refreshDerived;
+  /* Stash the class list so refreshTownStores can expand the bookseller's
+   * town-book always lines (object_kind_to_book, store.c:208-231). */
+  state.classes = players.classes;
 
   // player_best_digger (player-util.c L744): digging temporarily wields the
   // pack's best digger and recomputes calc_bonuses (update=false, no RNG) to
@@ -1511,6 +1515,9 @@ function wireGame(
     // updates player map knowledge (square_memorize/square_forget) to match.
     caveIlluminate: (s: GameState, dawn: boolean): void =>
       caveIlluminateKnown(s, dawn),
+    /* player_take_terrain_damage's adjust_dam(PROJ_FIRE) needs the projection
+     * table to scale lava damage by the player's fire resistance. */
+    ...(reg.projections ? { projections: reg.projections } : {}),
   };
 
   /* Surface the wizard/debug engine bundles (WP-14): all four locals are in
@@ -1768,6 +1775,7 @@ function makeChangeLevel(
         placePlayer(state, loc(1, 4));
         inArena = true;
         delete state.targetDepth;
+        state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         state.updateFov?.(state);
         return;
       }
@@ -1806,6 +1814,7 @@ function makeChangeLevel(
         state.healthWho = null;
         targetSetMonster(state, null);
         delete state.targetDepth;
+        state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         state.updateFov?.(state);
         return;
       }
@@ -1905,6 +1914,7 @@ function makeChangeLevel(
 
         refreshTownStores(state, reg);
         delete state.targetDepth;
+        state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         state.updateFov?.(state);
         return;
       }
@@ -2021,6 +2031,12 @@ function makeChangeLevel(
       caveIlluminateKnown(state, isDaytime(state.turn, state.z.dayLength));
     }
     delete state.targetDepth;
+    /* on_new_level (game-world.c:1034-1037): PU_BONUS -> update_bonuses ->
+     * calc_light recomputes cur_light for the NEW depth, then the view is
+     * flooded. Without this the daytime-town cur_light (0) leaks into the
+     * dungeon, so the torch radius is -1 and arrival renders dark until the
+     * next bonus recompute. Run the bonus pass before the first view build. */
+    state.updateBonuses?.();
     state.updateFov?.(state);
   };
 }
@@ -2086,6 +2102,10 @@ function refreshTownStores(state: GameState, reg: CoreRegistries): void {
       storeDeps,
       state.rng,
       state.actor.player.maxDepth,
+      /* parse_always book expansion (store.c:208-231): the bookseller's
+       * no-sval always lines need class-book metadata to resolve which town
+       * spellbooks to stock. Stashed on state by wireGame. */
+      state.classes,
     );
     return;
   }

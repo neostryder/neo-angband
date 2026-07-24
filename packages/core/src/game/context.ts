@@ -241,6 +241,13 @@ export interface GameState {
    */
   autoinscribe?: import("../obj/knowledge").AutoinscriptionRegistry;
   /**
+   * The bound player classes (players.classes), stashed by wireGame so the
+   * bookseller's town-book always-line expansion (object_kind_to_book,
+   * store.c:208-231) can resolve which spellbooks are town (non-dungeon) books.
+   * Absent in the worldless harness; the expansion then no-ops.
+   */
+  classes?: readonly import("../player/types").PlayerClass[];
+  /**
    * ignore_item_ok(obj): whether an object is currently ignored. Installed by
    * the session (wireGame) with the flavor-awareness lookup baked in; absent,
    * nothing is ignored.
@@ -275,6 +282,16 @@ export interface GameState {
    * FlavorAssignment; absent, no '#' modstr is produced.
    */
   flavorText?: (kind: import("../obj/types").ObjectKind) => string;
+  /**
+   * object_kind_attr / object_kind_char (ui-object.c:97-112): the assigned
+   * flavour's display glyph (d_char) and colour NAME (d_attr) for a flavoured
+   * kind, so the map renders an unidentified potion/etc. in its flavour colour
+   * (use_flavor_glyph) rather than the kind's black placeholder. Installed by
+   * wireGame from the FlavorAssignment; absent, the base kind glyph is used.
+   */
+  flavorGlyph?: (
+    kind: import("../obj/types").ObjectKind,
+  ) => import("../obj/flavor").AssignedFlavor | undefined;
   /**
    * The player option store (option.c op_ptr->opt / hitpoint_warn). Built by
    * the session (startGame / loadGame) from OPTION_ENTRIES defaults and the

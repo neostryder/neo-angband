@@ -203,6 +203,20 @@ describe("doAutopickup / playerPickupItem", () => {
     expect(obj.grid).toBeNull();
   });
 
+  it("the pickup message reports the merged stack count and slot (inven_carry)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const stack = makeObj(TV.POTION, 0);
+    stack.number = 5;
+    underfoot(state, stack);
+    let msg = "";
+    playerPickupItem(state, null, {
+      constants,
+      env: { onPickup: (m) => (msg = m) },
+    });
+    /* "You have 5 <potions> (a)." - the count and pack slot, not "You have a". */
+    expect(msg).toMatch(/^You have 5 .+ \(a\)\.$/);
+  });
+
   it("the chooseItem menu seam selects among several objects", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     underfoot(state, makeObj(TV.POTION, 0));

@@ -22,10 +22,13 @@
  *    candidate in the vicious-iteration order.
  */
 
-import { MSG, OF, PF, RF, STAT, TMD } from "../generated";
+import { ELEM, MSG, OF, PF, PROJ, RF, STAT, TMD } from "../generated";
 import type { GameObject } from "../obj/object";
 import { tvalIsLight } from "../obj/object";
-import { equipLearnFlag } from "../obj/knowledge";
+import { equipLearnElement, equipLearnFlag } from "../obj/knowledge";
+import type { ProjectionInfo } from "../world/projection";
+import { adjustDam } from "../world/projection";
+import { invenDamage } from "./project-obj";
 import {
   numberCharging,
   rechargeTimeout,
@@ -89,6 +92,12 @@ export interface WorldClockEnv {
   spawnAmbientMonster?: (state: GameState) => boolean;
   /** cave_illuminate on the town dawn / nightfall boundary. */
   caveIlluminate?: (state: GameState, dawn: boolean) => void;
+  /**
+   * The bound projection table (reg.projections), so player_take_terrain_damage
+   * can run adjust_dam(PROJ_FIRE, ...) against the player's fire resistance for
+   * fiery terrain (lava). Absent in bare test harnesses; terrain damage no-ops.
+   */
+  projections?: readonly ProjectionInfo[];
 }
 
 /** is_daytime (game-world.c L125): the first half of each day is daylight. */
@@ -163,6 +172,48 @@ export function worldTakeHit(state: GameState, dam: number, killer: string): voi
     ...(state.world?.takeHitHooks ?? {}),
   };
   takeHit(worldTakeHitTarget(state), dam, killer, hooks);
+}
+
+/**
+ * player_take_terrain_damage (player-util.c:913-966): fiery terrain (lava) burns
+ * the player once per acted turn while they stand on it (called at the
+ * game-world.c:864 seam, after the command uses energy). base 100+randint1(100),
+ * adjust_dam for the live fire resistance (actual=true learns the mitigating
+ * rune), OF_FEATHER halves, then damage reduction, the feature hurt message,
+ * inven_damage(PROJ_FIRE) on the RAW damage, and take_hit with the die message.
+ * Returns true if the player died. No-ops without a bound projection table.
+ */
+export function playerTakeTerrainDamage(state: GameState): boolean {
+  const grid = state.actor.grid;
+  if (!state.chunk.isFiery(grid)) return false;
+  const projections = state.world?.projections;
+  if (!projections) return false;
+
+  const feat = state.chunk.feature(grid);
+  const res = state.playerState?.elInfo[ELEM.FIRE]?.resLevel ?? 0;
+  /* adjust_dam(actual=true): learn the fire-resist rune from the mitigation. */
+  equipLearnElement(state.actor.player, state.runeEnv, PROJ.FIRE);
+  let dam = adjustDam(
+    state.rng,
+    projections,
+    PROJ.FIRE,
+    100 + state.rng.randint1(100),
+    "randomise",
+    res,
+  );
+  /* Feather fall makes one lightfooted (player-util.c:926). */
+  if (playerOfHasWorld(state, OF.FEATHER)) dam = Math.trunc(dam / 2);
+  if (dam <= 0) return false;
+
+  /* Inventory damage is on the RAW incoming damage; the player takes the
+   * reduced amount (player-util.c:954-965). */
+  const reduced = applyWorldDamageReduction(state, dam);
+  const damText =
+    reduced > 0 && state.options?.get("show_damage") ? ` (${reduced})` : "";
+  worldMsg(state, `${feat.hurtMsg}${damText}`);
+  invenDamage(state, PROJ.FIRE, dam);
+  worldTakeHit(state, reduced, feat.dieMsg);
+  return state.isDead;
 }
 
 /**

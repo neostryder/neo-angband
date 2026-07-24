@@ -46,6 +46,7 @@ import {
   runGameLoop,
   LOOP_STATUS,
   colorCharToAttr,
+  colorTextToAttr,
   colorToCss,
   updateView,
   squareIsSeen,
@@ -4006,9 +4007,10 @@ installPickup(state, registry, {
     onGold: (total, name, single): void => {
       say(`You have found ${total} gold pieces worth of ${single ? name : "treasures"}.`);
     },
-    onPickup: (obj): void => {
-      // object_desc(ODESC_PREFIX | ODESC_FULL): flavours + knowledge-gated name.
-      say(`You have ${describeObject(state, obj)}.`);
+    onPickup: (msg): void => {
+      // The core builds the full inven_carry line from the merged pack stack
+      // ("You have 5 Potions of Cure Light Wounds (a)."), obj-gear.c:893-921.
+      say(msg);
     },
   },
 });
@@ -4366,9 +4368,20 @@ function objectIndex(): Map<number, CellGlyph> {
     const tile = tileMap
       ? tileDrawFor(tileForObject(tileMap, o.kind))
       : undefined;
+    // object_kind_attr / object_kind_char (ui-object.c:87-112): a flavoured kind
+    // draws with its flavour glyph+colour (use_flavor_glyph) until identified -
+    // for a scroll, only while unaware. Without this an unidentified potion
+    // renders in the kind's black placeholder colour (a black square on the
+    // floor). The flavour attr is a colour NAME (colorTextToAttr); the kind attr
+    // is a colour CHAR (colorCharToAttr).
+    const flavor = state.flavorGlyph?.(o.kind);
+    const useFlavor =
+      !!flavor && !(tvalIsScroll(o.kind.tval) && (game.flavor?.isAware(o.kind) ?? false));
     map.set(gridIndex(o.grid.x, o.grid.y), {
-      ch: o.kind.dChar,
-      css: colorToCss(colorCharToAttr(o.kind.dAttr)),
+      ch: useFlavor ? flavor.char : o.kind.dChar,
+      css: useFlavor
+        ? colorToCss(colorTextToAttr(flavor.attr))
+        : colorToCss(colorCharToAttr(o.kind.dAttr)),
       ...(tile ? { tile } : {}),
     });
   }
@@ -5097,6 +5110,20 @@ async function pumpMessages(preLen: number): Promise<void> {
  * holding on) a shop tile. Because shop tiles carry no objects, the sell picker's
  * USE_FLOOR source is naturally empty here.
  */
+/**
+ * Run an item command while inside a store (cmdq_pop CTX_STORE, ui-store.c:1159):
+ * execute the registered action directly so the pack/equipment change and its
+ * messages apply, but NO world turn passes - monsters do not act while the
+ * player is shopping. Returns the message(s) the engine emitted (already logged
+ * via state.msg), for the store to mirror onto its row 0.
+ */
+function runStoreItemCmd(code: string, args: Record<string, unknown>): string | null {
+  const before = msglog.all().length;
+  game.registry.get(code)?.(state, { code, args });
+  const fresh = msglog.all().slice(before).map((m) => m.text);
+  return fresh.length ? fresh.join(" ") : null;
+}
+
 function enterStoreModal(store: Store): Promise<void> {
   const feat = features.get(store.feat);
   return openModal(() =>
@@ -5112,6 +5139,35 @@ function enterStoreModal(store: Store): Promise<void> {
         await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
       },
       sellPick: storeSellPick,
+      // store_process_command_key (ui-store.c:823-863): wear/wield, take off, and
+      // view inventory / equipment / quiver while shopping. wield/takeoff run
+      // through the engine with no world turn (runStoreItemCmd); the viewers are
+      // the same faithful screens the 'i'/'e'/'|' dungeon commands show.
+      manageItem: {
+        wield: async () => {
+          const ref = await selectItemFrom(
+            "Wear or wield which item?",
+            (t) => tvalIsWearable(t.tval),
+            { inven: true, quiver: true },
+            "You have nothing to wear or wield.",
+          );
+          if (ref === null || !("handle" in ref)) return null;
+          return runStoreItemCmd("wield", { handle: ref.handle });
+        },
+        takeOff: async () => {
+          const ref = await selectItemFrom(
+            "Take off or unwield which item?",
+            () => true,
+            { equip: true },
+            "You have nothing to take off or unwield.",
+          );
+          if (ref === null || !("handle" in ref)) return null;
+          return runStoreItemCmd("takeoff", { handle: ref.handle });
+        },
+        inventory: () => showTextScreen(term, "Inventory", inventoryLines(state)),
+        equipment: () => showTextScreen(term, "Equipment", equipmentLines(state)),
+        quiver: () => showTextScreen(term, "Quiver", quiverLines()),
+      },
     }),
   );
 }
@@ -5468,6 +5524,10 @@ window.addEventListener("keydown", (ev) => {
       // and the reverse in the roguelike keyset.
       { o: ".", r: ",", act: () => void openModal(runDirCmd) },
       { o: ",", r: ".", act: () => holdCmd() },
+      // Numpad 5 is the stay-still key in both keysets (do_cmd_hold): standing
+      // still on a shop door re-enters the store (EVENT_ENTER_STORE,
+      // cmd-cave.c:1592), and it is the canonical "wait one turn" command.
+      { o: "5", r: "5", act: () => holdCmd() },
       { o: "p", act: () => exploreCmd() },
       // Repeat: 'n' in the original keyset; roguelike uses ^V (handled above).
       { o: "n", r: null, act: () => repeatLastCommand() },

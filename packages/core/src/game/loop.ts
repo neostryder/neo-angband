@@ -48,6 +48,7 @@ import {
   playAmbientSound,
   playerHasWorld,
   playerOfHasWorld,
+  playerTakeTerrainDamage,
   playerUpdateLight,
   processDamageOverTime,
   processExpDrain,
@@ -513,6 +514,12 @@ function playerTurnsWhileEnergised(
     const r = processPlayer(state, registry);
     const s2 = loopStop(state);
     if (s2) return s2;
+    /* Terrain damage after each acted turn (game-world.c:864). */
+    if (r.energyUsed) {
+      playerTakeTerrainDamage(state);
+      const s3 = loopStop(state);
+      if (s3) return s3;
+    }
     if (r.needsInput || !r.energyUsed) return LOOP_STATUS.INPUT;
   }
   return null;
@@ -531,6 +538,13 @@ export function runGameLoop(
     const r = processPlayer(state, registry);
     const s = loopStop(state);
     if (s) return s;
+    /* Player can be damaged by terrain (game-world.c:864): fiery terrain (lava)
+     * burns the player after each acted turn. */
+    if (r.energyUsed) {
+      playerTakeTerrainDamage(state);
+      const st = loopStop(state);
+      if (st) return st;
+    }
     if (r.needsInput || !r.energyUsed) return LOOP_STATUS.INPUT;
   }
 

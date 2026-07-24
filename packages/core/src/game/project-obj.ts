@@ -53,7 +53,7 @@ const GEAR_LABELS = "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
  * the port's stand-in for the listing everywhere else - supplies the index.
  * Returns "" when the handle is neither (upstream's '\0').
  */
-function gearToLabel(gear: Gear, handle: number): string {
+export function gearToLabel(gear: Gear, handle: number): string {
   const qi = gear.quiver?.indexOf(handle) ?? -1;
   if (qi >= 0) return String(qi);
   const pi = gear.pack.indexOf(handle);
