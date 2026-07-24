@@ -580,6 +580,14 @@ export interface SelectMenuOptions {
   commands?: Record<string, (cursor: number) => number | null | void>;
   /** Footer legend override; wins over the positional `footer` parameter. */
   footer?: string;
+  /**
+   * do_cmd_options_birth key ('=', ui-birth.c:126): when set, pressing this key
+   * closes the menu resolving with the MENU_OPTIONS sentinel so the caller can
+   * open a sub-flow (e.g. the birth-options editor) and then re-show the menu.
+   * The menu must close first - opening another modal while this menu's own
+   * capturing keydown listener is still attached would double-capture keys.
+   */
+  optionsKey?: string;
   /** Start the cursor on this row (skipped if it is disabled/out of range). */
   initialCursor?: number;
   /** Called with the cursor row on open and after every cursor move. */
@@ -599,6 +607,14 @@ export interface SelectMenuOptions {
  * browse_hook). `extra.browseOnly` turns the menu read-only (abilities): Enter
  * / letter-select just re-paints instead of resolving, so only ESC exits.
  */
+/**
+ * selectFromMenu resolves with this sentinel (instead of a row index or null)
+ * when the caller set SelectMenuOptions.optionsKey and the user pressed it -
+ * the do_cmd_options_birth '=' path. A negative value never collides with a
+ * real 0..n-1 row index; callers that never set optionsKey never see it.
+ */
+export const MENU_OPTIONS = -2;
+
 export function selectFromMenu(
   term: GlyphTerm,
   title: string,
@@ -706,6 +722,13 @@ export function selectFromMenu(
       ev.stopImmediatePropagation();
       if (ev.key === "Escape") {
         finish(null);
+        return;
+      }
+      // do_cmd_options_birth ('=', ui-birth.c:126): close the menu with the
+      // MENU_OPTIONS sentinel so the caller opens the birth-options editor and
+      // re-shows this same menu (a nested modal here would double-capture keys).
+      if (extra?.optionsKey && ev.key === extra.optionsKey) {
+        finish(MENU_OPTIONS);
         return;
       }
       if (toggleKey && ev.key === toggleKey) {
