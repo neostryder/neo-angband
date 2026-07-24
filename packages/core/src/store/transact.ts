@@ -44,6 +44,7 @@ import {
   objectCopyAmt,
 } from "../game/gear";
 import type { Player } from "../player/player";
+import { objectValue, objectValueReal } from "../obj/value";
 import { priceItem } from "./price";
 import {
   storeCarry,
@@ -192,6 +193,14 @@ export function storeBuy(
 /** Why a sale could not complete. */
 export type SellFailure = "no-item" | "stuck" | "refused" | "no-room";
 
+/**
+ * purchase_analyze's verbal-reaction bucket (store.c L491-508): how the paid
+ * price compared to the item's real value and the store's apparent guess. The
+ * numeric comparison lives here (deterministic, testable); the caller maps the
+ * bucket to a random comment_* line. null when no reaction fires (or selling).
+ */
+export type SaleReaction = "worthless" | "bad" | "good" | "great";
+
 /** The outcome of storeSell. */
 export interface SellResult {
   ok: boolean;
@@ -208,6 +217,24 @@ export interface SellResult {
    * this to fire history_lose_artifact for a sold artifact the store rejected.
    */
   carried?: boolean;
+  /**
+   * purchase_analyze bucket (do_cmd_sell L1972): set on a successful non-Home
+   * sale when birth_no_selling is off. undefined for the Home, no-selling, or
+   * when no reaction fires. The shell prints the matching comment_* flavor.
+   */
+  reaction?: SaleReaction;
+}
+
+/**
+ * purchase_analyze (store.c L491-508): classify the shopkeeper's reaction from
+ * the gold paid, the item's real value, and its apparent (guessed) value.
+ */
+export function purchaseAnalyze(price: number, value: number, guess: number): SaleReaction | undefined {
+  if (value <= 0 && price > value) return "worthless";
+  if (value < guess && price > value) return "bad";
+  if (value > guess && value < 4 * guess && price < value) return "good";
+  if (value > guess && price < value) return "great";
+  return undefined;
 }
 
 /**
@@ -249,6 +276,12 @@ export function storeSell(
 
   const price = priceItem(reg, store, store.owner, dummy, true, amt, know.aware, know.noSelling);
 
+  /* purchase_analyze's "apparent" value (do_cmd_sell L1940, object_value on the
+   * dummy): the guess, taken with the PRE-sale knowledge (know.aware) before the
+   * item becomes fully known below. The "actual" value is computed from the sold
+   * copy after the sale (L1959, object_value_real). */
+  const guess = objectValue(reg, obj, amt, know.aware);
+
   /* Get some money. */
   player.au += price;
 
@@ -266,7 +299,15 @@ export function storeSell(
    * history_lose_artifact for a rejected artifact (do_cmd_sell L1985-1998). */
   const carried = storeCarry(rng, reg, constants, store, sold, true) !== null;
 
-  return { ok: true, price, sold, noneLeft, carried };
+  /* purchase_analyze (do_cmd_sell L1966-1972): only a real store reacts, and
+   * only when birth_no_selling is off (the no-selling branch just says "You had
+   * ..."). value = object_value_real(sold, amt). */
+  const reaction =
+    store.feat !== FEAT.HOME && !know.noSelling
+      ? purchaseAnalyze(price, objectValueReal(reg, sold, amt), guess)
+      : undefined;
+
+  return { ok: true, price, sold, noneLeft, carried, ...(reaction ? { reaction } : {}) };
 }
 
 /* ------------------------------------------------------------------ */
