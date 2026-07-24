@@ -121,8 +121,8 @@ import { monsterCarry } from "../mon/make";
 import { monsterWake } from "../mon/take-hit";
 import { monIncTimed, monsterEffectLevel } from "../mon/timed";
 import { tvalIsMoney } from "../obj/object";
-import type { GameObject } from "../obj/object";
 import { monMeleeAttack } from "../combat/mon-melee";
+import { reactToSlay } from "../combat/brand-slay";
 import { equipLearnOnDefend } from "../obj/knowledge";
 import { updatePlayerObjectKnowledge } from "./known";
 import { los, squareIsView } from "../world/view";
@@ -1294,7 +1294,7 @@ function monsterTurnGrabObjects(
 
     /* Artifacts are "safe" - a monster cannot pick them up; so are objects
      * that would hurt the monster (react_to_slay, mon-move.c L1420). */
-    const safe = (obj.artifact ? true : false) || reactToSlay(state, obj, mon);
+    const safe = (obj.artifact ? true : false) || reactToSlay(obj, mon, state.slays);
 
     if (safe) {
       /* Only a message for take_item (DEFERRED). */
@@ -1310,25 +1310,6 @@ function monsterTurnGrabObjects(
       floorExcise(state, next, obj);
     }
   }
-}
-
-/**
- * react_to_slay (obj-slays.c L435) over the bound slay table: the object
- * carries a slay that affects this monster (react_to_specific_slay: a matching
- * race flag or base name). Draws no RNG. Duplicated from the combat module's
- * private react_to_specific_slay (combat/brand-slay.ts) because the two sit in
- * different domains and neither exports the helper.
- */
-function reactToSlay(state: GameState, obj: GameObject, mon: Monster): boolean {
-  if (!obj.slays) return false;
-  for (let i = 0; i < state.slays.length; i++) {
-    const s = state.slays[i];
-    if (!s || !obj.slays[i]) continue;
-    if (!s.name) continue;
-    if (s.raceFlag && mon.race.flags.has(s.raceFlag)) return true;
-    if (s.base && s.base === mon.race.base.name) return true;
-  }
-  return false;
 }
 
 /**

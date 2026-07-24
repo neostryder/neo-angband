@@ -28,6 +28,9 @@ import type { Monster } from "../mon/monster";
 import { monsterCarry } from "../mon/make";
 import { MDESC_STANDARD, monsterDesc } from "../mon/desc";
 import { monsterIsVisible } from "../mon/predicate";
+import { reactToSlay } from "../combat/brand-slay";
+import { gearToLabel } from "./project-obj";
+import { squareIsSeen } from "../world/view";
 import type { Player } from "../player/player";
 import type { TimedEffect } from "../player/types";
 import type { ProjectionInfo } from "../world/projection";
@@ -342,8 +345,20 @@ export function makeMonBlowEnv(
 
         const name = describeObject(state, item.obj, ODESC.BASE);
         const split = item.obj.number > 1;
-        /* react_to_slay blocking the theft is DEFERRED (no RNG); steal. */
-        msg(`${split ? "One of your" : "Your"} ${name} was stolen!`);
+        /* gear_to_label read before the steal mutates the pack (mon-blows.c L287). */
+        const label = gearToLabel(state.gear, item.handle);
+        /* An item carrying a slay that hurts the thief resists the theft
+         * (react_to_slay, mon-blows.c L275). Either way the monster blinks away
+         * (context->blinked = true is set outside the if/else). No RNG. */
+        if (reactToSlay(item.obj, mon, state.slays)) {
+          msg(
+            `${monsterDesc(mon, MDESC_STANDARD)} tries to steal ${
+              split ? "one of your" : "your"
+            } ${name}, but fails.`,
+          );
+          return { blinked: true, obvious: true };
+        }
+        msg(`${split ? "One of your" : "Your"} ${name} (${label}) was stolen!`);
         /* Steal one and carry it (mon-blows.c L292-294); the stolen object
          * keeps its own origin, so monster_death does not count it as a drop. */
         const { obj: stolen } = gearObjectForUse(
@@ -368,7 +383,8 @@ export function makeMonBlowEnv(
 
         const name = describeObject(state, item.obj, ODESC.BASE);
         const one = item.obj.number === 1;
-        msg(`${one ? "Your" : "One of your"} ${name} was eaten!`);
+        const label = gearToLabel(state.gear, item.handle);
+        msg(`${one ? "Your" : "One of your"} ${name} (${label}) was eaten!`);
         gearObjectForUse(state.gear, current, item.handle, 1);
         break;
       }
@@ -408,6 +424,12 @@ export function makeMonBlowEnv(
     },
 
     blinkAway(): void {
+      /* "There is a puff of smoke!" when a seen thief teleports off with its
+       * loot and the player still lives (mon-attack.c L744). The teleport
+       * itself happens regardless of visibility / death. No RNG for the msg. */
+      if (!deps.actor.isDead && squareIsSeen(state.chunk, mon.grid)) {
+        msg("There is a puff of smoke!");
+      }
       teleportMonster(
         state,
         mon.midx,
