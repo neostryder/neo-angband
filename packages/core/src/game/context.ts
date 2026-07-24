@@ -722,6 +722,47 @@ export interface PlayerCommand {
   confusedApplied?: boolean;
   /** Free-form arguments a mod-registered action may read. */
   args?: Readonly<Record<string, unknown>>;
+  /**
+   * cmd-core.c process_command auto-repeat budget (nrepeats): the number of
+   * further attempts a repeatable command (tunnel / open / close / disarm /
+   * alter / lock) may make before it stops on its own. Absent on a fresh
+   * keypress (seeded to CMD_AUTO_REPEAT); each self-requeue decrements it. See
+   * queueCommandRepeat.
+   */
+  repeatRemaining?: number;
+}
+
+/**
+ * cmd-core.c game_cmds: the auto_repeat_n value (99) shared by every repeatable
+ * action command - open, close, tunnel, disarm, alter (and the lock alias).
+ */
+export const CMD_AUTO_REPEAT = 99;
+
+/**
+ * cmd-core.c process_command auto-repeat, the port of `cmd_set_repeat(99)` plus
+ * the per-command `if (!more) disturb(player)` (do_cmd_tunnel and friends): a
+ * repeatable command whose _aux reports "may continue" (a failed-but-hopeful
+ * attempt - still chipping at a wall, still picking a lock) re-queues itself on
+ * state.cmdQueue so the player keeps trying on later game turns without pressing
+ * the key again, bounded at CMD_AUTO_REPEAT like upstream. When the aux reports
+ * done (success, or no hope), nothing is re-queued, which is what upstream's
+ * `disturb(player)` achieves for repetition (the player is not running or
+ * resting mid-action, so disturb's other effects are moot here). processPlayer
+ * drains cmdQueue before asking for input and a full turn passes between
+ * attempts, so monsters act between digs; any disturb() during those turns
+ * flushes cmdQueue and stops the repeat, exactly as upstream disturb cancels
+ * command repetition.
+ */
+export function queueCommandRepeat(
+  state: GameState,
+  cmd: PlayerCommand,
+  more: boolean,
+): void {
+  if (!more) return;
+  const remaining = cmd.repeatRemaining ?? CMD_AUTO_REPEAT;
+  if (remaining <= 0) return;
+  if (!state.cmdQueue) state.cmdQueue = [];
+  state.cmdQueue.push({ ...cmd, repeatRemaining: remaining - 1 });
 }
 
 /**
