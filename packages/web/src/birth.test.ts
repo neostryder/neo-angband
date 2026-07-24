@@ -512,6 +512,28 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     press(win, "Escape");
     expect(await done).toBeNull();
   });
+
+  it("'=' opens the birth-options editor and re-shows the quickstart menu", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, QUICK);
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("Quick-start");
+    // textui_birth_quickstart ('=', ui-birth.c:126): opens do_cmd_options_birth.
+    press(win, "="); await tick();
+    expect(term.snapshot().join("\n")).toContain("Birth options");
+    // ESC leaves the editor; the SAME quickstart menu is shown again (next = current).
+    press(win, "Escape"); await tick();
+    expect(term.snapshot().join("\n")).toContain("Quick-start");
+    // The menu is still live and usable: quick-start then finish.
+    press(win, "a"); await tick(); // use the previous character
+    press(win, "Enter"); await tick(); // default name
+    press(win, "a"); // confirm
+    const choice = await done;
+    expect(choice!.raceName).toBe("Dwarf");
+    expect(choice!.className).toBe("Mage");
+  });
 });
 
 describe("runBirth: standard roller screen (roller_command)", () => {

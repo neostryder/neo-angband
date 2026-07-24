@@ -39,7 +39,7 @@
  * case the caller keeps the default Human Warrior).
  */
 
-import { selectFromMenu, promptText, menuNav } from "./overlay";
+import { selectFromMenu, promptText, menuNav, MENU_OPTIONS } from "./overlay";
 import type { MenuItem, ScreenLine } from "./overlay";
 import { runBirthOptionsEditor } from "./options";
 import { characterSheetLines, statHeaderLine, statRowLine } from "./screens";
@@ -1391,18 +1391,32 @@ export async function runBirth(
           { ...(q.stats ? { stats: q.stats } : {}), sheetName: "" },
           term.size().cols,
         );
-        const pick = await selectFromMenu(
-          term,
-          "Create a character",
-          items,
-          FOOTER_FIRST,
-          {
-            subtitle: "Quick-start uses your previous choices.",
-            ...(quickSheet
-              ? { detail: (i: number): ScreenLine[] => (i === 0 ? quickSheet : []) }
-              : {}),
-          },
-        );
+        // textui_birth_quickstart (ui-birth.c:106-131): the '=' key opens
+        // do_cmd_options_birth from the quick-start screen too (its prompt lists
+        // "'=': set birth options"), then re-shows this menu. selectFromMenu
+        // closes on '=' with the MENU_OPTIONS sentinel so the editor is not
+        // nested under the still-live menu listener.
+        let pick: number | null;
+        for (;;) {
+          pick = await selectFromMenu(
+            term,
+            "Create a character",
+            items,
+            FOOTER_FIRST,
+            {
+              subtitle: "Quick-start uses your previous choices.  ('=' birth options)",
+              optionsKey: "=",
+              ...(quickSheet
+                ? { detail: (i: number): ScreenLine[] => (i === 0 ? quickSheet : []) }
+                : {}),
+            },
+          );
+          if (pick === MENU_OPTIONS) {
+            await runBirthOptionsEditor(term, birthOptions);
+            continue;
+          }
+          break;
+        }
         if (pick === null) return null; // stage 0: keep the default character
         if (pick === 0) {
           raceName = q.raceName;
