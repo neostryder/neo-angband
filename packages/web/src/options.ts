@@ -97,6 +97,8 @@ export interface OptionRow {
   description: string;
   value: boolean;
   locked: boolean;
+  /** The maintainer/table default (OPTION_ENTRIES.normal), for 'x' reset. */
+  defaultValue?: boolean;
 }
 
 /**
@@ -117,6 +119,7 @@ function pageRows(
     description: e.description,
     value: state.options?.get(e.name) ?? e.normal,
     locked: page === "BIRTH",
+    defaultValue: e.normal,
   }));
 }
 
@@ -161,10 +164,10 @@ export function optionToggleScreen(
     let top = 0;
     const prompt = readOnly
       ? "You can only modify these options at character birth."
-      : "Set option (y/n/t), select with movement keys or index";
+      : "Set option (y/n/t), 'x' to reset to defaults";
     const footer = readOnly
       ? "[ ESC to return ]"
-      : "[ y/n/t to set, a-z index to jump, ESC to return ]";
+      : "[ y/n/t to set, x reset, a-z index to jump, ESC to return ]";
     const bodyTop = 3;
 
     const paint = (): void => {
@@ -250,6 +253,20 @@ export function optionToggleScreen(
       if (ev.key === "t" || ev.key === "T" || ev.key === "Enter") {
         const row = rows[cursor];
         if (row) setAt(cursor, !row.value);
+        paint();
+        return;
+      }
+      /* 'x' -> options_restore_maintainer (ui-options.c L196-199): reset every
+       * writable row on this page to its table/maintainer default, immediately
+       * and with no confirm (exactly as upstream). Rows without a known default
+       * (should not happen on the INTERFACE page) are left untouched. Custom
+       * save/restore ('s'/'r') stay unimplemented: the port has no separate
+       * custom-defaults snapshot - the game save IS the persistence. */
+      if (ev.key === "x" || ev.key === "X") {
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          if (row && row.defaultValue !== undefined) setAt(i, row.defaultValue);
+        }
         paint();
         return;
       }
