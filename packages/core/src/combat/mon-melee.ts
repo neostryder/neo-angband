@@ -116,6 +116,9 @@ export interface MonBlowEnv {
   readonly monName: string;
   /** OPT(p, show_damage): append the " (N)" suffix to the blow message. */
   readonly showDamage: boolean;
+  /** monster_is_visible(mon): gates the "%s misses you." message (a visible
+   * monster's missed blow is announced; an unseen one is silent). */
+  readonly monVisible: boolean;
   /** adjust_dam(p, proj, dam, RANDOMISE): elemental damage after resists. */
   elementalDam(proj: number, dam: number): number;
   /** inven_damage(p, elem, cperc): pack casualties from an elemental hit. */
@@ -980,6 +983,11 @@ export function monMeleeAttack(
       checkHit(rng, chanceOfMonsterHit(mon, mon.race.level, blow.effect.power), def);
 
     if (!hit) {
+      /* Visible monster missed the player: announce it (mon-attack.c L718). No
+       * RNG is drawn; unseen monsters and no-miss methods stay silent. */
+      if (env && env.monVisible && blow.method.miss) {
+        env.msg(`${env.monName} misses you.`);
+      }
       blows.push({
         hit: false,
         effect: effectName,
