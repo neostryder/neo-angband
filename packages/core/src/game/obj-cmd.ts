@@ -39,12 +39,16 @@ import type { GameObject, StackLimits } from "../obj/object";
 import {
   tvalIsEdible,
   tvalIsFuel,
+  tvalIsLauncher,
   tvalIsLight,
+  tvalIsMeleeWeapon,
   tvalIsPotion,
   tvalIsRod,
   tvalIsScroll,
   tvalIsStaff,
   tvalIsWand,
+  tvalIsWearable,
+  tvalCanHaveCharges,
   tvalCanHaveTimeout,
 } from "../obj/object";
 import { FlavorKnowledge, NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge";
@@ -70,6 +74,7 @@ import { buildEffectContext } from "./effect-env";
 import type { EffectEnvDeps } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
 import { describeObject } from "./describe";
+import { ODESC } from "../obj/desc";
 import { updatePlayerObjectKnowledge } from "./known";
 import type { CastContext } from "./project-cast";
 import type { ActionRegistry } from "./player-turn";
@@ -253,6 +258,25 @@ export function invenDrop(
 /* ------------------------------------------------------------------ *
  * cmd-obj.c use machinery.
  * ------------------------------------------------------------------ */
+
+/**
+ * gear_to_label (obj-gear.c L443): the one-character label for a held object -
+ * equipment slots index straight into the alphabet, a quiver handle takes its
+ * slot digit, a pack handle its listing letter. The alphabet skips the
+ * roguelike cardinal-movement keys h/j/k/l (L446). "" when the handle is not
+ * currently held (upstream '\0').
+ */
+const GEAR_LABELS = "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+function gearLabelFor(state: GameState, handle: number): string {
+  const p = state.actor.player;
+  const eq = p.equipment.indexOf(handle);
+  if (eq >= 0) return GEAR_LABELS[eq] ?? "";
+  const qi = state.gear.quiver?.indexOf(handle) ?? -1;
+  if (qi >= 0) return String(qi);
+  const pi = state.gear.pack.indexOf(handle);
+  if (pi >= 0 && pi < GEAR_LABELS.length) return GEAR_LABELS[pi] ?? "";
+  return "";
+}
 
 /** beam_chance (cmd-obj.c L112). */
 export function beamChance(tval: number): number {
@@ -679,9 +703,31 @@ export function useAux(
       0,
     );
 
-    /* Sound / message. */
-    if (obj.activation?.message) env.msg?.(obj.activation.message);
-    else if (obj.effectMsg) env.msg?.(obj.effectMsg);
+    /* Sound / message (cmd-obj.c L493-504): an activation prints the generic
+     * "You activate it." then its own activation_message; otherwise the kind's
+     * effect_msg (always) or vis_msg (only when not blind). The alt_msg override
+     * for a handful of artifacts (activation_message L134) is not yet carried on
+     * the port's artifact record - ledgered, activation.message is used for all. */
+    if (obj.activation) {
+      env.msg?.("You activate it.");
+      if (obj.activation.message) env.msg?.(obj.activation.message);
+    } else if (obj.effectMsg) {
+      env.msg?.(obj.effectMsg);
+    } else if (
+      obj.kind.visMsg &&
+      (state.actor.player.timed[TMD.BLIND] ?? 0) === 0
+    ) {
+      env.msg?.(obj.kind.visMsg);
+    }
+
+    /* Capture the describe inputs before the effect can rearrange the pack
+     * (cmd-obj.c L462-483): the gear label of the item and its stack count. The
+     * port names a single stack rather than upstream's object_pack_total across
+     * split stacks - ledgered; the aggregate "(1st %c)" split-stack form is not
+     * reproduced. */
+    const describeLabel =
+      opts.handle !== undefined ? gearLabelFor(state, opts.handle) : "";
+    const startNumber = obj.number;
 
     /* Tentatively deduct floor-object usage before the effect (the effect
      * could leave the object inaccessible). */
@@ -786,6 +832,35 @@ export function useAux(
       } else if (use === USE.SINGLE && opts.handle !== undefined) {
         gearObjectForUse(state.gear, state.actor.player, opts.handle, 1);
       }
+    }
+
+    /* Describe what's left (cmd-obj.c L633-706). Single-use items are always
+     * described; a charge/timeout device only when it was just identified (and
+     * never for wearables, which take the update-knowledge branch). Otherwise a
+     * used charge device reports its remaining charges. */
+    const describe =
+      use === USE.SINGLE ||
+      (!tvalIsWearable(obj.tval) && !wasAware && ident.value);
+    if (describe) {
+      const shown = startNumber - (used && use === USE.SINGLE ? 1 : 0);
+      const name = describeObject(
+        state,
+        obj,
+        ODESC.PREFIX | ODESC.FULL | ODESC.ALTNUM,
+        shown,
+      );
+      if (fromFloor) env.msg?.(`You see ${name}.`);
+      else env.msg?.(`You have ${name} (${describeLabel}).`);
+    } else if (
+      used &&
+      use === USE.CHARGE &&
+      tvalCanHaveCharges(obj.tval) &&
+      (deps.flavor ? deps.flavor.isAware(obj.kind) : true)
+    ) {
+      /* inven_item_charges / floor_item_charges (obj-gear.c L790-799). */
+      env.msg?.(
+        `You have ${obj.pval} charge${obj.pval === 1 ? "" : "s"} remaining.`,
+      );
     }
   }
 
@@ -910,8 +985,49 @@ export function installObjCommands(
       handle = invenCarry(state.gear, usable, stackLimits(deps.constants));
     }
     if (handle === undefined) return 0;
+    /* The occupant of the target slot is displaced back into the pack; capture
+     * it (and its slot type) before the wield so do_cmd_wield's "You were
+     * wielding ..." message reads the right wording (cmd-obj.c L333-354). */
+    const targetSlot = wieldSlot(
+      state.actor.player.body,
+      found.obj.tval,
+      state.actor.player.equipment,
+    );
+    const displacedHandle =
+      targetSlot >= 0 ? (state.actor.player.equipment[targetSlot] ?? 0) : 0;
+    const displaced = displacedHandle ? gearGet(state.gear, displacedHandle) : null;
+    const displacedTval = displaced?.tval ?? 0;
     const slot = invenWield(state, handle);
     if (slot < 0) return 0;
+    /* inven_wield's own message (obj-gear.c L986-1006): name the worn item by
+     * where it went, then a sticky warning. */
+    const worn = gearGet(state.gear, handle);
+    if (worn) {
+      const wname = describeObject(state, worn);
+      const wlabel = gearLabelFor(state, handle);
+      const verb = tvalIsMeleeWeapon(worn.tval)
+        ? "You are wielding"
+        : tvalIsLauncher(worn.tval)
+          ? "You are shooting with"
+          : tvalIsLight(worn.tval)
+            ? "Your light source is"
+            : "You are wearing";
+      deps.env?.msg?.(`${verb} ${wname} (${wlabel}).`);
+      if (worn.flags.has(OF.STICKY)) {
+        deps.env?.msg?.("Oops! It feels deathly cold!");
+      }
+    }
+    /* The displaced item, now back in the pack (cmd-obj.c L337-354). */
+    if (displaced) {
+      const dname = describeObject(state, displaced);
+      const dlabel = gearLabelFor(state, displacedHandle);
+      const act = tvalIsMeleeWeapon(displacedTval)
+        ? "You were wielding"
+        : tvalIsLauncher(displacedTval) || tvalIsLight(displacedTval)
+          ? "You were holding"
+          : "You were wearing";
+      deps.env?.msg?.(`${act} ${dname} (${dlabel}).`);
+    }
     /* inven_wield runs combine_pack (obj-gear.c L1009), which re-derives the
      * quiver via calc_inventory. */
     combinePack(state.gear, deps.constants, calcInvOpts(state, deps));
@@ -923,7 +1039,21 @@ export function installObjCommands(
     const args = cmd.args ?? {};
     const handle = typeof args["handle"] === "number" ? args["handle"] : null;
     if (handle === null) return 0;
+    const obj = gearGet(state.gear, handle);
+    const tval = obj?.tval ?? 0;
     if (!invenTakeoff(state, handle)) return 0;
+    /* inven_takeoff's message (obj-gear.c L1046-1065): the slot wording, then
+     * the item named at its new pack label. */
+    if (obj) {
+      const act = tvalIsMeleeWeapon(tval)
+        ? "You were wielding"
+        : tvalIsLauncher(tval) || tvalIsLight(tval)
+          ? "You were holding"
+          : "You were wearing";
+      deps.env?.msg?.(
+        `${act} ${describeObject(state, obj)} (${gearLabelFor(state, handle)}).`,
+      );
+    }
     /* inven_takeoff sets PU_INVEN (obj-gear.c L1060) -> calc_inventory. */
     calcInventory(state.gear, deps.constants, calcInvOpts(state, deps));
     return Math.trunc(state.z.moveEnergy / 2);
@@ -938,7 +1068,28 @@ export function installObjCommands(
     if (!obj) return 0;
     const amt =
       typeof args["quantity"] === "number" ? args["quantity"] : obj.number;
-    if (!invenDrop(state, handle, amt, deps.floorEnv)) return 0;
+    /* Label and artifact-ness captured before the drop (inven_drop L1099). */
+    const label = gearLabelFor(state, handle);
+    const wasArtifact = obj.artifact !== null;
+    const dropped = invenDrop(state, handle, amt, deps.floorEnv);
+    if (!dropped) return 0;
+    /* inven_drop's messages (obj-gear.c L1120-1163): the drop, then what's
+     * left. The split-stack "(1st %c)" aggregate is not reproduced (ledgered
+     * with the use_aux describe line above). Dropping an equipped item omits the
+     * take-off line the port's inven_takeoff does not emit - also ledgered. */
+    deps.env?.msg?.(`You drop ${describeObject(state, dropped)} (${label}).`);
+    const remain = gearGet(state.gear, handle);
+    if (remain) {
+      deps.env?.msg?.(`You have ${describeObject(state, remain)} (${label}).`);
+    } else if (wasArtifact) {
+      deps.env?.msg?.(
+        `You no longer have the ${describeObject(state, dropped, ODESC.FULL | ODESC.SINGULAR)} (${label}).`,
+      );
+    } else {
+      deps.env?.msg?.(
+        `You have ${describeObject(state, dropped, ODESC.PREFIX | ODESC.FULL | ODESC.ALTNUM, 0)} (${label}).`,
+      );
+    }
     /* gear_object_for_use sets PU_INVEN (obj-gear.c L617) -> calc_inventory. */
     calcInventory(state.gear, deps.constants, calcInvOpts(state, deps));
     return Math.trunc(state.z.moveEnergy / 2);

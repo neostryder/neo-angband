@@ -934,3 +934,102 @@ describe("RNG invariance (inscribe/uninscribe/autoinscribe/refill draw no RNG)",
     expect(after).toEqual(before);
   });
 });
+
+describe("faithful item-use messaging (cmd-obj.c / obj-gear.c)", () => {
+  function withMsgs(state: GameState): {
+    registry: ReturnType<typeof createDefaultRegistry>;
+    msgs: string[];
+  } {
+    const msgs: string[] = [];
+    const registry = createDefaultRegistry();
+    installObjCommands(
+      registry,
+      makeDeps(state, { env: { msg: (t) => msgs.push(t) } }),
+    );
+    return { registry, msgs };
+  }
+
+  it("quaffing prints a describe line, never a fabricated 'You quaff' wrapper", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const p = state.actor.player;
+    p.mhp = 30;
+    p.chp = 10;
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    potion.number = 5;
+    const h = carry(state, potion);
+    const { registry, msgs } = withMsgs(state);
+
+    registry.get("quaff")!(state, { code: "quaff", args: { handle: h } });
+
+    /* No invented "You quaff ..." wrapper - upstream never prints one. */
+    expect(msgs.every((m) => !m.startsWith("You quaff"))).toBe(true);
+    /* The remaining stack is described: "You have <name> (<label>)." */
+    expect(msgs.some((m) => /^You have .+\([a-z0-9]\)\.$/.test(m))).toBe(true);
+  });
+
+  it("wielding a weapon prints 'You are wielding X (c).'", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const h = carry(state, makeNamed("& Dagger~", TV.SWORD));
+    const { registry, msgs } = withMsgs(state);
+
+    registry.get("wield")!(state, { code: "wield", args: { handle: h } });
+
+    expect(
+      msgs.some((m) => /^You are wielding .+\([a-z0-9]\)\.$/.test(m)),
+    ).toBe(true);
+  });
+
+  it("taking off an item prints 'You were wielding X (c).'", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const h = carry(state, makeNamed("& Dagger~", TV.SWORD));
+    invenWield(state, h);
+    const { registry, msgs } = withMsgs(state);
+
+    registry.get("takeoff")!(state, { code: "takeoff", args: { handle: h } });
+
+    expect(
+      msgs.some((m) => /^You were wielding .+\([a-z0-9]\)\.$/.test(m)),
+    ).toBe(true);
+  });
+
+  it("dropping prints 'You drop X (c).' plus what's left", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    potion.number = 5;
+    const h = carry(state, potion);
+    const { registry, msgs } = withMsgs(state);
+
+    registry.get("drop")!(state, {
+      code: "drop",
+      args: { handle: h, quantity: 2 },
+    });
+
+    expect(msgs.some((m) => /^You drop .+\([a-z0-9]\)\.$/.test(m))).toBe(true);
+    expect(msgs.some((m) => /^You have .+\([a-z0-9]\)\.$/.test(m))).toBe(true);
+  });
+
+  it("a known charge device reports its remaining charges", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    maxDeviceSkill(state);
+    const flavor = new FlavorKnowledge(reg.ordinaryKindCount);
+    const wand = makeNamed("Magic Missile", TV.WAND);
+    wand.pval = 5;
+    flavor.objectFlavorAware(wand.kind, NOOP_FLAVOR_AWARE_DEPS);
+    const h = carry(state, wand);
+    const msgs: string[] = [];
+    const registry = createDefaultRegistry();
+    installObjCommands(
+      registry,
+      makeDeps(state, { flavor, env: { msg: (t) => msgs.push(t) } }),
+    );
+
+    registry.get("aim-wand")!(state, {
+      code: "aim-wand",
+      args: { handle: h, dir: 6 },
+    });
+
+    expect(
+      msgs.some((m) => /^You have \d+ charges? remaining\.$/.test(m)),
+    ).toBe(true);
+  });
+});
