@@ -14,6 +14,7 @@ import type { AttackModifier, BrandSlayTarget } from "./brand-slay";
 import {
   getMonsterBrandMultiplier,
   improveAttackModifier,
+  reactToSlay,
 } from "./brand-slay";
 
 function load(name: string): unknown {
@@ -194,5 +195,27 @@ describe("improve_attack_modifier", () => {
     const m = mod();
     improveAttackModifier(weapon([false, true], [false, false, false]), target(), brands, slays, m, true);
     expect(m.verb).toBe("burns");
+  });
+});
+
+describe("react_to_slay (obj-slays.c L435)", () => {
+  it("true when the object carries a slay matching the monster's race flag", () => {
+    /* Undead slay on an undead monster: the theft/pickup is blocked. */
+    expect(
+      reactToSlay(weapon([false, false], [false, false, true]), target(RF.UNDEAD), slays),
+    ).toBe(true);
+  });
+
+  it("false when no carried slay matches the monster", () => {
+    /* Undead slay on a non-undead monster. */
+    expect(
+      reactToSlay(weapon([false, false], [false, false, true]), target(RF.EVIL), slays),
+    ).toBe(false);
+  });
+
+  it("false for an object with no slays at all", () => {
+    const o = weapon([false, false], [false, false, false]);
+    o.slays = null;
+    expect(reactToSlay(o, target(RF.UNDEAD), slays)).toBe(false);
   });
 });
