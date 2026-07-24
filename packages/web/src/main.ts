@@ -2172,11 +2172,13 @@ async function studySpell(): Promise<void> {
 }
 
 /**
- * Spell-list column header (ui-spell.c:249, m->header), aligned to the port's
- * row format (name padded 30, then Lv/Mana/Fail/Info). Shown as the menu's
- * subtitle for cast / study / browse.
+ * Spell-list column header (ui-spell.c:249, m->header). Byte-faithful to the C
+ * literal: "Name" then 29 spaces (Lv begins at column 33), then Lv/Mana/Fail/
+ * Info. Note upstream deliberately offsets the header from the 30-wide name
+ * field of the data rows (spell_menu_display, ui-spell.c:106-121), so the header
+ * labels do not sit directly above their columns - reproduced here exactly.
  */
-const SPELL_HEADER = `${"Name".padEnd(30)}Lv Mana Fail Info`;
+const SPELL_HEADER = `${"Name".padEnd(33)}Lv Mana Fail Info`;
 
 /**
  * Browse (b / P, textui_spell_browse / ui-spell.c:334): a read-only view of a
@@ -2190,11 +2192,15 @@ async function browseCmd(): Promise<void> {
   const bookObj = gearGet(state.gear, handle);
   if (!bookObj) return;
   const { items, sidx } = bookSpellMenu(state, bookObj, "cast");
+  /* spell_menu_browse row-0 prompt (ui-spell.c:306): "Browsing %ss. ('?' to
+   * toggle description)" with the realm's pluralised spell noun (priests read
+   * "Browsing prayers."), not a "Browse which spell?" get_item prompt. */
+  const noun = playerObjectToBook(state.actor.player, bookObj)?.realm?.spellNoun ?? "spell";
   // Read-only: every row is viewable (drop the cast-gate disabling) and the
   // description is shown from the start (spell_menu_new show_description=true).
   await selectFromMenu(
     term,
-    "Browse which spell?",
+    `Browsing ${noun}s. ('?' to toggle description)`,
     items.map((it) => ({ ...it, disabled: false })),
     "[ a-z or arrows to view, ? to toggle description, ESC to exit ]",
     {

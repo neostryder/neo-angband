@@ -604,7 +604,13 @@ export async function runStore(
    * stashes without a price or confirmation.
    */
   const sellFlow = async (): Promise<void> => {
-    const { items, handles } = packMenu(game.state);
+    /* store_sell get_item tester (ui-store.c L512, store_will_buy_tester): a
+     * real shop only lists items it would actually buy; the Home accepts
+     * anything (game.willBuy returns true for it). Without this the picker
+     * showed unsellable items that were only refused after selection. Pack-only
+     * source is the same faithful subset noted at findInven (no equip/quiver/
+     * floor picker in the store yet). */
+    const { items, handles } = packMenu(game.state, (obj) => game.willBuy(store, obj));
     if (items.length === 0) {
       // store_sell reject (ui-store.c L499), shared by shops and the Home.
       storeSay("You have nothing that I want. ");
@@ -650,6 +656,27 @@ export async function runStore(
     else if (noSelling) storeSay(`You had ${name}.`);
     else storeSay(`You sold ${name} for ${result.price} gold.`);
     refreshStock();
+  };
+
+  /**
+   * 'I' -> textui_obj_examine (ui-store.c L843): inspect an item from the
+   * player's OWN pack (not the store stock), showing its object_info screen.
+   * Distinct from 'l'/'x' (store_examine), which inspects an item on sale.
+   * Pack-only, the same faithful subset as the sell picker (no equip/quiver
+   * picker in the store yet, gap noted at findInven).
+   */
+  const inspectInven = async (): Promise<void> => {
+    const { items, handles } = packMenu(game.state);
+    if (items.length === 0) {
+      storeSay("You have nothing to inspect. ");
+      return;
+    }
+    const idx = await selectFromMenu(term, "Examine which item? ", items, "[ a-z to inspect, ESC to cancel ]");
+    if (idx === null) return;
+    const handle = handles[idx];
+    if (handle === undefined) return;
+    const obj = game.state.gear.store.get(handle);
+    if (obj) await deps.examine(obj);
   };
 
   /**
@@ -730,6 +757,7 @@ export async function runStore(
     if (k === "Escape") return;
     if (k === "?") { helpShown = !helpShown; continue; }
     if (k === "s" || k === "d") { await sellFlow(); continue; }
+    if (k === "I") { await inspectInven(); continue; }
     if (k === "p" || k === "g") {
       const idx = await pickStock(
         isHome
