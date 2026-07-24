@@ -112,6 +112,26 @@ function reactToSpecificSlay(s: Slay, mon: BrandSlayTarget): boolean {
 }
 
 /**
+ * react_to_slay (obj-slays.c L435): does `obj` carry a slay that would affect
+ * `mon`? Iterates the object's slay runes and returns true on the first whose
+ * race flag or base name matches (react_to_specific_slay). Draws no RNG. Used
+ * by the thief blows (a slay-bearing item resists being stolen) and by the
+ * monster-turn item-pickup guard.
+ */
+export function reactToSlay(
+  obj: GameObject,
+  mon: BrandSlayTarget,
+  slays: readonly (Slay | null)[],
+): boolean {
+  if (!obj.slays) return false;
+  for (let i = 0; i < slays.length; i++) {
+    const s = slays[i];
+    if (s && obj.slays[i] && reactToSpecificSlay(s, mon)) return true;
+  }
+  return false;
+}
+
+/**
  * improve_attack_modifier: fold the best applicable brand or slay for `obj`
  * against `mon` into `mod`, updating mod.brand/mod.slay/mod.verb.
  *
