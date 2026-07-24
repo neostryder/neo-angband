@@ -85,6 +85,7 @@ import { selectFromMenu, promptNumber, menuNav } from "./overlay";
 import type { MenuItem } from "./overlay";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
 import { runColorsEditor, saveColorPrefs } from "./colors";
+import { runKeymapEditor } from "./keymap-edit";
 
 const FG = UI_TEXT;
 const DIM = UI_DIM;
@@ -559,6 +560,7 @@ export async function runOptionsMenu(
     { label: "Birth (difficulty) options", tag: "b" },
     { label: "Cheat options", tag: "x" },
     { label: "Item ignoring setup", tag: "i" },
+    { label: "Edit keymaps (advanced)", tag: "e" },
     { label: "Edit colours (advanced)", tag: "c" },
     { label: "Set base delay factor", tag: "d" },
     { label: "Set hitpoint warning", tag: "h" },
@@ -587,6 +589,11 @@ export async function runOptionsMenu(
         break;
       case "i":
         await openIgnoreSetup();
+        break;
+      case "e":
+        // do_cmd_keymaps (ui-options.c L743): the keymap query/create/remove
+        // editor, for the current keyset (rogue_like_commands, read live).
+        await runKeymapEditor(term, state.options?.get("rogue_like_commands") ?? false);
         break;
       case "c":
         // do_cmd_colors (ui-options.c L999): the interactive RGB editor.

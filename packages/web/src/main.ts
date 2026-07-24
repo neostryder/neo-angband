@@ -315,6 +315,8 @@ import { runHelp } from "./help";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
 import { loadColorPrefs } from "./colors";
+import { enqueueKeys, isSynthKey } from "./input-queue";
+import { keymapFind, keymapModeFor, loadKeymapPrefs } from "./keymap-store";
 import { installAutoUpdate } from "./pwa";
 
 // PWA freshness: silently reload onto a newly deployed build (a ratified
@@ -330,6 +332,9 @@ const term = new GlyphTerm(canvas);
 // localStorage; apply them to the live angband_color_table before the first
 // paint so custom colours are honoured from boot.
 loadColorPrefs();
+// User keymaps (do_cmd_keymaps) are a global pref too; load them before the
+// first keypress so a saved keymap fires from boot.
+loadKeymapPrefs();
 // Accessibility bridge: mirrors messages to an ARIA live region and labels the
 // canvas, since the canvas itself is opaque to screen readers (a11y.ts).
 const a11y = initA11y(canvas);
@@ -5200,6 +5205,21 @@ window.addEventListener("keydown", (ev) => {
   // key through this exactly like cmd_info's key[0] (original) / key[1]
   // (roguelike) pair, so no binding differs from the reference.
   const roguelike = state.options?.get("rogue_like_commands") ?? false;
+  // User keymaps (keymap_find, applied in inkey before command interpretation):
+  // a modifier-free character trigger with a keymap expands into its action
+  // sequence, fed through the input queue so any sub-menu the action opens
+  // consumes the following keys exactly as upstream. Synthetic keys (a keymap's
+  // own expanded output) are skipped so a keymap never recurses. Checked here,
+  // after the ^-aliases guard's siblings above (N / ? / death), so those web
+  // affordances keep priority; every ordinary command key is keymappable.
+  if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && !isSynthKey(ev) && ev.key.length === 1) {
+    const action = keymapFind(keymapModeFor(roguelike), ev.key);
+    if (action) {
+      ev.preventDefault();
+      enqueueKeys([...action].map((ch) => ({ key: ch })));
+      return;
+    }
+  }
   // Ctrl-key command aliases (cmd_action / cmd_util faithful bindings that use a
   // control modifier). Checked before the modifier-free block below.
   if (ev.ctrlKey && !ev.altKey && !ev.metaKey) {
