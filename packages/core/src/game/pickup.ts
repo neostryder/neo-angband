@@ -67,6 +67,15 @@ export interface PickupDeps {
   /** Bound constants (pack_size for inven_carry_num, quiver limits). */
   constants: Constants;
   env?: PickupEnv;
+  /**
+   * update_stuff's PU_INVEN after inven_carry (obj-gear.c:893 sets PU_INVEN):
+   * rebuild the computed quiver so picked-up ammo is routed out of the pack and
+   * into the quiver, exactly as the wield/takeoff/drop/store paths do. Without
+   * it, shots/arrows/bolts sit in the pack until some later gear change forces a
+   * calc_inventory. Invoked once per pickup command (upstream defers to the end
+   * of the turn's update_stuff), so a multi-item autopickup rebuilds once.
+   */
+  refreshInventory?: () => void;
 }
 
 function stackLimits(constants: Constants): StackLimits {
@@ -354,7 +363,13 @@ export function installPickup(
   registry: ActionRegistry,
   deps: PickupDeps,
 ): void {
-  registry.register("pickup", (s) => pickupEnergy(s, playerPickupItem(s, null, deps)));
-  registry.register("autopickup", (s) => pickupEnergy(s, doAutopickup(s, deps)));
-  state.autoPickup = (s): number => pickupEnergy(s, doAutopickup(s, deps));
+  /* Rebuild the computed quiver after any pickup that carried something, so
+   * ammo lands in the quiver rather than the pack (PU_INVEN; see PickupDeps). */
+  const pickedThen = (s: GameState, picked: number): number => {
+    if (picked > 0) deps.refreshInventory?.();
+    return pickupEnergy(s, picked);
+  };
+  registry.register("pickup", (s) => pickedThen(s, playerPickupItem(s, null, deps)));
+  registry.register("autopickup", (s) => pickedThen(s, doAutopickup(s, deps)));
+  state.autoPickup = (s): number => pickedThen(s, doAutopickup(s, deps));
 }

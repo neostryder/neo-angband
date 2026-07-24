@@ -3054,6 +3054,11 @@ async function chooseTarget(): Promise<boolean> {
 // monster; 5/t/0/. use the current target. Re-prompts (bell) if the player
 // backs out of the picker or asks for a target with none set/available.
 async function aimDir(): Promise<number | null> {
+  /* Every caller (throw/fire/aim-wand/zap-rod/activate/cast) reaches here from a
+   * full-screen item or spell picker, whose teardown does not repaint. Restore
+   * the map before the direction prompt so the player aims over the dungeon,
+   * not the leftover menu (get_aim_dir runs on the main term in C, ui-game.c). */
+  render();
   for (;;) {
     const d = await getAimDir(term, targetOkay(state));
     if (d === null) return null;
@@ -5102,7 +5107,18 @@ function waitAnyKey(): Promise<void> {
 async function pumpMessages(preLen: number): Promise<void> {
   const fresh = msglog.all().slice(preLen);
   const pages = paginateMessages(fresh, term.size().cols);
-  if (pages.length <= 1) return;
+  if (pages.length <= 1) {
+    // display_message packs the whole turn's messages onto row 0 (ui-input.c
+    // L570-590), so a turn with several short messages ("You are covered in
+    // acid!" + "You feel your life draining away!") shows them concatenated -
+    // not just msglog.latest(), which is all render() drew. Put the single
+    // packed page on the top line so no earlier message is dropped.
+    if (pages.length === 1) {
+      message = pages[0] ?? message;
+      render();
+    }
+    return;
+  }
   const last = pages[pages.length - 1] ?? "";
   if (state.options?.get("auto_more")) {
     message = last;

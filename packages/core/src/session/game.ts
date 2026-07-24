@@ -556,6 +556,19 @@ function wireGame(
   installPickup(state, registry, {
     constants: reg.constants,
     env: { isIgnored: (obj) => state.isIgnored!(obj) },
+    /* PU_INVEN after inven_carry (see PickupDeps.refreshInventory): route
+     * picked-up ammo into the quiver. Same calc_inventory opts as the store
+     * refreshQuiver and object-command paths. */
+    refreshInventory: (): void => {
+      calcInventory(state.gear, reg.constants, {
+        store: false,
+        objectValue: (obj: GameObject): number =>
+          computeObjectValue(reg.objects, obj, 1, true),
+        rogueLike: state.options?.get("rogue_like_commands") ?? false,
+        characterDungeon: true,
+        msg: (text: string): void => state.msg?.(text),
+      });
+    },
   });
 
   // Rune learning (obj-knowledge.c learn-by-use): the registry tables plus
