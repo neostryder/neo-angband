@@ -124,6 +124,8 @@ function makeFakeEnv(opts: {
       return false;
     },
     msg: () => {},
+    monName: "The kobold",
+    showDamage: false,
     elementalDam: (_proj: number, dam: number) => dam,
     invenDamage: () => {},
     resists: () => false,
@@ -239,6 +241,81 @@ describe("make_attack_normal", () => {
     for (const name of packEffects) {
       expect(resolved.has(name)).toBe(true);
     }
+  });
+});
+
+/*
+ * display_blow_message_vs_player (mon-blows.c L194): the "The kobold hits you."
+ * line every landing blow shows, emitted immediately before take_hit. The
+ * randint0(num_messages) variant draw is a no-op for the single-message methods
+ * (so normal combat RNG is unchanged) and picks one of the eight lines for the
+ * multi-message methods (INSULT / MOAN).
+ */
+describe("display_blow_message_vs_player (mon-blows.c L194)", () => {
+  function capturingEnv(
+    monName: string,
+    showDamage: boolean,
+  ): { env: MonBlowEnv; msgs: string[] } {
+    const { env } = makeFakeEnv();
+    const msgs: string[] = [];
+    return {
+      env: {
+        ...env,
+        msg: (t: string): void => {
+          msgs.push(t);
+        },
+        monName,
+        showDamage,
+      },
+      msgs,
+    };
+  }
+
+  it("emits 'The kobold hits you.' on a landed HURT/HIT blow", () => {
+    const rng = new Rng(1);
+    rng.randFix(100);
+    const { env, msgs } = capturingEnv("The kobold", false);
+    monMeleeAttack(rng, makeMon("HURT", "HIT", "1d4", 5), defender(), def, { env });
+    expect(msgs).toContain("The kobold hits you.");
+  });
+
+  it("appends the ' (N)' damage suffix when show_damage is on", () => {
+    const rng = new Rng(1);
+    rng.randFix(100);
+    const { env, msgs } = capturingEnv("The kobold", true);
+    monMeleeAttack(rng, makeMon("HURT", "HIT", "1d4", 5), defender(), def, { env });
+    /* HURT: adjust_dam_armor(1d4 max = 4, ac 0) = 4. */
+    expect(msgs).toContain("The kobold hits you. (4)");
+  });
+
+  it("shows no blow message when the attack misses", () => {
+    const rng = new Rng(1);
+    rng.randFix(0);
+    const { env, msgs } = capturingEnv("The kobold", false);
+    monMeleeAttack(rng, makeMon("HURT", "HIT", "1d4", 5), defender(), def, { env });
+    expect(msgs.length).toBe(0);
+  });
+
+  it("substitutes the player-target tags for the multi-message INSULT method", () => {
+    const rng = new Rng(1);
+    rng.randFix(100);
+    const { env, msgs } = capturingEnv("The cutpurse", false);
+    monMeleeAttack(rng, makeMon("EAT_GOLD", "INSULT", "1d4", 5), defender(), def, {
+      env,
+    });
+    /* Every INSULT line ends in "!" (no added fullstop) and resolves {target}->
+     * you / {oftarget}->your for a blow against the player. */
+    const insults = [
+      "insults you!",
+      "insults your mother!",
+      "gives you the finger!",
+      "humiliates you!",
+      "defiles you!",
+      "dances around you!",
+      "makes obscene gestures!",
+      "moons you!!!",
+    ].map((a) => `The cutpurse ${a}`);
+    expect(msgs.some((m) => insults.includes(m))).toBe(true);
   });
 });
 
