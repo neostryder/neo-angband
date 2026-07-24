@@ -154,6 +154,28 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     await done;
   });
 
+  it("'x' resets interface options to their maintainer defaults (no confirm)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(100, 40);
+    const state = makeState();
+    expect(state.options!.get("rogue_like_commands")).toBe(false); // default
+    const done = runOptionsMenu(term, state, async () => {});
+    press(win, "a"); // User interface options
+    await tick();
+    press(win, "y"); // flip rogue_like_commands (first row) to true
+    expect(state.options!.get("rogue_like_commands")).toBe(true);
+    press(win, "x"); // options_restore_maintainer: back to defaults immediately
+    expect(state.options!.get("rogue_like_commands")).toBe(false);
+    const snap = term.snapshot().join("\n");
+    expect(snap).toMatch(/rogue_like_commands\)/);
+    expect(snap).toContain("'x' to reset to defaults");
+    press(win, "Escape"); // back to top menu
+    await tick();
+    press(win, "Escape"); // exit
+    await done;
+  });
+
   it("(b) birth page is read-only: y/n/t never mutate a birth option", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
