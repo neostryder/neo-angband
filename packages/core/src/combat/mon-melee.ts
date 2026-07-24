@@ -38,6 +38,7 @@ import type { Rng, RandomValue } from "../rng";
 import type { Loc } from "../loc";
 import { locEq } from "../loc";
 import type { Monster } from "../mon/monster";
+import type { BlowMethod } from "../mon/types";
 import type { Player } from "../player/player";
 import { ELEM, MON_TMD, PROJ, RF, STAT, TMD } from "../generated";
 import { STUN_DAM_REDUCTION, STUN_HIT_REDUCTION, testHit } from "./hit";
@@ -110,6 +111,11 @@ export interface MonBlowEnv {
   readonly playerDied: boolean;
   /** msg(): route a blow message to the game's sink. */
   msg(text: string): void;
+  /** monster_desc(mon, MDESC_STANDARD): "The kobold" / "Something", for the
+   * per-blow "m_name act." message (drawn once per attack, no RNG). */
+  readonly monName: string;
+  /** OPT(p, show_damage): append the " (N)" suffix to the blow message. */
+  readonly showDamage: boolean;
   /** adjust_dam(p, proj, dam, RANDOMISE): elemental damage after resists. */
   elementalDam(proj: number, dam: number): number;
   /** inven_damage(p, elem, cperc): pack casualties from an elemental hit. */
@@ -295,6 +301,8 @@ interface BlowEffectContext {
   rlev: number;
   /** method->phys: whether the blow has a physical component. */
   phys: boolean;
+  /** The blow method, for display_blow_message_vs_player's action + msgt. */
+  method: BlowMethod;
 }
 
 interface BlowEffectResult {
@@ -329,6 +337,89 @@ const EXP_DRAIN: Readonly<Record<string, { holdChance: number; dice: number }>> 
 };
 
 /**
+ * monster_blow_method_action (mon-blows.c L74): pick one of the blow method's
+ * action messages via randint0(num_messages) and substitute the player-target
+ * tags. Returns null when the method carries no messages (act == NULL upstream,
+ * which yields the "You take N damage." fallback).
+ *
+ * The randint0(num_messages) draw is ALWAYS performed so the RNG stream matches
+ * upstream whether or not the message is shown. randint0 (Rand_div) short-
+ * circuits for num_messages <= 1, so only the multi-message methods (INSULT and
+ * MOAN, 8 each) consume any RNG here; every other blow is byte-identical.
+ *
+ * For a blow against the player (upstream midx < 0) the tags resolve to the
+ * fixed second-person words, not a monster_desc: {target}->you, {oftarget}->
+ * your, {has}->have (mon-blows.c L116-152).
+ */
+function monsterBlowMethodAction(method: BlowMethod, rng: Rng): string | null {
+  const n = method.messages.length;
+  if (n === 0) return null;
+  const choice = rng.randint0(n);
+  const raw = method.messages[choice] ?? method.messages[0]!;
+  return raw
+    .replace(/\{target\}/g, "you")
+    .replace(/\{oftarget\}/g, "your")
+    .replace(/\{has\}/g, "have");
+}
+
+/**
+ * display_blow_message_vs_player (mon-blows.c L194): show "m_name act." for a
+ * blow that lands on the player, with the " (N)" damage suffix when show_damage
+ * is on and the blow dealt HP. When `sink` is null (the worldless recording
+ * path) the message is drawn but not emitted, so both paths consume RNG
+ * identically. The fullstop is dropped when the action ends in "'" or "!".
+ */
+function displayBlowMessageVsPlayer(
+  rng: Rng,
+  method: BlowMethod,
+  reduced: number,
+  monName: string,
+  showDamage: boolean,
+  sink: ((text: string) => void) | null,
+): void {
+  const act = monsterBlowMethodAction(method, rng);
+  if (!sink) return;
+  if (act !== null) {
+    const fullstop = act.endsWith("'") || act.endsWith("!") ? "" : ".";
+    const tail = reduced > 0 && showDamage ? ` (${reduced})` : "";
+    sink(`${monName} ${act}${fullstop}${tail}`);
+  } else if (reduced > 0 && showDamage) {
+    sink(`You take ${reduced} damage.`);
+  }
+}
+
+/**
+ * Live-path blow message: emit "The kobold hits you." through the env sink
+ * immediately before take_hit (display_blow_message_vs_player, called from every
+ * damage-dealing melee_effect_handler in mon-blows.c).
+ */
+function emitBlowMessageLive(
+  env: MonBlowEnv,
+  ctx: BlowEffectContext,
+  reduced: number,
+): void {
+  displayBlowMessageVsPlayer(
+    ctx.rng,
+    ctx.method,
+    reduced,
+    env.monName,
+    env.showDamage,
+    (text: string): void => env.msg(text),
+  );
+}
+
+/**
+ * Recording-path blow message: perform the randint0(num_messages) draw without
+ * emitting (the worldless intent-recording path has no sink or monster name).
+ * Keeps the two paths in RNG lock-step; for every multi-message method in the
+ * vanilla data (INSULT / MOAN) the draw is the effect's first RNG event, so its
+ * position matches upstream.
+ */
+function drawBlowMessage(ctx: BlowEffectContext): void {
+  displayBlowMessageVsPlayer(ctx.rng, ctx.method, 0, "", false, null);
+}
+
+/**
  * Resolve one RBE_ blow effect: compute the HP damage the effect deals to the
  * player (context->damage after the handler runs) and record any timed /
  * stat / inventory / elemental side-effect intents.
@@ -339,6 +430,11 @@ function resolveBlowEffect(
 ): BlowEffectResult {
   const { rng, baseDamage, ac, rlev, phys } = ctx;
   const side: BlowSideEffect[] = [];
+
+  /* display_blow_message_vs_player draws randint0(num_messages) before take_hit
+   * in every handler; hoisted here for the worldless path (no-op for the single-
+   * message methods, first RNG event for the INSULT / MOAN effects). */
+  drawBlowMessage(ctx);
 
   /* Elemental blows: physical component to HP; elemental component deferred. */
   if (name === "ACID" || name === "ELEC" || name === "FIRE" || name === "COLD") {
@@ -593,6 +689,7 @@ function applyElemental(
   let reducedDamage = 0;
   if (contextDamage > 0) {
     reducedDamage = env.applyReduction(contextDamage);
+    emitBlowMessageLive(env, ctx, reducedDamage);
     env.takeHit(reducedDamage);
   }
   return { contextDamage, reducedDamage };
@@ -625,11 +722,15 @@ function resolveBlowEffectLive(
 
   switch (name) {
     case "NONE":
+      /* melee_effect_handler_NONE (mon-blows.c L638): show the message (with
+       * its randint0(num_messages) draw) for a no-damage hit; no take_hit. */
+      emitBlowMessageLive(env, ctx, 0);
       return done(0, 0);
 
     case "HURT": {
       const cd = adjustDamArmor(baseDamage, ac);
       const reduced = env.applyReduction(cd);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       return done(cd, reduced);
     }
@@ -645,6 +746,7 @@ function resolveBlowEffectLive(
 
     case "DISENCHANT": {
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied && !env.resists(ELEM.DISEN)) env.disenchant();
       return done(baseDamage, reduced);
@@ -652,6 +754,7 @@ function resolveBlowEffectLive(
 
     case "DRAIN_CHARGES": {
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied) env.drainCharges(rlev);
       return done(baseDamage, reduced);
@@ -659,6 +762,7 @@ function resolveBlowEffectLive(
 
     case "EAT_GOLD": {
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (env.playerDied) return done(baseDamage, reduced);
       const blinked = env.eatGold();
@@ -668,6 +772,7 @@ function resolveBlowEffectLive(
     case "EAT_ITEM": {
       /* monster_damage_target(context, false): returns only on death. */
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (env.playerDied) return done(baseDamage, reduced);
       const r = env.eatItem();
@@ -676,6 +781,7 @@ function resolveBlowEffectLive(
 
     case "EAT_FOOD": {
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied) env.eatFood();
       return done(baseDamage, reduced);
@@ -683,6 +789,7 @@ function resolveBlowEffectLive(
 
     case "EAT_LIGHT": {
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied) env.eatLight();
       return done(baseDamage, reduced);
@@ -692,6 +799,7 @@ function resolveBlowEffectLive(
       /* melee_effect_timed: duration arg drawn first, then damage, no save. */
       const amount = 10 + rng.randint1(rlev);
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied) env.incTimed(TMD.BLIND, amount, true);
       return done(baseDamage, reduced);
@@ -700,6 +808,7 @@ function resolveBlowEffectLive(
     case "CONFUSE": {
       const amount = 3 + rng.randint1(rlev);
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied) env.incTimed(TMD.CONFUSED, amount, true);
       return done(baseDamage, reduced);
@@ -708,6 +817,7 @@ function resolveBlowEffectLive(
     case "TERRIFY": {
       const amount = 3 + rng.randint1(rlev);
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied) {
         if (env.saveVsSkill()) env.msg("You stand your ground!");
@@ -719,6 +829,7 @@ function resolveBlowEffectLive(
     case "PARALYZE": {
       const amount = 3 + rng.randint1(rlev);
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied) {
         if (env.saveVsSkill()) env.msg("You resist the effects!");
@@ -733,6 +844,7 @@ function resolveBlowEffectLive(
     case "LOSE_DEX":
     case "LOSE_CON": {
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied) env.drainStat(STAT_OF_LIVE_EFFECT[name]!);
       return done(baseDamage, reduced);
@@ -740,6 +852,7 @@ function resolveBlowEffectLive(
 
     case "LOSE_ALL": {
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied) {
         env.drainStat(STAT.STR);
@@ -754,6 +867,7 @@ function resolveBlowEffectLive(
     case "SHATTER": {
       const cd = adjustDamArmor(baseDamage, ac);
       const reduced = env.applyReduction(cd);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (env.playerDied) return done(cd, reduced);
       if (cd > 23) env.earthquake(Math.trunc(cd / 12));
@@ -772,6 +886,7 @@ function resolveBlowEffectLive(
       /* damroll(N, 6) is evaluated as the handler's argument, before take_hit. */
       const drainAmount = rng.damroll(spec.dice, 6);
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied) env.drainExp(spec.holdChance, drainAmount);
       return done(baseDamage, reduced);
@@ -779,6 +894,7 @@ function resolveBlowEffectLive(
 
     case "HALLU": {
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied) {
         env.incTimed(TMD.IMAGE, 3 + rng.randint1(Math.trunc(rlev / 2)), true);
@@ -788,6 +904,7 @@ function resolveBlowEffectLive(
 
     case "BLACK_BREATH": {
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       if (!env.playerDied && rng.oneIn(5)) {
         env.incTimed(TMD.BLACKBREATH, Math.trunc(baseDamage / 10), false);
@@ -798,6 +915,7 @@ function resolveBlowEffectLive(
     default: {
       /* Unknown effect: deal the base damage, as the fallthrough would. */
       const reduced = env.applyReduction(baseDamage);
+      emitBlowMessageLive(env, ctx, reduced);
       env.takeHit(reduced);
       return done(baseDamage, reduced);
     }
@@ -909,6 +1027,7 @@ export function monMeleeAttack(
       ac: def.ac + def.toA,
       rlev,
       phys: blow.method.phys,
+      method: blow.method,
     };
 
     /* context->damage after the handler (unreduced; feeds the cut/stun crit). */
