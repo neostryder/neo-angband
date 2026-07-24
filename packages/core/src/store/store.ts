@@ -42,6 +42,7 @@ import {
 } from "../obj/object";
 import { OBJ_NOTICE } from "../obj/knowledge";
 import type { ObjectKind } from "../obj/types";
+import type { PlayerClass } from "../player/types";
 import { objectValue, objectValueReal } from "../obj/value";
 import type { Rng } from "../rng";
 import type { BoundStore, ObjectBuy, StoreOwner } from "./types";
@@ -103,18 +104,62 @@ export function storeShuffle(rng: Rng, store: Store): void {
   store.owner = o;
 }
 
-/** Create a live Store from a bound definition, choosing a proprietor. */
+/**
+ * object_kind_to_book branch of parse_always (store.c:208-231): every TOWN
+ * (non-dungeon) book kind of `tval`, deduped. A book is a town book when some
+ * class lists it as a non-dungeon book (object_kind_to_book, player-spell.c).
+ * The bookseller's no-sval `always:` lines defer to this expansion, which needs
+ * the class-book metadata unavailable at parse time.
+ */
+function townBooksOfTval(
+  reg: ObjRegistry,
+  classes: readonly PlayerClass[],
+  tval: number,
+): ObjectKind[] {
+  const out: ObjectKind[] = [];
+  const seen = new Set<number>();
+  for (const cls of classes) {
+    for (const b of cls.magic.books) {
+      if (b.tvalIdx !== tval || b.dungeon) continue;
+      const kind = reg.lookupKind(b.tvalIdx, b.sval);
+      if (kind && !seen.has(kind.kidx)) {
+        seen.add(kind.kidx);
+        out.push(kind);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Create a live Store from a bound definition, choosing a proprietor. When
+ * `reg`/`classes` are supplied, the bookseller's deferred town-book `always:`
+ * lines (bound.alwaysBookTvals) are expanded into the runtime alwaysTable so the
+ * shop actually stocks the town spellbooks (parse_always, store.c:208-231).
+ */
 export function bindStoreRuntime(
   bound: BoundStore,
   rng: Rng,
   storeInvenMax: number,
+  reg?: ObjRegistry,
+  classes?: readonly PlayerClass[],
 ): Store {
+  /* A fresh array so the parse-time bound.alwaysTable stays pristine (the
+   * expansion is per store instance / per new game). */
+  const alwaysTable = [...bound.alwaysTable];
+  if (reg && classes && bound.alwaysBookTvals.length) {
+    for (const tval of bound.alwaysBookTvals) {
+      for (const kind of townBooksOfTval(reg, classes, tval)) {
+        if (!alwaysTable.includes(kind)) alwaysTable.push(kind);
+      }
+    }
+  }
   return {
     feat: bound.feat,
     featName: bound.featName,
     owners: bound.owners,
     owner: storeChooseOwner(rng, bound),
-    alwaysTable: bound.alwaysTable,
+    alwaysTable,
     normalTable: bound.normalTable,
     buy: bound.buy,
     turnover: bound.turnover,
@@ -636,9 +681,10 @@ export function createTownStores(
   deps: MakeDeps,
   rng: Rng,
   maxDepth: number,
+  classes?: readonly PlayerClass[],
 ): Store[] {
   const stores = bound.map((b) =>
-    bindStoreRuntime(b, rng, deps.constants.storeInvenMax),
+    bindStoreRuntime(b, rng, deps.constants.storeInvenMax, deps.reg, classes),
   );
   storeReset({ rng, deps, maxDepth, stores });
   return stores;

@@ -31,9 +31,12 @@ import type { Constants } from "../constants";
 import type { GameObject, StackLimits } from "../obj/object";
 import { OSTACK_PACK, objectStackable, tvalIsMoney } from "../obj/object";
 import { objectTouch } from "../obj/known-object";
+import { ODESC } from "../obj/desc";
 import type { GameState } from "./context";
+import { describeObject } from "./describe";
 import { floorExcise, floorObjectForUse, floorPile } from "./floor";
-import { invenCarry, invenCarryNum } from "./gear";
+import { gearGet, invenCarry, invenCarryNum } from "./gear";
+import { gearToLabel } from "./project-obj";
 import type { ActionRegistry } from "./player-turn";
 
 /** Hooks and options for the pickup routines; every slot is optional. */
@@ -48,8 +51,13 @@ export interface PickupEnv {
   chooseItem?: (list: readonly GameObject[]) => GameObject | null;
   /** Gold was picked up (message/sound hook). */
   onGold?: (total: number, name: string, singleKind: boolean) => void;
-  /** An object entered the pack (message hook). */
-  onPickup?: (obj: GameObject) => void;
+  /**
+   * An object entered the pack: the message hook receives the finished
+   * inven_carry line ("You have 5 Potions of Cure Light Wounds (a)."), built
+   * from the MERGED pack stack so it reports the combined count and slot letter
+   * (obj-gear.c:893-921), not the bare floor object.
+   */
+  onPickup?: (msg: string) => void;
   /** disturb(player). */
   disturb?: () => void;
 }
@@ -218,17 +226,18 @@ function playerPickupAux(
   if (autoMax && max > autoMax) max = autoMax;
 
   const limits = stackLimits(deps.constants);
+  let handle: number;
   if (max === obj.number) {
     if (obj.grid) floorExcise(state, obj.grid, obj);
     obj.grid = null;
-    invenCarry(state.gear, obj, limits);
+    handle = invenCarry(state.gear, obj, limits);
   } else {
     /* Partial pickup: auto-limit, or the whole carryable amount (the
      * get_quantity prompt defaults to max; the prompt itself is ui). */
     const num = autoMax || max;
     if (!num) return;
     const { usable } = floorObjectForUse(state, obj, num);
-    invenCarry(state.gear, usable, limits);
+    handle = invenCarry(state.gear, usable, limits);
   }
   /* object_touch (obj-knowledge.c L960-972; cmd-pickup.c L322 also touches the
    * grid pile on pickup): mark the object ASSESSED so it reveals its combat
@@ -239,7 +248,16 @@ function playerPickupAux(
    * (ASSESSED is idempotent, so re-touching an item already seen on the grid via
    * squareKnowPile is harmless.) */
   objectTouch(obj, { onArtifactFound: () => state.onArtifactFound?.(obj.artifact!) });
-  env.onPickup?.(obj);
+  /* inven_carry's own "You have %s (%c)." message (obj-gear.c:893-921): describe
+   * the MERGED pack stack so the count and slot letter reflect the combined
+   * total (e.g. "You have 5 Potions of Cure Light Wounds (a).") rather than the
+   * bare floor object ("You have a Potion..."). */
+  const stack = gearGet(state.gear, handle);
+  if (stack) {
+    const name = describeObject(state, stack, ODESC.PREFIX | ODESC.FULL);
+    const label = gearToLabel(state.gear, handle);
+    env.onPickup?.(`You have ${name}${label ? ` (${label})` : ""}.`);
+  }
 }
 
 /**

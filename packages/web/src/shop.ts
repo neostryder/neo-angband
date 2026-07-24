@@ -245,6 +245,26 @@ export interface StoreScreenDeps {
    * pass. Returns the chosen source, or "empty"/"cancel".
    */
   sellPick: (prompt: string, tester: (obj: GameObject) => boolean) => Promise<SellPick>;
+  /**
+   * store_process_command_key item-management commands (ui-store.c:823-863):
+   * the store loop re-enables a subset of the dungeon inventory verbs. wield/
+   * takeOff run through the engine WITHOUT passing a world turn (cmdq_pop uses
+   * CTX_STORE), returning the message to show on row 0 (or null when
+   * cancelled). inventory/equipment/quiver are display-only. Optional so the
+   * worldless harness/tests can omit them.
+   */
+  manageItem?: {
+    /** 'w' -> CMD_WIELD (ui-store.c:844). */
+    wield: () => Promise<string | null>;
+    /** 't'/'T' -> CMD_TAKEOFF (ui-store.c:833). */
+    takeOff: () => Promise<string | null>;
+    /** 'i' -> do_cmd_inven (ui-store.c:849). */
+    inventory: () => Promise<void>;
+    /** 'e' -> do_cmd_equip (ui-store.c:848). */
+    equipment: () => Promise<void>;
+    /** '|' -> do_cmd_quiver (ui-store.c:850). */
+    quiver: () => Promise<void>;
+  };
 }
 
 /** One keyboard key or one grid tap from the store's own input listener. */
@@ -761,6 +781,10 @@ export async function runStore(
       const copy = objectCopyAmt(obj, amt);
       const oName = describeObject(game.state, copy, ODESC.PREFIX | ODESC.FULL);
       const price = game.price(store, copy, true, amt);
+      // screen_save (ui-store.c:559): restore the store frame behind the
+      // "Price:" line and confirm prompt, so the sale price is shown clearly
+      // over the shop rather than over the (now-closed) item-picker backdrop.
+      paint();
       const ok = await storeConfirm(
         term,
         `${noSelling ? "Give" : "Sell"} ${oName}? [ESC, any other key to accept]`,
@@ -917,6 +941,30 @@ export async function runStore(
     if (k === "Enter") {
       if (displayStock.length) await itemContext(cursor);
       continue;
+    }
+    // store_process_command_key (ui-store.c:823-863): item-management verbs
+    // usable while shopping. None of these letters are stock-selection tags
+    // (store_menu_set_selections excludes them; takeoff is the keyset's non-tag
+    // key - 't' in the original keyset, 'T' in roguelike). They run without a
+    // world turn and refresh the stock view (the pack changed).
+    if (deps.manageItem) {
+      if (k === "w") {
+        const m = await deps.manageItem.wield();
+        // The engine already logged the message via state.msg; only mirror it to
+        // the store's row 0 (statusMsg), do not re-log through storeSay.
+        if (m) statusMsg = m;
+        refreshStock();
+        continue;
+      }
+      if (k === (deps.rogueLike ? "T" : "t")) {
+        const m = await deps.manageItem.takeOff();
+        if (m) statusMsg = m;
+        refreshStock();
+        continue;
+      }
+      if (k === "i") { await deps.manageItem.inventory(); continue; }
+      if (k === "e") { await deps.manageItem.equipment(); continue; }
+      if (k === "|") { await deps.manageItem.quiver(); continue; }
     }
     const sel = selections.indexOf(k);
     if (sel >= 0) {
