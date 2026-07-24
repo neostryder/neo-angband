@@ -27,6 +27,7 @@ import type { Loc } from "../loc";
 import type { Monster } from "../mon/monster";
 import { monsterCarry } from "../mon/make";
 import { MDESC_STANDARD, monsterDesc } from "../mon/desc";
+import { monsterIsVisible } from "../mon/predicate";
 import type { Player } from "../player/player";
 import type { TimedEffect } from "../player/types";
 import type { ProjectionInfo } from "../world/projection";
@@ -165,6 +166,9 @@ export function makeMonBlowEnv(
 
     /* OPT(p, show_damage): the " (N)" suffix on each blow message. */
     showDamage: state.options?.get("show_damage") ?? false,
+
+    /* monster_is_visible(mon): gates the "%s misses you." line. */
+    monVisible: monsterIsVisible(mon),
 
     elementalDam(proj: number, dam: number): number {
       /* minus_ac(p) is consulted only for ACID after the immune short-circuit

@@ -126,6 +126,7 @@ function makeFakeEnv(opts: {
     msg: () => {},
     monName: "The kobold",
     showDamage: false,
+    monVisible: true,
     elementalDam: (_proj: number, dam: number) => dam,
     invenDamage: () => {},
     resists: () => false,
@@ -288,11 +289,31 @@ describe("display_blow_message_vs_player (mon-blows.c L194)", () => {
     expect(msgs).toContain("The kobold hits you. (4)");
   });
 
-  it("shows no blow message when the attack misses", () => {
+  it("announces a miss by a visible monster (mon-attack.c L718)", () => {
     const rng = new Rng(1);
     rng.randFix(0);
     const { env, msgs } = capturingEnv("The kobold", false);
+    /* HIT.miss is true; the to-hit band misses at randFix(0). */
     monMeleeAttack(rng, makeMon("HURT", "HIT", "1d4", 5), defender(), def, { env });
+    expect(msgs).toEqual(["The kobold misses you."]);
+  });
+
+  it("stays silent on a miss by an unseen monster", () => {
+    const rng = new Rng(1);
+    rng.randFix(0);
+    const { env } = makeFakeEnv();
+    const msgs: string[] = [];
+    const unseen: MonBlowEnv = {
+      ...env,
+      msg: (t: string): void => {
+        msgs.push(t);
+      },
+      monName: "Something",
+      monVisible: false,
+    };
+    monMeleeAttack(rng, makeMon("HURT", "HIT", "1d4", 5), defender(), def, {
+      env: unseen,
+    });
     expect(msgs.length).toBe(0);
   });
 
