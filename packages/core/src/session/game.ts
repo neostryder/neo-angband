@@ -152,7 +152,7 @@ import { installSpellCommands, makeSpellChanceEnv } from "../game/spell-cmd";
 import { installRangedCommands } from "../game/ranged-cmd";
 import { markNoscore, NOSCORE } from "../game/wizard";
 import type { WizardDeps } from "../game/wizard";
-import { createTownStores, storeUpdate } from "../store/store";
+import { createTownStores, storeUpdate, storeWillBuy } from "../store/store";
 import type { Store, StoreMaintContext } from "../store/store";
 import { storeBuy, storeSell } from "../store/transact";
 import type { BuyResult, SellResult } from "../store/transact";
@@ -417,6 +417,12 @@ export interface StartedGame {
    * false) or is offered (storeBuying true).
    */
   price: (store: Store, obj: GameObject, storeBuying: boolean, qty: number) => number;
+  /**
+   * store_will_buy (store.c L524): whether `store` would purchase `obj`, for the
+   * sell picker's pre-filter (ui-store.c store_sell get_item tester). Uses the
+   * same knowledge the sell transaction does so the picker and the sale agree.
+   */
+  willBuy: (store: Store, obj: GameObject) => boolean;
 }
 
 /**
@@ -2401,7 +2407,7 @@ function makeStoreApi(
   reg: CoreRegistries,
   flavor: FlavorKnowledge,
   options: OptionState,
-): Pick<StartedGame, "buy" | "sell" | "price"> {
+): Pick<StartedGame, "buy" | "sell" | "price" | "willBuy"> {
   const storeCtx = (): {
     rng: typeof state.rng;
     deps: MakeDeps;
@@ -2484,6 +2490,10 @@ function makeStoreApi(
         flavor.isAware(obj.kind),
         noSelling(),
       ),
+    /* runesKnown matches storeSell's know (txnKnow never sets it, so the
+     * transaction treats it as false); keep the filter aligned with the sale. */
+    willBuy: (store, obj): boolean =>
+      storeWillBuy(reg.objects, store, obj, flavor.isAware(obj.kind), noSelling(), false),
   };
 }
 
