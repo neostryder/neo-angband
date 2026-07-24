@@ -155,12 +155,69 @@ export function colorTextToAttr(name: string): number {
   return -1;
 }
 
-/** CSS hex string for a COLOUR_* index (front-end convenience). */
+/**
+ * angband_color_table (z-color.c): the LIVE colour values, mutable exactly like
+ * the C global, one [K, R, G, B] row per COLOUR_* index. Initialised from
+ * COLOR_TABLE with K = 0 (upstream's leading 0x00 byte). do_cmd_colors
+ * (colors_modify) edits these bytes and colorToCss reads R,G,B from here, so an
+ * edit takes effect immediately (Term_xtra REACT + redraw). K is the extra
+ * "kv" channel upstream keeps for palette backends; the web renderer ignores it
+ * but the editor still shows and edits it for faithfulness. Persisted by the
+ * front end as a user pref (like graphics/font), not in the character save.
+ */
+const angbandColorTable: [number, number, number, number][] = COLOR_TABLE.map(
+  (c) => [0, c.rgb[0], c.rgb[1], c.rgb[2]],
+);
+
+/** Clamp to a uint8 with C wraparound (colors_modify's (uint8_t)(x +/- 1)). */
+function u8(n: number): number {
+  return ((n % 256) + 256) % 256;
+}
+
+/** angband_color_table[attr][channel] (0=K, 1=R, 2=G, 3=B). */
+export function colorChannel(attr: number, channel: 0 | 1 | 2 | 3): number {
+  return angbandColorTable[attr]?.[channel] ?? 0;
+}
+
+/** Set one live colour channel (wraps uint8), like colors_modify's k/K/r/R/... */
+export function setColorChannel(attr: number, channel: 0 | 1 | 2 | 3, value: number): void {
+  const row = angbandColorTable[attr];
+  if (row) row[channel] = u8(value);
+}
+
+/** The live [K,R,G,B] rows, copied - for persisting the user's colour edits. */
+export function colorTableSnapshot(): [number, number, number, number][] {
+  return angbandColorTable.map((r) => [r[0], r[1], r[2], r[3]]);
+}
+
+/** Restore live colours from a snapshot (front-end pref load); ignores extras. */
+export function restoreColorTable(rows: readonly (readonly number[])[]): void {
+  for (let i = 0; i < angbandColorTable.length && i < rows.length; i++) {
+    const src = rows[i];
+    const dst = angbandColorTable[i];
+    if (src && dst) {
+      dst[0] = u8(src[0] ?? 0);
+      dst[1] = u8(src[1] ?? dst[1]);
+      dst[2] = u8(src[2] ?? dst[2]);
+      dst[3] = u8(src[3] ?? dst[3]);
+    }
+  }
+}
+
+/** Reset every live colour to its COLOR_TABLE default (K = 0). */
+export function resetColorTable(): void {
+  for (let i = 0; i < COLOR_TABLE.length; i++) {
+    const c = COLOR_TABLE[i]!;
+    angbandColorTable[i] = [0, c.rgb[0], c.rgb[1], c.rgb[2]];
+  }
+}
+
+/** CSS hex string for a COLOUR_* index (front-end convenience). Reads the LIVE
+ * angband_color_table so do_cmd_colors edits are reflected immediately. */
 export function colorToCss(attr: number): string {
-  const info = COLOR_TABLE[attr] ?? COLOR_TABLE[COLOUR_WHITE];
-  const [r, g, b] = (info as ColorInfo).rgb;
+  const row = angbandColorTable[attr] ?? angbandColorTable[COLOUR_WHITE]!;
   const hex = (n: number) => n.toString(16).padStart(2, "0");
-  return `#${hex(r)}${hex(g)}${hex(b)}`;
+  return `#${hex(row[1])}${hex(row[2])}${hex(row[3])}`;
 }
 
 /**

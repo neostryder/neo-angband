@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   ATTR_BLIND,
   ATTR_DARK,
@@ -22,10 +22,15 @@ import {
   COLOUR_WHITE,
   COLOUR_YELLOW,
   MAX_COLORS,
+  colorChannel,
   colorCharToAttr,
+  colorTableSnapshot,
   colorTextToAttr,
   colorToCss,
   getColor,
+  resetColorTable,
+  restoreColorTable,
+  setColorChannel,
 } from "./color";
 
 describe("color table", () => {
@@ -110,5 +115,43 @@ describe("getColor (get_color)", () => {
     const graphical = 0x80 | COLOUR_RED;
     expect(getColor(graphical, ATTR_MONO, 3)).toBe(graphical);
     expect(getColor(graphical, ATTR_DARK, 1)).toBe(graphical);
+  });
+});
+
+describe("live angband_color_table (do_cmd_colors)", () => {
+  // The table is a module global (like the C angband_color_table); reset it
+  // after each test so edits never leak into other cases.
+  afterEach(() => resetColorTable());
+
+  it("colorToCss reflects a live channel edit immediately", () => {
+    expect(colorToCss(COLOUR_DARK)).toBe("#000000");
+    setColorChannel(COLOUR_DARK, 1, 0x12); // R
+    setColorChannel(COLOUR_DARK, 2, 0x34); // G
+    setColorChannel(COLOUR_DARK, 3, 0x56); // B
+    expect(colorToCss(COLOUR_DARK)).toBe("#123456");
+  });
+
+  it("channels wrap as uint8 (colors_modify's (uint8_t) +/- 1)", () => {
+    setColorChannel(COLOUR_WHITE, 1, 0xff);
+    setColorChannel(COLOUR_WHITE, 1, colorChannel(COLOUR_WHITE, 1) + 1); // wraps to 0
+    expect(colorChannel(COLOUR_WHITE, 1)).toBe(0);
+    setColorChannel(COLOUR_WHITE, 1, colorChannel(COLOUR_WHITE, 1) - 1); // wraps to 255
+    expect(colorChannel(COLOUR_WHITE, 1)).toBe(255);
+  });
+
+  it("resetColorTable restores the built-in defaults", () => {
+    setColorChannel(COLOUR_WHITE, 1, 0x00);
+    expect(colorToCss(COLOUR_WHITE)).not.toBe("#ffffff");
+    resetColorTable();
+    expect(colorToCss(COLOUR_WHITE)).toBe("#ffffff");
+  });
+
+  it("snapshot / restore round-trips the edited table (save/load)", () => {
+    setColorChannel(COLOUR_RED, 2, 0x99);
+    const snap = colorTableSnapshot();
+    resetColorTable();
+    expect(colorChannel(COLOUR_RED, 2)).toBe(0x00); // default Red G
+    restoreColorTable(snap);
+    expect(colorChannel(COLOUR_RED, 2)).toBe(0x99);
   });
 });
