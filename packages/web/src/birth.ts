@@ -1029,11 +1029,19 @@ async function historyStage(
  * begin/back footer. Resolves true to begin the adventure, false to step back.
  * `sheetLines` null (no registry deps) falls back to the plain accept/back menu.
  */
+/**
+ * get_confirm_command (ui-birth.c L1546-1572): "begin" accepts the character,
+ * "back" steps back one stage (ESC), "restart" is 'S' -> BIRTH_RESET (start the
+ * whole character over). The port keeps the scrollable sheet + touch menu but
+ * layers the faithful 'S' start-over key on top.
+ */
+type ConfirmResult = "begin" | "back" | "restart";
+
 function confirmCharacter(
   term: GlyphTerm,
   title: string,
   sheetLines: ScreenLine[] | null,
-): Promise<boolean> {
+): Promise<ConfirmResult> {
   if (!sheetLines) {
     return selectFromMenu(
       term,
@@ -1041,15 +1049,16 @@ function confirmCharacter(
       [
         { label: "Begin the adventure", hint: "Accept this character and play." },
         { label: "Go back", hint: "Step back and change something." },
+        { label: "Start over", hint: "Discard everything and create a new character." },
       ],
       "[ a-z to choose, tap a row, ESC to go back ]",
       { subtitle: "Please confirm your character." },
-    ).then((pick) => pick === 0);
+    ).then((pick) => (pick === 0 ? "begin" : pick === 2 ? "restart" : "back"));
   }
-  return new Promise<boolean>((resolve) => {
+  return new Promise<ConfirmResult>((resolve) => {
     let top = 0;
     const footer =
-      "[ Enter/y begin, n/ESC go back, arrows scroll ]";
+      "[ Enter/y begin, S start over, n/ESC go back, arrows scroll ]";
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
@@ -1070,7 +1079,7 @@ function confirmCharacter(
           : "";
       term.print(0, rows - 1, (footer + more).slice(0, cols - 1), PB_DIM);
     };
-    const finish = (value: boolean): void => {
+    const finish = (value: ConfirmResult): void => {
       window.removeEventListener("keydown", onKey, true);
       term.onCellTap?.(null);
       resolve(value);
@@ -1081,11 +1090,16 @@ function confirmCharacter(
       const { rows } = term.size();
       const page = Math.max(1, rows - 3);
       if (ev.key === "Enter" || ev.key === "y" || ev.key === "Y") {
-        finish(true);
+        finish("begin");
+        return;
+      }
+      /* 'S' -> BIRTH_RESET (ui-birth.c L1560-1561): start the character over. */
+      if (ev.key === "S" || ev.key === "s") {
+        finish("restart");
         return;
       }
       if (ev.key === "Escape" || ev.key === "n" || ev.key === "N") {
-        finish(false);
+        finish("back");
         return;
       }
       const nav = menuNav(ev);
@@ -1104,7 +1118,7 @@ function confirmCharacter(
     term.onCellTap?.((cell) => {
       const { rows } = term.size();
       if (cell.row === rows - 1) {
-        finish(true);
+        finish("begin");
         return;
       }
       const page = Math.max(1, rows - 3);
@@ -1642,12 +1656,25 @@ export async function runBirth(
           },
           term.size().cols,
         );
-        const begin = await confirmCharacter(
+        const result = await confirmCharacter(
           term,
           `${finalName} the ${raceName} ${className}`,
           sheetLines,
         );
-        if (begin) {
+        if (result === "restart") {
+          /* BIRTH_RESET (ui-birth.c L1560-1561): discard every choice and start
+           * character creation over from the race screen (or quickstart when a
+           * previous character seeded one). Clear the accumulated picks so the
+           * new run is genuinely fresh, not the old stats re-shown. */
+          backStack.length = 0;
+          name = "";
+          historyText = null;
+          pointStats = null;
+          rolledStats = null;
+          stage = quick ? "quickstart" : "race";
+          break;
+        }
+        if (result === "begin") {
           return {
             raceName,
             className,

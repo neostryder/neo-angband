@@ -243,6 +243,38 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     press(win, "a");
     expect((await done)!.name).toBe("Bo");
   });
+
+  it("confirm's 'Start over' (S / BIRTH_RESET) restarts from the race screen", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES);
+    await tick();
+    press(win, "a"); await tick(); // race Human
+    press(win, "a"); await tick(); // class Warrior
+    press(win, "b"); await tick(); // Standard roller -> the roll screen
+    press(win, "Enter"); await tick(); // accept the roll -> name
+    for (const ch of "Zed") press(win, ch);
+    press(win, "Enter");
+    await tick();
+    expect(term.snapshot()[0]).toContain("Zed the Human Warrior");
+    // Start over is row c in the fallback menu (Begin=a, Go back=b, Start over=c),
+    // BIRTH_RESET: back to the race screen with every choice discarded.
+    press(win, "c");
+    await tick();
+    expect(term.snapshot()[1]).toContain("Please select your character traits");
+    expect(rowOf(term, "a) Human")).toBe(9);
+    // A fresh full run now completes with a different character.
+    press(win, "b"); await tick(); // Half-Elf
+    press(win, "a"); await tick(); // Warrior
+    press(win, "b"); await tick(); // Standard roller
+    press(win, "Enter"); await tick(); // accept roll -> name (name was cleared)
+    press(win, "Enter"); await tick(); // empty name -> confirm
+    press(win, "a"); // Begin
+    const choice = await done;
+    expect(choice!.raceName).toBe("Half-Elf");
+    expect(choice!.name).toBe("Adventurer"); // the cleared name defaulted
+  });
 });
 
 describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
