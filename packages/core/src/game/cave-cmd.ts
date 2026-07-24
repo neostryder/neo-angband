@@ -638,7 +638,16 @@ export function installCaveCommands(
           ? locSum(state.actor.grid, DDGRID[dir] as Loc)
           : null;
       if (grid && state.chunk.isClosedDoor(grid) && !squareMonster(state, grid)) {
-        openAux(state, grid, env);
+        /* move_player L1079-1083: walking into a known closed door sets a 99x
+         * repeat (cmd_set_repeat(99) when nrepeats == 0) then do_cmd_alter_aux
+         * opens it. A locked door that fails to pick this attempt re-queues the
+         * walk so the player keeps trying without pressing the key again,
+         * bounded at CMD_AUTO_REPEAT - the same repeat-on-failure budget the
+         * explicit open/tunnel/disarm commands use. Re-queue the ORIGINAL cmd
+         * (not the confused redirect) so each repeat re-rolls confusion, exactly
+         * as upstream's repeat re-runs do_cmd_walk from the top. */
+        const more = openAux(state, grid, env);
+        queueCommandRepeat(state, cmd, more);
         return state.z.moveEnergy;
       }
       const used = prior ? prior(state, cmd2) : 0;

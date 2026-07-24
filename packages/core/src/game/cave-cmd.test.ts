@@ -154,6 +154,45 @@ describe("open / close doors", () => {
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.OPEN);
   });
 
+  it("walking into a locked door re-queues the walk (move_player auto-repeat, cmd-cave.c L1079-1083)", () => {
+    const { state, run } = setup({
+      env: { isLockedDoor: (): boolean => true, pickLock: (): boolean => false },
+    });
+    state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    const energy = run({ code: "walk", dir: 6 });
+    /* The pick fails: the door stays locked, the player does not step, the turn
+     * is spent, and the walk re-queues (cmd_set_repeat(99), one attempt spent). */
+    expect(energy).toBe(state.z.moveEnergy);
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.CLOSED);
+    expect(state.actor.grid).toEqual(loc(5, 5));
+    expect(state.cmdQueue).toHaveLength(1);
+    expect(state.cmdQueue?.[0]).toMatchObject({
+      code: "walk",
+      dir: 6,
+      repeatRemaining: 98,
+    });
+  });
+
+  it("walking into a locked door that opens does not re-queue", () => {
+    const { state, run } = setup({
+      env: { isLockedDoor: (): boolean => true, pickLock: (): boolean => true },
+    });
+    state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    run({ code: "walk", dir: 6 });
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.OPEN);
+    expect(state.cmdQueue ?? []).toHaveLength(0);
+  });
+
+  it("the walk-into-locked-door repeat stops when the budget is exhausted", () => {
+    const { state, run } = setup({
+      env: { isLockedDoor: (): boolean => true, pickLock: (): boolean => false },
+    });
+    state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    /* Last of the 99 attempts (budget 0): the pick fails but does not re-queue. */
+    run({ code: "walk", dir: 6, repeatRemaining: 0 });
+    expect(state.cmdQueue ?? []).toHaveLength(0);
+  });
+
   it("a monster in the way is attacked instead", () => {
     const { state, run } = setup();
     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
