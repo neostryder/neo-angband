@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD } from "../generated";
+import { FlagSet } from "../bitflag";
+import { MFLAG, MON_TMD, OF } from "../generated";
+import { OF_SIZE, PF_SIZE } from "../player/types";
+import type { PlayerState } from "../player/calcs";
+import { MDESC, monsterDesc } from "../mon/desc";
 import { loc } from "../loc";
 import {
   ActionRegistry,
+  attackMonster,
   createDefaultRegistry,
   descendAction,
   holdAction,
@@ -10,7 +15,18 @@ import {
   walkAction,
 } from "./player-turn";
 import { GRANITE, addMon, makeRace, makeState } from "./harness";
-import type { PlayerCommand } from "./context";
+import type { GameState, PlayerCommand } from "./context";
+
+/** Give the player the OF_AFRAID flag, as calc_bonuses would when fear is up. */
+function setAfraid(state: GameState): void {
+  const flags = new FlagSet(OF_SIZE);
+  flags.on(OF.AFRAID);
+  state.playerState = {
+    flags,
+    pflags: new FlagSet(PF_SIZE),
+    seeInfra: 0,
+  } as unknown as PlayerState;
+}
 
 describe("built-in player actions", () => {
   it("walk steps onto a passable grid for move_energy and fires the FOV hook", () => {
@@ -72,6 +88,67 @@ describe("built-in player actions", () => {
     expect(mon.mflag.has(MFLAG.AWARE)).toBe(true);
     /* The player did not step onto the monster's grid. */
     expect(state.actor.grid).toEqual(loc(15, 10));
+  });
+
+  it("afraid: walking into an obvious monster refuses (do_cmd_walk_test, cmd-cave.c L1215)", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    setAfraid(state);
+    const mon = addMon(state, makeRace({ ac: 0 }), loc(16, 10), { hp: 30 });
+    mon.mflag.on(MFLAG.VISIBLE); /* obvious = visible && !camouflaged */
+    const msgs: string[] = [];
+    state.msg = (t): void => {
+      msgs.push(t);
+    };
+
+    const spent = walkAction(state, { code: "walk", dir: 6 });
+    /* No attack, no move, no energy (energy is set only after the test passes). */
+    expect(spent).toBe(0);
+    expect(mon.hp).toBe(30);
+    expect(state.actor.grid).toEqual(loc(15, 10));
+    expect(msgs).toContain(`You are too afraid to attack ${monsterDesc(mon, MDESC.DEFAULT)}!`);
+  });
+
+  it("afraid: an invisible monster falls through to py_attack's own afraid branch", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    setAfraid(state);
+    /* Not obvious (VISIBLE unset), so do_cmd_walk_test does not short-circuit. */
+    const mon = addMon(state, makeRace({ ac: 0 }), loc(16, 10), { hp: 30 });
+    const afraidBlows: boolean[] = [];
+    state.onMelee = (_m, result): void => {
+      for (const b of result.blows) afraidBlows.push(b.verb === "afraid");
+    };
+
+    const spent = walkAction(state, { code: "walk", dir: 6 });
+    /* py_attack ran (energy spent per blow) but every blow was refused by fear:
+     * no damage, and each blow carries the "afraid" verb the shell renders. */
+    expect(spent).toBeGreaterThan(0);
+    expect(mon.hp).toBe(30);
+    expect(afraidBlows.length).toBeGreaterThan(0);
+    expect(afraidBlows.every((v) => v)).toBe(true);
+  });
+
+  it("afraid: attackMonster (open/tunnel-into-monster) refuses every blow", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    setAfraid(state);
+    const mon = addMon(state, makeRace({ ac: 0 }), loc(16, 10), { hp: 30 });
+    mon.mflag.on(MFLAG.VISIBLE);
+    let sawAfraid = false;
+    state.onMelee = (_m, result): void => {
+      if (result.blows.some((b) => b.verb === "afraid")) sawAfraid = true;
+    };
+
+    attackMonster(state, mon);
+    expect(mon.hp).toBe(30);
+    expect(sawAfraid).toBe(true);
+  });
+
+  it("not afraid: walking into an obvious monster still attacks normally", () => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = addMon(state, makeRace({ ac: 0 }), loc(16, 10), { hp: 200 });
+    mon.mflag.on(MFLAG.VISIBLE);
+
+    walkAction(state, { code: "walk", dir: 6 });
+    expect(mon.hp).toBeLessThan(200);
   });
 
   it("hold spends a turn in place; descend signals a level change", () => {
