@@ -972,25 +972,11 @@ async function openModal(fn: () => Promise<void>): Promise<void> {
 // - the live command system's object reference (obj-cmd.ts commandObject). For
 // items that need aiming (wands, unknown rods, aimed effects: objNeedsAim), it
 // prompts a keypad direction and passes args.dir; the engine bypasses its own
-// get_aim_dir when a dir is supplied. The obj commands were installed without a
-// message env, so the shell narrates the action here for feedback; the real
-// per-effect messages arrive when the core message seam lands (task #42).
-function actionLine(code: string, obj: GameObject | null): string {
-  const name = obj ? describeObject(state, obj) : "the item";
-  switch (code) {
-    case "quaff": return `You quaff ${name}.`;
-    case "read": return `You read ${name}.`;
-    case "eat": return `You eat ${name}.`;
-    case "use-staff": return `You use ${name}.`;
-    case "aim-wand": return `You aim ${name}.`;
-    case "zap-rod": return `You zap ${name}.`;
-    case "activate": return `You activate ${name}.`;
-    case "wield": return `You are wielding ${name}.`;
-    case "takeoff": return `You take off ${name}.`;
-    case "drop": return `You drop ${name}.`;
-    default: return `You use ${name}.`;
-  }
-}
+// get_aim_dir when a dir is supplied. The commands are installed with a message
+// env (session/game.ts) that routes msg / activation_message / the use_aux and
+// inven_wield/takeoff/drop describe lines to the log, so the shell no longer
+// narrates the action itself - upstream prints no "You quaff X" wrapper, only
+// the effect's own messages (cmd-obj.c use_aux L493-706).
 
 // --- Item-target effect chooser (cmd_get_item "tgtitem") --------------------
 // Effects like Enchant / Recharge / Remove Curse / Identify pick a SECOND item
@@ -1667,7 +1653,6 @@ async function dispatchItemVerb(code: string, handle: number, obj: GameObject | 
     args["dir"] = dir;
   }
   if (obj && !(await applyItemTarget(obj, args))) return;
-  say(actionLine(code, obj));
   commandBuffer.push({ code, args });
   advance();
 }
@@ -1689,7 +1674,6 @@ async function dispatchItemRef(code: string, ref: ItemTargetRef): Promise<void> 
     args["dir"] = dir;
   }
   if (obj && !(await applyItemTarget(obj, args))) return;
-  say(actionLine(code, obj));
   commandBuffer.push({ code, args });
   advance();
 }
@@ -1787,7 +1771,6 @@ async function activateItem(): Promise<void> {
     args["dir"] = dir;
   }
   if (obj && !(await applyItemTarget(obj, args))) return;
-  say(actionLine("activate", obj));
   commandBuffer.push({ code: "activate", args });
   advance();
 }
@@ -1803,7 +1786,6 @@ async function takeOffItem(): Promise<void> {
   );
   if (ref === null || !("handle" in ref)) return;
   const handle = ref.handle;
-  say(actionLine("takeoff", gearGet(state.gear, handle)));
   commandBuffer.push({ code: "takeoff", args: { handle } });
   advance();
 }
@@ -1925,7 +1907,6 @@ async function applyIgnoreDrop(): Promise<void> {
         continue;
       }
     }
-    say(actionLine("drop", obj));
     commandBuffer.push({
       code: "drop",
       args: { handle: target.handle, quantity: target.number },
@@ -4168,7 +4149,6 @@ async function swapWeaponCmd(): Promise<void> {
     if (equipped.has(handle) || !tvalIsWearable(obj.tval)) continue;
     const note = obj.note ?? "";
     if (/@w?0/.test(note)) {
-      say(actionLine("wield", obj));
       commandBuffer.push({ code: "wield", args: { handle } });
       advance();
       return;
