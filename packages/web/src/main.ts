@@ -302,6 +302,7 @@ import { enterScore, noscoreInvalidatesScore, BIRTH_MESSAGE_RECALL_BANNER } from
 import { markNoscore } from "@neo-angband/core";
 import { ArtifactState } from "@neo-angband/core";
 import { walkTerrainPrompt } from "@neo-angband/core";
+import { monsterIsVisible, monsterIsDestroyed } from "@neo-angband/core";
 import type { WizardDeps } from "@neo-angband/core";
 import { runWizardToggle, runWizardDebugMenu } from "./wizard";
 import type { WizardUiCtx } from "./wizard";
@@ -965,7 +966,15 @@ state.onMelee = (mon, result): void => {
     state.sound?.((MSG as Record<string, number>)[blow.msg] ?? MSG.HIT);
   }
   if (result.monsterDied) {
-    say(`You have slain ${name}.`);
+    /* player_kill_monster death confirmation (mon-util.c L1057-1065): an unseen
+     * monster is "killed", a non-living one (skeleton/golem/...) "destroyed",
+     * a living one "slain". The port previously hardcoded "slain". */
+    const verb = !monsterIsVisible(mon)
+      ? "killed"
+      : monsterIsDestroyed(mon)
+        ? "destroyed"
+        : "slain";
+    say(`You have ${verb} ${name}.`);
     state.sound?.(MSG.KILL);
   }
 };
