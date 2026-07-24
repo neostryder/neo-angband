@@ -937,6 +937,15 @@ state.onMelee = (mon, result): void => {
   const name = monName(mon);
   for (const blow of result.blows) {
     if (!blow.hit) {
+      /* An afraid player cannot land the blow: py_attack_real prints "You are
+       * too afraid to attack X!" instead of a miss (player-attack.c L754). This
+       * is the invisible-monster / tunnel-into-monster path; obvious monsters
+       * are stopped earlier by do_cmd_walk_test (core walkAction). */
+      if (blow.verb === "afraid") {
+        say(`You are too afraid to attack ${name}!`);
+        state.sound?.(MSG.AFRAID);
+        continue;
+      }
       say(`You miss ${name}.`);
       state.sound?.(MSG.MISS);
       continue;

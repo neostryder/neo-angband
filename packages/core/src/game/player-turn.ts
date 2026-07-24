@@ -19,7 +19,7 @@
  * upstream do-while around cmdq_pop.
  */
 
-import { MON_MSG, MON_TMD, OF, PF, STAT, TMD } from "../generated";
+import { MON_MSG, MON_TMD, MSG, OF, PF, STAT, TMD } from "../generated";
 import { DDGRID, DDGRID_DDD, locSum } from "../loc";
 import type { Loc } from "../loc";
 import { pyAttack } from "../combat/melee";
@@ -28,7 +28,8 @@ import { learnBrandSlayFromMelee } from "../combat/brand-slay";
 import type { TempBrandSlay } from "../combat/brand-slay";
 import { getLore } from "../mon/lore";
 import type { Monster } from "../mon/monster";
-import { monsterIsCamouflaged } from "../mon/predicate";
+import { MDESC, monsterDesc } from "../mon/desc";
+import { monsterIsCamouflaged, monsterIsObvious } from "../mon/predicate";
 import { monsterWake } from "../mon/take-hit";
 import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed";
 import { equipLearnFlag, equipLearnOnMeleeAttack } from "../obj/knowledge";
@@ -257,6 +258,12 @@ export function attackMonster(state: GameState, target: Monster): number {
     state.slays,
     {
       monVisible: true,
+      /* player_of_has(p, OF_AFRAID): py_attack_real refuses the blow and prints
+       * "You are too afraid to attack X!" (player-attack.c L752). For obvious
+       * monsters do_cmd_walk_test short-circuits before this; the check here
+       * covers the invisible-monster walk and open/close/tunnel/alter-into-a-
+       * monster (attackBlocker), which upstream routes straight to py_attack. */
+      afraid: playerOfHasFlag(state, OF.AFRAID),
       percentDamage: state.options?.get("birth_percent_damage") ?? false,
       /* avail_energy = MIN(p->energy, move_energy); process_player only runs
        * with energy >= move_energy, so the full-turn default is upstream's
@@ -356,6 +363,19 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
       state.becomeAware?.(target);
       monsterWake(state.rng, target, false, 100);
       return state.z.moveEnergy;
+    }
+    /* do_cmd_walk_test (cmd-cave.c L1213-1226): an afraid player refuses to
+     * attack an obvious (visible, non-camouflaged) monster - it prints "You are
+     * too afraid to attack X!", learns OF_AFRAID from equipment, and makes no
+     * move. do_cmd_walk sets energy only AFTER the test passes, so an unconfused
+     * refusal costs nothing; a confused walk already spent its full turn. An
+     * invisible monster is not obvious, so it falls through to py_attack, whose
+     * own afraid branch (player-attack.c L752) fires there instead. */
+    if (monsterIsObvious(target) && playerOfHasFlag(state, OF.AFRAID)) {
+      state.msg?.(`You are too afraid to attack ${monsterDesc(target, MDESC.DEFAULT)}!`);
+      state.sound?.(MSG.AFRAID);
+      equipLearnFlag(state.actor.player, state.runeEnv, OF.AFRAID);
+      return confused ? state.z.moveEnergy : 0;
     }
     /* py_attack: the shared melee path with the full blow side-effect suite.
      * Energy is py_attack's own energy_use (blow_energy per blow), which may
