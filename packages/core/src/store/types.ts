@@ -87,9 +87,10 @@ export interface BoundStore {
    * tvals from `always:` lines that named no sval (the bookseller's book
    * lines). Upstream expands each to every TOWN (non-dungeon) book of the
    * tval - see parse_always's book branch (store.c L208-231), gated on
-   * object_kind_to_book(kind)->dungeon. That expansion needs the class-book
-   * metadata, so it is DEFERRED to store_init; these kinds are NOT yet in
-   * alwaysTable. Empty for every non-bookseller store.
+   * object_kind_to_book(kind)->dungeon. Because that needs the class-book
+   * metadata (absent at parse time), the parse keeps the tvals here and
+   * bindStoreRuntime performs the expansion into the runtime store's
+   * alwaysTable (townBooksOfTval). Empty for every non-bookseller store.
    */
   alwaysBookTvals: number[];
   /** normal_table: kinds the store may stock from. */
