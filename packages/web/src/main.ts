@@ -314,6 +314,7 @@ import type { Store } from "@neo-angband/core";
 import { runHelp } from "./help";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
+import { loadColorPrefs } from "./colors";
 import { installAutoUpdate } from "./pwa";
 
 // PWA freshness: silently reload onto a newly deployed build (a ratified
@@ -325,6 +326,10 @@ installAutoUpdate();
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
+// The user's saved colour edits (do_cmd_colors) are a global pref in
+// localStorage; apply them to the live angband_color_table before the first
+// paint so custom colours are honoured from boot.
+loadColorPrefs();
 // Accessibility bridge: mirrors messages to an ARIA live region and labels the
 // canvas, since the canvas itself is opaque to screen readers (a11y.ts).
 const a11y = initA11y(canvas);
