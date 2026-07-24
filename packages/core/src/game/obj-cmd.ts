@@ -711,8 +711,8 @@ export function useAux(
     if (obj.activation) {
       env.msg?.("You activate it.");
       if (obj.activation.message) env.msg?.(obj.activation.message);
-    } else if (obj.effectMsg) {
-      env.msg?.(obj.effectMsg);
+    } else if (obj.kind.effectMsg) {
+      env.msg?.(obj.kind.effectMsg);
     } else if (
       obj.kind.visMsg &&
       (state.actor.player.timed[TMD.BLIND] ?? 0) === 0

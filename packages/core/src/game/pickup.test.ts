@@ -9,7 +9,7 @@ import type { ObjPackJson } from "../obj/types";
 import { objectPrep } from "../obj/make";
 import type { GameObject } from "../obj/object";
 import { floorCarry, floorPile } from "./floor";
-import { gearGet, invenCarry } from "./gear";
+import { calcInventory, gearGet, invenCarry } from "./gear";
 import type { GameState } from "./context";
 import {
   autoPickupOkay,
@@ -281,5 +281,47 @@ describe("doAutopickup / playerPickupItem", () => {
     };
     playerPickupItem(state, null, deps);
     expect(fired).toBe(false);
+  });
+
+  it("routes picked-up ammo into the quiver (refreshInventory / PU_INVEN)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    underfoot(state, makeObj(TV.SHOT));
+    const registry = createDefaultRegistry();
+    /* Mirror the session wiring: the pickup command runs a PU_INVEN rebuild. */
+    installPickup(state, registry, {
+      constants,
+      refreshInventory: (): void => {
+        calcInventory(state.gear, constants);
+      },
+    });
+
+    state.nextCommand = (): { code: string } | null => ({ code: "pickup" });
+    processPlayer(state, registry);
+
+    /* The computed quiver now indexes the shot, so the inventory view shows it
+     * in the quiver rather than the pack (gear.quiver is an index into pack). */
+    const inQuiver = (state.gear.quiver ?? []).some((h) => {
+      const o = h ? state.gear.store.get(h) : null;
+      return o?.tval === TV.SHOT;
+    });
+    expect(inQuiver).toBe(true);
+  });
+
+  it("without a PU_INVEN rebuild the ammo is not yet in the quiver (bug repro)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    underfoot(state, makeObj(TV.SHOT));
+    /* inven_carry alone (no refreshInventory) leaves the quiver index empty, so
+     * the shot shows in the main inventory - exactly the reported bug. */
+    playerPickupItem(state, null, deps);
+    const inQuiver = (state.gear.quiver ?? []).some((h) => {
+      const o = h ? state.gear.store.get(h) : null;
+      return o?.tval === TV.SHOT;
+    });
+    expect(inQuiver).toBe(false);
+    /* It was carried (it is in the pack backing store). */
+    const carried = state.gear.pack.some(
+      (h) => state.gear.store.get(h)?.tval === TV.SHOT,
+    );
+    expect(carried).toBe(true);
   });
 });
