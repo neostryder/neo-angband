@@ -218,6 +218,18 @@ function prtWelcome(store: Store, player: StartedGame["state"]["actor"]["player"
 }
 
 /** Callbacks the store screen needs from the shell (kept out of core, decision 21). */
+/**
+ * The result of the store_sell item pick (deps.sellPick): a chosen gear object
+ * (pack / equipped / quiver, addressed by handle), a chosen floor-pile object
+ * (addressed by the live object, sold via game.sellFloor), or the two no-sale
+ * outcomes - "empty" (no qualifying source, show the reject) and "cancel" (ESC).
+ */
+export type SellPick =
+  | { kind: "handle"; handle: number }
+  | { kind: "floor"; obj: GameObject }
+  | { kind: "empty" }
+  | { kind: "cancel" };
+
 export interface StoreScreenDeps {
   /** f_info[store->feat].name, e.g. "General Store" (store_display_frame). */
   featureName: string;
@@ -225,6 +237,14 @@ export interface StoreScreenDeps {
   rogueLike: boolean;
   /** store_examine (ui-store.c L749): show the object_info screen for `obj`. */
   examine: (obj: GameObject) => Promise<void>;
+  /**
+   * store_sell get_item (ui-store.c L487-518): the faithful multi-source item
+   * picker over USE_INVEN|USE_EQUIP|USE_QUIVER|USE_FLOOR, filtered by `tester`
+   * (store_will_buy_tester for a shop; accept-anything for the Home). The quiver
+   * rides the pack in this gear model, so USE_QUIVER folds into the inventory
+   * pass. Returns the chosen source, or "empty"/"cancel".
+   */
+  sellPick: (prompt: string, tester: (obj: GameObject) => boolean) => Promise<SellPick>;
 }
 
 /** One keyboard key or one grid tap from the store's own input listener. */
@@ -716,25 +736,23 @@ export async function runStore(
    * stashes without a price or confirmation.
    */
   const sellFlow = async (): Promise<void> => {
-    /* store_sell get_item tester (ui-store.c L512, store_will_buy_tester): a
-     * real shop only lists items it would actually buy; the Home accepts
-     * anything (game.willBuy returns true for it). Without this the picker
-     * showed unsellable items that were only refused after selection. Pack-only
-     * source is the same faithful subset noted at findInven (no equip/quiver/
-     * floor picker in the store yet). */
-    const { items, handles } = packMenu(game.state, (obj) => game.willBuy(store, obj));
-    if (items.length === 0) {
+    /* store_sell get_item (ui-store.c L487-518): a faithful multi-source pick
+     * over USE_INVEN|USE_EQUIP|USE_QUIVER|USE_FLOOR, filtered by the tester - a
+     * real shop only lists items it would actually buy (store_will_buy_tester);
+     * the Home accepts anything (game.willBuy returns true for it). The quiver
+     * rides the pack in this gear model, so USE_QUIVER folds into the inventory
+     * pass (deps.sellPick). */
+    // store_sell prompt (ui-store.c L500/L509): Home drops, no_selling gives.
+    const sellPrompt = isHome ? "Drop which item? " : noSelling ? "Give which item? " : "Sell which item? ";
+    const picked = await deps.sellPick(sellPrompt, (obj) => game.willBuy(store, obj));
+    if (picked.kind === "empty") {
       // store_sell reject (ui-store.c L499), shared by shops and the Home.
       storeSay("You have nothing that I want. ");
       return;
     }
-    // store_sell prompt (ui-store.c L500/L509): Home drops, no_selling gives.
-    const sellPrompt = isHome ? "Drop which item? " : noSelling ? "Give which item? " : "Sell which item? ";
-    const idx = await selectFromMenu(term, sellPrompt, items, "[ a-z to sell, ESC to cancel ]");
-    if (idx === null) return;
-    const handle = handles[idx];
-    if (handle === undefined) return;
-    const obj = game.state.gear.store.get(handle);
+    if (picked.kind === "cancel") return;
+    // The chosen source: a gear object (handle) or a live floor-pile object.
+    const obj = picked.kind === "handle" ? game.state.gear.store.get(picked.handle) : picked.obj;
     if (!obj) return;
     const amt = await getQuantity(term, null, obj.number);
     if (amt <= 0) return;
@@ -750,7 +768,12 @@ export async function runStore(
       );
       if (!ok) return;
     }
-    const result = game.sell(store, handle, amt);
+    /* do_cmd_sell dispatch: gear handles (pack/equip/quiver) via game.sell, a
+     * floor-pile object via game.sellFloor (floor_object_for_use detach). */
+    const result =
+      picked.kind === "handle"
+        ? game.sell(store, picked.handle, amt)
+        : game.sellFloor(store, picked.obj, amt);
     if (!result.ok) {
       const why: Record<string, string> = {
         "no-item": "You do not have that item.",

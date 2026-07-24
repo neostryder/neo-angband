@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
-import { FEAT, TV } from "../generated";
+import { FEAT, OF, TV } from "../generated";
 import { gearAdd, invenCarry, newGear, objectCopyAmt } from "../game/gear";
 import type { Gear } from "../game/gear";
 import { ObjRegistry } from "../obj/bind";
@@ -17,7 +17,14 @@ import { StoreRegistry } from "./bind";
 import { priceItem } from "./price";
 import { bindStoreRuntime, storeReset } from "./store";
 import type { Store, StoreMaintContext } from "./store";
-import { homeRetrieve, homeStash, purchaseAnalyze, storeBuy, storeSell } from "./transact";
+import {
+  homeRetrieve,
+  homeStash,
+  purchaseAnalyze,
+  storeBuy,
+  storeSell,
+  storeSellFloor,
+} from "./transact";
 import type { StoreRecordJson } from "./types";
 import { FlavorKnowledge } from "../obj/knowledge";
 import type { FlavorAwareDeps } from "../obj/knowledge";
@@ -256,6 +263,85 @@ describe("storeSell (store.c do_cmd_sell)", () => {
     const homeSale = storeSell(ctx, home, h2, 1, player, gear, NO_SELL);
     expect(homeSale.ok).toBe(true);
     expect(homeSale.reaction).toBeUndefined(); // the Home never reacts
+  });
+});
+
+describe("storeSell from equipment / floor (ui-store.c L487 get_mode)", () => {
+  it("sells a worn (non-stuck) equipped item, emptying the body slot", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+
+    const sword = makeObj(TV.SWORD);
+    const handle = gearAdd(gear, sword);
+    player.equipment[0] = handle; // worn, not in the pack list
+    player.au = 0;
+
+    const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
+
+    expect(res.ok).toBe(true);
+    expect(player.au).toBe(res.price);
+    /* gear_object_for_use took it off: the body slot is now empty. */
+    expect(player.equipment[0] ?? 0).toBe(0);
+    expect(weapon.stock.some((o) => o.tval === TV.SWORD)).toBe(true);
+  });
+
+  it("refuses a stuck (sticky-cursed) equipped item (ui-store.c L522)", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+
+    const sword = makeObj(TV.SWORD);
+    sword.flags.on(OF.STICKY);
+    const handle = gearAdd(gear, sword);
+    player.equipment[0] = handle;
+    player.au = 7;
+
+    const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
+
+    expect(res.ok).toBe(false);
+    expect(res.failure).toBe("stuck");
+    expect(player.au).toBe(7); // no gold, still worn
+    expect(player.equipment[0]).toBe(handle);
+  });
+
+  it("storeSellFloor sells a floor-pile object via the supplied detach", () => {
+    const { ctx, stores, player } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+
+    const sword = makeObj(TV.SWORD);
+    player.au = 0;
+    let detached = 0;
+    const res = storeSellFloor(ctx, weapon, sword, 1, player, NO_SELL, (n) => {
+      detached = n;
+      return { obj: sword, noneLeft: true };
+    });
+
+    expect(res.ok).toBe(true);
+    expect(detached).toBe(1); // floor_object_for_use was asked for the amount
+    expect(res.price!).toBeGreaterThan(0);
+    expect(player.au).toBe(res.price);
+    expect(weapon.stock.some((o) => o.tval === TV.SWORD)).toBe(true);
+  });
+
+  it("storeSellFloor refuses an item the store won't buy (detach never runs)", () => {
+    const { ctx, stores, player } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+
+    const potion = makeObj(TV.POTION);
+    player.au = 5;
+    let called = false;
+    const res = storeSellFloor(ctx, weapon, potion, 1, player, NO_SELL, (n) => {
+      called = true;
+      return { obj: potion, noneLeft: n >= potion.number };
+    });
+
+    expect(res.ok).toBe(false);
+    expect(res.failure).toBe("refused");
+    expect(called).toBe(false); // refused before any floor detach
+    expect(player.au).toBe(5);
   });
 });
 
