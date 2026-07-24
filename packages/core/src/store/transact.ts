@@ -252,16 +252,59 @@ export function storeSell(
   gear: Gear,
   know: TxnKnowledge,
 ): SellResult {
-  const { rng, deps } = ctx;
-  const { reg, constants } = deps;
-
   const obj = gear.store.get(handle);
   if (!obj) return { ok: false, failure: "no-item" };
 
-  /* Cannot remove stuck (sticky-cursed) equipped objects. */
+  /* Cannot remove stuck (sticky-cursed) equipped objects (ui-store.c L522). */
   if (isEquipped(player, handle) && !objCanTakeoff(obj)) {
     return { ok: false, failure: "stuck" };
   }
+
+  /* gear_object_for_use handles the pack / equipment / quiver split-or-excise. */
+  return sellObject(ctx, store, obj, amt, player, know, (n) =>
+    gearObjectForUse(gear, player, handle, n),
+  );
+}
+
+/**
+ * store_sell for a FLOOR object (USE_FLOOR, ui-store.c L487 get_mode): the
+ * player's own grid can hold a pile when a store is entered (entering does not
+ * move the player onto the store feature), so a floor item is a valid sell
+ * source. No equip/stuck guard applies (a floor object is never equipped); the
+ * caller supplies the floor_object_for_use detach (game.ts owns GameState, so
+ * transact.ts stays free of a game/floor import).
+ */
+export function storeSellFloor(
+  ctx: StoreMaintContext,
+  store: Store,
+  obj: GameObject,
+  amt: number,
+  player: Player,
+  know: TxnKnowledge,
+  detach: (n: number) => { obj: GameObject; noneLeft: boolean },
+): SellResult {
+  return sellObject(ctx, store, obj, amt, player, know, detach);
+}
+
+/**
+ * The shared body of do_cmd_sell (store.c L1869), after the source-specific item
+ * pick and stuck guard: check the store wants it, that it has room, pay the
+ * player, learn flavor, detach the sold copy from its source, hand it to the
+ * store, and classify the shopkeeper reaction. `detach` removes `amt` from the
+ * chosen source (gear_object_for_use for pack/equip/quiver, floor_object_for_use
+ * for a floor pile).
+ */
+function sellObject(
+  ctx: StoreMaintContext,
+  store: Store,
+  obj: GameObject,
+  amt: number,
+  player: Player,
+  know: TxnKnowledge,
+  detach: (n: number) => { obj: GameObject; noneLeft: boolean },
+): SellResult {
+  const { rng, deps } = ctx;
+  const { reg, constants } = deps;
 
   amt = Math.min(amt, obj.number);
 
@@ -291,8 +334,8 @@ export function storeSell(
     know.flavor.objectFlavorAware(obj.kind, know.flavorDeps ?? NOOP_FLAVOR_AWARE_DEPS);
   }
 
-  /* Take a proper copy of the now known-about object out of the gear. */
-  const { obj: sold, noneLeft } = gearObjectForUse(gear, player, handle, amt);
+  /* Take a proper copy of the now known-about object out of its source. */
+  const { obj: sold, noneLeft } = detach(amt);
 
   /* The store gets that object (or, if worthless/no room, discards it). The
    * caller reads `carried` (whether store_carry accepted it) so it can fire

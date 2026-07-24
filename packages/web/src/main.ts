@@ -304,6 +304,7 @@ import type { WizardDeps } from "@neo-angband/core";
 import { runWizardToggle, runWizardDebugMenu } from "./wizard";
 import type { WizardUiCtx } from "./wizard";
 import { runStore, sortStoreStock } from "./shop";
+import type { SellPick } from "./shop";
 import {
   showIgnoreItemMenu,
   ignoreItemMenuCtx,
@@ -1103,6 +1104,31 @@ async function selectItemFrom(
  */
 async function selectTargetItem(req: ItemRequest): Promise<ItemTargetRef | null> {
   return selectItemFrom(req.prompt, req.tester, req.mode, req.reject);
+}
+
+/**
+ * store_sell get_item (ui-store.c L487 get_mode USE_INVEN|USE_EQUIP|USE_QUIVER|
+ * USE_FLOOR): the faithful multi-source item pick the store screen uses, wired
+ * as the runStore `sellPick` dependency. The quiver rides the pack in this gear
+ * model (buildItemSources folds USE_QUIVER into the inventory pass). Distinct
+ * from selectItemFrom in that it does NOT emit the reject via the game message
+ * log (invisible under the store frame): it returns "empty" so the store prints
+ * the reject on its own message row, and "cancel" on ESC. A chosen floor pile
+ * item is returned as the live object (game.sellFloor takes it directly).
+ */
+async function storeSellPick(
+  prompt: string,
+  tester: (o: GameObject) => boolean,
+): Promise<SellPick> {
+  const { sources, refs } = buildItemSources(tester, { inven: true, equip: true, floor: true });
+  if (sources.length === 0) return { kind: "empty" };
+  const chosen = await itemSelect(term, prompt.trim(), sources);
+  if (chosen === null) return { kind: "cancel" };
+  const ref = refs[chosen.source]?.[chosen.index];
+  if (!ref) return { kind: "cancel" };
+  if ("handle" in ref) return { kind: "handle", handle: ref.handle };
+  const obj = floorPile(state, state.actor.grid)[ref.floor];
+  return obj ? { kind: "floor", obj } : { kind: "cancel" };
 }
 
 /** The registry data the object-info engine needs; stable for the session. */
@@ -5447,6 +5473,7 @@ window.addEventListener("keydown", (ev) => {
             const tb = objectInfoTextblock(state, obj, inspectExtras);
             await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
           },
+          sellPick: storeSellPick,
         }),
       );
       return;
