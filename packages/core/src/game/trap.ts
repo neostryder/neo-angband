@@ -28,7 +28,7 @@ import type { TrapKind } from "../world/trap";
 import { lookupTrap } from "../world/trap";
 import { sourceTrap } from "../effects/interpreter";
 import type { GameState, PlayerCommand } from "./context";
-import { movePlayer } from "./context";
+import { movePlayer, queueCommandRepeat } from "./context";
 import { floorPile } from "./floor";
 import { buildObjectEffectChain } from "./obj-cmd";
 import type { ObjCmdDeps } from "./obj-cmd";
@@ -677,7 +677,8 @@ export function installTraps(
       deps.env?.msg?.("You see nothing there to disarm.");
       return 0;
     }
-    disarmAux(s, grid, deps);
+    const more = disarmAux(s, grid, deps);
+    queueCommandRepeat(s, cmd, more);
     return s.z.moveEnergy;
   });
 

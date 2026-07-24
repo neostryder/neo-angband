@@ -228,6 +228,59 @@ describe("tunnel", () => {
   });
 });
 
+/**
+ * cmd-core.c process_command auto_repeat_n = 99 for tunnel and friends: a dig
+ * that fails but still has a chance re-queues the command so digging continues
+ * across game turns without re-pressing the key; a dig that succeeds or is
+ * hopeless does not (upstream `if (!more) disturb(player)`).
+ */
+describe("tunnel - auto-repeat (cmd_set_repeat 99)", () => {
+  it("a failed dig with a chance re-queues the command with a decremented budget", () => {
+    const { state, run } = setup();
+    setDigging(state, 440); // granite chance = 440 - 40 = 400 (out of 1600)
+    state.chunk.setFeat(loc(6, 5), FEAT.GRANITE);
+    /* Force the 400-in-1600 roll to fail (chance > 0, so the dig continues). */
+    state.rng.randint0 = (): number => 1500;
+    const energy = run({ code: "tunnel", dir: 6 });
+    expect(energy).toBe(state.z.moveEnergy);
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.GRANITE); // still digging
+    expect(state.cmdQueue).toHaveLength(1);
+    expect(state.cmdQueue?.[0]).toMatchObject({
+      code: "tunnel",
+      dir: 6,
+      repeatRemaining: 98, // seeded 99, one attempt spent
+    });
+  });
+
+  it("a successful dig does not re-queue", () => {
+    const { state, run } = setup();
+    setDigging(state, 2000);
+    state.chunk.setFeat(loc(6, 5), FEAT.MAGMA);
+    run({ code: "tunnel", dir: 6 });
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.FLOOR);
+    expect(state.cmdQueue ?? []).toHaveLength(0);
+  });
+
+  it("a hopeless dig (no chance) does not re-queue", () => {
+    const { state, run } = setup();
+    setDigging(state, 0); // granite chance floors at 0 -> chip futilely
+    state.chunk.setFeat(loc(6, 5), FEAT.GRANITE);
+    run({ code: "tunnel", dir: 6 });
+    expect(state.cmdQueue ?? []).toHaveLength(0);
+  });
+
+  it("stops when the repeat budget is exhausted, even with a chance left", () => {
+    const { state, run } = setup();
+    setDigging(state, 440);
+    state.chunk.setFeat(loc(6, 5), FEAT.GRANITE);
+    state.rng.randint0 = (): number => 1500;
+    /* The last of the 99 attempts (budget 0): the dig fails but does not
+     * re-queue, matching cmd_set_repeat's exhaustion. */
+    run({ code: "tunnel", dir: 6, repeatRemaining: 0 });
+    expect(state.cmdQueue ?? []).toHaveLength(0);
+  });
+});
+
 describe("tunnel - player_best_digger swap", () => {
   it("digs with the swapped-in best digger's DIGGING, not the wielded one", () => {
     const { state, run } = setup();

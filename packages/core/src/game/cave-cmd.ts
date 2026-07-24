@@ -47,7 +47,7 @@ import { CHEST_QUERY } from "../obj/chest";
 import { chestCheck, doCmdDisarmChest, doCmdOpenChest } from "./chest";
 import type { ChestCmdDeps } from "./chest";
 import type { GameState, PlayerCommand } from "./context";
-import { modRuleEnabled, squareMonster } from "./context";
+import { modRuleEnabled, queueCommandRepeat, squareMonster } from "./context";
 import { squareIsKnown } from "./known";
 import { floorCarry } from "./floor";
 import { playerConfuseDir } from "./obj-cmd";
@@ -578,17 +578,20 @@ function revealOrAttackBlocker(state: GameState, grid: Loc, env: CaveCmdEnv): vo
  */
 function lockDoorCommand(
   state: GameState,
+  cmd: PlayerCommand,
   dir: number,
   deps: CaveCmdDeps,
   env: CaveCmdEnv,
 ): number {
   const cdir = playerConfuseDir(state, dir);
   const grid = locSum(state.actor.grid, DDGRID[cdir] as Loc);
+  let more = false;
   if (state.chunk.mon(grid) > 0) {
     revealOrAttackBlocker(state, grid, env);
   } else {
-    doCmdLockDoor(state, grid, deps);
+    more = doCmdLockDoor(state, grid, deps);
   }
+  queueCommandRepeat(state, cmd, more);
   return state.z.moveEnergy;
 }
 
@@ -661,13 +664,15 @@ export function installCaveCommands(
     const grid = chestDirGrid(state, dir);
     const chestObj = chestDeps ? chestCheck(state, grid, CHEST_QUERY.OPENABLE) : null;
 
+    let more = false;
     if (squareMonster(state, grid)) {
       revealOrAttackBlocker(state, grid, env);
     } else if (chestObj) {
-      doCmdOpenChest(state, grid, chestObj, chestDeps!);
+      more = doCmdOpenChest(state, grid, chestObj, chestDeps!);
     } else {
-      openAux(state, grid, env);
+      more = openAux(state, grid, env);
     }
+    queueCommandRepeat(state, cmd, more);
     return state.z.moveEnergy;
   });
 
@@ -683,8 +688,10 @@ export function installCaveCommands(
     }
     const dir = playerConfuseDir(state, at.dir);
     const grid = locSum(state.actor.grid, DDGRID[dir] as Loc);
+    let more = false;
     if (state.chunk.mon(grid) > 0) attackBlocker(state, grid, env);
-    else closeAux(state, grid, env);
+    else more = closeAux(state, grid, env);
+    queueCommandRepeat(state, cmd, more);
     return state.z.moveEnergy;
   });
 
@@ -711,8 +718,10 @@ export function installCaveCommands(
         if (squareMonster(state, grid)) {
           revealOrAttackBlocker(state, grid, env);
         } else if (chestObj) {
-          doCmdDisarmChest(state, chestObj, chestDeps);
+          const more = doCmdDisarmChest(state, chestObj, chestDeps);
+          queueCommandRepeat(state, cmd, more);
         } else if (priorDisarm) {
+          /* priorDisarm (trap.ts's floor-trap disarm) queues its own repeat. */
           priorDisarm(state, { ...cmd, dir });
         } else {
           env.msg?.("You see nothing there to disarm.");
@@ -731,7 +740,7 @@ export function installCaveCommands(
       state.chunk.isClosedDoor(doorAt.grid) &&
       !(env.isLockedDoor?.(doorAt.grid) ?? false)
     ) {
-      return lockDoorCommand(state, doorAt.dir, deps, env);
+      return lockDoorCommand(state, cmd, doorAt.dir, deps, env);
     }
     return priorDisarm ? priorDisarm(state, cmd) : 0;
   });
@@ -752,7 +761,7 @@ export function installCaveCommands(
       env.msg?.("You see nothing there to lock.");
       return 0;
     }
-    return lockDoorCommand(state, at.dir, deps, env);
+    return lockDoorCommand(state, cmd, at.dir, deps, env);
   });
 
   registry.register("tunnel", (state, cmd) => {
@@ -761,8 +770,12 @@ export function installCaveCommands(
     if (!tunnelTest(state, at.grid, env)) return 0;
     const dir = playerConfuseDir(state, at.dir);
     const grid = locSum(state.actor.grid, DDGRID[dir] as Loc);
+    /* A monster in the way is attacked and the dig does not repeat (upstream
+     * leaves `more` false); otherwise repeat while the aux reports hope. */
+    let more = false;
     if (state.chunk.mon(grid) > 0) attackBlocker(state, grid, env);
-    else tunnelAux(state, grid, deps);
+    else more = tunnelAux(state, grid, deps);
+    queueCommandRepeat(state, cmd, more);
     return state.z.moveEnergy;
   });
 
@@ -777,16 +790,18 @@ export function installCaveCommands(
     if (!at) return 0;
     const dir = playerConfuseDir(state, at.dir);
     const grid = locSum(state.actor.grid, DDGRID[dir] as Loc);
+    let more = false;
     if (state.chunk.mon(grid) > 0) {
       attackBlocker(state, grid, env);
     } else if (squareIsDiggable(state, grid)) {
-      tunnelAux(state, grid, deps);
+      more = tunnelAux(state, grid, deps);
     } else if (state.chunk.isClosedDoor(grid)) {
-      openAux(state, grid, env);
+      more = openAux(state, grid, env);
     } else {
       env.msg?.("You spin around.");
       return 0;
     }
+    queueCommandRepeat(state, cmd, more);
     return state.z.moveEnergy;
   });
 
