@@ -40,7 +40,7 @@ import type { CastContext } from "./project-cast";
 import type { GameState } from "./context";
 import { spellMessageText } from "./mon-message";
 import { disturb } from "./player-path";
-import { ELEM, OF, PF, TMD } from "../generated";
+import { ELEM, MSG, OF, PF, TMD } from "../generated";
 import { equipLearnElement, equipLearnFlag } from "../obj/knowledge";
 import { playerIncCheck } from "../player/timed";
 import type { PlayerIncCheckHooks, PlayerIncCheckQueries } from "../player/timed";
@@ -285,7 +285,11 @@ export function buildMonSpellHooks(
         ...(deps.panelContains ? { panelContains: deps.panelContains } : {}),
         ...(deps.lashDesc ? { lashDesc: deps.lashDesc } : {}),
       });
-      if (out) state.msg?.(out.text);
+      if (out) {
+        state.msg?.(out.text);
+        /* msgt(spell->msgt, ...) sound channel (mon-spell.c spell_message). */
+        state.sound?.((MSG as Record<string, number>)[out.msgt] ?? 0);
+      }
     },
     /* The save message (L382). */
     saveMessage: (text): void => state.msg?.(text),

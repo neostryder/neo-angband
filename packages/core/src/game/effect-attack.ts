@@ -24,7 +24,7 @@
  * attack projections are rare and resolve to a bare source.
  */
 
-import { EF, PROJ, TMD } from "../generated";
+import { EF, MSG, PROJ, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { monsterIsPowerful } from "../mon/predicate";
 import { breathDam } from "../mon/spell";
@@ -223,11 +223,14 @@ const handleBREATH: EffectHandler = (ctx) => {
       if (proj) dam = breathDam(proj, mon.hp);
     }
   } else if (source.isPlayer) {
-    /* A3 (effect-handler-attack.c:740-741): a player breath announces itself.
-     * msgt channel rides projections[type].msgt (display); the text is the
-     * parity artifact. */
+    /* A3 (effect-handler-attack.c:740-741): a player breath announces itself
+     * via msgt(projections[type].msgt, ...) - the text plus the projection's
+     * sound channel. */
     const proj = env.cast.projections[ctx.subtype];
-    if (proj) ctx.env.messages?.msg(`You breathe ${proj.desc}.`);
+    if (proj) {
+      ctx.env.messages?.msg(`You breathe ${proj.desc}.`);
+      if (proj.msgt) env.state.sound?.((MSG as Record<string, number>)[proj.msgt] ?? 0);
+    }
   }
 
   const opts: { radius?: number; powerful?: boolean } = { powerful };
