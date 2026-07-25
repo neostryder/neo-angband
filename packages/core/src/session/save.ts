@@ -22,7 +22,7 @@ import { loc } from "../loc";
 import type { RngState } from "../rng";
 import type { RandomValue } from "../rng";
 import { FlagSet } from "../bitflag";
-import { Chunk } from "../world/chunk";
+import { Chunk, SQUARE_SIZE } from "../world/chunk";
 import type { ChunkSquaresData } from "../world/chunk";
 import type { GameObject } from "../obj/object";
 import type { ObjRegistry } from "../obj/bind";
@@ -35,7 +35,6 @@ import type { MonsterRegistry } from "../mon/bind";
 import { blankPlayer } from "../player/player";
 import type { Player, PlayerQuest } from "../player/player";
 import type { PlayerRegistry } from "../player/bind";
-import type { HistoryInfo } from "../player/history";
 import type { TrapKind } from "../world/trap";
 import type { GameState, MonsterGroup, StoredLevel } from "../game/context";
 import { modRuleEnabled } from "../game/context";
@@ -53,6 +52,7 @@ import {
 } from "../save/integrity";
 import type { SaveIntegrity } from "../save/integrity";
 import type { ContentIdResolver } from "../mod/ids";
+import { PY_MAX_LEVEL, TMD_MAX } from "../player/types";
 import type {
   ModBag,
   OrphanStore,
@@ -111,6 +111,10 @@ export interface SavedObject {
   /** Origin monster race id, or null when there is no origin race. */
   originRaceId: string | null;
   note: string | null;
+  /** C wr_item's effect-present byte (save.c:113-118). */
+  effectPresent?: boolean;
+  /** C wr_item's saved activation index (save.c:184-188). */
+  activationIndex?: number;
 }
 
 export function serializeObject(
@@ -148,6 +152,8 @@ export function serializeObject(
     originDepth: obj.originDepth,
     originRaceId: obj.originRace ? ids.raceId(obj.originRace) : null,
     note: obj.note,
+    effectPresent: obj.effect !== null,
+    activationIndex: obj.activation?.index ?? 0,
   };
 }
 
@@ -214,6 +220,14 @@ export function deserializeObject(
   const ego = eIdx !== undefined ? (reg.egos[eIdx] ?? null) : null;
   const originIdx =
     data.originRaceId !== null ? ids.raceIndex(data.originRaceId) : undefined;
+  const effectPresent = data.effectPresent ?? true;
+  /* load.c:223-232 resolves the saved activation index, not kind defaults. */
+  const activation =
+    data.activationIndex !== undefined
+      ? data.activationIndex > 0
+        ? (reg.activations[data.activationIndex] ?? null)
+        : null
+      : (artifact?.activation ?? kind.activation);
   return {
     kind,
     ego,
@@ -236,9 +250,9 @@ export function deserializeObject(
     slays: deserializeSlayList(data.slays, reg, ids),
     curses: deserializeCurseList(data.curses, reg, ids),
     /* Kind-owned data re-points at the bound kind. */
-    effect: kind.effect,
-    effectMsg: kind.effectMsg,
-    activation: (artifact ? artifact.activation : null) ?? kind.activation,
+    effect: effectPresent ? kind.effect : null,
+    effectMsg: effectPresent ? kind.effectMsg : "",
+    activation,
     time: { ...data.time },
     timeout: data.timeout,
     number: data.number,
@@ -337,6 +351,10 @@ export interface SavedMonster {
   groupInfo: MonsterGroupInfo[];
   minRange: number;
   bestRange: number;
+  /** C wr_monster's known_pstate.flags (save.c:231-232). */
+  knownPstateFlags?: number[];
+  /** C wr_monster's known_pstate.el_info[].res_level (save.c:234-235). */
+  knownPstateElInfo?: number[];
 }
 
 export function serializeMonster(
@@ -365,6 +383,8 @@ export function serializeMonster(
     groupInfo: mon.groupInfo.map((g) => ({ ...g })),
     minRange: mon.minRange,
     bestRange: mon.bestRange,
+    knownPstateFlags: Array.from(mon.knownPstate.flags.bits),
+    knownPstateElInfo: Array.from(mon.knownPstate.elInfo),
   };
 }
 
@@ -392,6 +412,14 @@ export function deserializeMonster(
   mon.energy = data.energy;
   mon.cdis = data.cdis;
   mon.mflag.bits.set(data.mflag);
+  if (data.knownPstateFlags) {
+    /* load.c:302 restores known_pstate.flags before the monster goes live. */
+    mon.knownPstate.flags.bits.set(data.knownPstateFlags);
+  }
+  if (data.knownPstateElInfo) {
+    /* load.c:305 restores known_pstate.el_info[].res_level before live use. */
+    mon.knownPstate.elInfo.set(data.knownPstateElInfo);
+  }
   mon.mimickedObj = data.mimickedObj;
   mon.heldObj = data.heldObj.map((o) => deserializeObject(o, objects, ids));
   mon.attr = data.attr;
@@ -471,7 +499,7 @@ export interface SavedPlayer {
    * empty log (SAVEFILE_IMPORT-tolerant posture, matching load.c's
    * best-effort read of older savefiles).
    */
-  hist?: HistoryInfo[];
+  hist?: SavedHistoryInfo[];
   equipment: number[];
   /**
    * obj_k, every rune variety (wr_player's object knowledge). Older saves
@@ -514,6 +542,18 @@ export interface SavedPlayer {
   quests?: PlayerQuest[];
   /** total_winner: the victory flag. Optional; absent saves load as false. */
   totalWinner?: boolean;
+}
+
+/** Serialized history entry; C save.c:1063-1067 writes the artifact NAME. */
+export interface SavedHistoryInfo {
+  type: number;
+  dlev: number;
+  clev: number;
+  artifactName: string;
+  turn: number;
+  event: string;
+  /** Legacy JSON saves used a numeric aIdx; never written by this version. */
+  aIdx?: number;
 }
 
 export function serializePlayer(
@@ -559,7 +599,14 @@ export function serializePlayer(
     diedFrom: p.diedFrom,
     noscore: p.noscore,
     history: p.history,
-    hist: p.hist.map((e) => ({ ...e })),
+    hist: p.hist.map((e) => ({
+      type: e.type,
+      dlev: e.dlev,
+      clev: e.clev,
+      artifactName: ids.artifactName(e.aIdx) ?? "",
+      turn: e.turn,
+      event: e.event,
+    })),
     equipment: [...p.equipment],
     objKnown: {
       modifiers: [...p.objKnown.modifiers],
@@ -603,13 +650,20 @@ export function deserializePlayer(
   p.ht = data.ht;
   p.wt = data.wt;
   p.au = data.au;
-  p.maxLev = data.maxLev;
+  /* load.c:767-780 rejects levels outside 1..PY_MAX_LEVEL. */
+  if (data.lev < 1 || data.lev > PY_MAX_LEVEL) {
+    throw new Error(`save: invalid player level ${data.lev}`);
+  }
+  /* load.c:785-789 repairs max_lev, max_depth and recall_depth. */
+  p.maxLev = data.maxLev < data.lev ? data.lev : data.maxLev;
   p.lev = data.lev;
   p.maxExp = data.maxExp;
   p.exp = data.exp;
   p.expFrac = data.expFrac;
   p.maxDepth = data.maxDepth ?? 0;
+  if (p.maxDepth < 0) p.maxDepth = 1;
   p.recallDepth = data.recallDepth ?? 0;
+  if (p.recallDepth <= 0) p.recallDepth = p.maxDepth;
   p.wordRecall = data.wordRecall ?? 0;
   p.deepDescent = data.deepDescent ?? 0;
   p.mhp = data.mhp;
@@ -622,7 +676,8 @@ export function deserializePlayer(
   p.statCur = [...data.statCur];
   p.statMap = [...data.statMap];
   p.statBirth = [...data.statBirth];
-  p.timed.set(data.timed);
+  /* load.c:807-823 reads only supported timed entries and discards extras. */
+  p.timed.set(data.timed.slice(0, TMD_MAX));
   p.spellFlags = [...data.spellFlags];
   p.spellOrder = [...data.spellOrder];
   p.playerHp = [...data.playerHp];
@@ -632,10 +687,31 @@ export function deserializePlayer(
   /* full_name / died_from / noscore (load.c:661, load.c:966): absent in saves
    * predating the fields, which restore the blankPlayer defaults ("" / "" / 0). */
   p.fullName = data.fullName ?? "";
-  p.diedFrom = data.diedFrom ?? "";
+  /* load.c:791-793 resets died_from whenever HP is non-negative. */
+  p.diedFrom = p.chp >= 0 ? "(alive and well)" : (data.diedFrom ?? "");
   p.noscore = data.noscore ?? 0;
   p.history = data.history;
-  p.hist = data.hist ? data.hist.map((e) => ({ ...e })) : [];
+  p.hist = [];
+  for (const e of data.hist ?? []) {
+    let aIdx = 0;
+    const artifactName = e.artifactName ?? "";
+    if (artifactName) {
+      const artifact = objReg.artifacts.find((a) => a?.name === artifactName);
+      if (!artifact) continue;
+      aIdx = artifact.aidx;
+    } else if (e.aIdx !== undefined) {
+      /* Tolerate the pre-fix JSON shape, while all new saves use names. */
+      aIdx = e.aIdx;
+    }
+    p.hist.push({
+      type: e.type,
+      dlev: e.dlev,
+      clev: e.clev,
+      aIdx,
+      turn: e.turn,
+      event: e.event,
+    });
+  }
   p.equipment = [...data.equipment];
   if (data.objKnown) {
     p.objKnown = {
@@ -691,7 +767,8 @@ export interface SavedGame {
     totalEnergy: number;
   };
   gear: { next: number; pack: number[]; store: Array<[number, SavedObject]> };
-  chunk: ChunkSquaresData;
+  /** Omitted for dead saves, matching save.c:873-1045. */
+  chunk?: ChunkSquaresData;
   /**
    * Feature legend: every terrain index that appears in chunk.feats or
    * known.feat, paired with its namespaced feature id. The grid stays a
@@ -702,11 +779,13 @@ export interface SavedGame {
    * degenerate empty-level case.
    */
   featLegend?: Array<[number, string]>;
-  monsters: Array<SavedMonster | null>;
-  groups: Array<MonsterGroup | null>;
+  monsters?: Array<SavedMonster | null>;
+  groups?: Array<MonsterGroup | null>;
   /** Floor piles in pile order (head first), keyed by grid. */
-  floor: Array<{ x: number; y: number; objs: SavedObject[] }>;
-  traps: Array<{ x: number; y: number; traps: SavedTrap[] }>;
+  floor?: Array<{ x: number; y: number; objs: SavedObject[] }>;
+  traps?: Array<{ x: number; y: number; traps: SavedTrap[] }>;
+  /** The dungeon header retained by C even when the player is dead. */
+  dungeonDepth?: number;
   rng: RngState;
   turn: number;
   playing: boolean;
@@ -814,6 +893,10 @@ export interface SavedGame {
    * generation landed, which load with an all-false set.
    */
   artifactsCreated?: string[];
+  /** aup_info[].seen (save.c:684-685). */
+  artifactsSeen?: string[];
+  /** aup_info[].everseen (save.c:685-686). */
+  artifactsEverseen?: string[];
   /**
    * The manifest block (mod/save-blocks.ts, P7.2): the pack set + resolved load
    * order + core-owned determinism mode that produced this save - its profile
@@ -853,7 +936,7 @@ export interface SavedGame {
    * generate.c L1203-1214), so a first-visit persistent level can align stairs
    * with the level just left. Absent when the option is off / no joins recorded.
    */
-  currentJoins?: Array<{ x: number; y: number; feat: number }>;
+  currentJoins?: Array<{ x: number; y: number; feat: number; info?: number[] }>;
   /**
    * The per-kind autoinscription registry (obj-ignore.c note_aware/note_unaware,
    * obj/knowledge.ts AutoinscriptionRegistry). Keyed by the namespaced kind id
@@ -981,6 +1064,18 @@ function serializeArtifactsCreated(
   return out;
 }
 
+/** Serialize one aup_info boolean field as stable artifact names. */
+function serializeArtifactFlags(
+  flags: readonly boolean[],
+  ids: ContentIdResolver,
+): string[] {
+  const out: string[] = [];
+  for (let i = 1; i < flags.length; i++) {
+    if (flags[i]) out.push(ids.artifactId(i));
+  }
+  return out;
+}
+
 /** Serialize a live game (state + flavor knowledge) into plain JSON data. */
 export function serializeGame(
   state: GameState,
@@ -990,7 +1085,7 @@ export function serializeGame(
   randartSeed = 0,
   everseen?: { snapshot(): { kinds: number[]; egos: number[] } },
 ): SavedGame {
-  const floor: SavedGame["floor"] = [];
+  const floor: NonNullable<SavedGame["floor"]> = [];
   for (const pile of state.floor.values()) {
     const head = pile[0];
     if (!head || !head.grid) continue;
@@ -1000,7 +1095,7 @@ export function serializeGame(
       objs: pile.map((o) => serializeObject(o, ids)),
     });
   }
-  const traps: SavedGame["traps"] = [];
+  const traps: NonNullable<SavedGame["traps"]> = [];
   for (const list of state.traps.values()) {
     const head = list[0];
     if (!head) continue;
@@ -1042,14 +1137,22 @@ export function serializeGame(
         serializeObject(obj, ids),
       ]),
     },
-    chunk,
-    featLegend: buildFeatLegend(chunk.feats, knownFeat, ids),
-    monsters: state.monsters.map((m) => (m ? serializeMonster(m, ids) : null)),
-    groups: state.groups.map((g) =>
-      g ? { index: g.index, leader: g.leader, members: [...g.members] } : null,
-    ),
-    floor,
-    traps,
+    /* C save.c:873-1045 omits the live dungeon objects, monsters, traps and
+     * chunk-list data for a dead player. */
+    ...(state.isDead
+      ? { dungeonDepth: state.chunk.depth }
+      : {
+          chunk,
+          featLegend: buildFeatLegend(chunk.feats, knownFeat, ids),
+          monsters: state.monsters.map((m) =>
+            m ? serializeMonster(m, ids) : null,
+          ),
+          groups: state.groups.map((g) =>
+            g ? { index: g.index, leader: g.leader, members: [...g.members] } : null,
+          ),
+          floor,
+          traps,
+        }),
     rng: state.rng.getState(),
     turn: state.turn,
     playing: state.playing,
@@ -1065,17 +1168,27 @@ export function serializeGame(
             state.artifacts.snapshot(),
             ids,
           ),
+          artifactsSeen: serializeArtifactFlags(
+            state.artifacts.snapshotState().seen,
+            ids,
+          ),
+          artifactsEverseen: serializeArtifactFlags(
+            state.artifacts.snapshotState().everseen,
+            ids,
+          ),
         }
       : {}),
-    ...(savedLevelCache ? { levelCache: savedLevelCache } : {}),
+    ...(!state.isDead && savedLevelCache ? { levelCache: savedLevelCache } : {}),
     /* chunk->join of the level in play (gap 9.4/9.6): persisted so a first-visit
      * persistent level aligns its stairs after a reload. Omitted when empty. */
-    ...(state.currentJoins && state.currentJoins.length > 0
+    ...(!state.isDead && state.currentJoins && state.currentJoins.length > 0
       ? {
           currentJoins: state.currentJoins.map((j) => ({
             x: j.grid.x,
             y: j.grid.y,
             feat: j.feat,
+            /* save.c:850-866 writes x, y, feature and every SQUARE_SIZE byte. */
+            info: Array.from({ length: SQUARE_SIZE }, (_, i) => j.info?.[i] ?? 0),
           })),
         }
       : {}),
@@ -1099,13 +1212,17 @@ export function serializeGame(
       const messages = serializeMessages(state.messages);
       return messages ? { messages } : {};
     })(),
-    known: {
-      feat: knownFeat,
-      objects: Array.from(state.known.objects.entries()).map(([i, m]) => [
-        i,
-        { ch: m.ch, attr: m.attr },
-      ]),
-    },
+    ...(!state.isDead
+      ? {
+          known: {
+            feat: knownFeat,
+            objects: Array.from(state.known.objects.entries()).map(([i, m]) => [
+              i,
+              { ch: m.ch, attr: m.attr },
+            ]),
+          },
+        }
+      : {}),
     ...(state.arenaLevel
       ? {
           arena: {
@@ -1249,12 +1366,12 @@ export function buildFeatRemap(
 }
 
 /** Apply a feature remap to a terrain index array in place (identity-safe). */
-function remapFeats(feats: number[], remap: Map<number, number>): void {
-  if (remap.size === 0) return;
-  for (let i = 0; i < feats.length; i++) {
-    const to = remap.get(feats[i] as number);
-    if (to !== undefined) feats[i] = to;
-  }
+function remapFeats(
+  feats: readonly number[],
+  remap: Map<number, number>,
+): number[] {
+  if (remap.size === 0) return [...feats];
+  return feats.map((feat) => remap.get(feat) ?? feat);
 }
 
 /** Rebuild the map knowledge (absent in older saves: all unknown). */
@@ -1266,8 +1383,10 @@ export function deserializeKnown(
 ): KnownMap {
   const known = newKnownMap(width, height);
   if (!data) return known;
-  const feat = data.feat.slice(0, known.feat.length);
-  remapFeats(feat, featRemap);
+  const feat = remapFeats(
+    data.feat.slice(0, known.feat.length),
+    featRemap,
+  );
   known.feat.set(feat);
   for (const [i, m] of data.objects) {
     known.objects.set(i, { ch: m.ch, attr: m.attr });
@@ -1296,7 +1415,7 @@ export function deserializeFloor(
   ids: ContentIdResolver,
 ): Map<number, GameObject[]> {
   const floor = new Map<number, GameObject[]>();
-  for (const entry of data) {
+  for (const entry of data ?? []) {
     floor.set(
       entry.y * width + entry.x,
       entry.objs.map((o) => deserializeObject(o, reg, ids)),
@@ -1311,9 +1430,10 @@ export function deserializeTraps(
   kinds: readonly TrapKind[],
   width: number,
   ids: ContentIdResolver,
+  onDecoy?: (grid: Loc) => void,
 ): Map<number, Trap[]> {
   const traps = new Map<number, Trap[]>();
-  for (const entry of data) {
+  for (const entry of data ?? []) {
     traps.set(
       entry.y * width + entry.x,
       entry.traps.map((t) => {
@@ -1322,10 +1442,12 @@ export function deserializeTraps(
         if (kind === undefined || tidx === undefined) {
           throw new Error(`save: unknown trap kind ${t.trapId}`);
         }
+        const grid = loc(t.grid.x, t.grid.y);
+        if (kind.name === "decoy" || kind.desc === "decoy") onDecoy?.(grid);
         return {
           tidx,
           kind,
-          grid: loc(t.grid.x, t.grid.y),
+          grid,
           power: t.power,
           timeout: t.timeout,
           flags: new FlagSet(Uint8Array.from(t.flags)),
@@ -1418,6 +1540,20 @@ export function deserializeArtifactsCreated(
   return out;
 }
 
+/** Restore one aup_info boolean field from stable artifact ids. */
+export function deserializeArtifactFlags(
+  saved: string[] | undefined,
+  length: number,
+  ids: ContentIdResolver,
+): boolean[] {
+  const out = new Array<boolean>(length).fill(false);
+  for (const id of saved ?? []) {
+    const i = ids.artifactIndex(id);
+    if (i !== undefined && i < length) out[i] = true;
+  }
+  return out;
+}
+
 /**
  * Rebuild a chunk of the saved dimensions and restore its squares, remapping
  * the terrain grid through the save's feature legend so feature references
@@ -1429,10 +1565,13 @@ export function deserializeChunk(
   featRemap: Map<number, number>,
 ): Chunk {
   const chunk = new Chunk(features, data.height, data.width);
-  if (featRemap.size > 0) {
-    remapFeats(data.feats, featRemap);
-  }
-  chunk.restoreSquares(data);
+  /* load.c:1307-1355 decodes into a fresh cave. Keep the JSON source intact
+   * while applying the equivalent feature remap to fresh data. */
+  const remapped =
+    featRemap.size > 0
+      ? { ...data, feats: remapFeats(data.feats, featRemap) }
+      : data;
+  chunk.restoreSquares(remapped);
   return chunk;
 }
 
@@ -1454,7 +1593,7 @@ export interface SavedStoredLevel {
   known: SavedKnown;
   decoy?: { x: number; y: number } | null;
   /** chunk->join stair connectors (generate.c L1203-1214); absent in old saves. */
-  join?: Array<{ x: number; y: number; feat: number }>;
+  join?: Array<{ x: number; y: number; feat: number; info?: number[] }>;
 }
 
 /** Serialize one frozen level, reusing the current-level serializers. */
@@ -1510,7 +1649,12 @@ function serializeStoredLevel(
       ]),
     },
     decoy: level.decoy ? { x: level.decoy.x, y: level.decoy.y } : null,
-    join: level.join.map((j) => ({ x: j.grid.x, y: j.grid.y, feat: j.feat })),
+    join: level.join.map((j) => ({
+      x: j.grid.x,
+      y: j.grid.y,
+      feat: j.feat,
+      info: Array.from({ length: SQUARE_SIZE }, (_, i) => j.info?.[i] ?? 0),
+    })),
   };
 }
 
@@ -1562,7 +1706,13 @@ export function deserializeLevelCache(
       decoy: entry.decoy ? loc(entry.decoy.x, entry.decoy.y) : null,
       turn: entry.turn,
       /* chunk->join stair connectors; tolerate absence for pre-field saves. */
-      join: (entry.join ?? []).map((j) => ({ grid: loc(j.x, j.y), feat: j.feat })),
+      /* load.c:1366-1383 restores connector info; load.c:1653-1678 remaps
+       * the saved feature through the current feature table. */
+      join: (entry.join ?? []).map((j) => ({
+        grid: loc(j.x, j.y),
+        feat: featRemap.get(j.feat) ?? j.feat,
+        ...(j.info ? { info: [...j.info] } : {}),
+      })),
     });
   }
   return cache;

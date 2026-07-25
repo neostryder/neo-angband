@@ -214,7 +214,13 @@ export function collectJoins(g: Gen): void {
   for (let y = 0; y < c.height; y++) {
     for (let x = 0; x < c.width; x++) {
       const grid = loc(x, y);
-      if (c.isStairs(grid)) g.joins.unshift({ grid, feat: c.feat(grid) });
+      if (c.isStairs(grid)) {
+        g.joins.unshift({
+          grid,
+          feat: c.feat(grid),
+          info: Array.from(c.info(grid).bits),
+        });
+      }
     }
   }
 }

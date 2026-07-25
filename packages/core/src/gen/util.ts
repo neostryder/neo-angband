@@ -108,6 +108,8 @@ export function shuffle(rng: Rng, arr: number[], n: number): void {
 export interface Connector {
   grid: Loc;
   feat: number;
+  /** SQUARE_SIZE bytes copied by save.c:1205-1211 for persistent levels. */
+  info?: number[];
 }
 
 /**
