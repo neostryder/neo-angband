@@ -28,10 +28,18 @@
  */
 
 import type { Constants } from "../constants";
+import { PF } from "../generated";
 import type { GameObject, StackLimits } from "../obj/object";
-import { OSTACK_PACK, objectStackable, tvalIsMoney } from "../obj/object";
+import {
+  OSTACK_PACK,
+  objectStackable,
+  tvalIsMoney,
+  tvalIsMushroom,
+  tvalIsZapper,
+} from "../obj/object";
 import { objectTouch } from "../obj/known-object";
 import { ODESC } from "../obj/desc";
+import { NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge";
 import type { GameState } from "./context";
 import { describeObject } from "./describe";
 import { floorExcise, floorObjectForUse, floorPile } from "./floor";
@@ -257,11 +265,33 @@ function playerPickupAux(
    * (ASSESSED is idempotent, so re-touching an item already seen on the grid via
    * squareKnowPile is harmless.) */
   objectTouch(obj, { onArtifactFound: () => state.onArtifactFound?.(obj.artifact!) });
+
+  /*
+   * Hobbits ID mushrooms on pickup, gnomes ID wands and staffs on pickup
+   * (obj-gear.c:879-886). Uses tvalIsMushroom / tvalIsZapper so those
+   * predicates sit on the live path (W2-012 / W2-013). No RNG.
+   */
+  const stack = gearGet(state.gear, handle);
+  if (stack && state.flavorKnown && !state.flavorKnown.isAware(stack.kind)) {
+    const p = state.actor.player;
+    const pflags = state.playerState?.pflags ?? p.race.pflags;
+    const hasMushroom =
+      pflags.has(PF.KNOW_MUSHROOM) || p.cls.pflags.has(PF.KNOW_MUSHROOM);
+    const hasZapper =
+      pflags.has(PF.KNOW_ZAPPER) || p.cls.pflags.has(PF.KNOW_ZAPPER);
+    const flavorDeps = state.flavorAwareDeps ?? NOOP_FLAVOR_AWARE_DEPS;
+    if (hasMushroom && tvalIsMushroom(stack.tval)) {
+      state.flavorKnown.objectFlavorAware(stack.kind, flavorDeps);
+      env.onPickup?.("Mushrooms for breakfast!");
+    } else if (hasZapper && tvalIsZapper(stack.tval)) {
+      state.flavorKnown.objectFlavorAware(stack.kind, flavorDeps);
+    }
+  }
+
   /* inven_carry's own "You have %s (%c)." message (obj-gear.c:893-921): describe
    * the MERGED pack stack so the count and slot letter reflect the combined
    * total (e.g. "You have 5 Potions of Cure Light Wounds (a).") rather than the
    * bare floor object ("You have a Potion..."). */
-  const stack = gearGet(state.gear, handle);
   if (stack) {
     const name = describeObject(state, stack, ODESC.PREFIX | ODESC.FULL);
     const label = gearToLabel(state.gear, handle);

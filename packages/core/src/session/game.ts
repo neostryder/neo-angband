@@ -867,8 +867,14 @@ function wireGame(
    * terrain via state.world). Defined out here so both the projections block
    * and the state.world assignment below reference the same object. Wiring
    * onDeath is what finally records died_from + clears total_winner on death
-   * (audit 01 P1 CRITICAL). */
-  const sharedTakeHitHooks = makeTakeHitHooks(state);
+   * (audit 01 P1 CRITICAL). wizardEffect.current is filled once the effect
+   * stack exists so EVENT_CHEAT_DEATH can call wizCheatDeath (W2-009). */
+  const wizardEffectHolder: { current: WizardDeps["effect"] | undefined } = {
+    current: undefined,
+  };
+  const sharedTakeHitHooks = makeTakeHitHooks(state, {
+    wizardEffect: wizardEffectHolder,
+  });
   /* on_begin_effect / on_end_effect dispatch for timed transitions (audit 01
    * T2, player-timed.c:873-891). Assigned inside the projections block where the
    * effect registry + env exist, and read by the world-clock timedHooks
@@ -1169,6 +1175,9 @@ function wireGame(
       item,
       summon,
     };
+    /* Fill the take_hit cheat-death holder so wizCheatDeath can clear timers
+     * (W2-009; ui-display.c EVENT_CHEAT_DEATH). */
+    wizardEffectHolder.current = wizardEffect;
 
     /* monster_change_shape / monster_revert_shape, driving the
      * MON_TMD_CHANGED timer (the SHAPECHANGE monster spell). */

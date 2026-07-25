@@ -25,6 +25,9 @@ import {
   wizAcquire,
   wizAdvance,
   wizBanish,
+  wizCreateAllArtifact,
+  wizCreateAllArtifactFromTval,
+  wizCreateAllObj,
   wizCreateAllObjFromTval,
   wizCreateArtifact,
   wizCreateObj,
@@ -51,6 +54,8 @@ import {
   wizSummonNamed,
   wizSummonRandom,
   wizTeleportRandom,
+  wizTeleportTo,
+  wizTweakItem,
   wizWizardLight,
   wizWipeRecall,
   wizDisplayItem,
@@ -414,25 +419,68 @@ async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<void> {
   switch (action) {
     /* ---- Items ---- */
     case "create-obj": {
+      /* ui-wizard.c:302-304: top-level create menu offers "All objects" plus
+       * a single kind. Wire wizCreateAllObj (W2-006) on that branch. */
+      if (!deps.makeDeps) return unavailable(ctx);
+      const mode = await selectFromMenu(
+        term,
+        "Create object",
+        [{ label: "One kind by index" }, { label: "All ordinary objects" }],
+        "[ a/b to choose, ESC to cancel ]",
+      );
+      if (mode === null) return;
+      if (mode === 1) {
+        wizCreateAllObj(state, deps);
+        say("Allocated.");
+        break;
+      }
       const idx = await promptNumber(term, "Create object of which kind (kidx)?", 1, 0, 99999, undefined, 5);
       if (idx === null) return;
-      if (!deps.makeDeps) return unavailable(ctx);
       wizCreateObj(state, { index: idx }, deps);
       say("Allocated.");
       break;
     }
     case "create-artifact": {
+      /* ui-wizard.c:302-304: "All artifacts" + single artifact (W2-004). */
+      if (!deps.makeDeps || !deps.artifacts) return unavailable(ctx);
+      const mode = await selectFromMenu(
+        term,
+        "Create artifact",
+        [{ label: "One artifact by index" }, { label: "All artifacts" }],
+        "[ a/b to choose, ESC to cancel ]",
+      );
+      if (mode === null) return;
+      if (mode === 1) {
+        wizCreateAllArtifact(state, deps);
+        say("Allocated.");
+        break;
+      }
       const idx = await promptNumber(term, "Create which artifact (aidx)?", 1, 1, 99999, undefined, 5);
       if (idx === null) return;
-      if (!deps.makeDeps || !deps.artifacts) return unavailable(ctx);
       wizCreateArtifact(state, { index: idx }, deps);
       break;
     }
     case "create-all-tval": {
-      const tval = await promptNumber(term, "Create all objects of which tval?", 1, 1, 999, undefined, 3);
-      if (tval === null) return;
+      /* Ordinary kinds by tval (existing) or all artifacts of a tval (W2-005). */
       if (!deps.makeDeps) return unavailable(ctx);
-      wizCreateAllObjFromTval(state, { tval, art: false }, deps);
+      const kind = await selectFromMenu(
+        term,
+        "Create all of a tval",
+        [
+          { label: "Ordinary objects" },
+          { label: "Artifacts", disabled: !deps.artifacts },
+        ],
+        "[ a/b to choose, ESC to cancel ]",
+      );
+      if (kind === null) return;
+      const tval = await promptNumber(term, "Create all of which tval?", 1, 1, 999, undefined, 3);
+      if (tval === null) return;
+      if (kind === 1) {
+        if (!deps.artifacts) return unavailable(ctx);
+        wizCreateAllArtifactFromTval(state, { tval }, deps);
+      } else {
+        wizCreateAllObjFromTval(state, { tval, art: false }, deps);
+      }
       say("Allocated.");
       break;
     }
@@ -678,12 +726,9 @@ async function runTeleportTo(ctx: WizardUiCtx): Promise<void> {
   }
   if (!grid) return;
 
-  /* square_ispassable(cave, grid) (L2682). */
-  if (!state.chunk.isPassable(grid)) {
-    say("The square you are aiming for is impassable.");
-    return;
-  }
-  runWizEffect(state, deps.effect, EF.TELEPORT_TO, { y: grid.y, x: grid.x });
+  /* do_cmd_wiz_teleport_to data half (cmd-wizard.c:2673) via wizTeleportTo
+   * so the helper sits on the live path (W2-008). No RNG beyond the effect. */
+  wizTeleportTo(state, { grid }, deps);
 }
 
 /**
@@ -853,18 +898,20 @@ async function runPlayItem(ctx: WizardUiCtx): Promise<void> {
       [
         { label: "Reroll (normal/good/excellent)" },
         { label: "Curse item", disabled: !deps.curses },
+        /* [t]weak (cmd-wizard.c:1757-1767): do_cmd_wiz_tweak_item (W2-007). */
+        { label: "Tweak attributes", disabled: !!obj.artifact },
         { label: "Accept changes" },
         { label: "Reject changes" },
       ],
       "[ a-z to choose, ESC = reject ]",
       { detail: () => info },
     );
-    if (action === null || action === 3) {
+    if (action === null || action === 4) {
       wizPlayItemReject(obj, snapshot, deps);
       say("Changes rejected.");
       return;
     }
-    if (action === 2) {
+    if (action === 3) {
       const equipped = state.actor.player.equipment.includes(handle);
       wizPlayItemAccept(state, obj, { changed, equipped }, deps);
       say("Changes accepted.");
@@ -881,6 +928,16 @@ async function runPlayItem(ctx: WizardUiCtx): Promise<void> {
       const power = await promptNumber(term, "Curse power (0 removes it)?", 10, 0, 200, undefined, 3);
       if (power === null) continue;
       if (wizCurseItem(state, { obj, index: cidx, power }, deps)) changed = true;
+    } else if (action === 2) {
+      /* DATA half of do_cmd_wiz_tweak_item (cmd-wizard.c:2698): to_a / to_h /
+       * to_d via in-terminal prompts (never window.prompt). No RNG. */
+      const toA = await promptNumber(term, "Enter new AC bonus setting: ", obj.toA, -99, 99, undefined, 3);
+      if (toA === null) continue;
+      const toH = await promptNumber(term, "Enter new to-hit setting: ", obj.toH, -99, 99, undefined, 3);
+      if (toH === null) continue;
+      const toD = await promptNumber(term, "Enter new to-dam setting: ", obj.toD, -99, 99, undefined, 3);
+      if (toD === null) continue;
+      if (wizTweakItem(state, { obj, toA, toH, toD }, deps)) changed = true;
     }
   }
 }
