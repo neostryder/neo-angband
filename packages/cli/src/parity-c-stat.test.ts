@@ -75,10 +75,33 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
   });
 
   it("matches upstream generation distributions at alpha=0.01 (Bonferroni)", () => {
-    /* 4 tests per depth: density, species mix, object feeling, monster feeling.
+    /* 3 GATED tests per depth: density, object feeling, monster feeling.
+     *
+     * The species mix is measured and printed but NOT gated, because the G-test
+     * is invalid for it and I had this wrong. Measured 2026-07-25: comparing the
+     * port against ITSELF at a second base seed gives G = 350-860 over df =
+     * 133-281 at depths 5-20 -- the same magnitude as port-vs-C (389-929), and at
+     * depth 13 the port is further from itself (590) than from the C (452).
+     *
+     * The cause is clustering. Monster placement is not independent per monster:
+     * a pit or nest drops 20-60 monsters of one theme into a single level, so the
+     * effective sample size per depth is the number of LEVELS (400), not the
+     * number of monsters (~20 000). A G-test that assumes one independent
+     * observation per monster inflates the statistic by roughly the cluster size,
+     * which is exactly the 3-5x we see. It is the same overdispersion that makes
+     * the density standard deviation 21.6 where Poisson would say 6.6 -- correctly
+     * accounted for in the mean test above, and wrongly ignored here.
+     *
+     * A valid species test needs the LEVEL as the unit of observation, e.g. a
+     * permutation null over per-level species vectors. That is blocked on the C
+     * side: main-stats' SQLite schema stores per-depth aggregates only
+     * (`monsters(level, count, k_idx)` summed across runs), so per-run C samples
+     * do not exist yet. Emitting them needs a change to the DB writer in the
+     * oracle BUILD COPY, which is the next step.
+     *
      * Gold is asserted separately -- its per-origin classification is a known
      * open divergence and would otherwise mask the rest. */
-    const alpha = bonferroni(ALPHA, depths.length * 4);
+    const alpha = bonferroni(ALPHA, depths.length * 3);
     const rows: Row[] = [];
     const report: string[] = [];
     const densityZ: number[] = [];
@@ -115,14 +138,20 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
           p[key] as Record<string, number>,
           b[key] as Record<string, number>,
         );
-        rows.push({
-          depth: d,
-          metric,
-          detail: `G=${t.g.toFixed(1)} df=${t.df}`,
-          p: t.p,
-        });
+        /* Species is measured but not gated (see the note above): the G-test is
+         * invalid on clustered per-monster counts. Feelings ARE gated -- each
+         * level contributes exactly one feeling sample, so those observations are
+         * independent and the test holds. */
+        if (metric !== "species") {
+          rows.push({
+            depth: d,
+            metric,
+            detail: `G=${t.g.toFixed(1)} df=${t.df}`,
+            p: t.p,
+          });
+        }
         report.push(
-          `depth ${String(d).padStart(2)} ${metric.padEnd(8)} G=${t.g.toFixed(1)} ` +
+          `depth ${String(d).padStart(2)} ${metric.padEnd(8)}${metric === "species" ? " [ungated]" : ""} G=${t.g.toFixed(1)} ` +
             `df=${t.df} p=${t.p.toFixed(4)} cats=${t.categories} pooled=${t.pooled}` +
             (t.worst
               ? ` worst=${t.worst.category} obs=${t.worst.observed} exp=${t.worst.expected.toFixed(1)}`
