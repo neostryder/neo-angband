@@ -97,8 +97,19 @@ export function storeChooseOwner(
   return owner;
 }
 
-/** store_shuffle (L1493): swap in a different proprietor. */
+/**
+ * store_shuffle (L1493): swap in a different proprietor.
+ *
+ * C store.c:1497-1498 retries until the owner changes and assumes more than
+ * one owner. A one-owner table (accepted by the port's data model) would spin
+ * forever. Keep the multi-owner draw loop identical to C; terminate cleanly
+ * when there is only one owner (randint0(1) is a no-op on the WELL stream).
+ */
 export function storeShuffle(rng: Rng, store: Store): void {
+  if (store.owners.length <= 1) {
+    if (store.owners.length === 1) store.owner = storeChooseOwner(rng, store);
+    return;
+  }
   let o = store.owner;
   while (o === store.owner) o = storeChooseOwner(rng, store);
   store.owner = o;

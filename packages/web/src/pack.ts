@@ -384,6 +384,9 @@ export function loadGamePack(): GamePack {
     store: records("store"),
     quest: records("quest"),
     uiKnowledge: records("ui_knowledge"),
+    /* hints.json (ui-store.c prt_welcome tip branch). Bound into CorePack so
+     * the one_in_(3) + random_hint draws land on the main stream. */
+    hints: records("hints"),
     obj: {
       objectBase: composedFile("object_base"),
       object: composedFile("object"),
