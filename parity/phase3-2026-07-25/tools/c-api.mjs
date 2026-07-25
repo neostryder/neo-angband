@@ -121,3 +121,29 @@ export function normKey(s) {
   const camel = s.replace(/^_+/, "").replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
   return camel.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
+
+/**
+ * Subject prefixes the port drops when the C's subject becomes the receiver:
+ * `square_isfloor(c, grid)` is `Chunk.isFloor(grid)`, `mon_is_visible(mon)` is
+ * `Monster.isVisible()`. Matching has to try the stripped form or the whole
+ * predicate family reads as missing.
+ */
+const SUBJECT_PREFIXES = [
+  "square_", "cave_", "mon_", "monster_", "obj_", "object_", "player_",
+  "do_cmd_", "cmd_", "effect_", "ui_", "term_", "msg_", "textui_", "get_",
+];
+
+/**
+ * Candidate keys for one C name, best first. A prefix-stripped candidate is only
+ * offered when enough of the name survives to be distinctive, since `square_new`
+ * matching a bare `new` would hide a real gap rather than reveal one.
+ */
+export function candidateKeys(name) {
+  const keys = [normKey(name)];
+  for (const p of SUBJECT_PREFIXES) {
+    if (name.startsWith(p) && name.length - p.length >= 5) {
+      keys.push(normKey(name.slice(p.length)));
+    }
+  }
+  return keys;
+}
