@@ -125,7 +125,7 @@ function hasFewEntrances(flags: string[] | undefined): boolean {
 
 /** Load room templates from parsed room_template.json records. */
 export function loadRoomTemplates(records: RoomTemplateRecordJson[]): RoomTemplate[] {
-  return records.map((r) => ({
+  return [...records].reverse().map((r) => ({
     name: r.name,
     typ: r.type,
     rat: r.rating,
@@ -146,7 +146,7 @@ export function loadRoomTemplates(records: RoomTemplateRecordJson[]): RoomTempla
  * (128 of 161) from the dungeon.
  */
 export function loadVaults(records: VaultRecordJson[], maxDepth: number): Vault[] {
-  return records.map((r) => ({
+  return [...records].reverse().map((r) => ({
     name: r.name,
     typ: r.type,
     rat: r.rating,
@@ -1274,7 +1274,10 @@ function buildNest(g: Gen, centreIn: Loc, _rating: number): boolean {
   generateHole(g.rng, c, y1 - 1, x1 - 1, y2 + 1, x2 + 1, FEAT.CLOSED);
 
   /* Decide on the pit type (nests are room type 2). */
+  g.pitTelemetry.attempts.nest++;
   const pit = setPitType(g.rng, pits, c.depth, 2);
+  g.pitTelemetry.selected.nest[pit.name] =
+    (g.pitTelemetry.selected.nest[pit.name] ?? 0) + 1;
   const allocObj = pit.objRarity;
 
   /* Prepare allocation table; pick 64 (hard) monster types. */
@@ -1286,7 +1289,10 @@ function buildNest(g: Gen, centreIn: Loc, _rating: number): boolean {
     if (!what[i]) empty = true;
   }
   table.prep(null);
-  if (empty) return false;
+  if (empty) {
+    g.pitTelemetry.empty.nest++;
+    return false;
+  }
 
   /* Increase the level rating (gen-room.c L2718). */
   c.addToMonsterRating(sizeVary + Math.trunc(pit.ave / 20));
@@ -1356,7 +1362,10 @@ function buildPit(g: Gen, centreIn: Loc, _rating: number): boolean {
   generateHole(g.rng, c, y1 - 1, x1 - 1, y2 + 1, x2 + 1, FEAT.CLOSED);
 
   /* Decide on the pit type (pits are room type 1). */
+  g.pitTelemetry.attempts.pit++;
   const pit = setPitType(g.rng, pits, c.depth, 1);
+  g.pitTelemetry.selected.pit[pit.name] =
+    (g.pitTelemetry.selected.pit[pit.name] ?? 0) + 1;
   const allocObj = pit.objRarity;
 
   /* Prepare allocation table; pick 16 (hard) monster types. */
@@ -1368,7 +1377,10 @@ function buildPit(g: Gen, centreIn: Loc, _rating: number): boolean {
     if (!what[i]) empty = true;
   }
   table.prep(null);
-  if (empty) return false;
+  if (empty) {
+    g.pitTelemetry.empty.pit++;
+    return false;
+  }
 
   /* Sort the 16 entries by level (bubble sort, stable on ties). */
   const sorted = what as MonsterRace[];

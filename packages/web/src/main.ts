@@ -1930,9 +1930,7 @@ async function activateItem(): Promise<void> {
 async function takeOffItem(): Promise<void> {
   const ref = await selectItemFrom(
     "Take off or unwield which item?",
-    /* obj_can_takeoff = !OF_STICKY (obj-util.c L794), used as the item FILTER
-     * upstream (cmd-obj.c L251), so a stickied item is never offered. */
-    (o) => !(o.flags?.has(OF.STICKY) ?? false),
+    () => true,
     { equip: true },
     "You have nothing to take off or unwield.",
   );
