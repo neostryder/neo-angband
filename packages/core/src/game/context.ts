@@ -17,7 +17,7 @@
 
 import { MON_TMD, RF, TMD } from "../generated";
 import type { GameEvents } from "../events";
-import type { MessageLog } from "../msg";
+import type { MessageLog, MessageType } from "../msg";
 import type { Loc } from "../loc";
 import { distance, locEq } from "../loc";
 import type { Connector } from "../gen/util";
@@ -683,7 +683,7 @@ export interface GameState {
    * The world-event message sink (the recall yank, the deep-descent floor
    * opening). Presentation (#25) installs it; absent, the messages drop.
    */
-  msg?: (text: string) => void;
+  msg?: (text: string, type?: MessageType) => void;
   /**
    * sound(msgt): play the sound bound to a MSG_* type (message.c sound()).
    * A front end wires it to its audio engine (the web build emits the core

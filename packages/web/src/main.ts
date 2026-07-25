@@ -138,6 +138,7 @@ import {
 import type {
   GamePack,
   GameObject,
+  MessageType,
   ObjectKind,
   PlayerCommand,
   ViewConstants,
@@ -233,7 +234,7 @@ import {
   GAME_MENU_FOOTER,
   DEATH_MENU_FOOTER,
 } from "./game-menu";
-import { MessageLog, paginateMessages } from "./messages";
+import { MessageLog, messageTypeCode, paginateMessages, pushTypedMessage } from "./messages";
 import {
   inventoryLines,
   equipmentLines,
@@ -907,6 +908,7 @@ const sidebarModeMenu: SidebarModeMenu = {
 // warning (corrupt/undecodable save) - a situation with no C analog - so that
 // the player is told when their browser-stored save could not be trusted.
 let message = loadedNote;
+let messageColor = UI_TEXT;
 let dead = false;
 
 // The message log: every message the engine emits this session, for the top
@@ -914,23 +916,34 @@ let dead = false;
 // central message sink; routing it here means command/effect messages surface
 // without each call site knowing about the shell.
 const msglog = new MessageLog();
-function say(text: string): void {
+function say(text: string, type?: MessageType): void {
   if (!text) return;
-  msglog.push(text);
+  if (state.messages) {
+    pushTypedMessage(
+      msglog,
+      text,
+      type,
+      (code) => state.messages!.typeColor(code),
+      colorToCss,
+    );
+  } else {
+    msglog.push(text, UI_TEXT);
+  }
   message = msglog.latest();
+  messageColor = msglog.latestEntry()?.color ?? UI_TEXT;
   // Mirror to the screen-reader live region (the canvas is invisible to AT).
   a11y.announce(text);
 }
-state.msg = (text: string): void => {
+state.msg = (text: string, type?: MessageType): void => {
+  const code = messageTypeCode(type);
   // Persist the message into the core's rolling log (gap 12.8, wr_messages) so
-  // it survives save/load. Additive: the event-bus routing and shell rendering
-  // below are untouched. The central sink carries no MSG_* type, so log as 0.
-  state.messages?.add(text, 0);
+  // it survives save/load, preserving the MSG_* type used by msgt().
+  state.messages?.add(text, code);
   // Route the message onto the event bus (W1.6) so mods can subscribe to
   // "message", then render it. state.events is attached below; before that
   // (early boot) the emit is simply skipped.
-  state.events?.emit("message", { msg: text, type: 0 });
-  say(text);
+  state.events?.emit("message", { msg: text, type: code });
+  say(text, type);
 };
 
 // BIRTH_MESSAGE_RECALL_BANNER (player-birth.c L1245-1249, 1.11/WP-7 handoff):
@@ -968,11 +981,14 @@ state.onMelee = (mon, result): void => {
        * is the invisible-monster / tunnel-into-monster path; obvious monsters
        * are stopped earlier by do_cmd_walk_test (core walkAction). */
       if (blow.verb === "afraid") {
-        say(`You are too afraid to attack ${name}!`);
+        /* msgt(MSG_AFRAID, ...) (player-attack.c L754): the type carries the
+         * message.prf colour, so pass it through say() and not only to sound. */
+        say(`You are too afraid to attack ${name}!`, "AFRAID");
         state.sound?.(MSG.AFRAID);
         continue;
       }
-      say(`You miss ${name}.`);
+      /* msgt(MSG_MISS, ...) (player-attack.c L766). */
+      say(`You miss ${name}.`, "MISS");
       state.sound?.(MSG.MISS);
       continue;
     }
@@ -990,7 +1006,9 @@ state.onMelee = (mon, result): void => {
       : monsterIsDestroyed(mon)
         ? "destroyed"
         : "slain";
-    say(`You have ${verb} ${name}.`);
+    /* msgt(MSG_KILL, ...) (mon-util.c kill message): carry the type so the
+     * message.prf colour applies, not just the sound. */
+    say(`You have ${verb} ${name}.`, "KILL");
     state.sound?.(MSG.KILL);
   }
 };
@@ -4991,7 +5009,7 @@ function render(targeting?: TargetingOverlay): void {
   } else {
     // The message line owns the full width of row 0 from col 0 (c_prt at 0,0),
     // above the sidebar (which starts at row 1) - not indented to the map.
-    term.print(0, 0, message.slice(0, cols - 1), UI_TEXT);
+    term.print(0, 0, message.slice(0, cols - 1), messageColor);
     renderStatusLine(mapOriginX, rows - 1, mapCols);
   }
 }
@@ -5132,6 +5150,9 @@ function waitAnyKey(): Promise<void> {
 async function pumpMessages(preLen: number): Promise<void> {
   const fresh = msglog.all().slice(preLen);
   const pages = paginateMessages(fresh, term.size().cols);
+  if (fresh.length > 0) {
+    messageColor = fresh[fresh.length - 1]?.color ?? UI_TEXT;
+  }
   if (pages.length <= 1) {
     // display_message packs the whole turn's messages onto row 0 (ui-input.c
     // L570-590), so a turn with several short messages ("You are covered in

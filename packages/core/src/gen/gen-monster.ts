@@ -125,7 +125,6 @@ export function resolvePits(reg: MonsterRegistry): ResolvedPit[] {
     const colors: number[] = [];
     for (const code of p.colors) {
       const attr = code.length > 1 ? colorTextToAttr(code) : colorCharToAttr(code);
-      if (attr < 0) throw new Error(`gen-monster: pit ${p.name}: bad color ${code}`);
       colors.push(attr);
     }
 

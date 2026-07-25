@@ -524,8 +524,9 @@ export interface LoreColorState {
  * with `!level->lore_attr_resist` (mon-lore.c L75, L183).
  */
 function loreAttrOrDark(name: string): number {
-  const a = colorTextToAttr(name);
-  return a < 0 ? COLOUR_DARK : a;
+  // z-color.c:195-201 makes an empty name the zero-filled row 28, but
+  // mon-lore.c:75/183 treats an unset lore colour as COLOUR_DARK.
+  return name === "" ? COLOUR_DARK : colorTextToAttr(name);
 }
 
 /**
@@ -533,8 +534,7 @@ function loreAttrOrDark(name: string): number {
  * default the plain spellColor/blowColor helpers above use).
  */
 function loreAttrOrWhite(name: string): number {
-  const a = colorTextToAttr(name);
-  return a < 0 ? COLOUR_WHITE : a;
+  return name === "" ? COLOUR_WHITE : colorTextToAttr(name);
 }
 
 /** spell_color (mon-lore.c L59): the danger colour of a monster spell. */

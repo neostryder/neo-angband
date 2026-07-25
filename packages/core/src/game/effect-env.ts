@@ -60,7 +60,7 @@ export interface EffectEnvDeps {
   /** The bound player timed-effect table (player/bind.ts), any order. */
   timedTable: readonly TimedEffect[];
   /** msg(): status / damage messages. */
-  onMessage?: (text: string) => void;
+  onMessage?: (text: string, msgt?: string) => void;
   /** GameEvents bus, if the caller wires effect events. */
   events?: GameEvents;
   /** z_info->food_value; defaults to state.z.foodValue. */
@@ -126,7 +126,9 @@ export function buildTimedHost(
   };
 
   const hooks: PlayerTimedHooks = {
-    ...(deps.onMessage ? { onMessage: (t: string) => deps.onMessage!(t) } : {}),
+    ...(deps.onMessage
+      ? { onMessage: (t: string, msgt: string) => deps.onMessage!(t, msgt) }
+      : {}),
     ...(deps.timedHooks ?? {}),
     ...(deps.incQueries
       ? {

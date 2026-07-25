@@ -128,9 +128,9 @@ function rangedHelper(
       let dmg = result.damage;
       if (dmg <= 0) {
         dmg = 0;
-        state.msg?.(`Your ${oName} fails to harm ${mName}.`);
+        state.msg?.(`Your ${oName} fails to harm ${mName}.`, MSG.SHOOT_HIT);
       } else {
-        state.msg?.(`Your ${oName} ${result.verb} ${mName}.`);
+        state.msg?.(`Your ${oName} ${result.verb} ${mName}.`, MSG.SHOOT_HIT);
       }
       state.sound?.(MSG.SHOOT_HIT);
 
@@ -147,8 +147,9 @@ function rangedHelper(
         if (!state.arenaLevel) {
           const dieMsg = monsterIsDestroyed(mon) ? MON_MSG.DESTROYED : MON_MSG.DIE;
           const text = formatMonsterMessage(mon, dieMsg);
-          if (text) state.msg?.(text);
-          state.sound?.(monMessageSoundType(dieMsg));
+          const type = monMessageSoundType(dieMsg);
+          if (text) state.msg?.(text, type);
+          state.sound?.(type);
           state.onPlayerKill?.(mon);
           deleteMonster(state, mon.midx);
         }

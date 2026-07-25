@@ -2,16 +2,18 @@
  * The web shell's message log: the platform half of msg.c's message buffer.
  *
  * The core emits messages through the plain `state.msg` sink and per-command
- * `env.msg` hooks (a typed msg.ts MessageLog + GameEvents bus exists in core but
- * the live turn loop does not route through it yet - that seam is a separate
- * task that also unlocks first-class typed sound). Until then this shell-side
- * log is where every message the engine emits during a turn is collected, so
- * the player sees a scrollable history instead of a single overwritten line.
+ * `env.msg` hooks. This shell-side log is where every message the engine emits
+ * during a turn is collected, with the core MSG type resolved to CSS at the
+ * presentation boundary, so the player sees a colored scrollable history
+ * instead of a single overwritten line.
  *
  * It keeps a rolling buffer (like message__buf) with duplicate run-length
  * squashing (msg "you hit it. (x3)"), surfaces the messages emitted since the
  * last render as the top status line, and feeds the full history screen.
  */
+
+import { MSG } from "@neo-angband/core";
+import type { MessageType } from "@neo-angband/core";
 
 export interface LoggedMessage {
   text: string;
@@ -22,6 +24,25 @@ export interface LoggedMessage {
 }
 
 const MAX_MESSAGES = 2048; // message_max, the upstream rolling cap.
+
+/** Resolve an engine MSG_* name or number at the presentation boundary. */
+export function messageTypeCode(type?: MessageType): number {
+  if (typeof type === "number") return type;
+  if (type === undefined) return MSG.GENERIC;
+  const key = type.replace(/^MSG_/, "") as keyof typeof MSG;
+  return MSG[key] ?? MSG.GENERIC;
+}
+
+/** Push a typed engine message with the core message.c color resolution. */
+export function pushTypedMessage(
+  log: MessageLog,
+  text: string,
+  type: MessageType | undefined,
+  typeColor: (type: number) => number,
+  colorToCss: (attr: number) => string,
+): void {
+  log.push(text, colorToCss(typeColor(messageTypeCode(type))));
+}
 
 export class MessageLog {
   private readonly buf: LoggedMessage[] = [];

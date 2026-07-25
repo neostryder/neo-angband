@@ -28,22 +28,20 @@
  *    flicker -> base fallback, otherwise static).
  */
 
-import { colorCharToAttr } from "../color";
+import { BASIC_COLORS, colorCharToAttr, MAX_COLORS } from "../color";
 
 /**
  * z-color.h BASIC_COLORS: the count of the basic color attrs (0..28). It
  * doubles as the "no color / invalid" sentinel the cycler/flicker return on a
- * miss, since it is one past the last valid attr. (This equals color.ts
- * MAX_COLORS, which is the C's BASIC_COLORS value, not the C's MAX_COLORS.)
+ * miss, since it is one past the last valid attr.
  */
-export const BASIC_COLORS = 29;
+export { BASIC_COLORS } from "../color";
 
 /**
  * z-color.h MAX_COLORS (32). The flicker table is sized with this by
- * ui_visuals_module_init: visuals_flicker_new(MAX_COLORS, 3). Kept distinct
- * from BASIC_COLORS so the selection-attr bound check matches the C exactly.
+ * ui_visuals_module_init: visuals_flicker_new(MAX_COLORS, 3).
  */
-export const VISUALS_MAX_COLORS = 32;
+export const VISUALS_MAX_COLORS = MAX_COLORS;
 
 /** ui-visuals.c VISUALS_STEPS_MAX (L35): max colors per color cycle. */
 export const VISUALS_STEPS_MAX = 32;
@@ -296,12 +294,10 @@ export function buildVisualsFlicker(
 
   for (const rec of records) {
     const selection = colorCharToAttr(rec.color?.[0] ?? "");
-    if (selection < 0) continue;
     const steps = rec["flicker-color"] ?? [];
     let colorIndex = 0;
     for (const code of steps) {
       const attr = colorCharToAttr(code[0] ?? "");
-      if (attr < 0) continue;
       table.setColor(selection, colorIndex, attr);
       colorIndex++;
     }
@@ -335,7 +331,6 @@ export function buildVisualsCycler(
     for (const code of steps) {
       if (stepIndex >= cycle.maxSteps) break; // PARSE_ERROR_TOO_MANY_ENTRIES
       const attr = colorCharToAttr(code[0] ?? "");
-      if (attr < 0) continue;
       cycle.setStep(stepIndex, attr);
       stepIndex++;
     }
