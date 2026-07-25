@@ -16,9 +16,7 @@
  *   uses a sentinel (-1,-1) that never matches; a decoy only exists once the
  *   create-decoy effect is ported.
  * - PROJECT_INFO uses square_isbelievedwall (the player's remembered map),
- *   which is not modelled; it is approximated by the real projectability. This
- *   branch is only used by targeting display (deferred UI), so it is currently
- *   unreached by ported callers.
+ *   supplied by the caller because this world module does not own knowledge.
  */
 
 import { SQUARE } from "../generated";
@@ -63,6 +61,7 @@ export function projectPath(
   grid1: Loc,
   grid2: Loc,
   flg: number,
+  believedWall: (grid: Loc) => boolean = (grid) => !c.isProjectable(grid),
 ): Loc[] {
   const gp: Loc[] = [];
 
@@ -99,10 +98,7 @@ export function projectPath(
     if (!(flg & PROJECT.THRU) && x === grid2.x && y === grid2.y) return true;
     /* Stop at non-initial wall grids (n is always >= 1 here, as upstream). */
     if (!(flg & PROJECT.ROCK)) {
-      if (!(flg & PROJECT.INFO)) {
-        if (n > 0 && !c.isProjectable(here)) return true;
-      } else if (n > 0 && !c.isProjectable(here)) {
-        /* square_isbelievedwall approximated by the real map (DEFERRED). */
+      if (n > 0 && ((flg & PROJECT.INFO) ? believedWall(here) : !c.isProjectable(here))) {
         return true;
       }
     }
@@ -187,8 +183,9 @@ export function projectable(
   grid2: Loc,
   flg: number,
   maxRange: number,
+  believedWall?: (grid: Loc) => boolean,
 ): boolean {
-  const gridG = projectPath(c, maxRange, grid1, grid2, flg);
+  const gridG = projectPath(c, maxRange, grid1, grid2, flg, believedWall);
 
   /* No grid is ever projectable from itself. */
   if (gridG.length === 0) return false;
@@ -298,6 +295,8 @@ export interface ProjectParams {
   sourceIsPlayer?: boolean;
   /** Whether the player is blind (suppresses bolt visuals). */
   blind?: boolean;
+  /** square_isbelievedwall for PROJECT_INFO (cave-square.c L901-912). */
+  believedWall?: (grid: Loc) => boolean;
 }
 
 /** The computed blast: pure geometry + damage, no side effects. */
@@ -374,7 +373,7 @@ export function computeProjection(c: Chunk, p: ProjectParams): Projection {
     let x = start.x;
 
     /* Calculate the projection path. */
-    pathGrids = projectPath(c, maxRange, start, finish, flg);
+    pathGrids = projectPath(c, maxRange, start, finish, flg, p.believedWall);
 
     /* Some beams have limited length. */
     if (flg & PROJECT.BEAM && rad > 0 && rad < pathGrids.length) {

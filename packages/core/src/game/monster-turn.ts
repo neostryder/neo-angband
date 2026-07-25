@@ -106,6 +106,7 @@ import {
   monsterIsCamouflaged,
   monsterIsInView,
   monsterIsObvious,
+  monsterIsUnique,
   monsterIsVisible,
   monsterLovesArchery,
   monsterPassesWalls,
@@ -121,7 +122,16 @@ import {
 import { monsterRevertShape } from "./mon-shape";
 import { monsterCarry } from "../mon/make";
 import { monsterWake } from "../mon/take-hit";
-import { monIncTimed, monsterEffectLevel } from "../mon/timed";
+import {
+  MON_TMD_FLG_NOMESSAGE,
+  MON_TMD_FLG_NOTIFY,
+  monClearTimed,
+  monDecTimed,
+  monIncTimed,
+  monsterEffectLevel,
+  type MonTimedMessageSink,
+} from "../mon/timed";
+import { formatMonsterMessageByName } from "./mon-message";
 import { tvalIsMoney } from "../obj/object";
 import { monMeleeAttack } from "../combat/mon-melee";
 import { reactToSlay } from "../combat/brand-slay";
@@ -130,7 +140,12 @@ import { updatePlayerObjectKnowledge } from "./known";
 import { los, squareIsSeen, squareIsView } from "../world/view";
 import { PROJECT, projectPath, projectable } from "../world/project";
 import type { GameState } from "./context";
-import { monsterSwap, squareIsPlayer, squareMonster } from "./context";
+import {
+  deleteMonster,
+  monsterSwap,
+  squareIsPlayer,
+  squareMonster,
+} from "./context";
 import { disturb } from "./player-path";
 import { floorExcise, floorPile } from "./floor";
 import { describeObject } from "./describe";
@@ -339,7 +354,7 @@ function compareMonsters(a: Monster, b: Monster): number {
 function monsterCanKill(state: GameState, mon: Monster, grid: Loc): boolean {
   const other = squareMonster(state, grid);
   if (!other) return true;
-  if (other.race.flags.has(RF.UNIQUE)) return false;
+  if (monsterIsUnique(other)) return false;
   return mon.race.flags.has(RF.KILL_BODY) && compareMonsters(mon, other) > 0;
 }
 
@@ -435,6 +450,10 @@ export function getMoveFindRange(mon: Monster, state: GameState): void {
     mon.minRange = 1;
   } else {
     mon.minRange = 1;
+
+    /* mon-move.c L232: taunt forces close-in movement and returns before
+     * level/health range heuristics or preferred-range selection. */
+    if ((p.timed[TMD.TAUNT] ?? 0) > 0) return;
 
     const pLev = p.lev;
     const mLev = mon.race.level + (mon.midx & 0x08) + 25;
@@ -1237,8 +1256,9 @@ function monsterTurnTryPush(
 
   if (killOk) {
     if (victim) {
-      state.monsters[victim.midx] = null;
-      state.chunk.setMon(next, 0);
+      /* mon-move.c L1360: delete_monster_idx clears groups, targets,
+       * tracking, occupancy and the held/drop bookkeeping seam. */
+      deleteMonster(state, victim.midx);
     }
   }
   monsterSwap(state, mon.grid, next);
@@ -1588,8 +1608,9 @@ export function monsterTurn(mon: Monster, state: GameState): void {
   /* Out of options - monster is paralysed by fear (converts fear to hold). */
   if (!didSomething && (mon.mTimed[MON_TMD.FEAR] ?? 0)) {
     const amount = mon.mTimed[MON_TMD.FEAR] ?? 0;
-    mon.mTimed[MON_TMD.FEAR] = 0;
-    mon.mTimed[MON_TMD.HOLD] = (mon.mTimed[MON_TMD.HOLD] ?? 0) + amount;
+    const sink = monsterTimedMessage(state);
+    monClearTimed(state.rng, mon, MON_TMD.FEAR, MON_TMD_FLG_NOMESSAGE);
+    monIncTimed(state.rng, mon, MON_TMD.HOLD, amount, MON_TMD_FLG_NOTIFY, sink);
   }
 
   /* If we see an unaware monster do something, become aware of it
@@ -1606,6 +1627,13 @@ export function monsterTurn(mon: Monster, state: GameState): void {
  * monster outright via monster_wake (which draws its own randint0(100)); only
  * otherwise does the noise-notice reduction run.
  */
+function monsterTimedMessage(state: GameState): MonTimedMessageSink {
+  return (mon, note) => {
+    const text = formatMonsterMessageByName(mon, note);
+    if (text) state.msg?.(text);
+  };
+}
+
 function monsterReduceSleep(mon: Monster, state: GameState): void {
   const stealth = state.actor.stealth;
   const playerNoise = Math.pow(2, 30 - stealth);
@@ -1626,15 +1654,22 @@ function monsterReduceSleep(mon: Monster, state: GameState): void {
     if (localNoise > 0 && localNoise < 50) {
       sleepReduction = Math.trunc(100 / localNoise);
     }
-    const cur = mon.mTimed[MON_TMD.SLEEP] ?? 0;
-    const next = Math.max(0, cur - sleepReduction);
-    mon.mTimed[MON_TMD.SLEEP] = next;
+    monDecTimed(
+      state.rng,
+      mon,
+      MON_TMD.SLEEP,
+      sleepReduction,
+      MON_TMD_FLG_NOTIFY,
+      monsterTimedMessage(state),
+    );
+    const next = mon.mTimed[MON_TMD.SLEEP] ?? 0;
 
     /* Update knowledge (mon-move.c L1771): a watched sleeper that stirs
      * is "ignored", one that wakes is "woken". */
     if (monsterIsObvious(mon)) {
       const lore = getLore(state.lore, mon.race);
       loreCountU8(lore, next > 0 ? "ignore" : "wake");
+      loreUpdate(mon.race, lore);
     }
   }
 }
@@ -1653,26 +1688,35 @@ export function processMonsterTimed(mon: Monster, state: GameState): boolean {
     mon.mflag.on(MFLAG.AWARE);
   }
 
-  const dec = (idx: number): void => {
-    const v = mon.mTimed[idx] ?? 0;
-    if (v > 0) mon.mTimed[idx] = v - 1;
+  const sink = monsterTimedMessage(state);
+  const shape = {
+    change: (): boolean => false,
+    revert: (m: Monster): boolean => monsterRevertShape(state, m),
   };
-  dec(MON_TMD.FAST);
-  dec(MON_TMD.SLOW);
-  dec(MON_TMD.HOLD);
-  dec(MON_TMD.DISEN);
-  dec(MON_TMD.STUN);
-  dec(MON_TMD.CONF);
-  if (mon.mTimed[MON_TMD.CHANGED] ?? 0) {
-    dec(MON_TMD.CHANGED);
-    /* The shapechange running out reverts the form (mon-timed.c L202). */
-    if ((mon.mTimed[MON_TMD.CHANGED] ?? 0) === 0) {
-      monsterRevertShape(state, mon);
+  /* mon-move.c L1800-1826: flag-0 decrements precede the notifying
+   * stun/confusion/shape decrements, all through mon_dec_timed. */
+  for (const idx of [MON_TMD.FAST, MON_TMD.SLOW, MON_TMD.HOLD, MON_TMD.DISEN]) {
+    if ((mon.mTimed[idx] ?? 0) > 0) monDecTimed(state.rng, mon, idx, 1);
+  }
+  for (const idx of [MON_TMD.STUN, MON_TMD.CONF]) {
+    if ((mon.mTimed[idx] ?? 0) > 0) {
+      monDecTimed(state.rng, mon, idx, 1, MON_TMD_FLG_NOTIFY, sink);
     }
+  }
+  if ((mon.mTimed[MON_TMD.CHANGED] ?? 0) > 0) {
+    monDecTimed(
+      state.rng,
+      mon,
+      MON_TMD.CHANGED,
+      1,
+      MON_TMD_FLG_NOTIFY,
+      sink,
+      shape,
+    );
   }
   if (mon.mTimed[MON_TMD.FEAR] ?? 0) {
     const d = state.rng.randint1(Math.trunc(mon.race.level / 10) + 1);
-    mon.mTimed[MON_TMD.FEAR] = Math.max(0, (mon.mTimed[MON_TMD.FEAR] ?? 0) - d);
+    monDecTimed(state.rng, mon, MON_TMD.FEAR, d, MON_TMD_FLG_NOTIFY, sink);
   }
 
   if ((mon.mTimed[MON_TMD.HOLD] ?? 0) || (mon.mTimed[MON_TMD.COMMAND] ?? 0)) {

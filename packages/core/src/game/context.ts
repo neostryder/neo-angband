@@ -20,6 +20,7 @@ import type { GameEvents } from "../events";
 import type { MessageLog, MessageType } from "../msg";
 import type { Loc } from "../loc";
 import { distance, locEq } from "../loc";
+import { los } from "../world/view";
 import type { Connector } from "../gen/util";
 import type { Rng } from "../rng";
 import type { Chunk } from "../world/chunk";
@@ -28,6 +29,7 @@ import type { Monster } from "../mon/monster";
 import type { MeleeAttack, PlayerCombatState } from "../combat/melee";
 import type { DefenderState } from "../combat/mon-melee";
 import type { GameObject } from "../obj/object";
+import type { Effect } from "../effects/effect";
 import type { Brand, Slay } from "../obj/types";
 import type { FlavorAwareDeps, FlavorKnowledge } from "../obj/knowledge";
 import type { Gear } from "./gear";
@@ -36,6 +38,16 @@ import { NORMAL_ENERGY } from "./energy";
 /* Value import is safe: mon-group's imports from this module are type-only,
  * so there is no runtime cycle. */
 import { monsterRemoveFromGroups } from "./mon-group";
+import {
+  becomeAware,
+  moveMimickedObject,
+  updateMon,
+} from "./known";
+import {
+  monsterIsCamouflaged,
+  monsterIsInView,
+  monsterIsMimicking,
+} from "../mon/predicate";
 
 /**
  * z_info fields the turn loop and monster AI read (defaults are the shipped
@@ -477,6 +489,8 @@ export interface GameState {
   nextCommand: () => PlayerCommand | null;
   /** update_view: refresh player FOV after the player moves. */
   updateFov?: (state: GameState) => void;
+  /** Renderer-neutral EF_SELECT chooser; the host owns the menu renderer. */
+  effectChooser?: (first: Effect | null, count: number) => number;
   /**
    * make_ranged_attack: a monster attempts a spell / breath on its turn,
    * returning true if it spent the turn casting. Installed by
@@ -906,11 +920,40 @@ export function monsterSwap(state: GameState, grid1: Loc, grid2: Loc): void {
   const pgrid = state.actor.grid;
   c.setMon(grid1, m2);
   c.setMon(grid2, m1);
-  const mon1 = m1 > 0 ? state.monsters[m1] : null;
-  const mon2 = m2 > 0 ? state.monsters[m2] : null;
-  if (mon1) mon1.grid = grid2;
-  if (mon2) mon2.grid = grid1;
-  /* Player at grid1 -> grid2 (mon-util.c:609-612). */
+  const mon1 = m1 > 0 ? state.monsters[m1] ?? null : null;
+  const mon2 = m2 > 0 ? state.monsters[m2] ?? null : null;
+
+  /* mon-util.c L566-677: swap visibility, camouflage/mimicry, lighting,
+   * distances, monster redraw and square-light updates as one operation. */
+  let lightChanged = false;
+  const moved = (
+    mon: Monster | null,
+    from: Loc,
+    to: Loc,
+    other: number,
+  ): void => {
+    if (!mon) return;
+    if (monsterIsCamouflaged(mon)) {
+      const witnessed =
+        monsterIsInView(mon) ||
+        (other >= 0 ? los(c, state.actor.grid, to) : los(c, from, to));
+      if (witnessed) {
+        (state.becomeAware ?? ((m: Monster) => becomeAware(state, m)))(mon);
+      } else if (monsterIsMimicking(mon)) {
+        moveMimickedObject(state, mon, from, to);
+      }
+    }
+    /* C assigns mon->grid only after the camouflage witness/mimic update
+     * (mon-util.c L591-606 and L636-651). */
+    mon.grid = to;
+    updateMon(state, mon, true);
+    if (mon.race.light !== 0) lightChanged = true;
+  };
+  moved(mon1, grid1, grid2, m2);
+  moved(mon2, grid2, grid1, m1);
+  /* The player half of the swap runs AFTER the monster moves so the camouflage
+   * witness above still sees the player's pre-swap position, as the C does.
+   * Player at grid1 -> grid2 (mon-util.c:609-612). */
   if (m1 < 0) {
     state.actor.grid = grid2;
     state.onPlayerLeaving?.(state, pgrid, state.actor.grid);
@@ -919,6 +962,8 @@ export function monsterSwap(state: GameState, grid1: Loc, grid2: Loc): void {
     state.actor.grid = grid1;
     state.onPlayerLeaving?.(state, pgrid, state.actor.grid);
   }
+  updateMonsterDistances(state);
+  if (lightChanged) state.updateFov?.(state);
 }
 
 /**
