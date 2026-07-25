@@ -38,8 +38,9 @@ const objPack: ObjPackJson = {
 const namesJson = loadJson<{
   records: Array<{ section: number; word: string[] }>;
 }>("names");
+/* Match bindCore: names.txt words are prepended in C; reverse per section. */
 const nameSections = new Map<number, string[]>();
-for (const rec of namesJson.records) nameSections.set(rec.section, rec.word);
+for (const rec of namesJson.records) nameSections.set(rec.section, [...rec.word].reverse());
 
 function buildReg(): ObjRegistry {
   return new ObjRegistry(objPack);

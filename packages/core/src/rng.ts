@@ -396,17 +396,24 @@ export class Rng {
     };
   }
 
-  /** Restore a snapshot taken with getState(). */
+  /**
+   * Restore a snapshot taken with getState() (or a savefile rd_randomizer).
+   * Matches load.c L388-415: state_i is reduced modulo RAND_DEG and
+   * Rand_quick is forced false so the WELL stream continues (never the
+   * simple LCRNG). Fixed/fixval are not part of the C save block; they
+   * remain as restored for the port's test/debug seams only when present.
+   */
   setState(s: RngState): void {
     if (s.state.length !== RAND_DEG) {
       throw new RangeError(
         `RngState.state must have ${RAND_DEG} entries, got ${s.state.length}`,
       );
     }
-    this.quick = s.quick;
     this.value = s.value >>> 0;
     this.state = Uint32Array.from(s.state);
-    this.stateI = s.stateI;
+    /* for safety, make sure state_i < RAND_DEG (load.c L399-400) */
+    this.stateI = ((s.stateI % RAND_DEG) + RAND_DEG) % RAND_DEG;
+    this.quick = false;
     this.fixed = s.fixed;
     this.fixval = s.fixval;
   }

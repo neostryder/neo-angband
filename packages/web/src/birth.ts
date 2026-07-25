@@ -136,6 +136,12 @@ export interface BirthDeps {
 }
 
 export interface BirthOpts {
+  /**
+   * Shared game RNG for random birth choices (ui-birth.c randint0 at L465/678/
+   * 696/842) and the standard roller. When omitted a throwaway Rng(1) is used
+   * (tests); the shell should pass the same seed-backed stream as startGame.
+   */
+  rng?: Rng;
   /** BIRTH_QUICKSTART: the previous character's choices, offered as stage 0
    * only when a prior character exists (quickstart_allowed). `stats` is the
    * prior character's birth stats (save_roller_data); when present, quick-start
@@ -1200,11 +1206,11 @@ export async function runBirth(
   // The edited background (BIRTH_HISTORY_CHOICE), once the history stage runs.
   let historyText: string | null = null;
 
-  // The birth shell's one RNG source: the standard roller and the '*'/'@'
-  // random choices. Seeded nondeterministically since these are interactive,
-  // player-driven picks; the game seed (dungeon, drops) is unaffected because
-  // the accepted stats ride the choice explicitly.
-  const rollRng = new Rng(((Date.now() >>> 0) ^ 0x9e3779b9) >>> 0);
+  // The birth shell's RNG: standard roller and the '*'/'@' random choices.
+  // Must be the shared game stream (Decision 6.2 / ui-birth.c L678), never a
+  // Date.now-seeded generator. Accepted stats still ride the choice explicitly
+  // into startGame; the draw count/order on this stream matches C.
+  const rollRng = opts.rng ?? new Rng(1);
 
   // Registry-backed info (race/class ability names + the full preview sheet).
   // Absent, the help blocks still show stat + skill data (computable from the

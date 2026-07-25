@@ -131,6 +131,7 @@ import { installSteal } from "../game/steal";
 import type { ChestCmdDeps } from "../game/chest";
 import {
   calcUnlockingChance,
+  installTrap,
   installTraps,
   placeTrap,
   squareDoorPower,
@@ -1589,6 +1590,11 @@ interface LevelContent {
   monsters: readonly { grid: Loc; mon: import("../mon/monster").Monster }[];
   objects: readonly { grid: Loc; obj: import("../obj/object").GameObject }[];
   trapGrids: readonly Loc[];
+  /**
+   * Kind+power chosen at generation (place_trap). Preferred over re-picking
+   * from trapGrids so the gen-stream draws are not spent twice (trap.c:356).
+   */
+  traps?: readonly { grid: Loc; tidx: number; power: number }[];
   lockedDoors: readonly { grid: Loc; power: number }[];
   depth: number;
 }
@@ -1636,11 +1642,19 @@ function populateFromLevel(
     floorCarry(state, po.grid, po.obj);
   }
 
-  // Instantiate the generation-marked traps on the live cave (the random
-  // pick happens here, exactly as place_trap) and the rolled door locks.
+  // Instantiate generation-marked traps on the live cave. When kind+power were
+  // chosen at gen time (level.traps), install without a second pick/power draw
+  // (trap.c:356-394). Fall back to place_trap(-1) only for bare-grid paths that
+  // never threaded trapKinds into the generator.
   if (trapDeps) {
-    for (const grid of level.trapGrids) {
-      placeTrap(state, grid, -1, level.depth, trapDeps);
+    if (level.traps && level.traps.length > 0) {
+      for (const t of level.traps) {
+        installTrap(state, t.grid, t.tidx, t.power, trapDeps);
+      }
+    } else {
+      for (const grid of level.trapGrids) {
+        placeTrap(state, grid, -1, level.depth, trapDeps);
+      }
     }
     for (const door of level.lockedDoors) {
       squareSetDoorLock(state, door.grid, door.power, trapDeps);
@@ -2062,6 +2076,7 @@ function makeChangeLevel(
         monsters: g.monsters,
         objects: g.objects,
         trapGrids: [...g.trapGrids].map((i) => iToGrid(i, g.c.width)),
+        traps: g.traps,
         lockedDoors: g.lockedDoors,
         depth,
       },
@@ -2435,6 +2450,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       monsters: booted.monsters,
       objects: booted.objects,
       trapGrids: booted.trapGrids,
+      traps: booted.traps,
       lockedDoors: booted.lockedDoors,
       depth: booted.depth,
     },
@@ -3065,6 +3081,7 @@ export function loadGame(
     monsters: [],
     objects: [],
     trapGrids: [],
+    traps: [],
     lockedDoors: [],
     rng,
     registries: reg,
