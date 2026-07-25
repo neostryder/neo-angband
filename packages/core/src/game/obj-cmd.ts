@@ -607,12 +607,22 @@ export function playerGetResumeNormalShape(
  * player_confuse_dir (player-util.c): confusion randomises the direction
  * 75% of the time (always for "no direction").
  */
-export function playerConfuseDir(state: GameState, dir: number): number {
+export function playerConfuseDir(
+  state: GameState,
+  dir: number,
+  too = false,
+): number {
   if ((state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) {
     let newDir = dir;
     if (dir === 5 || state.rng.randint0(100) < 75) {
       /* Random direction. */
       newDir = DDD[state.rng.randint0(8)] as number;
+    }
+    /* player-util.c L1363-1366: running is refused after the same confusion
+     * roll, with the C's message. */
+    if (too) {
+      state.msg?.("You are too confused.");
+      return dir;
     }
     /* player-util.c L1369: emit "You are confused." and report the change only
      * when the direction actually changed (a same-direction roll is silent).

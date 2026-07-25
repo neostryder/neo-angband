@@ -11,7 +11,7 @@
  *   attack (player-attack.c:1023-1025).
  */
 import { describe, expect, it } from "vitest";
-import { MON_TMD, TMD } from "../generated";
+import { MFLAG, MON_TMD, TMD } from "../generated";
 import { loc } from "../loc";
 import type { PlayerState } from "../player/calcs";
 import {
@@ -156,6 +156,9 @@ describe("delayed flee message (player-attack.c:1023-1025, gap 2.4)", () => {
     state.rng.randFix(100);
     /* 100/1000 hp: the surviving monster fails its low-hp fear save. */
     const mon = addMon(state, makeRace({ ac: 0 }), loc(16, 10), { hp: 1000 });
+    /* C only emits the delayed flee message when monster_is_visible(mon)
+     * (player-attack.c:1023-1025); make this fixture explicitly visible. */
+    mon.mflag.on(MFLAG.VISIBLE);
     mon.hp = 100;
 
     walkAction(state, { code: "walk", dir: 6 });

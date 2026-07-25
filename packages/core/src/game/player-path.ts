@@ -28,12 +28,11 @@
  * (find_path, prepare_pfdistances, path_nearest_known / _unknown - the A*
  * with door and rubble penalties) and the pathfinding branch of run_step
  * (upkeep->steps / step_count, the automatic open-door / tunnel-rubble
- * command pushes); the OF_TRAP_IMMUNE half of player_is_trapsafe
- * (#13 equipment flags); the running torch-radius recalculation (PU_TORCH)
+ * command pushes); the running torch-radius recalculation (PU_TORCH)
  * and the run-into-trap-disarms nuance ride the light / trap layers.
  */
 
-import { TF, TMD } from "../generated";
+import { TF, TRF, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { DDD, DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc";
 import { SKILL } from "../player/types";
@@ -41,9 +40,16 @@ import { monsterIsObvious, monsterIsVisible } from "../mon/predicate";
 import type { GameState, PlayerCommand, RunState } from "./context";
 import { squareMonster } from "./context";
 import { squareIsKnown } from "./known";
-import { squareIsVisibleTrap, squareIsWebbed } from "./trap";
-import { calcUnlockingChance } from "./trap";
+import {
+  calcUnlockingChance,
+  playerIsTrapsafe,
+  squareIsVisibleTrap,
+  squareIsWebbed,
+  squareRemoveTrap,
+  squareTrap,
+} from "./trap";
 import { DIGGING, calcDiggingChances } from "./cave-cmd";
+import { playerConfuseDir } from "./obj-cmd";
 import { walkAction } from "./player-turn";
 import type { ActionRegistry } from "./player-turn";
 
@@ -54,11 +60,6 @@ const CYCLE: readonly number[] = [
 
 /** Map each direction into the middle of cycle[] (player-path.c chome[]). */
 const CHOME: readonly number[] = [0, 8, 9, 10, 7, 0, 11, 6, 5, 4];
-
-/** player_is_trapsafe (the OF_TRAP_IMMUNE equipment half is #13, deferred). */
-function playerIsTrapsafe(state: GameState): boolean {
-  return (state.actor.player.timed[TMD.TRAPSAFE] ?? 0) > 0;
-}
 
 /** Ensure the run state exists (created lazily on the first run). */
 function ensureRun(state: GameState): RunState {
@@ -876,6 +877,23 @@ export function runStep(state: GameState, dir: number): number {
 
 /** The run command: start (a real direction) or continue (dir 0) a run. */
 export function runAction(state: GameState, cmd: PlayerCommand): number {
+  /* do_cmd_run clears a web and spends a full turn before checking confusion
+   * (cmd-cave.c:1368-1381). */
+  const webbed = squareTrap(state, state.actor.grid).filter((trap) =>
+    trap.kind.flags.has(TRF.WEB),
+  );
+  if (webbed.length > 0) {
+    state.msg?.("You clear the web.");
+    for (const trap of webbed) squareRemoveTrap(state, state.actor.grid, trap);
+    return state.z.moveEnergy;
+  }
+
+  /* Confused run refusal follows the web branch, preserving its confusion RNG
+   * draw and message (cmd-cave.c:1359-1366). */
+  if ((state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) {
+    playerConfuseDir(state, cmd.dir ?? 0, true);
+    return 0;
+  }
   return runStep(state, cmd.dir ?? 0);
 }
 

@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { HIST, MFLAG, RF, TMD } from "../generated";
+import { HIST, MFLAG, OF, RF, TMD } from "../generated";
 import { FlagSet } from "../bitflag";
 import { MFLAG_SIZE, RF_SIZE } from "../mon/types";
 import { runGameLoop, LOOP_STATUS } from "../game/loop";
+import { processPlayer } from "../game/player-turn";
 import type { PlayerCommand } from "../game/context";
 import { startGame } from "./game";
 import type { GamePack } from "./game";
@@ -14,6 +15,8 @@ import { floorCarry } from "../game/floor";
 import { objectPrep } from "../obj/make";
 import { squareIsKnown } from "../game/known";
 import { loc } from "../loc";
+import { bindTraps, lookupTrap } from "../world/trap";
+import { placeTrap, squareIsPlayerTrap } from "../game/trap";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -193,6 +196,50 @@ describe("startGame (new-game assembly)", () => {
         expect(obj.grid).not.toBeNull();
       }
     }
+  });
+
+  it("live step-on-trap path honors OF_TRAP_IMMUNE equipment", () => {
+    const { state, registry } = startGame(pack, { seed: 123, depth: 1 });
+    const handle = state.actor.player.equipment.find((h) => h > 0);
+    expect(handle).toBeDefined();
+    const worn = gearGet(state.gear, handle!);
+    expect(worn).not.toBeNull();
+
+    /* Make a worn object trap-immune, then refresh p->state as equipment
+     * changes do in the live session. */
+    worn!.flags.on(OF.TRAP_IMMUNE);
+    state.updateBonuses?.();
+    expect(state.playerState?.flags.has(OF.TRAP_IMMUNE)).toBe(true);
+
+    const dirs = [
+      [6, 1, 0],
+      [4, -1, 0],
+      [2, 0, 1],
+      [8, 0, -1],
+    ] as const;
+    const step = dirs
+      .map(([dir, dx, dy]) => ({
+        dir,
+        grid: { x: state.actor.grid.x + dx, y: state.actor.grid.y + dy },
+      }))
+      .find(({ grid }) => state.chunk.inBounds(grid) && state.chunk.isPassable(grid));
+    expect(step).toBeDefined();
+
+    const kinds = bindTraps(pack.trap ?? []);
+    const pit = lookupTrap(kinds, "pit");
+    expect(pit).not.toBeNull();
+    placeTrap(state, step!.grid, pit!.tidx, 5, { kinds });
+    state.actor.player.chp = 100;
+    state.nextCommand = (): PlayerCommand => ({ code: "walk", dir: step!.dir });
+
+    processPlayer(state, registry);
+
+    /* This is the installed session onPlayerMoved -> hitTrap path: the player
+     * steps onto the armed pit, stays unharmed, and the trap is merely learned
+     * / revealed rather than fired. */
+    expect(state.actor.grid).toEqual(step!.grid);
+    expect(state.actor.player.chp).toBe(100);
+    expect(squareIsPlayerTrap(state, step!.grid)).toBe(true);
   });
 
   it("wires state.becomeAware to the real become_aware (mimic reveal)", () => {
