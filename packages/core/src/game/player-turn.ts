@@ -33,7 +33,7 @@ import { monsterIsCamouflaged, monsterIsObvious } from "../mon/predicate";
 import { monsterWake } from "../mon/take-hit";
 import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed";
 import { equipLearnFlag, equipLearnOnMeleeAttack } from "../obj/knowledge";
-import { playerClearTimed } from "../player/timed";
+import { playerClearTimed, playerTimedGradeEq } from "../player/timed";
 import type { GameState, PlayerCommand } from "./context";
 import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context";
 import { gearGet } from "./gear";
@@ -490,6 +490,15 @@ export function holdAction(state: GameState, _cmd: PlayerCommand): number {
 }
 
 /**
+ * sleep (do_cmd_sleep, cmd-cave.c:1675): spend a full turn doing nothing.
+ * process_player injects CMD_SLEEP when the player is paralyzed or Knocked Out
+ * (game-world.c:965-968).
+ */
+export function sleepAction(state: GameState, _cmd: PlayerCommand): number {
+  return state.z.moveEnergy;
+}
+
+/**
  * descend / ascend: signal a level change (player->upkeep->generate_level).
  * The actual level generation and depth change are DEFERRED to the world
  * integration; the loop observes the signal and clears it.
@@ -542,6 +551,7 @@ export function createDefaultRegistry(): ActionRegistry {
   reg.register("jump", jumpAction);
   reg.register("hold", holdAction);
   reg.register("rest", holdAction);
+  reg.register("sleep", sleepAction);
   reg.register("descend", descendAction);
   reg.register("ascend", ascendAction);
   for (const code of STUBBED_COMMANDS) reg.register(code, stubAction);
@@ -587,6 +597,22 @@ export function processPlayer(
   let energyUsed = 0;
   do {
     if (state.isDead || state.generateLevel) break;
+
+    /* Paralyzed or Knocked Out player gets no turn (game-world.c:965-968):
+     * inject CMD_SLEEP so a full-energy no-op is spent and nextCommand is
+     * never consulted. Ordering matches C: after the detect-ore block (not
+     * yet in the port), before command prep / cmdq_pop. */
+    {
+      const p = state.actor.player;
+      const stunEff = state.world?.timedTable?.[TMD.STUN];
+      const knockedOut =
+        stunEff !== undefined &&
+        playerTimedGradeEq(p, stunEff, "Knocked Out");
+      if ((p.timed[TMD.PARALYZED] ?? 0) > 0 || knockedOut) {
+        if (!state.cmdQueue) state.cmdQueue = [];
+        state.cmdQueue.push({ code: "sleep" });
+      }
+    }
 
     /* Drain the internal queue (cmdq) first - self-continuing commands like
      * running push their follow-up there - then ask the injected provider. */

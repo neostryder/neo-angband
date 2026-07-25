@@ -746,7 +746,9 @@ export async function runStore(
      * shops only (the Home retrieves via do_cmd_retrieve, no comment). Logged so
      * the "You bought ..." line remains the message shown on row 0. */
     if (!isHome && flavorOneIn(3)) say(flavorPick(COMMENT_ACCEPT));
-    storeSay(`You bought ${bought} for ${result.price} gold.`);
+    /* do_cmd_retrieve is free and silent about gold; real shops report the sale. */
+    if (isHome) storeSay(`You have ${bought}.`);
+    else storeSay(`You bought ${bought} for ${result.price} gold.`);
     refreshStock();
   };
 

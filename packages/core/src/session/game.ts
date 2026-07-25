@@ -155,8 +155,16 @@ import { markNoscore, NOSCORE } from "../game/wizard";
 import type { WizardDeps } from "../game/wizard";
 import { createTownStores, storeUpdate, storeWillBuy } from "../store/store";
 import type { Store, StoreMaintContext } from "../store/store";
-import { storeBuy, storeSell, storeSellFloor } from "../store/transact";
+import {
+  homeCarry,
+  homeRetrieve,
+  homeStash,
+  storeBuy,
+  storeSell,
+  storeSellFloor,
+} from "../store/transact";
 import type { BuyResult, SellResult } from "../store/transact";
+import { storeCheckNum } from "../store/store";
 import { priceItem } from "../store/price";
 import {
   formatMonsterMessage,
@@ -184,7 +192,14 @@ import type { MakeDeps } from "../obj/make";
 import { monsterDeath, installNonplayerHitDeps } from "../game/mon-death";
 import type { MonsterDeathDeps } from "../game/mon-death";
 import type { ProjectFeatEnv } from "../game/project-feat";
-import { newGear, outfitPlayer, gearGet, calcInventory, minusAc as applyMinusAc } from "../game/gear";
+import {
+  newGear,
+  outfitPlayer,
+  gearGet,
+  calcInventory,
+  minusAc as applyMinusAc,
+  objectCopyAmt,
+} from "../game/gear";
 import { objectValue as computeObjectValue } from "../obj/value";
 import type { GameObject, CurseTimedFoil } from "../obj/object";
 import { buildCurseTimedFoil } from "../obj/object";
@@ -2523,11 +2538,52 @@ function makeStoreApi(
   });
   return {
     buy: (store, obj, amt): BuyResult => {
+      /* do_cmd_retrieve (store.c:1783): Home Take is free - no price, no
+       * ORIGIN_STORE, no shuffle/maint RNG. Reuse the existing homeRetrieve. */
+      if (store.feat === FEAT.HOME) {
+        const r = homeRetrieve(store, obj, amt, state.gear, reg.constants);
+        if (!r.ok) {
+          return {
+            ok: false,
+            failure: r.failure === "no-room" ? "no-room" : "not-in-stock",
+          };
+        }
+        refreshQuiver();
+        return r.obj
+          ? { ok: true, price: 0, bought: r.obj }
+          : { ok: true, price: 0 };
+      }
       const result = storeBuy(storeCtx(), store, obj, amt, state.actor.player, state.gear, txnKnow(obj));
       if (result.ok) refreshQuiver();
       return result;
     },
     sell: (store, handle, amt): SellResult => {
+      /* do_cmd_stash (store.c:2009): Home Drop is free, pack-style stacking,
+       * no value gate / note-fuel-timeout rewrite. Reuse homeStash/homeCarry. */
+      if (store.feat === FEAT.HOME) {
+        const r = homeStash(
+          store,
+          handle,
+          amt,
+          state.actor.player,
+          state.gear,
+          reg.constants,
+        );
+        if (!r.ok) {
+          return {
+            ok: false,
+            failure: r.failure ?? "no-item",
+          };
+        }
+        refreshQuiver();
+        return {
+          ok: true,
+          price: 0,
+          ...(r.obj ? { sold: r.obj } : {}),
+          ...(r.noneLeft !== undefined ? { noneLeft: r.noneLeft } : {}),
+          carried: true,
+        };
+      }
       const obj = state.gear.store.get(handle);
       const know = obj
         ? txnKnow(obj)
@@ -2543,6 +2599,24 @@ function makeStoreApi(
       return result;
     },
     sellFloor: (store, obj, amt): SellResult => {
+      /* Home Drop from the floor pile: room check, detach, home_carry. */
+      if (store.feat === FEAT.HOME) {
+        const n = Math.min(amt, obj.number);
+        const dummy = objectCopyAmt(obj, n);
+        if (!storeCheckNum(store, dummy)) {
+          return { ok: false, failure: "no-room" };
+        }
+        const { usable, noneLeft } = floorObjectForUse(state, obj, n);
+        homeCarry(store, usable, reg.constants);
+        refreshQuiver();
+        return {
+          ok: true,
+          price: 0,
+          sold: usable,
+          noneLeft,
+          carried: true,
+        };
+      }
       const result = storeSellFloor(
         storeCtx(),
         store,
