@@ -35,7 +35,7 @@
 
 import type { Loc } from "../loc";
 import { DDGRID, locSum } from "../loc";
-import { FEAT, ORIGIN, TF, TMD } from "../generated";
+import { FEAT, ORIGIN, TF, TMD, TRF } from "../generated";
 import { SKILL } from "../player/types";
 import { squareIsSeen } from "../world/view";
 import { monsterIsCamouflaged } from "../mon/predicate";
@@ -53,6 +53,15 @@ import { floorCarry } from "./floor";
 import { playerConfuseDir } from "./obj-cmd";
 import { attackMonster } from "./player-turn";
 import type { ActionRegistry } from "./player-turn";
+import {
+  disarmAux,
+  playerIsTrapsafe,
+  squareIsDisarmableTrap,
+  squareIsWebbed,
+  squareRemoveAllTraps,
+  squareTrap,
+  type TrapDeps,
+} from "./trap";
 
 /** Hooks for messages and unported subsystems; all optional. */
 export interface CaveCmdEnv {
@@ -64,6 +73,12 @@ export interface CaveCmdEnv {
    * square_open_door's lock removal, #21). Returns whether it opened.
    */
   pickLock?: (grid: Loc) => boolean;
+  /**
+   * player_is_trapsafe (player-util.c:1073-1077): skip disarm-on-walk when
+   * true (cmd-cave.c:1311-1312). Default: trap.ts playerIsTrapsafe (timed +
+   * derived/equipment OF_TRAP_IMMUNE). Override only for tests.
+   */
+  isTrapsafe?: (state: GameState) => boolean;
 }
 
 /** What the cave commands need beyond the state. */
@@ -76,6 +91,11 @@ export interface CaveCmdDeps {
    * skipped entirely (doors and floor traps behave exactly as before).
    */
   chestDeps?: ChestCmdDeps;
+  /**
+   * Live trap deps for disarm-on-walk (cmd-cave.c:1079-1083). Absent, the
+   * walk wrapper never auto-disarms (step triggers as before).
+   */
+  trapDeps?: TrapDeps;
 }
 
 /* ------------------------------------------------------------------ *
@@ -607,18 +627,30 @@ export function installCaveCommands(
   const chestDeps = deps.chestDeps;
 
   /*
-   * move_player's bump-to-open (cmd-cave.c L1079-1083): walking (or jumping)
-   * into a known closed door opens it via do_cmd_alter_aux instead of a silent
-   * no-op - the primary way players open doors. Only the closed-door case is
-   * intercepted here; a monster in the doorway, an ordinary step, autopickup
-   * and wall/rubble bumps stay with the base walk/jump action (delegated). A
-   * disarmable trap under a walking player (disarm-on-walk) and the standing-
-   * in-a-web clear are separate move_player branches still routed through the
-   * base action - tracked, not silently dropped.
+   * move_player's alter branch (cmd-cave.c L1079-1083): walking (or jumping)
+   * into a known closed door opens it via do_cmd_alter_aux; walking onto a
+   * known disarmable trap (when not trapsafe) auto-disarms. Jump uses
+   * disarm=false so only the door half applies. Web clear is in walkAction.
    */
+  const trapDeps = deps.trapDeps;
+  /* Single C player_is_trapsafe (player-util.c:1073-1077) via trap.ts. */
+  const isTrapsafe = env.isTrapsafe ?? playerIsTrapsafe;
+
   const bumpOpen =
-    (prior: ReturnType<typeof registry.get>) =>
+    (prior: ReturnType<typeof registry.get>, allowDisarm: boolean) =>
     (state: GameState, cmd: PlayerCommand): number => {
+      /*
+       * do_cmd_walk / jump web clear (cmd-cave.c:1288-1297) runs BEFORE
+       * confusion so a webbed player spends no confuse-dir draw.
+       */
+      if (squareIsWebbed(state, state.actor.grid)) {
+        env.msg?.("You clear the web.");
+        const web = squareTrap(state, state.actor.grid).find(
+          (t) => t.kind.flags.has(TRF.WEB) || t.kind.desc === "web",
+        );
+        squareRemoveAllTraps(state, state.actor.grid, web?.tidx ?? -1);
+        return state.z.moveEnergy;
+      }
       /* move_player confusion (cmd-cave.c L1299-1302): apply it once, up front,
        * so the bump-open branch and the delegated step both use the redirected
        * direction and player_confuse_dir draws the RNG exactly once. The
@@ -637,7 +669,17 @@ export function installCaveCommands(
         dir !== undefined && dir >= 1 && dir <= 9 && dir !== 5
           ? locSum(state.actor.grid, DDGRID[dir] as Loc)
           : null;
-      if (grid && state.chunk.isClosedDoor(grid) && !squareMonster(state, grid)) {
+      /*
+       * move_player (cmd-cave.c:1079-1083): ((trap && disarm) || door) &&
+       * square_isknown. Door and known-trap alter share the known guard; an
+       * unknown closed door falls through to the bump message path.
+       */
+      if (
+        grid &&
+        !squareMonster(state, grid) &&
+        squareIsKnown(state, grid) &&
+        state.chunk.isClosedDoor(grid)
+      ) {
         /* move_player L1079-1083: walking into a known closed door sets a 99x
          * repeat (cmd_set_repeat(99) when nrepeats == 0) then do_cmd_alter_aux
          * opens it. A locked door that fails to pick this attempt re-queues the
@@ -650,15 +692,32 @@ export function installCaveCommands(
         queueCommandRepeat(state, cmd, more);
         return state.z.moveEnergy;
       }
+      /*
+       * move_player L1079-1083 / do_cmd_walk L1311-1312: known disarmable trap
+       * + disarm (walk, not jump, not trapsafe) -> do_cmd_alter_aux disarm.
+       */
+      if (
+        allowDisarm &&
+        trapDeps &&
+        grid &&
+        !squareMonster(state, grid) &&
+        squareIsDisarmableTrap(state, grid) &&
+        squareIsKnown(state, grid) &&
+        !isTrapsafe(state)
+      ) {
+        const more = disarmAux(state, grid, trapDeps);
+        queueCommandRepeat(state, cmd, more);
+        return state.z.moveEnergy;
+      }
       const used = prior ? prior(state, cmd2) : 0;
       /* A confused redirect that dead-ends (bump / edge) still spends a full
        * turn; walkAction returns 0 in that case since confusedApplied is set. */
       return confused && used === 0 ? state.z.moveEnergy : used;
     };
   const priorWalk = registry.get("walk");
-  if (priorWalk) registry.register("walk", bumpOpen(priorWalk));
+  if (priorWalk) registry.register("walk", bumpOpen(priorWalk, true));
   const priorJump = registry.get("jump");
-  if (priorJump) registry.register("jump", bumpOpen(priorJump));
+  if (priorJump) registry.register("jump", bumpOpen(priorJump, false));
 
   registry.register("open", (state, cmd) => {
     const at = chestCommandGrid(state, cmd);

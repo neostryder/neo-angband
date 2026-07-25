@@ -5880,7 +5880,10 @@ state.sound = (type: number): void => {
   soundEvents.emit("sound", { msg: "", type });
 };
 
+/* First FOV after birth/load: clear only_partial left sticky by startGame
+ * when updateFov was not yet wired (ui-display.c:2556-2557). */
 state.updateFov(state);
+state.chunk.onlyPartial = false;
 term.onResize = () => render();
 render();
 

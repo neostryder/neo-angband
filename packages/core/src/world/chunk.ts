@@ -124,6 +124,11 @@ export class Chunk {
   monRating = 0;
   goodItem = false;
   feelingSquares = 0;
+  /**
+   * p->upkeep->only_partial (cave-view.c:849-851): when true, the feeling
+   * reveal at feeling_need is suppressed (level-entry full update).
+   */
+  onlyPartial = false;
 
   readonly height: number;
   readonly width: number;
@@ -194,9 +199,20 @@ export class Chunk {
   }
 
   /**
-   * square_set_feat with feat_count bookkeeping and bright-terrain glow.
-   * The in-game side effects (trap destruction, note/light spot) belong
-   * to later modules; callers during generation match upstream behavior.
+   * Live-play hook for square_set_feat's character_dungeon path
+   * (cave-square.c:1256-1262): destroy traps when the new terrain cannot
+   * hold them (or square_player_trap_allowed fails). Installed by the
+   * session while a chunk is the live cave; absent during generation.
+   */
+  onFeatSet?: (grid: Loc) => void;
+
+  /**
+   * square_set_feat (cave-square.c:1238-1268): feat_count bookkeeping and
+   * bright-terrain glow. When onFeatSet is installed (live dungeon, C
+   * character_dungeon path) it runs trap destruction / note-spot. When
+   * absent (generation), clears SQUARE_WALL_INNER/OUTER/SOLID immediately
+   * (cave-square.c:1263-1268). End-of-builder clearGenerationFlags still
+   * sweeps remaining marks set via generateMark without a later setFeat.
    */
   setFeat(grid: Loc, feat: number): void {
     this.assertBounds(grid);
@@ -207,6 +223,18 @@ export class Chunk {
     this.feats[i] = feat;
     if (featIsBright(this.features, feat)) {
       this.info(grid).on(SQUARE["GLOW"]);
+    }
+    if (this.onFeatSet) {
+      /* character_dungeon path (cave-square.c:1256-1262). */
+      this.onFeatSet(grid);
+    } else {
+      /* Generation path (cave-square.c:1263-1268): drop stale WALL_* marks
+       * so mid-gen predicates match C after a feature change. Mark helpers
+       * (setMarkedGranite / fillRectangle) call setFeat then generateMark,
+       * same order as C set_marked_granite (gen-room.c:426-429). */
+      this.info(grid).off(SQUARE["WALL_INNER"]);
+      this.info(grid).off(SQUARE["WALL_OUTER"]);
+      this.info(grid).off(SQUARE["WALL_SOLID"]);
     }
   }
 
@@ -299,9 +327,20 @@ export class Chunk {
     return !f.flags.has(TF["WALL"]) && f.flags.has(TF["ROCK"]);
   }
 
-  /** square_ismineralwall equivalent: magma, quartz or granite. */
+  /**
+   * square_isrock (cave-square.c:236-240): granite that is not a door
+   * (secret doors carry GRANITE | DOOR_ANY and must not count as mineral).
+   */
+  isRock(grid: Loc): boolean {
+    return this.isGranite(grid) && !this.feature(grid).flags.has(TF["DOOR_ANY"]);
+  }
+
+  /**
+   * square_ismineral (cave-square.c:278-282): rock, magma or quartz.
+   * Secret doors are excluded via isRock.
+   */
   isMineralWall(grid: Loc): boolean {
-    return this.isMagma(grid) || this.isQuartz(grid) || this.isGranite(grid);
+    return this.isMagma(grid) || this.isQuartz(grid) || this.isRock(grid);
   }
 
   isWall(grid: Loc): boolean {

@@ -14,10 +14,12 @@
  * with level > lev*2.
  *
  * player_handle_post_move (FOV refresh, traps at the landing grid) is the
- * injected onPlayerPostMove hook, fired as upstream does whenever a swap
- * leaves the player on the vacated grid or moves the player. The lava
- * message fires from square_isfiery; taking the fire damage itself is the
- * terrain-damage pass that runs on movement.
+ * injected onPlayerPostMove hook. C project-mon.c:184-187 / 210-212 only
+ * checks mon(grid)<0 after the swap (player displaced onto the vacated
+ * side). When the player is the thrust source at grid, mon is at next after
+ * the swap, so the port also fires when mon(next)<0 so a force-pushed
+ * player gets landing post-move effects. The lava message fires from
+ * square_isfiery; fire damage itself is the terrain-damage pass on movement.
  */
 
 import { SQUARE } from "../generated";
@@ -34,13 +36,12 @@ export interface ThrustEnv {
   onPlayerPostMove?: () => void;
 }
 
-/** monster_swap that also keeps the player's actor grid in step. */
+/**
+ * monster_swap for thrust: player actor.grid and player_leaving (delayed
+ * traps) are handled inside monsterSwap (mon-util.c:609-672).
+ */
 function swapOccupants(state: GameState, g1: Loc, g2: Loc): void {
-  const m1 = state.chunk.mon(g1);
-  const m2 = state.chunk.mon(g2);
   monsterSwap(state, g1, g2);
-  if (m1 < 0) state.actor.grid = g2;
-  else if (m2 < 0) state.actor.grid = g1;
 }
 
 /**
@@ -134,7 +135,12 @@ export function thrustAway(
         if (c.isPassable(next)) {
           /* Travel down the path. */
           swapOccupants(state, grid, next);
-          if (c.mon(grid) < 0) env.onPlayerPostMove?.();
+          /*
+           * project-mon.c:184-187: C fires when mon(grid)<0 after swap
+           * (player was at next). Also fire when mon(next)<0 so a player
+           * thrust from grid still gets player_handle_post_move landing.
+           */
+          if (c.mon(grid) < 0 || c.mon(next) < 0) env.onPlayerPostMove?.();
 
           /* Jump to new location; we can't travel any more. */
           grid = next;
@@ -148,7 +154,8 @@ export function thrustAway(
       } else {
         /* Travel down the path. */
         swapOccupants(state, grid, next);
-        if (c.mon(grid) < 0) env.onPlayerPostMove?.();
+        /* project-mon.c:210-212 + player-at-grid landing (see above). */
+        if (c.mon(grid) < 0 || c.mon(next) < 0) env.onPlayerPostMove?.();
 
         /* Jump to new location. */
         grid = next;

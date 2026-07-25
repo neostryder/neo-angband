@@ -168,4 +168,26 @@ describe("updateView", () => {
     expect(c.feelingSquares).toBe(Z.feelingNeed);
     expect(fired).toBe(1);
   });
+
+  it("only_partial suppresses the feeling reveal (cave-view.c:849-851)", () => {
+    const c = room(30, 20, 5, 5, 15, 12);
+    glowRect(c, 5, 5, 15, 12);
+    let marked = 0;
+    for (let y = 5; y <= 12 && marked < Z.feelingNeed; y++) {
+      for (let x = 5; x <= 15 && marked < Z.feelingNeed; x++) {
+        c.sqinfoOn(loc(x, y), SQUARE["FEEL"]);
+        marked++;
+      }
+    }
+    c.onlyPartial = true;
+    const p = viewer(6, 6);
+    const events = new GameEvents();
+    let fired = 0;
+    events.on("feeling", () => {
+      fired++;
+    });
+    updateView(c, p, Z, [], events);
+    expect(c.feelingSquares).toBe(Z.feelingNeed);
+    expect(fired).toBe(0);
+  });
 });

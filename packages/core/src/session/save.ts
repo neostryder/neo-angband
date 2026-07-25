@@ -946,6 +946,15 @@ export interface SavedGame {
    * registry, back-compat like every other optional field here.
    */
   autoinscriptions?: SavedAutoinscription[];
+  /**
+   * Terrain-only Town chunk (wr_chunks always saves the Town entry even when
+   * birth_levels_persist is OFF; generate.c:1371-1373 / save.c:1001-1044).
+   * Present after leaving depth 0 without persist; consumed on town re-entry.
+   * Optional / absent in older saves and before the player has left town.
+   */
+  townChunk?: ChunkSquaresData;
+  /** Feature legend for townChunk feats (same remap contract as levelCache). */
+  townFeatLegend?: Array<[number, string]>;
 }
 
 /** One serialized per-kind autoinscription entry (namespaced kind id + notes). */
@@ -1193,6 +1202,19 @@ export function serializeGame(
         }
       : {}),
     ...(autoinscriptions ? { autoinscriptions } : {}),
+    /*
+     * Terrain-only Town cache (wr_chunks, save.c:1001-1044): C always writes
+     * the Town chunk even when birth_levels_persist is off, so a dungeon save
+     * after leaving town reloads the same shops/stairs without redrawing.
+     */
+    ...(() => {
+      if (state.isDead || !state.townChunk) return {};
+      const tc = state.townChunk.snapshotSquares();
+      return {
+        townChunk: tc,
+        townFeatLegend: buildFeatLegend(tc.feats, [], ids),
+      };
+    })(),
     /* Town stores + accrued daycount (wr_stores / save.c:963). Persisted so the
      * home stash and shop stock survive save/load (gaps 12.1/12.2/12.3). */
     ...(() => {

@@ -28,14 +28,34 @@ describe("thrust_away (project-mon.c L87)", () => {
     const state = makeState({ playerGrid: start, seed: 5 });
     const centre = loc(12, 9);
 
-    /* The post-move hook fires only for a DISPLACED player (upstream checks
-     * the vacated grid after the swap), so it stays silent here. */
     thrustAway(state, centre, start, 4, {});
 
     expect(locEq(state.actor.grid, start)).toBe(false);
     expect(distance(state.actor.grid, centre)).toBeGreaterThan(3);
     expect(state.chunk.mon(state.actor.grid)).toBe(-1);
     expect(state.chunk.mon(start)).toBe(0);
+  });
+
+  it("fires onPlayerPostMove landing when the player is thrust (project-mon.c landing)", () => {
+    const start = loc(12, 12);
+    const state = makeState({ playerGrid: start, seed: 5 });
+    const centre = loc(12, 9);
+    let postMoveCount = 0;
+    const landings: string[] = [];
+
+    thrustAway(state, centre, start, 4, {
+      onPlayerPostMove: () => {
+        postMoveCount++;
+        landings.push(`${state.actor.grid.x},${state.actor.grid.y}`);
+      },
+    });
+
+    expect(locEq(state.actor.grid, start)).toBe(false);
+    expect(postMoveCount).toBeGreaterThan(0);
+    /* Each callback sees the player already at the landing grid. */
+    expect(landings[landings.length - 1]).toBe(
+      `${state.actor.grid.x},${state.actor.grid.y}`,
+    );
   });
 
   it("stops at the map edge instead of leaving the level", () => {

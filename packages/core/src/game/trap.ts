@@ -26,6 +26,7 @@ import { equipLearnFlag } from "../obj/knowledge";
 import { featIsTrapHolding } from "../world/chunk";
 import type { TrapKind } from "../world/trap";
 import { lookupTrap } from "../world/trap";
+import { squareIsSeen } from "../world/view";
 import { sourceTrap } from "../effects/interpreter";
 import type { GameState, PlayerCommand } from "./context";
 import { movePlayer, queueCommandRepeat } from "./context";
@@ -164,12 +165,50 @@ export function squareIsDisarmableTrap(state: GameState, grid: Loc): boolean {
   return squareIsVisibleTrap(state, grid) && squareIsPlayerTrap(state, grid);
 }
 
-/** square_iswarded / square_iswebbed. */
+/**
+ * square_iswarded (cave-square.c:751-755): only the specific "glyph of
+ * warding" trap, not every TRF_GLYPH (decoys also carry GLYPH).
+ */
 export function squareIsWarded(state: GameState, grid: Loc): boolean {
-  return squareTrapFlag(state, grid, TRF.GLYPH);
+  return squareTrap(state, grid).some((t) => {
+    /* Live traps always carry kind; match C's lookup_trap("glyph of warding"). */
+    if (t.kind) {
+      return t.kind.desc === "glyph of warding" || t.kind.name === "glyph of warding";
+    }
+    /* Harness stubs without a kind: a bare GLYPH stands for warding. */
+    return t.flags.has(TRF.GLYPH);
+  });
 }
+/** square_iswebbed (cave-square.c:763-767). */
 export function squareIsWebbed(state: GameState, grid: Loc): boolean {
   return squareTrapFlag(state, grid, TRF.WEB);
+}
+
+/**
+ * square_destroy_trap (cave-square.c:1391-1394): remove every trap on a grid.
+ */
+export function squareDestroyTrap(state: GameState, grid: Loc): void {
+  squareRemoveAllTraps(state, grid);
+}
+
+/**
+ * Live square_set_feat trap half (cave-square.c:1256-1259): when the grid
+ * is no longer player-trap-allowed, destroy its traps. Wired as Chunk.onFeatSet.
+ */
+export function squareSetFeatTrapSideEffect(state: GameState, grid: Loc): void {
+  if (!squarePlayerTrapAllowed(state, grid)) {
+    squareDestroyTrap(state, grid);
+  }
+}
+
+/**
+ * Install the live character_dungeon set_feat hook on the current chunk
+ * (cave-square.c:1256-1259). Re-call after every state.chunk reassignment.
+ */
+export function installChunkFeatHook(state: GameState): void {
+  state.chunk.onFeatSet = (grid: Loc): void => {
+    squareSetFeatTrapSideEffect(state, grid);
+  };
 }
 
 /** square_trap_specific: a trap of the exact kind index here? */
@@ -475,13 +514,13 @@ export function hitTrap(
     } else {
       if (trap.kind.msgBad) env.msg?.(trap.kind.msgBad);
       runTrapEffect(state, trap, trap.kind.effect, deps);
-      if (state.isDead) break;
-      if (!squareTrap(state, grid).includes(trap)) {
-        /* The effect removed the trap (e.g. it destroyed the grid). */
-      } else if (trap.kind.effectXtra.length && state.rng.oneIn(2)) {
+      /* trap.c:561-562: stop if the square lost its traps or the player died. */
+      if (!squareTrap(state, grid).length || state.isDead) break;
+      if (trap.kind.effectXtra.length && state.rng.oneIn(2)) {
         if (trap.kind.msgXtra) env.msg?.(trap.kind.msgXtra);
         runTrapEffect(state, trap, trap.kind.effectXtra, deps);
-        if (state.isDead) break;
+        /* trap.c:572-573 */
+        if (!squareTrap(state, grid).length || state.isDead) break;
       }
     }
 
@@ -644,8 +683,13 @@ export function disarmAux(
     ? (state.actor.combat.skills[SKILL.DISARM_MAGIC] ?? 0)
     : (state.actor.combat.skills[SKILL.DISARM_PHYS] ?? 0);
   const p = state.actor.player;
+  /*
+   * cmd-cave.c:812-817: one /10 when any of blind, no_light, confused, or
+   * image. no_light is !square_isseen on the player grid (cave-view.c:914-917).
+   */
   if (
     (p.timed[TMD.BLIND] ?? 0) > 0 ||
+    !squareIsSeen(state.chunk, state.actor.grid) ||
     (p.timed[TMD.CONFUSED] ?? 0) > 0 ||
     (p.timed[TMD.IMAGE] ?? 0) > 0
   ) {
@@ -695,7 +739,17 @@ export function installTraps(
     return s.z.moveEnergy;
   });
 
-  /* Stepping onto a player trap sets it off (move_player -> hit_trap). */
+  /*
+   * player_leaving (mon-util.c:503-515): delayed traps fire on the OLD grid
+   * when the player leaves. Wired through movePlayer so every swap path
+   * (walk, teleport, pit pull) matches monster_swap.
+   */
+  state.onPlayerLeaving = (s, oldGrid, _newGrid): void => {
+    /* Decoy range check (mon-util.c:508-511) is handled where decoys live. */
+    if (squareIsPlayerTrap(s, oldGrid)) hitTrap(s, oldGrid, 1, deps);
+  };
+
+  /* player_handle_post_move eval_trap (player-util.c:1627-1629): immediate. */
   state.onPlayerMoved = (s, grid): void => {
     if (squareIsPlayerTrap(s, grid)) hitTrap(s, grid, 0, deps);
   };

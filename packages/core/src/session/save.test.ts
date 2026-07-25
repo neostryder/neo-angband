@@ -629,6 +629,26 @@ describe("store + home persistence (store.c wr_stores/rd_stores, gap 12.1/12.2)"
     expect(rs.stores).toBeDefined();
     expect(rs.stores!.length).toBeGreaterThan(0);
   });
+
+  it("persists the terrain-only Town chunk after leaving town (wr_chunks)", () => {
+    /* Non-persist: leave depth 0 stores townChunk; dungeon save must carry it. */
+    const game = startGame(pack, { seed: 5150, depth: 0 });
+    expect(game.state.chunk.depth).toBe(0);
+    expect(game.state.options?.get("birth_levels_persist") ?? false).toBe(false);
+    game.changeLevel(1);
+    expect(game.state.chunk.depth).toBe(1);
+    expect(game.state.townChunk).toBeTruthy();
+    const townFeats = Array.from(game.state.townChunk!.snapshotSquares().feats);
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    expect(saved.townChunk).toBeDefined();
+    expect(saved.townChunk!.feats).toEqual(townFeats);
+
+    const rs = loadGame(pack, saved).state;
+    expect(rs.townChunk).toBeTruthy();
+    expect(Array.from(rs.townChunk!.snapshotSquares().feats)).toEqual(townFeats);
+    expect(rs.townChunk!.name).toBe("Town");
+  });
 });
 
 describe("player full_name / died_from / noscore (gaps 12.4/12.5/15.3)", () => {

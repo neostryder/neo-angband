@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
 import { FlagSet } from "../bitflag";
-import { MFLAG, OF, RF, SQUARE, TV } from "../generated";
+import { MFLAG, OF, RF, SQUARE, TMD, TV } from "../generated";
 import { OF_SIZE } from "../player/types";
 import type { PlayerState } from "../player/calcs";
 import { getLore } from "../mon/lore";
@@ -282,6 +282,19 @@ describe("noteSpots (note_spot + update_mon)", () => {
     /* Already visible: no double count. */
     noteSpots(state);
     expect(getLoreSights(state, mon)).toBe(1);
+  });
+
+  it("blind forget drops a non-passable remembered player grid (cave-view.c:894-897)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    /* Remember the current grid as granite (impassable), then go blind. */
+    state.chunk.setFeat(loc(10, 10), GRANITE);
+    squareMemorize(state, loc(10, 10));
+    expect(squareIsKnown(state, loc(10, 10))).toBe(true);
+    state.actor.player.timed[TMD.BLIND] = 10;
+    /* Floor so SEEN re-memorize does not re-stamp granite mid-pass. */
+    state.chunk.setFeat(loc(10, 10), FLOOR);
+    noteSpots(state);
+    expect(squareIsKnown(state, loc(10, 10))).toBe(false);
   });
 });
 

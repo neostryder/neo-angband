@@ -13,16 +13,19 @@ import { basicPlayerActor } from "./project-cast";
 import { registerAttackHandlers } from "./effect-attack";
 import { registerMonsterHandlers } from "./effect-monster";
 import { registerTeleportHandlers } from "./effect-teleport";
+import { registerTerrainHandlers } from "./effect-terrain";
 import {
   calcUnlockingChance,
   disarmAux,
   hitTrap,
+  installChunkFeatHook,
   installTraps,
   pickTrap,
   placeTrap,
   squareDoorPower,
   squareIsPlayerTrap,
   squareIsVisibleTrap,
+  squareIsWarded,
   squareIsWebbed,
   squareRevealTrap,
   squareSetDoorLock,
@@ -34,7 +37,10 @@ import { createDefaultRegistry, processPlayer } from "./player-turn";
 import { runAction } from "./player-path";
 import { makeState, plReg } from "./harness";
 import type { GameState } from "./context";
-import { FEAT } from "../generated";
+import { FEAT, SQUARE } from "../generated";
+import { movePlayer } from "./context";
+import { thrustAway } from "./thrust";
+import { Rng } from "../rng";
 
 function loadRecords<T>(name: string): T[] {
   return (
@@ -58,6 +64,7 @@ function effectDeps(state: GameState): NonNullable<TrapDeps["effects"]> {
   registerAttackHandlers(registry);
   registerMonsterHandlers(registry);
   registerTeleportHandlers(registry);
+  registerTerrainHandlers(registry);
   return {
     registry,
     cast: { projections, maxRange: 20, playerActor: basicPlayerActor(state) },
@@ -213,17 +220,24 @@ describe("disarm and the step hook", () => {
     expect(squareIsPlayerTrap(state, loc(6, 5))).toBe(false);
   });
 
-  it("an invisible trap cannot be disarmed", () => {
+  it("installTraps refuses to disarm an invisible trap (visibility guard)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
-    const d = deps(state);
+    const msgs: string[] = [];
+    const d = deps(state, { env: { msg: (t): void => { msgs.push(t); } } });
     placeTrap(state, loc(6, 5), pitIdx, 5, d);
-    expect(disarmAux(state, loc(6, 5), d)).toBeDefined(); // aux itself works
+    /* Live guard: not visible, not known as disarmable. */
+    expect(squareIsVisibleTrap(state, loc(6, 5))).toBe(false);
+    expect(squareIsPlayerTrap(state, loc(6, 5))).toBe(true);
+
     const registry = createDefaultRegistry();
     installTraps(state, registry, d);
     const commands = [{ code: "disarm", dir: 6 }];
     state.nextCommand = (): { code: string; dir?: number } | null =>
       commands.shift() ?? null;
+    /* installTraps (trap.ts:713-716): zero energy, trap remains, refuse msg. */
     expect(processPlayer(state, registry).energyUsed).toBe(0);
+    expect(squareIsPlayerTrap(state, loc(6, 5))).toBe(true);
+    expect(msgs.some((m) => m.includes("nothing there to disarm"))).toBe(true);
   });
 
   it("stepping onto a trap triggers it through the walk wiring", () => {
@@ -240,6 +254,86 @@ describe("disarm and the step hook", () => {
     processPlayer(state, registry);
     expect(state.actor.grid).toEqual(loc(6, 5));
     expect(state.actor.player.chp).toBeLessThan(100);
+  });
+
+  it("TRF_DELAY fires on leave via player_leaving (mon-util.c:503-515)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const d = deps(state);
+    const blockFall = kinds.find((k) => k.desc === "block fall trap")!;
+    placeTrap(state, loc(5, 5), blockFall.tidx, 5, d);
+    installTraps(state, createDefaultRegistry(), d);
+    /* Immediate (delayed=0) must not fire DELAY traps. */
+    hitTrap(state, loc(5, 5), 0, d);
+    expect(state.chunk.feat(loc(5, 5))).not.toBe(FEAT.GRANITE);
+    /* Leaving the grid fires delayed=1 (player_leaving via movePlayer). */
+    movePlayer(state, loc(6, 5));
+    expect(state.actor.grid).toEqual(loc(6, 5));
+    expect(state.chunk.feat(loc(5, 5))).toBe(FEAT.GRANITE);
+  });
+
+  it("TRF_DELAY fires when thrust leaves the square (monster_swap player_leaving)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const d = deps(state);
+    const blockFall = kinds.find((k) => k.desc === "block fall trap")!;
+    placeTrap(state, loc(5, 5), blockFall.tidx, 5, d);
+    installTraps(state, createDefaultRegistry(), d);
+    /* thrust_away via monster_swap (mon-util.c:609-612): player_leaving. */
+    thrustAway(state, loc(3, 5), loc(5, 5), 2);
+    expect(state.actor.grid).not.toEqual(loc(5, 5));
+    expect(state.chunk.feat(loc(5, 5))).toBe(FEAT.GRANITE);
+  });
+
+  it("disarmAux applies no_light penalty (cmd-cave.c:812-817 / cave-view.c:914-917)", () => {
+    const make = (seen: boolean): boolean => {
+      const state = makeState({ playerGrid: loc(5, 5), seed: 99 });
+      state.actor.combat = {
+        ...state.actor.combat,
+        skills: state.actor.combat.skills.map((v, i) =>
+          i === SKILL.DISARM_PHYS ? 50 : v,
+        ),
+      };
+      if (seen) state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN);
+      else state.chunk.sqinfoOff(state.actor.grid, SQUARE.SEEN);
+      const d = deps(state);
+      placeTrap(state, loc(6, 5), pitIdx, 5, d);
+      squareRevealTrap(state, loc(6, 5), true, d);
+      /*
+       * First randint0(100)=10: lit chance~50 disarms; dark chance floor(50/10)=5
+       * fails, second roll 0 -> "failed to disarm" (not set-off).
+       */
+      let n100 = 0;
+      const base = state.rng;
+      state.rng = {
+        ...base,
+        randint0: (n: number): number =>
+          n === 100 ? (n100++ === 0 ? 10 : 0) : base.randint0(n),
+      } as Rng;
+      disarmAux(state, loc(6, 5), d);
+      return !squareIsPlayerTrap(state, loc(6, 5));
+    };
+    expect(make(true)).toBe(true);
+    expect(make(false)).toBe(false);
+  });
+
+  it("setFeat to non-trappable terrain destroys traps (cave-square.c:1256-1259)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const d = deps(state);
+    placeTrap(state, loc(10, 10), pitIdx, 5, d);
+    installChunkFeatHook(state);
+    expect(squareIsPlayerTrap(state, loc(10, 10))).toBe(true);
+    state.chunk.setFeat(loc(10, 10), FEAT.GRANITE);
+    expect(squareIsPlayerTrap(state, loc(10, 10))).toBe(false);
+  });
+
+  it("squareIsWarded is only glyph of warding, not decoy (cave-square.c:751-755)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const d = deps(state);
+    const glyph = kinds.find((k) => k.desc === "glyph of warding")!;
+    const decoy = kinds.find((k) => k.desc === "decoy")!;
+    placeTrap(state, loc(10, 10), glyph.tidx, 0, d);
+    placeTrap(state, loc(11, 10), decoy.tidx, 0, d);
+    expect(squareIsWarded(state, loc(10, 10))).toBe(true);
+    expect(squareIsWarded(state, loc(11, 10))).toBe(false);
   });
 });
 

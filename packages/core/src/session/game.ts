@@ -59,6 +59,7 @@ import {
   updateMonsterDistances,
 } from "../game/context";
 import { Chunk } from "../world/chunk";
+import { chunkWriteTerrain } from "../gen/cave";
 import { FEAT, SQUARE } from "../generated";
 import { blankMonster } from "../mon/monster";
 import { MON_GROUP } from "../mon/types";
@@ -126,8 +127,10 @@ import { installSteal } from "../game/steal";
 import type { ChestCmdDeps } from "../game/chest";
 import {
   calcUnlockingChance,
+  installChunkFeatHook,
   installTrap,
   installTraps,
+  playerIsTrapsafe,
   squareDoorPower,
   squareIsPlayerTrap,
   squareIsWarded,
@@ -921,6 +924,11 @@ function wireGame(
             state.targetDepth = targetDepth;
             state.generateLevel = true;
           },
+          /* player_handle_post_move eval_trap half (player-util.c:1627-1629):
+           * immediate traps at the landing grid after teleport / thrust. */
+          onPlayerPostMove: (_byMonster: boolean): void => {
+            state.onPlayerMoved?.(state, state.actor.grid);
+          },
         }
       : undefined;
     // Glyph / web creation needs the trap system; trapDeps joins below
@@ -1053,8 +1061,13 @@ function wireGame(
           /* PROJ_AWAY_ALL teleports and PROJ_FORCE knockback for monsters. */
           teleport: (m, dist): void =>
             teleportMonster(state, m.midx, dist, teleport ?? {}),
+          /* project-mon.c:183-185 / 208-212 + player thrust landing. */
           thrustAway: (centre, target, gridsAway): void =>
-            thrustAway(state, centre, target, gridsAway),
+            thrustAway(state, centre, target, gridsAway, {
+              onPlayerPostMove: (): void => {
+                state.onPlayerMoved?.(state, state.actor.grid);
+              },
+            }),
         },
         /* The per-PROJ player side effects (project-player.c handlers). */
         player: {
@@ -1356,17 +1369,19 @@ function wireGame(
         env: {
           expGain,
           msg: (text: string): void => state.msg?.(text),
-          // player_is_trapsafe/player_of_has (player-util.c:1073-1077):
-          // expose the live derived equipment flags to hitTrap on movement.
-          playerHasFlag: (ofFlag: number): boolean =>
-            state.playerState?.flags.has(ofFlag) ?? false,
+          /* player_of_has for trap saves / OF_TRAP_IMMUNE (trap.c:515-539). */
+          playerHasFlag: (flag: number): boolean =>
+            state.playerState?.flags.has(flag) ?? false,
           changeLevel: (s: GameState): void => {
             s.targetDepth = s.chunk.depth + 1;
             s.generateLevel = true;
           },
+          /* disturb(player) before trap effects (trap.c:525-526). */
+          disturb: (): void => disturb(state),
         },
       };
       installTraps(state, registry, trapDeps);
+      installChunkFeatHook(state);
       worldEnv.trapDeps = trapDeps;
       general.trapDeps = trapDeps;
     }
@@ -1423,11 +1438,14 @@ function wireGame(
   const deps = trapDeps; // narrow for the closures
   const caveDeps: CaveCmdDeps = {
     makeDeps,
+    ...(deps ? { trapDeps: deps } : {}),
     env: {
       // Route open/close/tunnel/chest messages to the game's message sink
       // (matching installObjCommands/installSpellCommands/installTraps);
       // absent, door/tunnel/chest messages would silently drop.
       msg: (text: string): void => state.msg?.(text),
+      /* player_is_trapsafe (player-util.c:1073-1077) via trap.ts:86. */
+      isTrapsafe: playerIsTrapsafe,
       ...(deps && lockKind
         ? {
             isLockedDoor: (grid: Loc): boolean =>
@@ -1820,6 +1838,7 @@ function makeChangeLevel(
           }
         }
         state.chunk = arena;
+        installChunkFeatHook(state);
         state.monsters = [null];
         state.groups = [null];
         state.floor = new Map();
@@ -1865,6 +1884,7 @@ function makeChangeLevel(
       if (stash) {
         /* Restore the level left behind (the player marker stayed). */
         state.chunk = stash.chunk;
+        installChunkFeatHook(state);
         state.monsters = stash.monsters;
         state.groups = stash.groups;
         state.floor = stash.floor;
@@ -1910,6 +1930,15 @@ function makeChangeLevel(
      * (chunk_find_name of level_by_depth(depth)->name); see StoredLevel. */
     const persist = state.options?.get("birth_levels_persist") ?? false;
     const currentDepth = state.chunk.depth;
+
+    /*
+     * Non-persist town store (generate.c:1371-1373): leaving depth 0 always
+     * keeps a terrain-only Town chunk so town_gen can reload the same layout
+     * (shops, stairs, ruins) without birth_levels_persist.
+     */
+    if (!persist && currentDepth === 0) {
+      state.townChunk = chunkWriteTerrain(state.chunk);
+    }
 
     /* wipe_mon_list: the old level's monsters forget their racial counts
      * before the new level allocates against them. Under persist the old level
@@ -1958,6 +1987,7 @@ function makeChangeLevel(
       if (stored) {
         cache.delete(depth); // chunk_list_remove (L1505)
         state.chunk = stored.chunk;
+        installChunkFeatHook(state);
         state.monsters = stored.monsters;
         state.groups = stored.groups;
         state.floor = stored.floor;
@@ -1984,17 +2014,26 @@ function makeChangeLevel(
          * re-entry is exact; only the first-visit arrival stair is approximate. */
         sanitizePlayerLoc(state);
         placePlayer(state, state.actor.grid);
+        installChunkFeatHook(state);
 
         refreshTownStores(state, reg);
         delete state.targetDepth;
         state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
+        /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
+        state.chunk.onlyPartial = true;
         state.updateFov?.(state);
+        state.chunk.onlyPartial = false;
         return;
       }
       /* First visit to this depth: fall through to fresh generation. The old
        * level is already frozen; counts were not wiped and artifacts are not
        * lost (both skipped above / below under persist). */
     }
+
+    /* Consume stored town layout for non-persist re-entry (town_gen L2682). */
+    const townLayout =
+      !persist && depth === 0 && state.townChunk ? state.townChunk : null;
+    if (townLayout) state.townChunk = null;
 
     /* birth_levels_persist first-visit generation (generate.c L1147-1152): seed
      * this fresh level's stair connectors from the frozen adjacent levels so
@@ -2049,6 +2088,7 @@ function makeChangeLevel(
         (state.options?.get("birth_connect_stairs") ?? true)
           ? { createStair: pendingStair }
           : {}),
+        ...(townLayout ? { townLayout } : {}),
       },
     );
     /* chunk->join (generate.c L1203-1214): remember this level's stair
@@ -2080,6 +2120,7 @@ function makeChangeLevel(
     state.floor = new Map();
     state.traps = new Map();
     state.known = newKnownMap(g.c.width, g.c.height);
+    installChunkFeatHook(state);
     populateFromLevel(
       state,
       {
@@ -2111,7 +2152,10 @@ function makeChangeLevel(
      * dungeon, so the torch radius is -1 and arrival renders dark until the
      * next bonus recompute. Run the bonus pass before the first view build. */
     state.updateBonuses?.();
+    /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
+    state.chunk.onlyPartial = true;
     state.updateFov?.(state);
+    state.chunk.onlyPartial = false;
   };
 }
 
@@ -2518,6 +2562,19 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
    * changer (changeLevel) does the same for recall-to-town. */
   if (booted.depth === 0) {
     caveIlluminateKnown(state, isDaytime(state.turn, state.z.dayLength));
+  }
+
+  /*
+   * only_partial during the initial level-entry FOV (ui-display.c:2522 /
+   * cave-view.c:851): C sets this for the first new-level display too, not
+   * only for later change_level transitions. When the host has already wired
+   * updateFov (tests), run under the flag now; otherwise leave onlyPartial
+   * set so the host's first FOV (packages/web main after wiring) matches C.
+   */
+  state.chunk.onlyPartial = true;
+  if (state.updateFov) {
+    state.updateFov(state);
+    state.chunk.onlyPartial = false;
   }
 
   return {
@@ -3026,6 +3083,17 @@ export function loadGame(
       reg.traps,
       ids,
     ),
+    /*
+     * Terrain-only Town cache (wr_chunks / load.c:1701-1704): restore even when
+     * birth_levels_persist is off so town re-entry keeps seed parity.
+     */
+    ...(() => {
+      if (save.isDead || !save.townChunk) return {};
+      const townRemap = buildFeatRemap(save.townFeatLegend, ids);
+      return {
+        townChunk: deserializeChunk(save.townChunk, reg.features, townRemap),
+      };
+    })(),
     /* The target is not persisted (as upstream: the savefile carries no
      * target and loading starts unset). */
     target: newTargetState(),
