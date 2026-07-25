@@ -1,0 +1,48 @@
+{
+  "generatedFrom": "parity/phase3-2026-07-25/tools/census.mjs",
+  "c": {
+    "filesScanned": 161,
+    "functions": 4493,
+    "byStatus": {
+      "INLINE?": 1001,
+      "UNMATCHED": 2352,
+      "MATCH": 1140
+    },
+    "byBucket": {
+      "engine": 2541,
+      "data-init": 535,
+      "oracle": 63,
+      "frontend": 85,
+      "ui": 1030,
+      "zlib": 239
+    },
+    "unmatchedByBucket": {
+      "engine": 933,
+      "data-init": 501,
+      "oracle": 58,
+      "frontend": 83,
+      "ui": 647,
+      "zlib": 130
+    },
+    "adjudicationQueue": {
+      "total": 1793,
+      "nonStatic": 717,
+      "files": 133
+    }
+  },
+  "ts": {
+    "files": 300,
+    "testFiles": 225,
+    "valueSymbols": 3700,
+    "reachableModules": 274,
+    "unreachableModules": 26,
+    "wiringSuspects": {
+      "TEST-ONLY": 58,
+      "ORPHAN": 48,
+      "DEAD-LOCAL": 6,
+      "MODULE-UNREACHABLE": 97,
+      "REF-UNREACHABLE": 3
+    }
+  },
+  "missingEntries": []
+}
