@@ -386,25 +386,40 @@ export function minusAc(
  * SEPARATE step here - callers run calcInventory when they want the quiver
  * re-derived. The pack_size overflow enforcement (pack_overflow) is DEFERRED.
  */
-export function invenCarry(
+export interface InvenCarryResult {
+  handle: number;
+  /** true when the incoming object was absorbed into an existing stack. */
+  combining: boolean;
+}
+
+/** inven_carry plus the C `combining` bit needed by pickup awareness. */
+export function invenCarryResult(
   gear: Gear,
   obj: GameObject,
   limits: StackLimits,
-): number {
+): InvenCarryResult {
   /* Check for combining with an existing non-equipped stack. */
   for (const handle of gear.pack) {
     const stack = gear.store.get(handle);
     const mode = objectIsInQuiver(gear, handle) ? OSTACK_QUIVER : OSTACK_PACK;
     if (stack && objectMergeable(stack, obj, mode, limits)) {
       objectAbsorb(stack, obj, ORIGIN.MIXED);
-      return handle;
+      return { handle, combining: true };
     }
   }
 
   /* We did not find an object to combine with: add a new pack handle. */
   const handle = gearAdd(gear, obj);
   gear.pack.push(handle);
-  return handle;
+  return { handle, combining: false };
+}
+
+export function invenCarry(
+  gear: Gear,
+  obj: GameObject,
+  limits: StackLimits,
+): number {
+  return invenCarryResult(gear, obj, limits).handle;
 }
 
 /* ------------------------------------------------------------------ */

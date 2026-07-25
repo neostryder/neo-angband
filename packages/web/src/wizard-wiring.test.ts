@@ -3,20 +3,27 @@
  * the DEBUG_MENU dispatch surface (runWizardDebugMenu -> dispatchDebug), not
  * by calling the core helpers directly.
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
 import {
   DEBUG_MENU,
+  dispatchDebug,
   runWizardDebugMenu,
 } from "./wizard";
 import type { WizardUiCtx } from "./wizard";
 import {
   markNoscore,
-  wizCreateAllArtifact,
-  wizCreateAllObj,
-  wizTeleportTo,
-  wizTweakItem,
+  ObjRegistry,
+  objectNew,
+  newGear,
+  bindConstants,
+  ObjAllocState,
+  ArtifactState,
+  Rng,
+  TV,
+  makeRuneEnv,
 } from "@neo-angband/core";
-import type { GameState, WizardDeps, GameObject, Loc } from "@neo-angband/core";
+import type { GameState, WizardDeps, ObjPackJson, ConstantsJson } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
 
 interface FakeWindow {
@@ -69,6 +76,26 @@ function makeTerm(cols = 40, rows = 20): GlyphTerm {
   } as unknown as GlyphTerm;
 }
 
+function load(name: string): unknown {
+  return JSON.parse(
+    readFileSync(new URL(`../../content/pack/${name}.json`, import.meta.url), "utf8"),
+  );
+}
+
+const objReg = new ObjRegistry({
+  objectBase: load("object_base"),
+  object: load("object"),
+  egoItem: load("ego_item"),
+  artifact: load("artifact"),
+  curse: load("curse"),
+  brand: load("brand"),
+  slay: load("slay"),
+  activation: load("activation"),
+  objectProperty: load("object_property"),
+  flavor: load("flavor"),
+} as ObjPackJson);
+const constants = bindConstants(load("constants") as ConstantsJson);
+
 describe("W2 wizard menu surface (DEBUG_MENU labels)", () => {
   it("keeps faithful Items letters and play-item / create entry points", () => {
     const items = DEBUG_MENU.find((c) => c.title === "Items")!;
@@ -87,15 +114,88 @@ describe("W2 wizard menu surface (DEBUG_MENU labels)", () => {
   });
 });
 
-describe("W2 wizard helpers remain the engine targets of the menu", () => {
-  /* Sanity: the imported helpers are the same symbols the wizard UI imports.
-   * Live keystroke dispatch is covered in wizard.test.ts; here we pin the
-   * wiring contract that create-all / tweak / teleport-to are not dead. */
-  it("core exports used by wizard.ts dispatch are callable", () => {
-    expect(typeof wizCreateAllArtifact).toBe("function");
-    expect(typeof wizCreateAllObj).toBe("function");
-    expect(typeof wizTeleportTo).toBe("function");
-    expect(typeof wizTweakItem).toBe("function");
+describe("W2-007 live tweak dispatch", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("drives Play with item -> Tweak attributes through every C field", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: FakeWindow }).window = win;
+    const kind = objReg.kinds.find((k) => k.tval === TV.POTION)!;
+    const obj = objectNew(kind);
+    obj.tval = kind.tval;
+    obj.sval = kind.sval;
+    obj.number = 1;
+    obj.weight = kind.weight;
+    const gear = newGear();
+    gear.store.set(1, obj);
+    gear.pack.push(1);
+    const player = {
+      equipment: [],
+      objKnown: { dd: 1, ds: 1, ac: 1, toA: 1, toH: 1, toD: 1 },
+    };
+    const state = {
+      actor: { player },
+      gear,
+      chunk: { depth: 1 },
+      rng: new Rng(4242),
+      runeEnv: makeRuneEnv(() => null, () => false, {
+        brands: objReg.brands,
+        slays: objReg.slays,
+        curses: objReg.curses,
+        properties: objReg.properties,
+      }),
+    } as unknown as GameState;
+    const deps: WizardDeps = {
+      wizard: true,
+      makeDeps: {
+        reg: objReg,
+        alloc: new ObjAllocState(objReg, constants),
+        constants,
+        artifacts: new ArtifactState(objReg.artifacts.length),
+        noArtifacts: false,
+      },
+      egos: objReg.egos,
+      artifacts: objReg.artifacts,
+    };
+    const ctx: WizardUiCtx = {
+      term: makeTerm(),
+      state,
+      deps,
+      say: () => {},
+      refresh: () => {},
+    };
+
+    const done = dispatchDebug(ctx, "play-item");
+    await tick();
+    press(win, "a"); // pack item
+    await tick();
+    press(win, "c"); // Tweak attributes
+    await tick();
+    press(win, "Enter"); // ego: keep/remove (-1)
+    await tick();
+    press(win, "Enter"); // artifact: remove (0)
+    for (let i = 0; i < obj.modifiers.length; i++) {
+      await tick();
+      press(win, "Backspace");
+      press(win, String((i % 9) + 1));
+      press(win, "Enter");
+    }
+    for (const value of [11, 12, 13]) {
+      await tick();
+      press(win, "Backspace");
+      for (const digit of String(value)) press(win, digit);
+      press(win, "Enter");
+    }
+    await tick();
+    press(win, "d"); // Accept changes
+    await done;
+
+    expect(obj.modifiers).toEqual(obj.modifiers.map((_, i) => (i % 9) + 1));
+    expect(obj.toA).toBe(11);
+    expect(obj.toH).toBe(12);
+    expect(obj.toD).toBe(13);
   });
 });
 
@@ -132,7 +232,3 @@ describe("runWizardDebugMenu still gates on wizard mode", () => {
     expect(said.some((s) => s.includes("wizard mode"))).toBe(true);
   });
 });
-
-/* Keep type imports warm for Loc/GameObject if used by future expansions. */
-void 0 as unknown as Loc;
-void 0 as unknown as GameObject;

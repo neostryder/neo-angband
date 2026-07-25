@@ -60,6 +60,50 @@ export function makeTakeHitHooks(
   state: GameState,
   opts: TakeHitHookOpts = {},
 ): TakeHitHooks {
+  const recordDeath = (killer: string): void => {
+    const p = state.actor.player;
+    /* my_strcpy(p->died_from, kb_str, ...) (L244) and total_winner = false
+     * (L255). The shell's death handler reads diedFrom for the score/tombstone
+     * and clears the active slot. */
+    p.diedFrom = killer;
+    p.totalWinner = false;
+  };
+
+  const cheatDeath = (killer: string): boolean | "pending" => {
+    const wizard = state.wizard === true;
+    const cheatLive = state.options?.get("cheat_live") === true;
+    if (!wizard && !cheatLive) return false;
+
+    const p = state.actor.player;
+    /* C assigns died_from before get_check("Die? ") even when the answer is
+     * No and EVENT_CHEAT_DEATH follows. */
+    p.diedFrom = killer;
+    state.pendingDeath = {
+      killer,
+      resolve: (die: boolean): void => {
+        state.pendingDeath = undefined;
+        if (die) {
+          state.msg?.("You die.", "DEATH");
+          state.sound?.(MSG.DEATH);
+          state.isDead = true;
+          recordDeath(killer);
+          return;
+        }
+        state.msg?.("You invoke wizard mode and cheat death.");
+        const effect = opts.wizardEffect?.current;
+        wizCheatDeath(state, {
+          wizard: true,
+          ...(effect ? { effect } : {}),
+          markNoscore: (bits: number): void => {
+            p.noscore = markNoscore(p.noscore, bits);
+          },
+          msg: (t) => state.msg?.(t),
+        });
+      },
+    };
+    return "pending";
+  };
+
   return {
     /* The bloodlust death-save flavour roll (player-util.c L232). */
     rng: state.rng,
@@ -76,39 +120,14 @@ export function makeTakeHitHooks(
     onDisturb: (): void => disturb(state),
     /* bell() on the first low-hitpoint notice (player-util.c L270). */
     bell: (): void => state.sound?.(MSG.BELL),
-    onDeath: (_target, killer): void => {
-      const p = state.actor.player;
-      /* my_strcpy(p->died_from, kb_str, ...) (L244) and total_winner = false
-       * (L255). The shell's death handler reads diedFrom for the score/tombstone
-       * and clears the active slot. */
-      p.diedFrom = killer;
-      p.totalWinner = false;
-    },
+    onDeath: (_target, killer): void => recordDeath(killer),
     /*
      * Wizard / cheat_live escape (player-util.c:246-248 + ui-display.c:2568):
      * when player->wizard or OPT(cheat_live), the C asks get_check("Die? ")
      * and on "no" signals EVENT_CHEAT_DEATH -> wiz_cheat_death(). No RNG.
-     * The shell may set state.wizard when ^W is toggled; confirmDie (sync)
-     * returns true to accept death. Absent confirmDie answers "no" (cheat).
+     * The shell owns the asynchronous prompt through state.pendingDeath.
      */
-    cheatDeath: (): boolean => {
-      const wizard = state.wizard === true;
-      const cheatLive = state.options?.get("cheat_live") === true;
-      if (!wizard && !cheatLive) return false;
-      /* get_check("Die? "): true = yes die; false = cheat. */
-      if (state.confirmDie?.() === true) return false;
-      state.msg?.("You invoke wizard mode and cheat death.");
-      const effect = opts.wizardEffect?.current;
-      return wizCheatDeath(state, {
-        wizard: true,
-        ...(effect ? { effect } : {}),
-        markNoscore: (bits: number): void => {
-          const p = state.actor.player;
-          p.noscore = markNoscore(p.noscore, bits);
-        },
-        msg: (t) => state.msg?.(t),
-      });
-    },
+    cheatDeath,
     /* PF_COMBAT_REGEN mana reward (player-util.c L216-222, audit 01 C1): a
      * Blackguard turns lost hitpoints into rage-mana. take_hit already excludes
      * poison / fatal wound / starvation before calling this, so only the flag
