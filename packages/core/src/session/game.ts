@@ -12,15 +12,10 @@
  * (birth), calcBonuses (derived combat/defence), and the context helpers
  * that place the player and register the monsters.
  *
- * Two honest simplifications for this stage, both deferred to the title /
- * character-birth flow (PORT_PLAN.md decision 21):
- * - Race and class default to Human Warrior; pass raceName/className to
- *   override. There is no birth UI or point-buy here.
- * - The character is birthed from the same RNG stream AFTER the level is
- *   generated (upstream births first). The result is still deterministic
- *   for a given seed - our reproducibility guarantee (decision 22) is that
- *   our engine is a function of the seed, not that the draw order matches
- *   the C game - so this is a faithful-enough dev entry point.
+ * Race and class default to Human Warrior; pass raceName/className to
+ * override. Decision 6.2 stream order matches C player-birth.c:1269-1292 +
+ * ui-game.c:757-760: store_reset, seed_randart, seed_flavor (back-to-back),
+ * then prepare_next_level generation.
  */
 
 import { loc } from "../loc";
@@ -133,7 +128,6 @@ import {
   calcUnlockingChance,
   installTrap,
   installTraps,
-  placeTrap,
   squareDoorPower,
   squareIsPlayerTrap,
   squareIsWarded,
@@ -1591,8 +1585,8 @@ interface LevelContent {
   objects: readonly { grid: Loc; obj: import("../obj/object").GameObject }[];
   trapGrids: readonly Loc[];
   /**
-   * Kind+power chosen at generation (place_trap). Preferred over re-picking
-   * from trapGrids so the gen-stream draws are not spent twice (trap.c:356).
+   * Kind+power chosen at generation (place_trap). Required for every trapGrid
+   * when trapDeps is live; bare markers throw rather than re-draw (trap.c:356).
    */
   traps?: readonly { grid: Loc; tidx: number; power: number }[];
   lockedDoors: readonly { grid: Loc; power: number }[];
@@ -1642,19 +1636,29 @@ function populateFromLevel(
     floorCarry(state, po.grid, po.obj);
   }
 
-  // Instantiate generation-marked traps on the live cave. When kind+power were
-  // chosen at gen time (level.traps), install without a second pick/power draw
-  // (trap.c:356-394). Fall back to place_trap(-1) only for bare-grid paths that
-  // never threaded trapKinds into the generator.
+  // Instantiate generation-marked traps on the live cave. Kind+power were
+  // chosen at gen time (level.traps / place_trap); install without a second
+  // pick/power draw (trap.c:356-394). Every C place_trap site must record a
+  // GenTrap. Bare trapGrids markers are a gen bug - fail loudly rather than
+  // re-drawing on the play stream or silently dropping them.
   if (trapDeps) {
-    if (level.traps && level.traps.length > 0) {
-      for (const t of level.traps) {
-        installTrap(state, t.grid, t.tidx, t.power, trapDeps);
+    const descriptors = level.traps ?? [];
+    const covered = new Set(
+      descriptors.map((t) => t.grid.y * state.chunk.width + t.grid.x),
+    );
+    for (const grid of level.trapGrids) {
+      const key = grid.y * state.chunk.width + grid.x;
+      if (!covered.has(key)) {
+        throw new Error(
+          `populateFromLevel: bare trap marker at (${grid.x},${grid.y}) ` +
+            `without kind+power; generation must call placeTrap with ` +
+            `trapKinds so pick_trap + power are spent in the gen stream ` +
+            `(trap.c:356-394)`,
+        );
       }
-    } else {
-      for (const grid of level.trapGrids) {
-        placeTrap(state, grid, -1, level.depth, trapDeps);
-      }
+    }
+    for (const t of descriptors) {
+      installTrap(state, t.grid, t.tidx, t.power, trapDeps);
     }
     for (const door of level.lockedDoors) {
       squareSetDoorLock(state, door.grid, door.power, trapDeps);
@@ -2232,35 +2236,13 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     }
   }
 
-  // OPT(player, birth_randarts) (obj-randart.c do_randart): replace the
-  // standard artifact set with a random one BEFORE the starting level is
-  // generated, so its drops come from the randart set. The seed is derived
-  // deterministically from the game seed (decision 22: a function of the seed)
-  // and persisted so a reload reproduces the identical set. Off by default, so
-  // the standard set and the existing draw order are untouched.
-  let randartSeed = 0;
-  if (options.get("birth_randarts")) {
-    randartSeed = new Rng(opts.seed ?? 1).randint0(0x10000000);
-    swapRandartSet(
-      reg,
-      randartSeed,
-      buildCurseTimedFoil(players.timed),
-      buildActivationSummarizer(pack, reg),
-    );
-  }
-
-  // aup_info[] (obj-make.c): the game's shared artifact-created registry.
-  // Built AFTER swapRandartSet so its length matches the (index-preserving)
-  // final artifact set, and BEFORE bootLevel so the starting level shares it.
-  const artifacts = new ArtifactState(reg.objects.artifacts.length);
-  const noArtifacts = options.get("birth_no_artifacts") ?? false;
-
-  const booted = bootLevel(pack, {
-    ...opts,
-    registries: reg,
-    artifacts,
-    noArtifacts,
-  });
+  // Main game RNG (Decision 6.2): one continuous stream for birth UI
+  // continuation (opts.rng / opts.rngState), store_reset, seed_randart,
+  // seed_flavor, player outfit, and level gen. C player-birth.c:1269-1292
+  // order is store_reset, then seed_randart immediately followed by
+  // seed_flavor; prepare_next_level (ui-game.c:757-760) runs only later.
+  const mainRng = opts.rng ?? new Rng(opts.seed ?? 1);
+  if (!opts.rng && opts.rngState) mainRng.setState(opts.rngState);
 
   const race =
     (opts.raceName ? players.raceByName(opts.raceName) : null) ??
@@ -2284,6 +2266,11 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // is born with exactly the set the roller UI showed.
   const useRolledStats =
     opts.rolledStats !== undefined && opts.rolledStats.length === STAT_MAX;
+  // Character birth draws (roll_hp / ahw / history / stats) run before
+  // store_reset, matching C accept order where player_generate / roll_hp
+  // precede store_reset (player-birth.c:1236-1270). When the shell already
+  // advanced the stream for birth UI and supplies rolledStats/history, only
+  // roll_hp / ahw / the history walk remain here.
   const birth = generatePlayer(
     race,
     cls,
@@ -2294,7 +2281,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       ...(usePointBuy ? { stats: opts.birthStats } : {}),
       ...(opts.history !== undefined ? { historyOverride: opts.history } : {}),
     },
-    booted.rng,
+    mainRng,
   );
 
   // player_quests_reset (player-quest.c L157, called from player_birth): copy
@@ -2302,14 +2289,71 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // is_quest and quest_check see the Sauron/Morgoth guardians from turn one.
   playerQuestsReset(birth.player, reg.quests);
 
-  // Populate the gear store and wear the class starting kit (player_outfit +
-  // wield_all) BEFORE deriving bonuses, so calc_bonuses sees the worn gear.
+  // C player-birth.c:1269-1292 then ui-game.c:757-760:
+  //   store_reset -> seed_randart -> seed_flavor -> (later) prepare_next_level
+  // Town store_reset draws on the main stream BEFORE both seeds; level gen
+  // draws come AFTER both seeds. Gated on starting depth 0 so a game that
+  // begins in the dungeon (tests) still draws no store RNG until town.
+  const startDepth = opts.depth ?? 1;
+  let earlyStores: Store[] | undefined;
+  if (reg.stores && startDepth === 0) {
+    const bookKeys = new Set(
+      birth.player.cls.magic.books.map((b) => `${b.tvalIdx},${b.sval}`),
+    );
+    const storeDeps: MakeDeps = {
+      reg: reg.objects,
+      alloc: new ObjAllocState(reg.objects, reg.constants),
+      constants: reg.constants,
+      artifacts: new ArtifactState(reg.objects.artifacts.length),
+      noArtifacts: options.get("birth_no_artifacts") ?? false,
+      timedFoil: buildCurseTimedFoil(players.timed),
+      canBrowseBook: (kind): boolean =>
+        bookKeys.has(`${kind.tval},${kind.sval}`),
+      noSelling: options.get("birth_no_selling") ?? false,
+    };
+    earlyStores = createTownStores(
+      reg.stores.stores,
+      storeDeps,
+      mainRng,
+      birth.player.maxDepth,
+      players.classes,
+    );
+  }
+
+  // OPT(player, birth_randarts) (obj-randart.c do_randart): seed_randart =
+  // randint0(0x10000000) on the main stream (player-birth.c:1285), then
+  // seed_flavor immediately after (player-birth.c:1291).
+  let randartSeed = 0;
+  if (options.get("birth_randarts")) {
+    randartSeed = mainRng.randint0(0x10000000);
+    swapRandartSet(
+      reg,
+      randartSeed,
+      buildCurseTimedFoil(players.timed),
+      buildActivationSummarizer(pack, reg),
+    );
+  }
+  const seedFlavor = mainRng.randint0(0x10000000);
+
+  // aup_info[] (obj-make.c): the game's shared artifact-created registry.
+  // Built AFTER swapRandartSet so its length matches the (index-preserving)
+  // final artifact set, and BEFORE bootLevel so the starting level shares it.
+  const artifacts = new ArtifactState(reg.objects.artifacts.length);
+  const noArtifacts = options.get("birth_no_artifacts") ?? false;
+
+  // player_outfit (player-birth.c L1299): after seed_flavor, before level gen.
   const gear = newGear();
-  // player_outfit (player-birth.c L612-637): thread the birth-option accessor so
-  // birth_start_kit (gap 1.6) and the per-start-item eopts exclusion (gap 1.8)
-  // are honoured; without it every character got the full class kit.
-  outfitPlayer(gear, birth.player, reg.objects, booted.rng, reg.constants, {
+  outfitPlayer(gear, birth.player, reg.objects, mainRng, reg.constants, {
     opt: (name: string): boolean => options.get(name) ?? false,
+  });
+
+  // prepare_next_level (ui-game.c:757-760): level generation AFTER both seeds.
+  const booted = bootLevel(pack, {
+    ...opts,
+    rng: mainRng,
+    registries: reg,
+    artifacts,
+    noArtifacts,
   });
 
   // Resolve the worn objects by body slot; calc_bonuses reads them for the
@@ -2402,11 +2446,11 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     isDead: false,
     generateLevel: false,
     nextCommand: (): PlayerCommand | null => null,
+    // store_reset already ran on the main stream before seed_randart/flavor.
+    ...(earlyStores ? { stores: earlyStores } : {}),
   };
 
-  // seed_flavor (player-birth.c L1291): drawn once at birth from the game RNG
-  // and persisted, so the object colours/titles stay stable across reloads.
-  const seedFlavor = booted.rng.randint0(0x10000000);
+  // seed_flavor already drawn above; flavor_init runs inside wireGame.
   const wired = wireGame(state, reg, players, pstate, seedFlavor, pack);
 
   // kind->everseen = true for each bought start item (player-birth.c L658). At
@@ -2456,6 +2500,8 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     },
     wired.trapDeps,
   );
+  // Stores already created pre-seed when startDepth === 0; refresh is then a
+  // daycount-0 no-op. Depth > 0 still no-ops until the first town entry.
   refreshTownStores(state, reg);
   /* town_gen -> cave_illuminate (gen-cave.c / cave-map.c L555): the birth town
    * is illuminated at generation. The chunk-flag half ran in the town builder;

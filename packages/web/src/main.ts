@@ -387,6 +387,10 @@ const FORCE_NEW_KEY = "neo-angband-force-new";
 // post-birth reload does not reopen the birth screen.
 const BIRTH_KEY = "neo-angband-birth";
 const BIRTH_DONE_KEY = "neo-angband-birth-done";
+// Post-birth RNG snapshot: ui-birth.c advances the live state.rng (* / @ / roller /
+// get_history); the reload that rebuilds the character restores this state so
+// startGame continues from the same stream position (Decision 6.2).
+const BIRTH_RNG_KEY = "neo-angband-birth-rng";
 // The boot title/news screen shows on every genuine launch (main-win.c:5475:
 // the GUI ports display news.txt and wait). Internal reloads that continue an
 // already-made choice (New/Switch/resume-a-slot) set this one-shot flag so the
@@ -578,9 +582,22 @@ function bootGame(): ReturnType<typeof startGame> {
   // A genuine new character (forcedNew, or an empty roster with nothing to
   // pick) gets an active slot now so its autosaves land.
   if (!needsSelect && !getActiveId()) setActiveId(newCharId());
+  // Resume the main stream after the birth UI advanced it (ui-birth.c draws
+  // before level gen). Absent, start from seed as a normal new game.
+  let birthRngState: ReturnType<Rng["getState"]> | undefined;
+  try {
+    const raw = sessionStorage.getItem(BIRTH_RNG_KEY);
+    if (raw) {
+      birthRngState = JSON.parse(raw) as ReturnType<Rng["getState"]>;
+      sessionStorage.removeItem(BIRTH_RNG_KEY);
+    }
+  } catch {
+    /* storage disabled or corrupt: fall through to seed */
+  }
   return startGame(pack, {
     seed,
     depth,
+    ...(birthRngState ? { rngState: birthRngState } : {}),
     // The effective mod-rule flags (qol / bug-fixes tweaks) for this session:
     // enabled mods' declared rules resolved against the player's saved choices.
     // Empty => faithful core. Upstream OPTIONS are NOT set here - they ship in
@@ -742,12 +759,12 @@ if (animator) {
   }
 }
 
-// do_animation increments a uint8_t `flicker` counter each animation tick. We
-// drive it off a display timer so shimmering never touches the deterministic
-// game RNG. RF_ATTR_MULTI's randint1 uses this DISPLAY rng (Math.random), not
-// state.rng, for the same reason (see parity/ledger/graphics-visuals.yaml).
+// do_animation increments a uint8_t `flicker` counter each animation tick.
+// RF_ATTR_MULTI draws randint1(BASIC_COLORS - 1) on the MAIN game RNG
+// (ui-display.c:1439-1446); Decision 6.2 requires that main-stream draw, not
+// Math.random. Flicker frame itself is display-only (no RNG).
 let animFrame = 0;
-const displayRandint1 = (n: number): number => 1 + Math.floor(Math.random() * n);
+const displayRandint1 = (n: number): number => state.rng.randint1(n);
 
 // --- Optional graphics tiles (task C1: bundled upstream tilesets) -----------
 // Four freely-licensed upstream packs ship under public/tiles/<dir>/ (see
@@ -5892,20 +5909,24 @@ async function maybeBirth(): Promise<void> {
     properties: players.properties,
     elementNames,
   };
+  // Birth UI advances the live game stream (ui-birth.c L465/678/696/842 +
+  // get_history L746-750): the same Rand that store_reset / seed_randart /
+  // seed_flavor / level gen continue. The throwaway startGame already advanced
+  // state.rng through init; reseed to the world seed so birth draws start at
+  // the C birth-UI position, then snapshot after accept for the post-birth
+  // reload (Decision 6.2). PREVIEW_SEED throwaways in birth.ts stay separate.
+  state.rng.setState(new Rng(seed).getState());
   const historyFor = (raceName: string): string => {
     const race = players.raceByName(raceName);
     if (!race) return "";
-    return generateHistory(
-      players.historyChart(race),
-      new Rng(((Date.now() >>> 0) ^ 0x1a2b3c4d) >>> 0),
-    );
+    return generateHistory(players.historyChart(race), state.rng);
   };
   await openModal(async () => {
     // quickstart_allowed (ui-birth.c): offer the quick-start stage only when
     // a previous character's choices exist to reuse.
     const choice = await runBirth(term, players.races, players.classes, {
       // ui-birth.c draws random race/class/*/@/roller from the main game RNG.
-      rng: new Rng(seed),
+      rng: state.rng,
       quickstart: birthChoice
         ? {
             raceName: birthChoice.raceName,
@@ -5929,6 +5950,9 @@ async function maybeBirth(): Promise<void> {
       localStorage.setItem(BIRTH_KEY, JSON.stringify(choice));
       sessionStorage.setItem(BIRTH_DONE_KEY, "1");
       sessionStorage.setItem(FORCE_NEW_KEY, "1");
+      // Persist the advanced stream so the post-birth reload's startGame
+      // continues from this position (store_reset / seeds / level gen).
+      sessionStorage.setItem(BIRTH_RNG_KEY, JSON.stringify(state.rng.getState()));
     } catch {
       /* storage disabled: the reload still starts a fresh game via ?new */
     }

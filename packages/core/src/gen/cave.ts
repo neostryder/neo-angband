@@ -69,6 +69,7 @@ import {
   pickAndPlaceDistantMonster,
   placeClosedDoor,
   placeRandomDoor,
+  placeTrap,
   randDir,
   setMarkedGranite,
   shuffle,
@@ -610,8 +611,9 @@ function tryDoor(g: Gen, grid: Loc): void {
   if (g.rng.randint0(100) < g.profileTun.jct && possibleDoorway(g, grid)) {
     placeRandomDoor(g, grid);
   } else if (g.rng.randint0(500) < g.profileTun.jct && possibleDoorway(g, grid)) {
-    /* place_trap deferred: record the grid. */
-    g.markTrap(grid);
+    /* place_trap(c, grid, -1, c->depth) (gen-cave.c:830-833): pick_trap +
+     * randcalc power on the generation stream, not a bare markTrap. */
+    placeTrap(g, grid);
   }
 }
 

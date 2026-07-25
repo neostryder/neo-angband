@@ -24,11 +24,10 @@
  *
  * Standard roller (BR_NORMAL): the standardRoller screen (roller_command,
  * ui-birth.c:872-999) rolls stats for display and supports reroll ('r'/space),
- * previous-roll ('p') and accept (Enter). Rolling is the only place the shell
- * draws RNG (from a throwaway per-birth Rng); the accepted natural stats ride
- * the BirthChoice as `rolledStats` and are applied by generatePlayer's
- * `rolledStats` option (see WIRING-NEEDED - bootGame must NOT feed them through
- * the point-buy path).
+ * previous-roll ('p') and accept (Enter). Rolling draws from the shared game
+ * stream (opts.rng); the accepted natural stats ride the BirthChoice as
+ * `rolledStats` and are applied by generatePlayer's `rolledStats` option
+ * (bootGame must NOT feed them through the point-buy path).
  *
  * History (BIRTH_HISTORY_CHOICE): when the shell supplies get_history via
  * BirthOpts.historyFor, the name stage is followed by an accept/edit-background
@@ -138,8 +137,8 @@ export interface BirthDeps {
 export interface BirthOpts {
   /**
    * Shared game RNG for random birth choices (ui-birth.c randint0 at L465/678/
-   * 696/842) and the standard roller. When omitted a throwaway Rng(1) is used
-   * (tests); the shell should pass the same seed-backed stream as startGame.
+   * 696/842) and the standard roller. Required: omitting it throws so a missing
+   * stream cannot silently desync Decision 6.2. Tests inject `new Rng(1)`.
    */
   rng?: Rng;
   /** BIRTH_QUICKSTART: the previous character's choices, offered as stage 0
@@ -1208,9 +1207,14 @@ export async function runBirth(
 
   // The birth shell's RNG: standard roller and the '*'/'@' random choices.
   // Must be the shared game stream (Decision 6.2 / ui-birth.c L678), never a
-  // Date.now-seeded generator. Accepted stats still ride the choice explicitly
-  // into startGame; the draw count/order on this stream matches C.
-  const rollRng = opts.rng ?? new Rng(1);
+  // Date.now-seeded generator or a silent Rng(1) fallback (that desyncs the
+  // stream when the shell forgets to inject). Tests and the shell must pass rng.
+  if (!opts.rng) {
+    throw new Error(
+      "runBirth: opts.rng is required (ui-birth.c advances the main game stream)",
+    );
+  }
+  const rollRng = opts.rng;
 
   // Registry-backed info (race/class ability names + the full preview sheet).
   // Absent, the help blocks still show stat + skill data (computable from the

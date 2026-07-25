@@ -14,6 +14,7 @@ import { runBirth } from "./birth";
 import type { GlyphTerm } from "./term";
 import type { PlayerClass, PlayerRace } from "@neo-angband/core";
 import {
+  Rng,
   colorToCss,
   COLOUR_L_BLUE,
   COLOUR_WHITE,
@@ -115,7 +116,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(90);
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     // The race menu: the instruction header, the yellow hint at row 7, and the
     // race column at RACE_COL=2 / TABLE_ROW=9.
@@ -164,7 +165,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
     const seen: string[] = [];
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     const record = (): void => {
       seen.push(term.snapshot().join("\n"));
     };
@@ -193,7 +194,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "b"); // pick Half-Elf
     await tick();
@@ -215,7 +216,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "Escape");
     expect(await done).toBeNull();
@@ -225,7 +226,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "a"); await tick(); // race Human
     press(win, "a"); await tick(); // class Warrior
@@ -248,7 +249,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "a"); await tick(); // race Human
     press(win, "a"); await tick(); // class Warrior
@@ -282,7 +283,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(90, 24);
-    const done = runBirth(term, RACES11, CLASSES);
+    const done = runBirth(term, RACES11, CLASSES, { rng: new Rng(1) });
     await tick();
     const snap = term.snapshot().join("\n");
     // 11 races -> a,b,c,d,e,f,g,i,m,n,o (h/j/k/l skipped).
@@ -305,7 +306,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(90);
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     const snap = term.snapshot().join("\n");
     expect(snap).not.toContain("Random");
@@ -318,7 +319,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(90);
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     // print_menu_instructions: title at (QUESTION_COL=2, HEADER_ROW=1) light blue.
     expect(term.snapshot()[1]).toContain("Please select your character traits");
@@ -338,7 +339,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(90);
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "c"); // Dwarf
     await tick();
@@ -361,7 +362,7 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(90); // wide enough for the untruncated centered prompt
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "a"); await tick(); // Human
     press(win, "a"); await tick(); // Warrior
@@ -393,7 +394,7 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "a"); await tick(); // Human
     press(win, "a"); await tick(); // Warrior
@@ -411,7 +412,7 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "a"); await tick();
     press(win, "a"); await tick();
@@ -436,7 +437,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES, QUICK);
+    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
     await tick();
     expect(term.snapshot().join("\n")).toContain("Quick-start");
     press(win, "a"); // use the previous character
@@ -454,7 +455,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES, {
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1),
       quickstart: { raceName: "Dwarf", className: "Mage", stats: [17, 10, 10, 10, 16] },
     });
     await tick();
@@ -475,7 +476,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES, QUICK);
+    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
     await tick();
     press(win, "a"); // quickstart
     await tick();
@@ -490,7 +491,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES, QUICK);
+    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
     await tick();
     press(win, "b"); // choose everything from scratch
     await tick();
@@ -505,7 +506,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES, { quickstart: null });
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1), quickstart: null });
     await tick();
     expect(term.snapshot().join("\n")).not.toContain("Quick-start");
     expect(term.snapshot()[7]).toContain("Race affects stats");
@@ -517,7 +518,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES, QUICK);
+    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
     await tick();
     expect(term.snapshot().join("\n")).toContain("Quick-start");
     // textui_birth_quickstart ('=', ui-birth.c:126): opens do_cmd_options_birth.
@@ -541,7 +542,7 @@ describe("runBirth: standard roller screen (roller_command)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(90);
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "a"); await tick(); // Human
     press(win, "a"); await tick(); // Warrior
@@ -567,7 +568,7 @@ describe("runBirth: standard roller screen (roller_command)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(90);
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "a"); await tick(); // Human
     press(win, "a"); await tick(); // Warrior
@@ -587,7 +588,7 @@ describe("runBirth: menu_question '*' random and '@' finish", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(90);
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "*"); // select a race at random (ui-birth.c:841)
     await tick();
@@ -626,6 +627,7 @@ describe("runBirth: menu_question '*' random and '@' finish", () => {
       term,
       RACES,
       FULL_CLASSES as unknown as typeof CLASSES,
+      { rng: new Rng(1) },
     );
     await tick();
     press(win, "@"); // finish with random choices (ui-birth.c:851)
@@ -646,7 +648,7 @@ describe("runBirth: history-edit stage (get_history_command)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(90);
-    const done = runBirth(term, RACES, CLASSES, {
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1),
       historyFor: () => "You are the only child of a Serf.",
     });
     await tick();
@@ -667,7 +669,7 @@ describe("runBirth: history-edit stage (get_history_command)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(90);
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "a"); await tick(); // Human
     press(win, "a"); await tick(); // Warrior
@@ -686,7 +688,7 @@ describe("runBirth: per-row race/class stat detail (race_help/class_help)", () =
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = runBirth(term, RACES, CLASSES);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     // race_help (ui-birth.c L241-302): the stat-adjustment table
     // (stat_names_reduced) plus the skill_help block, drawn in the aux column.
