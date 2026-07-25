@@ -31,18 +31,19 @@ import { describe, expect, it } from "vitest";
 import { loadGamePack } from "./pack";
 import { perLevelSd, runStatsBatch, type StatsReport } from "./stats";
 import { loadCBaseline } from "./baseline";
-import { bonferroni, distributionTest, meanTest } from "./stat-test";
+import { bonferroni, distributionTest, meanTest, normalTwoTailedP } from "./stat-test";
 
 const cbase = loadCBaseline();
 
 /**
  * Port sample size. Each run generates one level per depth, so this is also the
- * number of sampled levels per depth. 200 x 8 depths is ~30s and resolves a mean
- * shift of roughly 3 monsters per level (about 7%) at the corrected alpha; the
- * C side contributes 200 levels per depth of its own.
+ * number of sampled levels per depth, and the C oracle contributes 1000 of its
+ * own. 400 x 20 depths is a ~2 minute test that resolves a per-depth mean shift
+ * of about 4.5 monsters; raise it when chasing a specific divergence:
+ *   NEO_PARITY_RUNS=1000 pnpm vitest run packages/cli/src/parity-c-stat.test.ts
  */
-const PORT_RUNS = 200;
-const DEPTH_MAX = 8;
+const PORT_RUNS = Number(process.env.NEO_PARITY_RUNS ?? 400);
+const DEPTH_MAX = 20;
 const ALPHA = 0.01;
 
 interface Row {
@@ -80,6 +81,7 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
     const alpha = bonferroni(ALPHA, depths.length * 4);
     const rows: Row[] = [];
     const report: string[] = [];
+    const densityZ: number[] = [];
 
     for (const d of depths) {
       const b = base.depths[String(d)];
@@ -96,6 +98,7 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
         alpha,
       });
       rows.push({ depth: d, metric: "density", detail: `z=${density.z.toFixed(2)}`, p: density.p });
+      densityZ.push(density.z);
       report.push(
         `depth ${String(d).padStart(2)} density  C=${(b.monsterTotal / b.levels).toFixed(2)} ` +
           `port=${(p.monsterTotal / p.levels).toFixed(2)} delta=${density.delta.toFixed(2)} ` +
@@ -128,7 +131,28 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
       }
     }
 
-    const failures = rows.filter((r) => r.p < alpha);
+    /* Pooled density check (Stouffer). A per-depth test is blind to a small
+     * SYSTEMATIC bias -- 3% low at every depth is invisible one depth at a time
+     * but is exactly the kind of divergence that matters, and combining the
+     * per-depth deviates recovers roughly sqrt(k) times the power. This is one
+     * hypothesis, so it takes the uncorrected alpha. */
+    const stouffer =
+      densityZ.reduce((a, b) => a + b, 0) / Math.sqrt(Math.max(densityZ.length, 1));
+    const stoufferP = normalTwoTailedP(stouffer);
+    report.push(
+      `pooled density (Stouffer over ${densityZ.length} depths): Z=${stouffer.toFixed(2)} ` +
+        `p=${stoufferP.toExponential(2)} (alpha=${ALPHA})`,
+    );
+    if (stoufferP < ALPHA) {
+      rows.push({
+        depth: -1,
+        metric: "density-pooled",
+        detail: `Stouffer Z=${stouffer.toFixed(2)} over ${densityZ.length} depths`,
+        p: stoufferP,
+      });
+    }
+
+    const failures = rows.filter((r) => r.p < alpha || r.metric === "density-pooled");
     const summary =
       `C-vs-TS generation parity, alpha=${alpha.toExponential(2)} ` +
       `(${ALPHA} Bonferroni-corrected over ${rows.length} tests), ` +

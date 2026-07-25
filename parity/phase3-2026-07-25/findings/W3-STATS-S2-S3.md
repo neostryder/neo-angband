@@ -1,5 +1,27 @@
 # W3 — Statistical parity: S-2 resolved, S-3 opened
 
+> **UPDATE 2026-07-25, wider oracle.** A fresh stats-enabled C build now provides
+> **1000 levels per depth over depths 1–20** (see `W3-ORACLE.md`), replacing the
+> 200-level, depth-1–8 baseline everything below was first measured against. At
+> that sample size, with the port at 400 runs:
+>
+> - **Density is green at every depth 1–20**, and the pooled Stouffer test over
+>   all 20 depths gives Z = −1.22, p = 0.22. **S-2 is definitively closed.** The
+>   oracle stream's own report flagged depth 6 as still divergent, but it
+>   estimated the standard error with a Poisson approximation
+>   (`sqrt(mean/N)` ≈ 6.6), and the measured per-level standard deviation at that
+>   depth is **21.6** — monster counts are heavily overdispersed because the count
+>   follows whichever rooms the level grows. Its "57 metrics beyond noise" is
+>   inflated by the same factor.
+> - **The species mix diverges at every depth from 5 to 20**, G = 389–823 on
+>   df = 138–209, p from 1.9e-15 down to 4.8e-98. Depths 1–4 pass.
+> - **Object level feelings** also now fail at depths 11 and 12 (p = 3.1e-5,
+>   6.9e-5), consistent with the same cause: the feeling is derived from what was
+>   placed.
+>
+> The numbers in the S-3 section below are from the 200-level oracle; the
+> conclusions are unchanged and the effect is now measured over 20 depths.
+
 Measured 2026-07-25 against `packages/cli/baseline/c-stats-baseline.json`
 (200 generated levels per depth, imported from the compiled C `main-stats`), with
 the port at 200 runs, base seed 1337, depths 1–8.
