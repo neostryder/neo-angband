@@ -36,6 +36,7 @@ export * from "./world/projection";
 export * from "./world/trap";
 export * from "./effects/effect";
 export * from "./effects/effect-info";
+export * from "./effects/effect-choice";
 export * from "./effects/interpreter";
 export * from "./effects/handlers";
 export * from "./mon/types";

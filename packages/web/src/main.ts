@@ -50,6 +50,7 @@ import {
   colorToCss,
   updateView,
   squareIsSeen,
+  squareIsBelievedWall,
   noteSpots,
   knownFeat,
   knownObject,
@@ -134,6 +135,9 @@ import {
   historyStamp,
   HIST,
   displayFeeling,
+  effectChoiceRows,
+  EF,
+  OBJ_PROPERTY,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -654,6 +658,46 @@ try {
   /* history/URL unavailable: harmless, the params just linger */
 }
 const { state, registry, booted, players } = game;
+/* effects.c L437-458 and ui-effect.c L34-180: the core chooser remains a
+ * synchronous value seam, so the web host presents the menu before advancing
+ * the command and supplies the selected row when the engine reaches EF_SELECT. */
+let pendingEffectChoice: number | null = null;
+const effectMenuDeps = {
+  projections: booted.registries.projections ?? [],
+  timedDesc: (idx: number) => players.timed.find((t) => t.index === idx)?.desc ?? "",
+  statName: (idx: number) =>
+    booted.registries.objects.properties.find(
+      (p) => p?.type === OBJ_PROPERTY.STAT && p.propIndex === idx,
+    )?.name ?? "",
+  summonDesc: (idx: number) => booted.registries.monsters.summons[idx]?.desc ?? "",
+  foodFull: 90 * state.z.foodValue,
+  foodHungry: state.z.foodHungry,
+};
+state.effectChooser = (): number => {
+  const choice = pendingEffectChoice;
+  pendingEffectChoice = null;
+  return choice ?? -1;
+};
+
+/** Present the C-shaped EF_SELECT rows through the GlyphTerm overlay seam. */
+async function choosePlayerEffect(chain: Effect | null): Promise<boolean> {
+  if (!chain || chain.index !== EF.SELECT || !chain.dice) return true;
+  const value = chain.dice.randomValue();
+  /* All live SELECT lists use a fixed count. Do not pre-roll a dynamic count:
+   * that would consume the engine's later dice draw and change the seed. */
+  if (value.dice !== 0 || value.sides !== 0 || value.base < 2) return true;
+  const rows = effectChoiceRows(chain.next, value.base, effectMenuDeps);
+  const selected = await selectFromMenu(
+    term,
+    "Which effect?",
+    rows.map((row) => ({ label: row.label })),
+    "[ a-z to choose, ESC to cancel ]",
+  );
+  /* Keep the engine's cancellation policy in charge: queue the command with
+   * -1 so effectDo returns false exactly as the core seam specifies. */
+  pendingEffectChoice = selected === null ? -1 : (rows[selected]?.choice ?? -1);
+  return true;
+}
 // The effect interpreter (null on a worldless boot), surfaced for the trusted
 // mod registry facade (?trusted=<id>, W2.2).
 const effectRegistry = game.effects;
@@ -1738,8 +1782,13 @@ async function dispatchItemVerb(code: string, handle: number, obj: GameObject | 
     args["dir"] = dir;
   }
   if (obj && !(await applyItemTarget(obj, args))) return;
+  if (obj) {
+    const chain = buildObjectEffectChain((obj.effect ?? []) as EffectRecordJson[], state);
+    if (!(await choosePlayerEffect(chain))) return;
+  }
   commandBuffer.push({ code, args });
   advance();
+  pendingEffectChoice = null;
 }
 
 /**
@@ -1759,8 +1808,13 @@ async function dispatchItemRef(code: string, ref: ItemTargetRef): Promise<void> 
     args["dir"] = dir;
   }
   if (obj && !(await applyItemTarget(obj, args))) return;
+  if (obj) {
+    const chain = buildObjectEffectChain((obj.effect ?? []) as EffectRecordJson[], state);
+    if (!(await choosePlayerEffect(chain))) return;
+  }
   commandBuffer.push({ code, args });
   advance();
+  pendingEffectChoice = null;
 }
 
 /** Device-use verbs whose picker shows the OLIST_FAIL failure column. */
@@ -1856,8 +1910,13 @@ async function activateItem(): Promise<void> {
     args["dir"] = dir;
   }
   if (obj && !(await applyItemTarget(obj, args))) return;
+  if (obj) {
+    const chain = buildObjectEffectChain((obj.effect ?? []) as EffectRecordJson[], state);
+    if (!(await choosePlayerEffect(chain))) return;
+  }
   commandBuffer.push({ code: "activate", args });
   advance();
+  pendingEffectChoice = null;
 }
 
 /** Take off an equipped item (t): pick from filled equipment slots via the
@@ -2193,9 +2252,11 @@ async function castSpell(): Promise<void> {
     const prep = await prepareItemTarget(chain);
     if (prep === "cancel") return;
     if (prep !== "none") Object.assign(args, prep);
+    if (!(await choosePlayerEffect(chain))) return;
   }
   commandBuffer.push({ code: "cast", args });
   advance();
+  pendingEffectChoice = null;
 }
 
 /** Study (G): learn a spell. Choose-spell classes pick; others learn at random. */
@@ -2972,6 +3033,7 @@ function runTargetLoop(
         state.actor.grid,
         cur,
         PROJECT.THRU | PROJECT.INFO,
+        (grid) => squareIsBelievedWall(state, grid),
       );
       const { text, mon } = describeLookGrid(state, cur, mode);
       lastMon = mon;

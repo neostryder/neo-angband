@@ -56,8 +56,86 @@ interface EffectEntryShape {
   menuName: string;
 }
 
+/** Live lookup data needed by effect_get_menu_name (effects-info.c L583-714). */
+export interface EffectMenuNameDeps {
+  projections?: readonly Pick<ProjectionInfo, "desc" | "playerDesc" | "lashDesc">[];
+  timedDesc?: (tmdIndex: number) => string;
+  statName?: (statIndex: number) => string;
+  summonDesc?: (summonIndex: number) => string;
+  foodFull?: number;
+  foodHungry?: number;
+}
+
 function effectEntryFor(index: number): EffectEntryShape {
   return EFFECT_ENTRIES[index - 1] as EffectEntryShape;
+}
+
+/** effect_get_menu_name (effects-info.c L583-714), including subtype formatting. */
+export function effectMenuName(effect: Effect | null, deps: EffectMenuNameDeps = {}): string {
+  if (!effectValidUpstream(effect) || !effect) return "";
+  const entry = effectEntryFor(effect.index as number);
+  const fmt = entry.menuName;
+  const format = (...args: Array<string | number>): string => sprintf(fmt, ...args);
+
+  switch (entry.infoFlags) {
+    case "EFINFO_FOOD": {
+      let action: string | null = null;
+      let target: string | null = null;
+      if (effect.subtype === 0) {
+        action = "feed";
+        target = "yourself";
+      } else if (effect.subtype === 1) {
+        action = "increase";
+        target = "hunger";
+      } else if (effect.subtype === 2 || effect.subtype === 3) {
+        const avg = effect.dice ? diceAverage(effect.dice, 1) : 0;
+        const full = deps.foodFull ?? 90 * 100;
+        const hungry = deps.foodHungry ?? 10 * 100;
+        action = effect.subtype === 2 ? "become" : "leave";
+        target =
+          avg > full
+            ? "bloated"
+            : avg > hungry
+              ? effect.subtype === 3
+                ? "nourished"
+                : "satisfied"
+              : "hungry";
+      }
+      return action && target ? format(action, target) : "";
+    }
+    case "EFINFO_CURE":
+    case "EFINFO_TIMED":
+      return format(deps.timedDesc?.(effect.subtype) ?? "");
+    case "EFINFO_STAT":
+      return format(deps.statName?.(effect.subtype) ?? "");
+    case "EFINFO_SEEN":
+    case "EFINFO_BOLT":
+    case "EFINFO_BOLTD":
+    case "EFINFO_TOUCH":
+      return format(deps.projections?.[effect.subtype]?.desc ?? "");
+    case "EFINFO_SUMM":
+      return format(deps.summonDesc?.(effect.subtype) ?? "");
+    case "EFINFO_TELE": {
+      const value = effect.dice ? effect.dice.randomValue() : ZERO_RV;
+      const avg = effect.dice ? rvAverage(value, 1) : 0;
+      return format(effect.subtype ? "other" : "you", value.mBonus ? "some distance" : `${avg} grids`);
+    }
+    case "EFINFO_BALL":
+    case "EFINFO_SPOT":
+    case "EFINFO_BREATH":
+    case "EFINFO_SHORT":
+      return format(deps.projections?.[effect.subtype]?.playerDesc ?? "");
+    case "EFINFO_LASH":
+      return format(deps.projections?.[effect.subtype]?.lashDesc ?? "");
+    case "EFINFO_DICE":
+    case "EFINFO_HEAL":
+    case "EFINFO_CONST":
+    case "EFINFO_QUAKE":
+    case "EFINFO_NONE":
+      return fmt;
+    default:
+      return "";
+  }
 }
 
 /** effect_info (effects.c L103): the short info-type string ("dam", "heal", ...). */

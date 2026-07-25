@@ -12,12 +12,14 @@ import {
   effectAvgDamage,
   effectDamages,
   effectInfo,
+  effectMenuName,
   effectNext,
   effectProjection,
   getSpellInfo,
   spellDamageSummary,
 } from "./effect-info";
 import type { EffectDescribeDeps } from "./effect-info";
+import { effectChoiceRows } from "./effect-choice";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(
@@ -50,6 +52,26 @@ describe("effectInfo / effectDamages", () => {
   it("returns null/false for an invalid effect (EF_NONE, out of range)", () => {
     expect(effectInfo(effectNew(EF.NONE))).toBeNull();
     expect(effectInfo(null)).toBeNull();
+  });
+});
+
+describe("effect choice display", () => {
+  it("matches ui-effect.c random-first order and formats projection names", () => {
+    const chain = new EffectBuilder()
+      .effect("SELECT")
+      .dice("2")
+      .effect("BREATH:FIRE")
+      .effect("BREATH:COLD")
+      .build()!;
+    const rows = effectChoiceRows(chain.next, 2, { projections });
+
+    expect(rows.map((row) => row.choice)).toEqual([-2, 0, 1]);
+    expect(rows.map((row) => row.label)).toEqual([
+      "one of the following at random",
+      "breathe a cone of fire",
+      "breathe a cone of frost",
+    ]);
+    expect(effectMenuName(chain.next, { projections })).toBe("breathe a cone of fire");
   });
 });
 

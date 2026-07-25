@@ -489,10 +489,12 @@ export class EffectRegistry {
             if (choice === -1) return false;
           } else {
             /*
-             * No UI is injected: fall back to a random pick
-             * (upstream would prompt the player here).
+             * A player-origin select is a prompt, not a random effect. The
+             * live environment supplies the renderer-neutral chooser through
+             * EffectContext.chooseEffect; a missing UI seam is cancellation.
+             * This matches effects.c L425-460 and avoids an unrequested draw.
              */
-            choice = -2;
+            return false;
           }
 
           /* If the player chose to use a random effect, roll it. */

@@ -270,21 +270,32 @@ describe("EF_SELECT semantics", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("rolls randomly when the chooser answers -2 or is absent", () => {
-    for (const env of [
-      { rng: new Rng(11), chooseEffect: () => -2 } as EffectContext,
-      { rng: new Rng(11) } as EffectContext,
-    ]) {
-      const { registry, calls } = recordingRegistry([
-        EF.DETECT_TRAPS,
-        EF.DETECT_DOORS,
-      ]);
-      const done = registry.effectDo(selectChain(), env, {
-        origin: sourcePlayer(),
-      });
-      expect(done).toBe(true);
-      expect(calls).toHaveLength(1);
-    }
+  it("rolls randomly only when the chooser selects the random row", () => {
+    const { registry, calls } = recordingRegistry([
+      EF.DETECT_TRAPS,
+      EF.DETECT_DOORS,
+    ]);
+    const done = registry.effectDo(
+      selectChain(),
+      { rng: new Rng(11), chooseEffect: () => -2 },
+      { origin: sourcePlayer() },
+    );
+    expect(done).toBe(true);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("cancels when a player select has no prompt seam", () => {
+    const { registry, calls } = recordingRegistry([
+      EF.DETECT_TRAPS,
+      EF.DETECT_DOORS,
+    ]);
+    const done = registry.effectDo(
+      selectChain(),
+      { rng: new Rng(11) },
+      { origin: sourcePlayer() },
+    );
+    expect(done).toBe(false);
+    expect(calls).toHaveLength(0);
   });
 
   it("treats non-player selects as random (no chooser consulted)", () => {

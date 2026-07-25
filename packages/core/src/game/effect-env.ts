@@ -54,6 +54,7 @@ import type {
 import type { TimedEffect } from "../player/types";
 import { DEFAULT_HITPOINT_WARN } from "./project-cast";
 import type { GameState } from "./context";
+import type { Effect } from "../effects/effect";
 
 /** What the effect-environment adapters need beyond the GameState. */
 export interface EffectEnvDeps {
@@ -69,6 +70,8 @@ export interface EffectEnvDeps {
   level?: number;
   /** OPT(player, show_damage). */
   showDamage?: boolean;
+  /** Renderer-neutral EF_SELECT chooser; -1 cancels, -2 chooses random. */
+  chooseEffect?: (first: Effect | null, count: number) => number;
   /** player_inc_check resolvers; when absent every increase is allowed. */
   incQueries?: PlayerIncCheckQueries;
   /** player_inc_check side hooks (equip-learn + monster-source smart-learn);
@@ -242,5 +245,8 @@ export function buildEffectContext(
     foodValue: deps.foodValue ?? state.z.foodValue,
     ...(deps.level !== undefined ? { level: deps.level } : {}),
     ...(showDamage !== undefined ? { showDamage } : {}),
+    ...((deps.chooseEffect ?? state.effectChooser)
+      ? { chooseEffect: deps.chooseEffect ?? state.effectChooser }
+      : {}),
   };
 }
