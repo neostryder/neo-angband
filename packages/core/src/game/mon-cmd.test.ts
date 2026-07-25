@@ -16,8 +16,10 @@ import { deleteMonster } from "./context";
 import { basicPlayerActor } from "./project-cast";
 import { attachGameEnv } from "./effect-game-env";
 import { registerGeneralHandlers } from "./effect-general";
+import { registerTerrainHandlers } from "./effect-terrain";
 import { targetSetMonster } from "./target";
 import { decreaseTimeouts } from "./loop";
+import { getLore } from "../mon/lore";
 import type { DoMonSpellDeps } from "./mon-cast";
 import {
   doCmdMonCommand,
@@ -40,6 +42,8 @@ function registry(): EffectRegistry {
   const r = new EffectRegistry();
   registerCoreHandlers(r);
   registerGeneralHandlers(r);
+  /* EF_EARTHQUAKE for mon-vs-mon SHATTER (mon-blows.c L1098-1101). */
+  registerTerrainHandlers(r);
   return r;
 }
 
@@ -260,7 +264,10 @@ describe("monster_attack_monster (mon-attack.c L765)", () => {
     expect(target.hp).toBe(50);
   });
 
-  it("reveals a camouflaged target via mon_take_hit's becomeAware hook", () => {
+  it("lands HURT damage through mon_take_nonplayer_hit (armour, no becomeAware)", () => {
+    /* mon_take_nonplayer_hit (mon-util.c L1193) does NOT call become_aware;
+     * only mon_take_hit does. Camouflaged mon-vs-mon targets stay camouflaged
+     * but still take armour-reduced damage. */
     const state = makeState({ playerGrid: loc(10, 10) });
     const blow = makeBlow("HIT", "HURT", "5d5");
     const mon = addMon(
@@ -279,7 +286,129 @@ describe("monster_attack_monster (mon-attack.c L765)", () => {
 
     monsterAttackMonster(state, mon, target);
 
-    expect(revealed).toBe(target.midx);
+    expect(revealed).toBeNull();
     expect(target.hp).toBeLessThan(200);
+    expect(target.mflag.has(MFLAG.CAMOUFLAGE)).toBe(true);
+  });
+
+  it("emits the blow method msgt type on the typed-message seam (mon-blows.c L236)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const blow = makeBlow("HIT", "HURT", "2d2");
+    const mon = addMon(
+      state,
+      makeRace({ level: 20, blows: [blow] }),
+      loc(5, 5),
+      { hp: 50 },
+    );
+    mon.mflag.on(MFLAG.VISIBLE);
+    const target = addMon(state, makeRace({ ac: 0 }), loc(6, 5), { hp: 200 });
+    target.mflag.on(MFLAG.VISIBLE);
+
+    const typed: Array<{ text: string; type?: string | number }> = [];
+    const sounds: number[] = [];
+    state.msg = (text, type) => {
+      typed.push(type === undefined ? { text } : { text, type });
+    };
+    state.sound = (t) => {
+      sounds.push(t);
+    };
+
+    monsterAttackMonster(state, mon, target);
+
+    const blowLine = typed.find((m) => m.text.includes("hits") || m.text.includes("HIT") || /hits|claws|bites|crushes|touches|kicks/.test(m.text) || m.type);
+    /* method.msgt for HIT is MON_HIT in blow_methods.txt. */
+    expect(typed.some((m) => m.type === "MON_HIT" || m.type === blow.method?.msgt)).toBe(true);
+    expect(sounds.length).toBeGreaterThan(0);
+    expect(blowLine).toBeDefined();
+  });
+
+  it("reduces mon-vs-mon HURT damage by racial armour (mon-blows.c L661)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    /* Fixed 10 damage, high AC so adjust_dam_armor cuts it. */
+    const blow = makeBlow("HIT", "HURT", "10");
+    const mon = addMon(
+      state,
+      makeRace({ level: 1, blows: [blow] }),
+      loc(5, 5),
+      { hp: 50 },
+    );
+    const soft = addMon(state, makeRace({ ac: 0 }), loc(6, 5), { hp: 100 });
+    const hard = addMon(state, makeRace({ ac: 100 }), loc(7, 5), { hp: 100 });
+
+    state.rng = new Rng(1);
+    monsterAttackMonster(state, mon, soft);
+    const softLost = 100 - soft.hp;
+
+    state.rng = new Rng(1);
+    mon.race.blows = [blow];
+    monsterAttackMonster(state, mon, hard);
+    const hardLost = 100 - hard.hp;
+
+    expect(softLost).toBeGreaterThan(0);
+    expect(hardLost).toBeLessThan(softLost);
+  });
+
+  it("records blow lore times_seen for a visible attacker (mon-attack.c L872-898)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const blow = makeBlow("HIT", "HURT", "1d1");
+    const mon = addMon(
+      state,
+      makeRace({ level: 5, blows: [blow] }),
+      loc(5, 5),
+      { hp: 50 },
+    );
+    mon.mflag.on(MFLAG.VISIBLE);
+    const target = addMon(state, makeRace({ ac: 0 }), loc(6, 5), { hp: 50 });
+    const lore = getLore(state.lore, mon.race);
+    expect(lore.blowTimesSeen[0] ?? 0).toBe(0);
+
+    monsterAttackMonster(state, mon, target);
+
+    expect(lore.blowTimesSeen[0]).toBe(1);
+  });
+
+  it("SHATTER earthquake RNG is identical with or without deps (mon-blows.c L1098-1101)", () => {
+    /* Decision 6.2: EF_EARTHQUAKE draws must not depend on caller wiring.
+     * Same seed + game state with deps vs without must leave the same RNG. */
+    const blow = makeBlow("HIT", "SHATTER", "50");
+    const setup = (seed: number) => {
+      const state = makeState({ playerGrid: loc(20, 10), seed, w: 60, h: 40 });
+      /* depth > 0 so handleEARTHQUAKE runs the grid/monster draw loop. */
+      state.chunk.depth = 5;
+      const mon = addMon(
+        state,
+        makeRace({ level: 50, blows: [blow] }),
+        loc(10, 10),
+        { hp: 200 },
+      );
+      /* High HP so mon_take_nonplayer_hit does not kill before the quake. */
+      const target = addMon(state, makeRace({ ac: 0 }), loc(11, 10), {
+        hp: 500,
+      });
+      return { state, mon, target };
+    };
+
+    const withDeps = setup(42);
+    monsterAttackMonster(
+      withDeps.state,
+      withDeps.mon,
+      withDeps.target,
+      deps(withDeps.state),
+    );
+    const rngWith = withDeps.state.rng.getState();
+
+    const withoutDeps = setup(42);
+    monsterAttackMonster(
+      withoutDeps.state,
+      withoutDeps.mon,
+      withoutDeps.target,
+      null,
+    );
+    const rngWithout = withoutDeps.state.rng.getState();
+
+    expect(rngWithout).toEqual(rngWith);
+    /* Sanity: the blow landed and reduced HP (quake may also harm). */
+    expect(withDeps.target.hp).toBeLessThan(500);
+    expect(withoutDeps.target.hp).toBeLessThan(500);
   });
 });
