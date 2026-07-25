@@ -20,6 +20,7 @@
 
 import { FEAT, MON_MSG, MON_TMD, RF, TMD } from "../generated";
 import { MDESC, MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc";
+import type { BlowMethod } from "../mon/types";
 import { formatMonsterMessage } from "./mon-message";
 import { DDGRID, loc, locSum } from "../loc";
 import type { Loc } from "../loc";
@@ -47,6 +48,58 @@ import type { DoMonSpellDeps } from "./mon-cast";
 import { chooseAttackSpell } from "./mon-ranged";
 import { squareDoorPower, squareSetDoorLock } from "./trap";
 import type { TrapDeps } from "./trap";
+
+/** Trailing punct that suppresses MDESC_COMMA after {target} (mon-blows.c L76). */
+const BLOW_PUNCT = ".!?;:,'";
+
+/**
+ * display_blow_message_vs_monster (mon-blows.c L225) + monster_blow_method_action
+ * with midx > 0 (L74-152): draw randint0(num_messages), substitute mon-target
+ * tags, emit "m_name act." through the game sink.
+ */
+function displayBlowMessageVsMonster(
+  state: GameState,
+  method: BlowMethod,
+  mName: string,
+  tMon: Monster,
+): void {
+  const n = method.messages.length;
+  if (n === 0) return;
+  const choice = state.rng.randint0(n);
+  const raw = method.messages[choice] ?? method.messages[0]!;
+  /* Resolve {target}/{oftarget}/{has} for a monster target (midx > 0). */
+  let act = "";
+  let i = 0;
+  while (i < raw.length) {
+    const open = raw.indexOf("{", i);
+    if (open < 0) {
+      act += raw.slice(i);
+      break;
+    }
+    act += raw.slice(i, open);
+    const close = raw.indexOf("}", open + 1);
+    if (close < 0) {
+      act += raw.slice(open);
+      break;
+    }
+    const tag = raw.slice(open + 1, close);
+    const after = raw[close + 1] ?? "";
+    if (tag === "target") {
+      let mode = MDESC_TARG;
+      if (!BLOW_PUNCT.includes(after)) mode |= MDESC.COMMA;
+      act += monsterDesc(tMon, mode);
+    } else if (tag === "oftarget") {
+      act += monsterDesc(tMon, MDESC_TARG | MDESC.POSS);
+    } else if (tag === "has") {
+      act += "has";
+    } else {
+      act += raw.slice(open, close + 1);
+    }
+    i = close + 1;
+  }
+  const fullstop = act.endsWith("'") || act.endsWith("!") ? "" : ".";
+  state.msg?.(`${mName} ${act}${fullstop}`);
+}
 
 /**
  * get_commanded_monster (mon-util.c L182): the (single) monster under the
@@ -112,6 +165,12 @@ export function monsterAttackMonster(
     if (stunned) {
       damage = Math.trunc((damage * (100 - STUN_DAM_REDUCTION)) / 100);
     }
+
+    /* display_blow_message_vs_monster (mon-blows.c L225): randint0(num_messages)
+     * then the act line, before mon_take_nonplayer_hit. Always draw so the main
+     * stream matches C even when the method has a single message (Rand_div
+     * short-circuits n<=1). */
+    displayBlowMessageVsMonster(state, blow.method, name, tMon);
 
     /* Apply the damage (mon_take_nonplayer_hit: death without player
      * experience; the monster-target blow side effects reduce to it). */

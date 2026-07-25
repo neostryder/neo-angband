@@ -44,7 +44,7 @@ import { createDungeonProfiles } from "../gen/cave";
 import type { DungeonProfiles, DunProfileRecordJson } from "../gen/cave";
 import { generateLevel } from "../gen/generate";
 import type { GenDeps, GenerateOptions } from "../gen/generate";
-import type { MonPlaceDeps, PlacedMonster, PlacedObject } from "../gen/util";
+import type { GenTrap, MonPlaceDeps, PlacedMonster, PlacedObject } from "../gen/util";
 import { bindProjections } from "../world/projection";
 import type { ProjectionInfo, ProjectionRecordJson } from "../world/projection";
 import { bindTraps } from "../world/trap";
@@ -145,9 +145,11 @@ export function bindCore(pack: CorePack): CoreRegistries {
   const profiles = createDungeonProfiles(pack.dungeonProfiles);
   const projections = pack.projection ? bindProjections(pack.projection) : null;
   const traps = pack.trap ? bindTraps(pack.trap) : null;
+  /* names.txt words are prepended in C (init.c:1476); reverse each section so
+   * index 0 is the last word in file order (matches name_sections lookup). */
   const nameSections = new Map<number, string[]>();
   for (const rec of pack.names ?? []) {
-    nameSections.set(rec.section, rec.word);
+    nameSections.set(rec.section, [...rec.word].reverse());
   }
   const stores = pack.store ? new StoreRegistry(pack.store, objects) : null;
   const quests = pack.quest ? bindQuests(pack.quest, monsters) : [];
@@ -213,6 +215,8 @@ export function genDeps(
     profiles: reg.profiles,
     objDeps,
     monDeps,
+    /* place_trap draws pick_trap + power into the gen stream (trap.c:356-394). */
+    trapKinds: reg.traps,
   };
 }
 
@@ -247,6 +251,11 @@ export interface BootedLevel {
   objects: readonly PlacedObject[];
   /** Grids generation marked for player traps (instantiated at start). */
   trapGrids: readonly Loc[];
+  /**
+   * Traps whose kind and power were chosen at generation (place_trap). When
+   * present, populate materializes these without a second pick/power draw.
+   */
+  traps: readonly GenTrap[];
   /** Doors generation rolled locked (grid + lock power). */
   lockedDoors: readonly { grid: Loc; power: number }[];
   rng: Rng;
@@ -277,6 +286,7 @@ export function bootLevel(pack: CorePack, opts: BootLevelOptions = {}): BootedLe
     monsters: g.monsters,
     objects: g.objects,
     trapGrids: [...g.trapGrids].map((i) => iToGrid(i, g.c.width)),
+    traps: g.traps,
     lockedDoors: g.lockedDoors,
     rng,
     registries,

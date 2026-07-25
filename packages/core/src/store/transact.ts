@@ -8,20 +8,20 @@
  * cmd_get_arg_item / cmd_get_arg_number); here each is a plain function that
  * takes the object (or a pack handle) and amount directly, so the headless
  * core can run a transaction without the UI command layer. The economic and
- * inventory effects are faithful; the UI-only parts (flavor comments via
- * purchase_analyze, the EVENT_* signals, message text) are the caller's.
+ * inventory effects are faithful; the EVENT_* signals remain the caller's.
  *
  * LIVE vs DEFERRED (ledgered in parity/ledger/store-transact.yaml):
  * - LIVE: the gold debit/credit, the pack-room gate (inven_carry_num), the
  *   price (price_item), the buy decision (store_will_buy), the stack split /
  *   excise (gear_object_for_use), store_carry / store_delete / store_check_num,
  *   the empty-store restock (store_maint x10 with the shopkeeper-shuffle roll),
- *   the ORIGIN_STORE stamp, the OF_STICKY "stuck" refusal, and home_carry.
+ *   the ORIGIN_STORE stamp, the OF_STICKY "stuck" refusal, home_carry, and the
+ *   comment_accept / purchase_analyze ONE_OF draws on the game RNG.
  * - DEFERRED: the rune learn-on-transaction loop (object_learn_unknown_rune /
  *   player_know_object -> the knowledge/display system, task #13); flavor
  *   awareness IS applied when a FlavorKnowledge is supplied. The obj->known
  *   twin, total_weight upkeep, autoinscription, and history_find/lose_artifact
- *   are DEFERRED. purchase_analyze / comment_accept are UI (not ported).
+ *   are DEFERRED.
  */
 
 import type { Constants } from "../constants";
@@ -101,6 +101,51 @@ export interface TxnKnowledge {
 /** Why a purchase could not complete. */
 export type BuyFailure = "not-in-stock" | "no-room" | "cannot-afford";
 
+/**
+ * purchase_analyze's verbal-reaction bucket (store.c L491-508): how the paid
+ * price compared to the item's real value and the store's apparent guess.
+ */
+export type SaleReaction = "worthless" | "bad" | "good" | "great";
+
+/** comment_accept (store.c L453-461): ONE_OF pool for a successful buy. */
+const COMMENT_ACCEPT = ["Okay.", "Fine.", "Accepted!", "Agreed!", "Done!", "Taken!"];
+
+/** purchase_analyze reaction arrays (store.c L435-479). */
+const COMMENT_WORTHLESS = [
+  "Arrgghh!",
+  "You bastard!",
+  "You hear someone sobbing...",
+  "The shopkeeper howls in agony!",
+  "The shopkeeper wails in anguish!",
+  "The shopkeeper beats his head against the counter.",
+];
+const COMMENT_BAD = [
+  "Damn!",
+  "You fiend!",
+  "The shopkeeper curses at you.",
+  "The shopkeeper glares at you.",
+];
+const COMMENT_GOOD = [
+  "Cool!",
+  "You've made my day!",
+  "The shopkeeper sniggers.",
+  "The shopkeeper giggles.",
+  "The shopkeeper laughs loudly.",
+];
+const COMMENT_GREAT = [
+  "Yipee!",
+  "I think I'll retire!",
+  "The shopkeeper jumps for joy.",
+  "The shopkeeper smiles gleefully.",
+  "Wow.  I'm going to name my new villa in your honour.",
+];
+const REACTION_COMMENTS: Record<SaleReaction, readonly string[]> = {
+  worthless: COMMENT_WORTHLESS,
+  bad: COMMENT_BAD,
+  good: COMMENT_GOOD,
+  great: COMMENT_GREAT,
+};
+
 /** The outcome of storeBuy. */
 export interface BuyResult {
   ok: boolean;
@@ -109,6 +154,12 @@ export interface BuyResult {
   price?: number;
   /** The object added to the player's pack (present on success). */
   bought?: GameObject;
+  /**
+   * comment_accept line (do_cmd_buy L1717): set when one_in_(3) fires, drawn
+   * from the game RNG BEFORE any empty-store shuffle/maint so the stream order
+   * matches C. Absent when the Home retrieves or the roll fails.
+   */
+  acceptComment?: string;
 }
 
 /**
@@ -172,6 +223,13 @@ export function storeBuy(
   /* Give it to the player. */
   invenCarry(gear, bought, packLimits(constants));
 
+  /* comment_accept (do_cmd_buy L1717): one_in_(3) then ONE_OF, BEFORE any
+   * empty-store shuffle/maint so the main stream matches C statement order. */
+  let acceptComment: string | undefined;
+  if (rng.oneIn(3)) {
+    acceptComment = COMMENT_ACCEPT[rng.randint0(COMMENT_ACCEPT.length)];
+  }
+
   /* Remove the bought objects unless a readily-replaced staple. */
   if (storeSaleShouldReduceStock(store, obj)) {
     storeDelete(store, obj, amt);
@@ -183,7 +241,7 @@ export function storeBuy(
     }
   }
 
-  return { ok: true, price, bought };
+  return { ok: true, price, bought, ...(acceptComment ? { acceptComment } : {}) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -192,14 +250,6 @@ export function storeBuy(
 
 /** Why a sale could not complete. */
 export type SellFailure = "no-item" | "stuck" | "refused" | "no-room";
-
-/**
- * purchase_analyze's verbal-reaction bucket (store.c L491-508): how the paid
- * price compared to the item's real value and the store's apparent guess. The
- * numeric comparison lives here (deterministic, testable); the caller maps the
- * bucket to a random comment_* line. null when no reaction fires (or selling).
- */
-export type SaleReaction = "worthless" | "bad" | "good" | "great";
 
 /** The outcome of storeSell. */
 export interface SellResult {
@@ -220,9 +270,15 @@ export interface SellResult {
   /**
    * purchase_analyze bucket (do_cmd_sell L1972): set on a successful non-Home
    * sale when birth_no_selling is off. undefined for the Home, no-selling, or
-   * when no reaction fires. The shell prints the matching comment_* flavor.
+   * when no reaction fires.
    */
   reaction?: SaleReaction;
+  /**
+   * ONE_OF(comment_*) line drawn from the game RNG when a reaction fires
+   * (purchase_analyze L491-508). The shell prints this; the draw is spent here
+   * so Math.random never touches the main stream.
+   */
+  reactionComment?: string;
 }
 
 /**
@@ -344,13 +400,27 @@ function sellObject(
 
   /* purchase_analyze (do_cmd_sell L1966-1972): only a real store reacts, and
    * only when birth_no_selling is off (the no-selling branch just says "You had
-   * ..."). value = object_value_real(sold, amt). */
-  const reaction =
-    store.feat !== FEAT.HOME && !know.noSelling
-      ? purchaseAnalyze(price, objectValueReal(reg, sold, amt), guess)
-      : undefined;
+   * ..."). value = object_value_real(sold, amt). ONE_OF(comment_*) draws from
+   * the game RNG at this position (store.c L495-507). */
+  let reaction: SaleReaction | undefined;
+  let reactionComment: string | undefined;
+  if (store.feat !== FEAT.HOME && !know.noSelling) {
+    reaction = purchaseAnalyze(price, objectValueReal(reg, sold, amt), guess);
+    if (reaction) {
+      const arr = REACTION_COMMENTS[reaction];
+      reactionComment = arr[rng.randint0(arr.length)];
+    }
+  }
 
-  return { ok: true, price, sold, noneLeft, carried, ...(reaction ? { reaction } : {}) };
+  return {
+    ok: true,
+    price,
+    sold,
+    noneLeft,
+    carried,
+    ...(reaction ? { reaction } : {}),
+    ...(reactionComment ? { reactionComment } : {}),
+  };
 }
 
 /* ------------------------------------------------------------------ */

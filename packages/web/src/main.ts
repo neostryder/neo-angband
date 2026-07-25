@@ -5904,6 +5904,8 @@ async function maybeBirth(): Promise<void> {
     // quickstart_allowed (ui-birth.c): offer the quick-start stage only when
     // a previous character's choices exist to reuse.
     const choice = await runBirth(term, players.races, players.classes, {
+      // ui-birth.c draws random race/class/*/@/roller from the main game RNG.
+      rng: new Rng(seed),
       quickstart: birthChoice
         ? {
             raceName: birthChoice.raceName,
