@@ -18,7 +18,7 @@
  * rides the sound system (#26).
  */
 
-import { EF, TMD } from "../generated";
+import { EF, MSG, TMD } from "../generated";
 import type {
   EffectHandler,
   EffectRegistry,
@@ -44,6 +44,12 @@ const handleSUMMON: EffectHandler = (ctx) => {
   const senv = env.summon;
   if (!senv) return true;
   const { state } = env;
+
+  /* sound(summon_message_type(type)) (effect-handler-general.c L2246-2250):
+   * the summon type's sound channel plays before the arena gate, so it is
+   * heard even on arena levels. Draws no RNG. */
+  const summonMsgt = senv.summons.messageType(ctx.subtype);
+  if (summonMsgt) state.sound?.((MSG as Record<string, number>)[summonMsgt] ?? 0);
 
   /* No summoning in arena levels. */
   if (state.arenaLevel) return true;

@@ -21,7 +21,7 @@
  * impact); ledgered in parity/ledger/combat-melee.yaml.
  */
 
-import { ORIGIN, OF, PROJ, STAT, TMD } from "../generated";
+import { MSG, ORIGIN, OF, PROJ, STAT, TMD } from "../generated";
 import { SKILL } from "../player/types";
 import type { Loc } from "../loc";
 import type { Monster } from "../mon/monster";
@@ -159,8 +159,10 @@ export function makeMonBlowEnv(
       return deps.actor.isDead;
     },
 
-    msg(text: string): void {
+    msg(text: string, msgt?: string): void {
       msg(text);
+      /* msgt(method->msgt, ...) sound channel (mon-blows.c L206). */
+      if (msgt) state.sound?.((MSG as Record<string, number>)[msgt] ?? 0);
     },
 
     /* monster_desc(mon, MDESC_STANDARD) (mon-attack.c L561): computed once for

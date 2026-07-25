@@ -109,8 +109,9 @@ export interface MonBlowEnv {
   takeHit(reducedDam: number): void;
   /** p->is_dead after the last takeHit. */
   readonly playerDied: boolean;
-  /** msg(): route a blow message to the game's sink. */
-  msg(text: string): void;
+  /** msg(): route a blow message to the game's sink. An optional msgt (the
+   * blow method's sound channel, e.g. MON_HIT) plays the typed sound. */
+  msg(text: string, msgt?: string): void;
   /** monster_desc(mon, MDESC_STANDARD): "The kobold" / "Something", for the
    * per-blow "m_name act." message (drawn once per attack, no RNG). */
   readonly monName: string;
@@ -378,16 +379,18 @@ function displayBlowMessageVsPlayer(
   reduced: number,
   monName: string,
   showDamage: boolean,
-  sink: ((text: string) => void) | null,
+  sink: ((text: string, msgt: string) => void) | null,
 ): void {
   const act = monsterBlowMethodAction(method, rng);
   if (!sink) return;
+  /* msgt(method->msgt, ...) (mon-blows.c L206-213): the blow line plays the
+   * method's sound channel (blow_methods.txt msg:, e.g. MON_HIT). */
   if (act !== null) {
     const fullstop = act.endsWith("'") || act.endsWith("!") ? "" : ".";
     const tail = reduced > 0 && showDamage ? ` (${reduced})` : "";
-    sink(`${monName} ${act}${fullstop}${tail}`);
+    sink(`${monName} ${act}${fullstop}${tail}`, method.msgt);
   } else if (reduced > 0 && showDamage) {
-    sink(`You take ${reduced} damage.`);
+    sink(`You take ${reduced} damage.`, method.msgt);
   }
 }
 
@@ -407,7 +410,7 @@ function emitBlowMessageLive(
     reduced,
     env.monName,
     env.showDamage,
-    (text: string): void => env.msg(text),
+    (text: string, msgt: string): void => env.msg(text, msgt),
   );
 }
 
