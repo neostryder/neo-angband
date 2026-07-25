@@ -195,28 +195,28 @@ function buildModdedSave(): {
   const injected: Array<{ kind: OrphanEntry["kind"]; ref: string; data: unknown }> = [];
 
   /* A surviving CORE monster to host a mod held object + lead a mod group. */
-  const hostIdx = original.monsters.findIndex((m) => m !== null);
+  const hostIdx = original.monsters!.findIndex((m) => m !== null);
   expect(hostIdx).toBeGreaterThan(0);
-  const hostMon = original.monsters[hostIdx]!;
+  const hostMon = original.monsters![hostIdx]!;
   const hostMidx = hostMon.midx;
 
-  const cw = base.chunk.width;
-  const ch = base.chunk.height;
-  const used = new Set(original.floor.map((p) => `${p.x},${p.y}`));
+  const cw = base.chunk!.width;
+  const ch = base.chunk!.height;
+  const used = new Set(original.floor!.map((p) => `${p.x},${p.y}`));
 
   /* --- 1. A whole mod monster on the level (in a mixed group). --- */
-  const frostLiveMidx = original.monsters.length;
+  const frostLiveMidx = original.monsters!.length;
   const frostLiveMon = {
     raceId: "frost:frost-wyrm",
     originalRaceId: null,
     midx: frostLiveMidx,
     heldObj: [],
   } as unknown as SavedMonster;
-  original.monsters.push(frostLiveMon);
+  original.monsters!.push(frostLiveMon);
   injected.push({ kind: "monster", ref: "frost:frost-wyrm", data: frostLiveMon });
 
   const frostGroupIndex = 999;
-  original.groups.push({
+  original.groups!.push({
     index: frostGroupIndex,
     leader: hostMidx,
     members: [hostMidx, frostLiveMidx],
@@ -246,14 +246,14 @@ function buildModdedSave(): {
   const ff = freeCoord(used, cw, ch);
   used.add(`${ff.x},${ff.y}`);
   const frostFloor = frostObj("frost:ice-shard");
-  original.floor.push({ x: ff.x, y: ff.y, objs: [frostFloor] });
+  original.floor!.push({ x: ff.x, y: ff.y, objs: [frostFloor] });
   injected.push({ kind: "floorObject", ref: "frost:ice-shard", data: frostFloor });
 
   /* --- 5. A mod trap (its own cell, appended last). --- */
   const ft = freeCoord(used, cw, ch);
   used.add(`${ft.x},${ft.y}`);
   const frostTrap = { trapId: "frost:ice-spikes" } as unknown as SavedTrap;
-  original.traps.push({ x: ft.x, y: ft.y, traps: [frostTrap] });
+  original.traps!.push({ x: ft.x, y: ft.y, traps: [frostTrap] });
   injected.push({ kind: "trap", ref: "frost:ice-spikes", data: frostTrap });
 
   /* --- 6. A mod lore record (keyed by the mod race). --- */
@@ -291,7 +291,7 @@ function buildModdedSave(): {
   const cachedLevel: SavedStoredLevel = {
     depth: cacheDepth,
     turn: base.turn,
-    chunk: clone(base.chunk),
+    chunk: clone(base.chunk!),
     ...(base.featLegend ? { featLegend: clone(base.featLegend) } : {}),
     monsters: [null, coreCacheMon, frostCacheMon],
     groups: [null],
@@ -407,9 +407,9 @@ describe("mod dehydrate/rehydrate end-to-end (D1, decision 19)", () => {
 
     /* (d) The orphan store is gone and content is back where it belongs. */
     expect(rehydrated.orphans).toBeUndefined();
-    expect(rehydrated.monsters[frostLiveMidx]?.raceId).toBe("frost:frost-wyrm");
+    expect(rehydrated.monsters![frostLiveMidx]?.raceId).toBe("frost:frost-wyrm");
     expect(
-      rehydrated.monsters
+      rehydrated.monsters!
         .find((m) => m?.midx === hostMidx)
         ?.heldObj.some((o) => o.kindId === "frost:snowball"),
     ).toBe(true);
@@ -419,10 +419,10 @@ describe("mod dehydrate/rehydrate end-to-end (D1, decision 19)", () => {
     expect(rehydrated.gear.store.some(([, o]) => o.kindId === "frost:frost-plate")).toBe(
       true,
     );
-    expect(rehydrated.floor.some((p) => p.objs.some((o) => o.kindId === "frost:ice-shard"))).toBe(
+    expect(rehydrated.floor!.some((p) => p.objs.some((o) => o.kindId === "frost:ice-shard"))).toBe(
       true,
     );
-    expect(rehydrated.traps.some((c) => c.traps.some((t) => t.trapId === "frost:ice-spikes"))).toBe(
+    expect(rehydrated.traps!.some((c) => c.traps.some((t) => t.trapId === "frost:ice-spikes"))).toBe(
       true,
     );
     expect(rehydrated.lore?.some(([id]) => id === "frost:frost-wyrm")).toBe(true);
@@ -446,7 +446,7 @@ describe("mod dehydrate/rehydrate end-to-end (D1, decision 19)", () => {
      *   2. an equipped mod item returns to the pack, not the equipment slot.
      * If any OTHER field differs, this toEqual surfaces it as a bug. */
     const expected = clone(original);
-    const grp = expected.groups.find((g) => g && g.index === frostGroupIndex)!;
+    const grp = expected.groups!.find((g) => g && g.index === frostGroupIndex)!;
     grp.members = [hostMidx];
     expected.player.equipment[emptySlot] = 0;
     expected.gear.pack.push(equippedHandle);

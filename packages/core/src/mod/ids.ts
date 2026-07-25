@@ -178,6 +178,7 @@ export class ContentIdResolver {
   private readonly feats: IdTable;
   private readonly playerRaces: IdTable;
   private readonly playerClasses: IdTable;
+  private readonly artifactNames = new Map<number, string>();
 
   constructor(reg: ContentIdRegistries, namespace: string = CORE_NS) {
     const { objects } = reg;
@@ -194,7 +195,10 @@ export class ContentIdResolver {
     this.artifacts = new IdTable(namespace);
     for (let i = 1; i < objects.artifacts.length; i++) {
       const a = objects.artifacts[i];
-      if (a) this.artifacts.add(i, slug(a.name));
+      if (a) {
+        this.artifacts.add(i, slug(a.name));
+        this.artifactNames.set(i, a.name);
+      }
     }
 
     this.curses = new IdTable(namespace);
@@ -273,6 +277,10 @@ export class ContentIdResolver {
   }
   artifactIndex(id: string): number | undefined {
     return this.artifacts.index(id);
+  }
+  /** The upstream artifact NAME used by player history save/load. */
+  artifactName(aidx: number): string | null {
+    return this.artifactNames.get(aidx) ?? null;
   }
 
   /* Curses (positional on objects; 1-based). */
