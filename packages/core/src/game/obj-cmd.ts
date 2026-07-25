@@ -27,7 +27,7 @@
  */
 
 import type { Constants } from "../constants";
-import { EFFECT_ENTRIES, OF, TMD } from "../generated";
+import { EFFECT_ENTRIES, EQUIP_SLOT_ENTRIES, OF, TMD } from "../generated";
 import { DDD } from "../loc";
 import { SKILL } from "../player/types";
 import { EffectBuilder } from "../effects/effect";
@@ -277,6 +277,26 @@ function gearLabelFor(state: GameState, handle: number): string {
   const pi = state.gear.pack.indexOf(handle);
   if (pi >= 0 && pi < GEAR_LABELS.length) return GEAR_LABELS[pi] ?? "";
   return "";
+}
+
+/**
+ * equip_describe (obj-gear.c L320-332): how a slot's occupant is being used,
+ * for the "You cannot remove the X you are Y." refusal. A heavy weapon or
+ * launcher reads as the slot's heavy wording instead, and a named slot (rings,
+ * hands) interpolates the slot name into its describe template.
+ */
+function equipDescribe(state: GameState, slot: number): string {
+  const p = state.actor.player;
+  const bodySlot = p.body.slots[slot];
+  if (!bodySlot) return "";
+  const entry = EQUIP_SLOT_ENTRIES.find((e) => e.name === bodySlot.type);
+  if (!entry) return "";
+  const ps = state.playerState;
+  if (bodySlot.type === "WEAPON" && (ps?.heavyWield || ps?.heavyShoot)) {
+    return entry.heavyDescribe;
+  }
+  if (entry.named) return entry.describe.replace("%s", bodySlot.name);
+  return entry.describe;
 }
 
 /** beam_chance (cmd-obj.c L112). */
@@ -1042,6 +1062,17 @@ export function installObjCommands(
       targetSlot >= 0 ? (state.actor.player.equipment[targetSlot] ?? 0) : 0;
     const displaced = displacedHandle ? gearGet(state.gear, displacedHandle) : null;
     const displacedTval = displaced?.tval ?? 0;
+    /* Prevent wielding into a stickied slot (cmd-obj.c L313-320). obj_can_takeoff
+     * is !OF_STICKY (obj-util.c L794), and the refusal names the stuck item by
+     * its base description plus equip_describe's wording for the slot. Draws no
+     * RNG and spends no energy: the command aborts before inven_wield. */
+    if (displaced && displaced.flags.has(OF.STICKY)) {
+      deps.env?.msg?.(
+        `You cannot remove the ${describeObject(state, displaced, ODESC.BASE)} ` +
+          `you are ${equipDescribe(state, targetSlot)}.`,
+      );
+      return 0;
+    }
     const slot = invenWield(state, handle);
     if (slot < 0) return 0;
     /* inven_wield's own message (obj-gear.c L986-1006): name the worn item by
@@ -1111,6 +1142,16 @@ export function installObjCommands(
     if (handle === null) return 0;
     const obj = gearGet(state.gear, handle);
     if (!obj) return 0;
+    /* Cannot drop stickied equipment (cmd-obj.c L377-381). The C checks
+     * object_is_equipped && !obj_can_takeoff and aborts before inven_drop, so no
+     * energy is spent and no RNG is drawn. */
+    if (
+      state.actor.player.equipment.includes(handle) &&
+      obj.flags.has(OF.STICKY)
+    ) {
+      deps.env?.msg?.("Hmmm, it seems to be stuck.");
+      return 0;
+    }
     const amt =
       typeof args["quantity"] === "number" ? args["quantity"] : obj.number;
     /* Label and artifact-ness captured before the drop (inven_drop L1099). */
