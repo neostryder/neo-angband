@@ -158,7 +158,11 @@ function scenarioDescend(pack: GamePack): ScenarioResult {
  */
 const EXPECTED = {
   birthAndWait: { turn: 60, mhp: 19 },
-  descend: { monsterCount: 35 },
+  /* 35 -> 33: re-pinned 2026-07-25. The nine parity fix batches merged between
+   * ad1b2904a and 7f494358b intentionally changed generation RNG order, so this
+   * self-captured golden went stale with them; it is a self-regression pin, not
+   * a C-derived expectation. */
+  descend: { monsterCount: 33 },
 } as const;
 
 /** Run every golden scenario and return their results. */
