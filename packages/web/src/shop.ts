@@ -139,26 +139,60 @@ const COMMENT_WELCOME = [
   '%s: "You do honour to my humble store, noble %s."',
   '%s: "I and my family are entirely at your service, %s."',
 ];
+
 /**
- * prt_welcome (ui-store.c L139-177): a real shop's entry greeting. 50% of the
- * time it says nothing; otherwise, for a character above level 5, it picks a
- * comment_welcome line by level tier and substitutes the owner's short name and
- * a character identifier (class title / full name / "valued customer"). The
- * hint branch (ui-store.c L156) is skipped: the port loads no hints list, so
- * upstream's `if (hints && one_in_(3))` is unreachable. Returns null for no
- * greeting.
+ * comment_hint (ui-store.c L74-80): only one active format string; each has
+ * exactly one %s for the tip text (random_hint).
+ */
+const COMMENT_HINT = ['"%s"'];
+
+/**
+ * random_hint (ui-store.c L121-129): reservoir sample over the global hints
+ * list. Starts at the first tip, then for each subsequent tip at index n
+ * (1-based count 2, 3, ...) draws one_in_(n) to replace the choice. With N
+ * tips this consumes N-1 one_in_ draws on the main stream.
+ */
+function randomHint(
+  rng: StartedGame["state"]["rng"],
+  hints: readonly string[],
+): string {
+  let r = hints[0] ?? "";
+  for (let i = 1, n = 2; i < hints.length; i++, n++) {
+    if (rng.oneIn(n)) r = hints[i] ?? r;
+  }
+  return r;
+}
+
+/**
+ * prt_welcome (ui-store.c L139-177): a real shop's entry greeting.
  *
- * All draws consume the main game RNG (Decision 6.2), matching C one_in_/
- * randint0 order.
+ * Draw order (Decision 6.2 / ui-store.c:145-172):
+ *  1. one_in_(2) -> silent return
+ *  2. if hints non-empty: one_in_(3)
+ *     - true: randint0(comment_hint) + random_hint reservoir draws, emit tip
+ *     - false and lev > 5: comment_welcome path
+ *  3. else if lev > 5: comment_welcome path
+ *
+ * All draws consume the main game RNG.
  */
 function prtWelcome(
   store: Store,
   player: StartedGame["state"]["actor"]["player"],
   rng: StartedGame["state"]["rng"],
+  hints: readonly string[],
 ): string | null {
   if (rng.oneIn(2)) return null;
-  if (player.lev <= 5) return null;
+
   const shortName = store.owner.name.split(" ")[0] ?? store.owner.name;
+
+  if (hints.length > 0 && rng.oneIn(3)) {
+    const i = rng.randint0(COMMENT_HINT.length);
+    const fmt = COMMENT_HINT[i] ?? COMMENT_HINT[0]!;
+    return fmt.replace("%s", randomHint(rng, hints));
+  }
+
+  if (player.lev <= 5) return null;
+
   let i = Math.floor((player.lev - 1) / 5);
   i = Math.min(i, COMMENT_WELCOME.length - 1);
   let ident: string;
@@ -437,9 +471,15 @@ export async function runStore(
   /* prt_welcome (ui-store.c L1292-1294 in use_store): a real shop greets the
    * character once on entry; the Home does not. Shown on the message line, where
    * it persists until the first command clears it (statusMsg). Draws from
-   * state.rng (ui-store.c L145-172). */
+   * state.rng (ui-store.c L145-172), including the hint branch when the pack
+   * bound a non-empty hints list. */
   if (!isHome) {
-    const welcome = prtWelcome(store, game.state.actor.player, game.state.rng);
+    const welcome = prtWelcome(
+      store,
+      game.state.actor.player,
+      game.state.rng,
+      game.booted.registries.hints,
+    );
     if (welcome) storeSay(welcome);
   }
 

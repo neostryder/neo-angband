@@ -16,6 +16,7 @@
 import { bindConstants } from "../constants";
 import type { Constants, ConstantsJson } from "../constants";
 import { Rng } from "../rng";
+import type { RngState } from "../rng";
 import type { Loc } from "../loc";
 import type { Chunk } from "../world/chunk";
 import { FeatureRegistry } from "../world/feature";
@@ -93,6 +94,12 @@ export interface CorePack {
    * every known monster falls into the "***Unclassified***" catch-all.
    */
   uiKnowledge?: UiKnowledgeRecordJson[];
+  /**
+   * hints.json (shopkeeper tip strings, ui-store.c hints). Optional; without
+   * it prt_welcome skips the one_in_(3) hint branch and its main-stream draws.
+   * Records use the compiled "H" field (or "text" after some compose paths).
+   */
+  hints?: Array<{ H?: string; text?: string }>;
 }
 
 /** One names.txt section: a list of lowercase words under a section index. */
@@ -130,6 +137,12 @@ export interface CoreRegistries {
    * Empty when the pack ships no ui_knowledge.json.
    */
   monsterCategories: MonsterCategory[];
+  /**
+   * Shopkeeper tip strings (hints.txt / hints.json), in file order. Empty when
+   * the pack ships no hints.json. ui-store.c prt_welcome draws against this
+   * list when non-empty.
+   */
+  hints: readonly string[];
 }
 
 /** Bind a parsed pack into the full set of runtime registries. */
@@ -154,6 +167,12 @@ export function bindCore(pack: CorePack): CoreRegistries {
   const stores = pack.store ? new StoreRegistry(pack.store, objects) : null;
   const quests = pack.quest ? bindQuests(pack.quest, monsters) : [];
   const monsterCategories = bindMonsterCategories(pack.uiKnowledge ?? []);
+  /* hints.txt: each H: line becomes a tip string (init.c parse_hints). */
+  const hints: string[] = [];
+  for (const rec of pack.hints ?? []) {
+    const text = rec.H ?? rec.text;
+    if (text) hints.push(text);
+  }
   return {
     constants,
     features,
@@ -167,6 +186,7 @@ export function bindCore(pack: CorePack): CoreRegistries {
     stores,
     quests,
     monsterCategories,
+    hints,
   };
 }
 
@@ -224,6 +244,18 @@ export function genDeps(
 export interface BootLevelOptions {
   /** RNG seed. Provide a real one; defaults to 1 for reproducible tests. */
   seed?: number;
+  /**
+   * An already-advanced main-game RNG instance (Decision 6.2). When present,
+   * bootLevel continues from this stream instead of `new Rng(seed)`. Used so
+   * birth UI draws and seed_randart share the same stream level gen continues.
+   */
+  rng?: Rng;
+  /**
+   * Snapshot to install on a fresh Rng(seed) before any draws (post-birth
+   * reload: continue the stream the birth UI advanced). Ignored when `rng` is
+   * supplied.
+   */
+  rngState?: RngState;
   /** Dungeon depth (0 = town). Default 1. */
   depth?: number;
   /** Place monsters and objects. Default true. */
@@ -271,7 +303,8 @@ export interface BootedLevel {
 export function bootLevel(pack: CorePack, opts: BootLevelOptions = {}): BootedLevel {
   const registries = opts.registries ?? bindCore(pack);
   const depth = opts.depth ?? 1;
-  const rng = new Rng(opts.seed ?? 1);
+  const rng = opts.rng ?? new Rng(opts.seed ?? 1);
+  if (!opts.rng && opts.rngState) rng.setState(opts.rngState);
   const deps = genDeps(
     registries,
     opts.placeContent ?? true,

@@ -18,7 +18,7 @@
  * monster-target side effects reduce to their damage).
  */
 
-import { FEAT, MON_MSG, MON_TMD, RF, TMD } from "../generated";
+import { FEAT, MON_MSG, MON_TMD, MSG, RF, TMD } from "../generated";
 import { MDESC, MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc";
 import type { BlowMethod } from "../mon/types";
 import { formatMonsterMessage } from "./mon-message";
@@ -36,6 +36,7 @@ import {
 import { monSpellIsInnate } from "../mon/spell";
 import { STUN_DAM_REDUCTION } from "../combat/hit";
 import {
+  adjustDamArmor,
   chanceOfMonsterHit,
   checkHit,
   monsterCritical,
@@ -55,7 +56,7 @@ const BLOW_PUNCT = ".!?;:,'";
 /**
  * display_blow_message_vs_monster (mon-blows.c L225) + monster_blow_method_action
  * with midx > 0 (L74-152): draw randint0(num_messages), substitute mon-target
- * tags, emit "m_name act." through the game sink.
+ * tags, emit "m_name act." through the game sink with method->msgt sound.
  */
 function displayBlowMessageVsMonster(
   state: GameState,
@@ -99,6 +100,76 @@ function displayBlowMessageVsMonster(
   }
   const fullstop = act.endsWith("'") || act.endsWith("!") ? "" : ".";
   state.msg?.(`${mName} ${act}${fullstop}`);
+  /* msgt(method->msgt, ...) (mon-blows.c L236): the blow sound channel. */
+  if (method.msgt) {
+    state.sound?.((MSG as Record<string, number>)[method.msgt] ?? 0);
+  }
+}
+
+/**
+ * monster_elemental_damage (mon-blows.c L311): mon-target elemental component
+ * (no RNG). Returns the elemental damage and die-message code.
+ */
+function monsterElementalDamage(
+  tMon: Monster,
+  type: "ACID" | "ELEC" | "FIRE" | "COLD" | "POIS",
+  baseDamage: number,
+): { damage: number; dieMsg: number } {
+  let immFlag: number | null = null;
+  let hurtFlag: number | null = null;
+  let dieMsg: number = MON_MSG.DIE;
+
+  switch (type) {
+    case "ACID":
+      immFlag = RF.IM_ACID;
+      break;
+    case "ELEC":
+      immFlag = RF.IM_ELEC;
+      break;
+    case "FIRE":
+      immFlag = RF.IM_FIRE;
+      hurtFlag = RF.HURT_FIRE;
+      dieMsg = MON_MSG.DISINTEGRATES;
+      break;
+    case "COLD":
+      immFlag = RF.IM_COLD;
+      hurtFlag = RF.HURT_COLD;
+      dieMsg = MON_MSG.FREEZE_SHATTER;
+      break;
+    case "POIS":
+      immFlag = RF.IM_POIS;
+      break;
+  }
+
+  if (immFlag !== null && tMon.race.flags.has(immFlag)) {
+    return { damage: Math.trunc(baseDamage / 9), dieMsg: MON_MSG.DIE };
+  }
+  if (hurtFlag !== null && tMon.race.flags.has(hurtFlag)) {
+    return { damage: baseDamage * 2, dieMsg };
+  }
+  return { damage: baseDamage, dieMsg: MON_MSG.DIE };
+}
+
+/** mon_take_nonplayer_hit-shaped damage + death message. */
+function applyMonVsMonHit(
+  state: GameState,
+  tMon: Monster,
+  damage: number,
+  dieMsg: number,
+): boolean {
+  const res = monTakeHit(state.rng, tMon, damage, "", {
+    ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
+    primaryGroupSize: () => monsterPrimaryGroupSize(state, tMon),
+  });
+  if (res.died) {
+    if (monsterIsVisible(tMon)) {
+      const text = formatMonsterMessage(tMon, dieMsg);
+      if (text) state.msg?.(text);
+    }
+    deleteMonster(state, tMon.midx);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -118,8 +189,9 @@ export function getCommandedMonster(state: GameState): Monster | null {
  * monster_attack_monster (mon-attack.c L765): the commanded monster's
  * blows against another monster - hit vs the target's racial AC, the
  * stun-reduced damage, the critical-tier stun, and death without player
- * experience (mon_take_nonplayer_hit). Returns false only for
- * RF_NEVER_BLOW.
+ * experience (mon_take_nonplayer_hit). Per-handler draw ORDER/COUNT matches
+ * mon-blows.c (timed amount before message; elemental skips message when
+ * final damage is 0). Returns false only for RF_NEVER_BLOW.
  */
 export function monsterAttackMonster(
   state: GameState,
@@ -166,36 +238,101 @@ export function monsterAttackMonster(
       damage = Math.trunc((damage * (100 - STUN_DAM_REDUCTION)) / 100);
     }
 
-    /* display_blow_message_vs_monster (mon-blows.c L225): randint0(num_messages)
-     * then the act line, before mon_take_nonplayer_hit. Always draw so the main
-     * stream matches C even when the method has a single message (Rand_div
-     * short-circuits n<=1). */
-    displayBlowMessageVsMonster(state, blow.method, name, tMon);
+    const method = blow.method;
+    const ac = tMon.race.ac;
 
-    /* Apply the damage (mon_take_nonplayer_hit: death without player
-     * experience; the monster-target blow side effects reduce to it). */
-    if (damage > 0) {
-      const res = monTakeHit(state.rng, tMon, damage, "", {
-        /* become_aware: a commanded monster's blow can reveal a camouflaged
-         * target, same as any other monster-vs-monster hit. */
-        ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
-        /* The fear roll's per-member group save (mon-predicate.c L296). */
-        primaryGroupSize: () => monsterPrimaryGroupSize(state, tMon),
-      });
-      if (res.died) {
-        /* add_monster_message(t_mon, MON_MSG_DIE): the MON_MSG grammar. */
-        if (monsterIsVisible(tMon)) {
-          const text = formatMonsterMessage(tMon, MON_MSG.DIE);
-          if (text) state.msg?.(text);
+    /*
+     * Per-handler order (mon-blows.c):
+     * - timed: randint1 amount BEFORE display_blow_message (arg eval)
+     * - EXP_*: damroll(N,6) before message (arg eval; amount unused mon-side)
+     * - elemental: message+hit only when final damage > 0
+     * - HURT/SHATTER: adjust_dam_armor then message+hit
+     * - NONE: message only
+     */
+    let timedKey: number | null = null;
+    let timedAmount = 0;
+    if (effectName === "BLIND") {
+      timedKey = MON_TMD.STUN;
+      timedAmount = 10 + state.rng.randint1(rlev);
+    } else if (effectName === "CONFUSE") {
+      timedKey = MON_TMD.CONF;
+      timedAmount = 3 + state.rng.randint1(rlev);
+    } else if (effectName === "TERRIFY") {
+      timedKey = MON_TMD.FEAR;
+      timedAmount = 3 + state.rng.randint1(rlev);
+    } else if (effectName === "PARALYZE") {
+      timedKey = MON_TMD.HOLD;
+      timedAmount = 3 + state.rng.randint1(rlev);
+    }
+
+    if (
+      effectName === "EXP_10" ||
+      effectName === "EXP_20" ||
+      effectName === "EXP_40" ||
+      effectName === "EXP_80"
+    ) {
+      const n =
+        effectName === "EXP_10"
+          ? 10
+          : effectName === "EXP_20"
+            ? 20
+            : effectName === "EXP_40"
+              ? 40
+              : 80;
+      void state.rng.damroll(n, 6);
+    }
+
+    let finalDamage = damage;
+    let dieMsg: number = MON_MSG.DIE;
+
+    if (effectName === "NONE") {
+      displayBlowMessageVsMonster(state, method, name, tMon);
+    } else if (
+      effectName === "ACID" ||
+      effectName === "ELEC" ||
+      effectName === "FIRE" ||
+      effectName === "COLD" ||
+      effectName === "POISON"
+    ) {
+      const elemType =
+        effectName === "POISON"
+          ? "POIS"
+          : (effectName as "ACID" | "ELEC" | "FIRE" | "COLD");
+      const physical = method.phys ? adjustDamArmor(damage, ac + 50) : 0;
+      const el = monsterElementalDamage(tMon, elemType, damage);
+      finalDamage = physical > el.damage ? physical : el.damage;
+      dieMsg = el.dieMsg;
+      if (finalDamage > 0) {
+        displayBlowMessageVsMonster(state, method, name, tMon);
+        if (applyMonVsMonHit(state, tMon, finalDamage, dieMsg)) continue;
+      }
+    } else {
+      if (effectName === "HURT" || effectName === "SHATTER") {
+        finalDamage = adjustDamArmor(damage, ac);
+      }
+      displayBlowMessageVsMonster(state, method, name, tMon);
+      if (applyMonVsMonHit(state, tMon, finalDamage, dieMsg)) continue;
+
+      if (timedKey !== null && state.monsters[tMon.midx]) {
+        monIncTimed(state.rng, tMon, timedKey, timedAmount, 0);
+      }
+
+      /* SHATTER knockback chance (mon-blows.c L1105-1107); thrust deferred. */
+      if (
+        effectName === "SHATTER" &&
+        finalDamage > 100 &&
+        state.monsters[tMon.midx]
+      ) {
+        const value = finalDamage - 100;
+        if (state.rng.randint1(value) > 40) {
+          /* thrust_away deferred for mon-vs-mon; draw matches C. */
         }
-        deleteMonster(state, tMon.midx);
-        continue;
       }
     }
 
     /* Handle stun (the critical tiers). */
-    if (blow.method.stun && squareMonster(state, grid)) {
-      const tier = monsterCritical(state.rng, diceRv, rlev, damage);
+    if (method.stun && squareMonster(state, grid)) {
+      const tier = monsterCritical(state.rng, diceRv, rlev, finalDamage);
       let amt = 0;
       switch (tier) {
         case 0:

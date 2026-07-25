@@ -308,9 +308,8 @@ export class Gen {
     readonly monDeps: MonPlaceDeps | null,
     /**
      * The trap kind table (trap_info). When present, place_trap picks the kind
-     * and rolls the power at generation time (gap 9.2); when null (bare
-     * unit-test contexts), only the trap grid is recorded and the pick is
-     * deferred to the live populate path.
+     * and rolls the power at generation time (gap 9.2). Live boot always
+     * supplies this; null is bare unit-test Gen contexts only (marker-only).
      */
     readonly trapKinds: readonly TrapKind[] | null = null,
   ) {}
@@ -1169,9 +1168,11 @@ function genPlayerTrapAllowed(g: Gen, grid: Loc): boolean {
 /**
  * place_trap(c, grid, -1, c->depth) at generation time (trap.c:356): pick a
  * random player trap kind by rarity and roll its power, spending both RNG
- * draws in the generation stream (gap 9.2). When the trap kind table is not
- * threaded in (unit-test contexts), only the grid is recorded and the pick is
- * deferred to the live populate path.
+ * draws in the generation stream (gap 9.2). Always records a GenTrap so
+ * populate can materialize without a second draw. When the trap kind table is
+ * not threaded in (bare unit-test Gen contexts only), records a grid marker
+ * alone; the live boot path always supplies trapKinds and populate asserts
+ * every marker has a descriptor.
  */
 export function placeTrap(g: Gen, grid: Loc): void {
   if (!g.trapKinds) {
