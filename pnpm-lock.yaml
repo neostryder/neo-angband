@@ -66,9 +66,6 @@ importers:
 
   packages/web:
     dependencies:
-      '@neo-angband/borg':
-        specifier: workspace:*
-        version: link:../borg
       '@neo-angband/content':
         specifier: workspace:*
         version: link:../content
