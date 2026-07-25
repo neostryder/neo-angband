@@ -34,6 +34,7 @@ import type { ObjCmdDeps } from "./obj-cmd";
 import { buildEffectContext } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
 import type { GameState } from "./context";
+import { playerIsTrapsafe } from "./trap";
 
 /* CHEST_QUERY / ChestQuery are obj/chest.ts's own exports (the index barrel
  * re-exports that module directly); not re-exported again from here to
@@ -73,16 +74,6 @@ export interface ChestCmdDeps {
   env?: ChestEnv;
   makeDeps: MakeDeps;
   floorEnv?: FloorEnv;
-}
-
-/**
- * player_is_trapsafe (player-path.ts owns the canonical copy; duplicated
- * here as a one-line derived read to avoid a game/chest <-> game/player-path
- * import cycle through cave-cmd.ts). The OF_TRAP_IMMUNE equipment half is
- * #13, deferred, same as upstream's other half.
- */
-function playerIsTrapsafe(state: GameState): boolean {
-  return (state.actor.player.timed[TMD.TRAPSAFE] ?? 0) > 0;
 }
 
 /** no_light (cave-view.c L913): the player's own grid is not currently seen. */

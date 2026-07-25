@@ -29,7 +29,11 @@ import type { TempBrandSlay } from "../combat/brand-slay";
 import { getLore } from "../mon/lore";
 import type { Monster } from "../mon/monster";
 import { MDESC, monsterDesc } from "../mon/desc";
-import { monsterIsCamouflaged, monsterIsObvious } from "../mon/predicate";
+import {
+  monsterIsCamouflaged,
+  monsterIsObvious,
+  monsterIsVisible,
+} from "../mon/predicate";
 import { monsterWake } from "../mon/take-hit";
 import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed";
 import { equipLearnFlag, equipLearnOnMeleeAttack } from "../obj/knowledge";
@@ -234,16 +238,16 @@ export function buildMeleeHooks(state: GameState, mon: Monster): MeleeEffectHook
  */
 export function attackMonster(state: GameState, target: Monster): number {
   /* Learning from the attack (player-attack.c L822 equip_learn_on_melee_
-   * attack; obj-slays.c learn_brand_slay_from_melee). The target is
-   * treated as visible, matching the monVisible option below. */
+   * attack; obj-slays.c learn_brand_slay_from_melee). */
   const deps = (state as MeleeSideHost).meleeSideDeps ?? {};
+  const monVisible = monsterIsVisible(target);
   learnBrandSlayFromMelee(
     state.actor.player,
     state.runeEnv,
     state.actor.weapon,
     {
       race: target.race,
-      visible: true,
+      visible: monVisible,
       lore: getLore(state.lore, target.race),
     },
     deps.temp,
@@ -257,7 +261,9 @@ export function attackMonster(state: GameState, target: Monster): number {
     state.brands,
     state.slays,
     {
-      monVisible: true,
+      /* chance_of_melee_hit halves unseen targets (player-attack.c:104-109),
+       * and py_attack's delayed fear message uses the same visibility. */
+      monVisible,
       /* player_of_has(p, OF_AFRAID): py_attack_real refuses the blow and prints
        * "You are too afraid to attack X!" (player-attack.c L752). For obvious
        * monsters do_cmd_walk_test short-circuits before this; the check here

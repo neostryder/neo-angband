@@ -1356,6 +1356,10 @@ function wireGame(
         env: {
           expGain,
           msg: (text: string): void => state.msg?.(text),
+          // player_is_trapsafe/player_of_has (player-util.c:1073-1077):
+          // expose the live derived equipment flags to hitTrap on movement.
+          playerHasFlag: (ofFlag: number): boolean =>
+            state.playerState?.flags.has(ofFlag) ?? false,
           changeLevel: (s: GameState): void => {
             s.targetDepth = s.chunk.depth + 1;
             s.generateLevel = true;

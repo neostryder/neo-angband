@@ -35,6 +35,7 @@ import type { ObjCmdDeps } from "./obj-cmd";
 import { buildEffectContext } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
 import type { ActionRegistry } from "./player-turn";
+import { gearGet } from "./gear";
 
 /** struct trap: one trap instance on a grid. */
 export interface Trap {
@@ -79,6 +80,18 @@ export interface TrapDeps {
     | "summon"
   >;
   env?: TrapEnv;
+}
+
+/** player_is_trapsafe (player-util.c:1073-1077). */
+export function playerIsTrapsafe(state: GameState): boolean {
+  const equipmentImmune = state.actor.player.equipment.some((handle) =>
+    handle > 0 && (gearGet(state.gear, handle)?.flags.has(OF.TRAP_IMMUNE) ?? false),
+  );
+  return (
+    (state.actor.player.timed[TMD.TRAPSAFE] ?? 0) > 0 ||
+    (state.playerState?.flags.has(OF.TRAP_IMMUNE) ?? false) ||
+    equipmentImmune
+  );
 }
 
 /**

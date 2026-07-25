@@ -37,7 +37,7 @@ import { monTakeHit } from "../mon/take-hit";
 import { playerClearTimed } from "../player/timed";
 import { gearGet, gearObjectForUse } from "./gear";
 import { dropNear, floorPile, floorObjectForUse } from "./floor";
-import { invenTakeoff } from "./obj-cmd";
+import { invenTakeoff, playerConfuseDir } from "./obj-cmd";
 import { squareMonster, deleteMonster, arenaInterceptDeath } from "./context";
 import type { GameState, PlayerCommand } from "./context";
 import { targetOkay, targetGet, targetSetClosest, TARGET } from "./target";
@@ -214,7 +214,10 @@ export function installRangedCommands(registry: ActionRegistry): void {
       return 0;
     }
 
-    const dir = typeof args["dir"] === "number" ? args["dir"] : (cmd.dir ?? 5);
+    let dir = typeof args["dir"] === "number" ? args["dir"] : (cmd.dir ?? 5);
+    /* do_cmd_fire calls player_confuse_dir immediately after cmd_get_target
+     * (player-attack.c:1349-1352), including its confusion RNG draw. */
+    dir = playerConfuseDir(state, dir);
     /* Take one missile out of the stack. */
     const { obj: missile } = gearObjectForUse(state.gear, player, handle, 1);
 
@@ -286,7 +289,10 @@ export function installRangedCommands(registry: ActionRegistry): void {
      * gear handle covers pack/quiver/equipment. */
     const floorIdx = typeof args["floor"] === "number" ? args["floor"] : -1;
     const handle = typeof args["handle"] === "number" ? args["handle"] : -1;
-    const dir = typeof args["dir"] === "number" ? args["dir"] : (cmd.dir ?? 5);
+    let dir = typeof args["dir"] === "number" ? args["dir"] : (cmd.dir ?? 5);
+    /* do_cmd_throw calls player_confuse_dir immediately after cmd_get_target
+     * (player-attack.c:1392-1395), including its confusion RNG draw. */
+    dir = playerConfuseDir(state, dir);
 
     let missile: GameObject;
     if (floorIdx >= 0) {
