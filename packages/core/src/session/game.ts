@@ -51,6 +51,7 @@ import { makePlayerSideEffects, makeIncCheckQueries } from "../game/player-side"
 import { makeTakeHitHooks } from "../game/take-hit-hooks";
 import { makeMonBlowEnv } from "../game/mon-side";
 import { adj_dex_safe } from "../player/calcs";
+import { processCurseTimeouts } from "../game/curse-tick";
 import { buildEffectContext } from "../game/effect-env";
 import { attachGameEnv } from "../game/effect-game-env";
 import { sourceMonster, sourceNone, sourcePlayer } from "../effects/interpreter";
@@ -1352,6 +1353,25 @@ function wireGame(
       worldEnv.trapDeps = trapDeps;
       general.trapDeps = trapDeps;
     }
+
+    // Curse periodic effects (DECISION E, do_curse_effect / decrease_timeouts):
+    // once per game turn each equipped item's curse timeouts count down and fire
+    // when they reach zero, running the curse's effect through the same bundle.
+    state.curseTick = (): void => {
+      processCurseTimeouts(state, {
+        curses: reg.objects.curses,
+        effects: {
+          registry: effects,
+          cast,
+          envDeps,
+          inject,
+          ...(teleport ? { teleport } : {}),
+          general,
+          item,
+          summon,
+        },
+      });
+    };
 
     // Chests (gap #49): reuse the exact effect bundle traps/objects use, so
     // chest_trap's dice draws (poison/paralysis/summon/explosion) share the

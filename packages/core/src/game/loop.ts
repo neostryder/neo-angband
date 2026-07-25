@@ -275,8 +275,9 @@ export function playerRegenMana(state: GameState): void {
  * Each per-effect decrement routes through player_dec_timed (with the bound
  * timed table + hooks from state.world), so grade transitions and wear-off
  * messages fire. Absent the world env, it falls back to the raw mutation for
- * worldless callers. The curse-timeout countdown (L343-364) is DEFERRED with
- * the curse subsystem; it draws no RNG while no cursed items are equipped.
+ * worldless callers. The curse-timeout countdown (L343-364) runs last through
+ * state.curseTick (game/curse-tick.ts), installed by the session; absent, or
+ * with no cursed item equipped, it is a no-op and draws no RNG.
  */
 export function decreaseTimeouts(state: GameState): void {
   const p = state.actor.player;
@@ -321,6 +322,10 @@ export function decreaseTimeouts(state: GameState): void {
     if (eff) playerDecTimed(p, eff, decr, false, true, thooks);
     else p.timed[i] = Math.max(0, cur - decr);
   }
+
+  /* Curse effects always decrement by 1, and fire when they hit zero
+   * (game-world.c L343-364). Runs after the timed loop, matching upstream. */
+  state.curseTick?.();
 }
 
 /**
