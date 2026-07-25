@@ -25,6 +25,28 @@ export {
 } from "./stats";
 export type { DepthMetrics, StatsParams, StatsReport } from "./stats";
 
+/**
+ * In-game wizard collectors (wiz-stats.c via do_cmd_wiz_collect_*), reachable
+ * from main-stats --wiz-objmon / --wiz-pits / --wiz-disconnect (W2-017…022).
+ */
+export {
+  DEFAULT_DISCONNECT_PARAMS,
+  DEFAULT_OBJ_MON_PARAMS,
+  DEFAULT_PIT_PARAMS,
+  disconnectStats,
+  objMonStats,
+  pitStats,
+} from "./wiz-stats";
+export type {
+  DisconnectStatsParams,
+  DisconnectStatsReport,
+  ObjMonStatsParams,
+  ObjMonStatsReport,
+  PitStatsParams,
+  PitStatsReport,
+} from "./wiz-stats";
+export { runWizStats } from "./main-stats";
+
 /** Baseline capture + tolerance comparison (the CI regression guard). */
 export {
   BASELINE_URL,

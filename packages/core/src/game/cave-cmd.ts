@@ -873,9 +873,17 @@ export function installCaveCommands(
     return state.z.moveEnergy;
   });
 
-  /* do_cmd_go_down / go_up: require the matching staircase underfoot. */
+  /* do_cmd_go_down / go_up: require the matching staircase underfoot. When
+   * OPT(autoexplore_commands) and the player is not on the stair, fall through
+   * to do_cmd_navigate_* which uses pathNearestKnown (cmd-cave.c:62-66,107-111;
+   * W2-003). navigate-* is registered by installRunning after this; the
+   * registry.get at call time finds it. */
   registry.register("descend", (state) => {
     if (!state.chunk.isDownstairs(state.actor.grid)) {
+      if (state.options?.get("autoexplore_commands")) {
+        const nav = registry.get("navigate-down");
+        if (nav) return nav(state, { code: "navigate-down" });
+      }
       env.msg?.("I see no down staircase here.");
       return 0;
     }
@@ -891,6 +899,10 @@ export function installCaveCommands(
 
   registry.register("ascend", (state) => {
     if (!state.chunk.isUpstairs(state.actor.grid)) {
+      if (state.options?.get("autoexplore_commands")) {
+        const nav = registry.get("navigate-up");
+        if (nav) return nav(state, { code: "navigate-up" });
+      }
       env.msg?.("I see no up staircase here.");
       return 0;
     }

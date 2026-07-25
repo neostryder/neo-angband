@@ -18,9 +18,10 @@
  * message_pain (player-attack.c:1191-1195, gap 2.4).
  *
  * DEFERRED (ledgered in parity/ledger/ranged-cmd.yaml): the out-of-range "Fire
- * anyway?" prompt (UI), missile / equipment learn-on-attack (knowledge), the
- * show_damage " (N)" suffix, the invisible-monster "finds a mark" branch, and
- * the crit-flavour line (the hit verb still varies).
+ * anyway?" prompt (UI), the show_damage " (N)" suffix, the invisible-monster
+ * "finds a mark" branch, and the crit-flavour line (the hit verb still varies).
+ * Missile / equipment / brand-slay learn-on-attack is wired below (W2-001/002/
+ * 010/011; player-attack.c:1137-1140, 1255-1259, 1296-1299).
  */
 
 import { MON_MSG, MSG, RF, STAT, TMD } from "../generated";
@@ -28,11 +29,20 @@ import { distance, loc } from "../loc";
 import type { Loc } from "../loc";
 import { adj_str_blow } from "../player/calcs";
 import { makeRangedShot, makeRangedThrow, breakageChance } from "../combat/ranged";
+import {
+  learnBrandSlayFromLaunch,
+  learnBrandSlayFromThrow,
+} from "../combat/brand-slay";
+import {
+  equipLearnOnRangedAttack,
+  missileLearnOnRangedAttack,
+} from "../obj/knowledge";
 import { objectWeightOne, tvalIsAmmo, tvalIsSharpMissile } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { ODESC } from "../obj/desc";
 import { projectPath } from "../world/project";
-import { monsterIsObvious, monsterIsDestroyed } from "../mon/predicate";
+import { monsterIsObvious, monsterIsDestroyed, monsterIsVisible } from "../mon/predicate";
+import { getLore } from "../mon/lore";
 import { monTakeHit } from "../mon/take-hit";
 import { playerClearTimed } from "../player/timed";
 import { gearGet, gearObjectForUse } from "./gear";
@@ -118,13 +128,40 @@ function rangedHelper(
           state.brands, state.slays, dist, monObvious, percentDamage,
         );
 
-    const oName = describeObject(state, missile, ODESC.FULL | ODESC.SINGULAR);
-    const mName = mon.race.flags.has(RF.UNIQUE)
-      ? mon.race.name
-      : `the ${mon.race.name}`;
-
     if (result.success) {
       hit = true;
+
+      /*
+       * Learn-on-hit (player-attack.c). All learning is RNG-free; it sits after
+       * make_ranged_*'s to-hit/damage/crit draws and before mon_take_hit's fear
+       * roll, matching the C draw order:
+       *   make_ranged_shot: missile_learn(bow) then learn_brand_slay_from_launch
+       *   make_ranged_throw: learn_brand_slay_from_throw
+       *   ranged_helper: missile_learn(obj) then equip_learn_on_ranged_attack
+       *   then object_desc (with up-to-date knowledge) then mon_take_hit
+       */
+      const monVisible = monsterIsVisible(mon);
+      const learnMon = {
+        race: mon.race,
+        visible: monVisible,
+        lore: getLore(state.lore, mon.race),
+      };
+      if (throwing) {
+        learnBrandSlayFromThrow(player, state.runeEnv, missile, learnMon);
+      } else {
+        if (launcher) missileLearnOnRangedAttack(player, state.runeEnv, launcher);
+        learnBrandSlayFromLaunch(player, state.runeEnv, missile, launcher, learnMon);
+      }
+      missileLearnOnRangedAttack(player, state.runeEnv, missile);
+      equipLearnOnRangedAttack(player, state.runeEnv);
+
+      /* Describe after learning so the message reflects new knowledge
+       * (player-attack.c:1137-1147). */
+      const oName = describeObject(state, missile, ODESC.FULL | ODESC.SINGULAR);
+      const mName = mon.race.flags.has(RF.UNIQUE)
+        ? mon.race.name
+        : `the ${mon.race.name}`;
+
       let dmg = result.damage;
       if (dmg <= 0) {
         dmg = 0;
