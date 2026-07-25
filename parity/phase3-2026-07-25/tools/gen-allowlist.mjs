@@ -9,7 +9,7 @@
 
 import { writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { extractCHeaderFunctions, extractPortSymbols, normKey } from "./c-api.mjs";
+import { candidateKeys, extractCHeaderFunctions, extractPortSymbols, normKey } from "./c-api.mjs";
 
 const REPO = resolve(import.meta.dirname, "../../..");
 const OUT = join(REPO, "parity/phase3-2026-07-25/c-api-allowlist.json");
@@ -21,8 +21,8 @@ const mentionedKeys = new Set([...mentioned].map(normKey));
 
 const missing = [];
 for (const fn of cFns) {
-  const k = normKey(fn.name);
-  if (declaredKeys.has(k)) continue;
+  const keys = candidateKeys(fn.name);
+  if (keys.some((k) => declaredKeys.has(k))) continue;
   missing.push({
     name: fn.name,
     header: fn.header,
@@ -30,7 +30,7 @@ for (const fn of cFns) {
     /* "mentioned" means the identifier appears somewhere in the port but not as
      * a declaration -- inlined, a method, or only named in a comment. Weaker
      * evidence of a real gap, so it is worth adjudicating separately. */
-    status: mentionedKeys.has(k) ? "unreviewed-mentioned" : "unreviewed",
+    status: keys.some((k) => mentionedKeys.has(k)) ? "unreviewed-mentioned" : "unreviewed",
     reason: "",
   });
 }
