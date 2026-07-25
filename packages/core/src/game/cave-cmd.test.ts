@@ -20,6 +20,7 @@ import {
   squareIsOpenDoor,
 } from "./cave-cmd";
 import { floorPile } from "./floor";
+import { squareMemorize } from "./known";
 import { createDefaultRegistry, processPlayer } from "./player-turn";
 import { addMon, makeRace, makeState } from "./harness";
 import type { GameState } from "./context";
@@ -111,6 +112,8 @@ describe("open / close doors", () => {
   it("walking into a closed door opens it without stepping (move_player bump-to-open, cmd-cave.c L1079-1083)", () => {
     const { state, run } = setup();
     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    /* square_isknown gate (cmd-cave.c:1079): only a known door auto-opens. */
+    squareMemorize(state, loc(6, 5));
     const energy = run({ code: "walk", dir: 6 });
     expect(energy).toBe(state.z.moveEnergy);
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.OPEN);
@@ -159,6 +162,7 @@ describe("open / close doors", () => {
       env: { isLockedDoor: (): boolean => true, pickLock: (): boolean => false },
     });
     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    squareMemorize(state, loc(6, 5));
     const energy = run({ code: "walk", dir: 6 });
     /* The pick fails: the door stays locked, the player does not step, the turn
      * is spent, and the walk re-queues (cmd_set_repeat(99), one attempt spent). */
@@ -178,6 +182,7 @@ describe("open / close doors", () => {
       env: { isLockedDoor: (): boolean => true, pickLock: (): boolean => true },
     });
     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    squareMemorize(state, loc(6, 5));
     run({ code: "walk", dir: 6 });
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.OPEN);
     expect(state.cmdQueue ?? []).toHaveLength(0);
@@ -188,6 +193,7 @@ describe("open / close doors", () => {
       env: { isLockedDoor: (): boolean => true, pickLock: (): boolean => false },
     });
     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    squareMemorize(state, loc(6, 5));
     /* Last of the 99 attempts (budget 0): the pick fails but does not re-queue. */
     run({ code: "walk", dir: 6, repeatRemaining: 0 });
     expect(state.cmdQueue ?? []).toHaveLength(0);

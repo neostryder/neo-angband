@@ -19,7 +19,7 @@
  * upstream do-while around cmdq_pop.
  */
 
-import { MON_MSG, MON_TMD, MSG, OF, PF, STAT, TMD } from "../generated";
+import { MON_MSG, MON_TMD, MSG, OF, PF, STAT, TMD, TRF } from "../generated";
 import { DDGRID, DDGRID_DDD, locSum } from "../loc";
 import type { Loc } from "../loc";
 import { pyAttack } from "../combat/melee";
@@ -44,6 +44,7 @@ import { gearGet } from "./gear";
 import { playerConfuseDir } from "./obj-cmd";
 import { playerAdjustManaPrecise } from "./loop";
 import { formatMonsterMessage } from "./mon-message";
+import { squareIsWebbed, squareRemoveAllTraps, squareTrap } from "./trap";
 import { PY_EXERT, playerCheckTerrainDamage, playerOverExert } from "./world";
 
 /**
@@ -389,6 +390,20 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
   const rawDir = cmd.dir;
   if (rawDir === undefined || rawDir < 1 || rawDir > 9 || rawDir === 5) return 0;
 
+  /*
+   * do_cmd_walk / do_cmd_jump (cmd-cave.c:1288-1297 / 1328-1337): standing in
+   * a web clears the web and spends the turn in place - no movement.
+   */
+  if (squareIsWebbed(state, state.actor.grid)) {
+    state.msg?.("You clear the web.");
+    /* square_remove_all_traps_of_type(web->tidx) (cmd-cave.c:1294). */
+    const web = squareTrap(state, state.actor.grid).find(
+      (t) => t.kind.flags.has(TRF.WEB) || t.kind.desc === "web",
+    );
+    squareRemoveAllTraps(state, state.actor.grid, web?.tidx ?? -1);
+    return state.z.moveEnergy;
+  }
+
   /* do_cmd_walk (cmd-cave.c L1299-1302): confusion randomises the direction.
    * When it redirects ("You are confused."), the move spends a full turn even
    * if it dead-ends against a wall (energy_use is set to move_energy before the
@@ -480,14 +495,10 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
 
 /**
  * jump (do_cmd_jump, cmd-cave.c:1319): "walk into a trap" - identical to
- * do_cmd_walk except move_player is called with disarm=false, so a disarmable
- * trap in the target grid is stepped onto and triggered rather than disarmed.
- * The port's walkAction does not yet implement do_cmd_walk's disarm-on-walk
- * branch (cmd-cave.c:1311-1312, deferred: trap consequences run in
- * onPlayerMoved -> hit_trap on any step), so a step onto a trap already
- * triggers it; jump therefore shares walkAction's body. Kept as a distinct
- * action so a front end can bind the faithful CMD_JUMP keys (W / -) and so the
- * distinction survives once walk gains its disarm branch.
+ * do_cmd_walk except move_player is called with disarm=false (cmd-cave.c:1351),
+ * so a known disarmable trap is stepped onto rather than auto-disarmed. The
+ * cave-cmd walk wrapper only auto-disarms for code "walk"; jump falls through
+ * to the step path.
  */
 export function jumpAction(state: GameState, cmd: PlayerCommand): number {
   return walkAction(state, cmd);

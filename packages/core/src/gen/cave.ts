@@ -246,6 +246,11 @@ export interface CaveBuildContext {
    * first spawn) lays no stair.
    */
   createStair?: "down" | "up" | null;
+  /**
+   * Stored town terrain from chunk_write (gen-chunk.c:46 / town_gen L2682):
+   * when present, town_gen reloads this layout instead of regenerating.
+   */
+  townLayout?: Chunk | null;
 }
 
 export interface CaveBuildResult {
@@ -2549,23 +2554,70 @@ function townGenLayout(g: Gen): Loc {
 }
 
 /**
- * The town builder (town_gen, gen-cave.c L2664): a faithful port of the
- * first-time town layout (town_gen_layout) followed by day/night illumination
- * and the resident townsfolk. Store entrances are non-passable shop terrain (a
- * shell opens the shop when the player walks into one).
- *
- * DEFERRED: the chunk-persistence re-entry branch (town_gen L2682, a Tier-5
- * RECALL/level-persistence concern) - the port regenerates the town on every
- * entry, so only the first-time path is implemented. Day/night is honoured
- * when the caller supplies ctx.daytime; when omitted it defaults to daytime
- * (turn 0), which is the faithful state at birth.
+ * chunk_write (gen-chunk.c:46-61): terrain + sqinfo only, for the town store.
+ */
+export function chunkWriteTerrain(src: Chunk): Chunk {
+  const out = new Chunk(src.features, src.height, src.width);
+  /* chunk_write "Town" name (generate.c:1371 / gen-chunk.c:46). */
+  out.name = "Town";
+  out.depth = src.depth;
+  for (let y = 0; y < src.height; y++) {
+    for (let x = 0; x < src.width; x++) {
+      const grid = loc(x, y);
+      out.setFeat(grid, src.feat(grid));
+      out.info(grid).copy(src.info(grid));
+    }
+  }
+  return out;
+}
+
+/**
+ * The town builder (town_gen, gen-cave.c L2664): first-time layout via
+ * town_gen_layout, or re-entry from a stored Town chunk (L2682-2703). Store
+ * entrances are non-passable shop terrain. Day/night is honoured when the
+ * caller supplies ctx.daytime; when omitted it defaults to daytime (turn 0).
  */
 export const townGen: CaveBuilder = (ctx) => {
   const { constants } = ctx;
+  const daytime = ctx.daytime ?? true;
+  const stored = ctx.townLayout ?? null;
+
+  if (stored) {
+    /* town_gen re-entry (gen-cave.c:2682-2703): copy stored terrain. */
+    const c = new Chunk(ctx.reg, stored.height, stored.width);
+    c.depth = stored.depth;
+    const g = makeGen(ctx, c);
+    for (let y = 0; y < stored.height; y++) {
+      for (let x = 0; x < stored.width; x++) {
+        const grid = loc(x, y);
+        c.setFeat(grid, stored.feat(grid));
+        c.info(grid).copy(stored.info(grid));
+      }
+    }
+    /* Find the stairs (gen-cave.c:2691-2700). */
+    let pgrid = loc(1, 1);
+    outer: for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        if (c.feat(loc(x, y)) === FEAT.MORE) {
+          pgrid = loc(x, y);
+          break outer;
+        }
+      }
+    }
+    g.playerSpot = pgrid;
+    caveIlluminate(c, daytime);
+    const residents = daytime
+      ? constants.townMonstersDay
+      : constants.townMonstersNight;
+    for (let i = 0; i < residents; i++) {
+      pickAndPlaceDistantMonster(g, pgrid, 3, true, c.depth);
+    }
+    return { gen: g, error: null };
+  }
+
   const c = new Chunk(ctx.reg, constants.townHgt, constants.townWid);
   c.depth = ctx.depth;
   const g = makeGen(ctx, c);
-  const daytime = ctx.daytime ?? true;
 
   /* Build the layout and place the player at the crossroads head. */
   const pgrid = townGenLayout(g);

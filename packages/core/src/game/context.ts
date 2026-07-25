@@ -544,6 +544,18 @@ export interface GameState {
    */
   onPlayerMoved?: (state: GameState, grid: Loc) => void;
   /**
+   * player_leaving (mon-util.c:503-515): fires when the player leaves a grid
+   * (delayed traps, decoy range). Installed by installTraps; called from
+   * movePlayer so every monster_swap path matches C.
+   */
+  onPlayerLeaving?: (state: GameState, oldGrid: Loc, newGrid: Loc) => void;
+  /**
+   * Terrain-only town layout (chunk_write "Town", gen-chunk.c:46 / generate.c
+   * L1371-1373). Stored when leaving depth 0 without birth_levels_persist so
+   * town_gen can reload the same shops/stairs. Cleared when consumed on re-entry.
+   */
+  townChunk?: import("../world/chunk").Chunk | null;
+  /**
    * QoL auto-dig seam (the bundled `qol` mod, flag "qol.autoDig"): consulted by
    * walkAction (game/player-turn.ts) when a walk is blocked by a wall, BEFORE
    * the faithful no-energy bump. Returns the energy spent starting a dig (a full
@@ -881,21 +893,32 @@ export function squareIsEmpty(state: GameState, grid: Loc): boolean {
 }
 
 /**
- * monster_swap(grid1, grid2) for the two cases the ported AI produces: a
- * monster stepping into an empty grid, and two monsters trading places. The
- * player is never swapped here (the AI attacks the player instead of moving
- * onto it).
+ * monster_swap (mon-util.c:566-677): swap mon markers at two grids, update
+ * monster grids, and when the player is involved set actor.grid and fire
+ * player_leaving (mon-util.c:609-625 / 656-672) so TRF_DELAY traps run.
+ * Used by thrust, mon AI steps, and teleports that trade places.
  */
 export function monsterSwap(state: GameState, grid1: Loc, grid2: Loc): void {
   const c = state.chunk;
   const m1 = c.mon(grid1);
   const m2 = c.mon(grid2);
+  /* Snapshot player grid before the swap (mon-util.c:570). */
+  const pgrid = state.actor.grid;
   c.setMon(grid1, m2);
   c.setMon(grid2, m1);
   const mon1 = m1 > 0 ? state.monsters[m1] : null;
   const mon2 = m2 > 0 ? state.monsters[m2] : null;
   if (mon1) mon1.grid = grid2;
   if (mon2) mon2.grid = grid1;
+  /* Player at grid1 -> grid2 (mon-util.c:609-612). */
+  if (m1 < 0) {
+    state.actor.grid = grid2;
+    state.onPlayerLeaving?.(state, pgrid, state.actor.grid);
+  } else if (m2 < 0) {
+    /* Player at grid2 -> grid1 (mon-util.c:656-659). */
+    state.actor.grid = grid1;
+    state.onPlayerLeaving?.(state, pgrid, state.actor.grid);
+  }
 }
 
 /**
@@ -951,11 +974,16 @@ export function placePlayer(state: GameState, grid: Loc): void {
 /**
  * Move the player to a new grid, updating the square-occupancy marker
  * (clear the old grid, mark the new one with the player sentinel -1).
+ * Fires player_leaving on the old grid (mon-util.c:612 / 659 via
+ * monster_swap) so TRF_DELAY traps run before the post-move enter hooks.
  */
 export function movePlayer(state: GameState, grid: Loc): void {
-  state.chunk.setMon(state.actor.grid, 0);
+  const old = state.actor.grid;
+  if (old.x === grid.x && old.y === grid.y) return;
+  state.chunk.setMon(old, 0);
   state.actor.grid = grid;
   state.chunk.setMon(grid, -1);
+  state.onPlayerLeaving?.(state, old, grid);
 }
 
 /**

@@ -94,6 +94,13 @@ describe("startGame (new-game assembly)", () => {
     expect(state.monsters[0]).toBeNull();
   });
 
+  it("initial birth entry leaves only_partial set until first FOV (ui-display.c:2522)", () => {
+    /* startGame has no host updateFov yet, so onlyPartial stays true for the
+     * host's first level-entry FOV (feeling suppressed, cave-view.c:849-851). */
+    const { state } = startGame(pack, { seed: 123, depth: 1 });
+    expect(state.chunk.onlyPartial).toBe(true);
+  });
+
   it("memorizes the whole daytime town on birth (town_gen -> cave_illuminate)", () => {
     // Birth defaults to the town (depth 0) at turn 0, which is daytime. The C
     // town_gen calls cave_illuminate, memorizing every lit town grid so the

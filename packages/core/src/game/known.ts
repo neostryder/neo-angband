@@ -25,7 +25,7 @@
 import { FEAT, MFLAG, OF, RF, SQUARE, TF, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { DDGRID_DDD, loc, locEq, locSum } from "../loc";
-import { featIsBright } from "../world/chunk";
+import { featIsBright, featIsPassable } from "../world/chunk";
 import { caveIlluminate } from "../gen/cave";
 import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view";
 import { getLore, loreCountU16 } from "../mon/lore";
@@ -695,6 +695,23 @@ export function updateMonsters(state: GameState, full: boolean): void {
  */
 export function noteSpots(state: GameState): void {
   const c = state.chunk;
+
+  /*
+   * Blind forget of the current non-passable remembered square
+   * (cave-view.c:894-897): when blind and the player grid is known as
+   * impassable in map memory, forget it. Lives here (not pure view.ts)
+   * because it mutates KnownMap; called immediately after every updateView.
+   */
+  if ((state.actor.player.timed[TMD.BLIND] ?? 0) > 0) {
+    const pgrid = state.actor.grid;
+    if (squareIsKnown(state, pgrid)) {
+      const feat = knownFeat(state, pgrid);
+      if (feat >= 0 && !featIsPassable(c.features, feat)) {
+        squareForget(state, pgrid);
+      }
+    }
+  }
+
   for (let y = 0; y < c.height; y++) {
     for (let x = 0; x < c.width; x++) {
       const grid = { x, y };
