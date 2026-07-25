@@ -30,8 +30,8 @@
  * threads here - object_grab / object_see / delist_object / object_delete - is
  * the knowledge subsystem (#24), carried by the env's carry/gainGold seams; and
  * react_to_slay blocking the monster-thief path (midx >= 0) is deferred exactly
- * as the EAT_ITEM blow already defers it (game/mon-side.ts), since that path is
- * only reachable through monster-vs-monster melee, which is not yet ported.
+ * as the EAT_ITEM blow already defers it (game/mon-side.ts / mon-cmd.ts). The
+ * mon-vs-mon EAT_ITEM path wires stealMonsterItem from game/mon-cmd.ts.
  */
 
 import { KF } from "../generated";
@@ -227,9 +227,8 @@ export function stealMonsterItem(
       env.hitAndRun?.();
     }
   } else {
-    /* Monster thief (midx >= 0): only reachable via monster-vs-monster melee,
-     * which is not yet ported. react_to_slay blocking the theft is DEFERRED
-     * (no RNG), exactly as the EAT_ITEM blow defers it. */
+    /* Monster thief (midx >= 0): mon-vs-mon EAT_ITEM (mon-cmd.ts). react_to_slay
+     * blocking the theft is DEFERRED (no RNG), as the player EAT_ITEM path. */
     const tName = env.thiefName?.(midx) ?? "It";
 
     if (!obj /* || react_to_slay(obj, thief) -- DEFERRED */) {
