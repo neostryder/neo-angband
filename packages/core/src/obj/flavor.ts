@@ -158,8 +158,10 @@ export function flavorInit(
   }
 
   /* flavor_assign_random (L76): give each still-unflavoured kind of `tval` a
-   * random one of that tval's still-unassigned flavours. Iterating kinds in
-   * kidx order and flavours in file order reproduces the upstream draw order.
+   * random one of that tval's still-unassigned flavours. Kinds walk in kidx
+   * order. Flavours walk REVERSE file order: C prepends into a linked list
+   * (init.c:4239-4270), so head = last parsed and choice=0 selects the last
+   * remaining random flavour of that tval in file order (obj-util.c:76-112).
    * `titleFor` supplies the scroll title (flavour text) when relevant. */
   const assignRandom = (
     tval: number,
@@ -175,7 +177,8 @@ export function flavorInit(
         throw new Error(`flavor_init: not enough flavors for tval ${tval}`);
       }
       let choice = rng.randint0(flavorCount);
-      for (const w of work) {
+      for (let fi = work.length - 1; fi >= 0; fi--) {
+        const w = work[fi]!;
         if (w.flavor.tval !== tval || w.sval !== SV_UNKNOWN) continue;
         if (choice === 0) {
           w.sval = kind.sval;

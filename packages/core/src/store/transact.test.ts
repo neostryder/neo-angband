@@ -446,8 +446,12 @@ describe("object_flavor_aware ignore fix at storeBuy/storeSell (#89)", () => {
     /* ...and the #89 fix carried the ignore-while-unaware bit to "aware". */
     expect(rec.awareIgnored).toEqual([item.kind.kidx]);
     expect(rec.noticeRequests).toBe(1);
-    /* RNG-free: becoming aware draws nothing from the shared stream. */
-    expect(ctx.rng.getState()).toEqual(before);
+    /* Flavor awareness is RNG-free; the only stream draws are comment_accept
+     * (do_cmd_buy L1717: one_in_(3) then optional ONE_OF). */
+    const probe = new Rng(1);
+    probe.setState(before);
+    if (probe.oneIn(3)) probe.randint0(6);
+    expect(ctx.rng.getState()).toEqual(probe.getState());
   });
 
   it("storeSell fires the same ignore fix", () => {

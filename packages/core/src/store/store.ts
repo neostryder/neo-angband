@@ -132,14 +132,20 @@ function townBooksOfTval(
 }
 
 /**
- * Create a live Store from a bound definition, choosing a proprietor. When
- * `reg`/`classes` are supplied, the bookseller's deferred town-book `always:`
- * lines (bound.alwaysBookTvals) are expanded into the runtime alwaysTable so the
- * shop actually stocks the town spellbooks (parse_always, store.c:208-231).
+ * Create a live Store from a bound definition. The proprietor is a provisional
+ * placeholder (owners[0]); store_reset assigns the real owner with a single
+ * randint0, matching C store_shuffle against a NULL initial owner (store.c
+ * L340-357, L1493-1501). When `reg`/`classes` are supplied, the bookseller's
+ * deferred town-book `always:` lines (bound.alwaysBookTvals) are expanded into
+ * the runtime alwaysTable so the shop stocks the town spellbooks
+ * (parse_always, store.c:208-231).
+ *
+ * `rng` is accepted for call-site compatibility but is not consumed here - the
+ * first owner draw happens in storeReset.
  */
 export function bindStoreRuntime(
   bound: BoundStore,
-  rng: Rng,
+  _rng: Rng,
   storeInvenMax: number,
   reg?: ObjRegistry,
   classes?: readonly PlayerClass[],
@@ -154,11 +160,13 @@ export function bindStoreRuntime(
       }
     }
   }
+  const provisional = bound.owners[0];
+  if (!provisional) throw new Error(`store ${bound.featName} has no owners`);
   return {
     feat: bound.feat,
     featName: bound.featName,
     owners: bound.owners,
-    owner: storeChooseOwner(rng, bound),
+    owner: provisional,
     alwaysTable,
     normalTable: bound.normalTable,
     buy: bound.buy,
@@ -661,11 +669,16 @@ export function storeUpdate(ctx: StoreMaintContext, daycount: number): void {
 /**
  * store_reset (L340): (re)initialise every non-home store's stock, running
  * store_maint ten times to fill it. Home is left empty.
+ *
+ * Owner assignment matches C store_shuffle against a NULL initial owner: a
+ * single randint0(n_owners) per store, not a force-different re-draw (the port
+ * used to choose at bind and again in storeShuffle, over-drawing the stream).
+ * Later re-shuffles (store_update / empty-store) still use storeShuffle.
  */
 export function storeReset(ctx: StoreMaintContext): void {
   for (const store of ctx.stores) {
     store.stock = [];
-    storeShuffle(ctx.rng, store);
+    store.owner = storeChooseOwner(ctx.rng, store);
     if (store.feat === FEAT.HOME) continue;
     for (let j = 0; j < 10; j++) storeMaint(ctx, store);
   }
