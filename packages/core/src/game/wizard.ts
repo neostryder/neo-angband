@@ -1075,7 +1075,7 @@ export function wizWizardLight(state: GameState, deps: WizardDeps): boolean {
  * on the player; word_recall / deep_descent live there.
  */
 export function wizCheatDeath(state: GameState, deps: WizardDeps): boolean {
-  if (!wizardEnabled(deps) || !deps.effect) return false;
+  if (!wizardEnabled(deps)) return false;
   const p = state.actor.player;
   /* player->noscore |= NOSCORE_WIZARD (wiz-debug.c L32). */
   deps.markNoscore?.(NOSCORE.WIZARD);
@@ -1086,11 +1086,15 @@ export function wizCheatDeath(state: GameState, deps: WizardDeps): boolean {
   p.csp = p.msp;
   p.cspFrac = 0;
 
-  const ctx = effContext(state, deps.effect);
-  const timed = ctx.player?.timed;
-  if (timed) {
-    for (const idx of CHEAT_DEATH_TIMED) timed.clearTimed(idx, true, false);
-    timed.setTimed(TMD.FOOD, PY_FOOD_FULL - 1, false, false);
+  /* Timed clear + food need the effect/timed bundle (wiz-debug.c L43-53). When
+   * the shell has not assembled it yet, HP/SP/age still revive (W2-009). */
+  if (deps.effect) {
+    const ctx = effContext(state, deps.effect);
+    const timed = ctx.player?.timed;
+    if (timed) {
+      for (const idx of CHEAT_DEATH_TIMED) timed.clearTimed(idx, true, false);
+      timed.setTimed(TMD.FOOD, PY_FOOD_FULL - 1, false, false);
+    }
   }
 
   /* Back to the town. */

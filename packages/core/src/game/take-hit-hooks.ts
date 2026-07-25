@@ -35,9 +35,31 @@ import type { TakeHitHooks } from "../player/take-hit";
 import type { GameState } from "./context";
 import { disturb } from "./player-path";
 import { playerAdjustManaPrecise } from "./loop";
+import {
+  markNoscore,
+  wizCheatDeath,
+  type WizardDeps,
+} from "./wizard";
+
+/**
+ * Optional deps for the EVENT_CHEAT_DEATH path (ui-display.c:2568-2573).
+ * The effect bundle is assigned after makeTakeHitHooks when wireGame finishes
+ * building the wizard effect stack; the hook closes over a mutable holder.
+ */
+export interface TakeHitHookOpts {
+  /**
+   * Mutable holder for WizardDeps.effect (assembled later in wireGame). The
+   * cheat-death hook reads `.current` at death time so it sees the live
+   * bundle even though makeTakeHitHooks runs before the effect stack exists.
+   */
+  wizardEffect?: { current: WizardDeps["effect"] | undefined };
+}
 
 /** Build the shared, complete player take_hit consequences for `state`. */
-export function makeTakeHitHooks(state: GameState): TakeHitHooks {
+export function makeTakeHitHooks(
+  state: GameState,
+  opts: TakeHitHookOpts = {},
+): TakeHitHooks {
   return {
     /* The bloodlust death-save flavour roll (player-util.c L232). */
     rng: state.rng,
@@ -61,6 +83,31 @@ export function makeTakeHitHooks(state: GameState): TakeHitHooks {
        * and clears the active slot. */
       p.diedFrom = killer;
       p.totalWinner = false;
+    },
+    /*
+     * Wizard / cheat_live escape (player-util.c:246-248 + ui-display.c:2568):
+     * when player->wizard or OPT(cheat_live), the C asks get_check("Die? ")
+     * and on "no" signals EVENT_CHEAT_DEATH -> wiz_cheat_death(). No RNG.
+     * The shell may set state.wizard when ^W is toggled; confirmDie (sync)
+     * returns true to accept death. Absent confirmDie answers "no" (cheat).
+     */
+    cheatDeath: (): boolean => {
+      const wizard = state.wizard === true;
+      const cheatLive = state.options?.get("cheat_live") === true;
+      if (!wizard && !cheatLive) return false;
+      /* get_check("Die? "): true = yes die; false = cheat. */
+      if (state.confirmDie?.() === true) return false;
+      state.msg?.("You invoke wizard mode and cheat death.");
+      const effect = opts.wizardEffect?.current;
+      return wizCheatDeath(state, {
+        wizard: true,
+        ...(effect ? { effect } : {}),
+        markNoscore: (bits: number): void => {
+          const p = state.actor.player;
+          p.noscore = markNoscore(p.noscore, bits);
+        },
+        msg: (t) => state.msg?.(t),
+      });
     },
     /* PF_COMBAT_REGEN mana reward (player-util.c L216-222, audit 01 C1): a
      * Blackguard turns lost hitpoints into rage-mana. take_hit already excludes

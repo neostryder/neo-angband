@@ -24,19 +24,23 @@
  * through game/mon-side.ts; world DoTs and projections wire it in session/game.ts
  * and game/project-player.ts). All are deterministic (no RNG).
  *
- * DEFERRED (ledgered in game-player-path.yaml): pathfinding / travel
- * (find_path, prepare_pfdistances, path_nearest_known / _unknown - the A*
- * with door and rubble penalties) and the pathfinding branch of run_step
- * (upkeep->steps / step_count, the automatic open-door / tunnel-rubble
- * command pushes); the running torch-radius recalculation (PU_TORCH)
- * and the run-into-trap-disarms nuance ride the light / trap layers.
+ * path_nearest_known / path_nearest_unknown and the pathfinding branch of
+ * run_step are wired (W2-003 navigate-up/down, explore, pathfind). DEFERRED
+ * (ledgered in game-player-path.yaml): the automatic open-door / tunnel-rubble
+ * command pushes on the pathfind branch; the running torch-radius
+ * recalculation (PU_TORCH) and the run-into-trap-disarms nuance ride the
+ * light / trap layers.
  */
 
 import { TF, TRF, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { DDD, DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc";
 import { SKILL } from "../player/types";
-import { monsterIsObvious, monsterIsVisible } from "../mon/predicate";
+import {
+  monsterIsInView,
+  monsterIsObvious,
+  monsterIsVisible,
+} from "../mon/predicate";
 import type { GameState, PlayerCommand, RunState } from "./context";
 import { squareMonster } from "./context";
 import { squareIsKnown } from "./known";
@@ -931,9 +935,83 @@ export function exploreAction(state: GameState, _cmd: PlayerCommand): number {
   return beginPath(state, found, found.dest);
 }
 
-/** Register the run / pathfind / explore actions over their stubs. */
+/**
+ * player_has_monster_in_view (player-util.c:1721): any obvious monster currently
+ * in the player's view. Gates auto-navigate/explore (cmd-cave.c).
+ */
+function playerHasMonsterInView(state: GameState): boolean {
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (!mon) continue;
+    if (monsterIsObvious(mon) && monsterIsInView(mon)) return true;
+  }
+  return false;
+}
+
+/**
+ * Shared setup for navigate up/down (cmd-cave.c:1408 / 1454): refuse while
+ * confused, clear a web (full turn), refuse with a visible monster, else path
+ * to the nearest known stair of the given kind via pathNearestKnown (W2-003).
+ * No RNG on the success path; a failed path prints the C message and returns 0.
+ */
+function navigateStairAction(
+  state: GameState,
+  pred: (state: GameState, grid: Loc) => boolean,
+  noneMsg: string,
+): number {
+  if ((state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) {
+    state.msg?.("You cannot explore while confused.");
+    return 0;
+  }
+
+  const webbed = squareTrap(state, state.actor.grid).filter((trap) =>
+    trap.kind.flags.has(TRF.WEB),
+  );
+  if (webbed.length > 0) {
+    state.msg?.("You clear the web.");
+    for (const trap of webbed) squareRemoveTrap(state, state.actor.grid, trap);
+    return state.z.moveEnergy;
+  }
+
+  if (playerHasMonsterInView(state)) {
+    state.msg?.("Something is here.");
+    return 0;
+  }
+
+  const found = pathNearestKnown(state, state.actor.grid, pred);
+  if (found.length > 0) {
+    return beginPath(state, found, found.dest);
+  }
+  state.msg?.(noneMsg);
+  return 0;
+}
+
+/** do_cmd_navigate_down (cmd-cave.c:1408): path to nearest known downstairs. */
+export function navigateDownAction(
+  state: GameState,
+  _cmd: PlayerCommand,
+): number {
+  return navigateStairAction(
+    state,
+    (s, g) => s.chunk.isDownstairs(g),
+    "No known path to downstairs.",
+  );
+}
+
+/** do_cmd_navigate_up (cmd-cave.c:1454): path to nearest known upstairs. */
+export function navigateUpAction(state: GameState, _cmd: PlayerCommand): number {
+  return navigateStairAction(
+    state,
+    (s, g) => s.chunk.isUpstairs(g),
+    "No known path to upstairs.",
+  );
+}
+
+/** Register the run / pathfind / explore / navigate actions over their stubs. */
 export function installRunning(registry: ActionRegistry): void {
   registry.register("run", runAction);
   registry.register("pathfind", pathfindAction);
   registry.register("explore", exploreAction);
+  registry.register("navigate-down", navigateDownAction);
+  registry.register("navigate-up", navigateUpAction);
 }

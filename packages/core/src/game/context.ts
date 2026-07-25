@@ -433,6 +433,19 @@ export interface GameState {
    */
   runeEnv: import("../obj/knowledge").RuneEnv;
 
+  /**
+   * player->wizard (player.h): the session wizard-mode flag. Client/runtime
+   * toggle (not saved as such); the web shell sets it from ^W. Gates the
+   * cheat-death escape together with OPT(cheat_live). Absent = false.
+   */
+  wizard?: boolean;
+  /**
+   * Sync get_check("Die? ") stand-in for take_hit's cheat-death path
+   * (player-util.c:247). Return true to accept death; false/absent cheats
+   * when wizard or cheat_live is on. Interactive shells may wire a prompt.
+   */
+  confirmDie?: () => boolean;
+
   /* --- upkeep signals (player->upkeep) --- */
   playing: boolean;
   /** player->is_dead. */

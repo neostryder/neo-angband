@@ -48,6 +48,10 @@ import {
   colorCharToAttr,
   colorTextToAttr,
   colorToCss,
+  getColor,
+  ATTR_LIGHT,
+  ATTR_DARK,
+  featIsTorch,
   updateView,
   squareIsSeen,
   squareIsBelievedWall,
@@ -96,6 +100,8 @@ import {
   MSG,
   PF,
   spellNeedsAim,
+  spellBookCountSpells,
+  spellOkayToBrowse,
   playerObjectToBook,
   targetSetMonster,
   targetSetClosest,
@@ -2328,17 +2334,32 @@ async function browseCmd(): Promise<void> {
   if (handle === null) return;
   const bookObj = gearGet(state.gear, handle);
   if (!bookObj) return;
+  const player = state.actor.player;
+  /*
+   * textui_book_browse / spell_menu_new (ui-spell.c:231-238, 322-324): reject
+   * a book with no spell that passes spell_okay_to_browse (level < 99). Uses
+   * spellBookCountSpells + spellOkayToBrowse so both sit on the live path
+   * (W2-014 / W2-015). No RNG.
+   */
+  if (spellBookCountSpells(player, bookObj, spellOkayToBrowse) === 0) {
+    say("You cannot browse that.");
+    return;
+  }
   const { items, sidx } = bookSpellMenu(state, bookObj, "cast");
   /* spell_menu_browse row-0 prompt (ui-spell.c:306): "Browsing %ss. ('?' to
    * toggle description)" with the realm's pluralised spell noun (priests read
    * "Browsing prayers."), not a "Browse which spell?" get_item prompt. */
-  const noun = playerObjectToBook(state.actor.player, bookObj)?.realm?.spellNoun ?? "spell";
-  // Read-only: every row is viewable (drop the cast-gate disabling) and the
-  // description is shown from the start (spell_menu_new show_description=true).
+  const noun = playerObjectToBook(player, bookObj)?.realm?.spellNoun ?? "spell";
+  // Read-only browse: rows with level >= 99 stay disabled (illegible); all
+  // other rows are viewable. Description shown from the start
+  // (spell_menu_new show_description=true).
   await selectFromMenu(
     term,
     `Browsing ${noun}s. ('?' to toggle description)`,
-    items.map((it) => ({ ...it, disabled: false })),
+    items.map((it, i) => ({
+      ...it,
+      disabled: !spellOkayToBrowse(player, sidx[i] ?? -1),
+    })),
     "[ a-z or arrows to view, ? to toggle description, ESC to exit ]",
     {
       subtitle: SPELL_HEADER,
@@ -4552,7 +4573,18 @@ function terrainGlyph(
 ): CellGlyph {
   const f = state.chunk.feature(loc(x, y));
   const disp = f.mimic !== null ? features.get(f.mimic) : f;
-  const css = colorToCss(colorCharToAttr(disp.dAttr));
+  /*
+   * grid_get_attr (ui-map.c:108-125): torch-flag terrain brightens under
+   * torchlight and darkens out of LoS / UNLIGHT. featIsTorch is the live
+   * classifier (W2-016; cave-square.c:148). No RNG.
+   */
+  let attr = colorCharToAttr(disp.dAttr);
+  if (featIsTorch(features, disp.fidx)) {
+    if (lighting === LIGHTING.TORCH) attr = getColor(attr, ATTR_LIGHT, 1);
+    else if (lighting === LIGHTING.LIT) attr = getColor(attr, ATTR_DARK, 1);
+    else if (lighting === LIGHTING.DARK) attr = getColor(attr, ATTR_DARK, 2);
+  }
+  const css = colorToCss(attr);
   // A terrain tile (per the pack's feat mapping at this lighting) takes over
   // the cell; when the pack does not map this feat, the ASCII glyph shows.
   const tile = tileMap
@@ -5525,6 +5557,8 @@ window.addEventListener("keydown", (ev) => {
       ev.preventDefault();
       void openModal(async () => {
         wizardMode = await runWizardToggle(wizardCtx(), wizardMode);
+        /* player->wizard for take_hit's cheat-death gate (W2-009). */
+        state.wizard = wizardMode;
       });
       return;
     }
