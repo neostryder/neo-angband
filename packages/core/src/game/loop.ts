@@ -78,6 +78,8 @@ export const LOOP_STATUS = {
   INPUT: "input",
   /** player->is_dead. */
   DEAD: "dead",
+  /** The shell must answer the pending in-terminal wizard death prompt. */
+  DEATH_CONFIRM: "death-confirm",
   /** player->upkeep->generate_level (a stair/recall change; regen deferred). */
   LEVEL_CHANGE: "level-change",
   /** player->upkeep->playing cleared. */
@@ -497,6 +499,7 @@ export function processWorld(state: GameState): void {
 /** Non-null when the loop must stop and hand control back to the caller. */
 function loopStop(state: GameState): LoopStatus | null {
   if (state.isDead) return LOOP_STATUS.DEAD;
+  if (state.pendingDeath) return LOOP_STATUS.DEATH_CONFIRM;
   if (!state.playing) return LOOP_STATUS.STOPPED;
   if (state.generateLevel) return LOOP_STATUS.LEVEL_CHANGE;
   return null;

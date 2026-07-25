@@ -43,7 +43,7 @@ import { NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge";
 import type { GameState } from "./context";
 import { describeObject } from "./describe";
 import { floorExcise, floorObjectForUse, floorPile } from "./floor";
-import { gearGet, invenCarry, invenCarryNum } from "./gear";
+import { gearGet, invenCarryNum, invenCarryResult } from "./gear";
 import { gearToLabel } from "./project-obj";
 import type { ActionRegistry } from "./player-turn";
 
@@ -244,17 +244,18 @@ function playerPickupAux(
 
   const limits = stackLimits(deps.constants);
   let handle: number;
+  let combining = false;
   if (max === obj.number) {
     if (obj.grid) floorExcise(state, obj.grid, obj);
     obj.grid = null;
-    handle = invenCarry(state.gear, obj, limits);
+    ({ handle, combining } = invenCarryResult(state.gear, obj, limits));
   } else {
     /* Partial pickup: auto-limit, or the whole carryable amount (the
      * get_quantity prompt defaults to max; the prompt itself is ui). */
     const num = autoMax || max;
     if (!num) return;
     const { usable } = floorObjectForUse(state, obj, num);
-    handle = invenCarry(state.gear, usable, limits);
+    ({ handle, combining } = invenCarryResult(state.gear, usable, limits));
   }
   /* object_touch (obj-knowledge.c L960-972; cmd-pickup.c L322 also touches the
    * grid pile on pickup): mark the object ASSESSED so it reveals its combat
@@ -272,7 +273,7 @@ function playerPickupAux(
    * predicates sit on the live path (W2-012 / W2-013). No RNG.
    */
   const stack = gearGet(state.gear, handle);
-  if (stack && state.flavorKnown && !state.flavorKnown.isAware(stack.kind)) {
+  if (!combining && stack && state.flavorKnown && !state.flavorKnown.isAware(stack.kind)) {
     const p = state.actor.player;
     const pflags = state.playerState?.pflags ?? p.race.pflags;
     const hasMushroom =

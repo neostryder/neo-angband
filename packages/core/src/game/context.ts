@@ -440,11 +440,14 @@ export interface GameState {
    */
   wizard?: boolean;
   /**
-   * Sync get_check("Die? ") stand-in for take_hit's cheat-death path
-   * (player-util.c:247). Return true to accept death; false/absent cheats
-   * when wizard or cheat_live is on. Interactive shells may wire a prompt.
+   * A fatal wizard/cheat_live blow that is waiting for the shell's in-terminal
+   * get_check("Die? ") answer. The callback resumes the same live death chain;
+   * it is deliberately runtime-only and is not part of save data.
    */
-  confirmDie?: () => boolean;
+  pendingDeath?: {
+    killer: string;
+    resolve: (die: boolean) => void;
+  } | undefined;
 
   /* --- upkeep signals (player->upkeep) --- */
   playing: boolean;

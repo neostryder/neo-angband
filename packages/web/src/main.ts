@@ -3767,6 +3767,7 @@ function buildWizardDeps(): WizardDeps {
     ...game.wizardBundles,
     ...(game.flavor ? { flavor: game.flavor } : {}),
     races: reg.monsters.races,
+    egos: reg.objects.egos,
     artifacts: reg.objects.artifacts,
     curses: reg.objects.curses,
   };
@@ -5375,6 +5376,20 @@ function advance(): void {
   // that set `message` directly do not call advance(), so they are unaffected.
   message = "";
   const status = runGameLoop(state, registry);
+  if (status === LOOP_STATUS.DEATH_CONFIRM) {
+    /* take_hit suspended after the C-order died_from assignment and before
+     * either final death or EVENT_CHEAT_DEATH. Keep this an in-terminal prompt
+     * on the GlyphTerm grid; the answer resumes the same live chain. */
+    render();
+    void openModal(async () => {
+      const pending = state.pendingDeath;
+      if (!pending) return;
+      const die = await getCheck(term, "Die? ");
+      pending.resolve(die);
+      advance();
+    });
+    return;
+  }
   if (status === LOOP_STATUS.DEAD) {
     dead = true;
     // Death is terminal (decision 16): the character's slot becomes a

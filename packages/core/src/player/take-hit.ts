@@ -96,7 +96,7 @@ export interface TakeHitHooks {
    * Wizard / cheat_live escape: return true to survive a fatal blow. Absent
    * means death is final (the no-save-scum default).
    */
-  cheatDeath?: () => boolean;
+  cheatDeath?: (killer: string) => boolean | "pending";
 }
 
 /** Killers excluded from the COMBAT_REGEN mana reward. */
@@ -148,14 +148,18 @@ export function takeHit(
         );
         hooks.onMessage?.("'The Mormegil cannot be slain, save by mischance.'");
       }
-    } else if (hooks.cheatDeath?.()) {
-      /* Wizard / cheat death: survive (no is_dead). */
     } else {
-      /* Note death */
-      hooks.onMessage?.("You die.", "DEATH");
-      target.isDead = true;
-      hooks.onDeath?.(target, killer);
-      return;
+      const cheat = hooks.cheatDeath?.(killer);
+      if (cheat === "pending") return;
+      if (cheat) {
+        /* Wizard / cheat death: survive (no is_dead). */
+      } else {
+        /* Note death */
+        hooks.onMessage?.("You die.", "DEATH");
+        target.isDead = true;
+        hooks.onDeath?.(target, killer);
+        return;
+      }
     }
   }
 

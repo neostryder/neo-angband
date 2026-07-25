@@ -69,6 +69,7 @@ import {
   sourcePlayer,
   buildEffectContext,
   attachGameEnv,
+  OBJ_MOD_NAMES,
 } from "@neo-angband/core";
 import type {
   GameState,
@@ -414,7 +415,7 @@ const SQUARE_FLAG_CHOICES: { letter: string; name: string; flag: number }[] = [
 ];
 
 /** Route a debug action key to its collect-and-dispatch handler. */
-async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<void> {
+export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<void> {
   const { term, state, deps, say } = ctx;
   switch (action) {
     /* ---- Items ---- */
@@ -929,15 +930,60 @@ async function runPlayItem(ctx: WizardUiCtx): Promise<void> {
       if (power === null) continue;
       if (wizCurseItem(state, { obj, index: cidx, power }, deps)) changed = true;
     } else if (action === 2) {
-      /* DATA half of do_cmd_wiz_tweak_item (cmd-wizard.c:2698): to_a / to_h /
-       * to_d via in-terminal prompts (never window.prompt). No RNG. */
+      /* Full do_cmd_wiz_tweak_item prompt order (cmd-wizard.c:2737-2845):
+       * ego, artifact, every OBJ_MOD field, then AC/to-hit/to-dam. All input
+       * remains on the GlyphTerm overlay. Ego/artifact assignment retains the
+       * core's C-order generation RNG; scalar prompts add none. */
+      if (!deps.makeDeps || !deps.egos || !deps.artifacts) return unavailable(ctx);
+      const egoDefault = obj.ego?.eidx ?? -1;
+      const egoIdx = await promptNumber(
+        term,
+        "Enter ego item (-1 removes): ",
+        egoDefault,
+        -1,
+        Math.max(-1, deps.egos.length - 1),
+        undefined,
+        5,
+      );
+      if (egoIdx === null) continue;
+      const ego = egoIdx < 0 ? null : deps.egos[egoIdx] ?? null;
+      const artifactDefault = obj.artifact?.aidx ?? 0;
+      const artifactIdx = await promptNumber(
+        term,
+        "Enter new artifact (0 removes): ",
+        artifactDefault,
+        0,
+        Math.max(0, deps.artifacts.length - 1),
+        undefined,
+        5,
+      );
+      if (artifactIdx === null) continue;
+      const artifact = artifactIdx === 0 ? null : deps.artifacts[artifactIdx] ?? null;
+      const modifiers: number[] = [];
+      for (let i = 0; i < obj.modifiers.length; i++) {
+        const value = await promptNumber(
+          term,
+          `Enter new ${OBJ_MOD_NAMES[i] ?? `modifier ${i}`} setting: `,
+          obj.modifiers[i] ?? 0,
+          -32768,
+          32767,
+          undefined,
+          6,
+        );
+        if (value === null) {
+          modifiers.length = 0;
+          break;
+        }
+        modifiers.push(value);
+      }
+      if (modifiers.length !== obj.modifiers.length) continue;
       const toA = await promptNumber(term, "Enter new AC bonus setting: ", obj.toA, -99, 99, undefined, 3);
       if (toA === null) continue;
       const toH = await promptNumber(term, "Enter new to-hit setting: ", obj.toH, -99, 99, undefined, 3);
       if (toH === null) continue;
       const toD = await promptNumber(term, "Enter new to-dam setting: ", obj.toD, -99, 99, undefined, 3);
       if (toD === null) continue;
-      if (wizTweakItem(state, { obj, toA, toH, toD }, deps)) changed = true;
+      if (wizTweakItem(state, { obj, ego, artifact, modifiers, toA, toH, toD }, deps)) changed = true;
     }
   }
 }
