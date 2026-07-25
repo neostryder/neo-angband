@@ -126,8 +126,16 @@ export const monsterSpec: FileSpec = {
     { fmt: "message-vis sym spell ?str message", repeat: true },
     { fmt: "message-invis sym spell ?str message", repeat: true },
     { fmt: "message-miss sym spell ?str message", repeat: true },
-    { fmt: "drop sym tval sym sval uint chance uint min uint max", repeat: true },
-    { fmt: "drop-base sym tval uint chance uint min uint max", repeat: true },
+    {
+      fmt: "drop sym tval sym sval uint chance uint min uint max",
+      repeat: true,
+      orderKey: "drop-order",
+    },
+    {
+      fmt: "drop-base sym tval uint chance uint min uint max",
+      repeat: true,
+      orderKey: "drop-order",
+    },
     { fmt: "friends uint chance rand number sym name ?sym role", repeat: true },
     { fmt: "friends-base uint chance rand number sym name ?sym role", repeat: true },
     { fmt: "mimic sym tval sym sval", repeat: true },

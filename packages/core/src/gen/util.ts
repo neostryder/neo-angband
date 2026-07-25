@@ -20,7 +20,9 @@
  *   group_info, and the live GameState rebuilds its group structures from
  *   them at start (the savefile-loading path of monster_group_assign).
  *   Unique cur_num tracking is kept level-local so a unique appears at most
- *   once per level without mutating the shared registry.
+ *   once per level without mutating the shared registry. The shared count is
+ *   established once at the populate boundary by countMonsterRaces; see the
+ *   note at the placement site below for why it must not also be bumped here.
  */
 
 import { FEAT, ORIGIN, RF, SQUARE } from "../generated";
@@ -259,6 +261,12 @@ export interface PlacedMonster {
   index: number;
 }
 
+export interface PitTelemetry {
+  attempts: { pit: number; nest: number };
+  selected: { pit: Record<string, number>; nest: Record<string, number> };
+  empty: { pit: number; nest: number };
+}
+
 /**
  * The generation context: the chunk under construction plus the RNG, feature
  * registry, constants, dun bookkeeping, and the placement side-tables the
@@ -268,6 +276,12 @@ export interface PlacedMonster {
 export class Gen {
   readonly objects: PlacedObject[] = [];
   readonly monsters: PlacedMonster[] = [];
+  /** Optional RNG-neutral diagnostics for the S-3 pit residual. */
+  readonly pitTelemetry: PitTelemetry = {
+    attempts: { pit: 0, nest: 0 },
+    selected: { pit: {}, nest: {} },
+    empty: { pit: 0, nest: 0 },
+  };
   /** grid index -> square holds a generated object. */
   readonly objOccupied = new Set<number>();
   /** grid index -> square holds a trap (player trap for gen purposes). */
@@ -370,6 +384,15 @@ export class Gen {
   uniqueAlreadyPlaced(race: MonsterRace): boolean {
     return this.placedUniques.has(race.ridx);
   }
+
+  /**
+   * The same test, pre-bound for handing straight to getMonNum. Generation
+   * passes this so the allocation table stops offering a unique that is already
+   * on the level, which is what C gets for free by bumping race->cur_num at
+   * placement time (see the note in placeNewMonsterOne below).
+   */
+  readonly uniquePlaced = (race: MonsterRace): boolean =>
+    this.placedUniques.has(race.ridx);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1557,6 +1580,19 @@ function placeNewMonsterOne(
   });
   g.attachMonster(grid, mon, g.nextMonIndex());
 
+  /* C bumps race->cur_num here (mon-make.c L1040-1041), and deliberately we do
+   * NOT. C places monsters straight into the live cave, so that increment is
+   * the only one; the port generates into a detached Gen and establishes the
+   * shared count once at the populate boundary (countMonsterRaces, from the
+   * level-change path). Incrementing here as well double-counts every monster
+   * on a fresh level, and since wipe_mon_list decrements only once per live
+   * monster on the way out, every descent leaks: a unique that reaches
+   * cur_num >= max_num is refused by get_mon_num (mon-make.c L257-258) for the
+   * rest of the game. The observable effect C gets from the early increment is
+   * that get_mon_num stops OFFERING a placed unique, and that is reproduced
+   * exactly by passing the level-local placed set to getMonNum instead.
+   * Asserted by "cur_num tracks the live monster count" in session/game.test.ts. */
+
   /* Create the monster's drop, if any (mon-make.c place_monster L1044-1046):
    * generation placement is the twin of place_new_monster_one -> place_monster,
    * which draws mon_create_drop here (before mon_create_mimicked_object) when
@@ -1776,7 +1812,12 @@ export function placeNewMonster(
     );
 
     /* Pick a random race, then reset the allocation table. */
-    const friendsRace = g.monDeps.table.getMonNum(g.rng, race.level, g.c.depth);
+    const friendsRace = g.monDeps.table.getMonNum(
+      g.rng,
+      race.level,
+      g.c.depth,
+      g.uniquePlaced,
+    );
     g.monDeps.table.prep(null);
 
     /* Handle failure. */
@@ -1802,7 +1843,7 @@ export function pickAndPlaceMonster(
   origin: number = ORIGIN.DROP,
 ): boolean {
   if (!g.monDeps) return false;
-  const race = g.monDeps.table.getMonNum(g.rng, depth, g.c.depth);
+  const race = g.monDeps.table.getMonNum(g.rng, depth, g.c.depth, g.uniquePlaced);
   if (!race) return false;
   const info: MonsterGroupInfo = { index: 0, role: MON_GROUP.LEADER };
   return placeNewMonster(g, grid, race, sleep, groupOkay, info, origin);
@@ -1819,27 +1860,16 @@ export function pickAndPlaceDistantMonster(
   if (!g.monDeps) return false;
   const c = g.c;
   let attemptsLeft = 10_000;
-  let minDist = Math.max(dis, g.constants.maxSight + 1);
-  for (;;) {
-    let grid: Loc | null = null;
-    let found = false;
-    while (attemptsLeft > 0) {
-      attemptsLeft--;
-      grid = loc(g.rng.randint0(c.width - 2) + 1, g.rng.randint0(c.height - 2) + 1);
-      if (squareIsEmpty(g, grid) && distance(pgrid, grid) > minDist) {
-        found = true;
-        break;
-      }
-    }
-    if (found && grid) return pickAndPlaceMonster(g, grid, depth, sleep);
-    if (minDist > 1) {
-      /* Loosen the distance requirement rather than fail outright. */
-      minDist = Math.trunc(minDist / 2);
-      attemptsLeft = 10_000;
-      continue;
-    }
-    return false;
+  /* pick_and_place_distant_monster (mon-make.c L1483-1520): the initial
+   * 10,000 is pre-decremented, giving exactly 9,999 location attempts. */
+  while (--attemptsLeft) {
+    const grid = loc(g.rng.randint0(c.width), g.rng.randint0(c.height));
+    if (!squareIsEmpty(g, grid)) continue;
+    if (c.info(grid).has(SQUARE.MON_RESTRICT)) continue;
+    if (distance(grid, pgrid) <= dis) continue;
+    return pickAndPlaceMonster(g, grid, depth, sleep);
   }
+  return false;
 }
 
 /** vault_monsters: place num sleeping monsters near a grid. */

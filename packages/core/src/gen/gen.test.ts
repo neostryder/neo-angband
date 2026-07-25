@@ -64,6 +64,7 @@ import {
   drawRectangle,
   fillRectangle,
   generateRoom,
+  pickAndPlaceDistantMonster,
   placeNewMonster,
   placeObject,
   type MonPlaceDeps,
@@ -194,7 +195,14 @@ describe("room template instantiation", () => {
 
 describe("vault instantiation", () => {
   it("lays the 'Round' lesser vault with faithful glyph->feature mapping", () => {
-    const round = vaults.find((v) => v.name === "Round");
+    /* "Round" names TWO records in vault.txt - a Lesser vault and an
+     * Interesting room - as do "Cross" and "Hourglass". Selecting on the name
+     * alone silently depends on list order, and C's list is in REVERSE file
+     * order (parse_vault_name prepends at generate.c:479-487 and
+     * finish_parse_vault does not reverse, generate.c:614-618), so the bare
+     * find returned the Interesting room once the loader was corrected to
+     * match C. This test is about the lesser vault, so it says so. */
+    const round = vaults.find((v) => v.name === "Round" && v.typ === "Lesser vault");
     expect(round).toBeDefined();
     if (!round) return;
     expect(round.hgt).toBe(12);
@@ -385,7 +393,9 @@ describe("full level generation", () => {
         expect(g.c.isPassable(p)).toBe(true);
         expect(g.c.featCount[FEAT.MORE] ?? 0).toBeGreaterThanOrEqual(1);
         /* The player can descend: a down staircase is reachable. */
-        expect(downStairReachable(g, p)).toBe(true);
+        expect(downStairReachable(g, p), `depth ${depth} seed ${9000 + depth * 100 + s}`).toBe(
+          true,
+        );
         expect(g.monsters.length).toBeGreaterThanOrEqual(1);
         expect(g.monsters.length).toBeLessThan(constants.levelMonsterMax);
       }
@@ -1918,5 +1928,86 @@ describe("quest monster placement (generate.c cave_generate L1170-1191)", () => 
     } finally {
       uniq!.curNum = 0;
     }
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * pick_and_place_distant_monster (mon-make.c L1483-1520).
+ * ------------------------------------------------------------------ */
+
+/**
+ * Mechanical proof of the C search loop, because a histogram cannot see it.
+ *
+ * C is `int attempts_left = 10000; while (--attempts_left) { ... }`, so the
+ * loop body runs exactly 9,999 times and each iteration spends exactly two
+ * draws -- `randint0(c->width)` then `randint0(c->height)` -- over the FULL
+ * map, with no distance relaxation and no retry after exhaustion. The port's
+ * generation copy had drifted to a post-decrement 10,000-iteration loop over
+ * interior-only coordinates with a `max_sight + 1` distance floor and a
+ * halving retry, none of which exist in C. Only the draw COUNT and the draw
+ * MODULI can catch that, so they are asserted directly here.
+ *
+ * The port's live-game copy (game/mon-place.ts) is the same loop minus the
+ * SQUARE_MON_RESTRICT test, which C gates on `!character_dungeon`.
+ */
+describe("pick_and_place_distant_monster search loop", () => {
+  const monReg = bindMonsters(monPack, { maxSight: constants.maxSight });
+  const table = new MonAllocTable(monReg.races, { maxDepth: constants.maxDepth });
+
+  /** C's iteration count: `while (--attempts_left)` from 10,000. */
+  const C_ATTEMPTS = 9_999;
+  /** Two coordinate draws per attempt, and nothing else on a rejected grid. */
+  const C_DRAWS_ON_EXHAUSTION = C_ATTEMPTS * 2;
+
+  /** An Rng that records the modulus of every consuming draw, in order. */
+  class ModulusRng extends Rng {
+    readonly moduli: number[] = [];
+    override randDiv(m: number): number {
+      if (m > 1) this.moduli.push(m);
+      return super.randDiv(m);
+    }
+  }
+
+  /** An all-floor arena with no border, so every grid is a legal candidate. */
+  function floorGen(rng: Rng, width: number, height: number, flag: number = SQUARE.NONE): Gen {
+    const c = new Chunk(reg, height, width);
+    c.depth = 5;
+    fillRectangle(c, 0, 0, height - 1, width - 1, FEAT.FLOOR, flag);
+    return new Gen(c, rng, reg, constants, new Dun(constants), null, { table });
+  }
+
+  it("draws randint0(width) then randint0(height) over the full map", () => {
+    /* Interior-only sampling would ask for width-2 / height-2, and drawing y
+     * first would swap the pair. Both are visible in the moduli alone. */
+    const rng = new ModulusRng(7);
+    const g = floorGen(rng, 40, 25);
+    pickAndPlaceDistantMonster(g, loc(20, 12), 0, true, g.c.depth);
+    expect(rng.moduli.slice(0, 2)).toEqual([40, 25]);
+  });
+
+  it("spends exactly 9,999 attempts and gives up, with no distance relaxation", () => {
+    /* `dis` larger than the map's diagonal makes every grid too close, so the
+     * loop must exhaust. C returns false; the old port halved `dis` and tried
+     * again, which shows up as a draw count above 19,998. */
+    const rng = new ModulusRng(11);
+    const g = floorGen(rng, 40, 25);
+    const placed = pickAndPlaceDistantMonster(g, loc(20, 12), 10_000, true, g.c.depth);
+    expect(placed).toBe(false);
+    expect(rng.moduli.length).toBe(C_DRAWS_ON_EXHAUSTION);
+    /* Every attempt sampled the full map -- no widened or narrowed retry. */
+    expect(new Set(rng.moduli)).toEqual(new Set([40, 25]));
+    expect(g.monsters).toHaveLength(0);
+  });
+
+  it("rejects SQUARE_MON_RESTRICT grids during generation", () => {
+    /* C: `if ((!character_dungeon) && square_ismon_restrict(c, grid)) continue;`
+     * Generation is the !character_dungeon case, so a wholly restricted map
+     * yields nothing even though every grid is empty and far enough away. */
+    const rng = new ModulusRng(13);
+    const g = floorGen(rng, 40, 25, SQUARE.MON_RESTRICT);
+    const placed = pickAndPlaceDistantMonster(g, loc(20, 12), 0, true, g.c.depth);
+    expect(placed).toBe(false);
+    expect(rng.moduli.length).toBe(C_DRAWS_ON_EXHAUSTION);
+    expect(g.monsters).toHaveLength(0);
   });
 });
