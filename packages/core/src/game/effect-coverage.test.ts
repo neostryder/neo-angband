@@ -33,7 +33,9 @@ import { TERRAIN_HANDLER_CODES } from "./effect-terrain";
 
 /** EF codes for a list of upstream effect names (the manifest speaks in names). */
 const codesFor = (names: readonly string[]): readonly number[] =>
-  names.map((n) => EF[n as keyof typeof EF]).filter((c): c is number => typeof c === "number");
+  names
+    .map((n) => EF[n as keyof typeof EF] as number | undefined)
+    .filter((c) => c !== undefined);
 
 const REGISTRIES = {
   /* The subject-neutral base registry in effects/handlers.ts, which owns the
