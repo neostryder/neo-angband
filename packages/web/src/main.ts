@@ -182,7 +182,6 @@ import { runModManager } from "./mods";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
 import { initA11y } from "./a11y";
 import { DEMO_AGENTS } from "./agents/demo";
-import { createBorg, makeCoreResolvers } from "@neo-angband/borg";
 import { discoverPlugins } from "./agents/sandbox/discover";
 import { installSandboxedController } from "./agents/sandbox/host";
 import { discoverTrustedPlugins } from "./agents/trusted/discover";
@@ -6001,26 +6000,17 @@ void bootMenus();
 
 // ---- Agent controller seam (W1.5) ----------------------------------------
 // A bundled in-process agent can drive the real game through the frozen
-// perceive/act facade via installController - the same seam the Borg (P8)
-// rides, no privileged access. Enable with ?agent=<id> (disabled by default).
+// perceive/act facade via installController - no privileged access. Enable
+// with ?agent=<id> (disabled by default). Controllers are registered in
+// DEMO_AGENTS (and later, mods); the port ships no built-in autoplayer.
 // The controller is latched to yield one command per tick (runGameLoop would
 // otherwise pull nextCommand until null and never return with an always-acting
 // agent); the tick interval is the agent's configurable speed. Ticks wait out
 // birth / menus / death (modalDepth, dead).
 const agentId = params.get("agent");
-// The bundled Borg (P8) is the flagship in-process agent: a faithful autoplayer.
-// It is not a DEMO_AGENTS factory (it needs the live monster registry to build
-// its danger resolver), so it is constructed here with makeCoreResolvers.
-const isBorg = agentId === "borg";
-const agentMake = agentId && !isBorg ? DEMO_AGENTS[agentId] : undefined;
-if (agentId && (agentMake || isBorg)) {
-  const base: AgentController = isBorg
-    ? createBorg({
-        resolvers: makeCoreResolvers({
-          races: booted.registries.monsters.races,
-        }),
-      }).controller
-    : agentMake!();
+const agentMake = agentId ? DEMO_AGENTS[agentId] : undefined;
+if (agentId && agentMake) {
+  const base: AgentController = agentMake();
   const resolver = new ContentIdResolver({
     objects: booted.registries.objects,
     playerRaces: players.races,
@@ -6057,9 +6047,8 @@ if (agentId && (agentMake || isBorg)) {
   }
   let agentTicks = 0;
   let agentLastError: string | null = null;
-  // Configurable speed (borgs are configurable-speed, fast by default). Accepts
-  // ?speed=fast|normal|slow or a raw millisecond interval; the Borg defaults to
-  // fast, the demo agents to normal.
+  // Configurable speed. Accepts ?speed=fast|normal|slow or a raw millisecond
+  // interval; defaults to normal (120ms).
   const AGENT_TICK_MS = ((): number => {
     const raw = (params.get("speed") ?? "").toLowerCase();
     if (raw === "fast") return 40;
@@ -6067,7 +6056,7 @@ if (agentId && (agentMake || isBorg)) {
     if (raw === "slow") return 400;
     const n = Number(raw);
     if (Number.isFinite(n) && n >= 10 && n <= 5000) return n;
-    return isBorg ? 40 : 120;
+    return 120;
   })();
   const AGENT_TICK_CAP = 5000;
   const agentTimer = setInterval(() => {
@@ -6115,9 +6104,9 @@ if (agentId && (agentMake || isBorg)) {
 // so it can never touch GameState directly. The host serializes only the
 // capability-granted view domains (serialize.ts), the worker neuters network
 // globals unless granted, and every returned command flows back through the
-// live capability-gated act facade. This is the SYSTEM-modding tier's runtime;
-// P8's Borg can ride either this or the in-process seam. Enable with
-// ?plugin=<id> (disabled by default). Same latch-free pump as the agent seam:
+// live capability-gated act facade. This is the SYSTEM-modding tier's runtime.
+// Enable with ?plugin=<id> (disabled by default). Same latch-free pump as the
+// agent seam:
 // the async bridge yields null until the worker replies, then the next tick
 // executes the pending command (host.ts).
 // Tracks which plugin ids are already installed (URL param wins) so the
