@@ -16,12 +16,10 @@
  * (state.playerState); absent (worldless harness with no derived state), it
  * reads as "no steal ability", the same spin-around a non-rogue gets.
  *
- * DEFERRED (no RNG impact): the monster-thief reuse of steal_monster_item
- * (mon-blows.c L876, the EAT_ITEM blow against another monster) is not wired
- * here because monster-vs-monster melee (monster_attack_monster) is not yet
- * ported; the midx >= 0 branch exists in mon/steal.ts for when it lands. The
- * PR_GOLD redraw and the object-knowledge bookkeeping (object_grab /
- * object_see / delist) are UI / knowledge concerns (#24/#25).
+ * DEFERRED (no RNG impact): the PR_GOLD redraw and the object-knowledge
+ * bookkeeping (object_grab / object_see / delist) are UI / knowledge concerns
+ * (#24/#25). Monster-thief EAT_ITEM (mon-blows.c L876) is wired from
+ * game/mon-cmd.ts via mon/steal.ts stealMonsterItem(midx >= 0).
  */
 
 import type { Constants } from "../constants";
