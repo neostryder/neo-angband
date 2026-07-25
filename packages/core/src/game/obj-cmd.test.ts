@@ -319,6 +319,39 @@ describe("useAux (cmd-obj.c use_aux)", () => {
     expect(numberCharging(rod)).toBe(1);
   });
 
+  it("an activation prints its message with {kind}/{s} tag substitution", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    maxDeviceSkill(state);
+    const light = makeNamed("& Wooden Torch~", TV.LIGHT);
+    /* An activation carrying a tagged message (activation.txt msg:). */
+    light.activation = { message: "Your {kind} glow{s} deep red..." } as never;
+    const h = carry(state, light);
+    const msgs: string[] = [];
+    useAux(state, light, USE.TIMEOUT, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }), {
+      handle: h,
+    });
+    expect(msgs).toContain("You activate it.");
+    /* {kind} -> "Wooden Torch", {s} -> "s" (single item): no literal braces. */
+    const activationLine = msgs.find((m) => m.includes("glow"));
+    expect(activationLine).toBe("Your Wooden Torch glows deep red...");
+  });
+
+  it("an artifact's alt_msg overrides the activation message (cmd-obj.c L134)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    maxDeviceSkill(state);
+    const light = makeNamed("& Wooden Torch~", TV.LIGHT);
+    light.activation = { message: "Your {kind} glows." } as never;
+    /* Only the alt_msg field of the artifact record matters here. */
+    light.artifact = { name: "of Test", altMsg: "The torch blazes with white fire!" } as never;
+    const h = carry(state, light);
+    const msgs: string[] = [];
+    useAux(state, light, USE.TIMEOUT, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }), {
+      handle: h,
+    });
+    expect(msgs).toContain("The torch blazes with white fire!");
+    expect(msgs.some((m) => m.includes("glows"))).toBe(false);
+  });
+
   it("device failure spends the turn but no charge", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     /* Device skill 0 vs a deep item: fail rate is high; force a fail
