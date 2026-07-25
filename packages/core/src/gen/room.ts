@@ -1285,7 +1285,7 @@ function buildNest(g: Gen, centreIn: Loc, _rating: number): boolean {
   const what: (MonsterRace | null)[] = [];
   let empty = false;
   for (let i = 0; i < 64; i++) {
-    what[i] = table.getMonNum(g.rng, c.depth + 10, c.depth);
+    what[i] = table.getMonNum(g.rng, c.depth + 10, c.depth, g.uniquePlaced);
     if (!what[i]) empty = true;
   }
   table.prep(null);
@@ -1373,7 +1373,7 @@ function buildPit(g: Gen, centreIn: Loc, _rating: number): boolean {
   const what: (MonsterRace | null)[] = [];
   let empty = false;
   for (let i = 0; i < 16; i++) {
-    what[i] = table.getMonNum(g.rng, c.depth + 10, c.depth);
+    what[i] = table.getMonNum(g.rng, c.depth + 10, c.depth, g.uniquePlaced);
     if (!what[i]) empty = true;
   }
   table.prep(null);
