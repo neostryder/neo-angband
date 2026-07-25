@@ -485,6 +485,29 @@ describe("aggravation (monster_reduce_sleep)", () => {
     processMonsterTimed(mon, state);
     expect(mon.mTimed[MON_TMD.SLEEP]).toBeGreaterThan(0);
   });
+
+  it("an obvious sleeper woken by aggravation reports \"X wakes up.\" (mon-move.c L1749)", () => {
+    const { state, mon } = sleeper(true);
+    mon.mflag.on(MFLAG.VISIBLE); /* monster_is_obvious */
+    const msgs: string[] = [];
+    state.msg = (t): void => {
+      msgs.push(t);
+    };
+    processMonsterTimed(mon, state);
+    expect(msgs.some((m) => m.endsWith("wakes up."))).toBe(true);
+  });
+
+  it("an unseen sleeper woken by aggravation stays silent (not obvious)", () => {
+    const { state, mon } = sleeper(true);
+    /* MFLAG.VISIBLE stays off: monster_is_obvious is false. */
+    const msgs: string[] = [];
+    state.msg = (t): void => {
+      msgs.push(t);
+    };
+    processMonsterTimed(mon, state);
+    expect(msgs.some((m) => m.endsWith("wakes up."))).toBe(false);
+    expect(mon.mTimed[MON_TMD.SLEEP]).toBe(0); /* still woken, just quietly */
+  });
 });
 
 describe("group AI: bodyguard (get_move_bodyguard)", () => {
