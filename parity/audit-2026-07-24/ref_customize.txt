@@ -1,0 +1,11 @@
+reference/lib/customize/font.prf
+reference/lib/customize/font-gcu.prf
+reference/lib/customize/font-ibm.prf
+reference/lib/customize/font-sdl.prf
+reference/lib/customize/font-sdl2.prf
+reference/lib/customize/font-win.prf
+reference/lib/customize/font-x11.prf
+reference/lib/customize/message.prf
+reference/lib/customize/pref.prf
+reference/lib/customize/sound.prf
+reference/lib/customize/user.prf

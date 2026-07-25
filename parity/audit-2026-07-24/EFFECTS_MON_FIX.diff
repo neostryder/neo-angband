@@ -1,0 +1,697 @@
+diff --git a/packages/core/src/effects/effect-info.ts b/packages/core/src/effects/effect-info.ts
+index 3ef16d310..dedc09d95 100644
+--- a/packages/core/src/effects/effect-info.ts
++++ b/packages/core/src/effects/effect-info.ts
+@@ -60,6 +60,12 @@ function effectEntryFor(index: number): EffectEntryShape {
+   return EFFECT_ENTRIES[index - 1] as EffectEntryShape;
+ }
+ 
++/** effect_get_menu_name (effects-info.c L583-714), raw menu-name form. */
++export function effectMenuName(effect: Effect | null): string {
++  if (!effectValidUpstream(effect) || !effect) return "";
++  return effectEntryFor(effect.index as number).menuName;
++}
++
+ /** effect_info (effects.c L103): the short info-type string ("dam", "heal", ...). */
+ export function effectInfo(effect: Effect | null): string | null {
+   if (!effectValidUpstream(effect) || !effect) return null;
+diff --git a/packages/core/src/effects/interpreter.test.ts b/packages/core/src/effects/interpreter.test.ts
+index d544fa429..ae4e2189a 100644
+--- a/packages/core/src/effects/interpreter.test.ts
++++ b/packages/core/src/effects/interpreter.test.ts
+@@ -270,21 +270,32 @@ describe("EF_SELECT semantics", () => {
+     expect(calls).toHaveLength(0);
+   });
+ 
+-  it("rolls randomly when the chooser answers -2 or is absent", () => {
+-    for (const env of [
+-      { rng: new Rng(11), chooseEffect: () => -2 } as EffectContext,
+-      { rng: new Rng(11) } as EffectContext,
+-    ]) {
+-      const { registry, calls } = recordingRegistry([
+-        EF.DETECT_TRAPS,
+-        EF.DETECT_DOORS,
+-      ]);
+-      const done = registry.effectDo(selectChain(), env, {
+-        origin: sourcePlayer(),
+-      });
+-      expect(done).toBe(true);
+-      expect(calls).toHaveLength(1);
+-    }
++  it("rolls randomly only when the chooser selects the random row", () => {
++    const { registry, calls } = recordingRegistry([
++      EF.DETECT_TRAPS,
++      EF.DETECT_DOORS,
++    ]);
++    const done = registry.effectDo(
++      selectChain(),
++      { rng: new Rng(11), chooseEffect: () => -2 },
++      { origin: sourcePlayer() },
++    );
++    expect(done).toBe(true);
++    expect(calls).toHaveLength(1);
++  });
++
++  it("cancels when a player select has no prompt seam", () => {
++    const { registry, calls } = recordingRegistry([
++      EF.DETECT_TRAPS,
++      EF.DETECT_DOORS,
++    ]);
++    const done = registry.effectDo(
++      selectChain(),
++      { rng: new Rng(11) },
++      { origin: sourcePlayer() },
++    );
++    expect(done).toBe(false);
++    expect(calls).toHaveLength(0);
+   });
+ 
+   it("treats non-player selects as random (no chooser consulted)", () => {
+diff --git a/packages/core/src/effects/interpreter.ts b/packages/core/src/effects/interpreter.ts
+index ea47c1050..b9ec39fd3 100644
+--- a/packages/core/src/effects/interpreter.ts
++++ b/packages/core/src/effects/interpreter.ts
+@@ -489,10 +489,12 @@ export class EffectRegistry {
+             if (choice === -1) return false;
+           } else {
+             /*
+-             * No UI is injected: fall back to a random pick
+-             * (upstream would prompt the player here).
++             * A player-origin select is a prompt, not a random effect. The
++             * live environment supplies the renderer-neutral chooser through
++             * EffectContext.chooseEffect; a missing UI seam is cancellation.
++             * This matches effects.c L425-460 and avoids an unrequested draw.
+              */
+-            choice = -2;
++            return false;
+           }
+ 
+           /* If the player chose to use a random effect, roll it. */
+diff --git a/packages/core/src/game/context.ts b/packages/core/src/game/context.ts
+index 26696ade3..0237b02a5 100644
+--- a/packages/core/src/game/context.ts
++++ b/packages/core/src/game/context.ts
+@@ -20,6 +20,7 @@ import type { GameEvents } from "../events";
+ import type { MessageLog } from "../msg";
+ import type { Loc } from "../loc";
+ import { distance, locEq } from "../loc";
++import { los } from "../world/view";
+ import type { Connector } from "../gen/util";
+ import type { Rng } from "../rng";
+ import type { Chunk } from "../world/chunk";
+@@ -28,6 +29,7 @@ import type { Monster } from "../mon/monster";
+ import type { MeleeAttack, PlayerCombatState } from "../combat/melee";
+ import type { DefenderState } from "../combat/mon-melee";
+ import type { GameObject } from "../obj/object";
++import type { Effect } from "../effects/effect";
+ import type { Brand, Slay } from "../obj/types";
+ import type { FlavorAwareDeps, FlavorKnowledge } from "../obj/knowledge";
+ import type { Gear } from "./gear";
+@@ -36,6 +38,16 @@ import { NORMAL_ENERGY } from "./energy";
+ /* Value import is safe: mon-group's imports from this module are type-only,
+  * so there is no runtime cycle. */
+ import { monsterRemoveFromGroups } from "./mon-group";
++import {
++  becomeAware,
++  moveMimickedObject,
++  updateMon,
++} from "./known";
++import {
++  monsterIsCamouflaged,
++  monsterIsInView,
++  monsterIsMimicking,
++} from "../mon/predicate";
+ 
+ /**
+  * z_info fields the turn loop and monster AI read (defaults are the shipped
+@@ -477,6 +489,8 @@ export interface GameState {
+   nextCommand: () => PlayerCommand | null;
+   /** update_view: refresh player FOV after the player moves. */
+   updateFov?: (state: GameState) => void;
++  /** Renderer-neutral EF_SELECT chooser; the host owns the menu renderer. */
++  effectChooser?: (first: Effect | null, count: number) => number;
+   /**
+    * make_ranged_attack: a monster attempts a spell / breath on its turn,
+    * returning true if it spent the turn casting. Installed by
+@@ -892,10 +906,38 @@ export function monsterSwap(state: GameState, grid1: Loc, grid2: Loc): void {
+   const m2 = c.mon(grid2);
+   c.setMon(grid1, m2);
+   c.setMon(grid2, m1);
+-  const mon1 = m1 > 0 ? state.monsters[m1] : null;
+-  const mon2 = m2 > 0 ? state.monsters[m2] : null;
++  const mon1 = m1 > 0 ? state.monsters[m1] ?? null : null;
++  const mon2 = m2 > 0 ? state.monsters[m2] ?? null : null;
+   if (mon1) mon1.grid = grid2;
+   if (mon2) mon2.grid = grid1;
++
++  /* mon-util.c L566-677: swap visibility, camouflage/mimicry, lighting,
++   * distances, monster redraw and square-light updates as one operation. */
++  let lightChanged = false;
++  const moved = (
++    mon: Monster | null,
++    from: Loc,
++    to: Loc,
++    other: number,
++  ): void => {
++    if (!mon) return;
++    if (monsterIsCamouflaged(mon)) {
++      const witnessed =
++        monsterIsInView(mon) ||
++        (other > 0 ? los(c, state.actor.grid, to) : los(c, from, to));
++      if (witnessed) {
++        (state.becomeAware ?? ((m: Monster) => becomeAware(state, m)))(mon);
++      } else if (monsterIsMimicking(mon)) {
++        moveMimickedObject(state, mon, from, to);
++      }
++    }
++    updateMon(state, mon, true);
++    if (mon.race.light !== 0) lightChanged = true;
++  };
++  moved(mon1, grid1, grid2, m2);
++  moved(mon2, grid2, grid1, m1);
++  updateMonsterDistances(state);
++  if (lightChanged) state.updateFov?.(state);
+ }
+ 
+ /**
+diff --git a/packages/core/src/game/effect-env.ts b/packages/core/src/game/effect-env.ts
+index edf7d11f3..20b8a0623 100644
+--- a/packages/core/src/game/effect-env.ts
++++ b/packages/core/src/game/effect-env.ts
+@@ -54,6 +54,7 @@ import type {
+ import type { TimedEffect } from "../player/types";
+ import { DEFAULT_HITPOINT_WARN } from "./project-cast";
+ import type { GameState } from "./context";
++import type { Effect } from "../effects/effect";
+ 
+ /** What the effect-environment adapters need beyond the GameState. */
+ export interface EffectEnvDeps {
+@@ -69,6 +70,8 @@ export interface EffectEnvDeps {
+   level?: number;
+   /** OPT(player, show_damage). */
+   showDamage?: boolean;
++  /** Renderer-neutral EF_SELECT chooser; -1 cancels, -2 chooses random. */
++  chooseEffect?: (first: Effect | null, count: number) => number;
+   /** player_inc_check resolvers; when absent every increase is allowed. */
+   incQueries?: PlayerIncCheckQueries;
+   /** player_inc_check side hooks (equip-learn + monster-source smart-learn);
+@@ -240,5 +243,8 @@ export function buildEffectContext(
+     foodValue: deps.foodValue ?? state.z.foodValue,
+     ...(deps.level !== undefined ? { level: deps.level } : {}),
+     ...(showDamage !== undefined ? { showDamage } : {}),
++    ...((deps.chooseEffect ?? state.effectChooser)
++      ? { chooseEffect: deps.chooseEffect ?? state.effectChooser }
++      : {}),
+   };
+ }
+diff --git a/packages/core/src/game/known.ts b/packages/core/src/game/known.ts
+index 71cdfb6d9..01e15c593 100644
+--- a/packages/core/src/game/known.ts
++++ b/packages/core/src/game/known.ts
+@@ -25,7 +25,7 @@
+ import { FEAT, MFLAG, OF, RF, SQUARE, TF, TMD } from "../generated";
+ import type { Loc } from "../loc";
+ import { DDGRID_DDD, loc, locEq, locSum } from "../loc";
+-import { featIsBright } from "../world/chunk";
++import { featIsBright, featIsProjectable } from "../world/chunk";
+ import { caveIlluminate } from "../gen/cave";
+ import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view";
+ import { getLore, loreCountU16 } from "../mon/lore";
+@@ -38,7 +38,7 @@ import {
+ } from "../mon/predicate";
+ import { disturb } from "./player-path";
+ import { describeObject } from "./describe";
+-import { floorExcise, floorPile } from "./floor";
++import { floorCarry, floorExcise, floorPile } from "./floor";
+ import { noteSpotRevealTrap } from "./trap";
+ import { ODESC } from "../obj/desc";
+ import { monsterCarry } from "../mon/make";
+@@ -171,6 +171,17 @@ export function knownFeat(state: GameState, grid: Loc): number {
+   return state.known.feat[gi(state, grid)]!;
+ }
+ 
++/**
++ * square_isbelievedwall (cave-square.c L901-912): out-of-bounds is a wall,
++ * unknown terrain is not believed to be a wall, and known terrain is tested
++ * against the remembered feature rather than the live map.
++ */
++export function squareIsBelievedWall(state: GameState, grid: Loc): boolean {
++  if (!state.chunk.inBoundsFully(grid)) return true;
++  if (!squareIsKnown(state, grid)) return false;
++  return !featIsProjectable(state.chunk.features, knownFeat(state, grid));
++}
++
+ /**
+  * square_ismemorybad: the player remembers terrain here that no longer
+  * matches the live cave.
+@@ -673,6 +684,34 @@ export function becomeAware(state: GameState, mon: Monster): void {
+   }
+ }
+ 
++/**
++ * move_mimicked_object (mon-util.c L620-650): move the fake floor object with
++ * a camouflaged monster swap. The copied object keeps its mimic back-link;
++ * if the destination cannot carry it, RF_MIMIC_INV gives it to the monster.
++ * This operation is presentation/RNG-free.
++ */
++export function moveMimickedObject(
++  state: GameState,
++  mon: Monster,
++  from: Loc,
++  to: Loc,
++): void {
++  if (mon.mimickedObj === 0) return;
++  const obj = floorPile(state, from).find((o) => o.mimickingMIdx === mon.midx);
++  if (!obj) return;
++
++  const moved = objectCopy(obj);
++  if (!floorCarry(state, to, moved)) {
++    if (mon.race.flags.has(RF.MIMIC_INV)) {
++      monsterCarry(mon.heldObj, moved, mon.midx);
++    }
++  }
++  floorExcise(state, from, obj);
++  if (!floorPile(state, to).some((o) => o.mimickingMIdx === mon.midx)) {
++    mon.mimickedObj = 0;
++  }
++}
++
+ /** update_monsters (mon-util.c): update every live (non-dead) monster. */
+ export function updateMonsters(state: GameState, full: boolean): void {
+   for (let i = 1; i < state.monsters.length; i++) {
+diff --git a/packages/core/src/game/mon-side.ts b/packages/core/src/game/mon-side.ts
+index 617aaff8d..acfcc9f11 100644
+--- a/packages/core/src/game/mon-side.ts
++++ b/packages/core/src/game/mon-side.ts
+@@ -61,7 +61,8 @@ import { teleportMonster } from "./effect-teleport";
+ import type { TeleportEnv } from "./effect-teleport";
+ import { makeTakeHitHooks } from "./take-hit-hooks";
+ import { makeIncCheckQueries } from "./player-side";
+-import { buildMonsterIncHooks } from "./mon-cast";
++import { buildMonsterIncHooks, buildSmartLearnEnv } from "./mon-cast";
++import { updateSmartLearn } from "../mon/spell";
+ 
+ /** Everything the monster-blow handlers need beyond the GameState. */
+ export interface MonBlowDeps {
+@@ -142,7 +143,21 @@ export function makeMonBlowEnv(
+     return { handle, obj };
+   };
+ 
+-  return (mon: Monster): MonBlowEnv => ({
++  return (mon: Monster): MonBlowEnv => {
++    const learn = (ofFlag: number, element: number): void => {
++      /* mon-blows.c L486-689 / L1167: melee blow handlers teach the
++       * attacking monster through update_smart_learn after the side effect. */
++      updateSmartLearn(
++        state.rng,
++        mon,
++        buildSmartLearnEnv(state),
++        ofFlag,
++        0,
++        element,
++      );
++    };
++
++    return {
+     playerGrid(): Loc {
+       return state.actor.grid;
+     },
+@@ -187,7 +202,7 @@ export function makeMonBlowEnv(
+       const resLevel = deps.actor.resistLevel(proj);
+       const acidMinusAc =
+         proj === PROJ.ACID && resLevel !== 3 ? deps.actor.minusAc() : false;
+-      return adjustDam(
++      const result = adjustDam(
+         state.rng,
+         deps.projections,
+         proj,
+@@ -196,6 +211,8 @@ export function makeMonBlowEnv(
+         resLevel,
+         acidMinusAc,
+       );
++      learn(0, proj);
++      return result;
+     },
+ 
+     invenDamage(elem: number, cperc: number): void {
+@@ -213,7 +230,7 @@ export function makeMonBlowEnv(
+        * (FREE_ACT / PROT_BLIND/CONF/FEAR / ELEM_POIS / HALLU chaos) runs with
+        * equip_learn + update_smart_learn side effects (player-timed.c:945-953). */
+       const monIncHooks = buildMonsterIncHooks(state, mon);
+-      return playerIncTimed(p(), effect, amount, true, true, check, {
++      const result = playerIncTimed(p(), effect, amount, true, true, check, {
+         onMessage: (text: string): void => msg(text),
+         incCheck: (idx: number): boolean => {
+           const eff = deps.timed[idx];
+@@ -232,6 +249,16 @@ export function makeMonBlowEnv(
+           });
+         },
+       });
++      const learnedFlag: Record<number, number> = {
++        [TMD.BLIND]: OF.PROT_BLIND,
++        [TMD.CONFUSED]: OF.PROT_CONF,
++        [TMD.AFRAID]: OF.PROT_FEAR,
++        [TMD.PARALYZED]: OF.FREE_ACT,
++      };
++      if (learnedFlag[tmd] !== undefined) learn(learnedFlag[tmd]!, -1);
++      else if (tmd === TMD.POISONED) learn(0, ELEM.POIS);
++      else if (tmd === TMD.IMAGE) learn(0, ELEM.CHAOS);
++      return result;
+     },
+ 
+     saveVsSkill(): boolean {
+@@ -257,6 +284,7 @@ export function makeMonBlowEnv(
+     },
+ 
+     drainExp(chance: number, drainAmount: number): void {
++      learn(OF.HOLD_LIFE, -1);
+       const holdLife = playerOfHas(state, OF.HOLD_LIFE);
+       /* randint0(100) is drawn only when HOLD_LIFE is present (short-circuit). */
+       if (holdLife && state.rng.randint0(100) < chance) {
+@@ -432,6 +460,7 @@ export function makeMonBlowEnv(
+ 
+     disenchant(): void {
+       disenchantEquipment(state, { msg });
++      learn(0, ELEM.DISEN);
+     },
+ 
+     earthquake(radius: number): void {
+@@ -464,5 +493,6 @@ export function makeMonBlowEnv(
+         deps.teleport ?? {},
+       );
+     },
+-  });
++    };
++  };
+ }
+diff --git a/packages/core/src/game/monster-turn.ts b/packages/core/src/game/monster-turn.ts
+index f7ce1b199..2045de0f0 100644
+--- a/packages/core/src/game/monster-turn.ts
++++ b/packages/core/src/game/monster-turn.ts
+@@ -106,6 +106,7 @@ import {
+   monsterIsCamouflaged,
+   monsterIsInView,
+   monsterIsObvious,
++  monsterIsUnique,
+   monsterIsVisible,
+   monsterLovesArchery,
+   monsterPassesWalls,
+@@ -121,7 +122,16 @@ import {
+ import { monsterRevertShape } from "./mon-shape";
+ import { monsterCarry } from "../mon/make";
+ import { monsterWake } from "../mon/take-hit";
+-import { monIncTimed, monsterEffectLevel } from "../mon/timed";
++import {
++  MON_TMD_FLG_NOMESSAGE,
++  MON_TMD_FLG_NOTIFY,
++  monClearTimed,
++  monDecTimed,
++  monIncTimed,
++  monsterEffectLevel,
++  type MonTimedMessageSink,
++} from "../mon/timed";
++import { formatMonsterMessageByName } from "./mon-message";
+ import { tvalIsMoney } from "../obj/object";
+ import { monMeleeAttack } from "../combat/mon-melee";
+ import { reactToSlay } from "../combat/brand-slay";
+@@ -130,7 +140,12 @@ import { updatePlayerObjectKnowledge } from "./known";
+ import { los, squareIsSeen, squareIsView } from "../world/view";
+ import { PROJECT, projectPath, projectable } from "../world/project";
+ import type { GameState } from "./context";
+-import { monsterSwap, squareIsPlayer, squareMonster } from "./context";
++import {
++  deleteMonster,
++  monsterSwap,
++  squareIsPlayer,
++  squareMonster,
++} from "./context";
+ import { disturb } from "./player-path";
+ import { floorExcise, floorPile } from "./floor";
+ import { describeObject } from "./describe";
+@@ -339,7 +354,7 @@ function compareMonsters(a: Monster, b: Monster): number {
+ function monsterCanKill(state: GameState, mon: Monster, grid: Loc): boolean {
+   const other = squareMonster(state, grid);
+   if (!other) return true;
+-  if (other.race.flags.has(RF.UNIQUE)) return false;
++  if (monsterIsUnique(other)) return false;
+   return mon.race.flags.has(RF.KILL_BODY) && compareMonsters(mon, other) > 0;
+ }
+ 
+@@ -436,6 +451,10 @@ export function getMoveFindRange(mon: Monster, state: GameState): void {
+   } else {
+     mon.minRange = 1;
+ 
++    /* mon-move.c L232: taunt forces close-in movement and returns before
++     * level/health range heuristics or preferred-range selection. */
++    if ((p.timed[TMD.TAUNT] ?? 0) > 0) return;
++
+     const pLev = p.lev;
+     const mLev = mon.race.level + (mon.midx & 0x08) + 25;
+ 
+@@ -1237,8 +1256,9 @@ function monsterTurnTryPush(
+ 
+   if (killOk) {
+     if (victim) {
+-      state.monsters[victim.midx] = null;
+-      state.chunk.setMon(next, 0);
++      /* mon-move.c L1360: delete_monster_idx clears groups, targets,
++       * tracking, occupancy and the held/drop bookkeeping seam. */
++      deleteMonster(state, victim.midx);
+     }
+   }
+   monsterSwap(state, mon.grid, next);
+@@ -1588,8 +1608,9 @@ export function monsterTurn(mon: Monster, state: GameState): void {
+   /* Out of options - monster is paralysed by fear (converts fear to hold). */
+   if (!didSomething && (mon.mTimed[MON_TMD.FEAR] ?? 0)) {
+     const amount = mon.mTimed[MON_TMD.FEAR] ?? 0;
+-    mon.mTimed[MON_TMD.FEAR] = 0;
+-    mon.mTimed[MON_TMD.HOLD] = (mon.mTimed[MON_TMD.HOLD] ?? 0) + amount;
++    const sink = monsterTimedMessage(state);
++    monClearTimed(state.rng, mon, MON_TMD.FEAR, MON_TMD_FLG_NOMESSAGE);
++    monIncTimed(state.rng, mon, MON_TMD.HOLD, amount, MON_TMD_FLG_NOTIFY, sink);
+   }
+ 
+   /* If we see an unaware monster do something, become aware of it
+@@ -1606,6 +1627,13 @@ export function monsterTurn(mon: Monster, state: GameState): void {
+  * monster outright via monster_wake (which draws its own randint0(100)); only
+  * otherwise does the noise-notice reduction run.
+  */
++function monsterTimedMessage(state: GameState): MonTimedMessageSink {
++  return (mon, note) => {
++    const text = formatMonsterMessageByName(mon, note);
++    if (text) state.msg?.(text);
++  };
++}
++
+ function monsterReduceSleep(mon: Monster, state: GameState): void {
+   const stealth = state.actor.stealth;
+   const playerNoise = Math.pow(2, 30 - stealth);
+@@ -1626,9 +1654,15 @@ function monsterReduceSleep(mon: Monster, state: GameState): void {
+     if (localNoise > 0 && localNoise < 50) {
+       sleepReduction = Math.trunc(100 / localNoise);
+     }
+-    const cur = mon.mTimed[MON_TMD.SLEEP] ?? 0;
+-    const next = Math.max(0, cur - sleepReduction);
+-    mon.mTimed[MON_TMD.SLEEP] = next;
++    monDecTimed(
++      state.rng,
++      mon,
++      MON_TMD.SLEEP,
++      sleepReduction,
++      MON_TMD_FLG_NOTIFY,
++      monsterTimedMessage(state),
++    );
++    const next = mon.mTimed[MON_TMD.SLEEP] ?? 0;
+ 
+     /* Update knowledge (mon-move.c L1771): a watched sleeper that stirs
+      * is "ignored", one that wakes is "woken". */
+@@ -1653,26 +1687,35 @@ export function processMonsterTimed(mon: Monster, state: GameState): boolean {
+     mon.mflag.on(MFLAG.AWARE);
+   }
+ 
+-  const dec = (idx: number): void => {
+-    const v = mon.mTimed[idx] ?? 0;
+-    if (v > 0) mon.mTimed[idx] = v - 1;
++  const sink = monsterTimedMessage(state);
++  const shape = {
++    change: (): boolean => false,
++    revert: (m: Monster): boolean => monsterRevertShape(state, m),
+   };
+-  dec(MON_TMD.FAST);
+-  dec(MON_TMD.SLOW);
+-  dec(MON_TMD.HOLD);
+-  dec(MON_TMD.DISEN);
+-  dec(MON_TMD.STUN);
+-  dec(MON_TMD.CONF);
+-  if (mon.mTimed[MON_TMD.CHANGED] ?? 0) {
+-    dec(MON_TMD.CHANGED);
+-    /* The shapechange running out reverts the form (mon-timed.c L202). */
+-    if ((mon.mTimed[MON_TMD.CHANGED] ?? 0) === 0) {
+-      monsterRevertShape(state, mon);
++  /* mon-move.c L1800-1826: flag-0 decrements precede the notifying
++   * stun/confusion/shape decrements, all through mon_dec_timed. */
++  for (const idx of [MON_TMD.FAST, MON_TMD.SLOW, MON_TMD.HOLD, MON_TMD.DISEN]) {
++    if ((mon.mTimed[idx] ?? 0) > 0) monDecTimed(state.rng, mon, idx, 1);
++  }
++  for (const idx of [MON_TMD.STUN, MON_TMD.CONF]) {
++    if ((mon.mTimed[idx] ?? 0) > 0) {
++      monDecTimed(state.rng, mon, idx, 1, MON_TMD_FLG_NOTIFY, sink);
+     }
+   }
++  if ((mon.mTimed[MON_TMD.CHANGED] ?? 0) > 0) {
++    monDecTimed(
++      state.rng,
++      mon,
++      MON_TMD.CHANGED,
++      1,
++      MON_TMD_FLG_NOTIFY,
++      sink,
++      shape,
++    );
++  }
+   if (mon.mTimed[MON_TMD.FEAR] ?? 0) {
+     const d = state.rng.randint1(Math.trunc(mon.race.level / 10) + 1);
+-    mon.mTimed[MON_TMD.FEAR] = Math.max(0, (mon.mTimed[MON_TMD.FEAR] ?? 0) - d);
++    monDecTimed(state.rng, mon, MON_TMD.FEAR, d, MON_TMD_FLG_NOTIFY, sink);
+   }
+ 
+   if ((mon.mTimed[MON_TMD.HOLD] ?? 0) || (mon.mTimed[MON_TMD.COMMAND] ?? 0)) {
+diff --git a/packages/core/src/game/obj-cmd.ts b/packages/core/src/game/obj-cmd.ts
+index 6f6696441..40414fbda 100644
+--- a/packages/core/src/game/obj-cmd.ts
++++ b/packages/core/src/game/obj-cmd.ts
+@@ -521,6 +521,15 @@ export function buildObjectEffectChain(
+       PLAYER_LEVEL: () => state.actor.player.lev,
+       MAX_SIGHT: () => state.z.maxSight,
+       DUNGEON_LEVEL: () => state.chunk.depth,
++      /* effects.c L308-315: WEAPON_DAMAGE is a live damroll(dd, ds)+to_d
++       * expression base. Keeping this provider lazy preserves the C draw
++       * position: the roll occurs exactly when the expression is evaluated. */
++      WEAPON_DAMAGE: () => {
++        const weapon = state.actor.weapon;
++        return weapon
++          ? state.rng.damroll(weapon.dd, weapon.ds) + weapon.toD
++          : 0;
++      },
+       ...inject.baseValues,
+     },
+   });
+diff --git a/packages/core/src/game/project-cast.ts b/packages/core/src/game/project-cast.ts
+index 2bdb99ead..d17f20835 100644
+--- a/packages/core/src/game/project-cast.ts
++++ b/packages/core/src/game/project-cast.ts
+@@ -33,7 +33,7 @@
+  * mutations (chp, is_dead) write back through it to the live player/state.
+  */
+ 
+-import { TMD } from "../generated";
++import { PF, TMD } from "../generated";
+ import { DIR_TARGET } from "../effects/interpreter";
+ import { DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc";
+ import type { Loc } from "../loc";
+@@ -58,6 +58,7 @@ import { buildSmartLearnEnv } from "./mon-cast";
+ import { projectPlayer } from "./project-player";
+ import { projectObject } from "./project-obj";
+ import { projectFeature } from "./project-feat";
++import { squareIsBelievedWall } from "./known";
+ import type { PlayerProjActor, ProjectPlayerHooks } from "./project-player";
+ 
+ /** option.c: op_ptr->hitpoint_warn default (0..9). Canonical in player/options. */
+@@ -99,7 +100,12 @@ export function playerCastSource(
+     isMonster: false,
+     monster: 0,
+     grid: state.actor.grid,
+-    charm: opts.charm ?? false,
++    /* project-mon.c L1346: player_has(PF_CHARM), not a caller default. */
++    charm:
++      opts.charm ??
++      (state.playerState?.pflags.has(PF.CHARM) ??
++        (state.actor.player.race.pflags.has(PF.CHARM) ||
++          state.actor.player.cls.pflags.has(PF.CHARM))),
+     killer: opts.killer ?? "yourself",
+   };
+ }
+@@ -341,6 +347,7 @@ export function castProjection(
+     blind: cctx.playerActor.timed[TMD.BLIND]! > 0,
+     degreesOfArc,
+     diameterOfSource,
++    believedWall: (grid) => squareIsBelievedWall(state, grid),
+   };
+ 
+   return project(state.chunk, params, projectHooks);
+diff --git a/packages/core/src/index.ts b/packages/core/src/index.ts
+index eb2074b23..98e12ae04 100644
+--- a/packages/core/src/index.ts
++++ b/packages/core/src/index.ts
+@@ -36,6 +36,7 @@ export * from "./world/projection";
+ export * from "./world/trap";
+ export * from "./effects/effect";
+ export * from "./effects/effect-info";
++export * from "./effects/effect-choice";
+ export * from "./effects/interpreter";
+ export * from "./effects/handlers";
+ export * from "./mon/types";
+diff --git a/packages/core/src/world/project.ts b/packages/core/src/world/project.ts
+index 08efb0ff0..6295fee4c 100644
+--- a/packages/core/src/world/project.ts
++++ b/packages/core/src/world/project.ts
+@@ -16,9 +16,7 @@
+  *   uses a sentinel (-1,-1) that never matches; a decoy only exists once the
+  *   create-decoy effect is ported.
+  * - PROJECT_INFO uses square_isbelievedwall (the player's remembered map),
+- *   which is not modelled; it is approximated by the real projectability. This
+- *   branch is only used by targeting display (deferred UI), so it is currently
+- *   unreached by ported callers.
++ *   supplied by the caller because this world module does not own knowledge.
+  */
+ 
+ import { SQUARE } from "../generated";
+@@ -63,6 +61,7 @@ export function projectPath(
+   grid1: Loc,
+   grid2: Loc,
+   flg: number,
++  believedWall: (grid: Loc) => boolean = (grid) => !c.isProjectable(grid),
+ ): Loc[] {
+   const gp: Loc[] = [];
+ 
+@@ -99,10 +98,7 @@ export function projectPath(
+     if (!(flg & PROJECT.THRU) && x === grid2.x && y === grid2.y) return true;
+     /* Stop at non-initial wall grids (n is always >= 1 here, as upstream). */
+     if (!(flg & PROJECT.ROCK)) {
+-      if (!(flg & PROJECT.INFO)) {
+-        if (n > 0 && !c.isProjectable(here)) return true;
+-      } else if (n > 0 && !c.isProjectable(here)) {
+-        /* square_isbelievedwall approximated by the real map (DEFERRED). */
++      if (n > 0 && ((flg & PROJECT.INFO) ? believedWall(here) : !c.isProjectable(here))) {
+         return true;
+       }
+     }
+@@ -187,8 +183,9 @@ export function projectable(
+   grid2: Loc,
+   flg: number,
+   maxRange: number,
++  believedWall?: (grid: Loc) => boolean,
+ ): boolean {
+-  const gridG = projectPath(c, maxRange, grid1, grid2, flg);
++  const gridG = projectPath(c, maxRange, grid1, grid2, flg, believedWall);
+ 
+   /* No grid is ever projectable from itself. */
+   if (gridG.length === 0) return false;
+@@ -298,6 +295,8 @@ export interface ProjectParams {
+   sourceIsPlayer?: boolean;
+   /** Whether the player is blind (suppresses bolt visuals). */
+   blind?: boolean;
++  /** square_isbelievedwall for PROJECT_INFO (cave-square.c L901-912). */
++  believedWall?: (grid: Loc) => boolean;
+ }
+ 
+ /** The computed blast: pure geometry + damage, no side effects. */
+@@ -374,7 +373,7 @@ export function computeProjection(c: Chunk, p: ProjectParams): Projection {
+     let x = start.x;
+ 
+     /* Calculate the projection path. */
+-    pathGrids = projectPath(c, maxRange, start, finish, flg);
++    pathGrids = projectPath(c, maxRange, start, finish, flg, p.believedWall);
+ 
+     /* Some beams have limited length. */
+     if (flg & PROJECT.BEAM && rad > 0 && rad < pathGrids.length) {

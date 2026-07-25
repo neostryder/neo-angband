@@ -1,0 +1,6 @@
+reference/src/load.c
+reference/src/save.c
+reference/src/save-charoutput.c
+reference/src/save-charoutput.h
+reference/src/savefile.c
+reference/src/savefile.h
