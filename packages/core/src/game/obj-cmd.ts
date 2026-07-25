@@ -74,7 +74,8 @@ import { buildEffectContext } from "./effect-env";
 import type { EffectEnvDeps } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
 import { describeObject } from "./describe";
-import { ODESC } from "../obj/desc";
+import { ODESC, objDescNameFormat } from "../obj/desc";
+import { substituteTimedMessage } from "../player/timed";
 import { updatePlayerObjectKnowledge } from "./known";
 import type { CastContext } from "./project-cast";
 import type { ActionRegistry } from "./player-turn";
@@ -650,6 +651,33 @@ export interface UseResult {
 }
 
 /**
+ * activation_message (cmd-obj.c L127): print an activated object's custom
+ * message. The message text comes from the activation (activation.txt msg:),
+ * but an artifact carrying its own alt_msg (artifact.txt msg:) overrides it -
+ * and the override only fires when the activation itself defines a message. The
+ * text is run through print_custom_message's {name}/{kind}/{s}/{is} object-tag
+ * substitution (obj-util.c L1118): {name} -> object_desc(PREFIX|BASE), {kind} ->
+ * object_kind_name (easy_know), {s}/{is} keyed on the stack count.
+ */
+function activationMessage(
+  state: GameState,
+  obj: GameObject,
+  env: ObjCmdEnv,
+): void {
+  if (!obj.activation?.message) return;
+  const message =
+    obj.artifact && obj.artifact.altMsg
+      ? obj.artifact.altMsg
+      : obj.activation.message;
+  const text = substituteTimedMessage(message, {
+    name: describeObject(state, obj, ODESC.PREFIX | ODESC.BASE),
+    kind: objDescNameFormat(obj.kind.name, null, false),
+    number: obj.number,
+  });
+  env.msg?.(text);
+}
+
+/**
  * use_aux (cmd-obj.c L407): use an object the right way - aim resolution,
  * the device check, charge/timeout/single-use deduction with restore on an
  * unused effect, and the effect chain run with a player source.
@@ -705,12 +733,10 @@ export function useAux(
 
     /* Sound / message (cmd-obj.c L493-504): an activation prints the generic
      * "You activate it." then its own activation_message; otherwise the kind's
-     * effect_msg (always) or vis_msg (only when not blind). The alt_msg override
-     * for a handful of artifacts (activation_message L134) is not yet carried on
-     * the port's artifact record - ledgered, activation.message is used for all. */
+     * effect_msg (always) or vis_msg (only when not blind). */
     if (obj.activation) {
       env.msg?.("You activate it.");
-      if (obj.activation.message) env.msg?.(obj.activation.message);
+      activationMessage(state, obj, env);
     } else if (obj.kind.effectMsg) {
       env.msg?.(obj.kind.effectMsg);
     } else if (

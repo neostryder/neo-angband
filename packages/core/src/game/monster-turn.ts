@@ -104,11 +104,13 @@ import { MON_GROUP } from "../mon/types";
 import {
   monsterBreathes,
   monsterIsCamouflaged,
+  monsterIsInView,
   monsterIsObvious,
   monsterIsVisible,
   monsterLovesArchery,
   monsterPassesWalls,
 } from "../mon/predicate";
+import { MDESC, monsterDesc } from "../mon/desc";
 import {
   getLore,
   loreCountU16,
@@ -125,12 +127,14 @@ import { monMeleeAttack } from "../combat/mon-melee";
 import { reactToSlay } from "../combat/brand-slay";
 import { equipLearnOnDefend } from "../obj/knowledge";
 import { updatePlayerObjectKnowledge } from "./known";
-import { los, squareIsView } from "../world/view";
+import { los, squareIsSeen, squareIsView } from "../world/view";
 import { PROJECT, projectPath, projectable } from "../world/project";
 import type { GameState } from "./context";
 import { monsterSwap, squareIsPlayer, squareMonster } from "./context";
 import { disturb } from "./player-path";
 import { floorExcise, floorPile } from "./floor";
+import { describeObject } from "./describe";
+import { ODESC } from "../obj/desc";
 import { squareIsEmptyLive } from "./mon-place";
 import {
   squareIsPlayerTrap,
@@ -1062,6 +1066,27 @@ function monsterSlightlyStunByMove(mon: Monster, state: GameState): void {
  * (or a confused bump) even though it did not move - the caller keeps the
  * "can move here" result distinct from "did the terrain action".
  */
+/**
+ * monster_desc for a movement/behaviour message: m_name as upstream builds it
+ * (MDESC_CAPITAL | MDESC_IND_HID | MDESC_COMMA), e.g. "The kobold". Pure, no RNG.
+ */
+function monMoveName(mon: Monster): string {
+  return monsterDesc(mon, MDESC.CAPITAL | MDESC.IND_HID | MDESC.COMMA);
+}
+
+/**
+ * monster_display_confused_move_msg (mon-move.c L1111): a confused monster that
+ * bumps an obstacle stumbles - "%s %s." with the terrain's confused_msg, or
+ * "stumbles" when the feature defines none. Only shown for a monster both
+ * visible and in view. Draws no RNG.
+ */
+function displayConfusedMoveMsg(mon: Monster, state: GameState, next: Loc): void {
+  if (monsterIsVisible(mon) && monsterIsInView(mon)) {
+    const m = state.chunk.feature(next).confusedMsg;
+    state.msg?.(`${monMoveName(mon)} ${m || "stumbles"}.`);
+  }
+}
+
 function monsterTurnCanMove(
   mon: Monster,
   state: GameState,
@@ -1084,7 +1109,7 @@ function monsterTurnCanMove(
   if (state.chunk.isPerm(next)) {
     if (confused) {
       did.value = true;
-      /* confused-move message DEFERRED. */
+      displayConfusedMoveMsg(mon, state, next);
       monsterSlightlyStunByMove(mon, state);
     }
     return false;
@@ -1133,6 +1158,7 @@ function monsterTurnCanMove(
       /* Door is an insurmountable obstacle. */
       if (confused) {
         did.value = true;
+        displayConfusedMoveMsg(mon, state, next);
         monsterSlightlyStunByMove(mon, state);
       }
       return false;
@@ -1143,7 +1169,11 @@ function monsterTurnCanMove(
     if (lockPower > 0) {
       /* Locked door -- test monster strength against door strength. */
       if (state.rng.randint0(Math.trunc(mon.hp / 10)) > lockPower) {
-        /* "slams against" / "fiddles with" message DEFERRED. */
+        state.msg?.(
+          willBash
+            ? `${monMoveName(mon)} slams against the door.`
+            : `${monMoveName(mon)} fiddles with the lock.`,
+        );
         /* Reduce the power of the door by one. */
         state.setDoorLock?.(next, lockPower - 1);
       }
@@ -1155,9 +1185,9 @@ function monsterTurnCanMove(
       /* Closed or secret door -- always open or bash. */
       if (willBash) {
         squareSmashDoor(state, next);
-        /* "You hear a door burst open!" (mon-move.c L1269-1270): the message is
-         * UI (DEFERRED), but the disturb() is wired - a bursting door stops the
-         * player running / resting. disturb draws no RNG. */
+        /* mon-move.c L1269-1270: the burst is heard everywhere, then disturb()
+         * stops the player running / resting. Neither draws RNG. */
+        state.msg?.("You hear a door burst open!");
         disturb(state);
         if (confused) {
           if (monsterIsVisible(mon)) lore.flags.on(RF.BASH_DOOR);
@@ -1171,6 +1201,7 @@ function monsterTurnCanMove(
     }
   } else if (confused) {
     did.value = true;
+    displayConfusedMoveMsg(mon, state, next);
     monsterSlightlyStunByMove(mon, state);
   }
 
@@ -1193,6 +1224,15 @@ function monsterTurnTryPush(
   const victim = squareMonster(state, next);
   if (victim && monsterIsCamouflaged(victim)) {
     state.becomeAware?.(victim);
+  }
+
+  /* Note if visible (mon-move.c L1355-1358): "%s tramples over / pushes past
+   * %s." n_name is monster_desc(mon1, MDESC_IND_HID). No RNG. */
+  if (victim && monsterIsVisible(mon) && monsterIsInView(mon)) {
+    state.msg?.(
+      `${monMoveName(mon)} ${killOk ? "tramples over" : "pushes past"} ` +
+        `${monsterDesc(victim, MDESC.IND_HID)}.`,
+    );
   }
 
   if (killOk) {
@@ -1292,21 +1332,45 @@ function monsterTurnGrabObjects(
     /* Skip mimicked objects. */
     if (obj.mimickingMIdx) continue;
 
+    /* o_name (mon-move.c L1416) is object_desc(PREFIX|FULL); computed lazily so
+     * an unseen pickup/crush - the common case - never pays for the describe.
+     * !ignore_item_ok(player, obj): a message is suppressed for items the player
+     * has chosen to ignore. state.isIgnored is the wired equivalent; absent
+     * (worldless), nothing is ignored so the message shows. */
+    const oName = (): string => describeObject(state, obj, ODESC.PREFIX | ODESC.FULL);
+    const notIgnored = !(state.isIgnored?.(obj) ?? false);
+
     /* Artifacts are "safe" - a monster cannot pick them up; so are objects
      * that would hurt the monster (react_to_slay, mon-move.c L1420). */
     const safe = (obj.artifact ? true : false) || reactToSlay(obj, mon, state.slays);
 
     if (safe) {
-      /* Only a message for take_item (DEFERRED). */
+      /* Only give a message for "take_item" (mon-move.c L1424-1432). */
+      if (
+        mon.race.flags.has(RF.TAKE_ITEM) &&
+        visible &&
+        squareIsView(state.chunk, next) &&
+        notIgnored
+      ) {
+        state.msg?.(`${monMoveName(mon)} tries to pick up ${oName()}, but fails.`);
+      }
     } else if (mon.race.flags.has(RF.TAKE_ITEM)) {
       /* Pick it up: move the floor object into the monster's held pile. The
        * player-cave placeholder copy rides the knowledge subsystem (DEFERRED);
        * here the object simply leaves the floor and joins the monster. */
       if (floorExcise(state, next, obj)) {
         monsterCarry(mon.heldObj, obj, mon.midx);
+        /* Describe observable situations (mon-move.c L1452-1454). */
+        if (squareIsSeen(state.chunk, next) && notIgnored) {
+          state.msg?.(`${monMoveName(mon)} picks up ${oName()}.`);
+        }
       }
     } else {
-      /* Crush it. */
+      /* Crush it (mon-move.c L1466-1468). */
+      if (squareIsSeen(state.chunk, next) && notIgnored) {
+        state.msg?.(`${monMoveName(mon)} crushes ${oName()}.`);
+        state.sound?.(MSG.DESTROY);
+      }
       floorExcise(state, next, obj);
     }
   }
@@ -1325,6 +1389,10 @@ function monsterTurnAttackGlyph(
   next: Loc,
 ): boolean {
   if (state.rng.randint1(state.z.glyphHardness) < mon.race.level) {
+    /* Describe observable breakage (mon-move.c L1308). */
+    if (squareIsSeen(state.chunk, next)) {
+      state.msg?.("The rune of protection is broken!");
+    }
     removeTrapsWithFlag(state, next, TRF.GLYPH);
     return true;
   }
@@ -1545,9 +1613,13 @@ function monsterReduceSleep(mon: Monster, state: GameState): void {
   const aggravate = state.playerState?.flags.has(OF.AGGRAVATE) ?? false;
 
   if (aggravate) {
-    /* Wake the monster, make it aware. The "X wakes up" message and
-     * equip_learn_flag(OF_AGGRAVATE) are UI/lore (DEFERRED, no RNG). */
+    /* Wake the monster, make it aware. */
     monsterWake(state.rng, mon, false, 100);
+    /* Notify the player if aware (mon-move.c L1748-1750). equip_learn_flag(
+     * OF_AGGRAVATE) is lore (DEFERRED). No RNG. */
+    if (monsterIsObvious(mon)) {
+      state.msg?.(`${monMoveName(mon)} wakes up.`);
+    }
   } else if (notice * notice * notice <= playerNoise) {
     let sleepReduction = 1;
     const localNoise = noiseAt(state, mon.grid);
