@@ -25,7 +25,11 @@
 import { FEAT, MFLAG, OF, RF, SQUARE, TF, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { DDGRID_DDD, loc, locEq, locSum } from "../loc";
-import { featIsBright, featIsPassable } from "../world/chunk";
+import {
+  featIsBright,
+  featIsPassable,
+  featIsProjectable,
+} from "../world/chunk";
 import { caveIlluminate } from "../gen/cave";
 import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view";
 import { getLore, loreCountU16 } from "../mon/lore";
@@ -38,7 +42,7 @@ import {
 } from "../mon/predicate";
 import { disturb } from "./player-path";
 import { describeObject } from "./describe";
-import { floorExcise, floorPile } from "./floor";
+import { floorCarry, floorExcise, floorPile } from "./floor";
 import { noteSpotRevealTrap } from "./trap";
 import { ODESC } from "../obj/desc";
 import { monsterCarry } from "../mon/make";
@@ -169,6 +173,17 @@ export function squareIsKnown(state: GameState, grid: Loc): boolean {
 /** The remembered feat at a grid (-1 = unknown). */
 export function knownFeat(state: GameState, grid: Loc): number {
   return state.known.feat[gi(state, grid)]!;
+}
+
+/**
+ * square_isbelievedwall (cave-square.c L901-912): out-of-bounds is a wall,
+ * unknown terrain is not believed to be a wall, and known terrain is tested
+ * against the remembered feature rather than the live map.
+ */
+export function squareIsBelievedWall(state: GameState, grid: Loc): boolean {
+  if (!state.chunk.inBoundsFully(grid)) return true;
+  if (!squareIsKnown(state, grid)) return false;
+  return !featIsProjectable(state.chunk.features, knownFeat(state, grid));
 }
 
 /**
@@ -670,6 +685,34 @@ export function becomeAware(state: GameState, mon: Monster): void {
       /* Since mimicry affects visibility, update that. */
       updateMon(state, mon, false);
     }
+  }
+}
+
+/**
+ * move_mimicked_object (mon-util.c L620-650): move the fake floor object with
+ * a camouflaged monster swap. The copied object keeps its mimic back-link;
+ * if the destination cannot carry it, RF_MIMIC_INV gives it to the monster.
+ * This operation is presentation/RNG-free.
+ */
+export function moveMimickedObject(
+  state: GameState,
+  mon: Monster,
+  from: Loc,
+  to: Loc,
+): void {
+  if (mon.mimickedObj === 0) return;
+  const obj = floorPile(state, from).find((o) => o.mimickingMIdx === mon.midx);
+  if (!obj) return;
+
+  const moved = objectCopy(obj);
+  if (!floorCarry(state, to, moved)) {
+    if (mon.race.flags.has(RF.MIMIC_INV)) {
+      monsterCarry(mon.heldObj, moved, mon.midx);
+    }
+  }
+  floorExcise(state, from, obj);
+  if (!floorPile(state, to).some((o) => o.mimickingMIdx === mon.midx)) {
+    mon.mimickedObj = 0;
   }
 }
 

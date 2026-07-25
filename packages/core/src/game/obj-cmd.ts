@@ -521,6 +521,15 @@ export function buildObjectEffectChain(
       PLAYER_LEVEL: () => state.actor.player.lev,
       MAX_SIGHT: () => state.z.maxSight,
       DUNGEON_LEVEL: () => state.chunk.depth,
+      /* effects.c L308-315: WEAPON_DAMAGE is a live damroll(dd, ds)+to_d
+       * expression base. Keeping this provider lazy preserves the C draw
+       * position: the roll occurs exactly when the expression is evaluated. */
+      WEAPON_DAMAGE: () => {
+        const weapon = state.actor.weapon;
+        return weapon
+          ? state.rng.damroll(weapon.dd, weapon.ds) + weapon.toD
+          : 0;
+      },
       ...inject.baseValues,
     },
   });

@@ -107,6 +107,8 @@ export interface MonBlowEnv {
   applyReduction(dam: number): number;
   /** take_hit(p, reducedDam, ddesc): subtract HP, set is_dead. */
   takeHit(reducedDam: number): void;
+  /** Flush pure-element smart-learn after the complete elemental sequence. */
+  finishElemental?: () => void;
   /** p->is_dead after the last takeHit. */
   readonly playerDied: boolean;
   /** msg(): route a blow message to the game's sink. An optional msgt (the
@@ -698,6 +700,7 @@ function applyElemental(
     emitBlowMessageLive(env, ctx, reducedDamage);
     env.takeHit(reducedDamage);
   }
+  env.finishElemental?.();
   return { contextDamage, reducedDamage };
 }
 

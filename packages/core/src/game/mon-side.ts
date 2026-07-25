@@ -61,7 +61,8 @@ import { teleportMonster } from "./effect-teleport";
 import type { TeleportEnv } from "./effect-teleport";
 import { makeTakeHitHooks } from "./take-hit-hooks";
 import { makeIncCheckQueries } from "./player-side";
-import { buildMonsterIncHooks } from "./mon-cast";
+import { buildMonsterIncHooks, buildSmartLearnEnv } from "./mon-cast";
+import { updateSmartLearn } from "../mon/spell";
 
 /** Everything the monster-blow handlers need beyond the GameState. */
 export interface MonBlowDeps {
@@ -142,33 +143,58 @@ export function makeMonBlowEnv(
     return { handle, obj };
   };
 
-  return (mon: Monster): MonBlowEnv => ({
-    playerGrid(): Loc {
-      return state.actor.grid;
-    },
+  return (mon: Monster): MonBlowEnv => {
+    /* C's melee_effect_elemental learns pure elements after the complete
+     * elemental sequence (mon-blows.c L485-487). elementalDam runs before
+     * inven_damage and take_hit, so hold the learn until finishElemental even
+     * when elemental damage is zero but physical damage still hits. */
+    let pendingPureElement: number | null = null;
+    const learn = (ofFlag: number, element: number): void => {
+      /* mon-blows.c L486-689 / L1167: melee blow handlers teach the
+       * attacking monster through update_smart_learn after the side effect. */
+      updateSmartLearn(
+        state.rng,
+        mon,
+        buildSmartLearnEnv(state),
+        ofFlag,
+        0,
+        element,
+      );
+    };
 
-    applyReduction(dam: number): number {
-      return playerApplyDamageReduction(deps.actor, deps.actor.reduction, dam);
-    },
+    return {
+      playerGrid(): Loc {
+        return state.actor.grid;
+      },
 
-    takeHit(reducedDam: number): void {
-      /* The one shared take_hit consequences object, so a melee blow that kills
-       * records died_from + total_winner and shows the death / low-hp chain the
-       * same way projections and effects do (audit 01 P1 CRITICAL). Previously
-       * this site wired only onMessage + onDisturb, so a melee death was scored
-       * with an unknown killer. */
-      takeHit(deps.actor, reducedDam, mon.race.name, takeHitHooks);
-    },
+      applyReduction(dam: number): number {
+        return playerApplyDamageReduction(deps.actor, deps.actor.reduction, dam);
+      },
 
-    get playerDied(): boolean {
-      return deps.actor.isDead;
-    },
+      takeHit(reducedDam: number): void {
+        /* The one shared take_hit consequences object, so a melee blow that kills
+         * records died_from + total_winner and shows the death / low-hp chain the
+         * same way projections and effects do (audit 01 P1 CRITICAL). Previously
+         * this site wired only onMessage + onDisturb, so a melee death was scored
+         * with an unknown killer. */
+        takeHit(deps.actor, reducedDam, mon.race.name, takeHitHooks);
+      },
 
-    msg(text: string, msgt?: string): void {
-      msg(text, msgt);
-      /* msgt(method->msgt, ...) sound channel (mon-blows.c L206). */
-      if (msgt) state.sound?.((MSG as Record<string, number>)[msgt] ?? 0);
-    },
+      finishElemental(): void {
+        if (pendingPureElement === null) return;
+        learn(0, pendingPureElement);
+        pendingPureElement = null;
+      },
+
+      get playerDied(): boolean {
+        return deps.actor.isDead;
+      },
+
+      msg(text: string, msgt?: string): void {
+        msg(text, msgt);
+        /* msgt(method->msgt, ...) sound channel (mon-blows.c L206). */
+        if (msgt) state.sound?.((MSG as Record<string, number>)[msgt] ?? 0);
+      },
 
     /* monster_desc(mon, MDESC_STANDARD) (mon-attack.c L561): computed once for
      * the attack's blow messages ("The kobold hits you."). No RNG. */
@@ -187,7 +213,7 @@ export function makeMonBlowEnv(
       const resLevel = deps.actor.resistLevel(proj);
       const acidMinusAc =
         proj === PROJ.ACID && resLevel !== 3 ? deps.actor.minusAc() : false;
-      return adjustDam(
+      const result = adjustDam(
         state.rng,
         deps.projections,
         proj,
@@ -196,6 +222,10 @@ export function makeMonBlowEnv(
         resLevel,
         acidMinusAc,
       );
+      if (proj !== PROJ.POIS) {
+        pendingPureElement = proj;
+      }
+      return result;
     },
 
     invenDamage(elem: number, cperc: number): void {
@@ -213,7 +243,7 @@ export function makeMonBlowEnv(
        * (FREE_ACT / PROT_BLIND/CONF/FEAR / ELEM_POIS / HALLU chaos) runs with
        * equip_learn + update_smart_learn side effects (player-timed.c:945-953). */
       const monIncHooks = buildMonsterIncHooks(state, mon);
-      return playerIncTimed(p(), effect, amount, true, true, check, {
+      const result = playerIncTimed(p(), effect, amount, true, true, check, {
         onMessage: (text: string, msgt: string): void => msg(text, msgt),
         incCheck: (idx: number): boolean => {
           const eff = deps.timed[idx];
@@ -232,6 +262,16 @@ export function makeMonBlowEnv(
           });
         },
       });
+      const learnedFlag: Record<number, number> = {
+        [TMD.BLIND]: OF.PROT_BLIND,
+        [TMD.CONFUSED]: OF.PROT_CONF,
+        [TMD.AFRAID]: OF.PROT_FEAR,
+        [TMD.PARALYZED]: OF.FREE_ACT,
+      };
+      if (learnedFlag[tmd] !== undefined) learn(learnedFlag[tmd]!, -1);
+      else if (tmd === TMD.POISONED) learn(0, ELEM.POIS);
+      else if (tmd === TMD.IMAGE) learn(0, ELEM.CHAOS);
+      return result;
     },
 
     saveVsSkill(): boolean {
@@ -257,6 +297,7 @@ export function makeMonBlowEnv(
     },
 
     drainExp(chance: number, drainAmount: number): void {
+      learn(OF.HOLD_LIFE, -1);
       const holdLife = playerOfHas(state, OF.HOLD_LIFE);
       /* randint0(100) is drawn only when HOLD_LIFE is present (short-circuit). */
       if (holdLife && state.rng.randint0(100) < chance) {
@@ -432,6 +473,7 @@ export function makeMonBlowEnv(
 
     disenchant(): void {
       disenchantEquipment(state, { msg });
+      learn(0, ELEM.DISEN);
     },
 
     earthquake(radius: number): void {
@@ -464,5 +506,6 @@ export function makeMonBlowEnv(
         deps.teleport ?? {},
       );
     },
-  });
+    };
+  };
 }

@@ -33,7 +33,7 @@
  * mutations (chp, is_dead) write back through it to the live player/state.
  */
 
-import { TMD } from "../generated";
+import { PF, TMD } from "../generated";
 import { DIR_TARGET } from "../effects/interpreter";
 import { DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc";
 import type { Loc } from "../loc";
@@ -58,6 +58,7 @@ import { buildSmartLearnEnv } from "./mon-cast";
 import { projectPlayer } from "./project-player";
 import { projectObject } from "./project-obj";
 import { projectFeature } from "./project-feat";
+import { squareIsBelievedWall } from "./known";
 import type { PlayerProjActor, ProjectPlayerHooks } from "./project-player";
 
 /** option.c: op_ptr->hitpoint_warn default (0..9). Canonical in player/options. */
@@ -99,7 +100,12 @@ export function playerCastSource(
     isMonster: false,
     monster: 0,
     grid: state.actor.grid,
-    charm: opts.charm ?? false,
+    /* project-mon.c L1346: player_has(PF_CHARM), not a caller default. */
+    charm:
+      opts.charm ??
+      (state.playerState?.pflags.has(PF.CHARM) ??
+        (state.actor.player.race.pflags.has(PF.CHARM) ||
+          state.actor.player.cls.pflags.has(PF.CHARM))),
     killer: opts.killer ?? "yourself",
   };
 }
@@ -341,6 +347,7 @@ export function castProjection(
     blind: cctx.playerActor.timed[TMD.BLIND]! > 0,
     degreesOfArc,
     diameterOfSource,
+    believedWall: (grid) => squareIsBelievedWall(state, grid),
   };
 
   return project(state.chunk, params, projectHooks);
