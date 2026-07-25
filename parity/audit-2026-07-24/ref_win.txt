@@ -1,0 +1,14 @@
+reference/src/win/include/libpng12/png.h
+reference/src/win/include/libpng12/pngconf.h
+reference/src/win/include/png.h
+reference/src/win/include/pngconf.h
+reference/src/win/include/zconf.h
+reference/src/win/include/zlib.h
+reference/src/win/readdib.c
+reference/src/win/readdib.h
+reference/src/win/readpng.c
+reference/src/win/scrnshot.c
+reference/src/win/scrnshot.h
+reference/src/win/win-layout.c
+reference/src/win/win-menu.h
+reference/src/win/win-term.h

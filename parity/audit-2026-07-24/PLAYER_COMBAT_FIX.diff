@@ -1,0 +1,237 @@
+diff --git a/packages/core/src/game/effect-melee.ts b/packages/core/src/game/effect-melee.ts
+index 955e04726..d4219b5b4 100644
+--- a/packages/core/src/game/effect-melee.ts
++++ b/packages/core/src/game/effect-melee.ts
+@@ -86,7 +86,11 @@ function playerBlow(state: GameState, mon: Monster): boolean {
+     state.actor.player,
+     state.runeEnv,
+     state.actor.weapon,
+-    { race: mon.race, visible: true, lore: getLore(state.lore, mon.race) },
++    {
++      race: mon.race,
++      visible: monsterIsVisible(mon),
++      lore: getLore(state.lore, mon.race),
++    },
+   );
+   const blow = pyAttackReal(
+     state.rng,
+@@ -97,7 +101,9 @@ function playerBlow(state: GameState, mon: Monster): boolean {
+     state.brands,
+     state.slays,
+     {
+-      monVisible: true,
++      /* chance_of_melee_hit halves unseen targets (player-attack.c:104-109),
++       * including effect-handler-attack.c's py_attack_real paths. */
++      monVisible: monsterIsVisible(mon),
+       percentDamage: state.options?.get("birth_percent_damage") ?? false,
+     },
+   );
+diff --git a/packages/core/src/game/obj-cmd.ts b/packages/core/src/game/obj-cmd.ts
+index 6f6696441..30acdd9e6 100644
+--- a/packages/core/src/game/obj-cmd.ts
++++ b/packages/core/src/game/obj-cmd.ts
+@@ -607,13 +607,23 @@ export function playerGetResumeNormalShape(
+  * player_confuse_dir (player-util.c): confusion randomises the direction
+  * 75% of the time (always for "no direction").
+  */
+-export function playerConfuseDir(state: GameState, dir: number): number {
++export function playerConfuseDir(
++  state: GameState,
++  dir: number,
++  too = false,
++): number {
+   if ((state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) {
+     let newDir = dir;
+     if (dir === 5 || state.rng.randint0(100) < 75) {
+       /* Random direction. */
+       newDir = DDD[state.rng.randint0(8)] as number;
+     }
++    /* player-util.c L1363-1366: running is refused after the same confusion
++     * roll, with the C's message. */
++    if (too) {
++      state.msg?.("You are too confused.");
++      return dir;
++    }
+     /* player-util.c L1369: emit "You are confused." and report the change only
+      * when the direction actually changed (a same-direction roll is silent).
+      * The RNG draw above is unconditional whenever confused, matching C. */
+diff --git a/packages/core/src/game/player-path.ts b/packages/core/src/game/player-path.ts
+index 0205fc642..1e73c7eaa 100644
+--- a/packages/core/src/game/player-path.ts
++++ b/packages/core/src/game/player-path.ts
+@@ -33,7 +33,7 @@
+  * and the run-into-trap-disarms nuance ride the light / trap layers.
+  */
+ 
+-import { TF, TMD } from "../generated";
++import { OF, TF, TMD } from "../generated";
+ import type { Loc } from "../loc";
+ import { DDD, DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc";
+ import { SKILL } from "../player/types";
+@@ -44,6 +44,8 @@ import { squareIsKnown } from "./known";
+ import { squareIsVisibleTrap, squareIsWebbed } from "./trap";
+ import { calcUnlockingChance } from "./trap";
+ import { DIGGING, calcDiggingChances } from "./cave-cmd";
++import { gearGet } from "./gear";
++import { playerConfuseDir } from "./obj-cmd";
+ import { walkAction } from "./player-turn";
+ import type { ActionRegistry } from "./player-turn";
+ 
+@@ -55,9 +57,16 @@ const CYCLE: readonly number[] = [
+ /** Map each direction into the middle of cycle[] (player-path.c chome[]). */
+ const CHOME: readonly number[] = [0, 8, 9, 10, 7, 0, 11, 6, 5, 4];
+ 
+-/** player_is_trapsafe (the OF_TRAP_IMMUNE equipment half is #13, deferred). */
++/** player_is_trapsafe (player-util.c:1073-1077). */
+ function playerIsTrapsafe(state: GameState): boolean {
+-  return (state.actor.player.timed[TMD.TRAPSAFE] ?? 0) > 0;
++  const equipmentImmune = state.actor.player.equipment.some((handle) =>
++    handle > 0 && (gearGet(state.gear, handle)?.flags.has(OF.TRAP_IMMUNE) ?? false),
++  );
++  return (
++    (state.actor.player.timed[TMD.TRAPSAFE] ?? 0) > 0 ||
++    (state.playerState?.flags.has(OF.TRAP_IMMUNE) ?? false) ||
++    equipmentImmune
++  );
+ }
+ 
+ /** Ensure the run state exists (created lazily on the first run). */
+@@ -876,6 +885,12 @@ export function runStep(state: GameState, dir: number): number {
+ 
+ /** The run command: start (a real direction) or continue (dir 0) a run. */
+ export function runAction(state: GameState, cmd: PlayerCommand): number {
++  /* do_cmd_run refuses confused players after player_confuse_dir(..., true),
++   * preserving its confusion RNG draw and message (cmd-cave.c:1359-1366). */
++  if ((state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) {
++    playerConfuseDir(state, cmd.dir ?? 0, true);
++    return 0;
++  }
+   return runStep(state, cmd.dir ?? 0);
+ }
+ 
+diff --git a/packages/core/src/game/player-turn-coercion.test.ts b/packages/core/src/game/player-turn-coercion.test.ts
+index dabc9609f..cdaae7c59 100644
+--- a/packages/core/src/game/player-turn-coercion.test.ts
++++ b/packages/core/src/game/player-turn-coercion.test.ts
+@@ -11,7 +11,7 @@
+  *   attack (player-attack.c:1023-1025).
+  */
+ import { describe, expect, it } from "vitest";
+-import { MON_TMD, TMD } from "../generated";
++import { MFLAG, MON_TMD, TMD } from "../generated";
+ import { loc } from "../loc";
+ import type { PlayerState } from "../player/calcs";
+ import {
+@@ -156,6 +156,9 @@ describe("delayed flee message (player-attack.c:1023-1025, gap 2.4)", () => {
+     state.rng.randFix(100);
+     /* 100/1000 hp: the surviving monster fails its low-hp fear save. */
+     const mon = addMon(state, makeRace({ ac: 0 }), loc(16, 10), { hp: 1000 });
++    /* C only emits the delayed flee message when monster_is_visible(mon)
++     * (player-attack.c:1023-1025); make this fixture explicitly visible. */
++    mon.mflag.on(MFLAG.VISIBLE);
+     mon.hp = 100;
+ 
+     walkAction(state, { code: "walk", dir: 6 });
+diff --git a/packages/core/src/game/player-turn.ts b/packages/core/src/game/player-turn.ts
+index b9a82f467..01470186b 100644
+--- a/packages/core/src/game/player-turn.ts
++++ b/packages/core/src/game/player-turn.ts
+@@ -29,7 +29,11 @@ import type { TempBrandSlay } from "../combat/brand-slay";
+ import { getLore } from "../mon/lore";
+ import type { Monster } from "../mon/monster";
+ import { MDESC, monsterDesc } from "../mon/desc";
+-import { monsterIsCamouflaged, monsterIsObvious } from "../mon/predicate";
++import {
++  monsterIsCamouflaged,
++  monsterIsObvious,
++  monsterIsVisible,
++} from "../mon/predicate";
+ import { monsterWake } from "../mon/take-hit";
+ import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed";
+ import { equipLearnFlag, equipLearnOnMeleeAttack } from "../obj/knowledge";
+@@ -234,16 +238,16 @@ export function buildMeleeHooks(state: GameState, mon: Monster): MeleeEffectHook
+  */
+ export function attackMonster(state: GameState, target: Monster): number {
+   /* Learning from the attack (player-attack.c L822 equip_learn_on_melee_
+-   * attack; obj-slays.c learn_brand_slay_from_melee). The target is
+-   * treated as visible, matching the monVisible option below. */
++   * attack; obj-slays.c learn_brand_slay_from_melee). */
+   const deps = (state as MeleeSideHost).meleeSideDeps ?? {};
++  const monVisible = monsterIsVisible(target);
+   learnBrandSlayFromMelee(
+     state.actor.player,
+     state.runeEnv,
+     state.actor.weapon,
+     {
+       race: target.race,
+-      visible: true,
++      visible: monVisible,
+       lore: getLore(state.lore, target.race),
+     },
+     deps.temp,
+@@ -257,7 +261,9 @@ export function attackMonster(state: GameState, target: Monster): number {
+     state.brands,
+     state.slays,
+     {
+-      monVisible: true,
++      /* chance_of_melee_hit halves unseen targets (player-attack.c:104-109),
++       * and py_attack's delayed fear message uses the same visibility. */
++      monVisible,
+       /* player_of_has(p, OF_AFRAID): py_attack_real refuses the blow and prints
+        * "You are too afraid to attack X!" (player-attack.c L752). For obvious
+        * monsters do_cmd_walk_test short-circuits before this; the check here
+diff --git a/packages/core/src/game/ranged-cmd.ts b/packages/core/src/game/ranged-cmd.ts
+index 6bc4d5a6f..4a8a73d08 100644
+--- a/packages/core/src/game/ranged-cmd.ts
++++ b/packages/core/src/game/ranged-cmd.ts
+@@ -37,7 +37,7 @@ import { monTakeHit } from "../mon/take-hit";
+ import { playerClearTimed } from "../player/timed";
+ import { gearGet, gearObjectForUse } from "./gear";
+ import { dropNear, floorPile, floorObjectForUse } from "./floor";
+-import { invenTakeoff } from "./obj-cmd";
++import { invenTakeoff, playerConfuseDir } from "./obj-cmd";
+ import { squareMonster, deleteMonster, arenaInterceptDeath } from "./context";
+ import type { GameState, PlayerCommand } from "./context";
+ import { targetOkay, targetGet, targetSetClosest, TARGET } from "./target";
+@@ -213,7 +213,10 @@ export function installRangedCommands(registry: ActionRegistry): void {
+       return 0;
+     }
+ 
+-    const dir = typeof args["dir"] === "number" ? args["dir"] : (cmd.dir ?? 5);
++    let dir = typeof args["dir"] === "number" ? args["dir"] : (cmd.dir ?? 5);
++    /* do_cmd_fire calls player_confuse_dir immediately after cmd_get_target
++     * (player-attack.c:1349-1352), including its confusion RNG draw. */
++    dir = playerConfuseDir(state, dir);
+     /* Take one missile out of the stack. */
+     const { obj: missile } = gearObjectForUse(state.gear, player, handle, 1);
+ 
+@@ -285,7 +288,10 @@ export function installRangedCommands(registry: ActionRegistry): void {
+      * gear handle covers pack/quiver/equipment. */
+     const floorIdx = typeof args["floor"] === "number" ? args["floor"] : -1;
+     const handle = typeof args["handle"] === "number" ? args["handle"] : -1;
+-    const dir = typeof args["dir"] === "number" ? args["dir"] : (cmd.dir ?? 5);
++    let dir = typeof args["dir"] === "number" ? args["dir"] : (cmd.dir ?? 5);
++    /* do_cmd_throw calls player_confuse_dir immediately after cmd_get_target
++     * (player-attack.c:1392-1395), including its confusion RNG draw. */
++    dir = playerConfuseDir(state, dir);
+ 
+     let missile: GameObject;
+     if (floorIdx >= 0) {
+diff --git a/packages/core/src/game/spell-cmd.ts b/packages/core/src/game/spell-cmd.ts
+index 81a3e04ae..461d6b369 100644
+--- a/packages/core/src/game/spell-cmd.ts
++++ b/packages/core/src/game/spell-cmd.ts
+@@ -284,8 +284,11 @@ export function installSpellCommands(
+     state.curseTarget = null;
+     targetRelease(state);
+     if (!cast) return 0;
+-    /* TMD_FASTCAST's 3/4 turn is deferred with that timed effect. */
+-    return state.z.moveEnergy;
++    /* cmd-obj.c:1164-1168: FASTCAST consumes exactly three quarters of a
++     * turn, while an ordinary cast consumes a full move energy. */
++    return (player.timed[TMD.FASTCAST] ?? 0) > 0
++      ? Math.trunc((state.z.moveEnergy * 3) / 4)
++      : state.z.moveEnergy;
+   });
+ 
+   registry.register("study", (state, cmd: PlayerCommand) => {

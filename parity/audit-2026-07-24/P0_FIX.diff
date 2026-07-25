@@ -1,0 +1,281 @@
+diff --git a/packages/core/src/game/mon-side.ts b/packages/core/src/game/mon-side.ts
+index 67713654f..617aaff8d 100644
+--- a/packages/core/src/game/mon-side.ts
++++ b/packages/core/src/game/mon-side.ts
+@@ -21,7 +21,7 @@
+  * impact); ledgered in parity/ledger/combat-melee.yaml.
+  */
+ 
+-import { MSG, ORIGIN, OF, PROJ, STAT, TMD } from "../generated";
++import { ELEM, MSG, ORIGIN, OF, PROJ, STAT, TMD } from "../generated";
+ import { SKILL } from "../player/types";
+ import type { Loc } from "../loc";
+ import type { Monster } from "../mon/monster";
+@@ -35,14 +35,14 @@ import type { Player } from "../player/player";
+ import type { TimedEffect } from "../player/types";
+ import type { ProjectionInfo } from "../world/projection";
+ import { adjustDam } from "../world/projection";
+-import { playerIncTimed } from "../player/timed";
++import { playerIncCheck, playerIncTimed } from "../player/timed";
+ import { playerExpLose, playerStatDec } from "../player/exp";
+ import type { ExpDeps } from "../player/exp";
+ import {
+   playerApplyDamageReduction,
+   takeHit,
+ } from "../player/take-hit";
+-import { equipLearnFlag } from "../obj/knowledge";
++import { equipLearnElement, equipLearnFlag } from "../obj/knowledge";
+ import { MAX_PVAL } from "../obj/types";
+ import { tvalCanHaveCharges, tvalIsEdible } from "../obj/object";
+ import type { GameObject } from "../obj/object";
+@@ -60,6 +60,8 @@ import { thrustAway } from "./thrust";
+ import { teleportMonster } from "./effect-teleport";
+ import type { TeleportEnv } from "./effect-teleport";
+ import { makeTakeHitHooks } from "./take-hit-hooks";
++import { makeIncCheckQueries } from "./player-side";
++import { buildMonsterIncHooks } from "./mon-cast";
+ 
+ /** Everything the monster-blow handlers need beyond the GameState. */
+ export interface MonBlowDeps {
+@@ -125,6 +127,9 @@ export function makeMonBlowEnv(
+   /* The one shared take_hit consequences (message chain + died_from on death),
+    * identical to the projection and effect paths. */
+   const takeHitHooks = makeTakeHitHooks(state);
++  /* player_inc_check fail table (player-timed.c:923-956): Free Action, PROT_*,
++   * poison resist, hallu chaos resist - shared with world clock / effects. */
++  const incQueries = makeIncCheckQueries(state);
+ 
+   /* The pack object at inven[index] (null when the slot is empty). */
+   const packItem = (
+@@ -204,8 +209,28 @@ export function makeMonBlowEnv(
+     incTimed(tmd: number, amount: number, check: boolean): boolean {
+       const effect = deps.timed[tmd];
+       if (!effect) return false;
++      /* mon-blows.c melee_effect_timed uses check=true so player_inc_check
++       * (FREE_ACT / PROT_BLIND/CONF/FEAR / ELEM_POIS / HALLU chaos) runs with
++       * equip_learn + update_smart_learn side effects (player-timed.c:945-953). */
++      const monIncHooks = buildMonsterIncHooks(state, mon);
+       return playerIncTimed(p(), effect, amount, true, true, check, {
+         onMessage: (text: string): void => msg(text),
++        incCheck: (idx: number): boolean => {
++          const eff = deps.timed[idx];
++          if (!eff) return true;
++          return playerIncCheck(eff, incQueries, {
++            ...monIncHooks,
++            equipLearnFlag: (name: string): void => {
++              const of = (OF as Record<string, number>)[name];
++              if (of !== undefined) equipLearnFlag(p(), state.runeEnv, of);
++            },
++            equipLearnElement: (name: string): void => {
++              const elem = (ELEM as Record<string, number>)[name];
++              if (elem !== undefined) equipLearnElement(p(), state.runeEnv, elem);
++            },
++            resistMessage: (): void => msg("You resist the effect!"),
++          });
++        },
+       });
+     },
+ 
+diff --git a/packages/core/src/game/player-turn.ts b/packages/core/src/game/player-turn.ts
+index 06a6cbbb1..b9a82f467 100644
+--- a/packages/core/src/game/player-turn.ts
++++ b/packages/core/src/game/player-turn.ts
+@@ -33,7 +33,7 @@ import { monsterIsCamouflaged, monsterIsObvious } from "../mon/predicate";
+ import { monsterWake } from "../mon/take-hit";
+ import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed";
+ import { equipLearnFlag, equipLearnOnMeleeAttack } from "../obj/knowledge";
+-import { playerClearTimed } from "../player/timed";
++import { playerClearTimed, playerTimedGradeEq } from "../player/timed";
+ import type { GameState, PlayerCommand } from "./context";
+ import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context";
+ import { gearGet } from "./gear";
+@@ -489,6 +489,15 @@ export function holdAction(state: GameState, _cmd: PlayerCommand): number {
+   return state.z.moveEnergy;
+ }
+ 
++/**
++ * sleep (do_cmd_sleep, cmd-cave.c:1675): spend a full turn doing nothing.
++ * process_player injects CMD_SLEEP when the player is paralyzed or Knocked Out
++ * (game-world.c:965-968).
++ */
++export function sleepAction(state: GameState, _cmd: PlayerCommand): number {
++  return state.z.moveEnergy;
++}
++
+ /**
+  * descend / ascend: signal a level change (player->upkeep->generate_level).
+  * The actual level generation and depth change are DEFERRED to the world
+@@ -542,6 +551,7 @@ export function createDefaultRegistry(): ActionRegistry {
+   reg.register("jump", jumpAction);
+   reg.register("hold", holdAction);
+   reg.register("rest", holdAction);
++  reg.register("sleep", sleepAction);
+   reg.register("descend", descendAction);
+   reg.register("ascend", ascendAction);
+   for (const code of STUBBED_COMMANDS) reg.register(code, stubAction);
+@@ -588,6 +598,22 @@ export function processPlayer(
+   do {
+     if (state.isDead || state.generateLevel) break;
+ 
++    /* Paralyzed or Knocked Out player gets no turn (game-world.c:965-968):
++     * inject CMD_SLEEP so a full-energy no-op is spent and nextCommand is
++     * never consulted. Ordering matches C: after the detect-ore block (not
++     * yet in the port), before command prep / cmdq_pop. */
++    {
++      const p = state.actor.player;
++      const stunEff = state.world?.timedTable?.[TMD.STUN];
++      const knockedOut =
++        stunEff !== undefined &&
++        playerTimedGradeEq(p, stunEff, "Knocked Out");
++      if ((p.timed[TMD.PARALYZED] ?? 0) > 0 || knockedOut) {
++        if (!state.cmdQueue) state.cmdQueue = [];
++        state.cmdQueue.push({ code: "sleep" });
++      }
++    }
++
+     /* Drain the internal queue (cmdq) first - self-continuing commands like
+      * running push their follow-up there - then ask the injected provider. */
+     const cmd =
+diff --git a/packages/core/src/session/game.ts b/packages/core/src/session/game.ts
+index 98f3c34f8..9e4d9ac4e 100644
+--- a/packages/core/src/session/game.ts
++++ b/packages/core/src/session/game.ts
+@@ -155,8 +155,16 @@ import { markNoscore, NOSCORE } from "../game/wizard";
+ import type { WizardDeps } from "../game/wizard";
+ import { createTownStores, storeUpdate, storeWillBuy } from "../store/store";
+ import type { Store, StoreMaintContext } from "../store/store";
+-import { storeBuy, storeSell, storeSellFloor } from "../store/transact";
++import {
++  homeCarry,
++  homeRetrieve,
++  homeStash,
++  storeBuy,
++  storeSell,
++  storeSellFloor,
++} from "../store/transact";
+ import type { BuyResult, SellResult } from "../store/transact";
++import { storeCheckNum } from "../store/store";
+ import { priceItem } from "../store/price";
+ import {
+   formatMonsterMessage,
+@@ -184,7 +192,14 @@ import type { MakeDeps } from "../obj/make";
+ import { monsterDeath, installNonplayerHitDeps } from "../game/mon-death";
+ import type { MonsterDeathDeps } from "../game/mon-death";
+ import type { ProjectFeatEnv } from "../game/project-feat";
+-import { newGear, outfitPlayer, gearGet, calcInventory, minusAc as applyMinusAc } from "../game/gear";
++import {
++  newGear,
++  outfitPlayer,
++  gearGet,
++  calcInventory,
++  minusAc as applyMinusAc,
++  objectCopyAmt,
++} from "../game/gear";
+ import { objectValue as computeObjectValue } from "../obj/value";
+ import type { GameObject, CurseTimedFoil } from "../obj/object";
+ import { buildCurseTimedFoil } from "../obj/object";
+@@ -2523,11 +2538,52 @@ function makeStoreApi(
+   });
+   return {
+     buy: (store, obj, amt): BuyResult => {
++      /* do_cmd_retrieve (store.c:1783): Home Take is free - no price, no
++       * ORIGIN_STORE, no shuffle/maint RNG. Reuse the existing homeRetrieve. */
++      if (store.feat === FEAT.HOME) {
++        const r = homeRetrieve(store, obj, amt, state.gear, reg.constants);
++        if (!r.ok) {
++          return {
++            ok: false,
++            failure: r.failure === "no-room" ? "no-room" : "not-in-stock",
++          };
++        }
++        refreshQuiver();
++        return r.obj
++          ? { ok: true, price: 0, bought: r.obj }
++          : { ok: true, price: 0 };
++      }
+       const result = storeBuy(storeCtx(), store, obj, amt, state.actor.player, state.gear, txnKnow(obj));
+       if (result.ok) refreshQuiver();
+       return result;
+     },
+     sell: (store, handle, amt): SellResult => {
++      /* do_cmd_stash (store.c:2009): Home Drop is free, pack-style stacking,
++       * no value gate / note-fuel-timeout rewrite. Reuse homeStash/homeCarry. */
++      if (store.feat === FEAT.HOME) {
++        const r = homeStash(
++          store,
++          handle,
++          amt,
++          state.actor.player,
++          state.gear,
++          reg.constants,
++        );
++        if (!r.ok) {
++          return {
++            ok: false,
++            failure: r.failure ?? "no-item",
++          };
++        }
++        refreshQuiver();
++        return {
++          ok: true,
++          price: 0,
++          ...(r.obj ? { sold: r.obj } : {}),
++          ...(r.noneLeft !== undefined ? { noneLeft: r.noneLeft } : {}),
++          carried: true,
++        };
++      }
+       const obj = state.gear.store.get(handle);
+       const know = obj
+         ? txnKnow(obj)
+@@ -2543,6 +2599,24 @@ function makeStoreApi(
+       return result;
+     },
+     sellFloor: (store, obj, amt): SellResult => {
++      /* Home Drop from the floor pile: room check, detach, home_carry. */
++      if (store.feat === FEAT.HOME) {
++        const n = Math.min(amt, obj.number);
++        const dummy = objectCopyAmt(obj, n);
++        if (!storeCheckNum(store, dummy)) {
++          return { ok: false, failure: "no-room" };
++        }
++        const { usable, noneLeft } = floorObjectForUse(state, obj, n);
++        homeCarry(store, usable, reg.constants);
++        refreshQuiver();
++        return {
++          ok: true,
++          price: 0,
++          sold: usable,
++          noneLeft,
++          carried: true,
++        };
++      }
+       const result = storeSellFloor(
+         storeCtx(),
+         store,
+diff --git a/packages/web/src/pack.ts b/packages/web/src/pack.ts
+index 44494c55f..7bcc55075 100644
+--- a/packages/web/src/pack.ts
++++ b/packages/web/src/pack.ts
+@@ -382,6 +382,7 @@ export function loadGamePack(): GamePack {
+     trap: records("trap"),
+     names: records("names"),
+     store: records("store"),
++    quest: records("quest"),
+     uiKnowledge: records("ui_knowledge"),
+     obj: {
+       objectBase: composedFile("object_base"),
+diff --git a/packages/web/src/shop.ts b/packages/web/src/shop.ts
+index 093285592..bcefb60e9 100644
+--- a/packages/web/src/shop.ts
++++ b/packages/web/src/shop.ts
+@@ -746,7 +746,9 @@ export async function runStore(
+      * shops only (the Home retrieves via do_cmd_retrieve, no comment). Logged so
+      * the "You bought ..." line remains the message shown on row 0. */
+     if (!isHome && flavorOneIn(3)) say(flavorPick(COMMENT_ACCEPT));
+-    storeSay(`You bought ${bought} for ${result.price} gold.`);
++    /* do_cmd_retrieve is free and silent about gold; real shops report the sale. */
++    if (isHome) storeSay(`You have ${bought}.`);
++    else storeSay(`You bought ${bought} for ${result.price} gold.`);
+     refreshStock();
+   };
+ 

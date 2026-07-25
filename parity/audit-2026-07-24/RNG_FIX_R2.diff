@@ -1,0 +1,1502 @@
+diff --git a/packages/core/src/game/mon-cmd.ts b/packages/core/src/game/mon-cmd.ts
+index d7b65d927..43ee7dd6c 100644
+--- a/packages/core/src/game/mon-cmd.ts
++++ b/packages/core/src/game/mon-cmd.ts
+@@ -18,8 +18,9 @@
+  * monster-target side effects reduce to their damage).
+  */
+ 
+-import { FEAT, MON_MSG, MON_TMD, RF, TMD } from "../generated";
++import { FEAT, MON_MSG, MON_TMD, MSG, RF, TMD } from "../generated";
+ import { MDESC, MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc";
++import type { BlowMethod } from "../mon/types";
+ import { formatMonsterMessage } from "./mon-message";
+ import { DDGRID, loc, locSum } from "../loc";
+ import type { Loc } from "../loc";
+@@ -35,6 +36,7 @@ import {
+ import { monSpellIsInnate } from "../mon/spell";
+ import { STUN_DAM_REDUCTION } from "../combat/hit";
+ import {
++  adjustDamArmor,
+   chanceOfMonsterHit,
+   checkHit,
+   monsterCritical,
+@@ -48,6 +50,128 @@ import { chooseAttackSpell } from "./mon-ranged";
+ import { squareDoorPower, squareSetDoorLock } from "./trap";
+ import type { TrapDeps } from "./trap";
+ 
++/** Trailing punct that suppresses MDESC_COMMA after {target} (mon-blows.c L76). */
++const BLOW_PUNCT = ".!?;:,'";
++
++/**
++ * display_blow_message_vs_monster (mon-blows.c L225) + monster_blow_method_action
++ * with midx > 0 (L74-152): draw randint0(num_messages), substitute mon-target
++ * tags, emit "m_name act." through the game sink with method->msgt sound.
++ */
++function displayBlowMessageVsMonster(
++  state: GameState,
++  method: BlowMethod,
++  mName: string,
++  tMon: Monster,
++): void {
++  const n = method.messages.length;
++  if (n === 0) return;
++  const choice = state.rng.randint0(n);
++  const raw = method.messages[choice] ?? method.messages[0]!;
++  /* Resolve {target}/{oftarget}/{has} for a monster target (midx > 0). */
++  let act = "";
++  let i = 0;
++  while (i < raw.length) {
++    const open = raw.indexOf("{", i);
++    if (open < 0) {
++      act += raw.slice(i);
++      break;
++    }
++    act += raw.slice(i, open);
++    const close = raw.indexOf("}", open + 1);
++    if (close < 0) {
++      act += raw.slice(open);
++      break;
++    }
++    const tag = raw.slice(open + 1, close);
++    const after = raw[close + 1] ?? "";
++    if (tag === "target") {
++      let mode = MDESC_TARG;
++      if (!BLOW_PUNCT.includes(after)) mode |= MDESC.COMMA;
++      act += monsterDesc(tMon, mode);
++    } else if (tag === "oftarget") {
++      act += monsterDesc(tMon, MDESC_TARG | MDESC.POSS);
++    } else if (tag === "has") {
++      act += "has";
++    } else {
++      act += raw.slice(open, close + 1);
++    }
++    i = close + 1;
++  }
++  const fullstop = act.endsWith("'") || act.endsWith("!") ? "" : ".";
++  state.msg?.(`${mName} ${act}${fullstop}`);
++  /* msgt(method->msgt, ...) (mon-blows.c L236): the blow sound channel. */
++  if (method.msgt) {
++    state.sound?.((MSG as Record<string, number>)[method.msgt] ?? 0);
++  }
++}
++
++/**
++ * monster_elemental_damage (mon-blows.c L311): mon-target elemental component
++ * (no RNG). Returns the elemental damage and die-message code.
++ */
++function monsterElementalDamage(
++  tMon: Monster,
++  type: "ACID" | "ELEC" | "FIRE" | "COLD" | "POIS",
++  baseDamage: number,
++): { damage: number; dieMsg: number } {
++  let immFlag: number | null = null;
++  let hurtFlag: number | null = null;
++  let dieMsg: number = MON_MSG.DIE;
++
++  switch (type) {
++    case "ACID":
++      immFlag = RF.IM_ACID;
++      break;
++    case "ELEC":
++      immFlag = RF.IM_ELEC;
++      break;
++    case "FIRE":
++      immFlag = RF.IM_FIRE;
++      hurtFlag = RF.HURT_FIRE;
++      dieMsg = MON_MSG.DISINTEGRATES;
++      break;
++    case "COLD":
++      immFlag = RF.IM_COLD;
++      hurtFlag = RF.HURT_COLD;
++      dieMsg = MON_MSG.FREEZE_SHATTER;
++      break;
++    case "POIS":
++      immFlag = RF.IM_POIS;
++      break;
++  }
++
++  if (immFlag !== null && tMon.race.flags.has(immFlag)) {
++    return { damage: Math.trunc(baseDamage / 9), dieMsg: MON_MSG.DIE };
++  }
++  if (hurtFlag !== null && tMon.race.flags.has(hurtFlag)) {
++    return { damage: baseDamage * 2, dieMsg };
++  }
++  return { damage: baseDamage, dieMsg: MON_MSG.DIE };
++}
++
++/** mon_take_nonplayer_hit-shaped damage + death message. */
++function applyMonVsMonHit(
++  state: GameState,
++  tMon: Monster,
++  damage: number,
++  dieMsg: number,
++): boolean {
++  const res = monTakeHit(state.rng, tMon, damage, "", {
++    ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
++    primaryGroupSize: () => monsterPrimaryGroupSize(state, tMon),
++  });
++  if (res.died) {
++    if (monsterIsVisible(tMon)) {
++      const text = formatMonsterMessage(tMon, dieMsg);
++      if (text) state.msg?.(text);
++    }
++    deleteMonster(state, tMon.midx);
++    return true;
++  }
++  return false;
++}
++
+ /**
+  * get_commanded_monster (mon-util.c L182): the (single) monster under the
+  * player's command, or null.
+@@ -65,8 +189,9 @@ export function getCommandedMonster(state: GameState): Monster | null {
+  * monster_attack_monster (mon-attack.c L765): the commanded monster's
+  * blows against another monster - hit vs the target's racial AC, the
+  * stun-reduced damage, the critical-tier stun, and death without player
+- * experience (mon_take_nonplayer_hit). Returns false only for
+- * RF_NEVER_BLOW.
++ * experience (mon_take_nonplayer_hit). Per-handler draw ORDER/COUNT matches
++ * mon-blows.c (timed amount before message; elemental skips message when
++ * final damage is 0). Returns false only for RF_NEVER_BLOW.
+  */
+ export function monsterAttackMonster(
+   state: GameState,
+@@ -113,30 +238,101 @@ export function monsterAttackMonster(
+       damage = Math.trunc((damage * (100 - STUN_DAM_REDUCTION)) / 100);
+     }
+ 
+-    /* Apply the damage (mon_take_nonplayer_hit: death without player
+-     * experience; the monster-target blow side effects reduce to it). */
+-    if (damage > 0) {
+-      const res = monTakeHit(state.rng, tMon, damage, "", {
+-        /* become_aware: a commanded monster's blow can reveal a camouflaged
+-         * target, same as any other monster-vs-monster hit. */
+-        ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
+-        /* The fear roll's per-member group save (mon-predicate.c L296). */
+-        primaryGroupSize: () => monsterPrimaryGroupSize(state, tMon),
+-      });
+-      if (res.died) {
+-        /* add_monster_message(t_mon, MON_MSG_DIE): the MON_MSG grammar. */
+-        if (monsterIsVisible(tMon)) {
+-          const text = formatMonsterMessage(tMon, MON_MSG.DIE);
+-          if (text) state.msg?.(text);
++    const method = blow.method;
++    const ac = tMon.race.ac;
++
++    /*
++     * Per-handler order (mon-blows.c):
++     * - timed: randint1 amount BEFORE display_blow_message (arg eval)
++     * - EXP_*: damroll(N,6) before message (arg eval; amount unused mon-side)
++     * - elemental: message+hit only when final damage > 0
++     * - HURT/SHATTER: adjust_dam_armor then message+hit
++     * - NONE: message only
++     */
++    let timedKey: number | null = null;
++    let timedAmount = 0;
++    if (effectName === "BLIND") {
++      timedKey = MON_TMD.STUN;
++      timedAmount = 10 + state.rng.randint1(rlev);
++    } else if (effectName === "CONFUSE") {
++      timedKey = MON_TMD.CONF;
++      timedAmount = 3 + state.rng.randint1(rlev);
++    } else if (effectName === "TERRIFY") {
++      timedKey = MON_TMD.FEAR;
++      timedAmount = 3 + state.rng.randint1(rlev);
++    } else if (effectName === "PARALYZE") {
++      timedKey = MON_TMD.HOLD;
++      timedAmount = 3 + state.rng.randint1(rlev);
++    }
++
++    if (
++      effectName === "EXP_10" ||
++      effectName === "EXP_20" ||
++      effectName === "EXP_40" ||
++      effectName === "EXP_80"
++    ) {
++      const n =
++        effectName === "EXP_10"
++          ? 10
++          : effectName === "EXP_20"
++            ? 20
++            : effectName === "EXP_40"
++              ? 40
++              : 80;
++      void state.rng.damroll(n, 6);
++    }
++
++    let finalDamage = damage;
++    let dieMsg: number = MON_MSG.DIE;
++
++    if (effectName === "NONE") {
++      displayBlowMessageVsMonster(state, method, name, tMon);
++    } else if (
++      effectName === "ACID" ||
++      effectName === "ELEC" ||
++      effectName === "FIRE" ||
++      effectName === "COLD" ||
++      effectName === "POISON"
++    ) {
++      const elemType =
++        effectName === "POISON"
++          ? "POIS"
++          : (effectName as "ACID" | "ELEC" | "FIRE" | "COLD");
++      const physical = method.phys ? adjustDamArmor(damage, ac + 50) : 0;
++      const el = monsterElementalDamage(tMon, elemType, damage);
++      finalDamage = physical > el.damage ? physical : el.damage;
++      dieMsg = el.dieMsg;
++      if (finalDamage > 0) {
++        displayBlowMessageVsMonster(state, method, name, tMon);
++        if (applyMonVsMonHit(state, tMon, finalDamage, dieMsg)) continue;
++      }
++    } else {
++      if (effectName === "HURT" || effectName === "SHATTER") {
++        finalDamage = adjustDamArmor(damage, ac);
++      }
++      displayBlowMessageVsMonster(state, method, name, tMon);
++      if (applyMonVsMonHit(state, tMon, finalDamage, dieMsg)) continue;
++
++      if (timedKey !== null && state.monsters[tMon.midx]) {
++        monIncTimed(state.rng, tMon, timedKey, timedAmount, 0);
++      }
++
++      /* SHATTER knockback chance (mon-blows.c L1105-1107); thrust deferred. */
++      if (
++        effectName === "SHATTER" &&
++        finalDamage > 100 &&
++        state.monsters[tMon.midx]
++      ) {
++        const value = finalDamage - 100;
++        if (state.rng.randint1(value) > 40) {
++          /* thrust_away deferred for mon-vs-mon; draw matches C. */
+         }
+-        deleteMonster(state, tMon.midx);
+-        continue;
+       }
+     }
+ 
+     /* Handle stun (the critical tiers). */
+-    if (blow.method.stun && squareMonster(state, grid)) {
+-      const tier = monsterCritical(state.rng, diceRv, rlev, damage);
++    if (method.stun && squareMonster(state, grid)) {
++      const tier = monsterCritical(state.rng, diceRv, rlev, finalDamage);
+       let amt = 0;
+       switch (tier) {
+         case 0:
+diff --git a/packages/core/src/gen/cave.ts b/packages/core/src/gen/cave.ts
+index c487aa95a..baa2c625b 100644
+--- a/packages/core/src/gen/cave.ts
++++ b/packages/core/src/gen/cave.ts
+@@ -69,6 +69,7 @@ import {
+   pickAndPlaceDistantMonster,
+   placeClosedDoor,
+   placeRandomDoor,
++  placeTrap,
+   randDir,
+   setMarkedGranite,
+   shuffle,
+@@ -610,8 +611,9 @@ function tryDoor(g: Gen, grid: Loc): void {
+   if (g.rng.randint0(100) < g.profileTun.jct && possibleDoorway(g, grid)) {
+     placeRandomDoor(g, grid);
+   } else if (g.rng.randint0(500) < g.profileTun.jct && possibleDoorway(g, grid)) {
+-    /* place_trap deferred: record the grid. */
+-    g.markTrap(grid);
++    /* place_trap(c, grid, -1, c->depth) (gen-cave.c:830-833): pick_trap +
++     * randcalc power on the generation stream, not a bare markTrap. */
++    placeTrap(g, grid);
+   }
+ }
+ 
+diff --git a/packages/core/src/obj/flavor.test.ts b/packages/core/src/obj/flavor.test.ts
+index 7a08b7fc5..9c4ef3ebe 100644
+--- a/packages/core/src/obj/flavor.test.ts
++++ b/packages/core/src/obj/flavor.test.ts
+@@ -38,8 +38,9 @@ const objPack: ObjPackJson = {
+ const namesJson = loadJson<{
+   records: Array<{ section: number; word: string[] }>;
+ }>("names");
++/* Match bindCore: names.txt words are prepended in C; reverse per section. */
+ const nameSections = new Map<number, string[]>();
+-for (const rec of namesJson.records) nameSections.set(rec.section, rec.word);
++for (const rec of namesJson.records) nameSections.set(rec.section, [...rec.word].reverse());
+ 
+ function buildReg(): ObjRegistry {
+   return new ObjRegistry(objPack);
+diff --git a/packages/core/src/obj/flavor.ts b/packages/core/src/obj/flavor.ts
+index cb2849135..a69540863 100644
+--- a/packages/core/src/obj/flavor.ts
++++ b/packages/core/src/obj/flavor.ts
+@@ -158,8 +158,10 @@ export function flavorInit(
+   }
+ 
+   /* flavor_assign_random (L76): give each still-unflavoured kind of `tval` a
+-   * random one of that tval's still-unassigned flavours. Iterating kinds in
+-   * kidx order and flavours in file order reproduces the upstream draw order.
++   * random one of that tval's still-unassigned flavours. Kinds walk in kidx
++   * order. Flavours walk REVERSE file order: C prepends into a linked list
++   * (init.c:4239-4270), so head = last parsed and choice=0 selects the last
++   * remaining random flavour of that tval in file order (obj-util.c:76-112).
+    * `titleFor` supplies the scroll title (flavour text) when relevant. */
+   const assignRandom = (
+     tval: number,
+@@ -175,7 +177,8 @@ export function flavorInit(
+         throw new Error(`flavor_init: not enough flavors for tval ${tval}`);
+       }
+       let choice = rng.randint0(flavorCount);
+-      for (const w of work) {
++      for (let fi = work.length - 1; fi >= 0; fi--) {
++        const w = work[fi]!;
+         if (w.flavor.tval !== tval || w.sval !== SV_UNKNOWN) continue;
+         if (choice === 0) {
+           w.sval = kind.sval;
+diff --git a/packages/core/src/rng.ts b/packages/core/src/rng.ts
+index 7baf0956a..ca0bc444e 100644
+--- a/packages/core/src/rng.ts
++++ b/packages/core/src/rng.ts
+@@ -396,17 +396,24 @@ export class Rng {
+     };
+   }
+ 
+-  /** Restore a snapshot taken with getState(). */
++  /**
++   * Restore a snapshot taken with getState() (or a savefile rd_randomizer).
++   * Matches load.c L388-415: state_i is reduced modulo RAND_DEG and
++   * Rand_quick is forced false so the WELL stream continues (never the
++   * simple LCRNG). Fixed/fixval are not part of the C save block; they
++   * remain as restored for the port's test/debug seams only when present.
++   */
+   setState(s: RngState): void {
+     if (s.state.length !== RAND_DEG) {
+       throw new RangeError(
+         `RngState.state must have ${RAND_DEG} entries, got ${s.state.length}`,
+       );
+     }
+-    this.quick = s.quick;
+     this.value = s.value >>> 0;
+     this.state = Uint32Array.from(s.state);
+-    this.stateI = s.stateI;
++    /* for safety, make sure state_i < RAND_DEG (load.c L399-400) */
++    this.stateI = ((s.stateI % RAND_DEG) + RAND_DEG) % RAND_DEG;
++    this.quick = false;
+     this.fixed = s.fixed;
+     this.fixval = s.fixval;
+   }
+diff --git a/packages/core/src/session/boot.ts b/packages/core/src/session/boot.ts
+index fc8d03b03..99834d268 100644
+--- a/packages/core/src/session/boot.ts
++++ b/packages/core/src/session/boot.ts
+@@ -16,6 +16,7 @@
+ import { bindConstants } from "../constants";
+ import type { Constants, ConstantsJson } from "../constants";
+ import { Rng } from "../rng";
++import type { RngState } from "../rng";
+ import type { Loc } from "../loc";
+ import type { Chunk } from "../world/chunk";
+ import { FeatureRegistry } from "../world/feature";
+@@ -44,7 +45,7 @@ import { createDungeonProfiles } from "../gen/cave";
+ import type { DungeonProfiles, DunProfileRecordJson } from "../gen/cave";
+ import { generateLevel } from "../gen/generate";
+ import type { GenDeps, GenerateOptions } from "../gen/generate";
+-import type { MonPlaceDeps, PlacedMonster, PlacedObject } from "../gen/util";
++import type { GenTrap, MonPlaceDeps, PlacedMonster, PlacedObject } from "../gen/util";
+ import { bindProjections } from "../world/projection";
+ import type { ProjectionInfo, ProjectionRecordJson } from "../world/projection";
+ import { bindTraps } from "../world/trap";
+@@ -93,6 +94,12 @@ export interface CorePack {
+    * every known monster falls into the "***Unclassified***" catch-all.
+    */
+   uiKnowledge?: UiKnowledgeRecordJson[];
++  /**
++   * hints.json (shopkeeper tip strings, ui-store.c hints). Optional; without
++   * it prt_welcome skips the one_in_(3) hint branch and its main-stream draws.
++   * Records use the compiled "H" field (or "text" after some compose paths).
++   */
++  hints?: Array<{ H?: string; text?: string }>;
+ }
+ 
+ /** One names.txt section: a list of lowercase words under a section index. */
+@@ -130,6 +137,12 @@ export interface CoreRegistries {
+    * Empty when the pack ships no ui_knowledge.json.
+    */
+   monsterCategories: MonsterCategory[];
++  /**
++   * Shopkeeper tip strings (hints.txt / hints.json), in file order. Empty when
++   * the pack ships no hints.json. ui-store.c prt_welcome draws against this
++   * list when non-empty.
++   */
++  hints: readonly string[];
+ }
+ 
+ /** Bind a parsed pack into the full set of runtime registries. */
+@@ -145,13 +158,21 @@ export function bindCore(pack: CorePack): CoreRegistries {
+   const profiles = createDungeonProfiles(pack.dungeonProfiles);
+   const projections = pack.projection ? bindProjections(pack.projection) : null;
+   const traps = pack.trap ? bindTraps(pack.trap) : null;
++  /* names.txt words are prepended in C (init.c:1476); reverse each section so
++   * index 0 is the last word in file order (matches name_sections lookup). */
+   const nameSections = new Map<number, string[]>();
+   for (const rec of pack.names ?? []) {
+-    nameSections.set(rec.section, rec.word);
++    nameSections.set(rec.section, [...rec.word].reverse());
+   }
+   const stores = pack.store ? new StoreRegistry(pack.store, objects) : null;
+   const quests = pack.quest ? bindQuests(pack.quest, monsters) : [];
+   const monsterCategories = bindMonsterCategories(pack.uiKnowledge ?? []);
++  /* hints.txt: each H: line becomes a tip string (init.c parse_hints). */
++  const hints: string[] = [];
++  for (const rec of pack.hints ?? []) {
++    const text = rec.H ?? rec.text;
++    if (text) hints.push(text);
++  }
+   return {
+     constants,
+     features,
+@@ -165,6 +186,7 @@ export function bindCore(pack: CorePack): CoreRegistries {
+     stores,
+     quests,
+     monsterCategories,
++    hints,
+   };
+ }
+ 
+@@ -213,6 +235,8 @@ export function genDeps(
+     profiles: reg.profiles,
+     objDeps,
+     monDeps,
++    /* place_trap draws pick_trap + power into the gen stream (trap.c:356-394). */
++    trapKinds: reg.traps,
+   };
+ }
+ 
+@@ -220,6 +244,18 @@ export function genDeps(
+ export interface BootLevelOptions {
+   /** RNG seed. Provide a real one; defaults to 1 for reproducible tests. */
+   seed?: number;
++  /**
++   * An already-advanced main-game RNG instance (Decision 6.2). When present,
++   * bootLevel continues from this stream instead of `new Rng(seed)`. Used so
++   * birth UI draws and seed_randart share the same stream level gen continues.
++   */
++  rng?: Rng;
++  /**
++   * Snapshot to install on a fresh Rng(seed) before any draws (post-birth
++   * reload: continue the stream the birth UI advanced). Ignored when `rng` is
++   * supplied.
++   */
++  rngState?: RngState;
+   /** Dungeon depth (0 = town). Default 1. */
+   depth?: number;
+   /** Place monsters and objects. Default true. */
+@@ -247,6 +283,11 @@ export interface BootedLevel {
+   objects: readonly PlacedObject[];
+   /** Grids generation marked for player traps (instantiated at start). */
+   trapGrids: readonly Loc[];
++  /**
++   * Traps whose kind and power were chosen at generation (place_trap). When
++   * present, populate materializes these without a second pick/power draw.
++   */
++  traps: readonly GenTrap[];
+   /** Doors generation rolled locked (grid + lock power). */
+   lockedDoors: readonly { grid: Loc; power: number }[];
+   rng: Rng;
+@@ -262,7 +303,8 @@ export interface BootedLevel {
+ export function bootLevel(pack: CorePack, opts: BootLevelOptions = {}): BootedLevel {
+   const registries = opts.registries ?? bindCore(pack);
+   const depth = opts.depth ?? 1;
+-  const rng = new Rng(opts.seed ?? 1);
++  const rng = opts.rng ?? new Rng(opts.seed ?? 1);
++  if (!opts.rng && opts.rngState) rng.setState(opts.rngState);
+   const deps = genDeps(
+     registries,
+     opts.placeContent ?? true,
+@@ -277,6 +319,7 @@ export function bootLevel(pack: CorePack, opts: BootLevelOptions = {}): BootedLe
+     monsters: g.monsters,
+     objects: g.objects,
+     trapGrids: [...g.trapGrids].map((i) => iToGrid(i, g.c.width)),
++    traps: g.traps,
+     lockedDoors: g.lockedDoors,
+     rng,
+     registries,
+diff --git a/packages/core/src/session/game.ts b/packages/core/src/session/game.ts
+index 9e4d9ac4e..77245ce88 100644
+--- a/packages/core/src/session/game.ts
++++ b/packages/core/src/session/game.ts
+@@ -131,6 +131,7 @@ import { installSteal } from "../game/steal";
+ import type { ChestCmdDeps } from "../game/chest";
+ import {
+   calcUnlockingChance,
++  installTrap,
+   installTraps,
+   placeTrap,
+   squareDoorPower,
+@@ -1589,6 +1590,11 @@ interface LevelContent {
+   monsters: readonly { grid: Loc; mon: import("../mon/monster").Monster }[];
+   objects: readonly { grid: Loc; obj: import("../obj/object").GameObject }[];
+   trapGrids: readonly Loc[];
++  /**
++   * Kind+power chosen at generation (place_trap). Preferred over re-picking
++   * from trapGrids so the gen-stream draws are not spent twice (trap.c:356).
++   */
++  traps?: readonly { grid: Loc; tidx: number; power: number }[];
+   lockedDoors: readonly { grid: Loc; power: number }[];
+   depth: number;
+ }
+@@ -1636,11 +1642,22 @@ function populateFromLevel(
+     floorCarry(state, po.grid, po.obj);
+   }
+ 
+-  // Instantiate the generation-marked traps on the live cave (the random
+-  // pick happens here, exactly as place_trap) and the rolled door locks.
++  // Instantiate generation-marked traps on the live cave. When kind+power were
++  // chosen at gen time (level.traps), install without a second pick/power draw
++  // (trap.c:356-394). Every C place_trap site (including try_door) must record
++  // a GenTrap so populate never re-draws and never drops bare marker traps.
++  // Fall back to place_trap(-1) only when gen ran without trapKinds (unit tests
++  // with trapGrids only).
+   if (trapDeps) {
+-    for (const grid of level.trapGrids) {
+-      placeTrap(state, grid, -1, level.depth, trapDeps);
++    const descriptors = level.traps ?? [];
++    if (descriptors.length > 0) {
++      for (const t of descriptors) {
++        installTrap(state, t.grid, t.tidx, t.power, trapDeps);
++      }
++    } else {
++      for (const grid of level.trapGrids) {
++        placeTrap(state, grid, -1, level.depth, trapDeps);
++      }
+     }
+     for (const door of level.lockedDoors) {
+       squareSetDoorLock(state, door.grid, door.power, trapDeps);
+@@ -2062,6 +2079,7 @@ function makeChangeLevel(
+         monsters: g.monsters,
+         objects: g.objects,
+         trapGrids: [...g.trapGrids].map((i) => iToGrid(i, g.c.width)),
++        traps: g.traps,
+         lockedDoors: g.lockedDoors,
+         depth,
+       },
+@@ -2217,15 +2235,21 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
+     }
+   }
+ 
++  // Main game RNG (Decision 6.2): one stream for birth UI continuation
++  // (opts.rng / opts.rngState), seed_randart, level gen, player birth, and
++  // seed_flavor. C player-birth.c:1283-1291 draws seed_randart then
++  // seed_flavor from the same global Rand; a separate Rng(seed) for randarts
++  // desyncs the stream whenever birth_randarts is on.
++  const mainRng = opts.rng ?? new Rng(opts.seed ?? 1);
++  if (!opts.rng && opts.rngState) mainRng.setState(opts.rngState);
++
+   // OPT(player, birth_randarts) (obj-randart.c do_randart): replace the
+   // standard artifact set with a random one BEFORE the starting level is
+-  // generated, so its drops come from the randart set. The seed is derived
+-  // deterministically from the game seed (decision 22: a function of the seed)
+-  // and persisted so a reload reproduces the identical set. Off by default, so
+-  // the standard set and the existing draw order are untouched.
++  // generated, so its drops come from the randart set. seed_randart =
++  // randint0(0x10000000) on the main stream (player-birth.c:1285).
+   let randartSeed = 0;
+   if (options.get("birth_randarts")) {
+-    randartSeed = new Rng(opts.seed ?? 1).randint0(0x10000000);
++    randartSeed = mainRng.randint0(0x10000000);
+     swapRandartSet(
+       reg,
+       randartSeed,
+@@ -2242,6 +2266,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
+ 
+   const booted = bootLevel(pack, {
+     ...opts,
++    rng: mainRng,
+     registries: reg,
+     artifacts,
+     noArtifacts,
+@@ -2435,6 +2460,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
+       monsters: booted.monsters,
+       objects: booted.objects,
+       trapGrids: booted.trapGrids,
++      traps: booted.traps,
+       lockedDoors: booted.lockedDoors,
+       depth: booted.depth,
+     },
+@@ -3065,6 +3091,7 @@ export function loadGame(
+     monsters: [],
+     objects: [],
+     trapGrids: [],
++    traps: [],
+     lockedDoors: [],
+     rng,
+     registries: reg,
+diff --git a/packages/core/src/store/store.ts b/packages/core/src/store/store.ts
+index 7f80aa802..00f7268a7 100644
+--- a/packages/core/src/store/store.ts
++++ b/packages/core/src/store/store.ts
+@@ -97,8 +97,19 @@ export function storeChooseOwner(
+   return owner;
+ }
+ 
+-/** store_shuffle (L1493): swap in a different proprietor. */
++/**
++ * store_shuffle (L1493): swap in a different proprietor.
++ *
++ * C store.c:1497-1498 retries until the owner changes and assumes more than
++ * one owner. A one-owner table (accepted by the port's data model) would spin
++ * forever. Keep the multi-owner draw loop identical to C; terminate cleanly
++ * when there is only one owner (randint0(1) is a no-op on the WELL stream).
++ */
+ export function storeShuffle(rng: Rng, store: Store): void {
++  if (store.owners.length <= 1) {
++    if (store.owners.length === 1) store.owner = storeChooseOwner(rng, store);
++    return;
++  }
+   let o = store.owner;
+   while (o === store.owner) o = storeChooseOwner(rng, store);
+   store.owner = o;
+@@ -132,14 +143,20 @@ function townBooksOfTval(
+ }
+ 
+ /**
+- * Create a live Store from a bound definition, choosing a proprietor. When
+- * `reg`/`classes` are supplied, the bookseller's deferred town-book `always:`
+- * lines (bound.alwaysBookTvals) are expanded into the runtime alwaysTable so the
+- * shop actually stocks the town spellbooks (parse_always, store.c:208-231).
++ * Create a live Store from a bound definition. The proprietor is a provisional
++ * placeholder (owners[0]); store_reset assigns the real owner with a single
++ * randint0, matching C store_shuffle against a NULL initial owner (store.c
++ * L340-357, L1493-1501). When `reg`/`classes` are supplied, the bookseller's
++ * deferred town-book `always:` lines (bound.alwaysBookTvals) are expanded into
++ * the runtime alwaysTable so the shop stocks the town spellbooks
++ * (parse_always, store.c:208-231).
++ *
++ * `rng` is accepted for call-site compatibility but is not consumed here - the
++ * first owner draw happens in storeReset.
+  */
+ export function bindStoreRuntime(
+   bound: BoundStore,
+-  rng: Rng,
++  _rng: Rng,
+   storeInvenMax: number,
+   reg?: ObjRegistry,
+   classes?: readonly PlayerClass[],
+@@ -154,11 +171,13 @@ export function bindStoreRuntime(
+       }
+     }
+   }
++  const provisional = bound.owners[0];
++  if (!provisional) throw new Error(`store ${bound.featName} has no owners`);
+   return {
+     feat: bound.feat,
+     featName: bound.featName,
+     owners: bound.owners,
+-    owner: storeChooseOwner(rng, bound),
++    owner: provisional,
+     alwaysTable,
+     normalTable: bound.normalTable,
+     buy: bound.buy,
+@@ -661,11 +680,16 @@ export function storeUpdate(ctx: StoreMaintContext, daycount: number): void {
+ /**
+  * store_reset (L340): (re)initialise every non-home store's stock, running
+  * store_maint ten times to fill it. Home is left empty.
++ *
++ * Owner assignment matches C store_shuffle against a NULL initial owner: a
++ * single randint0(n_owners) per store, not a force-different re-draw (the port
++ * used to choose at bind and again in storeShuffle, over-drawing the stream).
++ * Later re-shuffles (store_update / empty-store) still use storeShuffle.
+  */
+ export function storeReset(ctx: StoreMaintContext): void {
+   for (const store of ctx.stores) {
+     store.stock = [];
+-    storeShuffle(ctx.rng, store);
++    store.owner = storeChooseOwner(ctx.rng, store);
+     if (store.feat === FEAT.HOME) continue;
+     for (let j = 0; j < 10; j++) storeMaint(ctx, store);
+   }
+diff --git a/packages/core/src/store/transact.test.ts b/packages/core/src/store/transact.test.ts
+index b9ccf6f16..b2e12c99d 100644
+--- a/packages/core/src/store/transact.test.ts
++++ b/packages/core/src/store/transact.test.ts
+@@ -446,8 +446,12 @@ describe("object_flavor_aware ignore fix at storeBuy/storeSell (#89)", () => {
+     /* ...and the #89 fix carried the ignore-while-unaware bit to "aware". */
+     expect(rec.awareIgnored).toEqual([item.kind.kidx]);
+     expect(rec.noticeRequests).toBe(1);
+-    /* RNG-free: becoming aware draws nothing from the shared stream. */
+-    expect(ctx.rng.getState()).toEqual(before);
++    /* Flavor awareness is RNG-free; the only stream draws are comment_accept
++     * (do_cmd_buy L1717: one_in_(3) then optional ONE_OF). */
++    const probe = new Rng(1);
++    probe.setState(before);
++    if (probe.oneIn(3)) probe.randint0(6);
++    expect(ctx.rng.getState()).toEqual(probe.getState());
+   });
+ 
+   it("storeSell fires the same ignore fix", () => {
+diff --git a/packages/core/src/store/transact.ts b/packages/core/src/store/transact.ts
+index 478acdf3a..180b5a37b 100644
+--- a/packages/core/src/store/transact.ts
++++ b/packages/core/src/store/transact.ts
+@@ -8,20 +8,20 @@
+  * cmd_get_arg_item / cmd_get_arg_number); here each is a plain function that
+  * takes the object (or a pack handle) and amount directly, so the headless
+  * core can run a transaction without the UI command layer. The economic and
+- * inventory effects are faithful; the UI-only parts (flavor comments via
+- * purchase_analyze, the EVENT_* signals, message text) are the caller's.
++ * inventory effects are faithful; the EVENT_* signals remain the caller's.
+  *
+  * LIVE vs DEFERRED (ledgered in parity/ledger/store-transact.yaml):
+  * - LIVE: the gold debit/credit, the pack-room gate (inven_carry_num), the
+  *   price (price_item), the buy decision (store_will_buy), the stack split /
+  *   excise (gear_object_for_use), store_carry / store_delete / store_check_num,
+  *   the empty-store restock (store_maint x10 with the shopkeeper-shuffle roll),
+- *   the ORIGIN_STORE stamp, the OF_STICKY "stuck" refusal, and home_carry.
++ *   the ORIGIN_STORE stamp, the OF_STICKY "stuck" refusal, home_carry, and the
++ *   comment_accept / purchase_analyze ONE_OF draws on the game RNG.
+  * - DEFERRED: the rune learn-on-transaction loop (object_learn_unknown_rune /
+  *   player_know_object -> the knowledge/display system, task #13); flavor
+  *   awareness IS applied when a FlavorKnowledge is supplied. The obj->known
+  *   twin, total_weight upkeep, autoinscription, and history_find/lose_artifact
+- *   are DEFERRED. purchase_analyze / comment_accept are UI (not ported).
++ *   are DEFERRED.
+  */
+ 
+ import type { Constants } from "../constants";
+@@ -101,6 +101,51 @@ export interface TxnKnowledge {
+ /** Why a purchase could not complete. */
+ export type BuyFailure = "not-in-stock" | "no-room" | "cannot-afford";
+ 
++/**
++ * purchase_analyze's verbal-reaction bucket (store.c L491-508): how the paid
++ * price compared to the item's real value and the store's apparent guess.
++ */
++export type SaleReaction = "worthless" | "bad" | "good" | "great";
++
++/** comment_accept (store.c L453-461): ONE_OF pool for a successful buy. */
++const COMMENT_ACCEPT = ["Okay.", "Fine.", "Accepted!", "Agreed!", "Done!", "Taken!"];
++
++/** purchase_analyze reaction arrays (store.c L435-479). */
++const COMMENT_WORTHLESS = [
++  "Arrgghh!",
++  "You bastard!",
++  "You hear someone sobbing...",
++  "The shopkeeper howls in agony!",
++  "The shopkeeper wails in anguish!",
++  "The shopkeeper beats his head against the counter.",
++];
++const COMMENT_BAD = [
++  "Damn!",
++  "You fiend!",
++  "The shopkeeper curses at you.",
++  "The shopkeeper glares at you.",
++];
++const COMMENT_GOOD = [
++  "Cool!",
++  "You've made my day!",
++  "The shopkeeper sniggers.",
++  "The shopkeeper giggles.",
++  "The shopkeeper laughs loudly.",
++];
++const COMMENT_GREAT = [
++  "Yipee!",
++  "I think I'll retire!",
++  "The shopkeeper jumps for joy.",
++  "The shopkeeper smiles gleefully.",
++  "Wow.  I'm going to name my new villa in your honour.",
++];
++const REACTION_COMMENTS: Record<SaleReaction, readonly string[]> = {
++  worthless: COMMENT_WORTHLESS,
++  bad: COMMENT_BAD,
++  good: COMMENT_GOOD,
++  great: COMMENT_GREAT,
++};
++
+ /** The outcome of storeBuy. */
+ export interface BuyResult {
+   ok: boolean;
+@@ -109,6 +154,12 @@ export interface BuyResult {
+   price?: number;
+   /** The object added to the player's pack (present on success). */
+   bought?: GameObject;
++  /**
++   * comment_accept line (do_cmd_buy L1717): set when one_in_(3) fires, drawn
++   * from the game RNG BEFORE any empty-store shuffle/maint so the stream order
++   * matches C. Absent when the Home retrieves or the roll fails.
++   */
++  acceptComment?: string;
+ }
+ 
+ /**
+@@ -172,6 +223,13 @@ export function storeBuy(
+   /* Give it to the player. */
+   invenCarry(gear, bought, packLimits(constants));
+ 
++  /* comment_accept (do_cmd_buy L1717): one_in_(3) then ONE_OF, BEFORE any
++   * empty-store shuffle/maint so the main stream matches C statement order. */
++  let acceptComment: string | undefined;
++  if (rng.oneIn(3)) {
++    acceptComment = COMMENT_ACCEPT[rng.randint0(COMMENT_ACCEPT.length)];
++  }
++
+   /* Remove the bought objects unless a readily-replaced staple. */
+   if (storeSaleShouldReduceStock(store, obj)) {
+     storeDelete(store, obj, amt);
+@@ -183,7 +241,7 @@ export function storeBuy(
+     }
+   }
+ 
+-  return { ok: true, price, bought };
++  return { ok: true, price, bought, ...(acceptComment ? { acceptComment } : {}) };
+ }
+ 
+ /* ------------------------------------------------------------------ */
+@@ -193,14 +251,6 @@ export function storeBuy(
+ /** Why a sale could not complete. */
+ export type SellFailure = "no-item" | "stuck" | "refused" | "no-room";
+ 
+-/**
+- * purchase_analyze's verbal-reaction bucket (store.c L491-508): how the paid
+- * price compared to the item's real value and the store's apparent guess. The
+- * numeric comparison lives here (deterministic, testable); the caller maps the
+- * bucket to a random comment_* line. null when no reaction fires (or selling).
+- */
+-export type SaleReaction = "worthless" | "bad" | "good" | "great";
+-
+ /** The outcome of storeSell. */
+ export interface SellResult {
+   ok: boolean;
+@@ -220,9 +270,15 @@ export interface SellResult {
+   /**
+    * purchase_analyze bucket (do_cmd_sell L1972): set on a successful non-Home
+    * sale when birth_no_selling is off. undefined for the Home, no-selling, or
+-   * when no reaction fires. The shell prints the matching comment_* flavor.
++   * when no reaction fires.
+    */
+   reaction?: SaleReaction;
++  /**
++   * ONE_OF(comment_*) line drawn from the game RNG when a reaction fires
++   * (purchase_analyze L491-508). The shell prints this; the draw is spent here
++   * so Math.random never touches the main stream.
++   */
++  reactionComment?: string;
+ }
+ 
+ /**
+@@ -344,13 +400,27 @@ function sellObject(
+ 
+   /* purchase_analyze (do_cmd_sell L1966-1972): only a real store reacts, and
+    * only when birth_no_selling is off (the no-selling branch just says "You had
+-   * ..."). value = object_value_real(sold, amt). */
+-  const reaction =
+-    store.feat !== FEAT.HOME && !know.noSelling
+-      ? purchaseAnalyze(price, objectValueReal(reg, sold, amt), guess)
+-      : undefined;
++   * ..."). value = object_value_real(sold, amt). ONE_OF(comment_*) draws from
++   * the game RNG at this position (store.c L495-507). */
++  let reaction: SaleReaction | undefined;
++  let reactionComment: string | undefined;
++  if (store.feat !== FEAT.HOME && !know.noSelling) {
++    reaction = purchaseAnalyze(price, objectValueReal(reg, sold, amt), guess);
++    if (reaction) {
++      const arr = REACTION_COMMENTS[reaction];
++      reactionComment = arr[rng.randint0(arr.length)];
++    }
++  }
+ 
+-  return { ok: true, price, sold, noneLeft, carried, ...(reaction ? { reaction } : {}) };
++  return {
++    ok: true,
++    price,
++    sold,
++    noneLeft,
++    carried,
++    ...(reaction ? { reaction } : {}),
++    ...(reactionComment ? { reactionComment } : {}),
++  };
+ }
+ 
+ /* ------------------------------------------------------------------ */
+diff --git a/packages/web/src/birth.test.ts b/packages/web/src/birth.test.ts
+index c9855fb70..f4be4b252 100644
+--- a/packages/web/src/birth.test.ts
++++ b/packages/web/src/birth.test.ts
+@@ -14,6 +14,7 @@ import { runBirth } from "./birth";
+ import type { GlyphTerm } from "./term";
+ import type { PlayerClass, PlayerRace } from "@neo-angband/core";
+ import {
++  Rng,
+   colorToCss,
+   COLOUR_L_BLUE,
+   COLOUR_WHITE,
+@@ -115,7 +116,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     // The race menu: the instruction header, the yellow hint at row 7, and the
+     // race column at RACE_COL=2 / TABLE_ROW=9.
+@@ -164,7 +165,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+     const seen: string[] = [];
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     const record = (): void => {
+       seen.push(term.snapshot().join("\n"));
+     };
+@@ -193,7 +194,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "b"); // pick Half-Elf
+     await tick();
+@@ -215,7 +216,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "Escape");
+     expect(await done).toBeNull();
+@@ -225,7 +226,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "a"); await tick(); // race Human
+     press(win, "a"); await tick(); // class Warrior
+@@ -248,7 +249,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "a"); await tick(); // race Human
+     press(win, "a"); await tick(); // class Warrior
+@@ -282,7 +283,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90, 24);
+-    const done = runBirth(term, RACES11, CLASSES);
++    const done = runBirth(term, RACES11, CLASSES, { rng: new Rng(1) });
+     await tick();
+     const snap = term.snapshot().join("\n");
+     // 11 races -> a,b,c,d,e,f,g,i,m,n,o (h/j/k/l skipped).
+@@ -305,7 +306,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     const snap = term.snapshot().join("\n");
+     expect(snap).not.toContain("Random");
+@@ -318,7 +319,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     // print_menu_instructions: title at (QUESTION_COL=2, HEADER_ROW=1) light blue.
+     expect(term.snapshot()[1]).toContain("Please select your character traits");
+@@ -338,7 +339,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "c"); // Dwarf
+     await tick();
+@@ -361,7 +362,7 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90); // wide enough for the untruncated centered prompt
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "a"); await tick(); // Human
+     press(win, "a"); await tick(); // Warrior
+@@ -393,7 +394,7 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "a"); await tick(); // Human
+     press(win, "a"); await tick(); // Warrior
+@@ -411,7 +412,7 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "a"); await tick();
+     press(win, "a"); await tick();
+@@ -436,7 +437,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, QUICK);
++    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
+     await tick();
+     expect(term.snapshot().join("\n")).toContain("Quick-start");
+     press(win, "a"); // use the previous character
+@@ -454,7 +455,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, {
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1),
+       quickstart: { raceName: "Dwarf", className: "Mage", stats: [17, 10, 10, 10, 16] },
+     });
+     await tick();
+@@ -475,7 +476,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, QUICK);
++    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
+     await tick();
+     press(win, "a"); // quickstart
+     await tick();
+@@ -490,7 +491,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, QUICK);
++    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
+     await tick();
+     press(win, "b"); // choose everything from scratch
+     await tick();
+@@ -505,7 +506,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { quickstart: null });
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1), quickstart: null });
+     await tick();
+     expect(term.snapshot().join("\n")).not.toContain("Quick-start");
+     expect(term.snapshot()[7]).toContain("Race affects stats");
+@@ -517,7 +518,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, QUICK);
++    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
+     await tick();
+     expect(term.snapshot().join("\n")).toContain("Quick-start");
+     // textui_birth_quickstart ('=', ui-birth.c:126): opens do_cmd_options_birth.
+@@ -541,7 +542,7 @@ describe("runBirth: standard roller screen (roller_command)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "a"); await tick(); // Human
+     press(win, "a"); await tick(); // Warrior
+@@ -567,7 +568,7 @@ describe("runBirth: standard roller screen (roller_command)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "a"); await tick(); // Human
+     press(win, "a"); await tick(); // Warrior
+@@ -587,7 +588,7 @@ describe("runBirth: menu_question '*' random and '@' finish", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "*"); // select a race at random (ui-birth.c:841)
+     await tick();
+@@ -626,6 +627,7 @@ describe("runBirth: menu_question '*' random and '@' finish", () => {
+       term,
+       RACES,
+       FULL_CLASSES as unknown as typeof CLASSES,
++      { rng: new Rng(1) },
+     );
+     await tick();
+     press(win, "@"); // finish with random choices (ui-birth.c:851)
+@@ -646,7 +648,7 @@ describe("runBirth: history-edit stage (get_history_command)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES, {
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1),
+       historyFor: () => "You are the only child of a Serf.",
+     });
+     await tick();
+@@ -667,7 +669,7 @@ describe("runBirth: history-edit stage (get_history_command)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     press(win, "a"); await tick(); // Human
+     press(win, "a"); await tick(); // Warrior
+@@ -686,7 +688,7 @@ describe("runBirth: per-row race/class stat detail (race_help/class_help)", () =
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES);
++    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+     await tick();
+     // race_help (ui-birth.c L241-302): the stat-adjustment table
+     // (stat_names_reduced) plus the skill_help block, drawn in the aux column.
+diff --git a/packages/web/src/birth.ts b/packages/web/src/birth.ts
+index 1a813f5e9..72bc5a452 100644
+--- a/packages/web/src/birth.ts
++++ b/packages/web/src/birth.ts
+@@ -24,11 +24,10 @@
+  *
+  * Standard roller (BR_NORMAL): the standardRoller screen (roller_command,
+  * ui-birth.c:872-999) rolls stats for display and supports reroll ('r'/space),
+- * previous-roll ('p') and accept (Enter). Rolling is the only place the shell
+- * draws RNG (from a throwaway per-birth Rng); the accepted natural stats ride
+- * the BirthChoice as `rolledStats` and are applied by generatePlayer's
+- * `rolledStats` option (see WIRING-NEEDED - bootGame must NOT feed them through
+- * the point-buy path).
++ * previous-roll ('p') and accept (Enter). Rolling draws from the shared game
++ * stream (opts.rng); the accepted natural stats ride the BirthChoice as
++ * `rolledStats` and are applied by generatePlayer's `rolledStats` option
++ * (bootGame must NOT feed them through the point-buy path).
+  *
+  * History (BIRTH_HISTORY_CHOICE): when the shell supplies get_history via
+  * BirthOpts.historyFor, the name stage is followed by an accept/edit-background
+@@ -136,6 +135,12 @@ export interface BirthDeps {
+ }
+ 
+ export interface BirthOpts {
++  /**
++   * Shared game RNG for random birth choices (ui-birth.c randint0 at L465/678/
++   * 696/842) and the standard roller. Required: omitting it throws so a missing
++   * stream cannot silently desync Decision 6.2. Tests inject `new Rng(1)`.
++   */
++  rng?: Rng;
+   /** BIRTH_QUICKSTART: the previous character's choices, offered as stage 0
+    * only when a prior character exists (quickstart_allowed). `stats` is the
+    * prior character's birth stats (save_roller_data); when present, quick-start
+@@ -1200,11 +1205,16 @@ export async function runBirth(
+   // The edited background (BIRTH_HISTORY_CHOICE), once the history stage runs.
+   let historyText: string | null = null;
+ 
+-  // The birth shell's one RNG source: the standard roller and the '*'/'@'
+-  // random choices. Seeded nondeterministically since these are interactive,
+-  // player-driven picks; the game seed (dungeon, drops) is unaffected because
+-  // the accepted stats ride the choice explicitly.
+-  const rollRng = new Rng(((Date.now() >>> 0) ^ 0x9e3779b9) >>> 0);
++  // The birth shell's RNG: standard roller and the '*'/'@' random choices.
++  // Must be the shared game stream (Decision 6.2 / ui-birth.c L678), never a
++  // Date.now-seeded generator or a silent Rng(1) fallback (that desyncs the
++  // stream when the shell forgets to inject). Tests and the shell must pass rng.
++  if (!opts.rng) {
++    throw new Error(
++      "runBirth: opts.rng is required (ui-birth.c advances the main game stream)",
++    );
++  }
++  const rollRng = opts.rng;
+ 
+   // Registry-backed info (race/class ability names + the full preview sheet).
+   // Absent, the help blocks still show stat + skill data (computable from the
+diff --git a/packages/web/src/main.ts b/packages/web/src/main.ts
+index 18eb6c509..2845380b5 100644
+--- a/packages/web/src/main.ts
++++ b/packages/web/src/main.ts
+@@ -387,6 +387,10 @@ const FORCE_NEW_KEY = "neo-angband-force-new";
+ // post-birth reload does not reopen the birth screen.
+ const BIRTH_KEY = "neo-angband-birth";
+ const BIRTH_DONE_KEY = "neo-angband-birth-done";
++// Post-birth RNG snapshot: ui-birth.c advances the main stream (* / @ / roller /
++// get_history); the reload that rebuilds the character restores this state so
++// startGame continues from the same stream position (Decision 6.2).
++const BIRTH_RNG_KEY = "neo-angband-birth-rng";
+ // The boot title/news screen shows on every genuine launch (main-win.c:5475:
+ // the GUI ports display news.txt and wait). Internal reloads that continue an
+ // already-made choice (New/Switch/resume-a-slot) set this one-shot flag so the
+@@ -578,9 +582,22 @@ function bootGame(): ReturnType<typeof startGame> {
+   // A genuine new character (forcedNew, or an empty roster with nothing to
+   // pick) gets an active slot now so its autosaves land.
+   if (!needsSelect && !getActiveId()) setActiveId(newCharId());
++  // Resume the main stream after the birth UI advanced it (ui-birth.c draws
++  // before level gen). Absent, start from seed as a normal new game.
++  let birthRngState: ReturnType<Rng["getState"]> | undefined;
++  try {
++    const raw = sessionStorage.getItem(BIRTH_RNG_KEY);
++    if (raw) {
++      birthRngState = JSON.parse(raw) as ReturnType<Rng["getState"]>;
++      sessionStorage.removeItem(BIRTH_RNG_KEY);
++    }
++  } catch {
++    /* storage disabled or corrupt: fall through to seed */
++  }
+   return startGame(pack, {
+     seed,
+     depth,
++    ...(birthRngState ? { rngState: birthRngState } : {}),
+     // The effective mod-rule flags (qol / bug-fixes tweaks) for this session:
+     // enabled mods' declared rules resolved against the player's saved choices.
+     // Empty => faithful core. Upstream OPTIONS are NOT set here - they ship in
+@@ -742,12 +759,12 @@ if (animator) {
+   }
+ }
+ 
+-// do_animation increments a uint8_t `flicker` counter each animation tick. We
+-// drive it off a display timer so shimmering never touches the deterministic
+-// game RNG. RF_ATTR_MULTI's randint1 uses this DISPLAY rng (Math.random), not
+-// state.rng, for the same reason (see parity/ledger/graphics-visuals.yaml).
++// do_animation increments a uint8_t `flicker` counter each animation tick.
++// RF_ATTR_MULTI draws randint1(BASIC_COLORS - 1) on the MAIN game RNG
++// (ui-display.c:1439-1446); Decision 6.2 requires that main-stream draw, not
++// Math.random. Flicker frame itself is display-only (no RNG).
+ let animFrame = 0;
+-const displayRandint1 = (n: number): number => 1 + Math.floor(Math.random() * n);
++const displayRandint1 = (n: number): number => state.rng.randint1(n);
+ 
+ // --- Optional graphics tiles (task C1: bundled upstream tilesets) -----------
+ // Four freely-licensed upstream packs ship under public/tiles/<dir>/ (see
+@@ -5892,18 +5909,22 @@ async function maybeBirth(): Promise<void> {
+     properties: players.properties,
+     elementNames,
+   };
++  // Birth UI draws from a clean Rng(seed) that becomes the main game stream
++  // after accept (ui-birth.c L465/678/696/842 + get_history L746-750 advance
++  // the same Rand that level gen continues). A separate Date.now or
++  // post-dungeon state.rng would desync Decision 6.2.
++  const birthRng = new Rng(seed);
+   const historyFor = (raceName: string): string => {
+     const race = players.raceByName(raceName);
+     if (!race) return "";
+-    return generateHistory(
+-      players.historyChart(race),
+-      new Rng(((Date.now() >>> 0) ^ 0x1a2b3c4d) >>> 0),
+-    );
++    return generateHistory(players.historyChart(race), birthRng);
+   };
+   await openModal(async () => {
+     // quickstart_allowed (ui-birth.c): offer the quick-start stage only when
+     // a previous character's choices exist to reuse.
+     const choice = await runBirth(term, players.races, players.classes, {
++      // ui-birth.c draws random race/class/*/@/roller from the main game RNG.
++      rng: birthRng,
+       quickstart: birthChoice
+         ? {
+             raceName: birthChoice.raceName,
+@@ -5927,6 +5948,9 @@ async function maybeBirth(): Promise<void> {
+       localStorage.setItem(BIRTH_KEY, JSON.stringify(choice));
+       sessionStorage.setItem(BIRTH_DONE_KEY, "1");
+       sessionStorage.setItem(FORCE_NEW_KEY, "1");
++      // Persist the advanced stream so the post-birth reload's startGame
++      // continues from this position (level gen / seed_flavor / etc.).
++      sessionStorage.setItem(BIRTH_RNG_KEY, JSON.stringify(birthRng.getState()));
+     } catch {
+       /* storage disabled: the reload still starts a fresh game via ?new */
+     }
+diff --git a/packages/web/src/pack.ts b/packages/web/src/pack.ts
+index 7bcc55075..16e250b8b 100644
+--- a/packages/web/src/pack.ts
++++ b/packages/web/src/pack.ts
+@@ -384,6 +384,9 @@ export function loadGamePack(): GamePack {
+     store: records("store"),
+     quest: records("quest"),
+     uiKnowledge: records("ui_knowledge"),
++    /* hints.json (ui-store.c prt_welcome tip branch). Bound into CorePack so
++     * the one_in_(3) + random_hint draws land on the main stream. */
++    hints: records("hints"),
+     obj: {
+       objectBase: composedFile("object_base"),
+       object: composedFile("object"),
+diff --git a/packages/web/src/shop.ts b/packages/web/src/shop.ts
+index bcefb60e9..f3e9c9f40 100644
+--- a/packages/web/src/shop.ts
++++ b/packages/web/src/shop.ts
+@@ -139,75 +139,66 @@ const COMMENT_WELCOME = [
+   '%s: "You do honour to my humble store, noble %s."',
+   '%s: "I and my family are entirely at your service, %s."',
+ ];
+-/** comment_accept (store.c L453-461): one_in_(3) on a purchase (do_cmd_buy L1717). */
+-const COMMENT_ACCEPT = ["Okay.", "Fine.", "Accepted!", "Agreed!", "Done!", "Taken!"];
+-/** purchase_analyze reaction arrays (store.c L435-479). */
+-const COMMENT_WORTHLESS = [
+-  "Arrgghh!",
+-  "You bastard!",
+-  "You hear someone sobbing...",
+-  "The shopkeeper howls in agony!",
+-  "The shopkeeper wails in anguish!",
+-  "The shopkeeper beats his head against the counter.",
+-];
+-const COMMENT_BAD = [
+-  "Damn!",
+-  "You fiend!",
+-  "The shopkeeper curses at you.",
+-  "The shopkeeper glares at you.",
+-];
+-const COMMENT_GOOD = [
+-  "Cool!",
+-  "You've made my day!",
+-  "The shopkeeper sniggers.",
+-  "The shopkeeper giggles.",
+-  "The shopkeeper laughs loudly.",
+-];
+-const COMMENT_GREAT = [
+-  "Yipee!",
+-  "I think I'll retire!",
+-  "The shopkeeper jumps for joy.",
+-  "The shopkeeper smiles gleefully.",
+-  "Wow.  I'm going to name my new villa in your honour.",
+-];
+-const REACTION_COMMENTS: Record<string, string[]> = {
+-  worthless: COMMENT_WORTHLESS,
+-  bad: COMMENT_BAD,
+-  good: COMMENT_GOOD,
+-  great: COMMENT_GREAT,
+-};
+-
+-/*
+- * These comments are pure cosmetic flavor. Like every other flavor draw in the
+- * port (do_animation flicker, RF_ATTR_MULTI colour; see main.ts and
+- * parity/ledger/graphics-visuals.yaml), they are selected with DISPLAY
+- * randomness (Math.random), NOT the game's state.rng - so entering a shop never
+- * perturbs the deterministic game stream or the Borg golden master. Upstream
+- * draws these from the main RNG, but shopping is not part of any golden replay,
+- * and the port's ratified policy keeps flavor off the game RNG.
++
++/**
++ * comment_hint (ui-store.c L74-80): only one active format string; each has
++ * exactly one %s for the tip text (random_hint).
+  */
+-const flavorPick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)] as T;
+-const flavorOneIn = (n: number): boolean => Math.floor(Math.random() * n) === 0;
++const COMMENT_HINT = ['"%s"'];
+ 
+ /**
+- * prt_welcome (ui-store.c L139-177): a real shop's entry greeting. 50% of the
+- * time it says nothing; otherwise, for a character above level 5, it picks a
+- * comment_welcome line by level tier and substitutes the owner's short name and
+- * a character identifier (class title / full name / "valued customer"). The
+- * hint branch (ui-store.c L156) is skipped: the port loads no hints list, so
+- * upstream's `if (hints && one_in_(3))` is unreachable. Returns null for no
+- * greeting. Uses display randomness (see flavorPick).
++ * random_hint (ui-store.c L121-129): reservoir sample over the global hints
++ * list. Starts at the first tip, then for each subsequent tip at index n
++ * (1-based count 2, 3, ...) draws one_in_(n) to replace the choice. With N
++ * tips this consumes N-1 one_in_ draws on the main stream.
+  */
+-function prtWelcome(store: Store, player: StartedGame["state"]["actor"]["player"]): string | null {
+-  if (flavorOneIn(2)) return null;
+-  if (player.lev <= 5) return null;
++function randomHint(
++  rng: StartedGame["state"]["rng"],
++  hints: readonly string[],
++): string {
++  let r = hints[0] ?? "";
++  for (let i = 1, n = 2; i < hints.length; i++, n++) {
++    if (rng.oneIn(n)) r = hints[i] ?? r;
++  }
++  return r;
++}
++
++/**
++ * prt_welcome (ui-store.c L139-177): a real shop's entry greeting.
++ *
++ * Draw order (Decision 6.2 / ui-store.c:145-172):
++ *  1. one_in_(2) -> silent return
++ *  2. if hints non-empty: one_in_(3)
++ *     - true: randint0(comment_hint) + random_hint reservoir draws, emit tip
++ *     - false and lev > 5: comment_welcome path
++ *  3. else if lev > 5: comment_welcome path
++ *
++ * All draws consume the main game RNG.
++ */
++function prtWelcome(
++  store: Store,
++  player: StartedGame["state"]["actor"]["player"],
++  rng: StartedGame["state"]["rng"],
++  hints: readonly string[],
++): string | null {
++  if (rng.oneIn(2)) return null;
++
+   const shortName = store.owner.name.split(" ")[0] ?? store.owner.name;
++
++  if (hints.length > 0 && rng.oneIn(3)) {
++    const i = rng.randint0(COMMENT_HINT.length);
++    const fmt = COMMENT_HINT[i] ?? COMMENT_HINT[0]!;
++    return fmt.replace("%s", randomHint(rng, hints));
++  }
++
++  if (player.lev <= 5) return null;
++
+   let i = Math.floor((player.lev - 1) / 5);
+   i = Math.min(i, COMMENT_WELCOME.length - 1);
+   let ident: string;
+-  if (i % 2 && Math.floor(Math.random() * 2)) {
++  if (i % 2 && rng.randint0(2)) {
+     ident = player.cls.titles[Math.floor((player.lev - 1) / 5)] ?? "valued customer";
+-  } else if (Math.floor(Math.random() * 2)) {
++  } else if (rng.randint0(2)) {
+     ident = player.fullName || "valued customer";
+   } else {
+     ident = "valued customer";
+@@ -479,9 +470,16 @@ export async function runStore(
+ 
+   /* prt_welcome (ui-store.c L1292-1294 in use_store): a real shop greets the
+    * character once on entry; the Home does not. Shown on the message line, where
+-   * it persists until the first command clears it (statusMsg). */
++   * it persists until the first command clears it (statusMsg). Draws from
++   * state.rng (ui-store.c L145-172), including the hint branch when the pack
++   * bound a non-empty hints list. */
+   if (!isHome) {
+-    const welcome = prtWelcome(store, game.state.actor.player);
++    const welcome = prtWelcome(
++      store,
++      game.state.actor.player,
++      game.state.rng,
++      game.booted.registries.hints,
++    );
+     if (welcome) storeSay(welcome);
+   }
+ 
+@@ -742,10 +740,10 @@ export async function runStore(
+     const bought = result.bought
+       ? describeObject(game.state, result.bought, ODESC.PREFIX | ODESC.FULL)
+       : "the item";
+-    /* comment_accept (do_cmd_buy L1717): one_in_(3) before the sale line, real
+-     * shops only (the Home retrieves via do_cmd_retrieve, no comment). Logged so
+-     * the "You bought ..." line remains the message shown on row 0. */
+-    if (!isHome && flavorOneIn(3)) say(flavorPick(COMMENT_ACCEPT));
++    /* comment_accept was drawn inside storeBuy (do_cmd_buy L1717) before any
++     * empty-store shuffle; print it first so the "You bought ..." line remains
++     * the status shown on row 0. Home retrieves via do_cmd_retrieve (no comment). */
++    if (result.acceptComment) say(result.acceptComment);
+     /* do_cmd_retrieve is free and silent about gold; real shops report the sale. */
+     if (isHome) storeSay(`You have ${bought}.`);
+     else storeSay(`You bought ${bought} for ${result.price} gold.`);
+@@ -817,11 +815,9 @@ export async function runStore(
+     else if (noSelling) storeSay(`You had ${name}.`);
+     else {
+       storeSay(`You sold ${name} for ${result.price} gold.`);
+-      /* purchase_analyze (do_cmd_sell L1972): the shopkeeper reacts after the
+-       * sale line. Core classified the reaction (SellResult.reaction) from the
+-       * price/value/guess; the shell prints one random comment_* line. */
+-      const arr = result.reaction ? REACTION_COMMENTS[result.reaction] : undefined;
+-      if (arr) storeSay(flavorPick(arr));
++      /* purchase_analyze (do_cmd_sell L1972): core already drew ONE_OF from
++       * state.rng; print the selected reaction comment after the sale line. */
++      if (result.reactionComment) storeSay(result.reactionComment);
+     }
+     refreshStock();
+   };

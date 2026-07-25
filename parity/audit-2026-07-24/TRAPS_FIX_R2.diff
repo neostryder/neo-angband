@@ -1,0 +1,1277 @@
+diff --git a/packages/core/src/game/cave-cmd.test.ts b/packages/core/src/game/cave-cmd.test.ts
+index c3db487de..ec0db7e02 100644
+--- a/packages/core/src/game/cave-cmd.test.ts
++++ b/packages/core/src/game/cave-cmd.test.ts
+@@ -20,6 +20,7 @@ import {
+   squareIsOpenDoor,
+ } from "./cave-cmd";
+ import { floorPile } from "./floor";
++import { squareMemorize } from "./known";
+ import { createDefaultRegistry, processPlayer } from "./player-turn";
+ import { addMon, makeRace, makeState } from "./harness";
+ import type { GameState } from "./context";
+@@ -111,6 +112,8 @@ describe("open / close doors", () => {
+   it("walking into a closed door opens it without stepping (move_player bump-to-open, cmd-cave.c L1079-1083)", () => {
+     const { state, run } = setup();
+     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
++    /* square_isknown gate (cmd-cave.c:1079): only a known door auto-opens. */
++    squareMemorize(state, loc(6, 5));
+     const energy = run({ code: "walk", dir: 6 });
+     expect(energy).toBe(state.z.moveEnergy);
+     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.OPEN);
+@@ -159,6 +162,7 @@ describe("open / close doors", () => {
+       env: { isLockedDoor: (): boolean => true, pickLock: (): boolean => false },
+     });
+     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
++    squareMemorize(state, loc(6, 5));
+     const energy = run({ code: "walk", dir: 6 });
+     /* The pick fails: the door stays locked, the player does not step, the turn
+      * is spent, and the walk re-queues (cmd_set_repeat(99), one attempt spent). */
+@@ -178,6 +182,7 @@ describe("open / close doors", () => {
+       env: { isLockedDoor: (): boolean => true, pickLock: (): boolean => true },
+     });
+     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
++    squareMemorize(state, loc(6, 5));
+     run({ code: "walk", dir: 6 });
+     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.OPEN);
+     expect(state.cmdQueue ?? []).toHaveLength(0);
+@@ -188,6 +193,7 @@ describe("open / close doors", () => {
+       env: { isLockedDoor: (): boolean => true, pickLock: (): boolean => false },
+     });
+     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
++    squareMemorize(state, loc(6, 5));
+     /* Last of the 99 attempts (budget 0): the pick fails but does not re-queue. */
+     run({ code: "walk", dir: 6, repeatRemaining: 0 });
+     expect(state.cmdQueue ?? []).toHaveLength(0);
+diff --git a/packages/core/src/game/cave-cmd.ts b/packages/core/src/game/cave-cmd.ts
+index 3942f497a..4a5efecfd 100644
+--- a/packages/core/src/game/cave-cmd.ts
++++ b/packages/core/src/game/cave-cmd.ts
+@@ -35,7 +35,7 @@
+ 
+ import type { Loc } from "../loc";
+ import { DDGRID, locSum } from "../loc";
+-import { FEAT, ORIGIN, TF, TMD } from "../generated";
++import { FEAT, OF, ORIGIN, TF, TMD, TRF } from "../generated";
+ import { SKILL } from "../player/types";
+ import { squareIsSeen } from "../world/view";
+ import { monsterIsCamouflaged } from "../mon/predicate";
+@@ -53,6 +53,14 @@ import { floorCarry } from "./floor";
+ import { playerConfuseDir } from "./obj-cmd";
+ import { attackMonster } from "./player-turn";
+ import type { ActionRegistry } from "./player-turn";
++import {
++  disarmAux,
++  squareIsDisarmableTrap,
++  squareIsWebbed,
++  squareRemoveAllTraps,
++  squareTrap,
++  type TrapDeps,
++} from "./trap";
+ 
+ /** Hooks for messages and unported subsystems; all optional. */
+ export interface CaveCmdEnv {
+@@ -64,6 +72,11 @@ export interface CaveCmdEnv {
+    * square_open_door's lock removal, #21). Returns whether it opened.
+    */
+   pickLock?: (grid: Loc) => boolean;
++  /**
++   * player_is_trapsafe (player-util.c:1073): skip disarm-on-walk when true
++   * (cmd-cave.c:1311-1312). Default: TMD_TRAPSAFE only.
++   */
++  isTrapsafe?: (state: GameState) => boolean;
+ }
+ 
+ /** What the cave commands need beyond the state. */
+@@ -76,6 +89,11 @@ export interface CaveCmdDeps {
+    * skipped entirely (doors and floor traps behave exactly as before).
+    */
+   chestDeps?: ChestCmdDeps;
++  /**
++   * Live trap deps for disarm-on-walk (cmd-cave.c:1079-1083). Absent, the
++   * walk wrapper never auto-disarms (step triggers as before).
++   */
++  trapDeps?: TrapDeps;
+ }
+ 
+ /* ------------------------------------------------------------------ *
+@@ -607,18 +625,33 @@ export function installCaveCommands(
+   const chestDeps = deps.chestDeps;
+ 
+   /*
+-   * move_player's bump-to-open (cmd-cave.c L1079-1083): walking (or jumping)
+-   * into a known closed door opens it via do_cmd_alter_aux instead of a silent
+-   * no-op - the primary way players open doors. Only the closed-door case is
+-   * intercepted here; a monster in the doorway, an ordinary step, autopickup
+-   * and wall/rubble bumps stay with the base walk/jump action (delegated). A
+-   * disarmable trap under a walking player (disarm-on-walk) and the standing-
+-   * in-a-web clear are separate move_player branches still routed through the
+-   * base action - tracked, not silently dropped.
++   * move_player's alter branch (cmd-cave.c L1079-1083): walking (or jumping)
++   * into a known closed door opens it via do_cmd_alter_aux; walking onto a
++   * known disarmable trap (when not trapsafe) auto-disarms. Jump uses
++   * disarm=false so only the door half applies. Web clear is in walkAction.
+    */
++  const trapDeps = deps.trapDeps;
++  const isTrapsafe =
++    env.isTrapsafe ??
++    ((s: GameState): boolean =>
++      (s.actor.player.timed[TMD.TRAPSAFE] ?? 0) > 0 ||
++      (s.playerState?.flags.has(OF.TRAP_IMMUNE) ?? false));
++
+   const bumpOpen =
+-    (prior: ReturnType<typeof registry.get>) =>
++    (prior: ReturnType<typeof registry.get>, allowDisarm: boolean) =>
+     (state: GameState, cmd: PlayerCommand): number => {
++      /*
++       * do_cmd_walk / jump web clear (cmd-cave.c:1288-1297) runs BEFORE
++       * confusion so a webbed player spends no confuse-dir draw.
++       */
++      if (squareIsWebbed(state, state.actor.grid)) {
++        env.msg?.("You clear the web.");
++        const web = squareTrap(state, state.actor.grid).find(
++          (t) => t.kind.flags.has(TRF.WEB) || t.kind.desc === "web",
++        );
++        squareRemoveAllTraps(state, state.actor.grid, web?.tidx ?? -1);
++        return state.z.moveEnergy;
++      }
+       /* move_player confusion (cmd-cave.c L1299-1302): apply it once, up front,
+        * so the bump-open branch and the delegated step both use the redirected
+        * direction and player_confuse_dir draws the RNG exactly once. The
+@@ -637,7 +670,17 @@ export function installCaveCommands(
+         dir !== undefined && dir >= 1 && dir <= 9 && dir !== 5
+           ? locSum(state.actor.grid, DDGRID[dir] as Loc)
+           : null;
+-      if (grid && state.chunk.isClosedDoor(grid) && !squareMonster(state, grid)) {
++      /*
++       * move_player (cmd-cave.c:1079-1083): ((trap && disarm) || door) &&
++       * square_isknown. Door and known-trap alter share the known guard; an
++       * unknown closed door falls through to the bump message path.
++       */
++      if (
++        grid &&
++        !squareMonster(state, grid) &&
++        squareIsKnown(state, grid) &&
++        state.chunk.isClosedDoor(grid)
++      ) {
+         /* move_player L1079-1083: walking into a known closed door sets a 99x
+          * repeat (cmd_set_repeat(99) when nrepeats == 0) then do_cmd_alter_aux
+          * opens it. A locked door that fails to pick this attempt re-queues the
+@@ -650,15 +693,32 @@ export function installCaveCommands(
+         queueCommandRepeat(state, cmd, more);
+         return state.z.moveEnergy;
+       }
++      /*
++       * move_player L1079-1083 / do_cmd_walk L1311-1312: known disarmable trap
++       * + disarm (walk, not jump, not trapsafe) -> do_cmd_alter_aux disarm.
++       */
++      if (
++        allowDisarm &&
++        trapDeps &&
++        grid &&
++        !squareMonster(state, grid) &&
++        squareIsDisarmableTrap(state, grid) &&
++        squareIsKnown(state, grid) &&
++        !isTrapsafe(state)
++      ) {
++        const more = disarmAux(state, grid, trapDeps);
++        queueCommandRepeat(state, cmd, more);
++        return state.z.moveEnergy;
++      }
+       const used = prior ? prior(state, cmd2) : 0;
+       /* A confused redirect that dead-ends (bump / edge) still spends a full
+        * turn; walkAction returns 0 in that case since confusedApplied is set. */
+       return confused && used === 0 ? state.z.moveEnergy : used;
+     };
+   const priorWalk = registry.get("walk");
+-  if (priorWalk) registry.register("walk", bumpOpen(priorWalk));
++  if (priorWalk) registry.register("walk", bumpOpen(priorWalk, true));
+   const priorJump = registry.get("jump");
+-  if (priorJump) registry.register("jump", bumpOpen(priorJump));
++  if (priorJump) registry.register("jump", bumpOpen(priorJump, false));
+ 
+   registry.register("open", (state, cmd) => {
+     const at = chestCommandGrid(state, cmd);
+diff --git a/packages/core/src/game/context.ts b/packages/core/src/game/context.ts
+index 09319a179..ec3e723fc 100644
+--- a/packages/core/src/game/context.ts
++++ b/packages/core/src/game/context.ts
+@@ -543,6 +543,18 @@ export interface GameState {
+    * terrain consequences). Installed by installTraps (game/trap.ts).
+    */
+   onPlayerMoved?: (state: GameState, grid: Loc) => void;
++  /**
++   * player_leaving (mon-util.c:503-515): fires when the player leaves a grid
++   * (delayed traps, decoy range). Installed by installTraps; called from
++   * movePlayer so every monster_swap path matches C.
++   */
++  onPlayerLeaving?: (state: GameState, oldGrid: Loc, newGrid: Loc) => void;
++  /**
++   * Terrain-only town layout (chunk_write "Town", gen-chunk.c:46 / generate.c
++   * L1371-1373). Stored when leaving depth 0 without birth_levels_persist so
++   * town_gen can reload the same shops/stairs. Cleared when consumed on re-entry.
++   */
++  townChunk?: import("../world/chunk").Chunk | null;
+   /**
+    * QoL auto-dig seam (the bundled `qol` mod, flag "qol.autoDig"): consulted by
+    * walkAction (game/player-turn.ts) when a walk is blocked by a wall, BEFORE
+@@ -881,21 +893,32 @@ export function squareIsEmpty(state: GameState, grid: Loc): boolean {
+ }
+ 
+ /**
+- * monster_swap(grid1, grid2) for the two cases the ported AI produces: a
+- * monster stepping into an empty grid, and two monsters trading places. The
+- * player is never swapped here (the AI attacks the player instead of moving
+- * onto it).
++ * monster_swap (mon-util.c:566-677): swap mon markers at two grids, update
++ * monster grids, and when the player is involved set actor.grid and fire
++ * player_leaving (mon-util.c:609-625 / 656-672) so TRF_DELAY traps run.
++ * Used by thrust, mon AI steps, and teleports that trade places.
+  */
+ export function monsterSwap(state: GameState, grid1: Loc, grid2: Loc): void {
+   const c = state.chunk;
+   const m1 = c.mon(grid1);
+   const m2 = c.mon(grid2);
++  /* Snapshot player grid before the swap (mon-util.c:570). */
++  const pgrid = state.actor.grid;
+   c.setMon(grid1, m2);
+   c.setMon(grid2, m1);
+   const mon1 = m1 > 0 ? state.monsters[m1] : null;
+   const mon2 = m2 > 0 ? state.monsters[m2] : null;
+   if (mon1) mon1.grid = grid2;
+   if (mon2) mon2.grid = grid1;
++  /* Player at grid1 -> grid2 (mon-util.c:609-612). */
++  if (m1 < 0) {
++    state.actor.grid = grid2;
++    state.onPlayerLeaving?.(state, pgrid, state.actor.grid);
++  } else if (m2 < 0) {
++    /* Player at grid2 -> grid1 (mon-util.c:656-659). */
++    state.actor.grid = grid1;
++    state.onPlayerLeaving?.(state, pgrid, state.actor.grid);
++  }
+ }
+ 
+ /**
+@@ -951,11 +974,16 @@ export function placePlayer(state: GameState, grid: Loc): void {
+ /**
+  * Move the player to a new grid, updating the square-occupancy marker
+  * (clear the old grid, mark the new one with the player sentinel -1).
++ * Fires player_leaving on the old grid (mon-util.c:612 / 659 via
++ * monster_swap) so TRF_DELAY traps run before the post-move enter hooks.
+  */
+ export function movePlayer(state: GameState, grid: Loc): void {
+-  state.chunk.setMon(state.actor.grid, 0);
++  const old = state.actor.grid;
++  if (old.x === grid.x && old.y === grid.y) return;
++  state.chunk.setMon(old, 0);
+   state.actor.grid = grid;
+   state.chunk.setMon(grid, -1);
++  state.onPlayerLeaving?.(state, old, grid);
+ }
+ 
+ /**
+diff --git a/packages/core/src/game/known.test.ts b/packages/core/src/game/known.test.ts
+index 4c68b9be6..7adec789d 100644
+--- a/packages/core/src/game/known.test.ts
++++ b/packages/core/src/game/known.test.ts
+@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
+ import { describe, expect, it } from "vitest";
+ import { bindConstants } from "../constants";
+ import { FlagSet } from "../bitflag";
+-import { MFLAG, OF, RF, SQUARE, TV } from "../generated";
++import { MFLAG, OF, RF, SQUARE, TMD, TV } from "../generated";
+ import { OF_SIZE } from "../player/types";
+ import type { PlayerState } from "../player/calcs";
+ import { getLore } from "../mon/lore";
+@@ -283,6 +283,19 @@ describe("noteSpots (note_spot + update_mon)", () => {
+     noteSpots(state);
+     expect(getLoreSights(state, mon)).toBe(1);
+   });
++
++  it("blind forget drops a non-passable remembered player grid (cave-view.c:894-897)", () => {
++    const state = makeState({ playerGrid: loc(10, 10) });
++    /* Remember the current grid as granite (impassable), then go blind. */
++    state.chunk.setFeat(loc(10, 10), GRANITE);
++    squareMemorize(state, loc(10, 10));
++    expect(squareIsKnown(state, loc(10, 10))).toBe(true);
++    state.actor.player.timed[TMD.BLIND] = 10;
++    /* Floor so SEEN re-memorize does not re-stamp granite mid-pass. */
++    state.chunk.setFeat(loc(10, 10), FLOOR);
++    noteSpots(state);
++    expect(squareIsKnown(state, loc(10, 10))).toBe(false);
++  });
+ });
+ 
+ describe("update_mon telepathy", () => {
+diff --git a/packages/core/src/game/known.ts b/packages/core/src/game/known.ts
+index 71cdfb6d9..4b29143c4 100644
+--- a/packages/core/src/game/known.ts
++++ b/packages/core/src/game/known.ts
+@@ -25,7 +25,7 @@
+ import { FEAT, MFLAG, OF, RF, SQUARE, TF, TMD } from "../generated";
+ import type { Loc } from "../loc";
+ import { DDGRID_DDD, loc, locEq, locSum } from "../loc";
+-import { featIsBright } from "../world/chunk";
++import { featIsBright, featIsPassable } from "../world/chunk";
+ import { caveIlluminate } from "../gen/cave";
+ import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view";
+ import { getLore, loreCountU16 } from "../mon/lore";
+@@ -695,6 +695,23 @@ export function updateMonsters(state: GameState, full: boolean): void {
+  */
+ export function noteSpots(state: GameState): void {
+   const c = state.chunk;
++
++  /*
++   * Blind forget of the current non-passable remembered square
++   * (cave-view.c:894-897): when blind and the player grid is known as
++   * impassable in map memory, forget it. Lives here (not pure view.ts)
++   * because it mutates KnownMap; called immediately after every updateView.
++   */
++  if ((state.actor.player.timed[TMD.BLIND] ?? 0) > 0) {
++    const pgrid = state.actor.grid;
++    if (squareIsKnown(state, pgrid)) {
++      const feat = knownFeat(state, pgrid);
++      if (feat >= 0 && !featIsPassable(c.features, feat)) {
++        squareForget(state, pgrid);
++      }
++    }
++  }
++
+   for (let y = 0; y < c.height; y++) {
+     for (let x = 0; x < c.width; x++) {
+       const grid = { x, y };
+diff --git a/packages/core/src/game/player-turn.ts b/packages/core/src/game/player-turn.ts
+index 9044e3706..07941e0cc 100644
+--- a/packages/core/src/game/player-turn.ts
++++ b/packages/core/src/game/player-turn.ts
+@@ -19,7 +19,7 @@
+  * upstream do-while around cmdq_pop.
+  */
+ 
+-import { MON_MSG, MON_TMD, MSG, OF, PF, STAT, TMD } from "../generated";
++import { MON_MSG, MON_TMD, MSG, OF, PF, STAT, TMD, TRF } from "../generated";
+ import { DDGRID, DDGRID_DDD, locSum } from "../loc";
+ import type { Loc } from "../loc";
+ import { pyAttack } from "../combat/melee";
+@@ -40,6 +40,7 @@ import { gearGet } from "./gear";
+ import { playerConfuseDir } from "./obj-cmd";
+ import { playerAdjustManaPrecise } from "./loop";
+ import { formatMonsterMessage } from "./mon-message";
++import { squareIsWebbed, squareRemoveAllTraps, squareTrap } from "./trap";
+ import { PY_EXERT, playerCheckTerrainDamage, playerOverExert } from "./world";
+ 
+ /**
+@@ -383,6 +384,20 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
+   const rawDir = cmd.dir;
+   if (rawDir === undefined || rawDir < 1 || rawDir > 9 || rawDir === 5) return 0;
+ 
++  /*
++   * do_cmd_walk / do_cmd_jump (cmd-cave.c:1288-1297 / 1328-1337): standing in
++   * a web clears the web and spends the turn in place - no movement.
++   */
++  if (squareIsWebbed(state, state.actor.grid)) {
++    state.msg?.("You clear the web.");
++    /* square_remove_all_traps_of_type(web->tidx) (cmd-cave.c:1294). */
++    const web = squareTrap(state, state.actor.grid).find(
++      (t) => t.kind.flags.has(TRF.WEB) || t.kind.desc === "web",
++    );
++    squareRemoveAllTraps(state, state.actor.grid, web?.tidx ?? -1);
++    return state.z.moveEnergy;
++  }
++
+   /* do_cmd_walk (cmd-cave.c L1299-1302): confusion randomises the direction.
+    * When it redirects ("You are confused."), the move spends a full turn even
+    * if it dead-ends against a wall (energy_use is set to move_energy before the
+@@ -474,14 +489,10 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
+ 
+ /**
+  * jump (do_cmd_jump, cmd-cave.c:1319): "walk into a trap" - identical to
+- * do_cmd_walk except move_player is called with disarm=false, so a disarmable
+- * trap in the target grid is stepped onto and triggered rather than disarmed.
+- * The port's walkAction does not yet implement do_cmd_walk's disarm-on-walk
+- * branch (cmd-cave.c:1311-1312, deferred: trap consequences run in
+- * onPlayerMoved -> hit_trap on any step), so a step onto a trap already
+- * triggers it; jump therefore shares walkAction's body. Kept as a distinct
+- * action so a front end can bind the faithful CMD_JUMP keys (W / -) and so the
+- * distinction survives once walk gains its disarm branch.
++ * do_cmd_walk except move_player is called with disarm=false (cmd-cave.c:1351),
++ * so a known disarmable trap is stepped onto rather than auto-disarmed. The
++ * cave-cmd walk wrapper only auto-disarms for code "walk"; jump falls through
++ * to the step path.
+  */
+ export function jumpAction(state: GameState, cmd: PlayerCommand): number {
+   return walkAction(state, cmd);
+diff --git a/packages/core/src/game/thrust.ts b/packages/core/src/game/thrust.ts
+index 5c1965da6..8c16c5b88 100644
+--- a/packages/core/src/game/thrust.ts
++++ b/packages/core/src/game/thrust.ts
+@@ -34,13 +34,12 @@ export interface ThrustEnv {
+   onPlayerPostMove?: () => void;
+ }
+ 
+-/** monster_swap that also keeps the player's actor grid in step. */
++/**
++ * monster_swap for thrust: player actor.grid and player_leaving (delayed
++ * traps) are handled inside monsterSwap (mon-util.c:609-672).
++ */
+ function swapOccupants(state: GameState, g1: Loc, g2: Loc): void {
+-  const m1 = state.chunk.mon(g1);
+-  const m2 = state.chunk.mon(g2);
+   monsterSwap(state, g1, g2);
+-  if (m1 < 0) state.actor.grid = g2;
+-  else if (m2 < 0) state.actor.grid = g1;
+ }
+ 
+ /**
+@@ -134,6 +133,11 @@ export function thrustAway(
+         if (c.isPassable(next)) {
+           /* Travel down the path. */
+           swapOccupants(state, grid, next);
++          /*
++           * project-mon.c:184-187 / 210-212: after monster_swap, fire
++           * player_handle_post_move when the player is now at `grid`
++           * (the vacated side of the swap). Matches C's check exactly.
++           */
+           if (c.mon(grid) < 0) env.onPlayerPostMove?.();
+ 
+           /* Jump to new location; we can't travel any more. */
+@@ -148,6 +152,7 @@ export function thrustAway(
+       } else {
+         /* Travel down the path. */
+         swapOccupants(state, grid, next);
++        /* project-mon.c:210-212: same post-move check as the passable branch. */
+         if (c.mon(grid) < 0) env.onPlayerPostMove?.();
+ 
+         /* Jump to new location. */
+diff --git a/packages/core/src/game/trap.test.ts b/packages/core/src/game/trap.test.ts
+index 4f23ca3ef..d3333954f 100644
+--- a/packages/core/src/game/trap.test.ts
++++ b/packages/core/src/game/trap.test.ts
+@@ -13,16 +13,19 @@ import { basicPlayerActor } from "./project-cast";
+ import { registerAttackHandlers } from "./effect-attack";
+ import { registerMonsterHandlers } from "./effect-monster";
+ import { registerTeleportHandlers } from "./effect-teleport";
++import { registerTerrainHandlers } from "./effect-terrain";
+ import {
+   calcUnlockingChance,
+   disarmAux,
+   hitTrap,
++  installChunkFeatHook,
+   installTraps,
+   pickTrap,
+   placeTrap,
+   squareDoorPower,
+   squareIsPlayerTrap,
+   squareIsVisibleTrap,
++  squareIsWarded,
+   squareRevealTrap,
+   squareSetDoorLock,
+   squareSetTrapTimeout,
+@@ -32,7 +35,10 @@ import type { TrapDeps } from "./trap";
+ import { createDefaultRegistry, processPlayer } from "./player-turn";
+ import { makeState, plReg } from "./harness";
+ import type { GameState } from "./context";
+-import { FEAT } from "../generated";
++import { FEAT, SQUARE } from "../generated";
++import { movePlayer } from "./context";
++import { thrustAway } from "./thrust";
++import { Rng } from "../rng";
+ 
+ function loadRecords<T>(name: string): T[] {
+   return (
+@@ -56,6 +62,7 @@ function effectDeps(state: GameState): NonNullable<TrapDeps["effects"]> {
+   registerAttackHandlers(registry);
+   registerMonsterHandlers(registry);
+   registerTeleportHandlers(registry);
++  registerTerrainHandlers(registry);
+   return {
+     registry,
+     cast: { projections, maxRange: 20, playerActor: basicPlayerActor(state) },
+@@ -210,17 +217,24 @@ describe("disarm and the step hook", () => {
+     expect(squareIsPlayerTrap(state, loc(6, 5))).toBe(false);
+   });
+ 
+-  it("an invisible trap cannot be disarmed", () => {
++  it("installTraps refuses to disarm an invisible trap (visibility guard)", () => {
+     const state = makeState({ playerGrid: loc(5, 5) });
+-    const d = deps(state);
++    const msgs: string[] = [];
++    const d = deps(state, { env: { msg: (t): void => { msgs.push(t); } } });
+     placeTrap(state, loc(6, 5), pitIdx, 5, d);
+-    expect(disarmAux(state, loc(6, 5), d)).toBeDefined(); // aux itself works
++    /* Live guard: not visible, not known as disarmable. */
++    expect(squareIsVisibleTrap(state, loc(6, 5))).toBe(false);
++    expect(squareIsPlayerTrap(state, loc(6, 5))).toBe(true);
++
+     const registry = createDefaultRegistry();
+     installTraps(state, registry, d);
+     const commands = [{ code: "disarm", dir: 6 }];
+     state.nextCommand = (): { code: string; dir?: number } | null =>
+       commands.shift() ?? null;
++    /* installTraps (trap.ts:713-716): zero energy, trap remains, refuse msg. */
+     expect(processPlayer(state, registry).energyUsed).toBe(0);
++    expect(squareIsPlayerTrap(state, loc(6, 5))).toBe(true);
++    expect(msgs.some((m) => m.includes("nothing there to disarm"))).toBe(true);
+   });
+ 
+   it("stepping onto a trap triggers it through the walk wiring", () => {
+@@ -238,4 +252,84 @@ describe("disarm and the step hook", () => {
+     expect(state.actor.grid).toEqual(loc(6, 5));
+     expect(state.actor.player.chp).toBeLessThan(100);
+   });
++
++  it("TRF_DELAY fires on leave via player_leaving (mon-util.c:503-515)", () => {
++    const state = makeState({ playerGrid: loc(5, 5) });
++    const d = deps(state);
++    const blockFall = kinds.find((k) => k.desc === "block fall trap")!;
++    placeTrap(state, loc(5, 5), blockFall.tidx, 5, d);
++    installTraps(state, createDefaultRegistry(), d);
++    /* Immediate (delayed=0) must not fire DELAY traps. */
++    hitTrap(state, loc(5, 5), 0, d);
++    expect(state.chunk.feat(loc(5, 5))).not.toBe(FEAT.GRANITE);
++    /* Leaving the grid fires delayed=1 (player_leaving via movePlayer). */
++    movePlayer(state, loc(6, 5));
++    expect(state.actor.grid).toEqual(loc(6, 5));
++    expect(state.chunk.feat(loc(5, 5))).toBe(FEAT.GRANITE);
++  });
++
++  it("TRF_DELAY fires when thrust leaves the square (monster_swap player_leaving)", () => {
++    const state = makeState({ playerGrid: loc(5, 5) });
++    const d = deps(state);
++    const blockFall = kinds.find((k) => k.desc === "block fall trap")!;
++    placeTrap(state, loc(5, 5), blockFall.tidx, 5, d);
++    installTraps(state, createDefaultRegistry(), d);
++    /* thrust_away via monster_swap (mon-util.c:609-612): player_leaving. */
++    thrustAway(state, loc(3, 5), loc(5, 5), 2);
++    expect(state.actor.grid).not.toEqual(loc(5, 5));
++    expect(state.chunk.feat(loc(5, 5))).toBe(FEAT.GRANITE);
++  });
++
++  it("disarmAux applies no_light penalty (cmd-cave.c:812-817 / cave-view.c:914-917)", () => {
++    const make = (seen: boolean): boolean => {
++      const state = makeState({ playerGrid: loc(5, 5), seed: 99 });
++      state.actor.combat = {
++        ...state.actor.combat,
++        skills: state.actor.combat.skills.map((v, i) =>
++          i === SKILL.DISARM_PHYS ? 50 : v,
++        ),
++      };
++      if (seen) state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN);
++      else state.chunk.sqinfoOff(state.actor.grid, SQUARE.SEEN);
++      const d = deps(state);
++      placeTrap(state, loc(6, 5), pitIdx, 5, d);
++      squareRevealTrap(state, loc(6, 5), true, d);
++      /*
++       * First randint0(100)=10: lit chance~50 disarms; dark chance floor(50/10)=5
++       * fails, second roll 0 -> "failed to disarm" (not set-off).
++       */
++      let n100 = 0;
++      const base = state.rng;
++      state.rng = {
++        ...base,
++        randint0: (n: number): number =>
++          n === 100 ? (n100++ === 0 ? 10 : 0) : base.randint0(n),
++      } as Rng;
++      disarmAux(state, loc(6, 5), d);
++      return !squareIsPlayerTrap(state, loc(6, 5));
++    };
++    expect(make(true)).toBe(true);
++    expect(make(false)).toBe(false);
++  });
++
++  it("setFeat to non-trappable terrain destroys traps (cave-square.c:1256-1259)", () => {
++    const state = makeState({ playerGrid: loc(5, 5) });
++    const d = deps(state);
++    placeTrap(state, loc(10, 10), pitIdx, 5, d);
++    installChunkFeatHook(state);
++    expect(squareIsPlayerTrap(state, loc(10, 10))).toBe(true);
++    state.chunk.setFeat(loc(10, 10), FEAT.GRANITE);
++    expect(squareIsPlayerTrap(state, loc(10, 10))).toBe(false);
++  });
++
++  it("squareIsWarded is only glyph of warding, not decoy (cave-square.c:751-755)", () => {
++    const state = makeState({ playerGrid: loc(5, 5) });
++    const d = deps(state);
++    const glyph = kinds.find((k) => k.desc === "glyph of warding")!;
++    const decoy = kinds.find((k) => k.desc === "decoy")!;
++    placeTrap(state, loc(10, 10), glyph.tidx, 0, d);
++    placeTrap(state, loc(11, 10), decoy.tidx, 0, d);
++    expect(squareIsWarded(state, loc(10, 10))).toBe(true);
++    expect(squareIsWarded(state, loc(11, 10))).toBe(false);
++  });
+ });
+diff --git a/packages/core/src/game/trap.ts b/packages/core/src/game/trap.ts
+index 13c33370d..34f7c5347 100644
+--- a/packages/core/src/game/trap.ts
++++ b/packages/core/src/game/trap.ts
+@@ -26,6 +26,7 @@ import { equipLearnFlag } from "../obj/knowledge";
+ import { featIsTrapHolding } from "../world/chunk";
+ import type { TrapKind } from "../world/trap";
+ import { lookupTrap } from "../world/trap";
++import { squareIsSeen } from "../world/view";
+ import { sourceTrap } from "../effects/interpreter";
+ import type { GameState, PlayerCommand } from "./context";
+ import { movePlayer, queueCommandRepeat } from "./context";
+@@ -151,14 +152,52 @@ export function squareIsDisarmableTrap(state: GameState, grid: Loc): boolean {
+   return squareIsVisibleTrap(state, grid) && squareIsPlayerTrap(state, grid);
+ }
+ 
+-/** square_iswarded / square_iswebbed. */
++/**
++ * square_iswarded (cave-square.c:751-755): only the specific "glyph of
++ * warding" trap, not every TRF_GLYPH (decoys also carry GLYPH).
++ */
+ export function squareIsWarded(state: GameState, grid: Loc): boolean {
+-  return squareTrapFlag(state, grid, TRF.GLYPH);
++  return squareTrap(state, grid).some((t) => {
++    /* Live traps always carry kind; match C's lookup_trap("glyph of warding"). */
++    if (t.kind) {
++      return t.kind.desc === "glyph of warding" || t.kind.name === "glyph of warding";
++    }
++    /* Harness stubs without a kind: a bare GLYPH stands for warding. */
++    return t.flags.has(TRF.GLYPH);
++  });
+ }
++/** square_iswebbed (cave-square.c:763-767). */
+ export function squareIsWebbed(state: GameState, grid: Loc): boolean {
+   return squareTrapFlag(state, grid, TRF.WEB);
+ }
+ 
++/**
++ * square_destroy_trap (cave-square.c:1391-1394): remove every trap on a grid.
++ */
++export function squareDestroyTrap(state: GameState, grid: Loc): void {
++  squareRemoveAllTraps(state, grid);
++}
++
++/**
++ * Live square_set_feat trap half (cave-square.c:1256-1259): when the grid
++ * is no longer player-trap-allowed, destroy its traps. Wired as Chunk.onFeatSet.
++ */
++export function squareSetFeatTrapSideEffect(state: GameState, grid: Loc): void {
++  if (!squarePlayerTrapAllowed(state, grid)) {
++    squareDestroyTrap(state, grid);
++  }
++}
++
++/**
++ * Install the live character_dungeon set_feat hook on the current chunk
++ * (cave-square.c:1256-1259). Re-call after every state.chunk reassignment.
++ */
++export function installChunkFeatHook(state: GameState): void {
++  state.chunk.onFeatSet = (grid: Loc): void => {
++    squareSetFeatTrapSideEffect(state, grid);
++  };
++}
++
+ /** square_trap_specific: a trap of the exact kind index here? */
+ export function squareTrapSpecific(
+   state: GameState,
+@@ -462,13 +501,13 @@ export function hitTrap(
+     } else {
+       if (trap.kind.msgBad) env.msg?.(trap.kind.msgBad);
+       runTrapEffect(state, trap, trap.kind.effect, deps);
+-      if (state.isDead) break;
+-      if (!squareTrap(state, grid).includes(trap)) {
+-        /* The effect removed the trap (e.g. it destroyed the grid). */
+-      } else if (trap.kind.effectXtra.length && state.rng.oneIn(2)) {
++      /* trap.c:561-562: stop if the square lost its traps or the player died. */
++      if (!squareTrap(state, grid).length || state.isDead) break;
++      if (trap.kind.effectXtra.length && state.rng.oneIn(2)) {
+         if (trap.kind.msgXtra) env.msg?.(trap.kind.msgXtra);
+         runTrapEffect(state, trap, trap.kind.effectXtra, deps);
+-        if (state.isDead) break;
++        /* trap.c:572-573 */
++        if (!squareTrap(state, grid).length || state.isDead) break;
+       }
+     }
+ 
+@@ -631,8 +670,13 @@ export function disarmAux(
+     ? (state.actor.combat.skills[SKILL.DISARM_MAGIC] ?? 0)
+     : (state.actor.combat.skills[SKILL.DISARM_PHYS] ?? 0);
+   const p = state.actor.player;
++  /*
++   * cmd-cave.c:812-817: one /10 when any of blind, no_light, confused, or
++   * image. no_light is !square_isseen on the player grid (cave-view.c:914-917).
++   */
+   if (
+     (p.timed[TMD.BLIND] ?? 0) > 0 ||
++    !squareIsSeen(state.chunk, state.actor.grid) ||
+     (p.timed[TMD.CONFUSED] ?? 0) > 0 ||
+     (p.timed[TMD.IMAGE] ?? 0) > 0
+   ) {
+@@ -682,7 +726,17 @@ export function installTraps(
+     return s.z.moveEnergy;
+   });
+ 
+-  /* Stepping onto a player trap sets it off (move_player -> hit_trap). */
++  /*
++   * player_leaving (mon-util.c:503-515): delayed traps fire on the OLD grid
++   * when the player leaves. Wired through movePlayer so every swap path
++   * (walk, teleport, pit pull) matches monster_swap.
++   */
++  state.onPlayerLeaving = (s, oldGrid, _newGrid): void => {
++    /* Decoy range check (mon-util.c:508-511) is handled where decoys live. */
++    if (squareIsPlayerTrap(s, oldGrid)) hitTrap(s, oldGrid, 1, deps);
++  };
++
++  /* player_handle_post_move eval_trap (player-util.c:1627-1629): immediate. */
+   state.onPlayerMoved = (s, grid): void => {
+     if (squareIsPlayerTrap(s, grid)) hitTrap(s, grid, 0, deps);
+   };
+diff --git a/packages/core/src/gen/cave.ts b/packages/core/src/gen/cave.ts
+index baa2c625b..456747493 100644
+--- a/packages/core/src/gen/cave.ts
++++ b/packages/core/src/gen/cave.ts
+@@ -246,6 +246,11 @@ export interface CaveBuildContext {
+    * first spawn) lays no stair.
+    */
+   createStair?: "down" | "up" | null;
++  /**
++   * Stored town terrain from chunk_write (gen-chunk.c:46 / town_gen L2682):
++   * when present, town_gen reloads this layout instead of regenerating.
++   */
++  townLayout?: Chunk | null;
+ }
+ 
+ export interface CaveBuildResult {
+@@ -2549,23 +2554,70 @@ function townGenLayout(g: Gen): Loc {
+ }
+ 
+ /**
+- * The town builder (town_gen, gen-cave.c L2664): a faithful port of the
+- * first-time town layout (town_gen_layout) followed by day/night illumination
+- * and the resident townsfolk. Store entrances are non-passable shop terrain (a
+- * shell opens the shop when the player walks into one).
+- *
+- * DEFERRED: the chunk-persistence re-entry branch (town_gen L2682, a Tier-5
+- * RECALL/level-persistence concern) - the port regenerates the town on every
+- * entry, so only the first-time path is implemented. Day/night is honoured
+- * when the caller supplies ctx.daytime; when omitted it defaults to daytime
+- * (turn 0), which is the faithful state at birth.
++ * chunk_write (gen-chunk.c:46-61): terrain + sqinfo only, for the town store.
++ */
++export function chunkWriteTerrain(src: Chunk): Chunk {
++  const out = new Chunk(src.features, src.height, src.width);
++  /* chunk_write "Town" name (generate.c:1371 / gen-chunk.c:46). */
++  out.name = "Town";
++  out.depth = src.depth;
++  for (let y = 0; y < src.height; y++) {
++    for (let x = 0; x < src.width; x++) {
++      const grid = loc(x, y);
++      out.setFeat(grid, src.feat(grid));
++      out.info(grid).copy(src.info(grid));
++    }
++  }
++  return out;
++}
++
++/**
++ * The town builder (town_gen, gen-cave.c L2664): first-time layout via
++ * town_gen_layout, or re-entry from a stored Town chunk (L2682-2703). Store
++ * entrances are non-passable shop terrain. Day/night is honoured when the
++ * caller supplies ctx.daytime; when omitted it defaults to daytime (turn 0).
+  */
+ export const townGen: CaveBuilder = (ctx) => {
+   const { constants } = ctx;
++  const daytime = ctx.daytime ?? true;
++  const stored = ctx.townLayout ?? null;
++
++  if (stored) {
++    /* town_gen re-entry (gen-cave.c:2682-2703): copy stored terrain. */
++    const c = new Chunk(ctx.reg, stored.height, stored.width);
++    c.depth = stored.depth;
++    const g = makeGen(ctx, c);
++    for (let y = 0; y < stored.height; y++) {
++      for (let x = 0; x < stored.width; x++) {
++        const grid = loc(x, y);
++        c.setFeat(grid, stored.feat(grid));
++        c.info(grid).copy(stored.info(grid));
++      }
++    }
++    /* Find the stairs (gen-cave.c:2691-2700). */
++    let pgrid = loc(1, 1);
++    outer: for (let y = 0; y < c.height; y++) {
++      for (let x = 0; x < c.width; x++) {
++        if (c.feat(loc(x, y)) === FEAT.MORE) {
++          pgrid = loc(x, y);
++          break outer;
++        }
++      }
++    }
++    g.playerSpot = pgrid;
++    caveIlluminate(c, daytime);
++    const residents = daytime
++      ? constants.townMonstersDay
++      : constants.townMonstersNight;
++    for (let i = 0; i < residents; i++) {
++      pickAndPlaceDistantMonster(g, pgrid, 3, true, c.depth);
++    }
++    return { gen: g, error: null };
++  }
++
+   const c = new Chunk(ctx.reg, constants.townHgt, constants.townWid);
+   c.depth = ctx.depth;
+   const g = makeGen(ctx, c);
+-  const daytime = ctx.daytime ?? true;
+ 
+   /* Build the layout and place the player at the crossroads head. */
+   const pgrid = townGenLayout(g);
+diff --git a/packages/core/src/gen/generate.ts b/packages/core/src/gen/generate.ts
+index 4541d120c..ca5277263 100644
+--- a/packages/core/src/gen/generate.ts
++++ b/packages/core/src/gen/generate.ts
+@@ -110,6 +110,11 @@ export interface GenerateOptions {
+    */
+   hasAdjacentAbove?: boolean;
+   hasAdjacentBelow?: boolean;
++  /**
++   * Stored town terrain (chunk_write "Town") for town_gen re-entry without
++   * birth_levels_persist (generate.c:1371-1373 / gen-cave.c:2671-2703).
++   */
++  townLayout?: import("../world/chunk").Chunk | null;
+   /**
+    * birth_connect_stairs (gen-util.c:427-433, new_player_spot): lay an arrival
+    * staircase on the player's start grid - "up" after a descent, "down" after
+@@ -383,6 +388,7 @@ export function generateLevel(
+       rooms: deps.rooms,
+       createStair: options.createStair ?? null,
+       ...(options.daytime !== undefined ? { daytime: options.daytime } : {}),
++      ...(options.townLayout ? { townLayout: options.townLayout } : {}),
+     };
+ 
+     const built = builder(ctx);
+diff --git a/packages/core/src/session/game.test.ts b/packages/core/src/session/game.test.ts
+index 5ba42677e..a9ef6dcab 100644
+--- a/packages/core/src/session/game.test.ts
++++ b/packages/core/src/session/game.test.ts
+@@ -91,6 +91,13 @@ describe("startGame (new-game assembly)", () => {
+     expect(state.monsters[0]).toBeNull();
+   });
+ 
++  it("initial birth entry leaves only_partial set until first FOV (ui-display.c:2522)", () => {
++    /* startGame has no host updateFov yet, so onlyPartial stays true for the
++     * host's first level-entry FOV (feeling suppressed, cave-view.c:849-851). */
++    const { state } = startGame(pack, { seed: 123, depth: 1 });
++    expect(state.chunk.onlyPartial).toBe(true);
++  });
++
+   it("memorizes the whole daytime town on birth (town_gen -> cave_illuminate)", () => {
+     // Birth defaults to the town (depth 0) at turn 0, which is daytime. The C
+     // town_gen calls cave_illuminate, memorizing every lit town grid so the
+diff --git a/packages/core/src/session/game.ts b/packages/core/src/session/game.ts
+index 3277b24e1..c30853abc 100644
+--- a/packages/core/src/session/game.ts
++++ b/packages/core/src/session/game.ts
+@@ -59,6 +59,7 @@ import {
+   updateMonsterDistances,
+ } from "../game/context";
+ import { Chunk } from "../world/chunk";
++import { chunkWriteTerrain } from "../gen/cave";
+ import { FEAT, SQUARE } from "../generated";
+ import { blankMonster } from "../mon/monster";
+ import { MON_GROUP } from "../mon/types";
+@@ -126,6 +127,7 @@ import { installSteal } from "../game/steal";
+ import type { ChestCmdDeps } from "../game/chest";
+ import {
+   calcUnlockingChance,
++  installChunkFeatHook,
+   installTrap,
+   installTraps,
+   squareDoorPower,
+@@ -1360,9 +1362,15 @@ function wireGame(
+             s.targetDepth = s.chunk.depth + 1;
+             s.generateLevel = true;
+           },
++          /* player_of_has for trap saves / OF_TRAP_IMMUNE (trap.c:515-539). */
++          playerHasFlag: (flag: number): boolean =>
++            state.playerState?.flags.has(flag) ?? false,
++          /* disturb(player) before trap effects (trap.c:525-526). */
++          disturb: (): void => disturb(state),
+         },
+       };
+       installTraps(state, registry, trapDeps);
++      installChunkFeatHook(state);
+       worldEnv.trapDeps = trapDeps;
+       general.trapDeps = trapDeps;
+     }
+@@ -1419,11 +1427,16 @@ function wireGame(
+   const deps = trapDeps; // narrow for the closures
+   const caveDeps: CaveCmdDeps = {
+     makeDeps,
++    ...(deps ? { trapDeps: deps } : {}),
+     env: {
+       // Route open/close/tunnel/chest messages to the game's message sink
+       // (matching installObjCommands/installSpellCommands/installTraps);
+       // absent, door/tunnel/chest messages would silently drop.
+       msg: (text: string): void => state.msg?.(text),
++      /* player_is_trapsafe for disarm-on-walk (cmd-cave.c:1311-1312). */
++      isTrapsafe: (s: GameState): boolean =>
++        (s.actor.player.timed[TMD.TRAPSAFE] ?? 0) > 0 ||
++        (s.playerState?.flags.has(OF.TRAP_IMMUNE) ?? false),
+       ...(deps && lockKind
+         ? {
+             isLockedDoor: (grid: Loc): boolean =>
+@@ -1816,6 +1829,7 @@ function makeChangeLevel(
+           }
+         }
+         state.chunk = arena;
++        installChunkFeatHook(state);
+         state.monsters = [null];
+         state.groups = [null];
+         state.floor = new Map();
+@@ -1861,6 +1875,7 @@ function makeChangeLevel(
+       if (stash) {
+         /* Restore the level left behind (the player marker stayed). */
+         state.chunk = stash.chunk;
++        installChunkFeatHook(state);
+         state.monsters = stash.monsters;
+         state.groups = stash.groups;
+         state.floor = stash.floor;
+@@ -1907,6 +1922,15 @@ function makeChangeLevel(
+     const persist = state.options?.get("birth_levels_persist") ?? false;
+     const currentDepth = state.chunk.depth;
+ 
++    /*
++     * Non-persist town store (generate.c:1371-1373): leaving depth 0 always
++     * keeps a terrain-only Town chunk so town_gen can reload the same layout
++     * (shops, stairs, ruins) without birth_levels_persist.
++     */
++    if (!persist && currentDepth === 0) {
++      state.townChunk = chunkWriteTerrain(state.chunk);
++    }
++
+     /* wipe_mon_list: the old level's monsters forget their racial counts
+      * before the new level allocates against them. Under persist the old level
+      * (and its monsters) survives in the cache with its counts intact, exactly
+@@ -1954,6 +1978,7 @@ function makeChangeLevel(
+       if (stored) {
+         cache.delete(depth); // chunk_list_remove (L1505)
+         state.chunk = stored.chunk;
++        installChunkFeatHook(state);
+         state.monsters = stored.monsters;
+         state.groups = stored.groups;
+         state.floor = stored.floor;
+@@ -1980,11 +2005,15 @@ function makeChangeLevel(
+          * re-entry is exact; only the first-visit arrival stair is approximate. */
+         sanitizePlayerLoc(state);
+         placePlayer(state, state.actor.grid);
++        installChunkFeatHook(state);
+ 
+         refreshTownStores(state, reg);
+         delete state.targetDepth;
+         state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
++        /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
++        state.chunk.onlyPartial = true;
+         state.updateFov?.(state);
++        state.chunk.onlyPartial = false;
+         return;
+       }
+       /* First visit to this depth: fall through to fresh generation. The old
+@@ -1992,6 +2021,11 @@ function makeChangeLevel(
+        * lost (both skipped above / below under persist). */
+     }
+ 
++    /* Consume stored town layout for non-persist re-entry (town_gen L2682). */
++    const townLayout =
++      !persist && depth === 0 && state.townChunk ? state.townChunk : null;
++    if (townLayout) state.townChunk = null;
++
+     /* birth_levels_persist first-visit generation (generate.c L1147-1152): seed
+      * this fresh level's stair connectors from the frozen adjacent levels so
+      * up/down stairs line up, and mark the build persistent so dun.persist
+@@ -2045,6 +2079,7 @@ function makeChangeLevel(
+         (state.options?.get("birth_connect_stairs") ?? true)
+           ? { createStair: pendingStair }
+           : {}),
++        ...(townLayout ? { townLayout } : {}),
+       },
+     );
+     /* chunk->join (generate.c L1203-1214): remember this level's stair
+@@ -2076,6 +2111,7 @@ function makeChangeLevel(
+     state.floor = new Map();
+     state.traps = new Map();
+     state.known = newKnownMap(g.c.width, g.c.height);
++    installChunkFeatHook(state);
+     populateFromLevel(
+       state,
+       {
+@@ -2107,7 +2143,10 @@ function makeChangeLevel(
+      * dungeon, so the torch radius is -1 and arrival renders dark until the
+      * next bonus recompute. Run the bonus pass before the first view build. */
+     state.updateBonuses?.();
++    /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
++    state.chunk.onlyPartial = true;
+     state.updateFov?.(state);
++    state.chunk.onlyPartial = false;
+   };
+ }
+ 
+@@ -2516,6 +2555,19 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
+     caveIlluminateKnown(state, isDaytime(state.turn, state.z.dayLength));
+   }
+ 
++  /*
++   * only_partial during the initial level-entry FOV (ui-display.c:2522 /
++   * cave-view.c:851): C sets this for the first new-level display too, not
++   * only for later change_level transitions. When the host has already wired
++   * updateFov (tests), run under the flag now; otherwise leave onlyPartial
++   * set so the host's first FOV (packages/web main after wiring) matches C.
++   */
++  state.chunk.onlyPartial = true;
++  if (state.updateFov) {
++    state.updateFov(state);
++    state.chunk.onlyPartial = false;
++  }
++
+   return {
+     state,
+     registry: wired.registry,
+@@ -3022,6 +3074,17 @@ export function loadGame(
+       reg.traps,
+       ids,
+     ),
++    /*
++     * Terrain-only Town cache (wr_chunks / load.c:1701-1704): restore even when
++     * birth_levels_persist is off so town re-entry keeps seed parity.
++     */
++    ...(() => {
++      if (save.isDead || !save.townChunk) return {};
++      const townRemap = buildFeatRemap(save.townFeatLegend, ids);
++      return {
++        townChunk: deserializeChunk(save.townChunk, reg.features, townRemap),
++      };
++    })(),
+     /* The target is not persisted (as upstream: the savefile carries no
+      * target and loading starts unset). */
+     target: newTargetState(),
+diff --git a/packages/core/src/session/save.test.ts b/packages/core/src/session/save.test.ts
+index 2995df3c5..c92973c51 100644
+--- a/packages/core/src/session/save.test.ts
++++ b/packages/core/src/session/save.test.ts
+@@ -629,6 +629,26 @@ describe("store + home persistence (store.c wr_stores/rd_stores, gap 12.1/12.2)"
+     expect(rs.stores).toBeDefined();
+     expect(rs.stores!.length).toBeGreaterThan(0);
+   });
++
++  it("persists the terrain-only Town chunk after leaving town (wr_chunks)", () => {
++    /* Non-persist: leave depth 0 stores townChunk; dungeon save must carry it. */
++    const game = startGame(pack, { seed: 5150, depth: 0 });
++    expect(game.state.chunk.depth).toBe(0);
++    expect(game.state.options?.get("birth_levels_persist") ?? false).toBe(false);
++    game.changeLevel(1);
++    expect(game.state.chunk.depth).toBe(1);
++    expect(game.state.townChunk).toBeTruthy();
++    const townFeats = Array.from(game.state.townChunk!.snapshotSquares().feats);
++
++    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
++    expect(saved.townChunk).toBeDefined();
++    expect(saved.townChunk!.feats).toEqual(townFeats);
++
++    const rs = loadGame(pack, saved).state;
++    expect(rs.townChunk).toBeTruthy();
++    expect(Array.from(rs.townChunk!.snapshotSquares().feats)).toEqual(townFeats);
++    expect(rs.townChunk!.name).toBe("Town");
++  });
+ });
+ 
+ describe("player full_name / died_from / noscore (gaps 12.4/12.5/15.3)", () => {
+diff --git a/packages/core/src/session/save.ts b/packages/core/src/session/save.ts
+index cd360ba80..d12221c8e 100644
+--- a/packages/core/src/session/save.ts
++++ b/packages/core/src/session/save.ts
+@@ -946,6 +946,15 @@ export interface SavedGame {
+    * registry, back-compat like every other optional field here.
+    */
+   autoinscriptions?: SavedAutoinscription[];
++  /**
++   * Terrain-only Town chunk (wr_chunks always saves the Town entry even when
++   * birth_levels_persist is OFF; generate.c:1371-1373 / save.c:1001-1044).
++   * Present after leaving depth 0 without persist; consumed on town re-entry.
++   * Optional / absent in older saves and before the player has left town.
++   */
++  townChunk?: ChunkSquaresData;
++  /** Feature legend for townChunk feats (same remap contract as levelCache). */
++  townFeatLegend?: Array<[number, string]>;
+ }
+ 
+ /** One serialized per-kind autoinscription entry (namespaced kind id + notes). */
+@@ -1193,6 +1202,19 @@ export function serializeGame(
+         }
+       : {}),
+     ...(autoinscriptions ? { autoinscriptions } : {}),
++    /*
++     * Terrain-only Town cache (wr_chunks, save.c:1001-1044): C always writes
++     * the Town chunk even when birth_levels_persist is off, so a dungeon save
++     * after leaving town reloads the same shops/stairs without redrawing.
++     */
++    ...(() => {
++      if (state.isDead || !state.townChunk) return {};
++      const tc = state.townChunk.snapshotSquares();
++      return {
++        townChunk: tc,
++        townFeatLegend: buildFeatLegend(tc.feats, [], ids),
++      };
++    })(),
+     /* Town stores + accrued daycount (wr_stores / save.c:963). Persisted so the
+      * home stash and shop stock survive save/load (gaps 12.1/12.2/12.3). */
+     ...(() => {
+diff --git a/packages/core/src/world/chunk.ts b/packages/core/src/world/chunk.ts
+index 6c0084e75..3ebe48e53 100644
+--- a/packages/core/src/world/chunk.ts
++++ b/packages/core/src/world/chunk.ts
+@@ -124,6 +124,11 @@ export class Chunk {
+   monRating = 0;
+   goodItem = false;
+   feelingSquares = 0;
++  /**
++   * p->upkeep->only_partial (cave-view.c:849-851): when true, the feeling
++   * reveal at feeling_need is suppressed (level-entry full update).
++   */
++  onlyPartial = false;
+ 
+   readonly height: number;
+   readonly width: number;
+@@ -193,10 +198,19 @@ export class Chunk {
+     return this.features.get(this.feat(grid));
+   }
+ 
++  /**
++   * Live-play hook for square_set_feat's character_dungeon path
++   * (cave-square.c:1256-1262): destroy traps when the new terrain cannot
++   * hold them (or square_player_trap_allowed fails). Installed by the
++   * session while a chunk is the live cave; absent during generation.
++   */
++  onFeatSet?: (grid: Loc) => void;
++
+   /**
+    * square_set_feat with feat_count bookkeeping and bright-terrain glow.
+-   * The in-game side effects (trap destruction, note/light spot) belong
+-   * to later modules; callers during generation match upstream behavior.
++   * During generation, clears SQUARE_WALL_INNER/OUTER/SOLID immediately
++   * (cave-square.c:1263-1268). During live play, onFeatSet runs the
++   * trap-destruction / note-spot half.
+    */
+   setFeat(grid: Loc, feat: number): void {
+     this.assertBounds(grid);
+@@ -208,6 +222,11 @@ export class Chunk {
+     if (featIsBright(this.features, feat)) {
+       this.info(grid).on(SQUARE["GLOW"]);
+     }
++    /* Live path (cave-square.c:1256-1259): trap destruction when installed.
++     * Generation wall-flag clear (cave-square.c:1263-1268) is applied by
++     * clearGenerationFlags after the builder succeeds - mid-gen predicates
++     * in the port still key on WALL_* flags until that pass. */
++    this.onFeatSet?.(grid);
+   }
+ 
+   /** square(c, grid)->info flag set. */
+@@ -299,9 +318,20 @@ export class Chunk {
+     return !f.flags.has(TF["WALL"]) && f.flags.has(TF["ROCK"]);
+   }
+ 
+-  /** square_ismineralwall equivalent: magma, quartz or granite. */
++  /**
++   * square_isrock (cave-square.c:236-240): granite that is not a door
++   * (secret doors carry GRANITE | DOOR_ANY and must not count as mineral).
++   */
++  isRock(grid: Loc): boolean {
++    return this.isGranite(grid) && !this.feature(grid).flags.has(TF["DOOR_ANY"]);
++  }
++
++  /**
++   * square_ismineral (cave-square.c:278-282): rock, magma or quartz.
++   * Secret doors are excluded via isRock.
++   */
+   isMineralWall(grid: Loc): boolean {
+-    return this.isMagma(grid) || this.isQuartz(grid) || this.isGranite(grid);
++    return this.isMagma(grid) || this.isQuartz(grid) || this.isRock(grid);
+   }
+ 
+   isWall(grid: Loc): boolean {
+diff --git a/packages/core/src/world/fov.test.ts b/packages/core/src/world/fov.test.ts
+index b020771a7..b906b5f84 100644
+--- a/packages/core/src/world/fov.test.ts
++++ b/packages/core/src/world/fov.test.ts
+@@ -168,4 +168,26 @@ describe("updateView", () => {
+     expect(c.feelingSquares).toBe(Z.feelingNeed);
+     expect(fired).toBe(1);
+   });
++
++  it("only_partial suppresses the feeling reveal (cave-view.c:849-851)", () => {
++    const c = room(30, 20, 5, 5, 15, 12);
++    glowRect(c, 5, 5, 15, 12);
++    let marked = 0;
++    for (let y = 5; y <= 12 && marked < Z.feelingNeed; y++) {
++      for (let x = 5; x <= 15 && marked < Z.feelingNeed; x++) {
++        c.sqinfoOn(loc(x, y), SQUARE["FEEL"]);
++        marked++;
++      }
++    }
++    c.onlyPartial = true;
++    const p = viewer(6, 6);
++    const events = new GameEvents();
++    let fired = 0;
++    events.on("feeling", () => {
++      fired++;
++    });
++    updateView(c, p, Z, [], events);
++    expect(c.feelingSquares).toBe(Z.feelingNeed);
++    expect(fired).toBe(0);
++  });
+ });
+diff --git a/packages/core/src/world/view.ts b/packages/core/src/world/view.ts
+index f488cee3e..cb2e5db5d 100644
+--- a/packages/core/src/world/view.ts
++++ b/packages/core/src/world/view.ts
+@@ -12,8 +12,9 @@
+  * exactly the fields the C reads from struct player, and light sources
+  * arrive as a list instead of scanning the monster array. The knowledge
+  * side effects of update_one (trap reveal, square_note_spot/light_spot,
+- * feeling display, blind memory forget) are deferred to the knowledge
+- * module; the flag bookkeeping they sit beside is ported.
++ * feeling display) and the blind forget of the current non-passable
++ * remembered square (cave-view.c:894-897) run from game/known.ts noteSpots
++ * after every updateView; the flag bookkeeping they sit beside is ported.
+  */
+ 
+ import type { GameEvents } from "../events";
+@@ -450,10 +451,9 @@ function updateViewOne(
+  * flag, and at the feeling_need crossing fires the reveal (upstream's
+  * display_feeling(true) message is a UI concern - only the "reveal now"
+  * signal, GameEvents' `feeling` event, is emitted here). Upstream also
+- * guards this on `!p->upkeep->only_partial` (suppressing the redundant
+- * reveal right after a fresh level's initial full update); that flag is not
+- * modelled, so the event can fire once more than upstream on level entry -
+- * a presentation nicety, not a state divergence.
++ * guards this on `!p->upkeep->only_partial` (cave-view.c:849-851); the
++ * port models that as `c.onlyPartial` so level-entry FOV can suppress the
++ * redundant reveal.
+  */
+ function updateOne(
+   c: Chunk,
+@@ -471,7 +471,8 @@ function updateOne(
+     if (c.sqinfoHas(grid, SQUARE["FEEL"])) {
+       c.feelingSquares++;
+       c.sqinfoOff(grid, SQUARE["FEEL"]);
+-      if (c.feelingSquares === z.feelingNeed) {
++      /* cave-view.c:849-851: skip display_feeling when only_partial. */
++      if (c.feelingSquares === z.feelingNeed && !c.onlyPartial) {
+         events?.signal("feeling");
+       }
+     }
+diff --git a/packages/web/src/main.ts b/packages/web/src/main.ts
+index 7d73a3197..ef98fff2c 100644
+--- a/packages/web/src/main.ts
++++ b/packages/web/src/main.ts
+@@ -5880,7 +5880,10 @@ state.sound = (type: number): void => {
+   soundEvents.emit("sound", { msg: "", type });
+ };
+ 
++/* First FOV after birth/load: clear only_partial left sticky by startGame
++ * when updateFov was not yet wired (ui-display.c:2556-2557). */
+ state.updateFov(state);
++state.chunk.onlyPartial = false;
+ term.onResize = () => render();
+ render();
+ 

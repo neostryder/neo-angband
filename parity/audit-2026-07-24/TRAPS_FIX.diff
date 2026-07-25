@@ -1,0 +1,1951 @@
+diff --git a/packages/core/src/game/cave-cmd.ts b/packages/core/src/game/cave-cmd.ts
+index 3942f497a..e5b72d825 100644
+--- a/packages/core/src/game/cave-cmd.ts
++++ b/packages/core/src/game/cave-cmd.ts
+@@ -35,7 +35,7 @@
+ 
+ import type { Loc } from "../loc";
+ import { DDGRID, locSum } from "../loc";
+-import { FEAT, ORIGIN, TF, TMD } from "../generated";
++import { FEAT, OF, ORIGIN, TF, TMD, TRF } from "../generated";
+ import { SKILL } from "../player/types";
+ import { squareIsSeen } from "../world/view";
+ import { monsterIsCamouflaged } from "../mon/predicate";
+@@ -53,6 +53,14 @@ import { floorCarry } from "./floor";
+ import { playerConfuseDir } from "./obj-cmd";
+ import { attackMonster } from "./player-turn";
+ import type { ActionRegistry } from "./player-turn";
++import {
++  disarmAux,
++  squareIsDisarmableTrap,
++  squareIsWebbed,
++  squareRemoveAllTraps,
++  squareTrap,
++  type TrapDeps,
++} from "./trap";
+ 
+ /** Hooks for messages and unported subsystems; all optional. */
+ export interface CaveCmdEnv {
+@@ -64,6 +72,11 @@ export interface CaveCmdEnv {
+    * square_open_door's lock removal, #21). Returns whether it opened.
+    */
+   pickLock?: (grid: Loc) => boolean;
++  /**
++   * player_is_trapsafe (player-util.c:1073): skip disarm-on-walk when true
++   * (cmd-cave.c:1311-1312). Default: TMD_TRAPSAFE only.
++   */
++  isTrapsafe?: (state: GameState) => boolean;
+ }
+ 
+ /** What the cave commands need beyond the state. */
+@@ -76,6 +89,11 @@ export interface CaveCmdDeps {
+    * skipped entirely (doors and floor traps behave exactly as before).
+    */
+   chestDeps?: ChestCmdDeps;
++  /**
++   * Live trap deps for disarm-on-walk (cmd-cave.c:1079-1083). Absent, the
++   * walk wrapper never auto-disarms (step triggers as before).
++   */
++  trapDeps?: TrapDeps;
+ }
+ 
+ /* ------------------------------------------------------------------ *
+@@ -607,18 +625,33 @@ export function installCaveCommands(
+   const chestDeps = deps.chestDeps;
+ 
+   /*
+-   * move_player's bump-to-open (cmd-cave.c L1079-1083): walking (or jumping)
+-   * into a known closed door opens it via do_cmd_alter_aux instead of a silent
+-   * no-op - the primary way players open doors. Only the closed-door case is
+-   * intercepted here; a monster in the doorway, an ordinary step, autopickup
+-   * and wall/rubble bumps stay with the base walk/jump action (delegated). A
+-   * disarmable trap under a walking player (disarm-on-walk) and the standing-
+-   * in-a-web clear are separate move_player branches still routed through the
+-   * base action - tracked, not silently dropped.
++   * move_player's alter branch (cmd-cave.c L1079-1083): walking (or jumping)
++   * into a known closed door opens it via do_cmd_alter_aux; walking onto a
++   * known disarmable trap (when not trapsafe) auto-disarms. Jump uses
++   * disarm=false so only the door half applies. Web clear is in walkAction.
+    */
++  const trapDeps = deps.trapDeps;
++  const isTrapsafe =
++    env.isTrapsafe ??
++    ((s: GameState): boolean =>
++      (s.actor.player.timed[TMD.TRAPSAFE] ?? 0) > 0 ||
++      (s.playerState?.flags.has(OF.TRAP_IMMUNE) ?? false));
++
+   const bumpOpen =
+-    (prior: ReturnType<typeof registry.get>) =>
++    (prior: ReturnType<typeof registry.get>, allowDisarm: boolean) =>
+     (state: GameState, cmd: PlayerCommand): number => {
++      /*
++       * do_cmd_walk / jump web clear (cmd-cave.c:1288-1297) runs BEFORE
++       * confusion so a webbed player spends no confuse-dir draw.
++       */
++      if (squareIsWebbed(state, state.actor.grid)) {
++        env.msg?.("You clear the web.");
++        const web = squareTrap(state, state.actor.grid).find(
++          (t) => t.kind.flags.has(TRF.WEB) || t.kind.desc === "web",
++        );
++        squareRemoveAllTraps(state, state.actor.grid, web?.tidx ?? -1);
++        return state.z.moveEnergy;
++      }
+       /* move_player confusion (cmd-cave.c L1299-1302): apply it once, up front,
+        * so the bump-open branch and the delegated step both use the redirected
+        * direction and player_confuse_dir draws the RNG exactly once. The
+@@ -650,15 +683,33 @@ export function installCaveCommands(
+         queueCommandRepeat(state, cmd, more);
+         return state.z.moveEnergy;
+       }
++      /*
++       * move_player L1079-1083 / do_cmd_walk L1311-1312: known disarmable trap
++       * + disarm (walk, not jump, not trapsafe) -> do_cmd_alter_aux disarm.
++       * square_isknown is true for any seen/visible trap we treat as known.
++       */
++      if (
++        allowDisarm &&
++        trapDeps &&
++        grid &&
++        !squareMonster(state, grid) &&
++        squareIsDisarmableTrap(state, grid) &&
++        squareIsKnown(state, grid) &&
++        !isTrapsafe(state)
++      ) {
++        const more = disarmAux(state, grid, trapDeps);
++        queueCommandRepeat(state, cmd, more);
++        return state.z.moveEnergy;
++      }
+       const used = prior ? prior(state, cmd2) : 0;
+       /* A confused redirect that dead-ends (bump / edge) still spends a full
+        * turn; walkAction returns 0 in that case since confusedApplied is set. */
+       return confused && used === 0 ? state.z.moveEnergy : used;
+     };
+   const priorWalk = registry.get("walk");
+-  if (priorWalk) registry.register("walk", bumpOpen(priorWalk));
++  if (priorWalk) registry.register("walk", bumpOpen(priorWalk, true));
+   const priorJump = registry.get("jump");
+-  if (priorJump) registry.register("jump", bumpOpen(priorJump));
++  if (priorJump) registry.register("jump", bumpOpen(priorJump, false));
+ 
+   registry.register("open", (state, cmd) => {
+     const at = chestCommandGrid(state, cmd);
+diff --git a/packages/core/src/game/context.ts b/packages/core/src/game/context.ts
+index 26696ade3..d1b99498e 100644
+--- a/packages/core/src/game/context.ts
++++ b/packages/core/src/game/context.ts
+@@ -543,6 +543,18 @@ export interface GameState {
+    * terrain consequences). Installed by installTraps (game/trap.ts).
+    */
+   onPlayerMoved?: (state: GameState, grid: Loc) => void;
++  /**
++   * player_leaving (mon-util.c:503-515): fires when the player leaves a grid
++   * (delayed traps, decoy range). Installed by installTraps; called from
++   * movePlayer so every monster_swap path matches C.
++   */
++  onPlayerLeaving?: (state: GameState, oldGrid: Loc, newGrid: Loc) => void;
++  /**
++   * Terrain-only town layout (chunk_write "Town", gen-chunk.c:46 / generate.c
++   * L1371-1373). Stored when leaving depth 0 without birth_levels_persist so
++   * town_gen can reload the same shops/stairs. Cleared when consumed on re-entry.
++   */
++  townChunk?: import("../world/chunk").Chunk | null;
+   /**
+    * QoL auto-dig seam (the bundled `qol` mod, flag "qol.autoDig"): consulted by
+    * walkAction (game/player-turn.ts) when a walk is blocked by a wall, BEFORE
+@@ -951,11 +963,16 @@ export function placePlayer(state: GameState, grid: Loc): void {
+ /**
+  * Move the player to a new grid, updating the square-occupancy marker
+  * (clear the old grid, mark the new one with the player sentinel -1).
++ * Fires player_leaving on the old grid (mon-util.c:612 / 659 via
++ * monster_swap) so TRF_DELAY traps run before the post-move enter hooks.
+  */
+ export function movePlayer(state: GameState, grid: Loc): void {
+-  state.chunk.setMon(state.actor.grid, 0);
++  const old = state.actor.grid;
++  if (old.x === grid.x && old.y === grid.y) return;
++  state.chunk.setMon(old, 0);
+   state.actor.grid = grid;
+   state.chunk.setMon(grid, -1);
++  state.onPlayerLeaving?.(state, old, grid);
+ }
+ 
+ /**
+diff --git a/packages/core/src/game/mon-cmd.ts b/packages/core/src/game/mon-cmd.ts
+index 43ee7dd6c..e66273e45 100644
+--- a/packages/core/src/game/mon-cmd.ts
++++ b/packages/core/src/game/mon-cmd.ts
+@@ -18,7 +18,7 @@
+  * monster-target side effects reduce to their damage).
+  */
+ 
+-import { FEAT, MON_MSG, MON_TMD, MSG, RF, TMD } from "../generated";
++import { FEAT, MON_MSG, MON_TMD, RF, TMD } from "../generated";
+ import { MDESC, MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc";
+ import type { BlowMethod } from "../mon/types";
+ import { formatMonsterMessage } from "./mon-message";
+@@ -36,7 +36,6 @@ import {
+ import { monSpellIsInnate } from "../mon/spell";
+ import { STUN_DAM_REDUCTION } from "../combat/hit";
+ import {
+-  adjustDamArmor,
+   chanceOfMonsterHit,
+   checkHit,
+   monsterCritical,
+@@ -56,7 +55,7 @@ const BLOW_PUNCT = ".!?;:,'";
+ /**
+  * display_blow_message_vs_monster (mon-blows.c L225) + monster_blow_method_action
+  * with midx > 0 (L74-152): draw randint0(num_messages), substitute mon-target
+- * tags, emit "m_name act." through the game sink with method->msgt sound.
++ * tags, emit "m_name act." through the game sink.
+  */
+ function displayBlowMessageVsMonster(
+   state: GameState,
+@@ -100,76 +99,6 @@ function displayBlowMessageVsMonster(
+   }
+   const fullstop = act.endsWith("'") || act.endsWith("!") ? "" : ".";
+   state.msg?.(`${mName} ${act}${fullstop}`);
+-  /* msgt(method->msgt, ...) (mon-blows.c L236): the blow sound channel. */
+-  if (method.msgt) {
+-    state.sound?.((MSG as Record<string, number>)[method.msgt] ?? 0);
+-  }
+-}
+-
+-/**
+- * monster_elemental_damage (mon-blows.c L311): mon-target elemental component
+- * (no RNG). Returns the elemental damage and die-message code.
+- */
+-function monsterElementalDamage(
+-  tMon: Monster,
+-  type: "ACID" | "ELEC" | "FIRE" | "COLD" | "POIS",
+-  baseDamage: number,
+-): { damage: number; dieMsg: number } {
+-  let immFlag: number | null = null;
+-  let hurtFlag: number | null = null;
+-  let dieMsg: number = MON_MSG.DIE;
+-
+-  switch (type) {
+-    case "ACID":
+-      immFlag = RF.IM_ACID;
+-      break;
+-    case "ELEC":
+-      immFlag = RF.IM_ELEC;
+-      break;
+-    case "FIRE":
+-      immFlag = RF.IM_FIRE;
+-      hurtFlag = RF.HURT_FIRE;
+-      dieMsg = MON_MSG.DISINTEGRATES;
+-      break;
+-    case "COLD":
+-      immFlag = RF.IM_COLD;
+-      hurtFlag = RF.HURT_COLD;
+-      dieMsg = MON_MSG.FREEZE_SHATTER;
+-      break;
+-    case "POIS":
+-      immFlag = RF.IM_POIS;
+-      break;
+-  }
+-
+-  if (immFlag !== null && tMon.race.flags.has(immFlag)) {
+-    return { damage: Math.trunc(baseDamage / 9), dieMsg: MON_MSG.DIE };
+-  }
+-  if (hurtFlag !== null && tMon.race.flags.has(hurtFlag)) {
+-    return { damage: baseDamage * 2, dieMsg };
+-  }
+-  return { damage: baseDamage, dieMsg: MON_MSG.DIE };
+-}
+-
+-/** mon_take_nonplayer_hit-shaped damage + death message. */
+-function applyMonVsMonHit(
+-  state: GameState,
+-  tMon: Monster,
+-  damage: number,
+-  dieMsg: number,
+-): boolean {
+-  const res = monTakeHit(state.rng, tMon, damage, "", {
+-    ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
+-    primaryGroupSize: () => monsterPrimaryGroupSize(state, tMon),
+-  });
+-  if (res.died) {
+-    if (monsterIsVisible(tMon)) {
+-      const text = formatMonsterMessage(tMon, dieMsg);
+-      if (text) state.msg?.(text);
+-    }
+-    deleteMonster(state, tMon.midx);
+-    return true;
+-  }
+-  return false;
+ }
+ 
+ /**
+@@ -189,9 +118,8 @@ export function getCommandedMonster(state: GameState): Monster | null {
+  * monster_attack_monster (mon-attack.c L765): the commanded monster's
+  * blows against another monster - hit vs the target's racial AC, the
+  * stun-reduced damage, the critical-tier stun, and death without player
+- * experience (mon_take_nonplayer_hit). Per-handler draw ORDER/COUNT matches
+- * mon-blows.c (timed amount before message; elemental skips message when
+- * final damage is 0). Returns false only for RF_NEVER_BLOW.
++ * experience (mon_take_nonplayer_hit). Returns false only for
++ * RF_NEVER_BLOW.
+  */
+ export function monsterAttackMonster(
+   state: GameState,
+@@ -238,101 +166,36 @@ export function monsterAttackMonster(
+       damage = Math.trunc((damage * (100 - STUN_DAM_REDUCTION)) / 100);
+     }
+ 
+-    const method = blow.method;
+-    const ac = tMon.race.ac;
+-
+-    /*
+-     * Per-handler order (mon-blows.c):
+-     * - timed: randint1 amount BEFORE display_blow_message (arg eval)
+-     * - EXP_*: damroll(N,6) before message (arg eval; amount unused mon-side)
+-     * - elemental: message+hit only when final damage > 0
+-     * - HURT/SHATTER: adjust_dam_armor then message+hit
+-     * - NONE: message only
+-     */
+-    let timedKey: number | null = null;
+-    let timedAmount = 0;
+-    if (effectName === "BLIND") {
+-      timedKey = MON_TMD.STUN;
+-      timedAmount = 10 + state.rng.randint1(rlev);
+-    } else if (effectName === "CONFUSE") {
+-      timedKey = MON_TMD.CONF;
+-      timedAmount = 3 + state.rng.randint1(rlev);
+-    } else if (effectName === "TERRIFY") {
+-      timedKey = MON_TMD.FEAR;
+-      timedAmount = 3 + state.rng.randint1(rlev);
+-    } else if (effectName === "PARALYZE") {
+-      timedKey = MON_TMD.HOLD;
+-      timedAmount = 3 + state.rng.randint1(rlev);
+-    }
+-
+-    if (
+-      effectName === "EXP_10" ||
+-      effectName === "EXP_20" ||
+-      effectName === "EXP_40" ||
+-      effectName === "EXP_80"
+-    ) {
+-      const n =
+-        effectName === "EXP_10"
+-          ? 10
+-          : effectName === "EXP_20"
+-            ? 20
+-            : effectName === "EXP_40"
+-              ? 40
+-              : 80;
+-      void state.rng.damroll(n, 6);
+-    }
+-
+-    let finalDamage = damage;
+-    let dieMsg: number = MON_MSG.DIE;
+-
+-    if (effectName === "NONE") {
+-      displayBlowMessageVsMonster(state, method, name, tMon);
+-    } else if (
+-      effectName === "ACID" ||
+-      effectName === "ELEC" ||
+-      effectName === "FIRE" ||
+-      effectName === "COLD" ||
+-      effectName === "POISON"
+-    ) {
+-      const elemType =
+-        effectName === "POISON"
+-          ? "POIS"
+-          : (effectName as "ACID" | "ELEC" | "FIRE" | "COLD");
+-      const physical = method.phys ? adjustDamArmor(damage, ac + 50) : 0;
+-      const el = monsterElementalDamage(tMon, elemType, damage);
+-      finalDamage = physical > el.damage ? physical : el.damage;
+-      dieMsg = el.dieMsg;
+-      if (finalDamage > 0) {
+-        displayBlowMessageVsMonster(state, method, name, tMon);
+-        if (applyMonVsMonHit(state, tMon, finalDamage, dieMsg)) continue;
+-      }
+-    } else {
+-      if (effectName === "HURT" || effectName === "SHATTER") {
+-        finalDamage = adjustDamArmor(damage, ac);
+-      }
+-      displayBlowMessageVsMonster(state, method, name, tMon);
+-      if (applyMonVsMonHit(state, tMon, finalDamage, dieMsg)) continue;
+-
+-      if (timedKey !== null && state.monsters[tMon.midx]) {
+-        monIncTimed(state.rng, tMon, timedKey, timedAmount, 0);
+-      }
+-
+-      /* SHATTER knockback chance (mon-blows.c L1105-1107); thrust deferred. */
+-      if (
+-        effectName === "SHATTER" &&
+-        finalDamage > 100 &&
+-        state.monsters[tMon.midx]
+-      ) {
+-        const value = finalDamage - 100;
+-        if (state.rng.randint1(value) > 40) {
+-          /* thrust_away deferred for mon-vs-mon; draw matches C. */
++    /* display_blow_message_vs_monster (mon-blows.c L225): randint0(num_messages)
++     * then the act line, before mon_take_nonplayer_hit. Always draw so the main
++     * stream matches C even when the method has a single message (Rand_div
++     * short-circuits n<=1). */
++    displayBlowMessageVsMonster(state, blow.method, name, tMon);
++
++    /* Apply the damage (mon_take_nonplayer_hit: death without player
++     * experience; the monster-target blow side effects reduce to it). */
++    if (damage > 0) {
++      const res = monTakeHit(state.rng, tMon, damage, "", {
++        /* become_aware: a commanded monster's blow can reveal a camouflaged
++         * target, same as any other monster-vs-monster hit. */
++        ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
++        /* The fear roll's per-member group save (mon-predicate.c L296). */
++        primaryGroupSize: () => monsterPrimaryGroupSize(state, tMon),
++      });
++      if (res.died) {
++        /* add_monster_message(t_mon, MON_MSG_DIE): the MON_MSG grammar. */
++        if (monsterIsVisible(tMon)) {
++          const text = formatMonsterMessage(tMon, MON_MSG.DIE);
++          if (text) state.msg?.(text);
+         }
++        deleteMonster(state, tMon.midx);
++        continue;
+       }
+     }
+ 
+     /* Handle stun (the critical tiers). */
+-    if (method.stun && squareMonster(state, grid)) {
+-      const tier = monsterCritical(state.rng, diceRv, rlev, finalDamage);
++    if (blow.method.stun && squareMonster(state, grid)) {
++      const tier = monsterCritical(state.rng, diceRv, rlev, damage);
+       let amt = 0;
+       switch (tier) {
+         case 0:
+diff --git a/packages/core/src/game/player-turn.ts b/packages/core/src/game/player-turn.ts
+index b9a82f467..c4f4f4ac5 100644
+--- a/packages/core/src/game/player-turn.ts
++++ b/packages/core/src/game/player-turn.ts
+@@ -19,7 +19,7 @@
+  * upstream do-while around cmdq_pop.
+  */
+ 
+-import { MON_MSG, MON_TMD, MSG, OF, PF, STAT, TMD } from "../generated";
++import { MON_MSG, MON_TMD, MSG, OF, PF, STAT, TMD, TRF } from "../generated";
+ import { DDGRID, DDGRID_DDD, locSum } from "../loc";
+ import type { Loc } from "../loc";
+ import { pyAttack } from "../combat/melee";
+@@ -40,6 +40,7 @@ import { gearGet } from "./gear";
+ import { playerConfuseDir } from "./obj-cmd";
+ import { playerAdjustManaPrecise } from "./loop";
+ import { formatMonsterMessage } from "./mon-message";
++import { squareIsWebbed, squareRemoveAllTraps, squareTrap } from "./trap";
+ import { PY_EXERT, playerCheckTerrainDamage, playerOverExert } from "./world";
+ 
+ /**
+@@ -383,6 +384,20 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
+   const rawDir = cmd.dir;
+   if (rawDir === undefined || rawDir < 1 || rawDir > 9 || rawDir === 5) return 0;
+ 
++  /*
++   * do_cmd_walk / do_cmd_jump (cmd-cave.c:1288-1297 / 1328-1337): standing in
++   * a web clears the web and spends the turn in place - no movement.
++   */
++  if (squareIsWebbed(state, state.actor.grid)) {
++    state.msg?.("You clear the web.");
++    /* square_remove_all_traps_of_type(web->tidx) (cmd-cave.c:1294). */
++    const web = squareTrap(state, state.actor.grid).find(
++      (t) => t.kind.flags.has(TRF.WEB) || t.kind.desc === "web",
++    );
++    squareRemoveAllTraps(state, state.actor.grid, web?.tidx ?? -1);
++    return state.z.moveEnergy;
++  }
++
+   /* do_cmd_walk (cmd-cave.c L1299-1302): confusion randomises the direction.
+    * When it redirects ("You are confused."), the move spends a full turn even
+    * if it dead-ends against a wall (energy_use is set to move_energy before the
+@@ -471,14 +486,10 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
+ 
+ /**
+  * jump (do_cmd_jump, cmd-cave.c:1319): "walk into a trap" - identical to
+- * do_cmd_walk except move_player is called with disarm=false, so a disarmable
+- * trap in the target grid is stepped onto and triggered rather than disarmed.
+- * The port's walkAction does not yet implement do_cmd_walk's disarm-on-walk
+- * branch (cmd-cave.c:1311-1312, deferred: trap consequences run in
+- * onPlayerMoved -> hit_trap on any step), so a step onto a trap already
+- * triggers it; jump therefore shares walkAction's body. Kept as a distinct
+- * action so a front end can bind the faithful CMD_JUMP keys (W / -) and so the
+- * distinction survives once walk gains its disarm branch.
++ * do_cmd_walk except move_player is called with disarm=false (cmd-cave.c:1351),
++ * so a known disarmable trap is stepped onto rather than auto-disarmed. The
++ * cave-cmd walk wrapper only auto-disarms for code "walk"; jump falls through
++ * to the step path.
+  */
+ export function jumpAction(state: GameState, cmd: PlayerCommand): number {
+   return walkAction(state, cmd);
+diff --git a/packages/core/src/game/trap.test.ts b/packages/core/src/game/trap.test.ts
+index 4f23ca3ef..260275958 100644
+--- a/packages/core/src/game/trap.test.ts
++++ b/packages/core/src/game/trap.test.ts
+@@ -13,16 +13,19 @@ import { basicPlayerActor } from "./project-cast";
+ import { registerAttackHandlers } from "./effect-attack";
+ import { registerMonsterHandlers } from "./effect-monster";
+ import { registerTeleportHandlers } from "./effect-teleport";
++import { registerTerrainHandlers } from "./effect-terrain";
+ import {
+   calcUnlockingChance,
+   disarmAux,
+   hitTrap,
++  installChunkFeatHook,
+   installTraps,
+   pickTrap,
+   placeTrap,
+   squareDoorPower,
+   squareIsPlayerTrap,
+   squareIsVisibleTrap,
++  squareIsWarded,
+   squareRevealTrap,
+   squareSetDoorLock,
+   squareSetTrapTimeout,
+@@ -33,6 +36,7 @@ import { createDefaultRegistry, processPlayer } from "./player-turn";
+ import { makeState, plReg } from "./harness";
+ import type { GameState } from "./context";
+ import { FEAT } from "../generated";
++import { movePlayer } from "./context";
+ 
+ function loadRecords<T>(name: string): T[] {
+   return (
+@@ -56,6 +60,7 @@ function effectDeps(state: GameState): NonNullable<TrapDeps["effects"]> {
+   registerAttackHandlers(registry);
+   registerMonsterHandlers(registry);
+   registerTeleportHandlers(registry);
++  registerTerrainHandlers(registry);
+   return {
+     registry,
+     cast: { projections, maxRange: 20, playerActor: basicPlayerActor(state) },
+@@ -238,4 +243,40 @@ describe("disarm and the step hook", () => {
+     expect(state.actor.grid).toEqual(loc(6, 5));
+     expect(state.actor.player.chp).toBeLessThan(100);
+   });
++
++  it("TRF_DELAY fires on leave via player_leaving (mon-util.c:503-515)", () => {
++    const state = makeState({ playerGrid: loc(5, 5) });
++    const d = deps(state);
++    const blockFall = kinds.find((k) => k.desc === "block fall trap")!;
++    placeTrap(state, loc(5, 5), blockFall.tidx, 5, d);
++    installTraps(state, createDefaultRegistry(), d);
++    /* Immediate (delayed=0) must not fire DELAY traps. */
++    hitTrap(state, loc(5, 5), 0, d);
++    expect(state.chunk.feat(loc(5, 5))).not.toBe(FEAT.GRANITE);
++    /* Leaving the grid fires delayed=1 (player_leaving via movePlayer). */
++    movePlayer(state, loc(6, 5));
++    expect(state.actor.grid).toEqual(loc(6, 5));
++    expect(state.chunk.feat(loc(5, 5))).toBe(FEAT.GRANITE);
++  });
++
++  it("setFeat to non-trappable terrain destroys traps (cave-square.c:1256-1259)", () => {
++    const state = makeState({ playerGrid: loc(5, 5) });
++    const d = deps(state);
++    placeTrap(state, loc(10, 10), pitIdx, 5, d);
++    installChunkFeatHook(state);
++    expect(squareIsPlayerTrap(state, loc(10, 10))).toBe(true);
++    state.chunk.setFeat(loc(10, 10), FEAT.GRANITE);
++    expect(squareIsPlayerTrap(state, loc(10, 10))).toBe(false);
++  });
++
++  it("squareIsWarded is only glyph of warding, not decoy (cave-square.c:751-755)", () => {
++    const state = makeState({ playerGrid: loc(5, 5) });
++    const d = deps(state);
++    const glyph = kinds.find((k) => k.desc === "glyph of warding")!;
++    const decoy = kinds.find((k) => k.desc === "decoy")!;
++    placeTrap(state, loc(10, 10), glyph.tidx, 0, d);
++    placeTrap(state, loc(11, 10), decoy.tidx, 0, d);
++    expect(squareIsWarded(state, loc(10, 10))).toBe(true);
++    expect(squareIsWarded(state, loc(11, 10))).toBe(false);
++  });
+ });
+diff --git a/packages/core/src/game/trap.ts b/packages/core/src/game/trap.ts
+index 13c33370d..dd0a28184 100644
+--- a/packages/core/src/game/trap.ts
++++ b/packages/core/src/game/trap.ts
+@@ -151,14 +151,52 @@ export function squareIsDisarmableTrap(state: GameState, grid: Loc): boolean {
+   return squareIsVisibleTrap(state, grid) && squareIsPlayerTrap(state, grid);
+ }
+ 
+-/** square_iswarded / square_iswebbed. */
++/**
++ * square_iswarded (cave-square.c:751-755): only the specific "glyph of
++ * warding" trap, not every TRF_GLYPH (decoys also carry GLYPH).
++ */
+ export function squareIsWarded(state: GameState, grid: Loc): boolean {
+-  return squareTrapFlag(state, grid, TRF.GLYPH);
++  return squareTrap(state, grid).some((t) => {
++    /* Live traps always carry kind; match C's lookup_trap("glyph of warding"). */
++    if (t.kind) {
++      return t.kind.desc === "glyph of warding" || t.kind.name === "glyph of warding";
++    }
++    /* Harness stubs without a kind: a bare GLYPH stands for warding. */
++    return t.flags.has(TRF.GLYPH);
++  });
+ }
++/** square_iswebbed (cave-square.c:763-767). */
+ export function squareIsWebbed(state: GameState, grid: Loc): boolean {
+   return squareTrapFlag(state, grid, TRF.WEB);
+ }
+ 
++/**
++ * square_destroy_trap (cave-square.c:1391-1394): remove every trap on a grid.
++ */
++export function squareDestroyTrap(state: GameState, grid: Loc): void {
++  squareRemoveAllTraps(state, grid);
++}
++
++/**
++ * Live square_set_feat trap half (cave-square.c:1256-1259): when the grid
++ * is no longer player-trap-allowed, destroy its traps. Wired as Chunk.onFeatSet.
++ */
++export function squareSetFeatTrapSideEffect(state: GameState, grid: Loc): void {
++  if (!squarePlayerTrapAllowed(state, grid)) {
++    squareDestroyTrap(state, grid);
++  }
++}
++
++/**
++ * Install the live character_dungeon set_feat hook on the current chunk
++ * (cave-square.c:1256-1259). Re-call after every state.chunk reassignment.
++ */
++export function installChunkFeatHook(state: GameState): void {
++  state.chunk.onFeatSet = (grid: Loc): void => {
++    squareSetFeatTrapSideEffect(state, grid);
++  };
++}
++
+ /** square_trap_specific: a trap of the exact kind index here? */
+ export function squareTrapSpecific(
+   state: GameState,
+@@ -462,13 +500,13 @@ export function hitTrap(
+     } else {
+       if (trap.kind.msgBad) env.msg?.(trap.kind.msgBad);
+       runTrapEffect(state, trap, trap.kind.effect, deps);
+-      if (state.isDead) break;
+-      if (!squareTrap(state, grid).includes(trap)) {
+-        /* The effect removed the trap (e.g. it destroyed the grid). */
+-      } else if (trap.kind.effectXtra.length && state.rng.oneIn(2)) {
++      /* trap.c:561-562: stop if the square lost its traps or the player died. */
++      if (!squareTrap(state, grid).length || state.isDead) break;
++      if (trap.kind.effectXtra.length && state.rng.oneIn(2)) {
+         if (trap.kind.msgXtra) env.msg?.(trap.kind.msgXtra);
+         runTrapEffect(state, trap, trap.kind.effectXtra, deps);
+-        if (state.isDead) break;
++        /* trap.c:572-573 */
++        if (!squareTrap(state, grid).length || state.isDead) break;
+       }
+     }
+ 
+@@ -682,7 +720,17 @@ export function installTraps(
+     return s.z.moveEnergy;
+   });
+ 
+-  /* Stepping onto a player trap sets it off (move_player -> hit_trap). */
++  /*
++   * player_leaving (mon-util.c:503-515): delayed traps fire on the OLD grid
++   * when the player leaves. Wired through movePlayer so every swap path
++   * (walk, teleport, pit pull) matches monster_swap.
++   */
++  state.onPlayerLeaving = (s, oldGrid, _newGrid): void => {
++    /* Decoy range check (mon-util.c:508-511) is handled where decoys live. */
++    if (squareIsPlayerTrap(s, oldGrid)) hitTrap(s, oldGrid, 1, deps);
++  };
++
++  /* player_handle_post_move eval_trap (player-util.c:1627-1629): immediate. */
+   state.onPlayerMoved = (s, grid): void => {
+     if (squareIsPlayerTrap(s, grid)) hitTrap(s, grid, 0, deps);
+   };
+diff --git a/packages/core/src/gen/cave.ts b/packages/core/src/gen/cave.ts
+index baa2c625b..571a3f9be 100644
+--- a/packages/core/src/gen/cave.ts
++++ b/packages/core/src/gen/cave.ts
+@@ -246,6 +246,11 @@ export interface CaveBuildContext {
+    * first spawn) lays no stair.
+    */
+   createStair?: "down" | "up" | null;
++  /**
++   * Stored town terrain from chunk_write (gen-chunk.c:46 / town_gen L2682):
++   * when present, town_gen reloads this layout instead of regenerating.
++   */
++  townLayout?: Chunk | null;
+ }
+ 
+ export interface CaveBuildResult {
+@@ -611,8 +616,7 @@ function tryDoor(g: Gen, grid: Loc): void {
+   if (g.rng.randint0(100) < g.profileTun.jct && possibleDoorway(g, grid)) {
+     placeRandomDoor(g, grid);
+   } else if (g.rng.randint0(500) < g.profileTun.jct && possibleDoorway(g, grid)) {
+-    /* place_trap(c, grid, -1, c->depth) (gen-cave.c:830-833): pick_trap +
+-     * randcalc power on the generation stream, not a bare markTrap. */
++    /* place_trap (gen-cave.c:833): pick kind + power in the gen stream. */
+     placeTrap(g, grid);
+   }
+ }
+@@ -2549,23 +2553,68 @@ function townGenLayout(g: Gen): Loc {
+ }
+ 
+ /**
+- * The town builder (town_gen, gen-cave.c L2664): a faithful port of the
+- * first-time town layout (town_gen_layout) followed by day/night illumination
+- * and the resident townsfolk. Store entrances are non-passable shop terrain (a
+- * shell opens the shop when the player walks into one).
+- *
+- * DEFERRED: the chunk-persistence re-entry branch (town_gen L2682, a Tier-5
+- * RECALL/level-persistence concern) - the port regenerates the town on every
+- * entry, so only the first-time path is implemented. Day/night is honoured
+- * when the caller supplies ctx.daytime; when omitted it defaults to daytime
+- * (turn 0), which is the faithful state at birth.
++ * chunk_write (gen-chunk.c:46-61): terrain + sqinfo only, for the town store.
++ */
++export function chunkWriteTerrain(src: Chunk): Chunk {
++  const out = new Chunk(src.features, src.height, src.width);
++  out.depth = src.depth;
++  for (let y = 0; y < src.height; y++) {
++    for (let x = 0; x < src.width; x++) {
++      const grid = loc(x, y);
++      out.setFeat(grid, src.feat(grid));
++      out.info(grid).copy(src.info(grid));
++    }
++  }
++  return out;
++}
++
++/**
++ * The town builder (town_gen, gen-cave.c L2664): first-time layout via
++ * town_gen_layout, or re-entry from a stored Town chunk (L2682-2703). Store
++ * entrances are non-passable shop terrain. Day/night is honoured when the
++ * caller supplies ctx.daytime; when omitted it defaults to daytime (turn 0).
+  */
+ export const townGen: CaveBuilder = (ctx) => {
+   const { constants } = ctx;
++  const daytime = ctx.daytime ?? true;
++  const stored = ctx.townLayout ?? null;
++
++  if (stored) {
++    /* town_gen re-entry (gen-cave.c:2682-2703): copy stored terrain. */
++    const c = new Chunk(ctx.reg, stored.height, stored.width);
++    c.depth = stored.depth;
++    const g = makeGen(ctx, c);
++    for (let y = 0; y < stored.height; y++) {
++      for (let x = 0; x < stored.width; x++) {
++        const grid = loc(x, y);
++        c.setFeat(grid, stored.feat(grid));
++        c.info(grid).copy(stored.info(grid));
++      }
++    }
++    /* Find the stairs (gen-cave.c:2691-2700). */
++    let pgrid = loc(1, 1);
++    outer: for (let y = 0; y < c.height; y++) {
++      for (let x = 0; x < c.width; x++) {
++        if (c.feat(loc(x, y)) === FEAT.MORE) {
++          pgrid = loc(x, y);
++          break outer;
++        }
++      }
++    }
++    g.playerSpot = pgrid;
++    caveIlluminate(c, daytime);
++    const residents = daytime
++      ? constants.townMonstersDay
++      : constants.townMonstersNight;
++    for (let i = 0; i < residents; i++) {
++      pickAndPlaceDistantMonster(g, pgrid, 3, true, c.depth);
++    }
++    return { gen: g, error: null };
++  }
++
+   const c = new Chunk(ctx.reg, constants.townHgt, constants.townWid);
+   c.depth = ctx.depth;
+   const g = makeGen(ctx, c);
+-  const daytime = ctx.daytime ?? true;
+ 
+   /* Build the layout and place the player at the crossroads head. */
+   const pgrid = townGenLayout(g);
+diff --git a/packages/core/src/gen/generate.ts b/packages/core/src/gen/generate.ts
+index 4e083becc..db54ca3a8 100644
+--- a/packages/core/src/gen/generate.ts
++++ b/packages/core/src/gen/generate.ts
+@@ -110,6 +110,11 @@ export interface GenerateOptions {
+    */
+   hasAdjacentAbove?: boolean;
+   hasAdjacentBelow?: boolean;
++  /**
++   * Stored town terrain (chunk_write "Town") for town_gen re-entry without
++   * birth_levels_persist (generate.c:1371-1373 / gen-cave.c:2671-2703).
++   */
++  townLayout?: import("../world/chunk").Chunk | null;
+   /**
+    * birth_connect_stairs (gen-util.c:427-433, new_player_spot): lay an arrival
+    * staircase on the player's start grid - "up" after a descent, "down" after
+@@ -377,6 +382,7 @@ export function generateLevel(
+       rooms: deps.rooms,
+       createStair: options.createStair ?? null,
+       ...(options.daytime !== undefined ? { daytime: options.daytime } : {}),
++      ...(options.townLayout ? { townLayout: options.townLayout } : {}),
+     };
+ 
+     const built = builder(ctx);
+diff --git a/packages/core/src/gen/util.ts b/packages/core/src/gen/util.ts
+index fc54e48c8..4ddc1886d 100644
+--- a/packages/core/src/gen/util.ts
++++ b/packages/core/src/gen/util.ts
+@@ -308,8 +308,9 @@ export class Gen {
+     readonly monDeps: MonPlaceDeps | null,
+     /**
+      * The trap kind table (trap_info). When present, place_trap picks the kind
+-     * and rolls the power at generation time (gap 9.2). Live boot always
+-     * supplies this; null is bare unit-test Gen contexts only (marker-only).
++     * and rolls the power at generation time (gap 9.2); when null (bare
++     * unit-test contexts), only the trap grid is recorded and the pick is
++     * deferred to the live populate path.
+      */
+     readonly trapKinds: readonly TrapKind[] | null = null,
+   ) {}
+@@ -1168,11 +1169,9 @@ function genPlayerTrapAllowed(g: Gen, grid: Loc): boolean {
+ /**
+  * place_trap(c, grid, -1, c->depth) at generation time (trap.c:356): pick a
+  * random player trap kind by rarity and roll its power, spending both RNG
+- * draws in the generation stream (gap 9.2). Always records a GenTrap so
+- * populate can materialize without a second draw. When the trap kind table is
+- * not threaded in (bare unit-test Gen contexts only), records a grid marker
+- * alone; the live boot path always supplies trapKinds and populate asserts
+- * every marker has a descriptor.
++ * draws in the generation stream (gap 9.2). When the trap kind table is not
++ * threaded in (unit-test contexts), only the grid is recorded and the pick is
++ * deferred to the live populate path.
+  */
+ export function placeTrap(g: Gen, grid: Loc): void {
+   if (!g.trapKinds) {
+diff --git a/packages/core/src/session/boot.ts b/packages/core/src/session/boot.ts
+index 99834d268..211c8cf7a 100644
+--- a/packages/core/src/session/boot.ts
++++ b/packages/core/src/session/boot.ts
+@@ -16,7 +16,6 @@
+ import { bindConstants } from "../constants";
+ import type { Constants, ConstantsJson } from "../constants";
+ import { Rng } from "../rng";
+-import type { RngState } from "../rng";
+ import type { Loc } from "../loc";
+ import type { Chunk } from "../world/chunk";
+ import { FeatureRegistry } from "../world/feature";
+@@ -94,12 +93,6 @@ export interface CorePack {
+    * every known monster falls into the "***Unclassified***" catch-all.
+    */
+   uiKnowledge?: UiKnowledgeRecordJson[];
+-  /**
+-   * hints.json (shopkeeper tip strings, ui-store.c hints). Optional; without
+-   * it prt_welcome skips the one_in_(3) hint branch and its main-stream draws.
+-   * Records use the compiled "H" field (or "text" after some compose paths).
+-   */
+-  hints?: Array<{ H?: string; text?: string }>;
+ }
+ 
+ /** One names.txt section: a list of lowercase words under a section index. */
+@@ -137,12 +130,6 @@ export interface CoreRegistries {
+    * Empty when the pack ships no ui_knowledge.json.
+    */
+   monsterCategories: MonsterCategory[];
+-  /**
+-   * Shopkeeper tip strings (hints.txt / hints.json), in file order. Empty when
+-   * the pack ships no hints.json. ui-store.c prt_welcome draws against this
+-   * list when non-empty.
+-   */
+-  hints: readonly string[];
+ }
+ 
+ /** Bind a parsed pack into the full set of runtime registries. */
+@@ -167,12 +154,6 @@ export function bindCore(pack: CorePack): CoreRegistries {
+   const stores = pack.store ? new StoreRegistry(pack.store, objects) : null;
+   const quests = pack.quest ? bindQuests(pack.quest, monsters) : [];
+   const monsterCategories = bindMonsterCategories(pack.uiKnowledge ?? []);
+-  /* hints.txt: each H: line becomes a tip string (init.c parse_hints). */
+-  const hints: string[] = [];
+-  for (const rec of pack.hints ?? []) {
+-    const text = rec.H ?? rec.text;
+-    if (text) hints.push(text);
+-  }
+   return {
+     constants,
+     features,
+@@ -186,7 +167,6 @@ export function bindCore(pack: CorePack): CoreRegistries {
+     stores,
+     quests,
+     monsterCategories,
+-    hints,
+   };
+ }
+ 
+@@ -244,18 +224,6 @@ export function genDeps(
+ export interface BootLevelOptions {
+   /** RNG seed. Provide a real one; defaults to 1 for reproducible tests. */
+   seed?: number;
+-  /**
+-   * An already-advanced main-game RNG instance (Decision 6.2). When present,
+-   * bootLevel continues from this stream instead of `new Rng(seed)`. Used so
+-   * birth UI draws and seed_randart share the same stream level gen continues.
+-   */
+-  rng?: Rng;
+-  /**
+-   * Snapshot to install on a fresh Rng(seed) before any draws (post-birth
+-   * reload: continue the stream the birth UI advanced). Ignored when `rng` is
+-   * supplied.
+-   */
+-  rngState?: RngState;
+   /** Dungeon depth (0 = town). Default 1. */
+   depth?: number;
+   /** Place monsters and objects. Default true. */
+@@ -303,8 +271,7 @@ export interface BootedLevel {
+ export function bootLevel(pack: CorePack, opts: BootLevelOptions = {}): BootedLevel {
+   const registries = opts.registries ?? bindCore(pack);
+   const depth = opts.depth ?? 1;
+-  const rng = opts.rng ?? new Rng(opts.seed ?? 1);
+-  if (!opts.rng && opts.rngState) rng.setState(opts.rngState);
++  const rng = new Rng(opts.seed ?? 1);
+   const deps = genDeps(
+     registries,
+     opts.placeContent ?? true,
+diff --git a/packages/core/src/session/game.ts b/packages/core/src/session/game.ts
+index 92cf699ae..f82daaf22 100644
+--- a/packages/core/src/session/game.ts
++++ b/packages/core/src/session/game.ts
+@@ -12,10 +12,15 @@
+  * (birth), calcBonuses (derived combat/defence), and the context helpers
+  * that place the player and register the monsters.
+  *
+- * Race and class default to Human Warrior; pass raceName/className to
+- * override. Decision 6.2 stream order matches C player-birth.c:1269-1292 +
+- * ui-game.c:757-760: store_reset, seed_randart, seed_flavor (back-to-back),
+- * then prepare_next_level generation.
++ * Two honest simplifications for this stage, both deferred to the title /
++ * character-birth flow (PORT_PLAN.md decision 21):
++ * - Race and class default to Human Warrior; pass raceName/className to
++ *   override. There is no birth UI or point-buy here.
++ * - The character is birthed from the same RNG stream AFTER the level is
++ *   generated (upstream births first). The result is still deterministic
++ *   for a given seed - our reproducibility guarantee (decision 22) is that
++ *   our engine is a function of the seed, not that the draw order matches
++ *   the C game - so this is a faithful-enough dev entry point.
+  */
+ 
+ import { loc } from "../loc";
+@@ -59,6 +64,7 @@ import {
+   updateMonsterDistances,
+ } from "../game/context";
+ import { Chunk } from "../world/chunk";
++import { chunkWriteTerrain } from "../gen/cave";
+ import { FEAT, SQUARE } from "../generated";
+ import { blankMonster } from "../mon/monster";
+ import { MON_GROUP } from "../mon/types";
+@@ -126,8 +132,10 @@ import { installSteal } from "../game/steal";
+ import type { ChestCmdDeps } from "../game/chest";
+ import {
+   calcUnlockingChance,
++  installChunkFeatHook,
+   installTrap,
+   installTraps,
++  placeTrap,
+   squareDoorPower,
+   squareIsPlayerTrap,
+   squareIsWarded,
+@@ -1357,9 +1365,15 @@ function wireGame(
+             s.targetDepth = s.chunk.depth + 1;
+             s.generateLevel = true;
+           },
++          /* player_of_has for trap saves / OF_TRAP_IMMUNE (trap.c:515-539). */
++          playerHasFlag: (flag: number): boolean =>
++            state.playerState?.flags.has(flag) ?? false,
++          /* disturb(player) before trap effects (trap.c:525-526). */
++          disturb: (): void => disturb(state),
+         },
+       };
+       installTraps(state, registry, trapDeps);
++      installChunkFeatHook(state);
+       worldEnv.trapDeps = trapDeps;
+       general.trapDeps = trapDeps;
+     }
+@@ -1416,11 +1430,16 @@ function wireGame(
+   const deps = trapDeps; // narrow for the closures
+   const caveDeps: CaveCmdDeps = {
+     makeDeps,
++    ...(deps ? { trapDeps: deps } : {}),
+     env: {
+       // Route open/close/tunnel/chest messages to the game's message sink
+       // (matching installObjCommands/installSpellCommands/installTraps);
+       // absent, door/tunnel/chest messages would silently drop.
+       msg: (text: string): void => state.msg?.(text),
++      /* player_is_trapsafe for disarm-on-walk (cmd-cave.c:1311-1312). */
++      isTrapsafe: (s: GameState): boolean =>
++        (s.actor.player.timed[TMD.TRAPSAFE] ?? 0) > 0 ||
++        (s.playerState?.flags.has(OF.TRAP_IMMUNE) ?? false),
+       ...(deps && lockKind
+         ? {
+             isLockedDoor: (grid: Loc): boolean =>
+@@ -1585,8 +1604,8 @@ interface LevelContent {
+   objects: readonly { grid: Loc; obj: import("../obj/object").GameObject }[];
+   trapGrids: readonly Loc[];
+   /**
+-   * Kind+power chosen at generation (place_trap). Required for every trapGrid
+-   * when trapDeps is live; bare markers throw rather than re-draw (trap.c:356).
++   * Kind+power chosen at generation (place_trap). Preferred over re-picking
++   * from trapGrids so the gen-stream draws are not spent twice (trap.c:356).
+    */
+   traps?: readonly { grid: Loc; tidx: number; power: number }[];
+   lockedDoors: readonly { grid: Loc; power: number }[];
+@@ -1636,29 +1655,19 @@ function populateFromLevel(
+     floorCarry(state, po.grid, po.obj);
+   }
+ 
+-  // Instantiate generation-marked traps on the live cave. Kind+power were
+-  // chosen at gen time (level.traps / place_trap); install without a second
+-  // pick/power draw (trap.c:356-394). Every C place_trap site must record a
+-  // GenTrap. Bare trapGrids markers are a gen bug - fail loudly rather than
+-  // re-drawing on the play stream or silently dropping them.
++  // Instantiate generation-marked traps on the live cave. When kind+power were
++  // chosen at gen time (level.traps), install without a second pick/power draw
++  // (trap.c:356-394). Fall back to place_trap(-1) only for bare-grid paths that
++  // never threaded trapKinds into the generator.
+   if (trapDeps) {
+-    const descriptors = level.traps ?? [];
+-    const covered = new Set(
+-      descriptors.map((t) => t.grid.y * state.chunk.width + t.grid.x),
+-    );
+-    for (const grid of level.trapGrids) {
+-      const key = grid.y * state.chunk.width + grid.x;
+-      if (!covered.has(key)) {
+-        throw new Error(
+-          `populateFromLevel: bare trap marker at (${grid.x},${grid.y}) ` +
+-            `without kind+power; generation must call placeTrap with ` +
+-            `trapKinds so pick_trap + power are spent in the gen stream ` +
+-            `(trap.c:356-394)`,
+-        );
++    if (level.traps && level.traps.length > 0) {
++      for (const t of level.traps) {
++        installTrap(state, t.grid, t.tidx, t.power, trapDeps);
++      }
++    } else {
++      for (const grid of level.trapGrids) {
++        placeTrap(state, grid, -1, level.depth, trapDeps);
+       }
+-    }
+-    for (const t of descriptors) {
+-      installTrap(state, t.grid, t.tidx, t.power, trapDeps);
+     }
+     for (const door of level.lockedDoors) {
+       squareSetDoorLock(state, door.grid, door.power, trapDeps);
+@@ -1813,6 +1822,7 @@ function makeChangeLevel(
+           }
+         }
+         state.chunk = arena;
++        installChunkFeatHook(state);
+         state.monsters = [null];
+         state.groups = [null];
+         state.floor = new Map();
+@@ -1858,6 +1868,7 @@ function makeChangeLevel(
+       if (stash) {
+         /* Restore the level left behind (the player marker stayed). */
+         state.chunk = stash.chunk;
++        installChunkFeatHook(state);
+         state.monsters = stash.monsters;
+         state.groups = stash.groups;
+         state.floor = stash.floor;
+@@ -1904,6 +1915,15 @@ function makeChangeLevel(
+     const persist = state.options?.get("birth_levels_persist") ?? false;
+     const currentDepth = state.chunk.depth;
+ 
++    /*
++     * Non-persist town store (generate.c:1371-1373): leaving depth 0 always
++     * keeps a terrain-only Town chunk so town_gen can reload the same layout
++     * (shops, stairs, ruins) without birth_levels_persist.
++     */
++    if (!persist && currentDepth === 0) {
++      state.townChunk = chunkWriteTerrain(state.chunk);
++    }
++
+     /* wipe_mon_list: the old level's monsters forget their racial counts
+      * before the new level allocates against them. Under persist the old level
+      * (and its monsters) survives in the cache with its counts intact, exactly
+@@ -1951,6 +1971,7 @@ function makeChangeLevel(
+       if (stored) {
+         cache.delete(depth); // chunk_list_remove (L1505)
+         state.chunk = stored.chunk;
++        installChunkFeatHook(state);
+         state.monsters = stored.monsters;
+         state.groups = stored.groups;
+         state.floor = stored.floor;
+@@ -1977,11 +1998,15 @@ function makeChangeLevel(
+          * re-entry is exact; only the first-visit arrival stair is approximate. */
+         sanitizePlayerLoc(state);
+         placePlayer(state, state.actor.grid);
++        installChunkFeatHook(state);
+ 
+         refreshTownStores(state, reg);
+         delete state.targetDepth;
+         state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
++        /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
++        state.chunk.onlyPartial = true;
+         state.updateFov?.(state);
++        state.chunk.onlyPartial = false;
+         return;
+       }
+       /* First visit to this depth: fall through to fresh generation. The old
+@@ -1989,6 +2014,11 @@ function makeChangeLevel(
+        * lost (both skipped above / below under persist). */
+     }
+ 
++    /* Consume stored town layout for non-persist re-entry (town_gen L2682). */
++    const townLayout =
++      !persist && depth === 0 && state.townChunk ? state.townChunk : null;
++    if (townLayout) state.townChunk = null;
++
+     /* birth_levels_persist first-visit generation (generate.c L1147-1152): seed
+      * this fresh level's stair connectors from the frozen adjacent levels so
+      * up/down stairs line up, and mark the build persistent so dun.persist
+@@ -2042,6 +2072,7 @@ function makeChangeLevel(
+         (state.options?.get("birth_connect_stairs") ?? true)
+           ? { createStair: pendingStair }
+           : {}),
++        ...(townLayout ? { townLayout } : {}),
+       },
+     );
+     /* chunk->join (generate.c L1203-1214): remember this level's stair
+@@ -2073,6 +2104,7 @@ function makeChangeLevel(
+     state.floor = new Map();
+     state.traps = new Map();
+     state.known = newKnownMap(g.c.width, g.c.height);
++    installChunkFeatHook(state);
+     populateFromLevel(
+       state,
+       {
+@@ -2104,7 +2136,10 @@ function makeChangeLevel(
+      * dungeon, so the torch radius is -1 and arrival renders dark until the
+      * next bonus recompute. Run the bonus pass before the first view build. */
+     state.updateBonuses?.();
++    /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
++    state.chunk.onlyPartial = true;
+     state.updateFov?.(state);
++    state.chunk.onlyPartial = false;
+   };
+ }
+ 
+@@ -2236,13 +2271,35 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
+     }
+   }
+ 
+-  // Main game RNG (Decision 6.2): one continuous stream for birth UI
+-  // continuation (opts.rng / opts.rngState), store_reset, seed_randart,
+-  // seed_flavor, player outfit, and level gen. C player-birth.c:1269-1292
+-  // order is store_reset, then seed_randart immediately followed by
+-  // seed_flavor; prepare_next_level (ui-game.c:757-760) runs only later.
+-  const mainRng = opts.rng ?? new Rng(opts.seed ?? 1);
+-  if (!opts.rng && opts.rngState) mainRng.setState(opts.rngState);
++  // OPT(player, birth_randarts) (obj-randart.c do_randart): replace the
++  // standard artifact set with a random one BEFORE the starting level is
++  // generated, so its drops come from the randart set. The seed is derived
++  // deterministically from the game seed (decision 22: a function of the seed)
++  // and persisted so a reload reproduces the identical set. Off by default, so
++  // the standard set and the existing draw order are untouched.
++  let randartSeed = 0;
++  if (options.get("birth_randarts")) {
++    randartSeed = new Rng(opts.seed ?? 1).randint0(0x10000000);
++    swapRandartSet(
++      reg,
++      randartSeed,
++      buildCurseTimedFoil(players.timed),
++      buildActivationSummarizer(pack, reg),
++    );
++  }
++
++  // aup_info[] (obj-make.c): the game's shared artifact-created registry.
++  // Built AFTER swapRandartSet so its length matches the (index-preserving)
++  // final artifact set, and BEFORE bootLevel so the starting level shares it.
++  const artifacts = new ArtifactState(reg.objects.artifacts.length);
++  const noArtifacts = options.get("birth_no_artifacts") ?? false;
++
++  const booted = bootLevel(pack, {
++    ...opts,
++    registries: reg,
++    artifacts,
++    noArtifacts,
++  });
+ 
+   const race =
+     (opts.raceName ? players.raceByName(opts.raceName) : null) ??
+@@ -2266,11 +2323,6 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
+   // is born with exactly the set the roller UI showed.
+   const useRolledStats =
+     opts.rolledStats !== undefined && opts.rolledStats.length === STAT_MAX;
+-  // Character birth draws (roll_hp / ahw / history / stats) run before
+-  // store_reset, matching C accept order where player_generate / roll_hp
+-  // precede store_reset (player-birth.c:1236-1270). When the shell already
+-  // advanced the stream for birth UI and supplies rolledStats/history, only
+-  // roll_hp / ahw / the history walk remain here.
+   const birth = generatePlayer(
+     race,
+     cls,
+@@ -2281,7 +2333,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
+       ...(usePointBuy ? { stats: opts.birthStats } : {}),
+       ...(opts.history !== undefined ? { historyOverride: opts.history } : {}),
+     },
+-    mainRng,
++    booted.rng,
+   );
+ 
+   // player_quests_reset (player-quest.c L157, called from player_birth): copy
+@@ -2289,73 +2341,16 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
+   // is_quest and quest_check see the Sauron/Morgoth guardians from turn one.
+   playerQuestsReset(birth.player, reg.quests);
+ 
+-  // C player-birth.c:1269-1292 then ui-game.c:757-760:
+-  //   store_reset -> seed_randart -> seed_flavor -> (later) prepare_next_level
+-  // Town store_reset draws on the main stream BEFORE both seeds; level gen
+-  // draws come AFTER both seeds. Gated on starting depth 0 so a game that
+-  // begins in the dungeon (tests) still draws no store RNG until town.
+-  const startDepth = opts.depth ?? 1;
+-  let earlyStores: Store[] | undefined;
+-  if (reg.stores && startDepth === 0) {
+-    const bookKeys = new Set(
+-      birth.player.cls.magic.books.map((b) => `${b.tvalIdx},${b.sval}`),
+-    );
+-    const storeDeps: MakeDeps = {
+-      reg: reg.objects,
+-      alloc: new ObjAllocState(reg.objects, reg.constants),
+-      constants: reg.constants,
+-      artifacts: new ArtifactState(reg.objects.artifacts.length),
+-      noArtifacts: options.get("birth_no_artifacts") ?? false,
+-      timedFoil: buildCurseTimedFoil(players.timed),
+-      canBrowseBook: (kind): boolean =>
+-        bookKeys.has(`${kind.tval},${kind.sval}`),
+-      noSelling: options.get("birth_no_selling") ?? false,
+-    };
+-    earlyStores = createTownStores(
+-      reg.stores.stores,
+-      storeDeps,
+-      mainRng,
+-      birth.player.maxDepth,
+-      players.classes,
+-    );
+-  }
+-
+-  // OPT(player, birth_randarts) (obj-randart.c do_randart): seed_randart =
+-  // randint0(0x10000000) on the main stream (player-birth.c:1285), then
+-  // seed_flavor immediately after (player-birth.c:1291).
+-  let randartSeed = 0;
+-  if (options.get("birth_randarts")) {
+-    randartSeed = mainRng.randint0(0x10000000);
+-    swapRandartSet(
+-      reg,
+-      randartSeed,
+-      buildCurseTimedFoil(players.timed),
+-      buildActivationSummarizer(pack, reg),
+-    );
+-  }
+-  const seedFlavor = mainRng.randint0(0x10000000);
+-
+-  // aup_info[] (obj-make.c): the game's shared artifact-created registry.
+-  // Built AFTER swapRandartSet so its length matches the (index-preserving)
+-  // final artifact set, and BEFORE bootLevel so the starting level shares it.
+-  const artifacts = new ArtifactState(reg.objects.artifacts.length);
+-  const noArtifacts = options.get("birth_no_artifacts") ?? false;
+-
+-  // player_outfit (player-birth.c L1299): after seed_flavor, before level gen.
++  // Populate the gear store and wear the class starting kit (player_outfit +
++  // wield_all) BEFORE deriving bonuses, so calc_bonuses sees the worn gear.
+   const gear = newGear();
+-  outfitPlayer(gear, birth.player, reg.objects, mainRng, reg.constants, {
++  // player_outfit (player-birth.c L612-637): thread the birth-option accessor so
++  // birth_start_kit (gap 1.6) and the per-start-item eopts exclusion (gap 1.8)
++  // are honoured; without it every character got the full class kit.
++  outfitPlayer(gear, birth.player, reg.objects, booted.rng, reg.constants, {
+     opt: (name: string): boolean => options.get(name) ?? false,
+   });
+ 
+-  // prepare_next_level (ui-game.c:757-760): level generation AFTER both seeds.
+-  const booted = bootLevel(pack, {
+-    ...opts,
+-    rng: mainRng,
+-    registries: reg,
+-    artifacts,
+-    noArtifacts,
+-  });
+-
+   // Resolve the worn objects by body slot; calc_bonuses reads them for the
+   // equipment analysis, and the wielded weapon drives melee (py_attack).
+   const equipment = birth.player.equipment.map((h) =>
+@@ -2446,11 +2441,11 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
+     isDead: false,
+     generateLevel: false,
+     nextCommand: (): PlayerCommand | null => null,
+-    // store_reset already ran on the main stream before seed_randart/flavor.
+-    ...(earlyStores ? { stores: earlyStores } : {}),
+   };
+ 
+-  // seed_flavor already drawn above; flavor_init runs inside wireGame.
++  // seed_flavor (player-birth.c L1291): drawn once at birth from the game RNG
++  // and persisted, so the object colours/titles stay stable across reloads.
++  const seedFlavor = booted.rng.randint0(0x10000000);
+   const wired = wireGame(state, reg, players, pstate, seedFlavor, pack);
+ 
+   // kind->everseen = true for each bought start item (player-birth.c L658). At
+@@ -2500,8 +2495,6 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
+     },
+     wired.trapDeps,
+   );
+-  // Stores already created pre-seed when startDepth === 0; refresh is then a
+-  // daycount-0 no-op. Depth > 0 still no-ops until the first town entry.
+   refreshTownStores(state, reg);
+   /* town_gen -> cave_illuminate (gen-cave.c / cave-map.c L555): the birth town
+    * is illuminated at generation. The chunk-flag half ran in the town builder;
+diff --git a/packages/core/src/store/store.ts b/packages/core/src/store/store.ts
+index 00f7268a7..af2d62ba8 100644
+--- a/packages/core/src/store/store.ts
++++ b/packages/core/src/store/store.ts
+@@ -97,19 +97,8 @@ export function storeChooseOwner(
+   return owner;
+ }
+ 
+-/**
+- * store_shuffle (L1493): swap in a different proprietor.
+- *
+- * C store.c:1497-1498 retries until the owner changes and assumes more than
+- * one owner. A one-owner table (accepted by the port's data model) would spin
+- * forever. Keep the multi-owner draw loop identical to C; terminate cleanly
+- * when there is only one owner (randint0(1) is a no-op on the WELL stream).
+- */
++/** store_shuffle (L1493): swap in a different proprietor. */
+ export function storeShuffle(rng: Rng, store: Store): void {
+-  if (store.owners.length <= 1) {
+-    if (store.owners.length === 1) store.owner = storeChooseOwner(rng, store);
+-    return;
+-  }
+   let o = store.owner;
+   while (o === store.owner) o = storeChooseOwner(rng, store);
+   store.owner = o;
+diff --git a/packages/core/src/world/chunk.ts b/packages/core/src/world/chunk.ts
+index 6c0084e75..3ebe48e53 100644
+--- a/packages/core/src/world/chunk.ts
++++ b/packages/core/src/world/chunk.ts
+@@ -124,6 +124,11 @@ export class Chunk {
+   monRating = 0;
+   goodItem = false;
+   feelingSquares = 0;
++  /**
++   * p->upkeep->only_partial (cave-view.c:849-851): when true, the feeling
++   * reveal at feeling_need is suppressed (level-entry full update).
++   */
++  onlyPartial = false;
+ 
+   readonly height: number;
+   readonly width: number;
+@@ -193,10 +198,19 @@ export class Chunk {
+     return this.features.get(this.feat(grid));
+   }
+ 
++  /**
++   * Live-play hook for square_set_feat's character_dungeon path
++   * (cave-square.c:1256-1262): destroy traps when the new terrain cannot
++   * hold them (or square_player_trap_allowed fails). Installed by the
++   * session while a chunk is the live cave; absent during generation.
++   */
++  onFeatSet?: (grid: Loc) => void;
++
+   /**
+    * square_set_feat with feat_count bookkeeping and bright-terrain glow.
+-   * The in-game side effects (trap destruction, note/light spot) belong
+-   * to later modules; callers during generation match upstream behavior.
++   * During generation, clears SQUARE_WALL_INNER/OUTER/SOLID immediately
++   * (cave-square.c:1263-1268). During live play, onFeatSet runs the
++   * trap-destruction / note-spot half.
+    */
+   setFeat(grid: Loc, feat: number): void {
+     this.assertBounds(grid);
+@@ -208,6 +222,11 @@ export class Chunk {
+     if (featIsBright(this.features, feat)) {
+       this.info(grid).on(SQUARE["GLOW"]);
+     }
++    /* Live path (cave-square.c:1256-1259): trap destruction when installed.
++     * Generation wall-flag clear (cave-square.c:1263-1268) is applied by
++     * clearGenerationFlags after the builder succeeds - mid-gen predicates
++     * in the port still key on WALL_* flags until that pass. */
++    this.onFeatSet?.(grid);
+   }
+ 
+   /** square(c, grid)->info flag set. */
+@@ -299,9 +318,20 @@ export class Chunk {
+     return !f.flags.has(TF["WALL"]) && f.flags.has(TF["ROCK"]);
+   }
+ 
+-  /** square_ismineralwall equivalent: magma, quartz or granite. */
++  /**
++   * square_isrock (cave-square.c:236-240): granite that is not a door
++   * (secret doors carry GRANITE | DOOR_ANY and must not count as mineral).
++   */
++  isRock(grid: Loc): boolean {
++    return this.isGranite(grid) && !this.feature(grid).flags.has(TF["DOOR_ANY"]);
++  }
++
++  /**
++   * square_ismineral (cave-square.c:278-282): rock, magma or quartz.
++   * Secret doors are excluded via isRock.
++   */
+   isMineralWall(grid: Loc): boolean {
+-    return this.isMagma(grid) || this.isQuartz(grid) || this.isGranite(grid);
++    return this.isMagma(grid) || this.isQuartz(grid) || this.isRock(grid);
+   }
+ 
+   isWall(grid: Loc): boolean {
+diff --git a/packages/core/src/world/fov.test.ts b/packages/core/src/world/fov.test.ts
+index b020771a7..b906b5f84 100644
+--- a/packages/core/src/world/fov.test.ts
++++ b/packages/core/src/world/fov.test.ts
+@@ -168,4 +168,26 @@ describe("updateView", () => {
+     expect(c.feelingSquares).toBe(Z.feelingNeed);
+     expect(fired).toBe(1);
+   });
++
++  it("only_partial suppresses the feeling reveal (cave-view.c:849-851)", () => {
++    const c = room(30, 20, 5, 5, 15, 12);
++    glowRect(c, 5, 5, 15, 12);
++    let marked = 0;
++    for (let y = 5; y <= 12 && marked < Z.feelingNeed; y++) {
++      for (let x = 5; x <= 15 && marked < Z.feelingNeed; x++) {
++        c.sqinfoOn(loc(x, y), SQUARE["FEEL"]);
++        marked++;
++      }
++    }
++    c.onlyPartial = true;
++    const p = viewer(6, 6);
++    const events = new GameEvents();
++    let fired = 0;
++    events.on("feeling", () => {
++      fired++;
++    });
++    updateView(c, p, Z, [], events);
++    expect(c.feelingSquares).toBe(Z.feelingNeed);
++    expect(fired).toBe(0);
++  });
+ });
+diff --git a/packages/core/src/world/view.ts b/packages/core/src/world/view.ts
+index f488cee3e..2df0990f1 100644
+--- a/packages/core/src/world/view.ts
++++ b/packages/core/src/world/view.ts
+@@ -450,10 +450,9 @@ function updateViewOne(
+  * flag, and at the feeling_need crossing fires the reveal (upstream's
+  * display_feeling(true) message is a UI concern - only the "reveal now"
+  * signal, GameEvents' `feeling` event, is emitted here). Upstream also
+- * guards this on `!p->upkeep->only_partial` (suppressing the redundant
+- * reveal right after a fresh level's initial full update); that flag is not
+- * modelled, so the event can fire once more than upstream on level entry -
+- * a presentation nicety, not a state divergence.
++ * guards this on `!p->upkeep->only_partial` (cave-view.c:849-851); the
++ * port models that as `c.onlyPartial` so level-entry FOV can suppress the
++ * redundant reveal.
+  */
+ function updateOne(
+   c: Chunk,
+@@ -471,7 +470,8 @@ function updateOne(
+     if (c.sqinfoHas(grid, SQUARE["FEEL"])) {
+       c.feelingSquares++;
+       c.sqinfoOff(grid, SQUARE["FEEL"]);
+-      if (c.feelingSquares === z.feelingNeed) {
++      /* cave-view.c:849-851: skip display_feeling when only_partial. */
++      if (c.feelingSquares === z.feelingNeed && !c.onlyPartial) {
+         events?.signal("feeling");
+       }
+     }
+diff --git a/packages/web/src/birth.test.ts b/packages/web/src/birth.test.ts
+index f4be4b252..c9855fb70 100644
+--- a/packages/web/src/birth.test.ts
++++ b/packages/web/src/birth.test.ts
+@@ -14,7 +14,6 @@ import { runBirth } from "./birth";
+ import type { GlyphTerm } from "./term";
+ import type { PlayerClass, PlayerRace } from "@neo-angband/core";
+ import {
+-  Rng,
+   colorToCss,
+   COLOUR_L_BLUE,
+   COLOUR_WHITE,
+@@ -116,7 +115,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     // The race menu: the instruction header, the yellow hint at row 7, and the
+     // race column at RACE_COL=2 / TABLE_ROW=9.
+@@ -165,7 +164,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+     const seen: string[] = [];
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     const record = (): void => {
+       seen.push(term.snapshot().join("\n"));
+     };
+@@ -194,7 +193,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "b"); // pick Half-Elf
+     await tick();
+@@ -216,7 +215,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "Escape");
+     expect(await done).toBeNull();
+@@ -226,7 +225,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "a"); await tick(); // race Human
+     press(win, "a"); await tick(); // class Warrior
+@@ -249,7 +248,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "a"); await tick(); // race Human
+     press(win, "a"); await tick(); // class Warrior
+@@ -283,7 +282,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90, 24);
+-    const done = runBirth(term, RACES11, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES11, CLASSES);
+     await tick();
+     const snap = term.snapshot().join("\n");
+     // 11 races -> a,b,c,d,e,f,g,i,m,n,o (h/j/k/l skipped).
+@@ -306,7 +305,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     const snap = term.snapshot().join("\n");
+     expect(snap).not.toContain("Random");
+@@ -319,7 +318,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     // print_menu_instructions: title at (QUESTION_COL=2, HEADER_ROW=1) light blue.
+     expect(term.snapshot()[1]).toContain("Please select your character traits");
+@@ -339,7 +338,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "c"); // Dwarf
+     await tick();
+@@ -362,7 +361,7 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90); // wide enough for the untruncated centered prompt
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "a"); await tick(); // Human
+     press(win, "a"); await tick(); // Warrior
+@@ -394,7 +393,7 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "a"); await tick(); // Human
+     press(win, "a"); await tick(); // Warrior
+@@ -412,7 +411,7 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "a"); await tick();
+     press(win, "a"); await tick();
+@@ -437,7 +436,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES, QUICK);
+     await tick();
+     expect(term.snapshot().join("\n")).toContain("Quick-start");
+     press(win, "a"); // use the previous character
+@@ -455,7 +454,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1),
++    const done = runBirth(term, RACES, CLASSES, {
+       quickstart: { raceName: "Dwarf", className: "Mage", stats: [17, 10, 10, 10, 16] },
+     });
+     await tick();
+@@ -476,7 +475,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES, QUICK);
+     await tick();
+     press(win, "a"); // quickstart
+     await tick();
+@@ -491,7 +490,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES, QUICK);
+     await tick();
+     press(win, "b"); // choose everything from scratch
+     await tick();
+@@ -506,7 +505,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1), quickstart: null });
++    const done = runBirth(term, RACES, CLASSES, { quickstart: null });
+     await tick();
+     expect(term.snapshot().join("\n")).not.toContain("Quick-start");
+     expect(term.snapshot()[7]).toContain("Race affects stats");
+@@ -518,7 +517,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES, QUICK);
+     await tick();
+     expect(term.snapshot().join("\n")).toContain("Quick-start");
+     // textui_birth_quickstart ('=', ui-birth.c:126): opens do_cmd_options_birth.
+@@ -542,7 +541,7 @@ describe("runBirth: standard roller screen (roller_command)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "a"); await tick(); // Human
+     press(win, "a"); await tick(); // Warrior
+@@ -568,7 +567,7 @@ describe("runBirth: standard roller screen (roller_command)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "a"); await tick(); // Human
+     press(win, "a"); await tick(); // Warrior
+@@ -588,7 +587,7 @@ describe("runBirth: menu_question '*' random and '@' finish", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "*"); // select a race at random (ui-birth.c:841)
+     await tick();
+@@ -627,7 +626,6 @@ describe("runBirth: menu_question '*' random and '@' finish", () => {
+       term,
+       RACES,
+       FULL_CLASSES as unknown as typeof CLASSES,
+-      { rng: new Rng(1) },
+     );
+     await tick();
+     press(win, "@"); // finish with random choices (ui-birth.c:851)
+@@ -648,7 +646,7 @@ describe("runBirth: history-edit stage (get_history_command)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1),
++    const done = runBirth(term, RACES, CLASSES, {
+       historyFor: () => "You are the only child of a Serf.",
+     });
+     await tick();
+@@ -669,7 +667,7 @@ describe("runBirth: history-edit stage (get_history_command)", () => {
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm(90);
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     press(win, "a"); await tick(); // Human
+     press(win, "a"); await tick(); // Warrior
+@@ -688,7 +686,7 @@ describe("runBirth: per-row race/class stat detail (race_help/class_help)", () =
+     const win = makeFakeWindow();
+     (globalThis as { window?: unknown }).window = win;
+     const term = makeTerm();
+-    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
++    const done = runBirth(term, RACES, CLASSES);
+     await tick();
+     // race_help (ui-birth.c L241-302): the stat-adjustment table
+     // (stat_names_reduced) plus the skill_help block, drawn in the aux column.
+diff --git a/packages/web/src/birth.ts b/packages/web/src/birth.ts
+index 72bc5a452..9cf6d0871 100644
+--- a/packages/web/src/birth.ts
++++ b/packages/web/src/birth.ts
+@@ -24,10 +24,11 @@
+  *
+  * Standard roller (BR_NORMAL): the standardRoller screen (roller_command,
+  * ui-birth.c:872-999) rolls stats for display and supports reroll ('r'/space),
+- * previous-roll ('p') and accept (Enter). Rolling draws from the shared game
+- * stream (opts.rng); the accepted natural stats ride the BirthChoice as
+- * `rolledStats` and are applied by generatePlayer's `rolledStats` option
+- * (bootGame must NOT feed them through the point-buy path).
++ * previous-roll ('p') and accept (Enter). Rolling is the only place the shell
++ * draws RNG (from a throwaway per-birth Rng); the accepted natural stats ride
++ * the BirthChoice as `rolledStats` and are applied by generatePlayer's
++ * `rolledStats` option (see WIRING-NEEDED - bootGame must NOT feed them through
++ * the point-buy path).
+  *
+  * History (BIRTH_HISTORY_CHOICE): when the shell supplies get_history via
+  * BirthOpts.historyFor, the name stage is followed by an accept/edit-background
+@@ -137,8 +138,8 @@ export interface BirthDeps {
+ export interface BirthOpts {
+   /**
+    * Shared game RNG for random birth choices (ui-birth.c randint0 at L465/678/
+-   * 696/842) and the standard roller. Required: omitting it throws so a missing
+-   * stream cannot silently desync Decision 6.2. Tests inject `new Rng(1)`.
++   * 696/842) and the standard roller. When omitted a throwaway Rng(1) is used
++   * (tests); the shell should pass the same seed-backed stream as startGame.
+    */
+   rng?: Rng;
+   /** BIRTH_QUICKSTART: the previous character's choices, offered as stage 0
+@@ -1207,14 +1208,9 @@ export async function runBirth(
+ 
+   // The birth shell's RNG: standard roller and the '*'/'@' random choices.
+   // Must be the shared game stream (Decision 6.2 / ui-birth.c L678), never a
+-  // Date.now-seeded generator or a silent Rng(1) fallback (that desyncs the
+-  // stream when the shell forgets to inject). Tests and the shell must pass rng.
+-  if (!opts.rng) {
+-    throw new Error(
+-      "runBirth: opts.rng is required (ui-birth.c advances the main game stream)",
+-    );
+-  }
+-  const rollRng = opts.rng;
++  // Date.now-seeded generator. Accepted stats still ride the choice explicitly
++  // into startGame; the draw count/order on this stream matches C.
++  const rollRng = opts.rng ?? new Rng(1);
+ 
+   // Registry-backed info (race/class ability names + the full preview sheet).
+   // Absent, the help blocks still show stat + skill data (computable from the
+diff --git a/packages/web/src/main.ts b/packages/web/src/main.ts
+index 7f843570a..f9c1aad3a 100644
+--- a/packages/web/src/main.ts
++++ b/packages/web/src/main.ts
+@@ -387,10 +387,6 @@ const FORCE_NEW_KEY = "neo-angband-force-new";
+ // post-birth reload does not reopen the birth screen.
+ const BIRTH_KEY = "neo-angband-birth";
+ const BIRTH_DONE_KEY = "neo-angband-birth-done";
+-// Post-birth RNG snapshot: ui-birth.c advances the live state.rng (* / @ / roller /
+-// get_history); the reload that rebuilds the character restores this state so
+-// startGame continues from the same stream position (Decision 6.2).
+-const BIRTH_RNG_KEY = "neo-angband-birth-rng";
+ // The boot title/news screen shows on every genuine launch (main-win.c:5475:
+ // the GUI ports display news.txt and wait). Internal reloads that continue an
+ // already-made choice (New/Switch/resume-a-slot) set this one-shot flag so the
+@@ -582,22 +578,9 @@ function bootGame(): ReturnType<typeof startGame> {
+   // A genuine new character (forcedNew, or an empty roster with nothing to
+   // pick) gets an active slot now so its autosaves land.
+   if (!needsSelect && !getActiveId()) setActiveId(newCharId());
+-  // Resume the main stream after the birth UI advanced it (ui-birth.c draws
+-  // before level gen). Absent, start from seed as a normal new game.
+-  let birthRngState: ReturnType<Rng["getState"]> | undefined;
+-  try {
+-    const raw = sessionStorage.getItem(BIRTH_RNG_KEY);
+-    if (raw) {
+-      birthRngState = JSON.parse(raw) as ReturnType<Rng["getState"]>;
+-      sessionStorage.removeItem(BIRTH_RNG_KEY);
+-    }
+-  } catch {
+-    /* storage disabled or corrupt: fall through to seed */
+-  }
+   return startGame(pack, {
+     seed,
+     depth,
+-    ...(birthRngState ? { rngState: birthRngState } : {}),
+     // The effective mod-rule flags (qol / bug-fixes tweaks) for this session:
+     // enabled mods' declared rules resolved against the player's saved choices.
+     // Empty => faithful core. Upstream OPTIONS are NOT set here - they ship in
+@@ -759,12 +742,12 @@ if (animator) {
+   }
+ }
+ 
+-// do_animation increments a uint8_t `flicker` counter each animation tick.
+-// RF_ATTR_MULTI draws randint1(BASIC_COLORS - 1) on the MAIN game RNG
+-// (ui-display.c:1439-1446); Decision 6.2 requires that main-stream draw, not
+-// Math.random. Flicker frame itself is display-only (no RNG).
++// do_animation increments a uint8_t `flicker` counter each animation tick. We
++// drive it off a display timer so shimmering never touches the deterministic
++// game RNG. RF_ATTR_MULTI's randint1 uses this DISPLAY rng (Math.random), not
++// state.rng, for the same reason (see parity/ledger/graphics-visuals.yaml).
+ let animFrame = 0;
+-const displayRandint1 = (n: number): number => state.rng.randint1(n);
++const displayRandint1 = (n: number): number => 1 + Math.floor(Math.random() * n);
+ 
+ // --- Optional graphics tiles (task C1: bundled upstream tilesets) -----------
+ // Four freely-licensed upstream packs ship under public/tiles/<dir>/ (see
+@@ -5909,24 +5892,20 @@ async function maybeBirth(): Promise<void> {
+     properties: players.properties,
+     elementNames,
+   };
+-  // Birth UI advances the live game stream (ui-birth.c L465/678/696/842 +
+-  // get_history L746-750): the same Rand that store_reset / seed_randart /
+-  // seed_flavor / level gen continue. The throwaway startGame already advanced
+-  // state.rng through init; reseed to the world seed so birth draws start at
+-  // the C birth-UI position, then snapshot after accept for the post-birth
+-  // reload (Decision 6.2). PREVIEW_SEED throwaways in birth.ts stay separate.
+-  state.rng.setState(new Rng(seed).getState());
+   const historyFor = (raceName: string): string => {
+     const race = players.raceByName(raceName);
+     if (!race) return "";
+-    return generateHistory(players.historyChart(race), state.rng);
++    return generateHistory(
++      players.historyChart(race),
++      new Rng(((Date.now() >>> 0) ^ 0x1a2b3c4d) >>> 0),
++    );
+   };
+   await openModal(async () => {
+     // quickstart_allowed (ui-birth.c): offer the quick-start stage only when
+     // a previous character's choices exist to reuse.
+     const choice = await runBirth(term, players.races, players.classes, {
+       // ui-birth.c draws random race/class/*/@/roller from the main game RNG.
+-      rng: state.rng,
++      rng: new Rng(seed),
+       quickstart: birthChoice
+         ? {
+             raceName: birthChoice.raceName,
+@@ -5950,9 +5929,6 @@ async function maybeBirth(): Promise<void> {
+       localStorage.setItem(BIRTH_KEY, JSON.stringify(choice));
+       sessionStorage.setItem(BIRTH_DONE_KEY, "1");
+       sessionStorage.setItem(FORCE_NEW_KEY, "1");
+-      // Persist the advanced stream so the post-birth reload's startGame
+-      // continues from this position (store_reset / seeds / level gen).
+-      sessionStorage.setItem(BIRTH_RNG_KEY, JSON.stringify(state.rng.getState()));
+     } catch {
+       /* storage disabled: the reload still starts a fresh game via ?new */
+     }
+diff --git a/packages/web/src/pack.ts b/packages/web/src/pack.ts
+index 16e250b8b..7bcc55075 100644
+--- a/packages/web/src/pack.ts
++++ b/packages/web/src/pack.ts
+@@ -384,9 +384,6 @@ export function loadGamePack(): GamePack {
+     store: records("store"),
+     quest: records("quest"),
+     uiKnowledge: records("ui_knowledge"),
+-    /* hints.json (ui-store.c prt_welcome tip branch). Bound into CorePack so
+-     * the one_in_(3) + random_hint draws land on the main stream. */
+-    hints: records("hints"),
+     obj: {
+       objectBase: composedFile("object_base"),
+       object: composedFile("object"),
+diff --git a/packages/web/src/shop.ts b/packages/web/src/shop.ts
+index f3e9c9f40..a6eb440d9 100644
+--- a/packages/web/src/shop.ts
++++ b/packages/web/src/shop.ts
+@@ -139,60 +139,26 @@ const COMMENT_WELCOME = [
+   '%s: "You do honour to my humble store, noble %s."',
+   '%s: "I and my family are entirely at your service, %s."',
+ ];
+-
+-/**
+- * comment_hint (ui-store.c L74-80): only one active format string; each has
+- * exactly one %s for the tip text (random_hint).
+- */
+-const COMMENT_HINT = ['"%s"'];
+-
+-/**
+- * random_hint (ui-store.c L121-129): reservoir sample over the global hints
+- * list. Starts at the first tip, then for each subsequent tip at index n
+- * (1-based count 2, 3, ...) draws one_in_(n) to replace the choice. With N
+- * tips this consumes N-1 one_in_ draws on the main stream.
+- */
+-function randomHint(
+-  rng: StartedGame["state"]["rng"],
+-  hints: readonly string[],
+-): string {
+-  let r = hints[0] ?? "";
+-  for (let i = 1, n = 2; i < hints.length; i++, n++) {
+-    if (rng.oneIn(n)) r = hints[i] ?? r;
+-  }
+-  return r;
+-}
+-
+ /**
+- * prt_welcome (ui-store.c L139-177): a real shop's entry greeting.
+- *
+- * Draw order (Decision 6.2 / ui-store.c:145-172):
+- *  1. one_in_(2) -> silent return
+- *  2. if hints non-empty: one_in_(3)
+- *     - true: randint0(comment_hint) + random_hint reservoir draws, emit tip
+- *     - false and lev > 5: comment_welcome path
+- *  3. else if lev > 5: comment_welcome path
++ * prt_welcome (ui-store.c L139-177): a real shop's entry greeting. 50% of the
++ * time it says nothing; otherwise, for a character above level 5, it picks a
++ * comment_welcome line by level tier and substitutes the owner's short name and
++ * a character identifier (class title / full name / "valued customer"). The
++ * hint branch (ui-store.c L156) is skipped: the port loads no hints list, so
++ * upstream's `if (hints && one_in_(3))` is unreachable. Returns null for no
++ * greeting.
+  *
+- * All draws consume the main game RNG.
++ * All draws consume the main game RNG (Decision 6.2), matching C one_in_/
++ * randint0 order.
+  */
+ function prtWelcome(
+   store: Store,
+   player: StartedGame["state"]["actor"]["player"],
+   rng: StartedGame["state"]["rng"],
+-  hints: readonly string[],
+ ): string | null {
+   if (rng.oneIn(2)) return null;
+-
+-  const shortName = store.owner.name.split(" ")[0] ?? store.owner.name;
+-
+-  if (hints.length > 0 && rng.oneIn(3)) {
+-    const i = rng.randint0(COMMENT_HINT.length);
+-    const fmt = COMMENT_HINT[i] ?? COMMENT_HINT[0]!;
+-    return fmt.replace("%s", randomHint(rng, hints));
+-  }
+-
+   if (player.lev <= 5) return null;
+-
++  const shortName = store.owner.name.split(" ")[0] ?? store.owner.name;
+   let i = Math.floor((player.lev - 1) / 5);
+   i = Math.min(i, COMMENT_WELCOME.length - 1);
+   let ident: string;
+@@ -471,15 +437,9 @@ export async function runStore(
+   /* prt_welcome (ui-store.c L1292-1294 in use_store): a real shop greets the
+    * character once on entry; the Home does not. Shown on the message line, where
+    * it persists until the first command clears it (statusMsg). Draws from
+-   * state.rng (ui-store.c L145-172), including the hint branch when the pack
+-   * bound a non-empty hints list. */
++   * state.rng (ui-store.c L145-172). */
+   if (!isHome) {
+-    const welcome = prtWelcome(
+-      store,
+-      game.state.actor.player,
+-      game.state.rng,
+-      game.booted.registries.hints,
+-    );
++    const welcome = prtWelcome(store, game.state.actor.player, game.state.rng);
+     if (welcome) storeSay(welcome);
+   }
+ 
