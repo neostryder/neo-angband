@@ -7,7 +7,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { ORIGIN, TMD, TV } from "../generated";
+import { MSG, ORIGIN, TMD, TV } from "../generated";
 import { STAT } from "../generated";
 import { loc } from "../loc";
 import { Rng } from "../rng";
@@ -158,6 +158,17 @@ describe("live monster melee - elemental resist split", () => {
     const { setup } = attackHit(make("FIRE", "HIT", "20d1"));
     /* physical = adjust_dam_armor(20, ac+50) = 18; elemental (res 0) = 20. */
     expect(1000 - setup.state.actor.player.chp).toBe(20);
+  });
+
+  it("a landed blow plays the method's msgt sound channel (mon-blows.c L206)", () => {
+    const sounds: number[] = [];
+    attackHit(make("HURT", "HIT", "5d1"), (s) => {
+      s.state.sound = (code: number): void => {
+        sounds.push(code);
+      };
+    });
+    /* Blow method HIT carries msg:MON_HIT (blow_methods.txt) -> MSG.MON_HIT. */
+    expect(sounds).toContain(MSG.MON_HIT);
   });
 
   it("immune to fire falls back to the physical component only", () => {
