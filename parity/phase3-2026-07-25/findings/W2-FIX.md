@@ -79,3 +79,52 @@ pnpm vitest run packages/core/src/game/w2-wiring-fix.test.ts packages/cli/src/ma
 ## Already-correct / wrong findings
 
 None of W2-001…W2-022 were judged wrong on inspection; all 22 were NOT-WIRED and are now fixed on a live path as above.
+
+## Rework
+
+The adversarial review identified four remaining wiring defects. The stale-base
+change-scope deletions are not part of this rework; the branch is already
+rebased onto current `master`.
+
+### W2-003 — target-panel nearest stairs
+
+`stepTargetLoop` now handles `<` and `>` by calling `pathNearestKnown` from the
+current cursor grid with the corresponding upstairs/downstairs predicate. A
+successful result moves only the target cursor and the caller repaints the
+GlyphTerm target panel; failure bells. This path is UI-only: it spends no energy,
+does not enqueue a command, and draws no RNG. The live target loop in
+`main.ts` drives this state machine.
+
+### W2-007 — complete `wizTweakItem` field set
+
+The in-terminal Play-with-item branch now prompts ego, artifact, all
+`OBJ_MOD_MAX` modifiers, AC bonus, to-hit, and to-dam, then passes the complete
+set to `wizTweakItem`. The core helper now preserves the C follow-up: selecting
+an ego runs `object_prep(RANDOMISE)` and `ego_apply_magic`; selecting an artifact
+runs `object_prep(RANDOMISE)` at its allocation depth and
+`copy_artifact_data`. Those are the only added RNG draws, in the same order as
+C; scalar prompts and assignments draw none. The live test drives
+`dispatchDebug("play-item")` through Tweak attributes and enters every field.
+
+### W2-009 — asynchronous in-terminal death confirmation
+
+The synchronous `confirmDie` stand-in was removed. A fatal wizard/`cheat_live`
+hit records `diedFrom` first, then installs a renderer-neutral `pendingDeath`
+resume seam and returns `LOOP_STATUS.DEATH_CONFIRM`. The web shell answers with
+the existing GlyphTerm `getCheck("Die? ")` overlay and resumes the same chain:
+`y` emits the normal death message, marks `isDead`, clears `totalWinner`, and
+enters the existing death flow; any other answer invokes `wizCheatDeath`.
+Bloodlust's `randint0(10)` remains before this seam. The prompt, state write,
+and resume control add no RNG. Live tests enter through `worldTakeHit`, verify
+the pre-prompt killer, and exercise both answers.
+
+### W2-012 / W2-013 — combining pickup guard
+
+`invenCarryResult` now preserves the C `combining` bit. The live pickup path
+gates both mushroom and zapper awareness on `!combining`, while retaining the
+existing `PF.KNOW_MUSHROOM` / `PF.KNOW_ZAPPER` predicates, awareness calls, and
+message. The guard adds no RNG. Live pickup-command tests cover both ordinary
+insertion and combining insertion for each tval.
+
+Rework verification uses single-worker, chunked Vitest invocations with a hard
+timeout and `pnpm typecheck`; no commit was created.

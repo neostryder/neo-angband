@@ -62,6 +62,7 @@ import { STAT_MAX } from "../player/types";
 import {
   applyMagic,
   copyArtifactData,
+  egoApplyMagic,
   makeGold,
   makeObject,
   objectPrep,
@@ -79,7 +80,7 @@ import { objectValue } from "../obj/value";
 import { OBJ_NOTICE, objectLearnOnWield } from "../obj/knowledge";
 import { OBJ_MOD_MAX } from "../obj/types";
 import type { FlagSet } from "../bitflag";
-import type { Artifact, Curse, ObjectKind } from "../obj/types";
+import type { Artifact, Curse, EgoItem, ObjectKind } from "../obj/types";
 import type { FlavorKnowledge } from "../obj/knowledge";
 import { MON_GROUP } from "../mon/types";
 import type { MonsterRace } from "../mon/types";
@@ -153,6 +154,8 @@ export interface WizardDeps {
   races?: readonly MonsterRace[];
   /** The full artifact list (reg.artifacts), for create_all_artifact. */
   artifacts?: readonly (Artifact | null)[];
+  /** The full ego list (reg.egos), for wiz_tweak_item. */
+  egos?: readonly EgoItem[];
   /** The full curse list (reg.curses), for curse_item. */
   curses?: readonly (Curse | null)[];
   /**
@@ -921,17 +924,17 @@ export function wizRerollItem(
 }
 
 /**
- * do_cmd_wiz_tweak_item (L2698, DATA half): set a non-artifact item's ego /
- * artifact / modifiers / to_a / to_h / to_d directly. The shell owns the
- * prompts; the values arrive as parameters. Every field is optional; only the
- * supplied ones are changed. (ego_apply_magic / copy_artifact_data on an
- * ego/artifact set are the shell's follow-up and are not re-run here.)
+ * do_cmd_wiz_tweak_item (L2698): apply the complete DATA command. The shell
+ * owns the prompts; the values arrive as parameters. Every field is optional;
+ * only supplied fields are changed. Selecting an ego or artifact follows C's
+ * object_prep + ego_apply_magic / copy_artifact_data sequence, including its
+ * RNG draws, before the scalar modifier prompts are applied.
  */
 export function wizTweakItem(
   state: GameState,
   params: {
     obj: GameObject;
-    ego?: import("../obj/types").EgoItem | null;
+    ego?: EgoItem | null;
     artifact?: Artifact | null;
     modifiers?: readonly number[];
     toA?: number;
@@ -943,8 +946,79 @@ export function wizTweakItem(
   if (!wizardEnabled(deps)) return false;
   const { obj } = params;
   if (obj.artifact) return false;
-  if (params.ego !== undefined) obj.ego = params.ego;
-  if (params.artifact !== undefined) obj.artifact = params.artifact;
+
+  const copyPreparedFields = (fresh: GameObject): void => {
+    /* object_prep mutates the existing C object while preserving its pile /
+     * identity fields. Copy the generated fields back while retaining those
+     * live carrier fields in the port's object model. */
+    obj.ego = fresh.ego;
+    obj.artifact = fresh.artifact;
+    obj.tval = fresh.tval;
+    obj.sval = fresh.sval;
+    obj.pval = fresh.pval;
+    obj.weight = fresh.weight;
+    obj.dd = fresh.dd;
+    obj.ds = fresh.ds;
+    obj.ac = fresh.ac;
+    obj.toA = fresh.toA;
+    obj.toH = fresh.toH;
+    obj.toD = fresh.toD;
+    obj.flags.copy(fresh.flags);
+    for (let i = 0; i < obj.modifiers.length; i++) {
+      obj.modifiers[i] = fresh.modifiers[i] as number;
+    }
+    for (let i = 0; i < obj.elInfo.length; i++) {
+      obj.elInfo[i]!.resLevel = fresh.elInfo[i]!.resLevel;
+      obj.elInfo[i]!.flags = fresh.elInfo[i]!.flags;
+    }
+    obj.brands = fresh.brands ? [...fresh.brands] : null;
+    obj.slays = fresh.slays ? [...fresh.slays] : null;
+    obj.curses = fresh.curses ? fresh.curses.map((c) => ({ ...c })) : null;
+    obj.effect = fresh.effect;
+    obj.effectMsg = fresh.effectMsg;
+    obj.activation = fresh.activation;
+    obj.time = { ...fresh.time };
+    obj.timeout = fresh.timeout;
+  };
+
+  if (params.ego !== undefined) {
+    if (params.ego && !deps.makeDeps) return false;
+    if (params.ego && deps.makeDeps) {
+      const fresh = objectPrep(
+        state.rng,
+        deps.makeDeps.reg,
+        deps.makeDeps.constants,
+        obj.kind,
+        state.chunk.depth,
+        "randomise",
+      );
+      fresh.ego = params.ego;
+      egoApplyMagic(state.rng, deps.makeDeps.reg, fresh, state.chunk.depth);
+      copyPreparedFields(fresh);
+    } else {
+      obj.ego = null;
+    }
+  }
+
+  if (params.artifact !== undefined) {
+    if (params.artifact && !deps.makeDeps) return false;
+    if (params.artifact && deps.makeDeps) {
+      const fresh = objectPrep(
+        state.rng,
+        deps.makeDeps.reg,
+        deps.makeDeps.constants,
+        obj.kind,
+        params.artifact.allocMin,
+        "randomise",
+      );
+      fresh.ego = null;
+      fresh.artifact = params.artifact;
+      copyArtifactData(state.rng, deps.makeDeps.reg, fresh, params.artifact);
+      copyPreparedFields(fresh);
+    } else {
+      obj.artifact = null;
+    }
+  }
   if (params.modifiers) {
     for (let i = 0; i < obj.modifiers.length && i < params.modifiers.length; i++) {
       obj.modifiers[i] = params.modifiers[i] as number;

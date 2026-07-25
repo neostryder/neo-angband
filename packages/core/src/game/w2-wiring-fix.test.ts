@@ -12,8 +12,6 @@ import { objectNew } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { FlavorKnowledge } from "../obj/knowledge";
 import { FlagSet } from "../bitflag";
-import { takeHit } from "../player/take-hit";
-import type { TakeHitTarget } from "../player/take-hit";
 import { OptionState } from "../player/options";
 import { PF_SIZE } from "../player/types";
 import { createDefaultRegistry } from "./player-turn";
@@ -21,9 +19,11 @@ import { installRangedCommands } from "./ranged-cmd";
 import { installRunning } from "./player-path";
 import { installCaveCommands } from "./cave-cmd";
 import { installPickup } from "./pickup";
-import { gearAdd } from "./gear";
+import { gearAdd, invenCarry } from "./gear";
 import { floorCarry } from "./floor";
 import { makeTakeHitHooks } from "./take-hit-hooks";
+import { worldTakeHit } from "./world";
+import { initTargetLoopUi, stepTargetLoop } from "./target-loop";
 import { bindConstants } from "../constants";
 import type { ConstantsJson } from "../constants";
 import type { GameState } from "./context";
@@ -103,29 +103,6 @@ function armArcher(state: GameState): number {
   return handle;
 }
 
-/** takeHitTarget bridge matching effect-env.ts (player fields live on state). */
-function liveTarget(state: GameState): TakeHitTarget {
-  const p = state.actor.player;
-  return {
-    get chp() {
-      return p.chp;
-    },
-    set chp(v: number) {
-      p.chp = v;
-    },
-    mhp: p.mhp,
-    lev: p.lev,
-    get isDead() {
-      return state.isDead;
-    },
-    set isDead(v: boolean) {
-      state.isDead = v;
-    },
-    timed: p.timed,
-    hitpointWarn: 3,
-  };
-}
-
 describe("W2-001/002/010/011 ranged learn-on-hit via fire/throw commands", () => {
   it("fire learns combat runes on ammo and launcher (live fire command)", () => {
     const state = makeState({ playerGrid: loc(5, 10) });
@@ -167,7 +144,7 @@ describe("W2-001/002/010/011 ranged learn-on-hit via fire/throw commands", () =>
 });
 
 describe("W2-009 wizCheatDeath via take_hit live hooks", () => {
-  it("cheat_live + lethal blow calls wizCheatDeath through makeTakeHitHooks", () => {
+  it("cheat_live + lethal world hit prompts, then resumes the cheat path", () => {
     const state = makeState();
     state.options = new OptionState({ overrides: { cheat_live: true } });
     const p = state.actor.player;
@@ -177,15 +154,39 @@ describe("W2-009 wizCheatDeath via take_hit live hooks", () => {
     p.csp = 3;
     const msgs: string[] = [];
     state.msg = (t) => msgs.push(t);
+    state.world!.takeHitHooks = makeTakeHitHooks(state);
 
-    const hooks = makeTakeHitHooks(state);
-    takeHit(liveTarget(state), 100, "a test", hooks);
+    worldTakeHit(state, 100, "a test");
 
     expect(state.isDead).toBe(false);
+    expect(state.pendingDeath?.killer).toBe("a test");
+    expect(p.diedFrom).toBe("a test");
+    state.pendingDeath!.resolve(false);
     expect(p.chp).toBe(p.mhp);
     expect(msgs.some((m) => m.includes("cheat death"))).toBe(true);
     expect(state.generateLevel).toBe(true);
     expect(state.targetDepth).toBe(0);
+  });
+
+  it("the same live seam can accept final death", () => {
+    const state = makeState();
+    state.options = new OptionState({ overrides: { cheat_live: true } });
+    const p = state.actor.player;
+    p.chp = 5;
+    p.mhp = 50;
+    p.totalWinner = true;
+    const msgs: string[] = [];
+    state.msg = (t) => msgs.push(t);
+    state.world!.takeHitHooks = makeTakeHitHooks(state);
+
+    worldTakeHit(state, 100, "a dragon");
+    expect(state.pendingDeath).toBeDefined();
+    state.pendingDeath!.resolve(true);
+
+    expect(state.isDead).toBe(true);
+    expect(p.diedFrom).toBe("a dragon");
+    expect(p.totalWinner).toBe(false);
+    expect(msgs).toContain("You die.");
   });
 });
 
@@ -225,6 +226,44 @@ describe("W2-012/013 mushroom and zapper ID on pickup command", () => {
     reg.get("pickup")!(state, { code: "pickup" });
 
     expect(state.flavorKnown.isAware(wand.kind)).toBe(true);
+  });
+
+  it("does not identify a mushroom while the live pickup combines a stack", () => {
+    const state = makeState();
+    state.flavorKnown = new FlavorKnowledge(objReg.ordinaryKindCount);
+    const inPack = bareObject(TV.MUSHROOM);
+    invenCarry(state.gear, inPack, {
+      quiverSlotSize: constants.quiverSlotSize,
+      thrownQuiverMult: constants.thrownQuiverMult,
+    });
+    const floorMushroom = bareObject(TV.MUSHROOM);
+    withPflag(state, PF.KNOW_MUSHROOM);
+    floorCarry(state, state.actor.grid, floorMushroom);
+
+    const reg = createDefaultRegistry();
+    installPickup(state, reg, { constants });
+    reg.get("pickup")!(state, { code: "pickup" });
+
+    expect(state.flavorKnown.isAware(inPack.kind)).toBe(false);
+  });
+
+  it("does not identify a wand while the live pickup combines a stack", () => {
+    const state = makeState();
+    state.flavorKnown = new FlavorKnowledge(objReg.ordinaryKindCount);
+    const inPack = bareObject(TV.WAND);
+    invenCarry(state.gear, inPack, {
+      quiverSlotSize: constants.quiverSlotSize,
+      thrownQuiverMult: constants.thrownQuiverMult,
+    });
+    const floorWand = bareObject(TV.WAND);
+    withPflag(state, PF.KNOW_ZAPPER);
+    floorCarry(state, state.actor.grid, floorWand);
+
+    const reg = createDefaultRegistry();
+    installPickup(state, reg, { constants });
+    reg.get("pickup")!(state, { code: "pickup" });
+
+    expect(state.flavorKnown.isAware(inPack.kind)).toBe(false);
   });
 });
 
@@ -273,6 +312,19 @@ describe("W2-003 pathNearestKnown via navigate-down / descend+autoexplore", () =
     const used = reg.get("descend")!(state, { code: "descend" });
     expect(used).toBeGreaterThan(0);
     expect(msgs).not.toContain("I see no down staircase here.");
+  });
+
+  it("target-panel '>' moves the cursor to the nearest known downstairs", () => {
+    const state = makeState({ playerGrid: loc(2, 5), w: 20, h: 12 });
+    corridorWithDownstairs(state);
+    const ui = initTargetLoopUi(state, 2, 5);
+    const before = state.rng.getState();
+    const step = stepTargetLoop(state, [], ui, ">");
+
+    expect(step.bell).toBe(false);
+    expect(step.ui).toMatchObject({ x: 10, y: 5 });
+    expect(state.actor.grid).toEqual(loc(2, 5));
+    expect(state.rng.getState()).toEqual(before);
   });
 });
 

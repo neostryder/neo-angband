@@ -73,6 +73,7 @@ import { squareIsVisibleTrap, squareTrap } from "./trap";
 import { squareIsSeen } from "../world/view";
 import type { GameState } from "./context";
 import { squareMonster } from "./context";
+import { pathNearestKnown } from "./player-path";
 import {
   coordsDesc,
   lookMonDesc,
@@ -343,10 +344,9 @@ export interface TargetLoopStep {
 
 /**
  * One keypress through target_set_interactive's key-handling chain
- * (L1422-1632), minus every mouse/panel/pathfinding/ignore/stairs branch
- * (no mouse or panels on the web; pathfinding, ignore and nearest-stairs are
- * sibling gaps - an unrecognized/deferred key falls through to the
- * direction branch and bells exactly as upstream's "no direction" case).
+ * (L1422-1632), minus mouse/panel/ignore branches that have no web equivalent.
+ * The nearest-stair '<'/'>' branches are retained as cursor-only operations;
+ * unlike navigate-up/down they do not spend energy or enqueue a player turn.
  */
 export function stepTargetLoop(
   state: GameState,
@@ -412,6 +412,29 @@ export function stepTargetLoop(
       };
     }
     return { ui, done: false, bell: false };
+  }
+
+  /* target_set_interactive's nearest-known-stair branches (ui-target.c
+   * L1506-1542): search from the cursor, not from the player, and move only
+   * the target cursor. This is UI navigation, so it draws no RNG and spends
+   * no energy; the web caller repaints the target panel after this step. */
+  if (key === ">" || key === "<") {
+    const start = currentLoopGrid(ui, targets);
+    const found = pathNearestKnown(
+      state,
+      start,
+      key === ">"
+        ? (s, grid) => s.chunk.isDownstairs(grid)
+        : (s, grid) => s.chunk.isUpstairs(grid),
+    );
+    if (found.length > 0) {
+      return {
+        ui: { ...ui, x: found.dest.x, y: found.dest.y, showInteresting: false },
+        done: false,
+        bell: false,
+      };
+    }
+    return { ui, done: false, bell: true };
   }
 
   if (key === "t" || key === "5" || key === "0" || key === ".") {
