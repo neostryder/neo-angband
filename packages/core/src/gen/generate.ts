@@ -111,6 +111,11 @@ export interface GenerateOptions {
   hasAdjacentAbove?: boolean;
   hasAdjacentBelow?: boolean;
   /**
+   * Stored town terrain (chunk_write "Town") for town_gen re-entry without
+   * birth_levels_persist (generate.c:1371-1373 / gen-cave.c:2671-2703).
+   */
+  townLayout?: import("../world/chunk").Chunk | null;
+  /**
    * birth_connect_stairs (gen-util.c:427-433, new_player_spot): lay an arrival
    * staircase on the player's start grid - "up" after a descent, "down" after
    * an ascent - so connected stairs line up. The caller (session changeLevel)
@@ -383,6 +388,7 @@ export function generateLevel(
       rooms: deps.rooms,
       createStair: options.createStair ?? null,
       ...(options.daytime !== undefined ? { daytime: options.daytime } : {}),
+      ...(options.townLayout ? { townLayout: options.townLayout } : {}),
     };
 
     const built = builder(ctx);

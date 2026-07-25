@@ -12,8 +12,9 @@
  * exactly the fields the C reads from struct player, and light sources
  * arrive as a list instead of scanning the monster array. The knowledge
  * side effects of update_one (trap reveal, square_note_spot/light_spot,
- * feeling display, blind memory forget) are deferred to the knowledge
- * module; the flag bookkeeping they sit beside is ported.
+ * feeling display) and the blind forget of the current non-passable
+ * remembered square (cave-view.c:894-897) run from game/known.ts noteSpots
+ * after every updateView; the flag bookkeeping they sit beside is ported.
  */
 
 import type { GameEvents } from "../events";
@@ -450,10 +451,9 @@ function updateViewOne(
  * flag, and at the feeling_need crossing fires the reveal (upstream's
  * display_feeling(true) message is a UI concern - only the "reveal now"
  * signal, GameEvents' `feeling` event, is emitted here). Upstream also
- * guards this on `!p->upkeep->only_partial` (suppressing the redundant
- * reveal right after a fresh level's initial full update); that flag is not
- * modelled, so the event can fire once more than upstream on level entry -
- * a presentation nicety, not a state divergence.
+ * guards this on `!p->upkeep->only_partial` (cave-view.c:849-851); the
+ * port models that as `c.onlyPartial` so level-entry FOV can suppress the
+ * redundant reveal.
  */
 function updateOne(
   c: Chunk,
@@ -471,7 +471,8 @@ function updateOne(
     if (c.sqinfoHas(grid, SQUARE["FEEL"])) {
       c.feelingSquares++;
       c.sqinfoOff(grid, SQUARE["FEEL"]);
-      if (c.feelingSquares === z.feelingNeed) {
+      /* cave-view.c:849-851: skip display_feeling when only_partial. */
+      if (c.feelingSquares === z.feelingNeed && !c.onlyPartial) {
         events?.signal("feeling");
       }
     }

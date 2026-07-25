@@ -343,7 +343,6 @@ describe("full level generation", () => {
      * hard_centre (proven by the choose() test). Drive many seeds end-to-end
      * through generateLevel and require every level to be valid + connected -
      * catches any deep generator that disconnects or throws via the pipeline. */
-    const deps = makeDeps();
     /* The player can reach a down staircase (the true playability guarantee).
      * 8-directional, since the player moves diagonally and caverns connect
      * diagonally. Angband does NOT guarantee every passable cell is reachable
@@ -373,7 +372,15 @@ describe("full level generation", () => {
     };
     for (const [depth, seeds] of [[30, 24], [60, 14]] as const) {
       for (let s = 0; s < seeds; s++) {
-        const g = generateLevel(new Rng(9000 + depth * 100 + s), depth, deps);
+        /*
+         * Fresh deps per seed: vault object placement draws mid-gen, and a
+         * shared ArtifactState / race.curNum from prior seeds pollutes those
+         * draws (independent seed trials are not one continuous game).
+         * square_set_feat clears WALL_* mid-gen (cave-square.c:1263-1268);
+         * with polluted vault RNG the modified profile at seed 15004 could
+         * land a disconnected stair layout that clean deps do not.
+         */
+        const g = generateLevel(new Rng(9000 + depth * 100 + s), depth, makeDeps());
         const p = g.playerSpot as Loc;
         expect(g.c.isPassable(p)).toBe(true);
         expect(g.c.featCount[FEAT.MORE] ?? 0).toBeGreaterThanOrEqual(1);
