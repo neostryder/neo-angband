@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { MessageLog, paginateMessages, format } from "./messages";
+import { colorToCss, COLOUR_ORANGE, MessageLog as CoreMessageLog, MSG } from "@neo-angband/core";
+import {
+  MessageLog,
+  messageTypeCode,
+  paginateMessages,
+  pushTypedMessage,
+  format,
+} from "./messages";
+import { messageHistoryLines } from "./screens";
 
 /**
  * paginateMessages ports display_message / msg_flush (ui-input.c L385-595): a
@@ -53,5 +61,19 @@ describe("paginateMessages (-more- packing, ui-input.c display_message)", () => 
     log.push("The orc dies.");
     const fresh = log.all().slice(preLen);
     expect(paginateMessages(fresh, 80)).toEqual(["You hit the orc. The orc dies."]);
+  });
+});
+
+describe("typed live message display", () => {
+  it("routes message.prf orange types through the shell log and history colors", () => {
+    const core = new CoreMessageLog();
+    const shell = new MessageLog();
+    for (const type of ["BELL", "HITPOINT_WARN", "AFRAID"] as const) {
+      pushTypedMessage(shell, type, type, (code) => core.typeColor(code), colorToCss);
+      expect(messageTypeCode(type)).toBe(MSG[type]);
+    }
+
+    expect(shell.all().every((entry) => entry.color === colorToCss(COLOUR_ORANGE))).toBe(true);
+    expect(messageHistoryLines(shell).every((line) => line.color === colorToCss(COLOUR_ORANGE))).toBe(true);
   });
 });

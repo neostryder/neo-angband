@@ -480,11 +480,9 @@ function bindShape(rec: ShapeRecordJson, sidx: number): Shape {
   };
 }
 
-/** Resolve a colour token (single char or full name) to an attr; throws. */
+/** Resolve a colour token (single char or full name) to an attr. */
 function colorToAttr(color: string): number {
-  const attr = color.length > 1 ? colorTextToAttr(color) : colorCharToAttr(color);
-  if (attr < 0) throw new Error(`player: invalid color: ${color}`);
-  return attr;
+  return color.length > 1 ? colorTextToAttr(color) : colorCharToAttr(color);
 }
 
 /** Split an eopts field like "birth_no_recall" or "none" into codes. */

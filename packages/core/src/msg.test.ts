@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { COLOUR_DARK, COLOUR_WHITE } from "./color";
+import { COLOUR_DARK, COLOUR_ORANGE, COLOUR_WHITE } from "./color";
 import { GameEvents } from "./events";
 import { MSG_GENERIC, MessageLog, Messages } from "./msg";
+import { MSG } from "./generated/message";
 
 describe("MessageLog", () => {
   it("stores newest-first with age access", () => {
@@ -56,6 +57,16 @@ describe("MessageLog", () => {
     log.colorDefine(7, COLOUR_DARK);
     expect(log.color(0)).toBe(COLOUR_WHITE);
     expect(log.color(99)).toBe(COLOUR_WHITE);
+  });
+
+  it("loads the message.prf orange defaults", () => {
+    const log = new MessageLog();
+    log.add("bell", MSG.BELL);
+    expect(log.color(0)).toBe(COLOUR_ORANGE);
+    log.add("warning", MSG.HITPOINT_WARN);
+    expect(log.color(0)).toBe(COLOUR_ORANGE);
+    log.add("afraid", MSG.AFRAID);
+    expect(log.color(0)).toBe(COLOUR_ORANGE);
   });
 });
 

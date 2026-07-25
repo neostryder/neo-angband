@@ -286,7 +286,7 @@ export function buildMonSpellHooks(
         ...(deps.lashDesc ? { lashDesc: deps.lashDesc } : {}),
       });
       if (out) {
-        state.msg?.(out.text);
+        state.msg?.(out.text, out.msgt);
         /* msgt(spell->msgt, ...) sound channel (mon-spell.c spell_message). */
         state.sound?.((MSG as Record<string, number>)[out.msgt] ?? 0);
       }

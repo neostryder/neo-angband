@@ -418,7 +418,10 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
      * invisible monster is not obvious, so it falls through to py_attack, whose
      * own afraid branch (player-attack.c L752) fires there instead. */
     if (monsterIsObvious(target) && playerOfHasFlag(state, OF.AFRAID)) {
-      state.msg?.(`You are too afraid to attack ${monsterDesc(target, MDESC.DEFAULT)}!`);
+      state.msg?.(
+        `You are too afraid to attack ${monsterDesc(target, MDESC.DEFAULT)}!`,
+        "AFRAID",
+      );
       state.sound?.(MSG.AFRAID);
       equipLearnFlag(state.actor.player, state.runeEnv, OF.AFRAID);
       return confused ? state.z.moveEnergy : 0;

@@ -1023,15 +1023,17 @@ function wireGame(
            * visibility before calling this. */
           message: (m, msgCode): void => {
             const text = formatMonsterMessage(m, msgCode);
-            if (text) state.msg?.(text);
-            state.sound?.(monMessageSoundType(msgCode));
+            const type = monMessageSoundType(msgCode);
+            if (text) state.msg?.(text, type);
+            state.sound?.(type);
           },
           /* message_pain: the graded "shrugs off the attack" / "cries out in
            * pain" line for a monster hurt but not killed. */
           messagePain: (m, dam): void => {
             const text = formatPainMessage(m, dam);
-            if (text) state.msg?.(text);
-            state.sound?.(monMessageSoundType(painMessageCode(m, dam)));
+            const type = monMessageSoundType(painMessageCode(m, dam));
+            if (text) state.msg?.(text, type);
+            state.sound?.(type);
           },
           /* mon_set_timed's queued status messages (slowed, confused, held). */
           timedMessage: (m, note): void => {
@@ -1091,7 +1093,7 @@ function wireGame(
       // Effect status/damage messages ("You feel better", "You feel yourself
       // yanked upwards!") route to the game's message sink so a shell shows
       // them; absent, they would drop.
-      onMessage: (text: string): void => state.msg?.(text),
+      onMessage: (text: string, msgt?: string): void => state.msg?.(text, msgt),
       incQueries,
       /* on_begin_effect / on_end_effect (audit 01 T2): the interpreter timed
        * path (a SCRAMBLE / SPRINT potion or spell) must run the chain too, not
@@ -1239,7 +1241,7 @@ function wireGame(
           radius,
         });
       },
-      msg: (text: string): void => state.msg?.(text),
+      msg: (text: string, msgt?: string): void => state.msg?.(text, msgt),
     });
 
     installObjCommands(registry, {
@@ -1508,7 +1510,7 @@ function wireGame(
   state.world = {
     timedTable: players.timed,
     timedHooks: {
-      onMessage: (text: string): void => state.msg?.(text),
+      onMessage: (text: string, msgt?: string): void => state.msg?.(text, msgt),
       onNotify: (_idx: number, canDisturb: boolean): void => {
         if (canDisturb) disturb(state);
       },

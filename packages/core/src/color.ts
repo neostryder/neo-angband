@@ -1,10 +1,10 @@
 /**
  * The Angband color palette, ported from reference/src/z-color.h and
- * z-color.c (Angband 4.2.6): 28 named colors plus the shade background,
- * their pref-file attr characters, the classic RGB values front ends
- * render with, and the color_table[].color_translate[] matrix (z-color.c
- * L66-155) used by get_color() to remap colors for mono/16-color terms,
- * torchlight/darkness, mouse highlight, and metallic shimmer.
+ * z-color.c (Angband 4.2.6): 28 named colors plus four zero-initialized
+ * color_table rows, their pref-file attr characters, the classic RGB values
+ * front ends render with, and the color_table[].color_translate[] matrix
+ * (z-color.c L66-155) used by get_color() to remap colors for mono/16-color
+ * terms, torchlight/darkness, mouse highlight, and metallic shimmer.
  */
 
 export const COLOUR_DARK = 0;
@@ -37,7 +37,9 @@ export const COLOUR_BLUE_SLATE = 26;
 export const COLOUR_DEEP_L_BLUE = 27;
 export const COLOUR_SHADE = 28;
 
-export const MAX_COLORS = 29;
+/** z-color.h:77-78: the table has 32 rows, 29 of them basic colours. */
+export const MAX_COLORS = 32;
+export const BASIC_COLORS = 29;
 
 /**
  * Column indices into ColorInfo.translate, matching z-color.h's
@@ -61,7 +63,7 @@ export interface ColorInfo {
   char: string;
   /** The human-readable name (color_table[].name). */
   name: string;
-  /** RGB from angband_color_table (the leading 0x00 byte dropped). */
+  /** Default RGB for named rows; shade RGB exists only in angbandColorTable. */
   rgb: readonly [number, number, number];
   /**
    * color_table[].color_translate[]: one COLOUR_* index per ATTR_*
@@ -132,27 +134,36 @@ export const COLOR_TABLE: readonly ColorInfo[] = [
     translate: [26, 1, 9, 2, 27, 2, 27, 27, 9] },
   { char: "Z", name: "Deep Light Blue", rgb: [0x00, 0xb0, 0xff],
     translate: [27, 1, 14, 9, 14, 26, 14, 14, 14] },
-  { char: " ", name: "Shade", rgb: [0x28, 0x28, 0x28],
+  // z-color.c:154-155: rows 28-31 are zero-initialised; shade has no
+  // index_char or name in color_table (its RGB is below, in angbandColorTable).
+  { char: "", name: "", rgb: [0, 0, 0],
+    translate: [0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  { char: "", name: "", rgb: [0, 0, 0],
+    translate: [0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  { char: "", name: "", rgb: [0, 0, 0],
+    translate: [0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  { char: "", name: "", rgb: [0, 0, 0],
     translate: [0, 0, 0, 0, 0, 0, 0, 0, 0] },
 ];
 
-/** color_char_to_attr: attr character -> COLOUR_* index, -1 if unknown. */
+/** color_char_to_attr (z-color.c:165-184): NUL/space are dark; unknown is white. */
 export function colorCharToAttr(ch: string): number {
-  for (let i = 0; i < COLOR_TABLE.length; i++) {
+  if (ch === "" || ch === "\0" || ch === " ") return COLOUR_DARK;
+  for (let i = 0; i < BASIC_COLORS; i++) {
     const info = COLOR_TABLE[i];
     if (info && info.char === ch) return i;
   }
-  return -1;
+  return COLOUR_WHITE;
 }
 
-/** color_text_to_attr: color name (case-insensitive) -> index, -1 if unknown. */
+/** color_text_to_attr (z-color.c:191-201): unknown names default to white. */
 export function colorTextToAttr(name: string): number {
   const lower = name.toLowerCase();
-  for (let i = 0; i < COLOR_TABLE.length; i++) {
+  for (let i = 0; i < MAX_COLORS; i++) {
     const info = COLOR_TABLE[i];
     if (info && info.name.toLowerCase() === lower) return i;
   }
-  return -1;
+  return COLOUR_WHITE;
 }
 
 /**
@@ -166,7 +177,9 @@ export function colorTextToAttr(name: string): number {
  * front end as a user pref (like graphics/font), not in the character save.
  */
 const angbandColorTable: [number, number, number, number][] = COLOR_TABLE.map(
-  (c) => [0, c.rgb[0], c.rgb[1], c.rgb[2]],
+  (c, i) => i === COLOUR_SHADE
+    ? [0, 0x28, 0x28, 0x28]
+    : [0, c.rgb[0], c.rgb[1], c.rgb[2]],
 );
 
 /** Clamp to a uint8 with C wraparound (colors_modify's (uint8_t)(x +/- 1)). */
@@ -204,12 +217,21 @@ export function restoreColorTable(rows: readonly (readonly number[])[]): void {
   }
 }
 
-/** Reset every live colour to its COLOR_TABLE default (K = 0). */
+/** Reset every live colour to z-color.c:30-61 defaults (K = 0). */
 export function resetColorTable(): void {
   for (let i = 0; i < COLOR_TABLE.length; i++) {
     const c = COLOR_TABLE[i]!;
-    angbandColorTable[i] = [0, c.rgb[0], c.rgb[1], c.rgb[2]];
+    angbandColorTable[i] = i === COLOUR_SHADE
+      ? [0, 0x28, 0x28, 0x28]
+      : [0, c.rgb[0], c.rgb[1], c.rgb[2]];
   }
+}
+
+/** attr_to_text (z-color.c:208-214): basic attrs expose their table name. */
+export function attrToText(attr: number): string {
+  return attr >= 0 && attr < BASIC_COLORS
+    ? COLOR_TABLE[attr]!.name
+    : "Icky";
 }
 
 /** CSS hex string for a COLOUR_* index (front-end convenience). Reads the LIVE

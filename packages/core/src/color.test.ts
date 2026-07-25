@@ -8,6 +8,8 @@ import {
   ATTR_METAL,
   ATTR_MONO,
   ATTR_VGA,
+  attrToText,
+  BASIC_COLORS,
   COLOR_TABLE,
   COLOUR_DARK,
   COLOUR_DEEP_L_BLUE,
@@ -34,13 +36,17 @@ import {
 } from "./color";
 
 describe("color table", () => {
-  it("has all 29 entries in upstream order", () => {
+  it("has MAX_COLORS rows and BASIC_COLORS named rows", () => {
     expect(COLOR_TABLE).toHaveLength(MAX_COLORS);
+    expect(MAX_COLORS).toBe(32);
+    expect(BASIC_COLORS).toBe(29);
     expect(COLOR_TABLE[0]?.name).toBe("Dark");
     expect(COLOR_TABLE[COLOUR_WHITE]?.rgb).toEqual([0xff, 0xff, 0xff]);
     expect(COLOR_TABLE[COLOUR_L_UMBER]?.rgb).toEqual([0xc0, 0x80, 0x40]);
     expect(COLOR_TABLE[COLOUR_DEEP_L_BLUE]?.char).toBe("Z");
-    expect(COLOR_TABLE[COLOUR_SHADE]?.rgb).toEqual([0x28, 0x28, 0x28]);
+    expect(COLOR_TABLE[COLOUR_SHADE]?.char).toBe("");
+    expect(COLOR_TABLE[COLOUR_SHADE]?.name).toBe("");
+    expect(colorChannel(COLOUR_SHADE, 1)).toBe(0x28);
   });
 
   it("attr chars are unique (except the shade placeholder)", () => {
@@ -52,10 +58,20 @@ describe("color table", () => {
     expect(colorCharToAttr("d")).toBe(0);
     expect(colorCharToAttr("W")).toBe(9);
     expect(colorCharToAttr("Z")).toBe(COLOUR_DEEP_L_BLUE);
-    expect(colorCharToAttr("q")).toBe(-1);
+    expect(colorCharToAttr("")).toBe(COLOUR_DARK);
+    expect(colorCharToAttr("\0")).toBe(COLOUR_DARK);
+    expect(colorCharToAttr(" ")).toBe(COLOUR_DARK);
+    expect(colorCharToAttr("q")).toBe(COLOUR_WHITE);
     expect(colorTextToAttr("light umber")).toBe(COLOUR_L_UMBER);
     expect(colorTextToAttr("MAGENTA-PINK")).toBe(21);
-    expect(colorTextToAttr("nope")).toBe(-1);
+    expect(colorTextToAttr("")).toBe(COLOUR_SHADE);
+    expect(colorTextToAttr("nope")).toBe(COLOUR_WHITE);
+  });
+
+  it("converts attrs to text with the C fallback", () => {
+    expect(attrToText(COLOUR_WHITE)).toBe("White");
+    expect(attrToText(COLOUR_SHADE)).toBe("");
+    expect(attrToText(MAX_COLORS)).toBe("Icky");
   });
 
   it("renders CSS hex strings", () => {
