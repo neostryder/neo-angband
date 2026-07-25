@@ -34,9 +34,8 @@ import { blankMonster, GROUP_TYPE, turnEnergy } from "./monster";
 import { MFLAG } from "../generated";
 import type { GameObject, StackLimits } from "../obj/object";
 import { objectAbsorb, objectMergeable, OSTACK_MONSTER } from "../obj/object";
-
-/** BASIC_COLORS from z-color.h, for ATTR_RAND rolls. */
-const BASIC_COLORS = 29;
+// z-color.h:78: ATTR_RAND rolls use the shared basic-colour count.
+import { BASIC_COLORS } from "../color";
 
 /** One row of the allocation table (alloc_entry for races). */
 export interface MonAllocEntry {

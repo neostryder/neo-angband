@@ -86,7 +86,7 @@ export interface MonBlowDeps {
   /** EF_EARTHQUAKE routed through the effect interpreter (SHATTER). */
   earthquake?: (mon: Monster, radius: number) => void;
   /** msg(): route blow messages to the game's sink. */
-  msg?: (text: string) => void;
+  msg?: (text: string, msgt?: string) => void;
 }
 
 /** The stat adjectives desc_stat uses for the drain message. */
@@ -122,7 +122,7 @@ export function makeMonBlowEnv(
   state: GameState,
   deps: MonBlowDeps,
 ): (mon: Monster) => MonBlowEnv {
-  const msg = (t: string): void => deps.msg?.(t);
+  const msg = (t: string, msgt?: string): void => deps.msg?.(t, msgt);
   const p = (): Player => state.actor.player;
   /* The one shared take_hit consequences (message chain + died_from on death),
    * identical to the projection and effect paths. */
@@ -165,7 +165,7 @@ export function makeMonBlowEnv(
     },
 
     msg(text: string, msgt?: string): void {
-      msg(text);
+      msg(text, msgt);
       /* msgt(method->msgt, ...) sound channel (mon-blows.c L206). */
       if (msgt) state.sound?.((MSG as Record<string, number>)[msgt] ?? 0);
     },
@@ -214,7 +214,7 @@ export function makeMonBlowEnv(
        * equip_learn + update_smart_learn side effects (player-timed.c:945-953). */
       const monIncHooks = buildMonsterIncHooks(state, mon);
       return playerIncTimed(p(), effect, amount, true, true, check, {
-        onMessage: (text: string): void => msg(text),
+        onMessage: (text: string, msgt: string): void => msg(text, msgt),
         incCheck: (idx: number): boolean => {
           const eff = deps.timed[idx];
           if (!eff) return true;

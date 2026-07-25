@@ -228,7 +228,7 @@ const handleBREATH: EffectHandler = (ctx) => {
      * sound channel. */
     const proj = env.cast.projections[ctx.subtype];
     if (proj) {
-      ctx.env.messages?.msg(`You breathe ${proj.desc}.`);
+      ctx.env.messages?.msg(`You breathe ${proj.desc}.`, proj.msgt ?? undefined);
       if (proj.msgt) env.state.sound?.((MSG as Record<string, number>)[proj.msgt] ?? 0);
     }
   }

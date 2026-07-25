@@ -22,7 +22,7 @@
  */
 
 import {
-  COLOR_TABLE,
+  attrToText,
   KF,
   OBJ_NOTICE,
   ODESC,
@@ -448,12 +448,6 @@ function spoilableRaces(
     (a, b) => a.level - b.level || a.mexp - b.mexp || a.ridx - b.ridx,
   );
   return who;
-}
-
-/** attr_to_text (z-color.c L208): the colour name for a display attr; the
- * out-of-range fallback is "Icky" (L213), not the color table's own name. */
-function attrToText(attr: number): string {
-  return COLOR_TABLE[attr]?.name ?? "Icky";
 }
 
 /** The [Q]/[U]/The name prefix used by both monster spoilers. */

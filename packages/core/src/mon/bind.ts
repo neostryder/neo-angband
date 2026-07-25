@@ -645,9 +645,7 @@ export class MonsterRegistry {
       rec.color.length > 1
         ? colorTextToAttr(rec.color)
         : colorCharToAttr(rec.color);
-    if (dAttr < 0) {
-      throw new Error(`mon: race ${rec.name}: invalid color ${rec.color}`);
-    }
+    // z-color.c:183-184 / 200-201: malformed colours resolve to white.
 
     /* flags: then flags-off:, applied after base inheritance. */
     raceFlagsOn(flags, rec.flags);

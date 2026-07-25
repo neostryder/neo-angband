@@ -14,11 +14,26 @@
  * C's printf-style formatting is dropped; callers use template strings.
  */
 
-import { COLOUR_DARK, COLOUR_WHITE } from "./color";
+import { colorCharToAttr, COLOUR_DARK, COLOUR_WHITE } from "./color";
+import { MSG } from "./generated/message";
 import type { GameEvents } from "./events";
+
+/** A message type as it appears at engine call sites or after codegen. */
+export type MessageType = number | string;
 
 /** MSG_GENERIC: the default message type (index 0 of list-message.h). */
 export const MSG_GENERIC = 0;
+
+/**
+ * message.prf:103,115,196: these are the three non-white default message
+ * colours. All other listed defaults are `w`, so message.c:269-285's white
+ * fallback gives the same result without duplicating a 100-line table.
+ */
+const DEFAULT_MESSAGE_COLORS = new Map<number, number>([
+  [MSG.BELL, colorCharToAttr("o")],
+  [MSG.HITPOINT_WARN, colorCharToAttr("o")],
+  [MSG.AFRAID, colorCharToAttr("o")],
+]);
 
 interface LogEntry {
   str: string;
@@ -30,7 +45,9 @@ interface LogEntry {
 export class MessageLog {
   /** Newest first, index 0 = age 0 (upstream walks head -> older). */
   private entries: LogEntry[] = [];
-  private colors = new Map<number, number>();
+  // message.c:269-285: message types start with their loaded defaults and
+  // an explicit COLOUR_DARK remains the unset/white sentinel.
+  private colors = new Map(DEFAULT_MESSAGE_COLORS);
 
   constructor(private max = 2048) {}
 
@@ -87,7 +104,7 @@ export class MessageLog {
 }
 
 /** MSG_BELL index in list-message.h; bell() signals with this type. */
-export const MSG_BELL = 1;
+export const MSG_BELL = MSG.BELL;
 
 /**
  * The msg()/msgt()/sound()/bell() facade: adds to the log and signals the

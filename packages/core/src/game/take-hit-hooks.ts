@@ -42,7 +42,7 @@ export function makeTakeHitHooks(state: GameState): TakeHitHooks {
     /* The bloodlust death-save flavour roll (player-util.c L232). */
     rng: state.rng,
     onMessage: (text: string, msgt?: string): void => {
-      state.msg?.(text);
+      state.msg?.(text, msgt);
       /* msgt() also plays the message-type sound (death, low-hp warning). Sound
        * is a pure UI sink - it draws no RNG - so this restores the audible cue
        * without perturbing the deterministic stream. */

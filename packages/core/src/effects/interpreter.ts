@@ -73,7 +73,7 @@ export function sourceChestTrap(chestTrap: unknown): Source {
 
 /** Anything that emits game messages (msg() in the C). */
 export interface EffectMessages {
-  msg(text: string): void;
+  msg(text: string, msgt?: string): void;
 }
 
 /** Hitpoint holder for EF_HEAL_HP (player->chp / mhp / chp_frac). */
