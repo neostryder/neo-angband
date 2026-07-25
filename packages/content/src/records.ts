@@ -24,8 +24,6 @@ export interface DirectiveDef {
   readonly repeat?: boolean;
   /** Attach to the most recent instance of one of these directives. */
   readonly childOf?: readonly string[];
-  /** Preserve encounter order for a cross-directive repeated list. */
-  readonly orderKey?: string;
 }
 
 export interface FileSpec {
@@ -55,7 +53,6 @@ export interface CompiledFile {
 class Node {
   readonly fields: Array<readonly [string, JsonPrimitive]> = [];
   readonly children = new Map<string, Slot>();
-  readonly orderGroups = new Map<string, string[]>();
 }
 
 type Value = JsonPrimitive | JsonObject | Node;
@@ -147,7 +144,6 @@ function finalizeNode(
       ? slot.map((v) => finalizeValue(v, spec, table))
       : finalizeValue(slot, spec, table);
   }
-  for (const [key, order] of node.orderGroups) out[key] = [...order];
   return out;
 }
 
@@ -234,18 +230,12 @@ export function compileGamedata(text: string, spec: FileSpec): CompiledFile {
 
     if (cd.def.repeat === true) {
       const slot = target.children.get(parsed.directive);
-      const occurrence = slot === undefined ? 0 : Array.isArray(slot) ? slot.length : 0;
       if (slot === undefined) {
         target.children.set(parsed.directive, [value]);
       } else if (Array.isArray(slot)) {
         slot.push(value);
       } else {
         throw new Error(`${where}: repeat directive "${parsed.directive}" collided with a single value`);
-      }
-      if (cd.def.orderKey !== undefined) {
-        const order = target.orderGroups.get(cd.def.orderKey) ?? [];
-        order.push(`${parsed.directive}:${occurrence}`);
-        target.orderGroups.set(cd.def.orderKey, order);
       }
     } else {
       if (target.children.has(parsed.directive)) {
