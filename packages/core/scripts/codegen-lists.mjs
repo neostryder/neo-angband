@@ -36,6 +36,44 @@ const referenceSrc = join(repoRoot, "reference", "src");
 const outDir = join(scriptDir, "..", "src", "generated");
 
 /**
+ * `--check` re-derives every module from reference/src/list-*.h and reports
+ * differences instead of writing, exiting non-zero if the committed generated
+ * modules have drifted. That is what makes these 1246 registry entries a live
+ * proof against the oracle rather than a snapshot: without it, a dropped
+ * effect, spell, flag, message or terrain type would sit in the tree
+ * indefinitely, since the hand-pinned expectations in generated/lists.test.ts
+ * only spot-check about a third of the headers.
+ */
+const checkOnly = process.argv.includes("--check");
+/** Differences found in --check mode: `${file}: ${detail}`. */
+const drift = [];
+
+/** Write, or in --check mode compare against what is already on disk. */
+function emit(path, content) {
+  if (!checkOnly) {
+    writeFileSync(path, content);
+    return;
+  }
+  let existing;
+  try {
+    existing = readFileSync(path, "utf8");
+  } catch {
+    drift.push(`${path}: missing (codegen would create it)`);
+    return;
+  }
+  if (existing === content) return;
+  /* Report the first differing line: enough to identify a dropped or
+   * reordered entry without dumping a whole module into the failure. */
+  const a = existing.split("\n");
+  const b = content.split("\n");
+  const i = a.findIndex((line, n) => line !== b[n]);
+  drift.push(
+    `${path}: line ${i + 1} committed=${JSON.stringify(a[i] ?? "<eof>")} ` +
+      `reference=${JSON.stringify(b[i] ?? "<eof>")}`,
+  );
+}
+
+/**
  * Per-header descriptors. `fields` names each macro argument in order
  * (field 0 is always the entry name and is kept verbatim as a string).
  * `implicitPrepend` lists names the consumer enum places before the
@@ -629,11 +667,11 @@ function generate() {
     lines.push("");
 
     const base = moduleBaseName(header);
-    writeFileSync(join(outDir, `${base}.ts`), lines.join("\n"));
+    emit(join(outDir, `${base}.ts`), lines.join("\n"));
     barrel.push(`export * from "./${base}";`);
-    console.log(
-      `${header} -> generated/${base}.ts (${entries.length} entries)`,
-    );
+    if (!checkOnly) {
+      console.log(`${header} -> generated/${base}.ts (${entries.length} entries)`);
+    }
   }
 
   const indexLines = [
@@ -642,7 +680,23 @@ function generate() {
     ...barrel,
     "",
   ];
-  writeFileSync(join(outDir, "index.ts"), indexLines.join("\n"));
+  emit(join(outDir, "index.ts"), indexLines.join("\n"));
+  if (checkOnly) {
+    if (drift.length > 0) {
+      console.error(
+        `generated/ has drifted from reference/src/list-*.h ` +
+          `(${drift.length} file(s)):`,
+      );
+      for (const d of drift) console.error(`  ${d}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(
+      `generated/ matches reference/src/list-*.h ` +
+        `(${headers.length} headers, ${totalEntries} entries)`,
+    );
+    return;
+  }
   console.log(
     `Wrote ${headers.length} modules (${totalEntries} entries) and index.ts`,
   );
