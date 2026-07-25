@@ -21,7 +21,7 @@
  * impact); ledgered in parity/ledger/combat-melee.yaml.
  */
 
-import { MSG, ORIGIN, OF, PROJ, STAT, TMD } from "../generated";
+import { ELEM, MSG, ORIGIN, OF, PROJ, STAT, TMD } from "../generated";
 import { SKILL } from "../player/types";
 import type { Loc } from "../loc";
 import type { Monster } from "../mon/monster";
@@ -35,14 +35,14 @@ import type { Player } from "../player/player";
 import type { TimedEffect } from "../player/types";
 import type { ProjectionInfo } from "../world/projection";
 import { adjustDam } from "../world/projection";
-import { playerIncTimed } from "../player/timed";
+import { playerIncCheck, playerIncTimed } from "../player/timed";
 import { playerExpLose, playerStatDec } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
 import {
   playerApplyDamageReduction,
   takeHit,
 } from "../player/take-hit";
-import { equipLearnFlag } from "../obj/knowledge";
+import { equipLearnElement, equipLearnFlag } from "../obj/knowledge";
 import { MAX_PVAL } from "../obj/types";
 import { tvalCanHaveCharges, tvalIsEdible } from "../obj/object";
 import type { GameObject } from "../obj/object";
@@ -60,6 +60,8 @@ import { thrustAway } from "./thrust";
 import { teleportMonster } from "./effect-teleport";
 import type { TeleportEnv } from "./effect-teleport";
 import { makeTakeHitHooks } from "./take-hit-hooks";
+import { makeIncCheckQueries } from "./player-side";
+import { buildMonsterIncHooks } from "./mon-cast";
 
 /** Everything the monster-blow handlers need beyond the GameState. */
 export interface MonBlowDeps {
@@ -125,6 +127,9 @@ export function makeMonBlowEnv(
   /* The one shared take_hit consequences (message chain + died_from on death),
    * identical to the projection and effect paths. */
   const takeHitHooks = makeTakeHitHooks(state);
+  /* player_inc_check fail table (player-timed.c:923-956): Free Action, PROT_*,
+   * poison resist, hallu chaos resist - shared with world clock / effects. */
+  const incQueries = makeIncCheckQueries(state);
 
   /* The pack object at inven[index] (null when the slot is empty). */
   const packItem = (
@@ -204,8 +209,28 @@ export function makeMonBlowEnv(
     incTimed(tmd: number, amount: number, check: boolean): boolean {
       const effect = deps.timed[tmd];
       if (!effect) return false;
+      /* mon-blows.c melee_effect_timed uses check=true so player_inc_check
+       * (FREE_ACT / PROT_BLIND/CONF/FEAR / ELEM_POIS / HALLU chaos) runs with
+       * equip_learn + update_smart_learn side effects (player-timed.c:945-953). */
+      const monIncHooks = buildMonsterIncHooks(state, mon);
       return playerIncTimed(p(), effect, amount, true, true, check, {
         onMessage: (text: string): void => msg(text),
+        incCheck: (idx: number): boolean => {
+          const eff = deps.timed[idx];
+          if (!eff) return true;
+          return playerIncCheck(eff, incQueries, {
+            ...monIncHooks,
+            equipLearnFlag: (name: string): void => {
+              const of = (OF as Record<string, number>)[name];
+              if (of !== undefined) equipLearnFlag(p(), state.runeEnv, of);
+            },
+            equipLearnElement: (name: string): void => {
+              const elem = (ELEM as Record<string, number>)[name];
+              if (elem !== undefined) equipLearnElement(p(), state.runeEnv, elem);
+            },
+            resistMessage: (): void => msg("You resist the effect!"),
+          });
+        },
       });
     },
 
