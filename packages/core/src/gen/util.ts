@@ -19,8 +19,8 @@
  *   allocated from a per-generation counter and recorded on each monster's
  *   group_info, and the live GameState rebuilds its group structures from
  *   them at start (the savefile-loading path of monster_group_assign).
- *   Unique cur_num tracking is kept level-local so a unique appears at most
- *   once per level without mutating the shared registry.
+ *   Unique cur_num tracking follows the successful generation placement
+ *   boundary, while the set remains a level-local defensive check.
  */
 
 import { FEAT, ORIGIN, RF, SQUARE } from "../generated";
@@ -259,6 +259,12 @@ export interface PlacedMonster {
   index: number;
 }
 
+export interface PitTelemetry {
+  attempts: { pit: number; nest: number };
+  selected: { pit: Record<string, number>; nest: Record<string, number> };
+  empty: { pit: number; nest: number };
+}
+
 /**
  * The generation context: the chunk under construction plus the RNG, feature
  * registry, constants, dun bookkeeping, and the placement side-tables the
@@ -268,6 +274,12 @@ export interface PlacedMonster {
 export class Gen {
   readonly objects: PlacedObject[] = [];
   readonly monsters: PlacedMonster[] = [];
+  /** Optional RNG-neutral diagnostics for the S-3 pit residual. */
+  readonly pitTelemetry: PitTelemetry = {
+    attempts: { pit: 0, nest: 0 },
+    selected: { pit: {}, nest: {} },
+    empty: { pit: 0, nest: 0 },
+  };
   /** grid index -> square holds a generated object. */
   readonly objOccupied = new Set<number>();
   /** grid index -> square holds a trap (player trap for gen purposes). */
@@ -1557,6 +1569,12 @@ function placeNewMonsterOne(
   });
   g.attachMonster(grid, mon, g.nextMonIndex());
 
+  /* place_monster increments cur_num immediately after a successful attach
+   * (mon-make.c L1041-1042), before the drop/mimic RNG below.  Symmetry copies
+   * call attachMonster directly and deliberately do not reach this boundary,
+   * so they do not double-count the copied monster. */
+  race.curNum++;
+
   /* Create the monster's drop, if any (mon-make.c place_monster L1044-1046):
    * generation placement is the twin of place_new_monster_one -> place_monster,
    * which draws mon_create_drop here (before mon_create_mimicked_object) when
@@ -1819,27 +1837,16 @@ export function pickAndPlaceDistantMonster(
   if (!g.monDeps) return false;
   const c = g.c;
   let attemptsLeft = 10_000;
-  let minDist = Math.max(dis, g.constants.maxSight + 1);
-  for (;;) {
-    let grid: Loc | null = null;
-    let found = false;
-    while (attemptsLeft > 0) {
-      attemptsLeft--;
-      grid = loc(g.rng.randint0(c.width - 2) + 1, g.rng.randint0(c.height - 2) + 1);
-      if (squareIsEmpty(g, grid) && distance(pgrid, grid) > minDist) {
-        found = true;
-        break;
-      }
-    }
-    if (found && grid) return pickAndPlaceMonster(g, grid, depth, sleep);
-    if (minDist > 1) {
-      /* Loosen the distance requirement rather than fail outright. */
-      minDist = Math.trunc(minDist / 2);
-      attemptsLeft = 10_000;
-      continue;
-    }
-    return false;
+  /* pick_and_place_distant_monster (mon-make.c L1483-1520): the initial
+   * 10,000 is pre-decremented, giving exactly 9,999 location attempts. */
+  while (--attemptsLeft) {
+    const grid = loc(g.rng.randint0(c.width), g.rng.randint0(c.height));
+    if (!squareIsEmpty(g, grid)) continue;
+    if (c.info(grid).has(SQUARE.MON_RESTRICT)) continue;
+    if (distance(grid, pgrid) <= dis) continue;
+    return pickAndPlaceMonster(g, grid, depth, sleep);
   }
+  return false;
 }
 
 /** vault_monsters: place num sleeping monsters near a grid. */
