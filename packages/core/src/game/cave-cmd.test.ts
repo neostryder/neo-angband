@@ -17,7 +17,9 @@ import {
   installCaveCommands,
   squareDigging,
   squareIsDiggable,
+  countFeats,
   squareIsOpenDoor,
+  squareIsUnlockedDoor,
 } from "./cave-cmd";
 import { floorPile } from "./floor";
 import { squareMemorize } from "./known";
@@ -496,5 +498,45 @@ describe("alter / stairs", () => {
     state.chunk.setFeat(loc(5, 5), FEAT.LESS);
     expect(run({ code: "ascend" })).toBe(state.z.moveEnergy);
     expect(state.generateLevel).toBe(true);
+  });
+});
+
+describe("countFeats (cave.c:644-679)", () => {
+  it("counts only KNOWN adjacent matches, and reports the last one", () => {
+    const { state } = setup();
+    state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    state.chunk.setFeat(loc(4, 5), FEAT.CLOSED);
+
+    /* Unknown terrain never counts: the C requires square_isknown and then
+     * tests the player's memory, not the live map (cave.c:664-668). */
+    expect(countFeats(state, (s, g) => s.chunk.isClosedDoor(g), false).count).toBe(0);
+
+    squareMemorize(state, loc(6, 5));
+    const one = countFeats(state, (s, g) => s.chunk.isClosedDoor(g), false);
+    expect(one.count).toBe(1);
+    expect(one.grid).toEqual(loc(6, 5));
+
+    squareMemorize(state, loc(4, 5));
+    expect(countFeats(state, (s, g) => s.chunk.isClosedDoor(g), false).count).toBe(2);
+  });
+
+  it("includes the player's own grid only when `under` is set (ddgrid_ddd[8])", () => {
+    const { state } = setup();
+    /* The player stands on a known open door; nothing else adjacent matches. */
+    state.chunk.setFeat(loc(5, 5), FEAT.OPEN);
+    squareMemorize(state, loc(5, 5));
+
+    expect(countFeats(state, (s, g) => squareIsOpenDoor(s, g), false).count).toBe(0);
+    const under = countFeats(state, (s, g) => squareIsOpenDoor(s, g), true);
+    expect(under.count).toBe(1);
+    expect(under.grid).toEqual(loc(5, 5));
+  });
+
+  it("treats a closed door with no lock power as unlocked (cave-square.c:791)", () => {
+    const { state } = setup();
+    state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    expect(squareIsUnlockedDoor(state, loc(6, 5))).toBe(true);
+    state.chunk.setFeat(loc(6, 5), FEAT.OPEN);
+    expect(squareIsUnlockedDoor(state, loc(6, 5))).toBe(false);
   });
 });
