@@ -692,6 +692,14 @@ export interface GameState {
    */
   sound?: (msgType: number) => void;
   /**
+   * The equipped-item curse effect countdown (game/curse-tick.ts
+   * processCurseTimeouts), run once per game turn at the tail of
+   * decrease_timeouts. The session installs it with the curses registry + the
+   * effect stack; absent (worldless callers, or no cursed item equipped) the
+   * curse loop is a no-op and draws no RNG, exactly as when it was deferred.
+   */
+  curseTick?: () => void;
+  /**
    * The game event bus (events.ts), when a host attaches one. Core-to-anything
    * seam: the host routes messages/sound through it and mods subscribe (the
    * capability-gated agent/events.ts subscribeEvents). Absent in the worldless
