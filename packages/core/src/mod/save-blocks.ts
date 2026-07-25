@@ -338,8 +338,8 @@ export function quarantineSave(
 
   /* --- Monsters (whole instances) + their held objects + group repair. --- */
   const removedMidx = new Set<number>();
-  for (let i = 0; i < out.monsters.length; i++) {
-    const m = out.monsters[i];
+  const monsters = out.monsters;
+  for (const [i, m] of (monsters ?? []).entries()) {
     if (!m) continue;
     const rns = namespaceOf(m.raceId);
     const ons = m.originalRaceId ? namespaceOf(m.originalRaceId) : null;
@@ -356,7 +356,7 @@ export function quarantineSave(
         data: m as unknown as JsonValue,
         locus: i,
       });
-      out.monsters[i] = null;
+      monsters![i] = null;
       removedMidx.add(m.midx);
       quarantined++;
       continue;
@@ -378,7 +378,7 @@ export function quarantineSave(
     }
   }
   /* Repair groups: drop quarantined members; null a group whose leader left. */
-  if (removedMidx.size > 0) {
+  if (removedMidx.size > 0 && out.groups) {
     out.groups = out.groups.map((g) => {
       if (!g) return g;
       if (removedMidx.has(g.leader)) return null;
@@ -419,43 +419,47 @@ export function quarantineSave(
   }
 
   /* --- Floor piles (prune mod objects; drop emptied piles). --- */
-  out.floor = out.floor
-    .map((pile) => {
-      const { kept, orphaned } = partitionObjects(pile.objs, present);
-      for (const { obj, ns } of orphaned) {
-        stash(orphans, ns, versionOf(ns), {
-          kind: "floorObject",
-          ref: obj.kindId,
-          data: obj as unknown as JsonValue,
-          locus: { x: pile.x, y: pile.y },
-        });
-        quarantined++;
-      }
-      return { ...pile, objs: kept };
-    })
-    .filter((pile) => pile.objs.length > 0);
-
-  /* --- Traps (prune mod trap kinds; drop emptied cells). --- */
-  out.traps = out.traps
-    .map((cell) => {
-      const keptTraps: typeof cell.traps = [];
-      for (const t of cell.traps) {
-        const ns = namespaceOf(t.trapId);
-        if (ns !== null && !present(ns)) {
+  if (out.floor) {
+    out.floor = out.floor
+      .map((pile) => {
+        const { kept, orphaned } = partitionObjects(pile.objs, present);
+        for (const { obj, ns } of orphaned) {
           stash(orphans, ns, versionOf(ns), {
-            kind: "trap",
-            ref: t.trapId,
-            data: t as unknown as JsonValue,
-            locus: { x: cell.x, y: cell.y },
+            kind: "floorObject",
+            ref: obj.kindId,
+            data: obj as unknown as JsonValue,
+            locus: { x: pile.x, y: pile.y },
           });
           quarantined++;
-        } else {
-          keptTraps.push(t);
         }
-      }
-      return { ...cell, traps: keptTraps };
-    })
-    .filter((cell) => cell.traps.length > 0);
+        return { ...pile, objs: kept };
+      })
+      .filter((pile) => pile.objs.length > 0);
+  }
+
+  /* --- Traps (prune mod trap kinds; drop emptied cells). --- */
+  if (out.traps) {
+    out.traps = out.traps
+      .map((cell) => {
+        const keptTraps: typeof cell.traps = [];
+        for (const t of cell.traps) {
+          const ns = namespaceOf(t.trapId);
+          if (ns !== null && !present(ns)) {
+            stash(orphans, ns, versionOf(ns), {
+              kind: "trap",
+              ref: t.trapId,
+              data: t as unknown as JsonValue,
+              locus: { x: cell.x, y: cell.y },
+            });
+            quarantined++;
+          } else {
+            keptTraps.push(t);
+          }
+        }
+        return { ...cell, traps: keptTraps };
+      })
+      .filter((cell) => cell.traps.length > 0);
+  }
 
   /* --- Lore (keyed by race id). --- */
   if (out.lore) {
@@ -606,10 +610,13 @@ export function quarantineSave(
  * Rehydrate (restore orphans whose pack is present again).
  * ------------------------------------------------------------------ */
 
-function reinsert(save: SavedGame, entry: OrphanEntry): void {
+function reinsert(save: SavedGame, entry: OrphanEntry): boolean {
   switch (entry.kind) {
     case "monster": {
-      const mon = entry.data as unknown as NonNullable<SavedGame["monsters"][number]>;
+      if (!save.monsters) return false;
+      const mon = entry.data as unknown as NonNullable<
+        NonNullable<SavedGame["monsters"]>[number]
+      >;
       const idx = entry.locus as number;
       /* Restore to its old slot when free, else append (a fresh slot). */
       if (idx >= 0 && idx < save.monsters.length && save.monsters[idx] === null) {
@@ -617,13 +624,15 @@ function reinsert(save: SavedGame, entry: OrphanEntry): void {
       } else {
         save.monsters.push(mon);
       }
-      return;
+      return true;
     }
     case "heldObject": {
+      if (!save.monsters) return false;
       const midx = (entry.locus as { midx: number }).midx;
       const host = save.monsters.find((m) => m !== null && m.midx === midx);
-      if (host) host.heldObj.push(entry.data as unknown as (typeof host.heldObj)[number]);
-      return;
+      if (!host) return false;
+      host.heldObj.push(entry.data as unknown as (typeof host.heldObj)[number]);
+      return true;
     }
     case "gearObject": {
       const handle = entry.locus as number;
@@ -632,39 +641,45 @@ function reinsert(save: SavedGame, entry: OrphanEntry): void {
       /* Return to the pack: an inert re-equip is not attempted (the slot was
        * cleared on quarantine), so a reinstalled item comes back carried. */
       if (!save.gear.pack.includes(handle)) save.gear.pack.push(handle);
-      return;
+      return true;
     }
     case "floorObject": {
+      if (!save.floor) return false;
       const { x, y } = entry.locus as { x: number; y: number };
-      const obj = entry.data as unknown as SavedGame["floor"][number]["objs"][number];
+      const obj = entry.data as unknown as NonNullable<
+        SavedGame["floor"]
+      >[number]["objs"][number];
       const pile = save.floor.find((p) => p.x === x && p.y === y);
       if (pile) pile.objs.push(obj);
       else save.floor.push({ x, y, objs: [obj] });
-      return;
+      return true;
     }
     case "trap": {
+      if (!save.traps) return false;
       const { x, y } = entry.locus as { x: number; y: number };
-      const trap = entry.data as unknown as SavedGame["traps"][number]["traps"][number];
+      const trap = entry.data as unknown as NonNullable<
+        SavedGame["traps"]
+      >[number]["traps"][number];
       const cell = save.traps.find((c) => c.x === x && c.y === y);
       if (cell) cell.traps.push(trap);
       else save.traps.push({ x, y, traps: [trap] });
-      return;
+      return true;
     }
     case "lore": {
       const raceId = entry.locus as string;
       const rec = entry.data as unknown as NonNullable<SavedGame["lore"]>[number][1];
       (save.lore ??= []).push([raceId, rec]);
-      return;
+      return true;
     }
     case "artifactCreated": {
       const id = entry.locus as string;
       (save.artifactsCreated ??= []).push(id);
-      return;
+      return true;
     }
     case "cacheMonster": {
       const { depth, index } = entry.locus as { depth: number; index: number };
       const level = save.levelCache?.find((l) => l.depth === depth);
-      if (!level) return;
+      if (!level) return false;
       const mon = entry.data as unknown as NonNullable<
         NonNullable<SavedGame["levelCache"]>[number]["monsters"][number]
       >;
@@ -677,17 +692,16 @@ function reinsert(save: SavedGame, entry: OrphanEntry): void {
       } else {
         level.monsters.push(mon);
       }
-      return;
+      return true;
     }
     case "cacheHeldObject": {
       const { depth, midx } = entry.locus as { depth: number; midx: number };
       const level = save.levelCache?.find((l) => l.depth === depth);
-      if (!level) return;
+      if (!level) return false;
       const host = level.monsters.find((m) => m !== null && m.midx === midx);
-      if (host) {
-        host.heldObj.push(entry.data as unknown as (typeof host.heldObj)[number]);
-      }
-      return;
+      if (!host) return false;
+      host.heldObj.push(entry.data as unknown as (typeof host.heldObj)[number]);
+      return true;
     }
     case "cacheFloorObject": {
       const { depth, x, y } = entry.locus as {
@@ -696,12 +710,12 @@ function reinsert(save: SavedGame, entry: OrphanEntry): void {
         y: number;
       };
       const level = save.levelCache?.find((l) => l.depth === depth);
-      if (!level) return;
+      if (!level) return false;
       const obj = entry.data as unknown as (typeof level.floor)[number]["objs"][number];
       const pile = level.floor.find((p) => p.x === x && p.y === y);
       if (pile) pile.objs.push(obj);
       else level.floor.push({ x, y, objs: [obj] });
-      return;
+      return true;
     }
     case "cacheTrap": {
       const { depth, x, y } = entry.locus as {
@@ -710,12 +724,12 @@ function reinsert(save: SavedGame, entry: OrphanEntry): void {
         y: number;
       };
       const level = save.levelCache?.find((l) => l.depth === depth);
-      if (!level) return;
+      if (!level) return false;
       const trap = entry.data as unknown as (typeof level.traps)[number]["traps"][number];
       const cell = level.traps.find((c) => c.x === x && c.y === y);
       if (cell) cell.traps.push(trap);
       else level.traps.push({ x, y, traps: [trap] });
-      return;
+      return true;
     }
   }
 }
@@ -743,7 +757,9 @@ export function rehydrateSave(
       remaining[key] = entries;
       continue;
     }
-    for (const entry of entries) reinsert(out, entry);
+    for (const entry of entries) {
+      if (!reinsert(out, entry)) (remaining[key] ??= []).push(entry);
+    }
   }
   if (orphanCount(remaining) > 0) out.orphans = remaining;
   else delete out.orphans;

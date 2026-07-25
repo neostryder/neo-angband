@@ -735,9 +735,13 @@ export function copyArtifactData(
  */
 export class ArtifactState {
   private readonly created: boolean[];
+  private readonly seen: boolean[];
+  private readonly everseen: boolean[];
 
   constructor(count: number) {
     this.created = new Array<boolean>(count).fill(false);
+    this.seen = new Array<boolean>(count).fill(false);
+    this.everseen = new Array<boolean>(count).fill(false);
   }
 
   /** is_artifact_created(art). */
@@ -750,21 +754,77 @@ export class ArtifactState {
     this.created[aidx] = created;
   }
 
+  /** is_artifact_seen / mark_artifact_seen (obj-util.c:1197-1229). */
+  isSeen(aidx: number): boolean {
+    return this.seen[aidx] ?? false;
+  }
+
+  markSeen(aidx: number, seen: boolean): void {
+    this.seen[aidx] = seen;
+  }
+
+  /** is_artifact_everseen / mark_artifact_everseen (obj-util.c:1206-1238). */
+  isEverseen(aidx: number): boolean {
+    return this.everseen[aidx] ?? false;
+  }
+
+  markEverseen(aidx: number, everseen: boolean): void {
+    this.everseen[aidx] = everseen;
+  }
+
   /** A copy of the flags for serialization. */
   snapshot(): boolean[] {
     return [...this.created];
   }
 
+  /** The complete aup_info[] field set written by save.c:674-688. */
+  snapshotState(): {
+    created: boolean[];
+    seen: boolean[];
+    everseen: boolean[];
+  } {
+    return {
+      created: [...this.created],
+      seen: [...this.seen],
+      everseen: [...this.everseen],
+    };
+  }
+
   /** Rebuild from serialized flags (load.c). */
-  static restore(data: readonly boolean[]): ArtifactState {
-    const s = new ArtifactState(data.length);
-    for (let i = 0; i < data.length; i++) s.markCreated(i, data[i] ?? false);
+  static restore(
+    data:
+      | readonly boolean[]
+      | {
+          created: readonly boolean[];
+          seen?: readonly boolean[];
+          everseen?: readonly boolean[];
+        },
+  ): ArtifactState {
+    const state = Array.isArray(data)
+      ? null
+      : (data as {
+          created: readonly boolean[];
+          seen?: readonly boolean[];
+          everseen?: readonly boolean[];
+        });
+    const created: readonly boolean[] = state
+      ? state.created
+      : (data as readonly boolean[]);
+    const s = new ArtifactState(created.length);
+    for (let i = 0; i < created.length; i++) {
+      s.markCreated(i, created[i] ?? false);
+      if (state) {
+        s.markSeen(i, state.seen?.[i] ?? false);
+        s.markEverseen(i, state.everseen?.[i] ?? false);
+      }
+    }
     return s;
   }
 
   /** reset_artifacts at birth: clear every created flag. */
   reset(): void {
     this.created.fill(false);
+    this.seen.fill(false);
   }
 }
 

@@ -232,6 +232,7 @@ import {
   deserializeFloor,
   buildFeatRemap,
   deserializeArtifactsCreated,
+  deserializeArtifactFlags,
   deserializeGear,
   deserializeKnown,
   deserializeLevelCache,
@@ -2920,17 +2921,33 @@ export function loadGame(
   // aup_info[] (load.c): the artifact-created registry. Restore the saved
   // flags (built after swapRandartSet so aidx references align); older saves
   // predate the field and load with an all-false set (a fresh game's state).
-  const artifacts = save.artifactsCreated
-    ? ArtifactState.restore(
-        deserializeArtifactsCreated(
+  const artifacts =
+    save.artifactsCreated || save.artifactsSeen || save.artifactsEverseen
+    ? ArtifactState.restore({
+        created: deserializeArtifactsCreated(
           save.artifactsCreated,
           reg.objects.artifacts.length,
           ids,
         ),
-      )
+        seen: deserializeArtifactFlags(
+          save.artifactsSeen,
+          reg.objects.artifacts.length,
+          ids,
+        ),
+        everseen: deserializeArtifactFlags(
+          save.artifactsEverseen,
+          reg.objects.artifacts.length,
+          ids,
+        ),
+      })
     : new ArtifactState(reg.objects.artifacts.length);
 
-  const chunk = deserializeChunk(save.chunk, reg.features, featRemap);
+  const chunk = save.chunk
+    ? deserializeChunk(save.chunk, reg.features, featRemap)
+    : new Chunk(reg.features, 1, 1);
+  if (!save.chunk && save.dungeonDepth !== undefined) {
+    chunk.depth = save.dungeonDepth;
+  }
   const player = deserializePlayer(save.player, players, reg.objects, ids);
   const gear = deserializeGear(save.gear, reg.objects, ids);
 
@@ -2962,26 +2979,43 @@ export function loadGame(
     unlight: pstate.pflags.has(PF.UNLIGHT),
   };
 
+  /* load.c:1473-1505 marks cave->decoy while rd_traps reads the active cave. */
+  let decoy: Loc | null = null;
+  const loadedTraps = !save.isDead && reg.traps
+    ? deserializeTraps(
+        save.traps,
+        reg.traps,
+        chunk.width,
+        ids,
+        (grid) => {
+          decoy = grid;
+        },
+      )
+    : new Map();
+
   const state: GameState = {
     rng,
     chunk,
     actor,
     gear,
-    monsters: save.monsters.map((m) =>
+    decoy,
+    monsters: (save.isDead ? [null] : (save.monsters ?? [null])).map((m) =>
       m ? deserializeMonster(m, reg.monsters, reg.objects, ids) : null,
     ),
-    groups: save.groups.map((g) =>
+    groups: (save.isDead ? [null] : (save.groups ?? [null])).map((g) =>
       g ? { index: g.index, leader: g.leader, members: [...g.members] } : null,
     ),
-    floor: deserializeFloor(save.floor, reg.objects, chunk.width, ids),
-    traps: reg.traps
-      ? deserializeTraps(save.traps, reg.traps, chunk.width, ids)
+    floor: !save.isDead && save.floor
+      ? deserializeFloor(save.floor, reg.objects, chunk.width, ids)
       : new Map(),
-    known: deserializeKnown(save.known, chunk.width, chunk.height, featRemap),
+    traps: loadedTraps,
+    known: save.isDead
+      ? newKnownMap(chunk.width, chunk.height)
+      : deserializeKnown(save.known, chunk.width, chunk.height, featRemap),
     /* birth_levels_persist (#30) frozen-level cache; empty in saves written
      * before the field or with the option off (back-compat). */
     levelCache: deserializeLevelCache(
-      save.levelCache,
+      save.isDead ? undefined : save.levelCache,
       reg.features,
       reg.monsters,
       reg.objects,
@@ -3029,11 +3063,12 @@ export function loadGame(
     messages: deserializeMessages(save.messages),
     /* chunk->join of the level in play (gap 9.4/9.6): restore the stair
      * connectors so a first-visit persistent level still aligns after reload. */
-    ...(save.currentJoins
+    ...(!save.isDead && save.currentJoins
       ? {
           currentJoins: save.currentJoins.map((j) => ({
             grid: loc(j.x, j.y),
-            feat: j.feat,
+            feat: featRemap.get(j.feat) ?? j.feat,
+            ...(j.info ? { info: [...j.info] } : {}),
           })),
         }
       : {}),
@@ -3069,7 +3104,8 @@ export function loadGame(
    * carries the monsters, not the registry-side counters). */
   countMonsterRaces(state);
 
-  /* SV-01 (load.c:532-535 rd_monster_memory, "ensure dead uniques stay dead"):
+  /* SV-01 (load.c:532-535 rd_monster_memory, "ensure dead uniques stay dead";
+   * mon-make.c:257 refuses a unique whose max_num is exhausted):
    * a fresh registry starts every UNIQUE at maxNum=1, and countMonsterRaces
    * above only rebuilds curNum from the live monster list - so a unique the
    * player already killed (restored lore pkills>0, but no live copy) would bind

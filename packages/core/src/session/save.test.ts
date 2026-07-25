@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, RF, TV } from "../generated";
+import { EF, FEAT, RF, TV } from "../generated";
+import { GLYPH_DECOY } from "../effects/effect";
+import { sourcePlayer } from "../effects/interpreter";
+import { attachGameEnv } from "../game/effect-game-env";
+import { caveFindDecoy } from "../game/effect-mon-origin";
+import { basicPlayerActor } from "../game/project-cast";
 import { getLore } from "../mon/lore";
 import { runGameLoop, LOOP_STATUS } from "../game/loop";
 import { monsterGroupsVerify } from "../game/mon-group";
@@ -90,6 +95,41 @@ function playTurns(game: StartedGame, count: number): void {
 }
 
 describe("saveGame / loadGame round trip (decision 9)", () => {
+  it("restores a deployed decoy for the live cave_find_decoy path", () => {
+    const game = startGame(pack, { seed: 909, depth: 3 });
+    const state = game.state;
+    const trapDeps = game.wizardBundles.trapDeps;
+    expect(trapDeps).toBeDefined();
+    const effectEnv = attachGameEnv(
+      { rng: state.rng },
+      {
+        state,
+        cast: {
+          projections: [],
+          maxRange: 20,
+          playerActor: basicPlayerActor(state),
+        },
+        general: { trapDeps: trapDeps! },
+      },
+    );
+
+    expect(game.effects).toBeDefined();
+    expect(
+      game.effects!.effectSimple(EF.GLYPH, effectEnv, {
+        origin: sourcePlayer(),
+        subtype: GLYPH_DECOY,
+      }),
+    ).toBe(true);
+    expect(state.decoy).toBeTruthy();
+    expect(caveFindDecoy(state)).toEqual(state.decoy);
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game)));
+    const restored = loadGame(pack, saved).state;
+
+    expect(restored.decoy).toEqual(state.decoy);
+    expect(caveFindDecoy(restored)).toEqual(state.decoy);
+  });
+
   it("restores the player, world and entities exactly", () => {
     const game = startGame(pack, { seed: 555, depth: 5, className: "Mage" });
     playTurns(game, 6);
@@ -596,6 +636,8 @@ describe("player full_name / died_from / noscore (gaps 12.4/12.5/15.3)", () => {
     const game = startGame(pack, { seed: 606, depth: 2 });
     const p = game.state.actor.player;
     p.fullName = "Aranweth";
+    /* load.c:791-793 preserves died_from only for a dead (negative-HP) save. */
+    p.chp = -1;
     p.diedFrom = "a fruit bat";
     p.noscore = NOSCORE.WIZARD | NOSCORE.DEBUG;
 
@@ -615,7 +657,8 @@ describe("player full_name / died_from / noscore (gaps 12.4/12.5/15.3)", () => {
     delete sp.noscore;
     const rp = loadGame(pack, saved).state.actor.player;
     expect(rp.fullName).toBe("");
-    expect(rp.diedFrom).toBe("");
+    /* load.c:791-793 repairs an alive save's cause to this exact string. */
+    expect(rp.diedFrom).toBe("(alive and well)");
     expect(rp.noscore).toBe(0);
   });
 
@@ -948,7 +991,7 @@ describe("mod-lifecycle save blocks (P7.2)", () => {
       determinism: "deterministic",
     };
     saved.floor = [
-      ...saved.floor,
+      ...saved.floor!,
       { x: 3, y: 3, objs: [{ kindId: "frost:ice-shard" } as never] },
     ];
 
