@@ -284,8 +284,11 @@ export function installSpellCommands(
     state.curseTarget = null;
     targetRelease(state);
     if (!cast) return 0;
-    /* TMD_FASTCAST's 3/4 turn is deferred with that timed effect. */
-    return state.z.moveEnergy;
+    /* cmd-obj.c:1164-1168: FASTCAST consumes exactly three quarters of a
+     * turn, while an ordinary cast consumes a full move energy. */
+    return (player.timed[TMD.FASTCAST] ?? 0) > 0
+      ? Math.trunc((state.z.moveEnergy * 3) / 4)
+      : state.z.moveEnergy;
   });
 
   registry.register("study", (state, cmd: PlayerCommand) => {

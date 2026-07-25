@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { OF, TRF } from "../generated";
+import { OF, TMD, TRF } from "../generated";
 import { loc } from "../loc";
 import { SKILL } from "../player/types";
 import { EffectRegistry } from "../effects/interpreter";
@@ -23,6 +23,7 @@ import {
   squareDoorPower,
   squareIsPlayerTrap,
   squareIsVisibleTrap,
+  squareIsWebbed,
   squareRevealTrap,
   squareSetDoorLock,
   squareSetTrapTimeout,
@@ -30,6 +31,7 @@ import {
 } from "./trap";
 import type { TrapDeps } from "./trap";
 import { createDefaultRegistry, processPlayer } from "./player-turn";
+import { runAction } from "./player-path";
 import { makeState, plReg } from "./harness";
 import type { GameState } from "./context";
 import { FEAT } from "../generated";
@@ -69,6 +71,7 @@ function deps(state: GameState, over: Partial<TrapDeps> = {}): TrapDeps {
 
 const pitIdx = kinds.find((k) => k.desc === "pit")!.tidx;
 const trapdoorIdx = kinds.find((k) => k.desc === "trap door")!.tidx;
+const webIdx = kinds.find((k) => k.flags.has(TRF.WEB))!.tidx;
 
 describe("bindTraps (trap.txt)", () => {
   it("binds the full kind table with flags, power and effects", () => {
@@ -237,5 +240,24 @@ describe("disarm and the step hook", () => {
     processPlayer(state, registry);
     expect(state.actor.grid).toEqual(loc(6, 5));
     expect(state.actor.player.chp).toBeLessThan(100);
+  });
+});
+
+describe("run web ordering (cmd-cave.c:1368-1381)", () => {
+  it("clears a web before refusing a confused run", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const messages: string[] = [];
+    state.msg = (text): void => {
+      messages.push(text);
+    };
+    state.actor.player.timed[TMD.CONFUSED] = 5;
+    const d = deps(state);
+    placeTrap(state, state.actor.grid, webIdx, 5, d);
+
+    const used = runAction(state, { code: "run", dir: 6 });
+
+    expect(used).toBe(state.z.moveEnergy);
+    expect(squareIsWebbed(state, state.actor.grid)).toBe(false);
+    expect(messages).toEqual(["You clear the web."]);
   });
 });

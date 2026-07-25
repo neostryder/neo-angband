@@ -86,7 +86,11 @@ function playerBlow(state: GameState, mon: Monster): boolean {
     state.actor.player,
     state.runeEnv,
     state.actor.weapon,
-    { race: mon.race, visible: true, lore: getLore(state.lore, mon.race) },
+    {
+      race: mon.race,
+      visible: monsterIsVisible(mon),
+      lore: getLore(state.lore, mon.race),
+    },
   );
   const blow = pyAttackReal(
     state.rng,
@@ -97,7 +101,9 @@ function playerBlow(state: GameState, mon: Monster): boolean {
     state.brands,
     state.slays,
     {
-      monVisible: true,
+      /* chance_of_melee_hit halves unseen targets (player-attack.c:104-109),
+       * including effect-handler-attack.c's py_attack_real paths. */
+      monVisible: monsterIsVisible(mon),
       percentDamage: state.options?.get("birth_percent_damage") ?? false,
     },
   );
