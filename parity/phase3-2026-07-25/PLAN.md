@@ -172,6 +172,41 @@ backlog is smaller than the raw count — then fix what survives.
 - **Chunked tests with hard timeouts** — never a monolithic `pnpm test`
   (`packages/borg/src/{think,foundation}.test.ts` hang; pre-existing, Borg phase).
 
+## Status, 2026-07-25
+
+Merged to master and pushed:
+
+- **W3 statistical oracle.** C rebuilt at 1000 descents over depths 1–20.
+  Hypothesis tests replace the tolerance gate (`stat-test.ts`,
+  `parity-c-stat.test.ts`). **S-2 closed** as a sampling artefact — density is
+  green at every depth, pooled Stouffer Z = −1.22. **S-3 opened**: the species mix
+  diverges at depths 5–20, G = 389–823, p to 4.8e-98. `parity-c-stat.test.ts` is
+  red on purpose until it closes.
+- **Registry proof.** `codegen-lists.mjs --check` + `codegen-drift.test.ts`:
+  1174 entries across 31 `list-*.h` headers, mutation-verified.
+- **Dispatch proof.** `effect-coverage.test.ts`: all 112 upstream effects have a
+  handler, each in exactly one registry, PARTIAL set pinned. Consumes the nine
+  `*_HANDLER_CODES` arrays the census found orphaned.
+- **Census + worklists.** `tools/census.mjs` (212 wiring suspects),
+  `tools/c-api.mjs` + `c-api-allowlist.json` (1148 unmatched public C functions,
+  per-header).
+- Two stale self-pins cleared: `stats-baseline.json` and the descend scenario
+  count — neither was a parity claim.
+
+On branches, awaiting review or merge:
+
+| Branch | Work | State |
+|---|---|---|
+| `p3/w2-fix` | all 22 `NOT-WIRED` fixes | suite green (1503/1504); under adversarial review; one gate finding open (`state.confirmDie` declared and never assigned) |
+| `p3/data` | W5 independent gamedata re-parse | 3194 records / ~57k fields, zero diffs, mutation-verified; needs the directive-coverage guard |
+| `p3/ut-core` | 19 upstream unit tests (effects/object/monster/cave/game/artifact/command) | 75 tests green; spot-verified faithful |
+| `p3/ut-zlib` | 4 upstream unit tests | under-delivered — the z-textblock N/A is wrong, the port has a Textblock analogue; found 2 real divergences |
+| `p3/s3`, `p3/s3-review` | S-3 diagnosis + prepend-order audit | RC2 verified: the C prepends `friends`/`drops`, the port stores file order |
+
+Open findings not yet fixed: S-3 (species mix), the 22 wiring fixes pending
+review, W1 adjudication (1148 entries, gameplay headers first), the batch-1
+redo, and the W5 directive guard.
+
 ## Exit criteria
 
 1. `w1-adjudication-queue.tsv` fully adjudicated; every `MISSING` fixed.
