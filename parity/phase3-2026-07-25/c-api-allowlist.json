@@ -1,17 +1,17 @@
 {
   "note": "Frozen shortfall of reference/src/*.h public functions with no port counterpart, guarded by packages/core/src/c-api-coverage.test.ts. This list may only SHRINK: delete an entry when the function is ported/wired, or set status to 'na' with a reason when the port legitimately has no counterpart. Do not add entries -- a new unmatched C function must be ported, not allow-listed.",
   "cHeaderFunctions": 1960,
-  "missing": 1258,
+  "missing": 1148,
   "byHeader": {
-    "reference/src/cave.h": 109,
-    "reference/src/cmd-core.h": 37,
-    "reference/src/cmds.h": 94,
+    "reference/src/cave.h": 76,
+    "reference/src/cmd-core.h": 30,
+    "reference/src/cmds.h": 44,
     "reference/src/datafile.h": 18,
     "reference/src/debug.h": 1,
-    "reference/src/effects-info.h": 3,
+    "reference/src/effects-info.h": 2,
     "reference/src/effects.h": 2,
     "reference/src/game-event.h": 17,
-    "reference/src/game-input.h": 31,
+    "reference/src/game-input.h": 30,
     "reference/src/game-world.h": 3,
     "reference/src/generate.h": 42,
     "reference/src/grafmode.h": 3,
@@ -26,12 +26,11 @@
     "reference/src/mon-lore.h": 2,
     "reference/src/mon-make.h": 6,
     "reference/src/mon-msg.h": 5,
-    "reference/src/mon-spell.h": 1,
     "reference/src/mon-summon.h": 4,
     "reference/src/mon-util.h": 7,
     "reference/src/obj-curse.h": 4,
-    "reference/src/obj-desc.h": 2,
-    "reference/src/obj-gear.h": 15,
+    "reference/src/obj-desc.h": 1,
+    "reference/src/obj-gear.h": 14,
     "reference/src/obj-ignore.h": 13,
     "reference/src/obj-info.h": 5,
     "reference/src/obj-knowledge.h": 14,
@@ -41,18 +40,18 @@
     "reference/src/obj-properties.h": 1,
     "reference/src/obj-slays.h": 6,
     "reference/src/obj-tval.h": 9,
-    "reference/src/obj-util.h": 36,
+    "reference/src/obj-util.h": 35,
     "reference/src/option.h": 10,
     "reference/src/parser.h": 17,
-    "reference/src/player-attack.h": 3,
-    "reference/src/player-birth.h": 17,
+    "reference/src/player-attack.h": 2,
+    "reference/src/player-birth.h": 13,
     "reference/src/player-calcs.h": 12,
     "reference/src/player-path.h": 4,
     "reference/src/player-properties.h": 3,
     "reference/src/player-quest.h": 1,
     "reference/src/player-spell.h": 4,
-    "reference/src/player-util.h": 37,
-    "reference/src/player.h": 9,
+    "reference/src/player-util.h": 35,
+    "reference/src/player.h": 8,
     "reference/src/project.h": 6,
     "reference/src/save-charoutput.h": 1,
     "reference/src/savefile.h": 65,
@@ -64,7 +63,7 @@
     "reference/src/target.h": 1,
     "reference/src/trap.h": 4,
     "reference/src/ui-birth.h": 2,
-    "reference/src/ui-command.h": 9,
+    "reference/src/ui-command.h": 8,
     "reference/src/ui-context.h": 6,
     "reference/src/ui-curse.h": 1,
     "reference/src/ui-death.h": 1,
@@ -75,19 +74,19 @@
     "reference/src/ui-entry.h": 16,
     "reference/src/ui-equip-cmp.h": 1,
     "reference/src/ui-event.h": 10,
-    "reference/src/ui-game.h": 18,
+    "reference/src/ui-game.h": 17,
     "reference/src/ui-help.h": 2,
     "reference/src/ui-history.h": 2,
     "reference/src/ui-init.h": 2,
     "reference/src/ui-input.h": 22,
     "reference/src/ui-keymap.h": 2,
-    "reference/src/ui-knowledge.h": 16,
+    "reference/src/ui-knowledge.h": 14,
     "reference/src/ui-map.h": 6,
     "reference/src/ui-menu.h": 25,
     "reference/src/ui-mon-list.h": 3,
     "reference/src/ui-mon-lore.h": 2,
     "reference/src/ui-obj-list.h": 2,
-    "reference/src/ui-object.h": 17,
+    "reference/src/ui-object.h": 16,
     "reference/src/ui-options.h": 6,
     "reference/src/ui-output.h": 23,
     "reference/src/ui-player-properties.h": 1,
@@ -98,7 +97,7 @@
     "reference/src/ui-spell.h": 4,
     "reference/src/ui-spoil.h": 1,
     "reference/src/ui-store.h": 4,
-    "reference/src/ui-target.h": 4,
+    "reference/src/ui-target.h": 3,
     "reference/src/ui-term.h": 38,
     "reference/src/ui-visuals.h": 4,
     "reference/src/ui-wizard.h": 11,
@@ -143,20 +142,6 @@
       "name": "cave_known",
       "header": "reference/src/cave.h",
       "line": 454,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "cave_monster",
-      "header": "reference/src/cave.h",
-      "line": 444,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "cave_monster_max",
-      "header": "reference/src/cave.h",
-      "line": 445,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -280,20 +265,6 @@
       "reason": ""
     },
     {
-      "name": "square_allowsfeel",
-      "header": "reference/src/cave.h",
-      "line": 334,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_allowslos",
-      "header": "reference/src/cave.h",
-      "line": 335,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "square_changeable",
       "header": "reference/src/cave.h",
       "line": 356,
@@ -311,20 +282,6 @@
       "name": "square_delete_object",
       "header": "reference/src/cave.h",
       "line": 377,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_destroy",
-      "header": "reference/src/cave.h",
-      "line": 409,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_destroy_decoy",
-      "header": "reference/src/cave.h",
-      "line": 405,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -360,13 +317,6 @@
       "name": "square_dtrap_edge",
       "header": "reference/src/cave.h",
       "line": 355,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_earthquake",
-      "header": "reference/src/cave.h",
-      "line": 410,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -420,44 +370,9 @@
       "reason": ""
     },
     {
-      "name": "square_in_bounds",
-      "header": "reference/src/cave.h",
-      "line": 357,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_in_bounds_fully",
-      "header": "reference/src/cave.h",
-      "line": 358,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_is_monster_walkable",
-      "header": "reference/src/cave.h",
-      "line": 331,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
       "name": "square_isbright",
       "header": "reference/src/cave.h",
       "line": 337,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_iscloseddoor",
-      "header": "reference/src/cave.h",
-      "line": 290,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "square_isdamaging",
-      "header": "reference/src/cave.h",
-      "line": 340,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -466,20 +381,6 @@
       "header": "reference/src/cave.h",
       "line": 344,
       "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_isdoor",
-      "header": "reference/src/cave.h",
-      "line": 292,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "square_isdownstairs",
-      "header": "reference/src/cave.h",
-      "line": 295,
-      "status": "unreviewed",
       "reason": ""
     },
     {
@@ -497,31 +398,10 @@
       "reason": ""
     },
     {
-      "name": "square_isfiery",
-      "header": "reference/src/cave.h",
-      "line": 338,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_isfloor",
-      "header": "reference/src/cave.h",
-      "line": 277,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
       "name": "square_isglow",
       "header": "reference/src/cave.h",
       "line": 304,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "square_isgranite",
-      "header": "reference/src/cave.h",
-      "line": 281,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -543,13 +423,6 @@
       "header": "reference/src/cave.h",
       "line": 348,
       "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_ismagma",
-      "header": "reference/src/cave.h",
-      "line": 283,
-      "status": "unreviewed",
       "reason": ""
     },
     {
@@ -609,31 +482,10 @@
       "reason": ""
     },
     {
-      "name": "square_isobjectholding",
-      "header": "reference/src/cave.h",
-      "line": 279,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "square_isoccupied",
       "header": "reference/src/cave.h",
       "line": 298,
       "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "square_ispassable",
-      "header": "reference/src/cave.h",
-      "line": 332,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_isperm",
-      "header": "reference/src/cave.h",
-      "line": 282,
-      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -644,51 +496,9 @@
       "reason": ""
     },
     {
-      "name": "square_isprojectable",
-      "header": "reference/src/cave.h",
-      "line": 333,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_isquartz",
-      "header": "reference/src/cave.h",
-      "line": 284,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "square_isrock",
-      "header": "reference/src/cave.h",
-      "line": 280,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_isrubble",
-      "header": "reference/src/cave.h",
-      "line": 287,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "square_issecrettrap",
       "header": "reference/src/cave.h",
       "line": 352,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "square_isshop",
-      "header": "reference/src/cave.h",
-      "line": 296,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_isstairs",
-      "header": "reference/src/cave.h",
-      "line": 293,
       "status": "unreviewed",
       "reason": ""
     },
@@ -707,38 +517,10 @@
       "reason": ""
     },
     {
-      "name": "square_isupstairs",
-      "header": "reference/src/cave.h",
-      "line": 294,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "square_iswall_inner",
-      "header": "reference/src/cave.h",
-      "line": 313,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "square_iswall_solid",
-      "header": "reference/src/cave.h",
-      "line": 315,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
       "name": "square_iswebbable",
       "header": "reference/src/cave.h",
       "line": 330,
       "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_light",
-      "header": "reference/src/cave.h",
-      "line": 368,
-      "status": "unreviewed",
       "reason": ""
     },
     {
@@ -781,20 +563,6 @@
       "header": "reference/src/cave.h",
       "line": 346,
       "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_set_feat",
-      "header": "reference/src/cave.h",
-      "line": 387,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "square_set_mon",
-      "header": "reference/src/cave.h",
-      "line": 388,
-      "status": "unreviewed",
       "reason": ""
     },
     {
@@ -864,7 +632,7 @@
       "name": "square_wasseen",
       "header": "reference/src/cave.h",
       "line": 309,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -878,20 +646,6 @@
       "name": "wiz_light",
       "header": "reference/src/cave.h",
       "line": 241,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "cmd_cancel_repeat",
-      "header": "reference/src/cmd-core.h",
-      "line": 336,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "cmd_disable_repeat",
-      "header": "reference/src/cmd-core.h",
-      "line": 347,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -966,20 +720,6 @@
       "reason": ""
     },
     {
-      "name": "cmd_get_item",
-      "header": "reference/src/cmd-core.h",
-      "line": 398,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "cmd_get_nrepeats",
-      "header": "reference/src/cmd-core.h",
-      "line": 359,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "cmd_get_point",
       "header": "reference/src/cmd-core.h",
       "line": 397,
@@ -990,7 +730,7 @@
       "name": "cmd_get_quantity",
       "header": "reference/src/cmd-core.h",
       "line": 401,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -1001,24 +741,10 @@
       "reason": ""
     },
     {
-      "name": "cmd_get_string",
-      "header": "reference/src/cmd-core.h",
-      "line": 402,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
       "name": "cmd_get_target",
       "header": "reference/src/cmd-core.h",
       "line": 396,
       "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "cmd_release",
-      "header": "reference/src/cmd-core.h",
-      "line": 282,
-      "status": "unreviewed",
       "reason": ""
     },
     {
@@ -1068,13 +794,6 @@
       "header": "reference/src/cmd-core.h",
       "line": 374,
       "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "cmd_set_repeat",
-      "header": "reference/src/cmd-core.h",
-      "line": 341,
-      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -1141,20 +860,6 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_activate",
-      "header": "reference/src/cmds.h",
-      "line": 66,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_aim_wand",
-      "header": "reference/src/cmds.h",
-      "line": 64,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_alter",
       "header": "reference/src/cmds.h",
       "line": 33,
@@ -1183,31 +888,10 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_close",
-      "header": "reference/src/cmds.h",
-      "line": 30,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_disarm",
-      "header": "reference/src/cmds.h",
-      "line": 32,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_drop",
       "header": "reference/src/cmds.h",
       "line": 61,
       "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_eat_food",
-      "header": "reference/src/cmds.h",
-      "line": 67,
-      "status": "unreviewed",
       "reason": ""
     },
     {
@@ -1295,13 +979,6 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_pickup",
-      "header": "reference/src/cmds.h",
-      "line": 78,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_quaff_potion",
       "header": "reference/src/cmds.h",
       "line": 68,
@@ -1344,20 +1021,6 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_sleep",
-      "header": "reference/src/cmds.h",
-      "line": 45,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_spoil_artifact",
-      "header": "reference/src/cmds.h",
-      "line": 82,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_spoil_monster",
       "header": "reference/src/cmds.h",
       "line": 83,
@@ -1389,7 +1052,7 @@
       "name": "do_cmd_study",
       "header": "reference/src/cmds.h",
       "line": 74,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -1407,24 +1070,10 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_takeoff",
-      "header": "reference/src/cmds.h",
-      "line": 59,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_try_borg",
       "header": "reference/src/cmds.h",
       "line": 136,
       "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_tunnel",
-      "header": "reference/src/cmds.h",
-      "line": 31,
-      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -1442,13 +1091,6 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_use_staff",
-      "header": "reference/src/cmds.h",
-      "line": 63,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_walk",
       "header": "reference/src/cmds.h",
       "line": 36,
@@ -1459,27 +1101,6 @@
       "name": "do_cmd_wield",
       "header": "reference/src/cmds.h",
       "line": 60,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_acquire",
-      "header": "reference/src/cmds.h",
-      "line": 88,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_advance",
-      "header": "reference/src/cmds.h",
-      "line": 89,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_banish",
-      "header": "reference/src/cmds.h",
-      "line": 90,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -1512,153 +1133,6 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_wiz_create_all_artifact",
-      "header": "reference/src/cmds.h",
-      "line": 95,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_create_all_artifact_from_tval",
-      "header": "reference/src/cmds.h",
-      "line": 96,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_create_all_obj",
-      "header": "reference/src/cmds.h",
-      "line": 97,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_create_all_obj_from_tval",
-      "header": "reference/src/cmds.h",
-      "line": 98,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_create_artifact",
-      "header": "reference/src/cmds.h",
-      "line": 99,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_create_obj",
-      "header": "reference/src/cmds.h",
-      "line": 100,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_create_trap",
-      "header": "reference/src/cmds.h",
-      "line": 101,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_cure_all",
-      "header": "reference/src/cmds.h",
-      "line": 102,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_curse_item",
-      "header": "reference/src/cmds.h",
-      "line": 103,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_detect_all_local",
-      "header": "reference/src/cmds.h",
-      "line": 104,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_detect_all_monsters",
-      "header": "reference/src/cmds.h",
-      "line": 105,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_dump_level_map",
-      "header": "reference/src/cmds.h",
-      "line": 106,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_edit_player_exp",
-      "header": "reference/src/cmds.h",
-      "line": 107,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_edit_player_gold",
-      "header": "reference/src/cmds.h",
-      "line": 108,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_edit_player_start",
-      "header": "reference/src/cmds.h",
-      "line": 109,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_edit_player_stat",
-      "header": "reference/src/cmds.h",
-      "line": 110,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_hit_all_los",
-      "header": "reference/src/cmds.h",
-      "line": 111,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_increase_exp",
-      "header": "reference/src/cmds.h",
-      "line": 112,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_jump_level",
-      "header": "reference/src/cmds.h",
-      "line": 113,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_learn_object_kinds",
-      "header": "reference/src/cmds.h",
-      "line": 114,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_magic_map",
-      "header": "reference/src/cmds.h",
-      "line": 115,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_wiz_peek_noise_scent",
       "header": "reference/src/cmds.h",
       "line": 116,
@@ -1680,27 +1154,6 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_wiz_push_object",
-      "header": "reference/src/cmds.h",
-      "line": 119,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_query_feature",
-      "header": "reference/src/cmds.h",
-      "line": 120,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_query_square_flag",
-      "header": "reference/src/cmds.h",
-      "line": 121,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_wiz_quit_no_save",
       "header": "reference/src/cmds.h",
       "line": 122,
@@ -1708,93 +1161,9 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_wiz_recall_monster",
-      "header": "reference/src/cmds.h",
-      "line": 123,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_rerate",
-      "header": "reference/src/cmds.h",
-      "line": 124,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_reroll_item",
-      "header": "reference/src/cmds.h",
-      "line": 125,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_stat_item",
-      "header": "reference/src/cmds.h",
-      "line": 126,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_summon_named",
-      "header": "reference/src/cmds.h",
-      "line": 127,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_summon_random",
-      "header": "reference/src/cmds.h",
-      "line": 128,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_teleport_random",
-      "header": "reference/src/cmds.h",
-      "line": 129,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_teleport_to",
-      "header": "reference/src/cmds.h",
-      "line": 130,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_tweak_item",
-      "header": "reference/src/cmds.h",
-      "line": 131,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_wipe_recall",
-      "header": "reference/src/cmds.h",
-      "line": 132,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_wiz_wizard_light",
-      "header": "reference/src/cmds.h",
-      "line": 133,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_wizard",
       "header": "reference/src/cmds.h",
       "line": 51,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_zap_rod",
-      "header": "reference/src/cmds.h",
-      "line": 65,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -1928,13 +1297,6 @@
       "name": "debug",
       "header": "reference/src/debug.h",
       "line": 33,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "effect_describe",
-      "header": "reference/src/effects-info.h",
-      "line": 73,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -2191,13 +1553,6 @@
       "reason": ""
     },
     {
-      "name": "get_curse",
-      "header": "reference/src/game-input.h",
-      "line": 87,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "get_effect_from_list",
       "header": "reference/src/game-input.h",
       "line": 88,
@@ -2215,7 +1570,7 @@
       "name": "get_point",
       "header": "reference/src/game-input.h",
       "line": 77,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -2229,7 +1584,7 @@
       "name": "get_spell",
       "header": "reference/src/game-input.h",
       "line": 81,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -3129,13 +2484,6 @@
       "reason": ""
     },
     {
-      "name": "monster_spell_by_index",
-      "header": "reference/src/mon-spell.h",
-      "line": 71,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "summon_desc",
       "header": "reference/src/mon-summon.h",
       "line": 49,
@@ -3244,13 +2592,6 @@
       "name": "object_base_name",
       "header": "reference/src/obj-desc.h",
       "line": 51,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "object_kind_name",
-      "header": "reference/src/obj-desc.h",
-      "line": 52,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -3307,13 +2648,6 @@
       "name": "object_is_carried",
       "header": "reference/src/obj-gear.h",
       "line": 42,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "object_is_equipped",
-      "header": "reference/src/obj-gear.h",
-      "line": 41,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -3951,7 +3285,7 @@
       "name": "obj_can_study",
       "header": "reference/src/obj-util.h",
       "line": 59,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -3972,7 +3306,7 @@
       "name": "obj_can_wear",
       "header": "reference/src/obj-util.h",
       "line": 62,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -3986,7 +3320,7 @@
       "name": "obj_has_flag",
       "header": "reference/src/obj-util.h",
       "line": 67,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -4000,7 +3334,7 @@
       "name": "obj_is_known_artifact",
       "header": "reference/src/obj-util.h",
       "line": 65,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -4025,13 +3359,6 @@
       "reason": ""
     },
     {
-      "name": "object_effect",
-      "header": "reference/src/obj-util.h",
-      "line": 69,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "object_flags",
       "header": "reference/src/obj-util.h",
       "line": 36,
@@ -4049,7 +3376,7 @@
       "name": "object_short_name",
       "header": "reference/src/obj-util.h",
       "line": 48,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -4291,13 +3618,6 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_throw",
-      "header": "reference/src/player-attack.h",
-      "line": 54,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_accept_character",
       "header": "reference/src/player-birth.h",
       "line": 44,
@@ -4315,21 +3635,14 @@
       "name": "do_cmd_birth_reset",
       "header": "reference/src/player-birth.h",
       "line": 33,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_buy_stat",
-      "header": "reference/src/player-birth.h",
-      "line": 36,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
       "name": "do_cmd_choose_class",
       "header": "reference/src/player-birth.h",
       "line": 35,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -4364,27 +3677,6 @@
       "name": "do_cmd_refresh_stats",
       "header": "reference/src/player-birth.h",
       "line": 39,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_reset_stats",
-      "header": "reference/src/player-birth.h",
-      "line": 38,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_roll_stats",
-      "header": "reference/src/player-birth.h",
-      "line": 40,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_sell_stat",
-      "header": "reference/src/player-birth.h",
-      "line": 37,
       "status": "unreviewed",
       "reason": ""
     },
@@ -4644,7 +3936,7 @@
       "name": "player_can_fire",
       "header": "reference/src/player-util.h",
       "line": 95,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -4725,13 +4017,6 @@
       "reason": ""
     },
     {
-      "name": "player_is_immune",
-      "header": "reference/src/player-util.h",
-      "line": 117,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "player_is_resting",
       "header": "reference/src/player-util.h",
       "line": 106,
@@ -4749,13 +4034,6 @@
       "name": "player_place",
       "header": "reference/src/player-util.h",
       "line": 118,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "player_resists",
-      "header": "reference/src/player-util.h",
-      "line": 116,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -4882,13 +4160,6 @@
       "name": "player_random_name",
       "header": "reference/src/player.h",
       "line": 640,
-      "status": "unreviewed",
-      "reason": ""
-    },
-    {
-      "name": "player_restore_mana",
-      "header": "reference/src/player.h",
-      "line": 639,
       "status": "unreviewed",
       "reason": ""
     },
@@ -5600,13 +4871,6 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_redraw",
-      "header": "reference/src/ui-command.h",
-      "line": 24,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_save_screen",
       "header": "reference/src/ui-command.h",
       "line": 30,
@@ -5617,7 +4881,7 @@
       "name": "do_cmd_unknown",
       "header": "reference/src/ui-command.h",
       "line": 26,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -5708,7 +4972,7 @@
       "name": "textui_get_curse",
       "header": "reference/src/ui-curse.h",
       "line": 20,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -5764,7 +5028,7 @@
       "name": "textui_get_effect_from_list",
       "header": "reference/src/ui-effect.h",
       "line": 10,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -6090,13 +5354,6 @@
       "reason": ""
     },
     {
-      "name": "cmd_lookup",
-      "header": "reference/src/ui-game.h",
-      "line": 65,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "cmd_lookup_key",
       "header": "reference/src/ui-game.h",
       "line": 63,
@@ -6170,7 +5427,7 @@
       "name": "textui_process_command",
       "header": "reference/src/ui-game.h",
       "line": 67,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -6212,7 +5469,7 @@
       "name": "textui_cleanup",
       "header": "reference/src/ui-init.h",
       "line": 25,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -6405,13 +5662,6 @@
       "reason": ""
     },
     {
-      "name": "do_cmd_equip",
-      "header": "reference/src/ui-knowledge.h",
-      "line": 32,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "do_cmd_inven",
       "header": "reference/src/ui-knowledge.h",
       "line": 31,
@@ -6422,7 +5672,7 @@
       "name": "do_cmd_itemlist",
       "header": "reference/src/ui-knowledge.h",
       "line": 40,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -6443,13 +5693,6 @@
       "name": "do_cmd_message_one",
       "header": "reference/src/ui-knowledge.h",
       "line": 29,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "do_cmd_messages",
-      "header": "reference/src/ui-knowledge.h",
-      "line": 30,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
@@ -6874,13 +6117,6 @@
       "reason": ""
     },
     {
-      "name": "textui_get_item",
-      "header": "reference/src/ui-object.h",
-      "line": 53,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
       "name": "textui_obj_examine",
       "header": "reference/src/ui-object.h",
       "line": 61,
@@ -7045,7 +6281,7 @@
       "name": "textui_get_panel",
       "header": "reference/src/ui-output.h",
       "line": 113,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -7059,7 +6295,7 @@
       "name": "textui_panel_contains",
       "header": "reference/src/ui-output.h",
       "line": 114,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -7318,7 +6554,7 @@
       "name": "do_cmd_spoilers",
       "header": "reference/src/ui-spoil.h",
       "line": 8,
-      "status": "unreviewed",
+      "status": "unreviewed-mentioned",
       "reason": ""
     },
     {
@@ -7360,13 +6596,6 @@
       "name": "target_set_interactive",
       "header": "reference/src/ui-target.h",
       "line": 46,
-      "status": "unreviewed-mentioned",
-      "reason": ""
-    },
-    {
-      "name": "textui_target",
-      "header": "reference/src/ui-target.h",
-      "line": 44,
       "status": "unreviewed-mentioned",
       "reason": ""
     },
