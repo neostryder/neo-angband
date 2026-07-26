@@ -127,8 +127,9 @@ only (`NOISE-FLOOR.md`'s own caveat). Per-depth, the honest statement was always
    - ego / `good` / `great` roll rates in `make_object`, since an ego item's
      value is what moves `sqrating` (it is squared, so a 10% value bias becomes
      21% of rating).
-   - ~~object *quantity* per level, i.e. the `alloc_objects` / room-loot
-     calls.~~ **RULED OUT, measured — see section 6.**
+   - object *quantity* per level, i.e. the `alloc_objects` / room-loot calls.
+     Ruled less likely: density parity passes and the pooled Stouffer is clean,
+     but that is monsters, not objects.
    - **Already checked and faithful:** the accumulation itself.
      `placeObject` (`gen/util.ts:1287-1294`) matches `gen-util.c:509-540`
      including `Math.trunc` for C's truncation-toward-zero on the `rating / 100`
@@ -137,67 +138,6 @@ only (`NOISE-FLOOR.md`'s own caveat). Per-depth, the honest statement was always
      `generate.c:722` including `Math.trunc` on the depth division.
 3. ~~Add pooled variants of the G-test metrics to the gate.~~ **DONE** — see
    section 5.
-
-## 6. Quantity is RULED OUT. The bias is in value per object
-
-Date: 2026-07-26. This is the discrimination step, and it did not need the C
-oracle rebuilt.
-
-The C main-stats database already stores per-level object counts; they were just
-never imported. `log_all_objects` (`main-stats.c:633-657`) sends every object to
-either the `wearables_*` family (if `tval_has_variable_power`) or `consumables`,
-so `wearables_count + consumables` is the total with no double-count. The port's
-`objectTotal` was already collected. So a two-sample z on objects-per-level is
-the same instrument as density, and it settles quantity directly.
-
-**One trap, and it is a 40% error if missed.** The C's gold capture at
-`main-stats.c:624-626` is additive and does NOT `continue`: a money object is
-accumulated into `gold[origin]` and then *falls through* into the `consumables`
-bucket at :656, so it is in both tables. The port's `collectLevel` deliberately
-`continue`s on `TV_GOLD` before touching `objectTotal`. On the 1000-run oracle
-money is 2.82M of 7.03M consumable entries, so importing `consumables` verbatim
-would have inflated the C total by roughly 40% and manufactured a divergence out
-of a bookkeeping difference. The importer subtracts the money kinds (identified
-as `object_info.tval = 35`, `TV_GOLD` being last in `list-tvals.h`, asserted at
-import time).
-
-Result, with the C at 1000 levels per depth:
-
-| runs | objFeel pooled G/df | objcount pooled Stouffer Z | worst single-depth objcount |
-|---:|---:|---:|---:|
-| 400 | 1.87 (p=2.9e-9) | -2.66 (p=7.9e-3) | z=-2.47 at depth 14 |
-| 1000 | **2.70 (p=8.4e-25)** | **-1.78 (p=7.5e-2)** | z=-1.57 at depth 6 |
-
-Read the two columns against each other. **objFeel strengthens as the sample
-grows and objcount weakens.** That is the whole argument: a real distributional
-difference grows with `n`, and one that shrinks with `n` was noise. The 400-run
-`p = 0.0079` on the object count was a fluke that 2.5x the data dissolved.
-
-So the port places the same NUMBER of objects per level as upstream — within
-about 1% at every depth from 1 to 20 — and those objects nevertheless rate as
-richer. `obj_rating` accumulates `object_value_real` (`gen-util.c:509-540`), and
-the accumulation itself is already verified faithful (section 4). **The bias is
-therefore in the VALUE of what is generated, not the count**, which leaves
-exactly two live suspects:
-
-1. `object_value_real` itself, i.e. `make_object`'s `*value` out-param
-   (`obj-make.c:1173, 1213, 1229`). Note the leverage: `sqrating` squares the
-   value, so a 10% value bias becomes a 21% rating bias.
-2. the ego / `good` / `great` roll rates inside `make_object`, which change *what*
-   gets made rather than how it is priced. The DB carries `wearables_egos` per
-   level, so this one is also measurable without touching the oracle — the
-   obvious next step, and cheaper than emitting `obj_rating`.
-
-### What this changed in the gate
-
-Object count per depth is now a gated metric (family 20 + 20 + 2 = 42,
-`alpha = 2.38e-4`), so a future quantity regression cannot hide behind the
-feeling histogram. The POOLED object count is printed but **not** gated: its
-null has not been measured, and the 400-vs-1000 disagreement above is direct
-evidence it is not calibrated — the 20 per-depth deviates are plausibly
-correlated, since one run walks every depth on a single RNG stream. Gating it
-when it was first added was a mistake, and the same one the `species` episode
-already taught: a pooled statistic does not get gated until its null is measured.
 
 ## 5. The gate's pass/fail set, decided and landed
 

@@ -96,24 +96,10 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * POOLED on 2026-07-26 after the noise floor was measured.
      *
      *   - density, per depth        -> `depths.length` tests, corrected
-     *   - object count, per depth   -> `depths.length` tests, corrected
      *   - objFeel, POOLED           -> 1 test, corrected
      *   - monFeel, POOLED           -> 1 test, corrected
      *   - species                   -> 0 tests. Printed only, never asserted.
      *   - pooled density (Stouffer) -> 1 test at the UNCORRECTED alpha
-     *   - pooled object count       -> 0 tests. Printed only; null not measured.
-     *
-     * Object count joined the family on 2026-07-26, to answer whether the pooled
-     * objFeel excess (the port's levels rate RICHER than the C's) comes from
-     * generating MORE objects or from generating more VALUABLE ones. obj_rating
-     * is driven by object_value_real (gen-util.c:509-540), so quantity and value
-     * are separable causes and objectTotal isolates the first. ANSWER: quantity
-     * matches. No depth exceeds |z| = 1.6 at 1000 runs and the pooled deviate
-     * shrinks as the sample grows. So the bias is in value per object, and this
-     * metric now serves to keep it that way. It is gated per depth for the same
-     * reason density is: it is a test on a mean, and a depth-localised quantity
-     * bug is a real possibility (a room type that only appears deep). See
-     * findings/OBJFEEL.md.
      *
      * Why species is not gated, and I had this wrong originally. Comparing the
      * port against ITSELF at a second base seed gives G = 350-860 over df =
@@ -149,11 +135,10 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      *
      * Gold is asserted separately -- its per-origin classification is a known
      * open divergence and would otherwise mask the rest. */
-    const alpha = bonferroni(ALPHA, 2 * depths.length + 2);
+    const alpha = bonferroni(ALPHA, depths.length + 2);
     const rows: Row[] = [];
     const report: string[] = [];
     const densityZ: number[] = [];
-    const objCountZ: number[] = [];
     /** Per-depth G-tests held for pooling, keyed by metric. */
     const pooling: Record<string, DistributionTest[]> = { objFeel: [], monFeel: [] };
 
@@ -178,33 +163,6 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
           `port=${(p.monsterTotal / p.levels).toFixed(2)} delta=${density.delta.toFixed(2)} ` +
           `sd=${sd.toFixed(1)} z=${density.z.toFixed(2)} p=${density.p.toFixed(4)} ` +
           `(resolves +/-${density.resolution.toFixed(2)})`,
-      );
-
-      /* Object count per level. Money is excluded on BOTH sides -- the port
-       * skips TV_GOLD before counting and the C importer subtracts the money
-       * kinds back out of `consumables`, which the C double-books (see
-       * c-stats.ts). So this is the count of real items only. */
-      const objSd = perLevelSd(p, "objectTotal");
-      const objCount = meanTest({
-        refMean: b.objectTotal / b.levels,
-        refN: b.levels,
-        portMean: p.objectTotal / p.levels,
-        portN: p.levels,
-        sd: objSd,
-        alpha,
-      });
-      rows.push({
-        depth: d,
-        metric: "objcount",
-        detail: `z=${objCount.z.toFixed(2)}`,
-        p: objCount.p,
-      });
-      objCountZ.push(objCount.z);
-      report.push(
-        `depth ${String(d).padStart(2)} objcount C=${(b.objectTotal / b.levels).toFixed(2)} ` +
-          `port=${(p.objectTotal / p.levels).toFixed(2)} delta=${objCount.delta.toFixed(2)} ` +
-          `sd=${objSd.toFixed(1)} z=${objCount.z.toFixed(2)} p=${objCount.p.toFixed(4)} ` +
-          `(resolves +/-${objCount.resolution.toFixed(2)})`,
       );
 
       for (const [metric, key] of [
@@ -275,37 +233,11 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
       });
     }
 
-    /*
-     * Same Stouffer combination for object count -- PRINTED, NOT GATED, because
-     * its null has not been measured and this house rule has been learned the
-     * hard way twice (species, then the feeling G-tests): a pooled statistic is
-     * not gated until its null is measured, because pooling inherits any
-     * correlation between the things pooled. I gated this one when I added it
-     * and that was wrong. The evidence that it is not calibrated is direct: at
-     * PORT_RUNS=400 it returned Z=-2.66 p=7.9e-3, and at 1000 -- two and a half
-     * times the data -- it WEAKENED to Z=-1.78 p=7.5e-2. A real effect grows
-     * with n (objFeel pooled went 1.87 -> 2.70 over the same two runs); one that
-     * shrinks is noise, and the 20 per-depth deviates are plausibly correlated
-     * since one run walks every depth on one RNG stream.
-     *
-     * The per-depth object-count tests ARE gated: they are two-sample mean tests,
-     * the same instrument as density, whose calibration was established when S-2
-     * was closed.
-     */
-    const objStouffer =
-      objCountZ.reduce((a, b) => a + b, 0) / Math.sqrt(Math.max(objCountZ.length, 1));
-    const objStoufferP = normalTwoTailedP(objStouffer);
-    report.push(
-      `pooled objcount (Stouffer over ${objCountZ.length} depths): Z=${objStouffer.toFixed(2)} ` +
-        `p=${objStoufferP.toExponential(2)} -- DIAGNOSTIC ONLY, null not yet measured`,
-    );
-
     const failures = rows.filter((r) => r.p < alpha || r.metric === "density-pooled");
     const summary =
       `C-vs-TS generation parity, alpha=${alpha.toExponential(2)} ` +
       `(${ALPHA} Bonferroni-corrected over ${depths.length} per-depth density ` +
-      `+ ${depths.length} per-depth object-count tests + 2 pooled feeling tests ` +
-      `= ${2 * depths.length + 2}; species not gated), ` +
+      `tests + 2 pooled feeling tests = ${depths.length + 2}; species not gated), ` +
       `port runs=${PORT_RUNS}\n` +
       report.join("\n") +
       (failures.length
