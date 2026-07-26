@@ -700,13 +700,9 @@ const ATTACK_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.DAMAGE, handleDAMAGE],
   [EF.BOLT, handleBOLT],
   [EF.BEAM, handleBEAM],
-  /* effect_handler_BOLT_OR_BEAM (effect-handler-attack.c:158) */
   [EF.BOLT_OR_BEAM, handleBOLT_OR_BEAM],
-  /* effect_handler_BOLT_STATUS (effect-handler-attack.c:368) */
   [EF.BOLT_STATUS, handleBOLT_STATUS],
-  /* effect_handler_BOLT_STATUS_DAM (effect-handler-attack.c:383) */
   [EF.BOLT_STATUS_DAM, handleBOLT_STATUS],
-  /* effect_handler_BOLT_AWARE (effect-handler-attack.c:398) */
   [EF.BOLT_AWARE, handleBOLT_AWARE],
   [EF.LASH, handleLASH],
   [EF.LINE, handleLINE],
@@ -722,10 +718,8 @@ const ATTACK_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   [EF.STAR_BALL, handleSTAR_BALL],
   [EF.SWARM, handleSWARM],
   [EF.TOUCH, handleTOUCH],
-  /* effect_handler_TOUCH_AWARE (effect-handler-attack.c:446) */
   [EF.TOUCH_AWARE, handleTOUCH_AWARE],
   [EF.PROJECT_LOS, makeProjectLos(false)],
-  /* effect_handler_PROJECT_LOS_AWARE (effect-handler-attack.c:1125) */
   [EF.PROJECT_LOS_AWARE, makeProjectLos(true)],
   [EF.WONDER, handleWONDER],
 ]);

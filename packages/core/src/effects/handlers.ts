@@ -379,25 +379,16 @@ const IMPLEMENTED: ReadonlyMap<number, EffectHandler> = new Map<
   EffectHandler
 >([
   [EF.RANDOM, handleRANDOM],
-  /* effect_handler_SELECT (effect-handler-general.c:3601) */
   [EF.SELECT, handleSELECT],
-  /* effect_handler_HEAL_HP (effect-handler-attack.c:201) */
   [EF.HEAL_HP, handleHEAL_HP],
   [EF.RESTORE_MANA, handleRESTORE_MANA],
-  /* effect_handler_NOURISH (effect-handler-general.c:501) */
   [EF.NOURISH, handleNOURISH],
-  /* effect_handler_CRUNCH (effect-handler-general.c:536) */
   [EF.CRUNCH, handleCRUNCH],
-  /* effect_handler_CURE (effect-handler-general.c:549) */
   [EF.CURE, handleCURE],
-  /* effect_handler_TIMED_SET (effect-handler-general.c:561) */
   [EF.TIMED_SET, handleTIMED_SET],
-  /* effect_handler_TIMED_INC_NO_RES (effect-handler-general.c:647) */
   [EF.TIMED_INC_NO_RES, handleTIMED_INC_NO_RES],
-  /* effect_handler_TIMED_DEC (effect-handler-general.c:686) */
   [EF.TIMED_DEC, handleTIMED_DEC],
   [EF.SET_VALUE, handleSET_VALUE],
-  /* effect_handler_CLEAR_VALUE (effect-handler-general.c:3623) */
   [EF.CLEAR_VALUE, handleCLEAR_VALUE],
 ]);
 

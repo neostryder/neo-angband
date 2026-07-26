@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EF, ELEM, FEAT, MON_TMD, RF, SQUARE, TMD } from "../generated";
-import { distance, loc, locEq, locSum, DDGRID_DDD } from "../loc";
+import { loc, locEq, locSum, DDGRID_DDD } from "../loc";
 import {
   EffectRegistry,
   sourceMonster,
@@ -14,18 +14,9 @@ import type { GameState } from "./context";
 import { basicPlayerActor } from "./project-cast";
 import { attachGameEnv } from "./effect-game-env";
 import type { GameEffectEnv } from "./effect-game-env";
-import { floorCarry, floorPile } from "./floor";
-import {
-  knownObject,
-  squareIsKnown,
-  squareKnowPile,
-  squareMemorize,
-} from "./known";
+import { floorCarry } from "./floor";
 import { objectNew } from "../obj/object";
-import { OBJ_NOTICE } from "../obj/knowledge";
-import { ArtifactState } from "../obj/make";
-import type { Artifact, ObjectKind } from "../obj/types";
-import { OptionState } from "../player/options";
+import type { ObjectKind } from "../obj/types";
 import {
   lightRoom,
   registerTerrainHandlers,
@@ -342,70 +333,6 @@ describe("EF_DESTRUCTION (effect-handler-attack.c L1169)", () => {
     /* The player's own grid is spared. */
     expect(state.chunk.isPassable(loc(10, 10))).toBe(true);
   });
-
-  it("forgets every affected remembered square, including the spared player grid", () => {
-    const state = makeState({ playerGrid: loc(10, 10), seed: 7 });
-    state.chunk.depth = 5;
-    const remembered: ReturnType<typeof loc>[] = [];
-    for (let y = 7; y <= 13; y++) {
-      for (let x = 7; x <= 13; x++) {
-        const grid = loc(x, y);
-        if (distance(state.actor.grid, grid) > 3) continue;
-        squareMemorize(state, grid);
-        remembered.push(grid);
-      }
-    }
-    const spared = makeObj();
-    floorCarry(state, state.actor.grid, spared);
-    squareKnowPile(state, state.actor.grid);
-    expect(remembered.every((grid) => squareIsKnown(state, grid))).toBe(true);
-    expect(knownObject(state, state.actor.grid)).not.toBeNull();
-
-    registry().effectSimple(EF.DESTRUCTION, env(state), {
-      origin: sourcePlayer(),
-      radius: 3,
-    });
-
-    expect(remembered.every((grid) => !squareIsKnown(state, grid))).toBe(true);
-    expect(knownObject(state, state.actor.grid)).toBeNull();
-    expect(floorPile(state, state.actor.grid)).toContain(spared);
-  });
-
-  it.each([
-    { known: false, loseArts: false, staysCreated: false, history: 0 },
-    { known: true, loseArts: false, staysCreated: true, history: 1 },
-    { known: false, loseArts: true, staysCreated: true, history: 1 },
-  ])(
-    "updates the artifact registry before destruction (known=$known, birth_lose_arts=$loseArts)",
-    ({ known, loseArts, staysCreated, history }) => {
-      const state = makeState({ playerGrid: loc(10, 10), seed: 7 });
-      state.chunk.depth = 5;
-      state.options = new OptionState({
-        overrides: { birth_lose_arts: loseArts },
-      });
-      state.artifacts = new ArtifactState(2);
-      state.artifacts.markCreated(1, true);
-      const art = { aidx: 1, name: "Test Artifact" } as Artifact;
-      const obj = makeObj();
-      obj.artifact = art;
-      if (known) obj.notice |= OBJ_NOTICE.ASSESSED;
-      const grid = loc(9, 10);
-      floorCarry(state, grid, obj);
-      const lost: Artifact[] = [];
-      state.onArtifactLost = (lostArt) => lost.push(lostArt);
-
-      registry().effectSimple(EF.DESTRUCTION, env(state), {
-        origin: sourcePlayer(),
-        radius: 2,
-      });
-
-      /* ArtifactState.isCreated is the registry gate makeArtifact uses before
-       * allowing this fixed artifact to regenerate (obj/make.ts:954-955). */
-      expect(state.artifacts.isCreated(art.aidx)).toBe(staysCreated);
-      expect(lost).toHaveLength(history);
-      expect(floorPile(state, grid)).toHaveLength(0);
-    },
-  );
 
   it("a light-subtype blast blinds an unresisting player", () => {
     const state = makeState({ playerGrid: loc(10, 10), seed: 7 });

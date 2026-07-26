@@ -63,13 +63,6 @@ divergence to chase.
 
 ## Result 3 — object feeling is real, and wider than recorded
 
-> **SUPERSEDED 2026-07-26 as a calibration, not as a signal.** The per-depth
-> numbers below stand as measurements, but the null they are judged against is
-> the WRONG null: it is the port against itself. See "The null was mismeasured"
-> at the end of this document, and `OBJFEEL.md` sections 7-9 for the resolution.
-> The finding itself turned out to be real — the cause was `parse_random`'s
-> negation in the shipped data, not the generator.
-
 | | mean G_null | max G_null | mean G_real | mean G_real/G_null |
 |---|---:|---:|---:|---:|
 | objFeel | 6.7 | **14.9** | 15.8 | **2.38** |
@@ -117,51 +110,3 @@ corrected parametric test on their own.
    code-vs-C evidence. The statistic has no vote.
 3. Keep this probe. Any future distribution gate must state its measured
    resolving power before its p-value is quoted.
-
-## The null was mismeasured (added 2026-07-26)
-
-Point 3 above was right and this document broke its own rule. A **port-vs-itself**
-null is not the null for a **port-vs-C** comparison, and the difference is not
-small.
-
-Two runs of one implementation share every structural quirk that implementation
-has: the same allocation tables walked in the same order, the same rounding, the
-same tie-breaks. Two *independent* samples — the port and the C — do not. So
-port-vs-itself measures seed noise alone and systematically UNDERSTATES how far
-apart two correct implementations can land.
-
-Measured, six 1000-run C `main-stats` databases → 15 unordered pairs
-(`tools/c-vs-c-all-pairs.mjs`):
-
-| pooled statistic | port vs itself (this doc) | **C vs C, 15 pairs** |
-|---|---:|---:|
-| objFeel G/df | 0.95 | **1.94** (sd 0.31, range 1.56–2.49) |
-| monFeel G/df | — | **1.82** (sd 0.18, range 1.45–2.21) |
-
-The real null is roughly **twice** the one this probe reports. Three further
-consequences, each of which cost a wrong claim before it was noticed:
-
-- **`G/df` is not sample-size invariant.** G grows with n for a fixed
-  distributional difference, so a 400-run ratio cannot be compared with a null
-  measured between two 1000-run samples. `parity-c-stat.test.ts` now skips the
-  pooled feeling assertion unless `PORT_RUNS === cLevels`.
-- **The parametric tail is untrustworthy out at 1e-4** for these histograms,
-  because the null's observed spread exceeds what a scaled chi-square at ~140 df
-  predicts. Fifteen replicates buy a rank-based one-sided resolution of about
-  1/16 ≈ 0.06 and no more.
-- Judging a statistic against a null this probe produces requires the
-  quasi-likelihood correction `G/φ` referred to `chi2(df)`, with φ the measured
-  dispersion. Reading G against `chi2(df)` directly assumes φ = 1, which for
-  these histograms is simply false.
-
-What this probe is still good for: **the species result**. Result 1 does not
-depend on the calibration being right, because port-vs-itself G came out
-*larger* than port-vs-C G (ratio 0.99) — a metric that cannot distinguish a
-sample from itself is void whichever null you prefer. That is the finding worth
-keeping, and it is why the probe survives.
-
-The probe is now **opt-in** (`NEO_NOISE_PROBE=1`) rather than part of the default
-`cli` glob: it asserts only that it ran, and its two `runStatsBatch` calls used to
-sit at module scope, so the ~10 minutes they cost landed in vitest COLLECTION
-where no per-test timeout applies and nothing reported as slow. Both batches now
-run inside the test with an explicit timeout.

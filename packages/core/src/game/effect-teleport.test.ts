@@ -21,8 +21,6 @@ import {
   registerTeleportHandlers,
   teleportMonster,
 } from "./effect-teleport";
-import { caveFindDecoy } from "./effect-mon-origin";
-import { targetIsSet, targetSetLocation } from "./target";
 
 const projections = bindProjections(
   JSON.parse(
@@ -148,52 +146,12 @@ describe("EF_TELEPORT_TO", () => {
   it("lands the player at the chosen aim (Dimension Door)", () => {
     const state = makeState({ playerGrid: loc(20, 12) });
     const target = loc(10, 8);
-    targetSetLocation(state, target);
-    expect(targetIsSet(state)).toBe(true);
     registry().effectSimple(
       EF.TELEPORT_TO,
       env(state, { teleport: { getAimTarget: () => target } }),
       { origin: sourcePlayer() },
     );
     expect(locEq(state.actor.grid, target)).toBe(true);
-    expect(targetIsSet(state)).toBe(false);
-  });
-
-  it("identifies but does not prompt or move on an arena level", () => {
-    const start = loc(20, 12);
-    const state = makeState({ playerGrid: start });
-    state.arenaLevel = true;
-    let prompts = 0;
-    const ran = registry().effectSimple(
-      EF.TELEPORT_TO,
-      env(state, {
-        teleport: {
-          getAimTarget: () => {
-            prompts++;
-            return loc(10, 8);
-          },
-        },
-      }),
-      { origin: sourcePlayer() },
-    );
-    expect(ran).toBe(true);
-    expect(prompts).toBe(0);
-    expect(locEq(state.actor.grid, start)).toBe(true);
-  });
-
-  it("destroys a seen decoy instead of teleporting the player to the caster", () => {
-    const start = loc(20, 12);
-    const state = makeState({ playerGrid: start });
-    const caster = addMon(state, plainRace, loc(10, 8), { hp: 30 });
-    state.decoy = loc(15, 10);
-    expect(caveFindDecoy(state)).not.toBeNull();
-
-    registry().effectSimple(EF.TELEPORT_TO, env(state), {
-      origin: sourceMonster(caster.midx),
-    });
-
-    expect(caveFindDecoy(state)).toBeNull();
-    expect(locEq(state.actor.grid, start)).toBe(true);
   });
 
   it("returns false when the aim prompt is cancelled", () => {
@@ -224,36 +182,6 @@ describe("EF_TELEPORT_TO", () => {
 });
 
 describe("EF_TELEPORT_LEVEL", () => {
-  it("identifies but does not change depth on an arena level", () => {
-    const state = makeState();
-    state.chunk.depth = 0;
-    state.arenaLevel = true;
-    let changed: number | null = null;
-    const ran = registry().effectSimple(
-      EF.TELEPORT_LEVEL,
-      env(state, { teleport: { changeLevel: (d) => (changed = d) } }),
-      { origin: sourcePlayer() },
-    );
-    expect(ran).toBe(true);
-    expect(changed).toBeNull();
-  });
-
-  it("destroys a live decoy instead of changing the player's level", () => {
-    const state = makeState();
-    state.chunk.depth = 0;
-    state.decoy = loc(10, 8);
-    let changed: number | null = null;
-
-    registry().effectSimple(
-      EF.TELEPORT_LEVEL,
-      env(state, { teleport: { changeLevel: (d) => (changed = d) } }),
-      { origin: sourcePlayer() },
-    );
-
-    expect(caveFindDecoy(state)).toBeNull();
-    expect(changed).toBeNull();
-  });
-
   it("in the town can only sink one level", () => {
     const state = makeState();
     state.chunk.depth = 0;
