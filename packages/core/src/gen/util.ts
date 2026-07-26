@@ -157,6 +157,15 @@ export class Dun {
   nstairRoom = 0;
 
   /**
+   * dun->profile->name (set once per generation attempt, generate.c L1157).
+   * Read by help_greater_vault (gen-room.c L3099), which rejects a further 2/3
+   * of greater-vault attempts on any profile that is not "classic". Assigned by
+   * makeGen (gen/cave.ts) alongside profileTun/profileStr; "" in bare
+   * unit-test Gen contexts, which behaves like any other non-classic profile.
+   */
+  profileName = "";
+
+  /**
    * Whether an adjacent persistent level already exists above/below this one
    * (gen-chunk.c:147 chunk_find_adjacent). Only consulted under `persist`, by
    * handle_level_stairs (gen-cave.c:959-966): when the neighbour exists its
@@ -546,6 +555,7 @@ export class CaveFinder {
     for (let i = 0; i < this.n; i++) this.order[i] = i;
   }
 
+  /** cave_find_reset (gen-util.c L187): restart the scan from the first grid. */
   reset(): void {
     this.next = 0;
   }
