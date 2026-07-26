@@ -1,6 +1,9 @@
 /**
  * Upstream unit tests from reference/src/tests/object/util.c
  *
+ * NOTE the filename: upstream has two `tests/.../util.c` files. This is the
+ * OBJECT one; the player one is game/player-util.upstream.test.ts.
+ *
  * Mapping:
  * - obj_can_refill -> objCanRefill (game/obj-cmd.ts)
  * - check_for_inscrip_with_int -> checkForInscripWithInt (game/pickup.ts)
