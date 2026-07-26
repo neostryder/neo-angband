@@ -70,7 +70,20 @@ function resolveBuy(entry: StoreBuyJson): ObjectBuy {
   return { tval, flag: entry.flag ? flagByName(entry.flag) : 0 };
 }
 
-/** Bind a single store record. */
+/**
+ * Bind a single store record. This is the semantic half of parse_store
+ * (store.c:132) and its sibling directive handlers (parse_slots, parse_turnover,
+ * parse_normal, parse_always, parse_buy): the grammar itself lives in
+ * packages/content/src/specs/misc.ts storeSpec, and the record arrives here
+ * already tokenised.
+ *
+ * Two upstream parse-time behaviours are deliberately absent, both recorded in
+ * parity/phase3-2026-07-25/findings/W1-CITED.md: the TF_SHOP check on the
+ * entrance feature (store.c:135-137, a validation on trusted data), and
+ * ordering the store array by the feature's shopnum (L142). Stores here keep
+ * store.txt order and are looked up by feature (store_at -> byFeat), which
+ * matches shopnum order for the shipped data.
+ */
 export function bindStore(rec: StoreRecordJson, reg: ObjRegistry): BoundStore {
   const owners: StoreOwner[] = rec.owner.map((o, index) => ({
     index,

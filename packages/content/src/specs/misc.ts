@@ -91,6 +91,11 @@ export const playerTimedSpec: FileSpec = {
   ],
 };
 
+/**
+ * store.txt: the grammar half of parse_store (store.c:132) and its sibling
+ * directive handlers. The semantic half - resolving the entrance feature, the
+ * owners and the stocking tables - is packages/core/src/store/bind.ts bindStore.
+ */
 export const storeSpec: FileSpec = {
   name: "store",
   upstream: ["src/store.c"],
