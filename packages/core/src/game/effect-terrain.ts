@@ -10,8 +10,11 @@
  * monsters and rebuilds the terrain) and EF_EARTHQUAKE (attack L1290, the
  * radius-r quake with player and monster displacement).
  *
- * light_room / wiz_light are ported here (cave-map.c): SQUARE_GLOW changes,
- * room flooding, illumination wake-up rolls, and player square memory.
+ * light_room / wiz_light are ported here (cave-map.c) reduced to their world
+ * halves: the SQUARE_GLOW changes, the room flood, and the illumination
+ * wake-up rolls. The player square-memory half (square_memorize / mark /
+ * know_pile / forget) rides the map-memory layer (#24/#25) - the core keeps
+ * no player square memory yet (the web renderer holds its own explored set).
  *
  * Like the other game-layer handlers these read their environment from
  * context.env.game and no-op when it is absent (the worldless rule).
@@ -20,6 +23,8 @@
  * - No town or arena (depth 0 short-circuits like the town branch), no
  *   birth_levels_persist / show_damage options (#30).
  * - expose_to_sun on the surface rides the day-night cycle.
+ * - Artifact created-mark preservation in DESTRUCTION rides artifact
+ *   upkeep (#24); EARTHQUAKE's square_changeable artifact check is ported.
  * - MDESC monster names and MON_MSG grammar ride the display layer (#25);
  *   the race name stands in for the quake and DARKEN_AREA target messages.
  */
@@ -35,8 +40,7 @@ import type {
 } from "../effects/interpreter";
 import { monsterIsSmart, monsterIsStupid, monsterIsVisible } from "../mon/predicate";
 import { monsterWake } from "../mon/take-hit";
-import { liveObjectIsKnownArtifact } from "../obj/artifact-known";
-import { equipLearnElement } from "../obj/knowledge";
+import { equipLearnElement, OBJ_NOTICE } from "../obj/knowledge";
 import { featIsBright } from "../world/chunk";
 import { los } from "../world/view";
 import {
@@ -55,7 +59,7 @@ import {
 import { gameEnv } from "./effect-game-env";
 import type { GameEffectEnv } from "./effect-game-env";
 import { floorExcise, floorPile } from "./floor";
-import { forgetMap, squareForget, squareKnowPile, squareMemorize } from "./known";
+import { forgetMap, squareKnowPile, squareMemorize } from "./known";
 import { pushObject } from "./project-feat";
 import { squareIsWarded } from "./trap";
 
@@ -429,12 +433,11 @@ const handleDESTRUCTION: EffectHandler = (ctx) => {
       c.sqinfoOff(grid, SQUARE.ROOM);
       c.sqinfoOff(grid, SQUARE.VAULT);
 
-      /* Forget completely (effect-handler-attack.c:1201-1207). */
+      /* Forget completely (square_forget rides map memory, #25). */
       if (!featIsBright(c.features, c.feat(grid))) {
         c.sqinfoOff(grid, SQUARE.GLOW);
       }
       c.sqinfoOff(grid, SQUARE.SEEN);
-      squareForget(state, grid);
 
       /* Deal with player later */
       if (locEq(grid, pgrid)) continue;
@@ -448,14 +451,17 @@ const handleDESTRUCTION: EffectHandler = (ctx) => {
 
       /* Destroy any grid that isn't a permanent wall */
       if (!c.isPerm(grid)) {
-        /* Deal with artifacts before removing the pile
-         * (effect-handler-attack.c:1220-1243). */
+        /* Deal with artifacts (effect-handler-attack.c L1220-1235): a known
+         * artifact (or any, under birth_lose_arts) is logged as lost. The
+         * created-mark preservation that lets an unknown one regenerate rides
+         * artifact upkeep (#24). */
         const loseArts = state.options?.get("birth_lose_arts") ?? false;
         for (const obj of [...floorPile(state, grid)]) {
-          if (obj.artifact) {
-            const lostForever = loseArts || liveObjectIsKnownArtifact(obj);
-            if (lostForever) state.onArtifactLost?.(obj.artifact);
-            state.artifacts?.markCreated(obj.artifact.aidx, lostForever);
+          if (
+            obj.artifact &&
+            (loseArts || (obj.notice & OBJ_NOTICE.ASSESSED) !== 0)
+          ) {
+            state.onArtifactLost?.(obj.artifact);
           }
           floorExcise(state, grid, obj);
         }
@@ -752,17 +758,11 @@ const TERRAIN_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
 >([
   [EF.RUBBLE, handleRUBBLE],
   [EF.GRANITE, handleGRANITE],
-  /* effect_handler_CREATE_STAIRS (effect-handler-general.c:1975) */
   [EF.CREATE_STAIRS, handleCREATE_STAIRS],
-  /* effect_handler_LIGHT_LEVEL (effect-handler-general.c:3003) */
   [EF.LIGHT_LEVEL, handleLIGHT_LEVEL],
-  /* effect_handler_DARKEN_LEVEL (effect-handler-general.c:3013) */
   [EF.DARKEN_LEVEL, handleDARKEN_LEVEL],
-  /* effect_handler_LIGHT_AREA (effect-handler-general.c:3026) */
   [EF.LIGHT_AREA, handleLIGHT_AREA],
-  /* effect_handler_DARKEN_AREA (effect-handler-general.c:3044) */
   [EF.DARKEN_AREA, handleDARKEN_AREA],
-  /* effect_handler_DESTRUCTION (effect-handler-attack.c:1169) */
   [EF.DESTRUCTION, handleDESTRUCTION],
   [EF.EARTHQUAKE, handleEARTHQUAKE],
 ]);

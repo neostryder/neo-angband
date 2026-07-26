@@ -493,16 +493,11 @@ const MELEE_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   number,
   EffectHandler
 >([
-  /* effect_handler_TAP_UNLIFE (effect-handler-attack.c:1615) */
   [EF.TAP_UNLIFE, handleTAP_UNLIFE],
-  /* effect_handler_SINGLE_COMBAT (effect-handler-attack.c:1857) */
   [EF.SINGLE_COMBAT, handleSINGLE_COMBAT],
   [EF.CURSE, handleCURSE],
-  /* effect_handler_JUMP_AND_BITE (effect-handler-attack.c:1710) */
   [EF.JUMP_AND_BITE, handleJUMP_AND_BITE],
-  /* effect_handler_MOVE_ATTACK (effect-handler-attack.c:1785) */
   [EF.MOVE_ATTACK, handleMOVE_ATTACK],
-  /* effect_handler_MELEE_BLOWS (effect-handler-attack.c:1907) */
   [EF.MELEE_BLOWS, handleMELEE_BLOWS],
   [EF.SWEEP, handleSWEEP],
 ]);
