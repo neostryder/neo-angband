@@ -151,6 +151,7 @@ import {
   playerRandomName,
   buildProb,
   RANDNAME_TOLKIEN,
+  playerCanCast,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -2246,11 +2247,12 @@ async function chooseBook(
 /** Cast/pray (m/p): choose book, choose spell, aim if needed, dispatch cast. */
 async function castSpell(): Promise<void> {
   const player = state.actor.player;
-  if (!player.cls.magic.totalSpells) {
-    // player_can_cast, no magic (player-util.c:1091).
-    say("You cannot pray or produce magics.");
-    return;
-  }
+  /* player_can_cast_prereq (player-util.c:1246), the 'm' key's prereq
+   * (ui-game.c:174): checked before the book-choose menu ever opens, matching
+   * upstream's key-dispatch gate. The "cast" command itself re-checks this
+   * (core/game/spell-cmd.ts), so this is belt-and-suspenders for the message
+   * ordering, not a new rule. */
+  if (!playerCanCast(state, { msg: say })) return;
   const handle = await chooseBook("Cast", "There are no spells you can cast.");
   if (handle === null) return;
   const bookObj = gearGet(state.gear, handle);
@@ -2313,11 +2315,12 @@ async function castSpell(): Promise<void> {
 /** Study (G): learn a spell. Choose-spell classes pick; others learn at random. */
 async function studySpell(): Promise<void> {
   const player = state.actor.player;
-  if (!player.cls.magic.totalSpells) {
-    // player_can_cast, no magic (player-util.c:1091).
-    say("You cannot pray or produce magics.");
-    return;
-  }
+  /* player_can_study_prereq (player-util.c:1255), the 'G' key's prereq
+   * (ui-game.c:176): player_can_study (L1120) calls player_can_cast FIRST,
+   * before its own new-spells check, so a blind/no_light/confused player
+   * never reaches "You cannot learn any new spells!" - they get the cast
+   * failure message instead. */
+  if (!playerCanCast(state, { msg: say })) return;
   if (player.upkeep.newSpells <= 0) {
     say("You cannot learn any new spells!");
     return;

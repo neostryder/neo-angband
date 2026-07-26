@@ -24,8 +24,14 @@ import { attachGameEnv } from "./effect-game-env";
 import type { GameEffectEnv } from "./effect-game-env";
 import { squareIsWarded, squareIsWebbed } from "./trap";
 import type { TrapDeps } from "./trap";
-import { disenchantEquipment, registerGeneralHandlers } from "./effect-general";
+import {
+  disenchantEquipment,
+  playerGetRecallDepth,
+  registerGeneralHandlers,
+} from "./effect-general";
 import { processWorld } from "./loop";
+import { OptionState } from "../player/options";
+import type { StoredLevel } from "./context";
 
 const trapKinds = bindTraps(
   (
@@ -503,6 +509,120 @@ describe("stat / exp / mana handlers (effect-handler-general.c)", () => {
     processWorld(state);
     expect(state.targetDepth).toBe(12);
     expect(state.generateLevel).toBe(true);
+  });
+
+  describe("player_get_recall_depth (player-util.c L100)", () => {
+    it("no prompt when max_depth <= 0: returns true, recall_depth untouched", () => {
+      const state = makeState({ seed: 64 });
+      const p = state.actor.player;
+      p.maxDepth = 0;
+      p.recallDepth = 99;
+      const chooseDepth = (): number => {
+        throw new Error("must not be called");
+      };
+      expect(playerGetRecallDepth(state, chooseDepth)).toBe(true);
+      expect(p.recallDepth).toBe(99);
+    });
+
+    it("no prompt under birth_force_descend, regardless of max_depth", () => {
+      const state = makeState({ seed: 65 });
+      const p = state.actor.player;
+      p.maxDepth = 10;
+      p.recallDepth = 3;
+      state.options = new OptionState({
+        overrides: { birth_force_descend: true },
+      });
+      const chooseDepth = (): number => {
+        throw new Error("must not be called");
+      };
+      expect(playerGetRecallDepth(state, chooseDepth)).toBe(true);
+      expect(p.recallDepth).toBe(3);
+    });
+
+    it("0 cancels the whole scroll (returns false)", () => {
+      const state = makeState({ seed: 66 });
+      const p = state.actor.player;
+      p.maxDepth = 10;
+      state.levelCache = new Map([[7, {} as StoredLevel]]);
+      expect(playerGetRecallDepth(state, () => 0)).toBe(false);
+    });
+
+    it("re-prompts on a depth with no chunk_list entry, then accepts a valid one", () => {
+      const state = makeState({ seed: 67 });
+      const p = state.actor.player;
+      p.maxDepth = 10;
+      state.levelCache = new Map([[7, {} as StoredLevel]]);
+      const asked: number[] = [];
+      let calls = 0;
+      const chooseDepth = (_prompt: string, max: number): number => {
+        asked.push(max);
+        calls += 1;
+        return calls === 1 ? 4 : 7; // 4 has no cache entry, 7 does
+      };
+      const said: string[] = [];
+      expect(
+        playerGetRecallDepth(state, chooseDepth, (t) => said.push(t)),
+      ).toBe(true);
+      expect(p.recallDepth).toBe(7);
+      expect(asked).toEqual([10, 10]);
+      expect(said).toContain(
+        "You must choose a level you have previously visited.",
+      );
+    });
+
+    it("max_depth === 1 never prompts (get_quantity's own clamp, ui-input.c:1211)", () => {
+      const state = makeState({ seed: 68 });
+      const p = state.actor.player;
+      p.maxDepth = 1;
+      state.levelCache = new Map([[1, {} as StoredLevel]]);
+      const chooseDepth = (): number => {
+        throw new Error("must not be called");
+      };
+      expect(playerGetRecallDepth(state, chooseDepth)).toBe(true);
+      expect(p.recallDepth).toBe(1);
+    });
+  });
+
+  it("in town with birth_levels_persist, RECALL prompts for the persistent depth", () => {
+    const state = makeState({ seed: 69 });
+    const p = state.actor.player;
+    state.chunk.depth = 0;
+    p.maxDepth = 12;
+    state.levelCache = new Map([[5, {} as StoredLevel]]);
+    state.options = new OptionState({
+      overrides: { birth_levels_persist: true },
+    });
+    const r = registry();
+    const msgs: string[] = [];
+    r.effectSimple(
+      EF.RECALL,
+      env(state, { general: { trapDeps, chooseDepth: () => 5 } }, msgs),
+      { origin: sourcePlayer() },
+    );
+    expect(p.recallDepth).toBe(5);
+    expect(p.wordRecall).toBeGreaterThanOrEqual(15);
+    expect(msgs).toContain("The air about you becomes charged...");
+  });
+
+  it("in town with birth_levels_persist, cancelling the depth choice aborts (no charge)", () => {
+    const state = makeState({ seed: 70 });
+    const p = state.actor.player;
+    state.chunk.depth = 0;
+    p.maxDepth = 12;
+    state.levelCache = new Map([[5, {} as StoredLevel]]);
+    state.options = new OptionState({
+      overrides: { birth_levels_persist: true },
+    });
+    const r = registry();
+    const msgs: string[] = [];
+    const result = r.effectSimple(
+      EF.RECALL,
+      env(state, { general: { trapDeps, chooseDepth: () => 0 } }, msgs),
+      { origin: sourcePlayer() },
+    );
+    expect(result).toBe(false);
+    expect(p.wordRecall).toBe(0);
+    expect(msgs).not.toContain("The air about you becomes charged...");
   });
 
   it("DEEP_DESCENT schedules a multi-level drop, or is blocked at depth", () => {
