@@ -18,13 +18,6 @@
  *    ego/artifact names and the &/~ pluralisation gate exactly by the player's
  *    knowledge. Only the terminal right-aligned "%3.3s" prefix padding of the
  *    upstream draw code stays with each shell.
- *  - The port collects a fresh list per draw instead of reusing a file-static
- *    singleton, so four upstream symbols have no counterpart, all of them C
- *    storage management: object_list_new/object_list_free (obj-list.c:33/56,
- *    mem_zalloc/mem_free -> objectListNew + GC), object_list_init (L77, nulls
- *    object_list_subwindow), object_list_finalize (L85, frees that singleton at
- *    shutdown - it does NOT sort or count; object_list_collect/_sort do), and
- *    object_list_shared_instance (L93, the lazy singleton getter).
  */
 
 import {
