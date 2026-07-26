@@ -1502,13 +1502,24 @@ export function newPlayerSpot(
 }
 
 /* ------------------------------------------------------------------ *
- * Staircase reachability guarantee.
+ * Staircase reachability repair - the bug-fixes mod, flag
+ * "bugfix.stairsReachable". OFF by default; core is faithful without it.
  *
- * DELIBERATE DEVIATION FROM UPSTREAM, ratified by the owner 2026-07-25:
- * "There must never be a floor that doesn't have a reachable up AND down
- * staircase (except town and Morgoth floors)."
+ * This is NOT core behaviour. It began as a core guarantee (owner ruling
+ * 2026-07-25, "there must never be a floor that doesn't have a reachable up AND
+ * down staircase, except town and Morgoth floors") and was moved here the next
+ * day when the owner learned that upstream really does strand floors:
  *
- * Upstream makes no such promise, and the port reproduces upstream exactly:
+ *   "We can't fix bugs in the port. Those will belong in the bug fixes mod. I
+ *    only said those couldn't exist because I thought that was how the C
+ *    version worked. Core must retain all warts of the reference code."
+ *
+ * So the caller (gen/generate.ts) invokes this ONLY when the flag is on, and
+ * faithful core keeps the upstream defect. See docs/modding/BUG_FIXES.md entry
+ * 13 and parity/phase3-2026-07-25/findings/STAIRCASE-INVARIANT.md.
+ *
+ * Upstream makes no reachability promise, and the port reproduces upstream
+ * exactly:
  * alloc_stairs (gen-util.c:629) picks any square_isempty grid and does NOT
  * exclude vault interiors, while ensure_connectedness is called with
  * allow_vault_disconnect = true at five of its six sites (gen-cave.c:1271,
@@ -1520,10 +1531,11 @@ export function newPlayerSpot(
  * strands the floor. 37 of the 53 had the orphaned stair inside SQUARE_VAULT.
  *
  * The repair DRAWS NO RNG, so a level that already satisfies the invariant is
- * bit-identical to upstream; only the stranded minority is touched, and only
- * by one grid. Levels with zero stairs of a direction are left alone, which is
- * exactly what exempts the town (place_stairs forces FEAT_MORE at depth 0) and
- * the quest/Morgoth floors (forced FEAT_LESS), with no depth special-casing.
+ * bit-identical to faithful core even with the flag ON; only the stranded
+ * minority is touched, and only by one grid. Levels with zero stairs of a
+ * direction are left alone, which is exactly what exempts the town
+ * (place_stairs forces FEAT_MORE at depth 0) and the quest/Morgoth floors
+ * (forced FEAT_LESS), with no depth special-casing.
  * ------------------------------------------------------------------ */
 
 /**
@@ -1605,10 +1617,13 @@ function findReachableStairSpot(g: Gen, seen: Uint8Array, near: Loc): Loc | null
 }
 
 /**
- * Guarantee that the player can reach a staircase in each direction the level
- * actually has one. Returns false when the level cannot be repaired, so
- * cave_generate can reject and re-roll it (the same treatment it gives a level
- * that overflows the monster maximum).
+ * Ensure the player can reach a staircase in each direction the level actually
+ * has one. Returns false when the level cannot be repaired, so cave_generate
+ * can reject and re-roll it (the same treatment it gives a level that overflows
+ * the monster maximum).
+ *
+ * Only ever called under the "bugfix.stairsReachable" flag - see the note
+ * above. Faithful core never calls it.
  */
 export function ensureStairsReachable(g: Gen, quest: boolean): boolean {
   const c = g.c;
