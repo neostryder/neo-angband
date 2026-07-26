@@ -13,6 +13,11 @@
  * duplicate. Monster-count overflow is the one upstream post-build
  * regeneration trigger that is kept.
  *
+ * ONE DELIBERATE ADDITION beyond upstream, ratified by the owner 2026-07-25:
+ * the staircase-reachability guarantee (ensureStairsReachable in gen/util.ts),
+ * applied inside this loop. It spends no RNG, so it cannot perturb a level that
+ * already satisfies it.
+ *
  * Level feeling (generate.c place_feeling / calc_obj_feeling /
  * calc_mon_feeling, L676-761 and L1235-1241) IS ported: placeFeeling scatters
  * feelingTotal hidden SQUARE_FEEL marks (the only RNG this file spends after
@@ -36,6 +41,7 @@ import type { RoomRegistry } from "./room";
 import {
   Dun,
   Gen,
+  ensureStairsReachable,
   findEmpty,
   placeNewMonster,
   type Connector,
@@ -403,6 +409,20 @@ export function generateLevel(
     /* Regenerate levels that overflow the monster maximum. */
     if (g.monsters.length >= deps.constants.levelMonsterMax) {
       error = "too many monsters";
+      continue;
+    }
+
+    /*
+     * Owner-ratified guarantee (2026-07-25): no floor may exist without a
+     * walk-reachable staircase in each direction it actually has one. Upstream
+     * makes no such promise - see the long note at ensureStairsReachable in
+     * gen/util.ts. The repair draws NO RNG, so levels that already satisfy the
+     * invariant are bit-identical to upstream; only the stranded minority is
+     * touched. A level that cannot be repaired is rejected and re-rolled, the
+     * same treatment as a monster-maximum overflow above.
+     */
+    if (!ensureStairsReachable(g, dun.quest)) {
+      error = "no reachable staircase";
       continue;
     }
 

@@ -1502,6 +1502,163 @@ export function newPlayerSpot(
 }
 
 /* ------------------------------------------------------------------ *
+ * Staircase reachability guarantee.
+ *
+ * DELIBERATE DEVIATION FROM UPSTREAM, ratified by the owner 2026-07-25:
+ * "There must never be a floor that doesn't have a reachable up AND down
+ * staircase (except town and Morgoth floors)."
+ *
+ * Upstream makes no such promise, and the port reproduces upstream exactly:
+ * alloc_stairs (gen-util.c:629) picks any square_isempty grid and does NOT
+ * exclude vault interiors, while ensure_connectedness is called with
+ * allow_vault_disconnect = true at five of its six sites (gen-cave.c:1271,
+ * 2836, 3083, 3693, 3953; only 3464 passes false). A vault whose interior the
+ * tunneller never joined can therefore swallow a staircase. Measured on this
+ * port before the guarantee: 53 stranded levels in 520 (10.2%), overwhelmingly
+ * the UP stair, because a level gets 3-4 down stairs but only 1-2 up
+ * (gen-cave.c:958 -> rand_range(3,4) / rand_range(1,2)), so a single bad roll
+ * strands the floor. 37 of the 53 had the orphaned stair inside SQUARE_VAULT.
+ *
+ * The repair DRAWS NO RNG, so a level that already satisfies the invariant is
+ * bit-identical to upstream; only the stranded minority is touched, and only
+ * by one grid. Levels with zero stairs of a direction are left alone, which is
+ * exactly what exempts the town (place_stairs forces FEAT_MORE at depth 0) and
+ * the quest/Morgoth floors (forced FEAT_LESS), with no depth special-casing.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Terrain the player can eventually get through: passable grids, plus doors
+ * (openable) and rubble (diggable). Walls are deliberately excluded - the
+ * player can tunnel granite, but counting that as "reachable" would make the
+ * guarantee vacuous.
+ */
+function stairWalkable(c: Chunk, grid: Loc): boolean {
+  return c.isPassable(grid) || c.isDoor(grid) || c.isRubble(grid);
+}
+
+/** ddgrid_ddd order: S, N, E, W, SE, SW, NE, NW. */
+const STAIR_DIRS: readonly Loc[] = [
+  loc(0, 1),
+  loc(0, -1),
+  loc(1, 0),
+  loc(-1, 0),
+  loc(1, 1),
+  loc(-1, 1),
+  loc(1, -1),
+  loc(-1, -1),
+];
+
+/** Flood the region the player can walk from `start`, 8-directionally. */
+function walkableRegion(c: Chunk, start: Loc): Uint8Array {
+  const seen = new Uint8Array(c.width * c.height);
+  const stack: Loc[] = [start];
+  seen[start.y * c.width + start.x] = 1;
+  while (stack.length > 0) {
+    const cur = stack.pop() as Loc;
+    for (const dir of STAIR_DIRS) {
+      const n = loc(cur.x + dir.x, cur.y + dir.y);
+      if (!c.inBounds(n)) continue;
+      const idx = n.y * c.width + n.x;
+      if (seen[idx] || !stairWalkable(c, n)) continue;
+      seen[idx] = 1;
+      stack.push(n);
+    }
+  }
+  return seen;
+}
+
+/**
+ * Pick the grid for a replacement staircase: inside the walkable region, legal
+ * for a stair by alloc_stairs' own rules, and as close as possible to the
+ * stranded stair it stands in for (so it surfaces just outside the vault that
+ * swallowed the original rather than in some unrelated corner).
+ *
+ * Deterministic - no RNG draws. Walls are tried 3 -> 0 exactly as alloc_stairs
+ * does, so the replacement sits in a corner or alcove like any other stair.
+ */
+function findReachableStairSpot(g: Gen, seen: Uint8Array, near: Loc): Loc | null {
+  const c = g.c;
+  const player = g.playerSpot;
+  for (let walls = 3; walls >= 0; walls--) {
+    let best: Loc | null = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let y = 1; y <= c.height - 2; y++) {
+      for (let x = 1; x <= c.width - 2; x++) {
+        if (!seen[y * c.width + x]) continue;
+        const grid = loc(x, y);
+        if (player && grid.x === player.x && grid.y === player.y) continue;
+        if (!squareIsEmpty(g, grid)) continue;
+        if (squareIsNoStairs(c, grid)) continue;
+        if (squareNumWallsAdjacent(c, grid) !== walls) continue;
+        const dy = y - near.y;
+        const dx = x - near.x;
+        const dist = dy * dy + dx * dx;
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = grid;
+        }
+      }
+    }
+    if (best) return best;
+  }
+  return null;
+}
+
+/**
+ * Guarantee that the player can reach a staircase in each direction the level
+ * actually has one. Returns false when the level cannot be repaired, so
+ * cave_generate can reject and re-roll it (the same treatment it gives a level
+ * that overflows the monster maximum).
+ */
+export function ensureStairsReachable(g: Gen, quest: boolean): boolean {
+  const c = g.c;
+  const start = g.playerSpot;
+  /* Sub-chunks (gauntlet's halves, the hard centre's caverns) have no player
+   * spot; they are checked once assembled, not in pieces. */
+  if (!start) return true;
+  if (!stairWalkable(c, start)) return false;
+
+  const seen = walkableRegion(c, start);
+
+  for (const feat of [FEAT.MORE, FEAT.LESS]) {
+    let total = 0;
+    let reached = 0;
+    let stranded: Loc | null = null;
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        const grid = loc(x, y);
+        if (c.feat(grid) !== feat) continue;
+        total++;
+        if (seen[y * c.width + x]) reached++;
+        else if (!stranded) stranded = grid;
+      }
+    }
+    /* No stairs of this kind by design (town has no up, Morgoth no down):
+     * nothing to guarantee. One already reachable: nothing to do. */
+    if (total === 0 || reached > 0) continue;
+
+    let spot = findReachableStairSpot(g, seen, stranded ?? start);
+    if (!spot && squareIsEmpty(g, start) && !squareIsNoStairs(c, start)) {
+      /*
+       * Last resort: the player's own grid. Upstream already lays a stair there
+       * under birth_connect_stairs (gen-util.c:427-433, new_player_spot), so a
+       * staircase underfoot is a legal arrival state rather than a hack. This
+       * only fires when the walkable region holds nothing else a stair can go
+       * on - measured once in ~230 levels, and it saves that level from a full
+       * re-roll, which would perturb it far more than one grid does.
+       */
+      spot = start;
+    }
+    if (!spot) return false;
+    /* place_stairs, not setFeat: it applies the town / max-depth / quest
+     * overrides, so this can never mint a down stair on a Morgoth floor. */
+    placeStairs(g, spot, quest, feat);
+    if (c.feat(spot) !== feat) return false;
+  }
+  return true;
+}
+
+/* ------------------------------------------------------------------ *
  * Vault helpers (vault_objects / vault_traps).
  * ------------------------------------------------------------------ */
 
