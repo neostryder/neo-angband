@@ -35,6 +35,7 @@
 import { TF, TRF, TMD } from "../generated";
 import type { Loc } from "../loc";
 import { DDD, DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc";
+import { qpNew } from "../z-queue";
 import { SKILL } from "../player/types";
 import {
   monsterIsInView,
@@ -54,9 +55,8 @@ import {
 } from "./trap";
 import { DIGGING, calcDiggingChances } from "./cave-cmd";
 import { playerConfuseDir } from "./obj-cmd";
-import { walkAction } from "./player-turn";
+import { energyPerMove, walkAction } from "./player-turn";
 import type { ActionRegistry } from "./player-turn";
-import { IntPriorityQueue } from "../z-queue";
 
 /** Quick "cycling" through the eight legal directions (player-path.c cycle[]). */
 const CYCLE: readonly number[] = [
@@ -373,13 +373,32 @@ function isValidPf(
   return false;
 }
 
+/**
+ * compute_unlocked_penalty: expected movement turns to open a known closed door
+ * that is unlocked - one turn.
+ *
+ * player-path.c:125-153 converts standard-turn penalties to movement-turn
+ * penalties whenever energyPerMove() differs from moveEnergy.  Keep that
+ * conversion here: the port's energyPerMove() is player-util.c:323-328.
+ */
+function convertTurnPenalty(penalty: number, state: GameState): number {
+  const movingEnergy = energyPerMove(state);
+  if (movingEnergy === state.z.moveEnergy) return penalty;
+  if (movingEnergy <= 0) return PF_INF;
+  return Math.round((state.z.moveEnergy * penalty) / movingEnergy);
+}
+
+function unlockedPenalty(state: GameState): number {
+  return convertTurnPenalty(PF_SCL, state);
+}
+
 /** compute_locked_penalty: expected movement turns to open a locked door. */
 function lockedPenalty(state: GameState): number {
   /* Treat the lock power as the maximum in use (7), as upstream does. */
   const chance = calcUnlockingChance(state, 7);
   if (chance <= 0) return PF_INF;
-  if (chance >= 100) return PF_SCL;
-  return Math.round((PF_SCL * 100) / chance);
+  if (chance >= 100) return convertTurnPenalty(PF_SCL, state);
+  return convertTurnPenalty(Math.round((PF_SCL * 100) / chance), state);
 }
 
 /** compute_rubble_penalty: expected movement turns to dig through rubble. */
@@ -392,8 +411,8 @@ function rubblePenalty(state: GameState): number {
   );
   const r = chances[DIGGING.RUBBLE] as number;
   if (r <= 0) return PF_INF;
-  if (r >= 1600) return PF_SCL;
-  return Math.round((PF_SCL * 1600) / r);
+  if (r >= 1600) return convertTurnPenalty(PF_SCL, state);
+  return convertTurnPenalty(Math.round((PF_SCL * 1600) / r), state);
 }
 
 /** A computed distance field over the level (movement turns * PF_SCL). */
@@ -409,7 +428,7 @@ interface PfDistances {
  * to every grid, using the player's memory. The outer edge is marked
  * unreachable; some hard-to-traverse known terrain is penalized.
  */
-export function preparePfdistances(
+function preparePfdistances(
   state: GameState,
   start: Loc,
   onlyKnown: boolean,
@@ -434,7 +453,7 @@ export function preparePfdistances(
 
   rows[start.y * w + start.x] = 0;
 
-  const unlocked = PF_SCL;
+  const unlocked = unlockedPenalty(state);
   const locked = lockedPenalty(state);
   const rubble = rubblePenalty(state);
 
@@ -507,7 +526,7 @@ function pfTurncount(a: PfDistances, grid: Loc): number {
  * in reverse order (index length-1 is the first step). Returns [] with a
  * length of -1 when unreachable, 0 when already at the destination.
  */
-export function pfToPath(a: PfDistances, dest: Loc): { length: number; steps: number[] } {
+function pfToPath(a: PfDistances, dest: Loc): { length: number; steps: number[] } {
   if (
     dest.y < 0 ||
     dest.y >= a.height ||
@@ -545,49 +564,220 @@ export function pfToPath(a: PfDistances, dest: Loc): { length: number; steps: nu
   return { length: steps.length, steps };
 }
 
+/* ------------------------------------------------------------------ *
+ * struct pfdistances_patched and find_path's A* (player-path.c L604-L1340).
+ * ------------------------------------------------------------------ */
+
 /**
- * find_path: the path from start to dest using the player's memory. Ported via
- * prepare_pfdistances + pfdistances_to_path (the same distances upstream's A*
- * approximates, so the paths match up to tie-breaking) with the same
- * constraint-loosening: try remembered-only then any, and no-traps then traps.
+ * struct pfdistances_patched (player-path.c L64): the distance field find_path
+ * works over, cut into non-overlapping patch_size by patch_size squares that
+ * are allocated only when first touched. Upstream's point (L1074-L1077) is to
+ * keep the overhead down when travelling somewhere that only needs a corridor's
+ * worth of the level, and it is visible behaviour, not just an allocation
+ * strategy: patched_distances_to_path SKIPS grids whose patch was never
+ * allocated, so which patches got touched is part of what picks the route.
+ */
+interface PfDistancesPatched {
+  /** npatchy x npatchx, each entry null until initializePatch fills it. */
+  patches: (Int32Array | null)[][];
+  patchSize: number;
+  patchShift: number;
+  patchMask: number;
+  npatchy: number;
+  npatchx: number;
+  height: number;
+  width: number;
+}
+
+/** initialize_patched_distances (L604): 16x16 patches over a height x width cave. */
+function initializePatchedDistances(
+  height: number,
+  width: number,
+): PfDistancesPatched {
+  const patchShift = 4;
+  const patchSize = 1 << patchShift;
+  const patchMask = patchSize - 1;
+  let npatchy = height >> patchShift;
+  if (height & patchMask) ++npatchy;
+  let npatchx = width >> patchShift;
+  if (width & patchMask) ++npatchx;
+  const patches: (Int32Array | null)[][] = [];
+  for (let i = 0; i < npatchy; ++i) {
+    patches.push(new Array<Int32Array | null>(npatchx).fill(null));
+  }
+  return {
+    patches,
+    patchSize,
+    patchShift,
+    patchMask,
+    npatchy,
+    npatchx,
+    height,
+    width,
+  };
+}
+
+/**
+ * clear_patched_distances (L649): drop every patch, so the next pass re-derives
+ * them under looser constraints. find_path calls this on each retry.
+ */
+function clearPatchedDistances(d: PfDistancesPatched): void {
+  for (let i = 0; i < d.npatchy; ++i) {
+    (d.patches[i] as (Int32Array | null)[]).fill(null);
+  }
+}
+
+/**
+ * initialize_patch (L666): allocate the patch containing `grid` and seed every
+ * cell in it with either the maximum distance (a grid the pathfinder may use)
+ * or -1 (one it may not). Cells where the patch overhangs the cave fail
+ * square_in_bounds_fully and become -1, which is what keeps the walk in bounds.
+ */
+function initializePatch(
+  d: PfDistancesPatched,
+  grid: Loc,
+  state: GameState,
+  onlyKnown: boolean,
+  forbidTraps: boolean,
+): void {
+  const patchy = grid.y >> d.patchShift;
+  const patchx = grid.x >> d.patchShift;
+  const block = new Int32Array(d.patchSize * d.patchSize);
+  (d.patches[patchy] as (Int32Array | null)[])[patchx] = block;
+
+  const cornerY = patchy << d.patchShift;
+  const cornerX = patchx << d.patchShift;
+  let i = 0;
+  for (let y = cornerY; y < cornerY + d.patchSize; ++y) {
+    for (let x = cornerX; x < cornerX + d.patchSize; ++x, ++i) {
+      const cursor = loc(x, y);
+      block[i] =
+        state.chunk.inBoundsFully(cursor) &&
+        isValidPf(state, cursor, onlyKnown, forbidTraps)
+          ? PF_INF
+          : -1;
+    }
+  }
+}
+
+/**
+ * has_patched_distance (L698): is the patch containing `grid` allocated?
  *
- * Historical parity gap (now closed below with z-queue.ts's binary heap).
- * Upstream ships TWO routines that answer this question. prepare_pfdistances
- * (player-path.c L307) relaxes a full distance field breadth-first through a
- * PLAIN FIFO queue (q_new / q_push_int / q_pop_int), and pfdistances_to_path
- * (L506) walks that field back from the destination. find_path (L1069) instead
- * runs A* with a Chebyshev heuristic over a BINARY-HEAP PRIORITY QUEUE
- * (qp_new / qp_push_int / qp_pushpop_int / qp_pop_int, z-queue.c) and a
- * lazily-initialised patched distance array. Both return a MINIMUM-cost path --
- * the heuristic is admissible because every step costs at least PF_SCL -- but
- * upstream's own comment at L1063-L1067 says outright that "the path returned by
- * find_path() may be different than that returned by pfdistances_to_path()"
- * when several paths tie on expected turncount. do_cmd_pathfind
- * (cmd-cave.c L1563) calls find_path, so the route the real game walks is the
- * A-star/heap one and the route this port walks is the field-backtrack one: same
- * length, same destination, possibly a different sequence of steps. Closing it
- * is why findPath below is an A* implementation rather than this field route.
+ * Upstream asserts the grid is inside the cave; out of bounds is returned as
+ * "no patch" here, the same guard pfdistances_to_path uses above where the C
+ * asserts. It is unreachable in play: a grid only enters the walk once it has a
+ * non-negative distance, which requires square_in_bounds_fully.
+ */
+function hasPatchedDistance(d: PfDistancesPatched, grid: Loc): boolean {
+  if (grid.y < 0 || grid.y >= d.height || grid.x < 0 || grid.x >= d.width) {
+    return false;
+  }
+  return (d.patches[grid.y >> d.patchShift] as (Int32Array | null)[])[
+    grid.x >> d.patchShift
+  ] !== null;
+}
+
+/** get_patched_distance (L712): the stored distance for an allocated patch. */
+function getPatchedDistance(d: PfDistancesPatched, grid: Loc): number {
+  const block = (d.patches[grid.y >> d.patchShift] as (Int32Array | null)[])[
+    grid.x >> d.patchShift
+  ] as Int32Array;
+  return block[
+    ((grid.y & d.patchMask) << d.patchShift) + (grid.x & d.patchMask)
+  ] as number;
+}
+
+/** set_patched_distance (L731). */
+function setPatchedDistance(
+  d: PfDistancesPatched,
+  grid: Loc,
+  distance: number,
+): void {
+  const block = (d.patches[grid.y >> d.patchShift] as (Int32Array | null)[])[
+    grid.x >> d.patchShift
+  ] as Int32Array;
+  block[((grid.y & d.patchMask) << d.patchShift) + (grid.x & d.patchMask)] =
+    distance;
+}
+
+/**
+ * patched_distances_to_path (L750): walk backwards from dest to start, taking
+ * at each grid the first neighbour (in ddd order) that strictly improves on the
+ * best distance seen so far, and recording the forward direction.
  *
- * The priority-queue cases formerly recorded as unavailable are covered by
- * z-queue.ts; its `pushpop` equality behaviour is used at the corresponding
- * find_path site.
- *  - test_qp_trivial, test_qp_flush: qp_new(size) preallocation, qp_size (the
- *    allocated capacity) as distinct from qp_len (the occupancy), and
- *    qp_flush/qp_free taking a free-callback to release the elements they drop.
- *    Capacity-vs-length and element ownership are C allocation concerns; the
- *    port has neither a capacity nor manual frees.
- *  - test_qp_integer, test_qp_pointer: the pop order matches a qsort by
- *    priority. This is the one genuinely behavioural property in the file, and
- *    it is unreachable here because no port code holds a priority queue. It is
- *    covered by GAP-1 above, not waved away.
- *  - test_qp_pushpop: qp_pushpop_int/_ptr, the push-then-pop-min fusion
- *    find_path uses at L1281 to avoid growing the heap. Same reason.
- *  - test_qp_resize: qp_resize doubling on overflow (find_path L1253-L1258) and
- *    truncating with a free-callback, plus qp_isinvalid, a debug heap-invariant
- *    self-check. Manual reallocation, with no counterpart in a JS array.
- *  - The int-vs-void* payload split across all six cases is upstream's tagged
- *    union for storing either an int or a pointer in one slot; TS has no such
- *    distinction.
+ * Two things separate it from pfdistances_to_path even though they look alike.
+ * `lastDistance` is seeded ONCE with the maximum and then carries across
+ * iterations (L761), where pfdistances_to_path re-reads the current grid's own
+ * distance every iteration (L531) - the destination itself never gets a
+ * distance here, because find_path returns the moment dest turns up as a
+ * neighbour. And grids in patches that were never allocated are skipped
+ * outright, so the walk can only pass through what the A* actually touched.
+ */
+function patchedDistancesToPath(
+  d: PfDistancesPatched,
+  start: Loc,
+  dest: Loc,
+): { length: number; steps: number[] } {
+  const steps: number[] = [];
+  let lastDistance = PF_INF;
+  let grid = dest;
+  while (!locEq(grid, start)) {
+    let bestGrid = loc(-1, -1);
+    let bestK = -1;
+
+    /* Find the next step. */
+    for (let k = 0; k < 8; ++k) {
+      const off = DDGRID_DDD[k] as Loc;
+      const next = loc(grid.x + off.x, grid.y + off.y);
+      if (!hasPatchedDistance(d, next)) continue;
+      const tryDistance = getPatchedDistance(d, next);
+      if (tryDistance >= 0 && lastDistance > tryDistance) {
+        lastDistance = tryDistance;
+        bestK = k;
+        bestGrid = next;
+      }
+    }
+
+    /* Upstream asserts best_k >= 0 (L782): the walk started from a grid the A*
+     * reached, so a strictly better neighbour always exists. Bail out the way
+     * pfdistances_to_path does (L554) rather than trusting that. */
+    if (bestK < 0) return { length: -1, steps: [] };
+    grid = bestGrid;
+
+    /* Record the opposite of the backward direction. */
+    steps.push(10 - (DDD[bestK] as number));
+  }
+  return { length: steps.length, steps };
+}
+
+/**
+ * find_path (player-path.c L1069), the routine do_cmd_pathfind (cmd-cave.c
+ * L1563) calls to travel to a clicked grid: A* from start to dest over the
+ * player's memory of the cave, with a Chebyshev heuristic (scaled by PF_SCL, so
+ * it is admissible - no step can cost less than one move) on a min-heap
+ * priority queue and a lazily patched distance array. Returns the steps as
+ * forward keypad directions in reverse order, a length of 0 when already at the
+ * destination and -1 when it is unreachable.
+ *
+ * WHY THE A* AND NOT prepare_pfdistances + pfdistances_to_path. Upstream ships
+ * both, and its own comment at L1063-L1067 says the two disagree: "the path
+ * returned by find_path() may be different than that returned by
+ * pfdistances_to_path()" when several paths tie on expected turncount. Both are
+ * minimum-cost, so the turncount, the destination and reachability always
+ * agree; what differs is WHICH of the equal-cost step sequences comes back, and
+ * do_cmd_pathfind gets its answer from this one. So this is a transcription of
+ * the A*, down to the comparisons that settle the ties: the sift order inside
+ * the heap (z-queue.ts), qp_pushpop_int handing the incoming grid back on a tie
+ * with the head (L1281), the ddd iteration order over the eight neighbours, and
+ * the "only the LAST feasible neighbour skips the heap" structure below.
+ * prepare_pfdistances and pfdistances_to_path stay as they are - they are
+ * faithful ports of upstream's other pair and still serve
+ * pfdistances_to_turncount, path_nearest_known and path_nearest_unknown.
+ *
+ * The retry structure is upstream's: try remembered grids only, then any; and
+ * within that, forbid known visible traps, then allow them - but the trap retry
+ * only happens if a trap actually blocked something (`hitTrap`, L1289), which is
+ * why it is tracked rather than inferred.
  */
 export function findPath(
   state: GameState,
@@ -599,71 +789,176 @@ export function findPath(
   }
   if (locEq(start, dest)) return { length: 0, steps: [] };
 
+  /* If both ends are remembered, first try paths that only cross remembered
+   * grids; then try ones that may include grids that are not. */
   let onlyKnown = squareIsKnown(state, start) && squareIsKnown(state, dest);
+  /* First try paths that avoid known visible traps, then ones that include
+   * them. A destination the pathfinder cannot stand on at all is unreachable. */
   let forbidTraps: boolean;
   if (isValidPf(state, dest, onlyKnown, true)) forbidTraps = true;
   else if (isValidPf(state, dest, onlyKnown, false)) forbidTraps = false;
   else return { length: -1, steps: [] };
+  /* Remember whether the pathfinding would change because of a known trap. */
+  let hitTrap = false;
 
-  const w = state.chunk.width, h = state.chunk.height;
+  /* Precompute quantities to penalize traversing some terrain. */
+  const unlocked = unlockedPenalty(state);
+  const locked = lockedPenalty(state);
+  const rubble = rubblePenalty(state);
+
+  const w = state.chunk.width;
+  const distances = initializePatchedDistances(state.chunk.height, w);
+
+  /* Set up the priority queue of feasible paths to consider. */
+  const pending = qpNew<number>(
+    4 * (2 + Math.max(Math.abs(start.y - dest.y), Math.abs(start.x - dest.x))),
+  );
+
+  initializePatch(distances, start, state, onlyKnown, forbidTraps);
+  setPatchedDistance(distances, start, 0);
+  let next = start;
+  let distNext = 0;
   for (;;) {
-    /* The C uses lazily allocated 16x16 patches (player-path.c:604-744).
-     * An eager typed array preserves every distance and heap decision. */
-    const distances = new Int32Array(w * h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      distances[y * w + x] = x > 0 && x < w - 1 && y > 0 && y < h - 1 &&
-        isValidPf(state, loc(x, y), onlyKnown, forbidTraps) ? PF_INF : -1;
-    }
-    const index = (g: Loc): number => g.y * w + g.x;
-    distances[index(start)] = 0;
-    const pending = new IntPriorityQueue(4 * (2 + Math.max(Math.abs(start.y - dest.y), Math.abs(start.x - dest.x))));
-    const unlocked = PF_SCL, locked = lockedPenalty(state), rubble = rubblePenalty(state);
-    let next = start, distNext = 0, hitTrap = false;
-    let retry = false;
-    while (true) {
-      let addGrid = -1, addPriority = -1;
-      const distThis = distNext + PF_SCL;
-      for (let d = 0; d < 8; d++) {
-        const grid = locSum(next, DDGRID_DDD[d] as Loc);
-        if (locEq(grid, dest)) {
-          const steps: number[] = [];
-          let cursor = dest, lastDistance = PF_INF;
-          while (!locEq(cursor, start)) {
-            let bestK = -1, bestGrid = loc(-1, -1);
-            for (let k = 0; k < 8; k++) {
-              const candidate = locSum(cursor, DDGRID_DDD[k] as Loc);
-              if (!state.chunk.inBounds(candidate)) continue;
-              const tried = distances[index(candidate)] as number;
-              if (tried >= 0 && lastDistance > tried) { lastDistance = tried; bestK = k; bestGrid = candidate; }
-            }
-            if (bestK < 0) return { length: -1, steps: [] };
-            steps.push(10 - (DDD[bestK] as number)); cursor = bestGrid;
-          }
-          return { length: steps.length, steps };
+    let addGrid = -1;
+    let addPriority = -1;
+    /* This is the base distance to any neighbor. */
+    const distThis = distNext + PF_SCL;
+
+    /* Try the neighbors. */
+    for (let i = 0; i < 8; ++i) {
+      const off = DDGRID_DDD[i] as Loc;
+      const thisGrid = loc(next.x + off.x, next.y + off.y);
+
+      if (locEq(thisGrid, dest)) {
+        /* Reached the destination. */
+        return patchedDistancesToPath(distances, start, dest);
+      }
+
+      /* Upstream's initialize_patch asserts the grid is in the cave (L674);
+       * guarded here for the same reason hasPatchedDistance is. Placed after
+       * the destination test so it cannot change the answer: dest is in
+       * bounds, so an out-of-bounds neighbour can never be it. */
+      if (!state.chunk.inBounds(thisGrid)) continue;
+
+      if (!hasPatchedDistance(distances, thisGrid)) {
+        initializePatch(distances, thisGrid, state, onlyKnown, forbidTraps);
+      }
+      const distStored = getPatchedDistance(distances, thisGrid);
+      if (distStored <= distThis) {
+        /* Unreachable, or already reached by a path that is no longer than
+         * this one. If a known visible trap is what put it out of reach,
+         * remember that allowing traps could change the answer. */
+        if (
+          forbidTraps &&
+          squareIsKnown(state, thisGrid) &&
+          squareIsVisibleTrap(state, thisGrid)
+        ) {
+          hitTrap = true;
         }
-        const stored = distances[index(grid)] as number;
-        if (stored <= distThis) {
-          if (forbidTraps && squareIsKnown(state, grid) && squareIsVisibleTrap(state, grid)) hitTrap = true;
+        continue;
+      }
+
+      /* A*: add an estimate - the Chebyshev distance - of what is left to get
+       * from thisGrid to the destination. */
+      let distRemaining = Math.max(
+        Math.abs(dest.x - thisGrid.x),
+        Math.abs(dest.y - thisGrid.y),
+      );
+      if (
+        distRemaining > Math.trunc(PF_INF / PF_SCL) ||
+        distThis >= PF_INF - PF_SCL * distRemaining
+      ) {
+        /* The destination is not reachable from thisGrid in a reasonable
+         * number of turns, so skip it. */
+        continue;
+      }
+      distRemaining *= PF_SCL;
+
+      let penalty: number;
+      if (
+        squareIsKnown(state, thisGrid) &&
+        !state.chunk.isPassable(thisGrid)
+      ) {
+        /* Penalize known but impassable terrain that can still be got through. */
+        if (state.chunk.isClosedDoor(thisGrid)) {
+          penalty = env_isLockedDoor(state, thisGrid) ? locked : unlocked;
+        } else if (state.chunk.isRubble(thisGrid)) {
+          penalty = rubble;
+        } else {
+          /* Should not happen; treat it as completely impassable. */
+          penalty = PF_INF;
+        }
+        if (
+          distThis >= distStored - penalty ||
+          distThis >= PF_INF - penalty - distRemaining
+        ) {
+          /* The penalty makes this path no shorter than what has already
+           * reached the grid, or puts the destination out of reach. */
           continue;
         }
-        const remaining = Math.max(Math.abs(dest.x - grid.x), Math.abs(dest.y - grid.y)) * PF_SCL;
-        let penalty = 0;
-        if (squareIsKnown(state, grid) && !state.chunk.isPassable(grid)) {
-          penalty = state.chunk.isClosedDoor(grid) ? (env_isLockedDoor(state, grid) ? locked : unlocked) : state.chunk.isRubble(grid) ? rubble : PF_INF;
-          if (distThis >= stored - penalty || distThis >= PF_INF - penalty - remaining) continue;
-        }
-        if (addGrid >= 0) { if (pending.length === pending.size) pending.resize(pending.size * 2); pending.push(addPriority, addGrid); }
-        addGrid = index(grid); addPriority = distThis + penalty + remaining;
-        distances[addGrid] = distThis + penalty;
+      } else {
+        penalty = 0;
       }
-      if (addGrid >= 0) { const i = pending.pushpop(addPriority, addGrid); next = loc(i % w, Math.trunc(i / w)); }
-      else if (pending.length) { const i = pending.pop(); next = loc(i % w, Math.trunc(i / w)); }
-      else if (forbidTraps && !playerIsTrapsafe(state) && hitTrap) { forbidTraps = false; retry = true; break; }
-      else if (onlyKnown) { onlyKnown = false; forbidTraps = isValidPf(state, dest, false, true); retry = true; break; }
-      else return { length: -1, steps: [] };
-      distNext = distances[index(next)] as number;
+
+      /* Push what is pending onto the queue. One feasible neighbour is always
+       * held back and handed to pushpop below instead, which is how upstream
+       * dives straight into it when it ties with the head of the heap.
+       *
+       * WART KEPT: upstream's guard is `add_grid > 0` (L1252), not `>= 0`, so a
+       * pending grid with index 0 would be silently dropped - while the
+       * matching test at L1280 does use `>= 0`. Index 0 is grid (0, 0), on the
+       * cave's boundary, which initialize_patch always marks -1; that fails the
+       * distStored test above, so it never becomes addGrid and the two guards
+       * can never disagree. */
+      if (addGrid > 0) {
+        if (pending.len() === pending.size()) {
+          /* Upstream doubles and gives up if the reallocation fails
+           * (L1253-L1270); resizing cannot fail here. */
+          pending.resize(2 * pending.size());
+        }
+        pending.push(addPriority, addGrid);
+      }
+      addGrid = thisGrid.y * w + thisGrid.x;
+      addPriority = distThis + penalty + distRemaining;
+      setPatchedDistance(distances, thisGrid, distThis + penalty);
     }
-    if (!retry) return { length: -1, steps: [] };
+
+    let nextIndex: number;
+    if (addGrid >= 0) {
+      nextIndex = pending.pushpop(addPriority, addGrid);
+    } else {
+      if (pending.len() === 0) {
+        /* Exhausted possible paths without reaching the destination. */
+        if (forbidTraps && !playerIsTrapsafe(state) && hitTrap) {
+          /* Retry, but allow grids that hold known visible traps. */
+          forbidTraps = false;
+          clearPatchedDistances(distances);
+          initializePatch(distances, start, state, onlyKnown, forbidTraps);
+          setPatchedDistance(distances, start, 0);
+          next = start;
+          distNext = 0;
+          continue;
+        }
+        if (onlyKnown) {
+          /* Retry, but allow grids that are not in the player's memory. */
+          onlyKnown = false;
+          forbidTraps = isValidPf(state, dest, false, true);
+          hitTrap = false;
+          clearPatchedDistances(distances);
+          initializePatch(distances, start, state, onlyKnown, forbidTraps);
+          setPatchedDistance(distances, start, 0);
+          next = start;
+          distNext = 0;
+          continue;
+        }
+        /* Nothing to retry, so give up. */
+        return { length: -1, steps: [] };
+      }
+      nextIndex = pending.pop();
+    }
+    next = loc(nextIndex % w, Math.trunc(nextIndex / w));
+    /* The relevant patch should already have been initialized. */
+    distNext = getPatchedDistance(distances, next);
   }
 }
 
