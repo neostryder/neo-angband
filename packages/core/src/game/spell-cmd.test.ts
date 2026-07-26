@@ -5,7 +5,6 @@ import type { Loc } from "../loc";
 import { addMonster, updateMonsterDistances } from "./context";
 import type { GameState, PlayerCommand } from "./context";
 import { gearGet } from "./gear";
-import { playerCanCast } from "./spell-cmd";
 import {
   playerObjectToBook,
   spellByIndex,
@@ -14,13 +13,14 @@ import {
   spellOkayToStudy,
 } from "../player/spell";
 import { convertManaToHp } from "../player/combat-regen";
-import { PF, SQUARE, STAT, TMD } from "../generated";
+import { PF, STAT, TMD } from "../generated";
 import { blankMonster } from "../mon/monster";
 import type { MonsterRace } from "../mon/types";
 import { processPlayer } from "./player-turn";
 import type { ActionRegistry } from "./player-turn";
 import { startGame } from "../session/game";
 import type { GamePack } from "../session/game";
+import { playerBookHasUnlearnedSpells } from "./spell-cmd";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -354,62 +354,29 @@ describe("spell consequence wiring (over-exert / cast-in-dark / combat-regen)", 
   });
 });
 
-/**
- * player_can_cast's no_light half (player-util.c L1096): upstream forbids
- * casting when `p->timed[TMD_BLIND] || no_light(p)`, one condition sharing one
- * message. Only the blindness half was wired before.
- */
-describe("player_can_cast no_light (player-util.c L1096)", () => {
-  /** Install the updateFov seam so SQUARE_SEEN carries information. */
-  function withView(state: GameState, seen: boolean): void {
-    state.updateFov = (): void => {};
-    if (seen) state.chunk.sqinfoOn(state.actor.grid, SQUARE["SEEN"]);
-    else state.chunk.sqinfoOff(state.actor.grid, SQUARE["SEEN"]);
-  }
-
-  it("refuses to cast on an unseen grid, with the shared 'You cannot see!'", () => {
-    const { state } = startMage(11);
-    withView(state, false);
-    const msgs: string[] = [];
-    expect(playerCanCast(state, { msg: (t) => msgs.push(t) })).toBe(false);
-    /* The SAME string blindness produces - upstream does not distinguish. */
-    expect(msgs).toEqual(["You cannot see!"]);
+describe("playerBookHasUnlearnedSpells (player-util.c L1315)", () => {
+  it("true at birth: newSpells>0 and the starting book holds a studiable spell", () => {
+    const { state } = startMage();
+    expect(state.actor.player.upkeep.newSpells).toBeGreaterThan(0);
+    expect(playerBookHasUnlearnedSpells(state)).toBe(true);
   });
 
-  it("allows it on a seen grid, and blindness still blocks there", () => {
-    const { state } = startMage(11);
-    withView(state, true);
-    expect(playerCanCast(state, {})).toBe(true);
-    state.actor.player.timed[TMD.BLIND] = 5;
-    const msgs: string[] = [];
-    expect(playerCanCast(state, { msg: (t) => msgs.push(t) })).toBe(false);
-    expect(msgs).toEqual(["You cannot see!"]);
-  });
-
-  it("the cast COMMAND is blocked too, spending no energy", () => {
-    const { state, registry } = startMage(12);
+  it("false once newSpells is exhausted (L1323 short-circuit)", () => {
+    const { state, registry } = startMage(777);
     const handle = bookHandle(state);
-    withView(state, true);
     run(state, registry, { code: "study", args: { handle, spell: 0 } });
-    withView(state, false);
-    expect(run(state, registry, { code: "cast", args: { spell: 0, dir: 6 } })).toBe(0);
+    expect(state.actor.player.upkeep.newSpells).toBe(0);
+    expect(playerBookHasUnlearnedSpells(state)).toBe(false);
   });
 
-  it("study is blocked by no_light too (player_can_study calls player_can_cast)", () => {
-    const { state, registry } = startMage(13);
-    const handle = bookHandle(state);
-    withView(state, false);
-    /* player_can_study (L1122) delegates to player_can_cast first, so an
-     * unlit would-be student never reaches the new-spells check. */
-    expect(run(state, registry, { code: "study", args: { handle, spell: 0 } })).toBe(0);
-    expect(state.actor.player.spellFlags[0] ?? 0).toBe(0);
-  });
-
-  it("no_light is inert without the updateFov seam (core-only hosts can cast)", () => {
-    const { state } = startMage(14);
-    /* startGame installs no FOV seam and leaves SQUARE_SEEN clear, so reading
-     * the flag would make casting impossible for headless consumers. */
-    expect(state.updateFov).toBeUndefined();
-    expect(playerCanCast(state, {})).toBe(true);
+  it("false when newSpells>0 but no carried/floor book has a studiable spell (obj_can_study scan)", () => {
+    const { state } = startMage();
+    /* Drop every book the obj_can_study scan could find. */
+    state.gear.pack = state.gear.pack.filter((h) => {
+      const o = gearGet(state.gear, h);
+      return o === null || playerObjectToBook(state.actor.player, o) === null;
+    });
+    expect(state.actor.player.upkeep.newSpells).toBeGreaterThan(0);
+    expect(playerBookHasUnlearnedSpells(state)).toBe(false);
   });
 });

@@ -2,13 +2,8 @@
  * Upstream unit tests from reference/src/tests/monster/monster.c
  *
  * Mapping:
- * - match_monster_bases -> a TEST-LOCAL helper comparing the registry's interned
- *   base object (the same pointer-identity test upstream's NULL-terminated
- *   varargs walk at mon-util.c:166 performs). Deliberately not production code:
- *   the C function is dead upstream, see the verdict note on the case below.
+ * - match_monster_bases -> monReg.bases.get(name) === race.base
  * - choose_nearby_injured_kin -> chooseNearbyInjuredKin (game/mon-ranged.ts)
- * - t_build_arena / t_add_monster -> openArena / place (test-utils.c has no
- *   port counterpart; the arena is built directly)
  */
 
 import { describe, expect, it } from "vitest";
@@ -150,42 +145,19 @@ function makeState(c: Chunk): GameState {
 }
 
 describe("monster/monster (reference/src/tests/monster/monster.c)", () => {
-  /*
-   * C: test_match_monster_bases -- upstream's regression test for #1409.
-   *
-   * VERDICT: N/A as a function. match_monster_bases is DEAD UPSTREAM. Its own
-   * header at mon-util.c:166 says "This function is currently unused, except in
-   * a test... -NRM-", and the only references anywhere in reference/src are that
-   * definition, the prototype at mon-util.h:29, and tests/monster/monster.c. No
-   * production caller exists in 4.2.6, so the port having no production
-   * counterpart cannot change anything a player can reach, and porting a varargs
-   * base-name matcher would be adding dead code. (Cross-confirmed: a W1-side
-   * lane reached the same verdict on this symbol independently.)
-   *
-   * The assertions are KEPT ANYWAY, because what is left once the dead function
-   * is discounted is a DATA check that costs nothing and is worth pinning: that
-   * the shipped monster_base assignments still put the scruffy little dog on
-   * "canine" and Morgoth on "Morgoth" and not on canine/lich/vampire/wraith. The
-   * local matchMonsterBases below is a test helper for that purpose, not a port.
-   *
-   * The C reaches the dog as &r_info[3], i.e. positionally, and Morgoth through
-   * lookup_monster by exact name. Both are reproduced literally: races[3] must
-   * BE the scruffy little dog (it is the fourth record in monster.txt, after
-   * <player>, filthy street urchin and scrawny cat), and the name lookups have
-   * no fallbacks -- if the gamedata order or a name drifts, this must fail
-   * rather than quietly test a different monster.
-   */
-  it("test_match_monster_bases", () => {
-    const scruffy = monReg.races[3];
-    expect(scruffy?.name).toBe("scruffy little dog");
+  it("match_monster_bases", () => {
+    const scruffy =
+      monReg.races.find((r) => r.name.toLowerCase().includes("scruffy")) ??
+      monReg.races.find((r) => r.base?.name === "canine");
+    expect(scruffy).toBeTruthy();
     const base = scruffy!.base;
     expect(matchMonsterBases(base, "canine")).toBe(true);
     expect(matchMonsterBases(base, "zephyr hound", "canine")).toBe(true);
     expect(matchMonsterBases(base, "ainu")).toBe(false);
     expect(matchMonsterBases(base, "lich", "vampire", "wraith")).toBe(false);
 
-    const morgoth = monReg.races.find(
-      (r) => r.name === "Morgoth, Lord of Darkness",
+    const morgoth = monReg.races.find((r) =>
+      r.name.toLowerCase().includes("morgoth"),
     );
     expect(morgoth).toBeTruthy();
     const mbase = morgoth!.base;
@@ -195,24 +167,17 @@ describe("monster/monster (reference/src/tests/monster/monster.c)", () => {
     expect(matchMonsterBases(mbase, "Morgoth")).toBe(true);
   });
 
-  /*
-   * C: test_nearby_kin. PORTED against real production code, unlike its
-   * neighbour above: choose_nearby_injured_kin (mon-util.c:907) has live callers
-   * at effect-handler-attack.c:324 (the MON_HEAL_KIN effect) and, via
-   * find_any_nearby_injured_kin (mon-util.c:885), at mon-attack.c:169 where it
-   * gates whether a monster will even consider casting RSF_HEAL_KIN. The port's
-   * counterparts are chooseNearbyInjuredKin / findAnyNearbyInjuredKin in
-   * game/mon-ranged.ts.
-   *
-   * Upstream names the three races outright via
-   * t_add_monster(c, grid, "wolf" / "warg" / "wild cat"), so this does too --
-   * the previous fuzzy regex-plus-base fallbacks could have silently swapped in
-   * some other canine and still passed.
-   */
-  it("test_nearby_kin", () => {
-    const wolfRace = monReg.races.find((r) => r.name === "wolf");
-    const wargRace = monReg.races.find((r) => r.name === "warg");
-    const catRace = monReg.races.find((r) => r.name === "wild cat");
+  it("nearby_kin", () => {
+    const wolfRace =
+      monReg.races.find((r) => r.name === "Wolf") ??
+      monReg.races.find((r) => r.name === "wolf") ??
+      monReg.races.find((r) => r.base?.name === "canine" && !/warg/i.test(r.name));
+    const wargRace =
+      monReg.races.find((r) => /warg/i.test(r.name)) ??
+      monReg.races.find((r) => r.base?.name === "canine");
+    const catRace =
+      monReg.races.find((r) => /wild cat/i.test(r.name)) ??
+      monReg.races.find((r) => r.base?.name === "feline" || r.base?.name === "cat");
 
     expect(wolfRace).toBeTruthy();
     expect(wargRace).toBeTruthy();

@@ -242,6 +242,48 @@ describe("ego binding", () => {
   });
 });
 
+describe("lookupArtifactName (obj-util.c L520, wizard-mode name lookup)", () => {
+  it("returns an exact name match", () => {
+    expect(reg.lookupArtifactName("'Narthanc'")).toBe(reg.findArtifact("'Narthanc'"));
+  });
+
+  it("falls back to a case-insensitive substring match (length >= 3)", () => {
+    const found = reg.lookupArtifactName("narthanc");
+    expect(found?.name).toBe("'Narthanc'");
+  });
+
+  it("a substring shorter than 3 characters never matches", () => {
+    expect(reg.lookupArtifactName("na")).toBeNull();
+  });
+
+  it("an unmatched name returns null", () => {
+    expect(reg.lookupArtifactName("Not A Real Artifact Name")).toBeNull();
+  });
+});
+
+describe("lookupEgoItem (obj-util.c L549, wizard-mode ego lookup)", () => {
+  it("returns the ego only when its poss_items covers the tval/sval kind", () => {
+    const softKind = reg.kinds.find((k) => k.tval === TV.SOFT_ARMOR)!;
+    const found = reg.lookupEgoItem("of Resist Lightning", softKind.tval, softKind.sval);
+    expect(found).toBe(reg.findEgo("of Resist Lightning"));
+  });
+
+  it("returns null when the name matches but the kind is not in poss_items", () => {
+    const ring = reg.kinds.find((k) => k.tval === TV.RING);
+    expect(ring).toBeDefined();
+    expect(
+      reg.lookupEgoItem("of Resist Lightning", ring!.tval, ring!.sval),
+    ).toBeNull();
+  });
+
+  it("returns null for an unknown ego name", () => {
+    const softKind = reg.kinds.find((k) => k.tval === TV.SOFT_ARMOR)!;
+    expect(
+      reg.lookupEgoItem("Not A Real Ego", softKind.tval, softKind.sval),
+    ).toBeNull();
+  });
+});
+
 describe("artifact binding", () => {
   it("binds Ringil exactly as artifact.txt declares it", () => {
     const art = reg.findArtifact("'Ringil'");

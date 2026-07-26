@@ -534,6 +534,57 @@ export class ObjRegistry {
     return null;
   }
 
+  /**
+   * lookup_artifact_name (obj-util.c L520): the artifact whose name EQUALS
+   * `name`, else the first artifact whose name CONTAINS `name`
+   * case-insensitively (only when `name` is at least 3 characters). Backs the
+   * wizard-mode "Enter new artifact:" prompt's name branch (cmd-wizard.c L2798),
+   * so `narthanc` and `hanc` both resolve.
+   *
+   * Two upstream warts are reproduced deliberately:
+   * - the exact-match test runs inside the same loop, so an exact match on a
+   *   LATER artifact still wins over an earlier substring match;
+   * - the close-match result is returned only when `a_idx > 0` (L540), so a
+   *   substring hit at index 0 yields NULL. Here index 0 is the reserved null
+   *   artifact, which makes the wart inert - but the `> 0` bound is kept.
+   */
+  lookupArtifactName(name: string): Artifact | null {
+    const needle = name.toUpperCase();
+    let aIdx = -1;
+    for (let i = 0; i < this.artifacts.length; i++) {
+      const art = this.artifacts[i];
+      if (!art) continue;
+      /* Test for equality. */
+      if (art.name === name) return art;
+      /* Test for close matches. */
+      if (name.length >= 3 && art.name.toUpperCase().includes(needle) && aIdx === -1) {
+        aIdx = i;
+      }
+    }
+    /* Return our best match (L540: strictly > 0). */
+    return aIdx > 0 ? (this.artifacts[aIdx] as Artifact) : null;
+  }
+
+  /**
+   * lookup_ego_item (obj-util.c L549): the ego of exactly this `name` that can
+   * be applied to the kind with `tval`/`sval`. Backs the wizard-mode "Enter ego
+   * item:" prompt's name branch (cmd-wizard.c L2752). Unlike the artifact
+   * lookup this is EXACT-name only, and an ego whose poss_items list does not
+   * hold the kind is skipped even when the name matches.
+   */
+  lookupEgoItem(name: string, tval: number, sval: number): EgoItem | null {
+    const kind = this.lookupKind(tval, sval);
+    if (!kind) return null;
+    for (const ego of this.egos) {
+      /* Reject nameless and wrong names. */
+      if (!ego.name) continue;
+      if (ego.name !== name) continue;
+      /* Check tval and sval. */
+      if (ego.possItems.has(kind.kidx)) return ego;
+    }
+    return null;
+  }
+
   /* -------------------------------------------------------------- */
   /* Binding                                                          */
   /* -------------------------------------------------------------- */
@@ -635,24 +686,6 @@ export class ObjRegistry {
     }
   }
 
-  /**
-   * parse_curse_weight (obj-init.c) refuses an adjustment that will not fit in
-   * the int16_t it is stored in: `< -32768 || > 32767` is
-   * PARSE_ERROR_INVALID_VALUE (curse.c test_weight_bad0 plants 32769 and
-   * -32780). Negative-with-MULTIPLY_WEIGHT is a separate finalize-time check
-   * upstream and is not this one.
-   */
-  private static curseWeight(name: string, weight: number | undefined): number {
-    if (weight === undefined) return 0;
-    if (weight < -32768 || weight > 32767) {
-      throw new Error(
-        `curse: ${name}: weight ${String(weight)} does not fit in an int16 ` +
-          `(PARSE_ERROR_INVALID_VALUE)`,
-      );
-    }
-    return weight;
-  }
-
   private bindCurses(records: CurseRecordJson[]): void {
     for (let r = records.length - 1; r >= 0; r--) {
       const rec = records[r] as CurseRecordJson;
@@ -702,7 +735,7 @@ export class ObjRegistry {
         name: rec.name,
         poss,
         obj: {
-          weight: ObjRegistry.curseWeight(rec.name, rec.weight),
+          weight: rec.weight ?? 0,
           toH: rec.combat?.["to-h"] ?? 0,
           toD: rec.combat?.["to-d"] ?? 0,
           toA: rec.combat?.["to-a"] ?? 0,

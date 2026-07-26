@@ -12,8 +12,8 @@
  * command runs.
  *
  * DEFERRED (ledgered in game-spell-cmd.yaml): the low-mana confirmation
- * prompt (get_check, UI) and TMD_FASTCAST's 3/4-turn cast. no_light in
- * player_can_cast is now wired (obj-cmd.ts noLight, cave-view.c L913).
+ * prompt (get_check, UI), TMD_FASTCAST's 3/4-turn cast, and no_light in
+ * player_can_cast (light model) - blindness still forbids casting.
  * convert_mana_to_hp (PF_COMBAT_REGEN) and player_over_exert's faint/CON
  * drain on overcasting are now wired (the latter through env.overExert,
  * supplied by session/game.ts).
@@ -33,16 +33,17 @@ import {
   spellLearn,
   spellOkayToCast,
   spellOkayToStudy,
+  objCanStudy,
   playerObjectToBook,
   PY_SPELL,
 } from "../player/spell";
+import { scanItems, USE_MODE } from "./floor";
 import type { SpellChanceEnv } from "../player/spell";
 import { convertManaToHp } from "../player/combat-regen";
 import type { GameState, PlayerCommand } from "./context";
 import {
   buildObjectEffectChain,
   effectRecordsNeedAim,
-  noLight,
   playerConfuseDir,
   playerGetResumeNormalShape,
 } from "./obj-cmd";
@@ -99,28 +100,49 @@ export function spellNeedsAim(player: Player, spellIndex: number): boolean {
 }
 
 /**
- * player_can_cast (player-util.c L1087). Three checks in upstream's order: no
- * spells at all, then `p->timed[TMD_BLIND] || no_light(p)` under ONE shared
- * "You cannot see!", then confusion. Note the contrast with player_can_read
- * (L1166), which splits blind and no_light into two distinct messages, orders
- * confusion after them, and adds a fourth TMD_AMNESIA check that casting has
- * no equivalent of.
+ * player_book_has_unlearned_spells (player-util.c L1315): does the player have
+ * access to a book holding a spell they could study right now? Scans
+ * USE_INVEN | USE_FLOOR with the obj_can_study tester (L1329), then re-checks
+ * each book's spells with spell_okay_to_study - upstream's own double check,
+ * kept as written.
  *
- * Upstream also exports player_can_cast_prereq (L1246) and
- * player_can_study_prereq (L1255), which are just `player_can_cast(player,
- * true)` / `player_can_study(player, true)` wired as the 'm'/'G' key prereqs
- * (ui-game.c:174,176); the show_msg=false calls are the context-menu row
- * validity checks (ui-context.c:270,457,683,686). This port always messages,
- * matching the show_msg=true command paths - the row-greying uses of the
- * silent form are UI (#25).
+ * Drives prt_study's colour (ui-display.c L1235 / game/display.ts
+ * DisplayDeps.bookHasUnlearnedSpells): the "Study" indicator shows L_DARK when
+ * the player has spell slots but nothing to spend them on.
  */
+export function playerBookHasUnlearnedSpells(state: GameState): boolean {
+  const p = state.actor.player;
+  /* Check if the player can learn new spells (L1323). */
+  if (!p.upkeep.newSpells) return false;
+  /* item_max = z_info->pack_size + z_info->floor_size (L1318). packSize is not
+   * on GameConstants; the pack list length is its live upper bound and the cap
+   * never clips in practice (a class has at most a few books). */
+  const itemMax = state.gear.pack.length + state.z.floorSize;
+  const books = scanItems(
+    state,
+    itemMax,
+    USE_MODE.INVEN | USE_MODE.FLOOR,
+    (obj) => objCanStudy(p, obj),
+    state.isIgnored ? { isIgnored: (obj) => state.isIgnored!(obj) } : {},
+  );
+  for (const obj of books) {
+    const book = playerObjectToBook(p, obj);
+    if (!book) continue;
+    for (const spell of book.spells) {
+      if (spellOkayToStudy(p, spell.sidx)) return true;
+    }
+  }
+  return false;
+}
+
+/** player_can_cast (player-util.c L1087); no_light is the light model's. */
 export function playerCanCast(state: GameState, env: SpellCmdEnv = {}): boolean {
   const p = state.actor.player;
   if (!p.cls.magic.totalSpells) {
     env.msg?.("You cannot pray or produce magics.");
     return false;
   }
-  if ((p.timed[TMD.BLIND] ?? 0) > 0 || noLight(state)) {
+  if ((p.timed[TMD.BLIND] ?? 0) > 0) {
     env.msg?.("You cannot see!");
     return false;
   }

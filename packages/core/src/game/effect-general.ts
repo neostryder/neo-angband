@@ -102,12 +102,6 @@ export interface GeneralEffectEnv {
   expDeps?: ExpDeps;
   /** get_check yes/no prompts (RECALL's depth/cancel checks). Default yes. */
   confirm?: (prompt: string) => boolean;
-  /**
-   * get_quantity (ui-input.c L1206) for player_get_recall_depth's
-   * "Which level do you wish to return to (0 to cancel)? " prompt. Only
-   * reached under birth_levels_persist. 0 = cancel.
-   */
-  chooseDepth?: (prompt: string, max: number) => number;
   /** The bound player shapes (PlayerRegistry.shapes), for EF_SHAPECHANGE. */
   shapes?: readonly Shape[];
 }
@@ -570,65 +564,12 @@ const handleDRAIN_MANA: EffectHandler = (ctx) => {
 };
 
 /**
- * player_get_recall_depth (player-util.c L100): under birth_levels_persist the
- * player CHOOSES which visited persistent level Word of Recall returns to.
- * Reached from exactly one place, effect_handler_RECALL's depth-0 branch
- * (effect-handler-general.c L1141), and only with that option on.
- *
- * The rules, exactly:
- *   - max_depth <= 0 (never left town) or birth_force_descend: no prompt at
- *     all, return true, recall_depth untouched (L109-111).
- *   - otherwise loop on get_quantity(prompt, p->max_depth): 0 cancels the whole
- *     scroll (return false); a depth with no entry in chunk_list re-prompts
- *     after "You must choose a level you have previously visited."
- *   - only on success is recall_depth assigned (L134).
- * get_quantity itself skips the prompt and yields 1 when max == 1
- * (ui-input.c L1211), so a max_depth of 1 never asks.
- *
- * `chooseDepth` is the get_quantity seam. With no seam an unprompted terminal
- * takes get_quantity's clamp-to-max, i.e. the deepest level reached, which is
- * always present in the cache.
- */
-export function playerGetRecallDepth(
-  state: GameState,
-  chooseDepth?: (prompt: string, max: number) => number,
-  say?: (text: string) => void,
-): boolean {
-  const p = state.actor.player;
-  const forceDescend = state.options?.get("birth_force_descend") ?? false;
-  if (p.maxDepth <= 0 || forceDescend) return true;
-
-  const cache = state.levelCache;
-  for (;;) {
-    const chosen =
-      p.maxDepth === 1
-        ? 1
-        : (chooseDepth?.(
-            "Which level do you wish to return to (0 to cancel)? ",
-            p.maxDepth,
-          ) ?? p.maxDepth);
-    if (chosen === 0) return false;
-    /* chunk_list scan (L124-129): the port's frozen-level cache is keyed by
-     * depth, which is the faithful identity for upstream's level name key. */
-    if (cache?.has(chosen)) {
-      p.recallDepth = chosen;
-      return true;
-    }
-    say?.("You must choose a level you have previously visited.");
-    /* An absent seam cannot answer differently on the next pass; upstream's
-     * while (!level_ok) would spin forever, so stop rather than hang. */
-    if (chooseDepth === undefined || p.maxDepth === 1) return false;
-  }
-}
-
-/**
  * EF_RECALL: toggle Word of Recall (effect-handler-general.c L1096) - a
  * delayed level change counted down by process_world (game/loop.ts). The
  * get_check prompts are the injected confirm (default yes, as an
- * unprompted terminal would auto-accept); birth_no_recall is an option (#30,
- * off); force_descend and is_quest read the teleport env; arenas are not
- * modelled. birth_levels_persist IS honoured: it suppresses the "set recall
- * depth to current depth?" prompt and turns on player_get_recall_depth.
+ * unprompted terminal would auto-accept); birth_no_recall /
+ * birth_levels_persist are options (#30, off); force_descend and is_quest
+ * read the teleport env; arenas are not modelled.
  */
 const handleRECALL: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
@@ -659,28 +600,14 @@ const handleRECALL: EffectHandler = (ctx) => {
   }
 
   if (!p.wordRecall) {
-    /* Reset recall depth (effect-handler-general.c L1129-1143). The
-     * !OPT(birth_levels_persist) half of L1131 matters: with persistent levels
-     * on, an off-max depth takes the ELSE arm (recall_depth = max_depth, no
-     * prompt) instead of offering to re-anchor recall here. */
-    const levelsPersist = state.options?.get("birth_levels_persist") ?? false;
+    /* Reset recall depth. */
     if (state.chunk.depth > 0) {
-      if (state.chunk.depth !== p.maxDepth && !levelsPersist) {
+      if (state.chunk.depth !== p.maxDepth) {
         if (confirm("Set recall depth to current depth? ")) {
           p.recallDepth = p.maxDepth = state.chunk.depth;
         }
       } else {
         p.recallDepth = p.maxDepth;
-      }
-    } else if (levelsPersist) {
-      /* L1140-1142: in town, persistent-levels players pick the destination,
-       * and a cancel aborts the whole effect (no charge, no turn). */
-      if (
-        !playerGetRecallDepth(state, env.general?.chooseDepth, (t) =>
-          say(ctx, t),
-        )
-      ) {
-        return false;
       }
     }
 
@@ -854,11 +781,6 @@ const handleSHAPECHANGE: EffectHandler = (ctx) => {
   if (!env) return true;
   const { state } = env;
   const p = state.actor.player;
-  /* player_shape_by_idx (player-util.c L1000) walks the shape list for a
-   * matching sidx; bind.ts assigns sidx == array index (player/bind.ts L527),
-   * so the array read IS that lookup. Upstream then re-resolves the same shape
-   * by name through lookup_player_shape (L971) - a no-op round trip. Upstream
-   * assert(shape)s a miss; the port declines the effect instead. */
   const shape = env.general?.shapes?.[ctx.subtype];
   if (!shape) return false;
 
