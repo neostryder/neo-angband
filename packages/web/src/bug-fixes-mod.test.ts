@@ -2,7 +2,7 @@
  * The bundled `bug-fixes` mod (packages/web/mods/bug-fixes/).
  *
  * After the mod-scope reset it is a plain CONTENT mod with no plugin code and no
- * capabilities: it just DECLARES the four core rule flags (PackManifest.rules)
+ * capabilities: it just DECLARES the core rule flags (PackManifest.rules)
  * that the host applies to GameState.modRules, each OFF by default. This test
  * ties the on-disk manifest to its contract by reading it; the flags here are
  * the same names the core control tests gate on (obj-list / make / chunk /
@@ -22,6 +22,10 @@ const EXPECTED_FLAGS = [
   "bugfix.noiseScentSave",
   "bugfix.objectListOrder",
   "bugfix.duplicateArtifact",
+  /* Entry 13: unreachable staircases. The one fix that was MIGRATED out of core
+   * (owner ruling 2026-07-26 - core keeps upstream's warts); its off/on pair is
+   * proven in core's gen/gen.test.ts and session/qol-defaults.test.ts. */
+  "bugfix.stairsReachable",
 ];
 
 describe("bug-fixes bundled mod", () => {
@@ -34,7 +38,7 @@ describe("bug-fixes bundled mod", () => {
     expect(m.dependencies).toEqual({ core: "*" });
   });
 
-  it("declares exactly the four documented core rule flags, all OFF by default", () => {
+  it("declares exactly the documented core rule flags, all OFF by default", () => {
     const rules = m.rules ?? [];
     expect(rules.map((r) => r.flag).sort()).toEqual([...EXPECTED_FLAGS].sort());
     for (const r of rules) {

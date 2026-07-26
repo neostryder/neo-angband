@@ -144,6 +144,9 @@
           "min": 1,
           "max": 2
         }
+      ],
+      "drop-order": [
+        "drop-base:0"
       ]
     },
     {
@@ -1152,6 +1155,9 @@
           "number": "1d3",
           "name": "person"
         }
+      ],
+      "drop-order": [
+        "drop:0"
       ]
     },
     {
@@ -1218,6 +1224,9 @@
           "number": "1d3",
           "name": "person"
         }
+      ],
+      "drop-order": [
+        "drop-base:0"
       ]
     },
     {
@@ -1284,6 +1293,9 @@
           "number": "1d3",
           "name": "person"
         }
+      ],
+      "drop-order": [
+        "drop-base:0"
       ]
     },
     {
@@ -2220,6 +2232,10 @@
           "number": "1d2",
           "name": "kobold"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -2317,6 +2333,9 @@
           "number": "1d3",
           "name": "person"
         }
+      ],
+      "drop-order": [
+        "drop-base:0"
       ]
     },
     {
@@ -2388,6 +2407,9 @@
           "number": "1d3",
           "name": "person"
         }
+      ],
+      "drop-order": [
+        "drop-base:0"
       ]
     },
     {
@@ -2457,6 +2479,9 @@
           "number": "1d3",
           "name": "person"
         }
+      ],
+      "drop-order": [
+        "drop-base:0"
       ]
     },
     {
@@ -4392,6 +4417,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -4896,6 +4925,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -5445,6 +5478,9 @@
           "number": "1d2",
           "name": "Same"
         }
+      ],
+      "drop-order": [
+        "drop-base:0"
       ]
     },
     {
@@ -5614,6 +5650,10 @@
           "number": "4d4",
           "name": "Same"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -5913,6 +5953,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -5991,6 +6035,10 @@
           "number": "1d2",
           "name": "Same"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -6042,6 +6090,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -6622,6 +6674,10 @@
           "number": "1d2",
           "name": "Same"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -6677,6 +6733,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -7723,6 +7783,9 @@
           "number": "1d2",
           "name": "Same"
         }
+      ],
+      "drop-order": [
+        "drop:0"
       ]
     },
     {
@@ -8433,6 +8496,10 @@
           "number": "1d1",
           "name": "paladin"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -9718,6 +9785,10 @@
           "name": "ironfist priest",
           "role": "servant"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -9801,6 +9872,10 @@
           "number": "1d1",
           "name": "Paladin"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -9882,6 +9957,10 @@
           "number": "1d1",
           "name": "Ranger"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -11365,6 +11444,10 @@
           "number": "1d3",
           "name": "skeleton"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -12470,6 +12553,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -12616,6 +12703,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -12753,6 +12844,10 @@
           "number": "1d1",
           "name": "southron assassin"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -12865,6 +12960,10 @@
           "number": "1d1",
           "name": "golem"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -13352,6 +13451,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -14758,6 +14861,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -15026,6 +15133,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -15255,6 +15366,10 @@
           "number": "2d4",
           "name": "spider"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -15717,6 +15832,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -17320,6 +17439,10 @@
           "number": "1d3",
           "name": "skeleton"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -17462,6 +17585,10 @@
           "name": "minor demon",
           "role": "servant"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -18121,6 +18248,10 @@
           "number": "1d1",
           "name": "Imp"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -19032,6 +19163,10 @@
       ],
       "shape": [
         "ancient dragon"
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -19117,6 +19252,10 @@
           "number": "1d1",
           "name": "Berserker"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -19420,6 +19559,10 @@
           "number": "1d1",
           "name": "Berserker"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -19735,6 +19878,10 @@
           "min": 1,
           "max": 1
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -19936,6 +20083,10 @@
           "number": "1d1",
           "name": "Berserker"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -21350,6 +21501,10 @@
           "number": "1d1",
           "name": "Berserker"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -22217,6 +22372,10 @@
           "number": "2d4",
           "name": "spider"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
@@ -23710,6 +23869,10 @@
           "number": "3d5",
           "name": "spider"
         }
+      ],
+      "drop-order": [
+        "drop-base:0",
+        "drop-base:1"
       ]
     },
     {
