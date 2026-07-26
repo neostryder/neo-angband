@@ -16,10 +16,12 @@
  *   ported as functions; table data lives in MESSAGE_ENTRIES — recorded
  *   BLOCKED in the findings file (no it() here).
  *
- * Two upstream assertions do not hold against the port and are pinned with
- * it.fails() rather than deleted or weakened — UT-001 (numeric lookup path)
- * and UT-002 (NULL bell payload). See
- * parity/phase3-2026-07-25/findings/W3-UNIT-TESTS-zlib-msg.md.
+ * Two upstream assertions initially failed against the port and were pinned
+ * with it.fails() — UT-001 (the numeric lookup path) and UT-002 (the NULL bell
+ * payload). Both are now FIXED in the port and asserted as plain it(); see
+ * parity/phase3-2026-07-25/findings/W3-UNIT-TESTS-zlib-msg.md. A third,
+ * UT-006, was found in the same pass: the name lookup compared with === where
+ * the C uses my_stricmp, and is covered here too.
  */
 
 import { describe, expect, it } from "vitest";
@@ -356,23 +358,22 @@ describe("message/message upstream", () => {
   });
 
   /*
-   * UT-002 (P3) — KNOWN PORT DIVERGENCE, do not "fix" this test.
+   * UT-002 — FIXED in the port; kept as the guard.
    *
    * reference/src/message.c:381 rings the bell with a NULL message pointer:
    *   event_signal_message(EVENT_BELL, MSG_BELL, NULL);
    * so reference/src/tests/message/message.c:443 requires
    * `st->lastbell == NULL` (the C handler only string_make()s a non-NULL
    * data->message.msg). The port's MessageEventData.msg is a non-nullable
-   * string and packages/core/src/msg.ts:140-142 materialises it as "", so the
-   * handler records "" and the upstream assertion cannot hold.
+   * string and materialised it as "", so the handler recorded "" and the
+   * upstream assertion could not hold.
    *
-   * it.fails() keeps the suite green while asserting the UPSTREAM value: the
-   * moment msg.ts starts sending null, this test passes, vitest reports it as
-   * an unexpected pass, and the marker must be promoted back to a plain it().
-   * The finding is recorded in
-   * parity/phase3-2026-07-25/findings/W3-UNIT-TESTS-zlib-msg.md (UT-002).
+   * MessageEventData.msg is now `string | null`, and both NULL-carrying signals
+   * send null: bell (message.c:381) and sound (:374). "" and NULL are not
+   * interchangeable here -- a front end has to be able to tell "no message
+   * accompanies this signal" from "an empty message".
    */
-  it.fails("bell:  EVENT_BELL carries a NULL message [UT-002]", () => {
+  it("bell:  EVENT_BELL carries a NULL message [UT-002]", () => {
     const events = new GameEvents();
     const st = freshState();
     wireHandlers(events, st);
@@ -443,28 +444,56 @@ describe("message/message upstream", () => {
   });
 
   /*
-   * UT-001 (P2) — KNOWN PORT DIVERGENCE, do not "fix" this test.
+   * UT-001 — FIXED in the port; kept as the guard.
    *
    * reference/src/message.c:304-309 runs strtoul over the name FIRST:
    *   unsigned long number = strtoul(name, &pe, 10);
    *   if (pe != name) return (contains_only_spaces(pe) && number < MSG_MAX) ?
    *           (int)number : -1;
-   * so a decimal string form of the MSG_ index resolves to that index, which
+   * so the decimal form of a MSG_ index resolves to that index, which
    * reference/src/tests/message/message.c:521-526 asserts for every index from
-   * MSG_GENERIC to MSG_MAX-1. The port's messageLookupByName
-   * (packages/core/src/sound/engine.ts:36-41) only walks MESSAGE_ENTRIES by
-   * name, so every numeral returns -1.
-   *
-   * it.fails() keeps the suite green while asserting the UPSTREAM value: once
-   * the strtoul path lands, this test passes, vitest reports the unexpected
-   * pass, and the marker must be promoted back to a plain it(). The finding is
-   * recorded in parity/phase3-2026-07-25/findings/W3-UNIT-TESTS-zlib-msg.md
-   * (UT-001).
+   * MSG_GENERIC to MSG_MAX-1. The port only walked MESSAGE_ENTRIES by name, so
+   * every numeral returned -1.
    */
-  it.fails("lookup:  by printed number, the C strtoul path [UT-001]", () => {
+  it("lookup:  by printed number, the C strtoul path [UT-001]", () => {
     /* Test by printed number (C strtoul path). */
     for (let i = MSG.GENERIC; i < MSG.MAX; i++) {
       expect(messageLookupByName(String(i))).toBe(i);
     }
+  });
+
+  /*
+   * UT-006 — found and FIXED in the same pass, and not covered by any upstream
+   * test, which only ever probes canonical spellings.
+   *
+   * message.c:312 compares with my_stricmp, i.e. case-INSENSITIVELY; the port
+   * used ===. The C reaches message_lookup_by_name from every `msgt:` directive
+   * in gamedata (init.c, mon-init.c, mon-summon.c, obj-init.c,
+   * player-timed.c), where the spelling is whatever a data file happens to use,
+   * so the case-folding is load-bearing rather than cosmetic.
+   */
+  it("lookup:  the name comparison is case-insensitive [UT-006]", () => {
+    expect(messageLookupByName("generic")).toBe(MSG.GENERIC);
+    expect(messageLookupByName("GeNeRiC")).toBe(MSG.GENERIC);
+    expect(messageLookupByName("death")).toBe(MSG.DEATH);
+    /* Still no match for a name that does not exist in any case. */
+    expect(messageLookupByName("kskl8bktk2b")).toBe(-1);
+  });
+
+  /*
+   * The numeric path's edge cases, which the fix has to get right for the
+   * upstream failure assertions at tests/message/message.c:529-536 to hold:
+   * a trailing remainder is allowed only if it is spaces or tabs
+   * (contains_only_spaces, z-util.c:801-806), and a negative literal wraps
+   * through unsigned long to a value far above MSG_MAX.
+   */
+  it("lookup:  numeric edge cases (blank tail, sign, overflow)", () => {
+    expect(messageLookupByName(" 3 ")).toBe(3);
+    expect(messageLookupByName("3\t")).toBe(3);
+    expect(messageLookupByName("3x")).toBe(-1);
+    expect(messageLookupByName("-3")).toBe(-1);
+    expect(messageLookupByName("99999999999999999999")).toBe(-1);
+    /* Nothing numeric consumed -> falls through to the name table. */
+    expect(messageLookupByName("")).toBe(-1);
   });
 });
