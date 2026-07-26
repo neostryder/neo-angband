@@ -5,7 +5,7 @@
  * reader (that agreement is what makes enable-then-reload actually work).
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PackManifest } from "@neo-angband/mod-sdk";
 import {
   ModStore,
@@ -16,6 +16,7 @@ import {
   FIRST_PARTY_MOD_IDS,
   type StorageLike,
 } from "./mod-store";
+import { confirmGameplayNoscore, needsGameplayNoscoreWarning } from "./mods";
 
 function fakeStorage(): StorageLike & { map: Map<string, string> } {
   const map = new Map<string, string>();
@@ -181,5 +182,19 @@ describe("buildCatalog", () => {
 
     // A plugin whose capability is not consented shows consented=false.
     expect(cat.find((m) => m.id === "sbx")!.consented).toBe(false);
+  });
+
+  it("surfaces the gameplay flag and fires its warning exactly once", async () => {
+    const gameplay = buildCatalog({
+      content: [manifest("gameplay", { affectsGameplay: true })],
+      sandbox: [], trusted: [], enabled: [], consents: {},
+    })[0]!;
+    expect(gameplay.affectsGameplay).toBe(true);
+    expect(needsGameplayNoscoreWarning(gameplay, false)).toBe(true);
+    const warning = vi.fn(async () => true);
+    expect(await confirmGameplayNoscore(gameplay, false, warning)).toBe(true);
+    // After acceptance the persistent ratchet is true; subsequent enables do not warn.
+    expect(await confirmGameplayNoscore(gameplay, true, warning)).toBe(true);
+    expect(warning).toHaveBeenCalledTimes(1);
   });
 });

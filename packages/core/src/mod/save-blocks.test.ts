@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SavedGame } from "../session/save";
 import {
+  advanceModNoscore,
   advanceDeterminism,
   coreOnlyManifest,
   migrateModBag,
@@ -20,6 +21,7 @@ const manifest: SaveManifest = {
   ],
   loadOrder: ["core", "frost"],
   determinism: "deterministic",
+  modNoscore: false,
 };
 
 /**
@@ -93,12 +95,25 @@ describe("advanceDeterminism (one-way ratchet)", () => {
   });
 });
 
+describe("advanceModNoscore (one-way ratchet)", () => {
+  it("flips for a gameplay mod and survives disabling it", () => {
+    const enabled = advanceModNoscore(false, true);
+    expect(enabled).toBe(true);
+    expect(advanceModNoscore(enabled, false)).toBe(true);
+  });
+
+  it("does not mark a save for a mod that does not affect gameplay", () => {
+    expect(advanceModNoscore(false, false)).toBe(false);
+  });
+});
+
 describe("coreOnlyManifest", () => {
   it("is core-as-pack-zero and deterministic", () => {
     const m = coreOnlyManifest();
     expect(m.packs).toEqual([{ id: "core", version: "0.1.0" }]);
     expect(m.loadOrder).toEqual(["core"]);
     expect(m.determinism).toBe("deterministic");
+    expect(m.modNoscore).toBe(false);
   });
 });
 

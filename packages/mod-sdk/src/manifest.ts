@@ -96,6 +96,8 @@ export interface PackManifest {
    * once, irreversibly (MOD_LIFECYCLE section 4, decision 4/18).
    */
   nondeterministic?: boolean;
+  /** Declares a gameplay change that permanently makes an enabled save non-scoring. */
+  affectsGameplay?: boolean;
   /** Free-form author credit. */
   author?: string;
   /** SPDX license expression for the pack's own content. */
@@ -164,6 +166,12 @@ export function validateManifest(value: unknown): PackManifest {
     typeof m["nondeterministic"] !== "boolean"
   ) {
     throw new ManifestError(`manifest ${id}: nondeterministic must be a boolean`);
+  }
+  if (
+    m["affectsGameplay"] !== undefined &&
+    typeof m["affectsGameplay"] !== "boolean"
+  ) {
+    throw new ManifestError(`manifest ${id}: affectsGameplay must be a boolean`);
   }
   validateRules(m["rules"], id);
   for (const key of ["engine", "repository", "changelog"] as const) {

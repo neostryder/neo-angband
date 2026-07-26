@@ -71,12 +71,6 @@ export { OF_SIZE, PF_SIZE };
 /** z_info->food_value: FOOD timed-grade maxima scale by this (constants.txt). */
 export const FOOD_VALUE = 100;
 
-/**
- * N_ELEMENTS(struct player_class.title): `const char *title[10]`
- * (player.h L313), one title per five of PY_MAX_LEVEL's 50 levels.
- */
-const CLASS_MAX_TITLES = 10;
-
 /** ELEM_ names indexed by element value (for RES_ value lines). */
 const ELEMENT_NAMES = ELEMENT_ENTRIES.map((e) => e.name);
 
@@ -322,12 +316,6 @@ function grabFlags(
 ): void {
   if (!lines) return;
   for (const line of lines) {
-    /* A non-string entry is the compiler's presence marker for a flags
-     * directive written with no value. parse_class_obj_flags /
-     * parse_class_play_flags (init.c L3672, L3692) check parser_hasval()
-     * first and return PARSE_ERROR_NONE with the set untouched
-     * (c-info.c test_obj_flags0 / test_player_flags0). */
-    if (typeof line !== "string") continue;
     for (const raw of line.split("|")) {
       const name = raw.trim();
       if (!name) continue;
@@ -640,49 +628,6 @@ function bindProperties(records: PlayerPropertyRecordJson[]): PlayerProperty[] {
   }));
 }
 
-/**
- * flags: for a timed effect. parse_player_timed_effect_flags
- * (player-timed.c L562-590) accepts an empty line, accepts NONSTACKING, and
- * returns PARSE_ERROR_INVALID_FLAG for anything else. Asserted by ptimed.c
- * test_flags0 and test_badflags0.
- */
-function timedNonStacking(rec: PlayerTimedRecordJson): boolean {
-  let nonStacking = false;
-  for (const line of rec.flags ?? []) {
-    /* A non-string entry is the compiler's marker for a bare "flags:". */
-    if (typeof line !== "string") continue;
-    for (const raw of line.split(/[ |]+/)) {
-      const name = raw.trim();
-      if (!name) continue;
-      if (name !== "NONSTACKING") {
-        throw new Error(
-          `player_timed ${rec.name}: unknown flag ${name} ` +
-            `(PARSE_ERROR_INVALID_FLAG)`,
-        );
-      }
-      nonStacking = true;
-    }
-  }
-  return nonStacking;
-}
-
-/**
- * lower-bound:. parse_player_timed_effect_lower_bound (player-timed.c
- * L599-604) refuses anything outside 0..32767, because the duration it is
- * compared against is an int16_t (ptimed.c test_badlowerbound0).
- */
-function timedLowerBound(rec: PlayerTimedRecordJson): number {
-  const bound = rec["lower-bound"];
-  if (bound === undefined) return 0;
-  if (bound < 0 || bound > 32767) {
-    throw new Error(
-      `player_timed ${rec.name}: lower-bound ${String(bound)} out of range ` +
-        `(PARSE_ERROR_INVALID_VALUE)`,
-    );
-  }
-  return bound;
-}
-
 function bindTimed(records: PlayerTimedRecordJson[]): TimedEffect[] {
   const out: TimedEffect[] = [];
   for (const rec of records) {
@@ -697,26 +642,6 @@ function bindTimed(records: PlayerTimedRecordJson[]): TimedEffect[] {
       { grade: 0, color: 0, max: 0, name: null, upMsg: null, downMsg: null },
     ];
     for (const g of rec.grade ?? []) {
-      /*
-       * parse_player_timed_grade (player-timed.c L262-265) rejects a maximum
-       * that would collide with the implicit zero grade or overflow the
-       * int16_t a duration is stored in, and (L273-280) rejects grades that
-       * do not ascend. ptimed.c test_badgrade0 asserts all three as
-       * PARSE_ERROR_INVALID_VALUE.
-       */
-      if (g.max <= 0 || g.max > Math.trunc(32767 / foodScale)) {
-        throw new Error(
-          `player_timed ${rec.name}: grade maximum ${String(g.max)} out of ` +
-            `range (PARSE_ERROR_INVALID_VALUE)`,
-        );
-      }
-      const highest = grades[grades.length - 1] as TimedGrade;
-      if (g.max * foodScale <= highest.max) {
-        throw new Error(
-          `player_timed ${rec.name}: grade maximum ${String(g.max)} does not ` +
-            `ascend (PARSE_ERROR_INVALID_VALUE)`,
-        );
-      }
       /* Single-char names/messages are upstream dummies -> null. */
       const name = g.name.length === 1 ? null : g.name;
       const upMsg = g.up_msg !== undefined && g.up_msg.length > 1 ? g.up_msg : null;
@@ -743,19 +668,10 @@ function bindTimed(records: PlayerTimedRecordJson[]): TimedEffect[] {
      * indices (0..4) coincide with the PROJ_ indices proj_name_to_idx returns,
      * so ELEM[name] is the faithful equivalent. Absent -> -1 (no resist).
      */
-    let tempResist = -1;
-    if (rec.resist !== undefined) {
-      const elem = (ELEM as Record<string, number>)[rec.resist];
-      if (elem === undefined) {
-        /* player-timed.c L347-349: idx < 0 || idx >= ELEM_MAX is
-         * PARSE_ERROR_INVALID_VALUE (ptimed.c test_badresist0). */
-        throw new Error(
-          `player_timed ${rec.name}: unknown resist element ${rec.resist} ` +
-            `(PARSE_ERROR_INVALID_VALUE)`,
-        );
-      }
-      tempResist = elem;
-    }
+    const tempResist =
+      rec.resist !== undefined
+        ? ((ELEM as Record<string, number>)[rec.resist] ?? -1)
+        : -1;
 
     /*
      * oflag_dup / oflag_syn (parse_player_timed_flag_synonym): the first
@@ -763,19 +679,10 @@ function bindTimed(records: PlayerTimedRecordJson[]): TimedEffect[] {
      * synonym is always > OF_NONE(0). Absent -> 0 (OF_NONE, no synonym).
      */
     const synonym = rec["flag-synonym"]?.[0];
-    let oflagDup = 0;
-    if (synonym !== undefined) {
-      const code = (OF as Record<string, number>)[synonym.code] ?? 0;
-      if (code <= 0) {
-        /* player-timed.c L419-421: idx <= OF_NONE is
-         * PARSE_ERROR_INVALID_OBJ_PROP_CODE (ptimed.c test_badflagsyn0). */
-        throw new Error(
-          `player_timed ${rec.name}: unknown flag-synonym code ${synonym.code} ` +
-            `(PARSE_ERROR_INVALID_OBJ_PROP_CODE)`,
-        );
-      }
-      oflagDup = code;
-    }
+    const oflagDup =
+      synonym !== undefined
+        ? ((OF as Record<string, number>)[synonym.code] ?? 0)
+        : 0;
     const oflagSyn = synonym !== undefined && synonym.exact !== 0;
 
     /*
@@ -794,15 +701,6 @@ function bindTimed(records: PlayerTimedRecordJson[]): TimedEffect[] {
           throw new Error(`player_timed ${rec.name}: unknown effect ${r.eff}`);
         }
         const subtype = r.type !== undefined ? effectSubtype(effect, r.type) : 0;
-        if (subtype < 0) {
-          /* grab_effect_data (init.c L192-194) returns
-           * PARSE_ERROR_INVALID_VALUE when effect_subtype() cannot resolve the
-           * type (ptimed.c test_badbegineffect0 / test_badendeffect0). */
-          throw new Error(
-            `player_timed ${rec.name}: invalid subtype ${r.type ?? ""} for ` +
-              `effect ${r.eff} (PARSE_ERROR_INVALID_VALUE)`,
-          );
-        }
         const step: TimedEffectStep = { effect, subtype };
         if (r["effect-dice"] !== undefined) step.dice = r["effect-dice"];
         return step;
@@ -819,8 +717,8 @@ function bindTimed(records: PlayerTimedRecordJson[]): TimedEffect[] {
       onIncrease: joinLines(rec["on-increase"]),
       onDecrease: joinLines(rec["on-decrease"]),
       msgt: rec.msgt ?? "GENERIC",
-      nonStacking: timedNonStacking(rec),
-      lowerBound: timedLowerBound(rec),
+      nonStacking: (rec.flags ?? []).includes("NONSTACKING"),
+      lowerBound: rec["lower-bound"] ?? 0,
       tempResist,
       oflagDup,
       oflagSyn,
@@ -988,23 +886,10 @@ function bindClass(
     eopts: parseEopts(e.eopts),
   }));
 
-  /*
-   * parse_class_title (init.c L3564-3572) fills the fixed-size
-   * `const char *title[10]` and returns
-   * PARSE_ERROR_TOO_MANY_ENTRIES once it is full (c-info.c test_title_bad0).
-   */
-  const titles = rec.title ? [...rec.title] : [];
-  if (titles.length > CLASS_MAX_TITLES) {
-    throw new Error(
-      `player: class ${rec.name} has ${String(titles.length)} titles, ` +
-        `max ${String(CLASS_MAX_TITLES)} (PARSE_ERROR_TOO_MANY_ENTRIES)`,
-    );
-  }
-
   return {
     cidx,
     name: rec.name,
-    titles,
+    titles: rec.title ? [...rec.title] : [],
     statAdj: statAdj(rec.stats),
     skills,
     extraSkills: extra,

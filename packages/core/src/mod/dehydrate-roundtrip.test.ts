@@ -167,6 +167,7 @@ const manifest: SaveManifest = {
   ],
   loadOrder: ["core", "frost"],
   determinism: "nondeterministic",
+  modNoscore: false,
 };
 
 const coreOnly = (ns: string): boolean => ns === "core";

@@ -51,7 +51,13 @@ import {
   tvalCanHaveCharges,
   tvalCanHaveTimeout,
 } from "../obj/object";
-import { FlavorKnowledge, NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge";
+import {
+  FlavorKnowledge,
+  NOOP_FLAVOR_AWARE_DEPS,
+  buildRuneList,
+  objectHasRune,
+  playerKnowsRune,
+} from "../obj/knowledge";
 import type { FlavorAwareDeps } from "../obj/knowledge";
 import { ignoreItemOk } from "../obj/ignore";
 import type { GameState, ItemTargetRef, PlayerCommand } from "./context";
@@ -692,14 +698,75 @@ function objIsCarried(state: GameState, obj: GameObject): boolean {
 }
 
 /**
+ * rune_add_autoinscription (obj-ignore.c:172-186): make or extend the rune-`i`
+ * autoinscription on one object. No note, or the note already present as a
+ * substring, is a no-op; otherwise the note is APPENDED to any existing
+ * inscription.
+ *
+ * Two upstream details preserved:
+ * - `strstr(obj->note, rune_note(i))` (obj-ignore.c:176) is a substring test,
+ *   not equality, so a note already contained in a longer inscription is not
+ *   appended twice - and an EMPTY note is never appended at all, because
+ *   strstr(x, "") is non-NULL;
+ * - `char current_note[80]` with my_strcpy/my_strcat (obj-ignore.c:174-182)
+ *   truncates the combined inscription to 79 characters.
+ */
+function runeAddAutoinscription(
+  state: GameState,
+  obj: GameObject,
+  i: number,
+): void {
+  const note = state.runeNotes?.get(i);
+  if (note === undefined) return; // !rune_note(i)
+  const current = obj.note ?? "";
+  if (obj.note && current.includes(note)) return;
+  obj.note = (current + note).slice(0, 79) || null;
+}
+
+/**
+ * runes_autoinscribe (obj-ignore.c:217-225): put every applicable rune
+ * autoinscription on `obj` - each rune the object carries and the player knows,
+ * walked in rune-list order.
+ */
+function runesAutoinscribe(state: GameState, obj: GameObject): void {
+  if (!state.runeNotes) return;
+  const env = state.runeEnv;
+  const p = state.actor.player;
+  const runes = buildRuneList(env);
+  for (let i = 0; i < runes.length; i++) {
+    const rune = runes[i]!;
+    if (objectHasRune(env, obj, rune) && playerKnowsRune(p, rune)) {
+      runeAddAutoinscription(state, obj, i);
+    }
+  }
+}
+
+/**
+ * rune_autoinscribe (obj-ignore.c:193-212): the player just set a note on rune
+ * `i` - stamp it on every object carrying that rune, on the floor beneath them
+ * first and then through the gear. Gated on player_knows_rune (:198).
+ * Upstream caller: ui-knowledge.c rune_xtra_act (:2275).
+ */
+export function runeAutoinscribe(state: GameState, i: number): void {
+  if (!state.runeNotes) return;
+  const env = state.runeEnv;
+  const rune = buildRuneList(env)[i];
+  if (!rune) return;
+  if (!playerKnowsRune(state.actor.player, rune)) return;
+  for (const obj of floorPile(state, state.actor.grid)) {
+    if (objectHasRune(env, obj, rune)) runeAddAutoinscription(state, obj, i);
+  }
+  for (const obj of state.gear.store.values()) {
+    if (objectHasRune(env, obj, rune)) runeAddAutoinscription(state, obj, i);
+  }
+}
+
+/**
  * apply_autoinscription (obj-ignore.c L242): put the kind's registered
  * autoinscription on `obj`, unless it is already inscribed, not carried, or
  * ignored. Also clears a stale unaware autoinscription once the kind
  * becomes aware. Returns 1 when an inscription was applied, 0 otherwise
  * (upstream's int return, kept for parity though callers ignore it).
- *
- * runes_autoinscribe (obj-ignore.c L259, rune-based autoinscription) rides
- * the rune-knowledge system and is deferred to #24.
  */
 export function applyAutoinscription(
   state: GameState,
@@ -717,6 +784,11 @@ export function applyAutoinscription(
     }
   }
 
+  /* "Make rune autoinscription go first, for now" (obj-ignore.c:258-259):
+   * BEFORE the no-kind-note early return, so the rune notes land even when the
+   * kind itself has no autoinscription. */
+  runesAutoinscribe(state, obj);
+
   if (!note) return 0;
   if (obj.note) return 0;
   if (!objIsCarried(state, obj)) return 0;
@@ -725,6 +797,26 @@ export function applyAutoinscription(
   obj.note = note.length > 0 ? note : null;
   deps.env?.msg?.(`You autoinscribe ${describeObject(state, obj)}.`);
   return 1;
+}
+
+/**
+ * autoinscribe_ground (obj-ignore.c:340-348): apply_autoinscription over the
+ * whole pile beneath the player.
+ */
+export function autoinscribeGround(state: GameState, deps: ObjCmdDeps): void {
+  for (const obj of floorPile(state, state.actor.grid)) {
+    applyAutoinscription(state, obj, deps);
+  }
+}
+
+/**
+ * autoinscribe_pack (obj-ignore.c:352-359): apply_autoinscription over p->gear
+ * (which upstream is one list covering pack AND equipment, as here).
+ */
+export function autoinscribePack(state: GameState, deps: ObjCmdDeps): void {
+  for (const obj of state.gear.store.values()) {
+    applyAutoinscription(state, obj, deps);
+  }
 }
 
 /** randcalc(obj->time, 0, RANDOMISE): the recharge time roll. */
@@ -1292,6 +1384,14 @@ function useCommand(
       ...(tgtItem ? { tgtItem } : {}),
       ...(typeof tgtCurse === "number" ? { tgtCurse } : {}),
     });
+    /* "Autoinscribe if we are guaranteed to still have any"
+     * (cmd-obj.c:717-719): `if (!none_left && !from_floor)`. none_left is
+     * gear_object_for_use consuming the last of the stack, which here is the
+     * gear handle no longer resolving. */
+    if (!found.fromFloor && found.handle !== undefined) {
+      const left = state.gear.store.get(found.handle);
+      if (left) applyAutoinscription(state, left, deps);
+    }
     return result.turnSpent ? state.z.moveEnergy : 0;
   };
 }
@@ -1552,12 +1652,8 @@ export function installObjCommands(
    * shapechanged, with no resume prompt. */
   registry.register("autoinscribe", (state, _cmd) => {
     if (playerIsShapechanged(state)) return 0;
-    for (const obj of floorPile(state, state.actor.grid)) {
-      applyAutoinscription(state, obj, deps);
-    }
-    for (const obj of state.gear.store.values()) {
-      applyAutoinscription(state, obj, deps);
-    }
+    autoinscribeGround(state, deps);
+    autoinscribePack(state, deps);
     return 0;
   });
 

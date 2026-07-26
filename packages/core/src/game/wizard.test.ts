@@ -36,12 +36,12 @@ import type { EffectEnvDeps } from "./effect-env";
 import type { MonPlaceDeps } from "./mon-place";
 import type { TrapDeps } from "./trap";
 import { squareTrap } from "./trap";
-import { floorPile } from "./floor";
+import { floorCarry, floorPile } from "./floor";
 import { gearAdd } from "./gear";
-import { squareIsKnown } from "./known";
+import { knownObject, squareIsKnown } from "./known";
 import { updateMonsterDistances } from "./context";
 import type { GameState } from "./context";
-import { FLOOR, addMon, makeRace, makeState, monReg, plReg } from "./harness";
+import { FLOOR, GRANITE, addMon, makeRace, makeState, monReg, plReg } from "./harness";
 import {
   NOSCORE,
   NOSCORE_SCORE_INVALIDATING,
@@ -542,11 +542,42 @@ describe("effect-backed wizard commands", () => {
 });
 
 describe("do_cmd_wiz_wizard_light (L2907)", () => {
-  it("lights and knows the level", () => {
+  it("lights the level and memorizes only its non-floor terrain", () => {
+    /*
+     * wiz_light(cave, player, true) (cmd-wizard.c:2909). Every non-wall grid is
+     * perma-lit, but a neighbour is MEMORIZED only when
+     * `!square_isfloor(a_grid) || square_isvisibletrap(a_grid)`
+     * (cave-map.c:439-440), so open floor stays unremembered - it is the walls
+     * bounding the lit area that get mapped.
+     */
     const state = makeState({ playerGrid: loc(10, 10) });
     wizWizardLight(state, wizDeps(state, true));
     expect(state.chunk.sqinfoHas(loc(10, 10), SQUARE.GLOW)).toBe(true);
-    expect(squareIsKnown(state, loc(10, 10))).toBe(true);
+    /* Open floor away from any wall: lit, not remembered. */
+    expect(squareIsKnown(state, loc(10, 10))).toBe(false);
+    /* The granite border neighbouring the field: remembered. */
+    expect(state.chunk.isFloor(loc(0, 10))).toBe(false);
+    expect(squareIsKnown(state, loc(0, 10))).toBe(true);
+  });
+
+  it("is the `full` form: square_know_pile, not sense_pile (cmd-wizard.c:2909)", () => {
+    /* wiz_light(cave, player, true): `full` is TRUE for the wizard command, so
+     * the floor piles are KNOWN (the real glyph) rather than merely SENSED (the
+     * "something is here" null-glyph marker, cave-map.c:445-452). */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    const potion = objectPrep(
+      state.rng,
+      objReg,
+      constants,
+      objReg.kinds.find((k) => k && k.tval === TV.POTION)!,
+      0,
+      "average",
+    );
+    potion.number = 1;
+    expect(floorCarry(state, grid, potion)).toBe(true);
+    wizWizardLight(state, wizDeps(state, true));
+    expect(knownObject(state, grid)?.ch).not.toBeNull();
   });
 });
 
@@ -601,10 +632,18 @@ describe("map-query DATA commands", () => {
     expect(
       wizQuerySquareFlag(state, { flag: 0 }, wizDeps(state, true)).length,
     ).toBe(0);
+    /*
+     * wiz_light memorizes only non-floor neighbours (cave-map.c:439-440), and
+     * wiz_hack_map scans square_in_bounds_fully grids only (cmd-wizard.c:333) -
+     * the same 1..h-2 range - so an open field has NOTHING to report. Put a
+     * granite pillar inside the field and it is the pillar that is known.
+     */
+    state.chunk.setFeat(loc(5, 5), GRANITE);
     wizWizardLight(state, wizDeps(state, true));
-    expect(
-      wizQuerySquareFlag(state, { flag: 0 }, wizDeps(state, true)).length,
-    ).toBeGreaterThan(0);
+    const known = wizQuerySquareFlag(state, { flag: 0 }, wizDeps(state, true));
+    expect(known.length).toBeGreaterThan(0);
+    expect(known.some((g) => g.x === 5 && g.y === 5)).toBe(true);
+    expect(known.some((g) => g.x === 12 && g.y === 8)).toBe(false);
   });
 
   it("wizPeekFlow returns grids at a noise depth", () => {

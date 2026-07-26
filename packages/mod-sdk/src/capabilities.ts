@@ -134,10 +134,16 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
 export class CapabilitySet {
   private readonly grants: readonly ParsedCapability[];
   private readonly nondeterministic: boolean;
+  private readonly affectsGameplay: boolean;
 
-  private constructor(grants: readonly ParsedCapability[], nondeterministic: boolean) {
+  private constructor(
+    grants: readonly ParsedCapability[],
+    nondeterministic: boolean,
+    affectsGameplay: boolean,
+  ) {
     this.grants = grants;
     this.nondeterministic = nondeterministic;
+    this.affectsGameplay = affectsGameplay;
   }
 
   /**
@@ -157,7 +163,11 @@ export class CapabilitySet {
       );
     }
     const grants = requested.map((cap) => parseCapability(cap));
-    return new CapabilitySet(grants, manifest.nondeterministic ?? false);
+    return new CapabilitySet(
+      grants,
+      manifest.nondeterministic ?? false,
+      manifest.affectsGameplay ?? false,
+    );
   }
 
   /**
@@ -186,5 +196,10 @@ export class CapabilitySet {
   /** True if the manifest declared `nondeterministic: true` (section 4). */
   isNondeterministic(): boolean {
     return this.nondeterministic;
+  }
+
+  /** True if the manifest declared `affectsGameplay: true`. */
+  isAffectsGameplay(): boolean {
+    return this.affectsGameplay;
   }
 }
