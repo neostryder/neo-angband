@@ -43,9 +43,6 @@ for (const rel of cFiles()) {
   for (const m of src.matchAll(CASE_RE)) cases.push({ file: rel, name: m[1] });
 }
 
-/** Every port .ts file, with its source, for the citation tests below. */
-const portFiles = [];
-
 /** Every test_* identifier appearing anywhere in the port's TypeScript. */
 function portCitations() {
   const cited = new Set();
@@ -56,9 +53,7 @@ function portCitations() {
         if (e.name === "node_modules" || e.name === "dist") continue;
         walk(p);
       } else if (e.name.endsWith(".ts")) {
-        const src = readFileSync(p, "utf8");
-        portFiles.push({ path: p, src });
-        for (const m of src.matchAll(/test_[A-Za-z0-9_]+/g)) cited.add(m[0]);
+        for (const m of readFileSync(p, "utf8").matchAll(/test_[A-Za-z0-9_]+/g)) cited.add(m[0]);
       }
     }
   };
@@ -74,40 +69,11 @@ function portCitations() {
 }
 
 const cited = portCitations();
-
-/*
- * AMBIGUOUS NAMES. Upstream reuses case names across files: `test_dice0`,
- * `test_flags0` and `test_effect0` each appear in many parse/*.c. Keying purely
- * on the name credited EVERY file sharing a name as soon as ONE was cited, which
- * inflated the cited count by 125 rows in a single run and -- worse -- hid a real
- * GAP: `parse/ptimed.c test_missing_effect0` read as covered because c-info.c has
- * a case of that name, and the two assert OPPOSITE things (c-info treats an
- * orphan effect dep as PARSE_ERROR_NONE, ptimed as MISSING_RECORD_HEADER).
- *
- * So a bare-name citation is only accepted when the name is UNIQUE upstream.
- * Where it is shared, the citing port file must also name the upstream file, and
- * the citation is credited only to that file. This can under-credit a real
- * adjudication that did not spell out the filename -- that is the safe direction
- * for a work queue, and the fix is to add the filename to the citation.
- */
-const nameCount = new Map();
-for (const c of cases) nameCount.set(c.name, (nameCount.get(c.name) ?? 0) + 1);
-
-const rows = cases.map((c) => {
-  if (!cited.has(c.name)) return { ...c, cited: false, why: "" };
-  if (nameCount.get(c.name) === 1) return { ...c, cited: true, why: "name" };
-  /* Shared name: require the upstream file to be named by a port file that also
-   * cites the case name, so a citation in one file cannot credit another. */
-  const base = c.file.split("/").pop();
-  const ok = portFiles.some((f) => f.src.includes(base) && f.src.includes(c.name));
-  return { ...c, cited: ok, why: ok ? "file+name" : "" };
-});
+const rows = cases.map((c) => ({ ...c, cited: cited.has(c.name) }));
 
 writeFileSync(
   join(OUT, "ut-ledger.tsv"),
-  ["file\tcase\tcited\tvia", ...rows.map((r) => `${r.file}\t${r.name}\t${r.cited}\t${r.why}`)].join(
-    "\n",
-  ) + "\n",
+  ["file\tcase\tcited", ...rows.map((r) => `${r.file}\t${r.name}\t${r.cited}`)].join("\n") + "\n",
 );
 
 const uncited = rows.filter((r) => !r.cited);

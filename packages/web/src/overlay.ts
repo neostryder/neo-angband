@@ -513,17 +513,9 @@ function paintLineEdit(
  * draws as an inverted cell. The default renders in COLOUR_YELLOW until the
  * first keypress and COLOUR_WHITE after (L892 vs L907).
  *
- * askfor_aux_keypress handles exactly six cases and no others -- ESCAPE,
- * KC_ENTER, ARROW_LEFT, ARROW_RIGHT, KC_BACKSPACE/KC_DELETE, and printable --
- * so anything else is deliberately inert here too.
- *
- * `randomize` opts this surface into get_name_keypress (ui-input.c L1028), the
- * handler askfor_aux is given for the CHARACTER NAME field specifically: it
- * intercepts '*' ahead of the default handler, replaces the whole buffer with
- * player_random_name's output and resets the cursor to 0 (L1035-1042), then
- * carries on editing. `firsttime` is not consulted by that case, so '*' as the
- * very first key replaces rather than clears-and-inserts; it does clear
- * firsttime afterwards, as any keypress does (L910).
+ * Upstream handles exactly six cases and no others -- ESCAPE, KC_ENTER,
+ * ARROW_LEFT, ARROW_RIGHT, KC_BACKSPACE/KC_DELETE, and printable -- so anything
+ * else is deliberately inert here too.
  */
 export function promptText(
   term: GlyphTerm,
@@ -531,7 +523,6 @@ export function promptText(
   initial = "",
   maxLen = 15,
   footer = "[ type a name, Enter to accept, ESC to cancel ]",
-  randomize?: () => string,
 ): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     const st: LineEdit = { buf: initial, curs: 0 };
@@ -554,17 +545,6 @@ export function promptText(
       ev.stopImmediatePropagation();
       const wasFirst = firsttime;
       firsttime = false;
-      /* get_name_keypress' '*' case (ui-input.c L1035-1042), ahead of the
-       * default handler and independent of firsttime. */
-      if (randomize && ev.key === "*") {
-        const generated = randomize();
-        if (generated !== "") {
-          st.buf = generated.slice(0, maxLen);
-          st.curs = 0;
-        }
-        paint();
-        return;
-      }
       const r = askforAuxKeypress(
         st,
         maxLen,

@@ -12,8 +12,8 @@
  * command runs.
  *
  * DEFERRED (ledgered in game-spell-cmd.yaml): the low-mana confirmation
- * prompt (get_check, UI) and TMD_FASTCAST's 3/4-turn cast. no_light in
- * player_can_cast is now wired (obj-cmd.ts noLight, cave-view.c L913).
+ * prompt (get_check, UI), TMD_FASTCAST's 3/4-turn cast, and no_light in
+ * player_can_cast (light model) - blindness still forbids casting.
  * convert_mana_to_hp (PF_COMBAT_REGEN) and player_over_exert's faint/CON
  * drain on overcasting are now wired (the latter through env.overExert,
  * supplied by session/game.ts).
@@ -42,7 +42,6 @@ import type { GameState, PlayerCommand } from "./context";
 import {
   buildObjectEffectChain,
   effectRecordsNeedAim,
-  noLight,
   playerConfuseDir,
   playerGetResumeNormalShape,
 } from "./obj-cmd";
@@ -98,29 +97,14 @@ export function spellNeedsAim(player: Player, spellIndex: number): boolean {
   return effectRecordsNeedAim(spell.effectsRaw as EffectRecordJson[]);
 }
 
-/**
- * player_can_cast (player-util.c L1087). Three checks in upstream's order: no
- * spells at all, then `p->timed[TMD_BLIND] || no_light(p)` under ONE shared
- * "You cannot see!", then confusion. Note the contrast with player_can_read
- * (L1166), which splits blind and no_light into two distinct messages, orders
- * confusion after them, and adds a fourth TMD_AMNESIA check that casting has
- * no equivalent of.
- *
- * Upstream also exports player_can_cast_prereq (L1246) and
- * player_can_study_prereq (L1255), which are just `player_can_cast(player,
- * true)` / `player_can_study(player, true)` wired as the 'm'/'G' key prereqs
- * (ui-game.c:174,176); the show_msg=false calls are the context-menu row
- * validity checks (ui-context.c:270,457,683,686). This port always messages,
- * matching the show_msg=true command paths - the row-greying uses of the
- * silent form are UI (#25).
- */
+/** player_can_cast (player-util.c L1087); no_light is the light model's. */
 export function playerCanCast(state: GameState, env: SpellCmdEnv = {}): boolean {
   const p = state.actor.player;
   if (!p.cls.magic.totalSpells) {
     env.msg?.("You cannot pray or produce magics.");
     return false;
   }
-  if ((p.timed[TMD.BLIND] ?? 0) > 0 || noLight(state)) {
+  if ((p.timed[TMD.BLIND] ?? 0) > 0) {
     env.msg?.("You cannot see!");
     return false;
   }

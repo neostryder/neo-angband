@@ -237,15 +237,11 @@ export function installRangedCommands(registry: ActionRegistry): void {
     const player = state.actor.player;
     const args = cmd.args ?? {};
 
-    /* The equipped launcher. do_cmd_fire duplicates player_can_fire's body
-     * inline (player-attack.c:1334-1338 vs player-util.c:1206) rather than
-     * calling it; player_can_fire itself is only reached through
-     * player_can_fire_prereq (the 'f'/'t' key, ui-game.c:124) and the
-     * context-menu row check (ui-context.c:508). */
+    /* The equipped launcher. */
     const bowSlot = player.body.slots.findIndex((s) => s.type === "BOW");
     const launcher =
       bowSlot >= 0 ? gearGet(state.gear, player.equipment[bowSlot] ?? 0) : null;
-    if (!launcher || !state.actor.combat.ammoTval) {
+    if (!launcher) {
       state.msg?.("You have nothing to fire with.");
       return 0;
     }
