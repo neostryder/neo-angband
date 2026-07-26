@@ -119,6 +119,83 @@ describe("projectMonster - player damage", () => {
   });
 });
 
+/*
+ * project_m_player_attack's display_dam (project-mon.c:1111-1112): with
+ * OPT(player, show_damage) on AND origin.what == SRC_PLAYER, the die / hurt /
+ * pain messages go through add_monster_message_show_damage and
+ * message_pain_show_damage, which append the numeric damage. A trap-sourced
+ * projection routes to the same function but has origin.what == SRC_TRAP, so it
+ * must stay bare.
+ */
+describe("projectMonster - show_damage (project-mon.c:1111)", () => {
+  /** A recorder that also captures the damage/showDamage message arguments. */
+  function damRecorder() {
+    const seen: Array<{ msg: number | "pain"; damage: number | undefined }> = [];
+    const hooks: ProjectMonsterHooks = {
+      showDamage: true,
+      message: (_m, msg, _delay, damage) => seen.push({ msg, damage }),
+      messagePain: (_m, dam, showDamage) =>
+        seen.push({ msg: "pain", damage: showDamage ? dam : undefined }),
+    };
+    return { hooks, seen };
+  }
+
+  it("passes the damage with the pain message for a survivor", () => {
+    const gs = makeState();
+    /* NO_FEAR is excluded by plainRace, so cap hp high enough that fear does
+     * not fire a second (never-damage-showing) message we would have to skip. */
+    addMon(gs, plainRace, loc(7, 7), { hp: 500 });
+    const rec = damRecorder();
+    projectMonster(
+      { state: gs, projections, origin: { isPlayer: true, monster: 0, grid: gs.actor.grid, charm: false }, hooks: rec.hooks },
+      0, loc(7, 7), 20, PROJ.FIRE, PROJECT.KILL,
+    );
+    const pain = rec.seen.find((s) => s.msg === "pain");
+    expect(pain).toBeDefined();
+    expect(pain!.damage).toBe(20);
+  });
+
+  it("passes the damage with the death message", () => {
+    const gs = makeState();
+    addMon(gs, plainRace, loc(8, 8), { hp: 10 });
+    const rec = damRecorder();
+    projectMonster(
+      { state: gs, projections, origin: { isPlayer: true, monster: 0, grid: gs.actor.grid, charm: false }, hooks: rec.hooks },
+      0, loc(8, 8), 40, PROJ.FIRE, PROJECT.KILL,
+    );
+    expect(rec.seen[0]?.damage).toBe(40);
+  });
+
+  it("a trap-sourced hit shows no damage even with the option on", () => {
+    /* display_dam requires origin.what == SRC_PLAYER; SRC_TRAP still routes to
+     * project_m_player_attack but must not show the number. */
+    const gs = makeState();
+    addMon(gs, plainRace, loc(7, 7), { hp: 500 });
+    const rec = damRecorder();
+    projectMonster(
+      { state: gs, projections, origin: { isPlayer: false, monster: 0, grid: gs.actor.grid, charm: false }, hooks: rec.hooks },
+      0, loc(7, 7), 20, PROJ.FIRE, PROJECT.KILL,
+    );
+    const pain = rec.seen.find((s) => s.msg === "pain");
+    expect(pain).toBeDefined();
+    expect(pain!.damage).toBeUndefined();
+  });
+
+  it("shows no damage with the option off", () => {
+    const gs = makeState();
+    addMon(gs, plainRace, loc(7, 7), { hp: 500 });
+    const rec = damRecorder();
+    (rec.hooks as { showDamage?: boolean }).showDamage = false;
+    projectMonster(
+      { state: gs, projections, origin: { isPlayer: true, monster: 0, grid: gs.actor.grid, charm: false }, hooks: rec.hooks },
+      0, loc(7, 7), 20, PROJ.FIRE, PROJECT.KILL,
+    );
+    const pain = rec.seen.find((s) => s.msg === "pain");
+    expect(pain).toBeDefined();
+    expect(pain!.damage).toBeUndefined();
+  });
+});
+
 describe("projectMonster - status and side effects", () => {
   it("applies a stun timer without dealing damage (MON_STUN)", () => {
     const gs = makeState();
