@@ -154,6 +154,7 @@ import {
   effectChoiceRows,
   EF,
   OBJ_PROPERTY,
+  runeAutoinscribe,
   playerRandomName,
   buildProb,
   RANDNAME_TOLKIEN,
@@ -322,7 +323,14 @@ import {
   registryNameResolver,
   showPredictedScores,
 } from "./score";
-import { enterScore, noscoreInvalidatesScore, BIRTH_MESSAGE_RECALL_BANNER } from "@neo-angband/core";
+import {
+  advanceDeterminism,
+  advanceModNoscore,
+  enterScore,
+  noscoreInvalidatesScore,
+  scoreGateNoscore,
+  BIRTH_MESSAGE_RECALL_BANNER,
+} from "@neo-angband/core";
 import { markNoscore } from "@neo-angband/core";
 import { ArtifactState } from "@neo-angband/core";
 import { walkTerrainPrompt } from "@neo-angband/core";
@@ -2709,7 +2717,16 @@ async function openKnowledgeMenu(): Promise<void> {
       objDeps,
     );
   });
-  add("Display rune knowledge", () => showRuneKnowledge(term, state.runeEnv, p));
+  add("Display rune knowledge", () =>
+    /* do_cmd_knowledge_runes (ui-knowledge.c:2291) with its xtra_prompt /
+     * xtra_act pair: '{' sets rune_list[i].note and runs rune_autoinscribe
+     * (:2275), '}' clears it (:2252). */
+    showRuneKnowledge(term, state.runeEnv, p, {
+      get: (i) => state.runeNotes?.get(i),
+      set: (i, note) => state.runeNotes?.set(i, note),
+      autoinscribe: (i) => runeAutoinscribe(state, i),
+    }),
+  );
   add("Display artifact knowledge", () =>
     // do_cmd_knowledge_artifacts (ui-knowledge.c L1740). The exact
     // artifact_is_known gate (L1687): created AND no live unidentified copy.
@@ -4049,6 +4066,11 @@ async function openModManager(): Promise<void> {
     ruleDecls: () => loadEnabledModRuleDecls(),
     applyRuleLive: (flag, on) => {
       (game.state.modRules ??= {})[flag] = on;
+    },
+    isModNoscore: () => game.manifest.modNoscore,
+    advanceSaveRatchets: (mod) => {
+      game.manifest.determinism = advanceDeterminism(game.manifest.determinism, mod.nondeterministic);
+      game.manifest.modNoscore = advanceModNoscore(game.manifest.modNoscore, mod.affectsGameplay);
     },
     requestReload: () => {
       try {
@@ -5572,7 +5594,10 @@ function advance(): void {
       {
         diedFrom,
         cheated: state.options?.anyScoreSet() ?? false,
-        noscore: noscoreInvalidatesScore(player.noscore),
+        noscore: scoreGateNoscore(
+          noscoreInvalidatesScore(player.noscore),
+          game.manifest.modNoscore,
+        ),
         totalWinner: player.totalWinner,
       },
     );

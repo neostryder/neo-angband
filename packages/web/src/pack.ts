@@ -196,6 +196,7 @@ function modManifest(raw: unknown): PackManifest {
     ...(m.dependencies ? { dependencies: m.dependencies } : {}),
     ...(m.capabilities ? { capabilities: m.capabilities } : {}),
     ...(m.nondeterministic !== undefined ? { nondeterministic: m.nondeterministic } : {}),
+    ...(m.affectsGameplay !== undefined ? { affectsGameplay: m.affectsGameplay } : {}),
     ...(m.rules ? { rules: m.rules } : {}),
     ...(m.author ? { author: m.author } : {}),
     ...(m.license ? { license: m.license } : {}),

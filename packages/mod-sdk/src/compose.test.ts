@@ -35,6 +35,14 @@ describe("manifest", () => {
     ).toThrow();
   });
 
+  it("validates affectsGameplay exactly as the optional boolean manifest flags", () => {
+    expect(validateManifest({ ...manifest("gameplay"), affectsGameplay: true }).affectsGameplay).toBe(true);
+    expect(validateManifest({ ...manifest("cosmetic"), affectsGameplay: false }).affectsGameplay).toBe(false);
+    expect(() => validateManifest({ ...manifest("bad-gameplay"), affectsGameplay: "yes" })).toThrow(
+      /affectsGameplay must be a boolean/,
+    );
+  });
+
   it("slugs names into stable refs", () => {
     expect(slugify("Grip, Farmer Maggot's Dog")).toBe(
       "grip-farmer-maggot-s-dog",

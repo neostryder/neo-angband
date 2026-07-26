@@ -62,6 +62,8 @@ export interface ModManagerDeps {
    * no game is running (the choice still persists and applies on next start).
    */
   applyRuleLive?: (flag: string, on: boolean) => void;
+  isModNoscore?: () => boolean;
+  advanceSaveRatchets?: (mod: CatalogMod) => void;
 }
 
 /** The one-line badge for a catalog row: enabled state + any warning. */
@@ -70,6 +72,7 @@ function rowLabel(m: CatalogMod): MenuItem {
   const needsConsent = m.enabled && !m.consented;
   const flags: string[] = [];
   if (m.nondeterministic) flags.push("non-deterministic");
+  if (m.affectsGameplay) flags.push("noscore");
   if (needsConsent) flags.push("NEEDS CONSENT");
   const suffix = flags.length ? `  ! ${flags.join(", ")}` : "";
   const label = `${box} ${m.name}  v${m.version}  (${m.kind})${suffix}`;
@@ -104,6 +107,12 @@ function rowDetail(m: CatalogMod): ScreenLine[] {
       color: C_WARN,
     });
   }
+  if (m.affectsGameplay) {
+    lines.push({
+      text: "Gameplay-changing: enabling this permanently marks this save non-scoring.",
+      color: C_WARN,
+    });
+  }
   if (m.capabilities.length === 0) {
     lines.push({ text: "Capabilities: none (content only).", color: C_DIM });
   } else {
@@ -120,6 +129,37 @@ function rowDetail(m: CatalogMod): ScreenLine[] {
     });
   }
   return lines;
+}
+
+/** True exactly while enabling `m` needs the one-time score warning. */
+export function needsGameplayNoscoreWarning(m: CatalogMod, modNoscore: boolean): boolean {
+  return m.affectsGameplay && !modNoscore;
+}
+
+/** Run the one-time warning only for the transition that trips the ratchet. */
+export async function confirmGameplayNoscore(
+  m: CatalogMod,
+  modNoscore: boolean,
+  confirm: () => Promise<boolean>,
+): Promise<boolean> {
+  return needsGameplayNoscoreWarning(m, modNoscore) ? confirm() : true;
+}
+
+async function gameplayNoscorePrompt(term: GlyphTerm, m: CatalogMod): Promise<boolean> {
+  await showTextScreen(term, `Non-scoring save - ${m.name}`, [
+    { text: "This mod changes core gameplay behavior.", color: C_WARN },
+    { text: "Your save will be permanently marked as non-scoring.", color: C_WARN },
+  ], "[ Press ESC to review, then choose ]");
+  const pick = await selectFromMenu(
+    term,
+    `Enable gameplay-changing mod "${m.name}"?`,
+    [
+      { label: "Yes, enable and mark save non-scoring", color: C_WARN },
+      { label: "No, cancel", color: C_FG },
+    ],
+    "[ a/b or tap; ESC cancels ]",
+  );
+  return pick === 0;
 }
 
 /**
@@ -171,11 +211,17 @@ async function enableMod(
   deps: ModManagerDeps,
   m: CatalogMod,
 ): Promise<boolean> {
+  if (!(await confirmGameplayNoscore(
+    m,
+    deps.isModNoscore?.() ?? false,
+    () => gameplayNoscorePrompt(term, m),
+  ))) return false;
   if (m.capabilities.length > 0) {
     const ok = await consentPrompt(term, m);
     if (!ok) return false;
     deps.store.setConsent(m.id, m.capabilities);
   }
+  deps.advanceSaveRatchets?.(m);
   deps.store.setModEnabled(m.id, true);
   return true;
 }

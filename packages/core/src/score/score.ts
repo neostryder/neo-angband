@@ -252,6 +252,11 @@ export interface EnterScoreGating {
   diedFrom: string;
 }
 
+/** The host's score gate: Angband NOSCORE bits plus the port-only mod ratchet. */
+export function scoreGateNoscore(playerNoscore: boolean, modNoscore: boolean): boolean {
+  return playerNoscore || modNoscore;
+}
+
 /**
  * enter_score (score.c L272): enter a character on the high-score table "if
  * legal". Cheaters, wizards/debug characters, and non-winning interrupted or

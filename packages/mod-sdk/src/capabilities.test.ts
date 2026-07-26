@@ -9,7 +9,7 @@ import type { PackManifest, PackShape } from "./manifest.js";
 /** Build a minimal manifest for capability tests; only set the fields we need. */
 function manifest(
   shape: PackShape,
-  extra?: Partial<Pick<PackManifest, "capabilities" | "nondeterministic">>,
+  extra?: Partial<Pick<PackManifest, "capabilities" | "nondeterministic" | "affectsGameplay">>,
 ): PackManifest {
   const m: PackManifest = {
     id: "frost",
@@ -20,6 +20,9 @@ function manifest(
   if (extra?.capabilities) m.capabilities = extra.capabilities;
   if (extra?.nondeterministic !== undefined) {
     m.nondeterministic = extra.nondeterministic;
+  }
+  if (extra?.affectsGameplay !== undefined) {
+    m.affectsGameplay = extra.affectsGameplay;
   }
   return m;
 }
@@ -281,5 +284,15 @@ describe("CapabilitySet: nondeterministic surfacing", () => {
       manifest("plugin", { nondeterministic: false }),
     );
     expect(set.isNondeterministic()).toBe(false);
+  });
+});
+
+describe("CapabilitySet: gameplay-affecting surfacing", () => {
+  it("surfaces affectsGameplay: true from the manifest", () => {
+    expect(CapabilitySet.fromManifest(manifest("content", { affectsGameplay: true })).isAffectsGameplay()).toBe(true);
+  });
+
+  it("defaults affectsGameplay to false", () => {
+    expect(CapabilitySet.fromManifest(manifest("content")).isAffectsGameplay()).toBe(false);
   });
 });

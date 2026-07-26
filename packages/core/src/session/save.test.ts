@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { EF, FEAT, RF, TV } from "../generated";
+import { invenCarry } from "../game/gear";
+import { updatePlayerObjectKnowledge } from "../game/known";
 import { GLYPH_DECOY } from "../effects/effect";
 import { sourcePlayer } from "../effects/interpreter";
 import { attachGameEnv } from "../game/effect-game-env";
@@ -20,7 +22,12 @@ import { describeObject } from "../game/describe";
 import { NOSCORE } from "../game/wizard";
 import { loadGame, saveGame, startGame } from "./game";
 import type { GamePack, StartedGame } from "./game";
-import { decodeSavedGame, encodeSavedGame, SAVE_VERSION } from "./save";
+import {
+  decodeSavedGame,
+  deserializeEverseen,
+  encodeSavedGame,
+  SAVE_VERSION,
+} from "./save";
 import type { SavedGame } from "./save";
 
 function loadJson<T>(name: string): T {
@@ -258,12 +265,13 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
       JSON.stringify(serializeGame(game.state, game.flavor, game.seedFlavor, ids, 0, everseen)),
     ) as SavedGame;
     expect(saved.everseen).toBeDefined();
-    expect(saved.everseen!.kinds).toContain(kind.kidx);
-    expect(saved.everseen!.egos).toContain(ego.eidx);
+    /* SAVE_VERSION 3: keyed by namespaced id, not raw kidx/eidx. */
+    expect(saved.everseen!.kinds).toContain(ids.kindId(kind.kidx));
+    expect(saved.everseen!.egos).toContain(ids.egoId(ego.eidx));
 
-    /* Restore into a fresh store and confirm both survive by index. */
+    /* Restore into a fresh store and confirm both survive the id round-trip. */
     const restored = new EverseenKnowledge();
-    restored.restore(saved.everseen!);
+    restored.restore(deserializeEverseen(saved.everseen!, ids));
     expect(restored.kindSeen(kind)).toBe(true);
     expect(restored.egoSeen(ego)).toBe(true);
     /* An unmarked kind stays unseen. */
@@ -302,8 +310,10 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     // Round-trips through the game-level saveGame/loadGame path.
     const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
     expect(saved.everseen).toBeDefined();
-    expect(saved.everseen!.kinds).toContain(kind.kidx);
-    expect(saved.everseen!.kinds).toContain(startObj.kind.kidx);
+    /* SAVE_VERSION 3: keyed by namespaced kind id, not raw kidx. */
+    const gameIds = new ContentIdResolver(reg);
+    expect(saved.everseen!.kinds).toContain(gameIds.kindId(kind.kidx));
+    expect(saved.everseen!.kinds).toContain(gameIds.kindId(startObj.kind.kidx));
     const rs = loadGame(pack, saved);
     expect(rs.everseen.kindSeen(kind)).toBe(true);
     expect(rs.everseen.kindSeen(startObj.kind)).toBe(true);
@@ -963,6 +973,195 @@ describe("string-id serialization (P7.1) decouples saves from registry order", (
   });
 });
 
+describe("rune auto-inscriptions (wr_ignore save.c:586-605 / rd_ignore load.c:937-945)", () => {
+  it("round-trips every rune note through save/load", () => {
+    const game = startGame(pack, { seed: 4242, depth: 2 });
+    expect(game.state.runeNotes).toBeTruthy();
+    /* rune_set_note(i, inscription) (obj-knowledge.c:414). Upstream writes every
+     * rune whose note is set, with no player_knows_rune gate. */
+    game.state.runeNotes!.set(0, "{ac}");
+    game.state.runeNotes!.set(4, "{str}");
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    expect(saved.runeNotes).toBeDefined();
+    /* Keyed by runeKey, not the raw wr_s16b index. */
+    expect(saved.runeNotes!.map(([k]) => k)).toEqual(["combat:enchantment to armor", "mod:intelligence"]);
+
+    const rs = loadGame(pack, saved);
+    expect(rs.state.runeNotes!.get(0)).toBe("{ac}");
+    expect(rs.state.runeNotes!.get(4)).toBe("{str}");
+    /* rune_set_note(i, NULL) is the only thing that clears a slot; an untouched
+     * rune stays noteless. */
+    expect(rs.state.runeNotes!.get(1)).toBeUndefined();
+  });
+
+  it("omits the block entirely when no rune carries a note", () => {
+    const game = startGame(pack, { seed: 4243, depth: 2 });
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    expect(saved.runeNotes).toBeUndefined();
+    /* A save without the block loads with no rune notes (back-compat). */
+    const rs = loadGame(pack, saved);
+    expect(rs.state.runeNotes!.entries()).toEqual([]);
+  });
+
+  it("survives a MUTATED reload: the reader does not ignore the field", () => {
+    const game = startGame(pack, { seed: 4244, depth: 2 });
+    game.state.runeNotes!.set(0, "{ac}");
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    saved.runeNotes![0]![1] = "{mutated}";
+    const rs = loadGame(pack, saved);
+    expect(rs.state.runeNotes!.get(0)).toBe("{mutated}");
+    const resaved = JSON.parse(JSON.stringify(saveGame(rs))) as SavedGame;
+    expect(resaved.runeNotes).toEqual([["combat:enchantment to armor", "{mutated}"]]);
+  });
+
+  it("runes_autoinscribe stamps the note on a carried object (obj-ignore.c:217-225)", () => {
+    const game = startGame(pack, { seed: 4245, depth: 2, className: "Warrior" });
+    const state = game.state;
+    /* Learn every rune so player_knows_rune is satisfied, then give the +AC
+     * rune a note and let apply_autoinscription run over the pack. */
+    const armour = [...state.gear.store.values()].find((o) => o.toA !== 0);
+    const target = armour ?? [...state.gear.store.values()][0]!;
+    target.toA = 2;
+    target.note = null;
+    state.actor.player.objKnown.toA = 1;
+    state.runeNotes!.set(0, "{ac}");
+    state.autoinscribeAll?.();
+    expect(target.note).toBe("{ac}");
+    /* rune_add_autoinscription is idempotent: strstr(obj->note, note) hits
+     * (obj-ignore.c:176), so a second pass does not append it twice. */
+    state.autoinscribeAll?.();
+    expect(target.note).toBe("{ac}");
+  });
+});
+
+describe("apply_autoinscription's other call sites (store.c:1977 / obj-knowledge.c:1246)", () => {
+  it("selling part of a stack autoinscribes the remainder, and stashing does not", () => {
+    const game = startGame(pack, { seed: 6100, depth: 0 });
+    const state = game.state;
+    const reg = game.booted.registries;
+    const stores = state.stores ?? [];
+    expect(stores.length).toBeGreaterThan(0);
+
+    /* A non-Home store that will buy a stack of flasks of oil. */
+    const flask = reg.objects.kinds.find((k) => k && k.name === "& Flask~ of oil")!;
+    state.autoinscribe!.set(flask.kidx, "@v1", true);
+
+    const shop = stores.find((st) => st.feat !== FEAT.HOME)!;
+    const home = stores.find((st) => st.feat === FEAT.HOME)!;
+
+    const mk = (): number => {
+      const obj = objectNew(flask);
+      obj.tval = flask.tval;
+      obj.sval = flask.sval;
+      obj.number = 3;
+      obj.note = null;
+      return invenCarry(state.gear, obj, {
+        quiverSlotSize: reg.constants.quiverSlotSize,
+        thrownQuiverMult: reg.constants.thrownQuiverMult,
+      });
+    };
+
+    /* do_cmd_stash (store.c:2009) has NO apply_autoinscription call. */
+    const stashed = mk();
+    const stashRes = game.sell(home, stashed, 1);
+    expect(stashRes.ok).toBe(true);
+    expect(state.gear.store.get(stashed)?.note ?? null).toBeNull();
+
+    /* do_cmd_sell (store.c:1976-1977) does, on the remaining stack. */
+    const forSale = mk();
+    const sellRes = game.sell(shop, forSale, 1);
+    if (sellRes.ok && sellRes.noneLeft === false) {
+      expect(state.gear.store.get(forSale)?.note).toBe("@v1");
+    } else {
+      /* The chosen shop refused the item: the assertion above would be vacuous,
+       * so fail loudly rather than pass silently. */
+      throw new Error(`the fixture shop refused the sale: ${JSON.stringify(sellRes)}`);
+    }
+  });
+
+  it("update_player_object_knowledge tail-calls autoinscribe_ground + _pack (:1245-1247)", () => {
+    const game = startGame(pack, { seed: 6101, depth: 2, className: "Warrior" });
+    const state = game.state;
+    const target = [...state.gear.store.values()][0]!;
+    target.toA = 2;
+    target.note = null;
+    state.actor.player.objKnown.toA = 1;
+    state.runeNotes!.set(0, "{ac}");
+    /* Nothing has stamped it yet... */
+    expect(target.note).toBeNull();
+    /* ...and learning object knowledge does, through the C tail call. */
+    updatePlayerObjectKnowledge(state);
+    expect(target.note).toBe("{ac}");
+  });
+});
+
+describe("ignore / aware state is keyed by content id, not raw index", () => {
+  /** A pack whose object records are reversed, shifting every kidx. */
+  function reversedKindPack(): GamePack {
+    return {
+      ...pack,
+      obj: {
+        ...pack.obj,
+        object: {
+          ...pack.obj.object,
+          records: [...pack.obj.object.records].reverse(),
+        },
+      },
+    };
+  }
+
+  it("writes ids for flavor.aware/tried, everseen and the ignore choices", () => {
+    const game = startGame(pack, { seed: 5150, depth: 2 });
+    const reg = game.booted.registries;
+    const kind = reg.objects.kinds.find((k) => k && k.tval === TV.SWORD)!;
+    const ego = reg.objects.egos.find((e) => e && e.name)!;
+    game.state.ignore.kindIgnoreWhenAware(kind.kidx);
+    game.state.ignore.kindIgnoreWhenUnaware(kind.kidx);
+    game.state.ignore.egoToggle(ego.eidx, 1);
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const ids = new ContentIdResolver(reg);
+    const kindId = ids.kindId(kind.kidx);
+    expect(saved.ignore!.kindAware).toContain(kindId);
+    expect(saved.ignore!.kindUnaware).toContain(kindId);
+    expect(saved.ignore!.ego).toContainEqual([ids.egoId(ego.eidx), 1]);
+    /* Nothing numeric is left in the aware/everseen blocks either. */
+    for (const v of [...saved.flavor.aware, ...saved.flavor.tried]) {
+      expect(typeof v).toBe("string");
+    }
+  });
+
+  it("reloads against a reordered kind registry onto the SAME items", () => {
+    const game = startGame(pack, { seed: 5151, depth: 2 });
+    const reg = game.booted.registries;
+    const kind = reg.objects.kinds.find((k) => k && k.tval === TV.SWORD)!;
+    const kindName = kind.name;
+    game.state.ignore.kindIgnoreWhenAware(kind.kidx);
+    const awareBefore = [...reg.objects.kinds]
+      .filter((k) => k && game.state.flavorKnown!.isAware(k))
+      .map((k) => k!.name)
+      .sort();
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const reordered = reversedKindPack();
+    const rs = loadGame(reordered, saved);
+    const rreg = rs.booted.registries;
+    const movedKind = rreg.objects.kinds.find((k) => k && k.name === kindName)!;
+    /* The reordering really moved the index, else the test is vacuous. */
+    expect(movedKind.kidx).not.toBe(kind.kidx);
+    /* The player's ignore choice followed the ITEM, not the index. */
+    expect(rs.state.ignore.kindIsIgnoredAware(movedKind.kidx)).toBe(true);
+    expect(rs.state.ignore.kindIsIgnoredAware(kind.kidx)).toBe(false);
+    /* ...and so did every aware flavour. */
+    const awareAfter = [...rreg.objects.kinds]
+      .filter((k) => k && rs.state.flavorKnown!.isAware(k))
+      .map((k) => k!.name)
+      .sort();
+    expect(awareAfter).toEqual(awareBefore);
+  });
+});
+
 describe("mod-lifecycle save blocks (P7.2)", () => {
   it("a core-only game writes a core-only manifest and no orphans/mods", () => {
     const game = startGame(pack, { seed: 111, depth: 2 });
@@ -1009,6 +1208,7 @@ describe("mod-lifecycle save blocks (P7.2)", () => {
       ],
       loadOrder: ["core", "frost"],
       determinism: "deterministic",
+      modNoscore: false,
     };
     saved.floor = [
       ...saved.floor!,

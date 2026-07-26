@@ -374,9 +374,15 @@ const BLOCKS: Block[] = [
       "ignore.ego",
       "everseen.egos",
       "autoinscriptions[0].kindId",
+      /* The rune auto-inscription block, save.c:586-605 / load.c:937-945:
+       * rune_note(k) per rune carrying a note. Keyed by runeKey rather than the
+       * raw rune index wr_s16b writes - see obj/knowledge.ts runeKey. */
+      "runeNotes[0][1]",
     ],
-    mutate: [["autoinscriptions[0].aware", "{squelch}"]],
-    gap: "the rune auto-inscription block (save.c:586-605 wr_ignore / load.c:937-945 rd_ignore) has no counterpart: rune_note / rune_set_note / max_runes (obj-knowledge.c:406/414/234) are an explicitly ledgered deferral (obj/knowledge.ts:25, parity/ledger/obj-knowledge.yaml). A character that inscribed runes loses those inscriptions on reload.",
+    mutate: [
+      ["autoinscriptions[0].aware", "{squelch}"],
+      ["runeNotes[0][1]", "{rune}"],
+    ],
   },
   {
     c: "wr_misc",
@@ -718,6 +724,11 @@ function fixture(): StartedGame {
   expect(state.autoinscribe, "the session must own an autoinscription registry")
     .toBeTruthy();
   state.autoinscribe!.set(dagger.kidx, "{guard}", true);
+  /* A rune auto-inscription (wr_ignore's rune block, save.c:586-605). Upstream
+   * writes every rune whose note is set, with no player_knows_rune gate, so
+   * rune 0 (the +AC combat rune) is enough to populate the block. */
+  expect(state.runeNotes, "the session must own a rune-note registry").toBeTruthy();
+  state.runeNotes!.set(0, "{ac}");
   state.actor.player.fullName = "Fieldguard";
   state.actor.player.noscore = 2;
   state.actor.player.wordRecall = 3;
@@ -811,8 +822,11 @@ describe("save.c field-coverage guard: the port side", () => {
     }
   });
 
-  it("names the one known GAP and no other (wr_ignore rune notes)", () => {
-    expect(BLOCKS.filter((b) => b.gap).map((b) => b.c)).toEqual(["wr_ignore"]);
+  it("declares no known GAP: every save.c block is fully covered", () => {
+    /* wr_ignore's rune auto-inscription block was the last outstanding GAP
+     * (W1-CAVE-SAVE-002); it is now saved and mutation-probed above. A row
+     * regaining a `gap` must land here, not be quietly tolerated. */
+    expect(BLOCKS.filter((b) => b.gap).map((b) => b.c)).toEqual([]);
   });
 
   it("a dead save carries wr_dungeon's header and omits the live blocks", () => {

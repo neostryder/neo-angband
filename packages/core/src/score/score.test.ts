@@ -10,6 +10,7 @@ import {
   highscoreValid,
   highscoreCmp,
   enterScore,
+  scoreGateNoscore,
   predictScore,
 } from "./score";
 import { MAX_HISCORES, WINNING_HOW } from "./types";
@@ -297,6 +298,17 @@ describe("enterScore (score.c L272): gating", () => {
     });
     expect(r).toEqual({ entered: false, reason: "wizard" });
     expect(store.data.length).toBe(0);
+  });
+
+  it("does NOT enter when the gameplay-mod ratchet alone marks the save non-scoring", () => {
+    const store = memStore();
+    const r = enterScore(store, stubPlayer(), { diedFrom: "orc", turn: 1, depth: 1 }, {
+      noscore: scoreGateNoscore(false, true),
+      diedFrom: "orc",
+    });
+    expect(r).toEqual({ entered: false, reason: "wizard" });
+    expect(store.data).toEqual([]);
+    expect(scoreGateNoscore(false, false)).toBe(false);
   });
 
   it("does NOT enter an interrupted or retiring non-winner", () => {

@@ -42,6 +42,7 @@ function toManifest(raw: unknown): PackManifest {
     ...(m.dependencies ? { dependencies: m.dependencies } : {}),
     ...(m.capabilities ? { capabilities: m.capabilities } : {}),
     ...(m.nondeterministic ? { nondeterministic: m.nondeterministic } : {}),
+    ...(m.affectsGameplay ? { affectsGameplay: m.affectsGameplay } : {}),
   };
 }
 
