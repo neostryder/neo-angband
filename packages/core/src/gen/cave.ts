@@ -168,7 +168,15 @@ const ZERO_STREAMER: StreamerProfile = {
   qc: 0,
 };
 
-/** name -> cave builder key, from list-dun-profiles.h. */
+/**
+ * name -> cave builder key, from list-dun-profiles.h. The port's stand-in for
+ * get_level_profile_index_from_name (generate.c L1600): the C resolves a profile
+ * name to its index in cave_profiles[] and indexes the builder from there, while
+ * DUN_PROFILE_ENTRIES carries the name->builder pairing directly.
+ * get_level_profile_name_from_index (generate.c L1612) is the inverse and is
+ * DUN_PROFILE_ENTRIES[i].name; both C functions exist only for wiz-stats.c's
+ * level dumps, never for the savefile.
+ */
 function profileBuilderKey(name: string): string {
   for (const e of DUN_PROFILE_ENTRIES) {
     if (e.name === name) return e.builder;
@@ -176,7 +184,14 @@ function profileBuilderKey(name: string): string {
   throw new Error(`gen: unknown dungeon profile name '${name}'`);
 }
 
-/** room name -> room-builder key, from list-rooms.h. */
+/**
+ * room name -> room-builder key, from list-rooms.h. This is
+ * get_room_builder_index_from_name (generate.c L1570) plus the room_builders[i]
+ * .builder deref that parse_profile_room (generate.c L171-177) does with it;
+ * get_room_builder_name_from_index (L1590) is ROOM_ENTRIES[i].name and
+ * get_room_builder_count (L1561) is ROOM_ENTRIES.length. The C trio is only
+ * consumed by wiz-stats.c, never by the savefile.
+ */
 function roomBuilderKey(name: string): string {
   for (const e of ROOM_ENTRIES) {
     if (e.name === name) return e.builder;
@@ -2690,6 +2705,9 @@ function makeGen(ctx: CaveBuildContext, c: Chunk): Gen {
    * and streamer helpers (they are read-only during a build). */
   g.profileTun = ctx.profile.tun;
   g.profileStr = ctx.profile.str;
+  /* dun->profile = choose_profile(p) (generate.c L1157): help_greater_vault
+   * (gen-room.c L3099) compares dun->profile->name against "classic". */
+  ctx.dun.profileName = ctx.profile.name;
   return g;
 }
 

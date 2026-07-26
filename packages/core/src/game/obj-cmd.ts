@@ -84,6 +84,7 @@ import { attachGameEnv } from "./effect-game-env";
 import { describeObject } from "./describe";
 import { ODESC, objDescNameFormat } from "../obj/desc";
 import { substituteTimedMessage } from "../player/timed";
+import { squareIsSeen } from "../world/view";
 import { updatePlayerObjectKnowledge } from "./known";
 import type { CastContext } from "./project-cast";
 import type { ActionRegistry } from "./player-turn";
@@ -541,6 +542,55 @@ export function objCanZap(obj: GameObject): boolean {
   return tvalCanHaveTimeout(obj.tval) && numberCharging(obj) < obj.number;
 }
 
+/**
+ * object_effect (obj-util.c L886): the effect an object actually runs - the
+ * ACTIVATION's effect when it has one, otherwise the kind/instance effect.
+ * The activation wins outright, so an artifact or ego activation replaces the
+ * base kind's effect rather than being appended to it.
+ */
+export function objectEffect(obj: GameObject): EffectRecordJson[] | null {
+  if (obj.activation) return obj.activation.effect;
+  return obj.effect;
+}
+
+/**
+ * obj_is_activatable (obj-util.c L721): a WEARABLE object that has an effect.
+ * Note both halves: a non-wearable with an effect (a potion) is not
+ * "activatable", and a wearable's effect may come from its kind rather than an
+ * activation - the rings of Flames / Acid / Ice / Lightning / Open Wounds /
+ * Digging carry an `effect:` in object.txt and no `act:`, so they ARE
+ * activatable even though obj.activation is null.
+ */
+export function objIsActivatable(obj: GameObject): boolean {
+  if (!tvalIsWearable(obj.tval)) return false;
+  const effect = objectEffect(obj);
+  return effect !== null && effect.length > 0;
+}
+
+/**
+ * obj_can_activate (obj-util.c L730): activatable AND not recharging. This is
+ * NOT obj_can_zap: do_cmd_activate guards on this (cmd-obj.c L886) while
+ * do_cmd_zap_rod guards on obj_can_zap (L851), and obj_can_zap requires a ROD
+ * tval, so reusing it for activation refuses every artifact and ring.
+ */
+export function objCanActivate(obj: GameObject): boolean {
+  return objIsActivatable(obj) && obj.timeout === 0;
+}
+
+/**
+ * obj_can_wear (obj-util.c L810): wield_slot(obj) >= 0 - do_cmd_wield's
+ * item_tester (cmd-obj.c L284). Over the shipped body plan this is exactly
+ * tvalIsWearable (wield_slot handles the same tval set), but it is the slot
+ * lookup that decides, so a body plan without some slot type changes the
+ * answer. NOTE the upstream wart it inherits: slot_by_type's fallback for
+ * "type not on this body" is `false`, i.e. slot 0 - so wield_slot returns 0,
+ * not -1, and obj_can_wear stays true for a slot the body does not have.
+ */
+export function objCanWear(state: GameState, obj: GameObject): boolean {
+  const player = state.actor.player;
+  return wieldSlot(player.body, obj.tval, player.equipment) >= 0;
+}
+
 /* ------------------------------------------------------------------ *
  * Inscriptions and refuelling (cmd-obj.c, obj-util.c, obj-ignore.c).
  * ------------------------------------------------------------------ */
@@ -878,6 +928,71 @@ export function playerGetResumeNormalShape(
 }
 
 /**
+ * player_can_read (player-util.c L1166): scrolls and spellbooks need working
+ * eyes, light, a clear head and intact memory. Checked in this exact order, and
+ * each refusal prints its own message and spends no turn. do_cmd_read_scroll
+ * (cmd-obj.c L748) calls this with show_msg true BEFORE cmd_get_item, so a blind
+ * player with no scrolls at all still hears "You can't see anything." rather
+ * than the "You have no scrolls to read." rejection.
+ *
+ * Reached from two places upstream and both are this same predicate:
+ * do_cmd_read_scroll (cmd-obj.c:748) and the 'r' key's prereq
+ * player_can_read_prereq (player-util.c:1264, wired at ui-game.c:131) - which
+ * is why the show_msg parameter exists rather than the messages being inlined.
+ * The prereq's TMD_COMMAND bypass is NOT reproduced here: while TMD_COMMAND runs
+ * the turn loop redirects every command to do_cmd_mon_command before the handler
+ * is reached (game/player-turn.ts L708-714), which is exactly what the bypass
+ * exists to permit.
+ *
+ * Note the order and strings differ from player_can_cast (L1087), which folds
+ * blind and no_light into one "You cannot see!" and has no amnesia check.
+ */
+export function playerCanRead(
+  state: GameState,
+  env: Pick<ObjCmdEnv, "msg"> = {},
+  showMsg = true,
+): boolean {
+  const p = state.actor.player;
+  if ((p.timed[TMD.BLIND] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You can't see anything.");
+    return false;
+  }
+  if (noLight(state)) {
+    if (showMsg) env.msg?.("You have no light to read by.");
+    return false;
+  }
+  if ((p.timed[TMD.CONFUSED] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You are too confused to read!");
+    return false;
+  }
+  if ((p.timed[TMD.AMNESIA] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You can't remember how to read!");
+    return false;
+  }
+  return true;
+}
+
+/**
+ * no_light (cave-view.c L913): the player's own grid is not currently seen.
+ * Shared by playerCanRead here and player_can_cast (game/spell-cmd.ts).
+ *
+ * SQUARE_SEEN is maintained by update_view, which this port drives through the
+ * `state.updateFov` host seam (game/context.ts L506, wired by the web shell at
+ * main.ts:4340). A core-only host that never installs the seam leaves SEEN
+ * clear on EVERY grid, so reading the flag there would report "no light"
+ * everywhere and make casting and reading permanently impossible - the opposite
+ * of upstream, where a lit town square is seen. So when the seam is absent the
+ * flag carries no information and no_light answers false, leaving the caller's
+ * other conditions (blindness) to decide, exactly as before this was wired.
+ * This is a seam guard, not a rule of the game: with a host that maintains the
+ * view, which is every playing configuration, the check is upstream's verbatim.
+ */
+export function noLight(state: GameState): boolean {
+  if (state.updateFov === undefined) return false;
+  return !squareIsSeen(state.chunk, state.actor.grid);
+}
+
+/**
  * player_confuse_dir (player-util.c): confusion randomises the direction
  * 75% of the time (always for "no direction").
  */
@@ -1059,8 +1174,11 @@ export function useAux(
       }
     }
 
-    /* Do effect. */
-    const chain = buildObjectEffectChain(obj.effect ?? [], state, deps.inject);
+    /* Do effect. use_aux takes its chain from object_effect(obj) (cmd-obj.c
+     * L410 `struct effect *effect = object_effect(obj);`), so an activation's
+     * effect REPLACES the base kind's - reading obj.effect here ran a
+     * Narthanc-style artifact's (empty) kind effect instead of its activation. */
+    const chain = buildObjectEffectChain(objectEffect(obj) ?? [], state, deps.inject);
     const ctx = attachGameEnv(buildEffectContext(state, deps.envDeps), {
       state,
       cast: deps.cast,
@@ -1221,23 +1339,27 @@ function commandTargetItem(cmd: PlayerCommand): ItemTargetRef | undefined {
   return undefined;
 }
 
-/** A use command over a tval filter and use kind. */
+/**
+ * A use command over a tval filter and use kind.
+ *
+ * `ready` is the command's OWN pre-use guard, because upstream does NOT share
+ * one: do_cmd_zap_rod tests obj_can_zap and says "That rod is still charging."
+ * (cmd-obj.c L851-855) while do_cmd_activate tests obj_can_activate and says
+ * "That item is still charging." (L886-890). obj_can_zap requires a rod tval,
+ * so the two are not interchangeable - using obj_can_zap for activation
+ * refused EVERY artifact and ring.
+ */
 function useCommand(
   deps: ObjCmdDeps,
   filter: (obj: GameObject) => boolean,
   use: UseKind,
+  ready?: { ok: (obj: GameObject) => boolean; msg: string },
 ) {
   return (state: GameState, cmd: PlayerCommand): number => {
     const found = commandObject(state, cmd);
     if (!found || !filter(found.obj)) return 0;
-    if (use === USE.TIMEOUT && !objCanZap(found.obj)) {
-      /* do_cmd_zap_rod (cmd-obj.c L852) and do_cmd_activate (L886) use
-       * distinct still-charging wording. */
-      deps.env?.msg?.(
-        tvalIsRod(found.obj.tval)
-          ? "That rod is still charging."
-          : "That item is still charging.",
-      );
+    if (ready && !ready.ok(found.obj)) {
+      deps.env?.msg?.(ready.msg);
       return 0;
     }
     if (use === USE.CHARGE && found.obj.pval <= 0) {
@@ -1283,8 +1405,10 @@ export function installObjCommands(
   deps: ObjCmdDeps,
 ): void {
   /* player_get_resume_normal_shape gates the hands/voice commands
-   * (cmd-obj.c: takeoff/wield/drop, scroll/staff/wand/rod/activate);
-   * eating and quaffing stay possible in any shape. */
+   * (cmd-obj.c: takeoff/wield/drop, scroll/staff/wand/rod/activate AND
+   * quaff - do_cmd_quaff_potion opens with the resume gate at cmd-obj.c L923).
+   * do_cmd_eat_food (L899) is the one use command with NO gate, so eating stays
+   * possible in any shape. */
   const gated = (
     fn: (state: GameState, cmd: PlayerCommand) => number,
   ): ((state: GameState, cmd: PlayerCommand) => number) => {
@@ -1430,13 +1554,39 @@ export function installObjCommands(
     "eat",
     useCommand(deps, (o) => tvalIsEdible(o.tval), USE.SINGLE),
   );
+  /* do_cmd_quaff_potion (cmd-obj.c L917-931): the resume-shape gate, THEN the
+   * potion pick. Unlike do_cmd_eat_food it is gated. */
   registry.register(
     "quaff",
-    useCommand(deps, (o) => tvalIsPotion(o.tval), USE.SINGLE),
+    gated(useCommand(deps, (o) => tvalIsPotion(o.tval), USE.SINGLE)),
   );
+  /*
+   * do_cmd_read_scroll (cmd-obj.c L740-758): resume shape, THEN
+   * player_can_read(player, true) - blind / no light / confused / amnesia each
+   * refuse with their own message and cost no turn - and only then the scroll
+   * pick, so the read gate fires before "You have no scrolls to read.".
+   *
+   * Two lanes ported this independently and reached OPPOSITE orderings, because
+   * upstream checks the same condition in two places and each lane found one:
+   * this handler order, and `player_can_read_prereq` hung on the 'r' key entry
+   * (ui-game.c:131), which ui-game.c:596 runs BEFORE the command is ever
+   * pushed. Both are real. The prereq means a blind player pressing 'r' never
+   * reaches the shape-resume prompt at all, while anything that pushes
+   * CMD_READ_SCROLL without going through that key entry still takes
+   * resume-then-read. Collapsing the pair into a single head-of-handler guard
+   * reproduces the keyboard order but breaks the handler's own, so the guard
+   * stays here in C order and the prereq belongs at the port's dispatch layer
+   * next to the key binding - the same split playercan applied to cast/study.
+   */
   registry.register(
     "read",
-    gated(useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE)),
+    gated((state, cmd) => {
+      if (!playerCanRead(state, deps.env ?? {})) return 0;
+      return useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE)(
+        state,
+        cmd,
+      );
+    }),
   );
   registry.register(
     "use-staff",
@@ -1446,20 +1596,26 @@ export function installObjCommands(
     "aim-wand",
     gated(useCommand(deps, (o) => tvalIsWand(o.tval), USE.CHARGE)),
   );
+  /* do_cmd_zap_rod (cmd-obj.c L832): tval_is_rod filter, obj_can_zap guard. */
   registry.register(
     "zap-rod",
-    gated(useCommand(deps, (o) => tvalIsRod(o.tval), USE.TIMEOUT)),
+    gated(
+      useCommand(deps, (o) => tvalIsRod(o.tval), USE.TIMEOUT, {
+        ok: objCanZap,
+        msg: "That rod is still charging.",
+      }),
+    ),
   );
-  /* obj_can_activate: an activation and not recharging. */
+  /* do_cmd_activate (cmd-obj.c L866): obj_is_activatable filter (a WEARABLE
+   * with an object_effect - which includes the kind-effect rings that have no
+   * activation), then the obj_can_activate guard. */
   registry.register(
     "activate",
     gated(
-      useCommand(
-        deps,
-        (o) =>
-          (o.activation !== null || o.artifact !== null) && o.timeout === 0,
-        USE.TIMEOUT,
-      ),
+      useCommand(deps, objIsActivatable, USE.TIMEOUT, {
+        ok: objCanActivate,
+        msg: "That item is still charging.",
+      }),
     ),
   );
 

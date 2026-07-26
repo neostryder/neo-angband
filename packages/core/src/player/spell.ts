@@ -229,6 +229,13 @@ export function spellBookCountSpells(
 }
 
 /** spell_okay_to_cast. */
+/**
+ * spell_okay_list (player-spell.c L320) is upstream's "does ANY spell in this
+ * list pass `spell_test`" fold over spellOkayToCast / spellOkayToStudy. Its one
+ * caller is spell_menu_new (ui-spell.c:233), which refuses to build the menu
+ * when no listed spell qualifies; the web shell's equivalent is the
+ * `items.every((it) => it.disabled)` check in castSpell / studySpell.
+ */
 export function spellOkayToCast(player: Player, spell: number): boolean {
   return ((player.spellFlags[spell] ?? 0) & PY_SPELL.LEARNED) !== 0;
 }
@@ -247,6 +254,42 @@ export function spellOkayToStudy(player: Player, spellIndex: number): boolean {
 export function spellOkayToBrowse(player: Player, spellIndex: number): boolean {
   const spell = spellByIndex(player.cls, spellIndex);
   return spell !== null && spell.level < 99;
+}
+
+/**
+ * obj_can_browse (obj-util.c L775) over obj_kind_can_browse (L762): a book of
+ * one of this class's own realms. The BROWSE book picker's item_tester
+ * (ui-spell.c L340).
+ */
+export function objCanBrowse(player: Player, obj: GameObject): boolean {
+  return playerObjectToBook(player, obj) !== null;
+}
+
+/**
+ * obj_can_cast_from (obj-util.c L780): browsable AND holding at least one
+ * spell that passes spell_okay_to_cast. This - not obj_can_browse - is
+ * do_cmd_cast's book item_tester (cmd-obj.c L1129), so a book of the right
+ * realm whose spells are all still unlearned is NEVER offered, and the
+ * remaining books keep the letters they would have in the C.
+ */
+export function objCanCastFrom(player: Player, obj: GameObject): boolean {
+  return (
+    objCanBrowse(player, obj) &&
+    spellBookCountSpells(player, obj, spellOkayToCast) > 0
+  );
+}
+
+/**
+ * obj_can_study (obj-util.c L786): browsable AND holding at least one spell
+ * that passes spell_okay_to_study. do_cmd_study_spell's / do_cmd_study_book's
+ * book item_tester (cmd-obj.c L1187 / L1215) and the filter
+ * player_book_has_unlearned_spells scans with (player-util.c L1330).
+ */
+export function objCanStudy(player: Player, obj: GameObject): boolean {
+  return (
+    objCanBrowse(player, obj) &&
+    spellBookCountSpells(player, obj, spellOkayToStudy) > 0
+  );
 }
 
 /** average_spell_stat: the mean casting-stat index over the class realms. */

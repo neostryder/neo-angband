@@ -73,12 +73,15 @@ import {
   objectCopy,
   objectWeightOne,
   removeObjectCurse,
+  tvalCanHaveCharges,
+  tvalCanHaveTimeout,
+  tvalIsAmmo,
   tvalIsMoney,
 } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { objectValue } from "../obj/value";
 import { OBJ_NOTICE, objectLearnOnWield } from "../obj/knowledge";
-import { OBJ_MOD_MAX } from "../obj/types";
+import { MAX_PVAL, OBJ_MOD_MAX } from "../obj/types";
 import type { FlagSet } from "../bitflag";
 import type { Artifact, Curse, EgoItem, ObjectKind } from "../obj/types";
 import type { FlavorKnowledge } from "../obj/knowledge";
@@ -92,6 +95,7 @@ import { scatterExt } from "../world/scatter";
 import { deleteMonster, monsterMax, squareIsEmpty } from "./context";
 import type { GameState } from "./context";
 import { dropNear, floorPile } from "./floor";
+import { objectIsInQuiver } from "./gear";
 import { placeNewMonster } from "./mon-place";
 import type { MonPlaceDeps } from "./mon-place";
 import { placeTrap, squareIsTrap, squareIsWebbed } from "./trap";
@@ -1278,6 +1282,103 @@ export function wizDisplayItem(
     flags: obj.flags,
     flagsKnown: (known ?? obj).flags,
   };
+}
+
+/** The outcome of wizChangeItemQuantity, for the shell's feedback. */
+export interface WizQuantityResult {
+  /** The number the stack ended up at (unchanged when the edit was refused). */
+  number: number;
+  /** The ceiling MIN(max_stack, charge limit, quiver limit) that was applied. */
+  max: number;
+  /** Whether obj.number actually changed. */
+  changed: boolean;
+}
+
+/**
+ * do_cmd_wiz_change_item_quantity (CMD_WIZ_CHANGE_ITEM_QUANTITY, cmd-wizard.c
+ * L484-575), the [q] entry of the do_cmd_wiz_play_item session (L1771-1789).
+ *
+ * Refuses an equipped item ("Can not change the quantity of an equipped item.",
+ * L495) and any artifact ("Can not modify the quantity of an artifact.", L501),
+ * then computes the ceiling nmax the same three ways upstream does (L505-517):
+ *   - obj->kind->base->max_stack, always;
+ *   - for a charge-carrying device with pval > 0, (MAX_PVAL * number) / pval, so
+ *     the scaled-up charges cannot overflow MAX_PVAL;
+ *   - for a quiver item, quiver_slot_size / (ammo ? 1 : thrown_quiver_mult).
+ * The requested count is then clamped to [1, nmax] (L520 MAX(1, MIN(nmax, n))).
+ *
+ * Upstream warts preserved: charges and timeouts are rescaled by INTEGER
+ * division `(pval * n) / number` BEFORE obj->number is assigned (L524-530), so
+ * both reads use the OLD number; and the whole body is skipped when n equals the
+ * current number, leaving charges untouched. `update` false suppresses only the
+ * weight/upkeep refresh (L551-570), never the number change itself.
+ *
+ * The PU_BONUS / PU_INVEN / PN_COMBINE / PR_* upkeep bits are UI (the shell's);
+ * the carried-weight arithmetic upstream does alongside them IS state and is
+ * applied here.
+ */
+export function wizChangeItemQuantity(
+  state: GameState,
+  params: {
+    obj: GameObject;
+    /** The gear handle, when the item is carried (absent for a floor item). */
+    handle?: number;
+    /** cmd_get_arg_number "quantity". */
+    quantity: number;
+    /** cmd_get_arg_choice "update"; absent behaves as upstream's !CMD_OK. */
+    update?: boolean;
+  },
+  deps: WizardDeps,
+): WizQuantityResult | null {
+  if (!wizardEnabled(deps) || !deps.makeDeps) return null;
+  const { obj, handle } = params;
+  const p = state.actor.player;
+
+  /* cmd-wizard.c L494-497: an explicitly supplied equipped item is refused. */
+  if (handle !== undefined && p.equipment.includes(handle)) {
+    deps.msg?.("Can not change the quantity of an equipped item.");
+    return null;
+  }
+  /* L499-503: artifacts are one of a kind. */
+  if (obj.artifact) {
+    deps.msg?.("Can not modify the quantity of an artifact.");
+    return null;
+  }
+
+  const z = deps.makeDeps.constants;
+  let nmax = obj.kind.base.maxStack;
+  if (tvalCanHaveCharges(obj.tval) && obj.pval > 0 && obj.number > 0) {
+    nmax = Math.min(Math.trunc((MAX_PVAL * obj.number) / obj.pval), nmax);
+  }
+  if (handle !== undefined && objectIsInQuiver(state.gear, handle)) {
+    nmax = Math.min(
+      Math.trunc(
+        z.quiverSlotSize / (tvalIsAmmo(obj.tval) ? 1 : z.thrownQuiverMult),
+      ),
+      nmax,
+    );
+  }
+
+  const n = Math.max(1, Math.min(nmax, params.quantity));
+  if (n === obj.number) return { number: obj.number, max: nmax, changed: false };
+
+  /* L523-530: rescale charges / timeouts against the OLD number. */
+  if (tvalCanHaveCharges(obj.tval) && obj.number > 0) {
+    obj.pval = Math.trunc((obj.pval * n) / obj.number);
+  }
+  if (tvalCanHaveTimeout(obj.tval) && obj.number > 0) {
+    obj.timeout = Math.trunc((obj.timeout * n) / obj.number);
+  }
+
+  /* L532-570: with "update" absent or true, restate the carried weight. */
+  if ((params.update ?? true) && handle !== undefined) {
+    const one = objectWeightOne(obj, deps.curses);
+    p.upkeep.totalWeight -= obj.number * one;
+    p.upkeep.totalWeight += n * one;
+  }
+
+  obj.number = n;
+  return { number: n, max: nmax, changed: true };
 }
 
 /**

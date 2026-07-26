@@ -87,6 +87,12 @@ import {
   tvalIsMeleeWeapon,
   tvalIsLight,
   objCanRefill,
+  objCanWear,
+  objIsActivatable,
+  objCanBrowse,
+  objCanCastFrom,
+  objCanStudy,
+  playerBookHasUnlearnedSpells,
   objHasInscrip,
   objectIsIgnored,
   OF,
@@ -149,6 +155,10 @@ import {
   EF,
   OBJ_PROPERTY,
   runeAutoinscribe,
+  playerRandomName,
+  buildProb,
+  RANDNAME_TOLKIEN,
+  playerCanCast,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -714,6 +724,21 @@ async function choosePlayerEffect(chain: Effect | null): Promise<boolean> {
 const effectRegistry = game.effects;
 const features = booted.registries.features;
 const constants = booted.registries.constants;
+/**
+ * build_prob over names.txt section RANDNAME_TOLKIEN, the corpus
+ * player_random_name (player.c:375) draws from. Built once and memoised; null
+ * when the pack ships no names.json, in which case playerRandomName no-ops.
+ */
+const tolkienNameProbs = ((): (() => ReturnType<typeof buildProb> | null) => {
+  let cached: ReturnType<typeof buildProb> | null | undefined;
+  return () => {
+    if (cached === undefined) {
+      const words = booted.registries.nameSections.get(RANDNAME_TOLKIEN);
+      cached = words && words.length > 0 ? buildProb(words) : null;
+    }
+    return cached;
+  };
+})();
 // A birth is pending when this load started fresh but the character has not
 // been chosen yet (the birth screen is about to show). The game running behind
 // it is a throwaway default; saving it would poison the new slot (its bytes and
@@ -1897,7 +1922,12 @@ async function activateItem(): Promise<void> {
     const handle = player.equipment[i] ?? 0;
     if (!handle) continue;
     const obj = gearGet(state.gear, handle);
-    if (!obj || !obj.activation) continue;
+    /* do_cmd_activate's item_tester is obj_is_activatable (cmd-obj.c L879):
+     * wearable AND object_effect(obj). Testing obj.activation alone hid the
+     * rings whose effect comes from the KIND (Flames / Acid / Ice / Lightning /
+     * Open Wounds / Digging carry `effect:` and no `act:` in object.txt), so
+     * those could never be activated. */
+    if (!obj || !objIsActivatable(obj)) continue;
     // OLIST_FAIL failure column for activatable gear (ui-object.c L212-221).
     const fail = deviceFailColumn(state, obj, isKindAware);
     const name = describeObject(state, obj);
@@ -1991,6 +2021,27 @@ async function uninscribeItem(): Promise<void> {
   if (!ref) return;
   commandBuffer.push({ code: "uninscribe", args: { ...ref } });
   advance();
+}
+
+/**
+ * player_can_refuel (player-util.c L1227) via player_can_refuel_prereq (L1287),
+ * the 'F' key's prereq (ui-game.c:132). Checked at the KEY, before the command
+ * is pushed (ui-game.c:596), which means do_cmd_refill's own two guards below
+ * are unreachable from 'F' and only fire on the context-menu Refill row
+ * (ui-context.c:725, offered on any obj_can_refill fuel item regardless of what
+ * is worn) - so this prereq must sit on the binding, not inside refuelItem.
+ *
+ * Note the message is "refuelled", not do_cmd_refill's "refilled", and that
+ * player_can_refuel tests OF_TAKES_FUEL only, ignoring OF_NO_FUEL.
+ */
+function playerCanRefuelPrereq(): boolean {
+  const player = state.actor.player;
+  const lightSlot = player.body.slots.findIndex((s) => s.type === "LIGHT");
+  const light =
+    lightSlot >= 0 ? gearGet(state.gear, player.equipment[lightSlot] ?? 0) : null;
+  if (light && light.flags.has(OF.TAKES_FUEL)) return true;
+  say("Your light cannot be refuelled.");
+  return false;
 }
 
 /**
@@ -2190,8 +2241,9 @@ async function openIgnoreSetup(): Promise<void> {
 async function chooseBook(
   verb: string,
   emptyMsg = "You have no books that you can use.",
+  tester: (obj: GameObject) => boolean = () => true,
 ): Promise<number | null> {
-  const { items, handles } = magicBooks(state);
+  const { items, handles } = magicBooks(state, tester);
   if (items.length === 0) {
     say(emptyMsg);
     return null;
@@ -2208,12 +2260,20 @@ async function chooseBook(
 /** Cast/pray (m/p): choose book, choose spell, aim if needed, dispatch cast. */
 async function castSpell(): Promise<void> {
   const player = state.actor.player;
-  if (!player.cls.magic.totalSpells) {
-    // player_can_cast, no magic (player-util.c:1091).
-    say("You cannot pray or produce magics.");
-    return;
-  }
-  const handle = await chooseBook("Cast", "There are no spells you can cast.");
+  /* player_can_cast_prereq (player-util.c:1246), the 'm' key's prereq
+   * (ui-game.c:174): checked before the book-choose menu ever opens, matching
+   * upstream's key-dispatch gate (do_cmd_cast, cmd-obj.c L1122-1124, runs this
+   * before cmd_get_spell). The "cast" command itself re-checks this
+   * (core/game/spell-cmd.ts), so this is belt-and-suspenders for the message
+   * ordering, not a new rule. */
+  if (!playerCanCast(state, { msg: say })) return;
+  /* do_cmd_cast's book item_tester is obj_can_cast_from (cmd-obj.c L1129): a
+   * book of this realm holding at least one LEARNED spell. */
+  const handle = await chooseBook(
+    "Cast",
+    "There are no spells you can cast.",
+    (o) => objCanCastFrom(player, o),
+  );
   if (handle === null) return;
   const bookObj = gearGet(state.gear, handle);
   if (!bookObj) return;
@@ -2275,18 +2335,23 @@ async function castSpell(): Promise<void> {
 /** Study (G): learn a spell. Choose-spell classes pick; others learn at random. */
 async function studySpell(): Promise<void> {
   const player = state.actor.player;
-  if (!player.cls.magic.totalSpells) {
-    // player_can_cast, no magic (player-util.c:1091).
-    say("You cannot pray or produce magics.");
-    return;
-  }
+  /* player_can_study_prereq (player-util.c:1255), the 'G' key's prereq
+   * (ui-game.c:176): player_can_study (L1120) calls player_can_cast FIRST,
+   * before its own new-spells check, so a blind/no_light/confused player
+   * never reaches "You cannot learn any new spells!" - they get the cast
+   * failure message instead. */
+  if (!playerCanCast(state, { msg: say })) return;
   if (player.upkeep.newSpells <= 0) {
     say("You cannot learn any new spells!");
     return;
   }
+  /* do_cmd_study_spell / do_cmd_study_book filter by obj_can_study (cmd-obj.c
+   * L1187 / L1215): a book of this realm holding a spell in level range that is
+   * not learned yet. */
   const handle = await chooseBook(
     "Study",
     "You cannot learn any new spells from the books you have.",
+    (o) => objCanStudy(player, o),
   );
   if (handle === null) return;
   const args: Record<string, unknown> = { handle };
@@ -2337,7 +2402,13 @@ const SPELL_HEADER = `${"Name".padEnd(33)}Lv Mana Fail Info`;
  * "no books that you can read").
  */
 async function browseCmd(): Promise<void> {
-  const handle = await chooseBook("Browse", "You have no books that you can read.");
+  /* textui_spell_browse filters by obj_can_browse (ui-spell.c L340) - any book
+   * of one of this class's realms. */
+  const handle = await chooseBook(
+    "Browse",
+    "You have no books that you can read.",
+    (o) => objCanBrowse(state.actor.player, o),
+  );
   if (handle === null) return;
   const bookObj = gearGet(state.gear, handle);
   if (!bookObj) return;
@@ -3699,6 +3770,14 @@ async function driveRest(nArg: number): Promise<void> {
   // player_resting_set_count + the "stop if told to" guard (cmd-cave.c:1645).
   if (n === 0 || (n < 0 && !restingIsSpecial(n))) return;
 
+  // cmd-cave.c:1662-1664: every self-continuation of a SPECIAL rest ('&', '*',
+  // '!') calls player_set_resting_repeat_count(player, 0), so a conditional rest
+  // wipes the remembered count. Since n never changes across a special rest's
+  // turns, doing it once here is equivalent to upstream's per-turn clear - and
+  // it happens even when the rest ends on its very first turn, because upstream
+  // reaches that branch whenever n is special regardless of the count.
+  if (restingIsSpecial(n)) restRepeatCount = 0;
+
   const rest: RestingState = { count: Math.min(n, 9999), turnsRested: 0 };
   (state as StateWithRest).resting = rest;
 
@@ -4363,7 +4442,10 @@ async function useGenericCmd(): Promise<void> {
     const handle = player.equipment[i] ?? 0;
     if (!handle) continue;
     const obj = gearGet(state.gear, handle);
-    if (!obj || !obj.activation) continue;
+    /* obj_is_useable admits an equipped item with an object_effect, and
+     * do_cmd_use routes it to do_cmd_activate (cmd-obj.c L987) - the kind-effect
+     * rings included, not just items with an `act:`. */
+    if (!obj || !objIsActivatable(obj)) continue;
     rows.push({ label: describeObject(state, obj), color: UI_TEXT });
     picks.push({ code: "activate", handle });
   }
@@ -4402,7 +4484,7 @@ async function swapWeaponCmd(): Promise<void> {
   // No @0-tagged item: fall back to the normal wield selection.
   await useItem(
     "wield",
-    (o) => tvalIsWearable(o.tval),
+    (o) => objCanWear(state, o),
     "Wear or wield which item?",
     "You have nothing to wear or wield.",
     { inven: true, floor: true, quiver: true },
@@ -4796,7 +4878,14 @@ const SIDEBAR_W = 13; // classic Angband status column width.
  * so the status line can label Poisoned/Afraid/Fed etc). Options the web does
  * not surface fall back to the model's defaults. */
 function displayDeps() {
-  return { timedEffects: players.timed, unignoring: state.ignore.unignoring };
+  return {
+    timedEffects: players.timed,
+    unignoring: state.ignore.unignoring,
+    /* prt_study (ui-display.c L1235) colours the "Study" indicator L_DARK when
+     * the player has spell slots but no book holding a studiable spell. The dep
+     * defaulted to true, so the indicator was always WHITE. */
+    bookHasUnlearnedSpells: playerBookHasUnlearnedSpells(state),
+  };
 }
 
 /**
@@ -5730,7 +5819,9 @@ window.addEventListener("keydown", (ev) => {
       // Item commands (cmd_item, ui-game.c:118-133).
       { o: "{", act: () => void openModal(inscribeItem) },
       { o: "}", act: () => void openModal(uninscribeItem) },
-      { o: "w", act: () => void openModal(() => useItem("wield", (t) => tvalIsWearable(t.tval), "Wear or wield which item?", "You have nothing to wear or wield.", { inven: true, floor: true, quiver: true })) },
+      // do_cmd_wield's item_tester is obj_can_wear = wield_slot(obj) >= 0
+      // (cmd-obj.c L284, obj-util.c L810) - the slot lookup, not the tval set.
+      { o: "w", act: () => void openModal(() => useItem("wield", (t) => objCanWear(state, t), "Wear or wield which item?", "You have nothing to wear or wield.", { inven: true, floor: true, quiver: true })) },
       { o: "t", r: "T", act: () => void openModal(takeOffItem) },
       { o: "I", act: () => void openModal(() => inspectItem()) },
       { o: "d", act: () => void openModal(() => useItem("drop", () => true, "Drop which item?", "You have nothing to drop.")) },
@@ -5742,7 +5833,8 @@ window.addEventListener("keydown", (ev) => {
       { o: "E", act: () => void openModal(() => useItem("eat", (t) => tvalIsEdible(t.tval), "Eat which food? ", "You have no food to eat.", { inven: true, floor: true })) },
       { o: "q", act: () => void openModal(() => useItem("quaff", (t) => tvalIsPotion(t.tval), "Quaff which potion? ", "You have no potions from which to quaff.", { inven: true, floor: true })) },
       { o: "r", act: () => void openModal(() => useItem("read", (t) => tvalIsScroll(t.tval), "Read which scroll? ", "You have no scrolls to read.", { inven: true, floor: true })) },
-      { o: "F", act: () => void openModal(refuelItem) },
+      // player_can_refuel_prereq gates 'F' (ui-game.c:132) before CMD_REFILL.
+      { o: "F", act: () => { if (playerCanRefuelPrereq()) void openModal(refuelItem); else render(); } },
       { o: "U", r: "X", act: () => void openModal(useGenericCmd) },
       // General actions (cmd_action, ui-game.c:141-153).
       { o: "D", act: () => void openModal(disarmCmd) },
@@ -6144,6 +6236,9 @@ async function maybeBirth(): Promise<void> {
         : null,
       deps: birthDeps,
       historyFor,
+      // player_random_name (player.c:375) for the name field's '*' key and the
+      // name finish_with_random_choices fills in. Draws on the same game RNG.
+      randomName: () => playerRandomName(state.rng, tolkienNameProbs()),
       // Seed the '=' birth-options editor with the previous character's choices
       // so a New Game defaults to them (as upstream keeps the last birth opts).
       ...(birthChoice?.birthOptions ? { birthOptions: birthChoice.birthOptions } : {}),

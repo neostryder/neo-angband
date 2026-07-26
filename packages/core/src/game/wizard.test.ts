@@ -37,6 +37,7 @@ import type { MonPlaceDeps } from "./mon-place";
 import type { TrapDeps } from "./trap";
 import { squareTrap } from "./trap";
 import { floorCarry, floorPile } from "./floor";
+import { gearAdd } from "./gear";
 import { knownObject, squareIsKnown } from "./known";
 import { updateMonsterDistances } from "./context";
 import type { GameState } from "./context";
@@ -49,6 +50,7 @@ import {
   wizAcquire,
   wizAdvance,
   wizBanish,
+  wizChangeItemQuantity,
   wizCheatDeath,
   wizCreateObj,
   wizCreateTrap,
@@ -321,6 +323,118 @@ describe("do_cmd_wiz_curse_item (L1004)", () => {
       deps,
     );
     expect(removed).toBe(true);
+  });
+});
+
+describe("do_cmd_wiz_change_item_quantity (cmd-wizard.c L484)", () => {
+  /** An ordinary wand (charge-carrying, stackable) prepped at depth 5. */
+  function wand(state: GameState): GameObject {
+    const kind = objReg.kinds.find(
+      (k) => k.tval === TV.WAND && k.kidx < objReg.ordinaryKindCount,
+    )!;
+    return objectPrep(state.rng, objReg, constants, kind, 5, "average");
+  }
+
+  it("sets the number and scales charges by integer division (L523-527)", () => {
+    const state = makeState();
+    const obj = wand(state);
+    obj.number = 2;
+    obj.pval = 7;
+    const res = wizChangeItemQuantity(
+      state,
+      { obj, quantity: 5 },
+      wizDeps(state, true),
+    );
+    expect(res).not.toBeNull();
+    expect(obj.number).toBe(5);
+    /* (7 * 5) / 2 == 17 after truncation, NOT 17.5 and not a per-item rescale. */
+    expect(obj.pval).toBe(17);
+  });
+
+  it("clamps to [1, max_stack] (L520)", () => {
+    const state = makeState();
+    const obj = wand(state);
+    obj.pval = 0; /* no charge ceiling, so max_stack is the only bound */
+    const max = obj.kind.base.maxStack;
+    expect(
+      wizChangeItemQuantity(state, { obj, quantity: 9999 }, wizDeps(state, true))
+        ?.number,
+    ).toBe(max);
+    expect(
+      wizChangeItemQuantity(state, { obj, quantity: -4 }, wizDeps(state, true))
+        ?.number,
+    ).toBe(1);
+  });
+
+  it("caps the count so scaled charges cannot exceed MAX_PVAL (L507-511)", () => {
+    const state = makeState();
+    const obj = wand(state);
+    obj.number = 1;
+    obj.pval = 1000;
+    /* nmax = MIN((32767 * 1) / 1000, max_stack) = MIN(32, max_stack). */
+    const expected = Math.min(32, obj.kind.base.maxStack);
+    const res = wizChangeItemQuantity(
+      state,
+      { obj, quantity: 9999 },
+      wizDeps(state, true),
+    );
+    expect(res?.max).toBe(expected);
+    expect(obj.number).toBe(expected);
+  });
+
+  it("refuses an artifact with upstream's message (L499-503)", () => {
+    const state = makeState();
+    const msgs: string[] = [];
+    const obj = wand(state);
+    obj.artifact = objReg.artifacts.find((a) => a) ?? null;
+    obj.number = 1;
+    expect(
+      wizChangeItemQuantity(state, { obj, quantity: 4 }, wizDeps(state, true, msgs)),
+    ).toBeNull();
+    expect(obj.number).toBe(1);
+    expect(msgs).toContain("Can not modify the quantity of an artifact.");
+  });
+
+  it("leaves an unchanged count entirely alone, charges included (L522)", () => {
+    const state = makeState();
+    const obj = wand(state);
+    obj.number = 3;
+    obj.pval = 5;
+    const res = wizChangeItemQuantity(
+      state,
+      { obj, quantity: 3 },
+      wizDeps(state, true),
+    );
+    expect(res?.changed).toBe(false);
+    expect(obj.pval).toBe(5);
+  });
+
+  it("is a no-op outside wizard mode", () => {
+    const state = makeState();
+    const obj = wand(state);
+    obj.number = 1;
+    expect(
+      wizChangeItemQuantity(state, { obj, quantity: 6 }, wizDeps(state, false)),
+    ).toBeNull();
+    expect(obj.number).toBe(1);
+  });
+
+  it("refuses a supplied equipped-item handle with upstream's message (L494-497)", () => {
+    const state = makeState();
+    const msgs: string[] = [];
+    const obj = wand(state);
+    obj.number = 1;
+    const handle = gearAdd(state.gear, obj);
+    state.actor.player.equipment[0] = handle;
+    expect(
+      wizChangeItemQuantity(
+        state,
+        { obj, handle, quantity: 4 },
+        wizDeps(state, true, msgs),
+      ),
+    ).toBeNull();
+    expect(obj.number).toBe(1);
+    expect(msgs).toContain("Can not change the quantity of an equipped item.");
   });
 });
 

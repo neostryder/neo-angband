@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
-import { OF, TMD, TV } from "../generated";
+import { OF, SQUARE, TMD, TV } from "../generated";
 import { loc } from "../loc";
 import { Rng } from "../rng";
 import { EffectRegistry } from "../effects/interpreter";
@@ -45,9 +45,14 @@ import {
   invenTakeoff,
   invenWield,
   numberCharging,
+  objCanActivate,
   objCanRefill,
+  objCanWear,
+  objCanZap,
   objHasInscrip,
+  objIsActivatable,
   objNeedsAim,
+  objectEffect,
   refillLamp,
   runeAutoinscribe,
   useAux,
@@ -126,6 +131,9 @@ function makeNamed(name: string, tval: number): GameObject {
     "average",
   );
 }
+
+/** The "fox" shape, for the player_get_resume_normal_shape gates. */
+const fox = plReg.shapes.find((s) => s.name === "fox")!;
 
 /** Max the device skill so check_devices cannot fizzle. */
 function maxDeviceSkill(state: GameState): void {
@@ -363,6 +371,23 @@ describe("useAux (cmd-obj.c use_aux)", () => {
     expect(msgs.some((m) => m.includes("glows"))).toBe(false);
   });
 
+  it("runs the ACTIVATION's effect chain in place of the kind's own effect (cmd-obj.c L410 object_effect)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    maxDeviceSkill(state);
+    const p = state.actor.player;
+    p.mhp = 30;
+    p.chp = 10;
+    const healEffect = makeNamed("Cure Light Wounds", TV.POTION).effect;
+    /* Flames' own kind effect is a FIRE ball + TIMED_INC (needs a target); if
+     * use_aux read obj.effect instead of object_effect(obj), it would run
+     * THAT chain instead of the activation's heal, and chp would not rise. */
+    const ring = makeNamed("Flames", TV.RING);
+    ring.activation = { effect: healEffect } as never;
+    const h = carry(state, ring);
+    useAux(state, ring, USE.TIMEOUT, makeDeps(state), { handle: h });
+    expect(p.chp).toBeGreaterThan(10);
+  });
+
   it("device failure spends the turn but no charge", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     /* Device skill 0 vs a deep item: fail rate is high; force a fail
@@ -460,6 +485,131 @@ describe("registered commands", () => {
     processPlayer(state, registry);
     /* Free of protection, the sleep potion paralyses. */
     expect(state.actor.player.timed[TMD.PARALYZED]!).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * W1-cmdwiz GAP-1/GAP-2: the two gates do_cmd_quaff_potion (cmd-obj.c L917) and
+ * do_cmd_read_scroll (cmd-obj.c L739) run BEFORE cmd_get_item.
+ */
+describe("quaff / read command gates (cmd-obj.c L739 / L917)", () => {
+  /** Light the player's grid so player_can_read's no_light check passes. */
+  function lightGrid(state: GameState): void {
+    state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN);
+  }
+
+  function readState(): {
+    state: GameState;
+    handle: number;
+    msgs: string[];
+    run: () => number;
+  } {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    lightGrid(state);
+    const scroll = makeNamed("Light", TV.SCROLL);
+    const handle = carry(state, scroll);
+    const msgs: string[] = [];
+    const registry = createDefaultRegistry();
+    installObjCommands(
+      registry,
+      makeDeps(state, { env: { msg: (t: string) => msgs.push(t) } }),
+    );
+    const run = (): number =>
+      registry.get("read")!(state, { code: "read", args: { handle } });
+    return { state, handle, msgs, run };
+  }
+
+  it("do_cmd_quaff_potion is gated by player_get_resume_normal_shape (L923)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const p = state.actor.player;
+    p.mhp = 30;
+    p.chp = 10;
+    p.shape = fox;
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    const h = carry(state, potion);
+
+    const registry = createDefaultRegistry();
+    /* A declined "Change back and continue?" must abort the quaff: no heal, no
+     * potion consumed, no energy - upstream returns before cmd_get_item. */
+    installObjCommands(registry, makeDeps(state, { env: { confirm: () => false } }));
+    expect(registry.get("quaff")!(state, { code: "quaff", args: { handle: h } })).toBe(0);
+    expect(p.chp).toBe(10);
+    expect(gearGet(state.gear, h)).not.toBeNull();
+    expect(p.shape).toBe(fox);
+  });
+
+  it("do_cmd_eat_food keeps NO shape gate (cmd-obj.c L899)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.actor.player.shape = fox;
+    const food = makeNamed("& Ration~ of Food", TV.FOOD);
+    const h = carry(state, food);
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state, { env: { confirm: () => false } }));
+    /* Eating is possible in any form, so the declined prompt is never asked and
+     * the food is consumed while still a fox. */
+    expect(registry.get("eat")!(state, { code: "eat", args: { handle: h } })).toBe(
+      state.z.moveEnergy,
+    );
+    expect(state.actor.player.shape).toBe(fox);
+  });
+
+  it("player_can_read refuses a blind reader with its own message (L1168)", () => {
+    const { state, handle, msgs, run } = readState();
+    state.actor.player.timed[TMD.BLIND] = 10;
+    expect(run()).toBe(0);
+    expect(msgs).toContain("You can't see anything.");
+    expect(gearGet(state.gear, handle)).not.toBeNull();
+  });
+
+  it("player_can_read refuses reading in the dark (no_light, L1173)", () => {
+    const { state, handle, msgs, run } = readState();
+    /* noLight only trusts SQUARE_SEEN when a host maintains the view, because a
+     * core-only host that never installs the seam leaves SEEN clear on every
+     * grid and would read as "no light" everywhere. Clearing the flag by hand
+     * therefore only models darkness once the seam is present, so install a
+     * no-op one: the flag is set explicitly here, nothing needs recomputing. */
+    state.updateFov = () => {};
+    state.chunk.sqinfoOff(state.actor.grid, SQUARE.SEEN);
+    expect(run()).toBe(0);
+    expect(msgs).toContain("You have no light to read by.");
+    expect(gearGet(state.gear, handle)).not.toBeNull();
+  });
+
+  it("player_can_read refuses a confused reader (L1180)", () => {
+    const { state, handle, msgs, run } = readState();
+    state.actor.player.timed[TMD.CONFUSED] = 10;
+    expect(run()).toBe(0);
+    expect(msgs).toContain("You are too confused to read!");
+    expect(gearGet(state.gear, handle)).not.toBeNull();
+  });
+
+  it("player_can_read refuses an amnesiac reader (L1187)", () => {
+    const { state, handle, msgs, run } = readState();
+    state.actor.player.timed[TMD.AMNESIA] = 10;
+    expect(run()).toBe(0);
+    expect(msgs).toContain("You can't remember how to read!");
+    expect(gearGet(state.gear, handle)).not.toBeNull();
+  });
+
+  it("the read gate fires before the item filter, and a lit reader still reads", () => {
+    const { state, handle, msgs, run } = readState();
+    expect(run()).toBe(state.z.moveEnergy);
+    expect(gearGet(state.gear, handle)).toBeNull();
+    expect(msgs).not.toContain("You can't see anything.");
+  });
+
+  it("a blind reader is refused even with no scroll at all (order: L748 before L750)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    lightGrid(state);
+    state.actor.player.timed[TMD.BLIND] = 10;
+    const msgs: string[] = [];
+    const registry = createDefaultRegistry();
+    installObjCommands(
+      registry,
+      makeDeps(state, { env: { msg: (t: string) => msgs.push(t) } }),
+    );
+    expect(registry.get("read")!(state, { code: "read", args: {} })).toBe(0);
+    expect(msgs).toEqual(["You can't see anything."]);
   });
 });
 
@@ -1461,5 +1611,212 @@ describe("rune autoinscriptions (obj-ignore.c:172-225)", () => {
     autoinscribePack(state, makeDeps(state, { autoNote: () => null }));
     runeAutoinscribe(state, 0);
     expect(state.rng.getState()).toEqual(before);
+/**
+ * player_can_read (player-util.c L1166) on the live read path. Upstream gates
+ * do_cmd_read_scroll (cmd-obj.c:748) and the 'r' key's prereq (ui-game.c:131)
+ * on it; before this was wired a blind / lightless / confused / amnesiac player
+ * could read scrolls freely.
+ */
+describe("player_can_read gates the read command (player-util.c L1166)", () => {
+  /** A state whose host maintains SQUARE_SEEN, so no_light is meaningful. */
+  function litState(): GameState {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    /* Installing the seam is what makes obj-cmd's noLight read the flag. */
+    state.updateFov = (): void => {};
+    state.chunk.sqinfoOn(state.actor.grid, SQUARE["SEEN"]);
+    return state;
+  }
+
+  function readScroll(
+    state: GameState,
+    msgs: string[],
+  ): { energyUsed: number; handle: number } {
+    const scroll = makeNamed("Word of Recall", TV.SCROLL);
+    const handle = carry(state, scroll);
+    const registry = createDefaultRegistry();
+    installObjCommands(
+      registry,
+      makeDeps(state, { env: { msg: (t) => msgs.push(t) } }),
+    );
+    const commands = [{ code: "read", args: { handle } }];
+    state.nextCommand = () => commands.shift() ?? null;
+    return { energyUsed: processPlayer(state, registry).energyUsed, handle };
+  }
+
+  it("blindness blocks it with 'You can't see anything.' and costs no turn", () => {
+    const state = litState();
+    state.actor.player.timed[TMD.BLIND] = 10;
+    const msgs: string[] = [];
+    const { energyUsed, handle } = readScroll(state, msgs);
+    expect(energyUsed).toBe(0);
+    expect(msgs).toContain("You can't see anything.");
+    /* The scroll is still in the pack: nothing was consumed. */
+    expect(gearGet(state.gear, handle)).not.toBeNull();
+  });
+
+  it("no_light reports 'You have no light to read by.', not the blind line", () => {
+    const state = litState();
+    /* Clear SQUARE_SEEN on the player's grid: no_light, but not blind. */
+    state.chunk.sqinfoOff(state.actor.grid, SQUARE["SEEN"]);
+    const msgs: string[] = [];
+    expect(readScroll(state, msgs).energyUsed).toBe(0);
+    expect(msgs).toContain("You have no light to read by.");
+    expect(msgs).not.toContain("You can't see anything.");
+  });
+
+  it("blindness is reported BEFORE no_light (upstream check order)", () => {
+    const state = litState();
+    state.chunk.sqinfoOff(state.actor.grid, SQUARE["SEEN"]);
+    state.actor.player.timed[TMD.BLIND] = 10;
+    const msgs: string[] = [];
+    readScroll(state, msgs);
+    expect(msgs[0]).toBe("You can't see anything.");
+  });
+
+  it("confusion blocks it with reading's own wording, after the sight checks", () => {
+    const state = litState();
+    state.actor.player.timed[TMD.CONFUSED] = 10;
+    const msgs: string[] = [];
+    expect(readScroll(state, msgs).energyUsed).toBe(0);
+    /* NOT player_can_cast's "You are too confused!" (player-util.c:1105). */
+    expect(msgs).toContain("You are too confused to read!");
+    expect(msgs).not.toContain("You are too confused!");
+  });
+
+  it("TMD_AMNESIA blocks it - a check casting has no equivalent of", () => {
+    const state = litState();
+    state.actor.player.timed[TMD.AMNESIA] = 10;
+    const msgs: string[] = [];
+    expect(readScroll(state, msgs).energyUsed).toBe(0);
+    expect(msgs).toContain("You can't remember how to read!");
+  });
+
+  it("an unafflicted reader on a seen grid still reads normally", () => {
+    const state = litState();
+    const msgs: string[] = [];
+    const { energyUsed, handle } = readScroll(state, msgs);
+    expect(energyUsed).toBe(state.z.moveEnergy);
+    expect(msgs.join("|")).not.toContain("read");
+    /* Single-use: the scroll is gone. */
+    expect(gearGet(state.gear, handle)).toBeNull();
+  });
+
+  it("without the updateFov seam no_light cannot fire (core-only hosts)", () => {
+    /* makeState installs no seam and openField leaves SEEN clear everywhere;
+     * reading the flag there would forbid all reading. */
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const msgs: string[] = [];
+    expect(readScroll(state, msgs).energyUsed).toBe(state.z.moveEnergy);
+    expect(msgs).not.toContain("You have no light to read by.");
+  });
+});
+
+describe("object_effect / obj_is_activatable / obj_can_activate (obj-util.c L886/721/730)", () => {
+  it("objectEffect prefers the activation's effect over the kind's own effect", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const ring = makeNamed("Flames", TV.RING);
+    expect(ring.effect).not.toBeNull();
+    expect(ring.activation).toBeNull();
+    /* Give it an activation too: objectEffect must return THIS, not ring.effect. */
+    const activationEffect = [{ eff: "CURE_LIGHT_WOUNDS" }] as never;
+    ring.activation = { effect: activationEffect } as never;
+    expect(objectEffect(ring)).toBe(activationEffect);
+    expect(objectEffect(ring)).not.toBe(ring.effect);
+  });
+
+  it("objectEffect falls back to the kind effect when there is no activation", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const ring = makeNamed("Flames", TV.RING);
+    expect(objectEffect(ring)).toBe(ring.effect);
+  });
+
+  it("a ring with a kind effect and no activation IS activatable (rings of Flames/Acid/...)", () => {
+    const ring = makeNamed("Flames", TV.RING);
+    expect(ring.activation).toBeNull();
+    expect(ring.effect).not.toBeNull();
+    expect(objIsActivatable(ring)).toBe(true);
+  });
+
+  it("a non-wearable object with an effect (a potion) is NOT activatable", () => {
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    expect(potion.effect).not.toBeNull();
+    expect(objIsActivatable(potion)).toBe(false);
+  });
+
+  it("objCanActivate is gated on the timeout, not on tvalCanHaveTimeout (which is rod-only)", () => {
+    const ring = makeNamed("Flames", TV.RING);
+    expect(ring.timeout).toBe(0);
+    expect(objCanActivate(ring)).toBe(true);
+    ring.timeout = 5;
+    expect(objCanActivate(ring)).toBe(false);
+  });
+
+  it("objCanZap requires a rod tval and cannot stand in for objCanActivate", () => {
+    const ring = makeNamed("Flames", TV.RING);
+    /* This is the exact bug the WIP fixed: objCanZap always rejects a ring. */
+    expect(objCanZap(ring)).toBe(false);
+    expect(objCanActivate(ring)).toBe(true);
+  });
+});
+
+describe("obj_can_wear (obj-util.c L810): wield_slot(obj) >= 0", () => {
+  it("matches wieldSlot's own verdict for a wearable and a non-wearable tval", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const sword = makeNamed("& Dagger~", TV.SWORD);
+    expect(objCanWear(state, sword)).toBe(true);
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    expect(objCanWear(state, potion)).toBe(false);
+  });
+});
+
+describe("registered command: activate (cmd-obj.c do_cmd_activate)", () => {
+  it("activates a ring with a kind effect and no `act:` (regression: objCanZap wrongly blocked this)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const ring = makeNamed("Flames", TV.RING);
+    const h = carry(state, ring);
+    invenWield(state, h, constants);
+    const registry = createDefaultRegistry();
+    const msgs: string[] = [];
+    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+    const commands = [{ code: "activate", args: { handle: h } }];
+    state.nextCommand = () => commands.shift() ?? null;
+    const result = processPlayer(state, registry);
+    expect(result.energyUsed).toBe(state.z.moveEnergy);
+    expect(msgs).not.toContain("That item is still charging.");
+    expect(ring.timeout).toBeGreaterThan(0);
+  });
+
+  it("refuses to re-activate a ring still recharging, with activation's own wording", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const ring = makeNamed("Flames", TV.RING);
+    ring.timeout = 50;
+    const h = carry(state, ring);
+    invenWield(state, h, constants);
+    const registry = createDefaultRegistry();
+    const msgs: string[] = [];
+    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+    const commands = [{ code: "activate", args: { handle: h } }];
+    state.nextCommand = () => commands.shift() ?? null;
+    const result = processPlayer(state, registry);
+    expect(result.energyUsed).toBe(0);
+    expect(msgs).toContain("That item is still charging.");
+  });
+});
+
+describe("registered command: zap-rod (cmd-obj.c do_cmd_zap_rod)", () => {
+  it("still uses the rod's own still-charging wording", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    maxDeviceSkill(state);
+    const rod = makeNamed("Treasure Location", TV.ROD);
+    rod.timeout = 50;
+    const h = carry(state, rod);
+    const registry = createDefaultRegistry();
+    const msgs: string[] = [];
+    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+    const commands = [{ code: "zap-rod", args: { handle: h } }];
+    state.nextCommand = () => commands.shift() ?? null;
+    const result = processPlayer(state, registry);
+    expect(result.energyUsed).toBe(0);
+    expect(msgs).toContain("That rod is still charging.");
   });
 });
