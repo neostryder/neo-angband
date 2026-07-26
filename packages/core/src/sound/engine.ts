@@ -19,7 +19,7 @@
  */
 
 import type { GameEvents, MessageEventData } from "../events";
-import { MESSAGE_ENTRIES } from "../generated/message";
+import { MESSAGE_ENTRIES, MSG } from "../generated/message";
 import { SoundStatus, MAX_SOUNDS_PER_MESSAGE } from "./types";
 import type { SoundData, SoundHooks } from "./types";
 
@@ -33,10 +33,55 @@ export function djb2Hash(str: string): number {
   return hash;
 }
 
-/** message_lookup_by_name: MSG_ index for a name, or -1 (message.c). */
+/** contains_only_spaces (z-util.c:801-806): the rest is spaces and tabs only. */
+function containsOnlySpaces(s: string): boolean {
+  return /^[ \t]*$/.test(s);
+}
+
+/**
+ * strtoul(s, &pe, 10), enough of it for message_lookup_by_name: returns the
+ * parsed value and the unconsumed tail, or null when nothing was consumed
+ * (the `pe == name` case). C skips leading whitespace and accepts a sign, and
+ * `unsigned long` is 32-bit on the reference toolchain, so a negative literal
+ * wraps to a huge value and an overflow saturates at ULONG_MAX -- both of which
+ * land above MSG_MAX and are rejected by the caller, which is exactly what
+ * upstream's own test asserts for "-3" (tests/message/message.c:533-534).
+ */
+function strtoul10(s: string): { value: number; tail: string } | null {
+  const m = /^[ \t\n\v\f\r]*([+-]?)([0-9]+)/.exec(s);
+  if (!m) return null;
+  const digits = m[2]!;
+  const raw = Number(digits);
+  const value =
+    raw > 0xffffffff
+      ? 0xffffffff
+      : m[1] === "-"
+        ? (0x100000000 - (raw % 0x100000000)) % 0x100000000
+        : raw;
+  return { value, tail: s.slice(m[0].length) };
+}
+
+/**
+ * message_lookup_by_name (message.c:295-317): MSG_ index for a name, or -1.
+ *
+ * Two paths, and the numeric one comes FIRST. A name that parses as a decimal
+ * number is that message index outright, provided the remainder is blank and
+ * the value is below MSG_MAX; only if nothing numeric was consumed does the
+ * name table get searched, and that search is case-INSENSITIVE (my_stricmp at
+ * :312). Both were missing here (findings UT-001 and UT-006): the numeric path
+ * entirely, and the name comparison was `===`, so "generic" returned -1 where
+ * upstream returns MSG_GENERIC. The C reaches this from every `msgt:` directive
+ * in gamedata (init.c, mon-init.c, obj-init.c, player-timed.c), so the
+ * case-folding is load-bearing once a data reader is wired to it.
+ */
 export function messageLookupByName(name: string): number {
+  const parsed = strtoul10(name);
+  if (parsed) {
+    return containsOnlySpaces(parsed.tail) && parsed.value < MSG.MAX ? parsed.value : -1;
+  }
+  const lower = name.toLowerCase();
   for (let i = 0; i < MESSAGE_ENTRIES.length; i++) {
-    if (MESSAGE_ENTRIES[i]!.name === name) return i;
+    if (MESSAGE_ENTRIES[i]!.name.toLowerCase() === lower) return i;
   }
   return -1;
 }
