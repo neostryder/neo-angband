@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { FEAT, MFLAG } from "../generated";
-import { loc, locEq } from "../loc";
+import { bindTraps } from "../world/trap";
+import type { TrapRecordJson } from "../world/trap";
+import { placeTrap, squareIsVisibleTrap, squareRevealTrap } from "./trap";
+import { DDGRID, loc, locEq, locSum } from "../loc";
 import type { Loc } from "../loc";
 import type { GameState, PlayerCommand } from "./context";
 import { addMon, makeRace, makeState, FLOOR, GRANITE } from "./harness";
@@ -10,11 +14,9 @@ import {
   exploreAction,
   findPath,
   installRunning,
-  pfToPath,
   pathNearestUnknown,
   pathfindAction,
   pathfindDirectionTo,
-  preparePfdistances,
   runAction,
 } from "./player-path";
 import { createDefaultRegistry } from "./player-turn";
@@ -200,6 +202,26 @@ describe("pathfind_direction_to (player-path.c L1347)", () => {
   });
 });
 
+/**
+ * Replay a path the way run_step does: steps come back in REVERSE order, so
+ * index length-1 is the first move. Returns the grids stepped through,
+ * including the start.
+ */
+function walkSteps(start: Loc, steps: number[]): Loc[] {
+  const grids: Loc[] = [start];
+  let g = start;
+  for (let i = steps.length - 1; i >= 0; i--) {
+    g = locSum(g, DDGRID[steps[i] as number] as Loc);
+    grids.push(g);
+  }
+  return grids;
+}
+
+/** The Chebyshev distance, which is the step count over open passable floor. */
+function chebyshev(a: Loc, b: Loc): number {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
 describe("find_path (player-path.c L1069)", () => {
   it("returns a straight-line path down a corridor", () => {
     const state = makeState({ w: 12, h: 7, playerGrid: loc(1, 3) });
@@ -220,21 +242,231 @@ describe("find_path (player-path.c L1069)", () => {
     expect(findPath(state, loc(1, 3), loc(3, 1)).length).toBe(-1);
   });
 
-  it("uses A* heap tie-breaking, not prepare_pfdistances backtracking", () => {
-    /* Two equal five-step branches around the central wall.  The FIFO
-     * distance field and its backward scan pick a different branch from
-     * find_path's qp_pushpop_int heap (player-path.c:1143-1281). */
-    const state = makeState({ w: 11, h: 9, playerGrid: loc(2, 4) });
-    const c = state.chunk;
-    for (let x = 0; x < c.width; x++) for (let y = 0; y < c.height; y++) c.setFeat(loc(x, y), GRANITE);
-    for (const g of [loc(2, 4), loc(3, 3), loc(4, 3), loc(5, 3), loc(6, 3), loc(7, 4), loc(3, 5), loc(4, 5), loc(5, 5), loc(6, 5)]) c.setFeat(g, FLOOR);
+  /*
+   * The three cases below are the A*'s step sequence, hand-traced through the C
+   * (player-path.c L1150-L1339 with z-queue.c's up_heap / down_heap /
+   * qp_pushpop_int) rather than read off this port. They exist because
+   * upstream's own comment at L1063-L1067 warns that find_path and
+   * pfdistances_to_path disagree on WHICH equal-cost route they return, so a
+   * cost-only assertion cannot tell a faithful A* from the composition of
+   * upstream's other pair that used to stand in for it here. Each expectation
+   * therefore pins the whole chain: the ddd order over the eight neighbours,
+   * which neighbour is held back for qp_pushpop_int, the heap's sift order, and
+   * patched_distances_to_path's backward walk.
+   */
+  it("A* trace: two steps east across open floor (C-derived)", () => {
+    const state = makeState({ w: 40, h: 25, playerGrid: loc(5, 5) });
     memorizeAll(state);
-    const start = loc(2, 4), dest = loc(7, 4);
-    const fieldPath = pfToPath(preparePfdistances(state, start, true, true), dest);
-    const heapPath = findPath(state, start, dest);
-    expect(heapPath.length).toBe(fieldPath.length);
-    expect(heapPath.steps).not.toEqual(fieldPath.steps);
-    expect(heapPath.steps).toEqual([3, 6, 6, 6, 9]);
+    /*
+     * The C: expanding (5,5) assigns all eight neighbours distance 16 and
+     * pushes seven of them, keeping (4,4) at priority 80 for qp_pushpop_int.
+     * The heap root is then (6,5) at 32 (priorities: 48/48/32/80/32/80/32 with
+     * up_heap's ties resolved toward the earlier push), and 80 > 32, so the pop
+     * returns (6,5). Expanding (6,5) meets the destination at ddd index 2.
+     * patched_distances_to_path walks back (7,5) -> (6,5) -> (5,5), both times
+     * taking ddd index 3 (west) since ties never beat the running minimum.
+     */
+    const path = findPath(state, loc(5, 5), loc(7, 5));
+    expect(path.length).toBe(2);
+    expect(path.steps).toEqual([6, 6]);
+  });
+
+  it("A* trace: a diagonal-then-straight route across open floor (C-derived)", () => {
+    const state = makeState({ w: 40, h: 25, playerGrid: loc(5, 5) });
+    memorizeAll(state);
+    /*
+     * Four expansions in the C - (5,5), then (6,5), (6,4) and (7,6) as the heap
+     * hands them over - reach (8,6) at ddd index 2 of the fourth. The backward
+     * walk is (8,6) -> (7,6) -> (6,6) -> (5,5): west, west, then north-west,
+     * recorded as their opposites.
+     */
+    const path = findPath(state, loc(5, 5), loc(8, 6));
+    expect(path.length).toBe(3);
+    expect(path.steps).toEqual([6, 6, 3]);
+    expect(walkSteps(loc(5, 5), path.steps)).toEqual([
+      loc(5, 5),
+      loc(6, 6),
+      loc(7, 6),
+      loc(8, 6),
+    ]);
+  });
+
+  it("A* trace: picks one of two equal-cost detours round a wall (C-derived)", () => {
+    /* A three-grid granite plug between start and destination, with identical
+     * four-step detours north and south of it. */
+    const state = makeState({ w: 8, h: 9, playerGrid: loc(1, 4) });
+    for (const x of [2, 3, 4]) state.chunk.setFeat(loc(x, 4), GRANITE);
+    memorizeAll(state);
+
+    /*
+     * The C explores both sides: qp_pushpop_int hands (2,3) - the northern
+     * diagonal - straight back on the priority-64 tie at the end of the first
+     * expansion, and the walk only crosses to the south when (4,5) ties with the
+     * heap root at 64 in the fifth expansion. The route that comes out is the
+     * SOUTHERN one, because patched_distances_to_path finds (4,5) at ddd index 5
+     * before (4,3) at index 7 and a tie does not displace the running minimum.
+     */
+    const path = findPath(state, loc(1, 4), loc(5, 4));
+    expect(path.length).toBe(4);
+    expect(path.steps).toEqual([9, 6, 6, 3]);
+    expect(walkSteps(loc(1, 4), path.steps)).toEqual([
+      loc(1, 4),
+      loc(2, 5),
+      loc(3, 5),
+      loc(4, 5),
+      loc(5, 4),
+    ]);
+  });
+
+  it("A* trace: the Chebyshev heuristic decides the route (C-derived)", () => {
+    const state = makeState({ w: 40, h: 25, playerGrid: loc(5, 12) });
+    memorizeAll(state);
+    /*
+     * Traced through the C: three expansions - (5,12), then (6,12) which the
+     * heap hands over at priority 48, then (7,11) which qp_pushpop_int hands
+     * back on the 48 tie - reach (8,10) at ddd index 6 of the third. The
+     * backward walk is (8,10) -> (7,11) -> (6,11) -> (5,12).
+     *
+     * This case exists because the heuristic is what ORDERS those expansions:
+     * strip `dist_remaining` (L1200-L1212) and every priority collapses to the
+     * distance alone, the walk fans out symmetrically from the start instead of
+     * driving at the destination, and the route that comes back is 699 - still
+     * three steps, still minimum-cost, but not the reference build's route.
+     */
+    const path = findPath(state, loc(5, 12), loc(8, 10));
+    expect(path.length).toBe(3);
+    expect(path.steps).toEqual([9, 6, 9]);
+    expect(walkSteps(loc(5, 12), path.steps)).toEqual([
+      loc(5, 12),
+      loc(6, 11),
+      loc(7, 11),
+      loc(8, 10),
+    ]);
+  });
+
+  it("A* trace: a grid already reached at equal cost is not re-expanded (C-derived)", () => {
+    const state = makeState({ w: 40, h: 25, playerGrid: loc(5, 12) });
+    memorizeAll(state);
+    /*
+     * Six expansions in the C - (5,12), (5,13), (4,13), (6,14), (6,13), (6,15)
+     * - reach (7,16) at ddd index 4 of the last, and the backward walk gives
+     * south, south, south-east, south-east.
+     *
+     * The fifth expansion is the point: (6,13) finds (7,13) and (7,14) already
+     * holding 48 from the fourth and LOWERS them to 32, because the skip test
+     * at L1177 is `dist_stored <= dist_this` and 48 is not <= 32. Relax that to
+     * `<` and equal-cost grids get re-expanded as well, which reorders the walk
+     * and returns 2323 instead.
+     */
+    const path = findPath(state, loc(5, 12), loc(7, 16));
+    expect(path.length).toBe(4);
+    expect(path.steps).toEqual([2, 2, 3, 3]);
+    expect(walkSteps(loc(5, 12), path.steps)).toEqual([
+      loc(5, 12),
+      loc(6, 13),
+      loc(7, 14),
+      loc(7, 15),
+      loc(7, 16),
+    ]);
+  });
+
+  it("returns a minimum-cost, contiguous, passable path over open floor", () => {
+    /* Minimum cost is the property the A* shares with prepare_pfdistances (the
+     * heuristic is admissible because no step costs less than PF_SCL), so it
+     * holds whichever of the tied routes comes back. Over open floor that cost
+     * is the Chebyshev distance. */
+    const state = makeState({ w: 40, h: 25, playerGrid: loc(5, 5) });
+    memorizeAll(state);
+    const start = loc(5, 5);
+    for (const dest of [
+      loc(6, 5),
+      loc(5, 9),
+      loc(9, 9),
+      loc(12, 7),
+      loc(2, 2),
+      loc(30, 20),
+      loc(1, 23),
+      loc(38, 1),
+    ]) {
+      const path = findPath(state, start, dest);
+      expect(path.length).toBe(chebyshev(start, dest));
+      const grids = walkSteps(start, path.steps);
+      expect(grids[grids.length - 1]).toEqual(dest);
+      for (let i = 1; i < grids.length; i++) {
+        expect(chebyshev(grids[i - 1] as Loc, grids[i] as Loc)).toBe(1);
+        expect(state.chunk.isPassable(grids[i] as Loc)).toBe(true);
+      }
+    }
+  });
+
+  it("crosses patch boundaries (initialize_patch, 16x16 blocks)", () => {
+    /* (5,5) sits in patch (0,0); (30,20) needs patches (0,1), (1,0) and (1,1)
+     * allocated on the way. The 25-step path also outgrows the queue's initial
+     * 4 * (2 + 25) capacity, exercising the resize at L1253. */
+    const state = makeState({ w: 40, h: 25, playerGrid: loc(5, 5) });
+    memorizeAll(state);
+    const path = findPath(state, loc(5, 5), loc(30, 20));
+    expect(path.length).toBe(25);
+    const grids = walkSteps(loc(5, 5), path.steps);
+    expect(grids[grids.length - 1]).toEqual(loc(30, 20));
+  });
+
+  it("falls back through a known visible trap (hit_trap retry)", () => {
+    const state = makeState({ w: 12, h: 7, playerGrid: loc(1, 3) });
+    corridor(state, 3, 7);
+    /* A visible trap plugs the one-wide corridor. The first pass rejects it
+     * (is_valid_pf with forbid_traps), exhausts the queue and - because the
+     * trap is what it hit (hit_trap, L1289) - retries allowing traps. */
+    const kinds = bindTraps(
+      (
+        JSON.parse(
+          readFileSync(
+            new URL("../../../content/pack/trap.json", import.meta.url),
+            "utf8",
+          ),
+        ) as { records: TrapRecordJson[] }
+      ).records,
+    );
+    const pit = kinds.find((k) => k.desc === "pit") as { tidx: number };
+    placeTrap(state, loc(4, 3), pit.tidx, 5, { kinds });
+    /* square_reveal_trap: the pathfinder only avoids traps the player has
+     * NOTICED (square_isvisibletrap), not merely ones that are there. */
+    squareRevealTrap(state, loc(4, 3), true, { kinds });
+    memorizeAll(state);
+    expect(squareIsVisibleTrap(state, loc(4, 3))).toBe(true);
+
+    const path = findPath(state, loc(1, 3), loc(7, 3));
+    expect(path.length).toBe(6);
+    expect(walkSteps(loc(1, 3), path.steps)).toContainEqual(loc(4, 3));
+  });
+
+  it("falls back to grids the player does not remember (only_known retry)", () => {
+    const state = makeState({ w: 12, h: 7, playerGrid: loc(1, 3) });
+    corridor(state, 3, 7);
+    /* Remember only the two ends: with only_known true every grid between them
+     * is unusable, so the first pass exhausts the queue and the C retries with
+     * only_known false (L1305). */
+    squareMemorize(state, loc(1, 3));
+    squareMemorize(state, loc(7, 3));
+    const path = findPath(state, loc(1, 3), loc(7, 3));
+    expect(path.length).toBe(6);
+    expect(walkSteps(loc(1, 3), path.steps).at(-1)).toEqual(loc(7, 3));
+  });
+
+  it("never routes along the cave boundary, even when it is unremembered", () => {
+    /* With only_known false, is_valid_pf returns TRUE for any unremembered grid
+     * - including the boundary ring. What keeps the walk inside the cave is
+     * initialize_patch's square_in_bounds_fully test (L691), which marks those
+     * cells -1 regardless. Here the destination is two steps down the column
+     * next to the west wall, so a boundary detour would tie on cost. */
+    const state = makeState({ w: 12, h: 7, playerGrid: loc(1, 3) });
+    squareMemorize(state, loc(1, 3));
+    squareMemorize(state, loc(1, 5));
+    const path = findPath(state, loc(1, 3), loc(1, 5));
+    expect(path.length).toBe(2);
+    for (const g of walkSteps(loc(1, 3), path.steps)) {
+      expect(state.chunk.inBoundsFully(g)).toBe(true);
+    }
   });
 });
 
