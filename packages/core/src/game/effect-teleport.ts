@@ -24,9 +24,9 @@
  * curse and its learning, monster_target_monster (monster-vs-monster spells,
  * #19), the Dimension Door aim prompt (targeting, #24), the trap / glyph / web /
  * damaging-terrain destination predicates (traps #21, terrain), and
- * dungeon_get_next_level / dungeon_change_level (level change, #23). Arena
- * levels, decoys, sound and the monster "puzzled" message are omitted (their
- * subsystems are not modelled); they are ledgered.
+ * dungeon_get_next_level / dungeon_change_level (level change, #23). Arena,
+ * decoy, and target state use their live GameState counterparts. Sound and the
+ * monster "puzzled" message are omitted and ledgered.
  *
  * teleportMonster is the concrete backing for the project_m `teleport` hook
  * (game/project-monster.ts) deferred there: a monster teleported a fixed number
@@ -44,6 +44,12 @@ import type {
 import { deleteMonster, monsterSwap, movePlayer } from "./context";
 import type { GameState } from "./context";
 import { gameEnv } from "./effect-game-env";
+import {
+  caveFindDecoy,
+  destroyDecoy,
+  monsterIsDecoyed,
+} from "./effect-mon-origin";
+import { targetSetLocation } from "./target";
 
 /**
  * The teleport-family hooks and unmodelled-subsystem seams, grouped on the
@@ -317,6 +323,9 @@ const handleTELEPORT_TO: EffectHandler = (ctx) => {
   const tMon =
     tp.targetMonster !== undefined ? state.monsters[tp.targetMonster] : null;
 
+  /* No teleporting in arena levels (effect-handler-general.c:2714-2715). */
+  if (state.arenaLevel) return true;
+
   let dis = 0;
   let start: Loc;
   let playerMoves = false;
@@ -329,6 +338,12 @@ const handleTELEPORT_TO: EffectHandler = (ctx) => {
     if (!mon) return true;
     start = mon.grid;
   } else {
+    /* Targeted decoys get destroyed (effect-handler-general.c:2735-2739). */
+    if (mon && monsterIsDecoyed(state, mon)) {
+      destroyDecoy(state, env.general?.trapDeps, (t) => say(ctx, t));
+      return true;
+    }
+
     /* Player being teleported. */
     playerMoves = true;
     start = state.actor.grid;
@@ -374,8 +389,9 @@ const handleTELEPORT_TO: EffectHandler = (ctx) => {
   if (playerMoves) tp.onPlayerPostMove?.(isMonsterOrigin);
   else if (startOcc > 0) tp.onMonsterPostMove?.(startOcc);
 
-  /* Cancel the location target on a Dimension Door (targeting, #24). */
-  void dimDoor;
+  /* Cancel the location target on a Dimension Door
+   * (effect-handler-general.c:2817-2820). */
+  if (dimDoor) targetSetLocation(state, loc(0, 0));
   state.chunk.sqinfoOff(land, SQUARE.PROJECT);
   return true;
 };
@@ -495,9 +511,18 @@ const handleTELEPORT_LEVEL: EffectHandler = (ctx) => {
   const tMon =
     tp.targetMonster !== undefined ? state.monsters[tp.targetMonster] : null;
 
+  /* No teleporting in arena levels (effect-handler-general.c:2844-2845). */
+  if (state.arenaLevel) return true;
+
   /* A monster targeting another monster: it is simply gone. */
   if (tMon) {
     deleteMonster(state, tp.targetMonster!);
+    return true;
+  }
+
+  /* Targeted decoys get destroyed (effect-handler-general.c:2855-2859). */
+  if (caveFindDecoy(state)) {
+    destroyDecoy(state, env.general?.trapDeps, (t) => say(ctx, t));
     return true;
   }
 
