@@ -94,14 +94,7 @@ export interface DepthMetrics {
   monsterTotalSq: number;
   /** Sum of squared per-level gold totals; same purpose as monsterTotalSq. */
   goldSq: number;
-  /** Sum of squared per-level object counts; same purpose as monsterTotalSq. */
-  objectTotalSq: number;
-  /**
-   * Total object entries swept (floor + monster-held), EXCLUDING money. The C's
-   * log_all_objects does not skip money -- its gold capture is additive and the
-   * object then falls through into the `consumables` bucket (main-stats.c:624-656)
-   * -- so the C importer subtracts the money kinds to match this.
-   */
+  /** Total object entries swept (floor + monster-held). */
   objectTotal: number;
   /** Object-entry count keyed by tval. */
   objectsByTval: Record<string, number>;
@@ -210,7 +203,6 @@ export function emptyDepth(): DepthMetrics {
     monsters: {},
     monsterTotalSq: 0,
     goldSq: 0,
-    objectTotalSq: 0,
     objectTotal: 0,
     objectsByTval: {},
     objectsByKind: {},
@@ -256,7 +248,6 @@ export function collectLevel(
   /* Monsters by race (kill_all_monsters L543). */
   const monstersBefore = m.monsterTotal;
   const goldBefore = m.gold;
-  const objectsBefore = m.objectTotal;
   for (const pm of g.monsters) {
     bump(m.monsters, pm.mon.race.ridx);
     m.monsterTotal += 1;
@@ -284,10 +275,8 @@ export function collectLevel(
   /* Per-level squares, for the variance the significance tests need. */
   const monstersHere = m.monsterTotal - monstersBefore;
   const goldHere = m.gold - goldBefore;
-  const objectsHere = m.objectTotal - objectsBefore;
   m.monsterTotalSq += monstersHere * monstersHere;
   m.goldSq += goldHere * goldHere;
-  m.objectTotalSq += objectsHere * objectsHere;
 }
 
 /**
@@ -295,16 +284,8 @@ export function collectLevel(
  * of its per-level squares (the sample standard deviation, Bessel-corrected).
  * Returns 0 for a C-imported report, which carries no squares.
  */
-export function perLevelSd(
-  m: DepthMetrics,
-  metric: "monsterTotal" | "gold" | "objectTotal",
-): number {
-  const sq =
-    metric === "monsterTotal"
-      ? m.monsterTotalSq
-      : metric === "gold"
-        ? m.goldSq
-        : m.objectTotalSq;
+export function perLevelSd(m: DepthMetrics, metric: "monsterTotal" | "gold"): number {
+  const sq = metric === "monsterTotal" ? m.monsterTotalSq : m.goldSq;
   const n = m.levels;
   if (n < 2 || sq <= 0) return 0;
   const mean = m[metric] / n;
