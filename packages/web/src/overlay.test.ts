@@ -648,9 +648,19 @@ describe("promptNumber (digit-only prompt, ui-options.c askfor_aux_numbers)", ()
 describe("promptText (askfor_aux + askfor_aux_keypress, ui-input.c:662-800)", () => {
   /*
    * The firsttime rule, found missing by W1-CITED and fixed 2026-07-26. A
-   * default answer is a suggestion you type OVER. Without it the birth screen's
-   * default "Gandalf" plus typing "Bob" produced "GandalfBob", which is very
-   * likely the cause of the standing "typed birth name may not persist" note.
+   * default answer is a suggestion you type OVER; without it a typed answer was
+   * APPENDED to the default.
+   *
+   * Which callers this actually bit, checked rather than assumed: birth.ts:1199
+   * starts `name` as "", so a FIRST pass through the birth name stage was
+   * unaffected -- append and replace agree on an empty default. It bit on going
+   * BACK to the name stage (the default is then the previous name), the 240-char
+   * background editor (birth.ts:1018), the charsheet rename (charsheet.ts:733),
+   * and the wizard prompts, whose default "0" made every typed value read as
+   * 0-something. The standing "typed birth name may not persist" note is NOT
+   * explained by this: appending to "Adventurer" would have shown
+   * "AdventurerTesta", not the bare default, so that observation remains an
+   * automation quirk as previously recorded.
    */
   it("the first printable key clears the whole default (L765-771)", async () => {
     const win = makeFakeWindow();
