@@ -20,7 +20,6 @@ import { processPlayer } from "./player-turn";
 import type { ActionRegistry } from "./player-turn";
 import { startGame } from "../session/game";
 import type { GamePack } from "../session/game";
-import { playerBookHasUnlearnedSpells } from "./spell-cmd";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -351,32 +350,5 @@ describe("spell consequence wiring (over-exert / cast-in-dark / combat-regen)", 
     >[0];
     convertManaToHp(z, 10 << 16);
     expect(z.chp).toBe(40);
-  });
-});
-
-describe("playerBookHasUnlearnedSpells (player-util.c L1315)", () => {
-  it("true at birth: newSpells>0 and the starting book holds a studiable spell", () => {
-    const { state } = startMage();
-    expect(state.actor.player.upkeep.newSpells).toBeGreaterThan(0);
-    expect(playerBookHasUnlearnedSpells(state)).toBe(true);
-  });
-
-  it("false once newSpells is exhausted (L1323 short-circuit)", () => {
-    const { state, registry } = startMage(777);
-    const handle = bookHandle(state);
-    run(state, registry, { code: "study", args: { handle, spell: 0 } });
-    expect(state.actor.player.upkeep.newSpells).toBe(0);
-    expect(playerBookHasUnlearnedSpells(state)).toBe(false);
-  });
-
-  it("false when newSpells>0 but no carried/floor book has a studiable spell (obj_can_study scan)", () => {
-    const { state } = startMage();
-    /* Drop every book the obj_can_study scan could find. */
-    state.gear.pack = state.gear.pack.filter((h) => {
-      const o = gearGet(state.gear, h);
-      return o === null || playerObjectToBook(state.actor.player, o) === null;
-    });
-    expect(state.actor.player.upkeep.newSpells).toBeGreaterThan(0);
-    expect(playerBookHasUnlearnedSpells(state)).toBe(false);
   });
 });

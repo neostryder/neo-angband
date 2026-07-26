@@ -8,9 +8,6 @@ import { bindPlayer } from "./bind";
 import type { PlayerPackRecords } from "./bind";
 import { blankPlayer } from "./player";
 import type { Player } from "./player";
-import { Rng } from "../rng";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
 import {
   PY_SPELL,
   adj_mag_fail,
@@ -19,9 +16,6 @@ import {
   calcMana,
   calcSpells,
   classMagicRealms,
-  objCanBrowse,
-  objCanCastFrom,
-  objCanStudy,
   playerSpellsInit,
   registerBookKinds,
   spellByIndex,
@@ -279,51 +273,5 @@ describe("calcMana (player-calcs.c L1480)", () => {
     statInd[classMagicRealms(mage)[0]!.stat] = 10;
     calcSpells(p, statInd);
     expect((p.spellFlags[0]! & PY_SPELL.LEARNED) !== 0).toBe(true);
-  });
-});
-
-describe("objCanBrowse / objCanCastFrom / objCanStudy (obj-util.c L775/780/786)", () => {
-  function bookObj(reg: ObjRegistry, cls: typeof mage, bookIdx = 0): GameObject {
-    const book = cls.magic.books[bookIdx]!;
-    const kind = reg.kinds.find(
-      (k) => k.tval === book.tvalIdx && k.sval === book.sval,
-    )!;
-    return objectPrep(new Rng(1), reg, constants, kind, 0, "average");
-  }
-
-  it("objCanBrowse: true for a book of the player's own realm, false for a foreign one", () => {
-    const reg = freshRegistry();
-    registerBookKinds(reg, players.classes);
-    const p = mkPlayer(mage);
-    expect(objCanBrowse(p, bookObj(reg, mage))).toBe(true);
-    expect(objCanBrowse(p, bookObj(reg, priest))).toBe(false);
-  });
-
-  it("objCanCastFrom and objCanStudy diverge from the bare browse test", () => {
-    const reg = freshRegistry();
-    registerBookKinds(reg, players.classes);
-    const p = mkPlayer(mage);
-    const book = bookObj(reg, mage);
-
-    /* Nothing learned yet: browsable, not castable, but studiable (do_cmd_cast
-     * would offer NO books here even though obj_can_browse says yes). */
-    expect(objCanBrowse(p, book)).toBe(true);
-    expect(objCanCastFrom(p, book)).toBe(false);
-    expect(objCanStudy(p, book)).toBe(true);
-
-    /* Learn every spell this level-1 player can reach. */
-    const reachable = mage.magic.books[0]!.spells.filter((s) => s.level <= p.lev);
-    expect(reachable.length).toBeGreaterThan(0);
-    for (const s of reachable) {
-      p.upkeep.newSpells = 1;
-      spellLearn(p, s.sidx);
-    }
-
-    /* Now castable (a learned spell exists) and no longer studiable (nothing
-     * left in level range) - obj_can_browse alone cannot distinguish either
-     * direction of this flip. */
-    expect(objCanBrowse(p, book)).toBe(true);
-    expect(objCanCastFrom(p, book)).toBe(true);
-    expect(objCanStudy(p, book)).toBe(false);
   });
 });

@@ -265,6 +265,10 @@ export class ContentIdResolver {
     if (id === null) throw new Error(`mod/ids: unbound ego index ${eidx}`);
     return id;
   }
+  /** The ego id for an index, or null when unbound (a partial resolver). */
+  egoIdOrNull(eidx: number): string | null {
+    return this.egos.id(eidx);
+  }
   egoIndex(id: string): number | undefined {
     return this.egos.index(id);
   }
