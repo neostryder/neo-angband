@@ -21,9 +21,8 @@
  *   pack_overflow, needs drop_near and so lives in game/obj-cmd.ts next to the
  *   other obj-gear.c verbs that touch the floor).
  * - DEFERRED: the display knowledge twin (obj->known) and equip_cnt UI
- *   counter.  The pack-side inven[] listing is a derived view rather than the
- *   source of truth: gear.pack keeps master-gear insertion order while
- *   gear.inven reproduces calc_inventory's earlier_object ordering. Wielding DOES learn modifier runes
+ *   counter; the inven[] display reorder half of calc_inventory (gear.pack
+ *   already IS the listing, unsorted here). Wielding DOES learn modifier runes
  *   (obj-knowledge.c object_learn_on_wield); see obj/knowledge.ts.
  */
 
@@ -87,12 +86,6 @@ export interface Gear {
    */
   pack: number[];
   /**
-   * upkeep->inven[]: computed, earlier_object-sorted non-quiver pack view.
-   * This is deliberately separate from `pack`, whose order is the master-gear
-   * ordering used by combine/split logic.  It is rebuilt, never persisted.
-   */
-  inven?: number[];
-  /**
    * upkeep->quiver[z_info->quiver_size]: the COMPUTED quiver view, one handle
    * per slot (0 = empty), filled by calcInventory. Optional so that a Gear built
    * without it (e.g. a save-load reconstruction, before calcInventory runs)
@@ -107,7 +100,7 @@ export interface Gear {
 
 /** A fresh, empty gear store (empty quiver; calcInventory sizes it). */
 export function newGear(): Gear {
-  return { store: new Map<number, GameObject>(), next: 1, pack: [], inven: [], quiver: [] };
+  return { store: new Map<number, GameObject>(), next: 1, pack: [], quiver: [] };
 }
 
 /** Store an object under a fresh handle and return it (no pack insertion). */
@@ -639,14 +632,13 @@ function earlierOpts(opts: CalcInventoryOpts): EarlierObjectOpts {
 }
 
 /**
- * calc_inventory (player-calcs.c:1023-1238): rebuild gear.quiver and the
- * separate sorted gear.inven listing.  `gear.pack` remains the raw master-gear
- * order, so changing this derived view cannot destabilize combine/split logic.
+ * calc_inventory (player-calcs.c:1023-1238), quiver half: rebuild gear.quiver
  * from the current non-equipped gear. First place inscribed items in their
  * preferred slots (splitting a stack that overflows quiver_slot_size, with the
  * excess going back to the pack), then fill the remaining slots in earlier_object
- * order with ammo.  Then select each remaining non-quiver handle in
- * earlier_object order, exactly as upstream fills upkeep->inven[].
+ * order with ammo. The pack/inven[] array-building half of upstream is a no-op
+ * here: gear.pack already IS the ordered non-equipped listing and is not
+ * re-sorted (display ordering is a UI concern).
  *
  * Split remainders are appended to gear.pack via object_split, exactly as
  * upstream's gear_insert_end. `n_stack_split <= n_pack_remaining` guards splits
@@ -743,29 +735,6 @@ export function calcInventory(
       }
     }
   }
-
-  /* Fill upkeep->inven[] (player-calcs.c:1191-1222).  Do not sort pack in
-   * place: C's p->gear remains its own linked-list order and inven[] is only
-   * a listing.  Repeated first-selection (rather than Array.sort()) faithfully
-   * preserves master-gear order when earlier_object has no preference. */
-  const inven: number[] = [];
-  const invenAssigned = new Set<number>(quiver.filter((h) => h !== 0));
-  for (;;) {
-    let first: GameObject | null = null;
-    let firstHandle = 0;
-    for (const handle of gear.pack) {
-      if (invenAssigned.has(handle)) continue;
-      const current = gear.store.get(handle);
-      if (current && earlierObject(first, current, earlierOpts(opts))) {
-        first = current;
-        firstHandle = handle;
-      }
-    }
-    if (!first) break;
-    inven.push(firstHandle);
-    invenAssigned.add(firstHandle);
-  }
-  gear.inven = inven;
 }
 
 /**

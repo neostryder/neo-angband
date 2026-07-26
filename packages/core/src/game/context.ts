@@ -688,9 +688,6 @@ export interface GameState {
    * worn). Installed by the session (wireGame).
    */
   updateBonuses?: () => void;
-  /** game-world.c:947 pack_overflow(NULL), installed by the live session with
-   * its full object/calc_inventory dependencies. */
-  overflowPack?: () => void;
   /**
    * state->stat_ind: the six internal stat indices from the last
    * calc_bonuses, kept live (updateBonuses refreshes it in place). The
