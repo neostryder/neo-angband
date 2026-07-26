@@ -19,6 +19,7 @@ import {
   becomeAware,
   caveIlluminateKnown,
   caveKnown,
+  forgetMap,
   knownFeat,
   knownObject,
   noteSpots,
@@ -507,24 +508,19 @@ describe("tickMonsterMarks (process_world detection fade)", () => {
   });
 });
 
-describe("squareForget (cave-square.c:1580)", () => {
-  /* Upstream square_forget is `square_set_known_feat(c, grid, FEAT_NONE)` and
-   * nothing more: the remembered object pile and the DTRAP mark both survive.
-   * map_info's object loop (cave-map.c:155-169) is not gated on
-   * square_isknown, so the remembered object stays on the player's map. */
-  it("forgets the terrain but keeps the remembered pile and DTRAP mark", () => {
+describe("forgetMap (wiz_dark's forgetting half)", () => {
+  it("erases all memory and DTRAP marks", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const grid = loc(12, 10);
     squareMemorize(state, grid);
     floorCarry(state, grid, makeObj(TV.POTION));
     squareKnowPile(state, grid);
     state.chunk.sqinfoOn(grid, SQUARE.DTRAP);
-    expect(knownObject(state, grid)).not.toBeNull();
 
-    squareForget(state, grid);
+    forgetMap(state);
     expect(squareIsKnown(state, grid)).toBe(false);
-    expect(knownObject(state, grid)).not.toBeNull();
-    expect(state.chunk.sqinfoHas(grid, SQUARE.DTRAP)).toBe(true);
+    expect(knownObject(state, grid)).toBeNull();
+    expect(state.chunk.sqinfoHas(grid, SQUARE.DTRAP)).toBe(false);
   });
 });
 

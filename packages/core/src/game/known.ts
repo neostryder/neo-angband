@@ -104,17 +104,10 @@ export function squareMemorize(state: GameState, grid: Loc): void {
   state.known.feat[gi(state, grid)] = state.chunk.feat(grid);
 }
 
-/**
- * square_forget (cave-square.c:1580-1583): forget the grid's TERRAIN only.
- * Upstream is `square_set_known_feat(c, grid, FEAT_NONE)` and nothing else -
- * it does not touch the remembered object pile, and map_info's object loop
- * (cave-map.c:155-169) is NOT gated on square_isknown, so an object remembered
- * on a grid whose terrain has been forgotten stays on the player's map. The
- * remembered pile is dropped only by forget_remembered_objects, i.e. through
- * squareKnowPile / squareSensePile.
- */
+/** square_forget: forget the grid's terrain (and any remembered objects). */
 export function squareForget(state: GameState, grid: Loc): void {
   state.known.feat[gi(state, grid)] = -1;
+  state.known.objects.delete(gi(state, grid));
 }
 
 /**
@@ -480,13 +473,6 @@ export function updatePlayerObjectKnowledge(state: GameState): void {
     const label = gearPackLabel(state, handle);
     know(obj, (name) => state.msg?.(`You have ${name} (${label}).`));
   }
-
-  /* autoinscribe_ground + autoinscribe_pack (obj-knowledge.c:1245-1247): the
-   * tail of update_player_object_knowledge. This is where learning a rune
-   * stamps its autoinscription onto everything the player can already see or
-   * carry, and where a newly-aware kind's note lands. Reached through the
-   * state seam because obj-cmd.ts imports this module. */
-  state.autoinscribeAll?.();
 }
 
 /**
@@ -511,11 +497,19 @@ export function squareSensePile(
   }
 }
 
-/* forgetMap (a whole-map "forget everything + wipe DTRAP" pass) was removed:
- * 4.2.6 has no such function. It existed only to back wiz_dark, and wiz_dark
- * (cave-map.c:490-546) does the OPPOSITE - it memorizes terrain exactly as
- * wiz_light does and only perma-darkens the grids. See game/effect-terrain.ts
- * wizLightLevel. */
+/**
+ * wiz_dark's forgetting half: erase all terrain and object memory (the
+ * remembered map goes black; DTRAP marks are wiped with it).
+ */
+export function forgetMap(state: GameState): void {
+  state.known.feat.fill(-1);
+  state.known.objects.clear();
+  for (let y = 0; y < state.chunk.height; y++) {
+    for (let x = 0; x < state.chunk.width; x++) {
+      state.chunk.sqinfoOff({ x, y }, SQUARE.DTRAP);
+    }
+  }
+}
 
 /** OPT(player, disturb_near): shipped default true (options.c). */
 function disturbNear(state: GameState): boolean {
