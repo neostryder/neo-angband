@@ -4828,6 +4828,13 @@ function renderSidebar(rows: number): void {
  * its width equals the reference handler's return value (update_statusline_aux
  * advances col by that width). Idle prt_state reserves one blank column, which
  * statusLineModel emits as a single-space run.
+ *
+ * update_statusline (ui-display.c:1316) is the event handler that picks the row
+ * and calls update_statusline_aux; here the caller passes the row. KNOWN
+ * DIVERGENCE, recorded not fixed by W1-CITED
+ * (parity/phase3-2026-07-25/findings/W1-CITED.md): upstream moves the status
+ * line to row 3 when Term->sidebar_mode is SIDEBAR_TOP; the only call site here
+ * always passes rows - 1, including in the "top" sidebar layout.
  */
 function renderStatusLine(originX: number, row: number, maxCols: number): void {
   let x = originX;

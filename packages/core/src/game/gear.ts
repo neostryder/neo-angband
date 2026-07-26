@@ -16,14 +16,12 @@
  *   (birth_start_kit + eopts exclusion honoured), the real quiver subsystem
  *   (object_is_in_quiver, preferred_quiver_slot, quiver_absorb_num,
  *   calc_inventory's quiver assignment, pack_slots_used quiver accounting),
- *   combine_pack + inven_can_stack_partial, and minus_ac armour damage,
- *   pack_is_full / pack_is_overfull (the pack_size overflow enforcement itself,
- *   pack_overflow, needs drop_near and so lives in game/obj-cmd.ts next to the
- *   other obj-gear.c verbs that touch the floor).
- * - DEFERRED: the display knowledge twin (obj->known) and equip_cnt UI
- *   counter; the inven[] display reorder half of calc_inventory (gear.pack
- *   already IS the listing, unsorted here). Wielding DOES learn modifier runes
- *   (obj-knowledge.c object_learn_on_wield); see obj/knowledge.ts.
+ *   combine_pack + inven_can_stack_partial, and minus_ac armour damage.
+ * - DEFERRED: the pack_size overflow enforcement (pack_overflow); the display
+ *   knowledge twin (obj->known) and equip_cnt UI counter; the inven[] display
+ *   reorder half of calc_inventory (gear.pack already IS the listing, unsorted
+ *   here). Wielding DOES learn modifier runes (obj-knowledge.c
+ *   object_learn_on_wield); see obj/knowledge.ts.
  */
 
 import type { Constants } from "../constants";
@@ -386,8 +384,7 @@ export function minusAc(
  *
  * The subsequent calc_inventory (upstream's update_stuff after PU_INVEN) is a
  * SEPARATE step here - callers run calcInventory when they want the quiver
- * re-derived. inven_carry does not itself enforce pack_size upstream either:
- * the command layer does (packOverflow, game/obj-cmd.ts).
+ * re-derived. The pack_size overflow enforcement (pack_overflow) is DEFERRED.
  */
 export interface InvenCarryResult {
   handle: number;
@@ -460,22 +457,6 @@ export function packSlotsUsed(gear: Gear, constants: Constants): number {
   if (quiverAmmo % constants.quiverSlotSize) packSlots++;
 
   return packSlots;
-}
-
-/**
- * pack_is_full (obj-gear.c L1328-1331): the pack holds exactly the maximum
- * number of items.
- */
-export function packIsFull(gear: Gear, constants: Constants): boolean {
-  return packSlotsUsed(gear, constants) === constants.packSize;
-}
-
-/**
- * pack_is_overfull (obj-gear.c L1337-1340): the pack holds MORE than the
- * maximum, so pack_overflow (game/obj-cmd.ts) will shed an item.
- */
-export function packIsOverfull(gear: Gear, constants: Constants): boolean {
-  return packSlotsUsed(gear, constants) > constants.packSize;
 }
 
 /**
@@ -922,27 +903,11 @@ export function gearObjectForUse(
 /* ------------------------------------------------------------------ */
 
 /**
- * Which upstream split a wield of a multi-item stack performs. The two C
- * callers do OPPOSITE things and the difference is observable in the pack
- * listing, so the caller must say which one it is:
- *
- * - "inven_wield" (obj-gear.c L947-968): `gear_object_for_use(p, obj, 1, ...)`
- *   splits ONE item off; the split is linked into p->gear immediately after
- *   the original (L961-963) and IT is what gets equipped. The original keeps
- *   `number - 1` and stays in the pack AT ITS EXISTING LISTING POSITION.
- * - "wield_all" (player-birth.c L484-491): `object_split(obj, number - 1)`
- *   sends the remainder to a new object collected in `new_pile` and appended
- *   to the END of the gear (pile_insert_end, L503); the ORIGINAL is equipped.
- */
-export type WieldSplit = "inven_wield" | "wield_all";
-
-/**
  * Wield the pack object with the given handle into its liked slot. If the
- * stack has more than one item it is split, following `split` (see
- * WieldSplit - the two upstream callers differ). Returns the filled slot, or
- * -1 if the object cannot be wielded or the slot is already occupied. Read
- * `player.equipment[slot]` for the handle that ended up worn: under
- * "inven_wield" a split stack equips a FRESH handle, not `handle`.
+ * stack has more than one item, one item is split off to wear and the
+ * remainder (number - 1) stays in the pack under a new handle (upstream
+ * object_split in wield_all / inven_wield). Returns the filled slot, or -1
+ * if the object cannot be wielded or the slot is already occupied.
  *
  * object_learn_on_wield runs the instant the item is worn (as in wield_all
  * and inven_wield), so a worn item's modifier runes become known and its
@@ -953,7 +918,6 @@ export function wieldObject(
   player: Player,
   handle: number,
   env?: import("../obj/knowledge").RuneEnv,
-  split: WieldSplit = "wield_all",
 ): number {
   const obj = gear.store.get(handle);
   if (!obj) return -1;
@@ -962,35 +926,22 @@ export function wieldObject(
   if (slot < 0 || slot >= player.body.count) return -1;
   if ((player.equipment[slot] ?? 0) !== 0) return -1;
 
-  /* Split if necessary. */
-  let wieldedHandle = handle;
-  let wielded = obj;
+  /* Split if necessary: all but one go back to the pack as a new stack. */
   if (obj.number > 1) {
-    if (split === "inven_wield") {
-      /* One item off the stack becomes the worn object; the original stays
-       * put in the pack holding number - 1 (obj-gear.c L947-968). */
-      wielded = objectSplit(obj, 1);
-      wieldedHandle = gearAdd(gear, wielded);
-    } else {
-      /* All but one go back to the pack as a new stack at the END
-       * (player-birth.c L484-491 + L502-505). */
-      const remainder = objectSplit(obj, obj.number - 1);
-      gear.pack.push(gearAdd(gear, remainder));
-    }
+    const remainder = objectSplit(obj, obj.number - 1);
+    gear.pack.push(gearAdd(gear, remainder));
   }
 
-  /* Remove the wielded handle from the pack and wear it. A fresh
-   * "inven_wield" split was never in the pack, so the splice no-ops and the
-   * original keeps its listing position. */
-  const idx = gear.pack.indexOf(wieldedHandle);
+  /* Remove the wielded handle from the pack and wear it. */
+  const idx = gear.pack.indexOf(handle);
   if (idx >= 0) gear.pack.splice(idx, 1);
-  player.equipment[slot] = wieldedHandle;
+  player.equipment[slot] = handle;
 
   /* Learn the runes that wearing makes obvious (obj-knowledge.c wield_all
    * L494-495). With an env the full obvious-flag/curse learning runs; the
    * env-less path (birth outfit, worldless tests) learns the modifier
    * runes, so worn pval bonuses apply immediately either way. */
-  objectLearnOnWield(player, wielded, env);
+  objectLearnOnWield(player, obj, env);
 
   return slot;
 }

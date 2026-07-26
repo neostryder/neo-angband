@@ -66,12 +66,10 @@ import {
   invenCarry,
   invenCarryNum,
   objectSplit,
-  packIsOverfull,
   wieldObject,
   wieldSlot,
 } from "./gear";
 import type { CalcInventoryOpts } from "./gear";
-import { disturb } from "./player-path";
 import { buildEffectContext } from "./effect-env";
 import type { EffectEnvDeps } from "./effect-env";
 import { attachGameEnv } from "./effect-game-env";
@@ -173,18 +171,6 @@ function calcInvOpts(state: GameState, deps: ObjCmdDeps): CalcInventoryOpts {
   return o;
 }
 
-/**
- * The combine_pack / pack_overflow seams for the command handlers: the message
- * sink, the calc_inventory inputs, and the drop_near environment
- * pack_overflow's drop needs (deps.floorEnv is the same one inven_drop uses).
- */
-function packOpts(state: GameState, deps: ObjCmdDeps): PackOverflowOpts {
-  const o: PackOverflowOpts = { calcInv: calcInvOpts(state, deps) };
-  if (deps.env?.msg) o.msg = deps.env.msg;
-  if (deps.floorEnv) o.floorEnv = deps.floorEnv;
-  return o;
-}
-
 function stackLimits(constants: Constants): StackLimits {
   return {
     quiverSlotSize: constants.quiverSlotSize,
@@ -213,116 +199,11 @@ export function invenTakeoff(state: GameState, handle: number): boolean {
 }
 
 /**
- * Seams for the combine_pack / pack_overflow tail of inven_wield and
- * do_cmd_takeoff. All optional; an absent msg simply drops the messages, as
- * everywhere else in this module.
+ * inven_wield (obj-gear.c L931): wield a pack object into its slot, taking
+ * off whatever occupies it first. Returns the slot, or -1 when the object
+ * cannot be worn.
  */
-export interface PackOverflowOpts {
-  /** msg / msgt sink for the wield line and the overflow messages. */
-  msg?: (text: string) => void;
-  /** calc_inventory inputs used by combine_pack's tail (quiver re-derive). */
-  calcInv?: CalcInventoryOpts;
-  /** drop_near seams (isTrap / onDrop / onBreak) for the overflowed item. */
-  floorEnv?: FloorEnv;
-}
-
-/** calcInv with the shared msg sink filled in when the caller left it out. */
-function overflowCalcInv(opts: PackOverflowOpts): CalcInventoryOpts {
-  const base: CalcInventoryOpts = { ...opts.calcInv };
-  if (!base.msg && opts.msg) base.msg = opts.msg;
-  return base;
-}
-
-/**
- * pack_overflow (obj-gear.c L1345-1390): when the pack holds more than
- * pack_size slots, shed one item onto the floor. `handle` is upstream's `obj`
- * argument - the item to shed, normally whatever displaced into the pack; 0 is
- * upstream's NULL, meaning "shed the last item of the inventory listing".
- * Returns the object that left the pack, or null when nothing overflowed.
- *
- * The C's three messages and their order are reproduced exactly: the warning,
- * then "You drop X." with X described BEFORE the excise, then the drop, then
- * "You no longer have X."
- *
- * DIVERGENCE, flagged: upstream picks the NULL-case victim by walking
- * upkeep->inven[] to its last filled entry (L1359-1366), and that array is
- * sorted by earlier_object in calc_inventory (player-calcs.c L1191-1222). The
- * port defers that sort - gear.pack IS the listing, in insertion order - so the
- * victim here is gear.pack's last handle. Every in-port caller passes an
- * explicit handle, so this only bites a pack that was already overfull.
- */
-export function packOverflow(
-  state: GameState,
-  handle: number,
-  constants: Constants,
-  opts: PackOverflowOpts = {},
-): GameObject | null {
-  if (!packIsOverfull(state.gear, constants)) return null;
-
-  /* Disturbing (L1353). */
-  disturb(state);
-
-  /* Warning (L1356). */
-  opts.msg?.("Your pack overflows!");
-
-  /* Drop the last inventory item unless requested otherwise (L1359-1366). */
-  const victim =
-    handle !== 0
-      ? handle
-      : (state.gear.pack[state.gear.pack.length - 1] ?? 0);
-  const obj = gearGet(state.gear, victim);
-  /* Upstream asserts obj != NULL here (L1369). The port can reach a stale
-   * handle where upstream reads freed memory: combine_pack (which runs just
-   * before every caller's pack_overflow) may have absorbed the displaced item
-   * into an earlier stack, which upstream frees while still holding the
-   * pointer. Absorbing shrinks the pack, so an overfull pack with a stale
-   * handle is a corner the C does not define; the port sheds nothing. */
-  if (!obj) return null;
-
-  /* Describe (L1372-1374) BEFORE the excise, so the count is the pre-drop one. */
-  const name = describeObject(state, obj);
-
-  /* Message (L1377). */
-  opts.msg?.(`You drop ${name}.`);
-
-  /* Excise the object and drop it (carefully) near the player (L1379-1380).
-   * gear_excise_object re-runs calc_inventory (obj-gear.c L497). */
-  const { obj: dropped } = gearObjectForUse(
-    state.gear,
-    state.actor.player,
-    victim,
-    obj.number,
-  );
-  calcInventory(state.gear, constants, overflowCalcInv(opts));
-  /* drop_near(cave, &obj, 0, player->grid, false, true): prefer_pile. */
-  dropNear(state, dropped, 0, state.actor.grid, true, opts.floorEnv ?? {});
-
-  /* Describe (L1383). */
-  opts.msg?.(`You no longer have ${name}.`);
-
-  state.updateBonuses?.(); /* gear_excise_object's PU_BONUS (obj-gear.c L500). */
-  return dropped;
-}
-
-/**
- * inven_wield (obj-gear.c L931-1017): wield a pack object into its slot,
- * taking off whatever occupies it first, then combine_pack + pack_overflow so
- * a displaced item that does not fit is dropped (L1009-1010). Returns the
- * slot, or -1 when the object cannot be worn. Read
- * `state.actor.player.equipment[slot]` for the handle actually worn - a wield
- * out of a stack equips a FRESH split, not `handle` (L947-968).
- *
- * The MSG_WIELD line and the OF_STICKY warning (L986-1008) live here rather
- * than in the command handler because upstream emits them BEFORE combine_pack,
- * while do_cmd_wield's "You were wielding ..." line comes AFTER it (cmd-obj.c
- * L346-352) and so reads the post-combine gear label.
- */
-export function invenWield(
-  state: GameState,
-  handle: number,
-  constants: Constants,
-  opts: PackOverflowOpts = {},
-): number {
+export function invenWield(state: GameState, handle: number): number {
   const player = state.actor.player;
   const obj = gearGet(state.gear, handle);
   if (!obj) return -1;
@@ -330,45 +211,11 @@ export function invenWield(
   const slot = wieldSlot(player.body, obj.tval, player.equipment);
   if (slot < 0 || slot >= player.body.count) return -1;
 
-  /* `old` (L933): the slot's current occupant. Upstream just overwrites
-   * body.slots[slot].obj, which leaves `old` in p->gear as a pack item; the
-   * port's equipment[]/pack split needs the move spelled out. */
+  /* If the slot is taken, replace the item in the slot. */
   const oldHandle = player.equipment[slot] ?? 0;
   if (oldHandle !== 0) invenTakeoff(state, oldHandle);
 
-  const worn = wieldObject(
-    state.gear,
-    player,
-    handle,
-    state.runeEnv,
-    "inven_wield",
-  );
-  if (worn < 0) return worn;
-  const wornHandle = player.equipment[worn] ?? 0;
-  const wornObj = gearGet(state.gear, wornHandle);
-
-  /* Where is the item now, and the message (L991-1006). */
-  if (wornObj && opts.msg) {
-    const verb = tvalIsMeleeWeapon(wornObj.tval)
-      ? "You are wielding"
-      : tvalIsLauncher(wornObj.tval)
-        ? "You are shooting with"
-        : tvalIsLight(wornObj.tval)
-          ? "Your light source is"
-          : "You are wearing";
-    opts.msg(
-      `${verb} ${describeObject(state, wornObj)} (${gearLabelFor(state, wornHandle)}).`,
-    );
-    /* Sticky flag gets a special mention (L1008). */
-    if (wornObj.flags.has(OF.STICKY)) {
-      opts.msg("Oops! It feels deathly cold!");
-    }
-  }
-
-  /* See if we have to overflow the pack (L1009-1010). */
-  combinePack(state.gear, constants, overflowCalcInv(opts));
-  packOverflow(state, oldHandle, constants, opts);
-
+  const worn = wieldObject(state.gear, player, handle, state.runeEnv);
   /* object_learn_on_wield's player_learn_rune tail-calls
    * update_player_object_knowledge (obj-knowledge.c L1373): the wield learns the
    * obvious runes, and the sweep is what turns that into cross-object awareness
@@ -1226,14 +1073,27 @@ export function installObjCommands(
       );
       return 0;
     }
-    /* invenWield owns the MSG_WIELD line, the sticky warning, combine_pack and
-     * pack_overflow, in that upstream order (obj-gear.c L986-1010). */
-    const slot = invenWield(state, handle, deps.constants, packOpts(state, deps));
+    const slot = invenWield(state, handle);
     if (slot < 0) return 0;
-    /* The displaced item, now back in the pack - or on the floor if
-     * pack_overflow shed it, in which case gear_to_label gives '\0' and the
-     * port's gearLabelFor gives "" (cmd-obj.c L337-354, read AFTER
-     * combine_pack, so the label is the post-combine one). */
+    /* inven_wield's own message (obj-gear.c L986-1006): name the worn item by
+     * where it went, then a sticky warning. */
+    const worn = gearGet(state.gear, handle);
+    if (worn) {
+      const wname = describeObject(state, worn);
+      const wlabel = gearLabelFor(state, handle);
+      const verb = tvalIsMeleeWeapon(worn.tval)
+        ? "You are wielding"
+        : tvalIsLauncher(worn.tval)
+          ? "You are shooting with"
+          : tvalIsLight(worn.tval)
+            ? "Your light source is"
+            : "You are wearing";
+      deps.env?.msg?.(`${verb} ${wname} (${wlabel}).`);
+      if (worn.flags.has(OF.STICKY)) {
+        deps.env?.msg?.("Oops! It feels deathly cold!");
+      }
+    }
+    /* The displaced item, now back in the pack (cmd-obj.c L337-354). */
     if (displaced) {
       const dname = describeObject(state, displaced);
       const dlabel = gearLabelFor(state, displacedHandle);
@@ -1244,6 +1104,9 @@ export function installObjCommands(
           : "You were wearing";
       deps.env?.msg?.(`${act} ${dname} (${dlabel}).`);
     }
+    /* inven_wield runs combine_pack (obj-gear.c L1009), which re-derives the
+     * quiver via calc_inventory. */
+    combinePack(state.gear, deps.constants, calcInvOpts(state, deps));
     return state.z.moveEnergy;
   }));
 
@@ -1271,12 +1134,8 @@ export function installObjCommands(
         `${act} ${describeObject(state, obj)} (${gearLabelFor(state, handle)}).`,
       );
     }
-    /* combine_pack (which re-runs calc_inventory for inven_takeoff's PU_INVEN,
-     * obj-gear.c L1060) then pack_overflow on the item just taken off
-     * (cmd-obj.c L255-257). */
-    const opts = packOpts(state, deps);
-    combinePack(state.gear, deps.constants, calcInvOpts(state, deps));
-    packOverflow(state, handle, deps.constants, opts);
+    /* inven_takeoff sets PU_INVEN (obj-gear.c L1060) -> calc_inventory. */
+    calcInventory(state.gear, deps.constants, calcInvOpts(state, deps));
     return Math.trunc(state.z.moveEnergy / 2);
   }));
 

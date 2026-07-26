@@ -78,7 +78,7 @@ describe("ignoreDropTargets (obj-ignore.c ignore_drop L651, scan half)", () => {
     const inscribedHandle = carry(state, badInscribed); // ignored, but !d excludes it
 
     const wornHandle = carry(state, makeSword(rng, "& Short Sword~", -3));
-    invenWield(state, wornHandle, constants);
+    invenWield(state, wornHandle);
 
     const targets = ignoreDropTargets(state);
     const handles = targets.map((t) => t.handle);

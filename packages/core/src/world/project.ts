@@ -631,7 +631,9 @@ export function project(
     for (let i = 0; i < grids.length; i++) {
       const g = grids[i]!;
 
-      /* Skip grids no longer marked, or with no monster. */
+      /* Skip grids no longer marked, or with no monster. The flag test IS
+       * square_isproject (cave-square.c:562), inlined at its only upstream
+       * call site (project.c:940). */
       if (!c.sqinfoHas(g, SQUARE.PROJECT)) continue;
       if (c.mon(g) === 0) continue;
 
