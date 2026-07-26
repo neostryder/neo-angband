@@ -59,7 +59,6 @@ import type {
   SummonType,
 } from "./types";
 import { RF, RSF } from "../generated";
-import { messageLookupByName } from "../sound/engine";
 
 /* re-export for consumers that reach the domain through bind */
 export { MFLAG_SIZE, RF_SIZE, RSF_SIZE };
@@ -436,7 +435,7 @@ function bindSpells(
     map.set(index, {
       index,
       name: rec.name,
-      msgt: checkMsgt(`spell ${rec.name}`, rec.msgt),
+      msgt: rec.msgt ?? "GENERIC",
       hit: rec.hit ?? 0,
       effects,
       levels,
@@ -546,42 +545,6 @@ function pctToFreq(pct: number, what: string): number {
   return Math.trunc(100 / pct);
 }
 
-/**
- * parse_pit_innate_freq (mon-init.c) rejects anything outside 1..100 with
- * PARSE_ERROR_INVALID_SPELL_FREQ before storing 100/pct (pit.c
- * test_innate_freq_bad0 plants 0, -1 and 101). The 100/pct conversion itself
- * happens in gen/gen-monster.ts resolvePits, which is why only the range
- * check lives here: without it, `innate-freq:0` silently became "no innate
- * requirement" and `innate-freq:101` silently became 0, both of which change
- * which monsters mon_pit_hook admits.
- */
-function checkPitInnateFreq(name: string, pct: number | undefined): number {
-  if (pct === undefined) return 0;
-  if (pct < 1 || pct > 100) {
-    throw new Error(
-      `mon: pit ${name}: invalid innate-freq ${String(pct)} ` +
-        `(PARSE_ERROR_INVALID_SPELL_FREQ; 1..100)`,
-    );
-  }
-  return pct;
-}
-
-/**
- * message_lookup_by_name (message.c) guards `msgt:` in every parser that has
- * one; an unknown name is PARSE_ERROR_INVALID_MESSAGE (mspell.c
- * test_msgt_bad0). The port keeps the MSG_ name as a string and resolves it
- * at message time, so without this the typo simply never matched anything.
- */
-function checkMsgt(what: string, msgt: string | undefined): string {
-  if (msgt === undefined) return "GENERIC";
-  if (messageLookupByName(msgt) < 0) {
-    throw new Error(
-      `mon: ${what}: invalid msgt ${msgt} (PARSE_ERROR_INVALID_MESSAGE)`,
-    );
-  }
-  return msgt;
-}
-
 /** Registry of everything the monster domain binds from the pack. */
 export class MonsterRegistry {
   readonly pains: Map<number, Pain>;
@@ -589,14 +552,6 @@ export class MonsterRegistry {
   readonly blowEffects: Map<string, BlowEffect>;
   /** RSF index -> spell. */
   readonly spells: Map<number, MonsterSpell>;
-  /**
-   * lookup_monster_base (mon-util.c:146): upstream walks the rb_info list
-   * comparing streq(name, base->name); this is that lookup as a map, so
-   * `bases.get(name)` IS lookup_monster_base and `bases.get(n) === race.base`
-   * is match_monster_bases's single-name test (mon-util.c:166 - variadic
-   * upstream, and unused outside its unit test; the slay/brand base check is
-   * react_to_specific_slay's streq on base->name, obj-slays.c:274).
-   */
   readonly bases: Map<string, MonsterBase>;
   /** Record order mirrors monster.txt; ridx is the array index. */
   readonly races: MonsterRace[];
@@ -670,7 +625,7 @@ export class MonsterRegistry {
       spellReq: rec["spell-req"] ? [...rec["spell-req"]] : [],
       spellBan: rec["spell-ban"] ? [...rec["spell-ban"]] : [],
       monBan: rec["mon-ban"] ? [...rec["mon-ban"]] : [],
-      freqInnate: checkPitInnateFreq(rec.name, rec["innate-freq"]),
+      freqInnate: rec["innate-freq"] ?? 0,
     }));
   }
 

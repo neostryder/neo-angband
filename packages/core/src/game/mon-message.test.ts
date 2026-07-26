@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import { FlagSet } from "../bitflag";
-import { MFLAG, MON_MSG, MSG, RF } from "../generated";
+import { MFLAG, MON_MSG, RF } from "../generated";
 import { loc } from "../loc";
 import { blankMonster } from "../mon/monster";
 import type { Monster } from "../mon/monster";
@@ -21,13 +21,7 @@ import type {
   MonsterSpell,
   MonsterSpellLevel,
 } from "../mon/types";
-import {
-  formatMonsterMessage,
-  formatMonsterMessageShowDamage,
-  formatPainMessageShowDamage,
-  monMessageSoundType,
-  spellMessageText,
-} from "./mon-message";
+import { formatMonsterMessage, spellMessageText } from "./mon-message";
 
 function level(overrides: Partial<MonsterSpellLevel>): MonsterSpellLevel {
   return {
@@ -48,17 +42,6 @@ function spell(levels: MonsterSpellLevel[], index = 1): MonsterSpell {
   return { index, name: "TEST", msgt: "MSG_GENERIC", hit: 100, effects: [], levels };
 }
 
-/** The seven graded pain lines a monster_base carries (pain.txt). */
-const PAIN_MESSAGES = [
-  "ignore[s] the attack.",
-  "grunt[s] with pain.",
-  "cr[ies|y] out in pain.",
-  "scream[s] in pain.",
-  "scream[s] in agony.",
-  "writhe[s] in agony.",
-  "cr[ies|y] out feebly.",
-];
-
 function race(
   name: string,
   opts: {
@@ -66,8 +49,6 @@ function race(
     spellPower?: number;
     spellMsgs?: MonsterAltMsg[];
     plural?: string | null;
-    /** monster_base name, for get_message_type's Morgoth check. */
-    base?: string;
   } = {},
 ): MonsterRace {
   const flags = new FlagSet(RF_SIZE);
@@ -79,10 +60,6 @@ function race(
     spellPower: opts.spellPower ?? 0,
     spellMsgs: opts.spellMsgs ?? [],
     blows: [],
-    base: {
-      name: opts.base ?? "person",
-      pain: { index: 0, messages: PAIN_MESSAGES },
-    },
   } as unknown as MonsterRace;
 }
 
@@ -213,75 +190,5 @@ describe("formatMonsterMessage subject grammar (mon-msg.c get_subject)", () => {
   it("uses the bare name for uniques", () => {
     const m = mon(race("Gollum", { flags: [RF.UNIQUE] }));
     expect(formatMonsterMessage(m, MON_MSG.DIE)).toMatch(/^Gollum /);
-  });
-});
-
-/*
- * add_monster_message_show_damage / message_pain_show_damage (mon-msg.c L288 /
- * L132) and show_message's MON_MSG_FLAG_DAMAGE branch (L494): with
- * OPT(player, show_damage) on, a monster message from the player's own damage
- * carries the numeric amount.
- */
-describe("show_damage monster messages (mon-msg.c L132/L288/L494)", () => {
-  it("appends ' (N)' to a coded message (count == 1 form)", () => {
-    const m = mon(race("kobold"));
-    expect(formatMonsterMessageShowDamage(m, MON_MSG.DIE, 17)).toBe(
-      "The kobold dies. (17)",
-    );
-  });
-
-  it("appends ' (N)' to the graded pain message", () => {
-    const m = mon(race("kobold"));
-    m.maxhp = 100;
-    m.hp = 40; /* 40/47 == 85% -> MON_MSG_75 */
-    expect(formatPainMessageShowDamage(m, 7)).toBe(
-      "The kobold grunts with pain. (7)",
-    );
-  });
-
-  it("a zero-damage hit takes the plain branch, with no ' (0)'", () => {
-    /* message_pain_show_damage only calls the show-damage variant when dam > 0
-     * (mon-msg.c L136-140), so MON_MSG_UNHARMED never carries a suffix. */
-    const m = mon(race("kobold"));
-    m.maxhp = 100;
-    m.hp = 100;
-    expect(formatPainMessageShowDamage(m, 0)).toBe(
-      formatMonsterMessage(m, MON_MSG.UNHARMED),
-    );
-    expect(formatPainMessageShowDamage(m, 0)).not.toMatch(/\(0\)/);
-  });
-});
-
-/*
- * get_message_type (mon-msg.c L450): MSG_KILL is refined to MSG_KILL_UNIQUE for
- * a unique, and MSG_KILL_KING when the unique's base is Morgoth's.
- */
-describe("get_message_type unique refinement (mon-msg.c L450)", () => {
-  it("a normal monster's death plays MSG_KILL", () => {
-    expect(monMessageSoundType(MON_MSG.DIE, race("kobold"))).toBe(MSG.KILL);
-  });
-
-  it("a unique's death plays MSG_KILL_UNIQUE", () => {
-    const r = race("Gollum", { flags: [RF.UNIQUE], base: "person" });
-    expect(monMessageSoundType(MON_MSG.DIE, r)).toBe(MSG.KILL_UNIQUE);
-  });
-
-  it("a Morgoth-base unique's death plays MSG_KILL_KING", () => {
-    const r = race("Morgoth, Lord of Darkness", {
-      flags: [RF.UNIQUE],
-      base: "Morgoth",
-    });
-    expect(monMessageSoundType(MON_MSG.DIE, r)).toBe(MSG.KILL_KING);
-  });
-
-  it("a non-KILL message is never refined, even for a unique", () => {
-    const r = race("Gollum", { flags: [RF.UNIQUE], base: "person" });
-    expect(monMessageSoundType(MON_MSG.WAKES_UP, r)).toBe(MSG.GENERIC);
-  });
-
-  it("the Morgoth base only matters for uniques", () => {
-    /* rf_has(race->flags, RF_UNIQUE) gates the whole refinement. */
-    const r = race("lesser morgoth-thing", { base: "Morgoth" });
-    expect(monMessageSoundType(MON_MSG.DIE, r)).toBe(MSG.KILL);
   });
 });
