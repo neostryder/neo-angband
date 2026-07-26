@@ -157,6 +157,15 @@ export class Dun {
   nstairRoom = 0;
 
   /**
+   * dun->profile->name (set once per generation attempt, generate.c L1157).
+   * Read by help_greater_vault (gen-room.c L3099), which rejects a further 2/3
+   * of greater-vault attempts on any profile that is not "classic". Assigned by
+   * makeGen (gen/cave.ts) alongside profileTun/profileStr; "" in bare
+   * unit-test Gen contexts, which behaves like any other non-classic profile.
+   */
+  profileName = "";
+
+  /**
    * Whether an adjacent persistent level already exists above/below this one
    * (gen-chunk.c:147 chunk_find_adjacent). Only consulted under `persist`, by
    * handle_level_stairs (gen-cave.c:959-966): when the neighbour exists its
@@ -308,15 +317,6 @@ export class Gen {
   private groupCounter = 0;
   /** The player start, set by the cave builder via new_player_spot. */
   playerSpot: Loc | null = null;
-  /**
-   * p->upkeep->light_level (gen-cave.c:1594-1596): a builder asking the level to
-   * be revealed on arrival. Only labyrinth_gen sets it, for a "known" labyrinth;
-   * cave_generate consumes it with `wiz_light(chunk, p, false)` and clears it
-   * (generate.c:1255-1258). Because `chunk` is not yet `cave` at that point,
-   * that call reduces to a pure SQUARE_GLOW pass (square_memorize /
-   * square_know_pile / square_forget all short-circuit on `c != cave`).
-   */
-  lightLevel = false;
   /** Current tunnel/streamer parameters (set by the cave builder). */
   profileTun: TunnelParams = ZERO_TUNNEL;
   profileStr: StreamerParams = ZERO_STREAMER;
@@ -555,6 +555,7 @@ export class CaveFinder {
     for (let i = 0; i < this.n; i++) this.order[i] = i;
   }
 
+  /** cave_find_reset (gen-util.c L187): restart the scan from the first grid. */
   reset(): void {
     this.next = 0;
   }

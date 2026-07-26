@@ -51,13 +51,7 @@ import {
   tvalCanHaveCharges,
   tvalCanHaveTimeout,
 } from "../obj/object";
-import {
-  FlavorKnowledge,
-  NOOP_FLAVOR_AWARE_DEPS,
-  buildRuneList,
-  objectHasRune,
-  playerKnowsRune,
-} from "../obj/knowledge";
+import { FlavorKnowledge, NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge";
 import type { FlavorAwareDeps } from "../obj/knowledge";
 import { ignoreItemOk } from "../obj/ignore";
 import type { GameState, ItemTargetRef, PlayerCommand } from "./context";
@@ -84,6 +78,7 @@ import { attachGameEnv } from "./effect-game-env";
 import { describeObject } from "./describe";
 import { ODESC, objDescNameFormat } from "../obj/desc";
 import { substituteTimedMessage } from "../player/timed";
+import { squareIsSeen } from "../world/view";
 import { updatePlayerObjectKnowledge } from "./known";
 import type { CastContext } from "./project-cast";
 import type { ActionRegistry } from "./player-turn";
@@ -541,6 +536,55 @@ export function objCanZap(obj: GameObject): boolean {
   return tvalCanHaveTimeout(obj.tval) && numberCharging(obj) < obj.number;
 }
 
+/**
+ * object_effect (obj-util.c L886): the effect an object actually runs - the
+ * ACTIVATION's effect when it has one, otherwise the kind/instance effect.
+ * The activation wins outright, so an artifact or ego activation replaces the
+ * base kind's effect rather than being appended to it.
+ */
+export function objectEffect(obj: GameObject): EffectRecordJson[] | null {
+  if (obj.activation) return obj.activation.effect;
+  return obj.effect;
+}
+
+/**
+ * obj_is_activatable (obj-util.c L721): a WEARABLE object that has an effect.
+ * Note both halves: a non-wearable with an effect (a potion) is not
+ * "activatable", and a wearable's effect may come from its kind rather than an
+ * activation - the rings of Flames / Acid / Ice / Lightning / Open Wounds /
+ * Digging carry an `effect:` in object.txt and no `act:`, so they ARE
+ * activatable even though obj.activation is null.
+ */
+export function objIsActivatable(obj: GameObject): boolean {
+  if (!tvalIsWearable(obj.tval)) return false;
+  const effect = objectEffect(obj);
+  return effect !== null && effect.length > 0;
+}
+
+/**
+ * obj_can_activate (obj-util.c L730): activatable AND not recharging. This is
+ * NOT obj_can_zap: do_cmd_activate guards on this (cmd-obj.c L886) while
+ * do_cmd_zap_rod guards on obj_can_zap (L851), and obj_can_zap requires a ROD
+ * tval, so reusing it for activation refuses every artifact and ring.
+ */
+export function objCanActivate(obj: GameObject): boolean {
+  return objIsActivatable(obj) && obj.timeout === 0;
+}
+
+/**
+ * obj_can_wear (obj-util.c L810): wield_slot(obj) >= 0 - do_cmd_wield's
+ * item_tester (cmd-obj.c L284). Over the shipped body plan this is exactly
+ * tvalIsWearable (wield_slot handles the same tval set), but it is the slot
+ * lookup that decides, so a body plan without some slot type changes the
+ * answer. NOTE the upstream wart it inherits: slot_by_type's fallback for
+ * "type not on this body" is `false`, i.e. slot 0 - so wield_slot returns 0,
+ * not -1, and obj_can_wear stays true for a slot the body does not have.
+ */
+export function objCanWear(state: GameState, obj: GameObject): boolean {
+  const player = state.actor.player;
+  return wieldSlot(player.body, obj.tval, player.equipment) >= 0;
+}
+
 /* ------------------------------------------------------------------ *
  * Inscriptions and refuelling (cmd-obj.c, obj-util.c, obj-ignore.c).
  * ------------------------------------------------------------------ */
@@ -648,75 +692,14 @@ function objIsCarried(state: GameState, obj: GameObject): boolean {
 }
 
 /**
- * rune_add_autoinscription (obj-ignore.c:172-186): make or extend the rune-`i`
- * autoinscription on one object. No note, or the note already present as a
- * substring, is a no-op; otherwise the note is APPENDED to any existing
- * inscription.
- *
- * Two upstream details preserved:
- * - `strstr(obj->note, rune_note(i))` (obj-ignore.c:176) is a substring test,
- *   not equality, so a note already contained in a longer inscription is not
- *   appended twice - and an EMPTY note is never appended at all, because
- *   strstr(x, "") is non-NULL;
- * - `char current_note[80]` with my_strcpy/my_strcat (obj-ignore.c:174-182)
- *   truncates the combined inscription to 79 characters.
- */
-function runeAddAutoinscription(
-  state: GameState,
-  obj: GameObject,
-  i: number,
-): void {
-  const note = state.runeNotes?.get(i);
-  if (note === undefined) return; // !rune_note(i)
-  const current = obj.note ?? "";
-  if (obj.note && current.includes(note)) return;
-  obj.note = (current + note).slice(0, 79) || null;
-}
-
-/**
- * runes_autoinscribe (obj-ignore.c:217-225): put every applicable rune
- * autoinscription on `obj` - each rune the object carries and the player knows,
- * walked in rune-list order.
- */
-function runesAutoinscribe(state: GameState, obj: GameObject): void {
-  if (!state.runeNotes) return;
-  const env = state.runeEnv;
-  const p = state.actor.player;
-  const runes = buildRuneList(env);
-  for (let i = 0; i < runes.length; i++) {
-    const rune = runes[i]!;
-    if (objectHasRune(env, obj, rune) && playerKnowsRune(p, rune)) {
-      runeAddAutoinscription(state, obj, i);
-    }
-  }
-}
-
-/**
- * rune_autoinscribe (obj-ignore.c:193-212): the player just set a note on rune
- * `i` - stamp it on every object carrying that rune, on the floor beneath them
- * first and then through the gear. Gated on player_knows_rune (:198).
- * Upstream caller: ui-knowledge.c rune_xtra_act (:2275).
- */
-export function runeAutoinscribe(state: GameState, i: number): void {
-  if (!state.runeNotes) return;
-  const env = state.runeEnv;
-  const rune = buildRuneList(env)[i];
-  if (!rune) return;
-  if (!playerKnowsRune(state.actor.player, rune)) return;
-  for (const obj of floorPile(state, state.actor.grid)) {
-    if (objectHasRune(env, obj, rune)) runeAddAutoinscription(state, obj, i);
-  }
-  for (const obj of state.gear.store.values()) {
-    if (objectHasRune(env, obj, rune)) runeAddAutoinscription(state, obj, i);
-  }
-}
-
-/**
  * apply_autoinscription (obj-ignore.c L242): put the kind's registered
  * autoinscription on `obj`, unless it is already inscribed, not carried, or
  * ignored. Also clears a stale unaware autoinscription once the kind
  * becomes aware. Returns 1 when an inscription was applied, 0 otherwise
  * (upstream's int return, kept for parity though callers ignore it).
+ *
+ * runes_autoinscribe (obj-ignore.c L259, rune-based autoinscription) rides
+ * the rune-knowledge system and is deferred to #24.
  */
 export function applyAutoinscription(
   state: GameState,
@@ -734,11 +717,6 @@ export function applyAutoinscription(
     }
   }
 
-  /* "Make rune autoinscription go first, for now" (obj-ignore.c:258-259):
-   * BEFORE the no-kind-note early return, so the rune notes land even when the
-   * kind itself has no autoinscription. */
-  runesAutoinscribe(state, obj);
-
   if (!note) return 0;
   if (obj.note) return 0;
   if (!objIsCarried(state, obj)) return 0;
@@ -747,26 +725,6 @@ export function applyAutoinscription(
   obj.note = note.length > 0 ? note : null;
   deps.env?.msg?.(`You autoinscribe ${describeObject(state, obj)}.`);
   return 1;
-}
-
-/**
- * autoinscribe_ground (obj-ignore.c:340-348): apply_autoinscription over the
- * whole pile beneath the player.
- */
-export function autoinscribeGround(state: GameState, deps: ObjCmdDeps): void {
-  for (const obj of floorPile(state, state.actor.grid)) {
-    applyAutoinscription(state, obj, deps);
-  }
-}
-
-/**
- * autoinscribe_pack (obj-ignore.c:352-359): apply_autoinscription over p->gear
- * (which upstream is one list covering pack AND equipment, as here).
- */
-export function autoinscribePack(state: GameState, deps: ObjCmdDeps): void {
-  for (const obj of state.gear.store.values()) {
-    applyAutoinscription(state, obj, deps);
-  }
 }
 
 /** randcalc(obj->time, 0, RANDOMISE): the recharge time roll. */
@@ -875,6 +833,71 @@ export function playerGetResumeNormalShape(
     return true;
   }
   return false;
+}
+
+/**
+ * player_can_read (player-util.c L1166): scrolls and spellbooks need working
+ * eyes, light, a clear head and intact memory. Checked in this exact order, and
+ * each refusal prints its own message and spends no turn. do_cmd_read_scroll
+ * (cmd-obj.c L748) calls this with show_msg true BEFORE cmd_get_item, so a blind
+ * player with no scrolls at all still hears "You can't see anything." rather
+ * than the "You have no scrolls to read." rejection.
+ *
+ * Reached from two places upstream and both are this same predicate:
+ * do_cmd_read_scroll (cmd-obj.c:748) and the 'r' key's prereq
+ * player_can_read_prereq (player-util.c:1264, wired at ui-game.c:131) - which
+ * is why the show_msg parameter exists rather than the messages being inlined.
+ * The prereq's TMD_COMMAND bypass is NOT reproduced here: while TMD_COMMAND runs
+ * the turn loop redirects every command to do_cmd_mon_command before the handler
+ * is reached (game/player-turn.ts L708-714), which is exactly what the bypass
+ * exists to permit.
+ *
+ * Note the order and strings differ from player_can_cast (L1087), which folds
+ * blind and no_light into one "You cannot see!" and has no amnesia check.
+ */
+export function playerCanRead(
+  state: GameState,
+  env: Pick<ObjCmdEnv, "msg"> = {},
+  showMsg = true,
+): boolean {
+  const p = state.actor.player;
+  if ((p.timed[TMD.BLIND] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You can't see anything.");
+    return false;
+  }
+  if (noLight(state)) {
+    if (showMsg) env.msg?.("You have no light to read by.");
+    return false;
+  }
+  if ((p.timed[TMD.CONFUSED] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You are too confused to read!");
+    return false;
+  }
+  if ((p.timed[TMD.AMNESIA] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You can't remember how to read!");
+    return false;
+  }
+  return true;
+}
+
+/**
+ * no_light (cave-view.c L913): the player's own grid is not currently seen.
+ * Shared by playerCanRead here and player_can_cast (game/spell-cmd.ts).
+ *
+ * SQUARE_SEEN is maintained by update_view, which this port drives through the
+ * `state.updateFov` host seam (game/context.ts L506, wired by the web shell at
+ * main.ts:4340). A core-only host that never installs the seam leaves SEEN
+ * clear on EVERY grid, so reading the flag there would report "no light"
+ * everywhere and make casting and reading permanently impossible - the opposite
+ * of upstream, where a lit town square is seen. So when the seam is absent the
+ * flag carries no information and no_light answers false, leaving the caller's
+ * other conditions (blindness) to decide, exactly as before this was wired.
+ * This is a seam guard, not a rule of the game: with a host that maintains the
+ * view, which is every playing configuration, the check is upstream's verbatim.
+ */
+export function noLight(state: GameState): boolean {
+  if (state.updateFov === undefined) return false;
+  return !squareIsSeen(state.chunk, state.actor.grid);
 }
 
 /**
@@ -1059,8 +1082,11 @@ export function useAux(
       }
     }
 
-    /* Do effect. */
-    const chain = buildObjectEffectChain(obj.effect ?? [], state, deps.inject);
+    /* Do effect. use_aux takes its chain from object_effect(obj) (cmd-obj.c
+     * L410 `struct effect *effect = object_effect(obj);`), so an activation's
+     * effect REPLACES the base kind's - reading obj.effect here ran a
+     * Narthanc-style artifact's (empty) kind effect instead of its activation. */
+    const chain = buildObjectEffectChain(objectEffect(obj) ?? [], state, deps.inject);
     const ctx = attachGameEnv(buildEffectContext(state, deps.envDeps), {
       state,
       cast: deps.cast,
@@ -1221,23 +1247,27 @@ function commandTargetItem(cmd: PlayerCommand): ItemTargetRef | undefined {
   return undefined;
 }
 
-/** A use command over a tval filter and use kind. */
+/**
+ * A use command over a tval filter and use kind.
+ *
+ * `ready` is the command's OWN pre-use guard, because upstream does NOT share
+ * one: do_cmd_zap_rod tests obj_can_zap and says "That rod is still charging."
+ * (cmd-obj.c L851-855) while do_cmd_activate tests obj_can_activate and says
+ * "That item is still charging." (L886-890). obj_can_zap requires a rod tval,
+ * so the two are not interchangeable - using obj_can_zap for activation
+ * refused EVERY artifact and ring.
+ */
 function useCommand(
   deps: ObjCmdDeps,
   filter: (obj: GameObject) => boolean,
   use: UseKind,
+  ready?: { ok: (obj: GameObject) => boolean; msg: string },
 ) {
   return (state: GameState, cmd: PlayerCommand): number => {
     const found = commandObject(state, cmd);
     if (!found || !filter(found.obj)) return 0;
-    if (use === USE.TIMEOUT && !objCanZap(found.obj)) {
-      /* do_cmd_zap_rod (cmd-obj.c L852) and do_cmd_activate (L886) use
-       * distinct still-charging wording. */
-      deps.env?.msg?.(
-        tvalIsRod(found.obj.tval)
-          ? "That rod is still charging."
-          : "That item is still charging.",
-      );
+    if (ready && !ready.ok(found.obj)) {
+      deps.env?.msg?.(ready.msg);
       return 0;
     }
     if (use === USE.CHARGE && found.obj.pval <= 0) {
@@ -1262,14 +1292,6 @@ function useCommand(
       ...(tgtItem ? { tgtItem } : {}),
       ...(typeof tgtCurse === "number" ? { tgtCurse } : {}),
     });
-    /* "Autoinscribe if we are guaranteed to still have any"
-     * (cmd-obj.c:717-719): `if (!none_left && !from_floor)`. none_left is
-     * gear_object_for_use consuming the last of the stack, which here is the
-     * gear handle no longer resolving. */
-    if (!found.fromFloor && found.handle !== undefined) {
-      const left = state.gear.store.get(found.handle);
-      if (left) applyAutoinscription(state, left, deps);
-    }
     return result.turnSpent ? state.z.moveEnergy : 0;
   };
 }
@@ -1283,8 +1305,10 @@ export function installObjCommands(
   deps: ObjCmdDeps,
 ): void {
   /* player_get_resume_normal_shape gates the hands/voice commands
-   * (cmd-obj.c: takeoff/wield/drop, scroll/staff/wand/rod/activate);
-   * eating and quaffing stay possible in any shape. */
+   * (cmd-obj.c: takeoff/wield/drop, scroll/staff/wand/rod/activate AND
+   * quaff - do_cmd_quaff_potion opens with the resume gate at cmd-obj.c L923).
+   * do_cmd_eat_food (L899) is the one use command with NO gate, so eating stays
+   * possible in any shape. */
   const gated = (
     fn: (state: GameState, cmd: PlayerCommand) => number,
   ): ((state: GameState, cmd: PlayerCommand) => number) => {
@@ -1430,13 +1454,39 @@ export function installObjCommands(
     "eat",
     useCommand(deps, (o) => tvalIsEdible(o.tval), USE.SINGLE),
   );
+  /* do_cmd_quaff_potion (cmd-obj.c L917-931): the resume-shape gate, THEN the
+   * potion pick. Unlike do_cmd_eat_food it is gated. */
   registry.register(
     "quaff",
-    useCommand(deps, (o) => tvalIsPotion(o.tval), USE.SINGLE),
+    gated(useCommand(deps, (o) => tvalIsPotion(o.tval), USE.SINGLE)),
   );
+  /*
+   * do_cmd_read_scroll (cmd-obj.c L740-758): resume shape, THEN
+   * player_can_read(player, true) - blind / no light / confused / amnesia each
+   * refuse with their own message and cost no turn - and only then the scroll
+   * pick, so the read gate fires before "You have no scrolls to read.".
+   *
+   * Two lanes ported this independently and reached OPPOSITE orderings, because
+   * upstream checks the same condition in two places and each lane found one:
+   * this handler order, and `player_can_read_prereq` hung on the 'r' key entry
+   * (ui-game.c:131), which ui-game.c:596 runs BEFORE the command is ever
+   * pushed. Both are real. The prereq means a blind player pressing 'r' never
+   * reaches the shape-resume prompt at all, while anything that pushes
+   * CMD_READ_SCROLL without going through that key entry still takes
+   * resume-then-read. Collapsing the pair into a single head-of-handler guard
+   * reproduces the keyboard order but breaks the handler's own, so the guard
+   * stays here in C order and the prereq belongs at the port's dispatch layer
+   * next to the key binding - the same split playercan applied to cast/study.
+   */
   registry.register(
     "read",
-    gated(useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE)),
+    gated((state, cmd) => {
+      if (!playerCanRead(state, deps.env ?? {})) return 0;
+      return useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE)(
+        state,
+        cmd,
+      );
+    }),
   );
   registry.register(
     "use-staff",
@@ -1446,20 +1496,26 @@ export function installObjCommands(
     "aim-wand",
     gated(useCommand(deps, (o) => tvalIsWand(o.tval), USE.CHARGE)),
   );
+  /* do_cmd_zap_rod (cmd-obj.c L832): tval_is_rod filter, obj_can_zap guard. */
   registry.register(
     "zap-rod",
-    gated(useCommand(deps, (o) => tvalIsRod(o.tval), USE.TIMEOUT)),
+    gated(
+      useCommand(deps, (o) => tvalIsRod(o.tval), USE.TIMEOUT, {
+        ok: objCanZap,
+        msg: "That rod is still charging.",
+      }),
+    ),
   );
-  /* obj_can_activate: an activation and not recharging. */
+  /* do_cmd_activate (cmd-obj.c L866): obj_is_activatable filter (a WEARABLE
+   * with an object_effect - which includes the kind-effect rings that have no
+   * activation), then the obj_can_activate guard. */
   registry.register(
     "activate",
     gated(
-      useCommand(
-        deps,
-        (o) =>
-          (o.activation !== null || o.artifact !== null) && o.timeout === 0,
-        USE.TIMEOUT,
-      ),
+      useCommand(deps, objIsActivatable, USE.TIMEOUT, {
+        ok: objCanActivate,
+        msg: "That item is still charging.",
+      }),
     ),
   );
 
@@ -1496,8 +1552,12 @@ export function installObjCommands(
    * shapechanged, with no resume prompt. */
   registry.register("autoinscribe", (state, _cmd) => {
     if (playerIsShapechanged(state)) return 0;
-    autoinscribeGround(state, deps);
-    autoinscribePack(state, deps);
+    for (const obj of floorPile(state, state.actor.grid)) {
+      applyAutoinscription(state, obj, deps);
+    }
+    for (const obj of state.gear.store.values()) {
+      applyAutoinscription(state, obj, deps);
+    }
     return 0;
   });
 

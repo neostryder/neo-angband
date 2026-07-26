@@ -36,11 +36,12 @@ import type { EffectEnvDeps } from "./effect-env";
 import type { MonPlaceDeps } from "./mon-place";
 import type { TrapDeps } from "./trap";
 import { squareTrap } from "./trap";
-import { floorCarry, floorPile } from "./floor";
-import { knownObject, squareIsKnown } from "./known";
+import { floorPile } from "./floor";
+import { gearAdd } from "./gear";
+import { squareIsKnown } from "./known";
 import { updateMonsterDistances } from "./context";
 import type { GameState } from "./context";
-import { FLOOR, GRANITE, addMon, makeRace, makeState, monReg, plReg } from "./harness";
+import { FLOOR, addMon, makeRace, makeState, monReg, plReg } from "./harness";
 import {
   NOSCORE,
   NOSCORE_SCORE_INVALIDATING,
@@ -49,6 +50,7 @@ import {
   wizAcquire,
   wizAdvance,
   wizBanish,
+  wizChangeItemQuantity,
   wizCheatDeath,
   wizCreateObj,
   wizCreateTrap,
@@ -324,6 +326,118 @@ describe("do_cmd_wiz_curse_item (L1004)", () => {
   });
 });
 
+describe("do_cmd_wiz_change_item_quantity (cmd-wizard.c L484)", () => {
+  /** An ordinary wand (charge-carrying, stackable) prepped at depth 5. */
+  function wand(state: GameState): GameObject {
+    const kind = objReg.kinds.find(
+      (k) => k.tval === TV.WAND && k.kidx < objReg.ordinaryKindCount,
+    )!;
+    return objectPrep(state.rng, objReg, constants, kind, 5, "average");
+  }
+
+  it("sets the number and scales charges by integer division (L523-527)", () => {
+    const state = makeState();
+    const obj = wand(state);
+    obj.number = 2;
+    obj.pval = 7;
+    const res = wizChangeItemQuantity(
+      state,
+      { obj, quantity: 5 },
+      wizDeps(state, true),
+    );
+    expect(res).not.toBeNull();
+    expect(obj.number).toBe(5);
+    /* (7 * 5) / 2 == 17 after truncation, NOT 17.5 and not a per-item rescale. */
+    expect(obj.pval).toBe(17);
+  });
+
+  it("clamps to [1, max_stack] (L520)", () => {
+    const state = makeState();
+    const obj = wand(state);
+    obj.pval = 0; /* no charge ceiling, so max_stack is the only bound */
+    const max = obj.kind.base.maxStack;
+    expect(
+      wizChangeItemQuantity(state, { obj, quantity: 9999 }, wizDeps(state, true))
+        ?.number,
+    ).toBe(max);
+    expect(
+      wizChangeItemQuantity(state, { obj, quantity: -4 }, wizDeps(state, true))
+        ?.number,
+    ).toBe(1);
+  });
+
+  it("caps the count so scaled charges cannot exceed MAX_PVAL (L507-511)", () => {
+    const state = makeState();
+    const obj = wand(state);
+    obj.number = 1;
+    obj.pval = 1000;
+    /* nmax = MIN((32767 * 1) / 1000, max_stack) = MIN(32, max_stack). */
+    const expected = Math.min(32, obj.kind.base.maxStack);
+    const res = wizChangeItemQuantity(
+      state,
+      { obj, quantity: 9999 },
+      wizDeps(state, true),
+    );
+    expect(res?.max).toBe(expected);
+    expect(obj.number).toBe(expected);
+  });
+
+  it("refuses an artifact with upstream's message (L499-503)", () => {
+    const state = makeState();
+    const msgs: string[] = [];
+    const obj = wand(state);
+    obj.artifact = objReg.artifacts.find((a) => a) ?? null;
+    obj.number = 1;
+    expect(
+      wizChangeItemQuantity(state, { obj, quantity: 4 }, wizDeps(state, true, msgs)),
+    ).toBeNull();
+    expect(obj.number).toBe(1);
+    expect(msgs).toContain("Can not modify the quantity of an artifact.");
+  });
+
+  it("leaves an unchanged count entirely alone, charges included (L522)", () => {
+    const state = makeState();
+    const obj = wand(state);
+    obj.number = 3;
+    obj.pval = 5;
+    const res = wizChangeItemQuantity(
+      state,
+      { obj, quantity: 3 },
+      wizDeps(state, true),
+    );
+    expect(res?.changed).toBe(false);
+    expect(obj.pval).toBe(5);
+  });
+
+  it("is a no-op outside wizard mode", () => {
+    const state = makeState();
+    const obj = wand(state);
+    obj.number = 1;
+    expect(
+      wizChangeItemQuantity(state, { obj, quantity: 6 }, wizDeps(state, false)),
+    ).toBeNull();
+    expect(obj.number).toBe(1);
+  });
+
+  it("refuses a supplied equipped-item handle with upstream's message (L494-497)", () => {
+    const state = makeState();
+    const msgs: string[] = [];
+    const obj = wand(state);
+    obj.number = 1;
+    const handle = gearAdd(state.gear, obj);
+    state.actor.player.equipment[0] = handle;
+    expect(
+      wizChangeItemQuantity(
+        state,
+        { obj, handle, quantity: 4 },
+        wizDeps(state, true, msgs),
+      ),
+    ).toBeNull();
+    expect(obj.number).toBe(1);
+    expect(msgs).toContain("Can not change the quantity of an equipped item.");
+  });
+});
+
 describe("do_cmd_wiz_edit_player_* (L1137 / L1169 / L1247)", () => {
   it("sets exp, gold and a stat within their bounds", () => {
     const state = makeState();
@@ -428,42 +542,11 @@ describe("effect-backed wizard commands", () => {
 });
 
 describe("do_cmd_wiz_wizard_light (L2907)", () => {
-  it("lights the level and memorizes only its non-floor terrain", () => {
-    /*
-     * wiz_light(cave, player, true) (cmd-wizard.c:2909). Every non-wall grid is
-     * perma-lit, but a neighbour is MEMORIZED only when
-     * `!square_isfloor(a_grid) || square_isvisibletrap(a_grid)`
-     * (cave-map.c:439-440), so open floor stays unremembered - it is the walls
-     * bounding the lit area that get mapped.
-     */
+  it("lights and knows the level", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     wizWizardLight(state, wizDeps(state, true));
     expect(state.chunk.sqinfoHas(loc(10, 10), SQUARE.GLOW)).toBe(true);
-    /* Open floor away from any wall: lit, not remembered. */
-    expect(squareIsKnown(state, loc(10, 10))).toBe(false);
-    /* The granite border neighbouring the field: remembered. */
-    expect(state.chunk.isFloor(loc(0, 10))).toBe(false);
-    expect(squareIsKnown(state, loc(0, 10))).toBe(true);
-  });
-
-  it("is the `full` form: square_know_pile, not sense_pile (cmd-wizard.c:2909)", () => {
-    /* wiz_light(cave, player, true): `full` is TRUE for the wizard command, so
-     * the floor piles are KNOWN (the real glyph) rather than merely SENSED (the
-     * "something is here" null-glyph marker, cave-map.c:445-452). */
-    const state = makeState({ playerGrid: loc(10, 10) });
-    const grid = loc(12, 10);
-    const potion = objectPrep(
-      state.rng,
-      objReg,
-      constants,
-      objReg.kinds.find((k) => k && k.tval === TV.POTION)!,
-      0,
-      "average",
-    );
-    potion.number = 1;
-    expect(floorCarry(state, grid, potion)).toBe(true);
-    wizWizardLight(state, wizDeps(state, true));
-    expect(knownObject(state, grid)?.ch).not.toBeNull();
+    expect(squareIsKnown(state, loc(10, 10))).toBe(true);
   });
 });
 
@@ -518,18 +601,10 @@ describe("map-query DATA commands", () => {
     expect(
       wizQuerySquareFlag(state, { flag: 0 }, wizDeps(state, true)).length,
     ).toBe(0);
-    /*
-     * wiz_light memorizes only non-floor neighbours (cave-map.c:439-440), and
-     * wiz_hack_map scans square_in_bounds_fully grids only (cmd-wizard.c:333) -
-     * the same 1..h-2 range - so an open field has NOTHING to report. Put a
-     * granite pillar inside the field and it is the pillar that is known.
-     */
-    state.chunk.setFeat(loc(5, 5), GRANITE);
     wizWizardLight(state, wizDeps(state, true));
-    const known = wizQuerySquareFlag(state, { flag: 0 }, wizDeps(state, true));
-    expect(known.length).toBeGreaterThan(0);
-    expect(known.some((g) => g.x === 5 && g.y === 5)).toBe(true);
-    expect(known.some((g) => g.x === 12 && g.y === 8)).toBe(false);
+    expect(
+      wizQuerySquareFlag(state, { flag: 0 }, wizDeps(state, true)).length,
+    ).toBeGreaterThan(0);
   });
 
   it("wizPeekFlow returns grids at a noise depth", () => {

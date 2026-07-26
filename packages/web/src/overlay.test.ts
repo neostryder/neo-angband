@@ -753,6 +753,74 @@ describe("promptText (askfor_aux + askfor_aux_keypress, ui-input.c:662-800)", ()
     expect(await done).toBeNull();
   });
 
+  /*
+   * get_name_keypress' '*' case (ui-input.c L1035-1042): the CHARACTER NAME
+   * field only, wired via the `randomize` callback so promptText's other
+   * callers (which pass no callback) are unaffected.
+   */
+  describe("randomize ('*' -> player_random_name, ui-input.c L1035-1042)", () => {
+    it("replaces the whole default buffer and resets the cursor to 0", async () => {
+      const win = makeFakeWindow();
+      (globalThis as { window?: unknown }).window = win;
+      const term = makeTerm(40, 12);
+      const done = promptText(
+        term,
+        "Enter your player's name",
+        "Gandalf",
+        31,
+        undefined,
+        () => "Frodo",
+      );
+      press(win, "*");
+      expect(term.snapshot().join("\n")).toContain("> Frodo");
+      /* Cursor reset to 0: a further printable key inserts at the front. */
+      press(win, "X");
+      expect(term.snapshot().join("\n")).toContain("> XFrodo");
+      press(win, "Enter");
+      expect(await done).toBe("XFrodo");
+    });
+
+    it("as the very first key it replaces rather than clears-then-inserts", async () => {
+      const win = makeFakeWindow();
+      (globalThis as { window?: unknown }).window = win;
+      const term = makeTerm(40, 12);
+      const done = promptText(
+        term,
+        "Name",
+        "Gandalf",
+        31,
+        undefined,
+        () => "Bilbo",
+      );
+      press(win, "*"); // firsttime is still true here
+      press(win, "Enter");
+      expect(await done).toBe("Bilbo"); // not "" (the clear-on-firsttime path)
+    });
+
+    it("is inert without a callback (falls through to the ordinary printable-key path)", async () => {
+      const win = makeFakeWindow();
+      (globalThis as { window?: unknown }).window = win;
+      const term = makeTerm(40, 12);
+      const done = promptText(term, "Name", "Gandalf");
+      /* No randomize supplied: '*' is just an ordinary printable key, so the
+       * firsttime-clears-the-default rule (L765-771) applies to it exactly
+       * like any other character - it does NOT generate a random name. */
+      press(win, "*");
+      press(win, "Enter");
+      expect(await done).toBe("*");
+    });
+
+    it("an empty generated name leaves the buffer untouched", async () => {
+      const win = makeFakeWindow();
+      (globalThis as { window?: unknown }).window = win;
+      const term = makeTerm(40, 12);
+      const done = promptText(term, "Name", "Gandalf", 31, undefined, () => "");
+      press(win, "*");
+      press(win, "Enter");
+      expect(await done).toBe("Gandalf");
+    });
+  });
+
   it("clamps to max on Enter (do_cmd_delay's MIN(val, 255))", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
