@@ -885,5 +885,5 @@ describe("save.c field-coverage guard: the loader round-trips every field", () =
       }
     }
     expect(failures).toEqual([]);
-  }, 15_000);
+  });
 });
