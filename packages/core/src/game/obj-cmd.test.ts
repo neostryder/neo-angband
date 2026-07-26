@@ -21,7 +21,13 @@ import type { FlavorAwareDeps } from "../obj/knowledge";
 import { bindProjections } from "../world/projection";
 import type { ProjectionRecordJson } from "../world/projection";
 import { floorPile } from "./floor";
-import { gearAdd, gearGet, invenCarry } from "./gear";
+import {
+  gearAdd,
+  gearGet,
+  invenCarry,
+  packIsOverfull,
+  packSlotsUsed,
+} from "./gear";
 import { basicPlayerActor } from "./project-cast";
 import type { CastContext } from "./project-cast";
 import { registerAttackHandlers } from "./effect-attack";
@@ -44,6 +50,7 @@ import {
   USE,
 } from "./obj-cmd";
 import type { ObjCmdDeps } from "./obj-cmd";
+import { describeObject } from "./describe";
 import { createDefaultRegistry, processPlayer } from "./player-turn";
 import { makeState, plReg } from "./harness";
 import type { GameState } from "./context";
@@ -137,7 +144,7 @@ describe("inventory verbs (obj-gear.c)", () => {
     const sword = makeNamed("& Dagger~", TV.SWORD);
     const h = carry(state, sword);
 
-    const slot = invenWield(state, h);
+    const slot = invenWield(state, h, constants);
     expect(slot).toBeGreaterThanOrEqual(0);
     expect(state.actor.player.equipment[slot]).toBe(h);
     expect(state.gear.pack).not.toContain(h);
@@ -151,8 +158,8 @@ describe("inventory verbs (obj-gear.c)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const first = carry(state, makeNamed("& Dagger~", TV.SWORD));
     const second = carry(state, makeNamed("& Tulwar~", TV.SWORD));
-    const slot = invenWield(state, first);
-    expect(invenWield(state, second)).toBe(slot);
+    const slot = invenWield(state, first, constants);
+    expect(invenWield(state, second, constants)).toBe(slot);
     expect(state.actor.player.equipment[slot]).toBe(second);
     expect(state.gear.pack).toContain(first);
   });
@@ -454,7 +461,7 @@ describe("registered commands", () => {
 
 /** Wield `obj` (carrying it first) and return its equipment slot. */
 function equip(state: GameState, obj: GameObject): number {
-  return invenWield(state, carry(state, obj));
+  return invenWield(state, carry(state, obj), constants);
 }
 
 describe("inscribe / uninscribe (cmd-obj.c do_cmd_inscribe/do_cmd_uninscribe)", () => {
@@ -1036,7 +1043,7 @@ describe("faithful item-use messaging (cmd-obj.c / obj-gear.c)", () => {
   it("taking off an item prints 'You were wielding X (c).'", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const h = carry(state, makeNamed("& Dagger~", TV.SWORD));
-    invenWield(state, h);
+    invenWield(state, h, constants);
     const { registry, msgs } = withMsgs(state);
 
     registry.get("takeoff")!(state, { code: "takeoff", args: { handle: h } });
@@ -1085,6 +1092,139 @@ describe("faithful item-use messaging (cmd-obj.c / obj-gear.c)", () => {
     expect(
       msgs.some((m) => /^You have \d+ charges? remaining\.$/.test(m)),
     ).toBe(true);
+  });
+});
+
+describe("pack_overflow is wired into the commands (obj-gear.c L1345 / cmd-obj.c L255)", () => {
+  function wired(state: GameState): {
+    registry: ReturnType<typeof createDefaultRegistry>;
+    msgs: string[];
+  } {
+    const msgs: string[] = [];
+    const registry = createDefaultRegistry();
+    installObjCommands(
+      registry,
+      makeDeps(state, { env: { msg: (t) => msgs.push(t) } }),
+    );
+    return { registry, msgs };
+  }
+
+  /** Occupy every remaining pack slot with mutually un-mergeable potions. */
+  function fillPack(state: GameState): void {
+    let slots = packSlotsUsed(state.gear, constants);
+    while (slots < constants.packSize) {
+      const potion = makeNamed("Cure Light Wounds", TV.POTION);
+      potion.note = `filler${slots}`; /* distinct notes: object_stackable fails */
+      state.gear.pack.push(gearAdd(state.gear, potion));
+      slots++;
+    }
+    expect(packSlotsUsed(state.gear, constants)).toBe(constants.packSize);
+  }
+
+  it("do_cmd_wield sheds the displaced item when the pack is full", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const worn = makeNamed("& Dagger~", TV.SWORD);
+    const wornHandle = carry(state, worn);
+    const slot = invenWield(state, wornHandle, constants);
+    expect(slot).toBeGreaterThanOrEqual(0);
+    /* A STACK of two, as upstream's overflow fixture does (inven-wield.c L551
+     * uses HELM 2 x3): the wield splits one off, so the remainder still holds
+     * the pack slot and the displaced dagger has nowhere to go. */
+    const replacement = makeNamed("& Tulwar~", TV.SWORD);
+    replacement.number = 2;
+    const replacementHandle = carry(state, replacement);
+    fillPack(state);
+    const oldSlots = packSlotsUsed(state.gear, constants);
+    expect(oldSlots).toBe(constants.packSize);
+    const { registry, msgs } = wired(state);
+    const dropName = describeObject(state, worn);
+
+    const used = registry.get("wield")!(state, {
+      code: "wield",
+      args: { handle: replacementHandle },
+    });
+
+    /* A real turn was spent (z_info->move_energy, obj-gear.c L941). */
+    expect(used).toBe(state.z.moveEnergy);
+    /* A Tulwar split off the pair is worn; the remainder keeps its slot. */
+    const wornNow = gearGet(state.gear, state.actor.player.equipment[slot]!);
+    expect(wornNow!.kind).toBe(replacement.kind);
+    expect(wornNow!.number).toBe(1);
+    expect(wornNow).not.toBe(replacement);
+    expect(replacement.number).toBe(1);
+    expect(state.gear.pack).toContain(replacementHandle);
+    /* The Dagger is on the floor and gone from the gear
+     * (obj-gear.c L1379-1380 gear_excise_object + drop_near). */
+    expect(gearGet(state.gear, wornHandle)).toBeNull();
+    expect(state.gear.pack).not.toContain(wornHandle);
+    expect(floorPile(state, state.actor.grid)).toEqual([worn]);
+    /* One shed: back to pack_size, not one over (L1337-1340). */
+    expect(packSlotsUsed(state.gear, constants)).toBe(oldSlots);
+    expect(packIsOverfull(state.gear, constants)).toBe(false);
+    /* Upstream order: inven_wield's MSG_WIELD line, then pack_overflow's three
+     * (L1005, L1356, L1377, L1383), then do_cmd_wield's take-off line last
+     * (cmd-obj.c L350-351). Its %c is gear_to_label of an object that is no
+     * longer held, which upstream renders from '\0' - the port's gearLabelFor
+     * gives "" for the same reason, hence the empty parentheses. */
+    expect(msgs).toEqual([
+      `You are wielding ${describeObject(state, wornNow!)} (a).`,
+      "Your pack overflows!",
+      `You drop ${dropName}.`,
+      `You no longer have ${dropName}.`,
+      `You were wielding ${dropName} ().`,
+    ]);
+  });
+
+  it("do_cmd_takeoff sheds the item it just took off when the pack is full", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const worn = makeNamed("& Dagger~", TV.SWORD);
+    const wornHandle = carry(state, worn);
+    expect(invenWield(state, wornHandle, constants)).toBeGreaterThanOrEqual(0);
+    fillPack(state);
+    const oldSlots = packSlotsUsed(state.gear, constants);
+    const { registry, msgs } = wired(state);
+    const dropName = describeObject(state, worn);
+
+    const used = registry.get("takeoff")!(state, {
+      code: "takeoff",
+      args: { handle: wornHandle },
+    });
+
+    expect(used).toBe(Math.trunc(state.z.moveEnergy / 2));
+    /* Taking it off would put the pack one over, so pack_overflow drops it
+     * again (cmd-obj.c L255-257 inven_takeoff / combine_pack / pack_overflow). */
+    expect(gearGet(state.gear, wornHandle)).toBeNull();
+    expect(floorPile(state, state.actor.grid)).toEqual([worn]);
+    expect(packSlotsUsed(state.gear, constants)).toBe(oldSlots);
+    expect(packIsOverfull(state.gear, constants)).toBe(false);
+    /* inven_takeoff's own line first, naming the dagger at the pack label it
+     * briefly held (whichever letter that is - gear_to_label's alphabet is
+     * covered by its own tests), then pack_overflow's three. */
+    expect(msgs[0]!.startsWith(`You were wielding ${dropName} (`)).toBe(true);
+    expect(msgs[0]!.endsWith(").")).toBe(true);
+    expect(msgs.slice(1)).toEqual([
+      "Your pack overflows!",
+      `You drop ${dropName}.`,
+      `You no longer have ${dropName}.`,
+    ]);
+  });
+
+  it("leaves a pack with room alone", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const worn = makeNamed("& Dagger~", TV.SWORD);
+    const wornHandle = carry(state, worn);
+    expect(invenWield(state, wornHandle, constants)).toBeGreaterThanOrEqual(0);
+    const { registry, msgs } = wired(state);
+
+    registry.get("takeoff")!(state, {
+      code: "takeoff",
+      args: { handle: wornHandle },
+    });
+
+    /* pack_is_overfull is false, so pack_overflow returns at once (L1350). */
+    expect(state.gear.pack).toContain(wornHandle);
+    expect(floorPile(state, state.actor.grid)).toHaveLength(0);
+    expect(msgs.some((m) => m === "Your pack overflows!")).toBe(false);
   });
 });
 
