@@ -501,6 +501,29 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     expect(choice!.stats).toEqual([17, 10, 10, 10, 16]);
   });
 
+  it("'*' at the interactive name prompt draws from opts.randomName (ui-input.c:1038)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, {
+      ...QUICK,
+      rng: new Rng(1),
+      randomName: () => "Bilbo",
+    });
+    await tick();
+    press(win, "a"); // quickstart
+    await tick();
+    // The footer advertises '*' when a generator is wired.
+    expect(term.snapshot().join("\n")).toContain("* for a random one");
+    press(win, "*");
+    expect(term.snapshot().join("\n")).toContain("Bilbo");
+    press(win, "Enter");
+    await tick();
+    press(win, "a"); // confirm
+    const choice = await done;
+    expect(choice!.name).toBe("Bilbo");
+  });
+
   it("ESC from the name stage steps back to quickstart, not to unseen menus", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
@@ -669,6 +692,79 @@ describe("runBirth: menu_question '*' random and '@' finish", () => {
     // The default point-buy (generate_stats) supplies the stats.
     expect(choice!.roller).toBe("point");
     expect(choice!.stats).toHaveLength(5);
+  });
+
+  it("'@' also fills the name from player_random_name (ui-birth.c:725), via opts.randomName", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const FULL_CLASSES = [
+      {
+        name: "Warrior",
+        statAdj: [3, -2, -2, 2, 2],
+        minWeight: 30,
+        attMultiply: 5,
+        maxAttacks: 6,
+        magic: { totalSpells: 0, books: [] },
+      },
+      {
+        name: "Mage",
+        statAdj: [-3, 3, 0, 1, -2],
+        minWeight: 40,
+        attMultiply: 2,
+        maxAttacks: 4,
+        magic: { totalSpells: 1, books: [{ realm: { stat: 1 } }] },
+      },
+    ];
+    const done = runBirth(
+      term,
+      RACES,
+      FULL_CLASSES as unknown as typeof CLASSES,
+      { rng: new Rng(1), randomName: () => "Frodo" },
+    );
+    await tick();
+    press(win, "@");
+    await tick();
+    expect(term.snapshot()[0]).toContain("Frodo the ");
+    press(win, "a");
+    const choice = await done;
+    expect(choice!.name).toBe("Frodo");
+  });
+
+  it("without opts.randomName, '@' leaves the name at the confirm default", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const FULL_CLASSES = [
+      {
+        name: "Warrior",
+        statAdj: [3, -2, -2, 2, 2],
+        minWeight: 30,
+        attMultiply: 5,
+        maxAttacks: 6,
+        magic: { totalSpells: 0, books: [] },
+      },
+      {
+        name: "Mage",
+        statAdj: [-3, 3, 0, 1, -2],
+        minWeight: 40,
+        attMultiply: 2,
+        maxAttacks: 4,
+        magic: { totalSpells: 1, books: [{ realm: { stat: 1 } }] },
+      },
+    ];
+    const done = runBirth(
+      term,
+      RACES,
+      FULL_CLASSES as unknown as typeof CLASSES,
+      { rng: new Rng(1) },
+    );
+    await tick();
+    press(win, "@");
+    await tick();
+    press(win, "a");
+    const choice = await done;
+    expect(choice!.name).toBe("Adventurer");
   });
 });
 
