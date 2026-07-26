@@ -236,12 +236,126 @@ describe("make_attack_normal", () => {
     expect(p.chp).toBe(96);
   });
 
-  it("resolves every RBE_ blow effect present in the pack", () => {
+  /*
+   * melee_handler_for_blow_effect (mon-blows.c:1191) is a TOTAL map over
+   * blow_effects.txt: its table lists exactly the 30 names the data file
+   * defines, so no blow can hit the "ERROR: Effect handler not found" branch
+   * (mon-attack.c:650 / :841). This asserts the same totality for the port, in
+   * both directions - a name in the pack with no handler would silently deal
+   * bare damage, and a handler for a name the data does not define would be
+   * dead code masking a rename.
+   */
+  it("maps every RBE_ blow effect to a handler, both directions (mon-blows.c:1191)", () => {
     const packEffects = new Set(monReg.blowEffects.keys());
     const resolved = new Set(RESOLVED_BLOW_EFFECTS);
-    for (const name of packEffects) {
-      expect(resolved.has(name)).toBe(true);
+    const missingHandler = [...packEffects].filter((n) => !resolved.has(n));
+    const extraHandler = [...resolved].filter((n) => !packEffects.has(n));
+    expect(missingHandler).toEqual([]);
+    expect(extraHandler).toEqual([]);
+    /* mon-blows.c:1197-1226 lists 30 handlers; blow_effects.txt has 30 names. */
+    expect(packEffects.size).toBe(30);
+    expect(resolved.size).toBe(30);
+  });
+
+  /*
+   * The list is only a claim unless each name really reaches its own handler.
+   * Drive every effect through monMeleeAttack and require the side-effect log /
+   * damage to be what that handler produces, so a name present in
+   * RESOLVED_BLOW_EFFECTS but fallen through to `default` is caught.
+   */
+  it("every listed effect reaches a concrete handler, not the fallthrough", () => {
+    /* The distinguishing signature of each handler (mon-blows.c:638-1183). */
+    const signature: Record<string, (r: ReturnType<typeof monMeleeAttack>) => boolean> = {
+      NONE: (r) => r.totalDamage === 0,
+      /* HURT's only mark is armour-reduced damage and nothing else; the CUT /
+       * STUN timers come from the METHOD (mon-attack.c:653-700), not the
+       * handler, so they are excluded here. */
+      HURT: (r) =>
+        r.totalDamage > 0 &&
+        r.sideEffects.every(
+          (s) => s.kind === "timed" && (s.effect === "CUT" || s.effect === "STUN"),
+        ),
+      POISON: (r) =>
+        r.sideEffects.some((s) => s.kind === "elemental" && s.element === "POIS") &&
+        r.sideEffects.some((s) => s.kind === "timed" && s.effect === "POISONED"),
+      DISENCHANT: (r) => r.sideEffects.some((s) => s.kind === "disenchant"),
+      DRAIN_CHARGES: (r) => r.sideEffects.some((s) => s.kind === "drainCharges"),
+      EAT_GOLD: (r) => r.sideEffects.some((s) => s.kind === "eatGold"),
+      EAT_ITEM: (r) => r.sideEffects.some((s) => s.kind === "eatItem"),
+      EAT_FOOD: (r) => r.sideEffects.some((s) => s.kind === "eatFood"),
+      EAT_LIGHT: (r) => r.sideEffects.some((s) => s.kind === "eatLight"),
+      ACID: (r) => r.sideEffects.some((s) => s.kind === "elemental" && s.element === "ACID"),
+      ELEC: (r) => r.sideEffects.some((s) => s.kind === "elemental" && s.element === "ELEC"),
+      FIRE: (r) => r.sideEffects.some((s) => s.kind === "elemental" && s.element === "FIRE"),
+      COLD: (r) => r.sideEffects.some((s) => s.kind === "elemental" && s.element === "COLD"),
+      BLIND: (r) => r.sideEffects.some((s) => s.kind === "timed" && s.effect === "BLIND"),
+      CONFUSE: (r) => r.sideEffects.some((s) => s.kind === "timed" && s.effect === "CONFUSED"),
+      TERRIFY: (r) => r.sideEffects.some((s) => s.kind === "timed" && s.effect === "AFRAID"),
+      PARALYZE: (r) => r.sideEffects.some((s) => s.kind === "timed" && s.effect === "PARALYZED"),
+      LOSE_STR: (r) => r.sideEffects.some((s) => s.kind === "drainStat" && s.stat === "STR"),
+      LOSE_INT: (r) => r.sideEffects.some((s) => s.kind === "drainStat" && s.stat === "INT"),
+      LOSE_WIS: (r) => r.sideEffects.some((s) => s.kind === "drainStat" && s.stat === "WIS"),
+      LOSE_DEX: (r) => r.sideEffects.some((s) => s.kind === "drainStat" && s.stat === "DEX"),
+      LOSE_CON: (r) => r.sideEffects.some((s) => s.kind === "drainStat" && s.stat === "CON"),
+      LOSE_ALL: (r) => r.sideEffects.filter((s) => s.kind === "drainStat").length === 5,
+      /* SHATTER's earthquake needs hp > 23, so use big dice below. */
+      SHATTER: (r) => r.sideEffects.some((s) => s.kind === "earthquake"),
+      EXP_10: (r) => r.sideEffects.some((s) => s.kind === "loseExp" && s.holdChance === 95),
+      EXP_20: (r) => r.sideEffects.some((s) => s.kind === "loseExp" && s.holdChance === 90),
+      EXP_40: (r) => r.sideEffects.some((s) => s.kind === "loseExp" && s.holdChance === 75),
+      EXP_80: (r) => r.sideEffects.some((s) => s.kind === "loseExp" && s.holdChance === 50),
+      HALLU: (r) => r.sideEffects.some((s) => s.kind === "timed" && s.effect === "IMAGE"),
+    };
+    /* signature covers all but BLACK_BREATH, whose one_in_(5) cannot fire under
+     * rand_fix (randint0(5) -> 4); it is proved by the seeded case below. */
+    expect(Object.keys(signature).sort()).toEqual(
+      RESOLVED_BLOW_EFFECTS.filter((n) => n !== "BLACK_BREATH").sort(),
+    );
+
+    for (const name of RESOLVED_BLOW_EFFECTS) {
+      if (name === "BLACK_BREATH") continue;
+      const rng = new Rng(1);
+      rng.randFix(100);
+      const p = defender();
+      p.chp = 100000;
+      p.mhp = 100000;
+      const res = monMeleeAttack(rng, makeMon(name, "HIT", "60d10", 20), p, def);
+      expect(
+        signature[name]!(res),
+        `${name} did not reach its own handler (fell through to default?)`,
+      ).toBe(true);
     }
+  });
+
+  it("BLACK_BREATH reaches its handler (one_in_(5), so sampled)", () => {
+    /* melee_effect_handler_BLACK_BREATH (mon-blows.c L1174): one_in_(5) adds
+     * TMD_BLACKBREATH for damage/10 turns. rand_fix cannot make randint0(5)
+     * return 0, so sample real seeds: the `default` fallthrough would produce
+     * the timer in NONE of them. */
+    let hits = 0;
+    let breathed = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const rng = new Rng(seed);
+      const p = defender();
+      p.chp = 100000;
+      p.mhp = 100000;
+      const res = monMeleeAttack(
+        rng,
+        makeMon("BLACK_BREATH", "HIT", "60d10", 20),
+        p,
+        def,
+      );
+      if (!res.blows[0]?.hit) continue;
+      hits++;
+      if (res.sideEffects.some((s) => s.kind === "timed" && s.effect === "BLACKBREATH")) {
+        breathed++;
+      }
+    }
+    expect(hits).toBeGreaterThan(50);
+    expect(breathed).toBeGreaterThan(0);
+    /* Roughly one landing blow in five, well away from 0 or 1. */
+    expect(breathed / hits).toBeGreaterThan(0.1);
+    expect(breathed / hits).toBeLessThan(0.35);
   });
 });
 

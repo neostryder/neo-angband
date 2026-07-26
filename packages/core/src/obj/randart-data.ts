@@ -30,9 +30,9 @@
  *   storeBasePower is unaffected either way.
  * - Upstream mean()/variance() (z-util.c L1389/L1516) are exact-rational
  *   multi-precision routines; store_base_power calls them with a non-NULL frac,
- *   which is the "round the result down" path. Artifact powers are small
- *   positive ints, so the exact value fits in a JS double and the floored
- *   result is reproduced by plain arithmetic (mean/variance below).
+ *   which is the "round the result down" path. Both are now ported for real in
+ *   ../rational (saturation and all) and called through meanFloored /
+ *   varianceFloored below, rather than reimplemented here.
  */
 
 import { ELEM, KF, OBJ_MOD, OF, TV } from "../generated";
@@ -50,6 +50,7 @@ import {
   tvalIsLauncher,
   tvalIsPotion,
 } from "./object";
+import { mean, variance } from "../rational";
 import { objectPower } from "./power";
 import type { PowerObject } from "./power";
 import type { Artifact, ElementInfo, ObjectKind } from "./types";
@@ -232,29 +233,26 @@ function countTrue(arr: readonly boolean[] | null): number {
   return n;
 }
 
-/** floor(sum(nums) / size); mean() (z-util.c L1389), frac-passed path. */
-function mean(nums: readonly number[]): number {
-  if (nums.length <= 0) return 0;
-  let sum = 0;
-  for (const n of nums) sum += n;
-  return Math.floor(sum / nums.length);
+/**
+ * store_base_power's two statistics, at the call shape obj-randart.c L278-L282
+ * uses: mean(a, n, &frac) and variance(a, n, false, false, &frac), i.e. the
+ * FLOORED variants. The scratch fraction upstream passes is written and then
+ * ignored, so one shared throwaway stands in for it.
+ *
+ * These used to be local reimplementations here (plain floor division and
+ * (sum(x^2)*size - sum(x)^2) / size^2). They agreed with the C for artifact
+ * powers, but not at the rails: upstream's variance saturates at INT_MAX and
+ * upstream's mean floors toward negative infinity via a magnitude-and-fraction
+ * dance. ../rational is the real port, so the statistics now go through it.
+ */
+const SCRATCH_FRAC = { n: 0, d: 1 };
+
+function meanFloored(nums: readonly number[]): number {
+  return mean(nums, nums.length, SCRATCH_FRAC);
 }
 
-/**
- * Biased variance floored: variance() (z-util.c L1516) with unbiased=false,
- * of_mean=false and a non-NULL frac. Exact value is
- * (sum(x^2)*size - sum(x)^2) / (size*size).
- */
-function variance(nums: readonly number[]): number {
-  const size = nums.length;
-  if (size <= 1) return 0;
-  let sum = 0;
-  let sumSq = 0;
-  for (const n of nums) {
-    sum += n;
-    sumSq += n * n;
-  }
-  return Math.floor((sumSq * size - sum * sum) / (size * size));
+function varianceFloored(nums: readonly number[]): number {
+  return variance(nums, nums.length, false, false, SCRATCH_FRAC);
 }
 
 /* ------------------------------------------------------------------ */
@@ -445,11 +443,11 @@ export function storeBasePower(reg: ObjRegistry, data: ArtifactSetData): void {
   }
 
   /* Round the result down (upstream passes frac but ignores it). */
-  data.avgPower = mean(fakeTotalPower);
-  data.varPower = variance(fakeTotalPower);
+  data.avgPower = meanFloored(fakeTotalPower);
+  data.varPower = varianceFloored(fakeTotalPower);
   for (let i = 0; i < TV_MAX; i++) {
     if (data.tvNum[i]) {
-      data.avgTvPower[i] = mean(fakeTvPower[i]!);
+      data.avgTvPower[i] = meanFloored(fakeTvPower[i]!);
     }
   }
 
