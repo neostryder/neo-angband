@@ -8,7 +8,11 @@
  * instance of one of their parent directives, replicating the upstream
  * "walk to the last effect/book/spell/level" parsing idiom; when no parent
  * instance exists yet in the record they attach to the record itself
- * (upstream treats that as "human, not parser error").
+ * (upstream treats that as "human, not parser error") unless the directive
+ * is marked `requireParent`, where upstream instead reports
+ * PARSE_ERROR_MISSING_RECORD_HEADER. A repeat of a non-`repeat` directive is
+ * refused as PARSE_ERROR_REPEATED_DIRECTIVE unless it is marked `lastWins`,
+ * where upstream overwrites the previous value.
  *
  * Output key order is spec order (the upstream registration order), not
  * encounter order, so records diff cleanly against the .txt sources.
@@ -26,6 +30,26 @@ export interface DirectiveDef {
   readonly childOf?: readonly string[];
   /** Preserve encounter order for a cross-directive repeated list. */
   readonly orderKey?: string;
+  /**
+   * A repeat of this directive REPLACES the previous value instead of being
+   * refused. Upstream returns PARSE_ERROR_REPEATED_DIRECTIVE only where a
+   * handler explicitly checks for a value already being set; the dice
+   * handlers instead dice_free() the old dice and store the new one, so the
+   * last line wins (init.c parse_class_dice, obj-init.c parse_object_dice,
+   * player-timed.c parse_player_timed_effect_dice, init.c parse_trap_dice).
+   * Asserted by c-info.c/k-info.c test_dice0 and ptimed.c test_effectdice0.
+   */
+  readonly lastWins?: boolean;
+  /**
+   * This directive is an ERROR when none of its `childOf` parents has been
+   * seen yet, rather than attaching to the enclosing record. Upstream is
+   * split on this: class.txt, object.txt and trap.txt treat an orphan
+   * effect detail as "human, not parser, error" and return
+   * PARSE_ERROR_NONE, but player-timed.c's four effect-* handlers return
+   * PARSE_ERROR_MISSING_RECORD_HEADER when `ps->e` is NULL
+   * (player-timed.c L473-560, asserted by ptimed.c test_missing_effect0).
+   */
+  readonly requireParent?: boolean;
 }
 
 export interface FileSpec {
@@ -240,6 +264,11 @@ export function compileGamedata(text: string, spec: FileSpec): CompiledFile {
       }
       if (best !== null) {
         target = best.node;
+      } else if (cd.def.requireParent === true) {
+        throw new Error(
+          `${where}: MISSING_RECORD_HEADER: "${parsed.directive}" before any ` +
+            `${cd.def.childOf.join(" / ")}`,
+        );
       }
     }
 
@@ -259,7 +288,7 @@ export function compileGamedata(text: string, spec: FileSpec): CompiledFile {
         target.orderGroups.set(cd.def.orderKey, order);
       }
     } else {
-      if (target.children.has(parsed.directive)) {
+      if (target.children.has(parsed.directive) && cd.def.lastWins !== true) {
         throw new Error(
           `${where}: duplicate directive "${parsed.directive}" (not marked repeat in the spec)`,
         );
