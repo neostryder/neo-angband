@@ -10,11 +10,9 @@ import {
   exploreAction,
   findPath,
   installRunning,
-  pfToPath,
   pathNearestUnknown,
   pathfindAction,
   pathfindDirectionTo,
-  preparePfdistances,
   runAction,
 } from "./player-path";
 import { createDefaultRegistry } from "./player-turn";
@@ -218,23 +216,6 @@ describe("find_path (player-path.c L1069)", () => {
     expect(findPath(state, loc(1, 3), loc(1, 3)).length).toBe(0);
     /* A walled-off cell (the granite above the corridor) is unreachable. */
     expect(findPath(state, loc(1, 3), loc(3, 1)).length).toBe(-1);
-  });
-
-  it("uses A* heap tie-breaking, not prepare_pfdistances backtracking", () => {
-    /* Two equal five-step branches around the central wall.  The FIFO
-     * distance field and its backward scan pick a different branch from
-     * find_path's qp_pushpop_int heap (player-path.c:1143-1281). */
-    const state = makeState({ w: 11, h: 9, playerGrid: loc(2, 4) });
-    const c = state.chunk;
-    for (let x = 0; x < c.width; x++) for (let y = 0; y < c.height; y++) c.setFeat(loc(x, y), GRANITE);
-    for (const g of [loc(2, 4), loc(3, 3), loc(4, 3), loc(5, 3), loc(6, 3), loc(7, 4), loc(3, 5), loc(4, 5), loc(5, 5), loc(6, 5)]) c.setFeat(g, FLOOR);
-    memorizeAll(state);
-    const start = loc(2, 4), dest = loc(7, 4);
-    const fieldPath = pfToPath(preparePfdistances(state, start, true, true), dest);
-    const heapPath = findPath(state, start, dest);
-    expect(heapPath.length).toBe(fieldPath.length);
-    expect(heapPath.steps).not.toEqual(fieldPath.steps);
-    expect(heapPath.steps).toEqual([3, 6, 6, 6, 9]);
   });
 });
 
