@@ -681,6 +681,11 @@ export function processPlayer(
   do {
     if (state.isDead || state.generateLevel) break;
 
+    /* game-world.c:941-947: after the refresh equivalent and before command
+     * preparation, recover an overfull/corrupt pack using calc_inventory's
+     * sorted inven[] view. */
+    state.overflowPack?.();
+
     /* Paralyzed or Knocked Out player gets no turn (game-world.c:965-968):
      * inject CMD_SLEEP so a full-energy no-op is spent and nextCommand is
      * never consulted. Ordering matches C: after the detect-ore block (not
