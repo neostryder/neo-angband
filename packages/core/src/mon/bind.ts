@@ -59,7 +59,6 @@ import type {
   SummonType,
 } from "./types";
 import { RF, RSF } from "../generated";
-import { messageLookupByName } from "../sound/engine";
 
 /* re-export for consumers that reach the domain through bind */
 export { MFLAG_SIZE, RF_SIZE, RSF_SIZE };
@@ -263,11 +262,27 @@ function joinLines(lines: string[] | undefined): string {
   return lines ? lines.join("") : "";
 }
 
+/**
+ * The "A | B" segments of one flags-style directive.
+ *
+ * An entry that is not a string is the compiler's presence marker for a
+ * directive written with no value at all ("flags:"). Upstream's handlers
+ * check `parser_hasval()` first and return PARSE_ERROR_NONE with the flag
+ * set untouched (mon-init.c L1316-1317 parse_monster_flags and its
+ * siblings), so an empty line contributes no tokens rather than crashing.
+ * Asserted by r-info.c test_flags0 / test_flags_off0 and, for the sibling
+ * parsers, c-info.c test_obj_flags0 / test_player_flags0 and partrap.c
+ * test_flags0.
+ */
+function flagSegments(line: unknown): string[] {
+  return typeof line === "string" ? line.split("|") : [];
+}
+
 /** grab_flag over RF names ("A | B" segments); throws on unknown names. */
 function raceFlagsOn(flags: FlagSet, lines: string[] | undefined): void {
   if (!lines) return;
   for (const line of lines) {
-    for (const raw of line.split("|")) {
+    for (const raw of flagSegments(line)) {
       const name = raw.trim();
       if (!name) continue;
       const value = (RF as Record<string, number>)[name];
@@ -283,7 +298,7 @@ function raceFlagsOn(flags: FlagSet, lines: string[] | undefined): void {
 function raceFlagsOff(flags: FlagSet, lines: string[] | undefined): void {
   if (!lines) return;
   for (const line of lines) {
-    for (const raw of line.split("|")) {
+    for (const raw of flagSegments(line)) {
       const name = raw.trim();
       if (!name) continue;
       const value = (RF as Record<string, number>)[name];
@@ -299,7 +314,7 @@ function raceFlagsOff(flags: FlagSet, lines: string[] | undefined): void {
 function spellFlagsOn(flags: FlagSet, lines: string[] | undefined): void {
   if (!lines) return;
   for (const line of lines) {
-    for (const raw of line.split("|")) {
+    for (const raw of flagSegments(line)) {
       const name = raw.trim();
       if (!name) continue;
       const value = (RSF as Record<string, number>)[name];
@@ -436,7 +451,7 @@ function bindSpells(
     map.set(index, {
       index,
       name: rec.name,
-      msgt: checkMsgt(`spell ${rec.name}`, rec.msgt),
+      msgt: rec.msgt ?? "GENERIC",
       hit: rec.hit ?? 0,
       effects,
       levels,
@@ -546,42 +561,6 @@ function pctToFreq(pct: number, what: string): number {
   return Math.trunc(100 / pct);
 }
 
-/**
- * parse_pit_innate_freq (mon-init.c) rejects anything outside 1..100 with
- * PARSE_ERROR_INVALID_SPELL_FREQ before storing 100/pct (pit.c
- * test_innate_freq_bad0 plants 0, -1 and 101). The 100/pct conversion itself
- * happens in gen/gen-monster.ts resolvePits, which is why only the range
- * check lives here: without it, `innate-freq:0` silently became "no innate
- * requirement" and `innate-freq:101` silently became 0, both of which change
- * which monsters mon_pit_hook admits.
- */
-function checkPitInnateFreq(name: string, pct: number | undefined): number {
-  if (pct === undefined) return 0;
-  if (pct < 1 || pct > 100) {
-    throw new Error(
-      `mon: pit ${name}: invalid innate-freq ${String(pct)} ` +
-        `(PARSE_ERROR_INVALID_SPELL_FREQ; 1..100)`,
-    );
-  }
-  return pct;
-}
-
-/**
- * message_lookup_by_name (message.c) guards `msgt:` in every parser that has
- * one; an unknown name is PARSE_ERROR_INVALID_MESSAGE (mspell.c
- * test_msgt_bad0). The port keeps the MSG_ name as a string and resolves it
- * at message time, so without this the typo simply never matched anything.
- */
-function checkMsgt(what: string, msgt: string | undefined): string {
-  if (msgt === undefined) return "GENERIC";
-  if (messageLookupByName(msgt) < 0) {
-    throw new Error(
-      `mon: ${what}: invalid msgt ${msgt} (PARSE_ERROR_INVALID_MESSAGE)`,
-    );
-  }
-  return msgt;
-}
-
 /** Registry of everything the monster domain binds from the pack. */
 export class MonsterRegistry {
   readonly pains: Map<number, Pain>;
@@ -589,14 +568,6 @@ export class MonsterRegistry {
   readonly blowEffects: Map<string, BlowEffect>;
   /** RSF index -> spell. */
   readonly spells: Map<number, MonsterSpell>;
-  /**
-   * lookup_monster_base (mon-util.c:146): upstream walks the rb_info list
-   * comparing streq(name, base->name); this is that lookup as a map, so
-   * `bases.get(name)` IS lookup_monster_base and `bases.get(n) === race.base`
-   * is match_monster_bases's single-name test (mon-util.c:166 - variadic
-   * upstream, and unused outside its unit test; the slay/brand base check is
-   * react_to_specific_slay's streq on base->name, obj-slays.c:274).
-   */
   readonly bases: Map<string, MonsterBase>;
   /** Record order mirrors monster.txt; ridx is the array index. */
   readonly races: MonsterRace[];
@@ -670,7 +641,7 @@ export class MonsterRegistry {
       spellReq: rec["spell-req"] ? [...rec["spell-req"]] : [],
       spellBan: rec["spell-ban"] ? [...rec["spell-ban"]] : [],
       monBan: rec["mon-ban"] ? [...rec["mon-ban"]] : [],
-      freqInnate: checkPitInnateFreq(rec.name, rec["innate-freq"]),
+      freqInnate: rec["innate-freq"] ?? 0,
     }));
   }
 
@@ -829,7 +800,11 @@ export class MonsterRegistry {
       ridx: this.races.length,
       name: rec.name,
       text: joinLines(rec.desc),
-      plural: rec.plural ?? null,
+      /* parse_monster_plural (mon-init.c L1680-1687) leaves r->plural NULL
+       * when the field is absent OR present but empty, so the compiler's
+       * bare presence marker for "plural:" must read as null too
+       * (r-info.c test_plural0). */
+      plural: typeof rec.plural === "string" && rec.plural.length > 0 ? rec.plural : null,
       base,
       avgHp: rec["hit-points"] ?? 0,
       ac: rec["armor-class"] ?? 0,
