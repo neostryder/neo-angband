@@ -144,11 +144,45 @@ state-changing side effects.  Results: **6 MATCH, 4 DIVERGENCE**.
 
 ## Actionable gaps (reported, not fixed)
 
-1. **W1-EFFECT-001 — `MON_HEAL_KIN` RNG and unseen messaging.** Move the
-   `effectCalculateValue(ctx, false)` call before `chooseNearbyInjuredKin`, even
-   when no target will be found.  Do not use `MON_HEAL_HP`'s unseen “sounds
-   healthier” branches for kin healing; C only prints the kin-heal health
-   message when `seen` is true.  Preserve fear clearing and identification.
+1. ~~**W1-EFFECT-001 — `MON_HEAL_KIN` RNG and unseen messaging.**~~ **FIXED
+   2026-07-26**, and the finding was right. Verified against the C before acting:
+   `effect-handler-attack.c:319` does precede `:324`, and `:338-344` does wrap
+   both messages in `if (seen)` where `:282-290` has "sounds ..." variants.
+
+   A **third** sub-divergence turned up in the same pair while confirming these
+   two, and it points the other way. `MON_HEAL_HP` computes `amount` at `:261`,
+   which is BEFORE its `if (!mon) return true;` at `:265`, so a `midx` resolving
+   to no monster still consumes the value's draws. `MON_HEAL_KIN` checks at
+   `:317`, before `:319`, and consumes nothing. The port had both handlers
+   guarding first. That asymmetry between two otherwise-identical handlers is a
+   wart, and core keeps upstream's warts.
+
+   All three came from the same cause: one shared `healMonster` body standing in
+   for two upstream functions that differ in exactly three places. The body is
+   still shared for the heal-and-cancel-fear tail, which genuinely is common, and
+   now takes an `unseenMsg` flag for the part that is not.
+
+   Guards in `packages/core/src/game/effect-monster.test.ts`, each proven to bite
+   by reverting that one piece of the fix:
+
+   | reverted | failure |
+   |---|---|
+   | roll the KIN value after the search | `expected 53 to be 48` |
+   | give KIN the unseen messages back | `an unseen kin produces no heal message at all: expected [ Array(1) ] to deeply equal []` |
+   | move the HP roll after its null guard | `a missing monster must leave the two streams in different places` |
+
+   The order guard works by comparing against `MON_HEAL_HP` on a lone monster at
+   the same seed and dice: HP rolls the value as its first RNG action, so if KIN
+   also rolls first the two heal by exactly the same amount. Three injured kin are
+   placed so the search makes three draws that would otherwise shift the stream.
+
+   Noted while measuring, upstream wart reproduced correctly: `effect_do` rolls
+   the dice for EVERY effect before dispatching (`effects.c:403-404`), and
+   `dice_roll` consumes a `damroll` it then throws away, keeping only
+   base/dice/sides (`z-dice.c:591`). So each effect pays for one discarded roll
+   before its handler's own `effect_calculate_value`. The port does the same at
+   `dice.ts:419`, and the null-guard test documents it so the next reader does not
+   mistake it for the thing being measured.
 2. **W1-EFFECT-002 — `DESTRUCTION` knowledge/artifact bookkeeping.** For every
    affected grid, forget the player's remembered square as C's
    `square_forget()` does.  When destroying an artifact, keep it permanently
