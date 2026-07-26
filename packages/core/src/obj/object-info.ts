@@ -129,13 +129,13 @@ export interface Textblock {
   runs: TextRun[];
 }
 
-/** textblock_new (z-textblock.c L48): an empty run stream. */
+/** textblock_new (z-textblock.c L57): an empty run stream. */
 export function tbNew(): Textblock {
   return { runs: [] };
 }
 
 /**
- * textblock_append (z-textblock.c L120): default (white) colour.
+ * textblock_append (z-textblock.c L166): default (white) colour.
  *
  * Upstream is variadic and vformats; the port's callers interpolate first, so
  * this takes the finished string. Empty appends are dropped rather than pushing
@@ -146,7 +146,7 @@ export function tbAppend(tb: Textblock, text: string): void {
   if (text.length > 0) tb.runs.push({ text, attr: COLOUR_WHITE });
 }
 
-/** textblock_append_c (z-textblock.c L127): coloured. */
+/** textblock_append_c (z-textblock.c L179): coloured. */
 export function tbAppendC(tb: Textblock, attr: number, text: string): void {
   if (text.length > 0) tb.runs.push({ text, attr });
 }
