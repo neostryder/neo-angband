@@ -31,7 +31,7 @@ export interface ScreenLine {
   runs?: { text: string; color: string }[];
 }
 
-import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG } from "./ui-colors";
+import { UI_TEXT, UI_DIM } from "./ui-colors";
 
 const FG = UI_TEXT;
 const DIM = UI_DIM;
@@ -380,10 +380,6 @@ export function getCheck(term: GlyphTerm, prompt: string): Promise<boolean> {
  * ignored), clears row 0, and resolves the key string - the faithful shape of
  * the retire '@' verification (ui-command.c L178-182) and any other "type this
  * exact key to confirm" prompt, which do NOT open a full-screen line editor.
- *
- * This is get_com_ex / textui_get_com (ui-input.c:1407); textui_get_com is only
- * get_com_ex narrowed to an ASCII char, so it has no separate counterpart. The
- * C returns false on ESCAPE where callers here compare the resolved key.
  */
 export function getKeyInline(term: GlyphTerm, prompt: string): Promise<string> {
   return new Promise<string>((resolve) => {
@@ -406,116 +402,10 @@ export function getKeyInline(term: GlyphTerm, prompt: string): Promise<string> {
   });
 }
 
-/** The buffer and cursor askfor_aux threads through its keypress handler. */
-interface LineEdit {
-  buf: string;
-  /** k in askfor_aux (L864). Starts at 0, i.e. in FRONT of the default. */
-  curs: number;
-}
-
 /**
- * askfor_aux_keypress (ui-input.c:662-800), the line editor both prompts share.
- * Upstream handles exactly six cases and no others, and anything unmatched is
- * inert -- which is also how askfor_aux_numbers (ui-options.c:1026) restricts
- * itself to digits: it switches on the keys it allows and delegates every one of
- * them here, returning false for the rest. Hence `accepts`.
- *
- * The `firsttime` rule is the whole point of the function and the part the port
- * originally dropped (found by W1-CITED, fixed 2026-07-26): a default answer
- * behaves like a suggestion you type OVER, not text you append to. The flag
- * clears after ANY keypress (L910).
- */
-function askforAuxKeypress(
-  st: LineEdit,
-  maxLen: number,
-  key: string,
-  firsttime: boolean,
-  accepts: (ch: string) => boolean,
-): "escape" | "enter" | "edit" {
-  /* ESCAPE (L669-673) / KC_ENTER (L675-679). */
-  if (key === "Escape") return "escape";
-  if (key === "Enter") return "enter";
-
-  if (key === "ArrowLeft") {
-    /* L682-689: the first left jumps to the front, it does not step. */
-    st.curs = firsttime ? 0 : Math.max(0, st.curs - 1);
-  } else if (key === "ArrowRight") {
-    /* L691-698. */
-    st.curs = firsttime ? st.buf.length : Math.min(st.buf.length, st.curs + 1);
-  } else if (key === "Backspace" || key === "Delete") {
-    if (firsttime) {
-      /* L703-709: "If this is the first time round, backspace means delete
-       * all". The C shares the case, so Delete does it too. */
-      st.buf = "";
-      st.curs = 0;
-    } else if (key === "Backspace") {
-      /* L712-714 refuses to backspace into oblivion. */
-      if (st.curs > 0) {
-        st.buf = st.buf.slice(0, st.curs - 1) + st.buf.slice(st.curs);
-        st.curs--;
-      }
-    } else if (st.curs < st.buf.length) {
-      st.buf = st.buf.slice(0, st.curs) + st.buf.slice(st.curs + 1);
-    }
-  } else if (key.length === 1 && accepts(key)) {
-    /* The printable default (L749-800). */
-    if (firsttime) {
-      /* L765-771: the first printable key clears the buffer, so a typed answer
-       * REPLACES the default. Without this the birth screen's default "Gandalf"
-       * plus typing "Bob" produced "GandalfBob". */
-      st.buf = "";
-      st.curs = 0;
-    }
-    /* L772-775: refuse when there is no room, rather than truncating. */
-    if (st.buf.length < maxLen) {
-      st.buf = st.buf.slice(0, st.curs) + key + st.buf.slice(st.curs);
-      st.curs++;
-    }
-  }
-  return "edit";
-}
-
-/**
- * Draw the buffer with its cursor. There is no Term_gotoxy on this surface, so
- * the cursor is an inverted cell. The text renders in COLOUR_YELLOW while the
- * default is untouched and COLOUR_WHITE after the first keypress (L892 vs L907).
- */
-function paintLineEdit(
-  term: GlyphTerm,
-  x: number,
-  y: number,
-  st: LineEdit,
-  firsttime: boolean,
-): void {
-  const { cols } = term.size();
-  const fg = firsttime ? UI_GOLD : FG;
-  term.print(x, y, `${st.buf}`.slice(0, cols - 1 - x), fg);
-  const cx = x + st.curs;
-  if (cx < cols) term.print(cx, y, st.buf[st.curs] ?? " ", UI_BG, fg);
-}
-
-/**
- * A single-line text input (get_string / textui_get_name), ported from
- * askfor_aux (ui-input.c:860) driving askfor_aux_keypress (L662). Resolves the
- * entered string (possibly empty) or null on cancel.
- *
- * The `firsttime` rule is the part that matters and the part the port originally
- * dropped (found by W1-CITED, fixed 2026-07-26). Upstream a default answer
- * behaves like a suggestion you type OVER: the first printable key clears the
- * whole buffer (L765-771) and the first Backspace or Delete deletes all of it
- * (L703-709), while the first ARROW_LEFT jumps to the front and the first
- * ARROW_RIGHT to the end (L682-698) rather than stepping. The flag clears after
- * ANY keypress (L910). Without it the birth screen's default "Gandalf" plus
- * typing "Bob" produced "GandalfBob".
- *
- * The cursor is real: k starts at 0, i.e. in FRONT of the default (L864), and
- * insert/delete happen at it. There is no Term_gotoxy on this surface, so it
- * draws as an inverted cell. The default renders in COLOUR_YELLOW until the
- * first keypress and COLOUR_WHITE after (L892 vs L907).
- *
- * Upstream handles exactly six cases and no others -- ESCAPE, KC_ENTER,
- * ARROW_LEFT, ARROW_RIGHT, KC_BACKSPACE/KC_DELETE, and printable -- so anything
- * else is deliberately inert here too.
+ * A single-line text input (get_string / textui_get_name). Renders a prompt and
+ * the editable buffer; Enter confirms, Escape cancels (resolves null), Backspace
+ * deletes. Resolves the entered string (possibly empty) or null on cancel.
  */
 export function promptText(
   term: GlyphTerm,
@@ -525,15 +415,12 @@ export function promptText(
   footer = "[ type a name, Enter to accept, ESC to cancel ]",
 ): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
-    const st: LineEdit = { buf: initial, curs: 0 };
-    let firsttime = true;
-    const PROMPT = "> ";
+    let buf = initial;
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
       term.print(0, HEADER_ROW, title.slice(0, cols - 1), TITLE);
-      term.print(0, BODY_TOP, PROMPT, FG);
-      paintLineEdit(term, PROMPT.length, BODY_TOP, st, firsttime);
+      term.print(0, BODY_TOP, `> ${buf}_`.slice(0, cols - 1), FG);
       term.print(0, rows - 1, footer.slice(0, cols - 1), DIM);
     };
     const finish = (value: string | null): void => {
@@ -543,18 +430,17 @@ export function promptText(
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      const wasFirst = firsttime;
-      firsttime = false;
-      const r = askforAuxKeypress(
-        st,
-        maxLen,
-        ev.key,
-        wasFirst,
-        () => !ev.ctrlKey && !ev.metaKey,
-      );
-      if (r === "escape") return finish(null);
-      if (r === "enter") return finish(st.buf);
-      paint();
+      if (ev.key === "Escape") return finish(null);
+      if (ev.key === "Enter") return finish(buf);
+      if (ev.key === "Backspace") {
+        buf = buf.slice(0, -1);
+        paint();
+        return;
+      }
+      if (ev.key.length === 1 && buf.length < maxLen && !ev.ctrlKey && !ev.metaKey) {
+        buf += ev.key;
+        paint();
+      }
     };
     window.addEventListener("keydown", onKey, true);
     paint();
@@ -585,9 +471,7 @@ export function promptNumber(
   maxLen = 3,
 ): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
-    const st: LineEdit = { buf: String(current), curs: 0 };
-    let firsttime = true;
-    const PROMPT = "> ";
+    let buf = String(current);
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
@@ -597,8 +481,7 @@ export function promptNumber(
         term.print(0, y, subtitle.slice(0, cols - 1), DIM);
         y += 1;
       }
-      term.print(0, y, PROMPT, FG);
-      paintLineEdit(term, PROMPT.length, y, st, firsttime);
+      term.print(0, y, `> ${buf}_`.slice(0, cols - 1), FG);
       term.print(0, rows - 1, "[ digits, Enter to accept, ESC to cancel ]".slice(0, cols - 1), DIM);
     };
     const finish = (value: number | null): void => {
@@ -608,21 +491,21 @@ export function promptNumber(
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      const wasFirst = firsttime;
-      firsttime = false;
-      /* askfor_aux_numbers (ui-options.c:1026) allows ESCAPE, ENTER, the two
-       * arrows, DELETE, BACKSPACE and the ten digits, delegates every one of them
-       * to askfor_aux_keypress, and returns false -- inert -- for anything else. */
-      const r = askforAuxKeypress(st, maxLen, ev.key, wasFirst, (ch) =>
-        /^[0-9]$/.test(ch),
-      );
-      if (r === "escape") return finish(null);
-      if (r === "enter") {
-        const n = st.buf.length > 0 ? Number.parseInt(st.buf, 10) : current;
+      if (ev.key === "Escape") return finish(null);
+      if (ev.key === "Enter") {
+        const n = buf.length > 0 ? Number.parseInt(buf, 10) : current;
         const clamped = Math.max(min, Math.min(max, Number.isFinite(n) ? n : current));
         return finish(clamped);
       }
-      paint();
+      if (ev.key === "Backspace") {
+        buf = buf.slice(0, -1);
+        paint();
+        return;
+      }
+      if (/^[0-9]$/.test(ev.key) && buf.length < maxLen) {
+        buf += ev.key;
+        paint();
+      }
     };
     window.addEventListener("keydown", onKey, true);
     paint();
@@ -723,12 +606,6 @@ export interface SelectMenuOptions {
  * to show the curse/ability's long description, mirroring upstream's
  * browse_hook). `extra.browseOnly` turns the menu read-only (abilities): Enter
  * / letter-select just re-paints instead of resolving, so only ESC exits.
- *
- * This is the port of ui-menu.c's whole menu object for every non-item menu, so
- * menu_new (ui-menu.c:980) - the allocator for `struct menu` - has no
- * counterpart: a menu here is one call with its rows, not a long-lived struct
- * with a skin, an iterator and priv state. (Object selection keeps its own
- * shape in itemSelect below, upstream's item_menu.)
  */
 /**
  * selectFromMenu resolves with this sentinel (instead of a row index or null)
