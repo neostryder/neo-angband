@@ -536,6 +536,55 @@ export function objCanZap(obj: GameObject): boolean {
   return tvalCanHaveTimeout(obj.tval) && numberCharging(obj) < obj.number;
 }
 
+/**
+ * object_effect (obj-util.c L886): the effect an object actually runs - the
+ * ACTIVATION's effect when it has one, otherwise the kind/instance effect.
+ * The activation wins outright, so an artifact or ego activation replaces the
+ * base kind's effect rather than being appended to it.
+ */
+export function objectEffect(obj: GameObject): EffectRecordJson[] | null {
+  if (obj.activation) return obj.activation.effect;
+  return obj.effect;
+}
+
+/**
+ * obj_is_activatable (obj-util.c L721): a WEARABLE object that has an effect.
+ * Note both halves: a non-wearable with an effect (a potion) is not
+ * "activatable", and a wearable's effect may come from its kind rather than an
+ * activation - the rings of Flames / Acid / Ice / Lightning / Open Wounds /
+ * Digging carry an `effect:` in object.txt and no `act:`, so they ARE
+ * activatable even though obj.activation is null.
+ */
+export function objIsActivatable(obj: GameObject): boolean {
+  if (!tvalIsWearable(obj.tval)) return false;
+  const effect = objectEffect(obj);
+  return effect !== null && effect.length > 0;
+}
+
+/**
+ * obj_can_activate (obj-util.c L730): activatable AND not recharging. This is
+ * NOT obj_can_zap: do_cmd_activate guards on this (cmd-obj.c L886) while
+ * do_cmd_zap_rod guards on obj_can_zap (L851), and obj_can_zap requires a ROD
+ * tval, so reusing it for activation refuses every artifact and ring.
+ */
+export function objCanActivate(obj: GameObject): boolean {
+  return objIsActivatable(obj) && obj.timeout === 0;
+}
+
+/**
+ * obj_can_wear (obj-util.c L810): wield_slot(obj) >= 0 - do_cmd_wield's
+ * item_tester (cmd-obj.c L284). Over the shipped body plan this is exactly
+ * tvalIsWearable (wield_slot handles the same tval set), but it is the slot
+ * lookup that decides, so a body plan without some slot type changes the
+ * answer. NOTE the upstream wart it inherits: slot_by_type's fallback for
+ * "type not on this body" is `false`, i.e. slot 0 - so wield_slot returns 0,
+ * not -1, and obj_can_wear stays true for a slot the body does not have.
+ */
+export function objCanWear(state: GameState, obj: GameObject): boolean {
+  const player = state.actor.player;
+  return wieldSlot(player.body, obj.tval, player.equipment) >= 0;
+}
+
 /* ------------------------------------------------------------------ *
  * Inscriptions and refuelling (cmd-obj.c, obj-util.c, obj-ignore.c).
  * ------------------------------------------------------------------ */
@@ -1033,8 +1082,11 @@ export function useAux(
       }
     }
 
-    /* Do effect. */
-    const chain = buildObjectEffectChain(obj.effect ?? [], state, deps.inject);
+    /* Do effect. use_aux takes its chain from object_effect(obj) (cmd-obj.c
+     * L410 `struct effect *effect = object_effect(obj);`), so an activation's
+     * effect REPLACES the base kind's - reading obj.effect here ran a
+     * Narthanc-style artifact's (empty) kind effect instead of its activation. */
+    const chain = buildObjectEffectChain(objectEffect(obj) ?? [], state, deps.inject);
     const ctx = attachGameEnv(buildEffectContext(state, deps.envDeps), {
       state,
       cast: deps.cast,
@@ -1195,23 +1247,27 @@ function commandTargetItem(cmd: PlayerCommand): ItemTargetRef | undefined {
   return undefined;
 }
 
-/** A use command over a tval filter and use kind. */
+/**
+ * A use command over a tval filter and use kind.
+ *
+ * `ready` is the command's OWN pre-use guard, because upstream does NOT share
+ * one: do_cmd_zap_rod tests obj_can_zap and says "That rod is still charging."
+ * (cmd-obj.c L851-855) while do_cmd_activate tests obj_can_activate and says
+ * "That item is still charging." (L886-890). obj_can_zap requires a rod tval,
+ * so the two are not interchangeable - using obj_can_zap for activation
+ * refused EVERY artifact and ring.
+ */
 function useCommand(
   deps: ObjCmdDeps,
   filter: (obj: GameObject) => boolean,
   use: UseKind,
+  ready?: { ok: (obj: GameObject) => boolean; msg: string },
 ) {
   return (state: GameState, cmd: PlayerCommand): number => {
     const found = commandObject(state, cmd);
     if (!found || !filter(found.obj)) return 0;
-    if (use === USE.TIMEOUT && !objCanZap(found.obj)) {
-      /* do_cmd_zap_rod (cmd-obj.c L852) and do_cmd_activate (L886) use
-       * distinct still-charging wording. */
-      deps.env?.msg?.(
-        tvalIsRod(found.obj.tval)
-          ? "That rod is still charging."
-          : "That item is still charging.",
-      );
+    if (ready && !ready.ok(found.obj)) {
+      deps.env?.msg?.(ready.msg);
       return 0;
     }
     if (use === USE.CHARGE && found.obj.pval <= 0) {
@@ -1440,20 +1496,26 @@ export function installObjCommands(
     "aim-wand",
     gated(useCommand(deps, (o) => tvalIsWand(o.tval), USE.CHARGE)),
   );
+  /* do_cmd_zap_rod (cmd-obj.c L832): tval_is_rod filter, obj_can_zap guard. */
   registry.register(
     "zap-rod",
-    gated(useCommand(deps, (o) => tvalIsRod(o.tval), USE.TIMEOUT)),
+    gated(
+      useCommand(deps, (o) => tvalIsRod(o.tval), USE.TIMEOUT, {
+        ok: objCanZap,
+        msg: "That rod is still charging.",
+      }),
+    ),
   );
-  /* obj_can_activate: an activation and not recharging. */
+  /* do_cmd_activate (cmd-obj.c L866): obj_is_activatable filter (a WEARABLE
+   * with an object_effect - which includes the kind-effect rings that have no
+   * activation), then the obj_can_activate guard. */
   registry.register(
     "activate",
     gated(
-      useCommand(
-        deps,
-        (o) =>
-          (o.activation !== null || o.artifact !== null) && o.timeout === 0,
-        USE.TIMEOUT,
-      ),
+      useCommand(deps, objIsActivatable, USE.TIMEOUT, {
+        ok: objCanActivate,
+        msg: "That item is still charging.",
+      }),
     ),
   );
 

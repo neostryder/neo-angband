@@ -33,9 +33,11 @@ import {
   spellLearn,
   spellOkayToCast,
   spellOkayToStudy,
+  objCanStudy,
   playerObjectToBook,
   PY_SPELL,
 } from "../player/spell";
+import { scanItems, USE_MODE } from "./floor";
 import type { SpellChanceEnv } from "../player/spell";
 import { convertManaToHp } from "../player/combat-regen";
 import type { GameState, PlayerCommand } from "./context";
@@ -96,6 +98,42 @@ export function spellNeedsAim(player: Player, spellIndex: number): boolean {
   const spell = spellByIndex(player.cls, spellIndex);
   if (!spell) return false;
   return effectRecordsNeedAim(spell.effectsRaw as EffectRecordJson[]);
+}
+
+/**
+ * player_book_has_unlearned_spells (player-util.c L1315): does the player have
+ * access to a book holding a spell they could study right now? Scans
+ * USE_INVEN | USE_FLOOR with the obj_can_study tester (L1329), then re-checks
+ * each book's spells with spell_okay_to_study - upstream's own double check,
+ * kept as written.
+ *
+ * Drives prt_study's colour (ui-display.c L1235 / game/display.ts
+ * DisplayDeps.bookHasUnlearnedSpells): the "Study" indicator shows L_DARK when
+ * the player has spell slots but nothing to spend them on.
+ */
+export function playerBookHasUnlearnedSpells(state: GameState): boolean {
+  const p = state.actor.player;
+  /* Check if the player can learn new spells (L1323). */
+  if (!p.upkeep.newSpells) return false;
+  /* item_max = z_info->pack_size + z_info->floor_size (L1318). packSize is not
+   * on GameConstants; the pack list length is its live upper bound and the cap
+   * never clips in practice (a class has at most a few books). */
+  const itemMax = state.gear.pack.length + state.z.floorSize;
+  const books = scanItems(
+    state,
+    itemMax,
+    USE_MODE.INVEN | USE_MODE.FLOOR,
+    (obj) => objCanStudy(p, obj),
+    state.isIgnored ? { isIgnored: (obj) => state.isIgnored!(obj) } : {},
+  );
+  for (const obj of books) {
+    const book = playerObjectToBook(p, obj);
+    if (!book) continue;
+    for (const spell of book.spells) {
+      if (spellOkayToStudy(p, spell.sidx)) return true;
+    }
+  }
+  return false;
 }
 
 /**

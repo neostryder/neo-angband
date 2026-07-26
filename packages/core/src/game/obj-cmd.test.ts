@@ -42,9 +42,14 @@ import {
   invenTakeoff,
   invenWield,
   numberCharging,
+  objCanActivate,
   objCanRefill,
+  objCanWear,
+  objCanZap,
   objHasInscrip,
+  objIsActivatable,
   objNeedsAim,
+  objectEffect,
   refillLamp,
   useAux,
   USE,
@@ -360,6 +365,23 @@ describe("useAux (cmd-obj.c use_aux)", () => {
     });
     expect(msgs).toContain("The torch blazes with white fire!");
     expect(msgs.some((m) => m.includes("glows"))).toBe(false);
+  });
+
+  it("runs the ACTIVATION's effect chain in place of the kind's own effect (cmd-obj.c L410 object_effect)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    maxDeviceSkill(state);
+    const p = state.actor.player;
+    p.mhp = 30;
+    p.chp = 10;
+    const healEffect = makeNamed("Cure Light Wounds", TV.POTION).effect;
+    /* Flames' own kind effect is a FIRE ball + TIMED_INC (needs a target); if
+     * use_aux read obj.effect instead of object_effect(obj), it would run
+     * THAT chain instead of the activation's heal, and chp would not rise. */
+    const ring = makeNamed("Flames", TV.RING);
+    ring.activation = { effect: healEffect } as never;
+    const h = carry(state, ring);
+    useAux(state, ring, USE.TIMEOUT, makeDeps(state), { handle: h });
+    expect(p.chp).toBeGreaterThan(10);
   });
 
   it("device failure spends the turn but no charge", () => {
@@ -1533,5 +1555,115 @@ describe("player_can_read gates the read command (player-util.c L1166)", () => {
     const msgs: string[] = [];
     expect(readScroll(state, msgs).energyUsed).toBe(state.z.moveEnergy);
     expect(msgs).not.toContain("You have no light to read by.");
+  });
+});
+
+describe("object_effect / obj_is_activatable / obj_can_activate (obj-util.c L886/721/730)", () => {
+  it("objectEffect prefers the activation's effect over the kind's own effect", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const ring = makeNamed("Flames", TV.RING);
+    expect(ring.effect).not.toBeNull();
+    expect(ring.activation).toBeNull();
+    /* Give it an activation too: objectEffect must return THIS, not ring.effect. */
+    const activationEffect = [{ eff: "CURE_LIGHT_WOUNDS" }] as never;
+    ring.activation = { effect: activationEffect } as never;
+    expect(objectEffect(ring)).toBe(activationEffect);
+    expect(objectEffect(ring)).not.toBe(ring.effect);
+  });
+
+  it("objectEffect falls back to the kind effect when there is no activation", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const ring = makeNamed("Flames", TV.RING);
+    expect(objectEffect(ring)).toBe(ring.effect);
+  });
+
+  it("a ring with a kind effect and no activation IS activatable (rings of Flames/Acid/...)", () => {
+    const ring = makeNamed("Flames", TV.RING);
+    expect(ring.activation).toBeNull();
+    expect(ring.effect).not.toBeNull();
+    expect(objIsActivatable(ring)).toBe(true);
+  });
+
+  it("a non-wearable object with an effect (a potion) is NOT activatable", () => {
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    expect(potion.effect).not.toBeNull();
+    expect(objIsActivatable(potion)).toBe(false);
+  });
+
+  it("objCanActivate is gated on the timeout, not on tvalCanHaveTimeout (which is rod-only)", () => {
+    const ring = makeNamed("Flames", TV.RING);
+    expect(ring.timeout).toBe(0);
+    expect(objCanActivate(ring)).toBe(true);
+    ring.timeout = 5;
+    expect(objCanActivate(ring)).toBe(false);
+  });
+
+  it("objCanZap requires a rod tval and cannot stand in for objCanActivate", () => {
+    const ring = makeNamed("Flames", TV.RING);
+    /* This is the exact bug the WIP fixed: objCanZap always rejects a ring. */
+    expect(objCanZap(ring)).toBe(false);
+    expect(objCanActivate(ring)).toBe(true);
+  });
+});
+
+describe("obj_can_wear (obj-util.c L810): wield_slot(obj) >= 0", () => {
+  it("matches wieldSlot's own verdict for a wearable and a non-wearable tval", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const sword = makeNamed("& Dagger~", TV.SWORD);
+    expect(objCanWear(state, sword)).toBe(true);
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    expect(objCanWear(state, potion)).toBe(false);
+  });
+});
+
+describe("registered command: activate (cmd-obj.c do_cmd_activate)", () => {
+  it("activates a ring with a kind effect and no `act:` (regression: objCanZap wrongly blocked this)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const ring = makeNamed("Flames", TV.RING);
+    const h = carry(state, ring);
+    invenWield(state, h, constants);
+    const registry = createDefaultRegistry();
+    const msgs: string[] = [];
+    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+    const commands = [{ code: "activate", args: { handle: h } }];
+    state.nextCommand = () => commands.shift() ?? null;
+    const result = processPlayer(state, registry);
+    expect(result.energyUsed).toBe(state.z.moveEnergy);
+    expect(msgs).not.toContain("That item is still charging.");
+    expect(ring.timeout).toBeGreaterThan(0);
+  });
+
+  it("refuses to re-activate a ring still recharging, with activation's own wording", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const ring = makeNamed("Flames", TV.RING);
+    ring.timeout = 50;
+    const h = carry(state, ring);
+    invenWield(state, h, constants);
+    const registry = createDefaultRegistry();
+    const msgs: string[] = [];
+    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+    const commands = [{ code: "activate", args: { handle: h } }];
+    state.nextCommand = () => commands.shift() ?? null;
+    const result = processPlayer(state, registry);
+    expect(result.energyUsed).toBe(0);
+    expect(msgs).toContain("That item is still charging.");
+  });
+});
+
+describe("registered command: zap-rod (cmd-obj.c do_cmd_zap_rod)", () => {
+  it("still uses the rod's own still-charging wording", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    maxDeviceSkill(state);
+    const rod = makeNamed("Treasure Location", TV.ROD);
+    rod.timeout = 50;
+    const h = carry(state, rod);
+    const registry = createDefaultRegistry();
+    const msgs: string[] = [];
+    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+    const commands = [{ code: "zap-rod", args: { handle: h } }];
+    state.nextCommand = () => commands.shift() ?? null;
+    const result = processPlayer(state, registry);
+    expect(result.energyUsed).toBe(0);
+    expect(msgs).toContain("That rod is still charging.");
   });
 });

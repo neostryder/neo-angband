@@ -87,6 +87,12 @@ import {
   tvalIsMeleeWeapon,
   tvalIsLight,
   objCanRefill,
+  objCanWear,
+  objIsActivatable,
+  objCanBrowse,
+  objCanCastFrom,
+  objCanStudy,
+  playerBookHasUnlearnedSpells,
   objHasInscrip,
   objectIsIgnored,
   OF,
@@ -1915,7 +1921,12 @@ async function activateItem(): Promise<void> {
     const handle = player.equipment[i] ?? 0;
     if (!handle) continue;
     const obj = gearGet(state.gear, handle);
-    if (!obj || !obj.activation) continue;
+    /* do_cmd_activate's item_tester is obj_is_activatable (cmd-obj.c L879):
+     * wearable AND object_effect(obj). Testing obj.activation alone hid the
+     * rings whose effect comes from the KIND (Flames / Acid / Ice / Lightning /
+     * Open Wounds / Digging carry `effect:` and no `act:` in object.txt), so
+     * those could never be activated. */
+    if (!obj || !objIsActivatable(obj)) continue;
     // OLIST_FAIL failure column for activatable gear (ui-object.c L212-221).
     const fail = deviceFailColumn(state, obj, isKindAware);
     const name = describeObject(state, obj);
@@ -2229,8 +2240,9 @@ async function openIgnoreSetup(): Promise<void> {
 async function chooseBook(
   verb: string,
   emptyMsg = "You have no books that you can use.",
+  tester: (obj: GameObject) => boolean = () => true,
 ): Promise<number | null> {
-  const { items, handles } = magicBooks(state);
+  const { items, handles } = magicBooks(state, tester);
   if (items.length === 0) {
     say(emptyMsg);
     return null;
@@ -2249,11 +2261,18 @@ async function castSpell(): Promise<void> {
   const player = state.actor.player;
   /* player_can_cast_prereq (player-util.c:1246), the 'm' key's prereq
    * (ui-game.c:174): checked before the book-choose menu ever opens, matching
-   * upstream's key-dispatch gate. The "cast" command itself re-checks this
+   * upstream's key-dispatch gate (do_cmd_cast, cmd-obj.c L1122-1124, runs this
+   * before cmd_get_spell). The "cast" command itself re-checks this
    * (core/game/spell-cmd.ts), so this is belt-and-suspenders for the message
    * ordering, not a new rule. */
   if (!playerCanCast(state, { msg: say })) return;
-  const handle = await chooseBook("Cast", "There are no spells you can cast.");
+  /* do_cmd_cast's book item_tester is obj_can_cast_from (cmd-obj.c L1129): a
+   * book of this realm holding at least one LEARNED spell. */
+  const handle = await chooseBook(
+    "Cast",
+    "There are no spells you can cast.",
+    (o) => objCanCastFrom(player, o),
+  );
   if (handle === null) return;
   const bookObj = gearGet(state.gear, handle);
   if (!bookObj) return;
@@ -2325,9 +2344,13 @@ async function studySpell(): Promise<void> {
     say("You cannot learn any new spells!");
     return;
   }
+  /* do_cmd_study_spell / do_cmd_study_book filter by obj_can_study (cmd-obj.c
+   * L1187 / L1215): a book of this realm holding a spell in level range that is
+   * not learned yet. */
   const handle = await chooseBook(
     "Study",
     "You cannot learn any new spells from the books you have.",
+    (o) => objCanStudy(player, o),
   );
   if (handle === null) return;
   const args: Record<string, unknown> = { handle };
@@ -2378,7 +2401,13 @@ const SPELL_HEADER = `${"Name".padEnd(33)}Lv Mana Fail Info`;
  * "no books that you can read").
  */
 async function browseCmd(): Promise<void> {
-  const handle = await chooseBook("Browse", "You have no books that you can read.");
+  /* textui_spell_browse filters by obj_can_browse (ui-spell.c L340) - any book
+   * of one of this class's realms. */
+  const handle = await chooseBook(
+    "Browse",
+    "You have no books that you can read.",
+    (o) => objCanBrowse(state.actor.player, o),
+  );
   if (handle === null) return;
   const bookObj = gearGet(state.gear, handle);
   if (!bookObj) return;
@@ -4403,7 +4432,10 @@ async function useGenericCmd(): Promise<void> {
     const handle = player.equipment[i] ?? 0;
     if (!handle) continue;
     const obj = gearGet(state.gear, handle);
-    if (!obj || !obj.activation) continue;
+    /* obj_is_useable admits an equipped item with an object_effect, and
+     * do_cmd_use routes it to do_cmd_activate (cmd-obj.c L987) - the kind-effect
+     * rings included, not just items with an `act:`. */
+    if (!obj || !objIsActivatable(obj)) continue;
     rows.push({ label: describeObject(state, obj), color: UI_TEXT });
     picks.push({ code: "activate", handle });
   }
@@ -4442,7 +4474,7 @@ async function swapWeaponCmd(): Promise<void> {
   // No @0-tagged item: fall back to the normal wield selection.
   await useItem(
     "wield",
-    (o) => tvalIsWearable(o.tval),
+    (o) => objCanWear(state, o),
     "Wear or wield which item?",
     "You have nothing to wear or wield.",
     { inven: true, floor: true, quiver: true },
@@ -4836,7 +4868,14 @@ const SIDEBAR_W = 13; // classic Angband status column width.
  * so the status line can label Poisoned/Afraid/Fed etc). Options the web does
  * not surface fall back to the model's defaults. */
 function displayDeps() {
-  return { timedEffects: players.timed, unignoring: state.ignore.unignoring };
+  return {
+    timedEffects: players.timed,
+    unignoring: state.ignore.unignoring,
+    /* prt_study (ui-display.c L1235) colours the "Study" indicator L_DARK when
+     * the player has spell slots but no book holding a studiable spell. The dep
+     * defaulted to true, so the indicator was always WHITE. */
+    bookHasUnlearnedSpells: playerBookHasUnlearnedSpells(state),
+  };
 }
 
 /**
@@ -5770,7 +5809,9 @@ window.addEventListener("keydown", (ev) => {
       // Item commands (cmd_item, ui-game.c:118-133).
       { o: "{", act: () => void openModal(inscribeItem) },
       { o: "}", act: () => void openModal(uninscribeItem) },
-      { o: "w", act: () => void openModal(() => useItem("wield", (t) => tvalIsWearable(t.tval), "Wear or wield which item?", "You have nothing to wear or wield.", { inven: true, floor: true, quiver: true })) },
+      // do_cmd_wield's item_tester is obj_can_wear = wield_slot(obj) >= 0
+      // (cmd-obj.c L284, obj-util.c L810) - the slot lookup, not the tval set.
+      { o: "w", act: () => void openModal(() => useItem("wield", (t) => objCanWear(state, t), "Wear or wield which item?", "You have nothing to wear or wield.", { inven: true, floor: true, quiver: true })) },
       { o: "t", r: "T", act: () => void openModal(takeOffItem) },
       { o: "I", act: () => void openModal(() => inspectItem()) },
       { o: "d", act: () => void openModal(() => useItem("drop", () => true, "Drop which item?", "You have nothing to drop.")) },

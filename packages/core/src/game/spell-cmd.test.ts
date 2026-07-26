@@ -5,7 +5,7 @@ import type { Loc } from "../loc";
 import { addMonster, updateMonsterDistances } from "./context";
 import type { GameState, PlayerCommand } from "./context";
 import { gearGet } from "./gear";
-import { playerCanCast } from "./spell-cmd";
+import { playerBookHasUnlearnedSpells, playerCanCast } from "./spell-cmd";
 import {
   playerObjectToBook,
   spellByIndex,
@@ -411,5 +411,32 @@ describe("player_can_cast no_light (player-util.c L1096)", () => {
      * the flag would make casting impossible for headless consumers. */
     expect(state.updateFov).toBeUndefined();
     expect(playerCanCast(state, {})).toBe(true);
+  });
+});
+
+describe("playerBookHasUnlearnedSpells (player-util.c L1315)", () => {
+  it("true at birth: newSpells>0 and the starting book holds a studiable spell", () => {
+    const { state } = startMage();
+    expect(state.actor.player.upkeep.newSpells).toBeGreaterThan(0);
+    expect(playerBookHasUnlearnedSpells(state)).toBe(true);
+  });
+
+  it("false once newSpells is exhausted (L1323 short-circuit)", () => {
+    const { state, registry } = startMage(777);
+    const handle = bookHandle(state);
+    run(state, registry, { code: "study", args: { handle, spell: 0 } });
+    expect(state.actor.player.upkeep.newSpells).toBe(0);
+    expect(playerBookHasUnlearnedSpells(state)).toBe(false);
+  });
+
+  it("false when newSpells>0 but no carried/floor book has a studiable spell (obj_can_study scan)", () => {
+    const { state } = startMage();
+    /* Drop every book the obj_can_study scan could find. */
+    state.gear.pack = state.gear.pack.filter((h) => {
+      const o = gearGet(state.gear, h);
+      return o === null || playerObjectToBook(state.actor.player, o) === null;
+    });
+    expect(state.actor.player.upkeep.newSpells).toBeGreaterThan(0);
+    expect(playerBookHasUnlearnedSpells(state)).toBe(false);
   });
 });
