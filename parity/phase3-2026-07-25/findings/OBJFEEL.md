@@ -383,3 +383,64 @@ forward, in order of value:
    more resolution than either. That needs another oracle change.
 
 Until one of those lands, **no generator code should change on this evidence.**
+
+## 9. CLOSED. The cause was `parse_random`'s negation, found in another lane
+
+Date: 2026-07-26, late. This closes the finding.
+
+The weak signal section 8 left open — "suggestive, not significant", the port's
+pooled ratio above all 15 measured C-vs-C pairs — turns out to have been real,
+and its cause was not in the generator at all. It was in the DATA.
+
+`parse_random` (`parser.c:126-213`) negates a `rand` field by parsing the
+remainder as positive and then shifting the base down:
+
+    base *= -1;  base -= m_bonus;  base -= dice * (sides + 1);
+
+The port bound the '-' to the base token alone. Three shipped values were
+affected, because `attack` and `armor` are both `rand`-typed
+(`obj-init.c:2161-2162`):
+
+| where | value | upstream | port before |
+|---|---|---|---|
+| `object.txt:2273` ring "Reckless Attacks" | `armor:0:-8+4d3` | to_a -20..-12 | to_a **-4..+4** |
+| `object.txt:2308` ring "Open Wounds" | `attack:0d0:0:-3d5` | to_d -15..-3 | base 0, **dice -3** |
+| `ego_item.txt:692` "of Backbiting" | `combat:-26+d25` | -51..-27 | -26..-1 |
+
+Every one of the three made the port's item BETTER than upstream's, and
+`obj_rating` accumulates `object_value_real` SQUARED (`gen-util.c:509-540`), so
+the error was amplified. "of Backbiting" is an ego, so it rides on any weapon
+kind, which is why three data rows could move a pooled statistic.
+
+### The measurement
+
+Same instrument, same C baseline, matched 1000-vs-1000:
+
+| | pooled objFeel G/df | verdict against the measured null (mean 1.94, range 1.56-2.49) |
+|---|---:|---|
+| before the fix | **2.70** | above ALL 15 C-vs-C pairs |
+| after the fix | **1.29** | below the null mean, and below the minimum pair |
+
+At 400 runs the raw ratio fell 1.87 -> 1.06 in the same way. **The gate now
+passes at 1000 runs**, where before it failed.
+
+Two honest caveats. The fix moved the RNG stream (the `-3d5` value carried a
+NEGATIVE dice count, suppressing three draws wherever that ring's to_d was
+rolled), so part of the change is a different sample — but 2.70 to 1.29 is far
+larger than the null's own spread, so sampling cannot account for it. And 1.29
+sits slightly BELOW the minimum of the 15 C-vs-C pairs, which is a ~1/16 event in
+the other direction; it means the residual is comfortably inside the null, not
+that the distributions now match exactly.
+
+### What this episode is worth remembering for
+
+- The finding was real, and every intermediate strength claim I made about it was
+  wrong: 7.6 sigma, then 8.4e-25, then p<=1/16, then closed. The direction of
+  each correction was downward except the last. Correct calibration made the
+  signal look weaker, and it was still there.
+- The cause was found by a lane looking at something else entirely — an
+  adjudication of upstream's gamedata parser unit tests. A statistical harness
+  told us the port's levels were too rich; it could never have told us which
+  three data rows were mis-parsed.
+- The pooled statistic never localised anything. Its value was to say "something
+  is off" credibly enough to keep looking, once its null was measured honestly.
