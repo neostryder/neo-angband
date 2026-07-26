@@ -46,10 +46,29 @@ import type { GameState } from "./context";
 
 /** The player-facing / downstream consequences the driver defers to the caller. */
 export interface ProjectMonsterHooks {
-  /** add_monster_message: queue a message about the monster (by MON_MSG index). */
-  message?: (mon: Monster, msg: number, addComma?: boolean) => void;
-  /** message_pain: a graded "it is hurt" message from the damage amount. */
-  messagePain?: (mon: Monster, dam: number) => void;
+  /**
+   * add_monster_message(mon, msg_code, delay): queue a message about the monster
+   * (by MON_MSG index). `delay` is upstream's third argument (what_delay,
+   * mon-msg.c:238), not a comma flag. When `damage` is given the caller must use
+   * add_monster_message_show_damage (mon-msg.c:288) and append " (N)".
+   */
+  message?: (
+    mon: Monster,
+    msg: number,
+    delay?: boolean,
+    damage?: number,
+  ) => void;
+  /**
+   * message_pain: a graded "it is hurt" message from the damage amount. With
+   * `showDamage` the caller must use message_pain_show_damage (mon-msg.c:132).
+   */
+  messagePain?: (mon: Monster, dam: number, showDamage?: boolean) => void;
+  /**
+   * OPT(player, show_damage) (list-options.h): project_m_player_attack combines
+   * it with origin.what == SRC_PLAYER into its `display_dam`
+   * (project-mon.c:1111-1112), which selects the *_show_damage message calls.
+   */
+  showDamage?: boolean;
   /** Timed-effect messages emitted while applying side-effect timers. */
   timedMessage?: MonTimedMessageSink;
   /** player_kill_monster: experience, drops, quests (removal is done here). */
@@ -223,12 +242,20 @@ function playerAttack(
   const mon = ctx.mon;
   const dam = ctx.dam;
 
+  /* display_dam (project-mon.c:1111-1112): only the PLAYER's own damage gets
+   * the " (N)" suffix, and only with OPT(player, show_damage) on - a trap also
+   * routes here (origin.what == SRC_TRAP) and must stay bare. */
+  const displayDam = pctx.origin.isPlayer && (hooks.showDamage ?? false);
+
   /* Lethal blow: show the death message before mon_take_hit (which is passed
    * an empty note, so it prints none, keeping message order correct). */
   if (dam > mon.hp) {
     hooks.revertShape?.(mon);
     const dieMsg = seen ? ctx.dieMsg : MON_MSG.MORIA_DEATH;
-    hooks.message?.(mon, dieMsg);
+    /* add_monster_message_show_damage vs add_monster_message
+     * (project-mon.c:1127-1132). */
+    if (displayDam) hooks.message?.(mon, dieMsg, false, dam);
+    else hooks.message?.(mon, dieMsg);
   }
 
   let died = false;
@@ -253,10 +280,14 @@ function playerAttack(
   }
 
   if (!died) {
+    /* project-mon.c:1145-1159: the display_dam branch swaps both the specific
+     * hurt message and the fallback pain message for their damage-showing
+     * twins. The FLEE_IN_TERROR line never shows damage. */
     if (seen && ctx.hurtMsg !== MON_MSG.NONE) {
-      hooks.message?.(mon, ctx.hurtMsg);
+      if (displayDam) hooks.message?.(mon, ctx.hurtMsg, false, dam);
+      else hooks.message?.(mon, ctx.hurtMsg);
     } else if (dam > 0) {
-      hooks.messagePain?.(mon, dam);
+      hooks.messagePain?.(mon, dam, displayDam);
     }
     if (seen && fear) hooks.message?.(mon, MON_MSG.FLEE_IN_TERROR, true);
   }
