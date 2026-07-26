@@ -87,7 +87,7 @@ import { registerMeleeHandlers } from "../game/effect-melee";
 import { registerSummonHandlers } from "../game/effect-summon";
 import type { SummonEffectEnv } from "../game/effect-summon";
 import { registerDetectHandlers } from "../game/effect-detect";
-import { becomeAware, caveIlluminateKnown, newKnownMap } from "../game/known";
+import { becomeAware, caveIlluminateKnown, caveKnown, newKnownMap } from "../game/known";
 import { PY_EXERT, compactMonsters, isDaytime, playerOverExert } from "../game/world";
 import { restoreMonsters } from "../game/scheduler";
 import { newTargetState, targetSetMonster } from "../game/target";
@@ -2159,6 +2159,7 @@ function makeChangeLevel(
      * night town forgets its boring floors. Town only (depth 0); dungeon levels
      * start dark. Runs on both birth and recall-to-town. */
     if (depth === 0) {
+      caveKnown(state);
       caveIlluminateKnown(state, isDaytime(state.turn, state.z.dayLength));
     }
     delete state.targetDepth;
@@ -2577,6 +2578,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
    * night town forgets its boring floors. Town only (booted depth 0); the level
    * changer (changeLevel) does the same for recall-to-town. */
   if (booted.depth === 0) {
+    caveKnown(state);
     caveIlluminateKnown(state, isDaytime(state.turn, state.z.dayLength));
   }
 

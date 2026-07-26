@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
-import { FEAT, MFLAG, MON_TMD, SQUARE } from "../generated";
+import { FEAT, MFLAG, MON_TMD, SQUARE, TV } from "../generated";
 import { loc } from "../loc";
 import type { Loc } from "../loc";
 import type { Rng } from "../rng";
 import { SKILL } from "../player/types";
 import { ObjRegistry } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
-import { ArtifactState, ObjAllocState } from "../obj/make";
+import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import { tvalIsMoney } from "../obj/object";
 import {
@@ -21,7 +21,7 @@ import {
   squareIsOpenDoor,
   squareIsUnlockedDoor,
 } from "./cave-cmd";
-import { floorPile } from "./floor";
+import { floorCarry, floorPile } from "./floor";
 import { squareMemorize } from "./known";
 import { createDefaultRegistry, processPlayer } from "./player-turn";
 import { addMon, makeRace, makeState } from "./harness";
@@ -102,6 +102,28 @@ describe("calcDiggingChances (player-calcs.c)", () => {
 });
 
 describe("open / close doors", () => {
+  it("auto-selects one known closed door without a direction (cmd-cave.c:245-260)", () => {
+    const { state, run } = setup();
+    state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    squareMemorize(state, loc(6, 5));
+
+    expect(run({ code: "open" })).toBe(state.z.moveEnergy);
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.OPEN);
+  });
+
+  it("does not auto-select when zero or multiple known doors are candidates", () => {
+    const { state, run } = setup();
+    expect(run({ code: "open" })).toBe(0);
+
+    state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    state.chunk.setFeat(loc(4, 5), FEAT.CLOSED);
+    squareMemorize(state, loc(6, 5));
+    squareMemorize(state, loc(4, 5));
+    expect(run({ code: "open" })).toBe(0);
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.CLOSED);
+    expect(state.chunk.feat(loc(4, 5))).toBe(FEAT.CLOSED);
+  });
+
   it("opens a closed door and spends a full turn", () => {
     const { state, run } = setup();
     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
@@ -128,6 +150,15 @@ describe("open / close doors", () => {
     state.chunk.setFeat(loc(6, 5), FEAT.OPEN);
     const energy = run({ code: "close", dir: 6 });
     expect(energy).toBe(state.z.moveEnergy);
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.CLOSED);
+  });
+
+  it("auto-selects one known open door without a direction (cmd-cave.c:409)", () => {
+    const { state, run } = setup();
+    state.chunk.setFeat(loc(6, 5), FEAT.OPEN);
+    squareMemorize(state, loc(6, 5));
+
+    expect(run({ code: "close" })).toBe(state.z.moveEnergy);
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.CLOSED);
   });
 
@@ -468,6 +499,16 @@ describe("lock door (do_cmd_lock_door)", () => {
     expect(locked.has("6,5")).toBe(true);
     expect(power()).toBe(4);
   });
+
+  it("auto-selects one known unlocked door for disarm (cmd-cave.c:874-876)", () => {
+    const { rng } = recordingRng({ mBonus: 4, randint0: [0] });
+    const { state, run, locked, power } = lockSetup(rng);
+    squareMemorize(state, loc(6, 5));
+
+    expect(run({ code: "disarm" })).toBe(state.z.moveEnergy);
+    expect(locked.has("6,5")).toBe(true);
+    expect(power()).toBe(4);
+  });
 });
 
 describe("alter / stairs", () => {
@@ -530,6 +571,28 @@ describe("countFeats (cave.c:644-679)", () => {
     const under = countFeats(state, (s, g) => squareIsOpenDoor(s, g), true);
     expect(under.count).toBe(1);
     expect(under.grid).toEqual(loc(5, 5));
+  });
+
+  it("combines with count_chests, including an underfoot chest", () => {
+    /* count_chests owns the chest scan (obj-chest.c:459-483), including the
+     * player's square; cmd-cave.c:250 adds that count to count_feats. */
+    const chestDeps = { makeDeps: makeDeps() };
+    const { state, run } = setup({ chestDeps });
+    state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    squareMemorize(state, loc(6, 5));
+    const chestKind = chestDeps.makeDeps.reg.lookupKind(
+      TV.CHEST,
+      chestDeps.makeDeps.reg.lookupSval(TV.CHEST, "Small wooden chest"),
+    )!;
+    const chest = objectPrep(state.rng, chestDeps.makeDeps.reg, constants, chestKind, 0, "average");
+    chest.pval = 1;
+    floorCarry(state, state.actor.grid, chest);
+    const feats = countFeats(state, (s, g) => s.chunk.isClosedDoor(g), false);
+    expect(feats.count).toBe(1);
+    /* cmd-cave.c:250 adds both counts; it must prompt rather than choose the
+     * adjacent door when the chest underfoot is the second candidate. */
+    expect(run({ code: "open" })).toBe(0);
+    expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.CLOSED);
   });
 
   it("treats a closed door with no lock power as unlocked (cave-square.c:791)", () => {

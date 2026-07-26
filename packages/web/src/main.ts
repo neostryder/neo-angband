@@ -3245,7 +3245,11 @@ async function openCmd(): Promise<void> {
   /* n_closed_doors + n_locked_chests == 1 -> the C infers (cmd-cave.c L250-260),
    * and otherwise allows 5 only when a chest is in reach. */
   const chests = countChests(state, CHEST_QUERY.OPENABLE);
-  const auto = inferredDir((g) => state.chunk.isClosedDoor(g), chests.count, chests.grid);
+  const auto = inferredDir(
+    (g) => state.chunk.features.featHas(knownFeat(state, g), TF.DOOR_CLOSED),
+    chests.count,
+    chests.grid,
+  );
   const dir = auto ?? (await getRepDir(term, chests.count > 0));
   if (dir === null) return;
   commandBuffer.push({ code: "open", dir });
@@ -3259,7 +3263,10 @@ async function disarmCmd(): Promise<void> {
    * single matching call supplies the grid; a combined predicate is equivalent. */
   const chests = countChests(state, CHEST_QUERY.TRAPPED);
   const auto = inferredDir(
-    (g) => squareIsDisarmableTrap(state, g) || squareIsUnlockedDoor(state, g),
+    (g) =>
+      squareIsDisarmableTrap(state, g) ||
+      (state.chunk.features.featHas(knownFeat(state, g), TF.DOOR_CLOSED) &&
+        squareIsUnlockedDoor(state, g)),
     chests.count,
     chests.grid,
   );
@@ -3280,7 +3287,9 @@ async function tunnelCmd(): Promise<void> {
 /** Close (c): a door, by direction (do_cmd_close, allow_5 = false). */
 async function closeCmd(): Promise<void> {
   /* count_feats(square_isopendoor) == 1 -> inferred (cmd-cave.c L406-414). */
-  const auto = inferredDir((g) => squareIsOpenDoor(state, g));
+  const auto = inferredDir((g) =>
+    state.chunk.features.featHas(knownFeat(state, g), TF.CLOSABLE),
+  );
   const dir = auto ?? (await getRepDir(term));
   if (dir === null) return;
   commandBuffer.push({ code: "close", dir });
