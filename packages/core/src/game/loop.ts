@@ -87,13 +87,22 @@ export const LOOP_STATUS = {
 } as const;
 export type LoopStatus = (typeof LOOP_STATUS)[keyof typeof LOOP_STATUS];
 
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
+
+/** player-util.c:538-545: saturating addition for 32-bit fixed-point values. */
+function addInt32Saturating(value: number, gain: number): number {
+  if (gain >= 0) return value < INT32_MAX - gain ? value + gain : INT32_MAX;
+  return value > INT32_MIN - gain ? value + gain : INT32_MIN;
+}
+
 /**
  * player_adjust_hp_precise: add hp_gain (in 2^16ths) to chp/chp_frac, clamped
  * at mhp. Reproduces the upstream fixed-point split.
  */
 export function playerAdjustHpPrecise(p: Player, hpGain: number): void {
   const old32 = p.chp * 65536 + p.chpFrac;
-  const new32 = old32 + hpGain;
+  const new32 = addInt32Saturating(old32, hpGain);
   if (new32 < 0) {
     const remainder = new32 % 65536;
     p.chp = Math.trunc(new32 / 65536);
@@ -125,7 +134,7 @@ export function playerAdjustHpPrecise(p: Player, hpGain: number): void {
 export function playerAdjustManaPrecise(p: Player, spGain: number): number {
   if (spGain === 0) return 0;
   const old32 = p.csp * 65536 + p.cspFrac;
-  const new32 = old32 + spGain;
+  const new32 = addInt32Saturating(old32, spGain);
   if (new32 < 0) {
     const remainder = new32 % 65536;
     p.csp = Math.trunc(new32 / 65536);
