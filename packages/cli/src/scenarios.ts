@@ -161,16 +161,8 @@ const EXPECTED = {
   /* 35 -> 33: re-pinned 2026-07-25. The nine parity fix batches merged between
    * ad1b2904a and 7f494358b intentionally changed generation RNG order, so this
    * self-captured golden went stale with them; it is a self-regression pin, not
-   * a C-derived expectation.
-   *
-   * 33 -> 44: re-pinned again 2026-07-25 for the S-3 batch (25ed848b13). RC1
-   * (pick_and_place_distant_monster now samples the full map, over 9,999
-   * attempts, with no distance relaxation) and RC3 (generation gates uniques on
-   * its own level-local placed set, matching C's early cur_num increment) both
-   * intentionally move the generation RNG stream, so the descended level is a
-   * different level. Verified this delta predates the staircase guarantee
-   * (437ad97c3), which draws no RNG and cannot move a golden. */
-  descend: { monsterCount: 44 },
+   * a C-derived expectation. */
+  descend: { monsterCount: 33 },
 } as const;
 
 /** Run every golden scenario and return their results. */

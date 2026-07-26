@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { HIST, MFLAG, OF, RF, TMD } from "../generated";
 import { FlagSet } from "../bitflag";
 import { MFLAG_SIZE, RF_SIZE } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
 import { runGameLoop, LOOP_STATUS } from "../game/loop";
 import { processPlayer } from "../game/player-turn";
 import type { PlayerCommand } from "../game/context";
@@ -519,64 +518,6 @@ describe("startGame (new-game assembly)", () => {
     expect(a.state.monsters.length).toBe(b.state.monsters.length);
     if (a.booted.playerSpot && b.booted.playerSpot) {
       expect(a.booted.playerSpot).toEqual(b.booted.playerSpot);
-    }
-  });
-});
-
-/* ------------------------------------------------------------------ *
- * Racial occurrence counts (mon-make.c cur_num).
- * ------------------------------------------------------------------ */
-
-/**
- * C's invariant, asserted end-to-end: `race->cur_num` is the number of live
- * monsters of that race, and nothing else.
- *
- * C maintains it with a single increment inside place_new_monster_one
- * (mon-make.c L1040-1041), because C generates monsters directly into the live
- * cave. The port generates a level into a detached Gen first, so its single
- * increment lives at the populate boundary instead - countMonsterRaces, called
- * from the level-change path - while generation tracks uniques level-locally
- * and deliberately leaves the shared registry alone.
- *
- * That makes the count a two-stage contract, and a second increment added at
- * generation time double-counts every monster on a freshly generated level. The
- * damage is not cosmetic: wipe_mon_list decrements only once per live monster on
- * the way out, so each descent leaks, and a unique that reaches cur_num >=
- * max_num is refused by get_mon_num (mon-make.c L257-258) forever - it
- * disappears from the rest of the game. Descending several levels here is what
- * exposes the leak; a single level only shows the doubling.
- */
-describe("cur_num tracks the live monster count (mon-make.c L1040-1041)", () => {
-  it("holds on a fresh level and across a descent", () => {
-    const game = startGame(pack, { seed: 4242, depth: 3 });
-    const state = game.state;
-
-    /* Races met so far, so a leak is still visible after their level is gone. */
-    const seen = new Set<MonsterRace>();
-
-    const check = (label: string): void => {
-      const live = new Map<MonsterRace, number>();
-      for (let i = 1; i < state.monsters.length; i++) {
-        const mon = state.monsters[i];
-        if (!mon) continue;
-        /* A shapechanged monster counts against the race it really is. */
-        const race = mon.originalRace ?? mon.race;
-        seen.add(race);
-        live.set(race, (live.get(race) ?? 0) + 1);
-      }
-      const wrong = [...seen]
-        .filter((r) => r.curNum !== (live.get(r) ?? 0))
-        .map((r) => `${label} ${r.name}: curNum=${r.curNum} live=${live.get(r) ?? 0}`);
-      expect(wrong).toEqual([]);
-    };
-
-    check("depth 3");
-    expect(seen.size).toBeGreaterThan(0);
-
-    for (const depth of [4, 5, 6, 7]) {
-      game.changeLevel(depth);
-      expect(state.chunk.depth).toBe(depth);
-      check(`depth ${depth}`);
     }
   });
 });

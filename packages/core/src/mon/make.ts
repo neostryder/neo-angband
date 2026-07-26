@@ -157,18 +157,6 @@ export class MonAllocTable {
     rng: Rng,
     generatedLevel: number,
     currentLevel: number,
-    /**
-     * Level generation only: "is this unique already placed on the level being
-     * built?". C has no equivalent parameter because it increments
-     * race->cur_num the moment a monster is placed (mon-make.c L1040-1041), so
-     * the unique gate below excludes it from the very next table build. The
-     * port generates into a detached Gen and must not touch the shared count
-     * (see the note in gen/util.ts placeNewMonsterOne), so generation supplies
-     * its level-local placed set here instead. Same effect on the table, and
-     * therefore the same RNG stream: a placed unique is never offered again,
-     * rather than being drawn and then rejected at placement.
-     */
-    uniquePlaced?: (race: MonsterRace) => boolean,
   ): MonsterRace | null {
     /* Occasionally produce a nastier monster in the dungeon. */
     if (generatedLevel > 0 && rng.oneIn(this.oodChance)) {
@@ -194,10 +182,7 @@ export class MonAllocTable {
       if (race.flags.has(RF.SEASONAL) && !this.seasonalAllowed) continue;
 
       /* Only one copy of a unique at a time (and none once dead). */
-      if (race.flags.has(RF.UNIQUE)) {
-        if (race.curNum >= race.maxNum) continue;
-        if (uniquePlaced?.(race)) continue;
-      }
+      if (race.flags.has(RF.UNIQUE) && race.curNum >= race.maxNum) continue;
 
       /* Some monsters never appear out of depth. */
       if (race.flags.has(RF.FORCE_DEPTH) && race.level > currentLevel) {
