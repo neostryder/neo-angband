@@ -549,6 +549,45 @@ function pfToPath(a: PfDistances, dest: Loc): { length: number; steps: number[] 
  * prepare_pfdistances + pfdistances_to_path (the same distances upstream's A*
  * approximates, so the paths match up to tie-breaking) with the same
  * constraint-loosening: try remembered-only then any, and no-traps then traps.
+ *
+ * KNOWN DIVERGENCE, and the reason this port has no priority queue.
+ * Upstream ships TWO routines that answer this question. prepare_pfdistances
+ * (player-path.c L307) relaxes a full distance field breadth-first through a
+ * PLAIN FIFO queue (q_new / q_push_int / q_pop_int), and pfdistances_to_path
+ * (L506) walks that field back from the destination. find_path (L1069) instead
+ * runs A* with a Chebyshev heuristic over a BINARY-HEAP PRIORITY QUEUE
+ * (qp_new / qp_push_int / qp_pushpop_int / qp_pop_int, z-queue.c) and a
+ * lazily-initialised patched distance array. Both return a MINIMUM-cost path --
+ * the heuristic is admissible because every step costs at least PF_SCL -- but
+ * upstream's own comment at L1063-L1067 says outright that "the path returned by
+ * find_path() may be different than that returned by pfdistances_to_path()"
+ * when several paths tie on expected turncount. do_cmd_pathfind
+ * (cmd-cave.c L1563) calls find_path, so the route the real game walks is the
+ * A-star/heap one and the route this port walks is the field-backtrack one: same
+ * length, same destination, possibly a different sequence of steps. Closing it
+ * means porting the A*, the patched-distance array and the priority queue, which
+ * is a restructure rather than an edit -- see parity findings UT-zlib2 GAP-1.
+ *
+ * Consequently reference/src/tests/z-queue/qp.c is N/A for this port, case by
+ * case, and is recorded here rather than in a test file because THIS is the
+ * function whose absence explains it:
+ *  - test_qp_trivial, test_qp_flush: qp_new(size) preallocation, qp_size (the
+ *    allocated capacity) as distinct from qp_len (the occupancy), and
+ *    qp_flush/qp_free taking a free-callback to release the elements they drop.
+ *    Capacity-vs-length and element ownership are C allocation concerns; the
+ *    port has neither a capacity nor manual frees.
+ *  - test_qp_integer, test_qp_pointer: the pop order matches a qsort by
+ *    priority. This is the one genuinely behavioural property in the file, and
+ *    it is unreachable here because no port code holds a priority queue. It is
+ *    covered by GAP-1 above, not waved away.
+ *  - test_qp_pushpop: qp_pushpop_int/_ptr, the push-then-pop-min fusion
+ *    find_path uses at L1281 to avoid growing the heap. Same reason.
+ *  - test_qp_resize: qp_resize doubling on overflow (find_path L1253-L1258) and
+ *    truncating with a free-callback, plus qp_isinvalid, a debug heap-invariant
+ *    self-check. Manual reallocation, with no counterpart in a JS array.
+ *  - The int-vs-void* payload split across all six cases is upstream's tagged
+ *    union for storing either an int or a pointer in one slot; TS has no such
+ *    distinction.
  */
 export function findPath(
   state: GameState,

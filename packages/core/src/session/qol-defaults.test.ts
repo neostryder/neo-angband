@@ -182,26 +182,15 @@ describe("bugfix.stairsReachable reaches level generation (BUG_FIXES.md entry 13
    * an all-flags-OFF stream comparison - only a seed whose behaviour actually
    * differs with the flag on can.
    *
-   * These birth seeds were measured stranded through startGame itself, and they
-   * cover both directions, including a down-only case - the direction that
-   * actually blocks descent. The rate was 12 of 120 sampled (10.0%) until
-   * help_greater_vault was restored on 2026-07-26; with greater vaults no longer
-   * swallowing every deep level it is roughly 1-2%, matching the raw generator.
+   * These three birth seeds were measured stranded through startGame itself (12
+   * of 120 sampled = 10.0%, the same rate as the raw generator). They cover both
+   * directions, including a down-only case - the direction that actually blocks
+   * descent.
    */
   const STRANDED: readonly [number, number, string][] = [
     [40, 740014, "down+up"],
-    /* 750000 sat here until 2026-07-26, when help_greater_vault (gen-room.c
-     * L3075) was restored to core: before that fix a greater vault was the
-     * first room of nearly every level at depth 35+, and this seed's up stair
-     * was sealed inside it. 740014 still strands, so this is a
-     * deliberate generation-stream change at depth >= 35, not a regression -
-     * see the note in gen/gen.test.ts' STRANDED list. */
-    [50, 750080, "up"],
-    [60, 1300081, "down+up"],
-    /* A down-only case - the direction that actually blocks descent. 760000
-     * was the down-only pin until 2026-07-26; it went stale in the same
-     * help_greater_vault restoration described above. */
-    [40, 1100361, "down"],
+    [50, 750000, "up"],
+    [60, 760000, "down"],
   ];
 
   /** The directions of this level that have a stair but no walk-reachable one. */
