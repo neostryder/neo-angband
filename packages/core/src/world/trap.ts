@@ -74,6 +74,10 @@ function parseTrapFlags(lines: string[] | undefined): FlagSet {
   const flags = new FlagSet(TRF_SIZE);
   if (!lines) return flags;
   for (const line of lines) {
+    /* A non-string entry is the compiler's presence marker for "flags:"
+     * with no value: parse_trap_flags (init.c L1612-1614) returns
+     * PARSE_ERROR_NONE with t->flags untouched (partrap.c test_flags0). */
+    if (typeof line !== "string") continue;
     for (const raw of line.split("|")) {
       const name = raw.trim();
       if (!name) continue;
