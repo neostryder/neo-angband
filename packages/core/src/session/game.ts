@@ -1981,6 +1981,10 @@ function makeChangeLevel(
       compactMonsters(state, 0);
       state.chunk.setMon(state.actor.grid, 0);
       state.chunk.turn = state.turn;
+      /* chunk_list_add (gen-chunk.c L69) is this Map insert: the C appends the
+       * stored chunk to a realloc'd chunk_list[] keyed by chunk->name (which is
+       * level_by_depth(depth)->name), so a depth-keyed Map is the same lookup
+       * without the name indirection or the manual growth. */
       cache.set(currentDepth, {
         chunk: state.chunk,
         monsters: state.monsters,
