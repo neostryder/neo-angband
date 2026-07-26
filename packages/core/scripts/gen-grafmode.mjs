@@ -30,6 +30,9 @@ const outPath = resolve(here, "../src/visuals/grafmode-data.ts");
 
 const text = readFileSync(listPath, "utf8");
 
+/* The loop below is init_parse_grafmode (grafmode.c:92) and its five directive
+ * handlers plus finish_parse_grafmode, inlined: a generator script has no
+ * reason to build a parser object and register hooks into it. */
 /** @type {any[]} */
 const modes = [];
 /** @type {any} */

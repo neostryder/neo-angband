@@ -291,6 +291,9 @@ export function installSpellCommands(
       : state.z.moveEnergy;
   });
 
+  /* do_cmd_study (cmd-obj.c:1245) with its two arms folded in: the
+   * PF_CHOOSE_SPELLS branch below is do_cmd_study_spell, the else branch is
+   * do_cmd_study_book. */
   registry.register("study", (state, cmd: PlayerCommand) => {
     if (!playerGetResumeNormalShape(state, env)) return 0;
     if (!playerCanCast(state, env)) return 0;
