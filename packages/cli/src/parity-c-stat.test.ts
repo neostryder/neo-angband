@@ -58,6 +58,30 @@ const cbase = loadCBaseline();
  *   NEO_PARITY_RUNS=1000 pnpm vitest run packages/cli/src/parity-c-stat.test.ts
  */
 const PORT_RUNS = Number(process.env.NEO_PARITY_RUNS ?? 400);
+
+/**
+ * MEASURED dispersion of the pooled feeling G-statistics under a true null.
+ *
+ * There are two independent 1000-run C main-stats databases, produced by the
+ * same binary. Diffing them against each other runs this exact instrument on
+ * data where the answer is known to be "no difference", so the result IS the
+ * null: `parity/phase3-2026-07-25/tools/c-vs-c-null.mjs` reports
+ *
+ *   obj_feelings  C-A vs C-B pooled: G/df = 1.76 over 20 depths
+ *   mon_feelings  C-A vs C-B pooled: G/df = 1.95 over 20 depths
+ *
+ * These histograms are therefore overdispersed by nearly a factor of two before
+ * the port is involved at all, and a pooled G/df near 1.8 is ORDINARY. This
+ * supersedes the 0.95 figure from NOISE-FLOOR.md, which was measured port
+ * against ITSELF at a second base seed -- a weaker null, since two runs of one
+ * implementation share structure that two independent samples do not.
+ *
+ * Applied as a quasi-likelihood correction (G/phi referred to chi2(df)). It is
+ * ONE replicate per metric, so phi is itself uncertain; more C runs would pin
+ * it. Erring toward the measured value is the conservative choice, because the
+ * alternative is claiming a divergence that two runs of upstream also show.
+ */
+const FEEL_DISPERSION: Record<string, number> = { objFeel: 1.76, monFeel: 1.95 };
 const DEPTH_MAX = 20;
 const ALPHA = 0.01;
 
@@ -97,6 +121,8 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      *
      *   - density, per depth        -> `depths.length` tests, corrected
      *   - object count, per depth   -> `depths.length` tests, corrected
+     *   - ego count, per depth      -> `depths.length` tests, corrected
+     *   - artifact count, per depth -> `depths.length` tests, corrected
      *   - objFeel, POOLED           -> 1 test, corrected
      *   - monFeel, POOLED           -> 1 test, corrected
      *   - species                   -> 0 tests. Printed only, never asserted.
@@ -114,6 +140,17 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * reason density is: it is a test on a mean, and a depth-localised quantity
      * bug is a real possibility (a room type that only appears deep). See
      * findings/OBJFEEL.md.
+     *
+     * Ego and artifact counts joined on 2026-07-26 for the same investigation,
+     * one step further in. With quantity matched and value diverging, the
+     * question is what carries the value, and obj_rating is driven by
+     * object_value_real squared (gen-util.c:509-540), so a handful of ego or
+     * artifact drops moves it far more than ordinary items do. These are
+     * COUNTS, small per level and roughly Poisson, so a mean test on them has
+     * real power -- unlike a mean test on obj_rating itself, whose per-level
+     * standard deviation runs about fourteen times its mean on the C oracle. A
+     * heavy-tailed variable's mean is not a usable parity instrument, which is
+     * exactly why upstream bins the rating into a feeling in the first place.
      *
      * Why species is not gated, and I had this wrong originally. Comparing the
      * port against ITSELF at a second base seed gives G = 350-860 over df =
@@ -144,12 +181,19 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * WHICH depths those are is a property of the RNG stream. Measured: the
      * surviving objFeel depths moved from {13,16,19} to {11,12} when RC1/RC3
      * shifted the stream in 25ed848b13, sharing not one depth, while the pooled
-     * excess stayed put. See poolDistributionTests for the additivity argument
-     * and the measured calibration that licenses it.
+     * excess stayed put. See poolDistributionTests for the additivity argument.
+     *
+     * Both pooled feeling tests are corrected by their MEASURED dispersion
+     * (FEEL_DISPERSION above), because two independent 1000-run samples of the
+     * same C binary pool to G/df = 1.76 and 1.95 respectively. Pooling is still
+     * the right move -- it removes the seed-dependent choice of depth -- but the
+     * uncorrected p-value it produces is not believable, and correcting it costs
+     * the objFeel finding most of its claimed strength. That is the honest
+     * number, so it is the one asserted.
      *
      * Gold is asserted separately -- its per-origin classification is a known
      * open divergence and would otherwise mask the rest. */
-    const alpha = bonferroni(ALPHA, 2 * depths.length + 2);
+    const alpha = bonferroni(ALPHA, 4 * depths.length + 2);
     const rows: Row[] = [];
     const report: string[] = [];
     const densityZ: number[] = [];
@@ -207,6 +251,26 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
           `(resolves +/-${objCount.resolution.toFixed(2)})`,
       );
 
+      /* Ego and artifact counts per level: the countable drivers of rating. */
+      for (const metric of ["egos", "artifacts"] as const) {
+        const sd = perLevelSd(p, metric);
+        const t = meanTest({
+          refMean: b[metric] / b.levels,
+          refN: b.levels,
+          portMean: p[metric] / p.levels,
+          portN: p.levels,
+          sd,
+          alpha,
+        });
+        rows.push({ depth: d, metric, detail: `z=${t.z.toFixed(2)}`, p: t.p });
+        report.push(
+          `depth ${String(d).padStart(2)} ${metric.padEnd(9)}C=${(b[metric] / b.levels).toFixed(3)} ` +
+            `port=${(p[metric] / p.levels).toFixed(3)} delta=${t.delta.toFixed(3)} ` +
+            `sd=${sd.toFixed(2)} z=${t.z.toFixed(2)} p=${t.p.toFixed(4)} ` +
+            `(resolves +/-${t.resolution.toFixed(3)})`,
+        );
+      }
+
       for (const [metric, key] of [
         ["species", "monsters"],
         ["objFeel", "objFeeling"],
@@ -235,7 +299,7 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * localised by eye; only these two are asserted. `ratio` is the number to
      * read: 1.0 is exactly the null expectation. */
     for (const metric of ["objFeel", "monFeel"] as const) {
-      const t = poolDistributionTests(pooling[metric] ?? []);
+      const t = poolDistributionTests(pooling[metric] ?? [], FEEL_DISPERSION[metric] ?? 1);
       rows.push({
         depth: -1,
         metric: `${metric}-pooled`,
@@ -244,8 +308,9 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
       });
       report.push(
         `POOLED ${metric.padEnd(8)} G=${t.g.toFixed(1)} df=${t.df} ` +
-          `G/df=${t.ratio.toFixed(2)} p=${t.p.toExponential(2)} over ${t.k} depths ` +
-          `(measured null ratio ~0.95; alpha=${alpha.toExponential(2)})`,
+          `G/df=${t.ratio.toFixed(2)} (measured C-vs-C null ${t.dispersion.toFixed(2)}) ` +
+          `-> G/phi/df=${(t.ratio / t.dispersion).toFixed(2)} p=${t.p.toExponential(2)} ` +
+          `over ${t.k} depths (alpha=${alpha.toExponential(2)})`,
       );
     }
     report.push(
@@ -303,9 +368,9 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
     const failures = rows.filter((r) => r.p < alpha || r.metric === "density-pooled");
     const summary =
       `C-vs-TS generation parity, alpha=${alpha.toExponential(2)} ` +
-      `(${ALPHA} Bonferroni-corrected over ${depths.length} per-depth density ` +
-      `+ ${depths.length} per-depth object-count tests + 2 pooled feeling tests ` +
-      `= ${2 * depths.length + 2}; species not gated), ` +
+      `(${ALPHA} Bonferroni-corrected over ${depths.length} per-depth tests each ` +
+      `of density, object count, ego count and artifact count + 2 pooled ` +
+      `feeling tests = ${4 * depths.length + 2}; species not gated), ` +
       `port runs=${PORT_RUNS}\n` +
       report.join("\n") +
       (failures.length

@@ -290,13 +290,18 @@ export interface PooledTest {
   df: number;
   p: number;
   /**
-   * `g / df`. The single most interpretable number here: chi-square has mean
-   * `df`, so 1.0 is exactly the null expectation, and the ratio reads directly
-   * as "this metric is Nx more dispersed than chance".
+   * `g / df`. The most interpretable number here, but read it against the
+   * MEASURED null rather than against 1.0: chi-square has mean `df`, so 1.0 is
+   * the theoretical expectation, and these histograms do not meet it. Two
+   * independent 1000-run samples of the same C binary give ratio 1.76 on
+   * obj_feelings and 1.95 on mon_feelings, so a port ratio of 1.8 is ORDINARY,
+   * not an eight-sigma finding. See `dispersion`.
    */
   ratio: number;
   /** How many per-depth tests contributed. */
   k: number;
+  /** The dispersion `phi` the p-value was corrected by; 1 means uncorrected. */
+  dispersion: number;
 }
 
 /**
@@ -331,18 +336,33 @@ export interface PooledTest {
  * rather than monsters. Pooling inherits that inflation exactly; it would turn a
  * void metric into a confidently void metric.
  */
-export function poolDistributionTests(tests: readonly DistributionTest[]): PooledTest {
+export function poolDistributionTests(
+  tests: readonly DistributionTest[],
+  dispersion = 1,
+): PooledTest {
   let g = 0;
   let df = 0;
   for (const t of tests) {
     g += t.g;
     df += t.df;
   }
+  const phi = dispersion > 0 ? dispersion : 1;
   return {
     g,
     df,
-    p: chiSquareUpperTail(g, df),
+    /*
+     * Quasi-likelihood correction: G/phi is referred to chi2(df), where phi is
+     * the MEASURED dispersion of this statistic under a true null. Without it
+     * the p-value assumes phi = 1, which for these histograms is simply false
+     * -- two independent 1000-run samples of the SAME C binary pool to
+     * G/df = 1.76 on obj_feelings and 1.95 on mon_feelings
+     * (parity/phase3-2026-07-25/tools/c-vs-c-null.mjs). Reporting an
+     * uncorrected p here would overstate every result by many orders of
+     * magnitude.
+     */
+    p: chiSquareUpperTail(g / phi, df),
     ratio: df > 0 ? g / df : 0,
+    dispersion: phi,
     k: tests.length,
   };
 }
