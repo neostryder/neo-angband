@@ -8,6 +8,15 @@
 
 import type { FileSpec } from "../records.js";
 
+function validIntRange(range: string): boolean {
+  const match = /^\s*(-?\d+)\s+to\s+(-?\d+)\s*$/.exec(range);
+  if (!match) return false;
+  const lo = BigInt(match[1]!);
+  const hi = BigInt(match[2]!);
+  /* grab_int_range rejects INT_MIN and INT_MAX too (datafile.c:328-331). */
+  return lo > -2147483648n && lo < 2147483647n && hi > -2147483648n && hi < 2147483647n;
+}
+
 export const constantsSpec: FileSpec = {
   name: "constants",
   upstream: ["src/init.c"],
@@ -239,16 +248,58 @@ export const classSpec: FileSpec = {
      * (init.c:3714-3716). */
     { fmt: "magic uint first uint weight uint books", rejectRepeated: (prior) =>
       (prior as { books?: number }).books !== 0 },
-    { fmt: "book sym tval sym quality sym name uint spells str realm", repeat: true },
-    { fmt: "book-graphics char glyph sym color", childOf: ["book"] },
-    { fmt: "book-properties int cost int common str minmax", childOf: ["book"] },
-    { fmt: "spell sym name int level int mana int fail int exp", childOf: ["book"], repeat: true },
-    { fmt: "effect sym eff ?sym type ?int radius ?int other", childOf: ["spell"], repeat: true },
+    {
+      fmt: "book sym tval sym quality sym name uint spells str realm",
+      repeat: true,
+      /* parse_class_book checks the allocated magic-book capacity after tval
+       * resolution (init.c:3735-3746).  The registry-dependent tval half is
+       * intentionally deferred; this structural half is available here. */
+      validate: ({ record }) => {
+        const magic = record.magic as { books?: number } | undefined;
+        const books = (record.book as unknown[] | undefined)?.length ?? 0;
+        return magic === undefined || books >= (magic.books ?? 0)
+          ? "TOO_MANY_ENTRIES"
+          : undefined;
+      },
+    },
+    { fmt: "book-graphics char glyph sym color", childOf: ["book"], requireParent: true },
+    {
+      fmt: "book-properties int cost int common str minmax",
+      childOf: ["book"],
+      requireParent: true,
+      /* grab_int_range(..., "to") failures are INVALID_ALLOCATION
+       * (init.c:3823-3826). */
+      validate: ({ values }) =>
+        validIntRange(String(values.minmax))
+          ? undefined
+          : "INVALID_ALLOCATION",
+    },
+    {
+      fmt: "spell sym name int level int mana int fail int exp",
+      childOf: ["book"],
+      orphanError: "TOO_MANY_ENTRIES",
+      repeat: true,
+      /* parse_class_spell uses the current book's declared spell capacity
+       * (init.c:3842-3854). */
+      validate: ({ target }) => {
+        const spells = (target.spell as unknown[] | undefined)?.length ?? 0;
+        return spells >= Number(target.spells) ? "TOO_MANY_ENTRIES" : undefined;
+      },
+    },
+    /* parse_class_effect requires a preceding spell (and therefore a book and
+     * magic), while its effect-detail successors intentionally tolerate a
+     * missing effect (init.c:3877-3905, 3925-3939). */
+    {
+      fmt: "effect sym eff ?sym type ?int radius ?int other",
+      childOf: ["spell"],
+      requireParent: true,
+      repeat: true,
+    },
     { fmt: "effect-yx int y int x", childOf: ["effect"] },
     { fmt: "dice str dice", childOf: ["effect"] },
     { fmt: "expr sym name sym base str expr", childOf: ["effect"], repeat: true },
     { fmt: "effect-msg str text", childOf: ["effect"], repeat: true },
-    { fmt: "desc str desc", childOf: ["spell"], repeat: true },
+    { fmt: "desc str desc", childOf: ["spell"], requireParent: true, repeat: true },
   ],
 };
 
