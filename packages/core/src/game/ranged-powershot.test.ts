@@ -19,6 +19,7 @@ import type { ObjPackJson, ObjectKind } from "../obj/types";
 import { objectNew } from "../obj/object";
 import type { GameObject } from "../obj/object";
 import { SKILL } from "../player/types";
+import { OptionState } from "../player/options";
 import { createDefaultRegistry } from "./player-turn";
 import { installRangedCommands } from "./ranged-cmd";
 import { gearAdd } from "./gear";
@@ -171,5 +172,45 @@ describe("ranged fear + pain messages (player-attack.c:1191-1195, gap 2.4)", () 
     expect(msgs.length).toBeGreaterThan(1);
     /* ...and the new fright printed the flee line. */
     expect(msgs.some((m) => m.includes("flees in terror"))).toBe(true);
+  });
+});
+
+describe("ranged show_damage suffix (player-attack.c:1168-1170)", () => {
+  it("appends ' (N)' to the hit line when the option is on", () => {
+    const msgs: string[] = [];
+    const state = makeState({ playerGrid: loc(5, 10) });
+    state.msg = (t): void => {
+      msgs.push(t);
+    };
+    state.options = new OptionState();
+    state.options.set("show_damage", true);
+    const handle = armArcher(state);
+    const mon = addMon(state, makeRace({ ac: 0 }), loc(7, 10), { hp: 5000 });
+    mon.mflag.on(MFLAG.VISIBLE);
+    state.rng.randFix(100);
+
+    fire(state, handle, 6);
+    const dealt = 5000 - mon.hp;
+    expect(dealt).toBeGreaterThan(0);
+    const hit = msgs.find((m) => m.startsWith("Your "));
+    expect(hit).toBeDefined();
+    expect(hit!.endsWith(` (${dealt}).`)).toBe(true);
+  });
+
+  it("leaves the hit line bare when the option is off", () => {
+    const msgs: string[] = [];
+    const state = makeState({ playerGrid: loc(5, 10) });
+    state.msg = (t): void => {
+      msgs.push(t);
+    };
+    const handle = armArcher(state);
+    const mon = addMon(state, makeRace({ ac: 0 }), loc(7, 10), { hp: 5000 });
+    mon.mflag.on(MFLAG.VISIBLE);
+    state.rng.randFix(100);
+
+    fire(state, handle, 6);
+    const hit = msgs.find((m) => m.startsWith("Your "));
+    expect(hit).toBeDefined();
+    expect(hit!).not.toMatch(/\(\d+\)\.$/);
   });
 });

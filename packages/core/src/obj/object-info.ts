@@ -52,6 +52,13 @@ import type { PlayerCombatState } from "../combat/melee";
 import type { PlayerState } from "../player/calcs";
 import type { Player } from "../player/player";
 import { SKILL, STAT_MAX } from "../player/types";
+import type { MyRational } from "../rational";
+import {
+  myRationalConstruct,
+  myRationalProduct,
+  myRationalSum,
+  myRationalToUint,
+} from "../rational";
 import type { RandomValue } from "../rng";
 import type { ProjectionInfo } from "../world/projection";
 import type { RuneEnv } from "./knowledge";
@@ -122,18 +129,57 @@ export interface Textblock {
   runs: TextRun[];
 }
 
-function tbNew(): Textblock {
+/** textblock_new (z-textblock.c L57): an empty run stream. */
+export function tbNew(): Textblock {
   return { runs: [] };
 }
 
-/** textblock_append: default (white) colour. */
-function tbAppend(tb: Textblock, text: string): void {
+/**
+ * textblock_append (z-textblock.c L166): default (white) colour.
+ *
+ * Upstream is variadic and vformats; the port's callers interpolate first, so
+ * this takes the finished string. Empty appends are dropped rather than pushing
+ * a zero-length run, which is invisible to textblockToString and to
+ * textblockAttrs alike (the C's vstrnfmt of "" also writes nothing).
+ */
+export function tbAppend(tb: Textblock, text: string): void {
   if (text.length > 0) tb.runs.push({ text, attr: COLOUR_WHITE });
 }
 
-/** textblock_append_c: coloured. */
-function tbAppendC(tb: Textblock, attr: number, text: string): void {
+/** textblock_append_c (z-textblock.c L179): coloured. */
+export function tbAppendC(tb: Textblock, attr: number, text: string): void {
   if (text.length > 0) tb.runs.push({ text, attr });
+}
+
+/**
+ * textblock_append_textblock (z-textblock.c L153): append every character AND
+ * its attribute from `tba` onto `tb`, leaving `tba` UNTOUCHED so the caller can
+ * keep using or free it independently (upstream's callers at obj-info.c L2135,
+ * effects-info.c L262/L296/L367, ui-equip-cmp.c L1457/L1462 and
+ * ui-knowledge.c L3052 all free the source afterwards, which is only safe
+ * because this copies).
+ *
+ * The runs are copied rather than aliased for the same reason: a later append to
+ * `tb` must not be able to reach into `tba`'s run objects.
+ */
+export function tbAppendTextblock(tb: Textblock, tba: Textblock): void {
+  for (const r of tba.runs) tb.runs.push({ text: r.text, attr: r.attr });
+}
+
+/**
+ * textblock_attrs (z-textblock.c L201): the PER-CHARACTER attribute array.
+ *
+ * The port stores runs, not parallel character arrays, because that is what its
+ * front ends consume; this is the flattening upstream's display_area
+ * (ui-output.c L145) reads, and it is the shape upstream's own tests assert
+ * against. attrs[i] is the colour of textblockToString(tb)[i].
+ */
+export function textblockAttrs(tb: Textblock): number[] {
+  const attrs: number[] = [];
+  for (const r of tb.runs) {
+    for (let i = 0; i < r.text.length; i++) attrs.push(r.attr);
+  }
+  return attrs;
 }
 
 /** Concatenate the entire run-stream text (tests / plain readouts). */
@@ -672,57 +718,27 @@ function calculateMissileCrits(
 
 /* ------------------------------------------------------------------ *
  * my_rational + O-combat crits (obj-info.c L435, L561, L723).
- * JS numbers are 53-bit safe integers, so the upstream multiprecision
- * overflow fallbacks (only reached near UINT_MAX) are not needed for the
- * value ranges here; the native-arithmetic path is ported directly.
+ *
+ * The rational helpers themselves now live in ../rational, a faithful port of
+ * z-util.c that keeps upstream's UINT_MAX saturation and its approximating
+ * overflow fallback. This file previously carried a private copy with only the
+ * native-arithmetic path; the two agree on every value obj-info can produce
+ * (crit chances and dice counts are far below 2^32), so moving to the shared
+ * one changes nothing here while giving player-path.c's and obj-randart.c's
+ * uses of the same C functions one implementation instead of three.
  * ------------------------------------------------------------------ */
 
-interface Rational {
-  n: number;
-  d: number;
-}
+type Rational = MyRational;
 
-function gcd(a: number, b: number): number {
-  while (b) {
-    [a, b] = [b, a % b];
-  }
-  return a;
-}
+const ratConstruct = myRationalConstruct;
+const ratProduct = myRationalProduct;
+const ratSum = myRationalSum;
 
-function ratConstruct(n: number, d: number): Rational {
-  if (n === 0) return { n: 0, d: 1 };
-  const g = gcd(n, d);
-  return { n: Math.trunc(n / g), d: Math.trunc(d / g) };
-}
-
+/** my_rational_to_uint with the remainder out-parameter as a return field. */
 function ratToUint(a: Rational, scale: number): { value: number; remainder: number } {
-  if (!scale) return { value: 0, remainder: 0 };
-  let result = Math.trunc(a.n / a.d) * scale;
-  const r = a.n % a.d;
-  const q = Math.trunc(scale / a.d);
-  result += q * r;
-  const r2 = scale - q * a.d;
-  const t = r * r2;
-  const q2 = Math.trunc(t / a.d);
-  result += q2;
-  return { value: result, remainder: t - q2 * a.d };
-}
-
-function ratProduct(a: Rational, b: Rational): Rational {
-  const g1 = gcd(a.n, b.d) || 1;
-  const g2 = gcd(a.d, b.n) || 1;
-  const anr = Math.trunc(a.n / g1);
-  const adr = Math.trunc(a.d / g2);
-  const bnr = Math.trunc(b.n / g2);
-  const bdr = Math.trunc(b.d / g1);
-  return { n: anr * bnr, d: adr * bdr };
-}
-
-function ratSum(a: Rational, b: Rational): Rational {
-  const g = gcd(a.d, b.d) || 1;
-  const adr = Math.trunc(a.d / g);
-  const bdr = Math.trunc(b.d / g);
-  return ratConstruct(a.n * bdr + b.n * adr, adr * b.d);
+  const out = { remainder: 0 };
+  const value = myRationalToUint(a, scale, out);
+  return { value, remainder: out.remainder };
 }
 
 /** sum_o_criticals (obj-info.c L435). */
