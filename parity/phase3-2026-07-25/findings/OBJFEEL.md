@@ -1,9 +1,9 @@
 # objFeel: NOT ESTABLISHED. The null was mismeasured; see section 7 first.
 
-> **Read section 7 before anything else.** Sections 1-6 were written against a
-> null of 0.95 x df, measured port-against-ITSELF. The real null, measured
-> between two independent 1000-run samples of the SAME upstream C binary, is
-> **1.76 x df**. Every sigma figure below is inflated by that error, and the
+> **Read sections 7 and 8 before anything else.** Sections 1-6 were written
+> against a null of 0.95 x df, measured port-against-ITSELF. The real null,
+> measured across 15 pairs of independent 1000-run samples of the SAME upstream
+> C binary, is **1.94 x df with a range of 1.56 to 2.49**. Every sigma figure below is inflated by that error, and the
 > headline claim does not survive it at the harness's default sample size. The
 > earlier sections are kept because their reasoning about POOLING and about
 > quantity-versus-value is unaffected and still correct.
@@ -287,18 +287,9 @@ The corrected figure is twenty orders of magnitude weaker.
 `monFeel` is comfortably clean either way -- 1.16 to 1.27 raw against a null of
 1.95, i.e. LESS dispersed than upstream is against itself.
 
-### Why this is not yet a finding
+### Why this was not yet a finding, and what pinning phi showed
 
-`phi` rests on **one replicate per metric**, so it is itself uncertain, and the
-residual signal is inside that uncertainty: at `phi = 2.0` instead of 1.76 the
-1000-run result becomes `G/phi/df = 1.35`, `p ~ 0.004`, which does not clear the
-threshold. So the residual at 1000 runs cannot be distinguished from an
-underestimated `phi`.
-
-**Status: the objFeel divergence is a candidate, not an established divergence.**
-The next step is to pin `phi` with several more 1000-run C passes and estimate it
-from all pairs, with an uncertainty. Until then no generator code should be
-changed on the strength of this.
+`phi` initially rested on one replicate, so section 8 pinned it properly.
 
 ### What survives from the earlier sections, unaffected
 
@@ -328,3 +319,67 @@ very rich levels drag the mean while leaving the mode ordinary. The binned
 feeling is the ROBUST statistic here, which is presumably why upstream computes
 it that way. A finer-grained instrument would need log-scale rating buckets or
 quantiles, not a mean -- and the oracle would have to emit them.
+
+
+## 8. phi pinned across 15 pairs, and the honest final reading
+
+Date: 2026-07-26. Four more 1000-run C databases were produced from the same
+patched binary, giving **six** in total and **15 unordered pairs** per metric.
+Tool: `parity/phase3-2026-07-25/tools/c-vs-c-all-pairs.mjs`.
+
+| metric | mean | sd | min | max | pairs |
+|---|---:|---:|---:|---:|---:|
+| `obj_feelings` | **1.94** | 0.31 | 1.56 | 2.49 | 15 |
+| `mon_feelings` | **1.82** | 0.18 | 1.45 | 2.21 | 15 |
+
+So 1.76 was a low draw, not a typical one. Three consequences, and the second is
+the most important thing in this file.
+
+### 1. At the pinned phi the parametric test does not reject
+
+At `phi = 1.94`, the port's 1000-run result (`G = 396.5`, `df = 147`) gives
+`G/phi/df = 1.39`, `p = 1.2e-3` against a family alpha of `1.22e-4`. Inside the
+null by a factor of ten.
+
+### 2. G/df is NOT sample-size invariant, so most earlier comparisons were invalid
+
+`G` grows with `n` for a fixed distributional difference. Every C-vs-C pair above
+is 1000 against 1000. The harness's DEFAULT is 400 port runs against the C's
+1000, which produces a systematically smaller ratio for the same underlying
+difference. Comparing a 400-run ratio (1.87) with a 1000-vs-1000 null (mean 1.94)
+is apples to oranges, and it is what made the 400-run result look reassuring.
+
+The gate now SKIPS the pooled feeling assertion unless `PORT_RUNS` equals the C
+baseline's levels-per-depth, and prints why. `NEO_PARITY_RUNS=1000` is required
+for a valid decision.
+
+### 3. The parametric tail is not trustworthy here at all
+
+The observed spread of the null (1.56 to 2.49) is wider than a scaled chi-square
+at ~140 df predicts. So the right threshold is the EMPIRICAL maximum, not a
+chi-square tail. On that basis:
+
+**At matched 1000-vs-1000, the port's pooled objFeel ratio is 2.70, which exceeds
+all 15 measured C-vs-C pairs (max 2.49).** As a rank statistic that is
+`p <= 1/16 = 0.063`.
+
+That is the strongest honest statement available: **suggestive, not significant.**
+Fifteen replicates buy a resolution of about 0.06 and no more. The gate asserts
+exactly this — it fails at 1000 runs, and its message says it is a rank bound of
+1/16, not a small p-value.
+
+### Status
+
+**A weak positive signal that has survived correct calibration, but at 1/16
+resolution.** It is no longer "7.6 sigma", and it was never 8.4e-25. Two ways
+forward, in order of value:
+
+1. **More C replicates.** The resolution is `1/(pairs + 1)`, so 40 pairs would
+   reach 0.024 and 100 would reach 0.01. Each 1000-run pass costs about 12
+   minutes, and pairs grow quadratically, so 10 databases give 45 pairs.
+2. **A better instrument.** The feeling's 9 bins throw away most of the signal,
+   and `obj_rating`'s mean is unusable (section 7's dead end). Log-scale rating
+   buckets, or per-level rating quantiles, would give a robust statistic with far
+   more resolution than either. That needs another oracle change.
+
+Until one of those lands, **no generator code should change on this evidence.**
