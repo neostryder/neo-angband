@@ -255,3 +255,26 @@ Further soft tests found by inspection, not fixed in this lane:
   or `CMD_AUTOPICKUP`.
 - `dropeat` (lines 167-187) is a command-wiring gap: it decrements the floor
   object directly, so it does not drive upstream's `CMD_EAT`.
+
+## Lane G follow-up — `game/basic.c` drop command wiring (2026-07-26)
+
+Rewrote both remaining soft `game/basic.c` tests to drive the installed action
+registry from `startGame`, matching the actual C command sequences:
+
+- `droppickup` now establishes a carried food stack through the real `pickup`
+  action, invokes `drop` with its handle and quantity 1, asserts the one-item
+  floor pile, invokes `autopickup`, and asserts that the floor pile is empty.
+  This matches `test_drop_pickup` at `reference/src/tests/game/basic.c:193-209`
+  (`CMD_DROP`, `CMD_AUTOPICKUP`).
+- `dropeat` now establishes the carried food stack through `pickup`, invokes
+  `drop` for the whole stack, invokes `eat` with `{ floor: 0 }`, and asserts
+  that the floor stack decremented exactly once. This matches
+  `test_drop_eat` at `reference/src/tests/game/basic.c:228-247` (`CMD_DROP`,
+  floor-targeted `CMD_EAT`).
+
+No production defect was found or fixed. Mutation checks were deliberately
+reverted: making `drop` return its normal half-turn energy before `invenDrop`
+failed both tests at their floor-pile postconditions; making `autopickup` return
+normal move energy without `doAutopickup` failed `droppickup` with one floor
+object remaining; and replacing floor `floorObjectForUse(..., 1)` with a
+no-op food selection failed `dropeat` with 3 rather than 2 on the floor.
