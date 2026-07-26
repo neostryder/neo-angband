@@ -37,6 +37,7 @@ import type { MonPlaceDeps } from "./mon-place";
 import type { TrapDeps } from "./trap";
 import { squareTrap } from "./trap";
 import { floorPile } from "./floor";
+import { gearAdd } from "./gear";
 import { squareIsKnown } from "./known";
 import { updateMonsterDistances } from "./context";
 import type { GameState } from "./context";
@@ -416,6 +417,24 @@ describe("do_cmd_wiz_change_item_quantity (cmd-wizard.c L484)", () => {
       wizChangeItemQuantity(state, { obj, quantity: 6 }, wizDeps(state, false)),
     ).toBeNull();
     expect(obj.number).toBe(1);
+  });
+
+  it("refuses a supplied equipped-item handle with upstream's message (L494-497)", () => {
+    const state = makeState();
+    const msgs: string[] = [];
+    const obj = wand(state);
+    obj.number = 1;
+    const handle = gearAdd(state.gear, obj);
+    state.actor.player.equipment[0] = handle;
+    expect(
+      wizChangeItemQuantity(
+        state,
+        { obj, handle, quantity: 4 },
+        wizDeps(state, true, msgs),
+      ),
+    ).toBeNull();
+    expect(obj.number).toBe(1);
+    expect(msgs).toContain("Can not change the quantity of an equipped item.");
   });
 });
 

@@ -81,7 +81,7 @@ import {
 import type { GameObject } from "../obj/object";
 import { objectValue } from "../obj/value";
 import { OBJ_NOTICE, objectLearnOnWield } from "../obj/knowledge";
-import { OBJ_MOD_MAX } from "../obj/types";
+import { MAX_PVAL, OBJ_MOD_MAX } from "../obj/types";
 import type { FlagSet } from "../bitflag";
 import type { Artifact, Curse, EgoItem, ObjectKind } from "../obj/types";
 import type { FlavorKnowledge } from "../obj/knowledge";
@@ -1281,9 +1281,6 @@ export function wizDisplayItem(
     flagsKnown: (known ?? obj).flags,
   };
 }
-
-/** MAX_PVAL (obj-util.h L26): the charge ceiling a device stack may hold. */
-export const MAX_PVAL = 32767;
 
 /** The outcome of wizChangeItemQuantity, for the shell's feedback. */
 export interface WizQuantityResult {
