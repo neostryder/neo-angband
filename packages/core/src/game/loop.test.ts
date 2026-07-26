@@ -5,10 +5,38 @@ import { createDefaultRegistry } from "./player-turn";
 import {
   LOOP_STATUS,
   decreaseTimeouts,
+  playerAdjustHpPrecise,
+  playerAdjustManaPrecise,
   processWorld,
   runGameLoop,
 } from "./loop";
-import { makeState } from "./harness";
+import { makePlayer, makeState } from "./harness";
+
+describe("player_adjust_*_precise", () => {
+  it("saturates the hp fixed-point accumulator at INT32_MIN", () => {
+    /* reference/src/tests/player/util.c:160-167 */
+    const p = makePlayer();
+    p.chp = -32768;
+    p.chpFrac = 0;
+    p.mhp = 50;
+
+    playerAdjustHpPrecise(p, -131072);
+
+    expect(p.chp).toBe(-32768);
+    expect(p.chpFrac).toBe(0);
+  });
+
+  it("uses the same int32 saturation before splitting mana", () => {
+    const p = makePlayer();
+    p.csp = 32767;
+    p.cspFrac = 0;
+    p.msp = 32767;
+
+    expect(playerAdjustManaPrecise(p, 196608)).toBe(0);
+    expect(p.csp).toBe(32767);
+    expect(p.cspFrac).toBe(0);
+  });
+});
 
 describe("runGameLoop", () => {
   it("a normal-speed walk advances the game turn by 10 and returns for input", () => {
