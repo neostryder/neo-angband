@@ -537,6 +537,12 @@ describe("quaff / read command gates (cmd-obj.c L739 / L917)", () => {
 
   it("player_can_read refuses reading in the dark (no_light, L1173)", () => {
     const { state, handle, msgs, run } = readState();
+    /* noLight only trusts SQUARE_SEEN when a host maintains the view, because a
+     * core-only host that never installs the seam leaves SEEN clear on every
+     * grid and would read as "no light" everywhere. Clearing the flag by hand
+     * therefore only models darkness once the seam is present, so install a
+     * no-op one: the flag is set explicitly here, nothing needs recomputing. */
+    state.updateFov = () => {};
     state.chunk.sqinfoOff(state.actor.grid, SQUARE.SEEN);
     expect(run()).toBe(0);
     expect(msgs).toContain("You have no light to read by.");
