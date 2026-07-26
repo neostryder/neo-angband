@@ -141,7 +141,9 @@ export const objectSpec: FileSpec = {
     { fmt: "power int power" },
     { fmt: "effect sym eff ?sym type ?int radius ?int other", repeat: true },
     { fmt: "effect-yx int y int x", childOf: ["effect"] },
-    { fmt: "dice str dice", childOf: ["effect"] },
+    /* parse_object_dice (obj-init.c L1947-1949) dice_free()s the old dice, so
+     * a repeated line is legal and the last wins (k-info.c test_dice0). */
+    { fmt: "dice str dice", childOf: ["effect"], lastWins: true },
     { fmt: "expr sym name sym base str expr", childOf: ["effect"], repeat: true },
     { fmt: "msg str text", repeat: true },
     { fmt: "vis-msg str text", repeat: true },

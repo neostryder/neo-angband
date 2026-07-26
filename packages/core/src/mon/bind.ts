@@ -263,11 +263,27 @@ function joinLines(lines: string[] | undefined): string {
   return lines ? lines.join("") : "";
 }
 
+/**
+ * The "A | B" segments of one flags-style directive.
+ *
+ * An entry that is not a string is the compiler's presence marker for a
+ * directive written with no value at all ("flags:"). Upstream's handlers
+ * check `parser_hasval()` first and return PARSE_ERROR_NONE with the flag
+ * set untouched (mon-init.c L1316-1317 parse_monster_flags and its
+ * siblings), so an empty line contributes no tokens rather than crashing.
+ * Asserted by r-info.c test_flags0 / test_flags_off0 and, for the sibling
+ * parsers, c-info.c test_obj_flags0 / test_player_flags0 and partrap.c
+ * test_flags0.
+ */
+function flagSegments(line: unknown): string[] {
+  return typeof line === "string" ? line.split("|") : [];
+}
+
 /** grab_flag over RF names ("A | B" segments); throws on unknown names. */
 function raceFlagsOn(flags: FlagSet, lines: string[] | undefined): void {
   if (!lines) return;
   for (const line of lines) {
-    for (const raw of line.split("|")) {
+    for (const raw of flagSegments(line)) {
       const name = raw.trim();
       if (!name) continue;
       const value = (RF as Record<string, number>)[name];
@@ -283,7 +299,7 @@ function raceFlagsOn(flags: FlagSet, lines: string[] | undefined): void {
 function raceFlagsOff(flags: FlagSet, lines: string[] | undefined): void {
   if (!lines) return;
   for (const line of lines) {
-    for (const raw of line.split("|")) {
+    for (const raw of flagSegments(line)) {
       const name = raw.trim();
       if (!name) continue;
       const value = (RF as Record<string, number>)[name];
@@ -299,7 +315,7 @@ function raceFlagsOff(flags: FlagSet, lines: string[] | undefined): void {
 function spellFlagsOn(flags: FlagSet, lines: string[] | undefined): void {
   if (!lines) return;
   for (const line of lines) {
-    for (const raw of line.split("|")) {
+    for (const raw of flagSegments(line)) {
       const name = raw.trim();
       if (!name) continue;
       const value = (RSF as Record<string, number>)[name];
@@ -360,7 +376,7 @@ function bindBlowMethods(
       stun: rec.stun === 1,
       miss: rec.miss === 1,
       phys: rec.phys === 1,
-      msgt: rec.msg ?? "GENERIC",
+      msgt: checkMsgt(`blow method ${rec.name}`, rec.msg),
       messages: rec.act ? [...rec.act] : [],
       desc: joinLines(rec.desc),
     });
@@ -571,6 +587,15 @@ function checkPitInnateFreq(name: string, pct: number | undefined): number {
  * one; an unknown name is PARSE_ERROR_INVALID_MESSAGE (mspell.c
  * test_msgt_bad0). The port keeps the MSG_ name as a string and resolves it
  * at message time, so without this the typo simply never matched anything.
+ *
+ * Four callers, matching the four upstream handlers that do this:
+ * parse_mon_spell_message_type and parse_meth_message_type (mon-init.c),
+ * parse_summon_message_type (mon-summon.c) and the projection one
+ * (obj-init.c, in ../world/projection). `msgt === undefined` is upstream's
+ * mem_zalloc default of 0 == MSG_GENERIC, and for the blow method
+ * specifically it is also parse_meth_message_type's `parser_hasval(p, "msg")`
+ * guard: `msg:` is registered `?str`, so a bare `msg:` omits the key here
+ * exactly as it leaves msgt untouched there, and is NOT an error.
  */
 function checkMsgt(what: string, msgt: string | undefined): string {
   if (msgt === undefined) return "GENERIC";
@@ -649,7 +674,7 @@ export class MonsterRegistry {
 
     this.summons = pack.summons.map((rec) => ({
       name: rec.name,
-      msgt: rec.msgt ?? "GENERIC",
+      msgt: checkMsgt(`summon ${rec.name}`, rec.msgt),
       uniquesAllowed: rec.uniques === 1,
       baseNames: rec.base ? [...rec.base] : [],
       raceFlag: rec["race-flag"] ?? null,
@@ -829,7 +854,11 @@ export class MonsterRegistry {
       ridx: this.races.length,
       name: rec.name,
       text: joinLines(rec.desc),
-      plural: rec.plural ?? null,
+      /* parse_monster_plural (mon-init.c L1680-1687) leaves r->plural NULL
+       * when the field is absent OR present but empty, so the compiler's
+       * bare presence marker for "plural:" must read as null too
+       * (r-info.c test_plural0). */
+      plural: typeof rec.plural === "string" && rec.plural.length > 0 ? rec.plural : null,
       base,
       avgHp: rec["hit-points"] ?? 0,
       ac: rec["armor-class"] ?? 0,
