@@ -445,19 +445,9 @@ describe("full level generation", () => {
     [40, 540014, "up stair in a vault"],
     [50, 550006, "lair: up stair in a vault"],
     [50, 550011, "up stair in a vault"],
-    /* 550019 sat here until 2026-07-26. It stopped stranding when the
-     * parse_random negation fix (obj/bind.ts parseRand) corrected three
-     * negative `rand` values in object.txt / ego_item.txt -- one of which,
-     * `attack:0d0:0:-3d5` on the ring "Open Wounds", had been parsed with a
-     * dice count of MINUS three, suppressing three RNG draws wherever that
-     * ring's to_d was rolled. So the generation stream legitimately moved.
-     * The other ELEVEN seeds in this list still strand, which is the evidence
-     * that the property is intact and only this example went stale. */
-    [50, 550038, "up stair in a vault"],
+    [50, 550019, "all 3 down + the up stair in vaults"],
     [50, 550024, "both, in vaults"],
-    /* 560006 went stale with 550019 in the same 2026-07-26 stream shift; see
-     * the note above. Two of the twelve, which is a shift, not a regression. */
-    [60, 560008, "up stair in a vault"],
+    [60, 560006, "up stair in a vault"],
     [20, 520037, "both"],
   ];
 
@@ -482,24 +472,15 @@ describe("full level generation", () => {
      * It is also the power validation for the fix test below - the two run the
      * same seeds through the same generator and differ only in the flag.
      */
-    /* Collect every stale seed rather than aborting on the first. A loop of
-     * bare expects hides the rest of the list, which matters here: when the
-     * parse_random fix shifted the generation stream on 2026-07-26 the first
-     * failure looked like a single stale example, and there were two. */
-    const notStranded: string[] = [];
     for (const [depth, seed, why] of STRANDED) {
       const g = generateLevel(new Rng(seed), depth, makeDeps());
-      if (strandedDirs(g).length === 0) notStranded.push(`d${depth} seed ${seed} (${why})`);
+      expect(
+        strandedDirs(g),
+        `d${depth} seed ${seed} (${why}): faithful core should still strand this level. ` +
+          `If the repair moved back into core unconditionally, revert it - it belongs ` +
+          `to the bug-fixes mod (bugfix.stairsReachable).`,
+      ).not.toEqual([]);
     }
-    expect(
-      notStranded,
-      `these seeds no longer strand under faithful core: ${notStranded.join("; ")}. ` +
-        `If the repair moved back into core unconditionally, revert it - it belongs to ` +
-        `the bug-fixes mod (bugfix.stairsReachable). If instead a deliberate change moved ` +
-        `the generation stream, re-pin only the stale examples and say so, and check how ` +
-        `many of the ${STRANDED.length} still strand: a handful going stale is a stream ` +
-        `shift, most of them going stale is a behavioural regression.`,
-    ).toEqual([]);
   });
 
   it("bugfix.stairsReachable: a reachable up AND down staircase on every floor", () => {
