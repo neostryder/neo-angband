@@ -125,6 +125,7 @@ import {
   autoinscribeGround,
   autoinscribePack,
   installObjCommands,
+  packOverflow,
 } from "../game/obj-cmd";
 import type { ObjCmdDeps } from "../game/obj-cmd";
 import { installCaveCommands, movementAutoDig } from "../game/cave-cmd";
@@ -689,6 +690,28 @@ function wireGame(
     if (p.csp > p.msp) p.csp = p.msp;
   };
   state.updateBonuses = refreshDerived;
+  /* game-world.c:941-947: the C refreshes upkeep->inven[] before its
+   * catch-all pack_overflow(NULL).  This closure has the same live
+   * calc_inventory inputs used by pickup and command paths, preserving the
+   * earlier_object order of the derived gear.inven view. */
+  state.overflowPack = (): void => {
+    const calcInv = {
+      ammoTval: state.playerState?.ammoTval ?? 0,
+      objectValue: (obj: GameObject): number =>
+        computeObjectValue(reg.objects, obj, 1, true),
+      rogueLike: state.options?.get("rogue_like_commands") ?? false,
+      characterDungeon: true,
+      ...(state.msg ? { msg: state.msg } : {}),
+    };
+    /* notice_stuff()/handle_stuff() precede pack_overflow(NULL) at
+     * game-world.c:941-947; materialize the current upkeep->inven[] analogue
+     * before selecting its final entry. */
+    calcInventory(state.gear, reg.constants, calcInv);
+    packOverflow(state, 0, reg.constants, {
+      calcInv,
+      ...(state.msg ? { msg: state.msg } : {}),
+    });
+  };
   /* Stash the class list so refreshTownStores can expand the bookseller's
    * town-book always lines (object_kind_to_book, store.c:208-231). */
   state.classes = players.classes;
