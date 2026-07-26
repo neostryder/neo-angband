@@ -326,6 +326,22 @@ describe("W2-003 pathNearestKnown via navigate-down / descend+autoexplore", () =
     expect(state.actor.grid).toEqual(loc(2, 5));
     expect(state.rng.getState()).toEqual(before);
   });
+
+  it("target-panel stair search starts at the cursor, not the player", () => {
+    const state = makeState({ playerGrid: loc(2, 5), w: 20, h: 12 });
+    corridorWithDownstairs(state);
+    for (let x = 11; x <= 16; x++) state.chunk.setFeat(loc(x, 5), FLOOR);
+    state.chunk.setFeat(loc(16, 5), featureReg.byCodeName("MORE").fidx);
+    for (let x = 11; x <= 16; x++) squareMemorize(state, loc(x, 5));
+
+    const before = state.rng.getState();
+    const step = stepTargetLoop(state, [], initTargetLoopUi(state, 14, 5), ">");
+
+    /* ui-target.c:1509 searches from loc(x, y), the target cursor. */
+    expect(step).toMatchObject({ bell: false, ui: { x: 16, y: 5 } });
+    expect(state.actor.grid).toEqual(loc(2, 5));
+    expect(state.rng.getState()).toEqual(before);
+  });
 });
 
 describe("W2-016 featIsTorch is the live torch classifier", () => {
