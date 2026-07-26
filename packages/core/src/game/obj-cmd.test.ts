@@ -25,6 +25,7 @@ import { floorCarry, floorPile } from "./floor";
 import {
   gearAdd,
   gearGet,
+  calcInventory,
   invenCarry,
   packIsOverfull,
   packSlotsUsed,
@@ -55,6 +56,7 @@ import {
   objectEffect,
   refillLamp,
   runeAutoinscribe,
+  packOverflow,
   useAux,
   USE,
 } from "./obj-cmd";
@@ -151,6 +153,27 @@ function carry(state: GameState, obj: GameObject): number {
 }
 
 describe("inventory verbs (obj-gear.c)", () => {
+  it("process_player sheds the last sorted inven item for catch-all overflow", () => {
+    const state = makeState({ playerGrid: loc(5, 5), commands: [] });
+    /* sword is inserted first but sorts LAST behind potions by tval. */
+    const sword = carry(state, makeNamed("& Dagger~", TV.SWORD));
+    for (let i = 0; i < constants.packSize; i++) {
+      const potion = makeNamed("Cure Light Wounds", TV.POTION);
+      potion.note = `catch-all-${i}`;
+      carry(state, potion);
+    }
+    expect(packIsOverfull(state.gear, constants)).toBe(true);
+    state.overflowPack = (): void => {
+      calcInventory(state.gear, constants);
+      packOverflow(state, 0, constants);
+    };
+
+    expect(processPlayer(state, createDefaultRegistry()).needsInput).toBe(true);
+
+    expect(gearGet(state.gear, sword)).toBeNull();
+    expect(floorPile(state, state.actor.grid)).toHaveLength(1);
+  });
+
   it("invenWield wears a pack item; invenTakeoff returns it to the pack", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const sword = makeNamed("& Dagger~", TV.SWORD);
