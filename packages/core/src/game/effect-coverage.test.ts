@@ -18,18 +18,22 @@
  * proves a handler is CORRECT -- that is what the behaviour tests are for.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { EF, EFFECT_ENTRIES } from "../generated";
-import { EFFECT_HANDLER_MANIFEST } from "../effects/handlers";
-import { ATTACK_HANDLER_CODES } from "./effect-attack";
-import { DETECT_HANDLER_CODES } from "./effect-detect";
-import { GENERAL_HANDLER_CODES } from "./effect-general";
-import { ITEM_HANDLER_CODES } from "./effect-item";
-import { MELEE_HANDLER_CODES } from "./effect-melee";
-import { MONSTER_HANDLER_CODES } from "./effect-monster";
-import { SUMMON_HANDLER_CODES } from "./effect-summon";
-import { TELEPORT_HANDLER_CODES } from "./effect-teleport";
-import { TERRAIN_HANDLER_CODES } from "./effect-terrain";
+import { EFFECT_HANDLER_MANIFEST, registerCoreHandlers } from "../effects/handlers";
+import { EffectRegistry } from "../effects/interpreter";
+import { ATTACK_HANDLER_CODES, registerAttackHandlers } from "./effect-attack";
+import { DETECT_HANDLER_CODES, registerDetectHandlers } from "./effect-detect";
+import { GENERAL_HANDLER_CODES, registerGeneralHandlers } from "./effect-general";
+import { ITEM_HANDLER_CODES, registerItemHandlers } from "./effect-item";
+import { MELEE_HANDLER_CODES, registerMeleeHandlers } from "./effect-melee";
+import { MONSTER_HANDLER_CODES, registerMonsterHandlers } from "./effect-monster";
+import { SUMMON_HANDLER_CODES, registerSummonHandlers } from "./effect-summon";
+import { TELEPORT_HANDLER_CODES, registerTeleportHandlers } from "./effect-teleport";
+import { TERRAIN_HANDLER_CODES, registerTerrainHandlers } from "./effect-terrain";
 
 /** EF codes for a list of upstream effect names (the manifest speaks in names). */
 const codesFor = (names: readonly string[]): readonly number[] =>
@@ -58,7 +62,71 @@ const REGISTRIES = {
 const nameOf = (code: number): string =>
   (EFFECT_ENTRIES[code - 1] as { name: string } | undefined)?.name ?? `EF#${code}`;
 
+const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const referenceSrc = join(packageRoot, "..", "..", "reference", "src");
+
+function upstreamEffectNames(): string[] {
+  const source = readFileSync(join(referenceSrc, "list-effects.h"), "utf8");
+  return [...source.matchAll(/^EFFECT\(\s*([A-Z0-9_]+)\s*,/gm)].map(
+    (match) => match[1]!,
+  );
+}
+
+function upstreamHandlerNames(): string[] {
+  const sources = ["effect-handler-attack.c", "effect-handler-general.c"].map(
+    (file) => readFileSync(join(referenceSrc, file), "utf8"),
+  );
+  return sources.flatMap((source) =>
+    [...source.matchAll(/^bool effect_handler_([A-Z0-9_]+)\s*\(/gm)].map(
+      (match) => match[1]!,
+    ),
+  );
+}
+
+function runtimeRegistry(): EffectRegistry {
+  const registry = new EffectRegistry();
+  registerCoreHandlers(registry);
+  registerAttackHandlers(registry);
+  registerMonsterHandlers(registry);
+  registerTeleportHandlers(registry);
+  registerGeneralHandlers(registry);
+  registerTerrainHandlers(registry);
+  registerItemHandlers(registry);
+  registerMeleeHandlers(registry);
+  registerSummonHandlers(registry);
+  registerDetectHandlers(registry);
+  return registry;
+}
+
 describe("effect handler coverage vs reference/src/list-effects.h", () => {
+  it("matches the C enumeration and definitions to the runtime registry exactly", () => {
+    const effects = upstreamEffectNames();
+    const handlers = upstreamHandlerNames();
+    const baseRegistry = new EffectRegistry();
+    registerCoreHandlers(baseRegistry);
+    const registry = runtimeRegistry();
+    const registered = registry.codes().map((code) =>
+      typeof code === "number" ? nameOf(code) : code,
+    );
+    const unresolved = registry
+      .codes()
+      .filter(
+        (code) =>
+          registry.lookup(code)?.status === "stub" ||
+          (baseRegistry.lookup(code)?.status === "partial" &&
+            registry.handlerFor(code) === baseRegistry.handlerFor(code)),
+      )
+      .map((code) => (typeof code === "number" ? nameOf(code) : code));
+
+    expect(effects).toHaveLength(112);
+    expect([...handlers].sort()).toEqual([...effects].sort());
+    expect([...registered].sort()).toEqual([...effects].sort());
+    expect(
+      unresolved,
+      `runtime effects still using base stubs/partials: ${unresolved.join(", ")}`,
+    ).toEqual([]);
+  });
+
   it("implements every effect in the upstream table", () => {
     const implemented = new Map<number, string[]>();
     for (const [registry, codes] of Object.entries(REGISTRIES)) {
