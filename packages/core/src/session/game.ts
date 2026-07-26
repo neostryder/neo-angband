@@ -201,7 +201,7 @@ import {
 import { objectValue as computeObjectValue } from "../obj/value";
 import type { GameObject, CurseTimedFoil } from "../obj/object";
 import { buildCurseTimedFoil } from "../obj/object";
-import { createDefaultRegistry, installMeleeSideEffects } from "../game/player-turn";
+import { createDefaultRegistry, installMeleeSideEffects, search } from "../game/player-turn";
 import type { ActionRegistry } from "../game/player-turn";
 import { buildTempBrandSlay, playerIncCheck } from "../player/timed";
 import type {
@@ -2031,6 +2031,7 @@ function makeChangeLevel(
         /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
         state.chunk.onlyPartial = true;
         state.updateFov?.(state);
+        search(state); /* on_new_level (game-world.c:1052). */
         state.chunk.onlyPartial = false;
         return;
       }
@@ -2172,6 +2173,7 @@ function makeChangeLevel(
     /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
     state.chunk.onlyPartial = true;
     state.updateFov?.(state);
+    search(state); /* on_new_level (game-world.c:1052). */
     state.chunk.onlyPartial = false;
   };
 }
@@ -2592,6 +2594,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   state.chunk.onlyPartial = true;
   if (state.updateFov) {
     state.updateFov(state);
+    search(state); /* on_new_level (game-world.c:1052). */
     state.chunk.onlyPartial = false;
   }
 
