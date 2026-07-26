@@ -118,7 +118,12 @@ const monPack: MonsterPackRecords = {
   pits: loadRecords("pit"),
 };
 
-function makeDeps(): GenDeps {
+/**
+ * `modRules` is the bug-fixes mod seam (GenDeps.modRules). Omitted = faithful
+ * core, which is what almost every test here wants; pass
+ * `{ "bugfix.stairsReachable": true }` to exercise that fix.
+ */
+function makeDeps(modRules?: Record<string, boolean>): GenDeps {
   const objReg = new ObjRegistry(objPack);
   const objAlloc = new ObjAllocState(objReg, constants);
   const objDeps: MakeDeps = {
@@ -139,7 +144,12 @@ function makeDeps(): GenDeps {
 
   const rooms = createRoomRegistry({ templates: roomTemplates, vaults });
   const profiles = createDungeonProfiles(loadRecords<DunProfileRecordJson>("dungeon_profile"));
-  return { reg, constants, rooms, profiles, objDeps, monDeps };
+  return { reg, constants, rooms, profiles, objDeps, monDeps, ...(modRules ? { modRules } : {}) };
+}
+
+/** GenDeps with the staircase-reachability fix (bug-fixes mod) turned on. */
+function stairFixDeps(): GenDeps {
+  return makeDeps({ "bugfix.stairsReachable": true });
 }
 
 function bareGen(width: number, height: number, depth: number): Gen {
@@ -392,20 +402,22 @@ describe("full level generation", () => {
   };
 
   /**
-   * THE STAIRCASE INVARIANT (owner-ratified 2026-07-25): no floor may exist
-   * without a walk-reachable staircase in each direction it actually has one.
+   * THE STAIRCASE INVARIANT - a property of the BUG-FIXES MOD, not of core.
    *
-   * This is a deliberate strengthening of upstream, enforced by
-   * ensureStairsReachable inside cave_generate's retry loop - see the note
-   * there. Upstream alloc_stairs happily drops a stair inside a vault that
+   * Faithful core does NOT hold this, and that is deliberate (owner ruling
+   * 2026-07-26: "Core must retain all warts of the reference code"). Upstream
+   * alloc_stairs happily drops a stair inside a vault that
    * ensure_connectedness(c, true) then declines to join, and a level gets only
-   * 1-2 up stairs against 3-4 down, so before the guarantee 53 of 520 sampled
-   * levels (10.2%) were stranded, 44 of them on the up stair.
+   * 1-2 up stairs against 3-4 down, so 53 of 520 sampled levels (10.2%) are
+   * stranded, 44 of them on the up stair. The control test below pins that.
+   *
+   * With "bugfix.stairsReachable" on, ensureStairsReachable repairs it inside
+   * cave_generate's retry loop - see the note there and BUG_FIXES.md entry 13.
    *
    * "each direction it actually has one" is what exempts the town (place_stairs
    * forces FEAT_MORE at depth 0, so there is no up stair to reach) and the
    * quest/Morgoth floors (forced FEAT_LESS, so no down stair) with no depth
-   * special-casing - which is exactly the exemption the owner named.
+   * special-casing.
    */
   const assertStairInvariant = (g: Gen, label: string): void => {
     const p = g.playerSpot as Loc;
@@ -418,7 +430,60 @@ describe("full level generation", () => {
     }
   };
 
-  it("guarantees a reachable up AND down staircase on every floor", () => {
+  /**
+   * Measured stranded levels in FAITHFUL core: every staircase of at least one
+   * direction sealed away from the player, mostly inside a vault. These drive
+   * the control/fix pair below - the control proves core still has the wart,
+   * the fix test proves the mod flag repairs exactly these.
+   */
+  const STRANDED: readonly [number, number, string][] = [
+    [1, 501016, "both directions sealed off from the player's region"],
+    [20, 520009, "both"],
+    [20, 520004, "single up stair unreachable"],
+    [40, 540007, "up stair in a vault"],
+    [40, 540008, "up stair in a vault"],
+    [40, 540014, "up stair in a vault"],
+    [50, 550006, "lair: up stair in a vault"],
+    [50, 550011, "up stair in a vault"],
+    [50, 550019, "all 3 down + the up stair in vaults"],
+    [50, 550024, "both, in vaults"],
+    [60, 560006, "up stair in a vault"],
+    [20, 520037, "both"],
+  ];
+
+  /** The directions of `g` that have a stair but no reachable one. */
+  const strandedDirs = (g: Gen): string[] => {
+    const seen = walkFrom(g, g.playerSpot as Loc);
+    const out: string[] = [];
+    for (const [name, feat] of [["down", FEAT.MORE], ["up", FEAT.LESS]] as const) {
+      const [total, reached] = stairTally(g, seen, feat);
+      if (total > 0 && reached === 0) out.push(name);
+    }
+    return out;
+  };
+
+  it("CONTROL: faithful core strands floors, exactly as upstream 4.2.6 does", () => {
+    /*
+     * The wart core keeps on purpose. This is the load-bearing test of the
+     * 2026-07-26 ruling ("Core must retain all warts of the reference code"): if
+     * someone re-adds the repair to core unconditionally, or makes it
+     * default-on, this test fails and says why.
+     *
+     * It is also the power validation for the fix test below - the two run the
+     * same seeds through the same generator and differ only in the flag.
+     */
+    for (const [depth, seed, why] of STRANDED) {
+      const g = generateLevel(new Rng(seed), depth, makeDeps());
+      expect(
+        strandedDirs(g),
+        `d${depth} seed ${seed} (${why}): faithful core should still strand this level. ` +
+          `If the repair moved back into core unconditionally, revert it - it belongs ` +
+          `to the bug-fixes mod (bugfix.stairsReachable).`,
+      ).not.toEqual([]);
+    }
+  });
+
+  it("bugfix.stairsReachable: a reachable up AND down staircase on every floor", () => {
     /*
      * Fresh deps per seed: vault object placement draws mid-gen, and a shared
      * ArtifactState / race.curNum from prior seeds pollutes those draws
@@ -431,7 +496,7 @@ describe("full level generation", () => {
     for (const depth of depths) {
       for (let s = 0; s < 8; s++) {
         const seed = 9000 + depth * 100 + s;
-        const g = generateLevel(new Rng(seed), depth, makeDeps());
+        const g = generateLevel(new Rng(seed), depth, stairFixDeps());
         assertStairInvariant(g, `depth ${depth} seed ${seed}`);
         if (depth > 0) {
           expect(g.monsters.length).toBeGreaterThanOrEqual(1);
@@ -441,26 +506,10 @@ describe("full level generation", () => {
     }
   });
 
-  it("holds on the seeds that stranded the player before the guarantee", () => {
-    /* Measured pre-guarantee failures, kept as regressions. Each one had every
-     * stair of the named direction sealed away, mostly inside a vault. */
-    const known: [number, number, string][] = [
-      [1, 501016, "both directions sealed off from the player's region"],
-      [20, 520009, "both"],
-      [20, 520004, "single up stair unreachable"],
-      [40, 540007, "up stair in a vault"],
-      [40, 540008, "up stair in a vault"],
-      [40, 540014, "up stair in a vault"],
-      [50, 550006, "lair: up stair in a vault"],
-      [50, 550011, "up stair in a vault"],
-      [50, 550019, "all 3 down + the up stair in vaults"],
-      [50, 550024, "both, in vaults"],
-      [60, 560006, "up stair in a vault"],
-      [20, 520037, "both"],
-    ];
-    for (const [depth, seed, why] of known) {
-      const g = generateLevel(new Rng(seed), depth, makeDeps());
-      assertStairInvariant(g, `regression d${depth} seed ${seed} (${why})`);
+  it("bugfix.stairsReachable: repairs every level faithful core strands", () => {
+    for (const [depth, seed, why] of STRANDED) {
+      const g = generateLevel(new Rng(seed), depth, stairFixDeps());
+      assertStairInvariant(g, `repaired d${depth} seed ${seed} (${why})`);
     }
   });
 
@@ -586,17 +635,26 @@ describe("full level generation", () => {
     expect(g.c.featCount[FEAT.MORE] ?? 0).toBe(0);
   });
 
-  it("generates fully-connected valid levels across the deep profile pool", () => {
+  it("generates valid levels across the deep profile pool", () => {
     /* Post-enablement, depth 30/60 select cavern/moria/labyrinth/lair/gauntlet/
      * hard_centre (proven by the choose() test). Drive many seeds end-to-end
-     * through generateLevel and require every level to be valid + connected -
-     * catches any deep generator that disconnects or throws via the pipeline. */
+     * through generateLevel and require every level to be structurally valid -
+     * catches any deep generator that throws or degenerates via the pipeline.
+     *
+     * This deliberately does NOT assert staircase reachability. It used to (as
+     * "fully-connected"), and depth 60 seed 15004 - 4 down stairs, none of them
+     * reachable - is what opened that investigation. Upstream genuinely permits
+     * it (BUG_FIXES.md entry 13), so asserting it here would be asserting a
+     * property C does not have. Reachability is tested against the bug-fixes
+     * flag instead, above. Fresh deps per seed: a shared ArtifactState /
+     * race.curNum pollutes the mid-gen vault object draws. */
     for (const [depth, seeds] of [[30, 24], [60, 14]] as const) {
       for (let s = 0; s < seeds; s++) {
         const seed = 9000 + depth * 100 + s;
         const g = generateLevel(new Rng(seed), depth, makeDeps());
+        expect(g.c.isPassable(g.playerSpot as Loc), `depth ${depth} seed ${seed}`).toBe(true);
         expect(g.c.featCount[FEAT.MORE] ?? 0).toBeGreaterThanOrEqual(1);
-        assertStairInvariant(g, `depth ${depth} seed ${seed}`);
+        expect(g.c.featCount[FEAT.LESS] ?? 0).toBeGreaterThanOrEqual(1);
         expect(g.monsters.length).toBeGreaterThanOrEqual(1);
         expect(g.monsters.length).toBeLessThan(constants.levelMonsterMax);
       }

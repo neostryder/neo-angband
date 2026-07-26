@@ -32,6 +32,12 @@
       "title": "Prevent duplicate artifacts (#4510)",
       "description": "Adds a defensive re-check so an object already carrying a created artifact can never be committed as that artifact a second time.",
       "default": false
+    },
+    {
+      "flag": "bugfix.stairsReachable",
+      "title": "Always a reachable up and down staircase",
+      "description": "Vanilla level generation can seal a staircase inside a vault it never tunnelled into, leaving about 10% of floors with no walkable staircase in one direction (usually up, since a level gets only 1-2 up stairs but 3-4 down). This adds one reachable staircase on such a floor. It changes the layout of the levels it repairs, so a character played with this on is not layout-identical to one played without it.",
+      "default": false
     }
   ]
 }
