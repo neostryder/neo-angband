@@ -552,6 +552,14 @@ export class MonsterRegistry {
   readonly blowEffects: Map<string, BlowEffect>;
   /** RSF index -> spell. */
   readonly spells: Map<number, MonsterSpell>;
+  /**
+   * lookup_monster_base (mon-util.c:146): upstream walks the rb_info list
+   * comparing streq(name, base->name); this is that lookup as a map, so
+   * `bases.get(name)` IS lookup_monster_base and `bases.get(n) === race.base`
+   * is match_monster_bases's single-name test (mon-util.c:166 - variadic
+   * upstream, and unused outside its unit test; the slay/brand base check is
+   * react_to_specific_slay's streq on base->name, obj-slays.c:274).
+   */
   readonly bases: Map<string, MonsterBase>;
   /** Record order mirrors monster.txt; ridx is the array index. */
   readonly races: MonsterRace[];
