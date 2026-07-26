@@ -504,14 +504,7 @@ describe("full level generation", () => {
         }
       }
     }
-    /*
-     * 96 full level builds (12 depths x 8 seeds) measure at ~6.2s, over vitest's
-     * 5s default -- it timed out on a slower run rather than failing an
-     * assertion. Raised rather than trimmed: the seed count is what gives this
-     * guard its power, and a flaky guard on a mod-vs-core invariant is worse than
-     * a slow one.
-     */
-  }, 30_000);
+  });
 
   it("bugfix.stairsReachable: repairs every level faithful core strands", () => {
     for (const [depth, seed, why] of STRANDED) {
