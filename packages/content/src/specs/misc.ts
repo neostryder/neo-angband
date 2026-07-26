@@ -78,36 +78,14 @@ export const playerTimedSpec: FileSpec = {
     { fmt: "flag-synonym sym code int exact", repeat: true },
     { fmt: "on-begin-effect sym eff ?sym type ?int radius ?int other", repeat: true },
     { fmt: "on-end-effect sym eff ?sym type ?int radius ?int other", repeat: true },
-    /* Unlike class.txt / object.txt / trap.txt, all four of player-timed.c's
-     * effect-detail handlers return PARSE_ERROR_MISSING_RECORD_HEADER when
-     * ps->e is NULL (player-timed.c L480, L496, L524, L557) instead of
-     * tolerating the orphan - hence requireParent (ptimed.c
-     * test_missing_effect0). `effect-dice` also dice_free()s any previous
-     * dice (L503-505), so a repeat is legal and the last wins
-     * (ptimed.c test_effectdice0). */
-    {
-      fmt: "effect-yx int y int x",
-      childOf: ["on-begin-effect", "on-end-effect"],
-      requireParent: true,
-    },
-    {
-      fmt: "effect-dice str dice",
-      childOf: ["on-begin-effect", "on-end-effect"],
-      requireParent: true,
-      lastWins: true,
-    },
+    { fmt: "effect-yx int y int x", childOf: ["on-begin-effect", "on-end-effect"] },
+    { fmt: "effect-dice str dice", childOf: ["on-begin-effect", "on-end-effect"] },
     {
       fmt: "effect-expr sym name sym base str expr",
       childOf: ["on-begin-effect", "on-end-effect"],
-      requireParent: true,
       repeat: true,
     },
-    {
-      fmt: "effect-msg str text",
-      childOf: ["on-begin-effect", "on-end-effect"],
-      requireParent: true,
-      repeat: true,
-    },
+    { fmt: "effect-msg str text", childOf: ["on-begin-effect", "on-end-effect"], repeat: true },
     { fmt: "flags ?str flags", repeat: true },
     { fmt: "lower-bound int bound" },
   ],

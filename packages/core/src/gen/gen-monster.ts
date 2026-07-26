@@ -130,9 +130,17 @@ export function resolvePits(reg: MonsterRegistry): ResolvedPit[] {
 
     const forbiddenMonsters: MonsterRace[] = [];
     for (const name of p.monBan) {
+      /*
+       * parse_pit_mon_ban (mon-init.c) does NOT reject an unknown race: it
+       * appends a pit_forbidden_monster whose `race` is the NULL that
+       * lookup_monster returned, and mon_pit_hook's `race == monster->race`
+       * test then never matches it (pit.c test_mon_ban_bad0 asserts exactly
+       * that - PARSE_ERROR_NONE with a null race). Dropping the entry here is
+       * that same never-matches behaviour without a null in the list; the
+       * port must not be stricter than the C it is porting.
+       */
       const race = reg.raceByName(name);
-      if (!race) throw new Error(`gen-monster: pit ${p.name}: unknown mon-ban ${name}`);
-      forbiddenMonsters.push(race);
+      if (race) forbiddenMonsters.push(race);
     }
 
     return {
