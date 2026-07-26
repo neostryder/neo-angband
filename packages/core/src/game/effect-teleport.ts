@@ -238,7 +238,8 @@ const handleTELEPORT: EffectHandler = (ctx) => {
   } else if (isPlayer) {
     start = state.actor.grid;
 
-    /* A no-teleport grid blocks all but a short, fixed hop. */
+    /* A no-teleport grid blocks all but a short, fixed hop:
+     * square_isno_teleport (cave-square.c:538). */
     if (
       state.chunk.sqinfoHas(start, SQUARE.NO_TELEPORT) &&
       (dis > 10 || dis === 0)
