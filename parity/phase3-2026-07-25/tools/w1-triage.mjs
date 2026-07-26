@@ -25,6 +25,56 @@ const Q = "parity/phase3-2026-07-25/reports/w1-adjudication-queue.tsv";
  * row must carry its rule and its reasoning; see findings/W1-CITED.md. */
 const EXCL = "parity/phase3-2026-07-25/reports/w1-scope-excluded.tsv";
 
+/*
+ * Symbols whose port counterpart is reached through a REGISTRY keyed by a data
+ * name rather than by any identifier this tool's index can see, and for which a
+ * mechanical guard in the suite already proves the mapping is total.
+ *
+ * Two whole families were sitting in the residue for this reason alone:
+ *
+ *   effect_handler_XXX -- the port has no function of that name. The nine
+ *     subject registries are keyed by EF code, so the counterpart is a registry
+ *     ENTRY. game/effect-coverage.test.ts proves the EF table and the runtime
+ *     registries match exactly, both directions, and that every effect lands in
+ *     exactly one registry.
+ *
+ *   wr_XXX / rd_XXX -- the port saves JSON, so there is no wr_/rd_ pair to
+ *     find. session/save-fields.test.ts re-reads save.c, counts the write call
+ *     sites per block, requires every block to be adjudicated, and requires
+ *     each declared scalar leaf to survive a MUTATED reload (which is what
+ *     covers the rd_ side).
+ *
+ * These are derived RULES, not a hand list: the effect names come from the
+ * generated EF table and the save blocks from the guard's own table, so a new
+ * upstream effect or save block is not silently absorbed -- it fails the guard
+ * that vouches for it. GUARD-PROVEN means "a guard asserts the counterpart
+ * exists and is reached", NOT "the behaviour is verified correct". A handler can
+ * be registered and wrong; that is what the behaviour tests are for.
+ */
+const EF_TABLE = "packages/core/src/generated/effects.ts";
+const EFFECT_GUARD = "packages/core/src/game/effect-coverage.test.ts";
+const SAVE_GUARD = "packages/core/src/session/save-fields.test.ts";
+
+function guardProvenRules() {
+  const rules = new Map(); // C symbol name -> the guard that proves it
+  const ef = readFileSync(EF_TABLE, "utf8");
+  const table = ef.slice(ef.indexOf("export const EF = {"));
+  for (const m of table.matchAll(/^\s{2}([A-Z][A-Z0-9_]*):\s*\d+,/gm)) {
+    rules.set(`effect_handler_${m[1]}`, EFFECT_GUARD);
+  }
+  const guard = readFileSync(SAVE_GUARD, "utf8");
+  for (const m of guard.matchAll(/\bwr_([a-z][a-z_]*)\b/g)) {
+    /* The guard also mentions the primitive writers (wr_byte/wr_u16b/wr_string)
+     * and the port's own *_aux helpers. Only the top-level blocks the C's
+     * savefile registers are queue entries, and a primitive that is not in the
+     * queue simply never matches. */
+    rules.set(`wr_${m[1]}`, SAVE_GUARD);
+    rules.set(`rd_${m[1]}`, SAVE_GUARD);
+  }
+  return rules;
+}
+const guardProven = guardProvenRules();
+
 /* C namespace prefixes the port routinely drops, because the namespace becomes
  * the class or module instead (square_* -> Chunk methods, and so on). */
 const PREFIXES = [
@@ -208,21 +258,30 @@ for (const it of items) {
   }
 
   const excl = excluded.get(it.name);
+  const guard = guardProven.get(it.name);
 
   let verdict;
   if (excl) verdict = "SCOPE-EXCLUDED";
   else if (hit && namedCite) verdict = "PORTED-AND-CITED";
   else if (anchored) verdict = "PORTED-AND-CITED";
   else if (hit) verdict = "CANDIDATE-RENAMED";
+  /* AFTER the index verdicts and BEFORE the two residue verdicts. Putting it
+   * first was tempting and wrong: it relabelled 118 rows that already had a
+   * specific port file, throwing that away, while only 19 rows actually left the
+   * queue. A guard proof is the right answer only where the index found nothing.
+   * It does outrank a bare citation: the citation says a human wrote the name
+   * down, the guard says the mapping is total and asserted. */
+  else if (guard) verdict = "GUARD-PROVEN";
   else if (namedCite) verdict = "CITED-NO-CANDIDATE";
   else if (areaWorked) verdict = "AREA-WORKED-NO-CANDIDATE";
   else verdict = "NO-TRACE";
 
-  const where = hit?.[0] ?? anchored?.[0] ?? cites[0]?.[0] ?? "";
+  const isGuard = verdict === "GUARD-PROVEN";
+  const where = (isGuard ? guard : (hit?.[0] ?? anchored?.[0] ?? cites[0]?.[0])) ?? "";
   out.push({
     ...it,
     verdict,
-    via: excl ?? (via || (anchored ? `cite:${anchored[1]}` : "")),
+    via: excl ?? (isGuard ? "registry-entry" : via || (anchored ? `cite:${anchored[1]}` : "")),
     where: excl ? "" : where.replace("packages/", ""),
   });
 }
