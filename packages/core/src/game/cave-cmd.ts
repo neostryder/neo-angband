@@ -28,18 +28,13 @@
  * randint0(100) / randint1(i) RNG order, riding the trap.c door-lock seams
  * (state.setDoorLock / env.isLockedDoor).
  *
- * count_feats direction inference is NOW PORTED (countFeats below, consumed by
- * the shell's open / close / disarm commands): it is unconditional in 4.2.6 --
- * the old easy_open option no longer exists -- so deferring it as "UI" changed
- * the keystrokes ordinary play requires on every door and trap.
- *
- * DEFERRED (ledgered in game-cave-cmd.yaml): do_cmd_steal (shapechange #22) and
- * command repetition. Running and travel / explore (player-path #24) are ported
- * in game/player-path.ts.
+ * DEFERRED (ledgered in game-cave-cmd.yaml): do_cmd_steal (shapechange #22),
+ * command repetition and count_feats direction inference (UI). Running and
+ * travel / explore (player-path #24) are ported in game/player-path.ts.
  */
 
 import type { Loc } from "../loc";
-import { DDGRID, DDGRID_DDD, locSum } from "../loc";
+import { DDGRID, locSum } from "../loc";
 import { FEAT, ORIGIN, TF, TMD, TRF } from "../generated";
 import { SKILL } from "../player/types";
 import { squareIsSeen } from "../world/view";
@@ -60,7 +55,6 @@ import { attackMonster } from "./player-turn";
 import type { ActionRegistry } from "./player-turn";
 import {
   disarmAux,
-  squareDoorPower,
   playerIsTrapsafe,
   squareIsDisarmableTrap,
   squareIsWebbed,
@@ -194,58 +188,9 @@ export function displayFeeling(
   state.msg?.(`${MON_FEELING_TEXT[monFeeling]}${join} ${OBJ_FEELING_TEXT[objFeeling]}`);
 }
 
-/**
- * count_feats (cave.c L644-679): how many of the nine grids around (and
- * optionally under) the player match `test`, plus the last one matched.
- *
- * Two details of the C matter and are easy to get wrong. It requires
- * `square_isknown` and then tests **the player's memory**, `player->cave`, not
- * the live map -- so terrain the player has not seen never counts, and
- * misremembered terrain counts as remembered. And `ddgrid_ddd[8]` is the
- * player's own grid, which only participates when `under` is set.
- *
- * Draws no RNG. The C uses this to auto-select a direction for open, close and
- * disarm when exactly one adjacent candidate exists (cmd-cave.c L250-260, L409,
- * L874-876), which is unconditional in 4.2.6 -- the old `easy_open` option no
- * longer exists.
- */
-export function countFeats(
-  state: GameState,
-  test: (state: GameState, grid: Loc) => boolean,
-  under: boolean,
-): { count: number; grid: Loc | null } {
-  let count = 0;
-  let last: Loc | null = null;
-  for (let d = 0; d < DDGRID_DDD.length; d++) {
-    if (d === 8 && !under) continue;
-    const grid = locSum(state.actor.grid, DDGRID_DDD[d] as Loc);
-    if (!state.chunk.inBoundsFully(grid)) continue;
-    if (!squareIsKnown(state, grid)) continue;
-    if (!test(state, grid)) continue;
-    count++;
-    last = grid;
-  }
-  return { count, grid: last };
-}
-
 /* ------------------------------------------------------------------ *
  * Door predicates (cave-square.c) over the feature flags.
  * ------------------------------------------------------------------ */
-
-/**
- * square_isunlockeddoor (cave-square.c L791-794): a closed door whose lock
- * power is zero. Locks are traps upstream, so without live trap deps every
- * closed door reads as unlocked -- which matches shipped levels, where plain
- * closed doors are what generation places.
- */
-export function squareIsUnlockedDoor(
-  state: GameState,
-  grid: Loc,
-  trapDeps?: TrapDeps,
-): boolean {
-  if (!state.chunk.isClosedDoor(grid)) return false;
-  return trapDeps ? squareDoorPower(state, grid, trapDeps) === 0 : true;
-}
 
 /** square_isopendoor: a door that can be closed (TF CLOSABLE). */
 export function squareIsOpenDoor(state: GameState, grid: Loc): boolean {
