@@ -360,6 +360,7 @@ function closeAux(state: GameState, grid: Loc, env: CaveCmdEnv): boolean {
   if (squareIsBrokenDoor(state, grid)) {
     env.msg?.("The door appears to be broken.");
   } else {
+    /* square_close_door (cave-square.c:1361): set_feat(FEAT_CLOSED). */
     state.chunk.setFeat(grid, FEAT.CLOSED);
   }
   return false;
@@ -452,7 +453,10 @@ function tunnelTest(state: GameState, grid: Loc, env: CaveCmdEnv): boolean {
   return true;
 }
 
-/** twall: knock the feature down to floor. */
+/**
+ * twall (cmd-cave.c:500-515): knock the feature down to floor. The set_feat
+ * is square_tunnel_wall (cave-square.c:1414), called at cmd-cave.c:510.
+ */
 function twall(state: GameState, grid: Loc): boolean {
   if (!squareIsDiggable(state, grid) && !state.chunk.isClosedDoor(grid)) {
     return false;
