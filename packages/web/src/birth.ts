@@ -1357,6 +1357,21 @@ export async function runBirth(
     name: c.name,
   }));
 
+  // do_cmd_choose_race (player-birth.c:1092-1102) and do_cmd_choose_class
+  // (L1105-1115) both end with reset_stats() + generate_stats() +
+  // `rolled_stats = false`. Every trip through those menus issues the command
+  // again (menu_question pushes CMD_CHOOSE_RACE / CMD_CHOOSE_CLASS on Enter and
+  // on '*', unconditionally, even for the same row), so ANY re-pick DISCARDS a
+  // manual point-buy allocation and any accepted standard roll: the allocation
+  // screen must re-open at the new race/class's generate_stats spread, and the
+  // point-buy lock rolled_stats imposes must be released. ESC (BIRTH_BACK) does
+  // NOT reset - it issues no command - so stepping back from the name stage into
+  // the same allocation still restores the work in progress.
+  const discardStatWork = (): void => {
+    pointStats = null;
+    rolledStats = null;
+  };
+
   // finish_with_random_choices (ui-birth.c:660-777): fill every remaining
   // choice from `fromStage` onward at random and jump to the final confirm. A
   // default point-buy (generate_stats) supplies the stats, matching upstream.
@@ -1465,6 +1480,7 @@ export async function runBirth(
             // '*' random pick, then advance to class (menu_question:841-847).
             raceIdx = rollRng.randint0(races.length);
             raceName = races[raceIdx]?.name ?? "Human";
+            discardStatWork();
             advance("class");
             break;
           case "finish":
@@ -1474,6 +1490,7 @@ export async function runBirth(
           case "pick":
             raceIdx = res.index;
             raceName = races[res.index]?.name ?? "Human";
+            discardStatWork();
             advance("class");
             break;
         }
@@ -1502,6 +1519,7 @@ export async function runBirth(
           case "random":
             classIdx = rollRng.randint0(classes.length);
             className = classes[classIdx]?.name ?? "Warrior";
+            discardStatWork();
             advance("roller");
             break;
           case "finish":
@@ -1510,6 +1528,7 @@ export async function runBirth(
           case "pick":
             classIdx = res.index;
             className = classes[res.index]?.name ?? "Warrior";
+            discardStatWork();
             advance("roller");
             break;
         }

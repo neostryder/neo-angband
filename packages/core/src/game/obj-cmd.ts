@@ -82,6 +82,7 @@ import { updatePlayerObjectKnowledge } from "./known";
 import type { CastContext } from "./project-cast";
 import type { ActionRegistry } from "./player-turn";
 import { targetFix, targetGet, targetOkay, targetRelease } from "./target";
+import { squareIsSeen } from "../world/view";
 
 /** enum use (cmd-obj.c). */
 export const USE = { TIMEOUT: 0, CHARGE: 1, SINGLE: 2 } as const;
@@ -785,6 +786,44 @@ export function playerGetResumeNormalShape(
   return false;
 }
 
+/** no_light (cave-view.c L913): the player's own grid is not currently seen. */
+function noLight(state: GameState): boolean {
+  return !squareIsSeen(state.chunk, state.actor.grid);
+}
+
+/**
+ * player_can_read (player-util.c L1166): scrolls and spellbooks need working
+ * eyes, light, a clear head and intact memory. Checked in this exact order, and
+ * each refusal prints its own message and spends no turn. do_cmd_read_scroll
+ * (cmd-obj.c L748) calls this with show_msg true BEFORE cmd_get_item, so a blind
+ * player with no scrolls at all still hears "You can't see anything." rather
+ * than the "You have no scrolls to read." rejection.
+ */
+export function playerCanRead(
+  state: GameState,
+  env: Pick<ObjCmdEnv, "msg"> = {},
+  showMsg = true,
+): boolean {
+  const p = state.actor.player;
+  if ((p.timed[TMD.BLIND] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You can't see anything.");
+    return false;
+  }
+  if (noLight(state)) {
+    if (showMsg) env.msg?.("You have no light to read by.");
+    return false;
+  }
+  if ((p.timed[TMD.CONFUSED] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You are too confused to read!");
+    return false;
+  }
+  if ((p.timed[TMD.AMNESIA] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You can't remember how to read!");
+    return false;
+  }
+  return true;
+}
+
 /**
  * player_confuse_dir (player-util.c): confusion randomises the direction
  * 75% of the time (always for "no direction").
@@ -1183,8 +1222,10 @@ export function installObjCommands(
   deps: ObjCmdDeps,
 ): void {
   /* player_get_resume_normal_shape gates the hands/voice commands
-   * (cmd-obj.c: takeoff/wield/drop, scroll/staff/wand/rod/activate);
-   * eating and quaffing stay possible in any shape. */
+   * (cmd-obj.c: takeoff/wield/drop, scroll/staff/wand/rod/activate AND
+   * quaff - do_cmd_quaff_potion opens with the resume gate at cmd-obj.c L923).
+   * do_cmd_eat_food (L899) is the one use command with NO gate, so eating stays
+   * possible in any shape. */
   const gated = (
     fn: (state: GameState, cmd: PlayerCommand) => number,
   ): ((state: GameState, cmd: PlayerCommand) => number) => {
@@ -1330,13 +1371,26 @@ export function installObjCommands(
     "eat",
     useCommand(deps, (o) => tvalIsEdible(o.tval), USE.SINGLE),
   );
+  /* do_cmd_quaff_potion (cmd-obj.c L917-931): the resume-shape gate, THEN the
+   * potion pick. Unlike do_cmd_eat_food it is gated. */
   registry.register(
     "quaff",
-    useCommand(deps, (o) => tvalIsPotion(o.tval), USE.SINGLE),
+    gated(useCommand(deps, (o) => tvalIsPotion(o.tval), USE.SINGLE)),
   );
+  /* do_cmd_read_scroll (cmd-obj.c L739-757): resume shape, then
+   * player_can_read(player, true) - blind / no light / confused / amnesia each
+   * refuse with their own message and cost no turn - and only then the scroll
+   * pick. The order matters: the read gate fires before "You have no scrolls to
+   * read.". */
   registry.register(
     "read",
-    gated(useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE)),
+    gated((state, cmd) => {
+      if (!playerCanRead(state, deps.env ?? {})) return 0;
+      return useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE)(
+        state,
+        cmd,
+      );
+    }),
   );
   registry.register(
     "use-staff",
