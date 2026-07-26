@@ -1570,11 +1570,6 @@ export function wizPeekFlow(
  * do_cmd_wiz_dump_level_map (L1112, DATA half): the level's feature grid as
  * rows of feature indices. The shell renders / writes them (upstream writes an
  * HTML file; the file I/O is not ported).
- *
- * dump_level (gen-util.c:987) is upstream's writer for that grid -
- * dump_level_header + dump_level_body + dump_level_footer over an ang_file.
- * Only its DATA half is here; the HTML/file half is out of scope (there is no
- * ang_file layer in the port).
  */
 export function wizDumpLevelMap(state: GameState, deps: WizardDeps): number[][] {
   if (!wizardEnabled(deps)) return [];
