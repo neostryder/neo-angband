@@ -2,6 +2,7 @@ import { describe, expect, it, afterEach } from "vitest";
 import {
   runWizardToggle,
   runWizardDebugMenu,
+  dispatchDebug,
   DEBUG_MENU,
   WIZARD_ENTRY_MSG_1,
   WIZARD_ENTRY_MSG_2,
@@ -55,7 +56,7 @@ async function tick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function makeTerm(cols = 40, rows = 20): GlyphTerm {
+function makeTerm(cols = 40, rows = 20): GlyphTerm & { snapshot(): string[] } {
   const grid: string[][] = Array.from({ length: rows }, () => new Array(cols).fill(" "));
   return {
     size: () => ({ cols, rows }),
@@ -68,7 +69,8 @@ function makeTerm(cols = 40, rows = 20): GlyphTerm {
         if (row) row[x + i] = text[i] ?? " ";
       }
     },
-  } as unknown as GlyphTerm;
+    snapshot: () => grid.map((row) => row.join("").replace(/\s+$/u, "")),
+  } as unknown as GlyphTerm & { snapshot(): string[] };
 }
 
 /** A minimal ctx: only player.noscore + the message sink matter for these flows. */
@@ -226,5 +228,34 @@ describe("runWizardDebugMenu debug gate (15.2 / player-util.c L1296)", () => {
     ctx.deps.wizard = false;
     await runWizardDebugMenu(ctx);
     expect(said.some((s) => s.includes("wizard mode"))).toBe(true);
+  });
+});
+
+describe("edit-player stat prompt (cmd-wizard.c:1259,1276 stat_idx_to_name)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it("prompts with the short stat code, not the long word (STR, not Strength)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const { ctx } = makeCtx(win, 0);
+    (ctx.state.actor.player as unknown as { statCur: number[] }).statCur = [
+      10, 10, 10, 10, 10,
+    ];
+    (ctx.state.actor.player as unknown as { au: number }).au = 0;
+    const done = dispatchDebug(ctx, "edit-player");
+    await tick();
+    // "Edit player" menu: row 0 is STR.
+    press(win, "a");
+    await tick();
+    // The value prompt reads "STR (3-118): ", not "Strength (3-118): ".
+    const snapshot = (ctx.term as GlyphTerm & { snapshot(): string[] })
+      .snapshot()
+      .join("\n");
+    expect(snapshot).toContain("STR (3-118)");
+    expect(snapshot).not.toContain("Strength");
+    press(win, "Escape"); // cancel the value prompt: no engine call needed
+    await done;
   });
 });
