@@ -158,16 +158,22 @@ const handleMASS_BANISH: EffectHandler = (ctx) => {
 };
 
 /**
- * The shared heal-a-monster body of MON_HEAL_HP / MON_HEAL_KIN
- * (effect-handler-attack.c L254/L311): heal, message by visibility (the
- * MDESC name rides the display layer; the race name stands in), and cancel
- * fear.
+ * The heal-and-cancel-fear tail shared by MON_HEAL_HP and MON_HEAL_KIN
+ * (effect-handler-attack.c L275-299 / L336-354). The MDESC name rides the
+ * display layer, so the race name stands in.
+ *
+ * NOT shared: the messages. Upstream's two handlers look near-identical and
+ * differ in exactly two places, both of which a shared body loses --
+ * MON_HEAL_HP has "sounds ..." variants for an unseen monster (L282-290) while
+ * MON_HEAL_KIN wraps BOTH of its messages in `if (seen)` (L338-344) and says
+ * nothing at all when the kin is not seen. Hence `unseenMsg`.
  */
 function healMonster(
   ctx: EffectHandlerContext,
   env: GameEffectEnv,
   mon: Monster,
   amount: number,
+  unseenMsg: boolean,
 ): void {
   const { state } = env;
   const blind = (env.cast.playerActor.timed[TMD.BLIND] ?? 0) > 0;
@@ -179,13 +185,15 @@ function healMonster(
 
   if (mon.hp >= mon.maxhp) {
     mon.hp = mon.maxhp;
-    ctx.env.messages?.msg(
-      seen ? `${name} looks REALLY healthy!` : `${name} sounds REALLY healthy!`,
-    );
-  } else {
-    ctx.env.messages?.msg(
-      seen ? `${name} looks healthier.` : `${name} sounds healthier.`,
-    );
+    if (seen) {
+      ctx.env.messages?.msg(`${name} looks REALLY healthy!`);
+    } else if (unseenMsg) {
+      ctx.env.messages?.msg(`${name} sounds REALLY healthy!`);
+    }
+  } else if (seen) {
+    ctx.env.messages?.msg(`${name} looks healthier.`);
+  } else if (unseenMsg) {
+    ctx.env.messages?.msg(`${name} sounds healthier.`);
   }
 
   /* Cancel fear */
@@ -203,8 +211,12 @@ const handleMON_HEAL_HP: EffectHandler = (ctx) => {
   if (!env) return true;
   if (ctx.origin.what !== "monster") return true;
   const mon = env.state.monsters[ctx.origin.monster];
+  /* The value is computed BEFORE the null-monster guard (L261 precedes L265),
+   * so a midx that resolves to no monster still consumes the dice draws. Keep
+   * the order: it is the stream the C produces. */
+  const amount = effectCalculateValue(ctx, false);
   if (!mon) return true;
-  healMonster(ctx, env, mon, effectCalculateValue(ctx, false));
+  healMonster(ctx, env, mon, amount, true);
   return true;
 };
 
@@ -251,11 +263,18 @@ const handleMON_HEAL_KIN: EffectHandler = (ctx) => {
   const caster = env.state.monsters[ctx.origin.monster];
   if (!caster) return true;
 
+  /* The value is rolled BEFORE the kin search (L319 precedes L324), and
+   * choose_nearby_injured_kin draws one randint0 per candidate, so computing it
+   * afterwards swaps two draw groups and desynchronises the stream. */
+  const amount = effectCalculateValue(ctx, false);
+
   /* Find a nearby injured monster of the same base. */
   const kin = chooseNearbyInjuredKin(env.state, caster);
   if (!kin) return true;
 
-  healMonster(ctx, env, kin, effectCalculateValue(ctx, false));
+  /* No unseen message: L338-344 wraps both messages in `if (seen)`, unlike
+   * MON_HEAL_HP. */
+  healMonster(ctx, env, kin, amount, false);
   return true;
 };
 
