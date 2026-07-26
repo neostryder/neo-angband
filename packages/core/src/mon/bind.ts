@@ -262,11 +262,27 @@ function joinLines(lines: string[] | undefined): string {
   return lines ? lines.join("") : "";
 }
 
+/**
+ * The "A | B" segments of one flags-style directive.
+ *
+ * An entry that is not a string is the compiler's presence marker for a
+ * directive written with no value at all ("flags:"). Upstream's handlers
+ * check `parser_hasval()` first and return PARSE_ERROR_NONE with the flag
+ * set untouched (mon-init.c L1316-1317 parse_monster_flags and its
+ * siblings), so an empty line contributes no tokens rather than crashing.
+ * Asserted by r-info.c test_flags0 / test_flags_off0 and, for the sibling
+ * parsers, c-info.c test_obj_flags0 / test_player_flags0 and partrap.c
+ * test_flags0.
+ */
+function flagSegments(line: unknown): string[] {
+  return typeof line === "string" ? line.split("|") : [];
+}
+
 /** grab_flag over RF names ("A | B" segments); throws on unknown names. */
 function raceFlagsOn(flags: FlagSet, lines: string[] | undefined): void {
   if (!lines) return;
   for (const line of lines) {
-    for (const raw of line.split("|")) {
+    for (const raw of flagSegments(line)) {
       const name = raw.trim();
       if (!name) continue;
       const value = (RF as Record<string, number>)[name];
@@ -282,7 +298,7 @@ function raceFlagsOn(flags: FlagSet, lines: string[] | undefined): void {
 function raceFlagsOff(flags: FlagSet, lines: string[] | undefined): void {
   if (!lines) return;
   for (const line of lines) {
-    for (const raw of line.split("|")) {
+    for (const raw of flagSegments(line)) {
       const name = raw.trim();
       if (!name) continue;
       const value = (RF as Record<string, number>)[name];
@@ -298,7 +314,7 @@ function raceFlagsOff(flags: FlagSet, lines: string[] | undefined): void {
 function spellFlagsOn(flags: FlagSet, lines: string[] | undefined): void {
   if (!lines) return;
   for (const line of lines) {
-    for (const raw of line.split("|")) {
+    for (const raw of flagSegments(line)) {
       const name = raw.trim();
       if (!name) continue;
       const value = (RSF as Record<string, number>)[name];
@@ -784,7 +800,11 @@ export class MonsterRegistry {
       ridx: this.races.length,
       name: rec.name,
       text: joinLines(rec.desc),
-      plural: rec.plural ?? null,
+      /* parse_monster_plural (mon-init.c L1680-1687) leaves r->plural NULL
+       * when the field is absent OR present but empty, so the compiler's
+       * bare presence marker for "plural:" must read as null too
+       * (r-info.c test_plural0). */
+      plural: typeof rec.plural === "string" && rec.plural.length > 0 ? rec.plural : null,
       base,
       avgHp: rec["hit-points"] ?? 0,
       ac: rec["armor-class"] ?? 0,

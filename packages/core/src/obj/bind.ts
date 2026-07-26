@@ -730,7 +730,15 @@ export class ObjRegistry {
         if (!found) throw new Error(`object: invalid value ${tok}`);
       }
       const hd = parseRand(rec.attack?.hd);
-      const pile = rec.pile?.[0];
+      /*
+       * parse_object_pile (obj-init.c L1844-1845) plainly assigns
+       * gen_mult_prob and stack_size, so a record with two `pile:` lines
+       * keeps the LAST. object.txt:3678/3680 (Potion of Dragon Breath) is
+       * exactly that: `pile:100:1d2` then `pile:70:1d3`. Taking the first
+       * made it always generate as a pile of 1-2 instead of 70% of the time
+       * as a pile of 1-3 (k-info.c test_pile0).
+       */
+      const pile = rec.pile?.[rec.pile.length - 1];
       const kind: ObjectKind = {
         name: rec.name,
         text: joinLines(rec.desc),
