@@ -42,18 +42,18 @@ import type { Loc } from "../loc";
 import { DDGRID, DDGRID_DDD, locSum } from "../loc";
 import { FEAT, ORIGIN, TF, TMD, TRF } from "../generated";
 import { SKILL } from "../player/types";
-import { motionDir, squareIsSeen } from "../world/view";
+import { squareIsSeen } from "../world/view";
 import { monsterIsCamouflaged } from "../mon/predicate";
 import { monsterWake } from "../mon/take-hit";
 import { featIsTreasure } from "../world/chunk";
 import type { MakeDeps } from "../obj/make";
 import { makeGold, makeObject } from "../obj/make";
 import { CHEST_QUERY } from "../obj/chest";
-import { chestCheck, countChests, doCmdDisarmChest, doCmdOpenChest } from "./chest";
+import { chestCheck, doCmdDisarmChest, doCmdOpenChest } from "./chest";
 import type { ChestCmdDeps } from "./chest";
 import type { GameState, PlayerCommand } from "./context";
 import { modRuleEnabled, queueCommandRepeat, squareMonster } from "./context";
-import { knownFeat, squareIsKnown } from "./known";
+import { squareIsKnown } from "./known";
 import { floorCarry } from "./floor";
 import { playerConfuseDir } from "./obj-cmd";
 import { attackMonster } from "./player-turn";
@@ -602,30 +602,6 @@ function commandGrid(state: GameState, cmd: PlayerCommand): { grid: Loc; dir: nu
   return { grid: locSum(state.actor.grid, DDGRID[dir] as Loc), dir };
 }
 
-/** The direction supplied by count_feats/count_chests, or the command's one. */
-function inferredDirection(
-  state: GameState,
-  cmd: PlayerCommand,
-  tests: readonly ((state: GameState, grid: Loc) => boolean)[],
-  chestQuery?: (typeof CHEST_QUERY)[keyof typeof CHEST_QUERY],
-): number | undefined {
-  if (cmd.dir !== undefined && cmd.dir >= 1 && cmd.dir <= 9) return cmd.dir;
-
-  let count = 0;
-  let grid: Loc | null = null;
-  for (const test of tests) {
-    const result = countFeats(state, test, false);
-    count += result.count;
-    if (result.grid) grid = result.grid;
-  }
-  if (chestQuery !== undefined) {
-    const chests = countChests(state, chestQuery);
-    count += chests.count;
-    if (chests.grid) grid = chests.grid;
-  }
-  return count === 1 ? motionDir(state.actor.grid, grid!) : undefined;
-}
-
 /** dir -> grid, but allowing 5 (the player's own grid) for a chest underfoot. */
 function chestDirGrid(state: GameState, dir: number): Loc {
   return dir === 5 ? state.actor.grid : (locSum(state.actor.grid, DDGRID[dir] as Loc));
@@ -799,13 +775,7 @@ export function installCaveCommands(
   if (priorJump) registry.register("jump", bumpOpen(priorJump, false));
 
   registry.register("open", (state, cmd) => {
-    const dir0 = inferredDirection(
-      state,
-      cmd,
-      [(s, grid) => s.chunk.features.featHas(knownFeat(s, grid), TF.DOOR_CLOSED)],
-      CHEST_QUERY.OPENABLE,
-    );
-    const at = dir0 === undefined ? null : chestCommandGrid(state, { ...cmd, dir: dir0 });
+    const at = chestCommandGrid(state, cmd);
     if (!at) return 0;
     /* do_cmd_open (L268-276): a chest there skips the door legality test. */
     const preChest = chestDeps ? chestCheck(state, at.grid, CHEST_QUERY.OPENABLE) : null;
@@ -830,10 +800,7 @@ export function installCaveCommands(
   });
 
   registry.register("close", (state, cmd) => {
-    const dir0 = inferredDirection(state, cmd, [
-      (s, grid) => s.chunk.features.featHas(knownFeat(s, grid), TF.CLOSABLE),
-    ]);
-    const at = dir0 === undefined ? null : commandGrid(state, { ...cmd, dir: dir0 });
+    const at = commandGrid(state, cmd);
     if (!at) return 0;
     if (
       !state.chunk.inBounds(at.grid) ||
@@ -861,20 +828,8 @@ export function installCaveCommands(
    */
   const priorDisarm = registry.get("disarm");
   registry.register("disarm", (state, cmd) => {
-    const dir0 = inferredDirection(
-      state,
-      cmd,
-      [
-        (s, grid) => squareIsDisarmableTrap(s, grid),
-        (s, grid) =>
-          s.chunk.features.featHas(knownFeat(s, grid), TF.DOOR_CLOSED) &&
-          !(env.isLockedDoor?.(grid) ?? false),
-      ],
-      CHEST_QUERY.TRAPPED,
-    );
-    const inferredCmd = dir0 === undefined ? cmd : { ...cmd, dir: dir0 };
     if (chestDeps) {
-      const at = chestCommandGrid(state, inferredCmd);
+      const at = chestCommandGrid(state, cmd);
       const preChest = at ? chestCheck(state, at.grid, CHEST_QUERY.TRAPPED) : null;
       if (at && preChest) {
         /* Apply confusion after the turn is committed, then re-resolve the
@@ -902,7 +857,7 @@ export function installCaveCommands(
      * disarmed. Decided on the pre-confusion grid to pick the branch (as the
      * chest branch and do_cmd_open do); lockDoorCommand applies confusion.
      */
-    const doorAt = commandGrid(state, inferredCmd);
+    const doorAt = commandGrid(state, cmd);
     if (
       doorAt &&
       state.chunk.isClosedDoor(doorAt.grid) &&
@@ -910,7 +865,7 @@ export function installCaveCommands(
     ) {
       return lockDoorCommand(state, cmd, doorAt.dir, deps, env);
     }
-    return priorDisarm ? priorDisarm(state, inferredCmd) : 0;
+    return priorDisarm ? priorDisarm(state, cmd) : 0;
   });
 
   /*
