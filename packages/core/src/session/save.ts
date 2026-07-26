@@ -84,7 +84,6 @@ export interface SavedObject {
   tval: number;
   sval: number;
   pval: number;
-  knownPval?: number;
   weight: number;
   dd: number;
   ds: number;
@@ -130,7 +129,6 @@ export function serializeObject(
     tval: obj.tval,
     sval: obj.sval,
     pval: obj.pval,
-    ...(obj.knownPval !== undefined ? { knownPval: obj.knownPval } : {}),
     weight: obj.weight,
     dd: obj.dd,
     ds: obj.ds,
@@ -238,7 +236,6 @@ export function deserializeObject(
     tval: data.tval,
     sval: data.sval,
     pval: data.pval,
-    ...(data.knownPval !== undefined ? { knownPval: data.knownPval } : {}),
     weight: data.weight,
     dd: data.dd,
     ds: data.ds,
