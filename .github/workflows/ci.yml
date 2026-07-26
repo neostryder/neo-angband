@@ -28,7 +28,12 @@ jobs:
       - run: pnpm lint
       # Catch Vite/PWA build breaks on PRs, not just at deploy time.
       - run: pnpm --dir packages/web bundle
+      # `pnpm test` excludes packages/borg: think.test.ts and foundation.test.ts
+      # hang indefinitely (no output, no timeout), so without the exclusion this
+      # step burns the whole job limit instead of failing. test:borg runs the two
+      # borg files that do terminate so that coverage is not silently dropped.
       - run: pnpm test
+      - run: pnpm test:borg
       # Parity harness (packages/cli): the parity.test.ts guard runs inside
       # `pnpm test` above; this runs the golden scenarios as a standalone Node
       # program too, so a break in the runnable harness (loader, entry wiring)
