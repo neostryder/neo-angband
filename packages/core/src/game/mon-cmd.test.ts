@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { FlagSet } from "../bitflag";
-import { EF, MFLAG, MON_TMD, RF, TMD } from "../generated";
-import { loc, locEq } from "../loc";
+import { EF, MFLAG, MON_TMD, RF, SQUARE, TMD } from "../generated";
+import { distance, loc, locEq } from "../loc";
 import { Rng } from "../rng";
 import { RSF_SIZE } from "../mon/types";
 import { EffectRegistry, sourcePlayer } from "../effects/interpreter";
@@ -410,5 +410,250 @@ describe("monster_attack_monster (mon-attack.c L765)", () => {
     /* Sanity: the blow landed and reduced HP (quake may also harm). */
     expect(withDeps.target.hp).toBeLessThan(500);
     expect(withoutDeps.target.hp).toBeLessThan(500);
+  });
+});
+
+/**
+ * SHATTER's two gates and their boundaries (mon-blows.c L1086-1115).
+ *
+ * The M-1 deps-parity proof above holds only for the one config it ran: damage
+ * 50, target surviving, radius 4. Codex flagged the untested sub-paths when it
+ * approved that proof -- thrust_away firing vs not firing, the target dying
+ * mid-blow, and radius variation -- and warned against letting the approval read
+ * as exhaustive. This closes that debt.
+ *
+ * The C, in order, after adjust_dam_armor:
+ *
+ *     if (monster_damage_target(context, false)) return;      // L1095
+ *     if (context->damage > 23) { radius = damage / 12; ... }  // L1097-1101
+ *     if (context->damage > 100) {                             // L1105
+ *         int value = context->damage - 100;
+ *         if (randint1(value) > 40) { dist = 1 + value / 40; thrust_away(...) }
+ *     }
+ *
+ * Two boundaries are worth pinning exactly because a plausible mistake changes
+ * them by one:
+ *
+ * - `damage > 23` with `radius = damage / 12` is INTEGER division, so 47 gives
+ *   radius 3 and 48 gives 4. Rounding instead of truncating would give 4 for both.
+ * - `randint1(value) > 40` can never fire when `value <= 40`, i.e. never below
+ *   damage 141. Writing `>= 40` would make damage 140 knock back one time in 40.
+ *
+ * The observable for the quake is terrain memory, not damage: the handler clears
+ * SQUARE_ROOM / VAULT / GLOW / SEEN for EVERY grid within the radius before the
+ * 85% per-grid skip (effect-terrain.ts:552-557, effect-handler-attack.c
+ * L1337-1352), so the cleared set is exactly {g : distance(centre, g) <= r} and
+ * reads the radius off directly with no sampling.
+ */
+describe("SHATTER sub-paths (mon-blows.c L1086-1115)", () => {
+  /* Big field: radius reaches 15, and the player sits far enough out that the
+   * quake never crushes or relocates them. */
+  const CENTRE = loc(25, 20);
+  const TARGET = loc(26, 20);
+  const PLAYER = loc(55, 35);
+
+  interface Shatter {
+    readonly state: GameState;
+    readonly mon: ReturnType<typeof addMon>;
+    readonly target: ReturnType<typeof addMon>;
+    /** Max distance from the epicentre at which a grid lost SQUARE_SEEN. */
+    readonly quakeExtent: number;
+    readonly targetAlive: boolean;
+    readonly rngAfter: ReturnType<Rng["getState"]>;
+  }
+
+  /**
+   * One blow, one observation. `effect` is a parameter so a HURT control can be
+   * run through the identical draw sequence up to the point where the C returns.
+   */
+  function shatter(opts: {
+    damage: number;
+    seed: number;
+    depth: number;
+    targetHp: number;
+    effect?: string;
+  }): Shatter {
+    const { damage, seed, depth, targetHp } = opts;
+    const state = makeState({ playerGrid: PLAYER, seed, w: 60, h: 40 });
+    state.chunk.depth = depth;
+    const blow = makeBlow("HIT", opts.effect ?? "SHATTER", String(damage));
+    const mon = addMon(state, makeRace({ level: 50, blows: [blow] }), CENTRE, {
+      hp: 500,
+    });
+    const target = addMon(state, makeRace({ ac: 0 }), TARGET, { hp: targetHp });
+
+    /* Mark every fully-in-bounds grid SEEN so the cleared set is unambiguous --
+     * whatever level setup did beforehand is overwritten. */
+    for (let y = 0; y < state.chunk.height; y++) {
+      for (let x = 0; x < state.chunk.width; x++) {
+        const g = loc(x, y);
+        if (state.chunk.inBoundsFully(g)) state.chunk.sqinfoOn(g, SQUARE.SEEN);
+      }
+    }
+
+    monsterAttackMonster(state, mon, target, deps(state));
+
+    let quakeExtent = -1;
+    for (let y = 0; y < state.chunk.height; y++) {
+      for (let x = 0; x < state.chunk.width; x++) {
+        const g = loc(x, y);
+        if (!state.chunk.inBoundsFully(g)) continue;
+        if (state.chunk.sqinfoHas(g, SQUARE.SEEN)) continue;
+        const d = distance(CENTRE, g);
+        if (d > quakeExtent) quakeExtent = d;
+      }
+    }
+
+    return {
+      state,
+      mon,
+      target,
+      quakeExtent,
+      targetAlive: state.monsters[target.midx] !== null,
+      rngAfter: state.rng.getState(),
+    };
+  }
+
+  it("does not quake at damage 23 and quakes to radius 2 at 24 (L1097)", () => {
+    /* The gate is strictly greater, so 23 is the last quiet value. */
+    const quiet = shatter({ damage: 23, seed: 7, depth: 5, targetHp: 5000 });
+    expect(quiet.target.hp, "the blow must have landed to test the gate").toBeLessThan(5000);
+    expect(quiet.quakeExtent, "damage 23 must not shake the ground at all").toBe(-1);
+
+    const shaken = shatter({ damage: 24, seed: 7, depth: 5, targetHp: 5000 });
+    expect(shaken.target.hp).toBeLessThan(5000);
+    expect(shaken.quakeExtent, "damage 24 -> radius 24/12 = 2").toBe(2);
+  });
+
+  it("radius is damage/12 truncated, not rounded (L1098)", () => {
+    /* 47/12 = 3.9 and 48/12 = 4.0: a rounding implementation gives 4 for both. */
+    for (const [damage, radius] of [
+      [24, 2],
+      [47, 3],
+      [48, 4],
+      [60, 5],
+      [120, 10],
+    ] as const) {
+      const r = shatter({ damage, seed: 11, depth: 5, targetHp: 20_000 });
+      expect(r.target.hp, `damage ${damage}: the blow must land`).toBeLessThan(20_000);
+      expect(r.quakeExtent, `damage ${damage} -> radius ${radius}`).toBe(radius);
+    }
+  });
+
+  it("a target killed by the blow gets neither quake nor knockback draw (L1095)", () => {
+    /* monster_damage_target returning true returns from the handler, so the C
+     * makes NO further draws. A HURT blow at the same damage and seed returns at
+     * exactly the same point, so the two RNG states must be identical -- which is
+     * a stronger statement than "no quake happened": it also proves the
+     * randint1(value) knockback roll was never taken. */
+    const killed = shatter({ damage: 200, seed: 3, depth: 5, targetHp: 1 });
+    expect(killed.targetAlive, "damage 200 vs 1 hp must kill the target").toBe(false);
+    expect(killed.quakeExtent, "a dead target means no earthquake").toBe(-1);
+
+    const control = shatter({
+      damage: 200,
+      seed: 3,
+      depth: 5,
+      targetHp: 1,
+      effect: "HURT",
+    });
+    expect(control.targetAlive).toBe(false);
+    expect(
+      killed.rngAfter,
+      "a fatal SHATTER must draw exactly what a fatal HURT draws",
+    ).toEqual(control.rngAfter);
+  });
+
+  it("knockback cannot fire at or below damage 140 (L1107, > not >=)", () => {
+    /* value = damage - 100 = 40, and randint1(40) tops out at 40, so
+     * `randint1(value) > 40` is unsatisfiable. Town depth so the earthquake
+     * short-circuits (effect-handler-attack.c L1319-1326) and thrust_away is the
+     * only thing that could move the target. */
+    let landed = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const r = shatter({ damage: 140, seed, depth: 0, targetHp: 20_000 });
+      if (r.target.hp === 20_000) continue; /* blow missed; not a knockback case */
+      landed++;
+      expect(
+        r.target.grid,
+        `seed ${seed}: randint1(40) can never exceed 40, so the target must not move`,
+      ).toEqual(TARGET);
+    }
+    /* Without this the whole loop could `continue` and assert nothing. */
+    expect(landed, "some seed must actually land the blow").toBeGreaterThan(0);
+  });
+
+  it("knockback fires above damage 140 and moves the target away (L1108-1112)", () => {
+    /* value = 100 -> randint1(100) > 40 about 60% of the time, dist = 1 + 100/40
+     * = 3. Sweep seeds and require BOTH outcomes: if every seed moved, the roll
+     * is not being consulted; if none did, thrust_away is not wired. */
+    let moved = 0;
+    let stayed = 0;
+    let maxPush = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const r = shatter({ damage: 200, seed, depth: 0, targetHp: 20_000 });
+      if (r.target.hp === 20_000) continue;
+      if (locEq(r.target.grid, TARGET)) {
+        stayed++;
+      } else {
+        moved++;
+        /* thrust_away pushes AWAY from the epicentre, never toward it. */
+        const away = distance(CENTRE, r.target.grid);
+        expect(away, `seed ${seed}: knockback must increase the distance`).toBeGreaterThan(
+          distance(CENTRE, TARGET),
+        );
+        if (away > maxPush) maxPush = away;
+      }
+    }
+    expect(moved, "some seed must roll randint1(100) > 40").toBeGreaterThan(0);
+    expect(stayed, "some seed must roll randint1(100) <= 40").toBeGreaterThan(0);
+    /* dist = 1 + trunc(100/40) = 3 grids requested; thrust_away stops early when
+     * blocked, so 3 is the ceiling, not the guarantee. */
+    expect(maxPush, "1 + 100/40 = 3 grids from a start distance of 1").toBeLessThanOrEqual(4);
+  });
+
+  it("the knockback roll is taken above 100 and skipped at 100 (L1105)", () => {
+    /* Town depth throughout, so the quake contributes no draws and the knockback
+     * roll is the only thing that can move the RNG.
+     *
+     * ON THE BOUNDARY, stated because it limits what this can prove: `damage >
+     * 100` and `damage >= 100` are BEHAVIOURALLY IDENTICAL here, and no test can
+     * separate them. At exactly 100 value is 0, and randint1(0) returns 1 without
+     * drawing in both implementations -- Rand_div returns 0 for m <= 1 with no
+     * draw (z-rand.c:176, rng.ts:187) -- and 1 > 40 is false either way. So the
+     * `>` is pinned by reading, not by measurement. Same for 101: randint1(1) also
+     * takes the m <= 1 short circuit.
+     *
+     * What IS measurable is that the roll happens once the gate opens for real.
+     * At damage 102 value is 2, randint1(2) draws, and the draw must show up as a
+     * divergence from the HURT control while still never exceeding 40. */
+    const at100 = shatter({ damage: 100, seed: 5, depth: 0, targetHp: 20_000 });
+    const hurt100 = shatter({
+      damage: 100,
+      seed: 5,
+      depth: 0,
+      targetHp: 20_000,
+      effect: "HURT",
+    });
+    expect(at100.target.hp, "the blow must land for the comparison to mean anything").toBeLessThan(
+      20_000,
+    );
+    expect(at100.target.grid).toEqual(TARGET);
+    expect(at100.rngAfter, "damage 100 must draw no knockback roll").toEqual(hurt100.rngAfter);
+
+    const at102 = shatter({ damage: 102, seed: 5, depth: 0, targetHp: 20_000 });
+    const hurt102 = shatter({
+      damage: 102,
+      seed: 5,
+      depth: 0,
+      targetHp: 20_000,
+      effect: "HURT",
+    });
+    expect(at102.target.hp).toBeLessThan(20_000);
+    expect(
+      at102.rngAfter,
+      "damage 102 -> value 2 -> randint1(2) must consume a draw the HURT control does not",
+    ).not.toEqual(hurt102.rngAfter);
+    expect(at102.target.grid, "randint1(2) can never exceed 40").toEqual(TARGET);
   });
 });

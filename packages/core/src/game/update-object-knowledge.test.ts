@@ -17,7 +17,6 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
 import { startGame } from "../session/game";
 import type { GamePack, StartedGame } from "../session/game";
 import { ObjRegistry } from "../obj/bind";
@@ -88,7 +87,6 @@ const pack: GamePack = {
 };
 
 const reg = new ObjRegistry(objPack);
-const constants = bindConstants(loadJson("constants"));
 
 /** The flavoured "Ring of Strength" kind from the pack (there is also a potion
  * named "Strength", so gate on jewelry). */
@@ -143,7 +141,7 @@ describe("update_player_object_knowledge sweep is wired (audit 03 KN-03/KN-04)",
     const msgs: string[] = [];
     game.state.msg = (t) => msgs.push(t);
 
-    const slot = invenWield(game.state, handle, constants);
+    const slot = invenWield(game.state, handle);
     expect(slot).toBeGreaterThanOrEqual(0);
 
     /* After: the wield learned the STR rune, and the sweep made the kind aware. */
@@ -160,7 +158,7 @@ describe("update_player_object_knowledge sweep is wired (audit 03 KN-03/KN-04)",
     const handle = carry(game, ring);
     /* NOT assessed: the ID gate must hold, so no awareness even after wield. */
 
-    invenWield(game.state, handle, constants);
+    invenWield(game.state, handle);
     expect(game.state.isAware!(kind)).toBe(false);
   });
 
@@ -182,7 +180,7 @@ describe("update_player_object_knowledge sweep is wired (audit 03 KN-03/KN-04)",
 
     const msgs: string[] = [];
     game.state.msg = (t) => msgs.push(t);
-    invenWield(game.state, handle, constants);
+    invenWield(game.state, handle);
 
     /* The kind is aware, so the floor ring is now named too, and the floor
      * instance won the first-reveal report (swept before gear, L1223<L1229). */
