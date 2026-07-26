@@ -156,16 +156,35 @@ describe("k-info.c: object (kind) rejections", () => {
 
 describe("k-info.c test_alloc_bad0: malformed allocation ranges", () => {
   /**
-   * The eight malformed forms from k-info.c that the port's grabIntRange
-   * refuses. Upstream also rejects three overflowing forms
-   * ("-8989999988989898889389 to 1", "1 to 38928673939573967296967390 23",
-   * "1119392572692029396720296 to 3399268...") because grab_int_range
-   * checks `lv1 <= INT_MIN || lv1 >= INT_MAX` (datafile.c:329-333, 352-355);
-   * the port's regex has no such bound. That divergence is recorded as a
-   * port defect in
-   * parity/phase3-2026-07-25/findings/W3-UNIT-TESTS-parse.md and is
-   * deliberately NOT asserted here.
+   * All eleven malformed forms from k-info.c test_alloc_bad0. The three
+   * OVERFLOWING ones used to be accepted by the port -- recorded as defect D2
+   * in findings/W3-UNIT-TESTS-parse.md -- and are now rejected, so they are
+   * asserted here alongside the rest.
+   *
+   * grab_int_range rejects an endpoint at INT_MIN and INT_MAX INCLUSIVE, not
+   * merely outside them, and the C says why (datafile.c:328-331): "Reject
+   * INT_MIN and INT_MAX as well so don't have to check errno in order to
+   * recognize overflow when sizeof(int) == sizeof(long)". A value that
+   * saturated strtol is indistinguishable from one that legitimately equals
+   * the limit, so upstream refuses both rather than guess.
    */
+  const overflowing = [
+    "-8989999988989898889389 to 1",
+    "1 to 38928673939573967296967390",
+    "1119392572692029396720296 to 3399268",
+  ];
+
+  it.each(overflowing)("grabIntRange rejects the overflowing %j (D2)", (range) => {
+    expect(() => grabIntRange(range)).toThrow(/out of range/);
+  });
+
+  it("rejects an endpoint exactly at INT_MAX / INT_MIN, as the C does", () => {
+    expect(() => grabIntRange("1 to 2147483647")).toThrow(/out of range/);
+    expect(() => grabIntRange("-2147483648 to 1")).toThrow(/out of range/);
+    /* One inside the bound on either side is fine. */
+    expect(grabIntRange("-2147483647 to 2147483646")).toEqual([-2147483647, 2147483646]);
+  });
+
   const malformed = [
     "7",
     "2to 7",

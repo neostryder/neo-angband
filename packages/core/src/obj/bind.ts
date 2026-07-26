@@ -143,11 +143,35 @@ export function parseRand(value: string | number | undefined): RandomValue {
   };
 }
 
-/** grab_int_range with sep "to": "10 to 100" -> [10, 100]. */
+/**
+ * grab_int_range with sep "to": "10 to 100" -> [10, 100] (datafile.c:320-372).
+ *
+ * Both endpoints are rejected at INT_MIN and INT_MAX inclusive, not merely
+ * outside them. That is deliberate upstream and the C says why at :328-331:
+ * "Reject INT_MIN and INT_MAX as well so don't have to check errno in order to
+ * recognize overflow when sizeof(int) == sizeof(long)". A value that saturated
+ * strtol is indistinguishable from one that legitimately equals the limit, so
+ * upstream refuses both rather than guess. Reproducing that means the port
+ * rejects the same three forms of k-info.c's test_alloc_bad0 that it used to
+ * accept (findings/W3-UNIT-TESTS-parse.md, D2).
+ */
+const INT_MIN = -2147483648;
+const INT_MAX = 2147483647;
+
 export function grabIntRange(range: string): [number, number] {
   const m = /^\s*(-?\d+)\s+to\s+(-?\d+)\s*$/.exec(range);
   if (!m) throw new Error(`obj: invalid allocation range "${range}"`);
-  return [Number(m[1]), Number(m[2])];
+  const lo = Number(m[1]);
+  const hi = Number(m[2]);
+  for (const v of [lo, hi]) {
+    if (v <= INT_MIN || v >= INT_MAX) {
+      throw new Error(
+        `obj: allocation range endpoint ${v} is out of range in "${range}" ` +
+          `(datafile.c:328-333 rejects INT_MIN and INT_MAX inclusive)`,
+      );
+    }
+  }
+  return [lo, hi];
 }
 
 /**
