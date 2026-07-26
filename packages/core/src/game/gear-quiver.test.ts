@@ -183,6 +183,19 @@ describe("preferredQuiverSlot (obj-gear.c L1396)", () => {
 /* ------------------------------------------------------------------ */
 
 describe("calcInventory (player-calcs.c calc_inventory)", () => {
+  it("builds a sorted inven view without reordering master gear", () => {
+    const gear = newGear();
+    /* Insertion is sword then potion, while earlier_object's decreasing-tval
+     * rule (player-calcs.c:959-961) puts the potion first. */
+    const sword = packAdd(gear, makeObj(TV.SWORD, 1));
+    const potion = packAdd(gear, makeObj(TV.POTION, 1));
+
+    calcInventory(gear, constants);
+
+    expect(gear.pack).toEqual([sword, potion]);
+    expect(gear.inven).toEqual([potion, sword]);
+  });
+
   function quiverSnapshot(gear: Gear): Array<[number, number]> {
     return (gear.quiver ?? []).map((handle) => [
       handle,
