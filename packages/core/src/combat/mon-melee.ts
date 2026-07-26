@@ -596,18 +596,7 @@ function resolveBlowEffect(
   }
 }
 
-/**
- * melee_handler_for_blow_effect (mon-blows.c:1191): upstream's name -> handler
- * table, as a list. The two switch statements in this file (resolveBlowEffect
- * for the recording path, resolveBlowEffectLive for the live path) are the
- * handlers themselves; this list is the table's key set, so a test can prove the
- * mapping total against the pack in both directions.
- *
- * Upstream's table has exactly these 30 entries (mon-blows.c:1197-1226) and
- * blow_effects.txt defines exactly the same 30 names, so a NULL handler (which
- * upstream reports as "ERROR: Effect handler not found", mon-attack.c:650/841)
- * is unreachable with vanilla data.
- */
+/** The set of RBE_ effect names this port resolves (for coverage checks). */
 export const RESOLVED_BLOW_EFFECTS: readonly string[] = [
   "NONE",
   "HURT",
