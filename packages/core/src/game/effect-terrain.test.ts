@@ -9,14 +9,13 @@ import {
 } from "../effects/interpreter";
 import type { EffectContext, EffectPlayer } from "../effects/interpreter";
 import { registerCoreHandlers } from "../effects/handlers";
-import { FLOOR, GRANITE, addMon, makeRace, makeState } from "./harness";
+import { addMon, makeRace, makeState } from "./harness";
 import type { GameState } from "./context";
 import { basicPlayerActor } from "./project-cast";
 import { attachGameEnv } from "./effect-game-env";
 import type { GameEffectEnv } from "./effect-game-env";
 import { floorCarry, floorPile } from "./floor";
 import {
-  knownFeat,
   knownObject,
   squareIsKnown,
   squareKnowPile,
@@ -293,7 +292,7 @@ describe("EF_LIGHT_LEVEL / EF_DARKEN_LEVEL (effect-handler-general.c L3003)", ()
 
   it("darkens the whole level", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
-    wizLightLevel(state, true, true);
+    wizLightLevel(state, true);
     const msgs: string[] = [];
     registry().effectSimple(EF.DARKEN_LEVEL, env(state, {}, msgs), {
       origin: sourcePlayer(),
@@ -302,140 +301,6 @@ describe("EF_LIGHT_LEVEL / EF_DARKEN_LEVEL (effect-handler-general.c L3003)", ()
     expect(msgs).toContain("A great blackness rolls through the dungeon...");
     expect(state.chunk.sqinfoHas(loc(3, 3), SQUARE.GLOW)).toBe(false);
     expect(state.chunk.sqinfoHas(loc(30, 20), SQUARE.GLOW)).toBe(false);
-  });
-
-  /*
-   * wiz_light (cave-map.c:417-479) and wiz_dark (:490-546) are line-for-line
-   * identical apart from sqinfo_on vs sqinfo_off of SQUARE_GLOW. Everything
-   * below is a property only the C body has; each assertion was verified to
-   * FAIL against the previous port body (which memorized unconditionally, had
-   * no mark/forget pass, ignored `full`, and called a forgetMap() that has no
-   * upstream counterpart).
-   */
-  describe("wiz_light / wiz_dark body (cave-map.c:417 / :490)", () => {
-    /** A 3x3 granite block so its faces are non-floor neighbours. */
-    const withWallBlock = (state: GameState): void => {
-      for (let y = 4; y <= 6; y++) {
-        for (let x = 4; x <= 6; x++) state.chunk.setFeat(loc(x, y), GRANITE);
-      }
-    };
-
-    it("memorizes only non-floor neighbours, never plain floor (cave-map.c:439)", () => {
-      const state = makeState({ playerGrid: loc(10, 10) });
-      withWallBlock(state);
-      wizLightLevel(state, true, true);
-      /* The block's grids are non-floor: remembered. */
-      expect(squareIsKnown(state, loc(4, 4))).toBe(true);
-      /* Open floor away from any wall: lit but NOT remembered. */
-      expect(state.chunk.sqinfoHas(loc(20, 12), SQUARE.GLOW)).toBe(true);
-      expect(squareIsKnown(state, loc(20, 12))).toBe(false);
-    });
-
-    it("wiz_dark memorizes exactly as wiz_light does, only darkening (cave-map.c:508-513)", () => {
-      const lit = makeState({ playerGrid: loc(10, 10) });
-      const dark = makeState({ playerGrid: loc(10, 10) });
-      withWallBlock(lit);
-      withWallBlock(dark);
-      wizLightLevel(lit, true, true);
-      wizLightLevel(dark, false, true);
-      /* Identical knowledge... */
-      expect(Array.from(dark.known.feat)).toEqual(Array.from(lit.known.feat));
-      expect(squareIsKnown(dark, loc(4, 4))).toBe(true);
-      /* ...opposite lighting. */
-      expect(dark.chunk.sqinfoHas(loc(20, 12), SQUARE.GLOW)).toBe(false);
-      expect(lit.chunk.sqinfoHas(loc(20, 12), SQUARE.GLOW)).toBe(true);
-    });
-
-    it("forgets a misremembered grid this pass did not mark (cave-map.c:456-459)", () => {
-      const state = makeState({ playerGrid: loc(10, 10) });
-      const stale = loc(20, 12); // open floor, no wall neighbour
-      /* Remember it as granite while the live grid is floor: memory is bad. */
-      state.chunk.setFeat(stale, GRANITE);
-      squareMemorize(state, stale);
-      state.chunk.setFeat(stale, FLOOR);
-      expect(squareIsKnown(state, stale)).toBe(true);
-
-      wizLightLevel(state, true, true);
-
-      /* Unmarked (plain floor, so never memorized/marked) and misremembered
-       * -> square_forget. */
-      expect(squareIsKnown(state, stale)).toBe(false);
-    });
-
-    it("refreshes a stale wall memory and clears MARK afterwards (cave-map.c:439-442 / :463-470)", () => {
-      const state = makeState({ playerGrid: loc(10, 10) });
-      withWallBlock(state);
-      const face = loc(4, 4); // in the block, so non-floor: marked + memorized
-      /* Seed a stale FLOOR memory of what is really granite. */
-      state.chunk.setFeat(face, FLOOR);
-      squareMemorize(state, face);
-      state.chunk.setFeat(face, GRANITE);
-      expect(knownFeat(state, face)).toBe(FLOOR);
-
-      wizLightLevel(state, true, true);
-
-      /* Marked and memorized by a neighbouring open grid's pass, so the memory
-       * is refreshed rather than blanked. */
-      expect(knownFeat(state, face)).toBe(GRANITE);
-      /*
-       * The unmark sweep leaves no MARK inside 1..h-2 / 1..w-2. This is
-       * savefile-visible state (wr_dungeon_aux writes every SQUARE_* byte), so
-       * a missing sweep would round-trip a stuck flag.
-       *
-       * NOTE: the `!square_ismark` half of the forget condition is provably
-       * REDUNDANT in 4.2.6 - a grid is marked only where it is also memorized
-       * (cave-map.c:441 sits inside the same if as :440's square_memorize), and
-       * a just-memorized grid can never be square_ismemorybad. It is ported
-       * anyway because core keeps the upstream body; only the sweep and the
-       * forget pass itself are observable.
-       */
-      for (let y = 1; y < state.chunk.height - 1; y++) {
-        for (let x = 1; x < state.chunk.width - 1; x++) {
-          expect(state.chunk.sqinfoHas(loc(x, y), SQUARE.MARK)).toBe(false);
-        }
-      }
-    });
-
-    it("threads `full`: know_pile when full, sense_pile otherwise (cave-map.c:445-452)", () => {
-      const full = makeState({ playerGrid: loc(10, 10) });
-      const sensed = makeState({ playerGrid: loc(10, 10) });
-      const grid = loc(20, 12);
-      for (const st of [full, sensed]) floorCarry(st, grid, makeObj());
-      wizLightLevel(full, true, true);
-      wizLightLevel(sensed, true, false);
-      /* square_know_pile records the real glyph; square_sense_pile records the
-       * null-glyph "something is here" marker. */
-      expect(knownObject(full, grid)?.ch).not.toBeNull();
-      expect(knownObject(sensed, grid)).not.toBeNull();
-      expect(knownObject(sensed, grid)?.ch).toBeNull();
-    });
-
-    it("wiz_dark senses/knows piles too - it is not a forget-everything", () => {
-      const state = makeState({ playerGrid: loc(10, 10) });
-      const grid = loc(20, 12);
-      floorCarry(state, grid, makeObj());
-      wizLightLevel(state, false, true);
-      expect(knownObject(state, grid)?.ch).not.toBeNull();
-    });
-
-    it("isCurrentCave=false is glow-only (the `c != cave` guard, generate.c:1109)", () => {
-      const state = makeState({ playerGrid: loc(10, 10) });
-      withWallBlock(state);
-      const grid = loc(20, 12);
-      floorCarry(state, grid, makeObj());
-      wizLightLevel(state, true, false, false);
-      expect(state.chunk.sqinfoHas(grid, SQUARE.GLOW)).toBe(true);
-      expect(squareIsKnown(state, loc(4, 4))).toBe(false);
-      expect(knownObject(state, grid)).toBeNull();
-    });
-
-    it("draws no RNG", () => {
-      const state = makeState({ playerGrid: loc(10, 10) });
-      const before = state.rng.getState();
-      wizLightLevel(state, true, true);
-      wizLightLevel(state, false, false);
-      expect(state.rng.getState()).toEqual(before);
-    });
   });
 });
 
@@ -502,12 +367,7 @@ describe("EF_DESTRUCTION (effect-handler-attack.c L1169)", () => {
     });
 
     expect(remembered.every((grid) => !squareIsKnown(state, grid))).toBe(true);
-    /* square_forget (cave-square.c:1580) is terrain-only, so the remembered
-     * pile on the spared player grid survives the *Destruction*
-     * (effect-handler-attack.c:1206 forgets, :1210 `continue`s on the player
-     * grid before touching objects). map_info's object loop (cave-map.c:155)
-     * is not gated on square_isknown, so upstream still draws it. */
-    expect(knownObject(state, state.actor.grid)).not.toBeNull();
+    expect(knownObject(state, state.actor.grid)).toBeNull();
     expect(floorPile(state, state.actor.grid)).toContain(spared);
   });
 

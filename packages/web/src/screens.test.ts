@@ -45,6 +45,12 @@ import {
   getHitChance,
   SKILL,
   PF_SIZE,
+  registerBookKinds,
+  objectPrep,
+  spellLearn,
+  objCanCastFrom,
+  objCanStudy,
+  bindConstants,
 } from "@neo-angband/core";
 import type {
   Textblock,
@@ -83,6 +89,7 @@ import {
   winnerLines,
   ctimeStamp,
   monsterListScreenLines,
+  magicBooks,
 } from "./screens";
 import type { Monster } from "@neo-angband/core";
 
@@ -133,6 +140,8 @@ const objReg = new ObjRegistry({
   objectProperty: loadJson("object_property"),
   flavor: loadJson("flavor"),
 } as ObjPackJson);
+
+const objConstants = bindConstants(loadJson("constants"));
 
 function openField(w: number, h: number) {
   const c = new Chunk(featureReg, h, w);
@@ -772,6 +781,53 @@ describe("bookSpellMenu (cast/study state labels + colours, 14.22/14.24)", () =>
     const row = items[sidx.indexOf(0)]!;
     expect(row.label).toBe("(illegible)");
     expect(row.color).toBe(colorToCss(COLOUR_L_DARK));
+  });
+});
+
+describe("magicBooks tester param (screens.ts, per-verb item_tester: cmd-obj.c L1129/1187/1215, ui-spell.c L340)", () => {
+  const mage = players.classByName("Mage")!;
+
+  /** A GameState wielding a real Mage class and carrying its first book. */
+  function makeMageBookState(): GameState {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.actor.player.cls = mage;
+    state.actor.player.lev = 1;
+    state.actor.player.spellFlags = new Array<number>(mage.magic.totalSpells).fill(0);
+    state.actor.player.upkeep.newSpells = 1;
+    registerBookKinds(objReg, players.classes);
+    const book = mage.magic.books[0]!;
+    const kind = objReg.kinds.find(
+      (k) => k.tval === book.tvalIdx && k.sval === book.sval,
+    )!;
+    const bookObj = objectPrep(new Rng(1), objReg, objConstants, kind, 0, "average");
+    const handle = gearAdd(state.gear, bookObj);
+    state.gear.pack.push(handle);
+    return state;
+  }
+
+  it("defaults to the browse behaviour: the book is offered even with nothing learned", () => {
+    const state = makeMageBookState();
+    const { items, handles } = magicBooks(state);
+    expect(items.length).toBe(1);
+    expect(handles.length).toBe(1);
+  });
+
+  it("a cast tester (obj_can_cast_from) hides the book until a spell is learned", () => {
+    const state = makeMageBookState();
+    const p = state.actor.player;
+    expect(magicBooks(state, (o) => objCanCastFrom(p, o)).items.length).toBe(0);
+    spellLearn(p, 0);
+    expect(magicBooks(state, (o) => objCanCastFrom(p, o)).items.length).toBe(1);
+  });
+
+  it("a study tester (obj_can_study) hides the book once nothing is left to learn", () => {
+    const state = makeMageBookState();
+    const p = state.actor.player;
+    expect(magicBooks(state, (o) => objCanStudy(p, o)).items.length).toBe(1);
+    for (const s of mage.magic.books[0]!.spells.filter((sp) => sp.level <= p.lev)) {
+      spellLearn(p, s.sidx);
+    }
+    expect(magicBooks(state, (o) => objCanStudy(p, o)).items.length).toBe(0);
   });
 });
 

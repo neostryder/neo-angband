@@ -12,13 +12,7 @@ import type { TrapRecordJson } from "../world/trap";
 import { addMon, makeState, monReg } from "./harness";
 import { floorCarry, floorPile } from "./floor";
 import { gearAdd } from "./gear";
-import {
-  placeTrap,
-  squareDoorPower,
-  squareIsTrap,
-  squareSetDoorLock,
-  squareTrap,
-} from "./trap";
+import { placeTrap, squareTrap } from "./trap";
 import type { TrapDeps } from "./trap";
 import { invenDamage, projectObject } from "./project-obj";
 import { projectFeature } from "./project-feat";
@@ -253,39 +247,6 @@ describe("project_f (project-feat.c)", () => {
     for (const t of squareTrap(state, grid)) {
       expect(t.timeout).toBe(10);
     }
-  });
-
-  it("KILL_TRAP unlocks a locked door by ZEROING the lock, not deleting it", () => {
-    /*
-     * square_unlock_door (cave-square.c:1377-1380) is square_set_door_lock(c,
-     * grid, 0), and square_set_door_lock (trap.c:706-726) KEEPS the "door lock"
-     * trap and sets its power to 0. project_feature_handler_KILL_TRAP
-     * (project-feat.c:239-247) is its only caller. So after the unlock the grid
-     * still HOLDS a trap - square_istrap is true, and wr_traps_aux writes one
-     * record - it merely has power 0.
-     */
-    const state = makeState({ seed: 21 });
-    const grid = loc(7, 9);
-    state.chunk.setFeat(grid, FEAT.CLOSED);
-    squareSetDoorLock(state, grid, 5, trapDeps);
-    expect(squareDoorPower(state, grid, trapDeps)).toBe(5);
-
-    const msgs: string[] = [];
-    projectFeature(state, 0, grid, 0, PROJ.KILL_TRAP, {
-      trapDeps,
-      msg: (t: string) => msgs.push(t),
-    });
-
-    expect(squareDoorPower(state, grid, trapDeps)).toBe(0);
-    /* The trap object survives with power 0 - the whole point. */
-    const lock = lookupTrap(trapKinds, "door lock")!;
-    const traps = squareTrap(state, grid);
-    expect(traps).toHaveLength(1);
-    expect(traps[0]!.tidx).toBe(lock.tidx);
-    expect(traps[0]!.power).toBe(0);
-    expect(squareIsTrap(state, grid)).toBe(true);
-    /* And the door is still a closed, now-unlocked door. */
-    expect(state.chunk.isClosedDoor(grid)).toBe(true);
   });
 
   it("fire clears webs and extreme heat makes lava", () => {

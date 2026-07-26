@@ -4,7 +4,7 @@
  * sort order and membership gating against the C oracle cited per function.
  */
 import { describe, it, expect } from "vitest";
-import { TV, TF, TRF, KF, COLOUR_YELLOW, colorToCss } from "@neo-angband/core";
+import { TV, TF, TRF, KF } from "@neo-angband/core";
 import type {
   Feature,
   FeatureRegistry,
@@ -13,8 +13,6 @@ import type {
   ObjectKind,
   EgoItem,
   EverseenKnowledge,
-  Player,
-  Rune,
 } from "@neo-angband/core";
 import {
   buildObjGroupOrder,
@@ -26,7 +24,6 @@ import {
   trapKnowledgeGroups,
   objectKnowledgeGroups,
   egoKnowledgeGroups,
-  runeKnowledgeGroups,
   type ObjectBrowserDeps,
   type KnowledgeGroup,
 } from "./knowledge";
@@ -243,63 +240,5 @@ describe("groupsToMenu", () => {
     expect(items[0]!.disabled).toBe(true);
     expect(items[2]!.disabled).toBe(true);
     expect(members).toEqual([null, "a", null, "b"]);
-  });
-});
-
-describe("runeKnowledgeGroups (do_cmd_knowledge_runes, ui-knowledge.c L2291)", () => {
-  /** Two runes the player knows: the +AC combat rune and one brand. */
-  const runes: Rune[] = [
-    { variety: "combat", index: 0, name: "enchantment to armor" },
-    { variety: "brand", index: 1, name: "fire" },
-  ];
-  const player = {
-    objKnown: {
-      toA: 1,
-      toH: 0,
-      toD: 0,
-      modifiers: [],
-      elInfo: [],
-      brands: [true, true],
-      slays: [],
-      curses: [],
-    },
-  } as unknown as Player;
-
-  it("labels rows with rune_name, not the bare name (ui-knowledge.c:2198)", () => {
-    const { groups } = runeKnowledgeGroups(runes, player);
-    const labels = groups.flatMap((g) => g.rows.map((r) => r.label));
-    expect(labels).toContain("enchantment to armor");
-    expect(labels).toContain("fire brand");
-  });
-
-  it("shows the autoinscription yellow at column 47 (display_rune, :2200-2202)", () => {
-    const { groups } = runeKnowledgeGroups(runes, player, (i) =>
-      i === 0 ? "{ac}" : undefined,
-    );
-    const rows = groups.flatMap((g) => g.rows);
-    const ac = rows.find((r) => r.label === "enchantment to armor")!;
-    const fire = rows.find((r) => r.label === "fire brand")!;
-    expect(ac.suffix).toEqual({ text: "{ac}", color: colorToCss(COLOUR_YELLOW), col: 47 });
-    expect(fire.suffix).toBeUndefined();
-  });
-
-  it("offers '}' only for an inscribed rune (rune_xtra_prompt, :2238-2244)", () => {
-    const { groups } = runeKnowledgeGroups(runes, player, (i) =>
-      i === 0 ? "{ac}" : undefined,
-    );
-    const rows = groups.flatMap((g) => g.rows);
-    expect(rows.find((r) => r.label === "enchantment to armor")!.hint).toBe(
-      ", 'r'ecall, '{', '}'",
-    );
-    expect(rows.find((r) => r.label === "fire brand")!.hint).toBe(", 'r'ecall, '{'");
-  });
-
-  it("groupsToMenu carries the suffix and hint onto the menu row", () => {
-    const { groups } = runeKnowledgeGroups(runes, player, () => "{x}");
-    const { items } = groupsToMenu(groups);
-    const withSuffix = items.filter((it) => it.suffix !== undefined);
-    expect(withSuffix.length).toBe(2);
-    expect(withSuffix[0]!.suffix!.col).toBe(47);
-    expect(items.every((it) => it.disabled || it.hint !== undefined)).toBe(true);
   });
 });

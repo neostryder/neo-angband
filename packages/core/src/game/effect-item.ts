@@ -40,6 +40,7 @@ import {
   tvalCanHaveCharges,
   tvalIsAmmo,
   tvalIsArmor,
+  tvalIsBolt,
   tvalIsStaff,
   tvalIsWand,
   tvalIsWeapon,
@@ -145,7 +146,7 @@ export function requestForEffect(
       return {
         prompt: "Brand which bolts? ",
         reject: "You have no bolts to brand.",
-        tester: (o) => o.tval === TV.BOLT,
+        tester: (o) => tvalIsBolt(o.tval),
         mode: { inven: true, quiver: true, floor: true },
       };
     case EF.CREATE_ARROWS:

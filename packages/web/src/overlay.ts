@@ -513,9 +513,17 @@ function paintLineEdit(
  * draws as an inverted cell. The default renders in COLOUR_YELLOW until the
  * first keypress and COLOUR_WHITE after (L892 vs L907).
  *
- * Upstream handles exactly six cases and no others -- ESCAPE, KC_ENTER,
- * ARROW_LEFT, ARROW_RIGHT, KC_BACKSPACE/KC_DELETE, and printable -- so anything
- * else is deliberately inert here too.
+ * askfor_aux_keypress handles exactly six cases and no others -- ESCAPE,
+ * KC_ENTER, ARROW_LEFT, ARROW_RIGHT, KC_BACKSPACE/KC_DELETE, and printable --
+ * so anything else is deliberately inert here too.
+ *
+ * `randomize` opts this surface into get_name_keypress (ui-input.c L1028), the
+ * handler askfor_aux is given for the CHARACTER NAME field specifically: it
+ * intercepts '*' ahead of the default handler, replaces the whole buffer with
+ * player_random_name's output and resets the cursor to 0 (L1035-1042), then
+ * carries on editing. `firsttime` is not consulted by that case, so '*' as the
+ * very first key replaces rather than clears-and-inserts; it does clear
+ * firsttime afterwards, as any keypress does (L910).
  */
 export function promptText(
   term: GlyphTerm,
@@ -523,6 +531,7 @@ export function promptText(
   initial = "",
   maxLen = 15,
   footer = "[ type a name, Enter to accept, ESC to cancel ]",
+  randomize?: () => string,
 ): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     const st: LineEdit = { buf: initial, curs: 0 };
@@ -545,6 +554,17 @@ export function promptText(
       ev.stopImmediatePropagation();
       const wasFirst = firsttime;
       firsttime = false;
+      /* get_name_keypress' '*' case (ui-input.c L1035-1042), ahead of the
+       * default handler and independent of firsttime. */
+      if (randomize && ev.key === "*") {
+        const generated = randomize();
+        if (generated !== "") {
+          st.buf = generated.slice(0, maxLen);
+          st.curs = 0;
+        }
+        paint();
+        return;
+      }
       const r = askforAuxKeypress(
         st,
         maxLen,
@@ -650,13 +670,6 @@ export interface MenuItem {
    * the list never jumps as the cursor moves.
    */
   hint?: string;
-  /**
-   * A right-hand annotation drawn at a fixed column in its OWN colour, after
-   * the label. This is display_rune's second field (ui-knowledge.c:2201-2202:
-   * `c_put_str(COLOUR_YELLOW, inscrip, row, 47)`) - the rune's autoinscription
-   * beside its name. Rows without one paint exactly as before.
-   */
-  suffix?: { text: string; color: string; col: number };
 }
 
 /**
@@ -791,16 +804,6 @@ export function selectFromMenu(
         const prefix = letter ? `${mark}${letter}) ` : `${mark}   `;
         const color = it.disabled ? DIM : i === cursor && extra?.cursorColor ? extra.cursorColor : it.color ?? FG;
         term.print(0, BODY_TOP + r, `${prefix}${it.label}`.slice(0, cols - 1), color);
-        /* display_rune's second field: its own colour at its own column. */
-        const sfx = it.suffix;
-        if (sfx && sfx.text.length > 0 && sfx.col < cols - 1) {
-          term.print(
-            sfx.col,
-            BODY_TOP + r,
-            sfx.text.slice(0, cols - 1 - sfx.col),
-            it.disabled ? DIM : sfx.color,
-          );
-        }
       }
       let dy = BODY_TOP + bodyRows;
       for (const line of detailLines) {

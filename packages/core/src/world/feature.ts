@@ -88,6 +88,30 @@ function joinLines(lines: string[] | undefined): string {
   return lines ? lines.join("") : "";
 }
 
+/**
+ * player.h's digging enum: DIGGING_RUBBLE = 0 .. DIGGING_DOORS = 4,
+ * DIGGING_MAX = 5. parse_feat_digging (init.c) accepts only
+ * `DIGGING_RUBBLE + 1 .. DIGGING_MAX`, i.e. 1..5 -- 0 and DIGGING_MAX + 1
+ * are both PARSE_ERROR_OUT_OF_BOUNDS (f-info.c test_digging_bad0). f->dig
+ * indexes calc_digging_chances()' `chances[DIGGING_MAX]`, so an
+ * out-of-range value is a live out-of-bounds read upstream too; upstream
+ * refuses the data rather than clamping, and so does this.
+ */
+const DIGGING_MIN_VALID = 1;
+const DIGGING_MAX_VALID = 5;
+
+function resolveDigging(code: string, dig: number | undefined): number {
+  if (dig === undefined) return 0;
+  if (dig < DIGGING_MIN_VALID || dig > DIGGING_MAX_VALID) {
+    throw new Error(
+      `terrain: ${code}: digging ${String(dig)} is out of bounds ` +
+        `(PARSE_ERROR_OUT_OF_BOUNDS; init.c parse_feat_digging accepts ` +
+        `${String(DIGGING_MIN_VALID)}..${String(DIGGING_MAX_VALID)})`,
+    );
+  }
+  return dig;
+}
+
 function resolveResistFlag(name: string | undefined): number {
   if (!name) return 0;
   const value = (RF as Record<string, number>)[name];
@@ -120,7 +144,7 @@ export class FeatureRegistry {
         desc: joinLines(rec.desc),
         mimic: null,
         priority: rec.priority ?? 0,
-        dig: rec.digging ?? 0,
+        dig: resolveDigging(rec.code, rec.digging),
         flags: parseFlagNames(rec.flags),
         dAttr: rec.graphics?.color ?? "w",
         dChar: rec.graphics?.glyph ?? " ",
