@@ -183,6 +183,13 @@ describe("preferredQuiverSlot (obj-gear.c L1396)", () => {
 /* ------------------------------------------------------------------ */
 
 describe("calcInventory (player-calcs.c calc_inventory)", () => {
+  function quiverSnapshot(gear: Gear): Array<[number, number]> {
+    return (gear.quiver ?? []).map((handle) => [
+      handle,
+      handle ? gearGet(gear, handle)?.number ?? 0 : 0,
+    ]);
+  }
+
   it("routes carried ammo into quiver slot 0", () => {
     const gear = newGear();
     const h = invenCarry(gear, makeObj(TV.ARROW, 30), limits);
@@ -263,6 +270,99 @@ describe("calcInventory (player-calcs.c calc_inventory)", () => {
     calcInventory(gear, constants);
     expect(gear.quiver!.every((q) => q === 0)).toBe(true);
     expect(objectIsInQuiver(gear, h)).toBe(false);
+  });
+
+  /*
+   * Upstream's calc_inventory tests call it twice and require the second pass
+   * to reproduce the first pointer-for-pointer
+   * (reference/src/tests/player/calc-inventory.c:231-263). In the C that is
+   * automatic because every ordering input is read off the global player
+   * (earlier_object, player-calcs.c:954-959 and :986-996); here they arrive as
+   * arguments, so the SAME opts must be passed both times or the two calls are
+   * not the same experiment. Passing them once and omitting them the second
+   * time tests nothing about idempotence -- it tests the argument default.
+   */
+  it("keeps the equipped/pack/quiver fixture stable on a second calculation", () => {
+    /* reference/src/tests/player/calc-inventory.c:396-478 */
+    const gear = newGear();
+    const fixture: Array<[number, number]> = [
+      [TV.BOLT, 10],
+      [TV.SCROLL, 4],
+      [TV.SWORD, 1],
+      [TV.POTION, 3],
+      [TV.ARROW, 7],
+      [TV.SHOT, 13],
+      [TV.ARROW, 15],
+      [TV.SCROLL, 3],
+      [TV.POTION, 1],
+      [TV.BOLT, 5],
+      [TV.SHOT, 3],
+      [TV.POTION, 2],
+    ];
+    for (const [tval, number] of fixture) {
+      packAdd(gear, makeObj(tval, number));
+    }
+
+    const opts = { ammoTval: TV.SHOT };
+    calcInventory(gear, constants, opts);
+    const first = quiverSnapshot(gear);
+    calcInventory(gear, constants, opts);
+
+    expect(quiverSnapshot(gear)).toEqual(first);
+  });
+
+  it("keeps the oversubscribed quiver fixture stable on a second calculation", () => {
+    /* reference/src/tests/player/calc-inventory.c:482-541 */
+    const gear = newGear();
+    const fixture: Array<[number, number]> = [
+      [TV.SHOT, 40],
+      [TV.ARROW, 40],
+      [TV.BOLT, 40],
+      [TV.ARROW, 40],
+      [TV.SHOT, 40],
+      [TV.ARROW, 10],
+      [TV.BOLT, 7],
+      [TV.ARROW, 15],
+      [TV.BOLT, 40],
+      [TV.SHOT, 25],
+      [TV.BOLT, 12],
+      [TV.SHOT, 17],
+    ];
+    for (const [tval, number] of fixture) {
+      packAdd(gear, makeObj(tval, number));
+    }
+
+    const opts = { ammoTval: TV.ARROW };
+    calcInventory(gear, constants, opts);
+    const first = quiverSnapshot(gear);
+    calcInventory(gear, constants, opts);
+
+    expect(quiverSnapshot(gear)).toEqual(first);
+  });
+
+  /*
+   * The real defect the idempotence investigation surfaced: session/game.ts's
+   * refreshInventory and refreshQuiver omitted ammoTval, so a pickup or a store
+   * purchase re-sorted the quiver as if no launcher were wielded. Asserted here
+   * as the ORDERING consequence, so the test fails if either call site drops
+   * the argument again -- the wiring is what broke, not the function.
+   */
+  it("usable ammo outranks a higher tval, and only ammoTval can do that", () => {
+    const gear = newGear();
+    /* TV_BOLT (4) > TV_ARROW (3) in list-tvals.h, and "objects sort by
+     * decreasing type" (player-calcs.c:962-964) runs AFTER the ammo branch at
+     * :952-959. So bolts lead by tval unless ammo_tval names the arrows: the
+     * one arrangement that ONLY the ammo_tval input can produce. */
+    const bolts = packAdd(gear, makeObj(TV.BOLT, 10));
+    const arrows = packAdd(gear, makeObj(TV.ARROW, 10));
+
+    calcInventory(gear, constants, { ammoTval: TV.ARROW });
+    expect(gear.quiver![0]).toBe(arrows);
+
+    /* Omitted -- the pre-fix session behaviour: the launcher preference is lost
+     * and the bolts take slot 0 on tval alone. */
+    calcInventory(gear, constants, {});
+    expect(gear.quiver![0]).toBe(bolts);
   });
 });
 

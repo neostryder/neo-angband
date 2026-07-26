@@ -15,18 +15,35 @@
  * dev library), and the COMMITTED artifact is the resulting JSON - the fast
  * vitest parity check consumes that JSON and never needs sqlite at test time.
  *
- * Coverage. The C schema splits floor objects across several detail tables
- * (consumables with a remapped index, plus wearables_* and artifacts), so the
- * object-kind distribution is a documented next increment. What IS mapped here
- * is the highest-signal, cleanly-keyed level-generation output:
+ * Coverage. What is mapped:
  *   - monsters (total + per race index) from table `monsters(level,count,k_idx)`
  *     where k_idx is the monster race index (r_idx), aligned with the port ridx;
  *   - gold (total + per origin) from `gold(level,count,origin)`;
  *   - object / monster level-feeling histograms from `obj_feelings`/`mon_feelings`;
  *   - levels-per-depth derived as SUM(obj_feelings.count) at that depth, since
- *     each generated level contributes exactly one feeling sample.
- * Object fields (objectTotal/objectsByTval/objectsByKind/artifacts) are left at
- * zero and MUST be excluded from a C comparison (see compareReports `metrics`).
+ *     each generated level contributes exactly one feeling sample;
+ *   - objects (total + per kind + per tval) and artifacts, reassembled from the
+ *     detail tables as described below.
+ *
+ * Objects: the C splits every logged object across two mutually exclusive
+ * tables. `log_all_objects` (main-stats.c:633-657) sends an object to the
+ * `wearables_*` family if `tval_has_variable_power`, and otherwise to
+ * `consumables`; `wearables_count(level,count,k_idx,origin)` is the plain
+ * per-kind count for the first bucket. So the object total is
+ * `wearables_count + consumables`, and every object is counted exactly once.
+ *
+ * MONEY IS SUBTRACTED. The C's gold capture at :624-626 is additive and does
+ * NOT `continue`, so a money object is accumulated into `gold[origin]` AND then
+ * falls through to the `consumables` bucket at :656 -- it appears in both. The
+ * port's `collectLevel` deliberately `continue`s on TV_GOLD before touching
+ * objectTotal, so to compare like with like the money kinds are excluded here,
+ * identified by `object_info.tval = 35` (TV_GOLD is last in list-tvals.h). On
+ * the 1000-run oracle that is 2.82M of 7.03M consumable entries, so leaving it
+ * in would inflate the C object total by ~40% and manufacture a divergence.
+ *
+ * Kind indices in these tables are REAL kind indices, not the compacted ones
+ * used in memory: `stats_lookup_index` (main-stats.c:1359) inverts
+ * `wearables_index` / `consumables_index` before the row is written.
  */
 
 import { execFileSync } from "node:child_process";
@@ -34,13 +51,29 @@ import type { DepthMetrics, StatsReport } from "./stats";
 import { emptyDepth } from "./stats";
 
 /** Which StatsReport metrics the C import populates (for comparison scoping). */
-export const C_SCALAR_METRICS = ["levels", "monsterTotal", "gold"] as const;
+export const C_SCALAR_METRICS = [
+  "levels",
+  "monsterTotal",
+  "gold",
+  "objectTotal",
+  "artifacts",
+] as const;
 export const C_RECORD_METRICS = [
   "monsters",
   "goldByOrigin",
   "objFeeling",
   "monFeeling",
+  "objectsByTval",
+  "objectsByKind",
 ] as const;
+
+/**
+ * TV_GOLD. Last entry in `reference/src/list-tvals.h`, so its value is the tval
+ * count; hard-coded rather than derived because the DB does not carry the tval
+ * name list and this import must not depend on the port's own tables to read
+ * the oracle. Asserted against the DB in the importer.
+ */
+const TV_GOLD = 35;
 
 export interface ImportCStatsOptions {
   /** Path/name of the sqlite3 CLI. Default: $NEO_SQLITE3 or "sqlite3". */
@@ -153,6 +186,54 @@ export function importCStats(
     if (m) m.monFeeling[String(r.feeling)] = (m.monFeeling[String(r.feeling)] ?? 0) + r.count;
   }
 
+  /*
+   * Objects. `wearables_count` and `consumables` partition every logged object
+   * (main-stats.c:633-657), so the two summed give the total with no
+   * double-count; money is dropped because it is ALSO in `consumables` and the
+   * port excludes it from objectTotal (see the header). Both tables carry real
+   * kind indices, and object_info supplies the tval for each.
+   */
+  const maxTval = query<{ t: number }>(
+    sqlite3,
+    dbPath,
+    "SELECT MAX(tval) AS t FROM object_info;",
+  )[0]?.t;
+  if (maxTval !== TV_GOLD) {
+    throw new Error(
+      `c-stats: expected TV_GOLD=${TV_GOLD} to be the highest tval in ` +
+        `object_info (list-tvals.h puts GOLD last) but found ${maxTval}. ` +
+        "The tval numbering has moved; re-check the money exclusion before trusting objectTotal.",
+    );
+  }
+  for (const table of ["wearables_count", "consumables"] as const) {
+    for (const r of query<{ level: number; count: number; k_idx: number; tval: number }>(
+      sqlite3,
+      dbPath,
+      `SELECT t.level, t.count, t.k_idx, oi.tval FROM ${table} t ` +
+        `JOIN object_info oi ON oi.idx = t.k_idx ` +
+        `WHERE t.level >= ${depthMin} AND t.level <= ${depthMax} ` +
+        `AND oi.tval <> ${TV_GOLD};`,
+    )) {
+      const m = depths[String(r.level)];
+      if (!m) continue;
+      m.objectTotal += r.count;
+      m.objectsByKind[String(r.k_idx)] =
+        (m.objectsByKind[String(r.k_idx)] ?? 0) + r.count;
+      m.objectsByTval[String(r.tval)] =
+        (m.objectsByTval[String(r.tval)] ?? 0) + r.count;
+    }
+  }
+
+  /* Artifacts: one row per (level, a_idx, origin); mirrors L628-630. */
+  for (const r of query<{ level: number; count: number }>(
+    sqlite3,
+    dbPath,
+    `SELECT level, count FROM artifacts WHERE ${range};`,
+  )) {
+    const m = depths[String(r.level)];
+    if (m) m.artifacts += r.count;
+  }
+
   const anyLevels = Object.values(depths).find((m) => m.levels > 0)?.levels ?? 0;
 
   return {
@@ -170,10 +251,13 @@ export function importCStats(
       note:
         "Imported from the C main-stats SQLite DB (Angband " +
         (meta.version ?? "4.2.6") +
-        "). Covers monster/gold/feeling generation distributions; object-kind " +
-        "distribution is not yet imported (C splits it across detail tables). " +
-        "Compare with normalizeByLevels + STATISTICAL_TOLERANCE over the " +
-        "C-covered metrics only.",
+        "). Covers monster, gold, object (count/kind/tval), artifact and " +
+        "level-feeling generation distributions. Object counts are reassembled " +
+        "from wearables_count + consumables with the money kinds removed, " +
+        "because the C logs a money object into BOTH gold and consumables while " +
+        "the port excludes it from objectTotal. Per-level squares are absent by " +
+        "construction (the C stores per-depth aggregates, not per-run samples), " +
+        "so any mean test estimates the shared variance from the port side.",
     },
     depths,
   };
