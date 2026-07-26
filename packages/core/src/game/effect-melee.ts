@@ -23,7 +23,7 @@
  * EF_SINGLE_COMBAT rides arena levels (not modelled, #24).
  */
 
-import { EF, TMD } from "../generated";
+import { EF, MON_MSG, TMD } from "../generated";
 import { PROJECT } from "../world/project";
 import type { Loc } from "../loc";
 import { CLOCKWISE_GRID, DDGRID, DDGRID_DDD, distance, loc, locDiff, locSum } from "../loc";
@@ -49,6 +49,11 @@ import type { GameState } from "./context";
 import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context";
 import { gameEnv } from "./effect-game-env";
 import type { GameEffectEnv } from "./effect-game-env";
+import {
+  formatMonsterMessage,
+  formatPainMessage,
+  formatPainMessageShowDamage,
+} from "./mon-message";
 import { castProjection, playerCastSource } from "./project-cast";
 import { squareIsPlayerTrap, squareIsWebbed } from "./trap";
 import {
@@ -126,6 +131,7 @@ function effectHit(
   mon: Monster,
   dam: number,
   note: string,
+  showDamage = false,
 ): boolean {
   const result = monTakeHit(state.rng, mon, dam, note, {
     /* become_aware: a direct-damage effect (EF_TAP_UNLIFE, EF_CURSE, ...)
@@ -139,9 +145,25 @@ function effectHit(
     deleteMonster(state, mon.midx);
     return true;
   }
-  /* message_pain rides the display layer; the flee message is kept. */
-  if (result.fear && monsterIsVisible(mon)) {
-    say(ctx, `${mon.race.name} flees in terror!`);
+  /*
+   * A survivor gets its graded pain line, then the flee line
+   * (effect-handler-attack.c:1651-1657 TAP_UNLIFE, 1693-1702 CURSE,
+   * 1770-1776 JUMP_AND_BITE - all three gate both on monster_is_visible).
+   * message_pain runs after mon_take_hit, so mon.hp is already the post-hit
+   * value get_pain_msg_code (mon-msg.c:96) compares against. CURSE alone takes
+   * the message_pain_show_damage branch, under OPT(player, show_damage).
+   */
+  if (monsterIsVisible(mon)) {
+    const pain = showDamage
+      ? formatPainMessageShowDamage(mon, dam)
+      : formatPainMessage(mon, dam);
+    if (pain) say(ctx, pain);
+    if (result.fear) {
+      /* add_monster_message(MON_MSG_FLEE_IN_TERROR): "The kobold flees in
+       * terror!" through get_subject, not a bare race name. */
+      const flee = formatMonsterMessage(mon, MON_MSG.FLEE_IN_TERROR);
+      if (flee) say(ctx, flee);
+    }
   }
   return false;
 }
@@ -201,7 +223,10 @@ const handleTAP_UNLIFE: EffectHandler = (ctx) => {
 
   /* Hurt the monster */
   const drain = Math.trunc(Math.min(mon.hp, amount) / 4);
-  say(ctx, `You draw power from the ${mon.race.name}.`);
+  /* effect-handler-attack.c:1637-1641: the suffix reports `amount` (the damage
+   * dealt), not `drain` (the mana gained). */
+  const tapTail = ctx.env.showDamage ? ` (${amount})` : "";
+  say(ctx, `You draw power from the ${mon.race.name}.${tapTail}`);
   effectHit(ctx, state, mon, amount, " is destroyed!");
 
   /* Gain mana (effect_simple(EF_RESTORE_MANA, drain)) */
@@ -231,7 +256,11 @@ const handleCURSE: EffectHandler = (ctx) => {
     return false;
   }
 
-  effectHit(ctx, state, mon, dam, " dies!");
+  /* display_dam (effect-handler-attack.c:1671): OPT(player, show_damage) puts
+   * the damage in the death note AND selects message_pain_show_damage. */
+  const displayDam = ctx.env.showDamage ?? false;
+  const note = displayDam ? ` dies! (${dam})` : " dies!";
+  effectHit(ctx, state, mon, dam, note, displayDam);
   return true;
 };
 
@@ -325,7 +354,10 @@ const handleJUMP_AND_BITE: EffectHandler = (ctx) => {
 
   /* Now bite it */
   const drain = Math.min(mon.hp + 1, amount);
-  say(ctx, `You bite ${name}.`);
+  /* effect-handler-attack.c:1755-1759: this one reports `drain` (the amount
+   * healed/nourished), unlike EF_TAP_UNLIFE which reports the damage. */
+  const biteTail = ctx.env.showDamage ? ` (${drain})` : "";
+  say(ctx, `You bite ${name}.${biteTail}`);
   effectHit(ctx, state, mon, amount, " is drained dry!");
 
   /* Heal and nourish (effect_simple(EF_HEAL_HP) + TMD_FOOD). */
