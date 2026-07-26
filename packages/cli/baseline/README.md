@@ -8,25 +8,56 @@ them.
 Imported from the compiled **C Angband 4.2.6 `main-stats`** tool
 (`meta.generatedBy = "c-main-stats"`). This is upstream output, so the port is
 diffed AGAINST it - it is the actual cross-implementation parity check the audit
-(07 AUX-2) asked for. Enforced by `../src/parity-c.test.ts` with the
-`STATISTICAL` tolerance and `normalizeByLevels` (the C and TS RNG streams differ
-by design under D1 = B, so per-level RATES match, not exact integers).
+(07 AUX-2) asked for. Enforced by `../src/parity-c-stat.test.ts`, where every
+comparison is a hypothesis test that states its own resolving power. That
+SUPERSEDED the older `parity-c.test.ts` abs/rel tolerance gate, which could not
+tell a real divergence from an under-sampled one.
 
-Coverage: the cleanly-keyed generation metrics - monsters (total + per race),
-level feelings (obj/mon), and gold (total + per origin). The object-kind
-distribution is not yet imported (C splits it across several detail tables with a
-remapped index); that is a documented next increment.
+Coverage: monsters (total + per race index), gold (total + per origin), objects
+(total + per kind + per tval), artifacts, and the object/monster level-feeling
+histograms. Levels-per-depth is derived as `SUM(obj_feelings.count)`, since each
+generated level contributes exactly one feeling sample.
 
-### Known honest deltas (surfaced by this harness, tracked for a later phase)
+Two things about the object counts are worth knowing before you touch the
+importer:
 
-These persist as the run count grows, so they are real, not sampling noise:
+- The C partitions every logged object across **two** tables. `log_all_objects`
+  (`main-stats.c:633-657`) sends it to the `wearables_*` family if
+  `tval_has_variable_power`, and otherwise to `consumables`; the total is
+  `wearables_count + consumables`, counted exactly once each.
+- **Money is subtracted, and getting that wrong is a ~40% error.** The C's gold
+  capture at `:624-626` is additive and does not `continue`, so a money object
+  is accumulated into `gold[origin]` AND falls through into `consumables` - it
+  is in both tables. The port's `collectLevel` deliberately skips `TV_GOLD`
+  before counting, so the importer drops the money kinds to match. On the
+  1000-run oracle money is 2.82M of 7.03M consumable entries.
 
-- **Depth-6 monster density ~10% low** in the port vs upstream. Every other
-  depth's density and every monster species distribution match within tolerance.
+Per-level squares are absent by construction: the C schema stores per-depth
+aggregates, not per-run samples, so any mean test estimates the shared variance
+from the port side. That is also what blocks a valid monster-species test, which
+needs the LEVEL as the unit of observation - see
+`parity/phase3-2026-07-25/findings/NOISE-FLOOR.md`.
+
+### Open divergences this harness has surfaced
+
+- **Object level feelings: the port's levels rate RICHER than upstream's.**
+  Pooled across depths, G/df = 2.70 at 1000 levels per depth (p = 8.4e-25), and
+  it STRENGTHENS with sample size, which is what makes it real. Object *count*
+  matches within about 1% at every depth, so the bias is in the value of what is
+  generated rather than the quantity. See
+  `parity/phase3-2026-07-25/findings/OBJFEEL.md`.
 - **Gold-by-origin classification differs.** Gold totals are close, but the port
   assigns some gold to different `ORIGIN_*` buckets than upstream (e.g. origin 12
-  at several depths). The gold TOTAL is guarded loosely so a gross gold
+  at several depths). The gold TOTAL is asserted separately so a gross gold
   regression cannot hide behind this; the per-origin split is a tracked finding.
+
+Two entries that used to be listed here are CLOSED and must not be revived from
+an old copy of this file: the depth-6 monster density deficit (S-2) was a
+sampling artifact - the per-level density standard deviation is near 17 on a mean
+near 46, so the "10% low" reading sat inside the port's own seed-to-seed spread -
+and the monster species G-test (S-3) was withdrawn as invalid, because pit and
+nest clustering overdisperses it to the point that the port reaches p = 2e-97
+against ITSELF.
 
 ## `stats-baseline.json` - self-regression guard (NOT parity)
 
@@ -72,8 +103,13 @@ finds automatically.
 2. **Run it** from the build's game dir (writes `lib/user/stats/<timestamp>.db`):
 
    ```
-   ./angband -mstats -- -n200 -q
+   ./angband -mstats -- -n1000 -q
    ```
+
+   The committed baseline was produced with `-n1000` (1000 levels per depth, no
+   randarts); a 1000-run pass takes roughly 12 minutes. Do not regenerate it with
+   a smaller `-n` without saying so in the commit - the gate's resolving power is
+   printed per depth and depends on it.
 
    (`-n` runs, `-r` randarts, `-q` quiet - see `reference/src/main-stats.c`
    `init_stats`. Each run descends every level once, so a depth's sample count
