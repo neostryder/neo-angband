@@ -449,7 +449,7 @@ export function monsterAttackMonster(
           if (damage > 23) {
             monVsMonEarthquake(state, mon, Math.trunc(damage / 12), deps);
           }
-          if (damage > 100 && state.monsters[tMon.midx]) {
+          if (damage > 100) {
             const value = damage - 100;
             if (state.rng.randint1(value) > 40) {
               const dist = 1 + Math.trunc(value / 40);
