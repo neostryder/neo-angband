@@ -83,6 +83,7 @@ import { updatePlayerObjectKnowledge } from "./known";
 import type { CastContext } from "./project-cast";
 import type { ActionRegistry } from "./player-turn";
 import { targetFix, targetGet, targetOkay, targetRelease } from "./target";
+import { squareIsSeen } from "../world/view";
 
 /** enum use (cmd-obj.c). */
 export const USE = { TIMEOUT: 0, CHARGE: 1, SINGLE: 2 } as const;
@@ -786,6 +787,44 @@ export function playerGetResumeNormalShape(
   return false;
 }
 
+/** no_light (cave-view.c L913): the player's own grid is not currently seen. */
+function noLight(state: GameState): boolean {
+  return !squareIsSeen(state.chunk, state.actor.grid);
+}
+
+/**
+ * player_can_read (player-util.c L1166): scrolls and spellbooks need working
+ * eyes, light, a clear head and intact memory. Checked in this exact order, and
+ * each refusal prints its own message and spends no turn. do_cmd_read_scroll
+ * (cmd-obj.c L748) calls this with show_msg true BEFORE cmd_get_item, so a blind
+ * player with no scrolls at all still hears "You can't see anything." rather
+ * than the "You have no scrolls to read." rejection.
+ */
+export function playerCanRead(
+  state: GameState,
+  env: Pick<ObjCmdEnv, "msg"> = {},
+  showMsg = true,
+): boolean {
+  const p = state.actor.player;
+  if ((p.timed[TMD.BLIND] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You can't see anything.");
+    return false;
+  }
+  if (noLight(state)) {
+    if (showMsg) env.msg?.("You have no light to read by.");
+    return false;
+  }
+  if ((p.timed[TMD.CONFUSED] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You are too confused to read!");
+    return false;
+  }
+  if ((p.timed[TMD.AMNESIA] ?? 0) > 0) {
+    if (showMsg) env.msg?.("You can't remember how to read!");
+    return false;
+  }
+  return true;
+}
+
 /**
  * no_light (cave-view.c L913): the player's own grid is not currently seen.
  * Shared by playerCanRead here and player_can_cast (game/spell-cmd.ts).
@@ -1243,8 +1282,10 @@ export function installObjCommands(
   deps: ObjCmdDeps,
 ): void {
   /* player_get_resume_normal_shape gates the hands/voice commands
-   * (cmd-obj.c: takeoff/wield/drop, scroll/staff/wand/rod/activate);
-   * eating and quaffing stay possible in any shape. */
+   * (cmd-obj.c: takeoff/wield/drop, scroll/staff/wand/rod/activate AND
+   * quaff - do_cmd_quaff_potion opens with the resume gate at cmd-obj.c L923).
+   * do_cmd_eat_food (L899) is the one use command with NO gate, so eating stays
+   * possible in any shape. */
   const gated = (
     fn: (state: GameState, cmd: PlayerCommand) => number,
   ): ((state: GameState, cmd: PlayerCommand) => number) => {
@@ -1390,22 +1431,39 @@ export function installObjCommands(
     "eat",
     useCommand(deps, (o) => tvalIsEdible(o.tval), USE.SINGLE),
   );
+  /* do_cmd_quaff_potion (cmd-obj.c L917-931): the resume-shape gate, THEN the
+   * potion pick. Unlike do_cmd_eat_food it is gated. */
   registry.register(
     "quaff",
-    useCommand(deps, (o) => tvalIsPotion(o.tval), USE.SINGLE),
+    gated(useCommand(deps, (o) => tvalIsPotion(o.tval), USE.SINGLE)),
   );
-  /* do_cmd_read_scroll (cmd-obj.c L738-758). player_can_read is checked
-   * BEFORE the shape-resume gate here even though do_cmd_read_scroll runs
-   * resume-first, because upstream's 'r' key runs player_can_read_prereq
-   * (ui-game.c:131) at the dispatch layer (ui-game.c:596) before the command
-   * is ever pushed: a blind player never sees the shape-resume prompt. This
-   * port has no prereq layer, so the guard sits at the head of the handler to
-   * reproduce that observable order. */
-  const readBody = gated(
-    useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE),
-  );
-  registry.register("read", (state, cmd) =>
-    playerCanRead(state, deps.env ?? {}) ? readBody(state, cmd) : 0,
+  /*
+   * do_cmd_read_scroll (cmd-obj.c L740-758): resume shape, THEN
+   * player_can_read(player, true) - blind / no light / confused / amnesia each
+   * refuse with their own message and cost no turn - and only then the scroll
+   * pick, so the read gate fires before "You have no scrolls to read.".
+   *
+   * Two lanes ported this independently and reached OPPOSITE orderings, because
+   * upstream checks the same condition in two places and each lane found one:
+   * this handler order, and `player_can_read_prereq` hung on the 'r' key entry
+   * (ui-game.c:131), which ui-game.c:596 runs BEFORE the command is ever
+   * pushed. Both are real. The prereq means a blind player pressing 'r' never
+   * reaches the shape-resume prompt at all, while anything that pushes
+   * CMD_READ_SCROLL without going through that key entry still takes
+   * resume-then-read. Collapsing the pair into a single head-of-handler guard
+   * reproduces the keyboard order but breaks the handler's own, so the guard
+   * stays here in C order and the prereq belongs at the port's dispatch layer
+   * next to the key binding - the same split playercan applied to cast/study.
+   */
+  registry.register(
+    "read",
+    gated((state, cmd) => {
+      if (!playerCanRead(state, deps.env ?? {})) return 0;
+      return useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE)(
+        state,
+        cmd,
+      );
+    }),
   );
   registry.register(
     "use-staff",

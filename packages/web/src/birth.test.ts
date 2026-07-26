@@ -428,6 +428,35 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
     press(win, "Escape");
     expect(await done).toBeNull();
   });
+
+  it("re-picking class after a point-buy discards the allocation (player-birth.c do_cmd_choose_class:1105-1113)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+    await tick();
+    press(win, "a"); await tick(); // Human
+    press(win, "a"); await tick(); // Warrior
+    press(win, "a"); await tick(); // Point-based -> allocation
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    expect(term.snapshot().join("\n")).toContain("Total Cost:  2/20");
+    press(win, "Enter"); await tick(); // accept -> name
+    press(win, "Escape"); await tick(); // ESC steps back to allocation: no reset,
+    // the prior buy is restored (ui-birth.c BIRTH_BACK issues no command).
+    expect(term.snapshot().join("\n")).toContain("Total Cost:  2/20");
+    press(win, "Escape"); await tick(); // -> roller choice
+    press(win, "Escape"); await tick(); // -> class choice
+    press(win, "b"); await tick(); // re-pick class (Mage): do_cmd_choose_class
+    // reruns reset_stats + generate_stats unconditionally, discarding the buy.
+    press(win, "a"); await tick(); // Point-based again -> a fresh allocation
+    expect(term.snapshot().join("\n")).toContain("Total Cost:  0/20");
+    press(win, "Escape"); await tick();
+    press(win, "Escape"); await tick();
+    press(win, "Escape"); await tick();
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
 });
 
 describe("runBirth: quickstart stage (quickstart_allowed)", () => {

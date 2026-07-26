@@ -18,8 +18,9 @@
  * message_pain (player-attack.c:1191-1195, gap 2.4).
  *
  * DEFERRED (ledgered in parity/ledger/ranged-cmd.yaml): the out-of-range "Fire
- * anyway?" prompt (UI), the show_damage " (N)" suffix, the invisible-monster
- * "finds a mark" branch, and the crit-flavour line (the hit verb still varies).
+ * anyway?" prompt (UI), the invisible-monster "finds a mark" branch, and the
+ * crit-flavour line (the hit verb still varies). The show_damage " (N)" suffix
+ * is now wired (player-attack.c:1168-1170).
  * Missile / equipment / brand-slay learn-on-attack is wired below (W2-001/002/
  * 010/011; player-attack.c:1137-1140, 1255-1259, 1296-1299).
  */
@@ -163,11 +164,15 @@ function rangedHelper(
         : `the ${mon.race.name}`;
 
       let dmg = result.damage;
+      if (dmg <= 0) dmg = 0;
+      /* OPT(player, show_damage) (player-attack.c:1168-1170): the hit line
+       * carries " (N)". Built after the dmg<=0 clamp, as upstream is, so a
+       * harmless hit reads " (0)". */
+      const dmgText = state.options?.get("show_damage") ? ` (${dmg})` : "";
       if (dmg <= 0) {
-        dmg = 0;
-        state.msg?.(`Your ${oName} fails to harm ${mName}.`, MSG.SHOOT_HIT);
+        state.msg?.(`Your ${oName} fails to harm ${mName}${dmgText}.`, MSG.SHOOT_HIT);
       } else {
-        state.msg?.(`Your ${oName} ${result.verb} ${mName}.`, MSG.SHOOT_HIT);
+        state.msg?.(`Your ${oName} ${result.verb} ${mName}${dmgText}.`, MSG.SHOOT_HIT);
       }
       state.sound?.(MSG.SHOOT_HIT);
 
@@ -184,7 +189,9 @@ function rangedHelper(
         if (!state.arenaLevel) {
           const dieMsg = monsterIsDestroyed(mon) ? MON_MSG.DESTROYED : MON_MSG.DIE;
           const text = formatMonsterMessage(mon, dieMsg);
-          const type = monMessageSoundType(dieMsg);
+          /* get_message_type (mon-msg.c:450): a unique's death plays
+           * MSG_KILL_UNIQUE (MSG_KILL_KING for Morgoth's base). */
+          const type = monMessageSoundType(dieMsg, mon.race);
           if (text) state.msg?.(text, type);
           state.sound?.(type);
           state.onPlayerKill?.(mon);
