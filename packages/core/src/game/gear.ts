@@ -94,6 +94,15 @@ export interface Gear {
    * listing here while Player holds only equipment[] handles.
    */
   quiver?: number[];
+  /**
+   * The earlier_object inputs used for the last computed quiver.  Upstream
+   * reads these from player state on every call (player-calcs.c:951-960),
+   * whereas this port receives them as optional calcInventory arguments.
+   */
+  quiverOrder?: Pick<
+    CalcInventoryOpts,
+    "ammoTval" | "objectValue" | "isAware" | "canBrowse" | "rogueLike"
+  >;
 }
 
 /** A fresh, empty gear store (empty quiver; calcInventory sizes it). */
@@ -613,6 +622,29 @@ function earlierOpts(opts: CalcInventoryOpts): EarlierObjectOpts {
 }
 
 /**
+ * Fill omitted ordering inputs from the previously computed quiver.  The C
+ * keeps them in player->state, so repeated calc_inventory() calls never lose
+ * the usable-ammo preference merely because its caller supplied no arguments
+ * (player-calcs.c:951-960, 1023-1172).
+ */
+function quiverOrderOpts(gear: Gear, opts: CalcInventoryOpts): CalcInventoryOpts {
+  const previous = gear.quiverOrder ?? {};
+  const order: Gear["quiverOrder"] = {};
+  const ammoTval = opts.ammoTval ?? previous.ammoTval;
+  const objectValue = opts.objectValue ?? previous.objectValue;
+  const isAware = opts.isAware ?? previous.isAware;
+  const canBrowse = opts.canBrowse ?? previous.canBrowse;
+  const rogueLike = opts.rogueLike ?? previous.rogueLike;
+  if (ammoTval !== undefined) order.ammoTval = ammoTval;
+  if (objectValue !== undefined) order.objectValue = objectValue;
+  if (isAware !== undefined) order.isAware = isAware;
+  if (canBrowse !== undefined) order.canBrowse = canBrowse;
+  if (rogueLike !== undefined) order.rogueLike = rogueLike;
+  gear.quiverOrder = order;
+  return { ...opts, ...order };
+}
+
+/**
  * calc_inventory (player-calcs.c:1023-1238), quiver half: rebuild gear.quiver
  * from the current non-equipped gear. First place inscribed items in their
  * preferred slots (splitting a stack that overflows quiver_slot_size, with the
@@ -630,6 +662,7 @@ export function calcInventory(
   constants: Constants,
   opts: CalcInventoryOpts = {},
 ): void {
+  opts = quiverOrderOpts(gear, opts);
   const qSize = constants.quiverSize;
   const qSlot = constants.quiverSlotSize;
   const rogueLike = opts.rogueLike ?? false;
