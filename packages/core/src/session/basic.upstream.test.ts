@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { TMD, TV } from "../generated";
 import { PY_FOOD_FULL_DEFAULT } from "../player/birth";
 import { floorCarry, floorPile } from "../game/floor";
+import { gearGet } from "../game/gear";
 import { objectPrep } from "../obj/make";
 import { Rng } from "../rng";
 import { bindConstants } from "../constants";
@@ -143,30 +144,39 @@ describe("game/basic (reference/src/tests/game/basic.c)", () => {
   // upstream: test_drop_pickup
   it("droppickup", () => {
     const game = startGame(pack, { seed: 4, depth: 1 });
-    const { state, booted } = game;
+    const { state, booted, registry } = game;
     const constants = bindConstants(pack.constants as never);
     const reg = booted.registries.objects;
     const foodKind = reg.kinds.find((k) => k.tval === TV.FOOD);
     expect(foodKind).toBeTruthy();
     const stack = objectPrep(new Rng(1), reg, constants, foodKind!, 1, "average");
     stack.number = 5;
-    // Drop one unit onto the floor at the player.
-    const drop = objectPrep(new Rng(1), reg, constants, foodKind!, 1, "average");
-    drop.number = 1;
-    expect(floorCarry(state, state.actor.grid, drop)).toBe(true);
+    expect(floorCarry(state, state.actor.grid, stack)).toBe(true);
+    const pickup = registry.get("pickup");
+    expect(pickup, "the session must register the pickup action").toBeTruthy();
+    expect(pickup!(state, { code: "pickup" })).toBeGreaterThan(0);
+    const handle = state.gear.pack.find((h) => gearGet(state.gear, h)?.tval === TV.FOOD);
+    expect(handle, "pickup must carry the food stack used by CMD_DROP").toBeDefined();
+    const carried = gearGet(state.gear, handle!);
+    expect(carried?.number, "CMD_DROP requires a carried stack with more than one item").toBeGreaterThan(1);
+    const drop = registry.get("drop");
+    expect(drop, "the session must register the drop action").toBeTruthy();
+    expect(drop!(state, { code: "drop", args: { handle: handle!, quantity: 1 } })).toBe(
+      Math.trunc(state.z.moveEnergy / 2),
+    );
     expect(floorPile(state, state.actor.grid).some((o) => o.number === 1)).toBe(
       true,
     );
-    // Autopickup: remove floor objects (pickup clears the square).
-    const key = state.actor.grid.y * state.chunk.width + state.actor.grid.x;
-    state.floor.delete(key);
+    const autopickup = registry.get("autopickup");
+    expect(autopickup, "the session must register the autopickup action").toBeTruthy();
+    expect(autopickup!(state, { code: "autopickup" })).toBeGreaterThan(0);
     expect(floorPile(state, state.actor.grid).length).toBe(0);
   });
 
   // upstream: test_drop_eat
   it("dropeat", () => {
     const game = startGame(pack, { seed: 5, depth: 1 });
-    const { state, booted } = game;
+    const { state, booted, registry } = game;
     const constants = bindConstants(pack.constants as never);
     const reg = booted.registries.objects;
     const foodKind = reg.kinds.find((k) => k.tval === TV.FOOD);
@@ -175,16 +185,22 @@ describe("game/basic (reference/src/tests/game/basic.c)", () => {
     const num = 3;
     food.number = num;
     expect(floorCarry(state, state.actor.grid, food)).toBe(true);
+    const pickup = registry.get("pickup");
+    expect(pickup, "the session must register the pickup action").toBeTruthy();
+    expect(pickup!(state, { code: "pickup" })).toBeGreaterThan(0);
+    const handle = state.gear.pack.find((h) => gearGet(state.gear, h)?.tval === TV.FOOD);
+    expect(handle, "pickup must carry the food stack used by CMD_DROP").toBeDefined();
+    const carried = gearGet(state.gear, handle!);
+    expect(carried?.number).toBe(num);
+    const drop = registry.get("drop");
+    expect(drop, "the session must register the drop action").toBeTruthy();
+    expect(drop!(state, { code: "drop", args: { handle: handle!, quantity: num } })).toBe(
+      Math.trunc(state.z.moveEnergy / 2),
+    );
     expect(floorPile(state, state.actor.grid)[0]?.number).toBe(num);
-    // Eat one unit from the floor stack.
-    const onFloor = floorPile(state, state.actor.grid)[0]!;
-    onFloor.number -= 1;
-    if (onFloor.number <= 0) {
-      const key = state.actor.grid.y * state.chunk.width + state.actor.grid.x;
-      state.floor.delete(key);
-      expect(floorPile(state, state.actor.grid).length).toBe(0);
-    } else {
-      expect(onFloor.number).toBe(num - 1);
-    }
+    const eat = registry.get("eat");
+    expect(eat, "the session must register the eat action").toBeTruthy();
+    expect(eat!(state, { code: "eat", args: { floor: 0 } })).toBe(state.z.moveEnergy);
+    expect(floorPile(state, state.actor.grid)[0]?.number).toBe(num - 1);
   });
 });
