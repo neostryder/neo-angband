@@ -103,24 +103,75 @@ export const ELEMENT_NAMES: readonly string[] = ELEMENT_ENTRIES.map(
 /* datafile.c helpers                                                   */
 /* ------------------------------------------------------------------ */
 
-/** dice string or plain number -> RandomValue (parser_getrand). */
+/**
+ * dice string or plain number -> RandomValue (parser_getrand / parse_random,
+ * parser.c:126-213).
+ *
+ * The negation is NOT dice negation, and getting it wrong is a live gameplay
+ * divergence. `parse_random` strips a leading '-', parses the remainder as a
+ * POSITIVE value, and only then adjusts (parser.c:207-211):
+ *
+ *     base *= -1;  base -= m_bonus;  base -= dice * (sides + 1);
+ *
+ * with the reason stated there: "the random components are always positive, so
+ * the base must be adjusted as necessary". The base is shifted down far enough
+ * that `base + XdY` spans the NEGATION of the positive interval.
+ * Dice.parseString instead binds the '-' to the base token alone, which leaves
+ * the random part pointing the wrong way.
+ *
+ * Reachable in shipped 4.2.6 data: ego_item.txt:692, "of Backbiting", carries
+ * `combat:-26+d25:-26+d25:0`. Upstream yields base -52, dice 1, sides 25, i.e.
+ * to_h/to_d in -51..-27; binding the sign to the base alone yields -26 + 1d25,
+ * i.e. -25..-1, an ego roughly half as punishing as upstream's.
+ */
 export function parseRand(value: string | number | undefined): RandomValue {
   if (value === undefined) return zeroRv();
   if (typeof value === "number") {
     return { base: value, dice: 0, sides: 0, mBonus: 0 };
   }
+  const negative = value.startsWith("-");
+  const body = negative ? value.slice(1) : value;
   const dice = new Dice();
-  if (!dice.parseString(value)) {
+  if (!dice.parseString(body)) {
     throw new Error(`obj: invalid dice string "${value}"`);
   }
-  return dice.randomValue();
+  const rv = dice.randomValue();
+  if (!negative) return rv;
+  return {
+    ...rv,
+    base: -rv.base - rv.mBonus - rv.dice * (rv.sides + 1),
+  };
 }
 
-/** grab_int_range with sep "to": "10 to 100" -> [10, 100]. */
+/**
+ * grab_int_range with sep "to": "10 to 100" -> [10, 100] (datafile.c:320-372).
+ *
+ * Both endpoints are rejected at INT_MIN and INT_MAX inclusive, not merely
+ * outside them. That is deliberate upstream and the C says why at :328-331:
+ * "Reject INT_MIN and INT_MAX as well so don't have to check errno in order to
+ * recognize overflow when sizeof(int) == sizeof(long)". A value that saturated
+ * strtol is indistinguishable from one that legitimately equals the limit, so
+ * upstream refuses both rather than guess. Reproducing that means the port
+ * rejects the same three forms of k-info.c's test_alloc_bad0 that it used to
+ * accept (findings/W3-UNIT-TESTS-parse.md, D2).
+ */
+const INT_MIN = -2147483648;
+const INT_MAX = 2147483647;
+
 export function grabIntRange(range: string): [number, number] {
   const m = /^\s*(-?\d+)\s+to\s+(-?\d+)\s*$/.exec(range);
   if (!m) throw new Error(`obj: invalid allocation range "${range}"`);
-  return [Number(m[1]), Number(m[2])];
+  const lo = Number(m[1]);
+  const hi = Number(m[2]);
+  for (const v of [lo, hi]) {
+    if (v <= INT_MIN || v >= INT_MAX) {
+      throw new Error(
+        `obj: allocation range endpoint ${v} is out of range in "${range}" ` +
+          `(datafile.c:328-333 rejects INT_MIN and INT_MAX inclusive)`,
+      );
+    }
+  }
+  return [lo, hi];
 }
 
 /**
