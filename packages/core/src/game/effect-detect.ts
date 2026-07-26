@@ -100,7 +100,7 @@ function mapArea(
     for (let x = b.x1; x < b.x2; x++) {
       const grid = loc(x, y);
 
-      /* Some squares can't be mapped. */
+      /* Some squares can't be mapped: square_isno_map (cave-square.c:546). */
       if (c.sqinfoHas(grid, SQUARE.NO_MAP)) continue;
 
       /* All non-walls are "checked". */
