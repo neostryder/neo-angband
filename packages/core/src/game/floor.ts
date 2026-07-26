@@ -25,7 +25,7 @@ import type { Loc } from "../loc";
 import { loc, locSum, randLoc } from "../loc";
 import { ORIGIN } from "../generated";
 import type { GameObject, StackLimits } from "../obj/object";
-import { OSTACK_FLOOR, objectAbsorb, objectMergeable } from "../obj/object";
+import { OSTACK_FLOOR, objectAbsorb, objectMergeable, tvalIsMoney } from "../obj/object";
 import { los } from "../world/view";
 import type { GameState } from "./context";
 import { objectIsInQuiver, objectSplit } from "./gear";
@@ -111,6 +111,19 @@ export const USE_MODE = {
 export type ItemTester = ((obj: GameObject) => boolean) | null;
 
 /**
+ * object_test (obj-util.c L386): null accepts anything except gold, a real
+ * tester still must reject gold too. Every OFLOOR_TEST / scan_items caller
+ * routes through this rather than the tester alone, so a null-tester scan
+ * (e.g. a future "drop"/"pickup" get_item) does not offer gold objects the
+ * way a bare `tester(obj)` call would.
+ */
+function objectTest(tester: ItemTester, obj: GameObject | null | undefined): boolean {
+  if (!obj) return false;
+  if (tvalIsMoney(obj.tval)) return false;
+  return !tester || tester(obj);
+}
+
+/**
  * scan_floor (obj-pile.c L1295): the objects at the player's grid that pass
  * `mode`, newest first, capped at maxSize.
  *
@@ -133,7 +146,7 @@ export function scanFloor(
     /* Enforce limit. */
     if (out.length >= maxSize) break;
     /* Item tester. */
-    if (mode & OFLOOR.TEST && tester && !tester(obj)) continue;
+    if (mode & OFLOOR.TEST && !objectTest(tester, obj)) continue;
     /* Visible. */
     if (mode & OFLOOR.VISIBLE && (env.isIgnored?.(obj) ?? false)) continue;
     out.push(obj);
@@ -168,8 +181,7 @@ export function scanItems(
 ): GameObject[] {
   const out: GameObject[] = [];
   const player = state.actor.player;
-  const test = (obj: GameObject | null | undefined): boolean =>
-    !!obj && (!tester || tester(obj));
+  const test = (obj: GameObject | null | undefined): boolean => objectTest(tester, obj);
 
   if (mode & USE_MODE.INVEN) {
     for (const handle of state.gear.pack) {

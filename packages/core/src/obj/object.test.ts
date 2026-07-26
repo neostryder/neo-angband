@@ -12,6 +12,7 @@ import {
   buildCurseTimedFoil,
   objectCopy,
   objectPackTotal,
+  tvalIsBolt,
 } from "./object";
 import type { GameObject, PackTotalGear } from "./object";
 
@@ -284,5 +285,13 @@ describe("object_pack_total (obj-gear.c L189)", () => {
     expect(objectPackTotal(view([a, b], ["a", "b"]), a, false).total).toBe(3);
     /* object_similar: inscriptions ignored. */
     expect(objectPackTotal(view([a, b], ["a", "b"]), a, true).total).toBe(5);
+  });
+});
+
+describe("tvalIsBolt (obj-tval.c L165)", () => {
+  it("is true only for TV.BOLT", () => {
+    expect(tvalIsBolt(TV.BOLT)).toBe(true);
+    expect(tvalIsBolt(TV.ARROW)).toBe(false);
+    expect(tvalIsBolt(TV.SHOT)).toBe(false);
   });
 });
