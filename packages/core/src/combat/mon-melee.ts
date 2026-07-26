@@ -309,8 +309,6 @@ interface BlowEffectContext {
   phys: boolean;
   /** The blow method, for display_blow_message_vs_player's action + msgt. */
   method: BlowMethod;
-  /** In the worldless path HP is applied after the handler returns. */
-  willPlayerDie?: (damage: number) => boolean;
 }
 
 interface BlowEffectResult {
@@ -551,11 +549,6 @@ function resolveBlowEffect(
 
     case "SHATTER": {
       const hp = adjustDamArmor(baseDamage, ac);
-      /* monster_damage_target() returns immediately on death (mon-blows.c
-       * L1095), before either SHATTER side-effect gate or its RNG draw. */
-      if (ctx.willPlayerDie?.(hp)) {
-        return { hpDamage: hp, obvious: true, sideEffects: side };
-      }
       if (hp > 23) {
         side.push({ kind: "earthquake", radius: Math.trunc(hp / 12) });
       }
@@ -1060,12 +1053,6 @@ export function monMeleeAttack(
       rlev,
       phys: blow.method.phys,
       method: blow.method,
-      /* The worldless path applies hpDamage after resolveBlowEffect(), unlike
-       * C's monster_damage_target(); predict its return value for handlers
-       * that must stop before later RNG draws (mon-blows.c L1095). */
-      ...(env
-        ? {}
-        : { willPlayerDie: (pendingDamage: number) => defender.chp - pendingDamage < 0 }),
     };
 
     /* context->damage after the handler (unreduced; feeds the cut/stun crit). */
