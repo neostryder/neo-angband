@@ -180,6 +180,8 @@ import {
 import {
   AutoinscriptionRegistry,
   RuneNoteRegistry,
+  buildRuneList,
+  runeKey,
   FlavorKnowledge,
   EverseenKnowledge,
   equipLearnElement,
@@ -238,6 +240,9 @@ import { iToGrid } from "../gen/util";
 import {
   SAVE_VERSION,
   deserializeAutoinscriptions,
+  deserializeEverseen,
+  deserializeFlavor,
+  deserializeIgnore,
   deserializeChunk,
   deserializeFloor,
   buildFeatRemap,
@@ -2197,6 +2202,16 @@ function makeChangeLevel(
       caveKnown(state);
       caveIlluminateKnown(state, isDaytime(state.turn, state.z.dayLength));
     }
+    /* cave_generate (generate.c:1255-1258): a builder that asked for the level
+     * to be revealed (labyrinth_gen's "known" maze, gen-cave.c:1594) gets
+     * `wiz_light(chunk, p, false)` and the flag is cleared. `chunk` is not yet
+     * `cave` there, so square_memorize / square_know_pile / square_forget all
+     * short-circuit on their `c != cave` guard and the call perma-LIGHTS the
+     * level without memorizing anything - hence isCurrentCave = false. */
+    if (g.lightLevel) {
+      wizLightLevel(state, true, false, false);
+      g.lightLevel = false;
+    }
     delete state.targetDepth;
     /* on_new_level (game-world.c:1034-1037): PU_BONUS -> update_bonuses ->
      * calc_light recomputes cur_light for the NEW depth, then the view is
@@ -3285,21 +3300,29 @@ export function loadGame(
   /* restore() replaces the aware/tried sets, so it must run AFTER flavor_init's
    * aware-marking of non-flavoured kinds - the save is the source of truth for
    * what the player has actually identified. */
-  wired.flavor.restore(save.flavor);
+  wired.flavor.restore(deserializeFlavor(save.flavor, ids));
   /* kind/ego everseen (save.c L397/L533): absent in saves written before
    * everseen tracking, which load with an empty set. */
-  if (save.everseen) wired.everseen.restore(save.everseen);
-  if (save.ignore) state.ignore.restore(save.ignore);
+  if (save.everseen) wired.everseen.restore(deserializeEverseen(save.everseen, ids));
+  if (save.ignore) state.ignore.restore(deserializeIgnore(save.ignore, ids));
   /* Per-kind autoinscriptions (obj-ignore.c note_aware/note_unaware): absent in
    * saves written before this block, which load with an empty registry. */
   if (save.autoinscriptions && state.autoinscribe) {
     deserializeAutoinscriptions(save.autoinscriptions, state.autoinscribe, ids);
   }
   /* Per-RUNE autoinscriptions (rd_ignore's rune block, load.c:934-945):
-   * rd_s16b(runeid) + rd_string, straight into rune_set_note. Absent in saves
-   * written before this block, which load with no rune notes. */
+   * rd_s16b(runeid) + rd_string, straight into rune_set_note. The savefile keys
+   * by runeKey, so resolve each back to its live buildRuneList index; a key the
+   * running pack no longer builds is dropped. Absent in saves written before
+   * this block, which load with no rune notes. */
   if (save.runeNotes && state.runeNotes) {
-    for (const [i, note] of save.runeNotes) state.runeNotes.set(i, note);
+    const runes = buildRuneList(state.runeEnv);
+    const byKey = new Map<string, number>();
+    runes.forEach((rune, i) => byKey.set(runeKey(rune), i));
+    for (const [key, note] of save.runeNotes) {
+      const i = byKey.get(key);
+      if (i !== undefined) state.runeNotes.set(i, note);
+    }
   }
 
   // A renderer-facing view of the restored level (no generation ran).

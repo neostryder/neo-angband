@@ -204,8 +204,10 @@ export function wizLightLevel(
            * upstream functions (cave-map.c:435 vs :508). */
           if (lit) c.sqinfoOn(a, SQUARE.GLOW);
           else c.sqinfoOff(a, SQUARE.GLOW);
-          /* Memorize normal features (cave-map.c:439-442 / :510-513). */
-          if (true) {
+          /* Memorize normal features (cave-map.c:439-442 / :510-513): only
+           * non-floor terrain, or a floor grid carrying a VISIBLE trap. Plain
+           * floor is lit but deliberately NOT remembered. */
+          if (!c.isFloor(a) || squareIsVisibleTrap(state, a)) {
             if (isCurrentCave) squareMemorize(state, a);
             c.sqinfoOn(a, SQUARE.MARK);
           }

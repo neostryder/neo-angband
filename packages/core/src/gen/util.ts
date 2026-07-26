@@ -308,6 +308,15 @@ export class Gen {
   private groupCounter = 0;
   /** The player start, set by the cave builder via new_player_spot. */
   playerSpot: Loc | null = null;
+  /**
+   * p->upkeep->light_level (gen-cave.c:1594-1596): a builder asking the level to
+   * be revealed on arrival. Only labyrinth_gen sets it, for a "known" labyrinth;
+   * cave_generate consumes it with `wiz_light(chunk, p, false)` and clears it
+   * (generate.c:1255-1258). Because `chunk` is not yet `cave` at that point,
+   * that call reduces to a pure SQUARE_GLOW pass (square_memorize /
+   * square_know_pile / square_forget all short-circuit on `c != cave`).
+   */
+  lightLevel = false;
   /** Current tunnel/streamer parameters (set by the cave builder). */
   profileTun: TunnelParams = ZERO_TUNNEL;
   profileStr: StreamerParams = ZERO_STREAMER;

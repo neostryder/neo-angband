@@ -1342,7 +1342,8 @@ export class AutoinscriptionRegistry {
  * saved/loaded by wr_ignore (save.c:586-605) / rd_ignore (load.c:937-945).
  * Like AutoinscriptionRegistry it lives per-game here so the bound registries
  * stay immutable, keyed by the rune's index in buildRuneList - the same key
- * upstream writes (`wr_s16b(k)`, save.c:600).
+ * upstream uses to address rune_list at runtime. (The SAVEFILE keys by runeKey
+ * instead; see runeKey below for why.)
  *
  * WART preserved: upstream `rune_set_note(i, "")` goes through quark_add(""),
  * which returns a NONZERO quark (z-quark.c:31-49 never returns 0 for a new
@@ -1386,6 +1387,27 @@ export function runeSetNote(
   note: string | null,
 ): void {
   registry.set(i, note);
+}
+
+/**
+ * A pack-stable identity for a rune, for the savefile only.
+ *
+ * Upstream writes the raw rune-list index (`wr_s16b(k)`, save.c:600) and reads
+ * it straight back (`rune_set_note(runeid, tmp)`, load.c:944), which mis-targets
+ * if the loaded data changes the rune list's shape - the same positional-index
+ * fragility wr_object_memory has. That fragility is a property of the C
+ * SAVEFILE FORMAT, and the port's format is the ratified JSON document whose
+ * load-bearing rule is that every content reference is a stable id
+ * (MOD_LIFECYCLE decision 1, session/save.ts SAVE_VERSION). Runtime behaviour
+ * is untouched: in play a rune is still addressed by its buildRuneList index,
+ * exactly as upstream addresses rune_list.
+ *
+ * `variety:name` is unique across the whole list: buildRuneList already
+ * de-duplicates brands and slays by name, and the remaining varieties draw one
+ * rune per distinct property name.
+ */
+export function runeKey(rune: Rune): string {
+  return `${rune.variety}:${rune.name}`;
 }
 
 /**
