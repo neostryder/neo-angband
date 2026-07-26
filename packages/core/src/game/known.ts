@@ -165,33 +165,6 @@ export function caveIlluminateKnown(state: GameState, daytime: boolean): void {
   }
 }
 
-/**
- * cave_known (cave-map.c:633-660): memorize town terrain except interior
- * wall/lava regions.
- *
- * MUST run BEFORE caveIlluminateKnown, as generate.c:1547-1550 does. The order
- * is load-bearing and not interchangeable: cave_illuminate writes player memory
- * too -- square_memorize at cave-map.c:582 and, at night, square_forget on
- * boring floor grids at :586-587. So upstream deliberately memorizes the whole
- * town here and then lets night-time illumination FORGET the boring floors
- * again. Running this second would leave a night town fully mapped, which is the
- * opposite of upstream.
- */
-export function caveKnown(state: GameState): void {
-  const c = state.chunk;
-  for (let y = 0; y < c.height; y++) {
-    for (let x = 0; x < c.width; x++) {
-      const grid = loc(x, y);
-      let count = 0;
-      for (let d = 0; d < 8; d++) {
-        const adjacent = locSum(grid, DDGRID_DDD[d] as Loc);
-        if (!c.isProjectable(adjacent) || featIsBright(c.features, c.feat(adjacent))) count++;
-      }
-      if (count < 8) squareMemorize(state, grid);
-    }
-  }
-}
-
 /** square_isknown: the player remembers some terrain here. */
 export function squareIsKnown(state: GameState, grid: Loc): boolean {
   return state.known.feat[gi(state, grid)]! >= 0;

@@ -18,7 +18,6 @@ import { floorCarry, floorExcise, floorPile } from "./floor";
 import {
   becomeAware,
   caveIlluminateKnown,
-  caveKnown,
   forgetMap,
   knownFeat,
   knownObject,
@@ -165,61 +164,6 @@ describe("cave_illuminate (cave-map.c L555, runtime)", () => {
     caveIlluminateKnown(state, true);
     caveIlluminateKnown(state, false);
     expect(state.rng.getState()).toEqual(before);
-  });
-});
-
-describe("cave_known (cave-map.c:633-660)", () => {
-  /** A 3x3 granite block, so its centre is a wall fully surrounded by wall. */
-  const withInteriorWall = (state: ReturnType<typeof makeState>): void => {
-    for (let y = 9; y <= 11; y++) {
-      for (let x = 9; x <= 11; x++) state.chunk.setFeat(loc(x, y), GRANITE);
-    }
-  };
-
-  it("memorizes everything except walls surrounded by walls", () => {
-    const state = makeState({ playerGrid: loc(10, 10) });
-    withInteriorWall(state);
-
-    caveKnown(state);
-
-    /* Open floor and the block's outer face are known; its centre is not. */
-    expect(squareIsKnown(state, loc(5, 5))).toBe(true);
-    expect(knownFeat(state, loc(5, 5))).toBe(FLOOR);
-    expect(squareIsKnown(state, loc(9, 9))).toBe(true);
-    expect(squareIsKnown(state, loc(10, 10))).toBe(false);
-  });
-
-  /*
-   * The ORDER of cave_known and cave_illuminate is load-bearing, and nothing
-   * else pins it. generate.c:1547-1550 runs cave_known FIRST and then lets
-   * cave_illuminate write memory too: square_memorize (cave-map.c:582) and, at
-   * night, square_forget on boring floors (:586-587). So a night town ends up
-   * NOT fully mapped, even though cave_known just mapped it.
-   *
-   * This test exists because the first implementation of caveKnown ran it
-   * AFTER illumination, which left a night town fully mapped, and every test
-   * then in the file still passed -- caveKnown was only ever exercised alone.
-   */
-  it("upstream order leaves a NIGHT town's boring floors forgotten", () => {
-    const state = makeState({ playerGrid: loc(10, 10) });
-    withInteriorWall(state);
-
-    caveKnown(state);
-    expect(squareIsKnown(state, loc(5, 5))).toBe(true); // mapped...
-    caveIlluminateKnown(state, false);
-    expect(squareIsKnown(state, loc(5, 5))).toBe(false); // ...then forgotten
-
-    /* Reversing the two would leave it known -- the divergence this guards. */
-  });
-
-  it("upstream order leaves a DAYTIME town's floors known", () => {
-    const state = makeState({ playerGrid: loc(10, 10) });
-    withInteriorWall(state);
-
-    caveKnown(state);
-    caveIlluminateKnown(state, true);
-    expect(squareIsKnown(state, loc(5, 5))).toBe(true);
-    expect(knownFeat(state, loc(5, 5))).toBe(FLOOR);
   });
 });
 
