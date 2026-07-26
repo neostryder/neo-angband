@@ -123,6 +123,10 @@ import {
   historyUnmaskUnknown,
   playerAbilities,
   chestCheck,
+  countChests,
+  countFeats,
+  squareIsDisarmableTrap,
+  squareIsUnlockedDoor,
   CHEST_QUERY,
   isLockedChest,
   squareIsOpenDoor,
@@ -1930,7 +1934,9 @@ async function activateItem(): Promise<void> {
 async function takeOffItem(): Promise<void> {
   const ref = await selectItemFrom(
     "Take off or unwield which item?",
-    () => true,
+    /* obj_can_takeoff = !OF_STICKY (obj-util.c L794), used as the item FILTER
+     * upstream (cmd-obj.c L251), so a stickied item is never offered. */
+    (o) => !(o.flags?.has(OF.STICKY) ?? false),
     { equip: true },
     "You have nothing to take off or unwield.",
   );
@@ -3210,9 +3216,37 @@ async function aimDir(): Promise<number | null> {
 // chest underfoot. The core resolves door-vs-chest (open) and
 // chest-vs-floor-trap (disarm) by what is actually there.
 
+/**
+ * count_feats direction inference (cmd-cave.c L250-260, L409, L874-876).
+ *
+ * When exactly one adjacent grid qualifies, the C fills the direction in itself
+ * and never prompts. It is unconditional in 4.2.6 -- the old `easy_open` option
+ * does not exist -- so a port that always asks for a direction changes the
+ * keystrokes ordinary play requires, on every door and trap.
+ *
+ * The count has to happen shell-side because that is where the prompt lives, and
+ * it mirrors the C's `cmd_get_direction(..., allow_5)` gate exactly: prompt only
+ * when the candidate count is not 1. countFeats draws no RNG and reads the
+ * player's remembered map, as the C does.
+ */
+function inferredDir(
+  test: (grid: Loc) => boolean,
+  extraCount = 0,
+  extraGrid: Loc | null = null,
+): number | null {
+  const feats = countFeats(state, (_s, g) => test(g), false);
+  if (feats.count + extraCount !== 1) return null;
+  const grid = feats.count === 1 ? feats.grid : extraGrid;
+  return grid ? motionDirTo(grid) : null;
+}
+
 /** Open (o): a door or a chest, by direction (do_cmd_open, allow_5 for a chest underfoot). */
 async function openCmd(): Promise<void> {
-  const dir = await getRepDir(term, true);
+  /* n_closed_doors + n_locked_chests == 1 -> the C infers (cmd-cave.c L250-260),
+   * and otherwise allows 5 only when a chest is in reach. */
+  const chests = countChests(state, CHEST_QUERY.OPENABLE);
+  const auto = inferredDir((g) => state.chunk.isClosedDoor(g), chests.count, chests.grid);
+  const dir = auto ?? (await getRepDir(term, chests.count > 0));
   if (dir === null) return;
   commandBuffer.push({ code: "open", dir });
   advance();
@@ -3220,7 +3254,16 @@ async function openCmd(): Promise<void> {
 
 /** Disarm (D): a trapped chest or a floor trap, by direction (do_cmd_disarm, allow_5 for a chest underfoot). */
 async function disarmCmd(): Promise<void> {
-  const dir = await getRepDir(term, true);
+  /* n_traps + n_chests + n_unlocked_doors == 1 -> inferred (cmd-cave.c L874-885).
+   * The C's three counts share one `grid1`, so with a total of exactly 1 the
+   * single matching call supplies the grid; a combined predicate is equivalent. */
+  const chests = countChests(state, CHEST_QUERY.TRAPPED);
+  const auto = inferredDir(
+    (g) => squareIsDisarmableTrap(state, g) || squareIsUnlockedDoor(state, g),
+    chests.count,
+    chests.grid,
+  );
+  const dir = auto ?? (await getRepDir(term, chests.count > 0));
   if (dir === null) return;
   commandBuffer.push({ code: "disarm", dir });
   advance();
@@ -3236,7 +3279,9 @@ async function tunnelCmd(): Promise<void> {
 
 /** Close (c): a door, by direction (do_cmd_close, allow_5 = false). */
 async function closeCmd(): Promise<void> {
-  const dir = await getRepDir(term);
+  /* count_feats(square_isopendoor) == 1 -> inferred (cmd-cave.c L406-414). */
+  const auto = inferredDir((g) => squareIsOpenDoor(state, g));
+  const dir = auto ?? (await getRepDir(term));
   if (dir === null) return;
   commandBuffer.push({ code: "close", dir });
   advance();
@@ -6435,18 +6480,13 @@ try {
   const sandboxMods = discoverPlugins();
   const trustedMods = discoverTrustedPlugins();
 
-  // First run (no saved enabled-set): materialize DEFAULT_ENABLED_MODS so the
-  // mod manager reflects them, and pre-consent any first-party bundled plugin to
-  // its declared caps so a default-on trusted/sandbox bundled mod actually
-  // installs. pack.ts already composed content with the same defaults this load;
-  // this persists them + the consent so later manager edits (including
-  // disabling) stick. Third-party plugins still require explicit consent.
-  //
-  // NOTE: DEFAULT_ENABLED_MODS is EMPTY by the parity mandate (see mod-store.ts),
-  // so today this loop persists an empty set and NO mod is on out of the box -
-  // the fresh-install experience is faithful 4.2.6 with no QoL tweak and no bug
-  // fix applied. The machinery is kept for the case where a future bundled mod
-  // is genuinely meant to default on.
+  // First run (no saved enabled-set): materialize the default bundled mods so
+  // they are ON out of the box (decision 23) and the mod manager reflects them,
+  // and pre-consent the first-party bundled plugins to their declared caps so a
+  // default-on trusted/sandbox bundled mod actually installs. pack.ts already
+  // composed content with the same defaults this load; this persists them + the
+  // consent so later manager edits (including disabling) stick. Third-party
+  // plugins still require explicit consent.
   if (!modStore.hasStoredEnabled()) {
     const discovered = [
       ...discoverContentModManifests().map((m) => m.id),

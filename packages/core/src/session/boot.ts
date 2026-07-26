@@ -272,13 +272,6 @@ export interface BootLevelOptions {
   artifacts?: ArtifactState;
   /** OPT(player, birth_no_artifacts). */
   noArtifacts?: boolean;
-  /**
-   * The effective bug-fixes / QoL mod rule flags (GameState.modRules), passed
-   * through to GenDeps so a generation-level fix can be gated by name. The only
-   * one cave_generate reads is "bugfix.stairsReachable". Omitted (the default,
-   * and the only possibility with no mod enabled) = faithful 4.2.6.
-   */
-  modRules?: Readonly<Record<string, boolean>> | undefined;
 }
 
 /** A generated, populated level ready to hand to a renderer or game loop. */
@@ -312,16 +305,12 @@ export function bootLevel(pack: CorePack, opts: BootLevelOptions = {}): BootedLe
   const depth = opts.depth ?? 1;
   const rng = opts.rng ?? new Rng(opts.seed ?? 1);
   if (!opts.rng && opts.rngState) rng.setState(opts.rngState);
-  const deps: GenDeps = {
-    ...genDeps(
-      registries,
-      opts.placeContent ?? true,
-      opts.artifacts,
-      opts.noArtifacts ?? false,
-    ),
-    /* bug-fixes seam; absent => faithful cave_generate. */
-    ...(opts.modRules ? { modRules: opts.modRules } : {}),
-  };
+  const deps = genDeps(
+    registries,
+    opts.placeContent ?? true,
+    opts.artifacts,
+    opts.noArtifacts ?? false,
+  );
   const g = generateLevel(rng, depth, deps, opts.generate ?? {});
   return {
     chunk: g.c,

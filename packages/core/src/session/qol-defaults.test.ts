@@ -17,10 +17,6 @@ import { describe, expect, it } from "vitest";
 import { startGame } from "./game";
 import type { GamePack } from "./game";
 import { OPTION_ENTRIES } from "../generated/options";
-import { FEAT } from "../generated";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import type { GameState } from "../game/context";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -154,7 +150,6 @@ describe("RNG neutrality: the empty mod system does not perturb the stream (Phas
     "bugfix.uniqueKillHistory": false,
     "bugfix.noiseScentSave": false,
     "bugfix.objectListOrder": false,
-    "bugfix.stairsReachable": false,
   };
 
   it("startGame draws the identical RNG stream whether modRules is absent or all-false", () => {
@@ -170,80 +165,5 @@ describe("RNG neutrality: the empty mod system does not perturb the stream (Phas
     // Sanity: a real WELL table was advanced (not a vacuous empty comparison).
     expect(a.state.length).toBeGreaterThan(0);
     expect(b).toEqual(a);
-  });
-});
-
-describe("bugfix.stairsReachable reaches level generation (BUG_FIXES.md entry 13)", () => {
-  /*
-   * The end-to-end guard on the ONE piece of plumbing this fix needs: the
-   * session must hand GameState.modRules to cave_generate (session/game.ts
-   * spreads it onto the GenDeps that generateLevel receives). A unit test on
-   * ensureStairsReachable cannot catch that wire coming loose, and neither can
-   * an all-flags-OFF stream comparison - only a seed whose behaviour actually
-   * differs with the flag on can.
-   *
-   * These three birth seeds were measured stranded through startGame itself (12
-   * of 120 sampled = 10.0%, the same rate as the raw generator). They cover both
-   * directions, including a down-only case - the direction that actually blocks
-   * descent.
-   */
-  const STRANDED: readonly [number, number, string][] = [
-    [40, 740014, "down+up"],
-    [50, 750000, "up"],
-    [60, 760000, "down"],
-  ];
-
-  /** The directions of this level that have a stair but no walk-reachable one. */
-  function strandedDirs(state: GameState): string[] {
-    const c = state.chunk;
-    const trav = (gr: Loc): boolean => c.isPassable(gr) || c.isDoor(gr) || c.isRubble(gr);
-    const seen = new Uint8Array(c.width * c.height);
-    const start = state.actor.grid;
-    const stack: Loc[] = [start];
-    seen[start.y * c.width + start.x] = 1;
-    const d8 = [loc(0,1),loc(0,-1),loc(1,0),loc(-1,0),loc(1,1),loc(1,-1),loc(-1,1),loc(-1,-1)];
-    while (stack.length) {
-      const cur = stack.pop() as Loc;
-      for (const d of d8) {
-        const n = loc(cur.x + d.x, cur.y + d.y);
-        if (!c.inBounds(n)) continue;
-        const idx = n.y * c.width + n.x;
-        if (seen[idx] || !trav(n)) continue;
-        seen[idx] = 1;
-        stack.push(n);
-      }
-    }
-    const out: string[] = [];
-    for (const [name, feat] of [["down", FEAT.MORE], ["up", FEAT.LESS]] as const) {
-      let total = 0;
-      let reached = 0;
-      for (let y = 0; y < c.height; y++) {
-        for (let x = 0; x < c.width; x++) {
-          if (c.feat(loc(x, y)) !== feat) continue;
-          total++;
-          if (seen[y * c.width + x]) reached++;
-        }
-      }
-      if (total > 0 && reached === 0) out.push(name);
-    }
-    return out;
-  }
-
-  it("CONTROL: a faithful game (no modRules) is born on a stranded floor", () => {
-    for (const [depth, seed, dirs] of STRANDED) {
-      const { state } = startGame(pack, { seed, depth });
-      expect(strandedDirs(state).join("+"), `d${depth} seed ${seed}`).toBe(dirs);
-    }
-  });
-
-  it("with the flag on, the same seeds are born on a repaired floor", () => {
-    for (const [depth, seed] of STRANDED) {
-      const { state } = startGame(pack, {
-        seed,
-        depth,
-        modRules: { "bugfix.stairsReachable": true },
-      });
-      expect(strandedDirs(state), `d${depth} seed ${seed}`).toEqual([]);
-    }
   });
 });

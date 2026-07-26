@@ -366,7 +366,7 @@ export function spreadMonsters(
   }
 
   /* Build the monster probability table. */
-  if (!table.getMonNum(g.rng, depth, c.depth, g.uniquePlaced)) {
+  if (!table.getMonNum(g.rng, depth, c.depth)) {
     monRestrict(g.rng, table, races, pits, null, depth, c.depth, true);
     return;
   }
@@ -458,7 +458,7 @@ export function getVaultMonsters(
     table.prep(monSelect(g.rng, sym, c.depth, true));
 
     /* Build the monster probability table (gate draw). */
-    if (!table.getMonNum(g.rng, depth, c.depth, g.uniquePlaced)) continue;
+    if (!table.getMonNum(g.rng, depth, c.depth)) continue;
 
     /* Place the monsters on every matching grid (linear data walk). */
     let t = 0;
@@ -547,7 +547,7 @@ export function getChamberMonsters(
   }
 
   /* Build the monster probability table. */
-  if (!table.getMonNum(g.rng, depth, c.depth, g.uniquePlaced)) {
+  if (!table.getMonNum(g.rng, depth, c.depth)) {
     monRestrict(g.rng, table, races, pits, null, depth, c.depth, true);
     return;
   }

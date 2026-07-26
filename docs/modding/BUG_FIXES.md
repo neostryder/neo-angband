@@ -14,7 +14,7 @@
 > and with the mod disabled - core is byte-identical to 4.2.6. See
 > `docs/modding/MOD_SEAMS.md` for the seam contract.
 >
-> The menu lists only fixes with a real, functional gate today - the five marked
+> The menu lists only fixes with a real, functional gate today - the four marked
 > `IMPLEMENTED` below. The `SPECIFIED` entries have no live gate yet (see each
 > entry's Port status): two (#2, #3) are impossible by construction in the port
 > so there is no buggy behaviour to toggle, and two (#1, #11) live in vanilla
@@ -73,8 +73,7 @@ this mod.
 The mod's flags (each `bugfix.*` declared in
 `packages/web/mods/bug-fixes/manifest.json` under `rules`, default OFF):
 `bugfix.uniqueKillHistory` (#4245), `bugfix.noiseScentSave` (#4605),
-`bugfix.objectListOrder` (#4664), `bugfix.duplicateArtifact` (#4510),
-`bugfix.stairsReachable` (no upstream issue - entry 13).
+`bugfix.objectListOrder` (#4664), `bugfix.duplicateArtifact` (#4510).
 
 ---
 
@@ -319,73 +318,6 @@ The mod's flags (each `bugfix.*` declared in
   artifact is re-committed with the flag off; corrected: it is refused and
   cleared with the flag on).
 
-### 13. Unreachable staircases (`IMPLEMENTED`, no upstream fix)
-
-- References: none. There is no upstream issue, PR, or commit for this - it is a
-  longstanding property of vanilla generation rather than a reported defect, so
-  the decision-24 referencing rule has nothing to cite. Recorded instead against
-  the reference source itself (all citations below are `reference/src`, the
-  4.2.6 tag) and against the port's own measurement.
-- Problem: a floor can have no staircase the player is able to walk to. Measured
-  on faithful core over 520 levels (depths 1-98, 40 seeds each): **53 stranded
-  levels, 10.2%**. 44 of the 53 were the UP stair; 37 had the orphaned stair
-  sealed inside `SQUARE_VAULT`.
-- Root cause, in two halves:
-  - `alloc_stairs` (`gen-util.c:629`) places a stair on any `square_isempty`
-    grid and does **not** exclude vault interiors, while `ensure_connectedness`
-    is called with `allow_vault_disconnect = true` at five of its six sites
-    (`gen-cave.c:1271`, `2836`, `3083`, `3693`, `3953`; only `3464` passes
-    `false`) - the tunneller is explicitly allowed to leave a vault sealed. So a
-    vault it never joined can swallow a staircase, and nothing checks: the only
-    post-build validation `cave_generate` runs is `chunk_validate_objects`
-    (`generate.c:1244`). Note the asymmetry - `find_start`, the player's own
-    spot, *does* exclude vaults; only stairs may land in one.
-  - `handle_level_stairs` (`gen-cave.c:958`) allocates `rand_range(3, 4)` down
-    stairs but only `rand_range(1, 2)` up, so one bad roll on the lone up stair
-    strands the floor, while three or four down stairs almost always leave one
-    reachable. A separate minority of cases is the player's own region being cut
-    off entirely, which `classic_gen` permits because it never calls
-    `ensure_connectedness` at all.
-- Port relevance: none of this is a port defect - `allocStairs` in
-  `packages/core/src/gen/util.ts` is a line-for-line match including the
-  `walls = 3 -> 0` ladder and the absence of a vault test. Faithful core
-  reproduces the wart, per decision 24 and the owner's 2026-07-26 ruling
-  ("Core must retain all warts of the reference code").
-- Implementation: `ensureStairsReachable` (`packages/core/src/gen/util.ts`),
-  called from `cave_generate`'s existing retry loop
-  (`packages/core/src/gen/generate.ts`) only when the flag is set; `GenDeps`
-  gains an optional `modRules`, threaded from `state.modRules` at the live
-  generation deps in `session/game.ts` (the same seam entry 12 uses). For each
-  direction the level actually HAS a stair in, it floods the region the player
-  can walk (passable + doors, which open, + rubble, which digs; 8-directional,
-  walls excluded so the guarantee is not vacuous) and, if no stair of that
-  direction is reachable, places one in that region - choosing the grid the way
-  `alloc_stairs` does (best wall-adjacency tier 3 -> 0, then closest to the
-  stranded stair), so it surfaces beside the vault that swallowed the original.
-  It goes through `placeStairs`, so that helper's own overrides still apply and
-  the fix **cannot** mint a down stair on Morgoth's floor. "Each direction it
-  actually has one" is also what exempts the town and the quest floors with no
-  depth special-casing. Fallback when the walkable region can host nothing else:
-  the player's own grid, which upstream itself uses under `birth_connect_stairs`
-  (`gen-util.c:427-433`); if even that is unavailable the level is rejected and
-  re-rolled like a monster-max overflow (measured re-rolls after the fallback:
-  zero).
-- Determinism: the repair draws NO RNG (asserted by RNG-state equality across
-  the call), so turning the flag on leaves 184 of 200 measured levels
-  bit-identical and changes the other 16 by one grid. It is still a generation
-  change, so a character played with the flag on is not layout-identical to one
-  played without it - the manifest description says so.
-- Tests in `gen/gen.test.ts`: a control that faithful core (no flag) really does
-  strand the measured seeds, the invariant holding across depths 0-100 with the
-  flag on, the 12 measured pre-fix failures as named regressions, and mechanical
-  unit tests on a synthetic sealed-pocket level (repair, spot-choice rule,
-  RNG-state equality on both paths, the under-the-player fallback, the
-  refuse-and-re-roll path, the quest guard).
-- History: briefly lived in core as an owner-ratified guarantee (commit
-  `437ad97c3`, 2026-07-25) and was moved here on 2026-07-26 once the owner
-  learned upstream genuinely behaves this way. Full write-up:
-  `parity/phase3-2026-07-25/findings/STAIRCASE-INVARIANT.md`.
-
 ---
 
 ## Front-end-only, likely out of scope for a core TS port
@@ -425,30 +357,14 @@ this one:
 
 ---
 
-## Our own port code: what has been moved here
+## Our own port code: nothing to move here
 
 Decision 24 requires any bug our port code fixed relative to the tag to be
-moved OUT of core and INTO this mod.
-
-Audit result (2026-07-08): the only non-faithful shortcut in core was the
-"everything known" rune convention, and it has been REVERTED to faithful (runes
-unknown by default) in commit `7970af462`, not relocated - because a shortcut
-that granted unearned bonuses is not a "fix" players would want as an option.
-The two remaining ledgered divergences (no global RNG singleton; Linoleum
-generated-by header text) are unavoidable port artifacts under decision 23(a),
-not bug fixes.
-
-**Migrated 2026-07-26: entry 13, unreachable staircases.** This is the one and
-only thing that has ever had to make the trip. It was added to core the previous
-day as an owner-ratified guarantee, on the owner's understanding that vanilla
-could not strand a floor. Once the reference source showed that it can and does
-(10.2% of levels), the ruling was reversed:
-
-> We can't fix bugs in the port. Those will belong in the bug fixes mod. I only
-> said those couldn't exist because I thought that was how the C version worked.
-> Core must retain all warts of the reference code.
-
-Precedent worth keeping: a "core must never do X" requirement is only safe to
-implement in core once `reference/src` has been read and confirmed to agree. If
-the reference disagrees, the requirement belongs in a mod, and the finding
-belongs in this file.
+moved OUT of core and INTO this mod. Audit result (2026-07-08): the only
+non-faithful shortcut in core was the "everything known" rune convention, and
+it has been REVERTED to faithful (runes unknown by default) in commit
+`7970af462`, not relocated - because a shortcut that granted unearned bonuses
+is not a "fix" players would want as an option. The two remaining ledgered
+divergences (no global RNG singleton; Linoleum generated-by header text) are
+unavoidable port artifacts under decision 23(a), not bug fixes. So there is
+currently nothing to migrate into this mod.
