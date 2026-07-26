@@ -148,6 +148,9 @@ import {
   effectChoiceRows,
   EF,
   OBJ_PROPERTY,
+  playerRandomName,
+  buildProb,
+  RANDNAME_TOLKIEN,
 } from "@neo-angband/core";
 import type {
   GamePack,
@@ -713,6 +716,21 @@ async function choosePlayerEffect(chain: Effect | null): Promise<boolean> {
 const effectRegistry = game.effects;
 const features = booted.registries.features;
 const constants = booted.registries.constants;
+/**
+ * build_prob over names.txt section RANDNAME_TOLKIEN, the corpus
+ * player_random_name (player.c:375) draws from. Built once and memoised; null
+ * when the pack ships no names.json, in which case playerRandomName no-ops.
+ */
+const tolkienNameProbs = ((): (() => ReturnType<typeof buildProb> | null) => {
+  let cached: ReturnType<typeof buildProb> | null | undefined;
+  return () => {
+    if (cached === undefined) {
+      const words = booted.registries.nameSections.get(RANDNAME_TOLKIEN);
+      cached = words && words.length > 0 ? buildProb(words) : null;
+    }
+    return cached;
+  };
+})();
 // A birth is pending when this load started fresh but the character has not
 // been chosen yet (the birth screen is about to show). The game running behind
 // it is a throwaway default; saving it would poison the new slot (its bytes and
@@ -1990,6 +2008,27 @@ async function uninscribeItem(): Promise<void> {
   if (!ref) return;
   commandBuffer.push({ code: "uninscribe", args: { ...ref } });
   advance();
+}
+
+/**
+ * player_can_refuel (player-util.c L1227) via player_can_refuel_prereq (L1287),
+ * the 'F' key's prereq (ui-game.c:132). Checked at the KEY, before the command
+ * is pushed (ui-game.c:596), which means do_cmd_refill's own two guards below
+ * are unreachable from 'F' and only fire on the context-menu Refill row
+ * (ui-context.c:725, offered on any obj_can_refill fuel item regardless of what
+ * is worn) - so this prereq must sit on the binding, not inside refuelItem.
+ *
+ * Note the message is "refuelled", not do_cmd_refill's "refilled", and that
+ * player_can_refuel tests OF_TAKES_FUEL only, ignoring OF_NO_FUEL.
+ */
+function playerCanRefuelPrereq(): boolean {
+  const player = state.actor.player;
+  const lightSlot = player.body.slots.findIndex((s) => s.type === "LIGHT");
+  const light =
+    lightSlot >= 0 ? gearGet(state.gear, player.equipment[lightSlot] ?? 0) : null;
+  if (light && light.flags.has(OF.TAKES_FUEL)) return true;
+  say("Your light cannot be refuelled.");
+  return false;
 }
 
 /**
@@ -3688,6 +3727,14 @@ async function driveRest(nArg: number): Promise<void> {
 
   // player_resting_set_count + the "stop if told to" guard (cmd-cave.c:1645).
   if (n === 0 || (n < 0 && !restingIsSpecial(n))) return;
+
+  // cmd-cave.c:1662-1664: every self-continuation of a SPECIAL rest ('&', '*',
+  // '!') calls player_set_resting_repeat_count(player, 0), so a conditional rest
+  // wipes the remembered count. Since n never changes across a special rest's
+  // turns, doing it once here is equivalent to upstream's per-turn clear - and
+  // it happens even when the rest ends on its very first turn, because upstream
+  // reaches that branch whenever n is special regardless of the count.
+  if (restingIsSpecial(n)) restRepeatCount = 0;
 
   const rest: RestingState = { count: Math.min(n, 9999), turnsRested: 0 };
   (state as StateWithRest).resting = rest;
@@ -5732,7 +5779,8 @@ window.addEventListener("keydown", (ev) => {
       { o: "E", act: () => void openModal(() => useItem("eat", (t) => tvalIsEdible(t.tval), "Eat which food? ", "You have no food to eat.", { inven: true, floor: true })) },
       { o: "q", act: () => void openModal(() => useItem("quaff", (t) => tvalIsPotion(t.tval), "Quaff which potion? ", "You have no potions from which to quaff.", { inven: true, floor: true })) },
       { o: "r", act: () => void openModal(() => useItem("read", (t) => tvalIsScroll(t.tval), "Read which scroll? ", "You have no scrolls to read.", { inven: true, floor: true })) },
-      { o: "F", act: () => void openModal(refuelItem) },
+      // player_can_refuel_prereq gates 'F' (ui-game.c:132) before CMD_REFILL.
+      { o: "F", act: () => { if (playerCanRefuelPrereq()) void openModal(refuelItem); else render(); } },
       { o: "U", r: "X", act: () => void openModal(useGenericCmd) },
       // General actions (cmd_action, ui-game.c:141-153).
       { o: "D", act: () => void openModal(disarmCmd) },
@@ -6134,6 +6182,9 @@ async function maybeBirth(): Promise<void> {
         : null,
       deps: birthDeps,
       historyFor,
+      // player_random_name (player.c:375) for the name field's '*' key and the
+      // name finish_with_random_choices fills in. Draws on the same game RNG.
+      randomName: () => playerRandomName(state.rng, tolkienNameProbs()),
       // Seed the '=' birth-options editor with the previous character's choices
       // so a New Game defaults to them (as upstream keeps the last birth opts).
       ...(birthChoice?.birthOptions ? { birthOptions: birthChoice.birthOptions } : {}),

@@ -78,6 +78,7 @@ import { attachGameEnv } from "./effect-game-env";
 import { describeObject } from "./describe";
 import { ODESC, objDescNameFormat } from "../obj/desc";
 import { substituteTimedMessage } from "../player/timed";
+import { squareIsSeen } from "../world/view";
 import { updatePlayerObjectKnowledge } from "./known";
 import type { CastContext } from "./project-cast";
 import type { ActionRegistry } from "./player-turn";
@@ -786,6 +787,65 @@ export function playerGetResumeNormalShape(
 }
 
 /**
+ * no_light (cave-view.c L913): the player's own grid is not currently seen.
+ * Shared by playerCanRead here and player_can_cast (game/spell-cmd.ts).
+ *
+ * SQUARE_SEEN is maintained by update_view, which this port drives through the
+ * `state.updateFov` host seam (game/context.ts L506, wired by the web shell at
+ * main.ts:4340). A core-only host that never installs the seam leaves SEEN
+ * clear on EVERY grid, so reading the flag there would report "no light"
+ * everywhere and make casting and reading permanently impossible - the opposite
+ * of upstream, where a lit town square is seen. So when the seam is absent the
+ * flag carries no information and no_light answers false, leaving the caller's
+ * other conditions (blindness) to decide, exactly as before this was wired.
+ * This is a seam guard, not a rule of the game: with a host that maintains the
+ * view, which is every playing configuration, the check is upstream's verbatim.
+ */
+export function noLight(state: GameState): boolean {
+  if (state.updateFov === undefined) return false;
+  return !squareIsSeen(state.chunk, state.actor.grid);
+}
+
+/**
+ * player_can_read (player-util.c L1166): the four conditions that forbid
+ * reading, in upstream's exact order - TMD_BLIND, then no_light, then
+ * TMD_CONFUSED, then TMD_AMNESIA - each with its own message. Note that the
+ * order and the strings differ from player_can_cast (L1087), which folds
+ * blind and no_light into one "You cannot see!" and has no amnesia check.
+ *
+ * Reached from two places upstream and both are the same predicate:
+ * do_cmd_read_scroll (cmd-obj.c:748) and the 'r' key's prereq
+ * player_can_read_prereq (player-util.c:1264, wired at ui-game.c:131). The
+ * prereq's TMD_COMMAND bypass is NOT reproduced here: while TMD_COMMAND runs
+ * the turn loop redirects every command to do_cmd_mon_command before the
+ * handler is reached (game/player-turn.ts L708-714), which is exactly what
+ * the bypass exists to permit.
+ */
+export function playerCanRead(
+  state: GameState,
+  env: Pick<ObjCmdEnv, "msg"> = {},
+): boolean {
+  const p = state.actor.player;
+  if ((p.timed[TMD.BLIND] ?? 0) > 0) {
+    env.msg?.("You can't see anything.");
+    return false;
+  }
+  if (noLight(state)) {
+    env.msg?.("You have no light to read by.");
+    return false;
+  }
+  if ((p.timed[TMD.CONFUSED] ?? 0) > 0) {
+    env.msg?.("You are too confused to read!");
+    return false;
+  }
+  if ((p.timed[TMD.AMNESIA] ?? 0) > 0) {
+    env.msg?.("You can't remember how to read!");
+    return false;
+  }
+  return true;
+}
+
+/**
  * player_confuse_dir (player-util.c): confusion randomises the direction
  * 75% of the time (always for "no direction").
  */
@@ -1334,9 +1394,18 @@ export function installObjCommands(
     "quaff",
     useCommand(deps, (o) => tvalIsPotion(o.tval), USE.SINGLE),
   );
-  registry.register(
-    "read",
-    gated(useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE)),
+  /* do_cmd_read_scroll (cmd-obj.c L738-758). player_can_read is checked
+   * BEFORE the shape-resume gate here even though do_cmd_read_scroll runs
+   * resume-first, because upstream's 'r' key runs player_can_read_prereq
+   * (ui-game.c:131) at the dispatch layer (ui-game.c:596) before the command
+   * is ever pushed: a blind player never sees the shape-resume prompt. This
+   * port has no prereq layer, so the guard sits at the head of the handler to
+   * reproduce that observable order. */
+  const readBody = gated(
+    useCommand(deps, (o) => tvalIsScroll(o.tval), USE.SINGLE),
+  );
+  registry.register("read", (state, cmd) =>
+    playerCanRead(state, deps.env ?? {}) ? readBody(state, cmd) : 0,
   );
   registry.register(
     "use-staff",

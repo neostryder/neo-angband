@@ -393,8 +393,13 @@ function unavailable(ctx: WizardUiCtx): void {
   ctx.say("That debug command is not available in this build.");
 }
 
-/** STR/INT/WIS/DEX/CON, the upstream stat_names order (player.h). */
-const STAT_NAMES = ["Strength", "Intelligence", "Wisdom", "Dexterity", "Constitution"];
+/**
+ * stat_idx_to_name (player.c L122): the list-stats.h macro names verbatim, in
+ * list order. These, not long words, are what do_cmd_wiz_edit_player_stat puts
+ * in its prompts - the stat-picker default (cmd-wizard.c:1259) and the value
+ * prompt "%s (3-118): " (cmd-wizard.c:1276).
+ */
+const STAT_NAMES = ["STR", "INT", "WIS", "DEX", "CON"];
 
 /** SQUARE flag choices for the 'q' query (cmd-wizard.c L2115-2128). */
 const SQUARE_FLAG_CHOICES: { letter: string; name: string; flag: number }[] = [
@@ -804,7 +809,10 @@ async function runEditPlayer(ctx: WizardUiCtx): Promise<void> {
   );
   if (field === null) return;
   if (field < STAT_NAMES.length) {
-    const v = await promptNumber(term, `Set ${STAT_NAMES[field]} to?`, p.statCur[field] ?? 10, 3, 118, undefined, 3);
+    /* cmd-wizard.c:1276 prompt verbatim: "<stat_idx_to_name> (3-118): ". The
+     * menu replaces upstream's free-text get_string stat picker (UI necessity);
+     * the value prompt and its [3, 118] clamp are upstream's. */
+    const v = await promptNumber(term, `${STAT_NAMES[field]} (3-118): `, p.statCur[field] ?? 10, 3, 118, undefined, 3);
     if (v === null) return;
     wizEditPlayerStat(state, { stat: field, value: v }, deps);
   } else if (field === STAT_NAMES.length) {
