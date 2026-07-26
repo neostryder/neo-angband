@@ -273,6 +273,14 @@ function playerPickupAux(
    * predicates sit on the live path (W2-012 / W2-013). No RNG.
    */
   const stack = gearGet(state.gear, handle);
+
+  /* apply_autoinscription (obj-gear.c:868): inven_carry autoinscribes in its
+   * NON-combining branch only - an object absorbed into an existing stack keeps
+   * that stack's inscription. This is the pickup half of the autoinscription
+   * story; without it a registered note only landed on the explicit `{`
+   * autoinscribe command. */
+  if (!combining && stack) state.autoinscribeObject?.(stack);
+
   if (!combining && stack && state.flavorKnown && !state.flavorKnown.isAware(stack.kind)) {
     const p = state.actor.player;
     const pflags = state.playerState?.pflags ?? p.race.pflags;

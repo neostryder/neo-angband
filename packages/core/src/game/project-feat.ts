@@ -39,6 +39,7 @@ import {
   squareIsTrap,
   squareRemoveAllTraps,
   squareRevealTrap,
+  squareSetDoorLock,
   squareTrap,
 } from "./trap";
 import type { TrapDeps } from "./trap";
@@ -259,11 +260,12 @@ export function projectFeature(
         }
         disableTraps(state, grid);
       } else if (env.trapDeps && squareDoorPower(state, grid, env.trapDeps) > 0) {
-        /* square_unlock_door (cave-square.c:1377) = square_set_door_lock(…, 0).
-         * DIVERGENCE (reported, W1-CAVE-SAVE-002): upstream keeps the "door
-         * lock" trap and zeroes its power; this removes the trap outright. */
-        const lock = lookupTrap(env.trapDeps.kinds, "door lock");
-        if (lock) squareRemoveAllTraps(state, grid, lock.tidx);
+        /* square_unlock_door (cave-square.c:1377-1380) = square_set_door_lock(c,
+         * grid, 0), and square_set_door_lock (trap.c:706-726) KEEPS the "door
+         * lock" trap and sets its power to 0 - it does not delete it. The trap
+         * object must survive: square_istrap / square_isplayertrap and the
+         * savefile's trap block both see it upstream. */
+        squareSetDoorLock(state, grid, 0, env.trapDeps);
         if (squareIsView(c, grid)) {
           env.msg?.("Click!");
           obvious = true;

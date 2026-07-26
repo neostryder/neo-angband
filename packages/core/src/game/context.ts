@@ -253,6 +253,27 @@ export interface GameState {
    */
   autoinscribe?: import("../obj/knowledge").AutoinscriptionRegistry;
   /**
+   * The per-RUNE autoinscription registry (rune_list[i].note, obj-knowledge.c
+   * rune_note / rune_set_note). Separate from `autoinscribe`: upstream
+   * apply_autoinscription applies BOTH (runes_autoinscribe first,
+   * obj-ignore.c:259). Persists in the save (wr_ignore, save.c:586-605).
+   * Optional so the worldless harness stays total.
+   */
+  runeNotes?: import("../obj/knowledge").RuneNoteRegistry;
+  /**
+   * apply_autoinscription (obj-ignore.c:242) as a seam, for the call sites that
+   * have no ObjCmdDeps to hand: inven_carry (obj-gear.c:868, every pickup) and
+   * store selling (store.c:1977). Wired by the session; absent in the worldless
+   * harness, where autoinscription is a no-op.
+   */
+  autoinscribeObject?: (obj: GameObject) => void;
+  /**
+   * autoinscribe_ground + autoinscribe_pack, the pair
+   * update_player_object_knowledge tail-calls (obj-knowledge.c:1245-1247).
+   * Wired by the session; absent in the worldless harness.
+   */
+  autoinscribeAll?: () => void;
+  /**
    * The bound player classes (players.classes), stashed by wireGame so the
    * bookseller's town-book always-line expansion (object_kind_to_book,
    * store.c:208-231) can resolve which spellbooks are town (non-dungeon) books.
