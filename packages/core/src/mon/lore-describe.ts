@@ -472,7 +472,14 @@ function spellColor(deps: LoreDeps, race: MonsterRace, spellIndex: number): numb
   return attr < 0 ? COLOUR_WHITE : attr;
 }
 
-/** blow_color default (mon-lore.c L178): the blow effect's base lore color. */
+/**
+ * blow_color default (mon-lore.c L178): the blow effect's base lore color.
+ *
+ * blow_index (mon-blows.c:174) is INLINED away here: upstream needs it only to
+ * turn race->blow[i].effect->name back into the blow_effects[] index that
+ * blow_color takes (its sole caller, mon-lore.c:1689), and the port passes the
+ * bound BlowEffect record itself, so the name->index round trip is unnecessary.
+ */
 function blowColor(deps: LoreDeps, effect: BlowEffect): number {
   if (deps.blowColor) return deps.blowColor(effect);
   const attr = colorTextToAttr(effect.loreColorBase);

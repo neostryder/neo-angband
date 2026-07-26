@@ -123,6 +123,9 @@ function makeNamed(name: string, tval: number): GameObject {
   );
 }
 
+/** The "fox" shape, for the player_get_resume_normal_shape gates. */
+const fox = plReg.shapes.find((s) => s.name === "fox")!;
+
 /** Max the device skill so check_devices cannot fizzle. */
 function maxDeviceSkill(state: GameState): void {
   state.actor.combat = {
@@ -456,6 +459,125 @@ describe("registered commands", () => {
     processPlayer(state, registry);
     /* Free of protection, the sleep potion paralyses. */
     expect(state.actor.player.timed[TMD.PARALYZED]!).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * W1-cmdwiz GAP-1/GAP-2: the two gates do_cmd_quaff_potion (cmd-obj.c L917) and
+ * do_cmd_read_scroll (cmd-obj.c L739) run BEFORE cmd_get_item.
+ */
+describe("quaff / read command gates (cmd-obj.c L739 / L917)", () => {
+  /** Light the player's grid so player_can_read's no_light check passes. */
+  function lightGrid(state: GameState): void {
+    state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN);
+  }
+
+  function readState(): {
+    state: GameState;
+    handle: number;
+    msgs: string[];
+    run: () => number;
+  } {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    lightGrid(state);
+    const scroll = makeNamed("Light", TV.SCROLL);
+    const handle = carry(state, scroll);
+    const msgs: string[] = [];
+    const registry = createDefaultRegistry();
+    installObjCommands(
+      registry,
+      makeDeps(state, { env: { msg: (t: string) => msgs.push(t) } }),
+    );
+    const run = (): number =>
+      registry.get("read")!(state, { code: "read", args: { handle } });
+    return { state, handle, msgs, run };
+  }
+
+  it("do_cmd_quaff_potion is gated by player_get_resume_normal_shape (L923)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const p = state.actor.player;
+    p.mhp = 30;
+    p.chp = 10;
+    p.shape = fox;
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    const h = carry(state, potion);
+
+    const registry = createDefaultRegistry();
+    /* A declined "Change back and continue?" must abort the quaff: no heal, no
+     * potion consumed, no energy - upstream returns before cmd_get_item. */
+    installObjCommands(registry, makeDeps(state, { env: { confirm: () => false } }));
+    expect(registry.get("quaff")!(state, { code: "quaff", args: { handle: h } })).toBe(0);
+    expect(p.chp).toBe(10);
+    expect(gearGet(state.gear, h)).not.toBeNull();
+    expect(p.shape).toBe(fox);
+  });
+
+  it("do_cmd_eat_food keeps NO shape gate (cmd-obj.c L899)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.actor.player.shape = fox;
+    const food = makeNamed("& Ration~ of Food", TV.FOOD);
+    const h = carry(state, food);
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state, { env: { confirm: () => false } }));
+    /* Eating is possible in any form, so the declined prompt is never asked and
+     * the food is consumed while still a fox. */
+    expect(registry.get("eat")!(state, { code: "eat", args: { handle: h } })).toBe(
+      state.z.moveEnergy,
+    );
+    expect(state.actor.player.shape).toBe(fox);
+  });
+
+  it("player_can_read refuses a blind reader with its own message (L1168)", () => {
+    const { state, handle, msgs, run } = readState();
+    state.actor.player.timed[TMD.BLIND] = 10;
+    expect(run()).toBe(0);
+    expect(msgs).toContain("You can't see anything.");
+    expect(gearGet(state.gear, handle)).not.toBeNull();
+  });
+
+  it("player_can_read refuses reading in the dark (no_light, L1173)", () => {
+    const { state, handle, msgs, run } = readState();
+    state.chunk.sqinfoOff(state.actor.grid, SQUARE.SEEN);
+    expect(run()).toBe(0);
+    expect(msgs).toContain("You have no light to read by.");
+    expect(gearGet(state.gear, handle)).not.toBeNull();
+  });
+
+  it("player_can_read refuses a confused reader (L1180)", () => {
+    const { state, handle, msgs, run } = readState();
+    state.actor.player.timed[TMD.CONFUSED] = 10;
+    expect(run()).toBe(0);
+    expect(msgs).toContain("You are too confused to read!");
+    expect(gearGet(state.gear, handle)).not.toBeNull();
+  });
+
+  it("player_can_read refuses an amnesiac reader (L1187)", () => {
+    const { state, handle, msgs, run } = readState();
+    state.actor.player.timed[TMD.AMNESIA] = 10;
+    expect(run()).toBe(0);
+    expect(msgs).toContain("You can't remember how to read!");
+    expect(gearGet(state.gear, handle)).not.toBeNull();
+  });
+
+  it("the read gate fires before the item filter, and a lit reader still reads", () => {
+    const { state, handle, msgs, run } = readState();
+    expect(run()).toBe(state.z.moveEnergy);
+    expect(gearGet(state.gear, handle)).toBeNull();
+    expect(msgs).not.toContain("You can't see anything.");
+  });
+
+  it("a blind reader is refused even with no scroll at all (order: L748 before L750)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    lightGrid(state);
+    state.actor.player.timed[TMD.BLIND] = 10;
+    const msgs: string[] = [];
+    const registry = createDefaultRegistry();
+    installObjCommands(
+      registry,
+      makeDeps(state, { env: { msg: (t: string) => msgs.push(t) } }),
+    );
+    expect(registry.get("read")!(state, { code: "read", args: {} })).toBe(0);
+    expect(msgs).toEqual(["You can't see anything."]);
   });
 });
 

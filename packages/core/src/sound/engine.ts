@@ -86,6 +86,37 @@ export function messageLookupByName(name: string): number {
   return -1;
 }
 
+/**
+ * message_sound_name (message.c:349-361): the sound.prf name for a MSG_, or
+ * null outside [MSG_GENERIC, MSG_MAX). Note MSG_GENERIC and MSG_BIRTH map to
+ * the EMPTY STRING, not null — list-message.h gives only MSG_MAX a NULL — so a
+ * caller must distinguish "no name" from "out of range".
+ */
+export function messageSoundName(message: number): string | null {
+  if (message < MSG.GENERIC || message >= MSG.MAX) return null;
+  return MESSAGE_ENTRIES[message]!.sound;
+}
+
+/**
+ * message_lookup_by_sound_name (message.c:325-341): the MSG_ whose sound.prf
+ * name matches, or MSG_GENERIC when nothing does.
+ *
+ * Three warts kept deliberately. The compare is my_stricmp, so it is
+ * case-INSENSITIVE. MSG_MAX is excluded from the scan (its name is NULL). And
+ * the not-found answer is MSG_GENERIC, i.e. 0 — NOT -1 as in
+ * message_lookup_by_name — so a caller cannot tell a miss from a real hit on
+ * MSG_GENERIC. The mapping is also not one-to-one: several messages share the
+ * empty sound name, and the first of those (MSG_GENERIC) always wins.
+ */
+export function messageLookupBySoundName(name: string): number {
+  const lower = name.toLowerCase();
+  /* Exclude MSG_MAX since it has NULL for the sound's name. */
+  for (let i = 0; i < MESSAGE_ENTRIES.length - 1; i++) {
+    if ((MESSAGE_ENTRIES[i]!.sound ?? "").toLowerCase() === lower) return i;
+  }
+  return MSG.GENERIC;
+}
+
 /** struct msg_snd_data (sound-core.c): a message's mapped sample ids. */
 interface MsgSndData {
   numSounds: number;
