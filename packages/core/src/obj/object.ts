@@ -119,10 +119,6 @@ export function tvalIsAmmo(tval: number): boolean {
 export function tvalIsSharpMissile(tval: number): boolean {
   return tval === TV.ARROW || tval === TV.BOLT;
 }
-/** tval_is_bolt (obj-tval.c L165): EF_BRAND_BOLTS' item_tester. */
-export function tvalIsBolt(tval: number): boolean {
-  return tval === TV.BOLT;
-}
 export function tvalIsLauncher(tval: number): boolean {
   return tval === TV.BOW;
 }
