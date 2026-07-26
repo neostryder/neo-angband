@@ -13,7 +13,14 @@ import type { Loc } from "./loc";
 
 /** EVENT_MESSAGE / EVENT_INITSTATUS payloads. */
 export interface MessageEventData {
-  msg: string;
+  /**
+   * The message text, or null. NULL is meaningful and not the same as "":
+   * event_signal_message carries a real string only for EVENT_MESSAGE, and
+   * passes NULL for EVENT_SOUND (message.c:374) and EVENT_BELL (:381). A front
+   * end distinguishing "no message accompanies this" from "an empty message"
+   * needs that, and a port that flattened both to "" could not.
+   */
+  msg: string | null;
   /** Message type (MSG_* index); front ends map it to color/sound. */
   type: number;
 }

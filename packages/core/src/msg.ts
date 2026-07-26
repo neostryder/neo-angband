@@ -130,14 +130,17 @@ export class Messages {
     this.events.emit("message", { msg: text, type });
   }
 
-  /** sound: EVENT_SOUND only, gated by the use_sound option. */
+  /**
+   * sound: EVENT_SOUND only, gated by the use_sound option. The payload's
+   * message is null, not "" -- message.c:374 passes NULL.
+   */
   sound(type: number): void {
     if (!this.soundEnabled()) return;
-    this.events.emit("sound", { msg: "", type });
+    this.events.emit("sound", { msg: null, type });
   }
 
-  /** bell: EVENT_BELL. */
+  /** bell: EVENT_BELL, likewise with a NULL message (message.c:381). */
   bell(): void {
-    this.events.emit("bell", { msg: "", type: MSG_BELL });
+    this.events.emit("bell", { msg: null, type: MSG_BELL });
   }
 }
