@@ -35,6 +35,18 @@ function loadPack(): MonsterPackRecords {
 const reg = bindMonsters(loadPack());
 
 describe("MonsterRegistry counts", () => {
+  it("uses C truthiness for blow-method and summon boolean directives", () => {
+    const pack = loadPack();
+    const method = pack.blowMethods.find((r) => r.name === "HIT")!;
+    Object.assign(method, { cut: 2, stun: 2, miss: 2, phys: 2 });
+    pack.summons[0]!.uniques = 2;
+
+    const bound = bindMonsters(pack);
+    const hit = bound.blowMethods.get("HIT")!;
+    expect(hit).toMatchObject({ cut: true, stun: true, miss: true, phys: true });
+    expect(bound.summons[0]!.uniquesAllowed).toBe(true);
+  });
+
   it("binds every pack record", () => {
     expect(reg.races.length).toBe(624);
     expect(reg.bases.size).toBe(56);
