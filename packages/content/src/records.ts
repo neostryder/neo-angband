@@ -11,9 +11,8 @@
  * (upstream treats that as "human, not parser error") unless the directive
  * is marked `requireParent`, where upstream instead reports
  * PARSE_ERROR_MISSING_RECORD_HEADER. A repeat of a non-`repeat` directive is
- * otherwise silently overwrite the previous value, matching the usual
- * upstream handler behavior.  Only explicitly marked directives reject a
- * repeat with PARSE_ERROR_REPEATED_DIRECTIVE.
+ * refused as PARSE_ERROR_REPEATED_DIRECTIVE unless it is marked `lastWins`,
+ * where upstream overwrites the previous value.
  *
  * Output key order is spec order (the upstream registration order), not
  * encounter order, so records diff cleanly against the .txt sources.
@@ -32,11 +31,15 @@ export interface DirectiveDef {
   /** Preserve encounter order for a cross-directive repeated list. */
   readonly orderKey?: string;
   /**
-   * Reject a repeated occurrence.  This models the two upstream handlers
-   * that explicitly test already-initialized state: parse_feat_name
-   * (init.c:2059-2060) and parse_class_magic (init.c:3714-3716).
+   * A repeat of this directive REPLACES the previous value instead of being
+   * refused. Upstream returns PARSE_ERROR_REPEATED_DIRECTIVE only where a
+   * handler explicitly checks for a value already being set; the dice
+   * handlers instead dice_free() the old dice and store the new one, so the
+   * last line wins (init.c parse_class_dice, obj-init.c parse_object_dice,
+   * player-timed.c parse_player_timed_effect_dice, init.c parse_trap_dice).
+   * Asserted by c-info.c/k-info.c test_dice0 and ptimed.c test_effectdice0.
    */
-  readonly rejectRepeated?: (prior: JsonValue) => boolean;
+  readonly lastWins?: boolean;
   /**
    * This directive is an ERROR when none of its `childOf` parents has been
    * seen yet, rather than attaching to the enclosing record. Upstream is
@@ -174,9 +177,8 @@ function finalizeNode(
 
 /**
  * Compile the text of one gamedata file into JSON records.
- * Throws on any line the upstream parser would reject.  Non-repeating
- * directives overwrite their previous value unless their spec explicitly
- * models an upstream repeated-directive error.
+ * Throws on any line the upstream parser would reject and on duplicate
+ * occurrences of directives the spec does not mark as repeating.
  *
  * This is the port's `parse_file` (datafile.c:87) plus the `fp->run` half of
  * `run_parser` (datafile.c:45): one line-at-a-time loop over the file feeding
@@ -286,14 +288,9 @@ export function compileGamedata(text: string, spec: FileSpec): CompiledFile {
         target.orderGroups.set(cd.def.orderKey, order);
       }
     } else {
-      const prior = target.children.get(parsed.directive);
-      if (
-        prior !== undefined &&
-        !Array.isArray(prior) &&
-        cd.def.rejectRepeated?.(finalizeValue(prior, spec, table))
-      ) {
+      if (target.children.has(parsed.directive) && cd.def.lastWins !== true) {
         throw new Error(
-          `${where}: duplicate directive "${parsed.directive}" (rejected by upstream handler)`,
+          `${where}: duplicate directive "${parsed.directive}" (not marked repeat in the spec)`,
         );
       }
       target.children.set(parsed.directive, value);

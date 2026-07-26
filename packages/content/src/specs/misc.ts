@@ -94,6 +94,7 @@ export const playerTimedSpec: FileSpec = {
       fmt: "effect-dice str dice",
       childOf: ["on-begin-effect", "on-end-effect"],
       requireParent: true,
+      lastWins: true,
     },
     {
       fmt: "effect-expr sym name sym base str expr",

@@ -144,7 +144,7 @@ describe("proj.c: projection field extraction", () => {
   });
 
   /*
-   * GAP-7: ordinary scalar directives are last-one-wins.
+   * GAP-7 (reported, NOT fixed - see the findings doc).
    *
    * Each of proj.c test_type0 / test_desc0 / test_player_desc0 /
    * test_blind_desc0 / test_lash_desc0 and curse.c test_dice0 parses the
@@ -153,11 +153,16 @@ describe("proj.c: projection field extraction", () => {
    * upstream handler string_free's / dice_free's the old value and assigns
    * the new one.
    *
-   * Only init.c parse_feat_name and parse_class_magic return
-   * PARSE_ERROR_REPEATED_DIRECTIVE, so all other non-accumulating directives
-   * silently replace the prior value.
+   * The port models "not marked repeat" as "a duplicate is an error", so it
+   * refuses the second line instead. That default is shared by every shipped
+   * spec, and only two upstream handlers (init.c parse_feat_name and
+   * parse_class_magic) genuinely return PARSE_ERROR_REPEATED_DIRECTIVE, so
+   * correcting it means flipping the default for non-repeat directives across
+   * ALL specs with an explicit opt-in for those two - a cross-lane
+   * restructure, not an edit inside this batch. These tests pin the current,
+   * WRONG behaviour so the fix has a failing marker to remove.
    */
-  describe("GAP-7: a restated single-value directive replaces the prior value", () => {
+  describe("GAP-7: a restated single-value directive is refused, not replaced", () => {
     it.each([
       ["type", "type:element", "type:monster"],
       ["desc", "desc:acid", "desc:caustic substance"],
@@ -165,11 +170,11 @@ describe("proj.c: projection field extraction", () => {
       ["blind-desc", "blind-desc:something acrid", "blind-desc:acid"],
       ["lash-desc", "lash-desc:oozing slime", "lash-desc:acid"],
     ])(
-      "upstream replaces a second %s: line (test_type0/desc0/player_desc0/blind_desc0/lash_desc0)",
+      "upstream replaces a second %s: line; the port throws (test_type0/desc0/player_desc0/blind_desc0/lash_desc0)",
       (key, first, second) => {
         const text = ["code:ACID", first, second, ""].join("\n");
-        expect(compileGamedata(text, spec("projection")).records[0]?.[key]).toBe(
-          second.slice(second.indexOf(":") + 1),
+        expect(() => compileGamedata(text, spec("projection"))).toThrow(
+          new RegExp(`duplicate directive "${key}"`),
         );
       },
     );
@@ -678,15 +683,19 @@ describe("curse.c: curse field extraction and the effect group", () => {
     ]);
   });
 
-  it("GAP-7: a second dice: on one effect replaces the first (test_dice0)", () => {
+  it("GAP-7: a second dice: on one effect is refused, not replaced (test_dice0)", () => {
     /* parse_curse_dice dice_free's the old dice and stores the new one, so
-     * upstream returns PARSE_ERROR_NONE with -4+4d8 winning over 8+2d10. */
-    expect(
+     * upstream returns PARSE_ERROR_NONE with -4+4d8 winning over 8+2d10. The
+     * port refuses the duplicate; see the GAP-7 note in the proj.c section.
+     * (EffectBuilder.dice, which is what actually builds the runtime chain,
+     * DOES overwrite - pinned in
+     * packages/core/src/parse-objterrain.upstream.test.ts.) */
+    expect(() =>
       compileGamedata(
         "name:test curse\neffect:DAMAGE\ndice:8+2d10\ndice:-4+4d8\n",
         spec("curse"),
-      ).records[0]?.["effect"],
-    ).toEqual([{ eff: "DAMAGE", dice: "-4+4d8" }]);
+      ),
+    ).toThrow(/duplicate directive "dice"/);
   });
 
   it("effect deps before any effect: are not an error (test_missing_dice0)", () => {
