@@ -34,10 +34,10 @@ Reference: read-only `reference/src/tests/…`.
 | `z-file/filename-index.c` | N/A | — | 0 | — | — |
 | `z-file/path-normalize.c` | N/A | — | 0 | — | — |
 | `trivial/trivial.c` | N/A | — | 0 | — | — |
-| `message/message.c` | PORTED | `packages/core/src/msg.upstream.test.ts` | 12 | 10 + 2 `it.fails` | 0 |
+| `message/message.c` | PORTED | `packages/core/src/msg.upstream.test.ts` | 14 | 14 | 0 |
 
-**Totals as landed:** 24 `it()`s across 4 files, of which 2 are `it.fails`
-pins for UT-001 and UT-002 (below).
+**Totals as landed:** 26 `it()`s across 4 files, all passing. UT-001, UT-002
+and UT-006 were FIXED rather than pinned -- see below.
 
 ```text
 npx vitest run packages/core/src/dice.upstream.test.ts \
@@ -58,30 +58,40 @@ pnpm build   # tsc -b
 # exit 0
 ```
 
-### How UT-001 / UT-002 landed without weakening the assertion
+### How UT-001 / UT-002 / UT-006 were resolved: FIXED, not pinned
 
-Neither is fixed here (production code untouched). Both upstream assertions are
-kept verbatim, moved into their own `it.fails()` case, with the C citation and
-the finding ID in the test:
+They landed first as `it.fails()` pins, on the reasoning that a pin is an active
+ratchet (vitest reports an `it.fails` case that starts PASSING as a failure, so
+the suite announces the day the port is corrected). That reasoning is sound and
+worth keeping for a divergence that cannot be closed cheaply. It did not apply
+here: all three were small, and the standing mandate is exact parity, so the
+right answer was to make the port match and keep the upstream assertions as
+ordinary green guards.
 
-- `packages/core/src/msg.upstream.test.ts`
-  `it.fails("lookup:  by printed number, the C strtoul path [UT-001]")`
-- `packages/core/src/msg.upstream.test.ts`
-  `it.fails("bell:  EVENT_BELL carries a NULL message [UT-002]")`
+What changed in the port (`packages/core/src/sound/engine.ts`,
+`packages/core/src/events.ts`, `packages/core/src/msg.ts`):
 
-`it.fails` was chosen over `skip`/`todo` because it is an active ratchet:
-vitest reports an `it.fails` case that starts PASSING as a failure, so the day
-the port is fixed the suite says so and the marker gets promoted back to a
-plain `it()`. No existing repo convention was found for this (grep over
-`packages/**/*.test.ts` for `it.fails` / `it.skip` / `it.todo` found only
-`describe.skipIf(!cbase)` for the missing-C-baseline gates), so this is the
-convention this batch establishes.
+- **UT-001** -- `messageLookupByName` now runs the numeric path FIRST, as
+  `message.c:304-309` does: a `strtoul`-style decimal parse, accepted when the
+  remainder is spaces or tabs only (`contains_only_spaces`, z-util.c:801-806)
+  and the value is below `MSG_MAX`. Only if nothing numeric was consumed does
+  the name table get searched. The sign and overflow behaviour of C's
+  `unsigned long` is reproduced, which is what makes upstream's own `"-3"`
+  assertion (tests/message/message.c:533-534) come out as -1 rather than as a
+  parse failure.
+- **UT-006** -- the name comparison is now case-insensitive, matching
+  `my_stricmp` at `message.c:312`.
+- **UT-002** -- `MessageEventData.msg` is now `string | null`, and both signals
+  the C fires with a NULL message send null: `bell` (`message.c:381`) and
+  `sound` (`:374`). "" and NULL are not interchangeable: a front end has to be
+  able to tell "no message accompanies this signal" from "an empty message".
 
-One side effect worth recording: the surviving green `lookup` case still
-asserts `messageLookupByName(String(MSG_MAX)) === -1` and
-`… (MSG_MAX + 1) === -1`, which pass **vacuously** in the port — it rejects
-every numeral, not only the out-of-range ones. Those two assertions only become
-meaningful once UT-001 is fixed. Noted in the test.
+The vacuous-assertion note that used to live here is also discharged. While
+UT-001 was open, the green `lookup` case's `messageLookupByName(String(MSG_MAX))
+=== -1` and `… (MSG_MAX + 1) === -1` passed only because the port rejected EVERY
+numeral. Now that the numeric path exists they test what they claim, and a new
+case covers the rest of the edge behaviour (blank tail, tab tail, non-blank
+tail, negative, overflow, empty string).
 
 ### N/A reasons (one line each)
 
@@ -118,7 +128,7 @@ expected: `message_lookup_by_name("0")` … `"152"` return the integer index; C 
 actual:   `messageLookupByName(String(i))` returns `-1` for every decimal numeral (name table walk only; no numeric path)
 why:      Port `messageLookupByName` compares against `MESSAGE_ENTRIES[i].name` only. Upstream also accepts a decimal string form of the MSG_ index.
 severity: P2
-status:   OPEN, pinned by `it.fails`. Dormant in the live port: `messageLookupByName` has no non-test caller (the C calls it from init.c:738/801/858/921, mon-init.c:164/606, mon-summon.c:79, obj-init.c:351, player-timed.c:176 while parsing `msgt:` directives; the port's content build resolves those elsewhere).
+status:   **FIXED** 2026-07-26 in `sound/engine.ts` (numeric path added ahead of the name walk). Guard is now a plain `it()` at msg.upstream.test.ts. Was dormant in the live port -- `messageLookupByName` has no non-test caller yet (the C calls it from init.c:738/801/858/921, mon-init.c:164/606, mon-summon.c:79, obj-init.c:351, player-timed.c:176 while parsing `msgt:` directives; the port's content build resolves those elsewhere) -- so this was fixed for correctness ahead of the caller, not to repair live behaviour.
 
 ### UT-002  bell (EVENT_BELL null message)
 ref:      reference/src/tests/message/message.c:443; reference/src/message.c:380-383
@@ -127,7 +137,7 @@ expected: after `bell()`, event payload message pointer is NULL → test `lastbe
 actual:   port emits `{ msg: "", type: MSG_BELL }`; handler records `""`
 why:      C `event_signal_message(EVENT_BELL, MSG_BELL, NULL)` vs TS `MessageEventData.msg: string` always materialised as empty string. Log side-effects (no message added) match; optional-message nullability does not.
 severity: P3
-status:   OPEN, pinned by `it.fails`. `Messages.sound()` (msg.ts:134-137) has the same `msg: ""`-for-NULL shape, so a fix should make `MessageEventData.msg` nullable for both EVENT_BELL and EVENT_SOUND.
+status:   **FIXED** 2026-07-26. `MessageEventData.msg` is now `string | null`; both `Messages.bell()` and `Messages.sound()` send null, which is what the C passes at message.c:381 and :374 respectively. Guard is now a plain `it()`.
 
 ### UT-003  sound_lookup
 ref:      reference/src/tests/message/message.c:547-578; reference/src/message.c:325-361
@@ -153,10 +163,11 @@ actual:   private helpers scoped to O-combat object-info; not exported; UINT_MAX
 why:      Same arithmetic family is used, but there is no shared z-util rational module to host the upstream unit suite.
 severity: P2
 
-### UT-006  lookup by name is case-SENSITIVE (NEW — found during the salvage, not fixed)
+### UT-006  lookup by name is case-SENSITIVE (NEW — found during the salvage)
 ref:      reference/src/message.c:306-308 — `if (my_stricmp(name, message_names[i]) == 0) return (int)i;`
 port:     packages/core/src/sound/engine.ts:38 — `if (MESSAGE_ENTRIES[i]!.name === name) return i;`
 expected: `message_lookup_by_name("generic")` / `"Generic"` return `MSG_GENERIC`; upstream compares case-INsensitively
 actual:   `messageLookupByName("generic")` returns `-1`; only the exact upper-case table spelling matches
 why:      `my_stricmp` was ported as `===`. Not covered by the upstream unit test (it only probes the canonical spellings), so no ported test catches it — recorded here instead of adding a non-upstream test.
-severity: P3 while dormant (same no-live-caller situation as UT-001); becomes P2 the moment a `.prf` / gamedata `msgt:` reader is wired, because upstream's data files are parsed case-insensitively.
+severity: P3 while dormant (same no-live-caller situation as UT-001); would have become P2 the moment a `.prf` / gamedata `msgt:` reader is wired, because upstream's data files are parsed case-insensitively.
+status:   **FIXED** 2026-07-26 alongside UT-001, and covered by a new `it()` -- the upstream suite only probes canonical spellings, so this case is ours rather than a port of one.

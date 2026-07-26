@@ -76,7 +76,8 @@ describe("Messages facade", () => {
     const log = new MessageLog();
     let soundOn = false;
     const m = new Messages(log, events, () => soundOn);
-    const emitted: Array<{ kind: string; type: number; msg: string }> = [];
+    /* msg is nullable: EVENT_SOUND and EVENT_BELL carry NULL (message.c:374, :381). */
+    const emitted: Array<{ kind: string; type: number; msg: string | null }> = [];
     events.on("message", (_t, d) =>
       emitted.push({ kind: "message", type: d.type, msg: d.msg }),
     );
