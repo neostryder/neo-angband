@@ -21,6 +21,22 @@ export const INT16_MIN = -32768;
 /** UINT32_MAX: the saturating ceiling for chunk->obj_rating / mon_rating. */
 export const UINT32_MAX = 4294967295;
 
+/**
+ * my_stristr (z-util.c:441): a case-insensitive substring search, returning
+ * whether `pattern` occurs anywhere in `string`. The C compares `toupper` per
+ * character; case-folding both sides is the same test for the ASCII data the
+ * gamedata files carry.
+ *
+ * Given a real counterpart rather than inlined a third time: it was already
+ * inlined at mon/bind.ts (raceByName's substring fallback) and MISSING at
+ * world/trap.ts's lookupTrap, which used a case-SENSITIVE `includes` where
+ * trap.c:57 uses my_stristr. Latent there only because every shipped trap desc
+ * and every call-site literal happens to be lower case today.
+ */
+export function myStristr(string: string, pattern: string): boolean {
+  return string.toLowerCase().includes(pattern.toLowerCase());
+}
+
 /** add_guardi: a + b coerced into [INT_MIN, INT_MAX] on overflow. */
 export function addGuardi(a: number, b: number): number {
   if (a < 0) {

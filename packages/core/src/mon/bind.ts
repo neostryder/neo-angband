@@ -36,6 +36,7 @@
 import { FlagSet } from "../bitflag";
 import { colorCharToAttr, colorTextToAttr } from "../color";
 import { Dice } from "../dice";
+import { myStristr } from "../guard";
 import { MFLAG_SIZE, monSpellsOfTypes, MON_GROUP, RF_SIZE, RSF_SIZE } from "./types";
 import type {
   BlowEffect,
@@ -634,15 +635,15 @@ export class MonsterRegistry {
    * a case-insensitive substring. The shipped monster.txt relies on the
    * substring fallback ("friends:100:4d4:spider" on ancient spider).
    *
-   * The substring test is my_stristr (z-util.c:441) inlined - toLowerCase on
-   * both sides is its toupper-per-char comparison.
+   * The substring test is my_stristr (z-util.c:441), now a real counterpart in
+   * guard.ts rather than a second inline copy -- the third place that needed it
+   * (lookupTrap) had got it wrong.
    */
   raceByName(name: string): MonsterRace | null {
     const exact = this.racesByName.get(name.toLowerCase());
     if (exact) return exact;
-    const query = name.toLowerCase();
     for (const race of this.races) {
-      if (race.name.toLowerCase().includes(query)) return race;
+      if (myStristr(race.name, name)) return race;
     }
     return null;
   }
