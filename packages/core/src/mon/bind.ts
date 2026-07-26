@@ -633,6 +633,9 @@ export class MonsterRegistry {
    * else the first race (lowest ridx) whose name contains the query as
    * a case-insensitive substring. The shipped monster.txt relies on the
    * substring fallback ("friends:100:4d4:spider" on ancient spider).
+   *
+   * The substring test is my_stristr (z-util.c:441) inlined - toLowerCase on
+   * both sides is its toupper-per-char comparison.
    */
   raceByName(name: string): MonsterRace | null {
     const exact = this.racesByName.get(name.toLowerCase());

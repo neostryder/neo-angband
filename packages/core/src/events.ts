@@ -292,7 +292,12 @@ export class GameEvents {
     this.handlers.clear();
   }
 
-  /** event_signal and the typed event_signal_* helpers, unified. */
+  /**
+   * event_signal and the typed event_signal_* helpers, unified: the C union
+   * payload is a typed payload map, so event_signal_message (game-event.c:172),
+   * event_signal_string, event_signal_point and event_signal_birthpoints are
+   * all this one call with a different payload type.
+   */
   emit<K extends GameEventType>(type: K, data: GameEventMap[K]): void {
     const list = this.handlers.get(type);
     if (!list) return;
