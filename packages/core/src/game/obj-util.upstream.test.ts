@@ -77,7 +77,7 @@ function carry(state: GameState, obj: GameObject): number {
 }
 
 function equip(state: GameState, obj: GameObject): number {
-  return invenWield(state, carry(state, obj), constants);
+  return invenWield(state, carry(state, obj));
 }
 
 describe("object/util (reference/src/tests/object/util.c)", () => {

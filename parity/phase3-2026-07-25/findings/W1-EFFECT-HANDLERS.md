@@ -127,22 +127,24 @@ handler also appears in the ten-handler deep-diff table.
 ## Ten line-by-line semantic diffs
 
 The selection emphasizes branches, loops, RNG ordering, targeting, and
-state-changing side effects.  Results: **6 MATCH, 4 DIVERGENCE**.
+state-changing side effects.  Current result after the assigned repair passes:
+**6 MATCH, 3 FIXED, 1 PARTIALLY FIXED**.  `TELEPORT_LEVEL` retains two
+reported-not-fixed surrounding-subsystem gaps below.
 
 | Handler | C / port citations | Verdict | Line-by-line conclusion |
 |---|---|---|---|
 | `BOLT_OR_BEAM` | C `effect-handler-attack.c:158-166`; port `effect-attack.ts:161-166` | MATCH | Both add `beam + other`, draw exactly one `randint0(100)`, use `< beam`, then tail-call BEAM or BOLT and return that result. |
-| `MON_HEAL_KIN` | C `effect-handler-attack.c:311-359`; port `effect-monster.ts:166-258` | **DIVERGENCE** | C rolls `amount` before reservoir-sampling for kin; the port samples first and rolls only after a kin exists, changing RNG state/order and skipping the value roll when none exists. C emits heal-health text only when the kin is seen; shared port helper `healMonster` emits “sounds … healthy” when unseen, behavior copied from `MON_HEAL_HP` but not present in `MON_HEAL_KIN`. HP cap, fear clear, identification, and kin predicate otherwise match. |
+| `MON_HEAL_KIN` | C `effect-handler-attack.c:311-359`; port `effect-monster.ts:166-258` | **FIXED** | The RNG-order and unseen-message divergences were fixed by W1-EFFECT-001.  Its re-audit also found and fixed the opposite null-monster roll-order divergence in `MON_HEAL_HP`; details and bite-proofs are below. |
 | `TIMED_INC` | C `effect-handler-general.c:576-645`; port `effect-general.ts:688-748` plus `effects/handlers.ts:246-284` | MATCH | Value roll and identification precede the same decoy early return; monster targets use the same six TMD-to-MON_TMD cases and clamped amount; the player path uses `other` only when the status is already active and passes notify/disturb/check flags equivalently. C computes the pure target pointer before its decoy check; that reordering has no state or RNG effect. |
-| `DESTRUCTION` | C `effect-handler-attack.c:1169-1281`; port `effect-terrain.ts:406-488` | **DIVERGENCE** | Circle bounds/distance, ROOM/VAULT/GLOW/SEEN changes, player/stair/permanent exclusions, monster deletion, `randint0(200)` terrain thresholds, element learning, resistance, and `10 + randint1(10)` blindness match. The port does not perform C's `square_forget()` against player map memory. It also removes destroyed artifacts but never does C's `mark_artifact_created(false)` for an unknown artifact when `birth_lose_arts` is off, so that artifact cannot regenerate. Both omissions are already broadly ledgered under map memory/artifact upkeep; they remain real core divergences. |
+| `DESTRUCTION` | C `effect-handler-attack.c:1169-1281`; port `effect-terrain.ts:402-493` | **FIXED** | Circle behavior still matches.  W1-EFFECT-002 added `square_forget()` for every affected grid and the exact known/`birth_lose_arts` artifact history plus created-registry branch before pile removal. |
 | `RECHARGE` | C `effect-handler-general.c:2127-2191`; port `effect-item.ts:464-545` | MATCH | Strength roll, immediate ID, cancel return, failure chance, guaranteed/one-in-N backfire, single-item destruction, ease formula, `t = strength / (10 - ease) + 1`, and `2 + randint1(t)` charge gain match. UI-only `recharge_pow`, combine, and redraw flags are represented outside the handler. |
-| `TELEPORT_TO` | C `effect-handler-general.c:2703-2831`; port `effect-teleport.ts:277-380` | **DIVERGENCE** | Start/aim selection, no-teleport checks, coordinate sentinel, monster-to-player radius 2, vault radius 10, widening threshold, legal-destination rejection sampling, movement, and PROJECT clearing match. The port omits the arena early return and the monster-decoy branch at C `:2735-2739`. It also computes `dimDoor` but discards it (`void dimDoor`) instead of C's `target_set_location(0, 0)`. These are acknowledged in the teleport ledger but are not semantic matches. |
-| `TELEPORT_LEVEL` | C `effect-handler-general.c:2834-2934`; port `effect-teleport.ts:418-511` | **DIVERGENCE** | Monster-target deletion, no-teleport checks, hostile nexus resistance, force-descend/quest/bottom gates, the 50% direction choice, destination-depth choice, messages, and change-level hook match. The port omits C's arena early return and decoy destruction before player checks. Command-queue flushing and typed sound are also absent but were not counted as separate core findings here because this review did not audit those surrounding subsystems. |
+| `TELEPORT_TO` | C `effect-handler-general.c:2703-2831`; port `effect-teleport.ts:307-397` | **FIXED** | Existing movement and landing behavior still matches.  W1-EFFECT-003 added the arena return, seen-decoy destruction, and Dimension Door location-target clearing in C order. |
+| `TELEPORT_LEVEL` | C `effect-handler-general.c:2834-2934`; port `effect-teleport.ts:434-536` | **PARTIALLY FIXED** | W1-EFFECT-004 fixed the two assigned handler gaps: the arena return and decoy destruction before player checks.  The port really does have a session/game command queue, so C's `cmdq_flush()` is an additional confirmed divergence; typed `MSG_TPLEVEL` sound is also absent.  Both are reported-not-fixed below under rule 8. |
 | `TAP_DEVICE` | C `effect-handler-general.c:3370-3446`; port `effect-item.ts:819-865` | MATCH | Item cancel, staff/wand energy `((5 + level) * 3 * pval) / 2`, `< 36` refusal, full-mana refusal, charge drain, mana `energy / 6` with fractional reset/cap, message, `used`, and `randint1(2)` stun flags match. |
 | `BIZARRE` | C `effect-handler-general.c:3516-3599`; port `effect-general.ts:860-951` | MATCH | The same `randint1(10)` partitions produce permanent five-stat/quarter-XP loss, 1000 DISP_ALL, radius-3 300 mana ball, or 250 mana bolt. Target-grid and projection-flag changes for DIR_TARGET match, as do return values. |
 | `MOVE_ATTACK` | C `effect-handler-attack.c:1785-1855`; port `effect-melee.ts:342-416` | MATCH | Both require an obvious monster, take up to four steps, choose diagonal/cardinal direction then `d,+1,-1`, return `moves != 4` when barred, return false after attacking a blocking monster, scale blows by `(blows * moves + 2) / 4`, and stop after a killing blow. |
 
-## Actionable gaps (reported, not fixed)
+## Actionable gaps
 
 1. ~~**W1-EFFECT-001 — `MON_HEAL_KIN` RNG and unseen messaging.**~~ **FIXED
    2026-07-26**, and the finding was right. Verified against the C before acting:
@@ -183,21 +185,74 @@ state-changing side effects.  Results: **6 MATCH, 4 DIVERGENCE**.
    before its handler's own `effect_calculate_value`. The port does the same at
    `dice.ts:419`, and the null-guard test documents it so the next reader does not
    mistake it for the thing being measured.
-2. **W1-EFFECT-002 — `DESTRUCTION` knowledge/artifact bookkeeping.** For every
-   affected grid, forget the player's remembered square as C's
-   `square_forget()` does.  When destroying an artifact, keep it permanently
-   created (and add loss history) if `birth_lose_arts` is on or it is known;
-   otherwise clear its created mark so it can regenerate.  Do this before
-   removing the pile.
-3. **W1-EFFECT-003 — `TELEPORT_TO` arena/decoy/target handling.** Return after
-   identification on arena levels; for a monster-origin, player-targeting cast
-   that monster sees the live decoy, destroy the decoy and return; after a
-   player-chosen Dimension Door, clear the location target.
-4. **W1-EFFECT-004 — `TELEPORT_LEVEL` arena/decoy handling.** Return after
-   identification on arena levels.  After the monster-target branch and before
-   player no-teleport checks, destroy a live decoy and return.
+2. ~~**W1-EFFECT-002 — `DESTRUCTION` knowledge/artifact bookkeeping.**~~
+   **FIXED 2026-07-26**, and the report was right.  Re-verified against C:
+   `effect-handler-attack.c:1201-1207` forgets every affected grid before the
+   player-grid early continue, so the player grid, stairs, and permanent grids
+   are included.  `:1220-1237` logs and marks known/`birth_lose_arts`
+   artifacts permanently created, but clears the created mark for an unknown
+   artifact when the option is off; `:1239-1243` removes the piles only after
+   that bookkeeping.
 
-No production behavior was changed for these findings.
+   Port fixes are `effect-terrain.ts:432-437` and `:450-461`.  Guards are
+   `effect-terrain.test.ts:346-407`.  The artifact guard observes
+   `ArtifactState.isCreated()`, the same registry gate generation reads in
+   `obj/make.ts:955`, rather than inspecting a test-only flag.
+
+   | reverted | verbatim failure |
+   |---|---|
+   | `squareForget(state, grid)` | `AssertionError: expected false to be true // Object.is equality` |
+   | artifact-registry `markCreated()` | `AssertionError: expected true to be false // Object.is equality` |
+   | permanent-loss history call | `AssertionError: expected [] to have a length of 1 but got +0` |
+
+3. ~~**W1-EFFECT-003 — `TELEPORT_TO` arena/decoy/target handling.**~~ **FIXED
+   2026-07-26**, and all three reported branches were present in C:
+   the arena return is `effect-handler-general.c:2714-2715`; a monster-origin
+   cast only destroys the decoy in the player-targeting branch when
+   `monster_is_decoyed(mon)` at `:2735-2739`; and a player-choice Dimension
+   Door clears the location target at `:2817-2820`.
+
+   Port fixes are `effect-teleport.ts:326-327`, `:341-345`, and `:392-394`.
+   Guards are `effect-teleport.test.ts:148-202`.
+
+   | reverted | verbatim failure |
+   |---|---|
+   | arena return | `AssertionError: expected 1 to be +0 // Object.is equality` |
+   | seen-decoy branch | `AssertionError: expected { x: 15, y: 10 } to be null` |
+   | Dimension Door target clear | `AssertionError: expected true to be false // Object.is equality` |
+
+4. ~~**W1-EFFECT-004 — `TELEPORT_LEVEL` arena/decoy handling.**~~ **FIXED
+   2026-07-26** for the two assigned gaps.  C identifies, then returns in an
+   arena at `effect-handler-general.c:2842-2845`.  After the target-monster
+   deletion branch, it destroys any live decoy and returns at `:2847-2859`,
+   before no-teleport, resistance, direction, or level-change work.
+
+   Port fixes are `effect-teleport.ts:514-515` and `:523-527`.  Guards are
+   `effect-teleport.test.ts:227-258`.
+
+   | reverted | verbatim failure |
+   |---|---|
+   | arena return | `AssertionError: expected 1 to be null` |
+   | decoy branch | `AssertionError: expected { x: 10, y: 8 } to be null` |
+
+## Reported, not fixed (rule 8)
+
+- **`TELEPORT_LEVEL` command queue:** confirmed additional divergence.  C
+  explicitly flushes pending commands before either level change at
+  `effect-handler-general.c:2903-2917`.  The port has a real equivalent:
+  `GameState.cmdQueue` at `game/context.ts:503`, drained before input at
+  `game/player-turn.ts:702-705`, and flushed by `disturb()` at
+  `game/player-path.ts:97-107`.  `teleportPlayerLevel()` changes level at
+  `effect-teleport.ts:468-493` without clearing it.  This was not one of the
+  three named assignments, so it was not fixed.
+- **`TELEPORT_LEVEL` typed sound:** C uses `msgt(MSG_TPLEVEL, ...)` at
+  `effect-handler-general.c:2908-2917`; the port emits plain text through
+  `say()`.  The original report already noted this.  It remains unfixed.
+- **`ALTER_REALITY` arena/ident ordering:** noticed while checking the same
+  file.  C checks the arena before the message, level change, and
+  identification at `effect-handler-general.c:1184-1191`.  The port has no
+  arena guard and sets `ident` before acting at `effect-teleport.ts:543-550`.
+  This is outside the named assignments and remains unfixed.
 
 ## What was not checked
 
@@ -206,9 +261,9 @@ No production behavior was changed for these findings.
 - The deep diff did not audit transitive implementations of projection,
   movement, object-stack, timed-status, map-memory, command-queue, message
   grammar, or sound primitives except where a direct handler mismatch is stated.
-- No behavioral regression tests were added for the four reported divergences,
-  because the lane instructions require reporting deep-diff defects without
-  fixing them.  The only changed test is the mechanical completeness guard.
+- Behavioral guards were added only for W1-EFFECT-002 through -004, the three
+  divergences assigned to this repair lane.  The extra rule-8 findings above
+  intentionally have no passing regression guard.
 - The 40 `effect_handler_*` functions outside the 72-row unmatched slice were
   included in the 112-way mechanical guard but not individually adjudicated.
 
@@ -222,9 +277,9 @@ No production behavior was changed for these findings.
   `MON_HEAL_KIN` depend on the still-simplified MDESC/display layer.  The
   RNG-order mismatch and the extra unseen heal message do not depend on that
   uncertainty.
-- **UNCERTAIN:** Command-queue flushing in `TELEPORT_LEVEL` may have a session
-  layer equivalent not visible in the handler.  It is recorded as not audited,
-  not asserted as an additional defect.
+- **RESOLVED (not a guess):** `TELEPORT_LEVEL` does have a concrete port-side
+  command-queue equivalent; the citations in “Reported, not fixed” establish
+  the missing flush.
 - **MAPPING CHOICE:** For handlers implemented by shared factories, the durable
   C-symbol citation is attached to the specific `EF.*` registry entry.  That
   registration line is the unambiguous per-effect counterpart even when there

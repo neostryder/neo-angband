@@ -381,12 +381,6 @@ export function placeTrap(
  * placeTrap after its pick_trap / randcalc draws, and directly by the level
  * populate path when the kind and power were rolled at generation time
  * (gen/util.ts placeTrap), so those draws are not spent twice.
- *
- * square_set_trap (cave-square.c:1299) has no counterpart by design: upstream
- * keeps a per-square singly-linked trap list and that setter writes its HEAD
- * pointer. The port stores an array per grid in state.traps, so head-pointer
- * assignment becomes unshift here, splice in squareRemoveTrap and delete in
- * squareRemoveAllTraps.
  */
 export function installTrap(
   state: GameState,

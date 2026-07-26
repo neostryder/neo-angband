@@ -391,7 +391,6 @@ export function serializeMonster(
   };
 }
 
-/** rd_monster (load.c:259), over JSON instead of the binary block. */
 export function deserializeMonster(
   data: SavedMonster,
   monsters: MonsterRegistry,
@@ -1450,12 +1449,7 @@ export function deserializeFloor(
   return floor;
 }
 
-/**
- * Rebuild the trap map from saved instances against the bound kinds. This is
- * rd_trap (load.c:359) plus its caller rd_traps_aux (L1473): the per-trap read
- * is not a separate function here because the port stores traps per grid rather
- * than as a linked list off the square.
- */
+/** Rebuild the trap map from saved instances against the bound kinds. */
 export function deserializeTraps(
   data: SavedGame["traps"],
   kinds: readonly TrapKind[],

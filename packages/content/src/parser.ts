@@ -334,12 +334,6 @@ class Tokenizer {
  * Returns null for blank lines and comments. Throws ParseError for
  * undefined directives, missing mandatory fields, malformed numbers and
  * malformed dice strings, mirroring parser_parse().
- *
- * parser_new (parser.c:99) has no counterpart: upstream allocates a mutable
- * `struct parser` that parser_reg fills with hooks and parser_setpriv threads
- * state through. Here the directive table is the caller's own `lookup` and
- * parsing is this pure function, so there is nothing to allocate or free
- * (parser_destroy likewise).
  */
 export function parseLine(
   line: string,
