@@ -230,28 +230,3 @@ parity/phase3-2026-07-25/findings/W3-UNIT-TESTS-core.md
 ```
 
 No port source files were modified (tests + findings only). `reference/` untouched.
-
-## Lane E follow-up — `game/basic.c` stair command guards (2026-07-26)
-
-`packages/core/src/session/basic.upstream.test.ts`'s `stairs1` had a conditional
-fallback: if `game.changeLevel` were absent, it assigned `chunk.depth = 1` and
-passed without a level transition. It now obtains the installed `descend` action
-from `startGame`'s command registry, proves the town-start stair precondition,
-asserts its pending level-change state, and invokes the real session
-`changeLevel` closure. Mutating that closure to return immediately made `stairs1`
-fail with `expected +0 to be 1` at the final depth assertion.
-
-`stairs2` assigned `state.actor.grid` directly. It now finds an in-bounds,
-passable adjacent square, obtains `walk` from the installed registry, walks out
-and back with real commands, and proves both positions and unchanged depth.
-Mutating `walkAction` to return `0` immediately made `stairs2` fail with
-`expected +0 to be 100` at the first walk-energy assertion. Both mutations were
-reverted; no production source was changed.
-
-Further soft tests found by inspection, not fixed in this lane:
-
-- `droppickup` (lines 144-164) is a command-wiring gap: it calls `floorCarry`
-  and deletes `state.floor` directly, so it does not drive upstream's `CMD_DROP`
-  or `CMD_AUTOPICKUP`.
-- `dropeat` (lines 167-187) is a command-wiring gap: it decrements the floor
-  object directly, so it does not drive upstream's `CMD_EAT`.
