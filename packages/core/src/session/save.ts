@@ -995,6 +995,14 @@ export interface SavedGame {
    */
   autoinscriptions?: SavedAutoinscription[];
   /**
+   * The per-RUNE autoinscriptions (rune_list[i].note; wr_ignore save.c:586-605,
+   * rd_ignore load.c:937-945). Keyed by the rune's index in buildRuneList -
+   * upstream writes the raw index too (`wr_s16b(k)`, save.c:600) and reads it
+   * straight back into rune_set_note(runeid, ...), so index keying IS the C
+   * behaviour here and core keeps it. Absent when no rune carries a note.
+   */
+  runeNotes?: Array<[number, string]>;
+  /**
    * Terrain-only Town chunk (wr_chunks always saves the Town entry even when
    * birth_levels_persist is OFF; generate.c:1371-1373 / save.c:1001-1044).
    * Present after leaving depth 0 without persist; consumed on town re-entry.
@@ -1178,6 +1186,11 @@ export function serializeGame(
   const autoinscriptions = state.autoinscribe
     ? serializeAutoinscriptions(state.autoinscribe, ids)
     : undefined;
+  /* wr_ignore's rune-autoinscription block (save.c:586-605): the count of runes
+   * carrying a note, then `wr_s16b(k)` + the note string for each. Keyed by the
+   * raw rune index, as upstream. */
+  const runeNoteEntries = state.runeNotes?.entries() ?? [];
+  const runeNotes = runeNoteEntries.length > 0 ? runeNoteEntries : undefined;
   return {
     version: SAVE_VERSION,
     player: serializePlayer(state.actor.player, ids),
@@ -1250,6 +1263,7 @@ export function serializeGame(
         }
       : {}),
     ...(autoinscriptions ? { autoinscriptions } : {}),
+    ...(runeNotes ? { runeNotes } : {}),
     /*
      * Terrain-only Town cache (wr_chunks, save.c:1001-1044): C always writes
      * the Town chunk even when birth_levels_persist is off, so a dungeon save
