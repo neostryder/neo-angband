@@ -25,10 +25,10 @@ import type { Loc } from "../loc";
 import { loc, locSum, randLoc } from "../loc";
 import { ORIGIN } from "../generated";
 import type { GameObject, StackLimits } from "../obj/object";
-import { OSTACK_FLOOR, objectAbsorb, objectMergeable } from "../obj/object";
+import { OSTACK_FLOOR, objectAbsorb, objectMergeable, tvalIsMoney } from "../obj/object";
 import { los } from "../world/view";
 import type { GameState } from "./context";
-import { objectSplit } from "./gear";
+import { objectIsInQuiver, objectSplit } from "./gear";
 
 /** Unported-subsystem hooks for the floor routines; every slot is optional. */
 export interface FloorEnv {
@@ -60,6 +60,165 @@ export function floorPile(
   grid: Loc,
 ): readonly GameObject[] {
   return state.floor.get(gridIdx(state, grid)) ?? [];
+}
+
+/**
+ * pile_contains (obj-pile.c L268). The pile is an array here, so the walk down
+ * obj->next is indexOf; kept as a named function so the intent (and the C
+ * symbol) is visible where the pile identity check matters.
+ */
+export function pileContains(
+  pile: readonly GameObject[],
+  obj: GameObject,
+): boolean {
+  return pile.indexOf(obj) >= 0;
+}
+
+/**
+ * pile_last_item (obj-pile.c L248): the tail of a pile, or null when empty.
+ * Upstream's two consumers (gear_last_item -> combine_pack, obj-ignore.c
+ * ignore_drop) both use it to walk gear BACKWARDS; here that is a reversed
+ * array walk (game/gear.ts combinePack, game/ignore-cmd.ts).
+ */
+export function pileLastItem(
+  pile: readonly GameObject[],
+): GameObject | null {
+  return pile.length > 0 ? (pile[pile.length - 1] as GameObject) : null;
+}
+
+/** object_floor_t (obj-pile.h L43): scan_floor's mode bits. */
+export const OFLOOR = {
+  NONE: 0x00,
+  /** Verify the item tester. */
+  TEST: 0x01,
+  /** Sensed or known items only. */
+  SENSE: 0x02,
+  /** Only the top item. */
+  TOP: 0x04,
+  /** Visible items only. */
+  VISIBLE: 0x08,
+} as const;
+
+/** get_item mode bits (game-input.h L28-40), the subset scan_items reads. */
+export const USE_MODE = {
+  EQUIP: 0x0001,
+  INVEN: 0x0002,
+  FLOOR: 0x0004,
+  QUIVER: 0x0008,
+} as const;
+
+/** item_tester: null accepts everything (object_test, obj-util.c). */
+export type ItemTester = ((obj: GameObject) => boolean) | null;
+
+/**
+ * object_test (obj-util.c L386): null accepts anything except gold, a real
+ * tester still must reject gold too. Every OFLOOR_TEST / scan_items caller
+ * routes through this rather than the tester alone, so a null-tester scan
+ * (e.g. a future "drop"/"pickup" get_item) does not offer gold objects the
+ * way a bare `tester(obj)` call would.
+ */
+function objectTest(tester: ItemTester, obj: GameObject | null | undefined): boolean {
+  if (!obj) return false;
+  if (tvalIsMoney(obj.tval)) return false;
+  return !tester || tester(obj);
+}
+
+/**
+ * scan_floor (obj-pile.c L1295): the objects at the player's grid that pass
+ * `mode`, newest first, capped at maxSize.
+ *
+ * OFLOOR_SENSE (`!obj->known`) has no counterpart: this port has no per-object
+ * known twin (see the module header), so nothing is dropped for being unsensed.
+ * OFLOOR_VISIBLE is `!is_unknown(obj) && ignore_item_ok(p, obj) -> skip`; with
+ * no unknown_item_kind marker, is_unknown is always false and the term reduces
+ * to the ignore check, which rides env.isIgnored.
+ */
+export function scanFloor(
+  state: GameState,
+  maxSize: number,
+  mode: number,
+  tester: ItemTester,
+  env: FloorEnv = {},
+): GameObject[] {
+  const out: GameObject[] = [];
+  if (!state.chunk.inBounds(state.actor.grid)) return out;
+  for (const obj of floorPile(state, state.actor.grid)) {
+    /* Enforce limit. */
+    if (out.length >= maxSize) break;
+    /* Item tester. */
+    if (mode & OFLOOR.TEST && !objectTest(tester, obj)) continue;
+    /* Visible. */
+    if (mode & OFLOOR.VISIBLE && (env.isIgnored?.(obj) ?? false)) continue;
+    out.push(obj);
+    /* Only one. */
+    if (mode & OFLOOR.TOP) break;
+  }
+  return out;
+}
+
+/**
+ * scan_items (obj-pile.c L1376): the "valid" objects a get_item picker over
+ * `mode` may offer, in upstream's source order - inventory, then equipment,
+ * then quiver, then the floor. ORDER IS BEHAVIOUR: it decides which letter each
+ * item gets. The floor pass is scan_floor with
+ * OFLOOR_TEST | OFLOOR_SENSE | OFLOOR_VISIBLE (L1411).
+ *
+ * Upstream stops at item_max across ALL passes; that cap is kept.
+ *
+ * The inventory pass walks p->upkeep->inven[], which calc_inventory fills
+ * DISJOINTLY from p->upkeep->quiver[] (player-calcs.c L1023: each non-equipped
+ * gear item is assigned to exactly one of the two). This port's gear.pack is
+ * the raw gear list and keeps quiver members, so the inven pass excludes them
+ * with objectIsInQuiver - otherwise USE_INVEN | USE_QUIVER would list a quivered
+ * stack twice and shift every later letter.
+ */
+export function scanItems(
+  state: GameState,
+  itemMax: number,
+  mode: number,
+  tester: ItemTester,
+  env: FloorEnv = {},
+): GameObject[] {
+  const out: GameObject[] = [];
+  const player = state.actor.player;
+  const test = (obj: GameObject | null | undefined): boolean => objectTest(tester, obj);
+
+  if (mode & USE_MODE.INVEN) {
+    for (const handle of state.gear.pack) {
+      if (out.length >= itemMax) break;
+      if (objectIsInQuiver(state.gear, handle)) continue;
+      const obj = state.gear.store.get(handle);
+      if (test(obj)) out.push(obj as GameObject);
+    }
+  }
+  if (mode & USE_MODE.EQUIP) {
+    for (let i = 0; i < player.body.count; i++) {
+      if (out.length >= itemMax) break;
+      const obj = state.gear.store.get(player.equipment[i] ?? 0);
+      if (test(obj)) out.push(obj as GameObject);
+    }
+  }
+  if (mode & USE_MODE.QUIVER) {
+    for (const handle of state.gear.quiver ?? []) {
+      if (out.length >= itemMax) break;
+      const obj = state.gear.store.get(handle);
+      if (test(obj)) out.push(obj as GameObject);
+    }
+  }
+  if (mode & USE_MODE.FLOOR) {
+    const floor = scanFloor(
+      state,
+      state.z.floorSize,
+      OFLOOR.TEST | OFLOOR.SENSE | OFLOOR.VISIBLE,
+      tester,
+      env,
+    );
+    for (const obj of floor) {
+      if (out.length >= itemMax) break;
+      out.push(obj);
+    }
+  }
+  return out;
 }
 
 /** pile_insert: prepend an object to the pile at a grid. */

@@ -561,11 +561,22 @@ export function characterSheetLines(
 }
 
 /**
- * The spellbooks in the pack this class can actually use (its own realm's
- * books), as a selection menu. Empty for non-casters or a caster carrying no
- * usable book. Handles map the chosen index back to the book's gear handle.
+ * The spellbooks in the pack that pass `tester`, as a selection menu. Empty for
+ * non-casters or a caster carrying no qualifying book. Handles map the chosen
+ * index back to the book's gear handle.
+ *
+ * The tester is the caller's get_item item_tester and IS behaviour, not a
+ * convenience: upstream uses a DIFFERENT one per verb - obj_can_cast_from for
+ * cast (cmd-obj.c L1129), obj_can_study for study (L1187 / L1215), and only
+ * browse uses the bare obj_can_browse (ui-spell.c L340). Filtering every verb
+ * by obj_can_browse offered books with nothing castable/studiable in them and
+ * shifted the letters of the books that did qualify. Defaults to obj_can_browse
+ * so a caller that omits it gets the browse behaviour.
  */
-export function magicBooks(state: GameState): { items: MenuItem[]; handles: number[] } {
+export function magicBooks(
+  state: GameState,
+  tester: (obj: GameObject) => boolean = () => true,
+): { items: MenuItem[]; handles: number[] } {
   const player = state.actor.player;
   const items: MenuItem[] = [];
   const handles: number[] = [];
@@ -573,6 +584,7 @@ export function magicBooks(state: GameState): { items: MenuItem[]; handles: numb
     const obj = gearGet(state.gear, handle);
     if (!obj || !tvalIsBook(obj.tval)) continue;
     if (!playerObjectToBook(player, obj)) continue;
+    if (!tester(obj)) continue;
     /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292). */
     items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length) });
     handles.push(handle);

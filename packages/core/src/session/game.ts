@@ -167,9 +167,7 @@ import { priceItem } from "../store/price";
 import {
   formatMonsterMessage,
   formatMonsterMessageByName,
-  formatMonsterMessageShowDamage,
   formatPainMessage,
-  formatPainMessageShowDamage,
   monMessageSoundType,
   painMessageCode,
 } from "../game/mon-message";
@@ -987,15 +985,7 @@ function wireGame(
     };
     const inject: EffectBuilderInjections = {
       summonNameToIdx: (name) => summons.nameToIdx(name),
-      /* shape_name_to_idx (player-util.c L987) over lookup_player_shape (L971).
-       * NOTE: upstream matches with streq (z-util.h:157 = strcmp), i.e. CASE
-       * SENSITIVELY, unlike the my_stricmp used by stat_name_to_idx /
-       * proj_name_to_idx. Core shape names ("Pukel-man") are cited with exact
-       * case in class.txt so the two agree on stock data; this stays
-       * case-insensitive because narrowing it would reject mod data the port has
-       * always accepted, and the parity-visible behaviour is identical.
-       * lookup_player_shape's msg("Could not find %s shape!") on failure is a
-       * diagnostic the -1 return covers. */
+      /* shape_name_to_idx (player-util.c): case-insensitive name lookup. */
       shapeNameToIdx: (name) =>
         players.shapes.findIndex(
           (s) => s.name.toLowerCase() === name.toLowerCase(),
@@ -1052,27 +1042,17 @@ function wireGame(
            * a shell shows ranged/spell/status monster messages the same way
            * melee shows "You hit/slay the X". The projection already gates on
            * visibility before calling this. */
-          message: (m, msgCode, _delay, damage): void => {
-            /* add_monster_message_show_damage (mon-msg.c:288) when the driver
-             * passed a damage total, else add_monster_message (L252). */
-            const text =
-              damage === undefined
-                ? formatMonsterMessage(m, msgCode)
-                : formatMonsterMessageShowDamage(m, msgCode, damage);
-            const type = monMessageSoundType(msgCode, m.race);
+          message: (m, msgCode): void => {
+            const text = formatMonsterMessage(m, msgCode);
+            const type = monMessageSoundType(msgCode);
             if (text) state.msg?.(text, type);
             state.sound?.(type);
           },
-          /* OPT(player, show_damage): project_m_player_attack's display_dam
-           * (project-mon.c:1111) picks the *_show_damage message variants. */
-          showDamage: state.options?.get("show_damage") ?? false,
           /* message_pain: the graded "shrugs off the attack" / "cries out in
            * pain" line for a monster hurt but not killed. */
-          messagePain: (m, dam, showDamage): void => {
-            const text = showDamage
-              ? formatPainMessageShowDamage(m, dam)
-              : formatPainMessage(m, dam);
-            const type = monMessageSoundType(painMessageCode(m, dam), m.race);
+          messagePain: (m, dam): void => {
+            const text = formatPainMessage(m, dam);
+            const type = monMessageSoundType(painMessageCode(m, dam));
             if (text) state.msg?.(text, type);
             state.sound?.(type);
           },
@@ -2001,10 +1981,6 @@ function makeChangeLevel(
       compactMonsters(state, 0);
       state.chunk.setMon(state.actor.grid, 0);
       state.chunk.turn = state.turn;
-      /* chunk_list_add (gen-chunk.c L69) is this Map insert: the C appends the
-       * stored chunk to a realloc'd chunk_list[] keyed by chunk->name (which is
-       * level_by_depth(depth)->name), so a depth-keyed Map is the same lookup
-       * without the name indirection or the manual growth. */
       cache.set(currentDepth, {
         chunk: state.chunk,
         monsters: state.monsters,

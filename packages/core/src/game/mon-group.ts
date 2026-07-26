@@ -11,13 +11,6 @@
  * group model (Monster.group_info primary/summon slots and the MON_GROUP roles)
  * is already on the monster (mon/monster.ts).
  *
- * monster_group_free (mon-group.c:39) has no counterpart: it only mem_frees the
- * member-list entries and the group struct. Its observable half - clearing the
- * chunk's group slot - is `state.groups[index] = null` at both upstream call
- * sites (monster_group_remove_leader L128 and monster_remove_from_groups L169);
- * the third caller, wipe_mon_list (mon-make.c:613), is level teardown that the
- * port does by dropping the whole state.groups array.
- *
  * Divergences: state.groups grows on demand rather than being capped at
  * z_info->level_monster_max (monster_group_index_new never "fails" here); the
  * rouse visibility test uses line of sight (monster_can_see, which also weighs

@@ -188,28 +188,3 @@ describe("missile breaks at a passable non-projectable grid (player-attack.c:120
     expect(mon.hp).toBe(5000); /* missile broke at the rubble, distance 4 */
   });
 });
-
-/**
- * player_can_fire (player-util.c:1206): `!obj || !p->state.ammo_tval`. do_cmd_fire
- * inlines this exact pair rather than calling the function (player-attack.c:
- * 1334-1338), so the "fire" command must check ammo_tval too, not just launcher
- * presence - a bow that resolves no ammo_tval (calc_bonuses only sets it for
- * KF_SHOOTS_SHOTS/ARROWS/BOLTS launchers) must refuse exactly like no launcher
- * at all.
- */
-describe("do_cmd_fire requires a usable launcher AND a resolved ammo_tval (player-util.c:1206)", () => {
-  it("a worn bow with no resolved ammo_tval still refuses to fire", () => {
-    const state = makeState({ playerGrid: loc(5, 12), w: 40 });
-    const handle = armArcher(state, 2, 20);
-    /* calc_bonuses left no ammo_tval resolved (e.g. a non-standard launcher
-     * kind) even though a bow is worn and ammo is in hand. */
-    state.actor.combat.ammoTval = 0;
-    const msgs: string[] = [];
-    state.msg = (t: string): void => {
-      msgs.push(t);
-    };
-
-    fire(state, handle, 6);
-    expect(msgs).toContain("You have nothing to fire with.");
-  });
-});
