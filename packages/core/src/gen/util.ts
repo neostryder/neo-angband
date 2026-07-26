@@ -20,7 +20,9 @@
  *   group_info, and the live GameState rebuilds its group structures from
  *   them at start (the savefile-loading path of monster_group_assign).
  *   Unique cur_num tracking is kept level-local so a unique appears at most
- *   once per level without mutating the shared registry.
+ *   once per level without mutating the shared registry. The shared count is
+ *   established once at the populate boundary by countMonsterRaces; see the
+ *   note at the placement site below for why it must not also be bumped here.
  */
 
 import { FEAT, ORIGIN, RF, SQUARE } from "../generated";
@@ -259,6 +261,12 @@ export interface PlacedMonster {
   index: number;
 }
 
+export interface PitTelemetry {
+  attempts: { pit: number; nest: number };
+  selected: { pit: Record<string, number>; nest: Record<string, number> };
+  empty: { pit: number; nest: number };
+}
+
 /**
  * The generation context: the chunk under construction plus the RNG, feature
  * registry, constants, dun bookkeeping, and the placement side-tables the
@@ -268,6 +276,12 @@ export interface PlacedMonster {
 export class Gen {
   readonly objects: PlacedObject[] = [];
   readonly monsters: PlacedMonster[] = [];
+  /** Optional RNG-neutral diagnostics for the S-3 pit residual. */
+  readonly pitTelemetry: PitTelemetry = {
+    attempts: { pit: 0, nest: 0 },
+    selected: { pit: {}, nest: {} },
+    empty: { pit: 0, nest: 0 },
+  };
   /** grid index -> square holds a generated object. */
   readonly objOccupied = new Set<number>();
   /** grid index -> square holds a trap (player trap for gen purposes). */
@@ -370,6 +384,15 @@ export class Gen {
   uniqueAlreadyPlaced(race: MonsterRace): boolean {
     return this.placedUniques.has(race.ridx);
   }
+
+  /**
+   * The same test, pre-bound for handing straight to getMonNum. Generation
+   * passes this so the allocation table stops offering a unique that is already
+   * on the level, which is what C gets for free by bumping race->cur_num at
+   * placement time (see the note in placeNewMonsterOne below).
+   */
+  readonly uniquePlaced = (race: MonsterRace): boolean =>
+    this.placedUniques.has(race.ridx);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1479,6 +1502,178 @@ export function newPlayerSpot(
 }
 
 /* ------------------------------------------------------------------ *
+ * Staircase reachability repair - the bug-fixes mod, flag
+ * "bugfix.stairsReachable". OFF by default; core is faithful without it.
+ *
+ * This is NOT core behaviour. It began as a core guarantee (owner ruling
+ * 2026-07-25, "there must never be a floor that doesn't have a reachable up AND
+ * down staircase, except town and Morgoth floors") and was moved here the next
+ * day when the owner learned that upstream really does strand floors:
+ *
+ *   "We can't fix bugs in the port. Those will belong in the bug fixes mod. I
+ *    only said those couldn't exist because I thought that was how the C
+ *    version worked. Core must retain all warts of the reference code."
+ *
+ * So the caller (gen/generate.ts) invokes this ONLY when the flag is on, and
+ * faithful core keeps the upstream defect. See docs/modding/BUG_FIXES.md entry
+ * 13 and parity/phase3-2026-07-25/findings/STAIRCASE-INVARIANT.md.
+ *
+ * Upstream makes no reachability promise, and the port reproduces upstream
+ * exactly:
+ * alloc_stairs (gen-util.c:629) picks any square_isempty grid and does NOT
+ * exclude vault interiors, while ensure_connectedness is called with
+ * allow_vault_disconnect = true at five of its six sites (gen-cave.c:1271,
+ * 2836, 3083, 3693, 3953; only 3464 passes false). A vault whose interior the
+ * tunneller never joined can therefore swallow a staircase. Measured on this
+ * port before the guarantee: 53 stranded levels in 520 (10.2%), overwhelmingly
+ * the UP stair, because a level gets 3-4 down stairs but only 1-2 up
+ * (gen-cave.c:958 -> rand_range(3,4) / rand_range(1,2)), so a single bad roll
+ * strands the floor. 37 of the 53 had the orphaned stair inside SQUARE_VAULT.
+ *
+ * The repair DRAWS NO RNG, so a level that already satisfies the invariant is
+ * bit-identical to faithful core even with the flag ON; only the stranded
+ * minority is touched, and only by one grid. Levels with zero stairs of a
+ * direction are left alone, which is exactly what exempts the town
+ * (place_stairs forces FEAT_MORE at depth 0) and the quest/Morgoth floors
+ * (forced FEAT_LESS), with no depth special-casing.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Terrain the player can eventually get through: passable grids, plus doors
+ * (openable) and rubble (diggable). Walls are deliberately excluded - the
+ * player can tunnel granite, but counting that as "reachable" would make the
+ * guarantee vacuous.
+ */
+function stairWalkable(c: Chunk, grid: Loc): boolean {
+  return c.isPassable(grid) || c.isDoor(grid) || c.isRubble(grid);
+}
+
+/** ddgrid_ddd order: S, N, E, W, SE, SW, NE, NW. */
+const STAIR_DIRS: readonly Loc[] = [
+  loc(0, 1),
+  loc(0, -1),
+  loc(1, 0),
+  loc(-1, 0),
+  loc(1, 1),
+  loc(-1, 1),
+  loc(1, -1),
+  loc(-1, -1),
+];
+
+/** Flood the region the player can walk from `start`, 8-directionally. */
+function walkableRegion(c: Chunk, start: Loc): Uint8Array {
+  const seen = new Uint8Array(c.width * c.height);
+  const stack: Loc[] = [start];
+  seen[start.y * c.width + start.x] = 1;
+  while (stack.length > 0) {
+    const cur = stack.pop() as Loc;
+    for (const dir of STAIR_DIRS) {
+      const n = loc(cur.x + dir.x, cur.y + dir.y);
+      if (!c.inBounds(n)) continue;
+      const idx = n.y * c.width + n.x;
+      if (seen[idx] || !stairWalkable(c, n)) continue;
+      seen[idx] = 1;
+      stack.push(n);
+    }
+  }
+  return seen;
+}
+
+/**
+ * Pick the grid for a replacement staircase: inside the walkable region, legal
+ * for a stair by alloc_stairs' own rules, and as close as possible to the
+ * stranded stair it stands in for (so it surfaces just outside the vault that
+ * swallowed the original rather than in some unrelated corner).
+ *
+ * Deterministic - no RNG draws. Walls are tried 3 -> 0 exactly as alloc_stairs
+ * does, so the replacement sits in a corner or alcove like any other stair.
+ */
+function findReachableStairSpot(g: Gen, seen: Uint8Array, near: Loc): Loc | null {
+  const c = g.c;
+  const player = g.playerSpot;
+  for (let walls = 3; walls >= 0; walls--) {
+    let best: Loc | null = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let y = 1; y <= c.height - 2; y++) {
+      for (let x = 1; x <= c.width - 2; x++) {
+        if (!seen[y * c.width + x]) continue;
+        const grid = loc(x, y);
+        if (player && grid.x === player.x && grid.y === player.y) continue;
+        if (!squareIsEmpty(g, grid)) continue;
+        if (squareIsNoStairs(c, grid)) continue;
+        if (squareNumWallsAdjacent(c, grid) !== walls) continue;
+        const dy = y - near.y;
+        const dx = x - near.x;
+        const dist = dy * dy + dx * dx;
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = grid;
+        }
+      }
+    }
+    if (best) return best;
+  }
+  return null;
+}
+
+/**
+ * Ensure the player can reach a staircase in each direction the level actually
+ * has one. Returns false when the level cannot be repaired, so cave_generate
+ * can reject and re-roll it (the same treatment it gives a level that overflows
+ * the monster maximum).
+ *
+ * Only ever called under the "bugfix.stairsReachable" flag - see the note
+ * above. Faithful core never calls it.
+ */
+export function ensureStairsReachable(g: Gen, quest: boolean): boolean {
+  const c = g.c;
+  const start = g.playerSpot;
+  /* Sub-chunks (gauntlet's halves, the hard centre's caverns) have no player
+   * spot; they are checked once assembled, not in pieces. */
+  if (!start) return true;
+  if (!stairWalkable(c, start)) return false;
+
+  const seen = walkableRegion(c, start);
+
+  for (const feat of [FEAT.MORE, FEAT.LESS]) {
+    let total = 0;
+    let reached = 0;
+    let stranded: Loc | null = null;
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        const grid = loc(x, y);
+        if (c.feat(grid) !== feat) continue;
+        total++;
+        if (seen[y * c.width + x]) reached++;
+        else if (!stranded) stranded = grid;
+      }
+    }
+    /* No stairs of this kind by design (town has no up, Morgoth no down):
+     * nothing to guarantee. One already reachable: nothing to do. */
+    if (total === 0 || reached > 0) continue;
+
+    let spot = findReachableStairSpot(g, seen, stranded ?? start);
+    if (!spot && squareIsEmpty(g, start) && !squareIsNoStairs(c, start)) {
+      /*
+       * Last resort: the player's own grid. Upstream already lays a stair there
+       * under birth_connect_stairs (gen-util.c:427-433, new_player_spot), so a
+       * staircase underfoot is a legal arrival state rather than a hack. This
+       * only fires when the walkable region holds nothing else a stair can go
+       * on - measured once in ~230 levels, and it saves that level from a full
+       * re-roll, which would perturb it far more than one grid does.
+       */
+      spot = start;
+    }
+    if (!spot) return false;
+    /* place_stairs, not setFeat: it applies the town / max-depth / quest
+     * overrides, so this can never mint a down stair on a Morgoth floor. */
+    placeStairs(g, spot, quest, feat);
+    if (c.feat(spot) !== feat) return false;
+  }
+  return true;
+}
+
+/* ------------------------------------------------------------------ *
  * Vault helpers (vault_objects / vault_traps).
  * ------------------------------------------------------------------ */
 
@@ -1556,6 +1751,19 @@ function placeNewMonsterOne(
     groupRole: info.role,
   });
   g.attachMonster(grid, mon, g.nextMonIndex());
+
+  /* C bumps race->cur_num here (mon-make.c L1040-1041), and deliberately we do
+   * NOT. C places monsters straight into the live cave, so that increment is
+   * the only one; the port generates into a detached Gen and establishes the
+   * shared count once at the populate boundary (countMonsterRaces, from the
+   * level-change path). Incrementing here as well double-counts every monster
+   * on a fresh level, and since wipe_mon_list decrements only once per live
+   * monster on the way out, every descent leaks: a unique that reaches
+   * cur_num >= max_num is refused by get_mon_num (mon-make.c L257-258) for the
+   * rest of the game. The observable effect C gets from the early increment is
+   * that get_mon_num stops OFFERING a placed unique, and that is reproduced
+   * exactly by passing the level-local placed set to getMonNum instead.
+   * Asserted by "cur_num tracks the live monster count" in session/game.test.ts. */
 
   /* Create the monster's drop, if any (mon-make.c place_monster L1044-1046):
    * generation placement is the twin of place_new_monster_one -> place_monster,
@@ -1776,7 +1984,12 @@ export function placeNewMonster(
     );
 
     /* Pick a random race, then reset the allocation table. */
-    const friendsRace = g.monDeps.table.getMonNum(g.rng, race.level, g.c.depth);
+    const friendsRace = g.monDeps.table.getMonNum(
+      g.rng,
+      race.level,
+      g.c.depth,
+      g.uniquePlaced,
+    );
     g.monDeps.table.prep(null);
 
     /* Handle failure. */
@@ -1802,7 +2015,7 @@ export function pickAndPlaceMonster(
   origin: number = ORIGIN.DROP,
 ): boolean {
   if (!g.monDeps) return false;
-  const race = g.monDeps.table.getMonNum(g.rng, depth, g.c.depth);
+  const race = g.monDeps.table.getMonNum(g.rng, depth, g.c.depth, g.uniquePlaced);
   if (!race) return false;
   const info: MonsterGroupInfo = { index: 0, role: MON_GROUP.LEADER };
   return placeNewMonster(g, grid, race, sleep, groupOkay, info, origin);
@@ -1819,27 +2032,16 @@ export function pickAndPlaceDistantMonster(
   if (!g.monDeps) return false;
   const c = g.c;
   let attemptsLeft = 10_000;
-  let minDist = Math.max(dis, g.constants.maxSight + 1);
-  for (;;) {
-    let grid: Loc | null = null;
-    let found = false;
-    while (attemptsLeft > 0) {
-      attemptsLeft--;
-      grid = loc(g.rng.randint0(c.width - 2) + 1, g.rng.randint0(c.height - 2) + 1);
-      if (squareIsEmpty(g, grid) && distance(pgrid, grid) > minDist) {
-        found = true;
-        break;
-      }
-    }
-    if (found && grid) return pickAndPlaceMonster(g, grid, depth, sleep);
-    if (minDist > 1) {
-      /* Loosen the distance requirement rather than fail outright. */
-      minDist = Math.trunc(minDist / 2);
-      attemptsLeft = 10_000;
-      continue;
-    }
-    return false;
+  /* pick_and_place_distant_monster (mon-make.c L1483-1520): the initial
+   * 10,000 is pre-decremented, giving exactly 9,999 location attempts. */
+  while (--attemptsLeft) {
+    const grid = loc(g.rng.randint0(c.width), g.rng.randint0(c.height));
+    if (!squareIsEmpty(g, grid)) continue;
+    if (c.info(grid).has(SQUARE.MON_RESTRICT)) continue;
+    if (distance(grid, pgrid) <= dis) continue;
+    return pickAndPlaceMonster(g, grid, depth, sleep);
   }
+  return false;
 }
 
 /** vault_monsters: place num sleeping monsters near a grid. */

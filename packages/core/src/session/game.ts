@@ -2067,14 +2067,21 @@ function makeChangeLevel(
     const g = generateLevel(
       state.rng,
       depth,
-      genDeps(
-        reg,
-        true,
-        state.artifacts,
-        state.options?.get("birth_no_artifacts") ?? false,
-        /* mon_create_drop's unique theft reduction reads the live lore store. */
-        state.lore,
-      ),
+      {
+        ...genDeps(
+          reg,
+          true,
+          state.artifacts,
+          state.options?.get("birth_no_artifacts") ?? false,
+          /* mon_create_drop's unique theft reduction reads the live lore store. */
+          state.lore,
+        ),
+        /* bug-fixes seam: read at build time (this call is synchronous, so a
+         * Fixes & tweaks toggle applies from the next level onward).
+         * "bugfix.stairsReachable" is the only flag cave_generate reads;
+         * absent => faithful. */
+        ...(state.modRules ? { modRules: state.modRules } : {}),
+      },
       /* is_daytime() only affects the town (depth 0) build; passed always so a
        * RECALL back to town honours the day/night clock. */
       {
