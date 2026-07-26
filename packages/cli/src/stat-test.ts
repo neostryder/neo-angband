@@ -324,27 +324,11 @@ export interface PooledTest {
  *
  * The additivity assumes the per-depth tests are independent, which is not free:
  * within a run the port generates one level per depth from a single sequential
- * RNG stream. That assumption was therefore MEASURED rather than asserted -- and
- * the first measurement of it was WRONG, so read this carefully.
- *
- * The port compared against ITSELF at two seeds pools objFeel to G = 132.9 on
- * 140 df, a ratio of 0.95, which looks like the textbook expectation. It is not
- * the null for a port-vs-C comparison. Two runs of one implementation share every
- * structural quirk that implementation has; two independent samples do not. The
- * real null, measured between six 1000-run C `main-stats` databases -- 15
- * unordered pairs, `tools/c-vs-c-all-pairs.mjs` -- is:
- *
- *     objFeel  G/df  mean 1.94  sd 0.31  range 1.56-2.49
- *     monFeel  G/df  mean 1.82  sd 0.18  range 1.45-2.21
- *
- * roughly TWICE the port-vs-itself figure. Hence the `dispersion` parameter: pass
- * the measured phi and this returns `chi2(G/phi, df)`. Leaving it at 1 asserts
- * phi = 1, which for these histograms is false. Note also that G/df is NOT
- * sample-size invariant -- G grows with n for a fixed distributional difference --
- * so a ratio measured at 400 runs cannot be judged against a null measured
- * between two 1000-run samples. See
- * `parity/phase3-2026-07-25/findings/NOISE-FLOOR.md` ("The null was mismeasured")
- * and `OBJFEEL.md` sections 7-9.
+ * RNG stream. That assumption was therefore MEASURED rather than asserted. With
+ * the port compared against itself at two seeds (identical code, so every
+ * difference is noise by construction), objFeel pools to G = 132.9 on 140 df,
+ * a ratio of 0.95 -- the textbook expectation. See
+ * `parity/phase3-2026-07-25/findings/NOISE-FLOOR.md` and `OBJFEEL.md`.
  *
  * The same measurement is why `species` is NOT pooled and NOT gated: it runs
  * 2.5-5.0x overdispersed per depth because a single pit or nest drops 20-60

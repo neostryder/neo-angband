@@ -265,9 +265,13 @@ const MONSTER_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   EffectHandler
 >([
   [EF.WAKE, handleWAKE],
+  /* effect_handler_BANISH (effect-handler-general.c:2337) */
   [EF.BANISH, handleBANISH],
+  /* effect_handler_MASS_BANISH (effect-handler-general.c:2401) */
   [EF.MASS_BANISH, handleMASS_BANISH],
+  /* effect_handler_MON_HEAL_HP (effect-handler-attack.c:254) */
   [EF.MON_HEAL_HP, handleMON_HEAL_HP],
+  /* effect_handler_MON_HEAL_KIN (effect-handler-attack.c:311) */
   [EF.MON_HEAL_KIN, handleMON_HEAL_KIN],
 ]);
 
