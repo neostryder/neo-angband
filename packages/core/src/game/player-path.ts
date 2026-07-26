@@ -56,7 +56,6 @@ import { DIGGING, calcDiggingChances } from "./cave-cmd";
 import { playerConfuseDir } from "./obj-cmd";
 import { walkAction } from "./player-turn";
 import type { ActionRegistry } from "./player-turn";
-import { IntPriorityQueue } from "../z-queue";
 
 /** Quick "cycling" through the eight legal directions (player-path.c cycle[]). */
 const CYCLE: readonly number[] = [
@@ -409,7 +408,7 @@ interface PfDistances {
  * to every grid, using the player's memory. The outer edge is marked
  * unreachable; some hard-to-traverse known terrain is penalized.
  */
-export function preparePfdistances(
+function preparePfdistances(
   state: GameState,
   start: Loc,
   onlyKnown: boolean,
@@ -507,7 +506,7 @@ function pfTurncount(a: PfDistances, grid: Loc): number {
  * in reverse order (index length-1 is the first step). Returns [] with a
  * length of -1 when unreachable, 0 when already at the destination.
  */
-export function pfToPath(a: PfDistances, dest: Loc): { length: number; steps: number[] } {
+function pfToPath(a: PfDistances, dest: Loc): { length: number; steps: number[] } {
   if (
     dest.y < 0 ||
     dest.y >= a.height ||
@@ -551,7 +550,7 @@ export function pfToPath(a: PfDistances, dest: Loc): { length: number; steps: nu
  * approximates, so the paths match up to tie-breaking) with the same
  * constraint-loosening: try remembered-only then any, and no-traps then traps.
  *
- * Historical parity gap (now closed below with z-queue.ts's binary heap).
+ * KNOWN DIVERGENCE, and the reason this port has no priority queue.
  * Upstream ships TWO routines that answer this question. prepare_pfdistances
  * (player-path.c L307) relaxes a full distance field breadth-first through a
  * PLAIN FIFO queue (q_new / q_push_int / q_pop_int), and pfdistances_to_path
@@ -566,11 +565,12 @@ export function pfToPath(a: PfDistances, dest: Loc): { length: number; steps: nu
  * (cmd-cave.c L1563) calls find_path, so the route the real game walks is the
  * A-star/heap one and the route this port walks is the field-backtrack one: same
  * length, same destination, possibly a different sequence of steps. Closing it
- * is why findPath below is an A* implementation rather than this field route.
+ * means porting the A*, the patched-distance array and the priority queue, which
+ * is a restructure rather than an edit -- see parity findings UT-zlib2 GAP-1.
  *
- * The priority-queue cases formerly recorded as unavailable are covered by
- * z-queue.ts; its `pushpop` equality behaviour is used at the corresponding
- * find_path site.
+ * Consequently reference/src/tests/z-queue/qp.c is N/A for this port, case by
+ * case, and is recorded here rather than in a test file because THIS is the
+ * function whose absence explains it:
  *  - test_qp_trivial, test_qp_flush: qp_new(size) preallocation, qp_size (the
  *    allocated capacity) as distinct from qp_len (the occupancy), and
  *    qp_flush/qp_free taking a free-callback to release the elements they drop.
@@ -605,65 +605,21 @@ export function findPath(
   else if (isValidPf(state, dest, onlyKnown, false)) forbidTraps = false;
   else return { length: -1, steps: [] };
 
-  const w = state.chunk.width, h = state.chunk.height;
   for (;;) {
-    /* The C uses lazily allocated 16x16 patches (player-path.c:604-744).
-     * An eager typed array preserves every distance and heap decision. */
-    const distances = new Int32Array(w * h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      distances[y * w + x] = x > 0 && x < w - 1 && y > 0 && y < h - 1 &&
-        isValidPf(state, loc(x, y), onlyKnown, forbidTraps) ? PF_INF : -1;
+    const dist = preparePfdistances(state, start, onlyKnown, forbidTraps);
+    const path = pfToPath(dist, dest);
+    if (path.length >= 0) return path;
+
+    if (forbidTraps && !playerIsTrapsafe(state)) {
+      forbidTraps = false;
+      continue;
     }
-    const index = (g: Loc): number => g.y * w + g.x;
-    distances[index(start)] = 0;
-    const pending = new IntPriorityQueue(4 * (2 + Math.max(Math.abs(start.y - dest.y), Math.abs(start.x - dest.x))));
-    const unlocked = PF_SCL, locked = lockedPenalty(state), rubble = rubblePenalty(state);
-    let next = start, distNext = 0, hitTrap = false;
-    let retry = false;
-    while (true) {
-      let addGrid = -1, addPriority = -1;
-      const distThis = distNext + PF_SCL;
-      for (let d = 0; d < 8; d++) {
-        const grid = locSum(next, DDGRID_DDD[d] as Loc);
-        if (locEq(grid, dest)) {
-          const steps: number[] = [];
-          let cursor = dest, lastDistance = PF_INF;
-          while (!locEq(cursor, start)) {
-            let bestK = -1, bestGrid = loc(-1, -1);
-            for (let k = 0; k < 8; k++) {
-              const candidate = locSum(cursor, DDGRID_DDD[k] as Loc);
-              if (!state.chunk.inBounds(candidate)) continue;
-              const tried = distances[index(candidate)] as number;
-              if (tried >= 0 && lastDistance > tried) { lastDistance = tried; bestK = k; bestGrid = candidate; }
-            }
-            if (bestK < 0) return { length: -1, steps: [] };
-            steps.push(10 - (DDD[bestK] as number)); cursor = bestGrid;
-          }
-          return { length: steps.length, steps };
-        }
-        const stored = distances[index(grid)] as number;
-        if (stored <= distThis) {
-          if (forbidTraps && squareIsKnown(state, grid) && squareIsVisibleTrap(state, grid)) hitTrap = true;
-          continue;
-        }
-        const remaining = Math.max(Math.abs(dest.x - grid.x), Math.abs(dest.y - grid.y)) * PF_SCL;
-        let penalty = 0;
-        if (squareIsKnown(state, grid) && !state.chunk.isPassable(grid)) {
-          penalty = state.chunk.isClosedDoor(grid) ? (env_isLockedDoor(state, grid) ? locked : unlocked) : state.chunk.isRubble(grid) ? rubble : PF_INF;
-          if (distThis >= stored - penalty || distThis >= PF_INF - penalty - remaining) continue;
-        }
-        if (addGrid >= 0) { if (pending.length === pending.size) pending.resize(pending.size * 2); pending.push(addPriority, addGrid); }
-        addGrid = index(grid); addPriority = distThis + penalty + remaining;
-        distances[addGrid] = distThis + penalty;
-      }
-      if (addGrid >= 0) { const i = pending.pushpop(addPriority, addGrid); next = loc(i % w, Math.trunc(i / w)); }
-      else if (pending.length) { const i = pending.pop(); next = loc(i % w, Math.trunc(i / w)); }
-      else if (forbidTraps && !playerIsTrapsafe(state) && hitTrap) { forbidTraps = false; retry = true; break; }
-      else if (onlyKnown) { onlyKnown = false; forbidTraps = isValidPf(state, dest, false, true); retry = true; break; }
-      else return { length: -1, steps: [] };
-      distNext = distances[index(next)] as number;
+    if (onlyKnown) {
+      onlyKnown = false;
+      forbidTraps = isValidPf(state, dest, false, true);
+      continue;
     }
-    if (!retry) return { length: -1, steps: [] };
+    return { length: -1, steps: [] };
   }
 }
 

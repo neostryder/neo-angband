@@ -111,11 +111,10 @@ describe("compileGamedata", () => {
     ]);
   });
 
-  it("lets ordinary repeated directives overwrite with the final value", () => {
-    // parse_world_level in reference/src/init.c:1094-1107 assigns the parsed
-    // values and returns PARSE_ERROR_NONE; it does not reject a repeated line.
-    const out = compileGamedata("name:x\nlevel:1\nlevel:2\n", effectSpec);
-    expect(out.records).toEqual([{ name: "x", level: 2 }]);
+  it("throws on duplicate non-repeat directives, naming file and line", () => {
+    expect(() => compileGamedata("name:x\nlevel:1\nlevel:2\n", effectSpec)).toThrow(
+      /synthetic\.txt:3.*duplicate directive "level"/,
+    );
   });
 
   it("throws on directives appearing before the first record", () => {

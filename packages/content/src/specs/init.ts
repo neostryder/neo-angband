@@ -78,11 +78,14 @@ export const trapSpec: FileSpec = {
     { fmt: "flags ?str flags", repeat: true },
     { fmt: "effect sym eff ?sym type ?int radius ?int other", repeat: true },
     { fmt: "effect-yx int y int x", childOf: ["effect"] },
-    { fmt: "dice str dice", childOf: ["effect"] },
+    /* parse_trap_dice (init.c L1688-1690) dice_free()s the old dice, so a
+     * repeated line is legal and the last wins. */
+    { fmt: "dice str dice", childOf: ["effect"], lastWins: true },
     { fmt: "expr sym name sym base str expr", childOf: ["effect"], repeat: true },
     { fmt: "effect-xtra sym eff ?sym type ?int radius ?int other", repeat: true },
     { fmt: "effect-yx-xtra int y int x", childOf: ["effect-xtra"] },
-    { fmt: "dice-xtra str dice", childOf: ["effect-xtra"] },
+    /* parse_trap_dice_xtra (init.c L1802-1810), same as `dice`. */
+    { fmt: "dice-xtra str dice", childOf: ["effect-xtra"], lastWins: true },
     { fmt: "expr-xtra sym name sym base str expr", childOf: ["effect-xtra"], repeat: true },
     { fmt: "save str flags" },
     { fmt: "desc str text", repeat: true },
@@ -99,9 +102,7 @@ export const terrainSpec: FileSpec = {
   recordStart: "code",
   directives: [
     { fmt: "code str code" },
-    /* parse_feat_name returns PARSE_ERROR_REPEATED_DIRECTIVE when f->name is set
-     * (init.c:2059-2060). */
-    { fmt: "name str name", rejectRepeated: () => true },
+    { fmt: "name str name" },
     { fmt: "graphics char glyph sym color" },
     { fmt: "mimic str feat" },
     { fmt: "priority uint priority" },
@@ -235,17 +236,16 @@ export const classSpec: FileSpec = {
     { fmt: "equip sym tval sym sval uint min uint max sym eopts", repeat: true },
     { fmt: "obj-flags ?str flags", repeat: true },
     { fmt: "player-flags ?str flags", repeat: true },
-    /* parse_class_magic rejects once c->magic.books is non-NULL
-     * (init.c:3714-3716). */
-    { fmt: "magic uint first uint weight uint books", rejectRepeated: (prior) =>
-      (prior as { books?: number }).books !== 0 },
+    { fmt: "magic uint first uint weight uint books" },
     { fmt: "book sym tval sym quality sym name uint spells str realm", repeat: true },
     { fmt: "book-graphics char glyph sym color", childOf: ["book"] },
     { fmt: "book-properties int cost int common str minmax", childOf: ["book"] },
     { fmt: "spell sym name int level int mana int fail int exp", childOf: ["book"], repeat: true },
     { fmt: "effect sym eff ?sym type ?int radius ?int other", childOf: ["spell"], repeat: true },
     { fmt: "effect-yx int y int x", childOf: ["effect"] },
-    { fmt: "dice str dice", childOf: ["effect"] },
+    /* parse_class_dice (init.c L3983-3985) dice_free()s the old dice, so a
+     * repeated line is legal and the last wins (c-info.c test_dice0). */
+    { fmt: "dice str dice", childOf: ["effect"], lastWins: true },
     { fmt: "expr sym name sym base str expr", childOf: ["effect"], repeat: true },
     { fmt: "effect-msg str text", childOf: ["effect"], repeat: true },
     { fmt: "desc str desc", childOf: ["spell"], repeat: true },
