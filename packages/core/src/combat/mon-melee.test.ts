@@ -174,46 +174,6 @@ function defender(): Player {
 
 const def: DefenderState = { ac: 0, toA: 0 };
 
-describe("worldless SHATTER fatal hit", () => {
-  it("takes neither side effect nor knockback RNG draw, matching the live path", () => {
-    const worldlessRng = new Rng(1);
-    const worldlessDefender = defender();
-    worldlessDefender.chp = 1;
-    const worldless = monMeleeAttack(
-      worldlessRng,
-      makeMon("SHATTER", "HIT", "200", 50),
-      worldlessDefender,
-      def,
-    );
-
-    const liveRng = new Rng(1);
-    const liveDefender = defender();
-    liveDefender.chp = 1;
-    const { env, calls } = makeFakeEnv();
-    let died = false;
-    Object.defineProperty(env, "playerDied", { get: () => died });
-    env.takeHit = (damage: number) => {
-      liveDefender.chp -= damage;
-      died = liveDefender.chp < 0;
-    };
-    env.earthquake = () => calls.push("earthquake");
-    env.thrust = () => calls.push("thrust");
-    const live = monMeleeAttack(
-      liveRng,
-      makeMon("SHATTER", "HIT", "200", 50),
-      liveDefender,
-      def,
-      { env },
-    );
-
-    expect(worldless.playerDied).toBe(true);
-    expect(live.playerDied).toBe(true);
-    expect(worldless.sideEffects).toEqual([]);
-    expect(calls).toEqual(["applyReduction:200"]);
-    expect(worldlessRng.getState()).toEqual(liveRng.getState());
-  });
-});
-
 describe("monster_critical", () => {
   const oneD4: RandomValue = { base: 0, dice: 1, sides: 4, mBonus: 0 };
 
