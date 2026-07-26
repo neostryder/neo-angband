@@ -41,11 +41,6 @@ function rowLabelAndColor(row: AbilityRow): { label: string; color: string } {
  * abilities. Read-only (upstream has no EVT_SELECT action on this menu) -
  * arrows move the cursor and update the description pane; ESC is the only
  * way out.
- *
- * This is also the port of view_ability_menu (game-input.c:334): upstream's
- * core calls it and it forwards to view_abilities_hook, i.e. to
- * textui_view_ability_menu. The port drops that hook indirection - the web
- * layer calls this directly - so the trampoline has no separate counterpart.
  */
 export function showAbilities(term: GlyphTerm, rows: readonly AbilityRow[]): Promise<void> {
   const items: MenuItem[] = rows.map((r) => {

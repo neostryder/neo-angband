@@ -593,11 +593,8 @@ const TELEPORT_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   EffectHandler
 >([
   [EF.TELEPORT, handleTELEPORT],
-  /* effect_handler_TELEPORT_TO (effect-handler-general.c:2703) */
   [EF.TELEPORT_TO, handleTELEPORT_TO],
-  /* effect_handler_TELEPORT_LEVEL (effect-handler-general.c:2834) */
   [EF.TELEPORT_LEVEL, handleTELEPORT_LEVEL],
-  /* effect_handler_ALTER_REALITY (effect-handler-general.c:1184) */
   [EF.ALTER_REALITY, handleALTER_REALITY],
 ]);
 

@@ -522,15 +522,7 @@ export function dumpCharacterFile(
   return downloadDump(state, name, extras);
 }
 
-/**
- * 'f' (dump_save): download the full character dump as a plain-text file.
- *
- * This is where upstream's text-out-to-disk path lands. The ang_file layer of
- * z-file.c is not ported, so file_put (z-file.c:1208) and file_putf have no
- * counterpart: a whole dump is built as one string and handed to the browser
- * (or, in the headless CLI, to writeFileSync) instead of being appended line by
- * line to an open handle.
- */
+/** 'f' (dump_save): download the full character dump as a plain-text file. */
 function downloadDump(
   state: GameState,
   name: string,
