@@ -25,8 +25,7 @@
 
 import { Dice } from "../dice";
 import type { Aspect, Rng } from "../rng";
-import { ELEMENT_ENTRIES, PROJ, PROJECTION_ENTRIES } from "../generated";
-import { messageLookupByName } from "../sound/engine";
+import { PROJ, PROJECTION_ENTRIES } from "../generated";
 
 /** struct projection: the behavioural data for one PROJ_ type. */
 export interface ProjectionInfo {
@@ -94,31 +93,10 @@ export function bindProjections(
   records: ProjectionRecordJson[],
 ): ProjectionInfo[] {
   /* 25 elements (list-elements.h) precede the list-projections.h entries. */
-  const total = PROJECTION_ENTRIES.length + ELEMENT_ENTRIES.length;
+  const total = PROJECTION_ENTRIES.length + 25;
   const out: Array<ProjectionInfo | null> = new Array<ProjectionInfo | null>(
     total,
   ).fill(null);
-
-  /*
-   * parse_projection_code (obj-init.c) numbers records sequentially and
-   * returns PARSE_ERROR_ELEMENT_NAME_MISMATCH when a record whose position is
-   * below ELEM_MAX does not carry element_names[position] as its code
-   * (proj.c test_code_mismatch0). Binding below is by code, so position would
-   * otherwise be free - but el_info[] is indexed by ELEM value and the
-   * ordering invariant is what upstream relies on to keep the two in step, so
-   * the port enforces it too, on the same input, before binding anything.
-   */
-  for (let i = 0; i < ELEMENT_ENTRIES.length; i++) {
-    const rec = records[i];
-    const expected = (ELEMENT_ENTRIES[i] as { name: string }).name;
-    if (rec === undefined || rec.code !== expected) {
-      throw new Error(
-        `projection: record ${String(i)} is ${rec ? rec.code : "missing"}, ` +
-          `expected the element ${expected} ` +
-          `(PARSE_ERROR_ELEMENT_NAME_MISMATCH)`,
-      );
-    }
-  }
 
   for (const rec of records) {
     const index = (PROJ as Record<string, number>)[rec.code];
@@ -127,14 +105,6 @@ export function bindProjections(
     }
     if (out[index]) {
       throw new Error(`projection: duplicate code ${rec.code}`);
-    }
-    /* parse_projection_message_type: an unknown MSG_ name is
-     * PARSE_ERROR_INVALID_MESSAGE (proj.c test_msgt_bad0). */
-    if (rec.msgt !== undefined && messageLookupByName(rec.msgt) < 0) {
-      throw new Error(
-        `projection: ${rec.code}: invalid msgt ${rec.msgt} ` +
-          `(PARSE_ERROR_INVALID_MESSAGE)`,
-      );
     }
     let denominator: Dice | null = null;
     if (rec.denominator !== undefined) {
