@@ -329,6 +329,15 @@ reproducibility/anti-scum guarantees. Mods can trigger the flip but can never
 reverse or prevent it. This is why the save block records the exact mod set
 and the mode: the mode travels with the save. See PORT_PLAN.md decision 22.
 
+Gameplay scoring mode (core-governed ratchet). A pack that changes core
+gameplay declares `affectsGameplay: true` in its manifest. On the first enable
+for a save, the UI warns that it will become non-scoring and asks for
+confirmation. If accepted, core sets `modNoscore`. This is separate from the
+determinism ratchet: a mod may be deterministic, nondeterministic,
+gameplay-affecting, both, or neither. `modNoscore` never clears after a mod is
+disabled or removed, and score entry rejects it independently of Angband's
+reference-format-compatible `player.noscore` bitfield.
+
 ---
 
 ## 5. Ergonomics: designing out the usual complaints

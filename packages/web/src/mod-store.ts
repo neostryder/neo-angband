@@ -104,6 +104,8 @@ export interface CatalogMod {
   capabilities: string[];
   /** Whether it trips the determinism ratchet. */
   nondeterministic: boolean;
+  /** Whether enabling it permanently makes the current save non-scoring. */
+  affectsGameplay: boolean;
   /**
    * Whether every requested capability has been consented to. Always true for a
    * mod that requests nothing (content/tiles), so only plugins gate on consent.
@@ -371,6 +373,7 @@ function toCatalogMod(
     enabled: enabled.has(manifest.id),
     capabilities,
     nondeterministic: manifest.nondeterministic ?? false,
+    affectsGameplay: manifest.affectsGameplay ?? false,
     consented,
   };
 }

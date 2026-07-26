@@ -97,6 +97,8 @@ export interface SaveManifest {
   loadOrder: string[];
   /** The core-owned determinism mode (one-way ratchet). */
   determinism: DeterminismMode;
+  /** True once a gameplay-affecting mod has made this save permanently non-scoring. */
+  modNoscore: boolean;
 }
 
 /**
@@ -163,6 +165,7 @@ export function coreOnlyManifest(): SaveManifest {
     packs: [{ id: "core", version: CORE_PACK_VERSION }],
     loadOrder: ["core"],
     determinism: "deterministic",
+    modNoscore: false,
   };
 }
 
@@ -183,6 +186,14 @@ export function advanceDeterminism(
 ): DeterminismMode {
   if (current === "nondeterministic") return "nondeterministic";
   return enablingNondeterministicMod ? "nondeterministic" : "deterministic";
+}
+
+/** Advance the permanent scoring ratchet for gameplay-affecting mods. */
+export function advanceModNoscore(
+  current: boolean,
+  enablingGameplayMod: boolean,
+): boolean {
+  return current || enablingGameplayMod;
 }
 
 /* ------------------------------------------------------------------ *

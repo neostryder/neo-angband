@@ -3050,7 +3050,12 @@ export function loadGame(
   // deserializers below only ever see ids the present packs can resolve, instead
   // of throwing on a removed mod. `present` defaults to core-only; a future mod
   // loader passes the actually-loaded namespace set.
-  const manifest = saveIn.manifest ?? coreOnlyManifest();
+  const manifest = {
+    ...(saveIn.manifest ?? coreOnlyManifest()),
+    /* Saves written before the gameplay-mod ratchet remain scoreable until a
+     * gameplay-affecting mod is actually enabled. */
+    modNoscore: saveIn.manifest?.modNoscore ?? false,
+  };
   const isPresent = (ns: string): boolean => present.has(ns);
   const quarantine = quarantineSave(
     rehydrateSave(saveIn, isPresent),

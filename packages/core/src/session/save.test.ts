@@ -1208,6 +1208,7 @@ describe("mod-lifecycle save blocks (P7.2)", () => {
       ],
       loadOrder: ["core", "frost"],
       determinism: "deterministic",
+      modNoscore: false,
     };
     saved.floor = [
       ...saved.floor!,

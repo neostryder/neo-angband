@@ -323,7 +323,14 @@ import {
   registryNameResolver,
   showPredictedScores,
 } from "./score";
-import { enterScore, noscoreInvalidatesScore, BIRTH_MESSAGE_RECALL_BANNER } from "@neo-angband/core";
+import {
+  advanceDeterminism,
+  advanceModNoscore,
+  enterScore,
+  noscoreInvalidatesScore,
+  scoreGateNoscore,
+  BIRTH_MESSAGE_RECALL_BANNER,
+} from "@neo-angband/core";
 import { markNoscore } from "@neo-angband/core";
 import { ArtifactState } from "@neo-angband/core";
 import { walkTerrainPrompt } from "@neo-angband/core";
@@ -4060,6 +4067,11 @@ async function openModManager(): Promise<void> {
     applyRuleLive: (flag, on) => {
       (game.state.modRules ??= {})[flag] = on;
     },
+    isModNoscore: () => game.manifest.modNoscore,
+    advanceSaveRatchets: (mod) => {
+      game.manifest.determinism = advanceDeterminism(game.manifest.determinism, mod.nondeterministic);
+      game.manifest.modNoscore = advanceModNoscore(game.manifest.modNoscore, mod.affectsGameplay);
+    },
     requestReload: () => {
       try {
         autosave(true); // keep the live hero before the page re-composes
@@ -5582,7 +5594,10 @@ function advance(): void {
       {
         diedFrom,
         cheated: state.options?.anyScoreSet() ?? false,
-        noscore: noscoreInvalidatesScore(player.noscore),
+        noscore: scoreGateNoscore(
+          noscoreInvalidatesScore(player.noscore),
+          game.manifest.modNoscore,
+        ),
         totalWinner: player.totalWinner,
       },
     );
