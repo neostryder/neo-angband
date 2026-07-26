@@ -79,13 +79,15 @@ const pack: GamePack = {
  *  - makeChangeLevel (session/game.ts, recall-to-town branch around line
  *    2162-2165): covered below by driving state.turn into the night half of
  *    the day cycle, then recalling to town (depth 0).
- *  - startGame (session/game.ts, birth branch around line 2582-2585): NOT
- *    coverable this way. `turn: 0` is hardcoded in the state object literal
- *    startGame builds (no StartGameOptions field overrides it), and turn 0 is
- *    always daytime (isDaytime, world.ts:105-107), for any positive
- *    dayLength. Reaching a night birth would need a production-side test-only
- *    turn/daytime override in StartGameOptions, which is out of scope for a
- *    test-only change (see the test file's session for the full writeup).
+ *  - startGame (session/game.ts, birth branch around line 2582-2585): the order
+ *    there is UNOBSERVABLE, not merely untested. `turn: 0` is hardcoded in the
+ *    state object literal startGame builds (no StartGameOptions field overrides
+ *    it) and turn 0 is daytime for any positive dayLength, and at daytime
+ *    cave_illuminate only sets GLOW and memorizes (cave-map.c:580-582) - the
+ *    square_forget branch at :586-587 is night-only. Two memorize-only passes
+ *    commute, so a swap at that site changes nothing there is to assert. It
+ *    would become a real gap the moment birth can begin at night; if a
+ *    StartGameOptions turn/daytime field is ever added, extend this file.
  */
 describe("cave_known / cave_illuminate call-order wiring (generate.c:1538-1552)", () => {
   it("a NIGHT recall-to-town forgets boring floors (session/game.ts makeChangeLevel)", () => {
@@ -116,9 +118,14 @@ describe("cave_known / cave_illuminate call-order wiring (generate.c:1538-1552)"
     // Correct order (caveKnown THEN caveIlluminateKnown) lets the night
     // illumination pass forget the boring floors caveKnown just memorized
     // (cave-map.c:586-587). Swapping the two lines at the changeLevel call
-    // site instead leaves every floor known (caveKnown runs last and
-    // re-memorizes everything) - that reversal is exactly what this assertion
-    // must catch.
-    expect(knownFloors).toBeLessThan(floors);
+    // site instead leaves EVERY floor known (caveKnown runs last and
+    // re-memorizes everything) - that reversal is what this must catch.
+    //
+    // Asserted as a fraction rather than `< floors`, which would also be
+    // satisfied by a single forgotten grid: cave_illuminate forgets every
+    // non-bright floor, so almost none should survive. The residue is the
+    // square_isbright grids the :583 branch skips (lit shop doorways).
+    expect(knownFloors / floors, `${knownFloors} of ${floors} floors still known`)
+      .toBeLessThan(0.1);
   });
 });
