@@ -1611,6 +1611,9 @@ describe("rune autoinscriptions (obj-ignore.c:172-225)", () => {
     autoinscribePack(state, makeDeps(state, { autoNote: () => null }));
     runeAutoinscribe(state, 0);
     expect(state.rng.getState()).toEqual(before);
+  });
+});
+
 /**
  * player_can_read (player-util.c L1166) on the live read path. Upstream gates
  * do_cmd_read_scroll (cmd-obj.c:748) and the 'r' key's prereq (ui-game.c:131)
