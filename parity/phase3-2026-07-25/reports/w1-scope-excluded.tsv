@@ -1,0 +1,5 @@
+name	rule	why
+chunk_find	dead-c-api	gen-chunk.c:130. Declared in generate.h and defined, but there is NOT ONE caller in the whole C tree (only the prototype). A pointer-identity membership test over chunk_list; the port keys stored levels by depth (core/src/game/context.ts levelCache), so there is nothing to search by identity. No player-visible behaviour.
+context_menu_store	mouse-ui	ui-store.c:902. The right-click popup inside a store, built with menu_dynamic_*. Every action it offers (Inspect inventory / Sell-or-Stash / Exit) is on the store's keyboard legend (packages/web/src/shop.ts helpRuns), so nothing is unreachable. The port has no mouse context menus at all.
+display_help	native-frontend	main-win.c:3473. Shells out to the Windows help viewer for the native win32 front end. There is no win32 front end in the port.
+lread	native-frontend	win/readdib.c:47. A byte reader inside the win32 BMP/DIB loader. The port loads tiles as browser images; there is no DIB loader.

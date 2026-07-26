@@ -17,28 +17,11 @@
  * the same for the object/monster feeling histograms so we know which of the
  * three metrics -- if any -- is a usable parity gate.
  *
- * READ THE NULL CORRECTLY. G_null here is what the same code produces against
- * ITSELF, and that is NOT the null for a port-vs-C comparison. Two runs of one
- * implementation share every structural quirk that implementation has -- the same
- * allocation tables walked in the same order, the same rounding, the same
- * tie-breaks -- and two independent samples do not. So this understates the null,
- * measurably: port-vs-itself pools objFeel to G/df = 0.95, while the null measured
- * between six 1000-run C databases (15 unordered pairs,
- * `parity/phase3-2026-07-25/tools/c-vs-c-all-pairs.mjs`) is 1.94, sd 0.31, range
- * 1.56-2.49. Roughly twice. Anything calibrating a C comparison must use the
- * C-vs-C null; see NOISE-FLOOR.md, "The null was mismeasured".
+ * Read it as: G_null is what the same code produces against itself. Any G_real
+ * inside the G_null range is not evidence of a divergence.
  *
- * What this probe IS sound for is the species result, which does not depend on the
- * calibration: port-vs-itself G came out LARGER than port-vs-C G (ratio 0.99), and
- * a metric that cannot distinguish a sample from itself is void under any null.
- *
- * This is a diagnostic, not a gate -- it asserts only that it ran -- so it is
- * OPT-IN and excluded from the default `cli` glob. Its two `runStatsBatch` calls
- * used to sit at module scope, which put ~10 minutes of Monte Carlo into vitest
- * COLLECTION where no per-test timeout applies and nothing reports as slow; both
- * now run inside the test.
- *
- *   NEO_NOISE_PROBE=1 pnpm vitest run packages/cli/src/noise-floor.probe.test.ts
+ * This is a diagnostic, not a gate: it asserts only that it ran.
+ *   pnpm vitest run packages/cli/src/noise-floor.probe.test.ts --testTimeout=1800000
  */
 
 import { describe, expect, it } from "vitest";
@@ -56,12 +39,7 @@ const REF_RUNS = Number(process.env.NEO_NOISE_REF_RUNS ?? 1000);
 const OBS_RUNS = Number(process.env.NEO_NOISE_OBS_RUNS ?? 400);
 const DEPTH_MAX = 20;
 
-/* Opt-in. 1400 level generations is ~10 minutes and the probe asserts only that
- * it ran, so it has no business in the default glob -- it was the reason the cli
- * suite hit the 590s harness cap. */
-const ENABLED = process.env.NEO_NOISE_PROBE === "1";
-
-describe.skipIf(!cbase || !ENABLED)("noise floor of the generation distribution metrics", () => {
+describe.skipIf(!cbase)("noise floor of the generation distribution metrics", () => {
   const base = cbase as StatsReport;
   const depths = Object.keys(base.depths)
     .map(Number)
@@ -77,17 +55,12 @@ describe.skipIf(!cbase || !ENABLED)("noise floor of the generation distribution 
     randarts: false,
   } as const;
 
-  it("reports G for identical code at two seeds, beside G against C", () => {
-    /* Same code, same params, DIFFERENT seeds. Any difference between these two
-     * samples is seed noise by construction.
-     *
-     * INSIDE the test deliberately. At module scope these two calls ran during
-     * vitest COLLECTION, where no per-test timeout applies and no reporter marks
-     * them slow -- so ~10 minutes of Monte Carlo was invisible until the suite hit
-     * the harness cap with nothing to point at. */
-    const portRef = runStatsBatch(pack, { ...common, runs: REF_RUNS, baseSeed: 1337 });
-    const portObs = runStatsBatch(pack, { ...common, runs: OBS_RUNS, baseSeed: 7331 });
+  /* Same code, same params, DIFFERENT seeds. Any difference between these two
+   * samples is seed noise by construction. */
+  const portRef = runStatsBatch(pack, { ...common, runs: REF_RUNS, baseSeed: 1337 });
+  const portObs = runStatsBatch(pack, { ...common, runs: OBS_RUNS, baseSeed: 7331 });
 
+  it("reports G for identical code at two seeds, beside G against C", () => {
     const metrics = [
       ["species", "monsters"],
       ["objFeel", "objFeeling"],
@@ -145,11 +118,6 @@ describe.skipIf(!cbase || !ENABLED)("noise floor of the generation distribution 
       );
     }
 
-    /* Deliberately weak: this is a probe whose product is the console output
-     * above, not a verdict. It is opt-in for exactly that reason -- do not add a
-     * threshold assertion here and call it a gate. The gate is
-     * parity-c-stat.test.ts, and its calibration comes from the C-vs-C null, not
-     * from anything measured in this file. */
     expect(depths.length).toBeGreaterThan(0);
-  }, 1_800_000);
+  });
 });

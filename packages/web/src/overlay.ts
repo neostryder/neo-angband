@@ -380,6 +380,10 @@ export function getCheck(term: GlyphTerm, prompt: string): Promise<boolean> {
  * ignored), clears row 0, and resolves the key string - the faithful shape of
  * the retire '@' verification (ui-command.c L178-182) and any other "type this
  * exact key to confirm" prompt, which do NOT open a full-screen line editor.
+ *
+ * This is get_com_ex / textui_get_com (ui-input.c:1407); textui_get_com is only
+ * get_com_ex narrowed to an ASCII char, so it has no separate counterpart. The
+ * C returns false on ESCAPE where callers here compare the resolved key.
  */
 export function getKeyInline(term: GlyphTerm, prompt: string): Promise<string> {
   return new Promise<string>((resolve) => {
@@ -406,6 +410,16 @@ export function getKeyInline(term: GlyphTerm, prompt: string): Promise<string> {
  * A single-line text input (get_string / textui_get_name). Renders a prompt and
  * the editable buffer; Enter confirms, Escape cancels (resolves null), Backspace
  * deletes. Resolves the entered string (possibly empty) or null on cancel.
+ *
+ * Upstream's line editor is askfor_aux (ui-input.c:860) driving
+ * askfor_aux_keypress (L662). KNOWN DIVERGENCE, recorded not fixed by W1-CITED
+ * (parity/phase3-2026-07-25/findings/W1-CITED.md): this editor drops the
+ * `firsttime` rule and the cursor. Upstream, the FIRST printable key clears the
+ * whole default (L765-771) and the first Backspace deletes all of it
+ * (L706-712), and ARROW_LEFT/RIGHT move a cursor that inserts and deletes
+ * mid-buffer (L681-699, L714-745). Here a printable key APPENDS to the default
+ * and Backspace only ever removes the last character, so every caller that
+ * passes a non-empty `initial` behaves differently from the C.
  */
 export function promptText(
   term: GlyphTerm,
@@ -606,6 +620,12 @@ export interface SelectMenuOptions {
  * to show the curse/ability's long description, mirroring upstream's
  * browse_hook). `extra.browseOnly` turns the menu read-only (abilities): Enter
  * / letter-select just re-paints instead of resolving, so only ESC exits.
+ *
+ * This is the port of ui-menu.c's whole menu object for every non-item menu, so
+ * menu_new (ui-menu.c:980) - the allocator for `struct menu` - has no
+ * counterpart: a menu here is one call with its rows, not a long-lived struct
+ * with a skin, an iterator and priv state. (Object selection keeps its own
+ * shape in itemSelect below, upstream's item_menu.)
  */
 /**
  * selectFromMenu resolves with this sentinel (instead of a row index or null)

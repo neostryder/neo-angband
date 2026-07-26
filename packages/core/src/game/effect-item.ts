@@ -351,7 +351,6 @@ export function enchant(
     if (prob > 100 && state.rng.randint0(prob) >= 100) continue;
 
     /* Try the three kinds of enchantment we can do */
-    /* enchant2 (effect-handler-general.c:294) */
     if (eflag & ENCH_TOHIT) {
       const r = enchantScore(state, obj.toH, isArtifact);
       obj.toH = r.score;
@@ -949,26 +948,16 @@ const ITEM_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   EffectHandler
 >([
   [EF.ENCHANT, handleENCHANT],
-  /* effect_handler_RECHARGE (effect-handler-general.c:2127) */
   [EF.RECHARGE, handleRECHARGE],
   [EF.REMOVE_CURSE, handleREMOVE_CURSE],
-  /* effect_handler_BRAND_WEAPON (effect-handler-general.c:3233) */
   [EF.BRAND_WEAPON, handleBRAND_WEAPON],
-  /* effect_handler_BRAND_AMMO (effect-handler-general.c:3251) */
   [EF.BRAND_AMMO, handleBRAND_AMMO],
-  /* effect_handler_BRAND_BOLTS (effect-handler-general.c:3284) */
   [EF.BRAND_BOLTS, handleBRAND_BOLTS],
-  /* effect_handler_CURSE_ARMOR (effect-handler-general.c:3103) */
   [EF.CURSE_ARMOR, handleCURSE_ARMOR],
-  /* effect_handler_CURSE_WEAPON (effect-handler-general.c:3167) */
   [EF.CURSE_WEAPON, handleCURSE_WEAPON],
-  /* effect_handler_CREATE_ARROWS (effect-handler-general.c:3315) */
   [EF.CREATE_ARROWS, handleCREATE_ARROWS],
-  /* effect_handler_TAP_DEVICE (effect-handler-general.c:3370) */
   [EF.TAP_DEVICE, handleTAP_DEVICE],
-  /* effect_handler_ACQUIRE (effect-handler-general.c:2194) */
   [EF.ACQUIRE, handleACQUIRE],
-  /* effect_handler_IDENTIFY (effect-handler-general.c:1945) */
   [EF.IDENTIFY, handleIDENTIFY],
 ]);
 
