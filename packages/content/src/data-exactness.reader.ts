@@ -8,7 +8,9 @@
  *
  * Format registration data (parser_reg format strings + which directives
  * repeat / nest) is supplied by the caller so this module stays free of
- * packages/content's parser implementation.
+ * packages/content's parser implementation. Because that metadata is itself
+ * port-supplied, extractParserRegFormats() below lets the caller check the
+ * format strings back against reference/src/*.c rather than trusting them.
  */
 
 export type FieldType = "int" | "uint" | "sym" | "str" | "char" | "rand";
@@ -28,6 +30,15 @@ export interface DirectiveDef {
   readonly fmt: string;
   readonly repeat?: boolean;
   readonly childOf?: readonly string[];
+  /**
+   * Synthetic key that records the file order of a cross-directive repeat
+   * group. C keeps such groups in one linked list (e.g. monster_drop, built by
+   * prepending in parse_monster_drop / parse_monster_drop_base), so splitting
+   * them into per-directive arrays would lose the interleaving. There is no
+   * upstream directive of this name; the key is generated, and every generated
+   * key must be declared here so the coverage guard can see it.
+   */
+  readonly orderKey?: string;
 }
 
 export interface FileSpec {
@@ -296,10 +307,17 @@ export function splitFlagList(raw: string): string[] {
   return out;
 }
 
-type Slot = JsonValue | Container;
+/**
+ * A directive's compiled value. Deliberately excludes arrays so that
+ * Array.isArray() narrows a slot to "repeated" vs "single" unambiguously.
+ */
+type Value = JsonPrimitive | JsonObject | Container;
+type Slot = Value | Value[];
+
 class Container {
   fields: Array<[string, JsonPrimitive]> = [];
-  children = new Map<string, Slot | Slot[]>();
+  children = new Map<string, Slot>();
+  orderGroups = new Map<string, string[]>();
 }
 
 interface CompiledDirective {
@@ -324,7 +342,7 @@ function buildTable(spec: FileSpec): Map<string, CompiledDirective> {
   return table;
 }
 
-function makeValue(cd: CompiledDirective, values: Record<string, string | number>): Slot {
+function makeValue(cd: CompiledDirective, values: Record<string, string | number>): Value {
   const entries: Array<[string, JsonPrimitive]> = [];
   for (const field of cd.sig.fields) {
     const v = values[field.name];
@@ -344,7 +362,7 @@ function makeValue(cd: CompiledDirective, values: Record<string, string | number
   return obj;
 }
 
-function finalize(slot: Slot, spec: FileSpec): JsonValue {
+function finalize(slot: Value, spec: FileSpec): JsonValue {
   if (!(slot instanceof Container)) return slot;
   const out: JsonObject = {};
   for (const [k, v] of slot.fields) out[k] = v;
@@ -357,6 +375,7 @@ function finalize(slot: Slot, spec: FileSpec): JsonValue {
       ? child.map((c) => finalize(c, spec))
       : finalize(child, spec);
   }
+  for (const [key, order] of slot.orderGroups) out[key] = [...order];
   return out;
 }
 
@@ -422,9 +441,15 @@ export function independentCompile(text: string, spec: FileSpec): CompiledFile {
 
     if (cd.def.repeat === true) {
       const existing = target.children.get(parsed.directive);
+      const occurrence = Array.isArray(existing) ? existing.length : 0;
       if (existing === undefined) target.children.set(parsed.directive, [value]);
       else if (Array.isArray(existing)) existing.push(value);
       else throw new Error(`${where}: repeat collision on "${parsed.directive}"`);
+      if (cd.def.orderKey !== undefined) {
+        const order = target.orderGroups.get(cd.def.orderKey) ?? [];
+        order.push(`${parsed.directive}:${occurrence}`);
+        target.orderGroups.set(cd.def.orderKey, order);
+      }
     } else {
       if (target.children.has(parsed.directive)) {
         throw new Error(`${where}: duplicate "${parsed.directive}" (not marked repeat)`);
@@ -448,4 +473,87 @@ export function independentCompile(text: string, spec: FileSpec): CompiledFile {
     };
   }
   return { file: spec.name, source, records: finalized };
+}
+
+/**
+ * The directive of every data line in a gamedata file, in file order.
+ *
+ * Mirrors the front of parser_parse(): skip leading isspace, drop blank and '#'
+ * lines, then take the first strtok(line, ":") token (strtok skips a run of
+ * leading delimiters). Deliberately does no field parsing, so it is an
+ * independent check on the record splitter and the directive table.
+ */
+export function extractDirectiveSequence(text: string): string[] {
+  const out: string[] = [];
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    let raw = lines[i] ?? "";
+    if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+    if (i === 0 && raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+    let pos = 0;
+    while (pos < raw.length && isSpace(raw.charCodeAt(pos))) pos++;
+    if (pos >= raw.length || raw[pos] === "#") continue;
+    while (pos < raw.length && raw[pos] === ":") pos++;
+    if (pos >= raw.length) continue;
+    const start = pos;
+    while (pos < raw.length && raw[pos] !== ":") pos++;
+    out.push(raw.slice(start, pos));
+  }
+  return out;
+}
+
+/** Every directive key that occurs in a gamedata file, with its line count. */
+export function extractDirectiveKeys(text: string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const key of extractDirectiveSequence(text)) {
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * parse_specs() tokenizes the format string with strtok(fmt, " "), so runs of
+ * whitespace collapse and leading/trailing whitespace is insignificant.
+ */
+export function normalizeFormat(fmt: string): string {
+  return fmt.split(/\s+/).filter((t) => t.length > 0).join(" ");
+}
+
+/**
+ * Every format string handed to parser_reg() in a C source file, normalized.
+ *
+ * Adjacent string literals are concatenated the way the C compiler does, so
+ * registrations wrapped across source lines (e.g. init.c's melee-critical-level)
+ * come back as the single format string parse_specs() actually sees.
+ */
+export function extractParserRegFormats(source: string): string[] {
+  const out: string[] = [];
+  const needle = "parser_reg(";
+  let at = 0;
+  for (;;) {
+    const call = source.indexOf(needle, at);
+    if (call < 0) break;
+    at = call + needle.length;
+    /* The format is the first string literal argument of the call. */
+    let pos = at;
+    while (pos < source.length && source[pos] !== '"' && source[pos] !== ";") pos++;
+    if (source[pos] !== '"') continue;
+    let fmt = "";
+    for (;;) {
+      pos++; /* past the opening quote */
+      while (pos < source.length && source[pos] !== '"') {
+        if (source[pos] === "\\") pos++;
+        fmt += source[pos] ?? "";
+        pos++;
+      }
+      pos++; /* past the closing quote */
+      let peek = pos;
+      while (peek < source.length && isSpace(source.charCodeAt(peek))) peek++;
+      if (source[peek] !== '"') break;
+      pos = peek;
+    }
+    out.push(normalizeFormat(fmt));
+    at = pos;
+  }
+  return out;
 }
