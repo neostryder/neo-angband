@@ -57,6 +57,7 @@ export const C_SCALAR_METRICS = [
   "gold",
   "objectTotal",
   "artifacts",
+  "egos",
 ] as const;
 export const C_RECORD_METRICS = [
   "monsters",
@@ -224,6 +225,22 @@ export function importCStats(
     }
   }
 
+  /*
+   * Egos: `wearables_egos(level, count, k_idx, origin, e_idx)` has one row per
+   * (kind, origin, ego) triple, so the per-level ego count is the sum over the
+   * whole table at that depth (main-stats.c:644-645). Only objects satisfying
+   * tval_has_variable_power reach that branch, which is exactly the set that can
+   * carry an ego, so no money/consumable correction is needed here.
+   */
+  for (const r of query<{ level: number; count: number }>(
+    sqlite3,
+    dbPath,
+    `SELECT level, count FROM wearables_egos WHERE ${range};`,
+  )) {
+    const m = depths[String(r.level)];
+    if (m) m.egos += r.count;
+  }
+
   /* Artifacts: one row per (level, a_idx, origin); mirrors L628-630. */
   for (const r of query<{ level: number; count: number }>(
     sqlite3,
@@ -251,8 +268,8 @@ export function importCStats(
       note:
         "Imported from the C main-stats SQLite DB (Angband " +
         (meta.version ?? "4.2.6") +
-        "). Covers monster, gold, object (count/kind/tval), artifact and " +
-        "level-feeling generation distributions. Object counts are reassembled " +
+        "). Covers monster, gold, object (count/kind/tval), ego, artifact " +
+        "and level-feeling generation distributions. Object counts are reassembled " +
         "from wearables_count + consumables with the money kinds removed, " +
         "because the C logs a money object into BOTH gold and consumables while " +
         "the port excludes it from objectTotal. Per-level squares are absent by " +

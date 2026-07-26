@@ -2,6 +2,9 @@
   "depths": {
     "1": {
       "artifacts": 22,
+      "artifactsSq": 0,
+      "egos": 327,
+      "egosSq": 0,
       "gold": 76806,
       "goldByOrigin": {
         "0": 28,
@@ -271,6 +274,9 @@
     },
     "2": {
       "artifacts": 32,
+      "artifactsSq": 0,
+      "egos": 392,
+      "egosSq": 0,
       "gold": 136426,
       "goldByOrigin": {
         "0": 141,
@@ -576,6 +582,9 @@
     },
     "3": {
       "artifacts": 25,
+      "artifactsSq": 0,
+      "egos": 648,
+      "egosSq": 0,
       "gold": 149878,
       "goldByOrigin": {
         "0": 698,
@@ -945,6 +954,9 @@
     },
     "4": {
       "artifacts": 35,
+      "artifactsSq": 0,
+      "egos": 626,
+      "egosSq": 0,
       "gold": 177814,
       "goldByOrigin": {
         "0": 5256,
@@ -1343,6 +1355,9 @@
     },
     "5": {
       "artifacts": 67,
+      "artifactsSq": 0,
+      "egos": 750,
+      "egosSq": 0,
       "gold": 197455,
       "goldByOrigin": {
         "0": 4120,
@@ -1814,6 +1829,9 @@
     },
     "6": {
       "artifacts": 72,
+      "artifactsSq": 0,
+      "egos": 795,
+      "egosSq": 0,
       "gold": 209781,
       "goldByOrigin": {
         "0": 8451,
@@ -2316,6 +2334,9 @@
     },
     "7": {
       "artifacts": 78,
+      "artifactsSq": 0,
+      "egos": 818,
+      "egosSq": 0,
       "gold": 253551,
       "goldByOrigin": {
         "0": 9005,
@@ -2836,6 +2857,9 @@
     },
     "8": {
       "artifacts": 132,
+      "artifactsSq": 0,
+      "egos": 1112,
+      "egosSq": 0,
       "gold": 255320,
       "goldByOrigin": {
         "0": 6621,
@@ -3381,6 +3405,9 @@
     },
     "9": {
       "artifacts": 113,
+      "artifactsSq": 0,
+      "egos": 1009,
+      "egosSq": 0,
       "gold": 319134,
       "goldByOrigin": {
         "0": 6423,
@@ -3926,6 +3953,9 @@
     },
     "10": {
       "artifacts": 135,
+      "artifactsSq": 0,
+      "egos": 1028,
+      "egosSq": 0,
       "gold": 347921,
       "goldByOrigin": {
         "0": 12438,
@@ -4511,6 +4541,9 @@
     },
     "11": {
       "artifacts": 153,
+      "artifactsSq": 0,
+      "egos": 901,
+      "egosSq": 0,
       "gold": 364232,
       "goldByOrigin": {
         "0": 11673,
@@ -5106,6 +5139,9 @@
     },
     "12": {
       "artifacts": 154,
+      "artifactsSq": 0,
+      "egos": 1059,
+      "egosSq": 0,
       "gold": 415046,
       "goldByOrigin": {
         "0": 11916,
@@ -5707,6 +5743,9 @@
     },
     "13": {
       "artifacts": 177,
+      "artifactsSq": 0,
+      "egos": 1094,
+      "egosSq": 0,
       "gold": 435781,
       "goldByOrigin": {
         "0": 16149,
@@ -6332,6 +6371,9 @@
     },
     "14": {
       "artifacts": 221,
+      "artifactsSq": 0,
+      "egos": 1067,
+      "egosSq": 0,
       "gold": 461189,
       "goldByOrigin": {
         "0": 15045,
@@ -6976,6 +7018,9 @@
     },
     "15": {
       "artifacts": 172,
+      "artifactsSq": 0,
+      "egos": 1058,
+      "egosSq": 0,
       "gold": 470021,
       "goldByOrigin": {
         "0": 14810,
@@ -7646,6 +7691,9 @@
     },
     "16": {
       "artifacts": 150,
+      "artifactsSq": 0,
+      "egos": 1055,
+      "egosSq": 0,
       "gold": 497814,
       "goldByOrigin": {
         "0": 14723,
@@ -8320,6 +8368,9 @@
     },
     "17": {
       "artifacts": 172,
+      "artifactsSq": 0,
+      "egos": 1093,
+      "egosSq": 0,
       "gold": 550709,
       "goldByOrigin": {
         "0": 15069,
@@ -9013,6 +9064,9 @@
     },
     "18": {
       "artifacts": 173,
+      "artifactsSq": 0,
+      "egos": 1146,
+      "egosSq": 0,
       "gold": 580009,
       "goldByOrigin": {
         "0": 13811,
@@ -9716,6 +9770,9 @@
     },
     "19": {
       "artifacts": 276,
+      "artifactsSq": 0,
+      "egos": 1274,
+      "egosSq": 0,
       "gold": 637219,
       "goldByOrigin": {
         "0": 13520,
@@ -10424,6 +10481,9 @@
     },
     "20": {
       "artifacts": 371,
+      "artifactsSq": 0,
+      "egos": 1606,
+      "egosSq": 0,
       "gold": 785953,
       "goldByOrigin": {
         "0": 11980,
@@ -11204,7 +11264,7 @@
     "depthMin": 1,
     "engineVersion": "4.2.6",
     "generatedBy": "c-main-stats",
-    "note": "Imported from the C main-stats SQLite DB (Angband 4.2.6). Covers monster, gold, object (count/kind/tval), artifact and level-feeling generation distributions. Object counts are reassembled from wearables_count + consumables with the money kinds removed, because the C logs a money object into BOTH gold and consumables while the port excludes it from objectTotal. Per-level squares are absent by construction (the C stores per-depth aggregates, not per-run samples), so any mean test estimates the shared variance from the port side.",
+    "note": "Imported from the C main-stats SQLite DB (Angband 4.2.6). Covers monster, gold, object (count/kind/tval), ego, artifact and level-feeling generation distributions. Object counts are reassembled from wearables_count + consumables with the money kinds removed, because the C logs a money object into BOTH gold and consumables while the port excludes it from objectTotal. Per-level squares are absent by construction (the C stores per-depth aggregates, not per-run samples), so any mean test estimates the shared variance from the port side.",
     "parityBaseline": "4.2.6",
     "race": "wizard-stats",
     "randarts": false,

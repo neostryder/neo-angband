@@ -1,4 +1,14 @@
-# objFeel: the divergence is real, and it is a depth BAND, not depths 11-12
+# objFeel: NOT ESTABLISHED. The null was mismeasured; see section 7 first.
+
+> **Read section 7 before anything else.** Sections 1-6 were written against a
+> null of 0.95 x df, measured port-against-ITSELF. The real null, measured
+> between two independent 1000-run samples of the SAME upstream C binary, is
+> **1.76 x df**. Every sigma figure below is inflated by that error, and the
+> headline claim does not survive it at the harness's default sample size. The
+> earlier sections are kept because their reasoning about POOLING and about
+> quantity-versus-value is unaffected and still correct.
+
+# (historical) objFeel: the divergence is real, and it is a depth BAND
 
 Date: 2026-07-26
 Code: `p3/s3-fix` @ `f2c50dbc8` (== `master` @ `78e2fe4c9`)
@@ -229,3 +239,92 @@ threshold, so not a finding, but it is up from the 0.80 ratio recorded in
 The species question is NOT closed by dropping it, and the code says so: it needs
 a different instrument (one species-vector per LEVEL, then a permutation test
 over levels) rather than a threshold on a clustered statistic. That is open work.
+
+
+## 7. CORRECTION: the null was mismeasured, and the finding does not survive it
+
+Date: 2026-07-26, later the same day. This section supersedes the strength of
+every claim above.
+
+### What was wrong
+
+Sections 1 and 5 justify pooling with a measured null of **0.95 x df**, taken
+from running the port against ITSELF at a second base seed. That is a weak null.
+Two runs of one implementation share more than two independent samples do, and
+using it as the reference for a port-versus-C comparison assumes the only
+variation is sampling.
+
+There are now two independent 1000-run C `main-stats` databases, produced by the
+same binary (the second was built to emit `obj_ratings`, an additive change that
+touches no generation code and consumes no RNG). Diffing them against each other
+runs this exact instrument on data where the answer is known to be "no
+difference", so the result IS the null:
+
+| statistic | C-run-A vs C-run-B, pooled over 20 depths |
+|---|---|
+| `obj_feelings` | G = 244.6, df = 139, **G/df = 1.76** |
+| `mon_feelings` | G = 238.2, df = 122, **G/df = 1.95** |
+
+The tool is `parity/phase3-2026-07-25/tools/c-vs-c-null.mjs`.
+
+**These histograms are overdispersed by nearly a factor of two before the port
+is involved at all.** A pooled `G/df` near 1.8 on objFeel is therefore ordinary,
+not an eight-sigma event.
+
+### What the finding actually is, corrected
+
+Applying the measured dispersion as a quasi-likelihood correction
+(`G/phi` referred to `chi2(df)`):
+
+| port runs | raw G/df | corrected G/phi/df | corrected p | verdict at alpha = 1.22e-4 |
+|---:|---:|---:|---:|---|
+| 400 (the harness default) | 1.87 | **1.06** | **0.29** | no evidence whatsoever |
+| 1000 | 2.70 | **1.53** | **3.5e-5** | survives, by a factor of 3.5 |
+
+Compare with what section 6 claimed for the same 1000-run data: `p = 8.4e-25`.
+The corrected figure is twenty orders of magnitude weaker.
+
+`monFeel` is comfortably clean either way -- 1.16 to 1.27 raw against a null of
+1.95, i.e. LESS dispersed than upstream is against itself.
+
+### Why this is not yet a finding
+
+`phi` rests on **one replicate per metric**, so it is itself uncertain, and the
+residual signal is inside that uncertainty: at `phi = 2.0` instead of 1.76 the
+1000-run result becomes `G/phi/df = 1.35`, `p ~ 0.004`, which does not clear the
+threshold. So the residual at 1000 runs cannot be distinguished from an
+underestimated `phi`.
+
+**Status: the objFeel divergence is a candidate, not an established divergence.**
+The next step is to pin `phi` with several more 1000-run C passes and estimate it
+from all pairs, with an uncertainty. Until then no generator code should be
+changed on the strength of this.
+
+### What survives from the earlier sections, unaffected
+
+- **Pooling is still right.** The argument in section 3 -- that WHICH depths
+  light up is a property of the seed, demonstrated by the recorded depths moving
+  from {13,16,19} to {11,12} across an unrelated stream shift -- does not depend
+  on the null's value. Pooling removes a seed-dependent choice; it just does not
+  license an uncorrected p-value.
+- **Quantity is still ruled out** (section 6). Object count matches within about
+  1% at every depth, and the two C runs differ from each other by 1.44% on the
+  same measure, so the port sits inside upstream's own run-to-run spread. Ego
+  and artifact counts per level were added to the gate in the same pass and no
+  depth reaches |z| = 2.
+- **The direction claim (section 2) is weaker than it reads.** Eight-of-eight
+  agreement on the sign was computed within the band that the mismeasured null
+  selected, so it is partly conditioned on the thing being tested.
+
+### And a dead end worth recording
+
+The recommendation in section 4 -- "stop measuring the feeling and measure
+`obj_rating` directly" -- was wrong, and the oracle patch that implemented it
+proved why. `obj_rating`'s per-level distribution is extremely heavy-tailed: on
+the C oracle its standard deviation runs about **fourteen times its mean** (depth
+1: mean 682, SD 9617). A mean test on it has no power, and the mean's feeling bin
+does not even match the modal per-level feeling at 85 of 100 depths, because rare
+very rich levels drag the mean while leaving the mode ordinary. The binned
+feeling is the ROBUST statistic here, which is presumably why upstream computes
+it that way. A finer-grained instrument would need log-scale rating buckets or
+quantiles, not a mean -- and the oracle would have to emit them.
