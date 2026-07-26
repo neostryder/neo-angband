@@ -1403,11 +1403,9 @@ export const labyrinthGen: CaveBuilder = (ctx) => {
   allocObjects(g, SET_BOTH, TYP_GOLD, rng.randNormal(k * 3, 2), c.depth, ORIGIN.LABYRINTH);
   allocObjects(g, SET_BOTH, TYP_GOOD, rng.randint1(2), c.depth, ORIGIN.LABYRINTH);
 
-  /* "Notify if we want the player to see the maze layout" (gen-cave.c:1593-1596):
-   * a known labyrinth sets p->upkeep->light_level, which cave_generate consumes
-   * as wiz_light(chunk, p, false) (generate.c:1255-1258). No RNG, no layout
-   * effect - it perma-lights the level. */
-  if (known) g.lightLevel = true;
+  /* known would set p->upkeep->light_level upstream (a UI reveal flag, no RNG
+   * and no layout effect); the port does not model player upkeep here. */
+  void known;
 
   return { gen: g, error: null };
 };

@@ -80,7 +80,7 @@ import { registerGeneralHandlers } from "../game/effect-general";
 import type { GeneralEffectEnv } from "../game/effect-general";
 import { registerMonsterHandlers } from "../game/effect-monster";
 import { registerTeleportHandlers, teleportMonster } from "../game/effect-teleport";
-import { registerTerrainHandlers, wizLightLevel } from "../game/effect-terrain";
+import { registerTerrainHandlers } from "../game/effect-terrain";
 import { registerItemHandlers } from "../game/effect-item";
 import type { ItemEffectEnv, ItemRequest } from "../game/effect-item";
 import { registerMeleeHandlers } from "../game/effect-melee";
@@ -120,13 +120,7 @@ import { installMonCommand } from "../game/mon-cmd";
 import { monsterChangeShape, monsterRevertShape } from "../game/mon-shape";
 import type { MonShapeHooks } from "../mon/timed";
 import { installMonTimedLore } from "../mon/timed";
-import {
-  applyAutoinscription,
-  autoinscribeGround,
-  autoinscribePack,
-  installObjCommands,
-} from "../game/obj-cmd";
-import type { ObjCmdDeps } from "../game/obj-cmd";
+import { installObjCommands } from "../game/obj-cmd";
 import { installCaveCommands, movementAutoDig } from "../game/cave-cmd";
 import type { CaveCmdDeps } from "../game/cave-cmd";
 import { installSteal } from "../game/steal";
@@ -181,9 +175,6 @@ import {
 } from "../game/mon-message";
 import {
   AutoinscriptionRegistry,
-  RuneNoteRegistry,
-  buildRuneList,
-  runeKey,
   FlavorKnowledge,
   EverseenKnowledge,
   equipLearnElement,
@@ -242,9 +233,6 @@ import { iToGrid } from "../gen/util";
 import {
   SAVE_VERSION,
   deserializeAutoinscriptions,
-  deserializeEverseen,
-  deserializeFlavor,
-  deserializeIgnore,
   deserializeChunk,
   deserializeFloor,
   buildFeatRemap,
@@ -1305,7 +1293,7 @@ function wireGame(
       msg: (text: string, msgt?: string): void => state.msg?.(text, msgt),
     });
 
-    const objCmdDeps: ObjCmdDeps = {
+    installObjCommands(registry, {
       constants: reg.constants,
       registry: effects,
       cast,
@@ -1339,20 +1327,7 @@ function wireGame(
       // Route object/effect messages (msg / msgt / activation_message) to the
       // game's message sink so a shell shows them; absent, they would drop.
       env: { msg: (text: string): void => state.msg?.(text) },
-    };
-    installObjCommands(registry, objCmdDeps);
-
-    /* apply_autoinscription / autoinscribe_ground + autoinscribe_pack as seams,
-     * so the upstream call sites that have no ObjCmdDeps can reach them:
-     * inven_carry (obj-gear.c:868), store selling (store.c:1977) and
-     * update_player_object_knowledge's tail (obj-knowledge.c:1245-1247). */
-    state.autoinscribeObject = (obj: GameObject): void => {
-      applyAutoinscription(state, obj, objCmdDeps);
-    };
-    state.autoinscribeAll = (): void => {
-      autoinscribeGround(state, objCmdDeps);
-      autoinscribePack(state, objCmdDeps);
-    };
+    });
 
     /* Player melee blow side effects (player-attack.c:669-1012, gap 2.5/3.6):
      * the OF_IMPACT earthquake (effect_simple(EF_EARTHQUAKE, source_player, 10)
@@ -1906,14 +1881,6 @@ function makeChangeLevel(
         state.known = newKnownMap(6, 6);
         delete state.decoy;
 
-        /* wiz_light(chunk, p, false) (generate.c:1109): every arena level is
-         * lit on generation. Upstream runs it while `chunk` is not yet `cave`,
-         * so square_memorize / square_know_pile / square_forget all short-
-         * circuit on their `c != cave` guard and the call is a pure
-         * SQUARE_GLOW pass - hence isCurrentCave = false here. Without it the
-         * arena is unlit and the opponent invisible without a light source. */
-        wizLightLevel(state, true, false, false);
-
         /* The monster is COPIED in (upstream memcpy); the original stays
          * in the stashed level and is finished on the way out. Held
          * objects are ignored, and it gets a fresh group. */
@@ -2225,16 +2192,6 @@ function makeChangeLevel(
     if (depth === 0) {
       caveKnown(state);
       caveIlluminateKnown(state, isDaytime(state.turn, state.z.dayLength));
-    }
-    /* cave_generate (generate.c:1255-1258): a builder that asked for the level
-     * to be revealed (labyrinth_gen's "known" maze, gen-cave.c:1594) gets
-     * `wiz_light(chunk, p, false)` and the flag is cleared. `chunk` is not yet
-     * `cave` there, so square_memorize / square_know_pile / square_forget all
-     * short-circuit on their `c != cave` guard and the call perma-LIGHTS the
-     * level without memorizing anything - hence isCurrentCave = false. */
-    if (g.lightLevel) {
-      wizLightLevel(state, true, false, false);
-      g.lightLevel = false;
     }
     delete state.targetDepth;
     /* on_new_level (game-world.c:1034-1037): PU_BONUS -> update_bonuses ->
@@ -2553,7 +2510,6 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     target: newTargetState(),
     ignore: new IgnoreSettings(),
     autoinscribe: new AutoinscriptionRegistry(),
-    runeNotes: new RuneNoteRegistry(),
     options,
     artifacts,
     /* Effective mod-rule flags (declarative bundled-mod seam): absent/empty =
@@ -2819,12 +2775,6 @@ function makeStoreApi(
       if (result.ok && result.sold?.artifact) {
         state.onArtifactFound?.(result.sold.artifact);
         if (result.carried === false) state.onArtifactLost?.(result.sold.artifact);
-      }
-      /* apply_autoinscription (store.c:1976-1977): "Autoinscribe if we still
-       * have any" - the remaining stack, not the sold copy. */
-      if (result.ok && result.noneLeft === false) {
-        const left = state.gear.store.get(handle);
-        if (left) state.autoinscribeObject?.(left);
       }
       if (result.ok) refreshQuiver();
       return result;
@@ -3204,7 +3154,6 @@ export function loadGame(
     target: newTargetState(),
     ignore: new IgnoreSettings(),
     autoinscribe: new AutoinscriptionRegistry(),
-    runeNotes: new RuneNoteRegistry(),
     options,
     artifacts,
     /* Effective mod-rule flags (declarative bundled-mod seam): the host
@@ -3324,29 +3273,15 @@ export function loadGame(
   /* restore() replaces the aware/tried sets, so it must run AFTER flavor_init's
    * aware-marking of non-flavoured kinds - the save is the source of truth for
    * what the player has actually identified. */
-  wired.flavor.restore(deserializeFlavor(save.flavor, ids));
+  wired.flavor.restore(save.flavor);
   /* kind/ego everseen (save.c L397/L533): absent in saves written before
    * everseen tracking, which load with an empty set. */
-  if (save.everseen) wired.everseen.restore(deserializeEverseen(save.everseen, ids));
-  if (save.ignore) state.ignore.restore(deserializeIgnore(save.ignore, ids));
+  if (save.everseen) wired.everseen.restore(save.everseen);
+  if (save.ignore) state.ignore.restore(save.ignore);
   /* Per-kind autoinscriptions (obj-ignore.c note_aware/note_unaware): absent in
    * saves written before this block, which load with an empty registry. */
   if (save.autoinscriptions && state.autoinscribe) {
     deserializeAutoinscriptions(save.autoinscriptions, state.autoinscribe, ids);
-  }
-  /* Per-RUNE autoinscriptions (rd_ignore's rune block, load.c:934-945):
-   * rd_s16b(runeid) + rd_string, straight into rune_set_note. The savefile keys
-   * by runeKey, so resolve each back to its live buildRuneList index; a key the
-   * running pack no longer builds is dropped. Absent in saves written before
-   * this block, which load with no rune notes. */
-  if (save.runeNotes && state.runeNotes) {
-    const runes = buildRuneList(state.runeEnv);
-    const byKey = new Map<string, number>();
-    runes.forEach((rune, i) => byKey.set(runeKey(rune), i));
-    for (const [key, note] of save.runeNotes) {
-      const i = byKey.get(key);
-      if (i !== undefined) state.runeNotes.set(i, note);
-    }
   }
 
   // A renderer-facing view of the restored level (no generation ran).

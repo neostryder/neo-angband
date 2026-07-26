@@ -71,9 +71,7 @@ import type { ChunkSquaresData } from "../world/chunk";
 import type { GameObject } from "../obj/object";
 import type { ObjRegistry } from "../obj/bind";
 import type { ElementInfo } from "../obj/types";
-import type { AutoinscriptionRegistry, Rune } from "../obj/knowledge";
-import { buildRuneList, runeKey } from "../obj/knowledge";
-import type { IgnoreSettingsData } from "../obj/ignore";
+import type { AutoinscriptionRegistry } from "../obj/knowledge";
 import { blankMonster, GROUP_MAX } from "../mon/monster";
 import type { Monster, MonsterGroupInfo } from "../mon/monster";
 import type { MonsterLore } from "../mon/lore";
@@ -109,14 +107,11 @@ import type {
  * The save format version this build writes. Version 2 replaced every numeric
  * content index (kidx/eidx/aidx/ridx/tidx/feat, and the positional curse/
  * brand/slay arrays) with the namespaced string ids of mod/ids.ts, the
- * load-bearing rule of the mod substrate (MOD_LIFECYCLE decision 1). Version 3
- * finished that job: `flavor`, `everseen` and `ignore` were the last blocks
- * still keyed by raw kidx/eidx, and the rune-autoinscription block of wr_ignore
- * (save.c:586-605) arrived with them. Older saves are not migrated: the game is
- * pre-1.0 and the save format is still settling, so loadGame rejects them and
- * the host starts a fresh game.
+ * load-bearing rule of the mod substrate (MOD_LIFECYCLE decision 1). Version-1
+ * saves are not migrated: the game is pre-1.0 and the save format is still
+ * settling, so loadGame rejects them and the host starts a fresh game.
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 2;
 
 /* ------------------------------------------------------------------ *
  * Objects.
@@ -843,22 +838,14 @@ export interface SavedGame {
   turn: number;
   playing: boolean;
   isDead: boolean;
-  /**
-   * kind->aware / kind->tried (wr_object_memory, save.c:399-401), by namespaced
-   * kind id. Upstream writes these positionally by kidx and rd_object_memory
-   * reads them back positionally (load.c:602-620), so a data change that
-   * re-orders k_info silently re-targets them; the port's format keys every
-   * content reference by id instead (SAVE_VERSION 3).
-   */
-  flavor: { aware: string[]; tried: string[] };
+  flavor: { aware: number[]; tried: number[] };
   /**
    * kind->everseen / ego->everseen (save.c L397, L533): the per-game "ever
-   * seen" flags for object kinds and egos, by namespaced id (see `flavor`).
-   * Optional: absent in saves written before everseen tracking, which reload
-   * with an empty set (the object browser then falls back to flavour-aware
-   * membership only).
+   * seen" flags for object kinds (by kidx) and egos (by eidx). Optional: absent
+   * in saves written before everseen tracking, which reload with an empty set
+   * (the object browser then falls back to flavour-aware membership only).
    */
-  everseen?: { kinds: string[]; egos: string[] };
+  everseen?: { kinds: number[]; egos: number[] };
   /**
    * seed_flavor (game-world.c): the seed flavor_init used to assign object
    * colours/titles. Optional: absent in saves written before flavour
@@ -934,7 +921,7 @@ export interface SavedGame {
    * The player's ignore settings (obj-ignore.c). Optional: absent in saves
    * written before ignoring, which load with everything shown.
    */
-  ignore?: SavedIgnoreSettings;
+  ignore?: import("../obj/ignore").IgnoreSettingsData;
   /**
    * The player option store (option.c): every option value, hitpoint_warn /
    * delay_factor, and the immutable birth-option snapshot. Optional: absent in
@@ -1007,14 +994,6 @@ export interface SavedGame {
    * registry, back-compat like every other optional field here.
    */
   autoinscriptions?: SavedAutoinscription[];
-  /**
-   * The per-RUNE autoinscriptions (rune_list[i].note; wr_ignore save.c:586-605,
-   * rd_ignore load.c:937-945). Keyed by runeKey (obj/knowledge.ts), the
-   * pack-stable form of the raw index upstream writes (`wr_s16b(k)`,
-   * save.c:600); the runtime registry is still index-keyed like rune_list.
-   * Absent when no rune carries a note.
-   */
-  runeNotes?: Array<[string, string]>;
   /**
    * Terrain-only Town chunk (wr_chunks always saves the Town entry even when
    * birth_levels_persist is OFF; generate.c:1371-1373 / save.c:1001-1044).
@@ -1199,21 +1178,6 @@ export function serializeGame(
   const autoinscriptions = state.autoinscribe
     ? serializeAutoinscriptions(state.autoinscribe, ids)
     : undefined;
-  /* wr_ignore's rune-autoinscription block (save.c:586-605): the count of runes
-   * carrying a note, then `wr_s16b(k)` + the note string for each. The index is
-   * converted to its pack-stable runeKey (see obj/knowledge.ts runeKey); a rune
-   * the running pack no longer builds is dropped. */
-  const runeNoteEntries: Array<[string, string]> = [];
-  const liveRuneNotes = state.runeNotes?.entries() ?? [];
-  if (liveRuneNotes.length > 0) {
-    const runes: readonly Rune[] = buildRuneList(state.runeEnv);
-    for (const [i, note] of liveRuneNotes) {
-      const rune = runes[i];
-      if (!rune) continue;
-      runeNoteEntries.push([runeKey(rune), note]);
-    }
-  }
-  const runeNotes = runeNoteEntries.length > 0 ? runeNoteEntries : undefined;
   return {
     version: SAVE_VERSION,
     player: serializePlayer(state.actor.player, ids),
@@ -1250,26 +1214,8 @@ export function serializeGame(
     turn: state.turn,
     playing: state.playing,
     isDead: state.isDead,
-    flavor: ((): { aware: string[]; tried: string[] } => {
-      const raw = flavor.snapshot();
-      return {
-        aware: kidxSetToIds(raw.aware, ids),
-        tried: kidxSetToIds(raw.tried, ids),
-      };
-    })(),
-    ...(everseen
-      ? {
-          everseen: ((): { kinds: string[]; egos: string[] } => {
-            const raw = everseen.snapshot();
-            const egos: string[] = [];
-            for (const eidx of raw.egos) {
-              const id = ids.egoIdOrNull(eidx);
-              if (id !== null) egos.push(id);
-            }
-            return { kinds: kidxSetToIds(raw.kinds, ids), egos };
-          })(),
-        }
-      : {}),
+    flavor: flavor.snapshot(),
+    ...(everseen ? { everseen: everseen.snapshot() } : {}),
     seedFlavor,
     ...(state.options ? { options: state.options.snapshot() } : {}),
     ...(randartSeed ? { randartSeed } : {}),
@@ -1304,7 +1250,6 @@ export function serializeGame(
         }
       : {}),
     ...(autoinscriptions ? { autoinscriptions } : {}),
-    ...(runeNotes ? { runeNotes } : {}),
     /*
      * Terrain-only Town cache (wr_chunks, save.c:1001-1044): C always writes
      * the Town chunk even when birth_levels_persist is off, so a dungeon save
@@ -1358,7 +1303,7 @@ export function serializeGame(
           },
         }
       : {}),
-    ignore: serializeIgnore(state.ignore.snapshot(), ids),
+    ignore: state.ignore.snapshot(),
     lore: Array.from(state.lore.entries()).map(([ridx, l]) => [
       ids.raceId(ridx),
       {
@@ -1464,143 +1409,6 @@ export function deserializeAutoinscriptions(
     if (entry.aware !== undefined) registry.set(kidx, entry.aware, true);
     if (entry.unaware !== undefined) registry.set(kidx, entry.unaware, false);
   }
-}
-
-/**
- * The player's ignore settings as they appear in the savefile: the wr_ignore /
- * wr_object_memory choices with every content reference converted to its
- * namespaced id.
- *
- * Upstream stores all three of these positionally - ignore_level[] by itype,
- * ego_ignore_types[] by eidx (save.c:530-541 / load.c:872-892), and the per-kind
- * ignore bits by kidx (save.c:399-407 / load.c:602-620) - so a data change that
- * re-orders e_info or k_info silently re-targets the player's choices onto
- * different items. `ignore_level` is genuinely keyed by the ITYPE_* enum, which
- * is compiled-in in both trees, so it stays an array; the ego and kind keys
- * become ids, matching every other content reference in the document
- * (MOD_LIFECYCLE decision 1).
- */
-export interface SavedIgnoreSettings {
-  /** ignore_level[itype] (save.c:522-523), keyed by the compiled ITYPE_* enum. */
-  level: number[];
-  /** ego_ignore_types: one [namespaced ego id, itype] pair per set bit. */
-  ego: Array<[string, number]>;
-  /** kind_is_ignored_aware, by namespaced kind id. */
-  kindAware: string[];
-  /** kind_is_ignored_unaware, by namespaced kind id. */
-  kindUnaware: string[];
-  /** player->unignoring (save.c L491). Optional: absent in older saves. */
-  unignoring?: boolean;
-}
-
-/**
- * Convert an IgnoreSettings.snapshot() (raw kidx/eidx, the runtime keying
- * upstream also uses) into the id-keyed savefile form. A kind or ego the
- * running pack no longer binds is dropped, like deserializeAutoinscriptions.
- */
-export function serializeIgnore(
-  data: IgnoreSettingsData,
-  ids: ContentIdResolver,
-): SavedIgnoreSettings {
-  const ego: Array<[string, number]> = [];
-  for (const key of data.ego) {
-    const sep = key.indexOf(":");
-    const eidx = Number(key.slice(0, sep));
-    const itype = Number(key.slice(sep + 1));
-    const egoId = ids.egoIdOrNull(eidx);
-    if (egoId === null) continue;
-    ego.push([egoId, itype]);
-  }
-  const kindIds = (kidxs: readonly number[]): string[] => {
-    const out: string[] = [];
-    for (const kidx of kidxs) {
-      const id = ids.kindIdOrNull(kidx);
-      if (id !== null) out.push(id);
-    }
-    return out;
-  };
-  return {
-    level: [...data.level],
-    ego,
-    kindAware: kindIds(data.kindAware),
-    kindUnaware: kindIds(data.kindUnaware),
-    unignoring: data.unignoring ?? false,
-  };
-}
-
-/** The inverse of serializeIgnore; an id the pack no longer binds is dropped. */
-export function deserializeIgnore(
-  data: SavedIgnoreSettings,
-  ids: ContentIdResolver,
-): IgnoreSettingsData {
-  const ego: string[] = [];
-  for (const [egoId, itype] of data.ego) {
-    const eidx = ids.egoIndex(egoId);
-    if (eidx === undefined) continue;
-    ego.push(`${eidx}:${itype}`);
-  }
-  const kidxs = (idList: readonly string[]): number[] => {
-    const out: number[] = [];
-    for (const id of idList) {
-      const kidx = ids.kindIndex(id);
-      if (kidx !== undefined) out.push(kidx);
-    }
-    return out;
-  };
-  return {
-    level: [...data.level],
-    ego,
-    kindAware: kidxs(data.kindAware),
-    kindUnaware: kidxs(data.kindUnaware),
-    unignoring: data.unignoring ?? false,
-  };
-}
-
-/**
- * kind->aware / kind->tried (wr_object_memory) and kind/ego ->everseen, by id.
- * Same reasoning as serializeIgnore: upstream writes them positionally, the
- * port's document keys them by namespaced id.
- */
-function kidxSetToIds(kidxs: readonly number[], ids: ContentIdResolver): string[] {
-  const out: string[] = [];
-  for (const kidx of kidxs) {
-    const id = ids.kindIdOrNull(kidx);
-    if (id !== null) out.push(id);
-  }
-  return out;
-}
-
-function idsToKidxSet(idList: readonly string[], ids: ContentIdResolver): number[] {
-  const out: number[] = [];
-  for (const id of idList) {
-    const kidx = ids.kindIndex(id);
-    if (kidx !== undefined) out.push(kidx);
-  }
-  return out;
-}
-
-/** Restore the id-keyed flavor block into the raw-kidx form FlavorKnowledge takes. */
-export function deserializeFlavor(
-  data: { aware: string[]; tried: string[] },
-  ids: ContentIdResolver,
-): { aware: number[]; tried: number[] } {
-  return {
-    aware: idsToKidxSet(data.aware, ids),
-    tried: idsToKidxSet(data.tried, ids),
-  };
-}
-
-/** Restore the id-keyed everseen block into the raw-index form it takes. */
-export function deserializeEverseen(
-  data: { kinds: string[]; egos: string[] },
-  ids: ContentIdResolver,
-): { kinds: number[]; egos: number[] } {
-  const egos: number[] = [];
-  for (const id of data.egos) {
-    const eidx = ids.egoIndex(id);
-    if (eidx !== undefined) egos.push(eidx);
-  }
-  return { kinds: idsToKidxSet(data.kinds, ids), egos };
 }
 
 /**

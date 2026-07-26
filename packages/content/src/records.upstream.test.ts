@@ -44,6 +44,14 @@ interface HeaderCase {
   readonly file: string;
   readonly recordStart: string;
   readonly dependents: readonly string[];
+  /**
+   * Lines the "accepts after the record header" leg must emit before the
+   * dependent. Upstream's test only asserts the dependents fail BEFORE a
+   * record; a few of them additionally need a parent directive inside the
+   * record, so `recordStart` alone is not enough to make them legal. Only
+   * player_timed needs this - see the requireParent note in specs/misc.ts.
+   */
+  readonly needsParent?: readonly string[];
 }
 
 const HEADER_CASES: readonly HeaderCase[] = [
@@ -417,6 +425,10 @@ const HEADER_CASES: readonly HeaderCase[] = [
     upstream: "ptimed.c",
     file: "player_timed",
     recordStart: "name:FAST",
+    /* ptimed.c test_missing_effect0: effect-yx / effect-dice / effect-expr /
+     * effect-msg are MISSING_RECORD_HEADER without a preceding
+     * on-begin-effect or on-end-effect too, not only without a record. */
+    needsParent: ["on-begin-effect:SCRAMBLE_STATS", "effect-dice:2d20"],
     dependents: [
       "desc:haste",
       "on-end:You feel yourself slow down.",
@@ -558,9 +570,8 @@ describe("parse/*: MISSING_RECORD_HEADER pins each spec's recordStart", () => {
       });
 
       it.each(c.dependents)("accepts %j after the record header", (line) => {
-        expect(() =>
-          compileGamedata(`${c.recordStart}\n${line}\n`, spec(c.file)),
-        ).not.toThrow();
+        const before = [c.recordStart, ...(c.needsParent ?? [])].join("\n");
+        expect(() => compileGamedata(`${before}\n${line}\n`, spec(c.file))).not.toThrow();
       });
     });
   }
