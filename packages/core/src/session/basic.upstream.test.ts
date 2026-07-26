@@ -4,9 +4,8 @@
  * Mapping:
  * - player_make_simple + prepare_next_level + savefile_save/load
  *   -> startGame / saveGame / loadGame (session/game.ts)
- * - CMD_GO_DOWN / drop / pickup / eat: exercised through GameState floor
- *   piles and depth, matching the observable post-conditions of those
- *   commands (command dispatch is covered separately in cave-cmd / obj-cmd).
+ * - CMD_GO_DOWN / CMD_WALK: exercised through the installed command registry,
+ *   then the session level changer, matching the observable post-conditions.
  */
 
 import { readFileSync } from "node:fs";
@@ -102,27 +101,42 @@ describe("game/basic (reference/src/tests/game/basic.c)", () => {
   // upstream: test_stairs1 — after going down, depth is 1
   it("stairs1", () => {
     const game = startGame(pack, { seed: 3, depth: 0 });
-    // Observable result of CMD_GO_DOWN from town: depth becomes 1.
-    // changeLevel is the port's prepare_next_level path.
-    if (typeof game.changeLevel === "function") {
-      game.changeLevel(1);
-    } else {
-      game.state.chunk.depth = 1;
-    }
+    const descend = game.registry.get("descend");
+    expect(descend, "the session must register the descend action").toBeTruthy();
+    expect(
+      game.state.chunk.isDownstairs(game.state.actor.grid),
+      "the town start must stand on its down staircase",
+    ).toBe(true);
+    expect(descend!(game.state, { code: "descend" })).toBe(game.state.z.moveEnergy);
+    expect(game.state.generateLevel).toBe(true);
+    expect(game.state.targetDepth).toBe(1);
+    game.changeLevel(game.state.targetDepth!);
     expect(game.state.chunk.depth).toBe(1);
   });
 
-  // upstream: test_stairs2 — walk off stairs then back (model-level)
+  // upstream: test_stairs2 — walk off stairs then back before descending
   it("stairs2", () => {
     const game = startGame(pack, { seed: 3, depth: 1 });
-    const start = { ...game.state.actor.grid };
-    // Move one step (walk), then return — depth unchanged.
-    game.state.actor.grid = {
-      x: start.x + 1,
-      y: start.y,
-    };
+    const { state, registry } = game;
+    const start = { ...state.actor.grid };
+    const step = [
+      { dir: 6, dx: 1, dy: 0 },
+      { dir: 4, dx: -1, dy: 0 },
+      { dir: 2, dx: 0, dy: 1 },
+      { dir: 8, dx: 0, dy: -1 },
+    ].find(({ dx, dy }) => {
+      const grid = { x: start.x + dx, y: start.y + dy };
+      return state.chunk.inBounds(grid) && state.chunk.isPassable(grid);
+    });
+    expect(step, "the generated level must have an adjacent passable square").toBeDefined();
+    const walk = registry.get("walk");
+    expect(walk, "the session must register the walk action").toBeTruthy();
+    expect(walk!(state, { code: "walk", dir: step!.dir })).toBe(state.z.moveEnergy);
+    expect(state.actor.grid).toEqual({ x: start.x + step!.dx, y: start.y + step!.dy });
     expect(game.state.chunk.depth).toBe(1);
-    game.state.actor.grid = start;
+    const back = ({ 2: 8, 4: 6, 6: 4, 8: 2 } as const)[step!.dir]!;
+    expect(walk!(state, { code: "walk", dir: back })).toBe(state.z.moveEnergy);
+    expect(state.actor.grid).toEqual(start);
     expect(game.state.chunk.depth).toBe(1);
   });
 
