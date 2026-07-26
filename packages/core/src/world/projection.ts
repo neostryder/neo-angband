@@ -107,15 +107,20 @@ export function bindProjections(
    * otherwise be free - but el_info[] is indexed by ELEM value and the
    * ordering invariant is what upstream relies on to keep the two in step, so
    * the port enforces it too, on the same input, before binding anything.
+   *
+   * A record that is absent entirely is NOT this error: upstream never runs
+   * the check for a position no record reached, and reports the short file as
+   * PARSE_ERROR_TOO_FEW_ENTRIES from finish_parse_projection instead. That is
+   * the "no record for PROJ value" throw at the bottom of this function, so
+   * missing positions are deliberately skipped here.
    */
-  for (let i = 0; i < ELEMENT_ENTRIES.length; i++) {
-    const rec = records[i];
+  for (let i = 0; i < ELEMENT_ENTRIES.length && i < records.length; i++) {
+    const rec = records[i] as ProjectionRecordJson;
     const expected = (ELEMENT_ENTRIES[i] as { name: string }).name;
-    if (rec === undefined || rec.code !== expected) {
+    if (rec.code !== expected) {
       throw new Error(
-        `projection: record ${String(i)} is ${rec ? rec.code : "missing"}, ` +
-          `expected the element ${expected} ` +
-          `(PARSE_ERROR_ELEMENT_NAME_MISMATCH)`,
+        `projection: record ${String(i)} is ${rec.code}, expected the ` +
+          `element ${expected} (PARSE_ERROR_ELEMENT_NAME_MISMATCH)`,
       );
     }
   }
