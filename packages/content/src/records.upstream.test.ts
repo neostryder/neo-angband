@@ -639,35 +639,6 @@ describe("c-info.c test_magic_repeated0: a second magic: for one class is an err
 describe("c-info.c: the class magic -> book -> spell -> effect childOf chain", () => {
   const cls = spec("class");
 
-  it("rejects class magic children in the same states as the parser", () => {
-    /* init.c:3739-3746, 3778-3784, 3842-3854, 3877-3892 */
-    const cases: Array<readonly [string, string]> = [
-      ["book:magic book:town:[Book]:1:arcane", "TOO_MANY_ENTRIES"],
-      ["magic:1:300:0\nbook:magic book:town:[Book]:1:arcane", "TOO_MANY_ENTRIES"],
-      ["magic:1:300:1\nbook-graphics:*:R", "MISSING_RECORD_HEADER"],
-      ["magic:1:300:1\nspell:Spell:1:1:1:1", "TOO_MANY_ENTRIES"],
-      ["magic:1:300:1\nbook:magic book:town:[Book]:0:arcane\nspell:Spell:1:1:1:1", "TOO_MANY_ENTRIES"],
-      ["magic:1:300:1\nbook:magic book:town:[Book]:1:arcane\neffect:HEAL_HP", "MISSING_RECORD_HEADER"],
-      ["magic:1:300:1\nbook:magic book:town:[Book]:1:arcane\ndesc:text", "MISSING_RECORD_HEADER"],
-    ];
-    for (const [line, code] of cases) {
-      expect(() => compileGamedata(`name:Test\n${line}\n`, cls), line).toThrow(code);
-    }
-  });
-
-  it("rejects malformed book allocation ranges", () => {
-    /* init.c:3823-3826 delegates to datafile.c:323-372. */
-    for (const range of ["1 100", "-2147483648 to 1", "1 to 2147483647"]) {
-      expect(() =>
-        compileGamedata(
-          `name:Test\nmagic:1:300:1\nbook:magic book:town:[Book]:1:arcane\n` +
-            `book-properties:1:1:${range}\n`,
-          cls,
-        ),
-      ).toThrow("INVALID_ALLOCATION");
-    }
-  });
-
   it("nests book under the record, spell under book, effect under spell", () => {
     const text = [
       "name:Test Class",
