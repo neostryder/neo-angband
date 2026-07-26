@@ -266,6 +266,7 @@ export function squarePlayerTrapAllowed(
 ): boolean {
   if (squareIsTrap(state, grid)) return false;
   if (floorPile(state, grid).length > 0) return false;
+  /* square_istrappable (cave-square.c:220), trap.c:269. */
   return featIsTrapHolding(state.chunk.features, state.chunk.feat(grid));
 }
 
@@ -444,6 +445,10 @@ export function squareRevealTrap(
  * squareRevealTrap reads only that env hook, never deps.kinds here.
  */
 export function noteSpotRevealTrap(state: GameState, grid: Loc): void {
+  /* square_issecrettrap (cave-square.c:815) = !square_isvisibletrap &&
+   * square_isplayertrap; the !visible half is absorbed into
+   * squareRevealTrap, which counts only newly-revealed traps and so is a
+   * no-op (and silent) on an already-visible grid. */
   if (!squareIsPlayerTrap(state, grid)) return;
   squareRevealTrap(state, grid, false, {
     kinds: [],

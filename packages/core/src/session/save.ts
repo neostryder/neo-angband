@@ -15,6 +15,50 @@
  * Integrity: serializeGame produces the JSON payload; callers stamp/verify
  * bytes with save/integrity.ts (stampSavefile / verifyStampedSavefile),
  * the decision-16b tamper deterrent.
+ *
+ * BLOCK MAP (save.c wr_* / load.c rd_* -> the field this file writes). There is
+ * deliberately no per-block function pair: the C block table is replaced by one
+ * JSON document, so W1's question is field coverage, not symbol presence. Each
+ * row is proved by save-fields.test.ts, the C-derived coverage guard.
+ *
+ *   wr_description   (save.c:49)   -> N/A: a display string rebuilt from
+ *                                    fullName / lev / race / class / depth.
+ *   wr_randomizer    (save.c:286)  -> SavedGame.rng
+ *   wr_options       (save.c:314)  -> SavedGame.options (SIDEBAR_MODE is UI)
+ *   wr_messages      (save.c:339)  -> SavedGame.messages
+ *   wr_monster_memory(save.c:356)  -> SavedGame.lore (whole record, not just
+ *                                    pkills/thefts: the port has no lore.txt)
+ *   wr_object_memory (save.c:377)  -> flavor.aware / .tried, everseen.kinds,
+ *                                    ignore.kindAware / .kindUnaware
+ *   wr_quests        (save.c:405)  -> player.quests
+ *   wr_player        (save.c:418)  -> SavedPlayer + SavedGame.actor / arena /
+ *                                    nameSuffix / skipCmdCoercion / unignoring /
+ *                                    restingTurn
+ *   wr_ignore        (save.c:514)  -> SavedGame.ignore, .autoinscriptions,
+ *                                    everseen.egos. GAP: the rune-note block
+ *                                    (save.c:589-605) has no counterpart -
+ *                                    rune_note is a ledgered deferral.
+ *   wr_misc          (save.c:610)  -> randartSeed, seedFlavor, player.totalWinner,
+ *                                    player.noscore, isDead, turn, player.objKnown
+ *   wr_artifacts     (save.c:674)  -> artifactsCreated / Seen / Everseen
+ *   wr_player_hp     (save.c:692)  -> player.playerHp
+ *   wr_player_spells (save.c:702)  -> player.spellFlags / .spellOrder
+ *   wr_gear_aux      (save.c:715)  -> gear (+ player.equipment slot map)
+ *   wr_gear          (save.c:737)  -> ditto; the gear_k known twin is N/A
+ *   wr_stores        (save.c:744)  -> SavedGame.stores
+ *   wr_dungeon_aux   (save.c:774)  -> ChunkSquaresData (+ currentJoins)
+ *   wr_objects_aux   (save.c:873)  -> SavedGame.floor
+ *   wr_monsters_aux  (save.c:915)  -> SavedGame.monsters / .groups
+ *   wr_traps_aux     (save.c:933)  -> SavedGame.traps
+ *   wr_dungeon       (save.c:959)  -> dungeonDepth, daycount, actor.grid
+ *   wr_objects       (save.c:980)  -> floor      (player->cave twin N/A)
+ *   wr_monsters      (save.c:986)  -> monsters   (player->cave twin N/A)
+ *   wr_traps         (save.c:992)  -> traps      (player->cave twin N/A)
+ *   wr_chunks        (save.c:1001) -> levelCache + townChunk
+ *   wr_history       (save.c:1048) -> player.hist
+ *   wr_item          (save.c:69)   -> SavedObject      (obj->oidx N/A)
+ *   wr_monster       (save.c:201)  -> SavedMonster
+ *   wr_trap          (save.c:261)  -> SavedTrap
  */
 
 import type { Loc } from "../loc";

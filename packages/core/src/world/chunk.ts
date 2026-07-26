@@ -99,10 +99,12 @@ export function featIsFiery(reg: FeatureRegistry, feat: number): boolean {
   return reg.featHas(feat, TF["FIERY"]);
 }
 
+/* square_isnoflow (cave-square.c:738) is this test on a grid's feat. */
 export function featIsNoFlow(reg: FeatureRegistry, feat: number): boolean {
   return reg.featHas(feat, TF["NO_FLOW"]);
 }
 
+/* square_isnoscent (cave-square.c:746) is this test on a grid's feat. */
 export function featIsNoScent(reg: FeatureRegistry, feat: number): boolean {
   return reg.featHas(feat, TF["NO_SCENT"]);
 }
@@ -287,6 +289,7 @@ export class Chunk {
     return featIsFloor(this.features, this.feat(grid));
   }
 
+  /** square_istrappable (cave-square.c:220): feat_is_trap_holding on a grid. */
   isTrapHolding(grid: Loc): boolean {
     return featIsTrapHolding(this.features, this.feat(grid));
   }

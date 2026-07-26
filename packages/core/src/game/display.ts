@@ -782,6 +782,8 @@ function terrainRuns(state: GameState): DisplayRun[] {
   const trap = state.traps.get(idx)?.[0] ?? null;
   let name: string;
   let color: number;
+  /* square_isinvis (cave-square.c:498): the unknown-trap mark, read here as
+   * ui-display.c:1191 does (prt_terrain). */
   if (trap && !state.chunk.sqinfoHas(grid, SQUARE.INVIS)) {
     name = trap.kind.name;
     color = colorCharToAttr(trap.kind.color);

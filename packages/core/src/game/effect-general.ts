@@ -169,7 +169,7 @@ const handleGLYPH: EffectHandler = (ctx) => {
     return false;
   }
 
-  /* See if the effect works */
+  /* See if the effect works: square_istrappable (cave-square.c:220). */
   const grid = state.actor.grid;
   if (!featIsTrapHolding(state.chunk.features, state.chunk.feat(grid))) {
     say(ctx, "There is no clear floor on which to cast the spell.");
@@ -231,7 +231,7 @@ const handleWEB: EffectHandler = (ctx) => {
       if (squareIsTrap(state, grid)) continue;
       if (!state.chunk.isFloor(grid)) continue;
 
-      /* Create a web */
+      /* Create a web: square_add_web (cave-square.c:1331). */
       placeTrap(state, grid, web.tidx, 0, trapDeps);
     }
   }

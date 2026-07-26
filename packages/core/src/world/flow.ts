@@ -62,6 +62,7 @@ export function makeNoise(c: Chunk, p: FlowSource): void {
       const dir = DDGRID_DDD[d] as Loc;
       const g = loc(next.x + dir.x, next.y + dir.y);
       if (!c.inBounds(g)) continue;
+      /* square_isnoflow (cave-square.c:738). */
       if (featIsNoFlow(c.features, c.feat(g))) continue;
       const gi = g.y * c.width + g.x;
       if (c.noise[gi] !== 0) continue;
@@ -106,6 +107,7 @@ export function updateScent(c: Chunk, p: FlowSource): void {
       ] as number;
       const scentGrid = loc(x + p.grid.x - 2, y + p.grid.y - 2);
       if (!c.inBounds(scentGrid)) continue;
+      /* square_isnoscent (cave-square.c:746). */
       if (featIsNoScent(c.features, c.feat(scentGrid))) continue;
 
       let addScent = false;

@@ -254,6 +254,7 @@ function clearGenerationFlags(g: Gen): void {
       c.sqinfoOff(grid, SQUARE.WALL_INNER);
       c.sqinfoOff(grid, SQUARE.WALL_OUTER);
       c.sqinfoOff(grid, SQUARE.WALL_SOLID);
+      /* square_ismon_restrict (cave-square.c:530) reads this flag. */
       c.sqinfoOff(grid, SQUARE.MON_RESTRICT);
     }
   }
