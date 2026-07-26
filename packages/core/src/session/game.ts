@@ -985,15 +985,7 @@ function wireGame(
     };
     const inject: EffectBuilderInjections = {
       summonNameToIdx: (name) => summons.nameToIdx(name),
-      /* shape_name_to_idx (player-util.c L987) over lookup_player_shape (L971).
-       * NOTE: upstream matches with streq (z-util.h:157 = strcmp), i.e. CASE
-       * SENSITIVELY, unlike the my_stricmp used by stat_name_to_idx /
-       * proj_name_to_idx. Core shape names ("Pukel-man") are cited with exact
-       * case in class.txt so the two agree on stock data; this stays
-       * case-insensitive because narrowing it would reject mod data the port has
-       * always accepted, and the parity-visible behaviour is identical.
-       * lookup_player_shape's msg("Could not find %s shape!") on failure is a
-       * diagnostic the -1 return covers. */
+      /* shape_name_to_idx (player-util.c): case-insensitive name lookup. */
       shapeNameToIdx: (name) =>
         players.shapes.findIndex(
           (s) => s.name.toLowerCase() === name.toLowerCase(),
