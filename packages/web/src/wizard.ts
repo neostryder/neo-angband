@@ -25,7 +25,6 @@ import {
   wizAcquire,
   wizAdvance,
   wizBanish,
-  wizChangeItemQuantity,
   wizCreateAllArtifact,
   wizCreateAllArtifactFromTval,
   wizCreateAllObj,
@@ -394,8 +393,13 @@ function unavailable(ctx: WizardUiCtx): void {
   ctx.say("That debug command is not available in this build.");
 }
 
-/** STR/INT/WIS/DEX/CON, the upstream stat_names order (player.h). */
-const STAT_NAMES = ["Strength", "Intelligence", "Wisdom", "Dexterity", "Constitution"];
+/**
+ * stat_idx_to_name (player.c L122): the list-stats.h macro names verbatim, in
+ * list order. These, not long words, are what do_cmd_wiz_edit_player_stat puts
+ * in its prompts - the stat-picker default (cmd-wizard.c:1259) and the value
+ * prompt "%s (3-118): " (cmd-wizard.c:1276).
+ */
+const STAT_NAMES = ["STR", "INT", "WIS", "DEX", "CON"];
 
 /** SQUARE flag choices for the 'q' query (cmd-wizard.c L2115-2128). */
 const SQUARE_FLAG_CHOICES: { letter: string; name: string; flag: number }[] = [
@@ -805,7 +809,10 @@ async function runEditPlayer(ctx: WizardUiCtx): Promise<void> {
   );
   if (field === null) return;
   if (field < STAT_NAMES.length) {
-    const v = await promptNumber(term, `Set ${STAT_NAMES[field]} to?`, p.statCur[field] ?? 10, 3, 118, undefined, 3);
+    /* cmd-wizard.c:1276 prompt verbatim: "<stat_idx_to_name> (3-118): ". The
+     * menu replaces upstream's free-text get_string stat picker (UI necessity);
+     * the value prompt and its [3, 118] clamp are upstream's. */
+    const v = await promptNumber(term, `${STAT_NAMES[field]} (3-118): `, p.statCur[field] ?? 10, 3, 118, undefined, 3);
     if (v === null) return;
     wizEditPlayerStat(state, { stat: field, value: v }, deps);
   } else if (field === STAT_NAMES.length) {
@@ -902,22 +909,18 @@ async function runPlayItem(ctx: WizardUiCtx): Promise<void> {
         { label: "Curse item", disabled: !deps.curses },
         /* [t]weak (cmd-wizard.c:1757-1767): do_cmd_wiz_tweak_item (W2-007). */
         { label: "Tweak attributes", disabled: !!obj.artifact },
-        /* [q]uantity (cmd-wizard.c:1770-1789): do_cmd_wiz_change_item_quantity.
-         * Artifacts are refused by the command itself (L499-503), so the row is
-         * disabled here rather than printing the refusal on every visit. */
-        { label: "Change quantity", disabled: !!obj.artifact },
         { label: "Accept changes" },
         { label: "Reject changes" },
       ],
       "[ a-z to choose, ESC = reject ]",
       { detail: () => info },
     );
-    if (action === null || action === 5) {
+    if (action === null || action === 4) {
       wizPlayItemReject(obj, snapshot, deps);
       say("Changes rejected.");
       return;
     }
-    if (action === 4) {
+    if (action === 3) {
       const equipped = state.actor.player.equipment.includes(handle);
       wizPlayItemAccept(state, obj, { changed, equipped }, deps);
       say("Changes accepted.");
@@ -989,29 +992,6 @@ async function runPlayItem(ctx: WizardUiCtx): Promise<void> {
       const toD = await promptNumber(term, "Enter new to-dam setting: ", obj.toD, -99, 99, undefined, 3);
       if (toD === null) continue;
       if (wizTweakItem(state, { obj, ego, artifact, modifiers, toA, toH, toD }, deps)) changed = true;
-    } else if (action === 3) {
-      /* [q]uantity (cmd-wizard.c:1770-1789 -> L484 do_cmd_wiz_change_item_quantity).
-       * Upstream's prompt is "Quantity (1-%d): " defaulted to the current number
-       * and bounded by the base's max_stack; the command then clamps to its own
-       * nmax (charge / quiver ceilings). "update" is passed 0 from the play
-       * session, so the weight refresh waits for [a]ccept. */
-      const nmax = obj.kind.base.maxStack;
-      const n = await promptNumber(
-        term,
-        `Quantity (1-${nmax}): `,
-        obj.number,
-        1,
-        nmax,
-        undefined,
-        5,
-      );
-      if (n === null) continue;
-      const res = wizChangeItemQuantity(
-        state,
-        { obj, handle, quantity: n, update: false },
-        deps,
-      );
-      if (res?.changed) changed = true;
     }
   }
 }

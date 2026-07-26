@@ -11,14 +11,6 @@
  * projection is a UI-buffering concern the single-message web sink does not
  * need. The [singular|plural] bracket state machine is preserved verbatim so a
  * later batched front end can reuse it with do_plural = true.
- *
- * KNOWN GAP (W1-FIX-monbase, P2 deferred): upstream QUEUES these messages
- * (add_monster_message -> mon_msg[], flushed by show_monster_messages from
- * notice_stuff's PN_MON_MESSAGE, player-calcs.c:2553) and so combines repeats
- * of one race into a single counted line and shows deaths last (what_delay,
- * mon-msg.c:238). The port has no notice_stuff, so each message is emitted at
- * its call site with count == 1. Closing that needs the PN_MON_MESSAGE flush
- * wired at every upstream notice_stuff site, not an edit here.
  */
 
 import { MON_MESSAGE_ENTRIES, MON_MSG, MSG, RF } from "../generated";
@@ -117,40 +109,6 @@ export function formatMonsterMessage(mon: Monster, msgCode: number): string | nu
 }
 
 /**
- * show_message's MON_MSG_FLAG_DAMAGE branch (mon-msg.c L494): the same sentence
- * with the numeric damage appended. Upstream shows " (%d)" for a single monster
- * and " (average %d)" once several were stacked into one line; the port emits
- * one monster at a time (count == 1), so this is always the " (%d)" form.
- *
- * Reached from add_monster_message_show_damage (mon-msg.c L288), i.e. only when
- * OPT(player, show_damage) is on and the damage came from the player.
- */
-export function formatMonsterMessageShowDamage(
-  mon: Monster,
-  msgCode: number,
-  damage: number,
-): string | null {
-  const base = formatMonsterMessage(mon, msgCode);
-  if (base === null) return null;
-  return `${base} (${damage})`;
-}
-
-/**
- * message_pain_show_damage (mon-msg.c L132): the graded pain line with the
- * numeric damage. Upstream only takes the show-damage branch when dam > 0; a
- * zero-or-less hit falls back to plain add_monster_message, so MON_MSG_UNHARMED
- * never carries a " (0)" suffix.
- */
-export function formatPainMessageShowDamage(
-  mon: Monster,
-  dam: number,
-): string | null {
-  const code = painMessageCode(mon, dam);
-  if (dam > 0) return formatMonsterMessageShowDamage(mon, code, dam);
-  return formatMonsterMessage(mon, code);
-}
-
-/**
  * The timed-message sink passes a MON_MSG_* name string (mon/timed.ts): map it
  * to its code and format. Returns null for an unknown / empty name.
  */
@@ -186,27 +144,15 @@ export function formatPainMessage(mon: Monster, dam: number): string | null {
 }
 
 /**
- * get_message_type (mon-msg.c L450): the MSG_* sound type for a monster message
- * code (MSG_KILL for deaths, MSG_GENERIC for the rest). Upstream then refines
- * MSG_KILL for a unique: MSG_KILL_KING when its base is Morgoth's, else
- * MSG_KILL_UNIQUE (mon-msg.c L454-463). `race` is optional only so the older
- * race-less callers keep compiling; pass it to get the unique sounds.
- *
- * The upstream check is `race->base == lookup_monster_base("Morgoth")`
- * (mon-util.c:146, a name lookup over the unique-per-name rb_info list), so
- * comparing the bound base's name is the same test.
+ * get_message_type (mon-msg.c L448): the MSG_* sound type for a monster
+ * message code (MSG_KILL for deaths, MSG_GENERIC for the rest). The
+ * unique/Morgoth KILL_UNIQUE/KILL_KING refinement is DEFERRED (needs the
+ * Morgoth base check). Returns a MSG index for state.sound.
  */
-export function monMessageSoundType(
-  msgCode: number,
-  race?: MonsterRace,
-): number {
+export function monMessageSoundType(msgCode: number): number {
   const name = MON_MESSAGE_ENTRIES[msgCode]?.msgType ?? "MSG_GENERIC";
   const key = name.replace(/^MSG_/, "") as keyof typeof MSG;
-  let type = MSG[key] ?? MSG.GENERIC;
-  if (type === MSG.KILL && race && race.flags.has(RF.UNIQUE)) {
-    type = race.base.name === "Morgoth" ? MSG.KILL_KING : MSG.KILL_UNIQUE;
-  }
-  return type;
+  return MSG[key] ?? MSG.GENERIC;
 }
 
 /* ------------------------------------------------------------------ */

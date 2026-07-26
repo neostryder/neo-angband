@@ -19,7 +19,6 @@ import type { CastContext } from "./project-cast";
 import { attachGameEnv } from "./effect-game-env";
 import type { GameEffectEnv } from "./effect-game-env";
 import { closestTarget, registerMeleeHandlers } from "./effect-melee";
-import { formatPainMessage } from "./mon-message";
 import { monsterIsUndead } from "../mon/predicate";
 
 const projections = bindProjections(
@@ -80,13 +79,10 @@ function env(
   state: GameState,
   msgs?: string[],
   game: Partial<GameEffectEnv> = {},
-  /** OPT(player, show_damage). */
-  showDamage = false,
 ): EffectContext {
   const base: EffectContext = {
     rng: state.rng,
     player: playerEnv(state),
-    showDamage,
     ...(msgs ? { messages: { msg: (t: string) => msgs.push(t) } } : {}),
   };
   return attachGameEnv(base, { state, cast: castContext(state), ...game });
@@ -137,35 +133,6 @@ describe("EF_TAP_UNLIFE (effect-handler-attack.c L1615)", () => {
     /* drain = min(100, 40) / 4 = 10 mana. */
     expect(p.csp).toBe(10);
     expect(msgs.some((m) => m.startsWith("You draw power from"))).toBe(true);
-  });
-
-  it("show_damage reports the damage dealt, not the mana drained", () => {
-    /* effect-handler-attack.c:1637-1641 formats `amount` (40), while the mana
-     * gain is amount/4 (10) - the suffix must show 40. */
-    const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
-    const p = state.actor.player;
-    p.msp = 50;
-    p.csp = 0;
-    addVisible(state, loc(13, 10), [RF.UNDEAD], 100);
-    const msgs: string[] = [];
-    registry().effectSimple(EF.TAP_UNLIFE, env(state, msgs, {}, true), {
-      origin: sourcePlayer(),
-      diceString: "40",
-    });
-    expect(msgs.some((m) => /^You draw power from the .*\. \(40\)$/.test(m))).toBe(
-      true,
-    );
-  });
-
-  it("gives a surviving drained target its pain message", () => {
-    const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
-    const mon = addVisible(state, loc(13, 10), [RF.UNDEAD], 500);
-    const msgs: string[] = [];
-    registry().effectSimple(EF.TAP_UNLIFE, env(state, msgs), {
-      origin: sourcePlayer(),
-      diceString: "40",
-    });
-    expect(msgs).toContain(formatPainMessage(mon, 40));
   });
 
   it("fails without an undead in sight", () => {
@@ -220,51 +187,6 @@ describe("EF_CURSE (effect-handler-attack.c L1665)", () => {
     expect(msgs).toContain("No monster selected!");
   });
 
-  /*
-   * effect-handler-attack.c:1693-1702: a surviving, visible target gets
-   * message_pain (or message_pain_show_damage under OPT(player, show_damage)),
-   * then the delayed MON_MSG_FLEE_IN_TERROR line. Before W1-FIX-monbase the
-   * port emitted neither pain line.
-   */
-  it("gives a surviving target its graded pain message", () => {
-    const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
-    const mon = addVisible(state, loc(14, 10), [], 500);
-    const msgs: string[] = [];
-    registry().effectSimple(
-      EF.CURSE,
-      env(state, msgs, { aimed: loc(14, 10) }),
-      { origin: sourcePlayer(), diceString: "20" },
-    );
-    expect(mon.hp).toBe(480);
-    /* 480/500 = 96% -> MON_MSG_95, the mildest pain grade. */
-    const expected = formatPainMessage(mon, 20);
-    expect(expected).toBeTruthy();
-    expect(msgs).toContain(expected);
-  });
-
-  it("show_damage puts the number on both the pain line and the death note", () => {
-    const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
-    const mon = addVisible(state, loc(14, 10), [], 500);
-    const msgs: string[] = [];
-    registry().effectSimple(
-      EF.CURSE,
-      env(state, msgs, { aimed: loc(14, 10) }, true),
-      { origin: sourcePlayer(), diceString: "20" },
-    );
-    expect(msgs.some((m) => m.endsWith(" (20)"))).toBe(true);
-
-    /* effect-handler-attack.c:1684-1689: the death note itself carries it. */
-    const state2 = makeState({ playerGrid: loc(10, 10), seed: 3 });
-    addVisible(state2, loc(14, 10), [], 20);
-    const msgs2: string[] = [];
-    registry().effectSimple(
-      EF.CURSE,
-      env(state2, msgs2, { aimed: loc(14, 10) }, true),
-      { origin: sourcePlayer(), diceString: "50" },
-    );
-    expect(msgs2.some((m) => m.endsWith(" dies! (50)"))).toBe(true);
-  });
-
   it("reveals a camouflaged monster hit directly (aimed grid) via mon_take_hit's becomeAware hook", () => {
     const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
     const mon = addVisible(state, loc(14, 10), [], 50);
@@ -303,33 +225,6 @@ describe("EF_JUMP_AND_BITE (effect-handler-attack.c L1710)", () => {
     /* ...and healed and fed on the drain (min(hp+1, 30) = 30). */
     expect(p.chp).toBe(530);
     expect(p.timed[TMD.FOOD]).toBe(30);
-  });
-
-  it("show_damage reports the drain, not the damage", () => {
-    /* effect-handler-attack.c:1755-1759 formats `drain` = min(hp+1, amount).
-     * With hp 20 and amount 30, drain is 21 while the damage dealt is 30 - so
-     * the suffix must read (21). (EF_TAP_UNLIFE reports the other one.) */
-    const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
-    state.actor.player.chp = 500;
-    addVisible(state, loc(16, 10), [], 20);
-    const msgs: string[] = [];
-    registry().effectSimple(EF.JUMP_AND_BITE, env(state, msgs, {}, true), {
-      origin: sourcePlayer(),
-      diceString: "30",
-    });
-    expect(msgs.some((m) => /^You bite .*\. \(21\)$/.test(m))).toBe(true);
-  });
-
-  it("gives a surviving bitten target its pain message", () => {
-    const state = makeState({ playerGrid: loc(10, 10), seed: 3 });
-    state.actor.player.chp = 500;
-    const mon = addVisible(state, loc(16, 10), [], 500);
-    const msgs: string[] = [];
-    registry().effectSimple(EF.JUMP_AND_BITE, env(state, msgs), {
-      origin: sourcePlayer(),
-      diceString: "30",
-    });
-    expect(msgs).toContain(formatPainMessage(mon, 30));
   });
 
   it("fails with no living monster in sight", () => {

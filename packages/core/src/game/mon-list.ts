@@ -11,14 +11,7 @@
  * Divergence from upstream (ledgered in parity/ledger/game-mon-list.yaml): the
  * C code keeps a shared, lazily-reallocated instance sized to
  * cave_monster_max(); the port builds a fresh list each collect (the realloc
- * dance is a memory optimisation, not behaviour). That subsumes four upstream
- * symbols with no port counterpart, all of them C storage management:
- * monster_list_new/monster_list_free (mon-list.c:30/53, mem_zalloc/mem_free ->
- * monsterListNew + GC), monster_list_init (L75, nulls the file-static
- * monster_list_subwindow), monster_list_finalize (L83, frees that singleton at
- * shutdown - it does NOT sort or count; monster_list_collect/_sort do), and
- * monster_list_shared_instance (L91, the lazy singleton getter the port
- * replaces by collecting fresh at each draw). LOS is decided with
+ * dance is a memory optimisation, not behaviour). LOS is decided with
  * projectable() exactly as upstream, which "cheats" so ESP-detected but
  * out-of-view monsters land in the telepathy section.
  */

@@ -635,24 +635,6 @@ export class ObjRegistry {
     }
   }
 
-  /**
-   * parse_curse_weight (obj-init.c) refuses an adjustment that will not fit in
-   * the int16_t it is stored in: `< -32768 || > 32767` is
-   * PARSE_ERROR_INVALID_VALUE (curse.c test_weight_bad0 plants 32769 and
-   * -32780). Negative-with-MULTIPLY_WEIGHT is a separate finalize-time check
-   * upstream and is not this one.
-   */
-  private static curseWeight(name: string, weight: number | undefined): number {
-    if (weight === undefined) return 0;
-    if (weight < -32768 || weight > 32767) {
-      throw new Error(
-        `curse: ${name}: weight ${String(weight)} does not fit in an int16 ` +
-          `(PARSE_ERROR_INVALID_VALUE)`,
-      );
-    }
-    return weight;
-  }
-
   private bindCurses(records: CurseRecordJson[]): void {
     for (let r = records.length - 1; r >= 0; r--) {
       const rec = records[r] as CurseRecordJson;
@@ -702,7 +684,7 @@ export class ObjRegistry {
         name: rec.name,
         poss,
         obj: {
-          weight: ObjRegistry.curseWeight(rec.name, rec.weight),
+          weight: rec.weight ?? 0,
           toH: rec.combat?.["to-h"] ?? 0,
           toD: rec.combat?.["to-d"] ?? 0,
           toA: rec.combat?.["to-a"] ?? 0,

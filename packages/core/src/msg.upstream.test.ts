@@ -12,10 +12,9 @@
  * - format (test_msg): C printf formatting is intentionally not ported;
  *   callers use template strings. This suite feeds the already-formatted
  *   expected strings into msg() so log/event behaviour still matches.
- * - sound_lookup (message_sound_name / message_lookup_by_sound_name) ->
- *   messageSoundName / messageLookupBySoundName (sound/engine.ts). Both were
- *   MISSING when this file was first written and the case was recorded BLOCKED;
- *   they were added 2026-07-26 (UT-zlib2) and the case is asserted below.
+ * - sound_lookup (message_sound_name / message_lookup_by_sound_name): not
+ *   ported as functions; table data lives in MESSAGE_ENTRIES — recorded
+ *   BLOCKED in the findings file (no it() here).
  *
  * Two upstream assertions initially failed against the port and were pinned
  * with it.fails() — UT-001 (the numeric lookup path) and UT-002 (the NULL bell
@@ -36,11 +35,7 @@ import {
 import { GameEvents } from "./events";
 import { MSG } from "./generated/message";
 import { MessageLog, Messages, MSG_GENERIC } from "./msg";
-import {
-  messageLookupByName,
-  messageLookupBySoundName,
-  messageSoundName,
-} from "./sound/engine";
+import { messageLookupByName } from "./sound/engine";
 
 interface EventState {
   lastmsg: string | null;
@@ -500,52 +495,5 @@ describe("message/message upstream", () => {
     expect(messageLookupByName("99999999999999999999")).toBe(-1);
     /* Nothing numeric consumed -> falls through to the name table. */
     expect(messageLookupByName("")).toBe(-1);
-  });
-
-  /*
-   * C: test_sound_lookup — previously recorded BLOCKED here because the port had
-   * no counterpart to message_sound_name / message_lookup_by_sound_name; only
-   * the underlying table (MESSAGE_ENTRIES[i].sound) existed. Both are now real
-   * functions in sound/engine.ts, so the case ports directly.
-   *
-   * Upstream has no caller for either function outside its own test, but the
-   * table they read is the same one sound.prf is keyed by, and the case pins two
-   * warts worth keeping: the relationship is NOT one-to-one (MSG_GENERIC and
-   * MSG_BIRTH share the empty sound name, and the lower index wins), and a
-   * failed lookup answers MSG_GENERIC rather than -1.
-   */
-  it("test_sound_lookup", () => {
-    for (let i = MSG.GENERIC; i < MSG.MAX; i++) {
-      const name = messageSoundName(i);
-      expect(name).not.toBeNull();
-      const j = messageLookupBySoundName(name as string);
-      if (j !== i) {
-        /*
-         * Not guaranteed to be one-to-one, but the names must still agree.
-         */
-        expect(messageSoundName(j)).toBe(name);
-      }
-    }
-
-    /* Check for lookups that should fail. */
-    expect(messageLookupBySoundName("ahvkaugowhbnsk")).toBe(MSG.GENERIC);
-    expect(messageSoundName(MSG.GENERIC - 1)).toBeNull();
-    expect(messageSoundName(MSG.MAX + 1)).toBeNull();
-    /* MSG_MAX itself is out of range too (the C tests `>= MSG_MAX`). */
-    expect(messageSoundName(MSG.MAX)).toBeNull();
-  });
-
-  /*
-   * The empty-name collision the loop above only reaches by accident, asserted
-   * head-on: MSG_BIRTH's sound name is "" and resolves back to MSG_GENERIC.
-   */
-  it("sound_lookup:  the empty sound name is shared and resolves to GENERIC", () => {
-    expect(messageSoundName(MSG.GENERIC)).toBe("");
-    expect(messageSoundName(MSG.BIRTH)).toBe("");
-    expect(messageLookupBySoundName("")).toBe(MSG.GENERIC);
-    /* And a real name round-trips exactly, case-insensitively. */
-    expect(messageSoundName(MSG.HIT)).toBe("hit");
-    expect(messageLookupBySoundName("hit")).toBe(MSG.HIT);
-    expect(messageLookupBySoundName("HiT")).toBe(MSG.HIT);
   });
 });

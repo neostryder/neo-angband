@@ -123,9 +123,6 @@ function makeNamed(name: string, tval: number): GameObject {
   );
 }
 
-/** The "fox" shape, for the player_get_resume_normal_shape gates. */
-const fox = plReg.shapes.find((s) => s.name === "fox")!;
-
 /** Max the device skill so check_devices cannot fizzle. */
 function maxDeviceSkill(state: GameState): void {
   state.actor.combat = {
@@ -459,125 +456,6 @@ describe("registered commands", () => {
     processPlayer(state, registry);
     /* Free of protection, the sleep potion paralyses. */
     expect(state.actor.player.timed[TMD.PARALYZED]!).toBeGreaterThan(0);
-  });
-});
-
-/**
- * W1-cmdwiz GAP-1/GAP-2: the two gates do_cmd_quaff_potion (cmd-obj.c L917) and
- * do_cmd_read_scroll (cmd-obj.c L739) run BEFORE cmd_get_item.
- */
-describe("quaff / read command gates (cmd-obj.c L739 / L917)", () => {
-  /** Light the player's grid so player_can_read's no_light check passes. */
-  function lightGrid(state: GameState): void {
-    state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN);
-  }
-
-  function readState(): {
-    state: GameState;
-    handle: number;
-    msgs: string[];
-    run: () => number;
-  } {
-    const state = makeState({ playerGrid: loc(5, 5) });
-    lightGrid(state);
-    const scroll = makeNamed("Light", TV.SCROLL);
-    const handle = carry(state, scroll);
-    const msgs: string[] = [];
-    const registry = createDefaultRegistry();
-    installObjCommands(
-      registry,
-      makeDeps(state, { env: { msg: (t: string) => msgs.push(t) } }),
-    );
-    const run = (): number =>
-      registry.get("read")!(state, { code: "read", args: { handle } });
-    return { state, handle, msgs, run };
-  }
-
-  it("do_cmd_quaff_potion is gated by player_get_resume_normal_shape (L923)", () => {
-    const state = makeState({ playerGrid: loc(5, 5) });
-    const p = state.actor.player;
-    p.mhp = 30;
-    p.chp = 10;
-    p.shape = fox;
-    const potion = makeNamed("Cure Light Wounds", TV.POTION);
-    const h = carry(state, potion);
-
-    const registry = createDefaultRegistry();
-    /* A declined "Change back and continue?" must abort the quaff: no heal, no
-     * potion consumed, no energy - upstream returns before cmd_get_item. */
-    installObjCommands(registry, makeDeps(state, { env: { confirm: () => false } }));
-    expect(registry.get("quaff")!(state, { code: "quaff", args: { handle: h } })).toBe(0);
-    expect(p.chp).toBe(10);
-    expect(gearGet(state.gear, h)).not.toBeNull();
-    expect(p.shape).toBe(fox);
-  });
-
-  it("do_cmd_eat_food keeps NO shape gate (cmd-obj.c L899)", () => {
-    const state = makeState({ playerGrid: loc(5, 5) });
-    state.actor.player.shape = fox;
-    const food = makeNamed("& Ration~ of Food", TV.FOOD);
-    const h = carry(state, food);
-    const registry = createDefaultRegistry();
-    installObjCommands(registry, makeDeps(state, { env: { confirm: () => false } }));
-    /* Eating is possible in any form, so the declined prompt is never asked and
-     * the food is consumed while still a fox. */
-    expect(registry.get("eat")!(state, { code: "eat", args: { handle: h } })).toBe(
-      state.z.moveEnergy,
-    );
-    expect(state.actor.player.shape).toBe(fox);
-  });
-
-  it("player_can_read refuses a blind reader with its own message (L1168)", () => {
-    const { state, handle, msgs, run } = readState();
-    state.actor.player.timed[TMD.BLIND] = 10;
-    expect(run()).toBe(0);
-    expect(msgs).toContain("You can't see anything.");
-    expect(gearGet(state.gear, handle)).not.toBeNull();
-  });
-
-  it("player_can_read refuses reading in the dark (no_light, L1173)", () => {
-    const { state, handle, msgs, run } = readState();
-    state.chunk.sqinfoOff(state.actor.grid, SQUARE.SEEN);
-    expect(run()).toBe(0);
-    expect(msgs).toContain("You have no light to read by.");
-    expect(gearGet(state.gear, handle)).not.toBeNull();
-  });
-
-  it("player_can_read refuses a confused reader (L1180)", () => {
-    const { state, handle, msgs, run } = readState();
-    state.actor.player.timed[TMD.CONFUSED] = 10;
-    expect(run()).toBe(0);
-    expect(msgs).toContain("You are too confused to read!");
-    expect(gearGet(state.gear, handle)).not.toBeNull();
-  });
-
-  it("player_can_read refuses an amnesiac reader (L1187)", () => {
-    const { state, handle, msgs, run } = readState();
-    state.actor.player.timed[TMD.AMNESIA] = 10;
-    expect(run()).toBe(0);
-    expect(msgs).toContain("You can't remember how to read!");
-    expect(gearGet(state.gear, handle)).not.toBeNull();
-  });
-
-  it("the read gate fires before the item filter, and a lit reader still reads", () => {
-    const { state, handle, msgs, run } = readState();
-    expect(run()).toBe(state.z.moveEnergy);
-    expect(gearGet(state.gear, handle)).toBeNull();
-    expect(msgs).not.toContain("You can't see anything.");
-  });
-
-  it("a blind reader is refused even with no scroll at all (order: L748 before L750)", () => {
-    const state = makeState({ playerGrid: loc(5, 5) });
-    lightGrid(state);
-    state.actor.player.timed[TMD.BLIND] = 10;
-    const msgs: string[] = [];
-    const registry = createDefaultRegistry();
-    installObjCommands(
-      registry,
-      makeDeps(state, { env: { msg: (t: string) => msgs.push(t) } }),
-    );
-    expect(registry.get("read")!(state, { code: "read", args: {} })).toBe(0);
-    expect(msgs).toEqual(["You can't see anything."]);
   });
 });
 
@@ -1427,5 +1305,105 @@ describe("OF_STICKY enforcement (obj-util.c:794 obj_can_takeoff)", () => {
     expect(processPlayer(state, registry).energyUsed).toBe(0);
     expect(msgs.join("|")).toContain("You cannot remove the");
     expect(state.gear.pack).toContain(replacement);
+  });
+});
+
+/**
+ * player_can_read (player-util.c L1166) on the live read path. Upstream gates
+ * do_cmd_read_scroll (cmd-obj.c:748) and the 'r' key's prereq (ui-game.c:131)
+ * on it; before this was wired a blind / lightless / confused / amnesiac player
+ * could read scrolls freely.
+ */
+describe("player_can_read gates the read command (player-util.c L1166)", () => {
+  /** A state whose host maintains SQUARE_SEEN, so no_light is meaningful. */
+  function litState(): GameState {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    /* Installing the seam is what makes obj-cmd's noLight read the flag. */
+    state.updateFov = (): void => {};
+    state.chunk.sqinfoOn(state.actor.grid, SQUARE["SEEN"]);
+    return state;
+  }
+
+  function readScroll(
+    state: GameState,
+    msgs: string[],
+  ): { energyUsed: number; handle: number } {
+    const scroll = makeNamed("Word of Recall", TV.SCROLL);
+    const handle = carry(state, scroll);
+    const registry = createDefaultRegistry();
+    installObjCommands(
+      registry,
+      makeDeps(state, { env: { msg: (t) => msgs.push(t) } }),
+    );
+    const commands = [{ code: "read", args: { handle } }];
+    state.nextCommand = () => commands.shift() ?? null;
+    return { energyUsed: processPlayer(state, registry).energyUsed, handle };
+  }
+
+  it("blindness blocks it with 'You can't see anything.' and costs no turn", () => {
+    const state = litState();
+    state.actor.player.timed[TMD.BLIND] = 10;
+    const msgs: string[] = [];
+    const { energyUsed, handle } = readScroll(state, msgs);
+    expect(energyUsed).toBe(0);
+    expect(msgs).toContain("You can't see anything.");
+    /* The scroll is still in the pack: nothing was consumed. */
+    expect(gearGet(state.gear, handle)).not.toBeNull();
+  });
+
+  it("no_light reports 'You have no light to read by.', not the blind line", () => {
+    const state = litState();
+    /* Clear SQUARE_SEEN on the player's grid: no_light, but not blind. */
+    state.chunk.sqinfoOff(state.actor.grid, SQUARE["SEEN"]);
+    const msgs: string[] = [];
+    expect(readScroll(state, msgs).energyUsed).toBe(0);
+    expect(msgs).toContain("You have no light to read by.");
+    expect(msgs).not.toContain("You can't see anything.");
+  });
+
+  it("blindness is reported BEFORE no_light (upstream check order)", () => {
+    const state = litState();
+    state.chunk.sqinfoOff(state.actor.grid, SQUARE["SEEN"]);
+    state.actor.player.timed[TMD.BLIND] = 10;
+    const msgs: string[] = [];
+    readScroll(state, msgs);
+    expect(msgs[0]).toBe("You can't see anything.");
+  });
+
+  it("confusion blocks it with reading's own wording, after the sight checks", () => {
+    const state = litState();
+    state.actor.player.timed[TMD.CONFUSED] = 10;
+    const msgs: string[] = [];
+    expect(readScroll(state, msgs).energyUsed).toBe(0);
+    /* NOT player_can_cast's "You are too confused!" (player-util.c:1105). */
+    expect(msgs).toContain("You are too confused to read!");
+    expect(msgs).not.toContain("You are too confused!");
+  });
+
+  it("TMD_AMNESIA blocks it - a check casting has no equivalent of", () => {
+    const state = litState();
+    state.actor.player.timed[TMD.AMNESIA] = 10;
+    const msgs: string[] = [];
+    expect(readScroll(state, msgs).energyUsed).toBe(0);
+    expect(msgs).toContain("You can't remember how to read!");
+  });
+
+  it("an unafflicted reader on a seen grid still reads normally", () => {
+    const state = litState();
+    const msgs: string[] = [];
+    const { energyUsed, handle } = readScroll(state, msgs);
+    expect(energyUsed).toBe(state.z.moveEnergy);
+    expect(msgs.join("|")).not.toContain("read");
+    /* Single-use: the scroll is gone. */
+    expect(gearGet(state.gear, handle)).toBeNull();
+  });
+
+  it("without the updateFov seam no_light cannot fire (core-only hosts)", () => {
+    /* makeState installs no seam and openField leaves SEEN clear everywhere;
+     * reading the flag there would forbid all reading. */
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const msgs: string[] = [];
+    expect(readScroll(state, msgs).energyUsed).toBe(state.z.moveEnergy);
+    expect(msgs).not.toContain("You have no light to read by.");
   });
 });
