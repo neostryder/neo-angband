@@ -1138,7 +1138,9 @@ export function wizPushObject(
  */
 export function wizWizardLight(state: GameState, deps: WizardDeps): boolean {
   if (!wizardEnabled(deps)) return false;
-  wizLightLevel(state, true);
+  /* wiz_light(cave, player, true) (cmd-wizard.c:2909): the wizard command is
+   * always the `full` form, so it square_know_piles rather than sense_piles. */
+  wizLightLevel(state, true, true);
   return true;
 }
 

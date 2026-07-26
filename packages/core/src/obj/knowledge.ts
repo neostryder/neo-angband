@@ -1336,6 +1336,101 @@ export class AutoinscriptionRegistry {
 }
 
 /**
+ * rune_list[i].note (object.h struct rune): the player's per-rune
+ * autoinscription. Upstream this is a quark on the file-static rune_list, set
+ * from the rune knowledge screen (ui-knowledge.c rune_xtra_act, L2246-2280) and
+ * saved/loaded by wr_ignore (save.c:586-605) / rd_ignore (load.c:937-945).
+ * Like AutoinscriptionRegistry it lives per-game here so the bound registries
+ * stay immutable, keyed by the rune's index in buildRuneList - the same key
+ * upstream uses to address rune_list at runtime. (The SAVEFILE keys by runeKey
+ * instead; see runeKey below for why.)
+ *
+ * WART preserved: upstream `rune_set_note(i, "")` goes through quark_add(""),
+ * which returns a NONZERO quark (z-quark.c:31-49 never returns 0 for a new
+ * string), so an empty inscription is a LIVE note that appends nothing - it is
+ * written to the savefile and shows the '}' uninscribe prompt. Only
+ * rune_set_note(i, NULL) clears the slot. Hence set(i, "") stores, set(i, null)
+ * deletes.
+ */
+export class RuneNoteRegistry {
+  private readonly notes = new Map<number, string>();
+
+  /** rune_note(i) (obj-knowledge.c:406). undefined == quark 0 == no note. */
+  get(i: number): string | undefined {
+    return this.notes.get(i);
+  }
+
+  /** rune_set_note(i, inscription) (obj-knowledge.c:414). */
+  set(i: number, note: string | null): void {
+    if (note === null) this.notes.delete(i);
+    else this.notes.set(i, note);
+  }
+
+  /** Every rune index carrying a note, for the save block and the UI. */
+  entries(): Array<[number, string]> {
+    return Array.from(this.notes.entries());
+  }
+}
+
+/** rune_note (obj-knowledge.c:406) as a free function over the registry. */
+export function runeNote(
+  registry: RuneNoteRegistry,
+  i: number,
+): string | undefined {
+  return registry.get(i);
+}
+
+/** rune_set_note (obj-knowledge.c:414) as a free function over the registry. */
+export function runeSetNote(
+  registry: RuneNoteRegistry,
+  i: number,
+  note: string | null,
+): void {
+  registry.set(i, note);
+}
+
+/**
+ * A pack-stable identity for a rune, for the savefile only.
+ *
+ * Upstream writes the raw rune-list index (`wr_s16b(k)`, save.c:600) and reads
+ * it straight back (`rune_set_note(runeid, tmp)`, load.c:944), which mis-targets
+ * if the loaded data changes the rune list's shape - the same positional-index
+ * fragility wr_object_memory has. That fragility is a property of the C
+ * SAVEFILE FORMAT, and the port's format is the ratified JSON document whose
+ * load-bearing rule is that every content reference is a stable id
+ * (MOD_LIFECYCLE decision 1, session/save.ts SAVE_VERSION). Runtime behaviour
+ * is untouched: in play a rune is still addressed by its buildRuneList index,
+ * exactly as upstream addresses rune_list.
+ *
+ * `variety:name` is unique across the whole list: buildRuneList already
+ * de-duplicates brands and slays by name, and the remaining varieties draw one
+ * rune per distinct property name.
+ */
+export function runeKey(rune: Rune): string {
+  return `${rune.variety}:${rune.name}`;
+}
+
+/**
+ * rune_name (obj-knowledge.c:325): the display name of a rune, with the
+ * variety-specific decoration - "<x> brand", "slay <x>", "<x> curse",
+ * "resist <x>", and the bare name for combat / modifier / flag runes.
+ */
+export function runeName(rune: Rune): string {
+  switch (rune.variety) {
+    case "brand":
+      return `${rune.name} brand`;
+    case "slay":
+      return `slay ${rune.name}`;
+    case "curse":
+      return `${rune.name} curse`;
+    case "resist":
+      return `resist ${rune.name}`;
+    default:
+      return rune.name;
+  }
+}
+
+/**
  * get_autoinscription (obj-ignore.c L229) as a free function over the registry,
  * mirroring the upstream signature: the aware note when the kind is aware, else
  * the unaware note; undefined when the kind has no note for that awareness.

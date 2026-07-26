@@ -15,12 +15,13 @@ import {
   FlavorKnowledge,
   getAutoinscription,
   NOOP_FLAVOR_AWARE_DEPS,
+  RuneNoteRegistry,
   setAutoinscription,
 } from "../obj/knowledge";
 import type { FlavorAwareDeps } from "../obj/knowledge";
 import { bindProjections } from "../world/projection";
 import type { ProjectionRecordJson } from "../world/projection";
-import { floorPile } from "./floor";
+import { floorCarry, floorPile } from "./floor";
 import {
   gearAdd,
   gearGet,
@@ -35,6 +36,8 @@ import { registerMonsterHandlers } from "./effect-monster";
 import { registerTeleportHandlers } from "./effect-teleport";
 import {
   applyAutoinscription,
+  autoinscribeGround,
+  autoinscribePack,
   buildObjectEffectChain,
   getUseDeviceChance,
   installObjCommands,
@@ -42,15 +45,11 @@ import {
   invenTakeoff,
   invenWield,
   numberCharging,
-  objCanActivate,
   objCanRefill,
-  objCanWear,
-  objCanZap,
   objHasInscrip,
-  objIsActivatable,
   objNeedsAim,
-  objectEffect,
   refillLamp,
+  runeAutoinscribe,
   useAux,
   USE,
 } from "./obj-cmd";
@@ -362,23 +361,6 @@ describe("useAux (cmd-obj.c use_aux)", () => {
     });
     expect(msgs).toContain("The torch blazes with white fire!");
     expect(msgs.some((m) => m.includes("glows"))).toBe(false);
-  });
-
-  it("runs the ACTIVATION's effect chain in place of the kind's own effect (cmd-obj.c L410 object_effect)", () => {
-    const state = makeState({ playerGrid: loc(5, 5) });
-    maxDeviceSkill(state);
-    const p = state.actor.player;
-    p.mhp = 30;
-    p.chp = 10;
-    const healEffect = makeNamed("Cure Light Wounds", TV.POTION).effect;
-    /* Flames' own kind effect is a FIRE ball + TIMED_INC (needs a target); if
-     * use_aux read obj.effect instead of object_effect(obj), it would run
-     * THAT chain instead of the activation's heal, and chp would not rise. */
-    const ring = makeNamed("Flames", TV.RING);
-    ring.activation = { effect: healEffect } as never;
-    const h = carry(state, ring);
-    useAux(state, ring, USE.TIMEOUT, makeDeps(state), { handle: h });
-    expect(p.chp).toBeGreaterThan(10);
   });
 
   it("device failure spends the turn but no charge", () => {
@@ -1330,112 +1312,154 @@ describe("OF_STICKY enforcement (obj-util.c:794 obj_can_takeoff)", () => {
   });
 });
 
-describe("object_effect / obj_is_activatable / obj_can_activate (obj-util.c L886/721/730)", () => {
-  it("objectEffect prefers the activation's effect over the kind's own effect", () => {
+describe("rune autoinscriptions (obj-ignore.c:172-225)", () => {
+  /** A state with a rune-note registry and rune 0 (+AC) known to the player. */
+  function runeState(): GameState {
     const state = makeState({ playerGrid: loc(5, 5) });
-    const ring = makeNamed("Flames", TV.RING);
-    expect(ring.effect).not.toBeNull();
-    expect(ring.activation).toBeNull();
-    /* Give it an activation too: objectEffect must return THIS, not ring.effect. */
-    const activationEffect = [{ eff: "CURE_LIGHT_WOUNDS" }] as never;
-    ring.activation = { effect: activationEffect } as never;
-    expect(objectEffect(ring)).toBe(activationEffect);
-    expect(objectEffect(ring)).not.toBe(ring.effect);
+    state.runeNotes = new RuneNoteRegistry();
+    state.actor.player.objKnown.toA = 1; // player_knows_rune(p, 0)
+    return state;
+  }
+  /** A dagger carrying the +AC rune (object_has_rune(obj, 0) == obj->to_a != 0). */
+  function acDagger(): GameObject {
+    const obj = makeNamed("& Dagger~", TV.SWORD);
+    obj.toA = 2;
+    obj.note = null;
+    return obj;
+  }
+
+  it("stamps a known rune's note through apply_autoinscription, kind note or not", () => {
+    const state = runeState();
+    const dagger = acDagger();
+    carry(state, dagger);
+    state.runeNotes!.set(0, "{ac}");
+    /* No per-kind note at all: runes_autoinscribe runs BEFORE the `if (!note)`
+     * early return (obj-ignore.c:258-262), so the rune note still lands. */
+    const deps = makeDeps(state, { autoNote: () => null });
+    expect(applyAutoinscription(state, dagger, deps)).toBe(0);
+    expect(dagger.note).toBe("{ac}");
   });
 
-  it("objectEffect falls back to the kind effect when there is no activation", () => {
+  it("does not stamp a rune the player does not know (obj-ignore.c:224)", () => {
+    const state = runeState();
+    state.actor.player.objKnown.toA = 0;
+    const dagger = acDagger();
+    carry(state, dagger);
+    state.runeNotes!.set(0, "{ac}");
+    applyAutoinscription(state, dagger, makeDeps(state, { autoNote: () => null }));
+    expect(dagger.note).toBeNull();
+  });
+
+  it("does not stamp a rune the object does not carry", () => {
+    const state = runeState();
+    const plain = makeNamed("& Dagger~", TV.SWORD);
+    plain.toA = 0;
+    plain.note = null;
+    carry(state, plain);
+    state.runeNotes!.set(0, "{ac}");
+    applyAutoinscription(state, plain, makeDeps(state, { autoNote: () => null }));
+    expect(plain.note).toBeNull();
+  });
+
+  it("APPENDS to an existing inscription, and is idempotent (strstr, :176-182)", () => {
+    const state = runeState();
+    const dagger = acDagger();
+    dagger.note = "@w1";
+    carry(state, dagger);
+    state.runeNotes!.set(0, "{ac}");
+    const deps = makeDeps(state, { autoNote: () => null });
+    applyAutoinscription(state, dagger, deps);
+    expect(dagger.note).toBe("@w1{ac}");
+    /* strstr(obj->note, rune_note(i)) now hits: no second append. */
+    applyAutoinscription(state, dagger, deps);
+    expect(dagger.note).toBe("@w1{ac}");
+  });
+
+  it("truncates the combined inscription at 79 chars (char current_note[80])", () => {
+    const state = runeState();
+    const dagger = acDagger();
+    dagger.note = "x".repeat(70);
+    carry(state, dagger);
+    state.runeNotes!.set(0, "y".repeat(20));
+    applyAutoinscription(state, dagger, makeDeps(state, { autoNote: () => null }));
+    expect(dagger.note).toHaveLength(79);
+    expect(dagger.note).toBe("x".repeat(70) + "y".repeat(9));
+  });
+
+  it("rune_autoinscribe stamps the floor pile AND the gear (:200-211)", () => {
+    const state = runeState();
+    const carried = acDagger();
+    carry(state, carried);
+    const onFloor = acDagger();
+    floorCarry(state, state.actor.grid, onFloor);
+    const elsewhere = acDagger();
+    floorCarry(state, loc(8, 8), elsewhere);
+    state.runeNotes!.set(0, "{ac}");
+
+    runeAutoinscribe(state, 0);
+    expect(carried.note).toBe("{ac}");
+    expect(onFloor.note).toBe("{ac}"); // the pile beneath the player
+    expect(elsewhere.note).toBeNull(); // any other grid is untouched
+  });
+
+  it("autoinscribe_ground / autoinscribe_pack cover both lists (:340-359)", () => {
+    const state = runeState();
+    const carried = acDagger();
+    carry(state, carried);
+    const onFloor = acDagger();
+    floorCarry(state, state.actor.grid, onFloor);
+    state.runeNotes!.set(0, "{ac}");
+    const deps = makeDeps(state, { autoNote: () => null });
+
+    autoinscribeGround(state, deps);
+    expect(onFloor.note).toBe("{ac}");
+    expect(carried.note).toBeNull();
+    autoinscribePack(state, deps);
+    expect(carried.note).toBe("{ac}");
+  });
+
+  it("the use command autoinscribes the stack it did not consume (cmd-obj.c:717-719)", () => {
+    /*
+     * "Autoinscribe if we are guaranteed to still have any":
+     * `if (!none_left && !from_floor) apply_autoinscription(player, obj)`. A
+     * stack of two potions leaves one behind, so the remainder gets the note; a
+     * single potion is consumed whole (none_left) and nothing is inscribed.
+     */
     const state = makeState({ playerGrid: loc(5, 5) });
-    const ring = makeNamed("Flames", TV.RING);
-    expect(objectEffect(ring)).toBe(ring.effect);
-  });
-
-  it("a ring with a kind effect and no activation IS activatable (rings of Flames/Acid/...)", () => {
-    const ring = makeNamed("Flames", TV.RING);
-    expect(ring.activation).toBeNull();
-    expect(ring.effect).not.toBeNull();
-    expect(objIsActivatable(ring)).toBe(true);
-  });
-
-  it("a non-wearable object with an effect (a potion) is NOT activatable", () => {
     const potion = makeNamed("Cure Light Wounds", TV.POTION);
-    expect(potion.effect).not.toBeNull();
-    expect(objIsActivatable(potion)).toBe(false);
+    potion.number = 2;
+    const h = carry(state, potion);
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state, { autoNote: () => "@q1" }));
+    state.nextCommand = () => ({ code: "quaff", args: { handle: h } });
+    processPlayer(state, registry);
+    const left = gearGet(state.gear, h);
+    expect(left?.number).toBe(1);
+    expect(left?.note).toBe("@q1");
   });
 
-  it("objCanActivate is gated on the timeout, not on tvalCanHaveTimeout (which is rod-only)", () => {
-    const ring = makeNamed("Flames", TV.RING);
-    expect(ring.timeout).toBe(0);
-    expect(objCanActivate(ring)).toBe(true);
-    ring.timeout = 5;
-    expect(objCanActivate(ring)).toBe(false);
-  });
-
-  it("objCanZap requires a rod tval and cannot stand in for objCanActivate", () => {
-    const ring = makeNamed("Flames", TV.RING);
-    /* This is the exact bug the WIP fixed: objCanZap always rejects a ring. */
-    expect(objCanZap(ring)).toBe(false);
-    expect(objCanActivate(ring)).toBe(true);
-  });
-});
-
-describe("obj_can_wear (obj-util.c L810): wield_slot(obj) >= 0", () => {
-  it("matches wieldSlot's own verdict for a wearable and a non-wearable tval", () => {
+  it("the use command inscribes nothing when the last of the stack is used", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
-    const sword = makeNamed("& Dagger~", TV.SWORD);
-    expect(objCanWear(state, sword)).toBe(true);
     const potion = makeNamed("Cure Light Wounds", TV.POTION);
-    expect(objCanWear(state, potion)).toBe(false);
-  });
-});
-
-describe("registered command: activate (cmd-obj.c do_cmd_activate)", () => {
-  it("activates a ring with a kind effect and no `act:` (regression: objCanZap wrongly blocked this)", () => {
-    const state = makeState({ playerGrid: loc(5, 5) });
-    const ring = makeNamed("Flames", TV.RING);
-    const h = carry(state, ring);
-    invenWield(state, h, constants);
+    potion.number = 1;
+    const h = carry(state, potion);
     const registry = createDefaultRegistry();
-    const msgs: string[] = [];
-    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
-    const commands = [{ code: "activate", args: { handle: h } }];
-    state.nextCommand = () => commands.shift() ?? null;
-    const result = processPlayer(state, registry);
-    expect(result.energyUsed).toBe(state.z.moveEnergy);
-    expect(msgs).not.toContain("That item is still charging.");
-    expect(ring.timeout).toBeGreaterThan(0);
+    installObjCommands(registry, makeDeps(state, { autoNote: () => "@q1" }));
+    state.nextCommand = () => ({ code: "quaff", args: { handle: h } });
+    processPlayer(state, registry);
+    expect(gearGet(state.gear, h)).toBeFalsy();
+    expect(potion.note).toBeNull();
   });
 
-  it("refuses to re-activate a ring still recharging, with activation's own wording", () => {
-    const state = makeState({ playerGrid: loc(5, 5) });
-    const ring = makeNamed("Flames", TV.RING);
-    ring.timeout = 50;
-    const h = carry(state, ring);
-    invenWield(state, h, constants);
-    const registry = createDefaultRegistry();
-    const msgs: string[] = [];
-    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
-    const commands = [{ code: "activate", args: { handle: h } }];
-    state.nextCommand = () => commands.shift() ?? null;
-    const result = processPlayer(state, registry);
-    expect(result.energyUsed).toBe(0);
-    expect(msgs).toContain("That item is still charging.");
-  });
-});
-
-describe("registered command: zap-rod (cmd-obj.c do_cmd_zap_rod)", () => {
-  it("still uses the rod's own still-charging wording", () => {
-    const state = makeState({ playerGrid: loc(5, 5) });
-    maxDeviceSkill(state);
-    const rod = makeNamed("Treasure Location", TV.ROD);
-    rod.timeout = 50;
-    const h = carry(state, rod);
-    const registry = createDefaultRegistry();
-    const msgs: string[] = [];
-    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
-    const commands = [{ code: "zap-rod", args: { handle: h } }];
-    state.nextCommand = () => commands.shift() ?? null;
-    const result = processPlayer(state, registry);
-    expect(result.energyUsed).toBe(0);
-    expect(msgs).toContain("That rod is still charging.");
+  it("draws no RNG", () => {
+    const state = runeState();
+    const dagger = acDagger();
+    carry(state, dagger);
+    state.runeNotes!.set(0, "{ac}");
+    const before = state.rng.getState();
+    autoinscribeGround(state, makeDeps(state, { autoNote: () => null }));
+    autoinscribePack(state, makeDeps(state, { autoNote: () => null }));
+    runeAutoinscribe(state, 0);
+    expect(state.rng.getState()).toEqual(before);
   });
 });

@@ -881,6 +881,30 @@ describe("labyrinth generator", () => {
     for (const o of g.objects) expect(c.isObjectHolding(o.grid)).toBe(true);
   });
 
+  it("sets light_level for a KNOWN maze and leaves it clear otherwise", () => {
+    /*
+     * gen-cave.c:1529-1530: `known = lit && randint0(p->depth) < 25`, and a
+     * known maze sets p->upkeep->light_level (:1594), which cave_generate
+     * consumes as wiz_light(chunk, p, false) (generate.c:1255-1258). At depth 13
+     * `randint0(13) < 25` is always true, so `known == lit` there; at depth 200
+     * both rolls are overwhelmingly false. Sample a spread of seeds and require
+     * both outcomes to appear, and require the flag to track `lit`.
+     */
+    const flags = (depth: number): boolean[] =>
+      [1, 2, 3, 4, 5, 6, 7, 8].map(
+        (seed) => (labyrinthGen(builderCtx(depth, seed)).gen as Gen).lightLevel,
+      );
+    /* At depth 13 randint0(13) < 25 always holds, so lit and known are both
+     * unconditionally true: every shallow maze is revealed. */
+    expect(flags(13)).toEqual([true, true, true, true, true, true, true, true]);
+    /* Deep down both rolls bite and most mazes are not known. */
+    const deep = flags(400);
+    expect(deep.filter((v) => v).length).toBeLessThan(deep.length);
+    /* Nothing else sets it. */
+    expect((cavernGen(builderCtx(15, 424242)).gen as Gen).lightLevel).toBe(false);
+    expect((classicGen(builderCtx(10, 99)).gen as Gen).lightLevel).toBe(false);
+  });
+
   it("is deterministic run-to-run for a fixed seed", () => {
     const a = labyrinthGen(builderCtx(20, 777)).gen as Gen;
     const b = labyrinthGen(builderCtx(20, 777)).gen as Gen;
