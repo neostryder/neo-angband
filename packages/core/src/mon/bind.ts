@@ -372,10 +372,10 @@ function bindBlowMethods(
   for (const rec of records) {
     map.set(rec.name, {
       name: rec.name,
-      cut: rec.cut !== 0,
-      stun: rec.stun !== 0,
-      miss: rec.miss !== 0,
-      phys: rec.phys !== 0,
+      cut: rec.cut === 1,
+      stun: rec.stun === 1,
+      miss: rec.miss === 1,
+      phys: rec.phys === 1,
       msgt: checkMsgt(`blow method ${rec.name}`, rec.msg),
       messages: rec.act ? [...rec.act] : [],
       desc: joinLines(rec.desc),
@@ -675,7 +675,7 @@ export class MonsterRegistry {
     this.summons = pack.summons.map((rec) => ({
       name: rec.name,
       msgt: checkMsgt(`summon ${rec.name}`, rec.msgt),
-      uniquesAllowed: rec.uniques !== 0,
+      uniquesAllowed: rec.uniques === 1,
       baseNames: rec.base ? [...rec.base] : [],
       raceFlag: rec["race-flag"] ?? null,
       fallbackName: rec.fallback ?? null,
