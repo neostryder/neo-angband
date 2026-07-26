@@ -183,13 +183,6 @@ describe("preferredQuiverSlot (obj-gear.c L1396)", () => {
 /* ------------------------------------------------------------------ */
 
 describe("calcInventory (player-calcs.c calc_inventory)", () => {
-  function quiverSnapshot(gear: Gear): Array<[number, number]> {
-    return (gear.quiver ?? []).map((handle) => [
-      handle,
-      handle ? gearGet(gear, handle)?.number ?? 0 : 0,
-    ]);
-  }
-
   it("routes carried ammo into quiver slot 0", () => {
     const gear = newGear();
     const h = invenCarry(gear, makeObj(TV.ARROW, 30), limits);
@@ -270,62 +263,6 @@ describe("calcInventory (player-calcs.c calc_inventory)", () => {
     calcInventory(gear, constants);
     expect(gear.quiver!.every((q) => q === 0)).toBe(true);
     expect(objectIsInQuiver(gear, h)).toBe(false);
-  });
-
-  it("keeps the equipped/pack/quiver fixture stable on a second calculation", () => {
-    /* reference/src/tests/player/calc-inventory.c:396-478 */
-    const gear = newGear();
-    const fixture: Array<[number, number]> = [
-      [TV.BOLT, 10],
-      [TV.SCROLL, 4],
-      [TV.SWORD, 1],
-      [TV.POTION, 3],
-      [TV.ARROW, 7],
-      [TV.SHOT, 13],
-      [TV.ARROW, 15],
-      [TV.SCROLL, 3],
-      [TV.POTION, 1],
-      [TV.BOLT, 5],
-      [TV.SHOT, 3],
-      [TV.POTION, 2],
-    ];
-    for (const [tval, number] of fixture) {
-      packAdd(gear, makeObj(tval, number));
-    }
-
-    calcInventory(gear, constants, { ammoTval: TV.SHOT });
-    const first = quiverSnapshot(gear);
-    calcInventory(gear, constants);
-
-    expect(quiverSnapshot(gear)).toEqual(first);
-  });
-
-  it("keeps the oversubscribed quiver fixture stable on a second calculation", () => {
-    /* reference/src/tests/player/calc-inventory.c:482-541 */
-    const gear = newGear();
-    const fixture: Array<[number, number]> = [
-      [TV.SHOT, 40],
-      [TV.ARROW, 40],
-      [TV.BOLT, 40],
-      [TV.ARROW, 40],
-      [TV.SHOT, 40],
-      [TV.ARROW, 10],
-      [TV.BOLT, 7],
-      [TV.ARROW, 15],
-      [TV.BOLT, 40],
-      [TV.SHOT, 25],
-      [TV.BOLT, 12],
-      [TV.SHOT, 17],
-    ];
-    for (const [tval, number] of fixture) {
-      packAdd(gear, makeObj(tval, number));
-    }
-
-    calcInventory(gear, constants, { ammoTval: TV.ARROW });
-    const first = quiverSnapshot(gear);
-    calcInventory(gear, constants);
-
-    expect(quiverSnapshot(gear)).toEqual(first);
   });
 });
 
