@@ -429,6 +429,10 @@ export function objectKnownShadow(
 
   objectSetBaseKnown(shadow, obj, p, env, deps);
 
+  /* search() writes obj->known->pval for a discovered chest trap
+   * (player-util.c:1709-1712), independently of assessment. */
+  if (tvalIsChest(obj.tval)) shadow.pval = obj.knownPval ?? 0;
+
   /* Distant / unassessed objects just get base properties (L1033-1035). */
   if (!assessed) return shadow;
 
