@@ -324,6 +324,7 @@ export function makePlayerSideEffects(
         }
         break;
       }
+      /* project_player_handler_DARK (project-player.c:268). */
       case PROJ.DARK: {
         if (resists(ELEM.DARK)) {
           msg("You resist the effect!");

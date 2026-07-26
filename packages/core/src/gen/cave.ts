@@ -693,12 +693,20 @@ function buildStreamer(g: Gen, feat: number, chance: number): void {
  * ensure_connectedness (gen-cave.c flood-fill region joining).
  * ------------------------------------------------------------------ */
 
+/**
+ * z-queue.c's `struct queue`, the FIFO the flood fills run on. Upstream's is a
+ * fixed-size ring that abort()s on overflow/underflow (q_new sizes it to the
+ * grid count); a growing array with a read cursor is the same FIFO order with
+ * no capacity to overflow.
+ */
 class IntQueue {
   private readonly data: number[] = [];
   private head = 0;
+  /** q_push (z-queue.c:93). */
   push(v: number): void {
     this.data.push(v);
   }
+  /** q_pop (z-queue.c:99). */
   pop(): number {
     return this.data[this.head++] as number;
   }

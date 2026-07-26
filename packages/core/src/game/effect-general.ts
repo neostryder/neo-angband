@@ -169,7 +169,7 @@ const handleGLYPH: EffectHandler = (ctx) => {
     return false;
   }
 
-  /* See if the effect works: square_istrappable (cave-square.c:220). */
+  /* See if the effect works */
   const grid = state.actor.grid;
   if (!featIsTrapHolding(state.chunk.features, state.chunk.feat(grid))) {
     say(ctx, "There is no clear floor on which to cast the spell.");
@@ -231,7 +231,7 @@ const handleWEB: EffectHandler = (ctx) => {
       if (squareIsTrap(state, grid)) continue;
       if (!state.chunk.isFloor(grid)) continue;
 
-      /* Create a web: square_add_web (cave-square.c:1331). */
+      /* Create a web */
       placeTrap(state, grid, web.tidx, 0, trapDeps);
     }
   }
@@ -988,24 +988,38 @@ const GENERAL_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   EffectHandler
 >([
   [EF.PROBE, handlePROBE],
+  /* effect_handler_BIZARRE (effect-handler-general.c:3516) */
   [EF.BIZARRE, handleBIZARRE],
   [EF.COMMAND, handleCOMMAND],
+  /* effect_handler_SHAPECHANGE (effect-handler-general.c:3449) */
   [EF.SHAPECHANGE, handleSHAPECHANGE],
   [EF.GLYPH, handleGLYPH],
+  /* effect_handler_WEB (effect-handler-general.c:732) */
   [EF.WEB, handleWEB],
   [EF.DISENCHANT, handleDISENCHANT],
   [EF.RECALL, handleRECALL],
+  /* effect_handler_DEEP_DESCENT (effect-handler-general.c:1163) */
   [EF.DEEP_DESCENT, handleDEEP_DESCENT],
+  /* effect_handler_RESTORE_STAT (effect-handler-general.c:773) */
   [EF.RESTORE_STAT, handleRESTORE_STAT],
   [EF.DRAIN_STAT, handleDRAIN_STAT],
+  /* effect_handler_LOSE_RANDOM_STAT (effect-handler-general.c:852) */
   [EF.LOSE_RANDOM_STAT, handleLOSE_RANDOM_STAT],
+  /* effect_handler_GAIN_STAT (effect-handler-general.c:875) */
   [EF.GAIN_STAT, handleGAIN_STAT],
+  /* effect_handler_RESTORE_EXP (effect-handler-general.c:893) */
   [EF.RESTORE_EXP, handleRESTORE_EXP],
+  /* effect_handler_GAIN_EXP (effect-handler-general.c:913) */
   [EF.GAIN_EXP, handleGAIN_EXP],
+  /* effect_handler_DRAIN_LIGHT (effect-handler-general.c:928) */
   [EF.DRAIN_LIGHT, handleDRAIN_LIGHT],
+  /* effect_handler_DRAIN_MANA (effect-handler-general.c:956) */
   [EF.DRAIN_MANA, handleDRAIN_MANA],
+  /* effect_handler_SCRAMBLE_STATS (effect-handler-general.c:3634) */
   [EF.SCRAMBLE_STATS, handleSCRAMBLE_STATS],
+  /* effect_handler_UNSCRAMBLE_STATS (effect-handler-general.c:3646) */
   [EF.UNSCRAMBLE_STATS, handleUNSCRAMBLE_STATS],
+  /* effect_handler_TIMED_INC (effect-handler-general.c:576) */
   [EF.TIMED_INC, handleTIMED_INC],
   [EF.MON_TIMED_INC, handleMON_TIMED_INC],
 ]);

@@ -232,8 +232,7 @@ const handleTELEPORT: EffectHandler = (ctx) => {
   } else if (isPlayer) {
     start = state.actor.grid;
 
-    /* A no-teleport grid blocks all but a short, fixed hop:
-     * square_isno_teleport (cave-square.c:538). */
+    /* A no-teleport grid blocks all but a short, fixed hop. */
     if (
       state.chunk.sqinfoHas(start, SQUARE.NO_TELEPORT) &&
       (dis > 10 || dis === 0)
@@ -594,8 +593,11 @@ const TELEPORT_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   EffectHandler
 >([
   [EF.TELEPORT, handleTELEPORT],
+  /* effect_handler_TELEPORT_TO (effect-handler-general.c:2703) */
   [EF.TELEPORT_TO, handleTELEPORT_TO],
+  /* effect_handler_TELEPORT_LEVEL (effect-handler-general.c:2834) */
   [EF.TELEPORT_LEVEL, handleTELEPORT_LEVEL],
+  /* effect_handler_ALTER_REALITY (effect-handler-general.c:1184) */
   [EF.ALTER_REALITY, handleALTER_REALITY],
 ]);
 

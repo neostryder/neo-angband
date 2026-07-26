@@ -73,13 +73,6 @@ function pileInsert(state: GameState, grid: Loc, obj: GameObject): void {
 /**
  * square_excise_object / pile_excise: remove an object from the pile at a
  * grid. Returns whether it was found.
- *
- * square_set_obj (cave-square.c:1291) has no counterpart: upstream stores a
- * `square->obj` linked-list HEAD, and its only two calls both set it to NULL
- * (cave-square.c:1035 inside square_excise_pile, obj-pile.c:1201 inside
- * push_object). Here the pile IS the Map entry, so emptying it is the delete
- * below - and square_excise_pile (cave-square.c:1031) is the caller-side loop
- * `for (obj of [...floorPile(...)]) floorExcise(...)`.
  */
 export function floorExcise(
   state: GameState,

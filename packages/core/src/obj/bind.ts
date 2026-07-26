@@ -273,12 +273,7 @@ export function grabElementFlag(
   return false;
 }
 
-/**
- * grab_flag against a NAME -> value map; returns true when matched.
- * The `table[name]` probe is lookup_flag (datafile.c:149): the generated
- * name->index records replace upstream's linear scan of a `const char **`
- * table, and `undefined` / 0 is its FLAG_END miss.
- */
+/** grab_flag against a NAME -> value map; returns true when matched. */
 function grabFlag(
   flags: FlagSet,
   table: Record<string, number>,
@@ -1150,9 +1145,6 @@ export class ObjRegistry {
       }
       let propIndex = 0;
       if (rec.code !== undefined) {
-        /* grab_name (datafile.c:433) / lookup_flag (datafile.c:149): resolve a
-         * data-file name against the generated name table, throwing on a miss
-         * where upstream msg()s and returns PARSE_ERROR_GENERIC. */
         const t = type ?? OBJ_PROPERTY.NONE;
         let idx = -1;
         if (t === OBJ_PROPERTY.STAT || t === OBJ_PROPERTY.MOD) {

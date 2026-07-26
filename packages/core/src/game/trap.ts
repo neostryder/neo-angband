@@ -266,7 +266,6 @@ export function squarePlayerTrapAllowed(
 ): boolean {
   if (squareIsTrap(state, grid)) return false;
   if (floorPile(state, grid).length > 0) return false;
-  /* square_istrappable (cave-square.c:220), trap.c:269. */
   return featIsTrapHolding(state.chunk.features, state.chunk.feat(grid));
 }
 
@@ -382,6 +381,12 @@ export function placeTrap(
  * placeTrap after its pick_trap / randcalc draws, and directly by the level
  * populate path when the kind and power were rolled at generation time
  * (gen/util.ts placeTrap), so those draws are not spent twice.
+ *
+ * square_set_trap (cave-square.c:1299) has no counterpart by design: upstream
+ * keeps a per-square singly-linked trap list and that setter writes its HEAD
+ * pointer. The port stores an array per grid in state.traps, so head-pointer
+ * assignment becomes unshift here, splice in squareRemoveTrap and delete in
+ * squareRemoveAllTraps.
  */
 export function installTrap(
   state: GameState,
@@ -445,10 +450,6 @@ export function squareRevealTrap(
  * squareRevealTrap reads only that env hook, never deps.kinds here.
  */
 export function noteSpotRevealTrap(state: GameState, grid: Loc): void {
-  /* square_issecrettrap (cave-square.c:815) = !square_isvisibletrap &&
-   * square_isplayertrap; the !visible half is absorbed into
-   * squareRevealTrap, which counts only newly-revealed traps and so is a
-   * no-op (and silent) on an already-visible grid. */
   if (!squareIsPlayerTrap(state, grid)) return;
   squareRevealTrap(state, grid, false, {
     kinds: [],
