@@ -577,6 +577,12 @@ function wireGame(
     refreshInventory: (): void => {
       calcInventory(state.gear, reg.constants, {
         store: false,
+        /* earlier_object reads player->state.ammo_tval off the global player
+         * (player-calcs.c:954-959), so EVERY caller must supply the live value
+         * -- omitting it here silently sorted the quiver as if no launcher were
+         * wielded, so a picked-up usable arrow lost its precedence over
+         * unusable ammo. Same source calcInvOpts uses (obj-cmd.ts:168). */
+        ammoTval: state.playerState?.ammoTval ?? 0,
         objectValue: (obj: GameObject): number =>
           computeObjectValue(reg.objects, obj, 1, true),
         rogueLike: state.options?.get("rogue_like_commands") ?? false,
@@ -2663,6 +2669,10 @@ function makeStoreApi(
   const refreshQuiver = (): void => {
     calcInventory(state.gear, reg.constants, {
       store: false,
+      /* Live ammo_tval, as refreshInventory above and calcInvOpts do; without
+       * it a store purchase re-sorted the quiver ignoring the wielded
+       * launcher. */
+      ammoTval: state.playerState?.ammoTval ?? 0,
       objectValue: (obj: GameObject): number =>
         computeObjectValue(reg.objects, obj, 1, true),
       rogueLike: state.options?.get("rogue_like_commands") ?? false,
