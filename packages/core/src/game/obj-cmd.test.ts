@@ -15,12 +15,13 @@ import {
   FlavorKnowledge,
   getAutoinscription,
   NOOP_FLAVOR_AWARE_DEPS,
+  RuneNoteRegistry,
   setAutoinscription,
 } from "../obj/knowledge";
 import type { FlavorAwareDeps } from "../obj/knowledge";
 import { bindProjections } from "../world/projection";
 import type { ProjectionRecordJson } from "../world/projection";
-import { floorPile } from "./floor";
+import { floorCarry, floorPile } from "./floor";
 import {
   gearAdd,
   gearGet,
@@ -35,6 +36,8 @@ import { registerMonsterHandlers } from "./effect-monster";
 import { registerTeleportHandlers } from "./effect-teleport";
 import {
   applyAutoinscription,
+  autoinscribeGround,
+  autoinscribePack,
   buildObjectEffectChain,
   getUseDeviceChance,
   installObjCommands,
@@ -51,6 +54,7 @@ import {
   objNeedsAim,
   objectEffect,
   refillLamp,
+  runeAutoinscribe,
   useAux,
   USE,
 } from "./obj-cmd";
@@ -1458,6 +1462,155 @@ describe("OF_STICKY enforcement (obj-util.c:794 obj_can_takeoff)", () => {
   });
 });
 
+describe("rune autoinscriptions (obj-ignore.c:172-225)", () => {
+  /** A state with a rune-note registry and rune 0 (+AC) known to the player. */
+  function runeState(): GameState {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.runeNotes = new RuneNoteRegistry();
+    state.actor.player.objKnown.toA = 1; // player_knows_rune(p, 0)
+    return state;
+  }
+  /** A dagger carrying the +AC rune (object_has_rune(obj, 0) == obj->to_a != 0). */
+  function acDagger(): GameObject {
+    const obj = makeNamed("& Dagger~", TV.SWORD);
+    obj.toA = 2;
+    obj.note = null;
+    return obj;
+  }
+
+  it("stamps a known rune's note through apply_autoinscription, kind note or not", () => {
+    const state = runeState();
+    const dagger = acDagger();
+    carry(state, dagger);
+    state.runeNotes!.set(0, "{ac}");
+    /* No per-kind note at all: runes_autoinscribe runs BEFORE the `if (!note)`
+     * early return (obj-ignore.c:258-262), so the rune note still lands. */
+    const deps = makeDeps(state, { autoNote: () => null });
+    expect(applyAutoinscription(state, dagger, deps)).toBe(0);
+    expect(dagger.note).toBe("{ac}");
+  });
+
+  it("does not stamp a rune the player does not know (obj-ignore.c:224)", () => {
+    const state = runeState();
+    state.actor.player.objKnown.toA = 0;
+    const dagger = acDagger();
+    carry(state, dagger);
+    state.runeNotes!.set(0, "{ac}");
+    applyAutoinscription(state, dagger, makeDeps(state, { autoNote: () => null }));
+    expect(dagger.note).toBeNull();
+  });
+
+  it("does not stamp a rune the object does not carry", () => {
+    const state = runeState();
+    const plain = makeNamed("& Dagger~", TV.SWORD);
+    plain.toA = 0;
+    plain.note = null;
+    carry(state, plain);
+    state.runeNotes!.set(0, "{ac}");
+    applyAutoinscription(state, plain, makeDeps(state, { autoNote: () => null }));
+    expect(plain.note).toBeNull();
+  });
+
+  it("APPENDS to an existing inscription, and is idempotent (strstr, :176-182)", () => {
+    const state = runeState();
+    const dagger = acDagger();
+    dagger.note = "@w1";
+    carry(state, dagger);
+    state.runeNotes!.set(0, "{ac}");
+    const deps = makeDeps(state, { autoNote: () => null });
+    applyAutoinscription(state, dagger, deps);
+    expect(dagger.note).toBe("@w1{ac}");
+    /* strstr(obj->note, rune_note(i)) now hits: no second append. */
+    applyAutoinscription(state, dagger, deps);
+    expect(dagger.note).toBe("@w1{ac}");
+  });
+
+  it("truncates the combined inscription at 79 chars (char current_note[80])", () => {
+    const state = runeState();
+    const dagger = acDagger();
+    dagger.note = "x".repeat(70);
+    carry(state, dagger);
+    state.runeNotes!.set(0, "y".repeat(20));
+    applyAutoinscription(state, dagger, makeDeps(state, { autoNote: () => null }));
+    expect(dagger.note).toHaveLength(79);
+    expect(dagger.note).toBe("x".repeat(70) + "y".repeat(9));
+  });
+
+  it("rune_autoinscribe stamps the floor pile AND the gear (:200-211)", () => {
+    const state = runeState();
+    const carried = acDagger();
+    carry(state, carried);
+    const onFloor = acDagger();
+    floorCarry(state, state.actor.grid, onFloor);
+    const elsewhere = acDagger();
+    floorCarry(state, loc(8, 8), elsewhere);
+    state.runeNotes!.set(0, "{ac}");
+
+    runeAutoinscribe(state, 0);
+    expect(carried.note).toBe("{ac}");
+    expect(onFloor.note).toBe("{ac}"); // the pile beneath the player
+    expect(elsewhere.note).toBeNull(); // any other grid is untouched
+  });
+
+  it("autoinscribe_ground / autoinscribe_pack cover both lists (:340-359)", () => {
+    const state = runeState();
+    const carried = acDagger();
+    carry(state, carried);
+    const onFloor = acDagger();
+    floorCarry(state, state.actor.grid, onFloor);
+    state.runeNotes!.set(0, "{ac}");
+    const deps = makeDeps(state, { autoNote: () => null });
+
+    autoinscribeGround(state, deps);
+    expect(onFloor.note).toBe("{ac}");
+    expect(carried.note).toBeNull();
+    autoinscribePack(state, deps);
+    expect(carried.note).toBe("{ac}");
+  });
+
+  it("the use command autoinscribes the stack it did not consume (cmd-obj.c:717-719)", () => {
+    /*
+     * "Autoinscribe if we are guaranteed to still have any":
+     * `if (!none_left && !from_floor) apply_autoinscription(player, obj)`. A
+     * stack of two potions leaves one behind, so the remainder gets the note; a
+     * single potion is consumed whole (none_left) and nothing is inscribed.
+     */
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    potion.number = 2;
+    const h = carry(state, potion);
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state, { autoNote: () => "@q1" }));
+    state.nextCommand = () => ({ code: "quaff", args: { handle: h } });
+    processPlayer(state, registry);
+    const left = gearGet(state.gear, h);
+    expect(left?.number).toBe(1);
+    expect(left?.note).toBe("@q1");
+  });
+
+  it("the use command inscribes nothing when the last of the stack is used", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const potion = makeNamed("Cure Light Wounds", TV.POTION);
+    potion.number = 1;
+    const h = carry(state, potion);
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state, { autoNote: () => "@q1" }));
+    state.nextCommand = () => ({ code: "quaff", args: { handle: h } });
+    processPlayer(state, registry);
+    expect(gearGet(state.gear, h)).toBeFalsy();
+    expect(potion.note).toBeNull();
+  });
+
+  it("draws no RNG", () => {
+    const state = runeState();
+    const dagger = acDagger();
+    carry(state, dagger);
+    state.runeNotes!.set(0, "{ac}");
+    const before = state.rng.getState();
+    autoinscribeGround(state, makeDeps(state, { autoNote: () => null }));
+    autoinscribePack(state, makeDeps(state, { autoNote: () => null }));
+    runeAutoinscribe(state, 0);
+    expect(state.rng.getState()).toEqual(before);
 /**
  * player_can_read (player-util.c L1166) on the live read path. Upstream gates
  * do_cmd_read_scroll (cmd-obj.c:748) and the 'r' key's prereq (ui-game.c:131)

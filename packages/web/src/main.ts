@@ -154,6 +154,7 @@ import {
   effectChoiceRows,
   EF,
   OBJ_PROPERTY,
+  runeAutoinscribe,
   playerRandomName,
   buildProb,
   RANDNAME_TOLKIEN,
@@ -2709,7 +2710,16 @@ async function openKnowledgeMenu(): Promise<void> {
       objDeps,
     );
   });
-  add("Display rune knowledge", () => showRuneKnowledge(term, state.runeEnv, p));
+  add("Display rune knowledge", () =>
+    /* do_cmd_knowledge_runes (ui-knowledge.c:2291) with its xtra_prompt /
+     * xtra_act pair: '{' sets rune_list[i].note and runs rune_autoinscribe
+     * (:2275), '}' clears it (:2252). */
+    showRuneKnowledge(term, state.runeEnv, p, {
+      get: (i) => state.runeNotes?.get(i),
+      set: (i, note) => state.runeNotes?.set(i, note),
+      autoinscribe: (i) => runeAutoinscribe(state, i),
+    }),
+  );
   add("Display artifact knowledge", () =>
     // do_cmd_knowledge_artifacts (ui-knowledge.c L1740). The exact
     // artifact_is_known gate (L1687): created AND no live unidentified copy.

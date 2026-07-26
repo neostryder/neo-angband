@@ -78,14 +78,11 @@ export const trapSpec: FileSpec = {
     { fmt: "flags ?str flags", repeat: true },
     { fmt: "effect sym eff ?sym type ?int radius ?int other", repeat: true },
     { fmt: "effect-yx int y int x", childOf: ["effect"] },
-    /* parse_trap_dice (init.c L1688-1690) dice_free()s the old dice, so a
-     * repeated line is legal and the last wins. */
-    { fmt: "dice str dice", childOf: ["effect"], lastWins: true },
+    { fmt: "dice str dice", childOf: ["effect"] },
     { fmt: "expr sym name sym base str expr", childOf: ["effect"], repeat: true },
     { fmt: "effect-xtra sym eff ?sym type ?int radius ?int other", repeat: true },
     { fmt: "effect-yx-xtra int y int x", childOf: ["effect-xtra"] },
-    /* parse_trap_dice_xtra (init.c L1802-1810), same as `dice`. */
-    { fmt: "dice-xtra str dice", childOf: ["effect-xtra"], lastWins: true },
+    { fmt: "dice-xtra str dice", childOf: ["effect-xtra"] },
     { fmt: "expr-xtra sym name sym base str expr", childOf: ["effect-xtra"], repeat: true },
     { fmt: "save str flags" },
     { fmt: "desc str text", repeat: true },
@@ -243,9 +240,7 @@ export const classSpec: FileSpec = {
     { fmt: "spell sym name int level int mana int fail int exp", childOf: ["book"], repeat: true },
     { fmt: "effect sym eff ?sym type ?int radius ?int other", childOf: ["spell"], repeat: true },
     { fmt: "effect-yx int y int x", childOf: ["effect"] },
-    /* parse_class_dice (init.c L3983-3985) dice_free()s the old dice, so a
-     * repeated line is legal and the last wins (c-info.c test_dice0). */
-    { fmt: "dice str dice", childOf: ["effect"], lastWins: true },
+    { fmt: "dice str dice", childOf: ["effect"] },
     { fmt: "expr sym name sym base str expr", childOf: ["effect"], repeat: true },
     { fmt: "effect-msg str text", childOf: ["effect"], repeat: true },
     { fmt: "desc str desc", childOf: ["spell"], repeat: true },

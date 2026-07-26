@@ -17,8 +17,10 @@
  */
 
 import {
+  COLOUR_YELLOW,
   buildRuneList,
   playerKnowsRune,
+  runeName,
   runeDesc,
   shapeLoreLines,
   colorToCss,
@@ -63,11 +65,19 @@ import type {
   ObjectInfoExtras,
 } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
-import { selectFromMenu, showTextScreen, type MenuItem, type ScreenLine } from "./overlay";
+import {
+  promptText,
+  selectFromMenu,
+  showTextScreen,
+  type MenuItem,
+  type ScreenLine,
+} from "./overlay";
 import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
 
 const FG = UI_TEXT;
 const TITLE_COLOR = UI_TEXT;
+/* COLOUR_YELLOW: display_rune paints the autoinscription in it. */
+const UI_YELLOW = colorToCss(COLOUR_YELLOW);
 
 /**
  * strcmp: ordinal (byte-order) comparison matching upstream's C library
@@ -162,6 +172,17 @@ export interface KnowledgeRow<T> {
   label: string;
   color: string;
   member: T;
+  /**
+   * A right-hand annotation in its own colour at a fixed column: display_rune's
+   * yellow autoinscription at column 47 (ui-knowledge.c:2201-2202).
+   */
+  suffix?: { text: string; color: string; col: number };
+  /**
+   * The row's own prompt line, i.e. an xtra_prompt hook (rune_xtra_prompt,
+   * ui-knowledge.c:2238-2244 returns a DIFFERENT string per row depending on
+   * whether that rune carries a note).
+   */
+  hint?: string;
 }
 
 /** A named group of knowledge rows, rendered as a header + its members. */
@@ -187,7 +208,12 @@ export function groupsToMenu<T>(
     items.push({ label: group.name, color: UI_DIM, disabled: true });
     members.push(null);
     for (const row of group.rows) {
-      items.push({ label: `  ${row.label}`, color: row.color });
+      items.push({
+        label: `  ${row.label}`,
+        color: row.color,
+        ...(row.suffix ? { suffix: row.suffix } : {}),
+        ...(row.hint !== undefined ? { hint: row.hint } : {}),
+      });
       members.push(row.member);
     }
   }
@@ -254,17 +280,49 @@ function runeGroupIndex(variety: Rune["variety"]): number {
 export function runeKnowledgeGroups(
   allRunes: readonly Rune[],
   player: Player,
+  runeNote?: (index: number) => string | undefined,
 ): { title: string; groups: KnowledgeGroup<Rune>[]; unknown: number } {
   const groups: KnowledgeGroup<Rune>[] = RUNE_GROUP_TEXT.map((name) => ({ name, rows: [] }));
   let known = 0;
-  for (const rune of allRunes) {
+  for (let i = 0; i < allRunes.length; i++) {
+    const rune = allRunes[i]!;
     if (!playerKnowsRune(player, rune)) continue;
     known++;
     const gid = runeGroupIndex(rune.variety);
-    groups[gid]!.rows.push({ label: rune.name, color: FG, member: rune });
+    /* display_rune (ui-knowledge.c:2198) prints rune_name(oid), which carries
+     * the variety decoration ("<x> brand", "slay <x>", "<x> curse",
+     * "resist <x>") - not the bare rune->name. */
+    const note = runeNote?.(i);
+    groups[gid]!.rows.push({
+      label: runeName(rune),
+      color: FG,
+      member: rune,
+      /* display_rune (ui-knowledge.c:2200-2202): the autoinscription, yellow,
+       * at column 47. `col` counts from screen column 0 exactly as upstream
+       * does; the label already sits at the same offset via the menu prefix. */
+      ...(note !== undefined
+        ? { suffix: { text: note, color: UI_YELLOW, col: 47 } }
+        : {}),
+      /* rune_xtra_prompt (ui-knowledge.c:2238-2244): the '}' uninscribe key is
+       * offered only for a rune that already carries a note. */
+      hint: note !== undefined ? ", 'r'ecall, '{', '}'" : ", 'r'ecall, '{'",
+    });
   }
   const unknown = allRunes.length - known;
   return { title: `runes (${unknown} unknown)`, groups, unknown };
+}
+
+/**
+ * The rune-note seam the rune knowledge screen needs: rune_note /
+ * rune_set_note (obj-knowledge.c:406/414) plus rune_autoinscribe
+ * (obj-ignore.c:193), all keyed by the rune's buildRuneList index like
+ * upstream's rune_list index. Optional at the call site: without it the screen
+ * is read-only (no '{' / '}'), which is what a spectator/harness host wants.
+ */
+export interface RuneNoteHooks {
+  get: (index: number) => string | undefined;
+  set: (index: number, note: string | null) => void;
+  autoinscribe: (index: number) => void;
 }
 
 /**
@@ -277,7 +335,9 @@ function runeRecallLines(
   rune: Rune,
   runeEnv: Parameters<typeof buildRuneList>[0],
 ): ScreenLine[] {
-  const cap = rune.name.charAt(0).toUpperCase() + rune.name.slice(1);
+  /* my_strcap(string_make(rune_name(oid))) (ui-knowledge.c:2219-2220). */
+  const full = runeName(rune);
+  const cap = full.charAt(0).toUpperCase() + full.slice(1);
   const desc = runeDesc(runeEnv, rune);
   const lines: ScreenLine[] = [{ text: cap, color: UI_CURSOR }];
   if (desc) {
@@ -291,12 +351,82 @@ export async function showRuneKnowledge(
   term: GlyphTerm,
   runeEnv: Parameters<typeof buildRuneList>[0],
   player: Player,
+  notes?: RuneNoteHooks,
 ): Promise<void> {
-  const { title, groups } = runeKnowledgeGroups(buildRuneList(runeEnv), player);
-  await runGroupedBrowser(term, title, groups, async (rune) => {
-    const cap = rune.name.charAt(0).toUpperCase() + rune.name.slice(1);
+  const allRunes = buildRuneList(runeEnv);
+  if (!notes) {
+    const { title, groups } = runeKnowledgeGroups(allRunes, player);
+    await runGroupedBrowser(term, title, groups, async (rune) => {
+      const full = runeName(rune);
+      const cap = full.charAt(0).toUpperCase() + full.slice(1);
+      await showTextScreen(term, cap, runeRecallLines(rune, runeEnv));
+    });
+    return;
+  }
+  /*
+   * The inscribable form of the browser: upstream's rune menu carries an
+   * xtra_prompt / xtra_act pair (rune_xtra_prompt ui-knowledge.c:2238,
+   * rune_xtra_act :2247) that runGroupedBrowser has no seam for, so this drives
+   * selectFromMenu directly. The '{' branch is rune_xtra_act's askfor_aux
+   * sequence verbatim: prompt seeded with the current note, on accept clear the
+   * old note, set the new one, then rune_autoinscribe (:2275).
+   */
+  let cursor = 0;
+  for (;;) {
+    const { title, groups } = runeKnowledgeGroups(allRunes, player, notes.get);
+    const { items, members } = groupsToMenu(groups);
+    if (items.length === 0) return;
+    /* Boxed so the closures below can set it: a plain `let` would be narrowed
+     * to its initializer by control-flow analysis. */
+    const pending: { act: "recall" | "inscribe" | "uninscribe" } = { act: "recall" };
+    const idx = await selectFromMenu(
+      term,
+      title,
+      items,
+      "[ a-z to recall, { inscribe, } uninscribe, ESC to exit ]",
+      {
+        initialCursor: cursor,
+        onHighlight: (i) => {
+          cursor = i;
+        },
+        commands: {
+          "{": (c) => {
+            pending.act = "inscribe";
+            return c;
+          },
+          "}": (c) => {
+            pending.act = "uninscribe";
+            return c;
+          },
+        },
+      },
+    );
+    if (idx === null) return;
+    cursor = idx;
+    const rune = members[idx];
+    if (rune == null) continue; // a header row
+    const i = allRunes.indexOf(rune);
+    if (i < 0) continue;
+    if (pending.act === "uninscribe") {
+      /* rune_set_note(oid, NULL) (ui-knowledge.c:2252). */
+      notes.set(i, null);
+      continue;
+    }
+    if (pending.act === "inscribe") {
+      /* askfor_aux(note_text, sizeof(note_text)) with char[80] -> 79 chars. */
+      const seed = notes.get(i) ?? "";
+      const text = await promptText(term, "Inscribe with: ", seed, 79);
+      if (text !== null) {
+        notes.set(i, null);
+        notes.set(i, text);
+        notes.autoinscribe(i);
+      }
+      continue;
+    }
+    const full = runeName(rune);
+    const cap = full.charAt(0).toUpperCase() + full.slice(1);
     await showTextScreen(term, cap, runeRecallLines(rune, runeEnv));
-  });
+  }
 }
 
 // ---------------------------------------------------------------------------
