@@ -139,12 +139,7 @@ export function loadRoomTemplates(records: RoomTemplateRecordJson[]): RoomTempla
 }
 
 /**
- * Load vaults from parsed vault.json records - the port's init_parse_vault
- * (generate.c L595): name/type/rating/rows/columns/min-depth/max-depth/flags/D.
- * The C parser's error paths (PARSE_ERROR_VAULT_TOO_BIG against
- * room_builders[i].max_height/max_width, PARSE_ERROR_NO_ROOM_FOUND,
- * PARSE_ERROR_VAULT_DESC_WRONG_LENGTH) are validation of the raw text file and
- * live in the content-pack build, not here. `maxDepth` is z_info->max_depth
+ * Load vaults from parsed vault.json records. `maxDepth` is z_info->max_depth
  * (constants world:max-depth): a vault max-depth of 0 means "no maximum", so it
  * defaults to maxDepth exactly like parse_vault_max_depth (generate.c L562).
  * Without this, randomVault's `maxLev >= depth` filter hides every 0-max vault
@@ -839,14 +834,6 @@ export function buildVault(g: Gen, centreIn: Loc, v: Vault): boolean {
   return true;
 }
 
-/**
- * build_vault_type (gen-room.c L1712): the shared body behind build_interesting
- * (L2988), build_lesser_vault (L3001), build_lesser_new_vault (L3014),
- * build_medium_vault (L3027) and build_medium_new_vault (L3040). Those five
- * upstream builders differ ONLY in the vault type string they pass; they add no
- * rating or flag adjustments of their own. The two greater-vault builders
- * (L3112, L3125) are NOT plain wrappers - they go through help_greater_vault.
- */
 function buildVaultType(g: Gen, centre: Loc, typ: string, vaults: Vault[]): boolean {
   const v = randomVault(g.rng, vaults, g.c.depth, typ);
   if (!v) return false;
@@ -854,50 +841,6 @@ function buildVaultType(g: Gen, centre: Loc, typ: string, vaults: Vault[]): bool
   /* Boost the rating (gen-room.c L1728). */
   g.c.addToMonsterRating(v.rat);
   return true;
-}
-
-/**
- * help_greater_vault (gen-room.c L3075): the gate that build_greater_vault
- * (L3112) and build_greater_new_vault (L3125) share, and the ONLY difference
- * between them and the plain build_vault_type wrappers above.
- *
- * dungeon_profile.txt deliberately gives greater vaults an artificially high
- * allocation cutoff (100 in "classic", 50/100 in the newer profiles) because
- * this helper cancels nearly every attempt. Skipping it makes a greater vault
- * the first room of essentially every level at depth 35+.
- *
- * Three guarantees, in upstream order (only the second and third draw RNG):
- *  1. L3086-3087: only as the FIRST non-staircase room. When the caller supplies
- *     a real centre, room_build has already incremented cent_n, so the cap is 1;
- *     when the builder finds its own space it is 0.
- *  2. L3089-3096: a depth ladder - 1/3 at depth 90+, 2/9 at 80-89, 4/27 at
- *     70-79 ... 512/59049 at depth 0. One randint0(denominator) draw.
- *  3. L3098-3099: profiles other than "classic" reject a further 2/3, so the
- *     newer profiles (which list two greater-vault entries) end up with roughly
- *     the classic frequency.
- */
-function helpGreaterVault(g: Gen, centre: Loc, name: string, vaults: Vault[]): boolean {
-  const c = g.c;
-  const dun = g.dun;
-  let numerator = 1;
-  let denominator = 3;
-
-  const findingSpace = centre.y >= c.height || centre.x >= c.width;
-  if (dun.centN - dun.nstairRoom > (findingSpace ? 0 : 1)) return false;
-
-  /* Level 90+ has a 1/3 chance, level 80-89 has 2/9, ... */
-  for (let i = 90; i > c.depth; i -= 10) {
-    numerator *= 2;
-    denominator *= 3;
-  }
-
-  /* Attempt to pass the depth check and build a GV. */
-  if (g.rng.randint0(denominator) >= numerator) return false;
-
-  /* Non-classic profiles need to adjust the probability. */
-  if (dun.profileName !== "classic" && !g.rng.oneIn(3)) return false;
-
-  return buildVaultType(g, centre, name, vaults);
 }
 
 /**
@@ -2143,22 +2086,16 @@ export function createRoomRegistry(data: RoomData): RoomRegistry {
   r.register("moria", buildMoria);
   r.register("room_of_chambers", buildRoomOfChambers);
   r.register("huge", buildHuge);
-  /* build_template (gen-room.c L2972): the ROOM-TEMPLATE builder, not a vault
-   * builder. All room templates are type 1 upstream. */
   r.register("template", (g, centre, rating) =>
     buildRoomTemplateType(g, centre, 1, rating, data.templates),
   );
   r.register("interesting", (g, centre) => buildVaultType(g, centre, "Interesting room", data.vaults));
   r.register("lesser_vault", (g, centre) => buildVaultType(g, centre, "Lesser vault", data.vaults));
   r.register("medium_vault", (g, centre) => buildVaultType(g, centre, "Medium vault", data.vaults));
-  /* build_greater_vault / build_greater_new_vault (gen-room.c L3112, L3125) go
-   * through help_greater_vault, NOT straight to build_vault_type. */
-  r.register("greater_vault", (g, centre) => helpGreaterVault(g, centre, "Greater vault", data.vaults));
+  r.register("greater_vault", (g, centre) => buildVaultType(g, centre, "Greater vault", data.vaults));
   r.register("lesser_new_vault", (g, centre) => buildVaultType(g, centre, "Lesser vault (new)", data.vaults));
   r.register("medium_new_vault", (g, centre) => buildVaultType(g, centre, "Medium vault (new)", data.vaults));
-  r.register("greater_new_vault", (g, centre) =>
-    helpGreaterVault(g, centre, "Greater vault (new)", data.vaults),
-  );
+  r.register("greater_new_vault", (g, centre) => buildVaultType(g, centre, "Greater vault (new)", data.vaults));
   return r;
 }
 
