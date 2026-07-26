@@ -48,8 +48,13 @@ interface HeaderCase {
    * Lines the "accepts after the record header" leg must emit before the
    * dependent. Upstream's test only asserts the dependents fail BEFORE a
    * record; a few of them additionally need a parent directive inside the
-   * record, so `recordStart` alone is not enough to make them legal. Only
-   * player_timed needs this - see the requireParent note in specs/misc.ts.
+   * record, so `recordStart` alone is not enough to make them legal. See the
+   * requireParent note in specs/misc.ts.
+   *
+   * This is an ORDERED chain. When the dependent under test is itself a member
+   * of the chain, only the part of the chain BEFORE it is emitted - otherwise a
+   * chain member would be tested as a repeat of itself. `class` needs that: its
+   * `magic` directive rejects a repeat (init.c:3714-3716).
    */
   readonly needsParent?: readonly string[];
 }
@@ -115,6 +120,16 @@ const HEADER_CASES: readonly HeaderCase[] = [
     upstream: "c-info.c",
     file: "class",
     recordStart: "name:Test Class",
+    /* book / book-graphics / book-properties / spell / effect / desc all need
+     * c->magic.num_books >= 1, i.e. a magic directive AND a book after it
+     * (init.c:3739, 3778, 3809, 3842, 3880, 4103); effect additionally needs a
+     * preceding spell. */
+    needsParent: [
+      "magic:3:400:9",
+      "book:magic book:town:[First Spells]:2:arcane",
+      "spell:Light Room:1:2:26:4",
+      "effect:LIGHT_AREA",
+    ],
     dependents: [
       "stats:0:1:-3:3:-1",
       "skill-disarm-phys:45:20",
@@ -570,7 +585,10 @@ describe("parse/*: MISSING_RECORD_HEADER pins each spec's recordStart", () => {
       });
 
       it.each(c.dependents)("accepts %j after the record header", (line) => {
-        const before = [c.recordStart, ...(c.needsParent ?? [])].join("\n");
+        const chain = c.needsParent ?? [];
+        const self = chain.indexOf(line);
+        const prefix = self === -1 ? chain : chain.slice(0, self);
+        const before = [c.recordStart, ...prefix].join("\n");
         expect(() => compileGamedata(`${before}\n${line}\n`, spec(c.file))).not.toThrow();
       });
     });
