@@ -47,6 +47,19 @@ export interface DirectiveDef {
    * (player-timed.c L473-560, asserted by ptimed.c test_missing_effect0).
    */
   readonly requireParent?: boolean;
+  /** Error returned when no `childOf` parent has been seen. */
+  readonly orphanError?: string;
+  /**
+   * Handler-specific state validation that is expressible from already
+   * assembled records.  This deliberately cannot see runtime registries.
+   */
+  readonly validate?: (context: DirectiveValidationContext) => string | undefined;
+}
+
+export interface DirectiveValidationContext {
+  readonly record: JsonObject;
+  readonly target: JsonObject;
+  readonly values: Readonly<Record<string, string | number>>;
 }
 
 export interface FileSpec {
@@ -262,12 +275,22 @@ export function compileGamedata(text: string, spec: FileSpec): CompiledFile {
       }
       if (best !== null) {
         target = best.node;
-      } else if (cd.def.requireParent === true) {
+      } else if (cd.def.requireParent === true || cd.def.orphanError !== undefined) {
+        const code = cd.def.orphanError ?? "MISSING_RECORD_HEADER";
         throw new Error(
-          `${where}: MISSING_RECORD_HEADER: "${parsed.directive}" before any ` +
+          `${where}: ${code}: "${parsed.directive}" before any ` +
             `${cd.def.childOf.join(" / ")}`,
         );
       }
+    }
+
+    const validation = cd.def.validate?.({
+      record: finalizeNode(root, spec, table),
+      target: finalizeNode(target, spec, table),
+      values: parsed.values,
+    });
+    if (validation !== undefined) {
+      throw new Error(`${where}: ${validation}: rejected by upstream handler`);
     }
 
     if (cd.def.repeat === true) {
