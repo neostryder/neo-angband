@@ -203,6 +203,8 @@ export interface MonsterRecordJson {
   "message-miss"?: MonsterAltMsgJson[];
   drop?: MonsterDropJson[];
   "drop-base"?: MonsterDropJson[];
+  /** Compiler-preserved encounter order for the single C drops list. */
+  "drop-order"?: string[];
   friends?: MonsterFriendsJson[];
   "friends-base"?: MonsterFriendsJson[];
   mimic?: Array<{ tval: string; sval: string }>;
@@ -484,7 +486,7 @@ function bindAltMsgs(
   msgType: MonsterAltMsg["msgType"],
 ): void {
   if (!lines) return;
-  for (const line of lines) {
+  for (const line of [...lines].reverse()) {
     const index = (RSF as Record<string, number>)[line.spell];
     if (index === undefined || index === 0) {
       throw new Error(`mon: invalid spell name in message: ${line.spell}`);
@@ -498,20 +500,41 @@ function bindAltMsgs(
   }
 }
 
+function bindDrop(out: MonsterDrop[], d: MonsterDropJson): void {
+  out.push({
+    tval: d.tval,
+    sval: d.sval ?? null,
+    percentChance: d.chance,
+    min: d.min,
+    max: d.max,
+  });
+}
+
+/** Bind C's one interleaved drops list, which the pack stores in two fields. */
 function bindDrops(
   out: MonsterDrop[],
   lines: MonsterDropJson[] | undefined,
+  baseLines: MonsterDropJson[] | undefined,
+  order: string[] | undefined,
 ): void {
-  if (!lines) return;
-  for (const d of lines) {
-    out.push({
-      tval: d.tval,
-      sval: d.sval ?? null,
-      percentChance: d.chance,
-      min: d.min,
-      max: d.max,
-    });
+  const dropLines = lines ?? [];
+  const baseDropLines = baseLines ?? [];
+  if (order && order.length > 0) {
+    for (const token of [...order].reverse()) {
+      const colon = token.lastIndexOf(":");
+      const kind = token.slice(0, colon);
+      const index = Number(token.slice(colon + 1));
+      const source = kind === "drop" ? dropLines : kind === "drop-base" ? baseDropLines : null;
+      const d = source?.[index];
+      if (!d) throw new Error(`mon: invalid drop-order entry ${token}`);
+      bindDrop(out, d);
+    }
+    return;
   }
+  /* Older/custom packs have no encounter metadata. Their two fields are
+   * already grouped by directive, so combine once and reverse once; do not
+   * reverse the two arrays independently. */
+  for (const d of [...dropLines, ...baseDropLines].reverse()) bindDrop(out, d);
 }
 
 function pctToFreq(pct: number, what: string): number {
@@ -706,11 +729,10 @@ export class MonsterRegistry {
     bindAltMsgs(spellMsgs, rec["message-miss"], "miss");
 
     const drops: MonsterDrop[] = [];
-    bindDrops(drops, rec.drop);
-    bindDrops(drops, rec["drop-base"]);
+    bindDrops(drops, rec.drop, rec["drop-base"], rec["drop-order"]);
 
     const friends: MonsterFriends[] = [];
-    for (const f of rec.friends ?? []) {
+    for (const f of [...(rec.friends ?? [])].reverse()) {
       const num = parseNumberPair(f.number);
       friends.push({
         name: f.name,
@@ -723,7 +745,7 @@ export class MonsterRegistry {
     }
 
     const friendsBase: MonsterFriendsBase[] = [];
-    for (const f of rec["friends-base"] ?? []) {
+    for (const f of [...(rec["friends-base"] ?? [])].reverse()) {
       const fb = this.bases.get(f.name);
       if (!fb) {
         throw new Error(
@@ -740,13 +762,13 @@ export class MonsterRegistry {
       });
     }
 
-    const mimicKinds: MonsterMimic[] = (rec.mimic ?? []).map((m) => ({
+    const mimicKinds: MonsterMimic[] = [...(rec.mimic ?? [])].reverse().map((m) => ({
       tval: m.tval,
       sval: m.sval,
     }));
 
     /* parse_monster_shape: a base name wins; races resolve second-pass. */
-    const shapes: MonsterShape[] = (rec.shape ?? []).map((name) => ({
+    const shapes: MonsterShape[] = [...(rec.shape ?? [])].reverse().map((name) => ({
       name,
       race: null,
       base: this.bases.get(name) ?? null,

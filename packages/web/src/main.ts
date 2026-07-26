@@ -6480,13 +6480,18 @@ try {
   const sandboxMods = discoverPlugins();
   const trustedMods = discoverTrustedPlugins();
 
-  // First run (no saved enabled-set): materialize the default bundled mods so
-  // they are ON out of the box (decision 23) and the mod manager reflects them,
-  // and pre-consent the first-party bundled plugins to their declared caps so a
-  // default-on trusted/sandbox bundled mod actually installs. pack.ts already
-  // composed content with the same defaults this load; this persists them + the
-  // consent so later manager edits (including disabling) stick. Third-party
-  // plugins still require explicit consent.
+  // First run (no saved enabled-set): materialize DEFAULT_ENABLED_MODS so the
+  // mod manager reflects them, and pre-consent any first-party bundled plugin to
+  // its declared caps so a default-on trusted/sandbox bundled mod actually
+  // installs. pack.ts already composed content with the same defaults this load;
+  // this persists them + the consent so later manager edits (including
+  // disabling) stick. Third-party plugins still require explicit consent.
+  //
+  // NOTE: DEFAULT_ENABLED_MODS is EMPTY by the parity mandate (see mod-store.ts),
+  // so today this loop persists an empty set and NO mod is on out of the box -
+  // the fresh-install experience is faithful 4.2.6 with no QoL tweak and no bug
+  // fix applied. The machinery is kept for the case where a future bundled mod
+  // is genuinely meant to default on.
   if (!modStore.hasStoredEnabled()) {
     const discovered = [
       ...discoverContentModManifests().map((m) => m.id),

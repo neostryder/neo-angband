@@ -62,10 +62,14 @@ import {
   Dun,
   Gen,
   drawRectangle,
+  ensureStairsReachable,
   fillRectangle,
   generateRoom,
+  pickAndPlaceDistantMonster,
   placeNewMonster,
   placeObject,
+  squareIsEmpty,
+  squareNumWallsAdjacent,
   type MonPlaceDeps,
 } from "./util";
 
@@ -114,7 +118,12 @@ const monPack: MonsterPackRecords = {
   pits: loadRecords("pit"),
 };
 
-function makeDeps(): GenDeps {
+/**
+ * `modRules` is the bug-fixes mod seam (GenDeps.modRules). Omitted = faithful
+ * core, which is what almost every test here wants; pass
+ * `{ "bugfix.stairsReachable": true }` to exercise that fix.
+ */
+function makeDeps(modRules?: Record<string, boolean>): GenDeps {
   const objReg = new ObjRegistry(objPack);
   const objAlloc = new ObjAllocState(objReg, constants);
   const objDeps: MakeDeps = {
@@ -135,7 +144,12 @@ function makeDeps(): GenDeps {
 
   const rooms = createRoomRegistry({ templates: roomTemplates, vaults });
   const profiles = createDungeonProfiles(loadRecords<DunProfileRecordJson>("dungeon_profile"));
-  return { reg, constants, rooms, profiles, objDeps, monDeps };
+  return { reg, constants, rooms, profiles, objDeps, monDeps, ...(modRules ? { modRules } : {}) };
+}
+
+/** GenDeps with the staircase-reachability fix (bug-fixes mod) turned on. */
+function stairFixDeps(): GenDeps {
+  return makeDeps({ "bugfix.stairsReachable": true });
 }
 
 function bareGen(width: number, height: number, depth: number): Gen {
@@ -194,7 +208,14 @@ describe("room template instantiation", () => {
 
 describe("vault instantiation", () => {
   it("lays the 'Round' lesser vault with faithful glyph->feature mapping", () => {
-    const round = vaults.find((v) => v.name === "Round");
+    /* "Round" names TWO records in vault.txt - a Lesser vault and an
+     * Interesting room - as do "Cross" and "Hourglass". Selecting on the name
+     * alone silently depends on list order, and C's list is in REVERSE file
+     * order (parse_vault_name prepends at generate.c:479-487 and
+     * finish_parse_vault does not reverse, generate.c:614-618), so the bare
+     * find returned the Interesting room once the loader was corrected to
+     * match C. This test is about the lesser vault, so it says so. */
+    const round = vaults.find((v) => v.name === "Round" && v.typ === "Lesser vault");
     expect(round).toBeDefined();
     if (!round) return;
     expect(round.hgt).toBe(12);
@@ -338,54 +359,302 @@ describe("full level generation", () => {
     }
   });
 
-  it("generates fully-connected valid levels across the deep profile pool", () => {
-    /* Post-enablement, depth 30/60 select cavern/moria/labyrinth/lair/gauntlet/
-     * hard_centre (proven by the choose() test). Drive many seeds end-to-end
-     * through generateLevel and require every level to be valid + connected -
-     * catches any deep generator that disconnects or throws via the pipeline. */
-    /* The player can reach a down staircase (the true playability guarantee).
-     * 8-directional, since the player moves diagonally and caverns connect
-     * diagonally. Angband does NOT guarantee every passable cell is reachable
-     * (vault interiors and stray fully-enclosed 1-cell pockets can be sealed),
-     * so this asserts descent-reachability, not total cell connectivity. */
-    const downStairReachable = (g: Gen, start: Loc): boolean => {
-      const c = g.c;
-      const trav = (gr: Loc): boolean => c.isPassable(gr) || c.isDoor(gr) || c.isRubble(gr);
-      const seen = new Uint8Array(c.width * c.height);
-      const stack: Loc[] = [start];
-      seen[start.y * c.width + start.x] = 1;
-      const d8 = [loc(0,1),loc(0,-1),loc(1,0),loc(-1,0),loc(1,1),loc(1,-1),loc(-1,1),loc(-1,-1)];
-      let found = c.feat(start) === FEAT.MORE;
-      while (stack.length && !found) {
-        const cur = stack.pop() as Loc;
-        for (const d of d8) {
-          const n = loc(cur.x + d.x, cur.y + d.y);
-          if (!c.inBounds(n)) continue;
-          const idx = n.y * c.width + n.x;
-          if (seen[idx] || !trav(n)) continue;
-          seen[idx] = 1;
-          if (c.feat(n) === FEAT.MORE) { found = true; break; }
-          stack.push(n);
+  /*
+   * Walk the region the player can actually get to: passable grids, plus doors
+   * (openable) and rubble (diggable). 8-directional, since the player moves
+   * diagonally and caverns connect diagonally. Walls are excluded on purpose -
+   * granite is tunnellable, but counting it would make the guarantee vacuous.
+   */
+  const walkFrom = (g: Gen, start: Loc): Uint8Array => {
+    const c = g.c;
+    const trav = (gr: Loc): boolean => c.isPassable(gr) || c.isDoor(gr) || c.isRubble(gr);
+    const seen = new Uint8Array(c.width * c.height);
+    const stack: Loc[] = [start];
+    seen[start.y * c.width + start.x] = 1;
+    const d8 = [loc(0,1),loc(0,-1),loc(1,0),loc(-1,0),loc(1,1),loc(1,-1),loc(-1,1),loc(-1,-1)];
+    while (stack.length) {
+      const cur = stack.pop() as Loc;
+      for (const d of d8) {
+        const n = loc(cur.x + d.x, cur.y + d.y);
+        if (!c.inBounds(n)) continue;
+        const idx = n.y * c.width + n.x;
+        if (seen[idx] || !trav(n)) continue;
+        seen[idx] = 1;
+        stack.push(n);
+      }
+    }
+    return seen;
+  };
+
+  /** [total on the level, how many of them the player can walk to]. */
+  const stairTally = (g: Gen, seen: Uint8Array, feat: number): [number, number] => {
+    const c = g.c;
+    let total = 0;
+    let reached = 0;
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        if (c.feat(loc(x, y)) !== feat) continue;
+        total++;
+        if (seen[y * c.width + x]) reached++;
+      }
+    }
+    return [total, reached];
+  };
+
+  /**
+   * THE STAIRCASE INVARIANT - a property of the BUG-FIXES MOD, not of core.
+   *
+   * Faithful core does NOT hold this, and that is deliberate (owner ruling
+   * 2026-07-26: "Core must retain all warts of the reference code"). Upstream
+   * alloc_stairs happily drops a stair inside a vault that
+   * ensure_connectedness(c, true) then declines to join, and a level gets only
+   * 1-2 up stairs against 3-4 down, so 53 of 520 sampled levels (10.2%) are
+   * stranded, 44 of them on the up stair. The control test below pins that.
+   *
+   * With "bugfix.stairsReachable" on, ensureStairsReachable repairs it inside
+   * cave_generate's retry loop - see the note there and BUG_FIXES.md entry 13.
+   *
+   * "each direction it actually has one" is what exempts the town (place_stairs
+   * forces FEAT_MORE at depth 0, so there is no up stair to reach) and the
+   * quest/Morgoth floors (forced FEAT_LESS, so no down stair) with no depth
+   * special-casing.
+   */
+  const assertStairInvariant = (g: Gen, label: string): void => {
+    const p = g.playerSpot as Loc;
+    expect(g.c.isPassable(p), `${label}: player spot not passable`).toBe(true);
+    const seen = walkFrom(g, p);
+    for (const [name, feat] of [["down", FEAT.MORE], ["up", FEAT.LESS]] as const) {
+      const [total, reached] = stairTally(g, seen, feat);
+      if (total === 0) continue; // none by design (town has no up, Morgoth no down)
+      expect(reached, `${label}: ${total} ${name} stair(s), NONE reachable`).toBeGreaterThan(0);
+    }
+  };
+
+  /**
+   * Measured stranded levels in FAITHFUL core: every staircase of at least one
+   * direction sealed away from the player, mostly inside a vault. These drive
+   * the control/fix pair below - the control proves core still has the wart,
+   * the fix test proves the mod flag repairs exactly these.
+   */
+  const STRANDED: readonly [number, number, string][] = [
+    [1, 501016, "both directions sealed off from the player's region"],
+    [20, 520009, "both"],
+    [20, 520004, "single up stair unreachable"],
+    [40, 540007, "up stair in a vault"],
+    [40, 540008, "up stair in a vault"],
+    [40, 540014, "up stair in a vault"],
+    [50, 550006, "lair: up stair in a vault"],
+    [50, 550011, "up stair in a vault"],
+    [50, 550019, "all 3 down + the up stair in vaults"],
+    [50, 550024, "both, in vaults"],
+    [60, 560006, "up stair in a vault"],
+    [20, 520037, "both"],
+  ];
+
+  /** The directions of `g` that have a stair but no reachable one. */
+  const strandedDirs = (g: Gen): string[] => {
+    const seen = walkFrom(g, g.playerSpot as Loc);
+    const out: string[] = [];
+    for (const [name, feat] of [["down", FEAT.MORE], ["up", FEAT.LESS]] as const) {
+      const [total, reached] = stairTally(g, seen, feat);
+      if (total > 0 && reached === 0) out.push(name);
+    }
+    return out;
+  };
+
+  it("CONTROL: faithful core strands floors, exactly as upstream 4.2.6 does", () => {
+    /*
+     * The wart core keeps on purpose. This is the load-bearing test of the
+     * 2026-07-26 ruling ("Core must retain all warts of the reference code"): if
+     * someone re-adds the repair to core unconditionally, or makes it
+     * default-on, this test fails and says why.
+     *
+     * It is also the power validation for the fix test below - the two run the
+     * same seeds through the same generator and differ only in the flag.
+     */
+    for (const [depth, seed, why] of STRANDED) {
+      const g = generateLevel(new Rng(seed), depth, makeDeps());
+      expect(
+        strandedDirs(g),
+        `d${depth} seed ${seed} (${why}): faithful core should still strand this level. ` +
+          `If the repair moved back into core unconditionally, revert it - it belongs ` +
+          `to the bug-fixes mod (bugfix.stairsReachable).`,
+      ).not.toEqual([]);
+    }
+  });
+
+  it("bugfix.stairsReachable: a reachable up AND down staircase on every floor", () => {
+    /*
+     * Fresh deps per seed: vault object placement draws mid-gen, and a shared
+     * ArtifactState / race.curNum from prior seeds pollutes those draws
+     * (independent seed trials are not one continuous game).
+     *
+     * Depth coverage spans every profile in the pool plus the three special
+     * cases: 0 (town, down only), 99 and 100 (quest/Morgoth, up only).
+     */
+    const depths = [0, 1, 2, 5, 10, 25, 40, 60, 80, 98, 99, 100];
+    for (const depth of depths) {
+      for (let s = 0; s < 8; s++) {
+        const seed = 9000 + depth * 100 + s;
+        const g = generateLevel(new Rng(seed), depth, stairFixDeps());
+        assertStairInvariant(g, `depth ${depth} seed ${seed}`);
+        if (depth > 0) {
+          expect(g.monsters.length).toBeGreaterThanOrEqual(1);
+          expect(g.monsters.length).toBeLessThan(constants.levelMonsterMax);
         }
       }
-      return found;
-    };
+    }
+  });
+
+  it("bugfix.stairsReachable: repairs every level faithful core strands", () => {
+    for (const [depth, seed, why] of STRANDED) {
+      const g = generateLevel(new Rng(seed), depth, stairFixDeps());
+      assertStairInvariant(g, `repaired d${depth} seed ${seed} (${why})`);
+    }
+  });
+
+  /*
+   * Mechanical proof of the two properties the guarantee rests on, on a
+   * synthetic level rather than a lucky seed: it repairs a sealed-away stair,
+   * and it spends NO RNG doing so. The second is what makes it safe to run on
+   * every level - a level that already satisfies the invariant is bit-identical
+   * to upstream, because the repair cannot perturb the stream.
+   */
+  const sealedPocketLevel = (): Gen => {
+    const c = new Chunk(reg, 25, 40);
+    c.depth = 5;
+    fillRectangle(c, 0, 0, 24, 39, FEAT.FLOOR, SQUARE.NONE);
+    drawRectangle(c, 0, 0, 24, 39, FEAT.PERM, SQUARE.NONE, true);
+    /* A granite ring with a 3x3 interior, joined to nothing. */
+    drawRectangle(c, 10, 28, 14, 32, FEAT.GRANITE, SQUARE.NONE, false);
+    /* The level's ONLY up stair sits inside it - the shape of the real defect. */
+    c.setFeat(loc(30, 12), FEAT.LESS);
+    /* A down stair out in the open, so only the up direction needs repair. */
+    c.setFeat(loc(5, 5), FEAT.MORE);
+    const g = new Gen(c, new Rng(99), reg, constants, new Dun(constants), null, null);
+    g.playerSpot = loc(3, 3);
+    return g;
+  };
+
+  it("repairs a level whose only up staircase is sealed inside a vault", () => {
+    const g = sealedPocketLevel();
+    const before = walkFrom(g, g.playerSpot as Loc);
+    /* Precondition: the pocket really is sealed and holds the only up stair. */
+    expect(before[12 * g.c.width + 30]).toBe(0);
+    expect(stairTally(g, before, FEAT.LESS)).toEqual([1, 0]);
+    expect(stairTally(g, before, FEAT.MORE)).toEqual([1, 1]);
+
+    expect(ensureStairsReachable(g, false)).toBe(true);
+
+    const after = walkFrom(g, g.playerSpot as Loc);
+    const [total, reached] = stairTally(g, after, FEAT.LESS);
+    expect(total).toBe(2); // the stranded one stays; a reachable one is added
+    expect(reached).toBe(1);
+    /*
+     * The spot is chosen the way alloc_stairs chooses: the best available
+     * wall-adjacency tier first (3 -> 0, so stairs sit in alcoves, not in the
+     * middle of a room), and within that tier the grid closest to the stranded
+     * stair it stands in for. Assert exactly that, rather than a raw distance -
+     * on this synthetic single-room level the walled tier is scarce, so the
+     * nearest qualifying grid is legitimately not the nearest grid.
+     */
+    const spot = [...Array(g.c.height).keys()]
+      .flatMap((y) => [...Array(g.c.width).keys()].map((x) => loc(x, y)))
+      .find((gr) => g.c.feat(gr) === FEAT.LESS && after[gr.y * g.c.width + gr.x]) as Loc;
+    const dist2 = (gr: Loc): number => (gr.x - 30) ** 2 + (gr.y - 12) ** 2;
+    const tier = squareNumWallsAdjacent(g.c, spot);
+    for (let y = 1; y <= g.c.height - 2; y++) {
+      for (let x = 1; x <= g.c.width - 2; x++) {
+        const gr = loc(x, y);
+        if (gr.x === spot.x && gr.y === spot.y) continue;
+        if (!after[y * g.c.width + x]) continue;
+        if (!squareIsEmpty(g, gr)) continue;
+        if (squareNumWallsAdjacent(g.c, gr) !== tier) continue;
+        expect(dist2(gr), `${x},${y} is a closer tier-${tier} spot than the one chosen`)
+          .toBeGreaterThanOrEqual(dist2(spot));
+      }
+    }
+  });
+
+  it("spends no RNG repairing a level (so healthy levels are untouched)", () => {
+    /* State equality is airtight: any draw through any entry point advances it. */
+    const g = sealedPocketLevel();
+    const before = JSON.stringify(g.rng.getState());
+    expect(ensureStairsReachable(g, false)).toBe(true);
+    expect(JSON.stringify(g.rng.getState()), "the repair drew RNG").toBe(before);
+
+    /* And the no-op path on an already-valid level. */
+    const ok = sealedPocketLevel();
+    ok.c.setFeat(loc(6, 6), FEAT.LESS); // reachable up stair, nothing to repair
+    const okBefore = JSON.stringify(ok.rng.getState());
+    const featsBefore = JSON.stringify([...ok.c.featCount]);
+    expect(ensureStairsReachable(ok, false)).toBe(true);
+    expect(JSON.stringify(ok.rng.getState())).toBe(okBefore);
+    expect(JSON.stringify([...ok.c.featCount]), "a valid level was modified").toBe(featsBefore);
+  });
+
+  /** Player alone in a 1x1 pocket, with the only up stair sealed elsewhere. */
+  const onePocketLevel = (): Gen => {
+    const c = new Chunk(reg, 25, 40);
+    c.depth = 5;
+    fillRectangle(c, 0, 0, 24, 39, FEAT.GRANITE, SQUARE.NONE);
+    drawRectangle(c, 0, 0, 24, 39, FEAT.PERM, SQUARE.NONE, true);
+    c.setFeat(loc(3, 3), FEAT.FLOOR);
+    c.setFeat(loc(30, 12), FEAT.LESS);
+    const g = new Gen(c, new Rng(99), reg, constants, new Dun(constants), null, null);
+    g.playerSpot = loc(3, 3);
+    return g;
+  };
+
+  it("falls back to a staircase under the player when nothing else will hold one", () => {
+    /* Upstream lays a stair on the player's own grid under birth_connect_stairs
+     * (new_player_spot), so this is a legal arrival state, and it saves the
+     * level from a full re-roll. Measured: it turns the one re-roll in ~230
+     * generated levels into zero. */
+    const g = onePocketLevel();
+    expect(ensureStairsReachable(g, false)).toBe(true);
+    expect(g.c.feat(loc(3, 3))).toBe(FEAT.LESS);
+  });
+
+  it("reports failure when a level cannot be repaired, so the caller re-rolls", () => {
+    /* Same 1x1 pocket, but the player's grid holds a trap - square_isempty
+     * rejects it, so not even the fallback applies and the guarantee must
+     * refuse rather than pretend. */
+    const g = onePocketLevel();
+    g.markTrap(loc(3, 3));
+    expect(ensureStairsReachable(g, false)).toBe(false);
+  });
+
+  it("never mints a down staircase on a quest floor", () => {
+    /* place_stairs forces FEAT_LESS when quest is set, so a repair on a Morgoth
+     * floor must not become a way down. With no down stair present the down
+     * branch is skipped entirely; assert the level stays down-stair-free. */
+    const g = sealedPocketLevel();
+    g.c.setFeat(loc(5, 5), FEAT.FLOOR); // remove the down stair
+    expect(ensureStairsReachable(g, true)).toBe(true);
+    expect(g.c.featCount[FEAT.MORE] ?? 0).toBe(0);
+  });
+
+  it("generates valid levels across the deep profile pool", () => {
+    /* Post-enablement, depth 30/60 select cavern/moria/labyrinth/lair/gauntlet/
+     * hard_centre (proven by the choose() test). Drive many seeds end-to-end
+     * through generateLevel and require every level to be structurally valid -
+     * catches any deep generator that throws or degenerates via the pipeline.
+     *
+     * This deliberately does NOT assert staircase reachability. It used to (as
+     * "fully-connected"), and depth 60 seed 15004 - 4 down stairs, none of them
+     * reachable - is what opened that investigation. Upstream genuinely permits
+     * it (BUG_FIXES.md entry 13), so asserting it here would be asserting a
+     * property C does not have. Reachability is tested against the bug-fixes
+     * flag instead, above. Fresh deps per seed: a shared ArtifactState /
+     * race.curNum pollutes the mid-gen vault object draws. */
     for (const [depth, seeds] of [[30, 24], [60, 14]] as const) {
       for (let s = 0; s < seeds; s++) {
-        /*
-         * Fresh deps per seed: vault object placement draws mid-gen, and a
-         * shared ArtifactState / race.curNum from prior seeds pollutes those
-         * draws (independent seed trials are not one continuous game).
-         * square_set_feat clears WALL_* mid-gen (cave-square.c:1263-1268);
-         * with polluted vault RNG the modified profile at seed 15004 could
-         * land a disconnected stair layout that clean deps do not.
-         */
-        const g = generateLevel(new Rng(9000 + depth * 100 + s), depth, makeDeps());
-        const p = g.playerSpot as Loc;
-        expect(g.c.isPassable(p)).toBe(true);
+        const seed = 9000 + depth * 100 + s;
+        const g = generateLevel(new Rng(seed), depth, makeDeps());
+        expect(g.c.isPassable(g.playerSpot as Loc), `depth ${depth} seed ${seed}`).toBe(true);
         expect(g.c.featCount[FEAT.MORE] ?? 0).toBeGreaterThanOrEqual(1);
-        /* The player can descend: a down staircase is reachable. */
-        expect(downStairReachable(g, p)).toBe(true);
+        expect(g.c.featCount[FEAT.LESS] ?? 0).toBeGreaterThanOrEqual(1);
         expect(g.monsters.length).toBeGreaterThanOrEqual(1);
         expect(g.monsters.length).toBeLessThan(constants.levelMonsterMax);
       }
@@ -1918,5 +2187,86 @@ describe("quest monster placement (generate.c cave_generate L1170-1191)", () => 
     } finally {
       uniq!.curNum = 0;
     }
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * pick_and_place_distant_monster (mon-make.c L1483-1520).
+ * ------------------------------------------------------------------ */
+
+/**
+ * Mechanical proof of the C search loop, because a histogram cannot see it.
+ *
+ * C is `int attempts_left = 10000; while (--attempts_left) { ... }`, so the
+ * loop body runs exactly 9,999 times and each iteration spends exactly two
+ * draws -- `randint0(c->width)` then `randint0(c->height)` -- over the FULL
+ * map, with no distance relaxation and no retry after exhaustion. The port's
+ * generation copy had drifted to a post-decrement 10,000-iteration loop over
+ * interior-only coordinates with a `max_sight + 1` distance floor and a
+ * halving retry, none of which exist in C. Only the draw COUNT and the draw
+ * MODULI can catch that, so they are asserted directly here.
+ *
+ * The port's live-game copy (game/mon-place.ts) is the same loop minus the
+ * SQUARE_MON_RESTRICT test, which C gates on `!character_dungeon`.
+ */
+describe("pick_and_place_distant_monster search loop", () => {
+  const monReg = bindMonsters(monPack, { maxSight: constants.maxSight });
+  const table = new MonAllocTable(monReg.races, { maxDepth: constants.maxDepth });
+
+  /** C's iteration count: `while (--attempts_left)` from 10,000. */
+  const C_ATTEMPTS = 9_999;
+  /** Two coordinate draws per attempt, and nothing else on a rejected grid. */
+  const C_DRAWS_ON_EXHAUSTION = C_ATTEMPTS * 2;
+
+  /** An Rng that records the modulus of every consuming draw, in order. */
+  class ModulusRng extends Rng {
+    readonly moduli: number[] = [];
+    override randDiv(m: number): number {
+      if (m > 1) this.moduli.push(m);
+      return super.randDiv(m);
+    }
+  }
+
+  /** An all-floor arena with no border, so every grid is a legal candidate. */
+  function floorGen(rng: Rng, width: number, height: number, flag: number = SQUARE.NONE): Gen {
+    const c = new Chunk(reg, height, width);
+    c.depth = 5;
+    fillRectangle(c, 0, 0, height - 1, width - 1, FEAT.FLOOR, flag);
+    return new Gen(c, rng, reg, constants, new Dun(constants), null, { table });
+  }
+
+  it("draws randint0(width) then randint0(height) over the full map", () => {
+    /* Interior-only sampling would ask for width-2 / height-2, and drawing y
+     * first would swap the pair. Both are visible in the moduli alone. */
+    const rng = new ModulusRng(7);
+    const g = floorGen(rng, 40, 25);
+    pickAndPlaceDistantMonster(g, loc(20, 12), 0, true, g.c.depth);
+    expect(rng.moduli.slice(0, 2)).toEqual([40, 25]);
+  });
+
+  it("spends exactly 9,999 attempts and gives up, with no distance relaxation", () => {
+    /* `dis` larger than the map's diagonal makes every grid too close, so the
+     * loop must exhaust. C returns false; the old port halved `dis` and tried
+     * again, which shows up as a draw count above 19,998. */
+    const rng = new ModulusRng(11);
+    const g = floorGen(rng, 40, 25);
+    const placed = pickAndPlaceDistantMonster(g, loc(20, 12), 10_000, true, g.c.depth);
+    expect(placed).toBe(false);
+    expect(rng.moduli.length).toBe(C_DRAWS_ON_EXHAUSTION);
+    /* Every attempt sampled the full map -- no widened or narrowed retry. */
+    expect(new Set(rng.moduli)).toEqual(new Set([40, 25]));
+    expect(g.monsters).toHaveLength(0);
+  });
+
+  it("rejects SQUARE_MON_RESTRICT grids during generation", () => {
+    /* C: `if ((!character_dungeon) && square_ismon_restrict(c, grid)) continue;`
+     * Generation is the !character_dungeon case, so a wholly restricted map
+     * yields nothing even though every grid is empty and far enough away. */
+    const rng = new ModulusRng(13);
+    const g = floorGen(rng, 40, 25, SQUARE.MON_RESTRICT);
+    const placed = pickAndPlaceDistantMonster(g, loc(20, 12), 0, true, g.c.depth);
+    expect(placed).toBe(false);
+    expect(rng.moduli.length).toBe(C_DRAWS_ON_EXHAUSTION);
+    expect(g.monsters).toHaveLength(0);
   });
 });
