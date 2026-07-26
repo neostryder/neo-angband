@@ -263,3 +263,37 @@ git diff --stat master -- reference/                                (empty)
 ```
 
 LF endings confirmed on all four new files (`tr -dc '\r' | wc -c` → 0).
+
+---
+
+## Status update, 2026-07-26 (later the same day)
+
+**D1 — FIXED, and it was worse than reported.** `parseRand` now reproduces
+`parse_random`'s negation (`parser.c:207-211`). The adjudication named one
+affected value ("of Backbiting") and flagged the blast radius as untraced; a grep
+of the compiled pack for every negative `rand` value carrying a dice or `M`
+component found **three**, because `attack` and `armor` are both `rand`-typed
+(`obj-init.c:2161-2162`):
+
+| where | value | upstream | port before |
+|---|---|---|---|
+| `object.txt:2273` ring "Reckless Attacks" | `armor:0:-8+4d3` | to_a -20..-12 | to_a **-4..+4** |
+| `object.txt:2308` ring "Open Wounds" | `attack:0d0:0:-3d5` | to_d -15..-3 | base 0, **dice -3** |
+| `ego_item.txt:692` "of Backbiting" | `combat:-26+d25` | -51..-27 | -26..-1 |
+
+The first FLIPS SIGN: a ring upstream guarantees to be a liability could hand out
+positive AC. The second held a NEGATIVE dice count, which suppressed three RNG
+draws wherever that ring's `to_d` was rolled — which is why the fix moved the
+generation stream and stale-dated two of the twelve seeds in `gen.test.ts`'s
+STRANDED control list. Ten of twelve were unaffected, which is what distinguishes
+a stream shift from a behavioural regression. Guard:
+`packages/core/src/obj/parse-rand.upstream.test.ts` (8 cases; reverting the fix
+fails 3 of them).
+
+**D2 — FIXED.** `grabIntRange` now rejects an endpoint at `INT_MIN`/`INT_MAX`
+inclusive, as `datafile.c:328-333` does and for the reason the C states. The
+three overflowing forms of `k-info.c test_alloc_bad0` are asserted in
+`obj/bind.upstream.test.ts` instead of being documented as a known divergence,
+so all eleven of that test's forms are now covered.
+
+G1-G4 remain open as recorded above.
