@@ -189,9 +189,7 @@ describe("W2-007 live tweak dispatch", () => {
       press(win, "Enter");
     }
     await tick();
-    // [q]uantity (cmd-wizard.c:1770-1789) now occupies row "d" (inserted before
-    // Accept/Reject, W1-cmdwiz); Accept changes shifted from "d" to "e".
-    press(win, "e"); // Accept changes
+    press(win, "d"); // Accept changes
     await done;
 
     expect(obj.modifiers).toEqual(obj.modifiers.map((_, i) => (i % 9) + 1));

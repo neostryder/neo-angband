@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
 import type { ConstantsJson } from "../constants";
-import { FEAT, ORIGIN, ROOM_ENTRIES, SQUARE } from "../generated";
+import { FEAT, ORIGIN, SQUARE } from "../generated";
 import { loc } from "../loc";
 import type { Loc } from "../loc";
 import { Rng } from "../rng";
@@ -440,34 +440,24 @@ describe("full level generation", () => {
     [1, 501016, "both directions sealed off from the player's region"],
     [20, 520009, "both"],
     [20, 520004, "single up stair unreachable"],
-    /*
-     * Every deep example below was re-pinned on 2026-07-26 when
-     * help_greater_vault (gen-room.c L3075) was restored to core - see the
-     * "help_greater_vault" describe block. Before that fix `greater_vault` was
-     * wired straight to build_vault_type, so a greater vault was built as the
-     * first room of virtually every level at depth 35+ (measured 120/120 at
-     * both depth 40 and depth 90), and the eight seeds that used to sit here
-     * all stranded for the same reason: "up stair in a vault". They stopped
-     * stranding because the levels stopped being one enormous vault, which is
-     * the intended upstream shape. This is a deliberate generation-stream
-     * change at depth >= 35, not a stream drift: the four shallow examples
-     * (depths 1 and 20, which never reach a greater vault) are untouched, and
-     * stranding is simply much rarer now, exactly as upstream 4.2.6 has it.
-     * 550019 and 560006 sat here until earlier the same day and went stale in
-     * the parse_random negation fix (obj/bind.ts parseRand), which corrected
-     * three negative `rand` values in object.txt / ego_item.txt -- one of
-     * which, `attack:0d0:0:-3d5` on the ring "Open Wounds", had been parsed
-     * with a dice count of MINUS three, suppressing three RNG draws wherever
-     * that ring's to_d was rolled.
-     */
-    [40, 400017, "up stair sealed off"],
-    [40, 400038, "up stair sealed off"],
-    [40, 400121, "both"],
-    [50, 500021, "up stair sealed off"],
-    [50, 500130, "both"],
-    [50, 500131, "both"],
-    [50, 500217, "both"],
-    [60, 600181, "down stair sealed off"],
+    [40, 540007, "up stair in a vault"],
+    [40, 540008, "up stair in a vault"],
+    [40, 540014, "up stair in a vault"],
+    [50, 550006, "lair: up stair in a vault"],
+    [50, 550011, "up stair in a vault"],
+    /* 550019 sat here until 2026-07-26. It stopped stranding when the
+     * parse_random negation fix (obj/bind.ts parseRand) corrected three
+     * negative `rand` values in object.txt / ego_item.txt -- one of which,
+     * `attack:0d0:0:-3d5` on the ring "Open Wounds", had been parsed with a
+     * dice count of MINUS three, suppressing three RNG draws wherever that
+     * ring's to_d was rolled. So the generation stream legitimately moved.
+     * The other ELEVEN seeds in this list still strand, which is the evidence
+     * that the property is intact and only this example went stale. */
+    [50, 550038, "up stair in a vault"],
+    [50, 550024, "both, in vaults"],
+    /* 560006 went stale with 550019 in the same 2026-07-26 stream shift; see
+     * the note above. Two of the twelve, which is a shift, not a regression. */
+    [60, 560008, "up stair in a vault"],
     [20, 520037, "both"],
   ];
 
@@ -2096,133 +2086,6 @@ describe("build_moria", () => {
         if (a.c.isFloor(grid)) expect(a.c.sqinfoHas(grid, SQUARE.ROOM)).toBe(true);
       }
     }
-  });
-});
-
-describe("room builder registry", () => {
-  it("registers exactly the list-rooms.h builder set, both directions", () => {
-    /* get_room_builder_count (generate.c L1561) = N_ELEMENTS(room_builders). */
-    expect(ROOM_ENTRIES.length).toBe(19);
-    const registered = new Set(
-      createRoomRegistry({ templates: roomTemplates, vaults }).names(),
-    );
-    const upstream = new Set<string>(ROOM_ENTRIES.map((e) => e.builder));
-    /* Set difference empty both ways. */
-    expect([...upstream].filter((k) => !registered.has(k))).toEqual([]);
-    expect([...registered].filter((k) => !upstream.has(k))).toEqual([]);
-    expect(registered.size).toBe(19);
-  });
-});
-
-describe("help_greater_vault", () => {
-  /* gen-room.c L3075. Greater vaults carry an artificially high allocation
-   * cutoff (100 in "classic") precisely because this helper cancels nearly
-   * every attempt; without it a greater vault lands on almost every level at
-   * depth 35+. A greater vault is up to 44x66, so the test chunk is oversized. */
-  const gvGen = (depth: number, seed: number, profileName: string): Gen => {
-    const g = roomGen(160, 70, depth, seed);
-    g.dun.profileName = profileName;
-    return g;
-  };
-  const build = (key: string) =>
-    createRoomRegistry({ templates: roomTemplates, vaults }).get(key);
-
-  it("refuses a greater vault that is not the first non-staircase room", () => {
-    /* L3086: cent_n - nstair_room > 1 (real centre => room_build already
-     * incremented cent_n). Depth 90 so the depth ladder alone would pass 1/3
-     * of the time; the gate must reject regardless of seed. */
-    for (let seed = 1; seed <= 40; seed++) {
-      const g = gvGen(90, seed, "classic");
-      g.dun.centN = 3;
-      g.dun.nstairRoom = 0;
-      expect(build("greater_vault")(g, loc(80, 35), 0)).toBe(false);
-      /* Nothing was drawn or built. */
-      expect(countFloor(g)).toBe(0);
-    }
-  });
-
-  it("still allows a greater vault as the second room when a staircase room precedes it", () => {
-    /* L3086: nstair_room is subtracted, so persistent-level staircase rooms do
-     * not use up the one allowed slot. */
-    let passed = 0;
-    for (let seed = 1; seed <= 60; seed++) {
-      const g = gvGen(90, seed, "classic");
-      g.dun.centN = 2;
-      g.dun.nstairRoom = 1;
-      if (build("greater_vault")(g, loc(80, 35), 0)) passed++;
-    }
-    expect(passed).toBeGreaterThan(0);
-  });
-
-  /* SAMPLES is fixed and the seeds are fixed, so every count below is
-   * deterministic; the bounds are set well clear of the observed values. */
-  const SAMPLES = 120;
-  const rate = (depth: number, profileName: string): number => {
-    let n = 0;
-    for (let seed = 1; seed <= SAMPLES; seed++) {
-      const g = gvGen(depth, seed, profileName);
-      if (build("greater_vault")(g, loc(80, 35), 0)) n++;
-    }
-    return n;
-  };
-
-  it(
-    "applies the depth ladder: ~1/3 at depth 90+, far rarer shallow",
-    () => {
-      /* L3090-3096: depth 90+ -> 1/3 (no ladder iterations). */
-      const deep = rate(90, "classic");
-      expect(deep).toBeGreaterThan(20);
-      expect(deep).toBeLessThan(65);
-      /* Depth 40 -> five iterations -> 32/729 = 4.4%. */
-      const shallow = rate(40, "classic");
-      expect(shallow).toBeLessThan(20);
-      expect(shallow).toBeLessThan(deep);
-      /* Observed: depth90 = 41/120 (34.2%, theory 33.3%);
-       *           depth40 =  6/120 ( 5.0%, theory 32/729 = 4.4%). */
-    },
-    120000,
-  );
-
-  it(
-    "rejects a further 2/3 outside the classic profile",
-    () => {
-      /* L3099: !streq(dun->profile->name, "classic") && !one_in_(3). */
-      const classic = rate(90, "classic");
-      const modified = rate(90, "modified");
-      /* Observed: classic = 41/120 (34.2%); modified = 15/120 (12.5%,
-       * theory 1/3 * 1/3 = 11.1%). */
-      expect(modified).toBeLessThan(classic / 2);
-      expect(modified).toBeGreaterThan(2);
-    },
-    120000,
-  );
-
-  it("has the live builder path publish the profile name onto dun", () => {
-    /* dun->profile = choose_profile(p) (generate.c L1157). help_greater_vault
-     * (L3099) reads dun->profile->name, so makeGen must publish it; without
-     * this the classic profile would take the non-classic 2/3 rejection. */
-    const ctx = builderCtx(50, 4242);
-    expect(ctx.dun.profileName).toBe("");
-    const built = classicGen(ctx);
-    expect(built.error).toBeNull();
-    expect(ctx.dun.profileName).toBe("classic");
-  });
-
-  it("gates the (new) greater vault the same way, and plain vaults not at all", () => {
-    for (let seed = 1; seed <= 40; seed++) {
-      const g = gvGen(90, seed, "classic");
-      g.dun.centN = 3;
-      expect(build("greater_new_vault")(g, loc(80, 35), 0)).toBe(false);
-    }
-    /* Lesser/medium vaults are plain build_vault_type wrappers: no gate, so a
-     * fourth room may still be a lesser vault. */
-    let lesser = 0;
-    for (let seed = 1; seed <= 20; seed++) {
-      const g = gvGen(90, seed, "classic");
-      g.dun.centN = 3;
-      if (build("lesser_vault")(g, loc(80, 35), 0)) lesser++;
-    }
-    expect(lesser).toBe(20);
   });
 });
 

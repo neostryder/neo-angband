@@ -1,7 +1,7 @@
 bucket	static	name	file	line	mechanical	matched_as	port_file
 engine	false	cave_known	reference/src/cave-map.c	633	PORTED-AND-CITED	caveknown	core/src/game/known.ts
-engine	false	square_isfloor	reference/src/cave-square.c	212	PORTED-AND-CITED	isfloor	core/src/world/chunk.ts
-engine	false	square_istrappable	reference/src/cave-square.c	220	PORTED-AND-CITED	cite:grid	core/src/game/effect-general.ts
+engine	false	square_isfloor	reference/src/cave-square.c	212	CANDIDATE-RENAMED	isfloor	core/src/world/chunk.ts
+engine	false	square_istrappable	reference/src/cave-square.c	220	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_isgranite	reference/src/cave-square.c	245	CANDIDATE-RENAMED	isgranite	core/src/world/chunk.ts
 engine	false	square_ismagma	reference/src/cave-square.c	262	CANDIDATE-RENAMED	ismagma	core/src/world/chunk.ts
 engine	false	square_isquartz	reference/src/cave-square.c	270	CANDIDATE-RENAMED	isquartz	core/src/world/chunk.ts
@@ -10,40 +10,40 @@ engine	false	square_isdoor	reference/src/cave-square.c	340	CANDIDATE-RENAMED	isd
 engine	false	square_isstairs	reference/src/cave-square.c	349	CANDIDATE-RENAMED	isstairs	core/src/world/chunk.ts
 engine	false	square_isupstairs	reference/src/cave-square.c	358	CANDIDATE-RENAMED	isupstairs	core/src/world/chunk.ts
 engine	false	square_isdownstairs	reference/src/cave-square.c	367	CANDIDATE-RENAMED	isdownstairs	core/src/world/chunk.ts
-engine	false	square_isoccupied	reference/src/cave-square.c	391	PORTED-AND-CITED	cite:occupied	core/src/game/project-feat.ts
-engine	false	square_ismark	reference/src/cave-square.c	424	PORTED-AND-CITED	cite:wizLightLevel	core/src/game/effect-terrain.ts
+engine	false	square_isoccupied	reference/src/cave-square.c	391	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_ismark	reference/src/cave-square.c	424	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_isglow	reference/src/cave-square.c	432	CANDIDATE-RENAMED	isglow	core/src/world/view.ts
-engine	false	square_wasseen	reference/src/cave-square.c	474	PORTED-AND-CITED	cite:if	core/src/world/view.ts
-engine	false	square_isfeel	reference/src/cave-square.c	482	PORTED-AND-CITED	cite:if	core/src/world/view.ts
-engine	false	square_isinvis	reference/src/cave-square.c	498	PORTED-AND-CITED	cite:if	core/src/game/display.ts
+engine	false	square_wasseen	reference/src/cave-square.c	474	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_isfeel	reference/src/cave-square.c	482	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_isinvis	reference/src/cave-square.c	498	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_iswall_inner	reference/src/cave-square.c	506	CANDIDATE-RENAMED	iswallinner	core/src/world/chunk.ts
 engine	false	square_iswall_solid	reference/src/cave-square.c	522	CANDIDATE-RENAMED	iswallsolid	core/src/world/chunk.ts
-engine	false	square_ismon_restrict	reference/src/cave-square.c	530	PORTED-AND-CITED	cite:placeFeeling	core/src/gen/generate.ts
-engine	false	square_isno_teleport	reference/src/cave-square.c	538	PORTED-AND-CITED	cite:if	core/src/game/effect-teleport.ts
-engine	false	square_isno_map	reference/src/cave-square.c	546	PORTED-AND-CITED	cite:if	core/src/game/effect-detect.ts
+engine	false	square_ismon_restrict	reference/src/cave-square.c	530	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_isno_teleport	reference/src/cave-square.c	538	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_isno_map	reference/src/cave-square.c	546	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_isproject	reference/src/cave-square.c	562	PORTED-AND-CITED	cite:if	core/src/world/project.ts
 engine	false	square_is_monster_walkable	reference/src/cave-square.c	655	CANDIDATE-RENAMED	ismonsterwalkable	core/src/world/chunk.ts
-engine	false	square_isnoflow	reference/src/cave-square.c	738	PORTED-AND-CITED	cite:featIsNoFlow	core/src/world/chunk.ts
-engine	false	square_isnoscent	reference/src/cave-square.c	746	PORTED-AND-CITED	cite:featIsNoScent	core/src/world/chunk.ts
+engine	false	square_isnoflow	reference/src/cave-square.c	738	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_isnoscent	reference/src/cave-square.c	746	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_isunlockeddoor	reference/src/cave-square.c	791	PORTED-AND-CITED	squareisunlockeddoor	core/src/game/cave-cmd.ts
-engine	false	square_issecrettrap	reference/src/cave-square.c	815	PORTED-AND-CITED	cite:if	core/src/game/trap.ts
+engine	false	square_issecrettrap	reference/src/cave-square.c	815	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_feat	reference/src/cave-square.c	969	CANDIDATE-RENAMED	feat	core/src/agent/perceive.ts
 engine	false	square_light	reference/src/cave-square.c	975	CANDIDATE-RENAMED	light	core/src/game/display.ts
-engine	false	square_excise_pile	reference/src/cave-square.c	1031	PORTED-AND-CITED	cite:for	core/src/game/effect-terrain.ts
+engine	false	square_excise_pile	reference/src/cave-square.c	1031	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_excise_all_imagined	reference/src/cave-square.c	1051	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_set_mon	reference/src/cave-square.c	1283	CANDIDATE-RENAMED	setmon	core/src/world/chunk.ts
-engine	false	square_set_obj	reference/src/cave-square.c	1291	PORTED-AND-CITED	cite:for	core/src/game/effect-terrain.ts
+engine	false	square_set_obj	reference/src/cave-square.c	1291	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_set_trap	reference/src/cave-square.c	1299	PORTED-AND-CITED	cite:installTrap	core/src/game/trap.ts
-engine	false	square_add_trap	reference/src/cave-square.c	1304	PORTED-AND-CITED	cite:placeTrap	core/src/game/project-feat.ts
-engine	false	square_add_web	reference/src/cave-square.c	1331	PORTED-AND-CITED	cite:placeTrap	core/src/game/effect-general.ts
-engine	false	square_add_door	reference/src/cave-square.c	1347	PORTED-AND-CITED	cite:for	core/src/game/project-feat.ts
-engine	false	square_close_door	reference/src/cave-square.c	1361	PORTED-AND-CITED	cite:noLight	core/src/game/cave-cmd.ts
-engine	false	square_unlock_door	reference/src/cave-square.c	1377	PORTED-AND-CITED	cite:lock	core/src/game/project-feat.ts
-engine	false	square_destroy_door	reference/src/cave-square.c	1382	PORTED-AND-CITED	cite:if	core/src/game/project-feat.ts
-engine	false	square_tunnel_wall	reference/src/cave-square.c	1414	PORTED-AND-CITED	cite:twall	core/src/game/cave-cmd.ts
-engine	false	square_destroy_rubble	reference/src/cave-square.c	1502	PORTED-AND-CITED	cite:if	core/src/game/project-feat.ts
-engine	false	square_force_floor	reference/src/cave-square.c	1507	PORTED-AND-CITED	cite:for	core/src/game/project-feat.ts
-engine	false	square_mark	reference/src/cave-square.c	1585	PORTED-AND-CITED	mark	web/src/options.ts
+engine	false	square_add_trap	reference/src/cave-square.c	1304	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_add_web	reference/src/cave-square.c	1331	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_add_door	reference/src/cave-square.c	1347	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_close_door	reference/src/cave-square.c	1361	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_unlock_door	reference/src/cave-square.c	1377	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_destroy_door	reference/src/cave-square.c	1382	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_tunnel_wall	reference/src/cave-square.c	1414	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_destroy_rubble	reference/src/cave-square.c	1502	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_force_floor	reference/src/cave-square.c	1507	AREA-WORKED-NO-CANDIDATE		
+engine	false	square_mark	reference/src/cave-square.c	1585	CANDIDATE-RENAMED	mark	web/src/options.ts
 engine	false	get_feat_code_name	reference/src/cave.c	336	AREA-WORKED-NO-CANDIDATE		
 engine	false	cave_connectors_free	reference/src/cave.c	381	AREA-WORKED-NO-CANDIDATE		
 engine	false	object_lists_check_integrity	reference/src/cave.c	503	AREA-WORKED-NO-CANDIDATE		
@@ -78,13 +78,13 @@ engine	false	do_cmd_wiz_collect_disconnect_stats	reference/src/cmd-wizard.c	585	
 engine	false	do_cmd_wiz_collect_obj_mon_stats	reference/src/cmd-wizard.c	622	AREA-WORKED-NO-CANDIDATE		
 engine	false	do_cmd_wiz_collect_pit_stats	reference/src/cmd-wizard.c	671	AREA-WORKED-NO-CANDIDATE		
 engine	false	do_cmd_wiz_quit_no_save	reference/src/cmd-wizard.c	2149	AREA-WORKED-NO-CANDIDATE		
-engine	false	run_parser	reference/src/datafile.c	45	PORTED-AND-CITED	cite:compileGamedata	content/src/records.ts
+engine	false	run_parser	reference/src/datafile.c	45	AREA-WORKED-NO-CANDIDATE		
 engine	false	parse_file_quit_not_found	reference/src/datafile.c	71	AREA-WORKED-NO-CANDIDATE		
-engine	false	parse_file	reference/src/datafile.c	87	PORTED-AND-CITED	cite:compileGamedata	content/src/records.ts
+engine	false	parse_file	reference/src/datafile.c	87	AREA-WORKED-NO-CANDIDATE		
 engine	false	cleanup_parser	reference/src/datafile.c	144	AREA-WORKED-NO-CANDIDATE		
-engine	false	lookup_flag	reference/src/datafile.c	149	PORTED-AND-CITED	cite:char	core/src/obj/bind.ts
+engine	false	lookup_flag	reference/src/datafile.c	149	AREA-WORKED-NO-CANDIDATE		
 engine	false	grab_base_and_int	reference/src/datafile.c	410	AREA-WORKED-NO-CANDIDATE		
-engine	false	grab_name	reference/src/datafile.c	433	PORTED-AND-CITED	cite:t	core/src/obj/bind.ts
+engine	false	grab_name	reference/src/datafile.c	433	AREA-WORKED-NO-CANDIDATE		
 engine	false	write_flags	reference/src/datafile.c	482	AREA-WORKED-NO-CANDIDATE		
 engine	false	write_mods	reference/src/datafile.c	520	AREA-WORKED-NO-CANDIDATE		
 engine	false	write_elements	reference/src/datafile.c	569	AREA-WORKED-NO-CANDIDATE		
@@ -93,98 +93,98 @@ engine	false	file_archive	reference/src/datafile.c	626	AREA-WORKED-NO-CANDIDATE
 engine	false	randart_file_exists	reference/src/datafile.c	658	AREA-WORKED-NO-CANDIDATE		
 engine	false	activate_randart_file	reference/src/datafile.c	673	AREA-WORKED-NO-CANDIDATE		
 engine	false	deactivate_randart_file	reference/src/datafile.c	692	AREA-WORKED-NO-CANDIDATE		
-engine	false	effect_handler_BOLT_OR_BEAM	reference/src/effect-handler-attack.c	158	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
-engine	false	effect_handler_HEAL_HP	reference/src/effect-handler-attack.c	201	PORTED-AND-CITED	cite:PARTIAL	core/src/effects/handlers.ts
-engine	false	effect_handler_MON_HEAL_HP	reference/src/effect-handler-attack.c	254	PORTED-AND-CITED	cite:registerMonsterHandlers	core/src/game/effect-monster.ts
-engine	false	effect_handler_MON_HEAL_KIN	reference/src/effect-handler-attack.c	311	PORTED-AND-CITED	cite:registerMonsterHandlers	core/src/game/effect-monster.ts
-engine	false	effect_handler_BOLT_STATUS	reference/src/effect-handler-attack.c	368	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
-engine	false	effect_handler_BOLT_STATUS_DAM	reference/src/effect-handler-attack.c	383	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
-engine	false	effect_handler_BOLT_AWARE	reference/src/effect-handler-attack.c	398	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
-engine	false	effect_handler_TOUCH_AWARE	reference/src/effect-handler-attack.c	446	PORTED-AND-CITED	cite:registerAttackHandlers	core/src/game/effect-attack.ts
+engine	false	effect_handler_BOLT_OR_BEAM	reference/src/effect-handler-attack.c	158	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_HEAL_HP	reference/src/effect-handler-attack.c	201	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_MON_HEAL_HP	reference/src/effect-handler-attack.c	254	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_MON_HEAL_KIN	reference/src/effect-handler-attack.c	311	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_BOLT_STATUS	reference/src/effect-handler-attack.c	368	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_BOLT_STATUS_DAM	reference/src/effect-handler-attack.c	383	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_BOLT_AWARE	reference/src/effect-handler-attack.c	398	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_TOUCH_AWARE	reference/src/effect-handler-attack.c	446	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_DAMAGE	reference/src/effect-handler-attack.c	458	CANDIDATE-RENAMED	damage	core/src/combat/mon-melee.ts
-engine	false	effect_handler_PROJECT_LOS_AWARE	reference/src/effect-handler-attack.c	1125	PORTED-AND-CITED	cite:registerAttackHandlers	core/src/game/effect-attack.ts
-engine	false	effect_handler_DESTRUCTION	reference/src/effect-handler-attack.c	1169	PORTED-AND-CITED	cite:registerTerrainHandlers	core/src/game/effect-terrain.ts
+engine	false	effect_handler_PROJECT_LOS_AWARE	reference/src/effect-handler-attack.c	1125	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DESTRUCTION	reference/src/effect-handler-attack.c	1169	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_EARTHQUAKE	reference/src/effect-handler-attack.c	1290	CANDIDATE-RENAMED	earthquake	core/src/combat/mon-melee.ts
-engine	false	effect_handler_TAP_UNLIFE	reference/src/effect-handler-attack.c	1615	PORTED-AND-CITED	cite:registerMeleeHandlers	core/src/game/effect-melee.ts
+engine	false	effect_handler_TAP_UNLIFE	reference/src/effect-handler-attack.c	1615	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_CURSE	reference/src/effect-handler-attack.c	1665	CANDIDATE-RENAMED	curse	core/src/agent/perceive.ts
-engine	false	effect_handler_JUMP_AND_BITE	reference/src/effect-handler-attack.c	1710	PORTED-AND-CITED	cite:registerMeleeHandlers	core/src/game/effect-melee.ts
-engine	false	effect_handler_MOVE_ATTACK	reference/src/effect-handler-attack.c	1785	PORTED-AND-CITED	cite:registerMeleeHandlers	core/src/game/effect-melee.ts
-engine	false	effect_handler_SINGLE_COMBAT	reference/src/effect-handler-attack.c	1857	PORTED-AND-CITED	cite:registerMeleeHandlers	core/src/game/effect-melee.ts
-engine	false	effect_handler_MELEE_BLOWS	reference/src/effect-handler-attack.c	1907	PORTED-AND-CITED	cite:registerMeleeHandlers	core/src/game/effect-melee.ts
+engine	false	effect_handler_JUMP_AND_BITE	reference/src/effect-handler-attack.c	1710	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_MOVE_ATTACK	reference/src/effect-handler-attack.c	1785	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_SINGLE_COMBAT	reference/src/effect-handler-attack.c	1857	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_MELEE_BLOWS	reference/src/effect-handler-attack.c	1907	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_SWEEP	reference/src/effect-handler-attack.c	1955	CANDIDATE-RENAMED	sweep	cli/src/stats.ts
 engine	false	effect_handler_RANDOM	reference/src/effect-handler-general.c	493	CANDIDATE-RENAMED	random	core/src/gen/gen-monster.ts
-engine	false	effect_handler_NOURISH	reference/src/effect-handler-general.c	501	PORTED-AND-CITED	cite:PARTIAL	core/src/effects/handlers.ts
-engine	false	effect_handler_CRUNCH	reference/src/effect-handler-general.c	536	PORTED-AND-CITED	cite:PARTIAL	core/src/effects/handlers.ts
-engine	false	effect_handler_CURE	reference/src/effect-handler-general.c	549	PORTED-AND-CITED	cite:PARTIAL	core/src/effects/handlers.ts
-engine	false	effect_handler_TIMED_SET	reference/src/effect-handler-general.c	561	PORTED-AND-CITED	cite:PARTIAL	core/src/effects/handlers.ts
-engine	false	effect_handler_TIMED_INC	reference/src/effect-handler-general.c	576	PORTED-AND-CITED	cite:registerGeneralHandlers	core/src/game/effect-general.ts
-engine	false	effect_handler_TIMED_INC_NO_RES	reference/src/effect-handler-general.c	647	PORTED-AND-CITED	cite:PARTIAL	core/src/effects/handlers.ts
-engine	false	effect_handler_MON_TIMED_INC	reference/src/effect-handler-general.c	667	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
-engine	false	effect_handler_TIMED_DEC	reference/src/effect-handler-general.c	686	PORTED-AND-CITED	cite:PARTIAL	core/src/effects/handlers.ts
+engine	false	effect_handler_NOURISH	reference/src/effect-handler-general.c	501	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_CRUNCH	reference/src/effect-handler-general.c	536	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_CURE	reference/src/effect-handler-general.c	549	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_TIMED_SET	reference/src/effect-handler-general.c	561	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_TIMED_INC	reference/src/effect-handler-general.c	576	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_TIMED_INC_NO_RES	reference/src/effect-handler-general.c	647	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_MON_TIMED_INC	reference/src/effect-handler-general.c	667	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_TIMED_DEC	reference/src/effect-handler-general.c	686	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_GLYPH	reference/src/effect-handler-general.c	700	CANDIDATE-RENAMED	glyph	core/src/game/effect-monster.ts
-engine	false	effect_handler_WEB	reference/src/effect-handler-general.c	732	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
-engine	false	effect_handler_RESTORE_STAT	reference/src/effect-handler-general.c	773	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
+engine	false	effect_handler_WEB	reference/src/effect-handler-general.c	732	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_RESTORE_STAT	reference/src/effect-handler-general.c	773	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_DRAIN_STAT	reference/src/effect-handler-general.c	803	CANDIDATE-RENAMED	drainstat	core/src/combat/mon-melee.ts
-engine	false	effect_handler_LOSE_RANDOM_STAT	reference/src/effect-handler-general.c	852	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
-engine	false	effect_handler_GAIN_STAT	reference/src/effect-handler-general.c	875	PORTED-AND-CITED	cite:registerGeneralHandlers	core/src/game/effect-general.ts
-engine	false	effect_handler_RESTORE_EXP	reference/src/effect-handler-general.c	893	PORTED-AND-CITED	cite:registerGeneralHandlers	core/src/game/effect-general.ts
-engine	false	effect_handler_GAIN_EXP	reference/src/effect-handler-general.c	913	PORTED-AND-CITED	cite:registerGeneralHandlers	core/src/game/effect-general.ts
-engine	false	effect_handler_DRAIN_LIGHT	reference/src/effect-handler-general.c	928	PORTED-AND-CITED	cite:registerGeneralHandlers	core/src/game/effect-general.ts
-engine	false	effect_handler_DRAIN_MANA	reference/src/effect-handler-general.c	956	PORTED-AND-CITED	cite:registerGeneralHandlers	core/src/game/effect-general.ts
+engine	false	effect_handler_LOSE_RANDOM_STAT	reference/src/effect-handler-general.c	852	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_GAIN_STAT	reference/src/effect-handler-general.c	875	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_RESTORE_EXP	reference/src/effect-handler-general.c	893	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_GAIN_EXP	reference/src/effect-handler-general.c	913	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DRAIN_LIGHT	reference/src/effect-handler-general.c	928	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DRAIN_MANA	reference/src/effect-handler-general.c	956	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_RESTORE_MANA	reference/src/effect-handler-general.c	1029	CANDIDATE-RENAMED	restoremana	core/src/game/effect-melee.ts
 engine	false	effect_handler_RECALL	reference/src/effect-handler-general.c	1093	CANDIDATE-RENAMED	recall	web/src/knowledge.ts
-engine	false	effect_handler_DEEP_DESCENT	reference/src/effect-handler-general.c	1163	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
-engine	false	effect_handler_ALTER_REALITY	reference/src/effect-handler-general.c	1184	PORTED-AND-CITED	cite:registerTeleportHandlers	core/src/game/effect-teleport.ts
+engine	false	effect_handler_DEEP_DESCENT	reference/src/effect-handler-general.c	1163	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_ALTER_REALITY	reference/src/effect-handler-general.c	1184	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_MAP_AREA	reference/src/effect-handler-general.c	1201	CANDIDATE-RENAMED	maparea	core/src/game/effect-detect.ts
-engine	false	effect_handler_READ_MINDS	reference/src/effect-handler-general.c	1286	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_TRAPS	reference/src/effect-handler-general.c	1321	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_DOORS	reference/src/effect-handler-general.c	1398	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_STAIRS	reference/src/effect-handler-general.c	1467	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_ORE	reference/src/effect-handler-general.c	1519	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_SENSE_GOLD	reference/src/effect-handler-general.c	1682	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_GOLD	reference/src/effect-handler-general.c	1699	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_SENSE_OBJECTS	reference/src/effect-handler-general.c	1725	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_OBJECTS	reference/src/effect-handler-general.c	1746	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_LIVING_MONSTERS	reference/src/effect-handler-general.c	1833	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_VISIBLE_MONSTERS	reference/src/effect-handler-general.c	1854	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_INVISIBLE_MONSTERS	reference/src/effect-handler-general.c	1874	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_FEARFUL_MONSTERS	reference/src/effect-handler-general.c	1893	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_EVIL	reference/src/effect-handler-general.c	1911	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_DETECT_SOUL	reference/src/effect-handler-general.c	1929	PORTED-AND-CITED	cite:monsterDetector	core/src/game/effect-detect.ts
-engine	false	effect_handler_IDENTIFY	reference/src/effect-handler-general.c	1945	PORTED-AND-CITED	cite:registerItemHandlers	core/src/game/effect-item.ts
-engine	false	effect_handler_CREATE_STAIRS	reference/src/effect-handler-general.c	1975	PORTED-AND-CITED	cite:registerTerrainHandlers	core/src/game/effect-terrain.ts
+engine	false	effect_handler_READ_MINDS	reference/src/effect-handler-general.c	1286	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_TRAPS	reference/src/effect-handler-general.c	1321	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_DOORS	reference/src/effect-handler-general.c	1398	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_STAIRS	reference/src/effect-handler-general.c	1467	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_ORE	reference/src/effect-handler-general.c	1519	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_SENSE_GOLD	reference/src/effect-handler-general.c	1682	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_GOLD	reference/src/effect-handler-general.c	1699	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_SENSE_OBJECTS	reference/src/effect-handler-general.c	1725	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_OBJECTS	reference/src/effect-handler-general.c	1746	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_LIVING_MONSTERS	reference/src/effect-handler-general.c	1833	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_VISIBLE_MONSTERS	reference/src/effect-handler-general.c	1854	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_INVISIBLE_MONSTERS	reference/src/effect-handler-general.c	1874	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_FEARFUL_MONSTERS	reference/src/effect-handler-general.c	1893	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_EVIL	reference/src/effect-handler-general.c	1911	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DETECT_SOUL	reference/src/effect-handler-general.c	1929	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_IDENTIFY	reference/src/effect-handler-general.c	1945	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_CREATE_STAIRS	reference/src/effect-handler-general.c	1975	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_DISENCHANT	reference/src/effect-handler-general.c	2003	CANDIDATE-RENAMED	disenchant	core/src/combat/mon-melee.ts
 engine	false	effect_handler_ENCHANT	reference/src/effect-handler-general.c	2095	CANDIDATE-RENAMED	enchant	core/src/game/effect-item.ts
-engine	false	effect_handler_RECHARGE	reference/src/effect-handler-general.c	2127	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
-engine	false	effect_handler_ACQUIRE	reference/src/effect-handler-general.c	2194	PORTED-AND-CITED	cite:registerItemHandlers	core/src/game/effect-item.ts
+engine	false	effect_handler_RECHARGE	reference/src/effect-handler-general.c	2127	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_ACQUIRE	reference/src/effect-handler-general.c	2194	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_WAKE	reference/src/effect-handler-general.c	2205	CANDIDATE-RENAMED	wake	core/src/mon/steal.ts
-engine	false	effect_handler_BANISH	reference/src/effect-handler-general.c	2337	PORTED-AND-CITED	cite:registerMonsterHandlers	core/src/game/effect-monster.ts
-engine	false	effect_handler_MASS_BANISH	reference/src/effect-handler-general.c	2401	PORTED-AND-CITED	cite:registerMonsterHandlers	core/src/game/effect-monster.ts
+engine	false	effect_handler_BANISH	reference/src/effect-handler-general.c	2337	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_MASS_BANISH	reference/src/effect-handler-general.c	2401	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_PROBE	reference/src/effect-handler-general.c	2451	CANDIDATE-RENAMED	probe	core/src/game/effect-general.ts
 engine	false	effect_handler_TELEPORT	reference/src/effect-handler-general.c	2507	CANDIDATE-RENAMED	teleport	core/src/session/game.ts
-engine	false	effect_handler_TELEPORT_TO	reference/src/effect-handler-general.c	2703	PORTED-AND-CITED	cite:registerTeleportHandlers	core/src/game/effect-teleport.ts
-engine	false	effect_handler_TELEPORT_LEVEL	reference/src/effect-handler-general.c	2834	PORTED-AND-CITED	cite:registerTeleportHandlers	core/src/game/effect-teleport.ts
+engine	false	effect_handler_TELEPORT_TO	reference/src/effect-handler-general.c	2703	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_TELEPORT_LEVEL	reference/src/effect-handler-general.c	2834	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_RUBBLE	reference/src/effect-handler-general.c	2939	CANDIDATE-RENAMED	rubble	core/src/game/cave-cmd.ts
 engine	false	effect_handler_GRANITE	reference/src/effect-handler-general.c	2991	CANDIDATE-RENAMED	granite	core/src/game/harness.ts
-engine	false	effect_handler_LIGHT_LEVEL	reference/src/effect-handler-general.c	3003	PORTED-AND-CITED	cite:registerTerrainHandlers	core/src/game/effect-terrain.ts
-engine	false	effect_handler_DARKEN_LEVEL	reference/src/effect-handler-general.c	3013	PORTED-AND-CITED	cite:registerTerrainHandlers	core/src/game/effect-terrain.ts
-engine	false	effect_handler_LIGHT_AREA	reference/src/effect-handler-general.c	3026	PORTED-AND-CITED	cite:registerTerrainHandlers	core/src/game/effect-terrain.ts
-engine	false	effect_handler_DARKEN_AREA	reference/src/effect-handler-general.c	3044	PORTED-AND-CITED	cite:registerTerrainHandlers	core/src/game/effect-terrain.ts
-engine	false	effect_handler_CURSE_ARMOR	reference/src/effect-handler-general.c	3103	PORTED-AND-CITED	cite:registerItemHandlers	core/src/game/effect-item.ts
-engine	false	effect_handler_CURSE_WEAPON	reference/src/effect-handler-general.c	3167	PORTED-AND-CITED	cite:registerItemHandlers	core/src/game/effect-item.ts
-engine	false	effect_handler_BRAND_WEAPON	reference/src/effect-handler-general.c	3233	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
-engine	false	effect_handler_BRAND_AMMO	reference/src/effect-handler-general.c	3251	PORTED-AND-CITED	cite:registerItemHandlers	core/src/game/effect-item.ts
-engine	false	effect_handler_BRAND_BOLTS	reference/src/effect-handler-general.c	3284	PORTED-AND-CITED	cite:registerItemHandlers	core/src/game/effect-item.ts
-engine	false	effect_handler_CREATE_ARROWS	reference/src/effect-handler-general.c	3315	PORTED-AND-CITED	cite:registerItemHandlers	core/src/game/effect-item.ts
-engine	false	effect_handler_TAP_DEVICE	reference/src/effect-handler-general.c	3370	PORTED-AND-CITED	cite:registerItemHandlers	core/src/game/effect-item.ts
-engine	false	effect_handler_SHAPECHANGE	reference/src/effect-handler-general.c	3449	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
+engine	false	effect_handler_LIGHT_LEVEL	reference/src/effect-handler-general.c	3003	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DARKEN_LEVEL	reference/src/effect-handler-general.c	3013	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_LIGHT_AREA	reference/src/effect-handler-general.c	3026	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_DARKEN_AREA	reference/src/effect-handler-general.c	3044	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_CURSE_ARMOR	reference/src/effect-handler-general.c	3103	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_CURSE_WEAPON	reference/src/effect-handler-general.c	3167	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_BRAND_WEAPON	reference/src/effect-handler-general.c	3233	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_BRAND_AMMO	reference/src/effect-handler-general.c	3251	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_BRAND_BOLTS	reference/src/effect-handler-general.c	3284	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_CREATE_ARROWS	reference/src/effect-handler-general.c	3315	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_TAP_DEVICE	reference/src/effect-handler-general.c	3370	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_SHAPECHANGE	reference/src/effect-handler-general.c	3449	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_COMMAND	reference/src/effect-handler-general.c	3479	CANDIDATE-RENAMED	command	core/src/cmd.ts
-engine	false	effect_handler_BIZARRE	reference/src/effect-handler-general.c	3516	GUARD-PROVEN	registry-entry	core/src/game/effect-coverage.test.ts
-engine	false	effect_handler_SELECT	reference/src/effect-handler-general.c	3601	PORTED-AND-CITED	select	borg/src/world/model.ts
+engine	false	effect_handler_BIZARRE	reference/src/effect-handler-general.c	3516	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_SELECT	reference/src/effect-handler-general.c	3601	CANDIDATE-RENAMED	select	borg/src/world/model.ts
 engine	false	effect_handler_SET_VALUE	reference/src/effect-handler-general.c	3613	CANDIDATE-RENAMED	setvalue	core/src/mod/registry-host.ts
-engine	false	effect_handler_CLEAR_VALUE	reference/src/effect-handler-general.c	3623	PORTED-AND-CITED	cite:PARTIAL	core/src/effects/handlers.ts
-engine	false	effect_handler_SCRAMBLE_STATS	reference/src/effect-handler-general.c	3634	PORTED-AND-CITED	cite:registerGeneralHandlers	core/src/game/effect-general.ts
-engine	false	effect_handler_UNSCRAMBLE_STATS	reference/src/effect-handler-general.c	3646	PORTED-AND-CITED	cite:registerGeneralHandlers	core/src/game/effect-general.ts
+engine	false	effect_handler_CLEAR_VALUE	reference/src/effect-handler-general.c	3623	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_SCRAMBLE_STATS	reference/src/effect-handler-general.c	3634	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_UNSCRAMBLE_STATS	reference/src/effect-handler-general.c	3646	AREA-WORKED-NO-CANDIDATE		
 engine	false	free_effect	reference/src/effects.c	68	AREA-WORKED-NO-CANDIDATE		
 engine	false	event_signal_flag	reference/src/game-event.c	145	AREA-WORKED-NO-CANDIDATE		
 engine	false	event_signal_point	reference/src/game-event.c	154	PORTED-AND-CITED	cite:emit	core/src/events.ts
@@ -227,21 +227,21 @@ engine	false	get_level_profile_name_from_index	reference/src/generate.c	1612	ARE
 engine	false	init_graphics_modes	reference/src/grafmode.c	175	AREA-WORKED-NO-CANDIDATE		
 engine	false	close_graphics_modes	reference/src/grafmode.c	216	AREA-WORKED-NO-CANDIDATE		
 engine	false	guid_eq	reference/src/guid.c	22	NO-TRACE		
-engine	false	rd_options	reference/src/load.c	424	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	rd_object_memory	reference/src/load.c	548	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	rd_quests	reference/src/load.c	623	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
+engine	false	rd_options	reference/src/load.c	424	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_object_memory	reference/src/load.c	548	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_quests	reference/src/load.c	623	AREA-WORKED-NO-CANDIDATE		
 engine	false	rd_player	reference/src/load.c	651	CANDIDATE-RENAMED	deserializeplayer	core/src/session/save.ts
-engine	false	rd_ignore	reference/src/load.c	846	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	rd_misc	reference/src/load.c	951	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	rd_artifacts	reference/src/load.c	1036	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	rd_player_hp	reference/src/load.c	1066	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	rd_player_spells	reference/src/load.c	1089	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
+engine	false	rd_ignore	reference/src/load.c	846	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_misc	reference/src/load.c	951	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_artifacts	reference/src/load.c	1036	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_player_hp	reference/src/load.c	1066	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_player_spells	reference/src/load.c	1089	AREA-WORKED-NO-CANDIDATE		
 engine	false	rd_gear	reference/src/load.c	1167	CANDIDATE-RENAMED	deserializegear	core/src/session/save.ts
-engine	false	rd_dungeon	reference/src/load.c	1508	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	rd_objects	reference/src/load.c	1562	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	rd_monsters	reference/src/load.c	1575	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	rd_chunks	reference/src/load.c	1623	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	rd_history	reference/src/load.c	1715	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
+engine	false	rd_dungeon	reference/src/load.c	1508	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_objects	reference/src/load.c	1562	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_monsters	reference/src/load.c	1575	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_chunks	reference/src/load.c	1623	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_history	reference/src/load.c	1715	AREA-WORKED-NO-CANDIDATE		
 engine	false	rd_null	reference/src/load.c	1766	AREA-WORKED-NO-CANDIDATE		
 engine	false	VblankHandler	reference/src/main-nds-arm7.c	35	NO-TRACE		
 engine	false	powerButtonCB	reference/src/main-nds-arm7.c	44	NO-TRACE		
@@ -276,8 +276,8 @@ engine	false	object_base_name	reference/src/obj-desc.c	31	CANDIDATE-RENAMED	base
 engine	false	slot_type_is	reference/src/obj-gear.c	103	AREA-WORKED-NO-CANDIDATE		
 engine	false	object_slot	reference/src/obj-gear.c	137	CANDIDATE-RENAMED	slot	core/src/game/effect-general.ts
 engine	false	equip_describe	reference/src/obj-gear.c	320	PORTED-AND-CITED	equipdescribe	core/src/game/obj-cmd.ts
-engine	false	pack_is_full	reference/src/obj-gear.c	1328	PORTED-AND-CITED	packisfull	core/src/game/gear.ts
-engine	false	pack_is_overfull	reference/src/obj-gear.c	1337	PORTED-AND-CITED	packisoverfull	core/src/game/gear.ts
+engine	false	pack_is_full	reference/src/obj-gear.c	1328	AREA-WORKED-NO-CANDIDATE		
+engine	false	pack_is_overfull	reference/src/obj-gear.c	1337	AREA-WORKED-NO-CANDIDATE		
 engine	false	ignore_birth_init	reference/src/obj-ignore.c	143	AREA-WORKED-NO-CANDIDATE		
 engine	false	rune_autoinscribe	reference/src/obj-ignore.c	193	AREA-WORKED-NO-CANDIDATE		
 engine	false	autoinscribe_ground	reference/src/obj-ignore.c	340	AREA-WORKED-NO-CANDIDATE		
@@ -335,7 +335,7 @@ engine	false	parser_getstr	reference/src/parser.c	585	AREA-WORKED-NO-CANDIDATE
 engine	false	parser_getchar	reference/src/parser.c	603	AREA-WORKED-NO-CANDIDATE		
 engine	false	parser_getstate	reference/src/parser.c	613	AREA-WORKED-NO-CANDIDATE		
 engine	false	parser_setstate	reference/src/parser.c	624	AREA-WORKED-NO-CANDIDATE		
-engine	false	get_parser_error_limit	reference/src/parser.c	637	PORTED-AND-CITED	cite:compileGamedata	content/src/records.ts
+engine	false	get_parser_error_limit	reference/src/parser.c	637	AREA-WORKED-NO-CANDIDATE		
 engine	false	player_make_simple	reference/src/player-birth.c	522	AREA-WORKED-NO-CANDIDATE		
 engine	false	do_cmd_birth_reset	reference/src/player-birth.c	1086	AREA-WORKED-NO-CANDIDATE		
 engine	false	do_cmd_choose_class	reference/src/player-birth.c	1105	AREA-WORKED-NO-CANDIDATE		
@@ -373,22 +373,22 @@ engine	false	player_random_name	reference/src/player.c	375	AREA-WORKED-NO-CANDID
 engine	false	player_cleanup_members	reference/src/player.c	430	AREA-WORKED-NO-CANDIDATE		
 engine	false	proj_idx_to_name	reference/src/project.c	71	AREA-WORKED-NO-CANDIDATE		
 engine	false	save_charoutput	reference/src/save-charoutput.c	25	NO-TRACE		
-engine	false	wr_description	reference/src/save.c	49	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_options	reference/src/save.c	314	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_monster_memory	reference/src/save.c	356	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_object_memory	reference/src/save.c	377	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_quests	reference/src/save.c	405	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_ignore	reference/src/save.c	514	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_misc	reference/src/save.c	610	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_artifacts	reference/src/save.c	674	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_player_hp	reference/src/save.c	692	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_player_spells	reference/src/save.c	702	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_gear	reference/src/save.c	737	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_dungeon	reference/src/save.c	959	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_objects	reference/src/save.c	980	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_monsters	reference/src/save.c	986	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_traps	reference/src/save.c	992	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	false	wr_history	reference/src/save.c	1048	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
+engine	false	wr_description	reference/src/save.c	49	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_options	reference/src/save.c	314	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_monster_memory	reference/src/save.c	356	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_object_memory	reference/src/save.c	377	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_quests	reference/src/save.c	405	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_ignore	reference/src/save.c	514	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_misc	reference/src/save.c	610	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_artifacts	reference/src/save.c	674	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_player_hp	reference/src/save.c	692	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_player_spells	reference/src/save.c	702	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_gear	reference/src/save.c	737	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_dungeon	reference/src/save.c	959	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_objects	reference/src/save.c	980	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_monsters	reference/src/save.c	986	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_traps	reference/src/save.c	992	AREA-WORKED-NO-CANDIDATE		
+engine	false	wr_history	reference/src/save.c	1048	AREA-WORKED-NO-CANDIDATE		
 engine	false	savefile_save	reference/src/savefile.c	384	AREA-WORKED-NO-CANDIDATE		
 engine	false	savefile_get_description	reference/src/savefile.c	598	AREA-WORKED-NO-CANDIDATE		
 engine	false	savefile_get_panic_name	reference/src/savefile.c	671	AREA-WORKED-NO-CANDIDATE		
@@ -461,12 +461,12 @@ ui	false	inkey_m	reference/src/ui-input.c	357	AREA-WORKED-NO-CANDIDATE
 ui	false	bell_message	reference/src/ui-input.c	600	AREA-WORKED-NO-CANDIDATE		
 ui	false	message_flush	reference/src/ui-input.c	612	AREA-WORKED-NO-CANDIDATE		
 ui	false	clear_from	reference/src/ui-input.c	644	AREA-WORKED-NO-CANDIDATE		
-ui	false	askfor_aux_keypress	reference/src/ui-input.c	662	PORTED-AND-CITED	askforauxkeypress	web/src/overlay.ts
+ui	false	askfor_aux_keypress	reference/src/ui-input.c	662	PORTED-AND-CITED	cite:promptText	web/src/overlay.ts
 ui	false	askfor_aux_mouse	reference/src/ui-input.c	831	AREA-WORKED-NO-CANDIDATE		
-ui	false	askfor_aux	reference/src/ui-input.c	860	PORTED-AND-CITED	cite:LineEdit	web/src/overlay.ts
+ui	false	askfor_aux	reference/src/ui-input.c	860	PORTED-AND-CITED	cite:promptText	web/src/overlay.ts
 ui	false	askfor_aux_ext	reference/src/ui-input.c	949	AREA-WORKED-NO-CANDIDATE		
 ui	false	get_character_name	reference/src/ui-input.c	1145	AREA-WORKED-NO-CANDIDATE		
-ui	false	get_char	reference/src/ui-input.c	1300	CANDIDATE-RENAMED	char	core/src/obj/bind.ts
+ui	false	get_char	reference/src/ui-input.c	1300	CANDIDATE-RENAMED	char	web/src/shop.ts
 ui	false	pause_line	reference/src/ui-input.c	1452	AREA-WORKED-NO-CANDIDATE		
 ui	false	textui_input_init	reference/src/ui-input.c	1789	AREA-WORKED-NO-CANDIDATE		
 ui	false	key_confirm_command	reference/src/ui-input.c	1995	AREA-WORKED-NO-CANDIDATE		
@@ -692,7 +692,7 @@ zlib	false	utf8_rskip	reference/src/z-util.c	149	AREA-WORKED-NO-CANDIDATE
 zlib	false	utf32_to_utf8	reference/src/z-util.c	182	AREA-WORKED-NO-CANDIDATE		
 zlib	false	utf32_isprint	reference/src/z-util.c	268	AREA-WORKED-NO-CANDIDATE		
 zlib	false	my_strnicmp	reference/src/z-util.c	418	AREA-WORKED-NO-CANDIDATE		
-zlib	false	my_stristr	reference/src/z-util.c	441	PORTED-AND-CITED	mystristr	core/src/guard.ts
+zlib	false	my_stristr	reference/src/z-util.c	441	PORTED-AND-CITED	cite:stristr	borg/src/perceive-facts.ts
 zlib	false	my_strcat	reference/src/z-util.c	512	AREA-WORKED-NO-CANDIDATE		
 zlib	false	suffix_i	reference/src/z-util.c	565	AREA-WORKED-NO-CANDIDATE		
 zlib	false	prefix_i	reference/src/z-util.c	598	PORTED-AND-CITED	prefixi	borg/src/perceive-facts.ts
@@ -717,8 +717,8 @@ zlib	false	mem_realloc	reference/src/z-virt.c	57	NO-TRACE
 zlib	false	string_make	reference/src/z-virt.c	73	NO-TRACE		
 zlib	false	string_free	reference/src/z-virt.c	91	NO-TRACE		
 engine	true	cave_room_aux	reference/src/cave-map.c	354	AREA-WORKED-NO-CANDIDATE		
-engine	true	forget_remembered_objects	reference/src/cave-square.c	1106	PORTED-AND-CITED	cite:and	core/src/game/known.ts
-engine	true	square_set_known_feat	reference/src/cave-square.c	1274	PORTED-AND-CITED	cite:squareForget	core/src/game/known.ts
+engine	true	forget_remembered_objects	reference/src/cave-square.c	1106	AREA-WORKED-NO-CANDIDATE		
+engine	true	square_set_known_feat	reference/src/cave-square.c	1274	AREA-WORKED-NO-CANDIDATE		
 engine	true	do_cmd_close_aux	reference/src/cmd-cave.c	368	CANDIDATE-RENAMED	closeaux	core/src/game/cave-cmd.ts
 engine	true	get_int_from_string	reference/src/cmd-wizard.c	67	AREA-WORKED-NO-CANDIDATE		
 engine	true	get_long_from_string	reference/src/cmd-wizard.c	95	AREA-WORKED-NO-CANDIDATE		
@@ -730,8 +730,8 @@ engine	true	wiz_hack_map_peek_scent	reference/src/cmd-wizard.c	1460	AREA-WORKED-
 engine	true	wiz_hack_map_query_feature	reference/src/cmd-wizard.c	1901	AREA-WORKED-NO-CANDIDATE		
 engine	true	wiz_hack_map_query_square_flag	reference/src/cmd-wizard.c	2082	AREA-WORKED-NO-CANDIDATE		
 engine	true	to_stderr	reference/src/debug.c	30	AREA-WORKED-NO-CANDIDATE		
-engine	true	enchant2	reference/src/effect-handler-general.c	294	PORTED-AND-CITED	cite:if	core/src/game/effect-item.ts
-engine	true	tval_is_not_money	reference/src/effect-handler-general.c	1717	PORTED-AND-CITED	cite:isNotMoney	core/src/game/effect-detect.ts
+engine	true	enchant2	reference/src/effect-handler-general.c	294	AREA-WORKED-NO-CANDIDATE		
+engine	true	tval_is_not_money	reference/src/effect-handler-general.c	1717	AREA-WORKED-NO-CANDIDATE		
 engine	true	add_to_summaries	reference/src/effects-info.c	847	AREA-WORKED-NO-CANDIDATE		
 engine	true	effect_value_base_spell_power	reference/src/effects.c	279	AREA-WORKED-NO-CANDIDATE		
 engine	true	effect_value_base_player_level	reference/src/effects.c	293	AREA-WORKED-NO-CANDIDATE		
@@ -797,14 +797,14 @@ engine	true	parse_graf_pref	reference/src/grafmode.c	72	AREA-WORKED-NO-CANDIDATE
 engine	true	parse_graf_extra	reference/src/grafmode.c	81	AREA-WORKED-NO-CANDIDATE		
 engine	true	init_parse_grafmode	reference/src/grafmode.c	92	PORTED-AND-CITED	cite:here	core/scripts/gen-grafmode.mjs
 engine	true	print_error	reference/src/grafmode.c	167	AREA-WORKED-NO-CANDIDATE		
-engine	true	rd_item	reference/src/load.c	99	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
+engine	true	rd_item	reference/src/load.c	99	AREA-WORKED-NO-CANDIDATE		
 engine	true	rd_monster	reference/src/load.c	259	PORTED-AND-CITED	deserializemonster	core/src/session/save.ts
 engine	true	rd_trap	reference/src/load.c	359	PORTED-AND-CITED	deserializetrap	core/src/session/save.ts
-engine	true	rd_gear_aux	reference/src/load.c	1124	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
+engine	true	rd_gear_aux	reference/src/load.c	1124	AREA-WORKED-NO-CANDIDATE		
 engine	true	rd_stores_aux	reference/src/load.c	1196	AREA-WORKED-NO-CANDIDATE		
-engine	true	rd_dungeon_aux	reference/src/load.c	1287	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	true	rd_objects_aux	reference/src/load.c	1394	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	true	rd_monsters_aux	reference/src/load.c	1432	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
+engine	true	rd_dungeon_aux	reference/src/load.c	1287	AREA-WORKED-NO-CANDIDATE		
+engine	true	rd_objects_aux	reference/src/load.c	1394	AREA-WORKED-NO-CANDIDATE		
+engine	true	rd_monsters_aux	reference/src/load.c	1432	AREA-WORKED-NO-CANDIDATE		
 engine	true	rd_traps_aux	reference/src/load.c	1473	PORTED-AND-CITED	cite:here	core/src/session/save.ts
 engine	true	copy_file	reference/src/main-spoil.c	64	NO-TRACE		
 engine	true	parse_seed	reference/src/main-spoil.c	109	NO-TRACE		
@@ -958,7 +958,7 @@ engine	true	parse_chest_trap_msg_death	reference/src/obj-chest.c	233	AREA-WORKED
 engine	true	run_parse_chest_trap	reference/src/obj-chest.c	258	AREA-WORKED-NO-CANDIDATE		
 engine	true	finish_parse_chest_trap	reference/src/obj-chest.c	262	AREA-WORKED-NO-CANDIDATE		
 engine	true	cleanup_chest_trap	reference/src/obj-chest.c	267	AREA-WORKED-NO-CANDIDATE		
-engine	true	gear_excise_object	reference/src/obj-gear.c	478	PORTED-AND-CITED	cite:calcInventory	core/src/game/obj-cmd.ts
+engine	true	gear_excise_object	reference/src/obj-gear.c	478	AREA-WORKED-NO-CANDIDATE		
 engine	true	init_ignore	reference/src/obj-ignore.c	117	AREA-WORKED-NO-CANDIDATE		
 engine	true	cleanup_ignore	reference/src/obj-ignore.c	131	AREA-WORKED-NO-CANDIDATE		
 engine	true	rune_add_autoinscription	reference/src/obj-ignore.c	172	AREA-WORKED-NO-CANDIDATE		
@@ -1247,12 +1247,12 @@ engine	true	project_player_handler_MON_HOLD	reference/src/project-player.c	746	A
 engine	true	project_player_handler_MON_STUN	reference/src/project-player.c	751	AREA-WORKED-NO-CANDIDATE		
 engine	true	project_player_handler_MON_DRAIN	reference/src/project-player.c	756	AREA-WORKED-NO-CANDIDATE		
 engine	true	project_player_handler_MON_CRUSH	reference/src/project-player.c	761	AREA-WORKED-NO-CANDIDATE		
-engine	true	wr_trap	reference/src/save.c	261	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	true	wr_gear_aux	reference/src/save.c	715	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	true	wr_dungeon_aux	reference/src/save.c	774	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	true	wr_objects_aux	reference/src/save.c	873	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	true	wr_monsters_aux	reference/src/save.c	915	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
-engine	true	wr_traps_aux	reference/src/save.c	933	GUARD-PROVEN	registry-entry	core/src/session/save-fields.test.ts
+engine	true	wr_trap	reference/src/save.c	261	AREA-WORKED-NO-CANDIDATE		
+engine	true	wr_gear_aux	reference/src/save.c	715	AREA-WORKED-NO-CANDIDATE		
+engine	true	wr_dungeon_aux	reference/src/save.c	774	AREA-WORKED-NO-CANDIDATE		
+engine	true	wr_objects_aux	reference/src/save.c	873	AREA-WORKED-NO-CANDIDATE		
+engine	true	wr_monsters_aux	reference/src/save.c	915	AREA-WORKED-NO-CANDIDATE		
+engine	true	wr_traps_aux	reference/src/save.c	933	AREA-WORKED-NO-CANDIDATE		
 engine	true	check_header	reference/src/savefile.c	460	AREA-WORKED-NO-CANDIDATE		
 engine	true	next_blockheader	reference/src/savefile.c	474	AREA-WORKED-NO-CANDIDATE		
 engine	true	find_loader	reference/src/savefile.c	506	AREA-WORKED-NO-CANDIDATE		
