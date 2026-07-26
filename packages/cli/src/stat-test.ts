@@ -44,7 +44,7 @@ export function erfc(x: number): number {
   const t = 2 / (2 + z);
   const ty = 4 * t - 2;
   const cof = [
-    -1.3026537197817094, 6.4196979235649026e-1, 1.9476473204185836e-2,
+    -1.3026537197817094, 0.6419697923564902, 1.9476473204185836e-2,
     -9.561514786808631e-3, -9.46595344482036e-4, 3.66839497852761e-4,
     4.2523324806907e-5, -2.0278578112534e-5, -1.624290004647e-6,
     1.30365583558e-6, 1.5626441722e-8, -8.5238095915e-8, 6.529054439e-9,
@@ -71,7 +71,7 @@ export function normalTwoTailedP(z: number): number {
 /** ln(Gamma(x)) via the Lanczos approximation. */
 function lnGamma(x: number): number {
   const cof = [
-    76.18009172947146, -86.50532032941677, 24.01409824083091,
+    76.18009172947146, -86.50532032941678, 24.01409824083091,
     -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5,
   ];
   let y = x;
@@ -79,7 +79,7 @@ function lnGamma(x: number): number {
   tmp -= (x + 0.5) * Math.log(tmp);
   let ser = 1.000000000190015;
   for (const c of cof) ser += c / ++y;
-  return -tmp + Math.log((2.5066282746310005 * ser) / x);
+  return -tmp + Math.log((2.5066282746310007 * ser) / x);
 }
 
 /** Regularized incomplete gamma Q(a,x) = 1 - P(a,x). */
