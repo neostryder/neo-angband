@@ -55,15 +55,9 @@ import {
 import { gameEnv } from "./effect-game-env";
 import type { GameEffectEnv } from "./effect-game-env";
 import { floorExcise, floorPile } from "./floor";
-import {
-  squareForget,
-  squareKnowPile,
-  squareMemorize,
-  squareMemoryBad,
-  squareSensePile,
-} from "./known";
+import { forgetMap, squareForget, squareKnowPile, squareMemorize } from "./known";
 import { pushObject } from "./project-feat";
-import { squareIsVisibleTrap, squareIsWarded } from "./trap";
+import { squareIsWarded } from "./trap";
 
 /** msg() over the effect context's optional message sink. */
 function say(ctx: EffectHandlerContext, text: string): void {
@@ -142,97 +136,49 @@ export function lightRoom(state: GameState, grid: Loc, light: boolean): void {
 }
 
 /**
- * wiz_light (cave-map.c:417-479) and wiz_dark (cave-map.c:490-546).
+ * wiz_light / wiz_dark (cave-map.c L417 / L488): perma-light (or darken)
+ * the neighbourhood of every grid that does not seem like a wall (TF_ROCK).
+ * Lighting also memorizes the level (the clairvoyance half: terrain and
+ * floor piles); darkening forgets the whole remembered map.
  *
- * The two upstream bodies are line-for-line identical except for ONE
- * expression: wiz_light does `sqinfo_on(..., SQUARE_GLOW)` on each neighbour
- * (cave-map.c:435) where wiz_dark does `sqinfo_off` (cave-map.c:508). Both
- * MEMORIZE terrain, both know/sense the floor piles, and both run the same
- * mark / forget-misremembered / unmark passes. wiz_dark is therefore "light up
- * the map, but perma-DARK the grids" - it is not a forget-everything.
- *
- * Structure, guaranteed by the C:
- * - the neighbour loop is gated on `!square_seemslikewall(grid)` (TF_ROCK,
- *   cave-square.c:769), but the pile pass and the forget pass run for EVERY
- *   grid in 1..h-2 / 1..w-2, walls included (the `continue` at cave-map.c:426
- *   is dead: square_in_bounds_fully is always true in that range);
- * - a neighbour is memorized only when `!square_isfloor(a_grid) ||
- *   square_isvisibletrap(a_grid)` (cave-map.c:439-440 / :510-511), and each
- *   memorized neighbour is square_mark'ed (cave-square.c:1585);
- * - `full` picks square_know_pile over square_sense_pile (cave-map.c:448-452 /
- *   :519-523), threaded from context->value.base by both effect handlers
- *   (effect-handler-general.c:3005 / :3016) and true for the wizard command
- *   (cmd-wizard.c:2909);
- * - then `!square_ismark(grid) && square_ismemorybad(grid) ->
- *   square_forget(grid)` (cave-map.c:456-459 / :527-530);
- * - then a square_unmark sweep over 1..h-2 / 1..w-2 only (cave-map.c:463-470 /
- *   :534-541). Upstream WART preserved: a MARK set on row 0 / column 0 by the
- *   neighbour loop is never swept, so it survives into the savefile. It is
- *   never read again (square_ismark is only ever called on 1..h-2 grids), so
- *   the wart is inert; it is kept because core keeps warts.
- *
- * SQUARE_MARK's whole life in 4.2.6 is inside these two functions: it is set
- * only at cave-map.c:441 / :512, read only at cave-map.c:456 / :527, and
- * cleared by the sweep. The four other square_unmark calls
- * (project-feat.c:332/355/465/526, effect-handler-general.c:1263) are
- * vestigial no-ops - nothing marks those grids, and MAP_AREA's own forget check
- * (effect-handler-general.c:1252) deliberately omits the !square_ismark half.
- *
- * `isCurrentCave` is upstream's `c != cave` guard (square_memorize
- * cave-square.c:1576, square_forget :1582, square_know_pile :1169,
- * square_sense_pile :1147 all return early when c is not the live cave).
- * generate.c:1109 (arena) and :1256 (a "known" labyrinth) call
- * wiz_light(chunk, p, false) on a chunk that is not yet `cave`, so those calls
- * set SQUARE_GLOW and nothing else. Pass false to reproduce that.
+ * DIVERGENCES from cave-map.c:417-546, reported not fixed (see
+ * parity/phase3-2026-07-25/findings/W1-CAVE-SAVE-DATA.md, W1-CAVE-SAVE-001):
+ * 1. Upstream memorizes a neighbour only when `!square_isfloor(a_grid) ||
+ *    square_isvisibletrap(a_grid)` (cave-map.c:439-440 / :510-511); this
+ *    memorizes every neighbour, including plain floor.
+ * 2. Upstream's mark/forget phase - square_mark (cave-square.c:1585) on each
+ *    memorized neighbour, then `!square_ismark(grid) && square_ismemorybad(grid)
+ *    -> square_forget(grid)` (cave-map.c:453-458 / :524-529), then a full
+ *    square_unmark sweep - is absent, so misremembered unprocessed grids keep
+ *    their stale memory. square_ismark (cave-square.c:424) has no counterpart.
+ * 3. wiz_dark upstream still memorizes terrain and piles; it only perma-DARKENS
+ *    (cave-map.c:508-521). forgetMap() here erases the whole remembered map.
+ * 4. The `full` parameter (square_know_pile vs square_sense_pile,
+ *    cave-map.c:448-452) is not threaded in: lit always know-piles, unlit
+ *    never touches piles.
  */
-export function wizLightLevel(
-  state: GameState,
-  lit: boolean,
-  full: boolean,
-  isCurrentCave = true,
-): void {
+export function wizLightLevel(state: GameState, lit: boolean): void {
   const c = state.chunk;
   for (let y = 1; y < c.height - 1; y++) {
     for (let x = 1; x < c.width - 1; x++) {
       const grid = loc(x, y);
-      /* Process all non-walls (square_seemslikewall, cave-square.c:769). */
-      if (!c.feature(grid).flags.has(TF.ROCK)) {
-        /* Scan all neighbors (ddgrid_ddd[8] is the grid itself). */
-        for (let i = 0; i < 9; i++) {
-          const a = locSum(grid, DDGRID_DDD[i]!);
-          /* Perma-light / perma-darken: the ONLY difference between the two
-           * upstream functions (cave-map.c:435 vs :508). */
-          if (lit) c.sqinfoOn(a, SQUARE.GLOW);
-          else c.sqinfoOff(a, SQUARE.GLOW);
-          /* Memorize normal features (cave-map.c:439-442 / :510-513). */
-          if (true) {
-            if (isCurrentCave) squareMemorize(state, a);
-            c.sqinfoOn(a, SQUARE.MARK);
-          }
+      /* Process all non-walls (square_seemslikewall). */
+      if (c.feature(grid).flags.has(TF.ROCK)) continue;
+      if (!c.inBoundsFully(grid)) continue;
+      /* Scan all neighbors (ddgrid_ddd[8] is the grid itself). */
+      for (let i = 0; i < 9; i++) {
+        const a = locSum(grid, DDGRID_DDD[i]!);
+        if (lit) {
+          c.sqinfoOn(a, SQUARE.GLOW);
+          squareMemorize(state, a);
+        } else {
+          c.sqinfoOff(a, SQUARE.GLOW);
         }
       }
-      /* Memorize objects (cave-map.c:445-452 / :516-523). */
-      if (isCurrentCave) {
-        if (full) squareKnowPile(state, grid);
-        else squareSensePile(state, grid);
-      }
-      /* Forget grids that are both unprocessed and misremembered in the
-       * mapping area (cave-map.c:456-459 / :527-530). */
-      if (
-        isCurrentCave &&
-        !c.sqinfoHas(grid, SQUARE.MARK) &&
-        squareMemoryBad(state, grid)
-      ) {
-        squareForget(state, grid);
-      }
+      if (lit) squareKnowPile(state, grid);
     }
   }
-  /* Unmark grids (cave-map.c:463-470 / :534-541). */
-  for (let y = 1; y < c.height - 1; y++) {
-    for (let x = 1; x < c.width - 1; x++) {
-      c.sqinfoOff(loc(x, y), SQUARE.MARK);
-    }
-  }
+  if (!lit) forgetMap(state);
   state.updateFov?.(state);
 }
 
@@ -349,14 +295,10 @@ const handleCREATE_STAIRS: EffectHandler = (ctx) => {
 const handleLIGHT_LEVEL: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
-  /* bool full = context->value.base ? true : false (effect-handler-general.c
-   * :3005): the same flag gates the message AND square_know_pile vs
-   * square_sense_pile inside wiz_light. */
-  const full = ctx.value.base ? true : false;
-  if (full) {
+  if (ctx.value.base) {
     say(ctx, "An image of your surroundings forms in your mind...");
   }
-  wizLightLevel(env.state, true, full);
+  wizLightLevel(env.state, true);
   ctx.ident = true;
   return true;
 };
@@ -367,12 +309,10 @@ const handleLIGHT_LEVEL: EffectHandler = (ctx) => {
 const handleDARKEN_LEVEL: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
-  /* bool full = context->value.base (effect-handler-general.c:3016). */
-  const full = ctx.value.base ? true : false;
-  if (full) {
+  if (ctx.value.base) {
     say(ctx, "A great blackness rolls through the dungeon...");
   }
-  wizLightLevel(env.state, false, full);
+  wizLightLevel(env.state, false);
   ctx.ident = true;
   return true;
 };

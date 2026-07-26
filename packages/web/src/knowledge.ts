@@ -19,7 +19,6 @@
 import {
   buildRuneList,
   playerKnowsRune,
-  runeName,
   runeDesc,
   shapeLoreLines,
   colorToCss,
@@ -262,10 +261,7 @@ export function runeKnowledgeGroups(
     if (!playerKnowsRune(player, rune)) continue;
     known++;
     const gid = runeGroupIndex(rune.variety);
-    /* display_rune (ui-knowledge.c:2198) prints rune_name(oid), which carries
-     * the variety decoration ("<x> brand", "slay <x>", "<x> curse",
-     * "resist <x>") - not the bare rune->name. */
-    groups[gid]!.rows.push({ label: runeName(rune), color: FG, member: rune });
+    groups[gid]!.rows.push({ label: rune.name, color: FG, member: rune });
   }
   const unknown = allRunes.length - known;
   return { title: `runes (${unknown} unknown)`, groups, unknown };
@@ -281,9 +277,7 @@ function runeRecallLines(
   rune: Rune,
   runeEnv: Parameters<typeof buildRuneList>[0],
 ): ScreenLine[] {
-  /* my_strcap(string_make(rune_name(oid))) (ui-knowledge.c:2219-2220). */
-  const full = runeName(rune);
-  const cap = full.charAt(0).toUpperCase() + full.slice(1);
+  const cap = rune.name.charAt(0).toUpperCase() + rune.name.slice(1);
   const desc = runeDesc(runeEnv, rune);
   const lines: ScreenLine[] = [{ text: cap, color: UI_CURSOR }];
   if (desc) {
@@ -300,8 +294,7 @@ export async function showRuneKnowledge(
 ): Promise<void> {
   const { title, groups } = runeKnowledgeGroups(buildRuneList(runeEnv), player);
   await runGroupedBrowser(term, title, groups, async (rune) => {
-    const full = runeName(rune);
-    const cap = full.charAt(0).toUpperCase() + full.slice(1);
+    const cap = rune.name.charAt(0).toUpperCase() + rune.name.slice(1);
     await showTextScreen(term, cap, runeRecallLines(rune, runeEnv));
   });
 }
