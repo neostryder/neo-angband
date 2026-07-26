@@ -148,6 +148,115 @@ describe("base inheritance (parse_monster_base semantics)", () => {
   });
 });
 
+/*
+ * The MSG_-name guard that message.c message_lookup_by_name puts in front of
+ * every `msgt:`/`msg:` parse handler, for the two handlers bound here:
+ * mon-init.c parse_meth_message_type (upstream blowm.c test_msg0 /
+ * test_msg_bad0, the latter uncited by the ut-ledger until now) and
+ * mon-summon.c parse_summon_message_type.
+ *
+ * The summon half has NO upstream parse/ test file -- there is no
+ * reference/src/tests/parse/summon.c and the ledger lists no summon cases --
+ * so its handler is transcribed straight from mon-summon.c:73-86 instead.
+ * The two handlers differ only in the `parser_hasval` guard (below); the
+ * lookup and the PARSE_ERROR_INVALID_MESSAGE return are identical.
+ *
+ * Method as in ../parse-objterrain.upstream.test.ts: plant exactly the token
+ * upstream plants into a fresh copy of the real committed pack, and require
+ * the binder to refuse it. loadPack() re-reads from disk, so each call is a
+ * fresh copy and mutation cannot leak between cases.
+ */
+describe("msg:/msgt: must name a MSG_ type (message.c message_lookup_by_name)", () => {
+  /* Plant `msg:<v>` on blow method HIT; undefined means no msg: line at all. */
+  function methMsgt(v: string | undefined): string {
+    const pack = loadPack();
+    const hit = pack.blowMethods.find((r) => r.name === "HIT");
+    expect(hit).not.toBeUndefined();
+    if (v === undefined) delete hit!.msg;
+    else hit!.msg = v;
+    return bindMonsters(pack).blowMethods.get("HIT")!.msgt;
+  }
+
+  /* The same on summon ANY. */
+  function summonMsgt(v: string | undefined): string {
+    const pack = loadPack();
+    const any = pack.summons.find((r) => r.name === "ANY");
+    expect(any).not.toBeUndefined();
+    if (v === undefined) delete any!.msgt;
+    else any!.msgt = v;
+    return bindMonsters(pack).summons.find((s) => s.name === "ANY")!.msgt;
+  }
+
+  it("the unmutated pack binds, msgt carried verbatim (control)", () => {
+    expect(reg.blowMethods.get("HIT")!.msgt).toBe("MON_HIT");
+    expect(reg.summons.find((s) => s.name === "ANY")!.msgt).toBe("SUM_MONSTER");
+  });
+
+  it("blowm.c test_msg0: msg:MON_HIT resolves", () => {
+    expect(methMsgt("MON_HIT")).toBe("MON_HIT");
+  });
+
+  it("blowm.c test_msg_bad0: msg:XYZZY is PARSE_ERROR_INVALID_MESSAGE", () => {
+    /* mon-init.c:164-167: message_lookup_by_name < 0 -> INVALID_MESSAGE. */
+    expect(() => methMsgt("XYZZY")).toThrow(/invalid msgt XYZZY/);
+  });
+
+  it("mon-summon.c parse_summon_message_type: msgt:XYZZY is INVALID_MESSAGE", () => {
+    /* mon-summon.c:79-82, the same two lines. */
+    expect(() => summonMsgt("XYZZY")).toThrow(/invalid msgt XYZZY/);
+  });
+
+  it("summon msgt: accepts any real MSG_ name", () => {
+    expect(summonMsgt("SUM_HI_UNDEAD")).toBe("SUM_HI_UNDEAD");
+  });
+
+  it("a bare msg: is not an error (blowm.c line 55: msgt stays 0)", () => {
+    /* parse_meth_message_type validates only under
+     * `parser_hasval(p, "msg")`, and `msg` is registered `?str`
+     * (mon-init.c:206), so a value-less msg: leaves meth->msgt at the
+     * mem_zalloc 0 == MSG_GENERIC. The content parser omits the key for
+     * an unfilled optional str, which is the same state. */
+    expect(methMsgt(undefined)).toBe("GENERIC");
+  });
+
+  it("a summon with no msgt: line defaults to GENERIC", () => {
+    /* mem_zalloc in parse_summon_name; unlike the blow method there is no
+     * hasval guard, because `msgt sym type` is mandatory once present. */
+    expect(summonMsgt(undefined)).toBe("GENERIC");
+  });
+
+  it("accepts the decimal-index and case-folded forms message.c accepts", () => {
+    /* message.c:303-310: the numeric path runs first and wins for anything
+     * strtoul consumes; the name search is my_stricmp, so case-insensitive.
+     * MSG_MON_HIT is 44 in list-message.h. */
+    expect(methMsgt("44")).toBe("44");
+    expect(methMsgt(" 44 ")).toBe(" 44 ");
+    expect(methMsgt("mon_hit")).toBe("mon_hit");
+    expect(summonMsgt("Sum_Monster")).toBe("Sum_Monster");
+  });
+
+  it('accepts "MAX" by name, as upstream does', () => {
+    /* Upstream wart, kept: message_names[] is built from list-message.h
+     * including MSG(MAX, NULL), so message_lookup_by_name("MAX") returns
+     * MSG_MAX (tests/message/message.c:517) -- not negative, so the guard
+     * lets it through even though it is out of range as an index. The
+     * decimal 153 for the same value IS rejected (number < MSG_MAX). */
+    expect(methMsgt("MAX")).toBe("MAX");
+    expect(() => methMsgt("153")).toThrow(/invalid msgt 153/);
+  });
+
+  it("rejects the failed lookups message.c pins", () => {
+    /* tests/message/message.c:529-542 -- each of these is -1 there. A
+     * value-less msg: cannot reach the binder as "" through the shipped
+     * parser, but a mod handing records straight to bindMonsters can. */
+    expect(() => methMsgt("")).toThrow(/invalid msgt/);
+    expect(() => methMsgt("kskl8bktk2b")).toThrow(/invalid msgt kskl8bktk2b/);
+    expect(() => methMsgt("-3")).toThrow(/invalid msgt -3/);
+    expect(() => methMsgt("154")).toThrow(/invalid msgt 154/);
+    expect(() => summonMsgt("kskl8bktk2b")).toThrow(/invalid msgt/);
+  });
+});
+
 describe("blow binding", () => {
   it("Grip binds BITE / HURT / 1d4", () => {
     const grip = reg.raceByName("Grip, Farmer Maggot's Dog");

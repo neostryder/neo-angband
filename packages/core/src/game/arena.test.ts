@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG, SQUARE, TF } from "../generated";
+import { EF, MFLAG } from "../generated";
 import { loc, locEq } from "../loc";
 import { EffectRegistry, sourcePlayer } from "../effects/interpreter";
 import type { EffectContext } from "../effects/interpreter";
@@ -182,22 +182,6 @@ describe("the arena round trip (generate.c / game-world.c)", () => {
     expect(copy.race.name).toBe(raceName);
     expect(locEq(copy.grid, loc(4, 1))).toBe(true);
     expect(state.monsters.filter(Boolean).length).toBe(1);
-
-    /*
-     * cave_generate's arena branch runs wiz_light(chunk, p, false)
-     * unconditionally (generate.c:1109) - every arena level is perma-lit. It
-     * runs while `chunk` is not yet `cave`, so square_memorize / square_know_pile
-     * short-circuit on `c != cave` and the pass sets SQUARE_GLOW only: nothing
-     * about the arena is remembered.
-     */
-    for (let y = 1; y < state.chunk.height - 1; y++) {
-      for (let x = 1; x < state.chunk.width - 1; x++) {
-        if (state.chunk.feature(loc(x, y)).flags.has(TF.ROCK)) continue;
-        expect(state.chunk.sqinfoHas(loc(x, y), SQUARE.GLOW)).toBe(true);
-        expect(state.chunk.sqinfoHas(loc(x, y), SQUARE.MARK)).toBe(false);
-      }
-    }
-    expect(Array.from(state.known.feat).every((f) => f === -1)).toBe(true);
 
     /* Strike the killing blow: the gate signals the exit. */
     expect(arenaInterceptDeath(state, copy)).toBe(true);

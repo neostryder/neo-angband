@@ -670,13 +670,6 @@ export interface MenuItem {
    * the list never jumps as the cursor moves.
    */
   hint?: string;
-  /**
-   * A right-hand annotation drawn at a fixed column in its OWN colour, after
-   * the label. This is display_rune's second field (ui-knowledge.c:2201-2202:
-   * `c_put_str(COLOUR_YELLOW, inscrip, row, 47)`) - the rune's autoinscription
-   * beside its name. Rows without one paint exactly as before.
-   */
-  suffix?: { text: string; color: string; col: number };
 }
 
 /**
@@ -811,16 +804,6 @@ export function selectFromMenu(
         const prefix = letter ? `${mark}${letter}) ` : `${mark}   `;
         const color = it.disabled ? DIM : i === cursor && extra?.cursorColor ? extra.cursorColor : it.color ?? FG;
         term.print(0, BODY_TOP + r, `${prefix}${it.label}`.slice(0, cols - 1), color);
-        /* display_rune's second field: its own colour at its own column. */
-        const sfx = it.suffix;
-        if (sfx && sfx.text.length > 0 && sfx.col < cols - 1) {
-          term.print(
-            sfx.col,
-            BODY_TOP + r,
-            sfx.text.slice(0, cols - 1 - sfx.col),
-            it.disabled ? DIM : sfx.color,
-          );
-        }
       }
       let dy = BODY_TOP + bodyRows;
       for (const line of detailLines) {
