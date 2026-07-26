@@ -21,19 +21,19 @@ engine	false	square_iswall_solid	reference/src/cave-square.c	522	CANDIDATE-RENAM
 engine	false	square_ismon_restrict	reference/src/cave-square.c	530	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_isno_teleport	reference/src/cave-square.c	538	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_isno_map	reference/src/cave-square.c	546	AREA-WORKED-NO-CANDIDATE		
-engine	false	square_isproject	reference/src/cave-square.c	562	CITED-NO-CANDIDATE		
+engine	false	square_isproject	reference/src/cave-square.c	562	PORTED-AND-CITED	cite:if	core/src/world/project.ts
 engine	false	square_is_monster_walkable	reference/src/cave-square.c	655	CANDIDATE-RENAMED	ismonsterwalkable	core/src/world/chunk.ts
 engine	false	square_isnoflow	reference/src/cave-square.c	738	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_isnoscent	reference/src/cave-square.c	746	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_isunlockeddoor	reference/src/cave-square.c	791	PORTED-AND-CITED	squareisunlockeddoor	core/src/game/cave-cmd.ts
 engine	false	square_issecrettrap	reference/src/cave-square.c	815	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_feat	reference/src/cave-square.c	969	CANDIDATE-RENAMED	feat	core/src/agent/perceive.ts
-engine	false	square_light	reference/src/cave-square.c	975	PORTED-AND-CITED	light	core/src/game/display.ts
+engine	false	square_light	reference/src/cave-square.c	975	CANDIDATE-RENAMED	light	core/src/game/display.ts
 engine	false	square_excise_pile	reference/src/cave-square.c	1031	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_excise_all_imagined	reference/src/cave-square.c	1051	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_set_mon	reference/src/cave-square.c	1283	CANDIDATE-RENAMED	setmon	core/src/world/chunk.ts
 engine	false	square_set_obj	reference/src/cave-square.c	1291	AREA-WORKED-NO-CANDIDATE		
-engine	false	square_set_trap	reference/src/cave-square.c	1299	CITED-NO-CANDIDATE		
+engine	false	square_set_trap	reference/src/cave-square.c	1299	PORTED-AND-CITED	cite:installTrap	core/src/game/trap.ts
 engine	false	square_add_trap	reference/src/cave-square.c	1304	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_add_web	reference/src/cave-square.c	1331	AREA-WORKED-NO-CANDIDATE		
 engine	false	square_add_door	reference/src/cave-square.c	1347	AREA-WORKED-NO-CANDIDATE		
@@ -47,8 +47,8 @@ engine	false	square_mark	reference/src/cave-square.c	1585	CANDIDATE-RENAMED	mark
 engine	false	get_feat_code_name	reference/src/cave.c	336	AREA-WORKED-NO-CANDIDATE		
 engine	false	cave_connectors_free	reference/src/cave.c	381	AREA-WORKED-NO-CANDIDATE		
 engine	false	object_lists_check_integrity	reference/src/cave.c	503	AREA-WORKED-NO-CANDIDATE		
-engine	false	do_cmd_navigate_down	reference/src/cmd-cave.c	1408	CITED-NO-CANDIDATE		
-engine	false	do_cmd_navigate_up	reference/src/cmd-cave.c	1454	CITED-NO-CANDIDATE		
+engine	false	do_cmd_navigate_down	reference/src/cmd-cave.c	1408	PORTED-AND-CITED	navigatedown	core/src/game/player-path.ts
+engine	false	do_cmd_navigate_up	reference/src/cmd-cave.c	1454	PORTED-AND-CITED	navigateup	core/src/game/player-path.ts
 engine	false	cmd_release	reference/src/cmd-core.c	196	CANDIDATE-RENAMED	release	core/src/cmd.ts
 engine	false	cmd_disable_repeat_floor_item	reference/src/cmd-core.c	548	AREA-WORKED-NO-CANDIDATE		
 engine	false	cmd_set_arg_choice	reference/src/cmd-core.c	674	AREA-WORKED-NO-CANDIDATE		
@@ -68,7 +68,7 @@ engine	false	do_cmd_read_scroll	reference/src/cmd-obj.c	739	AREA-WORKED-NO-CANDI
 engine	false	do_cmd_eat_food	reference/src/cmd-obj.c	900	CANDIDATE-RENAMED	eatfood	core/src/combat/mon-melee.ts
 engine	false	do_cmd_quaff_potion	reference/src/cmd-obj.c	917	AREA-WORKED-NO-CANDIDATE		
 engine	false	do_cmd_cast	reference/src/cmd-obj.c	1113	CANDIDATE-RENAMED	cast	core/src/agent/types.ts
-engine	false	do_cmd_study	reference/src/cmd-obj.c	1245	CITED-NO-CANDIDATE		
+engine	false	do_cmd_study	reference/src/cmd-obj.c	1245	PORTED-AND-CITED	cite:if	core/src/game/spell-cmd.ts
 engine	false	do_cmd_spoil_artifact	reference/src/cmd-spoil.c	28	CANDIDATE-RENAMED	spoilartifact	cli/src/main-spoil.ts
 engine	false	do_cmd_spoil_monster	reference/src/cmd-spoil.c	37	NO-TRACE		
 engine	false	do_cmd_spoil_monster_brief	reference/src/cmd-spoil.c	47	NO-TRACE		
@@ -106,7 +106,7 @@ engine	false	effect_handler_PROJECT_LOS_AWARE	reference/src/effect-handler-attac
 engine	false	effect_handler_DESTRUCTION	reference/src/effect-handler-attack.c	1169	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_EARTHQUAKE	reference/src/effect-handler-attack.c	1290	CANDIDATE-RENAMED	earthquake	core/src/combat/mon-melee.ts
 engine	false	effect_handler_TAP_UNLIFE	reference/src/effect-handler-attack.c	1615	AREA-WORKED-NO-CANDIDATE		
-engine	false	effect_handler_CURSE	reference/src/effect-handler-attack.c	1665	CANDIDATE-RENAMED	curse	core/src/game/curse-tick.ts
+engine	false	effect_handler_CURSE	reference/src/effect-handler-attack.c	1665	CANDIDATE-RENAMED	curse	core/src/agent/perceive.ts
 engine	false	effect_handler_JUMP_AND_BITE	reference/src/effect-handler-attack.c	1710	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_MOVE_ATTACK	reference/src/effect-handler-attack.c	1785	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_SINGLE_COMBAT	reference/src/effect-handler-attack.c	1857	AREA-WORKED-NO-CANDIDATE		
@@ -119,7 +119,7 @@ engine	false	effect_handler_CURE	reference/src/effect-handler-general.c	549	AREA
 engine	false	effect_handler_TIMED_SET	reference/src/effect-handler-general.c	561	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_TIMED_INC	reference/src/effect-handler-general.c	576	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_TIMED_INC_NO_RES	reference/src/effect-handler-general.c	647	AREA-WORKED-NO-CANDIDATE		
-engine	false	effect_handler_MON_TIMED_INC	reference/src/effect-handler-general.c	667	CANDIDATE-RENAMED	montimedinc	core/src/game/effect-general.ts
+engine	false	effect_handler_MON_TIMED_INC	reference/src/effect-handler-general.c	667	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_TIMED_DEC	reference/src/effect-handler-general.c	686	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_GLYPH	reference/src/effect-handler-general.c	700	CANDIDATE-RENAMED	glyph	core/src/game/effect-monster.ts
 engine	false	effect_handler_WEB	reference/src/effect-handler-general.c	732	AREA-WORKED-NO-CANDIDATE		
@@ -180,30 +180,30 @@ engine	false	effect_handler_TAP_DEVICE	reference/src/effect-handler-general.c	33
 engine	false	effect_handler_SHAPECHANGE	reference/src/effect-handler-general.c	3449	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_COMMAND	reference/src/effect-handler-general.c	3479	CANDIDATE-RENAMED	command	core/src/cmd.ts
 engine	false	effect_handler_BIZARRE	reference/src/effect-handler-general.c	3516	AREA-WORKED-NO-CANDIDATE		
-engine	false	effect_handler_SELECT	reference/src/effect-handler-general.c	3601	AREA-WORKED-NO-CANDIDATE		
+engine	false	effect_handler_SELECT	reference/src/effect-handler-general.c	3601	CANDIDATE-RENAMED	select	borg/src/world/model.ts
 engine	false	effect_handler_SET_VALUE	reference/src/effect-handler-general.c	3613	CANDIDATE-RENAMED	setvalue	core/src/mod/registry-host.ts
 engine	false	effect_handler_CLEAR_VALUE	reference/src/effect-handler-general.c	3623	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_SCRAMBLE_STATS	reference/src/effect-handler-general.c	3634	AREA-WORKED-NO-CANDIDATE		
 engine	false	effect_handler_UNSCRAMBLE_STATS	reference/src/effect-handler-general.c	3646	AREA-WORKED-NO-CANDIDATE		
 engine	false	free_effect	reference/src/effects.c	68	AREA-WORKED-NO-CANDIDATE		
 engine	false	event_signal_flag	reference/src/game-event.c	145	AREA-WORKED-NO-CANDIDATE		
-engine	false	event_signal_point	reference/src/game-event.c	154	AREA-WORKED-NO-CANDIDATE		
-engine	false	event_signal_string	reference/src/game-event.c	164	AREA-WORKED-NO-CANDIDATE		
-engine	false	event_signal_message	reference/src/game-event.c	172	CITED-NO-CANDIDATE		
-engine	false	event_signal_birthpoints	reference/src/game-event.c	192	AREA-WORKED-NO-CANDIDATE		
+engine	false	event_signal_point	reference/src/game-event.c	154	PORTED-AND-CITED	cite:emit	core/src/events.ts
+engine	false	event_signal_string	reference/src/game-event.c	164	PORTED-AND-CITED	cite:emit	core/src/events.ts
+engine	false	event_signal_message	reference/src/game-event.c	172	PORTED-AND-CITED	cite:BirthPointsEventData	core/src/events.ts
+engine	false	event_signal_birthpoints	reference/src/game-event.c	192	PORTED-AND-CITED	cite:emit	core/src/events.ts
 engine	false	event_signal_blast	reference/src/game-event.c	204	AREA-WORKED-NO-CANDIDATE		
 engine	false	event_signal_bolt	reference/src/game-event.c	225	AREA-WORKED-NO-CANDIDATE		
 engine	false	event_signal_missile	reference/src/game-event.c	248	AREA-WORKED-NO-CANDIDATE		
 engine	false	event_signal_size	reference/src/game-event.c	263	AREA-WORKED-NO-CANDIDATE		
 engine	false	event_signal_tunnel	reference/src/game-event.c	272	AREA-WORKED-NO-CANDIDATE		
-engine	false	get_point	reference/src/game-input.c	156	PORTED-AND-CITED	point	web/src/birth.ts
+engine	false	get_point	reference/src/game-input.c	156	CANDIDATE-RENAMED	point	web/src/birth.ts
 engine	false	get_spell_from_book	reference/src/game-input.c	168	AREA-WORKED-NO-CANDIDATE		
-engine	false	get_spell	reference/src/game-input.c	199	PORTED-AND-CITED	spell	core/src/game/mon-cast.ts
+engine	false	get_spell	reference/src/game-input.c	199	CANDIDATE-RENAMED	spell	core/src/game/mon-cast.ts
 engine	false	map_is_visible	reference/src/game-input.c	322	AREA-WORKED-NO-CANDIDATE		
-engine	false	view_ability_menu	reference/src/game-input.c	334	CITED-NO-CANDIDATE		
+engine	false	view_ability_menu	reference/src/game-input.c	334	PORTED-AND-CITED	cite:showAbilities	web/src/abilities.ts
 engine	false	level_by_name	reference/src/game-world.c	95	AREA-WORKED-NO-CANDIDATE		
 engine	false	chunk_list_add	reference/src/gen-chunk.c	69	AREA-WORKED-NO-CANDIDATE		
-engine	false	chunk_find	reference/src/gen-chunk.c	130	CITED-NO-CANDIDATE		
+engine	false	chunk_find	reference/src/gen-chunk.c	130	SCOPE-EXCLUDED	dead-c-api	
 engine	false	build_template	reference/src/gen-room.c	2972	AREA-WORKED-NO-CANDIDATE		
 engine	false	build_interesting	reference/src/gen-room.c	2988	AREA-WORKED-NO-CANDIDATE		
 engine	false	build_lesser_vault	reference/src/gen-room.c	3001	AREA-WORKED-NO-CANDIDATE		
@@ -214,10 +214,10 @@ engine	false	build_greater_vault	reference/src/gen-room.c	3112	AREA-WORKED-NO-CA
 engine	false	build_greater_new_vault	reference/src/gen-room.c	3125	AREA-WORKED-NO-CANDIDATE		
 engine	false	cave_find_reset	reference/src/gen-util.c	187	AREA-WORKED-NO-CANDIDATE		
 engine	false	dump_level_simple	reference/src/gen-util.c	951	AREA-WORKED-NO-CANDIDATE		
-engine	false	dump_level	reference/src/gen-util.c	987	CITED-NO-CANDIDATE		
-engine	false	dump_level_header	reference/src/gen-util.c	1038	AREA-WORKED-NO-CANDIDATE		
-engine	false	dump_level_body	reference/src/gen-util.c	1069	AREA-WORKED-NO-CANDIDATE		
-engine	false	dump_level_footer	reference/src/gen-util.c	1138	AREA-WORKED-NO-CANDIDATE		
+engine	false	dump_level	reference/src/gen-util.c	987	PORTED-AND-CITED	cite:wizDumpLevelMap	core/src/game/wizard.ts
+engine	false	dump_level_header	reference/src/gen-util.c	1038	PORTED-AND-CITED	cite:wizDumpLevelMap	core/src/game/wizard.ts
+engine	false	dump_level_body	reference/src/gen-util.c	1069	PORTED-AND-CITED	cite:wizDumpLevelMap	core/src/game/wizard.ts
+engine	false	dump_level_footer	reference/src/gen-util.c	1138	PORTED-AND-CITED	cite:wizDumpLevelMap	core/src/game/wizard.ts
 engine	false	init_parse_vault	reference/src/generate.c	595	AREA-WORKED-NO-CANDIDATE		
 engine	false	get_room_builder_count	reference/src/generate.c	1561	AREA-WORKED-NO-CANDIDATE		
 engine	false	get_room_builder_index_from_name	reference/src/generate.c	1570	AREA-WORKED-NO-CANDIDATE		
@@ -230,13 +230,13 @@ engine	false	guid_eq	reference/src/guid.c	22	NO-TRACE
 engine	false	rd_options	reference/src/load.c	424	AREA-WORKED-NO-CANDIDATE		
 engine	false	rd_object_memory	reference/src/load.c	548	AREA-WORKED-NO-CANDIDATE		
 engine	false	rd_quests	reference/src/load.c	623	AREA-WORKED-NO-CANDIDATE		
-engine	false	rd_player	reference/src/load.c	651	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_player	reference/src/load.c	651	CANDIDATE-RENAMED	deserializeplayer	core/src/session/save.ts
 engine	false	rd_ignore	reference/src/load.c	846	AREA-WORKED-NO-CANDIDATE		
 engine	false	rd_misc	reference/src/load.c	951	AREA-WORKED-NO-CANDIDATE		
 engine	false	rd_artifacts	reference/src/load.c	1036	AREA-WORKED-NO-CANDIDATE		
 engine	false	rd_player_hp	reference/src/load.c	1066	AREA-WORKED-NO-CANDIDATE		
 engine	false	rd_player_spells	reference/src/load.c	1089	AREA-WORKED-NO-CANDIDATE		
-engine	false	rd_gear	reference/src/load.c	1167	AREA-WORKED-NO-CANDIDATE		
+engine	false	rd_gear	reference/src/load.c	1167	CANDIDATE-RENAMED	deserializegear	core/src/session/save.ts
 engine	false	rd_dungeon	reference/src/load.c	1508	AREA-WORKED-NO-CANDIDATE		
 engine	false	rd_objects	reference/src/load.c	1562	AREA-WORKED-NO-CANDIDATE		
 engine	false	rd_monsters	reference/src/load.c	1575	AREA-WORKED-NO-CANDIDATE		
@@ -323,10 +323,10 @@ engine	false	option_type	reference/src/option.c	138	CANDIDATE-RENAMED	type	core/
 engine	false	options_save_custom	reference/src/option.c	213	AREA-WORKED-NO-CANDIDATE		
 engine	false	options_restore_custom	reference/src/option.c	267	AREA-WORKED-NO-CANDIDATE		
 engine	false	clean_options	reference/src/option.c	359	AREA-WORKED-NO-CANDIDATE		
-engine	false	parser_new	reference/src/parser.c	99	CITED-NO-CANDIDATE		
+engine	false	parser_new	reference/src/parser.c	99	PORTED-AND-CITED	cite:parseLine	content/src/parser.ts
 engine	false	parser_priv	reference/src/parser.c	364	AREA-WORKED-NO-CANDIDATE		
-engine	false	parser_setpriv	reference/src/parser.c	373	AREA-WORKED-NO-CANDIDATE		
-engine	false	parser_destroy	reference/src/parser.c	412	AREA-WORKED-NO-CANDIDATE		
+engine	false	parser_setpriv	reference/src/parser.c	373	PORTED-AND-CITED	cite:parseLine	content/src/parser.ts
+engine	false	parser_destroy	reference/src/parser.c	412	PORTED-AND-CITED	cite:parseLine	content/src/parser.ts
 engine	false	parser_hasval	reference/src/parser.c	535	AREA-WORKED-NO-CANDIDATE		
 engine	false	parser_getsym	reference/src/parser.c	558	AREA-WORKED-NO-CANDIDATE		
 engine	false	parser_getint	reference/src/parser.c	567	AREA-WORKED-NO-CANDIDATE		
@@ -402,7 +402,7 @@ ui	false	do_cmd_xxx_options	reference/src/ui-command.c	124	AREA-WORKED-NO-CANDID
 ui	false	do_cmd_unknown	reference/src/ui-command.c	134	CANDIDATE-RENAMED	unknown	web/src/knowledge.ts
 ui	false	context_menu_command	reference/src/ui-context.c	953	AREA-WORKED-NO-CANDIDATE		
 ui	false	textui_action_menu_choose	reference/src/ui-context.c	1272	AREA-WORKED-NO-CANDIDATE		
-ui	false	textui_get_curse	reference/src/ui-curse.c	156	CANDIDATE-RENAMED	getcurse	web/src/main.ts
+ui	false	textui_get_curse	reference/src/ui-curse.c	156	AREA-WORKED-NO-CANDIDATE		
 ui	false	allow_animations	reference/src/ui-display.c	1476	AREA-WORKED-NO-CANDIDATE		
 ui	false	disallow_animations	reference/src/ui-display.c	1484	AREA-WORKED-NO-CANDIDATE		
 ui	false	idle_update	reference/src/ui-display.c	1501	AREA-WORKED-NO-CANDIDATE		
@@ -461,12 +461,12 @@ ui	false	inkey_m	reference/src/ui-input.c	357	AREA-WORKED-NO-CANDIDATE
 ui	false	bell_message	reference/src/ui-input.c	600	AREA-WORKED-NO-CANDIDATE		
 ui	false	message_flush	reference/src/ui-input.c	612	AREA-WORKED-NO-CANDIDATE		
 ui	false	clear_from	reference/src/ui-input.c	644	AREA-WORKED-NO-CANDIDATE		
-ui	false	askfor_aux_keypress	reference/src/ui-input.c	662	AREA-WORKED-NO-CANDIDATE		
+ui	false	askfor_aux_keypress	reference/src/ui-input.c	662	PORTED-AND-CITED	cite:promptText	web/src/overlay.ts
 ui	false	askfor_aux_mouse	reference/src/ui-input.c	831	AREA-WORKED-NO-CANDIDATE		
-ui	false	askfor_aux	reference/src/ui-input.c	860	CITED-NO-CANDIDATE		
+ui	false	askfor_aux	reference/src/ui-input.c	860	PORTED-AND-CITED	cite:promptText	web/src/overlay.ts
 ui	false	askfor_aux_ext	reference/src/ui-input.c	949	AREA-WORKED-NO-CANDIDATE		
 ui	false	get_character_name	reference/src/ui-input.c	1145	AREA-WORKED-NO-CANDIDATE		
-ui	false	get_char	reference/src/ui-input.c	1300	AREA-WORKED-NO-CANDIDATE		
+ui	false	get_char	reference/src/ui-input.c	1300	CANDIDATE-RENAMED	char	web/src/shop.ts
 ui	false	pause_line	reference/src/ui-input.c	1452	AREA-WORKED-NO-CANDIDATE		
 ui	false	textui_input_init	reference/src/ui-input.c	1789	AREA-WORKED-NO-CANDIDATE		
 ui	false	key_confirm_command	reference/src/ui-input.c	1995	AREA-WORKED-NO-CANDIDATE		
@@ -491,7 +491,7 @@ ui	false	menu_layout	reference/src/ui-menu.c	945	AREA-WORKED-NO-CANDIDATE
 ui	false	menu_setpriv	reference/src/ui-menu.c	951	AREA-WORKED-NO-CANDIDATE		
 ui	false	menu_priv	reference/src/ui-menu.c	959	AREA-WORKED-NO-CANDIDATE		
 ui	false	menu_init	reference/src/ui-menu.c	964	AREA-WORKED-NO-CANDIDATE		
-ui	false	menu_new	reference/src/ui-menu.c	980	CITED-NO-CANDIDATE		
+ui	false	menu_new	reference/src/ui-menu.c	980	PORTED-AND-CITED	cite:MENU_OPTIONS	web/src/overlay.ts
 ui	false	menu_new_action	reference/src/ui-menu.c	987	AREA-WORKED-NO-CANDIDATE		
 ui	false	menu_free	reference/src/ui-menu.c	994	AREA-WORKED-NO-CANDIDATE		
 ui	false	menu_set_cursor_x_offset	reference/src/ui-menu.c	999	AREA-WORKED-NO-CANDIDATE		
@@ -534,7 +534,7 @@ ui	false	dump_features	reference/src/ui-prefs.c	239	AREA-WORKED-NO-CANDIDATE
 ui	false	dump_flavors	reference/src/ui-prefs.c	279	AREA-WORKED-NO-CANDIDATE		
 ui	false	dump_colors	reference/src/ui-prefs.c	295	AREA-WORKED-NO-CANDIDATE		
 ui	false	dump_ui_entry_renderers	reference/src/ui-prefs.c	323	AREA-WORKED-NO-CANDIDATE		
-ui	false	option_dump	reference/src/ui-prefs.c	352	CANDIDATE-RENAMED	dump	web/src/knowledge.ts
+ui	false	option_dump	reference/src/ui-prefs.c	352	AREA-WORKED-NO-CANDIDATE		
 ui	false	prefs_save	reference/src/ui-prefs.c	391	AREA-WORKED-NO-CANDIDATE		
 ui	false	parse_prefs_dummy	reference/src/ui-prefs.c	1124	AREA-WORKED-NO-CANDIDATE		
 ui	false	process_pref_file_command	reference/src/ui-prefs.c	1185	AREA-WORKED-NO-CANDIDATE		
@@ -594,7 +594,7 @@ ui	false	wiz_acquire_great	reference/src/ui-wizard.c	471	AREA-WORKED-NO-CANDIDAT
 ui	false	wiz_create_all_for_tval	reference/src/ui-wizard.c	482	AREA-WORKED-NO-CANDIDATE		
 ui	false	wiz_learn_all_object_kinds	reference/src/ui-wizard.c	492	AREA-WORKED-NO-CANDIDATE		
 ui	false	wiz_phase_door	reference/src/ui-wizard.c	502	AREA-WORKED-NO-CANDIDATE		
-ui	false	wiz_teleport	reference/src/ui-wizard.c	512	PORTED-AND-CITED	teleport	core/src/session/game.ts
+ui	false	wiz_teleport	reference/src/ui-wizard.c	512	CANDIDATE-RENAMED	teleport	core/src/session/game.ts
 frontend	false	ReadDIB	reference/src/win/readdib.c	177	NO-TRACE		
 frontend	false	FreeDIB	reference/src/win/readdib.c	332	NO-TRACE		
 frontend	false	ReadDIB2_PNG	reference/src/win/readpng.c	54	NO-TRACE		
@@ -607,39 +607,39 @@ engine	false	stat_grid_counter_simple	reference/src/wiz-stats.c	3334	AREA-WORKED
 zlib	false	flag_has_dbg	reference/src/z-bitflag.c	43	AREA-WORKED-NO-CANDIDATE		
 zlib	false	flag_on_dbg	reference/src/z-bitflag.c	213	AREA-WORKED-NO-CANDIDATE		
 zlib	false	build_gamma_table	reference/src/z-color.c	320	AREA-WORKED-NO-CANDIDATE		
-zlib	false	safe_setuid_drop	reference/src/z-file.c	77	NO-TRACE		
-zlib	false	safe_setuid_grab	reference/src/z-file.c	98	NO-TRACE		
+zlib	false	safe_setuid_drop	reference/src/z-file.c	77	AREA-WORKED-NO-CANDIDATE		
+zlib	false	safe_setuid_grab	reference/src/z-file.c	98	AREA-WORKED-NO-CANDIDATE		
 zlib	false	path_build	reference/src/z-file.c	176	CANDIDATE-RENAMED	build	core/src/effects/effect.ts
 zlib	false	path_normalize	reference/src/z-file.c	221	CANDIDATE-RENAMED	normalize	cli/src/baseline.ts
-zlib	false	path_filename_index	reference/src/z-file.c	781	NO-TRACE		
+zlib	false	path_filename_index	reference/src/z-file.c	781	AREA-WORKED-NO-CANDIDATE		
 zlib	false	file_delete	reference/src/z-file.c	837	CANDIDATE-RENAMED	delete	web/src/main.ts
 zlib	false	file_move	reference/src/z-file.c	850	CANDIDATE-RENAMED	move	core/src/agent/types.ts
-zlib	false	file_get_savefile	reference/src/z-file.c	909	NO-TRACE		
-zlib	false	file_get_tempfile	reference/src/z-file.c	937	NO-TRACE		
-zlib	false	file_newer	reference/src/z-file.c	952	NO-TRACE		
+zlib	false	file_get_savefile	reference/src/z-file.c	909	AREA-WORKED-NO-CANDIDATE		
+zlib	false	file_get_tempfile	reference/src/z-file.c	937	AREA-WORKED-NO-CANDIDATE		
+zlib	false	file_newer	reference/src/z-file.c	952	AREA-WORKED-NO-CANDIDATE		
 zlib	false	file_open	reference/src/z-file.c	981	CANDIDATE-RENAMED	open	core/src/agent/types.ts
 zlib	false	file_close	reference/src/z-file.c	1036	CANDIDATE-RENAMED	close	core/src/agent/types.ts
 zlib	false	file_lock	reference/src/z-file.c	1054	CANDIDATE-RENAMED	lock	core/src/game/project-feat.ts
-zlib	false	file_unlock	reference/src/z-file.c	1070	NO-TRACE		
+zlib	false	file_unlock	reference/src/z-file.c	1070	AREA-WORKED-NO-CANDIDATE		
 zlib	false	file_skip	reference/src/z-file.c	1089	CANDIDATE-RENAMED	skip	core/src/game/effect-general.ts
-zlib	false	file_readc	reference/src/z-file.c	1097	NO-TRACE		
-zlib	false	file_writec	reference/src/z-file.c	1111	NO-TRACE		
-zlib	false	file_read	reference/src/z-file.c	1119	CANDIDATE-RENAMED	read	core/src/agent/act.ts
+zlib	false	file_readc	reference/src/z-file.c	1097	AREA-WORKED-NO-CANDIDATE		
+zlib	false	file_writec	reference/src/z-file.c	1111	AREA-WORKED-NO-CANDIDATE		
+zlib	false	file_read	reference/src/z-file.c	1119	CANDIDATE-RENAMED	read	core/src/agent/types.ts
 zlib	false	file_write	reference/src/z-file.c	1132	CANDIDATE-RENAMED	write	core/src/save/buffer.ts
-zlib	false	file_getl	reference/src/z-file.c	1149	NO-TRACE		
-zlib	false	file_put	reference/src/z-file.c	1208	CITED-NO-CANDIDATE		
-zlib	false	file_vputf	reference/src/z-file.c	1245	NO-TRACE		
-zlib	false	dir_exists	reference/src/z-file.c	1256	NO-TRACE		
-zlib	false	dir_create	reference/src/z-file.c	1272	NO-TRACE		
-zlib	false	dir_create	reference/src/z-file.c	1315	NO-TRACE		
-zlib	false	my_dopen	reference/src/z-file.c	1339	NO-TRACE		
-zlib	false	alter_ang_dir_only_files	reference/src/z-file.c	1364	NO-TRACE		
-zlib	false	my_dread	reference/src/z-file.c	1372	NO-TRACE		
-zlib	false	my_dclose	reference/src/z-file.c	1416	NO-TRACE		
-zlib	false	my_dopen	reference/src/z-file.c	1439	NO-TRACE		
-zlib	false	alter_ang_dir_only_files	reference/src/z-file.c	1464	NO-TRACE		
-zlib	false	my_dread	reference/src/z-file.c	1472	NO-TRACE		
-zlib	false	my_dclose	reference/src/z-file.c	1505	NO-TRACE		
+zlib	false	file_getl	reference/src/z-file.c	1149	AREA-WORKED-NO-CANDIDATE		
+zlib	false	file_put	reference/src/z-file.c	1208	PORTED-AND-CITED	cite:downloadDump	web/src/charsheet.ts
+zlib	false	file_vputf	reference/src/z-file.c	1245	AREA-WORKED-NO-CANDIDATE		
+zlib	false	dir_exists	reference/src/z-file.c	1256	AREA-WORKED-NO-CANDIDATE		
+zlib	false	dir_create	reference/src/z-file.c	1272	AREA-WORKED-NO-CANDIDATE		
+zlib	false	dir_create	reference/src/z-file.c	1315	AREA-WORKED-NO-CANDIDATE		
+zlib	false	my_dopen	reference/src/z-file.c	1339	AREA-WORKED-NO-CANDIDATE		
+zlib	false	alter_ang_dir_only_files	reference/src/z-file.c	1364	AREA-WORKED-NO-CANDIDATE		
+zlib	false	my_dread	reference/src/z-file.c	1372	AREA-WORKED-NO-CANDIDATE		
+zlib	false	my_dclose	reference/src/z-file.c	1416	AREA-WORKED-NO-CANDIDATE		
+zlib	false	my_dopen	reference/src/z-file.c	1439	AREA-WORKED-NO-CANDIDATE		
+zlib	false	alter_ang_dir_only_files	reference/src/z-file.c	1464	AREA-WORKED-NO-CANDIDATE		
+zlib	false	my_dread	reference/src/z-file.c	1472	AREA-WORKED-NO-CANDIDATE		
+zlib	false	my_dclose	reference/src/z-file.c	1505	AREA-WORKED-NO-CANDIDATE		
 zlib	false	vstrnfmt	reference/src/z-form.c	185	NO-TRACE		
 zlib	false	strnfcat	reference/src/z-form.c	539	NO-TRACE		
 zlib	false	vformat	reference/src/z-form.c	570	NO-TRACE		
@@ -649,27 +649,27 @@ zlib	false	quit_fmt	reference/src/z-form.c	686	NO-TRACE
 zlib	false	quark_str	reference/src/z-quark.c	51	AREA-WORKED-NO-CANDIDATE		
 zlib	false	quarks_init	reference/src/z-quark.c	56	AREA-WORKED-NO-CANDIDATE		
 zlib	false	quarks_free	reference/src/z-quark.c	63	AREA-WORKED-NO-CANDIDATE		
-zlib	false	q_new	reference/src/z-queue.c	32	NO-TRACE		
-zlib	false	q_resize	reference/src/z-queue.c	46	NO-TRACE		
-zlib	false	q_len	reference/src/z-queue.c	88	NO-TRACE		
-zlib	false	q_push	reference/src/z-queue.c	93	CITED-NO-CANDIDATE		
-zlib	false	q_pop	reference/src/z-queue.c	99	CITED-NO-CANDIDATE		
-zlib	false	q_free	reference/src/z-queue.c	106	NO-TRACE		
-zlib	false	qp_new	reference/src/z-queue.c	194	NO-TRACE		
-zlib	false	qp_resize	reference/src/z-queue.c	224	NO-TRACE		
-zlib	false	qp_flush	reference/src/z-queue.c	251	NO-TRACE		
-zlib	false	qp_free	reference/src/z-queue.c	271	NO-TRACE		
-zlib	false	qp_size	reference/src/z-queue.c	291	NO-TRACE		
-zlib	false	qp_len	reference/src/z-queue.c	300	NO-TRACE		
-zlib	false	qp_push_int	reference/src/z-queue.c	317	NO-TRACE		
-zlib	false	qp_push_ptr	reference/src/z-queue.c	337	NO-TRACE		
-zlib	false	qp_pop_int	reference/src/z-queue.c	358	NO-TRACE		
-zlib	false	qp_pop_ptr	reference/src/z-queue.c	382	NO-TRACE		
-zlib	false	qp_pushpop_int	reference/src/z-queue.c	410	NO-TRACE		
-zlib	false	qp_pushpop_ptr	reference/src/z-queue.c	449	NO-TRACE		
-zlib	false	qp_peek_int	reference/src/z-queue.c	478	NO-TRACE		
-zlib	false	qp_peek_ptr	reference/src/z-queue.c	490	NO-TRACE		
-zlib	false	qp_isinvalid	reference/src/z-queue.c	500	NO-TRACE		
+zlib	false	q_new	reference/src/z-queue.c	32	PORTED-AND-CITED	cite:IntQueue	core/src/gen/cave.ts
+zlib	false	q_resize	reference/src/z-queue.c	46	AREA-WORKED-NO-CANDIDATE		
+zlib	false	q_len	reference/src/z-queue.c	88	AREA-WORKED-NO-CANDIDATE		
+zlib	false	q_push	reference/src/z-queue.c	93	PORTED-AND-CITED	cite:push	core/src/gen/cave.ts
+zlib	false	q_pop	reference/src/z-queue.c	99	PORTED-AND-CITED	cite:pop	core/src/gen/cave.ts
+zlib	false	q_free	reference/src/z-queue.c	106	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_new	reference/src/z-queue.c	194	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_resize	reference/src/z-queue.c	224	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_flush	reference/src/z-queue.c	251	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_free	reference/src/z-queue.c	271	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_size	reference/src/z-queue.c	291	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_len	reference/src/z-queue.c	300	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_push_int	reference/src/z-queue.c	317	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_push_ptr	reference/src/z-queue.c	337	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_pop_int	reference/src/z-queue.c	358	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_pop_ptr	reference/src/z-queue.c	382	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_pushpop_int	reference/src/z-queue.c	410	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_pushpop_ptr	reference/src/z-queue.c	449	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_peek_int	reference/src/z-queue.c	478	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_peek_ptr	reference/src/z-queue.c	490	AREA-WORKED-NO-CANDIDATE		
+zlib	false	qp_isinvalid	reference/src/z-queue.c	500	AREA-WORKED-NO-CANDIDATE		
 zlib	false	Rand_simple	reference/src/z-rand.c	579	AREA-WORKED-NO-CANDIDATE		
 zlib	false	textblock_new	reference/src/z-textblock.c	57	AREA-WORKED-NO-CANDIDATE		
 zlib	false	textblock_free	reference/src/z-textblock.c	71	AREA-WORKED-NO-CANDIDATE		
@@ -692,7 +692,7 @@ zlib	false	utf8_rskip	reference/src/z-util.c	149	AREA-WORKED-NO-CANDIDATE
 zlib	false	utf32_to_utf8	reference/src/z-util.c	182	AREA-WORKED-NO-CANDIDATE		
 zlib	false	utf32_isprint	reference/src/z-util.c	268	AREA-WORKED-NO-CANDIDATE		
 zlib	false	my_strnicmp	reference/src/z-util.c	418	AREA-WORKED-NO-CANDIDATE		
-zlib	false	my_stristr	reference/src/z-util.c	441	CITED-NO-CANDIDATE		
+zlib	false	my_stristr	reference/src/z-util.c	441	PORTED-AND-CITED	cite:stristr	borg/src/perceive-facts.ts
 zlib	false	my_strcat	reference/src/z-util.c	512	AREA-WORKED-NO-CANDIDATE		
 zlib	false	suffix_i	reference/src/z-util.c	565	AREA-WORKED-NO-CANDIDATE		
 zlib	false	prefix_i	reference/src/z-util.c	598	PORTED-AND-CITED	prefixi	borg/src/perceive-facts.ts
@@ -795,17 +795,17 @@ engine	true	parse_graf_directory	reference/src/grafmode.c	48	AREA-WORKED-NO-CAND
 engine	true	parse_graf_size	reference/src/grafmode.c	61	AREA-WORKED-NO-CANDIDATE		
 engine	true	parse_graf_pref	reference/src/grafmode.c	72	AREA-WORKED-NO-CANDIDATE		
 engine	true	parse_graf_extra	reference/src/grafmode.c	81	AREA-WORKED-NO-CANDIDATE		
-engine	true	init_parse_grafmode	reference/src/grafmode.c	92	CITED-NO-CANDIDATE		
+engine	true	init_parse_grafmode	reference/src/grafmode.c	92	PORTED-AND-CITED	cite:here	core/scripts/gen-grafmode.mjs
 engine	true	print_error	reference/src/grafmode.c	167	AREA-WORKED-NO-CANDIDATE		
 engine	true	rd_item	reference/src/load.c	99	AREA-WORKED-NO-CANDIDATE		
-engine	true	rd_monster	reference/src/load.c	259	CITED-NO-CANDIDATE		
-engine	true	rd_trap	reference/src/load.c	359	CITED-NO-CANDIDATE		
+engine	true	rd_monster	reference/src/load.c	259	PORTED-AND-CITED	deserializemonster	core/src/session/save.ts
+engine	true	rd_trap	reference/src/load.c	359	PORTED-AND-CITED	deserializetrap	core/src/session/save.ts
 engine	true	rd_gear_aux	reference/src/load.c	1124	AREA-WORKED-NO-CANDIDATE		
 engine	true	rd_stores_aux	reference/src/load.c	1196	AREA-WORKED-NO-CANDIDATE		
 engine	true	rd_dungeon_aux	reference/src/load.c	1287	AREA-WORKED-NO-CANDIDATE		
 engine	true	rd_objects_aux	reference/src/load.c	1394	AREA-WORKED-NO-CANDIDATE		
 engine	true	rd_monsters_aux	reference/src/load.c	1432	AREA-WORKED-NO-CANDIDATE		
-engine	true	rd_traps_aux	reference/src/load.c	1473	AREA-WORKED-NO-CANDIDATE		
+engine	true	rd_traps_aux	reference/src/load.c	1473	PORTED-AND-CITED	cite:here	core/src/session/save.ts
 engine	true	copy_file	reference/src/main-spoil.c	64	NO-TRACE		
 engine	true	parse_seed	reference/src/main-spoil.c	109	NO-TRACE		
 frontend	true	show_win_error	reference/src/main-win.c	448	AREA-WORKED-NO-CANDIDATE		
@@ -858,7 +858,7 @@ frontend	true	screensaver_inkey_hack	reference/src/main-win.c	3292	AREA-WORKED-N
 frontend	true	start_screensaver	reference/src/main-win.c	3310	AREA-WORKED-NO-CANDIDATE		
 frontend	true	open_url	reference/src/main-win.c	3433	AREA-WORKED-NO-CANDIDATE		
 frontend	true	open_local_docs	reference/src/main-win.c	3446	AREA-WORKED-NO-CANDIDATE		
-frontend	true	display_help	reference/src/main-win.c	3473	CITED-NO-CANDIDATE		
+frontend	true	display_help	reference/src/main-win.c	3473	SCOPE-EXCLUDED	native-frontend	
 frontend	true	process_menus	reference/src/main-win.c	3489	AREA-WORKED-NO-CANDIDATE		
 frontend	true	handle_wm_paint	reference/src/main-win.c	4238	AREA-WORKED-NO-CANDIDATE		
 frontend	true	extract_modifiers	reference/src/main-win.c	4269	AREA-WORKED-NO-CANDIDATE		
@@ -931,7 +931,7 @@ engine	true	cleanup_race_allocs	reference/src/mon-make.c	139	AREA-WORKED-NO-CAND
 engine	true	place_monster_base_okay	reference/src/mon-make.c	1266	AREA-WORKED-NO-CANDIDATE		
 engine	true	redundant_monster_message	reference/src/mon-msg.c	147	AREA-WORKED-NO-CANDIDATE		
 engine	true	message_flags	reference/src/mon-msg.c	167	AREA-WORKED-NO-CANDIDATE		
-engine	true	store_monster	reference/src/mon-msg.c	185	PORTED-AND-CITED	monster	core/src/game/effect-attack.ts
+engine	true	store_monster	reference/src/mon-msg.c	185	CANDIDATE-RENAMED	monster	core/src/agent/types.ts
 engine	true	stack_message	reference/src/mon-msg.c	200	AREA-WORKED-NO-CANDIDATE		
 engine	true	what_delay	reference/src/mon-msg.c	238	AREA-WORKED-NO-CANDIDATE		
 engine	true	skip_subject	reference/src/mon-msg.c	439	AREA-WORKED-NO-CANDIDATE		
@@ -1198,7 +1198,7 @@ engine	true	project_player_handler_FIRE	reference/src/project-player.c	161	AREA-
 engine	true	project_player_handler_COLD	reference/src/project-player.c	191	AREA-WORKED-NO-CANDIDATE		
 engine	true	project_player_handler_POIS	reference/src/project-player.c	216	AREA-WORKED-NO-CANDIDATE		
 engine	true	project_player_handler_LIGHT	reference/src/project-player.c	246	AREA-WORKED-NO-CANDIDATE		
-engine	true	project_player_handler_DARK	reference/src/project-player.c	268	CITED-NO-CANDIDATE		
+engine	true	project_player_handler_DARK	reference/src/project-player.c	268	PORTED-AND-CITED	cite:if	core/src/game/player-side.ts
 engine	true	project_player_handler_SOUND	reference/src/project-player.c	308	AREA-WORKED-NO-CANDIDATE		
 engine	true	project_player_handler_SHARD	reference/src/project-player.c	337	AREA-WORKED-NO-CANDIDATE		
 engine	true	project_player_handler_NEXUS	reference/src/project-player.c	350	AREA-WORKED-NO-CANDIDATE		
@@ -1268,12 +1268,12 @@ engine	true	unload_sound_sdl	reference/src/snd-sdl.c	204	NO-TRACE
 engine	true	close_audio_sdl	reference/src/snd-sdl.c	237	NO-TRACE		
 engine	true	supported_files_sdl	reference/src/snd-sdl.c	251	NO-TRACE		
 engine	true	cleanup_stores	reference/src/store.c	89	AREA-WORKED-NO-CANDIDATE		
-engine	true	parse_store	reference/src/store.c	132	CITED-NO-CANDIDATE		
-engine	true	parse_slots	reference/src/store.c	149	AREA-WORKED-NO-CANDIDATE		
-engine	true	parse_turnover	reference/src/store.c	156	AREA-WORKED-NO-CANDIDATE		
-engine	true	parse_normal	reference/src/store.c	162	AREA-WORKED-NO-CANDIDATE		
+engine	true	parse_store	reference/src/store.c	132	PORTED-AND-CITED	cite:storeSpec	content/src/specs/misc.ts
+engine	true	parse_slots	reference/src/store.c	149	PORTED-AND-CITED	cite:bindStore	core/src/store/bind.ts
+engine	true	parse_turnover	reference/src/store.c	156	PORTED-AND-CITED	cite:bindStore	core/src/store/bind.ts
+engine	true	parse_normal	reference/src/store.c	162	PORTED-AND-CITED	cite:bindStore	core/src/store/bind.ts
 engine	true	parse_owner	reference/src/store.c	236	AREA-WORKED-NO-CANDIDATE		
-engine	true	parse_buy	reference/src/store.c	254	AREA-WORKED-NO-CANDIDATE		
+engine	true	parse_buy	reference/src/store.c	254	PORTED-AND-CITED	cite:bindStore	core/src/store/bind.ts
 engine	true	parse_buy_flag	reference/src/store.c	268	AREA-WORKED-NO-CANDIDATE		
 engine	true	run_parse_stores	reference/src/store.c	310	AREA-WORKED-NO-CANDIDATE		
 engine	true	finish_parse_stores	reference/src/store.c	314	AREA-WORKED-NO-CANDIDATE		
@@ -1327,7 +1327,7 @@ ui	true	prt_title_short	reference/src/ui-display.c	753	AREA-WORKED-NO-CANDIDATE
 ui	true	update_topbar	reference/src/ui-display.c	765	AREA-WORKED-NO-CANDIDATE		
 ui	true	hp_colour_change	reference/src/ui-display.c	897	AREA-WORKED-NO-CANDIDATE		
 ui	true	longest_terrain_name	reference/src/ui-display.c	1165	AREA-WORKED-NO-CANDIDATE		
-ui	true	update_statusline	reference/src/ui-display.c	1316	CITED-NO-CANDIDATE		
+ui	true	update_statusline	reference/src/ui-display.c	1316	PORTED-AND-CITED	cite:renderStatusLine	web/src/main.ts
 ui	true	trace_map_updates	reference/src/ui-display.c	1334	AREA-WORKED-NO-CANDIDATE		
 ui	true	update_maps	reference/src/ui-display.c	1347	AREA-WORKED-NO-CANDIDATE		
 ui	true	bolt_pict	reference/src/ui-display.c	1524	AREA-WORKED-NO-CANDIDATE		
@@ -1435,9 +1435,9 @@ ui	true	insert_embryo_category	reference/src/ui-entry.c	1486	AREA-WORKED-NO-CAND
 ui	true	get_dummy_param_count	reference/src/ui-entry.c	1604	AREA-WORKED-NO-CANDIDATE		
 ui	true	get_dummy_param_name	reference/src/ui-entry.c	1611	AREA-WORKED-NO-CANDIDATE		
 ui	true	get_element_count	reference/src/ui-entry.c	1627	CANDIDATE-RENAMED	elementcount	core/src/game/ui-entry.ts
-ui	true	get_element_name	reference/src/ui-entry.c	1634	AREA-WORKED-NO-CANDIDATE		
+ui	true	get_element_name	reference/src/ui-entry.c	1634	CANDIDATE-RENAMED	elementname	core/src/obj/bind.ts
 ui	true	get_stat_count	reference/src/ui-entry.c	1650	AREA-WORKED-NO-CANDIDATE		
-ui	true	get_stat_name	reference/src/ui-entry.c	1657	CANDIDATE-RENAMED	statname	core/src/game/object-inspect.ts
+ui	true	get_stat_name	reference/src/ui-entry.c	1657	CANDIDATE-RENAMED	statname	core/src/effects/effect.ts
 ui	true	get_dummy_priority	reference/src/ui-entry.c	1668	AREA-WORKED-NO-CANDIDATE		
 ui	true	get_priority_from_index	reference/src/ui-entry.c	1678	AREA-WORKED-NO-CANDIDATE		
 ui	true	get_priority_from_negative_index	reference/src/ui-entry.c	1688	AREA-WORKED-NO-CANDIDATE		
@@ -1500,7 +1500,7 @@ ui	true	get_name_keypress	reference/src/ui-input.c	1028	AREA-WORKED-NO-CANDIDATE
 ui	true	handle_name_mouse	reference/src/ui-input.c	1073	AREA-WORKED-NO-CANDIDATE		
 ui	true	textui_get_string	reference/src/ui-input.c	1181	CANDIDATE-RENAMED	getstring	core/src/save/buffer.ts
 ui	true	get_file_text	reference/src/ui-input.c	1335	AREA-WORKED-NO-CANDIDATE		
-ui	true	textui_get_com	reference/src/ui-input.c	1407	CITED-NO-CANDIDATE		
+ui	true	textui_get_com	reference/src/ui-input.c	1407	PORTED-AND-CITED	cite:getKeyInline	web/src/overlay.ts
 ui	true	textui_get_point	reference/src/ui-input.c	1730	AREA-WORKED-NO-CANDIDATE		
 ui	true	textui_check_break	reference/src/ui-input.c	1753	AREA-WORKED-NO-CANDIDATE		
 ui	true	textui_get_count	reference/src/ui-input.c	1817	AREA-WORKED-NO-CANDIDATE		
@@ -1684,7 +1684,7 @@ ui	true	spell_menu_destroy	reference/src/ui-spell.c	265	AREA-WORKED-NO-CANDIDATE
 ui	true	spell_menu_select	reference/src/ui-spell.c	276	AREA-WORKED-NO-CANDIDATE		
 ui	true	spoiler_menu_act	reference/src/ui-spoil.c	27	NO-TRACE		
 ui	true	store_menu_recalc	reference/src/ui-store.c	810	AREA-WORKED-NO-CANDIDATE		
-ui	true	context_menu_store	reference/src/ui-store.c	902	CITED-NO-CANDIDATE		
+ui	true	context_menu_store	reference/src/ui-store.c	902	SCOPE-EXCLUDED	mouse-ui	
 ui	true	handle_g_context_store_item	reference/src/ui-store.c	950	AREA-WORKED-NO-CANDIDATE		
 ui	true	store_menu_init	reference/src/ui-store.c	1189	AREA-WORKED-NO-CANDIDATE		
 ui	true	is_running_keymap	reference/src/ui-target.c	254	AREA-WORKED-NO-CANDIDATE		
@@ -1725,7 +1725,7 @@ ui	true	wiz_create_item_subdisplay	reference/src/ui-wizard.c	193	AREA-WORKED-NO-
 ui	true	wiz_create_item_subaction	reference/src/ui-wizard.c	227	AREA-WORKED-NO-CANDIDATE		
 ui	true	wiz_create_item_display	reference/src/ui-wizard.c	268	AREA-WORKED-NO-CANDIDATE		
 ui	true	wiz_create_item_action	reference/src/ui-wizard.c	287	AREA-WORKED-NO-CANDIDATE		
-frontend	true	lread	reference/src/win/readdib.c	47	CITED-NO-CANDIDATE		
+frontend	true	lread	reference/src/win/readdib.c	47	SCOPE-EXCLUDED	native-frontend	
 frontend	true	MakeDIBPalette	reference/src/win/readdib.c	70	NO-TRACE		
 frontend	true	MakeBitmapAndPalette	reference/src/win/readdib.c	128	NO-TRACE		
 frontend	true	ReadFileFunc	reference/src/win/readpng.c	40	NO-TRACE		
@@ -1774,10 +1774,10 @@ engine	true	is_impassable_rubble	reference/src/wiz-stats.c	3298	AREA-WORKED-NO-C
 engine	true	is_passable_rubble	reference/src/wiz-stats.c	3303	AREA-WORKED-NO-CANDIDATE		
 engine	true	is_magma_treasure	reference/src/wiz-stats.c	3308	AREA-WORKED-NO-CANDIDATE		
 engine	true	is_quartz_treasure	reference/src/wiz-stats.c	3313	AREA-WORKED-NO-CANDIDATE		
-zlib	true	path_parse	reference/src/z-file.c	121	NO-TRACE		
-zlib	true	path_process	reference/src/z-file.c	128	NO-TRACE		
-zlib	true	up_heap	reference/src/z-queue.c	115	NO-TRACE		
-zlib	true	down_heap	reference/src/z-queue.c	139	NO-TRACE		
+zlib	true	path_parse	reference/src/z-file.c	121	AREA-WORKED-NO-CANDIDATE		
+zlib	true	path_process	reference/src/z-file.c	128	AREA-WORKED-NO-CANDIDATE		
+zlib	true	up_heap	reference/src/z-queue.c	115	AREA-WORKED-NO-CANDIDATE		
+zlib	true	down_heap	reference/src/z-queue.c	139	AREA-WORKED-NO-CANDIDATE		
 zlib	true	textblock_resize_if_needed	reference/src/z-textblock.c	85	AREA-WORKED-NO-CANDIDATE		
 zlib	true	textblock_vappend_c	reference/src/z-textblock.c	97	AREA-WORKED-NO-CANDIDATE		
 zlib	true	new_line	reference/src/z-textblock.c	206	AREA-WORKED-NO-CANDIDATE		

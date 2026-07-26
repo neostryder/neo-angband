@@ -467,8 +467,6 @@ function updateOne(
     c.sqinfoOff(grid, SQUARE["CLOSE_PLAYER"]);
   }
 
-  /* square_wasseen (cave-square.c:474) and square_isfeel (cave-square.c:482)
-   * are these two sqinfo reads; cave-view.c:845 / :862 are the only callers. */
   if (squareIsSeen(c, grid) && !c.sqinfoHas(grid, SQUARE["WASSEEN"])) {
     if (c.sqinfoHas(grid, SQUARE["FEEL"])) {
       c.feelingSquares++;

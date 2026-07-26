@@ -5,6 +5,7 @@ import {
   itemSelect,
   showTextScreen,
   promptNumber,
+  promptText,
   getRepDir,
   getAimDir,
   getCheck,
@@ -614,15 +615,132 @@ describe("promptNumber (digit-only prompt, ui-options.c askfor_aux_numbers)", ()
       "Current base delay factor: 40 msec");
     let snap = term.snapshot().join("\n");
     expect(snap).toContain("Current base delay factor: 40 msec");
-    expect(snap).toContain("> 40_");
+    expect(snap).toContain("> 40");
+    /* One Backspace clears the whole default -- askfor_aux_numbers delegates to
+     * askfor_aux_keypress with firsttime (ui-options.c:1046), and that is what
+     * firsttime means (ui-input.c:703-709). The second is a no-op on an empty
+     * buffer. */
     press(win, "Backspace");
+    expect(term.snapshot().join("\n")).not.toContain("> 40");
     press(win, "Backspace");
     press(win, "9");
     press(win, "9");
     snap = term.snapshot().join("\n");
-    expect(snap).toContain("> 99_");
+    expect(snap).toContain("> 99");
     press(win, "Enter");
     expect(await done).toBe(99);
+  });
+
+  it("a first digit REPLACES the default rather than appending (ui-input.c:765-771)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(60, 12);
+    const done = promptNumber(term, "Command: Base Delay Factor", 40, 0, 255);
+    press(win, "7");
+    /* Appending would give 407, then clamp to 255 -- the old behaviour. */
+    expect(term.snapshot().join("\n")).toContain("> 7");
+    press(win, "Enter");
+    expect(await done).toBe(7);
+  });
+});
+
+// --- promptText (get_string / textui_get_name -> askfor_aux) ----------------
+describe("promptText (askfor_aux + askfor_aux_keypress, ui-input.c:662-800)", () => {
+  /*
+   * The firsttime rule, found missing by W1-CITED and fixed 2026-07-26. A
+   * default answer is a suggestion you type OVER. Without it the birth screen's
+   * default "Gandalf" plus typing "Bob" produced "GandalfBob", which is very
+   * likely the cause of the standing "typed birth name may not persist" note.
+   */
+  it("the first printable key clears the whole default (L765-771)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = promptText(term, "Enter your player's name", "Gandalf");
+    expect(term.snapshot().join("\n")).toContain("> Gandalf");
+    for (const ch of ["B", "o", "b"]) press(win, ch);
+    expect(term.snapshot().join("\n")).toContain("> Bob");
+    press(win, "Enter");
+    expect(await done).toBe("Bob");
+  });
+
+  it("the first Backspace deletes all of the default (L703-709)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = promptText(term, "Name", "Gandalf");
+    press(win, "Backspace");
+    press(win, "Enter");
+    expect(await done).toBe("");
+  });
+
+  it("the first Delete also deletes all, since the C shares the case (L700-709)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = promptText(term, "Name", "Gandalf");
+    press(win, "Delete");
+    press(win, "Enter");
+    expect(await done).toBe("");
+  });
+
+  it("firsttime clears after ANY key, so a second edit is normal (L910)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = promptText(term, "Name", "Gandalf");
+    for (const ch of ["B", "o", "b"]) press(win, ch);
+    /* Now a plain backspace removes ONE character, not everything. */
+    press(win, "Backspace");
+    press(win, "Enter");
+    expect(await done).toBe("Bo");
+  });
+
+  it("the first ArrowRight jumps to the end and keeps the default (L691-698)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = promptText(term, "Name", "Bob");
+    /* An arrow is a keypress, so it clears firsttime WITHOUT touching the
+     * buffer -- which is how upstream lets you keep and extend a default. */
+    press(win, "ArrowRight");
+    press(win, "!");
+    press(win, "Enter");
+    expect(await done).toBe("Bob!");
+  });
+
+  it("the cursor inserts and deletes mid-buffer (L681-745)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = promptText(term, "Name", "Bob");
+    press(win, "ArrowRight"); /* firsttime: jump to the end */
+    press(win, "ArrowLeft"); /* now between 'o' and 'b' */
+    press(win, "z"); /* insert at the cursor, not at the end */
+    expect(term.snapshot().join("\n")).toContain("> Bozb");
+    press(win, "Backspace"); /* removes the 'z' just inserted */
+    press(win, "Delete"); /* removes the 'b' at the cursor */
+    press(win, "Enter");
+    expect(await done).toBe("Bo");
+  });
+
+  it("refuses to exceed maxLen rather than truncating (L772-775)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = promptText(term, "Name", "", 3);
+    for (const ch of ["a", "b", "c", "d", "e"]) press(win, ch);
+    press(win, "Enter");
+    expect(await done).toBe("abc");
+  });
+
+  it("Escape cancels with null and leaves the default unreturned (L669-673)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = promptText(term, "Name", "Gandalf");
+    press(win, "Escape");
+    expect(await done).toBeNull();
   });
 
   it("clamps to max on Enter (do_cmd_delay's MIN(val, 255))", async () => {

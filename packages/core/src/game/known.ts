@@ -97,10 +97,6 @@ function gi(state: GameState, grid: Loc): number {
 
 /** square_memorize: remember the grid's current terrain. */
 export function squareMemorize(state: GameState, grid: Loc): void {
-  /* square_set_known_feat (cave-square.c:1274), the static setter behind both
-   * square_memorize (cave-square.c:1576) and square_forget (:1582): upstream
-   * writes player->cave->squares[y][x].feat; the port writes state.known.feat.
-   * The `c != cave` guard is structural here - there is only one known map. */
   state.known.feat[gi(state, grid)] = state.chunk.feat(grid);
 }
 
@@ -306,13 +302,6 @@ function pileHead(
  * square_know_pile (reduced): remember the (first matching) floor object
  * exactly; forget a remembered object that is no longer there. Without a
  * predicate the whole pile is considered (the note_spot case).
- *
- * forget_remembered_objects (cave-square.c:1106, called at :1156 and :1186):
- * upstream walks player->cave's shadow pile and excises/deletes any known
- * twin whose original is no longer on the grid. The port's knowledge is one
- * glyph per grid (state.known.objects), so that whole walk collapses to the
- * "nothing here any more -> delete the entry" branch at the end of this
- * function and of squareSensePile.
  */
 export function squareKnowPile(
   state: GameState,

@@ -144,22 +144,6 @@ export function lightRoom(state: GameState, grid: Loc, light: boolean): void {
  * the neighbourhood of every grid that does not seem like a wall (TF_ROCK).
  * Lighting also memorizes the level (the clairvoyance half: terrain and
  * floor piles); darkening forgets the whole remembered map.
- *
- * DIVERGENCES from cave-map.c:417-546, reported not fixed (see
- * parity/phase3-2026-07-25/findings/W1-CAVE-SAVE-DATA.md, W1-CAVE-SAVE-001):
- * 1. Upstream memorizes a neighbour only when `!square_isfloor(a_grid) ||
- *    square_isvisibletrap(a_grid)` (cave-map.c:439-440 / :510-511); this
- *    memorizes every neighbour, including plain floor.
- * 2. Upstream's mark/forget phase - square_mark (cave-square.c:1585) on each
- *    memorized neighbour, then `!square_ismark(grid) && square_ismemorybad(grid)
- *    -> square_forget(grid)` (cave-map.c:453-458 / :524-529), then a full
- *    square_unmark sweep - is absent, so misremembered unprocessed grids keep
- *    their stale memory. square_ismark (cave-square.c:424) has no counterpart.
- * 3. wiz_dark upstream still memorizes terrain and piles; it only perma-DARKENS
- *    (cave-map.c:508-521). forgetMap() here erases the whole remembered map.
- * 4. The `full` parameter (square_know_pile vs square_sense_pile,
- *    cave-map.c:448-452) is not threaded in: lit always know-piles, unlit
- *    never touches piles.
  */
 export function wizLightLevel(state: GameState, lit: boolean): void {
   const c = state.chunk;
@@ -472,9 +456,6 @@ const handleDESTRUCTION: EffectHandler = (ctx) => {
          * created-mark preservation that lets an unknown one regenerate rides
          * artifact upkeep (#24). */
         const loseArts = state.options?.get("birth_lose_arts") ?? false;
-        /* square_excise_pile (cave-square.c:1031): drop the whole pile. The
-         * port's pile is a Map entry, so excising every member removes it -
-         * there is no square_set_obj(c, grid, NULL) head pointer to clear. */
         for (const obj of [...floorPile(state, grid)]) {
           if (
             obj.artifact &&
@@ -777,11 +758,17 @@ const TERRAIN_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
 >([
   [EF.RUBBLE, handleRUBBLE],
   [EF.GRANITE, handleGRANITE],
+  /* effect_handler_CREATE_STAIRS (effect-handler-general.c:1975) */
   [EF.CREATE_STAIRS, handleCREATE_STAIRS],
+  /* effect_handler_LIGHT_LEVEL (effect-handler-general.c:3003) */
   [EF.LIGHT_LEVEL, handleLIGHT_LEVEL],
+  /* effect_handler_DARKEN_LEVEL (effect-handler-general.c:3013) */
   [EF.DARKEN_LEVEL, handleDARKEN_LEVEL],
+  /* effect_handler_LIGHT_AREA (effect-handler-general.c:3026) */
   [EF.LIGHT_AREA, handleLIGHT_AREA],
+  /* effect_handler_DARKEN_AREA (effect-handler-general.c:3044) */
   [EF.DARKEN_AREA, handleDARKEN_AREA],
+  /* effect_handler_DESTRUCTION (effect-handler-attack.c:1169) */
   [EF.DESTRUCTION, handleDESTRUCTION],
   [EF.EARTHQUAKE, handleEARTHQUAKE],
 ]);

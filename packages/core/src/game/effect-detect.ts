@@ -100,7 +100,7 @@ function mapArea(
     for (let x = b.x1; x < b.x2; x++) {
       const grid = loc(x, y);
 
-      /* Some squares can't be mapped: square_isno_map (cave-square.c:546). */
+      /* Some squares can't be mapped. */
       if (c.sqinfoHas(grid, SQUARE.NO_MAP)) continue;
 
       /* All non-walls are "checked". */
@@ -356,6 +356,7 @@ function stuff(
 }
 
 const isMoney = (obj: GameObject): boolean => tvalIsMoney(obj.tval);
+/* tval_is_not_money (effect-handler-general.c:1717) */
 const isNotMoney = (obj: GameObject): boolean => !tvalIsMoney(obj.tval);
 
 /** EF_SENSE_GOLD: sense (without identifying) money on the floor. */
@@ -455,19 +456,30 @@ const DETECT_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   EffectHandler
 >([
   [EF.MAP_AREA, handleMAP_AREA],
+  /* effect_handler_READ_MINDS (effect-handler-general.c:1286) */
   [EF.READ_MINDS, handleREAD_MINDS],
+  /* effect_handler_DETECT_TRAPS (effect-handler-general.c:1321) */
   [EF.DETECT_TRAPS, handleDETECT_TRAPS],
+  /* effect_handler_DETECT_DOORS (effect-handler-general.c:1398) */
   [EF.DETECT_DOORS, handleDETECT_DOORS],
+  /* effect_handler_DETECT_STAIRS (effect-handler-general.c:1467) */
   [EF.DETECT_STAIRS, handleDETECT_STAIRS],
+  /* effect_handler_DETECT_ORE (effect-handler-general.c:1519) */
   [EF.DETECT_ORE, handleDETECT_ORE],
+  /* effect_handler_SENSE_GOLD (effect-handler-general.c:1682) */
   [EF.SENSE_GOLD, handleSENSE_GOLD],
+  /* effect_handler_DETECT_GOLD (effect-handler-general.c:1699) */
   [EF.DETECT_GOLD, handleDETECT_GOLD],
+  /* effect_handler_SENSE_OBJECTS (effect-handler-general.c:1725) */
   [EF.SENSE_OBJECTS, handleSENSE_OBJECTS],
+  /* effect_handler_DETECT_OBJECTS (effect-handler-general.c:1746) */
   [EF.DETECT_OBJECTS, handleDETECT_OBJECTS],
+  /* effect_handler_DETECT_LIVING_MONSTERS (effect-handler-general.c:1833) */
   [
     EF.DETECT_LIVING_MONSTERS,
     monsterDetector(monsterIsLiving, "You sense life!", "You sense no life."),
   ],
+  /* effect_handler_DETECT_VISIBLE_MONSTERS (effect-handler-general.c:1854) */
   [
     EF.DETECT_VISIBLE_MONSTERS,
     monsterDetector(
@@ -476,6 +488,7 @@ const DETECT_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
       "You sense no monsters.",
     ),
   ],
+  /* effect_handler_DETECT_INVISIBLE_MONSTERS (effect-handler-general.c:1874) */
   [
     EF.DETECT_INVISIBLE_MONSTERS,
     monsterDetector(
@@ -484,6 +497,7 @@ const DETECT_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
       "You sense no invisible creatures.",
     ),
   ],
+  /* effect_handler_DETECT_FEARFUL_MONSTERS (effect-handler-general.c:1893) */
   [
     EF.DETECT_FEARFUL_MONSTERS,
     monsterDetector(
@@ -492,6 +506,7 @@ const DETECT_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
       "You smell no fear in the air.",
     ),
   ],
+  /* effect_handler_DETECT_EVIL (effect-handler-general.c:1911) */
   [
     EF.DETECT_EVIL,
     monsterDetector(
@@ -500,6 +515,7 @@ const DETECT_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
       "You sense no evil creatures.",
     ),
   ],
+  /* effect_handler_DETECT_SOUL (effect-handler-general.c:1929) */
   [
     EF.DETECT_SOUL,
     monsterDetector(

@@ -70,13 +70,7 @@ function observed(state: GameState, grid: Loc): boolean {
 export function pushObject(state: GameState, grid: Loc): void {
   const c = state.chunk;
   const featOld = c.feat(grid);
-  /* square_force_floor (cave-square.c:1507) then square_add_door(closed=false)
-   * (cave-square.c:1347) - obj-pile.c:1204-1205 - collapse to one setFeat(OPEN):
-   * the intermediate FEAT_FLOOR is transient and its featCount delta cancels. */
   c.setFeat(grid, FEAT.OPEN);
-  /* square_excise_pile (cave-square.c:1031) + square_set_obj(c, grid, NULL)
-   * (cave-square.c:1291, obj-pile.c:1201): the port's pile is a Map entry, so
-   * excising every member removes the entry - there is no head pointer to null. */
   for (const obj of [...floorPile(state, grid)]) {
     floorExcise(state, grid, obj);
     dropNear(state, obj, 0, grid, false);
@@ -162,7 +156,6 @@ export function projectFeature(
           env.msg?.("The rubble turns into mud!");
           obvious = true;
         }
-        /* square_destroy_rubble (cave-square.c:1502): set_feat(FEAT_FLOOR). */
         c.setFeat(grid, FEAT.FLOOR);
         /* Hidden find: 10% chance of a buried object. */
         if (state.rng.randint0(100) < 10 && env.makeDeps) {
@@ -231,9 +224,6 @@ export function projectFeature(
           env.msg?.("There is a bright flash of light!");
           obvious = true;
         }
-        /* square_destroy_door (cave-square.c:1382): drop the "door lock" trap
-         * and set FEAT_FLOOR. The lock removal rides the setFeat hook here
-         * (FEAT_FLOOR cannot hold a lock), so only the set_feat is explicit. */
         c.setFeat(grid, FEAT.FLOOR);
         /* On the surface, new terrain may be exposed to the sun. */
         if (c.depth === 0) exposeToSun(state, grid, isDaytime(state.turn, state.z.dayLength));
@@ -259,9 +249,6 @@ export function projectFeature(
         }
         disableTraps(state, grid);
       } else if (env.trapDeps && squareDoorPower(state, grid, env.trapDeps) > 0) {
-        /* square_unlock_door (cave-square.c:1377) = square_set_door_lock(…, 0).
-         * DIVERGENCE (reported, W1-CAVE-SAVE-002): upstream keeps the "door
-         * lock" trap and zeroes its power; this removes the trap outright. */
         const lock = lookupTrap(env.trapDeps.kinds, "door lock");
         if (lock) squareRemoveAllTraps(state, grid, lock.tidx);
         if (squareIsView(c, grid)) {
@@ -276,8 +263,7 @@ export function projectFeature(
       /* Require a floor grid without monsters or the player. */
       if (squareMonster(state, grid) || squareIsPlayer(state, grid)) break;
       if (!c.isFloor(grid)) break;
-      /* Push objects off the grid, then create a closed door:
-       * square_add_door(c, grid, true) (cave-square.c:1347). */
+      /* Push objects off the grid, then create a closed door. */
       pushObject(state, grid);
       c.setFeat(grid, FEAT.CLOSED);
       if (squareIsSeen(c, grid)) obvious = true;
@@ -290,7 +276,6 @@ export function projectFeature(
       if (!squareIsEmpty(state, grid)) break;
       if (squareIsTrap(state, grid)) break;
       if (state.rng.oneIn(4) && env.trapDeps) {
-        /* square_add_trap (cave-square.c:1304) = place_trap(c, grid, -1, depth). */
         placeTrap(state, grid, -1, c.depth, env.trapDeps);
         squareRevealTrap(state, grid, false, env.trapDeps);
       }
@@ -320,8 +305,6 @@ export function projectFeature(
       if (observed(state, grid)) obvious = true;
       /* Sufficiently intense cold can solidify lava. */
       if (dam > state.rng.randint1(900) + 300 && c.isFiery(grid)) {
-        /* square_isoccupied (cave-square.c:391): square->mon != 0, i.e. either
-         * a monster (positive midx) or the player (-1). */
         const occupied =
           squareMonster(state, grid) !== null || squareIsPlayer(state, grid);
         if (state.rng.oneIn(2)) {

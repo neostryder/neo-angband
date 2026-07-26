@@ -13,6 +13,7 @@
 import { FlagSet, flagSize } from "../bitflag";
 import { Dice } from "../dice";
 import { OF, TRAP_FLAG_ENTRIES, TRF } from "../generated";
+import { myStristr } from "../guard";
 import type { RandomValue } from "../rng";
 import type { EffectRecordJson } from "../obj/types";
 
@@ -133,13 +134,18 @@ export function bindTraps(records: readonly TrapRecordJson[]): TrapKind[] {
   }));
 }
 
-/** lookup_trap: find a trap kind by its desc (partial match as upstream). */
+/**
+ * lookup_trap (trap.c:44-63): exact desc match wins, otherwise the FIRST close
+ * match. The two tests differ in case sensitivity and the port had them the same:
+ * equality is `streq` (:54) but the close match is `my_stristr` (:57), i.e.
+ * case-INsensitive. Found by W1-CITED.
+ */
 export function lookupTrap(kinds: readonly TrapKind[], desc: string): TrapKind | null {
   let closest: TrapKind | null = null;
   for (const kind of kinds) {
     if (!kind.name) continue;
     if (kind.desc === desc) return kind;
-    if (!closest && kind.desc.includes(desc)) closest = kind;
+    if (!closest && myStristr(kind.desc, desc)) closest = kind;
   }
   return closest;
 }

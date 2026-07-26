@@ -13,6 +13,7 @@ import {
   addGuardi16,
   INT_MAX,
   INT_MIN,
+  myStristr,
   subGuardi,
   subGuardi16,
 } from "./guard";
@@ -160,5 +161,30 @@ describe("z-util/guard upstream", () => {
     expect(subGuardi16(-32768, 3)).toBe(-32768);
     expect(subGuardi16(-32762, 8)).toBe(-32768);
     expect(subGuardi16(-32768, 32767)).toBe(-32768);
+  });
+});
+
+/*
+ * my_stristr (z-util.c:441). Given a real counterpart 2026-07-26 after W1-CITED
+ * found lookupTrap (world/trap.ts) using a case-SENSITIVE `includes` where
+ * trap.c:57 uses my_stristr, while mon/bind.ts had inlined the correct test.
+ * Two implementations of one C function, one of them wrong.
+ */
+describe("myStristr (z-util.c:441)", () => {
+  it("matches regardless of case on either side", () => {
+    expect(myStristr("a Rune of Protection", "rune")).toBe(true);
+    expect(myStristr("a rune of protection", "RUNE")).toBe(true);
+    expect(myStristr("A RUNE OF PROTECTION", "Rune")).toBe(true);
+  });
+
+  it("is a substring test, anchored nowhere", () => {
+    expect(myStristr("pit", "pit")).toBe(true);
+    expect(myStristr("a spiked pit", "pit")).toBe(true);
+    expect(myStristr("pitfall", "pit")).toBe(true);
+    expect(myStristr("pit", "spiked pit")).toBe(false);
+  });
+
+  it("treats the empty pattern as present, as strstr does", () => {
+    expect(myStristr("anything", "")).toBe(true);
   });
 });

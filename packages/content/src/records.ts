@@ -155,17 +155,6 @@ function finalizeNode(
  * Compile the text of one gamedata file into JSON records.
  * Throws on any line the upstream parser would reject and on duplicate
  * occurrences of directives the spec does not mark as repeating.
- *
- * This is the port's `parse_file` (datafile.c:87) plus the `fp->run` half of
- * `run_parser` (datafile.c:45): one line-at-a-time loop over the file feeding
- * `parseLine` (upstream `parser_parse`). Two deliberate differences, both
- * unobservable on shipped 4.2.6 data (W1-CAVE-SAVE-DATA.md, datafile section):
- * - Upstream tries ANGBAND_DIR_USER/<name>.txt before ANGBAND_DIR_GAMEDATA
- *   (datafile.c:96-105); user data-file overriding is the mod substrate's job
- *   here, and the compiler reads only reference/lib/gamedata.
- * - Upstream logs up to get_parser_error_limit() parse errors and returns the
- *   FIRST (datafile.c:113-141); this throws on the first. `parse_file_quit_
- *   not_found` (datafile.c:71) is the readFileSync throw in compile.ts.
  */
 export function compileGamedata(text: string, spec: FileSpec): CompiledFile {
   const table = buildTable(spec);
