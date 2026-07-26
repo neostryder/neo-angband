@@ -233,12 +233,6 @@ export interface PackOverflowOpts {
   floorEnv?: FloorEnv;
 }
 
-/** The subset of z_info pack_overflow and its calc_inventory refresh read. */
-type PackOverflowConstants = Pick<
-  Constants,
-  "packSize" | "quiverSize" | "quiverSlotSize" | "thrownQuiverMult"
->;
-
 /** calcInv with the shared msg sink filled in when the caller left it out. */
 function overflowCalcInv(opts: PackOverflowOpts): CalcInventoryOpts {
   const base: CalcInventoryOpts = { ...opts.calcInv };
@@ -257,19 +251,20 @@ function overflowCalcInv(opts: PackOverflowOpts): CalcInventoryOpts {
  * then "You drop X." with X described BEFORE the excise, then the drop, then
  * "You no longer have X."
  *
- * For the NULL case, upkeep->inven[] is represented by the derived,
- * earlier_object-sorted gear.inven view (player-calcs.c:1191-1222); gear.pack
- * remains the raw master-gear order and must not select the victim.
+ * DIVERGENCE, flagged: upstream picks the NULL-case victim by walking
+ * upkeep->inven[] to its last filled entry (L1359-1366), and that array is
+ * sorted by earlier_object in calc_inventory (player-calcs.c L1191-1222). The
+ * port defers that sort - gear.pack IS the listing, in insertion order - so the
+ * victim here is gear.pack's last handle. Every in-port caller passes an
+ * explicit handle, so this only bites a pack that was already overfull.
  */
 export function packOverflow(
   state: GameState,
   handle: number,
-  constants: PackOverflowConstants,
+  constants: Constants,
   opts: PackOverflowOpts = {},
 ): GameObject | null {
-  /* packSlotsUsed's public Constants type includes unrelated z_info fields;
-   * only the PackOverflowConstants subset is read on this path. */
-  if (!packIsOverfull(state.gear, constants as Constants)) return null;
+  if (!packIsOverfull(state.gear, constants)) return null;
 
   /* Disturbing (L1353). */
   disturb(state);
@@ -281,7 +276,7 @@ export function packOverflow(
   const victim =
     handle !== 0
       ? handle
-      : (state.gear.inven?.[state.gear.inven.length - 1] ?? 0);
+      : (state.gear.pack[state.gear.pack.length - 1] ?? 0);
   const obj = gearGet(state.gear, victim);
   /* Upstream asserts obj != NULL here (L1369). The port can reach a stale
    * handle where upstream reads freed memory: combine_pack (which runs just
@@ -305,7 +300,7 @@ export function packOverflow(
     victim,
     obj.number,
   );
-  calcInventory(state.gear, constants as Constants, overflowCalcInv(opts));
+  calcInventory(state.gear, constants, overflowCalcInv(opts));
   /* drop_near(cave, &obj, 0, player->grid, false, true): prefer_pile. */
   dropNear(state, dropped, 0, state.actor.grid, true, opts.floorEnv ?? {});
 
