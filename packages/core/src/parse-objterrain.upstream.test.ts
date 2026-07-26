@@ -289,13 +289,7 @@ describe("proj.c: projection binder", () => {
     expect(denom.randomValue()).toEqual(want.randomValue());
   });
 
-  it("obvious:/wake: are truthy tests on the stored int (test_obvious0, test_wake0)", () => {
-    /* NOTE a real divergence, recorded as GAP-9 and NOT fixed here:
-     * parse_projection_obvious stores `(obvious == 1)`, so upstream turns
-     * `obvious:2` into FALSE. The port's `(rec.obvious ?? 0) !== 0` turns it
-     * into TRUE. Unreachable on shipped data (every line is 0 or 1) and the
-     * fix belongs with a wider pass over the port's several `?? 0 !== 0`
-     * boolean conversions, so it is reported rather than patched. */
+  it("obvious:/wake: are true only for stored value 1 (test_obvious0, test_wake0)", () => {
     const recs = fresh();
     (recs[0] as unknown as Rec)["obvious"] = 1;
     (recs[0] as unknown as Rec)["wake"] = 1;
@@ -309,12 +303,12 @@ describe("proj.c: projection binder", () => {
     expect(info.obvious).toBe(false);
     expect(info.wake).toBe(false);
 
-    /* Upstream would give false for both of these. */
+    /* obj-init.c:366/377 use `(value == 1) ? true : false`. */
     (recs[0] as unknown as Rec)["obvious"] = 2;
     (recs[0] as unknown as Rec)["wake"] = 7;
     info = bindProjections(recs)[PROJ.ACID]!;
-    expect(info.obvious).toBe(true);
-    expect(info.wake).toBe(true);
+    expect(info.obvious).toBe(false);
+    expect(info.wake).toBe(false);
   });
 
   it("keeps every description string, absent ones as null (test_desc0/player_desc0/blind_desc0/lash_desc0)", () => {
