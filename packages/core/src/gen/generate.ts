@@ -13,10 +13,11 @@
  * duplicate. Monster-count overflow is the one upstream post-build
  * regeneration trigger that is kept.
  *
- * ONE DELIBERATE ADDITION beyond upstream, ratified by the owner 2026-07-25:
- * the staircase-reachability guarantee (ensureStairsReachable in gen/util.ts),
- * applied inside this loop. It spends no RNG, so it cannot perturb a level that
- * already satisfies it.
+ * NO ADDITIONS BEYOND UPSTREAM. The one optional extra this file can run is the
+ * staircase-reachability repair (ensureStairsReachable in gen/util.ts), and it
+ * is gated on the bug-fixes mod's "bugfix.stairsReachable" flag: absent (the
+ * default, and the only possibility with no mod enabled) means this loop is a
+ * faithful cave_generate, stranded floors included.
  *
  * Level feeling (generate.c place_feeling / calc_obj_feeling /
  * calc_mon_feeling, L676-761 and L1235-1241) IS ported: placeFeeling scatters
@@ -65,6 +66,14 @@ export interface GenDeps {
    * directly. Omitted/null keeps the deferred bare-grid behaviour.
    */
   trapKinds?: readonly TrapKind[] | null;
+  /**
+   * GameState.modRules (the bug-fixes mod seam), threaded from session/game.ts
+   * so the pure generation path can consult a named flag without importing
+   * session state. The only flag read here is "bugfix.stairsReachable"; absent
+   * or false - always the case with no mod enabled - keeps cave_generate
+   * faithful to 4.2.6, unreachable staircases included.
+   */
+  modRules?: Readonly<Record<string, boolean>> | undefined;
 }
 
 export interface GenerateOptions {
@@ -413,15 +422,19 @@ export function generateLevel(
     }
 
     /*
-     * Owner-ratified guarantee (2026-07-25): no floor may exist without a
-     * walk-reachable staircase in each direction it actually has one. Upstream
-     * makes no such promise - see the long note at ensureStairsReachable in
-     * gen/util.ts. The repair draws NO RNG, so levels that already satisfy the
-     * invariant are bit-identical to upstream; only the stranded minority is
-     * touched. A level that cannot be repaired is rejected and re-rolled, the
-     * same treatment as a monster-maximum overflow above.
+     * bug-fixes mod, flag "bugfix.stairsReachable" (docs/modding/BUG_FIXES.md
+     * entry 13): upstream can seal a staircase inside a vault the tunneller
+     * never joined, leaving a floor with no walk-reachable stair in one
+     * direction (measured 10.2% of levels, mostly the up stair). Faithful core
+     * KEEPS that wart - the flag is absent unless the player enables the fix,
+     * and then the repair draws no RNG, so a level that was already fine stays
+     * bit-identical. A level that cannot be repaired is rejected and re-rolled,
+     * the same treatment as a monster-maximum overflow above.
      */
-    if (!ensureStairsReachable(g, dun.quest)) {
+    if (
+      deps.modRules?.["bugfix.stairsReachable"] &&
+      !ensureStairsReachable(g, dun.quest)
+    ) {
       error = "no reachable staircase";
       continue;
     }
