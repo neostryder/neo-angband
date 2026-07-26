@@ -19,7 +19,7 @@
  * upstream do-while around cmdq_pop.
  */
 
-import { MON_MSG, MON_TMD, MSG, OF, PF, STAT, TMD, TRF } from "../generated";
+import { FEAT, MON_MSG, MON_TMD, MSG, OF, PF, STAT, TF, TMD, TRF } from "../generated";
 import { DDGRID, DDGRID_DDD, locSum } from "../loc";
 import type { Loc } from "../loc";
 import { pyAttack } from "../combat/melee";
@@ -41,7 +41,12 @@ import { playerClearTimed, playerTimedGradeEq } from "../player/timed";
 import type { GameState, PlayerCommand } from "./context";
 import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context";
 import { gearGet } from "./gear";
+import { floorPile } from "./floor";
+import { isTrappedChest } from "../obj/chest";
+import { knownObject } from "./known";
+import { squareIsSeen } from "../world/view";
 import { playerConfuseDir } from "./obj-cmd";
+import { disturb } from "./player-path";
 import { playerAdjustManaPrecise } from "./loop";
 import { formatMonsterMessage } from "./mon-message";
 import { squareIsWebbed, squareRemoveAllTraps, squareTrap } from "./trap";
@@ -480,6 +485,7 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
 
   movePlayer(state, next);
   if (state.updateFov) state.updateFov(state);
+  search(state); /* player_handle_post_move (player-util.c:1633-1634). */
 
   /* Autopickup on the new grid (upstream queues CMD_AUTOPICKUP; its energy
    * cost is folded into this step, see game/pickup.ts). */
@@ -504,8 +510,65 @@ export function jumpAction(state: GameState, cmd: PlayerCommand): number {
   return walkAction(state, cmd);
 }
 
+/**
+ * search (player-util.c:1680-1715): reveal adjacent secret doors and the
+ * traps on known chests.  The only RNG is place_closed_door's one_in_(4), then
+ * randint1(7) on success, once per discovered door in y/x scan order.
+ */
+export function search(state: GameState): void {
+  const p = state.actor.player;
+  if (
+    (p.timed[TMD.BLIND] ?? 0) > 0 ||
+    !squareIsSeen(state.chunk, state.actor.grid) ||
+    (p.timed[TMD.CONFUSED] ?? 0) > 0 ||
+    (p.timed[TMD.IMAGE] ?? 0) > 0
+  ) return;
+
+  for (let y = state.actor.grid.y - 1; y <= state.actor.grid.y + 1; y++) {
+    for (let x = state.actor.grid.x - 1; x <= state.actor.grid.x + 1; x++) {
+      const grid = { x, y };
+      if (!state.chunk.inBoundsFully(grid)) continue;
+
+      const flags = state.chunk.feature(grid).flags;
+      if (flags.has(TF.DOOR_ANY) && flags.has(TF.ROCK)) {
+        state.msg?.("You have found a secret door.");
+        state.chunk.setFeat(grid, FEAT.CLOSED);
+        if (state.rng.oneIn(4)) {
+          state.setDoorLock?.(grid, state.rng.randint1(7));
+        }
+        disturb(state);
+      }
+
+      /*
+       * The C tests knowledge PER OBJECT (`if (!obj->known || ...) continue;`),
+       * which has no exact analogue here: this port's object memory is per GRID
+       * (KnownObjectMemory holds the remembered pile head's glyph, not a shadow
+       * per object), so the closest check is "is this grid's pile remembered".
+       *
+       * For floor piles the two agree, because square_know_pile shadows the
+       * WHOLE pile at once -- either every object on the grid has a shadow or
+       * none does. They diverge only for an object added to an
+       * already-remembered grid since the last know_pile, e.g. a chest dropped
+       * onto a mapped floor: upstream will not discover its trap until the pile
+       * is known again, this will. Narrow, and recorded as a finding rather than
+       * faked, since a per-object shadow is a larger design change.
+       */
+      if (!knownObject(state, grid)) continue;
+      for (const obj of floorPile(state, grid)) {
+        if ((state.isIgnored?.(obj) ?? false) || !isTrappedChest(obj)) continue;
+        if (obj.knownPval !== obj.pval) {
+          state.msg?.("You have discovered a trap on the chest!");
+          obj.knownPval = obj.pval;
+          disturb(state);
+        }
+      }
+    }
+  }
+}
+
 /** hold / rest: stay put and spend a full turn. */
 export function holdAction(state: GameState, _cmd: PlayerCommand): number {
+  search(state);
   return state.z.moveEnergy;
 }
 

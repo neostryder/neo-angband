@@ -1117,6 +1117,10 @@ export function installObjCommands(
     if (handle === null) return 0;
     const obj = gearGet(state.gear, handle);
     const tval = obj?.tval ?? 0;
+    /* obj_can_takeoff (obj-util.c:794-796) is the takeoff-item filter in
+     * do_cmd_takeoff (cmd-obj.c:251): a sticky item is not selectable, so this
+     * direct command entry likewise aborts silently and spends no energy. */
+    if (obj?.flags.has(OF.STICKY)) return 0;
     if (!invenTakeoff(state, handle)) return 0;
     /* inven_takeoff's message (obj-gear.c L1046-1065): the slot wording, then
      * the item named at its new pack label. */

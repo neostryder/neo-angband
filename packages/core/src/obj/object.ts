@@ -294,6 +294,8 @@ export interface GameObject {
   tval: number;
   sval: number;
   pval: number;
+  /** obj->known->pval for a chest trap discovered by passive search. */
+  knownPval?: number;
   weight: number;
   dd: number;
   ds: number;
@@ -392,6 +394,7 @@ export function objectCopy(src: GameObject): GameObject {
     tval: src.tval,
     sval: src.sval,
     pval: src.pval,
+    ...(src.knownPval !== undefined ? { knownPval: src.knownPval } : {}),
     weight: src.weight,
     dd: src.dd,
     ds: src.ds,
