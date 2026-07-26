@@ -376,7 +376,7 @@ function bindBlowMethods(
       stun: rec.stun === 1,
       miss: rec.miss === 1,
       phys: rec.phys === 1,
-      msgt: rec.msg ?? "GENERIC",
+      msgt: checkMsgt(`blow method ${rec.name}`, rec.msg),
       messages: rec.act ? [...rec.act] : [],
       desc: joinLines(rec.desc),
     });
@@ -587,6 +587,15 @@ function checkPitInnateFreq(name: string, pct: number | undefined): number {
  * one; an unknown name is PARSE_ERROR_INVALID_MESSAGE (mspell.c
  * test_msgt_bad0). The port keeps the MSG_ name as a string and resolves it
  * at message time, so without this the typo simply never matched anything.
+ *
+ * Four callers, matching the four upstream handlers that do this:
+ * parse_mon_spell_message_type and parse_meth_message_type (mon-init.c),
+ * parse_summon_message_type (mon-summon.c) and the projection one
+ * (obj-init.c, in ../world/projection). `msgt === undefined` is upstream's
+ * mem_zalloc default of 0 == MSG_GENERIC, and for the blow method
+ * specifically it is also parse_meth_message_type's `parser_hasval(p, "msg")`
+ * guard: `msg:` is registered `?str`, so a bare `msg:` omits the key here
+ * exactly as it leaves msgt untouched there, and is NOT an error.
  */
 function checkMsgt(what: string, msgt: string | undefined): string {
   if (msgt === undefined) return "GENERIC";
@@ -665,7 +674,7 @@ export class MonsterRegistry {
 
     this.summons = pack.summons.map((rec) => ({
       name: rec.name,
-      msgt: rec.msgt ?? "GENERIC",
+      msgt: checkMsgt(`summon ${rec.name}`, rec.msgt),
       uniquesAllowed: rec.uniques === 1,
       baseNames: rec.base ? [...rec.base] : [],
       raceFlag: rec["race-flag"] ?? null,
