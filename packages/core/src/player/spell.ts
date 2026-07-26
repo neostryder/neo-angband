@@ -229,13 +229,6 @@ export function spellBookCountSpells(
 }
 
 /** spell_okay_to_cast. */
-/**
- * spell_okay_list (player-spell.c L320) is upstream's "does ANY spell in this
- * list pass `spell_test`" fold over spellOkayToCast / spellOkayToStudy. Its one
- * caller is spell_menu_new (ui-spell.c:233), which refuses to build the menu
- * when no listed spell qualifies; the web shell's equivalent is the
- * `items.every((it) => it.disabled)` check in castSpell / studySpell.
- */
 export function spellOkayToCast(player: Player, spell: number): boolean {
   return ((player.spellFlags[spell] ?? 0) & PY_SPELL.LEARNED) !== 0;
 }

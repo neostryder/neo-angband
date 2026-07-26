@@ -20,9 +20,6 @@ import { newElemInfo, newOfFlags, OBJ_MOD_MAX } from "../obj/types";
 import type { ElementInfo } from "../obj/types";
 import type { FlagSet } from "../bitflag";
 import type { HistoryInfo } from "./history";
-import { randnameMake } from "../obj/randname";
-import type { NameProbs } from "../obj/randname";
-import type { Rng } from "../rng";
 
 /**
  * Minimal struct player_upkeep: only the derived counters the headless core
@@ -331,26 +328,4 @@ export function blankPlayer(
     skills: new Array<number>(SKILL_MAX).fill(0),
     upkeep: { playing: false, newSpells: 0, totalWeight: 0 },
   };
-}
-
-/**
- * player_random_name (player.c L375): a Markov-chain name drawn from the
- * RANDNAME_TOLKIEN corpus with length in [4, 8], my_strcap'd. Note the bounds
- * differ from artifact_gen_name's MIN_NAME_LEN/MAX_NAME_LEN (5, 9).
- *
- * Upstream call sites are all name entry: ui-birth.c:725 (finish with random
- * choices fills the name too), ui-input.c:1038 ('*' in the name field) and
- * ui-input.c:1124 (the name field's context-menu "random" action). The
- * savefile-name-collision retry loop at ui-birth.c:721-733 is filesystem
- * plumbing this port has no counterpart for (browser save slots).
- *
- * `probs` is build_prob over the corpus (CoreRegistries.nameSections, section
- * RANDNAME_TOLKIEN = 1). Returns "" when no corpus is available, letting the
- * caller keep whatever name it had rather than invent an unfaithful one.
- */
-export function playerRandomName(rng: Rng, probs: NameProbs | null): string {
-  if (probs === null) return "";
-  const word = randnameMake(rng, 4, 8, probs);
-  /* my_strcap (z-util.c L529): first character only. */
-  return word.length === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1);
 }

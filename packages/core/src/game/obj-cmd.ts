@@ -78,7 +78,6 @@ import { attachGameEnv } from "./effect-game-env";
 import { describeObject } from "./describe";
 import { ODESC, objDescNameFormat } from "../obj/desc";
 import { substituteTimedMessage } from "../player/timed";
-import { squareIsSeen } from "../world/view";
 import { updatePlayerObjectKnowledge } from "./known";
 import type { CastContext } from "./project-cast";
 import type { ActionRegistry } from "./player-turn";
@@ -826,65 +825,6 @@ export function playerCanRead(
 }
 
 /**
- * no_light (cave-view.c L913): the player's own grid is not currently seen.
- * Shared by playerCanRead here and player_can_cast (game/spell-cmd.ts).
- *
- * SQUARE_SEEN is maintained by update_view, which this port drives through the
- * `state.updateFov` host seam (game/context.ts L506, wired by the web shell at
- * main.ts:4340). A core-only host that never installs the seam leaves SEEN
- * clear on EVERY grid, so reading the flag there would report "no light"
- * everywhere and make casting and reading permanently impossible - the opposite
- * of upstream, where a lit town square is seen. So when the seam is absent the
- * flag carries no information and no_light answers false, leaving the caller's
- * other conditions (blindness) to decide, exactly as before this was wired.
- * This is a seam guard, not a rule of the game: with a host that maintains the
- * view, which is every playing configuration, the check is upstream's verbatim.
- */
-export function noLight(state: GameState): boolean {
-  if (state.updateFov === undefined) return false;
-  return !squareIsSeen(state.chunk, state.actor.grid);
-}
-
-/**
- * player_can_read (player-util.c L1166): the four conditions that forbid
- * reading, in upstream's exact order - TMD_BLIND, then no_light, then
- * TMD_CONFUSED, then TMD_AMNESIA - each with its own message. Note that the
- * order and the strings differ from player_can_cast (L1087), which folds
- * blind and no_light into one "You cannot see!" and has no amnesia check.
- *
- * Reached from two places upstream and both are the same predicate:
- * do_cmd_read_scroll (cmd-obj.c:748) and the 'r' key's prereq
- * player_can_read_prereq (player-util.c:1264, wired at ui-game.c:131). The
- * prereq's TMD_COMMAND bypass is NOT reproduced here: while TMD_COMMAND runs
- * the turn loop redirects every command to do_cmd_mon_command before the
- * handler is reached (game/player-turn.ts L708-714), which is exactly what
- * the bypass exists to permit.
- */
-export function playerCanRead(
-  state: GameState,
-  env: Pick<ObjCmdEnv, "msg"> = {},
-): boolean {
-  const p = state.actor.player;
-  if ((p.timed[TMD.BLIND] ?? 0) > 0) {
-    env.msg?.("You can't see anything.");
-    return false;
-  }
-  if (noLight(state)) {
-    env.msg?.("You have no light to read by.");
-    return false;
-  }
-  if ((p.timed[TMD.CONFUSED] ?? 0) > 0) {
-    env.msg?.("You are too confused to read!");
-    return false;
-  }
-  if ((p.timed[TMD.AMNESIA] ?? 0) > 0) {
-    env.msg?.("You can't remember how to read!");
-    return false;
-  }
-  return true;
-}
-
-/**
  * player_confuse_dir (player-util.c): confusion randomises the direction
  * 75% of the time (always for "no direction").
  */
@@ -1437,24 +1377,11 @@ export function installObjCommands(
     "quaff",
     gated(useCommand(deps, (o) => tvalIsPotion(o.tval), USE.SINGLE)),
   );
-  /*
-   * do_cmd_read_scroll (cmd-obj.c L740-758): resume shape, THEN
+  /* do_cmd_read_scroll (cmd-obj.c L739-757): resume shape, then
    * player_can_read(player, true) - blind / no light / confused / amnesia each
    * refuse with their own message and cost no turn - and only then the scroll
-   * pick, so the read gate fires before "You have no scrolls to read.".
-   *
-   * Two lanes ported this independently and reached OPPOSITE orderings, because
-   * upstream checks the same condition in two places and each lane found one:
-   * this handler order, and `player_can_read_prereq` hung on the 'r' key entry
-   * (ui-game.c:131), which ui-game.c:596 runs BEFORE the command is ever
-   * pushed. Both are real. The prereq means a blind player pressing 'r' never
-   * reaches the shape-resume prompt at all, while anything that pushes
-   * CMD_READ_SCROLL without going through that key entry still takes
-   * resume-then-read. Collapsing the pair into a single head-of-handler guard
-   * reproduces the keyboard order but breaks the handler's own, so the guard
-   * stays here in C order and the prereq belongs at the port's dispatch layer
-   * next to the key binding - the same split playercan applied to cast/study.
-   */
+   * pick. The order matters: the read gate fires before "You have no scrolls to
+   * read.". */
   registry.register(
     "read",
     gated((state, cmd) => {
