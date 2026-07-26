@@ -60,28 +60,42 @@ const cbase = loadCBaseline();
 const PORT_RUNS = Number(process.env.NEO_PARITY_RUNS ?? 400);
 
 /**
- * MEASURED dispersion of the pooled feeling G-statistics under a true null.
+ * MEASURED null of the pooled feeling G-statistics, from SIX independent
+ * 1000-run C main-stats databases produced by the same binary. Every unordered
+ * pair (15 of them) is a run of this exact instrument on data where the answer
+ * is known to be "no difference", so the pairs ARE the null distribution.
+ * Produced by `parity/phase3-2026-07-25/tools/c-vs-c-all-pairs.mjs`:
  *
- * There are two independent 1000-run C main-stats databases, produced by the
- * same binary. Diffing them against each other runs this exact instrument on
- * data where the answer is known to be "no difference", so the result IS the
- * null: `parity/phase3-2026-07-25/tools/c-vs-c-null.mjs` reports
+ *   objFeel  mean 1.94, sd 0.31, range [1.56, 2.49]   (15 pairs)
+ *   monFeel  mean 1.82, sd 0.18, range [1.45, 2.21]   (15 pairs)
  *
- *   obj_feelings  C-A vs C-B pooled: G/df = 1.76 over 20 depths
- *   mon_feelings  C-A vs C-B pooled: G/df = 1.95 over 20 depths
+ * Three things follow, and they matter more than the constants.
  *
- * These histograms are therefore overdispersed by nearly a factor of two before
- * the port is involved at all, and a pooled G/df near 1.8 is ORDINARY. This
- * supersedes the 0.95 figure from NOISE-FLOOR.md, which was measured port
- * against ITSELF at a second base seed -- a weaker null, since two runs of one
- * implementation share structure that two independent samples do not.
+ * 1. These histograms are overdispersed by about a factor of two BEFORE the
+ *    port is involved. The 0.95 figure in NOISE-FLOOR.md is superseded: it was
+ *    measured port against ITSELF at a second base seed, which shares structure
+ *    that two independent samples do not.
  *
- * Applied as a quasi-likelihood correction (G/phi referred to chi2(df)). It is
- * ONE replicate per metric, so phi is itself uncertain; more C runs would pin
- * it. Erring toward the measured value is the conservative choice, because the
- * alternative is claiming a divergence that two runs of upstream also show.
+ * 2. G/df is NOT sample-size invariant -- G grows with n for a fixed
+ *    distributional difference -- so a port-vs-C ratio computed at 400 port runs
+ *    cannot be compared with a null measured between two 1000-run samples. The
+ *    pooled feeling assertion is therefore SKIPPED unless the port's sample size
+ *    matches the C baseline's levels-per-depth. At the default 400 it prints and
+ *    does not gate; run with NEO_PARITY_RUNS=1000 for a valid decision.
+ *
+ * 3. When it IS comparable, the honest threshold is the empirical maximum, not a
+ *    chi-square tail. The dispersion's own spread (1.56 to 2.49) is wider than a
+ *    scaled chi-square at ~140 df predicts, so the parametric tail is not
+ *    trustworthy at 1e-4. Fifteen replicates buy a rank-based one-sided
+ *    resolution of about 1/16 = 0.06 and no more. That is far weaker than the
+ *    rest of the family, and saying so is the point: this metric currently
+ *    cannot detect a small divergence, and pretending otherwise produced a
+ *    "p = 8e-25" that was an artefact of the wrong null.
  */
-const FEEL_DISPERSION: Record<string, number> = { objFeel: 1.76, monFeel: 1.95 };
+const FEEL_NULL: Record<string, { phi: number; max: number; pairs: number }> = {
+  objFeel: { phi: 1.94, max: 2.49, pairs: 15 },
+  monFeel: { phi: 1.82, max: 2.21, pairs: 15 },
+};
 const DEPTH_MAX = 20;
 const ALPHA = 0.01;
 
@@ -183,13 +197,11 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * shifted the stream in 25ed848b13, sharing not one depth, while the pooled
      * excess stayed put. See poolDistributionTests for the additivity argument.
      *
-     * Both pooled feeling tests are corrected by their MEASURED dispersion
-     * (FEEL_DISPERSION above), because two independent 1000-run samples of the
-     * same C binary pool to G/df = 1.76 and 1.95 respectively. Pooling is still
-     * the right move -- it removes the seed-dependent choice of depth -- but the
-     * uncorrected p-value it produces is not believable, and correcting it costs
-     * the objFeel finding most of its claimed strength. That is the honest
-     * number, so it is the one asserted.
+     * Both pooled feeling tests are judged against their MEASURED null
+     * (FEEL_NULL above, 15 C-vs-C pairs), not against a chi-square tail, and
+     * only when the port's sample size matches the C's. Pooling is still the
+     * right move -- it removes the seed-dependent choice of depth -- but the
+     * uncorrected p-value it produced was an artefact of assuming dispersion 1.
      *
      * Gold is asserted separately -- its per-origin classification is a known
      * open divergence and would otherwise mask the rest. */
@@ -298,19 +310,36 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * rows above stay in the printout so a real divergence can still be
      * localised by eye; only these two are asserted. `ratio` is the number to
      * read: 1.0 is exactly the null expectation. */
+    /* Comparable only when the port's sample size matches the C baseline's, for
+     * the sample-size reason in the FEEL_NULL note above. */
+    const cLevels = base.depths[String(depths[0] ?? 1)]?.levels ?? 0;
+    const feelComparable = PORT_RUNS === cLevels;
+
     for (const metric of ["objFeel", "monFeel"] as const) {
-      const t = poolDistributionTests(pooling[metric] ?? [], FEEL_DISPERSION[metric] ?? 1);
-      rows.push({
-        depth: -1,
-        metric: `${metric}-pooled`,
-        detail: `G=${t.g.toFixed(1)} df=${t.df} G/df=${t.ratio.toFixed(2)} over ${t.k} depths`,
-        p: t.p,
-      });
+      const nul = FEEL_NULL[metric] ?? { phi: 1, max: Infinity, pairs: 0 };
+      const t = poolDistributionTests(pooling[metric] ?? [], nul.phi);
+      /* Gated on the EMPIRICAL maximum of the measured null, not on t.p: with 15
+       * replicates the rank-based resolution is ~1/16, and the parametric tail
+       * over-claims. t.p is still printed as a second reading. */
+      if (feelComparable && t.ratio > nul.max) {
+        rows.push({
+          depth: -1,
+          metric: `${metric}-pooled`,
+          detail:
+            `G/df=${t.ratio.toFixed(2)} exceeds all ${nul.pairs} measured ` +
+            `C-vs-C pairs (max ${nul.max.toFixed(2)}) over ${t.k} depths`,
+          p: 1 / (nul.pairs + 1),
+        });
+      }
       report.push(
-        `POOLED ${metric.padEnd(8)} G=${t.g.toFixed(1)} df=${t.df} ` +
-          `G/df=${t.ratio.toFixed(2)} (measured C-vs-C null ${t.dispersion.toFixed(2)}) ` +
-          `-> G/phi/df=${(t.ratio / t.dispersion).toFixed(2)} p=${t.p.toExponential(2)} ` +
-          `over ${t.k} depths (alpha=${alpha.toExponential(2)})`,
+        `POOLED ${metric.padEnd(8)} G=${t.g.toFixed(1)} df=${t.df} G/df=${t.ratio.toFixed(2)} ` +
+          `vs measured C-vs-C null mean ${nul.phi.toFixed(2)} max ${nul.max.toFixed(2)} ` +
+          `(${nul.pairs} pairs) -> G/phi/df=${(t.ratio / t.dispersion).toFixed(2)} ` +
+          `p=${t.p.toExponential(2)} over ${t.k} depths` +
+          (feelComparable
+            ? ` [GATED at the empirical max; resolution ~1/${nul.pairs + 1}]`
+            : ` [NOT GATED: port runs ${PORT_RUNS} != C levels ${cLevels}, ` +
+              `and G/df is not sample-size invariant]`),
       );
     }
     report.push(
@@ -365,7 +394,13 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
         `p=${objStoufferP.toExponential(2)} -- DIAGNOSTIC ONLY, null not yet measured`,
     );
 
-    const failures = rows.filter((r) => r.p < alpha || r.metric === "density-pooled");
+    /* Every `-pooled` row is pushed ONLY when it has already breached its own
+     * threshold -- the Stouffer rows against the uncorrected alpha, the feeling
+     * rows against their measured empirical maximum -- so their `p` field is a
+     * report, not something to re-test against `alpha`. Comparing them with
+     * `alpha` would silently swallow them: the feeling rows carry a rank bound
+     * of 1/16, which is nowhere near 1.2e-4. */
+    const failures = rows.filter((r) => r.p < alpha || r.metric.endsWith("-pooled"));
     const summary =
       `C-vs-TS generation parity, alpha=${alpha.toExponential(2)} ` +
       `(${ALPHA} Bonferroni-corrected over ${depths.length} per-depth tests each ` +
