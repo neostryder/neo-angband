@@ -168,6 +168,14 @@ export interface BirthOpts {
   /** birth_* options carried over from the previous character, used to seed the
    * '=' birth-options editor so a New Game defaults to the last choices. */
   birthOptions?: Record<string, boolean>;
+  /**
+   * player_random_name (player.c L375), supplied by the shell because the
+   * RANDNAME_TOLKIEN corpus lives in the core registry the birth screen does
+   * not otherwise hold. Drives both upstream uses: the name field's '*' key
+   * (ui-input.c L1038) and the name that finish_with_random_choices fills in
+   * (ui-birth.c L725). Absent, the name stays as it was.
+   */
+  randomName?: () => string;
 }
 
 /* setup_menus' stage hints (ui-birth.c L565/578/586), verbatim. */
@@ -1357,26 +1365,12 @@ export async function runBirth(
     name: c.name,
   }));
 
-  // do_cmd_choose_race (player-birth.c:1092-1102) and do_cmd_choose_class
-  // (L1105-1115) both end with reset_stats() + generate_stats() +
-  // `rolled_stats = false`. Every trip through those menus issues the command
-  // again (menu_question pushes CMD_CHOOSE_RACE / CMD_CHOOSE_CLASS on Enter and
-  // on '*', unconditionally, even for the same row), so ANY re-pick DISCARDS a
-  // manual point-buy allocation and any accepted standard roll: the allocation
-  // screen must re-open at the new race/class's generate_stats spread, and the
-  // point-buy lock rolled_stats imposes must be released. ESC (BIRTH_BACK) does
-  // NOT reset - it issues no command - so stepping back from the name stage into
-  // the same allocation still restores the work in progress.
-  const discardStatWork = (): void => {
-    pointStats = null;
-    rolledStats = null;
-  };
-
   // finish_with_random_choices (ui-birth.c:660-777): fill every remaining
   // choice from `fromStage` onward at random and jump to the final confirm. A
   // default point-buy (generate_stats) supplies the stats, matching upstream.
-  // The name is left for the confirm default (the shell has no random-name
-  // generator; see WIRING-NEEDED).
+  // The name comes from player_random_name (ui-birth.c:725) via opts.randomName;
+  // upstream's savefile-collision retry around it (L721-733) is filesystem
+  // plumbing with no browser counterpart.
   const finishRandom = (fromStage: "race" | "class"): void => {
     if (fromStage === "race") {
       raceIdx = rollRng.randint0(races.length);
@@ -1391,6 +1385,9 @@ export async function runBirth(
       rollerIdx = 0;
       rolledStats = null;
     }
+    /* ui-birth.c:725: the name is filled in too, from player_random_name. */
+    const rolledName = opts.randomName?.() ?? "";
+    if (rolledName !== "") name = rolledName;
     advance("confirm");
   };
 
@@ -1480,7 +1477,6 @@ export async function runBirth(
             // '*' random pick, then advance to class (menu_question:841-847).
             raceIdx = rollRng.randint0(races.length);
             raceName = races[raceIdx]?.name ?? "Human";
-            discardStatWork();
             advance("class");
             break;
           case "finish":
@@ -1490,7 +1486,6 @@ export async function runBirth(
           case "pick":
             raceIdx = res.index;
             raceName = races[res.index]?.name ?? "Human";
-            discardStatWork();
             advance("class");
             break;
         }
@@ -1519,7 +1514,6 @@ export async function runBirth(
           case "random":
             classIdx = rollRng.randint0(classes.length);
             className = classes[classIdx]?.name ?? "Warrior";
-            discardStatWork();
             advance("roller");
             break;
           case "finish":
@@ -1528,7 +1522,6 @@ export async function runBirth(
           case "pick":
             classIdx = res.index;
             className = classes[res.index]?.name ?? "Warrior";
-            discardStatWork();
             advance("roller");
             break;
         }
@@ -1644,7 +1637,9 @@ export async function runBirth(
           name,
           // PLAYER_NAME_LEN (option.h:23 = 32) allows 31 usable characters.
           31,
-          "[ type a name, Enter to accept, ESC to go back ]",
+          "[ type a name, * for a random one, Enter to accept, ESC to go back ]",
+          /* get_name_keypress' '*' -> player_random_name (ui-input.c L1038). */
+          opts.randomName,
         );
         if (entered === null) {
           if (!goBack()) return null;
