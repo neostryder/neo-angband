@@ -758,17 +758,11 @@ const TERRAIN_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
 >([
   [EF.RUBBLE, handleRUBBLE],
   [EF.GRANITE, handleGRANITE],
-  /* effect_handler_CREATE_STAIRS (effect-handler-general.c:1975) */
   [EF.CREATE_STAIRS, handleCREATE_STAIRS],
-  /* effect_handler_LIGHT_LEVEL (effect-handler-general.c:3003) */
   [EF.LIGHT_LEVEL, handleLIGHT_LEVEL],
-  /* effect_handler_DARKEN_LEVEL (effect-handler-general.c:3013) */
   [EF.DARKEN_LEVEL, handleDARKEN_LEVEL],
-  /* effect_handler_LIGHT_AREA (effect-handler-general.c:3026) */
   [EF.LIGHT_AREA, handleLIGHT_AREA],
-  /* effect_handler_DARKEN_AREA (effect-handler-general.c:3044) */
   [EF.DARKEN_AREA, handleDARKEN_AREA],
-  /* effect_handler_DESTRUCTION (effect-handler-attack.c:1169) */
   [EF.DESTRUCTION, handleDESTRUCTION],
   [EF.EARTHQUAKE, handleEARTHQUAKE],
 ]);
