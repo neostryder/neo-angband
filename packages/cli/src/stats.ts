@@ -109,6 +109,17 @@ export interface DepthMetrics {
   objectsByKind: Record<string, number>;
   /** Artifact object entries (obj.artifact set); mirrors L628-630. */
   artifacts: number;
+  /**
+   * Ego object entries (obj.ego set). The C records these per kind and ego in
+   * `wearables_egos` (main-stats.c:644-645), reached only for objects where
+   * tval_has_variable_power holds, which is exactly the set that can carry an
+   * ego. Summed, that table gives the per-level ego count this mirrors.
+   */
+  egos: number;
+  /** Sum of squared per-level ego counts; same purpose as monsterTotalSq. */
+  egosSq: number;
+  /** Sum of squared per-level artifact counts; same purpose. */
+  artifactsSq: number;
   /** Total gold (sum of gold-object pval); mirrors L624-626. */
   gold: number;
   /** Gold total keyed by origin. */
@@ -215,6 +226,9 @@ export function emptyDepth(): DepthMetrics {
     objectsByTval: {},
     objectsByKind: {},
     artifacts: 0,
+    egos: 0,
+    egosSq: 0,
+    artifactsSq: 0,
     gold: 0,
     goldByOrigin: {},
     objFeeling: {},
@@ -257,6 +271,8 @@ export function collectLevel(
   const monstersBefore = m.monsterTotal;
   const goldBefore = m.gold;
   const objectsBefore = m.objectTotal;
+  const egosBefore = m.egos;
+  const artifactsBefore = m.artifacts;
   for (const pm of g.monsters) {
     bump(m.monsters, pm.mon.race.ridx);
     m.monsterTotal += 1;
@@ -276,6 +292,7 @@ export function collectLevel(
       bump(m.objectsByTval, obj.tval);
       bump(m.objectsByKind, obj.kind.kidx);
       if (obj.artifact) m.artifacts += 1; // L628-630
+      if (obj.ego) m.egos += 1; // L644-645 (wearables_egos)
     }
   };
   sweep(g.objects.map((po) => po.obj));
@@ -285,9 +302,13 @@ export function collectLevel(
   const monstersHere = m.monsterTotal - monstersBefore;
   const goldHere = m.gold - goldBefore;
   const objectsHere = m.objectTotal - objectsBefore;
+  const egosHere = m.egos - egosBefore;
+  const artifactsHere = m.artifacts - artifactsBefore;
   m.monsterTotalSq += monstersHere * monstersHere;
   m.goldSq += goldHere * goldHere;
   m.objectTotalSq += objectsHere * objectsHere;
+  m.egosSq += egosHere * egosHere;
+  m.artifactsSq += artifactsHere * artifactsHere;
 }
 
 /**
@@ -297,14 +318,18 @@ export function collectLevel(
  */
 export function perLevelSd(
   m: DepthMetrics,
-  metric: "monsterTotal" | "gold" | "objectTotal",
+  metric: "monsterTotal" | "gold" | "objectTotal" | "egos" | "artifacts",
 ): number {
   const sq =
     metric === "monsterTotal"
       ? m.monsterTotalSq
       : metric === "gold"
         ? m.goldSq
-        : m.objectTotalSq;
+        : metric === "objectTotal"
+          ? m.objectTotalSq
+          : metric === "egos"
+            ? m.egosSq
+            : m.artifactsSq;
   const n = m.levels;
   if (n < 2 || sq <= 0) return 0;
   const mean = m[metric] / n;
