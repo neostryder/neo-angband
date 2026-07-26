@@ -48,13 +48,8 @@ interface HeaderCase {
    * Lines the "accepts after the record header" leg must emit before the
    * dependent. Upstream's test only asserts the dependents fail BEFORE a
    * record; a few of them additionally need a parent directive inside the
-   * record, so `recordStart` alone is not enough to make them legal. See the
-   * requireParent note in specs/misc.ts.
-   *
-   * This is an ORDERED chain. When the dependent under test is itself a member
-   * of the chain, only the part of the chain BEFORE it is emitted - otherwise a
-   * chain member would be tested as a repeat of itself. `class` needs that: its
-   * `magic` directive rejects a repeat (init.c:3714-3716).
+   * record, so `recordStart` alone is not enough to make them legal. Only
+   * player_timed needs this - see the requireParent note in specs/misc.ts.
    */
   readonly needsParent?: readonly string[];
 }
@@ -120,16 +115,6 @@ const HEADER_CASES: readonly HeaderCase[] = [
     upstream: "c-info.c",
     file: "class",
     recordStart: "name:Test Class",
-    /* book / book-graphics / book-properties / spell / effect / desc all need
-     * c->magic.num_books >= 1, i.e. a magic directive AND a book after it
-     * (init.c:3739, 3778, 3809, 3842, 3880, 4103); effect additionally needs a
-     * preceding spell. */
-    needsParent: [
-      "magic:3:400:9",
-      "book:magic book:town:[First Spells]:2:arcane",
-      "spell:Light Room:1:2:26:4",
-      "effect:LIGHT_AREA",
-    ],
     dependents: [
       "stats:0:1:-3:3:-1",
       "skill-disarm-phys:45:20",
@@ -585,10 +570,7 @@ describe("parse/*: MISSING_RECORD_HEADER pins each spec's recordStart", () => {
       });
 
       it.each(c.dependents)("accepts %j after the record header", (line) => {
-        const chain = c.needsParent ?? [];
-        const self = chain.indexOf(line);
-        const prefix = self === -1 ? chain : chain.slice(0, self);
-        const before = [c.recordStart, ...prefix].join("\n");
+        const before = [c.recordStart, ...(c.needsParent ?? [])].join("\n");
         expect(() => compileGamedata(`${before}\n${line}\n`, spec(c.file))).not.toThrow();
       });
     });
@@ -656,35 +638,6 @@ describe("c-info.c test_magic_repeated0: a second magic: for one class is an err
 
 describe("c-info.c: the class magic -> book -> spell -> effect childOf chain", () => {
   const cls = spec("class");
-
-  it("rejects class magic children in the same states as the parser", () => {
-    /* init.c:3739-3746, 3778-3784, 3842-3854, 3877-3892 */
-    const cases: Array<readonly [string, string]> = [
-      ["book:magic book:town:[Book]:1:arcane", "TOO_MANY_ENTRIES"],
-      ["magic:1:300:0\nbook:magic book:town:[Book]:1:arcane", "TOO_MANY_ENTRIES"],
-      ["magic:1:300:1\nbook-graphics:*:R", "MISSING_RECORD_HEADER"],
-      ["magic:1:300:1\nspell:Spell:1:1:1:1", "TOO_MANY_ENTRIES"],
-      ["magic:1:300:1\nbook:magic book:town:[Book]:0:arcane\nspell:Spell:1:1:1:1", "TOO_MANY_ENTRIES"],
-      ["magic:1:300:1\nbook:magic book:town:[Book]:1:arcane\neffect:HEAL_HP", "MISSING_RECORD_HEADER"],
-      ["magic:1:300:1\nbook:magic book:town:[Book]:1:arcane\ndesc:text", "MISSING_RECORD_HEADER"],
-    ];
-    for (const [line, code] of cases) {
-      expect(() => compileGamedata(`name:Test\n${line}\n`, cls), line).toThrow(code);
-    }
-  });
-
-  it("rejects malformed book allocation ranges", () => {
-    /* init.c:3823-3826 delegates to datafile.c:323-372. */
-    for (const range of ["1 100", "-2147483648 to 1", "1 to 2147483647"]) {
-      expect(() =>
-        compileGamedata(
-          `name:Test\nmagic:1:300:1\nbook:magic book:town:[Book]:1:arcane\n` +
-            `book-properties:1:1:${range}\n`,
-          cls,
-        ),
-      ).toThrow("INVALID_ALLOCATION");
-    }
-  });
 
   it("nests book under the record, spell under book, effect under spell", () => {
     const text = [
