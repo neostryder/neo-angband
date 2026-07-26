@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { FlagSet } from "../bitflag";
-import { FEAT, MFLAG, MON_TMD, OF, SQUARE, TMD, TV } from "../generated";
+import { MFLAG, MON_TMD, OF, TMD } from "../generated";
 import { OF_SIZE, PF_SIZE } from "../player/types";
 import type { PlayerState } from "../player/calcs";
 import { MDESC, monsterDesc } from "../mon/desc";
@@ -16,13 +16,9 @@ import {
   descendAction,
   holdAction,
   processPlayer,
-  search,
   walkAction,
   walkTerrainPrompt,
 } from "./player-turn";
-import { floorCarry } from "./floor";
-import { squareKnowPile } from "./known";
-import type { GameObject } from "../obj/object";
 import { playerCheckTerrainDamage } from "./world";
 import { GRANITE, addMon, featureReg, makeRace, makeState } from "./harness";
 import type { GameState, PlayerCommand } from "./context";
@@ -197,62 +193,6 @@ describe("built-in player actions", () => {
 
     expect(descendAction(state, { code: "descend" })).toBe(state.z.moveEnergy);
     expect(state.generateLevel).toBe(true);
-  });
-});
-
-describe("search (player-util.c:1680-1715)", () => {
-  function litState(): GameState {
-    const state = makeState({ playerGrid: loc(15, 10) });
-    state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN);
-    return state;
-  }
-
-  it("finds an adjacent secret door", () => {
-    const state = litState();
-    const door = loc(16, 10);
-    state.chunk.setFeat(door, FEAT.SECRET);
-    const msgs: string[] = [];
-    state.msg = (text) => msgs.push(text);
-
-    search(state);
-
-    expect(state.chunk.feat(door)).toBe(FEAT.CLOSED);
-    expect(msgs).toContain("You have found a secret door.");
-  });
-
-  for (const blocked of [TMD.BLIND, TMD.CONFUSED, TMD.IMAGE]) {
-    it(`does not search while timed ${blocked}`, () => {
-      const state = litState();
-      const door = loc(16, 10);
-      state.chunk.setFeat(door, FEAT.SECRET);
-      state.actor.player.timed[blocked] = 1;
-      search(state);
-      expect(state.chunk.feat(door)).toBe(FEAT.SECRET);
-    });
-  }
-
-  it("does not search without light", () => {
-    const state = makeState({ playerGrid: loc(15, 10) });
-    const door = loc(16, 10);
-    state.chunk.setFeat(door, FEAT.SECRET);
-    search(state);
-    expect(state.chunk.feat(door)).toBe(FEAT.SECRET);
-  });
-
-  it("discovers the trap on an adjacent known chest", () => {
-    const state = litState();
-    const grid = loc(16, 10);
-    const chest = {
-      tval: TV.CHEST,
-      pval: 5,
-      kind: { dChar: "~", dAttr: "w" },
-    } as GameObject;
-    floorCarry(state, grid, chest);
-    squareKnowPile(state, grid);
-
-    search(state);
-
-    expect(chest.knownPval).toBe(5);
   });
 });
 

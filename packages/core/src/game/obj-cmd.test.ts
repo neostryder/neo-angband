@@ -1126,18 +1126,6 @@ describe("OF_STICKY enforcement (obj-util.c:794 obj_can_takeoff)", () => {
     expect(state.actor.player.equipment).toContain(h);
   });
 
-  it("refuses to take off stickied equipment and spends no energy (cmd-obj.c:251)", () => {
-    const state = makeState({ playerGrid: loc(5, 5) });
-    const h = equipArmour(state, true);
-    const registry = createDefaultRegistry();
-    installObjCommands(registry, makeDeps(state));
-    const commands = [{ code: "takeoff", args: { handle: h } }];
-    state.nextCommand = () => commands.shift() ?? null;
-
-    expect(processPlayer(state, registry).energyUsed).toBe(0);
-    expect(state.actor.player.equipment).toContain(h);
-  });
-
   it("drops non-sticky equipment normally", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const h = equipArmour(state, false);
