@@ -246,15 +246,23 @@ export function packMenu(
 ): { items: MenuItem[]; handles: number[] } {
   const items: MenuItem[] = [];
   const handles: number[] = [];
-  for (const handle of state.gear.pack) {
+  state.gear.pack.forEach((handle, slot) => {
     const obj = gearGet(state.gear, handle);
-    if (!obj) continue;
-    if (filter && !filter(obj)) continue;
-    /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292).
-     * `inscrip` carries obj->note for the picker's @-tag quick-select (get_tag). */
-    items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length), inscrip: obj.note });
+    if (!obj) return;
+    if (filter && !filter(obj)) return;
+    /* build_obj_list (ui-object.c:291-292): the label is
+     * `all_letters_nohjkl[i]` where i is the object's own PACK SLOT - so a
+     * filtered list (only potions, say) keeps each item's real inventory letter
+     * instead of relettering from 'a'. `inscrip` carries obj->note for the
+     * picker's @-tag quick-select (get_tag). */
+    items.push({
+      label: objectName(state, obj),
+      color: objectColor(obj, state),
+      tag: objLetter(slot),
+      inscrip: obj.note,
+    });
     handles.push(handle);
-  }
+  });
   return { items, handles };
 }
 
@@ -329,18 +337,18 @@ export function deviceMenu(
 ): { items: MenuItem[]; handles: number[] } {
   const items: MenuItem[] = [];
   const handles: number[] = [];
-  for (const handle of state.gear.pack) {
+  state.gear.pack.forEach((handle, slot) => {
     const obj = gearGet(state.gear, handle);
-    if (!obj) continue;
-    if (!filter(obj)) continue;
+    if (!obj) return;
+    if (!filter(obj)) return;
     const fail = deviceFailColumn(state, obj, isAware);
     const name = objectName(state, obj);
     const label = fail ? `${name.padEnd(40).slice(0, 40)} ${fail}` : name;
-    /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292).
-     * `inscrip` carries obj->note for the picker's @-tag quick-select (get_tag). */
-    items.push({ label, color: objectColor(obj, state), tag: objLetter(items.length), inscrip: obj.note });
+    /* The object's own pack-slot letter, as build_obj_list writes it
+     * (ui-object.c:291-292) - not its position in this filtered list. */
+    items.push({ label, color: objectColor(obj, state), tag: objLetter(slot), inscrip: obj.note });
     handles.push(handle);
-  }
+  });
   return { items, handles };
 }
 

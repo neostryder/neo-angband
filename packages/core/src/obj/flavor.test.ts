@@ -1,11 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { TV } from "../generated";
+import { KF, TV } from "../generated";
 import { ObjRegistry } from "./bind";
 import type { ObjPackJson, ObjectKind } from "./types";
 import { objectNew, tvalCanHaveFlavor } from "./object";
 import { FlavorKnowledge } from "./knowledge";
 import { flavorInit } from "./flavor";
+import { registerBookKinds } from "../player/spell";
+import { bindPlayer } from "../player/bind";
+import type { PlayerPackRecords } from "../player/types";
 import { buildProb, randnameMake } from "./randname";
 import { Rng } from "../rng";
 import { ODESC } from "./desc";
@@ -20,6 +23,10 @@ function loadJson<T>(name: string): T {
       "utf8",
     ),
   ) as T;
+}
+
+function loadRecords<T>(name: string): T[] {
+  return loadJson<{ records: T[] }>(name).records;
 }
 
 const objPack: ObjPackJson = {
@@ -41,6 +48,20 @@ const namesJson = loadJson<{
 /* Match bindCore: names.txt words are prepended in C; reverse per section. */
 const nameSections = new Map<number, string[]>();
 for (const rec of namesJson.records) nameSections.set(rec.section, [...rec.word].reverse());
+
+/** The bound player domain, for the class-book kinds (registerBookKinds). */
+function boundPlayers(): ReturnType<typeof bindPlayer> {
+  return bindPlayer({
+    races: loadRecords("p_race"),
+    classes: loadRecords("class"),
+    properties: loadRecords("player_property"),
+    timed: loadRecords("player_timed"),
+    shapes: loadRecords("shape"),
+    bodies: loadRecords("body"),
+    history: loadRecords("history"),
+    realms: loadRecords("realm"),
+  } as PlayerPackRecords);
+}
 
 function buildReg(): ObjRegistry {
   return new ObjRegistry(objPack);
@@ -102,6 +123,37 @@ describe("flavorInit (obj-util.c flavor_init)", () => {
     expect(title.endsWith('"')).toBe(true);
     /* "word word" -> at least two chars of letters between the quotes. */
     expect(title.length).toBeGreaterThan(3);
+  });
+});
+
+describe("flavorInit: class spellbooks (init.c write_book_kind)", () => {
+  /**
+   * A spellbook is an ORDINARY object: upstream creates its kind while parsing
+   * class.txt and bumps ordinary_kind_max with it (init.c:222-224), so
+   * flavor_init marks it aware and a store never tags it. The port appends book
+   * kinds AFTER the INSTA_ART dummies, so the awareness rule tests the
+   * INSTA_ART flag rather than the index - with the index test every book stayed
+   * unaware and every book in a store read "... {unseen}".
+   */
+  it("marks a book kind aware even though it sits above ordinaryKindCount", () => {
+    const r = buildReg();
+    registerBookKinds(r, boundPlayers().classes);
+    const book = r.kinds.find((k) => k.name.includes("[First Spells]"));
+    expect(book).toBeDefined();
+    // The port's own layout: books really are past the cap.
+    expect(book!.kidx).toBeGreaterThanOrEqual(r.ordinaryKindCount);
+    expect(book!.kindFlags.has(KF.INSTA_ART)).toBe(false);
+    const { awareness } = runInit(r, 4242);
+    expect(awareness.isAware(book!)).toBe(true);
+  });
+
+  it("leaves the INSTA_ART special-artifact dummies unaware", () => {
+    const r = buildReg();
+    const { awareness } = runInit(r, 4242);
+    const phial = r.kinds.find((k) => k.name.includes("Phial"));
+    expect(phial).toBeDefined();
+    expect(phial!.kindFlags.has(KF.INSTA_ART)).toBe(true);
+    expect(awareness.isAware(phial!)).toBe(false);
   });
 });
 

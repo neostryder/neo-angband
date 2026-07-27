@@ -149,6 +149,15 @@ export function registerBookKinds(
         genMultProb: 0,
         stackSize: { base: 1, dice: 0, sides: 0, mBonus: 0 },
       };
+      /* NOTE ON ORDER (init.c:208-232 write_book_kind): upstream creates book
+       * kinds while parsing class.txt - BEFORE the special-artifact dummies -
+       * and bumps ordinary_kind_max with each one, so upstream's k_info runs
+       * [object.txt kinds][books][INSTA_ART dummies] and "kidx >=
+       * ordinary_kind_max" means exactly "is a dummy". Here the dummies are
+       * appended during bindCore and the books after it, so books sit ABOVE
+       * ordinaryKindCount. Anything that wants "is this a special-artifact
+       * dummy?" must therefore test the INSTA_ART flag, not the index - which
+       * is what flavorInit does when it marks the ordinary kinds aware. */
       reg.kinds.push(kind);
       book.tvalIdx = tval;
       book.sval = sval;
