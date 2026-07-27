@@ -57,7 +57,7 @@ allowlist entry is deleted and the suite is green.
 - [ ] **E. host-io** (38) - scorefile (8), `.prf` files (8), dumps (6), dev
       logs + wiz-stats (16). Port the equivalent against the port's real storage
       and download layers, and the CLI's `node:fs` writers.
-- [ ] **F. Store guard messages** (9) - reachable from a mod adding remote
+- [x] **F. Store guard messages** (9) - reachable from a mod adding remote
       trade; the current UI is not an argument from the C.
 - [x] **G. `move_player`'s known-grid blocked branch** (3) - route the run loop
       (player-path.c:2042) and the whirlwind (effect-handler-attack.c:1838)
@@ -130,3 +130,15 @@ Nothing goes here until it is committed.
   do_cmd_walk_test's "in the way!", and run_step is its ONLY route in 4.2.6 -
   the whirlwind is not a second one, contrary to the census note, because it
   tests square_ispassable first. 110 absences, 19 tier-1.
+- 2026-07-27 - **F** done, and 4 of the 9 were the port SAYING SOMETHING ELSE
+  rather than saying nothing: the shop screen had invented "That item is no
+  longer in stock.", "You do not have enough gold.", "You cannot remove that -
+  it is stuck to you." and "The shopkeeper does not want that." in place of
+  upstream's wording, and the Home has its own line for the missing-item case.
+  The other 5 are the store-presence guards, now in
+  packages/core/src/store/store-cmd.ts and reached from the shop screen, which
+  re-resolves store_at from the player's grid per transaction as each
+  do_cmd_* does instead of trusting the Store it was opened with. Note
+  do_cmd_retrieve is SILENT for a null store while do_cmd_stash speaks - the two
+  conditions differ and collapsing them would invent a line. 101 absences,
+  19 tier-1.
