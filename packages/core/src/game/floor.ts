@@ -22,7 +22,7 @@
  */
 
 import type { Loc } from "../loc";
-import { loc, locSum, randLoc } from "../loc";
+import { loc, locEq, locSum, randLoc } from "../loc";
 import { ORIGIN } from "../generated";
 import type { GameObject, StackLimits } from "../obj/object";
 import { OSTACK_FLOOR, objectAbsorb, objectMergeable, tvalIsMoney } from "../obj/object";
@@ -310,6 +310,12 @@ export function floorCarry(
   grid: Loc,
   drop: GameObject,
   env: FloorEnv = {},
+  /**
+   * floor_carry's `bool *note` (obj-pile.c:906), an in/out box: cleared when the
+   * drop merged into a pile the player IGNORES, so drop_near knows the landing
+   * is not worth mentioning (:927-930). Omit it when the caller does not care.
+   */
+  note?: { value: boolean },
 ): boolean {
   const ignore = floorGetOldestIgnored(state, grid, env);
 
@@ -323,6 +329,11 @@ export function floorCarry(
   for (const obj of pile) {
     if (objectMergeable(obj, drop, OSTACK_FLOOR, limits)) {
       objectAbsorb(obj, drop, ORIGIN.MIXED);
+      /* square_note_spot when in view (obj-pile.c:922-925): the port's shell
+       * runs noteSpots(state) after every action (game/known.ts), so the pile is
+       * noted without a hook here - deliberately not a seam nothing wires. */
+      /* Don't mention if the merged stack is ignored (:927-930). */
+      if (note && (env.isIgnored?.(obj) ?? false)) note.value = false;
       return true;
     }
     n++;
@@ -453,9 +464,24 @@ export function dropNear(
   drop: GameObject,
   chance: number,
   grid: Loc,
+  /**
+   * drop_near's `verbose` (obj-pile.c:1129), in its upstream position. When set
+   * and the object is not ignored, a landing on the PLAYER'S OWN grid announces
+   * "You feel something roll beneath your feet." (:1152-1154).
+   *
+   * The port used to have no such parameter, and `preferPile` sat in this slot -
+   * so several call sites were passing the C's verbose argument as preferPile.
+   * That is not cosmetic: prefer_pile drops drop_find_grid's penalty for mixing
+   * item types in one square, so the wrong value lands objects on different
+   * grids from upstream.
+   */
+  verbose: boolean,
   preferPile: boolean,
   env: FloorEnv = {},
 ): Loc | null {
+  /* dont_ignore = verbose && !ignore_item_ok(player, *dropped) (:1132). */
+  const note = { value: verbose && !(env.isIgnored?.(drop) ?? false) };
+
   /* Handle normal breakage. */
   if (!drop.artifact && state.rng.randint0(100) < chance) {
     env.onBreak?.(drop, true);
@@ -464,8 +490,12 @@ export function dropNear(
 
   /* Find the best grid and drop the item, destroying if there's no space. */
   const best = dropFindGrid(state, drop, preferPile, grid, env);
-  if (floorCarry(state, best, drop, env)) {
+  if (floorCarry(state, best, drop, env, note)) {
     env.onDrop?.(drop, best);
+    /* square(c, best)->mon < 0 is the player's own grid (:1152). */
+    if (note.value && locEq(best, state.actor.grid)) {
+      state.msg?.("You feel something roll beneath your feet.");
+    }
     return best;
   }
   env.onBreak?.(drop, false);

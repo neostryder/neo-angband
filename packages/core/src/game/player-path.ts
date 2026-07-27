@@ -1236,7 +1236,14 @@ export function runStep(state: GameState, dir: number): number {
 
   /* Take one step in the current direction. Running while confused is not
    * allowed, so a zero-energy result is an unseen wall - stop. */
-  const used = walkAction(state, { code: "walk", dir: run.curDir });
+  /* run_step calls move_player DIRECTLY (player-path.c:2042), not do_cmd_walk.
+   * fromRun tells the merged walkAction which of the two it is standing in for -
+   * the blocked-grid wording differs. */
+  const used = walkAction(state, {
+    code: "walk",
+    dir: run.curDir,
+    args: { fromRun: true },
+  });
   if (used === 0) {
     disturb(state);
     return 0;

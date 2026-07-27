@@ -59,10 +59,10 @@ allowlist entry is deleted and the suite is green.
       and download layers, and the CLI's `node:fs` writers.
 - [ ] **F. Store guard messages** (9) - reachable from a mod adding remote
       trade; the current UI is not an argument from the C.
-- [ ] **G. `move_player`'s known-grid blocked branch** (3) - route the run loop
+- [x] **G. `move_player`'s known-grid blocked branch** (3) - route the run loop
       (player-path.c:2042) and the whirlwind (effect-handler-attack.c:1838)
       through the same block.
-- [ ] **H. `drop_near`'s `verbose`** (1) - thread through the port's 15
+- [x] **H. `drop_near`'s `verbose`** (1) - thread through the port's 15
       `dropNear` call sites; `floorCarry` reports whether the stack is ignorable.
 - [ ] **I. Single missing lines** (4 of 12 done) - each a small fix in a
       function that already exists. DONE: the explore command's four gates,
@@ -118,3 +118,15 @@ Nothing goes here until it is committed.
   two separate seams, deliberately not one: cheatMsg (cheat_room-gated restart
   narration, at all three rejection paths) and msg (new_player_spot's UNgated
   placement failure). 114 absences, 19 tier-1.
+- 2026-07-27 - **G** and **H**. G was one message set; H was a wrong argument at
+  five call sites. drop_near's signature is (…, grid, VERBOSE, prefer_pile) and
+  the port had no verbose parameter at all, with preferPile sitting in that slot
+  - so chest loot, acquirement, the nice-object drop and both missile drops were
+  receiving the C's verbose value as prefer_pile. That is placement, not text:
+  prefer_pile drops drop_find_grid's mixed-type penalty, so those objects were
+  piling where upstream scatters them. floor_carry regained its `note` in/out
+  parameter (obj-pile.c:906) so a merge into an ignored pile silences the
+  landing. G: move_player's own known-grid branch says "blocking your way", not
+  do_cmd_walk_test's "in the way!", and run_step is its ONLY route in 4.2.6 -
+  the whirlwind is not a second one, contrary to the census note, because it
+  tests square_ispassable first. 110 absences, 19 tier-1.

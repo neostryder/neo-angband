@@ -316,7 +316,7 @@ export function packOverflow(
   );
   calcInventory(state.gear, constants as Constants, overflowCalcInv(opts));
   /* drop_near(cave, &obj, 0, player->grid, false, true): prefer_pile. */
-  dropNear(state, dropped, 0, state.actor.grid, true, opts.floorEnv ?? {});
+  dropNear(state, dropped, 0, state.actor.grid, false, true, opts.floorEnv ?? {});
 
   /* Describe (L1383). */
   opts.msg?.(`You no longer have ${name}.`);
@@ -441,7 +441,7 @@ export function invenDrop(
     handle,
     amt,
   );
-  dropNear(state, dropped, 0, state.actor.grid, false, floorEnv);
+  dropNear(state, dropped, 0, state.actor.grid, false, true, floorEnv);
   return { dropped, noneLeft, wasEquipped };
 }
 
@@ -706,7 +706,7 @@ export function refillLamp(
         /* Overflow / floor donor: drop_near's own breakage roll (randint0)
          * fires here exactly as upstream, even at chance=0 (a real, faithful
          * RNG draw on this rare branch only - see obj-cmd.test.ts). */
-        dropNear(state, used, 0, state.actor.grid, false, deps.floorEnv);
+        dropNear(state, used, 0, state.actor.grid, false, true, deps.floorEnv);
       }
     } else {
       obj.timeout = 0;
@@ -1278,7 +1278,7 @@ export function useAux(
     if (!used && deductBefore) {
       /* Restore the tentative deduction. */
       if (use === USE.SINGLE && singleUsed) {
-        dropNear(state, singleUsed, 0, state.actor.grid, true, deps.floorEnv);
+        dropNear(state, singleUsed, 0, state.actor.grid, false, true, deps.floorEnv);
       } else if (use === USE.CHARGE) {
         obj.pval = charges;
       } else if (use === USE.TIMEOUT) {
