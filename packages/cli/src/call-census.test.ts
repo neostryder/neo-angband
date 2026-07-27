@@ -69,6 +69,12 @@ const KNOWN_UNUSED: Record<string, readonly string[]> = {
        * the port's monster recall renders from the same lore counters without
        * the boolean. */
       "lore_is_fully_known",
+      /* obj-pile.c:248. Both upstream consumers (gear_last_item ->
+       * combine_pack, obj-ignore.c ignore_drop) use it only to walk the gear
+       * list BACKWARDS, which over the port's array is a reversed index loop
+       * (game/gear.ts combinePack, game/ignore-cmd.ts) - there is no tail
+       * pointer to fetch. Ported and kept for the diff; nothing can call it. */
+      "pile_last_item",
     ],
 
   "host: the C layer the port replaces wholesale, so the ported shape has no caller by construction":
@@ -97,24 +103,6 @@ const KNOWN_UNUSED: Record<string, readonly string[]> = {
       "history_clear",
     ],
 
-  "LEAD: a genuine candidate, not yet run to ground - the port may reach the same behaviour by another route, or a caller may be missing":
-    [
-      /* obj-pile.c:268 / :248 - 8 and 2 C call sites, several of them
-       * assertions. The port's floor.ts defines both and calls neither. */
-      "pile_contains",
-      "pile_last_item",
-      /* obj-gear.c:189 - 5 C call sites, all quantity totals in the pack
-       * display and inven_carry_num. Worth checking the port's counts. */
-      "object_pack_total",
-      /* obj-gear.c:1328, used by ui-store.c:662's flavor-leak guard: an unaware
-       * flavor cannot be bought into a full pack even when a slot would merge.
-       * The port's storeBuy has a no-room failure but not that guard. */
-      "pack_is_full",
-      /* target.c:414 - the show_target option's "is the target still in view"
-       * test, at 4 UI call sites. options.ts records show_target as one of the
-       * levers; the highlight itself is unbuilt. */
-      "target_sighted",
-    ],
 };
 
 const ACCOUNTED = new Set(Object.values(KNOWN_UNUSED).flat());

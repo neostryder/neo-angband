@@ -45,7 +45,7 @@ import {
 } from "../mon/predicate";
 import { disturb } from "./player-path";
 import { describeObject } from "./describe";
-import { floorCarry, floorExcise, floorPile } from "./floor";
+import { floorCarry, floorExcise, floorPile, squareHoldsObject } from "./floor";
 import { noteSpotRevealTrap } from "./trap";
 import { ODESC } from "../obj/desc";
 import { monsterCarry } from "../mon/make";
@@ -555,7 +555,15 @@ export function updatePlayerObjectKnowledge(state: GameState): void {
    * (now-everseen) kind. */
   for (const pile of state.floor.values()) {
     for (const obj of pile) {
-      know(obj, (name) => state.msg?.(`On the ground: ${name}.`));
+      /* Every level object becomes known, but the REPORT is gated on
+       * square_holds_object(cave, p->grid, obj) (L1193) - only what is under the
+       * player's feet is announced. The port used to announce every pile on the
+       * level, so learning one rune could name objects across the whole floor. */
+      know(obj, (name) => {
+        if (squareHoldsObject(state, state.actor.grid, obj)) {
+          state.msg?.(`On the ground: ${name}.`);
+        }
+      });
     }
   }
 

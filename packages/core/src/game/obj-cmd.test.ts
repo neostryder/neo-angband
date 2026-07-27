@@ -203,10 +203,14 @@ describe("inventory verbs (obj-gear.c)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const potion = makeNamed("Cure Light Wounds", TV.POTION);
     const h = carry(state, potion);
-    const dropped = invenDrop(state, h, potion.number);
-    expect(dropped).not.toBeNull();
+    const result = invenDrop(state, h, potion.number);
+    expect(result).not.toBeNull();
     expect(state.gear.pack).not.toContain(h);
-    expect(floorPile(state, loc(5, 5))).toContain(dropped);
+    expect(floorPile(state, loc(5, 5))).toContain(result!.dropped);
+    /* The whole stack went, and it was never equipped (inven_drop's two
+     * message-shaping flags). */
+    expect(result!.noneLeft).toBe(true);
+    expect(result!.wasEquipped).toBe(false);
   });
 });
 

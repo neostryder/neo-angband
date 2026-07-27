@@ -52,8 +52,9 @@ import {
   tvalIsMeleeWeapon,
   tvalIsMoney,
   tvalIsRing,
+  tvalIsRod,
 } from "../obj/object";
-import type { StackLimits } from "../obj/object";
+import type { PackTotalGear, StackLimits } from "../obj/object";
 import { EL_INFO_IGNORE } from "../obj/types";
 import type { ObjectKind } from "../obj/types";
 import { objectPrep } from "../obj/make";
@@ -914,6 +915,52 @@ export function objectCopyAmt(src: GameObject, amt: number): GameObject {
   }
 
   return dest;
+}
+
+/**
+ * The p->gear view object_pack_total walks, built from the live gear.
+ *
+ * Upstream iterates all of p->gear and lets object_similar reject the equipped
+ * entries; the port's objectSimilar has the equipped test deferred (obj/object.ts
+ * module docs), so the view is built from the non-equipped handles instead. The
+ * resulting SET is the same, which is all object_pack_total reads.
+ */
+export function packTotalView(
+  gear: Gear,
+  /* gear_to_label (obj-gear.c:443). Injected because the port has it three
+   * times over (game/project-obj.ts, game/obj-cmd.ts, game/known.ts) and gear.ts
+   * importing any of those would close a cycle; consolidating them is its own
+   * job. */
+  label: (handle: number) => string,
+): PackTotalGear {
+  const objs: GameObject[] = [];
+  const labels = new Map<GameObject, string>();
+  for (const handle of gear.pack) {
+    const obj = gear.store.get(handle);
+    if (!obj) continue;
+    objs.push(obj);
+    labels.set(obj, label(handle));
+  }
+  return {
+    gear: objs,
+    /* Never: the view holds only non-equipped handles (see above). */
+    isEquipped: () => false,
+    gearToLabel: (obj) => labels.get(obj) ?? "",
+  };
+}
+
+/**
+ * Whether upstream suppresses the split-stack aggregate for this object.
+ *
+ * A charges count or "recharging" notice in the description belongs to ONE
+ * stack, so aggregating the number across stacks would contradict the notice
+ * printed beside it. Upstream repeats this test verbatim at every aggregate
+ * site - gear_object_for_use (obj-gear.c L550-556, L583-589), inven_carry
+ * (L899-901) and inven_drop (L1138-1140) - the last two of which also test
+ * object_is_equipped, which the callers here add because inven_carry does not.
+ */
+export function packTotalSuppressed(obj: GameObject): boolean {
+  return tvalCanHaveCharges(obj.tval) || tvalIsRod(obj.tval) || obj.timeout > 0;
 }
 
 /** The detached result of gear_object_for_use. */
