@@ -40,6 +40,8 @@ import {
   squareRemoveAllTraps,
   squareRevealTrap,
   squareSetDoorLock,
+  squareIsPlayerTrap,
+  squareSetTrapTimeout,
   squareTrap,
 } from "./trap";
 import type { TrapDeps } from "./trap";
@@ -100,11 +102,16 @@ function exposeToSun(state: GameState, grid: Loc, daytime: boolean): void {
   }
 }
 
-/** square_disable_trap: every player trap at the grid seizes up a while. */
+/**
+ * square_disable_trap (cave-square.c:1395-1399): every trap at the grid seizes
+ * up for 10 turns - but ONLY if a player trap is there. The port open-coded the
+ * loop and dropped that gate, so a glyph of warding or a web could be disabled
+ * where upstream leaves it alone. Now it goes through the real
+ * square_set_trap_timeout, which is what the C calls.
+ */
 function disableTraps(state: GameState, grid: Loc): void {
-  for (const t of squareTrap(state, grid)) {
-    t.timeout = 10;
-  }
+  if (!squareIsPlayerTrap(state, grid)) return;
+  squareSetTrapTimeout(state, grid, -1, 10);
 }
 
 /**

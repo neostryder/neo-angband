@@ -169,7 +169,6 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "No apparent path for exploration.", // the explore command, cmd-cave.c:1542
       "There is a scream and the door slams shut!", // cmd-cave.c:1595
       "That item is not within your reach.", // do_cmd_fire, player-attack.c:1339
-      "You have disabled the %s.", // trap.c:653
       "Cancelled.", // ui-game.c:663
       "Are you sure? ", // ui-input.c:2014
       "Keep this keymap? ", // the keymap editor, ui-options.c:692
