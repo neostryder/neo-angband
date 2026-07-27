@@ -36,9 +36,11 @@ import type { GraphicsMode, TilePrefsDeps } from "@neo-angband/core";
 // of a hardcoded catalog slice. See tile-mods.ts.
 export {
   discoverEnabledTileModes,
+  discoverTileModProviders,
   enabledTileModes,
+  tileModProviders,
 } from "./tile-mods";
-export type { TileModePack } from "./tile-mods";
+export type { TileModePack, TileModProvider } from "./tile-mods";
 
 /**
  * The classic Angband tile encoding: a cell is a tile (not an ASCII glyph)

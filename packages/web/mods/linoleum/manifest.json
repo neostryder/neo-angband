@@ -6,7 +6,7 @@
   "engine": "4.2.x",
   "author": "neostryder (RPGM Tools)",
   "license": "mixed; see packages/web/public/tiles/CREDITS.md",
-  "description": "Bundled freely-licensed graphics tile packs. Registers the Original, Adam Bolt, David Gervais, and Nomad tilesets so a graphics mode can be picked in Options (not only via ?tiles=/?graf= URL). Shockbolt is deliberately excluded (bespoke licence). The mod itself is OFF on a fresh install, like every mod; enable it and the four packs appear in Options -> Graphics, where ASCII is still the default until you pick one. Fully removable: disable it and the game is ASCII-only again.",
+  "description": "Bundled freely-licensed graphics tile packs. Registers the Original, Adam Bolt, David Gervais, and Nomad tilesets so a graphics mode can be picked from a menu (not only via the ?tiles=/?graf= URL). Shockbolt is deliberately excluded (bespoke licence). The mod itself is OFF on a fresh install, like every mod; enable it and the four sets appear in the game menu's Graphics screen, each tagged with this mod's name, with ASCII still selected until you pick one. There is no separate \"linoleum tileset\": this mod IS how those four tilesets get into the game. Fully removable: disable it and the game is ASCII-only again.",
   "dependencies": { "core": "*" },
   "tilePacks": [
     { "grafID": 1, "key": "old", "path": "tiles/old" },

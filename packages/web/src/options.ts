@@ -518,18 +518,37 @@ async function runSidebarModePage(
  * load + localStorage persistence and passes it in, like openIgnoreSetup.
  */
 export interface TileModeMenu {
-  /** Selectable modes in menu order, including the None (ASCII) entry. */
-  modes: readonly { grafID: number; menuname: string }[];
+  /**
+   * Selectable modes in menu order, including the None (ASCII) entry. Every
+   * mode past ASCII comes from a `tiles`-shape mod and carries that mod's
+   * display name in `modName`; ASCII (core) leaves it unset.
+   */
+  modes: readonly { grafID: number; menuname: string; modName?: string }[];
   /** The currently active grafID (GRAPHICS_NONE = ASCII). */
   current: () => number;
   /** Apply + persist a chosen grafID (reloads the tileset and repaints). */
   apply: (grafID: number) => Promise<void>;
+  /**
+   * Installed tiles mods that are switched OFF, so this screen can say where
+   * more tile sets would come from instead of being a dead end. Optional: with
+   * none (or none installed) the screen simply lists what is available.
+   */
+  disabledProviders?: readonly { name: string; packCount: number }[];
 }
 
 /**
  * Pick a graphics tile set (or ASCII). Reached from the in-game menu (the web
  * analog of the SDL/Windows frontend's "Graphics" menu bar), NOT from '=' -
  * upstream selects graphics outside do_cmd_options.
+ *
+ * Unlike upstream, the tile sets here are NOT core content: they are contributed
+ * by `tiles`-shape mods (the bundled neo-linoleum registers the four
+ * freely-licensed packs), so a bare list of tileset names would leave the player
+ * unable to tell where the rows came from, which mod to disable to be rid of
+ * them, or - with no tiles mod enabled - why the screen offers only ASCII. So
+ * each row is tagged with its contributing mod, and any installed-but-disabled
+ * tiles mod is listed as an unselectable row naming itself and what enabling it
+ * would add.
  */
 export async function runTileModePage(
   term: GlyphTerm,
@@ -537,13 +556,37 @@ export async function runTileModePage(
 ): Promise<void> {
   const cur = tiles.current();
   const items: MenuItem[] = tiles.modes.map((m) => ({
-    label: m.grafID === cur ? `${m.menuname}  (current)` : m.menuname,
+    label:
+      (m.modName ? `${m.menuname}  [${m.modName}]` : m.menuname) +
+      (m.grafID === cur ? "  (current)" : ""),
+    hint: m.modName
+      ? `Graphics tiles provided by the ${m.modName} mod.`
+      : "The faithful ASCII glyphs - core, always available, needs no mod.",
   }));
+  // Disabled tiles mods, listed but not selectable: this screen cannot enable a
+  // mod (that is the Mods menu's job), it can only say where the tiles are.
+  const disabled = tiles.disabledProviders ?? [];
+  for (const p of disabled) {
+    items.push({
+      label: `${p.name}  (disabled - ${p.packCount} tile set${p.packCount === 1 ? "" : "s"})`,
+      disabled: true,
+      hint: `Enable ${p.name} in the Mods menu and its tile sets appear here.`,
+    });
+  }
+  // The instruction goes in the SUBTITLE, not only in those rows' hints: the
+  // cursor skips disabled rows, so a hint on one is text the player can never
+  // bring up. The subtitle is on screen the whole time.
   const idx = await selectFromMenu(
     term,
     "Graphics (tiles) mode",
     items,
     "[ choose a tile set, ESC to keep current ]",
+    disabled.length > 0
+      ? {
+          subtitle:
+            "Tile sets come from mods - enable one in the Mods menu to add its sets here.",
+        }
+      : {},
   );
   if (idx === null) return;
   const chosen = tiles.modes[idx];
