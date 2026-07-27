@@ -589,18 +589,32 @@ function runTrapEffect(
   });
 }
 
-/** square_set_trap_timeout: disable traps here for `time` turns. */
+/**
+ * square_set_trap_timeout (trap.c:625): disable traps here for `time` turns.
+ *
+ * `domsg` is DEAD IN THE C. square_set_trap_timeout has exactly one caller in
+ * all of 4.2.6 - square_disable_trap at cave-square.c:1399 - and it passes
+ * false, so trap.c:653's "You have disabled the %s." can never reach a player
+ * upstream. It is ported anyway, behind the same parameter and the same
+ * default, so the port is a complete translation of the function rather than a
+ * translation of the reachable half; a mod that calls this with domsg on gets
+ * upstream's message rather than silence.
+ */
 export function squareSetTrapTimeout(
   state: GameState,
   grid: Loc,
   tIdx: number,
   time: number,
+  domsg = false,
+  msg?: (text: string) => void,
 ): boolean {
   let disabled = false;
   for (const trap of squareTrap(state, grid)) {
     if (tIdx >= 0 && tIdx !== trap.tidx) continue;
     trap.timeout = time;
     disabled = true;
+    /* trap.c:651-654 - unreachable upstream, see above. */
+    if (domsg) (msg ?? state.msg)?.(`You have disabled the ${trap.kind.name}.`);
   }
   return disabled;
 }
