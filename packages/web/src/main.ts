@@ -87,6 +87,7 @@ import {
   tvalIsMeleeWeapon,
   tvalIsLight,
   objCanRefill,
+  objectEffect,
   objCanWear,
   objIsActivatable,
   objCanBrowse,
@@ -4686,13 +4687,29 @@ function repeatLastCommand(): void {
  * item). This is the single generic verb the original keyset binds to 'U'.
  */
 async function useGenericCmd(): Promise<void> {
+  /* do_cmd_use's dispatch order, cmd-obj.c:961-996. Ammo and refillables are
+   * part of it: obj_is_useable (obj-util.c:867-879) admits ammo matching
+   * ammo_tval, anything with an object_effect, and obj_can_refill's flasks, so
+   * 'U' offers those too - the port used to list only the six device and
+   * consumable tvals. */
   const codeFor = (o: GameObject): string | null => {
-    if (tvalIsWand(o.tval)) return "aim-wand";
-    if (tvalIsRod(o.tval)) return "zap-rod";
-    if (tvalIsStaff(o.tval)) return "use-staff";
-    if (tvalIsScroll(o.tval)) return "read";
+    if (tvalIsAmmo(o.tval)) {
+      return o.tval === state.actor.combat.ammoTval ? "fire" : null;
+    }
     if (tvalIsPotion(o.tval)) return "quaff";
     if (tvalIsEdible(o.tval)) return "eat";
+    if (tvalIsRod(o.tval)) return "zap-rod";
+    if (tvalIsWand(o.tval)) return "aim-wand";
+    if (tvalIsStaff(o.tval)) return "use-staff";
+    if (tvalIsScroll(o.tval)) return "read";
+    if (objCanRefill(state, o)) return "refill";
+    /* obj_is_activatable but NOT equipped: upstream offers it and then says
+     * so (cmd-obj.c:993). "unequipped-activatable" is not a command code -
+     * dispatch below turns it into that message. */
+    if (objIsActivatable(o)) return "unequipped-activatable";
+    /* object_effect but none of the above: obj_is_useable still admits it, and
+     * do_cmd_use's final else says so (cmd-obj.c:996). */
+    if (objectEffect(o)) return "unusable-now";
     return null;
   };
   const rows: MenuItem[] = [];
@@ -4730,6 +4747,15 @@ async function useGenericCmd(): Promise<void> {
   if (idx === null) return;
   const pick = picks[idx];
   if (!pick) return;
+  if (pick.code === "unequipped-activatable") {
+    /* cmd-obj.c:993 - the item is usable, just not where it needs to be. */
+    say("Equip the item to use it.");
+    return;
+  }
+  if (pick.code === "unusable-now") {
+    say("The item cannot be used at the moment");
+    return;
+  }
   await dispatchItemVerb(pick.code, pick.handle, gearGet(state.gear, pick.handle));
 }
 

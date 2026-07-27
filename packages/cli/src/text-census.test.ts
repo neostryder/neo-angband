@@ -193,21 +193,13 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
 
   "GAP: single missing lines, each a small fix in an existing function":
     [
-      "The dungeon does not appear to extend deeper", // do_cmd_go_down, cmd-cave.c:117
-      "You see nothing there.", // do_cmd_search-adjacent look, cmd-cave.c:153
-      "You dig in the rubble %s with little effect.", // tunnel, cmd-cave.c:635
       "No apparent path for exploration.", // the explore command, cmd-cave.c:1542
       "There is a scream and the door slams shut!", // cmd-cave.c:1595
       "That item is not within your reach.", // do_cmd_fire, player-attack.c:1339
-      "Equip the item to use it.", // cmd-obj.c:994
-      "The item cannot be used at the moment", // cmd-obj.c:997
-      "I don't see any traps.", // chest search, obj-chest.c:703
-      "The %s curse is removed!", // obj-curse.c:231
       "You have disabled the %s.", // trap.c:653
       "Cancelled.", // ui-game.c:663
       "Are you sure? ", // ui-input.c:2014
       "Keep this keymap? ", // the keymap editor, ui-options.c:692
-      "Word of Recall is already active.  Do you want to cancel it? ", // effect-handler-general.c:1149
       "Do you want to quit? ", // ui-death.c:411
       "You are not allowed to change your name!", // ui-player.c:1250
       "Generation restarted: %s.", // generate.c:1165

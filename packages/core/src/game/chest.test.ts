@@ -339,6 +339,7 @@ describe("do_cmd_disarm_chest (obj-chest.c L659)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const chest = chestObj("Small wooden chest");
     chest.pval = 1; // locked, no traps
+    chest.knownPval = 1; // the player has searched it (obj-chest.c:702)
     const msgs: string[] = [];
     const deps = cmdDeps(state, { env: { msg: (t) => msgs.push(t) } });
     const more = doCmdDisarmChest(state, chest, deps);
@@ -353,6 +354,7 @@ describe("do_cmd_disarm_chest (obj-chest.c L659)", () => {
     setSkill(state, SKILL.DISARM_PHYS, 200);
     const chest = chestObj("Small iron chest");
     chest.pval = 4; // poison needle/STR (physical)
+    chest.knownPval = 4; // trap found by search (obj-chest.c:702)
     let exp = 0;
     const deps = cmdDeps(state, { env: { expGain: (n) => (exp = n) } });
     const more = doCmdDisarmChest(state, chest, deps);
@@ -370,6 +372,7 @@ describe("do_cmd_disarm_chest (obj-chest.c L659)", () => {
     state.actor.player.chp = 100;
     const chest = chestObj("Small iron chest");
     chest.pval = 4; // poison needle/STR
+    chest.knownPval = 4;
     const msgs: string[] = [];
     const deps = cmdDeps(state, { env: { msg: (t) => msgs.push(t) } });
 
@@ -458,6 +461,7 @@ describe("installCaveCommands: chest wiring (dir 5 underfoot, chest-vs-door)", (
     setSkill(state, SKILL.DISARM_PHYS, 200);
     const chest = chestObj("Small iron chest");
     chest.pval = 4; // poison needle/STR
+    chest.knownPval = 4;
     floorCarry(state, loc(6, 5), chest);
 
     const registry = createDefaultRegistry(); // "disarm" is the stock stub here

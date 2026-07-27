@@ -313,10 +313,15 @@ export function doCmdDisarmChest(
   let diff = skill - obj.pval;
   if (diff < 2) diff = 2;
 
-  /* The obj->known->pval / ignore_item_ok "I don't see any traps" guard is
-   * unreachable under the everything-known simplification (#24): it only
-   * ever fires when the chest's traps are not yet known to the player, so
-   * only the two reachable branches below are ported. */
+  /* obj-chest.c:702-704: the trap must be FOUND first. obj->known->pval is
+   * knownPval here - search() writes it when a chest trap is discovered
+   * (obj/known-object.ts:432) - and an ignored chest also reads as "no traps
+   * seen". This was previously dismissed as unreachable under an
+   * everything-known simplification the port no longer makes. */
+  if (!(obj.knownPval ?? 0) || (state.isIgnored?.(obj) ?? false)) {
+    env.msg?.("I don't see any traps.");
+    return false;
+  }
   if (!isTrappedChest(obj)) {
     env.msg?.("The chest is not trapped.");
     return false;
