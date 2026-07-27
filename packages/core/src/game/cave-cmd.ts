@@ -53,7 +53,19 @@ import { chestCheck, countChests, doCmdDisarmChest, doCmdOpenChest } from "./che
 import type { ChestCmdDeps } from "./chest";
 import type { GameState, PlayerCommand } from "./context";
 import { modRuleEnabled, queueCommandRepeat, squareMonster } from "./context";
-import { knownFeat, squareIsKnown } from "./known";
+import {
+  knownFeat,
+  knownIsBrokenDoor,
+  knownIsClosedDoor,
+  knownIsDiggable,
+  knownIsOpenDoor,
+  knownIsPerm,
+  squareApparentName,
+  squareForget,
+  squareIsKnown,
+  squareMemorize,
+} from "./known";
+import { dungeonGetNextLevel, isQuest } from "./quest";
 import { floorCarry } from "./floor";
 import { playerConfuseDir } from "./obj-cmd";
 import { attackMonster } from "./player-turn";
@@ -85,6 +97,20 @@ export interface CaveCmdEnv {
    * derived/equipment OF_TRAP_IMMUNE). Override only for tests.
    */
   isTrapsafe?: (state: GameState) => boolean;
+  /**
+   * get_check: do_cmd_go_down's force_descend quest warning
+   * (cmd-cave.c:126). Default yes - an unprompted terminal auto-accepts, the
+   * same convention as effect-general.ts's confirm seam.
+   */
+  confirm?: (prompt: string) => boolean;
+  /**
+   * tunnel_aux's `with_clause` (cmd-cave.c:541, :552): "with your hands" with
+   * no weapon, "with your weapon" wielding one, "with your swap digger" when
+   * player_best_digger swapped a better tool in for the roll. Pairs with
+   * state.bestDiggerDigging, which supplies that roll; default "with your
+   * hands" only matters in the worldless harness.
+   */
+  digWithClause?: () => string;
 }
 
 /** What the cave commands need beyond the state. */
@@ -314,10 +340,22 @@ export function squareDigging(state: GameState, grid: Loc): number {
  * Open / close.
  * ------------------------------------------------------------------ */
 
-/** do_cmd_open_test: a closed door there? (Knowledge gate is #24.) */
+/**
+ * do_cmd_open_test (cmd-cave.c:148-166): knowledge first, then a closed door.
+ *
+ * The knowledge gate matters because it is what stops a player opening a door
+ * they have never seen; and the failure arm reconciles a stale memory - if
+ * player->cave still remembers a closed door where the real grid has none, the
+ * memory is forgotten so the map stops lying.
+ */
 function openTest(state: GameState, grid: Loc, env: CaveCmdEnv): boolean {
-  if (!state.chunk.inBounds(grid) || !state.chunk.isClosedDoor(grid)) {
+  if (!state.chunk.inBounds(grid) || !squareIsKnown(state, grid)) {
+    env.msg?.("You see nothing there.");
+    return false;
+  }
+  if (!state.chunk.isClosedDoor(grid)) {
     env.msg?.("You see nothing there to open.");
+    if (knownIsClosedDoor(state, grid)) squareForget(state, grid);
     return false;
   }
   return true;
@@ -343,13 +381,18 @@ function openAux(state: GameState, grid: Loc, env: CaveCmdEnv): boolean {
   return false;
 }
 
-/** do_cmd_close_test / _aux. */
+/** do_cmd_close_test / _aux (cmd-cave.c:322-393). */
 function closeAux(state: GameState, grid: Loc, env: CaveCmdEnv): boolean {
-  if (
-    !state.chunk.inBounds(grid) ||
-    (!squareIsOpenDoor(state, grid) && !squareIsBrokenDoor(state, grid))
-  ) {
+  if (!state.chunk.inBounds(grid) || !squareIsKnown(state, grid)) {
+    env.msg?.("You see nothing there.");
+    return false;
+  }
+  if (!squareIsOpenDoor(state, grid) && !squareIsBrokenDoor(state, grid)) {
     env.msg?.("You see nothing there to close.");
+    /* cmd-cave.c:337-341: a remembered door that is not there is forgotten. */
+    if (knownIsOpenDoor(state, grid) || knownIsBrokenDoor(state, grid)) {
+      squareForget(state, grid);
+    }
     return false;
   }
   /* Don't allow if the player is in the way. */
@@ -442,12 +485,22 @@ function doCmdLockDoor(
 /** do_cmd_tunnel_test. */
 function tunnelTest(state: GameState, grid: Loc, env: CaveCmdEnv): boolean {
   if (!state.chunk.inBounds(grid)) return false;
+  if (!squareIsKnown(state, grid)) {
+    env.msg?.("You see nothing there.");
+    return false;
+  }
   if (state.chunk.isPerm(grid)) {
     env.msg?.("This seems to be permanent rock.");
+    /* cmd-cave.c:464-467: MEMORIZES - discovering titanium teaches it. */
+    if (!knownIsPerm(state, grid)) squareMemorize(state, grid);
     return false;
   }
   if (!squareIsDiggable(state, grid) && !state.chunk.isClosedDoor(grid)) {
     env.msg?.("You see nothing there to tunnel.");
+    /* cmd-cave.c:474-478: forgets a remembered wall/door that is not there. */
+    if (knownIsDiggable(state, grid) || knownIsClosedDoor(state, grid)) {
+      squareForget(state, grid);
+    }
     return false;
   }
   return true;
@@ -494,9 +547,12 @@ function tunnelAux(
   const chance = chances[digIdx - 1] as number;
   const okay = chance > state.rng.randint0(1600);
 
+  /* with_clause (cmd-cave.c:541, :552) - every tunnel message names the tool. */
+  const withClause = env.digWithClause?.() ?? "with your hands";
+
   if (okay && twall(state, grid)) {
     if (rubble) {
-      env.msg?.("You have removed the rubble.");
+      env.msg?.(`You have removed the rubble ${withClause}.`);
       /* Place an object (except in town). */
       if (state.rng.randint0(100) < 10 && state.chunk.depth > 0 && deps.makeDeps) {
         const obj = makeObject(
@@ -514,7 +570,14 @@ function tunnelAux(
           obj.origin = ORIGIN.RUBBLE;
           obj.originDepth = state.chunk.depth;
           floorCarry(state, grid, obj);
-          env.msg?.("You have found something!");
+          /* cmd-cave.c:603-609: announced only if it is not ignored and the
+           * grid is seen - digging blind finds it without telling you. */
+          if (
+            !(state.isIgnored?.(obj) ?? false) &&
+            squareIsSeen(state.chunk, grid)
+          ) {
+            env.msg?.("You have found something!");
+          }
         }
       }
     } else if (gold && deps.makeDeps) {
@@ -524,17 +587,27 @@ function tunnelAux(
       money.origin = ORIGIN.FLOOR;
       money.originDepth = state.chunk.depth;
       floorCarry(state, grid, money);
-      env.msg?.("You have found something digging!");
+      env.msg?.(`You have found something digging ${withClause}!`);
     } else {
-      env.msg?.("You have finished the tunnel.");
+      env.msg?.(`You have finished the tunnel ${withClause}.`);
     }
     return false;
   }
+  /* Failure messages name the terrain the player believes is there
+   * (square_apparent_name over player->cave), cmd-cave.c:624-639. */
   if (chance > 0) {
-    env.msg?.(rubble ? "You dig in the rubble." : "You tunnel into the wall.");
+    env.msg?.(
+      rubble
+        ? `You dig in the rubble ${withClause}.`
+        : `You tunnel into the ${squareApparentName(state, grid)} ${withClause}.`,
+    );
     return true;
   }
-  env.msg?.("You chip away futilely.");
+  env.msg?.(
+    rubble
+      ? `You dig in the rubble ${withClause} with little effect.`
+      : `You chip away futilely ${withClause} at the ${squareApparentName(state, grid)}.`,
+  );
   return false;
 }
 
@@ -983,6 +1056,7 @@ export function installCaveCommands(
    * W2-003). navigate-* is registered by installRunning after this; the
    * registry.get at call time finds it. */
   registry.register("descend", (state) => {
+    const p = state.actor.player;
     if (!state.chunk.isDownstairs(state.actor.grid)) {
       if (state.options?.get("autoexplore_commands")) {
         const nav = registry.get("navigate-down");
@@ -991,12 +1065,31 @@ export function installCaveCommands(
       env.msg?.("I see no down staircase here.");
       return 0;
     }
+    /* Paranoia, no descent from max_depth - 1 (cmd-cave.c:115-119). */
+    if (state.chunk.depth === state.z.maxDepth - 1) {
+      env.msg?.("The dungeon does not appear to extend deeper");
+      return 0;
+    }
+    /* dungeon_get_next_level (cmd-cave.c:103): the quest scan is what keeps a
+     * player on 99 while Sauron lives instead of landing them on Morgoth. */
+    let descendTo = dungeonGetNextLevel(p, state.chunk.depth, 1, state.z);
+    /* Warn a force_descend player about a quest level (cmd-cave.c:121-128).
+     * force_descend measures from max_depth, not from here. */
+    if (state.options?.get("birth_force_descend")) {
+      descendTo = dungeonGetNextLevel(p, p.maxDepth, 1, state.z);
+      if (
+        isQuest(p, descendTo) &&
+        !(env.confirm ?? ((): boolean => true))("Are you sure you want to descend? ")
+      ) {
+        return 0;
+      }
+    }
     /* Success (cmd-cave.c:134): the stair message, typed MSG_STAIRS_DOWN, goes
      * through the message log so it reaches the -more- pager and Ctrl-P. */
     env.msg?.("You enter a maze of down staircases.");
     /* create_up_stair = true (cmd-cave.c:137): arrive on an up staircase. */
     state.arrivalStair = "up";
-    state.targetDepth = state.chunk.depth + 1;
+    state.targetDepth = descendTo;
     state.generateLevel = true;
     return state.z.moveEnergy;
   });
@@ -1010,8 +1103,19 @@ export function installCaveCommands(
       env.msg?.("I see no up staircase here.");
       return 0;
     }
-    if (state.chunk.depth === 0) {
-      /* do_cmd_go_up (cmd-cave.c:78-79): can't ascend past the top level. */
+    /* Force descend (cmd-cave.c:70-74): up staircases do nothing at all. */
+    if (state.options?.get("birth_force_descend")) {
+      env.msg?.("Nothing happens!");
+      return 0;
+    }
+    const ascendTo = dungeonGetNextLevel(
+      state.actor.player,
+      state.chunk.depth,
+      -1,
+      state.z,
+    );
+    if (ascendTo === state.chunk.depth) {
+      /* do_cmd_go_up (cmd-cave.c:78-81): can't ascend past the top level. */
       env.msg?.("You can't go up from here!");
       return 0;
     }
@@ -1019,7 +1123,7 @@ export function installCaveCommands(
     env.msg?.("You enter a maze of up staircases.");
     /* create_down_stair = true (cmd-cave.c:91): arrive on a down staircase. */
     state.arrivalStair = "down";
-    state.targetDepth = state.chunk.depth - 1;
+    state.targetDepth = ascendTo;
     state.generateLevel = true;
     return state.z.moveEnergy;
   });

@@ -86,6 +86,7 @@ import { castProjection, playerCastSource } from "./project-cast";
 import { pushObject } from "./project-feat";
 import { placeTrap, squareIsTrap, squareRemoveAllTraps } from "./trap";
 import type { TrapDeps } from "./trap";
+import { dungeonGetNextLevel } from "./quest";
 
 /**
  * The general-handler seams, grouped on the game effect environment
@@ -715,10 +716,11 @@ const handleDEEP_DESCENT: EffectHandler = (ctx) => {
   const p = state.actor.player;
   const tp = env.teleport ?? {};
 
-  /* Calculate target depth. */
+  /* Calculate target depth (effect-handler-general.c:1167-1169) - through
+   * dungeon_get_next_level, so the quest scan and the max_depth clamp both
+   * apply rather than a bare arithmetic min. */
   const increment = Math.trunc(4 / state.z.stairSkip) + 1;
-  const maxDepth = tp.maxDepth ?? 128;
-  const targetDepth = Math.min(p.maxDepth + increment, maxDepth - 1);
+  const targetDepth = dungeonGetNextLevel(p, p.maxDepth, increment, state.z);
 
   if (targetDepth > state.chunk.depth) {
     say(ctx, "The air around you starts to swirl...");

@@ -27,8 +27,11 @@ import type { Loc } from "../loc";
 import { DDGRID_DDD, loc, locEq, locSum } from "../loc";
 import {
   featIsBright,
+  featIsGranite,
+  featIsMagma,
   featIsPassable,
   featIsProjectable,
+  featIsQuartz,
 } from "../world/chunk";
 import { caveIlluminate } from "../gen/cave";
 import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view";
@@ -236,6 +239,68 @@ export function knownIsRubble(state: GameState, grid: Loc): boolean {
   if (feat < 0) return false;
   const reg = state.chunk.features;
   return !reg.featHas(feat, TF["WALL"]) && reg.featHas(feat, TF["ROCK"]);
+}
+
+/**
+ * square_isperm(player->cave, grid): PERMANENT and ROCK, remembered.
+ * do_cmd_tunnel_test MEMORIZES rather than forgets on this one - hitting
+ * permanent rock the player did not know about teaches them it is there
+ * (cmd-cave.c:462-468).
+ */
+export function knownIsPerm(state: GameState, grid: Loc): boolean {
+  const feat = knownFeat(state, grid);
+  if (feat < 0) return false;
+  const reg = state.chunk.features;
+  return reg.featHas(feat, TF["PERMANENT"]) && reg.featHas(feat, TF["ROCK"]);
+}
+
+/** square_isopendoor(player->cave, grid): a remembered closable door. */
+export function knownIsOpenDoor(state: GameState, grid: Loc): boolean {
+  const feat = knownFeat(state, grid);
+  if (feat < 0) return false;
+  return state.chunk.features.featHas(feat, TF["CLOSABLE"]);
+}
+
+/** square_isbrokendoor(player->cave, grid): remembered, passable, unclosable. */
+export function knownIsBrokenDoor(state: GameState, grid: Loc): boolean {
+  const feat = knownFeat(state, grid);
+  if (feat < 0) return false;
+  const reg = state.chunk.features;
+  return (
+    reg.featHas(feat, TF["DOOR_ANY"]) &&
+    reg.featHas(feat, TF["PASSABLE"]) &&
+    !reg.featHas(feat, TF["CLOSABLE"])
+  );
+}
+
+/**
+ * square_isdiggable(player->cave, grid): remembered mineral wall, secret door
+ * or rubble - square_ismineral || square_issecretdoor || square_isrubble
+ * (cave-square.c), evaluated on the remembered feature index.
+ */
+export function knownIsDiggable(state: GameState, grid: Loc): boolean {
+  const feat = knownFeat(state, grid);
+  if (feat < 0) return false;
+  const reg = state.chunk.features;
+  const isDoor = reg.featHas(feat, TF["DOOR_ANY"]);
+  const mineral =
+    featIsMagma(reg, feat) ||
+    featIsQuartz(reg, feat) ||
+    (featIsGranite(reg, feat) && !isDoor);
+  const secretDoor = featIsGranite(reg, feat) && isDoor;
+  return mineral || secretDoor || knownIsRubble(state, grid);
+}
+
+/**
+ * square_iscloseddoor(player->cave, grid): does the player REMEMBER a closed
+ * door here? The open / close / disarm tests use it to spot a stale memory - a
+ * remembered door where the real grid has none is forgotten rather than left to
+ * mislead the map (cmd-cave.c:160-163, :243-246).
+ */
+export function knownIsClosedDoor(state: GameState, grid: Loc): boolean {
+  const feat = knownFeat(state, grid);
+  if (feat < 0) return false;
+  return state.chunk.features.featHas(feat, TF["DOOR_CLOSED"]);
 }
 
 /**

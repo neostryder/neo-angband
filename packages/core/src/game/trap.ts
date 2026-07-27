@@ -34,6 +34,7 @@ import { floorPile } from "./floor";
 import { buildObjectEffectChain } from "./obj-cmd";
 import type { ObjCmdDeps } from "./obj-cmd";
 import { buildEffectContext } from "./effect-env";
+import { squareIsKnown } from "./known";
 import { attachGameEnv } from "./effect-game-env";
 import type { ActionRegistry } from "./player-turn";
 import { gearGet } from "./gear";
@@ -740,9 +741,18 @@ export function installTraps(
     const dir = cmd.dir;
     if (dir === undefined || dir < 1 || dir > 9 || dir === 5) return 0;
     const grid = locSum(s.actor.grid, DDGRID[dir] as Loc);
+    /* do_cmd_disarm_test (cmd-cave.c:698-721): knowledge first. */
+    if (!squareIsKnown(s, grid)) {
+      deps.env?.msg?.("You see nothing there.");
+      return 0;
+    }
     /* Traps must be visible to disarm. */
     if (!squareIsVisibleTrap(s, grid)) {
       deps.env?.msg?.("You see nothing there to disarm.");
+      /* cmd-cave.c:713-715 re-memorizes the grid's traps when player->cave
+       * still remembers a disarmable one. The port has no separate known-trap
+       * store (known.ts:11 - trap knowledge reads the live grid), so there is
+       * no stale trap memory here to reconcile. */
       return 0;
     }
     const more = disarmAux(s, grid, deps);

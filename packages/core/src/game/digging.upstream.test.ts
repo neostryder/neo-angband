@@ -38,6 +38,7 @@ import { gearAdd, gearGet, wieldSlot } from "./gear";
 import { findPath } from "./player-path";
 import { createDefaultRegistry, processPlayer } from "./player-turn";
 import { GRANITE, makeState, plReg } from "./harness";
+import { squareMemorize } from "./known";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -151,6 +152,9 @@ describe("player/digging (reference/src/tests/player/digging.c)", () => {
 
     /* Give the player something difficult to dig, west of them (L163). */
     state.chunk.setFeat(loc(4, 4), GRANITE);
+    /* do_cmd_tunnel_test's knowledge gate (cmd-cave.c:456-459): upstream's
+     * test runs in a lit room where the grid is already known. */
+    squareMemorize(state, loc(4, 4));
 
     /* Rest until hit points and mana are fully recovered (L178-183). */
     p.mhp = 50;

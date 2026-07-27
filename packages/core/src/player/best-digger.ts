@@ -42,6 +42,48 @@ export function playerBestDiggerDigging(
   weaponSlot: number,
   computeDigging: (equipment: (GameObject | null)[]) => number,
 ): number {
+  const { swap, best } = bestDiggerSwap(
+    liveEquipment,
+    gearObjects,
+    weaponSlot,
+    computeDigging,
+  );
+  if (swap) {
+    const equip = liveEquipment.slice();
+    if (weaponSlot >= 0) equip[weaponSlot] = best;
+    return computeDigging(equip);
+  }
+  return computeDigging(liveEquipment.slice());
+}
+
+/**
+ * tunnel_aux's `with_clause` (cmd-cave.c:541, :552): what every tunnel message
+ * says the player is digging with. Derived from the SAME swap decision as
+ * playerBestDiggerDigging, so the message and the roll can never disagree.
+ */
+export function playerBestDiggerWithClause(
+  liveEquipment: readonly (GameObject | null)[],
+  gearObjects: readonly GameObject[],
+  weaponSlot: number,
+  computeDigging: (equipment: (GameObject | null)[]) => number,
+): string {
+  const { swap, currentWeapon } = bestDiggerSwap(
+    liveEquipment,
+    gearObjects,
+    weaponSlot,
+    computeDigging,
+  );
+  if (swap) return "with your swap digger";
+  return currentWeapon === null ? "with your hands" : "with your weapon";
+}
+
+/** The shared swap decision: which digger wins, and whether it displaces. */
+function bestDiggerSwap(
+  liveEquipment: readonly (GameObject | null)[],
+  gearObjects: readonly GameObject[],
+  weaponSlot: number,
+  computeDigging: (equipment: (GameObject | null)[]) => number,
+): { best: GameObject | null; swap: boolean; currentWeapon: GameObject | null } {
   const currentWeapon =
     weaponSlot >= 0 ? (liveEquipment[weaponSlot] ?? null) : null;
 
@@ -72,10 +114,5 @@ export function playerBestDiggerDigging(
     best !== currentWeapon &&
     (currentWeapon === null || !currentWeapon.flags.has(OF.STICKY));
 
-  if (swap) {
-    const equip = liveEquipment.slice();
-    if (weaponSlot >= 0) equip[weaponSlot] = best;
-    return computeDigging(equip);
-  }
-  return computeDigging(liveEquipment.slice());
+  return { best, swap, currentWeapon };
 }
