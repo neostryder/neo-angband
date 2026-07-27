@@ -249,8 +249,9 @@ export function packMenu(
     const obj = gearGet(state.gear, handle);
     if (!obj) continue;
     if (filter && !filter(obj)) continue;
-    /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292). */
-    items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length) });
+    /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292).
+     * `inscrip` carries obj->note for the picker's @-tag quick-select (get_tag). */
+    items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length), inscrip: obj.note });
     handles.push(handle);
   }
   return { items, handles };
@@ -334,8 +335,9 @@ export function deviceMenu(
     const fail = deviceFailColumn(state, obj, isAware);
     const name = objectName(state, obj);
     const label = fail ? `${name.padEnd(40).slice(0, 40)} ${fail}` : name;
-    /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292). */
-    items.push({ label, color: objectColor(obj, state), tag: objLetter(items.length) });
+    /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292).
+     * `inscrip` carries obj->note for the picker's @-tag quick-select (get_tag). */
+    items.push({ label, color: objectColor(obj, state), tag: objLetter(items.length), inscrip: obj.note });
     handles.push(handle);
   }
   return { items, handles };
@@ -585,8 +587,9 @@ export function magicBooks(
     if (!obj || !tvalIsBook(obj.tval)) continue;
     if (!playerObjectToBook(player, obj)) continue;
     if (!tester(obj)) continue;
-    /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292). */
-    items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length) });
+    /* all_letters_nohjkl tag so the picker's letters skip h,j,k,l (ui-object.c L292).
+     * `inscrip` carries obj->note for the picker's @-tag quick-select (get_tag). */
+    items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length), inscrip: obj.note });
     handles.push(handle);
   }
   return { items, handles };
