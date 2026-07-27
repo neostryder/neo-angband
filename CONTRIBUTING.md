@@ -110,6 +110,35 @@ New original code (UI, mod-sdk) needs no ledger entry.
   `scenarios` as a standalone run.
 - Run `pnpm test` (and, for engine changes, `pnpm --filter @neo-angband/cli
   scenarios`) locally before opening a pull request.
+- **Prove the test bites.** Revert your fix, confirm the new test fails, then put
+  the fix back. A test that passes either way documents nothing. (If you are
+  testing core from a web test, remember `packages/web` imports the *built*
+  core - run `npx tsc -b packages/core` first or the mutation is invisible.)
+
+## The text census
+
+`packages/cli/src/text-census.test.ts` is a CI gate on missing player-visible
+text. It reads every string literal the C hands to `msg` / `msgt` / `get_check` /
+`get_string` / `get_quantity` and fails if the port does not contain it.
+
+It exists because reviewing code does not find code that was never written: this
+port was declared complete several times and then found, by playing it, to be
+missing messages nobody could see the absence of. So if you add a message the C
+has, the gate goes quiet on its own; if you find one that is missing and *not*
+listed, that is a real find.
+
+```sh
+pnpm --filter @neo-angband/cli census    # the current list, grouped by C file
+```
+
+Everything still absent is in `KNOWN_ABSENT` with the reason - host file I/O the
+browser has no equivalent for, upstream's own malformed-gamedata diagnostics,
+dead code in the C itself, a ratified divergence, or a tracked `GAP:` with what
+it needs. The gate fails in **both** directions, so once you port a message you
+must also delete its entry.
+
+What it does not prove: that a message fires on the right event, in the right
+order, with the right message type. Presence is a floor, not parity.
 
 ## Attribution
 
