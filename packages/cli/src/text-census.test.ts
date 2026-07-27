@@ -24,11 +24,11 @@
  *                gamedata or an impossible argument. The port validates content
  *                when the pack is built and throws, so these are structurally
  *                unreachable rather than merely unwritten. Not a gap.
- *   capacity   - upstream's fixed-array housekeeping (monster compaction). The
- *                port uses growable collections, so the pass does not exist.
- *   dead-in-c  - dead code in Angband 4.2.6 itself: nothing calls it there
- *                either, so there is no behaviour to port.
  *   divergence - a ratified difference in how the port works, recorded elsewhere.
+ *                Re-derive these from the C before trusting one; the label is
+ *                self-issued (see the memory note on ratified divergences), and
+ *                the `capacity` and `dead-in-c` categories that used to sit here
+ *                both turned out to be gaps under exactly that failure.
  *   GAP        - a real missing message. Tracked, not excused. Each says what it
  *                needs.
  */
@@ -115,9 +115,6 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "%s has misconfigured digging chance; please report this bug.",
       "Sorry, could not deal with suffix",
     ],
-
-  "GAP (re-audited): mon_pop's monster-list bound (mon-make.c:678-680). My earlier reason - the port's list grows so there is no compaction - was wrong twice over: the port HAS compactMonsters and calls it at the same two game-world.c sites, and it half-honours level_monster_max already (gen/generate.ts:420, game/loop.ts:373). What is missing is the bound in placeMonsterLive itself, so the port never refuses a spawn where upstream would. That changes spawn behaviour at the cap and needs its own change with tests, not a message. The other two capacity messages are now ported":
-    ["Too many monsters!"],
 
   "GAP: the borg activation gate (cmd-misc.c:125-145). I had this down as a ratified divergence because the Borg ships as a mod - that was wrong. do_cmd_try_borg is a SEPARATE function from do_cmd_try_debug, whose parallel gate the port does have (web/src/wizard.ts:180), and it is what sets NOSCORE_BORG. It belongs in the borg mod's activation path, and cannot land until that mod is mounted in the shell (out of the parity gate until the port itself is complete). The score side is already ready: NOSCORE.BORG exists and enterScore reports it":
     [

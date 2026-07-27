@@ -22,10 +22,11 @@ import {
 import type { MakeDeps } from "../obj/make";
 import { tvalIsMoney } from "../obj/object";
 import { tvalFindIdx } from "../obj/bind";
-import { deleteMonster, squareMonster } from "./context";
+import { deleteMonster, monPop, squareMonster } from "./context";
 import type { GameState } from "./context";
 import { summonGroup } from "./mon-group";
 import { floorPile } from "./floor";
+import { compactMonsters } from "./world";
 import {
   createMimickedObject,
   monCreateMimickedObject,
@@ -683,5 +684,139 @@ describe("createMimickedObject (GameState-free core, used by the gen path)", () 
     expect(mon.mimickedObj).toBe(0);
     /* No RF_MIMIC_INV on "potion mimic", so the object is dropped. */
     expect(mon.heldObj).toHaveLength(0);
+  });
+});
+
+describe("mon_pop (mon-make.c L646)", () => {
+  const place = (state: GameState, grid: Loc, race: MonsterRace): boolean =>
+    placeNewMonsterOne(
+      state,
+      grid,
+      race,
+      false,
+      { index: 0, role: MON_GROUP.LEADER },
+      deps(state),
+    );
+
+  it("APPENDS below level_monster_max instead of reusing a hole", () => {
+    /* The port used to scan for the first free slot every time, which reassigns
+     * a dead monster's midx to the next arrival. Upstream takes
+     * cave_monster_max(c) whenever the array is below the cap, so slot 1 stays
+     * empty until compact_monsters excises it - and midx is turn order
+     * (process_monsters walks mon_max - 1 down to 1, mon-move.c:1899). */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const race = plainRace();
+    expect(place(state, loc(14, 10), race)).toBe(true);
+    expect(place(state, loc(15, 10), race)).toBe(true);
+    const first = squareMonster(state, loc(14, 10))!;
+    expect(first.midx).toBe(1);
+    expect(squareMonster(state, loc(15, 10))!.midx).toBe(2);
+
+    deleteMonster(state, first.midx);
+    expect(place(state, loc(16, 10), race)).toBe(true);
+    expect(squareMonster(state, loc(16, 10))!.midx).toBe(3);
+    expect(state.monsters[1]).toBeNull();
+  });
+
+  it("recycles a hole only once cave_monster_max reaches the cap", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.z = { ...state.z, levelMonsterMax: 3 };
+    const race = plainRace();
+    expect(place(state, loc(14, 10), race)).toBe(true);
+    expect(place(state, loc(15, 10), race)).toBe(true);
+    /* mon_max is now 3 == the cap, so allocation switches to the recycle scan. */
+    deleteMonster(state, 1);
+    expect(place(state, loc(16, 10), race)).toBe(true);
+    expect(squareMonster(state, loc(16, 10))!.midx).toBe(1);
+    expect(state.monsters).toHaveLength(3);
+  });
+
+  it("refuses the placement and warns when the list is full", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.z = { ...state.z, levelMonsterMax: 3 };
+    const msgs: string[] = [];
+    state.msg = (text: string): void => void msgs.push(text);
+    const race = plainRace();
+    expect(place(state, loc(14, 10), race)).toBe(true);
+    expect(place(state, loc(15, 10), race)).toBe(true);
+
+    /* No holes and no room: mon_pop returns 0, so place_new_monster_one
+     * returns 0 too (mon-make.c L1017-1018) and nothing is placed. */
+    const before = race.curNum;
+    expect(place(state, loc(16, 10), race)).toBe(false);
+    expect(msgs).toEqual(["Too many monsters!"]);
+    expect(squareMonster(state, loc(16, 10))).toBeNull();
+    expect(race.curNum).toBe(before);
+  });
+
+  it("stays silent about a full list during generation", () => {
+    /* character_dungeon is false while a level is being built. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.z = { ...state.z, levelMonsterMax: 1 };
+    const msgs: string[] = [];
+    state.msg = (text: string): void => void msgs.push(text);
+    expect(monPop(state, false)).toBe(0);
+    expect(msgs).toEqual([]);
+    expect(monPop(state, true)).toBe(0);
+    expect(msgs).toEqual(["Too many monsters!"]);
+  });
+});
+
+describe("compact_monsters' excise pass (mon-make.c L537-550)", () => {
+  const place = (state: GameState, grid: Loc, race: MonsterRace): boolean =>
+    placeNewMonsterOne(
+      state,
+      grid,
+      race,
+      false,
+      { index: 0, role: MON_GROUP.LEADER },
+      deps(state),
+    );
+
+  it("closes holes, renumbers the survivor and repairs its references", () => {
+    /* compactMonsters returned early for numToCompact === 0, so the port never
+     * ran this pass under EITHER argument and cave_monster_max grew for the
+     * life of the level. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const race = plainRace();
+    expect(place(state, loc(14, 10), race)).toBe(true);
+    expect(place(state, loc(15, 10), race)).toBe(true);
+    const doomed = squareMonster(state, loc(14, 10))!;
+    const survivor = squareMonster(state, loc(15, 10))!;
+    expect(survivor.midx).toBe(2);
+
+    /* Give the survivor every index-bearing reference monster_index_move
+     * repairs: a held object, the player's target and the health bar. */
+    survivor.heldObj.push({ heldMIdx: survivor.midx } as unknown as GameObject);
+    state.target.midx = survivor.midx;
+    state.target.set = true;
+    state.healthWho = survivor;
+
+    deleteMonster(state, doomed.midx);
+    expect(state.monsters).toHaveLength(3);
+
+    compactMonsters(state, 0);
+
+    /* Slot 1 now holds the survivor and mon_max is back to 2. */
+    expect(state.monsters).toHaveLength(2);
+    expect(state.monsters[1]).toBe(survivor);
+    expect(survivor.midx).toBe(1);
+    expect(state.chunk.mon(loc(15, 10))).toBe(1);
+    expect(survivor.heldObj[0]!.heldMIdx).toBe(1);
+    expect(state.target.midx).toBe(1);
+    expect(state.healthWho).toBe(survivor);
+    /* The group entry followed it, so monsterGroupsVerify still passes. */
+    const group = state.groups[survivor.groupInfo[GROUP_TYPE.PRIMARY]!.index];
+    expect(group?.leader).toBe(1);
+    expect(group?.members).toContain(1);
+  });
+
+  it("announces itself only when it is deleting, not when it is compressing", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const msgs: string[] = [];
+    state.msg = (text: string): void => void msgs.push(text);
+    place(state, loc(14, 10), plainRace());
+    compactMonsters(state, 0);
+    expect(msgs).toEqual([]);
   });
 });

@@ -911,8 +911,55 @@ export function monsterAt(state: GameState, i: number): Monster | null {
 }
 
 /**
+ * mon_pop (mon-make.c L646): the index of a free monster slot, or 0 if the
+ * list is full. Its one upstream caller (place_new_monster_one, L1016) must
+ * check for 0.
+ *
+ * The order here is the whole point and the port had it backwards. BELOW
+ * level_monster_max upstream always APPENDS - it takes cave_monster_max(c) and
+ * grows the array - and only once the array is at the cap does it scan for a
+ * hole left by a dead monster. placeMonsterLive used to scan for the first hole
+ * every time, which assigns different midx values from the first monster death
+ * onward, and midx is turn order (process_monsters walks
+ * cave_monster_max(cave) - 1 down to 1, mon-move.c:1899). Holes are removed by
+ * compact_monsters' excise pass, not by allocation.
+ *
+ * `characterDungeon` is upstream's character_dungeon: during generation there
+ * is no player to warn.
+ */
+export function monPop(state: GameState, characterDungeon = true): number {
+  /* c->mon_max starts at 1 on a fresh chunk: slot 0 is never a monster. */
+  if (state.monsters.length === 0) state.monsters.push(null);
+
+  /* Normal allocation. */
+  if (monsterMax(state) < state.z.levelMonsterMax) {
+    /* Get the next hole, and expand the array (c->mon_max++). mon_cnt is
+     * derived here (caveMonsterCount), so there is no counter to bump. */
+    const midx = monsterMax(state);
+    state.monsters.push(null);
+    return midx;
+  }
+
+  /* Recycle dead monsters if we've run out of room. */
+  for (let midx = 1; midx < monsterMax(state); midx++) {
+    if (!state.monsters[midx]) return midx;
+  }
+
+  /* Warn the player if no index is available. */
+  if (characterDungeon) state.msg?.("Too many monsters!");
+
+  /* Try not to crash. */
+  return 0;
+}
+
+/**
  * Add a monster to the state and mark its grid occupied, assigning the next
  * free midx. Mirrors the midx/square bookkeeping place_new_monster does.
+ *
+ * This is the LOADING path (place_new_monster_one's `loading` branch,
+ * mon-make.c L1011-1014): a monster read back from a save keeps its stored slot
+ * and mon_max just grows past it, so appending in stored order is the same
+ * assignment. Live placement goes through monPop instead.
  */
 export function addMonster(state: GameState, mon: Monster): number {
   if (state.monsters.length === 0) state.monsters.push(null);

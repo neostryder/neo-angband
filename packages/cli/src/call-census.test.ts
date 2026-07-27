@@ -69,9 +69,6 @@ const KNOWN_UNUSED: Record<string, readonly string[]> = {
        * the port's monster recall renders from the same lore counters without
        * the boolean. */
       "lore_is_fully_known",
-      /* mon-group.c:338: group index rewrites happen inside the port's
-       * monGroup helpers, which own the map directly. */
-      "monster_group_change_index",
     ],
 
   "host: the C layer the port replaces wholesale, so the ported shape has no caller by construction":
