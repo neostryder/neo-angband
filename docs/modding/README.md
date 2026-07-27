@@ -41,7 +41,7 @@ faithful 4.2.6 with no mod loaded):
 | --- | --- | --- |
 | `qol` | content | Genuinely new conveniences, currently just auto-dig on walk. Built-in Angband `=` options are NOT here: they ship in core at their upstream defaults. See `QOL.md`. |
 | `bug-fixes` | content | An unofficial patch set for upstream 4.2.6 bugs core deliberately keeps. See `BUG_FIXES.md`. |
-| `linoleum` | tiles | Registers the freely-licensed Original / Adam Bolt / David Gervais / Nomad tile packs so a graphics mode is selectable in-game. See `docs/LINOLEUM.md`. |
+| `linoleum` | tiles | Registers the freely-licensed Original / Adam Bolt / David Gervais / Nomad tile packs so a graphics mode is selectable in-game. There is no separate "linoleum tileset" - this mod is how those four get into the game menu's Graphics screen, where each row is tagged `[neo-linoleum]`. See `docs/LINOLEUM.md`. |
 
 Enable one in the in-app mod manager (game menu -> Mods), or with
 `?mods=qol,bug-fixes,linoleum` for a one-off.
