@@ -299,7 +299,7 @@ export function installRangedCommands(registry: ActionRegistry): void {
     const { hit, landing } = rangedHelper(state, missile, launcher, dir, range, false);
 
     /* Drop the (surviving) missile where it landed. */
-    dropNear(state, missile, breakageChance(missile, hit), landing, true, {});
+    dropNear(state, missile, breakageChance(missile, hit), landing, true, false, {});
 
     const shots = Math.max(10, state.actor.combat.numShots);
     return Math.trunc((state.z.moveEnergy * 10) / shots);
@@ -395,7 +395,7 @@ export function installRangedCommands(registry: ActionRegistry): void {
     const range = Math.min(Math.trunc(((str + 20) * 10) / weight), 10);
 
     const { hit, landing } = rangedHelper(state, missile, null, dir, range, true);
-    dropNear(state, missile, breakageChance(missile, hit), landing, true, {});
+    dropNear(state, missile, breakageChance(missile, hit), landing, true, false, {});
 
     return state.z.moveEnergy;
   });

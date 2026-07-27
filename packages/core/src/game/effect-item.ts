@@ -818,7 +818,7 @@ const handleCREATE_ARROWS: EffectHandler = (ctx) => {
       TV.ARROW,
       state.chunk.depth,
     );
-    if (arrows) dropNear(state, arrows, 0, state.actor.grid, true);
+    if (arrows) dropNear(state, arrows, 0, state.actor.grid, true, true);
   }
 
   return true;
@@ -911,7 +911,7 @@ const handleACQUIRE: EffectHandler = (ctx) => {
     nice.originDepth = state.chunk.depth;
 
     /* Drop the object */
-    dropNear(state, nice, 0, state.actor.grid, true);
+    dropNear(state, nice, 0, state.actor.grid, true, false);
   }
   return true;
 };

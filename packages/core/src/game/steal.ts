@@ -115,7 +115,7 @@ function makeStealEnv(state: GameState, deps: StealCmdDeps): StealEnv {
     dropStolen: (obj) => {
       /* object_desc captured before the drop (upstream order); drop_near draws. */
       const name = describeObject(state, obj);
-      dropNear(state, obj, 0, state.actor.grid, true, floorEnv);
+      dropNear(state, obj, 0, state.actor.grid, true, true, floorEnv);
       msg(`You drop ${name}.`);
     },
     wakeAll: (mon) => wakeNear(state, mon),
