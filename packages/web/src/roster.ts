@@ -1,6 +1,6 @@
 /**
  * The multi-character save roster (localStorage). Faithful to Angband's model
- * ([[neo-angband-save-scum-policy]] decision 16): many characters coexist,
+ * (decision 16, docs/PORT_PLAN.md - no save-scumming): many characters coexist,
  * each with its OWN authoritative save overwritten in place - there are no
  * snapshots to restore, so keeping several characters is not save-scumming.
  * Death turns a slot into a non-resumable tombstone that stays for the memorial

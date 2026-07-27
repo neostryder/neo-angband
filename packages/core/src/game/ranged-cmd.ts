@@ -18,9 +18,11 @@
  * message_pain (player-attack.c:1191-1195, gap 2.4).
  *
  * DEFERRED (ledgered in parity/ledger/ranged-cmd.yaml): the out-of-range "Fire
- * anyway?" prompt (UI), the invisible-monster "finds a mark" branch, and the
- * crit-flavour line (the hit verb still varies). The show_damage " (N)" suffix
- * is now wired (player-attack.c:1168-1170).
+ * anyway?" prompt (UI) and the crit-flavour line (the hit verb still varies).
+ * The show_damage " (N)" suffix is now wired (player-attack.c:1168-1170), and
+ * the invisible-monster "finds a mark" branch is now ported
+ * (player-attack.c:1156-1159) - it had been listed here as deferred, which is
+ * exactly how a missing player-visible message stays missing.
  * Missile / equipment / brand-slay learn-on-attack is wired below (W2-001/002/
  * 010/011; player-attack.c:1137-1140, 1255-1259, 1296-1299).
  */
@@ -169,7 +171,17 @@ function rangedHelper(
        * carries " (N)". Built after the dmg<=0 clamp, as upstream is, so a
        * harmless hit reads " (0)". */
       const dmgText = state.options?.get("show_damage") ? ` (${dmg})` : "";
-      if (dmg <= 0) {
+      /* `visible` in the C is monster_is_obvious (player-attack.c:1120), NOT
+       * monster_is_visible: a mimic still camouflaged as an item is "seen" but
+       * is not obviously a monster, so upstream will not name it. The learn
+       * paths above are the ones that use monster_is_visible (obj-slays.c:568),
+       * which is why the two are kept apart here. */
+      if (!monsterIsObvious(mon)) {
+        /* Invisible monster (player-attack.c:1156-1159). The port had no such
+         * branch, so shooting something unseen produced a message naming a
+         * monster the player has no business knowing about. */
+        state.msg?.(`The ${oName} finds a mark.`, MSG.SHOOT_HIT);
+      } else if (dmg <= 0) {
         state.msg?.(`Your ${oName} fails to harm ${mName}${dmgText}.`, MSG.SHOOT_HIT);
       } else {
         state.msg?.(`Your ${oName} ${result.verb} ${mName}${dmgText}.`, MSG.SHOOT_HIT);

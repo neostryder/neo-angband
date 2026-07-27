@@ -225,6 +225,37 @@ export function squareIsBelievedWall(state: GameState, grid: Loc): boolean {
 }
 
 /**
+ * square_isrubble(player->cave, grid): is the terrain the player REMEMBERS here
+ * rubble? Upstream freely runs the square predicates against player->cave to
+ * ask "what does the player think is there", which is how the bump-into-terrain
+ * paths decide whether their message contradicts the player's memory
+ * (cmd-cave.c:1112, :1243). Unknown terrain is not remembered as anything.
+ */
+export function knownIsRubble(state: GameState, grid: Loc): boolean {
+  const feat = knownFeat(state, grid);
+  if (feat < 0) return false;
+  const reg = state.chunk.features;
+  return !reg.featHas(feat, TF["WALL"]) && reg.featHas(feat, TF["ROCK"]);
+}
+
+/**
+ * square_ispassable || square_isrubble || square_iscloseddoor on player->cave
+ * (cmd-cave.c:1126-1128, :1253-1255): the player remembers something they could
+ * have walked into here. Discovering a wall instead means the memory was wrong
+ * and upstream forgets the grid.
+ */
+export function knownIsEnterable(state: GameState, grid: Loc): boolean {
+  const feat = knownFeat(state, grid);
+  if (feat < 0) return false;
+  const reg = state.chunk.features;
+  return (
+    featIsPassable(reg, feat) ||
+    knownIsRubble(state, grid) ||
+    reg.featHas(feat, TF["DOOR_CLOSED"])
+  );
+}
+
+/**
  * square_ismemorybad: the player remembers terrain here that no longer
  * matches the live cave.
  */

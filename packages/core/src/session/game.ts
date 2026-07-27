@@ -31,6 +31,7 @@ import {
   flavorSetAllAware,
 } from "../player/birth";
 import {
+  bonusChangeMessages,
   calcBonuses,
   calcHitpoints,
   toCombatState,
@@ -151,6 +152,7 @@ import { lookupTrap } from "../world/trap";
 import {
   calcMana,
   calcSpells,
+  cumberArmorFrom,
   playerSpellsInit,
   registerBookKinds,
 } from "../player/spell";
@@ -189,6 +191,7 @@ import {
   EverseenKnowledge,
   equipLearnElement,
   makeRuneEnv,
+  NOOP_FLAVOR_AWARE_DEPS,
   OBJ_NOTICE,
   objectLearnOnWield,
   playerLearnInnate,
@@ -197,6 +200,7 @@ import {
 import type { FlavorAwareDeps } from "../obj/knowledge";
 import { flavorInit } from "../obj/flavor";
 import { ELEM_MAX } from "../obj/types";
+import type { ObjectKind } from "../obj/types";
 import { ArtifactState, ObjAllocState } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import { monsterDeath, installNonplayerHitDeps } from "../game/mon-death";
@@ -652,6 +656,9 @@ function wireGame(
       h ? gearGet(state.gear, h) : null,
     );
     const daytime = isDaytime(state.turn, state.z.dayLength);
+    /* p->state before the memcpy at the end of calc_bonuses: the encumbrance
+     * notices below diff against it (player-calcs.c:2412-2453). */
+    const before = derived;
     derived = calcBonuses(p, {
       equipment,
       timedEffects: players.timed,
@@ -685,9 +692,26 @@ function wireGame(
       derived.statInd[STAT.CON] ?? 0,
     );
     if (p.chp > p.mhp) p.chp = p.mhp;
-    /* calc_mana with the worn-armor encumbrance. */
-    calcMana(p, derived.statInd, wornArmorWeight(p, equipment));
+    /* calc_mana with the worn-armor encumbrance. It owns state->cumber_armor
+     * (player-calcs.c:1503, :1528), so record it before the diff below reads
+     * it - upstream's calc_mana runs inside calc_bonuses, ahead of the
+     * notices. */
+    derived.cumberArmor = calcMana(
+      p,
+      derived.statInd,
+      wornArmorWeight(p, equipment),
+    );
     if (p.csp > p.msp) p.csp = p.msp;
+    /* The state-change notices at the end of calc_bonuses (2412-2453). Emitted
+     * last because cumber_armor is only known once calc_mana has run. */
+    const weaponSlotIdx = p.body.slots.findIndex((s) => s.type === "WEAPON");
+    const bowSlotIdx = p.body.slots.findIndex((s) => s.type === "BOW");
+    for (const text of bonusChangeMessages(before, derived, {
+      hasWeapon: weaponSlotIdx >= 0 && !!equipment[weaponSlotIdx],
+      hasLauncher: bowSlotIdx >= 0 && !!equipment[bowSlotIdx],
+    })) {
+      state.msg?.(text);
+    }
   };
   state.updateBonuses = refreshDerived;
   /* game-world.c:941-947: the C refreshes upkeep->inven[] before its
@@ -2542,8 +2566,15 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
 
   // player_outfit (player-birth.c L1299): after seed_flavor, before level gen.
   const gear = newGear();
+  /* object_flavor_aware(p, obj) on each start item (player-birth.c:650) has to
+   * wait for wireGame to build the awareness store, so collect the kinds here
+   * and apply them below. Without this a Warrior's own starting Flask of Oil
+   * read as "a Clear Flask" - named by flavour, as though they had found it on
+   * the floor. */
+  const startKinds: ObjectKind[] = [];
   outfitPlayer(gear, birth.player, reg.objects, mainRng, reg.constants, {
     opt: (name: string): boolean => options.get(name) ?? false,
+    onStartKind: (kind): void => void startKinds.push(kind),
   });
 
   // prepare_next_level (ui-game.c:757-760): level generation AFTER both seeds.
@@ -2578,7 +2609,14 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // the worn-armor weight over the class allowance as the penalty).
   playerSpellsInit(birth.player);
   calcSpells(birth.player, pstate.statInd);
-  calcMana(birth.player, pstate.statInd, wornArmorWeight(birth.player, equipment));
+  /* Record cumber_armor on the birth state too, so the first refreshDerived of
+   * the game diffs against the true starting value and cannot announce an
+   * armour change that never happened. */
+  pstate.cumberArmor = calcMana(
+    birth.player,
+    pstate.statInd,
+    wornArmorWeight(birth.player, equipment),
+  );
   birth.player.csp = birth.player.msp; // born rested, full mana
 
   const spot: Loc = booted.playerSpot ?? loc(1, 1);
@@ -2660,6 +2698,15 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // is exactly the start-item set. Pure Set insert, no RNG.
   for (const obj of state.gear.store.values()) {
     wired.everseen.markKind(obj.kind);
+  }
+
+  // object_flavor_aware(p, obj) per start item (player-birth.c:650), applied now
+  // that flavor_init has run and the awareness store exists. NOOP deps, not the
+  // live ones: upstream's L2276-79 ignore side effects re-check a pack that does
+  // not exist yet at this point in birth, and the first real notice_stuff pass
+  // covers it. No RNG.
+  for (const kind of startKinds) {
+    wired.flavor.objectFlavorAware(kind, NOOP_FLAVOR_AWARE_DEPS);
   }
 
   // birth_know_runes (player-birth.c L1261-1262): a birth_know_runes character
@@ -3189,6 +3236,12 @@ export function loadGame(
     curses: reg.objects.curses,
     update: true,
   });
+  /* cumber_armor is calc_mana's to set, and a resumed character's msp is
+   * restored from the save rather than recomputed - so derive the flag alone,
+   * without touching msp/csp. Skipping it would make the first refreshDerived
+   * of the session diff false -> true and announce that a mage's armour had
+   * just become too heavy, on a character who simply loaded their save. */
+  pstate.cumberArmor = cumberArmorFrom(player, wornArmorWeight(player, equipment));
   const combat = toCombatState(pstate);
 
   const rng = new Rng(1);

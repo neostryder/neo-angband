@@ -4,7 +4,7 @@ import { bindConstants } from "../constants";
 import { OBJ_MOD, TV } from "../generated";
 import { ObjRegistry } from "../obj/bind";
 import { objectPrep } from "../obj/make";
-import type { StackLimits } from "../obj/object";
+import type { GameObject, StackLimits } from "../obj/object";
 import { bindPlayer } from "../player/bind";
 import { blankPlayer } from "../player/player";
 import { makeRuneEnv, OBJ_NOTICE } from "../obj/knowledge";
@@ -14,6 +14,7 @@ import { Rng } from "../rng";
 import { startGame } from "../session/game";
 import type { GamePack } from "../session/game";
 import {
+  calcInventory,
   gearGet,
   invenCarry,
   newGear,
@@ -419,5 +420,100 @@ describe("startGame wires the gear at birth", () => {
     // The store holds every object; the pack holds the non-equipped ones.
     expect(state.gear.store.size).toBeGreaterThan(0);
     expect(state.gear.pack.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * calc_inventory's pack half of the reorder notice (player-calcs.c:1224-1233).
+ * Found absent by the upstream text census: the quiver half was ported and the
+ * pack half was not, so a pack that shuffled under the player said nothing.
+ */
+describe("calcInventory re-arrange notice (player-calcs.c:1224-1233)", () => {
+  /**
+   * Two potions of different kinds. Both aware, earlier_object sorts them by
+   * increasing sval (:972-974); make the low-sval one UNAWARE and it drops to
+   * the back instead (:966-969). That is the ordinary in-play trigger for this
+   * message - you identify a potion and the pack re-sorts around it.
+   */
+  function twoItemGear(): {
+    gear: ReturnType<typeof newGear>;
+    handles: number[];
+    lowSval: number;
+  } {
+    const reg = new ObjRegistry(pack.obj);
+    const rng = new Rng(1);
+    const gear = newGear();
+    const kinds = reg.kinds
+      .filter((k) => k.tval === TV.POTION && k.kidx < reg.ordinaryKindCount)
+      .sort((x, y) => x.sval - y.sval);
+    const a = objectPrep(rng, reg, constants, kinds[0]!, 0, "minimise");
+    const b = objectPrep(rng, reg, constants, kinds[1]!, 0, "minimise");
+    const ha = invenCarry(gear, a, limits);
+    return { gear, handles: [ha, invenCarry(gear, b, limits)], lowSval: ha };
+  }
+
+  it("says nothing the first time it runs - there is no old pack to differ from", () => {
+    const { gear } = twoItemGear();
+    const said: string[] = [];
+    calcInventory(gear, constants, { characterDungeon: true, msg: (t) => void said.push(t) });
+    expect(said).toEqual([]);
+    expect(gear.inven?.length).toBe(2);
+  });
+
+  it("says nothing when the same pack sorts to the same order", () => {
+    const { gear } = twoItemGear();
+    calcInventory(gear, constants, { characterDungeon: true });
+    const said: string[] = [];
+    calcInventory(gear, constants, { characterDungeon: true, msg: (t) => void said.push(t) });
+    expect(said).toEqual([]);
+  });
+
+  it("announces a re-arrangement when a slot's occupant changes", () => {
+    const { gear, handles, lowSval } = twoItemGear();
+    /* Start from the unaware ordering, so the low-sval potion is at the back. */
+    const unaware = { isAware: (o: GameObject): boolean => o.sval !== gearGet(gear, lowSval)!.sval };
+    calcInventory(gear, constants, { characterDungeon: true, ...unaware });
+    const before = [...gear.inven!];
+
+    /* Now the player identifies it: it sorts to the front and the pack shifts. */
+    const said: string[] = [];
+    calcInventory(gear, constants, {
+      characterDungeon: true,
+      msg: (t) => void said.push(t),
+    });
+
+    expect(gear.inven).not.toEqual(before);
+    expect(gear.inven!.length).toBe(handles.length);
+    expect(said).toEqual(["You re-arrange your pack."]);
+  });
+
+  it("stays silent outside the dungeon (character_dungeon, :1225)", () => {
+    const { gear, lowSval } = twoItemGear();
+    const unaware = { isAware: (o: GameObject): boolean => o.sval !== gearGet(gear, lowSval)!.sval };
+    calcInventory(gear, constants, { characterDungeon: true, ...unaware });
+    const said: string[] = [];
+    calcInventory(gear, constants, { msg: (t) => void said.push(t) });
+    expect(said).toEqual([]);
+  });
+
+  it("does not blame a re-arrangement for an item that was equipped (:1227)", () => {
+    const { gear, handles } = twoItemGear();
+    calcInventory(gear, constants, { characterDungeon: true });
+    const worn = handles[0]!;
+
+    /* Wear the first item and pick up a replacement in the same breath, so the
+     * pack count is unchanged and only the equipped handle moved. */
+    gear.pack = gear.pack.filter((h) => h !== worn);
+    const reg = new ObjRegistry(pack.obj);
+    const extra = objectPrep(new Rng(2), reg, constants, firstOrdinaryKind(reg, TV.POTION), 0, "minimise");
+    invenCarry(gear, extra, limits);
+
+    const said: string[] = [];
+    calcInventory(gear, constants, {
+      characterDungeon: true,
+      isEquipped: (h) => h === worn,
+      msg: (t) => void said.push(t),
+    });
+    expect(said).toEqual([]);
   });
 });

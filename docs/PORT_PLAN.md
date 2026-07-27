@@ -116,7 +116,7 @@ documentation lives here under `docs/`.
     restore-points. The injectable whole-file digest (FNV-1a default) is a
     separate, weaker thing: a DETERRENT against casual hand-editing, honest
     about its ceiling (a client-side verifier ships in the bundle). The one
-    hole the original also had - copying the savefile (here, the IndexedDB
+    hole the original also had - copying the savefile (here, the localStorage
     record) before a risk and restoring it - is closable only by a
     server-authoritative save, which is a networking MOD (decision 15). Mods
     may relax or replace any of this (decision 18); nondeterministic mods
@@ -287,7 +287,7 @@ completeness where possible.
   town and stores, quests and the win condition (data-driven objective
   system).
 - **P5 - Web UI**: glyph renderer, responsive single-surface layout, keymaps,
-  PWA packaging, IndexedDB saves with export/import. The presentation logic
+  PWA packaging, localStorage saves with export/import. The presentation logic
   behind every classic panel (sidebar, character sheet, monster/object lists,
   monster lore, map, knowledge, options) is ported as engine-computed data;
   only the terminal draw layer is what the web surface replaces. Sound

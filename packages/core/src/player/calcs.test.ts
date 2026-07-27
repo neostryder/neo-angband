@@ -12,7 +12,9 @@ import {
   modifyStatValue,
   player_exp,
   statUseToIndex,
+  bonusChangeMessages,
 } from "./calcs";
+import type { PlayerState } from "./calcs";
 import { STAT_RANGE } from "./types";
 
 describe("adj_* tables (player-calcs.c verbatim)", () => {
@@ -104,5 +106,95 @@ describe("calc_hitpoints", () => {
     expect(calcHitpoints(100, 10, 37)).toBe(100 + Math.trunc((1250 * 10) / 100));
     /* Floor: a hugely negative CON at level 1 clamps to lev + 1 = 2. */
     expect(calcHitpoints(1, 1, 0)).toBe(2);
+  });
+});
+
+/**
+ * calc_bonuses' encumbrance notices (player-calcs.c:2412-2453). Found absent by
+ * the upstream text census: calcBonuses ported the derive and not the diff at
+ * the end of the same function, so all ten of these were unreachable.
+ */
+describe("bonusChangeMessages (player-calcs.c:2412-2453)", () => {
+  /** Only the four fields the diff reads; the rest of PlayerState is inert. */
+  const st = (over: Partial<PlayerState> = {}): PlayerState =>
+    ({
+      heavyShoot: false,
+      heavyWield: false,
+      blessWield: false,
+      cumberArmor: false,
+      ...over,
+    }) as PlayerState;
+
+  const BOTH = { hasWeapon: true, hasLauncher: true };
+  const NEITHER = { hasWeapon: false, hasLauncher: false };
+
+  it("says nothing when nothing changed", () => {
+    expect(bonusChangeMessages(st(), st(), BOTH)).toEqual([]);
+  });
+
+  it("warns when a bow becomes too heavy (:2417)", () => {
+    expect(
+      bonusChangeMessages(st(), st({ heavyShoot: true }), BOTH),
+    ).toEqual(["You have trouble wielding such a heavy bow."]);
+  });
+
+  it("swapping to a manageable bow reads differently from putting one down", () => {
+    /* Both leave heavy_shoot false; the launcher slot tells them apart
+     * (:2419 vs :2421). */
+    expect(bonusChangeMessages(st({ heavyShoot: true }), st(), BOTH)).toEqual([
+      "You have no trouble wielding your bow.",
+    ]);
+    expect(bonusChangeMessages(st({ heavyShoot: true }), st(), NEITHER)).toEqual(
+      ["You feel relieved to put down your heavy bow."],
+    );
+  });
+
+  it("does the same for a heavy weapon (:2428-2432)", () => {
+    expect(bonusChangeMessages(st(), st({ heavyWield: true }), BOTH)).toEqual([
+      "You have trouble wielding such a heavy weapon.",
+    ]);
+    expect(bonusChangeMessages(st({ heavyWield: true }), st(), BOTH)).toEqual([
+      "You have no trouble wielding your weapon.",
+    ]);
+    expect(bonusChangeMessages(st({ heavyWield: true }), st(), NEITHER)).toEqual(
+      ["You feel relieved to put down your heavy weapon."],
+    );
+  });
+
+  it("attunement has no put-it-down line (:2435-2443)", () => {
+    expect(bonusChangeMessages(st(), st({ blessWield: true }), BOTH)).toEqual([
+      "You feel attuned to your weapon.",
+    ]);
+    expect(bonusChangeMessages(st({ blessWield: true }), st(), BOTH)).toEqual([
+      "You feel less attuned to your weapon.",
+    ]);
+    /* Upstream deliberately stops at two branches here: removing the offending
+     * weapon says nothing at all. */
+    expect(bonusChangeMessages(st({ blessWield: true }), st(), NEITHER)).toEqual(
+      [],
+    );
+  });
+
+  it("reports armour weight costing and releasing mana (:2445-2452)", () => {
+    expect(bonusChangeMessages(st(), st({ cumberArmor: true }), BOTH)).toEqual([
+      "The weight of your armor reduces your maximum SP.",
+    ]);
+    expect(bonusChangeMessages(st({ cumberArmor: true }), st(), BOTH)).toEqual([
+      "Your maximum SP is no longer reduced by armor weight.",
+    ]);
+  });
+
+  it("emits several in upstream's order when a whole kit changes at once", () => {
+    expect(
+      bonusChangeMessages(
+        st(),
+        st({ heavyShoot: true, heavyWield: true, cumberArmor: true }),
+        BOTH,
+      ),
+    ).toEqual([
+      "You have trouble wielding such a heavy bow.",
+      "You have trouble wielding such a heavy weapon.",
+      "The weight of your armor reduces your maximum SP.",
+    ]);
   });
 });
