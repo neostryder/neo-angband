@@ -27,6 +27,7 @@ import {
   ODESC,
   gearGet,
   invenCarryNum,
+  packIsFull,
   objectCopyAmt,
   tvalIsWearable,
   tvalIsAmmo,
@@ -697,13 +698,22 @@ export async function runStore(
     }
     if (!single) {
       amt = Math.min(amt, invenCarryNum(game.state.gear, obj, constants));
-      if (amt <= 0) {
+      const aware = game.flavor ? game.flavor.isAware(obj.kind) : true;
+      // ui-store.c L658-662: no room refuses the purchase - and so does a FULL
+      // pack when the flavour is not yet aware and this is not the Home, even
+      // though invenCarryNum would happily merge it into an existing slot.
+      // Merging is exactly the leak: succeeding where a full pack should refuse
+      // tells the player the unknown potion is one they already own. Taking from
+      // the Home cannot leak, because home stock shows no true flavour.
+      if (
+        amt <= 0 ||
+        (!aware && !isHome && packIsFull(game.state.gear, constants))
+      ) {
         storeSay("You cannot carry that many items.");
         return;
       }
       // find_inven owned count; suppressed for an unaware flavour outside the
-      // Home so a purchase does not leak the flavour's identity (ui-store.c L667).
-      const aware = game.flavor ? game.flavor.isAware(obj.kind) : true;
+      // Home for the same reason (ui-store.c L667).
       const owned = !aware && !isHome ? 0 : findInven(game, obj);
       const have = owned ? ` (you have ${owned})` : "";
       const q = await getQuantity(

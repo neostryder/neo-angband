@@ -70,10 +70,10 @@ allowlist entry is deleted and the suite is green.
       quota; the port neither retries nor says so. ui-game.c:1091-1155.
 - [ ] **K. Borg gate** (2) - `do_cmd_try_borg` (cmd-misc.c:125-145) in the borg
       mod's activation path; it is what sets `NOSCORE_BORG`.
-- [ ] **L. Call-census LEADs** (5, call census) - `pile_contains`,
+- [x] **L. Call-census LEADs** (5, call census) - `pile_contains`,
       `pile_last_item`, `object_pack_total`, `pack_is_full` (ui-store.c:662's
       flavor-leak guard), `target_sighted`.
-- [ ] **M. Savefile-name / panic-save divergences** (2) - re-question the
+- [x] **M. Savefile-name / panic-save divergences** (2) - re-question the
       "divergence" label per the standing rule.
 - [ ] **N. Misc. string fixes** (bug-fixes mod) - one mod patch collecting
       upstream's own typos and double spaces. Core is untouched by this.
@@ -92,3 +92,15 @@ Nothing goes here until it is committed.
   `compact_monsters` skipped the C's unconditional excise pass, so the port never
   closed a hole under either argument; `remove_object_curse` got its dropped
   `message` parameter back. 118 absences, 23 tier-1.
+- 2026-07-27 - **L** and **M**. 4 of the 5 LEADs were real gaps, and two of
+  them were live defects rather than missing wiring: the ground-reveal in
+  update_player_object_knowledge announced every pile on the LEVEL instead of
+  only what is underfoot (square_holds_object, obj-knowledge.c:1193), and the
+  store let an unaware flavour be bought into a full pack whenever a slot would
+  merge, which is exactly the leak ui-store.c:658-662 guards. object_pack_total
+  now drives the split-stack aggregate at all three port sites (use, carry,
+  drop) so "You have 6 Potions (1st a)." appears at all; targetSighted drives
+  show_target / highlight_player, which were flagged no-op options.
+  pile_last_item was the one genuine non-gap. **M**: both divergences
+  re-derived from the C and upheld, with the reason rewritten to cite it.
+  118 absences, 19 tier-1.

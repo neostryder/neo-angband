@@ -116,6 +116,7 @@ import {
   targetGetMonsters,
   targetIsSet,
   targetGet,
+  targetSighted,
   TARGET,
   TMD,
   ignoreDropTargets,
@@ -5607,6 +5608,33 @@ function render(targeting?: TargetingOverlay): void {
     // above the sidebar (which starts at row 1) - not indented to the map.
     term.print(0, 0, message.slice(0, cols - 1), messageColor);
     renderStatusLine(mapOriginX, rows - 1, mapCols);
+
+    // show_target / highlight_player: the between-turns map cursor. Upstream
+    // places it just before waiting for a command and repeats the same block at
+    // four sites (ui-display.c:2486 refresh, ui-game.c:678 pre_turn_refresh,
+    // ui-command.c:105 do_cmd_redraw, ui-input.c:1899 highlight_player in
+    // inkey) - target if show_target and target_sighted(), else the player.
+    // Painted LAST because repainting a cell erases the frame, exactly as
+    // Term_gotoxy-before-inkey does. The interactive '*' / 'l' loop owns the
+    // cursor itself, hence the targeting branch above.
+    const showTarget = state.options?.get("show_target") ?? false;
+    const cursorGrid =
+      showTarget && targetSighted(state)
+        ? targetGet(state)
+        : (state.options?.get("highlight_player") ?? false)
+          ? state.actor.grid
+          : null;
+    if (cursorGrid) {
+      const cx = mapOriginX + (cursorGrid.x - camX);
+      const cy = mapTop + (cursorGrid.y - camY);
+      if (cx >= mapOriginX && cy >= mapTop && cx < mapOriginX + mapCols && cy < mapTop + mapRows) {
+        term.setCursor(cx, cy);
+      } else {
+        term.hideCursor();
+      }
+    } else {
+      term.hideCursor();
+    }
   }
 }
 

@@ -32,6 +32,7 @@ import { PF } from "../generated";
 import type { GameObject, StackLimits } from "../obj/object";
 import {
   OSTACK_PACK,
+  objectPackTotal,
   objectStackable,
   tvalIsMoney,
   tvalIsMushroom,
@@ -43,7 +44,13 @@ import { NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge";
 import type { GameState } from "./context";
 import { describeObject } from "./describe";
 import { floorExcise, floorObjectForUse, floorPile } from "./floor";
-import { gearGet, invenCarryNum, invenCarryResult } from "./gear";
+import {
+  gearGet,
+  invenCarryNum,
+  invenCarryResult,
+  packTotalSuppressed,
+  packTotalView,
+} from "./gear";
 import { gearToLabel } from "./project-obj";
 import type { ActionRegistry } from "./player-turn";
 
@@ -300,12 +307,49 @@ function playerPickupAux(
   /* inven_carry's own "You have %s (%c)." message (obj-gear.c:893-921): describe
    * the MERGED pack stack so the count and slot letter reflect the combined
    * total (e.g. "You have 5 Potions of Cure Light Wounds (a).") rather than the
-   * bare floor object ("You have a Potion..."). */
+   * bare floor object ("You have a Potion...").
+   *
+   * The count is the AGGREGATE across every like stack in the pack
+   * (object_pack_total, L908), not this stack's own number, and the letter is
+   * the FIRST such stack's - so five flasks split over slots c and f read
+   * "You have 5 Flasks of oil (1st c)." Suppressed for charge/recharge items,
+   * whose notice belongs to one stack (L899-905); note inven_carry alone omits
+   * the object_is_equipped arm of that test, because a just-carried object
+   * cannot be equipped. */
   if (stack) {
-    const name = describeObject(state, stack, ODESC.PREFIX | ODESC.FULL);
-    const label = gearToLabel(state.gear, handle);
-    env.onPickup?.(`You have ${name}${label ? ` (${label})` : ""}.`);
+    let total: number;
+    let first: GameObject | null;
+    if (packTotalSuppressed(stack)) {
+      total = stack.number;
+      first = stack;
+    } else {
+      const view = packTotalView(state.gear, (h) => gearToLabel(state.gear, h));
+      ({ total, first } = objectPackTotal(view, stack, false));
+    }
+    const name = describeObject(
+      state,
+      stack,
+      ODESC.PREFIX | ODESC.FULL | ODESC.ALTNUM,
+      total,
+    );
+    /* gear_to_label(p, first) in BOTH arms (L913): the letter names the first
+     * like stack even when the total is not an aggregate. */
+    const label = first
+      ? packLabelOf(state, first)
+      : gearToLabel(state.gear, handle);
+    const suffix = label ? ` (${total > (first?.number ?? total) ? "1st " : ""}${label})` : "";
+    env.onPickup?.(`You have ${name}${suffix}.`);
   }
+}
+
+/** gear_to_label for an object we hold by reference rather than by handle. */
+function packLabelOf(state: GameState, obj: GameObject): string {
+  for (const handle of state.gear.pack) {
+    if (state.gear.store.get(handle) === obj) {
+      return gearToLabel(state.gear, handle);
+    }
+  }
+  return "";
 }
 
 /**

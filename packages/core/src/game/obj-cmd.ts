@@ -37,6 +37,7 @@ import type { EffectRegistry } from "../effects/interpreter";
 import type { EffectRecordJson, ObjectKind } from "../obj/types";
 import type { GameObject, StackLimits } from "../obj/object";
 import {
+  objectPackTotal,
   tvalIsEdible,
   tvalIsFuel,
   tvalIsLauncher,
@@ -73,6 +74,8 @@ import {
   invenCarryNum,
   objectSplit,
   packIsOverfull,
+  packTotalSuppressed,
+  packTotalView,
   wieldObject,
   wieldSlot,
 } from "./gear";
@@ -396,35 +399,50 @@ export function invenWield(
   return worn;
 }
 
+/** What inven_drop's caller needs to build its two messages. */
+export interface InvenDropResult {
+  /** The object that went to the floor. */
+  dropped: GameObject;
+  /** gear_object_for_use's *none_left: the whole stack went. */
+  noneLeft: boolean;
+  /** Whether the object had to be taken off first (obj-gear.c L1108-1111). */
+  wasEquipped: boolean;
+}
+
 /**
  * inven_drop (obj-gear.c L1078): drop amt of a carried object near the
- * player (equipment is taken off first). Returns the dropped object, or
- * null when nothing was dropped.
+ * player (equipment is taken off first). Returns null when nothing was dropped.
+ *
+ * The two messages stay at the caller (the command handler), but `noneLeft` and
+ * `wasEquipped` come back with the result because upstream's own message block
+ * (L1120-1165) branches on both.
  */
 export function invenDrop(
   state: GameState,
   handle: number,
   amt: number,
   floorEnv: FloorEnv = {},
-): GameObject | null {
+): InvenDropResult | null {
   if (amt <= 0) return null;
   const obj = gearGet(state.gear, handle);
   if (!obj) return null;
   if (amt > obj.number) amt = obj.number;
 
   /* Take off equipment, don't combine. */
+  let wasEquipped = false;
   if (state.actor.player.equipment.includes(handle)) {
+    wasEquipped = true;
     invenTakeoff(state, handle);
   }
 
-  const { obj: dropped } = gearObjectForUse(
+  const { obj: dropped, noneLeft } = gearObjectForUse(
     state.gear,
     state.actor.player,
     handle,
     amt,
   );
   dropNear(state, dropped, 0, state.actor.grid, false, floorEnv);
-  return dropped;
+  return { dropped, noneLeft, wasEquipped };
 }
 
 /* ------------------------------------------------------------------ *
@@ -447,6 +465,17 @@ function gearLabelFor(state: GameState, handle: number): string {
   if (qi >= 0) return String(qi);
   const pi = state.gear.pack.indexOf(handle);
   if (pi >= 0 && pi < GEAR_LABELS.length) return GEAR_LABELS[pi] ?? "";
+  return "";
+}
+
+/**
+ * gear_to_label for an object object_pack_total handed back by reference, which
+ * the port must map to a handle first.
+ */
+function packLabelFor(state: GameState, obj: GameObject): string {
+  for (const handle of state.gear.pack) {
+    if (state.gear.store.get(handle) === obj) return gearLabelFor(state, handle);
+  }
   return "";
 }
 
@@ -1157,13 +1186,26 @@ export function useAux(
     }
 
     /* Capture the describe inputs before the effect can rearrange the pack
-     * (cmd-obj.c L462-483): the gear label of the item and its stack count. The
-     * port names a single stack rather than upstream's object_pack_total across
-     * split stacks - ledgered; the aggregate "(1st %c)" split-stack form is not
-     * reproduced. */
-    const describeLabel =
+     * (cmd-obj.c L462-483): the gear label of the item and the count to report.
+     * For anything but a CHARGE / TIMEOUT device that count is the AGGREGATE
+     * across every like stack (object_pack_total, L474), and the label becomes
+     * the first such stack's - "You have 3 Scrolls of Light (1st d)."  A charge
+     * or recharging notice is stack-specific, so those keep their own number
+     * (L480). A floor object has no pack context at all (L465). */
+    let describeLabel =
       opts.handle !== undefined ? gearLabelFor(state, opts.handle) : "";
-    const startNumber = obj.number;
+    let startNumber = obj.number;
+    let firstRemainder: GameObject | null = null;
+    if (!fromFloor && use !== USE.CHARGE && use !== USE.TIMEOUT) {
+      const view = packTotalView(state.gear, (h) => gearLabelFor(state, h));
+      const agg = objectPackTotal(view, obj, false);
+      startNumber = agg.total;
+      firstRemainder = agg.first;
+      /* One stack only: nothing to call "1st" (L477-479). */
+      if (firstRemainder && firstRemainder.number === agg.total) {
+        firstRemainder = null;
+      }
+    }
 
     /* Tentatively deduct floor-object usage before the effect (the effect
      * could leave the object inaccessible). */
@@ -1289,7 +1331,16 @@ export function useAux(
         shown,
       );
       if (fromFloor) env.msg?.(`You see ${name}.`);
-      else env.msg?.(`You have ${name} (${describeLabel}).`);
+      else {
+        /* cmd-obj.c L692-698: the "1st" label is looked up AFTER the effect,
+         * because the pack may have moved underneath it. */
+        if (firstRemainder) describeLabel = packLabelFor(state, firstRemainder);
+        env.msg?.(
+          firstRemainder
+            ? `You have ${name} (1st ${describeLabel}).`
+            : `You have ${name} (${describeLabel}).`,
+        );
+      }
     } else if (
       used &&
       use === USE.CHARGE &&
@@ -1534,27 +1585,59 @@ export function installObjCommands(
     }
     const amt =
       typeof args["quantity"] === "number" ? args["quantity"] : obj.number;
-    /* Label and artifact-ness captured before the drop (inven_drop L1099). */
+    /* Label captured before the drop (inven_drop L1099). */
     const label = gearLabelFor(state, handle);
-    const wasArtifact = obj.artifact !== null;
-    const dropped = invenDrop(state, handle, amt, deps.floorEnv);
-    if (!dropped) return 0;
-    /* inven_drop's messages (obj-gear.c L1120-1163): the drop, then what's
-     * left. The split-stack "(1st %c)" aggregate is not reproduced (ledgered
-     * with the use_aux describe line above). Dropping an equipped item omits the
-     * take-off line the port's inven_takeoff does not emit - also ledgered. */
+    const result = invenDrop(state, handle, amt, deps.floorEnv);
+    if (!result) return 0;
+    const { dropped, noneLeft, wasEquipped } = result;
+    /* inven_drop's messages (obj-gear.c L1120-1165): the drop, then what's
+     * left. Dropping an equipped item omits the take-off line the port's
+     * inven_takeoff does not emit - ledgered. */
     deps.env?.msg?.(`You drop ${describeObject(state, dropped)} (${label}).`);
-    const remain = gearGet(state.gear, handle);
-    if (remain) {
-      deps.env?.msg?.(`You have ${describeObject(state, remain)} (${label}).`);
-    } else if (wasArtifact) {
+    if (dropped.artifact) {
       deps.env?.msg?.(
         `You no longer have the ${describeObject(state, dropped, ODESC.FULL | ODESC.SINGULAR)} (${label}).`,
       );
     } else {
-      deps.env?.msg?.(
-        `You have ${describeObject(state, dropped, ODESC.PREFIX | ODESC.FULL | ODESC.ALTNUM, 0)} (${label}).`,
+      /* The remaining count is the AGGREGATE over every like stack still in the
+       * pack (object_pack_total, L1149), and the letter is the first such
+       * stack's - so dropping 2 of 5 flasks split over slots c and f says
+       * "You have 3 Flasks of oil (1st c)." Suppressed when the item was
+       * equipped, or carries a stack-specific charge / recharging notice
+       * (L1138-1141), in which case the aggregate would contradict it. */
+      let total: number;
+      let first: GameObject | null;
+      let descTarget: GameObject;
+      if (wasEquipped || packTotalSuppressed(obj)) {
+        first = null;
+        if (noneLeft) {
+          total = 0;
+          descTarget = dropped;
+        } else {
+          total = obj.number;
+          descTarget = obj;
+        }
+      } else {
+        const view = packTotalView(state.gear, (h) => gearLabelFor(state, h));
+        ({ total, first } = objectPackTotal(view, obj, false));
+        descTarget = total ? obj : dropped;
+      }
+      const name = describeObject(
+        state,
+        descTarget,
+        ODESC.PREFIX | ODESC.FULL | ODESC.ALTNUM,
+        total,
       );
+      if (!first) {
+        deps.env?.msg?.(`You have ${name} (${label}).`);
+      } else {
+        const firstLabel = packLabelFor(state, first);
+        deps.env?.msg?.(
+          total > first.number
+            ? `You have ${name} (1st ${firstLabel}).`
+            : `You have ${name} (${firstLabel}).`,
+        );
+      }
     }
     /* gear_object_for_use sets PU_INVEN (obj-gear.c L617) -> calc_inventory. */
     calcInventory(state.gear, deps.constants, calcInvOpts(state, deps));
