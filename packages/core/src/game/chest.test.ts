@@ -447,7 +447,9 @@ describe("installCaveCommands: chest wiring (dir 5 underfoot, chest-vs-door)", (
     queueOne(state, { code: "open", dir: 6 });
     const result = processPlayer(state, registry);
     expect(result.energyUsed).toBe(0);
-    expect(msgs).toContain("You see nothing there to open.");
+    /* An unknown grid fails do_cmd_open_test's knowledge gate first
+     * (cmd-cave.c:151-154), before the "nothing to open" arm. */
+    expect(msgs).toContain("You see nothing there.");
   });
 
   it("disarm merges with the sibling floor-trap disarm: a trapped chest wins first", () => {

@@ -11,6 +11,7 @@ import type { ObjPackJson } from "../obj/types";
 import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
 import type { MakeDeps } from "../obj/make";
 import { tvalIsMoney } from "../obj/object";
+import { OptionState } from "../player/options";
 import {
   DIGGING,
   calcDiggingChances,
@@ -127,6 +128,7 @@ describe("open / close doors", () => {
   it("opens a closed door and spends a full turn", () => {
     const { state, run } = setup();
     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    squareMemorize(state, loc(6, 5));
     const energy = run({ code: "open", dir: 6 });
     expect(energy).toBe(state.z.moveEnergy);
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.OPEN);
@@ -148,6 +150,7 @@ describe("open / close doors", () => {
   it("closes an open door", () => {
     const { state, run } = setup();
     state.chunk.setFeat(loc(6, 5), FEAT.OPEN);
+    squareMemorize(state, loc(6, 5));
     const energy = run({ code: "close", dir: 6 });
     expect(energy).toBe(state.z.moveEnergy);
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.CLOSED);
@@ -183,6 +186,7 @@ describe("open / close doors", () => {
       },
     });
     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    squareMemorize(state, loc(6, 5));
     run({ code: "open", dir: 6 });
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.CLOSED);
     picked = true;
@@ -235,6 +239,7 @@ describe("open / close doors", () => {
   it("a monster in the way is attacked instead", () => {
     const { state, run } = setup();
     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    squareMemorize(state, loc(6, 5));
     const mon = addMon(state, makeRace({ ac: 0 }), loc(6, 5), { hp: 1000 });
     const energy = run({ code: "open", dir: 6 });
     expect(energy).toBe(state.z.moveEnergy);
@@ -245,6 +250,7 @@ describe("open / close doors", () => {
   it("a camouflaged monster in the way is revealed instead of attacked (do_cmd_open, cmd-cave.c L293-298)", () => {
     const { state, run } = setup();
     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    squareMemorize(state, loc(6, 5));
     const mon = addMon(state, makeRace({ ac: 0 }), loc(6, 5), { hp: 1000 });
     mon.mflag.on(MFLAG.CAMOUFLAGE);
     mon.mTimed[MON_TMD.SLEEP] = 20;
@@ -269,6 +275,7 @@ describe("tunnel", () => {
     const { state, run } = setup();
     setDigging(state, 2000); // chance 7960 > any randint0(1600)
     state.chunk.setFeat(loc(6, 5), FEAT.MAGMA);
+    squareMemorize(state, loc(6, 5));
     expect(squareIsDiggable(state, loc(6, 5))).toBe(true);
     expect(squareDigging(state, loc(6, 5))).toBeGreaterThan(0);
     const energy = run({ code: "tunnel", dir: 6 });
@@ -280,6 +287,7 @@ describe("tunnel", () => {
     const { state, run } = setup();
     setDigging(state, 0);
     state.chunk.setFeat(loc(6, 5), FEAT.GRANITE);
+    squareMemorize(state, loc(6, 5));
     const energy = run({ code: "tunnel", dir: 6 });
     expect(energy).toBe(state.z.moveEnergy);
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.GRANITE);
@@ -290,6 +298,7 @@ describe("tunnel", () => {
     setDigging(state, 2000);
     state.chunk.depth = 5;
     state.chunk.setFeat(loc(6, 5), FEAT.MAGMA_K);
+    squareMemorize(state, loc(6, 5));
     run({ code: "tunnel", dir: 6 });
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.FLOOR);
     const pile = floorPile(state, loc(6, 5));
@@ -317,6 +326,7 @@ describe("tunnel - auto-repeat (cmd_set_repeat 99)", () => {
     const { state, run } = setup();
     setDigging(state, 440); // granite chance = 440 - 40 = 400 (out of 1600)
     state.chunk.setFeat(loc(6, 5), FEAT.GRANITE);
+    squareMemorize(state, loc(6, 5));
     /* Force the 400-in-1600 roll to fail (chance > 0, so the dig continues). */
     state.rng.randint0 = (): number => 1500;
     const energy = run({ code: "tunnel", dir: 6 });
@@ -334,6 +344,7 @@ describe("tunnel - auto-repeat (cmd_set_repeat 99)", () => {
     const { state, run } = setup();
     setDigging(state, 2000);
     state.chunk.setFeat(loc(6, 5), FEAT.MAGMA);
+    squareMemorize(state, loc(6, 5));
     run({ code: "tunnel", dir: 6 });
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.FLOOR);
     expect(state.cmdQueue ?? []).toHaveLength(0);
@@ -366,6 +377,7 @@ describe("tunnel - player_best_digger swap", () => {
     /* A pack shovel would grant a strong DIGGING via calc_bonuses. */
     state.bestDiggerDigging = (): number => 2000;
     state.chunk.setFeat(loc(6, 5), FEAT.MAGMA);
+    squareMemorize(state, loc(6, 5));
     run({ code: "tunnel", dir: 6 });
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.FLOOR);
   });
@@ -516,9 +528,11 @@ describe("alter / stairs", () => {
     const { state, run } = setup();
     setDigging(state, 2000);
     state.chunk.setFeat(loc(6, 5), FEAT.CLOSED);
+    squareMemorize(state, loc(6, 5));
     run({ code: "alter", dir: 6 });
     expect(state.chunk.feat(loc(6, 5))).toBe(FEAT.OPEN);
     state.chunk.setFeat(loc(4, 5), FEAT.MAGMA);
+    squareMemorize(state, loc(4, 5));
     run({ code: "alter", dir: 4 });
     expect(state.chunk.feat(loc(4, 5))).toBe(FEAT.FLOOR);
   });
@@ -601,5 +615,74 @@ describe("countFeats (cave.c:644-679)", () => {
     expect(squareIsUnlockedDoor(state, loc(6, 5))).toBe(true);
     state.chunk.setFeat(loc(6, 5), FEAT.OPEN);
     expect(squareIsUnlockedDoor(state, loc(6, 5))).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * dungeon_get_next_level (player-util.c:1147) at the stair commands.
+ *
+ * The port used to set targetDepth to depth +/- 1 directly, so the quest scan
+ * never ran: stairs down from Sauron's level delivered the player straight to
+ * Morgoth. The seam that was meant to carry this (getNextLevel) existed but
+ * nothing wired it.
+ * ------------------------------------------------------------------ */
+describe("stairs go through dungeon_get_next_level", () => {
+  /** A state on `depth` standing on the matching staircase. */
+  function onStair(depth: number, feat: number): ReturnType<typeof setup> {
+    const s = setup();
+    s.state.chunk.depth = depth;
+    s.state.chunk.setFeat(loc(5, 5), feat);
+    return s;
+  }
+
+  it("stops the descent on an outstanding quest level (player-util.c:1163-1165)", () => {
+    const { state, run } = onStair(99, FEAT.MORE);
+    state.actor.player.quests = [
+      { name: "Sauron", level: 99, race: 0, maxNum: 1, curNum: 0 },
+    ];
+
+    expect(run({ code: "descend" })).toBe(state.z.moveEnergy);
+    /* is_quest(99) is true, so the loop returns 99 - the player stays. */
+    expect(state.targetDepth).toBe(99);
+  });
+
+  it("descends normally once the quest is cleared (level reset to 0)", () => {
+    const { state, run } = onStair(99, FEAT.MORE);
+    state.actor.player.quests = [
+      { name: "Sauron", level: 0, race: 0, maxNum: 1, curNum: 1 },
+    ];
+
+    run({ code: "descend" });
+    expect(state.targetDepth).toBe(100);
+  });
+
+  it("refuses to descend from max_depth - 1 (cmd-cave.c:115-119)", () => {
+    const { state, run } = onStair(0, FEAT.MORE);
+    state.chunk.depth = state.z.maxDepth - 1;
+    expect(run({ code: "descend" })).toBe(0);
+    expect(state.generateLevel).toBe(false);
+  });
+
+  it("force_descend measures the drop from max_depth (cmd-cave.c:121-128)", () => {
+    const { state, run } = onStair(2, FEAT.MORE);
+    state.actor.player.maxDepth = 40;
+    state.options = new OptionState({
+      overrides: { birth_force_descend: true },
+    });
+
+    run({ code: "descend" });
+    expect(state.targetDepth).toBe(41);
+  });
+
+  it("force_descend makes up staircases do nothing (cmd-cave.c:70-74)", () => {
+    const { state, run } = onStair(5, FEAT.LESS);
+    const msgs: string[] = [];
+    state.msg = (t): void => void msgs.push(t);
+    state.options = new OptionState({
+      overrides: { birth_force_descend: true },
+    });
+
+    expect(run({ code: "ascend" })).toBe(0);
+    expect(state.generateLevel).toBe(false);
   });
 });

@@ -64,6 +64,7 @@ import {
 } from "./scheduler";
 import { processPlayer } from "./player-turn";
 import type { ActionRegistry } from "./player-turn";
+import { dungeonGetNextLevel } from "./quest";
 
 /** player-util.h regeneration constants (regen factor / base, times 2^16). */
 const PY_REGEN_NORMAL = 197;
@@ -488,11 +489,10 @@ export function processWorld(state: GameState): void {
   if (p.deepDescent > 0) {
     p.deepDescent--;
     if (p.deepDescent === 0) {
+      /* game-world.c:817-819: the same dungeon_get_next_level the effect used
+       * when it armed the descent. */
       const increment = Math.trunc(4 / state.z.stairSkip) + 1;
-      const targetDepth = Math.min(
-        p.maxDepth + increment,
-        state.z.maxDepth - 1,
-      );
+      const targetDepth = dungeonGetNextLevel(p, p.maxDepth, increment, state.z);
       if (targetDepth > state.chunk.depth) {
         state.msg?.("The floor opens beneath you!");
         state.targetDepth = targetDepth;
