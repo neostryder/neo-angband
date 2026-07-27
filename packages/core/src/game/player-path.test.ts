@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, MFLAG } from "../generated";
+import { FEAT, MFLAG, TMD } from "../generated";
 import { bindTraps } from "../world/trap";
 import type { TrapRecordJson } from "../world/trap";
 import { placeTrap, squareIsVisibleTrap, squareRevealTrap } from "./trap";
@@ -9,6 +9,7 @@ import type { Loc } from "../loc";
 import type { GameState, PlayerCommand } from "./context";
 import { addMon, makeRace, makeState, FLOOR, GRANITE } from "./harness";
 import { squareMemorize } from "./known";
+import { OptionState } from "../player/options";
 import {
   disturb,
   exploreAction,
@@ -493,13 +494,23 @@ describe("do_cmd_pathfind (travel)", () => {
   });
 });
 
-describe("do_cmd_explore (path_nearest_unknown)", () => {
-  it("heads for the nearest remembered grid on the unknown frontier", () => {
+describe("do_cmd_explore (cmd-cave.c:1500)", () => {
+  /** A state with the western columns remembered and explore enabled. */
+  function frontierState(): GameState {
     const state = makeState({ w: 12, h: 11, playerGrid: loc(3, 5) });
     /* Remember only the western columns (x=0..6); x>=7 stays unknown. */
     for (let y = 0; y < state.chunk.height; y++) {
       for (let x = 0; x <= 6; x++) squareMemorize(state, loc(x, y));
     }
+    /* autoexplore_commands is OFF by default upstream (list-options.h:16-17). */
+    state.options = new OptionState({
+      overrides: { autoexplore_commands: true },
+    });
+    return state;
+  }
+
+  it("heads for the nearest remembered grid on the unknown frontier", () => {
+    const state = frontierState();
     const found = pathNearestUnknown(state, loc(3, 5));
     expect(found.length).toBeGreaterThan(0);
     expect(found.dest.x).toBe(6); /* the frontier column */
@@ -507,5 +518,49 @@ describe("do_cmd_explore (path_nearest_unknown)", () => {
     const reg = travelRegistry();
     pump(state, reg, { code: "explore" });
     expect(state.actor.grid.x).toBe(6);
+  });
+
+  it("does nothing at all when autoexplore_commands is off (L1502-1505)", () => {
+    const state = frontierState();
+    state.options = new OptionState(); /* shipped default: off */
+    const msgs: string[] = [];
+    state.msg = (text: string): void => void msgs.push(text);
+    pump(state, travelRegistry(), { code: "explore" });
+    expect(state.actor.grid.x).toBe(3); /* did not move */
+    expect(msgs).toEqual([]); /* and said nothing */
+  });
+
+  it("refuses while confused, and reports it (L1508-1511)", () => {
+    const state = frontierState();
+    state.actor.player.timed[TMD.CONFUSED] = 5;
+    const msgs: string[] = [];
+    state.msg = (text: string): void => void msgs.push(text);
+    pump(state, travelRegistry(), { code: "explore" });
+    expect(state.actor.grid.x).toBe(3);
+    expect(msgs).toContain("You cannot explore while confused.");
+  });
+
+  it("refuses with a monster in view (L1524-1527)", () => {
+    const state = frontierState();
+    const mon = addMon(state, makeRace({ level: 1 }), loc(4, 5));
+    mon.mflag.on(MFLAG.VIEW);
+    mon.mflag.on(MFLAG.VISIBLE);
+    const msgs: string[] = [];
+    state.msg = (text: string): void => void msgs.push(text);
+    pump(state, travelRegistry(), { code: "explore" });
+    expect(msgs).toContain("Something is here.");
+  });
+
+  it("reports when there is nowhere left to explore (L1542)", () => {
+    /* Everything remembered: path_nearest_unknown finds no frontier. */
+    const state = makeState({ w: 12, h: 11, playerGrid: loc(3, 5) });
+    memorizeAll(state);
+    state.options = new OptionState({
+      overrides: { autoexplore_commands: true },
+    });
+    const msgs: string[] = [];
+    state.msg = (text: string): void => void msgs.push(text);
+    pump(state, travelRegistry(), { code: "explore" });
+    expect(msgs).toContain("No apparent path for exploration.");
   });
 });

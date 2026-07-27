@@ -89,6 +89,21 @@ export function squareHoldsObject(
 }
 
 /**
+ * item_is_available (obj-pile.c L1427): the object is somewhere the player can
+ * act on it - carried, or in the pile underfoot. Upstream's do_cmd_fire uses it
+ * to reject a command whose ammo is no longer there (player-attack.c:1338), the
+ * case where two fire commands were queued for the same stack.
+ */
+export function itemIsAvailable(state: GameState, obj: GameObject): boolean {
+  /* object_is_carried(player, obj) = pile_contains(p->gear, obj). The port's
+   * gear is a handle map, so membership is a scan of its values. */
+  for (const held of state.gear.store.values()) {
+    if (held === obj) return true;
+  }
+  return squareHoldsObject(state, state.actor.grid, obj);
+}
+
+/**
  * pile_last_item (obj-pile.c L248): the tail of a pile, or null when empty.
  * Upstream's two consumers (gear_last_item -> combine_pack, obj-ignore.c
  * ignore_drop) both use it to walk gear BACKWARDS; here that is a reversed

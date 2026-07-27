@@ -49,7 +49,7 @@ import { getLore } from "../mon/lore";
 import { monTakeHit } from "../mon/take-hit";
 import { playerClearTimed } from "../player/timed";
 import { gearGet, gearObjectForUse } from "./gear";
-import { dropNear, floorPile, floorObjectForUse } from "./floor";
+import { dropNear, floorPile, floorObjectForUse, itemIsAvailable } from "./floor";
 import { invenTakeoff, playerConfuseDir } from "./obj-cmd";
 import { squareMonster, deleteMonster, arenaInterceptDeath } from "./context";
 import type { GameState, PlayerCommand } from "./context";
@@ -267,6 +267,14 @@ export function installRangedCommands(registry: ActionRegistry): void {
     if (!src || !tvalIsAmmo(src.tval)) {
       /* player-attack.c:1325 cmd_get_item error string (obj_can_fire filter). */
       state.msg?.("You have no suitable ammunition to fire.");
+      return 0;
+    }
+    /* item_is_available (player-attack.c:1338): the ammo must still be within
+     * reach. This is the "two fire commands queued for the same stack" case -
+     * the second one names ammo that is already gone, and the port reported it
+     * as unsuitable ammunition rather than out of reach. */
+    if (!itemIsAvailable(state, src)) {
+      state.msg?.("That item is not within your reach.");
       return 0;
     }
     if (src.tval !== state.actor.combat.ammoTval) {
