@@ -653,6 +653,9 @@ export function playAmbientSound(state: GameState): void {
 export function compactMonsters(state: GameState, numToCompact: number): void {
   if (numToCompact <= 0) return;
 
+  /* Message, only if actually compacting (mon-make.c:489-491). */
+  state.msg?.("Compacting monsters...");
+
   let numCompacted = 0;
   for (let iter = 1; numCompacted < numToCompact; iter++) {
     /* Get more vicious each iteration. */
