@@ -334,6 +334,7 @@ import {
   advanceDeterminism,
   advanceModNoscore,
   enterScore,
+  NOSCORE,
   noscoreInvalidatesScore,
   scoreGateNoscore,
   BIRTH_MESSAGE_RECALL_BANNER,
@@ -3819,6 +3820,24 @@ function quiverLines(): ScreenLine[] {
 }
 
 /**
+ * do_cmd_inven / do_cmd_equip / do_cmd_quiver's opening guard
+ * (ui-knowledge.c:4030-4033, :4076-4079, :4120-4123): an empty list says WHY
+ * instead of opening a screen with nothing on it.
+ */
+async function listingScreen(
+  title: string,
+  lines: ScreenLine[],
+  empty: boolean,
+  why: string,
+): Promise<void> {
+  if (empty) {
+    say(why);
+    return;
+  }
+  await showTextScreen(term, title, lines);
+}
+
+/**
  * Retire character (Q, textui_cmd_retire, ui-command.c:162 -> do_cmd_retire,
  * cmd-misc.c:73): the faithful retire confirmation, then mark the character
  * dead with died_from "Retiring" and run the shell's death/tombstone flow (the
@@ -5923,10 +5942,28 @@ function advance(): void {
           noscoreInvalidatesScore(player.noscore),
           game.manifest.modNoscore,
         ),
+        /* score.c:291: the Borg gets its own line. The bit is set by the borg
+         * mod's activation gate (cmd-misc.c:140) when that mod is mounted. */
+        borg: (player.noscore & NOSCORE.BORG) !== 0,
         totalWinner: player.totalWinner,
       },
     );
-    void outcome; // slot/rejection reason available for a future death screen
+    /* score.c:282/289/292/300/303: each rejection tells the player which rule
+     * cost them the entry, msg() then EVENT_MESSAGE_FLUSH - so it is read
+     * before the tombstone below. The reason was computed and discarded. */
+    if (!outcome.entered) {
+      say(
+        outcome.reason === "cheater"
+          ? "Score not registered for cheaters."
+          : outcome.reason === "wizard"
+            ? "Score not registered for wizards."
+            : outcome.reason === "borg"
+              ? "Score not registered for borgs."
+              : outcome.reason === "interrupted"
+                ? "Score not registered due to interruption."
+                : "Score not registered due to retiring.",
+      );
+    }
     // death_screen (ui-death.c L374): the winner crown + tombstone first, then
     // the death menu (whose "View scores" opens the Hall of Fame). Escape
     // reopens the menu.
@@ -6201,9 +6238,12 @@ window.addEventListener("keydown", (ev) => {
       { o: "v", act: () => void openModal(throwCmd) },
       { o: "W", r: "-", act: () => void openModal(jumpCmd) },
       // Item management (cmd_item_manage, ui-game.c:161-165).
-      { o: "e", act: () => void openModal(() => showTextScreen(term, "Equipment", equipmentLines(state))) },
-      { o: "i", act: () => void openModal(() => showTextScreen(term, "Inventory", inventoryLines(state))) },
-      { o: "|", act: () => void openModal(() => showTextScreen(term, "Quiver", quiverLines())) },
+      /* do_cmd_equip / do_cmd_inven / do_cmd_quiver open with an emptiness
+       * check that says why rather than showing an empty screen
+       * (ui-knowledge.c:4030-4033, :4076-4079, :4120-4123). */
+      { o: "e", act: () => void openModal(() => listingScreen("Equipment", equipmentLines(state), state.actor.player.equipment.every((h) => !h), "You are not wielding or wearing anything.")) },
+      { o: "i", act: () => void openModal(() => listingScreen("Inventory", inventoryLines(state), (state.gear.inven ?? []).filter(Boolean).length === 0, "You have nothing in your inventory.")) },
+      { o: "|", act: () => void openModal(() => listingScreen("Quiver", quiverLines(), (state.gear.quiver ?? []).filter(Boolean).length === 0, "You have nothing in your quiver.")) },
       { o: "g", act: () => void openModal(pickupCmd) },
       // Ignore: 'k' in the original keyset; roguelike uses ^D (handled above) so
       // roguelike 'k' stays free for movement.

@@ -2433,6 +2433,10 @@ function refreshTownStores(state: GameState, reg: CoreRegistries): void {
       deps: storeDeps,
       maxDepth: state.actor.player.maxDepth,
       stores: state.stores,
+      /* OPT(cheat_xtra) (store.c:1424, :1444). */
+      ...(state.options?.get("cheat_xtra")
+        ? { cheatMsg: (text: string): void => state.msg?.(text) }
+        : {}),
     };
     storeUpdate(ctx, state.daycount ?? 0);
     state.daycount = 0;

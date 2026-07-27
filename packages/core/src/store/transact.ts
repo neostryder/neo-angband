@@ -160,6 +160,12 @@ export interface BuyResult {
    * matches C. Absent when the Home retrieves or the roll fails.
    */
   acceptComment?: string;
+  /**
+   * store.c:1757-1763: when the purchase empties the store, the shopkeeper
+   * either retires (the shuffle roll) or brings out new stock, and SAYS so.
+   * "retired" | "restocked", absent when the store did not empty.
+   */
+  emptied?: "retired" | "restocked";
 }
 
 /**
@@ -231,17 +237,29 @@ export function storeBuy(
   }
 
   /* Remove the bought objects unless a readily-replaced staple. */
+  let emptied: "retired" | "restocked" | undefined;
   if (storeSaleShouldReduceStock(store, obj)) {
     storeDelete(store, obj, amt);
 
     /* Store is empty: maybe shuffle the shopkeeper, then restock. */
     if (store.stock.length === 0) {
-      if (rng.oneIn(constants.storeShuffle)) storeShuffle(rng, store);
+      if (rng.oneIn(constants.storeShuffle)) {
+        storeShuffle(rng, store);
+        emptied = "retired";
+      } else {
+        emptied = "restocked";
+      }
       for (let i = 0; i < 10; i++) storeMaint(ctx, store);
     }
   }
 
-  return { ok: true, price, bought, ...(acceptComment ? { acceptComment } : {}) };
+  return {
+    ok: true,
+    price,
+    bought,
+    ...(acceptComment ? { acceptComment } : {}),
+    ...(emptied ? { emptied } : {}),
+  };
 }
 
 /* ------------------------------------------------------------------ */
