@@ -29,6 +29,7 @@ import {
   spellLearn,
   spellOkayToCast,
   spellOkayToStudy,
+  playerRestoreMana,
 } from "./spell";
 
 function loadJson<T>(name: string): T {
@@ -325,5 +326,37 @@ describe("objCanBrowse / objCanCastFrom / objCanStudy (obj-util.c L775/780/786)"
     expect(objCanBrowse(p, book)).toBe(true);
     expect(objCanCastFrom(p, book)).toBe(true);
     expect(objCanStudy(p, book)).toBe(false);
+  });
+});
+
+describe("playerRestoreMana (player.c:351) - cordoned dead code", () => {
+  /**
+   * Ported because the port translates all of 4.2.6, not the reachable subset.
+   * These lock the behaviour so the cordoned copy cannot rot: it is not
+   * exercised by any game path, so nothing else would notice if it broke.
+   */
+  function p(csp: number, msp: number): Player {
+    return { csp, msp } as Player;
+  }
+
+  it("adds mana, caps at msp, and reports whether csp moved", () => {
+    const a = p(5, 20);
+    expect(playerRestoreMana(a, 10)).toBe(true);
+    expect(a.csp).toBe(15);
+
+    const b = p(18, 20);
+    expect(playerRestoreMana(b, 10)).toBe(true);
+    expect(b.csp).toBe(20); // capped
+
+    const c = p(20, 20);
+    expect(playerRestoreMana(c, 10)).toBe(false); // already full: no movement
+    expect(c.csp).toBe(20);
+  });
+
+  it("emits the message the C emits unconditionally", () => {
+    const msgs: string[] = [];
+    playerRestoreMana(p(20, 20), 5, (t) => msgs.push(t));
+    /* Note "unconditionally": upstream prints even when csp did not move. */
+    expect(msgs).toEqual(["You feel some of your energies returning."]);
   });
 });

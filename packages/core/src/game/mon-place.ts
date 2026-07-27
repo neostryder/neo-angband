@@ -774,7 +774,16 @@ export function pickAndPlaceDistantMonster(
     if (distance(grid, toAvoid) > dis) break;
   }
 
-  if (!attemptsLeft) return false;
+  if (!attemptsLeft) {
+    /* mon-make.c:1507-1509: the cheat options report a failed allocation. */
+    if (
+      (state.options?.get("cheat_xtra") ?? false) ||
+      (state.options?.get("cheat_hear") ?? false)
+    ) {
+      state.msg?.("Warning! Could not allocate a new monster.");
+    }
+    return false;
+  }
 
   /* Attempt to place the monster, allow groups. */
   return pickAndPlaceMonster(state, grid, depth, sleep, true, deps);

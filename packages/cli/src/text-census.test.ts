@@ -17,7 +17,7 @@
  *
  * Reason keys below are prefixed by category:
  *   host-io    - the C reads/writes a host file. The browser has no filesystem;
- *                the port keeps saves and scores in IndexedDB and hands dumps to
+ *                the port keeps saves and scores in browser storage and hands dumps to
  *                the browser as downloads, so the C's file-error text has no
  *                counterpart. Not a gap.
  *   internal   - the C's own "please report this bug" diagnostics for malformed
@@ -42,7 +42,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 /** Literal -> why it is absent. Keys are the C literal, verbatim. */
 const KNOWN_ABSENT: Record<string, readonly string[]> = {
-  "host-io: scorefile is a file on disk; the port keeps the score table in IndexedDB (packages/web/src/score.ts)":
+  "host-io: scorefile is a file on disk; the port keeps the score table in browser storage (packages/web/src/score.ts)":
     [
       "Lock file in place for scorefile; not writing.",
       "Failed to create lock for scorefile; not writing.",
@@ -96,7 +96,7 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "Total levels isolated from stairs: %ld",
     ],
 
-  "internal: malformed-gamedata diagnostics. The port validates the content pack at build time (packages/content) and throws on a bad record, so a live game cannot reach these":
+  "GAP (re-audited): malformed-gamedata diagnostics. My earlier reason - the port validates the pack at build time, so a live game cannot reach these - holds for the CORE pack and is wrong for MODS. A mod pack is loaded at runtime and can ship a spell with no message-vis, an effect name the registry does not know, or a flag with no object_property entry, which is exactly when upstream prints these. They are the mod SDK's diagnostic surface and belong there rather than as msg() lines; tracked as one job, not sixteen":
     [
       "No message-invis for monster spell %d cast by %s.  Please report this bug.",
       "No message-miss for monster spell %d cast by %s.  Please report this bug.",
@@ -116,17 +116,10 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "Sorry, could not deal with suffix",
     ],
 
-  "capacity: compact_monsters is upstream's fixed mon_max array housekeeping; the port's monster list grows, so there is no compaction pass to announce":
-    [
-      "Compacting monsters...",
-      "Too many monsters!",
-      "Warning! Could not allocate a new monster.",
-    ],
+  "GAP (re-audited): mon_pop's monster-list bound (mon-make.c:678-680). My earlier reason - the port's list grows so there is no compaction - was wrong twice over: the port HAS compactMonsters and calls it at the same two game-world.c sites, and it half-honours level_monster_max already (gen/generate.ts:420, game/loop.ts:373). What is missing is the bound in placeMonsterLive itself, so the port never refuses a spawn where upstream would. That changes spawn behaviour at the cap and needs its own change with tests, not a message. The other two capacity messages are now ported":
+    ["Too many monsters!"],
 
-  "dead-in-c: player_restore_mana (player.c:351) has no callers anywhere in 4.2.6 - the effect handlers all take the RESTORE_MANA path in effect-handler-general.c, whose own message the port does have":
-    ["You feel some of your energies returning."],
-
-  "divergence: the Borg ships as a mod with its own UI, so there is no \"you are about to use the unsupported borg commands\" gate to pass (docs/BORG_AS_MOD.md)":
+  "GAP: the borg activation gate (cmd-misc.c:125-145). I had this down as a ratified divergence because the Borg ships as a mod - that was wrong. do_cmd_try_borg is a SEPARATE function from do_cmd_try_debug, whose parallel gate the port does have (web/src/wizard.ts:180), and it is what sets NOSCORE_BORG. It belongs in the borg mod's activation path, and cannot land until that mod is mounted in the shell (out of the parity gate until the port itself is complete). The score side is already ready: NOSCORE.BORG exists and enterScore reports it":
     [
       "You are about to use the dangerous, unsupported, borg commands!",
       "Are you sure you want to use the borg commands? ",
@@ -135,7 +128,7 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
   "divergence: the port identifies a save by character id, not by filename, so two characters may share a name and there is no savefile to overwrite (docs/INSTALL.md, save export/import)":
     ["A savefile for that name exists.  Overwrite it? "],
 
-  "divergence: no panic save. The port autosaves to IndexedDB continuously, so there is no separate panic file to offer on next launch":
+  "divergence: no panic save. The port autosaves to browser storage continuously, so there is no separate panic file to offer on next launch":
     ["A panic save exists.  Use it? "],
 
   "GAP: guard messages upstream needs because a command can name a store the player is not in. The port's shop screens only offer buy/sell while a store is open, so no command can reach these - but that is an argument from the current UI, not from the C, and a mod adding remote trade would need them":
@@ -158,7 +151,7 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "There is a wall blocking your way.",
     ],
 
-  "GAP: save-failure handling (ui-game.c:1091-1155). An IndexedDB write CAN fail on a quota error, and the port neither retries nor says so":
+  "GAP: save-failure handling (ui-game.c:1091-1155). A localStorage write CAN fail on a quota error, and the port neither retries nor says so":
     ["lore save failed!", "death save failed!", "Saving failed.  Try again? "],
 
   "GAP: needs drop_near's `verbose` parameter (obj-pile.c:1128-1152) threaded through the port's 15 dropNear call sites, plus floorCarry reporting whether the resulting stack is ignorable":

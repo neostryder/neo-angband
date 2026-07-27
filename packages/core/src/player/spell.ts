@@ -588,3 +588,40 @@ export function calcMana(
   }
   return cumberArmor;
 }
+
+/* ------------------------------------------------------------------ *
+ * DEAD CODE IN ANGBAND 4.2.6, ported and cordoned.
+ *
+ * Everything below this line has NO CALLER in the reference tree. It is
+ * ported because the port is a translation of 4.2.6, not of the reachable
+ * subset of 4.2.6: a mod, a future upstream release, or a reader comparing the
+ * two trees should find the function where the C has it, behaving as the C
+ * says. Nothing in core may call these - if a caller ever appears upstream,
+ * the call-site census (packages/cli/src/call-census.ts) will report the port
+ * symbol as unused and the pairing can be made then.
+ * ------------------------------------------------------------------ */
+
+/**
+ * player_restore_mana (player.c:351) - DEAD IN 4.2.6.
+ *
+ * Nothing calls it anywhere in the reference tree. The mana-restoring effects
+ * all take the RESTORE_MANA path in effect-handler-general.c, which does its
+ * own arithmetic and prints its own message; this function's
+ * "You feel some of your energies returning." never reaches an upstream
+ * player. Returns whether csp actually moved, as the C does.
+ *
+ * @param msg upstream's unconditional msg(); optional here so a caller can
+ *   route it, since core has no ambient message sink at this layer.
+ */
+export function playerRestoreMana(
+  player: Player,
+  amt: number,
+  msg?: (text: string) => void,
+): boolean {
+  const oldCsp = player.csp;
+  player.csp += amt;
+  if (player.csp > player.msp) player.csp = player.msp;
+  /* PR_MANA redraw is the front end's business. */
+  msg?.("You feel some of your energies returning.");
+  return player.csp !== oldCsp;
+}
