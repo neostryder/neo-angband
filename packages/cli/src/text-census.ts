@@ -265,8 +265,18 @@ export function portHaystack(root: string): string {
   }
   add(join(root, "packages", "web", "mods"), /\.(?:ts|json)$/u);
   add(join(root, "packages", "content", "data"), /\.(?:json|txt)$/u);
-  // " " so a phrase cannot accidentally straddle two files.
-  return parts.join("\n \n");
+  /*
+   * Collapse whitespace runs, exactly as anchorsOf does to the C side.
+   * Without this, every upstream message carrying the two spaces upstream
+   * puts after a sentence ("Word of Recall is already active.  Do you want
+   * to cancel it? ") read as ABSENT even where the port had it verbatim: the
+   * anchor had been normalized to one space, the haystack had not. It also
+   * lets a message the port wraps across source lines match.
+   *
+   * NUL between files so a phrase cannot straddle two of them - collapsing
+   * whitespace would erode any printable separator.
+   */
+  return parts.join("\u0000").replace(/[^\S\u0000]+/gu, " ");
 }
 
 /** A call whose text the port does not contain, with the anchors that missed. */
