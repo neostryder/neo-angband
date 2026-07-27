@@ -49,6 +49,7 @@ import {
   calcUnlockingChance,
   playerIsTrapsafe,
   squareIsVisibleTrap,
+  squareDestroyTrap,
   squareIsWebbed,
   squareRemoveTrap,
   squareTrap,
@@ -1261,12 +1262,12 @@ export function runStep(state: GameState, dir: number): number {
 export function runAction(state: GameState, cmd: PlayerCommand): number {
   /* do_cmd_run clears a web and spends a full turn before checking confusion
    * (cmd-cave.c:1368-1381). */
-  const webbed = squareTrap(state, state.actor.grid).filter((trap) =>
-    trap.kind.flags.has(TRF.WEB),
-  );
-  if (webbed.length > 0) {
+  /* square_iswebbed then square_destroy_trap (cmd-cave.c:1374-1379), which is
+   * square_remove_all_traps - NOT just the web. Filtering to TRF.WEB left any
+   * other trap on the grid armed where upstream clears the lot. */
+  if (squareIsWebbed(state, state.actor.grid)) {
     state.msg?.("You clear the web.");
-    for (const trap of webbed) squareRemoveTrap(state, state.actor.grid, trap);
+    squareDestroyTrap(state, state.actor.grid);
     return state.z.moveEnergy;
   }
 
@@ -1307,10 +1308,41 @@ export function pathfindAction(state: GameState, cmd: PlayerCommand): number {
   return beginPath(state, findPath(state, state.actor.grid, dest), dest);
 }
 
-/** do_cmd_explore: travel toward the nearest unexplored area. */
+/**
+ * do_cmd_explore (cmd-cave.c:1500): travel toward the nearest unexplored area.
+ *
+ * The port had only the pathfinding half. Every one of upstream's four gates
+ * was missing, so explore ran while confused, ran out of a web for free, and
+ * ran with monsters in view - and said nothing when there was nowhere to go.
+ * The navigate-stair commands next door already share this preamble; upstream
+ * repeats it verbatim in all three (do_cmd_navigate_down L1408, _up L1454).
+ */
 export function exploreAction(state: GameState, _cmd: PlayerCommand): number {
+  /* Do nothing if autoexplore commands are disabled (L1502-1505). */
+  if (!(state.options?.get("autoexplore_commands") ?? false)) return 0;
+
+  if ((state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) {
+    state.msg?.("You cannot explore while confused.");
+    return 0;
+  }
+
+  /* In a web: clear it and finish the turn (L1515-1521). */
+  if (squareIsWebbed(state, state.actor.grid)) {
+    state.msg?.("You clear the web.");
+    squareDestroyTrap(state, state.actor.grid);
+    return state.z.moveEnergy;
+  }
+
+  if (playerHasMonsterInView(state)) {
+    state.msg?.("Something is here.");
+    return 0;
+  }
+
   const found = pathNearestUnknown(state, state.actor.grid);
-  return beginPath(state, found, found.dest);
+  if (found.length > 0) return beginPath(state, found, found.dest);
+
+  state.msg?.("No apparent path for exploration.");
+  return 0;
 }
 
 /**
@@ -1342,12 +1374,12 @@ function navigateStairAction(
     return 0;
   }
 
-  const webbed = squareTrap(state, state.actor.grid).filter((trap) =>
-    trap.kind.flags.has(TRF.WEB),
-  );
-  if (webbed.length > 0) {
+  /* square_iswebbed then square_destroy_trap (cmd-cave.c:1374-1379), which is
+   * square_remove_all_traps - NOT just the web. Filtering to TRF.WEB left any
+   * other trap on the grid armed where upstream clears the lot. */
+  if (squareIsWebbed(state, state.actor.grid)) {
     state.msg?.("You clear the web.");
-    for (const trap of webbed) squareRemoveTrap(state, state.actor.grid, trap);
+    squareDestroyTrap(state, state.actor.grid);
     return state.z.moveEnergy;
   }
 

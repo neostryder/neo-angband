@@ -64,8 +64,12 @@ allowlist entry is deleted and the suite is green.
       through the same block.
 - [ ] **H. `drop_near`'s `verbose`** (1) - thread through the port's 15
       `dropNear` call sites; `floorCarry` reports whether the stack is ignorable.
-- [ ] **I. Single missing lines** (12) - each a small fix in a function that
-      already exists.
+- [ ] **I. Single missing lines** (4 of 12 done) - each a small fix in a
+      function that already exists. DONE: the explore command's four gates,
+      `Generation restarted`, `Failed to place player`, `That item is not within
+      your reach`. LEFT: the shapechange shop scream, `Cancelled.`,
+      `Are you sure? `, `Keep this keymap? `, `Do you want to quit? `, the
+      force-name refusal, the glyph picker, the equip-cmp filter.
 - [ ] **J. Save-failure handling** (3) - a `localStorage` write can fail on
       quota; the port neither retries nor says so. ui-game.c:1091-1155.
 - [ ] **K. Borg gate** (2) - `do_cmd_try_borg` (cmd-misc.c:125-145) in the borg
@@ -104,3 +108,13 @@ Nothing goes here until it is committed.
   pile_last_item was the one genuine non-gap. **M**: both divergences
   re-derived from the C and upheld, with the reason rewritten to cite it.
   118 absences, 19 tier-1.
+- 2026-07-27 - **I**, 4 of 12, and the biggest was not a message at all:
+  `do_cmd_explore` (cmd-cave.c:1500) had only its pathfinding half, so explore
+  ran while confused, cleared a web for free and ran with monsters in view. The
+  two neighbouring web-clear blocks also filtered to TRF.WEB where upstream
+  calls square_destroy_trap (all traps). `do_cmd_fire` gained
+  item_is_available, which is what a second queued fire command hits when the
+  ammo is already gone - it used to say "no suitable ammunition". Generation got
+  two separate seams, deliberately not one: cheatMsg (cheat_room-gated restart
+  narration, at all three rejection paths) and msg (new_player_spot's UNgated
+  placement failure). 114 absences, 19 tier-1.

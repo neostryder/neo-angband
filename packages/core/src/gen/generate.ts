@@ -74,6 +74,22 @@ export interface GenDeps {
    * faithful to 4.2.6, unreachable staircases included.
    */
   modRules?: Readonly<Record<string, boolean>> | undefined;
+  /**
+   * The cheat_room readout (generate.c:1164-1166 and :1222-1224): with that
+   * cheat option on, upstream narrates every rejected level - both the builder
+   * failures and the monster-maximum overflow. Supplied by the session ONLY
+   * when cheat_room is set, so pure generation stays silent; the generation
+   * layer has no GameState to reach a msg() through, hence the seam (same shape
+   * as StoreMaintContext.cheatMsg for cheat_xtra).
+   */
+  cheatMsg?: (text: string) => void;
+  /**
+   * msg() for generation messages upstream does NOT gate on a cheat option -
+   * new_player_spot's "Failed to place player" (gen-util.c:422). Deliberately a
+   * different seam from cheatMsg: sharing one would make an ungated message
+   * conditional on cheat_room. The session always supplies this.
+   */
+  msg?: (text: string) => void;
 }
 
 export interface GenerateOptions {
@@ -403,6 +419,10 @@ export function generateLevel(
       trapKinds: deps.trapKinds ?? null,
       rooms: deps.rooms,
       createStair: options.createStair ?? null,
+      /* new_player_spot's placement-failure message (gen-util.c:422). Kept
+       * separate from cheatMsg: that one is gated on cheat_room, this one is
+       * not, so they cannot share a sink. */
+      ...(deps.msg ? { msg: deps.msg } : {}),
       ...(options.daytime !== undefined ? { daytime: options.daytime } : {}),
       ...(options.townLayout ? { townLayout: options.townLayout } : {}),
     };
@@ -410,6 +430,8 @@ export function generateLevel(
     const built = builder(ctx);
     if (!built.gen) {
       error = built.error ?? "unspecified level builder failure";
+      /* generate.c:1164-1166: cheat_room narrates every restart. */
+      deps.cheatMsg?.(`Generation restarted: ${error}.`);
       continue;
     }
 
@@ -419,6 +441,7 @@ export function generateLevel(
     /* Regenerate levels that overflow the monster maximum. */
     if (g.monsters.length >= deps.constants.levelMonsterMax) {
       error = "too many monsters";
+      deps.cheatMsg?.(`Generation restarted: ${error}.`);
       continue;
     }
 
@@ -437,6 +460,7 @@ export function generateLevel(
       !ensureStairsReachable(g, dun.quest)
     ) {
       error = "no reachable staircase";
+      deps.cheatMsg?.(`Generation restarted: ${error}.`);
       continue;
     }
 
