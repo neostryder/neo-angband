@@ -83,6 +83,7 @@ import {
   DEFAULT_HITPOINT_WARN,
   DEFAULT_DELAY_FACTOR,
   DEFAULT_LAZYMOVE_DELAY,
+  GRAPHICS_NONE,
 } from "@neo-angband/core";
 import type { GameState } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
@@ -519,21 +520,16 @@ async function runSidebarModePage(
  */
 export interface TileModeMenu {
   /**
-   * Selectable modes in menu order, including the None (ASCII) entry. Every
-   * mode past ASCII comes from a `tiles`-shape mod and carries that mod's
-   * display name in `modName`; ASCII (core) leaves it unset.
+   * Selectable modes in menu order: ASCII, then core's own tile sets (the
+   * upstream list.txt catalog), then anything enabled `tiles`-shape mods add.
+   * A mod-supplied row carries that mod's display name in `modName`; core rows
+   * leave it unset.
    */
   modes: readonly { grafID: number; menuname: string; modName?: string }[];
   /** The currently active grafID (GRAPHICS_NONE = ASCII). */
   current: () => number;
   /** Apply + persist a chosen grafID (reloads the tileset and repaints). */
   apply: (grafID: number) => Promise<void>;
-  /**
-   * Installed tiles mods that are switched OFF, so this screen can say where
-   * more tile sets would come from instead of being a dead end. Optional: with
-   * none (or none installed) the screen simply lists what is available.
-   */
-  disabledProviders?: readonly { name: string; packCount: number }[];
 }
 
 /**
@@ -541,14 +537,13 @@ export interface TileModeMenu {
  * analog of the SDL/Windows frontend's "Graphics" menu bar), NOT from '=' -
  * upstream selects graphics outside do_cmd_options.
  *
- * Unlike upstream, the tile sets here are NOT core content: they are contributed
- * by `tiles`-shape mods (the bundled neo-linoleum registers the four
- * freely-licensed packs), so a bare list of tileset names would leave the player
- * unable to tell where the rows came from, which mod to disable to be rid of
- * them, or - with no tiles mod enabled - why the screen offers only ASCII. So
- * each row is tagged with its contributing mod, and any installed-but-disabled
- * tiles mod is listed as an unselectable row naming itself and what enabling it
- * would add.
+ * The rows are the upstream catalog, exactly as each frontend builds this menu
+ * by walking `graphics_modes` (main-win.c:2897-2905): core content, offered with
+ * no mod enabled. A `tiles`-shape mod may ADD a set or re-skin one of these, and
+ * only those rows are tagged `[mod name]` - so a tagged row means "this is not
+ * stock, and here is the mod to disable to be rid of it", while an untagged row
+ * is the tile set upstream ships. The caller (main.ts) composes the list; this
+ * page just renders and applies it.
  */
 export async function runTileModePage(
   term: GlyphTerm,
@@ -560,33 +555,16 @@ export async function runTileModePage(
       (m.modName ? `${m.menuname}  [${m.modName}]` : m.menuname) +
       (m.grafID === cur ? "  (current)" : ""),
     hint: m.modName
-      ? `Graphics tiles provided by the ${m.modName} mod.`
-      : "The faithful ASCII glyphs - core, always available, needs no mod.",
+      ? `Graphics tiles from the ${m.modName} mod - disable it to remove this set.`
+      : m.grafID === GRAPHICS_NONE
+        ? "The faithful ASCII glyphs - the default, always available."
+        : "A tile set that ships with the game.",
   }));
-  // Disabled tiles mods, listed but not selectable: this screen cannot enable a
-  // mod (that is the Mods menu's job), it can only say where the tiles are.
-  const disabled = tiles.disabledProviders ?? [];
-  for (const p of disabled) {
-    items.push({
-      label: `${p.name}  (disabled - ${p.packCount} tile set${p.packCount === 1 ? "" : "s"})`,
-      disabled: true,
-      hint: `Enable ${p.name} in the Mods menu and its tile sets appear here.`,
-    });
-  }
-  // The instruction goes in the SUBTITLE, not only in those rows' hints: the
-  // cursor skips disabled rows, so a hint on one is text the player can never
-  // bring up. The subtitle is on screen the whole time.
   const idx = await selectFromMenu(
     term,
     "Graphics (tiles) mode",
     items,
     "[ choose a tile set, ESC to keep current ]",
-    disabled.length > 0
-      ? {
-          subtitle:
-            "Tile sets come from mods - enable one in the Mods menu to add its sets here.",
-        }
-      : {},
   );
   if (idx === null) return;
   const chosen = tiles.modes[idx];

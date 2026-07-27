@@ -1,26 +1,22 @@
 /**
  * Discover the graphics tile packs contributed by enabled `tiles`-shape mods.
  *
- * The bundled freely-licensed tilesets (old / adam-bolt / gervais / nomad) live
- * under public/tiles/ and are catalogued as graphics-mode METADATA in core
- * (visuals/grafmode). The neo-linoleum mod (packages/web/mods/linoleum) is the
- * REGISTRY of record for which of those packs are offered: its manifest.json
- * enumerates them as `tilePacks` (by grafID + path). This module reads the
- * enabled-mod set exactly the way the content composer does (mod-store's shared
- * resolver) and, for every enabled tiles mod, turns its `tilePacks` into the
- * selectable tile modes the Options tile-mode selector shows - so a user picks
- * a graphics set from the mod, not only via the ?tiles=/?graf= URL override.
+ * This is the MOD half of the tile-mode list, and only the mod half. Core's own
+ * tile sets - the upstream `lib/tiles/list.txt` catalog, which is core game data
+ * in 4.2.6 - come from tile-catalog.ts and are offered with no mod enabled. A
+ * tiles mod ADDS to that list (or re-skins a row of it); nothing here is
+ * required for the game to render in graphics mode, and the game neither knows
+ * nor expects any particular mod.
  *
- * When the linoleum mod is disabled (or removed), it contributes nothing and
- * the selector falls back to ASCII-only (plus any URL override), which is the
- * point of shipping graphics AS a removable mod. Shockbolt is never surfaced:
- * the manifest does not list it, and any grafID that resolves to the shockbolt
- * directory is filtered out here as defence in depth (its licence forbids
- * redistribution, so its assets are not bundled).
+ * A `shape:"tiles"` manifest declares `tilePacks`, each entry naming
+ * - `grafID`: which catalog mode it renders as (its metadata source: menu name,
+ *   cell size, atlas filename, pref file), and
+ * - `path`: the BASE its art hangs under, site-root-relative, so the atlas is
+ *   `<path>/<directory>/<file>`. The pack's own assets are used, not core's.
  *
- * The pure `enabledTileModes` does the work over already-discovered inputs so
- * it is unit-testable; `discoverEnabledTileModes` is the thin browser wrapper
- * that globs the manifests and reads the enabled set from URL/localStorage.
+ * The pure `enabledTileModes` does the work over already-discovered inputs so it
+ * is unit-testable; `discoverEnabledTileModes` is the thin browser wrapper that
+ * globs the manifests and reads the enabled set from URL/localStorage.
  */
 
 import { getGraphicsMode, GRAPHICS_NONE } from "@neo-angband/core";
@@ -32,32 +28,26 @@ export interface TileModePack {
   grafID: number;
   /** Menu label (from the core graphics-mode catalog). */
   menuname: string;
+  /**
+   * Base URL the pack's art hangs under (the manifest's `path`), or undefined
+   * when it declares none - the shell then falls back to its own tile base,
+   * which is only right for a mod that re-registers already-present art.
+   */
+  baseUrl?: string;
   /** The mod id that contributed this pack. */
   modId: string;
   /**
-   * The contributing mod's display name (manifest `name`, e.g. "neo-linoleum"),
-   * falling back to its id. The Graphics menu shows this beside the pack so it
-   * is visible WHERE the tiles come from: the packs are not core content, and a
-   * bare "Original Tiles / Adam Bolt's tiles / ..." list gives the player no way
-   * to tell that they appeared because a mod is enabled - or which mod to
-   * disable to make them go away.
+   * The contributing mod's display name (manifest `name`), falling back to its
+   * id. The Graphics menu tags the row with it, so it is visible that the row
+   * is not stock content and which mod to disable to be rid of it.
    */
   modName: string;
-}
-
-/** A tiles mod that is installed, whether or not it is currently enabled. */
-export interface TileModProvider {
-  id: string;
-  /** manifest `name`, falling back to the id. */
-  name: string;
-  /** How many tile packs it declares (before licence/unknown-grafID filtering). */
-  packCount: number;
-  enabled: boolean;
 }
 
 /** A raw tilePacks entry as authored in a tiles mod's manifest.json. */
 interface RawTilePack {
   grafID?: unknown;
+  path?: unknown;
 }
 
 /** Read a tiles mod manifest's tilePacks array, tolerating any shape. */
@@ -78,34 +68,12 @@ function isTilesMod(raw: unknown): boolean {
 }
 
 /**
- * Every installed tiles mod with its enabled state, in discovery order. The
- * Graphics menu uses the DISABLED ones to explain an otherwise dead-end screen:
- * with no tiles mod on, that menu offers ASCII and nothing else, and the player
- * has no way to know the tilesets live in a mod they have to enable first.
- */
-export function tileModProviders(input: {
-  manifests: ReadonlyMap<string, unknown>;
-  enabledIds: readonly string[];
-}): TileModProvider[] {
-  const out: TileModProvider[] = [];
-  for (const [id, raw] of input.manifests) {
-    if (!isTilesMod(raw)) continue;
-    out.push({
-      id,
-      name: readModName(raw, id),
-      packCount: readTilePacks(raw).length,
-      enabled: input.enabledIds.includes(id),
-    });
-  }
-  return out;
-}
-
-/**
  * The tile modes contributed by the enabled tiles mods, in enabled/load order,
  * deduped by grafID (first contributor wins). Pure: it takes the discovered
  * id->manifest map and the resolved enabled-id list, so it needs no glob or
- * storage. Only `shape:"tiles"` mods contribute; a grafID that is unknown,
- * GRAPHICS_NONE, or resolves to the (unbundled) shockbolt directory is skipped.
+ * storage. Only `shape:"tiles"` mods contribute; a grafID that is unknown to
+ * the core catalog, GRAPHICS_NONE, or carries no atlas filename is skipped,
+ * since there would be no metadata to render it with.
  */
 export function enabledTileModes(input: {
   manifests: ReadonlyMap<string, unknown>;
@@ -124,9 +92,15 @@ export function enabledTileModes(input: {
       if (seen.has(grafID)) continue;
       const mode = getGraphicsMode(grafID);
       if (!mode || mode.grafID === GRAPHICS_NONE || !mode.file) continue;
-      if (mode.directory === "shockbolt") continue; // never bundled
       seen.add(grafID);
-      out.push({ grafID, menuname: mode.menuname, modId: id, modName });
+      const path = typeof entry.path === "string" && entry.path ? entry.path : null;
+      out.push({
+        grafID,
+        menuname: mode.menuname,
+        ...(path === null ? {} : { baseUrl: path }),
+        modId: id,
+        modName,
+      });
     }
   }
   return out;
@@ -161,8 +135,8 @@ function readEnabledIds(discovered: readonly string[]): string[] {
 }
 
 /**
- * Glob every bundled mod manifest and resolve the enabled set - the shared
- * browser-side input for both public entry points below.
+ * Glob every bundled mod manifest and resolve the enabled set - the browser-side
+ * input for the entry point below.
  */
 function discover(): {
   manifests: Map<string, unknown>;
@@ -185,17 +159,9 @@ function discover(): {
 /**
  * Browser entry point: glob every bundled mod manifest, resolve the enabled
  * set, and return the tile modes the enabled tiles mods contribute. Safe to
- * call at any time; returns [] when no tiles mod is enabled/discovered.
+ * call at any time; returns [] when no tiles mod is enabled/discovered, which
+ * leaves the Graphics menu showing core's own tile sets.
  */
 export function discoverEnabledTileModes(): TileModePack[] {
   return enabledTileModes(discover());
-}
-
-/**
- * Browser entry point: every installed tiles mod with its enabled state, so the
- * Graphics menu can name the mod a pack comes from and point at the one that
- * would supply more.
- */
-export function discoverTileModProviders(): TileModProvider[] {
-  return tileModProviders(discover());
 }

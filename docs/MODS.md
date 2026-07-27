@@ -17,9 +17,11 @@ The dividing line (PORT_PLAN.md decisions 17-18) is deliberately sharp:
   quality-of-life - ships as a mod, never baked into the port. Core ships
   the extensibility SEAMS (part of the mod architecture); mods ship the
   features that ride them.
-- **Bundled mods ship in the box**, enabled by default and fully removable,
-  each a separate standalone pack (never combined): **neo-linoleum** (the tile
-  packs; a `tiles` pack, see `docs/LINOLEUM.md` and decision 26), a **QoL mod**
+- **Bundled mods ship in the box**, off on a fresh install and fully removable,
+  each a separate standalone pack (never combined): **neo-linoleum** (an
+  alternative loose-pack tile engine and converter - NOT the source of the
+  game's tile sets, which are core content from `lib/tiles/list.txt`; a `tiles`
+  pack, see `docs/LINOLEUM.md` and decision 26), a **QoL mod**
   (UI quality-of-life), and the **`bug-fixes`** mod (upstream crash/corruption/
   save/determinism patches; see `docs/modding/BUG_FIXES.md`). They are ordinary
   mods that happen to ship in the box - proof the seams are real, and the

@@ -404,80 +404,38 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     expect(applied).toBe(3);
   });
 
-  it("names the mod each tile set comes from, and marks ASCII as core", async () => {
-    // The tile packs are NOT core content - a `tiles`-shape mod contributes them
-    // (bundled neo-linoleum registers the four freely-licensed ones). An
-    // unlabelled list of tileset names leaves the player unable to tell where the
-    // rows came from or which mod supplies them, which is exactly the reported
-    // "I only see the original tileset options; how do I get the linoleum ones?"
-    // (they ARE linoleum's).
+  it("tags ONLY a mod-supplied row, leaving the game's own tile sets plain", async () => {
+    // The tile sets upstream ships are core content (grafmode.c / list.txt), so
+    // their rows must read like stock content. A tag means the opposite: this row
+    // came from a mod, and that is the mod to disable to be rid of it.
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm(100, 40);
     const tiles = {
       modes: [
         { grafID: 0, menuname: "None (ASCII)" },
-        { grafID: 1, menuname: "Original Tiles", modName: "neo-linoleum" },
+        { grafID: 1, menuname: "Original Tiles" },
+        { grafID: 2, menuname: "Adam Bolt's tiles", modName: "some-tile-mod" },
       ],
       current: () => 0,
       apply: async (): Promise<void> => undefined,
     };
     const done = runTileModePage(term, tiles);
     const snap = term.snapshot().join("\n");
-    expect(snap).toContain("Original Tiles  [neo-linoleum]");
+    expect(snap).toContain("Adam Bolt's tiles  [some-tile-mod]");
+    expect(snap).not.toContain("Original Tiles  [");
     expect(snap).toContain("(current)"); // ASCII is active, and still says so
-    // The highlighted row's hint names the providing mod.
+    // Core row's hint: it ships with the game, no mod named.
     press(win, "ArrowDown");
-    expect(term.snapshot().join("\n")).toContain("provided by the neo-linoleum mod");
-    press(win, "Escape");
-    await done;
-  });
-
-  it("lists a disabled tiles mod, unselectable, so ASCII-only is not a dead end", async () => {
-    const win = makeFakeWindow();
-    (globalThis as { window?: unknown }).window = win;
-    const term = makeTerm(100, 40);
-    let applied: number | null = null;
-    const tiles = {
-      modes: [{ grafID: 0, menuname: "None (ASCII)" }],
-      current: () => 0,
-      apply: async (id: number): Promise<void> => {
-        applied = id;
-      },
-      disabledProviders: [{ name: "neo-linoleum", packCount: 4 }],
-    };
-    const done = runTileModePage(term, tiles);
-    const snap = term.snapshot().join("\n");
-    expect(snap).toContain("neo-linoleum  (disabled - 4 tile sets)");
-    // The instruction must be ON SCREEN, not parked in the disabled row's hint:
-    // the cursor skips disabled rows, so such a hint can never be brought up.
-    expect(snap).toContain("enable one in the Mods menu");
-    // Selecting it must do nothing: this screen cannot enable a mod, and there is
-    // no tile mode behind the row (tiles.modes holds only ASCII). The row has to
-    // be genuinely non-selectable - the menu must still be up afterwards, not
-    // closed on an index that points past the end of `modes`.
-    press(win, "b");
-    const pending = Symbol("pending");
-    expect(await Promise.race([done.then(() => "closed"), Promise.resolve(pending)])).toBe(
-      pending,
+    const coreHint = term.snapshot().join("\n");
+    expect(coreHint).toContain("ships with the game");
+    // ...and it does NOT tell the player to go find a mod for it.
+    expect(coreHint).not.toContain("disable it to remove this set");
+    // Mod row's hint names the mod and what disabling it does.
+    press(win, "ArrowDown");
+    expect(term.snapshot().join("\n")).toContain(
+      "from the some-tile-mod mod - disable it to remove this set",
     );
-    expect(applied).toBeNull();
-    press(win, "Escape");
-    await done;
-    expect(applied).toBeNull();
-  });
-
-  it("singularises a one-pack provider", async () => {
-    const win = makeFakeWindow();
-    (globalThis as { window?: unknown }).window = win;
-    const term = makeTerm(100, 40);
-    const done = runTileModePage(term, {
-      modes: [{ grafID: 0, menuname: "None (ASCII)" }],
-      current: () => 0,
-      apply: async (): Promise<void> => undefined,
-      disabledProviders: [{ name: "one-tile-mod", packCount: 1 }],
-    });
-    expect(term.snapshot().join("\n")).toContain("(disabled - 1 tile set)");
     press(win, "Escape");
     await done;
   });
