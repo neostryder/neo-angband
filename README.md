@@ -4,38 +4,152 @@ A modern TypeScript port of [Angband](https://github.com/angband/angband),
 the classic dungeon-crawling roguelike - holding strongly to its roots while
 rebuilding the engine for the web era.
 
-**Status: playable.** The full game runs in the browser, as an installable
-offline PWA, self-hosted as a static site, or as a desktop app - see
-[how to play and install](docs/INSTALL.md). The mod framework (content packs,
-an in-app mod manager, sandboxed and trusted plugins, runtime vocabulary
-extension) is feature-complete, and the bundled **Borg** - a faithful port of
-Angband's automatic player - rides it as the completeness proof (add
-`?agent=borg` to watch it play; see [docs/modding/BORG.md](docs/modding/BORG.md)).
-See the [port plan](docs/PORT_PLAN.md) for the roadmap and what remains.
+> ## Status: ALPHA - and we would like you to break it
+>
+> The whole game is playable start to finish: roll a character, shop the town,
+> descend, die permanently. It is not finished. The port is checked against the
+> original C in a lot of ways, and play sessions still turn up things the checks
+> cannot see - a message the original prints that this one doesn't, a screen laid
+> out a column off, a prompt that never appears.
+>
+> **That is exactly what we need testers for.** Play it, and when something feels
+> unlike Angband, [open an issue](https://github.com/neostryder/neo-angband/issues)
+> or send a pull request. See [reporting a difference](#reporting-a-difference)
+> for the one detail that makes a report immediately actionable.
+>
+> **Run your own copy** - [Get it running](#get-it-running) takes about two
+> minutes. Please test on a build you control rather than any hosted demo: a
+> hosted copy changes under you mid-session, which makes a bug report impossible
+> to pin to a version.
 
 ## What this is
 
-- **Full feature parity** with Angband 4.2.6, statistically verified against
-  the original C code (which lives buildable in [`reference/`](reference/)
-  as the golden-master oracle).
-- **Web-first**: play at a URL, installable as an offline PWA. The classic
-  multi-terminal-window interface becomes one modern, responsive,
-  fullscreen-friendly surface - same keymaps, fully remappable, no terminal
-  limitations.
-- **Moddable by construction**: the base game is itself a content pack.
-  Declarative, schema-validated packs for content; Linoleum-style tile packs
-  (individual images, exact targets, honest glyph fallback); sandboxed
-  scripted plugins for the exotic. See [docs/MODS.md](docs/MODS.md).
-- **Randomization, exploration, replayability**: deterministic seeded
-  generation everywhere, a generator seam plugins can extend (including with
-  AI backends - none ships here), and a save format built to survive
-  procedurally generated and modular content.
-- **Headless core**: the engine has no UI dependencies. Browser, terminal,
-  desktop shells, bots, and plugins all speak the same command-queue and
-  event-bus API the original pioneered.
+- **A port, not a redesign.** The target is Angband 4.2.6's behaviour, down to
+  the message text and the screen layout. The original C tree lives buildable in
+  [`reference/`](reference/) as a read-only oracle, and ported code cites the C
+  `file:line` it came from. Where behaviour and "improvement" disagree,
+  faithfulness wins; quality-of-life changes ship as mods you can turn off.
+- **Web-first.** Play in a browser, install it as an offline PWA, self-host it as
+  static files, or run it as a desktop app - all from the same build. The classic
+  multi-window terminal interface becomes one fixed 80x24 surface scaled to your
+  screen, with the same keymaps, fully remappable.
+- **Moddable by construction.** The base game is itself a content pack.
+  Declarative, schema-validated packs for content; Linoleum-style tile packs;
+  sandboxed scripted plugins for the exotic. See [docs/MODS.md](docs/MODS.md).
+- **Deterministic and seeded** everywhere, with a generator seam plugins can
+  extend and a save format built to survive modular content.
+- **Headless core.** The engine has no UI dependencies. Browser, terminal,
+  desktop, bots, and plugins all speak the same command-queue and event-bus API.
 
-What it is not: a redesign. V1's enhancement budget is UI-level
-quality-of-life only - the game itself stays faithful.
+The bundled **Borg** - a faithful port of Angband's automatic player - rides the
+mod API as its completeness proof (add `?agent=borg` to watch it play; see
+[docs/modding/BORG.md](docs/modding/BORG.md)).
+
+## Get it running
+
+Full instructions for every method, including PWA install and packaged desktop
+installers, are in **[docs/INSTALL.md](docs/INSTALL.md)**. The short version:
+
+### Play it locally from source (the recommended way to test)
+
+You need [Node](https://nodejs.org/) 22 or newer and
+[pnpm](https://pnpm.io/installation) (`corepack enable` gets you pnpm).
+
+```bash
+git clone https://github.com/neostryder/neo-angband.git
+```
+
+```bash
+cd neo-angband && pnpm install && pnpm --filter @neo-angband/web dev
+```
+
+Then open **http://localhost:5178** and play. The dev server hot-reloads, so this
+is also the setup to use if you want to fix what you find.
+
+### Host it for yourself or a group
+
+The production build is a folder of static files - no server code, no database,
+no network calls at runtime.
+
+```bash
+pnpm --filter @neo-angband/web bundle
+```
+
+Serve `packages/web/dist-web/` with any static file host. It uses a relative
+base, so a domain root and a subpath both work with no reconfiguration. To check
+it locally:
+
+```bash
+cd packages/web/dist-web && python3 -m http.server 8080
+```
+
+Serve it over https (or `localhost`) if you want the offline PWA install to
+work. See [docs/INSTALL.md](docs/INSTALL.md#2-self-host-as-a-static-site) for
+headers and hosting notes.
+
+### Run it as a desktop app
+
+```bash
+pnpm --filter @neo-angband/desktop dev
+```
+
+That builds the web bundle and opens it in an Electron window. To produce real
+installers (`.exe`, `.dmg`, `.AppImage`/`.deb`), see
+[docs/INSTALL.md](docs/INSTALL.md#3-desktop-app-electron).
+
+### Your character and your save
+
+Saves live in your browser's **localStorage**, scoped to the origin you play on,
+so they are **per-surface**: a character made on `localhost:5178` is not the same
+character as one made in the packaged desktop app, and clearing site data deletes
+them. Use the built-in **export / import** to move a character between surfaces
+and to keep a backup - death is permanent and a save is overwritten in place,
+faithful to the original.
+
+Starting, resuming and deleting a character is walked step by step in
+[docs/INSTALL.md](docs/INSTALL.md#starting-resuming-and-deleting-a-character).
+
+## Reporting a difference
+
+The most useful report says **what the original C does** and **what this does**.
+If you have Angband 4.2.6 to hand, a side-by-side is ideal; if not, describing
+what you expected is plenty - we can check the C ourselves, and
+[`reference/`](reference/) is right there in the repo.
+
+Worth including: what you were doing, the character (race/class/level/depth),
+and whether any mods were enabled (`=` shows them). A screenshot settles layout
+questions instantly.
+
+**Especially wanted:** missing or wrong *messages*, prompts that never appear,
+and screens whose layout differs from the original. Those are the class of bug
+that survives code review, and they are what previous "the port is complete"
+claims kept getting wrong.
+
+Pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the setup,
+the faithfulness rules, and how a fix is expected to prove itself (cite the C,
+add a test, check the test fails without your fix).
+
+## Known rough edges
+
+Honest list, so nobody wastes a report on something already written down:
+
+- **Some upstream messages are still missing.** The exact set is enumerated, with
+  a reason for each, in `KNOWN_ABSENT` in
+  [packages/cli/src/text-census.test.ts](packages/cli/src/text-census.test.ts).
+  `pnpm --filter @neo-angband/cli census` prints the current list. A message that
+  is absent and *not* on that list fails CI - so if you find one that isn't
+  listed, that is a genuine find and a bug in the checking.
+- **The terminal is a fixed 80x24**, scaled to fit your window and letterboxed.
+  That is upstream's default and its minimum, but upstream also lets you resize
+  the window for a bigger map, and this does not yet. See
+  [docs/INSTALL.md](docs/INSTALL.md#screen-and-display-controls) for the full
+  display-lever inventory.
+- **No subwindows.** Upstream can put the monster list, messages, and inventory
+  in separate terminal windows; the port is one surface.
+- **Mods cannot be installed from a file or URL yet** in the web build - the
+  bundled ones are fully manageable. The desktop build has the seam for it.
+- The save format is pre-1.0 and may still change between versions. Export
+  anything you care about.
 
 ## Repository layout
 
@@ -45,7 +159,7 @@ quality-of-life only - the game itself stays faithful.
 | `packages/content` | Angband 4.2.6 gamedata compiled to the core content pack |
 | `packages/mod-sdk` | Pack schemas, validation, mod tooling |
 | `packages/web` | Web + PWA front-end (v1 target) |
-| `packages/cli` | Terminal front-end and dev/stats harness |
+| `packages/cli` | Terminal front-end and dev/parity harness |
 | `packages/desktop` | Optional Electron desktop wrapper |
 | `packages/linoleum` | Linoleum tile-pack converter (neo-linoleum) |
 | `packages/borg` | The bundled Borg autoplayer mod |
@@ -55,12 +169,13 @@ quality-of-life only - the game itself stays faithful.
 
 ## Development
 
-```sh
-pnpm install
-pnpm test        # unit tests
-pnpm typecheck   # strict TS across all packages
-pnpm build
+```bash
+pnpm install && pnpm build && pnpm test
 ```
+
+`pnpm build` is also the typecheck (`tsc -b`). See
+[CONTRIBUTING.md](CONTRIBUTING.md) for per-package scripts, the parity harnesses,
+and the rules that keep the port faithful.
 
 ## Relationship to upstream
 

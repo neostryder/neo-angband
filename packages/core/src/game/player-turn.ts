@@ -43,7 +43,14 @@ import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from ".
 import { gearGet } from "./gear";
 import { floorPile } from "./floor";
 import { isTrappedChest } from "../obj/chest";
-import { knownObject } from "./known";
+import {
+  knownIsEnterable,
+  knownIsRubble,
+  knownObject,
+  squareForget,
+  squareIsKnown,
+  squareMemorize,
+} from "./known";
 import { squareIsSeen } from "../world/view";
 import { playerConfuseDir } from "./obj-cmd";
 import { disturb } from "./player-path";
@@ -458,7 +465,7 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
     return attackMonster(state, target);
   }
 
-  /* Bump into a wall: no step, no energy (disturb/knowledge DEFERRED).
+  /* Bump into a wall: no step, no energy.
    * QoL auto-dig (mod seam): walking into known diggable terrain the player can
    * dig begins one tunnel attempt instead of a no-op bump. autoDigStep returns 0
    * without drawing RNG unless the qol.autoDig flag is on and the grid qualifies,
@@ -466,17 +473,56 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
   if (!state.chunk.isPassable(next)) {
     const dug = state.autoDigStep?.(state, next) ?? 0;
     if (dug > 0) return dug;
-    /* do_cmd_walk_test (cmd-cave.c L1240-1253): bumping a known wall or rubble
-     * gives a MSG_HITWALL message. A closed door is NOT messaged here - the
-     * walk override (installCaveCommands) opens it (move_player's alter branch);
-     * this stays silent for a door so the base action is a safe fallback when
-     * the override is absent (borg / unit tests). */
-    if (!state.chunk.isClosedDoor(next)) {
+    /*
+     * Upstream splits this by whether the player already KNOWS the grid, and
+     * the port previously used the known-grid wording for both cases.
+     *
+     * Unknown: do_cmd_walk_test lets the walk proceed (cmd-cave.c:1231-1232),
+     * so move_player runs and takes its own !square_ispassable branch
+     * (:1092-1106) - "You FEEL a wall blocking your way", because the player
+     * cannot see it - and MEMORIZES the grid. That mapping side effect is how
+     * you feel your way along an unlit corridor, and it was missing entirely:
+     * bumping an unseen wall left it unmapped forever and announced the wall as
+     * though it had been in plain sight.
+     *
+     * Known: do_cmd_walk_test messages "in the way!" and refuses the move
+     * (:1240-1253), reconciling player memory with what is really there.
+     *
+     * A closed door is silent in the KNOWN case only - the walk override
+     * (installCaveCommands) opens it (move_player's alter branch, :1079-1083) -
+     * so the base action stays a safe fallback when the override is absent
+     * (borg / unit tests). An UNKNOWN closed door does get its own line.
+     */
+    disturb(state);
+    const rubble = state.chunk.isRubble(next);
+    const door = state.chunk.isClosedDoor(next);
+    if (!squareIsKnown(state, next)) {
       state.msg?.(
-        state.chunk.isRubble(next)
+        rubble
+          ? "You feel a pile of rubble blocking your way."
+          : door
+            ? "You feel a door blocking your way."
+            : "You feel a wall blocking your way.",
+        "HITWALL",
+      );
+      /* square_memorize + square_light_spot at each of :1096, :1100, :1104. */
+      squareMemorize(state, next);
+    } else if (!door) {
+      state.msg?.(
+        rubble
           ? "There is a pile of rubble in the way!"
           : "There is a wall in the way!",
+        "HITWALL",
       );
+      /* The memory reconciliation upstream performs alongside each message: a
+       * remembered floor/rubble/door that turns out to be a wall is forgotten
+       * (:1252-1257), and rubble the player misremembered is re-memorized
+       * (:1243-1246). */
+      if (rubble) {
+        if (!knownIsRubble(state, next)) squareMemorize(state, next);
+      } else if (knownIsEnterable(state, next)) {
+        squareForget(state, next);
+      }
     }
     /* A confused redirect into a wall still spends the turn (cmd-cave.c
      * L1300-1302); a deliberate bump refunds all energy. */
