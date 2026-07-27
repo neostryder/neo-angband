@@ -5,13 +5,8 @@
   "shape": "tiles",
   "engine": "4.2.x",
   "author": "neostryder (RPGM Tools)",
-  "license": "mixed; see packages/web/public/tiles/CREDITS.md",
-  "description": "Bundled freely-licensed graphics tile packs. Registers the Original, Adam Bolt, David Gervais, and Nomad tilesets so a graphics mode can be picked from a menu (not only via the ?tiles=/?graf= URL). Shockbolt is deliberately excluded (bespoke licence). The mod itself is OFF on a fresh install, like every mod; enable it and the four sets appear in the game menu's Graphics screen, each tagged with this mod's name, with ASCII still selected until you pick one. There is no separate \"linoleum tileset\": this mod IS how those four tilesets get into the game. Fully removable: disable it and the game is ASCII-only again.",
+  "license": "GPL-2.0-only",
+  "description": "An alternative tile engine: a much easier way to build your own tile set, plus tile tricks a fixed sheet cannot do. The game's own graphics do NOT come from here - the tile sets Angband ships (Original, Adam Bolt, David Gervais, Nomad) are core content and appear in the Graphics screen with no mod enabled, exactly as upstream. What this mod adds is the Linoleum loose-pack format: a directory of individual PNGs addressed by readable target maps (feat/trap/monster/object/flavour by name) instead of one tilesheet plus pixel coordinates, so a set can be edited one file at a time. The format also carries variant POOLS - one symbol, creature or item drawing from several tiles instead of always the same one, chosen by map position so it stays identical on every replay of a seed - and families for shared effect metadata. Build a pack from any legacy tileset with the `@neo-angband/linoleum` converter (docs/LINOLEUM.md); packs you build are yours and none are redistributed with the game, so enabling this on its own changes nothing yet. Status: the format, the converter and the pack seam are built; the shell's loose-pack renderer (individual assets, pools) is not wired up yet, so a pack declared in `tilePacks` today is loaded through the ordinary tilesheet path. Fully removable: disable it and the game's own tile sets are untouched.",
   "dependencies": { "core": "*" },
-  "tilePacks": [
-    { "grafID": 1, "key": "old", "path": "tiles/old" },
-    { "grafID": 2, "key": "adam-bolt", "path": "tiles/adam-bolt" },
-    { "grafID": 3, "key": "gervais", "path": "tiles/gervais" },
-    { "grafID": 4, "key": "nomad", "path": "tiles/nomad" }
-  ]
+  "tilePacks": []
 }

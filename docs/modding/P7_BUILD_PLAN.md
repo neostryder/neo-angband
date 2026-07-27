@@ -143,8 +143,10 @@ The port is unusually ready for this (see `BORG_AS_MOD.md` section 4):
   replaceable + new codes addable) and the typed `CommandQueue` (`cmd.ts`).
 - **Controller boundary**: `runGameLoop` returns `LOOP_STATUS.INPUT` when
   `nextCommand()` yields null - the exact perceive->think->act seam.
-- **Bundled-mod precedent**: `neo-linoleum` (tile packs) already ships as a
-  separate pack, proving the pack pipeline.
+- **Bundled-mod precedent**: `neo-linoleum` (an alternative tile engine; the
+  game's own tile sets are core content) already ships as a separate pack,
+  proving the pack pipeline. Its loose-pack RENDERER is still unbuilt - see
+  `docs/LINOLEUM.md`.
 
 ## Phases
 

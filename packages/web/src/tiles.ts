@@ -29,18 +29,18 @@ import {
 } from "@neo-angband/core";
 import type { GraphicsMode, TilePrefsDeps } from "@neo-angband/core";
 
-// The tile-mode registry driven by enabled `tiles`-shape mods (neo-linoleum).
-// Re-exported so the whole tile subsystem is reachable through this module: the
-// Options tile-mode selector builds its pack list from discoverEnabledTileModes
-// (a graphics set is offered only when its contributing mod is enabled) instead
-// of a hardcoded catalog slice. See tile-mods.ts.
+// The Graphics-menu mode list, re-exported so the whole tile subsystem is
+// reachable through this module. CORE's tile sets come from the ported
+// list.txt catalog and need no mod (tile-catalog.ts); `tiles`-shape mods add
+// their own packs on top (tile-mods.ts) and composeTileModes layers the two.
 export {
-  discoverEnabledTileModes,
-  discoverTileModProviders,
-  enabledTileModes,
-  tileModProviders,
-} from "./tile-mods";
-export type { TileModePack, TileModProvider } from "./tile-mods";
+  BUNDLED_TILE_DIRECTORIES,
+  composeTileModes,
+  coreTileModes,
+} from "./tile-catalog";
+export type { TileModeEntry } from "./tile-catalog";
+export { discoverEnabledTileModes, enabledTileModes } from "./tile-mods";
+export type { TileModePack } from "./tile-mods";
 
 /**
  * The classic Angband tile encoding: a cell is a tile (not an ASCII glyph)
