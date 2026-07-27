@@ -38,10 +38,11 @@ the player's saved choices and seeds `GameState.modRules` at `startGame` /
 `loadGame`; the in-app **Fixes & tweaks** menu (in the mod manager) lists each
 tweak with its description and lets the player toggle it (applied live).
 
-QoL tweaks default **ON**; disabling the mod, or turning a tweak off, drops the
-flag and core returns to faithful behaviour. See `docs/modding/MOD_SEAMS.md` for
-the full seam contract, and `BUG_FIXES.md` for the same mechanism used (default
-OFF) by the bug-fix mod.
+QoL tweaks default **ON once the mod is enabled** - and the mod is off on a
+fresh install, so a default game applies no flag. Disabling the mod, or turning
+a tweak off, drops the flag and core returns to faithful behaviour. See
+`docs/modding/MOD_SEAMS.md` for the full seam contract, and `BUG_FIXES.md` for
+the same mechanism in the bug-fix mod.
 
 ## Tweaks this mod ships
 

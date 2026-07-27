@@ -13,6 +13,7 @@
  */
 
 import type { PackManifest } from "@neo-angband/mod-sdk";
+import { isShippedMod } from "../../mod-store";
 
 // Each plugin.ts becomes a module-Worker constructor (Vite ?worker).
 const workerGlob = import.meta.glob("../../../mods/*/plugin.ts", {
@@ -48,7 +49,11 @@ function toManifest(raw: unknown): PackManifest {
   };
 }
 
-/** modId -> discovered plugin, for every mod that ships a plugin.ts. */
+/**
+ * modId -> discovered plugin, for every mod that ships a plugin.ts. The demo-*
+ * framework proofs are not part of the shipped mod set, so they are dropped
+ * from release builds (isShippedMod).
+ */
 export function discoverPlugins(): Map<string, DiscoveredPlugin> {
   const byId = new Map<string, DiscoveredPlugin>();
 
@@ -60,7 +65,7 @@ export function discoverPlugins(): Map<string, DiscoveredPlugin> {
 
   for (const [key, ctor] of Object.entries(workerGlob)) {
     const m = /\/mods\/([^/]+)\/plugin\.ts$/.exec(key);
-    if (!m || !m[1]) continue;
+    if (!m || !m[1] || !isShippedMod(m[1])) continue;
     const id = m[1];
     const rawManifest = manifests.get(id);
     if (!rawManifest) {

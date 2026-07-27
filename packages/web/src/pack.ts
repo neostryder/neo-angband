@@ -20,7 +20,7 @@ import {
   resolveLoadOrder,
 } from "@neo-angband/mod-sdk";
 import type { LoadedPack, PackContent, PackManifest } from "@neo-angband/mod-sdk";
-import { resolveEnabledIds } from "./mod-store";
+import { isShippedMod, resolveEnabledIds } from "./mod-store";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
 // are the parsed JSON (the file's default export).
@@ -82,7 +82,11 @@ const modFileGlob = import.meta.glob("../mods/*/*.json", {
   import: "default",
 }) as Record<string, unknown>;
 
-/** modId -> { manifest, files } gathered from packages/web/mods/<id>/. */
+/**
+ * modId -> { manifest, files } gathered from packages/web/mods/<id>/. The
+ * demo-* framework proofs are dropped from release builds (isShippedMod), so a
+ * shipped game discovers exactly the three bundled mods.
+ */
 function discoverMods(): Map<
   string,
   { manifest: unknown; files: Record<string, unknown> }
@@ -93,7 +97,7 @@ function discoverMods(): Map<
   >();
   for (const [key, val] of Object.entries(modManifestGlob)) {
     const m = /\/mods\/([^/]+)\/manifest\.json$/.exec(key);
-    if (m && m[1]) mods.set(m[1], { manifest: val, files: {} });
+    if (m && m[1] && isShippedMod(m[1])) mods.set(m[1], { manifest: val, files: {} });
   }
   for (const [key, val] of Object.entries(modFileGlob)) {
     const m = /\/mods\/([^/]+)\/([^/]+)\.json$/.exec(key);

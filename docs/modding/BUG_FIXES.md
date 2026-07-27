@@ -91,7 +91,11 @@ this mod.
   carried as a known issue, with our own mitigation optional.
 
 The mod's flags (each `bugfix.*` declared in
-`packages/web/mods/bug-fixes/manifest.json` under `rules`, default OFF):
+`packages/web/mods/bug-fixes/manifest.json` under `rules`). Each declares
+`default: true`, which means ON once the mod is enabled - never on in a fresh
+install, because the mod itself is off there and no rule is applied at all.
+Enabling the mod gets you the whole patch set; individual patches are then
+switchable under Mods -> Fixes & tweaks, so you can take the set minus one:
 `bugfix.uniqueKillHistory` (#4245), `bugfix.noiseScentSave` (#4605),
 `bugfix.objectListOrder` (#4664), `bugfix.duplicateArtifact` (#4510),
 `bugfix.stairsReachable` (no upstream issue - entry 13).
