@@ -4,23 +4,39 @@
 > public changelog for the bundled bug-fix mod. The mod package
 > (`packages/web/mods/bug-fixes/`) is a plain `content`-shape pack with NO plugin
 > code and NO capabilities: it DECLARES its fixes in `manifest.json` under
-> `rules` (flag / title / description / default:false). Each fix lives in ported
-> core as its faithful 4.2.6 branch plus an off-by-default corrected branch
-> guarded by a named `GameState.modRules` flag (core, `game/context.ts`
-> `modRuleEnabled`). The host resolves the enabled mods' declared rules against
-> the player's saved choices and seeds `GameState.modRules`; the in-app
+> `rules` (flag / title / description / default). Each fix lives in ported core
+> as its faithful 4.2.6 branch plus a flag-guarded corrected branch (core,
+> `game/context.ts` `modRuleEnabled`, or a direct `deps.modRules` test where no
+> `GameState` is in scope). The host resolves the enabled mods' declared rules
+> against the player's saved choices and seeds `GameState.modRules`; the in-app
 > **Fixes & tweaks** menu (in the mod manager) lists each fix and toggles it.
-> Bug fixes default OFF (opt-in), so with the mod enabled but a fix untouched -
-> and with the mod disabled - core is byte-identical to 4.2.6. See
-> `docs/modding/MOD_SEAMS.md` for the seam contract.
+> The MOD is off by default and each fix inside it defaults ON, so an untouched
+> install is byte-identical to 4.2.6 and enabling the mod applies the whole patch
+> set minus whatever the player opts out of. See `docs/modding/MOD_SEAMS.md` for
+> the seam contract and the full default policy.
 >
 > The menu lists only fixes with a real, functional gate today - the five marked
-> `IMPLEMENTED` below. The `SPECIFIED` entries have no live gate yet (see each
-> entry's Port status): two (#2, #3) are impossible by construction in the port
-> so there is no buggy behaviour to toggle, and two (#1, #11) live in vanilla
-> subsystems the port has not reproduced yet (the `/say` note command; the quiver
-> + inscription recompute) - those are CORE PARITY gaps to close before the fix
-> can be offered as a toggle, not mod work.
+> `IMPLEMENTED` below.
+>
+> RE-VERIFIED 2026-07-26 (`parity/mods-2026-07-26/BUGFIX-UPSTREAM-AUDIT.md`).
+> The whole catalogue was re-checked against `4.2.6..upstream/master` (161
+> post-tag commits, inspected locally) and against the port source. **The
+> previous "blocked-on / not yet ported" notes were largely wrong** and have been
+> corrected per entry. Current state of the five `SPECIFIED` entries:
+>
+> - **#1, #3, #11 are READY** - the port systems they need all exist. The old
+>   claims that the `/say` note command, the partial-absorb path, and the
+>   quiver + inscription recompute were unported are each false; see each entry
+>   for the live `file:line`.
+> - **#2 is NOT APPLICABLE** by construction (the port never persists store
+>   stock, so there is no load-path re-roll). Its cited SHA was also simply
+>   wrong - corrected in the entry.
+> - **#9 stays open as a save/load INVARIANT to test, not a player toggle** -
+>   upstream's own fix commit says loading may still perturb RNG state.
+>
+> Post-tag sweep: 161 commits classified, 2 already catalogued, 4 newly
+> identified (none warranting a toggle without a port-specific repro), 155
+> excluded as frontend/platform/build/docs/data/refactor/balance.
 
 ## Why this mod exists
 
@@ -33,9 +49,13 @@ re-sync into a rebase over local patches.
 Instead, every such fix ships in this single BUNDLED, opt-in mod - the model
 players know from the Skyrim / Bethesda unofficial patches. It is a
 `content`-shape pack (docs/MODS.md) that declares core rule flags, id
-`bug-fixes`, depending on `core`. The mod is enabled by default but every fix is
-OFF by default (opt-in per fix in the Fixes & tweaks menu); with a fix off - or
-the mod removed - the game is faithful, buggy-as-shipped 4.2.6. It is authored
+`bug-fixes`, depending on `core`. The mod is **OFF by default**, like every mod
+(`DEFAULT_ENABLED_MODS` is `[]`), so an untouched install is faithful,
+buggy-as-shipped 4.2.6. Enable the mod and you get the whole patch set: each fix
+defaults ON and is an individual toggle in the Fixes & tweaks menu, so a player
+who wants the patch set minus one specific fix can opt that one out (Aaron's
+ruling, 2026-07-26). With the mod disabled - or a fix switched off - that
+behaviour is faithful again. It is authored
 and maintained by neostryder (RPGM Tools) as its own standalone pack, separate
 from the neo-linoleum tile mod (decision 26).
 
@@ -104,23 +124,34 @@ The mod's flags (each `bugfix.*` declared in
   reproduces the 4.2.6 truncation faithfully; this mod patches the history
   store to keep the raw note and moves expansion to the display layer, mirror-
   ing the helper above.
-- Blocked-on: the notes command + player-history subsystem (not yet ported).
-- Port status (2026-07-16): DEFERRED. The player-history STORE is ported
-  (`player/history.ts`, event text faithfully truncated to 79 chars =
-  `event[80]`), but `do_cmd_note` (the `/say` `/me` note command, cmd-misc.c)
-  and the `ui-history.c` display-expansion layer are shell concerns and are NOT
-  ported, so there is no live truncation site to gate yet. When the note command
-  lands, the fix (store raw text, expand at display) belongs there.
-- Note: #6665 is a maintainer-authored alternate that is still unreviewed and
-  unmerged, so this entry tracks the PR for its eventual merge commit rather
-  than freezing on today's diff.
+- Port status (2026-07-26, re-verified): **READY**. The previous "DEFERRED /
+  not ported" note is WRONG and is retracted. `do_cmd_note` IS ported - the
+  take-notes command is `packages/web/src/main.ts:3413`, and it calls
+  `historyAdd(...)` with the fully-prefixed note at `main.ts:3445`, which is
+  exactly the live truncation site. Display is
+  `packages/web/src/screens.ts:1053`. The gated fix stores the raw text and
+  moves expansion to those display paths.
+- Upstream status (2026-07-26, re-verified): PR #6665 is **MERGED**, as
+  `72aec1103ab8153911b503a10da5a1834c1e2b0a` ("Delay expanding user-supplied
+  history notes", 2026-07-14), touching `src/cmd-misc.c`,
+  `src/player-history.c`, `src/player-history.h`, `src/ui-history.c`. Verified
+  reachable from `upstream/master`. The earlier "open/unmerged, track the PR for
+  its eventual merge commit" note is obsolete - there is now an exact oracle
+  diff to mirror.
 
 ### 2. Store-charge save-scum exploit (`SPECIFIED`)
 
 - References: issue **#6537** ("Save, exit, reload perturbs RNG state"); fix
   PR **#6539** ("Plug exploit for charges in store"), merge commit
-  `4ce58ed04bc18702d445e6aa3f919c5844900f86` (merged 2026-03-24). NOT in the
-  4.2.6 baseline (`behind_by: 78`).
+  `a7b240980f56a66ece0eb921dcfafcca5754d750` (merged 2026-03-24). NOT in the
+  4.2.6 baseline.
+  > SHA CORRECTED 2026-07-26. This entry previously cited
+  > `4ce58ed04bc18702d445e6aa3f919c5844900f86`, which is a different commit
+  > entirely - "SDL2: better error handling in pui-misc.c", authored 3 minutes
+  > later the same day. The correct commit is `a7b24098`, whose message names
+  > issue #6537 and whose diff touches `src/load.c`, `src/store.c`,
+  > `src/store.h`. Both verified locally against `upstream/master`. This is
+  > exactly the failure the re-verification rule below exists to catch.
 - Problem: re-entering a store after save/reload re-triggered the store's
   charge-recharge RNG roll on wands/staves, letting a player save-scum charges
   up toward the maximum in object.txt.
@@ -158,16 +189,14 @@ The mod's flags (each `bugfix.*` declared in
   `else if (obj2->number == obj2->kind->base->max_stack) return false;`.
 - Port fix approach: when object-pile stacking is ported, apply the equivalent
   guard so a full destination stack refuses a partial merge.
-- Blocked-on: inventory/object-pile stacking (partially present via gear; the
-  full pile-merge path is not yet ported).
-- Port status (2026-07-16): DEFERRED. The partial-merge path this fix guards
-  (`inven_can_stack_partial` / `object_absorb_partial`) is not wired into live
-  play: `objectAbsorbPartial` (`obj/object.ts`) exists but is unused, and every
-  live merge site (floor / gear / store / monster) uses full-stack
-  `objectMergeable`, which already refuses a merge whose combined total exceeds
-  `max_stack` (leaving two stacks). So the charge scramble cannot occur, and
-  there is no ported `can_stack_partial` precondition to add the guard to. When
-  the partial path is wired, add the destination-at-`max_stack` guard there.
+- Port status (2026-07-26, re-verified): **READY**. The previous "DEFERRED /
+  `objectAbsorbPartial` exists but is unused" note is WRONG and is retracted.
+  The partial path IS live: `packages/core/src/game/gear.ts:851` tests
+  `invenCanStackPartial(...)` and `:852` calls
+  `objectAbsorbPartial(obj2, obj1, mode2, mode1, limits, ORIGIN.MIXED)` inside
+  `combinePack`'s merge loop. That is the one live caller, and it is exactly the
+  precondition the upstream draft guards. The gated fix adds the
+  destination-at-`max_stack` refusal before `gear.ts:852`.
 
 ### 4. Object list ordering is not a strict total order (`IMPLEMENTED`)
 
@@ -287,12 +316,15 @@ The mod's flags (each `bugfix.*` declared in
 - Problem: changing an inscription that moves an item out of the quiver, with a
   full pack, mis-fires `pack_overflow()` and opens a minor no-turn drop
   exploit.
-- Blocked-on: inventory/quiver + inscription commands (not yet ported).
-- Port status (2026-07-16): DEFERRED. The quiver model and the
-  inscription-driven `calc_inventory` / `pack_overflow` recomputation this bug
-  lives in are not ported (the quiver path in `game/gear.ts` is explicitly a
-  documented deferral), so there is no live mis-fire site to gate. Revisit when
-  the quiver + inscription commands land.
+- Port status (2026-07-26, re-verified): **READY**, though it needs a repro
+  first. The previous "quiver + inscription commands not yet ported" note is
+  WRONG and is retracted - all three pieces are live: the full recompute is
+  `calcInventory` (`packages/core/src/game/gear.ts:655`), the inscribe command
+  is `inscribeItem` (`packages/web/src/main.ts:1997`), and the overflow it can
+  mis-fire is `packOverflow` (`packages/core/src/game/obj-cmd.ts:264`).
+  Sequence before gating: reproduce the mis-fire against those three, THEN add
+  the gate - this one is a suspected mis-fire rather than a proven one, so
+  ordering matters.
 
 ### 12. Duplicate artifacts (`IMPLEMENTED`, no upstream fix)
 

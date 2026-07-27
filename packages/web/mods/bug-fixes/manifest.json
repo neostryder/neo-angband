@@ -7,37 +7,37 @@
   "dependencies": { "core": "*" },
   "author": "neostryder (RPGM Tools)",
   "license": "GPL-2.0-only",
-  "description": "Bundled, opt-in fixes for upstream Angband 4.2.6 bugs, in the model of an unofficial patch. Every fix is a named toggle in the in-app Fixes & tweaks menu and is OFF by default; core stays faithful to 4.2.6 (bugs included) unless you turn a fix on. See docs/modding/BUG_FIXES.md for the upstream issue/PR/commit each cites.",
+  "description": "Bundled, opt-in fixes for upstream Angband 4.2.6 bugs, in the model of an unofficial patch. The mod itself is OFF by default, like every mod; enable it and you get the whole patch set, with each fix a named toggle in the in-app Fixes & tweaks menu that you can switch off individually. With the mod disabled, core stays faithful to 4.2.6, bugs included. See docs/modding/BUG_FIXES.md for the upstream issue/PR/commit each fix cites.",
   "rules": [
     {
       "flag": "bugfix.uniqueKillHistory",
       "title": "No duplicate unique kills in history (#4245)",
       "description": "A unique reached again through a shape-change or projection death path no longer logs a second 'Killed X' entry in your character history.",
-      "default": false
+      "default": true
     },
     {
       "flag": "bugfix.noiseScentSave",
       "title": "Save noise and scent trails (#4605)",
       "description": "Persists the noise and scent heatmaps in the save, so monsters track you identically after a save/reload as they would have without one.",
-      "default": false
+      "default": true
     },
     {
       "flag": "bugfix.objectListOrder",
       "title": "Strict object-list ordering (#4664)",
       "description": "Gives the floor object list a deterministic total order (a geometric tiebreak after distance), so equal-distance items never reorder unexpectedly.",
-      "default": false
+      "default": true
     },
     {
       "flag": "bugfix.duplicateArtifact",
       "title": "Prevent duplicate artifacts (#4510)",
       "description": "Adds a defensive re-check so an object already carrying a created artifact can never be committed as that artifact a second time.",
-      "default": false
+      "default": true
     },
     {
       "flag": "bugfix.stairsReachable",
       "title": "Always a reachable up and down staircase",
       "description": "Vanilla level generation can seal a staircase inside a vault it never tunnelled into, leaving about 10% of floors with no walkable staircase in one direction (usually up, since a level gets only 1-2 up stairs but 3-4 down). This adds one reachable staircase on such a floor. It changes the layout of the levels it repairs, so a character played with this on is not layout-identical to one played without it.",
-      "default": false
+      "default": true
     }
   ]
 }
