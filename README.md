@@ -95,7 +95,7 @@ pnpm --filter @neo-angband/desktop dev
 
 That builds the web bundle and opens it in an Electron window. To produce real
 installers (`.exe`, `.dmg`, `.AppImage`/`.deb`), see
-[docs/INSTALL.md](docs/INSTALL.md#3-desktop-app-electron).
+[docs/INSTALL.md](docs/INSTALL.md#4-desktop-app-electron).
 
 ### Your character and your save
 
