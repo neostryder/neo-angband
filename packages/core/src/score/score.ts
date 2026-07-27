@@ -234,7 +234,10 @@ export function highscoreRegularize(scores: readonly HighScore[]): {
  */
 export type EnterScoreOutcome =
   | { entered: true; slot: number }
-  | { entered: false; reason: "cheater" | "wizard" | "interrupted" | "retired" };
+  | {
+      entered: false;
+      reason: "cheater" | "wizard" | "borg" | "interrupted" | "retired";
+    };
 
 /**
  * The gating inputs enter_score checks (score.c L272). The port has no options
@@ -246,6 +249,12 @@ export interface EnterScoreGating {
   cheated?: boolean;
   /** p->noscore & (NOSCORE_WIZARD | NOSCORE_DEBUG): a wizard/debug character. */
   noscore?: boolean;
+  /**
+   * p->noscore & NOSCORE_BORG (score.c:291, the !SCORE_BORGS branch): played by
+   * the Borg. Checked AFTER the wizard bits, so a character that is both is
+   * reported as a wizard, matching the C's else-if chain.
+   */
+  borg?: boolean;
   /** p->total_winner: a winner is scored even when interrupted/retiring. */
   totalWinner?: boolean;
   /** p->died_from (score.c L299/L302): "Interrupting" / "Retiring" are gated. */
@@ -274,6 +283,7 @@ export function enterScore(
 ): EnterScoreOutcome {
   if (gating.cheated) return { entered: false, reason: "cheater" };
   if (gating.noscore) return { entered: false, reason: "wizard" };
+  if (gating.borg) return { entered: false, reason: "borg" };
   if (!gating.totalWinner && gating.diedFrom === "Interrupting") {
     return { entered: false, reason: "interrupted" };
   }

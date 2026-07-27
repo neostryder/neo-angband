@@ -151,38 +151,11 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "You see no store here.",
     ],
 
-  "GAP: store maintenance on a new level (store_update / store_shuffle, store.c:1424-1444, :1763-1767). The port restocks stores but says nothing about it":
-    [
-      "Updating Shops...",
-      "Shuffling a Shopkeeper...",
-      "The shopkeeper retires.",
-      "The shopkeeper brings out some new stock.",
-    ],
-
   "GAP: move_player's KNOWN-grid blocked branch (cmd-cave.c:1108-1130). Reached only when something OTHER than a deliberate walk drives move_player - the run loop (player-path.c:2042) and the whirlwind effect (effect-handler-attack.c:1838). The unknown-grid half is ported (game/player-turn.ts, walk-blocked.test.ts); this half needs those two call sites routed through the same block":
     [
       "There is a pile of rubble blocking your way.",
       "There is a door blocking your way.",
       "There is a wall blocking your way.",
-    ],
-
-  "GAP: cheat_hear's monster-generation announcements (mon-make.c:1119-1128). The cheat options are in scope per the exact-parity mandate; the option exists but nothing reports through it":
-    ["Deep unique (%s).", "Deep monster (%s).", "Unique (%s)."],
-
-  "GAP: the knowledge menu's empty-list notices (ui-knowledge.c:4031-4126). Pressing ~ with an empty quiver silently shows nothing instead of saying why":
-    [
-      "You have nothing in your inventory.",
-      "You are not wielding or wearing anything.",
-      "You have nothing in your quiver.",
-    ],
-
-  "GAP: score suppression reasons (score.c:283-303). The port already flags a save NOSCORE for cheats/wizard/mods, but never tells the player which rule cost them the entry":
-    [
-      "Score not registered for cheaters.",
-      "Score not registered for wizards.",
-      "Score not registered for borgs.",
-      "Score not registered due to interruption.",
-      "Score not registered due to retiring.",
     ],
 
   "GAP: save-failure handling (ui-game.c:1091-1155). An IndexedDB write CAN fail on a quota error, and the port neither retries nor says so":

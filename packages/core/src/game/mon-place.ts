@@ -397,10 +397,23 @@ export function placeNewMonsterOne(
   /* Add to level feeling, note uniques for cheaters (mon-make.c
    * L1112-1126). See the module docstring: harmless post-gen bookkeeping. */
   state.chunk.addToMonsterRating(race.level * race.level);
+  /* cheat_hear (mon-make.c:1116-1128): the option is in scope per the
+   * exact-parity mandate, and it announces every out-of-depth spawn and every
+   * unique as it is placed. Nothing reported through it before. */
+  const cheatHear = state.options?.get("cheat_hear") ?? false;
   if (race.level > state.chunk.depth) {
+    if (cheatHear) {
+      state.msg?.(
+        race.flags.has(RF.UNIQUE)
+          ? `Deep unique (${race.name}).`
+          : `Deep monster (${race.name}).`,
+      );
+    }
     state.chunk.addToMonsterRating(
       (race.level - state.chunk.depth) * race.level * race.level,
     );
+  } else if (race.flags.has(RF.UNIQUE) && cheatHear) {
+    state.msg?.(`Unique (${race.name}).`);
   }
 
   const mon = createMonster(state.rng, race, {
