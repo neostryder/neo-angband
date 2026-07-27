@@ -4162,6 +4162,18 @@ async function openModManager(): Promise<void> {
     applyRuleLive: (flag, on) => {
       (game.state.modRules ??= {})[flag] = on;
     },
+    // Same parse as pack.ts/tile-mods.ts: ?mods= present (even empty) is an
+    // override; absent is null. Only used to caption the screen honestly.
+    urlModsOverride: () => {
+      try {
+        const raw = new URLSearchParams(location.search).get("mods");
+        return raw === null
+          ? null
+          : raw.split(",").map((s) => s.trim()).filter(Boolean);
+      } catch {
+        return null;
+      }
+    },
     isModNoscore: () => game.manifest.modNoscore,
     advanceSaveRatchets: (mod) => {
       game.manifest.determinism = advanceDeterminism(game.manifest.determinism, mod.nondeterministic);

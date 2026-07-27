@@ -24,7 +24,7 @@
  */
 
 import { getGraphicsMode, GRAPHICS_NONE } from "@neo-angband/core";
-import { resolveEnabledIds } from "./mod-store";
+import { isShippedMod, resolveEnabledIds } from "./mod-store";
 
 /** One selectable tile mode contributed by a tiles mod. */
 export interface TileModePack {
@@ -120,7 +120,7 @@ export function discoverEnabledTileModes(): TileModePack[] {
   const manifests = new Map<string, unknown>();
   for (const [key, val] of Object.entries(manifestGlob)) {
     const m = /\/mods\/([^/]+)\/manifest\.json$/.exec(key);
-    if (m && m[1]) manifests.set(m[1], val);
+    if (m && m[1] && isShippedMod(m[1])) manifests.set(m[1], val);
   }
 
   const enabledIds = readEnabledIds([...manifests.keys()]);

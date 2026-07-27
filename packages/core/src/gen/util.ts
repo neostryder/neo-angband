@@ -1522,7 +1522,8 @@ export function newPlayerSpot(
 
 /* ------------------------------------------------------------------ *
  * Staircase reachability repair - the bug-fixes mod, flag
- * "bugfix.stairsReachable". OFF by default; core is faithful without it.
+ * "bugfix.stairsReachable". Absent unless that mod is enabled, and no mod is
+ * enabled on a fresh install; core is faithful without it.
  *
  * This is NOT core behaviour. It began as a core guarantee (owner ruling
  * 2026-07-25, "there must never be a floor that doesn't have a reachable up AND

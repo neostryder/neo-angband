@@ -12,6 +12,7 @@
  */
 
 import type { PackManifest } from "@neo-angband/mod-sdk";
+import { isShippedMod } from "../../mod-store";
 import type { TrustedPlugin } from "./runtime";
 
 // Each trusted.ts is imported as a plain module (its default export).
@@ -46,7 +47,11 @@ function toManifest(raw: unknown): PackManifest {
   };
 }
 
-/** modId -> discovered trusted plugin, for every mod that ships a trusted.ts. */
+/**
+ * modId -> discovered trusted plugin, for every mod that ships a trusted.ts.
+ * The demo-* framework proofs are not part of the shipped mod set, so they are
+ * dropped from release builds (isShippedMod).
+ */
 export function discoverTrustedPlugins(): Map<string, DiscoveredTrustedPlugin> {
   const byId = new Map<string, DiscoveredTrustedPlugin>();
 
@@ -58,7 +63,7 @@ export function discoverTrustedPlugins(): Map<string, DiscoveredTrustedPlugin> {
 
   for (const [key, plugin] of Object.entries(pluginGlob)) {
     const m = /\/mods\/([^/]+)\/trusted\.ts$/.exec(key);
-    if (!m || !m[1]) continue;
+    if (!m || !m[1] || !isShippedMod(m[1])) continue;
     const id = m[1];
     const rawManifest = manifests.get(id);
     if (!rawManifest) {

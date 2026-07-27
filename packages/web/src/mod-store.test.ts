@@ -5,18 +5,21 @@
  * reader (that agreement is what makes enable-then-reload actually work).
  */
 
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { PackManifest } from "@neo-angband/mod-sdk";
 import {
   ModStore,
   buildCatalog,
   consentSatisfied,
+  isShippedMod,
   resolveEnabledIds,
   DEFAULT_ENABLED_MODS,
   FIRST_PARTY_MOD_IDS,
   type StorageLike,
 } from "./mod-store";
 import { confirmGameplayNoscore, needsGameplayNoscoreWarning } from "./mods";
+import { discoverContentModManifests } from "./pack";
 
 function fakeStorage(): StorageLike & { map: Map<string, string> } {
   const map = new Map<string, string>();
@@ -65,6 +68,90 @@ describe("ModStore - enabled set", () => {
     const store = new ModStore(null);
     store.setEnabled(["a"]);
     expect(store.getEnabled()).toEqual([]);
+  });
+});
+
+describe("the shipped mod set (isShippedMod)", () => {
+  it("ships exactly the three bundled mods: qol, bug-fixes, linoleum", () => {
+    expect([...FIRST_PARTY_MOD_IDS].sort()).toEqual([
+      "bug-fixes",
+      "linoleum",
+      "qol",
+    ]);
+  });
+
+  it("keeps every first-party id in both builds", () => {
+    for (const id of FIRST_PARTY_MOD_IDS) {
+      expect(isShippedMod(id, true)).toBe(true);
+      expect(isShippedMod(id, false)).toBe(true);
+    }
+  });
+
+  it("drops the demo-* framework proofs from a release build only", () => {
+    for (const id of ["demo-modtest", "demo-sandbox", "demo-trusted"]) {
+      expect(isShippedMod(id, true)).toBe(true); // dev: proofs stay loadable
+      expect(isShippedMod(id, false)).toBe(false); // release: not offered
+    }
+  });
+
+  it("is DEV-gated so the demos are discoverable while running the tests", () => {
+    // The production filter must not silently apply under vitest, or the demo
+    // mods would vanish from every discovery test that relies on them.
+    expect(isShippedMod("demo-modtest")).toBe(true);
+  });
+
+  /*
+   * The guard that makes the two lists above meaningful: a new directory under
+   * packages/web/mods/ is either a shipped first-party mod or a demo-* proof.
+   * Adding a fourth player-facing mod is a scope decision, so it has to come
+   * with an edit here rather than appearing in the manager unannounced.
+   */
+  it("accounts for every bundled mod directory, and each manifest id matches its folder", () => {
+    const modsDir = new URL("../mods/", import.meta.url);
+    const dirs = readdirSync(modsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+    expect(dirs.length).toBeGreaterThan(0); // the glob root really exists
+
+    for (const dir of dirs) {
+      const shipped = FIRST_PARTY_MOD_IDS.includes(dir);
+      expect(
+        shipped || dir.startsWith("demo-"),
+        `packages/web/mods/${dir} is neither first-party nor a demo-* proof`,
+      ).toBe(true);
+      expect(isShippedMod(dir, false)).toBe(shipped);
+
+      const raw = readFileSync(new URL(`${dir}/manifest.json`, modsDir), "utf8");
+      expect((JSON.parse(raw) as { id?: string }).id).toBe(dir);
+    }
+
+    for (const id of FIRST_PARTY_MOD_IDS) expect(dirs).toContain(id);
+  });
+
+  /*
+   * End-to-end on the real discovery path rather than the predicate: pack.ts
+   * globs the manifests on disk, so this is what the mod manager's catalog is
+   * actually built from in each build.
+   */
+  it("a release build's content catalog is exactly the three shipped mods", () => {
+    vi.stubEnv("DEV", false);
+    try {
+      const ids = discoverContentModManifests().map((m) => m.id);
+      expect([...ids].sort()).toEqual(["bug-fixes", "linoleum", "qol"]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("a dev build's content catalog still includes the demo content pack", () => {
+    vi.stubEnv("DEV", true);
+    try {
+      expect(discoverContentModManifests().map((m) => m.id)).toContain(
+        "demo-modtest",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

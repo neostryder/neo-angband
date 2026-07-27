@@ -3,11 +3,13 @@
  *
  * After the mod-scope reset it is a plain CONTENT mod with no plugin code and no
  * capabilities: it just DECLARES the core rule flags (PackManifest.rules)
- * that the host applies to GameState.modRules, each OFF by default. This test
- * ties the on-disk manifest to its contract by reading it; the flags here are
- * the same names the core control tests gate on (obj-list / make / chunk /
- * session tests), and each flag's off/on behaviour is proven there. With the
- * mod absent (or a rule left at its false default) core stays byte-identical.
+ * that the host applies to GameState.modRules, each ON once the mod is enabled
+ * (`default: true`) - and the mod itself is off on a fresh install, so an
+ * untouched game applies no rule at all. This test ties the on-disk manifest to
+ * its contract by reading it; the flags here are the same names the core control
+ * tests gate on (obj-list / make / chunk / session tests), and each flag's
+ * off/on behaviour is proven there. With the mod absent (or a rule the player
+ * switched off) core stays byte-identical.
  */
 
 import { readFileSync } from "node:fs";

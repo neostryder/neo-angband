@@ -55,6 +55,31 @@ export const FIRST_PARTY_MOD_IDS: readonly string[] = [
 ];
 
 /**
+ * Whether a bundled mod id is part of the SHIPPED set, i.e. offered to a player
+ * in a release build. The shipped set is exactly FIRST_PARTY_MOD_IDS: the
+ * minimal QoL mod, the bug-fixes patch set, and neo-linoleum.
+ *
+ * The `demo-*` mods under packages/web/mods/ are not shipped - they are the
+ * mod-framework proofs (a content pack that patches a core monster, a sandboxed
+ * worker plugin, a trusted in-process plugin) and exist so the SDK's three load
+ * paths stay exercised end-to-end in dev and in tests. Shipping them would put
+ * three joke entries in the player's mod manager, so every discovery surface
+ * (content packs, tile packs, sandbox plugins, trusted plugins) routes through
+ * this predicate and drops them from a production build.
+ *
+ * `dev` defaults to Vite's import.meta.env.DEV so callers just call
+ * `isShippedMod(id)`; it is a parameter only so the unit tests can assert both
+ * builds without faking the module environment. Note this gates DISCOVERY, not
+ * bundling: the eager import.meta.glob still inlines the demo manifests (glob
+ * patterns must be static), they are simply never surfaced. They are a few
+ * hundred bytes, and keeping the globs identical in both builds means dev and
+ * release load mods through the same code path.
+ */
+export function isShippedMod(id: string, dev = import.meta.env.DEV): boolean {
+  return dev || !id.startsWith("demo-");
+}
+
+/**
  * Resolve the effective enabled-mod id list from the three input sources, in
  * precedence order. Pure, so both the content composer (pack.ts, at module
  * load) and the plugin auto-installer (main.ts boot) resolve identically.
@@ -250,7 +275,10 @@ export class ModStore {
    * The player's explicit per-flag overrides for mod rules ("qol.autoDig",
    * "bugfix.*"). A flag ABSENT here means "use the mod's declared default", so
    * this stores only deliberate deviations - a fresh install has none and every
-   * rule sits at its manifest default (QoL on, bug fixes off).
+   * rule sits at its manifest default. Per the mod default policy every bundled
+   * patch declares `default: true`, which means "on once its mod is enabled" and
+   * never "on in a fresh install" - no mod is enabled by default at all (see
+   * DEFAULT_ENABLED_MODS), so an untouched install applies no rules.
    */
   getRuleChoices(): Record<string, boolean> {
     const obj = readJson<Record<string, unknown>>(this.storage, RULE_CHOICES_KEY, {});
