@@ -15,6 +15,12 @@ reference/build*/
 .test-out/
 .test-out-authoring/
 
+# The demonstration Linoleum loose pack, derived at build time from the game's
+# own public/tiles/ art by packages/web/scripts/gen-linoleum-demo.mjs. ~1500
+# generated PNGs; a pure function of art already in the tree, so it is built,
+# not committed.
+packages/web/public/mods/
+
 # Shockbolt tileset: bespoke license (copyright Raymond Gaustadnes), NOT
 # CC-BY. Permitted only with Angband proper and only non-commercially, and
 # needs the author's explicit permission for other projects. Kept locally as

@@ -10,7 +10,7 @@
 | `@neo-angband/web` | Web + PWA front-end (v1 target): modern glyph-first renderer. |
 | `@neo-angband/cli` | Terminal front-end and dev harness (golden scenarios, stats runs). |
 | `@neo-angband/desktop` | Optional Electron desktop wrapper around the same web bundle. |
-| `@neo-angband/linoleum` | Linoleum tile-pack converter (neo-linoleum). |
+| `@neo-angband/linoleum` | Linoleum loose-pack tile format: the converter (Node) plus the format readers and portable md5 the web renderer uses. |
 | `@neo-angband/borg` | The bundled Borg autoplayer mod. |
 | `reference/` | The original C tree at parity baseline 4.2.6, buildable, read-only. |
 | `parity/` | Machine-readable provenance ledger mapping port modules to upstream sources. |

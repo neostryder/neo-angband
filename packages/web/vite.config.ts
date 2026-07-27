@@ -50,6 +50,11 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest}"],
+        // Loose tile packs (mods/**) are hundreds of small PNGs fetched only for
+        // the tiles a level actually shows, so precaching them would inflate the
+        // install by megabytes of art most players never select. They are
+        // ordinary network fetches; the app itself still works offline.
+        globIgnores: ["**/mods/**"],
         // The main bundle now includes the full engine + the bundled Borg
         // autoplayer, pushing the JS chunk past workbox's 2 MiB precache
         // default. Raise the cap so the offline PWA precaches the whole app.

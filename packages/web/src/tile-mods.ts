@@ -9,10 +9,21 @@
  * nor expects any particular mod.
  *
  * A `shape:"tiles"` manifest declares `tilePacks`, each entry naming
- * - `grafID`: which catalog mode it renders as (its metadata source: menu name,
- *   cell size, atlas filename, pref file), and
- * - `path`: the BASE its art hangs under, site-root-relative, so the atlas is
- *   `<path>/<directory>/<file>`. The pack's own assets are used, not core's.
+ * - `grafID`: the mode's serial number, as a list.txt entry has;
+ * - `path`: the BASE its art hangs under, site-root-relative;
+ * - `engine`: which renderer draws it - omitted/`tilesheet` for upstream's own
+ *   scheme, `linoleum` for a loose pack (this is the pack's RENDERER, not the
+ *   manifest's top-level `engine`, which is the game version the mod targets);
+ * - `menuname`: the row's label, for a mode the core catalog does not have.
+ *
+ * The two engines constrain a pack differently, because a tilesheet's metadata
+ * (cell size, atlas filename, pref file) lives in upstream's catalog while a
+ * loose pack carries its own inside the pack:
+ * - a `tilesheet` pack must claim a grafID the CORE catalog knows, and re-skins
+ *   that row: the atlas is `<path>/<directory>/<file>` from the catalog entry;
+ * - a `linoleum` pack needs only `path` and `menuname` and may claim a grafID of
+ *   its own (use >= 100 to stay clear of upstream's list.txt numbering), which
+ *   ADDS a row - everything else comes from the pack's manifest.txt.
  *
  * The pure `enabledTileModes` does the work over already-discovered inputs so it
  * is unit-testable; `discoverEnabledTileModes` is the thin browser wrapper that
@@ -21,13 +32,16 @@
 
 import { getGraphicsMode, GRAPHICS_NONE } from "@neo-angband/core";
 import { isShippedMod, resolveEnabledIds } from "./mod-store";
+import type { TileEngine } from "./tile-catalog";
 
 /** One selectable tile mode contributed by a tiles mod. */
 export interface TileModePack {
   /** grafID (list.txt id) the pack renders as; the atlas metadata source. */
   grafID: number;
-  /** Menu label (from the core graphics-mode catalog). */
+  /** Menu label: the mod's own, or the core catalog's for a re-skinned row. */
   menuname: string;
+  /** The engine that draws it; absent means the classic tilesheet. */
+  engine?: TileEngine;
   /**
    * Base URL the pack's art hangs under (the manifest's `path`), or undefined
    * when it declares none - the shell then falls back to its own tile base,
@@ -48,6 +62,8 @@ export interface TileModePack {
 interface RawTilePack {
   grafID?: unknown;
   path?: unknown;
+  engine?: unknown;
+  menuname?: unknown;
 }
 
 /** Read a tiles mod manifest's tilePacks array, tolerating any shape. */
@@ -71,9 +87,13 @@ function isTilesMod(raw: unknown): boolean {
  * The tile modes contributed by the enabled tiles mods, in enabled/load order,
  * deduped by grafID (first contributor wins). Pure: it takes the discovered
  * id->manifest map and the resolved enabled-id list, so it needs no glob or
- * storage. Only `shape:"tiles"` mods contribute; a grafID that is unknown to
- * the core catalog, GRAPHICS_NONE, or carries no atlas filename is skipped,
- * since there would be no metadata to render it with.
+ * storage. Only `shape:"tiles"` mods contribute, and GRAPHICS_NONE is never
+ * takeable - ASCII is not a mod's to replace.
+ *
+ * A pack is skipped when it could not be rendered anyway: a tilesheet whose
+ * grafID the core catalog does not know or that has no atlas filename (its cell
+ * size and pref file would be unknown), or a loose pack with no `path` (there
+ * would be nowhere to fetch its manifest.txt and assets from).
  */
 export function enabledTileModes(input: {
   manifests: ReadonlyMap<string, unknown>;
@@ -90,13 +110,35 @@ export function enabledTileModes(input: {
       const grafID = typeof entry.grafID === "number" ? entry.grafID : NaN;
       if (!Number.isFinite(grafID) || grafID === GRAPHICS_NONE) continue;
       if (seen.has(grafID)) continue;
-      const mode = getGraphicsMode(grafID);
-      if (!mode || mode.grafID === GRAPHICS_NONE || !mode.file) continue;
-      seen.add(grafID);
       const path = typeof entry.path === "string" && entry.path ? entry.path : null;
+      const declared = typeof entry.menuname === "string" ? entry.menuname.trim() : "";
+      const found = getGraphicsMode(grafID);
+      const catalogued =
+        found && found.grafID !== GRAPHICS_NONE && found.file ? found : null;
+
+      if (entry.engine === "linoleum") {
+        // A loose pack brings its own metadata; all it needs from the manifest
+        // is where it lives and what to call it (or a catalog row to re-skin).
+        if (path === null) continue;
+        const menuname = declared || catalogued?.menuname || "";
+        if (menuname === "") continue;
+        seen.add(grafID);
+        out.push({
+          grafID,
+          menuname,
+          engine: "linoleum",
+          baseUrl: path,
+          modId: id,
+          modName,
+        });
+        continue;
+      }
+
+      if (catalogued === null) continue;
+      seen.add(grafID);
       out.push({
         grafID,
-        menuname: mode.menuname,
+        menuname: declared || catalogued.menuname,
         ...(path === null ? {} : { baseUrl: path }),
         modId: id,
         modName,
