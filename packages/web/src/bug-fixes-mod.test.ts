@@ -38,11 +38,19 @@ describe("bug-fixes bundled mod", () => {
     expect(m.dependencies).toEqual({ core: "*" });
   });
 
-  it("declares exactly the documented core rule flags, all OFF by default", () => {
+  /*
+   * Default policy (Aaron's ruling, 2026-07-26), two independent layers:
+   * the MOD is off by default (DEFAULT_ENABLED_MODS is [], asserted in
+   * mod-store.test.ts), and once the player enables it each fix inside it
+   * defaults ON. So `default: true` here means "on once the mod is on", never
+   * "on in a fresh install" - an untouched game is still faithful 4.2.6.
+   * The per-fix toggle exists so a player can take the patch set minus one.
+   */
+  it("declares exactly the documented core rule flags, all ON once the mod is enabled", () => {
     const rules = m.rules ?? [];
     expect(rules.map((r) => r.flag).sort()).toEqual([...EXPECTED_FLAGS].sort());
     for (const r of rules) {
-      expect(r.default).toBe(false); // bug fixes are opt-in
+      expect(r.default).toBe(true);
       expect(r.title.length).toBeGreaterThan(0);
       expect(r.description.length).toBeGreaterThan(0);
     }
