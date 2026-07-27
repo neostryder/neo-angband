@@ -5,16 +5,21 @@
  * the upstream fork's scripts/build-linoleum-packs.ps1.
  */
 
-import { createHash } from "node:crypto";
+import { md5Hex } from "./md5.js";
 
 /** Slug length cap before the md5 suffix kicks in. */
 const MAX_SLUG_LENGTH = 61;
 
 /**
  * md5 of the UTF-8 text, first 4 bytes as lowercase hex (8 characters).
+ *
+ * The md5 is the portable one (md5.ts), not `node:crypto`: this same hash
+ * decides which member of a variant pool a grid draws (targets.ts
+ * selectPoolMember), and that runs in the browser while the converter runs in
+ * Node. md5.test.ts pins it to `crypto.createHash("md5")`.
  */
 export function stableHashHex(text: string): string {
-  return createHash("md5").update(text, "utf8").digest("hex").slice(0, 8);
+  return md5Hex(text).slice(0, 8);
 }
 
 /**

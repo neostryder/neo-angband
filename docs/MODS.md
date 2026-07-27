@@ -20,8 +20,10 @@ The dividing line (PORT_PLAN.md decisions 17-18) is deliberately sharp:
 - **Bundled mods ship in the box**, off on a fresh install and fully removable,
   each a separate standalone pack (never combined): **neo-linoleum** (an
   alternative loose-pack tile engine and converter - NOT the source of the
-  game's tile sets, which are core content from `lib/tiles/list.txt`; a `tiles`
-  pack, see `docs/LINOLEUM.md` and decision 26), a **QoL mod**
+  game's tile sets, which are core content from `lib/tiles/list.txt`; it adds a
+  second renderer plus one demonstration pack built from the game's own art, and
+  a converted pack is proven to draw pixel-for-pixel what its tilesheet draws; a
+  `tiles` pack, see `docs/LINOLEUM.md` and decision 26), a **QoL mod**
   (UI quality-of-life), and the **`bug-fixes`** mod (upstream crash/corruption/
   save/determinism patches; see `docs/modding/BUG_FIXES.md`). They are ordinary
   mods that happen to ship in the box - proof the seams are real, and the

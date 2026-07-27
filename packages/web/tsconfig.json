@@ -9,6 +9,7 @@
   "references": [
     { "path": "../core" },
     { "path": "../content" },
+    { "path": "../linoleum" },
     { "path": "../mod-sdk" }
   ]
 }

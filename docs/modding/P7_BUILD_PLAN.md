@@ -145,8 +145,8 @@ The port is unusually ready for this (see `BORG_AS_MOD.md` section 4):
   `nextCommand()` yields null - the exact perceive->think->act seam.
 - **Bundled-mod precedent**: `neo-linoleum` (an alternative tile engine; the
   game's own tile sets are core content) already ships as a separate pack,
-  proving the pack pipeline. Its loose-pack RENDERER is still unbuilt - see
-  `docs/LINOLEUM.md`.
+  proving the pack pipeline - engine, format, converter and a demonstration pack
+  all in place. See `docs/LINOLEUM.md`.
 
 ## Phases
 

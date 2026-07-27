@@ -2,10 +2,29 @@
  * End-to-end converter tests on the two smallest bundled packs:
  * original-tiles (old, 8x8) and nomad (8x16, non-square).
  *
- * All hardcoded counts and target lines below were cross-checked against a
- * ground-truth run of the original scripts/build-linoleum-packs.ps1 over the
- * same reference data: every text output matched byte-for-byte (modulo the
- * generated-by header) and every extracted PNG matched pixel-for-pixel.
+ * The counts and target lines below started as a byte-for-byte cross-check
+ * against a ground-truth run of the original scripts/build-linoleum-packs.ps1
+ * over the same reference data. Three deliberate divergences from the ps1 have
+ * since been made, each because the ps1's behaviour produced a pack that did
+ * NOT render like the tilesheet it came from (all three were caught by
+ * packages/web linoleum-equivalence.test.ts, which compares the two engines
+ * pixel by pixel):
+ *
+ * 1. DECIMAL tile bytes are accepted (prf.ts isTileByte). The ps1 required
+ *    0xNN and so dropped `object:none:<pile>:131:159`, losing the pile tile.
+ * 2. Colliding asset names are disambiguated with the trailing sequence number
+ *    (`_1`, `_2`, ...). The ps1 slugged `Enchant Armour` and `*Enchant Armour*`
+ *    - two different scrolls - to one file name, so one crop overwrote the
+ *    other and a scroll drew the wrong tile.
+ * 3. Exact target rules are written in SOURCE order, not alphabetically. The
+ *    format is last-rule-wins, so sorting discards the precedence a pack's own
+ *    override lines rely on. This one is DEFENSIVE: on the four bundled packs
+ *    it changes no rendered tile (proven - the pixel-equivalence test passes
+ *    with either order), and it is pinned here instead, by the test that an
+ *    override line must follow what it overrides.
+ *
+ * Everything else still matches the ps1's output, and every extracted PNG
+ * still matches the source sheet pixel-for-pixel.
  */
 
 import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
@@ -77,7 +96,7 @@ describe("original-tiles (old, 8x8) pack", () => {
     const lines = readLines(join(packRoot(), "maps", "targets.txt"));
     const aliasIndex = lines.indexOf("target:feat:FLOOR:asset:feat_floor_lit_0");
     const exactHeaderIndex = lines.indexOf(
-      "# Exact legacy selectors, including stateful and conditional variants.",
+      "# Exact legacy selectors, in source order - a later rule overrides an earlier one.",
     );
     const exactIndex = lines.indexOf("target:feat:FLOOR:lit:asset:feat_floor_lit_0");
     expect(aliasIndex).toBeGreaterThan(-1);
@@ -85,9 +104,41 @@ describe("original-tiles (old, 8x8) pack", () => {
     expect(exactIndex).toBeGreaterThan(exactHeaderIndex);
   });
 
-  it("skips non-hex legacy coordinate lines like object:none:<pile>:131:159", () => {
-    const text = readFileSync(join(packRoot(), "maps", "targets.txt"), "utf8");
-    expect(text).not.toContain("<pile>");
+  it("exports the decimal-coordinate line object:none:<pile>:131:159", () => {
+    // The ps1 dropped it (hex-only); the C reads decimal, and the pile tile is
+    // real art the map draws over a grid holding several objects.
+    const lines = readLines(join(packRoot(), "maps", "targets.txt"));
+    expect(lines).toContain("target:object:none:<pile>:asset:object_none_pile_0");
+    expect(existsSync(join(packRoot(), "images", "8", "object_none_pile_0.png"))).toBe(true);
+  });
+
+  it("gives two selectors that slug alike their own assets", () => {
+    // object.txt has both `Enchant Armour` and `*Enchant Armour*` (a distinct,
+    // greater scroll) and they slug to the same name; the second takes _1, so
+    // neither scroll can end up drawing the other's tile.
+    const lines = readLines(join(packRoot(), "maps", "targets.txt"));
+    expect(lines).toContain(
+      "target:object:scroll:Enchant Armour:asset:object_scroll_enchant_armour_0",
+    );
+    expect(lines).toContain(
+      "target:object:scroll:*Enchant Armour*:asset:object_scroll_enchant_armour_1",
+    );
+    const dir = join(packRoot(), "images", "8");
+    const first = PNG.sync.read(readFileSync(join(dir, "object_scroll_enchant_armour_0.png")));
+    const second = PNG.sync.read(readFileSync(join(dir, "object_scroll_enchant_armour_1.png")));
+    expect(Buffer.compare(first.data, second.data)).not.toBe(0);
+  });
+
+  it("keeps an override line after the line it overrides (source order)", () => {
+    const lines = readLines(join(packRoot(), "maps", "targets.txt"));
+    const specific = lines.indexOf(
+      "target:object:scroll:Enchant Armour:asset:object_scroll_enchant_armour_0",
+    );
+    const glob = lines.indexOf(
+      "target:object:scroll:*Enchant Armour*:asset:object_scroll_enchant_armour_1",
+    );
+    expect(specific).toBeGreaterThan(-1);
+    expect(glob).toBeGreaterThan(specific);
   });
 
   it("writes family effect metadata for LESS/MORE stairs", () => {
@@ -118,7 +169,7 @@ describe("original-tiles (old, 8x8) pack", () => {
   it("produces the expected asset volume", () => {
     const result = summary.results.find((r) => r.key === "original-tiles");
     expect(result).toBeDefined();
-    expect(result?.assetCount).toBe(1495);
+    expect(result?.assetCount).toBe(1499);
     expect(result?.assetCount ?? 0).toBeGreaterThan(1000);
     const files = readdirSync(join(packRoot(), "images", "8"));
     expect(files.length).toBe(result?.assetCount);
@@ -178,9 +229,9 @@ describe("nomad (8x16, non-square) pack", () => {
 
   it("produces the expected asset volume", () => {
     const result = summary.results.find((r) => r.key === "nomad");
-    expect(result?.assetCount).toBe(1461);
+    expect(result?.assetCount).toBe(1465);
     const files = readdirSync(join(packRoot(), "images", "16"));
-    expect(files.length).toBe(1461);
+    expect(files.length).toBe(1465);
   });
 
   it("mirrors the pref files byte-for-byte", () => {
@@ -219,10 +270,10 @@ describe("inventory reports", () => {
 
     const old = inventory.packs.find((p) => p.key === "original-tiles");
     expect(old?.resolution).toBe(8);
-    expect(old?.assetCount).toBe(1495);
-    expect(old?.exactSelectorCount).toBe(1498);
+    expect(old?.assetCount).toBe(1499);
+    expect(old?.exactSelectorCount).toBe(1499);
     expect(old?.compatibilityAliasCount).toBe(59);
-    expect(old?.totalTargetRuleCount).toBe(1557);
+    expect(old?.totalTargetRuleCount).toBe(1558);
     expect(old?.statefulSelectorCount).toBe(204);
     expect(old?.conditionalSelectorCount).toBe(66);
     expect(old?.invalidSourceSelectorCount).toBe(0);
@@ -230,17 +281,18 @@ describe("inventory reports", () => {
       GF: 70,
       feat: 72,
       trap: 140,
-      object: 233,
+      // 234, not 233: the decimal-coordinate <pile> line now counts too.
+      object: 234,
       monster: 671,
       flavor: 312,
     });
 
     const nomad = inventory.packs.find((p) => p.key === "nomad");
     expect(nomad?.resolution).toBe(16);
-    expect(nomad?.assetCount).toBe(1461);
-    expect(nomad?.exactSelectorCount).toBe(1464);
+    expect(nomad?.assetCount).toBe(1465);
+    expect(nomad?.exactSelectorCount).toBe(1465);
     expect(nomad?.compatibilityAliasCount).toBe(59);
-    expect(nomad?.totalTargetRuleCount).toBe(1523);
+    expect(nomad?.totalTargetRuleCount).toBe(1524);
     expect(nomad?.statefulSelectorCount).toBe(156);
     expect(nomad?.conditionalSelectorCount).toBe(66);
     expect(nomad?.invalidSourceSelectorCount).toBe(2);
@@ -250,17 +302,17 @@ describe("inventory reports", () => {
     const text = readFileSync(join(outputRoot, "graphics-linoleum-inventory.md"), "utf8");
     expect(text).toContain("# Linoleum bundled tileset inventory");
     expect(text).toContain(
-      "| Original Tiles (Linoleum) | Original Tiles | 8 | 1495 | 1498 | 59 | 204 | 66 | 1557 |",
+      "| Original Tiles (Linoleum) | Original Tiles | 8 | 1499 | 1499 | 59 | 204 | 66 | 1558 |",
     );
     expect(text).toContain(
-      "| Nomad's tiles (Linoleum) | Nomad's tiles | 16 | 1461 | 1464 | 59 | 156 | 66 | 1523 |",
+      "| Nomad's tiles (Linoleum) | Nomad's tiles | 16 | 1465 | 1465 | 59 | 156 | 66 | 1524 |",
     );
   });
 
   it("counts target lines in targets.txt consistently with the inventory", () => {
     for (const [key, expected] of [
-      ["original-tiles", 1557],
-      ["nomad", 1523],
+      ["original-tiles", 1558],
+      ["nomad", 1524],
     ] as const) {
       const lines = readLines(join(outputRoot, key, "maps", "targets.txt"));
       const targetLines = lines.filter((line) => line.startsWith("target:"));

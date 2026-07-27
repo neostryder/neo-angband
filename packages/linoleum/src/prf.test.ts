@@ -67,9 +67,22 @@ describe("parseLegacySelectorLine", () => {
     expect(entry?.compatibilitySelectorValue).toBe("<player>");
   });
 
-  it("rejects lines whose trailing fields are not 0xNN hex bytes", () => {
-    // Real line from old/graf-xxx.prf: decimal coordinates are not exported.
-    expect(parseLegacySelectorLine("object:none:<pile>:131:159", null, "graf.prf", 0)).toBeNull();
+  it("accepts decimal tile bytes, as the game's own base-0 parser does", () => {
+    // Real line from old/graf-xxx.prf. The ps1 required 0xNN and dropped it,
+    // losing the pile tile the C draws for a grid holding several objects
+    // (ui-map.c:217-219); parser.c L315 reads it with strtol base 0.
+    const entry = parseLegacySelectorLine("object:none:<pile>:131:159", null, "graf.prf", 0);
+    expect(entry?.type).toBe("object");
+    expect(entry?.logicalValue).toBe("none:<pile>");
+    expect(entry?.row).toBe(131 & 0x7f);
+    expect(entry?.column).toBe(159 & 0x7f);
+  });
+
+  it("still rejects trailing fields that are not tile bytes", () => {
+    // Not numeric at all, and out of a byte's range.
+    expect(parseLegacySelectorLine("monster:Grip:zz:0x8B", null, "g.prf", 0)).toBeNull();
+    expect(parseLegacySelectorLine("monster:Grip:300:159", null, "g.prf", 0)).toBeNull();
+    expect(parseLegacySelectorLine("monster:Grip:0x8B:1024", null, "g.prf", 0)).toBeNull();
   });
 
   it("rejects unknown selector types and short lines", () => {
@@ -105,7 +118,7 @@ describe("readLegacySelectors", () => {
     const entries = readLegacySelectors([
       {
         name: "xtra.prf",
-        lines: ["?:[EQU $CLASS Mage]", "object:none:<pile>:131:159", "feat:FLOOR:0x80:0xA1"],
+        lines: ["?:[EQU $CLASS Mage]", "object:none:<pile>:9999:159", "feat:FLOOR:0x80:0xA1"],
       },
     ]);
     expect(entries).toHaveLength(1);
@@ -137,7 +150,7 @@ describe("readLegacySelectors", () => {
     const entries = readLegacySelectors([
       {
         name: "graf.prf",
-        lines: ["object:none:<pile>:131:159", "feat:FLOOR:0x80:0xA1"],
+        lines: ["object:none:<pile>:9999:159", "feat:FLOOR:0x80:0xA1"],
       },
     ]);
     expect(entries).toHaveLength(1);

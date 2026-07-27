@@ -1,6 +1,12 @@
 /**
  * Optional tile renderer: the platform half of the graphics/tiles subsystem.
  *
+ * This is the CLASSIC TILESHEET engine - one atlas PNG addressed by (row, col),
+ * which is how every tile set upstream ships is described. The shell can also
+ * draw loose packs (a directory of individual PNGs addressed by name, with
+ * variant pools); that engine is linoleum-pack.ts, and both engines implement
+ * the TileBlitter interface below so the live map render has one code path.
+ *
  * The core ships the graphics-mode CATALOG (packages/core/src/visuals/grafmode)
  * - names, tile dimensions, directory + image filenames - but NO tile IMAGE
  * assets. The tile art packs (adam-bolt, gervais, shockbolt, nomad) carry
@@ -63,11 +69,38 @@ export function tileCode(attr: number, char: number): TileCode {
 }
 
 /**
+ * What the map render needs of a graphics engine: blit the tile a decoded code
+ * addresses, or say you cannot so the cell keeps its ASCII glyph. Implemented by
+ * TileSet (tilesheet) and LinoleumPack (loose pack).
+ *
+ * `grid` is the map cell being drawn. The tilesheet engine ignores it - a code
+ * is a fixed atlas position - and a loose pack uses it to resolve a variant
+ * POOL to one member, deterministically (same cell, same tile, every replay).
+ */
+export interface TileBlitter {
+  /** Menu label of the mode this draws, for diagnostics. */
+  readonly menuname: string;
+  /** True once the engine can draw at least some tiles. */
+  readonly ready: boolean;
+  /** Called when more art has loaded, so the caller can repaint. */
+  onReady: (() => void) | null;
+  drawTile(
+    ctx: CanvasRenderingContext2D,
+    dx: number,
+    dy: number,
+    dw: number,
+    dh: number,
+    code: TileCode,
+    grid?: { x: number; y: number },
+  ): boolean;
+}
+
+/**
  * A loaded tileset image plus its tile metrics. Loading is asynchronous and
  * best-effort: `ready` flips true on a successful load and stays false on any
  * error, so callers can keep drawing ASCII until (and unless) tiles arrive.
  */
-export class TileSet {
+export class TileSet implements TileBlitter {
   readonly mode: GraphicsMode;
   readonly cellWidth: number;
   readonly cellHeight: number;
@@ -100,6 +133,11 @@ export class TileSet {
   /** True once the atlas image has loaded successfully. */
   get ready(): boolean {
     return this.loaded && this.image !== null;
+  }
+
+  /** The mode's menu label (TileBlitter, for diagnostics). */
+  get menuname(): string {
+    return this.mode.menuname;
   }
 
   /**
