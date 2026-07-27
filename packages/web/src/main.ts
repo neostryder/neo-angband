@@ -1178,7 +1178,7 @@ function buildItemSources(
       if (!handle) continue;
       const obj = gearGet(state.gear, handle);
       if (!obj || !tester(obj)) continue;
-      items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length) });
+      items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length), inscrip: obj.note });
       eRefs.push({ handle });
     }
     if (items.length > 0) {
@@ -1191,7 +1191,7 @@ function buildItemSources(
     const fRefs: ItemTargetRef[] = [];
     floorPile(state, state.actor.grid).forEach((obj, i) => {
       if (!tester(obj)) return;
-      items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length) });
+      items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length), inscrip: obj.note });
       fRefs.push({ floor: i });
     });
     if (items.length > 0) {
@@ -1203,16 +1203,89 @@ function buildItemSources(
 }
 
 /**
+ * The keypress each item command is bound to (cmd_lookup_key_unktrl,
+ * ui-game.c:461-473), per keyset: `o` is the original key, `r` the roguelike one
+ * where it differs. cmd_init copies key[0] into key[1] whenever a roguelike key
+ * is unset (ui-game.c:409-410), so an absent `r` means "same as `o`".
+ *
+ * This is the `x` an `@x<digit>` inscription is matched against (get_tag,
+ * ui-object.c:735-744), so a tag follows the player's keyset exactly as
+ * upstream: `@z1` is the rod on the original keyset and the wand on roguelike.
+ */
+const ITEM_CMD_KEYS: Record<string, { o: string; r?: string }> = {
+  // cmd_item (ui-game.c:118-133).
+  inscribe: { o: "{" },
+  uninscribe: { o: "}" },
+  wield: { o: "w" },
+  takeoff: { o: "t", r: "T" },
+  drop: { o: "d" },
+  fire: { o: "f", r: "t" },
+  "use-staff": { o: "u", r: "Z" },
+  "aim-wand": { o: "a", r: "z" },
+  "zap-rod": { o: "z", r: "a" },
+  activate: { o: "A" },
+  eat: { o: "E" },
+  quaff: { o: "q" },
+  read: { o: "r" },
+  refill: { o: "F" },
+  use: { o: "U", r: "X" },
+  // cmd_action (ui-game.c:152).
+  throw: { o: "v" },
+  /* cmd_item_manage (ui-game.c:165). Ignore's roguelike key is KTRL('D'), and
+   * cmd_lookup_key_unktrl deliberately runs control keys through UN_KTRL_CAP
+   * (X + 64, ui-event.h:135-136) rather than UN_KTRL for exactly this case: the
+   * latter would give 'd', which Drop already owns (ui-game.c:465-470). */
+  ignore: { o: "k", r: "D" },
+  // cmd_info (ui-game.c:173-176).
+  browse: { o: "b", r: "P" },
+  study: { o: "G" },
+  cast: { o: "m" },
+};
+
+/**
+ * The `@x<digit>` command letter for a picker upstream drives with CMD_NULL -
+ * the effect item-targets (`get_item(&obj, q, s, 0, ...)`, e.g.
+ * effect-handler-general.c:393, :1067, :1962) and Examine (ui-object.c:1679).
+ *
+ * It is 'A', and that is an accident of the command table rather than a design.
+ * cmd_lookup_key walks converted_list[] by ascending key code and returns the
+ * FIRST entry whose cmd matches (ui-game.c:451-456); many commands carry
+ * CMD_NULL, so the winner is simply whichever sits at the lowest key. That is
+ * "Debug mode commands" at KTRL('A') = 0x01 (cmd_hidden, ui-game.c:225 -
+ * registered like any other list, cmds_all keymap 0). Being below 0x20 it then
+ * goes through UN_KTRL_CAP, +64 (ui-game.c:469-470, ui-event.h:135-136), giving
+ * 'A' in BOTH keysets.
+ *
+ * So `@A1` really does quick-select in these pickers upstream. Core keeps
+ * upstream's warts, so it does here too.
+ */
+const EFFECT_ITEM_CMD_KEY = "A";
+
+/** `code`'s command key under the live keyset (rogue_like_commands). */
+function itemCmdKey(code: string): string | undefined {
+  const keys = ITEM_CMD_KEYS[code];
+  if (!keys) return undefined;
+  const roguelike = state.options?.get("rogue_like_commands") ?? false;
+  return roguelike ? keys.r ?? keys.o : keys.o;
+}
+
+/**
  * The faithful get_item picker (textui_get_item, ui-object.c): shows the prompt
  * and "(Inven: a-c, / for Equip, - for floor, ESC)" header over the allowed
  * sources and resolves the chosen ItemTargetRef, or null on ESC / an empty
  * menu. Used by the item-target effect chooser and the item-command pickers.
+ *
+ * `cmdKey` enables the `@`-inscription quick-select for this command (see
+ * inscripTagRow / get_tag): pass the command's own key, or leave it out for a
+ * picker that upstream drives with CMD_NULL, where only a bare `@<digit>` tag
+ * can match.
  */
 async function selectItemFrom(
   prompt: string,
   tester: (o: GameObject) => boolean,
   mode: { inven?: boolean; quiver?: boolean; equip?: boolean; floor?: boolean },
   reject: string,
+  cmdKey?: string,
   deviceFail = false,
 ): Promise<ItemTargetRef | null> {
   const { sources, refs } = buildItemSources(tester, mode, deviceFail);
@@ -1220,7 +1293,7 @@ async function selectItemFrom(
     say(reject);
     return null;
   }
-  const chosen = await itemSelect(term, prompt.trim(), sources);
+  const chosen = await itemSelect(term, prompt.trim(), sources, 0, cmdKey);
   if (chosen === null) return null;
   return refs[chosen.source]?.[chosen.index] ?? null;
 }
@@ -1231,7 +1304,13 @@ async function selectItemFrom(
  * USE_QUIVER is covered by the inventory pass.
  */
 async function selectTargetItem(req: ItemRequest): Promise<ItemTargetRef | null> {
-  return selectItemFrom(req.prompt, req.tester, req.mode, req.reject);
+  return selectItemFrom(
+    req.prompt,
+    req.tester,
+    req.mode,
+    req.reject,
+    EFFECT_ITEM_CMD_KEY,
+  );
 }
 
 /**
@@ -1250,7 +1329,9 @@ async function storeSellPick(
 ): Promise<SellPick> {
   const { sources, refs } = buildItemSources(tester, { inven: true, equip: true, floor: true });
   if (sources.length === 0) return { kind: "empty" };
-  const chosen = await itemSelect(term, prompt.trim(), sources);
+  // store_sell's get_item runs under CMD_DROP (ui-store.c:518), so the @-tag
+  // command letter here is Drop's, not a sell-specific one.
+  const chosen = await itemSelect(term, prompt.trim(), sources, 0, itemCmdKey("drop"));
   if (chosen === null) return { kind: "cancel" };
   const ref = refs[chosen.source]?.[chosen.index];
   if (!ref) return { kind: "cancel" };
@@ -1891,6 +1972,7 @@ async function useItem(
     filter,
     mode,
     emptyMsg,
+    itemCmdKey(code),
     DEVICE_VERBS.has(code),
   );
   if (ref === null) return;
@@ -1939,14 +2021,16 @@ async function activateItem(): Promise<void> {
     const fail = deviceFailColumn(state, obj, isKindAware);
     const name = describeObject(state, obj);
     const label = fail ? `${name.padEnd(40).slice(0, 40)} ${fail}` : name;
-    items.push({ label, color: UI_TEXT });
+    items.push({ label, color: UI_TEXT, inscrip: obj.note });
     handles.push(handle);
   }
   if (items.length === 0) {
     say("You have no items to activate.");
     return;
   }
-  const idx = await selectFromMenu(term, "Activate which item? ", items);
+  const idx = await selectFromMenu(term, "Activate which item? ", items, undefined, {
+    inscripCmdKey: itemCmdKey("activate"),
+  });
   if (idx === null) return;
   const handle = handles[idx];
   if (handle === undefined) return;
@@ -1977,6 +2061,7 @@ async function takeOffItem(): Promise<void> {
     (o) => !(o.flags?.has(OF.STICKY) ?? false),
     { equip: true },
     "You have nothing to take off or unwield.",
+    itemCmdKey("takeoff"),
   );
   if (ref === null || !("handle" in ref)) return;
   const handle = ref.handle;
@@ -2243,12 +2328,15 @@ async function openIgnoreSetup(): Promise<void> {
 /**
  * Pick one of the player's usable spellbooks, or null if none/cancelled. The
  * prompt is "<Verb> which book?" (ui-spell.c:388) and the empty message is the
- * per-command form (defaults to the cast wording).
+ * per-command form (defaults to the cast wording). `cmdCode` is the command this
+ * pick runs under, so `@m1` / `@G1` / `@b1` book tags resolve (get_item's cmd
+ * argument: CMD_BROWSE_SPELL at ui-spell.c:340, `cmd` at ui-spell.c:391).
  */
 async function chooseBook(
   verb: string,
   emptyMsg = "You have no books that you can use.",
   tester: (obj: GameObject) => boolean = () => true,
+  cmdCode?: string,
 ): Promise<number | null> {
   const { items, handles } = magicBooks(state, tester);
   if (items.length === 0) {
@@ -2259,7 +2347,9 @@ async function chooseBook(
   // the "<Verb> which book?" selection, even for one candidate, so browse/cast/
   // study never silently jump past the book prompt. The player presses the
   // book's letter (or ESC) exactly as in the original.
-  const idx = await selectFromMenu(term, `${verb} which book?`, items);
+  const idx = await selectFromMenu(term, `${verb} which book?`, items, undefined, {
+    inscripCmdKey: cmdCode ? itemCmdKey(cmdCode) : undefined,
+  });
   if (idx === null) return null;
   return handles[idx] ?? null;
 }
@@ -2280,6 +2370,7 @@ async function castSpell(): Promise<void> {
     "Cast",
     "There are no spells you can cast.",
     (o) => objCanCastFrom(player, o),
+    "cast",
   );
   if (handle === null) return;
   const bookObj = gearGet(state.gear, handle);
@@ -2359,6 +2450,7 @@ async function studySpell(): Promise<void> {
     "Study",
     "You cannot learn any new spells from the books you have.",
     (o) => objCanStudy(player, o),
+    "study",
   );
   if (handle === null) return;
   const args: Record<string, unknown> = { handle };
@@ -2415,6 +2507,7 @@ async function browseCmd(): Promise<void> {
     "Browse",
     "You have no books that you can read.",
     (o) => objCanBrowse(state.actor.player, o),
+    "browse",
   );
   if (handle === null) return;
   const bookObj = gearGet(state.gear, handle);
@@ -2474,6 +2567,7 @@ async function fireCmd(): Promise<void> {
     (o) => tvalIsAmmo(o.tval) && o.tval === tval,
     { inven: true },
     "You have no ammunition for your weapon.",
+    itemCmdKey("fire"),
   );
   if (ref === null || !("handle" in ref)) return;
   const handle = ref.handle;
@@ -2513,6 +2607,7 @@ async function throwCmd(): Promise<void> {
     canThrow,
     { inven: true, equip: true, floor: true },
     "You have nothing to throw.",
+    itemCmdKey("throw"),
   );
   if (ref === null) return;
   const dir = await aimDir();
@@ -4458,14 +4553,16 @@ async function useGenericCmd(): Promise<void> {
      * do_cmd_use routes it to do_cmd_activate (cmd-obj.c L987) - the kind-effect
      * rings included, not just items with an `act:`. */
     if (!obj || !objIsActivatable(obj)) continue;
-    rows.push({ label: describeObject(state, obj), color: UI_TEXT });
+    rows.push({ label: describeObject(state, obj), color: UI_TEXT, inscrip: obj.note });
     picks.push({ code: "activate", handle });
   }
   if (rows.length === 0) {
     say("You have no items to use.");
     return;
   }
-  const idx = await selectFromMenu(term, "Use which item? ", rows);
+  const idx = await selectFromMenu(term, "Use which item? ", rows, undefined, {
+    inscripCmdKey: itemCmdKey("use"),
+  });
   if (idx === null) return;
   const pick = picks[idx];
   if (!pick) return;
@@ -5503,6 +5600,7 @@ function enterStoreModal(store: Store): Promise<void> {
             (t) => tvalIsWearable(t.tval),
             { inven: true, quiver: true },
             "You have nothing to wear or wield.",
+            itemCmdKey("wield"),
           );
           if (ref === null || !("handle" in ref)) return null;
           return runStoreItemCmd("wield", { handle: ref.handle });
@@ -5513,6 +5611,7 @@ function enterStoreModal(store: Store): Promise<void> {
             () => true,
             { equip: true },
             "You have nothing to take off or unwield.",
+            itemCmdKey("takeoff"),
           );
           if (ref === null || !("handle" in ref)) return null;
           return runStoreItemCmd("takeoff", { handle: ref.handle });

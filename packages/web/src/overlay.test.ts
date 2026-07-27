@@ -10,6 +10,7 @@ import {
   getAimDir,
   getCheck,
   getKeyInline,
+  inscripTagRow,
   AIM_STAR,
   AIM_CLOSEST,
 } from "./overlay";
@@ -914,6 +915,139 @@ describe("itemSelect (get_item picker: menu_header + source switching)", () => {
     expect(term.snapshot()[0] ?? "").toContain("(Equip: a-a,");
     press(win, "a");
     expect(await done).toEqual({ source: 1, index: 0 });
+  });
+});
+
+/*
+ * get_tag (ui-object.c:693-753) + MN_INSCRIP_TAGS (ui-menu.c:488-490): the
+ * `@`-inscription quick-select. Two forms, per that function's own comment at
+ * L688-691: a bare `@n`, and `@xn` where x is the command the tag is meant for.
+ */
+describe("inscripTagRow (get_tag)", () => {
+  const row = (label: string, inscrip?: string): MenuItem =>
+    inscrip === undefined ? { label } : { label, inscrip };
+
+  it("matches a bare @<digit> with no command key at all", () => {
+    const items = [row("a Potion of Speed"), row("a Potion of Healing", "@1")];
+    expect(inscripTagRow(items, "1")).toBe(1);
+  });
+
+  it("matches the @xn form only when x is THIS command's key", () => {
+    const items = [row("a Potion of Healing", "@q1")];
+    // 'q' is Quaff (ui-game.c:130), so the tag is for quaffing and nothing else.
+    expect(inscripTagRow(items, "1", "q")).toBe(0);
+    expect(inscripTagRow(items, "1", "r")).toBe(-1);
+    // ...and without a command key the @q1 form cannot match either: L727's
+    // bare check sees 'q', not the digit.
+    expect(inscripTagRow(items, "1")).toBe(-1);
+  });
+
+  it("walks EVERY '@' in one inscription (strchr(s + 1, '@'), L747)", () => {
+    // One potion tagged slot 2 for quaff and slot 1 for the generic Use command.
+    const items = [row("a Potion of Healing", "@q2@U1")];
+    expect(inscripTagRow(items, "2", "q")).toBe(0);
+    expect(inscripTagRow(items, "1", "U")).toBe(0);
+    expect(inscripTagRow(items, "1", "q")).toBe(-1);
+  });
+
+  it("returns the FIRST matching row, and skips rows with no inscription", () => {
+    const items = [
+      row("a Scroll of Light"),
+      row("a Potion of Healing", "@1"),
+      row("a Potion of Cure Light Wounds", "@1"),
+    ];
+    expect(inscripTagRow(items, "1")).toBe(1);
+  });
+
+  it("is -1 when no row carries that digit (the key then falls through)", () => {
+    const items = [row("a Potion of Healing", "@2"), row("a Scroll of Light")];
+    expect(inscripTagRow(items, "1", "q")).toBe(-1);
+  });
+
+  it("does not treat a trailing '@' as a match", () => {
+    expect(inscripTagRow([row("a Potion of Healing", "cursed@")], "1")).toBe(-1);
+  });
+});
+
+describe("itemSelect: @-inscription quick-select", () => {
+  const inven: ItemMenuSource = {
+    label: "Inven",
+    items: [
+      { label: "a Potion of Cure Light Wounds", tag: "a" },
+      { label: "a Potion of Speed", tag: "b", inscrip: "@q1" },
+    ],
+  };
+
+  it("selects the inscribed row by digit, not the row that digit would letter", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = itemSelect(term, "Quaff which potion?", [inven], 0, "q");
+    press(win, "1");
+    expect(await done).toEqual({ source: 0, index: 1 });
+  });
+
+  it("ignores the tag when the command key differs (a @q1 tag under Read)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    const done = itemSelect(term, "Read which scroll?", [inven], 0, "r");
+    press(win, "1"); // no match: the menu stays open
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+
+  it("beats a literal digit tag on another row (get_cursor_key substitutes first)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    // A quiver-style source: m->selections is "0123456789" (item_menu L1155), so
+    // row 0's own tag IS "1". The inscription on row 1 must still win.
+    const quiver: ItemMenuSource = {
+      label: "Quiver",
+      items: [
+        { label: "24 Arrows", tag: "1" },
+        { label: "19 Seeker Arrows", tag: "2", inscrip: "@f1" },
+      ],
+    };
+    const done = itemSelect(term, "Fire which ammunition?", [quiver], 0, "f");
+    press(win, "1");
+    expect(await done).toEqual({ source: 0, index: 1 });
+  });
+});
+
+describe("selectFromMenu: @-inscription quick-select is opt-in", () => {
+  const books: MenuItem[] = [
+    { label: "a Magic Book of Magic for Beginners", tag: "a" },
+    { label: "a Magic Book of Conjurings", tag: "b", inscrip: "@m1" },
+  ];
+
+  it("resolves the tag when the caller passes inscripCmdKey", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    // 'm' is Cast (ui-game.c:176).
+    const done = selectFromMenu(term, "Cast which book?", books, undefined, {
+      inscripCmdKey: "m",
+    });
+    press(win, "1");
+    expect(await done).toBe(1);
+  });
+
+  it("leaves digits alone on every menu that does NOT opt in", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(70);
+    // A BARE @1 - the form that needs no command key - so this fails the moment
+    // the opt-in gate is dropped, rather than passing for the wrong reason.
+    const bare: MenuItem[] = [
+      { label: "a Magic Book of Magic for Beginners", tag: "a" },
+      { label: "a Magic Book of Conjurings", tag: "b", inscrip: "@1" },
+    ];
+    const done = selectFromMenu(term, "Cast which book?", bare);
+    press(win, "1"); // must NOT select row 1: no inscripCmdKey was given
+    press(win, "Escape");
+    expect(await done).toBeNull();
   });
 });
 
