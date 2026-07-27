@@ -577,9 +577,12 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
     /* Curse is permanent */
     return false;
   } else if (strength >= curse.power) {
-    /* Successfully removed this curse. uncurse_object (effect-handler-general.c
-       L192-196) emits NO message on success - only the failure branches do. */
+    /* Successfully removed this curse (effect-handler-general.c:193-196). The
+     * SECOND call passes message = true, so success does announce which curse
+     * went: obj-curse.c:231 "The %s curse is removed!". */
     removeObjectCurse(obj, pick);
+    const name = env.item?.reg?.curses[pick]?.name;
+    if (name) say(ctx, `The ${name} curse is removed!`);
   } else if (!obj.flags.has(OF.FRAGILE)) {
     /* Failure to remove, object is now fragile */
     say(
