@@ -33,7 +33,7 @@ import type { Rng } from "../rng";
 import type { ObjRegistry } from "../obj/bind";
 import { tvalFindIdx } from "../obj/bind";
 import type { GameObject } from "../obj/object";
-import { learnBirthObviousFlags, objectLearnOnWield } from "../obj/knowledge";
+import { learnBirthObviousFlags, objectLearnOnWield, OBJ_NOTICE } from "../obj/knowledge";
 import {
   distributeCharges,
   objectAbsorb,
@@ -1107,9 +1107,12 @@ function startItemIncluded(
  * for a default class kit those items carry no modifiers, so obj_k stays
  * empty at birth exactly as upstream.
  *
- * DEFERRED (see the module ledger): the display half of the obj-knowledge
- * block (object_flavor_aware / object_set_base_known / obj->known); and the
- * post-outfit calc_inventory (the caller runs it once the quiver is wired).
+ * Each item is marked OBJ_NOTICE_ASSESSED (L652), the per-object half of the
+ * knowledge block that the port models on the live object.
+ *
+ * DEFERRED (see the module ledger): object_flavor_aware on the start items
+ * (L650) - it needs the per-game FlavorKnowledge, which does not exist until
+ * wireGame, so a starting potion/scroll still reads by its flavour.
  */
 export function outfitPlayer(
   gear: Gear,
@@ -1173,7 +1176,15 @@ export function outfitPlayer(
      * port has no known twin, so it prices the real object - the same
      * approximation the store path uses (obj/value.ts). */
     player.au -= objectValueReal(reg, obj, obj.number);
-    /* DEFERRED: object knowledge (obj->known / flavor_aware / base_known). */
+
+    /* obj->known->notice |= OBJ_NOTICE_ASSESSED (player-birth.c L652): a start
+     * item has been handled, so it is assessed from birth. The port keeps that
+     * per-object bit on the live object (objectKnownShadow mirrors it), and
+     * without it the synthesised shadow returned before the flag/element
+     * intersection - so a Wooden Torch's own BURNS_OUT / LIGHT_2 flags read as
+     * UNKNOWN and the character sheet printed '?' down the torch's column even
+     * though those flags are known from birth (learnBirthObviousFlags above). */
+    obj.notice |= OBJ_NOTICE.ASSESSED;
 
     /* Carry the item. */
     invenCarry(gear, obj, limits);

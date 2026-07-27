@@ -16,6 +16,7 @@ import {
   ObjRegistry,
   objectNew,
   newGear,
+  calcInventory,
   bindConstants,
   ObjAllocState,
   ArtifactState,
@@ -131,6 +132,9 @@ describe("W2-007 live tweak dispatch", () => {
     const gear = newGear();
     gear.store.set(1, obj);
     gear.pack.push(1);
+    /* upkeep->inven[] is derived (calc_inventory) and it is what the item
+     * pickers list; a fixture that only fills the master gear list has none. */
+    calcInventory(gear, constants);
     const player = {
       equipment: [],
       objKnown: { dd: 1, ds: 1, ac: 1, toA: 1, toH: 1, toD: 1 },

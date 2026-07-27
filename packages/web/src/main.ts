@@ -271,6 +271,7 @@ import {
   messageHistoryLines,
   historyLines,
   packMenu,
+  quiverMenu,
   deviceMenu,
   deviceFailColumn,
   objLetter,
@@ -1245,9 +1246,11 @@ function targetRefObject(ref: ItemTargetRef): GameObject | null {
  * Build the get_item sources (command_wrk lists) the request allows - Inven,
  * Equip, Floor, in upstream display order - each filtered by req.tester, with a
  * parallel ItemTargetRef list per source so the itemSelect result maps back to
- * the right handle / floor index. The quiver rides the pack in this gear model,
- * so USE_QUIVER folds into the inventory pass. `deviceFail` shows the OLIST_FAIL
- * failure column on the inventory rows (device-use pickers).
+ * the right handle / floor index. USE_QUIVER is its OWN list, as upstream's
+ * command_wrk states are (built from `player->upkeep->quiver`, digit-tagged, and
+ * reached with '|'); it used to fold into the inventory pass, which is why
+ * quivered ammo appeared under Inven. `deviceFail` shows the OLIST_FAIL failure
+ * column on the inventory rows (device-use pickers).
  */
 function buildItemSources(
   tester: (o: GameObject) => boolean,
@@ -1256,7 +1259,7 @@ function buildItemSources(
 ): { sources: ItemMenuSource[]; refs: ItemTargetRef[][] } {
   const sources: ItemMenuSource[] = [];
   const refs: ItemTargetRef[][] = [];
-  if (mode.inven || mode.quiver) {
+  if (mode.inven) {
     const { items, handles } = deviceFail
       ? deviceMenu(state, tester, isKindAware)
       : packMenu(state, tester);
@@ -1283,6 +1286,13 @@ function buildItemSources(
     if (items.length > 0) {
       sources.push({ label: "Equip", items });
       refs.push(eRefs);
+    }
+  }
+  if (mode.quiver) {
+    const { items, handles } = quiverMenu(state, tester);
+    if (items.length > 0) {
+      sources.push({ label: "Quiver", items });
+      refs.push(handles.map((h) => ({ handle: h })));
     }
   }
   if (mode.floor) {
@@ -1417,8 +1427,8 @@ async function selectTargetItem(req: ItemRequest): Promise<ItemTargetRef | null>
 /**
  * store_sell get_item (ui-store.c L487 get_mode USE_INVEN|USE_EQUIP|USE_QUIVER|
  * USE_FLOOR): the faithful multi-source item pick the store screen uses, wired
- * as the runStore `sellPick` dependency. The quiver rides the pack in this gear
- * model (buildItemSources folds USE_QUIVER into the inventory pass). Distinct
+ * as the runStore `sellPick` dependency - all four sources, the quiver included
+ * (upstream sells ammo straight out of the quiver). Distinct
  * from selectItemFrom in that it does NOT emit the reject via the game message
  * log (invisible under the store frame): it returns "empty" so the store prints
  * the reject on its own message row, and "cancel" on ESC. A chosen floor pile
@@ -1428,7 +1438,12 @@ async function storeSellPick(
   prompt: string,
   tester: (o: GameObject) => boolean,
 ): Promise<SellPick> {
-  const { sources, refs } = buildItemSources(tester, { inven: true, equip: true, floor: true });
+  const { sources, refs } = buildItemSources(tester, {
+    inven: true,
+    equip: true,
+    quiver: true,
+    floor: true,
+  });
   if (sources.length === 0) return { kind: "empty" };
   // store_sell's get_item runs under CMD_DROP (ui-store.c:518), so the @-tag
   // command letter here is Drop's, not a sell-specific one.

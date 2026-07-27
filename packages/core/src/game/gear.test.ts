@@ -7,6 +7,9 @@ import { objectPrep } from "../obj/make";
 import type { StackLimits } from "../obj/object";
 import { bindPlayer } from "../player/bind";
 import { blankPlayer } from "../player/player";
+import { makeRuneEnv, OBJ_NOTICE } from "../obj/knowledge";
+import { objectFullyKnown, objectKnownShadow } from "../obj/known-object";
+import type { KnownDesc } from "../obj/known-object";
 import { Rng } from "../rng";
 import { startGame } from "../session/game";
 import type { GamePack } from "../session/game";
@@ -248,6 +251,39 @@ describe("outfitPlayer (player-birth.c player_outfit)", () => {
     expect(packTvals).toContain(TV.FOOD);
     expect(packTvals).toContain(TV.POTION);
     expect(packTvals).toContain(TV.SCROLL);
+  });
+
+  it("marks every start item OBJ_NOTICE_ASSESSED (player-birth.c L652)", () => {
+    const reg = new ObjRegistry(pack.obj);
+    const rng = new Rng(42);
+    const gear = newGear();
+    const { race, cls, body } = humanWarrior();
+    const player = blankPlayer(race, cls, body);
+
+    outfitPlayer(gear, player, reg, rng, constants);
+
+    /* Upstream sets obj->known->notice |= OBJ_NOTICE_ASSESSED on each item it
+     * hands out. The port keeps that bit on the live object, and the known
+     * shadow bails out before the flag/element intersection without it - which
+     * is what made a Wooden Torch's own known-from-birth flags read UNKNOWN and
+     * printed '?' down its whole character-sheet column. */
+    const all = [...gear.store.values()];
+    expect(all.length).toBeGreaterThan(0);
+    for (const obj of all) {
+      expect(obj.notice & OBJ_NOTICE.ASSESSED).not.toBe(0);
+    }
+
+    /* The consequence, end to end: the torch reads fully known. */
+    const light = gearGet(gear, player.equipment[body.slots.findIndex((sl) => sl.type === "LIGHT")]!)!;
+    expect(light.flags.isEmpty()).toBe(false); // BURNS_OUT / LIGHT_2
+    const env = makeRuneEnv(
+      (slot: number) => gearGet(gear, player.equipment[slot] ?? 0),
+      () => false,
+      { properties: reg.properties, brands: reg.brands, slays: reg.slays, curses: reg.curses },
+    );
+    const known: KnownDesc = { isAware: () => false, isTried: () => false };
+    const shadow = objectKnownShadow(light, player, env, known);
+    expect(objectFullyKnown(light, shadow, player, env)).toBe(true);
   });
 
   it("deducts the outfit cost from starting gold (player-birth.c L654)", () => {

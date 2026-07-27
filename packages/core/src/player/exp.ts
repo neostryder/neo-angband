@@ -20,6 +20,7 @@
  */
 
 import type { Rng } from "../rng";
+import type { MessageType } from "../msg";
 import { PY_MAX_LEVEL, STAT_MAX } from "./types";
 import type { Player } from "./player";
 
@@ -40,8 +41,12 @@ export const PY_MAX_EXP = 99999999;
 export interface ExpDeps {
   /** RNG for rolling unrolled hitdice on the way up. */
   rng: Rng;
-  /** "Welcome to level %d." and the drain messages. */
-  msg?(text: string): void;
+  /**
+   * "Welcome to level %d." - upstream's msgt(MSG_LEVEL, ...) (player.c L250),
+   * so the type rides along and the message picks up MSG_LEVEL's colour and
+   * sound at the presentation boundary rather than defaulting to MSG_GENERIC.
+   */
+  msg?(text: string, type?: MessageType): void;
   /**
    * PU_BONUS | PU_HP | PU_SPELLS: recompute mhp / spells / mana / bonuses
    * from the new level. Runs once after the level loops settle.
@@ -107,7 +112,7 @@ export function adjustLevel(p: Player, deps: ExpDeps, verbose = true): void {
     if (p.lev > p.maxLev) p.maxLev = p.lev;
     if (verbose) {
       deps.onGainLevel?.(p, p.lev);
-      deps.msg?.(`Welcome to level ${p.lev}.`);
+      deps.msg?.(`Welcome to level ${p.lev}.`, "LEVEL");
     }
     /* effect_simple(EF_RESTORE_STAT) x5: drained stats come back. */
     for (let i = 0; i < STAT_MAX; i++) {

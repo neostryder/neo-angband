@@ -463,7 +463,9 @@ export function buildCharacterDump(
   out.push("", "", "  [Character Inventory]", "");
   {
     let label = 0;
-    for (const handle of state.gear.pack) {
+    /* upkeep->inven[], not the master gear list (L1095): the quiver gets its
+     * own section below, so a quivered stack must not be dumped twice. */
+    for (const handle of state.gear.inven ?? []) {
       const obj = gearGet(state.gear, handle);
       if (!obj) continue;
       out.push(...dumpItemLines(state, obj, dumpLabel(label++), extras));
