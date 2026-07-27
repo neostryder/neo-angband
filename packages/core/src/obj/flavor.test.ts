@@ -8,7 +8,7 @@ import { FlavorKnowledge } from "./knowledge";
 import { flavorInit } from "./flavor";
 import { registerBookKinds } from "../player/spell";
 import { bindPlayer } from "../player/bind";
-import type { PlayerPackRecords } from "../player/types";
+import type { PlayerPackRecords } from "../player/bind";
 import { buildProb, randnameMake } from "./randname";
 import { Rng } from "../rng";
 import { ODESC } from "./desc";
