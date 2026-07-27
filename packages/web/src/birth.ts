@@ -6,9 +6,14 @@
  * FINAL_CONFIRM. There is NO sex/gender stage in Angband 4.2.6; the port's
  * earlier Female/Male prompt was a divergence and is removed.
  *
- * ESC steps BACK one stage (BIRTH_BACK), re-entering the previous menu with
- * its prior cursor; only stage-0 ESC abandons the flow (the caller keeps the
- * default character). Each menu shows the upstream stage hint (setup_menus,
+ * ESC steps BACK one stage (BIRTH_BACK), re-entering the previous menu with its
+ * prior cursor. Stepping back off the FIRST stage returns null, which means
+ * BIRTH_RESET, NOT "abandon": upstream maps that BIRTH_BACK to the stage before,
+ * which is BIRTH_QUICKSTART, and then remaps that to BIRTH_RESET, starting
+ * creation over (ui-birth.c:1661-1666) - there is no ESC exit from birth at all
+ * (only KTRL('X'), which quits the program). So the caller must run birth AGAIN
+ * on null, never keep whatever character it had rolled; main.ts's maybeBirth
+ * loops for exactly this reason. Each menu shows the upstream stage hint (setup_menus,
  * ui-birth.c L565/578/586) as its subtitle and, for race/class, a per-row
  * stat-adjustment line (a compact race_help/class_help). The race and class
  * menus also carry '*' (random pick, menu_question ui-birth.c L841) and '@'
@@ -34,8 +39,9 @@
  * prompt (get_history_command, ui-birth.c:1498-1540); the result rides the
  * BirthChoice as `history` (applied via generatePlayer's `historyOverride`).
  *
- * Returns the choice, or null if the player backed all the way out (in which
- * case the caller keeps the default Human Warrior).
+ * Returns the choice, or null for BIRTH_RESET - the player stepped back off the
+ * first stage and creation must start over (see above). Null is never a licence
+ * to play on with an unchosen character.
  */
 
 import { selectFromMenu, promptText, menuNav, MENU_OPTIONS } from "./overlay";

@@ -208,17 +208,20 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     const heRow = rowOf(term, "b) Half-Elf");
     expect(heRow).toBe(10);
     expect(term.colorAt(2, heRow)).toBe(colorToCss(COLOUR_L_BLUE));
-    press(win, "Escape"); // stage 0: abandon, keep the default
+    press(win, "Escape"); // stage 0: BIRTH_RESET (start over), not an exit
     expect(await done).toBeNull();
   });
 
-  it("ESC on the race stage (stage 0) keeps the default character (null)", async () => {
+  it("ESC on the race stage (stage 0) means BIRTH_RESET - start over, not keep a default", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
     const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
     await tick();
     press(win, "Escape");
+    // null is BIRTH_RESET (ui-birth.c:1661-1666: BIRTH_BACK off the first stage
+    // -> BIRTH_QUICKSTART -> BIRTH_RESET), so the CALLER must re-enter birth.
+    // Upstream has no ESC exit from creation at all - only KTRL('X') quits.
     expect(await done).toBeNull();
   });
 

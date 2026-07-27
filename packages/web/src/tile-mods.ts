@@ -34,6 +34,25 @@ export interface TileModePack {
   menuname: string;
   /** The mod id that contributed this pack. */
   modId: string;
+  /**
+   * The contributing mod's display name (manifest `name`, e.g. "neo-linoleum"),
+   * falling back to its id. The Graphics menu shows this beside the pack so it
+   * is visible WHERE the tiles come from: the packs are not core content, and a
+   * bare "Original Tiles / Adam Bolt's tiles / ..." list gives the player no way
+   * to tell that they appeared because a mod is enabled - or which mod to
+   * disable to make them go away.
+   */
+  modName: string;
+}
+
+/** A tiles mod that is installed, whether or not it is currently enabled. */
+export interface TileModProvider {
+  id: string;
+  /** manifest `name`, falling back to the id. */
+  name: string;
+  /** How many tile packs it declares (before licence/unknown-grafID filtering). */
+  packCount: number;
+  enabled: boolean;
 }
 
 /** A raw tilePacks entry as authored in a tiles mod's manifest.json. */
@@ -45,6 +64,40 @@ interface RawTilePack {
 function readTilePacks(raw: unknown): RawTilePack[] {
   const packs = (raw as { tilePacks?: unknown } | null)?.tilePacks;
   return Array.isArray(packs) ? (packs as RawTilePack[]) : [];
+}
+
+/** A manifest's display name, or the mod id when it declares none. */
+function readModName(raw: unknown, id: string): string {
+  const name = (raw as { name?: unknown } | null)?.name;
+  return typeof name === "string" && name.trim() !== "" ? name : id;
+}
+
+/** True for a `shape:"tiles"` manifest (the only shape contributing tile packs). */
+function isTilesMod(raw: unknown): boolean {
+  return (raw as { shape?: unknown } | null)?.shape === "tiles";
+}
+
+/**
+ * Every installed tiles mod with its enabled state, in discovery order. The
+ * Graphics menu uses the DISABLED ones to explain an otherwise dead-end screen:
+ * with no tiles mod on, that menu offers ASCII and nothing else, and the player
+ * has no way to know the tilesets live in a mod they have to enable first.
+ */
+export function tileModProviders(input: {
+  manifests: ReadonlyMap<string, unknown>;
+  enabledIds: readonly string[];
+}): TileModProvider[] {
+  const out: TileModProvider[] = [];
+  for (const [id, raw] of input.manifests) {
+    if (!isTilesMod(raw)) continue;
+    out.push({
+      id,
+      name: readModName(raw, id),
+      packCount: readTilePacks(raw).length,
+      enabled: input.enabledIds.includes(id),
+    });
+  }
+  return out;
 }
 
 /**
@@ -63,7 +116,8 @@ export function enabledTileModes(input: {
   for (const id of input.enabledIds) {
     const raw = input.manifests.get(id);
     if (!raw) continue;
-    if ((raw as { shape?: unknown }).shape !== "tiles") continue;
+    if (!isTilesMod(raw)) continue;
+    const modName = readModName(raw, id);
     for (const entry of readTilePacks(raw)) {
       const grafID = typeof entry.grafID === "number" ? entry.grafID : NaN;
       if (!Number.isFinite(grafID) || grafID === GRAPHICS_NONE) continue;
@@ -72,7 +126,7 @@ export function enabledTileModes(input: {
       if (!mode || mode.grafID === GRAPHICS_NONE || !mode.file) continue;
       if (mode.directory === "shockbolt") continue; // never bundled
       seen.add(grafID);
-      out.push({ grafID, menuname: mode.menuname, modId: id });
+      out.push({ grafID, menuname: mode.menuname, modId: id, modName });
     }
   }
   return out;
@@ -107,11 +161,13 @@ function readEnabledIds(discovered: readonly string[]): string[] {
 }
 
 /**
- * Browser entry point: glob every bundled mod manifest, resolve the enabled
- * set, and return the tile modes the enabled tiles mods contribute. Safe to
- * call at any time; returns [] when no tiles mod is enabled/discovered.
+ * Glob every bundled mod manifest and resolve the enabled set - the shared
+ * browser-side input for both public entry points below.
  */
-export function discoverEnabledTileModes(): TileModePack[] {
+function discover(): {
+  manifests: Map<string, unknown>;
+  enabledIds: readonly string[];
+} {
   const manifestGlob = import.meta.glob("../mods/*/manifest.json", {
     eager: true,
     import: "default",
@@ -123,6 +179,23 @@ export function discoverEnabledTileModes(): TileModePack[] {
     if (m && m[1] && isShippedMod(m[1])) manifests.set(m[1], val);
   }
 
-  const enabledIds = readEnabledIds([...manifests.keys()]);
-  return enabledTileModes({ manifests, enabledIds });
+  return { manifests, enabledIds: readEnabledIds([...manifests.keys()]) };
+}
+
+/**
+ * Browser entry point: glob every bundled mod manifest, resolve the enabled
+ * set, and return the tile modes the enabled tiles mods contribute. Safe to
+ * call at any time; returns [] when no tiles mod is enabled/discovered.
+ */
+export function discoverEnabledTileModes(): TileModePack[] {
+  return enabledTileModes(discover());
+}
+
+/**
+ * Browser entry point: every installed tiles mod with its enabled state, so the
+ * Graphics menu can name the mod a pack comes from and point at the one that
+ * would supply more.
+ */
+export function discoverTileModProviders(): TileModProvider[] {
+  return tileModProviders(discover());
 }

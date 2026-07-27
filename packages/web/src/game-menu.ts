@@ -34,7 +34,8 @@ export type GameMenuAction =
   | "equip-cmp"
   | "item-actions"
   | "switch"
-  | "new";
+  | "new"
+  | "exit";
 
 export interface GameMenuEntry {
   action: GameMenuAction;
@@ -110,6 +111,13 @@ export function gameMenuEntries(): GameMenuEntry[] {
     {
       action: "new",
       item: { label: "New character", hint: "Save this hero to its slot and birth a new one." },
+    },
+    {
+      action: "exit",
+      item: {
+        label: "Save and exit",
+        hint: "Save and leave play for the title screen and character list (Ctrl-X).",
+      },
     },
   ];
 }

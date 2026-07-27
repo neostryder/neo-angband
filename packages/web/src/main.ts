@@ -228,6 +228,7 @@ import { installWebSound } from "./sound";
 import {
   createTileRenderer,
   discoverEnabledTileModes,
+  discoverTileModProviders,
   isTile,
   loadTilePrefs,
   tileCode,
@@ -946,16 +947,26 @@ function tileDrawFor(atlas: TileAtlas | null): TileDraw | undefined {
 // Shockbolt (5,6) is never bundled or surfaced (its
 // assets carry a bespoke licence); a user can still select it via the
 // ?tiles=<url>&graf=5 URL override with their own copy.
+//
+// Each pack carries the NAME of the mod that contributed it (modName) so the
+// Graphics screen can show it: the packs are not core content, and an unlabelled
+// list of tileset names tells the player nothing about where they came from.
+// Installed tiles mods that are switched off ride along as disabledProviders, so
+// the screen names the mod to enable instead of just offering ASCII.
 const tileModeMenu: TileModeMenu = {
   modes: [
     { grafID: GRAPHICS_NONE, menuname: "None (ASCII)" },
     ...discoverEnabledTileModes().map((m) => ({
       grafID: m.grafID,
       menuname: m.menuname,
+      modName: m.modName,
     })),
   ],
   current: () => currentGrafID,
   apply: (grafID: number) => applyTileMode(grafID, true),
+  disabledProviders: discoverTileModProviders()
+    .filter((p) => !p.enabled)
+    .map((p) => ({ name: p.name, packCount: p.packCount })),
 };
 
 // Sidebar mode (do_cmd_sidebar_mode, ui-options.c): SIDEBAR_MODE is a UI-term
@@ -4153,6 +4164,33 @@ function switchCharacter(): void {
 }
 
 /**
+ * Save and exit (^X, textui_quit, ui-game.c:199): flush the save, then LEAVE
+ * play for the title screen.
+ *
+ * Upstream quits to the OS, and the next launch shows news.txt and then waits
+ * for New/Open from the File menu (main-win.c:5475). A browser tab has no OS to
+ * quit to, so the web analog reloads WITHOUT the continuation flag - which is
+ * exactly what routes boot through the title screen and then the character
+ * select (isContinuation / bootGame), where this hero is waiting to be resumed.
+ * Nothing is lost: the save is written before the reload.
+ */
+function exitToTitle(): void {
+  persistSave();
+  try {
+    // Next boot is a genuine launch, not a continuation, so BOTH skip-the-title
+    // flags have to be clear or the title would be skipped on the way out.
+    sessionStorage.removeItem(SKIP_TITLE_KEY);
+    sessionStorage.removeItem(BIRTH_DONE_KEY);
+  } catch {
+    /* storage disabled: boot then has nothing to read, so the title shows */
+  }
+  const url = new URL(location.href);
+  url.searchParams.delete("new");
+  url.searchParams.delete("seed");
+  location.assign(url.toString());
+}
+
+/**
  * The in-game menu (Escape): the discoverable home for EVERY major screen and
  * the save/character actions, so a player who knows no keys is never stuck.
  * Row structure lives in game-menu.ts (gameMenuEntries); every row carries a
@@ -4286,6 +4324,13 @@ async function openGameMenu(): Promise<void> {
       if (await confirmYesNo("Start a new character? (this hero is saved to its slot)")) {
         persistSave(); // keep the current character in its slot, then birth anew
         newGame();
+      }
+      break;
+    case "exit":
+      // Confirmed like Switch/New: the save is written first, so this loses
+      // nothing, but a stray tap should not throw the player out of a live run.
+      if (await confirmYesNo("Save and exit to the title screen?")) {
+        exitToTitle();
       }
       break;
     default:
@@ -4707,14 +4752,16 @@ function redrawCmd(): void {
 }
 
 /**
- * Save and quit (^X, textui_quit, cmd_util:199): flush the save, then return to
- * the game menu (the web build's "exit to main menu" - switch character / new
- * character / resume all live there). Faithful to save-then-leave-play.
+ * Save and quit (^X, textui_quit, cmd_util:199): confirm, then save and leave
+ * play for the title screen (exitToTitle). This used to save and merely reopen
+ * the game menu, which was not "quit" in any sense the player could see; the
+ * same action is now on the game menu's own "Save and exit" row, and both go
+ * through the one confirm-then-exitToTitle path.
  */
 function saveQuitCmd(): void {
-  autosave(true);
-  message = "Game saved.";
-  void openModal(openGameMenu);
+  void openModal(async () => {
+    if (await confirmYesNo("Save and exit to the title screen?")) exitToTitle();
+  });
 }
 
 /**
@@ -6374,32 +6421,46 @@ async function maybeBirth(): Promise<void> {
     return generateHistory(players.historyChart(race), state.rng);
   };
   await openModal(async () => {
+    // BIRTH_RESET (ui-birth.c:1615-1626 + 1661-1666): stepping back off the FIRST
+    // birth stage is NOT an exit. Upstream maps that BIRTH_BACK to the stage
+    // before, which is BIRTH_QUICKSTART, and then remaps THAT to BIRTH_RESET, so
+    // it re-pushes CMD_BIRTH_RESET and starts creation over; and in the quickstart
+    // prompt itself a bare ESCAPE is simply ignored (textui_birth_quickstart
+    // loops until Y/N/C/=). Birth has no ESC exit at all - only KTRL('X'), which
+    // quits the program.
+    //
+    // runBirth returns null for exactly that first-stage step-back, so the
+    // faithful handling is to run it AGAIN (a fresh call is what CMD_BIRTH_RESET
+    // amounts to here: cursors and stat work discarded, the shared RNG stream
+    // continuing). Accepting the null and playing on instead is what made ESC
+    // look like it "instantly creates a character with default settings" - the
+    // hero it kept was the throwaway one startGame had already rolled behind the
+    // birth screen, which the player never chose.
+    let choice: Awaited<ReturnType<typeof runBirth>> = null;
     // quickstart_allowed (ui-birth.c): offer the quick-start stage only when
     // a previous character's choices exist to reuse.
-    const choice = await runBirth(term, players.races, players.classes, {
-      // ui-birth.c draws random race/class/*/@/roller from the main game RNG.
-      rng: state.rng,
-      quickstart: birthChoice
-        ? {
-            raceName: birthChoice.raceName,
-            className: birthChoice.className,
-            ...(birthChoice.stats && birthChoice.stats.length === 5
-              ? { stats: birthChoice.stats }
-              : {}),
-          }
-        : null,
-      deps: birthDeps,
-      historyFor,
-      // player_random_name (player.c:375) for the name field's '*' key and the
-      // name finish_with_random_choices fills in. Draws on the same game RNG.
-      randomName: () => playerRandomName(state.rng, tolkienNameProbs()),
-      // Seed the '=' birth-options editor with the previous character's choices
-      // so a New Game defaults to them (as upstream keeps the last birth opts).
-      ...(birthChoice?.birthOptions ? { birthOptions: birthChoice.birthOptions } : {}),
-    });
-    if (!choice) {
-      say("Your adventure begins.");
-      return;
+    while (!choice) {
+      choice = await runBirth(term, players.races, players.classes, {
+        // ui-birth.c draws random race/class/*/@/roller from the main game RNG.
+        rng: state.rng,
+        quickstart: birthChoice
+          ? {
+              raceName: birthChoice.raceName,
+              className: birthChoice.className,
+              ...(birthChoice.stats && birthChoice.stats.length === 5
+                ? { stats: birthChoice.stats }
+                : {}),
+            }
+          : null,
+        deps: birthDeps,
+        historyFor,
+        // player_random_name (player.c:375) for the name field's '*' key and the
+        // name finish_with_random_choices fills in. Draws on the same game RNG.
+        randomName: () => playerRandomName(state.rng, tolkienNameProbs()),
+        // Seed the '=' birth-options editor with the previous character's choices
+        // so a New Game defaults to them (as upstream keeps the last birth opts).
+        ...(birthChoice?.birthOptions ? { birthOptions: birthChoice.birthOptions } : {}),
+      });
     }
     try {
       localStorage.setItem(BIRTH_KEY, JSON.stringify(choice));
