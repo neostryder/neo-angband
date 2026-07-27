@@ -663,6 +663,13 @@ export interface MenuItem {
    */
   tag?: string;
   /**
+   * The object's inscription (`obj->note`, the upstream quark) for rows in the
+   * get_item picker, so `@`-tags can quick-select this row (MN_INSCRIP_TAGS /
+   * get_tag, ui-object.c:693-753). Only the item picker reads it; every other
+   * menu leaves it unset and behaves exactly as before.
+   */
+  inscrip?: string | null;
+  /**
    * One-line help for THIS row, shown on a reserved line above the footer
    * while the row is under the cursor (the game menu's action descriptions,
    * char-select's roster detail, birth's per-race/class notes). When any item
@@ -690,6 +697,14 @@ export interface MenuItem {
 export interface SelectMenuOptions {
   /** browse_hook: lines shown below the list for the row under the cursor. */
   detail?: (index: number) => readonly ScreenLine[];
+  /**
+   * Enables the `@`-inscription quick-select (MN_INSCRIP_TAGS) on this menu, for
+   * the object pickers upstream drives through get_item. The value is the
+   * invoking command's own key (cmd_lookup_key_unktrl), matched by the `@xn`
+   * form; set it only on menus whose rows carry MenuItem.inscrip. Leaving it
+   * unset keeps digits meaning cursor navigation, as every other menu expects.
+   */
+  inscripCmdKey?: string | undefined;
   /** MN_DBL_TAP / read-only menu: Enter and letters never resolve; only ESC does. */
   browseOnly?: boolean;
   /** Colour applied to the cursor row instead of its own MenuItem.color (upstream draws the highlighted row COLOUR_WHITE regardless of its normal colour, e.g. view_ability_display). */
@@ -911,6 +926,17 @@ export function selectFromMenu(
           return;
         }
       }
+      // `@`-inscription quick-select, for the object pickers that opt in via
+      // inscripCmdKey. get_cursor_key (ui-menu.c:488-490) resolves the digit
+      // before any tag match, and it must also come before menuNav below, which
+      // would otherwise swallow the digit as a cursor move.
+      if (extra?.inscripCmdKey !== undefined && ev.key >= "0" && ev.key <= "9") {
+        const row = inscripTagRow(items, ev.key, extra.inscripCmdKey);
+        if (row >= 0) {
+          pick(row);
+          return;
+        }
+      }
       if (ev.key.length === 1) {
         // MN_CASELESS_TAGS: an explicit per-item tag (see MenuItem.tag) is
         // matched case-insensitively before nav so a tag letter/digit is
@@ -984,6 +1010,35 @@ function sourceTag(src: ItemMenuSource, i: number): string {
 }
 
 /**
+ * get_tag (ui-object.c:693-753): the row in `items` that the `@`-inscription
+ * tag `digit` selects, or -1 for none. Scans the rows in list order and, within
+ * each row's inscription, every '@' in turn; an '@' matches when the character
+ * after it IS the digit (`@1`), or when it is `cmdKey` and the one after THAT is
+ * the digit (`@q1` - the "@xn" form, where x is the command the tag is for, so
+ * one object can carry a different slot per command). First row wins.
+ *
+ * `cmdKey` is the command's own keypress (cmd_lookup_key_unktrl, ui-game.c:461),
+ * which differs between the two keysets - so the same `@z1` picks a different
+ * command under rogue_like_commands, exactly as upstream.
+ */
+export function inscripTagRow(
+  items: readonly MenuItem[],
+  digit: string,
+  cmdKey?: string,
+): number {
+  for (let i = 0; i < items.length; i++) {
+    const note = items[i]?.inscrip;
+    if (!note) continue;
+    // strchr(quark_str(obj->note), '@'), then strchr(s + 1, '@') (L720, L747).
+    for (let at = note.indexOf("@"); at >= 0; at = note.indexOf("@", at + 1)) {
+      if (note[at + 1] === digit) return i;
+      if (cmdKey && note[at + 1] === cmdKey && note[at + 2] === digit) return i;
+    }
+  }
+  return -1;
+}
+
+/**
  * Build the get_item header (menu_header, ui-object.c L764-914): the current
  * source's "Label: a-c," range, then the legality legends for the OTHER
  * sources in upstream order (Equip/Inven via '/', Quiver via '|', floor via
@@ -1019,12 +1074,20 @@ function itemMenuHeader(
  * Select by tag letter/digit, cursor + Enter, or tap; ESC cancels. Resolves the
  * chosen { source, index } as indices into the ORIGINAL `sources` array (so the
  * caller maps back to the right handle / floor ref), or null on ESC / empty.
+ *
+ * `cmdKey` is the invoking command's own key, enabling the `@`-inscription
+ * quick-select (MN_INSCRIP_TAGS, item_menu L1160-1177): see inscripTagRow. It is
+ * resolved against the CURRENTLY displayed source, which is where upstream reads
+ * it too - item_menu rebuilds m->inscriptions from the current command_wrk list
+ * on every re-entry and frees it on the way out (L1164, L1221), so a tag never
+ * carries across a source switch.
  */
 export function itemSelect(
   term: GlyphTerm,
   prompt: string,
   sources: readonly ItemMenuSource[],
   initialSource = 0,
+  cmdKey?: string,
 ): Promise<{ source: number; index: number } | null> {
   return new Promise((resolve) => {
     const firstNonEmpty = (): number => sources.findIndex((s) => s.items.length > 0);
@@ -1122,6 +1185,16 @@ export function itemSelect(
         return;
       }
       if (ev.key.length === 1) {
+        // `@`-inscription quick-select. get_cursor_key (ui-menu.c:488-490) does
+        // this substitution BEFORE any tag match, so an inscribed digit beats a
+        // literal digit tag (the quiver's own 0-9 lettering).
+        if (ev.key >= "0" && ev.key <= "9") {
+          const row = inscripTagRow(src().items, ev.key, cmdKey);
+          if (row >= 0) {
+            pick(row);
+            return;
+          }
+        }
         // Tag letter/digit select (MN_PVT_TAGS), case-insensitive.
         const lower = ev.key.toLowerCase();
         const rowsList = src().items;

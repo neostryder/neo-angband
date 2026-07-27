@@ -55,7 +55,6 @@
  * toggleable and persist in the save (so a save round-trips a player's
  * choice, and a future gap can wire the reader without a save-format change),
  * but toggling them currently has NO visible effect:
- *   - autoexplore_commands - no autoexplore command exists in this port.
  *   - use_old_target - target_set_interactive's "reuse the last target by
  *     default" default-selection nuance is not modelled.
  *   - show_target / highlight_player - the persistent map-cursor highlight
@@ -63,11 +62,17 @@
  *     interactive loop, which already has its own cursor) is not built.
  *   - view_yellow_light - torchlit-terrain yellow tinting (grid_get_attr's
  *     ATTR_LIGHT path) is not modelled in the shell's terrain coloring.
- *   - center_player - see viewport()'s own doc comment in main.ts.
  * Wired (real behaviour, see main.ts): auto_more (gates the -more- message
  * pager pumpMessages, main.ts), rogue_like_commands, use_sound,
  * solid_walls, hybrid_walls, purple_uniques, animate_flicker, mouse_movement,
- * hp_changes_color. Already wired before this gap (unchanged here):
+ * hp_changes_color,
+ * center_player (verifyPanel recentres on it rather than only edge-scrolling,
+ * main.ts - see viewport()'s own doc comment there),
+ * autoexplore_commands (the 'p' explore command is bound in main.ts, and the
+ * option itself gates descend/ascend falling through to navigate-down /
+ * navigate-up when the player is not standing on the stair,
+ * packages/core/src/game/cave-cmd.ts - cmd-cave.c:62-66,107-111).
+ * Already wired before this gap (unchanged here):
  * pickup_always, pickup_inven, show_flavors, show_damage, disturb_near,
  * notify_recharge, effective_speed, and the birth_* options read at
  * construction.
