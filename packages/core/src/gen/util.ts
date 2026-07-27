@@ -326,6 +326,14 @@ export class Gen {
    * square_know_pile / square_forget all short-circuit on `c != cave`).
    */
   lightLevel = false;
+  /**
+   * msg() for the handful of generation-time messages upstream prints to the
+   * player: new_player_spot's placement failure (gen-util.c:422) is UNgated -
+   * unlike the cheat_room restart narration - so it must reach a real player.
+   * Set by the cave builder from CaveBuildContext; absent in bare unit-test Gen
+   * contexts, which then generate silently.
+   */
+  msg?: (text: string) => void;
   /** Current tunnel/streamer parameters (set by the cave builder). */
   profileTun: TunnelParams = ZERO_TUNNEL;
   profileStr: StreamerParams = ZERO_STREAMER;
@@ -1514,7 +1522,12 @@ export function newPlayerSpot(
   createStair: "down" | "up" | null = null,
 ): Loc | null {
   const grid = findStart(g);
-  if (!grid) return null;
+  if (!grid) {
+    /* gen-util.c:422. NOT gated on cheat_room - upstream always tells the
+     * player, then dumps the level (the dump is host-io) and re-rolls. */
+    g.msg?.("Failed to place player; please report.  Restarting generation.");
+    return null;
+  }
   if (createStair === "down") g.c.setFeat(grid, FEAT.MORE);
   else if (createStair === "up") g.c.setFeat(grid, FEAT.LESS);
   return grid;

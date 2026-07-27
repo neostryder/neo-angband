@@ -2250,6 +2250,13 @@ function makeChangeLevel(
          * "bugfix.stairsReachable" is the only flag cave_generate reads;
          * absent => faithful. */
         ...(state.modRules ? { modRules: state.modRules } : {}),
+        /* new_player_spot's placement failure (gen-util.c:422): always audible. */
+        msg: (text: string): void => state.msg?.(text),
+        /* cheat_room's restart narration (generate.c:1164, :1222): only when
+         * the cheat option is on, which is what gates it upstream. */
+        ...((state.options?.get("cheat_room") ?? false)
+          ? { cheatMsg: (text: string): void => state.msg?.(text) }
+          : {}),
       },
       /* is_daytime() only affects the town (depth 0) build; passed always so a
        * RECALL back to town honours the day/night clock. */

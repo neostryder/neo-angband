@@ -266,6 +266,12 @@ export interface CaveBuildContext {
    * when present, town_gen reloads this layout instead of regenerating.
    */
   townLayout?: Chunk | null;
+  /**
+   * msg() for the generation-time messages that reach a real player, currently
+   * just new_player_spot's placement failure (gen-util.c:422). Threaded onto
+   * Gen.msg; absent in bare test contexts.
+   */
+  msg?: (text: string) => void;
 }
 
 export interface CaveBuildResult {
@@ -2704,6 +2710,8 @@ function makeGen(ctx: CaveBuildContext, c: Chunk): Gen {
   /* Attach the current profile's tunnel/streamer parameters for the tunnel
    * and streamer helpers (they are read-only during a build). */
   g.profileTun = ctx.profile.tun;
+  /* new_player_spot's placement-failure message (gen-util.c:422). */
+  if (ctx.msg) g.msg = ctx.msg;
   g.profileStr = ctx.profile.str;
   /* dun->profile = choose_profile(p) (generate.c L1157): help_greater_vault
    * (gen-room.c L3099) compares dun->profile->name against "classic". */

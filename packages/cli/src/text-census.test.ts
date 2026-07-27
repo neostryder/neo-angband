@@ -156,16 +156,12 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
 
   "GAP: single missing lines, each a small fix in an existing function":
     [
-      "No apparent path for exploration.", // the explore command, cmd-cave.c:1542
       "There is a scream and the door slams shut!", // cmd-cave.c:1595
-      "That item is not within your reach.", // do_cmd_fire, player-attack.c:1339
       "Cancelled.", // ui-game.c:663
       "Are you sure? ", // ui-input.c:2014
       "Keep this keymap? ", // the keymap editor, ui-options.c:692
       "Do you want to quit? ", // ui-death.c:411
       "You are not allowed to change your name!", // ui-player.c:1250
-      "Generation restarted: %s.", // generate.c:1165
-      "Failed to place player; please report.  Restarting generation.", // gen-util.c:422
       "(up to 5 hex digits):", // the visuals editor, ui-knowledge.c:707
       "Enter 2 or 3 (for stat) character code and return or return to clear ", // ui-equip-cmp.c:1237
     ],
