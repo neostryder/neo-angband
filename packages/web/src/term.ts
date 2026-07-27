@@ -90,6 +90,35 @@ function parseRgb(css: string): [number, number, number] | null {
 const FIXED_COLS = 80;
 const FIXED_ROWS = 24;
 
+/**
+ * A rows x cols grid carrying over whatever `prev` already held (the overlapping
+ * top-left rectangle; new cells come up empty).
+ *
+ * This is what keeps a resize from BLANKING the terminal. `fit()` has to
+ * reallocate the grid because the geometry may change, and it used to allocate an
+ * empty one - so every resize wiped the screen and left it wiped until something
+ * repainted. The only repaint wired to onResize is the game map, so a resize
+ * landing while a full-screen overlay owned the screen erased that overlay: the
+ * ResizeObserver fires once on observe, i.e. right around the boot title screen,
+ * which is how launching the game came to show nothing at all with the title
+ * modal still silently waiting on a key. (Repainting the map there instead is no
+ * better - it draws the town over the title, the same bug wearing a hat.)
+ *
+ * In the default fixed mode the grid is always 80x24, so a resize changes only
+ * cell size and letterbox offset and this is exact: every cell carries over.
+ * Reflow mode (the mobile opt-in) keeps the overlapping rectangle and lets the
+ * next paint fill the rest, which is strictly better than starting blank.
+ */
+export function carryGrid<T>(
+  prev: readonly (readonly (T | null)[])[],
+  rows: number,
+  cols: number,
+): (T | null)[][] {
+  return Array.from({ length: rows }, (_, y) =>
+    Array.from({ length: cols }, (_, x) => prev[y]?.[x] ?? null),
+  );
+}
+
 export class GlyphTerm {
   private ctx: CanvasRenderingContext2D;
   private cellW = 12;
@@ -232,9 +261,9 @@ export class GlyphTerm {
       this.fitFixed(w, h);
     }
 
-    this.grid = Array.from({ length: this.rows }, () =>
-      new Array<Glyph | null>(this.cols).fill(null),
-    );
+    // Carry the screen across the resize rather than starting blank - see
+    // carryGrid: an empty grid here is what made the boot title screen vanish.
+    this.grid = carryGrid(this.grid, this.rows, this.cols);
     this.ctx.textBaseline = "top";
     // Sync the fallback vector font to the current cell (used only for glyphs
     // the bitmap font lacks). Harmless when a bitmap glyph is blitted instead.
