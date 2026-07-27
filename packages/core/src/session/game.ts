@@ -750,6 +750,10 @@ function wireGame(
   // mexp * rlev / plev with the fractional carry.
   const expDeps: ExpDeps = {
     rng: state.rng,
+    /* msgt(MSG_LEVEL, "Welcome to level %d.") (player.c L250). This sink was
+     * missing, so every level-up was silent: the level and max HP simply
+     * changed on the status line with no message at all. */
+    msg: (text, type): void => state.msg?.(text, type),
     onLevelChange: (p): void => {
       refreshDerived();
       /* Casters learn/forget spells at the new level; calcSpells announces the
@@ -2358,6 +2362,35 @@ function refreshTownStores(state: GameState, reg: CoreRegistries): void {
 }
 
 /**
+ * Materialise upkeep->inven[] and upkeep->quiver[] for a game that has just
+ * come into existence, from birth (player_outfit -> inven_carry sets PU_INVEN,
+ * which the first update_stuff turns into calc_inventory) or from a savefile
+ * (rd_gear's explicit calc_inventory tail, load.c:1187).
+ *
+ * Both views are DERIVED and never persisted, and until this ran nothing built
+ * them: the port only recomputed them as a side effect of an object command or
+ * a game turn. Anything reading them before that - an inventory listing, an
+ * item picker, the quiver screen - saw an empty pack and an empty quiver.
+ *
+ * `characterDungeon` is false here: upstream's "You re-arrange your quiver."
+ * notice belongs to play, not to a character coming into being.
+ */
+function buildGearViews(
+  state: GameState,
+  reg: CoreRegistries,
+  ammoTval: number,
+): void {
+  calcInventory(state.gear, reg.constants, {
+    store: false,
+    ammoTval,
+    objectValue: (obj: GameObject): number =>
+      computeObjectValue(reg.objects, obj, 1, true),
+    rogueLike: state.options?.get("rogue_like_commands") ?? false,
+    characterDungeon: false,
+  });
+}
+
+/**
  * Assemble a runnable GameState from a pack: generate a level, birth a
  * character, derive its bonuses, and register the placed monsters. The
  * caller wires state.nextCommand (input) and state.updateFov (FOV) and then
@@ -2619,6 +2652,8 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
 
   // seed_flavor already drawn above; flavor_init runs inside wireGame.
   const wired = wireGame(state, reg, players, pstate, seedFlavor, pack);
+  /* PU_INVEN from the starting kit's inven_carry (player-birth.c). */
+  buildGearViews(state, reg, pstate.ammoTval);
 
   // kind->everseen = true for each bought start item (player-birth.c L658). At
   // birth the gear holds only the starting kit, so marking every carried kind
@@ -3349,6 +3384,8 @@ export function loadGame(
    * back to 0 so flavor_init still produces a stable per-load assignment. */
   const seedFlavor = save.seedFlavor ?? 0;
   const wired = wireGame(state, reg, players, pstate, seedFlavor, pack);
+  /* rd_gear's tail (load.c:1187). */
+  buildGearViews(state, reg, pstate.ammoTval);
   /* restore() replaces the aware/tried sets, so it must run AFTER flavor_init's
    * aware-marking of non-flavoured kinds - the save is the source of truth for
    * what the player has actually identified. */

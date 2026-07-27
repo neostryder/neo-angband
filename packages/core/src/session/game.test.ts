@@ -329,6 +329,14 @@ describe("startGame (new-game assembly)", () => {
     expect(p.lev).toBe(1);
     expect(p.exp).toBe(0);
 
+    /* msgt(MSG_LEVEL, "Welcome to level %d.") (player.c L250). wireGame has to
+     * hand ExpDeps a msg sink or the announcement goes nowhere - it did not,
+     * so every level-up was silent while the level and max HP just changed. */
+    const said: { text: string; type?: unknown }[] = [];
+    game.state.msg = (text, type): void => {
+      said.push(type === undefined ? { text } : { text, type });
+    };
+
     /* player_kill_monster's reward slice through the wired hook: a fat
      * kill (mexp * rlev / plev = 60 at level 1) passes level thresholds. */
     game.state.onPlayerKill?.({
@@ -359,6 +367,14 @@ describe("startGame (new-game assembly)", () => {
     const gainEntries = p.hist.filter((e) => histHas(e.type, HIST.GAIN_LEVEL));
     expect(gainEntries.length).toBe(p.lev - 1);
     expect(gainEntries[0]!.event).toBe("Reached level 2");
+
+    /* One announcement per level gained, each typed MSG_LEVEL (its colour and
+     * sound come from that type at the presentation boundary). */
+    const welcomes = said.filter((m) => m.text.startsWith("Welcome to level "));
+    expect(welcomes.map((m) => m.text)).toEqual(
+      Array.from({ length: p.lev - 1 }, (_, i) => `Welcome to level ${i + 2}.`),
+    );
+    expect(welcomes.every((m) => m.type === "LEVEL")).toBe(true);
   });
 
   it("killing a unique logs HIST_SLAY_UNIQUE; a non-unique kill logs nothing", () => {

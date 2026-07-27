@@ -218,6 +218,33 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     expect(nameBefore).not.toContain(`of ${potionKind.name}`);
   });
 
+  it("rebuilds upkeep->inven and the quiver on load (rd_gear tail, load.c:1187)", () => {
+    const game = startGame(pack, { seed: 555, depth: 5, className: "Ranger" });
+    const state = game.state;
+    /* A Ranger births with a bow and arrows, so both views are non-trivial. */
+    const invenBefore = state.gear.inven ?? [];
+    const quiverBefore = (state.gear.quiver ?? []).filter((h) => h !== 0);
+    expect(invenBefore.length).toBeGreaterThan(0);
+    expect(quiverBefore.length).toBeGreaterThan(0);
+
+    const restored = loadGame(pack, JSON.parse(JSON.stringify(saveGame(game))));
+    const rs = restored.state;
+
+    /* Neither view is persisted (they are derived), so load has to recompute
+     * them or the resumed character shows an empty inventory and empty quiver. */
+    expect(rs.gear.pack.length).toBe(state.gear.pack.length);
+    expect((rs.gear.inven ?? []).length).toBe(invenBefore.length);
+    expect((rs.gear.quiver ?? []).filter((h) => h !== 0).length).toBe(
+      quiverBefore.length,
+    );
+    /* Same objects in the same order, by name. */
+    const names = (g: typeof state.gear, list: number[]): string[] =>
+      list.map((h) => g.store.get(h)?.kind.name ?? "?");
+    expect(names(rs.gear, rs.gear.inven ?? [])).toEqual(
+      names(state.gear, invenBefore),
+    );
+  });
+
   it("keeps a killed unique dead across a reload (SV-01, load.c:532-535)", () => {
     const game = startGame(pack, { seed: 606, depth: 4, className: "Warrior" });
     const state = game.state;

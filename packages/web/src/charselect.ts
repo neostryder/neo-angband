@@ -54,10 +54,30 @@ function charHint(c: CharMeta, now: number): string {
 }
 
 /**
- * Run the picker until the player chooses. Living characters resume; a dead
- * character offers to clear its tombstone; the last row starts a new
- * character. ESC resumes the most-recent living character, or starts a new one
- * if there are none (there is always a way forward).
+ * Confirm deleting a save, naming what is about to be destroyed. A living
+ * character is a real loss, so it asks twice as bluntly as a tombstone does:
+ * there is no undo and no other place to delete a save from (the browser owns
+ * the storage, so there is no file to remove by hand - the reason this screen
+ * has a delete at all when upstream, with a savefile directory, does not).
+ */
+async function confirmDelete(term: GlyphTerm, c: CharMeta): Promise<boolean> {
+  const who = `${c.name || "(unnamed)"} the ${c.race} ${c.cls}, level ${c.level}`;
+  const title = c.alive ? `Delete ${who}?` : `${c.name || "(unnamed)"} has died.`;
+  const keep = c.alive ? "Keep this character" : "Leave the tombstone";
+  const drop = c.alive ? "Delete this save PERMANENTLY" : "Delete this record";
+  const pick = await selectFromMenu(term, title, [{ label: keep }, { label: drop }], "[ ESC to go back ]", {
+    ...(c.alive ? { subtitle: "The save is erased from this browser. There is no undo." } : {}),
+  });
+  return pick === 1;
+}
+
+/**
+ * Run the picker until the player chooses. Living characters resume; the last
+ * row starts a new character. Delete (or Backspace) on any row erases that save
+ * after a confirmation - a tombstone's own row also offers it on selection,
+ * since a dead character cannot be played. ESC resumes the most-recent living
+ * character, or starts a new one if there are none (there is always a way
+ * forward).
  */
 export async function runCharacterSelect(
   term: GlyphTerm,
@@ -75,12 +95,24 @@ export async function runCharacterSelect(
       color: FG,
       hint: "Birth a brand-new character in a fresh save slot.",
     };
+    /* The delete request, resolved after the menu closes: opening a confirm
+     * while this menu's own capturing keydown listener is still attached would
+     * double-capture keys (the same constraint optionsKey documents). */
+    let deleteRow = -1;
+    const requestDelete = (cursor: number): number | null => {
+      if (cursor < 0 || cursor >= roster.length) return null; // not a character row
+      deleteRow = cursor;
+      return cursor; // close the menu on this row; handled below
+    };
     const pick = await selectFromMenu(
       term,
       "Select a character",
       [...items, newRow],
-      "[ a-z to choose, tap a row, ESC for the most recent ]",
-      { subtitle: "Living characters resume; tombstones are memorials." },
+      "[ a-z to choose, tap a row, Del to delete, ESC for the most recent ]",
+      {
+        subtitle: "Living characters resume; tombstones are memorials.",
+        commands: { Delete: requestDelete, Backspace: requestDelete },
+      },
     );
 
     if (pick === null) {
@@ -91,16 +123,13 @@ export async function runCharacterSelect(
 
     const chosen = roster[pick];
     if (!chosen) continue;
-    if (chosen.alive) return { action: "resume", id: chosen.id };
 
-    // A tombstone: offer to clear it (it cannot be played).
-    const what = await selectFromMenu(
-      term,
-      `${chosen.name || "(unnamed)"} has died.`,
-      [{ label: "Leave the tombstone" }, { label: "Delete this record" }],
-      "[ ESC to go back ]",
-    );
-    if (what === 1) return { action: "delete", id: chosen.id };
-    // otherwise loop back to the list
+    // Del on a row, or selecting a tombstone (which cannot be played): both
+    // land on the same confirmation.
+    if (pick === deleteRow || !chosen.alive) {
+      if (await confirmDelete(term, chosen)) return { action: "delete", id: chosen.id };
+      continue; // back to the list
+    }
+    return { action: "resume", id: chosen.id };
   }
 }

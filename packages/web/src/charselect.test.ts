@@ -144,6 +144,53 @@ describe("runCharacterSelect", () => {
     expect(await done).toEqual({ action: "delete", id: "dead1" });
   });
 
+  it("Del on a living row asks first, then deletes that save", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runCharacterSelect(term, [
+      meta({ id: "a1", name: "Alpha" }),
+      meta({ id: "b2", name: "Beta" }),
+    ]);
+    press(win, "ArrowDown"); // cursor onto Beta
+    press(win, "Delete");
+    await tick();
+    /* Named the character, and said plainly that it cannot be undone. */
+    expect(term.snapshot()[0]).toContain("Delete Beta the Human Warrior, level 3?");
+    expect(term.snapshot().join("|")).toContain("There is no undo");
+    press(win, "b"); // Delete this save PERMANENTLY
+    expect(await done).toEqual({ action: "delete", id: "b2" });
+  });
+
+  it("Backspace also asks, and keeping the character returns to the list", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runCharacterSelect(term, [meta({ id: "a1", name: "Alpha" })]);
+    press(win, "Backspace");
+    await tick();
+    expect(term.snapshot()[0]).toContain("Delete Alpha");
+    press(win, "a"); // Keep this character
+    await tick();
+    expect(term.snapshot()[0]).toContain("Select a character");
+    /* The row still plays: the delete request did not leak into the resume. */
+    press(win, "a");
+    expect(await done).toEqual({ action: "resume", id: "a1" });
+  });
+
+  it("Del on the New row is a no-op (there is no save behind it)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runCharacterSelect(term, [meta({ id: "a1", name: "Alpha" })]);
+    press(win, "ArrowDown"); // cursor onto [ New character ]
+    press(win, "Delete");
+    await tick();
+    expect(term.snapshot()[0]).toContain("Select a character");
+    press(win, "Escape");
+    expect(await done).toEqual({ action: "resume", id: "a1" });
+  });
+
   it("rows carry hints: roster detail for the living, memorial for the dead", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;

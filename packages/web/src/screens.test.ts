@@ -18,7 +18,12 @@ import {
   placePlayer,
   ObjRegistry,
   objectNew,
+  ELEM,
+  buildUiEntryConfig,
+  characterGrid,
+  objectLearnOnWield,
   gearAdd,
+  calcInventory,
   COLOUR_RED,
   COLOUR_SLATE,
   COLOUR_VIOLET,
@@ -90,6 +95,8 @@ import {
   ctimeStamp,
   monsterListScreenLines,
   magicBooks,
+  packMenu,
+  quiverMenu,
 } from "./screens";
 import type { Monster } from "@neo-angband/core";
 
@@ -642,6 +649,10 @@ function addPack(state: GameState, kindName: string, number = 1): GameObject {
   obj.weight = kind.weight;
   const handle = gearAdd(state.gear, obj);
   state.gear.pack.push(handle);
+  /* upkeep->inven[] is DERIVED (calc_inventory, player-calcs.c:1023) and it is
+   * what every pack listing walks, so a fixture that only pushes onto the master
+   * gear list has an empty inventory. */
+  calcInventory(state.gear, objConstants);
   return obj;
 }
 
@@ -802,6 +813,7 @@ describe("magicBooks tester param (screens.ts, per-verb item_tester: cmd-obj.c L
     const bookObj = objectPrep(new Rng(1), objReg, objConstants, kind, 0, "average");
     const handle = gearAdd(state.gear, bookObj);
     state.gear.pack.push(handle);
+    calcInventory(state.gear, objConstants);
     return state;
   }
 
@@ -1258,5 +1270,104 @@ describe("monsterListScreenLines ([, ui-mon-list.c)", () => {
     const lines = monsterListScreenLines(state, 80);
     expect(lines).toHaveLength(1);
     expect(lines[0]!.text).toContain("hallucinations are too wild");
+  });
+});
+
+
+/* ------------------------------------------------------------------ */
+/* Inventory vs quiver, and the resist grid's knowledge gate           */
+/* ------------------------------------------------------------------ */
+
+describe("inventory listings walk upkeep->inven, not the master gear list", () => {
+  it("lists quivered ammo in the quiver only, never in the inventory", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    addPack(state, "& Ration~ of Food");
+    const shots = addPack(state, "& Iron Shot~", 20);
+
+    /* calc_inventory routed the ammo into a quiver slot (player-calcs.c:1119). */
+    expect(state.gear.quiver?.filter((h) => h !== 0)).toHaveLength(1);
+
+    const inv = inventoryLines(state).map((l) => l.text);
+    expect(inv.some((t) => t.includes("Ration"))).toBe(true);
+    expect(inv.some((t) => t.includes("Iron Shot"))).toBe(false);
+
+    /* The quiver source lists it, tagged by SLOT DIGIT (build_obj_list I2D). */
+    const q = quiverMenu(state);
+    expect(q.items).toHaveLength(1);
+    expect(q.items[0]!.tag).toBe("0");
+    expect(q.items[0]!.label).toContain("Iron Shot");
+    expect(shots.number).toBe(20);
+
+    /* And no item picker over the pack offers it either. */
+    expect(packMenu(state).items.some((i) => i.label.includes("Iron Shot"))).toBe(false);
+  });
+});
+
+describe("characterGrid knowledge gate (object_flag_is_known / object_element_is_known)", () => {
+  const uiConfig = buildUiEntryConfig({
+    uiEntry: loadJson<{ records: unknown[] }>("ui_entry").records,
+    uiEntryBase: loadJson<{ records: unknown[] }>("ui_entry_base").records,
+    uiEntryRenderer: loadJson<{ records: unknown[] }>("ui_entry_renderer").records,
+    objectProperty: loadJson<{ records: unknown[] }>("object_property").records,
+    playerProperty: loadJson<{ records: unknown[] }>("player_property").records,
+  } as never);
+
+  /**
+   * The default test runeEnv carries no registry tables (the harness default);
+   * rune learning needs the real object_property list, so give this state the
+   * shipped tables exactly as session/game.ts wireGame does.
+   */
+  function withRunes(state: GameState): GameState {
+    state.runeEnv = makeRuneEnv(
+      (slot: number) => state.gear.store.get(state.actor.player.equipment[slot] ?? 0) ?? null,
+      (v) => state.rng.randcalcVaries(v),
+      {
+        brands: objReg.brands,
+        slays: objReg.slays,
+        curses: objReg.curses,
+        properties: objReg.properties,
+      },
+    );
+    return state;
+  }
+
+  /** Wield a real kind into body slot `slot`, learning what upstream learns. */
+  function wield(state: GameState, kindName: string, slot: number): GameObject {
+    const kind = objReg.kinds.find((k) => k.name === kindName) as ObjectKind;
+    const obj = objectNew(kind);
+    obj.tval = kind.tval;
+    obj.sval = kind.sval;
+    obj.number = 1;
+    obj.weight = kind.weight;
+    const handle = gearAdd(state.gear, obj);
+    state.gear.pack.push(handle);
+    state.actor.player.equipment[slot] = handle;
+    objectLearnOnWield(state.actor.player, obj, state.runeEnv);
+    return obj;
+  }
+
+  it("prints '.' for a mundane weapon, whose runes are ALL known because it has none", () => {
+    const state = withRunes(makeTestState({ playerGrid: loc(20, 12) }));
+    wield(state, "& Main~ Gauche~", 0);
+    const grid = characterGrid(state, uiConfig);
+    const acidRow = grid.resistPanels[0]!.rows[0]!;
+    /* object_fully_known -> object_element_is_known true -> value 0 -> '.'.
+     * Reading p->obj_k alone printed '?' in every row of the weapon's column. */
+    expect(acidRow.cells[0]!.symbol).toBe(".");
+    const anyUnknown = grid.resistPanels.some((panel) =>
+      panel.rows.some((r) => r.cells[0]!.symbol === "?"),
+    );
+    expect(anyUnknown).toBe(false);
+  });
+
+  it("still prints '?' for a property whose rune is genuinely unlearned", () => {
+    const state = withRunes(makeTestState({ playerGrid: loc(20, 12) }));
+    const obj = wield(state, "& Main~ Gauche~", 0);
+    /* Give the weapon a resistance the player has NOT learned: it now has an
+     * unknown rune, so object_fully_known is false and the row reads '?'. */
+    obj.elInfo[ELEM.ACID]!.resLevel = 1;
+    const grid = characterGrid(state, uiConfig);
+    const acidRow = grid.resistPanels[0]!.rows.find((r) => r.label === " Acid:")!;
+    expect(acidRow.cells[0]!.symbol).toBe("?");
   });
 });

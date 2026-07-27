@@ -43,7 +43,9 @@ import {
 import { EL_INFO_IGNORE, OF_SIZE } from "../obj/types";
 import { SKILL } from "../player/types";
 import { playerFlags } from "../player/calcs";
+import { objectFullyKnown, objectKnownShadow } from "../obj/known-object";
 import { gearGet } from "./gear";
+import { knownDescOf } from "./describe";
 import type { Player } from "../player/player";
 import type { GameObject } from "../obj/object";
 import type { GameState } from "./context";
@@ -1178,11 +1180,22 @@ function modifierToSkill(modind: number): { skill: number; num: number; den: num
  * used to gate knowledge via p.objKnown. The upstream separate curse-object
  * iteration is deferred (see the ledger); this reads the object's own
  * flags/modifiers/el_info, which already fold in merged curse data in the port.
+ *
+ * `fullyKnown` is object_fully_known(obj) (obj-knowledge.c L754), which is the
+ * FIRST route out of both object_flag_is_known (L776) and
+ * object_element_is_known (L799) - upstream calls those two helpers here rather
+ * than reading p->obj_k directly. It is true for gear with no unknown runes,
+ * which for ordinary equipment (a plain torch, soft leather armour, a mundane
+ * weapon) means no runes at all, so every flag and element reads as KNOWN and
+ * the grid prints '.'. Callers that cannot synthesise obj->known leave it false,
+ * the pre-existing p->obj_k-only behaviour. The MOD/STAT case takes no such
+ * route in upstream either (L764: raw p->obj_k->modifiers), and does not here.
  */
 export function computeObjectValues(
   entry: UiEntry,
   obj: GameObject | null,
   p: Player,
+  fullyKnown = false,
 ): { val: number; auxval: number } {
   if (!obj || entry.objProps.length === 0) {
     return { val: UI_ENTRY_VALUE_NOT_PRESENT, auxval: UI_ENTRY_VALUE_NOT_PRESENT };
@@ -1217,7 +1230,8 @@ export function computeObjectValues(
         }
         break;
       case OP_FLAG:
-        if (p.objKnown.flags.has(ind)) {
+        /* object_flag_is_known (obj-knowledge.c L773-787). */
+        if (fullyKnown || p.objKnown.flags.has(ind)) {
           v = obj.flags.has(ind) ? 1 : 0;
           if (v && op.haveValue) v = op.value;
         } else {
@@ -1226,7 +1240,8 @@ export function computeObjectValues(
         }
         break;
       case OP_IGNORE:
-        if ((p.objKnown.elInfo[ind]?.resLevel ?? 0) !== 0) {
+        /* object_element_is_known (obj-knowledge.c L795-809). */
+        if (fullyKnown || (p.objKnown.elInfo[ind]?.resLevel ?? 0) !== 0) {
           v = ((obj.elInfo[ind]?.flags ?? 0) & EL_INFO_IGNORE) !== 0 ? 1 : 0;
           if (v && op.haveValue) v = op.value;
         } else {
@@ -1237,7 +1252,8 @@ export function computeObjectValues(
       case OP_RESIST:
       case OP_VULN:
       case OP_IMM:
-        if ((p.objKnown.elInfo[ind]?.resLevel ?? 0) !== 0) {
+        /* object_element_is_known (obj-knowledge.c L795-809). */
+        if (fullyKnown || (p.objKnown.elInfo[ind]?.resLevel ?? 0) !== 0) {
           v = obj.elInfo[ind]?.resLevel ?? 0;
           if (v && op.haveValue) v = op.value;
         } else {
@@ -1838,6 +1854,18 @@ export function characterGrid(
   const equipment: (GameObject | null)[] = [];
   for (let i = 0; i < bodyCount; i++) equipment.push(slotObject(state, i));
 
+  /* obj->known, synthesised ONCE per equipped object - upstream caches exactly
+   * this per object across the whole grid (cached_object_data, ui-entry.c
+   * L726-733). object_flag_is_known and object_element_is_known both take
+   * object_fully_known as their first route out (obj-knowledge.c L776, L799),
+   * and mundane gear carries no runes at all, so it IS fully known: a plain
+   * torch, soft leather armour or a mundane weapon must print '.' down every
+   * row. Reading p->obj_k alone (what this did) printed '?' for all of them. */
+  const knownDesc = knownDescOf(state);
+  const objFullyKnown: boolean[] = equipment.map((o) =>
+    o ? objectFullyKnown(o, objectKnownShadow(o, p, state.runeEnv, knownDesc), p, state.runeEnv) : false,
+  );
+
   const renderRow = (
     entry: UiEntry,
     forcePlayerValZero: boolean,
@@ -1846,7 +1874,7 @@ export function characterGrid(
     const vals: number[] = [];
     const auxs: number[] = [];
     for (let j = 0; j < bodyCount; j++) {
-      const r = computeObjectValues(entry, equipment[j]!, p);
+      const r = computeObjectValues(entry, equipment[j]!, p, objFullyKnown[j] ?? false);
       vals.push(r.val);
       auxs.push(r.auxval);
     }
