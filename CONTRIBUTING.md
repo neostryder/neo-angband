@@ -140,6 +140,31 @@ must also delete its entry.
 What it does not prove: that a message fires on the right event, in the right
 order, with the right message type. Presence is a floor, not parity.
 
+## The call-site census
+
+`packages/cli/src/call-census.test.ts` is the companion gate. Where the text
+census catches a message the port never says, this catches a *caller the port
+never wires*: a function that IS ported, correct and tested, whose caller does
+not exist. That is the shape of most of the bugs found by playing, because
+reviewing the ported function finds nothing wrong with it.
+
+```sh
+pnpm --filter @neo-angband/cli call-census              # tier 1, the gate
+pnpm --filter @neo-angband/cli call-census --shortfall  # + fewer-calls report
+pnpm --filter @neo-angband/cli call-census --unmatched  # + unmatched report
+```
+
+Tier 1 is "the port defines a function of this upstream name and nothing in the
+port mentions it". Everything it reports must be in `KNOWN_UNUSED` with a
+reason - `renamed` / `reduced` / `host` / `dead-in-c`, or a tracked `LEAD` that
+has not been run to ground yet. It fails in both directions, so wiring a caller
+means deleting its entry.
+
+Names are matched by stripping everything but letters and digits and
+lowercasing, so `calc_inventory` and `calcInventory` are the same key. Tiers 2
+and 3 (fewer call sites; no port symbol of that name) are reports, not gates -
+too much of both is legitimate shape difference.
+
 ## Attribution
 
 Neo Angband is built and maintained by neostryder at RPGM Tools. It is a
