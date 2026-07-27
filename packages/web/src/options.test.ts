@@ -50,7 +50,11 @@ function makeFakeWindow(): FakeWindow {
   };
 }
 
-function makeTerm(cols = 80, rows = 30): GlyphTerm & { snapshot(): string[] } {
+/**
+ * The REAL terminal size: 80x24. It used to be 30 rows, which hid the fact that
+ * an option list longer than the screen silently lost its tail.
+ */
+function makeTerm(cols = 80, rows = 24): GlyphTerm & { snapshot(): string[] } {
   const grid: string[][] = Array.from({ length: rows }, () => new Array(cols).fill(" "));
   return {
     size: () => ({ cols, rows }),

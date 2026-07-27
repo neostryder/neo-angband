@@ -495,6 +495,17 @@ export function weightLimit(state: PlayerState): number {
 }
 
 /**
+ * weight_remaining (player-calcs.c:1752-1765): tenth-pounds of carry capacity
+ * left before becoming burdened - `60 * adj_str_wgt[STR] - total_weight - 1`,
+ * which is NEGATIVE while there is room to spare (the character sheet prints
+ * `-diff/10`, so spare capacity shows as a negative "Overweight" figure, and
+ * real encumbrance shows as a positive one).
+ */
+export function weightRemaining(state: PlayerState, totalWeight: number): number {
+  return 60 * at(adj_str_wgt, state.statInd[STAT.STR] ?? 0) - totalWeight - 1;
+}
+
+/**
  * calc_blows (player-calcs.c:1703-1735): the blows a player would get with a
  * weapon of the given weight, as a pure function of the class blow
  * parameters and the STR/DEX stat indices (state->stat_ind upstream).

@@ -31,9 +31,11 @@ export interface ScreenLine {
   runs?: { text: string; color: string }[];
 }
 
-import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG } from "./ui-colors";
+import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG, UI_CURSOR } from "./ui-colors";
 
 const FG = UI_TEXT;
+/** curs_attrs[CURS_KNOWN][1] (ui-menu.c:32): the selected menu row's colour. */
+const CURSOR = UI_CURSOR;
 const DIM = UI_DIM;
 const TITLE = UI_TEXT;
 const HEADER_ROW = 0;
@@ -525,6 +527,67 @@ function paintLineEdit(
  * very first key replaces rather than clears-and-inserts; it does clear
  * firsttime afterwards, as any keypress does (L910).
  */
+/**
+ * askfor_aux over the CURRENT screen (ui-input.c:860), the inline form: the
+ * prompt is drawn at row 0 and the answer is typed right after it, leaving
+ * everything already on screen untouched.
+ *
+ * This is the shape of get_character_name (ui-input.c:1145-1169) - `prt("Enter a
+ * name for your character (* for a random name): ", 0, 0)` over the character
+ * sheet display_player(0) has just drawn - and of get_string generally. The
+ * full-screen promptText below is a different thing (its own titled screen) and
+ * must not be used where the C keeps the screen.
+ *
+ * Resolves the entered string, or null on ESCAPE. Clears row 0 either way
+ * (`prt("", 0, 0)`, L1162).
+ */
+export function promptTextInline(
+  term: GlyphTerm,
+  prompt: string,
+  initial = "",
+  maxLen = 15,
+  randomize?: () => string,
+): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
+    const st: LineEdit = { buf: initial, curs: 0 };
+    let firsttime = true;
+    const x = prompt.length;
+    const paint = (): void => {
+      const { cols } = term.size();
+      term.print(0, 0, " ".repeat(Math.max(0, cols - 1)), FG);
+      term.print(0, 0, prompt.slice(0, cols - 1), FG);
+      paintLineEdit(term, x, 0, st, firsttime);
+    };
+    const finish = (value: string | null): void => {
+      window.removeEventListener("keydown", onKey, true);
+      clearPromptRow(term);
+      resolve(value);
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      const wasFirst = firsttime;
+      firsttime = false;
+      /* get_name_keypress' '*' -> player_random_name (ui-input.c L1035-1042). */
+      if (randomize && ev.key === "*") {
+        const generated = randomize();
+        if (generated !== "") {
+          st.buf = generated.slice(0, maxLen);
+          st.curs = 0;
+        }
+        paint();
+        return;
+      }
+      const r = askforAuxKeypress(st, maxLen, ev.key, wasFirst, () => !ev.ctrlKey && !ev.metaKey);
+      if (r === "escape") return finish(null);
+      if (r === "enter") return finish(st.buf);
+      paint();
+    };
+    window.addEventListener("keydown", onKey, true);
+    paint();
+  });
+}
+
 export function promptText(
   term: GlyphTerm,
   title: string,
@@ -822,9 +885,16 @@ export function selectFromMenu(
         const it = items[i];
         if (!it) break;
         const letter = it.tag ?? menuLetter(i);
-        const mark = i === cursor ? ">" : " ";
-        const prefix = letter ? `${mark}${letter}) ` : `${mark}   `;
-        const color = it.disabled ? DIM : i === cursor && extra?.cursorColor ? extra.cursorColor : it.color ?? FG;
+        // display_menu_row (ui-menu.c:577-585): the tag is "%c) " - three
+        // columns - and the WHOLE row (tag included) takes the cursor colour
+        // when selected. There is no '>' marker in Angband; the selected row is
+        // light blue and carries the terminal cursor (set after this loop).
+        const prefix = letter ? `${letter}) ` : "   ";
+        const color = it.disabled
+          ? DIM
+          : i === cursor
+            ? (extra?.cursorColor ?? CURSOR)
+            : it.color ?? FG;
         term.print(0, BODY_TOP + r, `${prefix}${it.label}`.slice(0, cols - 1), color);
         /* display_rune's second field: its own colour at its own column. */
         const sfx = it.suffix;
@@ -836,6 +906,11 @@ export function selectFromMenu(
             it.disabled ? DIM : sfx.color,
           );
         }
+      }
+      // Term_gotoxy on the selected row (display_scrolling, ui-menu.c:212-213):
+      // the yellow frame the Windows front end draws for the cursor.
+      if (cursor >= top && cursor < top + bodyRows) {
+        term.setCursor?.(0, BODY_TOP + (cursor - top));
       }
       let dy = BODY_TOP + bodyRows;
       for (const line of detailLines) {
@@ -1121,10 +1196,12 @@ export function itemSelect(
         const i = top + r;
         const it = rowsList[i];
         if (!it) break;
-        const mark = i === cursor ? ">" : " ";
         const tag = sourceTag(src(), i);
-        const color = it.disabled ? DIM : it.color ?? FG;
-        term.print(0, listTop + r, `${mark}${tag}) ${it.label}`.slice(0, cols - 1), color);
+        const color = it.disabled ? DIM : i === cursor ? CURSOR : it.color ?? FG;
+        term.print(0, listTop + r, `${tag}) ${it.label}`.slice(0, cols - 1), color);
+      }
+      if (cursor >= top && cursor < top + bodyRows) {
+        term.setCursor?.(0, listTop + (cursor - top));
       }
       term.print(
         0,

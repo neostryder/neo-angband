@@ -178,7 +178,14 @@ interface SheetTerm extends GlyphTerm {
   hasTapHandler(): boolean;
 }
 
-function makeSheetTerm(cols = 100, rows = 30): SheetTerm {
+/**
+ * The fake term defaults to the REAL terminal size: 80x24, exactly what
+ * term.ts presents (FIXED_COLS x FIXED_ROWS) and what upstream lays out for.
+ * It used to default to 100x30, which is why nobody noticed that WIDE_COLS was
+ * 90: these tests proved the wide grid at a width the game never has, while the
+ * game itself always took the narrow fallback.
+ */
+function makeSheetTerm(cols = 80, rows = 24): SheetTerm {
   const grid: string[][] = Array.from({ length: rows }, () => new Array<string>(cols).fill(" "));
   const colors: (string | undefined)[][] = Array.from({ length: rows }, () =>
     new Array<string | undefined>(cols).fill(undefined),
@@ -322,7 +329,9 @@ describe("showCharacterSheet wide: faithful stat-table columns and colours", () 
     const noHist = setup("");
     void showCharacterSheet(noHist.term, noHist.state, "Fred");
     const empty = noHist.term.snapshot();
-    for (let r = 19; r < 29; r++) expect(empty[r] ?? "").toBe("");
+    // Rows 19 up to (but not including) the footer row, which always carries
+    // the key hints.
+    for (let r = 19; r < 23; r++) expect(empty[r] ?? "").toBe("");
     press(noHist.win, "Escape");
   });
 });
