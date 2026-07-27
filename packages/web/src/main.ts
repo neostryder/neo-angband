@@ -4209,16 +4209,47 @@ function metaFromState(id: string): CharMeta {
 // allocated slot - birthPending only guards the incoming page.
 let suppressSave = false;
 
-function persistSave(): void {
-  if (suppressSave || birthPending) return; // don't let a throwaway claim a slot
+/**
+ * savefile_save / save_game_checked (ui-game.c:1052, :1173): write the game and
+ * report whether it worked. A `true` return with nothing written is not possible
+ * here - the only ways out are the "nothing to save" short-circuits, which
+ * upstream does not have and which are not failures.
+ *
+ * The port used to swallow every failure silently, so a quota-exceeded
+ * localStorage write left the player playing on believing they were saved.
+ */
+function persistSave(): boolean {
+  if (suppressSave || birthPending) return true; // a throwaway claims no slot
   const id = getActiveId();
-  if (!id) return; // no active slot (e.g. the picker is up): nothing to save
+  if (!id) return true; // no active slot (e.g. the picker is up): nothing to save
   try {
     const b64 = bytesToB64(encodeSavedGame(saveGame(game)));
-    writeSlot(id, b64, metaFromState(id));
+    /* writeSlot's own verdict, not just "we did not throw": the storage write
+     * itself is where a quota failure shows up. */
+    return writeSlot(id, b64, metaFromState(id));
   } catch {
-    /* Quota exceeded or storage disabled: keep playing unsaved rather than
-     * crashing the turn. The next autosave retries. */
+    /* Encoding threw (a corrupt state), or storage is unreachable. */
+    return false;
+  }
+}
+
+/**
+ * close_game's save loop (ui-game.c:1152-1166): retry the save for as long as
+ * the player says to, and on giving up announce it - "death save failed!" for a
+ * dead hero (:1156), silence for a living one (the alive branch at :1161-1166
+ * has no message).
+ *
+ * `prompt` is upstream's prompt_failed_save: false skips the retry offer
+ * entirely, which is what the unload hooks need (a beforeunload handler cannot
+ * wait on a modal).
+ */
+async function closeGameSave(prompt: boolean): Promise<void> {
+  let prompting = prompt;
+  while (!persistSave()) {
+    if (!prompting || !(await confirmYesNo("Saving failed.  Try again? "))) {
+      if (dead) say("death save failed!");
+      return;
+    }
   }
 }
 
@@ -4227,13 +4258,27 @@ function persistSave(): void {
 // hidden/closed (pagehide / visibilitychange) so closing the tab never loses
 // more than the current turn. Manual 'S' forces an immediate save too.
 let lastSaveMs = -Infinity;
+/**
+ * Whether the player has already been told the autosave is failing. Upstream has
+ * no autosave, so it has no counterpart for this; what it does have is the
+ * principle that a failed save is never silent (ui-game.c:1152-1166). Reported
+ * once per run of failures rather than every three seconds.
+ */
+let autosaveFailed = false;
 function autosave(force = false): void {
   if (dead) return;
   const now =
     typeof performance !== "undefined" ? performance.now() : Date.now();
   if (!force && now - lastSaveMs < 3000) return;
   lastSaveMs = now;
-  persistSave();
+  if (persistSave()) {
+    autosaveFailed = false;
+    return;
+  }
+  if (!autosaveFailed) {
+    autosaveFailed = true;
+    say("Saving failed.");
+  }
 }
 
 /** Start a brand-new character in a fresh roster slot (birth, then play). */
@@ -4278,8 +4323,10 @@ function switchCharacter(): void {
  * select (isContinuation / bootGame), where this hero is waiting to be resumed.
  * Nothing is lost: the save is written before the reload.
  */
-function exitToTitle(): void {
-  persistSave();
+async function exitToTitle(): Promise<void> {
+  /* close_game(prompt_failed_save = true) (ui-game.c:1173): a deliberate exit
+   * offers the retry, because leaving on a failed save loses the session. */
+  await closeGameSave(true);
   try {
     // Next boot is a genuine launch, not a continuation, so BOTH skip-the-title
     // flags have to be clear or the title would be skipped on the way out.
@@ -4434,7 +4481,7 @@ async function openGameMenu(): Promise<void> {
       // Confirmed like Switch/New: the save is written first, so this loses
       // nothing, but a stray tap should not throw the player out of a live run.
       if (await confirmYesNo("Save and exit to the title screen?")) {
-        exitToTitle();
+        await exitToTitle();
       }
       break;
     default:
@@ -4889,7 +4936,9 @@ function redrawCmd(): void {
  */
 function saveQuitCmd(): void {
   void openModal(async () => {
-    if (await confirmYesNo("Save and exit to the title screen?")) exitToTitle();
+    if (await confirmYesNo("Save and exit to the title screen?")) {
+      await exitToTitle();
+    }
   });
 }
 
@@ -5953,7 +6002,10 @@ function advance(): void {
     // its record stays in the roster for the memorial. Clearing the active id
     // sends the next boot to the picker (or birth if no one else is left).
     const activeId = getActiveId();
-    if (activeId) markDead(activeId);
+    // close_game's dead branch (ui-game.c:1152-1158): the tombstone IS the
+    // port's dead-player save (decision 16 drops the resumable bytes), so a
+    // failed metadata write loses the memorial and gets upstream's message.
+    if (activeId && !markDead(activeId)) say("death save failed!");
     setActiveId(null);
     // death_knowledge (player-util.c L309): reveal every ARTIFACT_UNKNOWN
     // history entry before the memorial/score screen, so a "Missed X" find

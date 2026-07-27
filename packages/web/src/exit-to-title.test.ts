@@ -65,8 +65,11 @@ describe("the game menu's Save and exit row", () => {
 describe("exitToTitle", () => {
   const body = functionBody(MAIN, "exitToTitle");
 
-  it("writes the save before leaving", () => {
-    expect(body).toContain("persistSave()");
+  it("writes the save before leaving, through close_game's retry loop", () => {
+    /* Was a bare persistSave(); close_game (ui-game.c:1173) retries a failed
+     * save for as long as the player says to, with prompt_failed_save true for a
+     * deliberate exit. */
+    expect(body).toContain("closeGameSave(true)");
   });
 
   it("CLEARS the skip-the-title keys rather than setting them", () => {

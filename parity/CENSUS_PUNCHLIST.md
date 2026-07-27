@@ -70,7 +70,7 @@ allowlist entry is deleted and the suite is green.
       your reach`. LEFT: the shapechange shop scream, `Cancelled.`,
       `Are you sure? `, `Keep this keymap? `, `Do you want to quit? `, the
       force-name refusal, the glyph picker, the equip-cmp filter.
-- [ ] **J. Save-failure handling** (3) - a `localStorage` write can fail on
+- [x] **J. Save-failure handling** (2 of 3; the third, `lore save failed!`, is a lore.txt dump and moved to block E) - a `localStorage` write can fail on
       quota; the port neither retries nor says so. ui-game.c:1091-1155.
 - [ ] **K. Borg gate** (2) - `do_cmd_try_borg` (cmd-misc.c:125-145) in the borg
       mod's activation path; it is what sets `NOSCORE_BORG`.
@@ -142,3 +142,14 @@ Nothing goes here until it is committed.
   do_cmd_retrieve is SILENT for a null store while do_cmd_stash speaks - the two
   conditions differ and collapsing them would invent a line. 101 absences,
   19 tier-1.
+- 2026-07-27 - **J**. The three messages were the visible end of a real
+  defect: roster.ts's setItem SWALLOWED the quota error and returned void, so
+  writeSlot / upsertMeta / markDead all claimed success while nothing was
+  stored. A failed save could not be reported however carefully the code above
+  it was written, and the player kept playing believing they were saved. The
+  whole write path now reports, persistSave returns writeSlot's verdict rather
+  than "we did not throw", exitToTitle goes through close_game's retry loop
+  (prompt_failed_save = true), a failed death tombstone says "death save
+  failed!", and a failing autosave says so once per run of failures rather than
+  never. 6 tests over a quota-exhausting fake storage, 4 of which catch the
+  swallow if it comes back. 99 absences, 19 tier-1.

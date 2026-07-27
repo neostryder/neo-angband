@@ -42,11 +42,21 @@ function getItem(key: string): string | null {
   }
 }
 
-function setItem(key: string, value: string): void {
+/**
+ * A localStorage write, reporting whether it landed.
+ *
+ * This used to swallow the failure, which made every writer above it claim
+ * success while nothing was stored - so a quota-exceeded save left the player
+ * believing they were saved, and savefile_save's failure path (ui-game.c:1152)
+ * could not exist however carefully it was written higher up.
+ */
+function setItem(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
+    return true;
   } catch {
-    /* quota exceeded / storage disabled: keep playing unsaved. */
+    /* quota exceeded / storage disabled. */
+    return false;
   }
 }
 
@@ -71,8 +81,8 @@ export function listRoster(): CharMeta[] {
   }
 }
 
-function writeRoster(list: CharMeta[]): void {
-  setItem(ROSTER_KEY, JSON.stringify(list));
+function writeRoster(list: CharMeta[]): boolean {
+  return setItem(ROSTER_KEY, JSON.stringify(list));
 }
 
 /** The living characters (resumable); tombstones are excluded. */
@@ -84,11 +94,11 @@ export function getMeta(id: string): CharMeta | null {
   return listRoster().find((c) => c.id === id) ?? null;
 }
 
-/** Insert or replace a character's metadata. */
-export function upsertMeta(meta: CharMeta): void {
+/** Insert or replace a character's metadata; false if the write failed. */
+export function upsertMeta(meta: CharMeta): boolean {
   const list = listRoster().filter((c) => c.id !== meta.id);
   list.push(meta);
-  writeRoster(list);
+  return writeRoster(list);
 }
 
 export function getActiveId(): string | null {
@@ -105,18 +115,25 @@ export function readSlotSave(id: string): string | null {
   return getItem(SLOT_PREFIX + id);
 }
 
-/** Write a slot's save bytes and refresh its metadata in one call. */
-export function writeSlot(id: string, saveB64: string, meta: CharMeta): void {
-  setItem(SLOT_PREFIX + id, saveB64);
-  upsertMeta(meta);
+/**
+ * Write a slot's save bytes and refresh its metadata in one call. False if
+ * EITHER write failed - a save whose metadata did not land is not a save the
+ * character-select screen can offer.
+ */
+export function writeSlot(id: string, saveB64: string, meta: CharMeta): boolean {
+  const bytes = setItem(SLOT_PREFIX + id, saveB64);
+  const metaOk = upsertMeta(meta);
+  return bytes && metaOk;
 }
 
 /** Mark a slot dead (a tombstone): its meta stays, its bytes are dropped so a
  * dead character can never be resumed - faithful terminal death. */
-export function markDead(id: string): void {
+export function markDead(id: string): boolean {
   removeItem(SLOT_PREFIX + id);
   const meta = getMeta(id);
-  if (meta) upsertMeta({ ...meta, alive: false });
+  /* No meta at all means there is nothing to tombstone, which is not a
+   * failure. A meta write that does not land IS one: the memorial is lost. */
+  return meta ? upsertMeta({ ...meta, alive: false }) : true;
 }
 
 /** Remove a slot entirely (bytes + metadata) - used to clear a tombstone. */
