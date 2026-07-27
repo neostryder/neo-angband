@@ -64,6 +64,14 @@ export interface ModManagerDeps {
   applyRuleLive?: (flag: string, on: boolean) => void;
   isModNoscore?: () => boolean;
   advanceSaveRatchets?: (mod: CatalogMod) => void;
+  /**
+   * The `?mods=` URL override, when one is in force, else null. It outranks the
+   * store for the RUNNING session (resolveEnabledIds), so the [x] boxes here -
+   * which show the persisted set, the thing this screen edits - can disagree
+   * with what is actually loaded. The manager says so rather than showing a
+   * screenful of empty boxes over a game running three mods.
+   */
+  urlModsOverride?: () => readonly string[] | null;
 }
 
 /** The one-line badge for a catalog row: enabled state + any warning. */
@@ -449,9 +457,17 @@ export async function runModManager(
     }
     addAction("Done", "done", C_DIM, "Close the mod manager.");
 
-    const footer = dirty
-      ? "[ changes pending - Apply to reload; ESC = Done ]"
-      : "[ Enter a mod to manage it; ESC to close ]";
+    // A live ?mods= override outranks the store for this session, so the boxes
+    // below describe what is SAVED, not what is loaded. Say so; the row list is
+    // too narrow to spell out both sets.
+    const override = deps.urlModsOverride?.() ?? null;
+    const footer = override
+      ? dirty
+        ? "[ ?mods= live; changes pending - Apply to reload; ESC ]"
+        : "[ ?mods= override is live; boxes show the SAVED set; ESC ]"
+      : dirty
+        ? "[ changes pending - Apply to reload; ESC = Done ]"
+        : "[ Enter a mod to manage it; ESC to close ]";
     const pick = await selectFromMenu(term, "Mods", items, footer, {
       detail: (i) => {
         const rk = rowKinds[i];

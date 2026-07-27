@@ -31,6 +31,31 @@ overall design and the moddable-surface matrix, read `docs/MODS.md`.
   reference for scripted plugins, dialog/quest/shop cookbooks, the
   `neo-pack` validator/bundler, and publishing guidance.
 
+## The bundled mods
+
+Three mods ship with the game, all under `packages/web/mods/`, all OFF on
+a fresh install (see `DEFAULT_ENABLED_MODS` - an untouched install is
+faithful 4.2.6 with no mod loaded):
+
+| id | shape | what it adds |
+| --- | --- | --- |
+| `qol` | content | Genuinely new conveniences, currently just auto-dig on walk. Built-in Angband `=` options are NOT here: they ship in core at their upstream defaults. See `QOL.md`. |
+| `bug-fixes` | content | An unofficial patch set for upstream 4.2.6 bugs core deliberately keeps. See `BUG_FIXES.md`. |
+| `linoleum` | tiles | Registers the freely-licensed Original / Adam Bolt / David Gervais / Nomad tile packs so a graphics mode is selectable in-game. See `docs/LINOLEUM.md`. |
+
+Enable one in the in-app mod manager (game menu -> Mods), or with
+`?mods=qol,bug-fixes,linoleum` for a one-off. Every patch a mod declares
+is ON once its mod is enabled, and individually switchable under
+Mods -> Fixes & tweaks; `default: true` on a rule means "on once the mod
+is on", never "on in a fresh install".
+
+The `demo-*` directories alongside them are NOT shipped mods. They are the
+framework proofs - one per SDK load path (a content pack that patches a core
+monster, a sandboxed worker plugin, a trusted in-process plugin) - and exist
+so all three paths stay exercised in dev and in the test suite. Discovery
+drops them from release builds (`isShippedMod` in `mod-store.ts`), so a
+player's mod manager lists exactly the three above.
+
 ## Pack anatomy
 
 A pack is a directory (or archive) with a manifest and content files:
