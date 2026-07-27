@@ -43,6 +43,20 @@ describe("manifest", () => {
     );
   });
 
+  /*
+   * description is the prose the in-app mod manager puts in front of the player
+   * when they highlight a mod, so it has to survive validation as-is (it is
+   * carried, not re-built) and be rejected when it is not text.
+   */
+  it("carries the human description through, and rejects a non-string one", () => {
+    const text = "Adds a frost realm: new monsters, a new depth band, and two vaults.";
+    expect(validateManifest({ ...manifest("frost"), description: text }).description).toBe(text);
+    expect(validateManifest(manifest("plain")).description).toBeUndefined();
+    expect(() => validateManifest({ ...manifest("bad-desc"), description: 42 })).toThrow(
+      /description must be a string/,
+    );
+  });
+
   it("slugs names into stable refs", () => {
     expect(slugify("Grip, Farmer Maggot's Dog")).toBe(
       "grip-farmer-maggot-s-dog",

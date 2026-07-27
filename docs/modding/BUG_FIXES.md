@@ -9,11 +9,14 @@
 > `game/context.ts` `modRuleEnabled`, or a direct `deps.modRules` test where no
 > `GameState` is in scope). The host resolves the enabled mods' declared rules
 > against the player's saved choices and seeds `GameState.modRules`; the in-app
-> **Fixes & tweaks** menu (in the mod manager) lists each fix and toggles it.
-> The MOD is off by default and each fix inside it defaults ON, so an untouched
-> install is byte-identical to 4.2.6 and enabling the mod applies the whole patch
-> set minus whatever the player opts out of. See `docs/modding/MOD_SEAMS.md` for
-> the seam contract and the full default policy.
+> **Fixes & tweaks** submenu on this mod's own screen (mod manager -> Bug Fixes)
+> lists each fix and toggles it.
+> The MOD is off on a fresh install, and while it is off **its fixes do not
+> exist** - no flag is declared, nothing appears in the menu, and core is
+> byte-identical to 4.2.6. Enabling the mod turns the whole patch set on at once;
+> each fix is then individually switchable, so a player can take the set minus
+> one. See `docs/modding/MOD_SEAMS.md` for the seam contract and the full default
+> policy.
 >
 > The menu lists only fixes with a real, functional gate today - the five marked
 > `IMPLEMENTED` below.
@@ -49,15 +52,19 @@ re-sync into a rebase over local patches.
 Instead, every such fix ships in this single BUNDLED, opt-in mod - the model
 players know from the Skyrim / Bethesda unofficial patches. It is a
 `content`-shape pack (docs/MODS.md) that declares core rule flags, id
-`bug-fixes`, depending on `core`. The mod is **OFF by default**, like every mod
-(`DEFAULT_ENABLED_MODS` is `[]`), so an untouched install is faithful,
-buggy-as-shipped 4.2.6. Enable the mod and you get the whole patch set: each fix
-defaults ON and is an individual toggle in the Fixes & tweaks menu, so a player
-who wants the patch set minus one specific fix can opt that one out (Aaron's
-ruling, 2026-07-26). With the mod disabled - or a fix switched off - that
-behaviour is faithful again. It is authored
-and maintained by neostryder (RPGM Tools) as its own standalone pack, separate
-from the neo-linoleum tile mod (decision 26).
+`bug-fixes`, depending on `core`. The mod is **OFF on a fresh install**, like
+every mod (`DEFAULT_ENABLED_MODS` is `[]`), so an untouched install is faithful,
+buggy-as-shipped 4.2.6 - and while the mod is off, **none of its fixes exist**:
+the host only reads an ENABLED mod's declared `rules`, so there is no flag to
+switch and nothing listed in the menu.
+
+Enable the mod and you get the whole patch set at once - every fix comes on with
+it. Each fix is then an individual toggle in this mod's Fixes & tweaks submenu, so
+a player who wants the patch set minus one specific fix can opt that one out (Aaron's
+ruling, 2026-07-26). Disable the mod again, or switch one fix off, and that
+behaviour is faithful 4.2.6 again. It is authored and maintained by neostryder
+(RPGM Tools) as its own standalone pack, separate from the neo-linoleum tile mod
+(decision 26).
 
 Balance and subjective changes are NOT bug fixes and do not belong here; they
 live in the QoL mod (decision 18) or their own mod. This page tracks only
@@ -92,10 +99,11 @@ this mod.
 
 The mod's flags (each `bugfix.*` declared in
 `packages/web/mods/bug-fixes/manifest.json` under `rules`). Each declares
-`default: true`, which means ON once the mod is enabled - never on in a fresh
-install, because the mod itself is off there and no rule is applied at all.
-Enabling the mod gets you the whole patch set; individual patches are then
-switchable under Mods -> Fixes & tweaks, so you can take the set minus one:
+`default: true`, which means one thing only: ON once this mod is enabled. It does
+not mean on in a fresh install, and it does not mean the flag sits in core
+waiting to be switched - with the mod off the flag is absent entirely. Enabling
+the mod gets you the whole patch set; individual patches are then switchable
+under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
 `bugfix.uniqueKillHistory` (#4245), `bugfix.noiseScentSave` (#4605),
 `bugfix.objectListOrder` (#4664), `bugfix.duplicateArtifact` (#4510),
 `bugfix.stairsReachable` (no upstream issue - entry 13).

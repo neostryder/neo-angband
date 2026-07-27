@@ -7,7 +7,7 @@
   "dependencies": { "core": "*" },
   "author": "neostryder (RPGM Tools)",
   "license": "GPL-2.0-only",
-  "description": "Bundled, opt-in fixes for upstream Angband 4.2.6 bugs, in the model of an unofficial patch. The mod itself is OFF by default, like every mod; enable it and you get the whole patch set, with each fix a named toggle in the in-app Fixes & tweaks menu that you can switch off individually. With the mod disabled, core stays faithful to 4.2.6, bugs included. See docs/modding/BUG_FIXES.md for the upstream issue/PR/commit each fix cites.",
+  "description": "Bundled, opt-in fixes for upstream Angband 4.2.6 bugs, in the model of an unofficial patch. The mod itself is OFF by default, like every mod; enable it and you get the whole patch set, with each fix a named toggle in this mod's Fixes & tweaks submenu that you can switch off individually. With the mod disabled, core stays faithful to 4.2.6, bugs included. See docs/modding/BUG_FIXES.md for the upstream issue/PR/commit each fix cites.",
   "rules": [
     {
       "flag": "bugfix.uniqueKillHistory",

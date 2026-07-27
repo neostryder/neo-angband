@@ -98,6 +98,14 @@ export interface PackManifest {
   nondeterministic?: boolean;
   /** Declares a gameplay change that permanently makes an enabled save non-scoring. */
   affectsGameplay?: boolean;
+  /**
+   * What the pack does, in the author's own words, for a human deciding whether
+   * to enable it. Prose, not a tagline: the in-app mod manager wraps it to fill
+   * the detail pane of the highlighted row, and a marketplace listing would show
+   * the same text. Absent is allowed but leaves a player with only the id/shape
+   * to go on.
+   */
+  description?: string;
   /** Free-form author credit. */
   author?: string;
   /** SPDX license expression for the pack's own content. */
@@ -174,7 +182,14 @@ export function validateManifest(value: unknown): PackManifest {
     throw new ManifestError(`manifest ${id}: affectsGameplay must be a boolean`);
   }
   validateRules(m["rules"], id);
-  for (const key of ["engine", "repository", "changelog"] as const) {
+  for (const key of [
+    "engine",
+    "repository",
+    "changelog",
+    "description",
+    "author",
+    "license",
+  ] as const) {
     if (m[key] !== undefined && typeof m[key] !== "string") {
       throw new ManifestError(`manifest ${id}: ${key} must be a string`);
     }

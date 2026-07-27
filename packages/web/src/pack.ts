@@ -202,6 +202,10 @@ function modManifest(raw: unknown): PackManifest {
     ...(m.nondeterministic !== undefined ? { nondeterministic: m.nondeterministic } : {}),
     ...(m.affectsGameplay !== undefined ? { affectsGameplay: m.affectsGameplay } : {}),
     ...(m.rules ? { rules: m.rules } : {}),
+    // The mod manager shows this to the player when they highlight the mod, so
+    // it has to survive normalisation - dropping it here is what left the detail
+    // pane with only the id and shape to say for itself.
+    ...(m.description ? { description: m.description } : {}),
     ...(m.author ? { author: m.author } : {}),
     ...(m.license ? { license: m.license } : {}),
   };

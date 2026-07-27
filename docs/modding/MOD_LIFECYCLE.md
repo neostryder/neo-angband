@@ -231,8 +231,13 @@ from Bethesda games and similar mod ecosystems). The order is computed by:
    (hard requirements first; cycles rejected at install).
 2. User preference within the freedom that leaves.
 
-Most mods never need manual ordering; the app only asks the user to
-choose when two mods actually collide on the same field (below).
+Most mods never need manual ordering. Where manual ordering IS wanted,
+it is an EXTERNAL-MANAGER job, not an in-app one (Aaron's ruling,
+2026-07-27, see "External managers" below): the game reads and honours
+an explicit order, but the sorting UX belongs to Vortex/MO2. The in-app
+manager stays rudimentary - enable/disable a mod, opt out of one of its
+patches - and reports conflicts rather than offering a full load-order
+editor.
 
 ### Additive vs conflicting changes
 
@@ -255,20 +260,44 @@ in coarse whole-record systems.
 Before a session starts, the app computes the merged content and shows a
 conflict report: every record touched by more than one mod, which fields
 each touched, and who wins. Same-field collisions are highlighted with a
-one-line resolution ("frost and runes both set kobold.speed; frost wins
-- drag to reorder"). Nothing is silent, nothing is a surprise at
-runtime. A load order that fails validation (unmet dependency, engine
-mismatch, cyclic requirement) cannot be launched, and the reason is
+one-line resolution ("frost and runes both set kobold.speed; frost wins;
+reorder them in your mod manager"). Nothing is silent, nothing is a
+surprise at runtime. A load order that fails validation (unmet dependency,
+engine mismatch, cyclic requirement) cannot be launched, and the reason is
 plain language, not an error code.
 
 ### External managers (Vortex, MO2)
 
-[PROPOSED] The pack format is a plain directory / zip with a manifest, so
-it is filesystem-friendly. A desktop build can watch a mod directory
-that a Vortex or Mod Organizer 2 extension deploys into, giving power
-users their preferred tool for free. But the in-app manager is
-first-class and aims to be good enough that most players never need an
-external one. Same format serves both; we do not fork.
+**RATIFIED 2026-07-27 (Aaron).** Integrating with Vortex and the other
+popular mod managers is an explicit goal, and it sets the division of
+labour between them and the game:
+
+- **The game ships rudimentary management only.** Turning a mod on and
+  off, nudging one earlier/later in the order (the existing "Move earlier"
+  / "Move later" rows in `mods.ts`), opting out of one of its patches,
+  seeing what conflicts, applying a saved profile. That is the floor a
+  player needs to run the bundled mods and a handful of others without
+  extra software - not a mod-manager reimplementation.
+- **Advanced management belongs to the mod manager.** Real load-order
+  SORTING above all (rule sets, auto-sort, bulk reordering of a large
+  set), plus deployment/staging, collections and bundles, per-profile
+  installs, update watching, and bulk install/remove. Those are solved
+  problems in Vortex/MO2 and they are what those tools are for; we do not
+  compete with them and we do not grow the in-game UI to match them.
+- **The seam is the shared on-disk format, not an API.** A pack is a plain
+  directory / zip with a manifest, so it is filesystem-friendly by
+  construction. A desktop build watches a mod directory that a Vortex or
+  MO2 extension deploys into and honours the explicit enabled-set and
+  order it finds there. One format serves both; we do not fork, and the
+  external tool never needs the game running to do its job.
+
+Consequence for the engine: the ENABLED SET and the LOAD ORDER must both
+be externally authorable, plain-text, and authoritative when present -
+not derived state hidden in `localStorage`. The web build's
+`localStorage` set (`mod-store.ts`) is the browser's stand-in for that
+file, and `?mods=` is already an external override that outranks it, so
+the precedence rule (external order > stored order) is settled; the file
+form lands with the desktop build.
 
 ---
 
@@ -349,9 +378,11 @@ elsewhere. Each known complaint, and the design answer:
   -> String-id references, per-mod save namespaces, per-mod migrations,
   and quarantine-on-uninstall. Uninstalling is reversible.
 - "Load order is arcane (hand-sorting plugin files, external sorters)."
-  -> Auto-sort by declared dependencies; manual ordering surfaces only
-  for real same-field conflicts, with a plain explanation of what each
-  choice does.
+  -> Auto-sort by declared dependencies, so a correct order needs no
+  human. Where a real same-field conflict leaves a genuine choice, the
+  conflict report names it in plain words and says who currently wins -
+  and the sorting itself is done in the player's mod manager (Vortex/MO2),
+  which is already built for it, over the shared on-disk order.
 - "Silent conflicts, mystery crashes mid-game."
   -> A pre-launch conflict report and a validation gate. If it launches,
   it composed cleanly; if it will not, you are told why in plain words.
@@ -417,10 +448,14 @@ UI next, marketplace last:
    2026-07-14 audit found item 1's seams are built and tested but have no
    runtime caller; this is Wave 1 of the integration plan and it precedes
    the UI below.
-2. Next: the in-app mod manager UI (list, enable/disable, reorder,
-   install-from-url, conflict view, capability consent, profiles).
-3. Future release: the marketplace backend and in-app browser, and an
-   optional Vortex/MO2 extension over the shared on-disk format.
+2. Next: the in-app mod manager UI - deliberately rudimentary per the
+   2026-07-27 ruling (list, enable/disable, a one-step earlier/later
+   nudge, per-patch opt-out, install-from-url, conflict view, capability
+   consent, profiles). No load-order SORTER; real ordering work is the
+   external manager's job.
+3. Future release: the marketplace backend and in-app browser, plus the
+   externally-authored enabled-set/order file and a Vortex/MO2 extension
+   over the shared on-disk format.
 
 A `neo-pack` CLI (validate + bundle, a sibling of `neo-linoleum`) ships
 alongside so authors can check a pack in CI before publishing, and the
@@ -445,3 +480,16 @@ repo carries sample mods that CI installs and runs.
    stash view surfaces everything quarantined or shadowed. [DECIDED]
 8. Orphan policy: quarantine by default with a one-time per-save keep/purge
    prompt (keep default); no auto-purge. [DECIDED 2026-07-14]
+9. Integrate with Vortex and the other popular mod managers, and split the
+   labour with them: the game keeps rudimentary management (enable/disable,
+   per-patch opt-out, a one-step order nudge, conflict report, profiles)
+   and advanced management - load-order sorting above all - is the external
+   manager's job over the shared on-disk pack format. The enabled set and
+   the load order must therefore be externally authorable and authoritative
+   when present. [DECIDED 2026-07-27]
+10. A mod is the unit the player switches; its patches ride with it. A
+   disabled mod's patches DO NOT EXIST (no flag, nothing to toggle,
+   faithful 4.2.6); enabling a mod turns its whole patch set on at once,
+   and each patch is then individually switchable so a player can take the
+   set minus one. `default: true` on a rule means only "on once its own mod
+   is on". [DECIDED 2026-07-26, wording clarified 2026-07-27]

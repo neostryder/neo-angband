@@ -54,7 +54,10 @@ describe("bug-fixes bundled mod", () => {
     for (const r of rules) {
       expect(r.default).toBe(true);
       expect(r.title.length).toBeGreaterThan(0);
-      expect(r.description.length).toBeGreaterThan(0);
+      // The per-mod Fixes & tweaks screen wraps this description to fill its
+      // detail pane, so it must actually explain the fix (Aaron, 2026-07-27:
+      // descriptions "as long as will fit"), not just name it again.
+      expect(r.description.length, `${r.flag}'s description is a stub`).toBeGreaterThan(80);
     }
   });
 });
