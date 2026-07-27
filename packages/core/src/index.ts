@@ -92,6 +92,7 @@ export * from "./store/bind";
 export * from "./store/price";
 export * from "./store/store";
 export * from "./store/transact";
+export * from "./store/store-cmd";
 export * from "./session/boot";
 export * from "./session/game";
 export * from "./session/save";

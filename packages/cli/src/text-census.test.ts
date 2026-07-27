@@ -128,19 +128,6 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
   "divergence (re-derived from the C 2026-07-27, upheld): start_game (ui-game.c:709-720) offers the panic file only when file_newer(panicfile, loadpath) - it can be newer because upstream's ordinary save happens on demand, so a crash leaves the signal handler's separate savefile_get_panic_name file ahead of it. The port autosaves the one slot continuously, so there is no second artifact and no staleness window for one to be newer than":
     ["A panic save exists.  Use it? "],
 
-  "GAP: guard messages upstream needs because a command can name a store the player is not in. The port's shop screens only offer buy/sell while a store is open, so no command can reach these - but that is an argument from the current UI, not from the C, and a mod adding remote trade would need them":
-    [
-      "You cannot purchase items when not in a store.",
-      "You cannot buy that item because it's not in the store.",
-      "You cannot afford that purchase.",
-      "You are not currently at home.",
-      "You cannot retrieve that item because it's not in the home.",
-      "You cannot sell items when not in a store.",
-      "I do not wish to purchase this item.",
-      "You are not in your home.",
-      "You see no store here.",
-    ],
-
   "GAP: save-failure handling (ui-game.c:1091-1155). A localStorage write CAN fail on a quota error, and the port neither retries nor says so":
     ["lore save failed!", "death save failed!", "Saving failed.  Try again? "],
 
