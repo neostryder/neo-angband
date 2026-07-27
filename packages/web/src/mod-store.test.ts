@@ -14,12 +14,13 @@ import {
   consentSatisfied,
   isShippedMod,
   resolveEnabledIds,
+  resolveModRules,
   DEFAULT_ENABLED_MODS,
   FIRST_PARTY_MOD_IDS,
   type StorageLike,
 } from "./mod-store";
 import { confirmGameplayNoscore, needsGameplayNoscoreWarning } from "./mods";
-import { discoverContentModManifests } from "./pack";
+import { discoverContentModManifests, loadEnabledModRuleDecls } from "./pack";
 
 function fakeStorage(): StorageLike & { map: Map<string, string> } {
   const map = new Map<string, string>();
@@ -126,6 +127,29 @@ describe("the shipped mod set (isShippedMod)", () => {
     }
 
     for (const id of FIRST_PARTY_MOD_IDS) expect(dirs).toContain(id);
+  });
+
+  /*
+   * A bundled mod must explain itself. The mod manager shows manifest.description
+   * in the detail pane of the highlighted row (wrapped to fill it), so a stub
+   * one-liner leaves a player with nothing to decide on - Aaron's 2026-07-27 ask
+   * was explicitly for descriptions "as long as will fit".
+   */
+  it("gives every shipped mod a substantial description that does not claim to be on by default", () => {
+    const modsDir = new URL("../mods/", import.meta.url);
+    for (const id of FIRST_PARTY_MOD_IDS) {
+      const m = JSON.parse(
+        readFileSync(new URL(`${id}/manifest.json`, modsDir), "utf8"),
+      ) as { description?: string };
+      expect(typeof m.description, `${id} has no description`).toBe("string");
+      expect(m.description!.length, `${id}'s description is a stub`).toBeGreaterThan(120);
+      // No mod is enabled on a fresh install, so no mod may advertise otherwise.
+      // (linoleum's description said "Default-on" long after that stopped being
+      // true, and the manager puts this text in front of the player.)
+      for (const claim of [/default-on/i, /\bon by default\b/i, /enabled by default/i]) {
+        expect(claim.test(m.description!), `${id} claims to be on by default`).toBe(false);
+      }
+    }
   });
 
   /*
@@ -283,5 +307,112 @@ describe("buildCatalog", () => {
     // After acceptance the persistent ratchet is true; subsequent enables do not warn.
     expect(await confirmGameplayNoscore(gameplay, true, warning)).toBe(true);
     expect(warning).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The mod default policy, in mechanical form (Aaron's ruling 2026-07-26,
+ * restated 2026-07-27 because the prose was ambiguous). The MOD is the unit the
+ * player switches; a patch is a part of a mod, never a separate install:
+ *
+ *  - while a mod is disabled its patches DO NOT EXIST - not "exist and resolve
+ *    false". No key reaches modRules, so modRuleEnabled (which tests `=== true`
+ *    on an absent key) leaves core on the faithful 4.2.6 line;
+ *  - enabling a mod turns its WHOLE patch set on at once;
+ *  - each patch is then individually switchable, so a player can take the set
+ *    minus one.
+ *
+ * These run the real path - the on-disk bundled manifests through pack.ts's
+ * enabled-only rule discovery into resolveModRules - rather than hand-built
+ * decls, so a manifest that changed its `default` would fail here.
+ */
+describe("a mod's patches exist only while its mod is enabled", () => {
+  const BUG_FIX_FLAGS = (
+    JSON.parse(
+      readFileSync(new URL("../mods/bug-fixes/manifest.json", import.meta.url), "utf8"),
+    ) as { rules?: { flag: string }[] }
+  ).rules!.map((r) => r.flag);
+
+  /**
+   * Run `fn` with pack.ts's enabled-mods key set to `ids`. The web tests run in
+   * node with no localStorage (which is why enabledModIds swallows the throw and
+   * falls back to DEFAULT_ENABLED_MODS = []), so stubbing the global is how a
+   * test drives the enabled set through the real reader.
+   */
+  function withEnabled<T>(ids: readonly string[], fn: () => T): T {
+    const map = new Map<string, string>([["neo:enabledMods", JSON.stringify(ids)]]);
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => void map.set(k, v),
+      removeItem: (k: string) => void map.delete(k),
+    });
+    try {
+      return fn();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  }
+
+  it("declares at least one patch per rule-carrying bundled mod", () => {
+    // Guards the tests below from passing vacuously on an empty manifest.
+    expect(BUG_FIX_FLAGS.length).toBeGreaterThan(0);
+  });
+
+  it("contributes NO flag while the mod is off, even with a saved choice for it", () => {
+    const rules = withEnabled([], () =>
+      resolveModRules(loadEnabledModRuleDecls(), {
+        // A remembered opt-out AND a remembered opt-in, both for disabled mods:
+        // neither may resurrect a patch whose mod is not enabled.
+        "bugfix.objectListOrder": false,
+        "qol.autoDig": true,
+      }),
+    );
+    expect(rules).toEqual({});
+    // The distinction that matters: absent, not present-and-false.
+    expect("bugfix.objectListOrder" in rules).toBe(false);
+    expect("qol.autoDig" in rules).toBe(false);
+  });
+
+  it("turns the mod's whole patch set on at once when it is enabled", () => {
+    const rules = withEnabled(["bug-fixes"], () =>
+      resolveModRules(loadEnabledModRuleDecls(), {}),
+    );
+    expect(Object.keys(rules).sort()).toEqual([...BUG_FIX_FLAGS].sort());
+    expect(Object.values(rules).every((v) => v === true)).toBe(true);
+    // Enabling one mod says nothing about another: qol is still off, so its
+    // tweak does not exist.
+    expect("qol.autoDig" in rules).toBe(false);
+  });
+
+  it("lets a player take the set minus one, leaving the rest on", () => {
+    const opted = BUG_FIX_FLAGS[0]!;
+    const rules = withEnabled(["bug-fixes"], () =>
+      resolveModRules(loadEnabledModRuleDecls(), { [opted]: false }),
+    );
+    expect(rules[opted]).toBe(false);
+    for (const flag of BUG_FIX_FLAGS.filter((f) => f !== opted)) {
+      expect(rules[flag]).toBe(true);
+    }
+  });
+
+  it("drops the flags again when the mod goes off, but remembers the opt-out", () => {
+    const store = new ModStore(fakeStorage());
+    const opted = BUG_FIX_FLAGS[0]!;
+    store.setRuleChoice(opted, false);
+
+    const off = withEnabled([], () =>
+      resolveModRules(loadEnabledModRuleDecls(), store.getRuleChoices()),
+    );
+    expect(off).toEqual({});
+    // The choice is kept, not deleted - it is simply inert while the mod is off.
+    expect(store.getRuleChoices()).toEqual({ [opted]: false });
+
+    const back = withEnabled(["bug-fixes"], () =>
+      resolveModRules(loadEnabledModRuleDecls(), store.getRuleChoices()),
+    );
+    expect(back[opted]).toBe(false);
+    for (const flag of BUG_FIX_FLAGS.filter((f) => f !== opted)) {
+      expect(back[flag]).toBe(true);
+    }
   });
 });

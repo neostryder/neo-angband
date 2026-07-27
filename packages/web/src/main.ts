@@ -906,19 +906,19 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
   if (!mode || mode.grafID === GRAPHICS_NONE) {
     tileset = null;
     tileMap = null;
-    render();
+    renderBackground();
     return;
   }
   const ts = createTileRenderer({ baseUrl: tilesBaseUrl, grafID });
-  if (ts) ts.onReady = () => render();
+  if (ts) ts.onReady = () => renderBackground();
   tileset = ts;
   tileMap = null;
-  render();
+  renderBackground();
   const map = await loadTilePrefs(tilesBaseUrl, mode, tileDeps);
   // Ignore a stale load if the mode changed while we were fetching.
   if (currentGrafID === grafID) {
     tileMap = map;
-    render();
+    renderBackground();
   }
 }
 
@@ -939,10 +939,11 @@ function tileDrawFor(atlas: TileAtlas | null): TileDraw | undefined {
 }
 
 // The tile-mode selector rows for the Options menu (Phase 4): ASCII plus the
-// packs contributed by enabled `tiles`-shape mods. The neo-linoleum bundled mod
-// (default-on) registers the four freely-licensed packs (grafID 1..4); disabling
-// or removing it drops them back to ASCII-only, which is the point of shipping
-// graphics AS a removable mod. Shockbolt (5,6) is never bundled or surfaced (its
+// packs contributed by enabled `tiles`-shape mods. The neo-linoleum bundled mod -
+// off on a fresh install, like every mod - registers the four freely-licensed
+// packs (grafID 1..4) once enabled; disabling or removing it drops them back to
+// ASCII-only, which is the point of shipping graphics AS a removable mod.
+// Shockbolt (5,6) is never bundled or surfaced (its
 // assets carry a bespoke licence); a user can still select it via the
 // ?tiles=<url>&graf=5 URL override with their own copy.
 const tileModeMenu: TileModeMenu = {
@@ -1104,6 +1105,30 @@ state.onMelee = (mon, result): void => {
 // history, item/spell selection) owns the keyboard, the in-game key handler
 // stands down - exactly the single-owner input model of the upstream UI.
 let modalDepth = 0;
+
+/**
+ * A BACKGROUND repaint: a redraw nothing the player just did asked for, arriving
+ * asynchronously - a graphics pack's atlas finishing its fetch, its prefs
+ * resolving, a layout/ResizeObserver settle, the idle animation tick.
+ *
+ * These must stand down while a full-screen overlay owns the terminal, because
+ * they can land in the middle of one and paint the map over it. That is exactly
+ * how the TITLE SCREEN came to be invisible with a graphics mode selected: the
+ * title was drawn, then applyTileMode's onReady/prefs render() wiped it, leaving
+ * the town map on screen with the title modal still silently waiting on a key -
+ * so the first keypress "mysteriously" opened character select. Upstream cannot
+ * hit this at all: its UI is single-threaded and nothing repaints mid-command.
+ *
+ * Deliberate in-command render() calls are NOT routed through here - a modal
+ * flow that means to redraw the map (targeting, locate, the level map) still
+ * calls render() directly. openModal repaints once on close, so a suppressed
+ * background frame is caught up as soon as the overlay closes.
+ */
+function renderBackground(): void {
+  if (modalDepth > 0) return;
+  render();
+}
+
 async function openModal(fn: () => Promise<void>): Promise<void> {
   modalDepth++;
   try {
@@ -6284,7 +6309,10 @@ state.sound = (type: number): void => {
  * when updateFov was not yet wired (ui-display.c:2556-2557). */
 state.updateFov(state);
 state.chunk.onlyPartial = false;
-term.onResize = () => render();
+// A resize/reflow is a background repaint (the ResizeObserver in term.ts also
+// fires once on observe, and again whenever the embed's layout settles), so it
+// must not paint the map over a boot overlay - see renderBackground.
+term.onResize = () => renderBackground();
 render();
 
 // Boot the persisted/URL-selected graphics mode (ASCII if none). Async and
@@ -6856,5 +6884,7 @@ setInterval(() => {
   if (dead || scoresOpen || locateActive) return;
   if (!hasAnimatedVisibleMonster()) return;
   animFrame = (animFrame + 1) & 0xff; // uint8_t flicker counter
-  render();
+  // Background: an overlay (title, character select, birth, any menu) owns the
+  // terminal, and a flicker frame must not paint the map over it.
+  renderBackground();
 }, ANIM_INTERVAL_MS);

@@ -11,7 +11,7 @@ upstream defaults - and every new fix, tweak, or feature ships as a mod.** The
 seams below are how a mod reaches into core WITHOUT core carrying the mod's
 behaviour by default.
 
-## 1. `GameState.modRules` - named, off-by-default rule flags
+## 1. `GameState.modRules` - named rule flags that exist only while a mod does
 
 The one seam behind both bundled mods. `GameState.modRules` is an optional
 `Record<string, boolean>` of named flags. Core reads it in exactly one place -
@@ -47,31 +47,42 @@ The host does the rest, entirely outside core:
    every ENABLED mod (in load order).
 2. `packages/web/src/mod-store.ts` `resolveModRules(decls, choices)` computes the
    effective map: for each declared rule, `choices[flag] ?? rule.default`. The
-   player's choices come from the **Fixes & tweaks** menu and persist in
+   player's choices come from each mod's **Fixes & tweaks** submenu and persist in
    `localStorage` (`neo:modRuleChoices`) - a client setting, like the enabled-mod
    set, NOT part of the savefile.
 3. `packages/web/src/main.ts` passes that map to `startGame` / `loadGame` as
    `opts.modRules`, which seeds `GameState.modRules` (a copy).
-4. The Fixes & tweaks menu (`packages/web/src/mods.ts`) can also toggle a flag on
+4. That submenu (`managePatches`, `packages/web/src/mods.ts`) can also toggle a flag on
    the LIVE running state, so a change takes effect without a reload.
 
 This means a "rules mod" is a plain `content` pack with **no plugin code and no
 capabilities**. `qol` and `bug-fixes` are both content mods; disabling a mod (or
 turning a rule off) drops its flags and restores faithful core.
 
-**Default policy (Aaron's ruling, 2026-07-26).** Two independent layers:
+**Default policy (Aaron's ruling, 2026-07-26; wording tightened 2026-07-27).**
+The mod is the unit the player installs and switches; a patch is a part of a mod,
+never a separate thing to install. Two layers, in this order:
 
-- **Every mod is OFF by default**, including the bundled first-party ones
-  (`DEFAULT_ENABLED_MODS` is `[]`, `mod-store.ts`). A fresh install is the
-  faithful, unmodded 4.2.6 base game. The player enables a mod deliberately, at
-  birth or at any point afterwards.
-- **When a mod IS enabled, each of its patches defaults ON.** Enabling
-  `bug-fixes` gives you the whole patch set; enabling `qol` gives you the whole
-  tweak set. The per-patch toggles exist so a player who wants the mod but not
-  one specific patch can opt that one out.
+- **A disabled mod's patches DO NOT EXIST.** Not "exist but default off" -
+  `loadEnabledModRuleDecls()` only reads the `rules` of ENABLED mods, so a
+  disabled mod contributes no entry to `modRules` at all, `modRuleEnabled`
+  returns `false` for an absent flag, and core runs the faithful 4.2.6 line.
+  There is nothing to toggle and nothing appears in the menu.
+- **Enabling a mod turns its whole patch set ON, at once.** Enable `bug-fixes`
+  and you get every fix in it; enable `qol` and you get every tweak in it. Each
+  patch is then INDIVIDUALLY switchable in that mod's own Fixes & tweaks submenu,
+  so a player can take the set minus one specific patch. That per-patch switch is
+  the only reason the toggles exist.
+- **Every mod itself is OFF on a fresh install**, including the bundled
+  first-party ones (`DEFAULT_ENABLED_MODS` is `[]`, `mod-store.ts`). So an
+  untouched install has no mod, therefore no patches, therefore faithful 4.2.6.
+  The player enables a mod deliberately, at birth or later.
 
-So `default: true` on a rule does not mean "on in a fresh install" — it means
-"on once its mod is enabled". Nothing is on until the player turns the mod on.
+So `default: true` on a rule means exactly one thing: **"on once its own mod is
+enabled"**. It never means "on in a fresh install", and it never means the flag
+sits in core waiting to be switched - without its mod the flag is absent.
+`default: false` would mean a patch that ships inside an enabled mod but stays
+opt-in; no bundled patch uses it today.
 
 > An earlier build implemented this with a trusted in-process plugin plus a
 > `registry:rules` capability and a `RulesFacade`. That was removed in favour of
@@ -127,6 +138,6 @@ This is a hook rather than an inline branch only so the movement code
 | Manifest `rules` type + validation | `packages/mod-sdk/src/manifest.ts` |
 | Rule discovery | `packages/web/src/pack.ts` (`loadEnabledModRuleDecls`) |
 | Choice persistence + resolver | `packages/web/src/mod-store.ts` |
-| Fixes & tweaks menu | `packages/web/src/mods.ts` |
+| Per-mod Fixes & tweaks submenu | `packages/web/src/mods.ts` (`managePatches`) |
 | Host wiring | `packages/web/src/main.ts` |
 | Per-mod design | `docs/modding/QOL.md`, `docs/modding/BUG_FIXES.md` |

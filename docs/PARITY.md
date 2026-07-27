@@ -34,9 +34,10 @@ mod-neutral**:
 - With **no RNG-altering mod loaded**, no hook, seam, or guard may add, drop, or
   reorder a single draw versus the base path. A fixed seed run with the mod
   system present-but-empty draws exactly as it does with the mod system absent.
-- **Mods may perturb the stream when enabled.** That is their job; it is opt-in
-  and off by default. The default install enables zero mods (the faithful no-mod
-  base game).
+- **Mods may perturb the stream when enabled.** That is their job, and it is
+  entirely opt-in: the default install enables zero mods (the faithful no-mod
+  base game), and a disabled mod's patches do not exist - no flag reaches
+  `modRules`, so there is no branch for them to perturb.
 
 ## Verification lanes
 

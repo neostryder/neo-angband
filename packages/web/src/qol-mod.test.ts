@@ -33,7 +33,9 @@ describe("qol bundled mod", () => {
     expect(autoDig).toBeDefined();
     expect(autoDig!.default).toBe(true); // QoL tweaks are on by default
     expect(autoDig!.title.length).toBeGreaterThan(0);
-    expect(autoDig!.description.length).toBeGreaterThan(0);
+    // Long enough to actually explain the tweak: the per-mod Fixes & tweaks
+    // screen wraps it to fill its detail pane (Aaron, 2026-07-27).
+    expect(autoDig!.description.length).toBeGreaterThan(80);
   });
 
   it("declares no built-in Angband option defaults (those live in faithful core)", () => {
