@@ -226,12 +226,14 @@ import type { TileDraw } from "./term";
 import { resolveKey } from "./keymap";
 import { installWebSound } from "./sound";
 import {
+  composeTileModes,
+  coreTileModes,
   createTileRenderer,
   discoverEnabledTileModes,
-  discoverTileModProviders,
   isTile,
   loadTilePrefs,
   tileCode,
+  type TileModeEntry,
   type TileSet,
 } from "./tiles";
 import {
@@ -855,19 +857,26 @@ if (animator) {
 let animFrame = 0;
 const displayRandint1 = (n: number): number => state.rng.randint1(n);
 
-// --- Optional graphics tiles (task C1: bundled upstream tilesets) -----------
-// Four freely-licensed upstream packs ship under public/tiles/<dir>/ (see
-// CREDITS.md); ASCII (mode 0) is the default. A mode is chosen in the Options
-// menu (persisted to localStorage) or via a `?graf=<id>` URL override; a
-// user-supplied pack base URL can be given with `?tiles=<url>` (e.g. the
-// deliberately-unbundled Shockbolt set). When a mode is active the live map
-// blits tiles: each visible cell's entity (feature/monster/object/trap) is
-// looked up in the pack's graf/flvr pref TileMap (core visuals/tile-prefs) and
-// drawn from the atlas; a missing mapping or a not-yet-loaded image degrades to
-// the ASCII glyph, so tiles never blank or crash the map.
+// --- Graphics tiles (grafmode.c) --------------------------------------------
+// Tile sets are CORE content, exactly as upstream: lib/tiles/list.txt is parsed
+// by grafmode.c into `graphics_modes` and every frontend builds its Graphics
+// menu by walking that catalog (main-win.c:2897-2905). The port ships the
+// catalog in core (visuals/grafmode) and four of the freely-licensed upstream
+// packs under public/tiles/<dir>/ (see CREDITS.md), so graphics work on a stock
+// install with no mod enabled - a `tiles`-shape mod ADDS sets, it is never
+// needed for these. ASCII (mode 0) is the default, as in the C.
+//
+// A mode is chosen in the game menu (persisted to localStorage) or with
+// `?graf=<id>`; `?tiles=<url>` repoints the pack base at a pack of your own
+// (e.g. the deliberately-unbundled Shockbolt set). When a mode is active the
+// live map blits tiles: each visible cell's entity (feature/monster/object/trap)
+// is looked up in the pack's graf/flvr pref TileMap (core visuals/tile-prefs)
+// and drawn from the atlas; a missing mapping or a not-yet-loaded image degrades
+// to the ASCII glyph, so tiles never blank or crash the map.
 const TILE_MODE_KEY = "neo-angband:graf";
 // Bundled packs live at public/tiles/; a ?tiles= override points elsewhere.
 const tilesBaseUrl = params.get("tiles") || "tiles";
+const customTilesBase = Boolean(params.get("tiles"));
 const tileDeps: TilePrefsDeps = {
   features: booted.registries.features,
   objects: booted.registries.objects,
@@ -883,9 +892,30 @@ function readTileMode(): number {
   return Number.isFinite(stored) && stored > 0 ? stored : GRAPHICS_NONE;
 }
 
+// Every tile mode this install can offer, ASCII excluded: core's own sets (the
+// upstream list.txt catalog, restricted to the art that ships unless ?tiles=
+// points at a pack of your own) with the enabled `tiles`-shape mods' packs
+// layered over them. Read once at boot, like the C reads list.txt once at
+// startup; toggling a mod reloads the shell, so the list is rebuilt then.
+const availableTileModes: readonly TileModeEntry[] = composeTileModes({
+  core: coreTileModes({ customBaseUrl: customTilesBase }),
+  mods: discoverEnabledTileModes(),
+});
+
 let tileset: TileSet | null = null;
 let tileMap: TileMap | null = null;
 let currentGrafID = GRAPHICS_NONE;
+
+/**
+ * Where a mode's art is fetched from: the shell's own tile base for core modes,
+ * or the contributing mod's declared pack base when a mod supplied the mode, so
+ * a mod's tiles come from the MOD's assets. An id nobody offers (e.g. `?graf=5`
+ * with no pack) falls back to the shell base and simply 404s into ASCII.
+ */
+function tileBaseFor(grafID: number): string {
+  const entry = availableTileModes.find((m) => m.grafID === grafID);
+  return entry?.baseUrl ?? tilesBaseUrl;
+}
 
 /**
  * Load (or clear, with GRAPHICS_NONE) a graphics mode: build its atlas TileSet
@@ -910,12 +940,13 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
     renderBackground();
     return;
   }
-  const ts = createTileRenderer({ baseUrl: tilesBaseUrl, grafID });
+  const base = tileBaseFor(grafID);
+  const ts = createTileRenderer({ baseUrl: base, grafID });
   if (ts) ts.onReady = () => renderBackground();
   tileset = ts;
   tileMap = null;
   renderBackground();
-  const map = await loadTilePrefs(tilesBaseUrl, mode, tileDeps);
+  const map = await loadTilePrefs(base, mode, tileDeps);
   // Ignore a stale load if the mode changed while we were fetching.
   if (currentGrafID === grafID) {
     tileMap = map;
@@ -939,34 +970,21 @@ function tileDrawFor(atlas: TileAtlas | null): TileDraw | undefined {
   };
 }
 
-// The tile-mode selector rows for the Options menu (Phase 4): ASCII plus the
-// packs contributed by enabled `tiles`-shape mods. The neo-linoleum bundled mod -
-// off on a fresh install, like every mod - registers the four freely-licensed
-// packs (grafID 1..4) once enabled; disabling or removing it drops them back to
-// ASCII-only, which is the point of shipping graphics AS a removable mod.
-// Shockbolt (5,6) is never bundled or surfaced (its
-// assets carry a bespoke licence); a user can still select it via the
-// ?tiles=<url>&graf=5 URL override with their own copy.
-//
-// Each pack carries the NAME of the mod that contributed it (modName) so the
-// Graphics screen can show it: the packs are not core content, and an unlabelled
-// list of tileset names tells the player nothing about where they came from.
-// Installed tiles mods that are switched off ride along as disabledProviders, so
-// the screen names the mod to enable instead of just offering ASCII.
+// The Graphics screen's rows: ASCII first (the C's hardcoded GRAPHICS_NONE
+// entry, grafmode.c L137-146), then the composed catalog. Only a mod-supplied
+// row carries modName, and only those are tagged in the menu - an untagged row
+// is a tile set the game itself ships.
 const tileModeMenu: TileModeMenu = {
   modes: [
     { grafID: GRAPHICS_NONE, menuname: "None (ASCII)" },
-    ...discoverEnabledTileModes().map((m) => ({
+    ...availableTileModes.map((m) => ({
       grafID: m.grafID,
       menuname: m.menuname,
-      modName: m.modName,
+      ...(m.modName === undefined ? {} : { modName: m.modName }),
     })),
   ],
   current: () => currentGrafID,
   apply: (grafID: number) => applyTileMode(grafID, true),
-  disabledProviders: discoverTileModProviders()
-    .filter((p) => !p.enabled)
-    .map((p) => ({ name: p.name, packCount: p.packCount })),
 };
 
 // Sidebar mode (do_cmd_sidebar_mode, ui-options.c): SIDEBAR_MODE is a UI-term

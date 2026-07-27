@@ -6,12 +6,13 @@ upstream `.png` atlas and its pref files (`graf-*.prf` the attr/char -> tile
 map, `flvr-*.prf` the flavour map, `xtra-*.prf` the extra/overdraw map), copied
 verbatim from Angband 4.2.6 `lib/tiles/`.
 
-These four packs are registered by the bundled **neo-linoleum** tiles mod
-(`packages/web/mods/linoleum`, id `linoleum`, by neostryder / RPGM Tools), which
-is the registry of record for which graphics sets the Options tile-mode selector
-offers. It is enabled by default and fully removable; graphics are surfaced only
-while it is enabled. ASCII is always the default; a tile pack is opt-in (Options
-menu, or the `?tiles=<url>&graf=<id>` URL override).
+These four packs are CORE content, like upstream: `lib/tiles/list.txt` is game
+data parsed by `grafmode.c`, and each frontend builds its Graphics menu straight
+from that catalog (`main-win.c:2897-2905`). They are offered with no mod enabled
+and no mod is needed for them. A `tiles`-shape mod can add a tile set of its own
+or re-skin one of these, and only those rows are tagged with the mod's name in
+the Graphics screen. ASCII is always the default; a tile pack is opt-in (game
+menu -> Graphics, or the `?tiles=<url>&graf=<id>` URL override).
 
 ## Packs and their licences
 

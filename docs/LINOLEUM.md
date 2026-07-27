@@ -10,12 +10,29 @@ The format originated as a feature of neostryder's own Angband fork (see
 4.2.6 parity tag, so it exists ONLY as a mod - never in core (PORT_PLAN.md
 decisions 18 and 26). It ships as **neo-linoleum**, a STANDALONE
 `tiles`-shape pack (id `linoleum`) loaded through the ordinary mod pipeline,
-enabled by default, independent of and never combined with the QoL or
-`bug-fixes` mods, and - like any mod - fully removable. `packages/linoleum`
-is the build-time converter (a behaviorally faithful TypeScript port of the
-fork's converter) that produces this pack; it is tooling, not a core feature.
-It is the reference tile pack - proof the tile-pack seam is real. Everything
-below describes the pack format that mod uses.
+off on a fresh install like every mod, independent of and never combined with
+the QoL or `bug-fixes` mods, and - like any mod - fully removable.
+`packages/linoleum` is the build-time converter (a behaviorally faithful
+TypeScript port of the fork's converter) that turns a legacy tileset into a
+pack of this shape; it is tooling, not a core feature.
+
+**It is not where the game's graphics come from.** The tile sets Angband
+ships - Original, Adam Bolt, David Gervais, Nomad - are CORE content, exactly
+as upstream: `lib/tiles/list.txt` is game data parsed by `grafmode.c`, and the
+Graphics screen is built from that catalog (`main-win.c:2897-2905`), with no
+mod enabled and none required. What this mod adds is an alternative way to
+BUILD and express a tile set: a pack you can edit one PNG at a time, targets
+named after game entities instead of grid coordinates, and variant pools -
+several tiles for one symbol, creature or item, chosen by map position so a
+seed always looks the same. A pack it contributes joins the Graphics screen
+as an extra row tagged `[neo-linoleum]`; core's own rows stay untagged.
+
+The mod ships with **no packs of its own** (converted packs are yours and are
+not redistributed here), so enabling it alone changes nothing yet. The format,
+the converter and the `tilePacks` seam are built; the shell's loose-pack
+RENDERER - individual assets and pool selection at draw time - is not wired up
+yet, so a pack declared in `tilePacks` today is loaded through the ordinary
+tilesheet path. Everything below describes the pack format itself.
 
 ## Pack layout
 

@@ -100,7 +100,7 @@ function rowLabel(m: CatalogMod): MenuItem {
   const suffix = flags.length ? `  ! ${flags.join(", ")}` : "";
   // Kind distinguishes the two PLUGIN load paths (sandbox vs trusted); for a
   // non-plugin it is just "content", which mislabels a tiles pack - so show the
-  // shape there instead ("tiles" for neo-linoleum, not "content").
+  // shape there instead ("tiles" for a tile pack, not "content").
   const kindTag = m.kind === "content" ? m.shape : m.kind;
   const label = `${box} ${m.name}  v${m.version}  (${kindTag})${suffix}`;
   const color = needsConsent
