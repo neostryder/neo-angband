@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
 import { TV } from "../generated";
 import { loc } from "../loc";
+import type { Loc } from "../loc";
 import { Rng } from "../rng";
 import { ObjRegistry } from "../obj/bind";
 import type { ObjPackJson } from "../obj/types";
@@ -123,7 +124,7 @@ describe("dropNear (obj-pile.c drop_near)", () => {
   it("drops at the target grid when it is free", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const obj = makeObj(TV.POTION);
-    const landed = dropNear(state, obj, 0, loc(12, 12), false);
+    const landed = dropNear(state, obj, 0, loc(12, 12), false, false);
     expect(landed).toEqual(loc(12, 12));
     expect(floorPile(state, loc(12, 12))).toEqual([obj]);
   });
@@ -132,7 +133,7 @@ describe("dropNear (obj-pile.c drop_near)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const obj = makeObj(TV.POTION);
     let broke = false;
-    const landed = dropNear(state, obj, 100, loc(12, 12), false, {
+    const landed = dropNear(state, obj, 100, loc(12, 12), false, false, {
       onBreak: (_o, b) => {
         broke = b;
       },
@@ -147,7 +148,7 @@ describe("dropNear (obj-pile.c drop_near)", () => {
     const obj = makeObj(TV.SWORD);
     obj.artifact = reg.artifacts.find((a) => a) ?? null;
     expect(obj.artifact).not.toBeNull();
-    const landed = dropNear(state, obj, 100, loc(12, 12), false);
+    const landed = dropNear(state, obj, 100, loc(12, 12), false, false);
     expect(landed).not.toBeNull();
   });
 
@@ -157,7 +158,7 @@ describe("dropNear (obj-pile.c drop_near)", () => {
     state.z.floorSize = 1;
     floorCarry(state, loc(12, 12), makeObj(TV.SWORD));
     const obj = makeObj(TV.POTION);
-    const landed = dropNear(state, obj, 0, loc(12, 12), false);
+    const landed = dropNear(state, obj, 0, loc(12, 12), false, false);
     expect(landed).not.toBeNull();
     expect(Math.abs(landed!.x - 12)).toBeLessThanOrEqual(3);
     expect(Math.abs(landed!.y - 12)).toBeLessThanOrEqual(3);
@@ -341,5 +342,79 @@ describe("scanItems (obj-pile.c scan_items)", () => {
       null,
     );
     expect(found.length).toBe(2);
+  });
+});
+
+describe("drop_near's verbose (obj-pile.c:1129-1155)", () => {
+  it("announces a landing on the player's own grid", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const msgs: string[] = [];
+    state.msg = (text: string): void => void msgs.push(text);
+    dropNear(state, makeObj(TV.POTION), 0, loc(5, 5), true, false);
+    expect(msgs).toEqual(["You feel something roll beneath your feet."]);
+  });
+
+  it("says nothing when verbose is false", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const msgs: string[] = [];
+    state.msg = (text: string): void => void msgs.push(text);
+    dropNear(state, makeObj(TV.POTION), 0, loc(5, 5), false, false);
+    expect(msgs).toEqual([]);
+  });
+
+  it("says nothing for a landing away from the player", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const msgs: string[] = [];
+    state.msg = (text: string): void => void msgs.push(text);
+    dropNear(state, makeObj(TV.POTION), 0, loc(12, 12), true, false);
+    expect(msgs).toEqual([]);
+  });
+
+  it("says nothing for an ignored object, or one merged into an ignored pile", () => {
+    /* dont_ignore = verbose && !ignore_item_ok (:1132), and floor_carry clears
+     * it again when the drop merges into a stack the player ignores (:927-930). */
+    const ignored = makeObj(TV.POTION);
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const msgs: string[] = [];
+    state.msg = (text: string): void => void msgs.push(text);
+    const env = { isIgnored: (o: GameObject): boolean => o.kind === ignored.kind };
+    dropNear(state, ignored, 0, loc(5, 5), true, false, env);
+    expect(msgs).toEqual([]);
+
+    /* And the merge path: an un-ignored duplicate absorbed into that pile. */
+    const dup = makeObj(TV.POTION);
+    dropNear(state, dup, 0, loc(5, 5), true, false, env);
+    expect(msgs).toEqual([]);
+  });
+});
+
+describe("drop_near's prefer_pile (obj-pile.c drop_find_grid)", () => {
+  /**
+   * prefer_pile drops drop_find_grid's penalty for putting DIFFERENT kinds of
+   * item on one square. This is the parameter the port used to receive the C's
+   * `verbose` argument in, so several call sites had it backwards - which lands
+   * objects on different grids from upstream, not just a different message.
+   */
+  function dropSecond(preferPile: boolean): { first: Loc; second: Loc | null } {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const sword = makeObj(TV.SWORD);
+    const first = dropNear(state, sword, 0, loc(12, 12), false, preferPile)!;
+    /* A different kind, so the mixed-type penalty is what decides. */
+    const potion = makeObj(TV.POTION);
+    const second = dropNear(state, potion, 0, loc(12, 12), false, preferPile);
+    return { first, second };
+  }
+
+  it("piles a mixed item onto the target grid when preferPile is set", () => {
+    const { first, second } = dropSecond(true);
+    expect(first).toEqual(loc(12, 12));
+    expect(second).toEqual(loc(12, 12));
+  });
+
+  it("pushes a mixed item off the target grid when preferPile is clear", () => {
+    const { first, second } = dropSecond(false);
+    expect(first).toEqual(loc(12, 12));
+    expect(second).not.toBeNull();
+    expect(second).not.toEqual(loc(12, 12));
   });
 });

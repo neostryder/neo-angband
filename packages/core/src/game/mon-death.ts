@@ -331,7 +331,7 @@ export function monsterDeath(
 
     /* drop_near(cave, &obj, 0, mon->grid, true, false): chance 0, prefer_pile
      * FALSE (mon-util.c L990; the port's boolean slot is preferPile). */
-    dropNear(state, obj, 0, mon.grid, false, deps.floorEnv);
+    dropNear(state, obj, 0, mon.grid, true, false, deps.floorEnv);
   }
 
   /* Take note of any dropped treasure (monster_death L998-999). */

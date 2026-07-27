@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants";
 import { SQUARE, STAT, TMD, TV } from "../generated";
 import { loc } from "../loc";
+import type { Loc } from "../loc";
 import { SKILL } from "../player/types";
 import { Rng } from "../rng";
 import { ObjRegistry } from "../obj/bind";
@@ -67,6 +68,23 @@ function freshMakeDeps(): MakeDeps {
 }
 
 /** A real chest object of the given kind name (e.g. "Small wooden chest"). */
+/**
+ * Non-chest objects within drop_near's 7x7 placement scan of `grid`. Chest loot
+ * goes down with prefer_pile = false (obj-chest.c:532), so it does not all land
+ * on one square.
+ */
+function droppedNear(state: GameState, grid: Loc): number {
+  let n = 0;
+  for (let dy = -3; dy <= 3; dy++) {
+    for (let dx = -3; dx <= 3; dx++) {
+      const g = loc(grid.x + dx, grid.y + dy);
+      if (!state.chunk.inBounds(g)) continue;
+      n += floorPile(state, g).filter((o) => !tvalIsChest(o.tval)).length;
+    }
+  }
+  return n;
+}
+
 function chestObj(name: string, seed = 1) {
   const sval = reg.lookupSval(TV.CHEST, name);
   const kind = reg.lookupKind(TV.CHEST, sval)!;
@@ -217,6 +235,8 @@ describe("chest_death (obj-chest.c L498)", () => {
     const deps = cmdDeps(state);
 
     chestDeath(state, grid, chest, deps);
+    /* prefer_pile = false (obj-chest.c:532), so with only one item it lands on
+     * the chest's own grid; see droppedNear for the multi-item case. */
     const dropped = floorPile(state, grid).filter((o) => !tvalIsChest(o.tval));
     expect(dropped.length).toBe(1);
     expect(dropped[0]!.origin).toBe(2 /* ORIGIN.CHEST */);
@@ -228,19 +248,19 @@ describe("chest_death (obj-chest.c L498)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     const deps = cmdDeps(state);
 
+    /* Chest loot is dropped with prefer_pile = FALSE (obj-chest.c:532), so
+     * drop_find_grid's mixed-type penalty applies and items of different kinds
+     * scatter over the 7x7 scan rather than piling on the chest's grid. Count
+     * across the scan, not at one grid. */
     const iron = chestObj("Small iron chest");
     iron.pval = 1;
     chestDeath(state, loc(6, 5), iron, deps);
-    expect(
-      floorPile(state, loc(6, 5)).filter((o) => !tvalIsChest(o.tval)).length,
-    ).toBe(2);
+    expect(droppedNear(state, loc(6, 5))).toBe(2);
 
     const steel = chestObj("Small steel chest");
     steel.pval = 1;
-    chestDeath(state, loc(7, 5), steel, deps);
-    expect(
-      floorPile(state, loc(7, 5)).filter((o) => !tvalIsChest(o.tval)).length,
-    ).toBe(3);
+    chestDeath(state, loc(16, 5), steel, deps);
+    expect(droppedNear(state, loc(16, 5))).toBe(3);
   });
 
   it("an already-empty chest (pval 0) is a no-op", () => {
@@ -292,8 +312,9 @@ describe("do_cmd_open_chest (obj-chest.c L580)", () => {
     expect(more).toBe(false);
     expect(msgs).toContain("You have picked the lock.");
     expect(chest.pval).toBe(0);
-    const dropped = floorPile(state, grid).filter((o) => !tvalIsChest(o.tval));
-    expect(dropped.length).toBe(1);
+    /* prefer_pile = false (obj-chest.c:532): the loot need not land on the
+     * chest's own grid, so count across drop_near's scan. */
+    expect(droppedNear(state, grid)).toBe(1);
   });
 
   it("a failed lock pick may repeat and does not open the chest", () => {
@@ -435,9 +456,9 @@ describe("installCaveCommands: chest wiring (dir 5 underfoot, chest-vs-door)", (
     expect(result.energyUsed).toBe(state.z.moveEnergy);
     expect(msgs).toContain("You have picked the lock.");
     expect(chest.pval).toBe(0);
-    expect(
-      floorPile(state, state.actor.grid).filter((o) => !tvalIsChest(o.tval)).length,
-    ).toBe(1);
+    /* prefer_pile = false (obj-chest.c:532): the chest's own grid already holds
+     * the chest, so the mixed-type penalty can push the loot to a neighbour. */
+    expect(droppedNear(state, state.actor.grid)).toBe(1);
   });
 
   it("open still opens a door when there is no chest there", () => {

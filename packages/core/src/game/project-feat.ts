@@ -82,7 +82,7 @@ export function pushObject(state: GameState, grid: Loc): void {
    * excising every member removes the entry - there is no head pointer to null. */
   for (const obj of [...floorPile(state, grid)]) {
     floorExcise(state, grid, obj);
-    dropNear(state, obj, 0, grid, false);
+    dropNear(state, obj, 0, grid, false, false);
   }
   c.setFeat(grid, featOld);
 }

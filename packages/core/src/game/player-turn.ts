@@ -44,6 +44,7 @@ import { gearGet } from "./gear";
 import { floorPile } from "./floor";
 import { isTrappedChest } from "../obj/chest";
 import {
+  knownIsClosedDoor,
   knownIsEnterable,
   knownIsRubble,
   knownObject,
@@ -403,10 +404,22 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
   if (rawDir === undefined || rawDir < 1 || rawDir > 9 || rawDir === 5) return 0;
 
   /*
+   * The port merges do_cmd_walk and move_player into one action; upstream's
+   * run_step (player-path.c:2042) calls move_player DIRECTLY, skipping
+   * do_cmd_walk's preamble. `fromRun` says which caller this is, and the one
+   * place it currently changes behaviour is the known-blocked-grid wording
+   * below. The other two preamble steps are unreachable from a run either way:
+   * runAction refuses to start while confused (so player_confuse_dir cannot
+   * redirect a run step) and clears the web underfoot before the first step (and
+   * run_test treats a web ahead as a wall).
+   */
+  const fromRun = cmd.args?.["fromRun"] === true;
+
+  /*
    * do_cmd_walk / do_cmd_jump (cmd-cave.c:1288-1297 / 1328-1337): standing in
    * a web clears the web and spends the turn in place - no movement.
    */
-  if (squareIsWebbed(state, state.actor.grid)) {
+  if (!fromRun && squareIsWebbed(state, state.actor.grid)) {
     state.msg?.("You clear the web.");
     /* square_remove_all_traps_of_type(web->tidx) (cmd-cave.c:1294). */
     const web = squareTrap(state, state.actor.grid).find(
@@ -507,6 +520,37 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
       );
       /* square_memorize + square_light_spot at each of :1096, :1100, :1104. */
       squareMemorize(state, next);
+    } else if (fromRun) {
+      /*
+       * move_player's OWN known-grid branch (cmd-cave.c:1108-1130), whose
+       * wording differs from do_cmd_walk_test's above: "blocking your way", not
+       * "in the way!". It is reached only when something other than a deliberate
+       * walk drives move_player, because a deliberate walk is refused by
+       * do_cmd_walk_test before move_player runs. In 4.2.6 that leaves exactly
+       * one route - run_step (player-path.c:2042). The whirlwind
+       * (effect-handler-attack.c:1838) is NOT a second route, contrary to the
+       * census note: it tests square_ispassable on every candidate grid and
+       * says "The way is barred." rather than moving into one.
+       *
+       * A closed door reports here too (unlike the walk case, where the walk
+       * override opens it), because run_step passes disarm only for a trap.
+       */
+      state.msg?.(
+        rubble
+          ? "There is a pile of rubble blocking your way."
+          : door
+            ? "There is a door blocking your way."
+            : "There is a wall blocking your way.",
+        "HITWALL",
+      );
+      /* The same memory reconciliation, per branch (:1112-1129). */
+      if (rubble) {
+        if (!knownIsRubble(state, next)) squareMemorize(state, next);
+      } else if (door) {
+        if (!knownIsClosedDoor(state, next)) squareMemorize(state, next);
+      } else if (knownIsEnterable(state, next)) {
+        squareForget(state, next);
+      }
     } else if (!door) {
       state.msg?.(
         rubble

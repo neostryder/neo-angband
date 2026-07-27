@@ -217,7 +217,7 @@ export function chestDeath(
 
     treasure.origin = ORIGIN.CHEST;
     treasure.originDepth = chest.originDepth;
-    dropNear(state, treasure, 0, grid, true, deps.floorEnv ?? {});
+    dropNear(state, treasure, 0, grid, true, false, deps.floorEnv ?? {});
     number--;
   }
 

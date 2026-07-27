@@ -341,7 +341,7 @@ export function wizDropObject(state: GameState, obj: GameObject | null): void {
   if (!obj) return;
   obj.origin = ORIGIN.CHEAT;
   obj.originDepth = state.chunk.depth;
-  dropNear(state, obj, 0, state.actor.grid, true);
+  dropNear(state, obj, 0, state.actor.grid, true, true);
 }
 
 /* ------------------------------------------------------------------ *
@@ -374,7 +374,7 @@ export function wizAcquire(
     if (!obj) continue;
     obj.origin = ORIGIN.ACQUIRE;
     obj.originDepth = state.chunk.depth;
-    dropNear(state, obj, 0, state.actor.grid, true);
+    dropNear(state, obj, 0, state.actor.grid, true, true);
   }
   return true;
 }
