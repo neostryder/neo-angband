@@ -9,6 +9,7 @@
  * tables with the "Total Cost:" line and the exact upstream prompts.
  */
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
 import { runBirth } from "./birth";
 import type { GlyphTerm } from "./term";
@@ -51,7 +52,13 @@ interface TestTerm extends GlyphTerm {
   colorAt(x: number, y: number): string;
 }
 
-function makeTerm(cols = 70, rows = 24): TestTerm {
+/**
+ * The REAL terminal size: 80x24 (term.ts FIXED_COLS/FIXED_ROWS), which is what
+ * upstream lays the birth screens out for. It used to be 70 columns - below
+ * POINTBUY_WIDE_MIN - so these tests only ever exercised the narrow fallback
+ * while the game ran the wide layout.
+ */
+function makeTerm(cols = 80, rows = 24): TestTerm {
   const grid: string[][] = Array.from({ length: rows }, () => new Array<string>(cols).fill(" "));
   const colors: string[][] = Array.from({ length: rows }, () => new Array<string>(cols).fill(""));
   return {
@@ -516,8 +523,10 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     await tick();
     press(win, "a"); // quickstart
     await tick();
-    // The footer advertises '*' when a generator is wired.
-    expect(term.snapshot().join("\n")).toContain("* for a random one");
+    // get_character_name's own prompt (ui-input.c:1153) advertises '*'.
+    expect(term.snapshot()[0]).toContain(
+      "Enter a name for your character (* for a random name):",
+    );
     press(win, "*");
     expect(term.snapshot().join("\n")).toContain("Bilbo");
     press(win, "Enter");
@@ -828,5 +837,47 @@ describe("runBirth: per-row race/class stat detail (race_help/class_help)", () =
     expect(term.snapshot().join("\n")).toMatch(/Int:\s+\+1/);
     press(win, "Escape");
     expect(await done).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The birth screens sit on display_player, not on a summary list      */
+/* ------------------------------------------------------------------ */
+
+describe("birth screens draw the real character sheet", () => {
+  /**
+   * These are source guards, not renders: the panels only appear when the shell
+   * supplies BirthDeps (a bound player registry), which these unit tests do not
+   * have. What can go wrong without a guard is the SHAPE - the screens once drew
+   * characterSheetLines (the phone list) down the left column, so the point-buy
+   * and confirm screens showed one column of "Label: value" instead of upstream's
+   * five panels at their anchors, with no combat/skills panel and no history.
+   * The layout itself is covered where it is implemented (charsheet.test.ts,
+   * which now runs at the real 80x24).
+   */
+  const src = readFileSync(new URL("./birth.ts", import.meta.url), "utf8");
+
+  it("paints display_player_xtra_info's panels, not a list column", () => {
+    expect(src).toContain("drawPlayerXtraInfo(term, sheet.panels, sheet.history)");
+    // The point-buy and roller screens both go through it.
+    expect(src.match(/drawBirthPanels\(term, /gu)?.length).toBeGreaterThanOrEqual(2);
+    // And the old list-in-a-column renderer is gone for good.
+    expect(src).not.toContain("drawInfoColumn");
+  });
+
+  it("uses the C's own prompts on the name, history and confirm stages", () => {
+    // get_character_name (ui-input.c:1153), get_history_command (ui-birth.c:1508)
+    // and get_confirm_command (ui-birth.c:1548) - verbatim.
+    expect(src).toContain('"Enter a name for your character (* for a random name): "');
+    expect(src).toContain('"Accept character history? [y/n]"');
+    expect(src).toContain(
+      "to step back, 'S' to start over, or any other key to continue]",
+    );
+  });
+
+  it("draws the sheet under each of those prompts", () => {
+    // display_player(0) at BIRTH_NAME_CHOICE / HISTORY_CHOICE / FINAL_CONFIRM
+    // (ui-birth.c:1707/1721/1733).
+    expect(src.match(/drawBirthSheet\(/gu)?.length).toBeGreaterThanOrEqual(3);
   });
 });

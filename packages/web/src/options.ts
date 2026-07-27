@@ -89,11 +89,13 @@ import type { GameState } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
 import { selectFromMenu, promptNumber, menuNav } from "./overlay";
 import type { MenuItem } from "./overlay";
-import { UI_TEXT, UI_DIM } from "./ui-colors";
+import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
 import { runColorsEditor, saveColorPrefs } from "./colors";
 import { runKeymapEditor } from "./keymap-edit";
 
 const FG = UI_TEXT;
+/** curs_attrs[CURS_KNOWN][1] (ui-menu.c:32): the selected row's colour. */
+const CURSOR = UI_CURSOR;
 const DIM = UI_DIM;
 const TITLE = UI_TEXT;
 // Birth-locked options draw greyed (curs_attrs greyed row == COLOUR_SLATE).
@@ -145,8 +147,9 @@ const TOGGLE_TAGS = "abcdefgimopquvwzABCDEFGHIJKLMOPQUVWZ";
  * option_toggle_menu/option_toggle_display/option_toggle_handle (ui-options.c
  * L117-372): a repeatable toggle list. Each row paints as
  * "<desc padded to 45> : yes/no  (name)" (option_toggle_display), matching
- * upstream's own column layout; the cursor row is highlighted and prefixed
- * '>'. Keys: y/Y sets true and advances the cursor (wrapping), n/N sets false
+ * upstream's own column layout; the cursor row takes the light-blue cursor
+ * colour and the terminal cursor (curs_attrs, ui-menu.c:29-33) - no '>' marker,
+ * which upstream does not have. Keys: y/Y sets true and advances the cursor (wrapping), n/N sets false
  * and advances, t/T/Enter toggles in place (no advance), ArrowUp/ArrowDown
  * move the cursor, a TOGGLE_TAGS letter jumps directly to that row, Escape
  * resolves. When `readOnly` (the in-game birth-options view: upstream's
@@ -190,15 +193,24 @@ export function optionToggleScreen(
         const i = top + r;
         const row = rows[i];
         if (!row) break;
-        const mark = i === cursor ? ">" : " ";
         const desc =
           row.description.length < 45
             ? row.description.padEnd(45, " ")
             : row.description.slice(0, 45);
         const value = row.value ? "yes" : "no ";
-        const line = `${mark}${desc}: ${value}  (${row.name})`;
-        const color = row.locked ? LOCKED : i === cursor ? TITLE : FG;
+        // display_menu_row's "%c) " tag from m->selections (ui-menu.c:571-582,
+        // option_toggle_menu's `selections` = TOGGLE_TAGS) then
+        // option_toggle_display's own columns (ui-options.c:117-139): the
+        // description padded to 45, then ": yes  (option_name)". The letter is
+        // the SAME character that jumps to the row, and a read-only page shows
+        // none at all (MN_NO_TAGS, L341).
+        const tag = readOnly ? "   " : `${TOGGLE_TAGS[i] ?? " "}) `;
+        const line = `${tag}${desc}: ${value}  (${row.name})`;
+        const color = row.locked ? LOCKED : i === cursor ? CURSOR : FG;
         term.print(0, bodyTop + r, line.slice(0, cols - 1), color);
+      }
+      if (cursor >= top && cursor < top + bodyRows) {
+        term.setCursor?.(0, bodyTop + (cursor - top));
       }
       term.print(0, termRows - 1, footer.slice(0, cols - 1), DIM);
     };

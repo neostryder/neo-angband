@@ -79,6 +79,7 @@ import {
   TMD,
   EQUIP_SLOT_ENTRIES,
   monsterKnowledgeGroups,
+  weightRemaining,
 } from "@neo-angband/core";
 import type {
   GameState,
@@ -425,6 +426,7 @@ export function charSheetDeps(
   statUse?: readonly number[];
   seeInfra?: number;
   numShots?: number;
+  weightRemaining?: number;
 } {
   const ps = state.playerState;
   return {
@@ -436,6 +438,10 @@ export function charSheetDeps(
           statUse: ps.statUse,
           seeInfra: ps.seeInfra,
           numShots: ps.numShots,
+          // weight_remaining (player-calcs.c:1752): without this the sheet's
+          // "Overweight" row read 0.0 lb for every character, where upstream
+          // shows the spare capacity as a negative figure.
+          weightRemaining: weightRemaining(ps, state.actor.player.upkeep.totalWeight),
         }
       : {}),
   };

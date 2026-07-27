@@ -22,7 +22,7 @@
  * to its ch/fg text. Kept as a small interface so the terminal stays decoupled
  * from the tileset implementation (tiles.ts).
  */
-import { UI_BG } from "./ui-colors";
+import { UI_BG, UI_GOLD } from "./ui-colors";
 import { FONT_16X24, type BitmapFontData } from "./font-16x24";
 
 export interface TileDraw {
@@ -121,6 +121,10 @@ export function carryGrid<T>(
 
 export class GlyphTerm {
   private ctx: CanvasRenderingContext2D;
+  /** Term_gotoxy's cursor cell, and whether Term_set_cursor showed it. */
+  private cursorX = 0;
+  private cursorY = 0;
+  private cursorOn = false;
   private cellW = 12;
   private cellH = 20;
   private cols = FIXED_COLS;
@@ -366,6 +370,9 @@ export class GlyphTerm {
 
   clear(): void {
     for (const row of this.grid) row.fill(null);
+    // Term_clear takes the cursor with it; a stale frame on a blank screen
+    // would point at nothing.
+    this.cursorOn = false;
     this.redraw();
   }
 
@@ -415,6 +422,46 @@ export class GlyphTerm {
       for (const g of row) if (g?.tile) n++;
     }
     return n;
+  }
+
+  /**
+   * Term_gotoxy + Term_set_cursor(1) (ui-term.c): show the cursor at a cell.
+   *
+   * Drawn the way the Windows front end draws it (main-win.c Term_curs_win
+   * L1990-1999): a one-pixel YELLOW frame around the cell - "the gold
+   * rectangle". It is what upstream uses to say "you are here": menus put it on
+   * the selected row (ui-menu.c display_scrolling L212-213), the birth
+   * point-buy screen puts it just after the current stat's cost
+   * (ui-birth.c:1121), and the map puts it on the targeted grid.
+   *
+   * Like the C, this is painted LAST, just before waiting for input: repainting
+   * the cell erases it, so a caller that redraws must set it again (which is
+   * exactly what Term_gotoxy-before-inkey does).
+   */
+  setCursor(x: number, y: number): void {
+    if (y < 0 || y >= this.rows || x < 0 || x >= this.cols) return;
+    if (this.cursorOn) this.paintCell(this.cursorX, this.cursorY);
+    this.cursorX = x;
+    this.cursorY = y;
+    this.cursorOn = true;
+    this.drawCursor();
+  }
+
+  /** Term_set_cursor(0): hide it again (and repaint the cell it framed). */
+  hideCursor(): void {
+    if (!this.cursorOn) return;
+    this.cursorOn = false;
+    this.paintCell(this.cursorX, this.cursorY);
+  }
+
+  private drawCursor(): void {
+    if (!this.cursorOn) return;
+    const px = this.offsetX + this.cursorX * this.cellW;
+    const py = this.offsetY + this.cursorY * this.cellH;
+    this.ctx.strokeStyle = UI_GOLD;
+    this.ctx.lineWidth = 1;
+    // Half-pixel inset so a 1px stroke lands on the cell edge, not across it.
+    this.ctx.strokeRect(px + 0.5, py + 0.5, this.cellW - 1, this.cellH - 1);
   }
 
   put(x: number, y: number, glyph: Glyph): void {
@@ -515,5 +562,6 @@ export class GlyphTerm {
         if (this.grid[y]?.[x]) this.paintCell(x, y);
       }
     }
+    this.drawCursor();
   }
 }
