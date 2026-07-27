@@ -579,10 +579,17 @@ const handleREMOVE_CURSE: EffectHandler = (ctx) => {
   } else if (strength >= curse.power) {
     /* Successfully removed this curse (effect-handler-general.c:193-196). The
      * SECOND call passes message = true, so success does announce which curse
-     * went: obj-curse.c:231 "The %s curse is removed!". */
-    removeObjectCurse(obj, pick);
-    const name = env.item?.reg?.curses[pick]?.name;
-    if (name) say(ctx, `The ${name} curse is removed!`);
+     * went: obj-curse.c:231 "The %s curse is removed!". The message rides
+     * remove_object_curse's own power > 0 branch, so a pick the object does not
+     * actually carry announces nothing - which is why the string moved out of
+     * this call site. */
+    const curseReg = env.item?.reg?.curses;
+    removeObjectCurse(
+      obj,
+      pick,
+      true,
+      curseReg ? { curses: curseReg, msg: (text) => say(ctx, text) } : undefined,
+    );
   } else if (!obj.flags.has(OF.FRAGILE)) {
     /* Failure to remove, object is now fragile */
     say(

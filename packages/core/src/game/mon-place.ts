@@ -67,7 +67,7 @@ import { tvalFindIdx } from "../obj/bind";
 import type { ObjectKind } from "../obj/types";
 import { scatterExt } from "../world/scatter";
 import { los } from "../world/view";
-import { monsterMax, monsterSwap, squareMonster } from "./context";
+import { monPop, monsterMax, monsterSwap, squareMonster } from "./context";
 import type { GameState } from "./context";
 import { floorCarry } from "./floor";
 import type { FloorEnv } from "./floor";
@@ -175,9 +175,14 @@ export function squareAllowsSummon(
 }
 
 /**
- * mon_pop + the placement bookkeeping of place_monster: put a constructed
- * monster into the first free slot (or a fresh one), mark its square, join
- * its group and count its race. Returns the midx.
+ * The slot allocation and placement bookkeeping of place_new_monster_one
+ * (mon-make.c L1010 onwards): ask mon_pop for a slot, mark the square, join the
+ * group and count the race. Returns the midx, or 0 when the monster list is
+ * full - which the caller MUST propagate as a failed placement, as upstream's
+ * `if (!m_idx) return 0` does.
+ *
+ * The slot scan that used to live here reused the first hole; mon_pop appends
+ * below level_monster_max and only recycles at the cap. See monPop.
  */
 function placeMonsterLive(
   state: GameState,
@@ -186,17 +191,15 @@ function placeMonsterLive(
   deps: MonPlaceDeps,
   origin: number,
 ): number {
-  if (state.monsters.length === 0) state.monsters.push(null);
-  let midx = 0;
-  for (let i = 1; i < state.monsters.length; i++) {
-    if (!state.monsters[i]) {
-      midx = i;
-      break;
-    }
-  }
-  if (!midx) {
-    midx = state.monsters.length;
-    state.monsters.push(null);
+  /* `loading` (mon-make.c L1006, L1011-1014): a monster read back from a save
+   * keeps its stored slot rather than drawing a new one. Live callers build the
+   * monster with createMonster, whose midx is 0; the port's load path appends
+   * in stored order through addMonster, which is the same assignment. */
+  const loading = mon.midx > 0;
+  const midx = loading ? mon.midx : monPop(state);
+  if (!midx) return 0;
+  if (loading && state.monsters.length <= midx) {
+    state.monsters.length = midx + 1;
   }
   mon.midx = midx;
   mon.grid = grid;
@@ -422,8 +425,8 @@ export function placeNewMonsterOne(
     groupIndex: info.index,
     groupRole: info.role,
   });
-  placeMonsterLive(state, grid, mon, deps, origin);
-  return true;
+  /* mon-make.c L1017-1018: no free slot means no monster. */
+  return placeMonsterLive(state, grid, mon, deps, origin) !== 0;
 }
 
 /**
