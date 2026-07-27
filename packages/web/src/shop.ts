@@ -747,6 +747,13 @@ export async function runStore(
     /* do_cmd_retrieve is free and silent about gold; real shops report the sale. */
     if (isHome) storeSay(`You have ${bought}.`);
     else storeSay(`You bought ${bought} for ${result.price} gold.`);
+    /* store.c:1757-1763: buying the last item empties the shop, and the
+     * shopkeeper says which way it went. Printed after the sale line, as
+     * upstream prints it after "You bought ...". */
+    if (result.emptied === "retired") say("The shopkeeper retires.");
+    else if (result.emptied === "restocked") {
+      say("The shopkeeper brings out some new stock.");
+    }
     refreshStock();
   };
 

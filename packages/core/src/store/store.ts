@@ -77,6 +77,12 @@ export interface StoreMaintContext {
   maxDepth: number;
   /** Every live store, for black_market_ok's cross-store check. */
   stores: Store[];
+  /**
+   * store_update's cheat_xtra readouts (store.c:1424, :1444). The option is in
+   * scope per the exact-parity mandate; the session supplies this sink only
+   * when cheat_xtra is on, so faithful play stays silent.
+   */
+  cheatMsg?: (text: string) => void;
 }
 
 /** OSTACK_STORE/PACK never read the quiver limits, so these go unused here. */
@@ -659,6 +665,7 @@ export function storeMaint(ctx: StoreMaintContext, store: Store): void {
  */
 export function storeUpdate(ctx: StoreMaintContext, daycount: number): void {
   const shuffle = ctx.deps.constants.storeShuffle;
+  ctx.cheatMsg?.("Updating Shops...");
   let dc = daycount;
   while (dc-- > 0) {
     /* Maintain each shop (except home). */
@@ -668,6 +675,7 @@ export function storeUpdate(ctx: StoreMaintContext, daycount: number): void {
     }
     /* Sometimes, shuffle the shop-keepers. */
     if (ctx.rng.oneIn(shuffle)) {
+      ctx.cheatMsg?.("Shuffling a Shopkeeper...");
       const nonHome = ctx.stores.filter((s) => s.feat !== FEAT.HOME);
       if (nonHome.length > 0) {
         const n = ctx.rng.randint0(nonHome.length);

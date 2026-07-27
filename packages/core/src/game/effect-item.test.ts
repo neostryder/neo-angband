@@ -288,10 +288,11 @@ describe("EF_REMOVE_CURSE (effect-handler-general.c L1051)", () => {
     );
     expect(used).toBe(true);
     expect(sword.curses).toBeNull();
-    /* uncurse_object emits NO message on success (effect-handler-general.c
-       L192-196); only the failure branches speak (E1). */
+    /* Success names the curse it removed: uncurse_object's SECOND
+       remove_object_curse call passes message = true
+       (effect-handler-general.c:195 -> obj-curse.c:231). */
     void pick;
-    expect(msgs).toEqual([]);
+    expect(msgs).toEqual(["The air swing curse is removed!"]);
   });
 
   it("a weak attempt makes the item fragile", () => {
