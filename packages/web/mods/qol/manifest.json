@@ -6,7 +6,7 @@
   "dependencies": { "core": "*" },
   "author": "neostryder (RPGM Tools)",
   "license": "GPL-2.0-only",
-  "description": "Bundled, default-on, fully-removable quality-of-life mod. It adds NEW conveniences that are not part of faithful Angband (the built-in Angband options ship in core with their upstream defaults and are NOT touched here). Every tweak is a named, described toggle in the in-app Fixes & tweaks menu; QoL tweaks are ON by default. See docs/modding/QOL.md.",
+  "description": "Bundled, fully-removable quality-of-life mod. It adds NEW conveniences that are not part of faithful Angband (the built-in Angband options ship in core with their upstream defaults and are NOT touched here). The mod itself is OFF by default, like every mod; enable it and you get the whole set, with each tweak a named, described toggle in the in-app Fixes & tweaks menu that you can switch off individually. See docs/modding/QOL.md.",
   "rules": [
     {
       "flag": "qol.autoDig",

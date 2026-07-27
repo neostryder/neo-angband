@@ -57,8 +57,21 @@ The host does the rest, entirely outside core:
 
 This means a "rules mod" is a plain `content` pack with **no plugin code and no
 capabilities**. `qol` and `bug-fixes` are both content mods; disabling a mod (or
-turning a rule off) drops its flags and restores faithful core. QoL tweaks
-default ON; bug fixes default OFF.
+turning a rule off) drops its flags and restores faithful core.
+
+**Default policy (Aaron's ruling, 2026-07-26).** Two independent layers:
+
+- **Every mod is OFF by default**, including the bundled first-party ones
+  (`DEFAULT_ENABLED_MODS` is `[]`, `mod-store.ts`). A fresh install is the
+  faithful, unmodded 4.2.6 base game. The player enables a mod deliberately, at
+  birth or at any point afterwards.
+- **When a mod IS enabled, each of its patches defaults ON.** Enabling
+  `bug-fixes` gives you the whole patch set; enabling `qol` gives you the whole
+  tweak set. The per-patch toggles exist so a player who wants the mod but not
+  one specific patch can opt that one out.
+
+So `default: true` on a rule does not mean "on in a fresh install" — it means
+"on once its mod is enabled". Nothing is on until the player turns the mod on.
 
 > An earlier build implemented this with a trusted in-process plugin plus a
 > `registry:rules` capability and a `RulesFacade`. That was removed in favour of
@@ -90,7 +103,13 @@ This is a hook rather than an inline branch only so the movement code
 
 ## Why this is safe for a faithful port
 
-- Single reader (`modRuleEnabled`) enforces "absent = faithful" in one place.
+- Flags are read on two paths, both of which treat an absent flag as faithful:
+  `modRuleEnabled(state, name)` (`game/context.ts`) wherever a `GameState` is in
+  scope, and a direct `deps.modRules?.["flag"] === true` test in the two places
+  that only have a `deps` bag rather than a live state — level generation
+  (`gen/generate.ts`, `bugfix.stairsReachable`) and object creation
+  (`obj/make.ts`, `bugfix.duplicateArtifact`). Adding a third reader is
+  discouraged; prefer `modRuleEnabled` whenever a `GameState` is available.
 - Flags are a client setting, not saved - a save is portable and does not bake in
   a mod's behaviour; the same character plays faithfully if the mod is removed.
 - No mod code runs for rules; the host applies declared data. The capability
