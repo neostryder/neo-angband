@@ -75,6 +75,20 @@ export function pileContains(
 }
 
 /**
+ * square_holds_object (cave-square.c L1015): whether this exact object is in
+ * the pile at `grid`. Identity, not equality - it answers "is this the object I
+ * am holding a reference to, still here".
+ */
+export function squareHoldsObject(
+  state: GameState,
+  grid: Loc,
+  obj: GameObject,
+): boolean {
+  if (!state.chunk.inBounds(grid)) return false;
+  return pileContains(floorPile(state, grid), obj);
+}
+
+/**
  * pile_last_item (obj-pile.c L248): the tail of a pile, or null when empty.
  * Upstream's two consumers (gear_last_item -> combine_pack, obj-ignore.c
  * ignore_drop) both use it to walk gear BACKWARDS; here that is a reversed

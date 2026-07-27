@@ -122,10 +122,10 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "Are you sure you want to use the borg commands? ",
     ],
 
-  "divergence: the port identifies a save by character id, not by filename, so two characters may share a name and there is no savefile to overwrite (docs/INSTALL.md, save export/import)":
+  "divergence (re-derived from the C 2026-07-27, upheld): the prompt exists because upstream's savefile PATH is derived from the character name - savefile_name_already_used (ui-game.c:1016) calls savefile_set_name(fname) and then file_exists on the result - so two characters of one name are one file. The port's roster keys each slot by a UUID (web/src/roster.ts newCharId / SLOT_PREFIX + id) and nothing dedupes on name, so a repeated name collides with nothing and there is no file to overwrite":
     ["A savefile for that name exists.  Overwrite it? "],
 
-  "divergence: no panic save. The port autosaves to browser storage continuously, so there is no separate panic file to offer on next launch":
+  "divergence (re-derived from the C 2026-07-27, upheld): start_game (ui-game.c:709-720) offers the panic file only when file_newer(panicfile, loadpath) - it can be newer because upstream's ordinary save happens on demand, so a crash leaves the signal handler's separate savefile_get_panic_name file ahead of it. The port autosaves the one slot continuously, so there is no second artifact and no staleness window for one to be newer than":
     ["A panic save exists.  Use it? "],
 
   "GAP: guard messages upstream needs because a command can name a store the player is not in. The port's shop screens only offer buy/sell while a store is open, so no command can reach these - but that is an argument from the current UI, not from the C, and a mod adding remote trade would need them":

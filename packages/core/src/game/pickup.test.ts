@@ -9,7 +9,7 @@ import type { ObjPackJson } from "../obj/types";
 import { objectPrep } from "../obj/make";
 import type { GameObject } from "../obj/object";
 import { floorCarry, floorPile } from "./floor";
-import { calcInventory, gearGet, invenCarry } from "./gear";
+import { calcInventory, gearAdd, gearGet, invenCarry } from "./gear";
 import type { GameState } from "./context";
 import {
   autoPickupOkay,
@@ -69,6 +69,13 @@ function makeGold(pval: number): GameObject {
 /** Put an object on the player's grid. */
 function underfoot(state: GameState, obj: GameObject): GameObject {
   expect(floorCarry(state, state.actor.grid, obj)).toBe(true);
+  return obj;
+}
+
+/** Put an object straight into the pack (a pre-existing carried stack). */
+function carryObj(state: GameState, obj: GameObject): GameObject {
+  const handle = gearAdd(state.gear, obj);
+  state.gear.pack.push(handle);
   return obj;
 }
 
@@ -366,5 +373,75 @@ describe("inven_carry autoinscribes on pickup (obj-gear.c:864-868)", () => {
     underfoot(state, second);
     expect(playerPickupItem(state, second, deps)).toBe(1);
     expect(seen).toEqual([]);
+  });
+});
+
+describe("object_pack_total in inven_carry's message (obj-gear.c L905-921)", () => {
+  it("reports the AGGREGATE over split stacks and names the first one", () => {
+    /* The pack holds two MERGEABLE stacks of the same potion. That is a real
+     * state, and the reason object_pack_total exists: nothing merges them until
+     * combine_pack runs on the PN_COMBINE notice, and a stack over the per-slot
+     * limit stays split regardless. object_pack_total is called with
+     * ignore_inscrip = false, so it aggregates over object_stackable - two
+     * DIFFERENTLY inscribed stacks would (correctly) not combine into one total.
+     *
+     * Upstream aggregates across both slots and labels the earlier one "1st";
+     * the port used to report only the stack the pickup landed in. */
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const first = makeObj(TV.POTION, 0);
+    first.number = 2;
+    carryObj(state, first);
+    const second = makeObj(TV.POTION, 0);
+    second.number = 3;
+    carryObj(state, second);
+
+    const floorStack = makeObj(TV.POTION, 0);
+    floorStack.number = 1;
+    underfoot(state, floorStack);
+
+    let msg = "";
+    playerPickupItem(state, null, {
+      constants,
+      env: { onPickup: (m) => (msg = m) },
+    });
+    /* The floor potion merges into slot a (3), and the total spans both slots:
+     * 3 + 3 = 6, reported against the first stack's letter. */
+    expect(msg).toMatch(/^You have 6 .+ \(1st a\)\.$/);
+  });
+
+  it("keeps a single stack's own count and plain label", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const stack = makeObj(TV.POTION, 0);
+    stack.number = 4;
+    underfoot(state, stack);
+    let msg = "";
+    playerPickupItem(state, null, {
+      constants,
+      env: { onPickup: (m) => (msg = m) },
+    });
+    expect(msg).toMatch(/^You have 4 .+ \(a\)\.$/);
+  });
+
+  it("does not aggregate a wand, whose charge count belongs to one stack", () => {
+    /* obj-gear.c L899-901: tval_can_have_charges suppresses the aggregate,
+     * because the "(N charges)" notice beside it is this stack's own. */
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const held = makeObj(TV.WAND, 0);
+    held.number = 1;
+    held.pval = 7;
+    held.note = "keep";
+    carryObj(state, held);
+
+    const floorWand = makeObj(TV.WAND, 0);
+    floorWand.number = 1;
+    floorWand.pval = 3;
+    underfoot(state, floorWand);
+
+    let msg = "";
+    playerPickupItem(state, null, {
+      constants,
+      env: { onPickup: (m) => (msg = m) },
+    });
+    expect(msg).not.toMatch(/1st/);
   });
 });
