@@ -39,8 +39,8 @@ import {
 } from "@neo-angband/core";
 import type { GameObject, StartedGame, Store, EarlierObjectOpts } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
-import { selectFromMenu } from "./overlay";
-import { objectColor, objectName, packMenu } from "./screens";
+import { itemSelect, selectFromMenu } from "./overlay";
+import { objectColor, objectName, packMenu, quiverMenu } from "./screens";
 import { UI_TEXT, UI_DIM, UI_CURSOR, UI_CURSOR_DISABLED, UI_GOOD } from "./ui-colors";
 
 /**
@@ -759,9 +759,9 @@ export async function runStore(
     /* store_sell get_item (ui-store.c L487-518): a faithful multi-source pick
      * over USE_INVEN|USE_EQUIP|USE_QUIVER|USE_FLOOR, filtered by the tester - a
      * real shop only lists items it would actually buy (store_will_buy_tester);
-     * the Home accepts anything (game.willBuy returns true for it). The quiver
-     * rides the pack in this gear model, so USE_QUIVER folds into the inventory
-     * pass (deps.sellPick). */
+     * the Home accepts anything (game.willBuy returns true for it). The Quiver is
+     * its own source in that pick, so ammo sells out of the quiver as upstream's
+     * USE_QUIVER list does (deps.sellPick). */
     // store_sell prompt (ui-store.c L500/L509): Home drops, no_selling gives.
     const sellPrompt = isHome ? "Drop which item? " : noSelling ? "Give which item? " : "Sell which item? ";
     const picked = await deps.sellPick(sellPrompt, (obj) => game.willBuy(store, obj));
@@ -824,20 +824,27 @@ export async function runStore(
 
   /**
    * 'I' -> textui_obj_examine (ui-store.c L843): inspect an item from the
-   * player's OWN pack (not the store stock), showing its object_info screen.
+   * player's OWN gear (not the store stock), showing its object_info screen.
    * Distinct from 'l'/'x' (store_examine), which inspects an item on sale.
-   * Pack-only, the same faithful subset as the sell picker (no equip/quiver
-   * picker in the store yet, gap noted at findInven).
+   * Inven + Quiver, since the quiver is a list of its own (upstream's get_item
+   * mode here is USE_EQUIP|USE_INVEN|USE_QUIVER|USE_FLOOR; equip and floor
+   * remain the gap noted at findInven).
    */
   const inspectInven = async (): Promise<void> => {
-    const { items, handles } = packMenu(game.state);
-    if (items.length === 0) {
+    const inven = packMenu(game.state);
+    const quiver = quiverMenu(game.state);
+    const sources = [
+      { label: "Inven", items: inven.items },
+      { label: "Quiver", items: quiver.items },
+    ].filter((s) => s.items.length > 0);
+    const handleLists = [inven.handles, quiver.handles].filter((h) => h.length > 0);
+    if (sources.length === 0) {
       storeSay("You have nothing to inspect. ");
       return;
     }
-    const idx = await selectFromMenu(term, "Examine which item? ", items, "[ a-z to inspect, ESC to cancel ]");
-    if (idx === null) return;
-    const handle = handles[idx];
+    const chosen = await itemSelect(term, "Examine which item?", sources);
+    if (chosen === null) return;
+    const handle = handleLists[chosen.source]?.[chosen.index];
     if (handle === undefined) return;
     const obj = game.state.gear.store.get(handle);
     if (obj) await deps.examine(obj);

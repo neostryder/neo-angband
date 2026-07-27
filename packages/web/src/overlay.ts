@@ -992,9 +992,14 @@ export function selectFromMenu(
       }
       // Command-key layer (store buy/sell/examine, ui-store.c:1097-1120) sits
       // above positional selection AND cursor nav, so a command letter beats
-      // both meanings (upstream keeps the two key sets disjoint).
-      if (commands && ev.key.length === 1) {
-        const cmd = commands[ev.key] ?? commands[ev.key.toLowerCase()];
+      // both meanings (upstream keeps the two key sets disjoint). Named keys
+      // ("Delete", "Backspace") are matched too, so a screen can offer an action
+      // that does not consume one of the a-z selection letters.
+      if (commands) {
+        const cmd =
+          ev.key.length === 1
+            ? commands[ev.key] ?? commands[ev.key.toLowerCase()]
+            : commands[ev.key];
         if (cmd) {
           const res = cmd(cursor);
           if (typeof res === "number") pick(res);

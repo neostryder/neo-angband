@@ -230,9 +230,18 @@ export function objectName(state: GameState, obj: GameObject): string {
   return describeObject(state, obj, ODESC.PREFIX | ODESC.FULL);
 }
 
-/** Pack handles in slot order (gear.pack is already the non-equipped order). */
-export function packHandles(state: GameState): number[] {
-  return [...state.gear.pack];
+/**
+ * upkeep->inven[] in slot order - the ONE list every inventory view walks.
+ *
+ * build_obj_list is always handed `player->upkeep->inven` for the pack
+ * (ui-object.c:504, :1547), never the master gear list. The two differ: gear.pack
+ * is the port's p->gear-minus-equipment ordering and it still holds the handles
+ * calc_inventory routed into the quiver (upstream keeps them on p->gear too), so
+ * walking it listed quivered arrows and shots a second time under Inventory.
+ * gear.inven is the computed, earlier_object-sorted view with the quiver removed.
+ */
+export function invenHandles(state: GameState): number[] {
+  return [...(state.gear.inven ?? [])];
 }
 
 /**
@@ -246,7 +255,7 @@ export function packMenu(
 ): { items: MenuItem[]; handles: number[] } {
   const items: MenuItem[] = [];
   const handles: number[] = [];
-  state.gear.pack.forEach((handle, slot) => {
+  invenHandles(state).forEach((handle, slot) => {
     const obj = gearGet(state.gear, handle);
     if (!obj) return;
     if (filter && !filter(obj)) return;
@@ -259,6 +268,36 @@ export function packMenu(
       label: objectName(state, obj),
       color: objectColor(obj, state),
       tag: objLetter(slot),
+      inscrip: obj.note,
+    });
+    handles.push(handle);
+  });
+  return { items, handles };
+}
+
+/**
+ * The Quiver source of a get_item picker (show_quiver, ui-object.c:531, which
+ * hands build_obj_list `player->upkeep->quiver`). Rows are the FILLED slots and
+ * each is labelled with its slot DIGIT - build_obj_list writes `I2D(i)` rather
+ * than `all_letters_nohjkl[i]` when the list it was given is the quiver
+ * (ui-object.c:291-292). Empty slots are skipped: only the OLIST_SEMPTY
+ * subwindow listing shows them.
+ */
+export function quiverMenu(
+  state: GameState,
+  filter?: (obj: GameObject) => boolean,
+): { items: MenuItem[]; handles: number[] } {
+  const items: MenuItem[] = [];
+  const handles: number[] = [];
+  (state.gear.quiver ?? []).forEach((handle, slot) => {
+    if (!handle) return;
+    const obj = gearGet(state.gear, handle);
+    if (!obj) return;
+    if (filter && !filter(obj)) return;
+    items.push({
+      label: objectName(state, obj),
+      color: objectColor(obj, state),
+      tag: String(slot),
       inscrip: obj.note,
     });
     handles.push(handle);
@@ -337,7 +376,7 @@ export function deviceMenu(
 ): { items: MenuItem[]; handles: number[] } {
   const items: MenuItem[] = [];
   const handles: number[] = [];
-  state.gear.pack.forEach((handle, slot) => {
+  invenHandles(state).forEach((handle, slot) => {
     const obj = gearGet(state.gear, handle);
     if (!obj) return;
     if (!filter(obj)) return;
@@ -356,7 +395,7 @@ export function deviceMenu(
 export function inventoryLines(state: GameState): ScreenLine[] {
   const lines: ScreenLine[] = [];
   let i = 0;
-  for (const handle of state.gear.pack) {
+  for (const handle of invenHandles(state)) {
     const obj = gearGet(state.gear, handle);
     if (!obj) continue;
     lines.push({
@@ -596,7 +635,7 @@ export function magicBooks(
   const player = state.actor.player;
   const items: MenuItem[] = [];
   const handles: number[] = [];
-  for (const handle of state.gear.pack) {
+  for (const handle of invenHandles(state)) {
     const obj = gearGet(state.gear, handle);
     if (!obj || !tvalIsBook(obj.tval)) continue;
     if (!playerObjectToBook(player, obj)) continue;
