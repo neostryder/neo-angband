@@ -275,10 +275,16 @@ export class ModStore {
    * The player's explicit per-flag overrides for mod rules ("qol.autoDig",
    * "bugfix.*"). A flag ABSENT here means "use the mod's declared default", so
    * this stores only deliberate deviations - a fresh install has none and every
-   * rule sits at its manifest default. Per the mod default policy every bundled
-   * patch declares `default: true`, which means "on once its mod is enabled" and
-   * never "on in a fresh install" - no mod is enabled by default at all (see
-   * DEFAULT_ENABLED_MODS), so an untouched install applies no rules.
+   * rule sits at its manifest default.
+   *
+   * Per the mod default policy every bundled patch declares `default: true`,
+   * which means exactly "on once its own mod is enabled" - never "on in a fresh
+   * install". A choice recorded here for a flag whose mod is currently disabled
+   * is inert, because only an ENABLED mod's rules are ever resolved
+   * (loadEnabledModRuleDecls -> resolveModRules): a disabled mod's patches do not
+   * exist rather than sitting off. It is kept, not deleted, so re-enabling the
+   * mod restores the player's opt-outs. No mod is enabled on a fresh install at
+   * all (see DEFAULT_ENABLED_MODS), so an untouched install applies no rules.
    */
   getRuleChoices(): Record<string, boolean> {
     const obj = readJson<Record<string, unknown>>(this.storage, RULE_CHOICES_KEY, {});

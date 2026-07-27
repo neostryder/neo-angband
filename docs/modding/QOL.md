@@ -3,7 +3,7 @@
 > STATUS: DESIGN OF RECORD. This page is the source of truth and public
 > changelog for the bundled quality-of-life mod. The mod adds NEW conveniences
 > that are not part of faithful Angband; with it disabled (or a tweak turned off
-> in the Fixes & tweaks menu) core is byte-identical to faithful 4.2.6 behaviour.
+> in its Fixes & tweaks submenu) core is byte-identical to faithful 4.2.6 behaviour.
 
 ## Why this mod exists
 
@@ -30,23 +30,29 @@ bugs). Balance and rules changes belong in neither - they would be their own mod
 ## How it works (declarative, reversible, faithful-when-off)
 
 Every QoL tweak is a named **core rule flag** (`qol.*`) that ships in ported core
-as an OFF-by-default branch guarded by `modRuleEnabled(state, "<flag>")`. The mod
+as an extra branch guarded by `modRuleEnabled(state, "<flag>")`. The flag itself
+only exists while the `qol` mod is enabled - a disabled mod declares nothing, so
+`modRules` has no such key and core takes the faithful branch. The mod
 does not run code: `packages/web/mods/qol/manifest.json` simply DECLARES its
 tweaks under `rules` (flag / title / description / default). The host
 (`packages/web/src/main.ts`) resolves every enabled mod's declared rules against
 the player's saved choices and seeds `GameState.modRules` at `startGame` /
-`loadGame`; the in-app **Fixes & tweaks** menu (in the mod manager) lists each
-tweak with its description and lets the player toggle it (applied live).
+`loadGame`; the **Fixes & tweaks** submenu on this mod's own screen (mod manager
+-> Quality of Life) lists each tweak with its description and lets the player
+toggle it (applied live).
 
-QoL tweaks default **ON once the mod is enabled** - and the mod is off on a
-fresh install, so a default game applies no flag. Disabling the mod, or turning
-a tweak off, drops the flag and core returns to faithful behaviour. See
+**While the mod is off, its tweaks do not exist** - no flag, nothing in the
+menu, faithful 4.2.6. Enabling the mod turns its whole tweak set ON at once;
+each tweak is then individually switchable in that submenu, so you
+can take the set minus one. Disabling the mod again, or switching one tweak off,
+drops that flag and core returns to faithful behaviour. The mod is off on a
+fresh install, so a default game applies no flag at all. See
 `docs/modding/MOD_SEAMS.md` for the full seam contract, and `BUG_FIXES.md` for
 the same mechanism in the bug-fix mod.
 
 ## Tweaks this mod ships
 
-### `qol.autoDig` - Auto-dig on walk (default ON)
+### `qol.autoDig` - Auto-dig on walk (on with the mod)
 
 Ported from neostryder's Angband fork (`do_cmd_movement_tunnel_test` / `move_player` change).
 Walking into a rubble pile or mineral vein you can currently tunnel through
@@ -85,4 +91,5 @@ re-implement them:
 - `packages/core/src/session/qol-defaults.test.ts` - faithful core option
   defaults (no QoL override) and the `modRules` start/load seam.
 - `packages/web/src/qol-mod.test.ts` - the manifest declares `qol.autoDig`
-  (default on) and no option overrides; `pack.ts` discovery + `resolveModRules`.
+  (`default: true`, i.e. on once the mod is enabled) and no option overrides;
+  `pack.ts` discovery + `resolveModRules`.

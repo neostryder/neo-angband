@@ -44,10 +44,15 @@ faithful 4.2.6 with no mod loaded):
 | `linoleum` | tiles | Registers the freely-licensed Original / Adam Bolt / David Gervais / Nomad tile packs so a graphics mode is selectable in-game. See `docs/LINOLEUM.md`. |
 
 Enable one in the in-app mod manager (game menu -> Mods), or with
-`?mods=qol,bug-fixes,linoleum` for a one-off. Every patch a mod declares
-is ON once its mod is enabled, and individually switchable under
-Mods -> Fixes & tweaks; `default: true` on a rule means "on once the mod
-is on", never "on in a fresh install".
+`?mods=qol,bug-fixes,linoleum` for a one-off.
+
+**The mod is the unit you switch; its patches ride with it.** While a mod is
+disabled its patches DO NOT EXIST - no rule flag, nothing in the menu, core
+running faithful 4.2.6. Enabling the mod turns its whole patch set on at once,
+and each patch is then individually switchable on that mod's own screen
+(Mods -> the mod -> Fixes & tweaks), so you can take the set minus one.
+That is all `default: true` on a rule means:
+"on once its own mod is on" - never "on in a fresh install".
 
 The `demo-*` directories alongside them are NOT shipped mods. They are the
 framework proofs - one per SDK load path (a content pack that patches a core
