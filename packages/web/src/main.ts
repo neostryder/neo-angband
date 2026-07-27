@@ -117,6 +117,7 @@ import {
   targetIsSet,
   targetGet,
   targetSighted,
+  enterStoreGuard,
   TARGET,
   TMD,
   ignoreDropTargets,
@@ -5848,9 +5849,20 @@ function runStoreItemCmd(code: string, args: Record<string, unknown>): string | 
 }
 
 function enterStoreModal(store: Store): Promise<void> {
+  // enter_store's own guard (ui-store.c:1257-1262): re-resolve store_at from the
+  // grid, because the screen opens a tick after the step that triggered it.
+  const refusal = enterStoreGuard(storeAtPlayer());
+  if (refusal) {
+    say(refusal);
+    return Promise.resolve();
+  }
   const feat = features.get(store.feat);
   return openModal(() =>
     runStore(term, game, store, say, constants, {
+      // Each do_cmd_buy / _sell / _retrieve / _stash calls store_at(cave,
+      // player->grid) AFRESH (store.c:1665, :1795, :1872, :2014); the shop
+      // screen must not trust the Store it was opened with.
+      storeAt: storeAtPlayer,
       featureName: feat?.name ?? store.featName,
       rogueLike: state.options?.get("rogue_like_commands") ?? false,
       // store_examine (ui-store.c L749): the object_info screen for a fully

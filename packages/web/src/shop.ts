@@ -37,6 +37,10 @@ import {
   tvalCanHaveCharges,
   FEAT,
   earlierObject,
+  storeBuyGuard,
+  storeRetrieveGuard,
+  storeSellGuard,
+  storeStashGuard,
 } from "@neo-angband/core";
 import type { GameObject, StartedGame, Store, EarlierObjectOpts } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
@@ -225,6 +229,14 @@ export type SellPick =
 export interface StoreScreenDeps {
   /** f_info[store->feat].name, e.g. "General Store" (store_display_frame). */
   featureName: string;
+  /**
+   * store_at(cave, player->grid), re-resolved per transaction. Each of
+   * do_cmd_buy / _retrieve / _sell / _stash calls it afresh (store.c:1665,
+   * :1795, :1872, :2014) and refuses when the player is not in a store of the
+   * right kind - so the screen must not trust the Store it was opened with.
+   * Absent, the guards read the opened store (test harnesses).
+   */
+  storeAt?: () => Store | null;
   /** rogue_like_commands: swaps the selection string and the 'l'/'x' help key. */
   rogueLike: boolean;
   /** store_examine (ui-store.c L749): show the object_info screen for `obj`. */
@@ -737,12 +749,26 @@ export async function runStore(
       );
       if (!ok) return;
     }
+    // do_cmd_buy / do_cmd_retrieve's store-presence guard, re-resolving
+    // store_at from the grid as upstream does (store.c:1665-1670 / :1793-1800).
+    const here = deps.storeAt?.() ?? store;
+    const entry = isHome ? storeRetrieveGuard(here) : storeBuyGuard(here);
+    if (entry) {
+      storeSay(entry);
+      return;
+    }
     const result = game.buy(store, obj, amt);
     if (!result.ok) {
+      // do_cmd_buy / do_cmd_retrieve's own refusals (store.c:1671, :1690,
+      // :1707 and :1801, :1815). These were paraphrased here - "That item is no
+      // longer in stock." etc - which is a divergence under exact parity, and
+      // the Home has its OWN wording for the missing-item case.
       const why: Record<string, string> = {
-        "not-in-stock": "That item is no longer in stock.",
-        "no-room": "You cannot carry any more.",
-        "cannot-afford": "You do not have enough gold.",
+        "not-in-stock": isHome
+          ? "You cannot retrieve that item because it's not in the home."
+          : "You cannot buy that item because it's not in the store.",
+        "no-room": "You cannot carry that many items.",
+        "cannot-afford": "You cannot afford that purchase.",
       };
       storeSay(why[result.failure ?? ""] ?? "The purchase failed.");
       return;
@@ -811,16 +837,33 @@ export async function runStore(
     }
     /* do_cmd_sell dispatch: gear handles (pack/equip/quiver) via game.sell, a
      * floor-pile object via game.sellFloor (floor_object_for_use detach). */
+    // do_cmd_sell / do_cmd_stash's store-presence guard (store.c:1902-1905 /
+    // :2031-2034), re-resolved from the grid. Upstream checks the stuck item
+    // FIRST for sell, which game.sell reports as the "stuck" failure below.
+    const hereSell = deps.storeAt?.() ?? store;
+    const entrySell = isHome
+      ? storeStashGuard(hereSell)
+      : storeSellGuard(hereSell);
+    if (entrySell) {
+      storeSay(entrySell);
+      return;
+    }
     const result =
       picked.kind === "handle"
         ? game.sell(store, picked.handle, amt)
         : game.sellFloor(store, picked.obj, amt);
     if (!result.ok) {
+      // do_cmd_sell / do_cmd_stash's own refusals (store.c:1890, :1903, :1913
+      // and :2049). "no-item" has no upstream counterpart: cmd_get_arg_item
+      // fails there and returns silently, so the port keeps its own line for a
+      // seam the C cannot reach.
       const why: Record<string, string> = {
         "no-item": "You do not have that item.",
-        stuck: "You cannot remove that - it is stuck to you.",
-        refused: "The shopkeeper does not want that.",
-        "no-room": isHome ? "Your home is full." : "I have not the room in my store to keep it.",
+        stuck: "Hmmm, it seems to be stuck.",
+        refused: "I do not wish to purchase this item.",
+        "no-room": isHome
+          ? "Your home is full."
+          : "I have not the room in my store to keep it.",
       };
       storeSay(why[result.failure ?? ""] ?? "The sale failed.");
       return;
