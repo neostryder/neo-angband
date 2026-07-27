@@ -1,4 +1,5 @@
 import { describe, expect, it, afterEach } from "vitest";
+import { colorToCss, COLOUR_L_BLUE } from "@neo-angband/core";
 import {
   showLevelMap,
   selectFromMenu,
@@ -51,21 +52,40 @@ function makeFakeWindow(): FakeWindow {
   };
 }
 
-function makeTerm(cols = 20, rows = 12): GlyphTerm & { snapshot(): string[] } {
+interface FakeTerm extends GlyphTerm {
+  snapshot(): string[];
+  /** CSS colour last written to a cell, or "" if never printed. */
+  colorAt(x: number, y: number): string;
+  /** Row the terminal cursor was last placed on (Term_gotoxy), or -1. */
+  cursorRow(): number;
+}
+
+function makeTerm(cols = 20, rows = 12): FakeTerm {
   const grid: string[][] = Array.from({ length: rows }, () => new Array(cols).fill(" "));
+  const colors: string[][] = Array.from({ length: rows }, () => new Array(cols).fill(""));
+  let curRow = -1;
   return {
     size: () => ({ cols, rows }),
     clear: () => {
       for (const row of grid) row.fill(" ");
+      for (const row of colors) row.fill("");
+      curRow = -1;
     },
-    print: (x: number, y: number, text: string) => {
+    print: (x: number, y: number, text: string, fg?: string) => {
       for (let i = 0; i < text.length && x + i < cols; i++) {
         const row = grid[y];
+        const crow = colors[y];
         if (row) row[x + i] = text[i] ?? " ";
+        if (crow) crow[x + i] = fg ?? "";
       }
     },
+    setCursor: (_x: number, y: number) => {
+      curRow = y;
+    },
     snapshot: () => grid.map((row) => row.join("").replace(/\s+$/u, "")),
-  } as unknown as GlyphTerm & { snapshot(): string[] };
+    colorAt: (x: number, y: number) => colors[y]?.[x] ?? "",
+    cursorRow: () => curRow,
+  } as unknown as FakeTerm;
 }
 
 function press(win: FakeWindow, key: string): void {
@@ -317,8 +337,7 @@ describe("selectFromMenu: detailToggleKey ('?' description toggle)", () => {
 // GlyphTerm.onCellTap is the new term seam: a modal registers a handler on
 // open and clears it on resolve. The fake term here mimics that surface so
 // the overlay's tap logic is tested without a canvas.
-interface TapTerm extends GlyphTerm {
-  snapshot(): string[];
+interface TapTerm extends FakeTerm {
   /** Simulate a tap that GlyphTerm would deliver for a canvas pointerdown. */
   fireTap(col: number, row: number): void;
   /** True while a modal has a registered tap handler. */
@@ -355,7 +374,11 @@ describe("selectFromMenu: tap-to-select (gap #58 shared touch seam)", () => {
     const term = makeTapTerm();
     const done = selectFromMenu(term, "Menu", items());
     term.fireTap(3, BODY_TOP + 1); // row of "Beta": highlight only
-    expect(term.snapshot()[BODY_TOP + 1]).toContain(">b) Beta");
+    // The highlight IS the row's colour plus the terminal cursor - upstream has
+    // no '>' marker (curs_attrs / Term_gotoxy, ui-menu.c:29-33 and 212-213).
+    expect(term.snapshot()[BODY_TOP + 1]).toContain("b) Beta");
+    expect(term.colorAt(0, BODY_TOP + 1)).toBe(colorToCss(COLOUR_L_BLUE));
+    expect(term.cursorRow()).toBe(BODY_TOP + 1);
     let resolved: number | null | undefined;
     void done.then((v) => {
       resolved = v;
@@ -449,7 +472,9 @@ describe("selectFromMenu: subtitle / hint / initialCursor / onHighlight / footer
       undefined,
       { initialCursor: 2, onHighlight: (i) => seen.push(i) },
     );
-    expect(term.snapshot()[BODY_TOP + 2]).toContain(">c) C");
+    expect(term.snapshot()[BODY_TOP + 2]).toContain("c) C");
+    expect(term.colorAt(0, BODY_TOP + 2)).toBe(colorToCss(COLOUR_L_BLUE));
+    expect(term.cursorRow()).toBe(BODY_TOP + 2);
     press(win, "ArrowUp");
     press(win, "Enter");
     expect(await done).toBe(1);

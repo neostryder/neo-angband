@@ -44,10 +44,24 @@
  * to play on with an unchosen character.
  */
 
-import { selectFromMenu, promptText, menuNav, MENU_OPTIONS } from "./overlay";
+import {
+  getKeyInline,
+  menuNav,
+  MENU_OPTIONS,
+  promptText,
+  promptTextInline,
+  selectFromMenu,
+} from "./overlay";
 import type { MenuItem, ScreenLine } from "./overlay";
 import { runBirthOptionsEditor } from "./options";
-import { characterSheetLines, statHeaderLine, statRowLine } from "./screens";
+import {
+  characterSheetLines,
+  charSheetDeps,
+  historyBlockLines,
+  statHeaderLine,
+  statRowLine,
+} from "./screens";
+import { drawPlayerXtraInfo } from "./charsheet";
 import type { GlyphTerm } from "./term";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
 import {
@@ -59,6 +73,7 @@ import {
   birthGold,
   buyStat,
   calcBonuses,
+  characterPanels,
   classMagicRealms,
   cnvStat,
   colorToCss,
@@ -73,6 +88,7 @@ import {
   resetStats,
   rollStats,
   sellStat,
+  statTable,
   toCombatState,
 } from "@neo-angband/core";
 import type {
@@ -215,7 +231,6 @@ const CLASS_AUX_COL = 36;
 const ROLLER_COL = 36;
 
 /* Overlay palette (shared with overlay.ts's screen primitives). */
-const PB_TITLE = UI_TEXT;
 const PB_FG = UI_TEXT;
 const PB_DIM = UI_DIM;
 
@@ -451,9 +466,6 @@ const STAT_HEADER_ROW = 1;
 const STAT_ROW0 = 2; // COSTS_ROW / display_player_stat_info row.
 const COST_OFFSET = 32; // COSTS_COL - 42.
 const TOTAL_OFFSET = 19; // TOTAL_COL - 42.
-/** Width the character panels are drawn (and history wrapped) to on the left,
- * so nothing reaches the stat table at col 42. */
-const INFO_W = 40;
 /** Minimum terminal width for the faithful two-column layout (stat table at
  * col 42): point-buy needs the cost column at cols 74-77, the roller only the
  * Best column at cols 66-71. Below these, the table falls back to col 0 with no
@@ -462,50 +474,50 @@ const POINTBUY_WIDE_MIN = 78;
 const ROLLER_WIDE_MIN = 72;
 
 /**
- * display_player_xtra_info alongside the roller / point-buy stat table
- * (ui-birth.c L894 / L1083): the derived character panels drawn in the LEFT
- * column (from `startRow`), skipping the sheet's own stat block (the stat table
- * is drawn separately on the right) so the name, HP/SP, combat, skills, gold
- * and background surface and repaint on every reroll or stat buy/sell. Each
- * line is clipped to INFO_W so it never collides with the stat table.
+ * The in-progress character as display_player(0) sees it: the stat-table rows
+ * (display_player_stat_info), the five panels and the wrapped history
+ * (display_player_xtra_info).
+ *
+ * Every birth screen from the roller onward is drawn ON one of these, because
+ * that is what the C does: the roller calls display_player(0) (ui-birth.c L894),
+ * the point-based screen calls display_player_xtra_info + display_player_stat_info
+ * (L1082-1083), and the name, history and final-confirm stages each call
+ * display_player(0) before their prompt (L1707/L1721/L1733). Nothing else is on
+ * those screens - no title line, no menu, no summary list.
  */
-function drawInfoColumn(
-  term: GlyphTerm,
-  lines: ScreenLine[] | null,
-  startRow: number,
-): void {
-  const { rows } = term.size();
-  if (!lines) return;
-  const skip = 1 + STAT_MAX + 1; // stat header + STAT_MAX stat rows + separator
-  let y = startRow;
-  for (let i = skip; i < lines.length && y < rows - 1; i++, y++) {
-    const line = lines[i];
-    if (!line) continue;
-    // Clip to INFO_W by rendering into a bounded view (drawScreenLine clips to
-    // the terminal width; we additionally cap the run text at INFO_W columns).
-    drawScreenLine(term, 0, y, clipLine(line, INFO_W));
-  }
+interface PreviewSheet {
+  /** display_player_stat_info's STAT_MAX rows, header excluded. */
+  statRows: ScreenLine[];
+  /** display_player_xtra_info's five panels, keyed as the C's panels[] table. */
+  panels: { key: string; lines: readonly { label: string; value: string; color: number }[] }[];
+  /** player->history wrapped to the screen (text_out_wrap = 72, indent 1). */
+  history: ScreenLine[];
 }
 
-/** Clip a (possibly run-coloured) ScreenLine to at most `width` columns. */
-function clipLine(line: ScreenLine, width: number): ScreenLine {
-  if (!line.runs) {
-    return { text: line.text.slice(0, width), ...(line.color ? { color: line.color } : {}) };
-  }
-  const runs: { text: string; color: string }[] = [];
-  let used = 0;
-  for (const run of line.runs) {
-    if (used >= width) break;
-    const chunk = run.text.slice(0, width - used);
-    runs.push({ text: chunk, color: run.color });
-    used += chunk.length;
-  }
-  return {
-    text: runs.map((r) => r.text).join(""),
-    ...(line.color ? { color: line.color } : {}),
-    runs,
-  };
+/**
+ * display_player_xtra_info: the five panels at their upstream anchors plus the
+ * history block, shared verbatim with the character screen (charsheet.ts).
+ */
+function drawBirthPanels(term: GlyphTerm, sheet: PreviewSheet | null): void {
+  if (!sheet) return;
+  drawPlayerXtraInfo(term, sheet.panels, sheet.history);
 }
+
+/**
+ * display_player(0) (ui-player.c L890-919): clear, then the stat table at col 42
+ * and the panels/history. No title row - row 0 is the message/prompt line, which
+ * is exactly where the name and history prompts go.
+ */
+function drawBirthSheet(term: GlyphTerm, sheet: PreviewSheet | null): void {
+  term.clear();
+  if (!sheet) return;
+  drawScreenLine(term, STAT_TABLE_COL, STAT_HEADER_ROW, statHeaderLine());
+  sheet.statRows.forEach((line, i) => {
+    drawScreenLine(term, STAT_TABLE_COL, STAT_ROW0 + i, line);
+  });
+  drawBirthPanels(term, sheet);
+}
+
 
 /**
  * One display_player_stat_info row (ui-player.c L469-507) built from raw birth
@@ -551,7 +563,7 @@ function pointBuyStats(
   race: Named,
   cls: Named,
   initial?: readonly number[],
-  sheet?: (stats: readonly number[]) => ScreenLine[] | null,
+  sheet?: (stats: readonly number[]) => PreviewSheet | null,
 ): Promise<number[] | null> {
   return new Promise<number[] | null>((resolve) => {
     const buy = resetStats();
@@ -577,9 +589,10 @@ function pointBuyStats(
       // Narrower falls back to the table at col 0 with no side panels.
       const wide = cols >= POINTBUY_WIDE_MIN;
       const tableCol = wide ? STAT_TABLE_COL : 0;
-      // display_player_xtra_info on the left (repaints with the live stats).
+      // display_player_xtra_info (ui-birth.c:1082): the five panels at their
+      // own anchors plus the history, repainted with the live stats.
       const infoLines = wide && sheet ? sheet(buy.stats) : null;
-      if (infoLines) drawInfoColumn(term, infoLines, STAT_HEADER_ROW);
+      drawBirthPanels(term, infoLines);
       // display_player_stat_info (ui-player.c L449-509): Self, RB, CB, EB, Best
       // via the shared renderer, then the birth Cost column at COSTS_COL. EB is
       // +0 at birth (no equipment) but is a real column, not omitted.
@@ -711,7 +724,7 @@ function standardRoller(
   race: Named,
   cls: Named,
   rng: Rng,
-  sheet?: (roll: readonly number[]) => ScreenLine[] | null,
+  sheet?: (roll: readonly number[]) => PreviewSheet | null,
 ): Promise<number[] | null> {
   return new Promise<number[] | null>((resolve) => {
     let current = rollStats(rng);
@@ -730,8 +743,9 @@ function standardRoller(
       // back to the table at col 0 with no side panels.
       const wide = cols >= ROLLER_WIDE_MIN;
       const tableCol = wide ? STAT_TABLE_COL : 0;
-      // display_player_xtra_info on the left (repaints on every reroll).
-      if (wide) drawInfoColumn(term, sheet ? sheet(current) : null, STAT_HEADER_ROW);
+      // display_player(0) (ui-birth.c:894): the panels and history, repainted
+      // on every reroll, with the stat table below drawn from the live roll.
+      if (wide) drawBirthPanels(term, sheet ? sheet(current) : null);
       // display_player_stat_info (ui-player.c L449-509): Self, RB, CB, EB, Best
       // via the shared renderer. EB is +0 at birth but is a real column.
       drawScreenLine(term, tableCol, STAT_HEADER_ROW, statHeaderLine());
@@ -1011,24 +1025,26 @@ function wrapHistory(text: string, width = 60): ScreenLine[] {
  */
 async function historyStage(
   term: GlyphTerm,
-  name: string,
   historyText: string,
+  drawSheet: (history: string) => boolean,
 ): Promise<string | null> {
   let current = historyText;
   for (;;) {
-    const wrapped = wrapHistory(current);
-    const pick = await selectFromMenu(
-      term,
-      `${name}  -  background`,
-      [
-        { label: "Accept this background", hint: "Keep the generated history." },
-        { label: "Edit background", hint: "Write your own background." },
-      ],
-      "[ a-z to choose, tap a row, ESC to go back ]",
-      { subtitle: "Accept character history?", detail: () => wrapped },
-    );
-    if (pick === null) return null;
-    if (pick === 0) return current;
+    // The sheet carries the history itself (display_player_xtra_info wraps
+    // player->history from row 19), so the prompt is just the question. Without
+    // registry deps there is no sheet to draw, so the background is wrapped in
+    // on its own - never ask someone to accept a history they cannot read.
+    if (!drawSheet(current)) {
+      let y = 2;
+      for (const line of wrapHistory(current, term.size().cols - 2)) {
+        drawScreenLine(term, 1, y++, line);
+      }
+    }
+    const key = await getKeyInline(term, "Accept character history? [y/n]");
+    if (key === "Escape") return null;
+    if (key !== "n" && key !== "N") return current;
+    // 'n' -> edit_text (ui-birth.c:1523): edit the history in place. A cancelled
+    // edit leaves it unchanged and re-asks, exactly as edit_text returning 1.
     const edited = await promptText(
       term,
       "Edit your character's background",
@@ -1037,7 +1053,6 @@ async function historyStage(
       "[ edit text, Enter to accept, ESC to cancel ]",
     );
     if (edited !== null) current = edited;
-    // A cancelled edit falls back to the accept/edit choice (no change).
   }
 }
 
@@ -1058,13 +1073,15 @@ type ConfirmResult = "begin" | "back" | "restart";
 
 function confirmCharacter(
   term: GlyphTerm,
-  title: string,
-  sheetLines: ScreenLine[] | null,
+  sheet: PreviewSheet | null,
+  fallbackTitle: string,
 ): Promise<ConfirmResult> {
-  if (!sheetLines) {
+  if (!sheet) {
+    // No registry deps (tests / a stub pack): there is no sheet to confirm, so
+    // fall back to a plain choice rather than an empty screen.
     return selectFromMenu(
       term,
-      title,
+      fallbackTitle,
       [
         { label: "Begin the adventure", hint: "Accept this character and play." },
         { label: "Go back", hint: "Step back and change something." },
@@ -1075,77 +1092,40 @@ function confirmCharacter(
     ).then((pick) => (pick === 0 ? "begin" : pick === 2 ? "restart" : "back"));
   }
   return new Promise<ConfirmResult>((resolve) => {
-    let top = 0;
-    const footer =
-      "[ Enter/y begin, S start over, n/ESC go back, arrows scroll ]";
-    const paint = (): void => {
-      const { cols, rows } = term.size();
-      term.clear();
-      term.print(0, 0, title.slice(0, cols - 1), PB_TITLE);
-      term.print(0, 1, "Please confirm your character.".slice(0, cols - 1), PB_DIM);
-      const bodyTop = 2;
-      const bodyRows = Math.max(1, rows - bodyTop - 1);
-      const maxTop = Math.max(0, sheetLines.length - bodyRows);
-      if (top > maxTop) top = maxTop;
-      for (let r = 0; r < bodyRows; r++) {
-        const line = sheetLines[top + r];
-        if (!line) break;
-        drawScreenLine(term, 0, bodyTop + r, line);
-      }
-      const more =
-        maxTop > 0
-          ? `  (${top + 1}-${Math.min(top + bodyRows, sheetLines.length)}/${sheetLines.length})`
-          : "";
-      term.print(0, rows - 1, (footer + more).slice(0, cols - 1), PB_DIM);
-    };
+    const { cols, rows } = term.size();
+    drawBirthSheet(term, sheet);
+    // get_confirm_command (ui-birth.c:1548-1555): this exact prompt, centred on
+    // the last row. No scrolling and no menu - the whole sheet is already on
+    // screen, and any key that is not ESC or 'S' begins the game.
+    const prompt =
+      "['ESC' to step back, 'S' to start over, or any other key to continue]";
+    term.print(
+      Math.max(0, Math.floor(cols / 2 - prompt.length / 2)),
+      rows - 1,
+      prompt.slice(0, cols - 1),
+      PB_FG,
+    );
     const finish = (value: ConfirmResult): void => {
       window.removeEventListener("keydown", onKey, true);
       term.onCellTap?.(null);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") {
+        return; // a modifier alone is not "any other key"
+      }
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      const { rows } = term.size();
-      const page = Math.max(1, rows - 3);
-      if (ev.key === "Enter" || ev.key === "y" || ev.key === "Y") {
-        finish("begin");
-        return;
-      }
-      /* 'S' -> BIRTH_RESET (ui-birth.c L1560-1561): start the character over. */
-      if (ev.key === "S" || ev.key === "s") {
-        finish("restart");
-        return;
-      }
-      if (ev.key === "Escape" || ev.key === "n" || ev.key === "N") {
-        finish("back");
-        return;
-      }
-      const nav = menuNav(ev);
-      if (!nav) return;
-      if (nav === "up") top = Math.max(0, top - 1);
-      else if (nav === "down") top += 1;
-      else if (nav === "pageup") top = Math.max(0, top - page);
-      else if (nav === "pagedown") top += page;
-      else if (nav === "home") top = 0;
-      else if (nav === "end") top = sheetLines.length;
-      paint();
+      /* 'S'/'s' -> BIRTH_RESET (L1559-1560): start the character over. */
+      if (ev.key === "S" || ev.key === "s") return finish("restart");
+      if (ev.key === "Escape") return finish("back");
+      finish("begin");
     };
     window.addEventListener("keydown", onKey, true);
-    // Touch: the footer accepts (begin); the upper/lower halves scroll when the
-    // sheet is taller than the screen (mirrors the char-sheet viewer).
-    term.onCellTap?.((cell) => {
-      const { rows } = term.size();
-      if (cell.row === rows - 1) {
-        finish("begin");
-        return;
-      }
-      const page = Math.max(1, rows - 3);
-      if (cell.row < Math.floor(rows / 2)) top = Math.max(0, top - page);
-      else top += page;
-      paint();
+    // Touch: tapping the prompt row is "any other key" (begin).
+    term.onCellTap?.(() => {
+      finish("begin");
     });
-    paint();
   });
 }
 
@@ -1357,6 +1337,56 @@ export async function runBirth(
     );
     const ps = calcBonuses(player);
     return characterSheetLines(previewState(player, ps), o.sheetName, cols);
+  };
+
+  /**
+   * The same derived preview character as buildSheet, but as display_player(0)
+   * PARTS - the stat rows, the five panels and the wrapped history - so the birth
+   * screens can place them exactly where ui-player.c does instead of listing them.
+   */
+  const buildPreview = (
+    race: PlayerRace | undefined,
+    cls: PlayerClass | undefined,
+    o: {
+      stats?: readonly number[];
+      rolledStats?: readonly number[];
+      historyOverride?: string | null;
+      sheetName: string;
+    },
+    cols: number,
+  ): PreviewSheet | null => {
+    if (!deps || !race || !cls) return null;
+    const body = deps.bodyFor(race.name);
+    if (!body) return null;
+    const { player } = generatePlayer(
+      race,
+      cls,
+      {
+        body,
+        historyChart: deps.historyChartFor(race.name),
+        ...(o.rolledStats
+          ? { rolledStats: o.rolledStats }
+          : o.stats
+            ? { stats: o.stats }
+            : {}),
+        ...(o.historyOverride != null ? { historyOverride: o.historyOverride } : {}),
+      },
+      new Rng(PREVIEW_SEED),
+    );
+    const ps = calcBonuses(player);
+    const state = previewState(player, ps);
+    // The same deps the character screen resolves, so the birth sheet shows the
+    // same derived values (weight_remaining included - it is what makes the
+    // "Overweight" row read like upstream's rather than a flat 0.0 lb).
+    const sheetDeps = { ...charSheetDeps(state, o.sheetName), fullName: o.sheetName };
+    return {
+      statRows: statTable(state, sheetDeps).map((row) => statRowLine(row)),
+      panels: characterPanels(state, sheetDeps).map((panel) => ({
+        key: panel.key,
+        lines: panel.lines,
+      })),
+      history: historyBlockLines(state, cols),
+    };
   };
 
   // The race/class menu rows, tagged from all_letters_nohjkl (ui-menu.c:41), so
@@ -1601,12 +1631,12 @@ export async function runBirth(
         const race = raceRec ?? { name: raceName };
         const cls = clsRec ?? { name: className };
         // The live derived sheet for the current allocation (repaints per edit).
-        const sheet = (stats: readonly number[]): ScreenLine[] | null =>
-          buildSheet(
+        const sheet = (stats: readonly number[]): PreviewSheet | null =>
+          buildPreview(
             races[raceIdx],
             classes[classIdx],
             { stats, sheetName: name },
-            INFO_W,
+            term.size().cols,
           );
         // do_cmd_choose_race/choose_class (player-birth.c:1100-1112) seed the
         // point-buy with generate_stats' recommended per-class spread, so the
@@ -1638,12 +1668,12 @@ export async function runBirth(
         const race = races[raceIdx] ?? { name: raceName };
         const cls = classes[classIdx] ?? { name: className };
         // The live derived sheet for the current roll (repaints per reroll).
-        const sheet = (roll: readonly number[]): ScreenLine[] | null =>
-          buildSheet(
+        const sheet = (roll: readonly number[]): PreviewSheet | null =>
+          buildPreview(
             races[raceIdx],
             classes[classIdx],
             { rolledStats: roll, sheetName: name },
-            INFO_W,
+            term.size().cols,
           );
         const result = await standardRoller(term, race, cls, rollRng, sheet);
         if (result === null) {
@@ -1656,13 +1686,33 @@ export async function runBirth(
       }
 
       case "name": {
-        const entered = await promptText(
+        // BIRTH_NAME_CHOICE (ui-birth.c:1706-1716): display_player(0), then
+        // get_character_name's prompt AT ROW 0 over that sheet - the sheet stays
+        // on screen while you type (ui-input.c:1153).
+        drawBirthSheet(
           term,
-          "Enter your character's name",
+          buildPreview(
+            races[raceIdx],
+            classes[classIdx],
+            {
+              ...(rollerIdx === 0
+                ? pointStats
+                  ? { stats: pointStats }
+                  : {}
+                : rolledStats
+                  ? { rolledStats }
+                  : {}),
+              sheetName: name,
+            },
+            term.size().cols,
+          ),
+        );
+        const entered = await promptTextInline(
+          term,
+          "Enter a name for your character (* for a random name): ",
           name,
           // PLAYER_NAME_LEN (option.h:23 = 32) allows 31 usable characters.
           31,
-          "[ type a name, * for a random one, Enter to accept, ESC to go back ]",
           /* get_name_keypress' '*' -> player_random_name (ui-input.c L1038). */
           opts.randomName,
         );
@@ -1684,10 +1734,35 @@ export async function runBirth(
           advance("confirm");
           break;
         }
-        // get_history_command (ui-birth.c:1498-1540): show the generated
-        // background for accept/edit; ESC (-1 from edit_text) steps back.
+        // BIRTH_HISTORY_CHOICE (ui-birth.c:1718-1728): display_player(0) - so
+        // the generated background is read IN the sheet's history block - then
+        // get_history_command's row-0 prompt. 'n' opens the editor, ESC steps
+        // back, anything else accepts.
         const text = historyText ?? historyFor(raceName);
-        const result = await historyStage(term, name || "Adventurer", text);
+        const result = await historyStage(
+          term,
+          text,
+          (history: string) => {
+            const preview = buildPreview(
+                races[raceIdx],
+                classes[classIdx],
+                {
+                  ...(rollerIdx === 0
+                    ? pointStats
+                      ? { stats: pointStats }
+                      : {}
+                    : rolledStats
+                      ? { rolledStats }
+                      : {}),
+                  historyOverride: history,
+                  sheetName: name || "Adventurer",
+              },
+              term.size().cols,
+            );
+            drawBirthSheet(term, preview);
+            return preview !== null;
+          },
+        );
         if (result === null) {
           if (!goBack()) return null;
           break;
@@ -1700,10 +1775,10 @@ export async function runBirth(
       case "confirm": {
         const finalName = name || "Adventurer";
         const point = rollerIdx === 0;
-        // display_player(0) then the accept prompt (ui-birth.c L1733/1546): the
-        // full derived sheet for the completed character (with the accepted stats
-        // and any edited background), scrollable, above the begin/back choice.
-        const sheetLines = buildSheet(
+        // BIRTH_FINAL_CONFIRM (ui-birth.c:1730-1741): display_player(0) for the
+        // completed character - the accepted stats and any edited background -
+        // then get_confirm_command's centred prompt.
+        const sheet = buildPreview(
           races[raceIdx],
           classes[classIdx],
           {
@@ -1721,8 +1796,8 @@ export async function runBirth(
         );
         const result = await confirmCharacter(
           term,
+          sheet,
           `${finalName} the ${raceName} ${className}`,
-          sheetLines,
         );
         if (result === "restart") {
           /* BIRTH_RESET (ui-birth.c L1560-1561): discard every choice and start

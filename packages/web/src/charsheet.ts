@@ -96,8 +96,19 @@ export interface CharSheetOpts {
   seedRandart?: number;
 }
 
-/** Width at or above which the side-by-side layout is used; below it, the list. */
-const WIDE_COLS = 90;
+/**
+ * Width at or above which the upstream grid is used; below it, the list.
+ *
+ * This is 80 because 80 is the width upstream lays every screen out for, and
+ * the terminal is a fixed 80x24 (term.ts) - the grid's rightmost content is the
+ * stat table's Best column ending at col 72 and, on the birth screen, the cost
+ * column at cols 74-77, so 80 is exactly enough. It was 90 for a while, which
+ * made the whole faithful layout DEAD CODE: at 80 columns `cols < WIDE_COLS`
+ * was always true, so every character screen fell back to the phone list and no
+ * panel ever landed on its upstream anchor. The narrow path is now reachable
+ * only when a mobile reflow mod shrinks the grid below 80.
+ */
+const WIDE_COLS = 80;
 
 /** INFO_SCREENS (ui-player.c L1213): mode 0 = skills/history, 1 = flag grid. */
 const INFO_SCREENS = 2;
@@ -621,17 +632,7 @@ export function showCharacterSheet(
       const byKey = (k: string) => panels.find((p) => p.key === k)?.lines ?? [];
 
       if (mode === 0) {
-        paintPanel(term, ANCHOR.topleft, byKey("topleft"));
-        paintPanel(term, ANCHOR.misc, byKey("misc"));
-        const midEnd = paintPanel(term, ANCHOR.midleft, byKey("midleft"));
-        const combatEnd = paintPanel(term, ANCHOR.combat, byKey("combat"));
-        const skillsEnd = paintPanel(term, ANCHOR.skills, byKey("skills"));
-        // History from row 19 (below the lowest panel if one ever grows).
-        let hy = Math.max(HISTORY_ROW, midEnd + 1, combatEnd + 1, skillsEnd + 1);
-        for (const line of historyBlockLines(state, cols)) {
-          if (hy >= rows - 1) break;
-          printLine(0, hy++, line);
-        }
+        drawPlayerXtraInfo(term, characterPanels(state, deps), historyBlockLines(state, cols));
       } else if (!gridConfig) {
         // No ui_entry packs: a labelled notice instead of a faked grid.
         let y = 2;
@@ -842,6 +843,49 @@ export function showCharacterSheet(
  * label; a right-adjusted panel prints it so its last char lands at the region's
  * right edge (`col + w - len`), clamped so it never overlaps the label.
  */
+/**
+ * display_player_xtra_info (ui-player.c L858-880) - the five character panels at
+ * their upstream anchors plus the history block from row 19.
+ *
+ * Exported because it is not the character screen's private layout: ui-birth.c
+ * calls this same function for the roller (L894), the point-based screen
+ * (L1083) and the final confirmation (L1546), so the birth screens must show
+ * the SAME panels in the SAME places - the whole sheet minus the stat table,
+ * which each caller draws itself (the birth screen adds a cost column beside
+ * it). Painting a different, list-shaped summary there is exactly the drift
+ * this replaces.
+ */
+export function drawPlayerXtraInfo(
+  term: GlyphTerm,
+  panels: readonly { key: string; lines: readonly { label: string; value: string; color: number }[] }[],
+  history: readonly ScreenLine[],
+): void {
+  const { rows } = term.size();
+  const byKey = (k: string): readonly { label: string; value: string; color: number }[] =>
+    panels.find((p) => p.key === k)?.lines ?? [];
+  paintPanel(term, ANCHOR.topleft, byKey("topleft"));
+  paintPanel(term, ANCHOR.misc, byKey("misc"));
+  const midEnd = paintPanel(term, ANCHOR.midleft, byKey("midleft"));
+  const combatEnd = paintPanel(term, ANCHOR.combat, byKey("combat"));
+  const skillsEnd = paintPanel(term, ANCHOR.skills, byKey("skills"));
+  // History from row 19 (Term_gotoxy(1, 19) + text_out_to_screen), pushed down
+  // only if a panel ever grew past it.
+  let hy = Math.max(HISTORY_ROW, midEnd + 1, combatEnd + 1, skillsEnd + 1);
+  for (const line of history) {
+    if (hy >= rows - 1) break;
+    if (line.runs) {
+      let cx = 0;
+      for (const run of line.runs) {
+        term.print(cx, hy, run.text, run.color);
+        cx += run.text.length;
+      }
+    } else {
+      term.print(0, hy, line.text, line.color ?? FG);
+    }
+    hy += 1;
+  }
+}
+
 function paintPanel(
   term: GlyphTerm,
   region: { x: number; y: number; labelWidth: number; width: number; alignRight: boolean },
@@ -854,7 +898,10 @@ function paintPanel(
       y += 1;
       continue;
     }
-    const label = ln.label.replace(/:\s*$/u, "");
+    // The label is printed VERBATIM (display_panel L614 Term_putstr of
+    // pl->label): upstream's own labels carry no colon except get_panel_misc's
+    // "Turns used:", which keeps its one.
+    const label = ln.label;
     if (!ln.value) {
       term.print(x, y++, label, LABEL);
       continue;
