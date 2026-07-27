@@ -1437,5 +1437,86 @@ export function toDefenderState(state: PlayerState): DefenderState {
   return { ac: state.ac, toA: state.toA };
 }
 
+/**
+ * What the encumbrance notices need to know about the gear, beyond the two
+ * states: upstream asks equipped_item_by_slot_name(p, ...) to tell "you put the
+ * heavy thing down" apart from "you swapped it for a manageable one".
+ */
+export interface BonusChangeGear {
+  /** equipped_item_by_slot_name(p, "shooting") != NULL. */
+  hasLauncher: boolean;
+  /** equipped_item_by_slot_name(p, "weapon") != NULL. */
+  hasWeapon: boolean;
+}
+
+/**
+ * calc_bonuses' state-change notices (player-calcs.c:2412-2453): the messages
+ * upstream emits when heavy_shoot / heavy_wield / bless_wield / cumber_armor
+ * flip between the OLD p->state and the NEWLY derived state, in upstream's
+ * order. Returns the lines to emit, so the diff stays pure and testable and the
+ * session layer owns the message sink.
+ *
+ * calcBonuses itself cannot do this: it is a pure derive that never sees the
+ * previous state (upstream reads p->state, messages, and only then memcpy's the
+ * new one over it). That is why every one of these ten messages was missing -
+ * the derive was ported and the diff at the end of the same function was not, so
+ * wielding a weapon far too heavy for your STR said nothing at all.
+ *
+ * Upstream gates the whole block on !p->upkeep->only_partial. The port has no
+ * partial-update mode - the hypothetical derives (best-digger, item inspection)
+ * pass update:false and simply never reach this - so there is no flag to test.
+ */
+export function bonusChangeMessages(
+  prev: PlayerState,
+  next: PlayerState,
+  gear: BonusChangeGear,
+): string[] {
+  const out: string[] = [];
+
+  /* "heavy bow" (2413-2422). */
+  if (prev.heavyShoot !== next.heavyShoot) {
+    if (next.heavyShoot) {
+      out.push("You have trouble wielding such a heavy bow.");
+    } else if (gear.hasLauncher) {
+      out.push("You have no trouble wielding your bow.");
+    } else {
+      out.push("You feel relieved to put down your heavy bow.");
+    }
+  }
+
+  /* "heavy weapon" (2424-2433). */
+  if (prev.heavyWield !== next.heavyWield) {
+    if (next.heavyWield) {
+      out.push("You have trouble wielding such a heavy weapon.");
+    } else if (gear.hasWeapon) {
+      out.push("You have no trouble wielding your weapon.");
+    } else {
+      out.push("You feel relieved to put down your heavy weapon.");
+    }
+  }
+
+  /* "illegal weapon" - a priest wielding an unblessed edged weapon
+   * (2435-2443). Note the asymmetry: upstream emits nothing when the offending
+   * weapon is simply removed, so there is no third branch here. */
+  if (prev.blessWield !== next.blessWield) {
+    if (next.blessWield) {
+      out.push("You feel attuned to your weapon.");
+    } else if (gear.hasWeapon) {
+      out.push("You feel less attuned to your weapon.");
+    }
+  }
+
+  /* "armor state" (2445-2452). */
+  if (prev.cumberArmor !== next.cumberArmor) {
+    out.push(
+      next.cumberArmor
+        ? "The weight of your armor reduces your maximum SP."
+        : "Your maximum SP is no longer reduced by armor weight.",
+    );
+  }
+
+  return out;
+}
+
 /** Re-export for callers computing HP arrays over all levels. */
 export { PY_MAX_LEVEL };

@@ -589,22 +589,36 @@ export async function runOptionsMenu(
   openIgnoreSetup: () => Promise<void>,
   sidebar?: SidebarModeMenu,
 ): Promise<void> {
-  // Upstream order (option_actions[], ui-options.c L2038): a, b, x, i, then the
-  // numeric setters d, h, m, and o. There is deliberately NO graphics entry -
-  // upstream picks graphics in the frontend menu bar, not in do_cmd_options; the
-  // web shell mirrors that by placing tile selection in the in-game menu.
+  // Upstream's option_actions[] in ui-options.c:2036-2058, in ITS order:
+  //   a b x w i {   d h m o   s t u   p e c v
+  // The rows below are that sequence with the ones a browser cannot offer
+  // removed. What is dropped and why (the full display-lever inventory is in
+  // docs/INSTALL.md, "Screen and display controls"):
+  //   w  Subwindow setup     - the port is ONE surface, not eight terms.
+  //   s t u v p              - .prf pref-file read/write; there is no filesystem.
+  //                            The port persists these in browser storage
+  //                            automatically, so there is nothing to save or load.
+  //   {  Auto-inscription    - the capability is present but reachable only from
+  //                            the knowledge browser (`~`), the same screen
+  //                            upstream's row opens. Missing shortcut, not
+  //                            missing feature.
+  // There is deliberately NO graphics entry - upstream picks graphics in the
+  // frontend menu bar, not in do_cmd_options; the web shell mirrors that by
+  // placing tile selection in the in-game menu.
   const items: MenuItem[] = [
     { label: "User interface options", tag: "a" },
     { label: "Birth (difficulty) options", tag: "b" },
     { label: "Cheat options", tag: "x" },
     { label: "Item ignoring setup", tag: "i" },
-    { label: "Edit keymaps (advanced)", tag: "e" },
-    { label: "Edit colours (advanced)", tag: "c" },
     { label: "Set base delay factor", tag: "d" },
     { label: "Set hitpoint warning", tag: "h" },
     { label: "Set movement delay", tag: "m" },
   ];
   if (sidebar) items.push({ label: "Set sidebar mode", tag: "o" });
+  items.push(
+    { label: "Edit keymaps (advanced)", tag: "e" },
+    { label: "Edit colours (advanced)", tag: "c" },
+  );
   // Derive the hint from the live rows so it can never drift out of sync.
   const tagHint = items.map((i) => i.tag).join("/");
   for (;;) {

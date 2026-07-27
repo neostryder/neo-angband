@@ -170,7 +170,13 @@ export interface ObjCmdDeps {
 
 /** Build calc_inventory options from the object-command deps (gap 4.1). */
 function calcInvOpts(state: GameState, deps: ObjCmdDeps): CalcInventoryOpts {
-  const o: CalcInventoryOpts = {};
+  const o: CalcInventoryOpts = {
+    /* object_is_equipped(p->body, old_pack[i]) (player-calcs.c:1227): wielding
+     * an item moves it out of the pack, which must not read as a re-arrangement.
+     * This is the path where that happens, so the predicate belongs here. */
+    isEquipped: (handle: number): boolean =>
+      state.actor.player.equipment.includes(handle),
+  };
   if (deps.env?.msg) o.msg = deps.env.msg;
   if (deps.rogueLike) o.rogueLike = deps.rogueLike;
   if (deps.characterDungeon) o.characterDungeon = deps.characterDungeon;

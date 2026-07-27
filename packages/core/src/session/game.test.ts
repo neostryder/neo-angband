@@ -1,5 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { describeObject } from "../game/describe";
+import { ODESC } from "../obj/desc";
+import { tvalCanHaveFlavor } from "../obj/object";
+import { ObjRegistry } from "../obj/bind";
 import { HIST, MFLAG, OF, RF, TMD } from "../generated";
 import { FlagSet } from "../bitflag";
 import { MFLAG_SIZE, RF_SIZE } from "../mon/types";
@@ -594,5 +598,66 @@ describe("cur_num tracks the live monster count (mon-make.c L1040-1041)", () => 
       expect(state.chunk.depth).toBe(depth);
       check(`depth ${depth}`);
     }
+  });
+});
+
+/**
+ * object_flavor_aware(p, obj) on each start item (player-birth.c:650). Found
+ * absent by the upstream text census follow-up: the port had this ledgered as
+ * DEFERRED, so a starting consumable was named by its flavour ("a Clear Flask")
+ * instead of by what the player already knows it to be.
+ */
+describe("player_outfit flavour awareness (player-birth.c:650)", () => {
+  /** Every flavoured kind the character starts out carrying. */
+  function startingFlavouredKinds(state: ReturnType<typeof startGame>["state"]) {
+    return [...state.gear.store.values()].filter((o) =>
+      tvalCanHaveFlavor(o.tval),
+    );
+  }
+
+  it("makes the player aware of every flavoured kind in their own starting kit", () => {
+    /* A Ranger starts with Flasks of Oil - a flavoured tval - so there is
+     * something for this to be true of. */
+    const { state } = startGame(pack, { seed: 7, depth: 0 });
+    const flavoured = startingFlavouredKinds(state);
+    expect(flavoured.length).toBeGreaterThan(0);
+    for (const obj of flavoured) {
+      expect(
+        state.flavorKnown?.isAware(obj.kind),
+        `not aware of the starting ${obj.kind.name}`,
+      ).toBe(true);
+    }
+  });
+
+  it("names a starting consumable rather than describing its flavour", () => {
+    const { state } = startGame(pack, { seed: 7, depth: 0 });
+    for (const obj of startingFlavouredKinds(state)) {
+      const name = describeObject(state, obj, ODESC.FULL);
+      /* An unaware flavoured object reads as its flavour ("Smoky", "Clear"),
+       * never as its own name, so the kind name appearing is the proof. */
+      expect(name.toLowerCase()).toContain(
+        obj.kind.name.replace(/^& /u, "").replace(/~/gu, "").toLowerCase(),
+      );
+    }
+  });
+
+  it("does not make the player aware of kinds they were not given", () => {
+    const { state } = startGame(pack, { seed: 7, depth: 0 });
+    const objReg = new ObjRegistry(pack.obj);
+    const carried = new Set(
+      [...state.gear.store.values()].map((o) => o.kind.kidx),
+    );
+    const unowned = objReg.kinds.filter(
+      (k) =>
+        tvalCanHaveFlavor(k.tval) &&
+        k.kidx < objReg.ordinaryKindCount &&
+        !carried.has(k.kidx),
+    );
+    expect(unowned.length).toBeGreaterThan(0);
+    /* Birth must not hand out blanket awareness - that is birth_know_flavors,
+     * an option, and it is off here. */
+    expect(unowned.every((k) => state.flavorKnown?.isAware(k) !== true)).toBe(
+      true,
+    );
   });
 });

@@ -3,7 +3,7 @@
  * new one. Shown at boot when there is no live character to auto-resume, and
  * on demand from the in-game menu ("Switch character"). Living characters are
  * resumable; tombstones (dead characters) are listed dimmed for the memorial
- * but cannot be played - faithful terminal death ([[neo-angband-save-scum-policy]]).
+ * but cannot be played - faithful terminal death (decision 16, docs/PORT_PLAN.md).
  *
  * It resolves with the chosen action; main.ts performs the reload (set the
  * active slot and refresh, or run birth for a new character), reusing the same

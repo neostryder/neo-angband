@@ -55,6 +55,7 @@ import {
 } from "../obj/object";
 import type { StackLimits } from "../obj/object";
 import { EL_INFO_IGNORE } from "../obj/types";
+import type { ObjectKind } from "../obj/types";
 import { objectPrep } from "../obj/make";
 import { objectValueReal } from "../obj/value";
 import { earlierObject } from "../player/calcs";
@@ -622,8 +623,18 @@ export function invenCarryNum(
 export interface CalcInventoryOpts extends EarlierObjectOpts {
   /** rogue_like_commands: the fire key preferred_quiver_slot looks for. */
   rogueLike?: boolean;
-  /** character_dungeon: gates the "You re-arrange your quiver." message. */
+  /**
+   * character_dungeon: gates the "You re-arrange your quiver." / "You
+   * re-arrange your pack." notices (player-calcs.c:1174, :1224).
+   */
   characterDungeon?: boolean;
+  /**
+   * object_is_equipped(p->body, old_pack[i]) (player-calcs.c:1227): an old pack
+   * entry that the player has since WORN must not count as a re-arrangement.
+   * calc_inventory has no player, so the caller supplies the predicate. Omit it
+   * and no old entry is treated as equipped, which can only over-report.
+   */
+  isEquipped?: (handle: number) => boolean;
   /** msg(): the re-arrange / combine notices. */
   msg?: (text: string) => void;
 }
@@ -744,6 +755,11 @@ export function calcInventory(
     }
   }
 
+  /* Copy the current pack (L1183-1186) and remember how full it was (L1025),
+   * both read only by the re-arrange notice below. */
+  const oldInvenCnt = (gear.inven ?? []).length;
+  const oldPack: number[] = [...(gear.inven ?? [])];
+
   /* Fill upkeep->inven[] (player-calcs.c:1191-1222).  Do not sort pack in
    * place: C's p->gear remains its own linked-list order and inven[] is only
    * a listing.  Repeated first-selection (rather than Array.sort()) faithfully
@@ -766,6 +782,21 @@ export function calcInventory(
     invenAssigned.add(firstHandle);
   }
   gear.inven = inven;
+
+  /* Note reordering (L1224-1233). The quiver half of this notice was ported;
+   * the pack half was not, so shuffling the pack was silent. Only fires when
+   * the pack holds the SAME number of items as before (L1225) - a pickup or a
+   * drop reorders it too, and upstream does not call that a re-arrangement. */
+  if (opts.characterDungeon && inven.length === oldInvenCnt) {
+    for (let i = 0; i < constants.packSize; i++) {
+      const was = oldPack[i] ?? 0;
+      if (was === 0) continue;
+      if (inven[i] === was) continue;
+      if (opts.isEquipped?.(was)) continue;
+      opts.msg?.("You re-arrange your pack.");
+      break;
+    }
+  }
 }
 
 /**
@@ -1067,6 +1098,18 @@ export interface OutfitOptions {
    * i.e. full kit and no exclusions (equivalent to upstream's defaults).
    */
   opt?: (name: string) => boolean;
+  /**
+   * object_flavor_aware(p, obj) (player-birth.c:650): the player starts AWARE of
+   * every kind in their own starting kit - a Warrior knows their Flask of Oil by
+   * name, not as "a Clear Flask".
+   *
+   * It is a callback rather than a direct call because awareness lives in the
+   * per-game FlavorKnowledge, which the session layer does not create until
+   * wireGame - and player_outfit runs before that (it has to: the starting gold
+   * deduction feeds the birth screens). The caller collects the kinds here and
+   * marks them aware the moment the store exists; see startGame.
+   */
+  onStartKind?: (kind: ObjectKind) => void;
 }
 
 /**
@@ -1108,11 +1151,9 @@ function startItemIncluded(
  * empty at birth exactly as upstream.
  *
  * Each item is marked OBJ_NOTICE_ASSESSED (L652), the per-object half of the
- * knowledge block that the port models on the live object.
- *
- * DEFERRED (see the module ledger): object_flavor_aware on the start items
- * (L650) - it needs the per-game FlavorKnowledge, which does not exist until
- * wireGame, so a starting potion/scroll still reads by its flavour.
+ * knowledge block that the port models on the live object, and reported through
+ * opts.onStartKind for object_flavor_aware (L650) - which the caller applies
+ * once the per-game awareness store exists (see OutfitOptions.onStartKind).
  */
 export function outfitPlayer(
   gear: Gear,
@@ -1185,6 +1226,10 @@ export function outfitPlayer(
      * UNKNOWN and the character sheet printed '?' down the torch's column even
      * though those flags are known from birth (learnBirthObviousFlags above). */
     obj.notice |= OBJ_NOTICE.ASSESSED;
+
+    /* object_flavor_aware(p, obj) (player-birth.c:650). Deferred to the caller
+     * because the awareness store does not exist yet - see onStartKind. */
+    opts.onStartKind?.(kind);
 
     /* Carry the item. */
     invenCarry(gear, obj, limits);

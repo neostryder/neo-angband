@@ -524,21 +524,42 @@ export function calcSpells(
 }
 
 /**
+ * state->cumber_armor on its own (player-calcs.c:1524-1529): is the worn armour
+ * heavy enough over the class allowance to cost this player mana? Split out of
+ * calcMana so a caller that must NOT disturb msp/csp - loading a save, where
+ * maximum mana is restored rather than recomputed - can still derive the flag
+ * the encumbrance messages diff against.
+ */
+export function cumberArmorFrom(player: Player, armorWeight: number): boolean {
+  if (!player.cls.magic.totalSpells) return false;
+  return Math.trunc((armorWeight - player.cls.magic.spellWeight) / 10) > 0;
+}
+
+/**
  * calc_mana (player-calcs.c L1480): maximum mana from effective levels and
  * the casting stat, penalized by heavy armor over the class allowance.
  * `armorWeight` is the summed weight of worn body armor (the caller sums
  * the non-weapon/bow/ring/amulet/light slots). Updates msp and clamps csp.
+ *
+ * Returns state->cumber_armor (L1503, L1528) - true when the worn armour is
+ * heavy enough to cost mana. Upstream stores it on player_state; the port's
+ * PlayerState carries the same field but calcBonuses cannot fill it (the mana
+ * calc runs in the session layer afterwards), so it is returned here for the
+ * caller to record. It had been left permanently false, which is why the
+ * armour-encumbrance messages could never fire even once they existed.
  */
 export function calcMana(
   player: Player,
   statInd: readonly number[],
   armorWeight: number,
-): void {
+): boolean {
   if (!player.cls.magic.totalSpells) {
     player.msp = 0;
     player.csp = 0;
     player.cspFrac = 0;
-    return;
+    /* A non-caster leaves cumber_armor at its L1503 reset (L1483-1487 returns
+     * before the armour weigh-in). */
+    return false;
   }
 
   /* Extract "effective" player level. */
@@ -551,9 +572,10 @@ export function calcMana(
     );
   }
 
-  /* Heavy armor penalizes mana. */
+  /* Heavy armor penalizes mana (L1524-1532). */
   const over = Math.trunc((armorWeight - player.cls.magic.spellWeight) / 10);
-  if (over > 0) msp -= over;
+  const cumberArmor = cumberArmorFrom(player, armorWeight);
+  if (cumberArmor) msp -= over;
 
   if (msp < 0) msp = 0;
 
@@ -564,4 +586,5 @@ export function calcMana(
       player.cspFrac = 0;
     }
   }
+  return cumberArmor;
 }
