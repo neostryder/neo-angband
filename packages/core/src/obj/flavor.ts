@@ -18,7 +18,7 @@
  * name. That is written into the per-game FlavorKnowledge.
  */
 
-import { TV } from "../generated";
+import { KF, TV } from "../generated";
 import { Rng } from "../rng";
 import type { FlavorKnowledge } from "./knowledge";
 import { buildProb, randnameMake, type NameProbs } from "./randname";
@@ -240,7 +240,14 @@ export function flavorInit(
    * are skipped. */
   for (const kind of deps.kinds) {
     if (!kind.name) continue;
-    if (!assignment.hasFlavor(kind) && kind.kidx < deps.ordinaryKindCount) {
+    /* flavor_init (obj-util.c:238-245): "no flavor and not a kind that only has
+     * one instance (an artifact) yields aware". Upstream spells the second half
+     * as `kidx < ordinary_kind_max`, which is its proxy for "not one of the
+     * write_dummy_object_record INSTA_ART kinds". The port tests the FLAG
+     * instead, because its class-book kinds are appended after those dummies
+     * (see registerBookKinds) - with the index test every spellbook stayed
+     * unaware, so every book in a store came out tagged "{unseen}". */
+    if (!assignment.hasFlavor(kind) && !kind.kindFlags.has(KF.INSTA_ART)) {
       awareness.setAware(kind);
     }
   }

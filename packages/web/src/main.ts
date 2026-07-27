@@ -242,6 +242,7 @@ import {
   selectFromMenu,
   itemSelect,
   promptText,
+  promptTextInline,
   getKeyInline,
   getRepDir,
   getAimDir,
@@ -1273,7 +1274,10 @@ function buildItemSources(
       if (!handle) continue;
       const obj = gearGet(state.gear, handle);
       if (!obj || !tester(obj)) continue;
-      items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length), inscrip: obj.note });
+      // gear_to_label for equipment is labels[equipped_item_slot] (obj-gear.c
+      // L451-453) / build_obj_list's all_letters_nohjkl[i] over BODY SLOTS, so a
+      // filtered equipment list keeps each slot's own letter.
+      items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(i), inscrip: obj.note });
       eRefs.push({ handle });
     }
     if (items.length > 0) {
@@ -1286,7 +1290,9 @@ function buildItemSources(
     const fRefs: ItemTargetRef[] = [];
     floorPile(state, state.actor.grid).forEach((obj, i) => {
       if (!tester(obj)) return;
-      items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(items.length), inscrip: obj.note });
+      // build_obj_list over the floor list keeps each entry's own index letter
+      // (ui-object.c:291-292), so filtering does not reletter the pile.
+      items.push({ label: objectName(state, obj), color: objectColor(obj, state), tag: objLetter(i), inscrip: obj.note });
       fRefs.push({ floor: i });
     });
     if (items.length > 0) {
@@ -3923,12 +3929,14 @@ function anyVisibleMonster(): boolean {
  * The prompt string and its option letters are reproduced exactly.
  */
 async function restCmd(): Promise<void> {
-  const input = await promptText(
+  // textui_cmd_rest (ui-command.c:191-198) asks with get_string, i.e. askfor_aux
+  // at row 0 over the LIVE MAP - the map, sidebar and status line stay on
+  // screen. It does not open a screen of its own.
+  const input = await promptTextInline(
     term,
     "Rest (0-9999, '!' for HP or SP, '*' for HP and SP, '&' as needed): ",
     "&",
     4, // char out_val[5]: 4 chars + terminator
-    "[ Enter to accept, ESC to cancel ]",
   );
   if (input === null) return;
   const first = input[0];
@@ -4876,6 +4884,23 @@ function versionCmd(): void {
   );
 }
 
+/**
+ * The remembered object glyph at a grid, minus anything the player ignores.
+ *
+ * map_info re-walks the KNOWN pile every frame and skips ignored objects
+ * ("Item stays hidden", cave-map.c:162), so ignoring a kind hides it from the
+ * map at once - it is not merely dropped from the pack. The port stores the
+ * memory as one glyph, so the live pile is consulted here instead: when every
+ * object still on that grid is ignored, there is nothing to remember.
+ */
+function knownObjectShown(x: number, y: number): ReturnType<typeof knownObject> {
+  const mem = knownObject(state, loc(x, y));
+  if (!mem) return null;
+  const pile = state.floor.get(gridIndex(x, y));
+  if (pile && pile.length > 0 && !pile.some((o) => !state.isIgnored?.(o))) return null;
+  return mem;
+}
+
 // Touch open/disarm: tapping the "Open"/"Disarm" action-bar button arms this,
 // so the NEXT canvas tap resolves to a direction for that command instead of
 // a walk (open/close cancel it without spending it on an unrelated tap).
@@ -4917,7 +4942,11 @@ function trapIndex(): Map<number, CellGlyph> {
 function objectIndex(): Map<number, CellGlyph> {
   const map = new Map<number, CellGlyph>();
   for (const pile of state.floor.values()) {
-    const o = pile[0];
+    // map_info's object loop (cave-map.c:156-170) skips an ignored object
+    // ("Item stays hidden") and takes the first one that is NOT ignored, so a
+    // kind the player has ignored disappears from the map instead of being
+    // dropped from the pack and left visible on the ground.
+    const o = pile.find((obj) => obj.grid && !state.isIgnored?.(obj));
     if (!o || !o.grid) continue;
     const tile = tileMap
       ? tileDrawFor(tileForObject(tileMap, o.kind), o.grid.x, o.grid.y)
@@ -5112,7 +5141,7 @@ function buildOverviewForShell(): Overview {
       return { ch: disp.dChar, css: colorToCss(colorCharToAttr(disp.dAttr)), priority: disp.priority };
     },
     objectGlyphAt: (x, y) => {
-      const mem = knownObject(state, loc(x, y));
+      const mem = knownObjectShown(x, y);
       if (!mem) return null;
       return mem.ch === null
         ? { ch: "*", css: UI_DIM }
@@ -5424,7 +5453,7 @@ function render(targeting?: TargetingOverlay): void {
           ...(memTile ? { tile: memTile } : {}),
         });
         /* Remembered / sensed objects persist on the map in full color. */
-        const mem = knownObject(state, loc(gx, gy));
+        const mem = knownObjectShown(gx, gy);
         if (mem) {
           term.put(
             screenX,
@@ -5654,11 +5683,24 @@ function waitAnyKey(): Promise<void> {
  * line - so this returns immediately. Runs inside a modal so the game key
  * handler stands down while the player reads.
  */
-async function pumpMessages(preLen: number): Promise<void> {
+async function pumpMessages(preLen: number, force = false): Promise<void> {
   const fresh = msglog.all().slice(preLen);
   const pages = paginateMessages(fresh, term.size().cols);
   if (fresh.length > 0) {
     messageColor = fresh[fresh.length - 1]?.color ?? UI_TEXT;
+  }
+  /* `force` is msg_flush proper (ui-input.c L565-595): the caller is about to
+   * replace the screen, so even a single page has to be READ first - it gets
+   * the "-more-" prompt and waits, exactly as on_new_level's
+   * EVENT_MESSAGE_FLUSH does before EVENT_NEW_LEVEL_DISPLAY. Without a key to
+   * wait for, the last thing that happened on the old level is wiped unread. */
+  if (force && pages.length === 1 && !(state.options?.get("auto_more") ?? false)) {
+    const page = pages[0] ?? "";
+    message = page;
+    render();
+    term.print(page.length + 1, 0, "-more-", MORE_COLOR);
+    await waitAnyKey();
+    return;
   }
   if (pages.length <= 1) {
     // display_message packs the whole turn's messages onto row 0 (ui-input.c
@@ -5852,14 +5894,20 @@ function advance(): void {
       await runDeathMenu();
     });
   } else if (status === LOOP_STATUS.LEVEL_CHANGE) {
-    // Generate the next level in place and keep playing.
+    // on_new_level (game-world.c:1027-1031): EVENT_MESSAGE_FLUSH *then*
+    // EVENT_NEW_LEVEL_DISPLAY. The stair message ("You enter a maze of down
+    // staircases.", cmd-cave.c:134/87) is read on the OLD screen behind a
+    // "-more-" prompt; only after a key does the new level appear. Doing the
+    // change first wiped the message unread.
     const target = state.targetDepth ?? state.chunk.depth + 1;
-    game.changeLevel(target);
-    state.generateLevel = false;
-    autosave(true); // a fresh level is a natural save point
-    // The stair message ("You enter a maze of down/up staircases.") is emitted
-    // by the core descend/ascend command (cmd-cave.c:134/87) into the message
-    // log, so it flows through the -more- pager and Ctrl-P; no shell fabrication.
+    void openModal(async () => {
+      await pumpMessages(preLen, true);
+      game.changeLevel(target);
+      state.generateLevel = false;
+      autosave(true); // a fresh level is a natural save point
+      render();
+    });
+    return; // the modal owns the rest of this turn's tail
   }
   // EVENT_SEEFLOOR (cmd-pickup.c L484 after a step; cmd-cave.c L1610 on hold):
   // announce the floor pile once autopickup has run. Detect a step by the grid
@@ -5871,11 +5919,9 @@ function advance(): void {
   // the store. Gate on the step/hold this turn (not merely "on a shop tile") so
   // it fires once from the move, exactly like upstream, and does not re-open every
   // turn the player idles on the door after leaving.
-  const enterShop =
-    !dead && status !== LOOP_STATUS.LEVEL_CHANGE && (moved || seeFloorReq)
-      ? storeAtPlayer()
-      : null;
-  if (!dead && status !== LOOP_STATUS.LEVEL_CHANGE && (moved || seeFloorReq) && !enterShop) {
+  // (A level change returned above, so these no longer need to exclude it.)
+  const enterShop = !dead && (moved || seeFloorReq) ? storeAtPlayer() : null;
+  if (!dead && (moved || seeFloorReq) && !enterShop) {
     seeFloorItems();
   }
   autosave(); // throttled: keep the session recoverable during active play
@@ -6978,6 +7024,22 @@ if (import.meta.env.DEV) {
       tileCells: term.tileCellCount(),
     }),
     setTileMode: (id: number): Promise<void> => applyTileMode(id, true),
+    // OPT(player, name) as the game sees it - so a verification pass can check
+    // that an options screen actually reached the live option store.
+    option: (name: string): boolean => state.options?.get(name) ?? false,
+    // option_set through the live store, then a repaint - the verification aid
+    // for an option whose effect is visual (center_player, solid_walls, ...).
+    setOption: (name: string, value: boolean): boolean => {
+      const ok = state.options?.set(name, value) ?? false;
+      render();
+      return ok;
+    },
+    // The live map offset verifyPanel maintains (verify_panel), for checking
+    // the panel/centring behaviour without pixel-scraping.
+    camera: (): { x: number; y: number } => {
+      const vp = viewport();
+      return { x: vp.camX, y: vp.camY };
+    },
     messages: () => msglog.all().map((m) => m.text),
     monsters: () =>
       state.monsters
