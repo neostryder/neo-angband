@@ -233,9 +233,10 @@ import {
   isTile,
   loadTilePrefs,
   tileCode,
+  type TileBlitter,
   type TileModeEntry,
-  type TileSet,
 } from "./tiles";
+import { LinoleumPack, loadLinoleumPack } from "./linoleum-pack";
 import {
   showTextScreen,
   selectFromMenu,
@@ -873,6 +874,12 @@ const displayRandint1 = (n: number): number => state.rng.randint1(n);
 // is looked up in the pack's graf/flvr pref TileMap (core visuals/tile-prefs)
 // and drawn from the atlas; a missing mapping or a not-yet-loaded image degrades
 // to the ASCII glyph, so tiles never blank or crash the map.
+//
+// TWO ENGINES draw a mode, both behind the same TileBlitter + TileMap seam, so
+// the render path below does not care which is active: the classic TILESHEET
+// (tiles.ts - one atlas PNG addressed by row/column, what every upstream pack
+// is), and LOOSE PACKS (linoleum-pack.ts - a directory of named PNGs with
+// variant pools, which a mod can add). Core modes are always tilesheets.
 const TILE_MODE_KEY = "neo-angband:graf";
 // Bundled packs live at public/tiles/; a ?tiles= override points elsewhere.
 const tilesBaseUrl = params.get("tiles") || "tiles";
@@ -902,7 +909,7 @@ const availableTileModes: readonly TileModeEntry[] = composeTileModes({
   mods: discoverEnabledTileModes(),
 });
 
-let tileset: TileSet | null = null;
+let tileset: TileBlitter | null = null;
 let tileMap: TileMap | null = null;
 let currentGrafID = GRAPHICS_NONE;
 
@@ -918,10 +925,14 @@ function tileBaseFor(grafID: number): string {
 }
 
 /**
- * Load (or clear, with GRAPHICS_NONE) a graphics mode: build its atlas TileSet
- * and parse its graf/flvr prefs into a TileMap, then repaint. Async and
+ * Load (or clear, with GRAPHICS_NONE) a graphics mode and repaint. Async and
  * best-effort - any fetch/parse/image failure leaves the map ASCII. Exposed for
  * the Options tile-mode selector; it also persists the choice.
+ *
+ * Either engine ends up in the same two variables: a TileBlitter that turns a
+ * tile code into pixels, and the core TileMap that says which code an entity
+ * draws. A tilesheet gets them from the atlas image plus the pack's graf/flvr
+ * prefs; a loose pack gets both from its own manifest and target maps.
  */
 async function applyTileMode(grafID: number, persist = false): Promise<void> {
   currentGrafID = grafID;
@@ -932,6 +943,31 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
       localStorage.removeItem(TILE_MODE_KEY);
     }
   }
+  const entry =
+    grafID && grafID !== GRAPHICS_NONE
+      ? availableTileModes.find((m) => m.grafID === grafID)
+      : undefined;
+
+  if (entry?.engine === "linoleum") {
+    tileset = null;
+    tileMap = null;
+    renderBackground();
+    const pack = await loadLinoleumPack({
+      baseUrl: entry.baseUrl ?? tilesBaseUrl,
+      menuname: entry.menuname,
+      deps: tileDeps,
+    });
+    // Ignore a stale load if the mode changed while we were fetching.
+    if (currentGrafID !== grafID) return;
+    if (pack) {
+      pack.onReady = () => renderBackground();
+      tileset = pack;
+      tileMap = pack.index.map;
+    }
+    renderBackground();
+    return;
+  }
+
   const mode =
     grafID && grafID !== GRAPHICS_NONE ? getGraphicsMode(grafID) : undefined;
   if (!mode || mode.grafID === GRAPHICS_NONE) {
@@ -959,14 +995,19 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
  * undefined when there is no usable tile (no atlas entry, no/uninitialised
  * tileset, or the attr/char is an ASCII pair rather than a tile). The terminal
  * falls back to the ASCII glyph whenever this is undefined or the blit fails.
+ *
+ * The map grid is passed through to the blit: a tilesheet ignores it (a code is
+ * a fixed atlas position), while a loose pack resolves a variant POOL against
+ * it, so one selector can draw several tiles and still be identical on every
+ * replay of a seed.
  */
-function tileDrawFor(atlas: TileAtlas | null): TileDraw | undefined {
+function tileDrawFor(atlas: TileAtlas | null, x: number, y: number): TileDraw | undefined {
   const ts = tileset;
   if (!atlas || !ts || !ts.ready) return undefined;
   if (!isTile(atlas.attr, atlas.char)) return undefined;
   const code = tileCode(atlas.attr, atlas.char);
   return {
-    draw: (ctx, px, py, w, h) => ts.drawTile(ctx, px, py, w, h, code),
+    draw: (ctx, px, py, w, h) => ts.drawTile(ctx, px, py, w, h, code, { x, y }),
   };
 }
 
@@ -4859,7 +4900,7 @@ function trapIndex(): Map<number, CellGlyph> {
     for (const t of list) {
       if (!t.flags.has(TRF.VISIBLE) || !t.kind.glyph.trim()) continue;
       const tile = tileMap
-        ? tileDrawFor(tileForTrap(tileMap, t.kind.tidx, LIGHTING.LOS))
+        ? tileDrawFor(tileForTrap(tileMap, t.kind.tidx, LIGHTING.LOS), t.grid.x, t.grid.y)
         : undefined;
       map.set(gridIndex(t.grid.x, t.grid.y), {
         ch: t.kind.glyph,
@@ -4879,7 +4920,7 @@ function objectIndex(): Map<number, CellGlyph> {
     const o = pile[0];
     if (!o || !o.grid) continue;
     const tile = tileMap
-      ? tileDrawFor(tileForObject(tileMap, o.kind))
+      ? tileDrawFor(tileForObject(tileMap, o.kind), o.grid.x, o.grid.y)
       : undefined;
     // object_kind_attr / object_kind_char (ui-object.c:87-112): a flavoured kind
     // draws with its flavour glyph+colour (use_flavor_glyph) until identified -
@@ -4946,7 +4987,7 @@ function terrainGlyph(
   // A terrain tile (per the pack's feat mapping at this lighting) takes over
   // the cell; when the pack does not map this feat, the ASCII glyph shows.
   const tile = tileMap
-    ? tileDrawFor(tileForFeature(tileMap, disp.fidx, lighting))
+    ? tileDrawFor(tileForFeature(tileMap, disp.fidx, lighting), x, y)
     : undefined;
   if (disp.flags.has(TF["WALL"])) {
     if (state.options?.get("hybrid_walls"))
@@ -5033,7 +5074,7 @@ function monsterIndex(): Map<number, CellGlyph> {
     if (!mon) continue;
     if (!mon.mflag.has(MFLAG.VISIBLE) && !mon.mflag.has(MFLAG.MARK)) continue;
     const tile = tileMap
-      ? tileDrawFor(tileForMonster(tileMap, mon.race.ridx))
+      ? tileDrawFor(tileForMonster(tileMap, mon.race.ridx), mon.grid.x, mon.grid.y)
       : undefined;
     map.set(gridIndex(mon.grid.x, mon.grid.y), {
       ch: mon.race.dChar,
@@ -5374,7 +5415,7 @@ function render(targeting?: TargetingOverlay): void {
         // mapped tile shows at full brightness (upstream does not dim tiles);
         // absent a tile, the ASCII glyph is drawn dim as before.
         const memTile = tileMap
-          ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT))
+          ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), gx, gy)
           : undefined;
         term.put(screenX, screenY, {
           ch: disp.dChar,
@@ -6919,7 +6960,19 @@ if (import.meta.env.DEV) {
     // tiles (proves the map render chose tiles, not ASCII).
     tiles: () => ({
       grafID: currentGrafID,
-      mode: tileset?.mode.menuname ?? null,
+      mode: tileset?.menuname ?? null,
+      // Which engine is drawing, and for a loose pack how much of it has
+      // streamed in so far (a tilesheet has one image, hence null).
+      engine: tileset instanceof LinoleumPack ? "linoleum" : tileset ? "tilesheet" : null,
+      assets:
+        tileset instanceof LinoleumPack
+          ? {
+              slots: tileset.index.slots.length,
+              requested: tileset.requestedAssets,
+              loaded: tileset.loadedAssets,
+              skipped: tileset.index.skipped,
+            }
+          : null,
       atlasReady: !!tileset && tileset.ready,
       mapLoaded: !!tileMap,
       tileCells: term.tileCellCount(),

@@ -171,6 +171,16 @@ describe("composeTileModes", () => {
     expect(out.find((m) => m.grafID === 1)?.baseUrl).toBeUndefined();
   });
 
+  it("carries a pack's engine through, so a loose pack is drawn as one", () => {
+    const out = composeTileModes({
+      core,
+      mods: [pack({ grafID: 101, engine: "linoleum", baseUrl: "mods/m/pack" })],
+    });
+    expect(out.find((m) => m.grafID === 101)?.engine).toBe("linoleum");
+    // Core rows say nothing: they are tilesheets, upstream's own scheme.
+    expect(out.find((m) => m.grafID === 1)?.engine).toBeUndefined();
+  });
+
   it("keeps the first contributor when two mods claim one grafID", () => {
     // enabledTileModes already dedupes by grafID; this holds the composition
     // side to the same rule rather than letting a later mod silently win a row
@@ -199,12 +209,30 @@ describe("the game does not know or expect any particular mod", () => {
     "options.ts",
   ];
 
+  /**
+   * `linoleum` is the one bundled mod id these sources may contain, because the
+   * token there names a tile FORMAT and its engine (@neo-angband/linoleum, the
+   * workspace package, and docs/LINOLEUM.md), not the mod. The shell can read
+   * that format the way it can read a PNG; what it must not do is depend on a
+   * mod to have tile sets at all, which the other tests here pin.
+   */
+  const FORMAT_NAMES = ["linoleum"];
+
   it("names no specific mod anywhere in the graphics subsystem", () => {
     for (const file of GRAPHICS_SOURCES) {
       const src = read(file);
       for (const id of readdirSync(MODS_DIR)) {
+        if (FORMAT_NAMES.includes(id)) continue;
         expect(src.toLowerCase(), `${file} names the ${id} mod`).not.toContain(id);
       }
+    }
+  });
+
+  it("keeps every CORE tile set on the tilesheet engine upstream describes", () => {
+    // The loose-pack engine can only ever arrive with a mod: list.txt data
+    // describes an atlas plus a pref file, so that is what core modes are.
+    for (const mode of coreTileModes({ customBaseUrl: true })) {
+      expect(mode.engine, `${mode.menuname} must be a tilesheet`).toBeUndefined();
     }
   });
 
@@ -223,6 +251,26 @@ describe("the game does not know or expect any particular mod", () => {
     expect(main).toMatch(/const base = tileBaseFor\(grafID\)/);
     expect(main).toMatch(/createTileRenderer\(\{ baseUrl: base, grafID \}\)/);
     expect(main).toMatch(/loadTilePrefs\(base, mode, tileDeps\)/);
+  });
+
+  // main.ts boots a real game at module scope, so it cannot be imported here;
+  // these two pin its wiring at the source level instead. Both are things no
+  // unit test can see and the equivalence test assumes.
+  it("routes a loose-pack mode to the loose engine", () => {
+    const main = read("main.ts");
+    expect(main).toMatch(/entry\?\.engine === "linoleum"/);
+    expect(main).toMatch(/await loadLinoleumPack\(\{/);
+    // The pack supplies BOTH halves: the blitter and the entity->tile map.
+    expect(main).toMatch(/tileMap = pack\.index\.map/);
+  });
+
+  it("passes the map cell to the blit, so a variant pool can resolve", () => {
+    const main = read("main.ts");
+    expect(main).toMatch(/drawTile\(ctx, px, py, w, h, code, \{ x, y \}\)/);
+    // Every call site feeds the grid it is drawing, not a placeholder.
+    expect(main).toMatch(/tileForTrap\(tileMap, t\.kind\.tidx, LIGHTING\.LOS\), t\.grid\.x, t\.grid\.y\)/);
+    expect(main).toMatch(/tileForMonster\(tileMap, mon\.race\.ridx\), mon\.grid\.x, mon\.grid\.y\)/);
+    expect(main).toMatch(/tileForObject\(tileMap, o\.kind\), o\.grid\.x, o\.grid\.y\)/);
   });
 });
 
@@ -250,6 +298,20 @@ describe("bundled mods", () => {
         expect(banned.has(p.grafID ?? -1), `${id} declares grafID ${p.grafID}`).toBe(
           false,
         );
+      }
+    }
+  });
+
+  it("declares any loose pack with the path and name it needs to load", () => {
+    // A loose pack brings its own metadata, so what the manifest must supply is
+    // where the pack lives and what the Graphics row is called.
+    for (const id of readdirSync(MODS_DIR)) {
+      const packs = manifestOf(id).tilePacks;
+      if (!Array.isArray(packs)) continue;
+      for (const p of packs as { engine?: string; path?: string; menuname?: string }[]) {
+        if (p.engine !== "linoleum") continue;
+        expect(typeof p.path, `${id} loose pack needs a path`).toBe("string");
+        expect(typeof p.menuname, `${id} loose pack needs a menuname`).toBe("string");
       }
     }
   });

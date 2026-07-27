@@ -5,9 +5,13 @@
  * scripts/build-linoleum-packs.ps1. PowerShell string
  * comparisons are case-insensitive by default, so type/variant matching
  * here is deliberately case-insensitive too.
+ *
+ * One deliberate improvement on the ps1: tile bytes may be decimal as well as
+ * hex, because the game's own pref parser accepts both (see isTileByte).
  */
 
 const HEX_BYTE_PATTERN = /^0x[0-9A-Fa-f]{2}$/;
+const DECIMAL_BYTE_PATTERN = /^\d{1,3}$/;
 
 /** One parsed legacy selector line from a .prf file. */
 export interface LegacySelector {
@@ -55,11 +59,29 @@ function isBlankOrWhitespace(text: string): boolean {
   return text.trim().length === 0;
 }
 
-function hexByteToInt(value: string): number {
-  if (!HEX_BYTE_PATTERN.test(value)) {
+/**
+ * True for a token the pref grammar would read as a tile byte.
+ *
+ * The ps1 accepted only `0x`-prefixed hex, so it silently dropped the three
+ * bundled packs' DECIMAL lines (`object:none:<pile>:131:159` in old,
+ * adam-bolt and nomad) - and with them the pile tile the C draws for a grid
+ * holding several objects (ui-map.c:217-219). The game's own parser is base-0
+ * (parser.c L315 strtol(tok, &z, 0)), so decimal is legal input; a converted
+ * pack must carry those tiles or it is not the same tile set. Deliberate,
+ * documented divergence from the ps1 - see convert.test.ts.
+ */
+function isTileByte(value: string): boolean {
+  if (HEX_BYTE_PATTERN.test(value)) return true;
+  return DECIMAL_BYTE_PATTERN.test(value) && Number.parseInt(value, 10) <= 255;
+}
+
+function tileByteToInt(value: string): number {
+  if (!isTileByte(value)) {
     throw new Error(`Invalid tile byte '${value}'.`);
   }
-  return Number.parseInt(value, 16);
+  return HEX_BYTE_PATTERN.test(value)
+    ? Number.parseInt(value, 16)
+    : Number.parseInt(value, 10);
 }
 
 /**
@@ -87,8 +109,8 @@ export function parseLegacySelectorLine(
   if (
     attrText === undefined ||
     charText === undefined ||
-    !HEX_BYTE_PATTERN.test(attrText) ||
-    !HEX_BYTE_PATTERN.test(charText)
+    !isTileByte(attrText) ||
+    !isTileByte(charText)
   ) {
     return null;
   }
@@ -137,8 +159,8 @@ export function parseLegacySelectorLine(
     sourceFile,
     sourceLine: lineText,
     sourceOrder,
-    row: hexByteToInt(attrText) & 0x7f,
-    column: hexByteToInt(charText) & 0x7f,
+    row: tileByteToInt(attrText) & 0x7f,
+    column: tileByteToInt(charText) & 0x7f,
   };
 }
 

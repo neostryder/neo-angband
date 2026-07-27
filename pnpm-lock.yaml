@@ -72,10 +72,19 @@ importers:
       '@neo-angband/core':
         specifier: workspace:*
         version: link:../core
+      '@neo-angband/linoleum':
+        specifier: workspace:*
+        version: link:../linoleum
       '@neo-angband/mod-sdk':
         specifier: workspace:*
         version: link:../mod-sdk
     devDependencies:
+      '@types/pngjs':
+        specifier: ^6.0.5
+        version: 6.0.5
+      pngjs:
+        specifier: ^7.0.0
+        version: 7.0.0
       vite:
         specifier: ^7.0.0
         version: 7.3.6(@types/node@24.13.2)(terser@5.49.0)

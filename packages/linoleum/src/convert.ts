@@ -160,6 +160,29 @@ const PARITY_NOTES: readonly string[] = [
  */
 const collator = new Intl.Collator("en-US", { sensitivity: "accent" });
 
+/**
+ * Exact rules are emitted in SOURCE order, not sorted.
+ *
+ * A target map has the same precedence rule as the pref file it came from: a
+ * later line wins (linoleum-pack.ts hands the rules back to core's pref parser
+ * in file order, and parseTilePrefsInto reassigns the entity's slot). Sorting
+ * the rules alphabetically discards that precedence - a pack whose pref file
+ * states a broad rule and then narrows it (an `object:<tval>:*` wildcard, a
+ * repeated selector, a `GF:*` blanket) can come out with the override written
+ * BEFORE the thing it overrides, and a reader replaying the file then draws the
+ * wrong tile.
+ *
+ * Scope of the fix, honestly: on the four packs the game ships this is latent,
+ * not observed - their only overlapping rules are the `GF:*` blankets, which
+ * happened to sort first anyway. It is pinned by convert.test.ts (the override
+ * must follow what it overrides), NOT by the pixel-equivalence test, which
+ * passes either way today. The wrong-scroll-tile bug that prompted the look at
+ * this file was the asset-name collision below, not the ordering.
+ */
+function compareSourceOrder(a: ExportEntry, b: ExportEntry): number {
+  return a.sourceOrder - b.sourceOrder;
+}
+
 function compareRuleOrder(a: ExportEntry, b: ExportEntry): number {
   const byType = collator.compare(a.type, b.type);
   if (byType !== 0) {
@@ -357,8 +380,42 @@ export function buildPackExport(
     prefMirrorPaths[prefFile] = destinationPrefPath;
   }
 
+  /**
+   * Asset names, one per distinct selector, with collisions broken.
+   *
+   * deterministicAssetName slugs everything outside [a-z0-9] to "_", so two
+   * DIFFERENT selectors can land on the same name: object.txt has both
+   * `Enchant Armour` and `*Enchant Armour*` (a distinct, greater scroll), and
+   * both slug to object_scroll_enchant_armour_0. The ps1 wrote both crops to
+   * that one file, so the second silently replaced the first and one of the two
+   * scrolls drew the other's tile. The trailing `_0` is the sequence number
+   * this needs: the first selector to claim a slug keeps `_0` and the next
+   * takes `_1`, so each distinct tile keeps its own file.
+   *
+   * Keyed by SELECTOR, so a selector repeated in the pref corpus still maps to
+   * one asset and the later line's crop overwrites it - the pref file's own
+   * last-wins behaviour, which the sheet engine also applies.
+   */
+  const assetNameBySelector = new Map<string, string>();
+  const usedAssetNames = new Set<string>();
+  const assetNameFor = (entry: (typeof legacyEntries)[number]): string => {
+    const key = selectorKey(entry.type, entry.exactSelectorValue);
+    const existing = assetNameBySelector.get(key);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const base = deterministicAssetName(entry.type, entry.exactSelectorValue);
+    let name = base;
+    for (let n = 1; usedAssetNames.has(name); n += 1) {
+      name = base.replace(/_0$/, `_${n}`);
+    }
+    usedAssetNames.add(name);
+    assetNameBySelector.set(key, name);
+    return name;
+  };
+
   for (const entry of legacyEntries) {
-    const assetName = deterministicAssetName(entry.type, entry.exactSelectorValue);
+    const assetName = assetNameFor(entry);
     const outputPath = join(imageDir, `${assetName}.png`);
     const rect = sourceTileRectangle(
       entry.column,
@@ -557,8 +614,10 @@ export function buildPackExport(
   if (compatibilityRules.length > 0) {
     targetMapLines.push("");
   }
-  targetMapLines.push("# Exact legacy selectors, including stateful and conditional variants.");
-  for (const entry of [...exactRules].sort(compareRuleOrder)) {
+  targetMapLines.push(
+    "# Exact legacy selectors, in source order - a later rule overrides an earlier one.",
+  );
+  for (const entry of [...exactRules].sort(compareSourceOrder)) {
     targetMapLines.push(
       `target:${entry.type}:${entry.selectorValue}:${entry.mappingKind}:${entry.mappingValue}`,
     );

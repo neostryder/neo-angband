@@ -10,16 +10,20 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "vite",
-    "bundle": "vite build",
+    "dev": "node scripts/gen-linoleum-demo.mjs && vite",
+    "bundle": "node scripts/gen-linoleum-demo.mjs && vite build",
+    "gen-linoleum-demo": "node scripts/gen-linoleum-demo.mjs",
     "gen-icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
     "@neo-angband/content": "workspace:*",
     "@neo-angband/core": "workspace:*",
+    "@neo-angband/linoleum": "workspace:*",
     "@neo-angband/mod-sdk": "workspace:*"
   },
   "devDependencies": {
+    "@types/pngjs": "^6.0.5",
+    "pngjs": "^7.0.0",
     "vite": "^7.0.0",
     "vite-plugin-pwa": "^1.3.0"
   }

@@ -51,12 +51,23 @@ export const BUNDLED_TILE_DIRECTORIES: readonly string[] = [
   "nomad",
 ];
 
+/**
+ * Which engine draws a mode's art. `tilesheet` is upstream's own scheme (one
+ * atlas PNG addressed by row/column, tiles.ts) and is the only thing core modes
+ * ever use, since it is what upstream data describes. `linoleum` is the loose
+ * pack engine (a directory of individual PNGs addressed by name, plus variant
+ * pools - linoleum-pack.ts), which only a mod can bring.
+ */
+export type TileEngine = "tilesheet" | "linoleum";
+
 /** One selectable row of the Graphics menu. */
 export interface TileModeEntry {
   /** grafID (the list.txt serial number); GRAPHICS_NONE = ASCII. */
   grafID: number;
   /** The catalog menu name (grafmode.c's `menuname`). */
   menuname: string;
+  /** Engine that draws it; absent means the classic tilesheet. */
+  engine?: TileEngine;
   /**
    * Base URL the pack's art hangs under - the atlas is
    * `<baseUrl>/<directory>/<file>`. Undefined for core modes, which use the
@@ -127,6 +138,7 @@ export function composeTileModes(input: {
     const entry: TileModeEntry = {
       grafID: pack.grafID,
       menuname: pack.menuname,
+      ...(pack.engine === undefined ? {} : { engine: pack.engine }),
       ...(pack.baseUrl === undefined ? {} : { baseUrl: pack.baseUrl }),
       modId: pack.modId,
       modName: pack.modName,

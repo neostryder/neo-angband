@@ -27,12 +27,53 @@ several tiles for one symbol, creature or item, chosen by map position so a
 seed always looks the same. A pack it contributes joins the Graphics screen
 as an extra row tagged `[neo-linoleum]`; core's own rows stay untagged.
 
-The mod ships with **no packs of its own** (converted packs are yours and are
-not redistributed here), so enabling it alone changes nothing yet. The format,
-the converter and the `tilePacks` seam are built; the shell's loose-pack
-RENDERER - individual assets and pool selection at draw time - is not wired up
-yet, so a pack declared in `tilePacks` today is loaded through the ordinary
-tilesheet path. Everything below describes the pack format itself.
+## Status: both engines work
+
+The shell has TWO tile engines behind one seam, so the live map render does not
+care which is active:
+
+| | tilesheet (`packages/web/src/tiles.ts`) | loose pack (`packages/web/src/linoleum-pack.ts`) |
+|---|---|---|
+| art | one atlas PNG, addressed by (row, col) | one PNG per tile, addressed by name |
+| mapping | `graf-*.prf` (upstream's own data) | `maps/targets.txt` |
+| brought by | CORE - every tile set the game ships | a mod, via a `tilePacks` entry with `"engine": "linoleum"` |
+| variant pools | no | yes |
+
+A loose pack's selector is exactly the middle of the pref line it came from, so
+the loose engine hands its rules back to core's ported pref parser
+(`visuals/tile-prefs.ts`, the port of `ui-prefs.c parse_prefs_*`) as lines whose
+two tile bytes are a synthetic slot number, and keeps a table from slot to
+"which asset, or which pool". Entity lookup, lighting variants and the ASCII
+fallback are therefore ONE code path for both engines; only the final blit
+differs. Assets load lazily - the first cell that wants one starts its fetch and
+draws its glyph until it arrives.
+
+**Proven equivalent, not asserted.** `packages/web/src/linoleum-equivalence.test.ts`
+converts all four bundled tile sets, builds both engines' maps, and asserts that
+every entity either engine draws - features at all four lightings, traps,
+monsters, object kinds, flavours, projections - resolves to a PIXEL-IDENTICAL
+tile, with nothing the sheet covers left uncovered. Writing that test found two
+real converter defects - an asset-name collision that made two different scrolls
+share one file, and dropped decimal-coordinate lines - and prompted a third,
+defensive change: target rules are now written in source order, because the
+format is last-rule-wins and sorting discards a pack's own precedence (that one
+changes no tile in the bundled packs; `convert.test.ts` pins it).
+
+**Demonstration pack.** The mod declares one pack, `Original Tiles (Linoleum)`:
+the game's own 8x8 art, converted at build time by
+`packages/web/scripts/gen-linoleum-demo.mjs` into
+`packages/web/public/mods/linoleum/original-tiles/`. It is generated rather than
+committed (~1500 PNGs derived from art already in the tree) and gitignored. With
+the mod enabled the Graphics screen offers it beside core's own `Original Tiles`,
+which is the point: the same tiles, the other engine, no visible difference.
+Packs you convert yourself are yours and none are redistributed here.
+
+Known limits, shared by BOTH engines so they agree: conditional (`?:` /
+`:when:`) rules are not evaluated; `family` effect metadata (glow/tint/pulse) is
+parsed but not applied, so a family draws its base asset; double-height
+(overdraw) tiles are not drawn above their cell.
+
+Everything below describes the pack format itself.
 
 ## Pack layout
 
@@ -141,12 +182,17 @@ target:object:light:Wooden Torch:pool:torch_variants
 Every `member` is an ordinary asset base name under `images/<resolution>/`; a
 pool member must be an asset the pack already produced (the converter fails the
 build otherwise). A pool declares one of two deterministic **selection rules**
-(the runtime resolves a pool to a single member with the pure `selectPoolMember`
-in `packages/linoleum/src/targets.ts`):
+(the loose engine resolves a pool to a single member at blit time with the pure
+`selectPoolMember` in `packages/linoleum/src/targets.ts`, fed the cell being
+drawn):
 
 - `stable` (default) - an md5-derived index of `"<poolId>:<x>,<y>"`, so a given
   grid cell always draws the same variant (spatial variety that is stable across
-  redraws and identical on every machine, so it never touches the game RNG).
+  redraws and identical on every machine, so it never touches the game RNG). The
+  md5 is a portable one (`packages/linoleum/src/md5.ts`, pinned to
+  `crypto.createHash("md5")` by its own test) because the same hash has to be
+  computed by the Node converter and by the browser at draw time, and Web Crypto
+  has no md5.
 - `index` - an explicit ordinal (for example an object's stack position),
   falling back to the linear `x + y` when no ordinal is supplied, taken modulo
   the member count and wrapped non-negative.

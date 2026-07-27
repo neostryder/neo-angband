@@ -25,8 +25,10 @@ Current state of the project at version `0.1.0`. High level, what exists today:
 - A mod framework (`@neo-angband/mod-sdk`): content packs, tile packs, and
   sandboxed scripted plugins, with the base game loaded as a pack itself.
 - Bundled mods riding that framework: `qol` (quality-of-life conveniences),
-  `bug-fixes`, and `neo-linoleum` (loose-pack tile conversion via
-  `@neo-angband/linoleum`).
+  `bug-fixes`, and `neo-linoleum` (a second tile engine - loose packs of
+  individually named PNGs with variant pools - plus the converter that builds
+  one from any tilesheet, via `@neo-angband/linoleum`). The game's own tile sets
+  stay core content on the classic tilesheet engine.
 - The Borg (`@neo-angband/borg`): a faithful port of Angband's automatic
   player, shipped as a bundled mod on the perceive/act agent API.
 

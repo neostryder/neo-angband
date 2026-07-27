@@ -8,6 +8,12 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./targets": { "types": "./dist/targets.d.ts", "default": "./dist/targets.js" },
+    "./naming": { "types": "./dist/naming.d.ts", "default": "./dist/naming.js" },
+    "./md5": { "types": "./dist/md5.d.ts", "default": "./dist/md5.js" }
+  },
   "bin": {
     "neo-linoleum": "dist/cli.js"
   },

@@ -25,6 +25,20 @@ function manifests(...entries: [string, unknown][]): Map<string, unknown> {
   return new Map(entries);
 }
 
+const loosepack = {
+  id: "loosepack",
+  name: "Loose Pack Mod",
+  shape: "tiles",
+  tilePacks: [
+    {
+      grafID: 101,
+      engine: "linoleum",
+      menuname: "Hand-drawn (Linoleum)",
+      path: "mods/loosepack/hand-drawn",
+    },
+  ],
+};
+
 describe("enabledTileModes", () => {
   it("surfaces an enabled tiles mod's packs, named from the core catalog", () => {
     const modes = enabledTileModes({
@@ -152,5 +166,72 @@ describe("enabledTileModes", () => {
       "extra-tiles:3",
       "artpack:1",
     ]);
+  });
+});
+
+describe("enabledTileModes: loose packs", () => {
+  it("adds a mode of the mod's own, with its own name and no catalog entry", () => {
+    // A loose pack carries its metadata inside the pack (manifest.txt), so it
+    // needs no list.txt row - it ADDS a Graphics row instead of re-skinning one.
+    const modes = enabledTileModes({
+      manifests: manifests(["loosepack", loosepack]),
+      enabledIds: ["loosepack"],
+    });
+    expect(modes).toHaveLength(1);
+    expect(modes[0]?.grafID).toBe(101);
+    expect(modes[0]?.engine).toBe("linoleum");
+    expect(modes[0]?.menuname).toBe("Hand-drawn (Linoleum)");
+    expect(modes[0]?.baseUrl).toBe("mods/loosepack/hand-drawn");
+    expect(modes[0]?.modName).toBe("Loose Pack Mod");
+  });
+
+  it("skips a loose pack with no path - there would be nothing to fetch", () => {
+    expect(
+      enabledTileModes({
+        manifests: manifests([
+          "x",
+          { shape: "tiles", tilePacks: [{ grafID: 101, engine: "linoleum", menuname: "X" }] },
+        ]),
+        enabledIds: ["x"],
+      }),
+    ).toEqual([]);
+  });
+
+  it("skips a loose pack with no name for an id the catalog does not know", () => {
+    expect(
+      enabledTileModes({
+        manifests: manifests([
+          "x",
+          { shape: "tiles", tilePacks: [{ grafID: 101, engine: "linoleum", path: "mods/x" }] },
+        ]),
+        enabledIds: ["x"],
+      }),
+    ).toEqual([]);
+  });
+
+  it("lets a loose pack re-skin a catalog row, borrowing its menu name", () => {
+    const modes = enabledTileModes({
+      manifests: manifests([
+        "x",
+        { shape: "tiles", tilePacks: [{ grafID: 3, engine: "linoleum", path: "mods/x" }] },
+      ]),
+      enabledIds: ["x"],
+    });
+    expect(modes[0]?.menuname).toBe("David Gervais' tiles");
+    expect(modes[0]?.engine).toBe("linoleum");
+  });
+
+  it("still skips a TILESHEET pack on a grafID the catalog does not know", () => {
+    // A sheet needs the catalog's cell size and pref file to be renderable at
+    // all, so an unknown id has no metadata to draw with.
+    expect(
+      enabledTileModes({
+        manifests: manifests([
+          "x",
+          { shape: "tiles", tilePacks: [{ grafID: 101, menuname: "X", path: "mods/x" }] },
+        ]),
+        enabledIds: ["x"],
+      }),
+    ).toEqual([]);
   });
 });
