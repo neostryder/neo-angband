@@ -710,14 +710,36 @@ export function appendObjectCurse(
 /**
  * remove_object_curse (obj-curse.c L219): clear curse `pick` from the
  * object, dropping the curse array if it was the last one. Returns whether
- * the object had that curse; the removal message rides the caller.
+ * the object had that curse.
+ *
+ * `message` is upstream's third parameter, and it belongs here rather than at
+ * the caller: the message is emitted ONLY on the branch that actually removed a
+ * curse, so a caller that announces on its own would announce for a curse the
+ * object did not have. uncurse_object (effect-handler-general.c L194-195) calls
+ * this twice - once on obj->known with false, once on the object with true - and
+ * cmd-wizard.c:1051 passes false.
+ *
+ * The name comes from the global curses[] registry upstream reads directly;
+ * object.ts sits below the registry, so the caller supplies the sink.
  */
-export function removeObjectCurse(obj: GameObject, pick: number): boolean {
+export function removeObjectCurse(
+  obj: GameObject,
+  pick: number,
+  message = false,
+  env?: {
+    readonly curses: readonly (Curse | null)[];
+    readonly msg: (text: string) => void;
+  },
+): boolean {
   const c = obj.curses?.[pick];
   if (!c || !c.power) return false;
   c.power = 0;
   c.timeout = 0;
+  /* Remove the curses array if that was the last curse. */
   checkObjectCurses(obj);
+  if (message && env) {
+    env.msg(`The ${env.curses[pick]?.name ?? ""} curse is removed!`);
+  }
   return true;
 }
 

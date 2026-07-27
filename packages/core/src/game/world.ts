@@ -54,6 +54,8 @@ import { playerExpLose, playerStatDec } from "../player/exp";
 import { turnEnergy } from "../mon/monster";
 import { monsterIsUnique } from "../mon/predicate";
 import { gearGet, gearObjectForUse } from "./gear";
+import { floorPile } from "./floor";
+import { monsterGroupChangeIndex } from "./mon-group";
 import { disturb } from "./player-path";
 import { DEFAULT_HITPOINT_WARN } from "./project-cast";
 import { deleteMonster } from "./context";
@@ -643,18 +645,79 @@ export function playAmbientSound(state: GameState): void {
 }
 
 /**
+ * monster_index_move (mon-make.c L418): move the monster in slot i1 into slot
+ * i2, repairing every reference that names it by index.
+ *
+ * Only compact_monsters' excise pass calls this upstream, and the port did not
+ * have it at all - see compactMonsters below for why that mattered.
+ */
+export function monsterIndexMove(
+  state: GameState,
+  i1: number,
+  i2: number,
+): void {
+  /* Do nothing. */
+  if (i1 === i2) return;
+
+  /* Old monster. */
+  const mon = state.monsters[i1];
+  if (!mon) return;
+
+  /* Update the cave. */
+  state.chunk.setMon(mon.grid, i2);
+
+  /* Update midx. */
+  mon.midx = i2;
+
+  /* Update group. Upstream quit()s on a miss and the monster_groups_verify()
+   * after it is unreachable; throwing is the port's quit. */
+  if (!monsterGroupChangeIndex(state, i2, i1)) {
+    throw new Error(`mon: bad monster group info moving ${i1} -> ${i2}`);
+  }
+
+  /* Repair objects being carried by monster. */
+  for (const obj of mon.heldObj) obj.heldMIdx = i2;
+
+  /* Move mimicked objects (heh). mon.mimickedObj is the port's presence
+   * marker; the live link is the floor object's mimickingMIdx (mon-place.ts
+   * createMimickedObject), and it sits on the monster's own grid. */
+  if (mon.mimickedObj) {
+    for (const obj of floorPile(state, mon.grid)) {
+      if (obj.mimickingMIdx === i1) obj.mimickingMIdx = i2;
+    }
+  }
+
+  /* Update the target, and the health bar. Upstream re-points both at
+   * cave_monster(c, i2), which after the memcpy below is this same monster; the
+   * port moves the object itself, so the Monster reference healthWho holds
+   * stays valid and only the numeric target needs rewriting. */
+  if (state.target.midx === i1) state.target.midx = i2;
+
+  /* Move monster, and wipe the hole. */
+  state.monsters[i2] = mon;
+  state.monsters[i1] = null;
+}
+
+/**
  * compact_monsters (mon-make.c L482): when the monster list is overcrowded,
- * delete num_to_compact monsters, getting more vicious each iteration. Each
- * candidate that survives draws randint0(100) (the saving throw), a variable
+ * delete num_to_compact monsters, getting more vicious each iteration, and then
+ * - ALWAYS - excise the holes so the list is dense again. Each candidate that
+ * survives the deletion pass draws randint0(100) (the saving throw), a variable
  * number of draws that MUST be reproduced for save determinism on breeder-heavy
- * levels. The num_to_compact == 0 "too many holes" call is RNG-free (the outer
- * loop never runs) and is handled by slot reuse, so it is a no-op here.
+ * levels.
+ *
+ * The excise pass at the bottom is not conditional on num_to_compact, and the
+ * port used to return early for num_to_compact == 0 on the reasoning that the
+ * "too many holes" call was RNG-free and "handled by slot reuse". Both halves
+ * were wrong: nothing reused slots (mon_pop appends below the cap, see
+ * context.ts), and so the port never excised a hole at all - under either
+ * argument. cave_monster_max therefore grew monotonically for the life of a
+ * level, which shifts every midx away from upstream's and, with mon_pop's bound
+ * in place, would hit level_monster_max far earlier than the C does.
  */
 export function compactMonsters(state: GameState, numToCompact: number): void {
-  if (numToCompact <= 0) return;
-
-  /* Message, only if actually compacting (mon-make.c:489-491). */
-  state.msg?.("Compacting monsters...");
+  /* Message, only if compacting (mon-make.c:489-491). */
+  if (numToCompact) state.msg?.("Compacting monsters...");
 
   let numCompacted = 0;
   for (let iter = 1; numCompacted < numToCompact; iter++) {
@@ -686,6 +749,18 @@ export function compactMonsters(state: GameState, numToCompact: number): void {
       deleteMonster(state, mIdx);
       numCompacted++;
     }
+  }
+
+  /* Excise dead monsters (backwards!). monsterMax shrinks as we go, exactly as
+   * c->mon_max-- does, so the monster pulled down into a hole always comes from
+   * a slot this scan has already passed. */
+  for (let mIdx = state.monsters.length - 1; mIdx >= 1; mIdx--) {
+    /* Skip real monsters. */
+    if (state.monsters[mIdx]) continue;
+
+    /* Move last monster into open hole, and compress mon_max. */
+    monsterIndexMove(state, state.monsters.length - 1, mIdx);
+    state.monsters.length--;
   }
 }
 
