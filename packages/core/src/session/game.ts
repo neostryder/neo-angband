@@ -38,7 +38,10 @@ import {
   toDefenderState,
 } from "../player/calcs";
 import type { PlayerState } from "../player/calcs";
-import { playerBestDiggerDigging } from "../player/best-digger";
+import {
+  playerBestDiggerDigging,
+  playerBestDiggerWithClause,
+} from "../player/best-digger";
 import { playerExpGain, playerKillExp } from "../player/exp";
 import type { ExpDeps } from "../player/exp";
 import { historyAdd, historyFindArtifact, historyLoseArtifact } from "../player/history";
@@ -227,7 +230,12 @@ import type {
 } from "../player/timed";
 import { disturb, installRunning } from "../game/player-path";
 import { bindCore, bootLevel, genDeps } from "./boot";
-import { isQuest, playerQuestsReset, questCheck } from "../game/quest";
+import {
+  dungeonGetNextLevel,
+  isQuest,
+  playerQuestsReset,
+  questCheck,
+} from "../game/quest";
 import type {
   BootedLevel,
   BootLevelOptions,
@@ -769,6 +777,33 @@ function wireGame(
     );
   };
 
+  /* The same swap decision as a string, for tunnel_aux's with_clause
+   * (cmd-cave.c:541, :552) - "with your hands" / "with your weapon" / "with
+   * your swap digger". Shares bestDiggerSwap with the roll above so the
+   * message and the chance can never disagree. */
+  const digWithClause = (): string => {
+    const p = state.actor.player;
+    const equipment = p.equipment.map((h) =>
+      h ? gearGet(state.gear, h) : null,
+    );
+    const weaponSlot = p.body.slots.findIndex((s) => s.type === "WEAPON");
+    const daytime = isDaytime(state.turn, state.z.dayLength);
+    return playerBestDiggerWithClause(
+      equipment,
+      [...state.gear.store.values()],
+      weaponSlot,
+      (equip) =>
+        calcBonuses(p, {
+          equipment: equip,
+          timedEffects: players.timed,
+          curses: reg.objects.curses,
+          update: false,
+          depth: state.chunk.depth,
+          isDaytime: daytime,
+        }).skills[SKILL.DIGGING] ?? 0,
+    );
+  };
+
   // Experience (player.c): a level change recomputes the derived state
   // (upstream's PU_BONUS | PU_HP | PU_SPELLS), and a player kill rewards
   // mexp * rlev / plev with the fractional carry.
@@ -997,6 +1032,12 @@ function wireGame(
            * effect-teleport.ts, effect-terrain.ts) - a quest level cannot be
            * skipped or recalled away from. */
           isQuest: (depth: number): boolean => isQuest(state.actor.player, depth),
+          /* dungeon_get_next_level (player-util.c:1147). This seam existed but
+           * nothing ever wired it, so every consumer silently degraded to a
+           * bare `depth + dir` - no stair_skip, no max_depth clamp and, worst,
+           * no quest scan. */
+          getNextLevel: (from: number, dir: 1 | -1): number =>
+            dungeonGetNextLevel(state.actor.player, from, dir, state.z),
           changeLevel: (targetDepth: number): void => {
             state.targetDepth = targetDepth;
             state.generateLevel = true;
@@ -1484,7 +1525,14 @@ function wireGame(
           playerHasFlag: (flag: number): boolean =>
             state.playerState?.flags.has(flag) ?? false,
           changeLevel: (s: GameState): void => {
-            s.targetDepth = s.chunk.depth + 1;
+            /* trap.c:579-582: a TRF_DOWN trapdoor drops you through
+             * dungeon_get_next_level, not blindly one level. */
+            s.targetDepth = dungeonGetNextLevel(
+              s.actor.player,
+              s.chunk.depth,
+              1,
+              s.z,
+            );
             s.generateLevel = true;
           },
           /* disturb(player) before trap effects (trap.c:525-526). */
@@ -1557,6 +1605,12 @@ function wireGame(
       msg: (text: string): void => state.msg?.(text),
       /* player_is_trapsafe (player-util.c:1073-1077) via trap.ts:86. */
       isTrapsafe: playerIsTrapsafe,
+      digWithClause,
+      /* get_check for do_cmd_go_down's force_descend quest warning
+       * (cmd-cave.c:126). The shell has no synchronous prompt inside a turn,
+       * so this takes the same default as the effect handlers' confirm seam:
+       * an unprompted terminal auto-accepts. */
+      confirm: (): boolean => true,
       ...(deps && lockKind
         ? {
             isLockedDoor: (grid: Loc): boolean =>

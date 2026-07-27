@@ -107,6 +107,44 @@ export function isQuest(p: Player, level: number): boolean {
 }
 
 /**
+ * dungeon_get_next_level (player-util.c L1147): the depth `added` stair-steps
+ * from `dlev`, clamped to the world and STOPPED BY AN OUTSTANDING QUEST.
+ *
+ * Provenance is player-util.c, but it lives here because the quest scan is the
+ * whole point of it: the intermediate-level loop (L1163-1165) returns the first
+ * quest depth at or below `dlev`, so stairs down from 99 with Sauron alive land
+ * on 99 again rather than delivering the player to Morgoth. quest_check clears
+ * a finished quest's level to 0 (quest.ts:185, player-quest.c:232), which is
+ * what re-opens the descent.
+ *
+ * Every C caller of this goes through here (12 sites: the two stair commands,
+ * RECALL, DEEP_DESCENT and its countdown, TELEPORT_LEVEL, and TRF_DOWN traps).
+ * It is deliberately total - no seam, no default - because the previous shape,
+ * an injectable `getNextLevel` that nothing ever wired, silently degraded every
+ * one of those sites to a bare `depth + dir`.
+ */
+export function dungeonGetNextLevel(
+  p: Player,
+  dlev: number,
+  added: number,
+  z: { readonly stairSkip: number; readonly maxDepth: number },
+): number {
+  /* Get target level. */
+  let target = dlev + added * z.stairSkip;
+
+  /* Don't allow levels below max, or above the town. */
+  if (target > z.maxDepth - 1) target = z.maxDepth - 1;
+  if (target < 0) target = 0;
+
+  /* Check intermediate levels for quests. */
+  for (let i = dlev; i <= target; i++) {
+    if (isQuest(p, i)) return i;
+  }
+
+  return target;
+}
+
+/**
  * square_changeable (cave-square.c L868): a grid that may be "destroyed" - no
  * permanent walls, shops or stairs, and no artifact lying on it. Reimplemented
  * locally (the effect-terrain.c copy is module-private) so build_quest_stairs

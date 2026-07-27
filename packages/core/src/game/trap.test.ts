@@ -40,6 +40,7 @@ import type { GameState } from "./context";
 import { FEAT, SQUARE } from "../generated";
 import { movePlayer } from "./context";
 import { thrustAway } from "./thrust";
+import { squareMemorize } from "./known";
 import { Rng } from "../rng";
 
 function loadRecords<T>(name: string): T[] {
@@ -209,6 +210,8 @@ describe("disarm and the step hook", () => {
     const d = deps(state);
     placeTrap(state, loc(6, 5), pitIdx, 5, d);
     squareRevealTrap(state, loc(6, 5), true, d);
+    /* do_cmd_disarm_test's knowledge gate (cmd-cave.c:701). */
+    squareMemorize(state, loc(6, 5));
 
     const registry = createDefaultRegistry();
     installTraps(state, registry, d);
@@ -225,6 +228,7 @@ describe("disarm and the step hook", () => {
     const msgs: string[] = [];
     const d = deps(state, { env: { msg: (t): void => { msgs.push(t); } } });
     placeTrap(state, loc(6, 5), pitIdx, 5, d);
+    squareMemorize(state, loc(6, 5));
     /* Live guard: not visible, not known as disarmable. */
     expect(squareIsVisibleTrap(state, loc(6, 5))).toBe(false);
     expect(squareIsPlayerTrap(state, loc(6, 5))).toBe(true);
