@@ -83,7 +83,6 @@ const KNOWN_UNUSED: Record<string, readonly string[]> = {
        * PlayerCommand object, so there is nothing to set/get/name. */
       "cmd_set_arg",
       "cmd_get_arg",
-      "cmd_verb",
       /* z-textblock's attribute array and z-queue's constructor: the port uses
        * arrays and the renderer's own line model. */
       "textblock_attrs",

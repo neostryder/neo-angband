@@ -65,8 +65,17 @@ describe("background repaints stand down while an overlay owns the terminal", ()
     expect(MAIN).toMatch(/animFrame = \(animFrame \+ 1\) & 0xff;[\s\S]{0,400}?renderBackground\(\)/);
   });
 
-  it("still paints the map once when an overlay closes", () => {
-    // openModal's finally block is what catches up whatever was suppressed.
-    expect(MAIN).toMatch(/modalDepth--;\s*render\(\);\s*\}\s*\}/);
+  it("still paints the map once when the LAST overlay closes, and not before", () => {
+    /* openModal's finally block is what catches up whatever was suppressed - but
+     * through renderBackground, not render(). It used to be a bare render(),
+     * which meant a NESTED modal closing painted the map over the modal still
+     * open underneath: exactly the title-screen failure one level in. It went
+     * live with the key_confirm_command gate, whose confirmation modal wiped the
+     * item picker it had just approved. renderBackground reads modalDepth AFTER
+     * the decrement, so the outermost close still repaints. */
+    const body = functionBody(MAIN, "openModal");
+    expect(body).toMatch(/modalDepth--;[\s\S]*renderBackground\(\);/);
+    const bare = body.match(/(?<![A-Za-z])render\(\)/g) ?? [];
+    expect(bare, "openModal must not call render() directly").toEqual([]);
   });
 });

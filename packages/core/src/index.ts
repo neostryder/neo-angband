@@ -122,6 +122,7 @@ export * from "./game/effect-summon";
 export * from "./game/effect-detect";
 export * from "./game/known";
 export * from "./game/msg-fixes";
+export * from "./game/inscription-confirm";
 export * from "./game/target";
 export * from "./game/target-loop";
 export * from "./game/mon-cmd";
