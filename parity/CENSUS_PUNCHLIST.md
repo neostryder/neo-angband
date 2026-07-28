@@ -584,3 +584,40 @@ Nothing goes here until it is committed.
   The port's knowledge screens are a one-panel coloured-label list
   (web/src/knowledge.ts runGroupedBrowser), so the picker needs that screen
   first. Measured, not excused.
+
+  **Block D correction** (2026-07-28, census 36 -> 35). Re-deriving the
+  "mod-pack diagnostics" list found that 1 of its 16 does not belong, which is
+  the failure rate [[question-your-own-ratified-divergences]] predicts.
+
+  "Sorry, could not deal with suffix" (player-birth.c:1071) is not a gamedata
+  diagnostic. player_birth's opening block bumps the PREVIOUS character's
+  roman-numeral suffix before any menu runs - that is how "Aragorn II" becomes
+  "Aragorn III" - and the message reports int_to_roman running out of name
+  buffer, which any long-named player reaches in stock play. (Re-derived a second
+  premise while testing it: int_to_roman has NO 3999 cap. Its search starts at
+  1000, so 4000 spells as MMMM and succeeds; the buffer is the only failure.)
+
+  It was absent because the whole dynastic bump was absent: incrementNameSuffix
+  sat in core/player/birth.ts with NO CALLER anywhere - the port always offered a
+  blank name field. Now wired through runBirth's `previousName`, with the message
+  on the failure path and three tests including the buffer-shortfall trigger.
+
+  The remaining 15 hold up on a spot check (mon-spell's three fire when a spell
+  level has no blind/miss/message and the race has no alternate; the two
+  player-util shape lookups fire on an unresolvable shape name or index). One
+  extra scenario worth carrying into that job: `player_shape_by_idx` is reachable
+  on SAVE LOAD with a stored sidx, so disabling a mod that added a shape between
+  sessions is a live way to hit it - not only a malformed pack.
+
+  **Block E, wiz-stats scope** (measured 2026-07-28, still owed): of the 8,
+  seven are achievable now - stats.log's two file reports, "Results are also
+  recorded in %s.", the three tallies, and disconnect.html via the ported
+  dumpLevel (header + a body per problem level with the composed
+  "Level with ..." label and the distance array). The eighth,
+  "Level generation statistics are in disconnect_gstat.txt", needs
+  dump_generation_stats, and behind it the whole `cgen_stats` collector: per
+  level-profile success/failure counts, per room-builder means and standard
+  deviations, tunnel aggregates and grid fractions, all fed by upstream's
+  EVENT_GEN_LEVEL_START / _END and room-builder events. The port's generator
+  emits no such events (generateLevel picks a profile and does not report it), so
+  that one is generator instrumentation, not reporting - a separate job.

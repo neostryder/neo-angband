@@ -69,7 +69,7 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "Total levels isolated from stairs: %ld",
     ],
 
-  "GAP (re-audited): malformed-gamedata diagnostics. My earlier reason - the port validates the pack at build time, so a live game cannot reach these - holds for the CORE pack and is wrong for MODS. A mod pack is loaded at runtime and can ship a spell with no message-vis, an effect name the registry does not know, or a flag with no object_property entry, which is exactly when upstream prints these. They are the mod SDK's diagnostic surface and belong there rather than as msg() lines; tracked as one job, not sixteen":
+  "GAP (re-audited): malformed-gamedata diagnostics. My earlier reason - the port validates the pack at build time, so a live game cannot reach these - holds for the CORE pack and is wrong for MODS. A mod pack is loaded at runtime and can ship a spell with no message-vis, an effect name the registry does not know, or a flag with no object_property entry, which is exactly when upstream prints these. They are the mod SDK's diagnostic surface and belong there rather than as msg() lines; tracked as one job, not sixteen. CORRECTION 2026-07-28: this list held 16 and one of them did not belong. \"Sorry, could not deal with suffix\" (player-birth.c:1071) is not a gamedata diagnostic at all - player_birth bumps the previous character's roman-numeral suffix before any menu runs, and the message reports int_to_roman running out of NAME BUFFER, which any long-named player reaches in stock play. It was absent because the whole dynastic bump was: incrementNameSuffix existed in core with no caller anywhere, so the port always offered a blank name. Now wired (web/src/birth.ts previousName + msg). Re-derive the remaining 15 before building a validator on this premise":
     [
       "No message-invis for monster spell %d cast by %s.  Please report this bug.",
       "No message-miss for monster spell %d cast by %s.  Please report this bug.",
@@ -86,7 +86,6 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "Could not find %s shape!",
       "Could not find shape %d!",
       "%s has misconfigured digging chance; please report this bug.",
-      "Sorry, could not deal with suffix",
     ],
 
   "divergence (re-derived from the C 2026-07-27, upheld): the prompt exists because upstream's savefile PATH is derived from the character name - savefile_name_already_used (ui-game.c:1016) calls savefile_set_name(fname) and then file_exists on the result - so two characters of one name are one file. The port's roster keys each slot by a UUID (web/src/roster.ts newCharId / SLOT_PREFIX + id) and nothing dedupes on name, so a repeated name collides with nothing and there is no file to overwrite":

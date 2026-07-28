@@ -478,6 +478,32 @@ describe("roman-numeral dynastic suffixes (player-birth.c:1329-1481)", () => {
     expect(incrementNameSuffix("Frodo")).toBe("Frodo");
     expect(incrementNameSuffix("Sam Gamgee")).toBe("Sam Gamgee");
   });
+
+  it("has NO upper bound on the numeral itself - 3999 + 1 is MMMM, not a failure", () => {
+    /* Re-derived: int_to_roman (player-birth.c:1368-1412) has no 3999 cap. Its
+     * `while (n < roman_symbol_values[i]) i++` starts at 1000, so 4000 spells
+     * as MMMM and succeeds. The ONLY failure mode is the buffer. */
+    const said: string[] = [];
+    expect(incrementNameSuffix("Bob MMMCMXCIX", 32, (t) => said.push(t))).toBe("Bob MMMM");
+    expect(said).toEqual([]);
+  });
+
+  it("stays silent for a name with no suffix at all - there is nothing to fail", () => {
+    const said: string[] = [];
+    expect(incrementNameSuffix("Frodo", 32, (t) => said.push(t))).toBe("Frodo");
+    expect(said).toEqual([]);
+  });
+
+  it("reports when the incremented suffix outgrows the remaining buffer", () => {
+    /* "Aragorn VIII" -> IX fits; with a buffer only as long as the name it
+     * does not, and the C's `sizeof(full_name) - (buf - full_name)` shortfall
+     * is what trips. */
+    const said: string[] = [];
+    expect(incrementNameSuffix("Averylongcharactername XXXVII", 24, (t) => said.push(t))).toBe(
+      "Averylongcharactername XXXVII",
+    );
+    expect(said).toEqual(["Sorry, could not deal with suffix"]);
+  });
 });
 
 describe("acceptance-flow helpers (do_cmd_accept_character)", () => {
