@@ -95,6 +95,12 @@ export interface GenDeps {
 export interface GenerateOptions {
   /** Whether this is a quest level (forces the classic profile). */
   quest?: boolean;
+  /**
+   * choose_profile's wizard override (generate.c L824-836), the answer to
+   * "Profile name (eg classic): ". Unknown or absent falls through to the
+   * ordinary depth-based selection.
+   */
+  profileName?: string | undefined;
   /** Minimum level dimensions (persistent-level stair matching); default 1. */
   minHeight?: number;
   minWidth?: number;
@@ -402,7 +408,10 @@ export function generateLevel(
     dun.hasAdjacentAbove = options.hasAdjacentAbove ?? false;
     dun.hasAdjacentBelow = options.hasAdjacentBelow ?? false;
 
-    const profile = deps.profiles.choose(rng, depth, { quest });
+    const profile = deps.profiles.choose(rng, depth, {
+      quest,
+      ...(options.profileName ? { name: options.profileName } : {}),
+    });
     const builder = deps.profiles.builder(profile.builder);
 
     const ctx: CaveBuildContext = {

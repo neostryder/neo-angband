@@ -231,31 +231,83 @@ describe("runWizardDebugMenu debug gate (15.2 / player-util.c L1296)", () => {
   });
 });
 
-describe("edit-player stat prompt (cmd-wizard.c:1259,1276 stat_idx_to_name)", () => {
+describe("edit-player (do_cmd_wiz_edit_player_start, cmd-wizard.c:1202)", () => {
   afterEach(() => {
     delete (globalThis as { window?: unknown }).window;
   });
 
-  it("prompts with the short stat code, not the long word (STR, not Strength)", async () => {
+  /** Give the fake player the fields the edit sequence reads for its defaults. */
+  function withEditableFields(ctx: WizardUiCtx): void {
+    const p = ctx.state.actor.player as unknown as {
+      statCur: number[];
+      statMax: number[];
+      au: number;
+      exp: number;
+    };
+    p.statCur = [10, 11, 12, 13, 14];
+    p.statMax = [10, 11, 12, 13, 14];
+    p.au = 0;
+    p.exp = 0;
+  }
+
+  const row0 = (ctx: WizardUiCtx): string =>
+    ((ctx.term as GlyphTerm & { snapshot(): string[] }).snapshot()[0] ?? "").trim();
+
+  it("asks each stat by its short code and its stat_max default, no picker", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const { ctx } = makeCtx(win, 0);
-    (ctx.state.actor.player as unknown as { statCur: number[] }).statCur = [
-      10, 10, 10, 10, 10,
-    ];
-    (ctx.state.actor.player as unknown as { au: number }).au = 0;
+    withEditableFields(ctx);
     const done = dispatchDebug(ctx, "edit-player");
     await tick();
-    // "Edit player" menu: row 0 is STR.
-    press(win, "a");
+    /* Upstream walks straight into the first stat - there is no field menu.
+     * The prompt is "%s (3-118): " over stat_idx_to_name, defaulted to
+     * player->stat_max[stat] (cmd-wizard.c:1276-1279). */
+    expect(row0(ctx)).toContain("STR (3-118): 10");
+    expect(row0(ctx)).not.toContain("Strength");
+    press(win, "Escape"); // EDIT_PLAYER_BREAK: nothing else is asked
+    await done;
+  });
+
+  it("walks STR INT WIS DEX CON then Gold then Experience in that order", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const { ctx } = makeCtx(win, 0);
+    withEditableFields(ctx);
+    const seen: string[] = [];
+    const done = dispatchDebug(ctx, "edit-player");
+    for (let i = 0; i < 7; i++) {
+      await tick();
+      seen.push(row0(ctx));
+      press(win, "Enter"); // accept the default at each stage
+    }
     await tick();
-    // The value prompt reads "STR (3-118): ", not "Strength (3-118): ".
-    const snapshot = (ctx.term as GlyphTerm & { snapshot(): string[] })
-      .snapshot()
-      .join("\n");
-    expect(snapshot).toContain("STR (3-118)");
-    expect(snapshot).not.toContain("Strength");
-    press(win, "Escape"); // cancel the value prompt: no engine call needed
+    await done;
+    expect(seen.map((s) => s.split(":")[0])).toEqual([
+      "STR (3-118)",
+      "INT (3-118)",
+      "WIS (3-118)",
+      "DEX (3-118)",
+      "CON (3-118)",
+      "Gold",
+      "Experience",
+    ]);
+  });
+
+  it("ESC at INT skips every later stage (edit_player_state EDIT_PLAYER_BREAK)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const { ctx } = makeCtx(win, 0);
+    withEditableFields(ctx);
+    const done = dispatchDebug(ctx, "edit-player");
+    await tick();
+    press(win, "Enter"); // STR accepted
+    await tick();
+    expect(row0(ctx)).toContain("INT (3-118)");
+    press(win, "Escape"); // BREAK
+    await tick();
+    /* Row 0 is cleared and nothing further is asked - WIS never appears. */
+    expect(row0(ctx)).toBe("");
     await done;
   });
 });

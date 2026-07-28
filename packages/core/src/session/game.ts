@@ -2233,6 +2233,11 @@ function makeChangeLevel(
       });
     }
 
+    /* choose_profile's NOSCORE_JUMPING request (generate.c L824-836): consumed
+     * once, cleared as it is passed on, exactly as the C clears the bit. */
+    const jumpProfileName = state.jumpProfileName;
+    state.jumpProfileName = undefined;
+
     const g = generateLevel(
       state.rng,
       depth,
@@ -2281,6 +2286,7 @@ function makeChangeLevel(
           ? { createStair: pendingStair }
           : {}),
         ...(townLayout ? { townLayout } : {}),
+        ...(jumpProfileName ? { profileName: jumpProfileName } : {}),
       },
     );
     /* chunk->join (generate.c L1203-1214): remember this level's stair

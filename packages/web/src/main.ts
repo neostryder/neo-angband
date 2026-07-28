@@ -4301,6 +4301,25 @@ function wizardCtx(): WizardUiCtx {
       );
       return ok ? targetGet(state) : null;
     },
+    // wiz_hack_map (cmd-wizard.c:319): the debug query commands hand us the
+    // grids their probe selected, each with the colour that probe chose, and we
+    // overlay one glyph per grid on the visible panel exactly as print_rel
+    // does - '@' on the player, '*' where the grid is passable, '#' otherwise.
+    hackMap: (marks): void => {
+      const { mapOriginX, mapTop, mapCols, mapRows, camX, camY } = viewport();
+      for (const mark of marks) {
+        const { x, y } = mark.grid;
+        if (x < camX || x >= camX + mapCols || y < camY || y >= camY + mapRows) continue;
+        if (x < 1 || y < 1 || x >= state.chunk.width - 1 || y >= state.chunk.height - 1) {
+          continue; // square_in_bounds_fully
+        }
+        const here = x === state.actor.grid.x && y === state.actor.grid.y;
+        const ch = here ? "@" : state.chunk.isPassable(mark.grid) ? "*" : "#";
+        term.print(mapOriginX + x - camX, mapTop + y - camY, ch, colorToCss(mark.color));
+      }
+    },
+    // lookup_monster (mon-util.c:119), for the "Which monster? " prompts.
+    raceByName: (name: string) => booted.registries.monsters.raceByName(name),
   };
 }
 

@@ -483,6 +483,14 @@ export interface GameState {
    */
   targetDepth?: number;
   /**
+   * choose_profile's NOSCORE_JUMPING request (generate.c L824-836): the answer
+   * to the wizard jump command's "Profile name (eg classic): ". The NEXT
+   * generation consumes it - the session clears it as it passes it on, matching
+   * the C's one-shot `p->noscore &= ~(NOSCORE_JUMPING)`. An unknown name falls
+   * through to the ordinary depth-based selection.
+   */
+  jumpProfileName?: string | undefined;
+  /**
    * player->upkeep->create_up_stair / create_down_stair (cmd-cave.c:90-91,
    * 137-138): the arrival staircase the NEXT generated level must lay under the
    * player, so a down-stair lands you on an up-stair and vice versa

@@ -93,10 +93,6 @@ const KNOWN_UNUSED: Record<string, readonly string[]> = {
        * inlined at the port's use sites (locSum / the rng helpers). */
       "loc_offset",
       "random_chance_scaled",
-      /* obj-util.c:520/549 look a name up in the flat C arrays; the port's
-       * ObjRegistry resolves artifacts and egos at bind time. */
-      "lookup_artifact_name",
-      "lookup_ego_item",
       /* player-history.c:56 frees the C list; the port's history is an array
        * replaced at birth. */
       "history_clear",

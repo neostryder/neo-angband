@@ -49,9 +49,12 @@ allowlist entry is deleted and the suite is green.
       fires on the right event, not just that the string exists.
 - [x] **B. `mon_pop`'s bound** (1) - "Too many monsters!"; exact parity at the
       `level_monster_max` cap, with tests. mon-make.c:646-682.
-- [ ] **C. Wizard/debug prompts** (32) - cmd-wizard.c, wiz-debug.c,
-      generate.c:831. The port's debug menu drives most without asking for
-      parameters.
+- [x] **C. Wizard/debug prompts** (32 -> 1) - cmd-wizard.c, wiz-debug.c,
+      generate.c:831. The port's debug menu did not merely omit these: it
+      PARAPHRASED them, which no census can see. 31 are now exact; the last is a
+      recorded divergence (the cmdq_push-failure get_check, unreachable without a
+      command queue). Aaron, 2026-07-28: "Paraphrasing is a deviation and is not
+      permitted in this port."
 - [ ] **D. Mod-pack diagnostics** (16) - the mod SDK's validation surface. One
       job, not sixteen `msg()` lines.
 - [ ] **E. host-io** (39, the lore.txt dump moved in from J) - scorefile (8), `.prf` files (8), dumps (7), dev
@@ -341,3 +344,91 @@ Nothing goes here until it is committed.
   the port has no runtime x_attr/x_char override layer (TileMap is the graphics
   mapping only), so it needs that layer, the renderer reading it, and the picker
   UI. Aaron's call whether that lands before the remaining blocks.
+
+- 2026-07-28 (5), block **C**: the wizard/debug prompts, on Aaron's ruling that
+  **paraphrasing is a deviation** and the strings must be exact transcriptions.
+  This block was never really "32 missing prompts". The port's debug surface
+  *answered its own questions in its own words*, which is the one failure mode
+  neither census can detect - a paraphrase occupies the slot the literal should
+  hold, so the string reads as absent while the feature looks done. Measured
+  across the surface:
+  - **Invented prompts** (17): "Create object of which kind (kidx)?" for
+    `Create which object (0-%d)? `, "Jump to which dungeon level?" for
+    `Jump to level (0-%d): `, "Which race index?" for `Which monster? `,
+    "Curse power (0 removes it)?" for `Enter curse power (0 removes): `,
+    "Reroll: 0 normal, 1 good, 2 excellent?" for the get_com
+    `Roll as [n]ormal, [g]ood, or [e]xcellent? `, and so on.
+  - **Invented MESSAGES** (11), where upstream prints its own line or nothing:
+    "Cured." for `You feel *much* better!`; "Allocated." / "Monsters banished." /
+    "You have lit up the level." / "You feel more experienced." /
+    "Pushed any pile off your square." where the C is SILENT; "Changes
+    rejected." / "Changes accepted." for `Changes ignored.` and for nothing.
+  - **Invented STRUCTURE**: the play-item session was a row menu instead of
+    upstream's one get_com line
+    `[a]ccept [s]tatistics [r]eroll [t]weak [c]urse [q]uantity [k]nown? `, and
+    was missing [s]tatistics and [k]nown entirely; "Edit player" was a field
+    PICKER where upstream walks STR/INT/WIS/DEX/CON -> Gold -> Experience in
+    sequence with EDIT_PLAYER_BREAK cancel semantics; the two map QUERY commands
+    printed a count instead of highlighting the panel through wiz_hack_map; and
+    "Noise and scent" asked for one depth instead of stepping 0..99 then 0..49
+    with `Depth %d: ` between each.
+  - Every prompt also used the wrong INPUT primitive: promptNumber clears the
+    screen and draws a titled editor, where get_string / get_quantity keep the
+    screen and ask on row 0. overlay.ts now has real `getString` (with
+    askfor_aux's 80-column length restriction) and `getQuantity`.
+  Four behaviour defects fell out of doing it properly:
+  1. **The shared quantity prompt appended to its default instead of replacing
+     it.** shop.ts had a hand-rolled get_quantity; its default is "1", so typing
+     3 asked for 13 (clamped to the max). askfor_aux's `firsttime` rule is that a
+     default is a suggestion you type OVER. That was live in the STORE's "Buy how
+     many?" - the one copy is now in overlay.ts and both callers use it.
+  2. **wizJumpLevel set NOSCORE_JUMPING unconditionally.** The C sets it only
+     inside `if (choose_gen)` (cmd-wizard.c:1365), and the bit is not a cheat
+     marker at all: choose_profile consumes it as the one-shot signal to ask
+     which profile to build. So the port both mis-flagged the savefile and could
+     never reach `Profile name (eg classic): `.
+  3. **`Profile name (eg classic): ` was unreachable**, and with it the whole
+     wizard profile override (generate.c:824-836). ChooseProfileOptions now takes
+     the name, generate threads it, the session consumes it once (clearing it,
+     as the C clears the bit), and the jump command asks for it.
+  4. **wizCheatDeath never cancelled a pending recall or deep descent**
+     (wiz-debug.c:56-74). Both are counters on the player, so a cheated death
+     left a word of recall ticking that would then fire from the town you were
+     just returned to. That is what the census entry for
+     `The air around you stops swirling...` was sitting on - the pattern now
+     measures 8 for 8.
+  The four commands whose menu row presets an argument (`Acquire good/great`,
+  `Create all from tval`, `Learn object kinds`, `Random near/far`) are written the
+  way the C writes them - one function, `if (arg absent) ask` - so their prompts
+  are live rather than dead code waiting for a keymap layer.
+  Ratchet: **packages/web/src/wizard-prompts.test.ts** holds every exact literal
+  with its C line AND the 36 paraphrases it replaced, over a comment-STRIPPED
+  read of the source (the docblocks quote the paraphrases deliberately). Plus
+  live drives that read row 0.
+  Proven live in the browser: ^W -> `Are you sure you want to enter wizard mode? `
+  -> ^A -> the danger confirm -> Items -> Acquire good shows
+  `How many good objects? 1`, typing 3 gives `3` (not 13) and drops three
+  objects; Query -> Feature -> 'f' paints 651 '*' glyphs over the panel's floors
+  with `Press any key.` in the log and restores the map on a keypress; Play with
+  item draws the real wiz_display_item screen (description row 2, `combat = `
+  row 4, `kind = ` row 5, `number = ` row 6, the ruled `+---FLAGS---+` row 16,
+  vertical flag labels 17-21, the two prt_binary rows 22-23) under the exact
+  get_com line, and [s]tatistics asks
+  `Roll for [n]ormal, [g]ood, or [e]xcellent treasure? ` then
+  `Depth for treasure (0-127): `.
+  Also cleared 2 stale call-census tier-1 entries: `lookup_artifact_name` and
+  `lookup_ego_item` were ported-but-never-called and the tweak command now uses
+  both. 91 -> 59 absences (the allowlist is now 59 literals across 8 reasons:
+  block E's host-io set, block D's mod diagnostics, and 4 derived divergences).
+
+  LEFT in C, and it is UI structure rather than text: the three browsable screens
+  in ui-wizard.c. `wiz_create_item` (L376) is a two-level menu - a tval menu
+  titled "What kind of object?" / "What kind of artifact?" over object_base_name,
+  then a per-tval submenu ("What kind of %s?" / "Which artifact %s? ") over
+  object_kind_name / a fake-artifact object_desc, each with an "All ..." row. The
+  'c' / 'C' / 'V' rows currently reach the COMMAND-level prompts instead (real
+  upstream text, and what a repeat or keymap reaches, but not the menu). Also
+  `wiz_display_keylog` (L96: "Previous keypresses (top most recent):" +
+  "Press any key to continue.", needing a keypress ring in the shell) and
+  `wiz_proj_demo` (L78: the "PROJ_ types display" menu). None of the three emits
+  a census literal, so nothing else will remind us.
