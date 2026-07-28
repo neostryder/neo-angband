@@ -4204,7 +4204,11 @@ async function driveRest(nArg: number): Promise<void> {
 // A localStorage-backed ScoreStore (JSON) is the persistence seam; the core
 // owns the scoring/ordering/gating. `scoresOpen` gates the main keyhandler
 // while the Hall of Fame screen owns the keyboard.
-const scoreStore = createLocalStorageScoreStore();
+// highscore_write's eight failure messages (score.c L126-190) go to the
+// message line, exactly as upstream: a table that could not be written says so.
+const scoreStore = createLocalStorageScoreStore(undefined, {
+  msg: (text) => say(text),
+});
 const scoreNames = registryNameResolver(players);
 let scoresOpen = false;
 
