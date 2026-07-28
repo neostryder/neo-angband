@@ -16,6 +16,12 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # pnpm-workspace.yaml allowlists Electron's postinstall so a DEVELOPER gets
+      # the Chromium binary (without it `electron .` cannot start at all). CI only
+      # type-checks, lints and tests the desktop front end - it never launches it -
+      # so skip the ~110 MB download here rather than pay it on every run.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

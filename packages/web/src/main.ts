@@ -209,6 +209,7 @@ import type {
 import { buildUiEntryConfig, setColorChannel, uiEntryRendererCustomize, uiEntryRendererRows } from "@neo-angband/core";
 import { setHost } from "@neo-angband/core";
 import { BrowserHost } from "./host-browser";
+import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import type { PrefsUiCtx } from "./prefs-ui";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines, presentNamespaces } from "./pack";
@@ -396,11 +397,17 @@ import { installAutoUpdate } from "./pwa";
 // that upstream Angband does not.
 installAutoUpdate();
 
-// Install the host layer before anything reads or writes a file. This is the
-// browser's REDUCED adapter: it reports realFiles/argv/signals false and one
-// term, so a screen that needs any of those can ask instead of assuming (see
-// parity/PLATFORM.md). The desktop build installs the full-capability host.
-setHost(new BrowserHost());
+// Install the host layer before anything reads or writes a file.
+//
+// One bundle, two platforms - which is upstream's arrangement, where main-sdl2,
+// main-gcu and main-win are different front ends over one z-file.c. Under the
+// Electron shell there is a real filesystem and a real command line, so the
+// full-capability host goes in. In a browser tab there is not, so the REDUCED
+// adapter goes in and SAYS so: realFiles/argv/signals false, one term. Either
+// way a screen asks the host what the platform can do instead of assuming, which
+// is what stops a platform limit editing the game (parity/PLATFORM.md).
+const desktopBridge = detectDesktopBridge();
+setHost(desktopBridge ? makeDesktopHost(desktopBridge) : new BrowserHost());
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);

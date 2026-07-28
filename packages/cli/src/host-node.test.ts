@@ -12,8 +12,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { FileMode, HostDir } from "@neo-angband/core";
-import { NodeHost } from "./host-node";
+import { FileMode, HostDir, RawFsHost, rawFsOverTransport, serveRawFs } from "@neo-angband/core";
+import { NodeHost, NodeRawFs } from "./host-node";
 
 let base: string;
 
@@ -133,5 +133,97 @@ describe("NodeHost", () => {
     /* The CLI is a single terminal; the Electron shell passes termCount 8. */
     expect(new NodeHost({ base }).capabilities.termCount).toBe(1);
     expect(new NodeHost({ base, termCount: 8 }).capabilities.termCount).toBe(8);
+  });
+});
+
+/**
+ * The exact stack the desktop build runs, minus the Electron IPC hop:
+ *
+ *   RawFsHost  (core: z-file.c's rules)
+ *     -> rawFsOverTransport  (core: the renderer's end of the wire)
+ *       -> serveRawFs        (core: the main process's end)
+ *         -> NodeRawFs       (here: real syscalls)
+ *
+ * The unit tests either side of the wire use in-memory fakes, so this is the
+ * only place that proves bytes reach a real disk through the whole chain. What
+ * Electron adds on top is one structured-clone round trip over a synchronous
+ * channel, and every value crossing it is a string, boolean, number or array.
+ */
+describe("the desktop stack against a real filesystem", () => {
+  const wired = (): RawFsHost =>
+    new RawFsHost(rawFsOverTransport(serveRawFs(new NodeRawFs(base))), {
+      argv: ["-f", "Bilbo"],
+    });
+
+  it("writes a real file to a real directory", () => {
+    const h = wired();
+    expect(h.write(HostDir.USER, "Bilbo.prf", "# Options\n\n")).toBe("ok");
+    /* Read with plain fs, not through the host: the host agreeing with itself
+     * would prove nothing about what is on disk. */
+    expect(fs.readFileSync(path.join(base, "user", "Bilbo.prf"), "utf8")).toBe(
+      "# Options\n\n",
+    );
+    expect(h.read(HostDir.USER, "Bilbo.prf")).toBe("# Options\n\n");
+  });
+
+  it("appends across the wire without truncating", () => {
+    const h = wired();
+    h.write(HostDir.USER, "dump.prf", "first\n");
+    h.write(HostDir.USER, "dump.prf", "second\n", FileMode.APPEND);
+    expect(fs.readFileSync(path.join(base, "user", "dump.prf"), "utf8")).toBe(
+      "first\nsecond\n",
+    );
+  });
+
+  it("compares real mtimes across the wire", () => {
+    /* Stamps are set explicitly: two writes in the same millisecond would tie,
+     * and a tie is not "newer". */
+    const h = wired();
+    h.write(HostDir.PANIC, "Bilbo", "panic");
+    h.write(HostDir.SAVE, "Bilbo", "save");
+    fs.utimesSync(path.join(base, "panic", "Bilbo"), new Date(2000), new Date(2000));
+    fs.utimesSync(path.join(base, "save", "Bilbo"), new Date(1000), new Date(1000));
+    /* Same directory, since HostIo compares within one. */
+    h.write(HostDir.USER, "newer.txt", "x");
+    h.write(HostDir.USER, "older.txt", "x");
+    fs.utimesSync(path.join(base, "user", "newer.txt"), new Date(2000), new Date(2000));
+    fs.utimesSync(path.join(base, "user", "older.txt"), new Date(1000), new Date(1000));
+    expect(h.newer(HostDir.USER, "newer.txt", "older.txt")).toBe(true);
+    expect(h.newer(HostDir.USER, "older.txt", "newer.txt")).toBe(false);
+    expect(h.newer(HostDir.USER, "newer.txt", "absent.txt")).toBe(true);
+    expect(h.newer(HostDir.USER, "absent.txt", "newer.txt")).toBe(false);
+  });
+
+  it("moves, lists and removes real files", () => {
+    const h = wired();
+    h.write(HostDir.SAVE, "a", "body");
+    expect(h.move(HostDir.SAVE, "a", "b")).toBe(true);
+    expect(fs.existsSync(path.join(base, "save", "a"))).toBe(false);
+    expect(fs.readFileSync(path.join(base, "save", "b"), "utf8")).toBe("body");
+    expect(h.list(HostDir.SAVE)).toEqual(["b"]);
+    expect(h.remove(HostDir.SAVE, "b")).toBe(true);
+    expect(fs.existsSync(path.join(base, "save", "b"))).toBe(false);
+  });
+
+  it("still refuses to escape a directory when the request comes over the wire", () => {
+    /* The renderer is the untrusted side of this transport, so the guard has to
+     * hold on the far end - not just in the client that is being bypassed. */
+    const h = wired();
+    expect(h.write(HostDir.USER, "../escaped.txt", "x")).toBe("create-failed");
+    expect(h.read(HostDir.USER, "../../secret")).toBeNull();
+    expect(fs.existsSync(path.join(base, "escaped.txt"))).toBe(false);
+    expect(fs.readdirSync(base).sort()).toEqual([
+      "archive",
+      "panic",
+      "save",
+      "scores",
+      "user",
+    ]);
+  });
+
+  it("reports the real host path for messages, and passes argv through", () => {
+    const h = wired();
+    expect(h.displayPath(HostDir.USER, "a.prf")).toBe(path.join(base, "user", "a.prf"));
+    expect(h.argv()).toEqual(["-f", "Bilbo"]);
   });
 });
