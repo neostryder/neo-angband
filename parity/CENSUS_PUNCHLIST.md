@@ -54,7 +54,7 @@ allowlist entry is deleted and the suite is green.
       parameters.
 - [ ] **D. Mod-pack diagnostics** (16) - the mod SDK's validation surface. One
       job, not sixteen `msg()` lines.
-- [ ] **E. host-io** (38) - scorefile (8), `.prf` files (8), dumps (6), dev
+- [ ] **E. host-io** (39, the lore.txt dump moved in from J) - scorefile (8), `.prf` files (8), dumps (7), dev
       logs + wiz-stats (16). Port the equivalent against the port's real storage
       and download layers, and the CLI's `node:fs` writers.
 - [x] **F. Store guard messages** (9) - reachable from a mod adding remote
