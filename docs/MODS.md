@@ -101,13 +101,21 @@ How the engine keeps this true:
 A mod is a **folder**. That is the whole format:
 
 ```
-<data>/mods/
-  load-order.json          optional; owned by an external mod manager
-  my-mod/
-    manifest.json          identity, version, shape, dependencies, description
-    monster.json           one file per kind of record the pack changes
-    object.json
+Neo Angband/                 a self-contained install: the game's own folder
+  Neo Angband.exe
+  neo-angband-data/
+    save/                    your characters
+    mods/                    <- mods live here, right beside the program
+      load-order.json        optional; owned by an external mod manager
+      my-mod/
+        manifest.json        identity, version, shape, dependencies, description
+        monster.json         one file per kind of record the pack changes
+        object.json
 ```
+
+An installed copy keeps the same `mods/` folder under the OS user directory
+instead; either way the mod manager's "Where mods come from" row names the exact
+path. See [INSTALL.md](INSTALL.md#where-your-data-lives).
 
 `manifest.json` is validated on load. Every other `.json` at the top level of
 the folder is a record contribution, named after the record type - the same
