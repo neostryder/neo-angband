@@ -13,20 +13,28 @@
  * compare (their object_info textblocks side by side, via the ported
  * obj/object-info.ts - not re-derived here), ? shows help, ESC exits.
  *
+ * q / ! are prompt_for_easy_filter: type a 2-character property code (or a
+ * 3-character stat code) to keep only the items that have it, ! for those that
+ * do not, return to clear. The matching and the six selector functions live in
+ * the core model (matchEquipCmpFilter / equipCmpFilterKeeps).
+ *
  * Simplified vs. upstream (see game/equip-cmp.ts's header for the model-side
- * notes): the intricate per-terminal-width page/view reconfiguration
- * collapses to plain vertical scroll plus a fixed 2/3-view split, and the
- * free-text quick filter (q/!) and file dump (d) are not implemented - both
- * are UI conveniences over the same model, not present in this scoped port.
+ * notes): the intricate per-terminal-width page/view reconfiguration collapses
+ * to plain vertical scroll plus a fixed 2/3-view split, and the file dump (d)
+ * rides the port's host-io layer with the other dumps.
  */
 
 import {
   COLOUR_WHITE,
+  EQUIP_CMP_FILTER_NO_MATCH,
+  EQUIP_CMP_FILTER_PROMPT,
   colorToCss,
   equipCmpSummary,
+  matchEquipCmpFilter,
   objectInfoTextblock,
 } from "@neo-angband/core";
 import type {
+  EquipCmpEasyFilter,
   EquipCmpModel,
   EquipCmpOptions,
   GameState,
@@ -36,7 +44,7 @@ import type {
   UiEntryPackRecords,
 } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
-import { showTextScreen, selectFromMenu, menuNav } from "./overlay";
+import { showTextScreen, selectFromMenu, menuNav, promptTextInline } from "./overlay";
 import type { ScreenLine } from "./overlay";
 import { wrapRuns } from "./screens";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_CURSOR } from "./ui-colors";
@@ -88,9 +96,12 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
     let top = 0;
     let colScroll = 0;
     let dlgMsg = "";
+    /** The 'q' / '!' quick filter (easy_filt's property selector), or none. */
+    let filter: EquipCmpEasyFilter | null = null;
     const summaryOpts = (): EquipCmpOptions => ({
       source,
       reverse,
+      filter,
       ...(deps.entryDeps !== undefined ? { entryDeps: deps.entryDeps } : {}),
     });
     let model: EquipCmpModel = equipCmpSummary(state, deps.packs, summaryOpts());
@@ -157,7 +168,7 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
       }
 
       const srcMsg = SOURCE_MSG[source];
-      const footer = srcMsg || "[j/k move; n/p page; c source; v view; r reverse; x compare; ? help; ESC]";
+      const footer = srcMsg || "[j/k move; n/p page; c source; v view; q/! filter; r reverse; x compare; ? help; ESC]";
       term.print(0, rows - 1, footer.slice(0, cols - 1), DIM);
     };
 
@@ -167,6 +178,8 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
         { text: "n, PgDn / p, PgUp page" },
         { text: "c   cycle equipment source (none / only store / all / carried only)" },
         { text: "v   cycle attribute view" },
+        { text: "q   filter by a 2- or 3-character attribute code (return clears)" },
+        { text: "!   filter by NOT having that attribute" },
         { text: "r   reverse order" },
         { text: "R   reset to defaults" },
         { text: "x, I select one or two items to compare" },
@@ -196,6 +209,53 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
       } else {
         await showTextScreen(term, a.shortName, wrapRuns(tb0, term.size().cols));
       }
+    };
+
+    /**
+     * Run a nested overlay (the compare picker, the help screen, the filter
+     * prompt) with OUR listener detached, the way charsheet.ts does it for the
+     * rename prompt.
+     *
+     * Every overlay in this shell listens on window in the capture phase, and
+     * this screen's handler - registered first - opens with
+     * stopImmediatePropagation(). So while it was attached, no nested overlay
+     * ever saw a key: 'x' opened the item picker and then swallowed every letter
+     * the player typed into it, and ESC closed the WHOLE screen from underneath
+     * it. Verified live before the fix.
+     */
+    const nested = async <T>(run: () => Promise<T>): Promise<T> => {
+      window.removeEventListener("keydown", onKey, true);
+      try {
+        return await run();
+      } finally {
+        window.addEventListener("keydown", onKey, true);
+      }
+    };
+
+    /**
+     * prompt_for_easy_filter (ui-equip-cmp.c:1229): get_string for a 2- or
+     * 3-character property code, then either clear the filter (empty answer),
+     * install it, or report that nothing matched. ESC leaves it untouched.
+     */
+    const runFilterPrompt = async (not: boolean): Promise<void> => {
+      const code = await nested(() =>
+        promptTextInline(term, EQUIP_CMP_FILTER_PROMPT, "", 3),
+      );
+      if (code === null) return; // ESC: EQUIP_CMP_MENU_NEW_PAGE, no change
+      if (code === "") {
+        filter = null; // "return to clear"
+        rebuild();
+        return;
+      }
+      const match = matchEquipCmpFilter(model.columns, code, not);
+      if (!match) {
+        dlgMsg = EQUIP_CMP_FILTER_NO_MATCH;
+        return;
+      }
+      filter = match;
+      cursor = 0;
+      top = 0;
+      rebuild();
     };
 
     const runSelect = async (): Promise<void> => {
@@ -278,18 +338,31 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
           reverse = false;
           view = 0;
           colScroll = 0;
+          filter = null;
           rebuild();
           break;
+        case "q":
+          void (async () => {
+            await runFilterPrompt(false);
+            paint();
+          })();
+          return;
+        case "!":
+          void (async () => {
+            await runFilterPrompt(true);
+            paint();
+          })();
+          return;
         case "x":
         case "I":
           void (async () => {
-            await runSelect();
+            await nested(runSelect);
             paint();
           })();
           return;
         case "?":
           void (async () => {
-            await showHelp();
+            await nested(showHelp);
             paint();
           })();
           return;
