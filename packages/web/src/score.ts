@@ -39,23 +39,110 @@ import type { GlyphTerm } from "./term";
 /** Version-name shown in the page title (ui-score.c VERSION_NAME). */
 const VERSION_NAME = "Neo Angband";
 
+/** The Storage subset the score store uses (localStorage in the browser). */
+export interface ScoreStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+/** Platform wiring for the store: where to write, and how to report failure. */
+export interface ScoreStoreDeps {
+  /**
+   * msg(). highscore_write REPORTS every failure to the player (score.c
+   * L126-190) - eight distinct messages - so the writer needs the message line.
+   * Omitted, the failures are silent, which is what this module used to do.
+   */
+  msg?: ((text: string) => void) | undefined;
+  /** The backing storage; defaults to localStorage. */
+  storage?: ScoreStorage | undefined;
+}
+
 /**
- * A ScoreStore persisting the compact score list as JSON in localStorage. The
- * stored value is regularized on read (highscore_regularize) so a corrupted or
- * out-of-order blob still yields a valid, ordered list - the same defensive
+ * A ScoreStore persisting the compact score list as JSON in browser storage,
+ * ported from score.c's highscore_read / highscore_write - INCLUDING the parts
+ * that used to be dismissed as filesystem trivia.
+ *
+ * Upstream does not simply write scores.raw. It takes a lock, writes
+ * scores.new, rotates scores.raw to scores.old, renames scores.new into place,
+ * and drops the lock - and it has a message for every step that can fail. Every
+ * one of those steps has an honest analogue here, because storage keys are as
+ * shared and as failure-prone as files:
+ *
+ *   scores.lok  ->  <key>.lok   a second TAB writing the same table
+ *   scores.new  ->  <key>.new   the staged write
+ *   scores.old  ->  <key>.old   the rotated previous table
+ *   scores.raw  ->  <key>       the live table
+ *
+ * file_close's flush is the one step with no direct counterpart, so it becomes
+ * the read-back: a quota-truncated or evicted setItem is only detectable by
+ * reading the value back, and that is exactly the failure the old code hid
+ * behind an empty catch ("scores are a nicety, never fatal"). They are not a
+ * nicety - a lost write silently drops a character's only record of the run.
+ *
+ * The stored value is regularized on read (highscore_regularize) so a corrupted
+ * or out-of-order blob still yields a valid, ordered list - the same defensive
  * posture as highscore_read's regularize-on-load.
+ *
+ * WART KEPT (score.c L123-128): a lock left behind by a crash blocks every
+ * later write, with no way to clear it from inside the game. Upstream has the
+ * same trap; core keeps it.
  */
 export function createLocalStorageScoreStore(
   key = "neo-angband-scores",
+  deps: ScoreStoreDeps = {},
 ): ScoreStore {
+  const store: ScoreStorage | null = deps.storage ?? safeLocalStorage();
+  const msg = deps.msg ?? ((): void => undefined);
+
+  const CUR = key;
+  const NEW = `${key}.new`;
+  const OLD = `${key}.old`;
+  const LOK = `${key}.lok`;
+
+  /** file_read: null when the key is absent or storage is unavailable. */
+  const get = (k: string): string | null => {
+    if (!store) return null;
+    try {
+      return store.getItem(k);
+    } catch {
+      return null;
+    }
+  };
+
+  /** file_open(MODE_WRITE) + file_write: false when the write did not happen. */
+  const put = (k: string, v: string): boolean => {
+    if (!store) return false;
+    try {
+      store.setItem(k, v);
+      return true;
+    } catch {
+      return false; /* quota exceeded / storage disabled */
+    }
+  };
+
+  /** file_delete: false when the key is still there afterwards. */
+  const drop = (k: string): boolean => {
+    if (!store) return false;
+    try {
+      store.removeItem(k);
+    } catch {
+      return false;
+    }
+    return get(k) === null;
+  };
+
+  /** file_move. */
+  const move = (from: string, to: string): boolean => {
+    const v = get(from);
+    if (v === null) return false;
+    if (!put(to, v)) return false;
+    return drop(from);
+  };
+
   return {
     read(): HighScore[] {
-      let raw: string | null = null;
-      try {
-        raw = localStorage.getItem(key);
-      } catch {
-        return []; // storage unavailable (private mode, etc.) -> empty table
-      }
+      const raw = get(CUR);
       if (!raw) return [];
       let parsed: unknown;
       try {
@@ -64,18 +151,83 @@ export function createLocalStorageScoreStore(
         return [];
       }
       if (!Array.isArray(parsed)) return [];
-      // Trust the shape loosely; regularize drops anything invalid.
-      const { scores } = highscoreRegularize(parsed as HighScore[]);
+      /* highscore_read gets fixed-size binary records, so upstream's only
+       * corruption case is a short read; a JSON store can hand back null, a
+       * number or a record with no fields at all, and highscoreRegularize
+       * reads `what` unguarded. Drop non-records here - the representation is
+       * the platform's, so guarding it is the platform's job - then let
+       * regularize (score.c L63) reject the rest. */
+      const rows = (parsed as unknown[]).filter(
+        (r): r is HighScore =>
+          typeof r === "object" && r !== null && typeof (r as HighScore).what === "string",
+      );
+      const { scores } = highscoreRegularize(rows);
       return scores.slice(0, MAX_HISCORES);
     },
+
+    /** highscore_write (score.c L98-198), step for step. */
     write(scores: HighScore[]): void {
-      try {
-        localStorage.setItem(key, JSON.stringify(scores.slice(0, MAX_HISCORES)));
-      } catch {
-        /* storage full / unavailable - scores are a nicety, never fatal */
+      const json = JSON.stringify(scores.slice(0, MAX_HISCORES));
+
+      /* Lock scores (L121-128). */
+      if (get(LOK) !== null) {
+        msg("Lock file in place for scorefile; not writing.");
+        return;
       }
+      if (!put(LOK, "neo-angband")) {
+        msg("Failed to create lock for scorefile; not writing.");
+        return;
+      }
+
+      /* Open the new file for writing (L141-154). */
+      if (!put(NEW, "")) {
+        msg("Failed to open new scorefile for writing.");
+        drop(LOK);
+        return;
+      }
+
+      /* file_write (L156-166). */
+      if (!put(NEW, json)) {
+        msg("Failed to write new scores.");
+        drop(LOK);
+        drop(NEW);
+        return;
+      }
+
+      /* file_close - here, the read-back that proves it landed (L168-176). */
+      if (get(NEW) !== json) {
+        msg("Failed to close new scores.");
+        drop(LOK);
+        drop(NEW);
+        return;
+      }
+
+      /* Now move things around (L178-191). */
+      if (get(OLD) !== null && !drop(OLD)) {
+        msg("Couldn't delete old scorefile");
+        drop(NEW);
+      } else if (get(CUR) !== null && !move(CUR, OLD)) {
+        msg("Couldn't move old scores.raw out of the way");
+        drop(NEW);
+      } else if (!move(NEW, CUR)) {
+        msg("Couldn't rename new scorefile to scores.raw");
+        move(OLD, CUR);
+        drop(NEW);
+      }
+
+      /* Remove the lock (L193-195). */
+      drop(LOK);
     },
   };
+}
+
+/** localStorage, or null where touching it throws (private mode, no DOM). */
+function safeLocalStorage(): ScoreStorage | null {
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
 }
 
 /** Build a ScoreNameResolver from a player registry (race/class index -> name). */
