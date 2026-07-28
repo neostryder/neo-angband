@@ -21,11 +21,7 @@ export * from "./dice";
 export * from "./generated";
 export * from "./constants";
 
-/** Upstream release this port is verified against. */
-export const PARITY_BASELINE = "4.2.6";
-
-/** Port version, tracked independently of the baseline. */
-export const ENGINE_VERSION = "0.1.0";
+export * from "./version";
 export * from "./world/feature";
 export * from "./world/chunk";
 export * from "./world/view";
@@ -164,6 +160,7 @@ export * from "./game/mon-ranged";
 export * from "./game/mon-group";
 export * from "./game/floor";
 export * from "./game/dump-level";
+export * from "./game/spoil";
 export * from "./game/pickup";
 export * from "./game/obj-cmd";
 export * from "./game/cave-cmd";
