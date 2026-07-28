@@ -259,8 +259,12 @@ import {
   showLevelMap,
   menuNav,
   MENU_CLOSE,
+  getChar,
+  getFile,
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ScreenLine } from "./overlay";
+import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
+import { userPath, writeUserFile, downloadUserFile } from "./userdir";
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
 import type { Overview } from "./mapview";
 import { runBirth } from "./birth";
@@ -306,7 +310,7 @@ import {
   ctimeStamp,
   monsterListScreenLines,
 } from "./screens";
-import { showCharacterSheet, dumpCharacterFile } from "./charsheet";
+import { showCharacterSheet, dumpCharacterFile, dumpFileName } from "./charsheet";
 import {
   showRuneKnowledge,
   showFeatureKnowledge,
@@ -837,6 +841,7 @@ function charSheetOpts(): {
   uiEntryPacks: typeof uiEntryPacks;
   inspectExtras: ObjectInfoExtras;
   seedRandart: number;
+  msg: (text: string) => void;
 } {
   const p = state.actor.player;
   const bowSlot = p.body.slots.findIndex((s) => s.type === "BOW");
@@ -849,6 +854,8 @@ function charSheetOpts(): {
     // The char-dump extras ('f'): object_info_chardump blocks + [Randart seed].
     inspectExtras,
     seedRandart: game.randartSeed,
+    // 'f' reports its own result (ui-player.c:1273-1275).
+    msg: (text: string) => say(text),
   };
 }
 
@@ -898,6 +905,9 @@ const displayRandint1 = (n: number): number => state.rng.randint1(n);
 // is), and LOOSE PACKS (linoleum-pack.ts - a directory of named PNGs with
 // variant pools, which a mod can add). Core modes are always tilesheets.
 const TILE_MODE_KEY = "neo-angband:graf";
+
+/** buildid (buildid.c:37 = VERSION_NAME " " VERSION_STRING), for dump headers. */
+const BUILD_ID = `Neo Angband ${PARITY_BASELINE}`;
 // Bundled packs live at public/tiles/; a ?tiles= override points elsewhere.
 const tilesBaseUrl = params.get("tiles") || "tiles";
 const customTilesBase = Boolean(params.get("tiles"));
@@ -4734,22 +4744,29 @@ async function runDeathMenu(): Promise<void> {
       case "messages":
         await showTextScreen(term, "Message history", messageHistoryLines(msglog));
         break;
-      case "dump":
-        // death_file (ui-death.c L162): dump the character to a text file. The
-        // full write_character_dump extras (flag grids, per-item object info,
-        // last messages, killer, randart seed) go in for the death dump.
-        if (
-          dumpCharacterFile(state, playerName, {
+      case "dump": {
+        // death_file (ui-death.c L162-188): get_file over the suggested
+        // player_safe_name + ".txt", then dump_save, then the result message.
+        // The full write_character_dump extras (flag grids, per-item object
+        // info, last messages, killer, randart seed) go in for the death dump.
+        const file = await getFile(term, dumpFileName(playerName));
+        if (file === null) break;
+        const ok = dumpCharacterFile(
+          state,
+          playerName,
+          file,
+          {
             uiEntryPacks,
             inspectExtras,
             messages: msglog.all().map((m) => m.text),
             diedFrom: state.actor.player.diedFrom || "the dungeon",
             seedRandart: game.randartSeed,
-          })
-        )
-          say("Character dump successful.");
-        else say("Character dump failed!");
+          },
+          say,
+        );
+        say(ok ? "Character dump successful." : "Character dump failed!");
         break;
+      }
       case "scores":
         await showPredictedScores(
           term,
@@ -5179,21 +5196,37 @@ function saveQuitCmd(): void {
 }
 
 /**
- * Save a screen dump () , do_cmd_save_screen, cmd_util:203): the web analog of
- * the html/text dump is a PNG of the current canvas, downloaded locally. Purely
- * player-initiated by the keypress.
+ * Save a screen dump (')', do_cmd_save_screen, ui-command.c:540-561).
+ *
+ * Upstream asks which of two TEXT formats to write and dumps the terminal cell
+ * by cell (html_screenshot); the port used to hand over a PNG of the canvas with
+ * an invented message, which is neither format and cannot be pasted into a forum
+ * post or a ladder entry - the reason the command exists.
+ *
+ * The other_term half (a monster-list subwindow dumped beside the main terminal)
+ * has no counterpart: the port has no subwindows, so find_first_subwindow returns
+ * NULL and the "Include monster list? " branch cannot be reached. Recorded as a
+ * divergence rather than answered with something else.
  */
 function screenDumpCmd(): void {
-  try {
-    const url = canvas.toDataURL("image/png");
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "neo-angband-screen.png";
-    a.click();
-    say("Screen dump saved.");
-  } catch {
-    say("Screen dump failed.");
-  }
+  void openModal(async () => {
+    const ch = await getChar(term, "Dump as (H)TML or (F)orum text? ", "hf", " ");
+    const mode = ch === "h" ? DUMP_HTML : ch === "f" ? DUMP_FORUM : -1;
+    if (mode < 0) return; // default: return (L553-554)
+
+    /* get_file's suggested name, mode by mode (ui-command.c:501). */
+    const file = await getFile(term, mode === DUMP_HTML ? "dump.html" : "dump.txt");
+    if (file === null) return;
+
+    const text = htmlScreenshot(term.snapshotColored(), mode, userPath(file), BUILD_ID);
+    if (!writeUserFile(file, text)) {
+      /* html_screenshot's only failure: it could not open the file (L322-325). */
+      say(`Cannot write the '${userPath(file)}' file!`);
+      return;
+    }
+    downloadUserFile(file, text, mode === DUMP_HTML ? "text/html" : "text/plain");
+    say(`${mode ? "Forum text" : "HTML"} screen dump saved.`);
+  });
 }
 
 /**

@@ -42,7 +42,7 @@ import {
   wizCurseItem,
   wizDetectAllLocal,
   wizDetectAllMonsters,
-  wizDumpLevelMap,
+  dumpLevel,
   wizEditPlayerExp,
   wizEditPlayerGold,
   wizEditPlayerStat,
@@ -114,12 +114,14 @@ import { gearGet } from "@neo-angband/core";
 import { GlyphTerm } from "./term";
 import {
   getCheck,
+  getFile,
   getKeyInline,
   getQuantity,
   getString,
   selectFromMenu,
   showTextScreen,
 } from "./overlay";
+import { writeUserFile, downloadUserFile, userPath } from "./userdir";
 import type { MenuItem, ScreenLine } from "./overlay";
 import { packMenu } from "./screens";
 import { UI_TEXT } from "./ui-colors";
@@ -1356,17 +1358,18 @@ async function runSummonNamed(ctx: WizardUiCtx): Promise<void> {
 }
 
 /**
- * do_cmd_wiz_dump_level_map (cmd-wizard.c:1112): get_file("level.html", ...)
- * then "Title for map: ", defaulted to "Map of level %d", then dump_level
- * writes the HTML and reports "Level dumped to %s.".
+ * do_cmd_wiz_dump_level_map (cmd-wizard.c:1112-1130): get_file("level.html"),
+ * then "Title for map: " defaulted to "Map of level %d", then dump_level writes
+ * the HTML page and file_close's success reports "Level dumped to %s.".
  *
- * The file half (get_file's own "File name: " / "Replace existing file? " and
- * the write) is census block E's - the port has no ang_file layer and hands
- * dumps to the browser as downloads. The title prompt and its default are
- * upstream's and are asked here.
+ * Both prompts are upstream's and both can cancel (L1119-1122). The page is the
+ * real dump_level output (core game/dump-level.ts), written into the user
+ * directory and handed to the browser as a download.
  */
 async function runWriteMap(ctx: WizardUiCtx): Promise<void> {
-  const { term, state, deps } = ctx;
+  const { term, state } = ctx;
+  const file = await getFile(term, "level.html");
+  if (file === null) return;
   const title = await getString(
     term,
     "Title for map: ",
@@ -1374,14 +1377,11 @@ async function runWriteMap(ctx: WizardUiCtx): Promise<void> {
     80,
   );
   if (title === null) return;
-  const rows = wizDumpLevelMap(state, deps);
-  const lines: ScreenLine[] = [
-    { text: title },
-    { text: `Level feature map: ${rows.length} rows x ${rows[0]?.length ?? 0} cols.` },
-    { text: "(do_cmd_wiz_dump_level_map returns the feature grid; the HTML" },
-    { text: " file write is census block E.)" },
-  ];
-  await showTextScreen(term, "Write map", lines);
+  const html = dumpLevel(state, title);
+  /* file_open failing is silent upstream; only the close reports (L1124-1128). */
+  if (!writeUserFile(file, html)) return;
+  downloadUserFile(file, html, "text/html");
+  ctx.say(`Level dumped to ${userPath(file)}.`);
 }
 
 /* ------------------------------------------------------------------ *
