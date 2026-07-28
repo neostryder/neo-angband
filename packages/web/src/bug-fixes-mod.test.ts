@@ -28,6 +28,11 @@ const EXPECTED_FLAGS = [
    * (owner ruling 2026-07-26 - core keeps upstream's warts); its off/on pair is
    * proven in core's gen/gen.test.ts and session/qol-defaults.test.ts. */
   "bugfix.stairsReachable",
+  /* Entry 14: the owner's catch-all string-cleanup item. Measured before it was
+   * built - 38 double-space-after-sentence literals, ZERO misspellings - so it
+   * is one narrow whitespace rule plus an exact-match table that is empty on
+   * purpose. Proven in core's game/msg-fixes.test.ts. */
+  "bugfix.miscStrings",
 ];
 
 describe("bug-fixes bundled mod", () => {

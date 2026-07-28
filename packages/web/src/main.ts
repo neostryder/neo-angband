@@ -117,6 +117,7 @@ import {
   targetIsSet,
   targetGet,
   targetSighted,
+  miscStringFix,
   enterStoreGuard,
   TARGET,
   TMD,
@@ -1098,7 +1099,12 @@ function say(text: string, type?: MessageType): void {
   // Mirror to the screen-reader live region (the canvas is invisible to AT).
   a11y.announce(text);
 }
-state.msg = (text: string, type?: MessageType): void => {
+state.msg = (raw: string, type?: MessageType): void => {
+  // bug-fixes mod, "bugfix.miscStrings": upstream's own cosmetic string warts.
+  // Applied at the single message sink so every msg()/msgt() in core and the
+  // shell is covered by one hook; identity when the flag is off, so faithful
+  // core is byte-identical (docs/modding/BUG_FIXES.md).
+  const text = state.modRules?.["bugfix.miscStrings"] ? miscStringFix(raw) : raw;
   const code = messageTypeCode(type);
   // Persist the message into the core's rolling log (gap 12.8, wr_messages) so
   // it survives save/load, preserving the MSG_* type used by msgt().
