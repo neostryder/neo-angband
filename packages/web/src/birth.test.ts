@@ -3,15 +3,17 @@
  * order QUICKSTART -> RACE -> CLASS -> ROLLER_CHOICE -> NAME -> FINAL_CONFIRM
  * (birth_stage enum L60-74 - NO sex/gender stage in 4.2.6), ESC as BIRTH_BACK
  * (step back one stage, prior cursor restored; stage-0 ESC keeps the default
- * character), and the faithful multi-column menu appearance: all_letters_nohjkl
+ * character - EXCEPT on the quick-start screen, whose only exit upstream is
+ * KTRL('X'), see that describe block), and the faithful multi-column menu: all_letters_nohjkl
  * row tags (h/j/k/l skipped), no invented Random/Finish rows, the light-blue
  * instruction header, the yellow stage hint, and the Self/RB/CB/EB/Best stat
  * tables with the "Total Cost:" line and the exact upstream prompts.
  */
 
 import { readFileSync } from "node:fs";
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, beforeEach } from "vitest";
 import { runBirth } from "./birth";
+import { initLaunchArgs, resetLaunchArgs } from "./launch";
 import type { GlyphTerm } from "./term";
 import type { PlayerClass, PlayerRace } from "@neo-angband/core";
 import {
@@ -80,9 +82,13 @@ function makeTerm(cols = 80, rows = 24): TestTerm {
   } as unknown as TestTerm;
 }
 
-function press(win: FakeWindow, key: string): void {
-  const ev = new Event("keydown", { cancelable: true }) as Event & { key: string };
+function press(win: FakeWindow, key: string, mods: { ctrl?: boolean } = {}): void {
+  const ev = new Event("keydown", { cancelable: true }) as Event & {
+    key: string;
+    ctrlKey: boolean;
+  };
   ev.key = key;
+  ev.ctrlKey = mods.ctrl === true;
   win.dispatchEvent(ev);
 }
 
@@ -469,17 +475,77 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
   });
 });
 
+/**
+ * textui_birth_quickstart (ui-birth.c:103-136).
+ *
+ * These tests were rewritten on 2026-07-28 because they asserted the port's own
+ * paraphrase rather than the C. The screen used to be a two-row menu under the
+ * subtitle "Quick-start uses your previous choices" - which had no 'Y' row at
+ * all, so the one thing quick-start exists for (replay the previous character AS
+ * IS, without retyping its name) could not be done. The tests passed throughout,
+ * because they checked for the paraphrase.
+ */
 describe("runBirth: quickstart stage (quickstart_allowed)", () => {
   const QUICK = { quickstart: { raceName: "Dwarf", className: "Mage" } };
+  const PROMPT =
+    "['Y': use as is; 'N': redo; 'C': change name/history; '=': set birth options]";
 
-  it("offers quickstart first and jumps straight to naming on accept", async () => {
+  beforeEach(() => {
+    resetLaunchArgs();
+  });
+
+  it("draws upstream's header and prompt verbatim, over display_player(0)", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
     const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
     await tick();
-    expect(term.snapshot().join("\n")).toContain("Quick-start");
-    press(win, "a"); // use the previous character
+    /* prt("New character based on previous one:", 0, 0). */
+    expect(term.snapshot()[0]).toContain("New character based on previous one:");
+    /* prt(prompt, Term->hgt - 1, ...): the bottom row, centred. */
+    const rows = term.snapshot();
+    expect(rows[rows.length - 1]).toContain(PROMPT);
+    press(win, "x", { ctrl: true });
+    expect(await done).toBeNull();
+  });
+
+  it("'Y' accepts the previous character as is - no name stage, no confirm", async () => {
+    /* cmdq_push(CMD_ACCEPT_CHARACTER); next = BIRTH_COMPLETE (ui-birth.c:129). */
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, {
+      ...QUICK,
+      rng: new Rng(1),
+      previousName: "Aragorn II",
+    });
+    await tick();
+    press(win, "Y");
+    const choice = await done;
+    expect(choice!.raceName).toBe("Dwarf");
+    expect(choice!.className).toBe("Mage");
+    /* The previous name with its suffix bumped, which is the whole point: no
+     * prompt was shown and none was answered. */
+    expect(choice!.name).toBe("Aragorn III");
+  });
+
+  it("accepts lower-case 'y' and 'n' and 'c' too", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
+    await tick();
+    press(win, "y");
+    expect((await done)!.raceName).toBe("Dwarf");
+  });
+
+  it("'C' keeps the character and goes to the name stage", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
+    await tick();
+    press(win, "C");
     await tick();
     expect(term.snapshot()[0]).toContain("name");
     press(win, "Enter");
@@ -490,6 +556,26 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     expect(choice!.className).toBe("Mage");
   });
 
+  it("ignores 'C' under arg_force_name (ui-birth.c:124)", async () => {
+    /* `!arg_force_name && (ke.code == 'C' || ke.code == 'c')` - with the name
+     * pinned the key matches nothing and the loop keeps waiting. It must NOT
+     * fall through to some other action. */
+    initLaunchArgs(["-f"]);
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
+    await tick();
+    press(win, "C");
+    await tick();
+    press(win, "c");
+    await tick();
+    /* Still the quick-start screen: nothing advanced. */
+    expect(term.snapshot()[0]).toContain("New character based on previous one:");
+    press(win, "Y");
+    expect((await done)!.raceName).toBe("Dwarf");
+  });
+
   it("restores the prior character's stats on quickstart (load_roller_data)", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
@@ -498,8 +584,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
       quickstart: { raceName: "Dwarf", className: "Mage", stats: [17, 10, 10, 10, 16] },
     });
     await tick();
-    expect(term.snapshot().join("\n")).toContain("same stats");
-    press(win, "a"); // quick-start
+    press(win, "C"); // keep the character, rename it
     await tick();
     press(win, "Enter"); // accept default name
     await tick();
@@ -507,6 +592,22 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const choice = await done;
     expect(choice!.raceName).toBe("Dwarf");
     expect(choice!.className).toBe("Mage");
+    expect(choice!.roller).toBe("point");
+    expect(choice!.stats).toEqual([17, 10, 10, 10, 16]);
+  });
+
+  it("restores those stats on 'Y' as well, not only on 'C'", async () => {
+    /* Upstream has already reloaded the character before the prompt is drawn -
+     * the keys choose how much of it to keep, not whether it was loaded. */
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1),
+      quickstart: { raceName: "Dwarf", className: "Mage", stats: [17, 10, 10, 10, 16] },
+    });
+    await tick();
+    press(win, "Y");
+    const choice = await done;
     expect(choice!.roller).toBe("point");
     expect(choice!.stats).toEqual([17, 10, 10, 10, 16]);
   });
@@ -521,7 +622,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
       randomName: () => "Bilbo",
     });
     await tick();
-    press(win, "a"); // quickstart
+    press(win, "C"); // to the name stage
     await tick();
     // get_character_name's own prompt (ui-input.c:1153) advertises '*'.
     expect(term.snapshot()[0]).toContain(
@@ -542,28 +643,96 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const term = makeTerm();
     const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
     await tick();
-    press(win, "a"); // quickstart
+    press(win, "C");
     await tick();
     press(win, "Escape"); // back out of the name prompt
     await tick();
-    expect(term.snapshot().join("\n")).toContain("Quick-start");
-    press(win, "Escape"); // stage 0 ESC: keep the default
+    expect(term.snapshot()[0]).toContain("New character based on previous one:");
+    press(win, "x", { ctrl: true }); // quit(NULL)
     expect(await done).toBeNull();
   });
 
-  it("'from scratch' proceeds to the race stage", async () => {
+  it("leaves birth on Ctrl-X and NOT on ESC (ui-birth.c:121-123)", async () => {
+    /* Upstream's only exit from this screen is KTRL('X') -> quit(NULL); plain
+     * ESCAPE is guarded by `terms_disconnecting`, which this one-terminal front
+     * end has no equivalent of. So ESC here must do nothing at all. */
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
     const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
     await tick();
-    press(win, "b"); // choose everything from scratch
+    press(win, "Escape");
+    await tick();
+    expect(term.snapshot()[0]).toContain("New character based on previous one:");
+    press(win, "x", { ctrl: true });
+    expect(await done).toBeNull();
+  });
+
+  it("'N' proceeds to the race stage", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
+    await tick();
+    press(win, "N"); // CMD_BIRTH_RESET -> BIRTH_RACE_CHOICE
     await tick();
     expect(term.snapshot()[7]).toContain("Race affects stats");
     press(win, "Escape"); // back to quickstart
     await tick();
-    press(win, "Escape");
+    press(win, "x", { ctrl: true });
     expect(await done).toBeNull();
+  });
+
+  it("skips the name stage entirely under arg_force_name (ui-birth.c:1287)", async () => {
+    /* `if (arg_force_name) next = BIRTH_HISTORY_CHOICE;` - no prompt is drawn
+     * and none is answered, and arg_name becomes the character's name
+     * (L1277-1279). */
+    initLaunchArgs(["-f", "-uThorin"]);
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1), quickstart: null });
+    await tick();
+    press(win, "a"); await tick(); // race
+    press(win, "a"); await tick(); // class
+    press(win, "b"); await tick(); // standard roller
+    press(win, "Enter"); await tick(); // accept the roll -> would be the name stage
+    /* Straight to the final confirm, already named. */
+    expect(term.snapshot()[0]).toContain("Thorin the");
+    expect(term.snapshot()[0]).not.toContain("Enter a name");
+    press(win, "a"); // Begin the adventure
+    expect((await done)!.name).toBe("Thorin");
+  });
+
+  it("'@' finish-at-random uses arg_name, not a random one (ui-birth.c:711)", async () => {
+    /* The arg_force_name arm generates NOTHING: a host that pinned the name did
+     * not ask for a random one. Without the gate, randomName would win. */
+    initLaunchArgs(["-f", "-uThorin"]);
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    /* finish_with_random_choices seeds a point-buy via generate_stats, which
+     * reads calc_blows and the magic realm, so this path needs whole classes. */
+    const FULL = [
+      {
+        name: "Warrior",
+        statAdj: [3, -2, -2, 2, 2],
+        minWeight: 30,
+        attMultiply: 5,
+        maxAttacks: 6,
+        magic: { totalSpells: 0, books: [] },
+      },
+    ] as unknown as typeof CLASSES;
+    const done = runBirth(term, RACES, FULL, {
+      rng: new Rng(1),
+      quickstart: null,
+      randomName: () => "Randomly",
+    });
+    await tick();
+    press(win, "@"); // finish the rest of the character at random
+    await tick();
+    press(win, "a"); // Begin the adventure
+    expect((await done)!.name).toBe("Thorin");
   });
 
   it("without a prior character there is no quickstart stage", async () => {
@@ -572,27 +741,27 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const term = makeTerm();
     const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1), quickstart: null });
     await tick();
-    expect(term.snapshot().join("\n")).not.toContain("Quick-start");
+    expect(term.snapshot()[0]).not.toContain("New character based on previous one:");
     expect(term.snapshot()[7]).toContain("Race affects stats");
     press(win, "Escape");
     expect(await done).toBeNull();
   });
 
-  it("'=' opens the birth-options editor and re-shows the quickstart menu", async () => {
+  it("'=' opens the birth-options editor and re-shows the quickstart screen", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
     const done = runBirth(term, RACES, CLASSES, { ...QUICK, rng: new Rng(1) });
     await tick();
-    expect(term.snapshot().join("\n")).toContain("Quick-start");
+    expect(term.snapshot()[0]).toContain("New character based on previous one:");
     // textui_birth_quickstart ('=', ui-birth.c:126): opens do_cmd_options_birth.
     press(win, "="); await tick();
     expect(term.snapshot().join("\n")).toContain("Birth options");
-    // ESC leaves the editor; the SAME quickstart menu is shown again (next = current).
+    // ESC leaves the editor; the SAME screen is shown again (next = current).
     press(win, "Escape"); await tick();
-    expect(term.snapshot().join("\n")).toContain("Quick-start");
-    // The menu is still live and usable: quick-start then finish.
-    press(win, "a"); await tick(); // use the previous character
+    expect(term.snapshot()[0]).toContain("New character based on previous one:");
+    // Still live and usable: rename then finish.
+    press(win, "C"); await tick();
     press(win, "Enter"); await tick(); // default name
     press(win, "a"); // confirm
     const choice = await done;

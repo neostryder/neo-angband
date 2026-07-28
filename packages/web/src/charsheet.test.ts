@@ -12,6 +12,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
+import { initLaunchArgs, resetLaunchArgs } from "./launch";
 import {
   loc,
   Rng,
@@ -411,6 +412,34 @@ describe("showCharacterSheet: do_cmd_change_name keys", () => {
     expect(term.snapshot()[0]).toContain("Bob the");
     press(win, "Escape");
     await done;
+  });
+
+  it("'c' refuses the rename under arg_force_name (ui-player.c:1249-1250)", async () => {
+    /* The message is the only thing that happens: the prompt must NOT open, or
+     * the sheet would have detached its key listener and handed control to a
+     * line editor nobody asked for. Reachable via main.c's `-f`. */
+    initLaunchArgs(["-f"]);
+    try {
+      const { state, win, term } = setup();
+      const renames: string[] = [];
+      const said: string[] = [];
+      const done = showCharacterSheet(term, state, "Fred", {
+        onRename: (n) => renames.push(n),
+        msg: (t) => said.push(t),
+      });
+      press(win, "c");
+      await Promise.resolve();
+      expect(said).toEqual(["You are not allowed to change your name!"]);
+      /* Still the sheet's own listener: 'h' cycles the page, which it could not
+       * do if a name prompt had taken the keys. */
+      press(win, "h");
+      expect(term.snapshot().join("\n")).toContain("Resistances & Abilities");
+      press(win, "Escape");
+      await done;
+      expect(renames).toEqual([]);
+    } finally {
+      resetLaunchArgs();
+    }
   });
 
   it("ESC and Enter both close; the tap handler is torn down", async () => {
