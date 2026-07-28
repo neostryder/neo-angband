@@ -530,16 +530,57 @@ Nothing goes here until it is committed.
   Files -> `"` -> the four exact spoiler rows -> 30KB of
   "Spoiler File -- Basic Items (Angband 4.2.6)".
 
-  **Block E, still owed** (the remaining 42 includes these):
-  - The .prf group (5 census strings + "Cannot open '%s'."): prefs_save's
-    writer with its dump_separator markers and remove_old_dump, the dump
-    functions, process_pref_file's parser and its two error reports, and the
-    option/visuals menu rows that drive them. The user directory (part 2) is the
-    prerequisite and now exists.
-  - The four VISUALS dumps and "Visual attr/char tables reset." are blocked on
-    the same runtime x_attr/x_char override layer block I's glyph picker needs.
-    That coupling is now measured, not guessed: dump_monsters and friends write
-    monster_x_attr/monster_x_char, which the port does not have.
-  - The dev-log group (15): pricing.log / randart.log / stats.log and the
-    wiz-stats disconnect report (disconnect.html via dump_level_simple, which
-    part 2 unblocked).
+  **Block E part 4, the x_attr/x_char layer + the whole .prf group** (2026-07-28,
+  census 42 -> 36). The blocker named in part 3 is gone, and it was bigger than
+  a missing table.
+
+  `packages/core/src/visuals/glyph-table.ts` is the port of the
+  monster_x_attr / kind_x_attr / feat_x_attr[LIGHTING] / trap_x_attr[LIGHTING] /
+  flavor_x_attr arrays, textui_prefs_init's allocation and reset_visuals. Every
+  ASCII draw now reads it instead of the gamedata record - which is what
+  upstream does, and the only reason a pref file or a picker has anywhere to
+  write. Wiring it up exposed FOUR behaviour defects in grid_data_as_text's
+  monster branch that no census can see (it has seven arms; the port had two):
+  ATTR_RAND drew the race colour instead of the per-monster roll, ATTR_CLEAR and
+  CHAR_CLEAR monsters drew opaque, and the player's '@' was hardcoded where
+  upstream reads monster_x_attr[0]. Ported in core/visuals/map-text.ts with
+  CellGlyph carrying the numeric attr, since a CSS string cannot answer
+  `a & 0x80`.
+
+  `packages/core/src/visuals/prefs.ts` is prefs_save + remove_old_dump +
+  pref_header/footer + the eight dump_* writers + process_pref_file's line
+  grammar and print_error. **The grammar is now shared with the graphics path**:
+  tile-prefs.ts's own copy of the six glyph handlers is gone, and
+  parseTilePrefsInto is a PrefSink over the same parser (the 13 tile-pref tests
+  and the 16 linoleum pixel-equivalence tests are the regression proof). The
+  error text comes from the GENERATED parser_error_str table, not a
+  transcription - a hand-typed one had "invalid color" where upstream says
+  "invalid colour".
+
+  `packages/web/src/prefs-ui.ts` is get_pref_path / dump_pref_file /
+  do_cmd_pref_file_hack / do_cmd_visuals / color_events, and the option menu's
+  s / t / u / p / v rows are back. Verified live: `=` shows all five rows; `v`
+  opens the six-row visuals menu with its exact header; `v` -> b wrote a 21KB
+  user/Adventurer.prf whose first entry is `monster:<player>:0x01:0x40` inside
+  the real marker pair, and said "Saved monster attr/chars."; a hand-written
+  test.prf with a deliberate bad lighting keyword applied its good lines (floors
+  went red `,`, the scrawny cat became a blue 'Z') and reported
+  `Parse error in user/test.prf line 5 column 1: feat: invalid lighting` then
+  "Failed to load 'test.prf'!" - exactly upstream's keep-parsing-but-return-false;
+  `v` -> f said "Visual attr/char tables reset." and the floors came back. `u`
+  wrote real entry-renderer palette lines, `s` wrote option_dump's header.
+
+  **Block E, still owed** (the remaining 36 includes these):
+  - The dev-log group (10): randart.log (2, a real gap - obj-randart.c's
+    LOG_PRINT surface, reachable in stock builds whenever birth_randarts is on)
+    and the wiz-stats reporting half (8, CLI): stats.log, disconnect.html via
+    the now-ported dumpLevel, disconnect_gstat.txt and the five tallies.
+    pricing.log stays classified not-in-this-build (#ifdef PRICE_DEBUG).
+
+  **Block I, still owed**: the glyph picker (glyph_command + display_glyphs,
+  ui-knowledge.c:520-752). Its blocker - the x_attr layer - is now built, but it
+  needs a second thing the port does not have: display_knowledge's two-panel
+  browser with the per-row attr/char symbol columns (big_pad) the picker edits.
+  The port's knowledge screens are a one-panel coloured-label list
+  (web/src/knowledge.ts runGroupedBrowser), so the picker needs that screen
+  first. Measured, not excused.
