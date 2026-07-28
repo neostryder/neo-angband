@@ -184,6 +184,14 @@ export * from "./score/display";
 /* --- Graphics/tiles + visuals (task #27: grafmode.c / ui-visuals.c) --- */
 export * from "./visuals";
 
+/* --- The host layer (z-file.c + init.c's ANGBAND_DIR_*) ---
+ * The injectable seam that lets a front end declare what its platform can do
+ * instead of letting the platform's limits quietly redefine the game. Adapters
+ * live with their front ends (web, cli, desktop); MemoryHost is the reference
+ * implementation and what the tests drive. */
+export * from "./host/io";
+export * from "./host/memory";
+
 // Some small derived constants and geometry helpers are defined
 // independently by more than one domain (identical values/behavior).
 // Re-export a single canonical copy so the barrel is unambiguous rather
