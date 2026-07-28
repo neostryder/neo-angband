@@ -737,6 +737,34 @@ export function findRomanSuffixStart(buf: string): number | null {
 }
 
 /**
+ * player_safe_name (player.c:389-420): the character name reduced to a filename.
+ * Every character that is not a letter or digit becomes '_', and with
+ * `stripSuffix` a trailing roman-numeral dynasty suffix is dropped along with
+ * the space before it (so "Bob III" dumps as "Bob", not "Bob_III").
+ *
+ * Lives here because it is the only caller of find_roman_suffix_start outside
+ * the birth flow. `safelen` is the C's buffer size; the result is truncated to
+ * it exactly as the C's `limit = MIN(limit, safelen)` does.
+ *
+ * A name that is entirely stripped yields "" - upstream then writes ".txt",
+ * which the port keeps rather than inventing a placeholder.
+ */
+export function playerSafeName(name: string, safelen: number, stripSuffix: boolean): string {
+  let limit = name.length;
+  if (stripSuffix) {
+    const suffix = findRomanSuffixStart(name);
+    if (suffix !== null) limit = suffix - 1; /* -1 for preceding space */
+  }
+  if (limit > safelen) limit = safelen;
+  let out = "";
+  for (let i = 0; i < limit; i++) {
+    const c = name[i] ?? "";
+    out += /^[A-Za-z0-9]$/u.test(c) ? c : "_";
+  }
+  return out;
+}
+
+/**
  * The dynastic-suffix increment from do_cmd_birth_init (player-birth.c:1060-
  * 1073): when death -> new character reuses the savefile, a name that already
  * carries a roman-numeral suffix has that suffix bumped by one (Name II ->

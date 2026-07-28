@@ -43,6 +43,7 @@ import {
   OINFO,
   OPTION_ENTRIES,
   PARITY_BASELINE,
+  playerSafeName,
 } from "@neo-angband/core";
 import type {
   GameState,
@@ -61,7 +62,8 @@ import {
   statHeaderLine,
   statRowLine,
 } from "./screens";
-import { promptText, menuNav } from "./overlay";
+import { promptText, menuNav, getFile } from "./overlay";
+import { textLinesToFile, downloadUserFile, userPath } from "./userdir";
 import type { ScreenLine } from "./overlay";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
 
@@ -94,6 +96,13 @@ export interface CharSheetOpts {
   inspectExtras?: ObjectInfoExtras;
   /** seed_randart (write_character_dump L1185), for the [Randart seed] line. */
   seedRandart?: number;
+  /**
+   * msg(). 'f' reports its outcome on the message line ("Character dump
+   * successful." / "Character dump failed!", ui-player.c:1273-1275) and
+   * dump_save reports the staged file it could not create, so the sheet needs
+   * the shell's message sink. Without it the dump is silent.
+   */
+  msg?: (text: string) => void;
 }
 
 /**
@@ -272,10 +281,13 @@ function characterGridLines(state: GameState, config: UiEntryConfig): ScreenLine
   return lines;
 }
 
-/** player_safe_name: a filesystem-safe filename from the character's name. */
-function safeFileName(name: string): string {
-  const safe = name.replace(/[^A-Za-z0-9_-]+/gu, "_").replace(/^_+|_+$/gu, "");
-  return `${safe || "character"}.txt`;
+/**
+ * The suggested dump name: player_safe_name(fname, 80, false) + ".txt", the
+ * default get_file offers at all three dump call sites (ui-player.c:1268,
+ * ui-death.c:168, ui-equip-cmp.c:771 - the last with "_equip.txt").
+ */
+export function dumpFileName(name: string, suffix = ".txt"): string {
+  return `${playerSafeName(name, 80, false)}${suffix}`;
 }
 
 /** The optional data the full dump needs beyond the GameState. */
@@ -523,45 +535,32 @@ export function buildCharacterDump(
 }
 
 /**
- * death_file (ui-death.c L162-188) / the char sheet's 'f': download the
- * character dump as a text file. Exported so the death menu's "File dump" row
- * shares the exact same output as the in-life dump.
+ * dump_save (ui-player.c:1201-1209): write the character dump to `file` in the
+ * user directory through text_lines_to_file, and report its ONE failure - the
+ * staged file it could not create - with upstream's own message.
+ *
+ * The download is the export on top of the file, not the file: a dump exists to
+ * be read outside the game, but "the browser downloads it" is not a substitute
+ * for writing it where the game can see it again.
+ *
+ * The ang_file layer of z-file.c is not ported, so file_putf has no counterpart:
+ * the whole dump is built as one string and handed to textLinesToFile instead of
+ * being appended line by line to an open handle.
  */
 export function dumpCharacterFile(
   state: GameState,
   name: string,
+  file: string,
   extras: CharDumpExtras = {},
+  msg?: (text: string) => void,
 ): boolean {
-  return downloadDump(state, name, extras);
-}
-
-/**
- * 'f' (dump_save): download the full character dump as a plain-text file.
- *
- * This is where upstream's text-out-to-disk path lands. The ang_file layer of
- * z-file.c is not ported, so file_put (z-file.c:1208) and file_putf have no
- * counterpart: a whole dump is built as one string and handed to the browser
- * (or, in the headless CLI, to writeFileSync) instead of being appended line by
- * line to an open handle.
- */
-function downloadDump(
-  state: GameState,
-  name: string,
-  extras: CharDumpExtras = {},
-): boolean {
-  try {
-    const text = buildCharacterDump(state, name, extras);
-    const blob = new Blob([`${text}\n`], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = safeFileName(name);
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-    return true;
-  } catch {
-    return false; // headless / storage-restricted: the sheet stays up
+  const text = `${buildCharacterDump(state, name, extras)}\n`;
+  if (textLinesToFile(file, text)) {
+    msg?.(`Failed to create file ${userPath(file)}.new`);
+    return false;
   }
+  downloadUserFile(file, text);
+  return true;
 }
 
 /**
@@ -744,6 +743,37 @@ export function showCharacterSheet(
       });
     };
 
+    /**
+     * 'f' (do_cmd_change_name L1263-1278): get_file over the suggested
+     * player_safe_name + ".txt", then dump_save, then its result message. Same
+     * detach/reattach as changeName - get_file's own prompts listen in the
+     * capture phase and would otherwise be starved by ours.
+     */
+    const fileDump = (): void => {
+      window.removeEventListener("keydown", onKey, true);
+      term.onCellTap?.(null);
+      void (async () => {
+        const file = await getFile(term, dumpFileName(curName));
+        if (file !== null) {
+          const ok = dumpCharacterFile(
+            state,
+            curName,
+            file,
+            {
+              ...(opts.uiEntryPacks !== undefined ? { uiEntryPacks: opts.uiEntryPacks } : {}),
+              ...(opts.inspectExtras !== undefined ? { inspectExtras: opts.inspectExtras } : {}),
+              ...(opts.seedRandart !== undefined ? { seedRandart: opts.seedRandart } : {}),
+            },
+            opts.msg,
+          );
+          opts.msg?.(ok ? "Character dump successful." : "Character dump failed!");
+        }
+        window.addEventListener("keydown", onKey, true);
+        installTap();
+        paint();
+      })();
+    };
+
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -777,11 +807,7 @@ export function showCharacterSheet(
           changeName();
           return;
         case "f":
-          downloadDump(state, curName, {
-            ...(opts.uiEntryPacks !== undefined ? { uiEntryPacks: opts.uiEntryPacks } : {}),
-            ...(opts.inspectExtras !== undefined ? { inspectExtras: opts.inspectExtras } : {}),
-            ...(opts.seedRandart !== undefined ? { seedRandart: opts.seedRandart } : {}),
-          });
+          fileDump();
           return;
         default: {
           // Arrows AND numpad digits scroll (menuNav), so the numpad is not

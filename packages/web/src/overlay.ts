@@ -14,6 +14,7 @@
  * them into faithful full-screen views a keyboard or touch can drive.
  */
 
+import { userFileExists, userPath } from "./userdir";
 import type { GlyphTerm } from "./term";
 import type { Overview } from "./mapview";
 
@@ -638,6 +639,55 @@ export async function getQuantity(
   if (amt > max) amt = max;
   if (amt < 0) amt = 0;
   return amt;
+}
+
+/**
+ * get_char (ui-input.c:1300-1329): a one-key choice from a fixed option set.
+ * Builds "%.70s[%s] " (strnfmt into a 78-byte buffer), reads one key,
+ * lower-cases A-Z, and answers `fallback` for anything not in `options`.
+ */
+export async function getChar(
+  term: GlyphTerm,
+  prompt: string,
+  options: string,
+  fallback = " ",
+): Promise<string> {
+  const buf = `${prompt.slice(0, 70)}[${options}] `.slice(0, 77);
+  let key = await getKeyInline(term, buf);
+  /* "Lowercase answer if necessary" (L1318). */
+  if (key.length === 1 && key >= "A" && key <= "Z") key = key.toLowerCase();
+  if (key.length !== 1 || !options.includes(key)) key = fallback;
+  return key;
+}
+
+/**
+ * get_file (get_file_text, ui-input.c:1335-1383): ask where to write a dump.
+ *
+ *   File name: <suggested>          get_string over the untouched screen
+ *   <empty or leading space>        -> cancel (L1347)
+ *   Replace existing file?          only when the user directory has that name
+ *   Saving as user/<name>.          prt + anykey + prt("", 0, 0)
+ *
+ * Resolves the file name, or null on any of the three cancels. The arg_force_name
+ * arm (L1348-1368, a host-pinned name with a timestamp appended) has no way to
+ * fire in a browser build - see the recorded divergence in the text census - so
+ * only the interactive arm is here.
+ */
+export async function getFile(
+  term: GlyphTerm,
+  suggestedName: string,
+): Promise<string | null> {
+  /* char buf[160] (L1337). */
+  const name = await getString(term, "File name: ", suggestedName, 160);
+  if (name === null) return null;
+  /* "Make sure it's actually a filename" (L1346-1347). */
+  if (name === "" || name.startsWith(" ")) return null;
+  if (userFileExists(name) && !(await getCheck(term, "Replace existing file? "))) {
+    return null;
+  }
+  /* "Tell the user where it's saved to." (L1377-1380). */
+  await getKeyInline(term, `Saving as ${userPath(name)}.`);
+  return name;
 }
 
 export function promptText(

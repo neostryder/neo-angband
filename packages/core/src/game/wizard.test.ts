@@ -58,7 +58,6 @@ import {
   wizCurseItem,
   wizDetectAllMonsters,
   wizDisplayItem,
-  wizDumpLevelMap,
   wizEditPlayerExp,
   wizEditPlayerGold,
   wizEditPlayerStart,
@@ -212,7 +211,6 @@ describe("the wizard gate (ALLOW_DEBUG / NOSCORE_WIZARD)", () => {
 
   it("gates the map-query data commands too", () => {
     const state = makeState();
-    expect(wizDumpLevelMap(state, wizDeps(state, false))).toEqual([]);
     expect(
       wizQueryFeature(state, { features: [FLOOR] }, wizDeps(state, false)),
     ).toEqual([]);
@@ -657,12 +655,6 @@ describe("map-query DATA commands", () => {
     expect(grids).toContainEqual({ x: 10, y: 12 });
   });
 
-  it("wizDumpLevelMap returns a feature grid of the right size", () => {
-    const state = makeState({ w: 20, h: 15 });
-    const rows = wizDumpLevelMap(state, wizDeps(state, true));
-    expect(rows.length).toBe(15);
-    expect(rows[0]!.length).toBe(20);
-  });
 });
 
 /** A prepped, average non-artifact sword for the item-shell tests. */

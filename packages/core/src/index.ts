@@ -163,6 +163,7 @@ export * from "./game/mon-cast";
 export * from "./game/mon-ranged";
 export * from "./game/mon-group";
 export * from "./game/floor";
+export * from "./game/dump-level";
 export * from "./game/pickup";
 export * from "./game/obj-cmd";
 export * from "./game/cave-cmd";
