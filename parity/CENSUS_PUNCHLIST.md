@@ -64,12 +64,16 @@ allowlist entry is deleted and the suite is green.
       through the same block.
 - [x] **H. `drop_near`'s `verbose`** (1) - thread through the port's 15
       `dropNear` call sites; `floorCarry` reports whether the stack is ignorable.
-- [ ] **I. Single missing lines** (8 of 12 done) - each a small fix in a
-      function that already exists. DONE: the explore command's four gates,
-      `Generation restarted`, `Failed to place player`, `That item is not within
-      your reach`. LEFT: the shapechange shop scream, `Cancelled.`,
-      `Are you sure? `, `Keep this keymap? `, `Do you want to quit? `, the
-      force-name refusal, the glyph picker, the equip-cmp filter.
+- [ ] **I. Single missing lines** (10 of 12 done) - and only two of the twelve
+      really were one line; the rest were whole behaviours the message sat next
+      to. DONE: the explore command's four gates, `Generation restarted`,
+      `Failed to place player`, `That item is not within your reach`, the
+      shapechange shop scream, `Keep this keymap? `, `Do you want to quit? `
+      (the whole death menu), `Are you sure? ` (the entire `!`/`^` inscription
+      safety net), `Cancelled.` (the run was uninterruptible), and the
+      equip-cmp filter (`q`/`!`, plus a swallowed-key defect and a `?`-for-known-
+      gear defect on the same screen). LEFT: the force-name refusal, and the
+      glyph picker - which is the whole visuals editor, see the note below.
 - [x] **J. Save-failure handling** (2 of 3; the third, `lore save failed!`, is a lore.txt dump and moved to block E) - a `localStorage` write can fail on
       quota; the port neither retries nor says so. ui-game.c:1091-1155.
 - [x] **K. Borg gate** (2) - `do_cmd_try_borg` (cmd-misc.c:125-145) in the borg
@@ -248,3 +252,74 @@ Nothing goes here until it is committed.
   LEFT in I: "Cancelled." (ui-game.c:663 - check_for_player_interrupt, the
   any-key abort during a run / repeat / rest), the arg_force_name refusal, the
   glyph picker's "(up to 5 hex digits):", and the equip-cmp filter prompt.
+
+- 2026-07-28 (2), block I: **the run could not be interrupted.** `run_step`
+  re-queues CMD_RUN after every step (player-path.c, ported), so an entire run
+  drained inside ONE synchronous runGameLoop call - the browser never got the
+  event-loop turn it needs to deliver a keydown, and a keypress is upstream's
+  only way to abort a run. Every step was invisible too (nothing drawn until the
+  run ended). Same for a pathfind and for an auto-repeated dig's 99 repeats.
+  `check_for_player_interrupt` (ui-game.c:645-666), the EVENT_CHECK_INTERRUPT
+  handler process_player signals at game-world.c:937, was entirely absent - and
+  invisible to both detectors for the reason recorded above.
+  Now a host hook at upstream's site with the C's gate unchanged (running, a
+  pending repeat, or a rest on a 128-game-turn boundary). A host that can poll
+  the keyboard synchronously answers "go"/"cancel"; the browser cannot, so it
+  answers "pause" and the loop returns LOOP_STATUS.PAUSE having consumed
+  nothing - the queued continuation IS the resume point, so the shell pumps the
+  run a step at a time and each step is drawn. No hook installed: nothing
+  changes, which is what keeps the CLI harnesses, the borg and the tests driving
+  a whole run in one call. The first turn of a call never pauses, or a resumed
+  call would spin without stepping; "cancel" is still honoured immediately.
+  Keys arriving mid-pump are swallowed AS the abort (that is EVENT_INPUT_FLUSH),
+  and driveRest - which owns the rest lifecycle - now says "Cancelled." on its
+  keypress arm, the only arm the C reports.
+  Proven live: a run east from x=4 stops on its own at x=8; with a key dispatched
+  3ms in it stops at x=6, row 0 reads exactly "Cancelled.", and the 's' opened no
+  steal prompt. A 50-turn rest cancels the same way. Walking is unchanged.
+  Also: a root vitest.config.ts. Agent worktrees live inside the repo, so
+  vitest's default globs collected a second copy of every test file - 310
+  duplicates, the whole suite run twice, a stale branch able to decide a run on
+  master. `pnpm lint` had the same bug and the same fix.
+  92 absences.
+
+- 2026-07-28 (3), block I: **the equip-cmp quick filter, plus two defects on the
+  same screen.** `prompt_for_easy_filter` (ui-equip-cmp.c:1229) was written off
+  in both module headers as a "UI convenience ... not present in this scoped
+  port" - a self-issued divergence, and wrong: q / ! is a default part of the
+  screen on every platform. Ported faithfully: the 4 capitalisation attempts
+  (only 3 for a 3-character stat code, because the 4th writes two characters and
+  the `threec` guard stops first), the 2-char column label vs the 3-char stat
+  label, and the five category selectors - resistances val >= 1, abilities
+  val != 0, hindrances val == 0 (INVERTED: for a hindrance the wanted state is
+  off), modifiers val > 0 - with `!` as each one's complement. The model gained
+  `vals[]` (equippable.vals) and `label3`, and filters before it sorts.
+  Two defects found by opening the screen and pressing keys:
+  1. Every nested overlay was DEAD. Each overlay listens on window in the
+     capture phase, and this screen's handler - registered first - opens with
+     stopImmediatePropagation(), so 'x' opened the compare picker and then ate
+     every letter typed into it, and ESC closed the whole screen from underneath
+     it. Now detached around nested overlays, the way charsheet.ts already did it
+     for its rename prompt. Confirmed broken live first, then fixed.
+  2. The grid printed '?' down every column for fully-known mundane gear - a
+     Dagger, two torches and soft leather armour, all unknown. equipCmpSummary
+     never passed object_fully_known to computeObjectValues, so it read p->obj_k
+     alone. This is exactly the defect fixed for the character sheet's resist
+     grid (task #93); the screen nobody re-checked still had it.
+  Learned in passing, and left faithful: an UNKNOWN value is a huge positive int,
+  so unidentified gear satisfies "resists X" in upstream too.
+  Proven live: 'q' + "ac" (lowercase, capitalisation attempt 3) empties the list;
+  '!' + "Ac" restores all four rows; "zz" reports "Did not find attribute with
+  that name; filter unchanged" with the list intact; return alone clears; and the
+  compare picker now advances from the first item to the second.
+  91 absences.
+
+  LEFT in I: the arg_force_name refusal (ui-player.c:1250 - gated on a
+  command-line switch, so the honest question is what its equivalent is here),
+  and the glyph picker's "(up to 5 hex digits):" - which is not a prompt but the
+  WHOLE visuals editor (ui-knowledge.c glyph_command + display_glyphs: 'v' opens
+  a per-entry glyph picker in the knowledge menus, arrows cycle colour, 'i' takes
+  a hex code point, 'c'/'p' copy-paste, and each row shows its attr/char). The
+  port has no runtime x_attr/x_char override layer at all - TileMap covers the
+  graphics mapping only - so this needs that layer, the renderer reading it, and
+  the picker UI. Sized, not started.

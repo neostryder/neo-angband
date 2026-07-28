@@ -129,7 +129,6 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
     [
       "You are not allowed to change your name!", // ui-player.c:1250
       "(up to 5 hex digits):", // the visuals editor, ui-knowledge.c:707
-      "Enter 2 or 3 (for stat) character code and return or return to clear ", // ui-equip-cmp.c:1237
     ],
 
   "GAP: wizard/debug command prompts (cmd-wizard.c, wiz-debug.c, generate.c:831). In scope - the exact-parity mandate covers wizard mode and the cheat options - but the port's debug menu drives most of these without asking for their parameters":
