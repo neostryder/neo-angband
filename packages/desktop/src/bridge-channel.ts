@@ -35,6 +35,14 @@ export interface HostBridgeInfo {
   readonly argv: readonly string[];
   readonly termCount: number;
   readonly signals: boolean;
+  /**
+   * The resolved ANGBAND_DIR_* base. Reported so that "where are my saves?" has
+   * an answer inside the game: with a portable install it moves with the folder,
+   * so it is not a constant the player can be assumed to know.
+   */
+  readonly dataDir: string;
+  /** True when the tree travels with the install rather than with the user. */
+  readonly portable: boolean;
 }
 
 /**
