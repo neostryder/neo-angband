@@ -13,7 +13,8 @@
     "start": "pnpm build && electron .",
     "dev": "pnpm --filter @neo-angband/web bundle && pnpm build && electron .",
     "dist": "pnpm --filter @neo-angband/web bundle && pnpm build && electron-builder",
-    "dist:portable": "pnpm --filter @neo-angband/web bundle && pnpm build && electron-builder --win portable"
+    "dist:portable": "pnpm --filter @neo-angband/web bundle && pnpm build && electron-builder --win portable",
+    "install:portable": "node scripts/install-portable.mjs"
   },
   "dependencies": {
     "@neo-angband/cli": "workspace:*",
@@ -48,6 +49,9 @@
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}",
       "requestExecutionLevel": "user"
+    },
+    "nsis": {
+      "include": "build/installer.nsh"
     },
     "mac": {
       "target": ["dmg", "zip"],
