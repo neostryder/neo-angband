@@ -125,11 +125,11 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
   "GAP (block E): lore_save writes a human-readable lore.txt to the user directory (mon-lore.c:1904, called from ui-game.c:1089). The port has no lore dump at all - the monster memory lives in the save - so this belongs with the other dump equivalents rather than with the save-failure handling, which is now ported":
     ["lore save failed!"],
 
-  "GAP: single missing lines, each a small fix in an existing function":
-    [
-      "You are not allowed to change your name!", // ui-player.c:1250
-      "(up to 5 hex digits):", // the visuals editor, ui-knowledge.c:707
-    ],
+  "GAP (block I): the glyph picker's code-point prompt, and behind it the whole visuals editor. glyph_command + display_glyphs (ui-knowledge.c:597-752) let the knowledge menus re-map any monster / object / feature / trap glyph: 'v' opens a picker, the arrows cycle colour, 'i' takes a hex code point, 'c'/'p' copy and paste, and every row shows its own attr/char. The port has no runtime x_attr/x_char override layer at all - visuals/tile-prefs.ts TileMap covers the GRAPHICS mapping only - so this needs that layer, the renderer reading it, and the picker UI":
+    ["(up to 5 hex digits):"],
+
+  "divergence (derived from the C 2026-07-28): arg_force_name is set ONLY by main.c:436, the `-f` command-line switch, and it exists so a HOST can pin the character name - the four places that read it (ui-birth.c:711/1287 skip the name step, ui-player.c:1250 refuses the rename, ui-input.c:1342 and ui-options.c:66 auto-name the dump/pref files instead of asking). A browser build is launched by opening a page: there is no argv, and the port has no deployment-config layer for one to map onto, so the flag has no way to become true and the refusal has no way to fire. The rename it guards IS ported (charsheet.ts 'c'). If a host-config layer is ever added, this is one line inside it - and the two file-name arms belong with the other dumps in block E":
+    ["You are not allowed to change your name!"],
 
   "GAP: wizard/debug command prompts (cmd-wizard.c, wiz-debug.c, generate.c:831). In scope - the exact-parity mandate covers wizard mode and the cheat options - but the port's debug menu drives most of these without asking for their parameters":
     [
