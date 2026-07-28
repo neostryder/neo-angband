@@ -1,2 +1,12 @@
 packages:
   - packages/*
+
+# pnpm 10 blocks package postinstall scripts unless they are listed here.
+# Electron postinstall DOWNLOADS the Chromium binary, so without this entry
+# `electron .` dies with "Electron failed to install correctly" and the desktop
+# front end cannot run at all - which is how it sat until 2026-07-28.
+# electron-builder and esbuild likewise fetch platform binaries.
+onlyBuiltDependencies:
+  - electron
+  - electron-builder
+  - esbuild

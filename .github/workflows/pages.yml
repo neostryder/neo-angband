@@ -24,6 +24,10 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      # This job builds the WEB bundle; it never launches the desktop shell, so
+      # skip Electron's ~110 MB binary download (see the same note in ci.yml).
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

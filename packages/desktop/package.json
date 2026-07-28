@@ -2,18 +2,26 @@
   "name": "@neo-angband/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Optional Electron desktop wrapper: the same web app as a native, offline, installable app",
+  "description": "Electron front end: the same web app, handed a real filesystem and argv",
   "license": "GPL-2.0-only",
   "author": "neostryder (RPGM Tools)",
-  "main": "main.cjs",
+  "type": "module",
+  "main": "dist/main.cjs",
   "scripts": {
-    "start": "electron .",
-    "dev": "pnpm --filter @neo-angband/web bundle && electron .",
-    "dist": "pnpm --filter @neo-angband/web bundle && electron-builder"
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "start": "pnpm build && electron .",
+    "dev": "pnpm --filter @neo-angband/web bundle && pnpm build && electron .",
+    "dist": "pnpm --filter @neo-angband/web bundle && pnpm build && electron-builder"
+  },
+  "dependencies": {
+    "@neo-angband/cli": "workspace:*",
+    "@neo-angband/core": "workspace:*"
   },
   "devDependencies": {
-    "electron": "^38.0.0",
-    "electron-builder": "^25.0.0"
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1"
   },
   "build": {
     "appId": "org.neoangband.desktop",
@@ -22,8 +30,8 @@
       "output": "dist-desktop"
     },
     "files": [
-      "main.cjs",
-      "preload.cjs",
+      "dist/main.cjs",
+      "dist/preload.cjs",
       "../web/dist-web/**/*"
     ],
     "win": { "target": "nsis", "icon": "build/icon.ico" },

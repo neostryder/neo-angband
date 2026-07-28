@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist-types",
+    /* esbuild emits the runnable CommonJS (scripts/build.mjs); tsc is here to
+     * type-check the main process against core and the CLI. Declarations still
+     * emit so this can be a composite project and take part in `tsc -b`, which
+     * is what keeps the desktop front end inside the same gate as the others. */
+    "emitDeclarationOnly": true,
+    "module": "Preserve",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "references": [{ "path": "../core" }, { "path": "../cli" }]
+}
