@@ -257,6 +257,7 @@ import {
   AIM_CLOSEST,
   showLevelMap,
   menuNav,
+  MENU_CLOSE,
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ScreenLine } from "./overlay";
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
@@ -349,7 +350,7 @@ import { ArtifactState } from "@neo-angband/core";
 import { walkTerrainPrompt } from "@neo-angband/core";
 import { monsterIsVisible, monsterIsDestroyed } from "@neo-angband/core";
 import type { WizardDeps } from "@neo-angband/core";
-import { runWizardToggle, runWizardDebugMenu } from "./wizard";
+import { runWizardToggle, runWizardDebugMenu, SPOILERS_CLI_ONLY_MSG } from "./wizard";
 import type { WizardUiCtx } from "./wizard";
 import { runStore, sortStoreStock } from "./shop";
 import type { SellPick } from "./shop";
@@ -1931,19 +1932,39 @@ async function dispatchContextClick(grid: Loc): Promise<void> {
  * viewer. object_info is a pure read (no RNG), so this never advances the game.
  */
 async function inspectItem(): Promise<void> {
+  /* textui_obj_examine asks ONCE, and its prompt has no trailing space where
+   * death_examine's does (ui-object.c:1679 vs ui-death.c:309). */
+  await inspectOnce("Examine which item?", {
+    equip: true,
+    inven: true,
+    quiver: true,
+    floor: true,
+  });
+}
+
+/**
+ * One pass of the inspect flow: choose an item from `mode`'s sources and show
+ * its object_info. Returns whether an item was chosen, which is what
+ * death_examine's `while (get_item(...))` tests (ui-death.c:312).
+ */
+async function inspectOnce(
+  prompt: string,
+  mode: { equip?: boolean; inven?: boolean; quiver?: boolean; floor?: boolean },
+): Promise<boolean> {
   const ref = await selectTargetItem({
-    prompt: "Examine which item?",
+    prompt,
     reject: "You have nothing to examine.",
     tester: () => true,
-    mode: { equip: true, inven: true, quiver: true, floor: true },
+    mode,
   });
-  if (!ref) return;
+  if (!ref) return false;
   const obj = targetRefObject(ref);
-  if (!obj) return;
+  if (!obj) return false;
   const name = objectName(state, obj);
   const header = name.charAt(0).toUpperCase() + name.slice(1); /* ODESC_CAPITAL */
   const tb = objectInfoTextblock(state, obj, inspectExtras);
   await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
+  return true;
 }
 
 /**
@@ -4531,13 +4552,23 @@ async function showTombstone(diedFrom: string): Promise<void> {
 }
 
 /**
- * death_screen's menu (ui-death.c L374), routed through the same shared menu
- * component: Information / Messages / View scores / New Game with the
- * upstream tag letters, looping until ESC (leave the tombstone view) or a
- * confirmed New Game. Reached after the death score screen and again from
- * Escape while dead.
+ * death_screen's menu (ui-death.c L374-421), routed through the same shared menu
+ * component, with upstream's rows and tag letters.
+ *
+ * Its loop (L401-418) has four exits, and they do NOT agree on confirming:
+ * KTRL('X') breaks out at once, KTRL('N') restarts at once, while both the Quit
+ * row (an EVT_SELECT, reaching death_screen only because Quit's action pointer
+ * is NULL - menu_action_handle, ui-menu.c:98-112) and EVT_ESCAPE ask
+ * get_check("Do you want to quit? ") and go back round the loop on "no".
+ *
+ * So Escape does not leave here, which is a real behaviour change: upstream
+ * gives a dead character no way back to the map, and the port used to treat
+ * Escape as "park on the tombstone".
  */
 async function runDeathMenu(): Promise<void> {
+  /* Held in an object so the ctrlCommands closures below can set it without
+   * TypeScript narrowing the reads back to null. */
+  const chord: { hit: "quit" | "new" | null } = { hit: null };
   for (;;) {
     const entries = deathMenuEntries();
     const pick = await selectFromMenu(
@@ -4545,8 +4576,34 @@ async function runDeathMenu(): Promise<void> {
       "You have died.",
       entries.map((e) => e.item),
       DEATH_MENU_FOOTER,
+      {
+        ctrlCommands: {
+          /* KTRL('X') (L406): `break` - no get_check, unlike the Quit row. */
+          x: () => {
+            chord.hit = "quit";
+            return MENU_CLOSE;
+          },
+          /* KTRL('N') (L407): play_again = true, and unlike the New Game row
+           * (L349) it does not ask "Start a new game? " first. */
+          n: () => {
+            chord.hit = "new";
+            return MENU_CLOSE;
+          },
+        },
+      },
     );
-    if (pick === null) return;
+    if (chord.hit === "quit") return quitAfterDeath();
+    if (chord.hit === "new") {
+      newGame();
+      return;
+    }
+    if (pick === null) {
+      /* EVT_ESCAPE (L413-417). terms_disconnecting - the front end tearing
+       * down, which breaks out unasked - has no browser counterpart: a closing
+       * tab runs the pagehide save, not this menu. */
+      if (await confirmYesNo("Do you want to quit? ")) return quitAfterDeath();
+      continue;
+    }
     switch (entries[pick]?.action) {
       case "info":
         // death_info (ui-death.c L193-278): the final character sheet, then the
@@ -4588,21 +4645,51 @@ async function runDeathMenu(): Promise<void> {
           true,
         );
         break;
+      case "examine":
+        // death_examine (ui-death.c L303-325): get_item over inventory, quiver
+        // and equipment - NOT the floor, which textui_obj_examine includes -
+        // looping until the picker is cancelled. Its prompt carries a trailing
+        // space where textui_obj_examine's does not; both are verbatim.
+        while (await inspectOnce("Examine which item? ", { equip: true, inven: true, quiver: true }));
+        break;
       case "history":
         // death_history (ui-death.c L331): history_display.
         await showTextScreen(term, "Player history", historyLines(state));
         break;
+      case "spoilers":
+        // death_spoilers (ui-death.c L339): do_cmd_spoilers, which the debug
+        // menu also reaches. See SPOILERS_CLI_ONLY_MSG.
+        say(SPOILERS_CLI_ONLY_MSG);
+        break;
       case "new":
-        // death_new_game (ui-death.c L347): get_check("Start a new game? ").
-        if (await confirmYesNo("Start a new game?")) {
+        // death_new_game (ui-death.c L349): get_check("Start a new game? "),
+        // trailing space included - get_check appends "[y/n] " verbatim.
+        if (await confirmYesNo("Start a new game? ")) {
           newGame();
           return;
         }
+        break;
+      case "quit":
+        // The Quit row's NULL action is what lets EVT_SELECT escape menu_select
+        // and reach L409-412's get_check.
+        if (await confirmYesNo("Do you want to quit? ")) return quitAfterDeath();
         break;
       default:
         break;
     }
   }
+}
+
+/**
+ * What death_screen returning means here. Upstream falls back into close_game,
+ * which saves the dead player (ui-game.c:1150-1158) and then quits the process;
+ * the port's dead save is markDead at the moment of death (decision 16), and it
+ * has already run and already cleared the active slot - so exitToTitle's own
+ * close_game save is the no-active-slot no-op, and what is left is leaving play
+ * for the title screen and character list.
+ */
+async function quitAfterDeath(): Promise<void> {
+  await exitToTitle();
 }
 
 // menu_pickup_item (cmd-pickup.c L356-381): when several objects share the
@@ -6170,9 +6257,11 @@ window.addEventListener("keydown", (ev) => {
     void openModal(() => runHelp(term));
     return;
   }
-  // Escape while dead reopens the death menu (death_screen loops until New
-  // Game / quit upstream; here ESC parks on the tombstone map and Escape
-  // brings the menu back).
+  // A re-entry, not part of the flow: death_screen's loop only ends by quitting
+  // or starting a new game, and both navigate away, so the death modal normally
+  // owns the keyboard from death onwards and this never fires. It is here so a
+  // modal that dies on an exception still leaves the menu reachable rather than
+  // stranding a dead character on the map.
   if (dead && ev.key === "Escape" && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
     ev.preventDefault();
     void openModal(() => runDeathMenu());

@@ -800,6 +800,17 @@ export interface SelectMenuOptions {
    * own sub-flow, or it was a no-op).
    */
   commands?: Record<string, (cursor: number) => number | null | void>;
+  /**
+   * Control-modified command keys, for death_screen's KTRL('X') / KTRL('N')
+   * (ui-death.c:406-407). Upstream matches the control CODE against cmd_keys,
+   * and KTRL('X') is 0x18 rather than 'x', so a control chord can never collide
+   * with a row tag - which is why `commands` above is matched only when no
+   * modifier is held. Keys are named unmodified and lower case ("x" for Ctrl-X).
+   * A handler returning MENU_CLOSE closes the menu with that sentinel (the
+   * caller acted and wants out), a row index resolves that row, null/void
+   * consumes the chord.
+   */
+  ctrlCommands?: Record<string, (cursor: number) => number | null | void>;
   /** Footer legend override; wins over the positional `footer` parameter. */
   footer?: string;
   /**
@@ -842,6 +853,14 @@ export interface SelectMenuOptions {
  * real 0..n-1 row index; callers that never set optionsKey never see it.
  */
 export const MENU_OPTIONS = -2;
+
+/**
+ * A ctrlCommands handler returns this to close the menu without selecting a
+ * row - death_screen's `break` on KTRL('X') (ui-death.c:406), where the caller
+ * has already decided what happens next. Negative, so it never collides with a
+ * real row index; callers that set no ctrlCommands never see it.
+ */
+export const MENU_CLOSE = -3;
 
 export function selectFromMenu(
   term: GlyphTerm,
@@ -995,7 +1014,22 @@ export function selectFromMenu(
       // both meanings (upstream keeps the two key sets disjoint). Named keys
       // ("Delete", "Backspace") are matched too, so a screen can offer an action
       // that does not consume one of the a-z selection letters.
-      if (commands) {
+      // Control chords first: upstream compares the control CODE, so KTRL('X')
+      // is 0x18 and never matches the 'x' in cmd_keys or a row tag
+      // (ui-death.c:406-407 alongside the 'x' Examine row). The plain layer
+      // below is therefore matched only when NO modifier is held, or Ctrl-X
+      // would fire the Examine row on its way past.
+      const ctrlCommands = extra?.ctrlCommands;
+      if (ctrlCommands && ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key.length === 1) {
+        const chord = ctrlCommands[ev.key.toLowerCase()];
+        if (chord) {
+          const res = chord(cursor);
+          if (res === MENU_CLOSE) finish(MENU_CLOSE);
+          else if (typeof res === "number") pick(res);
+          return;
+        }
+      }
+      if (commands && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
         const cmd =
           ev.key.length === 1
             ? commands[ev.key] ?? commands[ev.key.toLowerCase()]
