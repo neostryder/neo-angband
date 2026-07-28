@@ -64,7 +64,7 @@ allowlist entry is deleted and the suite is green.
       through the same block.
 - [x] **H. `drop_near`'s `verbose`** (1) - thread through the port's 15
       `dropNear` call sites; `floorCarry` reports whether the stack is ignorable.
-- [ ] **I. Single missing lines** (7 of 12 done) - each a small fix in a
+- [ ] **I. Single missing lines** (8 of 12 done) - each a small fix in a
       function that already exists. DONE: the explore command's four gates,
       `Generation restarted`, `Failed to place player`, `That item is not within
       your reach`. LEFT: the shapechange shop scream, `Cancelled.`,
@@ -208,6 +208,43 @@ Nothing goes here until it is committed.
   threshhold - all four already correct in the 4.2.6 baseline. 94 absences,
   19 tier-1.
 
-  LEFT in I: "Cancelled." (ui-game.c:663), "Are you sure? " (the ^-inscription
-  verify, ui-input.c:2014), the arg_force_name refusal, the glyph picker's
-  "(up to 5 hex digits):", and the equip-cmp filter prompt.
+- 2026-07-27 - **I**, 1 more (8 of 12), and it was the largest single find of the
+  whole punch list: "Are you sure? " is the `!` / `^` INSCRIPTION SAFETY NET, and
+  the port had none of it. Two upstream functions, neither ported:
+  key_confirm_command (ui-input.c:1995, called at ui-game.c:565 and four
+  ui-context.c sites) scans WORN equipment for `^*` / `^<key>` and asks before a
+  command key becomes a command; get_item_allow (ui-object.c:634, called from the
+  item menu at :958 and ui-context.c:855) scans the CHOSEN object for `!<key>`
+  plus `!*` unless the command is harmless, and asks verify_object's
+  "Really <verb> <the object>? ". So `!q` on a Potion of Death, `^t` on your
+  armour, `!*` on anything - the thing every player uses - did nothing at all.
+  The census could only see one of the two strings because get_item_allow's
+  prompt is assembled by strnfmt from fragments under the anchor floor, the same
+  blindness that hid object_pack_total.
+  Both are now packages/core/src/game/inscription-confirm.ts (13 tests) with the
+  shell awaiting them, keeping two upstream warts: `^*` counts DOUBLE for the key
+  '*' (the C reuses the "^*" buffer and overwrites only [1]), and only
+  get_item_allow applies UN_KTRL_CAP, so a Ctrl-chord looks for `^` plus a
+  control byte and asks nothing. Wired at every get_item site with its real cmd
+  and its real IS_HARMLESS - inscribe has it, uninscribe pointedly does not
+  (cmd-obj.c:196 vs :166). Fixed on the way: selectTargetItem was handing
+  inscribe and uninscribe the CMD_NULL key 'A' instead of their own.
+  VERIFIED LIVE, which earned its keep: the first wiring typechecked, passed 594
+  web tests, and was broken. openModal's finally called render()
+  unconditionally, so the confirmation modal's close painted the map over the
+  item picker it had just approved - the invisible-title-screen bug one level in.
+  It now calls renderBackground (which stands down while a modal remains) and the
+  command runs after the modal closes. render-background.test.ts guards the new
+  contract instead of the old literal. Proof: {!q} -> "Really quaff a Potion of
+  Berserk Strength {!q}? [y/n]", "n" spends no turn; {^t} -> "Are you sure?
+  [y/n]", "y" opens the take-off picker and it stays on screen.
+  93 absences, 18 tier-1.
+
+  A DETECTOR GAP worth knowing: neither census can see either function. The call
+  census's C inventory does not cover ui-*.c at all, so key_confirm_command and
+  get_item_allow appear in no tier - not even as unmatched. Anything else living
+  only in the UI layer is invisible to both detectors.
+
+  LEFT in I: "Cancelled." (ui-game.c:663 - check_for_player_interrupt, the
+  any-key abort during a run / repeat / rest), the arg_force_name refusal, the
+  glyph picker's "(up to 5 hex digits):", and the equip-cmp filter prompt.

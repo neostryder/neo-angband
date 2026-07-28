@@ -347,7 +347,13 @@ import {
 } from "@neo-angband/core";
 import { markNoscore } from "@neo-angband/core";
 import { ArtifactState } from "@neo-angband/core";
-import { walkTerrainPrompt } from "@neo-angband/core";
+import {
+  walkTerrainPrompt,
+  itemAllowPrompt,
+  keyConfirmCount,
+  KEY_CONFIRM_PROMPT,
+} from "@neo-angband/core";
+import type { CommandCode } from "@neo-angband/core";
 import { monsterIsVisible, monsterIsDestroyed } from "@neo-angband/core";
 import type { WizardDeps } from "@neo-angband/core";
 import { runWizardToggle, runWizardDebugMenu, SPOILERS_CLI_ONLY_MSG } from "./wizard";
@@ -1220,7 +1226,13 @@ async function openModal(fn: () => Promise<void>): Promise<void> {
     await fn();
   } finally {
     modalDepth--;
-    render();
+    /* renderBackground, not render: when modals NEST, the inner one closing must
+     * not repaint the map over the outer one's screen. This was live - the
+     * key_confirm_command gate opens a modal, and its close wiped the item
+     * picker the confirmation had just approved, leaving a modal waiting for a
+     * key with the town map on screen. The same shape as the invisible title
+     * screen. The outermost close still repaints, since depth is 0 by then. */
+    renderBackground();
   }
 }
 
@@ -1402,7 +1414,17 @@ function itemCmdKey(code: string): string | undefined {
  * `cmdKey` enables the `@`-inscription quick-select for this command (see
  * inscripTagRow / get_tag): pass the command's own key, or leave it out for a
  * picker that upstream drives with CMD_NULL, where only a bare `@<digit>` tag
- * can match.
+ * can match. It is ALSO what get_item_allow matches `!<key>` against below.
+ *
+ * `cmdCode` is the same command as a code rather than a key, needed only for
+ * cmd_verb in get_item_allow's prompt; omitted means CMD_NULL, whose verb is the
+ * "do that with" fallback, which is what upstream reads there too.
+ *
+ * `isHarmless` is get_item's IS_HARMLESS flag: set on the pickers that only look
+ * at an item (inscribe, examine, browse, the context menu, the visuals editor -
+ * cmd-obj.c:196, ui-object.c:1680, ui-spell.c:341, ui-context.c:237,
+ * ui-knowledge.c:4020), and it suppresses a blanket `!*` while still honouring
+ * the command's own `!<key>`.
  */
 async function selectItemFrom(
   prompt: string,
@@ -1411,6 +1433,8 @@ async function selectItemFrom(
   reject: string,
   cmdKey?: string,
   deviceFail = false,
+  cmdCode?: string,
+  isHarmless = false,
 ): Promise<ItemTargetRef | null> {
   const { sources, refs } = buildItemSources(tester, mode, deviceFail);
   if (sources.length === 0) {
@@ -1419,7 +1443,42 @@ async function selectItemFrom(
   }
   const chosen = await itemSelect(term, prompt.trim(), sources, 0, cmdKey);
   if (chosen === null) return null;
-  return refs[chosen.source]?.[chosen.index] ?? null;
+  const ref = refs[chosen.source]?.[chosen.index] ?? null;
+  if (!(await allowChosenItem(ref, cmdKey, cmdCode, isHarmless))) return null;
+  return ref;
+}
+
+/**
+ * get_item_allow on the chosen row (ui-object.c:958, inside get_item_action).
+ *
+ * Refusing cancels the whole selection rather than reopening the picker:
+ * get_item_action returns false, so menu_select hands EVT_SELECT back to
+ * textui_get_item with `selection` still NULL and the command aborts.
+ *
+ * A picker with no command key at all cannot be upstream - every get_item passes
+ * a cmd_code, and even CMD_NULL resolves to 'A' (see EFFECT_ITEM_CMD_KEY) - so
+ * an absent key here means a port-only picker and asks nothing.
+ */
+async function allowChosenItem(
+  ref: ItemTargetRef | null,
+  cmdKey: string | undefined,
+  cmdCode: string | undefined,
+  isHarmless: boolean,
+): Promise<boolean> {
+  if (!ref || cmdKey === undefined) return true;
+  const obj = targetRefObject(ref);
+  if (!obj) return true;
+  /* The shell carries command codes as plain strings (commandBuffer.push takes
+   * them that way), so narrow at this one boundary; cmdVerb returns null for
+   * anything unknown, which lands on the "do that with" fallback either way. */
+  const code = (cmdCode ?? null) as CommandCode | null;
+  const ask = itemAllowPrompt(obj, cmdKey, code, isHarmless, (o) => objectName(state, o));
+  if (!ask) return true;
+  /* "Prompt for confirmation n times" (ui-object.c:669-674): one refusal ends it. */
+  for (let i = 0; i < ask.count; i++) {
+    if (!(await confirmYesNo(ask.prompt))) return false;
+  }
+  return true;
 }
 
 /**
@@ -1427,13 +1486,24 @@ async function selectItemFrom(
  * ItemTargetRef through the faithful picker. The quiver rides the pack, so
  * USE_QUIVER is covered by the inventory pass.
  */
-async function selectTargetItem(req: ItemRequest): Promise<ItemTargetRef | null> {
+async function selectTargetItem(
+  req: ItemRequest,
+  cmdCode?: string,
+  isHarmless = false,
+): Promise<ItemTargetRef | null> {
+  /* Without a command this really is a CMD_NULL picker and 'A' is the key
+   * upstream matches (see EFFECT_ITEM_CMD_KEY). With one - inscribe, uninscribe -
+   * it is that command's own key, which is what cmd_lookup_key returns and so
+   * what both get_tag and get_item_allow use. */
   return selectItemFrom(
     req.prompt,
     req.tester,
     req.mode,
     req.reject,
-    EFFECT_ITEM_CMD_KEY,
+    cmdCode === undefined ? EFFECT_ITEM_CMD_KEY : itemCmdKey(cmdCode),
+    false,
+    cmdCode,
+    isHarmless,
   );
 }
 
@@ -1951,12 +2021,13 @@ async function inspectOnce(
   prompt: string,
   mode: { equip?: boolean; inven?: boolean; quiver?: boolean; floor?: boolean },
 ): Promise<boolean> {
-  const ref = await selectTargetItem({
-    prompt,
-    reject: "You have nothing to examine.",
-    tester: () => true,
-    mode,
-  });
+  /* Both examine pickers are CMD_NULL | IS_HARMLESS (ui-object.c:1680,
+   * ui-death.c:312), so a blanket `!*` does not stop a look. */
+  const ref = await selectTargetItem(
+    { prompt, reject: "You have nothing to examine.", tester: () => true, mode },
+    undefined,
+    true,
+  );
   if (!ref) return false;
   const obj = targetRefObject(ref);
   if (!obj) return false;
@@ -2123,6 +2194,7 @@ async function useItem(
     emptyMsg,
     itemCmdKey(code),
     DEVICE_VERBS.has(code),
+    code,
   );
   if (ref === null) return;
   await dispatchItemRef(code, ref);
@@ -2211,6 +2283,8 @@ async function takeOffItem(): Promise<void> {
     { equip: true },
     "You have nothing to take off or unwield.",
     itemCmdKey("takeoff"),
+    false,
+    "takeoff",
   );
   if (ref === null || !("handle" in ref)) return;
   const handle = ref.handle;
@@ -2235,7 +2309,9 @@ async function inscribeItem(): Promise<void> {
     reject: "You have nothing to inscribe.",
     tester: () => true,
     mode: { equip: true, inven: true, quiver: true, floor: true },
-  });
+    /* cmd-obj.c:196 - CMD_INSCRIBE with IS_HARMLESS. Uninscribe below has no
+     * IS_HARMLESS (cmd-obj.c:166); the asymmetry is upstream's. */
+  }, "inscribe", true);
   if (!ref) return;
   const obj = targetRefObject(ref);
   if (!obj) return;
@@ -2258,7 +2334,7 @@ async function uninscribeItem(): Promise<void> {
     reject: "You have nothing you can uninscribe.",
     tester: (o) => objHasInscrip(o),
     mode: { equip: true, inven: true, quiver: true, floor: true },
-  });
+  }, "uninscribe");
   if (!ref) return;
   commandBuffer.push({ code: "uninscribe", args: { ...ref } });
   advance();
@@ -2309,7 +2385,8 @@ async function refuelItem(): Promise<void> {
     reject: "You have nothing you can refuel with.",
     tester: (o) => objCanRefill(state, o),
     mode: { inven: true, quiver: true, floor: true },
-  });
+    /* cmd-obj.c:1091-1095: CMD_REFILL, no IS_HARMLESS. */
+  }, "refill");
   if (!ref) return;
   commandBuffer.push({ code: "refill", args: { ...ref } });
   advance();
@@ -2717,6 +2794,8 @@ async function fireCmd(): Promise<void> {
     { inven: true },
     "You have no ammunition for your weapon.",
     itemCmdKey("fire"),
+    false,
+    "fire",
   );
   if (ref === null || !("handle" in ref)) return;
   const handle = ref.handle;
@@ -2757,6 +2836,8 @@ async function throwCmd(): Promise<void> {
     { inven: true, equip: true, floor: true },
     "You have nothing to throw.",
     itemCmdKey("throw"),
+    false,
+    "throw",
   );
   if (ref === null) return;
   const dir = await aimDir();
@@ -6030,6 +6111,8 @@ function enterStoreModal(store: Store): Promise<void> {
             { inven: true, quiver: true },
             "You have nothing to wear or wield.",
             itemCmdKey("wield"),
+            false,
+            "wield",
           );
           if (ref === null || !("handle" in ref)) return null;
           return runStoreItemCmd("wield", { handle: ref.handle });
@@ -6041,6 +6124,8 @@ function enterStoreModal(store: Store): Promise<void> {
             { equip: true },
             "You have nothing to take off or unwield.",
             itemCmdKey("takeoff"),
+            false,
+            "takeoff",
           );
           if (ref === null || !("handle" in ref)) return null;
           return runStoreItemCmd("takeoff", { handle: ref.handle });
@@ -6490,6 +6575,28 @@ window.addEventListener("keydown", (ev) => {
       const key = roguelike ? (c.r === undefined ? c.o : c.r) : c.o;
       if (key != null && ev.key === key) {
         ev.preventDefault();
+        /* key_confirm_command (ui-input.c:1995) at ui-game.c:562-565's exact
+         * position: the key has resolved to a real command, and the WORN
+         * equipment's `^*` / `^<key>` inscriptions get to veto it before the
+         * command runs. Refusing drops the key entirely - upstream sets cmd to
+         * NULL, so nothing is queued and no turn passes.
+         *
+         * The command runs AFTER this modal closes, not inside it: c.act opens
+         * its own modal, and running it nested meant this one's close repainted
+         * over it. */
+        const owed = keyConfirmCount(state.actor.player, state.gear, key);
+        if (owed > 0) {
+          let allowed = false;
+          void openModal(async () => {
+            for (let i = 0; i < owed; i++) {
+              if (!(await confirmYesNo(KEY_CONFIRM_PROMPT))) return;
+            }
+            allowed = true;
+          }).then(() => {
+            if (allowed) c.act();
+          });
+          return;
+        }
         c.act();
         return;
       }
