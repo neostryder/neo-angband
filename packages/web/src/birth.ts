@@ -83,6 +83,7 @@ import {
   COLOUR_YELLOW,
   generatePlayer,
   generateStats,
+  incrementNameSuffix,
   modifyStatValue,
   playerAbilities,
   resetStats,
@@ -172,6 +173,15 @@ export interface BirthOpts {
     className: string;
     stats?: readonly number[];
   } | null;
+  /**
+   * player->full_name as the PREVIOUS character left it, present only when one
+   * exists (upstream's `player->ht_birth` gate). player_birth bumps its roman
+   * suffix and the name prompt then defaults to that, which is how the dynastic
+   * "Aragorn II -> Aragorn III" naming happens at all.
+   */
+  previousName?: string;
+  /** msg(): needed for player_birth's "Sorry, could not deal with suffix". */
+  msg?: (text: string) => void;
   /**
    * get_history for a chosen race (player-birth.c get_history), supplied by the
    * shell because the history graph lives in the core registry the birth screen
@@ -1190,7 +1200,17 @@ export async function runBirth(
   let rollerIdx = 0;
   let raceName = "";
   let className = "";
-  let name = "";
+  /**
+   * player_birth's opening block (player-birth.c:1060-1073): with a previous
+   * character on file, its name comes forward with any roman-numeral suffix
+   * BUMPED, so the name prompt defaults to the next generation ("Aragorn II" ->
+   * "Aragorn III"). A name with no suffix comes forward unchanged; upstream does
+   * not blank it. An increment that will not fit reports
+   * "Sorry, could not deal with suffix" and leaves the name alone.
+   */
+  let name = opts.previousName
+    ? incrementNameSuffix(opts.previousName, 32, opts.msg)
+    : "";
   // The point-based allocation, once chosen; reused if the player steps back
   // into the screen so their work is not lost (ui-birth.c keeps it too).
   let pointStats: number[] | null = null;
