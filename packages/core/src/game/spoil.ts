@@ -21,45 +21,29 @@
  * wiz-spoil.c line citations are given inline as `// wiz-spoil.c L###`.
  */
 
-import {
-  attrToText,
-  KF,
-  OBJ_NOTICE,
-  ODESC,
-  OINFO,
-  PARITY_BASELINE,
-  RF,
-  Rng,
-  TV,
-  cheatMonsterLore,
-  copyArtifactData,
-  knownDescOf,
-  loreDescription,
-  makeObjectInfoDeps,
-  newMonsterLore,
-  objectDesc,
-  objectInfo,
-  objectPower,
-  objectPrep,
-  objectValue,
-  playerLearnAllRunes,
-  startGame,
-  tvalIsAmmo,
-  tvalIsArmor,
-  tvalIsMeleeWeapon,
-  textblockToString,
-} from "@neo-angband/core";
-import type {
-  Artifact,
-  GamePack,
-  GameObject,
-  LoreDeps,
-  MonsterRace,
-  ObjectInfoExtras,
-  ObjectKind,
-  PowerObject,
-  StartedGame,
-} from "@neo-angband/core";
+import { attrToText } from "../color";
+import { KF, RF, TV } from "../generated";
+import { Rng } from "../rng";
+import { PARITY_BASELINE } from "../version";
+import { ODESC, objectDesc } from "../obj/desc";
+import { OINFO, objectInfo, textblockToString } from "../obj/object-info";
+import { OBJ_NOTICE, playerLearnAllRunes } from "../obj/knowledge";
+import { copyArtifactData, objectPrep } from "../obj/make";
+import { objectPower } from "../obj/power";
+import { objectValue } from "../obj/value";
+import { tvalIsAmmo, tvalIsArmor, tvalIsMeleeWeapon } from "../obj/object";
+import { cheatMonsterLore, newMonsterLore } from "../mon/lore";
+import { loreDescription } from "../mon/lore-describe";
+import { knownDescOf } from "./describe";
+import { makeObjectInfoDeps } from "./object-inspect";
+import { startGame } from "../session/game";
+import type { Artifact, ObjectKind } from "../obj/types";
+import type { GameObject } from "../obj/object";
+import type { PowerObject } from "../obj/power";
+import type { ObjectInfoExtras } from "./object-inspect";
+import type { LoreDeps } from "../mon/lore-describe";
+import type { MonsterRace } from "../mon/types";
+import type { GamePack, StartedGame } from "../session/game";
 
 /**
  * The build id upstream stamps into every spoiler header (buildid, e.g.

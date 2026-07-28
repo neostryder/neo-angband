@@ -15,7 +15,7 @@ import {
   spoilMonDesc,
   spoilMonInfo,
   spoilObjDesc,
-} from "./spoilers";
+} from "@neo-angband/core";
 
 type Kind = "obj" | "artifact" | "mon-desc" | "mon-info" | "all";
 

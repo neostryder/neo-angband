@@ -51,7 +51,7 @@ describe("dump_level", () => {
   it("follows the C's precedence: player, monster, door, rubble, stairs, ...", () => {
     const state = makeState({ w: 12, h: 3, playerGrid: loc(1, 1) });
     const c = state.chunk;
-    const race = makeRace({ name: "test rat" });
+    const race = makeRace();
     monReg.races.push(race);
     addMon(state, race, loc(2, 1));
 
