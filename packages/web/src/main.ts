@@ -7305,6 +7305,13 @@ async function maybeBirth(): Promise<void> {
           : null,
         deps: birthDeps,
         historyFor,
+        // player_birth's dynastic suffix bump (player-birth.c:1060-1073): the
+        // previous character's name comes forward, roman suffix incremented, so
+        // the name prompt defaults to the next generation. Gated on there BEING
+        // a previous character, which is upstream's `player->ht_birth` gate and
+        // the same one quickstart_allowed uses.
+        ...(birthChoice?.name ? { previousName: birthChoice.name } : {}),
+        msg: (text) => say(text),
         // player_random_name (player.c:375) for the name field's '*' key and the
         // name finish_with_random_choices fills in. Draws on the same game RNG.
         randomName: () => playerRandomName(state.rng, tolkienNameProbs()),

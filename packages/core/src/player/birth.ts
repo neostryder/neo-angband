@@ -765,20 +765,30 @@ export function playerSafeName(name: string, safelen: number, stripSuffix: boole
 }
 
 /**
- * The dynastic-suffix increment from do_cmd_birth_init (player-birth.c:1060-
- * 1073): when death -> new character reuses the savefile, a name that already
- * carries a roman-numeral suffix has that suffix bumped by one (Name II ->
- * Name III). Returns the new full name; a name with no roman suffix, or one
- * whose incremented suffix will not fit, is returned unchanged (upstream logs
- * "Sorry, could not deal with suffix" and leaves the name alone).
+ * The dynastic-suffix increment from player_birth (player-birth.c:1060-1073):
+ * when a previous character exists (`player->ht_birth`, the same condition that
+ * enables quickstart), a name that already carries a roman-numeral suffix has
+ * that suffix bumped by one (Name II -> Name III) BEFORE the birth menus run,
+ * so the name prompt offers the next generation by default. Returns the new
+ * full name; a name with no roman suffix is returned unchanged, and one whose
+ * incremented suffix will not fit is returned unchanged after reporting
+ * "Sorry, could not deal with suffix" (L1071).
  *
- * `bufSize` is PLAYER_NAME_LEN (option.h:23 = 32) by default.
+ * `bufSize` is PLAYER_NAME_LEN (option.h:23 = 32) by default. `msg` is the
+ * message sink; omitted, the failure is silent (the worldless-test shape).
  */
-export function incrementNameSuffix(fullName: string, bufSize = 32): string {
+export function incrementNameSuffix(
+  fullName: string,
+  bufSize = 32,
+  msg?: (text: string) => void,
+): string {
   const start = findRomanSuffixStart(fullName);
   if (start === null) return fullName;
   const suffix = fullName.slice(start);
   const roman = intToRoman(romanToInt(suffix) + 1, bufSize - start);
-  if (roman === null) return fullName;
+  if (roman === null) {
+    msg?.("Sorry, could not deal with suffix");
+    return fullName;
+  }
   return fullName.slice(0, start) + roman;
 }
