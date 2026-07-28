@@ -98,13 +98,21 @@ a mod manager writes. The current desktop wrapper serves a `userData/mods`
 directory read-only over HTTP with a `/mods/index.json` listing - a half-step
 nothing can install *into*.
 
-> **Measured 2026-07-28, and worse than "a half-step": the seam is DEAD.** The
-> main process serves `/mods/index.json` and `/mods/<name>/...`, and the preload
-> exposes `modsBaseUrl` / `modsIndexUrl` on `window.neoDesktop` - and *nothing in
-> `packages/web/src` reads either of them*. A folder dropped into `mods/` is listed
-> by a server nobody asks and loaded by nobody. This is Phase 4's whole job, and
-> it is the one thing standing between the desktop build and "the fulness of all
-> of the features, including mod support".
+> **Measured 2026-07-28, and worse than "a half-step": the seam was DEAD.** The
+> main process served `/mods/index.json` and `/mods/<name>/...`, and the preload
+> exposed `modsBaseUrl` / `modsIndexUrl` on `window.neoDesktop` - and *nothing in
+> `packages/web/src` read either of them*. A folder dropped into `mods/` was listed
+> by a server nobody asked and loaded by nobody.
+>
+> **FIXED (Phase 4, same day).** `web/src/disk-packs.ts` reads the directory at
+> boot, validates each manifest, and merges the packs into the same discovery map
+> the bundled ones use; `load-order.json` is the external manager's file, and a
+> player's explicit toggle outranks it in both directions. Verified by deploying a
+> real folder into the data directory's `mods\` and launching: the pack appears in
+> the in-game manager as `[x] Disk Hound (folder-deployed proof) ... ! noscore`,
+> at its load-order position, with its own description and its `affectsGameplay`
+> warning, and the "Where mods come from" screen names the real path. Format
+> documented at `docs/MODS.md#where-a-pack-lives-on-disk`.
 
 **4. Everything shares one evictable bucket.** Saves, scores, colours, keymaps,
 tile mode, sidebar mode, birth records and the entire virtual user directory are

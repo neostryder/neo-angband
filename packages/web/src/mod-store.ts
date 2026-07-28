@@ -23,6 +23,9 @@
 import type { PackManifest } from "@neo-angband/mod-sdk";
 
 const ENABLED_KEY = "neo:enabledMods";
+/* Explicit per-mod decisions, distinct from the resulting enabled SET: an entry
+ * here means the player said so, and outranks an external manager's deployment. */
+const CHOICE_KEY = "neo:modChoices";
 const CONSENT_KEY = "neo:modConsents";
 const PROFILES_KEY = "neo:modProfiles";
 const RULE_CHOICES_KEY = "neo:modRuleChoices";
@@ -80,27 +83,58 @@ export function isShippedMod(id: string, dev = import.meta.env.DEV): boolean {
 }
 
 /**
- * Resolve the effective enabled-mod id list from the three input sources, in
- * precedence order. Pure, so both the content composer (pack.ts, at module
- * load) and the plugin auto-installer (main.ts boot) resolve identically.
+ * Resolve the effective enabled-mod id list, in precedence order. Pure, so both
+ * the content composer (pack.ts, at module load) and the plugin auto-installer
+ * (main.ts boot) resolve identically.
  *
  * - `url` (?mods=a,b): a one-off testing override; when non-null it wins
  *   verbatim (even when empty, meaning "no mods").
  * - `stored` (localStorage neo:enabledMods): the user's saved set. null means
  *   the key is ABSENT (first run) - distinct from an empty array (user turned
- *   everything off). When present it is authoritative.
- * - else first run: the DEFAULT_ENABLED_MODS, intersected with `discovered` so
- *   only mods that exist are enabled.
+ *   everything off). On a first run the DEFAULT_ENABLED_MODS apply instead,
+ *   intersected with `discovered` so only mods that exist are enabled.
+ * - `diskOrder` then ADDS anything an external mod manager deployed and the
+ *   player has no recorded opinion on, appended so it loads last.
+ * - `choices` is the player's explicit per-mod decision and outranks the disk
+ *   order in both directions.
  */
 export function resolveEnabledIds(opts: {
   url: string[] | null;
   stored: string[] | null;
   discovered: readonly string[];
+  /**
+   * load-order.json's list, from the on-disk mods directory (disk-packs.ts).
+   * An external mod manager deploying a folder and adding it here is how a mod
+   * arrives without the player opening this game's own manager, which is the
+   * recorded Vortex/MO2 division of labour.
+   *
+   * It does NOT override the player: an id the player has explicitly decided
+   * about (`choices`) keeps their decision, so turning a deployed mod off in the
+   * game does not have it reappear on the next launch. Absent from both, the
+   * manager's list wins - deploying it IS a request to enable it.
+   */
+  diskOrder?: readonly string[];
+  /** Explicit per-mod decisions the player made in the manager. */
+  choices?: Readonly<Record<string, boolean>>;
 }): string[] {
   if (opts.url !== null) return opts.url;
-  if (opts.stored !== null) return opts.stored;
-  const have = new Set(opts.discovered);
-  return DEFAULT_ENABLED_MODS.filter((id) => have.has(id));
+  const choices = opts.choices ?? {};
+  const base =
+    opts.stored !== null
+      ? opts.stored
+      : DEFAULT_ENABLED_MODS.filter((id) => new Set(opts.discovered).has(id));
+  const out = base.filter((id) => choices[id] !== false);
+  const seen = new Set(out);
+  for (const id of opts.diskOrder ?? []) {
+    /* Ordered AFTER the stored set, so a deployed pack loads last unless the
+     * player has reordered it - which matches "the manager owns disk order" and
+     * keeps the bundled mods where they were. */
+    if (!seen.has(id) && choices[id] !== false) {
+      out.push(id);
+      seen.add(id);
+    }
+  }
+  return out;
 }
 
 /** The minimal Storage surface used here (localStorage in the browser). */
@@ -221,6 +255,41 @@ export class ModStore {
     } else {
       this.setEnabled(cur.filter((x) => x !== id));
     }
+    /* Record that the PLAYER decided, separately from the resulting set.
+     * Removing a disk-deployed mod from the enabled list is not enough on its
+     * own: an external manager's load-order.json still lists it, so next launch
+     * would union it back in and the mod would look like it refused to turn off.
+     * The explicit choice is what makes their decision stick. */
+    this.setModChoice(id, on);
+  }
+
+  /* --- Explicit per-mod decisions (vs. a deployed default) ------------- */
+
+  /**
+   * What the player has explicitly decided about each mod, if anything.
+   *
+   * Only written by a deliberate toggle. An absent entry means "no opinion", and
+   * that is the state in which an external mod manager's load-order.json gets to
+   * decide - which is the whole point of the Vortex/MO2 division of labour.
+   */
+  getModChoices(): Record<string, boolean> {
+    const obj = readJson<Record<string, unknown>>(this.storage, CHOICE_KEY, {});
+    const out: Record<string, boolean> = {};
+    for (const [id, v] of Object.entries(obj)) {
+      if (typeof v === "boolean") out[id] = v;
+    }
+    return out;
+  }
+
+  setModChoice(id: string, on: boolean): void {
+    writeJson(this.storage, CHOICE_KEY, { ...this.getModChoices(), [id]: on });
+  }
+
+  /** Forget the player's decision, handing the mod back to the disk order. */
+  clearModChoice(id: string): void {
+    const next = this.getModChoices();
+    delete next[id];
+    writeJson(this.storage, CHOICE_KEY, next);
   }
 
   /** Move an enabled mod one step earlier (-1) or later (+1) in load order. */

@@ -165,22 +165,88 @@ function serveFile(
  * The server binds an ephemeral port on the loopback interface only, so nothing
  * is exposed off the machine. Path traversal is rejected.
  */
+/**
+ * The mods directory, as one index the renderer can act on.
+ *
+ * There is no C to be faithful to here - upstream has no mod system - so the
+ * shape is chosen for the job the recorded division of labour gives it: an
+ * external manager (Vortex/MO2) deploys folders and writes the load order, and
+ * the game reads both. That means the renderer needs, in one round trip:
+ *
+ *   - which packs are on disk, and WHICH FILES each contains. Per-file GETs are
+ *     enough to fetch a pack but not to discover one, because a pack's record
+ *     files are named after the record type and there is no fixed list.
+ *   - the on-disk load order, so a manager's ordering decision is not something
+ *     the game has to be told about separately.
+ *
+ * Only `.json` files at the top level of a pack are listed. Anything else a pack
+ * ships (tile images, licences, a readme) is still SERVED by the route below and
+ * fetched by name from the manifest that references it; it is simply not part of
+ * the record set, so it is not offered to the composer.
+ */
+interface ModsIndex {
+  readonly packs: readonly { readonly id: string; readonly files: readonly string[] }[];
+  /** load-order.json's `order`, or [] when the file is absent or unreadable. */
+  readonly order: readonly string[];
+  /** Where these live, so the game can tell a player where to put a mod. */
+  readonly dir: string;
+}
+
+/** load-order.json: the file an external mod manager owns. */
+const LOAD_ORDER_FILE = "load-order.json";
+
+function readLoadOrder(): readonly string[] {
+  try {
+    const raw = fs.readFileSync(path.join(MODS_DIR, LOAD_ORDER_FILE), "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object") return [];
+    const order = (parsed as { order?: unknown }).order;
+    if (!Array.isArray(order)) return [];
+    return order.filter((v): v is string => typeof v === "string");
+  } catch {
+    /* absent, unreadable, or not JSON: the game runs with no disk order, which
+     * is the same state as a fresh install. Reported to the renderer as [] and
+     * never as a crash - a hand-edited file must not stop the game booting. */
+    return [];
+  }
+}
+
+function modsIndex(): ModsIndex {
+  const packs: { id: string; files: string[] }[] = [];
+  let names: string[] = [];
+  try {
+    names = fs
+      .readdirSync(MODS_DIR, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    /* no mods dir yet */
+  }
+  for (const id of names) {
+    let files: string[] = [];
+    try {
+      files = fs
+        .readdirSync(path.join(MODS_DIR, id), { withFileTypes: true })
+        .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".json"))
+        .map((e) => e.name)
+        .sort((a, b) => a.localeCompare(b));
+    } catch {
+      /* unreadable pack: listed with no files, so the renderer reports it as a
+       * pack it could not read rather than silently omitting it. */
+    }
+    packs.push({ id, files });
+  }
+  return { packs, order: readLoadOrder(), dir: MODS_DIR };
+}
+
 function startServer(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const url = req.url ?? "/";
       // User mods folder (read-only), for the filesystem-mod path.
       if (url === "/mods/index.json") {
-        let list: string[] = [];
-        try {
-          list = fs
-            .readdirSync(MODS_DIR, { withFileTypes: true })
-            .filter((d) => d.isDirectory())
-            .map((d) => d.name);
-        } catch {
-          /* no mods dir yet */
-        }
-        send(res, 200, JSON.stringify(list), MIME[".json"]);
+        send(res, 200, JSON.stringify(modsIndex()), MIME[".json"]);
         return;
       }
       if (url.startsWith("/mods/")) {
