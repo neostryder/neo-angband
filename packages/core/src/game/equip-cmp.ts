@@ -18,11 +18,15 @@
  *    (all categories, then stat_modifiers alone) plus an optional 3-view
  *    split that also breaks out "modifiers" - correct data, simpler paging,
  *    as the port's shell-adaptation notes explicitly allow.
- *  - The free-text quick attribute filter (q/!, prompt_for_easy_filter) and
- *    the dump-to-file command (d) are UI conveniences over this same model;
- *    they are not implemented here (see the web equip-cmp screen for which
- *    keys are wired). The source-cycle (c), reverse (r), and reset (R)
- *    behaviours ARE implemented, faithfully.
+ *  - The dump-to-file command (d) writes a text file and rides the port's
+ *    host-io layer with the other dumps.
+ *
+ * The quick attribute filter (q / !, prompt_for_easy_filter) IS here:
+ * matchEquipCmpFilter does its label lookup and equipCmpFilterKeeps its six
+ * selector functions, applied through EquipCmpOptions.filter. It was called a
+ * "UI convenience" and skipped, which was wrong - it is a default part of the
+ * screen on every platform. The source-cycle (c), reverse (r), and reset (R)
+ * behaviours are faithful.
  *
  * No RNG: every value here is a deterministic function of already-computed
  * object/player state (curses, runes, equipment) - this is a pure display
@@ -36,8 +40,9 @@ import { gearGet } from "./gear";
 import { floorPile } from "./floor";
 import { wieldSlot } from "./gear";
 import { ignoreLevelOf, IGNORE } from "../obj/ignore";
+import { objectFullyKnown, objectKnownShadow } from "../obj/known-object";
 import { tvalIsWearable } from "../obj/object";
-import { describeObject } from "./describe";
+import { describeObject, knownDescOf } from "./describe";
 import { ODESC } from "../obj/desc";
 import { colorCharToAttr } from "../color";
 import { FEAT } from "../generated";
@@ -45,6 +50,7 @@ import {
   buildUiEntryConfig,
   equipCmpCategories,
   equipCmpColumnLabel,
+  equipCmpFilterLabel3,
   combineEntryValues,
   computeObjectValues,
   computePlayerValues,
@@ -83,6 +89,8 @@ export interface EquipCmpColumn {
   key: string;
   /** get_ui_entry_label(entry, 3, true): the 2-char header. */
   label: string;
+  /** get_ui_entry_label(entry, 4, false): what a 3-char filter code matches. */
+  label3: string;
   category: string;
 }
 
@@ -97,6 +105,12 @@ export interface EquipCmpItem {
   equippyAttr: number;
   /** One cell per column, in the same order as EquipCmpModel.columns. */
   cells: UiEntryCell[];
+  /**
+   * equippable.vals[]: the raw per-property value behind each cell, before the
+   * renderer turned it into a symbol. The easy filter's six selector functions
+   * (ui-equip-cmp.c:1643-1682) all test exactly this number.
+   */
+  vals: number[];
 }
 
 export interface EquipCmpModel {
@@ -115,6 +129,119 @@ export interface EquipCmpOptions {
   reverse?: boolean;
   /** UiEntryDeps passthrough (timed flags / element effects / playerHas). */
   entryDeps?: UiEntryDeps;
+  /** The 'q' / '!' quick filter, from matchEquipCmpFilter. Absent: no filter. */
+  filter?: EquipCmpEasyFilter | null;
+}
+
+/**
+ * One configured quick ("easy") filter: the property column it tests and
+ * whether the sense is inverted, which is all `easy_filt` carries beyond the
+ * store selector the port models separately (passesSourceFilter).
+ */
+export interface EquipCmpEasyFilter {
+  /** Index into EquipCmpModel.columns. */
+  column: number;
+  /** '!' rather than 'q' (apply_not). */
+  not: boolean;
+}
+
+/** get_string's prompt for the quick filter (ui-equip-cmp.c:1237). */
+export const EQUIP_CMP_FILTER_PROMPT =
+  "Enter 2 or 3 (for stat) character code and return or return to clear ";
+
+/** The failure message, shown in the dialogue line (ui-equip-cmp.c:1231). */
+export const EQUIP_CMP_FILTER_NO_MATCH =
+  "Did not find attribute with that name; filter unchanged";
+
+/**
+ * The four capitalisation attempts prompt_for_easy_filter makes before giving up
+ * (ui-equip-cmp.c:1273-1330), in order. A 3-character code only gets the first
+ * three: the fourth attempt writes a 2-character string, and the loop's
+ * `threec && itry >= 3` guard stops before it.
+ */
+function filterCodeAttempts(code: string): string[] {
+  const up = (s: string): string => s.toUpperCase();
+  const lo = (s: string): string => s.toLowerCase();
+  const head = code.slice(0, 1);
+  const tail = code.slice(1);
+  const attempts = [
+    up(head) + lo(tail),
+    up(head) + up(tail),
+    lo(head) + lo(tail),
+  ];
+  /* itry 3 only ever produces two characters (ctry[2] = '\0'). */
+  if (code.length <= 2) attempts.push(lo(head) + up(tail));
+  return attempts;
+}
+
+/**
+ * prompt_for_easy_filter's label lookup (ui-equip-cmp.c:1258-1360): find the
+ * property column whose label matches the typed code under any of upstream's
+ * capitalisation attempts. A 3-character code is matched against the 3-char
+ * label (all three characters, pad included); anything else against the first
+ * two characters of the 2-char column header, which is how a 1-character code
+ * fails to match anything.
+ *
+ * Returns null for upstream's "Did not find attribute with that name".
+ */
+export function matchEquipCmpFilter(
+  columns: readonly EquipCmpColumn[],
+  code: string,
+  not: boolean,
+): EquipCmpEasyFilter | null {
+  const threec = code.length >= 3;
+  const typed = code.slice(0, 3);
+  for (const attempt of filterCodeAttempts(typed)) {
+    for (let i = 0; i < columns.length; i++) {
+      const col = columns[i]!;
+      const label = threec ? col.label3 : col.label;
+      const hit = threec
+        ? label.slice(0, 3) === attempt.slice(0, 3)
+        : label.slice(0, 2) === attempt.slice(0, 2);
+      if (hit) return { column: i, not };
+    }
+  }
+  return null;
+}
+
+/**
+ * The selector prompt_for_easy_filter installs, chosen by the property's
+ * category (its `switch (j)`, ui-equip-cmp.c:1372-1425) and applied to the raw
+ * value (the six sel_* functions, L1643-1682):
+ *
+ * - resistances:    val >= 1        (sel_at_least_resists)
+ * - abilities:      val != 0        (sel_has_flag - a flag where on is wanted)
+ * - hindrances:     val == 0        (sel_does_not_have_flag - INVERTED, because
+ *                                   for a hindrance the desirable state is off)
+ * - modifiers,
+ *   stat_modifiers: val > 0         (sel_has_pos_mod)
+ *
+ * `not` swaps each for its complement.
+ */
+export function equipCmpFilterKeeps(
+  columns: readonly EquipCmpColumn[],
+  filter: EquipCmpEasyFilter,
+  vals: readonly number[],
+): boolean {
+  const col = columns[filter.column];
+  if (!col) return true;
+  const val = vals[filter.column] ?? 0;
+  let keep: boolean;
+  switch (col.category) {
+    case "resistances":
+      keep = val >= 1;
+      break;
+    case "abilities":
+      keep = val !== 0;
+      break;
+    case "hindrances":
+      keep = val === 0;
+      break;
+    default:
+      keep = val > 0;
+      break;
+  }
+  return filter.not ? !keep : keep;
 }
 
 let cachedConfig: UiEntryConfig | null = null;
@@ -261,7 +388,12 @@ export function equipCmpSummary(
   const columns: EquipCmpColumn[] = [];
   for (const cat of cats) {
     for (const entry of cat.entries) {
-      columns.push({ key: entry.name, label: equipCmpColumnLabel(entry), category: cat.key });
+      columns.push({
+        key: entry.name,
+        label: equipCmpColumnLabel(entry),
+        label3: equipCmpFilterLabel3(entry),
+        category: cat.key,
+      });
     }
   }
   const flatEntries = cats.flatMap((c) => c.entries);
@@ -274,12 +406,23 @@ export function equipCmpSummary(
     if (obj) equipped.push(obj);
   }
 
+  /* obj->known, synthesised once per object: object_flag_is_known and
+   * object_element_is_known both take object_fully_known as their first route
+   * out (obj-knowledge.c:777, 799), and mundane gear carries no runes at all, so
+   * it IS fully known and must print '.' down every column. Reading p->obj_k
+   * alone printed '?' for a plain torch or soft leather armour - the same defect
+   * the character sheet's resist grid had (its fix is ui-entry.ts:1857), which
+   * this screen never got. */
+  const knownDesc = knownDescOf(state);
+  const fullyKnown = (obj: GameObject): boolean =>
+    objectFullyKnown(obj, objectKnownShadow(obj, player, state.runeEnv, knownDesc), player, state.runeEnv);
+
   const combinedCells: UiEntryCell[] = flatEntries.map((entry) => {
     const playerVal = computePlayerValues(entry, player, rd, untimedCache);
     const vals = [playerVal.val];
     const auxs = [playerVal.auxval];
     for (const obj of equipped) {
-      const ov = computeObjectValues(entry, obj, player);
+      const ov = computeObjectValues(entry, obj, player, fullyKnown(obj));
       vals.push(ov.val);
       auxs.push(ov.auxval);
     }
@@ -295,8 +438,11 @@ export function equipCmpSummary(
 
   const gathered = gatherItems(state).filter((g) => passesSourceFilter(g.src, source));
   let items: EquipCmpItem[] = gathered.map(({ obj, src }) => {
+    const vals: number[] = [];
+    const known = fullyKnown(obj);
     const cells: UiEntryCell[] = flatEntries.map((entry) => {
-      const ov = computeObjectValues(entry, obj, player);
+      const ov = computeObjectValues(entry, obj, player, known);
+      vals.push(ov.val);
       const renderer = config.renderers[entry.rendererIndex - 1];
       if (!renderer) return { symbol: " ", color: 1 };
       const rendered = applyRenderer(renderer, [ov.val], [ov.auxval], {
@@ -307,6 +453,7 @@ export function equipCmpSummary(
     });
     return {
       obj,
+      vals,
       shortName: shortName(state, obj),
       src,
       quality: quality(obj),
@@ -316,6 +463,11 @@ export function equipCmpSummary(
       cells,
     };
   });
+
+  /* filter_items then sort_items (prompt_for_easy_filter L1428-1429): the quick
+   * filter narrows the gathered set before the ordering is applied. */
+  const filter = opts.filter ?? null;
+  if (filter) items = items.filter((it) => equipCmpFilterKeeps(columns, filter, it.vals));
 
   items = items.sort(compareItems);
   if (opts.reverse) items = items.slice().reverse();

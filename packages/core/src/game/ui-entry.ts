@@ -1956,6 +1956,16 @@ export function equipCmpColumnLabel(entry: UiEntry): string {
 }
 
 /**
+ * get_ui_entry_label(entry, 4, false) - the three-character label the easy
+ * filter matches a 3-character code against (ui-equip-cmp.c:1345). Only the
+ * stat modifiers have distinct 3-char labels; the comparison is exact over all
+ * three characters, pad included, exactly as the C compares wce[0..2].
+ */
+export function equipCmpFilterLabel3(entry: UiEntry): string {
+  return getUiEntryLabel(entry, 4, false);
+}
+
+/**
  * compute_player_and_equipment_values's per-property accumulation (ui-equip-
  * cmp.c L2279), condensed to the vectorized form combineValues already uses:
  * combine the player's own value with every equipped item's value for one
