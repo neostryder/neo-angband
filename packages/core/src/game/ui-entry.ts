@@ -28,7 +28,7 @@
  * effect" - faithful for a character with no active buffs.
  */
 
-import { colorCharToAttr } from "../color";
+import { BASIC_COLORS, COLOR_TABLE, colorCharToAttr } from "../color";
 import { FlagSet } from "../bitflag";
 import { OF } from "../generated/object-flags";
 import { PF } from "../generated/player-flags";
@@ -1047,8 +1047,27 @@ function bindPlayerProperties(table: Map<string, UiEntry>, records: Json[]): voi
   }
 }
 
-/** Build the whole ui_entry config from the compiled pack records. */
+/**
+ * One config per pack-records object, so every screen shares the SAME renderer
+ * table. Upstream's renderers are file-scope globals that
+ * ui_entry_renderer_customize mutates in place; if each caller rebuilt its own
+ * copy, an `entry-renderer:` pref line would change one screen and not the next.
+ */
+const UI_ENTRY_CONFIG_CACHE = new WeakMap<UiEntryPackRecords, UiEntryConfig>();
+
+/**
+ * Build the whole ui_entry config from the compiled pack records, memoised on
+ * the records object (see UI_ENTRY_CONFIG_CACHE).
+ */
 export function buildUiEntryConfig(packs: UiEntryPackRecords): UiEntryConfig {
+  const hit = UI_ENTRY_CONFIG_CACHE.get(packs);
+  if (hit) return hit;
+  const built = buildUiEntryConfigUncached(packs);
+  UI_ENTRY_CONFIG_CACHE.set(packs, built);
+  return built;
+}
+
+function buildUiEntryConfigUncached(packs: UiEntryPackRecords): UiEntryConfig {
   const renderers = buildRenderers(packs.uiEntryRenderer);
 
   /* The base file's entries become the template pool. */
@@ -1979,4 +1998,78 @@ export function combineEntryValues(
   auxs: number[],
 ): { accum: number; accumAux: number } {
   return combinerFuncs(entry.combinerIndex).vec(vals, auxs);
+}
+
+/* ------------------------------------------------------------------ */
+/* Renderer palette accessors (ui-entry-renderers.c L188-432)          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * convert_attrs_to_chars (ui-entry-renderers.c L1327-1351): the palette as the
+ * colour-index characters a pref file writes. An attr outside the basic range
+ * is written as 'w', not skipped.
+ */
+function attrsToChars(attrs: readonly number[]): string {
+  let out = "";
+  for (const a of attrs) {
+    out += a >= 0 && a < BASIC_COLORS ? (COLOR_TABLE[a]?.char ?? "w") : "w";
+  }
+  return out;
+}
+
+/**
+ * One `entry-renderer:` line's four fields, as dump_ui_entry_renderers reads
+ * them through ui_entry_renderer_get_name / _get_colors / _get_label_colors /
+ * _get_symbols over [ui_entry_renderer_get_min_index(),
+ * ui_entry_renderer_get_index_limit()) - which is 1-based, so index 0 of the
+ * port's array is renderer 1.
+ */
+export interface UiEntryRendererRow {
+  name: string;
+  colors: string;
+  labelColors: string;
+  symbols: string;
+}
+
+/** The rows dump_ui_entry_renderers writes, in renderer-index order. */
+export function uiEntryRendererRows(config: UiEntryConfig): UiEntryRendererRow[] {
+  return config.renderers.map((r) => ({
+    name: r.name,
+    colors: attrsToChars(r.colors),
+    labelColors: attrsToChars(r.labelColors),
+    symbols: r.symbols,
+  }));
+}
+
+/**
+ * ui_entry_renderer_customize (ui-entry-renderers.c L331-370): overwrite a
+ * renderer's palettes from the colour-index / symbol strings a pref file
+ * carries. Each string is truncated to the palette length it is replacing (the
+ * C's `length < ncolors ? length : ncolors`), so a short string leaves the tail
+ * as the gamedata built it. A null argument leaves that palette alone - which
+ * is what the `*` field in an `entry-renderer:` line means.
+ *
+ * Returns false when the name is not a configured renderer (the C's nonzero
+ * return, which parse_prefs_entry_renderer turns into INVALID_VALUE).
+ */
+export function uiEntryRendererCustomize(
+  config: UiEntryConfig,
+  name: string,
+  colors: string | null,
+  labelColors: string | null,
+  symbols: string | null,
+): boolean {
+  const r = config.renderers.find((x) => x.name === name);
+  if (!r) return false;
+  const overlay = (dst: number[], src: string): void => {
+    const n = Math.min(src.length, dst.length);
+    for (let i = 0; i < n; i++) dst[i] = colorCharToAttr(src[i]!);
+  };
+  if (colors !== null) overlay(r.colors, colors);
+  if (labelColors !== null) overlay(r.labelColors, labelColors);
+  if (symbols !== null) {
+    const n = Math.min(symbols.length, r.symbols.length);
+    r.symbols = symbols.slice(0, n) + r.symbols.slice(n);
+  }
+  return true;
 }

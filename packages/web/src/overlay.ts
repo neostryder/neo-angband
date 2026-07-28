@@ -263,9 +263,9 @@ const ARROW_DIR: Record<string, number> = {
  * repaints the message line, but blanking here keeps a cancelled prompt from
  * lingering when the caller returns without rendering.
  */
-function clearPromptRow(term: GlyphTerm): void {
+function clearPromptRow(term: GlyphTerm, row = 0): void {
   const { cols } = term.size();
-  term.print(0, 0, " ".repeat(cols - 1), FG);
+  term.print(0, row, " ".repeat(cols - 1), FG);
 }
 
 /**
@@ -539,8 +539,14 @@ function paintLineEdit(
  * full-screen promptText below is a different thing (its own titled screen) and
  * must not be used where the C keeps the screen.
  *
- * Resolves the entered string, or null on ESCAPE. Clears row 0 either way
- * (`prt("", 0, 0)`, L1162).
+ * Resolves the entered string, or null on ESCAPE. Clears the prompt row either
+ * way (`prt("", 0, 0)`, L1162).
+ *
+ * `row` is where the prompt is drawn. Upstream's askfor_aux takes no row at
+ * all - it draws wherever the cursor already is - so the row is whatever the
+ * caller's preceding prt() left it on. Row 0 is the common case (the message
+ * line); the pref-file screens prt their prompt further down the screen first
+ * (get_pref_path's `prt("File: ", row + 2, 0)`), and pass that row here.
  */
 export function promptTextInline(
   term: GlyphTerm,
@@ -548,6 +554,7 @@ export function promptTextInline(
   initial = "",
   maxLen = 15,
   randomize?: () => string,
+  row = 0,
 ): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     const st: LineEdit = { buf: initial, curs: 0 };
@@ -555,13 +562,13 @@ export function promptTextInline(
     const x = prompt.length;
     const paint = (): void => {
       const { cols } = term.size();
-      term.print(0, 0, " ".repeat(Math.max(0, cols - 1)), FG);
-      term.print(0, 0, prompt.slice(0, cols - 1), FG);
-      paintLineEdit(term, x, 0, st, firsttime);
+      term.print(0, row, " ".repeat(Math.max(0, cols - 1)), FG);
+      term.print(0, row, prompt.slice(0, cols - 1), FG);
+      paintLineEdit(term, x, row, st, firsttime);
     };
     const finish = (value: string | null): void => {
       window.removeEventListener("keydown", onKey, true);
-      clearPromptRow(term);
+      clearPromptRow(term, row);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -605,10 +612,11 @@ export function getString(
   prompt: string,
   initial = "",
   len = 80,
+  row = 0,
 ): Promise<string | null> {
   const x = prompt.length;
   const eff = x + len > 80 ? 80 - x : len;
-  return promptTextInline(term, prompt, initial, Math.max(1, eff - 1));
+  return promptTextInline(term, prompt, initial, Math.max(1, eff - 1), undefined, row);
 }
 
 /**

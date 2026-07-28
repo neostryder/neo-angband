@@ -92,6 +92,15 @@ import type { MenuItem } from "./overlay";
 import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
 import { runColorsEditor, saveColorPrefs } from "./colors";
 import { runKeymapEditor } from "./keymap-edit";
+import {
+  dumpAutoinscriptionsRow,
+  dumpCharScreenOptions,
+  dumpWindowSettings,
+  loadUserPrefFileRow,
+  runColorsMenu,
+  runVisualsMenu,
+} from "./prefs-ui";
+import type { PrefsUiCtx } from "./prefs-ui";
 
 const FG = UI_TEXT;
 /** curs_attrs[CURS_KNOWN][1] (ui-menu.c:32): the selected row's colour. */
@@ -588,6 +597,7 @@ export async function runOptionsMenu(
   state: GameState,
   openIgnoreSetup: () => Promise<void>,
   sidebar?: SidebarModeMenu,
+  prefs?: PrefsUiCtx,
 ): Promise<void> {
   // Upstream's option_actions[] in ui-options.c:2036-2058, in ITS order:
   //   a b x w i {   d h m o   s t u   p e c v
@@ -595,22 +605,15 @@ export async function runOptionsMenu(
   // removed. What is dropped and why (the full display-lever inventory is in
   // docs/INSTALL.md, "Screen and display controls"):
   //   w  Subwindow setup     - the port is ONE surface, not eight terms.
-  //   s t u v p              - the .prf pref-file rows. This used to say "there
-  //                            is no filesystem ... nothing to save or load",
-  //                            which is no longer true and was never a reason:
-  //                            the port now has a user directory (userdir.ts,
-  //                            census block E) and the dumps write into it. What
-  //                            is actually missing is the pref-file TEXT format
-  //                            (prefs_save + the dump_* writers + the
-  //                            process_pref_file parser), and for 'v' the
-  //                            runtime x_attr/x_char override layer that
-  //                            dump_monsters and friends serialise - the same
-  //                            layer block I's glyph picker needs. Tracked in
-  //                            parity/CENSUS_PUNCHLIST.md, not excused here.
   //   {  Auto-inscription    - the capability is present but reachable only from
   //                            the knowledge browser (`~`), the same screen
   //                            upstream's row opens. Missing shortcut, not
   //                            missing feature.
+  // The pref-file rows s / t / u / p / v are present (prefs-ui.ts): they write
+  // into and read back out of the virtual ANGBAND_DIR_USER, which is what they
+  // do upstream. `s` dumps the subwindow flag set, which for a one-terminal
+  // build is its header alone - exactly what option_dump writes when no
+  // angband_term[i>0] exists.
   // There is deliberately NO graphics entry - upstream picks graphics in the
   // frontend menu bar, not in do_cmd_options; the web shell mirrors that by
   // placing tile selection in the in-game menu.
@@ -624,10 +627,19 @@ export async function runOptionsMenu(
     { label: "Set movement delay", tag: "m" },
   ];
   if (sidebar) items.push({ label: "Set sidebar mode", tag: "o" });
+  if (prefs) {
+    items.push(
+      { label: "Save subwindow setup to pref file", tag: "s" },
+      { label: "Save autoinscriptions to pref file", tag: "t" },
+      { label: "Save char screen options to pref file", tag: "u" },
+      { label: "Load a user pref file", tag: "p" },
+    );
+  }
   items.push(
     { label: "Edit keymaps (advanced)", tag: "e" },
     { label: "Edit colours (advanced)", tag: "c" },
   );
+  if (prefs) items.push({ label: "Save visuals (advanced)", tag: "v" });
   // Derive the hint from the live rows so it can never drift out of sync.
   const tagHint = items.map((i) => i.tag).join("/");
   for (;;) {
@@ -659,8 +671,33 @@ export async function runOptionsMenu(
         await runKeymapEditor(term, state.options?.get("rogue_like_commands") ?? false);
         break;
       case "c":
-        // do_cmd_colors (ui-options.c L999): the interactive RGB editor.
-        await runColorsEditor(term, saveColorPrefs);
+        // do_cmd_colors (ui-options.c L999): color_events[]' three rows, the
+        // third of which is the interactive RGB editor (colors_modify). Without
+        // a pref context there is nowhere for the other two to read or write, so
+        // the editor opens directly, as it did before those rows existed.
+        if (prefs) {
+          await runColorsMenu(prefs, "Colors", () =>
+            runColorsEditor(term, saveColorPrefs),
+          );
+        } else {
+          await runColorsEditor(term, saveColorPrefs);
+        }
+        break;
+      case "s":
+        if (prefs) await dumpWindowSettings(prefs);
+        break;
+      case "t":
+        if (prefs) await dumpAutoinscriptionsRow(prefs);
+        break;
+      case "u":
+        if (prefs) await dumpCharScreenOptions(prefs);
+        break;
+      case "p":
+        if (prefs) await loadUserPrefFileRow(prefs);
+        break;
+      case "v":
+        // do_cmd_visuals (ui-options.c L831): the "Save visuals (advanced)" row.
+        if (prefs) await runVisualsMenu(prefs, "Visuals");
         break;
       case "d":
         await runDelayFactorPrompt(term, state);

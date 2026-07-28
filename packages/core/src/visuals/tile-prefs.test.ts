@@ -7,8 +7,6 @@ import type { CorePack } from "../session/boot";
 import {
   BOLT,
   LIGHTING,
-  parseTilePrefs,
-  parseTilePrefsInto,
   TileMap,
   tileForFeature,
   tileForFlavor,
@@ -17,6 +15,7 @@ import {
   tileForProjection,
   tileForTrap,
 } from "./tile-prefs";
+import { parseTilePrefs, parseTilePrefsInto } from "./prefs";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

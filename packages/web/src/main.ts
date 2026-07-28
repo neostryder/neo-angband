@@ -206,6 +206,8 @@ import type {
   TileMap,
   TilePrefsDeps,
 } from "@neo-angband/core";
+import { buildUiEntryConfig, setColorChannel, uiEntryRendererCustomize, uiEntryRendererRows } from "@neo-angband/core";
+import type { PrefsUiCtx } from "./prefs-ui";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines, presentNamespaces } from "./pack";
 import {
@@ -380,7 +382,7 @@ import type { Store } from "@neo-angband/core";
 import { runHelp } from "./help";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
-import { loadColorPrefs } from "./colors";
+import { loadColorPrefs, saveColorPrefs } from "./colors";
 import { enqueueKeys, isSynthKey } from "./input-queue";
 import { keymapFind, keymapModeFor, loadKeymapPrefs } from "./keymap-store";
 import { installAutoUpdate } from "./pwa";
@@ -1599,6 +1601,64 @@ function equipCmpDeps(): { packs: typeof uiEntryPacks; inspectExtras: ObjectInfo
   return { packs: uiEntryPacks, inspectExtras };
 }
 
+/**
+ * The pref-file screens' context (ui-options.c's get_pref_path / dump_pref_file /
+ * do_cmd_pref_file_hack / do_cmd_visuals). Built lazily so it always reads the
+ * live `state`, and only after boot - `state` and `glyphs` both exist by then.
+ */
+function prefsUiCtx(): PrefsUiCtx {
+  return {
+    term,
+    say: (text) => say(text),
+    playerName: () => playerName,
+    glyphs,
+    prefDeps: {
+      features: booted.registries.features,
+      objects: booted.registries.objects,
+      monsters: booted.registries.monsters,
+      traps: booted.registries.traps,
+    },
+    dumpDeps: () => ({
+      table: glyphs,
+      objects: booted.registries.objects,
+      features: booted.registries.features,
+      monsters: booted.registries.monsters,
+      /* get_autoinscription(kind, true): only AWARE notes go to a pref file. */
+      autoinscription: (kidx) => state.autoinscribe?.get(kidx, true) ?? null,
+      entryRenderers: uiEntryRendererRows(buildUiEntryConfig(uiEntryPacks)),
+    }),
+    extraSink: {
+      addAutoinscription: (kidx, text) => state.autoinscribe?.set(kidx, text, true),
+      messageColor: (msgIndex, attr) => state.messages?.colorDefine(msgIndex, attr),
+      colorTable: (idx, k, r, g, b) => {
+        setColorChannel(idx, 0, k);
+        setColorChannel(idx, 1, r);
+        setColorChannel(idx, 2, g);
+        setColorChannel(idx, 3, b);
+      },
+      entryRenderer: (name, colors, labelColors, symbols) => {
+        uiEntryRendererCustomize(
+          buildUiEntryConfig(uiEntryPacks),
+          name,
+          colors,
+          labelColors,
+          symbols,
+        );
+      },
+      /* window: the port is one terminal, so a subwindow flag has no target -
+       * see options.ts on the dropped 'w' row. keymap-input is deliberately
+       * absent too: the port's keymaps live in keymap-store.ts's own persisted
+       * store, which the keymap editor writes; letting a pref file write them
+       * would need that store's user/default split, which it does not have. */
+    },
+    afterLoad: () => {
+      /* Term_xtra(TERM_XTRA_REACT) + Term_redraw_all (ui-options.c L866-867). */
+      saveColorPrefs();
+      render();
+    },
+  };
+}
+
 // --- Context menus (ui-context.c) -------------------------------------------
 // The right-click / long-press per-grid and per-item action menus. Entry
 // construction is pure (context-menu.ts); this section only gathers the live
@@ -1661,7 +1721,7 @@ async function runContextMenuPlayerOther(): Promise<void> {
       await openIgnoreSetup();
       break;
     case "options":
-      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu);
+      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx());
       autosave(true);
       break;
     case "help":
@@ -4617,7 +4677,7 @@ async function openGameMenu(): Promise<void> {
       render();
       break;
     case "options":
-      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu);
+      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx());
       autosave(true); // flush any option change to the per-slot save
       break;
     case "graphics":
@@ -6845,7 +6905,7 @@ window.addEventListener("keydown", (ev) => {
       { o: "C", act: () => void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())) },
       { o: "~", act: () => void openModal(openKnowledgeMenu) },
       // Utility/assorted (cmd_util, ui-game.c:196-203).
-      { o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu)).then(() => autosave(true)); } },
+      { o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx())).then(() => autosave(true)); } },
       { o: "Q", act: () => void openModal(retireCmd) },
       { o: ")", act: () => screenDumpCmd() },
       // Hidden commands (cmd_hidden, ui-game.c:211-223).
@@ -7057,7 +7117,7 @@ function installTouchActionBar(): void {
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())); }],
     ["Hist", () => { void openModal(() => showTextScreen(term, "Player history", historyLines(state))); }],
     ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
-    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu)).then(() => autosave(true)); }],
+    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx())).then(() => autosave(true)); }],
     ["Help", () => { void openModal(() => runHelp(term)); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     ["Switch", () => { switchCharacter(); }],
