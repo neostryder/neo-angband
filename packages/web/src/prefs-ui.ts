@@ -33,12 +33,12 @@ import {
   prefsSave,
   processPrefText,
 } from "@neo-angband/core";
+import { HostDir, host } from "@neo-angband/core";
 import type { DumpDeps, GlyphTable, PrefDeps, PrefSink } from "@neo-angband/core";
 import { getString, selectFromMenu } from "./overlay";
 import type { MenuItem } from "./overlay";
 import type { GlyphTerm } from "./term";
 import { UI_TEXT } from "./ui-colors";
-import { readUserFile, userPath, writeUserFile } from "./userdir";
 
 /** What the pref screens need from the running game. */
 export interface PrefsUiCtx {
@@ -59,10 +59,19 @@ export interface PrefsUiCtx {
   afterLoad?: () => void;
 }
 
-/** prefs_save's file layer over the virtual user directory. */
+/**
+ * prefs_save's file layer, over whatever host is installed.
+ *
+ * This goes through core's HostIo rather than straight at the virtual user
+ * directory so the pref screens are host-agnostic: on the desktop build the
+ * same code writes a real file into ANGBAND_DIR_USER, and on the web build the
+ * BrowserHost still lands it in localStorage. See parity/PLATFORM.md - the
+ * front end must not be the thing that decides what a file IS.
+ */
 const IO = {
-  read: (path: string): string | null => readUserFile(path),
-  write: (path: string, text: string): boolean => writeUserFile(path, text),
+  read: (path: string): string | null => host().read(HostDir.USER, path),
+  write: (path: string, text: string): boolean =>
+    host().write(HostDir.USER, path, text) === "ok",
 };
 
 /**
@@ -129,17 +138,19 @@ export function processPrefFile(
   name: string,
   quiet = false,
 ): boolean {
-  const text = readUserFile(name);
+  const io = host();
+  const text = io.read(HostDir.USER, name);
   if (text === null) {
-    if (!quiet) ctx.say(`Cannot open '${userPath(name)}'.`);
+    if (!quiet) ctx.say(`Cannot open '${io.displayPath(HostDir.USER, name)}'.`);
     return false;
   }
   const sink = glyphTableSink(ctx.glyphs, {
-    loadFile: (n) => readUserFile(n),
+    /* The nested `%:file` include resolves against the same directory. */
+    loadFile: (n) => io.read(HostDir.USER, n),
     ...ctx.extraSink,
   });
   const errors = processPrefText(text, ctx.prefDeps, sink);
-  for (const e of errors) ctx.say(prefErrorMessage(userPath(name), e));
+  for (const e of errors) ctx.say(prefErrorMessage(io.displayPath(HostDir.USER, name), e));
   ctx.afterLoad?.();
   return errors.length === 0;
 }
