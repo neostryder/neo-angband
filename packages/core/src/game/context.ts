@@ -524,6 +524,14 @@ export interface GameState {
   cmdQueue?: PlayerCommand[];
   /** cmdq_pop: the next queued player command, or null when input is needed. */
   nextCommand: () => PlayerCommand | null;
+  /**
+   * check_for_player_interrupt's keyboard poll (ui-game.c:645), hosted. Called
+   * from the loop at upstream's EVENT_CHECK_INTERRUPT site while a run, a
+   * repeated command or a rest is driving the game - see
+   * checkForPlayerInterrupt in game/loop.ts for the contract and why "pause"
+   * exists. Absent: the loop never stops for input, as before.
+   */
+  checkInterrupt?: () => InterruptResponse;
   /** update_view: refresh player FOV after the player moves. */
   updateFov?: (state: GameState) => void;
   /** Renderer-neutral EF_SELECT chooser; the host owns the menu renderer. */
@@ -797,6 +805,18 @@ export interface GameState {
  * turns it back into the live object.
  */
 export type ItemTargetRef = { handle: number } | { floor: number };
+
+/**
+ * What the host's keyboard poll wants the loop to do at upstream's
+ * EVENT_CHECK_INTERRUPT point (game-world.c:937).
+ *
+ * - "go":     nothing was pressed; keep driving the run / repeat / rest (the C's
+ *             EVT_NONE from its non-waiting inkey_ex).
+ * - "cancel": a key arrived: flush input, disturb, "Cancelled." (ui-game.c:660).
+ * - "pause":  the host cannot answer synchronously and needs its event loop; the
+ *             loop returns LOOP_STATUS.PAUSE with the continuation still queued.
+ */
+export type InterruptResponse = "go" | "cancel" | "pause";
 
 /** One queued player command (a keyed action plus optional direction/args). */
 export interface PlayerCommand {
