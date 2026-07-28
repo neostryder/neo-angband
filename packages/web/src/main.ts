@@ -144,12 +144,8 @@ import {
   squareIsOpenDoor,
   squareIsDiggable,
   TF,
-  COLOUR_VIOLET,
   COLOUR_WHITE,
-  COLOUR_YELLOW,
-  COLOUR_ORANGE,
-  COLOUR_L_RED,
-  COLOUR_RED,
+  COLOUR_L_DARK,
   getLore,
   chanceOfMeleeHitBase,
   getHitChance,
@@ -193,14 +189,23 @@ import { installController, ContentIdResolver, subscribeEvents, createModRegistr
 import type { AgentController } from "@neo-angband/core";
 import {
   getGraphicsMode,
+  GlyphTable,
   GRAPHICS_NONE,
   LIGHTING,
+  monsterGlyph,
+  monsterIsShapeUnique,
+  playerGlyph,
   tileForFeature,
   tileForMonster,
   tileForObject,
   tileForTrap,
 } from "@neo-angband/core";
-import type { TileAtlas, TileMap, TilePrefsDeps } from "@neo-angband/core";
+import type {
+  MonsterGlyphInput,
+  TileAtlas,
+  TileMap,
+  TilePrefsDeps,
+} from "@neo-angband/core";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines, presentNamespaces } from "./pack";
 import {
@@ -917,6 +922,23 @@ const tileDeps: TilePrefsDeps = {
   monsters: booted.registries.monsters,
   traps: booted.registries.traps,
 };
+
+/**
+ * The x_attr/x_char tables (ui-prefs.c L46-56), allocated and seeded from
+ * gamedata exactly as textui_prefs_init does at startup (L1427-1452, ending in
+ * reset_visuals(false)). EVERY ASCII draw of a monster, object, flavour, trap
+ * or terrain glyph reads this table rather than the gamedata record, because
+ * that is the only place a pref file or the knowledge browser's glyph picker
+ * can write to. See packages/core/src/visuals/glyph-table.ts for why this is a
+ * layer and not a lookup.
+ */
+const glyphs = new GlyphTable({
+  features: booted.registries.features.allFeatures(),
+  kinds: booted.registries.objects.kinds,
+  races: booted.registries.monsters.races,
+  traps: booted.registries.traps,
+  flavors: booted.registries.objects.flavors,
+});
 
 /** The persisted/URL-selected graphics mode id (GRAPHICS_NONE = ASCII). */
 function readTileMode(): number {
@@ -5292,9 +5314,17 @@ function gridIndex(x: number, y: number): number {
   return y * state.chunk.width + x;
 }
 
-/** A composed map cell: an ASCII glyph plus an optional graphics tile. */
+/**
+ * A composed map cell: an ASCII glyph plus an optional graphics tile.
+ *
+ * `attr` is the COLOUR_* code `css` was derived from, kept alongside it because
+ * grid_data_as_text's monster arms compare and reuse the attr UNDER the monster
+ * (ui-map.c L275-286: the tile-code test and the ATTR_CLEAR/CHAR_CLEAR arms),
+ * which a CSS string cannot answer.
+ */
 interface CellGlyph {
   ch: string;
+  attr: number;
   css: string;
   bg?: string;
   tile?: TileDraw;
@@ -5309,9 +5339,13 @@ function trapIndex(): Map<number, CellGlyph> {
       const tile = tileMap
         ? tileDrawFor(tileForTrap(tileMap, t.kind.tidx, LIGHTING.LOS), t.grid.x, t.grid.y)
         : undefined;
+      /* get_trap_graphics (ui-map.c:98): trap_x_attr/char[lighting][tidx]. */
+      const g = glyphs.trapGlyph(LIGHTING.LOS, t.kind.tidx);
+      const attr = g?.attr ?? colorCharToAttr(t.kind.color);
       map.set(gridIndex(t.grid.x, t.grid.y), {
-        ch: t.kind.glyph,
-        css: colorToCss(colorCharToAttr(t.kind.color)),
+        ch: g?.char ?? t.kind.glyph,
+        attr,
+        css: colorToCss(attr),
         ...(tile ? { tile } : {}),
       });
     }
@@ -5342,11 +5376,18 @@ function objectIndex(): Map<number, CellGlyph> {
     const flavor = state.flavorGlyph?.(o.kind);
     const useFlavor =
       !!flavor && !(tvalIsScroll(o.kind.tval) && (game.flavor?.isAware(o.kind) ?? false));
+    /* Both arms read the x_attr table: flavor_x_attr/char[fidx] (ui-object.c:100)
+     * or kind_x_attr/char[kidx] (:107), never the gamedata record directly. */
+    const g = useFlavor
+      ? glyphs.flavorGlyph(flavor.fidx)
+      : glyphs.kindGlyph(o.kind.kidx);
+    const attr =
+      g?.attr ??
+      (useFlavor ? colorTextToAttr(flavor.attr) : colorCharToAttr(o.kind.dAttr));
     map.set(gridIndex(o.grid.x, o.grid.y), {
-      ch: useFlavor ? flavor.char : o.kind.dChar,
-      css: useFlavor
-        ? colorToCss(colorTextToAttr(flavor.attr))
-        : colorToCss(colorCharToAttr(o.kind.dAttr)),
+      ch: g?.char ?? (useFlavor ? flavor.char : o.kind.dChar),
+      attr,
+      css: colorToCss(attr),
       ...(tile ? { tile } : {}),
     });
   }
@@ -5388,7 +5429,12 @@ function terrainGlyph(
    * torchlight and darkens out of LoS / UNLIGHT. featIsTorch is the live
    * classifier (W2-016; cave-square.c:148). No RNG.
    */
-  let attr = colorCharToAttr(disp.dAttr);
+  /* grid_data_as_text (ui-map.c:180): the glyph comes out of
+   * feat_x_attr/char[lighting][fidx] FIRST, and grid_get_attr's torchlight
+   * remap is applied on top of whatever that slot holds. */
+  const slot = glyphs.featGlyph(lighting, disp.fidx);
+  const dChar = slot?.char ?? disp.dChar;
+  let attr = slot?.attr ?? colorCharToAttr(disp.dAttr);
   if (featIsTorch(features, disp.fidx)) {
     if (lighting === LIGHTING.TORCH) attr = getColor(attr, ATTR_LIGHT, 1);
     else if (lighting === LIGHTING.LIT) attr = getColor(attr, ATTR_DARK, 1);
@@ -5402,61 +5448,62 @@ function terrainGlyph(
     : undefined;
   if (disp.flags.has(TF["WALL"])) {
     if (state.options?.get("hybrid_walls"))
-      return { ch: disp.dChar, css, bg: dim(css), ...(tile ? { tile } : {}) };
+      return { ch: dChar, attr, css, bg: dim(css), ...(tile ? { tile } : {}) };
     if (state.options?.get("solid_walls"))
-      return { ch: disp.dChar, css, bg: css, ...(tile ? { tile } : {}) };
+      return { ch: dChar, attr, css, bg: css, ...(tile ? { tile } : {}) };
   }
-  return { ch: disp.dChar, css, ...(tile ? { tile } : {}) };
+  return { ch: dChar, attr, css, ...(tile ? { tile } : {}) };
 }
 
 /**
- * The display attr for a monster at the current animation frame. Faithful to
- * grid_data_as_text (ui-map.c L248): purple_uniques (checked FIRST, so it
- * overrides multi/flicker animation for a unique) turns the monster violet;
- * otherwise do_animation (ui-display.c) applies - RF_ATTR_MULTI shimmers a
- * random color, an RF_ATTR_FLICKER monster color-cycles (race cycle, else the
- * legacy flicker cycle, else its static color), and everything else keeps its
- * static attr. animate_flicker gates the animation entirely (ui-display.c
- * L1506: do_animation returns immediately when the option is off), so with it
- * off a multi/flicker monster simply shows its static base color.
+ * do_animation (ui-display.c L1435-1471): once per animation frame, write the
+ * animated colour into mon->attr for every ATTR_MULTI / ATTR_FLICKER monster.
+ * grid_data_as_text then READS mon->attr (ui-map.c L259), which is also how an
+ * ATTR_RAND monster shows the colour it rolled at birth. Upstream returns
+ * immediately when animate_flicker is off (L1506), leaving mon->attr as it was.
+ *
+ * DIVERGENCE (necessary): upstream's RF_ATTR_MULTI branch draws on the GAME
+ * RNG. The number of redraws is a front-end property - a browser at 60Hz would
+ * consume draws a real terminal never does - so the shimmer uses the same
+ * display-only RNG the rest of the animation seam does (displayRandint1),
+ * keeping the determinism ratchet intact.
  */
-function monsterAttr(mon: (typeof state.monsters)[number]): number {
-  const base = mon!.race.dAttr;
-  if (state.options?.get("purple_uniques") && mon!.race.flags.has(RF.UNIQUE)) {
-    return COLOUR_VIOLET;
+function doAnimation(): void {
+  if (!animator || !(state.options?.get("animate_flicker") ?? false)) return;
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (!mon) continue;
+    if (!mon.mflag.has(MFLAG.VISIBLE)) continue;
+    const base = glyphs.monsterGlyph(mon.race.ridx)?.attr ?? mon.race.dAttr;
+    const anim = animateMonsterAttr(animator, {
+      ridx: mon.race.ridx,
+      baseAttr: base,
+      attrMulti: mon.race.flags.has(RF.ATTR_MULTI),
+      attrFlicker: mon.race.flags.has(RF.ATTR_FLICKER),
+      frame: animFrame,
+      randint1: displayRandint1,
+    });
+    if (anim !== null) mon.attr = anim;
   }
-  if (!animator || !(state.options?.get("animate_flicker") ?? false)) return base;
-  const anim = animateMonsterAttr(animator, {
-    ridx: mon!.race.ridx,
-    baseAttr: base,
-    attrMulti: mon!.race.flags.has(RF.ATTR_MULTI),
-    attrFlicker: mon!.race.flags.has(RF.ATTR_FLICKER),
-    frame: animFrame,
-    randint1: displayRandint1,
-  });
-  return anim ?? base;
 }
 
 /**
- * The player's own '@' map glyph color. Faithful to grid_data_as_text's
- * g->is_player branch (ui-map.c L282-327): with hp_changes_color on (the
- * default, normal: true), the glyph's color tracks the player's HP decile -
- * white at 90-100%, yellow 70-80%, orange 50-60%, light-red 30-40%, red
- * 0-20%. Off, the player keeps a fixed neutral color (the shell's prior,
- * unconditional behaviour).
+ * The player's own map glyph. Faithful to grid_data_as_text's g->is_player
+ * branch (ui-map.c L289-331): both the colour AND the character come from the
+ * x_attr table's race-0 slot ("<player>" in monster.txt), so a pref file or the
+ * glyph picker can re-map the '@'. hp_changes_color (the default, normal: true)
+ * then recolours by HP decile - white at 90-100%, yellow 70-80%, orange 50-60%,
+ * light-red 30-40%, red 0-20%.
  */
-function playerMapAttr(): string {
-  if (!(state.options?.get("hp_changes_color") ?? true)) return UI_TEXT;
+function playerMapGlyph(): { ch: string; css: string } {
+  const slot = glyphs.monsterGlyph(0) ?? { attr: COLOUR_WHITE, char: "@" };
   const p = state.actor.player;
-  const pct10 = p.mhp > 0 ? Math.trunc((p.chp * 10) / p.mhp) : 10;
-  let color: number;
-  if (pct10 === 10 || pct10 === 9) color = COLOUR_WHITE;
-  else if (pct10 === 8 || pct10 === 7) color = COLOUR_YELLOW;
-  else if (pct10 === 6 || pct10 === 5) color = COLOUR_ORANGE;
-  else if (pct10 === 4 || pct10 === 3) color = COLOUR_L_RED;
-  else if (pct10 === 2 || pct10 === 1 || pct10 === 0) color = COLOUR_RED;
-  else color = COLOUR_WHITE; // out-of-range (negative/>10): upstream's default
-  return colorToCss(color);
+  const g = playerGlyph(slot, {
+    hpChangesColor: state.options?.get("hp_changes_color") ?? true,
+    chp: p.chp,
+    mhp: p.mhp,
+  });
+  return { ch: g.char, css: colorToCss(g.attr) };
 }
 
 /** True if any visible monster animates (drives the display frame timer). */
@@ -5474,12 +5521,22 @@ function hasAnimatedVisibleMonster(): boolean {
 }
 
 /**
+ * One drawable monster: everything grid_data_as_text's monster branch needs
+ * EXCEPT the glyph under it, which only the draw loop knows.
+ */
+interface MonsterCell {
+  input: Omit<MonsterGlyphInput, "under">;
+  tile?: TileDraw;
+}
+
+/**
  * Live monster glyphs, rebuilt each frame since monsters move. Only
  * monsters the player can see (or has detected - MFLAG MARK) are drawn;
  * noteSpots maintains the flags after every FOV refresh.
  */
-function monsterIndex(): Map<number, CellGlyph> {
-  const map = new Map<number, CellGlyph>();
+function monsterIndex(): Map<number, MonsterCell> {
+  const map = new Map<number, MonsterCell>();
+  const purpleUniques = state.options?.get("purple_uniques") ?? false;
   for (let i = 1; i < state.monsters.length; i++) {
     const mon = state.monsters[i];
     if (!mon) continue;
@@ -5488,12 +5545,41 @@ function monsterIndex(): Map<number, CellGlyph> {
       ? tileDrawFor(tileForMonster(tileMap, mon.race.ridx), mon.grid.x, mon.grid.y)
       : undefined;
     map.set(gridIndex(mon.grid.x, mon.grid.y), {
-      ch: mon.race.dChar,
-      css: colorToCss(monsterAttr(mon)),
+      input: {
+        desired: glyphs.monsterGlyph(mon.race.ridx) ?? {
+          attr: mon.race.dAttr,
+          char: mon.race.dChar,
+        },
+        monAttr: mon.attr,
+        attrMulti: mon.race.flags.has(RF.ATTR_MULTI),
+        attrFlicker: mon.race.flags.has(RF.ATTR_FLICKER),
+        attrRand: mon.race.flags.has(RF.ATTR_RAND),
+        attrClear: mon.race.flags.has(RF.ATTR_CLEAR),
+        charClear: mon.race.flags.has(RF.CHAR_CLEAR),
+        purpleUniques,
+        shapeUnique: monsterIsShapeUnique(mon),
+      },
       ...(tile ? { tile } : {}),
     });
   }
   return map;
+}
+
+/**
+ * grid_data_as_text's monster branch applied to the cell already composed from
+ * terrain/trap/object, plus upstream's write-back of the drawn attr into
+ * mon->attr (ui-map.c L288) - which the port skips, because the only reader of
+ * that field here is doAnimation, and re-seeding it from the drawn value would
+ * make an ATTR_CLEAR monster's colour drift with the floor it walks over.
+ */
+function composeMonster(under: CellGlyph, cell: MonsterCell): CellGlyph {
+  const g = monsterGlyph({ ...cell.input, under: { attr: under.attr, char: under.ch } });
+  return {
+    ch: g.char,
+    attr: g.attr,
+    css: colorToCss(g.attr),
+    ...(cell.tile ? { tile: cell.tile } : {}),
+  };
 }
 
 /**
@@ -5520,7 +5606,9 @@ function buildOverviewForShell(): Overview {
     featureGlyph: (fidx) => {
       const f = features.get(fidx);
       const disp = f.mimic !== null ? features.get(f.mimic) : f;
-      return { ch: disp.dChar, css: colorToCss(colorCharToAttr(disp.dAttr)), priority: disp.priority };
+      const slot = glyphs.featGlyph(LIGHTING.LIT, disp.fidx);
+      const attr = slot?.attr ?? colorCharToAttr(disp.dAttr);
+      return { ch: slot?.char ?? disp.dChar, css: colorToCss(attr), priority: disp.priority };
     },
     objectGlyphAt: (x, y) => {
       const mem = knownObjectShown(x, y);
@@ -5530,7 +5618,23 @@ function buildOverviewForShell(): Overview {
         : { ch: mem.ch, css: colorToCss(colorCharToAttr(mem.attr)) };
     },
     trapGlyphAt: (x, y) => trapAt.get(gridIndex(x, y)) ?? null,
-    monsterGlyphAt: (x, y) => monsterAt.get(gridIndex(x, y)) ?? null,
+    monsterGlyphAt: (x, y) => {
+      const cell = monsterAt.get(gridIndex(x, y));
+      if (!cell) return null;
+      /* display_map calls grid_data_as_text too (ui-map.c L446), so the
+       * ATTR_CLEAR arms need the same under-glyph the miniature is drawing:
+       * the remembered terrain at LIGHTING_LIT. */
+      const kf = knownFeat(state, loc(x, y));
+      const f = kf >= 0 ? features.get(kf) : null;
+      const disp = f && f.mimic !== null ? features.get(f.mimic) : f;
+      const slot = disp ? glyphs.featGlyph(LIGHTING.LIT, disp.fidx) : undefined;
+      const under: CellGlyph = {
+        ch: slot?.char ?? disp?.dChar ?? " ",
+        attr: slot?.attr ?? (disp ? colorCharToAttr(disp.dAttr) : 0),
+        css: "",
+      };
+      return composeMonster(under, cell);
+    },
     playerGrid: { x: state.actor.grid.x, y: state.actor.grid.y },
   });
 }
@@ -5777,6 +5881,9 @@ function render(targeting?: TargetingOverlay): void {
 
   const { layout, mapOriginX, mapTop, mapCols, mapRows, camX, camY } =
     viewport(targeting?.cursor);
+  /* do_animation runs once per frame, BEFORE the glyphs are resolved, exactly
+   * as upstream's animation timer fires before the redraw it triggers. */
+  doAnimation();
   const monsterAt = monsterIndex();
   const objectAt = objectIndex();
   const trapAt = trapIndex();
@@ -5828,32 +5935,43 @@ function render(targeting?: TargetingOverlay): void {
         const memTile = tileMap
           ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), gx, gy)
           : undefined;
+        const memSlot = glyphs.featGlyph(LIGHTING.LIT, disp.fidx);
+        const memAttr = memSlot?.attr ?? colorCharToAttr(disp.dAttr);
+        let under: CellGlyph = {
+          ch: memSlot?.char ?? disp.dChar,
+          attr: memAttr,
+          css: colorToCss(memAttr),
+        };
         term.put(screenX, screenY, {
-          ch: disp.dChar,
-          fg: dim(colorToCss(colorCharToAttr(disp.dAttr))),
+          ch: under.ch,
+          fg: dim(under.css),
           ...cursorBg,
           ...(memTile ? { tile: memTile } : {}),
         });
         /* Remembered / sensed objects persist on the map in full color. */
         const mem = knownObjectShown(gx, gy);
         if (mem) {
-          term.put(
-            screenX,
-            screenY,
+          under =
             mem.ch === null
-              ? { ch: "*", fg: UI_DIM, ...cursorBg }
-              : { ch: mem.ch, fg: colorToCss(colorCharToAttr(mem.attr)), ...cursorBg },
-          );
+              ? { ch: "*", attr: COLOUR_L_DARK, css: UI_DIM }
+              : {
+                  ch: mem.ch,
+                  attr: colorCharToAttr(mem.attr),
+                  css: colorToCss(colorCharToAttr(mem.attr)),
+                };
+          term.put(screenX, screenY, { ch: under.ch, fg: under.css, ...cursorBg });
         }
         /* Detected monsters show even out of view - that is the point. */
         const marked = monsterAt.get(idx);
-        if (marked)
+        if (marked) {
+          const drawnMon = composeMonster(under, marked);
           term.put(screenX, screenY, {
-            ch: marked.ch,
-            fg: marked.css,
+            ch: drawnMon.ch,
+            fg: drawnMon.css,
             ...cursorBg,
-            ...(marked.tile ? { tile: marked.tile } : {}),
+            ...(drawnMon.tile ? { tile: drawnMon.tile } : {}),
           });
+        }
         if (pathColour !== undefined) {
           term.put(screenX, screenY, { ch: "*", fg: colorToCss(pathColour), ...cursorBg });
         }
@@ -5867,8 +5985,9 @@ function render(targeting?: TargetingOverlay): void {
       const obj = objectAt.get(idx);
       if (obj) drawn = obj;
       const mon = monsterAt.get(idx);
-      if (mon) drawn = mon;
-      if (pathColour !== undefined) drawn = { ch: "*", css: colorToCss(pathColour) };
+      if (mon) drawn = composeMonster(drawn, mon);
+      if (pathColour !== undefined)
+        drawn = { ch: "*", attr: pathColour, css: colorToCss(pathColour) };
       // The wall shading (solid_walls/hybrid_walls) is terrain-only: any
       // trap/object/monster covering the cell (or the cursor highlight,
       // spread last below) fully overrides it, matching upstream drawing
@@ -5899,9 +6018,10 @@ function render(targeting?: TargetingOverlay): void {
       !!targeting &&
       state.actor.grid.x === targeting.cursor.x &&
       state.actor.grid.y === targeting.cursor.y;
+    const pg = playerMapGlyph();
     term.put(playerScreenX, playerScreenY, {
-      ch: "@",
-      fg: playerMapAttr(),
+      ch: pg.ch,
+      fg: pg.css,
       ...(playerIsCursor ? { bg: CURSOR_BG } : {}),
     });
   }
@@ -7590,6 +7710,10 @@ if (import.meta.env.DEV) {
       tileCells: term.tileCellCount(),
     }),
     setTileMode: (id: number): Promise<void> => applyTileMode(id, true),
+    // The live x_attr/x_char tables (ui-prefs.c), so a verification pass can
+    // write an override and watch the map redraw with it - the same write the
+    // pref-file parser and the knowledge browser's glyph picker make.
+    glyphs: () => glyphs,
     // OPT(player, name) as the game sees it - so a verification pass can check
     // that an options screen actually reached the live option store.
     option: (name: string): boolean => state.options?.get(name) ?? false,
