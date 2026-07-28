@@ -21,7 +21,7 @@ import { describe, expect, it, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { dispatchDebug, STATS_DISABLED_MSG } from "./wizard";
+import { dispatchDebug, DEBUG_MENU, STATS_DISABLED_MSG } from "./wizard";
 import type { WizardUiCtx } from "./wizard";
 import type { GameState, WizardDeps } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
@@ -379,6 +379,25 @@ describe("wizard prompts, driven live", () => {
     press(win, "Z"); // not one of fobuztcdhmqgpra
     await done;
     expect(said).toContain("That was an invalid selection.  Use one of fobuztcdhmqgpra .");
+  });
+
+  it("the Items rows 'c' and 'C' are DIFFERENT commands (get_cursor_key is exact)", async () => {
+    /* ui-game.c:247-248 gives Create an object 'c' and Create an artifact 'C'.
+     * The menu used to match tags case-insensitively, so 'C' selected Create an
+     * object and every upper-case row in the debug menu ('C' 'V' 'A' 'W' 'H' 'E'
+     * 'G' 'M' 'S' 'P' 'D' 'F' 'T' 'X') was unreachable by its own letter. Found
+     * by driving the menu, not by reading it. */
+    const items = DEBUG_MENU.find((c) => c.title === "Items");
+    expect(items).toBeDefined();
+    const rows = items!.commands;
+    expect(rows.map((r) => r.letter)).toEqual(["c", "C", "V", "g", "v", "o"]);
+    /* Distinct actions, so a caseless match cannot be harmless here. */
+    expect(rows[0]?.action).toBe("create-obj");
+    expect(rows[1]?.action).toBe("create-artifact");
+    /* And the same letter pair appears again in the same menu, lower vs upper. */
+    expect(rows[3]?.letter).toBe("g");
+    expect(rows[4]?.letter).toBe("v");
+    expect(rows[2]?.letter).toBe("V");
   });
 
   it("Really quit without saving? is a get_check, so 'n' declines", async () => {

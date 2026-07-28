@@ -186,12 +186,22 @@ describe("deathMenuEntries (ui-death.c death_actions)", () => {
   });
 
   it("selects by tag, caselessly (MN_CASELESS_TAGS)", async () => {
+    /* ui-death.c:397 sets the flag on THIS menu, so main.ts passes
+     * caselessTags; the option is not the default (get_cursor_key matches
+     * exactly unless the menu asks otherwise, ui-menu.c:485). */
     const entries = deathMenuEntries();
+    const caseless = { caselessTags: true };
     {
       const win = makeFakeWindow();
       (globalThis as { window?: unknown }).window = win;
       const term = makeTerm();
-      const done = selectFromMenu(term, "You have died.", entries.map((e) => e.item));
+      const done = selectFromMenu(
+        term,
+        "You have died.",
+        entries.map((e) => e.item),
+        undefined,
+        caseless,
+      );
       press(win, "v");
       expect(await done).toBe(3); // View scores
     }
@@ -199,7 +209,13 @@ describe("deathMenuEntries (ui-death.c death_actions)", () => {
       const win = makeFakeWindow();
       (globalThis as { window?: unknown }).window = win;
       const term = makeTerm();
-      const done = selectFromMenu(term, "You have died.", entries.map((e) => e.item));
+      const done = selectFromMenu(
+        term,
+        "You have died.",
+        entries.map((e) => e.item),
+        undefined,
+        caseless,
+      );
       press(win, "N");
       expect(await done).toBe(7); // New Game, uppercase tag
     }

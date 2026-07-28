@@ -627,6 +627,8 @@ export async function runOptionsMenu(
       "Options Menu",
       items,
       `[ ${tagHint} to choose, ESC to return ]`,
+      /* option_menu->flags = MN_CASELESS_TAGS (ui-options.c:2074). */
+      { caselessTags: true },
     );
     if (idx === null) return;
     switch (items[idx]?.tag) {

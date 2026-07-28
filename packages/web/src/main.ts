@@ -358,7 +358,7 @@ import type { CommandCode } from "@neo-angband/core";
 import { monsterIsVisible, monsterIsDestroyed } from "@neo-angband/core";
 import type { WizardDeps } from "@neo-angband/core";
 import { runWizardToggle, runWizardDebugMenu, SPOILERS_CLI_ONLY_MSG } from "./wizard";
-import type { WizardUiCtx } from "./wizard";
+import type { WizardUiCtx, WizKeypress } from "./wizard";
 import { runStore, sortStoreStock } from "./shop";
 import type { SellPick } from "./shop";
 import {
@@ -4320,6 +4320,10 @@ function wizardCtx(): WizardUiCtx {
     },
     // lookup_monster (mon-util.c:119), for the "Which monster? " prompts.
     raceByName: (name: string) => booted.registries.monsters.raceByName(name),
+    // keylog[] for wiz_display_keylog, oldest first (ui-term.c:317).
+    keylog: () => KEYLOG,
+    // projections[] for wiz_proj_demo's "PROJ_ types display" (project.c).
+    projections: booted.registries.projections ?? [],
   };
 }
 
@@ -4685,6 +4689,8 @@ async function runDeathMenu(): Promise<void> {
       entries.map((e) => e.item),
       DEATH_MENU_FOOTER,
       {
+        /* death_menu->flags = MN_CASELESS_TAGS (ui-death.c:397). */
+        caselessTags: true,
         ctrlCommands: {
           /* KTRL('X') (L406): `break` - no get_check, unlike the Quit row. */
           x: () => {
@@ -6387,7 +6393,47 @@ function advance(): void {
   if (status === LOOP_STATUS.PAUSE) pumpStep();
 }
 
+/**
+ * keylog[] / log_i / log_size (ui-term.c:317-319): the ring of recent keypresses
+ * wiz_display_keylog shows, KEYLOG_SIZE deep, oldest first. Upstream fills it
+ * inside inkey_ex, so it sees every key the game reads; here the overlays own
+ * their own listeners, so this records the keys the GAME handler sees - which is
+ * what the screen is for (working out what a keymap or a stuck key just sent).
+ *
+ * `code` is the browser's key, not upstream's keycode_t: this host has no
+ * keycode space of its own, so a single character logs its code point and a
+ * named key logs 0. `text` is keypress_to_text's rendering of the modifiers.
+ */
+const KEYLOG: WizKeypress[] = [];
+const KEYLOG_MAX = 8;
+
+/** keypress_to_text (ui-event.c:233) over a browser KeyboardEvent. */
+function logKeypress(ev: KeyboardEvent): void {
+  if (ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") {
+    return; // a modifier alone is not a keypress upstream would log
+  }
+  const mods =
+    (ev.ctrlKey ? 0x01 : 0) | (ev.shiftKey ? 0x02 : 0) | (ev.altKey ? 0x04 : 0) |
+    (ev.metaKey ? 0x08 : 0);
+  const named = ev.key.length > 1;
+  const body = named ? `[${ev.key}]` : ev.key;
+  let text: string;
+  if (!mods) text = body;
+  else if (mods === 0x01) text = `^${body}`; // control alone gets the caret form
+  else {
+    let braces = "{";
+    if (ev.ctrlKey) braces += "^";
+    if (ev.shiftKey) braces += "S";
+    if (ev.altKey) braces += "A";
+    if (ev.metaKey) braces += "M";
+    text = `${braces}}${body}`;
+  }
+  KEYLOG.push({ text, code: named ? 0 : ev.key.codePointAt(0) ?? 0, mods });
+  if (KEYLOG.length > KEYLOG_MAX) KEYLOG.shift();
+}
+
 window.addEventListener("keydown", (ev) => {
+  logKeypress(ev);
   if (scoresOpen || modalDepth > 0) return; // a modal owns the keyboard
   // While a run / pathfind / repeated command is being pumped, ANY key is the
   // abort and nothing else: check_for_player_interrupt flushes the input and

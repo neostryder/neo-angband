@@ -421,14 +421,47 @@ Nothing goes here until it is committed.
   both. 91 -> 59 absences (the allowlist is now 59 literals across 8 reasons:
   block E's host-io set, block D's mod diagnostics, and 4 derived divergences).
 
-  LEFT in C, and it is UI structure rather than text: the three browsable screens
-  in ui-wizard.c. `wiz_create_item` (L376) is a two-level menu - a tval menu
-  titled "What kind of object?" / "What kind of artifact?" over object_base_name,
-  then a per-tval submenu ("What kind of %s?" / "Which artifact %s? ") over
-  object_kind_name / a fake-artifact object_desc, each with an "All ..." row. The
-  'c' / 'C' / 'V' rows currently reach the COMMAND-level prompts instead (real
-  upstream text, and what a repeat or keymap reaches, but not the menu). Also
-  `wiz_display_keylog` (L96: "Previous keypresses (top most recent):" +
-  "Press any key to continue.", needing a keypress ring in the shell) and
-  `wiz_proj_demo` (L78: the "PROJ_ types display" menu). None of the three emits
-  a census literal, so nothing else will remind us.
+- 2026-07-28 (6), block **C** closed: ui-wizard.c's three browsable screens, the
+  part of the block that is UI STRUCTURE rather than text and that no census can
+  see (none of the three emits a literal the extractor collects).
+  - `wiz_create_item` (ui-wizard.c:376): the two-level creator behind 'c' and
+    'C'. A tval menu ("What kind of object?" / "What kind of artifact?") over
+    object_base_name, then a per-tval submenu ("What kind of %s?" /
+    "Which artifact %s? ") over object_kind_name or a make_fake_artifact
+    object_desc, each with its "All ..." row; artifact mode lists only tvals that
+    HAVE an artifact, and a submenu holds at most 60 rows, both upstream bounds.
+    object_base_name and object_kind_name were not ported at all; both are now
+    thin calls onto objDescNameFormat, which was.
+  - `wiz_display_keylog` (L96): the keypress ring, most recent first, in the C's
+    `    %-12s (code=%lu mods=%u)` layout under
+    "Previous keypresses (top most recent):" and closed by
+    "Press any key to continue.". The shell now keeps a KEYLOG_SIZE=8 ring and
+    renders the modifier prefixes keypress_to_text uses (`^x`, `{^SAM}x`). The
+    `code` column is the browser's key code point, not upstream's keycode_t -
+    this host has no keycode space of its own, and the screen exists to show what
+    THIS host actually received.
+  - `wiz_proj_demo` (L78): the "PROJ_ types display" menu - every projection by
+    its list-projections.h code with the five bolt glyphs in that projection's
+    colour, dotted rule on every odd row.
+  Both create commands keep their own get_string prompt for the argument-absent
+  path, so the menu and the command-level prompt both exist, as in the C.
+
+  **A live defect found by driving the new menu, and the biggest one of the
+  session:** menu tag letters were matched CASE-INSENSITIVELY for every menu.
+  get_cursor_key (ui-menu.c:480-509) matches exactly unless the menu sets
+  MN_CASELESS_TAGS, and only three upstream menus do (death ui-death.c:397,
+  options ui-options.c:2074, spell ui-spell.c:250) - because plenty of tables use
+  both cases of a letter as DIFFERENT rows. The debug command menu is the worst
+  case: 'c' Create an object vs 'C' Create an artifact, 'v' Acquire great vs 'V'
+  Create all from tval, and 14 upper-case rows in total ('C' 'V' 'A' 'W' 'H' 'E'
+  'G' 'M' 'S' 'P' 'D' 'F' 'T' 'X') that could not be reached by their own letter
+  at all - each one silently ran the lower-case command instead. Pressing 'C'
+  gave "What kind of object?". Now: exact by default, `caselessTags` opt-in set
+  on the death and option menus (the port's counterparts of the C's flagged
+  menus). This was invisible to the whole suite because the tests asserted the
+  caseless behaviour.
+  Proven live: 'C' opens "What kind of artifact?" -> "Which artifact Bows?" with
+  "Long Bow 'Belthronding'" in the list; 'c' -> "What kind of object?" ->
+  "What kind of Diggers?" with Shovel / Pick / Mattock / All Diggers, ESC
+  returning to the tval menu; 'G' draws the PROJ table with ACID / ELEC / FIRE
+  and the dotted rules; 'L' shows the last eight keypresses with their codes.
