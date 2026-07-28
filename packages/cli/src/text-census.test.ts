@@ -127,10 +127,8 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
 
   "GAP: single missing lines, each a small fix in an existing function":
     [
-      "There is a scream and the door slams shut!", // cmd-cave.c:1595
       "Cancelled.", // ui-game.c:663
       "Are you sure? ", // ui-input.c:2014
-      "Keep this keymap? ", // the keymap editor, ui-options.c:692
       "Do you want to quit? ", // ui-death.c:411
       "You are not allowed to change your name!", // ui-player.c:1250
       "(up to 5 hex digits):", // the visuals editor, ui-knowledge.c:707

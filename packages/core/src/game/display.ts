@@ -258,7 +258,15 @@ export function fmtTitle(player: Player, deps: ResolvedDeps): string {
   return player.cls.titles[idx] ?? "";
 }
 
-/** player_is_shapechanged (player-util.c L1065): a non-"normal" shape. */
+/**
+ * player_is_shapechanged (player-util.c L1065): a non-"normal" shape.
+ *
+ * NOT exported - game/obj-cmd.ts already exports a GameState-taking copy of this
+ * same C function, and that is the one callers outside this module use. The two
+ * agree because effect-general.ts:868 normalizes the "normal" shape to null when
+ * it assigns, so `shape === null` is exactly `name === "normal"`; the extra name
+ * test here is what makes this copy safe if that invariant ever slips.
+ */
 function playerIsShapechanged(player: Player): boolean {
   return player.shape !== null && player.shape.name !== "normal";
 }

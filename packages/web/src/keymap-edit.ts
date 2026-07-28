@@ -102,11 +102,17 @@ function ack(term: GlyphTerm, text: string): Promise<void> {
   });
 }
 
-/** A y/n confirm inline (get_check "Keep this keymap? "). */
+/**
+ * get_check (textui_get_check): an inline row-0 confirmation. Upstream appends
+ * "[y/n] " to the caller's prompt itself, so callers pass the bare prompt with
+ * its own trailing space - which is what keeps the prompt text identical to the
+ * reference's.
+ */
 function confirm(term: GlyphTerm, prompt: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const { cols } = term.size();
-    term.print(0, 0, prompt.slice(0, cols - 1).padEnd(cols - 1), UI_TEXT);
+    const line = `${prompt}[y/n] `;
+    term.print(0, 0, line.slice(0, cols - 1).padEnd(cols - 1), UI_TEXT);
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -155,7 +161,10 @@ export async function runKeymapEditor(term: GlyphTerm, roguelike: boolean): Prom
       }
       const action = await captureAction(term, "Action ('=' when done, Ctrl-U resets): ");
       if (action === null || action.length === 0) continue;
-      const keep = await confirm(term, `Keep this keymap ('${trigger}' -> "${action}")? [y/n] `);
+      /* ui_options.c:692 verbatim. The port used to interpolate the trigger and
+       * action into this prompt, which reads better but is not what upstream
+       * asks - and both are on screen already, having just been entered. */
+      const keep = await confirm(term, "Keep this keymap? ");
       if (keep) {
         keymapAdd(mode, trigger, action);
         saveKeymapPrefs();

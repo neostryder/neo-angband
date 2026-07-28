@@ -117,6 +117,8 @@ import {
   targetIsSet,
   targetGet,
   targetSighted,
+  playerIsShapechanged,
+  FEAT,
   miscStringFix,
   enterStoreGuard,
   TARGET,
@@ -6096,7 +6098,17 @@ function advance(): void {
   // it fires once from the move, exactly like upstream, and does not re-open every
   // turn the player idles on the door after leaving.
   // (A level change returned above, so these no longer need to exclude it.)
-  const enterShop = !dead && (moved || seeFloorReq) ? storeAtPlayer() : null;
+  // do_cmd_hold's shapechange gate (cmd-cave.c:1592-1598): a shapechanged
+  // player cannot enter a shop at all, and a non-Home shopkeeper screams. The
+  // port had the shop entry but not the gate, so a bat could go shopping.
+  const shopHere = !dead && (moved || seeFloorReq) ? storeAtPlayer() : null;
+  let enterShop = shopHere;
+  if (shopHere && playerIsShapechanged(state)) {
+    if (shopHere.feat !== FEAT.HOME) {
+      say("There is a scream and the door slams shut!");
+    }
+    enterShop = null;
+  }
   if (!dead && (moved || seeFloorReq) && !enterShop) {
     seeFloorItems();
   }

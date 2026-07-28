@@ -64,7 +64,7 @@ allowlist entry is deleted and the suite is green.
       through the same block.
 - [x] **H. `drop_near`'s `verbose`** (1) - thread through the port's 15
       `dropNear` call sites; `floorCarry` reports whether the stack is ignorable.
-- [ ] **I. Single missing lines** (4 of 12 done) - each a small fix in a
+- [ ] **I. Single missing lines** (6 of 12 done) - each a small fix in a
       function that already exists. DONE: the explore command's four gates,
       `Generation restarted`, `Failed to place player`, `That item is not within
       your reach`. LEFT: the shapechange shop scream, `Cancelled.`,
@@ -167,3 +167,18 @@ Nothing goes here until it is committed.
   at the single message sink. Documented as BUG_FIXES.md entry 14 with the
   measurement, because a title like "Misc. string fixes" otherwise invites a
   pile of unexamined edits. 97 absences, 19 tier-1.
+- 2026-07-27 - **I**, 2 more (6 of 12). Both were behaviour, not text: the
+  keymap editor asked its own interpolated question instead of upstream's
+  "Keep this keymap? " AND appended "[y/n] " at the call site rather than in the
+  get_check helper, and do_cmd_hold had no shapechange gate at all
+  (cmd-cave.c:1592-1598) - a shapechanged player could walk into a shop and
+  trade, where upstream refuses and a non-Home shopkeeper screams. Found a
+  second duplicated C function on the way (player_is_shapechanged exists twice
+  with DIFFERENT bodies); used the existing export rather than adding a third,
+  and spawned it as its own job. 95 absences, 19 tier-1.
+
+  LEFT in I: "Cancelled." (ui-game.c:663), "Are you sure? " (the ^-inscription
+  verify, ui-input.c:2014), "Do you want to quit? " (ui-death.c:411 - needs the
+  death menu's EVT_SELECT vs EVT_ESCAPE flow read properly, not guessed), the
+  arg_force_name refusal, the glyph picker's "(up to 5 hex digits):", and the
+  equip-cmp filter prompt.
