@@ -29,6 +29,7 @@ import {
   SAVE_VERSION,
 } from "./save";
 import type { SavedGame } from "./save";
+import type { SaveCodec } from "../save/compress";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -492,6 +493,92 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     tampered[100] = (tampered[100]! + 1) & 0xff;
     const bad = decodeSavedGame(tampered);
     expect(bad.verified).toBe(false);
+  });
+
+  /* Compression (decision 9's third word). The codec is injected, so these use a
+   * reversible stand-in rather than a real compressor: what has to hold is the
+   * ENVELOPE contract - a compressed save round trips, an uncompressed one still
+   * loads, and a save naming a codec this build lacks is reported as such rather
+   * than as damage. */
+  describe("compressed saves", () => {
+    const flip: SaveCodec = {
+      id: "flip",
+      compress: (b) => b.map((v) => v ^ 0xff),
+      decompress: (b) => b.map((v) => v ^ 0xff),
+    };
+
+    it("round trips a real game through a codec", () => {
+      const game = startGame(pack, { seed: 31, depth: 2 });
+      playTurns(game, 3);
+      const bytes = encodeSavedGame(saveGame(game), undefined, flip);
+
+      const out = decodeSavedGame(bytes, undefined, [flip]);
+      expect(out.verified).toBe(true);
+      expect(out.codecId).toBe("flip");
+      expect(out.save?.version).toBe(SAVE_VERSION);
+      expect(out.save?.turn).toBe(game.state.turn);
+      /* And it really loads: a save that decodes but will not start is no save. */
+      expect(loadGame(pack, out.save!).state.turn).toBe(game.state.turn);
+    });
+
+    it("reads an uncompressed save written before compression existed", () => {
+      /* The version-3 saves already in players' browsers. No codec supplied on
+       * either side, which is exactly the old call. */
+      const game = startGame(pack, { seed: 32, depth: 1 });
+      const out = decodeSavedGame(encodeSavedGame(saveGame(game)));
+      expect(out.codecId).toBeNull();
+      expect(out.save?.version).toBe(SAVE_VERSION);
+    });
+
+    it("reads an uncompressed save even when it HAS a codec", () => {
+      /* The upgrade case: a new build must keep loading old saves, not only
+       * saves it wrote itself. */
+      const game = startGame(pack, { seed: 33, depth: 1 });
+      const out = decodeSavedGame(encodeSavedGame(saveGame(game)), undefined, [
+        flip,
+      ]);
+      expect(out.codecId).toBeNull();
+      expect(out.save).toBeTruthy();
+    });
+
+    it("reports a codec it does not have instead of calling the save corrupt", () => {
+      /* The downgrade case: a save from a newer build. Nothing is wrong with the
+       * file, and a player told it is damaged might delete a live character. */
+      const game = startGame(pack, { seed: 34, depth: 1 });
+      const bytes = encodeSavedGame(saveGame(game), undefined, {
+        ...flip,
+        id: "from-the-future",
+      });
+      const out = decodeSavedGame(bytes, undefined, [flip]);
+      expect(out.save).toBeNull();
+      expect(out.unknownCodec).toBe("from-the-future");
+      /* Still stamped and still intact - the bytes are fine. */
+      expect(out.verified).toBe(true);
+    });
+
+    it("still detects tampering inside a compressed save", () => {
+      /* The digest is taken AFTER compression, so it covers what is stored. */
+      const game = startGame(pack, { seed: 35, depth: 1 });
+      const bytes = encodeSavedGame(saveGame(game), undefined, flip);
+      const tampered = Uint8Array.from(bytes);
+      tampered[200] = (tampered[200]! + 1) & 0xff;
+      expect(decodeSavedGame(tampered, undefined, [flip]).verified).toBe(false);
+    });
+
+    it("reports a codec that cannot read the bytes as a failed load", () => {
+      const game = startGame(pack, { seed: 36, depth: 1 });
+      const bytes = encodeSavedGame(saveGame(game), undefined, flip);
+      const throwing: SaveCodec = {
+        id: "flip",
+        compress: flip.compress,
+        decompress: () => {
+          throw new Error("not my bytes");
+        },
+      };
+      const out = decodeSavedGame(bytes, undefined, [throwing]);
+      expect(out.save).toBeNull();
+      expect(out.unknownCodec).toBeUndefined();
+    });
   });
 });
 

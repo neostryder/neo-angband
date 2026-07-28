@@ -77,6 +77,7 @@ export * from "./player/history";
 export * from "./player/abilities";
 export * from "./player/shape-lore";
 export * from "./save/buffer";
+export * from "./save/compress";
 export * from "./save/description";
 export * from "./save/integrity";
 export * from "./gen/util";

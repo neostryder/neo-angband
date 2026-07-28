@@ -347,6 +347,7 @@ import {
   newCharId,
 } from "./roster";
 import type { CharMeta } from "./roster";
+import { SAVE_CODEC, SAVE_CODECS } from "./save-codec";
 // --- High scores (task #28) ---
 import {
   createLocalStorageScoreStore,
@@ -653,8 +654,17 @@ function bootGame(): ReturnType<typeof startGame> {
     // refresh returns to the title, not to the live game.
     if (stored && isContinuation()) {
       try {
-        const decoded = decodeSavedGame(b64ToBytes(stored));
-        if (decoded.save) {
+        const decoded = decodeSavedGame(
+          b64ToBytes(stored),
+          undefined,
+          SAVE_CODECS,
+        );
+        if (decoded.unknownCodec) {
+          /* A save from a NEWER build than this one. The bytes are fine, so say
+           * that rather than anything that sounds like damage - a player told
+           * their character is corrupt may well delete it. */
+          loadedNote = `Save written by a newer version (${decoded.unknownCodec}); update to load it.`;
+        } else if (decoded.save) {
           // Faithful: a clean resume shows no "welcome" line (the original just
           // restores the game). Only a failed integrity check - a web-storage
           // failure mode with no C analog - surfaces a warning.
@@ -4501,7 +4511,7 @@ function persistSave(): boolean {
   const id = getActiveId();
   if (!id) return true; // no active slot (e.g. the picker is up): nothing to save
   try {
-    const b64 = bytesToB64(encodeSavedGame(saveGame(game)));
+    const b64 = bytesToB64(encodeSavedGame(saveGame(game), undefined, SAVE_CODEC));
     /* writeSlot's own verdict, not just "we did not throw": the storage write
      * itself is where a quota failure shows up. */
     return writeSlot(id, b64, metaFromState(id));
