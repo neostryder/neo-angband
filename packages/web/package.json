@@ -19,7 +19,8 @@
     "@neo-angband/content": "workspace:*",
     "@neo-angband/core": "workspace:*",
     "@neo-angband/linoleum": "workspace:*",
-    "@neo-angband/mod-sdk": "workspace:*"
+    "@neo-angband/mod-sdk": "workspace:*",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",
