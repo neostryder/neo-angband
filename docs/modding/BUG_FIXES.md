@@ -430,6 +430,38 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   learned upstream genuinely behaves this way. Full write-up:
   `parity/phase3-2026-07-25/findings/STAIRCASE-INVARIANT.md`.
 
+### 14. Misc. string fixes (`IMPLEMENTED`, no upstream fix)
+
+- References: none. Upstream does not treat its own message text as defective,
+  so there is no issue, PR or commit to cite under the decision-24 referencing
+  rule. Recorded against `reference/src` and against this port's own
+  measurement, like entry 13.
+- Requested by the owner as a single catch-all item ("Let's flag the string
+  cleanup (spelling, extra spaces, etc.) for another bug-fixes mod fix. They can
+  all be under one item 'Misc. string fixes'").
+- Problem, as MEASURED rather than assumed - this matters, because a catch-all
+  title invites a pile of unexamined edits:
+  - **38** player-visible literals in `reference/src` put TWO spaces after
+    sentence-ending punctuation ("Saving failed.  Try again? ", "A panic save
+    exists.  Use it? ", "Failed to place player; please report.  Restarting
+    generation."). This is the old typographic convention, applied deliberately
+    and consistently upstream - a presentation PREFERENCE, not a defect, which
+    is exactly why it is opt-in here rather than corrected in core.
+  - **ZERO** misspellings. A sweep of every `msg()` / `msgt()` /
+    `get_check()` literal for the usual suspects (recieve, seperate, occured,
+    acheive, neccessary, definately, teh, loosing) found none. If one is ever
+    found, it goes in `MISC_STRING_CORRECTIONS` as an exact-match entry rather
+    than by widening the whitespace rule.
+- Fix: `miscStringFix` (`packages/core/src/game/msg-fixes.ts`), applied at the
+  single message sink (`packages/web/src/main.ts` `state.msg`) so one hook
+  covers every message core or the shell emits. The whitespace rule is
+  deliberately narrow - only after `.`, `!` or `?`, only when a capital, digit
+  or quote follows, and never a run of three or more spaces, so it cannot
+  disturb column alignment in help text.
+- Faithful default: OFF with the mod, identity when on for any string with no
+  wart, so faithful core emits upstream's text byte-for-byte.
+- Not gameplay: no message changes meaning; nothing about play changes.
+
 ---
 
 ## Front-end-only, likely out of scope for a core TS port

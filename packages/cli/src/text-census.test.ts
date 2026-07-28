@@ -116,12 +116,6 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "Sorry, could not deal with suffix",
     ],
 
-  "GAP: the borg activation gate (cmd-misc.c:125-145). I had this down as a ratified divergence because the Borg ships as a mod - that was wrong. do_cmd_try_borg is a SEPARATE function from do_cmd_try_debug, whose parallel gate the port does have (web/src/wizard.ts:180), and it is what sets NOSCORE_BORG. It belongs in the borg mod's activation path, and cannot land until that mod is mounted in the shell (out of the parity gate until the port itself is complete). The score side is already ready: NOSCORE.BORG exists and enterScore reports it":
-    [
-      "You are about to use the dangerous, unsupported, borg commands!",
-      "Are you sure you want to use the borg commands? ",
-    ],
-
   "divergence (re-derived from the C 2026-07-27, upheld): the prompt exists because upstream's savefile PATH is derived from the character name - savefile_name_already_used (ui-game.c:1016) calls savefile_set_name(fname) and then file_exists on the result - so two characters of one name are one file. The port's roster keys each slot by a UUID (web/src/roster.ts newCharId / SLOT_PREFIX + id) and nothing dedupes on name, so a repeated name collides with nothing and there is no file to overwrite":
     ["A savefile for that name exists.  Overwrite it? "],
 

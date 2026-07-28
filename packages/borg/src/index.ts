@@ -22,6 +22,7 @@ export * from "./think";
 export * from "./think-session";
 export * from "./think-ladder";
 export * from "./controller";
+export * from "./activate";
 export * from "./harness";
 
 /* Decision subsystems (ported P8.1+). */

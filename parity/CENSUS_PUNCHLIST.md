@@ -72,14 +72,14 @@ allowlist entry is deleted and the suite is green.
       force-name refusal, the glyph picker, the equip-cmp filter.
 - [x] **J. Save-failure handling** (2 of 3; the third, `lore save failed!`, is a lore.txt dump and moved to block E) - a `localStorage` write can fail on
       quota; the port neither retries nor says so. ui-game.c:1091-1155.
-- [ ] **K. Borg gate** (2) - `do_cmd_try_borg` (cmd-misc.c:125-145) in the borg
+- [x] **K. Borg gate** (2) - `do_cmd_try_borg` (cmd-misc.c:125-145) in the borg
       mod's activation path; it is what sets `NOSCORE_BORG`.
 - [x] **L. Call-census LEADs** (5, call census) - `pile_contains`,
       `pile_last_item`, `object_pack_total`, `pack_is_full` (ui-store.c:662's
       flavor-leak guard), `target_sighted`.
 - [x] **M. Savefile-name / panic-save divergences** (2) - re-question the
       "divergence" label per the standing rule.
-- [ ] **N. Misc. string fixes** (bug-fixes mod) - one mod patch collecting
+- [x] **N. Misc. string fixes** (bug-fixes mod) - one mod patch collecting
       upstream's own typos and double spaces. Core is untouched by this.
 
 ## Progress log
@@ -153,3 +153,17 @@ Nothing goes here until it is committed.
   failed!", and a failing autosave says so once per run of failures rather than
   never. 6 tests over a quota-exhausting fake storage, 4 of which catch the
   swallow if it comes back. 99 absences, 19 tier-1.
+- 2026-07-27 - **K** and **N**. K: do_cmd_try_borg is now
+  packages/borg/src/activate.ts, in the mod where Aaron put it. The gate matters
+  because it is what SETS NOSCORE_BORG - without it a Borg-driven character stays
+  eligible for the high scores - and core already had NOSCORE.BORG and
+  enterScore's report, so this was the only missing piece. Deliberately not
+  key-bound: the Borg is not mounted in the shell yet, and whatever mounts it
+  calls borgActivate first.
+  N: MEASURED before building. 38 upstream literals put two spaces after a
+  sentence; a sweep of every msg()/msgt()/get_check() literal for misspellings
+  found ZERO. So the catch-all item is one narrow whitespace rule plus an
+  exact-match table that is empty on purpose, behind bugfix.miscStrings, applied
+  at the single message sink. Documented as BUG_FIXES.md entry 14 with the
+  measurement, because a title like "Misc. string fixes" otherwise invites a
+  pile of unexamined edits. 97 absences, 19 tier-1.
