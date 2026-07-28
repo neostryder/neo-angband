@@ -42,18 +42,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 /** Literal -> why it is absent. Keys are the C literal, verbatim. */
 const KNOWN_ABSENT: Record<string, readonly string[]> = {
-  "host-io: scorefile is a file on disk; the port keeps the score table in browser storage (packages/web/src/score.ts)":
-    [
-      "Lock file in place for scorefile; not writing.",
-      "Failed to create lock for scorefile; not writing.",
-      "Failed to open new scorefile for writing.",
-      "Failed to write new scores.",
-      "Failed to close new scores.",
-      "Couldn't delete old scorefile",
-      "Couldn't move old scores.raw out of the way",
-      "Couldn't rename new scorefile to scores.raw",
-    ],
-
   "host-io: pref/keymap/visual files (.prf) on disk; the port persists these in browser storage":
     [
       "Failed to save %s.",
