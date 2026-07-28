@@ -110,10 +110,12 @@ from may be separate save stores** if their origins differ. See
 
 ## 4. Desktop app (Electron)
 
-The desktop build (`packages/desktop`) is a thin native wrapper around the exact
-same web bundle: a native window, offline by default, with room to grow
-filesystem-based mod loading. It is optional - the browser and PWA are fully
-featured on their own.
+The desktop build (`packages/desktop`) runs the exact same web bundle in a native
+window - and hands it a **real filesystem, a real command line, and the OS user
+directory**. That is the difference between it and the browser: same game, more
+capable host. It is the build parity is measured against, because it is the one
+that can express everything upstream does (see
+[parity/PLATFORM.md](../parity/PLATFORM.md)).
 
 ### Run it from source
 
@@ -129,16 +131,57 @@ pnpm --filter @neo-angband/desktop dev
 If you have already built the web bundle, `pnpm --filter @neo-angband/desktop
 start` launches without rebuilding.
 
-### Package installers
+### Package it
 
 ```sh
 pnpm --filter @neo-angband/desktop dist
 ```
 
-This produces platform installers in `packages/desktop/dist-desktop/`
-(Windows `.exe`/NSIS, macOS `.dmg`, Linux `.AppImage`/`.deb`) via
-electron-builder. Run it on the target OS (cross-building, especially for macOS,
-has its own toolchain requirements).
+Everything lands in `packages/desktop/dist-desktop/`, built by electron-builder.
+Run it on the target OS (cross-building, especially for macOS, has its own
+toolchain requirements).
+
+| Platform | Installer | No-install |
+|---|---|---|
+| Windows | `.exe` (NSIS) | **`Neo Angband-<ver>-portable.exe`**, plus a `.zip` |
+| macOS | `.dmg` | `.zip` of the `.app` |
+| Linux | `.deb` | `.AppImage`, plus a `.tar.gz` |
+
+Every one of them is self-contained: Chromium, Node and the game bundle are all
+inside. Nothing needs to be installed first, and the app never reaches outside
+its own folder except for the data directory described next.
+
+For just the portable Windows build:
+
+```sh
+pnpm --filter @neo-angband/desktop dist:portable
+```
+
+### Where your data lives, and how to make it portable
+
+The game keeps upstream's writable tree - `save/`, `panic/`, `scores/`,
+`user/`, `archive/`, and a `mods/` folder - under one base directory. Which one
+depends on how you launched it, in this order:
+
+1. **`NEO_ANGBAND_DATA` is set** - that path. This is upstream's own
+   `ANGBAND_PATH` (`init.c`).
+2. **You ran the portable `.exe`** - a `neo-angband-data` folder beside it. Put
+   the .exe on a USB stick and the whole game, saves included, travels with it.
+3. **A `neo-angband-data` folder already exists beside the program** - that
+   folder. This is how you make an unzipped or installed copy portable: create
+   the folder, and the game uses it from then on.
+4. Otherwise the OS user-data directory:
+   - Windows `%APPDATA%\Neo Angband`
+   - macOS `~/Library/Application Support/Neo Angband`
+   - Linux `~/.config/Neo Angband`
+
+The path in use is printed at startup (`[neo-angband] data (portable): ...`). If
+the folder cannot be written to - a portable copy unzipped into Program Files,
+say - the game says so and stops rather than starting a character it could never
+save.
+
+To back a character up, copy the `save/` folder. To move an install, copy the
+whole data folder.
 
 **Signing.** The produced macOS `.dmg` and Windows `.exe` are unsigned, so a
 first run may hit Gatekeeper (macOS) or SmartScreen (Windows). Signing and
@@ -149,12 +192,14 @@ distribution.
 
 - **Offline and native by default** - no browser, no address bar; launches like
   any installed app.
-- **A user mods folder.** The app serves a `mods/` directory (under the OS user-
-  data path) to the game. This is the seam for loading mods from disk - the
-  filesystem/URL mod install the web build intentionally cannot do (see the mod
-  manager's "Install from URL" note). The folder is created on first launch;
-  wiring the game's loader to read runtime mods from it is the next desktop
-  increment.
+- **Real files.** Upstream's writable tree exists for real, so the things that
+  are a file in the original are a file here: `.prf` preference dumps you can
+  open in an editor, character dumps, screen dumps, the score file. In the
+  browser those live in a virtual directory inside browser storage.
+- **A command line.** `main.c`'s switches reach the game, which the browser has
+  no way to provide.
+- **A user mods folder** - `mods/` inside the data directory, which is what an
+  external mod manager can deploy into. The folder is created on first launch.
 - **Cross-origin isolation.** The desktop build serves the app with COOP/COEP
   headers, so `SharedArrayBuffer` is available. Nothing requires it today, but
   it is the one capability a static host cannot provide (see the matrix).

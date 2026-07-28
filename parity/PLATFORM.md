@@ -8,6 +8,29 @@ both ran straight into the same wall.
 Is the port giving things up, or jumping through hoops, to stay hostable on a
 static site? Should that restriction be dropped?
 
+## Ratified 2026-07-28: the desktop build is the parity bar
+
+The owner's decision, in full: *"Yes, Desktop is parity build. If you think we can
+still make it playable in a static site, great, but I want the desktop version to
+have the fulness of all of the features, including mod support."*
+
+So:
+
+- **Parity is measured against the desktop build.** "Done" means the desktop
+  build expresses everything the reference C does. A thing the browser cannot do
+  is no longer a reason for the game not to do it.
+- **The web build stays**, and stays playable on a static site. It is a *reduced
+  front end* - which is exactly `main-gcu.c`'s position upstream, not a
+  second-class one - and every reduction is declared through `capabilities` and
+  listed in the parity matrix (`docs/INSTALL.md`), never silently.
+- **Mod support in full is a desktop requirement**, including the on-disk pack
+  layout an external manager can deploy into (Phase 4). The browser keeps what it
+  can host: the bundled mods and the in-app manager.
+
+The desktop build is also **self-contained and portable**: nothing needs
+installing, and a `neo-angband-data` folder beside the executable makes the whole
+game - saves included - travel with its folder. See `docs/INSTALL.md` §4.
+
 ## The answer: yes to both, but the fix is not "leave the browser"
 
 The restriction has been costing real parity, and the cost is measurable rather

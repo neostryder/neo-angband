@@ -35,8 +35,31 @@ import {
   HOST_SHELL_LIMITS,
 } from "./bridge-channel";
 import type { HostBridgeInfo } from "./bridge-channel";
+import { checkWritable, resolveDataBase } from "./data-dir";
 
-const WEB_ROOT = path.join(__dirname, "..", "..", "web", "dist-web");
+/**
+ * Where the renderer bundle is, which differs between a checkout and a package.
+ *
+ * In the workspace it is the web package's own output. In a packaged build
+ * electron-builder maps it to `web/` inside the asar (a `files` entry cannot
+ * simply name `../web/dist-web` - patterns that climb out of the app directory
+ * are silently copied nowhere, which shipped a build whose only screen was the
+ * "Web bundle not found" dialog).
+ *
+ * Both are checked rather than switching on `app.isPackaged`, so an unexpected
+ * layout produces the honest missing-bundle dialog naming a real path instead of
+ * a confident guess.
+ */
+function findWebRoot(): string {
+  const packaged = path.join(__dirname, "..", "web");
+  const workspace = path.join(__dirname, "..", "..", "web", "dist-web");
+  for (const c of [packaged, workspace]) {
+    if (fs.existsSync(path.join(c, "index.html"))) return c;
+  }
+  return packaged;
+}
+
+const WEB_ROOT = findWebRoot();
 
 /**
  * Set BEFORE the first app.getPath("userData"), which derives from it and then
@@ -48,12 +71,17 @@ const WEB_ROOT = path.join(__dirname, "..", "..", "web", "dist-web");
 app.setName("Neo Angband");
 
 /**
- * init.c's writable tree. userData is Electron's per-user application data
- * directory (%APPDATA% / ~/Library/Application Support / ~/.config), which is
- * where a desktop game's savefiles belong; NodeRawFs creates the five
- * ANGBAND_DIR_* subdirectories under it.
+ * init.c's writable tree, chosen per launch: beside the install for a portable
+ * copy, under the user's application data for an installed one. See data-dir.ts
+ * for the order and why. NodeRawFs creates the five ANGBAND_DIR_* subdirectories
+ * under whichever base wins.
  */
-const USER_BASE = app.getPath("userData");
+const DATA = resolveDataBase({
+  env: process.env,
+  exeDir: path.dirname(app.getPath("exe")),
+  userData: app.getPath("userData"),
+});
+const USER_BASE = DATA.base;
 const MODS_DIR = path.join(USER_BASE, "mods");
 
 const MIME: Record<string, string> = {
@@ -210,7 +238,12 @@ function installHostBridge(): void {
   const argv: readonly string[] = app.isPackaged
     ? process.argv.slice(1)
     : process.argv.slice(2);
-  const info: HostBridgeInfo = { argv, ...HOST_SHELL_LIMITS };
+  const info: HostBridgeInfo = {
+    argv,
+    ...HOST_SHELL_LIMITS,
+    dataDir: USER_BASE,
+    portable: DATA.portable,
+  };
   ipcMain.on(HOST_INFO_CHANNEL, (event) => {
     event.returnValue = info;
   });
@@ -255,12 +288,41 @@ async function start(): Promise<void> {
     return;
   }
 
+  /* init.c's create_needed_dirs, which quits with a message rather than running
+   * on into a game that cannot save. A portable copy can easily be unzipped
+   * somewhere read-only - Program Files, a mounted image, a CD - and under the
+   * no-save-scumming policy the silent version of this failure is a character
+   * lost at the first autosave. */
+  const problem = checkWritable(USER_BASE);
+  if (problem !== null) {
+    await dialog.showMessageBox({
+      type: "error",
+      title: "Neo Angband",
+      message: "The data folder cannot be written to.",
+      detail:
+        `Savefiles, scores and preferences would go here:\n${USER_BASE}\n\n` +
+        `${problem}\n\n` +
+        (DATA.portable
+          ? "This is a portable install, so the folder travels with the game. " +
+            "Move the game somewhere writable, or set NEO_ANGBAND_DATA to a " +
+            "folder you can write to."
+          : "Set NEO_ANGBAND_DATA to a folder you can write to."),
+    });
+    app.quit();
+    return;
+  }
+
   // Ensure the user mods directory exists so the folder is discoverable.
   try {
     fs.mkdirSync(MODS_DIR, { recursive: true });
   } catch {
     /* best-effort */
   }
+
+  /* Stated on stdout as well as through the info channel: with a portable copy
+   * the answer changes per install, and a player who cannot start the game has
+   * only this to go on. */
+  console.log(`[neo-angband] data (${DATA.kind}): ${USER_BASE}`);
 
   installHostBridge();
   const port = await startServer();
