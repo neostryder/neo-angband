@@ -30,6 +30,8 @@ import {
   USER_DIR,
 } from "./userdir";
 import type { UserStorage } from "./userdir";
+import { FileMode, HostDir } from "@neo-angband/core";
+import { BrowserHost } from "./host-browser";
 import { htmlScreenshot, cssToHex, DUMP_HTML, DUMP_FORUM } from "./screenshot";
 import type { GlyphTerm, ColoredCell } from "./term";
 
@@ -418,5 +420,110 @@ describe("html_screenshot (ui-command.c L295-481)", () => {
     expect(cssToHex("#fff")).toBe("#FFFFFF");
     expect(cssToHex("#c81818")).toBe("#C81818");
     expect(cssToHex("rgb(200, 24, 24)")).toBe("#C81818");
+  });
+});
+
+/* --- the BrowserHost adapter --------------------------------------------- */
+
+/**
+ * The reduced-capability host, and the three things it must state rather than
+ * assume. Each of these was previously an unwritten belief at a call site, and
+ * an unwritten belief is what let the platform's limits edit the game.
+ */
+describe("BrowserHost (the reduced-capability adapter)", () => {
+  it("declares every capability a browser tab genuinely lacks", () => {
+    const h = new BrowserHost(fakeStorage());
+    /* Not cosmetic: realFiles false is why no mod manager can deploy into this
+     * host, and termCount 1 against ANGBAND_TERM_MAX 8 (ui-term.h:244) is why
+     * the subwindow screens are legitimately unavailable here. */
+    expect(h.capabilities.realFiles).toBe(false);
+    expect(h.capabilities.argv).toBe(false);
+    expect(h.capabilities.signals).toBe(false);
+    expect(h.capabilities.termCount).toBe(1);
+    expect(h.capabilities.directories).toBe(false);
+    expect(h.argv()).toEqual([]);
+  });
+
+  it("cannot answer file_newer, and returns null rather than guessing", () => {
+    /* localStorage stores no mtime. false would silently delete
+     * ui-game.c:709-720's panic-save prompt; true would offer a save that may
+     * not be there. null forces the caller to handle "cannot tell". */
+    expect(new BrowserHost(fakeStorage()).newer(HostDir.PANIC, "a", "b")).toBeNull();
+  });
+
+  it("delegates HostDir.USER to the existing user directory", () => {
+    /* The pref files a player already saved must stay readable, so USER must
+     * resolve through userdir.ts's prefix and not a new namespace. */
+    const h = new BrowserHost(fakeStorage());
+    writeUserFile("Adventurer.prf", "body");
+    expect(h.read(HostDir.USER, "Adventurer.prf")).toBe("body");
+    expect(h.exists(HostDir.USER, "Adventurer.prf")).toBe(true);
+    expect(h.list(HostDir.USER)).toContain("Adventurer.prf");
+    expect(h.displayPath(HostDir.USER, "Adventurer.prf")).toBe(userPath("Adventurer.prf"));
+  });
+
+  it("keeps the four non-USER directories in separate namespaces", () => {
+    const h = new BrowserHost(fakeStorage());
+    h.write(HostDir.SAVE, "Adventurer", "savebytes");
+    h.write(HostDir.PANIC, "Adventurer", "panicbytes");
+    expect(h.read(HostDir.SAVE, "Adventurer")).toBe("savebytes");
+    expect(h.read(HostDir.PANIC, "Adventurer")).toBe("panicbytes");
+    /* A savefile is not a pref file even under the same leaf name. */
+    expect(h.read(HostDir.USER, "Adventurer")).toBeNull();
+    expect(h.list(HostDir.SAVE)).toEqual(["Adventurer"]);
+    expect(h.list(HostDir.SCORES)).toEqual([]);
+  });
+
+  it("MODE_APPEND read-modify-writes, because localStorage has no append", () => {
+    /* prefs_save is strip-then-APPEND. A host that truncated instead would
+     * lose every earlier dump block in the file. */
+    const h = new BrowserHost(fakeStorage());
+    h.write(HostDir.SCORES, "scores", "one\n");
+    h.write(HostDir.SCORES, "scores", "two\n", FileMode.APPEND);
+    expect(h.read(HostDir.SCORES, "scores")).toBe("one\ntwo\n");
+    h.write(HostDir.SCORES, "scores", "three\n", FileMode.WRITE);
+    expect(h.read(HostDir.SCORES, "scores")).toBe("three\n");
+  });
+
+  it("reports a throwing quota as create-failed", () => {
+    const store = fakeStorage();
+    store.failWrite.add("big");
+    const h = new BrowserHost(store);
+    expect(h.write(HostDir.SAVE, "big", "x")).toBe("create-failed");
+  });
+
+  it("catches the write that stores nothing WITHOUT throwing", () => {
+    /* The failure mode that matters: a quota-evicted setItem returns void, so
+     * every layer above claims success while nothing was stored. Only the
+     * read-back sees it - which is what file_close's flush would have caught. */
+    const store = fakeStorage();
+    const h = new BrowserHost(store);
+    store.setItem = () => {
+      /* accepts the call, keeps nothing */
+    };
+    expect(h.write(HostDir.SAVE, "ghost", "x")).toBe("close-failed");
+    expect(h.read(HostDir.SAVE, "ghost")).toBeNull();
+  });
+
+  it("reports failure rather than throwing when there is no storage at all", () => {
+    /* Private mode / no DOM. Every accessor must degrade, not throw. */
+    const h = new BrowserHost(null);
+    expect(h.write(HostDir.SAVE, "a", "x")).toBe("create-failed");
+    expect(h.read(HostDir.SAVE, "a")).toBeNull();
+    expect(h.exists(HostDir.SAVE, "a")).toBe(false);
+    expect(h.remove(HostDir.SAVE, "a")).toBe(false);
+    expect(h.move(HostDir.SAVE, "a", "b")).toBe(false);
+    expect(h.list(HostDir.SAVE)).toEqual([]);
+  });
+
+  it("move relocates within a directory and leaves nothing behind", () => {
+    const h = new BrowserHost(fakeStorage());
+    h.write(HostDir.SAVE, "a", "text");
+    expect(h.move(HostDir.SAVE, "a", "b")).toBe(true);
+    expect(h.read(HostDir.SAVE, "a")).toBeNull();
+    expect(h.read(HostDir.SAVE, "b")).toBe("text");
+    /* file_move on a missing source fails without creating an empty target. */
+    expect(h.move(HostDir.SAVE, "missing", "c")).toBe(false);
+    expect(h.exists(HostDir.SAVE, "c")).toBe(false);
   });
 });

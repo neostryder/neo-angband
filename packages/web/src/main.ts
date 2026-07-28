@@ -207,6 +207,8 @@ import type {
   TilePrefsDeps,
 } from "@neo-angband/core";
 import { buildUiEntryConfig, setColorChannel, uiEntryRendererCustomize, uiEntryRendererRows } from "@neo-angband/core";
+import { setHost } from "@neo-angband/core";
+import { BrowserHost } from "./host-browser";
 import type { PrefsUiCtx } from "./prefs-ui";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines, presentNamespaces } from "./pack";
@@ -393,6 +395,12 @@ import { installAutoUpdate } from "./pwa";
 // those were removed for parity (audit 05 FEAT-3): the base game shows nothing
 // that upstream Angband does not.
 installAutoUpdate();
+
+// Install the host layer before anything reads or writes a file. This is the
+// browser's REDUCED adapter: it reports realFiles/argv/signals false and one
+// term, so a screen that needs any of those can ask instead of assuming (see
+// parity/PLATFORM.md). The desktop build installs the full-capability host.
+setHost(new BrowserHost());
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
