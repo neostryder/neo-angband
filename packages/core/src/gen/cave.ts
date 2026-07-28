@@ -2738,6 +2738,16 @@ function labyrinthCheck(rng: Rng, depth: number): boolean {
 
 export interface ChooseProfileOptions {
   quest?: boolean;
+  /**
+   * choose_profile's NOSCORE_JUMPING head (generate.c L824-836): the wizard's
+   * "Jump to a level" command, when the player answered "Choose cave profile? "
+   * with yes, makes the NEXT generation ask "Profile name (eg classic): " and
+   * use find_cave_profile on the answer. The name is passed in here because the
+   * prompt belongs to the UI; an empty or unknown name falls through to the
+   * ordinary depth-based selection, exactly as upstream does (L834: "If no
+   * valid profile name given, fall through").
+   */
+  name?: string | undefined;
 }
 
 /**
@@ -2782,6 +2792,12 @@ export class DungeonProfiles {
     const labyrinth = this.find("labyrinth");
     const moriaAlloc = moria ? moria.alloc : 0;
     const labyrinthAlloc = labyrinth ? labyrinth.alloc : 0;
+
+    /* The NOSCORE_JUMPING request, ahead of every other rule (L824-836). */
+    if (options.name) {
+      const named = this.find(options.name);
+      if (named) return named;
+    }
 
     let profile: DunProfile | null = null;
     if (depth === 0) {

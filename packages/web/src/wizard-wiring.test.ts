@@ -173,9 +173,11 @@ describe("W2-007 live tweak dispatch", () => {
 
     const done = dispatchDebug(ctx, "play-item");
     await tick();
-    press(win, "a"); // pack item
+    press(win, "a"); // get_item: the pack item
     await tick();
-    press(win, "c"); // Tweak attributes
+    /* The play session's own menu is one get_com line:
+     * "[a]ccept [s]tatistics [r]eroll [t]weak [c]urse [q]uantity [k]nown? " */
+    press(win, "t"); // [t]weak
     await tick();
     press(win, "Enter"); // ego: keep/remove (-1)
     await tick();
@@ -193,9 +195,7 @@ describe("W2-007 live tweak dispatch", () => {
       press(win, "Enter");
     }
     await tick();
-    // [q]uantity (cmd-wizard.c:1770-1789) now occupies row "d" (inserted before
-    // Accept/Reject, W1-cmdwiz); Accept changes shifted from "d" to "e".
-    press(win, "e"); // Accept changes
+    press(win, "a"); // [a]ccept
     await done;
 
     expect(obj.modifiers).toEqual(obj.modifiers.map((_, i) => (i % 9) + 1));

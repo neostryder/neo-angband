@@ -801,16 +801,28 @@ describe("NOSCORE cheat-flag model (player.h L95-99, score.c L289)", () => {
     expect(noscoreInvalidatesScore(0)).toBe(false);
   });
 
-  it("wizJumpLevel marks NOSCORE_JUMPING through the seam", () => {
-    const state = makeState();
-    const bits: number[] = [];
-    const deps: WizardDeps = {
-      ...wizDeps(state, true),
-      markNoscore: (b) => bits.push(b),
-    };
-    const ran = wizJumpLevel(state, { level: 5 }, deps);
+  it("wizJumpLevel marks NOSCORE_JUMPING only when a profile was asked for", () => {
+    /* cmd-wizard.c:1360-1367: the bit is set inside `if (choose_gen)`, i.e. only
+     * when "Choose cave profile? " was answered yes. It is not really a cheat
+     * marker - choose_profile (generate.c:824) consumes it as the one-shot
+     * signal to ask which profile to build - so setting it unconditionally, as
+     * this used to, both mis-flags the savefile and would make every jump ask. */
+    const plain = makeState();
+    const plainBits: number[] = [];
+    const ran = wizJumpLevel(plain, { level: 5 }, {
+      ...wizDeps(plain, true),
+      markNoscore: (b) => plainBits.push(b),
+    });
     expect(ran).toBe(true);
-    expect(bits).toContain(NOSCORE.JUMPING);
+    expect(plainBits).not.toContain(NOSCORE.JUMPING);
+
+    const chosen = makeState();
+    const chosenBits: number[] = [];
+    wizJumpLevel(chosen, { level: 5, chooseGen: true }, {
+      ...wizDeps(chosen, true),
+      markNoscore: (b) => chosenBits.push(b),
+    });
+    expect(chosenBits).toContain(NOSCORE.JUMPING);
   });
 
   it("wizCheatDeath marks NOSCORE_WIZARD through the seam", () => {
@@ -825,5 +837,33 @@ describe("NOSCORE cheat-flag model (player.h L95-99, score.c L289)", () => {
     expect(ran).toBe(true);
     expect(bits).toContain(NOSCORE.WIZARD);
     expect(state.isDead).toBe(false);
+  });
+
+  it("wizCheatDeath cancels a pending recall and deep descent, and says so", () => {
+    /* wiz-debug.c L56-74. The port used to leave both counters running, so a
+     * cheated death dropped you in town with a word of recall still ticking -
+     * which would then fire and yank you back down. The census entry for
+     * "The air around you stops swirling..." was sitting on that. */
+    const state = makeState();
+    state.isDead = true;
+    const p = state.actor.player;
+    p.wordRecall = 12;
+    p.deepDescent = 3;
+    const said: string[] = [];
+    wizCheatDeath(state, { ...wizDeps(state, true), msg: (t) => said.push(t) });
+    expect(p.wordRecall).toBe(0);
+    expect(p.deepDescent).toBe(0);
+    expect(said).toContain("A tension leaves the air around you...");
+    expect(said).toContain("The air around you stops swirling...");
+  });
+
+  it("wizCheatDeath says nothing about recall when none is pending", () => {
+    const state = makeState();
+    state.isDead = true;
+    state.actor.player.wordRecall = 0;
+    state.actor.player.deepDescent = 0;
+    const said: string[] = [];
+    wizCheatDeath(state, { ...wizDeps(state, true), msg: (t) => said.push(t) });
+    expect(said.join("|")).not.toContain("air around you");
   });
 });

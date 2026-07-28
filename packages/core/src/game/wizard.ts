@@ -765,17 +765,24 @@ export function wizIncreaseExp(
 /**
  * do_cmd_wiz_jump_level (L1339): jump to dungeon level `level` (dungeon_change_
  * level - the port signals a pending level change). Out-of-range is a no-op.
+ *
+ * `chooseGen` is the answer to "Choose cave profile? " (L1360-1363). It is the
+ * ONLY thing that sets NOSCORE_JUMPING (L1365-1367), and that bit is not really
+ * a cheat marker: choose_profile consumes it as the one-shot signal to ask which
+ * profile to build (generate.c:824). Marking it unconditionally - which this
+ * function used to do - both mis-flags the savefile and would make every jump
+ * ask for a profile name.
  */
 export function wizJumpLevel(
   state: GameState,
-  params: { level: number },
+  params: { level: number; chooseGen?: boolean },
   deps: WizardDeps,
 ): boolean {
   if (!wizardEnabled(deps)) return false;
   const level = params.level;
   if (level < 0 || level >= state.z.maxDepth) return false;
   /* player->noscore |= NOSCORE_JUMPING (cmd-wizard.c L1366). */
-  deps.markNoscore?.(NOSCORE.JUMPING);
+  if (params.chooseGen) deps.markNoscore?.(NOSCORE.JUMPING);
   deps.msg?.(`You jump to dungeon level ${level}.`);
   state.targetDepth = level;
   state.generateLevel = true;
@@ -1175,6 +1182,19 @@ export function wizCheatDeath(state: GameState, deps: WizardDeps): boolean {
       for (const idx of CHEAT_DEATH_TIMED) timed.clearTimed(idx, true, false);
       timed.setTimed(TMD.FOOD, PY_FOOD_FULL - 1, false, false);
     }
+  }
+
+  /* Cancel recall (wiz-debug.c L56-64) and deep descent (L67-74). Both are
+   * counters on the player, so zeroing them is state, not UI - and without this
+   * a cheated death left a pending recall or descent still counting down in
+   * process_world, which would fire from the town you were just returned to. */
+  if (p.wordRecall) {
+    deps.msg?.("A tension leaves the air around you...");
+    p.wordRecall = 0;
+  }
+  if (p.deepDescent) {
+    deps.msg?.("The air around you stops swirling...");
+    p.deepDescent = 0;
   }
 
   /* Back to the town. */

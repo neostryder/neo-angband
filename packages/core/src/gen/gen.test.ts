@@ -2457,3 +2457,30 @@ describe("pick_and_place_distant_monster search loop", () => {
     expect(g.monsters).toHaveLength(0);
   });
 });
+
+describe("choose_profile's wizard override (generate.c L824-836)", () => {
+  const profiles = createDungeonProfiles(loadRecords<DunProfileRecordJson>("dungeon_profile"));
+
+  it("a named profile wins over every depth rule", () => {
+    /* The wizard's "Jump to a level" -> "Choose cave profile? " -> "Profile name
+     * (eg classic): " path. Depth 1 would normally never build a labyrinth. */
+    const named = profiles.choose(new Rng(1), 1, { name: "labyrinth" });
+    expect(named.name).toBe("labyrinth");
+    /* And a town-depth jump can be told to build something else entirely. */
+    expect(profiles.choose(new Rng(1), 0, { name: "cavern" }).name).toBe("cavern");
+  });
+
+  it("an unknown name falls through to the ordinary selection", () => {
+    /* L834: "If no valid profile name given, fall through". */
+    const seed = 7;
+    const fell = profiles.choose(new Rng(seed), 0, { name: "not-a-profile" });
+    expect(fell.name).toBe(profiles.choose(new Rng(seed), 0, {}).name);
+    expect(fell.name).toBe("town");
+  });
+
+  it("no name at all leaves selection byte-identical", () => {
+    const a = profiles.choose(new Rng(99), 12, {});
+    const b = profiles.choose(new Rng(99), 12, { name: undefined });
+    expect(a.name).toBe(b.name);
+  });
+});
