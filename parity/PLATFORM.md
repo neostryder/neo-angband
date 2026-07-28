@@ -54,6 +54,16 @@ either expresses them or is *recorded* as reduced.
 Not hard to read, not subtle C. They need a file, a command line, or a process
 that can be signalled:
 
+> **Corrected 2026-07-28, later the same day.** Sixteen, not eighteen. `pricing.log`
+> ×2 sits inside `#ifdef PRICE_DEBUG`, and PRICE_DEBUG is defined **nowhere** in
+> the upstream tree - not in `configure.ac`, not in any Makefile - so those two
+> lines are unreachable in every build upstream ships and are not owed on any
+> platform. The `wiz-stats` ×8 stay owed, but to `packages/cli` (which *is* this
+> port's stats build) rather than to the game: `USE_STATS` is opt-in and needs
+> sqlite3, and the interactive build already reports the other arm honestly
+> ("Statistics generation not turned on in this build."). The conclusion does not
+> change; the number does, and it was mine to correct.
+
 | Source | Count | What it needs |
 | --- | --- | --- |
 | `wiz-stats.c` | 8 | `stats.log`, `disconnect.html`, `disconnect_gstat.txt` |
@@ -87,6 +97,14 @@ over the shared **on-disk** pack format. A browser origin cannot read a director
 a mod manager writes. The current desktop wrapper serves a `userData/mods`
 directory read-only over HTTP with a `/mods/index.json` listing - a half-step
 nothing can install *into*.
+
+> **Measured 2026-07-28, and worse than "a half-step": the seam is DEAD.** The
+> main process serves `/mods/index.json` and `/mods/<name>/...`, and the preload
+> exposes `modsBaseUrl` / `modsIndexUrl` on `window.neoDesktop` - and *nothing in
+> `packages/web/src` reads either of them*. A folder dropped into `mods/` is listed
+> by a server nobody asks and loaded by nobody. This is Phase 4's whole job, and
+> it is the one thing standing between the desktop build and "the fulness of all
+> of the features, including mod support".
 
 **4. Everything shares one evictable bucket.** Saves, scores, colours, keymaps,
 tile mode, sidebar mode, birth records and the entire virtual user directory are
