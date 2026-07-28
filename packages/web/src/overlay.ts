@@ -15,6 +15,8 @@
  */
 
 import { userFileExists, userPath } from "./userdir";
+import { argForceName } from "./launch";
+import { localTimestampSuffix } from "./timestamp";
 import type { GlyphTerm } from "./term";
 import type { Overview } from "./mapview";
 
@@ -676,20 +678,37 @@ export async function getChar(
  *   Replace existing file?          only when the user directory has that name
  *   Saving as user/<name>.          prt + anykey + prt("", 0, 0)
  *
- * Resolves the file name, or null on any of the three cancels. The arg_force_name
- * arm (L1348-1368, a host-pinned name with a timestamp appended) has no way to
- * fire in a browser build - see the recorded divergence in the text census - so
- * only the interactive arm is here.
+ * Resolves the file name, or null on any of the three cancels.
+ *
+ * Under arg_force_name (L1348-1368) the prompt is replaced: the host has pinned
+ * the name, so the ".txt" is overwritten with a timestamp and the player is
+ * asked to confirm the result rather than type it. Reachable only with `-f`,
+ * which means only on a front end that has a command line.
  */
 export async function getFile(
   term: GlyphTerm,
   suggestedName: string,
 ): Promise<string | null> {
   /* char buf[160] (L1337). */
-  const name = await getString(term, "File name: ", suggestedName, 160);
-  if (name === null) return null;
-  /* "Make sure it's actually a filename" (L1346-1347). */
-  if (name === "" || name.startsWith(" ")) return null;
+  let name: string;
+  if (argForceName()) {
+    /* prt("File name: ", 0, 0) (L1358) - drawn, then left for the get_check
+     * below to overwrite, exactly as upstream leaves it. */
+    term.print(0, 0, "File name: ", FG);
+    /* strftime("-%Y-%m-%d-%H-%M.txt") over the last four characters, which are
+     * the ".txt" the caller appended (L1360-1364, with its assert that they are
+     * there to overwrite). */
+    const stem =
+      suggestedName.length >= 4 ? suggestedName.slice(0, -4) : suggestedName;
+    name = `${stem}${localTimestampSuffix(new Date())}`;
+    if (!(await getCheck(term, `Confirm writing to ${name}? `))) return null;
+  } else {
+    const typed = await getString(term, "File name: ", suggestedName, 160);
+    if (typed === null) return null;
+    /* "Make sure it's actually a filename" (L1346-1347). */
+    if (typed === "" || typed.startsWith(" ")) return null;
+    name = typed;
+  }
   if (userFileExists(name) && !(await getCheck(term, "Replace existing file? "))) {
     return null;
   }

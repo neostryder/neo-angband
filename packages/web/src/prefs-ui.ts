@@ -35,7 +35,8 @@ import {
 } from "@neo-angband/core";
 import { HostDir, host } from "@neo-angband/core";
 import type { DumpDeps, GlyphTable, PrefDeps, PrefSink } from "@neo-angband/core";
-import { getString, selectFromMenu } from "./overlay";
+import { getCheck, getString, selectFromMenu } from "./overlay";
+import { argForceName } from "./launch";
 import type { MenuItem } from "./overlay";
 import type { GlyphTerm } from "./term";
 import { UI_TEXT } from "./ui-colors";
@@ -80,11 +81,10 @@ const IO = {
  * filesystem-safe player name with `.prf` appended. Returns the filename, or
  * null on ESC.
  *
- * DIVERGENCE (re-derived, not an excuse): upstream's arg_force_name branch,
- * which replaces the prompt with "Confirm writing to %s? ", is reachable only
- * from main.c's `-f` switch. A browser has no argv, so that branch has no way
- * to be taken - the same finding already recorded for the birth screen's
- * force-name refusal.
+ * Under arg_force_name (L65-69) the name is not typed: the host has pinned it,
+ * so the same default is offered as "Confirm writing to %s? " and the player
+ * either takes it or cancels. Reachable via main.c's `-f`, so only on a front
+ * end with a command line - the web build has no argv and always asks.
  */
 async function getPrefPath(ctx: PrefsUiCtx, what: string, row: number): Promise<string | null> {
   const { term } = ctx;
@@ -93,6 +93,9 @@ async function getPrefPath(ctx: PrefsUiCtx, what: string, row: number): Promise<
   term.print(0, row, `${what} to a pref file`, UI_TEXT);
   /* player_safe_name(..., true) strips the Roman-numeral suffix (player.c:389). */
   const ftmp = `${playerSafeName(ctx.playerName(), 80, true)}.prf`;
+  if (argForceName()) {
+    return (await getCheck(term, `Confirm writing to ${ftmp}? `)) ? ftmp : null;
+  }
   /* prt("File: ", row + 2, 0) then askfor_aux(ftmp, sizeof ftmp) - which draws
    * where that prt left the cursor, so the answer echoes on row + 2. */
   return getString(term, "File: ", ftmp, 80, row + 2);
@@ -158,6 +161,9 @@ export function processPrefFile(
 /**
  * do_cmd_pref_file_hack (ui-options.c L1202-1241): the "Command: Load a user
  * pref file" screen, its "File: " prompt, and the two outcome messages.
+ *
+ * arg_force_name (L1222-1225) replaces the prompt with a confirmation here too,
+ * for the same reason: the host chose the name.
  */
 export async function loadPrefFileHack(ctx: PrefsUiCtx, row: number): Promise<void> {
   const { term } = ctx;
@@ -165,7 +171,11 @@ export async function loadPrefFileHack(ctx: PrefsUiCtx, row: number): Promise<vo
   if (row > 0) term.print(0, row - 1, "", UI_TEXT);
   term.print(0, row, "Command: Load a user pref file", UI_TEXT);
   const ftmp = `${playerSafeName(ctx.playerName(), 80, true)}.prf`;
-  const name = await getString(term, "File: ", ftmp, 80, row + 2);
+  const name = argForceName()
+    ? (await getCheck(term, `Confirm loading ${ftmp}? `))
+      ? ftmp
+      : null
+    : await getString(term, "File: ", ftmp, 80, row + 2);
   if (name === null) return;
   if (!processPrefFile(ctx, name)) {
     ctx.say(`Failed to load '${name}'!`);

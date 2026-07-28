@@ -30,19 +30,35 @@ import { ALL_HOST_DIRS, RawFsHost } from "@neo-angband/core/host";
  */
 export class NodeRawFs implements RawFs {
   private readonly base: string;
+  /**
+   * Per-directory overrides, from main.c's `-d<dir>=<path>` (change_path).
+   *
+   * Upstream's ANGBAND_DIR_* are independent strings, not a base plus five
+   * suffixes - which is precisely what makes `-d` possible: the save directory
+   * can be somewhere else entirely from the user directory. The base is the
+   * default for the ones nobody overrode.
+   */
+  private readonly overrides: Readonly<Partial<Record<HostDir, string>>>;
 
-  constructor(base: string) {
+  constructor(base: string, overrides: Readonly<Partial<Record<HostDir, string>>> = {}) {
     this.base = base;
+    this.overrides = overrides;
     /* init.c's create_needed_dirs, at startup. Best-effort: every accessor
      * below already reports failure, so a base that cannot be created surfaces
      * per call instead of throwing here. */
     for (const d of ALL_HOST_DIRS) {
       try {
-        fs.mkdirSync(path.join(this.base, d), { recursive: true });
+        fs.mkdirSync(this.root(d), { recursive: true });
       } catch {
         /* reported per-call instead */
       }
     }
+  }
+
+  /** ANGBAND_DIR_x itself: the override if there is one, else base/<dir>. */
+  private root(dir: HostDir): string {
+    const over = this.overrides[dir];
+    return over !== undefined && over !== "" ? path.resolve(over) : path.resolve(this.base, dir);
   }
 
   /**
@@ -51,7 +67,7 @@ export class NodeRawFs implements RawFs {
    * every caller then reports failure.
    */
   private full(dir: HostDir, name: string): string | null {
-    const root = path.resolve(this.base, dir);
+    const root = this.root(dir);
     const full = path.resolve(root, name);
     if (full !== root && !full.startsWith(root + path.sep)) return null;
     return full;
@@ -157,7 +173,7 @@ export class NodeRawFs implements RawFs {
   listFiles(dir: HostDir): string[] {
     try {
       return fs
-        .readdirSync(path.join(this.base, dir), { withFileTypes: true })
+        .readdirSync(this.root(dir), { withFileTypes: true })
         .filter((e) => e.isFile())
         .map((e) => e.name)
         .sort((a, b) => a.localeCompare(b));
@@ -170,6 +186,8 @@ export class NodeRawFs implements RawFs {
 export interface NodeHostOpts {
   /** The base directory the five ANGBAND_DIR_* subdirectories live under. */
   base: string;
+  /** main.c's -d<dir>=<path> overrides, for the directories this port has. */
+  dirs?: Readonly<Partial<Record<HostDir, string>>>;
   /** argv minus the program name; defaults to process.argv.slice(2). */
   argv?: readonly string[];
   /** Terminals this front end can show. The CLI is one; Electron overrides it. */
@@ -179,7 +197,7 @@ export interface NodeHostOpts {
 /** A HostIo over node:fs: core's z-file.c rules on NodeRawFs' syscalls. */
 export class NodeHost extends RawFsHost {
   constructor(opts: NodeHostOpts) {
-    super(new NodeRawFs(opts.base), {
+    super(new NodeRawFs(opts.base, opts.dirs ?? {}), {
       argv: opts.argv ?? process.argv.slice(2),
       termCount: opts.termCount ?? 1,
     });

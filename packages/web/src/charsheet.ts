@@ -63,6 +63,7 @@ import {
   statRowLine,
 } from "./screens";
 import { promptText, menuNav, getFile } from "./overlay";
+import { argForceName } from "./launch";
 import { textLinesToFile, downloadUserFile, userPath } from "./userdir";
 import type { ScreenLine } from "./overlay";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
@@ -730,6 +731,13 @@ export function showCharacterSheet(
 
     /** 'c' (change name): detach our listeners, run promptText, reattach. */
     const changeName = (): void => {
+      /* ui-player.c:1249-1250. With the name pinned from the command line the
+       * rename is refused outright - the prompt never opens, so there is nothing
+       * to detach for. */
+      if (argForceName()) {
+        opts.msg?.("You are not allowed to change your name!");
+        return;
+      }
       window.removeEventListener("keydown", onKey, true);
       term.onCellTap?.(null);
       void promptText(term, "Enter your character's name", curName).then((entered) => {

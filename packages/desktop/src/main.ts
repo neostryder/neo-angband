@@ -27,8 +27,15 @@ import * as path from "node:path";
 /* The host modules by subpath, not through either barrel: the main process needs
  * z-file.c, not the game engine, and importing the barrels pulled the whole of
  * core into this bundle (479 kB of rules a file write has no use for). */
-import { serveRawFs } from "@neo-angband/core/host";
+import {
+  ALL_HOST_DIRS,
+  HostDir,
+  hostDirOverrides,
+  parseLaunchArgs,
+  serveRawFs,
+} from "@neo-angband/core/host";
 import { NodeRawFs } from "@neo-angband/cli/host-node";
+import { LAUNCH_MODULES } from "./modules";
 import {
   HOST_BRIDGE_CHANNEL,
   HOST_INFO_CHANNEL,
@@ -217,8 +224,8 @@ function startServer(): Promise<number> {
  * hostile call gets that operation's failure value; it never throws here,
  * because an exception in a sync IPC handler would take the main process with it.
  */
-function installHostBridge(): void {
-  const serve = serveRawFs(new NodeRawFs(USER_BASE));
+function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): void {
+  const serve = serveRawFs(new NodeRawFs(USER_BASE, dirs));
   ipcMain.on(HOST_BRIDGE_CHANNEL, (event, op: unknown, args: unknown) => {
     try {
       event.returnValue = serve(
@@ -232,14 +239,8 @@ function installHostBridge(): void {
     }
   });
 
-  /* main.c's argv. Only this process sees the real command line: `electron .
-   * -f Bilbo` in development puts the app path at argv[1], while a packaged
-   * build does not have it, so the two cases drop a different amount. */
-  const argv: readonly string[] = app.isPackaged
-    ? process.argv.slice(1)
-    : process.argv.slice(2);
   const info: HostBridgeInfo = {
-    argv,
+    argv: commandLine(),
     ...HOST_SHELL_LIMITS,
     dataDir: USER_BASE,
     portable: DATA.portable,
@@ -248,6 +249,100 @@ function installHostBridge(): void {
     event.returnValue = info;
   });
 }
+
+/**
+ * main.c's argv, minus the program name AND minus this front end's own switches.
+ *
+ * Only this process sees the real command line: `electron . -f Bilbo` in
+ * development puts the app path at argv[1], while a packaged build does not have
+ * it, so the two cases drop a different amount.
+ *
+ * The `--`-prefixed filter is not a liberty. Upstream splits the command line
+ * between the game and the display module - everything after `--` is handed to
+ * `modules[i].init(argc, argv)` (main.c:451-457) and the game never looks at it -
+ * and every switch main() itself takes is single-dash. Here the display module is
+ * Chromium, which reads its switches (`--remote-debugging-port`, `--disable-gpu`,
+ * ...) straight off the same command line wherever they appear, and does NOT
+ * honour the positional `--`. So the split has to be made by prefix instead of by
+ * position, or the module's own switches reach the game's option loop, which
+ * faithfully treats an unknown switch as a usage error - and the app then prints
+ * usage and quits without ever opening a window. That was measured, not
+ * predicted: `electron . -f -uThorin --remote-debugging-port=9557` did exactly
+ * that.
+ *
+ * A single-dash switch the game does not know is still a usage error, which is
+ * the part that matters: `-q` must not be silently ignored.
+ */
+function commandLine(): readonly string[] {
+  /* Filter FIRST, then drop the app path, because a Chromium switch given before
+   * the app path shifts its position: `electron --remote-debugging-port=N . -f`
+   * puts "." at argv[2], and a fixed slice(2) then hands "." to the option loop,
+   * which rejects it - there are no positional arguments in main.c. Measured the
+   * same way: it printed usage and quit. */
+  const rest = process.argv.slice(1).filter((a) => !a.startsWith("--") || a === "--");
+  /* In development the app path is itself an argument; a packaged build has none.
+   * process.defaultApp is Electron's own signal for that, and unlike a position
+   * it does not move. */
+  return process.defaultApp ? rest.slice(1) : rest;
+}
+
+/**
+ * main()'s three paths that never reach a display module (main.c:393, 461-490,
+ * 236-271): list the savefiles, print the usage text, or quit with a message.
+ *
+ * They belong HERE rather than in the renderer because they need a console and
+ * happen before any window exists, which is exactly where upstream does them -
+ * `angband -l` prints to stdout and exits without ever initialising a terminal.
+ * Returns true when the launch should stop.
+ *
+ * The renderer parses the same argv again with the same function, so there is one
+ * definition of what each switch means and no chance of the two disagreeing.
+ */
+function handleEarlyExit(): boolean {
+  const outcome = parseLaunchArgs(commandLine(), {
+    modules: LAUNCH_MODULES,
+    dirDefaults: Object.fromEntries(
+      ALL_HOST_DIRS.map((d) => [d, path.join(USER_BASE, d)]),
+    ),
+  });
+  switch (outcome.kind) {
+    case "run":
+      /* change_path's directory overrides, which the host layer needs before the
+       * first file is touched. `dir_create` is NodeRawFs' constructor. */
+      DIR_OVERRIDES = hostDirOverrides(outcome.args);
+      return false;
+    case "usage":
+      /* puts() for each line, then quit(NULL). */
+      for (const line of outcome.lines) console.log(line);
+      app.quit();
+      return true;
+    case "quit":
+      /* quit_fmt(): upstream's message goes to stderr through plog. */
+      console.error(outcome.message);
+      app.quit();
+      return true;
+    case "list-saves": {
+      /* list_saves (main.c:301-333). The savefile "desc" upstream prints comes
+       * from a savefile header this port does not write yet (Phase 5), so every
+       * entry takes upstream's own no-desc branch: ` %-15s`. */
+      const dirs = hostDirOverrides(outcome.args);
+      const names = new NodeRawFs(USER_BASE, dirs).listFiles(HostDir.SAVE);
+      if (names.length === 0) {
+        console.log("There are no savefiles you can use.");
+      } else {
+        console.log("Savefiles you can use are:");
+        for (const n of names) console.log(` ${n}`);
+        console.log("");
+        console.log("Use angband -u<name> to use savefile <name>.");
+      }
+      app.quit();
+      return true;
+    }
+  }
+}
+
+/** Set by handleEarlyExit before anything opens a file. */
+let DIR_OVERRIDES: Readonly<Partial<Record<HostDir, string>>> = {};
 
 async function createWindow(port: number): Promise<void> {
   const win = new BrowserWindow({
@@ -274,6 +369,11 @@ async function createWindow(port: number): Promise<void> {
 }
 
 async function start(): Promise<void> {
+  /* Before anything else, including the missing-bundle check: `-l` and the usage
+   * text must work on a checkout that has not built the renderer yet, the same
+   * way `angband -l` never touches a display module. */
+  if (handleEarlyExit()) return;
+
   if (!fs.existsSync(WEB_ROOT)) {
     // A helpful, honest error rather than a blank window.
     await dialog.showMessageBox({
@@ -324,7 +424,7 @@ async function start(): Promise<void> {
    * only this to go on. */
   console.log(`[neo-angband] data (${DATA.kind}): ${USER_BASE}`);
 
-  installHostBridge();
+  installHostBridge(DIR_OVERRIDES);
   const port = await startServer();
   await createWindow(port);
 

@@ -210,6 +210,7 @@ import { buildUiEntryConfig, setColorChannel, uiEntryRendererCustomize, uiEntryR
 import { setHost } from "@neo-angband/core";
 import { BrowserHost } from "./host-browser";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
+import { initLaunchArgsFromHost } from "./launch";
 import type { PrefsUiCtx } from "./prefs-ui";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines, presentNamespaces } from "./pack";
@@ -408,6 +409,15 @@ installAutoUpdate();
 // is what stops a platform limit editing the game (parity/PLATFORM.md).
 const desktopBridge = detectDesktopBridge();
 setHost(desktopBridge ? makeDesktopHost(desktopBridge) : new BrowserHost());
+
+// main()'s option loop (main.c:380-491), which is where every arg_* global comes
+// from. Run BEFORE anything is drawn, as upstream does. The usage/quit paths are
+// already handled by whoever owns the console - the desktop main process quits
+// without opening a window - so by the time this runs the only outcome that
+// matters is "run". On the web build argv is empty and everything keeps its
+// default, which is the reduced front end behaving correctly rather than a
+// special case.
+initLaunchArgsFromHost();
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
