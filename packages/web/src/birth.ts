@@ -47,13 +47,13 @@
 import {
   getKeyInline,
   menuNav,
-  MENU_OPTIONS,
   promptText,
   promptTextInline,
   selectFromMenu,
 } from "./overlay";
-import type { MenuItem, ScreenLine } from "./overlay";
+import type { ScreenLine } from "./overlay";
 import { runBirthOptionsEditor } from "./options";
+import { argForceName, argName } from "./launch";
 import {
   characterSheetLines,
   charSheetDeps,
@@ -216,8 +216,6 @@ const RACE_HINT =
 const CLASS_HINT = "Class affects stats, skills, and other character traits.";
 const ROLLER_HINT =
   "Choose how to generate your intrinsic stats. Point-based is recommended.";
-
-const FOOTER_FIRST = "[ a-z to choose, tap a row, ESC to keep the default ]";
 
 const STAT_ABBR = ["STR", "INT", "WIS", "DEX", "CON"] as const;
 
@@ -511,6 +509,70 @@ interface PreviewSheet {
 function drawBirthPanels(term: GlyphTerm, sheet: PreviewSheet | null): void {
   if (!sheet) return;
   drawPlayerXtraInfo(term, sheet.panels, sheet.history);
+}
+
+/** What textui_birth_quickstart's key loop resolves to. */
+type QuickstartAction = "accept" | "redo" | "name" | "options" | "quit";
+
+/**
+ * textui_birth_quickstart (ui-birth.c:103-136), the screen offered when a
+ * previous character is on file.
+ *
+ * Four keys, and the reason this is a raw key prompt rather than a menu is that
+ * upstream's four are not four rows of one list: 'Y' finishes birth outright,
+ * 'N' throws the character away, 'C' keeps it and renames, '=' edits options and
+ * comes back. The port previously offered two menu rows ("Quick-start with the
+ * previous character" / "Choose everything from scratch") under a paraphrased
+ * subtitle, which dropped 'Y' entirely - so the one thing quick-start exists for,
+ * replaying a character AS IS without retyping its name, could not be done. The
+ * paraphrase is what hid it: no census can see a prompt that has been replaced
+ * by a different prompt, because the slot is full.
+ *
+ * `sheet` is called per repaint so an option changed through '=' is reflected.
+ */
+async function runQuickstart(
+  term: GlyphTerm,
+  sheet: () => PreviewSheet | null,
+): Promise<QuickstartAction> {
+  const PROMPT =
+    "['Y': use as is; 'N': redo; 'C': change name/history; '=': set birth options]";
+  drawBirthSheet(term, sheet());
+  const { cols, rows } = term.size();
+  /* prt("New character based on previous one:", 0, 0) - row 0, the prompt row. */
+  term.print(0, 0, "New character based on previous one:".slice(0, cols - 1), UI_TEXT);
+  /* prt(prompt, Term->hgt - 1, Term->wid / 2 - strlen(prompt) / 2): centred on
+   * the bottom row, by C integer division on both halves. */
+  const col = Math.max(0, Math.trunc(cols / 2) - Math.trunc(PROMPT.length / 2));
+  term.print(col, rows - 1, PROMPT.slice(0, Math.max(0, cols - col)), UI_TEXT);
+
+  return new Promise<QuickstartAction>((resolve) => {
+    const finish = (action: QuickstartAction): void => {
+      window.removeEventListener("keydown", onKey, true);
+      resolve(action);
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") {
+        return;
+      }
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      /* The order below is upstream's, and it matters: the arg_force_name gate
+       * sits on the 'C' arm only, so with a pinned name 'C' falls through to
+       * nothing and the loop simply keeps waiting - it does NOT become a
+       * different action. */
+      if (ev.key === "N" || ev.key === "n") return finish("redo");
+      /* KTRL('X'), and ESCAPE only while terms are disconnecting - a condition
+       * this front end has no equivalent of (there is one term and it does not
+       * disconnect), so plain ESCAPE is inert here exactly as it is upstream. */
+      if (ev.key === "x" && ev.ctrlKey) return finish("quit");
+      if (!argForceName() && (ev.key === "C" || ev.key === "c")) return finish("name");
+      if (ev.key === "=") return finish("options");
+      if (ev.key === "Y" || ev.key === "y") return finish("accept");
+      /* Anything else: `while (next == BIRTH_QUICKSTART)` goes round again with
+       * the screen untouched. */
+    };
+    window.addEventListener("keydown", onKey, true);
+  });
 }
 
 /**
@@ -1323,46 +1385,11 @@ export async function runBirth(
     return dimLines(lines);
   };
 
-  // display_player(0) for an in-progress character (ui-birth.c L894 / L1074 /
-  // L1546): a derived preview character (generatePlayer + calc_bonuses) fed to
-  // the shared character-sheet renderer. Returns null without registry deps.
-  const buildSheet = (
-    race: PlayerRace | undefined,
-    cls: PlayerClass | undefined,
-    o: {
-      stats?: readonly number[];
-      rolledStats?: readonly number[];
-      historyOverride?: string | null;
-      sheetName: string;
-    },
-    cols: number,
-  ): ScreenLine[] | null => {
-    if (!deps || !race || !cls) return null;
-    const body = deps.bodyFor(race.name);
-    if (!body) return null;
-    const { player } = generatePlayer(
-      race,
-      cls,
-      {
-        body,
-        historyChart: deps.historyChartFor(race.name),
-        ...(o.rolledStats
-          ? { rolledStats: o.rolledStats }
-          : o.stats
-            ? { stats: o.stats }
-            : {}),
-        ...(o.historyOverride != null ? { historyOverride: o.historyOverride } : {}),
-      },
-      new Rng(PREVIEW_SEED),
-    );
-    const ps = calcBonuses(player);
-    return characterSheetLines(previewState(player, ps), o.sheetName, cols);
-  };
-
   /**
-   * The same derived preview character as buildSheet, but as display_player(0)
-   * PARTS - the stat rows, the five panels and the wrapped history - so the birth
-   * screens can place them exactly where ui-player.c does instead of listing them.
+   * display_player(0) (ui-birth.c L894 / L1074 / L1546 / L1631) as PARTS - a
+   * derived preview character (generatePlayer + calc_bonuses) reduced to the stat
+   * rows, the five panels and the wrapped history, so the birth screens can place
+   * them exactly where ui-player.c does. Returns null without registry deps.
    */
   const buildPreview = (
     race: PlayerRace | undefined,
@@ -1456,9 +1483,20 @@ export async function runBirth(
       rollerIdx = 0;
       rolledStats = null;
     }
-    /* ui-birth.c:725: the name is filled in too, from player_random_name. */
-    const rolledName = opts.randomName?.() ?? "";
-    if (rolledName !== "") name = rolledName;
+    /* ui-birth.c:706-743, the name arm, which has two shapes:
+     *  - arg_force_name (L711-715): use arg_name if there is one, and generate
+     *    NOTHING. Upstream's comment says it mimics get_name_command, and it
+     *    must: a host that pinned the name did not ask for a random one.
+     *  - otherwise (L716-741): player_random_name, retried until the name is not
+     *    already a savefile (the retry needs the savefile directory, so it comes
+     *    with Phase 5; the single draw is what the port does today). */
+    if (argForceName()) {
+      const pinned = argName();
+      if (pinned !== "") name = pinned;
+    } else {
+      const rolledName = opts.randomName?.() ?? "";
+      if (rolledName !== "") name = rolledName;
+    }
     advance("confirm");
   };
 
@@ -1469,63 +1507,65 @@ export async function runBirth(
       case "quickstart": {
         const q = quick as NonNullable<typeof quick>;
         const hasStats = !!q.stats && q.stats.length === STAT_MAX;
-        const items: MenuItem[] = [
-          {
-            label: "Quick-start with the previous character",
-            hint: `${q.raceName} ${q.className} - ${hasStats ? "same stats, " : ""}skip straight to naming`,
-          },
-          { label: "Choose everything from scratch" },
-        ];
-        // display_player(0) behind the quick-start prompt (ui-birth.c L1631):
-        // the previous character's derived sheet, shown for the quick-start row.
-        const quickSheet = buildSheet(
-          races.find((r) => r.name === q.raceName),
-          classes.find((c) => c.name === q.className),
-          { ...(q.stats ? { stats: q.stats } : {}), sheetName: "" },
-          term.size().cols,
-        );
-        // textui_birth_quickstart (ui-birth.c:106-131): the '=' key opens
-        // do_cmd_options_birth from the quick-start screen too (its prompt lists
-        // "'=': set birth options"), then re-shows this menu. selectFromMenu
-        // closes on '=' with the MENU_OPTIONS sentinel so the editor is not
-        // nested under the still-live menu listener.
-        let pick: number | null;
-        for (;;) {
-          pick = await selectFromMenu(
-            term,
-            "Create a character",
-            items,
-            FOOTER_FIRST,
-            {
-              subtitle: "Quick-start uses your previous choices.  ('=' birth options)",
-              optionsKey: "=",
-              ...(quickSheet
-                ? { detail: (i: number): ScreenLine[] => (i === 0 ? quickSheet : []) }
-                : {}),
-            },
-          );
-          if (pick === MENU_OPTIONS) {
-            await runBirthOptionsEditor(term, birthOptions);
-            continue;
-          }
-          break;
-        }
-        if (pick === null) return null; // stage 0: keep the default character
-        if (pick === 0) {
+        // load_roller_data: restore the prior stats (applied via the fixed
+        // point-based path, drawing no RNG). Without a saved array, fall back
+        // to a fresh classic roll. Applied for BOTH 'Y' and 'C', because
+        // upstream's quick-start has already reloaded the character by the time
+        // the prompt is drawn - the keys only choose how much of it to keep.
+        const takePrevious = (): void => {
           raceName = q.raceName;
           className = q.className;
-          // load_roller_data: restore the prior stats (applied via the fixed
-          // point-based path, drawing no RNG). Without a saved array, fall back
-          // to a fresh classic roll.
           if (hasStats && q.stats) {
             pointStats = [...q.stats];
             rollerIdx = 0;
           } else {
             rollerIdx = 1;
           }
-          advance("name");
-        } else {
-          advance("race");
+        };
+        const action = await runQuickstart(term, () =>
+          // display_player(0) BEFORE the prompt (ui-birth.c:1631): the reloaded
+          // character's own sheet fills the screen, and the prompt sits over it.
+          // Rebuilt per repaint so a birth option changed via '=' is reflected.
+          buildPreview(
+            races.find((r) => r.name === q.raceName),
+            classes.find((c) => c.name === q.className),
+            { ...(q.stats ? { stats: q.stats } : {}), sheetName: name },
+            term.size().cols,
+          ),
+        );
+        switch (action) {
+          case "options":
+            // textui_birth_quickstart (ui-birth.c:127-128): '=' opens
+            // do_cmd_options_birth and the loop re-shows this same screen.
+            await runBirthOptionsEditor(term, birthOptions);
+            break;
+          case "accept":
+            // 'Y': cmdq_push(CMD_ACCEPT_CHARACTER); BIRTH_COMPLETE
+            // (ui-birth.c:129-131). No name stage, no final confirm - the
+            // previous character's name (suffix already bumped) is the answer.
+            takePrevious();
+            return {
+              raceName,
+              className,
+              name: name || "Adventurer",
+              roller: rollerIdx === 0 ? "point" : "roller",
+              ...(rollerIdx === 0 && pointStats ? { stats: pointStats } : {}),
+              ...(Object.keys(birthOptions).length > 0 ? { birthOptions } : {}),
+            };
+          case "name":
+            // 'C': BIRTH_NAME_CHOICE (ui-birth.c:124-125). Gated on
+            // arg_force_name inside runQuickstart, which is where upstream gates
+            // it too - a pinned name means the key does nothing at all.
+            takePrevious();
+            advance("name");
+            break;
+          case "redo":
+            // 'N': cmdq_push(CMD_BIRTH_RESET); BIRTH_RACE_CHOICE.
+            advance("race");
+            break;
+          case "quit":
+            // KTRL('X') -> quit(NULL) (ui-birth.c:121-123).
+            return null;
         }
         break;
       }
@@ -1706,9 +1746,18 @@ export async function runBirth(
       }
 
       case "name": {
-        // BIRTH_NAME_CHOICE (ui-birth.c:1706-1716): display_player(0), then
-        // get_character_name's prompt AT ROW 0 over that sheet - the sheet stays
-        // on screen while you type (ui-input.c:1153).
+        // get_name_command (ui-birth.c:1270-1300). Two things happen before the
+        // prompt, and both come from the front end rather than the player:
+        //   L1277-1279: a savefile name the host chose IS the character's name.
+        //   L1287-1288: with the name forced, the stage is skipped outright -
+        //               no prompt, straight on to the history.
+        if (argName() !== "") name = argName();
+        if (argForceName()) {
+          advance(opts.historyFor ? "history" : "confirm");
+          break;
+        }
+        // display_player(0), then get_character_name's prompt AT ROW 0 over that
+        // sheet - the sheet stays on screen while you type (ui-input.c:1153).
         drawBirthSheet(
           term,
           buildPreview(

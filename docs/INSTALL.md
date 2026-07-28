@@ -197,7 +197,25 @@ distribution.
   open in an editor, character dumps, screen dumps, the score file. In the
   browser those live in a virtual directory inside browser storage.
 - **A command line.** `main.c`'s switches reach the game, which the browser has
-  no way to provide.
+  no way to provide:
+
+  ```
+  -c             Select savefile with a menu; overrides -n
+  -n             Start a new character
+  -l             List the savefiles you can play, and exit
+  -w             Resurrect dead character (marks savefile)
+  -g             Request graphics mode
+  -u<who>        Use your <who> savefile
+  -f             Force the character name (no rename, no name prompt)
+  -d<dir>=<path> Override one directory, e.g. -dsave=D:\angband-saves
+  -m<sys>        Use display module <sys>
+  ```
+
+  Run the app with `-h` (or any unknown switch) to print the same list with the
+  current directory defaults filled in. Two quirks are upstream's own and kept:
+  `-g` takes no number (`-g2` prints the usage text), and the eight read-only
+  data directories are accepted by `-d` but have no path to override, because
+  this port compiles that data in.
 - **A user mods folder** - `mods/` inside the data directory, which is what an
   external mod manager can deploy into. The folder is created on first launch.
 - **Cross-origin isolation.** The desktop build serves the app with COOP/COEP

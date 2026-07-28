@@ -146,6 +146,31 @@ Two things this turned up that were not on any list:
 present on the full-capability adapters, and the census gains a
 *present-on-desktop* verdict instead of an excuse.
 
+*In progress.* `main.c`'s option loop is ported (`core/src/host/args.ts`), which is
+what makes any of `arg_wizard` / `arg_graphics` / `arg_name` / `arg_force_name` /
+`ANGBAND_SYS` reachable; the desktop main process owns the three paths that never
+open a window (`-l`, the usage text, a bad `-d`) because they need a console, and
+`-d<dir>=<path>` reaches the host layer as real per-directory overrides.
+
+Two things this turned up that the census could not see, both of the recorded
+shape - a paraphrase fills the slot, so nothing measures it:
+
+1. **The quick-start screen had no 'Y'.** Upstream's
+   `['Y': use as is; 'N': redo; 'C': change name/history; '=': set birth options]`
+   had been replaced by a two-row menu under an invented subtitle, and 'Y' - replay
+   the previous character AS IS, the thing quick-start exists for - was not
+   offered at all. Six tests asserted the paraphrase and passed throughout.
+2. **`-g2` is a usage error upstream**, not graphics mode 2: `main.c:410` parses
+   the suffix and `main.c:491`'s trailing `if (*arg) goto usage` then fires on it.
+   Ported as the wart it is, with the dead `atoi` cordoned and the usage path
+   asserted.
+
+Also honest rather than fixed: the usage text's `-d` listing prints an empty
+default for the eight read-only directories (`gamedata`, `screens`, `help`,
+`pref`, `fonts`, `tiles`, `sounds`, `icons`), because this port compiles that data
+in and has no path to print. The switch still parses them - upstream accepts them -
+and `hostDirOverrides` drops what cannot be acted on.
+
 **Phase 3 - real subwindows.** `BrowserWindow` per term 1..7, the `=` → `w`
 flags screen (ui-options.c:386-405), the `window:` pref directive, and a real
 `option_dump` replacing core's `"# Options\n\n"` stub.

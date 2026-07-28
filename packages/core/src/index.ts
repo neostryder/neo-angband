@@ -193,6 +193,7 @@ export * from "./host/io";
 export * from "./host/memory";
 export * from "./host/raw";
 export * from "./host/bridge";
+export * from "./host/args";
 
 // Some small derived constants and geometry helpers are defined
 // independently by more than one domain (identical values/behavior).
