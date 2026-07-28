@@ -235,13 +235,29 @@ describe("selectFromMenu: MenuItem.tag (upstream-stable, case-insensitive)", () 
     expect(await done).toBe(4); // "Set hitpoint warning"
   });
 
-  it("MN_CASELESS_TAGS: the uppercase tag also selects the row", async () => {
+  it("MN_CASELESS_TAGS: the uppercase tag also selects the row, when set", async () => {
+    /* The option menus DO set MN_CASELESS_TAGS (ui-options.c:2074), so this is
+     * their behaviour - and it has to be asked for. get_cursor_key's default is
+     * an EXACT match (ui-menu.c:485), because tables like the debug command menu
+     * use 'c' and 'C' as different rows. */
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = selectFromMenu(term, "Options Menu", items(), undefined, {
+      caselessTags: true,
+    });
+    press(win, "D");
+    expect(await done).toBe(3); // "Set base delay factor"
+  });
+
+  it("without MN_CASELESS_TAGS an uppercase key does NOT hit a lowercase tag", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
     const done = selectFromMenu(term, "Options Menu", items());
-    press(win, "D");
-    expect(await done).toBe(3); // "Set base delay factor"
+    press(win, "D"); // no exact 'D' tag: inert, not a selection
+    press(win, "Escape");
+    expect(await done).toBe(null);
   });
 
   it("a tag does not collide with the untagged positional a..z fallback", async () => {

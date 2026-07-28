@@ -31,6 +31,9 @@ import {
   wizAdvance,
   wizBanish,
   wizChangeItemQuantity,
+  wizCreateAllArtifact,
+  wizCreateAllArtifactFromTval,
+  wizCreateAllObj,
   wizCreateAllObjFromTval,
   wizCreateArtifact,
   wizCreateObj,
@@ -68,10 +71,16 @@ import {
   wizPlayItemReject,
   wizPlayItemAccept,
   describeObject,
+  makeFakeArtifact,
+  objDescNameFormat,
+  colorTextToAttr,
   lookupTrap,
   statNameToIdx,
   COLOUR_RED,
+  COLOUR_WHITE,
   COLOUR_YELLOW,
+  colorToCss,
+  KF,
   FEAT,
   ODESC,
   OBJECT_FLAG_ENTRIES,
@@ -97,6 +106,9 @@ import type {
   EffectEnvDeps,
   CastContext,
   Loc,
+  ObjectBase,
+  ObjectKind,
+  ProjectionInfo,
 } from "@neo-angband/core";
 import { gearGet } from "@neo-angband/core";
 import { GlyphTerm } from "./term";
@@ -117,6 +129,16 @@ export interface WizHackMark {
   grid: Loc;
   /** The COLOUR_* index the C's probe hands print_rel. */
   color: number;
+}
+
+/**
+ * One entry of upstream's keylog (struct keypress, ui-event.h): the text
+ * keypress_to_text renders, the keycode, and the modifier bits.
+ */
+export interface WizKeypress {
+  text: string;
+  code: number;
+  mods: number;
 }
 
 /**
@@ -173,6 +195,17 @@ export interface WizardUiCtx {
   raceByName?: (name: string) => MonsterRace | null;
   /** The statistics collectors, when this build has them (see above). */
   stats?: WizStatsCollectors;
+  /**
+   * keylog[] (ui-term.c:317, KEYLOG_SIZE = 8): the shell's keypress ring for
+   * wiz_display_keylog, most recent LAST. Absent, the screen shows the blank
+   * rows upstream draws for an empty log.
+   */
+  keylog?: () => readonly WizKeypress[];
+  /**
+   * projections[] (project.c), for wiz_proj_demo's "PROJ_ types display".
+   * Absent, the command reports itself unavailable.
+   */
+  projections?: readonly ProjectionInfo[];
 }
 
 /* ------------------------------------------------------------------ *
@@ -572,31 +605,14 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
   const { term, state, deps, say } = ctx;
   switch (action) {
     /* ---- Items ---- */
-    case "create-obj": {
-      /* do_cmd_wiz_create_obj (cmd-wizard.c:873). ui-wizard.c's wiz_create_item
-       * browsable tval/kind menu is the menu front-end for this command and is
-       * not built yet (tracked in the census punch list); the command's own
-       * prompt is upstream's and is what a repeated command or keymap reaches. */
-      if (!deps.makeDeps) return unavailable(ctx);
-      const kMax = deps.makeDeps.reg.kinds.length;
-      const s = await getString(term, `Create which object (0-${kMax - 1})? `, "", 80);
-      if (s === null) return;
-      const ind = intFromString(s);
-      if (ind === null) return;
-      wizCreateObj(state, { index: ind }, deps);
+    case "create-obj":
+      /* wiz_create_nonartifact (ui-wizard.c:466) -> wiz_create_item(false). */
+      await runCreateItem(ctx, false);
       break;
-    }
-    case "create-artifact": {
-      /* do_cmd_wiz_create_artifact (cmd-wizard.c:842). */
-      if (!deps.makeDeps || !deps.artifacts) return unavailable(ctx);
-      const aMax = deps.artifacts.length;
-      const s = await getString(term, `Create which artifact (1-${aMax - 1})? `, "", 80);
-      if (s === null) return;
-      const ind = intFromString(s);
-      if (ind === null) return;
-      wizCreateArtifact(state, { index: ind }, deps);
+    case "create-artifact":
+      /* wiz_create_artifact (ui-wizard.c:456) -> wiz_create_item(true). */
+      await runCreateItem(ctx, true);
       break;
-    }
     case "create-all-tval":
       /* wiz_create_all_for_tval (ui-wizard.c:495) presets choice = 1, so
        * instant artifacts are included without asking. */
@@ -687,9 +703,7 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
       await runPerformEffect(ctx);
       break;
     case "graphics-demo":
-      /* wiz_proj_demo (ui-wizard.c:78): the "PROJ_ types display" menu. Not
-       * built yet - tracked with the other two block-C menus. */
-      say("That debug command is not available in this build.");
+      await runProjDemo(ctx);
       break;
 
     /* ---- Summon ---- */
@@ -734,9 +748,7 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
       await runPeekNoiseScent(ctx);
       break;
     case "keylog":
-      /* wiz_display_keylog (ui-wizard.c:96): the keypress-ring screen. Not
-       * built yet - tracked with the other two block-C menus. */
-      say("That debug command is not available in this build.");
+      await runDisplayKeylog(ctx);
       break;
 
     /* ---- Miscellaneous ---- */
@@ -781,6 +793,175 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
 const EF_MAX = Object.keys(EF).length;
 
 /* ------------------------------------------------------------------ *
+ * ui-wizard.c's three browsable screens.
+ * ------------------------------------------------------------------ */
+
+/** object_base_name(tval, plural) (obj-desc.c:31). */
+function objectBaseName(base: ObjectBase | undefined, plural: boolean): string {
+  if (!base || !base.name) return "";
+  return objDescNameFormat(base.name, null, plural);
+}
+
+/**
+ * object_kind_name(kind, easy_know) (obj-desc.c:48) with easy_know true, which
+ * is what the create menu passes: the proper name, never the flavour.
+ */
+function objectKindName(kind: ObjectKind): string {
+  return objDescNameFormat(kind.name, null, false);
+}
+
+/**
+ * wiz_create_item (ui-wizard.c:376): the browsable object / artifact creator
+ * behind the Items menu's 'c' and 'C'. Two levels - a tval menu titled
+ * "What kind of object?" / "What kind of artifact?" over object_base_name, then
+ * a submenu of that tval's kinds ("What kind of %s?") or artifacts
+ * ("Which artifact %s? ") - each with a trailing "All ..." row that creates
+ * every entry at that level. For artifacts only tvals that HAVE an artifact are
+ * listed (L440-449), and a submenu holds at most 60 entries (L303/L312), both
+ * upstream bounds.
+ *
+ * ESCAPE in the submenu returns to the tval menu (L367 returns EVT_ESCAPE, which
+ * keeps the outer menu open); a selection closes both.
+ */
+async function runCreateItem(ctx: WizardUiCtx, art: boolean): Promise<void> {
+  const { term, state, deps } = ctx;
+  if (!deps.makeDeps) return unavailable(ctx);
+  if (art && !deps.artifacts) return unavailable(ctx);
+  const make = deps.makeDeps;
+  const reg = make.reg;
+  const artifacts = deps.artifacts ?? [];
+
+  /* The tval filter (L423-451). */
+  const tvals: number[] = [];
+  for (let tval = 0; tval < reg.bases.length; tval++) {
+    const base = reg.bases[tval];
+    if (!base || !base.name) continue; // "Only real object bases"
+    if (art && !artifacts.some((a) => a && a.tval === tval)) continue;
+    tvals.push(tval);
+  }
+
+  for (;;) {
+    const rows: MenuItem[] = tvals.map((tval) => ({
+      label: objectBaseName(reg.bases[tval], true),
+    }));
+    rows.push({ label: art ? "All artifacts" : "All objects" });
+    const pick = await selectFromMenu(
+      term,
+      art ? "What kind of artifact?" : "What kind of object?",
+      rows,
+      "[ a-z to choose, ESC to cancel ]",
+    );
+    if (pick === null) return;
+    if (pick === tvals.length) {
+      /* The top-level "All ..." row (L286-290). */
+      if (art) wizCreateAllArtifact(state, deps);
+      else wizCreateAllObj(state, deps);
+      return;
+    }
+    const tval = tvals[pick];
+    if (tval === undefined) return;
+    const baseName = objectBaseName(reg.bases[tval], true);
+
+    /* The submenu's choices, capped at 60 as upstream caps them. */
+    const choices: number[] = [];
+    if (art) {
+      for (let i = 1; i < artifacts.length && choices.length < 60; i++) {
+        if (artifacts[i]?.tval === tval) choices.push(i);
+      }
+    } else {
+      for (let i = 1; i < reg.kinds.length && choices.length < 60; i++) {
+        const kind = reg.kinds[i];
+        if (!kind || kind.tval !== tval) continue;
+        if (kind.kindFlags.has(KF.INSTA_ART)) continue;
+        choices.push(i);
+      }
+    }
+    const subRows: MenuItem[] = choices.map((idx) => {
+      if (!art) return { label: objectKindName(reg.kinds[idx] as ObjectKind) };
+      /* get_art_name (ui-wizard.c:150): a fake artifact described with
+       * ODESC_SINGULAR | ODESC_SPOIL. */
+      const a = artifacts[idx];
+      const fake = a ? makeFakeArtifact(reg, make.constants, a) : null;
+      return {
+        label: fake
+          ? describeObject(state, fake, ODESC.SINGULAR | ODESC.SPOIL)
+          : a?.name ?? "",
+      };
+    });
+    subRows.push({ label: art ? `All artifact ${baseName}` : `All ${baseName}` });
+
+    const sub = await selectFromMenu(
+      term,
+      art ? `Which artifact ${baseName}? ` : `What kind of ${baseName}?`,
+      subRows,
+      "[ a-z to choose, ESC to go back ]",
+    );
+    if (sub === null) continue; // ESC: back to the tval menu
+    if (sub === choices.length) {
+      /* The per-tval "All ..." row (L246-253). The non-artifact branch passes
+       * choice = 0, so instant artifacts are EXCLUDED here - unlike the "Create
+       * all from tval" menu row, which passes 1. */
+      if (art) wizCreateAllArtifactFromTval(state, { tval }, deps);
+      else await runCreateAllObjFromTval(ctx, false, tval);
+      return;
+    }
+    const index = choices[sub];
+    if (index === undefined) return;
+    if (art) await runCreateArtifact(ctx, index);
+    else await runCreateObj(ctx, index);
+    return;
+  }
+}
+
+/** KEYLOG_SIZE (ui-term.h:336). */
+const KEYLOG_SIZE = 8;
+
+/**
+ * wiz_display_keylog (ui-wizard.c:96): the last KEYLOG_SIZE keypresses, most
+ * recent first, each as `    %-12s (code=%lu mods=%u)`, padded out to a full
+ * eight rows with the blanks upstream draws, then
+ * "Press any key to continue.".
+ */
+async function runDisplayKeylog(ctx: WizardUiCtx): Promise<void> {
+  const log = [...(ctx.keylog?.() ?? [])].reverse(); // the ring, most recent first
+  const lines: ScreenLine[] = [];
+  for (let i = 0; i < KEYLOG_SIZE; i++) {
+    const k = log[i];
+    lines.push({
+      text: k ? `    ${k.text.padEnd(12)} (code=${k.code} mods=${k.mods})` : "",
+    });
+  }
+  lines.push({ text: "Press any key to continue." });
+  await showTextScreen(ctx.term, "Previous keypresses (top most recent):", lines);
+}
+
+/**
+ * wiz_proj_demo (ui-wizard.c:78): the "PROJ_ types display" menu - every
+ * projection by its list-projections.h code, with the five bolt glyphs drawn 25
+ * columns in, in that projection's colour (proj_display, L37-64). Upstream rules
+ * every odd row with dots so the columns stay readable.
+ */
+async function runProjDemo(ctx: WizardUiCtx): Promise<void> {
+  const projections = ctx.projections;
+  if (!projections || projections.length === 0) return unavailable(ctx);
+  /* wchar_t chars[] = L"*|/-\\" (L52): the BOLT_MAX ASCII bolt glyphs. */
+  const BOLT_CHARS = ["*", "|", "/", "-", "\\"].join("");
+  const white = colorToCss(COLOUR_WHITE);
+  const rows: MenuItem[] = projections.map((proj, type) => {
+    const fill = Math.max(1, 25 - proj.code.length);
+    const rule = (type % 2 ? "." : " ").repeat(fill);
+    return {
+      label: `${proj.code}${rule}${BOLT_CHARS}`,
+      runs: [
+        { text: `${proj.code}${rule}`, color: white },
+        { text: BOLT_CHARS, color: colorToCss(colorTextToAttr(proj.color ?? "w")) },
+      ],
+    };
+  });
+  await selectFromMenu(ctx.term, "PROJ_ types display", rows, "[ ESC to close ]");
+}
+
+/* ------------------------------------------------------------------ *
  * The four commands whose menu row presets an argument. Upstream writes each as
  * `if (cmd_get_arg_*(...) != CMD_OK) { ask }`, so the SAME function serves the
  * menu (argument supplied, no prompt) and a bare command from a keymap or a
@@ -788,6 +969,40 @@ const EF_MAX = Object.keys(EF).length;
  * parameter keeps both paths in one place, as the C does - the prompts are not
  * dead code waiting for a keymap layer.
  * ------------------------------------------------------------------ */
+
+/** do_cmd_wiz_create_obj (cmd-wizard.c:873). */
+async function runCreateObj(ctx: WizardUiCtx, index?: number): Promise<void> {
+  const { term, state, deps } = ctx;
+  if (!deps.makeDeps) return unavailable(ctx);
+  let ind = index;
+  if (ind === undefined) {
+    const kMax = deps.makeDeps.reg.kinds.length;
+    const s = await getString(term, `Create which object (0-${kMax - 1})? `, "", 80);
+    if (s === null) return;
+    const parsed = intFromString(s);
+    if (parsed === null) return;
+    ind = parsed;
+  }
+  /* Out of range prints "That's not a valid kind of object." from the engine. */
+  wizCreateObj(state, { index: ind }, deps);
+}
+
+/** do_cmd_wiz_create_artifact (cmd-wizard.c:842). */
+async function runCreateArtifact(ctx: WizardUiCtx, index?: number): Promise<void> {
+  const { term, state, deps } = ctx;
+  if (!deps.makeDeps || !deps.artifacts) return unavailable(ctx);
+  let ind = index;
+  if (ind === undefined) {
+    const aMax = deps.artifacts.length;
+    const s = await getString(term, `Create which artifact (1-${aMax - 1})? `, "", 80);
+    if (s === null) return;
+    const parsed = intFromString(s);
+    if (parsed === null) return;
+    ind = parsed;
+  }
+  /* Out of range prints "That's not a valid artifact." from the engine. */
+  wizCreateArtifact(state, { index: ind }, deps);
+}
 
 /** do_cmd_wiz_acquire (cmd-wizard.c:389). */
 async function runAcquire(ctx: WizardUiCtx, great?: boolean): Promise<void> {
@@ -807,18 +1022,25 @@ async function runAcquire(ctx: WizardUiCtx, great?: boolean): Promise<void> {
 }
 
 /** do_cmd_wiz_create_all_obj_from_tval (cmd-wizard.c:803). */
-async function runCreateAllObjFromTval(ctx: WizardUiCtx, art?: boolean): Promise<void> {
+async function runCreateAllObjFromTval(
+  ctx: WizardUiCtx,
+  art?: boolean,
+  presetTval?: number,
+): Promise<void> {
   const { term, state, deps } = ctx;
   if (!deps.makeDeps) return unavailable(ctx);
   const tvalMax = deps.makeDeps.reg.bases.length;
-  const s = await getString(
-    term,
-    `Create all items of which tval (1-${tvalMax - 1})? `,
-    "",
-    80,
-  );
-  if (s === null) return;
-  const tval = intFromString(s);
+  let tval = presetTval ?? null;
+  if (tval === null) {
+    const s = await getString(
+      term,
+      `Create all items of which tval (1-${tvalMax - 1})? `,
+      "",
+      80,
+    );
+    if (s === null) return;
+    tval = intFromString(s);
+  }
   if (tval === null || tval < 1 || tval >= tvalMax) return;
   let withArt = art;
   if (withArt === undefined) {
