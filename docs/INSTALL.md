@@ -111,11 +111,18 @@ from may be separate save stores** if their origins differ. See
 ## 4. Desktop app (Electron)
 
 The desktop build (`packages/desktop`) runs the exact same web bundle in a native
-window - and hands it a **real filesystem, a real command line, and the OS user
-directory**. That is the difference between it and the browser: same game, more
-capable host. It is the build parity is measured against, because it is the one
-that can express everything upstream does (see
-[parity/PLATFORM.md](../parity/PLATFORM.md)).
+window - and hands it a **real filesystem and a real command line**. That is the
+difference between it and the browser: same game, more capable host. It is the
+build parity is measured against, because it is the one that can express
+everything upstream does (see [parity/PLATFORM.md](../parity/PLATFORM.md)).
+
+**It is self-contained by default.** Unzip it anywhere and that folder holds the
+whole game: the program, your settings, your savefiles, your scores, your
+character dumps and your mods. Nothing is written to your user profile, so you can
+move the folder, back it up by copying it, or carry it on a stick. This is
+upstream's own Windows shape - a downloaded Angband has always been `angband.exe`
+with `lib/` beside it - and the one exception is a copy placed by the installer,
+for the reason given under [where your data lives](#where-your-data-lives).
 
 ### Run it from source
 
@@ -147,41 +154,78 @@ toolchain requirements).
 | macOS | `.dmg` | `.zip` of the `.app` |
 | Linux | `.deb` | `.AppImage`, plus a `.tar.gz` |
 
-Every one of them is self-contained: Chromium, Node and the game bundle are all
-inside. Nothing needs to be installed first, and the app never reaches outside
-its own folder except for the data directory described next.
+Every one of them carries its own Chromium, Node and game bundle, so nothing needs
+to be installed first. The `.zip` / `.tar.gz` / `install:portable` shapes go
+further and keep their data in the folder too - see
+[where your data lives](#where-your-data-lives).
 
-For just the portable Windows build:
+For just the single-file portable Windows build:
 
 ```sh
 pnpm --filter @neo-angband/desktop dist:portable
 ```
 
-### Where your data lives, and how to make it portable
+### Install it into a folder you choose
 
-The game keeps upstream's writable tree - `save/`, `panic/`, `scores/`,
-`user/`, `archive/`, and a `mods/` folder - under one base directory. Which one
-depends on how you launched it, in this order:
+To build the game and put it straight into one self-contained folder - the shape
+described above, ready to run:
+
+```sh
+pnpm --filter @neo-angband/desktop install:portable
+```
+
+It goes to `C:\Games\Neo Angband` on Windows and `~/Games/Neo Angband` elsewhere.
+Name another location as an argument, or set `NEO_ANGBAND_INSTALL_DIR`:
+
+```sh
+pnpm --filter @neo-angband/desktop install:portable "D:\Games\Neo Angband"
+```
+
+Re-running it over an existing install replaces the program and **keeps
+`neo-angband-data` untouched**, so rebuilding never costs you a character.
+
+### Where your data lives
+
+The game keeps upstream's writable tree - `save/`, `panic/`, `scores/`, `user/`,
+`archive/`, a `mods/` folder, and Chromium's own caches in `chromium/` - under one
+base directory. Which one depends on how you launched it, in this order:
 
 1. **`NEO_ANGBAND_DATA` is set** - that path. This is upstream's own
    `ANGBAND_PATH` (`init.c`).
-2. **You ran the portable `.exe`** - a `neo-angband-data` folder beside it. Put
-   the .exe on a USB stick and the whole game, saves included, travels with it.
+2. **You ran the single-file portable `.exe`, or an AppImage** - a
+   `neo-angband-data` folder beside the file you double-clicked. (Both of those
+   unpack themselves somewhere temporary, so it is the file's own folder that
+   counts, not where the program is running from.)
 3. **A `neo-angband-data` folder already exists beside the program** - that
-   folder. This is how you make an unzipped or installed copy portable: create
-   the folder, and the game uses it from then on.
-4. Otherwise the OS user-data directory:
+   folder. This is how you make an *installed* copy self-contained: create the
+   folder, and the game uses it from then on.
+4. **The program's own folder** - `neo-angband-data` beside the executable. This
+   is the default, and it is what makes an unzipped copy self-contained without
+   being asked.
+5. Otherwise the OS user-data directory:
    - Windows `%APPDATA%\Neo Angband`
    - macOS `~/Library/Application Support/Neo Angband`
    - Linux `~/.config/Neo Angband`
 
-The path in use is printed at startup (`[neo-angband] data (portable): ...`). If
-the folder cannot be written to - a portable copy unzipped into Program Files,
-say - the game says so and stops rather than starting a character it could never
-save.
+Only three things reach step 5, and each of them wants to:
 
-To back a character up, copy the `save/` folder. To move an install, copy the
-whole data folder.
+- **A copy the installer placed.** Uninstalling deletes the install directory, and
+  your characters must not be inside it. The installer leaves an `installed.txt`
+  saying so and naming where the data went; delete nothing else if you want to
+  keep playing.
+- **A folder the OS will not let the game write to** - dragged into Program Files,
+  say. Rather than refuse to start, the game uses the location that works.
+- **macOS.** Data inside `Neo Angband.app` would break the bundle's signature and
+  be thrown away by the next upgrade, so a `.app` uses step 5 unless you pick
+  step 1 or 3.
+
+The path in use, and which rule chose it, is printed at startup:
+`[neo-angband] data (folder): C:\Games\Neo Angband\neo-angband-data`. If the folder
+cannot be written to, the game says so and stops rather than starting a character
+it could never save (upstream's `create_needed_dirs` does the same).
+
+To back a character up, copy the `save/` folder. To move an install, copy the whole
+folder - program included.
 
 **Signing.** The produced macOS `.dmg` and Windows `.exe` are unsigned, so a
 first run may hit Gatekeeper (macOS) or SmartScreen (Windows). Signing and

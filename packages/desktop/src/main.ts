@@ -78,18 +78,57 @@ const WEB_ROOT = findWebRoot();
 app.setName("Neo Angband");
 
 /**
- * init.c's writable tree, chosen per launch: beside the install for a portable
- * copy, under the user's application data for an installed one. See data-dir.ts
- * for the order and why. NodeRawFs creates the five ANGBAND_DIR_* subdirectories
- * under whichever base wins.
+ * init.c's writable tree, chosen per launch: beside the install by default, under
+ * the user's application data only for a copy the installer put there. See
+ * data-dir.ts for the order and why. NodeRawFs creates the five ANGBAND_DIR_*
+ * subdirectories under whichever base wins, and the mods folder sits alongside
+ * them - so an unzipped folder holds the program, its data and its mods together.
  */
 const DATA = resolveDataBase({
   env: process.env,
   exeDir: path.dirname(app.getPath("exe")),
   userData: app.getPath("userData"),
+  packaged: app.isPackaged,
+  platform: process.platform,
 });
 const USER_BASE = DATA.base;
 const MODS_DIR = path.join(USER_BASE, "mods");
+
+/**
+ * Move Chromium's own state into the folder too.
+ *
+ * Without this a "self-contained" copy is not one. Electron unconditionally
+ * creates its userData directory - caches, GPU shader cache, local storage, a
+ * DevTools port file - under the OS user profile, so a portable game still left
+ * an `AppData\Roaming\Neo Angband` folder behind on any machine it was run on,
+ * and the localStorage the web build keeps its characters in lived there rather
+ * than with the game. That is precisely the smearing this shape exists to avoid.
+ *
+ * There is no upstream equivalent because upstream has no browser engine; the
+ * governing rule is the ratified one, that a portable copy keeps EVERYTHING in
+ * one folder. It goes in a subdirectory rather than the base itself so that the
+ * five ANGBAND_DIR_* directories stay recognisable next to it instead of being
+ * buried among Chromium's dozen.
+ *
+ * Only for a portable launch: the `user` kind is already Electron's own
+ * directory, and reassigning it to itself-plus-a-suffix would orphan the
+ * localStorage characters of every existing installed copy.
+ *
+ * FOUR paths, not one. `userData` is only documented to be where the other three
+ * DEFAULT to; `sessionData` (the caches, local storage, IndexedDB), `crashDumps`
+ * and `logs` are separate entries that can each be resolved on their own, and
+ * "defaults to" is not a guarantee about ordering against an override installed
+ * this early. Setting all four is a line each and removes the question. Verified
+ * by launch: after this, the user profile has no Neo Angband directory at all and
+ * Chromium's 94 files are inside the game folder.
+ */
+if (DATA.portable) {
+  const chromium = path.join(USER_BASE, "chromium");
+  app.setPath("userData", chromium);
+  app.setPath("sessionData", chromium);
+  app.setPath("crashDumps", path.join(chromium, "crashes"));
+  app.setPath("logs", path.join(chromium, "logs"));
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",

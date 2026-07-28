@@ -27,9 +27,30 @@ So:
   layout an external manager can deploy into (Phase 4). The browser keeps what it
   can host: the bundled mods and the in-app manager.
 
-The desktop build is also **self-contained and portable**: nothing needs
-installing, and a `neo-angband-data` folder beside the executable makes the whole
-game - saves included - travel with its folder. See `docs/INSTALL.md` §4.
+The desktop build is also **self-contained by default** (ratified 2026-07-28, in
+answer to what "portable" was asked to mean):
+
+> When I said portable, I meant that the executable and its config and data and
+> saves and everything are bundled into the same local folder instead of smearing
+> them across the OS user's folder or applications folder. [...] All mods would
+> then be right in with the app.
+
+So the folder holds all of it - program, settings, savefiles, scores, dumps, mods,
+and Chromium's own caches - and the OS user directory is used only where keeping
+data in the folder would destroy it (an installed copy, whose uninstaller deletes
+the directory) or is not permitted (a read-only location, a signed `.app` bundle).
+That is `main-win.c`'s shape, where a downloaded Angband is an executable with
+`lib/` beside it. Resolution order and the exceptions: `docs/INSTALL.md` §4.
+
+Two things this cost that reading the config would not have found. Electron
+resolves `sessionData`, `crashDumps` and `logs` separately from `userData`, so all
+four have to be redirected or the "self-contained" copy still leaves its caches -
+and the browser localStorage the characters currently live in - in the user
+profile. And an installed copy and an unzipped copy are IDENTICAL on disk, so the
+game cannot tell them apart by looking: the installer has to mark its own work
+(`build/installer.nsh`), and unmarked has to mean portable. Marked that way round
+deliberately - a missing marker keeps data in the folder, which is recoverable,
+where the inverse would scatter a deliberately-portable copy into the profile.
 
 ## The answer: yes to both, but the fix is not "leave the browser"
 
