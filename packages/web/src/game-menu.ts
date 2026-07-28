@@ -8,12 +8,13 @@
  * upstream buries them across keymaps); every row names its keyboard shortcut
  * in the hint so the menu teaches the keys rather than replacing them.
  *
- * The death menu follows ui-death.c death_actions (L356-367) with its stable
- * MN_CASELESS_TAGS letters, reduced to the actions this port implements:
- * Information (i), Messages (m), File dump (f), View scores (v), History (h),
- * New Game (n). Examine items (x) needs the get_item examine loop, Spoilers (s)
- * is the CLI-only randart spoiler generator, and Quit (q) is meaningless in a
- * browser tab; those three upstream rows are omitted rather than shown dead.
+ * The death menu is ui-death.c death_actions (L356-367) in full, in upstream's
+ * order and with its stable MN_CASELESS_TAGS letters. Three of the rows were
+ * omitted here for a while on reasoning that did not survive re-reading the C:
+ * Examine items (x) needs nothing the inspect command has not had for months,
+ * Spoilers (s) reaches the same handler as the wizard menu's Create spoilers,
+ * and Quit (q) is exactly the port's leave-play-for-the-title action, which the
+ * game menu has offered all along.
  */
 
 import type { MenuItem } from "./overlay";
@@ -127,18 +128,22 @@ export type DeathMenuAction =
   | "messages"
   | "dump"
   | "scores"
+  | "examine"
   | "history"
-  | "new";
+  | "spoilers"
+  | "new"
+  | "quit";
 
 export interface DeathMenuEntry {
   action: DeathMenuAction;
   item: MenuItem;
 }
 
-export const DEATH_MENU_FOOTER = "[ letters or tap to choose, ESC to close ]";
+export const DEATH_MENU_FOOTER = "[ letters or tap to choose, ESC to quit ]";
 
-/** death_actions (ui-death.c L356), reduced to the ported rows, with the
- * upstream tag letters (MN_CASELESS_TAGS). */
+/** death_actions (ui-death.c L356-367), every row, in upstream's order, with
+ * its tag letter (MN_CASELESS_TAGS). Quit is last because death_screen's own
+ * comment requires it to be. */
 export function deathMenuEntries(): DeathMenuEntry[] {
   return [
     {
@@ -158,12 +163,24 @@ export function deathMenuEntries(): DeathMenuEntry[] {
       item: { label: "View scores", tag: "v", hint: "The Hall of Fame." },
     },
     {
+      action: "examine",
+      item: { label: "Examine items", tag: "x", hint: "Inspect what the hero was carrying." },
+    },
+    {
       action: "history",
       item: { label: "History", tag: "h", hint: "The character's life history." },
     },
     {
+      action: "spoilers",
+      item: { label: "Spoilers", tag: "s", hint: "Generate the spoiler files." },
+    },
+    {
       action: "new",
-      item: { label: "New Game", tag: "n", hint: "Start a new character ('N')." },
+      item: { label: "New Game", tag: "n", hint: "Start a new character ('N' or Ctrl-N)." },
+    },
+    {
+      action: "quit",
+      item: { label: "Quit", tag: "q", hint: "Leave play for the title screen (Ctrl-X)." },
     },
   ];
 }

@@ -4,49 +4,103 @@
  * runs only when the bug-fixes mod is enabled and its `bugfix.miscStrings` flag
  * is on, exactly like every other rule in that mod.
  *
- * WHAT THIS ACTUALLY IS, measured rather than assumed. Sweeping every
- * player-visible literal in reference/src for warts found:
+ * WHAT THIS ACTUALLY IS, measured rather than assumed, over the 577 distinct
+ * literals reference/src hands to msg / msgt / get_check / get_string /
+ * get_quantity. Sentence-break spacing splits like this:
  *
- * - 38 literals with TWO spaces after sentence-ending punctuation ("Saving
- *   failed.  Try again? ", "A panic save exists.  Use it? ", ...). This is the
- *   old typographic convention, used deliberately and consistently upstream, so
- *   it is a presentation PREFERENCE rather than a defect - which is why it is
- *   opt-in behind a mod flag and not a core change.
- * - ZERO misspellings. A pass over msg()/msgt()/get_check() text for the usual
- *   suspects (recieve, seperate, occured, acheive, neccessary, definately, teh,
- *   loosing) turned up nothing. If one is ever found, add it to CORRECTIONS
- *   below rather than widening the whitespace rule.
+ * | break        | one space | two spaces |
+ * | ------------ | --------- | ---------- |
+ * | after `.`    | 2         | 15         |
+ * | after `!`    | 3         | 0          |
+ * | after `?`    | 0         | 0          |
  *
- * So the patch is one mechanical rule plus an empty exact-match table. Saying
- * that plainly is the point: an item called "Misc. string fixes" invites a pile
- * of unexamined edits, and there is nothing here to edit but the spacing.
+ * So upstream is NOT inconsistent about wanting two spaces - it is consistent
+ * about it (15 of 17) and slips twice. The patch therefore normalizes the
+ * MINORITY form up to the majority, rather than flattening the majority down:
+ * exactly Aaron's rule, that a convention used throughout is not a defect and
+ * only the less-frequent variant gets corrected.
+ *
+ * The three `!` breaks are the judgement call. Pooled across terminators they
+ * are minority spellings of one convention and get the same treatment; split by
+ * terminator they are 3 of 3 and would be the local majority. Pooling wins here
+ * because the convention is "two spaces after a sentence", not "after a period",
+ * and because a reader sees one message stream, not three punctuation classes.
+ * Dropping the three `!` entries below is the whole change if that reading is
+ * wrong.
+ *
+ * ZERO misspellings, also measured: a pass over the same corpus for the usual
+ * suspects (recieve, seperate, occured, acheive, neccessary, definately, teh,
+ * loosing) turned up nothing, and so did a separate sweep of the gamedata
+ * descriptions - see MISSPELLINGS below.
+ *
+ * A general rewrite rule was considered and rejected. Messages reach this sink
+ * already interpolated, so a blanket ". " -> ".  " would rewrite object
+ * inscriptions and character names the player typed. An exact-match table
+ * cannot misfire that way, and the measurement says it needs four rows - five
+ * single-spaced literals upstream, one of which the port cannot emit.
  */
 
 /**
- * Exact-match corrections for genuine upstream typos, applied before the
- * whitespace rule. Empty by measurement, not by omission - see the module note.
- * Keys are the upstream text verbatim.
+ * Upstream's own single-spaced sentence breaks, normalized to the double space
+ * it uses everywhere else. Keys are the upstream text VERBATIM; the port must
+ * hand this function the finished message for the lookup to hit.
+ *
+ * "Non-existent glyph requested. Please report this bug." (ui-prefs.c) is a
+ * sixth instance upstream, deliberately absent here: the port has no glyph
+ * request path to emit it (text-census KNOWN_ABSENT, internal-error category),
+ * so a row for it would be a rule nothing can ever apply.
  */
-export const MISC_STRING_CORRECTIONS: Readonly<Record<string, string>> = {};
+export const MISC_STRING_CORRECTIONS: Readonly<Record<string, string>> = {
+  /* effect-handler-general.c: its three sibling messages ("Bad effect
+   * description passed to effect_info().  Please report this bug." and friends)
+   * are double-spaced, so this one is a slip and not a house style. */
+  "Bad effect passed to effect_do(). Please report this bug.":
+    "Bad effect passed to effect_do().  Please report this bug.",
+  /* effect-handler-general.c, EARTHQUAKE. */
+  "The ground shakes! The ceiling caves in!": "The ground shakes!  The ceiling caves in!",
+  /* mon-make.c place_new_monster_one's allocation failure. */
+  "Warning! Could not allocate a new monster.": "Warning!  Could not allocate a new monster.",
+  /* effect-handler-general.c, the unresisted cold branch. */
+  "Oops! It feels deathly cold!": "Oops!  It feels deathly cold!",
+};
 
 /**
- * Collapse the double space upstream puts after a sentence to a single one.
- *
- * Deliberately narrow: only after `.`, `!` or `?` and only when a capital,
- * a digit or a quote follows, so it cannot touch column alignment in the help
- * text or the two spaces inside a name. Runs of three or more are left alone -
- * those are alignment, not sentence spacing.
+ * The misspellings sweep, kept as data so the claim "zero" is checkable rather
+ * than asserted. Each is a wrong spelling paired with the right one; the test
+ * asserts none of the wrong forms appears in upstream's message corpus OR in
+ * the gamedata descriptions, and any that turns up gets a row above.
  */
-function singleSpaceSentences(text: string): string {
-  return text.replace(/([.!?]) {2}(?=["'A-Z0-9])/gu, "$1 ");
-}
+export const MISSPELLINGS: readonly (readonly [string, string])[] = [
+  ["recieve", "receive"],
+  ["seperate", "separate"],
+  ["occured", "occurred"],
+  ["occurance", "occurrence"],
+  ["acheive", "achieve"],
+  ["neccessary", "necessary"],
+  ["definately", "definitely"],
+  ["accidently", "accidentally"],
+  ["begining", "beginning"],
+  ["existance", "existence"],
+  ["persistant", "persistent"],
+  ["independant", "independent"],
+  ["noticable", "noticeable"],
+  ["wierd", "weird"],
+  ["thier", "their"],
+  ["teh", "the"],
+  ["loosing", "losing"],
+  ["gaurd", "guard"],
+  ["peice", "piece"],
+  ["releive", "relieve"],
+  ["seige", "siege"],
+  ["succesful", "successful"],
+  ["untill", "until"],
+  ["wich", "which"],
+];
 
 /**
  * The patch: upstream's text in, the corrected text out. Identity for anything
  * with no wart, so the caller can apply it unconditionally once the flag is on.
  */
 export function miscStringFix(text: string): string {
-  const exact = MISC_STRING_CORRECTIONS[text];
-  if (exact !== undefined) return exact;
-  return singleSpaceSentences(text);
+  return MISC_STRING_CORRECTIONS[text] ?? text;
 }

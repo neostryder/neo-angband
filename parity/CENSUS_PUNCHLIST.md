@@ -64,7 +64,7 @@ allowlist entry is deleted and the suite is green.
       through the same block.
 - [x] **H. `drop_near`'s `verbose`** (1) - thread through the port's 15
       `dropNear` call sites; `floorCarry` reports whether the stack is ignorable.
-- [ ] **I. Single missing lines** (6 of 12 done) - each a small fix in a
+- [ ] **I. Single missing lines** (7 of 12 done) - each a small fix in a
       function that already exists. DONE: the explore command's four gates,
       `Generation restarted`, `Failed to place player`, `That item is not within
       your reach`. LEFT: the shapechange shop scream, `Cancelled.`,
@@ -177,8 +177,37 @@ Nothing goes here until it is committed.
   with DIFFERENT bodies); used the existing export rather than adding a third,
   and spawned it as its own job. 95 absences, 19 tier-1.
 
+- 2026-07-27 - lint, **I** (1 more, 7 of 12), and **N** re-measured and
+  REVERSED. Root `pnpm lint` had been reporting 1404 parse errors since an agent
+  worktree landed under the repo root: eslint.config.js now ignores
+  `**/.claude/worktrees/**`, and the root command is 0 errors again.
+  I: "Do you want to quit? " is death_screen's loop, and the loop was the work.
+  Three of death_actions' nine rows were missing (Examine items, Spoilers, Quit)
+  behind reasoning that did not survive re-reading the C - "Quit is meaningless
+  in a browser tab", when the port has had a leave-play action all along. The
+  four exits do not agree on confirming: KTRL('X') and KTRL('N') act at once,
+  the Quit row and Escape both ask. Escape asking is a real behaviour change:
+  upstream gives a dead character no way back to the map, and the port treated
+  Escape as "park on the tombstone". selectFromMenu grew a ctrlCommands layer
+  because KTRL('X') is 0x18 and must not collide with the 'x' Examine tag -
+  mutation-proven: without it, Ctrl-X opens Examine and Ctrl-N picks New Game.
+  Also fixed: death_new_game's get_check had lost its trailing space.
+  N: the earlier pass got both the COUNT and the DIRECTION wrong. Not 38
+  literals but 15, and upstream is consistent rather than sloppy - 15 double
+  spaces after a period against 2 single, so the double space is the convention
+  and collapsing it was a restyling. Per Aaron's rule the minority is what gets
+  corrected, so the patch is now a four-row exact-match table normalizing UP,
+  and the general whitespace rule is gone (it would have rewritten player-typed
+  inscriptions at the sink).
+  Spelling, answering Aaron's question directly: the earlier sweep covered ONLY
+  C string literals. The gamedata descriptions are now swept too, three ways -
+  a ~47-entry known-misspelling list (0 hits), doubled words (1 hit, the room
+  *named* "Dot dot dot"), and every post-4.2.6 upstream commit touching
+  lib/gamedata (zero spelling fixes). The AIngband correction Aaron remembered
+  is upstream 736e4ad0e (2020-06-02): obiterate, "can can", untramelled,
+  threshhold - all four already correct in the 4.2.6 baseline. 94 absences,
+  19 tier-1.
+
   LEFT in I: "Cancelled." (ui-game.c:663), "Are you sure? " (the ^-inscription
-  verify, ui-input.c:2014), "Do you want to quit? " (ui-death.c:411 - needs the
-  death menu's EVT_SELECT vs EVT_ESCAPE flow read properly, not guessed), the
-  arg_force_name refusal, the glyph picker's "(up to 5 hex digits):", and the
-  equip-cmp filter prompt.
+  verify, ui-input.c:2014), the arg_force_name refusal, the glyph picker's
+  "(up to 5 hex digits):", and the equip-cmp filter prompt.

@@ -16,6 +16,10 @@ export default tseslint.config(
       "**/*.d.ts",
       "coverage/**",
       "**/*.cjs",
+      // Agent worktrees live inside the repo root, so a checkout of this same
+      // tree would otherwise be linted a second time with no tsconfig behind
+      // it - 1400+ parser errors that say nothing about the source.
+      "**/.claude/worktrees/**",
     ],
   },
   {

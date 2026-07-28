@@ -13,7 +13,7 @@ import {
   GAME_MENU_FOOTER,
   DEATH_MENU_FOOTER,
 } from "./game-menu";
-import { selectFromMenu, menuLetter } from "./overlay";
+import { selectFromMenu, menuLetter, MENU_CLOSE } from "./overlay";
 import type { GlyphTerm } from "./term";
 
 interface FakeWindow {
@@ -67,9 +67,13 @@ function makeTerm(cols = 80, rows = 24): GlyphTerm & {
   } as unknown as GlyphTerm & { snapshot(): string[]; fireTap(col: number, row: number): void };
 }
 
-function press(win: FakeWindow, key: string): void {
-  const ev = new Event("keydown", { cancelable: true }) as Event & { key: string };
+function press(win: FakeWindow, key: string, mods: { ctrl?: boolean } = {}): void {
+  const ev = new Event("keydown", { cancelable: true }) as Event & {
+    key: string;
+    ctrlKey: boolean;
+  };
   ev.key = key;
+  ev.ctrlKey = mods.ctrl ?? false;
   win.dispatchEvent(ev);
 }
 
@@ -158,16 +162,21 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
   });
 });
 
-describe("deathMenuEntries (ui-death.c death_actions, reduced)", () => {
-  it("keeps the upstream tag letters i/m/f/v/h/n and hints on every row", () => {
+describe("deathMenuEntries (ui-death.c death_actions)", () => {
+  it("is death_actions in full, in order, with its tag letters", () => {
     const entries = deathMenuEntries();
+    /* ui-death.c:356-367, verbatim order and tags. Quit last, as
+     * death_screen's own comment (L353-354) requires. */
     expect(entries.map((e) => [e.action, e.item.tag])).toEqual([
       ["info", "i"],
       ["messages", "m"],
       ["dump", "f"],
       ["scores", "v"],
+      ["examine", "x"],
       ["history", "h"],
+      ["spoilers", "s"],
       ["new", "n"],
+      ["quit", "q"],
     ]);
     for (const e of entries) {
       expect(e.item.hint).toBeTruthy();
@@ -192,7 +201,75 @@ describe("deathMenuEntries (ui-death.c death_actions, reduced)", () => {
       const term = makeTerm();
       const done = selectFromMenu(term, "You have died.", entries.map((e) => e.item));
       press(win, "N");
-      expect(await done).toBe(5); // New Game, uppercase tag
+      expect(await done).toBe(7); // New Game, uppercase tag
+    }
+  });
+
+  it("Ctrl-X does not fire the 'x' Examine row (KTRL('X') != 'x')", async () => {
+    const entries = deathMenuEntries();
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    let chord: string | null = null;
+    const done = selectFromMenu(
+      term,
+      "You have died.",
+      entries.map((e) => e.item),
+      undefined,
+      {
+        ctrlCommands: {
+          x: () => {
+            chord = "quit";
+            return MENU_CLOSE;
+          },
+          n: () => {
+            chord = "new";
+            return MENU_CLOSE;
+          },
+        },
+      },
+    );
+    press(win, "x", { ctrl: true });
+    expect(await done).toBe(MENU_CLOSE);
+    expect(chord).toBe("quit");
+  });
+
+  it("Ctrl-N closes with the new-game chord, not the 'n' row's confirmation", async () => {
+    const entries = deathMenuEntries();
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    let chord: string | null = null;
+    const done = selectFromMenu(
+      term,
+      "You have died.",
+      entries.map((e) => e.item),
+      undefined,
+      { ctrlCommands: { n: () => { chord = "new"; return MENU_CLOSE; } } },
+    );
+    press(win, "n", { ctrl: true });
+    expect(await done).toBe(MENU_CLOSE);
+    expect(chord).toBe("new");
+  });
+
+  it("plain 'x' and 'q' still select their own rows", async () => {
+    const entries = deathMenuEntries();
+    for (const [key, row] of [
+      ["x", 4],
+      ["q", 8],
+    ] as const) {
+      const win = makeFakeWindow();
+      (globalThis as { window?: unknown }).window = win;
+      const term = makeTerm();
+      const done = selectFromMenu(
+        term,
+        "You have died.",
+        entries.map((e) => e.item),
+        undefined,
+        { ctrlCommands: { x: () => MENU_CLOSE, n: () => MENU_CLOSE } },
+      );
+      press(win, key);
+      expect(await done).toBe(row);
     }
   });
 });
