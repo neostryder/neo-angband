@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "start": "pnpm build && electron .",
     "dev": "pnpm --filter @neo-angband/web bundle && pnpm build && electron .",
-    "dist": "pnpm --filter @neo-angband/web bundle && pnpm build && electron-builder"
+    "dist": "pnpm --filter @neo-angband/web bundle && pnpm build && electron-builder",
+    "dist:portable": "pnpm --filter @neo-angband/web bundle && pnpm build && electron-builder --win portable"
   },
   "dependencies": {
     "@neo-angband/cli": "workspace:*",
@@ -32,16 +33,29 @@
     "files": [
       "dist/main.cjs",
       "dist/preload.cjs",
-      "../web/dist-web/**/*"
+      "package.json",
+      "!node_modules/**/*",
+      {
+        "from": "../web/dist-web",
+        "to": "web",
+        "filter": ["**/*"]
+      }
     ],
-    "win": { "target": "nsis", "icon": "build/icon.ico" },
+    "win": {
+      "target": ["nsis", "portable", "zip"],
+      "icon": "build/icon.ico"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}",
+      "requestExecutionLevel": "user"
+    },
     "mac": {
-      "target": "dmg",
+      "target": ["dmg", "zip"],
       "category": "public.app-category.games",
       "icon": "build/icon.png"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": ["AppImage", "deb", "tar.gz"],
       "category": "Game",
       "maintainer": "neostryder <neostryder@users.noreply.github.com>",
       "icon": "build/icon.png"

@@ -159,13 +159,28 @@ web and desktop builds.
 
 ## What "done" means
 
-The **desktop build is the parity bar**; the web build is a documented
-reduced-capability front end. That is upstream's own arrangement - `main-gcu`
-cannot show subwindows either - and it is the only version where 100% parity is
-reachable rather than permanently 18 short.
+**Ratified by the owner on 2026-07-28.** The **desktop build is the parity bar**;
+the web build is a documented reduced-capability front end. That is upstream's own
+arrangement - `main-gcu` cannot show subwindows either - and it is the only version
+where 100% parity is reachable rather than permanently 18 short. Mod support in
+full, including the on-disk pack layout, is a desktop requirement.
 
 The web build stays first-class as a *distribution*: click-a-link play, free
 static hosting, PWA offline install. None of that is given up.
+
+**Phase 2a addendum - the distribution is self-contained.** `pnpm dist` had in
+fact never been run either, and it produced a package with **no renderer in it**:
+a `files` pattern that climbs out of the app directory (`../web/dist-web/**/*`) is
+copied nowhere, so the only screen that build could ever have shown was the
+"Web bundle not found" dialog. Fixed with a `{from, to}` mapping, `!node_modules`
+(2 079 asar entries of bundled-anyway dependencies), and a `WEB_ROOT` that checks
+both layouts. Windows now also builds a **portable** `.exe` and a `.zip`, macOS a
+`.zip`, Linux a `.tar.gz`; `data-dir.ts` puts the writable tree beside the
+executable for those. Verified by launching the real 95 MB portable .exe: it
+created `neo-angband-data/{user,save,panic,scores,archive,mods}` beside itself,
+reported `portable: true` with that path, painted 20 598 lit canvas pixels, wrote
+a file through the bridge into the portable tree, and still refused
+`../../escaped.txt`.
 
 ## The rule this encodes
 

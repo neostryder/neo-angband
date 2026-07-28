@@ -42,7 +42,7 @@ function platformInfo(): HostBridgeInfo {
   }
   /* The channel is not there, so this is not the shell we think it is. Report
    * no argv rather than an empty-but-supported one. */
-  return { argv: [], ...HOST_SHELL_LIMITS };
+  return { argv: [], ...HOST_SHELL_LIMITS, dataDir: "", portable: false };
 }
 
 const info = platformInfo();
@@ -54,6 +54,14 @@ contextBridge.exposeInMainWorld("neoDesktop", {
   modsBaseUrl: "/mods",
   /** The listing endpoint (returns a JSON array of mod folder names). */
   modsIndexUrl: "/mods/index.json",
+  /**
+   * Where this install keeps its data. Informational, not part of the host
+   * layer - z-file.c answers "what is the path of this file" through
+   * displayPath; this answers "where is everything", which a portable copy
+   * changes per folder.
+   */
+  dataDir: info.dataDir,
+  portable: info.portable,
 });
 
 contextBridge.exposeInMainWorld(HOST_BRIDGE_GLOBAL, {
