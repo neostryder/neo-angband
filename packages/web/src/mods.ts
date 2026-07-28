@@ -24,11 +24,12 @@
  * store; the change takes effect on reload (content is composed at load time and
  * plugins are installed at boot), which the manager makes explicit.
  *
- * Install-from-URL is surfaced honestly: the static web build inlines every mod
- * at build time and has no runtime code loader, so this build cannot fetch a mod
- * from a URL. The row explains that filesystem/URL install is a desktop
- * (Electron) capability rather than pretending to work - documenting the
- * surface difference instead of leaving a dead button.
+ * Where mods come from is surfaced honestly, and now with a real answer on the
+ * desktop build: the "Where mods come from" row names the actual mods folder,
+ * how many packs are in it, and anything it could not read. On a browser tab it
+ * says there is no folder and why. Neither surface has a runtime CODE loader, so
+ * neither can fetch and run a mod from a URL - a folder of records is a different
+ * thing, and it composes through the same pipeline as a bundled pack.
  */
 
 import {
@@ -52,11 +53,26 @@ const C_DANGER = UI_BAD;
 const C_FG = UI_TEXT;
 const C_DIM = UI_DIM;
 const C_TITLE = UI_TEXT;
+const C_GOLD_TEXT = UI_GOLD;
+
+/** What the manager needs to know about the on-disk mods folder. */
+export interface DiskPackStatus {
+  available: boolean;
+  dir: string | null;
+  count: number;
+  problems: readonly string[];
+}
 
 /** What the manager needs from the host (discovery + reload are browser-only). */
 export interface ModManagerDeps {
   /** The persisted enable/consent/profile store. */
   store: ModStore;
+  /**
+   * The mods DIRECTORY's state, when this front end has one (pack.diskPackStatus).
+   * Absent means the same as unavailable; the manager says so rather than
+   * implying a folder exists.
+   */
+  diskPackStatus?: () => DiskPackStatus;
   /** Build the current catalog fresh (re-reads discovery + store each call). */
   listCatalog: () => CatalogMod[];
   /** Human-readable conflict lines for the enabled content set (P7.6 humanLines). */
@@ -532,24 +548,61 @@ async function managePatches(
   }
 }
 
-/** The honest install-from-URL surface (no runtime loader in the web build). */
-async function installFromUrl(term: GlyphTerm): Promise<void> {
-  const url = await promptText(term, "Install mod from URL", "https://", 200);
-  if (!url) return;
-  await showTextScreen(
-    term,
-    "Install from URL",
-    [
-      { text: "This browser build inlines every mod at build time and has no", color: C_FG },
-      { text: "runtime code loader, so it cannot fetch and run a mod from a URL.", color: C_FG },
+/**
+ * Where mods come from, and how to add one.
+ *
+ * On a front end WITH a mods directory this is the real answer: the path, what
+ * is in it, and what could not be read. On one without, it says so - which is
+ * the same honesty the old "Install from URL" row had, arrived at from the other
+ * side now that the directory actually works.
+ *
+ * Neither surface has a runtime code loader, so neither can fetch and RUN a mod
+ * from a URL. A folder you copied in is a different thing: its records are data,
+ * composed at load time by the same pipeline the bundled mods use.
+ */
+async function showModSources(
+  term: GlyphTerm,
+  status: DiskPackStatus | undefined,
+): Promise<void> {
+  const lines: ScreenLine[] = [];
+  if (!status || !status.available) {
+    lines.push(
+      { text: "This build has no mods folder.", color: C_FG },
       { text: "", color: C_FG },
-      { text: "To install mods from a URL or a folder, use the desktop (Electron)", color: C_WARN },
-      { text: "build, which reads mods from a local mods/ directory. See the", color: C_WARN },
-      { text: "Electron how-to in the docs. Bundled mods remain manageable here.", color: C_WARN },
+      { text: "A browser tab cannot read a directory on your computer, so every", color: C_FG },
+      { text: "mod here is one bundled into the app - fully manageable, but a", color: C_FG },
+      { text: "fixed set. The desktop build keeps a mods folder you can copy a", color: C_WARN },
+      { text: "mod into, and an external mod manager can deploy into.", color: C_WARN },
+    );
+  } else {
+    lines.push(
+      { text: "Mods folder:", color: C_FG },
+      { text: `  ${status.dir ?? "(unknown)"}`, color: C_GOLD_TEXT },
       { text: "", color: C_FG },
-      { text: `(You entered: ${url.slice(0, 60)})`, color: C_DIM },
-    ],
-  );
+      {
+        text:
+          status.count === 1
+            ? "1 mod found in it."
+            : `${status.count} mods found in it.`,
+        color: C_FG,
+      },
+      { text: "", color: C_FG },
+      { text: "To add one, copy its folder in and restart. A mod folder holds", color: C_FG },
+      { text: "manifest.json plus one .json per kind of record it changes -", color: C_FG },
+      { text: "exactly the layout a bundled mod has.", color: C_FG },
+      { text: "", color: C_FG },
+      { text: "load-order.json in that folder is owned by an external mod", color: C_FG },
+      { text: "manager: the ids it lists are loaded, in that order. Turning a", color: C_FG },
+      { text: "mod on or off here overrides it for that mod.", color: C_FG },
+    );
+    if (status.problems.length > 0) {
+      lines.push({ text: "", color: C_FG }, { text: "Could not be used:", color: C_DANGER });
+      for (const p of status.problems.slice(0, 8)) {
+        lines.push({ text: `  ${p}`, color: C_DANGER });
+      }
+    }
+  }
+  await showTextScreen(term, "Where mods come from", lines);
 }
 
 /**
@@ -586,7 +639,15 @@ export async function runModManager(
     // without it.
     addAction("View conflicts", "conflicts", C_FG, "Which enabled content mods contest the same records.");
     addAction("Profiles...", "profiles", C_FG, "Save / apply / delete named mod setups.");
-    addAction("Install from URL...", "install", C_DIM, "Desktop-only; explains the web-build limit.");
+    const diskStatus = deps.diskPackStatus?.();
+    addAction(
+      "Where mods come from...",
+      "install",
+      C_DIM,
+      diskStatus?.available === true
+        ? "Your mods folder: path, contents, and anything unreadable."
+        : "Why this build has no mods folder.",
+    );
     if (dirty) {
       addAction("Apply changes and reload", "reload", C_WARN, "Reload so enable/disable/order take effect.");
     }
@@ -634,7 +695,7 @@ export async function runModManager(
     } else if (rk.kind === "profiles") {
       if (await manageProfiles(term, deps)) dirty = true;
     } else if (rk.kind === "install") {
-      await installFromUrl(term);
+      await showModSources(term, deps.diskPackStatus?.());
     } else if (rk.kind === "reload") {
       deps.requestReload();
       return; // reload takes over

@@ -216,8 +216,12 @@ distribution.
   `-g` takes no number (`-g2` prints the usage text), and the eight read-only
   data directories are accepted by `-d` but have no path to override, because
   this port compiles that data in.
-- **A user mods folder** - `mods/` inside the data directory, which is what an
-  external mod manager can deploy into. The folder is created on first launch.
+- **A user mods folder** - `mods/` inside the data directory. Copy a mod's folder
+  in and restart; it appears in the in-game mod manager, off until you enable it.
+  An external mod manager (Vortex/MO2) deploys into the same folder and owns
+  `load-order.json` there. The mod manager's "Where mods come from" row names the
+  exact path and lists anything it could not read. Format:
+  [docs/MODS.md](MODS.md#where-a-pack-lives-on-disk).
 - **Cross-origin isolation.** The desktop build serves the app with COOP/COEP
   headers, so `SharedArrayBuffer` is available. Nothing requires it today, but
   it is the one capability a static host cannot provide (see the matrix).
@@ -240,7 +244,7 @@ The same game everywhere. This table is the honest, per-surface difference list
 | Content-pack mods (bundled) | Yes | Yes | Yes | Yes |
 | Trusted in-process system-override mods | Yes | Yes | Yes | Yes |
 | Untrusted sandbox (Worker) mods | Yes | Yes | Yes | Yes |
-| Install mods from a URL / folder | No (1) | No (1) | No (1) | Planned (2) |
+| Install mods from a folder | No (1) | No (1) | No (1) | **Yes** (2) |
 | SharedArrayBuffer / cross-origin isolation | Only with COOP/COEP headers | Same as host | Only if host sends COOP/COEP (3) | Yes (built in) |
 | Accessibility (screen reader, keyboard) | Yes (4) | Yes (4) | Yes (4) | Yes (4) |
 
@@ -251,8 +255,11 @@ Notes:
    runtime mod-loader that lets a plain static site or PWA load user content-pack
    and sandboxed-plugin mods from a file picker / drag-drop is a planned mods-
    phase feature; it is an implementation gap, not a platform limitation.)
-2. The desktop build serves a user `mods/` folder; loading runtime mods from it
-   is the next desktop increment (the serving seam is already in place).
+2. The desktop build reads content and tile packs from its `mods/` folder, and an
+   external mod manager can deploy into it (`load-order.json` is honoured). Neither
+   surface has a runtime CODE loader, so a scripted-plugin mod still has to be
+   bundled - a folder of records is data, and composes through the same pipeline
+   as a bundled pack.
 3. GitHub Pages and most static hosts cannot send custom headers, so cross-
    origin isolation is unavailable there. It is never required - the trusted
    in-process mod tier works on every surface.

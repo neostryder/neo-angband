@@ -175,8 +175,22 @@ and `hostDirOverrides` drops what cannot be acted on.
 flags screen (ui-options.c:386-405), the `window:` pref directive, and a real
 `option_dump` replacing core's `"# Options\n\n"` stub.
 
-**Phase 4 - the on-disk pack layout,** so Vortex/MO2 have something to deploy
-into and the recorded division of labour becomes true.
+**Phase 4 - the on-disk pack layout.** DONE for content and tile packs. A mod is
+a folder holding `manifest.json` plus one `<record-type>.json` per contribution -
+the same layout a bundled pack has, so a mod developed bundled ships as a folder
+with no translation. `load-order.json` belongs to the external manager and means
+both "loaded" and "in this position", the way an active-plugin list does; a
+player's explicit toggle outranks it in both directions, because otherwise turning
+off a deployed mod would look broken. Every failure is one reported line and never
+fatal, since a mods directory is player-supplied data.
+
+Two things this turned up: the seam was not a half-step but **dead** (nothing in
+the renderer read the served folder at all), and the mod manager built its `[x]`
+boxes from the stored set rather than the effective one - so the first live run
+showed a pack the game had loaded as OFF. One resolver, one answer.
+
+Still bundled-only: a **scripted plugin**. A folder of records is data; running a
+plugin from disk needs a code loader, which is a separate decision.
 
 **Phase 5 - real savefiles on desktop,** which also restores ui-birth.c:1292's
 overwrite prompt, plus explicit import/export so a character can move between the
