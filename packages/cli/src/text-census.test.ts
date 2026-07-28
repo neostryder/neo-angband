@@ -127,7 +127,6 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
 
   "GAP: single missing lines, each a small fix in an existing function":
     [
-      "Cancelled.", // ui-game.c:663
       "You are not allowed to change your name!", // ui-player.c:1250
       "(up to 5 hex digits):", // the visuals editor, ui-knowledge.c:707
       "Enter 2 or 3 (for stat) character code and return or return to clear ", // ui-equip-cmp.c:1237

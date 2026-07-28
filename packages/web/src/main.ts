@@ -169,6 +169,7 @@ import {
 import type {
   GamePack,
   GameObject,
+  InterruptResponse,
   MessageType,
   ObjectKind,
   PlayerCommand,
@@ -4152,7 +4153,14 @@ async function driveRest(nArg: number): Promise<void> {
     for (;;) {
       // Interruptions before spending the turn (a keypress, a monster already
       // in view, or the world moved us off the level): disturb().
-      if (dead || interrupted || anyVisibleMonster()) break;
+      if (dead || interrupted || anyVisibleMonster()) {
+        // Only the keypress arm reports it: "Cancelled." comes from
+        // check_for_player_interrupt (ui-game.c:663), and the monster /
+        // damage disturbs are silent. Said here rather than through the engine
+        // hook because this loop, not the engine, drives the rest (WP-11).
+        if (interrupted && !dead) say("Cancelled.");
+        break;
+      }
 
       const hpBefore = p.chp;
       const spBefore = p.csp;
@@ -4911,6 +4919,29 @@ state.nextCommand = (): PlayerCommand | null => {
   const cmd = commandBuffer.shift() ?? null;
   if (cmd && cmd.code !== "repeat") lastRepeatCmd = cmd;
   return cmd;
+};
+
+/* --- check_for_player_interrupt (ui-game.c:645), hosted ------------------- */
+/* A key arrived while the loop was driving a run / repeat / rest. The keydown
+ * handler sets this instead of executing the key, which IS upstream's
+ * EVENT_INPUT_FLUSH: the key that stops a run is discarded, not obeyed. */
+let interruptKey = false;
+/* True while a self-continuing command (a run, a pathfind, an auto-repeated
+ * dig) is being pumped one step per event-loop turn - see advance(). */
+let pumping = false;
+state.checkInterrupt = (): InterruptResponse => {
+  /* The resting arm of the C's gate is answered by driveRest, which owns the
+   * rest lifecycle in this port (WP-11) and already yields - and pauses - once
+   * per rest turn. Pausing here as well would strand the {hold} it has queued
+   * in commandBuffer and double-count that turn. */
+  if (state.resting) return "go";
+  if (interruptKey) {
+    interruptKey = false;
+    return "cancel";
+  }
+  /* The browser cannot be asked "was a key pressed?" without letting the event
+   * loop run, so always hand control back and answer on the next pump. */
+  return "pause";
 };
 
 /**
@@ -6145,7 +6176,40 @@ function storeAtPlayer(): Store | null {
   );
 }
 
+/**
+ * Re-enter the loop on the next macrotask to take the next step of a
+ * self-continuing command (a run, a pathfind, an auto-repeated dig). The engine
+ * already holds the continuation on its cmdQueue, so this consumes nothing and
+ * decides nothing - it exists because the browser can only deliver the keypress
+ * that ABORTS a run (check_for_player_interrupt, ui-game.c:645) when the event
+ * loop turns. Upstream redraws every step of a run too (Term_fresh in
+ * process_player's refresh), so stepping through advance() is also what makes a
+ * run visible instead of a teleport from start to finish.
+ */
+function pumpStep(): void {
+  // Keys arriving during the wait are the abort, not commands (see the keydown
+  // handler); set the flag before yielding so none is missed.
+  pumping = true;
+  setTimeout(() => {
+    // A -more- prompt, a floor pile or a store screen may have taken the
+    // terminal in this step's tail: let it finish before stepping again.
+    if (modalDepth > 0) {
+      pumpStep();
+      return;
+    }
+    if (dead || !state.playing) {
+      pumping = false;
+      return;
+    }
+    advance();
+  }, 0);
+}
+
 function advance(): void {
+  // A key held over from a pump that ended some other way (a level change, a
+  // death) must not abort the NEXT run.
+  if (!pumping) interruptKey = false;
+  pumping = false;
   const preLen = msglog.all().length; // messages before this turn, for -more-
   const beforeX = state.actor.grid.x;
   const beforeY = state.actor.grid.y;
@@ -6300,10 +6364,21 @@ function advance(): void {
       return undefined;
     });
   }
+  // The engine handed control back mid-run/repeat so a keypress can reach it.
+  if (status === LOOP_STATUS.PAUSE) pumpStep();
 }
 
 window.addEventListener("keydown", (ev) => {
   if (scoresOpen || modalDepth > 0) return; // a modal owns the keyboard
+  // While a run / pathfind / repeated command is being pumped, ANY key is the
+  // abort and nothing else: check_for_player_interrupt flushes the input and
+  // disturbs (ui-game.c:658-663), so the key is swallowed rather than obeyed.
+  // The engine says "Cancelled." on the next step.
+  if (pumping) {
+    ev.preventDefault();
+    interruptKey = true;
+    return;
+  }
   // Ctrl-P: recall the message history (do_cmd_messages), even the same key
   // the roguelike keyset would otherwise use, since a modifier is held.
   if (ev.ctrlKey && (ev.key === "p" || ev.key === "P")) {

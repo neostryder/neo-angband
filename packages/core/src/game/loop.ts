@@ -56,14 +56,15 @@ import {
   rechargeObjects,
 } from "./world";
 import type { Player } from "../player/player";
-import type { GameState } from "./context";
+import type { GameState, InterruptResponse } from "./context";
 import {
   givePlayerEnergy,
   processMonsters,
   resetMonsters,
 } from "./scheduler";
+import { disturb } from "./player-path";
 import { processPlayer } from "./player-turn";
-import type { ActionRegistry } from "./player-turn";
+import type { ActionRegistry, PlayerTurnResult } from "./player-turn";
 import { dungeonGetNextLevel } from "./quest";
 
 /** player-util.h regeneration constants (regen factor / base, times 2^16). */
@@ -85,6 +86,14 @@ export const LOOP_STATUS = {
   LEVEL_CHANGE: "level-change",
   /** player->upkeep->playing cleared. */
   STOPPED: "stopped",
+  /**
+   * A host that cannot poll the keyboard synchronously asked to be handed
+   * control back mid run / repeat / rest so its event loop can turn (see
+   * checkForPlayerInterrupt). Nothing was consumed and the continuation is
+   * still queued: call runGameLoop again to take the next step. Only ever
+   * returned when state.checkInterrupt is installed.
+   */
+  PAUSE: "pause",
 } as const;
 export type LoopStatus = (typeof LOOP_STATUS)[keyof typeof LOOP_STATUS];
 
@@ -515,6 +524,75 @@ function loopStop(state: GameState): LoopStatus | null {
 }
 
 /**
+ * check_for_player_interrupt (ui-game.c:645-666) - the EVENT_CHECK_INTERRUPT
+ * handler that process_player signals before its command loop
+ * (game-world.c:936-937).
+ *
+ * Upstream polls the keyboard WITHOUT waiting (inkey_scan = SCAN_INSTANT) while
+ * a run, a repeated command or a rest is driving the game, and on any key it
+ * flushes input, disturbs and says "Cancelled.". That is the only way to abort a
+ * run: without it a run in a long corridor cannot be stopped by the player.
+ *
+ * A browser host cannot answer synchronously - a keydown is delivered only when
+ * the JS event loop turns - so it may answer "pause". The loop then hands
+ * control back with LOOP_STATUS.PAUSE having consumed nothing: the run's queued
+ * continuation (cmdQueue, player-path.ts runStep) is untouched, so the next
+ * runGameLoop call resumes exactly where it stopped and the host drives the run
+ * a step at a time. Hosts that can poll synchronously answer "go"/"cancel" and
+ * never see PAUSE; with no hook installed nothing changes at all, which is what
+ * keeps the headless harnesses, the borg and the tests driving a whole run
+ * inside one call.
+ *
+ * The upstream call sits at the top of process_player, before its do-while;
+ * calling it immediately before processPlayer() is the same point in the order.
+ * player_resting_complete_special, signalled on the line above it, is ported as
+ * a predicate the host's rest lifecycle owns (restingCompleteSpecial, WP-11).
+ */
+export function checkForPlayerInterrupt(state: GameState): InterruptResponse {
+  if (!state.checkInterrupt) return "go";
+  /* The C's gate, unchanged: running, a repeat still pending, or a rest on a
+   * 128-game-turn boundary. cmd_get_nrepeats() reads the nrepeats counter on the
+   * queued command, which this port carries as PlayerCommand.repeatRemaining
+   * (queueCommandRepeat, context.ts), so a pending repeat is one sitting in
+   * cmdQueue. */
+  const running = (state.run?.running ?? 0) > 0;
+  const repeating = (state.cmdQueue ?? []).some(
+    (c) => (c.repeatRemaining ?? 0) > 0,
+  );
+  const resting = playerIsResting(state) && !(state.turn & 0x7f);
+  if (!running && !repeating && !resting) return "go";
+
+  const answer = state.checkInterrupt();
+  if (answer !== "cancel") return answer;
+  /* EVENT_INPUT_FLUSH, disturb(), msg("Cancelled.") (ui-game.c:660-663).
+   * disturb() flushes cmdQueue, so the caller's processPlayer finds nothing
+   * queued and asks the host for a fresh command - upstream's break out of
+   * process_player with no energy used. */
+  disturb(state);
+  state.msg?.("Cancelled.");
+  return "go";
+}
+
+/**
+ * process_player (game-world.c:933): the interrupt check, then the turn. "pause"
+ * is the host asking for its event loop back before the turn is taken.
+ *
+ * mayPause is false for the FIRST turn of a runGameLoop call. A call resumed
+ * after LOOP_STATUS.PAUSE re-enters at that same point, so pausing there would
+ * answer a question the host has already been given its event loop to answer -
+ * and the run would spin forever, never stepping. A key that arrived during the
+ * pause still cancels immediately: only "pause" is overridden, never "cancel".
+ */
+function processPlayerChecked(
+  state: GameState,
+  registry: ActionRegistry,
+  mayPause: boolean,
+): PlayerTurnResult | "pause" {
+  if (checkForPlayerInterrupt(state) === "pause" && mayPause) return "pause";
+  return processPlayer(state, registry);
+}
+
+/**
  * Take player turns while the player has the energy, letting any monster with
  * strictly more energy act first (process_monsters(player.energy + 1)).
  * Returns a stop status, or null when the player ran out of energy normally.
@@ -534,7 +612,10 @@ function playerTurnsWhileEnergised(
     const s = loopStop(state);
     if (s) return s;
 
-    const r = processPlayer(state, registry);
+    /* Always reached with a turn already taken this call (runGameLoop's first
+     * block returns INPUT otherwise), so pausing here always makes progress. */
+    const r = processPlayerChecked(state, registry, true);
+    if (r === "pause") return LOOP_STATUS.PAUSE;
     const s2 = loopStop(state);
     if (s2) return s2;
     /* Terrain damage after each acted turn (game-world.c:864). */
@@ -558,7 +639,8 @@ export function runGameLoop(
 ): LoopStatus {
   /* The player's own turn first. */
   {
-    const r = processPlayer(state, registry);
+    const r = processPlayerChecked(state, registry, false);
+    if (r === "pause") return LOOP_STATUS.PAUSE;
     const s = loopStop(state);
     if (s) return s;
     /* Player can be damaged by terrain (game-world.c:864): fiery terrain (lava)
