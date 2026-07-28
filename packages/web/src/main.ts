@@ -361,7 +361,7 @@ import {
 import type { CommandCode } from "@neo-angband/core";
 import { monsterIsVisible, monsterIsDestroyed } from "@neo-angband/core";
 import type { WizardDeps } from "@neo-angband/core";
-import { runWizardToggle, runWizardDebugMenu, SPOILERS_CLI_ONLY_MSG } from "./wizard";
+import { runWizardToggle, runWizardDebugMenu, runSpoilers } from "./wizard";
 import type { WizardUiCtx, WizKeypress } from "./wizard";
 import { runStore, sortStoreStock } from "./shop";
 import type { SellPick } from "./shop";
@@ -4338,6 +4338,8 @@ function wizardCtx(): WizardUiCtx {
     keylog: () => KEYLOG,
     // projections[] for wiz_proj_demo's "PROJ_ types display" (project.c).
     projections: booted.registries.projections ?? [],
+    // The static content the four do_cmd_spoilers generators walk.
+    pack,
   };
 }
 
@@ -4792,9 +4794,9 @@ async function runDeathMenu(): Promise<void> {
         await showTextScreen(term, "Player history", historyLines(state));
         break;
       case "spoilers":
-        // death_spoilers (ui-death.c L339): do_cmd_spoilers, which the debug
-        // menu also reaches. See SPOILERS_CLI_ONLY_MSG.
-        say(SPOILERS_CLI_ONLY_MSG);
+        // death_spoilers (ui-death.c L339): do_cmd_spoilers, the same four-row
+        // menu the debug menu reaches.
+        await runSpoilers(term, pack, say);
         break;
       case "new":
         // death_new_game (ui-death.c L349): get_check("Start a new game? "),

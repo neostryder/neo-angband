@@ -85,17 +85,30 @@ export function readUserFile(name: string): string | null {
   }
 }
 
+/**
+ * The two ways upstream's write can fail, kept apart because callers report
+ * them differently: wiz-spoil.c prints "Cannot create spoiler file." for the
+ * file_open and "Cannot close spoiler file." for the file_close.
+ */
+export type WriteOutcome = "ok" | "create-failed" | "close-failed";
+
 /** file_open(MODE_WRITE) + file_put + file_close, verified by a read-back. */
-export function writeUserFile(name: string, text: string): boolean {
+export function writeUserFileChecked(name: string, text: string): WriteOutcome {
   const s = store();
-  if (!s) return false;
+  if (!s) return "create-failed";
   try {
     s.setItem(USER_PREFIX + name, text);
   } catch {
-    return false; /* quota exceeded */
+    return "create-failed"; /* quota exceeded */
   }
-  /* A truncated or evicted write does not throw; only the read-back sees it. */
-  return readUserFile(name) === text;
+  /* A truncated or evicted write does not throw; only the read-back sees it -
+   * which is what file_close's flush would have caught. */
+  return readUserFile(name) === text ? "ok" : "close-failed";
+}
+
+/** writeUserFileChecked for the callers that only report success/failure. */
+export function writeUserFile(name: string, text: string): boolean {
+  return writeUserFileChecked(name, text) === "ok";
 }
 
 /** file_delete. */
