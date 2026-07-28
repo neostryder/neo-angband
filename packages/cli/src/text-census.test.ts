@@ -90,7 +90,6 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
       "Successfully created a spoiler file.",
       "Map is in disconnect.html.",
       "Level generation statistics are in disconnect_gstat.txt",
-      "Statistics generation not turned on in this build.",
       "Total levels with bad starts: %ld",
       "Total levels with disconnected areas: %ld",
       "Total levels isolated from stairs: %ld",
@@ -131,41 +130,8 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
   "divergence (derived from the C 2026-07-28): arg_force_name is set ONLY by main.c:436, the `-f` command-line switch, and it exists so a HOST can pin the character name - the four places that read it (ui-birth.c:711/1287 skip the name step, ui-player.c:1250 refuses the rename, ui-input.c:1342 and ui-options.c:66 auto-name the dump/pref files instead of asking). A browser build is launched by opening a page: there is no argv, and the port has no deployment-config layer for one to map onto, so the flag has no way to become true and the refusal has no way to fire. The rename it guards IS ported (charsheet.ts 'c'). If a host-config layer is ever added, this is one line inside it - and the two file-name arms belong with the other dumps in block E":
     ["You are not allowed to change your name!"],
 
-  "GAP: wizard/debug command prompts (cmd-wizard.c, wiz-debug.c, generate.c:831). In scope - the exact-parity mandate covers wizard mode and the cheat options - but the port's debug menu drives most of these without asking for their parameters":
-    [
-      "Acquire great objects? ",
-      "Zap within what distance? ",
-      "Number of simulations: ",
-      "Stop if disconnected level found? ",
-      "Type of Sim: Diving (1) or Clearing (2) ",
-      "Regen randarts (warning SLOW)? ",
-      "Number of simulations per depth: ",
-      "Pit type (1-3): ",
-      "Minimum depth: ",
-      "Maximum depth: ",
-      "Create instant artifacts? ",
-      "Create which trap? ",
-      "Enter curse name or index: ",
-      "Enter curse power (0 removes): ",
-      "Title for map: ",
-      "Experience: ",
-      "Choose cave profile? ",
-      "Learn object kinds up to level (0-100)? ",
-      "Do which effect: ",
-      "Couldn't proceed.  Stop playing with item and lose all changes? ",
-      "That was an invalid selection.  Use one of fobuztcdhmqgpra .",
-      "Press any key.",
-      "Which monster? ",
-      "No monster found.",
-      "Creating a lot of %s items.  Base level = %d.",
-      "Summon which monster? ",
-      "How many monsters? ",
-      "Teleport range? ",
-      "Enter ego item: ",
-      "Enter new artifact: ",
-      "Profile name (eg classic): ",
-      "The air around you stops swirling...",
-    ],
+  "divergence (derived from the C 2026-07-28): the only way upstream reaches this get_check is a FAILED cmdq_push inside the do_cmd_wiz_play_item session (cmd-wizard.c:1723-1799) - the [c]urse / [s]tatistics / [r]eroll / [t]weak / [q]uantity keys each push a command, and cmdq_push returns non-zero only when the fixed command queue (CMD_QUEUE_SIZE, cmd-core.c) is full. The port has no command queue on that path: runPlayItem awaits the sub-flow directly in the same function, so there is no push, no full queue, and no way for the failure branch to fire. The two done_msg lines behind the same failure (Bailed out. / Couldn't queue command.) are unreachable for the same reason. If wizard commands are ever put on a real queue, all three come back with it":
+    ["Couldn't proceed.  Stop playing with item and lose all changes? "],
 };
 
 const ACCOUNTED = new Set(Object.values(KNOWN_ABSENT).flat());

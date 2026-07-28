@@ -588,6 +588,58 @@ export function promptTextInline(
   });
 }
 
+/**
+ * get_string (textui_get_string, ui-input.c:1181): `prt(prompt, 0, 0)`, then
+ * askfor_aux over the untouched screen with `initial` as the default answer,
+ * then `prt("", 0, 0)`. Resolves the typed string, or null where the C returns
+ * false (ESCAPE).
+ *
+ * `len` is the C's `sizeof(buf)`, so the answer is at most len-1 characters -
+ * and askfor_aux narrows that again to what still fits on an 80-column row
+ * after the prompt (L881-882: `if (x + len > 80) len = 80 - x`). Callers pass
+ * the C's sizeof value verbatim so both limits land where upstream puts them.
+ */
+export function getString(
+  term: GlyphTerm,
+  prompt: string,
+  initial = "",
+  len = 80,
+): Promise<string | null> {
+  const x = prompt.length;
+  const eff = x + len > 80 ? 80 - x : len;
+  return promptTextInline(term, prompt, initial, Math.max(1, eff - 1));
+}
+
+/**
+ * get_quantity (textui_get_quantity, ui-input.c:1206): an amount prompt over
+ * the current screen. `max` of 1 answers 1 without asking; otherwise it is a
+ * get_string defaulting to "1" with a 7-byte buffer, read with atoi, where a
+ * leading '*' or letter means "all", and the result is clamped to [0, max].
+ * ESCAPE is 0, which every caller treats as "no".
+ *
+ * `prompt` is the caller's (e.g. "How many great objects? "); null builds
+ * upstream's own "Quantity (0-N, *=all): ".
+ */
+export async function getQuantity(
+  term: GlyphTerm,
+  prompt: string | null,
+  max: number,
+): Promise<number> {
+  if (max === 1) return 1;
+  const label = prompt ?? `Quantity (0-${max}, *=all): `;
+  const s = await getString(term, label, "1", 7);
+  if (s === null) return 0;
+  /* atoi: leading digits, 0 for anything unparseable. */
+  const parsed = Number.parseInt(s, 10);
+  let amt = Number.isFinite(parsed) ? parsed : 0;
+  /* L1234: only the FIRST character makes it "all". */
+  const first = s.charAt(0);
+  if (first === "*" || /^[a-zA-Z]$/.test(first)) amt = max;
+  if (amt > max) amt = max;
+  if (amt < 0) amt = 0;
+  return amt;
+}
+
 export function promptText(
   term: GlyphTerm,
   title: string,

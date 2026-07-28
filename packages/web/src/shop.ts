@@ -44,7 +44,7 @@ import {
 } from "@neo-angband/core";
 import type { GameObject, StartedGame, Store, EarlierObjectOpts } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
-import { itemSelect, selectFromMenu } from "./overlay";
+import { getQuantity, itemSelect, selectFromMenu } from "./overlay";
 import { objectColor, objectName, packMenu, quiverMenu } from "./screens";
 import { UI_TEXT, UI_DIM, UI_CURSOR, UI_CURSOR_DISABLED, UI_GOOD } from "./ui-colors";
 
@@ -297,67 +297,6 @@ function readStoreInput(term: GlyphTerm): Promise<StoreInput> {
     };
     window.addEventListener("keydown", onKey, true);
     term.onCellTap?.((cell) => finish({ type: "tap", row: cell.row, col: cell.col }));
-  });
-}
-
-/**
- * get_quantity (textui_get_quantity, ui-input.c L1206): an inline row-0 amount
- * prompt over the current screen. Returns 1 without prompting when max is 1;
- * otherwise pre-fills the default "1", accepts digits (and '*'/a letter for
- * "all"), Enter to accept, Escape to abort (0). The result is clamped to
- * [0, max]. `prompt` is the caller's (e.g. "Buy how many? (max 5) ") or the
- * default "Quantity (0-N, *=all): " when null.
- */
-function getQuantity(
-  term: GlyphTerm,
-  prompt: string | null,
-  max: number,
-): Promise<number> {
-  if (max === 1) return Promise.resolve(1);
-  return new Promise<number>((resolve) => {
-    const label = prompt ?? `Quantity (0-${max}, *=all): `;
-    let buf = "1";
-    let all = false;
-    const paint = (): void => {
-      const { cols } = term.size();
-      term.print(0, 0, " ".repeat(cols - 1), UI_TEXT);
-      term.print(0, 0, `${label}${buf}`.slice(0, cols - 1), UI_TEXT);
-    };
-    const finish = (value: number): void => {
-      window.removeEventListener("keydown", onKey, true);
-      const { cols } = term.size();
-      term.print(0, 0, " ".repeat(cols - 1), UI_TEXT);
-      resolve(value);
-    };
-    const onKey = (ev: KeyboardEvent): void => {
-      if (ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") {
-        return;
-      }
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
-      if (ev.key === "Escape") return finish(0);
-      if (ev.key === "Enter") {
-        // atoi(buf): a leading '*'/letter means "all"; else parse digits.
-        let amt = all ? max : Number.parseInt(buf, 10);
-        if (!Number.isFinite(amt)) amt = 0;
-        if (amt > max) amt = max;
-        if (amt < 0) amt = 0;
-        return finish(amt);
-      }
-      if (ev.key === "Backspace") {
-        buf = buf.slice(0, -1);
-        all = false;
-        paint();
-        return;
-      }
-      if (ev.key.length === 1 && buf.length < 7) {
-        if (ev.key === "*" || /^[a-zA-Z]$/.test(ev.key)) all = true;
-        buf += ev.key;
-        paint();
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    paint();
   });
 }
 
