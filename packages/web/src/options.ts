@@ -595,9 +595,18 @@ export async function runOptionsMenu(
   // removed. What is dropped and why (the full display-lever inventory is in
   // docs/INSTALL.md, "Screen and display controls"):
   //   w  Subwindow setup     - the port is ONE surface, not eight terms.
-  //   s t u v p              - .prf pref-file read/write; there is no filesystem.
-  //                            The port persists these in browser storage
-  //                            automatically, so there is nothing to save or load.
+  //   s t u v p              - the .prf pref-file rows. This used to say "there
+  //                            is no filesystem ... nothing to save or load",
+  //                            which is no longer true and was never a reason:
+  //                            the port now has a user directory (userdir.ts,
+  //                            census block E) and the dumps write into it. What
+  //                            is actually missing is the pref-file TEXT format
+  //                            (prefs_save + the dump_* writers + the
+  //                            process_pref_file parser), and for 'v' the
+  //                            runtime x_attr/x_char override layer that
+  //                            dump_monsters and friends serialise - the same
+  //                            layer block I's glyph picker needs. Tracked in
+  //                            parity/CENSUS_PUNCHLIST.md, not excused here.
   //   {  Auto-inscription    - the capability is present but reachable only from
   //                            the knowledge browser (`~`), the same screen
   //                            upstream's row opens. Missing shortcut, not
