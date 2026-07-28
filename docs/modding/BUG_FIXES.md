@@ -439,25 +439,49 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
 - Requested by the owner as a single catch-all item ("Let's flag the string
   cleanup (spelling, extra spaces, etc.) for another bug-fixes mod fix. They can
   all be under one item 'Misc. string fixes'").
+- Scope set by the owner: *"If all sentences use double spaces, those should not
+  be 'corrected'. I am only interested in normalizing. If some use double and
+  some single, whichever method is less frequently used should be corrected."*
 - Problem, as MEASURED rather than assumed - this matters, because a catch-all
-  title invites a pile of unexamined edits:
-  - **38** player-visible literals in `reference/src` put TWO spaces after
-    sentence-ending punctuation ("Saving failed.  Try again? ", "A panic save
-    exists.  Use it? ", "Failed to place player; please report.  Restarting
-    generation."). This is the old typographic convention, applied deliberately
-    and consistently upstream - a presentation PREFERENCE, not a defect, which
-    is exactly why it is opt-in here rather than corrected in core.
-  - **ZERO** misspellings. A sweep of every `msg()` / `msgt()` /
-    `get_check()` literal for the usual suspects (recieve, seperate, occured,
-    acheive, neccessary, definately, teh, loosing) found none. If one is ever
-    found, it goes in `MISC_STRING_CORRECTIONS` as an exact-match entry rather
-    than by widening the whitespace rule.
+  title invites a pile of unexamined edits. Over the **577** distinct literals
+  `reference/src` hands to `msg` / `msgt` / `get_check` / `get_string` /
+  `get_quantity`:
+
+  | sentence break | one space | two spaces |
+  | -------------- | --------- | ---------- |
+  | after `.`      | 2         | 15         |
+  | after `!`      | 3         | 0          |
+  | after `?`      | 0         | 0          |
+
+  So upstream is not inconsistent about *wanting* the old two-space convention;
+  it uses it 15 times out of 17 and slips twice. The minority form is what gets
+  normalized, and the direction is UP to the double space. An earlier pass here
+  claimed "38 literals" and collapsed them all to a single space - both the
+  count and the direction were wrong.
+  - **ZERO** misspellings, in two corpora. The message literals above, swept for
+    the usual suspects (recieve, seperate, occured, acheive, neccessary,
+    definately, teh, loosing, and ~40 more - `MISSPELLINGS` in msg-fixes.ts):
+    none. And the **gamedata descriptions**, which the message census structurally
+    cannot see, swept three ways: the same known-misspelling list (0 hits), doubled
+    words (1 hit, the room *named* "Dot dot dot"), and every post-4.2.6 upstream
+    commit touching `lib/gamedata` (no spelling fixes at all - upstream's four
+    description misspellings, `obiterate` / `can can` / `untramelled` /
+    `threshhold`, were fixed by commit `736e4ad0e` in June 2020 and are already
+    correct in the 4.2.6 baseline). The compiled `packages/content/pack/*.json`
+    is the same corpus by construction, and the data-exactness gate keeps it so.
+- The `!` rows are the judgement call: pooled across terminators they are 3
+  minority spellings of one convention, split by terminator they are 3 of 3 and
+  the local majority. Pooled here, because the convention is "two spaces after a
+  sentence" rather than "after a period". Dropping those three rows from
+  `MISC_STRING_CORRECTIONS` is the whole change if that reading is wrong.
 - Fix: `miscStringFix` (`packages/core/src/game/msg-fixes.ts`), applied at the
   single message sink (`packages/web/src/main.ts` `state.msg`) so one hook
-  covers every message core or the shell emits. The whitespace rule is
-  deliberately narrow - only after `.`, `!` or `?`, only when a capital, digit
-  or quote follows, and never a run of three or more spaces, so it cannot
-  disturb column alignment in help text.
+  covers every message core or the shell emits. It is an exact-match table of
+  four rows, NOT a rewrite rule: messages reach the sink already interpolated, so
+  a general `". "` -> `".  "` would rewrite object inscriptions and character
+  names the player typed. A fifth upstream instance ("Non-existent glyph
+  requested. Please report this bug.") has no row because the port has no code
+  path that emits it.
 - Faithful default: OFF with the mod, identity when on for any string with no
   wart, so faithful core emits upstream's text byte-for-byte.
 - Not gameplay: no message changes meaning; nothing about play changes.
