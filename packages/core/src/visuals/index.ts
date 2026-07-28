@@ -11,5 +11,7 @@
  */
 
 export * from "./engine";
+export * from "./glyph-table";
 export * from "./grafmode";
+export * from "./map-text";
 export * from "./tile-prefs";
