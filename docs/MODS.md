@@ -96,6 +96,54 @@ How the engine keeps this true:
    (which APIs a plugin may touch); they interact with the engine only
    through the documented command/event/registry surfaces.
 
+## Where a pack lives on disk
+
+A mod is a **folder**. That is the whole format:
+
+```
+<data>/mods/
+  load-order.json          optional; owned by an external mod manager
+  my-mod/
+    manifest.json          identity, version, shape, dependencies, description
+    monster.json           one file per kind of record the pack changes
+    object.json
+```
+
+`manifest.json` is validated on load. Every other `.json` at the top level of
+the folder is a record contribution, named after the record type - the same
+layout a bundled mod under `packages/web/mods/` has, so a mod can be developed
+bundled and shipped as a folder with no translation step.
+
+**`load-order.json` belongs to the mod manager, not to the game.** Its shape is
+`{ "order": ["mod-a", "mod-b"] }`, and being listed means two things at once, the
+way an active-plugin list does in Vortex or MO2: the pack is **loaded**, and it
+loads **in that position**. This is the deploy target the division of labour
+below assumes.
+
+Precedence, because a manager and a player can disagree:
+
+| Situation | Result |
+| --- | --- |
+| Listed in `load-order.json`, player has never touched it | Enabled |
+| Player turned it off in the game | Stays off, permanently |
+| Player turned it on in the game | Stays on, even if unlisted |
+| `?mods=` in the URL (dev override) | Wins outright, verbatim |
+
+A player's explicit decision outranks the file in both directions. Without that,
+turning off a deployed mod would look broken: the file would put it back on the
+next launch.
+
+**Failures are reported, never fatal.** A mods directory is player-supplied data,
+so a hand-edited manifest, a half-copied folder, or a `.txt` renamed to `.json`
+produces one line in the mod manager's "Where mods come from" screen and the game
+still starts. A folder whose `manifest.json` claims a different id than the folder
+name is refused with an explanation, because every other surface - the enabled
+set, the load order, a save's provenance - keys off the manifest id.
+
+**Only the desktop build has a mods folder.** A browser origin cannot read a
+directory on your computer, so the web build offers exactly the bundled mods and
+says so. This is the one capability difference in the mod system.
+
 ## Identity and composition
 
 - Namespaced IDs everywhere: `core:kobold`, `mypack:frost-wyrm`. No

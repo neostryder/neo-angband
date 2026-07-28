@@ -21,6 +21,7 @@ import {
 } from "@neo-angband/mod-sdk";
 import type { LoadedPack, PackContent, PackManifest } from "@neo-angband/mod-sdk";
 import { isShippedMod, resolveEnabledIds } from "./mod-store";
+import { diskPacks } from "./disk-packs";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
 // are the parsed JSON (the file's default export).
@@ -105,7 +106,60 @@ function discoverMods(): Map<
     const mod = mods.get(m[1]);
     if (mod) mod.files[m[2]] = val;
   }
+  /* Packs from the user's mods DIRECTORY, read at boot (disk-packs.ts) and
+   * latched before this runs. Merged into the same map because a disk pack is
+   * not a different KIND of pack - same manifest, same record files - it just
+   * arrived by being copied into a folder instead of by being bundled.
+   *
+   * A disk pack with a bundled pack's id LOSES, deliberately: shadowing a
+   * first-party mod would let a folder silently redefine what "bug-fixes" is,
+   * and the player would have no way to see which one they had enabled. It is
+   * reported as a problem instead. */
+  for (const pack of diskPacks().packs) {
+    if (mods.has(pack.manifest.id)) continue;
+    mods.set(pack.manifest.id, {
+      manifest: pack.manifest,
+      files: { ...pack.files },
+    });
+  }
   return mods;
+}
+
+/** Ids that came from the mods directory rather than from the bundle. */
+export function diskPackIds(): ReadonlySet<string> {
+  return new Set(diskPacks().packs.map((p) => p.manifest.id));
+}
+
+/**
+ * Everything the mod manager needs to tell a player about the mods DIRECTORY:
+ * where it is, what could not be read, and whether this front end even has one.
+ */
+export function diskPackStatus(): {
+  available: boolean;
+  dir: string | null;
+  count: number;
+  problems: readonly string[];
+} {
+  const r = diskPacks();
+  const shadowed = r.packs
+    .filter((p) => bundledModIds().has(p.manifest.id))
+    .map((p) => `${p.manifest.id}: a bundled mod already uses this id; renaming it makes it loadable`);
+  return {
+    available: r.available,
+    dir: r.dir,
+    count: r.packs.length,
+    problems: [...r.problems, ...shadowed],
+  };
+}
+
+/** The ids that come from the bundle, so a disk pack can be told apart. */
+function bundledModIds(): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const key of Object.keys(modManifestGlob)) {
+    const m = /\/mods\/([^/]+)\/manifest\.json$/.exec(key);
+    if (m && m[1] && isShippedMod(m[1])) out.add(m[1]);
+  }
+  return out;
 }
 
 /**
@@ -159,13 +213,22 @@ export function modConflictLines(enabledIds: readonly string[]): string[] {
 }
 
 /**
+ * The EFFECTIVE enabled set - what the game actually loaded.
+ *
+ * Exported because the mod manager has to agree with it. It used to build its
+ * [x] boxes straight from `store.getEnabled()`, which was the same thing until a
+ * mods DIRECTORY existed: a pack an external manager deployed and listed in
+ * load-order.json is loaded by the composer but is not in the player's stored
+ * set, so the manager showed it as OFF while the game was running it. One
+ * resolver, one answer.
+ *
  * Enabled mod ids, via the shared resolver (mod-store.resolveEnabledIds):
  * URL ?mods=a,b wins; else the saved set in localStorage; else - on a first run
  * with no saved set - the DEFAULT_ENABLED_MODS that are actually discovered.
  * Distinguishing "no saved key" (first run -> defaults) from an empty array
  * (user turned everything off) is why this reads the raw key itself.
  */
-function enabledModIds(): string[] {
+export function enabledModIds(): string[] {
   let url: string[] | null = null;
   try {
     const raw = new URLSearchParams(location.search).get("mods");
@@ -186,7 +249,29 @@ function enabledModIds(): string[] {
     /* no localStorage */
   }
   const discovered = [...discoverMods().keys()];
-  return resolveEnabledIds({ url, stored, discovered });
+  /* An external mod manager's load-order.json, and the player's own explicit
+   * decisions which outrank it. See resolveEnabledIds. */
+  const choices: Record<string, boolean> = {};
+  try {
+    const raw = localStorage.getItem("neo:modChoices");
+    if (raw !== null) {
+      const obj = JSON.parse(raw) as unknown;
+      if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
+        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+          if (typeof v === "boolean") choices[k] = v;
+        }
+      }
+    }
+  } catch {
+    /* no localStorage */
+  }
+  return resolveEnabledIds({
+    url,
+    stored,
+    discovered,
+    diskOrder: diskPacks().order,
+    choices,
+  });
 }
 
 function modManifest(raw: unknown): PackManifest {

@@ -211,9 +211,10 @@ import { setHost } from "@neo-angband/core";
 import { BrowserHost } from "./host-browser";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
+import { loadDiskPacks, setDiskPacks } from "./disk-packs";
 import type { PrefsUiCtx } from "./prefs-ui";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines, presentNamespaces } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines, presentNamespaces, diskPackStatus, enabledModIds } from "./pack";
 import {
   defaultModStore,
   buildCatalog,
@@ -418,6 +419,19 @@ setHost(desktopBridge ? makeDesktopHost(desktopBridge) : new BrowserHost());
 // default, which is the reduced front end behaving correctly rather than a
 // special case.
 initLaunchArgsFromHost();
+
+// Mods from the user's mods DIRECTORY, before anything composes content.
+//
+// The one top-level await in this module, and it is here for the same reason the
+// host layer is synchronous everywhere else: content composition (loadGamePack,
+// below) and the whole load path are synchronous, so the choice is one awaited
+// HTTP round trip before the game exists, or `await` pushed down into the
+// composer for a fetch that happens once. This is the boot equivalent of
+// init.c reading its directories before init_angband.
+//
+// In a browser tab there is no mods directory, loadDiskPacks resolves to
+// NO_DISK_PACKS immediately, and nothing about the web build changes.
+setDiskPacks(await loadDiskPacks());
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
@@ -4629,10 +4643,17 @@ async function openModManager(): Promise<void> {
         content: discoverContentModManifests(),
         sandbox: [...discoverPlugins().values()].map((p) => p.manifest),
         trusted: [...discoverTrustedPlugins().values()].map((p) => p.manifest),
-        enabled: store.getEnabled(),
+        // The EFFECTIVE set, not store.getEnabled(): a pack deployed into the
+        // mods folder and listed in load-order.json is loaded without being in
+        // the player's stored set, and a manager that showed it as off while the
+        // game ran it would be lying about the state of the game.
+        enabled: enabledModIds(),
         consents: store.getConsents(),
       }),
-    conflictLines: () => modConflictLines(store.getEnabled()),
+    conflictLines: () => modConflictLines(enabledModIds()),
+    // The mods DIRECTORY, so the manager can name a real path instead of
+    // describing a capability the shell might or might not have.
+    diskPackStatus: () => diskPackStatus(),
     // Fixes & tweaks: the enabled mods' declared rules, and a live-apply that
     // writes the running game's GameState.modRules so a toggle takes effect at
     // once (no reload). modRuleEnabled reads `=== true`, so a false value is off.
