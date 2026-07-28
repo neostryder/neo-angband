@@ -72,8 +72,10 @@ allowlist entry is deleted and the suite is green.
       (the whole death menu), `Are you sure? ` (the entire `!`/`^` inscription
       safety net), `Cancelled.` (the run was uninterruptible), and the
       equip-cmp filter (`q`/`!`, plus a swallowed-key defect and a `?`-for-known-
-      gear defect on the same screen). LEFT: the force-name refusal, and the
-      glyph picker - which is the whole visuals editor, see the note below.
+      gear defect on the same screen). The force-name refusal is a re-derived
+      DIVERGENCE (arg_force_name comes only from main.c's `-f` switch and a
+      browser has no argv). LEFT: the glyph picker, which is the whole visuals
+      editor - see the note below.
 - [x] **J. Save-failure handling** (2 of 3; the third, `lore save failed!`, is a lore.txt dump and moved to block E) - a `localStorage` write can fail on
       quota; the port neither retries nor says so. ui-game.c:1091-1155.
 - [x] **K. Borg gate** (2) - `do_cmd_try_borg` (cmd-misc.c:125-145) in the borg
@@ -323,3 +325,19 @@ Nothing goes here until it is committed.
   port has no runtime x_attr/x_char override layer at all - TileMap covers the
   graphics mapping only - so this needs that layer, the renderer reading it, and
   the picker UI. Sized, not started.
+
+- 2026-07-28 (4), block I: the **arg_force_name refusal** re-derived and recorded
+  as a divergence rather than a gap. The flag is set at exactly one place -
+  main.c:436, the `-f` command-line switch - and exists so a HOST can pin the
+  character name; the four readers are ui-birth.c:711/1287 (skip the name step),
+  ui-player.c:1250 (refuse the rename, the missing message), ui-input.c:1342 and
+  ui-options.c:66 (auto-name the dump / pref file instead of asking). A browser
+  build is launched by opening a page: there is no argv and the port has no
+  deployment-config layer for one to map onto, so the flag cannot become true.
+  The rename it guards is ported (charsheet.ts 'c'), and the two file-name arms
+  belong with the other dumps in block E. Deliberately NOT invented a URL
+  parameter for it - that would be a new feature, not a port.
+  Block I is now down to the glyph picker alone, and that one is a subsystem:
+  the port has no runtime x_attr/x_char override layer (TileMap is the graphics
+  mapping only), so it needs that layer, the renderer reading it, and the picker
+  UI. Aaron's call whether that lands before the remaining blocks.
