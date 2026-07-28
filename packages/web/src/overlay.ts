@@ -822,6 +822,14 @@ export interface SelectMenuOptions {
   inscripCmdKey?: string | undefined;
   /** MN_DBL_TAP / read-only menu: Enter and letters never resolve; only ESC does. */
   browseOnly?: boolean;
+  /**
+   * MN_CASELESS_TAGS (ui-menu.h:192): match a typed tag letter without regard to
+   * case. Only three upstream menus set it - the death menu (ui-death.c:397),
+   * the option menus (ui-options.c:2074) and the spell menu (ui-spell.c:250) -
+   * because most tables use both cases of a letter as DIFFERENT rows. Leave it
+   * unset and the tag match is exact, as get_cursor_key's default is.
+   */
+  caselessTags?: boolean;
   /** Colour applied to the cursor row instead of its own MenuItem.color (upstream draws the highlighted row COLOUR_WHITE regardless of its normal colour, e.g. view_ability_display). */
   cursorColor?: string;
   /**
@@ -1104,12 +1112,23 @@ export function selectFromMenu(
         }
       }
       if (ev.key.length === 1) {
-        // MN_CASELESS_TAGS: an explicit per-item tag (see MenuItem.tag) is
-        // matched case-insensitively before nav so a tag letter/digit is
-        // honoured rather than swallowed as a cursor move. Untagged rows keep
-        // the original exact-case positional match (a..z then A..Z).
+        // get_cursor_key (ui-menu.c:480): an explicit per-item tag (see
+        // MenuItem.tag) is matched before nav, so a tag letter/digit is honoured
+        // rather than swallowed as a cursor move. The match is EXACT unless the
+        // menu sets MN_CASELESS_TAGS (L485-509), which only three upstream menus
+        // do - death, options and spell. It has to be exact by default because
+        // several tables deliberately use both cases of a letter: the debug
+        // command menu's Items rows are 'c' Create an object and 'C' Create an
+        // artifact (ui-game.c:247-248), and a caseless match made every
+        // upper-case row in that menu unreachable.
         const lower = ev.key.toLowerCase();
-        const tagIdx = items.findIndex((it) => it.tag && it.tag.toLowerCase() === lower);
+        const exact = items.findIndex((it) => it.tag === ev.key);
+        const tagIdx =
+          exact >= 0
+            ? exact
+            : extra?.caselessTags
+              ? items.findIndex((it) => it.tag && it.tag.toLowerCase() === lower)
+              : -1;
         if (tagIdx >= 0) {
           pick(tagIdx);
           return;
