@@ -21,8 +21,14 @@
  * JSON document, so W1's question is field coverage, not symbol presence. Each
  * row is proved by save-fields.test.ts, the C-derived coverage guard.
  *
- *   wr_description   (save.c:49)   -> N/A: a display string rebuilt from
- *                                    fullName / lev / race / class / depth.
+ *   wr_description   (save.c:49)   -> not a FIELD: the exact string is ported in
+ *                                    save/description.ts and derived from
+ *                                    fullName / lev / race / class / depth,
+ *                                    which this document already carries. In a
+ *                                    JSON save it need not be stored at all, and
+ *                                    storing it would create the second source
+ *                                    of truth upstream's own readers avoid by
+ *                                    scanning a directory and asking each file.
  *   wr_randomizer    (save.c:286)  -> SavedGame.rng
  *   wr_options       (save.c:314)  -> SavedGame.options (SIDEBAR_MODE is UI)
  *   wr_messages      (save.c:339)  -> SavedGame.messages
@@ -97,6 +103,8 @@ import {
   verifyStampedSavefile,
 } from "../save/integrity";
 import type { SaveIntegrity } from "../save/integrity";
+import { applyCodec, findCodec, stripCodec } from "../save/compress";
+import type { SaveCodec } from "../save/compress";
 import type { ContentIdResolver } from "../mod/ids";
 import { PY_MAX_LEVEL, TMD_MAX } from "../player/types";
 import type {
@@ -1989,13 +1997,22 @@ export function deserializeLevelCache(
  * Stamped bytes (the file/localStorage form).
  * ------------------------------------------------------------------ */
 
-/** JSON-encode a save and stamp it with the integrity trailer (16b). */
+/**
+ * JSON-encode a save, optionally compress it, and stamp it with the integrity
+ * trailer (16b).
+ *
+ * ORDER: JSON -> codec -> stamp. The digest therefore covers the bytes that are
+ * actually stored, and the trailer stays findable without running a decompressor
+ * first - which matters because an unknown codec must still be diagnosable.
+ * Passing no codec writes the bare JSON every earlier build wrote.
+ */
 export function encodeSavedGame(
   save: SavedGame,
   provider: SaveIntegrity = fnv1aIntegrity,
+  codec?: SaveCodec,
 ): Uint8Array {
-  const bytes = new TextEncoder().encode(JSON.stringify(save));
-  return stampSavefile(bytes, provider);
+  const json = new TextEncoder().encode(JSON.stringify(save));
+  return stampSavefile(codec ? applyCodec(json, codec) : json, provider);
 }
 
 /** The decoded form of a stamped save. */
@@ -2005,27 +2022,53 @@ export interface DecodedSave {
   verified: boolean;
   /** No trailer was present at all. */
   unstamped: boolean;
+  /** The codec that wrote it, or null for an uncompressed save. */
+  codecId?: string | null;
+  /**
+   * Set when the save names a codec this build does not have - a save from a
+   * NEWER build, which is a different thing from a corrupt one and must be
+   * reported differently: nothing is wrong with the file, and telling the player
+   * it is damaged would invite them to delete a perfectly good character.
+   */
+  unknownCodec?: string;
 }
 
 /**
  * Verify and parse stamped save bytes. A failed digest still parses (the
  * warn-and-label posture of decision 16b - the deterrent is honest, not a
  * lock), with verified=false for the caller to surface.
+ *
+ * `codecs` are the compressors this build can run. An uncompressed save needs
+ * none, so a caller that never compresses can keep ignoring this argument.
  */
 export function decodeSavedGame(
   bytes: Uint8Array,
   provider: SaveIntegrity = fnv1aIntegrity,
+  codecs: readonly SaveCodec[] = [],
 ): DecodedSave {
   const result = verifyStampedSavefile(bytes, provider);
+  const { codecId, body } = stripCodec(result.payload);
+  const base = {
+    verified: result.verified,
+    unstamped: result.unstamped ?? false,
+    codecId,
+  };
+  let payload = body;
+  if (codecId !== null) {
+    const codec = findCodec(codecId, codecs);
+    if (!codec) return { ...base, save: null, unknownCodec: codecId };
+    try {
+      payload = codec.decompress(body);
+    } catch {
+      /* A codec we HAVE that cannot read these bytes is genuine damage. */
+      return { ...base, save: null };
+    }
+  }
   let save: SavedGame | null = null;
   try {
-    save = JSON.parse(new TextDecoder().decode(result.payload)) as SavedGame;
+    save = JSON.parse(new TextDecoder().decode(payload)) as SavedGame;
   } catch {
     save = null;
   }
-  return {
-    save,
-    verified: result.verified,
-    unstamped: result.unstamped ?? false,
-  };
+  return { ...base, save };
 }

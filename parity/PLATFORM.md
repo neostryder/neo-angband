@@ -143,6 +143,30 @@ loss. `writeUserFileChecked` has to do a read-back purely to catch a `setItem`
 that silently stored nothing - a hoop that exists only because this is not a
 filesystem.
 
+> **Measured 2026-07-28, and the quota half is FIXED.** The saves were being
+> written as bare JSON - `compressed` is one of decision 9's three words and was
+> the one never implemented. Sizes: 135 KiB in town, 337 KiB at DL20, 391 KiB at
+> DL50, each a third larger again once base64'd for `localStorage`. Against a
+> ~5 MB origin quota that is about **nine characters**, and `birth_levels_persist`
+> can spend it on one. gzip measures at ratio 0.04 on this data (the chunk grids
+> and known-map arrays are hugely repetitive).
+>
+> Core now owns a `SaveCodec` seam (`core/src/save/compress.ts`) - the envelope
+> `NGSC1:<id>\n`, the sniffing, and the rule that an unknown codec is *reported*
+> rather than guessed - and the front end supplies the compressor, because the
+> save path is synchronous (`z-file.c` is) and the browser's own
+> `CompressionStream` is async. Verified end to end on a real pre-existing
+> uncompressed save in the live app: it resumed at turn 390, the anti-scum flush
+> rewrote it at **178 012 -> 11 988 base64 chars (14.8x)** with the gzip magic
+> after the envelope, and the next launch resumed from the compressed file at the
+> same turn and grid. Roughly 437 characters now fit where 29 did.
+>
+> Two things this deliberately does NOT fix, so they are not mistaken for done:
+> eviction (a compressed bucket is still an evictable one - only the desktop
+> build's real files answer that), and decision 9's remaining word,
+> **schema-validated**: the load path still checks the version integer and
+> nothing else.
+
 **5. The split forced a second front end for anything host-shaped, and it bred
 stand-ins.** `wiz-stats` lives in the CLI, so the in-game wizard command cannot
 reach it. The same pressure produced the "use the CLI" spoiler line,
