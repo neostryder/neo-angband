@@ -2,9 +2,13 @@
  * The full-capability HostIo: node:fs, the real thing.
  *
  * This is z-file.c on a POSIX/Windows host, which is what upstream actually
- * runs on. It backs the CLI harness today and the Electron main process (which
- * imports it rather than reimplementing it) - so there is ONE real-filesystem
- * adapter, not two that drift.
+ * runs on. It backs the CLI harness and the Electron main process.
+ *
+ * Only the SYSCALLS live here. z-file.c's rules - the create/close distinction,
+ * file_exists being "is a file", file_newer's three branches - live once in
+ * core's RawFsHost, because the Electron build reaches the same filesystem over
+ * an IPC hop and two hand-written copies of those rules would drift. See
+ * packages/core/src/host/raw.ts.
  *
  * The directory root follows upstream's layout under a single base:
  *   <base>/user  <base>/save  <base>/panic  <base>/scores  <base>/archive
@@ -13,47 +17,26 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { HostCapabilities, HostIo, WriteOutcome } from "@neo-angband/core";
-import { FileMode, HostDir } from "@neo-angband/core";
+/* The host subpath, not the barrel: the Electron main process bundles this file
+ * and needs z-file.c, not the game engine. Going through core's index dragged
+ * the whole of core into that bundle. */
+import type { FileType, HostDir, RawFs, WriteOutcome } from "@neo-angband/core/host";
+import { ALL_HOST_DIRS, RawFsHost } from "@neo-angband/core/host";
 
-/** Every HostDir, so the tree can be created up front. */
-const ALL_DIRS: readonly HostDir[] = [
-  HostDir.USER,
-  HostDir.SAVE,
-  HostDir.PANIC,
-  HostDir.SCORES,
-  HostDir.ARCHIVE,
-];
-
-export interface NodeHostOpts {
-  /** The base directory the five ANGBAND_DIR_* subdirectories live under. */
-  base: string;
-  /** argv minus the program name; defaults to process.argv.slice(2). */
-  argv?: readonly string[];
-  /** Terminals this front end can show. The CLI is one; Electron overrides it. */
-  termCount?: number;
-}
-
-/** A HostIo over node:fs. */
-export class NodeHost implements HostIo {
-  readonly capabilities: HostCapabilities;
+/**
+ * node:fs as a RawFs. Every method reports failure by return value, the way
+ * z-file.c does - file_open returns NULL rather than dying - so a read-only
+ * base directory is a legitimate host state rather than a crash.
+ */
+export class NodeRawFs implements RawFs {
   private readonly base: string;
-  private readonly cmdline: readonly string[];
 
-  constructor(opts: NodeHostOpts) {
-    this.base = opts.base;
-    this.cmdline = opts.argv ?? process.argv.slice(2);
-    this.capabilities = {
-      realFiles: true,
-      argv: true,
-      signals: true,
-      termCount: opts.termCount ?? 1,
-      directories: true,
-    };
-    /* Upstream's init.c creates the user directories at startup (create_needed_
-     * dirs). Best-effort: a read-only base is a legitimate host state and every
-     * accessor below already reports failure rather than throwing. */
-    for (const d of ALL_DIRS) {
+  constructor(base: string) {
+    this.base = base;
+    /* init.c's create_needed_dirs, at startup. Best-effort: every accessor
+     * below already reports failure, so a base that cannot be created surfaces
+     * per call instead of throwing here. */
+    for (const d of ALL_HOST_DIRS) {
       try {
         fs.mkdirSync(path.join(this.base, d), { recursive: true });
       } catch {
@@ -78,18 +61,17 @@ export class NodeHost implements HostIo {
     return this.full(dir, name) ?? `${dir}/${name}`;
   }
 
-  exists(dir: HostDir, name: string): boolean {
+  isFile(dir: HostDir, name: string): boolean {
     const p = this.full(dir, name);
     if (p === null) return false;
     try {
-      /* file_exists is "exists AND is a file" (z-file.h L135). */
       return fs.statSync(p).isFile();
     } catch {
       return false;
     }
   }
 
-  read(dir: HostDir, name: string): string | null {
+  readText(dir: HostDir, name: string): string | null {
     const p = this.full(dir, name);
     if (p === null) return null;
     try {
@@ -99,19 +81,22 @@ export class NodeHost implements HostIo {
     }
   }
 
-  write(
+  writeText(
     dir: HostDir,
     name: string,
     text: string,
-    mode: FileMode = FileMode.WRITE,
+    append: boolean,
+    _ftype: FileType,
   ): WriteOutcome {
+    /* ftype reaches the platform through upstream's file_open_hook, which only
+     * the Mac front end ever set (it stamped a type/creator code). Accepted and
+     * unused rather than dropped from the signature, so the seam stays visible. */
+    void _ftype;
     const p = this.full(dir, name);
     if (p === null) return "create-failed";
     let fd: number | undefined;
     try {
-      /* MODE_APPEND must not truncate: prefs_save appends its dump after
-       * remove_old_dump has stripped the previous one. */
-      fd = fs.openSync(p, mode === FileMode.APPEND ? "a" : "w");
+      fd = fs.openSync(p, append ? "a" : "w");
     } catch {
       return "create-failed";
     }
@@ -136,7 +121,7 @@ export class NodeHost implements HostIo {
     return "ok";
   }
 
-  remove(dir: HostDir, name: string): boolean {
+  unlink(dir: HostDir, name: string): boolean {
     const p = this.full(dir, name);
     if (p === null) return false;
     try {
@@ -147,7 +132,7 @@ export class NodeHost implements HostIo {
     }
   }
 
-  move(dir: HostDir, from: string, to: string): boolean {
+  rename(dir: HostDir, from: string, to: string): boolean {
     const a = this.full(dir, from);
     const b = this.full(dir, to);
     if (a === null || b === null) return false;
@@ -159,27 +144,17 @@ export class NodeHost implements HostIo {
     }
   }
 
-  /** file_newer (z-file.c): true only when `first` exists and out-dates `second`. */
-  newer(dir: HostDir, first: string, second: string): boolean {
-    const a = this.full(dir, first);
-    const b = this.full(dir, second);
-    if (a === null || b === null) return false;
-    let sa: fs.Stats;
+  mtime(dir: HostDir, name: string): number | null {
+    const p = this.full(dir, name);
+    if (p === null) return null;
     try {
-      sa = fs.statSync(a);
+      return fs.statSync(p).mtimeMs;
     } catch {
-      return false;
-    }
-    try {
-      return sa.mtimeMs > fs.statSync(b).mtimeMs;
-    } catch {
-      /* Second missing: the first is trivially newer, which is the state
-       * ui-game.c's panic prompt is really asking about. */
-      return true;
+      return null;
     }
   }
 
-  list(dir: HostDir): string[] {
+  listFiles(dir: HostDir): string[] {
     try {
       return fs
         .readdirSync(path.join(this.base, dir), { withFileTypes: true })
@@ -190,8 +165,23 @@ export class NodeHost implements HostIo {
       return [];
     }
   }
+}
 
-  argv(): readonly string[] {
-    return this.cmdline;
+export interface NodeHostOpts {
+  /** The base directory the five ANGBAND_DIR_* subdirectories live under. */
+  base: string;
+  /** argv minus the program name; defaults to process.argv.slice(2). */
+  argv?: readonly string[];
+  /** Terminals this front end can show. The CLI is one; Electron overrides it. */
+  termCount?: number;
+}
+
+/** A HostIo over node:fs: core's z-file.c rules on NodeRawFs' syscalls. */
+export class NodeHost extends RawFsHost {
+  constructor(opts: NodeHostOpts) {
+    super(new NodeRawFs(opts.base), {
+      argv: opts.argv ?? process.argv.slice(2),
+      termCount: opts.termCount ?? 1,
+    });
   }
 }

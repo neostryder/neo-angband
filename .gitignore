@@ -1,6 +1,11 @@
 node_modules/
 dist/
 dist-web/
+# Declarations tsc emits only so the Electron front end can join `tsc -b`; the
+# runnable main process is bundled by esbuild into dist/.
+dist-types/
+# electron-builder installers.
+dist-desktop/
 coverage/
 *.tsbuildinfo
 .env

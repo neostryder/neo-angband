@@ -132,7 +132,13 @@ Two details that are load-bearing rather than stylistic:
   because `localStorage` stores no mtime. Guessing `false` would have silently
   deleted upstream's panic-save prompt; `null` forces the caller to handle it.
 
-**Phase 2 - wire the 18.** Each becomes present on the full-capability adapters,
+**Phase 2a - the capability wrapper.** DONE. `RawFs` / `RawFsHost` split so
+z-file.c's rules exist once for both real-filesystem front ends; `host/bridge.ts`
+with both ends of the wire in one file; a TypeScript Electron main process serving
+it over one synchronous channel; and `ElectronHost` installed in preference to
+`BrowserHost`. Verified by driving the built shell - see `STACK.md`.
+
+**Phase 2b - wire the 18.** Each becomes present on the full-capability adapters,
 and the census gains a *present-on-desktop* verdict instead of an excuse.
 
 **Phase 3 - real subwindows.** `BrowserWindow` per term, the flags screen, the
