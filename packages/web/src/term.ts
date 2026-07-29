@@ -481,6 +481,36 @@ export class GlyphTerm {
   }
 
   /**
+   * erase (ui-term.c Term_erase): blank a row from `x` to the end of the line.
+   */
+  eraseToEol(x: number, y: number): void {
+    if (y < 0 || y >= this.rows || y >= this.grid.length) return;
+    const row = this.grid[y];
+    if (!row) return;
+    for (let cx = Math.max(0, x); cx < this.cols; cx++) {
+      row[cx] = null;
+      this.paintCell(cx, y);
+    }
+  }
+
+  /**
+   * prt (ui-output.c): `Term_erase(col, row, 255)` THEN write the string.
+   *
+   * The erase is the whole difference from print(), and it is load-bearing rather
+   * than tidy. Upstream draws its one-line prompts over whatever is already on
+   * that row and relies on prt to wipe the rest of it. The store's buy/sell
+   * confirmation is the case that surfaced: it prints "Price: N" onto row 1, which
+   * is the shopkeeper line, so a print() without the erase leaves the old text
+   * running on past the number - "Price: 450the Great (Gnome)".
+   *
+   * Every place the C calls prt() should call this, not print().
+   */
+  prt(x: number, y: number, text: string, fg: string): void {
+    this.eraseToEol(x, y);
+    this.print(x, y, text, fg);
+  }
+
+  /**
    * A native-resolution (font.w x font.h) canvas of glyph `code` tinted `fg`,
    * cached by "code:fg". Set pixels are painted fg (opaque), the rest stay
    * transparent, so paintCell can scale it into the cell over the background.

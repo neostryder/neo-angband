@@ -29,6 +29,17 @@ export const HOST_INFO_CHANNEL = "neo-host-info";
 /** The global the preload exposes on the renderer's window. */
 export const HOST_BRIDGE_GLOBAL = "neoHostFs";
 
+/**
+ * textui_quit's channel (ui-game.c:199).
+ *
+ * "Save and exit" means EXIT where there is something to exit to. The web build
+ * has no OS to quit to, so it reloads to the title screen - and that analogue was
+ * being used on the desktop build too, where the app simply stayed open and the
+ * row read as "just saves". The renderer asks; the main process decides whether
+ * quitting is allowed and does the quitting.
+ */
+export const HOST_QUIT_CHANNEL = "neo-host-quit";
+
 /** What the info channel answers with. */
 export interface HostBridgeInfo {
   /** main.c's argv, minus the program name. */

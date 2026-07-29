@@ -28,6 +28,7 @@ import {
   HOST_BRIDGE_CHANNEL,
   HOST_BRIDGE_GLOBAL,
   HOST_INFO_CHANNEL,
+  HOST_QUIT_CHANNEL,
   HOST_SHELL_LIMITS,
 } from "./bridge-channel";
 import type { HostBridgeInfo } from "./bridge-channel";
@@ -62,6 +63,16 @@ contextBridge.exposeInMainWorld("neoDesktop", {
    */
   dataDir: info.dataDir,
   portable: info.portable,
+  /**
+   * textui_quit (ui-game.c:199): leave the program.
+   *
+   * Fire-and-forget on purpose. The renderer has already written the save by the
+   * time it calls this (closeGameSave), and a synchronous round trip would block
+   * the renderer while the main process tears its own window down.
+   */
+  quit(): void {
+    ipcRenderer.send(HOST_QUIT_CHANNEL);
+  },
 });
 
 contextBridge.exposeInMainWorld(HOST_BRIDGE_GLOBAL, {

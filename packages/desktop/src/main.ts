@@ -39,6 +39,7 @@ import { LAUNCH_MODULES } from "./modules";
 import {
   HOST_BRIDGE_CHANNEL,
   HOST_INFO_CHANNEL,
+  HOST_QUIT_CHANNEL,
   HOST_SHELL_LIMITS,
 } from "./bridge-channel";
 import type { HostBridgeInfo } from "./bridge-channel";
@@ -375,6 +376,22 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
   };
   ipcMain.on(HOST_INFO_CHANNEL, (event) => {
     event.returnValue = info;
+  });
+
+  /**
+   * textui_quit (ui-game.c:199): "Save and exit" leaves the program.
+   *
+   * app.quit() rather than closing the window, because closing it would run the
+   * window-all-closed path - which on macOS deliberately keeps the app alive, so a
+   * player there would have "exited" to nothing at all.
+   *
+   * The renderer has already written and verified the save before it gets here
+   * (closeGameSave retries and reports), so this must not second-guess it: a shell
+   * that refused to quit on the game's behalf would be the same class of bug as the
+   * row that never quit in the first place.
+   */
+  ipcMain.on(HOST_QUIT_CHANNEL, () => {
+    app.quit();
   });
 }
 
