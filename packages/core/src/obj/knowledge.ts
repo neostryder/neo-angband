@@ -48,6 +48,7 @@ import {
   OFT,
 } from "./types";
 import { OF } from "../generated";
+import { OBJECT_FLAG_ENTRIES } from "../generated/object-flags";
 import { OBJ_MOD } from "../generated/object-modifiers";
 import { STAT_MAX } from "../player/types";
 import type { Player } from "../player/player";
@@ -133,14 +134,86 @@ function runeMsg(env: RuneEnv, name: string | null): void {
 }
 
 /**
- * flag_message (obj-properties.c): the property's msg with the object's base
- * name substituted for {name}/%s. Only sent while actually playing.
+ * Expand the `{tag}` forms in an obj_property message (obj-properties.c
+ * L111-136).
+ *
+ * Ported as the C parses rather than as a pair of regex replacements, because the
+ * two disagree on three points and every one of them is reachable from a mod's own
+ * `msg:` line (a content mod may contribute object_property records):
+ *
+ * - Only `name` is substituted. Any OTHER well-formed tag - `{level}`, `{foo}` -
+ *   is consumed and replaced with NOTHING (L121-127 substitutes nothing unless the
+ *   tag matches), where a `{name}`-only replace would leave it in the message.
+ * - An UNCLOSED brace loses the brace and keeps the rest (L129-132 advances past
+ *   the `{` alone), where a replace would print it.
+ * - `%s` is NOT a substitution here. The C builds `buf` and then calls
+ *   `msg("%s", buf)` (L138), so a literal `%s` in a property message stays
+ *   literal. The port used to swap the object name in for it, which is an invented
+ *   behaviour - no shipped record contains `%s`, so it was latent, and a mod's
+ *   message is exactly where it would have surfaced.
+ *
+ * The tag test is upstream's `strncmp(tag, "name", 4)` (L125), a PREFIX compare on
+ * the live string, so `{names}` matches too. Kept, wart and all.
  */
-function flagMessage(p: Player, env: RuneEnv, flag: number, oName: string): void {
-  if (!p.upkeep.playing || !env.msg) return;
+function expandPropertyTags(msg: string, name: string): string {
+  let out = "";
+  let cursor = 0;
+  for (;;) {
+    const next = msg.indexOf("{", cursor);
+    if (next < 0) break;
+    /* The text leading up to this { (L114-115). */
+    out += msg.slice(cursor, next);
+    let s = next + 1;
+    /* isalpha() under the C locale: ASCII letters only (L118). */
+    while (s < msg.length && /[A-Za-z]/.test(msg[s]!)) s++;
+    if (msg[s] === "}") {
+      if (msg.slice(next + 1, s).startsWith("name")) out += name;
+      cursor = s + 1;
+    } else {
+      cursor = next + 1; /* an invalid tag: skip it */
+    }
+  }
+  return out + msg.slice(cursor);
+}
+
+/**
+ * flag_message (obj-properties.c:86-139): the property's message for a flag the
+ * player has just noticed, with the object's base name substituted for `{name}`.
+ *
+ * Takes no player, exactly as the C does. The `p->upkeep->playing` gate belongs to
+ * TWO of the four call sites (obj-knowledge.c:1664 and :1857) and NOT to the other
+ * two (:2110 equip_learn_flag, :2202 equip_learn_after_time). The port used to hold
+ * the gate inside this function, which silently applied it to all four and
+ * suppressed messages upstream sends - so the gate now lives at the call sites that
+ * have it, and the shape of that decision is visible where the C makes it.
+ */
+function flagMessage(env: RuneEnv, flag: number, oName: string): void {
   const prop = lookupProp(env, OBJ_PROPERTY.FLAG, flag);
-  if (!prop || !prop.msg) return;
-  env.msg(prop.msg.replace(/\{name\}/g, oName).replace(/%s/g, oName));
+  /* No property record at all: upstream reports the bug rather than falling
+   * silent, and distinguishes an out-of-range index from a flag that simply has
+   * no object_property.txt entry (L97-107). Both are reachable through a mod that
+   * removes or mistypes a record. */
+  if (!prop) {
+    if (flag < 0 || flag >= OF.MAX) {
+      env.msg?.(`Bug: invalid flag index, ${flag}, passed to flag_message().`);
+    } else {
+      env.msg?.(
+        `Bug: flag '${objectFlagName(flag)}' (index ${flag}) noticed but has no entry in object_property.txt.`,
+      );
+    }
+    return;
+  }
+  if (!prop.msg) return;
+  env.msg?.(expandPropertyTags(prop.msg, oName));
+}
+
+/**
+ * list_obj_flag_names[flag] (init.c:110-116), whose element 0 is "NONE" and whose
+ * rest comes from list-object-flags.h - so OF_<name> indexes it directly and the
+ * generated entries tuple is one behind.
+ */
+function objectFlagName(flag: number): string {
+  return OBJECT_FLAG_ENTRIES[flag - 1]?.name ?? "NONE";
 }
 
 /** ODESC_BASE approximation until object_desc lands: the kind's plain name. */
@@ -403,7 +476,9 @@ export function objectCursesFindFlags(
       if (!p.objKnown.flags.has(flag)) {
         found = true;
         playerLearnFlagRune(p, env, flag);
-        flagMessage(p, env, flag, oName);
+        /* p->upkeep->playing (obj-knowledge.c:1664): this call site gates, and
+         * two of the four do not. */
+        if (p.upkeep.playing) flagMessage(env, flag, oName);
       }
       playerLearnCurse(p, env, i);
     }
@@ -529,7 +604,8 @@ export function objectLearnOnWield(
     if (!obj.flags.has(flag) || !obviousMask.has(flag)) continue;
     if (!player.objKnown.flags.has(flag)) {
       playerLearnFlagRune(player, env, flag);
-      flagMessage(player, env, flag, oName);
+      /* p->upkeep->playing (obj-knowledge.c:1857). */
+      if (player.upkeep.playing) flagMessage(env, flag, oName);
     }
   }
 
@@ -644,7 +720,7 @@ export function equipLearnFlag(p: Player, env: RuneEnv, flag: number): void {
     if (!obj) continue;
     if (obj.flags.has(flag)) {
       if (!p.objKnown.flags.has(flag)) {
-        flagMessage(p, env, flag, baseName(obj));
+        flagMessage(env, flag, baseName(obj));
         playerLearnFlagRune(p, env, flag);
       }
     }
@@ -723,7 +799,7 @@ export function equipLearnAfterTime(p: Player, env: RuneEnv): void {
     const oName = baseName(obj);
     for (let flag = 1; flag < OF.MAX; flag++) {
       if (!obj.flags.has(flag) || !timedMask.has(flag)) continue;
-      if (!p.objKnown.flags.has(flag)) flagMessage(p, env, flag, oName);
+      if (!p.objKnown.flags.has(flag)) flagMessage(env, flag, oName);
       playerLearnFlagRune(p, env, flag);
     }
     objectCursesFindFlags(p, env, obj, timedMask);
