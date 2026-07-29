@@ -50,7 +50,12 @@ describe("inven_damage gear_to_label lettering (project-obj.c L143, gap 6.12)", 
   it("labels a destroyed pack item with its listing letter", () => {
     const state = makeState();
     const potion = makeObj(TV.POTION, [ELEM.FIRE]);
-    state.gear.pack.push(gearAdd(state.gear, potion)); /* first pack slot -> 'a' */
+    const handle = gearAdd(state.gear, potion);
+    state.gear.pack.push(handle);
+    /* The LISTING is what gear_to_label reads (upkeep->inven[], obj-gear.c
+     * L462-466), and calc_inventory is what fills it. One item, so the listing is
+     * the pack order - but it has to exist. */
+    state.gear.inven = [handle]; /* first listing slot -> 'a' */
 
     const msgs: string[] = [];
     const killed = invenDamage(state, ELEM.FIRE, 10000, {
@@ -65,6 +70,7 @@ describe("inven_damage gear_to_label lettering (project-obj.c L143, gap 6.12)", 
     const ammo = makeObj(TV.POTION, [ELEM.FIRE]);
     const handle = gearAdd(state.gear, ammo);
     state.gear.pack.push(handle);
+    state.gear.inven = [];
     state.gear.quiver = [handle]; /* now assigned quiver slot 0 -> '0' */
 
     const msgs: string[] = [];

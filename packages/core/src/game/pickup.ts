@@ -83,12 +83,19 @@ export interface PickupDeps {
   constants: Constants;
   env?: PickupEnv;
   /**
-   * update_stuff's PU_INVEN after inven_carry (obj-gear.c:893 sets PU_INVEN):
-   * rebuild the computed quiver so picked-up ammo is routed out of the pack and
-   * into the quiver, exactly as the wield/takeoff/drop/store paths do. Without
-   * it, shots/arrows/bolts sit in the pack until some later gear change forces a
-   * calc_inventory. Invoked once per pickup command (upstream defers to the end
-   * of the turn's update_stuff), so a multi-item autopickup rebuilds once.
+   * update_stuff's PU_INVEN after inven_carry (obj-gear.c:889-891 sets PU_INVEN
+   * and then calls update_stuff itself): rebuild the computed quiver so picked-up
+   * ammo is routed out of the pack and into the quiver, exactly as the
+   * wield/takeoff/drop/store paths do. Without it, shots/arrows/bolts sit in the
+   * pack until some later gear change forces a calc_inventory.
+   *
+   * Called once per CARRIED OBJECT, before that object's "You have %s (%c)."
+   * message - not once per command. That is where upstream calls it (L891, four
+   * lines above the message at L893-921) and the ordering is the whole point: the
+   * %c is gear_to_label of the sorted upkeep->inven[] listing, so a label read
+   * before the rebuild names the pre-pickup listing. It was previously invoked
+   * once per command, after every message, which is what let a picked-up scroll be
+   * announced at one letter and be found at another.
    */
   refreshInventory?: () => void;
 }
@@ -317,13 +324,19 @@ function playerPickupAux(
    * the object_is_equipped arm of that test, because a just-carried object
    * cannot be equipped. */
   if (stack) {
+    /* update_stuff after PU_INVEN (obj-gear.c:889-891), and it happens HERE -
+     * before the message, not after the command - because the (%c) below is
+     * gear_to_label of the sorted upkeep->inven[] listing. Refresh it late and the
+     * letter names the listing as it was before this object joined it. */
+    deps.refreshInventory?.();
+
     let total: number;
     let first: GameObject | null;
     if (packTotalSuppressed(stack)) {
       total = stack.number;
       first = stack;
     } else {
-      const view = packTotalView(state.gear, (h) => gearToLabel(state.gear, h));
+      const view = packTotalView(state.gear);
       ({ total, first } = objectPackTotal(view, stack, false));
     }
     const name = describeObject(

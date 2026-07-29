@@ -51,6 +51,21 @@ const reg = new ObjRegistry(objPack);
 const constants = bindConstants(loadJson("constants"));
 const deps: PickupDeps = { constants };
 
+/**
+ * Deps with the PU_INVEN refresh wired, exactly as the session binder wires it
+ * (session/game.ts installPickup). Any test that asserts a SLOT LETTER must use
+ * these: the letter is gear_to_label of the derived upkeep->inven[] listing, so a
+ * test that never rebuilds the listing is not testing what the player sees. The
+ * absence of this was how the wrong-letter defect stayed invisible.
+ */
+function labelDeps(state: GameState, env?: PickupDeps["env"]): PickupDeps {
+  return {
+    constants,
+    refreshInventory: () => calcInventory(state.gear, constants),
+    ...(env ? { env } : {}),
+  };
+}
+
 function makeObj(tval: number, nth = 0): GameObject {
   const kinds = reg.kinds.filter(
     (k) => k.tval === tval && k.kidx < reg.ordinaryKindCount,
@@ -216,10 +231,7 @@ describe("doAutopickup / playerPickupItem", () => {
     stack.number = 5;
     underfoot(state, stack);
     let msg = "";
-    playerPickupItem(state, null, {
-      constants,
-      env: { onPickup: (m) => (msg = m) },
-    });
+    playerPickupItem(state, null, labelDeps(state, { onPickup: (m) => (msg = m) }));
     /* "You have 5 <potions> (a)." - the count and pack slot, not "You have a". */
     expect(msg).toMatch(/^You have 5 .+ \(a\)\.$/);
   });
@@ -400,10 +412,7 @@ describe("object_pack_total in inven_carry's message (obj-gear.c L905-921)", () 
     underfoot(state, floorStack);
 
     let msg = "";
-    playerPickupItem(state, null, {
-      constants,
-      env: { onPickup: (m) => (msg = m) },
-    });
+    playerPickupItem(state, null, labelDeps(state, { onPickup: (m) => (msg = m) }));
     /* The floor potion merges into slot a (3), and the total spans both slots:
      * 3 + 3 = 6, reported against the first stack's letter. */
     expect(msg).toMatch(/^You have 6 .+ \(1st a\)\.$/);
@@ -415,10 +424,7 @@ describe("object_pack_total in inven_carry's message (obj-gear.c L905-921)", () 
     stack.number = 4;
     underfoot(state, stack);
     let msg = "";
-    playerPickupItem(state, null, {
-      constants,
-      env: { onPickup: (m) => (msg = m) },
-    });
+    playerPickupItem(state, null, labelDeps(state, { onPickup: (m) => (msg = m) }));
     expect(msg).toMatch(/^You have 4 .+ \(a\)\.$/);
   });
 

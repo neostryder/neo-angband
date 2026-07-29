@@ -35,31 +35,14 @@ import { squareIsSeen } from "../world/view";
 import type { GameState } from "./context";
 import { describeObject } from "./describe";
 import { floorExcise, floorPile } from "./floor";
-import type { Gear } from "./gear";
-import { gearObjectForUse } from "./gear";
+import { gearObjectForUse, gearToLabel } from "./gear";
 
 /**
- * gear_to_label's label alphabet (obj-gear.c L446): a-z minus the roguelike
- * cardinal-movement keys h/j/k/l, then A-Z.
+ * gear_to_label (obj-gear.c:443) lives in game/gear.ts, beside the Gear it reads.
+ * Re-exported here because inven_damage's own callers import it from this module;
+ * equipment is exempt from inven_damage, so the two-argument form is all it needs.
  */
-const GEAR_LABELS = "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-/**
- * gear_to_label (obj-gear.c L443), reduced to the pack items inven_damage can
- * touch (equipment is exempt, so its slot letters are never needed): a quiver
- * handle takes its slot digit (I2D, L456-460), otherwise a pack handle takes its
- * listing letter (L462-466). Upstream reads the sorted upkeep->inven[] view; the
- * port's inven[] reorder is deferred (game/gear.ts), so the raw pack ordering -
- * the port's stand-in for the listing everywhere else - supplies the index.
- * Returns "" when the handle is neither (upstream's '\0').
- */
-export function gearToLabel(gear: Gear, handle: number): string {
-  const qi = gear.quiver?.indexOf(handle) ?? -1;
-  if (qi >= 0) return String(qi);
-  const pi = gear.pack.indexOf(handle);
-  if (pi >= 0 && pi < GEAR_LABELS.length) return GEAR_LABELS[pi]!;
-  return "";
-}
+export { gearToLabel };
 
 /** The world seams project_o/project_f need beyond the GameState. */
 export interface ProjectWorldEnv {

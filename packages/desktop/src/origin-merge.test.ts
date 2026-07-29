@@ -10,8 +10,9 @@ import { describe, expect, it } from "vitest";
 import { ROSTER_KEY, planOriginMerge } from "./origin-merge";
 import type { OriginSnapshot } from "./origin-merge";
 
-function meta(id: string, name: string, updatedAt: number, alive = true) {
-  return { id, name, race: "Human", cls: "Warrior", sex: "Female", level: 1, depth: 0, maxDepth: 0, turn: 1, alive, updatedAt };
+/** `turn` defaults to 1: a character that has been played at least a moment. */
+function meta(id: string, name: string, updatedAt: number, alive = true, turn = 1) {
+  return { id, name, race: "Human", cls: "Warrior", sex: "Female", level: 1, depth: 0, maxDepth: 0, turn, alive, updatedAt };
 }
 
 function origin(port: number, metas: ReturnType<typeof meta>[], saves: Record<string, string> = {}): OriginSnapshot {
@@ -35,7 +36,11 @@ describe("stranded-origin merge", () => {
   });
 
   it("does nothing when there is nothing to bring back", () => {
-    expect(planOriginMerge({}, [origin(54979, [])])).toEqual({ writes: {}, recovered: [] });
+    expect(planOriginMerge({}, [origin(54979, [])])).toEqual({
+      writes: {},
+      recovered: [],
+      skippedUnplayed: [],
+    });
   });
 
   it("never overwrites a character the target already has", () => {
@@ -62,7 +67,7 @@ describe("stranded-origin merge", () => {
     /* Metadata alone would put a row on the character-select screen that cannot
      * be resumed - worse than not offering it. */
     const plan = planOriginMerge({}, [origin(61806, [meta("a", "Frodo", 300)])]);
-    expect(plan).toEqual({ writes: {}, recovered: [] });
+    expect(plan).toEqual({ writes: {}, recovered: [], skippedUnplayed: [] });
   });
 
   it("does bring back a tombstone, which legitimately has no bytes", () => {
@@ -70,6 +75,7 @@ describe("stranded-origin merge", () => {
     expect(plan.recovered).toEqual([
       { id: "a", name: "Frodo", fromPort: 61806, hasSave: false },
     ]);
+    expect(plan.skippedUnplayed).toEqual([]);
     expect(JSON.parse(plan.writes[ROSTER_KEY]!)[0].alive).toBe(false);
   });
 
@@ -122,5 +128,35 @@ describe("stranded-origin merge", () => {
     ]);
     expect(plan.recovered).toHaveLength(1);
     expect(JSON.parse(plan.writes[ROSTER_KEY]!)).toHaveLength(1);
+  });
+
+  it("leaves a birth abandoned at turn 0 where it is, and says so", () => {
+    /* Aaron's ruling, 2026-07-28: only characters with progress come back. The
+     * two level-1 turn-0 births in the real install were rows he had pressed
+     * Enter through, not characters he lost. Nothing is deleted - they stay in
+     * the origin they were written to. */
+    const plan = planOriginMerge({}, [
+      origin(61806, [meta("a", "Litholor", 300, true, 0)], { a: "AAA" }),
+      origin(61038, [meta("b", "Negor", 200, true, 4144)], { b: "BBB" }),
+    ]);
+
+    expect(plan.recovered.map((r) => r.name)).toEqual(["Negor"]);
+    expect(plan.skippedUnplayed.map((r) => r.name)).toEqual(["Litholor"]);
+    expect(plan.writes["neo-angband-save:a"]).toBeUndefined();
+    expect(plan.writes["neo-angband-save:b"]).toBe("BBB");
+    expect(JSON.parse(plan.writes[ROSTER_KEY]!)).toHaveLength(1);
+  });
+
+  it("treats a missing turn as unplayed rather than guessing", () => {
+    const src: OriginSnapshot = {
+      port: 61806,
+      entries: {
+        [ROSTER_KEY]: JSON.stringify([{ id: "a", name: "Frodo", updatedAt: 1, alive: true }]),
+        "neo-angband-save:a": "AAA",
+      },
+    };
+    const plan = planOriginMerge({}, [src]);
+    expect(plan.recovered).toEqual([]);
+    expect(plan.skippedUnplayed.map((r) => r.name)).toEqual(["Frodo"]);
   });
 });

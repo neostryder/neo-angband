@@ -37,6 +37,7 @@ interface Meta {
   name?: string;
   updatedAt?: number;
   alive?: boolean;
+  turn?: number;
 }
 
 export const ROSTER_KEY = "neo-angband-roster";
@@ -67,6 +68,13 @@ export interface MergePlan {
   readonly writes: Readonly<Record<string, string>>;
   /** Characters this brings back, for the report the player is shown. */
   readonly recovered: readonly RecoveredChar[];
+  /**
+   * Living characters left where they were because they had never been played -
+   * births abandoned at turn 0. Reported rather than hidden: their bytes are NOT
+   * deleted from the origin they are in, so the count is a statement about what
+   * this build chose not to import, not about what was destroyed.
+   */
+  readonly skippedUnplayed: readonly RecoveredChar[];
 }
 
 function parseRoster(raw: string | undefined): Meta[] {
@@ -96,6 +104,7 @@ export function planOriginMerge(
 ): MergePlan {
   const writes: Record<string, string> = {};
   const recovered: RecoveredChar[] = [];
+  const skippedUnplayed: RecoveredChar[] = [];
 
   /* The target's own characters are the baseline and are never displaced by an
    * older copy of themselves. */
@@ -109,6 +118,20 @@ export function planOriginMerge(
 
       const slot = SLOT_PREFIX + m.id;
       const bytes = src.entries[slot];
+      const named = {
+        id: m.id,
+        name: typeof m.name === "string" ? m.name : "(unnamed)",
+        fromPort: src.port,
+        hasSave: bytes !== undefined || target[slot] !== undefined,
+      };
+
+      /* A birth abandoned at turn 0 is not a character anybody lost; importing
+       * every one of them would fill the character screen with rows the player
+       * only ever pressed Enter through. Left in place, not deleted. */
+      if (m.alive !== false && (m.turn ?? 0) <= 0) {
+        skippedUnplayed.push(named);
+        continue;
+      }
       /* A living character with no bytes is not resumable, so importing its
        * metadata alone would offer the player a save that cannot be loaded. Skip
        * it unless the target has the bytes already. */
@@ -118,12 +141,7 @@ export function planOriginMerge(
 
       merged.set(m.id, m);
       if (bytes !== undefined && target[slot] === undefined) writes[slot] = bytes;
-      recovered.push({
-        id: m.id,
-        name: typeof m.name === "string" ? m.name : "(unnamed)",
-        fromPort: src.port,
-        hasSave: bytes !== undefined || target[slot] !== undefined,
-      });
+      recovered.push(named);
     }
 
     /* Everything else the game owns: filled in only where the target has nothing,
@@ -137,7 +155,7 @@ export function planOriginMerge(
   }
 
   if (recovered.length === 0 && Object.keys(writes).length === 0) {
-    return { writes: {}, recovered: [] };
+    return { writes: {}, recovered: [], skippedUnplayed };
   }
 
   /* Only rewrite the roster when it actually gained something. */
@@ -152,5 +170,5 @@ export function planOriginMerge(
   const active = writes[ACTIVE_KEY];
   if (active !== undefined && !merged.has(active)) delete writes[ACTIVE_KEY];
 
-  return { writes, recovered };
+  return { writes, recovered, skippedUnplayed };
 }
