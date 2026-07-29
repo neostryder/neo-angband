@@ -32,7 +32,8 @@ const MAIN = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 
 /** The body of a top-level `function`/`async function` declaration, by name. */
 function functionBody(src: string, name: string): string {
-  const start = src.indexOf(`function ${name}(`);
+  /* `[(<]` so a GENERIC declaration matches too (openModal<T>), not only `name(`. */
+  const start = src.search(new RegExp(`function ${name}\\s*[(<]`));
   expect(start, `main.ts no longer declares ${name}()`).toBeGreaterThan(-1);
   const open = src.indexOf("{", start);
   let depth = 0;

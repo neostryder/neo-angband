@@ -99,6 +99,7 @@ import {
   OF,
   sidebarModel,
   statusLineModel,
+  playerRestingIsSpecial,
   PARITY_BASELINE,
   ENGINE_VERSION,
   createVisualsAnimator,
@@ -281,6 +282,7 @@ import {
   MENU_CLOSE,
   getChar,
   getFile,
+  getQuantity,
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ScreenLine } from "./overlay";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
@@ -289,6 +291,7 @@ import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
 import type { Overview } from "./mapview";
 import { runBirth } from "./birth";
 import { showTitleScreen } from "./news";
+import type { TitleChoice } from "./news";
 import type { BirthDeps } from "./birth";
 import {
   gameMenuEntries,
@@ -1326,10 +1329,10 @@ function renderBackground(): void {
   render();
 }
 
-async function openModal(fn: () => Promise<void>): Promise<void> {
+async function openModal<T>(fn: () => Promise<T>): Promise<T> {
   modalDepth++;
   try {
-    await fn();
+    return await fn();
   } finally {
     modalDepth--;
     /* renderBackground, not render: when modals NEST, the inner one closing must
@@ -2453,6 +2456,50 @@ async function takeOffItem(): Promise<void> {
   if (ref === null || !("handle" in ref)) return;
   const handle = ref.handle;
   commandBuffer.push({ code: "takeoff", args: { handle } });
+  advance();
+}
+
+/**
+ * Drop an item (d): do_cmd_drop, cmd-obj.c L360-388.
+ *
+ * Two things this has to get right that a bare useItem() call cannot.
+ *
+ * The sources are USE_EQUIP | USE_INVEN | USE_QUIVER (L374) - upstream drops
+ * worn gear and quivered ammo straight from the same prompt, and there is no
+ * USE_FLOOR (dropping what is already on the floor is meaningless), so the
+ * chosen ref is always a gear handle.
+ *
+ * And the amount is asked for: cmd_get_quantity(cmd, "quantity", &amt,
+ * obj->number) at L383, i.e. get_quantity(NULL, obj->number) ->
+ * "Quantity (0-N, *=all): " over the current screen. A max of 1 answers 1
+ * silently (ui-input.c L1211), so a single item never prompts. An answer of 0 -
+ * which ESCAPE gives - is CMD_ARG_ABORTED (cmd-core.c L1119): no drop, no
+ * message, and no energy.
+ *
+ * Ordering note: upstream's stuck-item check (L378) runs BEFORE the quantity
+ * prompt, while the port's lives in the core "drop" handler (obj-cmd.c) and so
+ * runs after. That is unobservable, because obj_can_takeoff only ever fails on
+ * an EQUIPPED object and an equipment slot holds a single item, so max is 1 and
+ * the prompt is skipped. Duplicating the gate in the UI would be a second copy
+ * of a C function, which is worse.
+ */
+async function dropItem(): Promise<void> {
+  const ref = await selectItemFrom(
+    "Drop which item?",
+    () => true,
+    { equip: true, inven: true, quiver: true },
+    "You have nothing to drop.",
+    itemCmdKey("drop"),
+    false,
+    "drop",
+  );
+  if (ref === null || !("handle" in ref)) return;
+  const handle = ref.handle;
+  const obj = gearGet(state.gear, handle);
+  if (!obj) return;
+  const quantity = await getQuantity(term, null, obj.number);
+  if (quantity <= 0) return;
+  commandBuffer.push({ code: "drop", args: { handle, quantity } });
   advance();
 }
 
@@ -4173,14 +4220,11 @@ const REST_REQUIRED_FOR_REGEN = 5;
 // re-issuing rest with n == 1 repeats it.
 let restRepeatCount = 0;
 
-/** player_resting_is_special (player-util.c:1381). */
-function restingIsSpecial(count: number): boolean {
-  return (
-    count === REST_COMPLETE ||
-    count === REST_ALL_POINTS ||
-    count === REST_SOME_POINTS
-  );
-}
+/* player_resting_is_special (player-util.c:1382) is core's now (game/context.ts,
+ * beside state.resting) - this file used to carry a third copy of it. The REST_
+ * constants above stay local because restingCompleteSpecial below reads them by
+ * name. */
+const restingIsSpecial = playerRestingIsSpecial;
 
 /**
  * GameState carries a live resting counter for the loop.ts regen seams. The
@@ -4316,9 +4360,12 @@ async function driveRest(nArg: number): Promise<void> {
     interrupted = true;
   };
   window.addEventListener("keydown", onStopKey, true);
-  // Transient status only (upstream shows a "Rest" state flag, not a message);
-  // set the top line directly rather than logging it into message history.
-  message = "Resting... (press any key to stop)";
+  // No message: upstream announces a rest ONLY through prt_state's "Rest" field
+  // in the status column (ui-display.c:957), which core's stateRuns now lights
+  // up off state.resting. The invented "Resting... (press any key to stop)" line
+  // that used to sit here was never cleared when the rest ended, so it outlived
+  // both a completed and a disturbed rest - and being an invented string, no
+  // census could see it.
   render();
 
   try {
@@ -4648,6 +4695,21 @@ function desktopQuit(): boolean {
     if (typeof shell?.quit !== "function") return false;
     (shell.quit as () => void)();
     return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether desktopQuit would do anything - i.e. whether there is a host process
+ * to exit. Asked BEFORE offering an exit (the title screen's Quit row), because
+ * a tab has nothing to quit to and a row that does nothing is worse than a row
+ * that says it cannot.
+ */
+function desktopQuitAvailable(): boolean {
+  try {
+    const shell = (globalThis as { neoDesktop?: { quit?: unknown } }).neoDesktop;
+    return typeof shell?.quit === "function";
   } catch {
     return false;
   }
@@ -5057,6 +5119,12 @@ async function quitAfterDeath(): Promise<void> {
 // hook just hands back the already-chosen object on the next call.
 let pendingPickupChoice: GameObject | null = null;
 
+// player_pickup_aux's get_quantity (cmd-pickup.c L270), resolved the same way
+// and for the same reason: only part of the stack fits, so upstream asks how
+// much to take. null means "the UI did not ask", and the core then takes the
+// whole carryable amount.
+let pendingPickupQuantity: number | null = null;
+
 // Reinstall the pickup commands with message hooks so gold and item pickup
 // report on the message line. Restores isIgnored (dropped by this reinstall
 // otherwise, since ActionRegistry.register replaces rather than merges) so
@@ -5071,6 +5139,11 @@ installPickup(state, registry, {
       pendingPickupChoice = null;
       if (choice && list.includes(choice)) return choice;
       return list[0] ?? null;
+    },
+    getQuantity: (max): number => {
+      const answer = pendingPickupQuantity;
+      pendingPickupQuantity = null;
+      return answer ?? max;
     },
     onGold: (total, name, single): void => {
       say(`You have found ${total} gold pieces worth of ${single ? name : "treasures"}.`);
@@ -5095,11 +5168,23 @@ async function pickupCmd(): Promise<void> {
   const canPickup = floorPile(state, grid).filter(
     (o) => !state.isIgnored?.(o) && invenCarryNum(state.gear, o, constants) > 0,
   );
+  let target = canPickup[0] ?? null;
   if (canPickup.length > 1) {
     const items = canPickup.map((o) => ({ label: objectName(state, o), color: UI_TEXT }));
     const idx = await selectFromMenu(term, "Get which item?", items);
     if (idx === null) return;
     pendingPickupChoice = canPickup[idx] ?? null;
+    target = pendingPickupChoice;
+  }
+  /* player_pickup_aux L253-274: a stack that only partly fits is prompted for.
+   * A 0 answer still spends the turn upstream (player_pickup_item counts the
+   * object at L389 before player_pickup_aux's early return), so the command is
+   * queued either way and the core hook does the abandoning. */
+  if (target) {
+    const max = invenCarryNum(state.gear, target, constants);
+    if (max > 0 && max !== target.number) {
+      pendingPickupQuantity = await getQuantity(term, null, max);
+    }
   }
   commandBuffer.push({ code: "pickup" });
   advance();
@@ -6987,7 +7072,7 @@ window.addEventListener("keydown", (ev) => {
       { o: "w", act: () => void openModal(() => useItem("wield", (t) => objCanWear(state, t), "Wear or wield which item?", "You have nothing to wear or wield.", { inven: true, floor: true, quiver: true })) },
       { o: "t", r: "T", act: () => void openModal(takeOffItem) },
       { o: "I", act: () => void openModal(() => inspectItem()) },
-      { o: "d", act: () => void openModal(() => useItem("drop", () => true, "Drop which item?", "You have nothing to drop.")) },
+      { o: "d", act: () => void openModal(dropItem) },
       { o: "f", r: "t", act: () => void openModal(fireCmd) },
       { o: "u", r: "Z", act: () => void openModal(() => useItem("use-staff", (t) => tvalIsStaff(t.tval), "Use which staff? ", "You have no staves to use.", { inven: true, floor: true })) },
       { o: "a", r: "z", act: () => void openModal(() => useItem("aim-wand", (t) => tvalIsWand(t.tval), "Aim which wand? ", "You have no wands to aim.", { inven: true, floor: true })) },
@@ -7498,51 +7583,124 @@ function resumeSelected(id: string): void {
  * cleared - maybeBirth still owns clearing it), and New/Switch/resume-a-slot
  * (SKIP_TITLE, set by those actions and cleared here).
  */
-async function maybeTitle(): Promise<void> {
-  if (params.get("agent")) return;
+async function maybeTitle(): Promise<TitleChoice | null> {
+  if (params.get("agent")) return null;
   try {
     if (sessionStorage.getItem(SKIP_TITLE_KEY) === "1") {
       sessionStorage.removeItem(SKIP_TITLE_KEY);
-      return;
+      return null;
     }
-    if (sessionStorage.getItem(BIRTH_DONE_KEY) === "1") return; // post-birth rebuild
+    if (sessionStorage.getItem(BIRTH_DONE_KEY) === "1") return null; // post-birth rebuild
   } catch {
     /* sessionStorage unavailable: fall through and show the title */
   }
-  await openModal(() => showTitleScreen(term));
+  /* Which File-menu rows are live (main-win.c:2957-2990). "Quit" needs a host
+   * with something to exit; desktopQuit reports whether there is one. */
+  const living = livingRoster().length > 0;
+  return openModal(() =>
+    showTitleScreen(term, {
+      canLoad: living || resumedActive,
+      canOpen: listRoster().length > 0,
+      canQuit: desktopQuitAvailable(),
+    }),
+  );
 }
 
 // Boot-time flow: the title screen first, then a resumed character plays
 // immediately; otherwise pick from the roster (when other characters are saved)
 // or birth a brand-new one.
-async function bootMenus(): Promise<void> {
-  await maybeTitle();
-  if (resumedActive) return;
-  if (needsSelect) {
-    // Whether this origin's storage is exempt from the browser's own eviction. A
-    // query, never a request: the request happens when a save lands (persistSave),
-    // which is a moment the player caused and has something to protect.
-    const durability = await storageDurability();
-    await openModal(async () => {
-      for (;;) {
-        const roster = listRoster();
-        const res = await runCharacterSelect(
-          term,
-          roster,
-          durabilityNotice(durability, roster.length),
-        );
-        if (res.action === "delete") {
-          deleteSlot(res.id);
-          if (livingRoster().length === 0) return newGame();
-          continue;
+async function openRoster(): Promise<boolean> {
+  // Whether this origin's storage is exempt from the browser's own eviction. A
+  // query, never a request: the request happens when a save lands (persistSave),
+  // which is a moment the player caused and has something to protect.
+  const durability = await storageDurability();
+  return openModal(async () => {
+    for (;;) {
+      const roster = listRoster();
+      const res = await runCharacterSelect(
+        term,
+        roster,
+        durabilityNotice(durability, roster.length),
+      );
+      if (res.action === "delete") {
+        deleteSlot(res.id);
+        if (livingRoster().length === 0) {
+          newGame();
+          return true;
         }
-        if (res.action === "resume") return resumeSelected(res.id);
-        return newGame();
+        continue;
       }
-    });
+      /* ESC: cancelling the picker returns to the title, it does not pick. */
+      if (res.action === "back") return false;
+      if (res.action === "resume") {
+        resumeSelected(res.id);
+        return true;
+      }
+      newGame();
+      return true;
+    }
+  });
+}
+
+/** IDM_FILE_NEW (main-win.c:3501). */
+function startNewCharacter(): void {
+  /* A boot with nothing to resume has already built a fresh game and claimed a
+   * slot for it, so birth can run in place. Anything else has a live character
+   * to leave behind first, which newGame does through a reload. */
+  if (!resumedActive && !needsSelect) {
+    void maybeBirth();
     return;
   }
-  await maybeBirth();
+  newGame();
+}
+
+async function bootMenus(): Promise<void> {
+  let choice = await maybeTitle();
+  /* Title skipped (an autoplayer boot, a post-birth rebuild, or an internal
+   * continuation): the pre-title-menu flow, unchanged. */
+  if (choice === null) {
+    if (resumedActive) return;
+    if (needsSelect && (await openRoster())) return;
+    await maybeBirth();
+    return;
+  }
+  /* The title's rows loop with the roster: ESC out of the picker comes back
+   * here rather than dropping the player into a game they did not choose. */
+  for (;;) {
+    /* IDM_FILE_EXIT at the splash (main-win.c:3568): with no game in progress it
+     * just quits. Only offered when desktopQuitAvailable() said yes, so there is
+     * no browser fallback to write here. */
+    if (choice === "quit") {
+      desktopQuit();
+      return;
+    }
+    if (choice === "new") {
+      startNewCharacter();
+      return;
+    }
+    /* "Load last save": the most recent living character, straight in. A boot
+     * that already resumed one IS that character, so there is nothing to do. */
+    if (choice === "load") {
+      if (resumedActive) return;
+      const recent = livingRoster()[0];
+      if (recent) {
+        resumeSelected(recent.id);
+        return;
+      }
+      /* Nothing living after all: show the picker rather than stalling. */
+    }
+    /* IDM_FILE_OPEN (main-win.c:3518) raises a picker over the save directory;
+     * the port's picker is the character-select screen. */
+    if (await openRoster()) return;
+    const again = await maybeTitle();
+    /* maybeTitle only answers null when the title is suppressed, which cannot
+     * become true between iterations - but if it ever did, birth is the way out. */
+    if (again === null) {
+      await maybeBirth();
+      return;
+    }
+    choice = again;
+  }
 }
 void bootMenus();
 

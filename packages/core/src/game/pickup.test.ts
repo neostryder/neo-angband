@@ -9,7 +9,7 @@ import type { ObjPackJson } from "../obj/types";
 import { objectPrep } from "../obj/make";
 import type { GameObject } from "../obj/object";
 import { floorCarry, floorPile } from "./floor";
-import { calcInventory, gearAdd, gearGet, invenCarry } from "./gear";
+import { calcInventory, gearAdd, gearGet, invenCarry, invenCarryNum } from "./gear";
 import type { GameState } from "./context";
 import {
   autoPickupOkay,
@@ -234,6 +234,125 @@ describe("doAutopickup / playerPickupItem", () => {
     playerPickupItem(state, null, labelDeps(state, { onPickup: (m) => (msg = m) }));
     /* "You have 5 <potions> (a)." - the count and pack slot, not "You have a". */
     expect(msg).toMatch(/^You have 5 .+ \(a\)\.$/);
+  });
+
+  /**
+   * player_pickup_aux L253-274: when only PART of a floor stack can be carried,
+   * upstream asks how much with get_quantity(NULL, max) - and the port took the
+   * whole carryable amount silently. Same class as the drop-a-stack report: the
+   * amount prompt existed for the store and nowhere else.
+   */
+  describe("partial pickup asks how much (cmd-pickup.c L270)", () => {
+    /**
+     * The only way inven_carry_num returns a number strictly between 0 and
+     * obj.number: every pack slot is taken, and the one matching stack has room
+     * for just a few more. Room for exactly PART_ROOM, offered PART_ROOM + 7.
+     */
+    const PART_ROOM = 3;
+    function overfullStack(state: GameState): GameObject {
+      const potion = makeObj(TV.POTION, 0);
+      const cap = potion.kind.base.maxStack;
+      /* Fill every pack slot but one with singletons. */
+      for (let i = 0; i < constants.packSize - 1; i++) {
+        const filler = makeObj(TV.SWORD, i % 3);
+        filler.number = 1;
+        carryObj(state, filler);
+      }
+      /* The last slot: a matching stack with room for PART_ROOM more. */
+      const held = makeObj(TV.POTION, 0);
+      held.number = cap - PART_ROOM;
+      carryObj(state, held);
+      calcInventory(state.gear, constants, {});
+      const stack = makeObj(TV.POTION, 0);
+      stack.number = PART_ROOM + 7;
+      underfoot(state, stack);
+      /* Guard the premise: a partial pickup, not a whole one and not a refusal. */
+      expect(invenCarryNum(state.gear, stack, constants)).toBe(PART_ROOM);
+      return stack;
+    }
+
+    it("asks with the carryable maximum, not the whole stack", () => {
+      const state = makeState({ playerGrid: loc(5, 5) });
+      const stack = overfullStack(state);
+      const offered = stack.number;
+      const asked: number[] = [];
+      playerPickupItem(state, stack, {
+        constants,
+        env: {
+          getQuantity: (max) => {
+            asked.push(max);
+            return 2;
+          },
+        },
+      });
+      /* The prompt's ceiling is what FITS, not what is lying there. */
+      expect(asked).toEqual([PART_ROOM]);
+      /* Two moved, so the floor keeps the rest. */
+      expect(floorPile(state, loc(5, 5))[0]?.number).toBe(offered - 2);
+    });
+
+    it("a 0 answer picks nothing up, and the object stays whole", () => {
+      const state = makeState({ playerGrid: loc(5, 5) });
+      const stack = overfullStack(state);
+      const before = stack.number;
+      /* Upstream still counts the object (player_pickup_item L389), so the turn
+       * is spent - the return value is 1 even though nothing moved. */
+      const picked = playerPickupItem(state, stack, {
+        constants,
+        env: { getQuantity: () => 0 },
+      });
+      expect(picked).toBe(1);
+      expect(floorPile(state, loc(5, 5))[0]?.number).toBe(before);
+    });
+
+    it("a whole stack that fits never asks (max == obj.number)", () => {
+      const state = makeState({ playerGrid: loc(5, 5) });
+      const stack = makeObj(TV.POTION, 0);
+      stack.number = 5;
+      underfoot(state, stack);
+      let asked = false;
+      playerPickupItem(state, stack, {
+        constants,
+        env: {
+          getQuantity: () => {
+            asked = true;
+            return 1;
+          },
+        },
+      });
+      expect(asked).toBe(false);
+      expect(gearGet(state.gear, state.gear.pack[0]!)?.number).toBe(5);
+    });
+
+    it("autopickup answers for itself and never asks", () => {
+      const state = makeState({ playerGrid: loc(5, 5) });
+      state.options = new OptionState();
+      state.options.set("pickup_always", true);
+      const stack = overfullStack(state);
+      const before = stack.number;
+      let asked = false;
+      doAutopickup(state, {
+        constants,
+        env: {
+          getQuantity: () => {
+            asked = true;
+            return 0;
+          },
+        },
+      });
+      /* auto_max short-circuits the prompt (cmd-pickup.c L267-268), and taking
+       * PART_ROOM anyway proves the hook's 0 was never consulted. */
+      expect(asked).toBe(false);
+      expect(floorPile(state, loc(5, 5))[0]?.number).toBe(before - PART_ROOM);
+    });
+
+    it("with no hook at all the whole carryable amount is taken", () => {
+      const state = makeState({ playerGrid: loc(5, 5) });
+      const stack = overfullStack(state);
+      const before = stack.number;
+      playerPickupItem(state, stack, { constants });
+      expect(floorPile(state, loc(5, 5))[0]?.number).toBe(before - PART_ROOM);
+    });
   });
 
   it("the chooseItem menu seam selects among several objects", () => {

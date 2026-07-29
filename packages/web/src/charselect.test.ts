@@ -105,7 +105,10 @@ describe("runCharacterSelect", () => {
     expect(await done).toEqual({ action: "new" });
   });
 
-  it("ESC resumes the most-recent living character, or New when none", async () => {
+  // ESC used to resume the most-recent living character, which made cancelling
+  // the picker indistinguishable from choosing its top row and left no route back
+  // to the title. It now goes back, whatever the roster holds.
+  it("ESC goes back to the title, never into a game", async () => {
     {
       const win = makeFakeWindow();
       (globalThis as { window?: unknown }).window = win;
@@ -115,7 +118,7 @@ describe("runCharacterSelect", () => {
         meta({ id: "live1", name: "Alive" }),
       ]);
       press(win, "Escape");
-      expect(await done).toEqual({ action: "resume", id: "live1" });
+      expect(await done).toEqual({ action: "back" });
     }
     {
       const win = makeFakeWindow();
@@ -123,8 +126,19 @@ describe("runCharacterSelect", () => {
       const term = makeTerm();
       const done = runCharacterSelect(term, [meta({ id: "dead1", alive: false })]);
       press(win, "Escape");
-      expect(await done).toEqual({ action: "new" });
+      expect(await done).toEqual({ action: "back" });
     }
+  });
+
+  it("the footer tells the player where ESC goes", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runCharacterSelect(term, [meta({ id: "a1", name: "Alpha" })]);
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("ESC for the title screen");
+    press(win, "Escape");
+    await done;
   });
 
   it("a tombstone offers Leave/Delete; Delete resolves, Leave returns to the list", async () => {
@@ -188,7 +202,7 @@ describe("runCharacterSelect", () => {
     await tick();
     expect(term.snapshot()[0]).toContain("Select a character");
     press(win, "Escape");
-    expect(await done).toEqual({ action: "resume", id: "a1" });
+    expect(await done).toEqual({ action: "back" });
   });
 
   it("rows carry hints: roster detail for the living, memorial for the dead", async () => {
