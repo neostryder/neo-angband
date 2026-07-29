@@ -138,3 +138,123 @@ describe("prt erases to end of line before writing (ui-output.c)", () => {
     expect(src).not.toContain("term.print(0, 1,");
   });
 });
+
+/**
+ * The prt/put_str census (2026-07-29), pinned so a converted site cannot quietly
+ * revert to print(). The behaviour itself is exercised in overlay.test.ts's
+ * "row-0 prompts erase the line they draw on"; these are the wiring pins for the
+ * sites whose surface no unit test drives, in the shape exit-to-title.test.ts
+ * established (read the source, assert the call is there).
+ *
+ * The bar for conversion was: the C function this site mirrors is prt/c_prt AND
+ * the port draws it over content that is still on the row. Sites that mirror
+ * put_str/c_put_str, and sites drawn immediately after term.clear() (where the
+ * erase is a provable no-op), were left on print() - see the "must NOT erase"
+ * block below, which is the half of the census that keeps this from being a
+ * blanket rewrite.
+ */
+const WEB = (name: string): string =>
+  readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
+
+describe("prt census: every converted prompt site (2026-07-29)", () => {
+  it("overlay.ts row-0 prompts all use prt", () => {
+    const src = WEB("overlay.ts");
+    /* textui_get_check ui-input.c:1271; get_com_ex :1427; get_rep_dir :1512;
+     * askfor_aux's caller prt :1153/:1189/:1357; prt("", 0, 0) :1275 etc. */
+    expect(src).toContain('term.prt(0, 0, buf.slice(0, cols - 1), FG)'); // getCheck
+    expect(src).toContain('term.prt(0, 0, prompt.slice(0, cols - 1), FG)'); // getAimDir/getKeyInline
+    expect(src).toContain('term.prt(0, 0, "Direction or <click> (Escape to cancel)? "');
+    expect(src).toContain('term.prt(0, row, prompt.slice(0, cols - 1), FG)'); // promptTextInline
+    expect(src).toContain('term.prt(0, 0, "File name: ", FG)'); // get_file_text
+    expect(src).toContain('term.prt(0, row, "", FG)'); // clearPromptRow = prt("", 0, 0)
+    /* The hand-rolled erases these replaced must not come back. */
+    expect(src).not.toContain('" ".repeat(cols - 1)');
+    expect(src).not.toContain('" ".repeat(Math.max(0, cols - 1))');
+  });
+
+  it("the 'L' locate banner uses prt (it lands on the message row render() just drew)", () => {
+    expect(WEB("main.ts")).toContain("term.prt(0, 0, banner.slice(0, cols - 1), UI_TEXT)");
+  });
+
+  it("the store per-item command prompt uses prt (it lands on statusMsg)", () => {
+    expect(WEB("shop.ts")).toContain(
+      "term.prt(0, 0, `(Enter to select, ESC) Command for ${name}:`",
+    );
+  });
+
+  it("the keymap editor's four row-0 prompts use prt, not padEnd", () => {
+    const src = WEB("keymap-edit.ts");
+    /* ui-options.c:594 "Key: ", :647 "Action: %s", :603/:613 the ack lines,
+     * and the get_check confirmation at ui-input.c:1271. */
+    expect(src.match(/term\.prt\(0, 0,/gu)?.length).toBe(4);
+    expect(src).not.toContain("term.print(0, 0,");
+    /* padEnd(cols - 1) was the hand-rolled erase, and it left the last column. */
+    expect(src).not.toContain("padEnd(cols - 1)");
+  });
+
+  it("the pref-file screens' prt(\"\", row - 1, 0) really erases", () => {
+    const src = WEB("prefs-ui.ts");
+    /* ui-options.c:53 and :1211. print("", ...) drew nothing, so the call was a
+     * no-op and the row above the heading was never cleared. */
+    expect(src.match(/term\.prt\(0, row - 1, ""/gu)?.length).toBe(2);
+    expect(src).not.toContain('term.print(0, row - 1, ""');
+  });
+
+  it("the quickstart screen's two prts (ui-birth.c) use prt", () => {
+    const src = WEB("birth.ts");
+    expect(src).toContain('term.prt(0, 0, "New character based on previous one:"');
+    expect(src).toContain("term.prt(col, rows - 1, PROMPT.slice(");
+  });
+});
+
+describe("prt census: the sites that must NOT erase (put_str, ui-output.c:362-379)", () => {
+  it('msg_flush\'s "-more-" stays a Term_putstr', () => {
+    /* ui-input.c:393 is `Term_putstr(x, 0, -1, a, "-more-")`, appended one column
+     * past the message text (:575). prt there would erase the message it follows. */
+    const src = WEB("main.ts");
+    expect(src.match(/term\.print\(page\.length \+ 1, 0, "-more-", MORE_COLOR\)/gu)?.length).toBe(2);
+    expect(src).not.toContain('term.prt(page.length + 1, 0, "-more-"');
+  });
+
+  it("askfor_aux's field paint stays print (its erase is BOUNDED, ui-input.c:891)", () => {
+    /* Term_erase(x, y, (int)len) clears len cells, not to the end of the row:
+     * whatever is further right belongs to the screen underneath. */
+    const src = WEB("overlay.ts");
+    const at = src.indexOf("function paintLineEdit(");
+    expect(at).toBeGreaterThan(-1);
+    const body = src.slice(at, src.indexOf("\n}", at));
+    expect(body).toContain("term.print(x, y,");
+    expect(body).not.toContain("term.prt(");
+  });
+
+  it("showLevelMap's box border stays print (prt would erase across the border)", () => {
+    /* window_make draws a bordered box; an erase-to-end-of-line on any interior
+     * row would take the right-hand '|' with it. */
+    const src = WEB("overlay.ts");
+    const at = src.indexOf("export function showLevelMap(");
+    expect(at).toBeGreaterThan(-1);
+    const body = src.slice(at, src.indexOf("\n}", at));
+    expect(body).toContain("term.print(mapW + 1, r + 1,");
+    expect(body).not.toContain("term.prt(");
+  });
+
+  it("the title screen's art stays print (prt would wipe the mountains)", () => {
+    /* news.ts paints news.txt row by row and then lays the "Neo" block OVER it.
+     * Drawing on top of existing art is put_str-shaped by intent: an erase to end
+     * of line on any of those rows would take the mountains to the right with it -
+     * which is exactly what news.test.ts's caret-survival assertion checks from
+     * the other side. */
+    const src = WEB("news.ts");
+    expect(src).not.toContain("term.prt(");
+    expect(src).toContain("term.print(NEO_COL, y,");
+  });
+
+  it("the colour editor stays print end to end (colors_modify is all Term_putstr)", () => {
+    /* ui-options.c:876-930: only the "Command: Modify colors" heading is a prt
+     * (:883) and it is drawn straight after clear_from, so every draw on that
+     * screen is put_str semantics. */
+    const src = WEB("colors.ts");
+    expect(src).not.toContain("term.prt(");
+    expect(src).toContain('term.print(0, 14, "Command (n/N/k/K/r/R/g/G/b/B): "');
+  });
+});

@@ -27,28 +27,48 @@ This is the QoL home decision 18 refers to: subjective and convenience additions
 live here, NOT in the `bug-fixes` mod (which carries only fixes for upstream
 bugs). Balance and rules changes belong in neither - they would be their own mod.
 
-## How it works (declarative, reversible, faithful-when-off)
+## How it works (the mod's own code, reversible, faithful-when-off)
 
-Every QoL tweak is a named **core rule flag** (`qol.*`) that ships in ported core
-as an extra branch guarded by `modRuleEnabled(state, "<flag>")`. The flag itself
-only exists while the `qol` mod is enabled - a disabled mod declares nothing, so
-`modRules` has no such key and core takes the faithful branch. The mod
-does not run code: `packages/web/mods/qol/manifest.json` simply DECLARES its
-tweaks under `rules` (flag / title / description / default). The host
-(`packages/web/src/main.ts`) resolves every enabled mod's declared rules against
-the player's saved choices and seeds `GameState.modRules` at `startGame` /
-`loadGame`; the **Fixes & tweaks** submenu on this mod's own screen (mod manager
--> Quality of Life) lists each tweak with its description and lets the player
-toggle it (applied live).
+Every QoL tweak is a named **patch flag** (`qol.*`) that the mod DECLARES in
+`packages/web/mods/qol/manifest.json` under `rules` (flag / title / description /
+default). The flag is a conversation between the host and the mod - **core never
+sees it.** Nothing in `packages/core/src` contains the string `qol.autoDig` or a
+dig-on-walk branch.
 
-**While the mod is off, its tweaks do not exist** - no flag, nothing in the
-menu, faithful 4.2.6. Enabling the mod turns its whole tweak set ON at once;
-each tweak is then individually switchable in that submenu, so you
-can take the set minus one. Disabling the mod again, or switching one tweak off,
-drops that flag and core returns to faithful behaviour. The mod is off on a
-fresh install, so a default game applies no flag at all. See
-`docs/modding/MOD_SEAMS.md` for the full seam contract, and `BUG_FIXES.md` for
-the same mechanism in the bug-fix mod.
+The tweak's BEHAVIOUR is the mod's own code, in
+`packages/web/mods/qol/hooks.ts`. That file default-exports the entry point every
+behaviour mod exports:
+
+```ts
+export default function qolHooks(
+  flags: Readonly<Record<string, boolean>>,
+): ModHooks;
+```
+
+The host (`packages/web/src/mod-hooks.ts`) resolves each enabled mod's declared
+rules against the player's saved choices, slices the resulting flag map PER MOD,
+calls this function once per enabled mod in load order, and folds the returned
+`ModHooks` objects into the single object core holds (`composeModHooks`,
+`packages/core/src/mod/hooks.ts`). It is passed to `startGame` / `loadGame` as
+`opts.modHooks`. The **Fixes & tweaks** submenu on this mod's own screen (mod
+manager -> Quality of Life) lists each tweak with its description and lets the
+player toggle it; a live toggle REBUILDS the composed hooks
+(`applyRuleLive`, `packages/web/src/main.ts:4956`), because core does not branch
+on a flag and so writing one alone would do nothing.
+
+A tweak the player switched off does not install its hook at all - so it is not
+merely inert, it is ABSENT, and core takes the faithful path with one undefined
+check. See `docs/modding/MOD_SEAMS.md` for the full seam contract, including the
+per-hook fold rules.
+
+**While the mod is off, its tweaks do not exist** - the host never calls this
+mod's entry point, so no hook is contributed, nothing appears in the menu, and
+core is faithful 4.2.6. Enabling the mod turns its whole tweak set ON at once;
+each tweak is then individually switchable in that submenu, so you can take the
+set minus one. Disabling the mod again, or switching one tweak off, removes the
+hook and core returns to faithful behaviour. The mod is off on a fresh install,
+so a default game installs no hook at all. See `BUG_FIXES.md` for the same
+mechanism in the bug-fix mod.
 
 ## Tweaks this mod ships
 
@@ -62,14 +82,24 @@ instead of the faithful no-energy "there is a wall in the way" bump. You never
 step onto the dug-out grid in the same move, and each walk is a single attempt
 (you keep walking to keep digging), matching the source fork.
 
-- Core: `packages/core/src/game/cave-cmd.ts` (`movementTunnelTest`,
-  `movementAutoDig`, reusing the ported `do_cmd_tunnel_aux` dig roll and
-  payouts), consulted by `walkAction` (`packages/core/src/game/player-turn.ts`)
-  through the `state.autoDigStep` seam, installed by the session
-  (`packages/core/src/session/game.ts`). Off => `walkAction` bumps as in 4.2.6,
-  drawing no RNG.
-- Tests: `packages/core/src/game/auto-dig.test.ts` (bump when off; one dig +
-  move, no step when on; the known / permanent-rock / can't-dig gates).
+- The tweak's code: `packages/web/mods/qol/hooks.ts:76`, installing the
+  `walkBlockedByDiggable` hook (`packages/core/src/mod/hooks.ts:96`). It reuses
+  two PUBLIC core primitives rather than reimplementing the dig - a reimplemented
+  roll would drift from the tunnel command's: `movementTunnelTest`
+  (`packages/core/src/game/cave-cmd.ts:662`, RNG-free, which is what lets the mod
+  decline without moving the stream) and `tunnelAux` (one `do_cmd_tunnel_aux`
+  attempt with the real roll, messages, and payouts, which DRAWS, so it is
+  reached only after the decision to handle the walk is final).
+- Core's side of the seam: `walkAction`
+  (`packages/core/src/game/player-turn.ts:493`) consults `state.autoDigStep`,
+  installed by the session (`packages/core/src/session/game.ts:1668`) pointing at
+  `movementAutoDig` (`cave-cmd.ts:676`), whose whole body is the hook read plus
+  `?? 0`. Off (or no mod) => the hook is absent, `movementAutoDig` returns 0
+  having drawn no RNG, and `walkAction` bumps as in 4.2.6.
+- Tests: `packages/core/src/game/auto-dig.test.ts` (core's seam: bump with no
+  hook; the returned energy is honoured) and
+  `packages/web/mods/qol/hooks.test.ts` (the mod's own behaviour and its flag
+  gate).
 
 ## QoL ideas that are ALREADY faithful core (not this mod)
 
@@ -87,9 +117,14 @@ re-implement them:
 
 ## Tests
 
-- `packages/core/src/game/auto-dig.test.ts` - the auto-dig behaviour + gates.
+- `packages/core/src/game/auto-dig.test.ts` - core's side of the seam: the bump
+  with no hook, and the hook's returned energy being honoured.
+- `packages/web/mods/qol/hooks.test.ts` - the mod's own behaviour: one dig + a
+  move and no step with the tweak on, decline with it off, and the known /
+  permanent-rock / can't-dig gates.
 - `packages/core/src/session/qol-defaults.test.ts` - faithful core option
-  defaults (no QoL override) and the `modRules` start/load seam.
+  defaults (no QoL override), plus the ratchet that an ALL-NEUTRAL `ModHooks`
+  leaves the RNG state and the generated level bit-identical to no hooks at all.
 - `packages/web/src/qol-mod.test.ts` - the manifest declares `qol.autoDig`
   (`default: true`, i.e. on once the mod is enabled) and no option overrides;
   `pack.ts` discovery + `resolveModRules`.

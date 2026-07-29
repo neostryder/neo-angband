@@ -1,5 +1,16 @@
 # The Mod System
 
+> STATUS: TARGET DESIGN, not a description of the current build. This page is
+> the ratified design of the mod system (PORT_PLAN.md decisions 13-21). Most of
+> it - including the matrix below - states what mods are meant to be able to do,
+> in the present tense, and a reader cannot tell from this page which rows are
+> built. For the MEASURED current state, with counts and `file:line` citations,
+> read **`docs/modding/MOD_REACH.md`**; it is deliberately blunt about what is
+> absent. In short, as of 2026-07-29: gamedata records are real and layered
+> (add / patch / replace / remove, on 24 of 44 record files), and every code and
+> resource seam that exists is reachable only by a mod compiled into the web
+> bundle. `docs/modding/MOD_SEAMS.md` documents the behaviour seam that is built.
+
 Neo Angband is moddable by construction: the base game is itself a pack
 loaded through the same pipeline as any third-party mod. Moddability is a
 ratified pillar (PORT_PLAN.md decisions 13-21): every aspect of the game is
@@ -49,6 +60,13 @@ core are the upstream parity pieces (the 4.2.6 town and its shops, the
 win condition), implemented through these same surfaces so mods can
 overhaul them. The matrix asserts what mods CAN do, not what core ships.
 
+> The matrix is the TARGET. Measured against the code on 2026-07-29, the "Add"
+> and "Patch/replace" columns hold for 24 of the 44 record files and are silently
+> inert on the other 20; the "Extend" column holds for effects, room builders,
+> and player commands only, and only for a mod compiled into the web bundle;
+> Shops, Sounds, UI panels, and Game constants have no seam at all. Row by row,
+> with citations: `docs/modding/MOD_REACH.md`.
+
 | Surface | Add | Patch/replace | Extend |
 |---|---|---|---|
 | Terrain types | yes | yes | new terrain flags + handlers |
@@ -68,16 +86,26 @@ overhaul them. The matrix asserts what mods CAN do, not what core ships.
 | Game constants (z_info) | n/a | yes | new constants namespaced per pack |
 | Networking sessions | n/a | n/a | plugin transports and modes |
 
-How the engine keeps this true:
+How the engine is meant to keep this true (the design rules, with the measured
+state of each noted):
 
 - Every registry accepts runtime registration and is keyed by namespaced
   string IDs, never closed enums. Upstream's compiled dispatch tables
   (effects, commands) are ported as open handler registries.
+  *Measured: true for effects (112 codes), room builders (19), and player
+  commands (43). Not true for monster blow effects, projection-to-feature,
+  projection-to-object, or store behaviour, which are `switch` statements, nor
+  for the 31 generated `as const` tables.*
 - New record TYPES are supported: a pack may declare its own schemas, and
   scripted plugins may register loaders for them. The engine treats the base
   game's record types as pack-zero declarations, not engine specials.
+  *Measured: the type list really is open (any `*.json` stem composes) and core
+  really is pack zero with no special casing. Per-pack SCHEMAS do not exist -
+  there is no record-schema validation at all.*
 - The base game must consume every surface through the same public API mods
   use. If core needs a private hook, the hook becomes public API instead.
+  *Measured: holds for the bundled mods' hooks - `packages/web/mods/bug-fixes/`
+  and `qol/` import only `@neo-angband/core`'s public API and no test hook.*
 
 ## Pack shapes
 

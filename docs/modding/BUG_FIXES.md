@@ -2,21 +2,35 @@
 
 > STATUS: DESIGN OF RECORD + CHANGELOG. This page is the source of truth and
 > public changelog for the bundled bug-fix mod. The mod package
-> (`packages/web/mods/bug-fixes/`) is a plain `content`-shape pack with NO plugin
-> code and NO capabilities: it DECLARES its fixes in `manifest.json` under
-> `rules` (flag / title / description / default). Each fix lives in ported core
-> as its faithful 4.2.6 branch plus a flag-guarded corrected branch (core,
-> `game/context.ts` `modRuleEnabled`, or a direct `deps.modRules` test where no
-> `GameState` is in scope). The host resolves the enabled mods' declared rules
-> against the player's saved choices and seeds `GameState.modRules`; the in-app
-> **Fixes & tweaks** submenu on this mod's own screen (mod manager -> Bug Fixes)
-> lists each fix and toggles it.
+> (`packages/web/mods/bug-fixes/`) DECLARES its fixes in `manifest.json` under
+> `rules` (flag / title / description / default) and carries each fix's BODY as
+> its own code: `hooks.ts` (the entry point), `stairs.ts`, `strings.ts`. Nothing
+> in `packages/core/src` holds a `bugfix.*` string, the staircase repair, the
+> duplicate-artifact guard, or the message rewriter - delete this folder and the
+> fixes go with it.
+>
+> Each fix installs one member of `ModHooks`
+> (`packages/core/src/mod/hooks.ts`) - a typed interface of OPTIONAL functions on
+> `GameState.modHooks`. The host slices each enabled mod's resolved flags per mod,
+> calls its entry point once in load order, and folds the results with
+> `composeModHooks`; the in-app **Fixes & tweaks** submenu on this mod's own
+> screen (mod manager -> Bug Fixes) lists each fix and toggles it, rebuilding the
+> composed hooks live.
+>
+> This replaced an earlier flag-registry design in which each fix lived in core
+> behind `if (modRuleEnabled(state, "bugfix.x"))`. That was rejected because a
+> flag-gated fix is not excluded from core: core shipped the fix body, was tested
+> on it, and carried the mod's flag name as a literal. `modRuleEnabled` is deleted;
+> `modRules` survives only as the host's record of the player's choices and is
+> opaque to core.
+>
 > The MOD is off on a fresh install, and while it is off **its fixes do not
-> exist** - no flag is declared, nothing appears in the menu, and core is
+> exist** - its entry point is never called, no hook is contributed,
+> `GameState.modHooks` stays ABSENT, nothing appears in the menu, and core is
 > byte-identical to 4.2.6. Enabling the mod turns the whole patch set on at once;
 > each fix is then individually switchable, so a player can take the set minus
-> one. See `docs/modding/MOD_SEAMS.md` for the seam contract and the full default
-> policy.
+> one. See `docs/modding/MOD_SEAMS.md` for the seam contract, the per-hook fold
+> rules, and the full default policy.
 >
 > The menu lists only fixes with a real, functional gate today - the five marked
 > `IMPLEMENTED` below.
@@ -51,18 +65,19 @@ re-sync into a rebase over local patches.
 
 Instead, every such fix ships in this single BUNDLED, opt-in mod - the model
 players know from the Skyrim / Bethesda unofficial patches. It is a
-`content`-shape pack (docs/MODS.md) that declares core rule flags, id
-`bug-fixes`, depending on `core`. The mod is **OFF on a fresh install**, like
-every mod (`DEFAULT_ENABLED_MODS` is `[]`), so an untouched install is faithful,
+`content`-shape pack (docs/MODS.md) that declares its patch flags in
+`manifest.json` and carries their code in its own `hooks.ts`; id `bug-fixes`,
+depending on `core`. The mod is **OFF on a fresh install**, like every mod
+(`DEFAULT_ENABLED_MODS` is `[]`), so an untouched install is faithful,
 buggy-as-shipped 4.2.6 - and while the mod is off, **none of its fixes exist**:
-the host only reads an ENABLED mod's declared `rules`, so there is no flag to
-switch and nothing listed in the menu.
+the host only invokes an ENABLED mod's entry point, so no hook is contributed,
+there is nothing to switch and nothing listed in the menu.
 
 Enable the mod and you get the whole patch set at once - every fix comes on with
 it. Each fix is then an individual toggle in this mod's Fixes & tweaks submenu, so
-a player who wants the patch set minus one specific fix can opt that one out (Aaron's
-ruling, 2026-07-26). Disable the mod again, or switch one fix off, and that
-behaviour is faithful 4.2.6 again. It is authored and maintained by neostryder
+a player who wants the patch set minus one specific fix can opt that one out
+(the project owner's ruling, 2026-07-26). Disable the mod again, or switch one
+fix off, and that behaviour is faithful 4.2.6 again. It is authored and maintained by neostryder
 (RPGM Tools) as its own standalone pack, separate from the neo-linoleum tile mod
 (decision 26).
 
@@ -87,10 +102,11 @@ this mod.
 
 ## Status legend
 
-- `IMPLEMENTED` - the mod carries this fix: a gated corrected branch is in core
-  and the plugin enables its flag. The Implementation note names the core file
-  and the flag; a vitest control asserts faithful 4.2.6 behavior with the flag
-  off.
+- `IMPLEMENTED` - the mod carries this fix: the corrected behaviour is the MOD's
+  own code, installed on one `ModHooks` member when the fix's flag is on. The
+  Implementation note names the mod file, the hook, the core call site the hook
+  serves, and the flag; a vitest control asserts faithful 4.2.6 behaviour with no
+  hook installed.
 - `SPECIFIED` - fix understood and referenced; patch not yet written because
   the core system it touches is not yet ported (blocked-on noted).
 - `READY` - the core system exists; the patch can be implemented now.
@@ -222,17 +238,20 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   (stable tiebreak on a total key) so the list is deterministic - and re-derive
   the true root cause, since #4668 showed the two-unknowns case alone did not
   explain every report.
-- Implementation: `packages/core/src/game/obj-list.ts`
-  (`objectListStandardCompare`), flag `bugfix.objectListOrder`. Port status: the
-  port's comparator is already a lexicographic strict weak order and feeds a
-  guaranteed-STABLE `Array.sort`, and it already returns 0 for the two-unknowns
-  case - so the port does not exhibit the qsort instability #4664 reports. The
-  flag adds a deterministic geometric total-key tiebreak (dy then dx) after the
-  distance tiebreak, making the order a strict TOTAL order that stays correct
-  even under a non-stable sort. Off => the faithful distance-only tiebreak.
-  Tests in `game/obj-list.test.ts` (control: equal-distance distinct entries are
-  order-equivalent with the flag off; corrected: the total key breaks the tie
-  antisymmetrically).
+- Implementation: the mod's `objectListTiebreak` hook
+  (`packages/web/mods/bug-fixes/hooks.ts:89`), serving core's comparator tiebreak
+  at `packages/core/src/game/obj-list.ts:242`; flag `bugfix.objectListOrder`.
+  Port status: the port's comparator is already a lexicographic strict weak order
+  and feeds a guaranteed-STABLE `Array.sort`, and it already returns 0 for the
+  two-unknowns case - so the port does not exhibit the qsort instability #4664
+  reports. The hook adds a deterministic geometric total-key tiebreak (dy then
+  dx) after the distance tiebreak, making the order a strict TOTAL order that
+  stays correct even under a non-stable sort. No hook => the faithful
+  distance-only tiebreak (`?? 0`, i.e. leave the entries equal). Tests in
+  `game/obj-list.test.ts` (core's seam: equal-distance distinct entries stay
+  order-equivalent with no hook; an installed hook breaks the tie) and
+  `packages/web/mods/bug-fixes/hooks.test.ts` (the mod's comparator and its flag
+  gate).
 
 ### 5. Unique monster "returns" in the kill history (`IMPLEMENTED`, partial upstream)
 
@@ -246,16 +265,23 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   overwrites `original_race` without a null-check.
 - Port fix approach: when monster shape-change + death bookkeeping is ported,
   guard `original_race` and dedupe unique-death history entries.
-- Implementation: `packages/core/src/session/game.ts` (`onPlayerKill`, the
-  ported `player_kill_monster` / `HIST_SLAY_UNIQUE` slice), flag
-  `bugfix.uniqueKillHistory`. The port's `monsterChangeShape`
-  (`game/mon-shape.ts`) already carries the `original_race` null-check upstream's
-  `monster_change_shape` lacks. This flag closes the remaining defect: a lethal
-  blow on a unique whose `race.maxNum` is already 0 (an already-dead unique
-  re-reached via a shape-change / projection death path) no longer logs a
-  duplicate "Killed X" entry. Off => faithful 4.2.6 logs one per lethal blow.
-  Tests in `session/game.test.ts` (control: two kills log two entries with the
-  flag off; corrected: the second, already-dead kill logs nothing).
+- Implementation: the mod's `historyAdd` hook
+  (`packages/web/mods/bug-fixes/hooks.ts:62`, a one-line `!entry.duplicate`),
+  serving core's `onPlayerKill` `HIST.SLAY_UNIQUE` write at
+  `packages/core/src/session/game.ts:872`; flag `bugfix.uniqueKillHistory`. Core
+  computes and passes `duplicate` and holds no opinion about it. The port's
+  `monsterChangeShape` (`game/mon-shape.ts`) already carries the `original_race`
+  null-check upstream's `monster_change_shape` lacks. This fix closes the
+  remaining defect: a lethal blow on a unique whose `race.maxNum` is already 0
+  (an already-dead unique re-reached via a shape-change / projection death path)
+  no longer logs a duplicate "Killed X" entry. No hook => `?? true` => faithful
+  4.2.6 logs one per lethal blow. Tests in `session/game.test.ts` (core's seam:
+  two kills log two entries with no hook; an installed hook suppresses the
+  second) and `packages/web/mods/bug-fixes/hooks.test.ts` (the mod's predicate
+  and its flag gate).
+  Scope note: this is the ONLY `historyAdd` call site that consults the hook -
+  core's other `historyAdd` writes are not routed through it, which matches the
+  fix's scope but is worth knowing before reusing the hook.
 
 ### 6. Pile integrity failure crash (`NO UPSTREAM FIX`)
 
@@ -284,11 +310,16 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
 - Problem: player noise/scent fields are not persisted, so save/reload can
   change monster tracking behavior versus uninterrupted play.
 - Port fix approach: persist the noise/scent fields in the save block.
-- Implementation: `packages/core/src/world/chunk.ts`
+- Implementation: the mod's `saveNoiseScent` hook
+  (`packages/web/mods/bug-fixes/hooks.ts:72`, a one-line `true`), serving the
+  live-level snapshot's `includeFlow` argument at
+  `packages/core/src/session/save.ts:1203`; core does the writing and the reading
+  either way, in `packages/core/src/world/chunk.ts`
   (`snapshotSquares(includeFlow)` / `restoreSquares`, with optional `noise` /
-  `scent` on `ChunkSquaresData`) plus `packages/core/src/session/save.ts` (the
-  live-level snapshot passes `modRuleEnabled(state, "bugfix.noiseScentSave")`),
-  flag `bugfix.noiseScentSave`. The port models noise/scent as `Chunk` heatmaps
+  `scent` on `ChunkSquaresData`). Flag `bugfix.noiseScentSave`. Fold kind: this is
+  an ANY hook - one mod asking for the data is enough, because the payload is
+  additive and a second mod has nothing to object to.
+  The port models noise/scent as `Chunk` heatmaps
   (`world/flow.ts`) that faithful core does NOT save (matching 4.2.6). With the
   flag on they ride the save and restore exactly, so a reload preserves the
   scent trail instead of starting it empty. The payload is self-describing:
@@ -296,8 +327,8 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   first turn) - back-compatible. The frozen `levelCache` snapshot stays faithful
   (out-of-play levels carry no live trail; they rebuild flow on re-entry).
   Tests in `world/chunk.test.ts` (snapshot/restore round-trip) and
-  `session/save.test.ts` (full save round-trip: heatmaps absent + lost with the
-  flag off, present + restored with it on).
+  `session/save.test.ts` (full save round-trip: heatmaps absent + lost with no
+  hook, present + restored with the hook installed).
 - Note: complements the port's local-determinism guarantee (decision 22).
 
 ### 9. RNG perturbed by loading, general case (`SPECIFIED`)
@@ -346,22 +377,31 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
 - Port fix approach: the port's artifact-generation path can enforce a single
   source of truth for "this artifact exists", making duplication impossible by
   construction; optional mitigation is a defensive re-check on creation.
-- Implementation: `packages/core/src/obj/make.ts` (`makeArtifact`; `MakeDeps`
-  gains an optional live `modRules`, threaded from `state.modRules` at the
-  live generation deps in `session/game.ts`), flag `bugfix.duplicateArtifact`.
+- Implementation: the mod's `artifactCommit` hook
+  (`packages/web/mods/bug-fixes/hooks.ts:107`, a one-line `!alreadyCreated`),
+  serving core's commit branch at `packages/core/src/obj/make.ts:987`
+  (`makeArtifact`); `MakeDeps` gains an optional `hooks: ModHooks`
+  (`obj/make.ts:1119`), threaded from the LIVE `state.modHooks` at the generation
+  deps in `session/game.ts`, because the pure object layer has no `GameState` in
+  scope. Flag `bugfix.duplicateArtifact`. Fold kind: a VETO hook - conjunctive,
+  first refusal decides. The hook is contractually RNG-FREE (it runs on the main
+  object stream) and this one is a pure read of the created flag core passes in;
+  core refuses BEFORE `copyArtifactData` draws, so the veto changes the outcome
+  without half-drawing.
   Port status: duplication is already impossible by construction for
   freshly-selected artifacts - the shared `ArtifactState` (`aup_info[]`, threaded
   through every `MakeDeps`) is the single source of truth and `make_artifact`
-  already skips any `isCreated` candidate. The flag adds the defensive re-check
+  already skips any `isCreated` candidate. The fix adds the defensive re-check
   the design calls for on the one remaining window: an object handed to
   `make_artifact` that ALREADY carries an artifact whose created-flag is set
   (the C `!obj->artifact` loop guard skips the scan, so control reaches the
   commit block) is refused rather than re-committed and re-marked a second time.
-  Off => faithful 4.2.6 re-commits it. Store generation deps
-  (`allowArtifacts=false`) do not thread the flag - artifact creation is inert
-  there. Tests in `obj/make.test.ts` (control: an already-created carried
-  artifact is re-committed with the flag off; corrected: it is refused and
-  cleared with the flag on).
+  No hook => faithful 4.2.6 re-commits it. Store generation deps
+  (`allowArtifacts=false`) do not thread the hooks - artifact creation is inert
+  there. Tests in `obj/make.test.ts` (core's seam: an already-created carried
+  artifact is re-committed with no hook; a refusing hook clears it and reports
+  failure) and `packages/web/mods/bug-fixes/hooks.test.ts` (the mod's predicate
+  and its flag gate).
 
 ### 13. Unreachable staircases (`IMPLEMENTED`, no upstream fix)
 
@@ -395,19 +435,32 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   `walls = 3 -> 0` ladder and the absence of a vault test. Faithful core
   reproduces the wart, per decision 24 and the owner's 2026-07-26 ruling
   ("Core must retain all warts of the reference code").
-- Implementation: `ensureStairsReachable` (`packages/core/src/gen/util.ts`),
-  called from `cave_generate`'s existing retry loop
-  (`packages/core/src/gen/generate.ts`) only when the flag is set; `GenDeps`
-  gains an optional `modRules`, threaded from `state.modRules` at the live
-  generation deps in `session/game.ts` (the same seam entry 12 uses). For each
+- Implementation: the mod's `levelGenerated` hook
+  (`packages/web/mods/bug-fixes/hooks.ts:121`), whose body is
+  `ensureStairsReachable` in the MOD's own file
+  (`packages/web/mods/bug-fixes/stairs.ts:135`) - core carries no staircase
+  repair. It serves core's accept branch inside `cave_generate`'s existing retry
+  loop (`packages/core/src/gen/generate.ts:473`); `GenDeps` gains an optional
+  `hooks: ModHooks` (`gen/generate.ts:80`), threaded from the LIVE
+  `state.modHooks` at the generation deps in `session/game.ts` (the same seam
+  entry 12 uses). Flag `bugfix.stairsReachable`. Fold kind: a VETO hook -
+  conjunctive, and note that every contributor still runs after an earlier one has
+  REPAIRED the level, because a second mod's invariant is not satisfied by the
+  first mod's repair; only a refusal short-circuits. Returning false re-rolls the
+  level, the same treatment as a monster-maximum overflow. The hook is
+  contractually RNG-FREE, which is what makes it safe to run on every level. For
+  each
   direction the level actually HAS a stair in, it floods the region the player
   can walk (passable + doors, which open, + rubble, which digs; 8-directional,
   walls excluded so the guarantee is not vacuous) and, if no stair of that
   direction is reachable, places one in that region - choosing the grid the way
   `alloc_stairs` does (best wall-adjacency tier 3 -> 0, then closest to the
   stranded stair), so it surfaces beside the vault that swallowed the original.
-  It goes through `placeStairs`, so that helper's own overrides still apply and
-  the fix **cannot** mint a down stair on Morgoth's floor. "Each direction it
+  It goes through core's PUBLIC `placeStairs` (as do `squareIsEmpty`,
+  `squareIsNoStairs`, `squareNumWallsAdjacent`, `FEAT` and `loc` - the same
+  primitives a third-party level mod would reach for), so that helper's own
+  overrides still apply and the fix **cannot** mint a down stair on Morgoth's
+  floor. "Each direction it
   actually has one" is also what exempts the town and the quest floors with no
   depth special-casing. Fallback when the walkable region can host nothing else:
   the player's own grid, which upstream itself uses under `birth_connect_stairs`
@@ -419,15 +472,25 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   bit-identical and changes the other 16 by one grid. It is still a generation
   change, so a character played with the flag on is not layout-identical to one
   played without it - the manifest description says so.
-- Tests in `gen/gen.test.ts`: a control that faithful core (no flag) really does
-  strand the measured seeds, the invariant holding across depths 0-100 with the
-  flag on, the 12 measured pre-fix failures as named regressions, and mechanical
-  unit tests on a synthetic sealed-pocket level (repair, spot-choice rule,
-  RNG-state equality on both paths, the under-the-player fallback, the
-  refuse-and-re-roll path, the quest guard).
+- Tests, split the way the code is:
+  - `packages/core/src/gen/gen.test.ts` keeps the CONTROL that faithful core
+    (no hook) really does strand the measured seeds, so moving the repair back
+    into core fails the suite and says why (the failure message names the mod -
+    `gen.test.ts:489`).
+  - `packages/web/mods/bug-fixes/stairs.test.ts` carries the repair's own tests:
+    the invariant across depths, the measured pre-fix failures as named
+    regressions, and mechanical unit tests on a synthetic sealed-pocket level
+    (repair, spot-choice rule, RNG-state equality on both paths, the
+    under-the-player fallback, the refuse-and-re-roll path, the quest guard).
+  - `packages/core/src/session/qol-defaults.test.ts` pins the end-to-end wire -
+    that the session really hands `GameState.modHooks` to `cave_generate` - with
+    a hook whose answer changes the outcome, because an all-neutral stream
+    comparison cannot catch that wire coming loose.
 - History: briefly lived in core as an owner-ratified guarantee (commit
-  `437ad97c3`, 2026-07-25) and was moved here on 2026-07-26 once the owner
-  learned upstream genuinely behaves this way. Full write-up:
+  `437ad97c3`, 2026-07-25), moved to this mod on 2026-07-26 once the owner
+  learned upstream genuinely behaves this way, and moved OUT of core entirely on
+  2026-07-29 when the flag-registry design was replaced by `ModHooks` (it had
+  still been a core function behind a flag until then). Full write-up:
   `parity/phase3-2026-07-25/findings/STAIRCASE-INVARIANT.md`.
 
 ### 14. Misc. string fixes (`IMPLEMENTED`, no upstream fix)
@@ -474,16 +537,22 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   the local majority. Pooled here, because the convention is "two spaces after a
   sentence" rather than "after a period". Dropping those three rows from
   `MISC_STRING_CORRECTIONS` is the whole change if that reading is wrong.
-- Fix: `miscStringFix` (`packages/web/mods/bug-fixes/strings.ts`), applied at the
-  single message sink (`packages/web/src/main.ts` `state.msg`) so one hook
-  covers every message core or the shell emits. It is an exact-match table of
+- Fix: `miscStringFix` (`packages/web/mods/bug-fixes/strings.ts:111`), installed
+  on the `messageText` hook (`packages/web/mods/bug-fixes/hooks.ts:133`) and
+  applied at the host's single message sink (`packages/web/src/main.ts:1244`,
+  `state.msg`) so one hook covers every message core or the shell emits. Fold
+  kind: a TRANSFORM hook - several mods' rewriters chain in load order, each
+  seeing the previous one's output. A hook here may only RESTATE a message;
+  changing what one MEANS would put text on screen upstream never wrote, and no
+  census could see it, because the slot is filled. It is an exact-match table of
   four rows, NOT a rewrite rule: messages reach the sink already interpolated, so
   a general `". "` -> `".  "` would rewrite object inscriptions and character
   names the player typed. A fifth upstream instance ("Non-existent glyph
   requested. Please report this bug.") has no row because the port has no code
   path that emits it.
-- Faithful default: OFF with the mod, identity when on for any string with no
-  wart, so faithful core emits upstream's text byte-for-byte.
+- Faithful default: with the mod off (or this fix off) the hook is absent and the
+  sink is `?? raw`; with it on it is the identity for any string not in the table,
+  so faithful core's text still reaches the screen byte-for-byte.
 - Not gameplay: no message changes meaning; nothing about play changes.
 
 ---
