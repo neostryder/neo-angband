@@ -21,7 +21,7 @@ mods/my-mod/
   plugin.js          <- the entry point, default-exporting a plugin
   lib/dice.js        <- more scripts; import them relatively
   lib/format.js
-  monster.json       <- a record contribution, if you want both
+  monster.json       <- a record contribution (needs the "content" facet too)
   tiles/orc.png      <- an image: await ctx.assetUrl("tiles/orc.png")
   data/spawns.json   <- your own data (nested .json is an asset, not a record)
   README.md
@@ -30,7 +30,25 @@ mods/my-mod/
 Only `plugin.js` is loaded by name. Everything else your code reaches itself —
 scripts by importing them, everything else through `ctx.assetUrl`.
 
-`manifest.json` must declare `shape: "plugin"` and `modApi`:
+`manifest.json` must declare the **`plugin` facet** and `modApi`.
+
+A mod that only runs code can say `"shape": "plugin"` and stop there. A mod that
+contributes **both** records and code — the ordinary case, e.g. a new monster
+plus the behaviour that makes it interesting — lists both facets:
+
+```json
+{ "shape": "content", "facets": ["content", "plugin"] }
+```
+
+`facets` must contain `shape`, so the two can never contradict each other. Either
+spelling works (`shape` is just the primary kind, and what the mod manager
+displays).
+
+> Until 2026-07-29 `shape` was **exclusive**, and the loader gated code on
+> `"plugin"` while composition gated records on `"content"`. A folder like the one
+> above therefore could not work: declaring `plugin` dropped `monster.json`
+> silently, and declaring `content` refused the code. If you wrote a mod against
+> the older text and found half of it inert, that was this, and `facets` is the fix.
 
 ```json
 {
@@ -175,7 +193,7 @@ In order, and all of it before the import:
 1. the folder ships `plugin.js` (from the directory listing — no probing);
 2. the mod is **enabled** — a disabled mod's code does not exist, the same rule as
    a disabled mod's patches;
-3. the manifest says `shape: "plugin"`;
+3. the manifest declares the `plugin` facet (via `shape` or `facets`);
 4. `modApi` matches;
 5. the player has **consented** to every capability the manifest requests.
 

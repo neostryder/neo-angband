@@ -11,7 +11,7 @@
  * manager UI (enable/consent/reorder) is W2.4.
  */
 
-import type { PackManifest } from "@neo-angband/mod-sdk";
+import { hasFacet, type PackManifest } from "@neo-angband/mod-sdk";
 import { isShippedMod } from "../../mod-store";
 import type { TrustedPlugin } from "./runtime";
 
@@ -71,7 +71,7 @@ export function discoverTrustedPlugins(): Map<string, DiscoveredTrustedPlugin> {
       continue;
     }
     const manifest = toManifest(rawManifest);
-    if (manifest.shape !== "plugin") {
+    if (!hasFacet(manifest, "plugin")) {
       console.warn(
         `[trusted] ${id} ships trusted.ts but manifest shape is "${manifest.shape}"; skipping`,
       );

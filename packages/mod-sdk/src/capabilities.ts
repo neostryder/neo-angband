@@ -48,7 +48,7 @@
  * irreversibly - lives in core/save (decisions 4/18/22), not here.
  */
 
-import type { PackManifest } from "./manifest.js";
+import { hasFacet, type PackManifest } from "./manifest.js";
 
 export class CapabilityError extends Error {}
 
@@ -156,7 +156,7 @@ export class CapabilitySet {
    */
   static fromManifest(manifest: PackManifest): CapabilitySet {
     const requested = manifest.capabilities ?? [];
-    if (manifest.shape !== "plugin" && requested.length > 0) {
+    if (!hasFacet(manifest, "plugin") && requested.length > 0) {
       throw new CapabilityError(
         `pack ${manifest.id}: only shape "plugin" packs may request capabilities ` +
           `(this pack is shape "${manifest.shape}")`,

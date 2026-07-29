@@ -78,9 +78,16 @@ function readModName(raw: unknown, id: string): string {
   return typeof name === "string" && name.trim() !== "" ? name : id;
 }
 
-/** True for a `shape:"tiles"` manifest (the only shape contributing tile packs). */
+/**
+ * True for a manifest declaring the `tiles` FACET - its `shape`, or a `facets`
+ * list containing it. Reads the raw JSON rather than a validated PackManifest
+ * because tile discovery runs over the glob before normalisation, so it checks
+ * both fields itself instead of borrowing hasFacet.
+ */
 function isTilesMod(raw: unknown): boolean {
-  return (raw as { shape?: unknown } | null)?.shape === "tiles";
+  const m = raw as { shape?: unknown; facets?: unknown } | null;
+  if (Array.isArray(m?.facets)) return m.facets.includes("tiles");
+  return m?.shape === "tiles";
 }
 
 /**

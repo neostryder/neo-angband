@@ -11,6 +11,50 @@ export type PackRef = `${string}:${string}`;
 /** The three pack shapes (docs/MODS.md). */
 export type PackShape = "content" | "tiles" | "plugin";
 
+/** Every shape, for validation and for iterating the facet vocabulary. */
+export const PACK_SHAPES: readonly PackShape[] = ["content", "tiles", "plugin"];
+
+/**
+ * WHAT A PACK CONTRIBUTES, as a SET rather than one exclusive kind.
+ *
+ * `shape` was exclusive, and the two halves of the loader gated on opposite
+ * values: code loaded only for `shape: "plugin"` (web/src/mod-code.ts) and
+ * records composed only for `shape: "content"` (web/src/pack.ts). So the folder
+ * layout the plugin documentation promises -
+ *
+ *     my-mod/  manifest.json  plugin.js  monster.json  tiles/orc.png
+ *
+ * - could never work: declaring "plugin" dropped monster.json from composition,
+ * and declaring "content" refused the code. Each half had tests and each half
+ * passed; nothing asserted the two together. A mod that adds a monster AND gives
+ * it behaviour is the ordinary case, not an exotic one.
+ *
+ * `facets` is that set. `shape` stays REQUIRED and remains the pack's primary
+ * kind - it is what the manager displays and what every existing manifest
+ * already carries - and when `facets` is present it must CONTAIN `shape`, so the
+ * two fields cannot contradict each other. A hybrid declares:
+ *
+ *     { "shape": "content", "facets": ["content", "plugin"] }
+ *
+ * The consent property is unchanged and is why `facets` is a declaration rather
+ * than something inferred from the folder's contents: shipping plugin.js without
+ * naming the `plugin` facet is still a REFUSAL, because running code must be
+ * something a mod states rather than something a file listing implies.
+ */
+export function packFacets(
+  manifest: Pick<PackManifest, "shape" | "facets">,
+): ReadonlySet<PackShape> {
+  return new Set(manifest.facets ?? [manifest.shape]);
+}
+
+/** Whether a pack contributes `facet` (its shape, or any declared facet). */
+export function hasFacet(
+  manifest: Pick<PackManifest, "shape" | "facets">,
+  facet: PackShape,
+): boolean {
+  return packFacets(manifest).has(facet);
+}
+
 /**
  * One player-toggleable "rule" a pack contributes: a flag name the pack owns,
  * plus the human-facing label / description / default the in-app "Fixes &
@@ -81,7 +125,17 @@ export interface PackManifest {
   name: string;
   /** Semantic version of the pack itself. */
   version: string;
+  /**
+   * The pack's primary kind, and what the mod manager displays. When `facets` is
+   * absent this is the pack's only facet.
+   */
   shape: PackShape;
+  /**
+   * Everything this pack contributes, when it contributes more than one kind -
+   * a mod shipping both `plugin.js` and record JSON declares
+   * `["content", "plugin"]`. Must contain `shape`. See packFacets().
+   */
+  facets?: readonly PackShape[];
   /**
    * Engine version range the pack requires (semver range, e.g. ">=0.5.0
    * <0.7.0"). A save refuses to load on an incompatible engine.
@@ -163,7 +217,6 @@ export interface PackManifest {
 
 const ID_RE = /^[a-z][a-z0-9-]*$/;
 const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-const SHAPES: readonly PackShape[] = ["content", "tiles", "plugin"];
 
 export class ManifestError extends Error {}
 
@@ -186,12 +239,13 @@ export function validateManifest(value: unknown): PackManifest {
       `manifest ${m["id"]}: version must be semver, got ${String(m["version"])}`,
     );
   }
-  if (!SHAPES.includes(m["shape"] as PackShape)) {
+  if (!PACK_SHAPES.includes(m["shape"] as PackShape)) {
     throw new ManifestError(
-      `manifest ${m["id"]}: shape must be one of ${SHAPES.join(", ")}`,
+      `manifest ${m["id"]}: shape must be one of ${PACK_SHAPES.join(", ")}`,
     );
   }
   const id = m["id"] as string;
+  validateFacets(m["facets"], id, m["shape"] as PackShape);
   validateDepMap(m["dependencies"], id, "dependencies");
   validateDepMap(m["optionalDependencies"], id, "optionalDependencies");
   validateIdList(m["loadAfter"], id, "loadAfter");
@@ -307,6 +361,41 @@ function validateIdList(value: unknown, id: string, field: string): void {
     if (typeof entry !== "string" || !ID_RE.test(entry)) {
       throw new ManifestError(`manifest ${id}: bad ${field} id ${String(entry)}`);
     }
+  }
+}
+
+/**
+ * Validate the optional `facets` list against the pack's `shape`.
+ *
+ * `shape` must appear in `facets`. Without that rule the two fields could
+ * disagree - `{shape: "content", facets: ["plugin"]}` - and every consumer would
+ * have to decide which one it trusted, which is how the exclusive `shape`
+ * produced a folder layout the documentation promised and the loader refused.
+ * One source of truth, checked once, at the edge.
+ */
+function validateFacets(value: unknown, id: string, shape: PackShape): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new ManifestError(
+      `manifest ${id}: facets must be a non-empty array of ${PACK_SHAPES.join(", ")}`,
+    );
+  }
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string" || !PACK_SHAPES.includes(entry as PackShape)) {
+      throw new ManifestError(
+        `manifest ${id}: facet must be one of ${PACK_SHAPES.join(", ")}, got ${String(entry)}`,
+      );
+    }
+    if (seen.has(entry)) {
+      throw new ManifestError(`manifest ${id}: facet "${entry}" is listed twice`);
+    }
+    seen.add(entry);
+  }
+  if (!seen.has(shape)) {
+    throw new ManifestError(
+      `manifest ${id}: facets ${JSON.stringify(value)} must include its shape "${shape}"`,
+    );
   }
 }
 

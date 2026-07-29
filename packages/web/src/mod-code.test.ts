@@ -166,7 +166,10 @@ describe("every gate is applied BEFORE the import", () => {
     const { report, imported } = await attempt(codePack("sneaky", { shape: "content" }));
     expect(imported).toBe(0);
     expect(report.problems[0]).toContain('shape is "content"');
-    expect(report.problems[0]).toContain('requires shape "plugin"');
+    /* The refusal now names the FACET and the fix, since a mod may legitimately
+     * be content-shaped and still run code - it just has to say so. */
+    expect(report.problems[0]).toContain('does not declare the "plugin" facet');
+    expect(report.problems[0]).toContain('"facets": ["content", "plugin"]');
   });
 
   it("refuses a pack that ships code and declares no modApi", async () => {
