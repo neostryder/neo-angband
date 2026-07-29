@@ -13,7 +13,15 @@
  * base game composes through this exact pipeline as pack zero.
  */
 
-export { ManifestError, packRef, slugify, validateManifest } from "./manifest.js";
+export {
+  hasFacet,
+  ManifestError,
+  PACK_SHAPES,
+  packFacets,
+  packRef,
+  slugify,
+  validateManifest,
+} from "./manifest.js";
 export type { Capability, PackManifest, PackRef, PackRule, PackShape } from "./manifest.js";
 export { ResolveError, resolveLoadOrder } from "./resolve.js";
 export { satisfies, SemverError } from "./semver.js";

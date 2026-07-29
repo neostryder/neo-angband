@@ -23,8 +23,10 @@
  *      listing already said);
  *   2. the mod must be ENABLED - a disabled mod's code does not exist, which is
  *      the same standing rule as a disabled mod's patches;
- *   3. the manifest must declare `shape: "plugin"`, so shipping code is a stated
- *      intent rather than a file that happened to be in the folder;
+ *   3. the manifest must declare the `plugin` FACET - `shape: "plugin"`, or a
+ *      `facets` list containing it - so shipping code is a stated intent rather
+ *      than a file that happened to be in the folder. A mod that contributes both
+ *      records and code declares `"facets": ["content", "plugin"]`;
  *   4. the manifest's `modApi` must match this host's MOD_API_VERSION exactly;
  *   5. the player must have consented to every capability the manifest requests.
  *
@@ -50,7 +52,7 @@
  * published. There is nothing to import - the engine is handed in as `ctx.core`.
  */
 
-import { validateManifest, type PackManifest } from "@neo-angband/mod-sdk";
+import { hasFacet, validateManifest, type PackManifest } from "@neo-angband/mod-sdk";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
 import {
   MOD_API_VERSION,
@@ -146,10 +148,12 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       skipped.push({ id, why: "not enabled" });
       continue;
     }
-    if (pack.manifest.shape !== "plugin") {
+    if (!hasFacet(pack.manifest, "plugin")) {
       problems.push(
-        `${id}: ships ${PLUGIN_FILE} but its manifest shape is "${pack.manifest.shape}" - ` +
-          `code requires shape "plugin", so that running code is something the mod states`,
+        `${id}: ships ${PLUGIN_FILE} but its manifest does not declare the "plugin" ` +
+          `facet (shape is "${pack.manifest.shape}") - add ` +
+          `"facets": ["${pack.manifest.shape}", "plugin"], so that running code is ` +
+          `something the mod states`,
       );
       continue;
     }
@@ -275,7 +279,7 @@ export function hasPlugin(pack: DiskPack): boolean {
  * tests could not see that; only driving the real game could.
  */
 export function folderPluginManifests(packs: readonly DiskPack[]): PackManifest[] {
-  return packs.filter((p) => hasPlugin(p) && p.manifest.shape === "plugin").map((p) => p.manifest);
+  return packs.filter((p) => hasPlugin(p) && hasFacet(p.manifest, "plugin")).map((p) => p.manifest);
 }
 
 /**

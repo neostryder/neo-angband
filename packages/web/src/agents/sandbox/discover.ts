@@ -12,7 +12,7 @@
  * manager UI (enable/consent/reorder) is W2.4.
  */
 
-import type { PackManifest } from "@neo-angband/mod-sdk";
+import { hasFacet, type PackManifest } from "@neo-angband/mod-sdk";
 import { isShippedMod } from "../../mod-store";
 
 // Each plugin.ts becomes a module-Worker constructor (Vite ?worker).
@@ -73,7 +73,7 @@ export function discoverPlugins(): Map<string, DiscoveredPlugin> {
       continue;
     }
     const manifest = toManifest(rawManifest);
-    if (manifest.shape !== "plugin") {
+    if (!hasFacet(manifest, "plugin")) {
       console.warn(`[plugins] ${id} ships plugin.ts but manifest shape is "${manifest.shape}"; skipping`);
       continue;
     }
