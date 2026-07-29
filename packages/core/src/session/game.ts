@@ -1665,7 +1665,7 @@ function wireGame(
   // The walk-into-a-wall seam (mod/hooks.ts walkBlockedByDiggable). walkAction
   // consults this before its no-energy bump; movementAutoDig returns 0 having drawn
   // no RNG when no mod installed a hook, so faithful play is byte-identical.
-  state.autoDigStep = (s, grid): number => movementAutoDig(s, grid, caveDeps);
+  state.autoDigStep = (s, grid): number | null => movementAutoDig(s, grid, caveDeps);
 
   // steal (cmd-cave.c do_cmd_steal): the rogue / PF_STEAL lift-from-monster
   // command. The PF_STEAL gate reads the live derived state (state.playerState).
