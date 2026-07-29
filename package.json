@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "test": "vitest run --exclude \"**/borg/**\"",
     "test:borg": "vitest run packages/borg/src/perceive.test.ts packages/borg/src/resolvers.test.ts",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "check:private": "node tools/private-scan.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

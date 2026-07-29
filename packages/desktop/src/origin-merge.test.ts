@@ -131,7 +131,7 @@ describe("stranded-origin merge", () => {
   });
 
   it("leaves a birth abandoned at turn 0 where it is, and says so", () => {
-    /* Aaron's ruling, 2026-07-28: only characters with progress come back. The
+    /* neostryder's ruling, 2026-07-28: only characters with progress come back. The
      * two level-1 turn-0 births in the real install were rows he had pressed
      * Enter through, not characters he lost. Nothing is deleted - they stay in
      * the origin they were written to. */

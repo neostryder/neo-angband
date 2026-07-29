@@ -2,7 +2,7 @@
 
 `reference/` is the ORACLE (Angband 4.2.x). Fix WHAT IS SAVED/RESTORED, not the container.
 
-## OUT OF SCOPE — do NOT attempt (awaiting Aaron's decision)
+## OUT OF SCOPE — do NOT attempt (awaiting neostryder's decision)
 The port stores a JSON `SavedGame` (base64 + FNV trailer) in localStorage instead of the C
 block-binary savefile (`Save` + `VNLA` header, 28-byte block headers, named saver/loader
 tables). Findings L12-003, L12-004, L12-005, L12-006, L12-007, L12-009, L12-010, L12-013 are

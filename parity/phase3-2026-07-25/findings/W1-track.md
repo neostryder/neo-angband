@@ -346,7 +346,7 @@ Change surface (on top of the WIP snapshot):
 1. **`SAVE_VERSION` 3 rejects existing version-2 saves.** That follows the policy
    already written into the constant's comment ("the game is pre-1.0… loadGame
    rejects them and the host starts a fresh game"), and I did not add a migration.
-   If any live save on Pages matters, that is a decision for Aaron, not a code
+   If any live save on Pages matters, that is a decision for neostryder, not a code
    question.
 2. **GAP-4 is not a parity fix.** Upstream is positional too. I fixed it because
    the task named it and because the port's ratified JSON document has a stated

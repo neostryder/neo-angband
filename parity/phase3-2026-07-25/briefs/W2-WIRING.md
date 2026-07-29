@@ -65,7 +65,7 @@ For **every** row, emit exactly one:
    The standing mandate puts wizard mode and cheat options **in scope for exact
    parity**. Cross-check the port's full wizard command surface against the C's
    `CMD_WIZ_*` set and report every command the C has and the port cannot reach.
-2. **`packages/mod-sdk/**` is unreachable from the running game.** Aaron's rule:
+2. **`packages/mod-sdk/**` is unreachable from the running game.** neostryder's rule:
    the mod framework ships with the port but stays **unused** — meaning no mods
    are loaded, not that the loader is absent from boot. Decide whether the game
    can load a mod at all today, and report what is missing if not.

@@ -24,7 +24,7 @@ each fix still re-derives against the C before landing.
 
 ## 2. Reconciliation notes
 
-### 2.1 Prior @Gandalf 2026-07-21 audit — status of its headline P0s
+### 2.1 Prior 2026-07-21 audit — status of its headline P0s
 The prior ledger is stale (as its own remediation doc warned). Cross-checked against
 current code:
 - **Silent death (no damage line / no "*** LOW HITPOINT WARNING! ***" / no "You die.")
@@ -180,7 +180,7 @@ The largest bucket and the crux of "looks different." Group-fix by theme:
 4. **Display/layout:** sidebar, stores, knowledge lists re-laid-out; equippy chars use
    kind not object attr/char; map tiles ignore flavor_x. -> per-item, from digest.
 
-## 6. Decisions — RESOLVED by Aaron 2026-07-24
+## 6. Decisions — RESOLVED by neostryder 2026-07-24
 
 - **6.1 Terminal-fidelity target = FAITHFUL glyph terminal (core), renderer kept
   mod-swappable.** NOT a literal terminal emulator. The existing `GlyphTerm` canvas
@@ -190,10 +190,10 @@ The largest bucket and the crux of "looks different." Group-fix by theme:
   faithful-UI work: (a) exact z-color palette (drop invented pastel hex), (b) inline
   prompts instead of modal dialogs, (c) message-string drift.
   **HARD CONSTRAINT:** all faithful-UI fixes MUST preserve the cell-grid render seam (the
-  game emits `Glyph {ch, fg, tile?}` cells; `GlyphTerm` is one consumer). Aaron will build
+  game emits `Glyph {ch, fg, tile?}` cells; `GlyphTerm` is one consumer). neostryder will build
   a visual-overhaul MOD (canvas/PIXI) that plugs in as an alternative renderer of the same
   cell stream. Do not couple game logic to `GlyphTerm`; keep/strengthen the seam.
-- **6.3 Save format = JSON stays (RATIFIED by Aaron 2026-07-25).** The port keeps its JSON
+- **6.3 Save format = JSON stays (RATIFIED by neostryder 2026-07-25).** The port keeps its JSON
   `SavedGame` (base64 + FNV trailer) in localStorage; the C block-binary savefile format
   (`Save`+`VNLA` header, 28-byte block headers, named saver/loader tables) is an ACCEPTED
   BROWSER CONCESSION (no filesystem). Findings L12-003/004/005/006/007/009/010/013 are
@@ -213,7 +213,7 @@ Structural omissions (z-quark interning, point_set, gamma table, guid type), sta
 DEFERRED comments, spoiler/help/pref-file peripherals, non-ASCII edge cases. Batch by
 category; most are low-risk mechanical additions or documentation. Full list in digest.
 
-## 7.5 SCOPE BOUNDARY (Aaron, 2026-07-25): extensions are NOT part of the port
+## 7.5 SCOPE BOUNDARY (neostryder, 2026-07-25): extensions are NOT part of the port
 
 The port = the original game, minus extensions. Extensions (Borg, linoleum) are handled
 AFTER the port is confirmed complete. Consequences for this plan:
@@ -235,7 +235,7 @@ AFTER the port is confirmed complete. Consequences for this plan:
   dep). `packages/borg/**` kept untouched for the later mod phase; mod framework and the
   generic agent/sandbox/plugin seams left intact.
 
-- **SEAMS ARE IN PORT SCOPE** (Aaron 2026-07-25): the port must ship every seam mods need,
+- **SEAMS ARE IN PORT SCOPE** (neostryder 2026-07-25): the port must ship every seam mods need,
   *including* what a Borg mod requires; only the BUILDING and VALIDATION of mods is
   deferred. `DEMO_AGENTS` stays (seam registry/harness, not a mod).
 

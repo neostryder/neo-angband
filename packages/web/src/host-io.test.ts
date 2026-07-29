@@ -1,7 +1,7 @@
 /**
  * THE RATCHET on the user directory and the dumps written into it.
  *
- * Census block E, host-io. Aaron's disposition: "Must not deviate from upstream
+ * Census block E, host-io. neostryder's disposition: "Must not deviate from upstream
  * - port the equivalents, do not excuse." What was excused here:
  *
  *   - get_file's prompt (File name: / Replace existing file? / Saving as ...),

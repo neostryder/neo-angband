@@ -35,12 +35,12 @@ upstream:
   - path: src/main-win.c
     items:
       - DEFAULT_FONT "8X12x.FON" (L254) is the compiled fallback, but the shipped
-        Windows experience (and Aaron's installed angband.INI [Term-0]) blits the
+        Windows experience (and neostryder's installed angband.INI [Term-0]) blits the
         larger 16X24X.FON. FONT-1: GlyphTerm blits the ORIGINAL glyphs
         (font-16x24.ts, extracted from reference/lib/fonts/16x24x.fon by
         packages/web/scripts/extract-fon.py) for code points 0-255, tinted per
         attr and nearest-neighbour scaled to the cell - the faithful default in
-        place of the previous system-monospace (Cascadia/Consolas) stack. Aaron
+        place of the previous system-monospace (Cascadia/Consolas) stack. neostryder
         ratified 16x24 as the shipped default (2026-07-22) so the web text matches
         what a real installed client shows; the extractor is source-agnostic
         (derives FONT_<w>X<h> + header from the .fon dims) so any bundled size
@@ -61,7 +61,7 @@ licence: >-
   are by Leon Marrick and/or Sheldon Simms III and/or Nick McConnell, all of
   whom agreed to their Angband work being released under the GPL. This is the
   same copyleft basis the whole port stands on; the author attribution is kept
-  in font-8x12.ts and the extractor per GPL. Surfaced to Aaron for the
+  in font-8x12.ts and the extractor per GPL. Surfaced to neostryder for the
   commercial-safety posture; mods may ship additional/alternative fonts later.
 verified-by:
   - web/font-16x24.test.ts: pins the 16x24 metrics, the 256-glyph CP437 table,

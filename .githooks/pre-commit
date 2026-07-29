@@ -1,0 +1,11 @@
+#!/bin/sh
+# Refuse a commit that would put private information into this PUBLIC repository:
+# the maintainer's legal name, work email or employer, a private project codename,
+# or an absolute path naming a machine's user account.
+#
+# Reads the STAGED blobs, not the working tree, so a partially-staged file is
+# judged on the half that is actually going in.
+#
+# Enable (once per clone):   git config core.hooksPath .githooks
+# Bypass (and CI will still catch it): git commit --no-verify
+exec node "$(git rev-parse --show-toplevel)/tools/private-scan.mjs" --staged

@@ -20,7 +20,17 @@ pnpm install        # install the whole workspace
 pnpm build          # tsc -b: typecheck and build every package
 pnpm typecheck      # tsc -b (build is the typecheck; same command)
 pnpm test           # vitest run across all packages
+pnpm check:private  # refuse private information in a public repo (see below)
 ```
+
+Enable the repository's git hooks once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+That installs a `pre-commit` gate which runs `pnpm check:private` over the
+**staged** content. See [Keeping the repository publishable](#keeping-the-repository-publishable).
 
 Run one area's tests by passing a path filter to the root test script:
 
@@ -164,6 +174,50 @@ Names are matched by stripping everything but letters and digits and
 lowercasing, so `calc_inventory` and `calcInventory` are the same key. Tiers 2
 and 3 (fewer call sites; no port symbol of that name) are reports, not gates -
 too much of both is legitimate shape difference.
+
+## Keeping the repository publishable
+
+This repository is public, and a small set of strings must never appear in it:
+the maintainer's legal name, work email or employer, private project codenames,
+paths inside the private workspace, and absolute paths that name a machine's
+user account. All of them are natural things to type while working - a code
+comment attributing a decision, a hardcoded tool path in a throwaway script -
+which is exactly why the rule needs a machine behind it.
+
+```sh
+node tools/private-scan.mjs            # every tracked file (the CI gate)
+node tools/private-scan.mjs --staged   # what is about to be committed (the hook)
+```
+
+Two rule tiers, in `tools/private-scan.mjs`:
+
+- **Always** - terms with no legitimate use here. Any hit fails.
+- **Baselined** - terms that ARE legitimate in specific places and private
+  elsewhere. One codename is also upstream Angband content: it is a syllable in
+  `names.txt` and part of an artifact description in `artifact.txt`, both of which
+  the port mirrors verbatim. Likewise an absolute path under a user profile is a
+  leak in a build script and a perfectly good invented test fixture. These are
+  accounted for per file, with a count and a reason, in
+  `tools/private-scan-baseline.json`.
+
+  (This section deliberately does not spell those terms out - it would trip the
+  scan it is describing, and baselining the documentation would put noise in the
+  file that is supposed to hold only real exceptions.)
+
+The baseline fails in **both** directions: an unlisted occurrence fails, and so
+does an entry that no longer matches. A one-way allowlist keeps passing long
+after the thing it excused is gone, and then quietly excuses whatever moved into
+the same file. Raising a count is a deliberate act - say why in the entry.
+
+`reference/**` is exempt: it is upstream Angband, vendored verbatim and never
+edited. `tools/private-scan*` is exempt too, because it has to contain the
+patterns in order to test for them - a real hole, stated rather than hidden.
+
+The `pre-commit` hook is a courtesy, not a control: it needs enabling per clone
+and `git commit --no-verify` walks past it. The control is
+`packages/cli/src/private-scan.test.ts`, which runs the whole-tree scan in CI
+and also plants deliberately-bad fixtures to prove the detector still bites -
+a scanner broken to always pass would satisfy a clean-tree assertion on its own.
 
 ## Attribution
 

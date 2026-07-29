@@ -5,7 +5,7 @@ dungeon and rolls; same draw ORDER and COUNT). `reference/` is the ORACLE.
 
 Round 1 is committed on branch `parity/p1-rng` (WIP commit 60c358f4b). Codex's independent
 review is at `parity/audit-2026-07-24/RNG_REVIEW_codex.md` -- READ IT; it cites C file:line
-for every item below. Aaron's directive: KEEP the approved fixes, CORRECT the defects and
+for every item below. neostryder's directive: KEEP the approved fixes, CORRECT the defects and
 the additional breaks.
 
 ## KEEP AS-IS (Codex APPROVED, C-cited) — do not rework
