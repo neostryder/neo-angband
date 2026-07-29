@@ -18,7 +18,7 @@ The dual audit proved coverage at **file** granularity and found defects by
    code-review findings missed it*. Statistical divergence is invisible to code
    reading.
 
-Aaron's directive for this phase: every line of reference code and data
+neostryder's directive for this phase: every line of reference code and data
 **accounted for, ported exactly, and fully wired up**, with **statistical /
 Monte-Carlo tests** proving the game *behaves* the same — visual, statistical,
 and data parity all at 100%.
@@ -90,7 +90,7 @@ reader), or `NOT-WIRED` (a finding).
 
 Known already from the first run, ahead of triage:
 
-- `packages/mod-sdk/**` is unreachable from the running game. Aaron's rule is
+- `packages/mod-sdk/**` is unreachable from the running game. neostryder's rule is
   that the mod **framework ships with the port but stays unused**; "unused"
   means no mods are loaded, *not* that the loader is absent from boot. Candidate
   finding.
@@ -168,7 +168,7 @@ backlog is smaller than the raw count — then fix what survives.
 - **Verify by re-derivation**, never by reading a comment or a test name.
 - **Trace the live path.** A fix in a helper is not a fix.
 - **Preserve upstream bugs.** Faithful means faithful.
-- **One engine writes, the other reviews, Opus gates, Aaron approves.**
+- **One engine writes, the other reviews, Opus gates, neostryder approves.**
 - **Chunked tests with hard timeouts** — never a monolithic `pnpm test`
   (`packages/borg/src/{think,foundation}.test.ts` hang; pre-existing, Borg phase).
 

@@ -5,8 +5,12 @@ param(
   [Parameter(Mandatory)][ValidateSet('grok','codex','terra','m3')][string]$Model,
   [string]$LaneTitle = ''                        # human description of the lane
 )
-$ai   = 'C:\Repositories\_tools\ai-cli-toolkit\ai.ps1'
-$repo = 'C:\Repositories\neo-angband'
+# The external-model dispatcher this harness drives is NOT part of this repository.
+# Its path used to be hardcoded here, which named a private workspace from a public
+# repo; point AI_CLI at your own dispatcher instead.
+$ai = $env:AI_CLI
+if (-not $ai) { Write-Error 'set $env:AI_CLI to the model-dispatcher script this harness should call'; exit 2 }
+$repo = if ($env:NEO_REPO) { $env:NEO_REPO } else { (git -C $PSScriptRoot rev-parse --show-toplevel) }
 $aud  = 'parity/audit-2026-07-24'
 $manRel = "$aud/manifests/$Lane.ref.txt"
 $manAbs = Join-Path $repo $manRel

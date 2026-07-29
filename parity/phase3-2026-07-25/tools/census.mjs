@@ -30,7 +30,7 @@ const OUT = process.argv.includes("--out")
 /* ------------------------------------------------------------------ scope */
 
 /**
- * Out of scope per Aaron: non-Windows front ends, the Borg (its own later
+ * Out of scope per neostryder: non-Windows front ends, the Borg (its own later
  * phase), and the C build/test tooling. `main-stats.c` and the `stats/` dir
  * stay IN, because they are the statistical oracle we diff against.
  */

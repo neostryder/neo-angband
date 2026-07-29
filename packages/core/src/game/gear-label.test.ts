@@ -1,7 +1,7 @@
 /**
  * The letter a message quotes must be the letter the pack listing shows.
  *
- * Reported by Aaron, 2026-07-28: "I picked up a scroll and was shown that it was
+ * Reported by neostryder, 2026-07-28: "I picked up a scroll and was shown that it was
  * placed in slot i, but when I went to read it, it was in slot e. A torch was in
  * i." Both halves of that were true, because the port had two different orderings
  * and read the wrong one for the message:
@@ -107,7 +107,7 @@ describe("gear_to_label reads the listing, not the storage order", () => {
 
   it("the pickup message quotes the letter the item is actually at", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
-    /* Aaron's pack, in the shape that produced the wrong letter: a handful of
+    /* neostryder's pack, in the shape that produced the wrong letter: a handful of
      * things carried first, then a scroll picked up off the floor. */
     for (const tval of [TV.SWORD, TV.SOFT_ARMOR, TV.LIGHT, TV.POTION, TV.FOOD]) {
       carry(state, makeObj(tval));

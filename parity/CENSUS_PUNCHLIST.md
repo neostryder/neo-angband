@@ -1,7 +1,7 @@
 # Census punch list
 
 The live worklist for everything the two mechanical censuses found missing,
-incomplete or wrong. Opened 2026-07-27 on Aaron's instruction: *"Please
+incomplete or wrong. Opened 2026-07-27 on neostryder's instruction: *"Please
 systematically fix/complete the porting of anything you found missing,
 incomplete, or wrong using the new census process. If it spans more than one
 turn, keep a punch list, so we can stay on top of them across turns/
@@ -21,12 +21,12 @@ Their allowlists (`text-census.test.ts` `KNOWN_ABSENT`,
 `call-census.test.ts` `KNOWN_UNUSED`) are the ratchet, and they fail in both
 directions. **This file is not a substitute for them** - an item is not done
 until its allowlist entry is deleted and the suite is green. What this file adds
-is the disposition Aaron gave for each block, so no future turn re-litigates it.
+is the disposition neostryder gave for each block, so no future turn re-litigates it.
 
 Start of work: 119 text absences, 24 tier-1 call findings (all accounted, 5 of
 them tracked LEADs).
 
-## Dispositions Aaron gave, 2026-07-27
+## Dispositions neostryder gave, 2026-07-27
 
 | Block | Disposition |
 | --- | --- |
@@ -53,7 +53,7 @@ allowlist entry is deleted and the suite is green.
       generate.c:831. The port's debug menu did not merely omit these: it
       PARAPHRASED them, which no census can see. 31 are now exact; the last is a
       recorded divergence (the cmdq_push-failure get_check, unreachable without a
-      command queue). Aaron, 2026-07-28: "Paraphrasing is a deviation and is not
+      command queue). neostryder, 2026-07-28: "Paraphrasing is a deviation and is not
       permitted in this port."
 - [ ] **D. Mod-pack diagnostics** (16) - the mod SDK's validation surface. One
       job, not sixteen `msg()` lines.
@@ -163,7 +163,7 @@ Nothing goes here until it is committed.
   never. 6 tests over a quota-exhausting fake storage, 4 of which catch the
   swallow if it comes back. 99 absences, 19 tier-1.
 - 2026-07-27 - **K** and **N**. K: do_cmd_try_borg is now
-  packages/borg/src/activate.ts, in the mod where Aaron put it. The gate matters
+  packages/borg/src/activate.ts, in the mod where neostryder put it. The gate matters
   because it is what SETS NOSCORE_BORG - without it a Borg-driven character stays
   eligible for the high scores - and core already had NOSCORE.BORG and
   enterScore's report, so this was the only missing piece. Deliberately not
@@ -204,15 +204,15 @@ Nothing goes here until it is committed.
   N: the earlier pass got both the COUNT and the DIRECTION wrong. Not 38
   literals but 15, and upstream is consistent rather than sloppy - 15 double
   spaces after a period against 2 single, so the double space is the convention
-  and collapsing it was a restyling. Per Aaron's rule the minority is what gets
+  and collapsing it was a restyling. Per neostryder's rule the minority is what gets
   corrected, so the patch is now a four-row exact-match table normalizing UP,
   and the general whitespace rule is gone (it would have rewritten player-typed
   inscriptions at the sink).
-  Spelling, answering Aaron's question directly: the earlier sweep covered ONLY
+  Spelling, answering neostryder's question directly: the earlier sweep covered ONLY
   C string literals. The gamedata descriptions are now swept too, three ways -
   a ~47-entry known-misspelling list (0 hits), doubled words (1 hit, the room
   *named* "Dot dot dot"), and every post-4.2.6 upstream commit touching
-  lib/gamedata (zero spelling fixes). The AIngband correction Aaron remembered
+  lib/gamedata (zero spelling fixes). The AIngband correction neostryder remembered
   is upstream 736e4ad0e (2020-06-02): obiterate, "can can", untramelled,
   threshhold - all four already correct in the 4.2.6 baseline. 94 absences,
   19 tier-1.
@@ -343,9 +343,9 @@ Nothing goes here until it is committed.
   Block I is now down to the glyph picker alone, and that one is a subsystem:
   the port has no runtime x_attr/x_char override layer (TileMap is the graphics
   mapping only), so it needs that layer, the renderer reading it, and the picker
-  UI. Aaron's call whether that lands before the remaining blocks.
+  UI. neostryder's call whether that lands before the remaining blocks.
 
-- 2026-07-28 (5), block **C**: the wizard/debug prompts, on Aaron's ruling that
+- 2026-07-28 (5), block **C**: the wizard/debug prompts, on neostryder's ruling that
   **paraphrasing is a deviation** and the strings must be exact transcriptions.
   This block was never really "32 missing prompts". The port's debug surface
   *answered its own questions in its own words*, which is the one failure mode

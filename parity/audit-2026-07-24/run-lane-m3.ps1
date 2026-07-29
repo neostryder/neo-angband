@@ -7,8 +7,12 @@ param(
   [Parameter(Mandatory)][string]$Lane,
   [string]$LaneTitle = ''
 )
-$ai   = 'C:\Repositories\_tools\ai-cli-toolkit\ai.ps1'
-$repo = 'C:\Repositories\neo-angband'
+# The external-model dispatcher this harness drives is NOT part of this repository.
+# Its path used to be hardcoded here, which named a private workspace from a public
+# repo; point AI_CLI at your own dispatcher instead.
+$ai = $env:AI_CLI
+if (-not $ai) { Write-Error 'set $env:AI_CLI to the model-dispatcher script this harness should call'; exit 2 }
+$repo = if ($env:NEO_REPO) { $env:NEO_REPO } else { (git -C $PSScriptRoot rev-parse --show-toplevel) }
 $aud  = Join-Path $repo 'parity/audit-2026-07-24'
 $manAbs = Join-Path $aud "manifests/$Lane.ref.txt"
 if (-not (Test-Path $manAbs)) { Write-Error "manifest not found: $manAbs"; exit 2 }
@@ -34,7 +38,10 @@ $portGlobs = @{
   L17_fonts_screens_help = @('packages/web/src/screens.ts','packages/web/src/*.ts')
 }
 
-$bundleDir = 'C:\Users\neost\AppData\Local\Temp\claude\C--Repositories\0ff2c8e0-d365-4fe6-95ff-4fdec8dcb774\scratchpad\bundles'
+# Scratch space for the bundles. This was a hardcoded absolute path under the
+# machine's user profile, which is both personal information and useless to anyone
+# else; the OS temp directory is the portable equivalent.
+$bundleDir = Join-Path ([System.IO.Path]::GetTempPath()) 'neo-parity-bundles'
 New-Item -ItemType Directory -Force -Path $bundleDir | Out-Null
 $bundle = Join-Path $bundleDir "$Lane.bundle.txt"
 $sb = [System.Text.StringBuilder]::new()

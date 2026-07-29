@@ -46,7 +46,7 @@ describe("bug-fixes bundled mod", () => {
   });
 
   /*
-   * Default policy (Aaron's ruling, 2026-07-26), two independent layers:
+   * Default policy (neostryder's ruling, 2026-07-26), two independent layers:
    * the MOD is off by default (DEFAULT_ENABLED_MODS is [], asserted in
    * mod-store.test.ts), and once the player enables it each fix inside it
    * defaults ON. So `default: true` here means "on once the mod is on", never
@@ -60,7 +60,7 @@ describe("bug-fixes bundled mod", () => {
       expect(r.default).toBe(true);
       expect(r.title.length).toBeGreaterThan(0);
       // The per-mod Fixes & tweaks screen wraps this description to fill its
-      // detail pane, so it must actually explain the fix (Aaron, 2026-07-27:
+      // detail pane, so it must actually explain the fix (neostryder, 2026-07-27:
       // descriptions "as long as will fit"), not just name it again.
       expect(r.description.length, `${r.flag}'s description is a stub`).toBeGreaterThan(80);
     }

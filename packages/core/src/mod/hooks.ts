@@ -12,7 +12,7 @@
  * bug-fixes / QoL mods did the only thing that was available: the FIX LIVED IN
  * CORE behind `if (modRuleEnabled(state, "bugfix.x"))`.
  *
- * That was wrong, and Aaron named exactly why (2026-07-29): "the whole point of
+ * That was wrong, and neostryder named exactly why (2026-07-29): "the whole point of
  * making them mods was to exclude them from the core game." A flag-gated fix is
  * not excluded from core. It ships in core, it is tested in core, and core
  * carries the string "bugfix.uniqueKillHistory" - so core knows the mod's name.

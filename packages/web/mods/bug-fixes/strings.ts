@@ -16,7 +16,7 @@
  * So upstream is NOT inconsistent about wanting two spaces - it is consistent
  * about it (15 of 17) and slips twice. The patch therefore normalizes the
  * MINORITY form up to the majority, rather than flattening the majority down:
- * exactly Aaron's rule, that a convention used throughout is not a defect and
+ * exactly neostryder's rule, that a convention used throughout is not a defect and
  * only the less-frequent variant gets corrected.
  *
  * The three `!` breaks are the judgement call. Pooled across terminators they
@@ -41,7 +41,7 @@
  * THE LIMIT THE messageText HOOK IMPOSES, and which this patch respects: a hook
  * may only RESTATE a message. Changing what a message MEANS would put text in
  * front of the player that upstream never wrote, and no census could see it,
- * because a paraphrase fills the slot it should have left empty (Aaron,
+ * because a paraphrase fills the slot it should have left empty (neostryder,
  * 2026-07-28). Every row below differs from its key by exactly one doubled
  * space, and the mod's test asserts that mechanically.
  */
