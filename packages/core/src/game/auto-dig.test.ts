@@ -40,7 +40,7 @@ function rubbleState(): GameState {
   squareMemorize(state, wall); // square_isknown gate
   (state.actor.combat.skills as number[])[SKILL.DIGGING] = 200; // rubble chance = 8*skill -> always
   // Install the seam the session normally wires (harness does not run wireGame).
-  state.autoDigStep = (s, g): number => movementAutoDig(s, g, { env: {} });
+  state.autoDigStep = (s, g): number | null => movementAutoDig(s, g, { env: {} });
   return state;
 }
 
@@ -68,6 +68,36 @@ describe("the walk-into-a-wall seam (walkBlockedByDiggable)", () => {
     expect(state.chunk.isRubble(loc(16, 10))).toBe(true); // the stub dug nothing
   });
 
+  it("a hook that handles the walk for ZERO energy is honoured, not read as a decline", () => {
+    /* mod/hooks.ts documents null-vs-number as "declined" vs "handled, this much
+     * energy", explicitly including zero - a mod consuming the keypress without
+     * costing the player a turn. That case was UNREACHABLE: movementAutoDig
+     * collapsed null to 0 and walkAction tested `dug > 0`, so a zero-energy answer
+     * came out identical to no answer and fell through to the faithful wall-bump.
+     * The interface documented a case the engine could not express.
+     *
+     * The distinguishing observable is the MESSAGE: the bump path says something,
+     * the handled path says nothing. Energy alone cannot separate them, which is
+     * why the old test suite could not see this. */
+    const state = rubbleState();
+    const said: string[] = [];
+    state.msg = (m: string) => said.push(m);
+
+    /* First establish that the observable EXISTS: with no hook, the bump speaks.
+     * Without this the assertion below would pass on a state that simply has no
+     * message sink - a test that holds for the wrong reason, which is how the
+     * defect it is guarding survived in the first place. */
+    walkAction(state, { code: "walk", dir: 6 });
+    expect(said).toEqual(["There is a pile of rubble in the way!"]);
+
+    said.length = 0;
+    state.modHooks = { walkBlockedByDiggable: () => 0 };
+    const spent = walkAction(state, { code: "walk", dir: 6 });
+    expect(spent).toBe(0);
+    expect(said, "the mod handled it, so core must not also report a wall").toEqual([]);
+    expect(state.actor.grid).toEqual(loc(15, 10));
+  });
+
   it("falls back to the faithful bump when the hook declines (null)", () => {
     const state = rubbleState();
     let asked = 0;
@@ -91,7 +121,7 @@ describe("the walk-into-a-wall seam (walkBlockedByDiggable)", () => {
   it("hands the hook the blocked grid and the live CaveCmdDeps", () => {
     const state = rubbleState();
     const deps: CaveCmdDeps = { env: { msg: () => {} } };
-    state.autoDigStep = (s, g): number => movementAutoDig(s, g, deps);
+    state.autoDigStep = (s, g): number | null => movementAutoDig(s, g, deps);
     const seen: { grid: Loc | null; deps: unknown } = { grid: null, deps: null };
     state.modHooks = {
       walkBlockedByDiggable: (s, g, d) => {
@@ -139,7 +169,7 @@ describe("the walk-into-a-wall seam (walkBlockedByDiggable)", () => {
     expect(movementTunnelTest(perm, loc(16, 10))).toBe(false);
 
     for (const state of [unknown, perm]) {
-      state.autoDigStep = (s, g): number => movementAutoDig(s, g, { env: {} });
+      state.autoDigStep = (s, g): number | null => movementAutoDig(s, g, { env: {} });
       state.modHooks = {
         walkBlockedByDiggable: (s, g, d): number | null => {
           if (!movementTunnelTest(s, g)) return null;

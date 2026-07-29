@@ -490,8 +490,11 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
    * (mod/hooks.ts) - the QoL mod digs here. autoDigStep returns 0 having drawn NO
    * RNG when no mod supplied one, so faithful core still just bumps. */
   if (!state.chunk.isPassable(next)) {
-    const dug = state.autoDigStep?.(state, next) ?? 0;
-    if (dug > 0) return dug;
+    /* `!== null`, not `> 0`: a mod may handle the walk and charge ZERO energy
+     * (mod/hooks.ts), and `> 0` silently threw that case away by treating it as
+     * "no mod supplied one". */
+    const dug = state.autoDigStep?.(state, next) ?? null;
+    if (dug !== null) return dug;
     /*
      * Upstream splits this by whether the player already KNOWS the grid, and
      * the port previously used the known-grid wording for both cases.
