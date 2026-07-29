@@ -60,7 +60,11 @@ function dirHandle(
             yield {
               kind: "file" as const,
               name: child,
-              getFile: () => Promise.resolve({ text: () => Promise.resolve(val) }),
+              /* A real File IS a Blob, and the asset path mints its URL from the
+               * Blob rather than from text() - an image's bytes are not UTF-8 and a
+               * text round trip would replace every invalid sequence. So the fake
+               * hands back a real Blob, which has text() of its own. */
+              getFile: () => Promise.resolve(new Blob([val])),
             };
           } else {
             yield dirHandle(child, val, perm);
@@ -458,5 +462,98 @@ describe("reading a mods folder", () => {
     const r = await readModDir(folderModSource(handle));
     expect(r.problems).toEqual([]);
     expect(Object.keys(r.packs[0]!.files)).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * A mod is data, images and scripts in a FOLDER.
+ * ------------------------------------------------------------------ */
+
+describe("a picked folder's whole tree", () => {
+  /** A pack with every kind of file, two levels deep. */
+  const FULL: Tree = {
+    "manifest.json": JSON.stringify({
+      id: "full",
+      name: "Full",
+      version: "1.0.0",
+      shape: "plugin",
+      modApi: 1,
+    }),
+    "monster.json": "[]",
+    "plugin.js": 'import { greet } from "./lib/greet.js";\nexport default { api: 1, hooks: () => ({}) };',
+    lib: {
+      "greet.js": 'import { B } from "./format.js";\nexport const greet = B;',
+      "format.js": "export const B = (s) => s;",
+    },
+    tiles: { "orc.png": "PNG-BYTES" },
+    data: { "spawns.json": '{"orc":3}' },
+  };
+
+  it("lists nested scripts and assets by path, and keeps record files top-level", async () => {
+    /* Before this, both readers collected the top level only, so `lib/` and
+     * `tiles/` were invisible - a mod system that silently drops half of a mod. */
+    const report = await readModDir(folderModSource(dirHandle("mods", { full: FULL })));
+    const pack = report.packs[0];
+    expect(report.problems).toEqual([]);
+    expect(pack?.code).toEqual(
+      expect.arrayContaining(["plugin.js", "lib/greet.js", "lib/format.js"]),
+    );
+    /* A record contribution names its type by its filename, so only the top-level
+     * ones count; a nested .json is the mod's own data. */
+    expect(Object.keys(pack?.files ?? {})).toEqual(["monster"]);
+    expect(pack?.assets).toEqual(
+      expect.arrayContaining(["tiles/orc.png", "data/spawns.json"]),
+    );
+    expect(pack?.assets).not.toContain("plugin.js");
+  });
+
+  it("resolves the whole module graph into one importable URL", async () => {
+    const report = await readModDir(folderModSource(dirHandle("mods", { full: FULL })));
+    const url = await report.codeUrl?.("full", "plugin.js");
+    expect(url).toMatch(/^blob:/u);
+    /* Releasing the ENTRY releases the dependencies too: the graph made three blob
+     * URLs and handing back only one would leak two per mod, per launch. */
+    expect(() => report.codeUrl?.release?.(url as string)).not.toThrow();
+  });
+
+  it("reports which script is missing instead of failing anonymously", async () => {
+    const broken: Tree = {
+      "manifest.json": JSON.stringify({
+        id: "broken",
+        name: "B",
+        version: "1.0.0",
+        shape: "plugin",
+        modApi: 1,
+      }),
+      "plugin.js": 'import "./lib/gone.js";',
+    };
+    const report = await readModDir(folderModSource(dirHandle("mods", { broken })));
+    await expect(report.codeUrl?.("broken", "plugin.js")).rejects.toThrow(
+      /lib\/gone\.js.*not in the mod folder/u,
+    );
+  });
+
+  it("hands out ONE URL per asset, however often it is asked for", async () => {
+    /* An <img src> may load long after the call that made the URL, so an asset URL
+     * is never revoked - which makes minting a fresh one per call a leak that grows
+     * with how often a mod draws. */
+    const report = await readModDir(folderModSource(dirHandle("mods", { full: FULL })));
+    const a = await report.assetUrl?.("full", "tiles/orc.png");
+    const b = await report.assetUrl?.("full", "tiles/orc.png");
+    expect(a).toMatch(/^blob:/u);
+    expect(b).toBe(a);
+  });
+
+  it("returns null for an asset the pack does not have", async () => {
+    const report = await readModDir(folderModSource(dirHandle("mods", { full: FULL })));
+    expect(await report.assetUrl?.("full", "tiles/nope.png")).toBeNull();
+    expect(await report.assetUrl?.("no-such-mod", "tiles/orc.png")).toBeNull();
+  });
+
+  it("finds a nested file case-insensitively, like every other lookup here", async () => {
+    /* A mod authored on Windows and read on a case-sensitive volume must not lose
+     * half its files, and the manifest lookup has always been caseless. */
+    const report = await readModDir(folderModSource(dirHandle("mods", { full: FULL })));
+    expect(await report.assetUrl?.("full", "TILES/Orc.PNG")).not.toBeNull();
   });
 });

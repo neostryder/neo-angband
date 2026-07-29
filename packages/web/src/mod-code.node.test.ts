@@ -28,13 +28,24 @@ import type { PackManifest } from "@neo-angband/mod-sdk";
 import { validateManifest } from "@neo-angband/mod-sdk";
 import { readModDir, type ModDirEntry, type ModDirSource } from "./disk-packs";
 import { loadModCode, PLUGIN_FILE } from "./mod-code";
-import { MOD_API_VERSION } from "./mod-plugin";
+import { MOD_API_VERSION, type ModPlugin } from "./mod-plugin";
+import { buildModuleGraph } from "./mod-modules";
 
 const root = mkdtempSync(join(tmpdir(), "neo-mods-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-/** Write a mod folder to disk, exactly as a player unzipping one would. */
-function writeMod(id: string, manifest: Partial<PackManifest>, plugin: string | null): void {
+/**
+ * Write a mod folder to disk, exactly as a player unzipping one would.
+ *
+ * `extra` holds any further files by pack-relative path - more scripts, an image,
+ * nested data - with their directories created. A mod is a folder, not a file.
+ */
+function writeMod(
+  id: string,
+  manifest: Partial<PackManifest>,
+  plugin: string | null,
+  extra: Record<string, string | Uint8Array> = {},
+): void {
   const dir = join(root, id);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
@@ -43,6 +54,12 @@ function writeMod(id: string, manifest: Partial<PackManifest>, plugin: string | 
     "utf8",
   );
   if (plugin !== null) writeFileSync(join(dir, PLUGIN_FILE), plugin, "utf8");
+  for (const [rel, body] of Object.entries(extra)) {
+    const full = join(dir, ...rel.split("/"));
+    mkdirSync(join(full, ".."), { recursive: true });
+    if (typeof body === "string") writeFileSync(full, body, "utf8");
+    else writeFileSync(full, body);
+  }
 }
 
 /**
@@ -67,6 +84,53 @@ function fsSource(entries: readonly ModDirEntry[]): ModDirSource {
      * loopback http: URL and a blob:. All three are just "somewhere import() can
      * fetch from", which is the whole abstraction. */
     codeUrl: (id, file) => Promise.resolve(pathToFileURL(join(root, id, file)).href),
+    assetUrl: (id, path) => Promise.resolve(pathToFileURL(join(root, id, path)).href),
+  };
+}
+
+/**
+ * A source whose code URLs are `data:` - which stands in for a browser's `blob:`,
+ * and stands in EXACTLY where it matters.
+ *
+ * Both are opaque: neither has a path component, so a relative specifier inside a
+ * module loaded from one has no base to resolve against. Node rejects it with
+ * ERR_UNSUPPORTED_RESOLVE_REQUEST; a browser reports "Failed to fetch dynamically
+ * imported module". Same cause, same consequence, and it means the browser half of
+ * the multi-file mod path can be proven here with real module evaluation instead of
+ * being asserted about a platform no test can reach.
+ *
+ * `resolveGraph: false` is the WITHOUT case, kept so the tests can show the problem
+ * is real before showing it fixed. A fix demonstrated only in its working state is
+ * a fix nobody has watched matter.
+ */
+function dataSource(
+  entries: readonly ModDirEntry[],
+  { resolveGraph }: { resolveGraph: boolean },
+): ModDirSource {
+  const read = async (id: string, path: string): Promise<string | null> => {
+    const { readFile } = await import("node:fs/promises");
+    try {
+      return await readFile(join(root, id, ...path.split("/")), "utf8");
+    } catch {
+      return null;
+    }
+  };
+  const dataUrl = (text: string): string =>
+    `data:text/javascript;base64,${Buffer.from(text, "utf8").toString("base64")}`;
+  return {
+    ...fsSource(entries),
+    codeUrl: async (id, file) => {
+      if (!resolveGraph) {
+        const text = await read(id, file);
+        return text === null ? null : dataUrl(text);
+      }
+      const graph = await buildModuleGraph(file, {
+        read: (path) => read(id, path),
+        urlFor: (_path, text) => dataUrl(text),
+      });
+      if (graph.url === null) throw new Error(graph.problem ?? "could not be read");
+      return graph.url;
+    },
   };
 }
 
@@ -107,6 +171,8 @@ describe("a mod folder on disk supplies working code", () => {
       engine: "test",
       flags: { loud: true },
       core: {} as never,
+      assetUrl: () => Promise.resolve(null),
+      data: {},
       log: () => undefined,
     });
     expect(hooks?.messageText?.("You feel less thirsty.")).toBe(
@@ -150,6 +216,53 @@ describe("a mod folder on disk supplies working code", () => {
     expect(code.problems[0]).toContain("failed to load");
   });
 
+  it("carries the pack's own record files through to the plugin's context", async () => {
+    writeMod("with-data", {}, `export default { api: ${MOD_API_VERSION}, hooks: () => ({}) };`, {
+      "monster.json": JSON.stringify([{ name: "Grip" }]),
+    });
+    const report = await readModDir(
+      fsSource([{ id: "with-data", files: ["manifest.json", "monster.json"], code: [PLUGIN_FILE] }]),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    /* Without this the plugin would have to fetch and re-parse a file the game had
+     * already parsed, to read what its own pack declares. */
+    expect(code.plugins[0]?.data).toEqual({ monster: [{ name: "Grip" }] });
+  });
+
+  it("serves an asset - a real PNG's bytes, unmangled", async () => {
+    /* The bytes matter: an image read as text and re-encoded comes back with every
+     * invalid UTF-8 sequence replaced by U+FFFD, which is a corrupt PNG that still
+     * "loads". These are the first eight bytes of the PNG signature. */
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    writeMod("tiled", {}, `export default { api: ${MOD_API_VERSION}, hooks: () => ({}) };`, {
+      "tiles/orc.png": png,
+      "data/spawns.json": JSON.stringify({ orc: 3 }),
+    });
+    const report = await readModDir(
+      fsSource([
+        {
+          id: "tiled",
+          files: ["manifest.json"],
+          code: [PLUGIN_FILE],
+          assets: ["tiles/orc.png", "data/spawns.json"],
+        },
+      ]),
+    );
+    expect(report.packs[0]?.assets).toEqual(["tiles/orc.png", "data/spawns.json"]);
+    expect(report.assetUrl).not.toBeNull();
+
+    const url = await report.assetUrl?.("tiled", "tiles/orc.png");
+    expect(url).toContain("orc.png");
+    const { readFile } = await import("node:fs/promises");
+    const back = await readFile(new URL(url as string));
+    expect([...back]).toEqual([...png]);
+  });
+
   it("the manifest schema accepts modApi and rejects a non-integer one", () => {
     /* The declaration has to survive validateManifest or the gate never sees it -
      * a field the validator drops is a field that does not exist. */
@@ -169,3 +282,118 @@ describe("a mod folder on disk supplies working code", () => {
     ).toThrow(/modApi/);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * SEVERAL SCRIPTS.
+ * ------------------------------------------------------------------ */
+
+/** A mod split across three files, two of them in a subdirectory. */
+const MULTI = {
+  plugin: `import { greet } from "./lib/greet.js";
+           export default {
+             api: ${MOD_API_VERSION},
+             hooks(ctx) { return { messageText: (raw) => greet(ctx.id) + raw }; },
+           };`,
+  files: {
+    "lib/greet.js": `import { BRACKET } from "./format.js";
+                     export const greet = (id) => BRACKET(id) + " ";`,
+    "lib/format.js": `export const BRACKET = (s) => "[" + s + "]";`,
+  },
+};
+
+const MULTI_ENTRY: ModDirEntry = {
+  id: "multi",
+  files: ["manifest.json"],
+  code: [PLUGIN_FILE, "lib/greet.js", "lib/format.js"],
+};
+
+describe("a mod may be several scripts, not one bundled file", () => {
+  it("works with no help at all where the pack has a real base URL (the desktop path)", async () => {
+    /* On desktop the pack is served from the shell's loopback origin, so
+     * `./lib/greet.js` resolves against plugin.js's own URL and the engine fetches
+     * it. A file: URL behaves the same way, which is what makes this the honest
+     * stand-in for that platform. Nothing in mod-modules.ts is involved. */
+    writeMod("multi", {}, MULTI.plugin, MULTI.files);
+    const report = await readModDir(fsSource([MULTI_ENTRY]));
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    expect(code.problems).toEqual([]);
+    const hooks = code.plugins[0]?.plugin.hooks?.(ctx("multi"));
+    /* Through two files: format.js's BRACKET, used by greet.js, called by plugin.js. */
+    expect(hooks?.messageText?.("You feel less thirsty.")).toBe(
+      "[multi] You feel less thirsty.",
+    );
+  });
+
+  it("FAILS from an opaque URL when the graph is not resolved - the problem, shown", async () => {
+    /* Establishing that the fix below is fixing something. A data: URL is opaque in
+     * exactly the way a blob: URL is, so the relative specifier has no base and the
+     * import dies. This is the state a browser tab was in, and it is why the first
+     * cut of the loader told authors to bundle. */
+    writeMod("multi", {}, MULTI.plugin, MULTI.files);
+    const report = await readModDir(dataSource([MULTI_ENTRY], { resolveGraph: false }));
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    expect(code.plugins).toEqual([]);
+    expect(code.problems).toHaveLength(1);
+    expect(code.problems[0]).toContain("failed to load");
+  });
+
+  it("WORKS from an opaque URL once the graph is resolved (the browser path)", async () => {
+    writeMod("multi", {}, MULTI.plugin, MULTI.files);
+    const report = await readModDir(dataSource([MULTI_ENTRY], { resolveGraph: true }));
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    expect(code.problems).toEqual([]);
+    expect(code.plugins).toHaveLength(1);
+    const hooks = code.plugins[0]?.plugin.hooks?.(ctx("multi"));
+    expect(hooks?.messageText?.("You feel less thirsty.")).toBe(
+      "[multi] You feel less thirsty.",
+    );
+  });
+
+  it("names the missing script rather than the entry point", async () => {
+    /* The browser's own message names plugin.js, which is the file that is fine. */
+    writeMod("gappy", {}, `import "./lib/absent.js"; export default { api: ${MOD_API_VERSION} };`);
+    const report = await readModDir(
+      dataSource([{ id: "gappy", files: ["manifest.json"], code: [PLUGIN_FILE] }], {
+        resolveGraph: true,
+      }),
+    );
+    const code = await loadModCode({
+      packs: report.packs,
+      codeUrl: report.codeUrl,
+      enabled: () => true,
+      consented: () => [],
+    });
+    expect(code.plugins).toEqual([]);
+    expect(code.problems[0]).toContain("lib/absent.js");
+    expect(code.problems[0]).toContain("not in the mod folder");
+  });
+});
+
+/** A minimal ModPluginContext for calling a loaded plugin's hooks directly. */
+function ctx(id: string): Parameters<NonNullable<ModPlugin["hooks"]>>[0] {
+  return {
+    id,
+    api: MOD_API_VERSION,
+    engine: "test",
+    flags: {},
+    core: {} as never,
+    assetUrl: () => Promise.resolve(null),
+    data: {},
+    log: () => undefined,
+  };
+}

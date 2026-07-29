@@ -1171,8 +1171,32 @@ export function selectFromMenu(
       const bodyRows = Math.max(1, rows - BODY_TOP - 1 - detailLines.length - hintRows);
       paintedBodyRows = bodyRows;
       listTop = BODY_TOP;
+      /* display_scrolling (ui-menu.c:190-200). The port had only the two
+       * cursor-chasing tests, and was missing both context rows AND the clamp:
+       *
+       *   *top = MIN(*top, n - rows_per_page);
+       *   *top = MAX(*top, 0);
+       *
+       * Without that first line `top` only ever moves TOWARD the cursor, never
+       * back, so when the visible height GROWS the list keeps the position a
+       * shorter page left it at and paints blank rows below the last item.
+       * Pressing '?' to hide the mod manager's description pane is exactly that
+       * case: it hands twenty rows to a thirty-mod list that goes on showing
+       * five. Upstream cannot reach the state because its region's page_rows is
+       * fixed for the life of the menu; ours is recomputed every paint from the
+       * detail pane's height, which is what made the missing clamp visible. */
+      if (cursor <= top && top > 0) top = cursor - 1;
+      if (cursor >= top + (bodyRows - 1)) top = cursor - (bodyRows - 1) + 1;
+      top = Math.min(top, items.length - bodyRows);
+      top = Math.max(top, 0);
+      /* Port-only, and only for a geometry upstream's region never has: a detail
+       * pane on a short terminal can squeeze bodyRows to 1 or 2, where the
+       * context-distance lines above push `top` one PAST the cursor and the
+       * selected row is off screen. This restores the invariant that arithmetic
+       * assumes rather than changing what it does - at bodyRows >= 3 it is a
+       * no-op. */
       if (cursor < top) top = cursor;
-      if (cursor >= top + bodyRows) top = cursor - bodyRows + 1;
+      else if (cursor >= top + bodyRows) top = cursor - bodyRows + 1;
       for (let r = 0; r < bodyRows; r++) {
         const i = top + r;
         const it = items[i];

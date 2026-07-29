@@ -36,6 +36,7 @@ function pack(id: string): DiskPack {
     } as DiskPack["manifest"],
     files: {},
     code: [],
+    assets: [],
   };
 }
 
@@ -83,6 +84,7 @@ describe("diskPackStatus reports the folder count AND the bundled count", () => 
       order: [],
       kind: "app",
       codeUrl: null,
+      assetUrl: null,
     });
     const s = diskPackStatus();
     expect(s.count).toBe(2);
@@ -106,6 +108,7 @@ describe("diskPackStatus reports the folder count AND the bundled count", () => 
       order: [],
       kind: "app",
       codeUrl: null,
+      assetUrl: null,
     });
     const s = diskPackStatus();
     expect(s.count).toBe(1);

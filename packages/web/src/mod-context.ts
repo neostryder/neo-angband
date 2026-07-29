@@ -17,6 +17,7 @@ import {
   type ModCoreApi,
   type ModPluginContext,
 } from "./mod-plugin";
+import { diskPacks } from "./disk-packs";
 
 /**
  * `core` is the module namespace this host itself imported, so a plugin and the
@@ -34,7 +35,12 @@ export function modPluginContext(
   id: string,
   flags: Readonly<Record<string, boolean>>,
   state?: GameState,
+  own: ModOwnFiles = {},
 ): ModPluginContext {
+  /* The mod's OWN files only. `assetUrl` is called with the mod's id fixed here
+   * rather than taken as an argument, so a plugin cannot read another mod's assets
+   * by passing a different one - the id it gets is the id it was loaded under. */
+  const assets = own.assetUrl;
   return Object.freeze({
     id,
     api: MOD_API_VERSION,
@@ -42,8 +48,32 @@ export function modPluginContext(
     flags: Object.freeze({ ...flags }),
     core: neoCore as unknown as ModCoreApi,
     ...(state ? { state } : {}),
+    assetUrl: (path: string): Promise<string | null> =>
+      assets ? assets(id, path) : Promise.resolve(null),
+    data: Object.freeze({ ...(own.data ?? {}) }),
     log: (msg: string) => {
       console.info(`[mod:${id}] ${msg}`);
     },
   });
+}
+
+/**
+ * A mod's own files for its context: its parsed record JSON plus the live asset
+ * resolver.
+ *
+ * The resolver is read off the CURRENT disk-pack report rather than captured when
+ * the plugin loaded, because the browser's is stateful - it caches the URLs it has
+ * minted, and a stale copy would hand out a second blob URL for the same image.
+ */
+export function modOwnFiles(data: Readonly<Record<string, unknown>>): ModOwnFiles {
+  const assetUrl = diskPacks().assetUrl;
+  return { data, ...(assetUrl ? { assetUrl } : {}) };
+}
+
+/** What the host knows about this mod's own folder, when it came from one. */
+export interface ModOwnFiles {
+  /** The report's asset resolver (DiskPackReport.assetUrl), if the source has one. */
+  readonly assetUrl?: (id: string, path: string) => Promise<string | null>;
+  /** The pack's parsed record files, keyed without `.json` (DiskPack.files). */
+  readonly data?: Readonly<Record<string, unknown>>;
 }
