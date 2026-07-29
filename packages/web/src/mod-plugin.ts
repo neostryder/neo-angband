@@ -10,13 +10,23 @@
  * was already built and sitting behind that one gate. This module is the gate's
  * replacement.
  *
- * A mod that runs code ships ONE file: `plugin.js`, an ES module beside its
- * manifest.json, default-exporting a ModPlugin.
+ * A mod that runs code ships `plugin.js`, an ES module beside its manifest.json,
+ * default-exporting a ModPlugin. That is the ENTRY POINT, not the whole mod: a mod
+ * is a folder, and it may hold as many scripts, images and data files as it likes.
  *
  *   mods/my-mod/
  *     manifest.json
- *     plugin.js        <- an ES module, default-exporting a ModPlugin
- *     monster.json     <- records, as before
+ *     plugin.js        <- the entry point, default-exporting a ModPlugin
+ *     lib/dice.js      <- more code; `import "./lib/dice.js"` from plugin.js
+ *     monster.json     <- a record contribution, as before
+ *     tiles/orc.png    <- an asset: `await ctx.assetUrl("tiles/orc.png")`
+ *     data/spawns.json <- nested data, also an asset (ctx.assetUrl + fetch)
+ *
+ * Relative imports resolve on both front ends. On desktop that is free - the pack
+ * is served from the shell's loopback origin. In a browser tab the folder has no
+ * location at all, so the dependency graph is resolved and rewritten before the
+ * import (mod-modules.ts); read that file's header for the two things it cannot do
+ * (a cycle, and an extensionless specifier).
  *
  * WHY NO IMPORTS. The obvious design is to let plugin.js `import` from
  * "@neo-angband/core" the way a bundled mod's TypeScript does. It cannot: a bare
@@ -86,6 +96,33 @@ export interface ModPluginContext {
   readonly core: ModCoreApi;
   /** The live game state, when there is one (absent during content composition). */
   readonly state?: GameState;
+  /**
+   * A URL for one of the mod's OWN files, by path relative to its folder -
+   * `"tiles/orc.png"`, `"data/spawns.json"`, `"sound/hit.ogg"`. Null when the pack
+   * has no such file, or when this front end cannot serve one.
+   *
+   * A function rather than a map of paths to URLs because the browser case has to
+   * read the file to mint a URL for it, and building one for every asset of every
+   * installed mod at boot would read the whole mods folder into memory to satisfy
+   * the mods that ask for nothing. The URL stays valid for the session, and asking
+   * twice returns the same one.
+   *
+   * Use it, rather than composing a path yourself: on desktop this is an http URL
+   * under the shell's own server, in a browser tab it is a blob:, and a mod that
+   * hard-codes either is a mod that runs on one of the two front ends.
+   */
+  readonly assetUrl: (path: string) => Promise<string | null>;
+  /**
+   * The mod's own record files, parsed, keyed WITHOUT the `.json` - so
+   * `data["monster"]` for `monster.json`. The same objects the content composer
+   * was handed.
+   *
+   * Here because a plugin frequently wants to read what its own pack declares (to
+   * index it, to validate it, to drive behaviour from it) and the alternative was
+   * fetching its own file back through assetUrl and re-parsing bytes the game had
+   * already parsed. Empty for a plugin whose folder holds no record files.
+   */
+  readonly data: Readonly<Record<string, unknown>>;
   /** Emit a diagnostic line; the host decides where it goes. */
   readonly log: (msg: string) => void;
 }

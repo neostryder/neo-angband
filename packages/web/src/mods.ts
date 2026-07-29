@@ -924,14 +924,30 @@ export async function runModManager(
         if (!rk || !("id" in rk)) return [];
         const m = catalog.find((x) => x.id === rk.id);
         if (!m) return [];
-        // Budget: keep at least MIN_LIST_ROWS rows of the list on screen (it
+        // Budget: keep at least MIN_LIST_ROWS rows of the LIST on screen (it
         // scrolls to the cursor, and ESC always closes) and hand the rest to the
         // description. The cap only bites on a mod whose blurb is longer than the
         // pane; the bundled ones fit, and opening the mod shows the full text.
+        //
+        // The floor used to be written `Math.max(8, ...)` - a floor on the PANE,
+        // which overrides the list floor it sits next to rather than protecting
+        // it. On a 14-row terminal it claimed 8 of them and left the mod list
+        // two rows deep. A pane is the thing that can afford to be short here,
+        // because opening the mod shows all of it; the list is not.
         const MIN_LIST_ROWS = 5;
         const { cols, rows } = term.size();
-        const budget = Math.max(8, rows - 4 - Math.min(items.length, MIN_LIST_ROWS));
-        return rowDetail(m, cols, budget);
+        const CHROME = 4; // title, blank, hint line, footer
+        const budget = Math.max(0, rows - CHROME - Math.min(items.length, MIN_LIST_ROWS));
+        const detail = rowDetail(m, cols, budget - 1);
+        /* Where in the list this row is. With five rows of a thirty-mod catalogue
+         * on screen there is otherwise nothing that says the list continues -
+         * upstream's menu draws no scroll indicator (display_scrolling has none)
+         * and this pane is the port's own text, so the count goes here rather
+         * than as new chrome on a faithful menu. Only when it is worth saying. */
+        const total = catalog.length;
+        return total > 1 && detail.length < budget
+          ? [{ text: `Mod ${i + 1} of ${total}`, color: C_DIM }, ...detail]
+          : detail;
       },
       detailToggleKey: "?",
       detailInitiallyShown: true,

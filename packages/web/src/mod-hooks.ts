@@ -33,7 +33,7 @@ import { composeModHooks, type ModHooks } from "@neo-angband/core";
 import { enabledModIds, loadEnabledModRuleDecls } from "./pack";
 import { defaultModStore, isShippedMod, resolveModRules } from "./mod-store";
 import { activeModCode } from "./mod-code";
-import { modPluginContext } from "./mod-context";
+import { modPluginContext, modOwnFiles } from "./mod-context";
 
 /**
  * The entry-point signature every behaviour mod exports as default. Identical
@@ -136,7 +136,10 @@ function folderHookEntries(): Map<string, (flags: Readonly<Record<string, boolea
     if (!hooks) continue;
     out.set(loaded.id, (flags) => {
       try {
-        return hooks.call(loaded.plugin, modPluginContext(loaded.id, flags));
+        return hooks.call(
+          loaded.plugin,
+          modPluginContext(loaded.id, flags, undefined, modOwnFiles(loaded.data)),
+        );
       } catch (e) {
         console.error(`[mod:${loaded.id}] hooks() threw; contributing nothing:`, e);
         return undefined;

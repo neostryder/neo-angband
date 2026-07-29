@@ -36,15 +36,18 @@
  * game still boots. Same reasoning as z-file.c returning NULL rather than dying,
  * and the same as readModDir's, one layer up.
  *
- * SINGLE FILE, and this is a real constraint worth stating rather than
- * discovering. On the desktop build plugin.js is served from the loopback origin
- * and a relative `./helper.js` beside it resolves normally. In a browser tab the
- * player's folder is a set of handles with no location at all, so the module is
- * imported from a blob: URL - and a relative specifier then resolves against the
- * blob URL, which names nothing. A plugin that wants to run on both front ends
- * must be bundled into one file. When a relative import is what failed, the
- * problem line says so, because "failed to fetch" on its own sends the author
- * looking in the wrong place.
+ * `plugin.js` is the ENTRY POINT, not the whole mod. A mod may hold as many
+ * scripts as it likes, in subdirectories, and import them relatively: on desktop
+ * the pack is served from the shell's loopback origin so that resolves for free,
+ * and in a browser tab the graph is resolved and rewritten before the import
+ * (mod-modules.ts). The first cut of this file required a single bundled file, and
+ * said so in a comment that read like a fact about browsers; it was a fact about
+ * the implementation. A mod is data, images and scripts in a folder, and needing a
+ * build step to ship one would put a toolchain between an author and the game.
+ *
+ * What a folder plugin still cannot do is import a BARE specifier
+ * ("@neo-angband/core"): it resolves against the document, where nothing is
+ * published. There is nothing to import - the engine is handed in as `ctx.core`.
  */
 
 import { validateManifest, type PackManifest } from "@neo-angband/mod-sdk";
@@ -65,6 +68,13 @@ export interface LoadedModPlugin {
   readonly plugin: ModPlugin;
   /** Where it was imported from, for diagnostics and the mod manager. */
   readonly url: string;
+  /**
+   * The pack's own parsed record files, keyed without `.json`, so the caller can
+   * put them in the plugin's context (ModPluginContext.data). Carried here rather
+   * than looked up again by id: the loader already held the pack, and a second
+   * lookup is a second chance to disagree with it.
+   */
+  readonly data: Readonly<Record<string, unknown>>;
 }
 
 export interface ModCodeReport {
@@ -176,7 +186,11 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
     try {
       url = await opts.codeUrl(id, PLUGIN_FILE);
     } catch (e) {
-      problems.push(`${id}/${PLUGIN_FILE} could not be read: ${message(e)}`);
+      /* The message from here already names the file at fault - which script is
+       * missing, which two import each other (mod-modules.ts). Prefixing it with
+       * "<id>/plugin.js could not be read" would put a second, wrong filename in
+       * front of the right one, so only the mod is named. */
+      problems.push(`${id}: ${message(e)}`);
       continue;
     }
     if (url === null) {
@@ -200,7 +214,13 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       problems.push(`${id}: ${wrong}`);
       continue;
     }
-    plugins.push({ id, manifest: pack.manifest, plugin: entry as ModPlugin, url });
+    plugins.push({
+      id,
+      manifest: pack.manifest,
+      plugin: entry as ModPlugin,
+      url,
+      data: pack.files,
+    });
   }
 
   return { plugins, problems, skipped };
@@ -277,17 +297,20 @@ export function mergePluginManifests(
 /**
  * Turn an import failure into something an author can act on.
  *
- * The bare message for the commonest real mistake - a relative import inside a
- * plugin loaded from a blob: URL - is "Failed to fetch dynamically imported
- * module", which points at the entry file rather than at the line that broke.
+ * Relative imports are resolved before this point (mod-modules.ts), so a fetch
+ * failure now means a BARE specifier - the one kind that cannot be resolved from a
+ * folder, and the mistake anyone who has written a bundled mod makes first. The
+ * browser's own message ("Failed to resolve module specifier") names the specifier
+ * but not the thing to do instead, which is the part that matters.
  */
 function importAdvice(e: unknown): string {
   const msg = message(e);
-  if (/dynamically imported module|Failed to fetch|Cannot find module/i.test(msg)) {
+  if (/resolve module specifier|dynamically imported module|Failed to fetch|Cannot find module/i.test(msg)) {
     return (
-      `${msg} - if the plugin imports another file relative to itself, bundle it into a ` +
-      `single ${PLUGIN_FILE}: a plugin read from a picked folder is loaded from a blob: URL, ` +
-      `against which a relative path resolves to nothing`
+      `${msg} - a plugin loaded from a folder cannot import a package by name. ` +
+      `Relative imports of the mod's own files work ("./lib/dice.js"); the engine ` +
+      `is handed to the plugin as ctx.core, so there is nothing to import from ` +
+      `"@neo-angband/core"`
     );
   }
   return msg;
