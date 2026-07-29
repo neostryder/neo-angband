@@ -173,7 +173,7 @@ import {
   storeSell,
   storeSellFloor,
 } from "../store/transact";
-import type { BuyResult, SellResult } from "../store/transact";
+import type { BuyResult, SellResult, TxnKnowledge } from "../store/transact";
 import { storeCheckNum } from "../store/store";
 import { priceItem } from "../store/price";
 import {
@@ -2924,18 +2924,16 @@ function makeStoreApi(
       msg: (text: string): void => state.msg?.(text),
     });
   };
-  const txnKnow = (
-    obj: GameObject,
-  ): {
-    flavor: FlavorKnowledge;
-    flavorDeps: FlavorAwareDeps;
-    aware: boolean;
-    noSelling: boolean;
-  } => ({
+  const txnKnow = (obj: GameObject): TxnKnowledge => ({
     flavor,
     flavorDeps: flavorAwareDeps(state),
     aware: flavor.isAware(obj.kind),
     noSelling: noSelling(),
+    /* do_cmd_sell L1946-1951: selling teaches the runes as well as the flavour.
+     * buildRuneList is rebuilt per call for the same reason effect-item.ts does
+     * it (L930): a mod can add runes mid-session, so a cached list would go
+     * stale. Unused by storeBuy, which learns flavour only. */
+    learnRunes: { env: state.runeEnv, runes: buildRuneList(state.runeEnv) },
   });
   return {
     buy: (store, obj, amt): BuyResult => {

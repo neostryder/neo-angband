@@ -3718,6 +3718,22 @@ function runTargetLoop(
       resolve(targetIsSet(state));
     };
 
+    /**
+     * aux_monster's recall toggle (ui-target.c L595-598): open the full recall
+     * for the grid's monster, then return to this same loop. The listeners come
+     * off first because every overlay listens on window in the CAPTURE phase, so
+     * a loop that stays attached eats the recall screen's own keys.
+     */
+    const openRecall = (mon: Monster): void => {
+      window.removeEventListener("keydown", onKey, true);
+      canvas.removeEventListener("pointerdown", onTap);
+      void showMonsterRecall(mon).then(() => {
+        window.addEventListener("keydown", onKey, true);
+        canvas.addEventListener("pointerdown", onTap);
+        paint();
+      });
+    };
+
     // Touch: a tap on a map cell moves the cursor there (leaving interesting
     // mode); a tap on the cell the cursor already sits on confirms, exactly as
     // target.c's mouse routing selects on a click of the current grid. Routed
@@ -3728,6 +3744,19 @@ function runTargetLoop(
       if (!grid) return; // tap outside the map (HUD): ignore, do not leak
       ev.preventDefault();
       const cur = currentLoopGrid(ui, targets);
+      /* aux_monster L591-595: button 1 on the grid the cursor is already on
+       * toggles the RECALL, exactly as 'r' does - it does not select. In LOOK
+       * mode there is nothing to select anyway (do_cmd_look just browses), so
+       * the tap-to-confirm below is only the touch route for target selection
+       * and must not eat look mode's recall click. */
+      if (grid.x === cur.x && grid.y === cur.y && mode & TARGET.LOOK) {
+        if (!lastMon) {
+          state.sound?.(MSG.BELL);
+          return;
+        }
+        openRecall(lastMon);
+        return;
+      }
       if (grid.x === cur.x && grid.y === cur.y) {
         const step = stepTargetLoop(state, targets, ui, "t");
         ui = step.ui;
@@ -3747,21 +3776,12 @@ function runTargetLoop(
       ev.preventDefault();
       ev.stopImmediatePropagation();
       if (ev.key === "r") {
-        // aux_monster's recall toggle: open the full recall for the grid's
-        // monster, then return to this same loop (any key closes the recall
-        // screen - showTextScreen's own ESC/Enter/Space/arrows handling).
         const mon = lastMon;
         if (!mon) {
           state.sound?.(MSG.BELL);
           return;
         }
-        window.removeEventListener("keydown", onKey, true);
-        canvas.removeEventListener("pointerdown", onTap);
-        void showMonsterRecall(mon).then(() => {
-          window.addEventListener("keydown", onKey, true);
-          canvas.addEventListener("pointerdown", onTap);
-          paint();
-        });
+        openRecall(mon);
         return;
       }
       const step = stepTargetLoop(state, targets, ui, ev.key);
