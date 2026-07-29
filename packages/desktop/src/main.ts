@@ -43,6 +43,9 @@ import {
 } from "./bridge-channel";
 import type { HostBridgeInfo } from "./bridge-channel";
 import { checkWritable, resolveDataBase } from "./data-dir";
+import { PORT_ENV, rememberLoopbackPort, resolveLoopbackPort } from "./loopback-port";
+import { planOriginMerge } from "./origin-merge";
+import type { OriginSnapshot } from "./origin-merge";
 
 /**
  * Where the renderer bundle is, which differs between a checkout and a package.
@@ -279,10 +282,26 @@ function modsIndex(): ModsIndex {
   return { packs, order: readLoadOrder(), dir: MODS_DIR };
 }
 
-function startServer(): Promise<number> {
+/**
+ * A blank same-origin page.
+ *
+ * Its only job is to give a hidden window somewhere to stand so the main process
+ * can read or write that origin's localStorage (see origin-merge.ts). It must NOT
+ * be the app: loading index.html in a hidden window would boot a second copy of
+ * the game, which under a no-save-scumming policy is a second autosaver.
+ */
+const ORIGIN_PROBE_ROUTE = "/__origin-storage";
+const ORIGIN_PROBE_PAGE =
+  "<!doctype html><meta charset=utf-8><title>storage</title>";
+
+function startServer(port: number): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const url = req.url ?? "/";
+      if (url === ORIGIN_PROBE_ROUTE) {
+        send(res, 200, ORIGIN_PROBE_PAGE, MIME[".html"]);
+        return;
+      }
       // User mods folder (read-only), for the filesystem-mod path.
       if (url === "/mods/index.json") {
         send(res, 200, JSON.stringify(modsIndex()), MIME[".json"]);
@@ -307,10 +326,13 @@ function startServer(): Promise<number> {
       serveFile(res, full, true);
     });
     server.on("error", reject);
-    // Ephemeral port on loopback only.
-    server.listen(0, "127.0.0.1", () => {
+    /* A FIXED port on loopback only. Fixed, not ephemeral, because the port is
+     * part of the origin the renderer's localStorage - and therefore the character
+     * roster - is partitioned by; see loopback-port.ts. Nothing is exposed off the
+     * machine either way. */
+    server.listen(port, "127.0.0.1", () => {
       const addr = server.address();
-      resolve(typeof addr === "object" && addr ? addr.port : 0);
+      resolve(typeof addr === "object" && addr ? addr.port : port);
     });
   });
 }
@@ -449,7 +471,165 @@ function handleEarlyExit(): boolean {
 /** Set by handleEarlyExit before anything opens a file. */
 let DIR_OVERRIDES: Readonly<Partial<Record<HostDir, string>>> = {};
 
+/* ------------------------------------------------------------------ *
+ * Recovering characters stranded by the old ephemeral port.
+ * ------------------------------------------------------------------ */
+
+/** Records which abandoned origins have already been dealt with. */
+const MERGED_FILE = "origins-merged.txt";
+
+function mergedPorts(userDir: string): Set<number> {
+  try {
+    const raw = fs.readFileSync(path.join(userDir, MERGED_FILE), "utf8");
+    return new Set(
+      raw
+        .split(/\s+/)
+        .map((s) => Number.parseInt(s, 10))
+        .filter((n) => Number.isInteger(n)),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberMergedPorts(userDir: string, ports: Iterable<number>): void {
+  try {
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(path.join(userDir, MERGED_FILE), `${[...ports].join("\n")}\n`, "utf8");
+  } catch {
+    /* best effort: the worst case is harvesting the same origin again next time,
+     * which the merge rules make a no-op. */
+  }
+}
+
+/** Read every localStorage entry of the origin served on `port`. */
+async function readOriginStorage(port: number): Promise<Record<string, string>> {
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+  try {
+    await win.loadURL(`http://127.0.0.1:${port}${ORIGIN_PROBE_ROUTE}`);
+    return (await win.webContents.executeJavaScript(
+      `(() => { const o = {};
+         for (let i = 0; i < localStorage.length; i++) {
+           const k = localStorage.key(i);
+           if (k !== null) o[k] = localStorage.getItem(k) ?? "";
+         }
+         return o; })()`,
+    )) as Record<string, string>;
+  } finally {
+    win.destroy();
+  }
+}
+
+/** Write entries into the origin served on `port`, one key at a time. */
+async function writeOriginStorage(
+  port: number,
+  writes: Readonly<Record<string, string>>,
+): Promise<string[]> {
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+  const failed: string[] = [];
+  try {
+    await win.loadURL(`http://127.0.0.1:${port}${ORIGIN_PROBE_ROUTE}`);
+    for (const [key, value] of Object.entries(writes)) {
+      /* One key per evaluation so a quota refusal names the key that hit it
+       * instead of losing the whole batch (a recovered save can be 500 kB). */
+      const ok = (await win.webContents.executeJavaScript(
+        `(() => { try { localStorage.setItem(${JSON.stringify(key)}, ${JSON.stringify(
+          value,
+        )}); return true; } catch { return false; } })()`,
+      )) as boolean;
+      if (!ok) failed.push(key);
+    }
+  } finally {
+    win.destroy();
+  }
+  return failed;
+}
+
+/**
+ * Bring characters written under the old ephemeral origins into the stable one.
+ *
+ * Runs once per abandoned origin and reports what it found. Never fatal: a failure
+ * here must not stop the player getting into the game, and nothing is deleted from
+ * the origin it was read from, so a failed attempt can simply be repeated.
+ */
+async function recoverStrandedOrigins(
+  userDir: string,
+  stablePort: number,
+  knownPorts: readonly number[],
+): Promise<void> {
+  const done = mergedPorts(userDir);
+  const todo = knownPorts.filter((p) => p !== stablePort && !done.has(p));
+  if (todo.length === 0) return;
+
+  const sources: OriginSnapshot[] = [];
+  for (const port of todo) {
+    /* A throwaway server serving ONLY the blank page: the game must not boot in
+     * one of these windows, and on this port it never can. */
+    const server = http.createServer((_req, res) =>
+      send(res, 200, ORIGIN_PROBE_PAGE, MIME[".html"]),
+    );
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.on("error", reject);
+        server.listen(port, "127.0.0.1", () => resolve());
+      });
+      sources.push({ port, entries: await readOriginStorage(port) });
+    } catch (err) {
+      console.error(`[neo-angband] could not read storage on port ${port}: ${String(err)}`);
+    } finally {
+      server.close();
+    }
+  }
+
+  const plan = planOriginMerge(await readOriginStorage(stablePort), sources);
+  const keys = Object.keys(plan.writes);
+  if (keys.length === 0) {
+    rememberMergedPorts(userDir, [...done, ...todo]);
+    return;
+  }
+
+  const failed = await writeOriginStorage(stablePort, plan.writes);
+  /* Only mark the sources handled if everything landed. A quota failure must stay
+   * retryable - the bytes are still in the old origin, and they are a character. */
+  if (failed.length === 0) rememberMergedPorts(userDir, [...done, ...todo]);
+
+  const names = plan.recovered.map((r) => `${r.name}${r.hasSave ? "" : " (memorial)"}`);
+  console.log(
+    `[neo-angband] recovered ${plan.recovered.length} character(s) from ` +
+      `${sources.map((s) => s.port).join(", ")}: ${names.join(", ")}`,
+  );
+  if (plan.recovered.length > 0) {
+    await dialog.showMessageBox({
+      type: failed.length === 0 ? "info" : "warning",
+      title: "Neo Angband",
+      message:
+        failed.length === 0
+          ? `Recovered ${plan.recovered.length} character(s).`
+          : `Recovered ${plan.recovered.length} character(s), with problems.`,
+      detail:
+        "An earlier version of the game stored characters against a port number " +
+        "that changed every launch, which is why they stopped appearing. They " +
+        "have been moved into this copy's own storage and are on the character " +
+        `screen now:\n\n${names.join("\n")}` +
+        (failed.length > 0
+          ? `\n\nThese could not be written (storage may be full): ${failed.join(", ")}. ` +
+            "They are still in the old storage and will be retried next launch."
+          : ""),
+    });
+  }
+}
+
+/**
+ * True once the game's own window exists.
+ *
+ * Guards window-all-closed: the hidden windows startup uses to reach an origin's
+ * localStorage are windows too, and their closing must not be read as the player
+ * having quit.
+ */
+let gameWindowOpened = false;
+
 async function createWindow(port: number): Promise<void> {
+  gameWindowOpened = true;
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -478,6 +658,25 @@ async function start(): Promise<void> {
    * text must work on a checkout that has not built the renderer yet, the same
    * way `angband -l` never touches a display module. */
   if (handleEarlyExit()) return;
+
+  /* One playing instance per install, taken AFTER the early-exit commands so that
+   * `-l` and the usage text still work while the game is running (upstream's
+   * `angband -l` does not care what else is open).
+   *
+   * Two windows on one install would share a savefile tree, a Chromium profile and
+   * a roster, and the second would lose the race for the port; under a no-save-
+   * scumming policy two processes autosaving one character is a corruption route,
+   * not an inconvenience. */
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return;
+  }
+  app.on("second-instance", () => {
+    const [win] = BrowserWindow.getAllWindows();
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  });
 
   if (!fs.existsSync(WEB_ROOT)) {
     // A helpful, honest error rather than a blank window.
@@ -530,7 +729,56 @@ async function start(): Promise<void> {
   console.log(`[neo-angband] data (${DATA.kind}): ${USER_BASE}`);
 
   installHostBridge(DIR_OVERRIDES);
-  const port = await startServer();
+
+  /* The origin the roster lives under. Resolved and remembered BEFORE the server
+   * binds, so the number is stable across launches; see loopback-port.ts for what
+   * an ephemeral one cost. */
+  const choice = resolveLoopbackPort({
+    env: process.env,
+    userDir: path.join(USER_BASE, "user"),
+    sessionDir: app.getPath("sessionData"),
+  });
+  console.log(
+    `[neo-angband] loopback port (${choice.source}): ${choice.port}` +
+      (choice.known.length > 1 ? ` [storage also under: ${choice.known.join(", ")}]` : ""),
+  );
+
+  let port: number;
+  try {
+    port = await startServer(choice.port);
+  } catch (err) {
+    /* Deliberately fatal, and deliberately NOT a retry on another port. Binding
+     * elsewhere would start the game against an empty storage area and present it
+     * as a clean slate - which is the bug this whole mechanism exists to end. Far
+     * better to refuse to start and say which port and how to change it. */
+    await dialog.showMessageBox({
+      type: "error",
+      title: "Neo Angband",
+      message: `Port ${choice.port} is not available.`,
+      detail:
+        "The game serves itself to its own window over this port, and your " +
+        "characters are stored against it, so it cannot simply use another one " +
+        "without hiding them.\n\n" +
+        `${err instanceof Error ? err.message : String(err)}\n\n` +
+        "Either close whatever is using the port, or choose a different one by " +
+        `setting ${PORT_ENV} (it will be remembered).` +
+        (choice.known.length > 1
+          ? `\n\nThis copy has storage under these ports: ${choice.known.join(", ")}.`
+          : ""),
+    });
+    app.quit();
+    return;
+  }
+  rememberLoopbackPort(path.join(USER_BASE, "user"), port);
+
+  /* Before the game opens, reunite anything the ephemeral-port era stranded. Never
+   * allowed to stop the launch. */
+  try {
+    await recoverStrandedOrigins(path.join(USER_BASE, "user"), port, choice.known);
+  } catch (err) {
+    console.error(`[neo-angband] character recovery failed: ${String(err)}`);
+  }
+
   await createWindow(port);
 
   app.on("activate", () => {
@@ -544,6 +792,11 @@ app.whenReady().then(
 );
 
 app.on("window-all-closed", () => {
+  /* Not before the game has been opened at all. Startup uses hidden windows to
+   * read and write an origin's localStorage (recoverStrandedOrigins), and
+   * destroying the last of those counts as "all windows closed" - which quit the
+   * app in the middle of recovering the player's characters. */
+  if (!gameWindowOpened) return;
   // macOS apps conventionally stay alive until Cmd-Q.
   if (process.platform !== "darwin") app.quit();
 });
