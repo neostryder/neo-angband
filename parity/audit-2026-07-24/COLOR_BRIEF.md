@@ -1,12 +1,12 @@
 # Palette / Colour Parity Brief (worktree: C:\Repositories\na-wt-color, branch parity/p2-color)
 
-`reference/` is the ORACLE (Angband 4.2.x). Decision 6.1 (Aaron): the port keeps a FAITHFUL
+`reference/` is the ORACLE (Angband 4.2.x). Decision 6.1 (neostryder): the port keeps a FAITHFUL
 glyph terminal as core; the exact z-color palette is required, not invented colours. This
 stream fixes the palette layer ONLY.
 
 ## HARD CONSTRAINT — keep the render seam intact
 The game emits abstract cells (`Glyph { ch, fg, tile? }`) and `GlyphTerm` is ONE consumer.
-Aaron will later add a canvas/PIXI visual-overhaul MOD that renders the same cell stream.
+neostryder will later add a canvas/PIXI visual-overhaul MOD that renders the same cell stream.
 Do NOT couple game logic to `GlyphTerm`, and do NOT collapse the cell-grid seam. Colour must
 resolve through data (the z-color table), not hard-coded per-call-site literals.
 

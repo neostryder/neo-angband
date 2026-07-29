@@ -4,7 +4,7 @@
  * Census block E, host-io. The store used to be `try { setItem } catch {}` with
  * the comment "scores are a nicety, never fatal", which meant upstream's eight
  * write-failure messages had nothing to fire from and a quota-exceeded write
- * silently threw away a dead character's only record. Aaron, 2026-07-27, on the
+ * silently threw away a dead character's only record. neostryder, 2026-07-27, on the
  * host-io block: "Must not deviate from upstream - port the equivalents, do not
  * excuse."
  *

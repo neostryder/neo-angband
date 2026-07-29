@@ -9,8 +9,10 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-const SQ =
-  "C:/Users/neost/AppData/Local/Microsoft/WinGet/Packages/SQLite.SQLite_Microsoft.Winget.Source_8wekyb3d8bbwe/sqlite3.exe";
+/* The sqlite3 binary. This used to be an absolute path, which put the machine's
+ * user account name into a public repository. Point NEO_SQLITE3 at the binary,
+ * or leave it unset and let PATH resolve it. */
+const SQ = process.env.NEO_SQLITE3 ?? "sqlite3";
 
 const dbs = process.argv.slice(2);
 if (dbs.length < 2) {

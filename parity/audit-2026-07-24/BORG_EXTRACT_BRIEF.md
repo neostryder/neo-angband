@@ -1,6 +1,6 @@
 # Borg Extraction Brief (Grok writer)
 
-Aaron's directive (2026-07-25): "I intended Borg to be extracted during the port and handled
+neostryder's directive (2026-07-25): "I intended Borg to be extracted during the port and handled
 as a standalone mod. It should never have made it into the main code. This needs to be
 reversed. The mod framework *should* be included in the initial port, but remain unused
 until the mods come along."

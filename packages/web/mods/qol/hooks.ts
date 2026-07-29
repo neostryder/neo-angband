@@ -4,7 +4,7 @@
  * Nothing in this file is compiled into core. Delete this folder and the game
  * loses auto-dig entirely - there is no `qol.autoDig` string, and no dig-on-walk
  * branch, anywhere in packages/core. That is the whole point of the mod being a
- * mod (Aaron, 2026-07-29: "the whole point of making them mods was to exclude
+ * mod (neostryder, 2026-07-29: "the whole point of making them mods was to exclude
  * them from the core game").
  *
  * ------------------------------------------------------------------

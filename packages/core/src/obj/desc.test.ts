@@ -279,7 +279,7 @@ describe("object_desc dice bracket gates on obj_k->dd/ds, not ASSESSED (OD-01)",
  * Store stock is created ASSESSED (store.c L1216-1219), and the player knows the
  * combat runes from birth (player-birth.c L1265-1267), so an enchanted-but-plain
  * weapon like "Broad Sword (+5,+4)" must have runes-known and no marker. This is
- * the parity fix for the spurious "{??}" Aaron saw on mundane store weapons.
+ * the parity fix for the spurious "{??}" neostryder saw on mundane store weapons.
  */
 describe("object_desc store {??} only on unlearned runes (OD-STORE)", () => {
   const storeDeps: KnownDesc = { isAware: () => true, isTried: () => false };

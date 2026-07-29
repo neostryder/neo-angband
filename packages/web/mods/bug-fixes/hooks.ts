@@ -4,7 +4,7 @@
  * Nothing in this file is compiled into core. Delete this folder and every fix
  * below goes with it - there is no `bugfix.*` string, no staircase repair, no
  * duplicate-artifact guard and no message rewriter anywhere in packages/core.
- * That is the whole point of the mod being a mod (Aaron, 2026-07-29: "the whole
+ * That is the whole point of the mod being a mod (neostryder, 2026-07-29: "the whole
  * point of making them mods was to exclude them from the core game").
  *
  * Each patch cites its upstream issue; docs/modding/BUG_FIXES.md carries the

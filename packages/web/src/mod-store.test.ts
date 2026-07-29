@@ -132,7 +132,7 @@ describe("the shipped mod set (isShippedMod)", () => {
   /*
    * A bundled mod must explain itself. The mod manager shows manifest.description
    * in the detail pane of the highlighted row (wrapped to fill it), so a stub
-   * one-liner leaves a player with nothing to decide on - Aaron's 2026-07-27 ask
+   * one-liner leaves a player with nothing to decide on - neostryder's 2026-07-27 ask
    * was explicitly for descriptions "as long as will fit".
    */
   it("gives every shipped mod a substantial description that does not claim to be on by default", () => {
@@ -311,7 +311,7 @@ describe("buildCatalog", () => {
 });
 
 /**
- * The mod default policy, in mechanical form (Aaron's ruling 2026-07-26,
+ * The mod default policy, in mechanical form (neostryder's ruling 2026-07-26,
  * restated 2026-07-27 because the prose was ambiguous). The MOD is the unit the
  * player switches; a patch is a part of a mod, never a separate install:
  *

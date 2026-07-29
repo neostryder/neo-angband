@@ -198,7 +198,7 @@ describe("composeTileModes", () => {
 });
 
 describe("the game does not know or expect any particular mod", () => {
-  // Aaron's rule, and 4.2.6's reality: a mod adds itself to the game when loaded;
+  // neostryder's rule, and 4.2.6's reality: a mod adds itself to the game when loaded;
   // the game never reaches for one. These guards are cheap and catch the exact
   // regression that happened - a bundled mod quietly becoming load-bearing for a
   // core feature. Test files are exempt: naming a mod in a fixture is fine.

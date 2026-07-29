@@ -1,7 +1,7 @@
 /**
  * ANGBAND_DIR_USER, ported.
  *
- * Census block E, host-io. Aaron's disposition: "Must not deviate from
+ * Census block E, host-io. neostryder's disposition: "Must not deviate from
  * upstream - port the equivalents, do not excuse."
  *
  * Upstream keeps a USER DIRECTORY next to the savefile and writes real files

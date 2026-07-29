@@ -3,7 +3,7 @@ import { FONT_16X24 } from "./font-16x24";
 
 // FONT-1 regression guard: the terminal blits these glyphs as the faithful
 // default (term.ts), so the generated data must stay byte-exact with the classic
-// 16X24x.FON (Aaron's ratified default, matching his installed Angband's main
+// 16X24x.FON (neostryder's ratified default, matching their installed Angband's main
 // window). If the extractor or the committed data drifts, the pinned bitmaps
 // below fail. Regenerate with packages/web/scripts/extract-fon.py.
 describe("FONT_16X24 (original Angband 16x24 bitmap)", () => {
