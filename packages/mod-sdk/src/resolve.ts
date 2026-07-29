@@ -1,11 +1,23 @@
 /**
  * Deterministic pack load-order resolution.
  *
- * Dependencies load before dependents (topological order); ties break
- * lexicographically by pack id so the order is reproducible on every
- * machine given the same pack set. Cycles and missing dependencies are
- * hard errors - a mod set either composes deterministically or fails
- * loudly before play.
+ * Dependencies load before dependents (topological order); ties break by the
+ * caller's INPUT ORDER, so the order is reproducible on every machine given the
+ * same pack list. Cycles and missing dependencies are hard errors - a mod set
+ * either composes deterministically or fails loudly before play.
+ *
+ * TIES USED TO BREAK LEXICOGRAPHICALLY BY ID, and that was a defect, not a
+ * preference. Determinism was the goal and input order delivers it just as well:
+ * the caller's list is itself deterministic (the stored enabled array, an
+ * external manager's load-order.json, or `?mods=a,b`). Sorting by id instead
+ * DISCARDED the player's choice, while the mod manager went on offering "Move
+ * later (loads last, wins conflicts)" (web/src/mods.ts) - a reorder that changed
+ * nothing for any two packs with no dependency edge between them, which is most
+ * pairs. Vortex/MO2 semantics require the deployed order to decide, so the one
+ * thing the resolver must not do is invent an order of its own.
+ *
+ * Dependency edges still win outright: input order only decides among packs the
+ * graph leaves free, which is exactly what a load-order list is for.
  *
  * Beyond hard `dependencies`, MOD_LIFECYCLE.md section 3 defines two more
  * ordering inputs, both soft (their absence is never an error):
@@ -113,7 +125,6 @@ export function resolveLoadOrder(
     }
   }
 
-  // Kahn's algorithm with a sorted frontier for determinism.
   const remainingDeps = new Map<string, Set<string>>();
   const dependents = new Map<string, string[]>();
   for (const m of manifests) {
@@ -125,10 +136,17 @@ export function resolveLoadOrder(
     }
   }
 
+  /* The caller's position for each id, which is what ties break on. */
+  const inputAt = new Map<string, number>();
+  manifests.forEach((m, i) => inputAt.set(m.id, i));
+  const at = (id: string): number => inputAt.get(id) ?? 0;
+
+  // Kahn with a frontier kept in input order, so the result is deterministic
+  // without the resolver imposing an order the player did not choose.
   const frontier = [...remainingDeps.entries()]
     .filter(([, deps]) => deps.size === 0)
     .map(([id]) => id)
-    .sort();
+    .sort((a, b) => at(a) - at(b));
   const order: PackManifest[] = [];
 
   while (frontier.length > 0) {
@@ -138,10 +156,10 @@ export function resolveLoadOrder(
       const deps = remainingDeps.get(dependent) as Set<string>;
       deps.delete(id);
       if (deps.size === 0) {
-        // Insert keeping the frontier sorted.
-        const at = frontier.findIndex((f) => f > dependent);
-        if (at === -1) frontier.push(dependent);
-        else frontier.splice(at, 0, dependent);
+        // Insert keeping the frontier in input order.
+        const pos = frontier.findIndex((f) => at(f) > at(dependent));
+        if (pos === -1) frontier.push(dependent);
+        else frontier.splice(pos, 0, dependent);
       }
     }
   }

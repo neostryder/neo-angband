@@ -2,6 +2,16 @@
  * Per-record identity for the record files whose identity is NOT a unique
  * string `name`.
  *
+ * CURRENT STATE, FIRST, BECAUSE THIS COMMENT USED TO MISLEAD. Every record file
+ * but ONE is addressable per record today: 24 by a unique `name`, 19 by the
+ * explicit specs in this file, and `history` by nothing - and an op against
+ * `history` is REPORTED, never silently dropped. Two independent reviewers read
+ * the older wording, took the "the other 20 files do not fit it" paragraph below
+ * for the present tense, and filed the same non-existent P1 ("20 files silently
+ * discard patch/replace/remove, including object, ego_item, vault, trap, store,
+ * brand, slay, projection, constants"). Those nine are precisely the files this
+ * table fixes. If you are about to report that bug, run record-key.test.ts.
+ *
  * WHY THIS EXISTS
  *
  * composePacks (compose.ts) keys every record by `packRef(pack, slugify(name))`.
@@ -9,8 +19,9 @@
  * carry a unique `name` - monster, object_property, terrain and so on - and it
  * is what makes `patches` / `replaces` / `fieldPatches` / `removes` work there.
  *
- * The other 20 files do not fit it, for two measured reasons (counts taken over
- * packages/content/pack on 2026-07-29):
+ * The other 20 files did not fit it, for two measured reasons (counts taken over
+ * packages/content/pack on 2026-07-29). This is the problem statement, not the
+ * status:
  *
  *  - 14 files have no string `name` at all. Their identity lives somewhere else:
  *    `code` (brand, slay, chest_trap, projection), the tval half of a composite
