@@ -314,8 +314,12 @@ function storeConfirm(
 ): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const { cols } = term.size();
-    if (price !== undefined) term.print(0, 1, `Price: ${price}`.slice(0, cols - 1), UI_TEXT);
-    term.print(0, 0, prompt.slice(0, cols - 1), UI_TEXT);
+    /* prt, not print: upstream's prt erases to end of line first (ui-output.c), and
+     * both of these are drawn OVER the store frame - row 0 over the message line,
+     * row 1 over the shopkeeper line. Without the erase the shopkeeper's name ran
+     * on straight after the price ("Price: 450the Great (Gnome)"). */
+    if (price !== undefined) term.prt(0, 1, `Price: ${price}`.slice(0, cols - 1), UI_TEXT);
+    term.prt(0, 0, prompt.slice(0, cols - 1), UI_TEXT);
     const finish = (value: boolean): void => {
       window.removeEventListener("keydown", onKey, true);
       resolve(value);
