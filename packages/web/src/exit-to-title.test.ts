@@ -135,10 +135,16 @@ describe("ESC out of the first birth stage (BIRTH_RESET)", () => {
 });
 
 describe("^X (textui_quit)", () => {
-  it("runs the same confirm-then-exit as the menu row, not a menu reopen", () => {
-    const body = functionBody(MAIN, "saveQuitCmd");
-    expect(body).toMatch(/confirmYesNo\([\s\S]{0,200}?exitToTitle\(\)/);
-    expect(body, "^X must not just reopen the game menu").not.toContain("openGameMenu");
+  it("leaves play, rather than reopening the game menu", () => {
+    /* ^X once saved and then reopened the menu, which was not "quit" in any sense
+     * a player could see. It now runs saveQuitNow, which leaves play on both front
+     * ends - and asks nothing, because textui_quit asks nothing (see below). */
+    expect(functionBody(MAIN, "saveQuitCmd")).toContain("saveQuitNow");
+    expect(functionBody(MAIN, "saveQuitNow")).toContain("exitToTitle()");
+    expect(
+      functionBody(MAIN, "saveQuitNow"),
+      "^X must not just reopen the game menu",
+    ).not.toContain("openGameMenu");
   });
 });
 
@@ -178,15 +184,30 @@ describe("exitToTitle goes to the title on BOTH front ends", () => {
     expect(functionBody(MAIN, "quitAfterDeath")).not.toContain("desktopQuit");
   });
 
-  it("^X is the faithful quit, and asks its own question", () => {
-    /* textui_quit (ui-game.c:199) ends the program; every front end then calls
-     * quit() (main.c:581-586, main-win.c:3511-3512). A tab has no OS to quit to
-     * and falls back to the title, the nearest thing that exists there. */
-    const body = functionBody(MAIN, "saveQuitCmd");
+  it("^X is the faithful quit, and asks NOTHING", () => {
+    /* textui_quit (ui-command.c:228-231) is three lines - `playing = false` - with
+     * no get_check anywhere on the path. The loop then unwinds through close_game
+     * (which saves) and every front end calls quit() (main.c:581-586,
+     * main-win.c:3511-3512). A tab has no OS to quit to and falls back to the
+     * title, the nearest thing that exists there.
+     *
+     * The port used to ask "Save and quit?" here, a prompt that appears nowhere in
+     * the C. This asserts the ABSENCE, because that is the half a census cannot
+     * see: an invented string fills the slot a missing one would leave empty. */
+    const body = functionBody(MAIN, "saveQuitNow");
     expect(body).toContain("desktopQuitAvailable()");
-    expect(body).toContain("Save and quit?");
+    expect(body, "^X must not confirm - textui_quit does not").not.toContain("confirmYesNo");
+    expect(functionBody(MAIN, "saveQuitCmd")).not.toContain("confirmYesNo");
     /* The save comes FIRST: quitting before closeGameSave would drop the turn. */
     expect(body.indexOf("closeGameSave")).toBeLessThan(body.indexOf("desktopQuit()"));
+  });
+
+  it("the game menu's Quit row runs the same body, so the two cannot drift", () => {
+    /* Two independent copies of "save and quit" is how the last defect here stayed
+     * alive: one call site was fixed and the other was not. */
+    const row = functionBody(MAIN, "openGameMenu");
+    expect(row).toContain("saveQuitNow()");
+    expect(row, "the row must not re-implement the quit").not.toContain("desktopQuit()");
   });
 
   it("treats an absent shell as a tab rather than swallowing the exit", () => {

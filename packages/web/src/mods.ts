@@ -275,7 +275,19 @@ export function rowDetail(m: CatalogMod, width = 80, maxLines = 99): ScreenLine[
     );
   }
   if (m.capabilities.length === 0) {
-    below.push(...wrapped("Capabilities: none (content only).", w, C_DIM));
+    /* "(content only)" was wrong for a plugin that requests nothing, and a folder
+     * plugin is exactly that case: it runs code but asks for no registry domain,
+     * so the row said "content only" about a mod whose whole substance is code.
+     * The parenthetical now describes the mod in front of the player. */
+    below.push(
+      ...wrapped(
+        m.kind === "content"
+          ? "Capabilities: none (content only)."
+          : "Capabilities: none requested.",
+        w,
+        C_DIM,
+      ),
+    );
   } else {
     below.push(...wrapped("Capabilities requested:", w));
     for (const d of describeCapabilities(m.capabilities)) {

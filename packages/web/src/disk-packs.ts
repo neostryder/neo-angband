@@ -52,6 +52,13 @@ export interface DiskPack {
   readonly manifest: PackManifest;
   /** record type -> parsed JSON, keyed WITHOUT the .json suffix. */
   readonly files: Readonly<Record<string, unknown>>;
+  /**
+   * The pack's CODE files (`*.js`), by name. Listed rather than loaded: whether
+   * to import a plugin depends on the mod being enabled, the ABI matching and the
+   * player having consented, and every one of those has to be decided BEFORE the
+   * module's top-level code runs (mod-code.ts). Empty for a pure content pack.
+   */
+  readonly code: readonly string[];
 }
 
 /**
@@ -84,6 +91,31 @@ export interface DiskPackReport {
   readonly available: boolean;
   /** Which of the three kinds of directory this is. */
   readonly kind: ModDirKind;
+  /**
+   * How to turn one of a pack's `code` files into a URL `import()` can take, or
+   * null when this report's source cannot supply code at all.
+   *
+   * Carried on the report rather than looked up later because only the SOURCE
+   * knows how: the desktop shell has a real same-origin URL under its loopback
+   * server, and a folder the player picked in a browser has no URL at all until
+   * its bytes are wrapped in a blob:. The plugin loader must not know which of
+   * those it is talking to - that difference is exactly what this file exists to
+   * absorb.
+   */
+  readonly codeUrl: CodeUrlResolver | null;
+}
+
+/**
+ * Resolve one code file to an importable URL, plus how to let it go again.
+ *
+ * `release` matters for the blob: case: a blob URL pins its bytes in memory for
+ * the lifetime of the document unless revoked, and a mods folder can hold many.
+ * Revoking AFTER the import has settled is safe - the module graph is already
+ * built and does not re-fetch.
+ */
+export interface CodeUrlResolver {
+  (id: string, file: string): Promise<string | null>;
+  readonly release?: (url: string) => void;
 }
 
 export const NO_DISK_PACKS: DiskPackReport = {
@@ -93,6 +125,7 @@ export const NO_DISK_PACKS: DiskPackReport = {
   dir: null,
   available: false,
   kind: "none",
+  codeUrl: null,
 };
 
 /** The latched result, so the synchronous composer can read it. */
@@ -135,7 +168,14 @@ function asStringArray(v: unknown): string[] {
 /** One candidate pack folder: its folder name and the file names inside it. */
 export interface ModDirEntry {
   readonly id: string;
+  /** The `.json` file names (manifest plus record files). */
   readonly files: readonly string[];
+  /**
+   * The `.js` file names. Absent from older sources, which is read as "this
+   * source offers no code" rather than as an error - a content-only mods folder
+   * is the common case and must not be reported as broken.
+   */
+  readonly code?: readonly string[];
 }
 
 /**
@@ -162,6 +202,13 @@ export interface ModDirSource {
   readJson(id: string, file: string): Promise<unknown>;
   /** load-order.json's `order` list, or [] when the folder has no such file. */
   order(): Promise<readonly string[]>;
+  /**
+   * A URL `import()` can take for one code file, or null when this source cannot
+   * serve code. Optional so a source can honestly say "data only".
+   */
+  codeUrl?(id: string, file: string): Promise<string | null>;
+  /** Let a URL from codeUrl go (revoke a blob:). Omit when there is nothing to free. */
+  releaseUrl?(url: string): void;
 }
 
 /**
@@ -172,6 +219,8 @@ export interface ModDirSource {
  */
 export async function readModDir(source: ModDirSource): Promise<DiskPackReport> {
   const problems: string[] = [];
+
+  const codeUrl = resolverFor(source);
 
   let entries: readonly ModDirEntry[];
   try {
@@ -184,6 +233,7 @@ export async function readModDir(source: ModDirSource): Promise<DiskPackReport> 
       dir: source.dir(),
       available: true,
       kind: source.kind,
+      codeUrl,
     };
   }
 
@@ -195,7 +245,7 @@ export async function readModDir(source: ModDirSource): Promise<DiskPackReport> 
       problems.push(`${id}: no manifest.json, so it is not a mod folder`);
       continue;
     }
-    const pack = await readPack(id, files, source, problems);
+    const pack = await readPack(id, files, entry.code ?? [], source, problems);
     if (pack) packs.push(pack);
   }
 
@@ -215,7 +265,28 @@ export async function readModDir(source: ModDirSource): Promise<DiskPackReport> 
     else problems.push(`load-order.json lists "${id}", which is not installed`);
   }
 
-  return { packs, order, problems, dir: source.dir(), available: true, kind: source.kind };
+  return {
+    packs,
+    order,
+    problems,
+    dir: source.dir(),
+    available: true,
+    kind: source.kind,
+    codeUrl,
+  };
+}
+
+/** Lift a source's optional codeUrl/releaseUrl into the report's resolver. */
+function resolverFor(source: ModDirSource): CodeUrlResolver | null {
+  const resolve = source.codeUrl;
+  if (!resolve) return null;
+  const fn = ((id: string, file: string) => resolve.call(source, id, file)) as {
+    (id: string, file: string): Promise<string | null>;
+    release?: (url: string) => void;
+  };
+  const release = source.releaseUrl;
+  if (release) fn.release = (url: string) => release.call(source, url);
+  return fn as CodeUrlResolver;
 }
 
 /**
@@ -253,12 +324,20 @@ export function httpModsSource(
         if (entry === null || typeof entry !== "object") continue;
         const id = (entry as { id?: unknown }).id;
         if (typeof id !== "string" || id === "") continue;
-        out.push({ id, files: asStringArray((entry as { files?: unknown }).files) });
+        out.push({
+          id,
+          files: asStringArray((entry as { files?: unknown }).files),
+          code: asStringArray((entry as { code?: unknown }).code),
+        });
       }
       return out;
     },
     readJson: (id, file) => fetchJson(`${baseUrl}/${id}/${file}`),
     order: () => Promise.resolve(asStringArray(index?.order)),
+    /* The shell's mods folder is served over its own loopback HTTP server, so a
+     * code file already HAS a same-origin URL with a JavaScript content type -
+     * `import()` takes it directly and there is nothing to release. */
+    codeUrl: (id, file) => Promise.resolve(`${baseUrl}/${id}/${file}`),
   };
 }
 
@@ -292,6 +371,7 @@ export async function loadDiskPacks(opts: {
 async function readPack(
   id: string,
   files: readonly string[],
+  code: readonly string[],
   source: ModDirSource,
   problems: string[],
 ): Promise<DiskPack | null> {
@@ -327,7 +407,7 @@ async function readPack(
       problems.push(`${id}/${file}: ${message(e)}`);
     }
   }
-  return { manifest, files: out };
+  return { manifest, files: out, code };
 }
 
 function message(e: unknown): string {

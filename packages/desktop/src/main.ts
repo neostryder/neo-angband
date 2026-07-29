@@ -223,13 +223,21 @@ function serveFile(
  *   - the on-disk load order, so a manager's ordering decision is not something
  *     the game has to be told about separately.
  *
- * Only `.json` files at the top level of a pack are listed. Anything else a pack
- * ships (tile images, licences, a readme) is still SERVED by the route below and
- * fetched by name from the manifest that references it; it is simply not part of
- * the record set, so it is not offered to the composer.
+ * `.json` files at the top level of a pack are listed as its RECORDS, and `.js`
+ * files as its CODE. The two are kept apart because they are gated differently:
+ * records are composed, code is imported only once the mod is enabled, its
+ * declared ABI matches and the player has consented (web/src/mod-code.ts), and
+ * every one of those has to be decided before the module runs. Anything else a
+ * pack ships (tile images, licences, a readme) is still SERVED by the route below
+ * and fetched by name from the manifest that references it; it is simply neither
+ * a record nor code.
  */
 interface ModsIndex {
-  readonly packs: readonly { readonly id: string; readonly files: readonly string[] }[];
+  readonly packs: readonly {
+    readonly id: string;
+    readonly files: readonly string[];
+    readonly code: readonly string[];
+  }[];
   /** load-order.json's `order`, or [] when the file is absent or unreadable. */
   readonly order: readonly string[];
   /** Where these live, so the game can tell a player where to put a mod. */
@@ -256,7 +264,7 @@ function readLoadOrder(): readonly string[] {
 }
 
 function modsIndex(): ModsIndex {
-  const packs: { id: string; files: string[] }[] = [];
+  const packs: { id: string; files: string[]; code: string[] }[] = [];
   let names: string[] = [];
   try {
     names = fs
@@ -269,17 +277,20 @@ function modsIndex(): ModsIndex {
   }
   for (const id of names) {
     let files: string[] = [];
+    let code: string[] = [];
     try {
-      files = fs
+      const entries = fs
         .readdirSync(path.join(MODS_DIR, id), { withFileTypes: true })
-        .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".json"))
+        .filter((e) => e.isFile())
         .map((e) => e.name)
         .sort((a, b) => a.localeCompare(b));
+      files = entries.filter((n) => n.toLowerCase().endsWith(".json"));
+      code = entries.filter((n) => /\.m?js$/i.test(n));
     } catch {
       /* unreadable pack: listed with no files, so the renderer reports it as a
        * pack it could not read rather than silently omitting it. */
     }
-    packs.push({ id, files });
+    packs.push({ id, files, code });
   }
   return { packs, order: readLoadOrder(), dir: MODS_DIR };
 }
