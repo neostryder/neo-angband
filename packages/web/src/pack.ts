@@ -17,6 +17,7 @@ import type { GamePack, UiEntryPackRecords } from "@neo-angband/core";
 import {
   composeContentPacks,
   computeConflictReport,
+  hasFacet,
   resolveLoadOrder,
 } from "@neo-angband/mod-sdk";
 import type { LoadedPack, PackContent, PackManifest } from "@neo-angband/mod-sdk";
@@ -188,8 +189,10 @@ export function discoverContentModManifests(): PackManifest[] {
   for (const [, mod] of discoverMods()) {
     const m = modManifest(mod.manifest);
     // Plugins are surfaced by discoverPlugins/discoverTrustedPlugins; here we
-    // list only content/tiles packs so the catalog does not double-count.
-    if (m.shape !== "plugin") out.push(m);
+    // list only packs with something to CONTRIBUTE as content, so the catalog
+    // does not double-count. A hybrid (content + plugin) belongs here for its
+    // content facet; a plugin-only pack does not.
+    if (hasFacet(m, "content") || hasFacet(m, "tiles")) out.push(m);
   }
   return out;
 }
@@ -209,7 +212,7 @@ export function modConflictLines(enabledIds: readonly string[]): string[] {
     const mod = mods.get(id);
     if (!mod) continue;
     const manifest = modManifest(mod.manifest);
-    if (manifest.shape === "plugin") continue; // plugins contribute no records
+    if (!hasFacet(manifest, "content")) continue; // nothing to compose
     packs.push({
       manifest,
       files: mod.files as unknown as LoadedPack["files"],
@@ -297,8 +300,22 @@ function modManifest(raw: unknown): PackManifest {
     name: m.name ?? m.id ?? "mod",
     version: m.version ?? "0.0.0",
     shape: m.shape ?? "content",
+    /* What the pack contributes, when it is more than its shape alone. Dropping
+     * this would silently demote a hybrid mod to its primary facet - exactly the
+     * class of bug the facet model exists to end. */
+    ...(m.facets ? { facets: m.facets } : {}),
     ...(m.engine ? { engine: m.engine } : {}),
     ...(m.dependencies ? { dependencies: m.dependencies } : {}),
+    /* ORDERING INPUTS, and they were all being dropped here. This normaliser is
+     * an allowlist, so every field it forgets becomes a manifest key the player
+     * can write and nothing can read: optionalDependencies, loadAfter and
+     * loadBefore reached resolveLoadOrder as undefined for every mod discovered
+     * through this path, making all three inert. */
+    ...(m.optionalDependencies ? { optionalDependencies: m.optionalDependencies } : {}),
+    ...(m.loadAfter ? { loadAfter: m.loadAfter } : {}),
+    ...(m.loadBefore ? { loadBefore: m.loadBefore } : {}),
+    ...(m.saveSchema !== undefined ? { saveSchema: m.saveSchema } : {}),
+    ...(m.modApi !== undefined ? { modApi: m.modApi } : {}),
     ...(m.capabilities ? { capabilities: m.capabilities } : {}),
     ...(m.nondeterministic !== undefined ? { nondeterministic: m.nondeterministic } : {}),
     ...(m.affectsGameplay !== undefined ? { affectsGameplay: m.affectsGameplay } : {}),
@@ -312,28 +329,47 @@ function modManifest(raw: unknown): PackManifest {
   };
 }
 
-/** The ordered LoadedPack set: core first, then each enabled mod. */
-function activePackSet(): LoadedPack[] {
+/**
+ * The ordered LoadedPack set: core first, then each enabled mod that contributes
+ * records, in the player's order.
+ *
+ * PURE, and takes its two inputs, so the gate below is assertable. It used to
+ * read the glob and localStorage itself, which meant the one line that decides
+ * whether a mod's records reach the game could only be exercised by whatever the
+ * bundle happened to contain - and that is how `shape !== "content"` sat here
+ * dropping every hybrid mod's records with nothing able to notice.
+ */
+export function activePackSetFrom(
+  mods: ReadonlyMap<string, { manifest: unknown; files: Record<string, unknown> }>,
+  enabledIds: readonly string[],
+): LoadedPack[] {
   const packs: LoadedPack[] = [coreLoadedPack()];
-  const mods = discoverMods();
-  for (const id of enabledModIds()) {
+  for (const id of enabledIds) {
     const mod = mods.get(id);
     if (!mod) {
       console.warn(`[mods] enabled mod "${id}" not found; skipping`);
       continue;
     }
     const manifest = modManifest(mod.manifest);
-    // Only content-shape mods contribute records to the compose pipeline.
-    // Plugins (sandbox/trusted) are installed separately in main.ts boot; tiles
-    // packs are loaded by the tile subsystem (tiles.ts). Both would confuse
-    // composeContentPacks (which expects record files), so skip them here.
-    if (manifest.shape !== "content") continue;
+    /* Only packs with the CONTENT facet contribute records to the compose
+     * pipeline. Plugins (sandbox/trusted) are installed separately in main.ts
+     * boot; tiles packs are loaded by the tile subsystem (tiles.ts), and neither
+     * carries record files composeContentPacks could use.
+     *
+     * This was `shape !== "content"`, which is what made a mod choose between
+     * shipping records and shipping code: a hybrid declaring "plugin" had its
+     * record files dropped here, silently, while its code loaded fine. */
+    if (!hasFacet(manifest, "content")) continue;
     packs.push({
       manifest,
       files: mod.files as unknown as LoadedPack["files"],
     });
   }
   return packs;
+}
+
+function activePackSet(): LoadedPack[] {
+  return activePackSetFrom(discoverMods(), enabledModIds());
 }
 
 /**
