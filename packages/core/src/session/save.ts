@@ -89,7 +89,6 @@ import type { Player, PlayerQuest } from "../player/player";
 import type { PlayerRegistry } from "../player/bind";
 import type { TrapKind } from "../world/trap";
 import type { GameState, MonsterGroup, StoredLevel } from "../game/context";
-import { modRuleEnabled } from "../game/context";
 import { MessageLog } from "../msg";
 import type { Trap } from "../game/trap";
 import type { Gear } from "../game/gear";
@@ -1197,10 +1196,11 @@ export function serializeGame(
       })),
     });
   }
-  /* bug-fixes #4605 (bugfix.noiseScentSave): persist the live level's noise /
-   * scent heatmaps when the mod's rule is on; faithful saves omit them. */
+  /* The noise/scent seam (mod/hooks.ts saveNoiseScent). Faithful 4.2.6 omits the
+   * heatmaps from the save - that is upstream's behaviour and upstream's bug - so
+   * with no hook installed the `?? false` below IS the faithful answer. */
   const chunk = state.chunk.snapshotSquares(
-    modRuleEnabled(state, "bugfix.noiseScentSave"),
+    state.modHooks?.saveNoiseScent?.() ?? false,
   );
   const knownFeat = Array.from(state.known.feat);
   const savedLevelCache = serializeLevelCache(state.levelCache, ids);

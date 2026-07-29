@@ -58,8 +58,8 @@ import {
   DEFAULT_GAME_CONSTANTS,
   addMonster,
   deleteMonster,
-  modRuleEnabled,
   placePlayer,
+  squareMonster,
   updateMonsterDistances,
 } from "../game/context";
 import { Chunk } from "../world/chunk";
@@ -132,7 +132,7 @@ import {
   packOverflow,
 } from "../game/obj-cmd";
 import type { ObjCmdDeps } from "../game/obj-cmd";
-import { installCaveCommands, movementAutoDig } from "../game/cave-cmd";
+import { displayFeeling, installCaveCommands, movementAutoDig } from "../game/cave-cmd";
 import type { CaveCmdDeps } from "../game/cave-cmd";
 import { installSteal } from "../game/steal";
 import type { ChestCmdDeps } from "../game/chest";
@@ -376,16 +376,18 @@ export interface StartGameOptions extends BootLevelOptions {
   /** op_ptr->hitpoint_warn (0..9). Default 3 (DEFAULT_HITPOINT_WARN). */
   hitpointWarn?: number;
   /**
-   * The effective "mod rule" flags to seed GameState.modRules with (the
-   * declarative bundled-mod seam: the host resolves each enabled mod's
-   * manifest `rules` against the player's saved choices and passes the result
-   * here). Each flag gates an off-by-default corrected branch in ported core,
-   * read through modRuleEnabled; an absent/empty map leaves core byte-identical
-   * to faithful 4.2.6. The qol / bug-fixes mods populate this; disabling them
-   * (or turning a rule off in the menu) drops the flag and restores faithful
-   * behaviour.
+   * The player's per-patch choices, resolved by the host from each enabled mod's
+   * manifest `rules`. Recorded on GameState.modRules and saved, so a save says
+   * which patches a character was played with. OPAQUE to core - see the field's
+   * note in game/context.ts.
    */
   modRules?: Readonly<Record<string, boolean>>;
+  /**
+   * The behaviour every enabled mod supplies, already folded into one object by
+   * the host (mod/hooks.ts composeModHooks). Absent - the case with no mod
+   * enabled - leaves core byte-identical to faithful 4.2.6.
+   */
+  modHooks?: import("../mod/hooks").ModHooks;
 }
 
 /** A started game: the loop's state and registry, plus what a renderer needs. */
@@ -861,11 +863,22 @@ function wireGame(
        * upstream's history_add-before-player_exp_gain order. MDESC_DIED_FROM
        * for a unique is just the race name (no article/pronoun swap), so no
        * MDESC subsystem is needed here. */
-      if (!(alreadyDead && modRuleEnabled(state, "bugfix.uniqueKillHistory"))) {
+      /* The history seam (mod/hooks.ts historyAdd). Faithful 4.2.6 logs one entry
+       * per lethal blow, duplicates included, so with no hook installed the
+       * `?? true` below IS the faithful answer. `duplicate` tells a mod what it
+       * needs to decide without core deciding anything. */
+      const what = `Killed ${mon.race.name}`;
+      const wanted =
+        state.modHooks?.historyAdd?.({
+          what,
+          type: HIST.SLAY_UNIQUE,
+          duplicate: alreadyDead,
+        }) ?? true;
+      if (wanted) {
         const stamp = historyStamp(state);
         historyAdd(
           state.actor.player,
-          `Killed ${mon.race.name}`,
+          what,
           HIST.SLAY_UNIQUE,
           stamp.dlev,
           stamp.clev,
@@ -951,11 +964,11 @@ function wireGame(
     constants: reg.constants,
     artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
     noArtifacts: state.options?.get("birth_no_artifacts") ?? false,
-    /* bug-fixes seam (#4510): read state.modRules LIVE, not captured, so a
-     * trusted plugin that turns rules on at boot (after wireGame builds this)
-     * is still seen. Empty/absent => makeArtifact's faithful branch. */
-    get modRules() {
-      return state.modRules;
+    /* The mod behaviour seam: read state.modHooks LIVE, not captured, so a mod
+     * that installs a hook at boot (after wireGame builds this) is still seen.
+     * Absent => makeArtifact's faithful branch, which is the only branch. */
+    get hooks() {
+      return state.modHooks;
     },
     /* append_object_curse TIMED_INC foil (obj-curse.c L159-188, gap 3.2):
      * reject a curse an existing item property would foil, built from the bound
@@ -1229,6 +1242,24 @@ function wireGame(
            * rune on worn gear. No RNG. */
           equipLearnElement: (resType: number): void =>
             equipLearnElement(state.actor.player, state.runeEnv, resType),
+        },
+      /* health_track (project.c:971-980): a player projection that affected
+       * exactly one monster, without jumping, recalls and health-tracks it.
+       *
+       * This hook was DECLARED in world/project.ts, fired with the right gate,
+       * and threaded through project-cast.ts - and no production caller ever
+       * supplied it. Only two tests did, which is exactly why it read as live:
+       * the call-site census counts references, so a hook referenced only by a
+       * test is indistinguishable from a wired one. The visible symptom was that
+       * no bolt or ball spell ever put a monster on the health bar.
+       *
+       * project.ts has already applied the one-monster / no-JUMP / player-source
+       * gate and confirmed a monster is on the grid, so this must not re-check
+       * them. The gate here is VISIBLE, not obvious - project.c uses
+       * monster_is_visible. */
+        onTrackMonster: (grid: Loc): void => {
+          const mon = squareMonster(state, grid);
+          if (mon && monsterIsVisible(mon)) state.healthWho = mon;
         },
       },
     };
@@ -1631,10 +1662,9 @@ function wireGame(
   };
   installCaveCommands(registry, caveDeps);
 
-  // QoL auto-dig (bundled `qol` mod, flag "qol.autoDig"): walking into known
-  // diggable terrain the player can dig begins one tunnel attempt. walkAction
-  // consults this before its no-energy bump; movementAutoDig is a no-op (returns
-  // 0, no RNG) unless the flag is on, so faithful play is byte-identical.
+  // The walk-into-a-wall seam (mod/hooks.ts walkBlockedByDiggable). walkAction
+  // consults this before its no-energy bump; movementAutoDig returns 0 having drawn
+  // no RNG when no mod installed a hook, so faithful play is byte-identical.
   state.autoDigStep = (s, grid): number => movementAutoDig(s, grid, caveDeps);
 
   // steal (cmd-cave.c do_cmd_steal): the rogue / PF_STEAL lift-from-monster
@@ -2199,6 +2229,7 @@ function makeChangeLevel(
         /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
         state.chunk.onlyPartial = true;
         state.updateFov?.(state);
+        announceFeeling(state, reg);
         search(state); /* on_new_level (game-world.c:1052). */
         state.chunk.onlyPartial = false;
         return;
@@ -2250,11 +2281,11 @@ function makeChangeLevel(
           /* mon_create_drop's unique theft reduction reads the live lore store. */
           state.lore,
         ),
-        /* bug-fixes seam: read at build time (this call is synchronous, so a
-         * Fixes & tweaks toggle applies from the next level onward).
-         * "bugfix.stairsReachable" is the only flag cave_generate reads;
-         * absent => faithful. */
-        ...(state.modRules ? { modRules: state.modRules } : {}),
+        /* The mod behaviour seam, read at build time (this call is synchronous,
+         * so a Fixes & tweaks toggle applies from the next level onward).
+         * `levelGenerated` is the only hook cave_generate consults; absent =>
+         * faithful. */
+        ...(state.modHooks ? { hooks: state.modHooks } : {}),
         /* new_player_spot's placement failure (gen-util.c:422): always audible. */
         msg: (text: string): void => state.msg?.(text),
         /* cheat_room's restart narration (generate.c:1164, :1222): only when
@@ -2364,6 +2395,7 @@ function makeChangeLevel(
     /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
     state.chunk.onlyPartial = true;
     state.updateFov?.(state);
+    announceFeeling(state, reg);
     search(state); /* on_new_level (game-world.c:1052). */
     state.chunk.onlyPartial = false;
   };
@@ -2393,6 +2425,32 @@ function questSpawnsForDepth(
     spawns.push({ race, maxNum: q.maxNum });
   }
   return spawns;
+}
+
+/**
+ * on_new_level's level-feeling announcement (game-world.c:1047-1049):
+ *
+ *     if (player->depth)
+ *             display_feeling(false);
+ *
+ * The whole feeling system was ported - both message tables verbatim, the
+ * obj/mon rating arithmetic, place_feeling's scatter, feeling_squares, the
+ * birth_feelings gate, the LF: status row - and displayFeeling had exactly ONE
+ * caller in the repo: the ^F command. Nothing announced it on arrival, so a
+ * player who never pressed ^F never saw a feeling message in the whole game.
+ * That is the shape a call-site census is built to catch: the function exists and
+ * is correct, and no live path reaches it.
+ *
+ * The depth guard is the CALLER's upstream, not displayFeeling's own - the town
+ * line ("Looks like a typical town.") is reachable only through ^F, so guarding
+ * here rather than inside is what keeps the town silent on every arrival.
+ *
+ * Deliberately NOT called from the two arena paths, which mirror upstream's
+ * `arena_level` early return at game-world.c:1044-1046.
+ */
+function announceFeeling(state: GameState, reg: CoreRegistries): void {
+  if (!state.chunk.depth) return;
+  displayFeeling(state, { feelingNeed: reg.constants.feelingNeed });
 }
 
 /**
@@ -2725,6 +2783,10 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
      * faithful 4.2.6. Seeded a copy so later menu toggles mutate this map, not
      * the caller's. */
     ...(opts.modRules ? { modRules: { ...opts.modRules } } : {}),
+    /* The behaviour seam itself, already composed by the host. Not copied: it is
+     * a fold of functions, not mutable player state, and the menu re-composes it
+     * rather than editing it in place. */
+    ...(opts.modHooks ? { modHooks: opts.modHooks } : {}),
     lore: new Map(),
     /* birth_levels_persist (#30) frozen-level cache; empty until a level is
      * left with the option on (the whole persist path is option-gated). */
@@ -2844,6 +2906,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   state.chunk.onlyPartial = true;
   if (state.updateFov) {
     state.updateFov(state);
+    announceFeeling(state, reg);
     search(state); /* on_new_level (game-world.c:1052). */
     state.chunk.onlyPartial = false;
   }
@@ -3195,6 +3258,11 @@ export interface LoadGameOptions {
    */
   modRules?: Readonly<Record<string, boolean>>;
   /**
+   * The composed behaviour of every enabled mod (mod/hooks.ts). A client setting
+   * like the flags above; absent = faithful 4.2.6.
+   */
+  modHooks?: import("../mod/hooks").ModHooks;
+  /**
    * arg_wizard (savefile.c:631 savefile_load's cheat_death parameter): the game
    * was launched in wizard mode. Loading a DEAD character this way resurrects it
    * (savefile.c:647-651) and marks it NOSCORE_WIZARD so it stays off the score
@@ -3397,6 +3465,9 @@ export function loadGame(
      * load, so they are a client setting (like the enabled-mod set), not part of
      * the savefile. Absent/empty = faithful 4.2.6. */
     ...(opts.modRules ? { modRules: { ...opts.modRules } } : {}),
+    /* And the composed behaviour, recomputed by the host on load for the same
+     * reason the flags are: which mods are enabled is a client setting. */
+    ...(opts.modHooks ? { modHooks: opts.modHooks } : {}),
     lore: deserializeLore(save.lore, ids),
     /* Town stores + accrued daycount (rd_stores, gaps 12.1/12.2/12.3). Restored
      * from the save (never re-rolled) so the home stash and shop stock survive;

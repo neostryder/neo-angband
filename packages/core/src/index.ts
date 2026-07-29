@@ -84,6 +84,12 @@ export * from "./gen/util";
 export * from "./gen/room";
 export * from "./gen/cave";
 export * from "./gen/generate";
+/* gen-monster's pit machinery: resolvePits is the last piece of a GenDeps a
+ * caller outside core cannot otherwise build, so a mod that wants to run
+ * generateLevel itself (or test a levelGenerated hook against real levels) needs
+ * it. Everything else here is the same generation vocabulary gen/util already
+ * publishes. */
+export * from "./gen/gen-monster";
 export * from "./combat/index";
 export * from "./store/types";
 export * from "./store/bind";
@@ -94,6 +100,11 @@ export * from "./store/store-cmd";
 export * from "./session/boot";
 export * from "./session/game";
 export * from "./session/save";
+/* The behaviour seam itself: ModHooks (the closed set of extension points) and
+ * composeModHooks (the host's fold over several mods' contributions). A mod
+ * cannot write a hook without the type, and a host cannot install one without
+ * the fold, so both are part of the published API - see mod/hooks.ts. */
+export * from "./mod/hooks";
 export * from "./mod/save-blocks";
 export * from "./mod/ids";
 export * from "./mod/registry-host";
@@ -119,7 +130,6 @@ export * from "./game/effect-melee";
 export * from "./game/effect-summon";
 export * from "./game/effect-detect";
 export * from "./game/known";
-export * from "./game/msg-fixes";
 export * from "./game/inscription-confirm";
 export * from "./game/target";
 export * from "./game/target-loop";

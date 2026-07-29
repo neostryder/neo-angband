@@ -13,11 +13,16 @@
  * duplicate. Monster-count overflow is the one upstream post-build
  * regeneration trigger that is kept.
  *
- * NO ADDITIONS BEYOND UPSTREAM. The one optional extra this file can run is the
- * staircase-reachability repair (ensureStairsReachable in gen/util.ts), and it
- * is gated on the bug-fixes mod's "bugfix.stairsReachable" flag: absent (the
- * default, and the only possibility with no mod enabled) means this loop is a
- * faithful cave_generate, stranded floors included.
+ * NO ADDITIONS BEYOND UPSTREAM. This file holds no fix and no mod's name. It
+ * offers ONE extension point - the levelGenerated hook (mod/hooks.ts), consulted
+ * on an otherwise-accepted level, which a mod may use to inspect, repair or reject
+ * it. With no mod loaded the hook is absent and this loop is a faithful
+ * cave_generate, stranded floors included.
+ *
+ * The staircase-reachability repair used to live in gen/util.ts behind a
+ * "bugfix.stairsReachable" flag read here. That put a mod's fix, and a mod's name,
+ * inside core; it is now the bug-fixes mod's own code, reaching this loop through
+ * the hook like any third-party mod would.
  *
  * Level feeling (generate.c place_feeling / calc_obj_feeling /
  * calc_mon_feeling, L676-761 and L1235-1241) IS ported: placeFeeling scatters
@@ -42,7 +47,6 @@ import type { RoomRegistry } from "./room";
 import {
   Dun,
   Gen,
-  ensureStairsReachable,
   findEmpty,
   placeNewMonster,
   type Connector,
@@ -67,13 +71,13 @@ export interface GenDeps {
    */
   trapKinds?: readonly TrapKind[] | null;
   /**
-   * GameState.modRules (the bug-fixes mod seam), threaded from session/game.ts
-   * so the pure generation path can consult a named flag without importing
-   * session state. The only flag read here is "bugfix.stairsReachable"; absent
-   * or false - always the case with no mod enabled - keeps cave_generate
-   * faithful to 4.2.6, unreachable staircases included.
+   * The mod behaviour seam (mod/hooks.ts), threaded from session/game.ts so the
+   * pure generation path can offer its extension point without importing session
+   * state. Only `levelGenerated` is consulted here. Absent - always the case with
+   * no mod enabled - keeps cave_generate faithful to 4.2.6, unreachable
+   * staircases included.
    */
-  modRules?: Readonly<Record<string, boolean>> | undefined;
+  hooks?: import("../mod/hooks").ModHooks | undefined;
   /**
    * The cheat_room readout (generate.c:1164-1166 and :1222-1224): with that
    * cheat option on, upstream narrates every rejected level - both the builder
@@ -455,20 +459,19 @@ export function generateLevel(
     }
 
     /*
-     * bug-fixes mod, flag "bugfix.stairsReachable" (docs/modding/BUG_FIXES.md
-     * entry 13): upstream can seal a staircase inside a vault the tunneller
-     * never joined, leaving a floor with no walk-reachable stair in one
-     * direction (measured 10.2% of levels, mostly the up stair). Faithful core
-     * KEEPS that wart - the flag is absent unless the player enables the fix,
-     * and then the repair draws no RNG, so a level that was already fine stays
-     * bit-identical. A level that cannot be repaired is rejected and re-rolled,
-     * the same treatment as a monster-maximum overflow above.
+     * The finished-level seam (mod/hooks.ts levelGenerated). A mod gets the
+     * accepted level and may inspect it, repair it, or refuse it - refusing
+     * re-rolls, the same treatment as the monster-maximum overflow above.
+     *
+     * Faithful core has no opinion here: with no hook installed this is one
+     * undefined check and the level is accepted exactly as generated. The hook
+     * is contractually RNG-FREE (it is handed no rng) because a single draw at
+     * this point would desynchronise every draw after it and a seed would stop
+     * reproducing its dungeon - so a repair that happens is bit-identical to no
+     * repair on a level that needed none.
      */
-    if (
-      deps.modRules?.["bugfix.stairsReachable"] &&
-      !ensureStairsReachable(g, dun.quest)
-    ) {
-      error = "no reachable staircase";
+    if (deps.hooks?.levelGenerated?.(g, dun.quest) === false) {
+      error = "level rejected by a mod";
       deps.cheatMsg?.(`Generation restarted: ${error}.`);
       continue;
     }

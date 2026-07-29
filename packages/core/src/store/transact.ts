@@ -17,11 +17,17 @@
  *   the empty-store restock (store_maint x10 with the shopkeeper-shuffle roll),
  *   the ORIGIN_STORE stamp, the OF_STICKY "stuck" refusal, home_carry, and the
  *   comment_accept / purchase_analyze ONE_OF draws on the game RNG.
- * - DEFERRED: the rune learn-on-transaction loop (object_learn_unknown_rune /
- *   player_know_object -> the knowledge/display system, task #13); flavor
- *   awareness IS applied when a FlavorKnowledge is supplied. The obj->known
- *   twin, total_weight upkeep, autoinscription, and history_find/lose_artifact
- *   are DEFERRED.
+ * - LIVE: the rune learn-on-transaction loop (object_learn_unknown_rune) on BOTH
+ *   sides of the counter - selling (do_cmd_sell L1947-1953) and buying
+ *   (do_cmd_buy L1736-1742) - plus flavor awareness when a FlavorKnowledge is
+ *   supplied. The two were wired months apart, and while only the sell half
+ *   existed a purchase left an item's runes unknown; the header said DEFERRED for
+ *   both, which is how the asymmetry read as intentional.
+ * - Still DEFERRED: the obj->known twin, total_weight upkeep, autoinscription,
+ *   and history_find/lose_artifact.
+ * - Deliberately ABSENT: the HOME teaches nothing (do_cmd_retrieve L1783-1851 and
+ *   do_cmd_stash L2009 learn nothing at all), so homeRetrieve/homeStash have no
+ *   learn block and must not gain one.
  */
 
 import type { Constants } from "../constants";
@@ -201,8 +207,9 @@ export interface BuyResult {
 /**
  * do_cmd_buy (L1650): buy `amt` of the store-stock object `obj`. Copies the
  * desired amount, checks pack room and affordability, pays, carries it to the
- * player, and reduces the store stock (restocking an emptied store). The knows
- * flavor of the purchase; rune learning is DEFERRED (task #13).
+ * player, and reduces the store stock (restocking an emptied store). Learns the
+ * flavour, and every rune, on the way out - the same identification do_cmd_sell
+ * grants (L1736-1742 / L1947-1953).
  */
 export function storeBuy(
   ctx: StoreMaintContext,
@@ -250,21 +257,48 @@ export function storeBuy(
   /* Reduce the number of charges in the original store stack. */
   if (tvalCanHaveCharges(obj.tval)) obj.pval -= bought.pval;
 
-  /* Learn flavor (object_flavor_aware, including the #89 ignore fix); runes
-   * are DEFERRED (task #13). */
-  if (know.flavor) {
-    know.flavor.objectFlavorAware(bought.kind, know.flavorDeps ?? NOOP_FLAVOR_AWARE_DEPS);
-  }
-
-  /* Give it to the player. */
-  invenCarry(gear, bought, packLimits(constants));
-
-  /* comment_accept (do_cmd_buy L1717): one_in_(3) then ONE_OF, BEFORE any
-   * empty-store shuffle/maint so the main stream matches C statement order. */
+  /* comment_accept (do_cmd_buy L1717): one_in_(3) then ONE_OF. Upstream draws
+   * this BEFORE the rune learning at L1739-1741, and the rune loop draws from the
+   * main stream too - so this block has to stay ahead of it or a purchase that
+   * teaches a rune would put the port's stream out of step with the C. It was
+   * previously below, which was RNG-neutral only because nothing drew in between. */
   let acceptComment: string | undefined;
   if (rng.oneIn(3)) {
     acceptComment = COMMENT_ACCEPT[rng.randint0(COMMENT_ACCEPT.length)];
   }
+
+  /* "Learn flavor, any effect and all the runes" (do_cmd_buy L1736-1742).
+   *
+   * The rune half was missing, which is why buying an Amulet of Resist Acid left
+   * its rune unknown. This is byte-for-byte the block do_cmd_sell runs at
+   * L1947-1953 - the shopkeeper's counter teaches in BOTH directions - and the
+   * sell side was wired first (d2f7da13e), so only half the pair existed. The
+   * machinery was already being handed to this function: session/game.ts builds
+   * `learnRunes` for both directions and this one ignored it.
+   *
+   * Both halves must land BEFORE invenCarry below: the pack merge can absorb
+   * `bought` into an existing stack, and then there is no longer an object here to
+   * teach anything about.
+   *
+   * The home does NOT teach (do_cmd_retrieve L1783-1851 learns nothing at all),
+   * so homeRetrieve correctly has no equivalent of this block. */
+  if (know.flavor) {
+    know.flavor.objectFlavorAware(bought.kind, know.flavorDeps ?? NOOP_FLAVOR_AWARE_DEPS);
+  }
+  if (know.learnRunes) {
+    const { env, runes } = know.learnRunes;
+    while (!objectRunesKnown(player, env, bought, runes)) {
+      /* Each pass learns one rune. The bail-out is not upstream's (see the same
+       * loop in sellObject); a predicate disagreement would hang the game rather
+       * than mis-describe an item. */
+      if (!objectLearnUnknownRune(rng, player, env, bought, runes, know.flavor, know.flavorDeps)) {
+        break;
+      }
+    }
+  }
+
+  /* Give it to the player. */
+  invenCarry(gear, bought, packLimits(constants));
 
   /* Remove the bought objects unless a readily-replaced staple. */
   let emptied: "retired" | "restocked" | undefined;

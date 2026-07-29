@@ -31,7 +31,7 @@ const EXPECTED_FLAGS = [
   /* Entry 14: the owner's catch-all string-cleanup item. Measured before it was
    * built - 38 double-space-after-sentence literals, ZERO misspellings - so it
    * is one narrow whitespace rule plus an exact-match table that is empty on
-   * purpose. Proven in core's game/msg-fixes.test.ts. */
+   * purpose. Proven in packages/web/mods/bug-fixes/strings.test.ts. */
   "bugfix.miscStrings",
 ];
 
