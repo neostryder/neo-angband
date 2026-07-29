@@ -25,7 +25,9 @@ So:
   listed in the parity matrix (`docs/INSTALL.md`), never silently.
 - **Mod support in full is a desktop requirement**, including the on-disk pack
   layout an external manager can deploy into (Phase 4). The browser keeps what it
-  can host: the bundled mods and the in-app manager.
+  can host - which turned out to be more than this line first claimed: the bundled
+  mods, the in-app manager, *and* a real mods folder the player points it at (see
+  the correction under cost 3).
 
 The desktop build is also **self-contained by default** (ratified 2026-07-28, in
 answer to what "portable" was asked to mean):
@@ -119,6 +121,31 @@ a mod manager writes. The current desktop wrapper serves a `userData/mods`
 directory read-only over HTTP with a `/mods/index.json` listing - a half-step
 nothing can install *into*.
 
+> **My own sentence above was wrong, and corrected 2026-07-28 later the same day.**
+> "A browser origin cannot read a directory a mod manager writes" was true of the
+> platform I was thinking of and false of the one shipping. `showDirectoryPicker()`
+> hands the page a real `FileSystemDirectoryHandle`, and the handle is structured-
+> cloneable, so IndexedDB keeps it and every later launch reads the SAME folder
+> without asking again. The bytes a mod manager deploys there are the bytes the tab
+> reads. This is the second time a "the browser cannot" premise turned out to be a
+> statement about an older web - the first cost this port eighteen census absences -
+> so the rule is: check the API, do not recall the limit.
+>
+> **DONE.** `web/src/mod-folder.ts` supplies the handle; `disk-packs.ts` was split
+> into a source-agnostic `readModDir(source)` plus two sources (the shell's HTTP
+> index, a picked directory), so every rule about what a usable mod IS lives once
+> and both platforms obey it identically. A single mod's own folder is accepted as
+> well as a folder of mods, because that is what a player actually picks first.
+> Verified live: booting a tab opens the handle store and correctly reports no
+> folder; 28 tests, three mutations proven.
+>
+> What is genuinely reduced in a browser, and now stated in the UI rather than
+> excused: the player picks the folder once (a page may not browse a filesystem
+> uninvited); the permission can lapse, so the row reads `NEEDS RECONNECTING` and a
+> keypress re-grants it; the page is told the folder's name and never its path; and
+> Firefox and Safari cannot pick a directory at all, where `folderPickingSupported`
+> reports it and the manager offers no dead row.
+
 > **Measured 2026-07-28, and worse than "a half-step": the seam was DEAD.** The
 > main process served `/mods/index.json` and `/mods/<name>/...`, and the preload
 > exposed `modsBaseUrl` / `modsIndexUrl` on `window.neoDesktop` - and *nothing in
@@ -166,6 +193,21 @@ filesystem.
 > build's real files answer that), and decision 9's remaining word,
 > **schema-validated**: the load path still checks the version integer and
 > nothing else.
+>
+> **The eviction half is now ANSWERED IN PART, 2026-07-28, and "only real files"
+> was again too pessimistic.** A browser bucket is best-effort *by default*, not by
+> nature: `navigator.storage.persist()` moves the origin to persistent, which is
+> exempt from the browser's own eviction. `web/src/storage-persist.ts` asks for it
+> once, at the moment the first character save of a session lands - not at boot,
+> where there is nothing to protect and an engine that prompts would be prompting
+> about nothing - and the character-select screen carries a one-line warning while
+> the answer is no. Measured: a fresh dev origin on localhost is REFUSED (Chromium
+> grants by site engagement, and an installed PWA is the strongest signal), which is
+> exactly why the notice exists rather than an assumption that asking works.
+>
+> Still not fixed, and not to be mistaken for done: the player's own "clear browsing
+> data" erases everything regardless; the grant is never guaranteed on any engine;
+> and only real files on disk answer it completely, which remains Phase 5.
 
 **5. The split forced a second front end for anything host-shaped, and it bred
 stand-ins.** `wiz-stats` lives in the CLI, so the in-game wizard command cannot
