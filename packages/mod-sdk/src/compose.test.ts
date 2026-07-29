@@ -66,14 +66,14 @@ describe("manifest", () => {
 });
 
 describe("resolveLoadOrder", () => {
-  it("orders dependencies first with lexicographic ties", () => {
+  it("orders dependencies first, breaking ties by the caller's input order", () => {
     const order = resolveLoadOrder([
+      manifest("core"),
       manifest("zeta", { core: "*" }),
       manifest("alpha", { core: "*" }),
       manifest("bridge", { alpha: "*", zeta: "*" }),
-      manifest("core"),
     ]).map((m) => m.id);
-    expect(order).toEqual(["core", "alpha", "zeta", "bridge"]);
+    expect(order).toEqual(["core", "zeta", "alpha", "bridge"]);
   });
 
   it("rejects missing deps, duplicates, and cycles", () => {

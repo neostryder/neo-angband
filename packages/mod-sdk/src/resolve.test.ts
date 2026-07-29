@@ -30,14 +30,42 @@ function manifest(
 }
 
 describe("resolveLoadOrder: dependency graph", () => {
-  it("orders dependencies first with lexicographic ties", () => {
+  it("orders dependencies first, breaking ties by the caller's input order", () => {
+    /* zeta is listed before alpha and neither depends on the other, so zeta
+     * loads first - the resolver must not re-alphabetise the caller's list. */
     const order = resolveLoadOrder([
+      manifest("core"),
       manifest("zeta", { dependencies: { core: "*" } }),
       manifest("alpha", { dependencies: { core: "*" } }),
       manifest("bridge", { dependencies: { alpha: "*", zeta: "*" } }),
+    ]).map((m) => m.id);
+    expect(order).toEqual(["core", "zeta", "alpha", "bridge"]);
+  });
+
+  it("reverses that order when the caller reverses it", () => {
+    /* The companion of the test above, and the one that actually proves the
+     * player's reorder reaches the resolver: same packs, same edges, alpha and
+     * zeta swapped in the input, and the output swaps with it. Neither order is
+     * alphabetical for both runs, so a lexical tie-break fails one of them. */
+    const order = resolveLoadOrder([
       manifest("core"),
+      manifest("alpha", { dependencies: { core: "*" } }),
+      manifest("zeta", { dependencies: { core: "*" } }),
+      manifest("bridge", { dependencies: { alpha: "*", zeta: "*" } }),
     ]).map((m) => m.id);
     expect(order).toEqual(["core", "alpha", "zeta", "bridge"]);
+  });
+
+  it("keeps the base game first even when a mod's id sorts before it", () => {
+    /* A third-party mod that forgets `dependencies: {core: "*"}` used to compose
+     * BEFORE the base game purely because "aaa-overhaul" < "core", so core then
+     * overwrote it. Nothing pins core explicitly; being first in the caller's
+     * list is what does it, which is how every host already builds the list. */
+    const order = resolveLoadOrder([
+      manifest("core"),
+      manifest("aaa-overhaul"),
+    ]).map((m) => m.id);
+    expect(order).toEqual(["core", "aaa-overhaul"]);
   });
 
   it("rejects a missing required dependency", () => {
@@ -102,8 +130,8 @@ describe("resolveLoadOrder: version ranges", () => {
       manifest("zed", { optionalDependencies: { ghost: "*" } }),
       manifest("alpha"),
     ]).map((m) => m.id);
-    // No edge was created, so lexicographic order wins outright.
-    expect(order).toEqual(["alpha", "zed"]);
+    // No edge was created, so the caller's order stands untouched.
+    expect(order).toEqual(["zed", "alpha"]);
   });
 
   it("orders a present optional dependency before its dependent", () => {
@@ -173,28 +201,68 @@ describe("resolveLoadOrder: loadAfter / loadBefore", () => {
 });
 
 describe("resolveLoadOrder: determinism", () => {
-  it("produces the same order regardless of input array order", () => {
-    const packs = [
-      manifest("core"),
-      manifest("alpha", { dependencies: { core: "*" } }),
-      manifest("zeta", { dependencies: { core: "*" } }),
-      manifest("bridge", { dependencies: { alpha: "*", zeta: "*" } }),
-      manifest("loose"),
-    ];
+  /* This block used to assert "produces the same order regardless of input array
+   * order", which stated the defect as a guarantee: it is exactly the behaviour
+   * that made the mod manager's "Move later (loads last, wins conflicts)" row a
+   * no-op. Determinism means SAME input -> same output, not ANY input -> same
+   * output. The two assertions below are what that actually requires: repeatable
+   * for a fixed input, and dependency edges honoured under every input order. */
+  const packs = [
+    manifest("core"),
+    manifest("alpha", { dependencies: { core: "*" } }),
+    manifest("zeta", { dependencies: { core: "*" } }),
+    manifest("bridge", { dependencies: { alpha: "*", zeta: "*" } }),
+    manifest("loose"),
+  ];
 
-    const baseline = resolveLoadOrder(packs).map((m) => m.id);
+  const shuffles = [
+    [packs[4], packs[3], packs[2], packs[1], packs[0]],
+    [packs[2], packs[0], packs[4], packs[3], packs[1]],
+    [packs[1], packs[2], packs[3], packs[4], packs[0]],
+    [packs[3], packs[1], packs[0], packs[2], packs[4]],
+  ] as PackManifest[][];
 
-    // A handful of shuffles of the same manifest set.
-    const shuffles = [
-      [packs[4], packs[3], packs[2], packs[1], packs[0]],
-      [packs[2], packs[0], packs[4], packs[3], packs[1]],
-      [packs[1], packs[2], packs[3], packs[4], packs[0]],
-      [packs[3], packs[1], packs[0], packs[2], packs[4]],
-    ];
-    for (const shuffled of shuffles) {
-      expect(
-        resolveLoadOrder(shuffled as PackManifest[]).map((m) => m.id),
-      ).toEqual(baseline);
+  it("is repeatable: one input order always yields one output order", () => {
+    for (const input of [packs, ...shuffles]) {
+      const first = resolveLoadOrder(input).map((m) => m.id);
+      for (let again = 0; again < 3; again++) {
+        expect(resolveLoadOrder(input).map((m) => m.id)).toEqual(first);
+      }
     }
+  });
+
+  it("honours every dependency edge under any input order", () => {
+    for (const input of [packs, ...shuffles]) {
+      const order = resolveLoadOrder(input).map((m) => m.id);
+      expect([...order].sort()).toEqual(
+        ["alpha", "bridge", "core", "loose", "zeta"],
+      );
+      const at = (id: string): number => order.indexOf(id);
+      /* The edges declared above, checked as edges rather than as one expected
+       * sequence - a fixed sequence cannot tell a satisfied graph from an
+       * imposed order. */
+      expect(at("core")).toBeLessThan(at("alpha"));
+      expect(at("core")).toBeLessThan(at("zeta"));
+      expect(at("alpha")).toBeLessThan(at("bridge"));
+      expect(at("zeta")).toBeLessThan(at("bridge"));
+    }
+  });
+
+  it("lets the input order decide between two packs the graph leaves free", () => {
+    /* alpha and zeta are siblings under core with no edge between them, so the
+     * caller - the player's list, or load-order.json - is what decides. */
+    const core = manifest("core");
+    const alpha = manifest("alpha", { dependencies: { core: "*" } });
+    const zeta = manifest("zeta", { dependencies: { core: "*" } });
+    expect(resolveLoadOrder([core, alpha, zeta]).map((m) => m.id)).toEqual([
+      "core",
+      "alpha",
+      "zeta",
+    ]);
+    expect(resolveLoadOrder([core, zeta, alpha]).map((m) => m.id)).toEqual([
+      "core",
+      "zeta",
+      "alpha",
+    ]);
   });
 });
