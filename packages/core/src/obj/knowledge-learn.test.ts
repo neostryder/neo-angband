@@ -13,6 +13,7 @@ import type { ObjPackJson } from "./types";
 import { objectNew, sameMonstersSlain } from "./object";
 import type { GameObject } from "./object";
 import { ELEM_HIGH_MAX, OBJ_PROPERTY, OFID, OFT } from "./types";
+import type { ObjectProperty } from "./types";
 import {
   buildRuneList,
   equipLearnAfterTime,
@@ -545,5 +546,170 @@ describe("the rune list (init_rune) and per-object enumeration", () => {
     /* Nothing left: the object is assessed instead. */
     expect(objectLearnUnknownRune(rng, p, env, obj, runes)).toBe(false);
     expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(OBJ_NOTICE.ASSESSED);
+  });
+});
+
+/**
+ * flag_message (obj-properties.c:86-139).
+ *
+ * Pinned as a whole function rather than by its message text, because the census
+ * that found the two missing "Bug:" lines cannot see the three things underneath
+ * them: a substitution that was a paraphrase of the C's tag parser, and a
+ * `p->upkeep->playing` gate the port had moved off two call sites onto all four.
+ * A message the game does not send is exactly as invisible as one it sends wrong.
+ */
+describe("flag_message (obj-properties.c:86)", () => {
+  /** The base name equip_learn_flag will use for the boots below. */
+  const BOOTS = objectNew(kindOfTval(TV.BOOTS)).kind.name.replace(/[~&]/g, "").trim();
+
+  function flagProp(flag: number, msg: string | undefined): ObjectProperty {
+    return {
+      type: OBJ_PROPERTY.FLAG,
+      propIndex: flag,
+      ...(msg === undefined ? {} : { msg }),
+    } as unknown as ObjectProperty;
+  }
+
+  /**
+   * Equip boots carrying `flag`, then let equip_learn_flag notice it, against an
+   * env whose ONLY property records are the ones given - so a MISSING record is
+   * testable, which the real registry cannot be.
+   */
+  function notice(
+    flag: number,
+    msg: string | undefined,
+    props?: readonly (ObjectProperty | null)[],
+  ): string[] {
+    const p = makePlayerOf("Human");
+    const eq: (GameObject | null)[] = new Array(p.body.count).fill(null);
+    const messages: string[] = [];
+    const env = makeRuneEnv((slot) => eq[slot] ?? null, (v) => rng.randcalcVaries(v), {
+      properties: props ?? [flagProp(flag, msg)],
+      msg: (t) => messages.push(t),
+    });
+    const boots = objectNew(kindOfTval(TV.BOOTS));
+    boots.flags.on(flag);
+    eq[p.body.slots.findIndex((s) => s.type === "BOOTS")] = boots;
+    equipLearnFlag(p, env, flag);
+    return messages;
+  }
+
+  it("substitutes the object's base name for {name}", () => {
+    expect(notice(OF.FEATHER, "Your {name} slows your fall.")).toEqual([
+      `Your ${BOOTS} slows your fall.`,
+    ]);
+  });
+
+  it("drops a well-formed tag that is not {name} (L121-127)", () => {
+    /* The C only ever appends for a "name" tag; every other valid tag is consumed
+     * and contributes nothing. A {name}-only replace would leave it in place. */
+    expect(notice(OF.FEATHER, "Your {name} glows {somehow}.")).toEqual([
+      `Your ${BOOTS} glows .`,
+    ]);
+  });
+
+  it("drops an unclosed brace and keeps the rest (L129-132)", () => {
+    expect(notice(OF.FEATHER, "Your {name} hums {oddly.")).toEqual([
+      `Your ${BOOTS} hums oddly.`,
+    ]);
+  });
+
+  it('leaves %s alone: the C ends with msg("%s", buf) (L138)', () => {
+    /* No shipped record contains %s, but a content mod's own msg: can, and the
+     * port used to substitute the object name for it. */
+    expect(notice(OF.FEATHER, "Your %s twitches.")).toEqual(["Your %s twitches."]);
+  });
+
+  it("matches {names} too, because the C compares only four characters (L125)", () => {
+    expect(notice(OF.FEATHER, "Your {names} glow.")).toEqual([`Your ${BOOTS} glow.`]);
+  });
+
+  it("says nothing when the property carries no message (L108)", () => {
+    expect(notice(OF.FEATHER, undefined)).toEqual([]);
+  });
+
+  it("reports a flag with no object_property entry rather than falling silent", () => {
+    /* Reachable through a mod that removes or mistypes a record. */
+    expect(notice(OF.FEATHER, "x", [])).toEqual([
+      `Bug: flag 'FEATHER' (index ${OF.FEATHER}) noticed but has no entry in object_property.txt.`,
+    ]);
+  });
+
+  it("distinguishes an out-of-range index from a missing entry (L98-105)", () => {
+    expect(notice(OF.MAX, "x", [])).toEqual([
+      `Bug: invalid flag index, ${OF.MAX}, passed to flag_message().`,
+    ]);
+  });
+
+  /**
+   * The gate, both ways round. The C has it at TWO of flag_message's four call
+   * sites, and the port used to hold it inside the callee - which applied it to all
+   * four and suppressed messages upstream sends. Each test below asserts the
+   * PROPERTY message specifically, and each has a passing arm, so neither can go
+   * green by never reaching the call at all.
+   */
+  describe("the p->upkeep->playing gate belongs to the call sites", () => {
+    const NOTE = "Your {name} tingles.";
+
+    /**
+     * Wear boots carrying `flag`, run `act`, and collect the messages.
+     *
+     * A SYNTHETIC property record, because no shipped OFID_WIELD flag has a `msg:`
+     * at all - upstream's own flag_message call at :1858 never fires for the data
+     * it ships, so the real registry cannot tell a working gate from a broken one.
+     * The record carries the id-type both call sites select on, so both reach
+     * flag_message for the same flag and the only difference under test is the gate.
+     */
+    function wearing(
+      playing: boolean,
+      idType: number,
+      act: (p: Player, env: RuneEnv, obj: GameObject) => void,
+    ): string[] {
+      const flag = OF.FEATHER;
+      const p = makePlayerOf("Human");
+      const eq: (GameObject | null)[] = new Array(p.body.count).fill(null);
+      const messages: string[] = [];
+      const env = makeRuneEnv((slot) => eq[slot] ?? null, (v) => rng.randcalcVaries(v), {
+        properties: [
+          {
+            type: OBJ_PROPERTY.FLAG,
+            propIndex: flag,
+            idType,
+            msg: NOTE,
+          } as unknown as ObjectProperty,
+        ],
+        msg: (t) => messages.push(t),
+      });
+      p.upkeep.playing = playing;
+      const boots = objectNew(kindOfTval(TV.BOOTS));
+      boots.flags.on(flag);
+      eq[p.body.slots.findIndex((s) => s.type === "BOOTS")] = boots;
+      act(p, env, boots);
+      return messages;
+    }
+
+    /** Did the property's own message get sent? */
+    const sent = (messages: string[]): boolean =>
+      messages.some((m) => m.startsWith("Your") && m.endsWith("tingles."));
+
+    it("equip_learn_flag messages even when not playing (obj-knowledge.c:2110)", () => {
+      expect(sent(wearing(false, OFID.TIMED, (p, env) => equipLearnFlag(p, env, OF.FEATHER)))).toBe(
+        true,
+      );
+      /* The passing arm, so a change that stopped reaching flag_message entirely
+       * cannot make the assertion above vacuous. */
+      expect(sent(wearing(true, OFID.TIMED, (p, env) => equipLearnFlag(p, env, OF.FEATHER)))).toBe(
+        true,
+      );
+    });
+
+    it("object_learn_on_wield stays silent when not playing (obj-knowledge.c:1857)", () => {
+      expect(
+        sent(wearing(false, OFID.WIELD, (p, env, obj) => objectLearnOnWield(p, obj, env))),
+      ).toBe(false);
+      expect(
+        sent(wearing(true, OFID.WIELD, (p, env, obj) => objectLearnOnWield(p, obj, env))),
+      ).toBe(true);
+    });
   });
 });
