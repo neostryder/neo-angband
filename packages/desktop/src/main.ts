@@ -20,7 +20,7 @@
  *     lives in core (host/bridge.ts), so neither end can drift from the other.
  */
 
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
 import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -590,9 +590,34 @@ async function recoverStrandedOrigins(
   }
 
   const failed = await writeOriginStorage(stablePort, plan.writes);
-  /* Only mark the sources handled if everything landed. A quota failure must stay
-   * retryable - the bytes are still in the old origin, and they are a character. */
-  if (failed.length === 0) rememberMergedPorts(userDir, [...done, ...todo]);
+
+  /* Read it BACK before believing it. setItem returning true means Chromium
+   * accepted the value, not that the value is in the database; the marker written
+   * below says "these origins have been dealt with" and would then be a lie that
+   * hides a character permanently, because nothing looks at those origins again.
+   * The source origins are never modified, so a failed verification simply leaves
+   * the whole job retryable. Storage is flushed first so the check is against
+   * something durable rather than the same in-memory map that was just written. */
+  try {
+    await session.defaultSession.flushStorageData();
+  } catch {
+    /* Not fatal: the read-back below is the actual gate. */
+  }
+  const after = await readOriginStorage(stablePort);
+  const missing = Object.keys(plan.writes).filter((k) => !(k in after));
+  if (missing.length > 0) {
+    console.error(
+      `[neo-angband] recovery did not stick for ${missing.length} key(s): ` +
+        `${missing.join(", ")} - the old storage is untouched and it will be retried.`,
+    );
+  }
+
+  /* Only mark the sources handled if everything landed AND is still there. A quota
+   * failure must stay retryable - the bytes are still in the old origin, and they
+   * are a character. */
+  if (failed.length === 0 && missing.length === 0) {
+    rememberMergedPorts(userDir, [...done, ...todo]);
+  }
 
   const names = plan.recovered.map((r) => `${r.name}${r.hasSave ? "" : " (memorial)"}`);
   console.log(
