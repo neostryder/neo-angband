@@ -633,7 +633,11 @@ export interface GameState {
    * Core names no mod and reads no flag here. Which mod is asking, and why, is
    * not core's business.
    */
-  autoDigStep?: (state: GameState, grid: Loc) => number;
+  /* null means NO mod took the walk over, which is not the same as a mod taking
+   * it over for zero energy - ModHooks.walkBlockedByDiggable distinguishes the
+   * two on purpose and this seam has to carry the distinction, or the interface
+   * documents a case the engine cannot express. */
+  autoDigStep?: (state: GameState, grid: Loc) => number | null;
   /**
    * player_kill_monster's reward slice: runs when the PLAYER kills a
    * monster, before it is deleted (experience now; drops/lore/quests join

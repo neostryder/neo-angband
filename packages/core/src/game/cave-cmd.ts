@@ -676,8 +676,14 @@ export function movementAutoDig(
   state: GameState,
   grid: Loc,
   deps: CaveCmdDeps,
-): number {
-  return state.modHooks?.walkBlockedByDiggable?.(state, grid, deps) ?? 0;
+): number | null {
+  /* null, not 0. The hook's contract is that null means "not handled" and a NUMBER
+   * means "handled, charge this much energy" - including zero, which is how a mod
+   * consumes the keypress without costing the player a turn. Collapsing null to 0
+   * here made those two answers identical, so the zero-energy case documented in
+   * mod/hooks.ts could not actually happen: the caller's `> 0` test read it as
+   * "no mod supplied one" and fell through to the faithful wall-bump. */
+  return state.modHooks?.walkBlockedByDiggable?.(state, grid, deps) ?? null;
 }
 
 /* ------------------------------------------------------------------ *
