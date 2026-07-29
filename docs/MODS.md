@@ -148,9 +148,22 @@ still starts. A folder whose `manifest.json` claims a different id than the fold
 name is refused with an explanation, because every other surface - the enabled
 set, the load order, a save's provenance - keys off the manifest id.
 
-**Only the desktop build has a mods folder.** A browser origin cannot read a
-directory on your computer, so the web build offers exactly the bundled mods and
-says so. This is the one capability difference in the mod system.
+**Both builds can read a mods folder; only the desktop build knows where its own
+is.** The desktop build has a `mods/` directory beside the game and reads it at
+every launch. In a browser, the mod manager's "Choose a mods folder..." row asks you
+for one - and remembers it, so later visits read the same folder without asking
+again. It goes through the identical validator, so a mod behaves the same on both.
+
+The narrower reductions in a browser, precisely:
+
+- You pick the folder once; a page may not go looking through a filesystem
+  uninvited. Pick either a folder of mods or one mod's own folder.
+- The browser may need permission again after a long gap. The mod manager's row
+  then reads `NEEDS RECONNECTING`, because a folder that silently stopped being
+  read is the failure that looks like the mods vanished.
+- The page is told the folder's *name*, never its path, so only the name is shown.
+- Firefox and Safari cannot pick a directory at all. There the answer is still
+  "bundled mods only", and the manager says so instead of offering a dead row.
 
 ## Identity and composition
 

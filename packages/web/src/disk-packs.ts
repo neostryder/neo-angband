@@ -27,6 +27,16 @@
  * one line the mod manager can show, and the game still boots. A mod directory is
  * player-supplied data, so a bad one must never be able to stop the game
  * starting - the same reasoning as z-file.c returning NULL instead of dying.
+ *
+ * The reader is SOURCE-AGNOSTIC (2026-07-28), for the same reason z-file.c is one
+ * file behind several `main-*.c`: the desktop shell hands over a directory as an
+ * HTTP index on the loopback server, and a browser tab can hand over the very same
+ * directory as a `FileSystemDirectoryHandle` the player picked (mod-folder.ts).
+ * Those differ only in how five bytes are fetched. Every rule that decides what a
+ * usable mod IS - the manifest, the id/folder-name agreement, which failures
+ * condemn a pack and which merely lose one contribution, and who owns the load
+ * order - lives once, here, and both platforms obey it identically. Duplicating
+ * this loop per platform is how the two would have drifted.
  */
 
 import { validateManifest, type PackManifest } from "@neo-angband/mod-sdk";
@@ -44,6 +54,20 @@ export interface DiskPack {
   readonly files: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * Which kind of directory a report came from. The mod manager says different
+ * things about the three, and only this distinguishes them: `count === 0` is true
+ * of a shell with an empty folder AND of a browser tab that has never been given
+ * one, and those need opposite advice.
+ */
+export type ModDirKind =
+  /** No directory at all (a browser tab that has not picked one). */
+  | "none"
+  /** The shell's own folder, beside the game (the desktop build). */
+  | "app"
+  /** A folder the player picked in the browser (mod-folder.ts). */
+  | "picked";
+
 export interface DiskPackReport {
   readonly packs: readonly DiskPack[];
   /**
@@ -58,6 +82,8 @@ export interface DiskPackReport {
   readonly dir: string | null;
   /** False when this front end has no mods directory at all (a browser tab). */
   readonly available: boolean;
+  /** Which of the three kinds of directory this is. */
+  readonly kind: ModDirKind;
 }
 
 export const NO_DISK_PACKS: DiskPackReport = {
@@ -66,6 +92,7 @@ export const NO_DISK_PACKS: DiskPackReport = {
   problems: [],
   dir: null,
   available: false,
+  kind: "none",
 };
 
 /** The latched result, so the synchronous composer can read it. */
@@ -105,11 +132,142 @@ function asStringArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 }
 
+/** One candidate pack folder: its folder name and the file names inside it. */
+export interface ModDirEntry {
+  readonly id: string;
+  readonly files: readonly string[];
+}
+
 /**
- * Fetch and validate every pack in the mods directory.
+ * Where a mods directory's bytes come from.
+ *
+ * Deliberately tiny: a source knows how to enumerate folders, read one JSON file,
+ * and report a load order. It knows NOTHING about what makes a mod valid - that is
+ * readModDir's job, once, for every platform.
+ */
+export interface ModDirSource {
+  /** Which kind of directory this is, for the mod manager's wording. */
+  readonly kind: Exclude<ModDirKind, "none">;
+  /**
+   * The location to show a player. Called AFTER list(), because a source may only
+   * learn the real path while enumerating (the HTTP index carries it).
+   */
+  dir(): string | null;
+  /**
+   * The candidate pack folders. Throwing here means the DIRECTORY could not be
+   * read at all, which is one problem line rather than a per-pack one.
+   */
+  list(): Promise<readonly ModDirEntry[]>;
+  /** One JSON file inside a pack folder; throws when it cannot be read. */
+  readJson(id: string, file: string): Promise<unknown>;
+  /** load-order.json's `order` list, or [] when the folder has no such file. */
+  order(): Promise<readonly string[]>;
+}
+
+/**
+ * Validate every pack a source offers.
+ *
+ * This is the whole definition of "a usable mod folder", and it runs identically
+ * on the desktop shell and in a browser tab.
+ */
+export async function readModDir(source: ModDirSource): Promise<DiskPackReport> {
+  const problems: string[] = [];
+
+  let entries: readonly ModDirEntry[];
+  try {
+    entries = await source.list();
+  } catch (e) {
+    return {
+      packs: [],
+      order: [],
+      problems: [`Could not read the mods folder: ${message(e)}`],
+      dir: source.dir(),
+      available: true,
+      kind: source.kind,
+    };
+  }
+
+  const packs: DiskPack[] = [];
+  for (const entry of entries) {
+    const { id, files } = entry;
+    if (id === "") continue;
+    if (!files.some((f) => f.toLowerCase() === "manifest.json")) {
+      problems.push(`${id}: no manifest.json, so it is not a mod folder`);
+      continue;
+    }
+    const pack = await readPack(id, files, source, problems);
+    if (pack) packs.push(pack);
+  }
+
+  const known = new Set(packs.map((p) => p.manifest.id));
+  const order: string[] = [];
+  let wanted: readonly string[] = [];
+  try {
+    wanted = await source.order();
+  } catch (e) {
+    /* A load-order.json that exists and cannot be parsed is worth saying, but it
+     * must not cost the player their packs - the enabled set falls back to their
+     * own stored choices, which is what a folder with no load order does. */
+    problems.push(`load-order.json could not be read: ${message(e)}`);
+  }
+  for (const id of wanted) {
+    if (known.has(id)) order.push(id);
+    else problems.push(`load-order.json lists "${id}", which is not installed`);
+  }
+
+  return { packs, order, problems, dir: source.dir(), available: true, kind: source.kind };
+}
+
+/**
+ * The desktop shell's mods folder, served as an index plus one URL per file.
+ *
+ * The index is fetched once and cached, because it carries three answers (the
+ * folders, the load order, and the real path) that used to be one round trip and
+ * must stay one.
+ */
+export function httpModsSource(
+  indexUrl: string,
+  baseUrl: string,
+  doFetch: (url: string) => Promise<{ ok: boolean; json(): Promise<unknown> }>,
+): ModDirSource {
+  let index: RawIndex | null = null;
+  const fetchJson = async (url: string): Promise<unknown> => {
+    const res = await doFetch(url);
+    if (!res.ok) throw new Error("could not be read");
+    return await res.json();
+  };
+  return {
+    kind: "app",
+    dir: () => (typeof index?.dir === "string" ? index.dir : null),
+    list: async () => {
+      const parsed: unknown = await fetchJson(indexUrl).catch((e: unknown) => {
+        throw new Error(message(e));
+      });
+      if (parsed === null || typeof parsed !== "object") {
+        throw new Error("index is not an object");
+      }
+      index = parsed as RawIndex;
+      const raw = Array.isArray(index.packs) ? index.packs : [];
+      const out: ModDirEntry[] = [];
+      for (const entry of raw) {
+        if (entry === null || typeof entry !== "object") continue;
+        const id = (entry as { id?: unknown }).id;
+        if (typeof id !== "string" || id === "") continue;
+        out.push({ id, files: asStringArray((entry as { files?: unknown }).files) });
+      }
+      return out;
+    },
+    readJson: (id, file) => fetchJson(`${baseUrl}/${id}/${file}`),
+    order: () => Promise.resolve(asStringArray(index?.order)),
+  };
+}
+
+/**
+ * Fetch and validate every pack in the mods directory the SHELL provides.
  *
  * `scope` and `fetchImpl` are injected so this is testable without a browser;
- * production passes neither.
+ * production passes neither. A browser tab has no shell folder and resolves to
+ * NO_DISK_PACKS here - it reaches a folder through mod-folder.ts instead.
  */
 export async function loadDiskPacks(opts: {
   scope?: unknown;
@@ -128,64 +286,18 @@ export async function loadDiskPacks(opts: {
   const doFetch =
     opts.fetchImpl ??
     ((url: string) => (scope as { fetch: typeof fetch }).fetch(url));
-
-  const problems: string[] = [];
-  let raw: RawIndex;
-  try {
-    const res = await doFetch(indexUrl);
-    if (!res.ok) throw new Error(`index responded ${String(res.ok)}`);
-    const parsed: unknown = await res.json();
-    if (parsed === null || typeof parsed !== "object") throw new Error("index is not an object");
-    raw = parsed as RawIndex;
-  } catch (e) {
-    return {
-      packs: [],
-      order: [],
-      problems: [`Could not read the mods folder: ${message(e)}`],
-      dir: null,
-      available: true,
-    };
-  }
-
-  const dir = typeof raw.dir === "string" ? raw.dir : null;
-  const entries = Array.isArray(raw.packs) ? raw.packs : [];
-  const packs: DiskPack[] = [];
-
-  for (const entry of entries) {
-    if (entry === null || typeof entry !== "object") continue;
-    const id = (entry as { id?: unknown }).id;
-    if (typeof id !== "string" || id === "") continue;
-    const files = asStringArray((entry as { files?: unknown }).files);
-    if (!files.some((f) => f.toLowerCase() === "manifest.json")) {
-      problems.push(`${id}: no manifest.json, so it is not a mod folder`);
-      continue;
-    }
-    const pack = await readPack(id, files, baseUrl, doFetch, problems);
-    if (pack) packs.push(pack);
-  }
-
-  const known = new Set(packs.map((p) => p.manifest.id));
-  const order: string[] = [];
-  for (const id of asStringArray(raw.order)) {
-    if (known.has(id)) order.push(id);
-    else problems.push(`load-order.json lists "${id}", which is not installed`);
-  }
-
-  return { packs, order, problems, dir, available: true };
+  return await readModDir(httpModsSource(indexUrl, baseUrl, doFetch));
 }
 
 async function readPack(
   id: string,
   files: readonly string[],
-  baseUrl: string,
-  doFetch: (url: string) => Promise<{ ok: boolean; json(): Promise<unknown> }>,
+  source: ModDirSource,
   problems: string[],
 ): Promise<DiskPack | null> {
   let manifest: PackManifest;
   try {
-    const res = await doFetch(`${baseUrl}/${id}/manifest.json`);
-    if (!res.ok) throw new Error("could not be read");
-    manifest = validateManifest(await res.json());
+    manifest = validateManifest(await source.readJson(id, "manifest.json"));
   } catch (e) {
     problems.push(`${id}: ${message(e)}`);
     return null;
@@ -204,10 +316,11 @@ async function readPack(
     if (!file.toLowerCase().endsWith(".json")) continue;
     const stem = file.slice(0, -".json".length);
     if (stem === "manifest") continue;
+    /* load-order.json belongs to the DIRECTORY, not to a pack. A pack folder that
+     * happens to hold one must not have it bound as a record file. */
+    if (stem === "load-order") continue;
     try {
-      const res = await doFetch(`${baseUrl}/${id}/${file}`);
-      if (!res.ok) throw new Error("could not be read");
-      out[stem] = await res.json();
+      out[stem] = await source.readJson(id, file);
     } catch (e) {
       /* One bad record file does not condemn the pack: the composer will simply
        * not see that contribution, and the player is told which file it was. */

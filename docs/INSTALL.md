@@ -281,6 +281,7 @@ The same game everywhere. This table is the honest, per-surface difference list
 |---|---|---|---|---|
 | Full gameplay (faithful 4.2.6) | Yes | Yes | Yes | Yes |
 | Saves persist across sessions | Yes (localStorage) | Yes (localStorage) | Yes (localStorage) | Yes (localStorage) |
+| Saves exempt from browser eviction | If granted (5) | Usually (5) | If granted (5) | Usually (5) |
 | Works offline | Only after first load (SW) | Yes | Only after first load (SW) | Yes (always) |
 | Responsive / any viewport | Yes | Yes | Yes | Yes |
 | Bundled mods + in-app mod manager | Yes | Yes | Yes | Yes |
@@ -288,17 +289,21 @@ The same game everywhere. This table is the honest, per-surface difference list
 | Content-pack mods (bundled) | Yes | Yes | Yes | Yes |
 | Trusted in-process system-override mods | Yes | Yes | Yes | Yes |
 | Untrusted sandbox (Worker) mods | Yes | Yes | Yes | Yes |
-| Install mods from a folder | No (1) | No (1) | No (1) | **Yes** (2) |
+| Install mods from a folder | Yes, you pick it (1) | Yes, you pick it (1) | Yes, you pick it (1) | Yes, its own folder (2) |
 | SharedArrayBuffer / cross-origin isolation | Only with COOP/COEP headers | Same as host | Only if host sends COOP/COEP (3) | Yes (built in) |
 | Accessibility (screen reader, keyboard) | Yes (4) | Yes (4) | Yes (4) | Yes (4) |
 
 Notes:
-1. The web build inlines every mod at build time and has no runtime code loader,
-   so it cannot fetch and run a mod from a URL. The in-app mod manager says so
-   rather than showing a dead button. Bundled mods are fully manageable. (A
-   runtime mod-loader that lets a plain static site or PWA load user content-pack
-   and sandboxed-plugin mods from a file picker / drag-drop is a planned mods-
-   phase feature; it is an implementation gap, not a platform limitation.)
+1. The mod manager's "Choose a mods folder..." row asks you for a folder on your
+   computer and remembers it, so later visits read the same one without asking. It
+   is read by the same validator the desktop build uses, so a mod behaves
+   identically. Three narrower limits, each stated in the manager rather than left
+   to be discovered: you pick the folder once (a page may not browse a filesystem
+   uninvited); the browser may need permission again after a long gap, and the row
+   then says `NEEDS RECONNECTING`; and Firefox and Safari cannot pick a directory at
+   all, where the answer stays "bundled mods only". Neither surface has a runtime
+   CODE loader, so it still cannot fetch and RUN a mod from a URL - a folder of
+   records is data.
 2. The desktop build reads content and tile packs from its `mods/` folder, and an
    external mod manager can deploy into it (`load-order.json` is honoured). Neither
    surface has a runtime CODE loader, so a scripted-plugin mod still has to be
@@ -312,6 +317,15 @@ Notes:
    disabled on the game canvas (the page sets `maximum-scale=1,
    user-scalable=no`) so a stray pinch cannot blur or misalign the grid - resize
    the window or use your OS/browser page zoom instead.
+5. By default a browser may delete a site's whole storage bucket to reclaim space,
+   without asking - which under this game's terminal-death rule is permanent
+   character loss from a mechanism you never see. So the first time a character save
+   lands, the game asks for **persistent** storage, which is exempt from that.
+   Chromium grants it by engagement (installing the app is the strongest signal,
+   which is why the installed rows read "usually"); Firefox asks you. It is asked
+   for once, never re-nagged, and the character-select screen says plainly when the
+   answer was no. What it does not protect against: *you* clearing browsing data.
+   Real files on disk are the complete answer and are still coming.
 
 ---
 
