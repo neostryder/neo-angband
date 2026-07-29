@@ -59,7 +59,16 @@ const C_GOLD_TEXT = UI_GOLD;
 export interface DiskPackStatus {
   available: boolean;
   dir: string | null;
+  /** How many mods came from the FOLDER. On its own this number misleads. */
   count: number;
+  /**
+   * How many came from the bundle instead. Reported alongside `count` because
+   * the folder count alone reads as the whole mod list: "0 mods found in it" is
+   * true of an empty folder in a game shipping three mods, and says nothing
+   * about where those three are. Both numbers come from pack.ts, which is the
+   * only place that knows both sets.
+   */
+  bundledCount: number;
   problems: readonly string[];
   /** "app" = the shell's own folder; "picked" = one the player chose; "none". */
   kind: "none" | "app" | "picked";
@@ -209,46 +218,36 @@ function wrapped(text: string, width: number, color = C_FG): ScreenLine[] {
  * description flexes: the identity and trust lines are never dropped, and the
  * mod's own screen (few rows, a big budget) shows the description in full.
  */
-function rowDetail(m: CatalogMod, width = 80, maxLines = 99): ScreenLine[] {
-  const lines: ScreenLine[] = [];
-  lines.push({ text: `${m.name}  (id: ${m.id})`, color: C_TITLE });
-  lines.push({
-    text:
+export function rowDetail(m: CatalogMod, width = 80, maxLines = 99): ScreenLine[] {
+  const w = width - 1;
+  /* EVERY line here goes through wrapped(), not just the description. The
+   * description was wrapped and its siblings were not, so on any terminal
+   * narrower than the longest of them - "Non-deterministic: enabling this
+   * permanently marks the save non-reproducible." is 76 columns, a capability
+   * blurb can be longer - the pane sliced them mid-word at cols-1 while the
+   * paragraph above wrapped cleanly. */
+  const head: ScreenLine[] = [
+    ...wrapped(`${m.name}  (id: ${m.id})`, w, C_TITLE),
+    ...wrapped(
       m.kind === "content"
         ? `version ${m.version}  -  ${m.shape} pack`
         : `version ${m.version}  -  ${m.shape} pack, ${m.kind} plugin`,
-    color: C_FG,
-  });
+      w,
+    ),
+  ];
   const by = [m.manifest.author, m.manifest.license].filter(Boolean).join("  -  ");
-  if (by) lines.push({ text: by, color: C_DIM });
-  if (m.manifest.description) {
-    // Reserve room for everything below (patches / deps / warnings / consent),
-    // then give the description the rest.
-    const belowCount =
-      (m.manifest.rules?.length ? 3 : 0) +
-      (m.manifest.dependencies ? 1 : 0) +
-      (m.nondeterministic ? 1 : 0) +
-      (m.affectsGameplay ? 1 : 0) +
-      (m.capabilities.length === 0 ? 1 : m.capabilities.length + 2);
-    const room = Math.max(1, maxLines - lines.length - belowCount - 1);
-    const desc = wrapped(m.manifest.description, width - 1);
-    lines.push({ text: "", color: C_FG });
-    if (desc.length <= room) {
-      lines.push(...desc);
-    } else {
-      lines.push(...desc.slice(0, Math.max(1, room - 1)));
-      lines.push({ text: "...  (open the mod to read the rest)", color: C_DIM });
-    }
-  }
+  if (by) head.push(...wrapped(by, w, C_DIM));
+
+  const below: ScreenLine[] = [];
   const ruleCount = m.manifest.rules?.length ?? 0;
   if (ruleCount > 0) {
-    lines.push({ text: "", color: C_FG });
-    lines.push(
+    below.push({ text: "", color: C_FG });
+    below.push(
       ...wrapped(
         m.enabled
           ? `Patches: ${ruleCount}, all on. Open this mod to switch any of them off individually.`
           : `Patches: ${ruleCount}. None of them exist while this mod is disabled; enabling it turns them all on at once.`,
-        width - 1,
+        w,
         m.enabled ? C_ENABLED : C_DIM,
       ),
     );
@@ -256,35 +255,74 @@ function rowDetail(m: CatalogMod, width = 80, maxLines = 99): ScreenLine[] {
   const deps = m.manifest.dependencies
     ? Object.entries(m.manifest.dependencies).map(([d, v]) => `${d} ${v}`)
     : [];
-  if (deps.length) lines.push({ text: `Depends on: ${deps.join(", ")}`, color: C_FG });
+  if (deps.length) below.push(...wrapped(`Depends on: ${deps.join(", ")}`, w));
   if (m.nondeterministic) {
-    lines.push({
-      text: "Non-deterministic: enabling this permanently marks the save non-reproducible.",
-      color: C_WARN,
-    });
+    below.push(
+      ...wrapped(
+        "Non-deterministic: enabling this permanently marks the save non-reproducible.",
+        w,
+        C_WARN,
+      ),
+    );
   }
   if (m.affectsGameplay) {
-    lines.push({
-      text: "Gameplay-changing: enabling this permanently marks this save non-scoring.",
-      color: C_WARN,
-    });
+    below.push(
+      ...wrapped(
+        "Gameplay-changing: enabling this permanently marks this save non-scoring.",
+        w,
+        C_WARN,
+      ),
+    );
   }
   if (m.capabilities.length === 0) {
-    lines.push({ text: "Capabilities: none (content only).", color: C_DIM });
+    below.push(...wrapped("Capabilities: none (content only).", w, C_DIM));
   } else {
-    lines.push({ text: "Capabilities requested:", color: C_FG });
+    below.push(...wrapped("Capabilities requested:", w));
     for (const d of describeCapabilities(m.capabilities)) {
-      lines.push({
-        text: `  - ${d.text}${d.elevated ? "  [elevated]" : ""}`,
-        color: d.elevated ? C_WARN : C_FG,
-      });
+      /* Hanging indent so a wrapped bullet stays visibly one bullet. */
+      below.push(
+        ...wrapped(`  - ${d.text}${d.elevated ? "  [elevated]" : ""}`, w, d.elevated ? C_WARN : C_FG)
+          .map((l, i) => (i === 0 ? l : { ...l, text: `    ${l.text}` })),
+      );
     }
-    lines.push({
-      text: m.consented ? "Consent: granted." : "Consent: NOT granted (enable to review).",
-      color: m.consented ? C_ENABLED : C_WARN,
-    });
+    below.push(
+      ...wrapped(
+        m.consented ? "Consent: granted." : "Consent: NOT granted (enable to review).",
+        w,
+        m.consented ? C_ENABLED : C_WARN,
+      ),
+    );
   }
-  return lines;
+
+  /* The description gets whatever the head and the below block leave. This used
+   * to be a COUNT of how many lines each part was expected to occupy (rules ? 3
+   * : 0, deps ? 1 : 0, ...), which is only right while every one of them is a
+   * single line - and once they wrap, the guess under-reserves and the pane
+   * overflows. Measuring the built lines cannot drift from what is drawn. */
+  const lines = [...head];
+  const MORE = { text: "...  (open the mod to read the rest)", color: C_DIM };
+  if (m.manifest.description) {
+    const room = maxLines - head.length - below.length - 1;
+    const desc = wrapped(m.manifest.description, w);
+    if (desc.length <= room) {
+      lines.push({ text: "", color: C_FG }, ...desc);
+    } else if (room >= 2) {
+      lines.push({ text: "", color: C_FG }, ...desc.slice(0, room - 1), MORE);
+    } else {
+      /* No room for even a line of it plus the pointer: the head and the block
+       * below already fill the pane. Say so instead of showing a stub. */
+      lines.push({ text: "", color: C_FG }, MORE);
+    }
+  }
+  const all = [...lines, ...below];
+
+  /* Even with no description at all the pane can outgrow a short terminal, and
+   * overlay.ts's print loop just STOPS at the hint row - silently, from the
+   * bottom, which is where the two save-ratchet warnings are. Truncating here
+   * instead keeps the loss visible and keeps this function's length equal to
+   * what gets drawn, which is the property the caller's budget depends on. */
+  if (all.length <= maxLines) return all;
+  return [...all.slice(0, Math.max(1, maxLines - 1)), MORE];
 }
 
 /** True exactly while enabling `m` needs the one-time score warning. */
@@ -650,13 +688,18 @@ async function showModSources(
       },
       { text: `  ${status.dir ?? "(unknown)"}`, color: C_GOLD_TEXT },
       { text: "", color: C_FG },
+      /* Both numbers, always. "0 mods found in it." is TRUE and reads as "this
+       * game has no mods" while three are listed one screen away - the count is
+       * of the folder, but nothing said so, and nothing said where the others
+       * came from. A player with an empty folder needs to see that the folder is
+       * the empty part. */
       {
-        text:
-          status.count === 1
-            ? "1 mod found in it."
-            : `${status.count} mods found in it.`,
+        text: `${status.bundledCount} bundled with the game, ${status.count} from this folder.`,
         color: C_FG,
       },
+      ...(status.count === 0
+        ? [{ text: "Nothing has been copied into it yet.", color: C_DIM }]
+        : []),
       { text: "", color: C_FG },
       { text: "To add one, copy its folder in and restart. A mod folder holds", color: C_FG },
       { text: "manifest.json plus one .json per kind of record it changes -", color: C_FG },

@@ -18,10 +18,20 @@
  * do not, return to clear. The matching and the six selector functions live in
  * the core model (matchEquipCmpFilter / equipCmpFilterKeeps).
  *
+ * d dumps the rendered table through the port's host-io layer, like the other
+ * dumps (append_to_file). This header used to CLAIM that while no 'd' case
+ * existed at all - a stand-in sentence rather than a stand-in function, and just
+ * as invisible to either census, since a claim in a comment is what a reader
+ * checks instead of the code.
+ *
  * Simplified vs. upstream (see game/equip-cmp.ts's header for the model-side
  * notes): the intricate per-terminal-width page/view reconfiguration collapses
- * to plain vertical scroll plus a fixed 2/3-view split, and the file dump (d)
- * rides the port's host-io layer with the other dumps.
+ * to plain vertical scroll plus a fixed 2/3-view split.
+ *
+ * Still unported, named rather than faked: the two MOUSE context menus
+ * (L551-605, L1004-1042), which need a right-button/left-button distinction the
+ * GlyphTerm tap seam does not carry, and the horizontal property-column scroll
+ * is the port's own addition standing in for upstream's page reconfiguration.
  */
 
 import {
@@ -44,8 +54,10 @@ import type {
   UiEntryPackRecords,
 } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
-import { showTextScreen, selectFromMenu, menuNav, promptTextInline } from "./overlay";
+import { showTextScreen, menuNav, promptTextInline, getFile } from "./overlay";
 import type { ScreenLine } from "./overlay";
+import { dumpFileName } from "./charsheet";
+import { textLinesToFile, downloadUserFile } from "./userdir";
 import { wrapRuns } from "./screens";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_CURSOR } from "./ui-colors";
 
@@ -60,12 +72,38 @@ const ITEMS_TOP = 4;
 const NAME_COL = 4;
 const NAME_WIDTH = 20;
 
+/**
+ * The two menu_display_state prompts equip_cmp_display draws on the last row
+ * (ui-equip-cmp.c:313-324), one per input state.
+ */
+const PROMPT_GENERAL = "[k/up, j/down, p/PgUp, n/PgDn to move; ? for help; ESC to exit]";
+const PROMPT_SELECT = "[k/up, j/down, p/PgUp, n/PgDn to move; return to accept]";
+
+/** Row 0 when the filter left nothing to show (equip_cmp_display L358). */
+const EMPTY_FILTER_MSG = "No items; use q, !, c, or R to change filter";
+
+/**
+ * The four source-cycle messages (trans_msg_onlystore / _withstore / _carried),
+ * set as dlg_trans_msg by ACT_CTX_EQUIPCMP_CYCLE_SOURCES (L694-730). They belong
+ * on row 0 for one paint, not pinned to the footer: EQUIPPABLE_NO_STORE has no
+ * message at all, which only reads correctly if the others are transient too.
+ */
 const SOURCE_MSG: Record<StoreInclusion, string> = {
   "no-store": "",
   "only-store": "Only showing goods from stores; press c to change",
   "yes-store": "Showing possessions and goods from stores; press c to change",
   "only-carried": "Only showing carried items; press c to change",
 };
+
+/**
+ * trans_msg_unknown_key, shared by both input handlers (ui-equip-cmp.c:469 and
+ * :983). It is the screen's own discoverability: press anything it does not know
+ * and it tells you where the key list is.
+ */
+const UNKNOWN_KEY = "Unknown key pressed; ? will list available keys";
+
+/** Keys that are a modifier being held, not a keystroke the C would ever see. */
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock"]);
 
 const SRC_CHAR: Record<string, string> = {
   worn: "e",
@@ -80,6 +118,11 @@ export interface EquipCmpDeps {
   packs: UiEntryPackRecords;
   entryDeps?: EquipCmpOptions["entryDeps"];
   inspectExtras: ObjectInfoExtras;
+  /**
+   * The character's name, for the 'd' dump's suggested filename:
+   * player_safe_name(p->full_name) + "_equip.txt" (ui-equip-cmp.c:770-772).
+   */
+  playerName: string;
 }
 
 /**
@@ -122,7 +165,13 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
-      term.print(0, HEADER_ROW, dlgMsg || "Equipment comparison".slice(0, cols - 1), dlgMsg ? UI_GOLD : TITLE);
+      /* equip_cmp_display L347-363: row 0 is the transition message, cleared
+       * after one paint; with no message it carries the empty-filter warning if
+       * nothing passed the filter, and is otherwise blank. The port had put a
+       * "Equipment comparison" title here that upstream never draws, which is
+       * also why the empty-list case had nothing to say. */
+      const row0 = dlgMsg || (model.items.length === 0 ? EMPTY_FILTER_MSG : "");
+      if (row0) term.print(0, HEADER_ROW, row0.slice(0, cols - 1), dlgMsg ? UI_GOLD : TITLE);
       dlgMsg = "";
 
       const colIdx = viewColumns();
@@ -149,14 +198,21 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
       });
 
       const bodyRows = Math.max(1, rows - ITEMS_TOP - 1);
-      if (cursor < top) top = cursor;
-      if (cursor >= top + bodyRows) top = cursor - bodyRows + 1;
+      /* In select mode work_sel is what the view follows and what is
+       * highlighted; the general cursor is left where it was (the C keeps
+       * ifirst/npage and only tracks work_sel while selecting). */
+      const focus = selState !== null ? workSel : cursor;
+      if (focus < top) top = focus;
+      if (focus >= top + bodyRows) top = focus - bodyRows + 1;
       for (let r = 0; r < bodyRows; r++) {
         const i = top + r;
         const item = model.items[i];
         if (!item) break;
         const y = ITEMS_TOP + r;
-        const selected = i === cursor;
+        /* display_page L222-224: the name goes L_BLUE for isel0, isel1 OR
+         * work_sel - so the item already chosen stays lit while the second is
+         * being picked, which is how you can see what you are comparing to. */
+        const selected = i === focus || i === isel0;
         term.put(0, y, { ch: item.equippyCh, fg: colorToCss(item.equippyAttr) });
         term.print(2, y, SRC_CHAR[item.src] ?? "?", DIM);
         term.print(NAME_COL, y, item.shortName.padEnd(NAME_WIDTH).slice(0, NAME_WIDTH), selected ? UI_CURSOR : FG);
@@ -167,25 +223,110 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
         });
       }
 
-      const srcMsg = SOURCE_MSG[source];
-      const footer = srcMsg || "[j/k move; n/p page; c source; v view; q/! filter; r reverse; x compare; ? help; ESC]";
-      term.print(0, rows - 1, footer.slice(0, cols - 1), DIM);
+      /* "Use last row for prompt" (L372-374): one of the menu_display_state
+       * prompts, chosen by the input state. Both were invented before - a
+       * hand-written key list downstairs and the source message pinned there
+       * permanently, where upstream shows it once on row 0 and clears it. */
+      term.print(0, rows - 1, (selState !== null ? PROMPT_SELECT : PROMPT_GENERAL).slice(0, cols - 1), DIM);
     };
 
+    /**
+     * display_equip_cmp_help (ui-equip-cmp.c:377-414), transcribed. It had been
+     * PARAPHRASED into this shell's own wording, which is worse than an absence:
+     * a paraphrase fills the slot, so no census can see it, and a player reading
+     * it cannot tell which keys the screen really has. Every line below is one
+     * prt() call in the C, in its order, with its spacing.
+     *
+     * The only added line is Left/Right, because the port's simplified paging
+     * scrolls the property columns where upstream reconfigures pages instead
+     * (see this file's header note) - so that key exists here and nowhere in the
+     * C, and the help has to say so rather than leave it undiscoverable.
+     */
     const showHelp = async (): Promise<void> => {
       await showTextScreen(term, "Equipment comparison - help", [
-        { text: "j, down / k, up   move one line" },
-        { text: "n, PgDn / p, PgUp page" },
-        { text: "c   cycle equipment source (none / only store / all / carried only)" },
-        { text: "v   cycle attribute view" },
-        { text: "q   filter by a 2- or 3-character attribute code (return clears)" },
-        { text: "!   filter by NOT having that attribute" },
-        { text: "r   reverse order" },
-        { text: "R   reset to defaults" },
-        { text: "x, I select one or two items to compare" },
-        { text: "Left/Right  scroll property columns" },
-        { text: "ESC exit" },
-      ].map((l) => ({ text: l.text, color: FG }) as ScreenLine));
+        "Movement/scrolling ---------------------------------",
+        "j, down  one line down    k, up    one line up",
+        "n, PgDn  one page down    p, PgUp  one page up",
+        "space    one page down",
+        "left, right  scroll the property columns",
+        "Filtering/searching/sorting ------------------------",
+        "q        quick filter     !        use opposite quick",
+        "c        cycle through sources of items",
+        "r        reverse",
+        "Information ----------------------------------------",
+        "v        cycle through attribute views",
+        "I, x     select one or two items for details",
+        "Other ----------------------------------------------",
+        "d        dump to file     R        reset display",
+        "ESC      exit",
+      ].map((text) => ({ text, color: FG }) as ScreenLine));
+    };
+
+    /**
+     * display_equip_cmp_sel_help (ui-equip-cmp.c:894-918), transcribed. This
+     * screen was entirely absent: select mode had no '?' at all, so the one place
+     * a player is most likely to press it was the one place it did nothing.
+     */
+    const showSelHelp = async (): Promise<void> => {
+      await showTextScreen(term, "Equipment comparison - help", [
+        "j, down   move selection one line down",
+        "k, up     move selection one line up",
+        "n, PgDn   move selection one page up",
+        "p, PgUp   move selection one page up",
+        "x         stop selection; if first item, escapes",
+        "return    select current item",
+        "ESC       leave selection process",
+      ].map((text) => ({ text, color: FG }) as ScreenLine));
+    };
+
+    /**
+     * append_to_file (ui-equip-cmp.c:1481-1545): the rendered table, dumped as
+     * text - the property label rows, the combined "@" row, then every item row,
+     * each with its trailing spaces backed off. Upstream walks page by page
+     * because its display is paged; the port's simplified model shows one
+     * continuous list, so "every page" is "every row" here, and the current view
+     * and filter select the columns and rows exactly as they do on screen.
+     *
+     * Built as one string rather than appended through an open handle, for the
+     * reason dumpCharacterFile gives: z-file.c's ang_file layer is not ported, so
+     * there is no file_putf to append with.
+     */
+    const dumpText = (): string => {
+      const colIdx = viewColumns();
+      const pad = NAME_COL + NAME_WIDTH;
+      const rows: string[] = [];
+      for (const which of [0, 1]) {
+        rows.push(
+          " ".repeat(pad) + colIdx.map((ci) => model.columns[ci]?.label[which] ?? " ").join(""),
+        );
+      }
+      rows.push(
+        "@".padEnd(pad) + colIdx.map((ci) => model.combinedCells[ci]?.symbol ?? " ").join(""),
+      );
+      for (const item of model.items) {
+        const name = `${item.equippyCh} ${SRC_CHAR[item.src] ?? "?"} ${item.shortName}`;
+        rows.push(
+          name.padEnd(pad).slice(0, pad) +
+            colIdx.map((ci) => item.cells[ci]?.symbol ?? " ").join(""),
+        );
+      }
+      /* "Back up over spaces" (L1528-1530), per row. */
+      return `${rows.map((r) => r.replace(/ +$/, "")).join("\n")}\n`;
+    };
+
+    /**
+     * ACT_CTX_EQUIPCMP_DUMP_FILE (ui-equip-cmp.c:765-783). The suffix is
+     * "_equip.txt" over player_safe_name, which charsheet.ts's dumpFileName
+     * already cited and offered - the key that reaches it was simply never
+     * wired, so this screen's own header claimed a dump that did not exist.
+     */
+    const dumpToFile = async (): Promise<void> => {
+      const file = await nested(() => getFile(term, dumpFileName(deps.playerName, "_equip.txt")));
+      if (file === null) return;
+      dlgMsg = textLinesToFile(file, dumpText())
+        ? "Failed to save to file!"
+        : "Successfully saved to file";
+      if (!dlgMsg.startsWith("Failed")) downloadUserFile(file, dumpText());
     };
 
     const compare = async (i0: number, i1: number | null): Promise<void> => {
@@ -258,28 +399,96 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
       rebuild();
     };
 
-    const runSelect = async (): Promise<void> => {
-      if (model.items.length === 0) return;
-      const items = model.items.map((it, i) => ({ label: `${it.shortName}`, color: i === cursor ? UI_CURSOR : FG }));
-      const first = await selectFromMenu(term, "Select first item to compare (ESC to skip)", items);
-      if (first === null) return;
-      const second = await selectFromMenu(
-        term,
-        "Select second item to compare (ESC to show just the first)",
-        items,
-      );
-      await compare(first, second);
+    /**
+     * handle_input_equip_cmp_select (ui-equip-cmp.c:920-1225). Select mode is not
+     * a separate picker: it is a second INPUT STATE over the same table, with its
+     * own key set and its own highlighted row (work_sel), and the two items are
+     * chosen one after the other in place.
+     *
+     * The port had invented a pair of selectFromMenu overlays instead - a list of
+     * bare item names, twice, with the port's own prompt wording. That lost the
+     * grid the screen exists to show (you picked blind, from a list stripped of
+     * every property column), lost 'x' as "skip the second and just show the
+     * first", and lost '?'. Reading upstream's istate machine is what turned it
+     * up: the C returns EQUIP_CMP_MENU_SEL0/SEL1 from the general handler and
+     * keeps drawing the same page.
+     */
+    /** Upstream's istate while selecting: 0 = SEL0, 1 = SEL1, null = general. */
+    let selState: 0 | 1 | null = null;
+    /** s->work_sel, the row the selection cursor is on. */
+    let workSel = -1;
+    /** s->isel0, the first chosen row, once accepted. */
+    let isel0 = -1;
+
+    /** ESC / a finished comparison: isel0 = isel1 = work_sel = -1 (L1188-1191). */
+    const leaveSelect = (): void => {
+      selState = null;
+      workSel = -1;
+      isel0 = -1;
     };
 
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
+      /* A held modifier is not a keystroke: without this it would report
+       * "Unknown key pressed" for pressing Shift on the way to '!'. */
+      if (MODIFIER_KEYS.has(ev.key)) return;
       const { rows } = term.size();
       const page = Math.max(1, rows - ITEMS_TOP - 2);
       const last = Math.max(0, model.items.length - 1);
       // Arrows AND numpad digits move the cursor (menuNav), so the numpad is
       // not dead here when NumLock is on; horizontal arrows still column-scroll.
       const nav = menuNav(ev);
+
+      /* Select mode owns every key while it is active (the C dispatches to
+       * handle_input_equip_cmp_select instead of ..._general for SEL0/SEL1). */
+      if (selState !== null) {
+        const move = (d: number): void => { workSel = Math.min(last, Math.max(0, workSel + d)); };
+        switch (nav !== null ? `nav:${nav}` : ev.key) {
+          case "nav:down": case "j": case "ArrowDown": move(1); break;
+          case "nav:up": case "k": case "ArrowUp": move(-1); break;
+          case "nav:pagedown": case "n": case "PageDown": move(page); break;
+          case "nav:pageup": case "p": case "PageUp": move(-page); break;
+          case "x":
+            /* SELECT_SKIP (L1182-1191): from SEL1 show just the first item;
+             * from SEL0 it "acts like ESC". */
+            if (selState === 1) {
+              const first = isel0;
+              leaveSelect();
+              void (async () => { await nested(() => compare(first, null)); paint(); })();
+              return;
+            }
+            leaveSelect();
+            break;
+          case "Enter":
+            /* SELECT_ACCEPT (L1193-1207). */
+            if (workSel < 0 || workSel > last) break;
+            if (selState === 0) {
+              isel0 = workSel;
+              selState = 1;
+              dlgMsg = "Select second item; x to skip";
+              break;
+            } else {
+              const a = isel0;
+              const b = workSel;
+              leaveSelect();
+              void (async () => { await nested(() => compare(a, b)); paint(); })();
+              return;
+            }
+          case "?":
+            void (async () => { await nested(showSelHelp); paint(); })();
+            return;
+          case "Escape":
+            leaveSelect();
+            break;
+          default:
+            dlgMsg = UNKNOWN_KEY;
+            break;
+        }
+        paint();
+        return;
+      }
+
       if (nav === "up") { cursor = Math.max(0, cursor - 1); paint(); return; }
       if (nav === "down") { cursor = Math.min(last, cursor + 1); paint(); return; }
       if (nav === "pageup") { cursor = Math.max(0, cursor - page); paint(); return; }
@@ -323,6 +532,7 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
                 : source === "yes-store"
                   ? "only-carried"
                   : "no-store";
+          dlgMsg = SOURCE_MSG[source];
           rebuild();
           break;
         case "v":
@@ -355,8 +565,17 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
           return;
         case "x":
         case "I":
+          /* START_SELECT (L810-815): work_sel = ifirst - the top of the page in
+           * view, not the general cursor - then straight into SEL0. */
+          if (model.items.length === 0) break;
+          workSel = top;
+          isel0 = -1;
+          selState = 0;
+          dlgMsg = "Select first item to examine";
+          break;
+        case "d":
           void (async () => {
-            await nested(runSelect);
+            await dumpToFile();
             paint();
           })();
           return;
@@ -367,7 +586,10 @@ export function showEquipCmp(term: GlyphTerm, state: GameState, deps: EquipCmpDe
           })();
           return;
         default:
-          return;
+          /* ACT_CTX_EQUIPCMP_UNKNOWN (L885-887). Saying nothing was its own bug:
+           * this message is the only thing that tells a player '?' exists. */
+          dlgMsg = UNKNOWN_KEY;
+          break;
       }
       paint();
     };

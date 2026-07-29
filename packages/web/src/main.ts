@@ -1669,10 +1669,15 @@ const inspectExtras: ObjectInfoExtras = {
  * UiEntryConfig itself, keyed on this same object). */
 const uiEntryPacks = loadUiEntryPacks();
 
-/** Deps showEquipCmp needs: the ui_entry packs plus the same object-info
- * extras the Inspect command uses (item comparison textblocks). */
-function equipCmpDeps(): { packs: typeof uiEntryPacks; inspectExtras: ObjectInfoExtras } {
-  return { packs: uiEntryPacks, inspectExtras };
+/** Deps showEquipCmp needs: the ui_entry packs, the same object-info extras the
+ * Inspect command uses (item comparison textblocks), and the character name for
+ * the 'd' dump's suggested "<name>_equip.txt". */
+function equipCmpDeps(): {
+  packs: typeof uiEntryPacks;
+  inspectExtras: ObjectInfoExtras;
+  playerName: string;
+} {
+  return { packs: uiEntryPacks, inspectExtras, playerName };
 }
 
 /**
