@@ -119,6 +119,7 @@ import {
   targetGet,
   targetSighted,
   playerIsShapechanged,
+  playerCanRead,
   FEAT,
   miscStringFix,
   enterStoreGuard,
@@ -1398,7 +1399,7 @@ function buildItemSources(
       ? deviceMenu(state, tester, isKindAware)
       : packMenu(state, tester);
     if (items.length > 0) {
-      sources.push({ label: "Inven", items });
+      sources.push({ label: "Inven", items, kind: "inven" });
       refs.push(handles.map((h) => ({ handle: h })));
     }
   }
@@ -1418,14 +1419,14 @@ function buildItemSources(
       eRefs.push({ handle });
     }
     if (items.length > 0) {
-      sources.push({ label: "Equip", items });
+      sources.push({ label: "Equip", items, kind: "equip" });
       refs.push(eRefs);
     }
   }
   if (mode.quiver) {
     const { items, handles } = quiverMenu(state, tester);
     if (items.length > 0) {
-      sources.push({ label: "Quiver", items });
+      sources.push({ label: "Quiver", items, kind: "quiver" });
       refs.push(handles.map((h) => ({ handle: h })));
     }
   }
@@ -1440,7 +1441,7 @@ function buildItemSources(
       fRefs.push({ floor: i });
     });
     if (items.length > 0) {
-      sources.push({ label: "Floor", items });
+      sources.push({ label: "Floor", items, kind: "floor" });
       refs.push(fRefs);
     }
   }
@@ -1544,13 +1545,23 @@ async function selectItemFrom(
   deviceFail = false,
   cmdCode?: string,
   isHarmless = false,
+  /**
+   * Which listing to OPEN in - upkeep->command_wrk, which do_cmd_inven /
+   * do_cmd_equip / do_cmd_quiver each set before the shared get_item
+   * (ui-knowledge.c:4036, 4082, 4131). It selects the starting tab only; every
+   * source in `mode` stays reachable from inside the picker.
+   */
+  startIn?: "inven" | "equip" | "quiver" | "floor",
 ): Promise<ItemTargetRef | null> {
   const { sources, refs } = buildItemSources(tester, mode, deviceFail);
   if (sources.length === 0) {
     say(reject);
     return null;
   }
-  const chosen = await itemSelect(term, prompt.trim(), sources, 0, cmdKey);
+  /* buildItemSources emits them in this order, and only for the enabled modes,
+   * so the index has to be looked up rather than assumed. */
+  const initial = startIn ? Math.max(0, sources.findIndex((s) => s.kind === startIn)) : 0;
+  const chosen = await itemSelect(term, prompt.trim(), sources, initial, cmdKey);
   if (chosen === null) return null;
   const ref = refs[chosen.source]?.[chosen.index] ?? null;
   if (!(await allowChosenItem(ref, cmdKey, cmdCode, isHarmless))) return null;
@@ -2021,10 +2032,25 @@ function isObjectEquipped(obj: GameObject, handle: number): boolean {
   return state.actor.player.equipment.includes(handle);
 }
 
+/**
+ * context_menu_object's return value (ui-context.c:654-899), which its callers
+ * loop on. It had been dropped - the port returned void - so both loops were
+ * gone: cancelling the menu ended the whole command instead of going back to the
+ * item picker, and inspecting an item threw you out instead of returning to its
+ * menu.
+ */
+type ContextMenuResult = 1 | 2 | 3;
+/** A command was queued, or the action is finished. Both loops end. */
+const CTX_DONE: ContextMenuResult = 1;
+/** It showed a screen (Inspect, Browse): reopen this menu on the same object. */
+const CTX_REOPEN: ContextMenuResult = 2;
+/** The user escaped the menu: go back to the item picker. */
+const CTX_CANCELLED: ContextMenuResult = 3;
+
 /** context_menu_object: the per-item action menu (reached from the inventory/equipment picker). */
-async function runContextMenuObject(handle: number): Promise<void> {
+async function runContextMenuObject(handle: number): Promise<ContextMenuResult> {
   const obj = gearGet(state.gear, handle);
-  if (!obj) return;
+  if (!obj) return CTX_DONE;
   const isBook = playerObjectToBook(state.actor.player, obj) !== null;
   const equipped = isObjectEquipped(obj, handle);
   const ctx: ObjectMenuCtx = {
@@ -2034,6 +2060,7 @@ async function runContextMenuObject(handle: number): Promise<void> {
     useKind: isBook ? "other" : objectUseKind(obj),
     canFire: !isBook && tvalIsAmmo(obj.tval) && obj.tval === state.actor.combat.ammoTval,
     canRefill: objCanRefill(state, obj),
+    canBrowse: isBook && playerCanRead(state, {}, false),
     isEquipped: equipped,
     canWear: !equipped && tvalIsWearable(obj.tval),
     canThrow: true,
@@ -2046,14 +2073,17 @@ async function runContextMenuObject(handle: number): Promise<void> {
     `Command for ${objectName(state, obj)}`,
     toMenuItems(items),
   );
-  if (idx === null) return;
+  /* selected == -1: "User cancelled the menu." (ui-context.c:809-810) */
+  if (idx === null) return CTX_CANCELLED;
   switch (items[idx]?.action) {
     case "inspect": {
       const name = objectName(state, obj);
       const header = name.charAt(0).toUpperCase() + name.slice(1);
       const tb = objectInfoTextblock(state, obj, inspectExtras);
       await showTextScreen(term, header, wrapRuns(tb, term.size().cols));
-      break;
+      /* MENU_VALUE_INSPECT returns 2 (L821): the caller reopens this menu on the
+       * same object, so reading an item's info does not throw you out of it. */
+      return CTX_REOPEN;
     }
     case "cast":
       await castSpell();
@@ -2061,6 +2091,11 @@ async function runContextMenuObject(handle: number): Promise<void> {
     case "study":
       await studySpell();
       break;
+    case "browse":
+      /* CMD_BROWSE_SPELL returns 2 (ui-context.c:871-876), like Inspect: you
+       * come back to the item's menu after reading the book. */
+      await browseBookObject(handle);
+      return CTX_REOPEN;
     case "aim":
       await dispatchItemVerb("aim-wand", handle, obj);
       break;
@@ -2124,31 +2159,65 @@ async function runContextMenuObject(handle: number): Promise<void> {
     default:
       break;
   }
+  return CTX_DONE;
 }
 
-/** A dedicated item picker into the per-item context menu (equip+pack), the
- * discoverable home for context_menu_object until the inventory/equipment
- * viewers grow their own second-tap/Enter hook into it. */
-async function openItemActionsMenu(): Promise<void> {
-  const { items, handles } = packMenu(state, () => true);
-  const player = state.actor.player;
-  for (let i = 0; i < player.body.count; i++) {
-    const handle = player.equipment[i] ?? 0;
-    if (!handle) continue;
-    const obj = gearGet(state.gear, handle);
-    if (!obj) continue;
-    items.push({ label: `${objectName(state, obj)} (worn)`, color: UI_TEXT });
-    handles.push(handle);
-  }
-  if (items.length === 0) {
-    say("You have nothing to act on.");
+/**
+ * do_cmd_inven / do_cmd_equip / do_cmd_quiver (ui-knowledge.c:4025, 4071, 4120).
+ *
+ * These three keys - i, e and | - are not passive listings upstream. Each one
+ * opens the listing as a get_item PICKER and runs the chosen object's context
+ * menu, in a two-level loop the return code drives:
+ *
+ *   while (ret == 3)                       // the menu was cancelled: pick again
+ *     if (!get_item(...)) { ret = -1 }      // the picker was cancelled: leave
+ *     else while ((ret = context_menu_object(obj)) == 2);  // it showed a screen:
+ *                                                          // reopen the menu
+ *
+ * The port had all three as read-only screens, and then reached the context menu
+ * through an invented "Item actions" row on the game menu whose picker offered
+ * only the pack and worn gear and whose prompt was written here rather than
+ * transcribed. So the three most-used inventory keys had lost their whole
+ * purpose, and the replacement was both less capable and unfaithful.
+ *
+ * `mode` is which listing it OPENS in (command_wrk), not what it can reach:
+ * GET_ITEM_PARAMS is EQUIP|INVEN|QUIVER|FLOOR|SHOW_QUIVER|SHOW_EMPTY|IS_HARMLESS
+ * in all three cases (L4019-4020), so you can switch to any of them from inside.
+ */
+async function doCmdItemListing(mode: "inven" | "equip" | "quiver"): Promise<void> {
+  /* Each opens with its own emptiness guard and message (L4030-4033). */
+  const empty = {
+    inven: [(state.gear.inven ?? []).filter(Boolean).length === 0, "You have nothing in your inventory."],
+    equip: [state.actor.player.equipment.every((h) => !h), "You are not wielding or wearing anything."],
+    quiver: [(state.gear.quiver ?? []).filter(Boolean).length === 0, "You have nothing in your quiver."],
+  }[mode] as [boolean, string];
+  if (empty[0]) {
+    say(empty[1]);
     return;
   }
-  const idx = await selectFromMenu(term, "Item actions - which item?", items);
-  if (idx === null) return;
-  const handle = handles[idx];
-  if (handle === undefined) return;
-  await runContextMenuObject(handle);
+
+  let ret: ContextMenuResult = CTX_CANCELLED;
+  while (ret === CTX_CANCELLED) {
+    const ref = await selectItemFrom(
+      "Select Item:",
+      () => true,
+      { inven: true, equip: true, quiver: true, floor: true },
+      empty[1],
+      undefined,
+      false,
+      undefined,
+      /* IS_HARMLESS: this picker runs no command itself, so the "really use
+       * that?" confirmation for an unknown item does not belong here. */
+      true,
+      mode,
+    );
+    if (ref === null || !("handle" in ref)) return; /* get_item false -> ret = -1 */
+    /* player_is_shapechanged gates the menu, not the picker (L4053-4055). */
+    if (playerIsShapechanged(state)) return;
+    do {
+      ret = await runContextMenuObject(ref.handle);
+    } while (ret === CTX_REOPEN);
+  }
 }
 
 /** routeContextClick's classification, applied to a canvas client point. */
@@ -2952,6 +3021,18 @@ async function browseCmd(): Promise<void> {
     "browse",
   );
   if (handle === null) return;
+  await browseBookObject(handle);
+}
+
+/**
+ * textui_book_browse's body, for an ALREADY-CHOSEN book.
+ *
+ * Split out because context_menu_object reaches the same screen without a
+ * get_item of its own (ui-context.c:871-876, "copied from textui_spell_browse"),
+ * and the port had no way in: its object context menu was missing the Browse row
+ * entirely, so a spellbook there offered Cast and Study and no way to read it.
+ */
+async function browseBookObject(handle: number): Promise<void> {
   const bookObj = gearGet(state.gear, handle);
   if (!bookObj) return;
   const player = state.actor.player;
@@ -4177,24 +4258,6 @@ function quiverLines(): ScreenLine[] {
 }
 
 /**
- * do_cmd_inven / do_cmd_equip / do_cmd_quiver's opening guard
- * (ui-knowledge.c:4030-4033, :4076-4079, :4120-4123): an empty list says WHY
- * instead of opening a screen with nothing on it.
- */
-async function listingScreen(
-  title: string,
-  lines: ScreenLine[],
-  empty: boolean,
-  why: string,
-): Promise<void> {
-  if (empty) {
-    say(why);
-    return;
-  }
-  await showTextScreen(term, title, lines);
-}
-
-/**
  * Retire character (Q, textui_cmd_retire, ui-command.c:162 -> do_cmd_retire,
  * cmd-misc.c:73): the faithful retire confirmation, then mark the character
  * dead with died_from "Retiring" and run the shell's death/tombstone flow (the
@@ -4927,7 +4990,10 @@ async function openGameMenu(): Promise<void> {
       await showEquipCmp(term, state, equipCmpDeps());
       break;
     case "item-actions":
-      await openItemActionsMenu();
+      /* The touch surface's route to the same command 'i' runs. It used to be
+       * openItemActionsMenu, a separate picker with an invented prompt and only
+       * the pack and worn gear in it. */
+      await doCmdItemListing("inven");
       break;
     case "switch":
       // get_check-style confirmation (parallels ui-death.c's "Start a new
@@ -7133,9 +7199,11 @@ window.addEventListener("keydown", (ev) => {
       /* do_cmd_equip / do_cmd_inven / do_cmd_quiver open with an emptiness
        * check that says why rather than showing an empty screen
        * (ui-knowledge.c:4030-4033, :4076-4079, :4120-4123). */
-      { o: "e", act: () => void openModal(() => listingScreen("Equipment", equipmentLines(state), state.actor.player.equipment.every((h) => !h), "You are not wielding or wearing anything.")) },
-      { o: "i", act: () => void openModal(() => listingScreen("Inventory", inventoryLines(state), (state.gear.inven ?? []).filter(Boolean).length === 0, "You have nothing in your inventory.")) },
-      { o: "|", act: () => void openModal(() => listingScreen("Quiver", quiverLines(), (state.gear.quiver ?? []).filter(Boolean).length === 0, "You have nothing in your quiver.")) },
+      /* do_cmd_equip / do_cmd_inven / do_cmd_quiver: each opens its listing as a
+       * PICKER into context_menu_object, not as a read-only screen. */
+      { o: "e", act: () => void openModal(() => doCmdItemListing("equip")) },
+      { o: "i", act: () => void openModal(() => doCmdItemListing("inven")) },
+      { o: "|", act: () => void openModal(() => doCmdItemListing("quiver")) },
       { o: "g", act: () => void openModal(pickupCmd) },
       // Ignore: 'k' in the original keyset; roguelike uses ^D (handled above) so
       // roguelike 'k' stays free for movement.

@@ -219,6 +219,7 @@ export type ObjectMenuAction =
   | "inspect"
   | "cast"
   | "study"
+  | "browse"
   | "aim"
   | "zap"
   | "use-staff"
@@ -242,6 +243,13 @@ export interface ObjectMenuCtx {
   isBook: boolean;
   canCast: boolean;
   canStudy: boolean;
+  /**
+   * player_can_read(player, false) (ui-context.c:689), the gate on the Browse
+   * row. Separate from canCast because a class that cannot cast from a book can
+   * still read it, and blind/confused blocks reading without blocking either of
+   * the other two.
+   */
+  canBrowse: boolean;
   useKind: ObjectUseKind;
   canFire: boolean;
   canRefill: boolean;
@@ -254,17 +262,23 @@ export interface ObjectMenuCtx {
 }
 
 /**
- * context_menu_object (L654-900), minus Browse (obj_can_browse's read-only
- * spellbook view has no port screen yet). The Ignore/Unignore entry
- * (ui-context.c:770) opens the same per-item ignore menu as the 'k' / ^D
- * command (textui_cmd_ignore_menu; see web/src/ignore-menu.ts).
+ * context_menu_object (L654-900). The Ignore/Unignore entry (ui-context.c:770)
+ * opens the same per-item ignore menu as the 'k' / ^D command
+ * (textui_cmd_ignore_menu; see web/src/ignore-menu.ts).
+ *
+ * Browse (L690) used to be omitted here, with a comment saying the read-only
+ * spellbook view "has no port screen yet" - it had one all along (browseCmd, the
+ * 'b' command). The stated reason was untrue, so nothing ever went back to check
+ * it, and a spellbook in this menu offered Cast and Study with no way to read it.
  */
 export function buildObjectMenu(ctx: ObjectMenuCtx): MenuEntry<ObjectMenuAction>[] {
   const out: MenuEntry<ObjectMenuAction>[] = [{ label: "Inspect", action: "inspect" }];
 
   if (ctx.isBook) {
+    /* L683-690, in this order: Cast, Study, Browse. */
     if (ctx.canCast) out.push({ label: "Cast", action: "cast" });
     if (ctx.canStudy) out.push({ label: "Study", action: "study" });
+    if (ctx.canBrowse) out.push({ label: "Browse", action: "browse" });
   } else {
     switch (ctx.useKind) {
       case "wand":
