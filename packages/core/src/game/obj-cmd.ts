@@ -44,6 +44,7 @@ import {
   tvalIsLight,
   tvalIsMeleeWeapon,
   tvalIsPotion,
+  tvalIsRing,
   tvalIsRod,
   tvalIsScroll,
   tvalIsStaff,
@@ -81,6 +82,7 @@ import {
   wieldSlot,
 } from "./gear";
 import type { CalcInventoryOpts } from "./gear";
+import { checkForInscrip } from "./pickup";
 import { disturb } from "./player-path";
 import { buildEffectContext } from "./effect-env";
 import type { EffectEnvDeps } from "./effect-env";
@@ -327,12 +329,19 @@ export function packOverflow(
 }
 
 /**
- * inven_wield (obj-gear.c L931-1017): wield a pack object into its slot,
+ * inven_wield (obj-gear.c L931-1017): wield a pack object into `intoSlot`,
  * taking off whatever occupies it first, then combine_pack + pack_overflow so
  * a displaced item that does not fit is dropped (L1009-1010). Returns the
  * slot, or -1 when the object cannot be worn. Read
  * `state.actor.player.equipment[slot]` for the handle actually worn - a wield
  * out of a stack equips a FRESH split, not `handle` (L947-968).
+ *
+ * The slot is an ARGUMENT upstream (`inven_wield(struct object *obj, int slot)`,
+ * obj-gear.c:931) and is NOT recomputed inside: do_cmd_wield picks it, and for a
+ * ring the player picks it (cmd-obj.c:298-311). Re-deriving it with wield_slot
+ * here is what made the third ring always land in the same hand. `intoSlot` is
+ * optional only so the pre-existing worldless callers keep the wield_slot
+ * default; every in-play caller passes the slot it decided.
  *
  * The MSG_WIELD line and the OF_STICKY warning (L986-1008) live here rather
  * than in the command handler because upstream emits them BEFORE combine_pack,
@@ -344,12 +353,16 @@ export function invenWield(
   handle: number,
   constants: Constants,
   opts: PackOverflowOpts = {},
+  intoSlot?: number,
 ): number {
   const player = state.actor.player;
   const obj = gearGet(state.gear, handle);
   if (!obj) return -1;
 
-  const slot = wieldSlot(player.body, obj.tval, player.equipment);
+  const slot =
+    intoSlot !== undefined
+      ? intoSlot
+      : wieldSlot(player.body, obj.tval, player.equipment);
   if (slot < 0 || slot >= player.body.count) return -1;
 
   /* `old` (L933): the slot's current occupant. Upstream just overwrites
@@ -364,6 +377,7 @@ export function invenWield(
     handle,
     state.runeEnv,
     "inven_wield",
+    slot,
   );
   if (worn < 0) return worn;
   const wornHandle = player.equipment[worn] ?? 0;
@@ -398,6 +412,112 @@ export function invenWield(
   updatePlayerObjectKnowledge(state);
   state.updateBonuses?.(); /* PU_BONUS */
   return worn;
+}
+
+/**
+ * do_cmd_wield's SECOND cmd_get_item (cmd-obj.c:295-311), the one the port never
+ * had: wearing a third ring must ask WHICH HAND to free.
+ *
+ *     if (tval_is_ring(obj)) {
+ *             if (cmd_get_item(cmd, "replace", &equip_obj,
+ *                              "Replace which ring? ",
+ *                              "Error in do_cmd_wield(), please report.",
+ *                              tval_is_ring, USE_EQUIP) != CMD_OK)
+ *                     return;
+ *             slot = equipped_item_slot(player->body, equip_obj);
+ *     }
+ *
+ * Reached only when the ring slot wield_slot picked is already OCCUPIED: for
+ * rings wield_slot is `slot_by_type(p, EQUIP_RING, false)` (obj-gear.c:357),
+ * which prefers an EMPTY slot and only falls back to the first ring slot when
+ * every one is full (obj-gear.c:71-93). So one free hand means no question, and
+ * two full hands means the question - which is exactly "wearing a THIRD ring
+ * asks".
+ *
+ * Returns null when nothing is owed, otherwise the verbatim prompt/error and the
+ * equipment slots USE_EQUIP + tval_is_ring offers. The core command path cannot
+ * block on UI, so the shell asks and passes the answer back as the command's
+ * "slot" argument - the same division itemAllowPrompt (game/inscription-confirm.ts)
+ * and walkTerrainPrompt (game/player-turn.ts) already use, and the same caching
+ * upstream's own cmd_get_item does when the argument is already set.
+ */
+export interface WieldRingChoice {
+  /** cmd_get_item's prompt (cmd-obj.c:300), verbatim. */
+  readonly prompt: string;
+  /** cmd_get_item's error (cmd-obj.c:301), verbatim. */
+  readonly error: string;
+  /** The offered equipment slots, in body order. */
+  readonly slots: readonly number[];
+}
+
+/** cmd_get_item's prompt for the second wield question (cmd-obj.c:300). */
+export const WIELD_REPLACE_RING_PROMPT = "Replace which ring? ";
+/** cmd_get_item's error for it (cmd-obj.c:301) - a "please report" paranoia line. */
+export const WIELD_REPLACE_RING_ERROR = "Error in do_cmd_wield(), please report.";
+
+export function wieldRingChoice(
+  state: GameState,
+  obj: GameObject,
+): WieldRingChoice | null {
+  const player = state.actor.player;
+  if (!tvalIsRing(obj.tval)) return null;
+  const slot = wieldSlot(player.body, obj.tval, player.equipment);
+  if (slot < 0 || slot >= player.body.count) return null;
+  /* "If the slot is open, wield and be done" (cmd-obj.c:291-295) - asked BEFORE
+   * the ring branch, so an empty hand skips the question entirely. */
+  if ((player.equipment[slot] ?? 0) === 0) return null;
+  const slots: number[] = [];
+  for (let i = 0; i < player.body.count; i++) {
+    const handle = player.equipment[i] ?? 0;
+    if (!handle) continue;
+    const worn = gearGet(state.gear, handle);
+    /* USE_EQUIP filtered by tval_is_ring: the worn rings, both of them. */
+    if (worn && tvalIsRing(worn.tval)) slots.push(i);
+  }
+  if (slots.length === 0) return null;
+  return {
+    prompt: WIELD_REPLACE_RING_PROMPT,
+    error: WIELD_REPLACE_RING_ERROR,
+    slots,
+  };
+}
+
+/**
+ * do_cmd_wield's "!t" checks for taking off (cmd-obj.c:321-330):
+ *
+ *     n = check_for_inscrip(equip_obj, "!t");
+ *     while (n--) {
+ *             object_desc(o_name, sizeof(o_name), equip_obj,
+ *                     ODESC_PREFIX | ODESC_FULL, player);
+ *             if (!get_check(format("Really take off %s? ", o_name))) return;
+ *     }
+ *
+ * Note it is "!t" ALONE - unlike get_item_allow there is no "!*" term here, and
+ * that asymmetry is upstream's. Returns the prompt and how many times it must be
+ * answered (one refusal aborts the command), or null when nothing is owed.
+ *
+ * `slot` is the DESTINATION slot, i.e. after the ring question has been answered:
+ * the item that gets taken off is whatever occupies the hand the player chose.
+ */
+export interface WieldTakeoffConfirm {
+  /** get_check's prompt (cmd-obj.c:329), verbatim. */
+  readonly prompt: string;
+  /** Occurrences of "!t" on the displaced item; each one asks again. */
+  readonly count: number;
+}
+
+export function wieldTakeoffConfirm(
+  state: GameState,
+  slot: number,
+): WieldTakeoffConfirm | null {
+  const handle = state.actor.player.equipment[slot] ?? 0;
+  if (!handle) return null;
+  const displaced = gearGet(state.gear, handle);
+  if (!displaced) return null;
+  const count = checkForInscrip(displaced, "!t");
+  if (!count) return null;
+  const name = describeObject(state, displaced, ODESC.PREFIX | ODESC.FULL);
+  return { prompt: `Really take off ${name}? `, count };
 }
 
 /** What inven_drop's caller needs to build its two messages. */
@@ -1469,33 +1589,60 @@ export function installObjCommands(
       playerGetResumeNormalShape(state, deps.env ?? {}) ? fn(state, cmd) : 0;
   };
 
-  /* do_cmd_wield: wear/wield from the pack or the floor. */
+  /* do_cmd_wield (cmd-obj.c:265-353): wear/wield from the pack or the floor.
+   *
+   * The statement order below is upstream's, and it is load-bearing:
+   *   1. cmd_get_item for the item
+   *   2. slot = wield_slot(obj); equip_obj = slot_object(player, slot)
+   *   3. slot empty -> inven_wield and return, asking nothing
+   *   4. ring -> the SECOND cmd_get_item, "Replace which ring? ", which
+   *      overwrites slot with the hand the player chose
+   *   5. obj_can_takeoff refusal (sticky)
+   *   6. the "!t" get_check loop
+   *   7. act wording from the SLOT's type, then inven_wield(obj, slot)
+   *   8. the MSG_WIELD "You were ..." line
+   *
+   * The floor pickup belongs at step 7, not step 1: upstream carries a floor
+   * item INSIDE inven_wield (`floor_object_for_use` + `inven_carry`,
+   * obj-gear.c:973-976), which is past every abort above. Doing it first - as the
+   * port did - leaked the item into the pack when the player escaped the ring or
+   * "!t" prompt, or when the slot turned out to be stuck. */
   registry.register("wield", gated((state, cmd) => {
     const found = commandObject(state, cmd);
     if (!found) return 0;
-    let handle = found.handle;
-    if (found.fromFloor) {
-      /* Get a floor item and carry it first (inven_wield's floor path). */
-      const { usable } = floorObjectForUse(state, found.obj, 1);
-      handle = invenCarry(state.gear, usable, stackLimits(deps.constants));
+    const player = state.actor.player;
+
+    /* Step 2. */
+    let targetSlot = wieldSlot(player.body, found.obj.tval, player.equipment);
+    if (targetSlot < 0 || targetSlot >= player.body.count) return 0;
+
+    /* Step 4: the ring question. The core command path cannot block on UI, so
+     * the shell resolves wieldRingChoice() and passes the chosen slot back as
+     * the "slot" argument, which is precisely what upstream's cmd_get_item does
+     * when the command already carries the answer (cmd-obj.c:298). With no
+     * answer supplied (a headless driver, the borg) the pre-prompt wield_slot
+     * stands, the same "unprompted terminal takes the default" rule the confirm
+     * seam uses. */
+    if ((player.equipment[targetSlot] ?? 0) !== 0 && tvalIsRing(found.obj.tval)) {
+      const chosen = cmd.args?.["slot"];
+      if (typeof chosen === "number") {
+        const chosenHandle = player.equipment[chosen] ?? 0;
+        const chosenObj = chosenHandle ? gearGet(state.gear, chosenHandle) : null;
+        /* Only a worn RING is a legal answer (the tval_is_ring filter on
+         * USE_EQUIP); anything else is not something cmd_get_item could have
+         * returned, so it is ignored rather than obeyed. */
+        if (chosenObj && tvalIsRing(chosenObj.tval)) targetSlot = chosen;
+      }
     }
-    if (handle === undefined) return 0;
-    /* The occupant of the target slot is displaced back into the pack; capture
-     * it (and its slot type) before the wield so do_cmd_wield's "You were
-     * wielding ..." message reads the right wording (cmd-obj.c L333-354). */
-    const targetSlot = wieldSlot(
-      state.actor.player.body,
-      found.obj.tval,
-      state.actor.player.equipment,
-    );
-    const displacedHandle =
-      targetSlot >= 0 ? (state.actor.player.equipment[targetSlot] ?? 0) : 0;
+
+    const displacedHandle = player.equipment[targetSlot] ?? 0;
     const displaced = displacedHandle ? gearGet(state.gear, displacedHandle) : null;
-    const displacedTval = displaced?.tval ?? 0;
-    /* Prevent wielding into a stickied slot (cmd-obj.c L313-320). obj_can_takeoff
-     * is !OF_STICKY (obj-util.c L794), and the refusal names the stuck item by
-     * its base description plus equip_describe's wording for the slot. Draws no
-     * RNG and spends no energy: the command aborts before inven_wield. */
+
+    /* Step 5: prevent wielding into a stickied slot (cmd-obj.c:313-320).
+     * obj_can_takeoff is !OF_STICKY (obj-util.c L794), and the refusal names the
+     * stuck item by its base description plus equip_describe's wording for the
+     * slot. Draws no RNG and spends no energy: the command aborts before
+     * inven_wield. */
     if (displaced && displaced.flags.has(OF.STICKY)) {
       deps.env?.msg?.(
         `You cannot remove the ${describeObject(state, displaced, ODESC.BASE)} ` +
@@ -1503,22 +1650,56 @@ export function installObjCommands(
       );
       return 0;
     }
+
+    /* Step 6: the "!t" checks for taking off (cmd-obj.c:321-330). One refusal
+     * ends the command with no turn spent. The shell has normally answered these
+     * already (it must, to ask before the item moves); the seam is here too so a
+     * driver that queues the command directly still honours the inscription. */
+    const ask = wieldTakeoffConfirm(state, targetSlot);
+    if (ask) {
+      for (let i = 0; i < ask.count; i++) {
+        if (!(deps.env?.confirm?.(ask.prompt) ?? true)) return 0;
+      }
+    }
+
+    /* Step 7: the wording comes from the SLOT's type upstream
+     * (slot_type_is(player, slot, EQUIP_WEAPON), cmd-obj.c:337-347), not from the
+     * displaced item's tval - and it is read BEFORE inven_wield empties the
+     * slot. */
+    const slotType = player.body.slots[targetSlot]?.type ?? "";
+    const act =
+      slotType === "WEAPON"
+        ? "You were wielding"
+        : slotType === "BOW" || slotType === "LIGHT"
+          ? "You were holding"
+          : "You were wearing";
+
+    /* inven_wield's own floor path (obj-gear.c:973-976), reached only now. */
+    let handle = found.handle;
+    if (found.fromFloor) {
+      const { usable } = floorObjectForUse(state, found.obj, 1);
+      handle = invenCarry(state.gear, usable, stackLimits(deps.constants));
+    }
+    if (handle === undefined) return 0;
+
     /* invenWield owns the MSG_WIELD line, the sticky warning, combine_pack and
-     * pack_overflow, in that upstream order (obj-gear.c L986-1010). */
-    const slot = invenWield(state, handle, deps.constants, packOpts(state, deps));
+     * pack_overflow, in that upstream order (obj-gear.c L986-1010). The slot is
+     * passed, not re-derived: for a ring it is the hand the player chose. */
+    const slot = invenWield(
+      state,
+      handle,
+      deps.constants,
+      packOpts(state, deps),
+      targetSlot,
+    );
     if (slot < 0) return 0;
-    /* The displaced item, now back in the pack - or on the floor if
+    /* Step 8. The displaced item is now back in the pack - or on the floor if
      * pack_overflow shed it, in which case gear_to_label gives '\0' and the
      * port's gearLabelFor gives "" (cmd-obj.c L337-354, read AFTER
      * combine_pack, so the label is the post-combine one). */
     if (displaced) {
       const dname = describeObject(state, displaced);
       const dlabel = gearLabelFor(state, displacedHandle);
-      const act = tvalIsMeleeWeapon(displacedTval)
-        ? "You were wielding"
-        : tvalIsLauncher(displacedTval) || tvalIsLight(displacedTval)
-          ? "You were holding"
-          : "You were wearing";
       deps.env?.msg?.(`${act} ${dname} (${dlabel}).`);
     }
     return state.z.moveEnergy;

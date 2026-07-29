@@ -138,6 +138,10 @@ interface FakeTerm {
   size(): { cols: number; rows: number };
   clear(): void;
   print(x: number, y: number, text: string, fg?: string): void;
+  /* Term_erase / c_prt (ui-output.c:385-391) - erase-then-draw, as against
+   * print()'s put_str, which does not erase (ui-output.c:362-379). */
+  eraseToEol(x: number, y: number): void;
+  prt(x: number, y: number, text: string, fg?: string): void;
   snapshot(): string[];
 }
 
@@ -149,6 +153,19 @@ function makeTerm(cols = 80, rows = 24): FakeTerm {
     size: () => ({ cols, rows }),
     clear: () => {
       for (const row of grid) row.fill(" ");
+    },
+    /* Term_erase(x, y, 255) + c_prt = erase-then-draw (ui-output.c:385-391).
+     * print() is put_str and does NOT erase (ui-output.c:362-379); the two must
+     * stay distinguishable in the fake or a prt site cannot be tested. */
+    eraseToEol: (x, y) => {
+      const row = grid[y];
+      if (row) for (let cx = Math.max(0, x); cx < cols; cx++) row[cx] = " ";
+    },
+    prt: (x, y, text) => {
+      const row = grid[y];
+      if (!row) return;
+      for (let cx = Math.max(0, x); cx < cols; cx++) row[cx] = " ";
+      for (let i = 0; i < text.length && x + i < cols; i++) row[x + i] = text[i] ?? " ";
     },
     print: (x, y, text) => {
       for (let i = 0; i < text.length && x + i < cols; i++) {

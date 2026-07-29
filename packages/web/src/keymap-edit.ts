@@ -25,7 +25,9 @@ import {
 function captureKey(term: GlyphTerm, prompt: string): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     const { cols } = term.size();
-    term.print(0, 0, prompt.slice(0, cols - 1), UI_TEXT);
+    /* prt("Key: ", 14, 0) (ui-options.c:594, :628, :705) - prt, so the menu
+     * title still on this row is erased rather than showing its tail. */
+    term.prt(0, 0, prompt.slice(0, cols - 1), UI_TEXT);
     const onKey = (ev: KeyboardEvent): void => {
       if (ev.ctrlKey || ev.altKey || ev.metaKey) {
         if (!(ev.key === "u" || ev.key === "U")) return; // allow ^U through to callers
@@ -50,7 +52,9 @@ function captureAction(term: GlyphTerm, prompt: string): Promise<string | null> 
     let buf = "";
     const paint = (): void => {
       const { cols } = term.size();
-      term.print(0, 0, `${prompt}${buf}`.slice(0, cols - 1).padEnd(cols - 1), UI_TEXT);
+      /* c_prt(color, format("Action: %s", tmp), 15, 0) (ui-options.c:647): the
+       * erase is prt's, not a padEnd - which left the row's last column stale. */
+      term.prt(0, 0, `${prompt}${buf}`.slice(0, cols - 1), UI_TEXT);
     };
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
@@ -90,7 +94,9 @@ function captureAction(term: GlyphTerm, prompt: string): Promise<string | null> 
 function ack(term: GlyphTerm, text: string): Promise<void> {
   return new Promise<void>((resolve) => {
     const { cols } = term.size();
-    term.print(0, 0, `${text}  [press any key]`.slice(0, cols - 1).padEnd(cols - 1), UI_TEXT);
+    /* prt(msg, 16, 0) + prt("Press any key to continue.", 17, 0)
+     * (ui-options.c:603, :610-613, :710-715) - prt, so the row is erased. */
+    term.prt(0, 0, `${text}  [press any key]`.slice(0, cols - 1), UI_TEXT);
     const onKey = (ev: KeyboardEvent): void => {
       if (ev.key.length !== 1 && ev.key !== "Escape" && ev.key !== "Enter") return;
       ev.preventDefault();
@@ -112,7 +118,8 @@ function confirm(term: GlyphTerm, prompt: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const { cols } = term.size();
     const line = `${prompt}[y/n] `;
-    term.print(0, 0, line.slice(0, cols - 1).padEnd(cols - 1), UI_TEXT);
+    /* prt(buf, 0, 0) (textui_get_check, ui-input.c:1271). */
+    term.prt(0, 0, line.slice(0, cols - 1), UI_TEXT);
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();

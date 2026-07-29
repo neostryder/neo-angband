@@ -81,13 +81,18 @@ import {
   tvalIsEdible,
   tvalIsStaff,
   tvalIsWand,
+  tvalIsRing,
   tvalIsRod,
   tvalIsWearable,
   tvalIsAmmo,
+  wieldRingChoice,
+  wieldSlot,
+  wieldTakeoffConfirm,
   tvalIsMeleeWeapon,
   tvalIsLight,
   objCanRefill,
   objectEffect,
+  objectWeightOne,
   objCanWear,
   objIsActivatable,
   objCanBrowse,
@@ -278,6 +283,7 @@ import {
   getCheck,
   AIM_STAR,
   AIM_CLOSEST,
+  showFloorList,
   showLevelMap,
   menuNav,
   MENU_CLOSE,
@@ -285,7 +291,7 @@ import {
   getFile,
   getQuantity,
 } from "./overlay";
-import type { MenuItem, ItemMenuSource, ScreenLine } from "./overlay";
+import type { MenuItem, ItemMenuSource, ObjListRow, ScreenLine } from "./overlay";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
 import { userPath, writeUserFile, downloadUserFile } from "./userdir";
 import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
@@ -2376,6 +2382,61 @@ async function prepareItemTarget(
 }
 
 /**
+ * do_cmd_wield's two remaining questions (cmd-obj.c:296-330), asked here because
+ * the core command path cannot block on UI. Returns false when the player backed
+ * out, in which case NOTHING is queued and no turn is spent - which is the whole
+ * point of asking before the command runs rather than after.
+ *
+ *   1. "Replace which ring? " - the SECOND cmd_get_item (cmd-obj.c:298-311), over
+ *      USE_EQUIP filtered to rings, reached only when both hands are full (see
+ *      wieldRingChoice). The chosen slot rides along as args.slot, exactly as
+ *      upstream caches the answer in the command's "replace" argument.
+ *   2. the "!t" get_check loop (cmd-obj.c:321-330), on whatever occupies the slot
+ *      that was just settled - so it must run AFTER the ring question.
+ *
+ * The order is upstream's; swapping them would ask about the wrong hand's ring.
+ */
+async function wieldPrompts(
+  obj: GameObject | null,
+  args: Record<string, unknown>,
+): Promise<boolean> {
+  if (!obj) return true;
+  const player = state.actor.player;
+  const choice = wieldRingChoice(state, obj);
+  let slot = wieldSlot(player.body, obj.tval, player.equipment);
+  if (choice) {
+    const ref = await selectItemFrom(
+      choice.prompt,
+      (o) => tvalIsRing(o.tval),
+      { equip: true },
+      choice.error,
+      itemCmdKey("wield"),
+      false,
+      "wield",
+      false,
+      "equip",
+    );
+    /* cmd_get_item != CMD_OK -> return (cmd-obj.c:305-306): ESC abandons the
+     * whole wield, it does not fall back to a hand of our choosing. */
+    if (ref === null || !("handle" in ref)) return false;
+    /* equipped_item_slot(player->body, equip_obj) (cmd-obj.c:309). */
+    const chosen = player.equipment.findIndex((h) => h === ref.handle);
+    if (chosen < 0) return false;
+    slot = chosen;
+    args["slot"] = chosen;
+  }
+  if (slot < 0 || slot >= player.body.count) return true;
+  const ask = wieldTakeoffConfirm(state, slot);
+  if (ask) {
+    /* `while (n--)` (cmd-obj.c:323-330): asked once per "!t", any refusal returns. */
+    for (let i = 0; i < ask.count; i++) {
+      if (!(await confirmYesNo(ask.prompt))) return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Dispatch `code` on an already-chosen item (aim direction if needed,
  * pre-resolve any item-target effect, then queue). Shared by useItem's own
  * picker and the context menu's per-item action, which already knows the
@@ -2393,6 +2454,7 @@ async function dispatchItemVerb(code: string, handle: number, obj: GameObject | 
     const chain = buildObjectEffectChain((obj.effect ?? []) as EffectRecordJson[], state);
     if (!(await choosePlayerEffect(chain))) return;
   }
+  if (code === "wield" && !(await wieldPrompts(obj, args))) return;
   commandBuffer.push({ code, args });
   advance();
   pendingEffectChoice = null;
@@ -2419,6 +2481,7 @@ async function dispatchItemRef(code: string, ref: ItemTargetRef): Promise<void> 
     const chain = buildObjectEffectChain((obj.effect ?? []) as EffectRecordJson[], state);
     if (!(await choosePlayerEffect(chain))) return;
   }
+  if (code === "wield" && !(await wieldPrompts(obj, args))) return;
   commandBuffer.push({ code, args });
   advance();
   pendingEffectChoice = null;
@@ -5387,21 +5450,48 @@ function seeFloorItems(): void {
   }
 }
 
-/** show_floor for the pile under the player (ui-display.c L2637-L2647): the
- * "You see:" list shown when more than one object is on the grid. */
+/**
+ * show_floor for the pile under the player (ui-display.c:2629-2647): the "You
+ * see: " list shown when more than one object is on the grid.
+ *
+ * This used to call showTextScreen, which clears the terminal - so a step onto a
+ * pile blanked the map - and appended an invented "[ Press ESC to return ]"
+ * footer. showFloorList is the real thing: an overlay over screen_save, the
+ * OLIST_WEIGHT column upstream passes, no footer, and the dismissing key re-fed
+ * as the next command (Term_event_push, :2644).
+ *
+ * `p` is upstream's own variable: "see" by default, and the two replacements at
+ * :2626-2628 (ui-display.c). The format is `"You %s: "` (:2640), trailing space
+ * and all - the prompt is a prt, so the space is what erases the cell after the
+ * colon.
+ *
+ * No detach/reattach is needed here even though every overlay listens on window
+ * in the capture phase: this is opened from advance() under openModal, with the
+ * top-level game handler stood down and no other overlay attached. (A caller that
+ * opened it from INSIDE another overlay would have to detach first - see
+ * charsheet.ts changeName.)
+ */
 async function showFloorPileScreen(pile: GameObject[]): Promise<void> {
   const blind = (state.actor.player.timed[TMD.BLIND] ?? 0) > 0;
   const canPickup = pile.some((o) => invenCarryNum(state.gear, o, constants) > 0);
-  const header = !canPickup
-    ? "You have no room for the following objects:"
+  const p = !canPickup
+    ? "have no room for the following objects"
     : blind
-      ? "You feel something on the floor:"
-      : "You see:";
-  const lines: ScreenLine[] = pile.map((o, i) => ({
-    text: `${objLetter(i)}) ${objectName(state, o)}`,
+      ? "feel something on the floor"
+      : "see";
+  const rows: ObjListRow[] = pile.map((o, i) => ({
+    label: `${objLetter(i)}) `,
+    name: objectName(state, o),
     color: objectColor(o, state),
+    /* obj->number * object_weight_one(obj) (ui-object.c:462) - the curse-adjusted
+     * single weight, not the raw kind weight. */
+    weight: o.number * objectWeightOne(o, state.runeEnv.curses),
   }));
-  await showTextScreen(term, header, lines);
+  await showFloorList(term, `You ${p}: `, rows, (key) =>
+    enqueueKeys([{ key }]),
+  );
+  /* screen_load (ui-display.c:2646): put the map back. */
+  render();
 }
 
 const Z: ViewConstants = {
@@ -5570,7 +5660,11 @@ async function swapWeaponCmd(): Promise<void> {
     if (equipped.has(handle) || !tvalIsWearable(obj.tval)) continue;
     const note = obj.note ?? "";
     if (/@w?0/.test(note)) {
-      commandBuffer.push({ code: "wield", args: { handle } });
+      /* Still do_cmd_wield, so it still owes the ring question and the "!t"
+       * confirm (cmd-obj.c:296-330) - a @0-tagged ring must ask which hand. */
+      const args: Record<string, unknown> = { handle };
+      if (!(await wieldPrompts(obj, args))) return;
+      commandBuffer.push({ code: "wield", args });
       advance();
       return;
     }
@@ -6591,7 +6685,10 @@ async function runLocate(): Promise<void> {
     // command prompt, drawn full-width from col 0 in white (prt), not offset by
     // the sidebar (REND-5) nor gold.
     const cols = term.size().cols;
-    term.print(0, 0, banner.slice(0, cols - 1), UI_TEXT);
+    // prt (ui-output.c:385-391), not put_str: render() has just drawn the
+    // message on this row, so a longer message would show its tail past the
+    // banner.
+    term.prt(0, 0, banner.slice(0, cols - 1), UI_TEXT);
   };
   const panDir = (dir: number): void => {
     const vp = viewport();
@@ -7654,14 +7751,14 @@ void applyTileMode(readTileMode());
 // race/class (its stats and starting kit differ). A one-shot sessionStorage
 // flag suppresses the screen on that rebuild. Backing out (ESC) keeps whatever
 // character was built. Resuming a save never births.
-async function maybeBirth(): Promise<void> {
-  if (!bootedNew) return;
+async function maybeBirth(): Promise<BootStep> {
+  if (!bootedNew) return "done";
   // An autoplayer (the Borg, ?agent=) boots straight into play: skip the modal
   // birth screen and let it drive the default (or last-birthed) character, so it
   // never stalls waiting for a human to click through character creation.
   if (params.get("agent")) {
     say("The Borg awakens.");
-    return;
+    return "done";
   }
   let justBirthed = false;
   try {
@@ -7670,7 +7767,7 @@ async function maybeBirth(): Promise<void> {
   } catch {
     /* sessionStorage unavailable: fall through and show birth. */
   }
-  if (justBirthed) return; // the choice from the previous load is already live
+  if (justBirthed) return "done"; // the choice from the previous load is already live
   // Registry-backed data for the birth informational panels (race/class help
   // blocks + the full display_player(0) sheet), plus get_history for the
   // background stage. The birth screen holds neither the bodies/history charts
@@ -7700,27 +7797,28 @@ async function maybeBirth(): Promise<void> {
     if (!race) return "";
     return generateHistory(players.historyChart(race), state.rng);
   };
-  await openModal(async () => {
-    // BIRTH_RESET (ui-birth.c:1615-1626 + 1661-1666): stepping back off the FIRST
-    // birth stage is NOT an exit. Upstream maps that BIRTH_BACK to the stage
-    // before, which is BIRTH_QUICKSTART, and then remaps THAT to BIRTH_RESET, so
-    // it re-pushes CMD_BIRTH_RESET and starts creation over; and in the quickstart
-    // prompt itself a bare ESCAPE is simply ignored (textui_birth_quickstart
-    // loops until Y/N/C/=). Birth has no ESC exit at all - only KTRL('X'), which
-    // quits the program.
+  return openModal(async () => {
+    // ESC inside birth steps BACK one stage, and that is upstream's own rule:
+    // "As all the menus are displayed in 'hierarchical' style, we allow use of
+    // 'back' (left arrow key or equivalent) to step back in the proces as well as
+    // 'escape'" (ui-birth.c:804-806), which turns ESC into BIRTH_BACK (:811) and
+    // then `next = current_stage - 1` (:1662). runBirth already does that
+    // internally and returns null for the FIRST stage's step-back only.
     //
-    // runBirth returns null for exactly that first-stage step-back, so the
-    // faithful handling is to run it AGAIN (a fresh call is what CMD_BIRTH_RESET
-    // amounts to here: cursors and stat work discarded, the shared RNG stream
-    // continuing). Accepting the null and playing on instead is what made ESC
-    // look like it "instantly creates a character with default settings" - the
-    // hero it kept was the throwaway one startGame had already rolled behind the
-    // birth screen, which the player never chose.
-    let choice: Awaited<ReturnType<typeof runBirth>> = null;
-    // quickstart_allowed (ui-birth.c): offer the quick-start stage only when
-    // a previous character's choices exist to reuse.
-    while (!choice) {
-      choice = await runBirth(term, players.races, players.classes, {
+    // Upstream has nowhere above birth to go - textui_do_birth is entered from a
+    // running program whose only exit is KTRL('X') - so it remaps that
+    // first-stage BIRTH_BACK to BIRTH_QUICKSTART and then to BIRTH_RESET
+    // (:1615-1626 + :1661-1666), i.e. creation starts over. The web shell DOES
+    // have a level above: the title screen is its "no game in progress" splash
+    // (main-win.c:5475). So the hierarchical-back rule continues one step further
+    // here and we answer "back", letting bootMenus put the title up. What must
+    // NOT happen is accepting the null and playing on: the hero kept that way is
+    // the throwaway one startGame rolled behind the birth screen, which the player
+    // never chose - that was the "ESC instantly creates a default character" bug.
+    //
+    // quickstart_allowed (ui-birth.c): offer the quick-start stage only when a
+    // previous character's choices exist to reuse.
+    const choice = await runBirth(term, players.races, players.classes, {
         // ui-birth.c draws random race/class/*/@/roller from the main game RNG.
         rng: state.rng,
         quickstart: birthChoice
@@ -7746,9 +7844,24 @@ async function maybeBirth(): Promise<void> {
         randomName: () => playerRandomName(state.rng, tolkienNameProbs()),
         // Seed the '=' birth-options editor with the previous character's choices
         // so a New Game defaults to them (as upstream keeps the last birth opts).
-        ...(birthChoice?.birthOptions ? { birthOptions: birthChoice.birthOptions } : {}),
-      });
-    }
+      ...(birthChoice?.birthOptions ? { birthOptions: birthChoice.birthOptions } : {}),
+    });
+    /* The first stage's step-back: up one level, to the title.
+     *
+     * runBirth answers null for TWO things and they are not distinguished here,
+     * deliberately: the first-stage step-back above, and KTRL('X') at the
+     * quickstart prompt, which upstream turns into `quit(NULL)` (ui-birth.c:121-
+     * 123). A browser tab has no program to exit, and the title screen is the
+     * port's "no game in progress" splash - the same substitution saveQuitCmd
+     * makes for ^X in play - so both land in the right place. On a host that CAN
+     * exit, the KTRL('X') half should reach desktopQuit() instead; distinguishing
+     * them needs a third runBirth result and is not done here.
+     *
+     * ESC at the quickstart prompt itself is NOT one of these: upstream's
+     * do/while loops until Y/N/C/= and ignores ESCAPE outright unless the terminal
+     * is disconnecting (ui-birth.c:114-131), so it stays inert - the one step of
+     * the pre-game flow ESC does not back out of, and that is the C's choice. */
+    if (!choice) return "back";
     try {
       localStorage.setItem(BIRTH_KEY, JSON.stringify(choice));
       sessionStorage.setItem(BIRTH_DONE_KEY, "1");
@@ -7762,6 +7875,7 @@ async function maybeBirth(): Promise<void> {
     const url = new URL(location.href);
     url.searchParams.set("new", "1");
     location.assign(url.toString());
+    return "done";
   });
 }
 
@@ -7811,10 +7925,28 @@ async function maybeTitle(): Promise<TitleChoice | null> {
   );
 }
 
+/**
+ * One pre-game menu's answer.
+ *
+ * "back" is deliberately NOT null. The pre-game flow has two genuinely different
+ * outcomes that a nullable result conflates, and conflating them is what broke
+ * ESC at both boundaries: "the player stepped back one level" (put the level above
+ * up again) versus "there is nothing here to choose" (the menu was suppressed or
+ * empty, so fall through). openRoster used to answer `false` for the first and
+ * bootMenus read that as the second, so ESC out of the character picker dropped
+ * into character creation instead of returning to the title.
+ *
+ * This is upstream's own hierarchical-back rule (ui-birth.c:804-806, ":we allow
+ * use of 'back' ... as well as 'escape'") carried up into the shell's menu stack,
+ * where menu_select's EVT_ESCAPE pops ONE level and the caller decides what the
+ * level above is (ui-menu.c menu_select / ui-birth.c:807-811).
+ */
+type BootStep = "done" | "back";
+
 // Boot-time flow: the title screen first, then a resumed character plays
 // immediately; otherwise pick from the roster (when other characters are saved)
 // or birth a brand-new one.
-async function openRoster(): Promise<boolean> {
+async function openRoster(): Promise<BootStep> {
   // Whether this origin's storage is exempt from the browser's own eviction. A
   // query, never a request: the request happens when a save lands (persistSave),
   // which is a moment the player caused and has something to protect.
@@ -7831,47 +7963,73 @@ async function openRoster(): Promise<boolean> {
         deleteSlot(res.id);
         if (livingRoster().length === 0) {
           newGame();
-          return true;
+          return "done";
         }
         continue;
       }
-      /* ESC: cancelling the picker returns to the title, it does not pick. */
-      if (res.action === "back") return false;
+      /* ESC: cancelling the picker steps back one level - to the title - it does
+       * not pick, and it does not fall through into character creation. */
+      if (res.action === "back") return "back";
       if (res.action === "resume") {
         resumeSelected(res.id);
-        return true;
+        return "done";
       }
+      /* "New character": through the ONE birth path, so ESC in birth still comes
+       * back up here rather than being a dead end. newGame reloads with the
+       * fresh-start flag; the reload's bootMenus runs birth. */
       newGame();
-      return true;
+      return "done";
     }
   });
 }
 
 /** IDM_FILE_NEW (main-win.c:3501). */
-function startNewCharacter(): void {
+async function startNewCharacter(): Promise<BootStep> {
   /* A boot with nothing to resume has already built a fresh game and claimed a
-   * slot for it, so birth can run in place. Anything else has a live character
-   * to leave behind first, which newGame does through a reload. */
-  if (!resumedActive && !needsSelect) {
-    void maybeBirth();
-    return;
-  }
+   * slot for it, so birth can run in place - and its "back" has to reach
+   * bootMenus, which is why this is awaited rather than fired and forgotten.
+   * Anything else has a live character to leave behind first, which newGame does
+   * through a reload. */
+  if (!resumedActive && !needsSelect) return maybeBirth();
   newGame();
+  return "done";
 }
 
+/**
+ * The pre-game menu stack: title -> (load | open the roster | new -> birth).
+ *
+ * ONE loop, and every level answers BootStep, so "the player pressed ESC" walks
+ * back up a level at a time until the title is showing again - ui-birth.c's
+ * hierarchical-back rule (:804-806) applied to the whole boot, which is what the
+ * player asked for. The two boundaries that used to leak:
+ *
+ *   - ESC out of the character picker with the title suppressed (a continuation
+ *     boot) fell THROUGH to maybeBirth, so backing out of the roster started
+ *     character creation.
+ *   - birth's own first-stage ESC looped forever (`while (!choice)`), so once you
+ *     were in creation there was no way back to the title at all.
+ */
 async function bootMenus(): Promise<void> {
-  let choice = await maybeTitle();
-  /* Title skipped (an autoplayer boot, a post-birth rebuild, or an internal
-   * continuation): the pre-title-menu flow, unchanged. */
-  if (choice === null) {
-    if (resumedActive) return;
-    if (needsSelect && (await openRoster())) return;
-    await maybeBirth();
-    return;
-  }
-  /* The title's rows loop with the roster: ESC out of the picker comes back
-   * here rather than dropping the player into a game they did not choose. */
+  /* ?agent= suppresses the title for the whole session (maybeTitle's first line),
+   * so there is no level above to back up TO and no loop to make infinite: an
+   * autoplayer boot keeps the old fall-through. Every other suppressor
+   * (SKIP_TITLE, BIRTH_DONE) is one-shot and cleared on the first pass, so the
+   * second time round the title really does appear. */
+  const canReturnToTitle = !params.get("agent");
   for (;;) {
+    const choice = await maybeTitle();
+    /* Title suppressed (autoplayer, post-birth rebuild, or an internal
+     * continuation reload): the pre-title-menu flow. */
+    if (choice === null) {
+      if (resumedActive) return;
+      if (needsSelect) {
+        if ((await openRoster()) === "done") return;
+        if (canReturnToTitle) continue; // ESC: up to the title
+      }
+      if ((await maybeBirth()) === "done") return;
+      if (!canReturnToTitle) return;
+      continue; // ESC out of birth: up to the title
+    }
     /* IDM_FILE_EXIT at the splash (main-win.c:3568): with no game in progress it
      * just quits. Only offered when desktopQuitAvailable() said yes, so there is
      * no browser fallback to write here. */
@@ -7880,8 +8038,8 @@ async function bootMenus(): Promise<void> {
       return;
     }
     if (choice === "new") {
-      startNewCharacter();
-      return;
+      if ((await startNewCharacter()) === "done") return;
+      continue; // ESC off birth's first stage: back to the title
     }
     /* "Load last save": the most recent living character, straight in. A boot
      * that already resumed one IS that character, so there is nothing to do. */
@@ -7896,15 +8054,8 @@ async function bootMenus(): Promise<void> {
     }
     /* IDM_FILE_OPEN (main-win.c:3518) raises a picker over the save directory;
      * the port's picker is the character-select screen. */
-    if (await openRoster()) return;
-    const again = await maybeTitle();
-    /* maybeTitle only answers null when the title is suppressed, which cannot
-     * become true between iterations - but if it ever did, birth is the way out. */
-    if (again === null) {
-      await maybeBirth();
-      return;
-    }
-    choice = again;
+    if ((await openRoster()) === "done") return;
+    /* ESC: round the loop, which puts the title back up. */
   }
 }
 void bootMenus();

@@ -494,16 +494,37 @@ export class GlyphTerm {
   }
 
   /**
-   * prt (ui-output.c): `Term_erase(col, row, 255)` THEN write the string.
+   * c_prt / prt (ui-output.c:385-391 and :396-398): `Term_erase(col, row, 255)`
+   * THEN `Term_addstr`, in that order, as ONE operation.
    *
-   * The erase is the whole difference from print(), and it is load-bearing rather
-   * than tidy. Upstream draws its one-line prompts over whatever is already on
-   * that row and relies on prt to wipe the rest of it. The store's buy/sell
-   * confirmation is the case that surfaced: it prints "Price: N" onto row 1, which
-   * is the shopkeeper line, so a print() without the erase leaves the old text
-   * running on past the number - "Price: 450the Great (Gnome)".
+   *     void c_prt(uint8_t attr, const char *str, int row, int col) {
+   *             Term_erase(col, row, 255);
+   *             Term_addstr(-1, attr, str);
+   *     }
    *
-   * Every place the C calls prt() should call this, not print().
+   * How this differs from print(): print() is `c_put_str` / `put_str`
+   * (ui-output.c:368-379), which is a bare `Term_putstr` and whose own comment is
+   * "Do not clear the line." That is the entire distinction upstream draws
+   * between the two families, and the port must keep them distinct - a site that
+   * mirrors put_str MUST NOT erase (e.g. msg_flush's "-more-", ui-input.c:393,
+   * is a Term_putstr appended one column past the message text and would wipe
+   * that text if it erased), and a site that mirrors prt MUST.
+   *
+   * The erase is load-bearing rather than tidy: upstream draws its one-line
+   * prompts over whatever is already on that row and relies on prt to wipe the
+   * rest of it. Two cases surfaced from live play:
+   *   - the store's buy/sell confirmation prints "Price: N" onto row 1, the
+   *     shopkeeper line, so a print() left "Price: 450the Great (Gnome)";
+   *   - textui_get_check (ui-input.c:1271, `prt(buf, 0, 0)`) draws "Save and
+   *     quit?[y/n] " onto the message row, so a print() left the tail of the
+   *     previous message behind: "Save and quit?[y/n] d5) (+5,+3) (0).".
+   *
+   * Note the erase runs to the END of the row (255 is clamped to the term width
+   * by Term_erase), not to the length of `text`. A field edit that must preserve
+   * what is to its right uses the BOUNDED `Term_erase(x, y, len)` instead
+   * (askfor_aux, ui-input.c:891) - eraseToEol/prt is the wrong tool there.
+   *
+   * Every place the C calls prt()/c_prt() should call this, not print().
    */
   prt(x: number, y: number, text: string, fg: string): void {
     this.eraseToEol(x, y);

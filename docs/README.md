@@ -26,8 +26,11 @@ install, and how to mod the game. Start with the top-level
 
 ## Modding
 
-- [MODS.md](./MODS.md) - the mod system: content packs, tile packs, and
-  scripted plugins, with the base game as a pack itself.
+- [MODS.md](./MODS.md) - the mod system's TARGET design: content packs, tile
+  packs, and scripted plugins, with the base game as a pack itself.
+- [modding/MOD_REACH.md](./modding/MOD_REACH.md) - the MEASURED current state:
+  what a mod can actually change today, with counts and citations, plus the gap
+  list. Read this alongside MODS.md, which is the target.
 - [BORG_AS_MOD.md](./BORG_AS_MOD.md) - scope and plan for shipping the Borg as
   a bundled mod on the perceive/act agent API.
 - [LINOLEUM.md](./LINOLEUM.md) - the manifest-backed, loose-pack Linoleum tile
@@ -39,8 +42,11 @@ install, and how to mod the game. Start with the top-level
   Angband and the moddability pillar.
 - [modding/MOD_LIFECYCLE.md](./modding/MOD_LIFECYCLE.md) - mod lifecycle,
   saves, and how mods compose.
-- [modding/MOD_SEAMS.md](./modding/MOD_SEAMS.md) - the small set of core seams
-  the bundled mods use, and why each stays faithful when untouched.
+- [modding/MOD_SEAMS.md](./modding/MOD_SEAMS.md) - the `ModHooks` behaviour
+  seam, its per-hook fold rules, and why core stays faithful when untouched.
+- [modding/MOD_REACH.md](./modding/MOD_REACH.md) - measured mod reach: hook
+  count, the dispatch-table census, what data layering really supports, what
+  resources are overridable, and the ranked gap list.
 - [modding/MOD_INTEGRATION_PLAN.md](./modding/MOD_INTEGRATION_PLAN.md) - wiring
   the mod substrate into the running game.
 - [modding/BORG.md](./modding/BORG.md) - the bundled Borg autoplayer mod and

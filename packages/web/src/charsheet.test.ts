@@ -198,6 +198,28 @@ function makeSheetTerm(cols = 80, rows = 24): SheetTerm {
       for (const row of grid) row.fill(" ");
       for (const row of colors) row.fill(undefined);
     },
+    /* Term_erase(x, y, 255) + c_prt = erase-then-draw (ui-output.c:385-391).
+     * print() is put_str and does NOT erase (ui-output.c:362-379); the two must
+     * stay distinguishable in the fake or a prt site cannot be tested. */
+    eraseToEol: (x: number, y: number) => {
+      if (y < 0 || y >= rows) return;
+      for (let cx = Math.max(0, x); cx < cols; cx++) {
+        grid[y]![cx] = " ";
+        colors[y]![cx] = "";
+      }
+    },
+    prt: (x: number, y: number, text: string, fg: string) => {
+      if (y < 0 || y >= rows) return;
+      for (let cx = Math.max(0, x); cx < cols; cx++) {
+        grid[y]![cx] = " ";
+        colors[y]![cx] = "";
+      }
+      for (let i = 0; i < text.length && x + i < cols; i++) {
+        if (x + i < 0) continue;
+        grid[y]![x + i] = text[i] ?? " ";
+        colors[y]![x + i] = fg;
+      }
+    },
     print: (x: number, y: number, text: string, fg: string) => {
       for (let i = 0; i < text.length && x + i < cols; i++) {
         if (y < 0 || y >= rows || x + i < 0) continue;
