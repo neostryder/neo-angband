@@ -223,6 +223,61 @@ describe("status state (prt_state, ui-display.c:957-1017)", () => {
     const st = field(statusLineModel(state), "state");
     expect(st).toEqual([{ text: " ", color: COLOUR_WHITE }]);
   });
+
+  /**
+   * player_is_resting is upkeep->resting (player-util.c:1397), which GameState
+   * carries as state.resting - so the field must appear off the STATE, not only
+   * when a caller remembers the dep. It appeared nowhere at all: no shell passed
+   * isResting, so the web shell printed an invented "Resting..." message line
+   * instead, and never cleared it.
+   */
+  describe("the Rest field comes from state.resting, with no dep passed", () => {
+    it("shows the count while a timed rest runs", () => {
+      const state = makeState();
+      state.resting = { count: 42, turnsRested: 3 };
+      const st = field(statusLineModel(state), "state");
+      expect(st[0]?.text).toBe("Rest    42 ");
+    });
+
+    it("shows the conditional modes' own glyphs (* & !)", () => {
+      const state = makeState();
+      for (const [count, glyph] of [[-1, "*"], [-2, "&"], [-3, "!"]] as const) {
+        state.resting = { count, turnsRested: 0 };
+        expect(field(statusLineModel(state), "state")[0]?.text).toBe(
+          `Rest ${glyph.repeat(5)} `,
+        );
+      }
+    });
+
+    it("goes back to one blank column the moment the rest ends", () => {
+      const state = makeState();
+      state.resting = { count: 7, turnsRested: 1 };
+      expect(field(statusLineModel(state), "state")[0]?.text).toBe("Rest     7 ");
+      /* driveRest's finally clause deletes it. */
+      delete state.resting;
+      expect(field(statusLineModel(state), "state")).toEqual([
+        { text: " ", color: COLOUR_WHITE },
+      ]);
+    });
+
+    it("a count of 0 is not resting (player_is_resting is > 0 or special)", () => {
+      const state = makeState();
+      state.resting = { count: 0, turnsRested: 9 };
+      expect(field(statusLineModel(state), "state")).toEqual([
+        { text: " ", color: COLOUR_WHITE },
+      ]);
+    });
+
+    it("an explicit dep still wins over the state", () => {
+      const state = makeState();
+      state.resting = { count: 42, turnsRested: 3 };
+      const st = field(
+        statusLineModel(state, { isResting: false }),
+        "state",
+      );
+      expect(st).toEqual([{ text: " ", color: COLOUR_WHITE }]);
+    });
+  });
 });
 
 describe("status segments bake exactly one trailing gap (update_statusline_aux widths)", () => {

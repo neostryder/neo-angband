@@ -64,6 +64,17 @@ export interface PickupEnv {
   pickupInven?: boolean;
   /** get_item over the floor list (the pickup menu, ui #25). */
   chooseItem?: (list: readonly GameObject[]) => GameObject | null;
+  /**
+   * get_quantity(NULL, max) on a PARTIAL pickup (cmd-pickup.c L270): only some
+   * of the stack fits, so upstream asks how much of it to take. Answering 0
+   * (which ESCAPE gives) abandons the pickup - but not the turn, since
+   * player_pickup_item has already counted the object (L389).
+   *
+   * With no hook the whole carryable amount is taken, which is what a headless
+   * caller (the borg, the agent seam, a test) wants: upstream's default answer
+   * is 1, but a caller with no way to answer would then never make progress.
+   */
+  getQuantity?: (max: number) => number;
   /** Gold was picked up (message/sound hook). */
   onGold?: (total: number, name: string, singleKind: boolean) => void;
   /**
@@ -264,10 +275,11 @@ function playerPickupAux(
     obj.grid = null;
     ({ handle, combining } = invenCarryResult(state.gear, obj, limits));
   } else {
-    /* Partial pickup: auto-limit, or the whole carryable amount (the
-     * get_quantity prompt defaults to max; the prompt itself is ui). */
-    const num = autoMax || max;
-    if (!num) return;
+    /* Partial pickup (cmd-pickup.c L262-274): an auto-pickup limit answers for
+     * itself, otherwise upstream asks - get_quantity(NULL, max) - and a 0
+     * answer abandons the pickup. */
+    const num = autoMax || (env.getQuantity?.(max) ?? max);
+    if (num <= 0) return;
     const { usable } = floorObjectForUse(state, obj, num);
     ({ handle, combining } = invenCarryResult(state.gear, usable, limits));
   }
