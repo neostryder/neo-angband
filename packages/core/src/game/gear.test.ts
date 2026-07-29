@@ -6,6 +6,7 @@ import { ObjRegistry } from "../obj/bind";
 import { objectPrep } from "../obj/make";
 import type { GameObject, StackLimits } from "../obj/object";
 import { bindPlayer } from "../player/bind";
+import { registerBookKinds } from "../player/spell";
 import { blankPlayer } from "../player/player";
 import { makeRuneEnv, OBJ_NOTICE } from "../obj/knowledge";
 import { objectFullyKnown, objectKnownShadow } from "../obj/known-object";
@@ -515,5 +516,83 @@ describe("calcInventory re-arrange notice (player-calcs.c:1224-1233)", () => {
       msg: (t) => void said.push(t),
     });
     expect(said).toEqual([]);
+  });
+});
+
+/**
+ * Every class's starting kit, against class.txt.
+ *
+ * Added 2026-07-29 after a playtest report of a Priest handed a Main Gauche. The
+ * classes that DO start with one - Necromancer, Paladin, Ranger - sit next to
+ * Priest in class.txt, so an off-by-one anywhere between the class menu and
+ * player_outfit would produce exactly that symptom. This walks all nine rather
+ * than checking one, because a single-class assertion cannot tell a correct kit
+ * from a shifted one.
+ */
+describe("player_outfit gives each class its own kit (class.txt equip: lines)", () => {
+  /** The weapon each class starts wielding, verbatim from class.txt. */
+  const START_WEAPON: Record<string, string> = {
+    Warrior: "Dagger",
+    Mage: "Rapier",
+    Druid: "Whip",
+    Priest: "Mace",
+    Necromancer: "Main Gauche",
+    Paladin: "Main Gauche",
+    Rogue: "Dagger",
+    Ranger: "Main Gauche",
+    Blackguard: "Tulwar",
+  };
+
+  /**
+   * The registry a real game builds. Class BOOKS are created from class.txt's
+   * `book:` lines (registerBookKinds, player/spell.ts) rather than living in
+   * object.txt, so a bare ObjRegistry cannot outfit any caster - outfitPlayer
+   * throws on the unknown sval. That is a harness detail, not a port defect, and
+   * it is why this helper exists rather than `new ObjRegistry(pack.obj)`.
+   */
+  const outfitReg = (): ObjRegistry => {
+    const reg = new ObjRegistry(pack.obj);
+    registerBookKinds(reg, players.classes);
+    return reg;
+  };
+
+  /** kind.name carries object.txt's template ("& Dagger~"); strip it as ODESC_BASE does. */
+  const plain = (n: string | undefined): string | undefined =>
+    n?.replace(/[~&]/g, "").trim();
+
+  for (const [name, weapon] of Object.entries(START_WEAPON)) {
+    it(`${name} starts with ${weapon}`, () => {
+      const reg = outfitReg();
+      const cls = players.classByName(name);
+      expect(cls, `class ${name} is missing from the pack`).toBeTruthy();
+      const race = players.raceByName("Human")!;
+      const body = players.bodies[race.body]!;
+      const player = blankPlayer(race, cls!, body);
+      const gear = newGear();
+      outfitPlayer(gear, player, reg, new Rng(42), constants);
+
+      const slot = body.slots.findIndex((s) => s.type === "WEAPON");
+      const worn = gearGet(gear, player.equipment[slot] ?? 0);
+      expect(plain(worn?.kind.name)).toBe(weapon);
+    });
+  }
+
+  it("gives a Priest no edged weapon at all (BLESS_WEAPON)", () => {
+    /* The class has player-flags:BLESS_WEAPON, so an edged starting weapon would
+     * be penalised from turn one - which is why the report was worth chasing even
+     * though the compiled data turned out to be right. */
+    const reg = outfitReg();
+    const cls = players.classByName("Priest")!;
+    const race = players.raceByName("Human")!;
+    const body = players.bodies[race.body]!;
+    const player = blankPlayer(race, cls, body);
+    const gear = newGear();
+    outfitPlayer(gear, player, reg, new Rng(7), constants);
+    const everything = [
+      ...player.equipment.filter((h): h is number => !!h),
+      ...gear.pack,
+    ].map((h) => gearGet(gear, h)!);
+    expect(everything.some((o) => o.tval === TV.SWORD)).toBe(false);
+    expect(everything.some((o) => plain(o.kind.name) === "Mace")).toBe(true);
   });
 });
