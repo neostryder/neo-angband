@@ -82,6 +82,13 @@ async function confirmDelete(term: GlyphTerm, c: CharMeta): Promise<boolean> {
 export async function runCharacterSelect(
   term: GlyphTerm,
   roster: CharMeta[],
+  /**
+   * A standing warning about the storage these characters live in, when there is
+   * one (storage-persist.durabilityNotice). Shown here because this screen is the
+   * only place the player sees their characters as things that can be lost; a
+   * warning on the title screen would be about nothing in particular.
+   */
+  notice?: string | null,
 ): Promise<SelectResult> {
   for (;;) {
     const now = Date.now();
@@ -110,7 +117,9 @@ export async function runCharacterSelect(
       [...items, newRow],
       "[ a-z to choose, tap a row, Del to delete, ESC for the most recent ]",
       {
-        subtitle: "Living characters resume; tombstones are memorials.",
+        subtitle: notice
+          ? notice
+          : "Living characters resume; tombstones are memorials.",
         commands: { Delete: requestDelete, Backspace: requestDelete },
       },
     );
