@@ -155,7 +155,15 @@ export function diskPackStatus(): {
      * out of the catalog, so counting them here would disagree with the list the
      * player is looking at. */
     bundledCount: [...bundledModIds()].filter((id) => isShippedMod(id)).length,
-    problems: [...r.problems, ...shadowed],
+    /* composed.problems carries what the COMPOSER refused, which is a different
+     * class from what the pack READER could not read (r.problems): a ref no
+     * record answers to, a ref two records both claim, a per-record op against a
+     * file with no keyable identity, and a mod that replaced a whole file and
+     * discarded core records with it. Those used to be dropped in silence, which
+     * meant a mod author's patch could do nothing and say nothing - so they are
+     * surfaced in the same list the manager already shows, or collecting them
+     * would have been pointless. */
+    problems: [...r.problems, ...composedProblems(), ...shadowed],
     kind: r.kind,
   };
 }
@@ -337,6 +345,15 @@ function activePackSet(): LoadedPack[] {
  */
 const activePacks = activePackSet();
 const composed = composeContentPacks(activePacks);
+
+/**
+ * What the composer refused, for diskPackStatus (declared here, beside the
+ * composition it reads, and reached from above by hoisting - `composed` is a
+ * module-scope const and diskPackStatus only ever runs after module init).
+ */
+function composedProblems(): readonly string[] {
+  return composed.problems;
+}
 
 /**
  * The namespaces whose content the running pack can resolve: core plus every
