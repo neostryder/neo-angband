@@ -332,14 +332,19 @@ export function folderModSource(handle: FsDirHandle): ModDirSource {
         single = true;
         dirs.clear();
         dirs.set(handle.name, handle);
-        return [{ id: handle.name, files: topFiles.filter(isJson) }];
+        return [
+          { id: handle.name, files: topFiles.filter(isJson), code: topFiles.filter(isJs) },
+        ];
       }
       for (const [name, sub] of dirs) {
         const files: string[] = [];
+        const code: string[] = [];
         for await (const child of sub.values()) {
-          if (child.kind === "file" && isJson(child.name)) files.push(child.name);
+          if (child.kind !== "file") continue;
+          if (isJson(child.name)) files.push(child.name);
+          else if (isJs(child.name)) code.push(child.name);
         }
-        entries.push({ id: name, files });
+        entries.push({ id: name, files, code });
       }
       return entries;
     },
@@ -360,11 +365,43 @@ export function folderModSource(handle: FsDirHandle): ModDirSource {
         ? order.filter((x): x is string => typeof x === "string")
         : [];
     },
+    /**
+     * A picked file has no URL of any kind - it is a handle, not a location - so
+     * its bytes are read and wrapped in a blob: URL, which `import()` accepts as a
+     * module. The type MUST be a JavaScript one or the import is rejected on MIME
+     * grounds exactly as a mis-served .js would be.
+     *
+     * The consequence a mod author has to know: bare specifiers in a blob: module
+     * resolve against the DOCUMENT (so there are none here by design - the host
+     * passes the engine in, see mod-plugin.ts), but a RELATIVE import resolves
+     * against the blob URL, which points at nothing. A folder-loaded plugin must
+     * therefore be a single file. mod-code.ts says so when it fails.
+     */
+    codeUrl: async (id, file) => {
+      const dir = dirs.get(id);
+      if (!dir) return null;
+      const found = await findFile(dir, file);
+      if (!found) return null;
+      const text = await (await found.getFile()).text();
+      const blob = new Blob([text], { type: "text/javascript" });
+      return URL.createObjectURL(blob);
+    },
+    releaseUrl: (url) => {
+      /* A blob URL pins its bytes for the document's lifetime until revoked, and
+       * a mods folder can hold many. Safe once the import has settled: the module
+       * graph is already built and never re-fetches. */
+      if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+    },
   };
 }
 
 function isJson(name: string): boolean {
   return name.toLowerCase().endsWith(".json");
+}
+
+function isJs(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.endsWith(".js") || lower.endsWith(".mjs");
 }
 
 /**

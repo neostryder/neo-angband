@@ -217,7 +217,15 @@ import { setHost } from "@neo-angband/core";
 import { BrowserHost } from "./host-browser";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
-import { loadDiskPacks, setDiskPacks } from "./disk-packs";
+import { diskPacks, loadDiskPacks, setDiskPacks } from "./disk-packs";
+import {
+  activeModCode,
+  folderPluginManifests,
+  loadModCode,
+  mergePluginManifests,
+  setModCode,
+} from "./mod-code";
+import { modPluginContext } from "./mod-context";
 import {
   folderPickingSupported,
   forgetModFolder,
@@ -237,7 +245,7 @@ import {
   resolveModRules,
   FIRST_PARTY_MOD_IDS,
 } from "./mod-store";
-import { activeModHooks } from "./mod-hooks";
+import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { runModManager } from "./mods";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
 import { initA11y } from "./a11y";
@@ -464,6 +472,27 @@ initLaunchArgsFromHost();
 {
   const shellPacks = await loadDiskPacks();
   setDiskPacks(shellPacks.available ? shellPacks : await loadPickedModFolder());
+
+  /* And their CODE. Until this existed, a folder could contribute records and
+   * never a line of behaviour - the whole SDK (patches, conflicts, the five
+   * capability-gated registries) was reachable only from mods compiled INTO the
+   * app, because the only route to a mod's code was a build-time glob.
+   *
+   * Awaited here, beside the records, because both have to be settled before
+   * content composes and the game exists; latched, because everything downstream
+   * is synchronous. Every gate - enabled, shape, ABI version, consent - is applied
+   * before a plugin is imported (mod-code.ts), so this call cannot run code the
+   * player has not agreed to run. */
+  const disk = diskPacks();
+  const store = defaultModStore();
+  setModCode(
+    await loadModCode({
+      packs: disk.packs,
+      codeUrl: disk.codeUrl,
+      enabled: (id) => enabledModIds().includes(id),
+      consented: (id) => store.getConsent(id),
+    }),
+  );
 }
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -4981,7 +5010,14 @@ async function openModManager(): Promise<void> {
       buildCatalog({
         content: discoverContentModManifests(),
         sandbox: [...discoverPlugins().values()].map((p) => p.manifest),
-        trusted: [...discoverTrustedPlugins().values()].map((p) => p.manifest),
+        /* Bundled trusted plugins AND folder ones. A folder plugin is trusted
+         * in-process code exactly as a bundled trusted.ts is - same registry
+         * facades, same consent gate - so it belongs in the same list rather than
+         * a fourth kind the UI would have to learn about. */
+        trusted: mergePluginManifests(
+          [...discoverTrustedPlugins().values()].map((p) => p.manifest),
+          folderPluginManifests(diskPacks().packs),
+        ),
         // The EFFECTIVE set, not store.getEnabled(): a pack deployed into the
         // mods folder and listed in load-order.json is loaded without being in
         // the player's stored set, and a manager that showed it as off while the
@@ -5145,13 +5181,15 @@ async function openGameMenu(): Promise<void> {
       }
       break;
     case "quit":
-      /* The desktop-only row. Asks its OWN question, because "quit" and "exit to
-       * the title" are now different outcomes and a confirmation that named the
-       * wrong one is how the previous defect stayed invisible. */
-      if (await confirmYesNo("Save and quit?")) {
-        await closeGameSave(true);
-        if (!desktopQuit()) await exitToTitle();
-      }
+      /* The desktop-only row. It runs saveQuitNow, the SAME body as ^X, so the two
+       * cannot drift apart - which is how the previous defect here stayed alive.
+       *
+       * It keeps a confirmation where ^X does not, and that asymmetry is deliberate:
+       * ^X is a command the C defines, and textui_quit asks nothing, so asking there
+       * would be an invention. This row is port UI with no counterpart in the C - a
+       * browse surface where Quit sits one arrow key from its neighbours - so a
+       * guard rail here diverges from nothing. */
+      if (await confirmYesNo("Save and quit?")) await saveQuitNow();
       break;
     default:
       break; // Resume play
@@ -5749,28 +5787,39 @@ function redrawCmd(): void {
 }
 
 /**
- * Save and quit (^X, textui_quit, cmd_util:199): confirm, then save and leave
- * play for the title screen (exitToTitle). This used to save and merely reopen
- * the game menu, which was not "quit" in any sense the player could see; the
- * same action is now on the game menu's own "Save and exit" row, and both go
- * through the one confirm-then-exitToTitle path.
+ * Save and quit (^X, textui_quit, ui-game.c:199 -> ui-command.c:228-231).
+ *
+ * Upstream asks NOTHING. textui_quit's entire body is `playing = false`; the loop
+ * unwinds through close_game (which saves), and every front end then calls quit()
+ * (main.c:581-586, main-win.c:3511-3512). There is no get_check anywhere on the
+ * path.
+ *
+ * The port used to open a "Save and quit?" confirmation. That prompt exists
+ * nowhere in the C, and an invented string in a prompt slot is worse than an
+ * absence, because it fills the slot and no census can see it. A confirm-on-quit
+ * is a comfort, not a parity requirement: it belongs in a mod if it is wanted.
+ * The risk it was guarding is also small - the save is written first, so ^X loses
+ * nothing but the current screen.
+ *
+ * The one thing that DOES have to differ is the destination: a browser tab has no
+ * OS to quit to, so it falls back to the title screen, the nearest thing that
+ * exists there. That accommodation is necessary; the question was not.
  */
 function saveQuitCmd(): void {
-  void openModal(async () => {
-    /* Two different actions, so two different questions. ^X is upstream's quit:
-     * textui_quit clears playing, the loop unwinds through close_game, and every
-     * front end then calls quit() (main.c:581-586, main-win.c:3511-3512). A tab
-     * has no OS to quit to and falls back to the title, which is the nearest
-     * thing that exists there. */
-    const quits = desktopQuitAvailable();
-    const ask = quits ? "Save and quit?" : "Save and exit to the title screen?";
-    if (!(await confirmYesNo(ask))) return;
-    if (quits) {
-      await closeGameSave(true);
-      if (desktopQuit()) return;
-    }
-    await exitToTitle();
-  });
+  void openModal(saveQuitNow);
+}
+
+/**
+ * The body of the quit: save, leave. Shared with the game menu's own Quit row so
+ * there is exactly ONE implementation of "save and quit" - the previous defect in
+ * this area survived precisely because two call sites drifted apart.
+ */
+async function saveQuitNow(): Promise<void> {
+  if (desktopQuitAvailable()) {
+    await closeGameSave(true);
+    if (desktopQuit()) return;
+  }
+  await exitToTitle();
 }
 
 /**
@@ -8392,6 +8441,49 @@ try {
   }
 } catch (err) {
   console.warn("[mods] persisted-enable auto-install failed:", err);
+}
+
+/* The FOLDER plugins' register() half.
+ *
+ * A bundled trusted.ts reaches the five capability-gated registries through
+ * installTrusted above; this is the identical thing for a plugin that came from a
+ * folder, and it is the half that had no path at all - the registry facades
+ * existed, were tested, and in a release build had no non-test caller, because the
+ * only way to reach them was a module compiled into the app.
+ *
+ * mod-code.ts already applied every gate before importing, including consent, so
+ * a plugin that reaches here has been agreed to. The capability set is still built
+ * from the MANIFEST and still gates each facade at every call: consent says the
+ * player allowed these domains, CapabilitySet says the mod asked for them, and a
+ * facade the mod did not declare throws even though it was consented to something
+ * else.
+ */
+const folderRuleFlags = resolveModRuleFlagsByMod();
+for (const loaded of activeModCode().plugins) {
+  const register = loaded.plugin.register;
+  if (!register) continue;
+  try {
+    const host = createModRegistryHost(
+      {
+        effects: effectRegistry,
+        rooms: booted.registries.rooms,
+        commands: registry,
+        state,
+        vocab: new VocabularyRegistry(),
+      },
+      CapabilitySet.fromManifest(loaded.manifest),
+    );
+    register.call(
+      loaded.plugin,
+      host,
+      modPluginContext(loaded.id, folderRuleFlags.get(loaded.id) ?? {}, state),
+    );
+    installedPluginIds.add(loaded.id);
+  } catch (err) {
+    /* One mod's bad register() loses that mod and nothing else. A third-party
+     * plugin throwing must not take the game, or the other mods, down. */
+    console.error(`[mod:${loaded.id}] register() failed:`, err);
+  }
 }
 
 // Dev-only diagnostic hook for automated verification; Vite strips this whole
