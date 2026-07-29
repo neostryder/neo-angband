@@ -2,6 +2,7 @@ import { describe, expect, it, afterEach } from "vitest";
 import { colorToCss, COLOUR_L_BLUE } from "@neo-angband/core";
 import {
   showLevelMap,
+  showFloorList,
   selectFromMenu,
   itemSelect,
   showTextScreen,
@@ -75,6 +76,29 @@ function makeTerm(cols = 20, rows = 12): FakeTerm {
       for (let i = 0; i < text.length && x + i < cols; i++) {
         const row = grid[y];
         const crow = colors[y];
+        if (row) row[x + i] = text[i] ?? " ";
+        if (crow) crow[x + i] = fg ?? "";
+      }
+    },
+    // Term_erase(x, y, 255) (ui-term.c) and c_prt = erase-then-draw
+    // (ui-output.c:385-391). The fake models both so a prompt drawn with prt()
+    // really does wipe the rest of the row here, exactly as on the canvas.
+    eraseToEol: (x: number, y: number) => {
+      const row = grid[y];
+      const crow = colors[y];
+      for (let cx = Math.max(0, x); cx < cols; cx++) {
+        if (row) row[cx] = " ";
+        if (crow) crow[cx] = "";
+      }
+    },
+    prt: (x: number, y: number, text: string, fg?: string) => {
+      const row = grid[y];
+      const crow = colors[y];
+      for (let cx = Math.max(0, x); cx < cols; cx++) {
+        if (row) row[cx] = " ";
+        if (crow) crow[cx] = "";
+      }
+      for (let i = 0; i < text.length && x + i < cols; i++) {
         if (row) row[x + i] = text[i] ?? " ";
         if (crow) crow[x + i] = fg ?? "";
       }
@@ -1307,6 +1331,202 @@ describe("getCheck (textui_get_check)", () => {
     expect(resolved).toBe(false);
     press(win, "y");
     expect(await done).toBe(true);
+  });
+});
+
+/**
+ * The reported bug, verbatim from a screenshot of the running game: row 0 read
+ *
+ *     Save and quit?[y/n] d5) (+5,+3) (0).
+ *
+ * The tail is the previous message ("You have a Main Gauche (1d5) (+5,+3) (0).")
+ * left behind because the prompt was drawn with put_str semantics over a longer
+ * line. Upstream cannot do this: textui_get_check draws with `prt(buf, 0, 0)`
+ * (ui-input.c:1271), and prt is `Term_erase(col, row, 255)` THEN the string
+ * (ui-output.c:385-391), whereas put_str/c_put_str is a bare Term_putstr whose
+ * own comment is "Do not clear the line" (ui-output.c:362-379).
+ *
+ * Every row-0 prompt in the port is checked here, not just get_check, because
+ * the defect was systemic: they all drew over the live message row.
+ */
+describe("row-0 prompts erase the line they draw on (prt, ui-output.c:385-391)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  /** Put the reported message on row 0, the way render() leaves it. */
+  function withStaleMessage(cols = 60): FakeTerm {
+    const term = makeTerm(cols);
+    term.print(0, 0, "You have a Main Gauche (1d5) (+5,+3) (0).", "#ffffff");
+    expect(term.snapshot()[0] ?? "").toBe("You have a Main Gauche (1d5) (+5,+3) (0).");
+    return term;
+  }
+
+  it("get_check leaves ONLY the prompt on row 0 (the reported bug)", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = withStaleMessage();
+    void getCheck(term, "Save and quit? ");
+    // Not "Save and quit?[y/n] d5) (+5,+3) (0)." - nothing of the old line survives.
+    expect(term.snapshot()[0] ?? "").toBe("Save and quit? [y/n]");
+  });
+
+  it("get_com_ex / getKeyInline leaves ONLY the prompt on row 0", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = withStaleMessage();
+    void getKeyInline(term, "Type '@' to be sure: ");
+    expect(term.snapshot()[0] ?? "").toBe("Type '@' to be sure:");
+  });
+
+  it("textui_get_rep_dir leaves ONLY the prompt on row 0", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = withStaleMessage(80);
+    void getRepDir(term);
+    expect(term.snapshot()[0] ?? "").toBe("Direction or <click> (Escape to cancel)?");
+  });
+
+  it("textui_get_aim_dir leaves ONLY the prompt on row 0", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = withStaleMessage(80);
+    void getAimDir(term, false);
+    expect(term.snapshot()[0] ?? "").toBe(
+      "Direction ('*' or <click> to target, \"'\" for closest, Escape to cancel)?",
+    );
+  });
+
+  it("the dismissed prompt erases the WHOLE row, including its last column", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(20);
+    // A message filling the row right up to the last column. clearPromptRow used
+    // to write cols-1 spaces, so column 19 kept its glyph after the prompt went.
+    term.print(0, 0, "ABCDEFGHIJKLMNOPQRST", "#ffffff");
+    const done = getCheck(term, "Ok? ");
+    press(win, "n");
+    expect(await done).toBe(false);
+    expect(term.snapshot()[0] ?? "").toBe("");
+    expect(term.colorAt(19, 0)).toBe("");
+  });
+});
+
+/**
+ * show_floor over screen_save (ui-display.c:2629-2647 + ui-object.c:381-467).
+ *
+ * The port reused showTextScreen for this, which calls term.clear() - so walking
+ * onto a pile of loot blanked the map - and appended an invented
+ * "[ Press ESC to return ]" footer. It also dropped the OLIST_WEIGHT column and
+ * swallowed the key that dismissed the list, which upstream re-feeds as the next
+ * command (Term_event_push, :2644): 'g' onto a pile should list it and pick up.
+ */
+describe("showFloorList (show_floor, ui-display.c:2629-2647)", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  const rows = [
+    { label: "a) ", name: "2 Flasks of oil", color: "#c8a000", weight: 20 },
+    { label: "b) ", name: "a Dagger (1d4)", color: "#c8c8d4", weight: 12 },
+  ];
+
+  /** A term with a map already drawn on every row, the way render() leaves it. */
+  function withMap(cols = 80, termRows = 24): FakeTerm {
+    const term = makeTerm(cols, termRows);
+    for (let y = 0; y < termRows; y++) term.print(0, y, "#".repeat(cols), "#8a8a94");
+    return term;
+  }
+
+  it("does NOT clear the screen - the map to the left of the block survives", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = withMap();
+    void showFloorList(term, "You see: ", rows);
+    const snap = term.snapshot();
+    /* col = cols - 1 - max_len - 9 (ui-object.c:419-420). max_len is
+     * len("a) ") + len("2 Flasks of oil") = 18, so col = 80 - 1 - 18 - 9 = 52,
+     * and each row clears from col - 1 = 51 (ui-object.c:151). */
+    expect(snap[1]!.slice(0, 51)).toBe("#".repeat(51));
+    expect(snap[2]!.slice(0, 51)).toBe("#".repeat(51));
+    /* And rows the list does not touch are wholly untouched. */
+    expect(snap[10]).toBe("#".repeat(80));
+  });
+
+  it("right-anchors the block at row 1 with the OLIST_WEIGHT column", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = withMap();
+    void showFloorList(term, "You see: ", rows);
+    const snap = term.snapshot();
+    /* Row 1: label at col 52, name after it, weight at col + ex_offset = 52 + 18.
+     * `%4d.%1d lb` of 20 tenths -> "   2.0 lb" (ui-object.c:461-464). */
+    expect(snap[1]!.slice(51)).toBe(" a) 2 Flasks of oil   2.0 lb");
+    expect(snap[2]!.slice(51)).toBe(" b) a Dagger (1d4)    1.2 lb");
+    /* Row 0 is the prompt, drawn from col 0 with prt (ui-display.c:2640). */
+    expect(snap[0]).toBe("You see:");
+  });
+
+  it("draws NO footer anywhere (upstream writes none)", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = withMap();
+    void showFloorList(term, "You see: ", rows);
+    const snap = term.snapshot();
+    expect(snap[23]).toBe("#".repeat(80)); // the last row is still map
+    expect(snap.join("\n")).not.toMatch(/Press ESC|\[ /u);
+  });
+
+  it("clears one drop-shadow row under the list (ui-object.c:465-467)", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = withMap();
+    void showFloorList(term, "You see: ", rows);
+    /* prt("", row + i, MAX(col - 2, 0)) - from col - 2 = 50, one row past the last. */
+    expect(term.snapshot()[3]!.slice(50)).toBe("");
+    expect(term.snapshot()[3]!.slice(0, 50)).toBe("#".repeat(50));
+  });
+
+  it("re-feeds the dismissing key as the next command (Term_event_push)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = withMap();
+    const refed: string[] = [];
+    const done = showFloorList(term, "You see: ", rows, (k) => refed.push(k));
+    press(win, "g");
+    await done;
+    expect(refed).toEqual(["g"]);
+  });
+
+  it("ignores a lone modifier, then resolves on the real key", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = withMap();
+    let resolved = false;
+    const refed: string[] = [];
+    const done = showFloorList(term, "You see: ", rows, (k) => refed.push(k)).then(() => {
+      resolved = true;
+    });
+    press(win, "Shift");
+    await tick();
+    expect(resolved).toBe(false);
+    press(win, "Escape");
+    await done;
+    expect(refed).toEqual(["Escape"]);
+  });
+
+  it("truncates a name that would overrun the weight column", () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    /* A 20-wide term: col = 20 - 1 - max_len - 9 goes below 3, so col = 0 and
+     * ex_offset = 20 - 1 - 9 - 0 = 10 (ui-object.c:421-425). The name is then
+     * truncated to ex_offset - label (ui-object.c:164-174). */
+    const term = makeTerm(20, 24);
+    void showFloorList(term, "You see: ", [
+      { label: "a) ", name: "a Long Sword of Extra Attacks", color: "#fff", weight: 150 },
+    ]);
+    /* label "a) " + name clipped to 7 ("a Long "), then "  15.0 lb" at col 10. */
+    expect(term.snapshot()[1]).toBe("a) a Long   15.0 lb");
   });
 });
 

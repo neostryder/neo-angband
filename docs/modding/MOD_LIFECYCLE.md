@@ -232,7 +232,7 @@ from Bethesda games and similar mod ecosystems). The order is computed by:
 2. User preference within the freedom that leaves.
 
 Most mods never need manual ordering. Where manual ordering IS wanted,
-it is an EXTERNAL-MANAGER job, not an in-app one (Aaron's ruling,
+it is an EXTERNAL-MANAGER job, not an in-app one (the project owner's ruling,
 2026-07-27, see "External managers" below): the game reads and honours
 an explicit order, but the sorting UX belongs to Vortex/MO2. The in-app
 manager stays rudimentary - enable/disable a mod, opt out of one of its
@@ -268,7 +268,7 @@ plain language, not an error code.
 
 ### External managers (Vortex, MO2)
 
-**RATIFIED 2026-07-27 (Aaron).** Integrating with Vortex and the other
+**RATIFIED 2026-07-27 (the project owner).** Integrating with Vortex and the other
 popular mod managers is an explicit goal, and it sets the division of
 labour between them and the game:
 

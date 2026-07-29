@@ -878,7 +878,9 @@ export async function runStore(
     for (;;) {
       paint();
       const { cols } = term.size();
-      term.print(0, 0, `(Enter to select, ESC) Command for ${name}:`.slice(0, cols - 1), UI_TEXT);
+      // prt (ui-output.c:385-391): paint() has just put statusMsg on row 0, so a
+      // longer status would show its tail past this prompt.
+      term.prt(0, 0, `(Enter to select, ESC) Command for ${name}:`.slice(0, cols - 1), UI_TEXT);
       for (let e = 0; e < entries.length; e++) {
         const ent = entries[e]!;
         term.print(2, 2 + e, `${ent.key}) ${ent.label}`, e === mc ? UI_CURSOR : UI_TEXT);

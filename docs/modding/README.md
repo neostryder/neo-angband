@@ -21,6 +21,16 @@ overall design and the moddable-surface matrix, read `docs/MODS.md`.
   uninstall, installing from git (and a future marketplace), multi-mod
   composition and conflict resolution, uninstall recovery, and the UX
   principles. RATIFIED (decision 19); not yet fully built.
+- `MOD_SEAMS.md`: the CORE seams a mod reaches through - the `ModHooks`
+  behaviour interface, its per-hook fold rules, and how a patch is turned
+  on. Describes what is built.
+- `MOD_REACH.md`: the MEASURED answer to "how much of the game can a mod
+  actually make over today" - hook count, a census of the port's dispatch
+  tables and which are mod-reachable, what data layering really supports,
+  what resources are overridable, and the gap list. Read this before
+  trusting a capability claim on any other page: this directory contains
+  both design-of-record pages and built-today pages, and the two are not
+  the same thing.
 - `docs/LINOLEUM.md`: tile packs and converting the classic tilesets.
 - `BUG_FIXES.md`: the bundled `bug-fixes` mod - its design of record and
   referenced changelog for upstream crash/corruption/save/determinism fixes
@@ -47,8 +57,12 @@ Enable one in the in-app mod manager (game menu -> Mods), or with
 `?mods=qol,bug-fixes,linoleum` for a one-off.
 
 **The mod is the unit you switch; its patches ride with it.** While a mod is
-disabled its patches DO NOT EXIST - no rule flag, nothing in the menu, core
-running faithful 4.2.6. Enabling the mod turns its whole patch set on at once,
+disabled its patches DO NOT EXIST - its code is never called, no hook is
+installed, nothing appears in the menu, and core runs faithful 4.2.6. A mod that
+changes BEHAVIOUR does so by default-exporting `ModHooks` from its own
+`hooks.ts`; core holds one composed `ModHooks` and never learns which mod
+supplied what (`docs/modding/MOD_SEAMS.md`).
+Enabling the mod turns its whole patch set on at once,
 and each patch is then individually switchable on that mod's own screen
 (Mods -> the mod -> Fixes & tweaks), so you can take the set minus one.
 That is all `default: true` on a rule means:
@@ -124,12 +138,26 @@ Each content file may add, patch, replace, and remove records:
   deletes a key.
 - `replaces` swaps the record body wholesale (the ref and owner stay).
 - `removes` deletes the record from the composed game.
-- Every record in the running game carries provenance: which pack owns
-  it and every pack that modified it, in order. Savefiles embed this,
-  so a save knows exactly which content produced it.
+- `fieldPatches` applies typed ops to dot-paths (`set`, `merge`,
+  `addFlag`, `removeFlag`, `add`, `mul`) - see
+  `packages/mod-sdk/src/patch.ts`.
+- Modifying a record you do not own requires declaring its owner in
+  `dependencies`; compose throws otherwise.
+
+> **Measured limitation, read this before designing around the above.**
+> Per-record addressing (`patches` / `replaces` / `removes` /
+> `fieldPatches`) works on **24 of the 44 record files**. The other 20 -
+> including `object`, `ego_item`, `vault`, `store`, `trap`, `brand`,
+> `slay`, `object_base`, `projection` and `constants` - are whole-file
+> passthrough only, because they either have no unique string `name` per
+> record or core's own data contains duplicate names. A `patches` entry
+> aimed at one of them is **silently dropped**: no error, no conflict-report
+> line, the mod simply does nothing. `MOD_REACH.md` carries the full
+> per-file list and the measurement.
 
 Total conversions are the same mechanism at full throttle: depend on
-`core`, replace or remove what you do not want, add your own world.
+`core`, replace or remove what you do not want, add your own world - within
+the 24-file limit above.
 
 ### Adding things that do not exist in the base game
 
@@ -137,13 +165,25 @@ Two levels:
 
 1. New records of existing types (the JSON above) - pure data, safe by
    construction, validated against the same schemas core uses.
-2. New capabilities - new effect opcodes, new commands, new record
-   types with their own schemas, new UI panels, networked features.
-   These are scripted plugins: they register handlers into the same
-   string-keyed registries the engine's own systems use, sandboxed and
-   capability-scoped. The engine never switches on closed enums, so a
-   registered `frost:blizzard-teleport` effect is dispatched exactly
-   like a core effect.
+2. New capabilities - new effect opcodes, new commands, new room
+   builders, monster-AI overrides, new vocabulary terms. These go
+   through the capability-gated registry host
+   (`packages/core/src/mod/registry-host.ts`), and they require a
+   **TRUSTED in-process** plugin (`<mod>/trusted.ts`), not the
+   sandboxed Worker tier - a Worker is async by construction and cannot
+   supply a handler that runs synchronously with live `rng` / `chunk` /
+   `player` access deep inside the turn. The sandboxed tier keeps the
+   reactive perceive/act/event surface and none of the registries.
+   Trust is explicit: the plugin declares each `registry:*` capability
+   in its manifest and the user consents at install.
+
+> **Measured limitation.** Trusted-plugin discovery is a build-time glob
+> over `packages/web/mods/` plus an `isShippedMod` allowlist
+> (`packages/web/src/agents/trusted/discover.ts`), so today only a mod
+> compiled into the web bundle can reach any registry. A mod installed from
+> disk cannot - it can supply gamedata JSON only. And the registries cover
+> five domains, not the whole engine; most of the port's dispatch tables
+> have no registry at all. `MOD_REACH.md` has the census.
 
 ## Versioning and stability
 

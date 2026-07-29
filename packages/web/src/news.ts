@@ -55,23 +55,57 @@ const NEWS: readonly string[] = [
 ];
 
 /**
- * "Neo" in the same figlet family as news.txt's "Angband", drawn OVER the art
- * rather than edited into NEWS above - the array stays a verbatim copy of
- * reference/lib/screens/news.txt, so a diff against that file still passes.
+ * "Neo", drawn OVER news.txt's art rather than edited into NEWS above - the array
+ * stays a verbatim copy of reference/lib/screens/news.txt, so a diff against that
+ * file still passes.
  *
- * Placement is measured, not guessed: the art's own letters start at column 18
- * (rows 6-11), and rows 1-4 are clear sky between column 19 and column 34 (the
- * left ridge tops out at column 17 on row 4, the centre peak starts at 36). So
- * this block sits directly above the "A" and touches no mountain.
+ * FONT. This must be figlet **standard**, because that is the font news.txt's own
+ * "Angband" is set in: its capital A occupies FIVE rows (NEWS rows 6-10, the '_'
+ * row through the '/_/   \_\' baseline). The first version of this block was
+ * figlet **small**, whose capitals are four rows, so "Neo" sat a row short beside
+ * a five-row "Angband" and the letters read as squashed - two figlet families
+ * side by side. Generated authoritatively rather than hand-drawn:
+ *
+ *     npx -y figlet-cli -f standard "Neo"
+ *
+ * then ONE leading space stripped from every row and trailing spaces trimmed, so
+ * the block paints no blanks over the mountains to its right.
+ *
+ * PLACEMENT is measured, not guessed. Stripping the {colour} markup (the same
+ * rule parseNewsLine applies - a tag occupies no columns, so a naive index into
+ * the raw literal is wrong) and scanning for '^' gives the mountain columns:
+ *
+ *     row 0: (none)                 row 3: 16, 37-41, 61
+ *     row 1: 39                     row 4: 15-17, 36-42, 60-62
+ *     row 2: 38-40                  row 5: 14-18, 35-43, 59-63
+ *
+ * The art rows are 6, 16, 17, 18 and 17 columns wide, and the sky gap NARROWS
+ * going down, so at NEO_COL = 19:
+ *
+ *     art row 0 (w 6)  -> NEWS row 0, cols 19-24  - the blank line, free
+ *     art row 1 (w 16) -> NEWS row 1, cols 19-34  - next caret at 39
+ *     art row 2 (w 17) -> NEWS row 2, cols 19-35  - next caret at 38
+ *     art row 3 (w 18) -> NEWS row 3, cols 19-36  - next caret at 37  <- ONE column
+ *     art row 4 (w 17) -> NEWS row 4, cols 19-35  - next caret at 36  <- ONE column
+ *
+ * The last two clear the centre peak by EXACTLY ONE COLUMN: one more character of
+ * art on either row, or NEO_COL one higher, and it paints over the mountain. That
+ * is the fact a future edit will break silently, so news.test.ts asserts it.
+ * NEO_ROW = 1 is NOT free - it slides both of those rows down into the wider part
+ * of the peak and collides at columns 36 and 35 - which is why the row moved from
+ * 1 to 0 when the art grew from four rows to five. It also puts "Neo"'s five rows
+ * (0-4) at the same cap height as "Angband"'s five (6-10), which is what the
+ * squashed look was really about.
  */
 const NEO_ART: readonly string[] = [
-  " _  _           ",
-  "| \\| | ___  ___ ",
-  "| .` |/ -_)/ _ \\",
-  "|_|\\_|\\___|\\___/",
+  " _   _",
+  "| \\ | | ___  ___",
+  "|  \\| |/ _ \\/ _ \\",
+  "| |\\  |  __/ (_) |",
+  "|_| \\_|\\___|\\___/",
 ];
 /** Top row and left column of NEO_ART on the title grid (see NEO_ART). */
-const NEO_ROW = 1;
+const NEO_ROW = 0;
 const NEO_COL = 19;
 /** news.txt colours the "Angband" letters red; "Neo" joins them. */
 const NEO_COLOUR = "red";

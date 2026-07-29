@@ -539,11 +539,11 @@ async function runQuickstart(
   drawBirthSheet(term, sheet());
   const { cols, rows } = term.size();
   /* prt("New character based on previous one:", 0, 0) - row 0, the prompt row. */
-  term.print(0, 0, "New character based on previous one:".slice(0, cols - 1), UI_TEXT);
+  term.prt(0, 0, "New character based on previous one:".slice(0, cols - 1), UI_TEXT);
   /* prt(prompt, Term->hgt - 1, Term->wid / 2 - strlen(prompt) / 2): centred on
    * the bottom row, by C integer division on both halves. */
   const col = Math.max(0, Math.trunc(cols / 2) - Math.trunc(PROMPT.length / 2));
-  term.print(col, rows - 1, PROMPT.slice(0, Math.max(0, cols - col)), UI_TEXT);
+  term.prt(col, rows - 1, PROMPT.slice(0, Math.max(0, cols - col)), UI_TEXT);
 
   return new Promise<QuickstartAction>((resolve) => {
     const finish = (action: QuickstartAction): void => {

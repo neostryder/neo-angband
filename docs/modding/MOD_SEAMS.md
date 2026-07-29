@@ -11,63 +11,204 @@ upstream defaults - and every new fix, tweak, or feature ships as a mod.** The
 seams below are how a mod reaches into core WITHOUT core carrying the mod's
 behaviour by default.
 
-## 1. `GameState.modRules` - named rule flags that exist only while a mod does
+> For an honest, measured account of how much of the game these seams can
+> actually reach - and the much longer list of things they cannot - see
+> `docs/modding/MOD_REACH.md`.
 
-The one seam behind both bundled mods. `GameState.modRules` is an optional
-`Record<string, boolean>` of named flags. Core reads it in exactly one place -
-`modRuleEnabled(state, name)` (`packages/core/src/game/context.ts`), which
-returns `true` only when the flag is explicitly set. A ported core function that
-a mod can change is written as:
+## 1. `GameState.modHooks` - the behaviour seam
+
+The one seam behind both bundled mods. `GameState.modHooks`
+(`packages/core/src/game/context.ts:712`) is an optional `ModHooks`
+(`packages/core/src/mod/hooks.ts:78`): a plain interface whose every member is an
+OPTIONAL function. An absent member means "no mod touches that point", and core
+takes its faithful path with one undefined check:
 
 ```ts
-if (modRuleEnabled(state, "bugfix.objectListOrder")) {
-  // corrected / new branch (only when a mod turned the flag on)
-} else {
-  // the faithful Angband 4.2.6 branch (the default)
+/* obj-list.ts:242 - the whole shape of a seam read */
+if (result === 0 && tiebreak) {
+  result = tiebreak({ dy: ea.dy, dx: ea.dx }, { dy: eb.dy, dx: eb.dx });
 }
 ```
 
-Because `modRules` is absent by default and read only through `modRuleEnabled`,
-core with no mod enabled never enters a modded branch and is byte-identical to
-4.2.6. No RNG is drawn differently, nothing is saved differently.
+**Absence, not falsity, is how a patch is off.** With no mod loaded the field is
+not present, the optional call is never made, and the faithful branch is the only
+branch that exists. No flag map is consulted because core holds no flag map.
 
-### How a flag gets turned on (declarative - no mod code runs)
+### The seam replaced a flag registry, and why
 
-A mod does not execute code to flip a flag. It DECLARES the flags it offers in
-its `manifest.json` under `rules`, each an entry of:
+An earlier build did this with a string-keyed flag registry:
+`GameState.modRules` (a `Record<string, boolean>`) read by a core helper
+`modRuleEnabled(state, name)`, so a ported core function was written as
+`if (modRuleEnabled(state, "bugfix.objectListOrder")) { corrected } else { faithful }`.
 
-```json
-{ "flag": "qol.autoDig", "title": "Auto-dig on walk",
-  "description": "…", "default": true }
+That was rejected (the project owner, 2026-07-29) on the grounds that a
+flag-gated fix is not excluded from core: **core shipped the fix body, core was
+tested on it, and core carried the mod's own flag name as a string literal.**
+Deleting the mod folder would not have deleted a line of it. `modRuleEnabled` is now GONE from core -
+deliberately deleted rather than left unused, because a helper that exists is a
+helper the next core function reaches for (see the tombstone comment at
+`packages/core/src/game/context.ts:932`).
+
+What core still contains, and cannot stop containing, is the SEAM ITSELF: one
+named, documented extension point per behaviour a mod may override. That is the
+price of behaviour modding at all. The difference that matters is that a seam is
+generic, available to any mod, and holds no opinion about what plugs into it.
+
+### The hooks, and the ONE core call site each serves
+
+Each member of `ModHooks` documents its single call site, because a hook whose
+call site is not written down is a hook nobody can verify is still wired - the
+exact failure the call-site census exists to catch.
+
+| Hook | Kind | Call site | Faithful answer when absent |
+| --- | --- | --- | --- |
+| `walkBlockedByDiggable(state, grid, deps)` | first-handler | `game/cave-cmd.ts:680` (`movementAutoDig`), reached from `game/player-turn.ts:493` | `?? 0` - bump the wall, spend nothing, draw no RNG |
+| `objectListTiebreak(a, b)` | ordering | `game/obj-list.ts:242` | `?? 0`, i.e. leave the entries equal (stable sort keeps collect order) |
+| `levelGenerated(gen, quest)` | veto | `gen/generate.ts:473` | accept the level as generated |
+| `artifactCommit(aidx, alreadyCreated)` | veto | `obj/make.ts:987` | commit it unconditionally |
+| `historyAdd(entry)` | veto | `session/game.ts:872` (the `HIST.SLAY_UNIQUE` path) | `?? true` - write every entry, duplicates included |
+| `saveNoiseScent()` | any | `session/save.ts:1203` | `?? false` - omit the heatmaps, which is upstream's behaviour and upstream's bug |
+| `messageText(raw)` | transform | `packages/web/src/main.ts:1244` (the HOST's single message sink, not core) | `?? raw` - show what core was given, warts and all |
+
+Two of these are contractually **RNG-FREE** (`levelGenerated`, `artifactCommit`):
+they run inside the generation and object pipelines, where one extra draw does
+not merely change a value, it desynchronises every draw after it and a seed stops
+reproducing its dungeon. Core hands them no `rng`. A mod can still break the
+contract by reaching for a global, so the suite pins it by running generation
+with a hook installed and asserting the level is bit-identical.
+
+`walkBlockedByDiggable` is RNG-free only on its DECLINE path, which is a stronger
+and more easily broken requirement: faithful core bumps the wall without drawing,
+so a hook that rolls a dig check and then declines has already moved the stream.
+
+### The fold rule, which differs per hook
+
+Two enabled mods may both want the same hook. Core deliberately holds exactly ONE
+`ModHooks` and knows nothing about mod identity, ordering, or enablement; the host
+collects each enabled mod's contributions in LOAD order and folds them with
+`composeModHooks` (`packages/core/src/mod/hooks.ts:206`). This is the same
+layering as content: core consumes a composed result, never the pack list.
+
+"Later wins" is not a usable rule here, because the hooks differ in kind. What
+`composeModHooks` actually does, per hook:
+
+- **VETO hooks** (`levelGenerated`, `artifactCommit`, `historyAdd`) are
+  **conjunctive**: every contributor runs and the **first refusal decides**
+  (`hooks.ts:242`, `:250`, `:258`). This is the only safe fold - a mod that
+  vetoes a duplicate artifact must not be overruled by a later mod that merely
+  has no opinion. Note for `levelGenerated` specifically: every contributor still
+  runs after an earlier one has REPAIRED the level, because a second mod's
+  invariant is not satisfied by the first mod's repair; only a refusal
+  short-circuits, since the level is being thrown away anyway.
+- **TRANSFORM hooks** (`messageText`) **chain in load order**, each seeing the
+  previous one's output (`hooks.ts:270`, a `reduce` over the contributors).
+- **FIRST-HANDLER hooks** (`walkBlockedByDiggable`) stop at the **first
+  non-`null`** (`hooks.ts:216-222`), so an earlier mod's handling wins and a later
+  one cannot double-spend the same turn's energy.
+- **ANY hooks** (`saveNoiseScent`) are **disjunctive** - `some()`
+  (`hooks.ts:265`). One mod asking for the data is enough, because the data is
+  additive and a second mod has nothing to object to.
+- **ORDERING hooks** (`objectListTiebreak`) stop at the **first non-zero**
+  answer (`hooks.ts:227-233`), the same way a lexicographic comparator chains.
+
+`composeModHooks` returns `undefined` when nothing contributed (`hooks.ts:210`),
+so the host leaves the field ABSENT rather than storing an empty object. That
+keeps "no mod loaded" and "a mod loaded that touches nothing" indistinguishable
+from core's side - which is the one thing the seam exists to guarantee.
+
+### Why `null` is the decline sentinel, and not `0` or `false`
+
+For the first-handler fold, the sentinel cannot be a value the hook might
+legitimately want to return. `walkBlockedByDiggable` returns an ENERGY COST, and
+`0` is a real energy cost - so if `0` meant "decline", a mod could not express
+"I handled this action and it costs nothing". `null` keeps the two apart:
+`hooks.ts:219` tests `energy !== null`, so a hook returning `0` HANDLES the walk
+and stops the chain, while `null` passes it to the next mod.
+
+Two honest caveats, both verified in the code rather than assumed:
+
+- The **call site truncates the distinction today.** `movementAutoDig`
+  (`cave-cmd.ts:680`) collapses a declining hook to `0` with `?? 0`, and
+  `walkAction` (`player-turn.ts:493`) then tests `if (dug > 0)`. So a hook that
+  returns `0` short-circuits the FOLD (a later mod does not get the walk) but
+  still falls through to core's faithful bump. "Handled for zero energy" is
+  expressible in `ModHooks` and in `composeModHooks`, and is not yet honoured by
+  this one call site. A hook wanting to handle a walk must therefore return a
+  positive energy cost.
+- `objectListTiebreak` uses `0` rather than `null` as its "no opinion" answer,
+  because there `0` is also the faithful answer ("these two entries are equal"),
+  so the two readings agree and no third value is needed.
+
+## 2. How a patch is turned on - and where the patch's CODE lives
+
+A mod does not execute code to flip a flag, and core never sees a flag name at
+all. The flags still exist, but they are now purely a **conversation between the
+host and the mod**:
+
+1. The mod DECLARES its patches in `manifest.json` under `rules`, each an entry
+   of `{ "flag": "qol.autoDig", "title": "…", "description": "…", "default": true }`.
+2. `packages/web/src/pack.ts` `loadEnabledModRuleDecls()` gathers the `rules` of
+   every ENABLED mod, in load order.
+3. `packages/web/src/mod-store.ts` `resolveModRules(decls, choices)` computes the
+   effective map: for each declared rule, `choices[flag] ?? rule.default`. The
+   player's choices come from each mod's **Fixes & tweaks** submenu and persist
+   in `localStorage` (`neo:modRuleChoices`) - a client setting, like the
+   enabled-mod set, NOT part of the savefile.
+4. `packages/web/src/mod-hooks.ts` `resolveModRuleFlagsByMod()` SLICES that map
+   per mod, then `activeModHooks()` (`mod-hooks.ts:91`) calls each enabled mod's
+   entry point once, in load order, with only that mod's own flags, and folds the
+   results with `composeModHooks`.
+5. `packages/web/src/main.ts` passes the composed object to `startGame` /
+   `loadGame` as `opts.modHooks` (`main.ts:756`, `main.ts:713`).
+
+The entry point every behaviour mod default-exports from
+`packages/web/mods/<id>/hooks.ts`:
+
+```ts
+export default function <mod>Hooks(
+  flags: Readonly<Record<string, boolean>>,
+): ModHooks;
 ```
 
-The host does the rest, entirely outside core:
+It is discovered by a glob (`import.meta.glob("../mods/*/hooks.ts")`,
+`mod-hooks.ts:48`) rather than a hardcoded list, so the host knows no mod's id
+and no mod's flag names. A mod with no behaviour - the linoleum tile pack, and
+every pure content mod - simply ships no `hooks.ts` and is never called.
 
-1. `packages/web/src/pack.ts` `loadEnabledModRuleDecls()` gathers the `rules` of
-   every ENABLED mod (in load order).
-2. `packages/web/src/mod-store.ts` `resolveModRules(decls, choices)` computes the
-   effective map: for each declared rule, `choices[flag] ?? rule.default`. The
-   player's choices come from each mod's **Fixes & tweaks** submenu and persist in
-   `localStorage` (`neo:modRuleChoices`) - a client setting, like the enabled-mod
-   set, NOT part of the savefile.
-3. `packages/web/src/main.ts` passes that map to `startGame` / `loadGame` as
-   `opts.modRules`, which seeds `GameState.modRules` (a copy).
-4. That submenu (`managePatches`, `packages/web/src/mods.ts`) can also toggle a flag on
-   the LIVE running state, so a change takes effect without a reload.
+Three rules make this shape work, and they are the contract a third-party
+behaviour mod must keep (spelled out in the header of
+`packages/web/mods/bug-fixes/hooks.ts`):
 
-This means a "rules mod" is a plain `content` pack with **no plugin code and no
-capabilities**. `qol` and `bug-fixes` are both content mods; disabling a mod (or
-turning a rule off) drops its flags and restores faithful core.
+1. **The mod reads its OWN flags.** Its flag map is sliced per mod so a mod
+   cannot read, or act on, another mod's toggles - its behaviour cannot silently
+   depend on which other mods the player enabled.
+2. **Never return a function that self-disables.**
+   `historyAdd: (e) => flags.x ? !e.duplicate : true` behaves the same but is
+   wrong: an installed hook is a promise to core that
+   something wants that point, and under `composeModHooks` a present-but-
+   opinionless hook still runs - and for the first-handler hooks can shadow
+   another mod's.
+3. **A disabled mod is never called at all.** `enabledModIds()` drives the loop,
+   so returning `{}` means "enabled, but every patch off".
 
-**Default policy (Aaron's ruling, 2026-07-26; wording tightened 2026-07-27).**
+**The patch bodies are the mods' code, not core's.** There is no `bugfix.*` or
+`qol.*` string in `packages/core/src` outside comments, no staircase repair, no
+duplicate-artifact guard, and no message rewriter. `ensureStairsReachable` lives
+at `packages/web/mods/bug-fixes/stairs.ts:135`; `miscStringFix` at
+`packages/web/mods/bug-fixes/strings.ts:111`; the auto-dig at
+`packages/web/mods/qol/hooks.ts:76`. Delete a mod folder and its behaviour goes
+with it.
+
+**Default policy (the project owner's ruling, 2026-07-26; wording tightened 2026-07-27).**
 The mod is the unit the player installs and switches; a patch is a part of a mod,
 never a separate thing to install. Two layers, in this order:
 
 - **A disabled mod's patches DO NOT EXIST.** Not "exist but default off" -
-  `loadEnabledModRuleDecls()` only reads the `rules` of ENABLED mods, so a
-  disabled mod contributes no entry to `modRules` at all, `modRuleEnabled`
-  returns `false` for an absent flag, and core runs the faithful 4.2.6 line.
-  There is nothing to toggle and nothing appears in the menu.
+  `enabledModIds()` drives hook discovery, so a disabled mod's entry point is
+  never invoked, contributes no hook, and `composeModHooks` returns `undefined`
+  when nothing contributed, leaving `GameState.modHooks` absent and every core
+  call site on its faithful path. There is nothing to toggle and nothing appears
+  in the menu.
 - **Enabling a mod turns its whole patch set ON, at once.** Enable `bug-fixes`
   and you get every fix in it; enable `qol` and you get every tweak in it. Each
   patch is then INDIVIDUALLY switchable in that mod's own Fixes & tweaks submenu,
@@ -76,68 +217,89 @@ never a separate thing to install. Two layers, in this order:
 - **Every mod itself is OFF on a fresh install**, including the bundled
   first-party ones (`DEFAULT_ENABLED_MODS` is `[]`, `mod-store.ts`). So an
   untouched install has no mod, therefore no patches, therefore faithful 4.2.6.
-  The player enables a mod deliberately, at birth or later.
 
 So `default: true` on a rule means exactly one thing: **"on once its own mod is
-enabled"**. It never means "on in a fresh install", and it never means the flag
-sits in core waiting to be switched - without its mod the flag is absent.
-`default: false` would mean a patch that ships inside an enabled mod but stays
-opt-in; no bundled patch uses it today.
+enabled"**. It never means "on in a fresh install", and it never means a flag sits
+in core waiting to be switched - core has no flag to switch.
 
-> An earlier build implemented this with a trusted in-process plugin plus a
+> An earlier build implemented rules with a trusted in-process plugin plus a
 > `registry:rules` capability and a `RulesFacade`. That was removed in favour of
-> the declarative manifest field above - it needs no capability, runs no mod
-> code, and is what the menu reads. `registry:*` capabilities still exist for the
-> other, genuinely code-carrying trusted-plugin seams (effect / room / command /
-> monster / vocab); rules are not one of them.
+> the declarative manifest field above. `registry:*` capabilities are documented
+> for other, genuinely code-carrying trusted-plugin seams (effect / room /
+> command / monster / vocab); see `MOD_REACH.md` for which of those have real,
+> mod-reachable code today rather than a design note.
 
-## 2. `StartGameOptions.modRules` / `LoadGameOptions.modRules`
+## 3. `StartGameOptions` / `LoadGameOptions`: `modHooks`, and the now-opaque `modRules`
 
-The birth/load entry point for the flags above. `startGame` and `loadGame`
-(`packages/core/src/session/game.ts`) accept `modRules` and seed
-`GameState.modRules` with a copy. Absent/empty => faithful core. This replaced
-the removed `interfaceDefaults` seam: built-in Angband options are NOT set here;
-they ship in core at their upstream defaults (`OPTION_ENTRIES.normal`) and are
-restored from the save on load.
+`startGame` and `loadGame` (`packages/core/src/session/game.ts:390`, `:3264`)
+each accept an optional `modHooks` and store it on `GameState`. Absent =>
+faithful core. The session threads the LIVE `state.modHooks` (read fresh, not
+captured - `session/game.ts:967`) into the deps bags that the pure layers need it
+in: `GenDeps.hooks` (`gen/generate.ts:80`) and `MakeDeps.hooks`
+(`obj/make.ts:1119`), because those layers have no `GameState` in scope.
 
-## 3. `GameState.autoDigStep` - the QoL auto-dig hook
+`modRules` still exists on `GameState` and is still seeded at start/load, but it
+is now **OPAQUE to core**: nothing in `packages/core/src` reads it. It is the
+RECORD of the player's choices, kept because it is what the Fixes & tweaks menu
+is built from and what the host re-reads. Because core does not branch on it,
+writing it alone is a no-op - so the live per-patch toggle
+(`applyRuleLive`, `packages/web/src/main.ts:4956`) must REBUILD the hooks, and
+must `delete game.state.modHooks` rather than assign `undefined` when nothing
+contributes, so "no mod loaded" stays absent rather than becoming an empty object
+core could detect.
 
-A single optional hook on `GameState`, consulted by `walkAction`
-(`packages/core/src/game/player-turn.ts`) when a walk is blocked by a wall,
-before the faithful no-energy bump. The session installs it
-(`movementAutoDig`, `packages/core/src/game/cave-cmd.ts`); it returns 0 WITHOUT
-drawing RNG unless the `qol.autoDig` flag is on and the grid is one the player
-can dig, in which case it performs one `do_cmd_tunnel_aux` attempt and returns a
-move's energy. Absent hook or off flag => movement is byte-identical to 4.2.6.
-This is a hook rather than an inline branch only so the movement code
-(`player-turn.ts`) need not import the dig internals (`cave-cmd.ts`).
+Built-in Angband options are NOT set through any of this: they ship in core at
+their upstream defaults (`OPTION_ENTRIES.normal`) and are restored from the save
+on load. (This is what the removed `interfaceDefaults` seam used to do.)
+
+## 4. `GameState.autoDigStep` - a plumbing indirection, not a mod seam
+
+`walkAction` (`packages/core/src/game/player-turn.ts:493`) calls
+`state.autoDigStep?.(state, next)` when a walk is blocked. This is NOT a second
+mod seam and holds no mod's behaviour: the session installs it
+(`session/game.ts:1668`) pointing at `movementAutoDig`
+(`game/cave-cmd.ts:676`), whose entire body is the `walkBlockedByDiggable`
+hook read plus `?? 0`. It exists only so the movement code need not import the
+dig internals. With no hook installed it returns `0` having drawn no RNG, and the
+walk falls through to the faithful bump.
+
+The two core primitives a digging mod needs are public and reused rather than
+reimplemented: `movementTunnelTest` (`cave-cmd.ts:662`, RNG-free, which is what
+lets the mod decline for free) and `tunnelAux` (one real `do_cmd_tunnel_aux`
+attempt with the upstream roll, messages, and payouts).
 
 ## Why this is safe for a faithful port
 
-- Flags are read on two paths, both of which treat an absent flag as faithful:
-  `modRuleEnabled(state, name)` (`game/context.ts`) wherever a `GameState` is in
-  scope, and a direct `deps.modRules?.["flag"] === true` test in the two places
-  that only have a `deps` bag rather than a live state — level generation
-  (`gen/generate.ts`, `bugfix.stairsReachable`) and object creation
-  (`obj/make.ts`, `bugfix.duplicateArtifact`). Adding a third reader is
-  discouraged; prefer `modRuleEnabled` whenever a `GameState` is available.
-- Flags are a client setting, not saved - a save is portable and does not bake in
-  a mod's behaviour; the same character plays faithfully if the mod is removed.
-- No mod code runs for rules; the host applies declared data. The capability
-  surface did not grow (it shrank: `registry:rules` was removed).
-- Each modded branch keeps the exact 4.2.6 branch as its default, so turning a
-  flag off is a true revert, not an approximation.
+- **Absence is the default, at every level.** No mod enabled => no entry point
+  called => nothing contributed => `composeModHooks` returns `undefined` =>
+  `GameState.modHooks` absent => every call site is one `?.` away from the exact
+  4.2.6 line. There is no map to mis-key and no flag to leak.
+- **Core holds no mod's name and no mod's fix body.** The seam is generic; the
+  patch is the mod's own module.
+- **The generation and object hooks are RNG-free by contract**, so a seed still
+  means the same dungeon, and a level that needed no repair is bit-identical to
+  one generated with no mod at all.
+- **Choices are a client setting, not saved** - a save is portable and does not
+  bake in a mod's behaviour; the same character plays faithfully if the mod is
+  removed.
+- **Turning a patch off is a true revert, not an approximation**, because the
+  faithful path is the only path core ever compiled.
 
 ## Where to look
 
 | Concern | File |
 | --- | --- |
-| Flag reader + `modRules` field | `packages/core/src/game/context.ts` |
-| Start/load seam | `packages/core/src/session/game.ts` |
-| Auto-dig | `packages/core/src/game/cave-cmd.ts`, `player-turn.ts` |
+| The `ModHooks` interface + per-hook fold rules | `packages/core/src/mod/hooks.ts` |
+| `GameState.modHooks` field, `modRuleEnabled` tombstone | `packages/core/src/game/context.ts` |
+| Start/load seam + live-hook threading into deps | `packages/core/src/session/game.ts` |
+| Deps-bag hook fields (no `GameState` in scope) | `packages/core/src/gen/generate.ts`, `packages/core/src/obj/make.ts` |
+| Auto-dig indirection + public dig primitives | `packages/core/src/game/cave-cmd.ts`, `player-turn.ts` |
 | Manifest `rules` type + validation | `packages/mod-sdk/src/manifest.ts` |
 | Rule discovery | `packages/web/src/pack.ts` (`loadEnabledModRuleDecls`) |
 | Choice persistence + resolver | `packages/web/src/mod-store.ts` |
+| Per-mod hook discovery + fold | `packages/web/src/mod-hooks.ts` |
+| Bundled mods' own hook code | `packages/web/mods/bug-fixes/hooks.ts`, `packages/web/mods/qol/hooks.ts` |
 | Per-mod Fixes & tweaks submenu | `packages/web/src/mods.ts` (`managePatches`) |
-| Host wiring | `packages/web/src/main.ts` |
+| Host wiring + message sink | `packages/web/src/main.ts` |
 | Per-mod design | `docs/modding/QOL.md`, `docs/modding/BUG_FIXES.md` |
+| Measured reach + gap list | `docs/modding/MOD_REACH.md` |

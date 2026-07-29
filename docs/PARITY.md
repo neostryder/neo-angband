@@ -36,8 +36,17 @@ mod-neutral**:
   system present-but-empty draws exactly as it does with the mod system absent.
 - **Mods may perturb the stream when enabled.** That is their job, and it is
   entirely opt-in: the default install enables zero mods (the faithful no-mod
-  base game), and a disabled mod's patches do not exist - no flag reaches
-  `modRules`, so there is no branch for them to perturb.
+  base game), and a disabled mod's patches do not exist - its entry point is
+  never called, so it contributes no hook, `GameState.modHooks` stays absent, and
+  there is no code for them to perturb the stream with.
+- **Two hooks are RNG-FREE by contract**, because they run inside the generation
+  and object pipelines where one extra draw desynchronises every draw after it:
+  `levelGenerated` and `artifactCommit` are handed no `rng`
+  (`packages/core/src/mod/hooks.ts`). `walkBlockedByDiggable` is RNG-free on its
+  DECLINE path for the same reason. The suite pins this by running generation with
+  an all-neutral `ModHooks` installed and asserting the RNG state and the level
+  are bit-identical to no hooks at all
+  (`packages/core/src/session/qol-defaults.test.ts`).
 
 ## Verification lanes
 

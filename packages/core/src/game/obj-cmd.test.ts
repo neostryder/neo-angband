@@ -29,6 +29,7 @@ import {
   invenCarry,
   packIsOverfull,
   packSlotsUsed,
+  wieldSlot,
 } from "./gear";
 import { basicPlayerActor } from "./project-cast";
 import type { CastContext } from "./project-cast";
@@ -59,9 +60,12 @@ import {
   packOverflow,
   useAux,
   USE,
+  wieldRingChoice,
+  wieldTakeoffConfirm,
 } from "./obj-cmd";
 import type { ObjCmdDeps } from "./obj-cmd";
 import { describeObject } from "./describe";
+import { ODESC } from "../obj/desc";
 import { createDefaultRegistry, processPlayer } from "./player-turn";
 import { makeState, plReg } from "./harness";
 import type { GameState } from "./context";
@@ -1836,6 +1840,226 @@ describe("registered command: activate (cmd-obj.c do_cmd_activate)", () => {
     const result = processPlayer(state, registry);
     expect(result.energyUsed).toBe(0);
     expect(msgs).toContain("That item is still charging.");
+  });
+});
+
+/**
+ * do_cmd_wield's second question and its two aborts (cmd-obj.c:265-353).
+ *
+ * The port silently took one hand when a third ring was worn, never asked the
+ * "!t" confirmation, and carried a floor item into the pack BEFORE any of the
+ * abort points - so escaping a prompt (or hitting a stuck slot) left the item in
+ * your pack for free.
+ */
+describe("registered command: wield (cmd-obj.c do_cmd_wield)", () => {
+  /** The body's RING slot indices, in order. */
+  function ringSlots(state: GameState): number[] {
+    const body = state.actor.player.body;
+    const out: number[] = [];
+    for (let i = 0; i < body.count; i++) {
+      if (body.slots[i]?.type === "RING") out.push(i);
+    }
+    return out;
+  }
+
+  /** Two named rings worn, one in each hand. Returns the two slot indices. */
+  function bothHandsFull(state: GameState): { left: number; right: number } {
+    const slots = ringSlots(state);
+    const a = slots[0]!;
+    const b = slots[1]!;
+    expect(slots.length).toBeGreaterThanOrEqual(2);
+    const r1 = carry(state, makeNamed("Strength", TV.RING));
+    const r2 = carry(state, makeNamed("Protection", TV.RING));
+    invenWield(state, r1, constants, {}, a);
+    invenWield(state, r2, constants, {}, b);
+    expect(state.actor.player.equipment[a]).toBe(r1);
+    expect(state.actor.player.equipment[b]).toBe(r2);
+    return { left: a, right: b };
+  }
+
+  it("wield_slot prefers the FREE hand, so a SECOND ring asks nothing", () => {
+    /* slot_by_type(p, EQUIP_RING, false) (obj-gear.c:357 -> :71-93) prefers an
+     * empty slot, and cmd-obj.c:291-295 wields straight into it. */
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const slots = ringSlots(state);
+    const r1 = carry(state, makeNamed("Strength", TV.RING));
+    invenWield(state, r1, constants, {}, slots[0]!);
+    const second = makeNamed("Protection", TV.RING);
+    expect(wieldRingChoice(state, second)).toBeNull();
+    const h = carry(state, second);
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state));
+    registry.get("wield")!(state, { code: "wield", args: { handle: h } });
+    expect(state.actor.player.equipment[slots[1]!]).toBe(h);
+  });
+
+  it("a THIRD ring owes the 'Replace which ring? ' question over both worn rings", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const { left, right } = bothHandsFull(state);
+    const third = makeNamed("Speed", TV.RING);
+    const choice = wieldRingChoice(state, third);
+    expect(choice).not.toBeNull();
+    /* cmd-obj.c:300-301, verbatim. */
+    expect(choice!.prompt).toBe("Replace which ring? ");
+    expect(choice!.error).toBe("Error in do_cmd_wield(), please report.");
+    /* USE_EQUIP filtered by tval_is_ring: both hands, nothing else. */
+    expect([...choice!.slots]).toEqual([left, right]);
+  });
+
+  it("the chosen hand is the hand that is freed (args.slot, not wield_slot)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const { left, right } = bothHandsFull(state);
+    const worn = state.actor.player.equipment[right]!;
+    const h = carry(state, makeNamed("Speed", TV.RING));
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state));
+    /* equipped_item_slot(player->body, equip_obj) (cmd-obj.c:309) - the SECOND
+     * hand, which is NOT the one wield_slot's full-slot fallback returns. */
+    expect(
+      wieldSlot(state.actor.player.body, TV.RING, state.actor.player.equipment),
+    ).toBe(left);
+    registry.get("wield")!(state, { code: "wield", args: { handle: h, slot: right } });
+    expect(state.actor.player.equipment[right]).toBe(h);
+    /* The other hand is untouched, and the displaced ring went to the pack. */
+    expect(state.actor.player.equipment[left]).not.toBe(0);
+    expect(state.gear.pack).toContain(worn);
+  });
+
+  it("a non-ring answer is ignored rather than obeyed (the tval_is_ring filter)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const { left } = bothHandsFull(state);
+    const sword = carry(state, makeNamed("& Dagger~", TV.SWORD));
+    const weaponSlot = wieldSlot(
+      state.actor.player.body,
+      TV.SWORD,
+      state.actor.player.equipment,
+    );
+    invenWield(state, sword, constants, {}, weaponSlot);
+    const h = carry(state, makeNamed("Speed", TV.RING));
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state));
+    registry.get("wield")!(state, {
+      code: "wield",
+      args: { handle: h, slot: weaponSlot },
+    });
+    /* The weapon is still worn; the ring went to the wield_slot default hand. */
+    expect(state.actor.player.equipment[weaponSlot]).toBe(sword);
+    expect(state.actor.player.equipment[left]).toBe(h);
+  });
+
+  it("'!t' on the displaced item asks 'Really take off %s? ' and a refusal aborts", () => {
+    /* cmd-obj.c:321-330: check_for_inscrip(equip_obj, "!t"), then get_check with
+     * ODESC_PREFIX | ODESC_FULL. */
+    const state = makeState({ playerGrid: loc(5, 5) });
+    /* Both hands full, so the third ring really does displace one - with a free
+     * hand upstream wields into it and never touches the inscribed ring. */
+    const { left: slot } = bothHandsFull(state);
+    const wornHandle = state.actor.player.equipment[slot]!;
+    const worn = gearGet(state.gear, wornHandle)!;
+    worn.note = "!t";
+
+    const ask = wieldTakeoffConfirm(state, slot);
+    expect(ask).not.toBeNull();
+    expect(ask!.count).toBe(1);
+    expect(ask!.prompt).toBe(
+      `Really take off ${describeObject(state, worn, ODESC.PREFIX | ODESC.FULL)}? `,
+    );
+
+    const h = carry(state, makeNamed("Speed", TV.RING));
+    const registry = createDefaultRegistry();
+    const asked: string[] = [];
+    installObjCommands(
+      registry,
+      makeDeps(state, {
+        env: {
+          confirm: (p: string) => {
+            asked.push(p);
+            return false;
+          },
+        },
+      }),
+    );
+    const energy = registry.get("wield")!(state, {
+      code: "wield",
+      args: { handle: h, slot },
+    });
+    expect(asked).toEqual([ask!.prompt]);
+    /* "Forget it" (cmd-obj.c:329): no turn, and the ring is still in the pack. */
+    expect(energy).toBe(0);
+    expect(state.actor.player.equipment[slot]).toBe(wornHandle);
+    expect(state.gear.pack).toContain(h);
+  });
+
+  it("each occurrence of '!t' asks again (the `while (n--)` loop)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const { left: slot } = bothHandsFull(state);
+    gearGet(state.gear, state.actor.player.equipment[slot]!)!.note = "!t!t!t";
+    expect(wieldTakeoffConfirm(state, slot)!.count).toBe(3);
+  });
+
+  it("aborting the '!t' confirm does NOT leak a FLOOR item into the pack", () => {
+    /* inven_wield carries the floor item itself (obj-gear.c:973-976), i.e. past
+     * every abort in do_cmd_wield. The port carried it up front, so escaping the
+     * prompt left the ring in the pack for free. */
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const { left: slot } = bothHandsFull(state);
+    gearGet(state.gear, state.actor.player.equipment[slot]!)!.note = "!t";
+
+    const onFloor = makeNamed("Speed", TV.RING);
+    floorCarry(state, loc(5, 5), onFloor);
+    const packBefore = [...state.gear.pack];
+
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state, { env: { confirm: () => false } }));
+    const energy = registry.get("wield")!(state, {
+      code: "wield",
+      args: { floor: 0, slot },
+    });
+    expect(energy).toBe(0);
+    expect(state.gear.pack).toEqual(packBefore);
+    /* Still on the floor, where the player left it. */
+    expect(floorPile(state, loc(5, 5))).toContain(onFloor);
+  });
+
+  it("a stuck slot does NOT leak a FLOOR item into the pack either", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const { left: slot } = bothHandsFull(state);
+    gearGet(state.gear, state.actor.player.equipment[slot]!)!.flags.on(OF.STICKY);
+
+    const onFloor = makeNamed("Speed", TV.RING);
+    floorCarry(state, loc(5, 5), onFloor);
+    const packBefore = [...state.gear.pack];
+
+    const registry = createDefaultRegistry();
+    const msgs: string[] = [];
+    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+    const energy = registry.get("wield")!(state, {
+      code: "wield",
+      args: { floor: 0, slot },
+    });
+    expect(energy).toBe(0);
+    expect(msgs.some((m) => m.startsWith("You cannot remove the"))).toBe(true);
+    expect(state.gear.pack).toEqual(packBefore);
+    expect(floorPile(state, loc(5, 5))).toContain(onFloor);
+  });
+
+  it("the 'You were ...' wording comes from the SLOT type (cmd-obj.c:337-347)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const old = makeNamed("& Dagger~", TV.SWORD);
+    const oldHandle = carry(state, old);
+    const slot = wieldSlot(
+      state.actor.player.body,
+      TV.SWORD,
+      state.actor.player.equipment,
+    );
+    invenWield(state, oldHandle, constants, {}, slot);
+    const h = carry(state, makeNamed("& Main~ Gauche~", TV.SWORD));
+    const registry = createDefaultRegistry();
+    const msgs: string[] = [];
+    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+    registry.get("wield")!(state, { code: "wield", args: { handle: h } });
+    /* EQUIP_WEAPON -> "You were wielding" (cmd-obj.c:338-339). */
+    expect(msgs.some((m) => m.startsWith("You were wielding "))).toBe(true);
   });
 });
 

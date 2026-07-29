@@ -112,16 +112,21 @@ describe("exitToTitle", () => {
 });
 
 describe("ESC out of the first birth stage (BIRTH_RESET)", () => {
-  it("re-enters birth instead of playing on with an unchosen character", () => {
-    // runBirth returns null for a step-back off the first stage, which upstream
-    // treats as BIRTH_RESET - start creation over (ui-birth.c:1661-1666); a bare
-    // ESCAPE in the quickstart prompt is ignored outright
-    // (textui_birth_quickstart, ui-birth.c:103-138). Birth has no ESC exit.
-    // maybeBirth used to accept the null and keep playing, which handed the
-    // player the throwaway hero startGame had rolled behind the birth screen -
-    // ESC appeared to "instantly create a character with default settings".
+  it("steps back to the title instead of playing on with an unchosen character", () => {
+    // What must NOT happen is the original bug: accepting runBirth's null and
+    // playing on handed the player the throwaway hero startGame had rolled behind
+    // the birth screen, so ESC appeared to "instantly create a character with
+    // default settings". That is what this guards.
+    //
+    // The fix for it was `while (!choice)` - re-enter birth, upstream's
+    // BIRTH_RESET (ui-birth.c:1661-1666) - and that has since been REPLACED by a
+    // "back" result, because re-entering was a dead end: there was then no way out
+    // of creation at all. ESC now steps up one level to the title, which is
+    // upstream's own hierarchical-back rule (ui-birth.c:804-806) continued into a
+    // shell that HAS a level above birth. See boot-menus.test.ts for the full
+    // walk-back; this file only keeps the never-play-an-unchosen-hero half.
     const body = functionBody(MAIN, "maybeBirth");
-    expect(body).toMatch(/while \(!choice\) \{[\s\S]{0,200}?runBirth\(/);
+    expect(body).toMatch(/if \(!choice\) return "back"/u);
     expect(
       body,
       "maybeBirth must not treat a null birth choice as permission to play on",

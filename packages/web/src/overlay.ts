@@ -250,6 +250,122 @@ export function showLevelMap(term: GlyphTerm, overview: Overview): Promise<void>
   });
 }
 
+/** One row of a show_obj_list listing (ui-object.c:140-238). */
+export interface ObjListRow {
+  /** items[].label - "a) " for the floor (ui-object.c:291). */
+  label: string;
+  /** items[].o_name - object_desc(ODESC_PREFIX | ODESC_FULL) (ui-object.c:437). */
+  name: string;
+  /** obj->kind->base->attr as CSS (ui-object.c:176-186). */
+  color: string;
+  /** obj->number * object_weight_one(obj), in TENTHS of a pound (ui-object.c:462). */
+  weight: number;
+}
+
+/** OLIST_WEIGHT's column width (ui-object.c:406: `ex_width += 9`). */
+const OLIST_WEIGHT_WIDTH = 9;
+
+/**
+ * The floor-pile listing that see_floor_items shows when more than one object is
+ * on your grid (ui-display.c:2629-2647):
+ *
+ *     screen_save();
+ *     show_floor(floor_list, floor_num, OLIST_WEIGHT, NULL);
+ *     prt(format("You %s: ", p), 0, 0);
+ *     e = inkey_ex();
+ *     Term_event_push(&e);
+ *     screen_load();
+ *
+ * Four things there that the port's showTextScreen substitute got wrong:
+ *
+ * 1. It is an OVERLAY over screen_save, not a cleared screen. show_obj_list
+ *    right-anchors the block (`col = Term->wid - 1 - max_len - ex_width`,
+ *    ui-object.c:418-422) starting at ROW 1, and each row clears only from
+ *    `MAX(col - 1, 0)` rightwards (ui-object.c:151). Everything to the left of
+ *    that - the map, the sidebar - stays on screen. term.clear() blanked it.
+ * 2. OLIST_WEIGHT is passed, so every row carries a `%4d.%1d lb` column
+ *    (ui-object.c:461-464). The port showed no weights at all.
+ * 3. There is NO footer. The port's showTextScreen appended
+ *    "[ Press ESC to return ]", which upstream never writes anywhere on this
+ *    screen - an invented string, which is worse than an absence because it
+ *    fills the slot where a census would notice one missing.
+ * 4. `Term_event_push(&e)` RE-FEEDS the dismissing key as the next command, so
+ *    stepping onto a pile and pressing 'g' picks up in one keystroke. The port
+ *    swallowed it. `refeed` is the port's Term_event_push (input-queue.ts
+ *    enqueueKeys), injected rather than imported so this module stays free of the
+ *    shell's input plumbing.
+ *
+ * screen_load is the caller's job: the shell repaints with render() when this
+ * resolves, which is what puts the map back.
+ */
+export function showFloorList(
+  term: GlyphTerm,
+  prompt: string,
+  rows: readonly ObjListRow[],
+  refeed?: (key: string) => void,
+): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const { cols } = term.size();
+    /* set_obj_names' max_len: label + equip_label + o_name, and the floor has no
+     * equip_label (ui-object.c:326-327, :455-458). */
+    let maxLen = 0;
+    for (const r of rows) maxLen = Math.max(maxLen, r.label.length + r.name.length);
+    /* "Determine beginning row and column" (ui-object.c:411-422). */
+    const row = 1;
+    let col = cols - 1 - maxLen - OLIST_WEIGHT_WIDTH;
+    if (col < 3) col = 0;
+    /* "Column offset of the first extra field" (ui-object.c:425). */
+    const exOffset = Math.min(maxLen, cols - 1 - OLIST_WEIGHT_WIDTH - col);
+
+    rows.forEach((r, i) => {
+      const y = row + i;
+      /* "Clear the line" (ui-object.c:151): from col - 1, NOT from col 0. */
+      term.prt(Math.max(col - 1, 0), y, "", FG);
+      /* The label, then the object name, both c_put_str (ui-object.c:158, :189). */
+      term.print(col, y, r.label, FG);
+      /* "Limit object name" (ui-object.c:164-174): truncate to ex_offset. */
+      let name = r.name;
+      if (r.label.length + name.length > exOffset) {
+        name = name.slice(0, Math.max(0, exOffset - r.label.length));
+      }
+      term.print(col + r.label.length, y, name, r.color);
+      /* Weight: `%4d.%1d lb` in tenths (ui-object.c:461-464), put_str at
+       * col + ex_offset - a put_str, so it does NOT erase. */
+      const lbs = String(Math.trunc(r.weight / 10)).padStart(4);
+      term.print(col + exOffset, y, `${lbs}.${r.weight % 10} lb`, FG);
+    });
+    /* "Print a drop shadow for the main window if necessary" (ui-object.c:465-467):
+     * one more cleared row under the list, only while it fits on the term. */
+    if (rows.length > 0 && row + rows.length < 24) {
+      term.prt(Math.max(col - 2, 0), row + rows.length, "", FG);
+    }
+    /* prt(format("You %s: ", p), 0, 0) (ui-display.c:2640). */
+    term.prt(0, 0, prompt.slice(0, cols - 1), FG);
+
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      /* A lone modifier is not a key inkey_ex would return. */
+      if (ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") {
+        return;
+      }
+      window.removeEventListener("keydown", onKey, true);
+      term.onCellTap?.(null);
+      /* Term_event_push(&e) (ui-display.c:2644): the key that dismissed the list
+       * becomes the next command. */
+      refeed?.(ev.key);
+      resolve();
+    };
+    window.addEventListener("keydown", onKey, true);
+    /* A tap is the touch analogue of "any key"; there is no key to re-feed. */
+    term.onCellTap?.(() => {
+      window.removeEventListener("keydown", onKey, true);
+      term.onCellTap?.(null);
+      resolve();
+    });
+  });
+}
+
 /** getAimDir sentinel: the player pressed '*' (or <click>) to pick a target. */
 export const AIM_STAR = -1;
 /** getAimDir sentinel: the player pressed "'" to target the closest monster. */
@@ -261,13 +377,17 @@ const ARROW_DIR: Record<string, number> = {
 };
 
 /**
- * Clear the row-0 prompt line (prt("", 0, 0) in the reference). The next frame
- * repaints the message line, but blanking here keeps a cancelled prompt from
- * lingering when the caller returns without rendering.
+ * Clear the row-0 prompt line: `prt("", 0, 0)` (ui-input.c:1275, :1325, :1433,
+ * :1518 ...), i.e. `Term_erase(0, 0, 255)` with an empty string to draw. The next
+ * frame repaints the message line, but blanking here keeps a cancelled prompt
+ * from lingering when the caller returns without rendering.
+ *
+ * This used to print `cols - 1` spaces, which left the LAST column of the row
+ * untouched (Term_erase's 255 is clamped to the full term width) and painted
+ * spaces where upstream leaves empty cells. term.prt does the real erase.
  */
 function clearPromptRow(term: GlyphTerm, row = 0): void {
-  const { cols } = term.size();
-  term.print(0, row, " ".repeat(cols - 1), FG);
+  term.prt(0, row, "", FG);
 }
 
 /**
@@ -284,7 +404,9 @@ export function getRepDir(
 ): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
     const { cols } = term.size();
-    term.print(0, 0, "Direction or <click> (Escape to cancel)? ".slice(0, cols - 1), FG);
+    /* prt("Direction or <click> (Escape to cancel)? ", 0, 0) (ui-input.c:1512):
+     * prt, not put_str - it is drawn over the live message row. */
+    term.prt(0, 0, "Direction or <click> (Escape to cancel)? ".slice(0, cols - 1), FG);
     const finish = (value: number | null): void => {
       window.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
@@ -323,7 +445,9 @@ export function getAimDir(
     const prompt = targetOkay
       ? "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? "
       : "Direction ('*' or <click> to target, \"'\" for closest, Escape to cancel)? ";
-    term.print(0, 0, prompt.slice(0, cols - 1), FG);
+    /* textui_get_aim_dir asks through get_com_ex (ui-input.c:1637), which is
+     * `prt(prompt, 0, 0)` at ui-input.c:1427 - over the live message row. */
+    term.prt(0, 0, prompt.slice(0, cols - 1), FG);
     const finish = (value: number | null): void => {
       window.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
@@ -361,7 +485,10 @@ export function getCheck(term: GlyphTerm, prompt: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const { cols } = term.size();
     const buf = `${prompt.slice(0, 70)}[y/n] `;
-    term.print(0, 0, buf.slice(0, cols - 1), FG);
+    /* prt(buf, 0, 0) (ui-input.c:1271). This MUST erase: the prompt lands on the
+     * message row, and a bare print left the tail of the previous message behind
+     * - the live "Save and quit?[y/n] d5) (+5,+3) (0)." report. */
+    term.prt(0, 0, buf.slice(0, cols - 1), FG);
     const finish = (value: boolean): void => {
       window.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
@@ -393,7 +520,8 @@ export function getCheck(term: GlyphTerm, prompt: string): Promise<boolean> {
 export function getKeyInline(term: GlyphTerm, prompt: string): Promise<string> {
   return new Promise<string>((resolve) => {
     const { cols } = term.size();
-    term.print(0, 0, prompt.slice(0, cols - 1), FG);
+    /* prt(prompt, 0, 0) (get_com_ex, ui-input.c:1427). */
+    term.prt(0, 0, prompt.slice(0, cols - 1), FG);
     const finish = (key: string): void => {
       window.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
@@ -484,6 +612,13 @@ function askforAuxKeypress(
  * Draw the buffer with its cursor. There is no Term_gotoxy on this surface, so
  * the cursor is an inverted cell. The text renders in COLOUR_YELLOW while the
  * default is untouched and COLOUR_WHITE after the first keypress (L892 vs L907).
+ *
+ * Deliberately print(), NOT prt(): askfor_aux clears the field with the BOUNDED
+ * `Term_erase(x, y, (int)len)` (ui-input.c:891, :906, :983, :1012) - len cells,
+ * not to the end of the row - because anything further right on that row belongs
+ * to the screen underneath and must survive. Each caller's paint() has already
+ * cleared the field's span (term.clear(), or the prompt's own prt erasing to the
+ * end of the row) before this runs.
  */
 function paintLineEdit(
   term: GlyphTerm,
@@ -564,8 +699,10 @@ export function promptTextInline(
     const x = prompt.length;
     const paint = (): void => {
       const { cols } = term.size();
-      term.print(0, row, " ".repeat(Math.max(0, cols - 1)), FG);
-      term.print(0, row, prompt.slice(0, cols - 1), FG);
+      /* The caller's own `prt(prompt, row, 0)` (e.g. ui-input.c:1153, :1189,
+       * :1357, ui-options.c:57) - one erase-then-draw, not a spaces pass
+       * followed by a draw. */
+      term.prt(0, row, prompt.slice(0, cols - 1), FG);
       paintLineEdit(term, x, row, st, firsttime);
     };
     const finish = (value: string | null): void => {
@@ -694,7 +831,7 @@ export async function getFile(
   if (argForceName()) {
     /* prt("File name: ", 0, 0) (L1358) - drawn, then left for the get_check
      * below to overwrite, exactly as upstream leaves it. */
-    term.print(0, 0, "File name: ", FG);
+    term.prt(0, 0, "File name: ", FG);
     /* strftime("-%Y-%m-%d-%H-%M.txt") over the last four characters, which are
      * the ".txt" the caller appended (L1360-1364, with its assert that they are
      * there to overwrite). */

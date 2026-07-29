@@ -89,8 +89,10 @@ const IO = {
 async function getPrefPath(ctx: PrefsUiCtx, what: string, row: number): Promise<string | null> {
   const { term } = ctx;
   term.clear();
-  if (row > 0) term.print(0, row - 1, "", UI_TEXT);
-  term.print(0, row, `${what} to a pref file`, UI_TEXT);
+  /* prt("", row - 1, 0) (ui-options.c:53) is an ERASE of that row; print("") drew
+   * nothing at all, so the call was a no-op. */
+  if (row > 0) term.prt(0, row - 1, "", UI_TEXT);
+  term.prt(0, row, `${what} to a pref file`, UI_TEXT); // prt (ui-options.c:55)
   /* player_safe_name(..., true) strips the Roman-numeral suffix (player.c:389). */
   const ftmp = `${playerSafeName(ctx.playerName(), 80, true)}.prf`;
   if (argForceName()) {
@@ -168,8 +170,9 @@ export function processPrefFile(
 export async function loadPrefFileHack(ctx: PrefsUiCtx, row: number): Promise<void> {
   const { term } = ctx;
   term.clear();
-  if (row > 0) term.print(0, row - 1, "", UI_TEXT);
-  term.print(0, row, "Command: Load a user pref file", UI_TEXT);
+  /* prt("", row - 1, 0) (ui-options.c:1211) - an erase, not a no-op print(""). */
+  if (row > 0) term.prt(0, row - 1, "", UI_TEXT);
+  term.prt(0, row, "Command: Load a user pref file", UI_TEXT); // prt (ui-options.c:1213)
   const ftmp = `${playerSafeName(ctx.playerName(), 80, true)}.prf`;
   const name = argForceName()
     ? (await getCheck(term, `Confirm loading ${ftmp}? `))

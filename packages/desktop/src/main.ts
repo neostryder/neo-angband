@@ -20,7 +20,7 @@
  *     lives in core (host/bridge.ts), so neither end can drift from the other.
  */
 
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, screen, session, shell } from "electron";
 import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -47,7 +47,7 @@ import { checkWritable, resolveDataBase } from "./data-dir";
 import { PORT_ENV, rememberLoopbackPort, resolveLoopbackPort } from "./loopback-port";
 import { planOriginMerge } from "./origin-merge";
 import type { OriginSnapshot } from "./origin-merge";
-import { readWindowState, writeWindowState } from "./window-state";
+import { readWindowState, startPlacement, writeWindowState } from "./window-state";
 
 /**
  * Where the renderer bundle is, which differs between a checkout and a package.
@@ -683,9 +683,14 @@ async function createWindow(port: number): Promise<void> {
   gameWindowOpened = true;
   const userDir = path.join(USER_BASE, "user");
   const startState = readWindowState(userDir);
+  /* Validated against the displays that exist NOW, not the ones the rectangle was
+   * saved on - see startPlacement. */
+  const placement = startPlacement(
+    startState,
+    screen.getAllDisplays().map((d) => d.workArea),
+  );
   const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    ...placement,
     backgroundColor: "#0b0b0b",
     autoHideMenuBar: true,
     /* Restored, as main-sdl.c restores its own `Fullscreen` (L4694, L5905): a
@@ -699,6 +704,17 @@ async function createWindow(port: number): Promise<void> {
     },
   });
 
+  /* Maximised is restored too, and is a SEPARATE state from fullscreen -
+   * main-win.c keeps its own `Maximized` key and applies it as a window style when
+   * it creates the window (`if (td->maximized) td->dwStyle |= WS_MAXIMIZE;`,
+   * L2770). Electron has no constructor option for it, so it is a call.
+   *
+   * Skipped when fullscreen, because that is what the window will actually be:
+   * MEASURED, Electron reports isMaximized() false for a full-screen window, so
+   * the two are never both saved and there is nothing to layer.
+   */
+  if (startState.maximized && !startState.fullscreen) win.maximize();
+
   /* Fullscreen, and BORDERLESS with it: Electron's own full-screen state drops the
    * frame and title bar, and the menu bar goes with it, so the terminal grid gets
    * the whole display exactly as SDL_FULLSCREEN gives it upstream. A maximised
@@ -710,10 +726,6 @@ async function createWindow(port: number): Promise<void> {
    * package): a keydown handler in the page is not reliably reachable, while
    * before-input-event sees the key before the page does and cannot be eaten.
    */
-  const applyChrome = (): void => {
-    win.setMenuBarVisibility(!win.isFullScreen());
-  };
-  applyChrome();
   win.webContents.on("before-input-event", (event, input) => {
     if (
       input.type !== "keyDown" ||
@@ -728,12 +740,121 @@ async function createWindow(port: number): Promise<void> {
     event.preventDefault();
     win.setFullScreen(!win.isFullScreen());
   });
-  const rememberChrome = (): void => {
-    applyChrome();
-    writeWindowState(userDir, { fullscreen: win.isFullScreen() });
+
+  /* The window's state is tracked HERE rather than asked of the window inside each
+   * handler, and that is the whole bug this replaces.
+   *
+   * MEASURED on Electron 43 / Windows 11: `enter-full-screen` and
+   * `leave-full-screen` both fire BEFORE `isFullScreen()` flips. Inside the
+   * enter handler `isFullScreen()` is still false; inside the leave handler it is
+   * still true. So the old code wrote the INVERSE of reality every time - press
+   * F11, go genuinely fullscreen, and the file records `Fullscreen = 0` - and the
+   * menu bar was un-hidden on the way in for the same reason. (The API note about
+   * asynchronous fullscreen transitions is documented only for macOS. It is not
+   * only macOS.)
+   *
+   * The event itself names the new state unambiguously and needs no timing
+   * assumption at all: enter means true, leave means false.
+   */
+  let fullscreen = startState.fullscreen;
+  let maximized = startState.maximized;
+  let width = placement.width;
+  let height = placement.height;
+  /* Null when startPlacement REJECTED the saved position (it named a display that
+   * is gone): the window is centred, and the file must not keep insisting on a
+   * rectangle nothing can show. The first move/resize, or the close, records where
+   * it really is. */
+  let position: { x: number; y: number } | null =
+    placement.x !== undefined && placement.y !== undefined
+      ? { x: placement.x, y: placement.y }
+      : null;
+
+  const save = (): void => {
+    writeWindowState(userDir, { fullscreen, maximized, width, height, position });
   };
-  win.on("enter-full-screen", rememberChrome);
-  win.on("leave-full-screen", rememberChrome);
+
+  /* Whatever the window looks like when it is NOT fullscreen and NOT maximised -
+   * main-win.c's `rcNormalPosition`, the rect it saves rather than the live one
+   * (save_prefs_aux L771-773), so that un-maximising after a restore puts the
+   * window back where the player last dragged it.
+   *
+   * getNormalBounds() is that rect and is MEASURED correct while maximised; while
+   * FULLSCREEN it is not (it came back as the maximised rect), hence the guard.
+   * The guard uses the tracked flag, not isFullScreen(), for the reason above:
+   * enter-full-screen fires first, so `fullscreen` is already true by the time the
+   * transition's own resize/move events arrive.
+   */
+  const rememberBounds = (): void => {
+    if (fullscreen || win.isMinimized()) return;
+    const b = win.getNormalBounds();
+    width = b.width;
+    height = b.height;
+    position = { x: b.x, y: b.y };
+  };
+  win.on("resize", rememberBounds);
+  win.on("move", rememberBounds);
+
+  const applyChrome = (): void => {
+    win.setMenuBarVisibility(!fullscreen);
+  };
+  applyChrome();
+
+  win.on("enter-full-screen", () => {
+    fullscreen = true;
+    /* At most one of the two, and fullscreen is the one that can be restored - see
+     * WindowState.maximized. Nothing is lost: MEASURED, leaving fullscreen from a
+     * window that was maximised underneath re-emits `maximize`, so the flag comes
+     * back on the way out. Cleared here rather than only at write time so the
+     * TRACKED state never holds a pair the restore path cannot reproduce. */
+    maximized = false;
+    applyChrome();
+    save();
+  });
+  win.on("leave-full-screen", () => {
+    fullscreen = false;
+    applyChrome();
+    save();
+  });
+  /* MEASURED: entering fullscreen from an already-maximised window emits a
+   * `maximize` event too, AFTER enter-full-screen. Without the guard that would
+   * record "maximised" for a window that Electron itself calls un-maximised. */
+  win.on("maximize", () => {
+    if (fullscreen) return;
+    maximized = true;
+    save();
+  });
+  win.on("unmaximize", () => {
+    if (fullscreen) return;
+    maximized = false;
+    save();
+  });
+  /* Both upstream front ends save their prefs at shutdown and nowhere else -
+   * hook_quit calls save_prefs (main-win.c L5124, main-sdl.c L1217). The saves
+   * above are additional, so that a crash does not lose the choice; the flushes
+   * below are the ones that catch a plain resize or drag, which is far too frequent
+   * an event to write a file on.
+   *
+   * `close` is not the only way a run ends. A Windows session end - shutdown,
+   * restart, log off - closes the app through its own path, and a window that never
+   * gets a `close` would take the whole session's resizing and dragging with it.
+   * Electron gives that path its own Windows-only events (BrowserWindow
+   * `query-session-end` and `session-end`, `electron.d.ts` L2316-2325 / L2411-2422).
+   *
+   * `query-session-end` is the one with time left in it - it is the only one that
+   * CAN be delayed. It deliberately is not: the file is written and the session goes
+   * on ending, because there is nothing here worth standing in a player's way over.
+   * `session-end` is hooked too, cheaply, in case the query never arrives; the write
+   * is synchronous and idempotent, so doing it twice costs one small file. */
+  const flush = (): void => {
+    rememberBounds();
+    save();
+  };
+  win.on("close", flush);
+  win.on("query-session-end", () => {
+    /* NO event.preventDefault(): respect the user's choice to end the session. */
+    flush();
+  });
+  win.on("session-end", flush);
 
   // External links open in the user's real browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {

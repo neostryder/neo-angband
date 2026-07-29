@@ -1105,6 +1105,14 @@ export type WieldSplit = "inven_wield" | "wield_all";
  * object_learn_on_wield runs the instant the item is worn (as in wield_all
  * and inven_wield), so a worn item's modifier runes become known and its
  * pval bonuses go live at once. The equip_cnt UI counter is DEFERRED.
+ *
+ * `intoSlot` is the slot ARGUMENT upstream's inven_wield takes
+ * (`void inven_wield(struct object *obj, int slot)`, obj-gear.c:931): the caller
+ * decides the destination and inven_wield never recomputes it. That matters for
+ * rings - do_cmd_wield asks "Replace which ring? " and then overwrites slot with
+ * `equipped_item_slot(player->body, equip_obj)` (cmd-obj.c:309), so re-deriving
+ * it here would silently discard the hand the player picked. Omit it to keep the
+ * wield_slot default (wield_all and every non-choosing caller).
  */
 export function wieldObject(
   gear: Gear,
@@ -1112,11 +1120,15 @@ export function wieldObject(
   handle: number,
   env?: import("../obj/knowledge").RuneEnv,
   split: WieldSplit = "wield_all",
+  intoSlot?: number,
 ): number {
   const obj = gear.store.get(handle);
   if (!obj) return -1;
 
-  const slot = wieldSlot(player.body, obj.tval, player.equipment);
+  const slot =
+    intoSlot !== undefined
+      ? intoSlot
+      : wieldSlot(player.body, obj.tval, player.equipment);
   if (slot < 0 || slot >= player.body.count) return -1;
   if ((player.equipment[slot] ?? 0) !== 0) return -1;
 
