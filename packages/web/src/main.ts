@@ -2954,9 +2954,15 @@ async function fireCmd(): Promise<void> {
   }
   const ref = await selectItemFrom(
     "Fire which ammunition?",
-    (o) => tvalIsAmmo(o.tval) && o.tval === tval,
-    { inven: true },
-    "You have no ammunition for your weapon.",
+    /* obj_can_fire (obj-util.c:816) is `obj->tval == player->state.ammo_tval`
+     * alone; the extra tvalIsAmmo conjunct is redundant while ammo_tval is an
+     * ammo tval and would silently diverge if a mod made it anything else. */
+    (o) => o.tval === tval,
+    /* USE_INVEN | USE_QUIVER | USE_FLOOR (player-attack.c:1327). The quiver and
+     * the floor were both missing, so the one list a player keeps their arrows in
+     * was the one place this could not see them. */
+    { inven: true, quiver: true, floor: true },
+    "You have no suitable ammunition to fire.",
     itemCmdKey("fire"),
     false,
     "fire",
@@ -2982,8 +2988,7 @@ async function throwCmd(): Promise<void> {
     player.equipment.filter((h): h is number => !!h),
   );
   // Reverse-map object identity to gear handle so the tester can tell an
-  // equipped weapon from a pack/quiver/floor item (the pack list already holds
-  // quiver items, so USE_QUIVER is covered by the inventory pass).
+  // equipped weapon from a pack/quiver/floor item.
   const handleOf = new Map<GameObject, number>();
   for (const [h, o] of state.gear.store) handleOf.set(o, h);
   const canThrow = (o: GameObject): boolean => {
@@ -2997,7 +3002,11 @@ async function throwCmd(): Promise<void> {
   const ref = await selectItemFrom(
     "Throw which item?",
     canThrow,
-    { inven: true, equip: true, floor: true },
+    /* USE_EQUIP | USE_QUIVER | USE_INVEN | USE_FLOOR (player-attack.c:1388). The
+     * quiver was missing: its comment claimed the inventory pass covered it,
+     * which stopped being true when the quiver became its own command_wrk list
+     * (buildItemSources), so quivered ammo could not be thrown at all. */
+    { inven: true, quiver: true, equip: true, floor: true },
     "You have nothing to throw.",
     itemCmdKey("throw"),
     false,
