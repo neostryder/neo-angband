@@ -1263,6 +1263,12 @@ export function selectFromMenu(
 export interface ItemMenuSource {
   label: string;
   items: readonly MenuItem[];
+  /**
+   * Which gear list this tab is, so a caller can ask to OPEN on it
+   * (upkeep->command_wrk) without depending on the display label or on the
+   * order buildItemSources happens to emit enabled sources in.
+   */
+  kind?: "inven" | "equip" | "quiver" | "floor";
 }
 
 /** The effective selection tag for row `i` of a source (its explicit tag, or
