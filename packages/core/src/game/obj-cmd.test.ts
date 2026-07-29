@@ -146,10 +146,16 @@ function maxDeviceSkill(state: GameState): void {
 }
 
 function carry(state: GameState, obj: GameObject): number {
-  return invenCarry(state.gear, obj, {
+  const handle = invenCarry(state.gear, obj, {
     quiverSlotSize: constants.quiverSlotSize,
     thrownQuiverMult: constants.thrownQuiverMult,
   });
+  /* inven_carry ends with PU_INVEN + update_stuff (obj-gear.c L889-891), so the
+   * derived upkeep->inven[] listing exists by the time anything reads a slot
+   * letter off it. A test that skips this is testing a state the game never
+   * reaches, and it is what hid the wrong-letter defect. */
+  calcInventory(state.gear, constants);
+  return handle;
 }
 
 describe("inventory verbs (obj-gear.c)", () => {

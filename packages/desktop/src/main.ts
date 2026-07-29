@@ -46,6 +46,7 @@ import { checkWritable, resolveDataBase } from "./data-dir";
 import { PORT_ENV, rememberLoopbackPort, resolveLoopbackPort } from "./loopback-port";
 import { planOriginMerge } from "./origin-merge";
 import type { OriginSnapshot } from "./origin-merge";
+import { readWindowState, writeWindowState } from "./window-state";
 
 /**
  * Where the renderer bundle is, which differs between a checkout and a package.
@@ -596,7 +597,11 @@ async function recoverStrandedOrigins(
   const names = plan.recovered.map((r) => `${r.name}${r.hasSave ? "" : " (memorial)"}`);
   console.log(
     `[neo-angband] recovered ${plan.recovered.length} character(s) from ` +
-      `${sources.map((s) => s.port).join(", ")}: ${names.join(", ")}`,
+      `${sources.map((s) => s.port).join(", ")}: ${names.join(", ")}` +
+      (plan.skippedUnplayed.length > 0
+        ? `; left ${plan.skippedUnplayed.length} unplayed birth(s) behind: ` +
+          plan.skippedUnplayed.map((r) => r.name).join(", ")
+        : ""),
   );
   if (plan.recovered.length > 0) {
     await dialog.showMessageBox({
@@ -611,6 +616,10 @@ async function recoverStrandedOrigins(
         "that changed every launch, which is why they stopped appearing. They " +
         "have been moved into this copy's own storage and are on the character " +
         `screen now:\n\n${names.join("\n")}` +
+        (plan.skippedUnplayed.length > 0
+          ? `\n\nNot brought over, having never been played past turn 0: ` +
+            `${plan.skippedUnplayed.map((r) => r.name).join(", ")}.`
+          : "") +
         (failed.length > 0
           ? `\n\nThese could not be written (storage may be full): ${failed.join(", ")}. ` +
             "They are still in the old storage and will be retried next launch."
@@ -630,11 +639,16 @@ let gameWindowOpened = false;
 
 async function createWindow(port: number): Promise<void> {
   gameWindowOpened = true;
+  const userDir = path.join(USER_BASE, "user");
+  const startState = readWindowState(userDir);
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
     backgroundColor: "#0b0b0b",
     autoHideMenuBar: true,
+    /* Restored, as main-sdl.c restores its own `Fullscreen` (L4694, L5905): a
+     * player who chose fullscreen chose it for the game, not for one session. */
+    fullscreen: startState.fullscreen,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -642,6 +656,42 @@ async function createWindow(port: number): Promise<void> {
       sandbox: true,
     },
   });
+
+  /* Fullscreen, and BORDERLESS with it: Electron's own full-screen state drops the
+   * frame and title bar, and the menu bar goes with it, so the terminal grid gets
+   * the whole display exactly as SDL_FULLSCREEN gives it upstream. A maximised
+   * window deliberately keeps its chrome - that is what maximised means.
+   *
+   * Bound through before-input-event rather than a menu accelerator or a page
+   * listener because the renderer attaches its key handlers on window in the
+   * CAPTURE phase and stops propagation (see the overlay-key note in the web
+   * package): a keydown handler in the page is not reliably reachable, while
+   * before-input-event sees the key before the page does and cannot be eaten.
+   */
+  const applyChrome = (): void => {
+    win.setMenuBarVisibility(!win.isFullScreen());
+  };
+  applyChrome();
+  win.webContents.on("before-input-event", (event, input) => {
+    if (
+      input.type !== "keyDown" ||
+      input.key !== "F11" ||
+      input.control ||
+      input.alt ||
+      input.meta ||
+      input.shift
+    ) {
+      return;
+    }
+    event.preventDefault();
+    win.setFullScreen(!win.isFullScreen());
+  });
+  const rememberChrome = (): void => {
+    applyChrome();
+    writeWindowState(userDir, { fullscreen: win.isFullScreen() });
+  };
+  win.on("enter-full-screen", rememberChrome);
+  win.on("leave-full-screen", rememberChrome);
 
   // External links open in the user's real browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {

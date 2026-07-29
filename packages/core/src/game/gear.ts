@@ -918,6 +918,62 @@ export function objectCopyAmt(src: GameObject, amt: number): GameObject {
 }
 
 /**
+ * gear_to_label's label alphabet (obj-gear.c:446): a-z minus the roguelike
+ * cardinal-movement keys h/j/k/l, then A-Z. An equipment slot index and a pack
+ * LISTING index both index straight into it (L452, L465).
+ */
+export const GEAR_LABELS = "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/**
+ * gear_to_label (obj-gear.c:443-469): the one-character label for a held object -
+ * an equipment slot letter, a quiver slot digit (I2D), or a pack listing letter.
+ * "" when the handle is not currently held, upstream's '\0'.
+ *
+ * THE LISTING, NOT THE STORAGE ORDER. Upstream's pack arm reads
+ * `p->upkeep->inven[]` (L462-466) - the earlier_object-sorted view calc_inventory
+ * builds and every inventory display walks - NOT the master gear list. The port
+ * had three copies of this function (game/project-obj.ts, game/obj-cmd.ts,
+ * game/known.ts) and all three read `gear.pack`, the raw storage order, because
+ * they were written while `gear.inven` was still an unbuilt stand-in. calcInventory
+ * has filled `inven` for some time, so every one of them was quoting a letter the
+ * pack listing disagreed with: pick up a scroll into raw slot 8 of a pack that
+ * sorts it fourth and the message says (i) while the item is at (e) and (i) holds
+ * whatever sorted eighth. Same defect class as #92, one layer further in - the
+ * listings were fixed and the MESSAGES about them were not.
+ *
+ * Deliberately reads `inven` with no fallback to `pack`. A wrong letter is worse
+ * than a missing one: it sends the player to another item, and no census can see
+ * it because the slot is filled (paraphrase-is-a-deviation). If `inven` is stale
+ * the caller has skipped upstream's PU_INVEN/update_stuff, which is a bug to fix
+ * at that caller - gear-label-freshness.test.ts asserts the invariant holds after
+ * every gear mutation the live session performs.
+ *
+ * `equipment` is optional because most callers hold a Gear and no Player; a pack
+ * or quiver handle is never in equipment[], so omitting it cannot mislabel one.
+ */
+export function gearToLabel(
+  gear: Gear,
+  handle: number,
+  equipment?: readonly number[],
+): string {
+  /* Equipment is easy (L450-453). */
+  if (equipment) {
+    const eq = equipment.indexOf(handle);
+    if (eq >= 0) return GEAR_LABELS[eq] ?? "";
+  }
+
+  /* Check the quiver (L455-460). */
+  const qi = gear.quiver?.indexOf(handle) ?? -1;
+  if (qi >= 0) return String(qi);
+
+  /* Check the inventory (L462-466). */
+  const pi = (gear.inven ?? []).indexOf(handle);
+  if (pi >= 0 && pi < GEAR_LABELS.length) return GEAR_LABELS[pi]!;
+
+  return "";
+}
+
+/**
  * The p->gear view object_pack_total walks, built from the live gear.
  *
  * Upstream iterates all of p->gear and lets object_similar reject the equipped
@@ -925,21 +981,14 @@ export function objectCopyAmt(src: GameObject, amt: number): GameObject {
  * module docs), so the view is built from the non-equipped handles instead. The
  * resulting SET is the same, which is all object_pack_total reads.
  */
-export function packTotalView(
-  gear: Gear,
-  /* gear_to_label (obj-gear.c:443). Injected because the port has it three
-   * times over (game/project-obj.ts, game/obj-cmd.ts, game/known.ts) and gear.ts
-   * importing any of those would close a cycle; consolidating them is its own
-   * job. */
-  label: (handle: number) => string,
-): PackTotalGear {
+export function packTotalView(gear: Gear): PackTotalGear {
   const objs: GameObject[] = [];
   const labels = new Map<GameObject, string>();
   for (const handle of gear.pack) {
     const obj = gear.store.get(handle);
     if (!obj) continue;
     objs.push(obj);
-    labels.set(obj, label(handle));
+    labels.set(obj, gearToLabel(gear, handle));
   }
   return {
     gear: objs,
