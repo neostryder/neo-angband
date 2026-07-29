@@ -176,6 +176,7 @@ describe("buildObjectMenu (ui-context.c context_menu_object L654)", () => {
     isBook: false,
     canCast: false,
     canStudy: false,
+    canBrowse: false,
     useKind: "other" as const,
     canFire: false,
     canRefill: false,
@@ -185,6 +186,52 @@ describe("buildObjectMenu (ui-context.c context_menu_object L654)", () => {
     hasInscription: false,
     isIgnored: false,
   };
+
+  /* Browse (L690) was missing, with a comment blaming a port screen that had
+   * existed all along ('b' / browseCmd). A spellbook offered Cast and Study and
+   * no way to read it. */
+  it("offers Browse for a book the player can read (L689-690)", () => {
+    const rows = buildObjectMenu({ ...base, isBook: true, canBrowse: true });
+    expect(rows.some((i) => i.action === "browse")).toBe(true);
+    expect(rows.find((i) => i.action === "browse")!.label).toBe("Browse");
+  });
+
+  it("gates Browse on player_can_read, separately from Cast and Study", () => {
+    /* A blind caster can still Cast from memory in this menu but cannot read the
+     * book, so the three gates are not interchangeable. */
+    const blind = buildObjectMenu({
+      ...base,
+      isBook: true,
+      canCast: true,
+      canStudy: true,
+      canBrowse: false,
+    });
+    expect(blind.some((i) => i.action === "cast")).toBe(true);
+    expect(blind.some((i) => i.action === "study")).toBe(true);
+    expect(blind.some((i) => i.action === "browse")).toBe(false);
+  });
+
+  it("never offers Browse for something that is not a book", () => {
+    /* canBrowse is only consulted inside the obj_can_browse branch (L682). */
+    expect(
+      buildObjectMenu({ ...base, isBook: false, canBrowse: true }).some(
+        (i) => i.action === "browse",
+      ),
+    ).toBe(false);
+  });
+
+  it("orders the book rows Cast, Study, Browse (L683-690)", () => {
+    const rows = buildObjectMenu({
+      ...base,
+      isBook: true,
+      canCast: true,
+      canStudy: true,
+      canBrowse: true,
+    })
+      .map((i) => i.action)
+      .filter((a) => a === "cast" || a === "study" || a === "browse");
+    expect(rows).toEqual(["cast", "study", "browse"]);
+  });
 
   it("labels the ignore entry Ignore normally and Unignore when the item is ignored (ui-context.c:770)", () => {
     expect(buildObjectMenu(base).find((i) => i.action === "ignore")!.label).toBe("Ignore");
