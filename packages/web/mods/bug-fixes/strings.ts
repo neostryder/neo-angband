@@ -1,8 +1,7 @@
 /**
- * The bug-fixes mod's "Misc. string fixes" patch: cosmetic corrections to the
- * text Angband 4.2.6 itself ships. Core keeps upstream's wording EXACTLY - this
- * runs only when the bug-fixes mod is enabled and its `bugfix.miscStrings` flag
- * is on, exactly like every other rule in that mod.
+ * "Misc. string fixes" (bugfix.miscStrings) - cosmetic corrections to the text
+ * Angband 4.2.6 itself ships, and the bug-fixes mod's own code. Core keeps
+ * upstream's wording EXACTLY; nothing here is compiled into it.
  *
  * WHAT THIS ACTUALLY IS, measured rather than assumed, over the 577 distinct
  * literals reference/src hands to msg / msgt / get_check / get_string /
@@ -33,16 +32,23 @@
  * loosing) turned up nothing, and so did a separate sweep of the gamedata
  * descriptions - see MISSPELLINGS below.
  *
- * A general rewrite rule was considered and rejected. Messages reach this sink
+ * A general rewrite rule was considered and rejected. Messages reach the sink
  * already interpolated, so a blanket ". " -> ".  " would rewrite object
  * inscriptions and character names the player typed. An exact-match table
  * cannot misfire that way, and the measurement says it needs four rows - five
  * single-spaced literals upstream, one of which the port cannot emit.
+ *
+ * THE LIMIT THE messageText HOOK IMPOSES, and which this patch respects: a hook
+ * may only RESTATE a message. Changing what a message MEANS would put text in
+ * front of the player that upstream never wrote, and no census could see it,
+ * because a paraphrase fills the slot it should have left empty (Aaron,
+ * 2026-07-28). Every row below differs from its key by exactly one doubled
+ * space, and the mod's test asserts that mechanically.
  */
 
 /**
  * Upstream's own single-spaced sentence breaks, normalized to the double space
- * it uses everywhere else. Keys are the upstream text VERBATIM; the port must
+ * it uses everywhere else. Keys are the upstream text VERBATIM; the host must
  * hand this function the finished message for the lookup to hit.
  *
  * "Non-existent glyph requested. Please report this bug." (ui-prefs.c) is a
@@ -99,7 +105,8 @@ export const MISSPELLINGS: readonly (readonly [string, string])[] = [
 
 /**
  * The patch: upstream's text in, the corrected text out. Identity for anything
- * with no wart, so the caller can apply it unconditionally once the flag is on.
+ * with no wart, so the host can apply it unconditionally once the hook is
+ * installed.
  */
 export function miscStringFix(text: string): string {
   return MISC_STRING_CORRECTIONS[text] ?? text;

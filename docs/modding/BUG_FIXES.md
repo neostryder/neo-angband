@@ -460,7 +460,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   count and the direction were wrong.
   - **ZERO** misspellings, in two corpora. The message literals above, swept for
     the usual suspects (recieve, seperate, occured, acheive, neccessary,
-    definately, teh, loosing, and ~40 more - `MISSPELLINGS` in msg-fixes.ts):
+    definately, teh, loosing, and ~40 more - `MISSPELLINGS` in mods/bug-fixes/strings.ts):
     none. And the **gamedata descriptions**, which the message census structurally
     cannot see, swept three ways: the same known-misspelling list (0 hits), doubled
     words (1 hit, the room *named* "Dot dot dot"), and every post-4.2.6 upstream
@@ -474,7 +474,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   the local majority. Pooled here, because the convention is "two spaces after a
   sentence" rather than "after a period". Dropping those three rows from
   `MISC_STRING_CORRECTIONS` is the whole change if that reading is wrong.
-- Fix: `miscStringFix` (`packages/core/src/game/msg-fixes.ts`), applied at the
+- Fix: `miscStringFix` (`packages/web/mods/bug-fixes/strings.ts`), applied at the
   single message sink (`packages/web/src/main.ts` `state.msg`) so one hook
   covers every message core or the shell emits. It is an exact-match table of
   four rows, NOT a rewrite rule: messages reach the sink already interpolated, so

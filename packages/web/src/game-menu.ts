@@ -36,7 +36,8 @@ export type GameMenuAction =
   | "item-actions"
   | "switch"
   | "new"
-  | "exit";
+  | "exit"
+  | "quit";
 
 export interface GameMenuEntry {
   action: GameMenuAction;
@@ -46,8 +47,13 @@ export interface GameMenuEntry {
 export const GAME_MENU_FOOTER = "[ a-z to choose, tap a row, ESC to resume ]";
 
 /** The Escape menu rows, in order. Every action is also reachable by its own
- * key (named in the hint), by arrows+Enter, and by tap. */
-export function gameMenuEntries(): GameMenuEntry[] {
+ * key (named in the hint), by arrows+Enter, and by tap.
+ *
+ * `canQuit` adds the desktop-only "Quit to desktop" row. Leaving play and quitting
+ * the program used to be the same row, which is how "Save and exit" came to close
+ * the app; separating them left the desktop build with no discoverable way out at
+ * all, since a tab's close button has no equivalent there. */
+export function gameMenuEntries(opts: { canQuit?: boolean } = {}): GameMenuEntry[] {
   return [
     {
       action: "resume",
@@ -117,9 +123,22 @@ export function gameMenuEntries(): GameMenuEntry[] {
       action: "exit",
       item: {
         label: "Save and exit",
-        hint: "Save and leave play for the title screen and character list (Ctrl-X).",
+        hint: "Save and leave play for the title screen and character list.",
       },
     },
+    /* Ctrl-X is deliberately NOT named on the row above any more: upstream's ^X
+     * (textui_quit) ends the program, and this row does not. */
+    ...(opts.canQuit
+      ? [
+          {
+            action: "quit" as const,
+            item: {
+              label: "Quit to desktop",
+              hint: "Save and close the game entirely (Ctrl-X).",
+            },
+          },
+        ]
+      : []),
   ];
 }
 

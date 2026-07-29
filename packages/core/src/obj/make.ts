@@ -975,18 +975,19 @@ export function makeArtifact(
   }
 
   if (obj.artifact) {
-    /* bug-fixes #4510 ("Duplicate artifacts"): the shared ArtifactState already
-     * makes duplication impossible by construction for freshly-selected
-     * artifacts (the loop above skips any isCreated one). This defensive
-     * re-check closes the remaining window: an object handed to make_artifact
-     * that ALREADY carries an artifact (the loop's `!obj->artifact` guard skips
-     * the scan) whose flag is set - re-committing it would copy the artifact
-     * data and re-mark it created a second time. With bugfix.duplicateArtifact
-     * on, that is refused (single source of truth = ArtifactState); faithful
-     * 4.2.6 re-commits it. */
+    /* The artifact-commit seam (mod/hooks.ts artifactCommit). An object handed to
+     * make_artifact that ALREADY carries an artifact skips the selection loop's
+     * `!obj->artifact` scan, so this is the one point where a caller could commit
+     * the same artifact twice. Faithful 4.2.6 commits it unconditionally and that
+     * is what core does; a mod may refuse, and refusing clears the artifact and
+     * reports failure.
+     *
+     * RNG-FREE by contract - this runs on the main object stream. */
     if (
-      deps.modRules?.["bugfix.duplicateArtifact"] &&
-      deps.artifacts.isCreated(obj.artifact.aidx)
+      deps.hooks?.artifactCommit?.(
+        obj.artifact.aidx,
+        deps.artifacts.isCreated(obj.artifact.aidx),
+      ) === false
     ) {
       obj.artifact = null;
       return false;
@@ -1111,12 +1112,11 @@ export interface MakeDeps {
   /** OPT(player, birth_no_artifacts): suppress all artifact creation. */
   noArtifacts: boolean;
   /**
-   * GameState.modRules (the bug-fixes mod seam), threaded so the pure obj
-   * layer can consult a named rule without a GameState. Absent => every rule
-   * reads false and creation is faithful 4.2.6. Used by makeArtifact's
-   * bugfix.duplicateArtifact defensive re-check.
+   * The mod behaviour seam (mod/hooks.ts), threaded so the pure obj layer can
+   * offer its extension point without a GameState. Only `artifactCommit` is
+   * consulted here. Absent => creation is faithful 4.2.6.
    */
-  modRules?: Record<string, boolean> | undefined;
+  hooks?: import("../mod/hooks").ModHooks | undefined;
   /**
    * The player-timed failure tables (timed effect NAME -> fail directives),
    * for append_object_curse's TIMED_INC foil rejection (obj-curse.c L159-188).

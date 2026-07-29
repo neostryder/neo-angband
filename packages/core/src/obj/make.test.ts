@@ -324,9 +324,12 @@ describe("make_artifact - bug-fixes #4510 duplicate-artifact defensive re-check"
     expect(obj.artifact?.aidx).toBe(art.aidx);
   });
 
-  it("corrected (flag ON): refuses the duplicate and clears the artifact", () => {
+  it("corrected (a mod vetoes): refuses the duplicate and clears the artifact", () => {
     const { deps, obj, art } = preCarried();
-    deps.modRules = { "bugfix.duplicateArtifact": true };
+    /* What the bug-fixes mod's own hook does, stated here as the CONTRACT core
+     * offers rather than as core's behaviour: refuse a commit of an artifact the
+     * ArtifactState already records as created. */
+    deps.hooks = { artifactCommit: (_aidx, alreadyCreated) => !alreadyCreated };
     const ok = makeArtifact(new Rng(1), deps, obj, art.allocMin);
     expect(ok).toBe(false);
     expect(obj.artifact).toBeNull();
@@ -356,33 +359,31 @@ describe("RNG neutrality of the make_artifact mod guard (Phase 3 / D1=B)", () =>
     }
   }
 
-  /* Every bundled-mod rule flag, all explicitly OFF: the "no-mod but mod system
-   * present" state that must be byte-identical to the mod system being absent. */
-  const ALL_FLAGS_OFF: Record<string, boolean> = {
-    "bugfix.duplicateArtifact": false,
-    "qol.autoDig": false,
-    "bugfix.uniqueKillHistory": false,
-    "bugfix.noiseScentSave": false,
-    "bugfix.objectListOrder": false,
-  };
+  /* A mod that IS loaded and IS consulted, and permits. This is the state that
+   * has to be byte-identical to no mod at all - and it is a stronger claim than
+   * the flag-map version it replaces, because back then "no mod" meant a map of
+   * false values that core read and short-circuited on. Here the hook is really
+   * invoked on every commit, so the pin now proves that CALLING a mod does not
+   * itself move the stream. */
+  const PERMISSIVE: import("../mod/hooks").ModHooks = { artifactCommit: () => true };
 
   /** Prep an object of a unique-base artifact's kind, then run make_artifact. */
   function runAt(
     seed: number,
-    modRules?: Record<string, boolean>,
+    hooks?: import("../mod/hooks").ModHooks,
   ): { ok: boolean; draws: Array<[number, number]> } {
     const art = uniqueNormalArt();
     const kind = reg.lookupKind(art.tval, art.sval)!;
     const depth = art.allocMin; /* in [allocMin, allocMax]: only the rarity roll */
     const deps = freshDeps();
-    if (modRules) deps.modRules = modRules;
+    if (hooks) deps.hooks = hooks;
     const rng = new RecordingRng(seed);
     const obj = objectPrep(rng, reg, constants, kind, depth, "randomise");
     const ok = makeArtifact(rng, deps, obj, depth);
     return { ok, draws: rng.draws };
   }
 
-  it("mod-absent and no-mod(all flags off) draw the identical sequence when an artifact commits", () => {
+  it("mod-absent and mod-loaded-but-permitting draw the identical sequence", () => {
     /* A seed on which the artifact is actually promoted, so copy_artifact_data
      * runs and the guarded commit block draws RNG (a meaningful, non-empty run). */
     let winSeed = -1;
@@ -392,11 +393,34 @@ describe("RNG neutrality of the make_artifact mod guard (Phase 3 / D1=B)", () =>
     expect(winSeed).toBeGreaterThan(0);
 
     const absent = runAt(winSeed, undefined);
-    const empty = runAt(winSeed, ALL_FLAGS_OFF);
+    const permitted = runAt(winSeed, PERMISSIVE);
     expect(absent.ok).toBe(true);
-    expect(empty.ok).toBe(true);
+    expect(permitted.ok).toBe(true);
     expect(absent.draws.length).toBeGreaterThan(0);
-    expect(empty.draws).toEqual(absent.draws);
+    expect(permitted.draws).toEqual(absent.draws);
+  });
+
+  it("a vetoing mod refuses BEFORE the commit draws, so the veto costs no RNG", () => {
+    /* The veto path must not half-draw: it returns false having taken exactly the
+     * draws the faithful path took up to that point. Otherwise enabling the mod
+     * would desynchronise the stream rather than only change the outcome. */
+    let winSeed = -1;
+    for (let s = 1; s < 500 && winSeed < 0; s++) {
+      if (runAt(s).ok) winSeed = s;
+    }
+    const vetoed = runAt(winSeed, { artifactCommit: () => false });
+    expect(vetoed.ok).toBe(false);
+    /* A PREFIX of the committing run: the veto took exactly the draws the faithful
+     * path took up to that point and not one more.
+     *
+     * NOT "strictly fewer" - that was this test's own wrong premise. The fixture's
+     * artifact resolves to 'Gondricam', whose `curses` is null, so
+     * copyArtifactData draws NOTHING for it and the two runs legitimately match in
+     * length. Asserting a prefix is what the claim actually is, and it holds
+     * whether or not the committed path happens to draw. */
+    const committed = runAt(winSeed).draws;
+    expect(vetoed.draws.length).toBeLessThanOrEqual(committed.length);
+    expect(vetoed.draws).toEqual(committed.slice(0, vetoed.draws.length));
   });
 });
 

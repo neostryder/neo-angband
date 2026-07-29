@@ -1356,6 +1356,13 @@ export function itemSelect(
   sources: readonly ItemMenuSource[],
   initialSource = 0,
   cmdKey?: string,
+  /**
+   * bell(): sounded when a tab-switch key is refused because the target source
+   * holds nothing this command accepts (ui-object.c:975). Injected because this
+   * module has no GameState to reach state.sound through. Omitted = silent, which
+   * is what made a faithful refusal read as a dead key.
+   */
+  bell?: () => void,
 ): Promise<{ source: number; index: number } | null> {
   return new Promise((resolve) => {
     const firstNonEmpty = (): number => sources.findIndex((s) => s.items.length > 0);
@@ -1416,7 +1423,17 @@ export function itemSelect(
     };
     const switchTo = (label: string): void => {
       const next = sources.findIndex((s) => s.label === label && s.items.length > 0);
-      if (next < 0 || next === cur) return;
+      if (next < 0 || next === cur) {
+        /* bell() (ui-object.c:975, :981-982, :992-993). Upstream ANSWERS a refused
+         * switch; this returned silently, and a silent refusal is indistinguishable
+         * from a dead key - which is exactly how a faithful refusal came to be
+         * reported as "'/' does not switch inventory". It is legitimately refused
+         * whenever the other source holds nothing the command will accept: at an
+         * Alchemist, get_item drops USE_EQUIP entirely (ui-object.c:1411-1414),
+         * menu_header omits the "/ for Equip" legend, and '/' bells. */
+        bell?.();
+        return;
+      }
       cur = next;
       cursor = 0;
       top = 0;

@@ -147,7 +147,9 @@ describe("RNG neutrality: the empty mod system does not perturb the stream (Phas
    */
 
   /* Every bundled-mod rule flag, all explicitly OFF (mod system present, no
-   * behavior-changing mod enabled) - the neutral default install. */
+   * behavior-changing mod enabled) - the neutral default install. Core does not
+   * read these any more (modRules is opaque to it); the point of keeping them is
+   * that RECORDING a player's choices must not perturb anything either. */
   const ALL_FLAGS_OFF: Record<string, boolean> = {
     "bugfix.duplicateArtifact": false,
     "qol.autoDig": false,
@@ -171,16 +173,50 @@ describe("RNG neutrality: the empty mod system does not perturb the stream (Phas
     expect(a.state.length).toBeGreaterThan(0);
     expect(b).toEqual(a);
   });
+
+  it("a mod whose every hook is INSTALLED but neutral draws the identical stream", () => {
+    /*
+     * Strictly stronger than the flag-map version above, and the pin that matters
+     * now: back then "no mod" meant a map of false values core short-circuited on,
+     * so nothing was ever called. Here all seven hooks are really present and
+     * really invoked during birth and level generation, each answering exactly
+     * what faithful core does on its own - so this proves that CALLING a mod does
+     * not itself move the stream.
+     */
+    const NEUTRAL: import("../mod/hooks").ModHooks = {
+      walkBlockedByDiggable: () => null,
+      objectListTiebreak: () => 0,
+      levelGenerated: () => true,
+      artifactCommit: () => true,
+      historyAdd: () => true,
+      saveNoiseScent: () => false,
+      messageText: (raw) => raw,
+    };
+    const absent = startGame(pack, { seed: 20260722, depth: 2 });
+    const hooked = startGame(pack, { seed: 20260722, depth: 2, modHooks: NEUTRAL });
+
+    expect(hooked.state.rng.getState()).toEqual(absent.state.rng.getState());
+    /* Not just the stream: the level itself. */
+    expect(Array.from(hooked.state.chunk.featCount)).toEqual(
+      Array.from(absent.state.chunk.featCount),
+    );
+    expect(hooked.state.actor.grid).toEqual(absent.state.actor.grid);
+  });
 });
 
-describe("bugfix.stairsReachable reaches level generation (BUG_FIXES.md entry 13)", () => {
+describe("the levelGenerated seam reaches level generation from startGame", () => {
   /*
-   * The end-to-end guard on the ONE piece of plumbing this fix needs: the
-   * session must hand GameState.modRules to cave_generate (session/game.ts
-   * spreads it onto the GenDeps that generateLevel receives). A unit test on
-   * ensureStairsReachable cannot catch that wire coming loose, and neither can
-   * an all-flags-OFF stream comparison - only a seed whose behaviour actually
-   * differs with the flag on can.
+   * The end-to-end guard on the ONE piece of plumbing a level mod needs: the
+   * session must hand GameState.modHooks to cave_generate (session/game.ts
+   * spreads it onto the GenDeps that generateLevel receives). No unit test on a
+   * mod's repair can catch that wire coming loose, and neither can an
+   * all-hooks-neutral stream comparison - only a hook whose answer actually
+   * changes the outcome can.
+   *
+   * The staircase repair that used to be tested here is the bug-fixes mod's
+   * (packages/web/mods/bug-fixes/), and its end-to-end proof on these same seeds
+   * now lives with it. What stays here is the CONTROL - core still strands
+   * floors, on purpose - plus the seam itself.
    *
    * These birth seeds were measured stranded through startGame itself, and they
    * cover both directions, including a down-only case - the direction that
@@ -240,21 +276,61 @@ describe("bugfix.stairsReachable reaches level generation (BUG_FIXES.md entry 13
     return out;
   }
 
-  it("CONTROL: a faithful game (no modRules) is born on a stranded floor", () => {
+  it("CONTROL: a faithful game (no mod loaded) is born on a stranded floor", () => {
     for (const [depth, seed, dirs] of STRANDED) {
       const { state } = startGame(pack, { seed, depth });
       expect(strandedDirs(state).join("+"), `d${depth} seed ${seed}`).toBe(dirs);
     }
   });
 
-  it("with the flag on, the same seeds are born on a repaired floor", () => {
-    for (const [depth, seed] of STRANDED) {
-      const { state } = startGame(pack, {
-        seed,
-        depth,
-        modRules: { "bugfix.stairsReachable": true },
-      });
-      expect(strandedDirs(state), `d${depth} seed ${seed}`).toEqual([]);
-    }
+  it("a hook's in-place repair of the level survives into the live game", () => {
+    /* The mutation is deliberately one a real repair makes: a staircase on the
+     * player's own grid, which upstream itself lays under birth_connect_stairs
+     * (gen-util.c:427-433). If the Gen the hook mutates were a copy, or were
+     * mutated after the chunk was taken, this grid would not be a stair. */
+    const [entry] = STRANDED;
+    const [depth, seed] = entry as [number, number, string];
+    const calls: boolean[] = [];
+    const { state } = startGame(pack, {
+      seed,
+      depth,
+      modHooks: {
+        levelGenerated: (gen, quest) => {
+          const g = gen as { c: { setFeat: (grid: Loc, feat: number) => void }; playerSpot: Loc | null };
+          calls.push(quest);
+          if (g.playerSpot) g.c.setFeat(g.playerSpot, FEAT.MORE);
+          return true;
+        },
+      },
+    });
+    expect(calls).toEqual([false]); // called once, told this is not a quest level
+    expect(state.chunk.feat(state.actor.grid)).toBe(FEAT.MORE);
+  });
+
+  it("a hook's refusal re-rolls the level, exactly as a monster overflow does", () => {
+    const [entry] = STRANDED;
+    const [depth, seed] = entry as [number, number, string];
+    const faithful = startGame(pack, { seed, depth }).state;
+
+    let refusals = 0;
+    const rerolled = startGame(pack, {
+      seed,
+      depth,
+      modHooks: {
+        levelGenerated: () => {
+          /* Refuse the first level only, then accept - a hook that always refused
+           * would exhaust cave_generate's attempts, which is its own test. */
+          refusals++;
+          return refusals > 1;
+        },
+      },
+    }).state;
+
+    expect(refusals).toBe(2);
+    /* A different level from the same seed: the rejection really went back
+     * through the retry loop rather than being swallowed. */
+    expect(Array.from(rerolled.chunk.featCount)).not.toEqual(
+      Array.from(faithful.chunk.featCount),
+    );
   });
 });

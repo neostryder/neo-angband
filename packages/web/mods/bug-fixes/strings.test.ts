@@ -1,5 +1,12 @@
+/**
+ * The "Misc. string fixes" table's own tests, moved here with the table itself
+ * when it left core (it was packages/core/src/game/msg-fixes.test.ts). The
+ * assertions are unchanged; only the import is.
+ */
+
 import { describe, expect, it } from "vitest";
-import { MISC_STRING_CORRECTIONS, MISSPELLINGS, miscStringFix } from "./msg-fixes";
+import { MISC_STRING_CORRECTIONS, MISSPELLINGS, miscStringFix } from "./strings";
+import bugFixesHooks from "./hooks";
 
 describe("the bug-fixes mod's Misc. string fixes (docs/modding/BUG_FIXES.md #14)", () => {
   it("normalizes upstream's single-spaced sentence breaks UP to its double", () => {
@@ -57,7 +64,9 @@ describe("the bug-fixes mod's Misc. string fixes (docs/modding/BUG_FIXES.md #14)
     expect(keys).toHaveLength(4);
     for (const [from, to] of Object.entries(MISC_STRING_CORRECTIONS)) {
       /* Every row differs from its key ONLY by doubling one space after a
-       * sentence end - no wording changes smuggled into a spacing patch. */
+       * sentence end - no wording changes smuggled into a spacing patch. This is
+       * also the messageText hook's limit: a hook may RESTATE a message, never
+       * change what it means. */
       expect(to.replace(/([.!?]) {2}/gu, "$1 ")).toBe(from);
       expect(to).not.toBe(from);
     }
@@ -77,5 +86,14 @@ describe("the bug-fixes mod's Misc. string fixes (docs/modding/BUG_FIXES.md #14)
      * spacing only. If a sweep ever finds one, this stops being true. */
     const table = Object.keys(MISC_STRING_CORRECTIONS).join(" ").toLowerCase();
     for (const [wrong] of MISSPELLINGS) expect(table).not.toContain(wrong);
+  });
+
+  it("reaches the message sink only through the messageText hook", () => {
+    /* The host applies state.modHooks.messageText at its single message sink; the
+     * mod's job is to install the table there and only when the patch is on. */
+    expect(bugFixesHooks({ "bugfix.miscStrings": false }).messageText).toBeUndefined();
+    const fix = bugFixesHooks({ "bugfix.miscStrings": true }).messageText!;
+    expect(fix("Oops! It feels deathly cold!")).toBe("Oops!  It feels deathly cold!");
+    expect(fix("You hit the kobold.")).toBe("You hit the kobold.");
   });
 });

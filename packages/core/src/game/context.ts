@@ -623,13 +623,15 @@ export interface GameState {
    */
   townChunk?: import("../world/chunk").Chunk | null;
   /**
-   * QoL auto-dig seam (the bundled `qol` mod, flag "qol.autoDig"): consulted by
-   * walkAction (game/player-turn.ts) when a walk is blocked by a wall, BEFORE
-   * the faithful no-energy bump. Returns the energy spent starting a dig (a full
-   * move), or 0 to fall through to the bump. Installed by the session
-   * (movementAutoDig, game/cave-cmd.ts); it itself returns 0 without drawing RNG
-   * unless the "qol.autoDig" flag is on and the grid is diggable, so an absent
-   * hook or an off flag keeps movement byte-identical to faithful 4.2.6.
+   * The walk-into-a-wall seam: consulted by walkAction (game/player-turn.ts)
+   * when a walk is blocked, BEFORE the faithful no-energy bump. Returns the
+   * energy a mod spent taking the walk over, or 0 to fall through to the bump.
+   * Installed by the session (movementAutoDig, game/cave-cmd.ts), which returns 0
+   * having drawn NO RNG unless a mod supplied the walkBlockedByDiggable hook - so
+   * an absent hook keeps movement byte-identical to faithful 4.2.6.
+   *
+   * Core names no mod and reads no flag here. Which mod is asking, and why, is
+   * not core's business.
    */
   autoDigStep?: (state: GameState, grid: Loc) => number;
   /**
@@ -685,19 +687,29 @@ export interface GameState {
    */
   monsterTurnHook?: (mon: Monster, state: GameState) => boolean;
   /**
-   * Named boolean "mod rule" flags (the declarative bundled-mod seam behind the
-   * qol / bug-fixes mods). DEFAULT ABSENT/EMPTY, so faithful core reads every
-   * flag as false and is byte-identical to 4.2.6 with no mod enabled. The HOST
-   * resolves each enabled mod's manifest `rules` (PackManifest.rules: flag /
-   * title / description / default) against the player's saved Fixes & tweaks
-   * choices and seeds this map at startGame / loadGame (opts.modRules); the menu
-   * can also toggle a flag live. Each ported core function keeps the faithful
-   * 4.2.6 branch as the default and an off-by-default corrected/new branch guarded
-   * by modRuleEnabled(state, "<flag>"). Disabling the mod (or a rule) drops the
-   * flag and returns core to faithful behaviour. Read only through modRuleEnabled
-   * so the "absent = faithful" contract is enforced in one place.
+   * Named boolean "mod rule" flags: the player's per-patch choices, resolved by
+   * the HOST from each enabled mod's manifest `rules` against their saved Fixes
+   * & tweaks selections.
+   *
+   * OPAQUE TO CORE. Core stores this (it is save state, and a save has to record
+   * which patches a character was played with) and never branches on it. Every
+   * flag name here belongs to a mod, so a core function reading one would be core
+   * implementing that mod - which is exactly what the ModHooks seam below exists
+   * to stop. The mod itself reads its own flags when it decides which hooks to
+   * install; by the time core sees anything, the decision is already a function
+   * or an absent field.
    */
   modRules?: Record<string, boolean>;
+  /**
+   * The behaviour a mod supplies (mod/hooks.ts).
+   *
+   * ABSENT by default, and absent is the whole contract: with no mod loaded there
+   * is no object, no optional call is made, and core runs the faithful 4.2.6 path
+   * that is the only path in the branch. Composed by the host in load order from
+   * every enabled mod's contributions (composeModHooks), so core holds one object
+   * and knows nothing about mod identity, ordering or enablement.
+   */
+  modHooks?: import("../mod/hooks").ModHooks;
   /**
    * PU_BONUS | PU_HP | PU_MANA: recompute the derived state from the
    * current gear (equipment commands call this after changing what is
@@ -917,16 +929,16 @@ export interface RunState {
   pathDest?: Loc;
 }
 
-/**
- * Whether a named "mod rule" flag is enabled (the bug-fixes mod seam). The
- * single reader for state.modRules: absent map or absent/false flag both mean
- * OFF, which is the faithful 4.2.6 branch everywhere it is consulted. A core
- * function reads it as `if (modRuleEnabled(state, "bugfix.x")) { corrected }
- * else { faithful 4.2.6 }`, so core is byte-identical when no mod set the flag.
- */
-export function modRuleEnabled(state: GameState, name: string): boolean {
-  return state.modRules?.[name] === true;
-}
+/* modRuleEnabled used to live here: the single reader for state.modRules, which
+ * core functions consulted as `if (modRuleEnabled(state, "bugfix.x"))`. It is
+ * GONE, deliberately and permanently. Core does not read a mod's flags - flag
+ * names belong to mods, so a core function reading one is core implementing that
+ * mod. Behaviour arrives through GameState.modHooks (mod/hooks.ts) instead.
+ *
+ * Deleted rather than left unused: with zero callers it was the last trace of the
+ * old contract, and a helper that exists is a helper the next core function will
+ * reach for. The HOST still resolves the choice map (it is save state, and the
+ * Fixes & tweaks menu is built from it) - that reading lives in the host. */
 
 /**
  * player_resting_is_special (player-util.c:1382): the conditional REST_ modes,
