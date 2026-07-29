@@ -22,7 +22,8 @@ const FG = UI_TEXT;
 export type SelectResult =
   | { action: "resume"; id: string }
   | { action: "delete"; id: string }
-  | { action: "new" };
+  | { action: "new" }
+  | { action: "back" };
 
 /** "Town" at the surface, else the classic "<feet>' (L<n>)". */
 function depthLabel(depth: number): string {
@@ -75,9 +76,13 @@ async function confirmDelete(term: GlyphTerm, c: CharMeta): Promise<boolean> {
  * Run the picker until the player chooses. Living characters resume; the last
  * row starts a new character. Delete (or Backspace) on any row erases that save
  * after a confirmation - a tombstone's own row also offers it on selection,
- * since a dead character cannot be played. ESC resumes the most-recent living
- * character, or starts a new one if there are none (there is always a way
- * forward).
+ * since a dead character cannot be played.
+ *
+ * ESC goes BACK to the title screen. It used to resume the most-recent living
+ * character, which made cancelling out of the picker indistinguishable from
+ * choosing its top row - and left no way back to the title at all. This screen
+ * is the port's stand-in for IDM_FILE_OPEN's file dialog (main-win.c:3518), and
+ * cancelling a file dialog returns you to the splash, it does not open a file.
  */
 export async function runCharacterSelect(
   term: GlyphTerm,
@@ -115,7 +120,7 @@ export async function runCharacterSelect(
       term,
       "Select a character",
       [...items, newRow],
-      "[ a-z to choose, tap a row, Del to delete, ESC for the most recent ]",
+      "[ a-z to choose, tap a row, Del to delete, ESC for the title screen ]",
       {
         subtitle: notice
           ? notice
@@ -124,10 +129,7 @@ export async function runCharacterSelect(
       },
     );
 
-    if (pick === null) {
-      const living = roster.find((c) => c.alive);
-      return living ? { action: "resume", id: living.id } : { action: "new" };
-    }
+    if (pick === null) return { action: "back" };
     if (pick === roster.length) return { action: "new" };
 
     const chosen = roster[pick];

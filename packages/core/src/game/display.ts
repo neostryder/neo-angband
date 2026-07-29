@@ -61,6 +61,7 @@ import type { Player } from "../player/player";
 import type { Monster } from "../mon/monster";
 import type { GameObject } from "../obj/object";
 import type { GameState } from "./context";
+import { playerIsResting, playerRestingCount } from "./context";
 
 /** One coloured run of text; color is a COLOUR_* value (see color.ts). */
 export interface DisplayRun {
@@ -127,9 +128,13 @@ export interface DisplayDeps {
    * unignoring flag is not carried on the port's Player / upkeep.
    */
   unignoring?: boolean;
-  /** player_is_resting(player) (player-util.c L1397). Default false. */
+  /**
+   * player_is_resting(player) (player-util.c L1397). Defaults from
+   * state.resting, so prt_state's "Rest" field appears without every shell
+   * having to remember to pass it - which is how it came to appear nowhere.
+   */
   isResting?: boolean;
-  /** player_resting_count(player) = upkeep->resting (L1406). Default 0. */
+  /** player_resting_count(player) = upkeep->resting (L1406). Default state.resting.count. */
   restingCount?: number;
   /** cmd_get_nrepeats() (cmd-core.c). Default 0. */
   nRepeats?: number;
@@ -204,8 +209,8 @@ function resolveDeps(state: GameState, deps: DisplayDeps): ResolvedDeps {
     numMoves: deps.numMoves ?? 0,
     healthWho: deps.healthWho ?? state.healthWho ?? null,
     unignoring: deps.unignoring ?? false,
-    isResting: deps.isResting ?? false,
-    restingCount: deps.restingCount ?? 0,
+    isResting: deps.isResting ?? playerIsResting(state),
+    restingCount: deps.restingCount ?? playerRestingCount(state),
     nRepeats: deps.nRepeats ?? 0,
     wizard: deps.wizard ?? false,
     totalWinner: deps.totalWinner ?? false,

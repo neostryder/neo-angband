@@ -57,6 +57,7 @@ import {
 } from "./world";
 import type { Player } from "../player/player";
 import type { GameState, InterruptResponse } from "./context";
+import { playerIsResting, playerRestingIsSpecial } from "./context";
 import {
   givePlayerEnergy,
   processMonsters,
@@ -172,14 +173,6 @@ export function playerAdjustManaPrecise(p: Player, spGain: number): number {
 const REST_REQUIRED_FOR_REGEN = 5;
 
 /**
- * player-util.c:1381: the conditional REST_ modes (COMPLETE=-2, ALL_POINTS=-1,
- * SOME_POINTS=-3) rest until a condition is met rather than for a fixed count.
- */
-function playerRestingIsSpecial(count: number): boolean {
-  return count === -1 || count === -2 || count === -3;
-}
-
-/**
  * player_resting_can_regenerate (player-util.c:1461): the player earns the x2
  * regeneration bonus once REST_REQUIRED_FOR_REGEN turns of the current rest
  * have elapsed, or immediately for the conditional REST_ modes. The rest
@@ -189,16 +182,6 @@ function playerRestingCanRegenerate(state: GameState): boolean {
   const r = state.resting;
   if (!r) return false;
   return r.turnsRested >= REST_REQUIRED_FOR_REGEN || playerRestingIsSpecial(r.count);
-}
-
-/**
- * player_is_resting (player-util.c:1397): true while a rest command is running.
- * Gates the noise/scent update below. Driven by state.resting (WP-11, web).
- */
-function playerIsResting(state: GameState): boolean {
-  const r = state.resting;
-  if (!r) return false;
-  return r.count > 0 || playerRestingIsSpecial(r.count);
 }
 
 /**

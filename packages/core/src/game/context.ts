@@ -928,6 +928,36 @@ export function modRuleEnabled(state: GameState, name: string): boolean {
   return state.modRules?.[name] === true;
 }
 
+/**
+ * player_resting_is_special (player-util.c:1382): the conditional REST_ modes,
+ * which rest until a condition is met rather than for a fixed count.
+ * REST_COMPLETE = -2, REST_ALL_POINTS = -1, REST_SOME_POINTS = -3
+ * (player-util.h:53-55).
+ *
+ * This and playerIsResting live here, next to state.resting, because three
+ * separate copies of them had grown up around the port - the rest command's, the
+ * turn loop's, and display.ts's inline -1/-2/-3 tests - and a predicate with
+ * three bodies only agrees by luck.
+ */
+export function playerRestingIsSpecial(count: number): boolean {
+  return count === -1 || count === -2 || count === -3;
+}
+
+/**
+ * player_is_resting (player-util.c:1397): upkeep->resting > 0 or one of the
+ * conditional modes. Absent state.resting is upkeep->resting == 0.
+ */
+export function playerIsResting(state: GameState): boolean {
+  const r = state.resting;
+  if (!r) return false;
+  return r.count > 0 || playerRestingIsSpecial(r.count);
+}
+
+/** player_resting_count (player-util.c:1406) = upkeep->resting. */
+export function playerRestingCount(state: GameState): number {
+  return state.resting?.count ?? 0;
+}
+
 /** cave_monster_max(cave): one past the highest occupied monster slot. */
 export function monsterMax(state: GameState): number {
   return state.monsters.length;
