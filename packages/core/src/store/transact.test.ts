@@ -26,8 +26,14 @@ import {
   storeSellFloor,
 } from "./transact";
 import type { StoreRecordJson } from "./types";
-import { FlavorKnowledge } from "../obj/knowledge";
-import type { FlavorAwareDeps } from "../obj/knowledge";
+import {
+  buildRuneList,
+  FlavorKnowledge,
+  makeRuneEnv,
+  objectRunesKnown,
+  playerKnowsRune,
+} from "../obj/knowledge";
+import type { FlavorAwareDeps, Rune, RuneEnv } from "../obj/knowledge";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -194,6 +200,146 @@ describe("storeSell (store.c do_cmd_sell)", () => {
     expect(gear.pack.length).toBe(0);
     /* The store now holds the sold sword. */
     expect(weapon.stock.some((o) => o.tval === TV.SWORD)).toBe(true);
+  });
+
+  /**
+   * do_cmd_sell L1946-1951: the shopkeeper appraises the item, so selling
+   * teaches its RUNES as well as its flavour -
+   *
+   *   while (!object_fully_known(obj)) { object_learn_unknown_rune(...); ... }
+   *
+   * The port had only object_flavor_aware, which is exactly the reported
+   * symptom: selling an unidentified item revealed the NAME and taught no rune.
+   */
+  describe("selling teaches the object's runes (L1946-1951)", () => {
+    /** A rune environment over the real registry tables, and its rune list. */
+    function runeSetup(): { env: RuneEnv; runes: Rune[] } {
+      const env = makeRuneEnv(
+        () => null,
+        () => false,
+        {
+          brands: reg.brands,
+          slays: reg.slays,
+          curses: reg.curses,
+          properties: reg.properties,
+        },
+      );
+      return { env, runes: buildRuneList(env) };
+    }
+
+    /**
+     * buildRuneList's order is the three COMBAT runes, then one per object
+     * modifier. The combat three are useless as a fixture: do_cmd_accept_character
+     * sets all three known at birth ("Hack - player knows all combat runes",
+     * player-birth.c L1264-1267), so a blank player already knows them. The
+     * modifier runes start unknown.
+     */
+    const MOD = (i: number): number => 3 + i;
+
+    it("learns the unknown rune, not just the flavour", () => {
+      const { ctx, stores, player, gear } = setup();
+      storeReset(ctx);
+      const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+      const { env, runes } = runeSetup();
+
+      /* A sword carrying one modifier: exactly one unknown rune. */
+      const sword = makeObj(TV.SWORD);
+      sword.modifiers[0] = 2;
+      const handle = invenCarry(gear, sword, limits);
+
+      expect(playerKnowsRune(player, runes[MOD(0)]!)).toBe(false);
+      expect(objectRunesKnown(player, env, sword, runes)).toBe(false);
+
+      const res = storeSell(ctx, weapon, handle, 1, player, gear, {
+        ...NO_SELL,
+        learnRunes: { env, runes },
+      });
+
+      expect(res.ok).toBe(true);
+      expect(playerKnowsRune(player, runes[MOD(0)]!)).toBe(true);
+    });
+
+    it("keeps learning until nothing on the object is unknown", () => {
+      const { ctx, stores, player, gear } = setup();
+      storeReset(ctx);
+      const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+      const { env, runes } = runeSetup();
+
+      /* Three unknown runes at once: the loop must not stop after one. */
+      const sword = makeObj(TV.SWORD);
+      sword.modifiers[0] = 2;
+      sword.modifiers[1] = 3;
+      sword.modifiers[2] = 1;
+      const handle = invenCarry(gear, sword, limits);
+
+      storeSell(ctx, weapon, handle, 1, player, gear, {
+        ...NO_SELL,
+        learnRunes: { env, runes },
+      });
+
+      expect(objectRunesKnown(player, env, sword, runes)).toBe(true);
+      for (const i of [0, 1, 2]) {
+        expect(playerKnowsRune(player, runes[i]!)).toBe(true);
+      }
+    });
+
+    it("learns nothing when the caller supplies no rune environment", () => {
+      /* A store-maintenance caller with no RuneEnv keeps the bare flavour learn
+       * rather than throwing - the reason learnRunes is optional. */
+      const { ctx, stores, player, gear } = setup();
+      storeReset(ctx);
+      const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+      const { env, runes } = runeSetup();
+
+      const sword = makeObj(TV.SWORD);
+      sword.modifiers[0] = 2;
+      const handle = invenCarry(gear, sword, limits);
+
+      const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
+
+      expect(res.ok).toBe(true);
+      expect(playerKnowsRune(player, runes[MOD(0)]!)).toBe(false);
+      void env;
+    });
+
+    it("a refused sale teaches nothing (the guard runs first)", () => {
+      const { ctx, stores, player, gear } = setup();
+      storeReset(ctx);
+      const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+      const { env, runes } = runeSetup();
+
+      /* The weaponsmith does not buy potions (store_will_buy, L1901). */
+      const potion = makeObj(TV.POTION);
+      potion.modifiers[0] = 2;
+      const handle = invenCarry(gear, potion, limits);
+
+      const res = storeSell(ctx, weapon, handle, 1, player, gear, {
+        ...NO_SELL,
+        learnRunes: { env, runes },
+      });
+
+      expect(res.failure).toBe("refused");
+      expect(playerKnowsRune(player, runes[MOD(0)]!)).toBe(false);
+    });
+
+    it("teaches under birth_no_selling too (there is no gold gate on it)", () => {
+      const { ctx, stores, player, gear } = setup();
+      storeReset(ctx);
+      const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+      const { env, runes } = runeSetup();
+
+      const sword = makeObj(TV.SWORD);
+      sword.modifiers[0] = 2;
+      const handle = invenCarry(gear, sword, limits);
+
+      storeSell(ctx, weapon, handle, 1, player, gear, {
+        aware: true,
+        noSelling: true,
+        learnRunes: { env, runes },
+      });
+
+      expect(playerKnowsRune(player, runes[MOD(0)]!)).toBe(true);
+    });
   });
 
   it("refuses an item not on the store's buy list (item retained)", () => {
