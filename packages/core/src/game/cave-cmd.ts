@@ -52,7 +52,7 @@ import { CHEST_QUERY } from "../obj/chest";
 import { chestCheck, countChests, doCmdDisarmChest, doCmdOpenChest } from "./chest";
 import type { ChestCmdDeps } from "./chest";
 import type { GameState, PlayerCommand } from "./context";
-import { modRuleEnabled, queueCommandRepeat, squareMonster } from "./context";
+import { queueCommandRepeat, squareMonster } from "./context";
 import {
   knownFeat,
   knownIsBrokenDoor,
@@ -523,8 +523,13 @@ function twall(state: GameState, grid: Loc): boolean {
  * the pack's best digger and recomputes DIGGING (via state.bestDiggerDigging,
  * RNG-free) to feed the roll; absent that hook the wielded DIGGING decides.
  * Returns "may repeat" (a failed dig with hope).
+ *
+ * Exported because a mod handling the walkBlockedByDiggable hook has to be able
+ * to make a REAL dig attempt - the same roll and payouts the tunnel command
+ * makes - rather than reimplement the roll and drift from it. It draws RNG, so a
+ * hook must only call it on a path where it has committed to handling the walk.
  */
-function tunnelAux(
+export function tunnelAux(
   state: GameState,
   grid: Loc,
   deps: CaveCmdDeps,
@@ -612,16 +617,20 @@ function tunnelAux(
 }
 
 /* ------------------------------------------------------------------ *
- * QoL: auto-dig on walk (mod seam, flag "qol.autoDig").
+ * The walk-into-a-wall seam, and the two primitives a mod needs to act on it.
  *
- * Ported from neostryder's Angband fork (do_cmd_movement_tunnel_test /
- * move_player change; cmd-cave.c: "walking or running into known diggable
- * terrain begins
- * tunneling when the player can dig the target terrain"). This is NOT in
- * faithful 4.2.6 - it ships as an opt-in feature of the bundled `qol` content
- * mod, gated by the named flag so core is byte-identical when the flag is off
- * (the flag is absent unless the qol mod set it, and even when the qol mod is
- * enabled the player can turn it off in the Fixes & tweaks menu).
+ * Faithful 4.2.6 bumps the wall and spends nothing, and that is all core does.
+ * Digging on a blocked walk is NOT in 4.2.6 - it is a feature of neostryder's
+ * fork (do_cmd_movement_tunnel_test / the move_player change) - so it lives in
+ * the QoL mod, which reaches this point through the walkBlockedByDiggable hook
+ * (mod/hooks.ts).
+ *
+ * What core provides here is deliberately mod-agnostic: movementTunnelTest (is
+ * this grid a legal dig target - RNG-free) and tunnelAux (make one real attempt,
+ * with the upstream roll and payouts). Both are exported so a mod uses the engine's
+ * own dig rather than reimplementing it and drifting. Core names no mod and reads
+ * no flag: it cannot tell whether a hook is installed by the bundled QoL mod or by
+ * something a player wrote, and that is the point.
  * ------------------------------------------------------------------ */
 
 /** do_cmd_tunnel_chance: the player's success chance (out of 1600) at `grid`. */
@@ -649,24 +658,26 @@ export function movementTunnelTest(state: GameState, grid: Loc): boolean {
 }
 
 /**
- * The QoL auto-dig step, installed as state.autoDigStep by the session and
- * consulted by walkAction (game/player-turn.ts) when a walk is blocked by a
- * wall. When the "qol.autoDig" flag is off (faithful default) it returns 0
- * WITHOUT drawing any RNG, so the walk falls through to the normal no-energy
- * bump and core is byte-identical to 4.2.6. When on and the blocked grid passes
- * movementTunnelTest, it performs one do_cmd_tunnel_aux attempt (the same dig
- * roll and payouts as the tunnel command) and spends a full move (source fork:
- * energy_use = move_energy), returning that energy.
+ * The walk-into-a-wall seam, installed as state.autoDigStep by the session and
+ * consulted by walkAction (game/player-turn.ts) when a walk is blocked.
+ *
+ * Faithful 4.2.6 bumps the wall and spends nothing, so with no mod loaded this
+ * returns 0 having drawn NO RNG - the walk falls through to the normal bump and
+ * core is byte-identical. A mod may take the walk over through the
+ * walkBlockedByDiggable hook (mod/hooks.ts); the digging itself is the mod's,
+ * and everything it needs is already public here (movementTunnelTest to decide
+ * whether the grid is a legal target, tunnelAux to make one attempt with the
+ * real dig roll and payouts).
+ *
+ * Core deliberately does not check what KIND of mod is asking or which flag it
+ * consulted - a hook is present or it is not.
  */
 export function movementAutoDig(
   state: GameState,
   grid: Loc,
   deps: CaveCmdDeps,
 ): number {
-  if (!modRuleEnabled(state, "qol.autoDig")) return 0;
-  if (!movementTunnelTest(state, grid)) return 0;
-  tunnelAux(state, grid, deps);
-  return state.z.moveEnergy;
+  return state.modHooks?.walkBlockedByDiggable?.(state, grid, deps) ?? 0;
 }
 
 /* ------------------------------------------------------------------ *

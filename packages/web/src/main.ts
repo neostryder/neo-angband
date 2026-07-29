@@ -121,7 +121,6 @@ import {
   playerIsShapechanged,
   playerCanRead,
   FEAT,
-  miscStringFix,
   enterStoreGuard,
   TARGET,
   TMD,
@@ -233,6 +232,7 @@ import {
   resolveModRules,
   FIRST_PARTY_MOD_IDS,
 } from "./mod-store";
+import { activeModHooks } from "./mod-hooks";
 import { runModManager } from "./mods";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG, UI_MORE, UI_CURSOR } from "./ui-colors";
 import { initA11y } from "./a11y";
@@ -704,8 +704,13 @@ function bootGame(): ReturnType<typeof startGame> {
           // that was removed since the save has its content quarantined (and
           // rehydrated if re-enabled). Hardcoding core-only here would strip a
           // content mod's world entities on the first reload after enabling it.
+          const loadHooks = activeModHooks();
           return loadGame(pack, decoded.save, presentNamespaces(), {
             modRules: activeModRules(),
+            /* The behaviour every enabled mod contributes, recomputed on load for
+             * the same reason the flags are: which mods are on is a client
+             * setting, not part of the save. */
+            ...(loadHooks ? { modHooks: loadHooks } : {}),
           });
         }
       } catch {
@@ -734,6 +739,7 @@ function bootGame(): ReturnType<typeof startGame> {
   } catch {
     /* storage disabled or corrupt: fall through to seed */
   }
+  const startHooks = activeModHooks();
   return startGame(pack, {
     seed,
     depth,
@@ -743,6 +749,11 @@ function bootGame(): ReturnType<typeof startGame> {
     // Empty => faithful core. Upstream OPTIONS are NOT set here - they ship in
     // core at their upstream defaults and come from the save on resume.
     modRules: activeModRules(),
+    /* The behaviour every enabled mod contributes, folded into one object
+     * (mod-hooks.ts). Undefined => the field stays absent => core is faithful
+     * 4.2.6. Spread rather than assigned because exactOptionalPropertyTypes
+     * forbids handing an optional property an explicit undefined. */
+    ...(startHooks ? { modHooks: startHooks } : {}),
     ...(birthChoice
       ? { raceName: birthChoice.raceName, className: birthChoice.className }
       : {}),
@@ -1219,11 +1230,18 @@ function say(text: string, type?: MessageType): void {
   a11y.announce(text);
 }
 state.msg = (raw: string, type?: MessageType): void => {
-  // bug-fixes mod, "bugfix.miscStrings": upstream's own cosmetic string warts.
-  // Applied at the single message sink so every msg()/msgt() in core and the
-  // shell is covered by one hook; identity when the flag is off, so faithful
-  // core is byte-identical (docs/modding/BUG_FIXES.md).
-  const text = state.modRules?.["bugfix.miscStrings"] ? miscStringFix(raw) : raw;
+  /* The messageText seam (mod/hooks.ts), applied at the single message sink so
+   * every msg()/msgt() in core and the shell passes through one point. With no mod
+   * loaded the hook is absent and this is `raw` - faithful 4.2.6, warts included.
+   *
+   * This used to read the mod's flag directly and call core's own miscStringFix,
+   * which meant a mod's rewriter shipped inside core and core knew that mod's
+   * name. The rewriter is now the bug-fixes mod's code and arrives as this hook.
+   *
+   * A hook here may only RESTATE a message. Changing what one MEANS would put text
+   * on screen that upstream never wrote, and no census could see it - the slot is
+   * filled, so it never reads as absent. */
+  const text = state.modHooks?.messageText?.(raw) ?? raw;
   const code = messageTypeCode(type);
   // Persist the message into the core's rolling log (gap 12.8, wr_messages) so
   // it survives save/load, preserving the MSG_* type used by msgt().
@@ -1554,6 +1572,8 @@ async function selectItemFrom(
   startIn?: "inven" | "equip" | "quiver" | "floor",
 ): Promise<ItemTargetRef | null> {
   const { sources, refs } = buildItemSources(tester, mode, deviceFail);
+  /* bell() for a refused tab switch (ui-object.c:975). */
+  const bell = (): void => state.sound?.(MSG.BELL);
   if (sources.length === 0) {
     say(reject);
     return null;
@@ -1561,7 +1581,7 @@ async function selectItemFrom(
   /* buildItemSources emits them in this order, and only for the enabled modes,
    * so the index has to be looked up rather than assumed. */
   const initial = startIn ? Math.max(0, sources.findIndex((s) => s.kind === startIn)) : 0;
-  const chosen = await itemSelect(term, prompt.trim(), sources, initial, cmdKey);
+  const chosen = await itemSelect(term, prompt.trim(), sources, initial, cmdKey, bell);
   if (chosen === null) return null;
   const ref = refs[chosen.source]?.[chosen.index] ?? null;
   if (!(await allowChosenItem(ref, cmdKey, cmdCode, isHarmless))) return null;
@@ -1650,7 +1670,9 @@ async function storeSellPick(
   if (sources.length === 0) return { kind: "empty" };
   // store_sell's get_item runs under CMD_DROP (ui-store.c:518), so the @-tag
   // command letter here is Drop's, not a sell-specific one.
-  const chosen = await itemSelect(term, prompt.trim(), sources, 0, itemCmdKey("drop"));
+  const chosen = await itemSelect(term, prompt.trim(), sources, 0, itemCmdKey("drop"), () =>
+    state.sound?.(MSG.BELL),
+  );
   if (chosen === null) return { kind: "cancel" };
   const ref = refs[chosen.source]?.[chosen.index];
   if (!ref) return { kind: "cancel" };
@@ -3099,6 +3121,13 @@ async function fireCmd(): Promise<void> {
     itemCmdKey("fire"),
     false,
     "fire",
+    false,
+    /* QUIVER_TAGS (player-attack.c:1327) makes get_item open on the QUIVER for any
+     * cmd != CMD_USE (ui-object.c:1477-1478). Without it this opened on the
+     * inventory whenever the pack also held matching ammo - so the list the arrows
+     * actually live in was not the one that came up. Math.max(0, findIndex) inside
+     * selectItemFrom reproduces upstream's fallback when the quiver has none. */
+    "quiver",
   );
   if (ref === null || !("handle" in ref)) return;
   const handle = ref.handle;
@@ -3930,6 +3959,22 @@ async function aimDir(): Promise<number | null> {
    * the map before the direction prompt so the player aims over the dungeon,
    * not the leftover menu (get_aim_dir runs on the main term in C, ui-game.c). */
   render();
+  /* "Auto-target if requested" (ui-input.c:1619-1620):
+   *
+   *   if (OPT(player, use_old_target) && target_okay() && !dir) dir = 5;
+   *
+   * With the option on and a live target, get_aim_dir returns DIR_TARGET without
+   * printing a prompt or reading a key. The option was defined, toggleable and
+   * persisted in this port and READ BY NOTHING, so turning it on changed nothing
+   * and firing always asked for a direction. options.ts even recorded it as an
+   * intentional no-op, attributing it to a "default-selection nuance" in
+   * target_set_interactive - which is not where the C uses it; that note was
+   * written from the option's description rather than from its one reader.
+   *
+   * The DEFAULT stays false, as upstream ships it (list-options.h:22-23), so
+   * out of the box the game still prompts. Only two readers exist in the whole C
+   * tree: this line and borg-init.c:421, which forces it off. */
+  if (state.options?.get("use_old_target") && targetOkay(state)) return 5;
   for (;;) {
     const d = await getAimDir(term, targetOkay(state));
     if (d === null) return null;
@@ -4815,19 +4860,27 @@ function desktopQuitAvailable(): boolean {
  * the character select (isContinuation / bootGame), with this hero waiting to be
  * resumed. Nothing is lost: the save is written first.
  *
- * The DESKTOP build does have an OS to quit to, and applying the tab's analogue
- * there is why the row read as "just saves": it saved, reloaded, and the app sat
- * on the title screen. So the shell quits (neoDesktop.quit) and only a tab falls
- * back to the reload. Reported from play 2026-07-29.
+ * This function goes to the TITLE on both front ends, and deliberately does not
+ * quit. It used to call desktopQuit() first, which made the desktop build close
+ * the whole app - so the menu row labelled "Save and exit", its hint promising
+ * "the title screen and character list", and the confirmation asking "Save and
+ * exit to the title screen?" all did something else entirely. Reported from play
+ * 2026-07-29 as "it just closes the game instead".
+ *
+ * That line came from reading an earlier report of "Save and exit just saves" as
+ * "it should exit the process". The real defect then was that the reload landed
+ * back in the game; the fix was to clear the continuation flags, which is what
+ * the block below does. Quitting was a second, wrong fix layered on the first.
+ *
+ * Leaving play is NOT the same action as quitting the program, so the two are now
+ * separate: this one, and saveQuitCmd (^X / textui_quit) which is the faithful
+ * upstream quit. Three other callers were quietly inheriting the quit - death,
+ * retirement, and ^X - which is why DYING closed the app on desktop.
  */
 async function exitToTitle(): Promise<void> {
   /* close_game(prompt_failed_save = true) (ui-game.c:1173): a deliberate exit
    * offers the retry, because leaving on a failed save loses the session. */
   await closeGameSave(true);
-  /* The save has landed (or the player chose to give up on it), so this is the
-   * point upstream calls quit(). Ask the shell; if there is no shell, fall through
-   * to the tab's own analogue below. */
-  if (desktopQuit()) return;
   try {
     // Next boot is a genuine launch, not a continuation, so BOTH skip-the-title
     // flags have to be clear or the title would be skipped on the way out.
@@ -4897,12 +4950,25 @@ async function openModManager(): Promise<void> {
           },
         }
       : {}),
-    // Fixes & tweaks: the enabled mods' declared rules, and a live-apply that
-    // writes the running game's GameState.modRules so a toggle takes effect at
-    // once (no reload). modRuleEnabled reads `=== true`, so a false value is off.
+    // Fixes & tweaks: the enabled mods' declared rules, and a live-apply so a
+    // toggle takes effect at once (no reload).
     ruleDecls: () => loadEnabledModRuleDecls(),
     applyRuleLive: (flag, on) => {
+      /* modRules is now only the RECORD of the player's choice - core never
+       * branches on it - so writing it alone was a SILENT NO-OP for all seven
+       * patches the moment the behaviour moved to the mods' hooks. The behaviour
+       * lives in state.modHooks, so a live toggle has to REBUILD them.
+       *
+       * mod-store.setRuleChoice has already written the new choice by the time
+       * this runs (see mods.ts), so activeModHooks() re-reads it and re-composes.
+       *
+       * DELETE rather than assign undefined when nothing contributes: "no mod
+       * loaded" has to stay absent, not an empty object, or core can tell a mod is
+       * there - which is the one thing the seam exists to prevent. */
       (game.state.modRules ??= {})[flag] = on;
+      const hooks = activeModHooks();
+      if (hooks) game.state.modHooks = hooks;
+      else delete game.state.modHooks;
     },
     // Same parse as pack.ts/tile-mods.ts: ?mods= present (even empty) is an
     // override; absent is null. Only used to caption the screen honestly.
@@ -4936,7 +5002,7 @@ async function openModManager(): Promise<void> {
 }
 
 async function openGameMenu(): Promise<void> {
-  const entries = gameMenuEntries();
+  const entries = gameMenuEntries({ canQuit: desktopQuitAvailable() });
   const pick = await selectFromMenu(
     term,
     "Game menu",
@@ -5013,6 +5079,15 @@ async function openGameMenu(): Promise<void> {
       // nothing, but a stray tap should not throw the player out of a live run.
       if (await confirmYesNo("Save and exit to the title screen?")) {
         await exitToTitle();
+      }
+      break;
+    case "quit":
+      /* The desktop-only row. Asks its OWN question, because "quit" and "exit to
+       * the title" are now different outcomes and a confirmation that named the
+       * wrong one is how the previous defect stayed invisible. */
+      if (await confirmYesNo("Save and quit?")) {
+        await closeGameSave(true);
+        if (!desktopQuit()) await exitToTitle();
       }
       break;
     default:
@@ -5588,9 +5663,19 @@ function redrawCmd(): void {
  */
 function saveQuitCmd(): void {
   void openModal(async () => {
-    if (await confirmYesNo("Save and exit to the title screen?")) {
-      await exitToTitle();
+    /* Two different actions, so two different questions. ^X is upstream's quit:
+     * textui_quit clears playing, the loop unwinds through close_game, and every
+     * front end then calls quit() (main.c:581-586, main-win.c:3511-3512). A tab
+     * has no OS to quit to and falls back to the title, which is the nearest
+     * thing that exists there. */
+    const quits = desktopQuitAvailable();
+    const ask = quits ? "Save and quit?" : "Save and exit to the title screen?";
+    if (!(await confirmYesNo(ask))) return;
+    if (quits) {
+      await closeGameSave(true);
+      if (desktopQuit()) return;
     }
+    await exitToTitle();
   });
 }
 
@@ -5634,7 +5719,27 @@ function screenDumpCmd(): void {
  * ./ignore-menu (task 155).
  */
 async function ignoreItemCmd(): Promise<void> {
-  await showIgnoreItemMenu(term, state, game, say, applyIgnoreDrop);
+  await showIgnoreItemMenu(term, state, game, applyIgnoreDrop, async (prompt, reject) => {
+    const ref = await selectItemFrom(
+      prompt,
+      () => true,
+      /* ui-object.c:1833 USE_INVEN | USE_QUIVER | USE_EQUIP | USE_FLOOR. No
+       * startIn: command_wrk is reset to 0 at the end of every get_item
+       * (ui-object.c:1594), so ignore lands on USE_INVEN (ui-object.c:1481-1482),
+       * which is what initial = 0 gives. */
+      { inven: true, quiver: true, equip: true, floor: true },
+      reject,
+      /* CMD_IGNORE's own key, so @k<digit> tags and the !k get_item_allow work. */
+      itemCmdKey("ignore"),
+      false,
+      /* cmd_verb(CMD_IGNORE) is NULL upstream - CMD_IGNORE has no game_cmds
+       * entry, it is UI-only - so the confirmation reads "Really do that with". */
+      "ignore",
+      /* textui_cmd_ignore passes no IS_HARMLESS, so a blanket `!*` does prompt. */
+      false,
+    );
+    return ref && "handle" in ref ? (gearGet(state.gear, ref.handle) ?? null) : null;
+  });
 }
 
 /**
@@ -6201,8 +6306,15 @@ function verifyPanel(): void {
   panelCam = { x: wx, y: wy };
 }
 
-/** Selected sidebar fields shown inline on the compact-layout vitals row. */
-const COMPACT_VITALS_KEYS = ["level", "hp", "sp", "ac", "gold", "depth"];
+/**
+ * Selected sidebar fields shown inline on the compact-layout vitals row.
+ *
+ * `health` is here because upstream's own compact layout carries it: update_topbar
+ * calls prt_health_short (ui-display.c:795) between SP and Speed. This layout is
+ * auto-selected whenever cols < 48, so leaving it out meant the monster health bar
+ * was absent on a narrow or phone viewport even once tracking worked.
+ */
+const COMPACT_VITALS_KEYS = ["level", "hp", "sp", "health", "ac", "gold", "depth"];
 
 /** The one-line vitals header for the compact layout (reuses sidebarModel). */
 function renderCompactVitals(row: number, maxCols: number): void {

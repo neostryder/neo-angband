@@ -256,7 +256,14 @@ describe("object_list sorting + colour", () => {
   });
 });
 
-describe("objectListStandardCompare - bug-fixes #4664 total-key tiebreak", () => {
+describe("objectListStandardCompare - the objectListTiebreak seam", () => {
+  /*
+   * Core's side of the seam only. The GEOMETRIC key is the bug-fixes mod's patch
+   * (#4664, "bugfix.objectListOrder"), lives in packages/web/mods/bug-fixes/
+   * hooks.ts, and is proven there; core holds no opinion about how a tie breaks
+   * and no `bugfix.*` string. What core owes is: upstream's keys first, the hook
+   * only for a real tie, and the hook's answer honoured as given.
+   */
   /* Two DISTINCT entries of the same kind at the SAME squared distance from the
    * player but different offsets: compareTypes ties, distanceCompare ties. */
   function sameDistancePair(): [
@@ -277,7 +284,7 @@ describe("objectListStandardCompare - bug-fixes #4664 total-key tiebreak", () =>
     return [a as never, b as never];
   }
 
-  it("faithful (flag OFF): equal-distance distinct entries are order-equivalent", () => {
+  it("faithful with no mod loaded: equal-distance distinct entries are order-equivalent", () => {
     const state = makeState({ playerGrid: loc(20, 12) });
     const [a, b] = sameDistancePair();
     const cmp = objectListStandardCompare(state);
@@ -285,15 +292,38 @@ describe("objectListStandardCompare - bug-fixes #4664 total-key tiebreak", () =>
     expect(cmp(b, a)).toBe(0);
   });
 
-  it("corrected (flag ON): a deterministic geometric total-key breaks the tie", () => {
+  it("honours whatever order the hook reports, without imposing one", () => {
+    /* Deliberately NOT the mod's key: rightmost-first on dx alone. If core were
+     * quietly applying a geometric order of its own, this would disagree. */
     const state = makeState({ playerGrid: loc(20, 12) });
-    state.modRules = { "bugfix.objectListOrder": true };
-    const [a, b] = sameDistancePair();
+    state.modHooks = { objectListTiebreak: (x, y) => Math.sign(y.dx - x.dx) };
+    const [a, b] = sameDistancePair(); // a.dx=3, b.dx=4
     const cmp = objectListStandardCompare(state);
-    // a has dy=4, b has dy=3: nearer-to-top (smaller dy) sorts first, so b < a.
-    expect(cmp(a, b)).toBeGreaterThan(0);
+    expect(cmp(a, b)).toBeGreaterThan(0); // b (dx=4) sorts first
     expect(cmp(b, a)).toBeLessThan(0);
-    // Antisymmetry holds (strict total order): sign(cmp(a,b)) == -sign(cmp(b,a)).
     expect(Math.sign(cmp(a, b))).toBe(-Math.sign(cmp(b, a)));
+  });
+
+  it("consults the hook ONLY after every upstream key, distance included", () => {
+    const state = makeState({ playerGrid: loc(20, 12) });
+    const asked: Array<[number, number, number, number]> = [];
+    state.modHooks = {
+      objectListTiebreak: (x, y) => {
+        asked.push([x.dy, x.dx, y.dy, y.dx]);
+        return 0;
+      },
+    };
+    const cmp = objectListStandardCompare(state);
+    const [a, b] = sameDistancePair();
+
+    /* Different DISTANCE: upstream's own keys settle it, so the hook is never
+     * reached - a mod cannot override upstream ordering, only extend it. */
+    const far = { ...(b as { dx: number; dy: number }), dx: 9, dy: 9 } as typeof b;
+    expect(cmp(a, far)).toBeLessThan(0);
+    expect(asked).toEqual([]);
+
+    /* A real tie: now it is asked, with both entries' offsets. */
+    expect(cmp(a, b)).toBe(0); // the hook returned 0 -> still equal, as faithful
+    expect(asked).toEqual([[4, 3, 3, 4]]);
   });
 });

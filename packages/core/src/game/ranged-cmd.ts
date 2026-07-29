@@ -85,6 +85,15 @@ function rangedHelper(
   if (dir === 5 && targetOkay(state)) {
     target = targetGet(state);
   } else {
+    /* KNOWN LIMIT, not a fix: an unusable DIR_TARGET arriving here aims at the
+     * player's OWN grid, because DDX[5]/DDY[5] are both 0 - a missile spent on a
+     * zero-length path. Upstream cannot reach this state: cmd_get_target
+     * (cmd-core.c:955-969) re-validates a stored direction and RE-PROMPTS when
+     * `*target == DIR_TARGET && !target_okay()`. Core has no prompt to re-open, so
+     * closing this properly means the caller re-validating before it queues the
+     * command, not clamping here (clamping would fire in a direction the player
+     * never chose). The web shell's aimDir does validate, so no live path reaches
+     * it today; the agent/borg act seams are what could. */
     const dd = dir >= 1 && dir <= 9 ? dir : 5;
     target = loc(start.x + 99 * DDX[dd]!, start.y + 99 * DDY[dd]!);
   }
@@ -187,6 +196,12 @@ function rangedHelper(
         state.msg?.(`Your ${oName} ${result.verb} ${mName}${dmgText}.`, MSG.SHOOT_HIT);
       }
       state.sound?.(MSG.SHOOT_HIT);
+
+      /* health_track (player-attack.c:1183-1187): an OBVIOUS hit - not merely a
+       * visible one - makes the victim the tracked monster. Covers fire AND
+       * throw, since both route through here. Upstream's order is after the
+       * message and before mon_take_hit. */
+      if (monObvious) state.healthWho = mon;
 
       /* Route damage through mon_take_hit so a survivor rolls fear and a kill
        * is handled uniformly (player-attack.c:1191). Death messaging stays

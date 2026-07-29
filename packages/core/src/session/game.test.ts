@@ -429,7 +429,59 @@ describe("startGame (new-game assembly)", () => {
     expect(p.hist.filter((e) => histHas(e.type, HIST.SLAY_UNIQUE))).toHaveLength(1);
   });
 
-  it("bug-fixes #4245: a re-kill of an already-dead unique logs one entry with the flag, two without", () => {
+  it("the historyAdd seam sees each entry, with the duplicate flag core computed", () => {
+    /*
+     * Core's side of the seam only: it offers every history entry to the hook and
+     * says whether the kill is a re-kill, and it holds no opinion about it.
+     * SUPPRESSING the duplicate is the bug-fixes mod's patch (#4245,
+     * "bugfix.uniqueKillHistory"), whose code and proof live in
+     * packages/web/mods/bug-fixes/.
+     */
+    const uniqueFlags = new FlagSet(RF_SIZE);
+    uniqueFlags.on(RF.UNIQUE);
+    const race = {
+      ridx: 2,
+      name: "Grip, Farmer Maggot's Dog",
+      mexp: 1,
+      level: 1,
+      flags: uniqueFlags,
+      blows: [],
+      drops: [],
+      maxNum: 1,
+    };
+    const mon = () =>
+      ({
+        race,
+        originalRace: null,
+        midx: 0,
+        grid: { x: 20, y: 12 },
+        heldObj: [],
+        mflag: new FlagSet(MFLAG_SIZE),
+      }) as unknown as Parameters<NonNullable<typeof game.state.onPlayerKill>>[0];
+
+    const game = startGame(pack, { seed: 4242, depth: 1 });
+    const offered: Array<{ what: string; type: number; duplicate: boolean }> = [];
+    game.state.modHooks = {
+      historyAdd: (e) => {
+        offered.push({ what: e.what, type: e.type, duplicate: e.duplicate });
+        return true; // permit, so this stays a faithful run
+      },
+    };
+    race.maxNum = 1;
+    game.state.onPlayerKill?.(mon());
+    game.state.onPlayerKill?.(mon());
+
+    expect(offered).toEqual([
+      { what: "Killed Grip, Farmer Maggot's Dog", type: HIST.SLAY_UNIQUE, duplicate: false },
+      { what: "Killed Grip, Farmer Maggot's Dog", type: HIST.SLAY_UNIQUE, duplicate: true },
+    ]);
+    /* Permitting is byte-identical to no hook at all: both entries written. */
+    expect(
+      game.state.actor.player.hist.filter((e) => histHas(e.type, HIST.SLAY_UNIQUE)),
+    ).toHaveLength(2);
+  });
+
+  it("a hook may suppress an entry, and the text it saw is the text core writes", () => {
     /* A single shared race object so the first kill's max_num=0 persists into
      * the second kill (alreadyDead). The mon is otherwise the synthetic shape
      * the faithful unique test above uses. */
@@ -455,20 +507,23 @@ describe("startGame (new-game assembly)", () => {
         mflag: new FlagSet(MFLAG_SIZE),
       }) as unknown as Parameters<NonNullable<typeof game.state.onPlayerKill>>[0];
 
-    /* FAITHFUL (flag OFF): two lethal blows => two "Killed" entries. */
+    /* FAITHFUL (no mod loaded): two lethal blows => two "Killed" entries. */
     let game = startGame(pack, { seed: 4242, depth: 1 });
     race.maxNum = 1;
     game.state.onPlayerKill?.(mon());
     game.state.onPlayerKill?.(mon());
-    expect(
-      game.state.actor.player.hist.filter((e) =>
-        histHas(e.type, HIST.SLAY_UNIQUE),
-      ),
-    ).toHaveLength(2);
+    const written = game.state.actor.player.hist.filter((e) =>
+      histHas(e.type, HIST.SLAY_UNIQUE),
+    );
+    expect(written).toHaveLength(2);
+    /* The entry the hook is shown is the entry core writes - not a summary of
+     * it - so a mod deciding on `what` is deciding on the real text. */
+    expect(written[0]?.event).toBe("Killed Grip, Farmer Maggot's Dog");
 
-    /* CORRECTED (flag ON): the second (already-dead) kill logs nothing. */
+    /* A HOOK REFUSES the duplicate. Written inline as the CONTRACT core offers,
+     * which is exactly what the bug-fixes mod's own hook does. */
     game = startGame(pack, { seed: 4242, depth: 1 });
-    game.state.modRules = { "bugfix.uniqueKillHistory": true };
+    game.state.modHooks = { historyAdd: (e) => !e.duplicate };
     race.maxNum = 1;
     game.state.onPlayerKill?.(mon());
     game.state.onPlayerKill?.(mon());

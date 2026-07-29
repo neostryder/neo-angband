@@ -55,14 +55,19 @@
  * toggleable and persist in the save (so a save round-trips a player's
  * choice, and a future gap can wire the reader without a save-format change),
  * but toggling them currently has NO visible effect:
- *   - use_old_target - target_set_interactive's "reuse the last target by
- *     default" default-selection nuance is not modelled.
  *   - show_target / highlight_player - the persistent map-cursor highlight
  *     for the current target / the player between turns (outside the '*'/'l'
  *     interactive loop, which already has its own cursor) is not built.
  *   - view_yellow_light - torchlit-terrain yellow tinting (grid_get_attr's
  *     ATTR_LIGHT path) is not modelled in the shell's terrain coloring.
- * Wired (real behaviour, see main.ts): auto_more (gates the -more- message
+ * Wired (real behaviour, see main.ts):
+ * use_old_target (aimDir returns DIR_TARGET without prompting when it is on and
+ * target_okay() holds - ui-input.c:1619-1620. It was on the no-op list above with
+ * a WRONG reason, attributed to a default-selection nuance in
+ * target_set_interactive; the C uses it in textui_get_aim_dir, and that note had
+ * been written from the option's description rather than from its one reader.
+ * Default stays false, as upstream ships it),
+ * auto_more (gates the -more- message
  * pager pumpMessages, main.ts), rogue_like_commands, use_sound,
  * solid_walls, hybrid_walls, purple_uniques, animate_flicker, mouse_movement,
  * hp_changes_color,

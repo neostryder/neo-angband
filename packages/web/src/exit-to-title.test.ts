@@ -48,13 +48,32 @@ function functionBody(src: string, name: string): string {
 }
 
 describe("the game menu's Save and exit row", () => {
-  it("exists, is last, and names the keyboard shortcut", () => {
+  it("exists and is last when the front end cannot quit", () => {
     const entries = gameMenuEntries();
     const exit = entries.find((e) => e.action === "exit");
     expect(exit, "the game menu needs a save-and-exit row").toBeTruthy();
     expect(entries[entries.length - 1]?.action).toBe("exit");
     expect(exit!.item.label).toMatch(/exit/i);
-    expect(exit!.item.hint).toMatch(/Ctrl-X/);
+  });
+
+  it("does NOT claim Ctrl-X, because ^X quits and this row does not", () => {
+    /* The hint used to say "(Ctrl-X)". That was true only while the two actions
+     * were the same function - and them being the same function is exactly what
+     * made "Save and exit" close the app on desktop. A hint naming the wrong key
+     * is how the confusion stayed invisible. */
+    const exit = gameMenuEntries().find((e) => e.action === "exit");
+    expect(exit!.item.hint).not.toMatch(/Ctrl-X/);
+    expect(exit!.item.hint).toMatch(/title screen/);
+  });
+
+  it("offers a SEPARATE quit row only where there is something to quit to", () => {
+    expect(gameMenuEntries().some((e) => e.action === "quit")).toBe(false);
+    const desktop = gameMenuEntries({ canQuit: true });
+    const quit = desktop.find((e) => e.action === "quit");
+    expect(quit, "the desktop build needs a discoverable way out").toBeTruthy();
+    expect(quit!.item.hint).toMatch(/Ctrl-X/);
+    /* Last, after "Save and exit": leaving the program is the more final act. */
+    expect(desktop[desktop.length - 1]?.action).toBe("quit");
   });
 
   it("is dispatched to exitToTitle, behind a confirmation", () => {
@@ -119,26 +138,50 @@ describe("^X (textui_quit)", () => {
 });
 
 /**
- * The desktop half, reported from play as "Save and exit just saves".
+ * Leaving play and quitting the program are two actions, and collapsing them onto
+ * one function is how the menu came to lie.
  *
- * The web analogue (save, then reload without the continuation flag) was being
- * used on the desktop build too, where there IS an OS to quit to - so the app
- * saved, reloaded, and sat on its own title screen with the window still open.
- * Upstream's textui_quit quits (ui-game.c:199).
+ * The history is worth keeping, because the same report was misread twice. First
+ * "Save and exit just saves" - true then: it saved, reloaded, and landed back in
+ * the game because the continuation flags were still set. The fix for THAT was to
+ * clear the flags. A second fix was then layered on top, calling desktopQuit()
+ * first, which made the desktop build close the whole app - so the row labelled
+ * "Save and exit", its hint promising "the title screen and character list", and
+ * its confirmation asking "Save and exit to the title screen?" all did something
+ * none of them said. Reported 2026-07-29 as "it just closes the game instead".
+ *
+ * Worse, three other callers inherited the quit through exitToTitle: death,
+ * retirement, and ^X. On desktop, DYING closed the app.
  *
  * Pinned by source, like the rest of this file: exitToTitle navigates, which a
  * node test cannot let it do.
  */
-describe("Save and exit quits the desktop shell (textui_quit)", () => {
-  it("asks the shell to quit before falling back to the reload", () => {
+describe("exitToTitle goes to the title on BOTH front ends", () => {
+  it("does not quit the shell", () => {
     const body = functionBody(MAIN, "exitToTitle");
-    expect(body).toContain("desktopQuit()");
-    /* The save comes FIRST: quitting before closeGameSave would drop the turn. */
-    expect(body.indexOf("closeGameSave")).toBeLessThan(body.indexOf("desktopQuit"));
-    /* And the quit RETURNS, so a shell that quit does not also navigate. */
-    expect(body).toContain("if (desktopQuit()) return;");
-    /* The tab analogue is still there behind it. */
+    expect(
+      body,
+      "exitToTitle must not quit - that is saveQuitCmd's job",
+    ).not.toContain("desktopQuit");
     expect(body).toContain("location.assign");
+  });
+
+  it("so death and retirement reach the title, not the OS", () => {
+    /* These two only ever called exitToTitle, so the defect was invisible at
+     * their own call sites - which is why they are asserted here. */
+    expect(functionBody(MAIN, "quitAfterDeath")).toContain("exitToTitle()");
+    expect(functionBody(MAIN, "quitAfterDeath")).not.toContain("desktopQuit");
+  });
+
+  it("^X is the faithful quit, and asks its own question", () => {
+    /* textui_quit (ui-game.c:199) ends the program; every front end then calls
+     * quit() (main.c:581-586, main-win.c:3511-3512). A tab has no OS to quit to
+     * and falls back to the title, the nearest thing that exists there. */
+    const body = functionBody(MAIN, "saveQuitCmd");
+    expect(body).toContain("desktopQuitAvailable()");
+    expect(body).toContain("Save and quit?");
+    /* The save comes FIRST: quitting before closeGameSave would drop the turn. */
+    expect(body.indexOf("closeGameSave")).toBeLessThan(body.indexOf("desktopQuit()"));
   });
 
   it("treats an absent shell as a tab rather than swallowing the exit", () => {

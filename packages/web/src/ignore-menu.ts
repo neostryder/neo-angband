@@ -31,15 +31,12 @@ import {
   IGNORE_TYPE_ENTRIES,
   OBJ_NOTICE,
   tvalIsJewelry,
-  gearGet,
-  floorPile,
 } from "@neo-angband/core";
 import type { GameState, GameObject } from "@neo-angband/core";
-import { packMenu, objectName, SVAL_DEPENDENT } from "./screens";
+import { SVAL_DEPENDENT } from "./screens";
 import { selectFromMenu } from "./overlay";
 import type { MenuItem } from "./overlay";
 import type { GlyphTerm } from "./term";
-import { UI_TEXT } from "./ui-colors";
 
 /**
  * The seven selectable actions (ui-object.c:1701-1709 anonymous enum). Kept as
@@ -279,66 +276,32 @@ const IGNORE_PROMPT = "Ignore which item?";
 const IGNORE_TITLE = "(Enter to select, ESC) Ignore:";
 
 /**
- * The get_item pick for textui_cmd_ignore (ui-object.c:1832-1833):
- * USE_INVEN | USE_QUIVER | USE_EQUIP | USE_FLOOR. The quiver rides the pack in
- * this gear model (as in main.ts's selectTargetItem), so packMenu covers it.
- * Returns the chosen live object, or null on ESC / an empty menu.
- */
-async function pickIgnoreItem(
-  term: GlyphTerm,
-  state: GameState,
-  say: (text: string) => void,
-): Promise<GameObject | null> {
-  const items: MenuItem[] = [];
-  const objs: GameObject[] = [];
-
-  const { items: packItems, handles } = packMenu(state, () => true);
-  packItems.forEach((it, i) => {
-    const obj = gearGet(state.gear, handles[i]!);
-    if (!obj) return;
-    items.push(it);
-    objs.push(obj);
-  });
-
-  const player = state.actor.player;
-  for (let i = 0; i < player.body.count; i++) {
-    const handle = player.equipment[i] ?? 0;
-    if (!handle) continue;
-    const obj = gearGet(state.gear, handle);
-    if (!obj) continue;
-    items.push({ label: objectName(state, obj), color: UI_TEXT });
-    objs.push(obj);
-  }
-
-  floorPile(state, state.actor.grid).forEach((obj) => {
-    items.push({ label: `${objectName(state, obj)} (on floor)`, color: UI_TEXT });
-    objs.push(obj);
-  });
-
-  if (items.length === 0) {
-    say(IGNORE_REJECT);
-    return null;
-  }
-
-  const idx = await selectFromMenu(term, IGNORE_PROMPT, items);
-  if (idx === null) return null;
-  return objs[idx] ?? null;
-}
-
-/**
  * showIgnoreItemMenu (ui-object.c:1825-1837 textui_cmd_ignore +
  * textui_cmd_ignore_menu): the whole 'k' / ^D flow. Pick an item, build and
  * show the ignore menu, apply the choice, then run the ignore-drop pass (the
  * PN_IGNORE re-run). ESC at either prompt aborts with no change.
+ *
+ * `pick` is the REAL get_item (ui-object.c:1832-1833, USE_INVEN | USE_QUIVER |
+ * USE_EQUIP | USE_FLOOR), injected because this module cannot reach the shell's
+ * picker. It used to build one FLAT list here instead - pack rows, then
+ * equipment rows re-lettered continuously from the pack's sequence, then floor
+ * rows with an invented " (on floor)" suffix - and no quiver at all, so quivered
+ * ammo could not be ignored. The doc comment claimed "the quiver rides the pack
+ * in this gear model", which had stopped being true when the quiver became its
+ * own command_wrk source, and nothing rechecked it.
+ *
+ * Upstream never concatenates lists. It shows one source at a time with `/`, `|`
+ * and `-` switching between them, and the only merged list in the whole game is
+ * do_cmd_throw's SHOW_THROWING.
  */
 export async function showIgnoreItemMenu(
   term: GlyphTerm,
   state: GameState,
   game: IgnoreMenuGame,
-  say: (text: string) => void,
   applyIgnoreDrop: () => Promise<void>,
+  pick: (prompt: string, reject: string) => Promise<GameObject | null>,
 ): Promise<void> {
-  const obj = await pickIgnoreItem(term, state, say);
+  const obj = await pick(IGNORE_PROMPT, IGNORE_REJECT);
   if (!obj) return;
 
   const entries = buildIgnoreItemMenu(ignoreItemMenuCtx(obj, state, game));

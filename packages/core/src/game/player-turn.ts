@@ -255,6 +255,13 @@ export function attackMonster(state: GameState, target: Monster): number {
    * attack; obj-slays.c learn_brand_slay_from_melee). */
   const deps = (state as MeleeSideHost).meleeSideDeps ?? {};
   const monVisible = monsterIsVisible(target);
+  /* health_track (player-attack.c:745-749): hitting something visible makes it
+   * the tracked monster, which is what puts it on the sidebar's health bar. This
+   * was absent, and melee is the commonest way a player acquires a tracked
+   * monster - so the bar stayed blank unless you explicitly targeted. Upstream
+   * does it per blow inside py_attack_real; the assignment is idempotent, so
+   * once before the blow loop is behaviourally identical. */
+  if (monVisible) state.healthWho = target;
   learnBrandSlayFromMelee(
     state.actor.player,
     state.runeEnv,
@@ -479,10 +486,9 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
   }
 
   /* Bump into a wall: no step, no energy.
-   * QoL auto-dig (mod seam): walking into known diggable terrain the player can
-   * dig begins one tunnel attempt instead of a no-op bump. autoDigStep returns 0
-   * without drawing RNG unless the qol.autoDig flag is on and the grid qualifies,
-   * so faithful core (no mod / flag off) still just bumps. */
+   * A mod may take the walk over through the walkBlockedByDiggable hook
+   * (mod/hooks.ts) - the QoL mod digs here. autoDigStep returns 0 having drawn NO
+   * RNG when no mod supplied one, so faithful core still just bumps. */
   if (!state.chunk.isPassable(next)) {
     const dug = state.autoDigStep?.(state, next) ?? 0;
     if (dug > 0) return dug;

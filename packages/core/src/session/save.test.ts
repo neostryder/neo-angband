@@ -452,9 +452,15 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     expect(restored.state.turn).toBeGreaterThan(before);
   });
 
-  it("bug-fixes #4605: noise/scent persist only with bugfix.noiseScentSave on", () => {
-    /* FAITHFUL (flag OFF): the heatmaps are transient and a reload starts them
-     * empty, so a live scent trail is lost across save/reload. */
+  it("the saveNoiseScent seam decides whether the heatmaps ride the save", () => {
+    /*
+     * Core's side of the seam only. Persisting noise/scent is the bug-fixes mod's
+     * patch (#4605, "bugfix.noiseScentSave"), its code is in
+     * packages/web/mods/bug-fixes/hooks.ts and the flag->hook mapping is proven
+     * there; core keeps upstream's behaviour, which is to omit them.
+     *
+     * FAITHFUL (no mod loaded): the heatmaps are transient and a reload starts
+     * them empty, so a live scent trail is lost across save/reload. */
     const faithful = startGame(pack, { seed: 808, depth: 3 });
     playTurns(faithful, 4);
     faithful.state.chunk.scent[
@@ -467,9 +473,11 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     const reOff = loadGame(pack, savedOff).state;
     expect(Array.from(reOff.chunk.scent).every((v) => v === 0)).toBe(true);
 
-    /* CORRECTED (flag ON): the heatmaps ride the save and restore exactly. */
+    /* A MOD ASKS FOR THEM: the heatmaps ride the save and restore exactly. The
+     * hook is written inline as the CONTRACT core offers - a hook that returns
+     * true is the whole of what a mod has to do here. */
     const fixed = startGame(pack, { seed: 808, depth: 3 });
-    fixed.state.modRules = { "bugfix.noiseScentSave": true };
+    fixed.state.modHooks = { saveNoiseScent: () => true };
     playTurns(fixed, 4);
     const savedOn = JSON.parse(JSON.stringify(saveGame(fixed)));
     expect(savedOn.chunk.scent).toBeDefined();
