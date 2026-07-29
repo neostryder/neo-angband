@@ -47,6 +47,7 @@ import { disturb } from "./player-path";
 import { describeObject } from "./describe";
 import { floorCarry, floorExcise, floorPile, squareHoldsObject } from "./floor";
 import { noteSpotRevealTrap } from "./trap";
+import { GEAR_LABELS, gearToLabel } from "./gear";
 import { ODESC } from "../obj/desc";
 import { monsterCarry } from "../mon/make";
 import type { Monster } from "../mon/monster";
@@ -457,26 +458,12 @@ export function squareKnowPile(
 }
 
 /**
- * gear_to_label's label alphabet (obj-gear.c L446): a-z minus the roguelike
- * cardinal-movement keys h/j/k/l, then A-Z. Equipment slot index and pack
- * listing index both index straight into it (L452, L465).
- */
-const GEAR_LABELS = "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-/**
- * gear_to_label (obj-gear.c L443) for a held handle: a quiver handle takes its
- * slot digit (I2D, L456-460), otherwise a pack handle takes its listing letter
- * (L462-466). Equipment is handled by the caller (it knows the body slot).
- * Upstream reads the sorted upkeep->inven[] view; the port's inven[] reorder is
- * deferred (game/gear.ts), so the raw pack ordering supplies the index, exactly
- * as project-obj.ts's gearToLabel already does. "" when neither (upstream '\0').
+ * gear_to_label (obj-gear.c:443) for a held handle. The one implementation lives
+ * in game/gear.ts; equipment is handled by this module's callers (they know the
+ * body slot), so the two-argument form is what is wanted here.
  */
 function gearPackLabel(state: GameState, handle: number): string {
-  const qi = state.gear.quiver?.indexOf(handle) ?? -1;
-  if (qi >= 0) return String(qi);
-  const pi = state.gear.pack.indexOf(handle);
-  if (pi >= 0 && pi < GEAR_LABELS.length) return GEAR_LABELS[pi]!;
-  return "";
+  return gearToLabel(state.gear, handle);
 }
 
 /**

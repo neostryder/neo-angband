@@ -245,6 +245,33 @@ into and the recorded division of labour becomes true.
 overwrite prompt, plus explicit import/export so a character can move between
 the web and desktop builds.
 
+## Classified 2026-07-28: the character-select screen is `get_savefile_selection`
+
+Left open in an earlier session, and now decided. `packages/web/src/charselect.ts`
+is a port-invented screen standing where upstream has
+`get_savefile_selection` (`ui-game.c:838-860`). Three ways to classify it, and it
+is the first:
+
+**It is part of the core port, as the host equivalent.** Upstream answers "which
+savefile" with `argv` - `-u<name>`, `arg_force_name` - and failing that with a
+front-end prompt. A browser tab has no `argv` and no file dialogue, so *something*
+has to ask, and a front end that could not ask would simply be unable to reach a
+second character. That is the definition of a NECESSARY platform accommodation
+under the ratified rule, so it belongs in the port, not in a mod, and it is
+recorded here rather than being quietly excused as a "web reduction". A mod would
+be wrong twice over: mods are additive, and a disabled mod's patches do not exist,
+which would leave a build with no way to choose a character at all.
+
+The multi-character roster it lists is not an invention either. Upstream has always
+had many savefiles; it just keeps them in a directory the OS browses. The port
+keeps them in one storage area and browses it itself.
+
+What this classification then OWES upstream, tracked on #114 rather than done here:
+`-u<name>` must skip the screen exactly as `arg_force_name` does, and both
+`arg_force_name` branches (`ui-game.c:846` and `:855`) need their real prompts.
+Those only become meaningful once a save is a file, which is Phase 5's job; the
+desktop shell already parses the argument.
+
 ## The rule this encodes
 
 The reference C defines the semantics. A front end either expresses them or is

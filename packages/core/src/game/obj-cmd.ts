@@ -70,6 +70,7 @@ import {
   combinePack,
   gearGet,
   gearObjectForUse,
+  gearToLabel,
   invenCarry,
   invenCarryNum,
   objectSplit,
@@ -450,22 +451,12 @@ export function invenDrop(
  * ------------------------------------------------------------------ */
 
 /**
- * gear_to_label (obj-gear.c L443): the one-character label for a held object -
- * equipment slots index straight into the alphabet, a quiver handle takes its
- * slot digit, a pack handle its listing letter. The alphabet skips the
- * roguelike cardinal-movement keys h/j/k/l (L446). "" when the handle is not
- * currently held (upstream '\0').
+ * gear_to_label (obj-gear.c:443) with the equipment arm supplied: this module's
+ * callers can be holding an equipped object (takeoff, the "you cannot remove"
+ * refusals), so the body slots are passed in. One implementation, game/gear.ts.
  */
-const GEAR_LABELS = "abcdefgimnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 function gearLabelFor(state: GameState, handle: number): string {
-  const p = state.actor.player;
-  const eq = p.equipment.indexOf(handle);
-  if (eq >= 0) return GEAR_LABELS[eq] ?? "";
-  const qi = state.gear.quiver?.indexOf(handle) ?? -1;
-  if (qi >= 0) return String(qi);
-  const pi = state.gear.pack.indexOf(handle);
-  if (pi >= 0 && pi < GEAR_LABELS.length) return GEAR_LABELS[pi] ?? "";
-  return "";
+  return gearToLabel(state.gear, handle, state.actor.player.equipment);
 }
 
 /**
@@ -1197,7 +1188,7 @@ export function useAux(
     let startNumber = obj.number;
     let firstRemainder: GameObject | null = null;
     if (!fromFloor && use !== USE.CHARGE && use !== USE.TIMEOUT) {
-      const view = packTotalView(state.gear, (h) => gearLabelFor(state, h));
+      const view = packTotalView(state.gear);
       const agg = objectPackTotal(view, obj, false);
       startNumber = agg.total;
       firstRemainder = agg.first;
@@ -1545,6 +1536,14 @@ export function installObjCommands(
      * direct command entry likewise aborts silently and spends no energy. */
     if (obj?.flags.has(OF.STICKY)) return 0;
     if (!invenTakeoff(state, handle)) return 0;
+    /* inven_takeoff sets PU_INVEN and calls update_stuff ITSELF (obj-gear.c
+     * L1058-1062), one line before its message - because that message names the
+     * item at its NEW pack letter, and the item has only just stopped being
+     * equipment. The port deferred this to the caller's combine_pack below, which
+     * is after the message: the letter was read off a listing the item was not
+     * in yet. (The old comment here cited L1060 for combine_pack; L1060 is
+     * update_stuff inside inven_takeoff.) */
+    calcInventory(state.gear, deps.constants, calcInvOpts(state, deps));
     /* inven_takeoff's message (obj-gear.c L1046-1065): the slot wording, then
      * the item named at its new pack label. */
     if (obj) {
@@ -1590,6 +1589,12 @@ export function installObjCommands(
     const result = invenDrop(state, handle, amt, deps.floorEnv);
     if (!result) return 0;
     const { dropped, noneLeft, wasEquipped } = result;
+    /* gear_object_for_use excises through gear_excise_object, which re-runs
+     * calc_inventory (obj-gear.c L497) - BEFORE inven_drop's messages, not after
+     * them. It matters for the "1st" letter below, which upstream looks up at
+     * L1157 against the rebuilt listing; `label` above stays the pre-drop one
+     * (L1099), exactly as upstream captures it. */
+    calcInventory(state.gear, deps.constants, calcInvOpts(state, deps));
     /* inven_drop's messages (obj-gear.c L1120-1165): the drop, then what's
      * left. Dropping an equipped item omits the take-off line the port's
      * inven_takeoff does not emit - ledgered. */
@@ -1618,7 +1623,7 @@ export function installObjCommands(
           descTarget = obj;
         }
       } else {
-        const view = packTotalView(state.gear, (h) => gearLabelFor(state, h));
+        const view = packTotalView(state.gear);
         ({ total, first } = objectPackTotal(view, obj, false));
         descTarget = total ? obj : dropped;
       }
@@ -1639,8 +1644,6 @@ export function installObjCommands(
         );
       }
     }
-    /* gear_object_for_use sets PU_INVEN (obj-gear.c L617) -> calc_inventory. */
-    calcInventory(state.gear, deps.constants, calcInvOpts(state, deps));
     return Math.trunc(state.z.moveEnergy / 2);
   }));
 
