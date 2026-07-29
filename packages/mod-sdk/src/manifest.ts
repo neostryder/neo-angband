@@ -109,6 +109,23 @@ export interface PackManifest {
   /** Capabilities a `shape: plugin` pack requests (see Capability). */
   capabilities?: Capability[];
   /**
+   * The mod-plugin ABI version this pack's `plugin.js` was written against, and
+   * REQUIRED of any pack that ships one. Separate from `engine` on purpose: the
+   * engine version and the ABI a mod's code compiles against diverge immediately
+   * - a patch release changes the former and not the latter.
+   *
+   * Declared here, in the MANIFEST, rather than only inside plugin.js, so the
+   * host can refuse an incompatible plugin BEFORE importing it. A version check
+   * that lives inside the module can only run after the module's top-level code
+   * has already executed, which is the wrong order for player-supplied code.
+   *
+   * An exact integer, matched exactly, because the ABI is explicitly unstable
+   * until 1.0: every change to it bumps this number and every mod must
+   * republish. A semver range would imply a compatibility promise that does not
+   * exist yet.
+   */
+  modApi?: number;
+  /**
    * Player-toggleable flags this pack owns (see PackRule). The bundled qol /
    * bug-fixes mods use this to declare their fixes/tweaks for the in-app "Fixes
    * & tweaks" menu; the host resolves (choice ?? default), hands each mod its own
@@ -193,6 +210,14 @@ export function validateManifest(value: unknown): PackManifest {
       m["capabilities"].some((c) => typeof c !== "string")
     ) {
       throw new ManifestError(`manifest ${id}: capabilities must be strings`);
+    }
+  }
+  if (m["modApi"] !== undefined) {
+    const a = m["modApi"];
+    if (typeof a !== "number" || !Number.isInteger(a) || a < 1) {
+      throw new ManifestError(
+        `manifest ${id}: modApi must be a positive integer (the mod-plugin ABI version)`,
+      );
     }
   }
   if (

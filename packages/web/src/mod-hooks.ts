@@ -22,7 +22,7 @@
  * means a mod sees exactly the flags it declared in its own manifest, so its
  * behaviour cannot silently depend on which other mods the player enabled.
  *
- * A DISABLED MOD'S PATCHES DO NOT EXIST (Aaron's standing ruling). Not "exist and
+ * A DISABLED MOD'S PATCHES DO NOT EXIST (neostryder's standing ruling). Not "exist and
  * read false": enabledModIds() drives the loop, so a disabled mod's entry point
  * is never invoked, contributes no hook, and composeModHooks returns undefined
  * when nothing contributed - leaving GameState.modHooks ABSENT and every core
@@ -32,6 +32,8 @@
 import { composeModHooks, type ModHooks } from "@neo-angband/core";
 import { enabledModIds, loadEnabledModRuleDecls } from "./pack";
 import { defaultModStore, isShippedMod, resolveModRules } from "./mod-store";
+import { activeModCode } from "./mod-code";
+import { modPluginContext } from "./mod-context";
 
 /**
  * The entry-point signature every behaviour mod exports as default. Identical
@@ -87,15 +89,59 @@ export function resolveModRuleFlagsByMod(): Map<string, Record<string, boolean>>
  * The composed behaviour for this session, for startGame/loadGame's `modHooks`.
  * Undefined when no enabled mod contributes anything - the fresh-install case,
  * and the one that must leave core byte-identical to faithful 4.2.6.
+ *
+ * TWO SOURCES, ONE FOLD. A bundled mod's hooks.ts is found by the glob above; a
+ * mod installed as a FOLDER supplies a built plugin.js that boot imported and
+ * latched (mod-code.ts). Both produce a ModHooks and both go into the same
+ * composeModHooks call, in enabled/load order, so a folder mod is not a
+ * second-class citizen with its own precedence rules - which is the whole point of
+ * routing it through here rather than giving it a path of its own.
+ *
+ * A mod that is both bundled AND present as a folder contributes ONCE, from the
+ * folder: a folder is what an external mod manager deploys and what the player can
+ * see and edit, so it is the copy they will expect to be running. Contributing
+ * twice would silently double every hook it folds.
  */
 export function activeModHooks(): ModHooks | undefined {
   const entries = discoverModHookEntries();
+  const folder = folderHookEntries();
   const flagsByMod = resolveModRuleFlagsByMod();
   const contributions: ModHooks[] = [];
   for (const id of enabledModIds()) {
+    const flags = flagsByMod.get(id) ?? {};
+    const fromFolder = folder.get(id);
+    if (fromFolder) {
+      const hooks = fromFolder(flags);
+      if (hooks) contributions.push(hooks);
+      continue;
+    }
     const entry = entries.get(id);
     if (!entry) continue;
     contributions.push(entry(flagsByMod.get(id) ?? {}));
   }
   return composeModHooks(contributions);
+}
+
+/**
+ * The folder-loaded plugins' `hooks`, adapted to the same one-argument shape a
+ * bundled hooks.ts has, so activeModHooks folds both identically.
+ *
+ * A plugin that throws inside hooks() loses ITS contribution and nothing else: a
+ * broken third-party mod must not take the other mods, or the game, down with it.
+ */
+function folderHookEntries(): Map<string, (flags: Readonly<Record<string, boolean>>) => ModHooks | undefined> {
+  const out = new Map<string, (flags: Readonly<Record<string, boolean>>) => ModHooks | undefined>();
+  for (const loaded of activeModCode().plugins) {
+    const hooks = loaded.plugin.hooks;
+    if (!hooks) continue;
+    out.set(loaded.id, (flags) => {
+      try {
+        return hooks.call(loaded.plugin, modPluginContext(loaded.id, flags));
+      } catch (e) {
+        console.error(`[mod:${loaded.id}] hooks() threw; contributing nothing:`, e);
+        return undefined;
+      }
+    });
+  }
+  return out;
 }
