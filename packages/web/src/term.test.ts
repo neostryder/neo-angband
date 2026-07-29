@@ -86,3 +86,55 @@ describe("GlyphTerm.fit", () => {
     expect(TERM).toMatch(/this\.fit\(\);\s*this\.onResize\?\.\(this\.size\(\)\)/);
   });
 });
+
+/**
+ * prt's erase (ui-output.c: prt = Term_erase(col, row, 255) then the string).
+ *
+ * Reported from play as "the text overlaps on this shop": the buy/sell
+ * confirmation prints "Price: 450" onto row 1, which is the shopkeeper line, and
+ * the port used print() - which writes ten characters and leaves the rest of the
+ * row alone - so the row read "Price: 450the Great (Gnome)". Upstream never has
+ * this problem because every one of its one-line prompts goes through prt.
+ *
+ * Pinned by reading the source, like the fit() call site above: GlyphTerm needs a
+ * real canvas 2d context that the node environment has not got. So this asserts
+ * the SHAPE - erase first, then write - and that the store's confirmation calls
+ * it. It cannot assert pixels, and that screen still wants a human look.
+ */
+function bodyOf(src: string, signature: string): string {
+  const at = src.indexOf(signature);
+  expect(at, `${signature} is missing`).toBeGreaterThan(-1);
+  const end = src.indexOf("\n  }", at);
+  expect(end, `${signature} body is unterminated`).toBeGreaterThan(at);
+  return src.slice(at + signature.length, end);
+}
+
+describe("prt erases to end of line before writing (ui-output.c)", () => {
+  it("GlyphTerm.prt erases, then prints, in that order", () => {
+    const src = bodyOf(TERM, "prt(x: number, y: number, text: string, fg: string): void {");
+    expect(src).toContain("this.eraseToEol(x, y)");
+    expect(src).toContain("this.print(x, y, text, fg)");
+    /* Order is the whole point: printing then erasing would blank what it wrote. */
+    expect(src.indexOf("eraseToEol")).toBeLessThan(src.indexOf("this.print"));
+  });
+
+  it("eraseToEol blanks from x to the last column, not one cell", () => {
+    const src = bodyOf(TERM, "eraseToEol(x: number, y: number): void {");
+    expect(src).toContain("cx < this.cols");
+    expect(src).toContain("= null");
+  });
+
+  it("the store confirmation draws both of its rows with prt", () => {
+    /* Row 0 goes over the message line and row 1 over the shopkeeper line
+     * (ui-store.c:563 and :566 are both prt), so BOTH need the erase. */
+    const shop = readFileSync(new URL("./shop.ts", import.meta.url), "utf8");
+    const at = shop.indexOf("function storeConfirm(");
+    expect(at).toBeGreaterThan(-1);
+    const src = shop.slice(at, shop.indexOf("\n}", at));
+    expect(src).toContain("term.prt(0, 1, `Price:");
+    expect(src).toContain("term.prt(0, 0, prompt");
+    /* And no prompt row still uses the non-erasing print. */
+    expect(src).not.toContain("term.print(0, 0,");
+    expect(src).not.toContain("term.print(0, 1,");
+  });
+});

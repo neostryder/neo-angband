@@ -116,3 +116,47 @@ describe("^X (textui_quit)", () => {
     expect(body, "^X must not just reopen the game menu").not.toContain("openGameMenu");
   });
 });
+
+/**
+ * The desktop half, reported from play as "Save and exit just saves".
+ *
+ * The web analogue (save, then reload without the continuation flag) was being
+ * used on the desktop build too, where there IS an OS to quit to - so the app
+ * saved, reloaded, and sat on its own title screen with the window still open.
+ * Upstream's textui_quit quits (ui-game.c:199).
+ *
+ * Pinned by source, like the rest of this file: exitToTitle navigates, which a
+ * node test cannot let it do.
+ */
+describe("Save and exit quits the desktop shell (textui_quit)", () => {
+  it("asks the shell to quit before falling back to the reload", () => {
+    const body = functionBody(MAIN, "exitToTitle");
+    expect(body).toContain("desktopQuit()");
+    /* The save comes FIRST: quitting before closeGameSave would drop the turn. */
+    expect(body.indexOf("closeGameSave")).toBeLessThan(body.indexOf("desktopQuit"));
+    /* And the quit RETURNS, so a shell that quit does not also navigate. */
+    expect(body).toContain("if (desktopQuit()) return;");
+    /* The tab analogue is still there behind it. */
+    expect(body).toContain("location.assign");
+  });
+
+  it("treats an absent shell as a tab rather than swallowing the exit", () => {
+    const body = functionBody(MAIN, "desktopQuit");
+    expect(body).toContain('typeof shell?.quit !== "function"');
+    expect(body).toContain("return false");
+  });
+
+  it("the preload exposes quit and the main process handles it", () => {
+    const preload = readFileSync(
+      new URL("../../desktop/src/preload.ts", import.meta.url),
+      "utf8",
+    );
+    expect(preload).toContain("HOST_QUIT_CHANNEL");
+    expect(preload).toContain("quit(): void {");
+    const main = readFileSync(new URL("../../desktop/src/main.ts", import.meta.url), "utf8");
+    expect(main).toContain("ipcMain.on(HOST_QUIT_CHANNEL");
+    /* app.quit(), not win.close(): closing the window runs window-all-closed,
+     * which on macOS keeps the app alive - an "exit" to nothing at all. */
+    expect(main).toContain("app.quit()");
+  });
+});

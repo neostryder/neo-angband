@@ -4637,20 +4637,47 @@ function switchCharacter(): void {
 }
 
 /**
+ * Ask the desktop shell to quit (textui_quit, ui-game.c:199). False when this is
+ * an ordinary browser tab, or a shell too old to offer it - in which case the
+ * caller uses the tab analogue rather than doing nothing, because a Save-and-exit
+ * that neither quits nor leaves play is the bug this replaced.
+ */
+function desktopQuit(): boolean {
+  try {
+    const shell = (globalThis as { neoDesktop?: { quit?: unknown } }).neoDesktop;
+    if (typeof shell?.quit !== "function") return false;
+    (shell.quit as () => void)();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Save and exit (^X, textui_quit, ui-game.c:199): flush the save, then LEAVE
  * play for the title screen.
  *
  * Upstream quits to the OS, and the next launch shows news.txt and then waits
- * for New/Open from the File menu (main-win.c:5475). A browser tab has no OS to
- * quit to, so the web analog reloads WITHOUT the continuation flag - which is
- * exactly what routes boot through the title screen and then the character
- * select (isContinuation / bootGame), where this hero is waiting to be resumed.
- * Nothing is lost: the save is written before the reload.
+ * for New/Open from the File menu (main-win.c:5475).
+ *
+ * A browser tab has no OS to quit to, so there the analogue reloads WITHOUT the
+ * continuation flag - which is what routes boot through the title screen and then
+ * the character select (isContinuation / bootGame), with this hero waiting to be
+ * resumed. Nothing is lost: the save is written first.
+ *
+ * The DESKTOP build does have an OS to quit to, and applying the tab's analogue
+ * there is why the row read as "just saves": it saved, reloaded, and the app sat
+ * on the title screen. So the shell quits (neoDesktop.quit) and only a tab falls
+ * back to the reload. Reported from play 2026-07-29.
  */
 async function exitToTitle(): Promise<void> {
   /* close_game(prompt_failed_save = true) (ui-game.c:1173): a deliberate exit
    * offers the retry, because leaving on a failed save loses the session. */
   await closeGameSave(true);
+  /* The save has landed (or the player chose to give up on it), so this is the
+   * point upstream calls quit(). Ask the shell; if there is no shell, fall through
+   * to the tab's own analogue below. */
+  if (desktopQuit()) return;
   try {
     // Next boot is a genuine launch, not a continuation, so BOTH skip-the-title
     // flags have to be clear or the title would be skipped on the way out.
