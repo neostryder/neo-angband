@@ -34,8 +34,17 @@ import {
   OSTACK_PACK,
   tvalCanHaveCharges,
 } from "../obj/object";
-import { NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge";
-import type { FlavorAwareDeps, FlavorKnowledge } from "../obj/knowledge";
+import {
+  NOOP_FLAVOR_AWARE_DEPS,
+  objectLearnUnknownRune,
+  objectRunesKnown,
+} from "../obj/knowledge";
+import type {
+  FlavorAwareDeps,
+  FlavorKnowledge,
+  Rune,
+  RuneEnv,
+} from "../obj/knowledge";
 import type { Gear } from "../game/gear";
 import {
   gearObjectForUse,
@@ -92,6 +101,27 @@ export interface TxnKnowledge {
   noSelling: boolean;
   /** object_runes_known(obj), for store_will_buy's no-selling exception. */
   runesKnown?: boolean;
+  /**
+   * Selling TEACHES the object's runes (do_cmd_sell L1946-1951):
+   *
+   *   object_flavor_aware(player, obj);
+   *   obj->known->effect = obj->effect;
+   *   while (!object_fully_known(obj)) {
+   *     object_learn_unknown_rune(player, obj);
+   *     player_know_object(player, obj);
+   *   }
+   *
+   * The shopkeeper appraises the item and you learn what they learned - so an
+   * unidentified torch sold to the store leaves its rune in your knowledge, not
+   * just its name. The port had only the flavor half, which is exactly the
+   * reported symptom: the name appeared and the rune did not.
+   *
+   * Optional so a caller with no rune environment (a store-maintenance test)
+   * keeps the bare flavor learn. object_learn_unknown_rune draws from the game
+   * RNG to pick which rune, so a caller that supplies this changes the draw
+   * sequence - as upstream's does.
+   */
+  learnRunes?: { env: RuneEnv; runes: readonly Rune[] };
 }
 
 /* ------------------------------------------------------------------ */
@@ -402,10 +432,33 @@ function sellObject(
   /* Get some money. */
   player.au += price;
 
-  /* Learn flavor (object_flavor_aware, including the #89 ignore fix); runes
-   * are DEFERRED (task #13). */
+  /* Learn flavor (object_flavor_aware, including the #89 ignore fix). */
   if (know.flavor) {
     know.flavor.objectFlavorAware(obj.kind, know.flavorDeps ?? NOOP_FLAVOR_AWARE_DEPS);
+  }
+
+  /* ...then the runes (do_cmd_sell L1946-1951), BEFORE the detach below, so the
+   * sold copy is the fully-known object upstream describes at L1961 and values
+   * at L1956. object_fully_known is "all runes known AND the effect known", and
+   * upstream makes the effect half true unconditionally on the line above the
+   * loop (obj->known->effect = obj->effect); the port's known shadow derives the
+   * effect from awareness instead of storing it, which objectFlavorAware has just
+   * granted for a flavoured or non-wearable kind and for a wearable with a KIND
+   * effect (known-object.ts L226-239). An ego- or artifact-only activation is
+   * therefore not covered here - the port has no per-object effect-known bit to
+   * set, and adding one is a save-format change. So the loop condition below is
+   * the rune half alone, which is what terminates it upstream too. */
+  if (know.learnRunes) {
+    const { env, runes } = know.learnRunes;
+    while (!objectRunesKnown(player, env, obj, runes)) {
+      /* Each pass learns one rune. The bail-out is not upstream's - upstream
+       * cannot stall because object_find_unknown_rune and object_runes_known
+       * read the same predicates - but a disagreement here would hang the game
+       * rather than mis-describe an item. */
+      if (!objectLearnUnknownRune(rng, player, env, obj, runes, know.flavor, know.flavorDeps)) {
+        break;
+      }
+    }
   }
 
   /* Take a proper copy of the now known-about object out of its source. */
