@@ -12,21 +12,46 @@ export type PackRef = `${string}:${string}`;
 export type PackShape = "content" | "tiles" | "plugin";
 
 /**
- * One player-toggleable "rule" a pack contributes: a named core rule flag
- * (GameState.modRules, read through modRuleEnabled) plus the human-facing
- * label / description / default the in-app "Fixes & tweaks" menu renders.
+ * One player-toggleable "rule" a pack contributes: a flag name the pack owns,
+ * plus the human-facing label / description / default the in-app "Fixes &
+ * tweaks" menu renders.
  *
- * This is the DECLARATIVE seam the bundled qol and bug-fixes mods use: the
- * corrected behaviour lives in ported core as an off-by-default branch guarded
- * by `flag`; the mod merely declares the flag exists, what it does, and whether
- * it defaults on. The host resolves each enabled mod's rules against the
- * player's saved choices and applies the result to GameState.modRules - no mod
- * code runs, so a rules-only mod is a plain `content` pack with no capabilities.
- * With the mod disabled the flag is never set and core is byte-identical to the
- * faithful 4.2.6 branch.
+ * WHAT THIS USED TO BE, AND WHY IT IS NOT THAT ANY MORE. The first design made
+ * this a registry of CORE flags: the corrected behaviour lived in ported core as
+ * an off-by-default branch guarded by `if (modRuleEnabled(state, flag))`, the
+ * host applied the resolved choices to GameState.modRules, and no mod code ran.
+ * That design was deleted on 2026-07-29 because a flag-gated fix is not excluded
+ * from core - core shipped the fix body AND the mod's flag name, so deleting the
+ * mod folder would not have deleted a line of it. `modRuleEnabled` is GONE
+ * (packages/core/src/game/context.ts, where its removal is recorded), and
+ * `GameState.modRules` still exists but is OPAQUE to core: core stores it because
+ * a save has to record which patches a character was played with, and never
+ * branches on it (`context.ts`, the modRules doc comment).
+ *
+ * WHAT A RULE IS NOW: an input to the MOD's own code. Mods do run code. A mod
+ * that changes behaviour ships `hooks.ts` next to its manifest, default-exporting
+ * `(flags: Readonly<Record<string, boolean>>) => ModHooks`. The host discovers it
+ * (packages/web/src/mod-hooks.ts), calls it once per ENABLED mod in load order
+ * with only THAT mod's resolved flags (`choices[flag] ?? rule.default` for the
+ * rules its own manifest declares, so one mod cannot read another's toggles), and
+ * folds the results into the single ModHooks core holds via `composeModHooks`
+ * (packages/core/src/mod/hooks.ts). Each fix body lives in its mod's folder; what
+ * core contains is the generic seam, not any mod's name.
+ *
+ * A disabled mod's patches DO NOT EXIST rather than existing and reading false:
+ * its entry point is never called, it contributes no hook, composeModHooks
+ * returns undefined, and GameState.modHooks stays absent - so core runs the
+ * faithful 4.2.6 path, which is the only path compiled into the branch.
+ *
+ * A rules-only pack is still a plain `content` pack requesting no capabilities;
+ * `rules` remains pure declaration, and this manifest still holds no behaviour.
  */
 export interface PackRule {
-  /** The GameState.modRules flag this rule toggles (e.g. "qol.autoDig"). */
+  /**
+   * The flag this rule toggles (e.g. "qol.autoDig"). Namespaced by convention to
+   * the owning pack, because the pack's own hooks.ts is what reads it; the host
+   * also records the resolved value on GameState.modRules as save state.
+   */
   flag: string;
   /** Short menu label (e.g. "Auto-dig"). */
   title: string;
@@ -84,10 +109,11 @@ export interface PackManifest {
   /** Capabilities a `shape: plugin` pack requests (see Capability). */
   capabilities?: Capability[];
   /**
-   * Player-toggleable core rule flags this pack contributes (see PackRule). The
-   * bundled qol / bug-fixes mods use this to declare their fixes/tweaks for the
-   * in-app "Fixes & tweaks" menu; the host applies (choice ?? default) to
-   * GameState.modRules. Absent for a pack that changes no core rules.
+   * Player-toggleable flags this pack owns (see PackRule). The bundled qol /
+   * bug-fixes mods use this to declare their fixes/tweaks for the in-app "Fixes
+   * & tweaks" menu; the host resolves (choice ?? default), hands each mod its own
+   * slice when it calls that mod's hooks.ts, and records the result on
+   * GameState.modRules as save state. Absent for a pack with nothing to toggle.
    */
   rules?: PackRule[];
   /**

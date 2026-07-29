@@ -20,6 +20,14 @@ export { satisfies, SemverError } from "./semver.js";
 export { ComposeError, composePacks, mergePatch } from "./compose.js";
 export { composeContentPacks } from "./loader.js";
 export type { ComposedContent, LoadedPack } from "./loader.js";
+export {
+  KEYED_RECORD_FILES,
+  keyDescription,
+  keySpecFor,
+  RECORD_KEY_SPECS,
+  recordKey,
+} from "./record-key.js";
+export type { RecordKeySpec } from "./record-key.js";
 export type {
   ComposedRecord,
   FileContribution,

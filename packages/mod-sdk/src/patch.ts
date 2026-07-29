@@ -46,37 +46,82 @@ function isCommutative(op: FieldOp["op"]): boolean {
 
 /* ------------------------------------------------------------------ *
  * Dot-path access.
+ *
+ * A path segment that is a run of digits indexes an ARRAY ("level-max.0.value").
+ * Array traversal is not a convenience: a great deal of upstream gamedata is
+ * label/value lists rather than objects - every section of constants.json, a
+ * store's owner list, a body's slot list, the visuals flicker table - so without
+ * it a fieldPatch into those files could not address anything. Worse, the first
+ * version of setPath treated an existing array as an unusable intermediate and
+ * REPLACED it with a fresh object, which turned `set level-max.0.value` into
+ * silent destruction of the whole list. Objects still win when the container is
+ * an object, so a literal "0" key is unaffected.
  * ------------------------------------------------------------------ */
 
+/** A path segment as an array index, or null when it is a plain object key. */
+function arrayIndex(part: string): number | null {
+  return /^(?:0|[1-9][0-9]*)$/.test(part) ? Number(part) : null;
+}
+
+/** One step down a path, through either an object key or an array index. */
+function childOf(cur: JsonValue | undefined, part: string): JsonValue | undefined {
+  if (Array.isArray(cur)) {
+    const at = arrayIndex(part);
+    return at === null ? undefined : cur[at];
+  }
+  if (typeof cur === "object" && cur !== null) return (cur as JsonRecord)[part];
+  return undefined;
+}
+
 function getPath(record: JsonRecord, path: string): JsonValue | undefined {
-  const parts = path.split(".");
-  let cur: JsonValue = record;
-  for (const part of parts) {
-    if (typeof cur !== "object" || cur === null || Array.isArray(cur)) {
-      return undefined;
-    }
-    cur = (cur as JsonRecord)[part] as JsonValue;
+  let cur: JsonValue | undefined = record;
+  for (const part of path.split(".")) {
+    cur = childOf(cur, part);
     if (cur === undefined) return undefined;
   }
   return cur;
 }
 
-/** Set a value at a dot-path, creating intermediate objects as needed. */
+/** Write one slot of an object or an array container. */
+function assignAt(
+  container: JsonRecord | JsonValue[],
+  part: string,
+  value: JsonValue,
+): void {
+  if (Array.isArray(container)) {
+    const at = arrayIndex(part);
+    if (at === null) {
+      throw new PatchError(
+        `patch: "${part}" is not an array index, and the value at that point is an array`,
+      );
+    }
+    container[at] = value;
+    return;
+  }
+  container[part] = value;
+}
+
+/**
+ * Set a value at a dot-path, creating intermediate containers as needed. A
+ * created container is an array when the next segment is an index and an object
+ * otherwise, so `set a.0.b` on a record with no `a` builds `{a:[{b:...}]}`.
+ */
 function setPath(record: JsonRecord, path: string, value: JsonValue): void {
   const parts = path.split(".");
-  let cur: JsonRecord = record;
+  let cur: JsonRecord | JsonValue[] = record;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i] as string;
-    const next = cur[part];
-    if (typeof next !== "object" || next === null || Array.isArray(next)) {
-      const fresh: JsonRecord = {};
-      cur[part] = fresh;
-      cur = fresh;
+    const next = childOf(cur as JsonValue, part);
+    if (typeof next !== "object" || next === null) {
+      const fresh: JsonValue =
+        arrayIndex(parts[i + 1] as string) === null ? {} : [];
+      assignAt(cur, part, fresh);
+      cur = fresh as JsonRecord | JsonValue[];
     } else {
-      cur = next as JsonRecord;
+      cur = next as JsonRecord | JsonValue[];
     }
   }
-  cur[parts[parts.length - 1] as string] = value;
+  assignAt(cur, parts[parts.length - 1] as string, value);
 }
 
 /* ------------------------------------------------------------------ *

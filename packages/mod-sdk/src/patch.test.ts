@@ -131,3 +131,96 @@ describe("touchedFields", () => {
     expect(touchedFields(ops)).toEqual(new Set(["speed", "hp"]));
   });
 });
+
+/**
+ * Array indices in dot-paths. Upstream gamedata is full of label/value LISTS
+ * (every section of constants.json, a store's owner list, a body's slot list),
+ * so a fieldPatch that cannot address a list element cannot address those files
+ * at all - and the first version did worse than fail: it replaced the array with
+ * a fresh object, destroying the whole list without a word.
+ */
+describe("applyFieldPatch through array indices", () => {
+  const constants = (): JsonRecord => ({
+    "level-max": [
+      { label: "monsters", value: 1024 },
+      { label: "objects", value: 256 },
+    ],
+  });
+
+  it("sets one element's field and leaves the array an array", () => {
+    const out = applyFieldPatch(constants(), [
+      { op: "set", path: "level-max.0.value", value: 2048 },
+    ]);
+    expect(out).toEqual({
+      "level-max": [
+        { label: "monsters", value: 2048 },
+        { label: "objects", value: 256 },
+      ],
+    });
+    expect(Array.isArray(out["level-max"])).toBe(true);
+  });
+
+  it("reads through an index for add and mul", () => {
+    const out = applyFieldPatch(constants(), [
+      { op: "add", path: "level-max.1.value", value: 4 },
+      { op: "mul", path: "level-max.0.value", value: 2 },
+    ]);
+    expect(out["level-max"]).toEqual([
+      { label: "monsters", value: 2048 },
+      { label: "objects", value: 260 },
+    ]);
+  });
+
+  it("replaces a whole element and merges into one", () => {
+    const set = applyFieldPatch(constants(), [
+      { op: "set", path: "level-max.1", value: { label: "objects", value: 9 } },
+    ]);
+    expect(set["level-max"]).toEqual([
+      { label: "monsters", value: 1024 },
+      { label: "objects", value: 9 },
+    ]);
+    const merged = applyFieldPatch(constants(), [
+      { op: "merge", path: "level-max.1", value: { value: 9 } },
+    ]);
+    expect(merged["level-max"]).toEqual([
+      { label: "monsters", value: 1024 },
+      { label: "objects", value: 9 },
+    ]);
+  });
+
+  it("addFlag / removeFlag reach a nested flag list", () => {
+    const base: JsonRecord = { slot: [{ name: "weapon", flags: ["A"] }] };
+    const added = applyFieldPatch(base, [
+      { op: "addFlag", path: "slot.0.flags", flag: "B" },
+    ]);
+    expect(added["slot"]).toEqual([{ name: "weapon", flags: ["A", "B"] }]);
+    const removed = applyFieldPatch(added, [
+      { op: "removeFlag", path: "slot.0.flags", flag: "A" },
+    ]);
+    expect(removed["slot"]).toEqual([{ name: "weapon", flags: ["B"] }]);
+  });
+
+  it("builds an array when an intermediate is missing and the next part is an index", () => {
+    const out = applyFieldPatch({}, [
+      { op: "set", path: "owner.0.purse", value: 5000 },
+    ]);
+    expect(out).toEqual({ owner: [{ purse: 5000 }] });
+    expect(Array.isArray(out["owner"])).toBe(true);
+  });
+
+  it("still treats a numeric segment as an object KEY when the container is an object", () => {
+    const out = applyFieldPatch({ tally: { "0": 1 } }, [
+      { op: "set", path: "tally.0", value: 2 },
+    ]);
+    expect(out).toEqual({ tally: { "0": 2 } });
+    expect(Array.isArray(out["tally"])).toBe(false);
+  });
+
+  it("throws rather than guessing when a non-index segment addresses an array", () => {
+    expect(() =>
+      applyFieldPatch(constants(), [
+        { op: "set", path: "level-max.first", value: 1 },
+      ]),
+    ).toThrow(PatchError);
+  });
+});
