@@ -212,6 +212,14 @@ import { BrowserHost } from "./host-browser";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
 import { loadDiskPacks, setDiskPacks } from "./disk-packs";
+import {
+  folderPickingSupported,
+  forgetModFolder,
+  loadPickedModFolder,
+  pickModFolder,
+  savedModFolder,
+  folderPermission,
+} from "./mod-folder";
 import type { PrefsUiCtx } from "./prefs-ui";
 import { CapabilitySet } from "@neo-angband/mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, modConflictLines, presentNamespaces, diskPackStatus, enabledModIds } from "./pack";
@@ -335,6 +343,11 @@ import {
 } from "./knowledge";
 import { runCharacterSelect } from "./charselect";
 import {
+  durabilityNotice,
+  ensureDurableStorage,
+  storageDurability,
+} from "./storage-persist";
+import {
   listRoster,
   livingRoster,
   getActiveId,
@@ -430,9 +443,18 @@ initLaunchArgsFromHost();
 // composer for a fetch that happens once. This is the boot equivalent of
 // init.c reading its directories before init_angband.
 //
-// In a browser tab there is no mods directory, loadDiskPacks resolves to
-// NO_DISK_PACKS immediately, and nothing about the web build changes.
-setDiskPacks(await loadDiskPacks());
+// The shell's own mods folder first. A browser tab has none, so loadDiskPacks
+// resolves to NO_DISK_PACKS immediately and the picked-folder path below takes
+// over: a directory the player chose once (mod-folder.ts), read through the very
+// same validator, so a mod behaves identically on both platforms.
+//
+// The shell's folder WINS when both exist. The desktop build's folder is the one
+// beside the game that an external mod manager deploys into, and a stale handle
+// picked in some earlier browser session must not shadow it.
+{
+  const shellPacks = await loadDiskPacks();
+  setDiskPacks(shellPacks.available ? shellPacks : await loadPickedModFolder());
+}
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
@@ -4514,7 +4536,12 @@ function persistSave(): boolean {
     const b64 = bytesToB64(encodeSavedGame(saveGame(game), undefined, SAVE_CODEC));
     /* writeSlot's own verdict, not just "we did not throw": the storage write
      * itself is where a quota failure shows up. */
-    return writeSlot(id, b64, metaFromState(id));
+    const ok = writeSlot(id, b64, metaFromState(id));
+    /* There is now a character worth protecting from the browser's own eviction, so
+     * this is the moment to ask for persistent storage - once per session, in the
+     * background, never blocking the save that prompted it. */
+    if (ok) ensureDurableStorage();
+    return ok;
   } catch {
     /* Encoding threw (a corrupt state), or storage is unreachable. */
     return false;
@@ -4664,6 +4691,26 @@ async function openModManager(): Promise<void> {
     // The mods DIRECTORY, so the manager can name a real path instead of
     // describing a capability the shell might or might not have.
     diskPackStatus: () => diskPackStatus(),
+    // Picking a mods folder is offered ONLY where the player is the one who has to
+    // supply it: a browser tab, on an engine that can pick a directory. The desktop
+    // shell knows where its own folder is (kind "app"), so offering to choose one
+    // there would put a second, competing answer in front of the player.
+    ...(folderPickingSupported() && diskPackStatus().kind !== "app"
+      ? {
+          modFolder: {
+            pick: async () => (await pickModFolder())?.name ?? null,
+            // The permission prompt is only allowed from a user gesture, which is
+            // why this lives behind a menu row and never runs at boot.
+            reconnect: async () => {
+              const handle = await savedModFolder();
+              if (!handle) return false;
+              return (await folderPermission(handle, { request: true })) === "granted";
+            },
+            forget: () => forgetModFolder(),
+            savedName: async () => (await savedModFolder())?.name ?? null,
+          },
+        }
+      : {}),
     // Fixes & tweaks: the enabled mods' declared rules, and a live-apply that
     // writes the running game's GameState.modRules so a toggle takes effect at
     // once (no reload). modRuleEnabled reads `=== true`, so a false value is off.
@@ -7436,9 +7483,18 @@ async function bootMenus(): Promise<void> {
   await maybeTitle();
   if (resumedActive) return;
   if (needsSelect) {
+    // Whether this origin's storage is exempt from the browser's own eviction. A
+    // query, never a request: the request happens when a save lands (persistSave),
+    // which is a moment the player caused and has something to protect.
+    const durability = await storageDurability();
     await openModal(async () => {
       for (;;) {
-        const res = await runCharacterSelect(term, listRoster());
+        const roster = listRoster();
+        const res = await runCharacterSelect(
+          term,
+          roster,
+          durabilityNotice(durability, roster.length),
+        );
         if (res.action === "delete") {
           deleteSlot(res.id);
           if (livingRoster().length === 0) return newGame();

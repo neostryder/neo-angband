@@ -21,7 +21,7 @@ import {
 } from "@neo-angband/mod-sdk";
 import type { LoadedPack, PackContent, PackManifest } from "@neo-angband/mod-sdk";
 import { isShippedMod, resolveEnabledIds } from "./mod-store";
-import { diskPacks } from "./disk-packs";
+import { diskPacks, type ModDirKind } from "./disk-packs";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
 // are the parsed JSON (the file's default export).
@@ -139,6 +139,7 @@ export function diskPackStatus(): {
   dir: string | null;
   count: number;
   problems: readonly string[];
+  kind: ModDirKind;
 } {
   const r = diskPacks();
   const shadowed = r.packs
@@ -149,6 +150,7 @@ export function diskPackStatus(): {
     dir: r.dir,
     count: r.packs.length,
     problems: [...r.problems, ...shadowed],
+    kind: r.kind,
   };
 }
 

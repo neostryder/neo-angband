@@ -61,6 +61,27 @@ export interface DiskPackStatus {
   dir: string | null;
   count: number;
   problems: readonly string[];
+  /** "app" = the shell's own folder; "picked" = one the player chose; "none". */
+  kind: "none" | "app" | "picked";
+}
+
+/**
+ * Choosing a mods folder, on a front end that has to be GIVEN one.
+ *
+ * Absent on the desktop build, which knows where its own folder is, and on an
+ * engine that cannot pick a directory at all - in both cases there is nothing here
+ * for a player to do, so no row is offered. Every one of these takes effect on
+ * reload, because content composes at load time.
+ */
+export interface ModFolderPicker {
+  /** Ask for a folder. Resolves to its name, or null when cancelled. */
+  pick(): Promise<string | null>;
+  /** Re-grant read permission for the saved folder. */
+  reconnect(): Promise<boolean>;
+  /** Stop using the saved folder (the bundled mods remain). */
+  forget(): Promise<void>;
+  /** The saved folder's name, when one is remembered. */
+  savedName(): Promise<string | null>;
 }
 
 /** What the manager needs from the host (discovery + reload are browser-only). */
@@ -73,6 +94,12 @@ export interface ModManagerDeps {
    * implying a folder exists.
    */
   diskPackStatus?: () => DiskPackStatus;
+  /**
+   * Pick / reconnect / forget a mods folder. Present only where the player is the
+   * one who has to supply it - a browser tab on an engine that can pick a
+   * directory. See ModFolderPicker.
+   */
+  modFolder?: ModFolderPicker;
   /** Build the current catalog fresh (re-reads discovery + store each call). */
   listCatalog: () => CatalogMod[];
   /** Human-readable conflict lines for the enabled content set (P7.6 humanLines). */
@@ -103,6 +130,29 @@ export interface ModManagerDeps {
    * screenful of empty boxes over a game running three mods.
    */
   urlModsOverride?: () => readonly string[] | null;
+}
+
+/**
+ * The mods-folder row: label and colour for the three states it can be in.
+ *
+ * Exported and pure because the states are easy to get wrong in the direction that
+ * hides a problem - a remembered folder the browser will not read must look
+ * DIFFERENT from one it is reading, or the player sees a folder named on screen,
+ * no mods from it, and no explanation.
+ */
+export function modFolderRow(
+  savedName: string | null,
+  attached: boolean,
+): { label: string; color: string; lapsed: boolean } {
+  if (savedName === null) {
+    return { label: "Choose a mods folder...", color: C_FG, lapsed: false };
+  }
+  if (attached) return { label: `Mods folder: ${savedName}`, color: C_FG, lapsed: false };
+  return {
+    label: `Mods folder: ${savedName} - NEEDS RECONNECTING`,
+    color: C_WARN,
+    lapsed: true,
+  };
 }
 
 /** The one-line badge for a catalog row: enabled state + any warning. */
@@ -563,20 +613,41 @@ async function managePatches(
 async function showModSources(
   term: GlyphTerm,
   status: DiskPackStatus | undefined,
+  canPick: boolean,
 ): Promise<void> {
   const lines: ScreenLine[] = [];
   if (!status || !status.available) {
-    lines.push(
-      { text: "This build has no mods folder.", color: C_FG },
-      { text: "", color: C_FG },
-      { text: "A browser tab cannot read a directory on your computer, so every", color: C_FG },
-      { text: "mod here is one bundled into the app - fully manageable, but a", color: C_FG },
-      { text: "fixed set. The desktop build keeps a mods folder you can copy a", color: C_WARN },
-      { text: "mod into, and an external mod manager can deploy into.", color: C_WARN },
-    );
+    if (canPick) {
+      /* An engine that CAN be given a folder has not been given one yet. Saying
+       * "this build has no mods folder" here would be a false statement about the
+       * program, which is the exact failure mode PLATFORM.md was written about. */
+      lines.push(
+        { text: "No mods folder chosen yet.", color: C_FG },
+        { text: "", color: C_FG },
+        { text: "This build can read one: choose a folder on your computer and it", color: C_FG },
+        { text: "is remembered for every later visit. The mods in it are read the", color: C_FG },
+        { text: "same way the desktop build reads its own folder, by the same", color: C_FG },
+        { text: "validator, so a mod behaves identically on both.", color: C_FG },
+        { text: "", color: C_FG },
+        { text: "Pick either a folder of mods, or a single mod's folder.", color: C_GOLD_TEXT },
+      );
+    } else {
+      lines.push(
+        { text: "This browser has no mods folder.", color: C_FG },
+        { text: "", color: C_FG },
+        { text: "It cannot ask you for a directory to read, so every mod here is", color: C_FG },
+        { text: "one bundled into the app - fully manageable, but a fixed set.", color: C_FG },
+        { text: "", color: C_FG },
+        { text: "Chrome and Edge can be given a folder; the desktop build keeps", color: C_WARN },
+        { text: "its own, which an external mod manager can deploy into.", color: C_WARN },
+      );
+    }
   } else {
     lines.push(
-      { text: "Mods folder:", color: C_FG },
+      {
+        text: status.kind === "picked" ? "Mods folder you chose:" : "Mods folder:",
+        color: C_FG,
+      },
       { text: `  ${status.dir ?? "(unknown)"}`, color: C_GOLD_TEXT },
       { text: "", color: C_FG },
       {
@@ -595,6 +666,13 @@ async function showModSources(
       { text: "manager: the ids it lists are loaded, in that order. Turning a", color: C_FG },
       { text: "mod on or off here overrides it for that mod.", color: C_FG },
     );
+    if (status.kind === "picked") {
+      lines.push(
+        { text: "", color: C_FG },
+        { text: "Your browser is not told where that folder is on disk, only its", color: C_DIM },
+        { text: "name, so only the name can be shown here.", color: C_DIM },
+      );
+    }
     if (status.problems.length > 0) {
       lines.push({ text: "", color: C_FG }, { text: "Could not be used:", color: C_DANGER });
       for (const p of status.problems.slice(0, 8)) {
@@ -603,6 +681,101 @@ async function showModSources(
     }
   }
   await showTextScreen(term, "Where mods come from", lines);
+}
+
+/**
+ * Choose, reconnect, or forget the mods folder.
+ *
+ * Returns whether anything changed, so the caller can offer the reload that makes
+ * it take effect. Every branch is reported: a cancelled picker and a refused
+ * permission look identical from here otherwise, and silence after a folder failed
+ * to attach is how a player concludes the feature is broken.
+ */
+async function manageModFolder(
+  term: GlyphTerm,
+  picker: ModFolderPicker,
+  status: DiskPackStatus | undefined,
+  savedName: string | null,
+): Promise<boolean> {
+  /* A saved folder that produced no readable directory is the lapsed-permission
+   * case: the handle is still remembered, the browser just will not read it until
+   * the player says so from a keypress. */
+  const lapsed = savedName !== null && status?.available !== true;
+
+  type Row = "pick" | "reconnect" | "forget" | "about";
+  const items: MenuItem[] = [];
+  const rows: Row[] = [];
+  const add = (label: string, row: Row, color: string, hint: string): void => {
+    items.push({ label, color, hint });
+    rows.push(row);
+  };
+
+  if (lapsed) {
+    add(
+      `Reconnect "${savedName}"`,
+      "reconnect",
+      C_WARN,
+      "Your browser needs permission again before it will read that folder.",
+    );
+  }
+  add(
+    savedName === null ? "Choose a mods folder..." : "Choose a different folder...",
+    "pick",
+    C_FG,
+    "A folder of mods, or one mod's own folder.",
+  );
+  if (savedName !== null) {
+    add(
+      `Stop using "${savedName}"`,
+      "forget",
+      C_DIM,
+      "The bundled mods stay; nothing on your disk is touched.",
+    );
+  }
+  add("What is this?", "about", C_DIM, "Where mods come from, and the folder layout.");
+
+  for (;;) {
+    const pick = await selectFromMenu(term, "Mods folder", items, "[ ESC to go back ]");
+    if (pick === null) return false;
+    const row = rows[pick];
+    if (row === "about") {
+      await showModSources(term, status, true);
+      continue;
+    }
+    if (row === "pick") {
+      const name = await picker.pick();
+      if (name === null) return false; /* cancelled: not a failure, no message */
+      await showTextScreen(term, "Mods folder", [
+        { text: `Using "${name}".`, color: C_ENABLED },
+        { text: "", color: C_FG },
+        { text: "Reload to read it. Any mod in it appears in this list, off until", color: C_FG },
+        { text: "you turn it on - the same as a bundled one.", color: C_FG },
+      ]);
+      return true;
+    }
+    if (row === "reconnect") {
+      const ok = await picker.reconnect();
+      await showTextScreen(term, "Mods folder", [
+        ok
+          ? { text: `Reconnected to "${savedName}".`, color: C_ENABLED }
+          : { text: "Permission was not granted, so that folder stays unread.", color: C_DANGER },
+        { text: "", color: C_FG },
+        ok
+          ? { text: "Reload to read it.", color: C_FG }
+          : { text: "You can try again, or choose a different folder.", color: C_FG },
+      ]);
+      if (ok) return true;
+      continue;
+    }
+    /* forget */
+    await picker.forget();
+    await showTextScreen(term, "Mods folder", [
+      { text: `No longer using "${savedName}".`, color: C_FG },
+      { text: "", color: C_FG },
+      { text: "Nothing on your disk was changed. Reload to drop its mods.", color: C_FG },
+    ]);
+    return true;
+  }
 }
 
 /**
@@ -617,7 +790,13 @@ export async function runModManager(
   for (;;) {
     const catalog = deps.listCatalog();
     const items: MenuItem[] = catalog.map(rowLabel);
-    type ActionKind = "conflicts" | "profiles" | "install" | "reload" | "done";
+    type ActionKind =
+      | "conflicts"
+      | "profiles"
+      | "install"
+      | "folder"
+      | "reload"
+      | "done";
     type RowKind = { kind: "mod"; id: string } | { kind: ActionKind };
     const rowKinds: RowKind[] = catalog.map((m) => ({
       kind: "mod" as const,
@@ -640,13 +819,31 @@ export async function runModManager(
     addAction("View conflicts", "conflicts", C_FG, "Which enabled content mods contest the same records.");
     addAction("Profiles...", "profiles", C_FG, "Save / apply / delete named mod setups.");
     const diskStatus = deps.diskPackStatus?.();
+    /* The saved folder's name is read fresh each pass, because picking or
+     * forgetting one changes it and the row has to follow. */
+    const savedFolder = deps.modFolder ? await deps.modFolder.savedName() : null;
+    if (deps.modFolder) {
+      const row = modFolderRow(savedFolder, diskStatus?.available === true);
+      addAction(
+        row.label,
+        "folder",
+        row.color,
+        savedFolder === null
+          ? "Read mods from a folder on your computer."
+          : row.lapsed
+            ? "Your browser needs permission again before it will read it."
+            : "Choose another, reconnect, or stop using it.",
+      );
+    }
     addAction(
       "Where mods come from...",
       "install",
       C_DIM,
       diskStatus?.available === true
         ? "Your mods folder: path, contents, and anything unreadable."
-        : "Why this build has no mods folder.",
+        : deps.modFolder
+          ? "The folder layout, and how one is read."
+          : "Why this build has no mods folder.",
     );
     if (dirty) {
       addAction("Apply changes and reload", "reload", C_WARN, "Reload so enable/disable/order take effect.");
@@ -695,7 +892,14 @@ export async function runModManager(
     } else if (rk.kind === "profiles") {
       if (await manageProfiles(term, deps)) dirty = true;
     } else if (rk.kind === "install") {
-      await showModSources(term, deps.diskPackStatus?.());
+      await showModSources(term, deps.diskPackStatus?.(), deps.modFolder !== undefined);
+    } else if (rk.kind === "folder") {
+      if (
+        deps.modFolder &&
+        (await manageModFolder(term, deps.modFolder, diskStatus, savedFolder))
+      ) {
+        dirty = true;
+      }
     } else if (rk.kind === "reload") {
       deps.requestReload();
       return; // reload takes over
