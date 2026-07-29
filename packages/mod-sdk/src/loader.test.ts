@@ -258,10 +258,19 @@ describe("composeContentPacks: per-record ops on passthrough files", () => {
         store: { fieldPatches: { "core:store-general": [{ op: "mul", path: "turnover", value: 10 }] } },
       },
     };
-    const composed = composeContentPacks([passthroughCore(), b, a]);
-    expect(composed.problems).toEqual([]);
-    // load order is lexicographic among independents: a-mod (9+1) then b-mod (x10)
-    expect(recordsOf(composed, "store")[0]?.["turnover"]).toBe(100);
+    /* Load order among independents is the CALLER'S order, so the arithmetic is
+     * the visible proof of it: turnover starts at 9, a-mod adds 1 and b-mod
+     * multiplies by 10, and the two orders give two different numbers. This used
+     * to assert 100 for the b,a input with the comment "load order is
+     * lexicographic among independents" - i.e. the resolver re-sorted the caller's
+     * list and a player reordering these two mods saw no change. */
+    const bFirst = composeContentPacks([passthroughCore(), b, a]);
+    expect(bFirst.problems).toEqual([]);
+    expect(recordsOf(bFirst, "store")[0]?.["turnover"]).toBe(91); // 9*10 then +1
+
+    const aFirst = composeContentPacks([passthroughCore(), a, b]);
+    expect(aFirst.problems).toEqual([]);
+    expect(recordsOf(aFirst, "store")[0]?.["turnover"]).toBe(100); // 9+1 then *10
   });
 });
 
