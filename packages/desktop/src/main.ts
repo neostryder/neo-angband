@@ -145,6 +145,17 @@ const MIME: Record<string, string> = {
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
+  /* A mod ships images and text of its own, and an unlisted extension is served
+   * with no content type at all - which an <img> will load anyway but a
+   * `fetch().json()` and an SVG will not. */
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp",
+  ".txt": "text/plain; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
+  ".md": "text/plain; charset=utf-8",
   ".woff": "font/woff",
   ".woff2": "font/woff2",
   ".wav": "audio/wav",
@@ -227,16 +238,21 @@ function serveFile(
  * files as its CODE. The two are kept apart because they are gated differently:
  * records are composed, code is imported only once the mod is enabled, its
  * declared ABI matches and the player has consented (web/src/mod-code.ts), and
- * every one of those has to be decided before the module runs. Anything else a
- * pack ships (tile images, licences, a readme) is still SERVED by the route below
- * and fetched by name from the manifest that references it; it is simply neither
- * a record nor code.
+ * every one of those has to be decided before the module runs. Everything else a
+ * pack ships - tile images, sounds, a licence, nested data - is `assets`, served by
+ * the route below and reached through the plugin context's assetUrl.
+ *
+ * All three lists are pack-relative PATHS, so a pack's subdirectories are
+ * expressible. They used to be bare top-level filenames, which made a mod's
+ * `tiles/` and `lib/` folders invisible to the game while the server underneath
+ * would have served them perfectly well.
  */
 interface ModsIndex {
   readonly packs: readonly {
     readonly id: string;
     readonly files: readonly string[];
     readonly code: readonly string[];
+    readonly assets: readonly string[];
   }[];
   /** load-order.json's `order`, or [] when the file is absent or unreadable. */
   readonly order: readonly string[];
@@ -263,8 +279,32 @@ function readLoadOrder(): readonly string[] {
   }
 }
 
+/** How deep into a pack the index walks; see the note in mod-folder.ts. */
+const MAX_PACK_DEPTH = 12;
+
+/** Every file under `dir`, by path relative to it, with `/` separators. */
+function walkPack(dir: string, prefix = "", depth = 0, out: string[] = []): string[] {
+  if (depth > MAX_PACK_DEPTH) return out;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    /* Symlinks are not followed: a link out of the mods folder would let a pack
+     * name any file on the machine, and the loopback server would serve it. */
+    if (e.isSymbolicLink()) continue;
+    if (e.isFile()) out.push(`${prefix}${e.name}`);
+    else if (e.isDirectory()) {
+      walkPack(path.join(dir, e.name), `${prefix}${e.name}/`, depth + 1, out);
+    }
+  }
+  return out;
+}
+
 function modsIndex(): ModsIndex {
-  const packs: { id: string; files: string[]; code: string[] }[] = [];
+  const packs: { id: string; files: string[]; code: string[]; assets: string[] }[] = [];
   let names: string[] = [];
   try {
     names = fs
@@ -276,21 +316,19 @@ function modsIndex(): ModsIndex {
     /* no mods dir yet */
   }
   for (const id of names) {
-    let files: string[] = [];
-    let code: string[] = [];
-    try {
-      const entries = fs
-        .readdirSync(path.join(MODS_DIR, id), { withFileTypes: true })
-        .filter((e) => e.isFile())
-        .map((e) => e.name)
-        .sort((a, b) => a.localeCompare(b));
-      files = entries.filter((n) => n.toLowerCase().endsWith(".json"));
-      code = entries.filter((n) => /\.m?js$/i.test(n));
-    } catch {
-      /* unreadable pack: listed with no files, so the renderer reports it as a
-       * pack it could not read rather than silently omitting it. */
+    const files: string[] = [];
+    const code: string[] = [];
+    const assets: string[] = [];
+    /* The WHOLE tree, not the top level. A mod is data, images and scripts in a
+     * folder; listing only its root made `tiles/orc.png` and `lib/dice.js` invisible
+     * to the game, which is a mod system that silently drops half of a mod. Record
+     * contributions stay top-level-only - see disk-packs.ts for why. */
+    for (const rel of walkPack(path.join(MODS_DIR, id))) {
+      if (/\.m?js$/i.test(rel)) code.push(rel);
+      else if (rel.toLowerCase().endsWith(".json") && !rel.includes("/")) files.push(rel);
+      else assets.push(rel);
     }
-    packs.push({ id, files, code });
+    packs.push({ id, files, code, assets });
   }
   return { packs, order: readLoadOrder(), dir: MODS_DIR };
 }

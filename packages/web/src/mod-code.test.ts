@@ -34,6 +34,7 @@ function codePack(id: string, over: Partial<PackManifest> = {}): DiskPack {
     } as PackManifest,
     files: {},
     code: [PLUGIN_FILE],
+    assets: [],
   };
 }
 
@@ -43,6 +44,7 @@ function dataPack(id: string): DiskPack {
     manifest: { id, name: id, version: "1.0.0", shape: "content" } as PackManifest,
     files: { monster: [] },
     code: [],
+    assets: [],
   };
 }
 
@@ -253,20 +255,42 @@ describe("a broken plugin is one line, not a boot failure", () => {
     expect(report.problems[0]).toContain("mod API");
   });
 
-  it("explains a relative import rather than repeating the browser's message", async () => {
-    /* The commonest real failure, and the bare message ("Failed to fetch
-     * dynamically imported module") points at the entry file instead of the line
-     * that broke. */
+  it("explains a BARE specifier rather than repeating the browser's message", async () => {
+    /* Relative imports are resolved before the import now (mod-modules.ts), so a
+     * resolution failure here means the one import a folder plugin cannot have: a
+     * package name. It is also the first mistake anyone who has written a bundled
+     * mod makes, and the browser's message names the specifier without saying what
+     * to do instead - which is the part that matters, since there is nothing to
+     * import at all. */
     const report = await loadModCode({
       packs: [codePack("m")],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
       consented: NO_CAPS,
       importer: () =>
-        Promise.reject(new Error("Failed to fetch dynamically imported module: blob:x")),
+        Promise.reject(
+          new Error('Failed to resolve module specifier "@neo-angband/core"'),
+        ),
     });
-    expect(report.problems[0]).toContain("single plugin.js");
-    expect(report.problems[0]).toContain("blob:");
+    expect(report.problems[0]).toContain("@neo-angband/core");
+    expect(report.problems[0]).toContain("ctx.core");
+    /* And it must not tell the author to bundle, which is what it used to say and
+     * is now simply wrong: relative imports of the mod's own files work. */
+    expect(report.problems[0]).toContain("./lib/dice.js");
+    expect(report.problems[0]).not.toMatch(/single plugin\.js|bundle it into/u);
+  });
+
+  it("carries the pack's record files to the caller for the plugin's context", async () => {
+    const pack = codePack("m");
+    const report = await loadModCode({
+      packs: [{ ...pack, files: { monster: [{ name: "Grip" }] } }],
+      codeUrl: resolver(),
+      enabled: ALL_ENABLED,
+      consented: NO_CAPS,
+      importer: () =>
+        Promise.resolve({ default: { api: MOD_API_VERSION, hooks: () => undefined } }),
+    });
+    expect(report.plugins[0]?.data).toEqual({ monster: [{ name: "Grip" }] });
   });
 
   it("one bad plugin does not cost a good one", async () => {

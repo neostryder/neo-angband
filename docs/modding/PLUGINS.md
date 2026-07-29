@@ -12,12 +12,23 @@ A mod that only changes records needs no code — drop `manifest.json` plus one
 
 ## The shape
 
+A mod is a **folder**, and it may hold as much as it needs to: several scripts,
+records, images, sounds, data of its own.
+
 ```
 mods/my-mod/
   manifest.json
-  plugin.js        <- one ES module, default-exporting a plugin
-  monster.json     <- records too, if you want both
+  plugin.js          <- the entry point, default-exporting a plugin
+  lib/dice.js        <- more scripts; import them relatively
+  lib/format.js
+  monster.json       <- a record contribution, if you want both
+  tiles/orc.png      <- an image: await ctx.assetUrl("tiles/orc.png")
+  data/spawns.json   <- your own data (nested .json is an asset, not a record)
+  README.md
 ```
+
+Only `plugin.js` is loaded by name. Everything else your code reaches itself —
+scripts by importing them, everything else through `ctx.assetUrl`.
 
 `manifest.json` must declare `shape: "plugin"` and `modApi`:
 
@@ -60,7 +71,7 @@ export default {
 Both members are optional. A plugin that declares neither is refused, because a
 mod with no code simply ships no `plugin.js`.
 
-## Why there are no imports
+## Why the engine is not imported
 
 `ctx.core` **is** the engine — the same live module instance the game is running
 on, passed in rather than imported.
@@ -82,27 +93,65 @@ What `ctx` carries:
 | `flags` | **your** resolved rule toggles — `choices[flag] ?? rule.default`, sliced to the rules your own manifest declares |
 | `core` | the live engine namespace: core's entire public API |
 | `state` | the live `GameState` (present in `register`, absent in `hooks`) |
+| `assetUrl` | `(path) => Promise<string \| null>` — a URL for one of *your* files |
+| `data` | your own record files, parsed, keyed without `.json` |
 | `log` | a diagnostic line; the host decides where it goes |
 
 `flags` is sliced per mod on purpose: a mod must not be able to read or act on
 another mod's toggles, or its behaviour would silently depend on which other mods
 the player happened to enable.
 
-## One file, no relative imports
+## Several scripts
 
-**Bundle your plugin into a single `plugin.js`.**
+Split your plugin up however you like and import the pieces relatively:
 
-On the desktop build your folder is served over the loopback HTTP server, so a
-relative `./helper.js` beside your plugin resolves fine. In a browser tab the
-player's folder is a set of file handles with no location at all, so the plugin is
-imported from a `blob:` URL — and a relative specifier then resolves against the
-blob URL, which points at nothing.
+```js
+// plugin.js
+import { roll } from "./lib/dice.js";
+import { describe } from "./lib/format.js";
+```
 
-If that is what broke, the mod manager says so rather than repeating the browser's
-"Failed to fetch dynamically imported module", which points at your entry file
-instead of the line that failed.
+Two rules, both of them things a browser cannot do rather than choices:
 
-(Bare specifiers are unaffected either way, because there are none.)
+- **Put the extension on.** `"./lib/dice.js"`, not `"./lib/dice"`. Extensionless
+  resolution is a Node and bundler convenience; no browser has ever done it.
+- **No cycles.** Two files that import each other cannot both be loaded from a
+  browser folder — a file's address there only exists once its text is final, and a
+  cycle needs both addresses at once. Move the shared part into a third file.
+
+Anything else works, in as many subdirectories as you want. If a script is missing
+or two import each other, the mod manager names *those* files, not your entry
+point.
+
+## Images, sounds, and your own data
+
+Ask for a URL; do not build a path.
+
+```js
+register(host, ctx) {
+  ctx.assetUrl("tiles/orc.png").then((url) => {
+    if (url) { /* an <img>, a canvas draw, a texture */ }
+  });
+}
+
+// data too - your own JSON, not a record contribution
+const spawns = await fetch(await ctx.assetUrl("data/spawns.json")).then((r) => r.json());
+```
+
+On desktop that URL is an `http:` one under the shell's own server; in a browser
+tab it is a `blob:`. A mod that hard-codes either is a mod that runs on one of the
+two front ends. The URL lasts for the session, and asking twice gives you the same
+one.
+
+`ctx.assetUrl` only ever reaches **your own** folder — the id is fixed by the host,
+and a path that climbs out of it is refused.
+
+## Bare specifiers still do not work
+
+`import { tunnelAux } from "@neo-angband/core"` cannot resolve from a folder, and
+there is nothing to import: the engine is `ctx.core`, already live. That is the one
+import a folder plugin cannot have, and the mod manager says so instead of
+repeating the browser's message.
 
 ## Version contract
 

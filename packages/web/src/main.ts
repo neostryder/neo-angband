@@ -225,7 +225,7 @@ import {
   mergePluginManifests,
   setModCode,
 } from "./mod-code";
-import { modPluginContext } from "./mod-context";
+import { modOwnFiles, modPluginContext } from "./mod-context";
 import {
   folderPickingSupported,
   forgetModFolder,
@@ -8476,7 +8476,12 @@ for (const loaded of activeModCode().plugins) {
     register.call(
       loaded.plugin,
       host,
-      modPluginContext(loaded.id, folderRuleFlags.get(loaded.id) ?? {}, state),
+      modPluginContext(
+        loaded.id,
+        folderRuleFlags.get(loaded.id) ?? {},
+        state,
+        modOwnFiles(loaded.data),
+      ),
     );
     installedPluginIds.add(loaded.id);
   } catch (err) {
