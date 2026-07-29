@@ -138,6 +138,7 @@ export function diskPackStatus(): {
   available: boolean;
   dir: string | null;
   count: number;
+  bundledCount: number;
   problems: readonly string[];
   kind: ModDirKind;
 } {
@@ -149,6 +150,11 @@ export function diskPackStatus(): {
     available: r.available,
     dir: r.dir,
     count: r.packs.length,
+    /* The SHIPPED bundled mods, which is what the manager lists - the glob also
+     * picks up the dev-only demo-* proofs, and isShippedMod is what filters them
+     * out of the catalog, so counting them here would disagree with the list the
+     * player is looking at. */
+    bundledCount: [...bundledModIds()].filter((id) => isShippedMod(id)).length,
     problems: [...r.problems, ...shadowed],
     kind: r.kind,
   };
