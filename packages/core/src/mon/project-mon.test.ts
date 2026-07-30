@@ -120,7 +120,9 @@ describe("monster projection handler table", () => {
        * back, so the failure stays legible as this one assertion instead of a
        * cascade in unrelated FIRE tests. */
       try {
-        table[PROJ.FIRE] = original;
+        // `original` is `| undefined` under noUncheckedIndexedAccess; the slot is
+        // never actually empty (the test above asserts all 56 are functions).
+        table[PROJ.FIRE] = original ?? null;
         table.length = 56;
       } catch {
         /* still frozen, which is the passing case - nothing to undo */
