@@ -34,6 +34,7 @@ import {
   TileMap,
 } from "@neo-angband/core";
 import type { GraphicsMode, TilePrefsDeps } from "@neo-angband/core";
+import type { PackFileResolver } from "./pack-files";
 
 // The Graphics-menu mode list, re-exported so the whole tile subsystem is
 // reachable through this module. CORE's tile sets come from the ported
@@ -109,10 +110,35 @@ export class TileSet implements TileBlitter {
   /** Called once the atlas image has finished loading (for a repaint). */
   onReady: (() => void) | null = null;
 
-  constructor(mode: GraphicsMode, url: string) {
+  /**
+   * Build the tileset and start its atlas load.
+   *
+   * Takes a RESOLVER for the pack's files rather than a finished URL, because two
+   * of the three places a tile pack can come from have no URL until something
+   * mints one (see PackFileResolver). Construction stays synchronous - the caller
+   * gets an object it can hold and draw ASCII through - and the resolve happens on
+   * its own turn, exactly as LinoleumPack's asset loads do. A resolver that
+   * returns null (or throws) leaves the atlas unloaded, which is the same outcome
+   * as a 404: the map stays ASCII.
+   */
+  constructor(mode: GraphicsMode, resolve: PackFileResolver) {
     this.mode = mode;
     this.cellWidth = mode.cellWidth;
     this.cellHeight = mode.cellHeight;
+    void this.startLoad(resolve, `${mode.directory}/${mode.file}`);
+  }
+
+  private async startLoad(
+    resolve: PackFileResolver,
+    relPath: string,
+  ): Promise<void> {
+    let url: string | null;
+    try {
+      url = await resolve(relPath);
+    } catch {
+      url = null;
+    }
+    if (url === null) return;
     try {
       const img = new Image();
       img.addEventListener("load", () => {
@@ -177,51 +203,52 @@ export class TileSet implements TileBlitter {
 
 export interface TileRendererOptions {
   /**
-   * Base URL/path the user's tile pack lives under (e.g. "/tiles/" or
-   * "https://my-cdn.example/angband-tiles/"). The atlas is fetched from
-   * `${baseUrl}${mode.directory}/${mode.file}`. Omitted/empty -> tiles off.
+   * How to reach the pack's files, by path relative to the pack ROOT - so the
+   * atlas is `${mode.directory}/${mode.file}`. For a pack with a real base URL
+   * (`public/tiles/`, a `?tiles=` override, the desktop shell's loopback folder)
+   * that is `urlBaseResolver(base)`; for a mod in a picked folder or installed
+   * from GitHub it is the mod's own asset resolver. Omitted -> tiles off.
    */
-  baseUrl?: string;
+  resolve?: PackFileResolver;
   /** The graphics-mode id to use (list.txt grafID). Defaults to none. */
   grafID?: number;
 }
 
 /**
  * Build a TileSet for the configured graphics mode, or null when tiles are
- * disabled: no base URL, GRAPHICS_NONE, or an unknown mode id. Never throws.
+ * disabled: no resolver, GRAPHICS_NONE, or an unknown mode id. Never throws.
  */
 export function createTileRenderer(options: TileRendererOptions): TileSet | null {
-  const baseUrl = options.baseUrl ?? "";
+  const resolve = options.resolve;
   const grafID = options.grafID ?? GRAPHICS_NONE;
-  if (!baseUrl || grafID === GRAPHICS_NONE) return null;
+  if (resolve === undefined || grafID === GRAPHICS_NONE) return null;
 
   const mode = getGraphicsMode(grafID);
   if (!mode || mode.grafID === GRAPHICS_NONE || !mode.file) return null;
 
-  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  const url = `${base}${mode.directory}/${mode.file}`;
-  return new TileSet(mode, url);
+  return new TileSet(mode, resolve);
 }
 
 /**
- * Fetch a graphics mode's pref files and parse them into a core TileMap. The
- * mode's `pref` (graf-*.prf) is fetched first; its `%:<file>` include lines
+ * Fetch a graphics mode's pref files and parse them into a core TileMap, through
+ * the same pack-relative resolver the atlas load uses. The mode's `pref`
+ * (graf-*.prf) is fetched first; its `%:<file>` include lines
  * (ui-prefs.c process_pref_file) pull in the pack's flvr-*.prf and xtra-*.prf,
  * which are pre-fetched here so the synchronous parser's loadFile resolver can
  * satisfy them. Returns null on any fetch failure - the caller then keeps the
  * map ASCII. Never throws.
  */
 export async function loadTilePrefs(
-  baseUrl: string,
+  resolve: PackFileResolver,
   mode: GraphicsMode,
   deps: TilePrefsDeps,
 ): Promise<TileMap | null> {
   if (!mode.pref || mode.pref === "none") return null;
-  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  const dir = `${base}${mode.directory}/`;
   const fetchText = async (name: string): Promise<string | null> => {
     try {
-      const r = await fetch(dir + name);
+      const url = await resolve(`${mode.directory}/${name}`);
+      if (url === null) return null;
+      const r = await fetch(url);
       return r.ok ? await r.text() : null;
     } catch {
       return null;

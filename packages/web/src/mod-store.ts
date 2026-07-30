@@ -137,6 +137,69 @@ export function resolveEnabledIds(opts: {
   return out;
 }
 
+/**
+ * The effective enabled-mod ids, over the LIVE browser inputs: ?mods=, the saved
+ * set, the player's explicit per-mod decisions, and the mods directory's
+ * load-order.json.
+ *
+ * One reader, because there were three. The content composer (pack.ts), the tile
+ * discovery (tile-mods.ts) and this module each spelled out the same URL and
+ * localStorage reads, and two of them hardcoded the key strings that are constants
+ * ten lines above. They had already drifted: only pack.ts passed `diskOrder` and
+ * `choices`, so a tiles mod an external manager deployed was COMPOSED as content
+ * and contributed no Graphics row - enabled by one answer and disabled by the
+ * other, in the same launch.
+ *
+ * Every read is guarded because a host may have no `location` (a non-browser test)
+ * and no `localStorage` (private mode), and in both cases the honest answer is "no
+ * recorded opinion", not a throw at boot.
+ */
+export function readEnabledModIds(input: {
+  discovered: readonly string[];
+  diskOrder?: readonly string[];
+}): string[] {
+  let url: string[] | null = null;
+  try {
+    const raw = new URLSearchParams(location.search).get("mods");
+    if (raw !== null) url = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  } catch {
+    /* no location (non-browser host) */
+  }
+  let stored: string[] | null = null;
+  try {
+    const raw = localStorage.getItem(ENABLED_KEY);
+    if (raw !== null) {
+      const arr = JSON.parse(raw) as unknown;
+      if (Array.isArray(arr)) {
+        stored = arr.filter((s): s is string => typeof s === "string");
+      }
+    }
+  } catch {
+    /* no localStorage, or a corrupt value: treat as no saved set */
+  }
+  const choices: Record<string, boolean> = {};
+  try {
+    const raw = localStorage.getItem(CHOICE_KEY);
+    if (raw !== null) {
+      const obj = JSON.parse(raw) as unknown;
+      if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
+        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+          if (typeof v === "boolean") choices[k] = v;
+        }
+      }
+    }
+  } catch {
+    /* no localStorage */
+  }
+  return resolveEnabledIds({
+    url,
+    stored,
+    discovered: input.discovered,
+    ...(input.diskOrder === undefined ? {} : { diskOrder: input.diskOrder }),
+    choices,
+  });
+}
+
 /** The minimal Storage surface used here (localStorage in the browser). */
 export interface StorageLike {
   getItem(key: string): string | null;

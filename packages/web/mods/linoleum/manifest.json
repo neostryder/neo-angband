@@ -13,7 +13,7 @@
       "grafID": 101,
       "engine": "linoleum",
       "menuname": "Original Tiles (Linoleum)",
-      "path": "mods/linoleum/original-tiles"
+      "path": "original-tiles"
     }
   ]
 }

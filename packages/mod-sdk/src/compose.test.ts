@@ -57,6 +57,61 @@ describe("manifest", () => {
     );
   });
 
+  /*
+   * `tilePacks` was read loosely off the raw JSON and was not in the schema at all,
+   * so a typo produced no error - the entry was skipped and the mod author saw a
+   * Graphics row that never appeared. These pin the fields the tile discovery
+   * actually reads.
+   */
+  it("validates a tilePacks entry, and names the field when it is wrong", () => {
+    const withPacks = (packs: unknown): unknown => ({
+      ...manifest("art"),
+      shape: "tiles",
+      tilePacks: packs,
+    });
+    expect(
+      validateManifest(
+        withPacks([
+          { grafID: 101, engine: "linoleum", menuname: "Hand-drawn", path: "my-set" },
+          { grafID: 3 },
+        ]),
+      ).tilePacks,
+    ).toHaveLength(2);
+    expect(() => validateManifest(withPacks({}))).toThrow(/tilePacks must be an array/);
+    expect(() => validateManifest(withPacks(["x"]))).toThrow(/must be an object/);
+    expect(() => validateManifest(withPacks([{}]))).toThrow(/grafID must be a/);
+    expect(() => validateManifest(withPacks([{ grafID: 1.5 }]))).toThrow(/grafID/);
+    expect(() =>
+      validateManifest(withPacks([{ grafID: 1, engine: "sprites" }])),
+    ).toThrow(/engine must be one of tilesheet, linoleum/);
+    expect(() =>
+      validateManifest(withPacks([{ grafID: 1, menuname: 7 }])),
+    ).toThrow(/menuname must be a string/);
+  });
+
+  /*
+   * The old form of `path` was a site-root-relative URL base, which only a mod
+   * compiled into the app could know. Refused at the edge now, because unconverted
+   * it resolves to mods/<id>/mods/<id>/... - a 404, and ASCII with nothing said.
+   */
+  it("refuses a tilePacks path that is not relative to the mod folder", () => {
+    const withPath = (path: unknown): unknown => ({
+      ...manifest("art"),
+      shape: "tiles",
+      tilePacks: [{ grafID: 101, path }],
+    });
+    expect(validateManifest(withPath("tiles/my-set")).tilePacks?.[0]?.path).toBe(
+      "tiles/my-set",
+    );
+    for (const bad of ["/mods/art/tiles", "https://cdn.example/tiles", "\\mods\\art"]) {
+      expect(() => validateManifest(withPath(bad)), bad).toThrow(/must be relative/);
+    }
+    expect(() => validateManifest(withPath("../other-mod/tiles"))).toThrow(
+      /stay inside the mod folder/,
+    );
+    expect(() => validateManifest(withPath(3))).toThrow(/path must be a string/);
+  });
+
   it("slugs names into stable refs", () => {
     expect(slugify("Grip, Farmer Maggot's Dog")).toBe(
       "grip-farmer-maggot-s-dog",

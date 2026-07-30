@@ -552,30 +552,46 @@ one.** Divergences worth knowing:
   Shockbolt's two modes are filtered out of the menu for licence reasons
   (`tile-catalog.ts:41-45`, `:99-113`).
 - A `shape:"tiles"` mod CAN register a tileset: `tilePacks[]` is read by
-  `enabledTileModes` (`packages/web/src/tile-mods.ts:98-149`) and layered over
-  core by `composeTileModes` (`tile-catalog.ts:129-151`). A `linoleum`-engine
-  pack may claim a NEW grafID (>= 100) and add a menu row
-  (`tile-mods.ts:119-135`); a `tilesheet` pack may only re-skin a grafID core
-  already knows (`tile-mods.ts:137-145`). Live example:
+  `enabledTileModes` (`packages/web/src/tile-mods.ts`) and layered over core by
+  `composeTileModes` (`tile-catalog.ts`). A `linoleum`-engine pack may claim a NEW
+  grafID (>= 100) and add a menu row; a `tilesheet` pack may only re-skin a grafID
+  core already knows. Live example:
   `packages/web/mods/linoleum/manifest.json:11-18`.
-- **But discovery is the same build-time glob plus `isShippedMod`**:
-  `import.meta.glob("../mods/*/manifest.json")` at
-  `packages/web/src/tile-mods.ts:183-199`, filtered at `:195`. And
-  `tile-mods.ts` never imports `diskPacks()`, whose only consumers are content
-  composition and enable-resolution (`pack.ts:118-124`, `:130`, `:145`, `:280`).
-- `tilePacks` is also **not in the validated schema**: `PackManifest`
-  (`packages/mod-sdk/src/manifest.ts:49-119`) has no such field;
-  `tile-mods.ts:61-73` reads it loosely off the raw JSON.
 
-**A concrete, measurable asymmetry worth fixing first.** On desktop the shell
+**RESOLVED 2026-07-30 (gap 8 below).** Both halves of this section's complaint are
+fixed, and both fixes were needed together:
+
+- **Discovery now reads the mods DIRECTORY as well as the bundle glob.**
+  `mergeModSources` (`tile-mods.ts`) merges `diskPacks()` into the bundled glob,
+  first-wins on id collision - the same rule `pack.ts` applies to the same two
+  sources. `discover()` also resolves the enabled set through the one shared reader
+  (`mod-store.readEnabledModIds`), which the tile surface previously did NOT do: it
+  passed no `diskOrder`, so a tiles mod an external manager deployed was composed
+  as content and contributed no Graphics row - enabled by one answer and disabled by
+  the other, in the same launch.
+- **`tilePacks[].path` is now MOD-relative, and both engines take a resolver.** The
+  field used to be a site-root-relative URL base, which only a bundled mod can
+  know: a picked folder has no URL for its files until their bytes are wrapped in a
+  `blob:`, and an installed mod lives in IndexedDB. `PackFileResolver`
+  (`pack-files.ts`) is the seam; `tilePackResolver` composes a mod's source with its
+  `path`; `createTileRenderer`/`loadTilePrefs` and `loadLinoleumPack` all take one,
+  so the field cannot mean one thing per engine.
+- **`tilePacks` is in the validated schema**: `PackTilePack` +
+  `validateTilePacks` (`packages/mod-sdk/src/manifest.ts`), which also refuses the
+  old site-path form of `path` rather than letting it 404 into ASCII in silence.
+
+Measured, not asserted: `tile-mods.test.ts` registers a Graphics row for a pack
+that is only in the mods directory and proves its art resolves through the report's
+`assetUrl`; `tiles.test.ts` pins the tilesheet engine's two reads (atlas and
+`graf-*.prf` + its `%:` includes) to the same resolver. Eight mutations, each
+failing a named test.
+
+The desktop side of the asymmetry that made this worth fixing first: the shell
 already serves arbitrary pack files over loopback INCLUDING images (MIME table
 `packages/desktop/src/main.ts:145-147` for `.png`/`.svg`/`.ico`, `:150-152` for
 `.wav`/`.mp3`/`.ogg`; `/mods/` route at `:312-314`), and a disk `shape:"tiles"`
-pack IS surfaced in the mod manager because `discoverContentModManifests`
-(`pack.ts:178-187`) lists every non-plugin manifest from `discoverMods()`. So a
-player can drop a tile pack in the mods folder, see it listed, enable it - and get
-no new Graphics row, because `availableTileModes` (`main.ts:1044-1047`) comes from
-the bundle-only glob. **The bytes are reachable; the registration is not.**
+pack was already surfaced in the mod manager by `discoverContentModManifests`
+(`pack.ts`). The bytes were reachable; only the registration was not.
 
 The non-mod escape hatch is `?tiles=<base-url>` + `?graf=<id>`
 (`tiles.ts:178-187`, `main.ts:1005-1006`), which also unlocks the full catalog
@@ -653,9 +669,12 @@ sort). Every other `locale` hit is `localeCompare`. All UI text is inline TS
 string literals. There is nothing a mod could supply strings through - which is
 also worth noting against the standing "localization everywhere" intent.
 
-**Net for resources: 0 of 7 categories** (tiles, prefs, fonts, sounds, UI
-strings, help, art) is reachable by a non-bundled mod. Tiles is the only one with
-a mod seam at all, and it is bundle-gated.
+**Net for resources: 1 of 7 categories** (tiles, prefs, fonts, sounds, UI
+strings, help, art) is reachable by a non-bundled mod. Tiles was the only one with
+a mod seam at all and was bundle-gated; that gate is gone as of 2026-07-30, and the
+other six still have no manifest field and no discovery. The tile fix is the shape
+the rest would take: a manifest field, a merge that reads the mods directory as
+well as the bundle, and a resolver so the mod's own bytes are what load.
 
 ---
 
@@ -672,7 +691,7 @@ Ranked by how much of "the whole game can be made over" each one unlocks.
 | 5 | **Store behaviour is moddable** | **no** | There is no table to register into: `storeWillBuy` (`store/store.ts:235`) and `massProduce` (`:281`) are switches, and `StoreRegistry` is a `BoundStore[]` with linear scans (`store/bind.ts:129`). |
 | 6 | **Level generation architecture is moddable** | **partial** | `DungeonProfiles` (`gen/cave.ts:2758`) already has `registerBuilder` / `addProfile`, and `dungeon_profile.json` is one of the 24 patchable files - but there is no `registry:profile` facade, so a mod cannot reach the builders. This is the cheapest real win on the list: the registry exists; only the facade and capability are missing. |
 | 7 | **Resources: sounds / fonts / splash / help** | **no** | Manifest fields (`soundPacks`, `fontPacks`, …) plus discovery, and - on the desktop side only - nothing else, because the loopback server already serves images and audio from the mods folder (`packages/desktop/src/main.ts:145-152`, `:312-314`). |
-| 8 | **A disk tile pack registers a Graphics row** | **no** (listed, enableable, inert) | `enabledTileModes` must read `diskPacks()` as well as the bundle glob; `tilePacks` must join the validated `PackManifest` schema. The bytes are already served. |
+| 8 | **A disk tile pack registers a Graphics row** | **YES** (closed 2026-07-30) | Done. `mergeModSources` merges `diskPacks()` into the glob; `tilePacks[].path` became MOD-relative and both engines take a `PackFileResolver`, so a pack in a picked folder or installed from a repository reaches its own bytes; `tilePacks` joined the validated schema as `PackTilePack`. See section (c) above. |
 | 9 | **UI is moddable** | **no** | Menus are row-building FUNCTIONS (`game-menu.ts:56`, `:166`) and the 62-entry keypress table is declared inside a keydown closure (`main.ts:7337`, inside the handler opened at `:7149`), so there is nothing to register into even from inside the bundle. |
 | 10 | **Provenance survives into the running game and the save** | **no** | `loader.ts:126-129` drops `owner`/`modifiedBy`; every `ContentIdResolver` uses `CORE_NS` (`mod/ids.ts:183`), so mod content is saved as `core:*`. Until this is fixed, a save cannot honestly say which content produced it, and `-2` localid suffixes make ids order-dependent (`ids.ts:142-146`). |
 | 11 | **Load order means what the UI says it means** | **no** | `orderPacks` discards the given order (`loader.ts:80-84`); ties resolve lexicographically (`resolve.ts:128-131`). The conflict report already promises reordering works (`conflicts.ts:208-212`). |
