@@ -97,7 +97,13 @@ export type ModDirKind =
   /** The shell's own folder, beside the game (the desktop build). */
   | "app"
   /** A folder the player picked in the browser (mod-folder.ts). */
-  | "picked";
+  | "picked"
+  /**
+   * Mods downloaded from their own repositories and kept in IndexedDB
+   * (mod-install.ts). No path to show a player - they were never put anywhere -
+   * so the manager names the repository and tag instead.
+   */
+  | "installed";
 
 export interface DiskPackReport {
   readonly packs: readonly DiskPack[];

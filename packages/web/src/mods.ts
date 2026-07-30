@@ -40,6 +40,7 @@ import {
   type ScreenLine,
 } from "./overlay";
 import type { GlyphTerm } from "./term";
+import type { ModDirKind } from "./disk-packs";
 import type { CatalogMod, ModStore } from "./mod-store";
 import type { ModRuleDecl } from "./pack";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
@@ -70,8 +71,15 @@ export interface DiskPackStatus {
    */
   bundledCount: number;
   problems: readonly string[];
-  /** "app" = the shell's own folder; "picked" = one the player chose; "none". */
-  kind: "none" | "app" | "picked";
+  /**
+   * Which kind of source these came from.
+   *
+   * ModDirKind itself rather than a copy of its members. It was spelled out here as
+   * `"none" | "app" | "picked"`, and adding a fourth kind broke this assignment - which
+   * was the lucky outcome. The unlucky one is a copy that still compiles and no longer
+   * covers every case the producer can hand it.
+   */
+  kind: ModDirKind;
 }
 
 /**

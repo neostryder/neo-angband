@@ -34,7 +34,9 @@ import {
   NO_DISK_PACKS,
   readModDir,
 } from "./disk-packs";
+import { STORE_HANDLES, idbDelete, idbGet, idbPut, openDb } from "./idb";
 import { buildModuleGraph } from "./mod-modules";
+import { assetMime, sortPackFiles } from "./pack-files";
 
 /* ------------------------------------------------------------------ *
  * The File System Access API, declared structurally.
@@ -104,75 +106,13 @@ export function folderPickingSupported(scope: unknown = globalThis): boolean {
  * localStorage, and IndexedDB's structured clone is the only store that keeps one.
  * That is the entire reason this module touches IndexedDB - a mods folder the
  * player has to re-pick every launch is not a mods folder.
+ *
+ * The plumbing itself lives in idb.ts, shared with mod-install.ts. It used to be
+ * private here; a second copy meant two version numbers, and the store the other
+ * copy added would be missing on exactly the machines that had opened this one first.
  * ------------------------------------------------------------------ */
 
-const DB_NAME = "neo-angband";
-const DB_VERSION = 1;
-const STORE = "handles";
 const HANDLE_KEY = "modsDir";
-
-function openDb(scope: unknown): Promise<IDBDatabase | null> {
-  const idb = pickerScope(scope).indexedDB;
-  if (!idb) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    let req: IDBOpenDBRequest;
-    try {
-      req = idb.open(DB_NAME, DB_VERSION);
-    } catch {
-      resolve(null);
-      return;
-    }
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
-    };
-    /* Every failure resolves null rather than rejecting: private-browsing modes
-     * and storage-blocking policies fail here, and neither may stop the game. */
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => resolve(null);
-    req.onblocked = () => resolve(null);
-  });
-}
-
-function idbGet(db: IDBDatabase, key: string): Promise<unknown> {
-  return new Promise((resolve) => {
-    try {
-      const req = db.transaction(STORE, "readonly").objectStore(STORE).get(key);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(undefined);
-    } catch {
-      resolve(undefined);
-    }
-  });
-}
-
-function idbPut(db: IDBDatabase, key: string, value: unknown): Promise<boolean> {
-  return new Promise((resolve) => {
-    try {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put(value, key);
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
-      tx.onabort = () => resolve(false);
-    } catch {
-      resolve(false);
-    }
-  });
-}
-
-function idbDelete(db: IDBDatabase, key: string): Promise<void> {
-  return new Promise((resolve) => {
-    try {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).delete(key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-      tx.onabort = () => resolve();
-    } catch {
-      resolve();
-    }
-  });
-}
 
 /** A stored value is only a handle if it still behaves like one. */
 function asDirHandle(v: unknown): FsDirHandle | null {
@@ -189,7 +129,7 @@ export async function savedModFolder(
 ): Promise<FsDirHandle | null> {
   const db = await openDb(scope);
   if (!db) return null;
-  return asDirHandle(await idbGet(db, HANDLE_KEY));
+  return asDirHandle(await idbGet(db, STORE_HANDLES, HANDLE_KEY));
 }
 
 /** Remember this folder for later launches. Reports whether it stuck. */
@@ -199,13 +139,13 @@ export async function rememberModFolder(
 ): Promise<boolean> {
   const db = await openDb(scope);
   if (!db) return false;
-  return await idbPut(db, HANDLE_KEY, handle);
+  return await idbPut(db, STORE_HANDLES, HANDLE_KEY, handle);
 }
 
 /** Forget the saved folder (the mod manager's "use no folder" action). */
 export async function forgetModFolder(scope: unknown = globalThis): Promise<void> {
   const db = await openDb(scope);
-  if (db) await idbDelete(db, HANDLE_KEY);
+  if (db) await idbDelete(db, STORE_HANDLES, HANDLE_KEY);
 }
 
 /**
@@ -390,16 +330,11 @@ export function folderModSource(handle: FsDirHandle): ModDirSource {
         `${id}: "${d}" is nested more than ${MAX_PACK_DEPTH} levels deep and was not read`,
       );
     }
-    const files: string[] = [];
-    const code: string[] = [];
-    const assets: string[] = [];
-    for (const path of walked.files) {
-      const nested = path.includes("/");
-      if (isJs(path)) code.push(path);
-      else if (isJson(path) && !nested) files.push(path);
-      else assets.push(path);
-    }
-    return { id, files, code, assets, problems: deep.filter((p) => p.startsWith(`${id}:`)) };
+    return {
+      id,
+      ...sortPackFiles(walked.files),
+      problems: deep.filter((p) => p.startsWith(`${id}:`)),
+    };
   };
 
   return {
@@ -534,47 +469,6 @@ export function folderModSource(handle: FsDirHandle): ModDirSource {
       return url;
     },
   };
-}
-
-/**
- * The content type for an asset, by extension, or "" to use the File's own.
- *
- * Only the types a mod plausibly ships. Anything unlisted keeps whatever the
- * platform said, which is the right answer for a file this build has no opinion
- * about - guessing octet-stream would stop a `fetch().json()` that works today.
- */
-function assetMime(path: string): string {
-  const dot = path.lastIndexOf(".");
-  const ext = dot < 0 ? "" : path.slice(dot).toLowerCase();
-  return ASSET_MIME[ext] ?? "";
-}
-
-const ASSET_MIME: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".bmp": "image/bmp",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".json": "application/json",
-  ".txt": "text/plain; charset=utf-8",
-  ".csv": "text/csv; charset=utf-8",
-  ".wav": "audio/wav",
-  ".mp3": "audio/mpeg",
-  ".ogg": "audio/ogg",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-};
-
-function isJson(name: string): boolean {
-  return name.toLowerCase().endsWith(".json");
-}
-
-function isJs(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower.endsWith(".js") || lower.endsWith(".mjs");
 }
 
 /**
