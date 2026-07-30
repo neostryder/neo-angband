@@ -22,7 +22,7 @@ import {
 } from "@neo-angband/mod-sdk";
 import type { LoadedPack, PackContent, PackManifest } from "@neo-angband/mod-sdk";
 import { isShippedMod, readEnabledModIds } from "./mod-store";
-import { diskPacks, type ModDirKind } from "./disk-packs";
+import { diskPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
 // are the parsed JSON (the file's default export).
@@ -142,6 +142,7 @@ export function diskPackStatus(): {
   bundledCount: number;
   problems: readonly string[];
   kind: ModDirKind;
+  origins: readonly ModOrigin[];
 } {
   const r = diskPacks();
   const shadowed = r.packs
@@ -166,6 +167,10 @@ export function diskPackStatus(): {
      * would have been pointless. */
     problems: [...r.problems, ...composedProblems(), ...shadowed],
     kind: r.kind,
+    /* Every contributing source, not just the primary one: boot combines a folder
+     * with any mods installed from repositories, and `kind`/`dir` can only describe
+     * one of them. */
+    origins: r.origins,
   };
 }
 
