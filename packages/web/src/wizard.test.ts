@@ -13,7 +13,7 @@ import {
   DEBUG_CONFIRM_MSG_2,
   DEBUG_CONFIRM,
 } from "./wizard";
-import type { WizardUiCtx } from "./wizard";
+import type { DebugCategory, DebugCommand, WizardUiCtx } from "./wizard";
 import { NOSCORE, markNoscore, noscoreInvalidatesScore } from "@neo-angband/core";
 import type { GameState, WizardDeps } from "@neo-angband/core";
 import type { GlyphTerm } from "./term";
@@ -155,6 +155,48 @@ describe("DEBUG_MENU structure (ui-game.c L234-322)", () => {
       "Query",
       "Miscellaneous",
     ]);
+  });
+
+  it("is frozen DEEPLY, so a mod cannot add a row to upstream's table", () => {
+    /* These are the C's own tables and the parity tests count their letters.
+     * Exported-and-mutable made them an accidental extension point outside the
+     * mod system: a pushed row would have no ordering, appear in no manifest, and
+     * survive disabling the mod that added it. A SHALLOW freeze would not close
+     * it - the rows anyone would want to add live in `commands`, one level down. */
+    const items = DEBUG_MENU.find((c) => c.title === "Items")!;
+    const before = items.commands.length;
+    const firstLetter = items.commands[0]?.letter;
+    try {
+      expect(() => (DEBUG_MENU as DebugCategory[]).push(items)).toThrow(TypeError);
+      expect(() =>
+        (items.commands as DebugCommand[]).push({ letter: "!", label: "x", action: "x" }),
+      ).toThrow(TypeError);
+      expect(() => {
+        (items.commands[0] as { letter: string }).letter = "!";
+      }).toThrow(TypeError);
+      expect(DEBUG_MENU).toHaveLength(9);
+      expect(items.commands).toHaveLength(before);
+      expect(items.commands[0]?.letter).toBe("c");
+    } finally {
+      /* If a freeze is ever lost these writes SUCCEED, and this test would leave
+       * a bogus row and a mangled letter in the shared table for every test after
+       * it. Undo, so the failure reads as this assertion rather than a cascade
+       * through the parity tests below.
+       *
+       * Each undo needs its OWN catch. The freeze can be lost at one level and
+       * held at another - a shallow freeze is exactly that case - and one shared
+       * try would let the first still-frozen write abort the undos after it. */
+      const undo = (f: () => void): void => {
+        try {
+          f();
+        } catch {
+          /* that level is still frozen, which is the passing case */
+        }
+      };
+      undo(() => ((DEBUG_MENU as DebugCategory[]).length = 9));
+      undo(() => ((items.commands as DebugCommand[]).length = before));
+      undo(() => ((items.commands[0] as { letter: string }).letter = firstLetter ?? "c"));
+    }
   });
 
   it("locks the faithful command letters per category", () => {

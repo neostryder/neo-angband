@@ -91,13 +91,15 @@ step onto the dug-out grid in the same move, and each walk is a single attempt
   attempt with the real roll, messages, and payouts, which DRAWS, so it is
   reached only after the decision to handle the walk is final).
 - Core's side of the seam: `walkAction`
-  (`packages/core/src/game/player-turn.ts:493`) consults `state.autoDigStep`,
-  installed by the session (`packages/core/src/session/game.ts:1668`) pointing at
-  `movementAutoDig` (`cave-cmd.ts:676`), whose whole body is the hook read plus
-  `?? 0`. Off (or no mod) => the hook is absent, `movementAutoDig` returns 0
-  having drawn no RNG, and `walkAction` bumps as in 4.2.6.
+  (`packages/core/src/game/player-turn.ts:496`) consults `state.autoDigStep`,
+  installed by the session (`packages/core/src/session/game.ts:1670`) pointing at
+  `movementAutoDig` (`cave-cmd.ts:675`), whose whole body is the hook read plus
+  `?? null`. Off (or no mod) => the hook is absent, `movementAutoDig` returns
+  `null` having drawn no RNG, and `walkAction` bumps as in 4.2.6. `null` is the
+  only value that bumps: a returned `0` means a mod handled the walk for free, and
+  is honoured as such.
 - Tests: `packages/core/src/game/auto-dig.test.ts` (core's seam: bump with no
-  hook; the returned energy is honoured) and
+  hook; the returned energy is honoured, zero included) and
   `packages/web/mods/qol/hooks.test.ts` (the mod's own behaviour and its flag
   gate).
 
