@@ -268,6 +268,33 @@ export function buildLinoleumIndex(input: {
   return { map, slots, skipped };
 }
 
+/**
+ * How one of a pack's files is turned into a URL, or null when it cannot be.
+ *
+ * A loose pack used to be addressed by a base URL, and that quietly assumed the
+ * pack sits somewhere the page can spell as a path. Two of the three places a mod
+ * can come from cannot: a folder the player picked has no URL until its bytes are
+ * wrapped in a `blob:`, and a mod installed from GitHub lives in IndexedDB, which
+ * has no path at all. So the pack takes a resolver instead of a base, and the
+ * caller decides how bytes are reached - the same seam, and the same reason, as
+ * `codeUrl`/`assetUrl` on a DiskPackReport.
+ *
+ * `relPath` is an unencoded pack-relative path (`maps/targets.txt`,
+ * `images/8/feat_floor_lit_0.png`); a resolver that builds a URL must encode it.
+ */
+export type LinoleumFileResolver = (relPath: string) => Promise<string | null>;
+
+/**
+ * Reach a pack's files under a base URL - the site-root case, and what a bundled
+ * pack served out of `public/` uses. Encodes per SEGMENT so a `/` in the relative
+ * path stays a path separator and everything else is escaped.
+ */
+export function urlBaseResolver(baseUrl: string): LinoleumFileResolver {
+  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  return (relPath) =>
+    Promise.resolve(`${base}${relPath.split("/").map(encodeURIComponent).join("/")}`);
+}
+
 /** One cached asset image and its load state. */
 interface CachedAsset {
   image: HTMLImageElement | null;
@@ -288,21 +315,22 @@ export class LinoleumPack implements TileBlitter {
   /** Called after assets finish loading, coalesced to one call per frame. */
   onReady: (() => void) | null = null;
 
-  private readonly imageBase: string;
+  private readonly imageDir: string;
+  private readonly resolve: LinoleumFileResolver;
   private readonly cache = new Map<string, CachedAsset>();
   private notifyScheduled = false;
 
   constructor(input: {
     menuname: string;
-    baseUrl: string;
+    resolve: LinoleumFileResolver;
     manifest: LinoleumManifest;
     index: LinoleumIndex;
   }) {
     this.menuname = input.menuname;
     this.manifest = input.manifest;
     this.index = input.index;
-    const base = input.baseUrl.endsWith("/") ? input.baseUrl : `${input.baseUrl}/`;
-    this.imageBase = `${base}images/${input.manifest.resolution}/`;
+    this.resolve = input.resolve;
+    this.imageDir = `images/${input.manifest.resolution}/`;
   }
 
   /**
@@ -360,12 +388,38 @@ export class LinoleumPack implements TileBlitter {
     }
   }
 
-  /** Start (or reuse) an asset's image load. Never throws. */
+  /**
+   * Start (or reuse) an asset's image load. Never throws, and returns the cache
+   * entry synchronously so the caller can draw ASCII for this frame.
+   *
+   * The entry is registered BEFORE the resolver is awaited, which is what keeps a
+   * pack from asking for the same tile once per frame while its URL is in flight:
+   * resolving can take a turn of the event loop now (an installed mod reads its
+   * bytes out of IndexedDB), where a base URL was pure string work.
+   */
   private request(asset: string): CachedAsset {
     const existing = this.cache.get(asset);
     if (existing) return existing;
     const entry: CachedAsset = { image: null, loaded: false };
     this.cache.set(asset, entry);
+    void this.startLoad(entry, `${this.imageDir}${asset}.png`);
+    return entry;
+  }
+
+  /**
+   * Resolve one asset to a URL and hand it to an Image. A resolver that returns
+   * null (or throws) leaves the entry unloaded, which draws that cell as ASCII -
+   * the same outcome as a 404, and deliberately not an error: a pack is allowed
+   * to name a tile it does not ship.
+   */
+  private async startLoad(entry: CachedAsset, relPath: string): Promise<void> {
+    let url: string | null;
+    try {
+      url = await this.resolve(relPath);
+    } catch {
+      url = null;
+    }
+    if (url === null) return;
     try {
       const img = new Image();
       img.addEventListener("load", () => {
@@ -375,12 +429,11 @@ export class LinoleumPack implements TileBlitter {
       img.addEventListener("error", () => {
         entry.image = null;
       });
-      img.src = `${this.imageBase}${encodeURIComponent(asset)}.png`;
+      img.src = url;
       entry.image = img;
     } catch {
       entry.image = null;
     }
-    return entry;
   }
 
   /**
@@ -413,43 +466,62 @@ async function fetchText(url: string): Promise<string | null> {
   }
 }
 
+/** Resolve a pack-relative path and read it as text, or null on any failure. */
+async function readPackText(
+  resolve: LinoleumFileResolver,
+  relPath: string,
+): Promise<string | null> {
+  let url: string | null;
+  try {
+    url = await resolve(relPath);
+  } catch {
+    return null;
+  }
+  return url === null ? null : await fetchText(url);
+}
+
 /**
- * Load a loose pack from its base URL: manifest.txt, then the text maps it
+ * Load a loose pack through a file resolver: manifest.txt, then the text maps it
  * names, then the index built off core's pref parser. Returns null when the
  * pack is absent or unreadable, which leaves the game in ASCII exactly as a
  * missing tilesheet does.
+ *
+ * Takes a resolver rather than a base URL so the same loader serves a pack served
+ * from the site, a pack in a folder the player picked, and a pack installed from
+ * GitHub - see LinoleumFileResolver. For the plain site case pass
+ * `urlBaseResolver(base)`.
  */
 export async function loadLinoleumPack(input: {
-  baseUrl: string;
+  resolve: LinoleumFileResolver;
   menuname: string;
   deps: TilePrefsDeps;
 }): Promise<LinoleumPack | null> {
-  const base = input.baseUrl.endsWith("/") ? input.baseUrl : `${input.baseUrl}/`;
-  const manifestText = await fetchText(`${base}manifest.txt`);
+  const manifestText = await readPackText(input.resolve, "manifest.txt");
   if (manifestText === null) return null;
   const manifest = parseLinoleumManifest(manifestText);
   if (manifest === null) return null;
 
   const targetsPath = manifest.maps.get("targets");
   if (targetsPath === undefined) return null;
-  const targetsText = await fetchText(`${base}${targetsPath}`);
+  const targetsText = await readPackText(input.resolve, targetsPath);
   if (targetsText === null) return null;
   const rules: TargetRule[] = parseTargetsFile(targetsText);
 
   const poolsPath = manifest.maps.get("pools");
-  const poolsText = poolsPath === undefined ? null : await fetchText(`${base}${poolsPath}`);
+  const poolsText =
+    poolsPath === undefined ? null : await readPackText(input.resolve, poolsPath);
   const pools: PoolDefinition[] = poolsText === null ? [] : parsePoolsFile(poolsText);
 
   const familiesPath = manifest.maps.get("families");
   const familiesText =
-    familiesPath === undefined ? null : await fetchText(`${base}${familiesPath}`);
+    familiesPath === undefined ? null : await readPackText(input.resolve, familiesPath);
   const families = familiesText === null ? new Map<string, string>() : parseFamiliesFile(familiesText);
 
   const index = buildLinoleumIndex({ rules, pools, families, deps: input.deps });
   if (index.slots.length === 0) return null;
   return new LinoleumPack({
     menuname: input.menuname,
-    baseUrl: base,
+    resolve: input.resolve,
     manifest,
     index,
   });
