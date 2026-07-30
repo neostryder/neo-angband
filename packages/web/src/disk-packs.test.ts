@@ -14,14 +14,16 @@
  *    launches - a mod that comes back after being turned off looks broken.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   NO_DISK_PACKS,
+  combineDiskReports,
   diskPacks,
   loadDiskPacks,
   resetDiskPacks,
   setDiskPacks,
 } from "./disk-packs";
+import type { DiskPackReport, ModDirKind } from "./disk-packs";
 import { resolveEnabledIds } from "./mod-store";
 import { composeContentPacks } from "@neo-angband/mod-sdk";
 import type { LoadedPack } from "@neo-angband/mod-sdk";
@@ -384,5 +386,190 @@ describe("a disk pack reaches the composer", () => {
     const names = (composed.records["monster"] as { name: string }[]).map((m) => m.name);
     /* The patch landed on the core record, and the added record follows it. */
     expect(names).toEqual(["Kobold", "Grip, the Folder Hound", "Folder Newt"]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Several sources at once.
+ *
+ * Boot used to CHOOSE one source, and installed mods were nowhere at all -
+ * loadInstalledMods had no production caller, so a mod could be downloaded,
+ * digest-checked, stored, and reach nothing. Choosing is right between the shell's
+ * folder and a picked one; it is wrong for installed mods, which are not an
+ * alternative to having a folder.
+ * ------------------------------------------------------------------ */
+
+describe("combineDiskReports", () => {
+  /** A report with one pack per id, and resolvers that name their own source. */
+  function report(
+    kind: ModDirKind,
+    dir: string | null,
+    ids: readonly string[],
+    over: Partial<DiskPackReport> = {},
+  ): DiskPackReport {
+    const packs = ids.map((id) => ({
+      manifest: { id, name: id, version: "1.0.0", shape: "content" },
+      files: {},
+      code: [],
+      assets: [],
+    }));
+    const codeUrl = Object.assign(
+      (id: string, file: string) => Promise.resolve(`${kind}:code:${id}/${file}`),
+      { release: (url: string) => released.push(`${kind} <- ${url}`) },
+    );
+    return {
+      packs,
+      order: [],
+      problems: [],
+      dir,
+      available: true,
+      kind,
+      codeUrl,
+      assetUrl: (id: string, path: string) =>
+        Promise.resolve(`${kind}:asset:${id}/${path}`),
+      origins: [{ kind, dir, count: packs.length }],
+      ...over,
+    } as unknown as DiskPackReport;
+  }
+
+  let released: string[] = [];
+  beforeEach(() => {
+    released = [];
+  });
+
+  it("is the unavailable report when nothing is available", () => {
+    expect(combineDiskReports([])).toBe(NO_DISK_PACKS);
+    expect(combineDiskReports([NO_DISK_PACKS, NO_DISK_PACKS])).toBe(NO_DISK_PACKS);
+  });
+
+  it("is the report itself when only one source is live", () => {
+    // Identity, not a rebuild: a single source must behave exactly as it did before
+    // combining existed, resolvers and all.
+    const only = report("picked", "my-mods/", ["a"]);
+    expect(combineDiskReports([NO_DISK_PACKS, only, NO_DISK_PACKS])).toBe(only);
+  });
+
+  it("unions the packs of every live source", () => {
+    const out = combineDiskReports([
+      report("picked", "my-mods/", ["a", "b"]),
+      report("installed", null, ["c"]),
+    ]);
+    expect(out.packs.map((p) => p.manifest.id)).toEqual(["a", "b", "c"]);
+    expect(out.available).toBe(true);
+    expect(out.problems).toEqual([]);
+  });
+
+  /*
+   * The load-bearing one. Each source reaches bytes its own way - a loopback URL, a
+   * blob over a picked File, an IndexedDB read - so one shared resolver would serve a
+   * mod's files out of another mod's storage, or (more likely) nothing, and a tile
+   * pack that draws no tiles says nothing about why.
+   */
+  it("routes each mod's resolvers to the source that holds its bytes", async () => {
+    const out = combineDiskReports([
+      report("picked", "my-mods/", ["a"]),
+      report("installed", null, ["b"]),
+    ]);
+    expect(await out.assetUrl?.("a", "tiles/x.png")).toBe("picked:asset:a/tiles/x.png");
+    expect(await out.assetUrl?.("b", "tiles/x.png")).toBe("installed:asset:b/tiles/x.png");
+    expect(await out.codeUrl?.("a", "plugin.js")).toBe("picked:code:a/plugin.js");
+    expect(await out.codeUrl?.("b", "plugin.js")).toBe("installed:code:b/plugin.js");
+  });
+
+  it("has no answer for a mod no source owns", async () => {
+    const out = combineDiskReports([
+      report("picked", "my-mods/", ["a"]),
+      report("installed", null, ["b"]),
+    ]);
+    expect(await out.assetUrl?.("ghost", "x.png")).toBeNull();
+    expect(await out.codeUrl?.("ghost", "plugin.js")).toBeNull();
+  });
+
+  /*
+   * Releasing is destructive. A blob URL revoked by the wrong source is revoked
+   * anyway - the string is unique - but its module GRAPH is not, which leaks one blob
+   * per dependency per launch.
+   */
+  it("routes release back to the source that minted the URL", async () => {
+    const out = combineDiskReports([
+      report("picked", "my-mods/", ["a"]),
+      report("installed", null, ["b"]),
+    ]);
+    const url = (await out.codeUrl?.("b", "plugin.js")) as string;
+    out.codeUrl?.release?.(url);
+    expect(released).toEqual(["installed <- installed:code:b/plugin.js"]);
+  });
+
+  it("keeps the FIRST source's copy of a duplicate id, and says so", () => {
+    const out = combineDiskReports([
+      report("picked", "my-mods/", ["shared"]),
+      report("installed", null, ["shared", "other"]),
+    ]);
+    expect(out.packs.map((p) => p.manifest.id)).toEqual(["shared", "other"]);
+    // Reported, not dropped in silence: the player has two mods claiming one name.
+    expect(out.problems).toEqual([
+      "shared: two sources offer this mod (folder you chose and installed); the folder you chose one is loaded",
+    ]);
+  });
+
+  it("routes the winner's resolvers, not the loser's", async () => {
+    const out = combineDiskReports([
+      report("picked", "my-mods/", ["shared"]),
+      report("installed", null, ["shared"]),
+    ]);
+    expect(await out.assetUrl?.("shared", "x.png")).toBe("picked:asset:shared/x.png");
+  });
+
+  it("keeps a source with no resolvers from answering for its own mods", async () => {
+    const out = combineDiskReports([
+      report("picked", "my-mods/", ["a"], { codeUrl: null, assetUrl: null }),
+      report("installed", null, ["b"]),
+    ]);
+    // `a` came from a data-only source, so it has no files to serve - and must not
+    // borrow the other source's, which would read another mod's storage.
+    expect(await out.assetUrl?.("a", "x.png")).toBeNull();
+    expect(await out.assetUrl?.("b", "x.png")).toBe("installed:asset:b/x.png");
+  });
+
+  it("is null-resolvered only when NO source can serve", () => {
+    const bare = { codeUrl: null, assetUrl: null };
+    const out = combineDiskReports([
+      report("picked", "my-mods/", ["a"], bare),
+      report("installed", null, ["b"], bare),
+    ]);
+    expect(out.codeUrl).toBeNull();
+    expect(out.assetUrl).toBeNull();
+  });
+
+  it("orders only ids that actually loaded, once each", () => {
+    const out = combineDiskReports([
+      report("picked", "my-mods/", ["a", "b"], { order: ["b", "a", "ghost"] }),
+      report("installed", null, ["a", "c"], { order: ["a", "c"] }),
+    ]);
+    // `a` lost its collision to the folder copy, so it is ordered by that one and not
+    // twice; `ghost` is in no source's packs.
+    expect(out.order).toEqual(["b", "a", "c"]);
+  });
+
+  it("carries EVERY origin, so no surface has to claim one describes them all", () => {
+    const out = combineDiskReports([
+      report("picked", "my-mods/", ["a", "b"]),
+      report("installed", null, ["c"]),
+    ]);
+    expect(out.origins).toEqual([
+      { kind: "picked", dir: "my-mods/", count: 2 },
+      { kind: "installed", dir: null, count: 1 },
+    ]);
+    // dir/kind still describe the PRIMARY, which is the one a player copies into.
+    expect(out.kind).toBe("picked");
+    expect(out.dir).toBe("my-mods/");
+  });
+
+  it("concatenates each source's own problems", () => {
+    const out = combineDiskReports([
+      report("picked", "my-mods/", ["a"], { problems: ["a folder gripe"] }),
+      report("installed", null, ["b"], { problems: ["an install gripe"] }),
+    ]);
+    expect(out.problems).toEqual(["a folder gripe", "an install gripe"]);
   });
 });

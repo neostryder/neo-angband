@@ -40,7 +40,7 @@ import {
   type ScreenLine,
 } from "./overlay";
 import type { GlyphTerm } from "./term";
-import type { ModDirKind } from "./disk-packs";
+import type { ModDirKind, ModOrigin } from "./disk-packs";
 import type { CatalogMod, ModStore } from "./mod-store";
 import type { ModRuleDecl } from "./pack";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
@@ -80,6 +80,16 @@ export interface DiskPackStatus {
    * covers every case the producer can hand it.
    */
   kind: ModDirKind;
+  /**
+   * One entry per SOURCE that contributed mods, so this screen never has to claim
+   * that one `kind`/`dir` describes all of them.
+   *
+   * A player can have a folder AND mods installed from repositories at the same time
+   * (boot combines them - see combineDiskReports). "Mods folder: my-mods/ ... 2 from
+   * this folder" was then a true sentence that read as the whole answer, while two
+   * more mods loaded from IndexedDB with nothing on screen to say so.
+   */
+  origins: readonly ModOrigin[];
 }
 
 /**
@@ -700,6 +710,31 @@ async function showModSources(
         { text: "its own, which an external mod manager can deploy into.", color: C_WARN },
       );
     }
+  } else if (status.kind === "installed") {
+    /* Mods installed from their own repositories and NO folder at all. There is no
+     * directory to name - nobody put these anywhere - so saying "Mods folder:
+     * (unknown)" would be a sentence about a folder that does not exist. */
+    lines.push(
+      { text: "Mods installed from their own repositories.", color: C_FG },
+      { text: "", color: C_FG },
+      {
+        text: `${status.bundledCount} bundled with the game, ${status.count} installed.`,
+        color: C_FG,
+      },
+      { text: "", color: C_FG },
+      { text: "An installed mod's files are kept in this browser's storage, not in", color: C_FG },
+      { text: "a folder, so there is no path to show. Each was checked against a", color: C_FG },
+      { text: "digest before a byte of it was unpacked, and the mod manager names", color: C_FG },
+      { text: "the repository and tag it came from.", color: C_FG },
+      { text: "", color: C_FG },
+      { text: "You can also give this browser a mods FOLDER, and use both.", color: C_DIM },
+    );
+    if (status.problems.length > 0) {
+      lines.push({ text: "", color: C_FG }, { text: "Could not be used:", color: C_DANGER });
+      for (const p of status.problems.slice(0, 8)) {
+        lines.push({ text: `  ${p}`, color: C_DANGER });
+      }
+    }
   } else {
     lines.push(
       {
@@ -734,6 +769,32 @@ async function showModSources(
         { text: "", color: C_FG },
         { text: "Your browser is not told where that folder is on disk, only its", color: C_DIM },
         { text: "name, so only the name can be shown here.", color: C_DIM },
+      );
+    }
+    /* Mods can arrive from more than one source at once - a folder AND repositories
+     * the player installed from - and the block above describes only the first. Every
+     * other source gets its own line, because "2 from this folder" was otherwise a
+     * true sentence that read as the whole answer while other mods loaded unmentioned. */
+    for (const origin of status.origins.slice(1)) {
+      lines.push(
+        { text: "", color: C_FG },
+        {
+          text:
+            origin.kind === "installed"
+              ? `${origin.count} installed from ${origin.count === 1 ? "its own repository" : "their own repositories"}.`
+              : `${origin.count} from ${origin.dir ?? "another source"}.`,
+          color: C_FG,
+        },
+        ...(origin.kind === "installed"
+          ? [
+              {
+                /* Where they physically are, honestly: nobody put them anywhere. */
+                text: "  Kept in this browser's storage, not in a folder - the mod",
+                color: C_DIM,
+              },
+              { text: "  manager names the repository and tag each came from.", color: C_DIM },
+            ]
+          : []),
       );
     }
     if (status.problems.length > 0) {

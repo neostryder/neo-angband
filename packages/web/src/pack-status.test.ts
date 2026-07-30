@@ -85,6 +85,7 @@ describe("diskPackStatus reports the folder count AND the bundled count", () => 
       kind: "app",
       codeUrl: null,
       assetUrl: null,
+      origins: [{ kind: "app", dir: "mods", count: 1 }],
     });
     const s = diskPackStatus();
     expect(s.count).toBe(2);
@@ -109,6 +110,7 @@ describe("diskPackStatus reports the folder count AND the bundled count", () => 
       kind: "app",
       codeUrl: null,
       assetUrl: null,
+      origins: [{ kind: "app", dir: "mods", count: 1 }],
     });
     const s = diskPackStatus();
     expect(s.count).toBe(1);

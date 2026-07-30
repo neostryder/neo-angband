@@ -12,6 +12,8 @@
  */
 
 import { webcrypto } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -720,5 +722,38 @@ describe("an installed TILES mod registers a Graphics row and draws its own art"
     // load, which leaves the map ASCII exactly as a missing tilesheet does.
     expect(modes).toHaveLength(1);
     expect(await modes[0]?.resolve?.("manifest.txt")).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The call site.
+ *
+ * This whole module was reachable and unreached: loadInstalledMods had NO production
+ * caller, so a mod could be fetched, hashed, verified and stored, and then take part
+ * in nothing. Reading the code could not show that - the function exists, is exported,
+ * is tested - which is precisely why the absence needs a test of its own. Source-level,
+ * because main.ts boots a real game at module scope and cannot be imported here.
+ * ------------------------------------------------------------------ */
+
+describe("boot reads installed mods", () => {
+  const main = readFileSync(join(import.meta.dirname, "main.ts"), "utf8");
+
+  it("calls loadInstalledMods at boot", () => {
+    expect(main).toContain("loadInstalledMods");
+    expect(main).toMatch(/await loadInstalledMods\(\)/u);
+  });
+
+  it("COMBINES it with the folder rather than choosing between them", () => {
+    // Choosing is right between the shell's folder and a picked one - two answers to
+    // one question. Installed mods are not an alternative to having a folder, and the
+    // bug this guards is the shape `shellPacks.available ? shell : picked` had: one
+    // winner, and no third seat at all.
+    expect(main).toMatch(/combineDiskReports\(\[folder, await loadInstalledMods\(\)\]\)/u);
+    expect(main).toMatch(/setDiskPacks\(combineDiskReports\(/u);
+  });
+
+  it("lists the folder FIRST, so a mod put there deliberately outranks a download", () => {
+    const at = main.indexOf("combineDiskReports([folder,");
+    expect(at, "the combine call must be present").toBeGreaterThan(0);
   });
 });
