@@ -115,6 +115,51 @@ export interface PackRule {
  */
 export type Capability = string;
 
+/**
+ * One graphics mode a `tiles`-facet pack contributes.
+ *
+ * This was read loosely off the raw JSON for a long time and was NOT in the
+ * validated schema, which the moddability measurement recorded as a gap
+ * (docs/modding/MOD_REACH.md). The consequence was specific rather than
+ * theoretical: a typo in `grafID` or `path` produced no error anywhere - the entry
+ * was silently skipped, and a mod author saw a Graphics row that simply never
+ * appeared. Declaring it here means the manifest is refused at the edge, with the
+ * mod's id and the offending field named.
+ */
+export interface PackTilePack {
+  /**
+   * The list.txt serial number this mode renders as. A `tilesheet` pack must claim
+   * one the core catalog already knows (it borrows that row's cell size, atlas
+   * filename and pref file); a `linoleum` pack carries its own metadata and may
+   * claim a new id - use >= 100 to stay clear of upstream's numbering.
+   */
+  grafID: number;
+  /**
+   * The pack's directory INSIDE THE MOD FOLDER (`original-tiles`,
+   * `tiles/my-set`), or absent for a pack that is the mod folder itself.
+   *
+   * Mod-relative, not a site path. A mod cannot know where a host serves it from,
+   * and two of the three sources serve it from nowhere: a folder the player picked
+   * has no URL for its files until their bytes are wrapped in a blob:, and a mod
+   * installed from a repository lives in IndexedDB. The host composes this with
+   * the mod's own asset resolver.
+   */
+  path?: string;
+  /**
+   * Which renderer draws it: `tilesheet` (or absent) for upstream's own scheme -
+   * one atlas PNG addressed by row/column - and `linoleum` for a loose pack, a
+   * directory of individually named PNGs. This is the PACK's renderer; the
+   * manifest's top-level `engine` is the game version the mod targets.
+   */
+  engine?: "tilesheet" | "linoleum";
+  /**
+   * The Graphics row's label. Required in effect for a mode the core catalog does
+   * not have, since there would be nothing to name the row; a pack re-skinning a
+   * catalogued mode may omit it and borrow that row's name.
+   */
+  menuname?: string;
+}
+
 export interface PackManifest {
   /**
    * The pack's namespace: lowercase kebab-case, unique among loaded
@@ -187,6 +232,11 @@ export interface PackManifest {
    * GameState.modRules as save state. Absent for a pack with nothing to toggle.
    */
   rules?: PackRule[];
+  /**
+   * Graphics modes this pack contributes (see PackTilePack). Only read for a pack
+   * with the `tiles` facet; a content pack that declares them contributes none.
+   */
+  tilePacks?: PackTilePack[];
   /**
    * Declares the pack deliberately nondeterministic (a wall-clock event, an
    * external agent, live multiplayer). Trips the save's determinism ratchet
@@ -287,6 +337,7 @@ export function validateManifest(value: unknown): PackManifest {
     throw new ManifestError(`manifest ${id}: affectsGameplay must be a boolean`);
   }
   validateRules(m["rules"], id);
+  validateTilePacks(m["tilePacks"], id);
   for (const key of [
     "engine",
     "repository",
@@ -347,6 +398,61 @@ function validateRules(value: unknown, id: string): void {
     }
     if (typeof r["default"] !== "boolean") {
       throw new ManifestError(`manifest ${id}: rule ${r["flag"]} default must be a boolean`);
+    }
+  }
+}
+
+/** The pack renderers a tilePacks entry may name. */
+const TILE_ENGINES: readonly string[] = ["tilesheet", "linoleum"];
+
+/**
+ * Validate the optional `tilePacks` array (PackTilePack[]); throws ManifestError.
+ *
+ * `path` is checked for being MOD-RELATIVE, and that check is the point rather than
+ * tidiness. It used to be a site-root-relative URL base, which only a bundled mod
+ * could ever get right; a manifest carrying the old form would resolve to
+ * `mods/<id>/mods/<id>/…` and 404 into ASCII with nothing said. An absolute path, a
+ * scheme, or a `..` escape is refused for the same reason a pack's code files are
+ * read by pack-relative path: the host decides where a mod's bytes live.
+ */
+function validateTilePacks(value: unknown, id: string): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: tilePacks must be an array`);
+  }
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new ManifestError(`manifest ${id}: each tilePacks entry must be an object`);
+    }
+    const p = entry as Record<string, unknown>;
+    const graf = p["grafID"];
+    if (typeof graf !== "number" || !Number.isInteger(graf) || graf < 0) {
+      throw new ManifestError(
+        `manifest ${id}: tilePacks grafID must be a non-negative integer, got ${String(graf)}`,
+      );
+    }
+    if (p["engine"] !== undefined && !TILE_ENGINES.includes(p["engine"] as string)) {
+      throw new ManifestError(
+        `manifest ${id}: tilePacks engine must be one of ${TILE_ENGINES.join(", ")}, got ${String(p["engine"])}`,
+      );
+    }
+    if (p["menuname"] !== undefined && typeof p["menuname"] !== "string") {
+      throw new ManifestError(`manifest ${id}: tilePacks menuname must be a string`);
+    }
+    if (p["path"] === undefined) continue;
+    const path = p["path"];
+    if (typeof path !== "string") {
+      throw new ManifestError(`manifest ${id}: tilePacks path must be a string`);
+    }
+    if (/^([a-z][a-z0-9+.-]*:)?\//iu.test(path) || path.startsWith("\\")) {
+      throw new ManifestError(
+        `manifest ${id}: tilePacks path "${path}" must be relative to the mod folder, not a site or absolute path`,
+      );
+    }
+    if (path.split(/[/\\]/u).includes("..")) {
+      throw new ManifestError(
+        `manifest ${id}: tilePacks path "${path}" must stay inside the mod folder`,
+      );
     }
   }
 }

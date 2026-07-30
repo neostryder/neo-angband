@@ -1,6 +1,6 @@
 /**
- * How a mod folder's file paths sort into the three kinds, and what type each asset
- * is served as.
+ * How a mod folder's file paths sort into the three kinds, what type each asset is
+ * served as, and how a pack-relative path becomes a URL.
  *
  * ONE copy, because there are now three sources that enumerate a pack's files - the
  * desktop shell's folder, a folder the player picked, and a mod downloaded from a
@@ -10,6 +10,71 @@
  * and silent: a mod whose PNG loads from a picked folder and not from an installed one,
  * or whose nested JSON is a record on one path and an asset on the other.
  */
+
+/**
+ * How one of a pack's files is turned into a URL, or null when it cannot be.
+ *
+ * A pack used to be addressed by a base URL, and that quietly assumed the pack sits
+ * somewhere the page can spell as a path. Two of the three places a mod can come
+ * from cannot: a folder the player picked has no URL until its bytes are wrapped in
+ * a `blob:`, and a mod installed from GitHub lives in IndexedDB, which has no path
+ * at all. So a pack takes a resolver instead of a base, and the SOURCE decides how
+ * bytes are reached - the same seam, and the same reason, as `codeUrl`/`assetUrl` on
+ * a DiskPackReport.
+ *
+ * `relPath` is an UNENCODED pack-relative path (`maps/targets.txt`,
+ * `images/8/feat_floor_lit_0.png`); a resolver that builds a URL must encode it,
+ * which is what encodePackPath is for.
+ *
+ * Lives here, beside the file-sorting rule, because both tile engines and all three
+ * mod sources need it and none of them should own it.
+ */
+export type PackFileResolver = (relPath: string) => Promise<string | null>;
+
+/**
+ * Percent-encode each segment of a pack-relative path, leaving the separators.
+ *
+ * A mod folder is named by whoever wrote it, so `tiles/dark elf.png` and a `#` in a
+ * filename are both things that will happen; unencoded, the first breaks the path
+ * and the second truncates it at a fragment. Per SEGMENT, so a `/` stays a
+ * separator while everything else is escaped.
+ */
+export function encodePackPath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+/**
+ * Reach a pack's files under a base URL - the site-root case, and what a bundled
+ * pack served out of `public/` uses. Also the desktop shell's case, where the mods
+ * folder has a real loopback URL.
+ */
+export function urlBaseResolver(baseUrl: string): PackFileResolver {
+  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  return (relPath) => Promise.resolve(`${base}${encodePackPath(relPath)}`);
+}
+
+/**
+ * Reach the files under one SUBDIRECTORY of what `resolve` reaches.
+ *
+ * This is what makes a manifest's `tilePacks[].path` mod-relative: the mod's own
+ * asset resolver answers for the whole mod folder, and a tile pack lives in a
+ * directory inside it. Composing rather than string-joining is the point - the
+ * outer resolver may be an IndexedDB read or a blob mint, neither of which has a
+ * base a caller could concatenate onto.
+ *
+ * An empty (or `.`) dir returns the resolver unchanged, so a pack that IS the mod
+ * root needs no special case at the call site - and, more to the point, so the
+ * source is never asked for a path with a `//` in it, which a source that looks its
+ * files up by name would miss every time.
+ */
+export function subPackResolver(
+  resolve: PackFileResolver,
+  dir: string,
+): PackFileResolver {
+  const trimmed = dir.replace(/^\.?\/+/u, "").replace(/\/+$/u, "");
+  if (trimmed === "" || trimmed === ".") return resolve;
+  return (relPath) => resolve(`${trimmed}/${relPath}`);
+}
 
 /** A pack's files, sorted into what the loader does with each. */
 export interface SortedPackFiles {

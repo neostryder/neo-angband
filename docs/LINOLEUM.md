@@ -225,6 +225,59 @@ The converter:
 - writes `manifest.txt`, `maps/targets.txt`, and `maps/families.txt`;
 - writes Markdown and JSON inventory reports into the output root.
 
+## Shipping a pack in a mod
+
+Put the converted directory inside your mod folder and name it in the manifest:
+
+```
+my-tiles/
+  manifest.json
+  my-set/                    <- the converted pack directory
+    manifest.txt
+    maps/ images/ ...
+```
+
+```json
+{
+  "id": "my-tiles",
+  "name": "My Tile Set",
+  "version": "1.0.0",
+  "shape": "tiles",
+  "tilePacks": [
+    {
+      "grafID": 101,
+      "engine": "linoleum",
+      "menuname": "My Set (Linoleum)",
+      "path": "my-set"
+    }
+  ]
+}
+```
+
+**`path` is relative to your MOD FOLDER, not to the site.** This is the one thing
+worth getting right, because the wrong form used to be the documented one. A mod
+cannot know where the host serves it from, and for two of the three ways a mod can
+arrive the host serves it from nowhere at all: a folder the player picked in a
+browser has no URL for its files until their bytes are wrapped in a `blob:`, and a
+mod installed from a repository lives in IndexedDB. So the manifest names a
+directory and the host composes it with however that mod's bytes are reached. A
+`path` that still leads with `mods/` is refused by `validateManifest`.
+
+`grafID` is the Graphics-screen row's serial number. Use **>= 100** for a set of
+your own, to stay clear of upstream's `list.txt` numbering (1-6). A `linoleum` pack
+may claim a new id and ADD a row; claiming one of 1-6 re-skins that row instead and
+borrows its menu name. `menuname` is what the row is called - required in practice
+for a new id, since there would otherwise be nothing to label it with.
+
+The same `tilePacks` entry works for a classic tilesheet: leave `engine` out (or say
+`"tilesheet"`), claim a grafID core's catalog already knows, and lay the pack out as
+`<path>/<directory>/<file>` per that catalog row - the atlas and its `graf-*.prf`
+are both reached through the same resolver, so they cannot come from different
+places.
+
+Nothing about this is loose-pack-specific and no bundled mod is privileged: the
+`linoleum` mod's own manifest is exactly the shape above.
+
 ## Tileset licensing (why converted packs are not shipped)
 
 The bundled legacy tilesheets under `reference/lib/tiles/` carry different

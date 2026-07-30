@@ -21,9 +21,9 @@ import {
   parseFamiliesFile,
   parseLinoleumManifest,
   slotToAtlas,
-  urlBaseResolver,
 } from "./linoleum-pack";
-import type { LinoleumFileResolver } from "./linoleum-pack";
+import { urlBaseResolver } from "./pack-files";
+import type { PackFileResolver } from "./pack-files";
 import { isTile, tileCode } from "./tiles";
 
 /**
@@ -331,25 +331,6 @@ describe("LinoleumPack", () => {
   });
 });
 
-describe("urlBaseResolver", () => {
-  it("joins onto the base, adding the separator only when it is missing", async () => {
-    expect(await urlBaseResolver("mods/p")("manifest.txt")).toBe("mods/p/manifest.txt");
-    expect(await urlBaseResolver("mods/p/")("manifest.txt")).toBe("mods/p/manifest.txt");
-  });
-
-  it("encodes per segment, so a / stays a separator and a space does not", async () => {
-    expect(await urlBaseResolver("mods/p")("maps/targets.txt")).toBe("mods/p/maps/targets.txt");
-    expect(await urlBaseResolver("mods/p")("images/8/my tile.png")).toBe(
-      "mods/p/images/8/my%20tile.png",
-    );
-    // A pack that names a tile with a # or ? must not have the rest of the URL
-    // read as a fragment or a query.
-    expect(await urlBaseResolver("mods/p")("images/8/a#b?c.png")).toBe(
-      "mods/p/images/8/a%23b%3Fc.png",
-    );
-  });
-});
-
 describe("loadLinoleumPack", () => {
   /** A pack served out of a plain map of URL -> text, no network. */
   function serve(files: Record<string, string>): typeof fetch {
@@ -435,7 +416,7 @@ describe("loadLinoleumPack", () => {
       bodies[url] = text;
     }
     globalThis.fetch = serve(bodies);
-    const resolve: LinoleumFileResolver = (rel) => Promise.resolve(blobs.get(rel) ?? null);
+    const resolve: PackFileResolver = (rel) => Promise.resolve(blobs.get(rel) ?? null);
 
     const pack = await loadLinoleumPack({ resolve, menuname: "Pack P", deps });
     expect(pack?.index.slots).toHaveLength(3);

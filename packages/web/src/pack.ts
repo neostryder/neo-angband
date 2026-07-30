@@ -21,7 +21,7 @@ import {
   resolveLoadOrder,
 } from "@neo-angband/mod-sdk";
 import type { LoadedPack, PackContent, PackManifest } from "@neo-angband/mod-sdk";
-import { isShippedMod, resolveEnabledIds } from "./mod-store";
+import { isShippedMod, readEnabledModIds } from "./mod-store";
 import { diskPacks, type ModDirKind } from "./disk-packs";
 
 // Eagerly import every compiled pack file. Keys are module paths; values
@@ -241,55 +241,19 @@ export function modConflictLines(enabledIds: readonly string[]): string[] {
  * set, so the manager showed it as OFF while the game was running it. One
  * resolver, one answer.
  *
- * Enabled mod ids, via the shared resolver (mod-store.resolveEnabledIds):
+ * Enabled mod ids, via the shared reader (mod-store.readEnabledModIds):
  * URL ?mods=a,b wins; else the saved set in localStorage; else - on a first run
  * with no saved set - the DEFAULT_ENABLED_MODS that are actually discovered.
  * Distinguishing "no saved key" (first run -> defaults) from an empty array
- * (user turned everything off) is why this reads the raw key itself.
+ * (user turned everything off) is why that reader reads the raw key itself.
  */
 export function enabledModIds(): string[] {
-  let url: string[] | null = null;
-  try {
-    const raw = new URLSearchParams(location.search).get("mods");
-    if (raw !== null) url = raw.split(",").map((s) => s.trim()).filter(Boolean);
-  } catch {
-    /* no location (non-browser host) */
-  }
-  let stored: string[] | null = null;
-  try {
-    const raw = localStorage.getItem("neo:enabledMods");
-    if (raw !== null) {
-      const arr = JSON.parse(raw) as unknown;
-      if (Array.isArray(arr)) {
-        stored = arr.filter((s): s is string => typeof s === "string");
-      }
-    }
-  } catch {
-    /* no localStorage */
-  }
-  const discovered = [...discoverMods().keys()];
-  /* An external mod manager's load-order.json, and the player's own explicit
-   * decisions which outrank it. See resolveEnabledIds. */
-  const choices: Record<string, boolean> = {};
-  try {
-    const raw = localStorage.getItem("neo:modChoices");
-    if (raw !== null) {
-      const obj = JSON.parse(raw) as unknown;
-      if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
-        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-          if (typeof v === "boolean") choices[k] = v;
-        }
-      }
-    }
-  } catch {
-    /* no localStorage */
-  }
-  return resolveEnabledIds({
-    url,
-    stored,
-    discovered,
+  /* The URL/localStorage reading, the player's explicit per-mod decisions and the
+   * external manager's load-order.json all live in mod-store.readEnabledModIds, so
+   * this surface and the tile discovery cannot answer differently. */
+  return readEnabledModIds({
+    discovered: [...discoverMods().keys()],
     diskOrder: diskPacks().order,
-    choices,
   });
 }
 

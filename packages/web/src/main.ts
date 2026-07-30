@@ -278,7 +278,8 @@ import {
   type TileBlitter,
   type TileModeEntry,
 } from "./tiles";
-import { LinoleumPack, loadLinoleumPack, urlBaseResolver } from "./linoleum-pack";
+import { LinoleumPack, loadLinoleumPack } from "./linoleum-pack";
+import { urlBaseResolver, type PackFileResolver } from "./pack-files";
 import {
   showTextScreen,
   selectFromMenu,
@@ -1086,14 +1087,16 @@ let tileMap: TileMap | null = null;
 let currentGrafID = GRAPHICS_NONE;
 
 /**
- * Where a mode's art is fetched from: the shell's own tile base for core modes,
- * or the contributing mod's declared pack base when a mod supplied the mode, so
- * a mod's tiles come from the MOD's assets. An id nobody offers (e.g. `?graf=5`
- * with no pack) falls back to the shell base and simply 404s into ASCII.
+ * How a mode's files are reached: the contributing mod's own resolver when a mod
+ * supplied the mode, so a mod's tiles come from the MOD's assets wherever they
+ * physically live (a site path, a picked folder's blob, an installed mod's
+ * IndexedDB bytes); otherwise the shell's own tile base, which is right for a core
+ * mode and for a mod that only re-registers art already there. An id nobody offers
+ * (e.g. `?graf=5` with no pack) falls back to the shell base and simply 404s into
+ * ASCII.
  */
-function tileBaseFor(grafID: number): string {
-  const entry = availableTileModes.find((m) => m.grafID === grafID);
-  return entry?.baseUrl ?? tilesBaseUrl;
+function tileResolverFor(entry: TileModeEntry | undefined): PackFileResolver {
+  return entry?.resolve ?? urlBaseResolver(tilesBaseUrl);
 }
 
 /**
@@ -1125,11 +1128,7 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
     tileMap = null;
     renderBackground();
     const pack = await loadLinoleumPack({
-      // Site-root today, because a bundled pack's `path` is a site path. The seam
-      // takes a resolver so a pack from a picked folder or an installed mod can
-      // reach its bytes through the mod's own assetUrl instead; wiring that needs
-      // `tilePacks[].path` to become mod-relative, which is a manifest change.
-      resolve: urlBaseResolver(entry.baseUrl ?? tilesBaseUrl),
+      resolve: tileResolverFor(entry),
       menuname: entry.menuname,
       deps: tileDeps,
     });
@@ -1152,13 +1151,13 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
     renderBackground();
     return;
   }
-  const base = tileBaseFor(grafID);
-  const ts = createTileRenderer({ baseUrl: base, grafID });
+  const resolve = tileResolverFor(entry);
+  const ts = createTileRenderer({ resolve, grafID });
   if (ts) ts.onReady = () => renderBackground();
   tileset = ts;
   tileMap = null;
   renderBackground();
-  const map = await loadTilePrefs(base, mode, tileDeps);
+  const map = await loadTilePrefs(resolve, mode, tileDeps);
   // Ignore a stale load if the mode changed while we were fetching.
   if (currentGrafID === grafID) {
     tileMap = map;
