@@ -127,6 +127,23 @@ export interface LookGridResult {
 }
 
 /**
+ * The wizard-mode tail every aux_* description carries (ui-target.c L400-407,
+ * L483-487, L559-563, L717-721, L790-793, L915-918): where an ordinary look line
+ * ends "..., <coords>.", a wizard's ends "..., <coords> (y:x, noise=N, scent=N).".
+ * The same seven-site pattern in the C, so it lives in one place here.
+ *
+ * cave->noise.grids[y][x] / cave->scent.grids[y][x] are the flow maps the port
+ * keeps as flat y*width+x arrays (the same ones do_cmd_wiz_peek_noise_scent
+ * walks, see game/wizard.ts wizPeekFlow).
+ */
+function lookTail(state: GameState, grid: Loc): string {
+  if (state.wizard !== true) return ".";
+  const c = state.chunk;
+  const i = grid.y * c.width + grid.x;
+  return ` (${grid.y}:${grid.x}, noise=${c.noise[i] ?? 0}, scent=${c.scent[i] ?? 0}).`;
+}
+
+/**
  * target_set_interactive_aux (L981) plus its aux_reinit/aux_hallucinate/
  * aux_monster/aux_trap/aux_object/aux_terrain handlers, folded into a single
  * "one line, highest precedence content" description per the module's
@@ -161,18 +178,21 @@ export function describeLookGrid(
   /* aux_hallucinate (L473-508). */
   if ((state.actor.player.timed[TMD.IMAGE] ?? 0) > 0) {
     return {
-      text: `${phrase1}${phrase2}something strange, ${coords}.`,
+      text: `${phrase1}${phrase2}something strange, ${coords}${lookTail(state, grid)}`,
       mon: null,
     };
   }
 
-  /* aux_monster (L516-691, reduced: no carried-object / recall sub-loop). */
+  /* aux_monster (L516-691, reduced: no carried-object / recall sub-loop). The
+   * wizard-only "She is carrying <object>" walk over mon->held_obj (L622-687) is
+   * part of that same absent sub-loop - it is an interactive keypress loop, not a
+   * line, so it lands with the sub-loop port and not with the wizard tail. */
   const mon = squareMonster(state, grid);
   if (mon && monsterIsObvious(mon)) {
     const name = monsterLookName(mon);
     const health = lookMonDesc(mon);
     return {
-      text: `${phrase1}${phrase2}${name} (${health}), ${coords}.`,
+      text: `${phrase1}${phrase2}${name} (${health}), ${coords}${lookTail(state, grid)}`,
       mon,
     };
   }
@@ -183,7 +203,7 @@ export function describeLookGrid(
     if (trap) {
       const art = isAVowel(trap.kind.desc.charAt(0)) ? "an " : "a ";
       return {
-        text: `${phrase1}${phrase2}${art}${trap.kind.desc}, ${coords}.`,
+        text: `${phrase1}${phrase2}${art}${trap.kind.desc}, ${coords}${lookTail(state, grid)}`,
         mon: null,
       };
     }
@@ -192,7 +212,10 @@ export function describeLookGrid(
   /* aux_object (L763-888, reduced per the module doc). */
   const objDesc = describeFloorAtGrid(state, grid);
   if (objDesc) {
-    return { text: `${phrase1}${phrase2}${objDesc}, ${coords}.`, mon: null };
+    return {
+      text: `${phrase1}${phrase2}${objDesc}, ${coords}${lookTail(state, grid)}`,
+      mon: null,
+    };
   }
 
   /* aux_terrain (L893-950): shown whenever nothing else claimed the grid. */
@@ -200,7 +223,7 @@ export function describeLookGrid(
   const lphrase2 = phrase2 ? squareApparentLookInPreposition(state, grid) : "";
   const lphrase3 = squareApparentLookPrefix(state, grid);
   return {
-    text: `${phrase1}${lphrase2}${lphrase3}${name}, ${coords}.`,
+    text: `${phrase1}${lphrase2}${lphrase3}${name}, ${coords}${lookTail(state, grid)}`,
     mon: null,
   };
 }

@@ -300,7 +300,13 @@ function makeTerm(cols = 80, rows = 24): GlyphTerm & { snapshot(): string[] } {
 function makeCtx(_win: FakeWindow): { ctx: WizardUiCtx; said: string[] } {
   const said: string[] = [];
   const player = { noscore: 0, statCur: [10, 10, 10, 10, 10], statMax: [10, 10, 10, 10, 10], au: 0, exp: 0 };
-  const deps: WizardDeps = { wizard: true, msg: (t: string) => said.push(t) };
+  const deps: WizardDeps = {
+    wizard: true,
+    /* These prompt tests drive dispatchDebug directly, past the ^A consent gate,
+     * so debug consent is already given (player_can_debug_prereq true). */
+    debug: true,
+    msg: (t: string) => said.push(t),
+  };
   const state = {
     actor: { player, grid: { x: 5, y: 5 } },
     chunk: { depth: 7 },

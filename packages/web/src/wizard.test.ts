@@ -94,18 +94,24 @@ function makeCtx(win: FakeWindow, noscore = 0): {
 } {
   const player = { noscore };
   const said: string[] = [];
-  const deps: WizardDeps = {
+  const deps = (): WizardDeps => ({
     wizard: true,
+    /* player_can_debug_prereq reads the live NOSCORE_DEBUG bit, so the shell
+     * hands deps in as a getter; mirror that or confirmDebugGate's mid-command
+     * consent would not be visible to the command it just unlocked. */
+    debug: (player.noscore & NOSCORE.DEBUG) !== 0,
     msg: (t: string) => said.push(t),
     markNoscore: (bits: number) => {
       player.noscore = markNoscore(player.noscore, bits);
     },
-  };
+  });
   const state = { actor: { player } } as unknown as GameState;
   const ctx: WizardUiCtx = {
     term: makeTerm(),
     state,
-    deps,
+    get deps(): WizardDeps {
+      return deps();
+    },
     say: (t: string) => said.push(t),
     refresh: () => {},
   };
@@ -221,26 +227,43 @@ describe("runWizardDebugMenu debug gate (15.2 / player-util.c L1296)", () => {
     delete (globalThis as { window?: unknown }).window;
   });
 
-  it("first open confirms danger and marks NOSCORE_DEBUG", async () => {
+  it("first use confirms danger and marks NOSCORE_DEBUG", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const { ctx, said, player } = makeCtx(win, NOSCORE.WIZARD);
     const done = runWizardDebugMenu(ctx);
     await tick();
+    /* get_com asks for the command key FIRST (ui-game.c L578); the prereq runs
+     * only once that key resolves to a real command (L595). */
+    press(win, "a"); // Player -> "Cure everything"
+    await tick();
     expect(said).toContain(DEBUG_CONFIRM_MSG_1);
     expect(said).toContain(DEBUG_CONFIRM_MSG_2);
-    press(win, "n"); // decline the debug confirm -> menu never opens
+    press(win, "n"); // decline the debug confirm -> the command never runs
     await done;
     expect(player.noscore & NOSCORE.DEBUG).toBe(0);
   });
 
-  it("refuses when not in wizard mode", async () => {
+  /**
+   * The predecessor of this case asserted that ^A refuses outside wizard mode.
+   * That refusal was invented: player_can_debug_prereq (player-util.c L1296-1307)
+   * reads only NOSCORE_DEBUG and never player->wizard, so a non-wizard character
+   * that accepts the warning gets the whole debug surface. Keep asserting the
+   * absence, so the invented gate cannot come back.
+   */
+  it("never mentions wizard mode: ^A does not consult it", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
-    const { ctx, said } = makeCtx(win, 0);
-    ctx.deps.wizard = false;
-    await runWizardDebugMenu(ctx);
-    expect(said.some((s) => s.includes("wizard mode"))).toBe(true);
+    const { ctx, said, player } = makeCtx(win, 0);
+    const done = runWizardDebugMenu(ctx);
+    await tick();
+    press(win, "a"); // Player -> "Cure everything"
+    await tick();
+    press(win, "y"); // accept confirm_debug
+    await done;
+    expect(said.some((s) => s.includes("wizard mode"))).toBe(false);
+    expect(player.noscore & NOSCORE.DEBUG).toBe(NOSCORE.DEBUG);
+    expect(player.noscore & NOSCORE.WIZARD).toBe(0); // debug consent is not wizard mode
   });
 });
 

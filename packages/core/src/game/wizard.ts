@@ -3,12 +3,31 @@
  *   - reference/src/cmd-wizard.c   (the do_cmd_wiz_* command actions)
  *   - reference/src/wiz-debug.c    (wiz_cheat_death)
  *
- * These are debug / cheat commands. Upstream gates them behind ALLOW_DEBUG and
- * flags the character with NOSCORE_WIZARD; a normal, faithful game (this
- * project's design decision 16: no save-scumming, faithful play) must never
- * reach them. The port keeps that gate as an explicit `wizard` boolean on the
- * WizardDeps seam: every action here is a no-op refusal when `wizard` is false,
- * so the wizard surface is a dev affordance behind a flag exactly like upstream.
+ * UPSTREAM HAS TWO SEPARATE CONCEPTS HERE, and this module gates on the second.
+ * The port originally collapsed them into one `wizard` boolean, which silently
+ * made every debug command unreachable unless wizard mode was also on - a gate
+ * upstream does not have:
+ *
+ *   - DEBUG consent (player_can_debug_prereq, reference/src/player-util.c
+ *     L1296-1307) gates all 41 debug-menu commands. It consults ONLY
+ *     `player->noscore & NOSCORE_DEBUG`; on the first use it asks confirm_debug()
+ *     and, if accepted, ORs the bit in permanently. It never reads
+ *     player->wizard. Every row of every cmd_debug_* table in
+ *     reference/src/ui-game.c L247-322 uses this prereq and nothing else.
+ *   - WIZARD mode (player->wizard, toggled by ^W / do_cmd_wizard,
+ *     reference/src/cmd-misc.c L40-67) is a separate, much smaller thing: it
+ *     changes six display / knowledge behaviours and nothing in this module.
+ *     Its 15 upstream call sites are the toggle itself, cheat death
+ *     (player-util.c L246), the "[=-WIZARD-=]" title (ui-display.c L178,
+ *     ui-player.c L628), all-artifacts-known (ui-knowledge.c L1695), the seven
+ *     look/target coordinate+noise+scent lines (ui-target.c), the headless
+ *     stats build (main-stats.c L435) and the borg's cheat-death check.
+ *
+ * So WizardDeps carries BOTH flags: `debug` (the player_can_debug_prereq result)
+ * gates the commands here, and `wizard` gates only wizCheatDeath, whose upstream
+ * path is `player->wizard || OPT(player, cheat_live)`. A normal, faithful game
+ * (design decision 16: no save-scumming, faithful play) reaches neither without
+ * the player accepting an explicit, savefile-marking warning first.
  *
  * MOST of these commands are thin wrappers that drive already-ported engine
  * systems with debug parameters, so this module wires to the existing port and
@@ -138,8 +157,24 @@ export type WizEffectDeps = Pick<
  */
 export interface WizardDeps {
   /**
-   * The wizard/debug gate (upstream ALLOW_DEBUG + NOSCORE_WIZARD). When false,
-   * every wizard action is a no-op refusal and no game state changes.
+   * player_can_debug_prereq's result (player-util.c L1296-1307): has this
+   * character already consented to debug commands, i.e. is NOSCORE_DEBUG set?
+   * This is the gate on all 41 debug commands in this module. It is NOT wizard
+   * mode: upstream's prereq never reads player->wizard, so a non-wizard player
+   * who accepts the debug warning gets the whole debug surface.
+   *
+   * The consent itself lives on player->noscore, so a caller computes this as
+   * `(player.noscore & NOSCORE.DEBUG) !== 0` and asks the player via the shell's
+   * confirm_debug equivalent before setting the bit through markNoscore.
+   */
+  debug: boolean;
+  /**
+   * player->wizard (cmd-misc.c L40-67). Gates ONLY wizCheatDeath here, whose
+   * upstream condition is `player->wizard || OPT(player, cheat_live)`
+   * (player-util.c L246). The other five wizard-mode behaviours are display and
+   * knowledge concerns and live with their own modules (game/display.ts,
+   * game/char-sheet.ts, obj/artifact-known.ts, game/target-loop.ts), each with
+   * its own `wizard` flag - none of them route through this seam.
    */
   wizard: boolean;
   /** obj/make.ts bundle (reg / alloc / constants) for object creation. */
@@ -176,7 +211,19 @@ export interface WizardDeps {
   msg?: (text: string) => void;
 }
 
-/** requireWizard: the gate. Returns false (and no-ops) when not in wizard mode. */
+/**
+ * player_can_debug_prereq (player-util.c L1296-1307): the gate on every debug
+ * command. Returns false (and the command no-ops) until the character has
+ * consented to debug mode. Deliberately independent of wizard mode.
+ */
+export function debugEnabled(deps: WizardDeps): boolean {
+  return deps.debug === true;
+}
+
+/**
+ * player->wizard (cmd-misc.c L40-67). Only wizCheatDeath gates on this here; see
+ * WizardDeps.wizard for where the other wizard-mode behaviours live.
+ */
 export function wizardEnabled(deps: WizardDeps): boolean {
   return deps.wizard === true;
 }
@@ -206,13 +253,31 @@ export const NOSCORE = {
 } as const;
 
 /**
- * The cheat bits that invalidate a high-score entry (score.c L289-298:
- * NOSCORE_WIZARD | NOSCORE_DEBUG, and NOSCORE_BORG when SCORE_BORGS is not
- * defined - the port's baseline). NOSCORE_JUMPING is deliberately absent: it is
- * a transient generation marker, not a scoring disqualifier.
+ * The two upstream build switches that decide whether NOSCORE_BORG exists and
+ * whether it disqualifies a score. Upstream expresses these as #ifdefs
+ * (player.h L97-99 wraps the bit in ALLOW_BORG; score.c L292-297 skips the borg
+ * branch when SCORE_BORGS is defined), so the port records the configuration it
+ * builds under as named constants instead of leaving the choice implicit.
+ *
+ * ALLOW_BORG: true. The Borg ships as a bundled mod (decision 31), so the bit
+ * exists and can be set.
+ * SCORE_BORGS: false, matching upstream's default - a borg-played character is
+ * not eligible for the high-score table.
+ */
+export const ALLOW_BORG = true;
+export const SCORE_BORGS = false;
+
+/**
+ * The cheat bits that invalidate a high-score entry (score.c L289-298).
+ * NOSCORE_WIZARD | NOSCORE_DEBUG always disqualify; NOSCORE_BORG additionally
+ * does so only under ALLOW_BORG && !SCORE_BORGS, which is this port's
+ * configuration. NOSCORE_JUMPING is deliberately absent: it is a transient
+ * generation marker, not a scoring disqualifier.
  */
 export const NOSCORE_SCORE_INVALIDATING =
-  NOSCORE.WIZARD | NOSCORE.DEBUG | NOSCORE.BORG;
+  NOSCORE.WIZARD |
+  NOSCORE.DEBUG |
+  (ALLOW_BORG && !SCORE_BORGS ? NOSCORE.BORG : 0);
 
 /** markNoscore (obj-mark analogue): OR cheat bits into a noscore value. Pure. */
 export function markNoscore(current: number, bits: number): number {
@@ -357,7 +422,7 @@ export function wizAcquire(
   params: { quantity: number; great?: boolean },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.makeDeps) return false;
+  if (!debugEnabled(deps) || !deps.makeDeps) return false;
   const great = params.great ?? false;
   for (let i = 0; i < params.quantity; i++) {
     /* acquirement: make_object(cave, level, good=true, great, extra=true). */
@@ -383,7 +448,7 @@ export function wizAcquire(
  * do_cmd_wiz_advance (L414): max stats, a heap of gold, level 50, full HP/SP.
  */
 export function wizAdvance(state: GameState, deps: WizardDeps): boolean {
-  if (!wizardEnabled(deps) || !deps.expDeps) return false;
+  if (!debugEnabled(deps) || !deps.expDeps) return false;
   const p = state.actor.player;
   for (let i = 0; i < STAT_MAX; i++) {
     p.statCur[i] = 118;
@@ -407,7 +472,7 @@ export function wizBanish(
   params: { range: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   for (let i = 1; i < monsterMax(state); i++) {
     const mon = state.monsters[i];
     if (!mon) continue;
@@ -421,7 +486,7 @@ export function wizBanish(
  * do_cmd_wiz_create_all_artifact (L728): create every artifact and drop them.
  */
 export function wizCreateAllArtifact(state: GameState, deps: WizardDeps): boolean {
-  if (!wizardEnabled(deps) || !deps.makeDeps || !deps.artifacts) return false;
+  if (!debugEnabled(deps) || !deps.makeDeps || !deps.artifacts) return false;
   for (let i = 1; i < deps.artifacts.length; i++) {
     const art = deps.artifacts[i];
     if (!art) continue;
@@ -439,7 +504,7 @@ export function wizCreateAllArtifactFromTval(
   params: { tval: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.makeDeps || !deps.artifacts) return false;
+  if (!debugEnabled(deps) || !deps.makeDeps || !deps.artifacts) return false;
   for (let i = 1; i < deps.artifacts.length; i++) {
     const art = deps.artifacts[i];
     if (!art || art.tval !== params.tval) continue;
@@ -453,7 +518,7 @@ export function wizCreateAllArtifactFromTval(
  * instant-artifact kinds) and drop them.
  */
 export function wizCreateAllObj(state: GameState, deps: WizardDeps): boolean {
-  if (!wizardEnabled(deps) || !deps.makeDeps) return false;
+  if (!debugEnabled(deps) || !deps.makeDeps) return false;
   const kinds = deps.makeDeps.reg.kinds;
   for (const kind of kinds) {
     if (!kind || !kind.base || !kind.base.name) continue;
@@ -472,7 +537,7 @@ export function wizCreateAllObjFromTval(
   params: { tval: number; art?: boolean },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.makeDeps) return false;
+  if (!debugEnabled(deps) || !deps.makeDeps) return false;
   const art = params.art ?? false;
   for (const kind of deps.makeDeps.reg.kinds) {
     if (!kind || kind.tval !== params.tval) continue;
@@ -490,7 +555,7 @@ export function wizCreateArtifact(
   params: { index: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.makeDeps || !deps.artifacts) return false;
+  if (!debugEnabled(deps) || !deps.makeDeps || !deps.artifacts) return false;
   const ind = params.index;
   if (ind < 1 || ind >= deps.artifacts.length) {
     deps.msg?.("That's not a valid artifact.");
@@ -513,7 +578,7 @@ export function wizCreateObj(
   params: { index: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.makeDeps) return false;
+  if (!debugEnabled(deps) || !deps.makeDeps) return false;
   const kinds = deps.makeDeps.reg.kinds;
   const ind = params.index;
   if (ind < 0 || ind >= kinds.length) {
@@ -538,7 +603,7 @@ export function wizCreateTrap(
   params: { index: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.trapDeps) return false;
+  if (!debugEnabled(deps) || !deps.trapDeps) return false;
   const grid = state.actor.grid;
   const tidx = params.index;
   if (
@@ -567,7 +632,7 @@ export function wizCreateTrap(
  * lost experience, top HP/SP, clear the affliction timers and feed the player.
  */
 export function wizCureAll(state: GameState, deps: WizardDeps): boolean {
-  if (!wizardEnabled(deps) || !deps.effect) return false;
+  if (!debugEnabled(deps) || !deps.effect) return false;
   const p = state.actor.player;
 
   /* Remove curses from equipped items. */
@@ -634,7 +699,7 @@ export function wizCurseItem(
   params: { obj: GameObject; index: number; power: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.curses) return false;
+  if (!debugEnabled(deps) || !deps.curses) return false;
   const { obj, index, power } = params;
   if (index <= 0 || index >= deps.curses.length) return false;
   if (power < 0) return false;
@@ -651,7 +716,7 @@ export function wizCurseItem(
  * objects / visible + invisible monsters in a 22x40 rectangle.
  */
 export function wizDetectAllLocal(state: GameState, deps: WizardDeps): boolean {
-  if (!wizardEnabled(deps) || !deps.effect) return false;
+  if (!debugEnabled(deps) || !deps.effect) return false;
   const local: SimpleParams = { y: 22, x: 40 };
   runSimple(state, deps.effect, EF.DETECT_TRAPS, local);
   runSimple(state, deps.effect, EF.DETECT_DOORS, local);
@@ -668,7 +733,7 @@ export function wizDetectAllLocal(state: GameState, deps: WizardDeps): boolean {
  * rectangle (i.e. the whole level).
  */
 export function wizDetectAllMonsters(state: GameState, deps: WizardDeps): boolean {
-  if (!wizardEnabled(deps) || !deps.effect) return false;
+  if (!debugEnabled(deps) || !deps.effect) return false;
   const whole: SimpleParams = { y: 500, x: 500 };
   runSimple(state, deps.effect, EF.DETECT_VISIBLE_MONSTERS, whole);
   runSimple(state, deps.effect, EF.DETECT_INVISIBLE_MONSTERS, whole);
@@ -679,7 +744,7 @@ export function wizDetectAllMonsters(state: GameState, deps: WizardDeps): boolea
  * do_cmd_wiz_magic_map (L1418): map the area around the player (22x40).
  */
 export function wizMagicMap(state: GameState, deps: WizardDeps): boolean {
-  if (!wizardEnabled(deps) || !deps.effect) return false;
+  if (!debugEnabled(deps) || !deps.effect) return false;
   return runSimple(state, deps.effect, EF.MAP_AREA, { y: 22, x: 40 });
 }
 
@@ -688,7 +753,7 @@ export function wizMagicMap(state: GameState, deps: WizardDeps): boolean {
  * (dispel every monster in line of sight).
  */
 export function wizHitAllLos(state: GameState, deps: WizardDeps): boolean {
-  if (!wizardEnabled(deps) || !deps.effect) return false;
+  if (!debugEnabled(deps) || !deps.effect) return false;
   return runSimple(state, deps.effect, EF.PROJECT_LOS, {
     diceString: "10000",
     subtype: PROJ.DISP_ALL,
@@ -704,7 +769,7 @@ export function wizEditPlayerExp(
   params: { value: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.expDeps) return false;
+  if (!debugEnabled(deps) || !deps.expDeps) return false;
   const p = state.actor.player;
   const newv = Math.min(PY_MAX_EXP, Math.max(0, params.value));
   if (newv > p.exp) {
@@ -724,7 +789,7 @@ export function wizEditPlayerGold(
   params: { value: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   state.actor.player.au = Math.min(2147483647, Math.max(0, params.value));
   return true;
 }
@@ -738,7 +803,7 @@ export function wizEditPlayerStat(
   params: { stat: number; value: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   const { stat } = params;
   if (stat < 0 || stat >= STAT_MAX) return false;
   const newv = Math.min(118, Math.max(3, params.value));
@@ -756,7 +821,7 @@ export function wizIncreaseExp(
   params: { quantity: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.expDeps) return false;
+  if (!debugEnabled(deps) || !deps.expDeps) return false;
   const n = params.quantity < 1 ? 1 : params.quantity;
   playerExpGain(state.actor.player, n, deps.expDeps);
   return true;
@@ -778,7 +843,7 @@ export function wizJumpLevel(
   params: { level: number; chooseGen?: boolean },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   const level = params.level;
   if (level < 0 || level >= state.z.maxDepth) return false;
   /* player->noscore |= NOSCORE_JUMPING (cmd-wizard.c L1366). */
@@ -798,7 +863,7 @@ export function wizLearnObjectKinds(
   params: { level: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.makeDeps || !deps.flavor) return false;
+  if (!debugEnabled(deps) || !deps.makeDeps || !deps.flavor) return false;
   for (const kind of deps.makeDeps.reg.kinds) {
     if (!kind || !kind.name) continue;
     if (kind.level <= params.level) deps.flavor.setAware(kind);
@@ -816,7 +881,7 @@ export function wizRecallMonster(
   params: { race?: MonsterRace; all?: boolean },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   if (params.all) {
     if (!deps.races) return false;
     for (const race of deps.races) {
@@ -837,7 +902,7 @@ export function wizWipeRecall(
   params: { race?: MonsterRace; all?: boolean },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   if (params.all) {
     if (!deps.races) return false;
     for (const race of deps.races) {
@@ -855,7 +920,7 @@ export function wizWipeRecall(
  * it lands in the legal band, and report the life rating. Returns the rating.
  */
 export function wizRerate(state: GameState, deps: WizardDeps): number | null {
-  if (!wizardEnabled(deps)) return null;
+  if (!debugEnabled(deps)) return null;
   const p = state.actor.player;
   let minValue = Math.trunc((PY_MAX_LEVEL * 3 * (p.hitdie - 1)) / 8);
   minValue += PY_MAX_LEVEL;
@@ -890,7 +955,7 @@ export function wizRerollItem(
   params: { obj: GameObject; roll: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.makeDeps) return false;
+  if (!debugEnabled(deps) || !deps.makeDeps) return false;
   const { obj } = params;
   if (obj.artifact) return false;
   const good = params.roll >= 1;
@@ -954,7 +1019,7 @@ export function wizTweakItem(
   },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   const { obj } = params;
   if (obj.artifact) return false;
 
@@ -1050,7 +1115,7 @@ export function wizSummonNamed(
   params: { race: MonsterRace },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.monPlace) return false;
+  if (!debugEnabled(deps) || !deps.monPlace) return false;
   const info = { index: 0, role: MON_GROUP.LEADER };
   for (let i = 0; i < 10; i++) {
     const spots = scatterExt(state.chunk, state.rng, 1, state.actor.grid, 1, true, (_c, g) =>
@@ -1089,7 +1154,7 @@ export function wizSummonRandom(
   params: { quantity: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.effect) return false;
+  if (!debugEnabled(deps) || !deps.effect) return false;
   const n = params.quantity < 1 ? 1 : params.quantity;
   for (let i = 0; i < n; i++) {
     runSimple(state, deps.effect, EF.SUMMON, { diceString: "1" });
@@ -1105,7 +1170,7 @@ export function wizTeleportRandom(
   params: { range: number },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.effect || params.range < 1) return false;
+  if (!debugEnabled(deps) || !deps.effect || params.range < 1) return false;
   return runSimple(state, deps.effect, EF.TELEPORT, {
     diceString: String(params.range),
   });
@@ -1120,7 +1185,7 @@ export function wizTeleportTo(
   params: { grid: Loc },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps) || !deps.effect) return false;
+  if (!debugEnabled(deps) || !deps.effect) return false;
   if (!state.chunk.isPassable(params.grid)) {
     deps.msg?.("The square you are aiming for is impassable.");
     return false;
@@ -1139,7 +1204,7 @@ export function wizPushObject(
   params: { grid: Loc },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   pushObject(state, params.grid);
   return true;
 }
@@ -1148,7 +1213,7 @@ export function wizPushObject(
  * do_cmd_wiz_wizard_light (L2907): permanently light and know the whole level.
  */
 export function wizWizardLight(state: GameState, deps: WizardDeps): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   /* wiz_light(cave, player, true) (cmd-wizard.c:2909): the wizard command is
    * always the `full` form, so it square_know_piles rather than sense_piles. */
   wizLightLevel(state, true, true);
@@ -1162,6 +1227,8 @@ export function wizWizardLight(state: GameState, deps: WizardDeps): boolean {
  * on the player; word_recall / deep_descent live there.
  */
 export function wizCheatDeath(state: GameState, deps: WizardDeps): boolean {
+  /* player->wizard || OPT(player, cheat_live) (player-util.c L246); the caller
+   * (game/take-hit-hooks.ts) enforces the cheat_live half. */
   if (!wizardEnabled(deps)) return false;
   const p = state.actor.player;
   /* player->noscore |= NOSCORE_WIZARD (wiz-debug.c L32). */
@@ -1277,7 +1344,7 @@ export function wizDisplayItem(
   deps: WizardDeps,
   opts: { all?: boolean; known?: GameObject | null } = {},
 ): WizItemDisplay | null {
-  if (!wizardEnabled(deps) || !deps.makeDeps) return null;
+  if (!debugEnabled(deps) || !deps.makeDeps) return null;
   const all = opts.all ?? true;
   const known = opts.known ?? null;
   /* The object the "+" combat fields and the known flag set are read from. */
@@ -1350,7 +1417,7 @@ export function wizChangeItemQuantity(
   },
   deps: WizardDeps,
 ): WizQuantityResult | null {
-  if (!wizardEnabled(deps) || !deps.makeDeps) return null;
+  if (!debugEnabled(deps) || !deps.makeDeps) return null;
   const { obj, handle } = params;
   const p = state.actor.player;
 
@@ -1412,7 +1479,7 @@ export function wizPlayItemBegin(
   obj: GameObject,
   deps: WizardDeps,
 ): GameObject | null {
-  if (!wizardEnabled(deps)) return null;
+  if (!debugEnabled(deps)) return null;
   return objectCopy(obj);
 }
 
@@ -1468,7 +1535,7 @@ export function wizPlayItemReject(
   original: GameObject,
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   restoreItemFields(obj, original);
   return true;
 }
@@ -1486,7 +1553,7 @@ export function wizPlayItemAccept(
   params: { changed: boolean; equipped: boolean },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   if (params.changed && params.equipped) {
     obj.notice &= ~OBJ_NOTICE_WORN;
     objectLearnOnWield(state.actor.player, obj, state.runeEnv);
@@ -1530,7 +1597,7 @@ export function wizStatItem(
   params: { obj: GameObject; roll: number; level: number; nRolls?: number },
   deps: WizardDeps,
 ): WizStatItemResult | null {
-  if (!wizardEnabled(deps) || !deps.makeDeps) return null;
+  if (!debugEnabled(deps) || !deps.makeDeps) return null;
   const { obj } = params;
   const good = params.roll >= 1;
   const great = params.roll >= 2;
@@ -1606,7 +1673,7 @@ export function wizEditPlayerStart(
   },
   deps: WizardDeps,
 ): boolean {
-  if (!wizardEnabled(deps)) return false;
+  if (!debugEnabled(deps)) return false;
   if (params.stats) {
     for (let stat = 0; stat < STAT_MAX && stat < params.stats.length; stat++) {
       const v = params.stats[stat];
@@ -1631,7 +1698,7 @@ export function wizQueryFeature(
   params: { features: readonly number[] },
   deps: WizardDeps,
 ): Loc[] {
-  if (!wizardEnabled(deps)) return [];
+  if (!debugEnabled(deps)) return [];
   const out: Loc[] = [];
   const c = state.chunk;
   for (let y = 1; y < c.height - 1; y++) {
@@ -1652,7 +1719,7 @@ export function wizQuerySquareFlag(
   params: { flag: number },
   deps: WizardDeps,
 ): Loc[] {
-  if (!wizardEnabled(deps)) return [];
+  if (!debugEnabled(deps)) return [];
   const out: Loc[] = [];
   const c = state.chunk;
   for (let y = 1; y < c.height - 1; y++) {
@@ -1677,7 +1744,7 @@ export function wizPeekFlow(
   params: { depth: number; which: "noise" | "scent" },
   deps: WizardDeps,
 ): Loc[] {
-  if (!wizardEnabled(deps)) return [];
+  if (!debugEnabled(deps)) return [];
   const out: Loc[] = [];
   const c = state.chunk;
   const map = params.which === "scent" ? c.scent : c.noise;

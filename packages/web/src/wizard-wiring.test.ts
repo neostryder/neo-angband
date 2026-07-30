@@ -7,12 +7,15 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
 import {
   DEBUG_MENU,
+  DEBUG_NESTED_ERROR,
+  DEBUG_PROMPT,
   dispatchDebug,
   runWizardDebugMenu,
 } from "./wizard";
 import type { WizardUiCtx } from "./wizard";
 import {
   markNoscore,
+  NOSCORE,
   ObjRegistry,
   objectNew,
   newGear,
@@ -87,6 +90,9 @@ function makeTerm(cols = 40, rows = 20): GlyphTerm {
         if (row) row[x + i] = text[i] ?? " ";
       }
     },
+    /* Read the cell grid back, so a test can assert what is actually on a row
+     * (the ^A prompt lives on row 0) rather than that a draw call happened. */
+    snapshot: () => grid.map((row) => row.join("").replace(/\s+$/u, "")),
   } as unknown as GlyphTerm;
 }
 
@@ -166,6 +172,7 @@ describe("W2-007 live tweak dispatch", () => {
     } as unknown as GameState;
     const deps: WizardDeps = {
       wizard: true,
+      debug: true,
       makeDeps: {
         reg: objReg,
         alloc: new ObjAllocState(objReg, constants),
@@ -218,7 +225,7 @@ describe("W2-007 live tweak dispatch", () => {
   });
 });
 
-describe("runWizardDebugMenu still gates on wizard mode", () => {
+describe("runWizardDebugMenu: the ^A gate is debug consent", () => {
   const g = globalThis as unknown as { window?: FakeWindow };
   let prev: FakeWindow | undefined;
 
@@ -227,27 +234,102 @@ describe("runWizardDebugMenu still gates on wizard mode", () => {
     else delete g.window;
   });
 
-  it("refuses when not in wizard mode", async () => {
-    const win = makeFakeWindow();
-    prev = g.window;
-    g.window = win;
-    const said: string[] = [];
-    const player = { noscore: 0 };
-    const deps: WizardDeps = {
-      wizard: false,
-      msg: (t) => said.push(t),
-      markNoscore: (bits) => {
-        player.noscore = markNoscore(player.noscore, bits);
-      },
-    };
-    const ctx: WizardUiCtx = {
-      term: makeTerm(),
-      state: { actor: { player } } as unknown as GameState,
-      deps,
-      say: (t) => said.push(t),
-      refresh: () => {},
-    };
-    await runWizardDebugMenu(ctx);
-    expect(said.some((s) => s.includes("wizard mode"))).toBe(true);
+  /**
+   * ^A's real gate is player_can_debug_prereq (player-util.c L1296-1307), which
+   * reads ONLY the persisted NOSCORE_DEBUG bit. The port used to refuse the whole
+   * surface unless wizard mode was also on - an invented prerequisite that made
+   * all 41 debug commands unreachable for a non-wizard character - and the test
+   * that stood here asserted that refusal was correct, which is why the defect
+   * survived. These cases pin the upstream behaviour in both directions, so
+   * re-introducing a wizard check fails and so does dropping the consent gate.
+   */
+  describe("debug consent, not wizard mode, is the ^A gate", () => {
+    function debugCtx(wizard: boolean, noscore = 0): {
+      ctx: WizardUiCtx;
+      said: string[];
+      player: { noscore: number };
+      term: GlyphTerm & { snapshot(): string[] };
+    } {
+      const said: string[] = [];
+      const player = { noscore };
+      const term = makeTerm() as GlyphTerm & { snapshot(): string[] };
+      const ctx: WizardUiCtx = {
+        term,
+        state: { actor: { player } } as unknown as GameState,
+        get deps(): WizardDeps {
+          return {
+            wizard,
+            debug: (player.noscore & NOSCORE.DEBUG) !== 0,
+            msg: (t) => said.push(t),
+            markNoscore: (bits) => {
+              player.noscore = markNoscore(player.noscore, bits);
+            },
+          };
+        },
+        say: (t) => said.push(t),
+        refresh: () => {},
+      };
+      return { ctx, said, player, term };
+    }
+
+    it("asks nested_prompt for one keypress, with no category menu", async () => {
+      const win = makeFakeWindow();
+      prev = g.window;
+      g.window = win;
+      const { ctx, term } = debugCtx(false);
+      const done = runWizardDebugMenu(ctx);
+      await tick();
+      /* get_com_ex does prt(prompt, 0, 0) (ui-input.c L1427) - the prompt is on
+       * row 0 and nothing has been drawn over the screen. */
+      expect((term.snapshot()[0] ?? "").trimEnd()).toBe(DEBUG_PROMPT.trimEnd());
+      press(win, "Escape");
+      await done;
+    });
+
+    it("reports nested_error for an unbound key and never asks for consent", async () => {
+      const win = makeFakeWindow();
+      prev = g.window;
+      g.window = win;
+      const { ctx, said, player } = debugCtx(false);
+      const done = runWizardDebugMenu(ctx);
+      await tick();
+      press(win, "~"); // bound to nothing in any cmd_debug_* table
+      await done;
+      expect(said).toContain(DEBUG_NESTED_ERROR);
+      /* The prereq runs AFTER the key resolves (ui-game.c L595), so an unbound
+       * key must not have marked the savefile. */
+      expect(player.noscore & NOSCORE.DEBUG).toBe(0);
+    });
+
+    it("runs a debug command for a NON-wizard character once consent is given", async () => {
+      const win = makeFakeWindow();
+      prev = g.window;
+      g.window = win;
+      const { ctx, said, player } = debugCtx(false);
+      const done = runWizardDebugMenu(ctx);
+      await tick();
+      press(win, "a"); // Player -> "Cure everything"
+      await tick();
+      press(win, "y"); // confirm_debug
+      await done;
+      /* Consent marked the savefile, and the command was not refused for want of
+       * wizard mode. */
+      expect(player.noscore & NOSCORE.DEBUG).toBe(NOSCORE.DEBUG);
+      expect(said.some((s) => s.includes("wizard mode"))).toBe(false);
+    });
+
+    it("declining consent leaves the bit clear and runs nothing", async () => {
+      const win = makeFakeWindow();
+      prev = g.window;
+      g.window = win;
+      const { ctx, player } = debugCtx(true);
+      const done = runWizardDebugMenu(ctx);
+      await tick();
+      press(win, "a");
+      await tick();
+      press(win, "n"); // refuse confirm_debug
+      await done;
+      expect(player.noscore & NOSCORE.DEBUG).toBe(0);
+    });
   });
 });
