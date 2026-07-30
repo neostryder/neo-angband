@@ -458,15 +458,31 @@ export async function runWizardToggle(
 
 /** One debug command: its faithful letter + label + a dispatch key. */
 export interface DebugCommand {
-  letter: string;
-  label: string;
-  action: string;
+  readonly letter: string;
+  readonly label: string;
+  readonly action: string;
 }
 
 /** One debug category: faithful title + its commands. */
 export interface DebugCategory {
-  title: string;
-  commands: DebugCommand[];
+  readonly title: string;
+  readonly commands: readonly DebugCommand[];
+}
+
+/**
+ * Freeze the table and every row in it. The `readonly` types below only bind
+ * TypeScript callers, and a mod folder ships plain `plugin.js` - so the runtime
+ * freeze is the half that actually holds the door shut. Shallow freezing would
+ * leave `commands` mutable, which is where the rows people would want to add
+ * actually live.
+ */
+function deepFreezeMenu(cats: readonly DebugCategory[]): readonly DebugCategory[] {
+  for (const cat of cats) {
+    Object.freeze(cat.commands);
+    for (const cmd of cat.commands) Object.freeze(cmd);
+    Object.freeze(cat);
+  }
+  return Object.freeze(cats);
 }
 
 /**
@@ -480,8 +496,20 @@ export interface DebugCategory {
  * (textui_action_menu_choose / cmd_menu, ui-context.c L1176-1215), which this
  * port has not yet ported for any command list; that absence is tracked
  * separately and is not specific to debug mode.
+ *
+ * FROZEN (deeply), AND DELIBERATELY NOT A MOD SEAM. These are upstream's own
+ * tables and must match the C exactly, which is what the parity tests assert.
+ * Exported-and-mutable made it an accidental extension point: a mod could push a
+ * row here at import time, and that row would be outside the mod system - no
+ * ordering against another mod's rows, absent from every manifest, and NOT
+ * removable by disabling the mod, which breaks the rule that a disabled mod's
+ * patches do not exist. It would also silently break the parity tests that count
+ * these letters. Frozen, the attempt throws in strict mode.
+ *
+ * A mod wanting its own debug or developer commands should register a command,
+ * not edit upstream's table.
  */
-export const DEBUG_MENU: DebugCategory[] = [
+export const DEBUG_MENU: readonly DebugCategory[] = deepFreezeMenu([
   {
     title: "Items",
     commands: [
@@ -568,7 +596,7 @@ export const DEBUG_MENU: DebugCategory[] = [
       { letter: "X", label: "Quit without saving", action: "quit-no-save" },
     ],
   },
-];
+]);
 
 /**
  * player_can_debug_prereq + confirm_debug (player-util.c L1296-1307,

@@ -624,19 +624,22 @@ export interface GameState {
   townChunk?: import("../world/chunk").Chunk | null;
   /**
    * The walk-into-a-wall seam: consulted by walkAction (game/player-turn.ts)
-   * when a walk is blocked, BEFORE the faithful no-energy bump. Returns the
-   * energy a mod spent taking the walk over, or 0 to fall through to the bump.
-   * Installed by the session (movementAutoDig, game/cave-cmd.ts), which returns 0
-   * having drawn NO RNG unless a mod supplied the walkBlockedByDiggable hook - so
-   * an absent hook keeps movement byte-identical to faithful 4.2.6.
+   * when a walk is blocked, BEFORE the faithful no-energy bump.
+   *
+   * `null` means NO mod took the walk over, and is the ONLY value that falls
+   * through to the bump. A number is the energy a mod spent - **including 0**,
+   * which is a mod consuming the keypress without costing the player a turn.
+   * Those two are different answers on purpose; collapsing zero into "declined"
+   * is the defect this signature exists to prevent, and it would make the hook
+   * interface document a case the engine cannot express.
+   *
+   * Installed by the session (movementAutoDig, game/cave-cmd.ts), which returns
+   * null having drawn NO RNG unless a mod supplied the walkBlockedByDiggable
+   * hook - so an absent hook keeps movement byte-identical to faithful 4.2.6.
    *
    * Core names no mod and reads no flag here. Which mod is asking, and why, is
    * not core's business.
    */
-  /* null means NO mod took the walk over, which is not the same as a mod taking
-   * it over for zero energy - ModHooks.walkBlockedByDiggable distinguishes the
-   * two on purpose and this seam has to carry the distinction, or the interface
-   * documents a case the engine cannot express. */
   autoDigStep?: (state: GameState, grid: Loc) => number | null;
   /**
    * player_kill_monster's reward slice: runs when the PLAYER kills a

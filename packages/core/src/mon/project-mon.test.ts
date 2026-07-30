@@ -14,7 +14,7 @@ import {
   newMonProjectContext,
   runMonsterHandler,
 } from "./project-mon";
-import type { MonProjectHooks } from "./project-mon";
+import type { MonHandler, MonProjectHooks } from "./project-mon";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(
@@ -94,6 +94,37 @@ describe("monster projection handler table", () => {
     expect(MONSTER_HANDLERS).toHaveLength(56);
     for (let i = 0; i < 56; i++) {
       expect(typeof MONSTER_HANDLERS[i]).toBe("function");
+    }
+  });
+
+  it("cannot be rewired from outside - it is exported for tests, not as a mod seam", () => {
+    /* An exported mutable table is an accidental extension point. A mod folder
+     * ships plain plugin.js, so the `readonly` type binds nobody there; only the
+     * runtime freeze does. What makes this worth closing rather than documenting:
+     * a mod assigning a slot here patches core from outside the mod system, so
+     * the patch has no ordering against another mod's, appears in no manifest,
+     * and survives DISABLING the mod - which contradicts the rule that a disabled
+     * mod's patches do not exist. */
+    const original = MONSTER_HANDLERS[PROJ.FIRE];
+    const table = MONSTER_HANDLERS as (MonHandler | null)[];
+    try {
+      expect(() => {
+        table[PROJ.FIRE] = (): void => {};
+      }).toThrow(TypeError);
+      expect(() => table.push(null)).toThrow(TypeError);
+      expect(MONSTER_HANDLERS[PROJ.FIRE]).toBe(original);
+      expect(MONSTER_HANDLERS).toHaveLength(56);
+    } finally {
+      /* If the freeze is ever lost, the writes above SUCCEED and this test would
+       * leave the module's shared table rewired for every test after it. Put it
+       * back, so the failure stays legible as this one assertion instead of a
+       * cascade in unrelated FIRE tests. */
+      try {
+        table[PROJ.FIRE] = original;
+        table.length = 56;
+      } catch {
+        /* still frozen, which is the passing case - nothing to undo */
+      }
     }
   });
 });
