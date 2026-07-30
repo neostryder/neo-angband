@@ -1,0 +1,59 @@
+# The privacy gate, as one step any of the companion mod repositories can run.
+#
+# Every repository in this project is PUBLIC, and the terms the scanner looks for
+# (the maintainer's legal name, work email and employer, private project
+# codenames, absolute paths naming a user account) leak into a small mod repo for
+# exactly the same reasons they leak into this one: they are natural things to
+# type in a comment or a commit message while working.
+#
+# WHY AN ACTION AND NOT A COPY. A vendored scanner per repository is three rule
+# lists that drift, and the one that quietly stops matching is the one nobody
+# opens. Referencing this action pins the action AND the scanner to a single ref,
+# because GitHub checks out this whole repository to run a composite action - so
+# `tools/private-scan.mjs` three directories up is the scanner from the same
+# commit as this file, with no second version coordinate to keep in step.
+#
+# THIS IS THE SECOND OF TWO GATES, and it is the later one. It sees a file only
+# once that file is committed, which for a public repo is after the bytes are
+# already published. The pre-commit hook is what catches a new file in time; see
+# .githooks/pre-commit, which a mod clone enables by pointing core.hooksPath at
+# it. Neither gate substitutes for the other.
+#
+# Usage in a mod repository's workflow:
+#
+#   - uses: actions/checkout@v4
+#   - uses: neostryder/neo-angband/.github/actions/private-scan@master
+#
+name: private-scan
+description: Refuse private information in a public Neo Angband repository
+
+inputs:
+  root:
+    description: >-
+      The working tree to scan, relative to the workspace. Defaults to the
+      workspace root, which is where actions/checkout puts a single checkout.
+    required: false
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    # Fail closed, loudly. If the layout this depends on ever changes, the
+    # damaging outcome is a step that finds no scanner, prints nothing and exits
+    # 0 - a green tick for a check that did not run.
+    - name: Locate the scanner
+      id: locate
+      shell: bash
+      run: |
+        scanner="${{ github.action_path }}/../../../tools/private-scan.mjs"
+        if [ ! -f "$scanner" ]; then
+          echo "::error::private-scan: no scanner at $scanner." \
+               "The action expects to run from a full neo-angband checkout." >&2
+          exit 1
+        fi
+        echo "scanner=$(cd "$(dirname "$scanner")" && pwd)/private-scan.mjs" >> "$GITHUB_OUTPUT"
+
+    - name: Scan the tracked tree
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: node "${{ steps.locate.outputs.scanner }}" --root "${{ inputs.root }}"
