@@ -145,6 +145,25 @@ export interface DiskPackReport {
    * repeatedly rather than minted per call.
    */
   readonly assetUrl: AssetUrlResolver | null;
+  /**
+   * One entry per SOURCE that contributed packs to this report.
+   *
+   * A single report has one (or none, when this front end has no mods directory).
+   * A COMBINED report has one per contributing source, and that is the point: with
+   * a picked folder AND mods installed from repositories both live, `kind` and `dir`
+   * can only describe one of them, so the manager would have to say something false
+   * about where a player's mods came from. It says one line each instead.
+   */
+  readonly origins: readonly ModOrigin[];
+}
+
+/** Where one contributing source's packs came from, for the mod manager. */
+export interface ModOrigin {
+  readonly kind: ModDirKind;
+  /** The directory, when there is one to name; null for installed mods. */
+  readonly dir: string | null;
+  /** How many usable packs this source contributed. */
+  readonly count: number;
 }
 
 /** Resolve one asset file to a URL that stays valid. */
@@ -172,6 +191,7 @@ export const NO_DISK_PACKS: DiskPackReport = {
   kind: "none",
   codeUrl: null,
   assetUrl: null,
+  origins: [],
 };
 
 /** The latched result, so the synchronous composer can read it. */
@@ -302,6 +322,10 @@ export async function readModDir(source: ModDirSource): Promise<DiskPackReport> 
       kind: source.kind,
       codeUrl,
       assetUrl,
+      /* Available but contributing nothing: the folder IS there and could not be
+       * read, which is a different thing from having no folder, and the manager says
+       * different things about the two. */
+      origins: [{ kind: source.kind, dir: source.dir(), count: 0 }],
     };
   }
 
@@ -350,7 +374,144 @@ export async function readModDir(source: ModDirSource): Promise<DiskPackReport> 
     kind: source.kind,
     codeUrl,
     assetUrl,
+    origins: [{ kind: source.kind, dir: source.dir(), count: packs.length }],
   };
+}
+
+/**
+ * One report over several sources - a picked folder AND mods installed from their own
+ * repositories, both live at once.
+ *
+ * WHY THIS EXISTS. Boot used to CHOOSE: the shell's folder if it had one, else a
+ * picked folder, and installed mods were nowhere - `loadInstalledMods` had no
+ * production caller at all, so a mod could be downloaded, digest-checked, stored, and
+ * then reach nothing. Choosing is right between the shell's folder and a picked one
+ * (they are two answers to the same question, and a stale handle must not shadow the
+ * folder beside the game). It is wrong for installed mods, which are not an
+ * alternative to having a folder.
+ *
+ * THE RESOLVERS ROUTE PER MOD ID, and that is the whole difficulty. Each source
+ * reaches bytes its own way - a loopback URL, a blob over a picked File, an IndexedDB
+ * read - so a single `assetUrl(id, path)` has to ask the source that OWNS that id.
+ * Concatenating packs while keeping one source's resolver would serve one mod's files
+ * from another mod's storage, or more likely nothing at all, and a tile pack that
+ * silently draws no tiles is the exact failure this whole seam was built to stop.
+ *
+ * FIRST WINS on a duplicate id, in the order given, and the loser is reported rather
+ * than dropped in silence: the player has two mods claiming one name and needs to know
+ * which one is running. The same rule pack.ts applies when a disk pack collides with a
+ * bundled one.
+ */
+export function combineDiskReports(
+  reports: readonly DiskPackReport[],
+): DiskPackReport {
+  const live = reports.filter((r) => r.available);
+  if (live.length === 0) return NO_DISK_PACKS;
+  if (live.length === 1) return live[0] as DiskPackReport;
+
+  const packs: DiskPack[] = [];
+  const problems: string[] = [];
+  const order: string[] = [];
+  const owner = new Map<string, DiskPackReport>();
+
+  for (const report of live) {
+    problems.push(...report.problems);
+    for (const pack of report.packs) {
+      const id = pack.manifest.id;
+      const held = owner.get(id);
+      if (held !== undefined) {
+        problems.push(
+          `${id}: two sources offer this mod (${describe(held)} and ` +
+            `${describe(report)}); the ${describe(held)} one is loaded`,
+        );
+        continue;
+      }
+      owner.set(id, report);
+      packs.push(pack);
+    }
+  }
+  /* Order after the packs, so an id that lost a collision is still ordered once - by
+   * the copy that actually loaded. */
+  const seenOrder = new Set<string>();
+  for (const report of live) {
+    for (const id of report.order) {
+      if (owner.has(id) && !seenOrder.has(id)) {
+        seenOrder.add(id);
+        order.push(id);
+      }
+    }
+  }
+
+  const codeUrl = combinedCodeUrl(owner, live);
+  const assetUrl = live.some((r) => r.assetUrl !== null)
+    ? async (id: string, path: string): Promise<string | null> => {
+        const src = owner.get(id);
+        return src?.assetUrl ? await src.assetUrl(id, path) : null;
+      }
+    : null;
+
+  return {
+    packs,
+    order,
+    problems,
+    /* The PRIMARY source's directory, because that is the one a player can copy a mod
+     * into; `origins` carries the rest, and the manager reads that rather than
+     * pretending one line covers every source. */
+    dir: live[0]?.dir ?? null,
+    available: true,
+    kind: live[0]?.kind ?? "none",
+    codeUrl,
+    assetUrl,
+    origins: live.flatMap((r) => r.origins),
+  };
+}
+
+/** How a report is named in a collision message. */
+function describe(report: DiskPackReport): string {
+  switch (report.kind) {
+    case "app":
+      return "mods folder";
+    case "picked":
+      return "folder you chose";
+    case "installed":
+      return "installed";
+    default:
+      return report.kind;
+  }
+}
+
+/**
+ * The combined code resolver, routed by id, with `release` routed by URL.
+ *
+ * The URL is remembered against the source that minted it because releasing is
+ * destructive: a blob URL revoked by the wrong source would be revoked anyway (the
+ * string is unique) but its module GRAPH would not be, leaking one blob per
+ * dependency per launch - invisible, and exactly how a mod system comes to feel
+ * slower the more mods are installed.
+ */
+function combinedCodeUrl(
+  owner: ReadonlyMap<string, DiskPackReport>,
+  live: readonly DiskPackReport[],
+): CodeUrlResolver | null {
+  if (!live.some((r) => r.codeUrl !== null)) return null;
+  const mintedBy = new Map<string, DiskPackReport>();
+  const fn = (async (id: string, file: string): Promise<string | null> => {
+    const src = owner.get(id);
+    if (!src?.codeUrl) return null;
+    const url = await src.codeUrl(id, file);
+    if (url !== null) mintedBy.set(url, src);
+    return url;
+  }) as {
+    (id: string, file: string): Promise<string | null>;
+    release?: (url: string) => void;
+  };
+  if (live.some((r) => r.codeUrl?.release !== undefined)) {
+    fn.release = (url: string): void => {
+      mintedBy.get(url)?.codeUrl?.release?.(url);
+      mintedBy.delete(url);
+    };
+  }
+  return fn;
 }
 
 /** Lift a source's optional codeUrl/releaseUrl into the report's resolver. */

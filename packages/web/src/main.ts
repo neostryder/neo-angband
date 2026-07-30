@@ -217,7 +217,8 @@ import { setHost } from "@neo-angband/core";
 import { BrowserHost } from "./host-browser";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
-import { diskPacks, loadDiskPacks, setDiskPacks } from "./disk-packs";
+import { combineDiskReports, diskPacks, loadDiskPacks, setDiskPacks } from "./disk-packs";
+import { loadInstalledMods } from "./mod-install";
 import {
   activeModCode,
   folderPluginManifests,
@@ -470,9 +471,18 @@ initLaunchArgsFromHost();
 // The shell's folder WINS when both exist. The desktop build's folder is the one
 // beside the game that an external mod manager deploys into, and a stale handle
 // picked in some earlier browser session must not shadow it.
+//
+// INSTALLED mods are not an alternative to having a folder, so they are COMBINED
+// rather than chosen between. Until this line existed, loadInstalledMods had no
+// caller anywhere in the app: a mod could be downloaded, digest-checked and stored,
+// and then reach nothing at all. The folder is listed first, so a mod a player put
+// there deliberately outranks a downloaded copy of the same id (and the loser is
+// reported, not dropped in silence). combineDiskReports routes each mod's file
+// resolvers to the source that actually holds its bytes.
 {
   const shellPacks = await loadDiskPacks();
-  setDiskPacks(shellPacks.available ? shellPacks : await loadPickedModFolder());
+  const folder = shellPacks.available ? shellPacks : await loadPickedModFolder();
+  setDiskPacks(combineDiskReports([folder, await loadInstalledMods()]));
 
   /* And their CODE. Until this existed, a folder could contribute records and
    * never a line of behaviour - the whole SDK (patches, conflicts, the five
