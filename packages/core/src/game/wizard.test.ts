@@ -157,14 +157,20 @@ function trapDeps(): TrapDeps {
   return { kinds: trapKinds };
 }
 
-/** A full wizard deps bundle for `state`; toggle the gate with `wizard`. */
+/**
+ * A full wizard deps bundle for `state`; toggle the gate with `gate`. Both flags
+ * move together here so the pre-existing gate assertions keep their meaning; the
+ * "debug consent and wizard mode are separate gates" describe block below drives
+ * them independently, which is what proves the split.
+ */
 function wizDeps(
   state: GameState,
-  wizard: boolean,
+  gate: boolean,
   msgs?: string[],
 ): WizardDeps {
   return {
-    wizard,
+    wizard: gate,
+    debug: gate,
     makeDeps,
     expDeps: expDeps(state),
     effect: effectDeps(state),
@@ -190,8 +196,8 @@ function ordinaryKindIndex(tval: number): number {
   return idx;
 }
 
-describe("the wizard gate (ALLOW_DEBUG / NOSCORE_WIZARD)", () => {
-  it("blocks a non-wizard call: no object is created", () => {
+describe("the debug-consent gate (player_can_debug_prereq, player-util.c L1296)", () => {
+  it("blocks a call without debug consent: no object is created", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const ind = ordinaryKindIndex(TV.FOOD);
     const ran = wizCreateObj(state, { index: ind }, wizDeps(state, false));
@@ -199,7 +205,7 @@ describe("the wizard gate (ALLOW_DEBUG / NOSCORE_WIZARD)", () => {
     expect(floorPile(state, loc(10, 10)).length).toBe(0);
   });
 
-  it("permits the same call in wizard mode", () => {
+  it("permits the same call once debug consent is given", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const ind = ordinaryKindIndex(TV.FOOD);
     const ran = wizCreateObj(state, { index: ind }, wizDeps(state, true));
@@ -857,5 +863,62 @@ describe("NOSCORE cheat-flag model (player.h L95-99, score.c L289)", () => {
     const said: string[] = [];
     wizCheatDeath(state, { ...wizDeps(state, true), msg: (t) => said.push(t) });
     expect(said.join("|")).not.toContain("air around you");
+  });
+});
+
+/**
+ * The two gates are independent, which is the whole point of the split.
+ *
+ * player_can_debug_prereq (player-util.c L1296-1307) consults ONLY
+ * `player->noscore & NOSCORE_DEBUG`, and all 41 rows of the cmd_debug_* tables
+ * (ui-game.c L247-322) use it as their sole prereq. Nothing on that path reads
+ * player->wizard. Conversely cheat death is gated on `player->wizard ||
+ * OPT(player, cheat_live)` (player-util.c L246) and never on debug consent.
+ *
+ * The port collapsed both into one `wizard` boolean, so a non-wizard character
+ * who accepted the debug warning got 41 commands that silently did nothing.
+ * These cases drive the flags in opposition, so restoring the collapse fails.
+ */
+describe("debug consent and wizard mode are separate gates", () => {
+  it("a debug command runs on debug consent alone, with wizard mode OFF", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    p.timed[TMD.POISONED] = 10;
+    p.chp = 1;
+    const ran = wizCureAll(state, { ...wizDeps(state, true), wizard: false, debug: true });
+    expect(ran).toBe(true);
+    expect(p.timed[TMD.POISONED]).toBe(0);
+    expect(p.chp).toBe(p.mhp);
+  });
+
+  it("a debug command refuses without debug consent, even in wizard mode", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    p.timed[TMD.POISONED] = 10;
+    p.chp = 1;
+    const ran = wizCureAll(state, { ...wizDeps(state, true), wizard: true, debug: false });
+    expect(ran).toBe(false);
+    expect(p.timed[TMD.POISONED]).toBe(10); // untouched
+    expect(p.chp).toBe(1);
+  });
+
+  it("cheat death follows wizard mode, not debug consent", () => {
+    const withDebugOnly = makeState();
+    withDebugOnly.isDead = true;
+    expect(
+      wizCheatDeath(withDebugOnly, { ...wizDeps(withDebugOnly, true), wizard: false, debug: true }),
+    ).toBe(false);
+    expect(withDebugOnly.isDead).toBe(true);
+
+    const withWizardOnly = makeState();
+    withWizardOnly.isDead = true;
+    expect(
+      wizCheatDeath(withWizardOnly, {
+        ...wizDeps(withWizardOnly, true),
+        wizard: true,
+        debug: false,
+      }),
+    ).toBe(true);
+    expect(withWizardOnly.isDead).toBe(false);
   });
 });

@@ -118,6 +118,48 @@ describe("describeLookGrid (target_set_interactive_aux + aux_*)", () => {
     expect(text).toBe("You see a kobold (unhurt), 0 N, 5 E.");
   });
 
+  /**
+   * ui-target.c L400-407 / L483-487 / L559-563 / L717-721 / L790-793 / L915-918:
+   * every aux_* description has a wizard variant that appends the grid's y:x plus
+   * its noise and scent flow values. The port had no wizard argument on this path
+   * at all, so all six were silently absent.
+   */
+  describe("the wizard tail (p->wizard branches of every aux_*)", () => {
+    it("appends y:x, noise and scent in wizard mode", () => {
+      const state = makeState({ playerGrid: loc(10, 10) });
+      const m = addVisible(state, loc(15, 10));
+      m.race = { ...m.race, name: "kobold" };
+      state.chunk.sqinfoOn(m.grid, SQUARE.SEEN);
+      const c = state.chunk;
+      c.noise[10 * c.width + 15] = 7;
+      c.scent[10 * c.width + 15] = 3;
+      state.wizard = true;
+      const { text } = describeLookGrid(state, loc(15, 10), TARGET.KILL);
+      expect(text).toBe("You see a kobold (unhurt), 0 N, 5 E (10:15, noise=7, scent=3).");
+    });
+
+    it("adds nothing outside wizard mode", () => {
+      const state = makeState({ playerGrid: loc(10, 10) });
+      const m = addVisible(state, loc(15, 10));
+      m.race = { ...m.race, name: "kobold" };
+      state.chunk.sqinfoOn(m.grid, SQUARE.SEEN);
+      const c = state.chunk;
+      c.noise[10 * c.width + 15] = 7;
+      c.scent[10 * c.width + 15] = 3;
+      const { text } = describeLookGrid(state, loc(15, 10), TARGET.KILL);
+      expect(text).toBe("You see a kobold (unhurt), 0 N, 5 E.");
+      expect(text).not.toContain("noise=");
+    });
+
+    it("reaches the terrain branch too, not just monsters", () => {
+      const state = makeState({ playerGrid: loc(10, 10) });
+      squareMemorize(state, loc(10, 10));
+      state.wizard = true;
+      const { text } = describeLookGrid(state, loc(10, 10), TARGET.LOOK);
+      expect(text).toBe("You are on an open floor, 0 N, 0 E (10:10, noise=0, scent=0).");
+    });
+  });
+
   it("names a wounded monster's status", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const m = addVisible(state, loc(15, 10), [], 100);
