@@ -21,7 +21,9 @@ import {
   parseFamiliesFile,
   parseLinoleumManifest,
   slotToAtlas,
+  urlBaseResolver,
 } from "./linoleum-pack";
+import type { LinoleumFileResolver } from "./linoleum-pack";
 import { isTile, tileCode } from "./tiles";
 
 /**
@@ -268,7 +270,7 @@ describe("LinoleumPack", () => {
   const pack = (pool: PoolDefinition): LinoleumPack =>
     new LinoleumPack({
       menuname: "Test pack",
-      baseUrl: "mods/test/pack",
+      resolve: urlBaseResolver("mods/test/pack"),
       manifest: {
         packId: "test",
         displayName: "Test pack",
@@ -329,6 +331,25 @@ describe("LinoleumPack", () => {
   });
 });
 
+describe("urlBaseResolver", () => {
+  it("joins onto the base, adding the separator only when it is missing", async () => {
+    expect(await urlBaseResolver("mods/p")("manifest.txt")).toBe("mods/p/manifest.txt");
+    expect(await urlBaseResolver("mods/p/")("manifest.txt")).toBe("mods/p/manifest.txt");
+  });
+
+  it("encodes per segment, so a / stays a separator and a space does not", async () => {
+    expect(await urlBaseResolver("mods/p")("maps/targets.txt")).toBe("mods/p/maps/targets.txt");
+    expect(await urlBaseResolver("mods/p")("images/8/my tile.png")).toBe(
+      "mods/p/images/8/my%20tile.png",
+    );
+    // A pack that names a tile with a # or ? must not have the rest of the URL
+    // read as a fragment or a query.
+    expect(await urlBaseResolver("mods/p")("images/8/a#b?c.png")).toBe(
+      "mods/p/images/8/a%23b%3Fc.png",
+    );
+  });
+});
+
 describe("loadLinoleumPack", () => {
   /** A pack served out of a plain map of URL -> text, no network. */
   function serve(files: Record<string, string>): typeof fetch {
@@ -370,7 +391,7 @@ describe("loadLinoleumPack", () => {
 
   it("reads the manifest, then every map it names, into one index", async () => {
     globalThis.fetch = serve(files);
-    const pack = await loadLinoleumPack({ baseUrl: "mods/p", menuname: "Pack P", deps });
+    const pack = await loadLinoleumPack({ resolve: urlBaseResolver("mods/p"), menuname: "Pack P", deps });
     expect(pack).not.toBeNull();
     expect(pack?.manifest.resolution).toBe(8);
     expect(pack?.menuname).toBe("Pack P");
@@ -386,14 +407,53 @@ describe("loadLinoleumPack", () => {
 
   it("is null when the pack is not there, so the game just stays ASCII", async () => {
     globalThis.fetch = serve({});
-    expect(await loadLinoleumPack({ baseUrl: "mods/p", menuname: "Pack P", deps })).toBeNull();
+    expect(await loadLinoleumPack({ resolve: urlBaseResolver("mods/p"), menuname: "Pack P", deps })).toBeNull();
   });
 
   it("is null when the manifest names no target map", async () => {
     globalThis.fetch = serve({
       "mods/p/manifest.txt": "pack:p:Pack P\nresolution:8",
     });
-    expect(await loadLinoleumPack({ baseUrl: "mods/p", menuname: "Pack P", deps })).toBeNull();
+    expect(await loadLinoleumPack({ resolve: urlBaseResolver("mods/p"), menuname: "Pack P", deps })).toBeNull();
+  });
+
+  /**
+   * The seam that lets a pack come from somewhere with no site path: a mod the
+   * player picked, or one installed from GitHub and kept in IndexedDB. Its files
+   * are reached through the mod's own assetUrl, which hands back `blob:` URLs
+   * that have no relationship to the pack's directory layout - so if the loader
+   * built any path itself, this pack would not load.
+   */
+  it("loads a pack whose files have no site path at all (an installed mod)", async () => {
+    const blobs = new Map<string, string>();
+    const bodies: Record<string, string> = {};
+    let n = 0;
+    for (const [path, text] of Object.entries(files)) {
+      const rel = path.slice("mods/p/".length);
+      const url = `blob:neo/${(n += 1)}`;
+      blobs.set(rel, url);
+      bodies[url] = text;
+    }
+    globalThis.fetch = serve(bodies);
+    const resolve: LinoleumFileResolver = (rel) => Promise.resolve(blobs.get(rel) ?? null);
+
+    const pack = await loadLinoleumPack({ resolve, menuname: "Pack P", deps });
+    expect(pack?.index.slots).toHaveLength(3);
+    expect(pack?.index.slots).toContainEqual({ kind: "asset", asset: "maggot" });
+  });
+
+  it("is null when the resolver refuses the manifest, and never throws when it does", async () => {
+    globalThis.fetch = serve({});
+    expect(
+      await loadLinoleumPack({ resolve: () => Promise.resolve(null), menuname: "P", deps }),
+    ).toBeNull();
+    expect(
+      await loadLinoleumPack({
+        resolve: () => Promise.reject(new Error("storage gone")),
+        menuname: "P",
+        deps,
+      }),
+    ).toBeNull();
   });
 
   it("tolerates a missing pools/families file rather than failing the pack", async () => {
@@ -401,7 +461,7 @@ describe("loadLinoleumPack", () => {
       "mods/p/manifest.txt": files["mods/p/manifest.txt"],
       "mods/p/maps/targets.txt": files["mods/p/maps/targets.txt"],
     });
-    const pack = await loadLinoleumPack({ baseUrl: "mods/p", menuname: "Pack P", deps });
+    const pack = await loadLinoleumPack({ resolve: urlBaseResolver("mods/p"), menuname: "Pack P", deps });
     // The plain asset rule still works; the pool and family rules are dropped.
     expect(pack?.index.slots).toEqual([{ kind: "asset", asset: "maggot" }]);
     expect(pack?.index.skipped.unresolved).toBe(2);

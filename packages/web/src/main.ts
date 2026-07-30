@@ -278,7 +278,7 @@ import {
   type TileBlitter,
   type TileModeEntry,
 } from "./tiles";
-import { LinoleumPack, loadLinoleumPack } from "./linoleum-pack";
+import { LinoleumPack, loadLinoleumPack, urlBaseResolver } from "./linoleum-pack";
 import {
   showTextScreen,
   selectFromMenu,
@@ -1125,7 +1125,11 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
     tileMap = null;
     renderBackground();
     const pack = await loadLinoleumPack({
-      baseUrl: entry.baseUrl ?? tilesBaseUrl,
+      // Site-root today, because a bundled pack's `path` is a site path. The seam
+      // takes a resolver so a pack from a picked folder or an installed mod can
+      // reach its bytes through the mod's own assetUrl instead; wiring that needs
+      // `tilePacks[].path` to become mod-relative, which is a manifest change.
+      resolve: urlBaseResolver(entry.baseUrl ?? tilesBaseUrl),
       menuname: entry.menuname,
       deps: tileDeps,
     });
