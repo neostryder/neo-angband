@@ -487,8 +487,8 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
 
   /* Bump into a wall: no step, no energy.
    * A mod may take the walk over through the walkBlockedByDiggable hook
-   * (mod/hooks.ts) - the QoL mod digs here. autoDigStep returns 0 having drawn NO
-   * RNG when no mod supplied one, so faithful core still just bumps. */
+   * (mod/hooks.ts) - the QoL mod digs here. autoDigStep returns null having drawn
+   * NO RNG when no mod supplied one, so faithful core still just bumps. */
   if (!state.chunk.isPassable(next)) {
     /* `!== null`, not `> 0`: a mod may handle the walk and charge ZERO energy
      * (mod/hooks.ts), and `> 0` silently threw that case away by treating it as

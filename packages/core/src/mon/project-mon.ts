@@ -335,7 +335,7 @@ function charmAnimalBoost(ctx: MonProjectContext): void {
 /* Per-PROJ-type handlers                                              */
 /* ------------------------------------------------------------------ */
 
-type MonHandler = (ctx: MonProjectContext) => void;
+export type MonHandler = (ctx: MonProjectContext) => void;
 
 /* Acid */
 function hAcid(ctx: MonProjectContext): void {
@@ -766,8 +766,21 @@ function hMonCrush(ctx: MonProjectContext): void {
  * The monster handler table, indexed by PROJ_ type (upstream builds it from
  * list-elements.h then list-projections.h). Assigned by name so the ordering
  * exactly follows the generated PROJ map.
+ *
+ * FROZEN, AND DELIBERATELY NOT A MOD SEAM. It is exported for the parity test
+ * that counts the 56 slots, and an exported mutable array is an accidental
+ * extension point: a mod could assign `MONSTER_HANDLERS[PROJ.FIRE]` at import
+ * time and rewire core from outside the mod system entirely. That patch would
+ * have no ordering against another mod's, would appear in no manifest, and -
+ * worst - could not be undone by DISABLING the mod, which breaks the rule that a
+ * disabled mod's patches do not exist. Frozen, the attempt throws in strict mode
+ * instead of silently succeeding.
+ *
+ * A mod that wants to change what a projection does to a monster asks for a
+ * hook in `core/src/mod/hooks.ts`, where contributions compose, order and
+ * disable properly.
  */
-export const MONSTER_HANDLERS: Array<MonHandler | null> = (() => {
+export const MONSTER_HANDLERS: readonly (MonHandler | null)[] = (() => {
   const t: Array<MonHandler | null> = new Array<MonHandler | null>(56).fill(
     null,
   );
@@ -827,7 +840,7 @@ export const MONSTER_HANDLERS: Array<MonHandler | null> = (() => {
   t[PROJ.MON_STUN] = hMonStun;
   t[PROJ.MON_DRAIN] = hMonDrain;
   t[PROJ.MON_CRUSH] = hMonCrush;
-  return t;
+  return Object.freeze(t);
 })();
 
 /**

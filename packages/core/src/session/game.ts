@@ -1663,8 +1663,10 @@ function wireGame(
   installCaveCommands(registry, caveDeps);
 
   // The walk-into-a-wall seam (mod/hooks.ts walkBlockedByDiggable). walkAction
-  // consults this before its no-energy bump; movementAutoDig returns 0 having drawn
-  // no RNG when no mod installed a hook, so faithful play is byte-identical.
+  // consults this before its no-energy bump; movementAutoDig returns null having
+  // drawn no RNG when no mod installed a hook, so faithful play is byte-identical.
+  // null, not 0: zero is a mod handling the walk for free, which is a different
+  // answer from no mod handling it at all.
   state.autoDigStep = (s, grid): number | null => movementAutoDig(s, grid, caveDeps);
 
   // steal (cmd-cave.c do_cmd_steal): the rogue / PF_STEAL lift-from-monster

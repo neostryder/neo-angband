@@ -257,16 +257,48 @@ on load. (This is what the removed `interfaceDefaults` seam used to do.)
 `walkAction` (`packages/core/src/game/player-turn.ts:493`) calls
 `state.autoDigStep?.(state, next)` when a walk is blocked. This is NOT a second
 mod seam and holds no mod's behaviour: the session installs it
-(`session/game.ts:1668`) pointing at `movementAutoDig`
-(`game/cave-cmd.ts:676`), whose entire body is the `walkBlockedByDiggable`
-hook read plus `?? 0`. It exists only so the movement code need not import the
-dig internals. With no hook installed it returns `0` having drawn no RNG, and the
-walk falls through to the faithful bump.
+(`session/game.ts:1670`) pointing at `movementAutoDig`
+(`game/cave-cmd.ts:675`), whose entire body is the `walkBlockedByDiggable`
+hook read plus `?? null`. It exists only so the movement code need not import the
+dig internals. With no hook installed it returns `null` having drawn no RNG, and
+the walk falls through to the faithful bump.
+
+`null` is the only value that falls through. A **number is honoured, including
+`0`** - a mod that handles the walk and charges nothing. This used to be `?? 0`
+against a `dug > 0` test at the call site, which made "handled for free" and "no
+mod answered" the same answer and quietly discarded the first: the hook interface
+documented a case the engine could not express. If you are writing a mod that
+consumes a blocked walk without spending a turn, return `0`, not `null`.
 
 The two core primitives a digging mod needs are public and reused rather than
 reimplemented: `movementTunnelTest` (`cave-cmd.ts:662`, RNG-free, which is what
 lets the mod decline for free) and `tunnelAux` (one real `do_cmd_tunnel_aux`
 attempt with the upstream roll, messages, and payouts).
+
+## 5. Doors that are exported but deliberately CLOSED
+
+An exported mutable table is an extension point whether anyone meant it to be one
+or not. Two were found this way and are now frozen at runtime, not merely typed
+`readonly` - a mod folder ships plain `plugin.js`, so the type binds nobody there:
+
+| Table | Where | Why it is closed |
+| --- | --- | --- |
+| `MONSTER_HANDLERS` (56 slots) | `core/src/mon/project-mon.ts` | Exported for the parity test that counts the slots. |
+| `DEBUG_MENU` (9 categories) | `web/src/wizard.ts` | Upstream's own `cmd_debug_*` tables; the parity tests assert their letters. Frozen **deeply** - the rows anyone would want to add live in `commands`, one level down. |
+
+The reason is not tidiness. A mod assigning into one of these patches core from
+*outside* the mod system, so the patch:
+
+- has no ordering against another mod's patch (nothing composed it);
+- appears in no manifest, so no menu, save or report can name it;
+- **survives disabling the mod that added it**, which contradicts the rule that a
+  disabled mod's patches do not exist.
+
+Both are covered by tests that assert the write THROWS, and both were
+mutation-proven by removing the freeze. If you need to change what one of these
+tables does, ask for a hook in `core/src/mod/hooks.ts`, where contributions
+compose, order and disable properly. That request is a reasonable one - a closed
+door here is not a refusal, it is a redirection to the door with hinges.
 
 ## Why this is safe for a faithful port
 
