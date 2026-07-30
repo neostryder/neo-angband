@@ -30,7 +30,9 @@ git config core.hooksPath .githooks
 ```
 
 That installs a `pre-commit` gate which runs `pnpm check:private` over the
-**staged** content. See [Keeping the repository publishable](#keeping-the-repository-publishable).
+**staged** content. The same hook gates a `neo-angband-mod-*` clone if you point
+that clone's `core.hooksPath` at this one's `.githooks` - it needs no files of its
+own. See [Keeping the repository publishable](#keeping-the-repository-publishable).
 
 Run one area's tests by passing a path filter to the root test script:
 
@@ -213,11 +215,62 @@ the same file. Raising a count is a deliberate act - say why in the entry.
 edited. `tools/private-scan*` is exempt too, because it has to contain the
 patterns in order to test for them - a real hole, stated rather than hidden.
 
-The `pre-commit` hook is a courtesy, not a control: it needs enabling per clone
-and `git commit --no-verify` walks past it. The control is
-`packages/cli/src/private-scan.test.ts`, which runs the whole-tree scan in CI
-and also plants deliberately-bad fixtures to prove the detector still bites -
-a scanner broken to always pass would satisfy a clean-tree assertion on its own.
+### The two gates cover different things
+
+`packages/cli/src/private-scan.test.ts` runs the whole-tree scan in CI, and also
+plants deliberately-bad fixtures to prove the detector still bites - a scanner
+broken to always pass would satisfy a clean-tree assertion on its own.
+
+But the whole-tree scan asks `git ls-files`, so **a brand-new file is invisible
+to it** until that file is committed - and for a public repository, "committed
+and pushed" is already too late. The `pre-commit` hook reads the staged blobs, so
+it is the only gate that sees a new file in time. Measured, not assumed: a
+fixture naming the private workspace was reported clean by the tree scan and
+caught by the hook, in the same working state. Both were correct.
+
+So neither substitutes for the other. The hook still needs enabling per clone and
+`git commit --no-verify` walks past it; the CI scan is what catches whatever got
+in around it, later.
+
+### The mod repositories use this same scanner
+
+`neo-angband-mod-*` are public too, and the terms leak into them for the same
+reasons. They do **not** get a copy of the scanner: two copies of a rule list
+drift, and the copy that quietly stops matching is the one nobody opens. Both
+gates reach them from here.
+
+The hook needs no file in the mod repository at all - point `core.hooksPath` at
+this checkout, once per clone:
+
+```sh
+git config core.hooksPath /path/to/neo-angband/.githooks
+```
+
+The hook resolves the scanner relative to itself and passes the repository being
+committed to as `--root`. If it cannot find the scanner it **fails the commit**
+rather than exiting 0: a hook that silently passes reports success forever, and
+the first anyone hears of it is after the leak.
+
+For CI, a mod repository's workflow uses the composite action, which pins the
+action and the scanner to one ref because GitHub checks this whole repository out
+to run it:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: neostryder/neo-angband/.github/actions/private-scan@master
+```
+
+Scanning another tree by hand:
+
+```sh
+node tools/private-scan.mjs --root ../neo-angband-mod-linoleum
+```
+
+The rules are shared; the **baseline is per-root**
+(`<root>/tools/private-scan-baseline.json`), because what is legitimately
+present differs by repository. A `--root` that is not a directory is refused
+outright - falling back to this repository would report a pass for a tree nobody
+asked about.
 
 ## Attribution
 

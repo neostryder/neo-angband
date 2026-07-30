@@ -19,7 +19,7 @@
  * importing it.
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,6 +45,30 @@ function plant(name: string, body: string): string {
   return p;
 }
 
+/* The terms are assembled from pieces so that this test file does not itself
+ * contain the strings it is testing for - otherwise the whole-tree run below
+ * would fail on this very file, and exempting it by path would leave a hole
+ * exactly where the gate is verified. */
+const NAME = ["Aa", "ron"].join("");
+const SURNAME = ["West", "over"].join("");
+const EMPLOYER = ["G", "CE"].join("");
+const CODENAME = ["Stew", "ard"].join("");
+const WIZARD = ["Gan", "dalf"].join("");
+const PRIVATE_DIR = ["_neo-angband", "-private"].join("");
+const HOME = ["C:/Us", "ers/someone/x"].join("");
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const HOOK = readFileSync(join(REPO_ROOT, ".githooks", "pre-commit"), "utf8");
+/**
+ * The hook with its comments removed. Asserting against the whole file is a trap
+ * that caught this test once already: the comment block explains what `--root`
+ * is for, so `HOOK.includes("--root")` stayed true after the flag was deleted
+ * from the command. Prose is not behaviour.
+ */
+const HOOK_CODE = HOOK.split("\n")
+  .filter((l) => !/^\s*#/u.test(l))
+  .join("\n");
+
 describe("private-scan over the tracked tree", () => {
   it("is clean", () => {
     const { code, out } = run();
@@ -54,18 +78,6 @@ describe("private-scan over the tracked tree", () => {
 });
 
 describe("private-scan actually bites", () => {
-  /* The terms are assembled from pieces so that this test file does not itself
-   * contain the strings it is testing for - otherwise the whole-tree run above
-   * would fail on this very file, and exempting it by path would leave a hole
-   * exactly where the gate is verified. */
-  const NAME = ["Aa", "ron"].join("");
-  const SURNAME = ["West", "over"].join("");
-  const EMPLOYER = ["G", "CE"].join("");
-  const CODENAME = ["Stew", "ard"].join("");
-  const WIZARD = ["Gan", "dalf"].join("");
-  const PRIVATE_DIR = ["_neo-angband", "-private"].join("");
-  const HOME = ["C:/Us", "ers/someone/x"].join("");
-
   it.each([
     ["legal-name (first)", `// reported by ${NAME} today`],
     ["legal-name (surname)", `// see the ${SURNAME} note`],
@@ -143,14 +155,110 @@ describe("private-scan actually bites", () => {
 
 describe("the pre-commit hook is wired to the scanner", () => {
   it("runs the same scan the tree is judged by", () => {
-    const hook = spawnSync(
-      process.execPath,
-      ["-e", "process.stdout.write(require('fs').readFileSync('.githooks/pre-commit','utf8'))"],
-      { encoding: "utf8", cwd: fileURLToPath(new URL("../../../", import.meta.url)) },
-    ).stdout;
-    expect(hook).toContain("tools/private-scan.mjs");
-    expect(hook, "the hook must judge the staged blobs, not the working tree").toContain(
+    expect(HOOK_CODE).toContain("tools/private-scan.mjs");
+    expect(HOOK_CODE, "the hook must judge the staged blobs, not the working tree").toContain(
       "--staged",
     );
+  });
+});
+
+/**
+ * --root, which is how the companion mod repositories are gated.
+ *
+ * Those repositories are public too, they are small enough to have no build of
+ * their own, and a vendored copy of the scanner in each would be three rule
+ * lists drifting apart. So one scanner reads several trees. The thing that can
+ * go wrong is specific and silent: if --root were ignored, every mod repository
+ * would be reported clean forever, because the scan would be re-reading THIS
+ * repository, which is clean. So the tests below check that a leak planted in
+ * another tree is actually found there.
+ */
+describe("private-scan gates another repository via --root", () => {
+  /** A throwaway git repo with `files` in it, staged so `ls-files` sees them. */
+  function fixtureRepo(name: string, files: Record<string, string>): string {
+    const root = join(scratch, name);
+    mkdirSync(root, { recursive: true });
+    for (const [rel, body] of Object.entries(files)) writeFileSync(join(root, rel), body, "utf8");
+    // No commit: `git ls-files` reads the index, so `add` is enough - and this
+    // avoids needing a user.name/user.email in the test environment.
+    spawnSync("git", ["init", "-q"], { cwd: root });
+    spawnSync("git", ["add", "-A"], { cwd: root });
+    return root;
+  }
+
+  it("finds a leak in the other tree, at that tree's path", () => {
+    const root = fixtureRepo("mod-leaky", {
+      "README.md": `# A mod\n\nMaintained by ${NAME}.\n`,
+    });
+    const { code, out } = run("--root", root);
+    expect(code, out).toBe(1);
+    expect(out).toContain("README.md:3");
+    /* If --root were quietly ignored this run would have scanned THIS repo and
+     * said "clean (NNNN tracked files)". Naming the root is what tells the two
+     * apart in a CI log. */
+    expect(out).toContain(root);
+  });
+
+  it("passes a clean tree, and reports the count for THAT tree", () => {
+    const root = fixtureRepo("mod-clean", { "README.md": "# A mod\n" });
+    const { code, out } = run("--root", root);
+    expect(code, out).toBe(0);
+    expect(out).toContain("clean (1 tracked files");
+  });
+
+  it("refuses a --root that is not a directory instead of falling back", () => {
+    /* The dangerous handling of a mis-wired root is to scan this repository
+     * instead: the run would pass, having read a tree nobody asked about. */
+    const { code, out } = run("--root", join(scratch, "no-such-tree"));
+    expect(code, out).toBe(2);
+    expect(out).not.toContain("clean");
+  });
+
+  it("keeps each tree's baseline separate", () => {
+    /* A term legitimate here (Angband's own default character name, recorded in
+     * this repo's baseline) is NOT accounted for in a mod repo that has no
+     * baseline, and must be looked at rather than inherited. */
+    const root = fixtureRepo("mod-baselined", { "data.txt": `name:${WIZARD}\n` });
+    const { code, out } = run("--root", root);
+    expect(code, out).toBe(1);
+    expect(out).toContain("unlisted");
+    /* And the baseline must have been read from the OTHER tree, where there is
+     * none. Loading this repository's baseline while scanning that tree would
+     * report every entry here as stale, since none of those paths exist there -
+     * exit 1 either way, so only the absence of "stale" tells them apart. */
+    expect(out, "the baseline must come from the scanned root, not from here").not.toContain(
+      "stale",
+    );
+  });
+
+  it("the hook locates the scanner relative to ITSELF, not to the repo being committed to", () => {
+    /* This is the whole mechanism by which a mod clone needs no files: it sets
+     * core.hooksPath to this repo's .githooks. If the hook resolved the scanner
+     * from `git rev-parse --show-toplevel` it would look inside the MOD repo,
+     * find nothing, and (before the fail-closed branch) pass every commit. */
+    expect(HOOK_CODE).toContain("dirname");
+    expect(HOOK_CODE, "the tree being committed to must be passed, not assumed").toMatch(
+      /--root "\$\(git rev-parse --show-toplevel\)"/u,
+    );
+    expect(
+      HOOK_CODE,
+      "the SCANNER must not be resolved from the repo being committed to",
+    ).not.toMatch(/SCANNER=.*rev-parse/u);
+    expect(HOOK_CODE, "a hook that cannot find its scanner must fail, not exit 0").toMatch(
+      /if \[ ! -f "\$SCANNER" \]/u,
+    );
+  });
+
+  it("the composite action runs this scanner, and fails closed if it cannot find it", () => {
+    /* CI in a mod repo reaches the scanner through .github/actions/private-scan.
+     * A missing scanner there must be a red step, not a green tick for a check
+     * that never ran. */
+    const action = readFileSync(
+      fileURLToPath(new URL("../../../.github/actions/private-scan/action.yml", import.meta.url)),
+      "utf8",
+    );
+    expect(action).toContain("tools/private-scan.mjs");
+    expect(action).toContain("--root");
+    expect(action, "a missing scanner must fail the step").toMatch(/exit 1/u);
   });
 });

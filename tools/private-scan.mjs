@@ -18,6 +18,18 @@
  *              anything that got in before the hook existed or around it with
  *              `--no-verify`. A hook alone is not a control; it is a courtesy.
  *
+ * NOT ONLY THIS REPOSITORY. `--root <dir>` points the same scanner, with the
+ * same patterns, at any other working tree - the companion mod repositories are
+ * public too, and the terms below leak into them for exactly the same reasons.
+ * One scanner reading several roots, never a copy per repository: three copies
+ * of a rule list drift, and the copy that stops matching is the one nobody
+ * looks at. The two ways it reaches another repo are both this file:
+ *   - the hook, via `git config core.hooksPath <this repo>/.githooks`, which
+ *     needs no file at all in the other repository;
+ *   - CI, via the composite action in .github/actions/private-scan.
+ * The baseline is per-root (`<root>/tools/private-scan-baseline.json`), because
+ * what is legitimately present differs by repository; the rules do not.
+ *
  * TWO RULE TIERS, because precision matters more than a big pattern list:
  *
  *   ALWAYS     Terms with no legitimate use in this repository at all. Any hit
@@ -42,13 +54,16 @@
  * Exit 0 clean, 1 on findings, 2 on a usage or git error.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO = dirname(HERE);
-const DEFAULT_BASELINE = join(HERE, "private-scan-baseline.json");
+/** The repository this file lives in, which is the root when --root is absent. */
+const OWN_REPO = dirname(HERE);
+/** Where a root keeps its baseline. Identical to the old constant for OWN_REPO. */
+const BASELINE_REL = "tools/private-scan-baseline.json";
+const baselineFor = (root) => join(root, BASELINE_REL);
 
 /**
  * Terms with no legitimate use anywhere in a public Angband port.
@@ -117,7 +132,7 @@ const BASELINED = [
       "a private project codename - but ALSO upstream Angband content: a syllable in " +
       "names.txt:335 and the Staff of Gandalf's description in artifact.txt:872, both " +
       "of which the port mirrors. Legitimate uses are recorded per file in " +
-      "tools/private-scan-baseline.json",
+      BASELINE_REL,
   },
 ];
 
@@ -128,20 +143,20 @@ const EXEMPT_PREFIXES = ["reference/", "tools/private-scan"];
 const BINARY_EXT =
   /\.(png|jpg|jpeg|gif|bmp|ico|webp|woff2?|ttf|otf|fon|wav|ogg|mp3|zip|gz|exe|dll|node|pdf|asar)$/i;
 
-function git(args) {
+function git(root, args) {
   return execFileSync("git", args, {
-    cwd: REPO,
+    cwd: root,
     encoding: "utf8",
     maxBuffer: 256 * 1024 * 1024,
   });
 }
 
 /** Tracked paths, or staged paths when gating a commit. */
-function listFiles(staged) {
+function listFiles(root, staged) {
   const args = staged
     ? ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"]
     : ["ls-files", "-z"];
-  return git(args)
+  return git(root, args)
     .split("\0")
     .filter(Boolean)
     .filter((p) => !EXEMPT_PREFIXES.some((x) => p.startsWith(x)))
@@ -152,10 +167,10 @@ function listFiles(staged) {
  * The staged content, not the working tree. A file can be staged clean and dirty
  * in the tree (or the reverse), and the commit is what this gate is about.
  */
-function readStaged(path) {
+function readStaged(root, path) {
   try {
     return execFileSync("git", ["show", `:${path}`], {
-      cwd: REPO,
+      cwd: root,
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
     });
@@ -174,8 +189,8 @@ function readAbsolute(path) {
   }
 }
 
-function readWorking(path) {
-  const full = join(REPO, path);
+function readWorking(root, path) {
+  const full = join(root, path);
   if (!existsSync(full)) return null;
   try {
     return readFileSync(full, "utf8");
@@ -208,17 +223,22 @@ function loadBaseline(path) {
 }
 
 /**
+ * `--root d` scans a different working tree, which is how the companion mod
+ * repositories are gated without a copy of this file in each of them.
+ *
  * `--files a b c` scans exactly those paths off disk instead of asking git, and
- * `--baseline p` swaps the baseline. Neither is used in anger: they exist so the
- * test can plant a known-bad fixture and prove the detector actually BITES, and
- * can point the baseline at a doctored copy to prove the stale-entry direction
- * fires. A gate nobody has watched fail is not known to work.
+ * `--baseline p` swaps the baseline. Neither of those is used in anger: they
+ * exist so the test can plant a known-bad fixture and prove the detector
+ * actually BITES, and can point the baseline at a doctored copy to prove the
+ * stale-entry direction fires. A gate nobody has watched fail is not known to
+ * work.
  */
 function parseArgs(argv) {
-  const out = { staged: false, files: null, baseline: DEFAULT_BASELINE };
+  const out = { staged: false, files: null, baseline: null, root: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--staged") out.staged = true;
     else if (argv[i] === "--baseline") out.baseline = argv[++i];
+    else if (argv[i] === "--root") out.root = argv[++i];
     else if (argv[i] === "--files") {
       out.files = [];
       while (i + 1 < argv.length && !argv[i + 1].startsWith("--")) out.files.push(argv[++i]);
@@ -227,14 +247,31 @@ function parseArgs(argv) {
       process.exit(2);
     }
   }
-  return out;
+  /* A --root that is not a directory is a wiring mistake, and the damaging way
+   * to handle it is to fall back to this repository: the scan would then pass,
+   * having read a tree that was never in question. Refuse instead. */
+  if (out.root !== null) {
+    out.root = resolvePath(out.root);
+    let ok = false;
+    try {
+      ok = statSync(out.root).isDirectory();
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      console.error(`private-scan: --root '${out.root}' is not a directory`);
+      process.exit(2);
+    }
+  }
+  const root = out.root ?? OWN_REPO;
+  return { ...out, root, baseline: out.baseline ?? baselineFor(root) };
 }
 
 function main(argv) {
   const opts = parseArgs(argv);
-  const staged = opts.staged;
-  const files = opts.files ?? listFiles(staged);
-  const read = opts.files ? (p) => readAbsolute(p) : staged ? readStaged : readWorking;
+  const { staged, root } = opts;
+  const files = opts.files ?? listFiles(root, staged);
+  const read = opts.files ? readAbsolute : (p) => (staged ? readStaged : readWorking)(root, p);
 
   const alwaysHits = [];
   /** rule -> path -> count, for the baselined tier. */
@@ -269,22 +306,22 @@ function main(argv) {
   const seen = new Set();
   for (const entry of baseline.entries ?? []) {
     const actual = counted.get(entry.rule)?.get(entry.path) ?? 0;
-    seen.add(`${entry.rule} ${entry.path}`);
+    seen.add(`${entry.rule}\0${entry.path}`);
     if (partial && !files.includes(entry.path)) continue;
     if (actual === entry.count) continue;
     problems.push(
       actual === 0
-        ? `tools/private-scan-baseline.json  [stale] ${entry.rule} in ${entry.path} is baselined at ` +
+        ? `${BASELINE_REL}  [stale] ${entry.rule} in ${entry.path} is baselined at ` +
           `${entry.count} but no longer occurs there. Remove the entry - a baseline that ` +
           `outlives what it excused will silently excuse the next thing that lands in the same file.`
         : `${entry.path}  [${entry.rule}] occurs ${actual}x, baselined at ${entry.count}. ` +
           `If the new occurrences are legitimate (Angband's own default name), raise the ` +
-          `count in tools/private-scan-baseline.json and say why.`,
+          `count in ${BASELINE_REL} and say why.`,
     );
   }
   for (const [rule, byPath] of counted) {
     for (const [path, count] of byPath) {
-      if (seen.has(`${rule} ${path}`)) continue;
+      if (seen.has(`${rule}\0${path}`)) continue;
       const why = BASELINED.find((r) => r.id === rule)?.why ?? "";
       problems.push(
         `${path}  [${rule}] ${count} unlisted occurrence(s).\n      why: ${why}`,
@@ -292,21 +329,27 @@ function main(argv) {
     }
   }
 
+  /* Name the tree when it is not this one. The mod repositories run the same
+   * scanner, and two identical "clean" lines in two different logs cannot be
+   * told apart - which is exactly how a gate pointed at the wrong tree goes
+   * unnoticed for months. */
+  const where = root === OWN_REPO ? "" : ` in ${root}`;
+
   if (problems.length === 0) {
     const scope = staged ? "staged" : "tracked";
-    console.log(`private-scan: clean (${files.length} ${scope} files)`);
+    console.log(`private-scan: clean (${files.length} ${scope} files${where})`);
     return 0;
   }
 
   console.error(
-    `private-scan: ${problems.length} problem(s) - this repository is PUBLIC.\n`,
+    `private-scan: ${problems.length} problem(s)${where} - this repository is PUBLIC.\n`,
   );
   for (const p of problems) console.error(`  ${p}\n`);
   console.error(
     staged
       ? "Fix the staged content and commit again. `git commit --no-verify` bypasses this\n" +
         "hook, but the same scan runs over the whole tree in CI, so it only defers the failure."
-      : "Run `node tools/private-scan.mjs` after fixing to confirm.",
+      : `Run \`node tools/private-scan.mjs${where === "" ? "" : ` --root ${root}`}\` after fixing to confirm.`,
   );
   return 1;
 }
