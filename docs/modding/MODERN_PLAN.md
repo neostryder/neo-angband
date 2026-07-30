@@ -2,16 +2,17 @@
 
 > STATUS: consensus + plan, 2026-07-29. The brief asked one question — *what does a
 > best-in-class, modern modding platform have that this one lacks?* — and put it to
-> three model families independently (MiniMax M3, OpenAI Codex/gpt-5.6, Copilot
-> gpt-5.6 Terra), each with repository access and no sight of the others' answers.
-> Every claim below was then **verified against the code**, and the verdict column
-> is that verification, not a vote. The raw reports are session artifacts, not
-> repo files; what survived verification is here.
+> **three independent reviewers across two model families**: MiniMax M3, and
+> gpt-5.6 twice under different harnesses (OpenAI's Codex CLI, and Copilot's).
+> Each had repository access and no sight of the others' answers. Every claim below
+> was then **verified against the code**, and the verdict column is that
+> verification, not a vote. The raw reports are session artifacts, not repo files;
+> what survived verification is here.
 
-## Why three, and what it bought
+## Why three reviewers, and what it bought
 
 One reviewer's highest-priority finding was **false**, and only the disagreement
-exposed it. Terra's #1 (cost L, "fix this before anything else") was:
+exposed it. Copilot/gpt-5.6's #1 (cost L, "fix this before anything else") was:
 
 > Only 24 of 44 record files support per-record patch/replace/remove. The other 20
 > silently discard those operations; this includes objects, ego-items, vaults,
@@ -20,7 +21,17 @@ exposed it. Terra's #1 (cost L, "fix this before anything else") was:
 Those nine files are exactly the ones `mod-sdk/src/record-key.ts` exists to key.
 Its header describes the silent-drop as the state **before** that table was
 written; two of the three reviewers read the problem statement as the status quo
-and filed the same non-existent P1. Codex, reading the same repository, did not.
+and filed the same non-existent P1. The third, reading the same repository, did not.
+
+**The split did not follow family lines, and that is the useful part.** The two
+reviewers who got it wrong were from *different* families; the one that got it
+right shares its model with one of them. Two instances of one model under
+different harnesses disagreed with each other, while two different models agreed
+on something false. So the thing worth buying is **independent reviewers**, not
+specifically independent *architectures* — vary the harness, the context loaded
+and the reasoning effort, and count a same-model split as fully as a cross-family
+one. A panel picked to look diverse on paper can still be correlated where it
+matters, and a panel that looks redundant can still disagree usefully.
 
 Verified state: **44 of 45 record files are addressable per record** — 24 by a
 unique `name`, 19 by explicit key specs, and `history` by nothing, because every
@@ -36,24 +47,25 @@ current state first, and names the false bug so the next reader does not re-file
 
 | # | Finding | Raised by | Verdict |
 |---|---|---|---|
-| 1 | `shape` is exclusive: code gates on `"plugin"`, records on `"content"`, so a folder cannot ship both | Terra, Codex | **CONFIRMED — FIXED** (`994dfb5f8`) |
-| 2 | Load order ties break lexicographically, discarding the player's order | M3, Codex, Terra | **CONFIRMED — FIXED** (`7ed88d05e`) |
+| 1 | `shape` is exclusive: code gates on `"plugin"`, records on `"content"`, so a folder cannot ship both | gpt-5.6 (both) | **CONFIRMED — FIXED** (`994dfb5f8`) |
+| 2 | Load order ties break lexicographically, discarding the player's order | all three | **CONFIRMED — FIXED** (`7ed88d05e`) |
 | 3 | `modManifest` allowlist drops `optionalDependencies` / `loadAfter` / `loadBefore` | M3 (in passing) | **CONFIRMED — FIXED** (`994dfb5f8`) |
-| 4 | Mod records are saved as `core:*`; a fresh game records `coreOnlyManifest()` | Codex, M3 | **CONFIRMED — OPEN (#131)** |
+| 4 | Mod records are saved as `core:*`; a fresh game records `coreOnlyManifest()` | Codex/gpt-5.6, M3 | **CONFIRMED — OPEN (#131)** |
 | 5 | No record-level schema validation (only manifests) | all three | **CONFIRMED — OPEN** |
 | 6 | No public author SDK, `create-mod`, JSON Schema, or test harness | all three | **CONFIRMED — OPEN** |
 | 7 | Consent is not a sandbox; `ctx.core` + live `state` is full in-process trust | all three | **CONFIRMED — by design, needs a second tier** |
 | 8 | No i18n seam; mod strings cannot be localised | all three | **CONFIRMED — OPEN** |
 | 9 | Behaviour reach is 7 hooks + 5 facades; most dispatch is closed `switch` | all three | **CONFIRMED — the real long pole** |
-| 10 | `assetUrl` is byte access, not an asset system (no sounds/fonts/preload) | Codex, M3 | **CONFIRMED — OPEN** |
-| 11 | "24 of 44 record files silently discard per-record ops" | Terra, M3 | **FALSE** — see above |
+| 10 | `assetUrl` is byte access, not an asset system (no sounds/fonts/preload) | Codex/gpt-5.6, M3 | **CONFIRMED — OPEN** |
+| 11 | "24 of 44 record files silently discard per-record ops" | Copilot/gpt-5.6, M3 | **FALSE** — see above |
 | 12 | `loader.ts` re-sorts lexicographically after the resolver | M3 | **FALSE** — `orderPacks` preserves the resolver's output; the defect was one layer up (#2) |
 | 13 | Rebuild dependency resolution / version ranges / cycle detection | *proposed as a gap by the brief* | **REJECTED by all three** — `resolve.ts` is complete; do not rebuild |
 | 14 | Move `modApi` to semver now | *proposed as a gap by the brief* | **REJECTED by all three** — an exact integer is correct pre-1.0; revisit at 1.0 |
-| 15 | Full state-preserving hot reload | *proposed as a gap by the brief* | **REJECTED by Codex/M3** — content removal invalidates live entities; ship reload-the-fixture instead |
+| 15 | Full state-preserving hot reload | *proposed as a gap by the brief* | **REJECTED by Codex/gpt-5.6 + M3** — content removal invalidates live entities; ship reload-the-fixture instead |
 
 Two independently-found `FALSE` rows and three independently-rejected proposals is
-the return on asking three families instead of one.
+the return on asking three reviewers instead of one. Next panel adds xAI Grok as a
+genuinely third family, which this one did not have.
 
 ## What is genuinely ahead of the curve
 
