@@ -174,14 +174,20 @@ export interface WizStatsCollectors {
 }
 
 /**
- * The runtime context the web shell hands the wizard UI. `deps.wizard` gates
- * every action; `deps.markNoscore` is the WP-10 handoff hook that ORs cheat
- * bits into player.noscore (persisted by save.ts, read by the score gate).
+ * The runtime context the web shell hands the wizard UI. `deps.debug` gates every
+ * debug command and `deps.wizard` gates only cheat death (see WizardDeps);
+ * `deps.markNoscore` is the WP-10 handoff hook that ORs cheat bits into
+ * player.noscore (persisted by save.ts, read by the score gate).
  */
 export interface WizardUiCtx {
   term: GlyphTerm;
   state: GameState;
-  /** The wizard engine dependency bundle assembled by the shell. */
+  /**
+   * The wizard engine dependency bundle assembled by the shell. Read it fresh at
+   * each use rather than caching it: `debug` is derived from the live
+   * player.noscore, which confirmDebugGate can set mid-command, and the shell
+   * supplies this as a getter for that reason.
+   */
   deps: WizardDeps;
   /** msg(): route a line to the game message log. */
   say: (text: string) => void;
@@ -189,6 +195,13 @@ export interface WizardUiCtx {
   refresh: () => void;
   /** dungeon_change_level: regenerate at the pending targetDepth (jump-level). */
   changeLevel?: (depth: number) => void;
+  /**
+   * quit("user choice") (do_cmd_wiz_quit_no_save, cmd-wizard.c L2150): abandon
+   * the session WITHOUT writing a save. The shell owns what "quit" means on each
+   * front end, so the command asks and this performs. Never resolves on desktop
+   * (the process is going away).
+   */
+  quitNoSave?: () => Promise<void>;
   /**
    * The on-map grid picker (the shell's targeting/look UI), used by the
    * teleport "To location" command (do_cmd_wiz_teleport_to). Returns the chosen
@@ -457,8 +470,16 @@ export interface DebugCategory {
 }
 
 /**
- * The faithful two-level debug menu (cmd_debug categories -> cmd_debug_*
- * commands, ui-game.c L234-322). Letters and labels match the C tables exactly.
+ * The nine cmd_debug[] categories and their cmd_debug_* command tables
+ * (ui-game.c L234-322). Titles, letters and labels match the C tables exactly.
+ *
+ * The nesting is DATA, not the ^A interaction: upstream calls these categories
+ * "placeholders for the Enter menu system" (ui-game.c L232), and ^A never shows
+ * them - it resolves one keypress against the flat DEBUG_BY_KEY table below. The
+ * categories become reachable only through the ENTER command browser
+ * (textui_action_menu_choose / cmd_menu, ui-context.c L1176-1215), which this
+ * port has not yet ported for any command list; that absence is tracked
+ * separately and is not specific to debug mode.
  */
 export const DEBUG_MENU: DebugCategory[] = [
   {
@@ -554,7 +575,8 @@ export const DEBUG_MENU: DebugCategory[] = [
  * game-input.c L281-295): on the first debug-command use (player.noscore lacks
  * the DEBUG bit) upstream mentions the danger, flushes, and asks get_check;
  * accepting marks the savefile (noscore |= DEBUG). Returns whether the debug
- * menu may open.
+ * command may run. Consulted for every debug command, not once per session, and
+ * never a function of wizard mode.
  */
 async function confirmDebugGate(ctx: WizardUiCtx): Promise<boolean> {
   const p = ctx.state.actor.player;
@@ -571,39 +593,75 @@ async function confirmDebugGate(ctx: WizardUiCtx): Promise<boolean> {
 }
 
 /**
- * Open the debug command menu (Control-A). Verifies wizard mode is on, runs the
- * one-time debug confirm/noscore gate, then walks the two-level category ->
- * command menu and dispatches the chosen action.
+ * nested_prompt / nested_error for the ^A row of cmd_hidden[] (ui-game.c L225),
+ * transcribed exactly. The prompt's trailing colon-space is part of the string;
+ * the error is what ui-game.c L580-584 prints when the key is not bound.
+ */
+export const DEBUG_PROMPT = "Debug Command: ";
+export const DEBUG_NESTED_ERROR = "That is not a valid debug command.";
+
+/**
+ * nested_lists[0] (ui-game.c L421-440): ONE table keyed by character, populated
+ * by all nine cmd_debug_* lists, which every one of them shares because each
+ * carries keymap 1 in cmds_all[] (ui-game.c L342-350). Upstream asserts the keys
+ * are globally unique across the nine lists (L436); this build throws on a
+ * duplicate for the same reason, so a future row that collides fails loudly at
+ * module load instead of shadowing an existing command.
+ */
+const DEBUG_BY_KEY: ReadonlyMap<string, DebugCommand> = (() => {
+  const table = new Map<string, DebugCommand>();
+  for (const cat of DEBUG_MENU) {
+    for (const cmd of cat.commands) {
+      if (table.has(cmd.letter)) {
+        throw new Error(`duplicate debug command key ${cmd.letter} (ui-game.c L436)`);
+      }
+      table.set(cmd.letter, cmd);
+    }
+  }
+  return table;
+})();
+
+/**
+ * The debug command surface (Control-A). Upstream this is NOT a menu. The ^A row
+ * of cmd_hidden[] has nested_keymap 1 and nested_prompt "Debug Command: "
+ * (ui-game.c L225), so textui_process_command asks get_com for ONE keypress,
+ * looks it up in the flat nested_lists[0] table, prints nested_error when the key
+ * is unbound, and only THEN evaluates the row's prereq (ui-game.c L568-596).
+ *
+ * The port previously got three things wrong here, all of them invented:
+ *   - it opened a two-level category menu. The cmd_debug[] categories are
+ *     "placeholders for the Enter menu system" (ui-game.c L232) and are not
+ *     reachable from ^A at all; see the note on DEBUG_MENU.
+ *   - it ran the debug confirmation BEFORE asking for a command, where upstream
+ *     asks for the key first and confirms only once a real command is selected.
+ *   - it required wizard mode, a prerequisite player_can_debug_prereq does not
+ *     have (player-util.c L1296-1307). That single invented check made all 41
+ *     debug commands unreachable for a non-wizard character.
+ *
+ * It also looped, re-prompting after each command; upstream handles exactly one
+ * debug command per ^A and returns to the main input loop.
  */
 export async function runWizardDebugMenu(ctx: WizardUiCtx): Promise<void> {
-  if (!ctx.deps.wizard) {
-    ctx.say("You need to be in wizard mode for that. (^W)");
+  const key = await getKeyInline(ctx.term, DEBUG_PROMPT);
+  /* get_com_ex returns false on ESCAPE (ui-input.c L1439), and the caller then
+   * abandons the nested lookup entirely (ui-game.c L586-588). */
+  if (key === "Escape") {
     ctx.refresh();
     return;
   }
-  if (!(await confirmDebugGate(ctx))) return;
-
-  for (;;) {
-    const catIdx = await selectFromMenu(
-      ctx.term,
-      "Debug Command",
-      DEBUG_MENU.map((c) => ({ label: c.title })),
-      "[ a-z to choose a category, ESC to close ]",
-    );
-    if (catIdx === null) break;
-    const cat = DEBUG_MENU[catIdx];
-    if (!cat) break;
-    const cmdIdx = await selectFromMenu(
-      ctx.term,
-      cat.title,
-      cat.commands.map((cmd): MenuItem => ({ label: cmd.label, tag: cmd.letter })),
-      "[ letter to run a command, ESC to go back ]",
-    );
-    if (cmdIdx === null) continue; // ESC returns to the category list
-    const cmd = cat.commands[cmdIdx];
-    if (!cmd) continue;
-    await dispatchDebug(ctx, cmd.action);
+  const cmd = DEBUG_BY_KEY.get(key);
+  if (!cmd) {
+    ctx.say(DEBUG_NESTED_ERROR);
+    ctx.refresh();
+    return;
   }
+  /* Check prereqs (ui-game.c L595): player_can_debug_prereq runs AFTER the key
+   * resolves to a command, so an unbound key never triggers the warning. */
+  if (!(await confirmDebugGate(ctx))) {
+    ctx.refresh();
+    return;
+  }
+  await dispatchDebug(ctx, cmd.action);
   ctx.refresh();
 }
 
@@ -840,9 +898,25 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
       wizPushObject(state, { grid: state.actor.grid }, deps);
       break;
     case "quit-no-save":
-      /* wiz_confirm_quit_no_save (ui-wizard.c:441). */
+      /* wiz_confirm_quit_no_save (ui-wizard.c L432-436) asks, then pushes
+       * CMD_WIZ_QUIT_NO_SAVE, whose handler is do_cmd_wiz_quit_no_save
+       * (cmd-wizard.c L2150): quit("user choice") - end the program, writing
+       * nothing.
+       *
+       * The port used to ask the question and then TELL THE PLAYER to reload the
+       * page, which is a stand-in, not a port: the row promised an action and
+       * performed a suggestion. ctx.quitNoSave is the shell's real equivalent -
+       * on desktop it exits the process, in a tab it abandons the session and
+       * lands on the title without persisting. Both leave whatever was last
+       * written on disk untouched, which is exactly what upstream's quit does. */
       if (await confirmYesNo(term, "Really quit without saving? ")) {
-        say("Reload the page to abandon this character without saving.");
+        if (ctx.quitNoSave) {
+          await ctx.quitNoSave();
+        } else {
+          /* No seam wired (headless / test harness): say so rather than claim a
+           * quit that did not happen. */
+          say("That debug command is not available in this build.");
+        }
       }
       break;
     default:
@@ -1007,9 +1081,25 @@ async function runDisplayKeylog(ctx: WizardUiCtx): Promise<void> {
  * columns in, in that projection's colour (proj_display, L37-64). Upstream rules
  * every odd row with dots so the columns stay readable.
  */
+/*
+ * DEAD CODE, CORDONED (convention: packages/core/src/player/spell.ts).
+ *
+ * proj_display's else branch (ui-wizard.c L61-63) prints this when tile_height is
+ * not 1, because a multi-row tile cannot be drawn inside a one-row menu entry.
+ * This port has no tile_height > 1 state at all - the renderer scales a tile to
+ * one cell, documented at mapview.ts:70 - so the branch is unreachable here.
+ * Transcribed rather than omitted so both censuses can see it and so the reason
+ * it never fires is recorded next to the string instead of nowhere.
+ */
+export const PROJ_DEMO_TILE_HEIGHT_MSG = "Change tile_height to 1 to see graphics.";
+
 async function runProjDemo(ctx: WizardUiCtx): Promise<void> {
   const projections = ctx.projections;
   if (!projections || projections.length === 0) return unavailable(ctx);
+  /* REDUCED: upstream picks proj_to_attr/proj_to_char[type][i] when use_graphics
+   * is not GRAPHICS_NONE (L56-58); the port has no per-projection tile table, so
+   * the bolt row is always the ASCII glyphs below. A real gap, not a stand-in -
+   * the ASCII path is what upstream draws in the default GRAPHICS_NONE build. */
   /* wchar_t chars[] = L"*|/-\\" (L52): the BOLT_MAX ASCII bolt glyphs. */
   const BOLT_CHARS = ["*", "|", "/", "-", "\\"].join("");
   const white = colorToCss(COLOUR_WHITE);

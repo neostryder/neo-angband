@@ -93,6 +93,11 @@ export function makeTakeHitHooks(
         const effect = opts.wizardEffect?.current;
         wizCheatDeath(state, {
           wizard: true,
+          /* Cheat death is gated on player->wizard || OPT(cheat_live)
+           * (player-util.c L246), never on debug consent, and this bundle
+           * exists only to run wizCheatDeath - so no debug command is
+           * reachable through it. */
+          debug: false,
           ...(effect ? { effect } : {}),
           markNoscore: (bits: number): void => {
             p.noscore = markNoscore(p.noscore, bits);

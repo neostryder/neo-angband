@@ -77,6 +77,7 @@ function wizardDeps(game: StartedGame): WizardDeps {
   const reg = game.booted.registries;
   return {
     wizard: true,
+    debug: true,
     msg: () => {},
     markNoscore: () => {},
     ...game.wizardBundles,

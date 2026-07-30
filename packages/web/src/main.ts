@@ -4709,6 +4709,11 @@ function buildWizardDeps(): WizardDeps {
   const player = state.actor.player;
   return {
     wizard: wizardMode,
+    /* player_can_debug_prereq (player-util.c L1296-1307): debug consent is the
+     * persisted NOSCORE_DEBUG bit, NOT wizard mode and NOT a session flag. Read
+     * live off the player so accepting the warning takes effect immediately and
+     * survives save/load exactly as upstream's savefile bit does. */
+    debug: (player.noscore & NOSCORE.DEBUG) !== 0,
     msg: say,
     // WP-10 handoff: OR the cheat bits into the live, persisted player.noscore.
     markNoscore: (bits: number): void => {
@@ -4729,13 +4734,40 @@ function wizardCtx(): WizardUiCtx {
   return {
     term,
     state,
-    deps: buildWizardDeps(),
+    /* A GETTER, not a snapshot. buildWizardDeps derives `debug` from the live
+     * player.noscore, and confirmDebugGate sets that bit part-way through a ^A
+     * command - so a snapshot taken when the context was built would still say
+     * debug:false at dispatch time and every command would silently no-op. */
+    get deps(): WizardDeps {
+      return buildWizardDeps();
+    },
     say,
     refresh: () => render(),
     changeLevel: (depth: number): void => {
       game.changeLevel(depth);
       state.generateLevel = false;
       panelCam = null; // new level: recentre the camera on the player
+    },
+    /* quit("user choice") (cmd-wizard.c L2150). Deliberately NOT exitToTitle:
+     * that one saves first, and the whole point of this command is that nothing
+     * is written. On desktop the process exits, as upstream's does. In a tab
+     * there is no process, so the analogue is a reload with the continuation
+     * flags cleared - the session is abandoned and boot lands on the title with
+     * whatever was last autosaved still in the roster, which is the same
+     * end state a real quit leaves. */
+    quitNoSave: async (): Promise<void> => {
+      if (desktopQuit()) return;
+      try {
+        sessionStorage.removeItem(SKIP_TITLE_KEY);
+        sessionStorage.removeItem(BIRTH_DONE_KEY);
+      } catch {
+        /* storage disabled: boot then reads nothing and shows the title anyway */
+      }
+      const url = new URL(location.href);
+      url.searchParams.delete("new");
+      url.searchParams.delete("seed");
+      location.assign(url.toString());
+      await new Promise(() => {}); // navigation in flight; never resume the caller
     },
     // do_cmd_wiz_teleport_to's cmd_get_point: reuse the interactive look/target
     // loop (target_set_interactive) to pick a destination grid, then read it
