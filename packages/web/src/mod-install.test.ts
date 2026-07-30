@@ -14,7 +14,7 @@
 import { webcrypto } from "node:crypto";
 
 import { zipSync } from "fflate";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { STORE_MODS, STORE_MOD_META } from "./idb";
 import {
@@ -30,6 +30,7 @@ import {
   uninstallMod,
 } from "./mod-install";
 import { type RecommendedMod, badPath, rawUrl, validateRecommendedMod } from "./mod-registry";
+import { contributedTileModes, mergeModSources } from "./tile-mods";
 
 const subtle = webcrypto.subtle;
 
@@ -585,5 +586,139 @@ describe("validateRecommendedMod", () => {
         },
       }),
     ).toMatch(/no manifest\.json/u);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The whole chain, for a TILES mod.
+ *
+ * Every link below is covered on its own elsewhere; this is the one test that runs
+ * them in a row, because that is where the bug was. A mod installed from a repository
+ * used to be listed, enableable and INERT: tile discovery consulted only the
+ * build-time bundle glob, and even had it not, `tilePacks[].path` was a site-root URL
+ * base - a form an installed mod cannot produce, since its bytes live in IndexedDB
+ * and have no path at all (MOD_REACH gap 8).
+ *
+ * So: install an archive, read it back, and follow the row all the way to the URL an
+ * <img> would be given. Nothing here mocks the resolver.
+ * ------------------------------------------------------------------ */
+
+describe("an installed TILES mod registers a Graphics row and draws its own art", () => {
+  const TILES_MANIFEST = JSON.stringify({
+    id: "demo",
+    name: "Demo Tiles",
+    version: "1.0.0",
+    shape: "tiles",
+    tilePacks: [
+      {
+        grafID: 101,
+        engine: "linoleum",
+        menuname: "Demo Set (Linoleum)",
+        path: "my-set",
+      },
+    ],
+  });
+
+  /** A one-pixel PNG, so the asset is real bytes rather than a string. */
+  const PNG = Uint8Array.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+    0x44, 0x52,
+  ]);
+
+  /** Blob URLs, which node has no implementation of. Recorded so the type is checked. */
+  function stubObjectUrls(): { made: Array<{ url: string; type: string }> } {
+    const made: Array<{ url: string; type: string }> = [];
+    const realCreate = URL.createObjectURL;
+    const realRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = ((blob: Blob) => {
+      const url = `blob:neo/${made.length + 1}`;
+      made.push({ url, type: blob.type });
+      return url;
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => undefined) as typeof URL.revokeObjectURL;
+    afterEach(() => {
+      URL.createObjectURL = realCreate;
+      URL.revokeObjectURL = realRevoke;
+    });
+    return { made };
+  }
+
+  it("reaches the pack's files through the installed mod's own bytes", async () => {
+    const urls = stubObjectUrls();
+    const zip = zipSync({
+      "manifest.json": enc(TILES_MANIFEST),
+      "my-set/manifest.txt": enc("pack:demo:Demo Set\nformat:png\nresolution:8\n"),
+      "my-set/images/8/feat_floor_lit_0.png": PNG,
+    });
+    const sha = await sha256Hex(zip, subtle);
+    const made = fakeIdb();
+    const { env } = await envFor({ "pack.zip": zip }, { idb: made.factory });
+    const installed = await installRecommendedMod(
+      {
+        id: "demo",
+        name: "Demo Tiles",
+        repo: "neostryder/neo-angband-mod-demo",
+        tag: "v1.0.0",
+        summary: "A demo tiles mod.",
+        preChecked: false,
+        approxBytes: zip.byteLength,
+        payload: { kind: "archive", archive: { path: "pack.zip", sha256: sha } },
+      },
+      env,
+    );
+    expect(installed.ok).toBe(true);
+
+    // Read back exactly as boot does.
+    const report = await loadInstalledMods({ indexedDB: made.factory });
+    expect(report.kind).toBe("installed");
+    expect(report.assetUrl).not.toBeNull();
+
+    // Discovery must see it even though it is in NO bundle glob.
+    const merged = mergeModSources({ bundled: new Map(), disk: report });
+    const modes = contributedTileModes({ ...merged, enabledIds: ["demo"] });
+    expect(modes).toHaveLength(1);
+    expect(modes[0]?.menuname).toBe("Demo Set (Linoleum)");
+    expect(modes[0]?.grafID).toBe(101);
+
+    // And the row's resolver must reach the mod's stored bytes, by PACK-relative
+    // path - `my-set/` comes from the manifest, not from anything the caller knows.
+    const manifestUrl = await modes[0]?.resolve?.("manifest.txt");
+    const tileUrl = await modes[0]?.resolve?.("images/8/feat_floor_lit_0.png");
+    expect(manifestUrl).toMatch(/^blob:neo\//u);
+    expect(tileUrl).toMatch(/^blob:neo\//u);
+    expect(manifestUrl).not.toBe(tileUrl);
+    // The PNG must be typed, or an <img> refuses the blob outright.
+    expect(urls.made.find((u) => u.url === tileUrl)?.type).toBe("image/png");
+    expect(urls.made.find((u) => u.url === manifestUrl)?.type).toBe(
+      "text/plain; charset=utf-8",
+    );
+  });
+
+  it("has no resolver for a file the mod did not install", async () => {
+    stubObjectUrls();
+    const zip = zipSync({ "manifest.json": enc(TILES_MANIFEST) });
+    const sha = await sha256Hex(zip, subtle);
+    const made = fakeIdb();
+    const { env } = await envFor({ "pack.zip": zip }, { idb: made.factory });
+    await installRecommendedMod(
+      {
+        id: "demo",
+        name: "Demo Tiles",
+        repo: "neostryder/neo-angband-mod-demo",
+        tag: "v1.0.0",
+        summary: "A demo tiles mod.",
+        preChecked: false,
+        approxBytes: zip.byteLength,
+        payload: { kind: "archive", archive: { path: "pack.zip", sha256: sha } },
+      },
+      env,
+    );
+    const report = await loadInstalledMods({ indexedDB: made.factory });
+    const merged = mergeModSources({ bundled: new Map(), disk: report });
+    const modes = contributedTileModes({ ...merged, enabledIds: ["demo"] });
+    // The row still exists - the manifest declared it - and the pack simply does not
+    // load, which leaves the map ASCII exactly as a missing tilesheet does.
+    expect(modes).toHaveLength(1);
+    expect(await modes[0]?.resolve?.("manifest.txt")).toBeNull();
   });
 });
