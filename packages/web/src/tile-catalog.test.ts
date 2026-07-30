@@ -19,6 +19,7 @@ import {
   composeTileModes,
   coreTileModes,
 } from "./tile-catalog";
+import { BUNDLED_MODS_BASE, tilePackResolver } from "./tile-mods";
 import type { TileModePack } from "./tile-mods";
 
 const TILES_DIR = join(import.meta.dirname, "..", "public", "tiles");
@@ -42,8 +43,10 @@ describe("coreTileModes", () => {
     expect(modes.some((m) => m.modName !== undefined || m.modId !== undefined)).toBe(
       false,
     );
-    // Core rows carry no base URL - they load from the shell's own tile base.
-    expect(modes.every((m) => m.baseUrl === undefined)).toBe(true);
+    // Core rows carry no pack path and no resolver - they load from the shell's
+    // own tile base.
+    expect(modes.every((m) => m.path === undefined)).toBe(true);
+    expect(modes.every((m) => m.resolve === undefined)).toBe(true);
   });
 
   it("omits catalog modes whose art is not bundled (Shockbolt)", () => {
@@ -129,12 +132,12 @@ describe("composeTileModes", () => {
   it("lets a mod re-skin a core set IN PLACE, tagged with the mod", () => {
     const out = composeTileModes({
       core,
-      mods: [pack({ grafID: 2, menuname: "Adam Bolt's tiles", baseUrl: "mods/m/tiles" })],
+      mods: [pack({ grafID: 2, menuname: "Adam Bolt's tiles", path: "tiles" })],
     });
     // Same rows, same order - the mod replaced one, it did not append a duplicate.
     expect(out.map((m) => m.grafID)).toEqual([1, 2, 3, 4]);
     expect(out[1]?.modName).toBe("A Mod");
-    expect(out[1]?.baseUrl).toBe("mods/m/tiles");
+    expect(out[1]?.path).toBe("tiles");
     // Untouched rows stay untagged, so the menu still distinguishes them.
     expect(out.filter((m) => m.modName !== undefined)).toHaveLength(1);
   });
@@ -147,7 +150,7 @@ describe("composeTileModes", () => {
           grafID: 5,
           menuname: "Shockbolt Dark",
           modName: "my-shockbolt",
-          baseUrl: "mods/my-shockbolt/tiles",
+          path: "tiles",
         }),
       ],
     });
@@ -161,20 +164,26 @@ describe("composeTileModes", () => {
     expect(original[0]?.modName).toBeUndefined();
   });
 
-  it("carries a mod pack's base URL through, so the mod's art is fetched", () => {
+  it("carries a mod pack's path AND resolver through, so the mod's art is fetched", () => {
+    // The resolver is what actually fetches - dropping it here would leave the
+    // mod's row drawing core's atlas out of the shell's own tile base, which is
+    // exactly the silent wrong-art failure this field exists to prevent.
+    const resolve = (rel: string): Promise<string> => Promise.resolve(`blob:${rel}`);
     const out = composeTileModes({
       core,
-      mods: [pack({ grafID: 4, baseUrl: "mods/m/tiles" })],
+      mods: [pack({ grafID: 4, path: "tiles", resolve })],
     });
-    expect(out.find((m) => m.grafID === 4)?.baseUrl).toBe("mods/m/tiles");
-    // Core rows keep no base: they load from the shell's own tile base.
-    expect(out.find((m) => m.grafID === 1)?.baseUrl).toBeUndefined();
+    expect(out.find((m) => m.grafID === 4)?.path).toBe("tiles");
+    expect(out.find((m) => m.grafID === 4)?.resolve).toBe(resolve);
+    // Core rows keep neither: they load from the shell's own tile base.
+    expect(out.find((m) => m.grafID === 1)?.path).toBeUndefined();
+    expect(out.find((m) => m.grafID === 1)?.resolve).toBeUndefined();
   });
 
   it("carries a pack's engine through, so a loose pack is drawn as one", () => {
     const out = composeTileModes({
       core,
-      mods: [pack({ grafID: 101, engine: "linoleum", baseUrl: "mods/m/pack" })],
+      mods: [pack({ grafID: 101, engine: "linoleum", path: "pack" })],
     });
     expect(out.find((m) => m.grafID === 101)?.engine).toBe("linoleum");
     // Core rows say nothing: they are tilesheets, upstream's own scheme.
@@ -246,11 +255,17 @@ describe("the game does not know or expect any particular mod", () => {
     expect(main).not.toContain("disabledProviders");
   });
 
-  it("loads each mode's art from ITS OWN base, core's or the mod's", () => {
+  it("loads each mode's art through ITS OWN resolver, core's base or the mod's", () => {
     const main = read("main.ts");
-    expect(main).toMatch(/const base = tileBaseFor\(grafID\)/);
-    expect(main).toMatch(/createTileRenderer\(\{ baseUrl: base, grafID \}\)/);
-    expect(main).toMatch(/loadTilePrefs\(base, mode, tileDeps\)/);
+    // ONE resolver per mode, handed to both halves of the tilesheet load. When
+    // these were two separate `base` arguments a mod could - and briefly did -
+    // fetch its atlas from one place and its pref files from another.
+    expect(main).toMatch(/const resolve = tileResolverFor\(entry\)/);
+    expect(main).toMatch(/createTileRenderer\(\{ resolve, grafID \}\)/);
+    expect(main).toMatch(/loadTilePrefs\(resolve, mode, tileDeps\)/);
+    // And the loose engine takes the same resolver, so `path` cannot come to
+    // mean one thing per engine.
+    expect(main).toMatch(/resolve: tileResolverFor\(entry\)/);
   });
 
   // main.ts boots a real game at module scope, so it cannot be imported here;
@@ -314,6 +329,56 @@ describe("bundled mods", () => {
         expect(typeof p.menuname, `${id} loose pack needs a menuname`).toBe("string");
       }
     }
+  });
+
+  it("declares every pack path MOD-relative, never as a site path", () => {
+    // `path` used to be site-root-relative ("mods/linoleum/original-tiles"), which
+    // only a bundled mod can know: a mod in a picked folder has no URL for its
+    // files until their bytes are wrapped in a blob:, and one installed from
+    // GitHub lives in IndexedDB. A path that still leads with the mods base is one
+    // that survived the change unconverted, and it would resolve to
+    // mods/<id>/mods/<id>/... - a 404, and ASCII with no message.
+    for (const id of readdirSync(MODS_DIR)) {
+      const packs = manifestOf(id).tilePacks;
+      if (!Array.isArray(packs)) continue;
+      for (const p of packs as { path?: string }[]) {
+        if (typeof p.path !== "string") continue;
+        expect(p.path, `${id}: path must be inside the mod`).not.toMatch(
+          new RegExp(`^/?${BUNDLED_MODS_BASE}/`, "u"),
+        );
+        expect(p.path, `${id}: path must be relative`).not.toMatch(/^([a-z]+:)?\//iu);
+      }
+    }
+  });
+
+  /*
+   * The one place the two halves of the bundled case have to agree. The generator
+   * writes the demo pack to public/mods/<modId>/<PACK_KEY>, and the resolver reaches
+   * it at <BUNDLED_MODS_BASE>/<modId>/<path>. Those are two files that never
+   * reference each other, so nothing but this notices when one moves - and the
+   * failure is a Graphics row that loads nothing.
+   */
+  it("puts the generated demo pack exactly where the bundled resolver looks", async () => {
+    const gen = readFileSync(
+      join(MODS_DIR, "..", "scripts", "gen-linoleum-demo.mjs"),
+      "utf8",
+    );
+    const key = /const PACK_KEY = "([^"]+)"/u.exec(gen)?.[1];
+    expect(key, "the generator must name a pack key").toBeTruthy();
+    // The generator's output root, as it spells it.
+    expect(gen).toMatch(/join\(webRoot, "public", "mods", "linoleum"\)/);
+
+    const declared = (manifestOf("linoleum").tilePacks as { path?: string }[])[0]?.path;
+    expect(declared).toBe(key);
+
+    const resolve = tilePackResolver({
+      source: { kind: "bundle", base: BUNDLED_MODS_BASE },
+      modId: "linoleum",
+      path: declared,
+    });
+    expect(await resolve?.("manifest.txt")).toBe(
+      `mods/linoleum/${key as string}/manifest.txt`,
+    );
   });
 
   it("no longer claims the game's own tile sets as a mod's contribution", () => {

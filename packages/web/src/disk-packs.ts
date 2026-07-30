@@ -49,6 +49,7 @@
  */
 
 import { validateManifest, type PackManifest } from "@neo-angband/mod-sdk";
+import { encodePackPath } from "./pack-files";
 
 /** What the desktop shell exposes for the mods directory. */
 interface DesktopModPaths {
@@ -423,20 +424,9 @@ export function httpModsSource(
      * `import()` takes it directly and there is nothing to release. A relative
      * import inside it resolves against that URL like any other module's, which is
      * why the desktop build needs no part of mod-modules.ts. */
-    codeUrl: (id, file) => Promise.resolve(`${baseUrl}/${id}/${encodePath(file)}`),
-    assetUrl: (id, path) => Promise.resolve(`${baseUrl}/${id}/${encodePath(path)}`),
+    codeUrl: (id, file) => Promise.resolve(`${baseUrl}/${id}/${encodePackPath(file)}`),
+    assetUrl: (id, path) => Promise.resolve(`${baseUrl}/${id}/${encodePackPath(path)}`),
   };
-}
-
-/**
- * Percent-encode each segment of a pack-relative path, leaving the separators.
- *
- * A mod folder is named by whoever wrote it, so `tiles/dark elf.png` and a `#` in a
- * filename are both things that will happen; unencoded, the first breaks the path
- * and the second truncates it at a fragment.
- */
-function encodePath(path: string): string {
-  return path.split("/").map(encodeURIComponent).join("/");
 }
 
 /**

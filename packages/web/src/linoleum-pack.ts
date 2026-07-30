@@ -68,6 +68,7 @@ import {
   selectPoolMember,
 } from "@neo-angband/linoleum/targets";
 import type { PoolDefinition, TargetRule } from "@neo-angband/linoleum/targets";
+import type { PackFileResolver } from "./pack-files";
 import type { TileBlitter, TileCode } from "./tiles";
 
 /** A pack's manifest.txt, parsed. */
@@ -268,33 +269,6 @@ export function buildLinoleumIndex(input: {
   return { map, slots, skipped };
 }
 
-/**
- * How one of a pack's files is turned into a URL, or null when it cannot be.
- *
- * A loose pack used to be addressed by a base URL, and that quietly assumed the
- * pack sits somewhere the page can spell as a path. Two of the three places a mod
- * can come from cannot: a folder the player picked has no URL until its bytes are
- * wrapped in a `blob:`, and a mod installed from GitHub lives in IndexedDB, which
- * has no path at all. So the pack takes a resolver instead of a base, and the
- * caller decides how bytes are reached - the same seam, and the same reason, as
- * `codeUrl`/`assetUrl` on a DiskPackReport.
- *
- * `relPath` is an unencoded pack-relative path (`maps/targets.txt`,
- * `images/8/feat_floor_lit_0.png`); a resolver that builds a URL must encode it.
- */
-export type LinoleumFileResolver = (relPath: string) => Promise<string | null>;
-
-/**
- * Reach a pack's files under a base URL - the site-root case, and what a bundled
- * pack served out of `public/` uses. Encodes per SEGMENT so a `/` in the relative
- * path stays a path separator and everything else is escaped.
- */
-export function urlBaseResolver(baseUrl: string): LinoleumFileResolver {
-  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  return (relPath) =>
-    Promise.resolve(`${base}${relPath.split("/").map(encodeURIComponent).join("/")}`);
-}
-
 /** One cached asset image and its load state. */
 interface CachedAsset {
   image: HTMLImageElement | null;
@@ -316,13 +290,13 @@ export class LinoleumPack implements TileBlitter {
   onReady: (() => void) | null = null;
 
   private readonly imageDir: string;
-  private readonly resolve: LinoleumFileResolver;
+  private readonly resolve: PackFileResolver;
   private readonly cache = new Map<string, CachedAsset>();
   private notifyScheduled = false;
 
   constructor(input: {
     menuname: string;
-    resolve: LinoleumFileResolver;
+    resolve: PackFileResolver;
     manifest: LinoleumManifest;
     index: LinoleumIndex;
   }) {
@@ -468,7 +442,7 @@ async function fetchText(url: string): Promise<string | null> {
 
 /** Resolve a pack-relative path and read it as text, or null on any failure. */
 async function readPackText(
-  resolve: LinoleumFileResolver,
+  resolve: PackFileResolver,
   relPath: string,
 ): Promise<string | null> {
   let url: string | null;
@@ -488,11 +462,11 @@ async function readPackText(
  *
  * Takes a resolver rather than a base URL so the same loader serves a pack served
  * from the site, a pack in a folder the player picked, and a pack installed from
- * GitHub - see LinoleumFileResolver. For the plain site case pass
+ * GitHub - see PackFileResolver. For the plain site case pass
  * `urlBaseResolver(base)`.
  */
 export async function loadLinoleumPack(input: {
-  resolve: LinoleumFileResolver;
+  resolve: PackFileResolver;
   menuname: string;
   deps: TilePrefsDeps;
 }): Promise<LinoleumPack | null> {

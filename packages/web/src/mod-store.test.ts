@@ -13,6 +13,7 @@ import {
   buildCatalog,
   consentSatisfied,
   isShippedMod,
+  readEnabledModIds,
   resolveEnabledIds,
   resolveModRules,
   DEFAULT_ENABLED_MODS,
@@ -414,5 +415,42 @@ describe("a mod's patches exist only while its mod is enabled", () => {
     for (const flag of BUG_FIX_FLAGS.filter((f) => f !== opted)) {
       expect(back[flag]).toBe(true);
     }
+  });
+});
+
+/*
+ * ONE reader for the live enabled set, because there were three: pack.ts,
+ * tile-mods.ts and this module each spelled out the same URL and localStorage
+ * reads, and two of them hardcoded the key strings that are constants in this
+ * file. They had already drifted - only pack.ts passed `diskOrder` and `choices`,
+ * so a tiles mod an external manager deployed was COMPOSED as content and
+ * contributed no Graphics row, enabled by one answer and disabled by the other in
+ * the same launch.
+ *
+ * The node test env has no `location` and no `localStorage`, which is itself one
+ * of the cases this has to survive: both reads must degrade to "no recorded
+ * opinion" rather than throwing at boot, and that is exactly what makes the
+ * diskOrder pass-through observable here.
+ */
+describe("readEnabledModIds (the one live reader)", () => {
+  it("survives a host with no location and no localStorage", () => {
+    // Not a hypothetical: this runs at module scope during content composition,
+    // and a private-mode browser throws on the localStorage getter itself.
+    expect(readEnabledModIds({ discovered: ["qol"] })).toEqual([]);
+  });
+
+  it("passes the external manager's load order through, so a deployed mod is on", () => {
+    // The Vortex/MO2 division of labour: deploying a folder and listing it in
+    // load-order.json IS a request to enable it. Dropping diskOrder here is what
+    // made the tile surface disagree with content composition.
+    expect(
+      readEnabledModIds({ discovered: ["folder-tiles"], diskOrder: ["folder-tiles"] }),
+    ).toEqual(["folder-tiles"]);
+  });
+
+  it("appends the disk order after the stored set, never before", () => {
+    expect(
+      readEnabledModIds({ discovered: ["a", "b"], diskOrder: ["b", "a"] }),
+    ).toEqual(["b", "a"]);
   });
 });

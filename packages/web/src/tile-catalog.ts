@@ -30,6 +30,7 @@
 
 import { GRAPHICS_MODE_CATALOG, GRAPHICS_NONE } from "@neo-angband/core";
 import type { GraphicsMode } from "@neo-angband/core";
+import type { PackFileResolver } from "./pack-files";
 import type { TileModePack } from "./tile-mods";
 
 /**
@@ -69,12 +70,24 @@ export interface TileModeEntry {
   /** Engine that draws it; absent means the classic tilesheet. */
   engine?: TileEngine;
   /**
-   * Base URL the pack's art hangs under - the atlas is
-   * `<baseUrl>/<directory>/<file>`. Undefined for core modes, which use the
-   * shell's own tile base; a mod mode carries the base its manifest declared,
-   * so a mod's pack is loaded from the MOD's assets, not core's.
+   * The pack's directory inside the contributing MOD's folder (its manifest's
+   * `path`). Undefined for core modes, and for a mod pack that declares none.
+   * Carried for diagnostics and for the tests that pin the manifest shape; the
+   * thing that actually fetches bytes is `resolve`.
    */
-  baseUrl?: string;
+  path?: string;
+  /**
+   * How to reach the pack's files, by path relative to the PACK root - so the
+   * tilesheet atlas is `<directory>/<file>` and a loose pack's manifest is
+   * `manifest.txt`. Undefined for core modes, which use the shell's own tile
+   * base, and for a mod pack whose source cannot serve assets.
+   *
+   * A resolver rather than a base URL because a mod in a folder the player picked
+   * has no URL for its files until their bytes are wrapped in a blob:, and one
+   * installed from GitHub lives in IndexedDB (see PackFileResolver). Both engines
+   * take it, so the field means one thing whichever renderer reads it.
+   */
+  resolve?: PackFileResolver;
   /** The contributing mod's id, when a mod supplied this mode. */
   modId?: string;
   /**
@@ -139,7 +152,8 @@ export function composeTileModes(input: {
       grafID: pack.grafID,
       menuname: pack.menuname,
       ...(pack.engine === undefined ? {} : { engine: pack.engine }),
-      ...(pack.baseUrl === undefined ? {} : { baseUrl: pack.baseUrl }),
+      ...(pack.path === undefined ? {} : { path: pack.path }),
+      ...(pack.resolve === undefined ? {} : { resolve: pack.resolve }),
       modId: pack.modId,
       modName: pack.modName,
     };
