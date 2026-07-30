@@ -46,6 +46,7 @@ import type { HostBridgeInfo } from "./bridge-channel";
 import { checkWritable, resolveDataBase } from "./data-dir";
 import { PORT_ENV, rememberLoopbackPort, resolveLoopbackPort } from "./loopback-port";
 import { planOriginMerge } from "./origin-merge";
+import { ORIGIN_PROBE_ROUTE, planRequest } from "./routes";
 import type { OriginSnapshot } from "./origin-merge";
 import { readWindowState, startPlacement, writeWindowState } from "./window-state";
 
@@ -163,15 +164,6 @@ const MIME: Record<string, string> = {
   ".ogg": "audio/ogg",
 };
 
-/** Resolve a request path safely under a root, rejecting traversal. */
-function safeJoin(root: string, urlPath: string): string | null {
-  const decoded = decodeURIComponent(urlPath.split("?")[0] ?? "");
-  const rel = decoded.replace(/^\/+/, "");
-  const full = path.normalize(path.join(root, rel));
-  if (full !== root && !full.startsWith(root + path.sep)) return null;
-  return full;
-}
-
 function send(
   res: http.ServerResponse,
   status: number,
@@ -188,22 +180,40 @@ function send(
   res.end(body);
 }
 
-function serveFile(
+/**
+ * Serve the first candidate that reads.
+ *
+ * A LIST rather than one path because `/mods/<id>/...` can be answered from two
+ * places - the player's mods folder or the web bundle - and which one holds a
+ * given file is not knowable without looking. See routes.ts for why, and for the
+ * defect that taught us: a single-candidate lookup made every bundled mod asset
+ * a 404 on desktop while serving fine on Pages.
+ */
+function serveFirst(
   res: http.ServerResponse,
-  filePath: string,
+  candidates: readonly string[],
   fallbackIndex: boolean,
 ): void {
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      if (fallbackIndex) {
-        // SPA-style fallback to index.html for unknown non-asset routes.
-        serveFile(res, path.join(WEB_ROOT, "index.html"), false);
-        return;
-      }
-      send(res, 404, "Not found");
+  const [head, ...rest] = candidates;
+  if (head === undefined) {
+    if (fallbackIndex) {
+      // SPA-style fallback to index.html for unknown non-asset routes.
+      serveFirst(res, [path.join(WEB_ROOT, "index.html")], false);
       return;
     }
-    send(res, 200, data, MIME[path.extname(filePath).toLowerCase()]);
+    send(res, 404, "Not found");
+    return;
+  }
+  fs.readFile(head, (err, data) => {
+    if (err) {
+      serveFirst(res, rest, fallbackIndex);
+      return;
+    }
+    /* The MIME type comes from the file actually opened, not the first
+     * candidate: the two roots can name different extensions for one request
+     * only if a path is odd, but reading the type off the wrong name is the kind
+     * of thing that silently serves a PNG as text/plain. */
+    send(res, 200, data, MIME[path.extname(head).toLowerCase()]);
   });
 }
 
@@ -340,8 +350,10 @@ function modsIndex(): ModsIndex {
  * can read or write that origin's localStorage (see origin-merge.ts). It must NOT
  * be the app: loading index.html in a hidden window would boot a second copy of
  * the game, which under a no-save-scumming policy is a second autosaver.
+ *
+ * The route itself lives in routes.ts, so the router and the loader cannot drift
+ * onto two different paths.
  */
-const ORIGIN_PROBE_ROUTE = "/__origin-storage";
 const ORIGIN_PROBE_PAGE =
   "<!doctype html><meta charset=utf-8><title>storage</title>";
 
@@ -349,32 +361,22 @@ function startServer(port: number): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const url = req.url ?? "/";
-      if (url === ORIGIN_PROBE_ROUTE) {
-        send(res, 200, ORIGIN_PROBE_PAGE, MIME[".html"]);
-        return;
-      }
-      // User mods folder (read-only), for the filesystem-mod path.
-      if (url === "/mods/index.json") {
-        send(res, 200, JSON.stringify(modsIndex()), MIME[".json"]);
-        return;
-      }
-      if (url.startsWith("/mods/")) {
-        const full = safeJoin(MODS_DIR, url.slice("/mods".length));
-        if (!full) {
+      const plan = planRequest(url, { modsDir: MODS_DIR, webRoot: WEB_ROOT });
+      switch (plan.kind) {
+        case "origin-probe":
+          send(res, 200, ORIGIN_PROBE_PAGE, MIME[".html"]);
+          return;
+        // User mods folder (read-only), for the filesystem-mod path.
+        case "mods-index":
+          send(res, 200, JSON.stringify(modsIndex()), MIME[".json"]);
+          return;
+        case "forbidden":
           send(res, 403, "Forbidden");
           return;
-        }
-        serveFile(res, full, false);
-        return;
+        case "file":
+          serveFirst(res, plan.candidates, plan.fallbackIndex);
+          return;
       }
-      // The web bundle.
-      const target = url === "/" ? "/index.html" : url;
-      const full = safeJoin(WEB_ROOT, target);
-      if (!full) {
-        send(res, 403, "Forbidden");
-        return;
-      }
-      serveFile(res, full, true);
     });
     server.on("error", reject);
     /* A FIXED port on loopback only. Fixed, not ephemeral, because the port is
