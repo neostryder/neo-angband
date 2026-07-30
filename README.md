@@ -146,8 +146,15 @@ Honest list, so nobody wastes a report on something already written down:
   display-lever inventory.
 - **No subwindows.** Upstream can put the monster list, messages, and inventory
   in separate terminal windows; the port is one surface.
-- **Mods cannot be installed from a file or URL yet** in the web build - the
-  bundled ones are fully manageable. The desktop build has the seam for it.
+- **There is no mod catalogue to browse and install from yet.** What works
+  today: the bundled mods are fully manageable, and the mod manager's *Choose a
+  mods folder...* row reads mods from a folder on your computer - in the browser
+  build too, not just on the desktop (Chrome/Edge; Firefox and Safari cannot
+  pick a directory, so those stay bundled-only). What is missing is the
+  one-click "install this recommended mod" front end. Neither surface has a
+  runtime *code* loader, so a scripted-plugin mod still has to be bundled; a
+  folder of records is data, and composes like a bundled pack. Full matrix in
+  [docs/INSTALL.md](docs/INSTALL.md).
 - The save format is pre-1.0 and may still change between versions. Export
   anything you care about.
 
@@ -199,5 +206,15 @@ upstream Angband maintainers and contributors whose work this builds on.
 ## License
 
 Dual-licensed under GPLv2 or the traditional Angband license, matching
-upstream - see [LICENSE.md](LICENSE.md). Game data derives from Angband;
-asset licenses vary (see `reference/docs/copying.rst`).
+upstream - see [LICENSE.md](LICENSE.md). Game data derives from Angband.
+
+**Art is licensed separately from code, per pack.** The four tile sets this
+build ships are Angband's own, by **Adam Bolt** (16x16), **David Gervais**
+(32x32, CC BY 3.0), **Nomad** (8x16), and the classic 8x8 Original Tiles -
+each bundled under its own terms, stated per pack in
+[packages/web/public/tiles/CREDITS.md](packages/web/public/tiles/CREDITS.md).
+That file also records the one pack Angband ships that this port does *not*
+bundle, and why. If you are a tile artist wondering how your work would be
+treated here, that file is the answer, and
+[docs/LINOLEUM.md](docs/LINOLEUM.md#tileset-licensing-why-converted-packs-are-not-shipped)
+covers why no converted pack is redistributed at all.

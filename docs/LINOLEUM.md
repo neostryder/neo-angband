@@ -290,14 +290,29 @@ readme file; the authoritative statements are in `reference/docs/copying.rst`.
 | Adam Bolt 16x16 (`adam-bolt`) | "may be redistributed and used for any purpose, with or without modification" | Yes |
 | David Gervais 32x32 (`gervais`) | Creative Commons Attribution 3.0 | Yes, with attribution |
 | Nomad 8x16 (`nomad`) | No separate exception in copying.rst; Angband dual licence (GPL v2 or Angband licence) | Yes, under those terms |
-| Shockbolt 64x64 (`shockbolt-dark`, `shockbolt-light`) | Custom licence, copyright (C) Raymond Gaustadnes 2012 | **No.** Modification and use or distribution outside Angband are not permitted |
+| Shockbolt 64x64 (`shockbolt-dark`, `shockbolt-light`) | Custom licence, copyright (C) Raymond Gaustadnes 2012 | Distribution **with Angband** is granted (no fee); **modification is not**, so a converted pack needs the author's permission |
 
-Because the Shockbolt licence forbids modification and any distribution
-outside Angband, converted Shockbolt packs are strictly for personal use and
-must never be redistributed. Rather than shipping some converted packs and
-not others, this port ships none: the converter runs locally against the
-`reference/` data so every user derives their own packs from the original
-files under the original licences. The CLI prints the relevant licence
+Read that last row carefully, because it is easy to get backwards. Shockbolt's
+licence is not a blanket prohibition: it *grants* use and fee-free distribution
+of the tileset with in-development and released versions of Angband. What it
+withholds is modification without permission, ToME-only tiles, and use or
+distribution "with other games or projects" without explicit permission. Two
+consequences for this converter:
+
+- **A Linoleum conversion is a modification** — it cuts the sheet into
+  individual PNGs. That needs the author's permission regardless of how the
+  "is this Angband?" question below is answered. Convert your own copy for your
+  own use; do not redistribute the result.
+- **Whether this port counts as "Angband" or as "another project"** decides
+  whether the unmodified sheet may ship with it. Only the author can answer
+  that, and until he has, the port takes the conservative reading and bundles
+  none of his art (`packages/web/public/tiles/CREDITS.md` has the full text and
+  the reasoning).
+
+Independently of Shockbolt: rather than shipping some converted packs and not
+others, this port ships **no** converted packs. The converter runs locally
+against the `reference/` data, so every user derives their own packs from the
+original files under the original licences. The CLI prints the relevant licence
 notes, including a prominent warning for the Shockbolt packs, on every run.
 
 ## Parity

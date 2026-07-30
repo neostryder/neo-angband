@@ -23,11 +23,18 @@ b) the "Angband licence":
 ## Assets
 
 Asset licenses under `reference/` vary and are NOT all dual-licensed as
-above; see `reference/docs/copying.rst` for the full statements. Notably,
-the Shockbolt tile set carries a restrictive license (no modification, no
-use outside Angband, no commercial use without a purchased license) and is
-not used by the port. The Adam Bolt tiles (free use) and David Gervais
-tiles (CC BY 3.0) are available to tile packs under their own terms.
+above; see `reference/docs/copying.rst` for the full statements, and
+`packages/web/public/tiles/CREDITS.md` for the four tile packs this port
+actually bundles and the terms each one is bundled under.
+
+The Adam Bolt tiles (any purpose, with or without modification) and David
+Gervais tiles (CC BY 3.0, attribution given in that CREDITS.md) are available
+to tile packs under their own terms. The Shockbolt tile set is a distinct
+case and is **not** bundled: its license grants fee-free distribution *with*
+Angband but withholds modification without the author's permission, and
+withholds use with "other games or projects" absent explicit permission —
+so whether this port may carry it turns on a question only the author can
+settle. CREDITS.md states the grants and the prohibitions in full.
 
 ## Mods
 
