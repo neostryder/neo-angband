@@ -6,7 +6,13 @@
 
 import { describe, expect, it } from "vitest";
 import { MISC_STRING_CORRECTIONS, MISSPELLINGS, miscStringFix } from "./strings";
-import bugFixesHooks from "./hooks";
+import * as neoCore from "@neo-angband/core";
+import plugin from "./plugin";
+
+/** The mod's behaviour as the host drives it: plugin.hooks(ctx) reduced to a
+ * function of flags, with the real core namespace as ctx.core. */
+const bugFixesHooks = (flags: Readonly<Record<string, boolean>>) =>
+  plugin.hooks({ flags, core: neoCore });
 
 describe("the bug-fixes mod's Misc. string fixes (docs/modding/BUG_FIXES.md #14)", () => {
   it("normalizes upstream's single-spaced sentence breaks UP to its double", () => {

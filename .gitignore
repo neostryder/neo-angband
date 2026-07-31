@@ -33,6 +33,12 @@ packages/web/public/mods/
 # packages/web/public/tiles/CREDITS.md for the grant and its conditions, which
 # ride along with the art: a commercial release needs a licence from the author.
 
+# The bundled mods built to the plugin.js their OWN repositories ship
+# (packages/web/scripts/build-mod-plugins.mjs). Derived from mods/<id>/plugin.ts and
+# reproducible from it, so it is built rather than committed - the artefact belongs in
+# neo-angband-mod-<id>, not here.
+packages/web/build/
+
 # Stray compiled output from plugin sources under mods/ (source is *.ts)
 packages/web/mods/**/*.js
 packages/web/mods/**/*.d.ts

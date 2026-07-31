@@ -3,8 +3,15 @@
   "name": "Bug Fixes (unofficial patch set)",
   "version": "1.0.0",
   "shape": "content",
+  "facets": [
+    "content",
+    "plugin"
+  ],
+  "modApi": 1,
   "engine": "4.2.x",
-  "dependencies": { "core": "*" },
+  "dependencies": {
+    "core": "*"
+  },
   "author": "neostryder (RPGM Tools)",
   "license": "GPL-2.0-only",
   "description": "Bundled, opt-in fixes for upstream Angband 4.2.6 bugs, in the model of an unofficial patch. The mod itself is OFF by default, like every mod; enable it and you get the whole patch set, with each fix a named toggle in this mod's Fixes & tweaks submenu that you can switch off individually. With the mod disabled, core stays faithful to 4.2.6, bugs included. See docs/modding/BUG_FIXES.md for the upstream issue/PR/commit each fix cites.",

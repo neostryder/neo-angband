@@ -1,14 +1,21 @@
 /**
  * The mod plugin ABI: the one contract a mod's CODE is written against.
  *
- * Until now every path by which a mod could supply code was a build-time Vite
- * `import.meta.glob` over `mods/<id>/hooks.ts` for behaviour and the same for `trusted.ts`
- * for system overrides. Both resolve when the app is BUILT, so a folder on disk
- * could contribute records and never a line of code, for first- or third-party
- * mods alike. Everything else the SDK does - add/replace/remove/merge/field
- * patches, provenance-aware conflicts, five capability-gated registry facades -
+ * Until this existed, every path by which a mod could supply code was a build-time
+ * Vite `import.meta.glob` over `mods/<id>/hooks.ts` for behaviour and the same for
+ * `trusted.ts` for system overrides. Both resolve when the app is BUILT, so a folder
+ * on disk could contribute records and never a line of code, for first- or
+ * third-party mods alike. Everything else the SDK does - add/replace/remove/merge/
+ * field patches, provenance-aware conflicts, five capability-gated registry facades -
  * was already built and sitting behind that one gate. This module is the gate's
  * replacement.
+ *
+ * And it is now the ONLY shape. The bundled mods were rewritten onto it (their
+ * source is `mods/<id>/plugin.ts`, still resolved by a Vite glob, but the same
+ * ModPlugin a folder ships), so there is one contract rather than a first-party one
+ * and a third-party one. That is what lets one source produce both the bundled mod
+ * and the plugin.js in the mod's own repository - scripts/build-mod-plugins.mjs -
+ * and it is why the hooks.ts signature is gone rather than kept as a second option.
  *
  * A mod that runs code ships `plugin.js`, an ES module beside its manifest.json,
  * default-exporting a ModPlugin. That is the ENTRY POINT, not the whole mod: a mod
@@ -48,7 +55,8 @@
  * points with two signatures for two halves of the same job: `hooks` folds
  * behaviour into core's ModHooks, `register` reaches the capability-gated
  * registries. A mod that wants both had to ship two files. One ModPlugin carries
- * both, either optional.
+ * both, either optional. (trusted.ts still exists for the AGENT system, which is a
+ * different thing wearing a similar name; the sandboxed agent entry is sandbox.ts.)
  *
  * WHY THE VERSION IS DECLARED AND CHECKED. The API is explicitly unstable until
  * 1.0. That is a reason to fail LOUDLY, not a reason to skip the check: a plugin

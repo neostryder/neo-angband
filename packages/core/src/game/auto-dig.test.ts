@@ -12,7 +12,7 @@
  *    REAL dig attempt instead of reimplementing the roll.
  *
  * What core does NOT own: auto-dig itself. That is the `qol` mod's patch
- * ("qol.autoDig"), its code lives in packages/web/mods/qol/hooks.ts, and its
+ * ("qol.autoDig"), its code lives in packages/web/mods/qol/plugin.ts, and its
  * behaviour is proven there (one attempt, spends a move, never steps onto the
  * grid). No `qol.*` string appears in core. The hook written inline below is
  * stated as the CONTRACT core offers, not as core's behaviour.
