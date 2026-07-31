@@ -56,8 +56,22 @@ import type {
   ModHooks,
   MonPlaceDeps,
 } from "@neo-angband/core";
-import bugFixesHooks from "./hooks";
-import { ensureStairsReachable } from "./stairs";
+import * as neoCore from "@neo-angband/core";
+import plugin from "./plugin";
+
+/**
+ * The mod's behaviour, driven the way the HOST drives it: the entry point is a
+ * ModPlugin whose `hooks` reads the engine off `ctx.core`
+ * (mods/bug-fixes/plugin.ts), and the host reduces that to a function of flags
+ * (src/mod-hooks.ts pluginAdapter). Same reduction here, with the real core.
+ */
+const bugFixesHooks = (flags: Readonly<Record<string, boolean>>): ModHooks =>
+  plugin.hooks({ flags, core: neoCore });
+import { ensureStairsReachable as repairStairs } from "./stairs";
+
+/** The repair with the engine handed in, as the plugin hands it. */
+const ensureStairsReachable = (g: Gen, quest: boolean): boolean =>
+  repairStairs(g, quest, neoCore);
 
 /* ------------------------------------------------------------------ *
  * Content, loaded straight from the shipped pack.

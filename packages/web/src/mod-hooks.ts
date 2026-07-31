@@ -8,14 +8,23 @@
  * rather than a hardcoded list. Nothing here knows any mod's id, and no mod's
  * flag name appears in the host either - the mod reads its own flags.
  *
- * THE ENTRY POINT. packages/web/mods/<id>/hooks.ts default-exports
+ * THE ENTRY POINT. packages/web/mods/<id>/plugin.ts default-exports a ModPlugin
+ * (mod-plugin.ts) - `{ api, hooks?, register? }` - and its `hooks` is called ONCE
+ * per ENABLED mod, in enabled/load order, with a ModPluginContext carrying THAT
+ * mod's resolved rule choices (`choices[flag] ?? rule.default` for every rule its
+ * manifest declares). A mod with no behaviour - the neo-linoleum tile pack, and
+ * every pure content mod - simply ships no plugin.ts and is never called.
  *
- *   (flags: Readonly<Record<string, boolean>>) => ModHooks
- *
- * and is called ONCE per ENABLED mod, in enabled/load order, with THAT mod's
- * resolved rule choices (`choices[flag] ?? rule.default` for every rule its
- * manifest declares). A mod with no behaviour - the linoleum tile pack, and every
- * pure content mod - simply ships no hooks.ts and is never called.
+ * ONE SHAPE, NOT TWO. This used to glob `hooks.ts` for a bundled mod, whose entry
+ * point took `flags` and imported core directly, while a folder mod shipped a
+ * `plugin.js` whose `hooks` took a context and got the engine as `ctx.core`. Same
+ * job, two signatures, and the bundled one could not be built into a distributable
+ * plugin.js at all - it imported a bare specifier, which is the one thing a module
+ * fetched from a folder cannot do. So the bundled mods now use the folder ABI, and
+ * the only remaining difference between the two paths is how the module is
+ * obtained: Vite resolves one at build time, mod-code.ts imports the other from a
+ * URL. That is what lets ONE source produce both the bundled mod and the plugin.js
+ * in the mod's own repository.
  *
  * WHY THE PER-MOD FLAG MAP IS SLICED PER MOD rather than passed whole: a mod must
  * not be able to read, or act on, another mod's toggles. Slicing by declaration
@@ -33,38 +42,68 @@ import { composeModHooks, type ModHooks } from "@neo-angband/core";
 import { enabledModIds, loadEnabledModRuleDecls } from "./pack";
 import { defaultModStore, isShippedMod, resolveModRules } from "./mod-store";
 import { activeModCode } from "./mod-code";
+import { validateModPlugin, type ModPlugin } from "./mod-plugin";
 import { modPluginContext, modOwnFiles } from "./mod-context";
 
 /**
- * The entry-point signature every behaviour mod exports as default. Identical
- * across the bundled mods and the only shape this discovery accepts; see the
- * header comment in packages/web/mods/bug-fixes/hooks.ts.
+ * The one-argument adapter both paths are reduced to before the fold: a mod's
+ * behaviour as a function of its own flags.
+ *
+ * `undefined` means "contributed nothing", which is distinct from `{}` - a plugin
+ * that has no `hooks`, or whose `hooks` threw, must leave core on its faithful path
+ * rather than install an empty opinion.
  */
 export type ModHookEntry = (
   flags: Readonly<Record<string, boolean>>,
-) => ModHooks;
+) => ModHooks | undefined;
 
-/* Each hooks.ts is imported as a plain module (its default export), exactly as
- * trusted.ts is - in-process, no serialization boundary, so it can use core's
- * public API directly. */
-const entryGlob = import.meta.glob("../mods/*/hooks.ts", {
+/* Each plugin.ts is resolved by Vite at build time and imported as a plain module
+ * (its default export) - in-process, no serialization boundary. The SAME source is
+ * built to a standalone plugin.js for the mod's own repository, which is why it
+ * takes the engine from its context rather than importing it. */
+const entryGlob = import.meta.glob("../mods/*/plugin.ts", {
   eager: true,
   import: "default",
-}) as Record<string, ModHookEntry>;
+}) as Record<string, unknown>;
 
-/** modId -> its default-exported entry point, for every mod shipping hooks.ts. */
+/** modId -> its behaviour adapter, for every bundled mod shipping plugin.ts. */
 export function discoverModHookEntries(): Map<string, ModHookEntry> {
   const byId = new Map<string, ModHookEntry>();
   for (const [key, entry] of Object.entries(entryGlob)) {
-    const m = /\/mods\/([^/]+)\/hooks\.ts$/.exec(key);
+    const m = /\/mods\/([^/]+)\/plugin\.ts$/.exec(key);
     if (!m || !m[1] || !isShippedMod(m[1])) continue;
-    if (typeof entry !== "function") {
-      console.warn(`[mod-hooks] ${m[1]}/hooks.ts does not default-export a function; skipping`);
+    const id = m[1];
+    /* The same validator the folder path runs, so a bundled mod cannot ship a
+     * shape the ABI would refuse from a third party - including the api-version
+     * check, which is the one that catches a mod left behind by a bump. */
+    const wrong = validateModPlugin(entry);
+    if (wrong) {
+      console.warn(`[mod-hooks] ${id}/plugin.ts: ${wrong}; skipping`);
       continue;
     }
-    byId.set(m[1], entry);
+    byId.set(id, pluginAdapter(id, entry as ModPlugin));
   }
   return byId;
+}
+
+/**
+ * A ModPlugin's `hooks` as a one-argument function of flags.
+ *
+ * Shared by both paths on purpose: a plugin that throws loses ITS contribution and
+ * nothing else, whether it came from a folder or the bundle. A bundled mod is first
+ *-party, but "first-party code cannot throw" is an assumption, not a guarantee, and
+ * a mod that takes the game down on boot is the worst version of that being wrong.
+ */
+function pluginAdapter(id: string, plugin: ModPlugin): ModHookEntry {
+  return (flags) => {
+    if (!plugin.hooks) return undefined;
+    try {
+      return plugin.hooks(modPluginContext(id, flags));
+    } catch (e) {
+      console.error(`[mod:${id}] hooks() threw; contributing nothing:`, e);
+      return undefined;
+    }
+  };
 }
 
 /**
@@ -90,12 +129,13 @@ export function resolveModRuleFlagsByMod(): Map<string, Record<string, boolean>>
  * Undefined when no enabled mod contributes anything - the fresh-install case,
  * and the one that must leave core byte-identical to faithful 4.2.6.
  *
- * TWO SOURCES, ONE FOLD. A bundled mod's hooks.ts is found by the glob above; a
+ * TWO SOURCES, ONE FOLD. A bundled mod's plugin.ts is found by the glob above; a
  * mod installed as a FOLDER supplies a built plugin.js that boot imported and
- * latched (mod-code.ts). Both produce a ModHooks and both go into the same
- * composeModHooks call, in enabled/load order, so a folder mod is not a
- * second-class citizen with its own precedence rules - which is the whole point of
- * routing it through here rather than giving it a path of its own.
+ * latched (mod-code.ts). Both are ModPlugins, both are adapted by pluginAdapter,
+ * and both go into the same composeModHooks call in enabled/load order - so a
+ * folder mod is not a second-class citizen with its own precedence rules, which is
+ * the whole point of routing it through here rather than giving it a path of its
+ * own.
  *
  * A mod that is both bundled AND present as a folder contributes ONCE, from the
  * folder: a folder is what an external mod manager deploys and what the player can
@@ -109,28 +149,25 @@ export function activeModHooks(): ModHooks | undefined {
   const contributions: ModHooks[] = [];
   for (const id of enabledModIds()) {
     const flags = flagsByMod.get(id) ?? {};
-    const fromFolder = folder.get(id);
-    if (fromFolder) {
-      const hooks = fromFolder(flags);
-      if (hooks) contributions.push(hooks);
-      continue;
-    }
-    const entry = entries.get(id);
+    const entry = folder.get(id) ?? entries.get(id);
     if (!entry) continue;
-    contributions.push(entry(flagsByMod.get(id) ?? {}));
+    const hooks = entry(flags);
+    if (hooks) contributions.push(hooks);
   }
   return composeModHooks(contributions);
 }
 
 /**
- * The folder-loaded plugins' `hooks`, adapted to the same one-argument shape a
- * bundled hooks.ts has, so activeModHooks folds both identically.
+ * The folder-loaded plugins, adapted to the same one-argument shape the bundled
+ * ones get, so activeModHooks folds both identically.
  *
- * A plugin that throws inside hooks() loses ITS contribution and nothing else: a
- * broken third-party mod must not take the other mods, or the game, down with it.
+ * Not pluginAdapter itself, because a folder plugin's context carries the pack's
+ * own files: its parsed records and the live asset resolver. A bundled mod's folder
+ * is inside the app bundle and has no such report, so it gets a context with an
+ * empty `data` and an `assetUrl` that resolves null.
  */
-function folderHookEntries(): Map<string, (flags: Readonly<Record<string, boolean>>) => ModHooks | undefined> {
-  const out = new Map<string, (flags: Readonly<Record<string, boolean>>) => ModHooks | undefined>();
+function folderHookEntries(): Map<string, ModHookEntry> {
+  const out = new Map<string, ModHookEntry>();
   for (const loaded of activeModCode().plugins) {
     const hooks = loaded.plugin.hooks;
     if (!hooks) continue;

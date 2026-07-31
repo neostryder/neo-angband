@@ -1,9 +1,9 @@
 /**
  * Discover bundled scripted-plugin mods (MOD_INTEGRATION_PLAN.md Wave 2, W2.1).
  *
- * A scripted plugin lives at packages/web/mods/<id>/ with a plugin.ts entry and
+ * A scripted plugin lives at packages/web/mods/<id>/ with a sandbox.ts entry and
  * a shape:"plugin" manifest.json declaring its capabilities. Vite compiles each
- * plugin.ts as its own module worker (the "?worker" glob query), so the host
+ * sandbox.ts as its own module worker (the "?worker" glob query), so the host
  * gets a Worker constructor per plugin and never has to dynamically import
  * untrusted code by URL. The manifest supplies the capability grant the host
  * turns into a CapabilitySet.
@@ -15,8 +15,16 @@
 import { hasFacet, type PackManifest } from "@neo-angband/mod-sdk";
 import { isShippedMod } from "../../mod-store";
 
-// Each plugin.ts becomes a module-Worker constructor (Vite ?worker).
-const workerGlob = import.meta.glob("../../../mods/*/plugin.ts", {
+/* Each sandbox.ts becomes a module-Worker constructor (Vite ?worker).
+ *
+ * The entry was called plugin.ts until the bundled behaviour mods moved onto the mod
+ * ABI, whose entry point IS plugin.js - two systems globbing one filename in one
+ * folder, and the mod-hooks glob is EAGER, so it would have imported this worker's
+ * module into the main thread and run runWorkerRuntime there. Renaming was the fix
+ * rather than working around it: "plugin" already means something specific in a mod
+ * folder. The pairing is now trusted.ts for an in-process agent and sandbox.ts for a
+ * worker-sandboxed one. */
+const workerGlob = import.meta.glob("../../../mods/*/sandbox.ts", {
   eager: true,
   query: "?worker",
   import: "default",
@@ -50,7 +58,7 @@ function toManifest(raw: unknown): PackManifest {
 }
 
 /**
- * modId -> discovered plugin, for every mod that ships a plugin.ts. The demo-*
+ * modId -> discovered plugin, for every mod that ships a sandbox.ts. The demo-*
  * framework proofs are not part of the shipped mod set, so they are dropped
  * from release builds (isShippedMod).
  */
@@ -64,17 +72,17 @@ export function discoverPlugins(): Map<string, DiscoveredPlugin> {
   }
 
   for (const [key, ctor] of Object.entries(workerGlob)) {
-    const m = /\/mods\/([^/]+)\/plugin\.ts$/.exec(key);
+    const m = /\/mods\/([^/]+)\/sandbox\.ts$/.exec(key);
     if (!m || !m[1] || !isShippedMod(m[1])) continue;
     const id = m[1];
     const rawManifest = manifests.get(id);
     if (!rawManifest) {
-      console.warn(`[plugins] ${id}/plugin.ts has no manifest.json; skipping`);
+      console.warn(`[plugins] ${id}/sandbox.ts has no manifest.json; skipping`);
       continue;
     }
     const manifest = toManifest(rawManifest);
     if (!hasFacet(manifest, "plugin")) {
-      console.warn(`[plugins] ${id} ships plugin.ts but manifest shape is "${manifest.shape}"; skipping`);
+      console.warn(`[plugins] ${id} ships sandbox.ts but manifest shape is "${manifest.shape}"; skipping`);
       continue;
     }
     byId.set(id, { manifest, createWorker: () => new ctor() });
