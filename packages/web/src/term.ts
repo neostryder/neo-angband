@@ -41,6 +41,21 @@ export interface Glyph {
   bg?: string;
   /** When set, blit this tile in place of the ASCII glyph (ASCII on failure). */
   tile?: TileDraw;
+  /**
+   * The TERRAIN tile under `tile`, blitted first so an alpha foreground tile
+   * shows the floor through its transparent pixels instead of the cell's flat
+   * background colour.
+   *
+   * This is grid_data_as_text's (tap, tcp) pair: the feature's attr/char, saved
+   * "for the transparency effects" BEFORE traps, objects, monsters and the
+   * player overwrite (ap, cp) (ui-map.c L186-189). The front ends blit the
+   * terrain tile and then, only when the foreground pair differs, the
+   * foreground tile over it (Term_pict_sdl, main-sdl.c L5511-5540; the same
+   * two-pass shape in main-win.c and main-sdl2.c). Callers therefore leave this
+   * undefined when the terrain IS the top layer, which is upstream's
+   * `if ((tap[i] == ap[i]) && (tcp[i] == cp[i])) continue;`.
+   */
+  bgTile?: TileDraw;
 }
 
 export interface TermSize {
@@ -117,6 +132,34 @@ export function carryGrid<T>(
   return Array.from({ length: rows }, (_, y) =>
     Array.from({ length: cols }, (_, x) => prev[y]?.[x] ?? null),
   );
+}
+
+/**
+ * Term_pict's two-pass tile blit (main-sdl.c Term_pict_sdl L5511-5540, and the
+ * same shape in main-win.c and main-sdl2.c): lay the TERRAIN tile down, then the
+ * foreground tile over it. That second blit is what puts a monster on a floor
+ * rather than on a bare cell, and it is the only reason an alpha tile's
+ * transparent pixels ever show anything but the cell's background colour.
+ *
+ * Returns true when the FOREGROUND tile drew, meaning the caller must not also
+ * draw the ASCII glyph. A terrain tile that draws on its own does NOT suppress
+ * the glyph: the terrain is scenery, and a cell whose real content failed to
+ * blit still has to say what is standing there.
+ *
+ * Pure but for the two draw calls, so the ORDER is testable without a canvas -
+ * the class itself needs a real 2d context the node test environment has not
+ * got (see carryGrid above for the same split).
+ */
+export function blitCellTiles(
+  ctx: CanvasRenderingContext2D,
+  g: Glyph | null,
+  px: number,
+  py: number,
+  w: number,
+  h: number,
+): boolean {
+  g?.bgTile?.draw(ctx, px, py, w, h);
+  return g?.tile?.draw(ctx, px, py, w, h) === true;
 }
 
 export class GlyphTerm {
@@ -425,6 +468,43 @@ export class GlyphTerm {
   }
 
   /**
+   * How many cells carry a TERRAIN tile under their foreground tile - the count
+   * of cells where something covers the floor and the floor still shows through.
+   * Zero while nothing stands on mapped terrain, and zero if the (tap, tcp) pair
+   * stops being threaded through, which is the regression this measures.
+   */
+  /**
+   * The BACKING-STORE pixel rectangle of one cell, so automated verification can
+   * read exactly the cell it means - `getImageData` on this canvas, or a crop out
+   * of an Electron capturePage() - instead of estimating from the window size and
+   * the letterbox.
+   *
+   * The dpr multiply is the whole point: cellW/cellH/offsetX/offsetY are CSS
+   * pixels (fit() is handed the CSS size and compensates with
+   * `ctx.setTransform(dpr, ...)`), while the backing store is `width * dpr`. On a
+   * 1.1x display that 10% drift is ~3.6 cells at mid-screen, which is enough to
+   * read a NEIGHBOURING cell and believe the answer - measured, and it produced a
+   * clean false positive before it was found.
+   */
+  cellRect(x: number, y: number): { x: number; y: number; w: number; h: number } {
+    const dpr = (typeof window === "undefined" ? 1 : window.devicePixelRatio) || 1;
+    return {
+      x: Math.round((this.offsetX + x * this.cellW) * dpr),
+      y: Math.round((this.offsetY + y * this.cellH) * dpr),
+      w: Math.round(this.cellW * dpr),
+      h: Math.round(this.cellH * dpr),
+    };
+  }
+
+  bgTileCellCount(): number {
+    let n = 0;
+    for (const row of this.grid) {
+      for (const g of row) if (g?.bgTile) n++;
+    }
+    return n;
+  }
+
+  /**
    * Term_gotoxy + Term_set_cursor(1) (ui-term.c): show the cursor at a cell.
    *
    * Drawn the way the Windows front end draws it (main-win.c Term_curs_win
@@ -584,12 +664,7 @@ export class GlyphTerm {
     const py = this.offsetY + y * this.cellH;
     this.ctx.fillStyle = g?.bg ?? UI_BG;
     this.ctx.fillRect(px, py, this.cellW, this.cellH);
-    // Graphics tile: blit it over the cell background; only if the blit
-    // succeeds do we skip the ASCII glyph. A not-ready atlas returns false and
-    // the cell degrades to its text glyph, so tiles never blank the map out.
-    if (g?.tile && g.tile.draw(this.ctx, px, py, this.cellW, this.cellH)) {
-      return;
-    }
+    if (blitCellTiles(this.ctx, g, px, py, this.cellW, this.cellH)) return;
     if (g && g.ch !== " ") {
       // FONT-1: blit the original 16x24 bitmap glyph, tinted to fg and scaled to
       // the cell (nearest-neighbour). Falls back to FONT_STACK fillText for any

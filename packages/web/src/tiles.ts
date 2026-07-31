@@ -8,13 +8,12 @@
  * the TileBlitter interface below so the live map render has one code path.
  *
  * The core ships the graphics-mode CATALOG (packages/core/src/visuals/grafmode)
- * - names, tile dimensions, directory + image filenames - but NO tile IMAGE
- * assets. The tile art packs (adam-bolt, gervais, shockbolt, nomad) carry
- * their own licenses (Shockbolt's is NOT freely redistributable for commercial
- * use), so nothing is bundled. A user supplies their own pack and points the
- * game at it with a configurable base URL (`?tiles=<base-url>&graf=<id>`).
+ * - names, tile dimensions, directory + image filenames - and the web build ships
+ * the ART for all five packs at public/tiles/ (see its CREDITS.md: the terms
+ * differ per pack, and Shockbolt's are the author's own). A player can still
+ * point the game at a pack of their own with `?tiles=<base-url>&graf=<id>`.
  *
- * ASCII is the DEFAULT: with no base URL configured, or if the tileset image
+ * ASCII is the DEFAULT: with no graphics mode selected, or if the tileset image
  * fails to load, createTileRenderer returns null and the game renders as pure
  * ASCII. Nothing here can crash the game - every failure path degrades.
  *

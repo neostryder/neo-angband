@@ -34,7 +34,7 @@
  *
  * Run automatically by the web package's `dev` and `bundle` scripts, and cheap to
  * re-run: it skips a pack whose manifest.txt is already there (delete
- * packages/web/public/mods/linoleum/ to force a rebuild). It never touches core's
+ * packages/web/public/mods/neo-linoleum/ to force a rebuild). It never touches core's
  * public/tiles/ - it only writes under public/mods/.
  */
 
@@ -44,7 +44,7 @@ import { fileURLToPath } from "node:url";
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const tilesRoot = join(webRoot, "public", "tiles");
-const outputRoot = join(webRoot, "public", "mods", "linoleum");
+const outputRoot = join(webRoot, "public", "mods", "neo-linoleum");
 
 /** The one pack cheap enough to build unconditionally (see WHICH PACKS). */
 const DEFAULT_PACK_KEYS = ["original-tiles"];

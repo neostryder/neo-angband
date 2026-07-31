@@ -23,6 +23,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { blitCellTiles, type Glyph, type TileDraw } from "./term";
 import { carryGrid } from "./term";
 
 const TERM = readFileSync(new URL("./term.ts", import.meta.url), "utf8");
@@ -256,5 +257,139 @@ describe("prt census: the sites that must NOT erase (put_str, ui-output.c:362-37
     const src = WEB("colors.ts");
     expect(src).not.toContain("term.prt(");
     expect(src).toContain('term.print(0, 14, "Command (n/N/k/K/r/R/g/G/b/B): "');
+  });
+});
+
+/**
+ * The transparency guard: a foreground tile must be blitted OVER the terrain
+ * tile, not over the cell's flat background colour.
+ *
+ * Measured on the shipped art before the fix: the Shockbolt player tile
+ * (64x64.png row 3 col 7) is 2171 of 4096 pixels fully transparent and another
+ * 743 partially so, and the single-pass blit put all of that straight onto
+ * UI_BG - so the player stood in a black hole in the middle of a tiled floor.
+ *
+ * Upstream never draws one tile per cell. grid_data_as_text saves the terrain
+ * attr/char into (tap, tcp) "for the transparency effects" BEFORE the trap,
+ * object, monster and player arms overwrite (ap, cp) (ui-map.c L186-189), and
+ * Term_pict blits the terrain tile first, then the foreground tile only when the
+ * pair differs (main-sdl.c L5511-5540).
+ */
+describe("blitCellTiles (Term_pict's terrain-then-foreground pass)", () => {
+  /** A TileDraw that records the order it was called in, and can refuse. */
+  const rec = (log: string[], name: string, ok = true): TileDraw => ({
+    draw: (_ctx, px, py, w, h) => {
+      log.push(`${name}@${px},${py}+${w}x${h}`);
+      return ok;
+    },
+  });
+  const CTX = null as unknown as CanvasRenderingContext2D;
+  const cell = (g: Partial<Glyph>): Glyph => ({ ch: "@", fg: "#fff", ...g });
+
+  it("draws the terrain tile first and the foreground tile second", () => {
+    const log: string[] = [];
+    const drew = blitCellTiles(
+      CTX,
+      cell({ bgTile: rec(log, "floor"), tile: rec(log, "player") }),
+      32,
+      48,
+      16,
+      24,
+    );
+    expect(log).toEqual(["floor@32,48+16x24", "player@32,48+16x24"]);
+    expect(drew).toBe(true);
+  });
+
+  it("draws only the foreground tile when the terrain IS the top layer", () => {
+    /* Upstream's `if ((tap[i] == ap[i]) && (tcp[i] == cp[i])) continue;` - the
+     * caller expresses that by leaving bgTile off an uncovered terrain cell. */
+    const log: string[] = [];
+    expect(blitCellTiles(CTX, cell({ tile: rec(log, "floor") }), 0, 0, 16, 24)).toBe(true);
+    expect(log).toEqual(["floor@0,0+16x24"]);
+  });
+
+  it("still draws the foreground tile when the terrain tile refuses", () => {
+    /* A pack that maps the monster but not the floor it stands on must not lose
+     * the monster. Both engines can return false per tile: the tilesheet while
+     * its atlas is still fetching, a loose pack for any target it has no art
+     * for. */
+    const log: string[] = [];
+    const drew = blitCellTiles(
+      CTX,
+      cell({ bgTile: rec(log, "floor", false), tile: rec(log, "player") }),
+      0,
+      0,
+      16,
+      24,
+    );
+    expect(log).toEqual(["floor@0,0+16x24", "player@0,0+16x24"]);
+    expect(drew).toBe(true);
+  });
+
+  it("reports NOT drawn when only the terrain drew, so the ASCII glyph survives", () => {
+    /* The whole degradation contract: a cell whose real content would not blit
+     * falls back to its text glyph rather than showing scenery alone. */
+    const log: string[] = [];
+    const drew = blitCellTiles(
+      CTX,
+      cell({ bgTile: rec(log, "floor"), tile: rec(log, "player", false) }),
+      0,
+      0,
+      16,
+      24,
+    );
+    expect(log).toEqual(["floor@0,0+16x24", "player@0,0+16x24"]);
+    expect(drew).toBe(false);
+  });
+
+  it("draws nothing and reports NOT drawn for a plain text cell", () => {
+    expect(blitCellTiles(CTX, cell({}), 0, 0, 16, 24)).toBe(false);
+    expect(blitCellTiles(CTX, null, 0, 0, 16, 24)).toBe(false);
+  });
+});
+
+/**
+ * ...and the call sites, because blitCellTiles is only as good as what reaches
+ * it. main.ts boots a real game at module scope and cannot be imported here, so
+ * these read the source - the same approach as render-background.test.ts.
+ *
+ * Comments are STRIPPED first: every one of these assertions names a symbol that
+ * also appears in the prose right above the code, so an unstripped match would
+ * pass on the explanation alone.
+ */
+describe("main.ts supplies bgTile wherever something covers the terrain", () => {
+  const stripComments = (src: string): string =>
+    src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const MAIN = stripComments(WEB("main.ts"));
+
+  it("passes the terrain tile under a trap/object/monster on a visible cell", () => {
+    /* `drawn !== t` is the port of tap==ap && tcp==cp: `t` IS the terrain glyph,
+     * so when nothing covered the cell the two are the same object. */
+    expect(MAIN).toContain("...(drawn !== t && t.tile ? { bgTile: t.tile } : {})");
+  });
+
+  it("passes the terrain tile under the player, from the player's OWN grid", () => {
+    /* The player is painted in a second pass after the cell loop, so it cannot
+     * reuse the loop's `t`. It must read terrain - not the object it stands on,
+     * which grid_data_as_text has already excluded from (tap, tcp). */
+    expect(MAIN).toContain(
+      "terrainGlyph(state.actor.grid.x, state.actor.grid.y, LIGHTING.LOS)",
+    );
+    expect(MAIN).toContain("...(pTerrain.tile ? { bgTile: pTerrain.tile } : {})");
+  });
+
+  it("passes the remembered terrain tile under a detected monster out of view", () => {
+    /* Remembered terrain is the LIT variant (cave-map.c map_info), and a
+     * detected monster is drawn over it - so it needs the same pass. */
+    expect(MAIN).toContain("...(memTile ? { bgTile: memTile } : {})");
+  });
+
+  it("term.ts routes paintCell through blitCellTiles rather than blitting once", () => {
+    const term = stripComments(TERM);
+    expect(term).toContain(
+      "if (blitCellTiles(this.ctx, g, px, py, this.cellW, this.cellH)) return;",
+    );
+    /* The old single-pass shape, which no longer exists anywhere. */
+    expect(term).not.toContain("if (g?.tile && g.tile.draw(");
   });
 });

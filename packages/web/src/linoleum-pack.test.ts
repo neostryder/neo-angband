@@ -8,7 +8,13 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { LIGHTING, tileForFeature, tileForMonster } from "@neo-angband/core";
+import {
+  LIGHTING,
+  parseTilePrefsInto,
+  TileMap,
+  tileForFeature,
+  tileForMonster,
+} from "@neo-angband/core";
 import type { TilePrefsDeps } from "@neo-angband/core";
 import type { PoolDefinition, TargetRule } from "@neo-angband/linoleum/targets";
 import {
@@ -40,7 +46,14 @@ const deps = {
   },
   objects: { kinds: [], flavors: [], lookupSval: () => -1, lookupKind: () => null },
   monsters: {
-    raceByName: (name: string) => (name === "Farmer Maggot" ? { ridx: MAGGOT_RIDX } : null),
+    /* `<player>` is r_info[0], the slot grid_data_as_text draws the player from
+     * - not a placeholder, so the stub has to resolve it like the real registry. */
+    raceByName: (name: string) =>
+      name === "Farmer Maggot"
+        ? { ridx: MAGGOT_RIDX }
+        : name === "<player>"
+          ? { ridx: 0 }
+          : null,
   },
   traps: null,
 } as unknown as TilePrefsDeps;
@@ -204,15 +217,46 @@ describe("linoleumPrefLines", () => {
     expect(out.skipped.unresolved).toBe(2);
   });
 
-  it("skips a conditional rule instead of applying it unconditionally", () => {
+  it("emits a conditional rule as a `?:` block, with the :when: stripped off", () => {
+    /* The `?:1` after it is what stops one false condition swallowing every
+     * later rule: a generated file has no authored `?:` to reset the flag. */
     const out = linoleumPrefLines({
       rules: [
         rule("monster", "<player>:when:[EQU $CLASS Mage]", "asset", "player_mage"),
         rule("monster", "Farmer Maggot", "asset", "maggot"),
       ],
     });
-    expect(out.skipped.conditional).toBe(1);
-    expect(out.lines).toEqual(["monster:Farmer Maggot:0x80:0x80"]);
+    expect(out.conditional).toBe(1);
+    expect(out.lines).toEqual([
+      "?:[EQU $CLASS Mage]",
+      "monster:<player>:0x80:0x80",
+      "?:1",
+      "monster:Farmer Maggot:0x80:0x81",
+    ]);
+  });
+
+  it("the condition decides the player tile, and never eats the rules after it", () => {
+    const out = linoleumPrefLines({
+      rules: [
+        rule("monster", "<player>:when:[EQU $CLASS Mage]", "asset", "player_mage"),
+        rule("monster", "Farmer Maggot", "asset", "maggot"),
+      ],
+    });
+    const forClass = (cls: string) => {
+      const map = new TileMap();
+      parseTilePrefsInto(map, out.lines.join("\n"), { ...deps, vars: { CLASS: cls } });
+      return {
+        player: tileForMonster(map, 0),
+        maggot: tileForMonster(map, MAGGOT_RIDX),
+      };
+    };
+    const mage = forClass("Mage");
+    expect(mage.player).toEqual({ attr: 0x80, char: 0x80 });
+    const ranger = forClass("Ranger");
+    expect(ranger.player).toBeNull();
+    /* And the rule AFTER the conditional survives either way. */
+    expect(mage.maggot).toEqual({ attr: 0x80, char: 0x81 });
+    expect(ranger.maggot).toEqual({ attr: 0x80, char: 0x81 });
   });
 
   it("stops allocating past the slot space but keeps what fits", () => {
@@ -262,7 +306,7 @@ describe("buildLinoleumIndex", () => {
     });
     // A selector no registry knows resolves to nothing and draws ASCII; it
     // still costs a slot (the rule was well-formed), which is harmless.
-    expect(index.skipped).toEqual({ conditional: 0, unresolved: 0, overflow: 0 });
+    expect(index.skipped).toEqual({ unresolved: 0, overflow: 0 });
   });
 });
 

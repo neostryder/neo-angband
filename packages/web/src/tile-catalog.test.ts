@@ -134,15 +134,20 @@ describe("BUNDLED_TILE_DIRECTORIES", () => {
   });
 
   it("ships Shockbolt's art, under the permission its author granted", () => {
-    // The inverse of this assertion stood here while the art was withheld. The
-    // grant is conditional on the project not profiting from sales or other
-    // income, so this test doubles as the place that fails loudly if someone
-    // removes the art again - and CREDITS.md is where the condition is recorded.
+    // The inverse of this assertion stood here while the art was withheld. This
+    // is now the place that fails loudly if someone removes the art again, and
+    // the CREDITS.md checks below are what keep the shipped art from losing the
+    // three things the licence actually requires: the author's copyright, the
+    // non-commercial condition, and the "ask him yourself" pointer.
     expect(onDisk).toContain("shockbolt");
     expect(BUNDLED_TILE_DIRECTORIES).toContain("shockbolt");
-    const credits = readFileSync(join(TILES_DIR, "CREDITS.md"), "utf8");
-    expect(credits).toContain("Gaustadnes");
-    expect(credits.toLowerCase()).toContain("profit");
+    const credits = readFileSync(join(TILES_DIR, "CREDITS.md"), "utf8").toLowerCase();
+    expect(credits).toContain("gaustadnes");
+    expect(credits).toContain("with the author's permission");
+    expect(credits).toContain("non-commercial");
+    expect(credits).toContain("contact");
+    // And no contact ADDRESS: he consented to being asked, not to being listed.
+    expect(credits).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
   });
 });
 
@@ -298,7 +303,7 @@ describe("the game does not know or expect any particular mod", () => {
     // fetch its atlas from one place and its pref files from another.
     expect(main).toMatch(/const resolve = tileResolverFor\(entry\)/);
     expect(main).toMatch(/createTileRenderer\(\{ resolve, grafID \}\)/);
-    expect(main).toMatch(/loadTilePrefs\(resolve, mode, tileDeps\)/);
+    expect(main).toMatch(/loadTilePrefs\(resolve, mode, \{\s*\.\.\.tileDeps,/);
     // And the loose engine takes the same resolver, so `path` cannot come to
     // mean one thing per engine.
     expect(main).toMatch(/resolve: tileResolverFor\(entry\)/);
@@ -409,7 +414,7 @@ describe("bundled mods", () => {
      * The generated PNGs are gitignored, so links 2 and 3 are checked against the
      * filesystem only when a build has actually run here (see below); link 1 needs
      * no artefacts and is the one that catches a typo'd path in the manifest. */
-    const declared = manifestOf("linoleum").tilePacks as { path: string }[];
+    const declared = manifestOf("neo-linoleum").tilePacks as { path: string }[];
     expect(declared.length).toBeGreaterThan(0);
 
     const keys = new Set(ALL_PACKS.map((p) => p.key));
@@ -423,16 +428,16 @@ describe("bundled mods", () => {
       join(MODS_DIR, "..", "scripts", "gen-linoleum-demo.mjs"),
       "utf8",
     );
-    expect(gen).toMatch(/join\(webRoot, "public", "mods", "linoleum"\)/);
+    expect(gen).toMatch(/join\(webRoot, "public", "mods", "neo-linoleum"\)/);
 
     for (const { path } of declared) {
       const resolve = tilePackResolver({
         source: { kind: "bundle", base: BUNDLED_MODS_BASE },
-        modId: "linoleum",
+        modId: "neo-linoleum",
         path,
       });
       const url = await resolve?.("manifest.txt");
-      expect(url).toBe(`mods/linoleum/${path}/manifest.txt`);
+      expect(url).toBe(`mods/neo-linoleum/${path}/manifest.txt`);
       /* When this checkout HAS built the pack, the resolved URL must name a file
        * that exists - the strongest form of the check, and the one that would have
        * caught a resolver/generator disagreement directly. Skipped rather than

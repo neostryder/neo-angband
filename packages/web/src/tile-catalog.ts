@@ -19,10 +19,10 @@
  *
  * Core modes come from the ported catalog (core visuals/grafmode), restricted to
  * the tile art that actually ships. That restriction existed for one reason -
- * Shockbolt's art was not bundled - and with his permission granted it now ships
- * too, so the filter passes all six modes and the deviation from upstream's
- * "offer whatever list.txt says" is gone. The filter itself stays, because it is
- * what keeps a stock install from offering a row whose image is absent.
+ * Shockbolt's art was not bundled - and now that it is, the filter passes all six
+ * modes and the deviation from upstream's "offer whatever list.txt says" is gone.
+ * The filter itself stays, because it is what keeps a stock install from offering
+ * a row whose image is absent.
  *
  * Point the game at your own pack with `?tiles=<base-url>` and the full catalog
  * is offered regardless: with a user-supplied pack we cannot know what is in it,
@@ -46,11 +46,9 @@ import type { TileModePack } from "./tile-mods";
  * Shockbolt (`shockbolt`) used to be absent, on the reading that its licence
  * forbids redistribution "with other games or projects" and that we could not
  * decide for ourselves whether a faithful re-implementation of 4.2.6 counts as
- * Angband. Raymond Gaustadnes has since granted this project free use of the
- * tiles, as the Angband tilesheet and as separate converted tiles, conditional on
- * the project not profiting from sales or other income - so all six catalog modes
- * now ship. The condition is not a formality: it travels with the art, and a
- * commercial release would need a licence from him. CREDITS.md carries the grant.
+ * Angband. It ships now, with the author's permission, so all six catalog modes
+ * are offerable. That permission holds only while the project is non-commercial;
+ * CREDITS.md in public/tiles/ carries the terms.
  *
  * tile-catalog.test.ts holds this list to the actual contents of public/tiles/,
  * in both directions, so it cannot drift from what ships.

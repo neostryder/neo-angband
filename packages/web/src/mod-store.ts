@@ -54,7 +54,7 @@ export const DEFAULT_ENABLED_MODS: readonly string[] = [];
 export const FIRST_PARTY_MOD_IDS: readonly string[] = [
   "bug-fixes",
   "qol",
-  "linoleum",
+  "neo-linoleum",
 ];
 
 /**
@@ -98,6 +98,48 @@ export function isShippedMod(id: string, dev = import.meta.env.DEV): boolean {
  * - `choices` is the player's explicit per-mod decision and outranks the disk
  *   order in both directions.
  */
+/**
+ * Mod ids that have been RENAMED, old -> new.
+ *
+ * A mod id is durable state: it is what the saved enabled set, the per-mod
+ * choice map and an external manager's load-order.json all record. Renaming one
+ * without this map would silently disable the mod for anyone who already had it
+ * on, and the symptom - "the tile sets stopped appearing in Graphics" - points at
+ * the tile code, not at a rename three commits back.
+ *
+ * `linoleum` -> `neo-linoleum` (2026-07-31): the mod always DISPLAYED as
+ * neo-linoleum; the id, its folder and the docs had not caught up.
+ */
+export const RENAMED_MOD_IDS: Readonly<Record<string, string>> = {
+  linoleum: "neo-linoleum",
+};
+
+/**
+ * Apply RENAMED_MOD_IDS to a list of ids, dropping a duplicate if both the old
+ * and the new id are present (a store written across the rename).
+ */
+export function migrateModIds(ids: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const id of ids) {
+    const to = RENAMED_MOD_IDS[id] ?? id;
+    if (!out.includes(to)) out.push(to);
+  }
+  return out;
+}
+
+/** Apply RENAMED_MOD_IDS to the KEYS of a per-mod record (choices, consents). */
+export function migrateModIdKeys<T>(
+  rec: Readonly<Record<string, T>>,
+): Record<string, T> {
+  const out: Record<string, T> = {};
+  for (const [k, v] of Object.entries(rec)) {
+    /* The new id wins if both are present: it is the one the player set last. */
+    const to = RENAMED_MOD_IDS[k] ?? k;
+    if (to === k || !(to in rec)) out[to] = v;
+  }
+  return out;
+}
+
 export function resolveEnabledIds(opts: {
   url: string[] | null;
   stored: string[] | null;
@@ -117,15 +159,18 @@ export function resolveEnabledIds(opts: {
   /** Explicit per-mod decisions the player made in the manager. */
   choices?: Readonly<Record<string, boolean>>;
 }): string[] {
-  if (opts.url !== null) return opts.url;
-  const choices = opts.choices ?? {};
+  /* Every id that came from OUTSIDE this build - the URL override, the saved set,
+   * the choice map, an external manager's load order - goes through the rename map
+   * first, so a store written before a rename still enables the same mod. */
+  if (opts.url !== null) return migrateModIds(opts.url);
+  const choices = migrateModIdKeys(opts.choices ?? {});
   const base =
     opts.stored !== null
-      ? opts.stored
+      ? migrateModIds(opts.stored)
       : DEFAULT_ENABLED_MODS.filter((id) => new Set(opts.discovered).has(id));
   const out = base.filter((id) => choices[id] !== false);
   const seen = new Set(out);
-  for (const id of opts.diskOrder ?? []) {
+  for (const id of migrateModIds(opts.diskOrder ?? [])) {
     /* Ordered AFTER the stored set, so a deployed pack loads last unless the
      * player has reordered it - which matches "the manager owns disk order" and
      * keeps the bundled mods where they were. */

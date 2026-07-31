@@ -38,45 +38,40 @@ Graphics, or the `?tiles=<url>&graf=<id>` URL override).
 
 - **Shockbolt's tiles** (`shockbolt/`, 64x64/128x64) - by Raymond "Shockbolt"
   Gaustadnes, copyright (C) 2012. Catalogued in `lib/tiles/list.txt` as graphics
-  modes 5 (Dark) and 6 (Light). Angband's own statement, from
-  `docs/copying.rst`, grants permission to use and distribute the tileset with
-  in-development and released versions of Angband as long as no fee is charged
-  for it, and withholds permission to modify it, to incorporate tiles drawn for
-  ToME, or to use or distribute it with other games or projects without the
-  author's explicit permission - non-commercial projects may be granted that;
-  commercial use needs a non-exclusive licence from the author.
+  modes 5 (Dark) and 6 (Light). **Bundled here, both as the tilesheet and as
+  converted individual tiles, with the author's permission.** Angband's own
+  statement of the licence, from `docs/copying.rst`:
 
-  **This project has that permission.** Raymond granted it directly, in
-  correspondence dated 2026-07-30: free use of the tiles both as the tilesheet
-  made for Angband and as separate individual tiles (which is what the Linoleum
-  loose-pack conversion produces, and is a *modification* of the tileset, so it
-  needed saying explicitly). The condition he set is that the project must not
-  plan to profit from sales or other income; using the tiles in a game that aims
-  for profit is a one-time USD 250 licence from him instead.
+  > The Shockbolt Angband 64x64/128x64 tileset is copyright (C) Raymond
+  > Gaustadnes 2012.
+  >
+  > Permission is granted to:
+  >
+  > - use the tileset with in-development and released versions of Angband
+  > - distribute and make copies of the tileset with in-development and released
+  >   versions of Angband, as long as no fee is charged for it
+  > - incorporate tiles designed by the author for variants of Angband and use
+  >   and distribute them with Angband under the terms above
+  >
+  > Permission is not granted to:
+  >
+  > - modify the tileset without the author's permission.
+  > - incorporate tiles designed for ToME that do not appear in the Angband
+  >   tileset.
+  > - use or distribute the tileset with other games or projects. If you want to
+  >   use and distribute the tileset with other games or projects, you must
+  >   obtain explicit permission from the author. Non-commercial games or
+  >   projects may be granted permission to use them, and if so, use will be
+  >   allowed as long as the game or project remains non-commercial. To use them
+  >   in commercial games, a non-exclusive licence must be acquired from the
+  >   author.
 
-  **If you want to use this tileset in a project of your own, contact Raymond
-  Gaustadnes for permission.** He asked that this be stated here, and the request
-  is reasonable on its face: our permission is ours, not something this
-  repository can pass along to you. Fork this project and the tiles do not come
-  with a licence - only the art's own terms above apply, and the grant above was
-  given to this project on the strength of its being free.
+  Some tiles in `64x64.png` were resized from tiles made by David Gervais for the
+  32x32 set. **If you want to use this tileset in a project of your own, contact
+  the author for permission** - the permission above is this project's, not
+  something this repository can pass along, and it holds only while the project
+  stays non-commercial.
 
-## Conditions that ride along with this art
-
-These are not formalities, and they are the reason this section is longer than
-the others:
-
-- **Neo Angband must stay free of sales and other income to keep using
-  Shockbolt's tiles for free.** Anything gated behind a paid RPGM Tools
-  membership, or any release that charges for the game, is commercial use and
-  needs a purchased licence from Raymond first.
-- **A converted Linoleum pack is derived from his art** and carries the same
-  terms as the sheet it came from. The converter prints those terms when it
-  builds a Shockbolt pack.
-- **The other packs' terms differ from each other** - Adam Bolt's are usable for
-  any purpose, David Gervais' require CC-BY attribution (this file is that
-  attribution), and the Original and Nomad sets are under Angband's dual licence.
-  Do not treat "bundled with Neo Angband" as one licence.
-
-Sources: Angband 4.2.6 `docs/copying.rst` and `docs/thanks.rst`, plus the
-author's own grant to this project as described above.
+The five packs' terms differ from each other, so do not treat "bundled with Neo
+Angband" as one licence. Sources: Angband 4.2.6 `docs/copying.rst` and
+`docs/thanks.rst`, plus the author's permission for this project as noted above.
