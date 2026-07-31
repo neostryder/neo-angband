@@ -9,15 +9,15 @@
  * which is deferred to the world integration.
  */
 
-import { FlagSet } from "../bitflag";
-import type { Loc } from "../loc";
-import { loc } from "../loc";
-import { MON_TMD } from "../generated";
-import type { GameObject } from "../obj/object";
-import { ELEM_MAX, OF_SIZE } from "../obj/types";
-import { PF_SIZE } from "../player/types";
-import type { MonsterGroupRole, MonsterRace } from "./types";
-import { MFLAG_SIZE, MON_GROUP } from "./types";
+import { FlagSet } from "../bitflag.js";
+import type { Loc } from "../loc.js";
+import { loc } from "../loc.js";
+import { MON_TMD } from "../generated/index.js";
+import type { GameObject } from "../obj/object.js";
+import { ELEM_MAX, OF_SIZE } from "../obj/types.js";
+import { PF_SIZE } from "../player/types.js";
+import type { MonsterGroupRole, MonsterRace } from "./types.js";
+import { MFLAG_SIZE, MON_GROUP } from "./types.js";
 
 /** enum monster_group_type. */
 export const GROUP_TYPE = {

@@ -6,13 +6,13 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { AgentCapabilityError } from "../agent/types";
-import { EffectRegistry } from "../effects/interpreter";
-import { ActionRegistry } from "../game/player-turn";
-import type { GameState } from "../game/context";
-import type { RoomRegistry } from "../gen/room";
-import { createModRegistryHost } from "./registry-host";
-import { VocabularyRegistry } from "./vocabulary";
+import { AgentCapabilityError } from "../agent/types.js";
+import { EffectRegistry } from "../effects/interpreter.js";
+import { ActionRegistry } from "../game/player-turn.js";
+import type { GameState } from "../game/context.js";
+import type { RoomRegistry } from "../gen/room.js";
+import { createModRegistryHost } from "./registry-host.js";
+import { VocabularyRegistry } from "./vocabulary.js";
 
 /** An exact-match capability set (mirrors CapabilitySet's has()). */
 function grant(...caps: string[]): { has: (c: string) => boolean } {

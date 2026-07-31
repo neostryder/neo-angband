@@ -19,8 +19,8 @@
  *   upstream resolves it to a message index at parse time.
  */
 
-import { RF } from "../generated";
-import type { MonsterBase, MonsterRace, SummonType } from "./types";
+import { RF } from "../generated/index.js";
+import type { MonsterBase, MonsterRace, SummonType } from "./types.js";
 
 /** One bound summon type (struct summon, resolved). */
 export interface BoundSummon {

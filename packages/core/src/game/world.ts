@@ -22,44 +22,44 @@
  *    candidate in the vicious-iteration order.
  */
 
-import { ELEM, MSG, OF, PF, PROJ, RF, STAT, TMD } from "../generated";
-import type { Loc } from "../loc";
-import type { GameObject } from "../obj/object";
-import { tvalIsLight } from "../obj/object";
-import { equipLearnElement, equipLearnFlag } from "../obj/knowledge";
-import type { ProjectionInfo } from "../world/projection";
-import { adjustDam } from "../world/projection";
-import { invenDamage } from "./project-obj";
+import { ELEM, MSG, OF, PF, PROJ, RF, STAT, TMD } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import type { GameObject } from "../obj/object.js";
+import { tvalIsLight } from "../obj/object.js";
+import { equipLearnElement, equipLearnFlag } from "../obj/knowledge.js";
+import type { ProjectionInfo } from "../world/projection.js";
+import { adjustDam } from "../world/projection.js";
+import { invenDamage } from "./project-obj.js";
 import {
   numberCharging,
   rechargeTimeout,
   tvalCanHaveTimeout,
-} from "../obj/recharge";
-import type { TimedEffect } from "../player/types";
-import type { PlayerTimedHooks } from "../player/timed";
+} from "../obj/recharge.js";
+import type { TimedEffect } from "../player/types.js";
+import type { PlayerTimedHooks } from "../player/timed.js";
 import {
   playerDecTimed,
   playerIncTimed,
   playerSetTimed,
   playerTimedGradeEq,
-} from "../player/timed";
+} from "../player/timed.js";
 import type {
   DamageReduction,
   TakeHitHooks,
   TakeHitTarget,
-} from "../player/take-hit";
-import { playerApplyDamageReduction, takeHit } from "../player/take-hit";
-import type { ExpDeps } from "../player/exp";
-import { playerExpLose, playerStatDec } from "../player/exp";
-import { turnEnergy } from "../mon/monster";
-import { monsterIsUnique } from "../mon/predicate";
-import { gearGet, gearObjectForUse } from "./gear";
-import { floorPile } from "./floor";
-import { monsterGroupChangeIndex } from "./mon-group";
-import { disturb } from "./player-path";
-import { DEFAULT_HITPOINT_WARN } from "./project-cast";
-import { deleteMonster } from "./context";
-import type { GameState } from "./context";
+} from "../player/take-hit.js";
+import { playerApplyDamageReduction, takeHit } from "../player/take-hit.js";
+import type { ExpDeps } from "../player/exp.js";
+import { playerExpLose, playerStatDec } from "../player/exp.js";
+import { turnEnergy } from "../mon/monster.js";
+import { monsterIsUnique } from "../mon/predicate.js";
+import { gearGet, gearObjectForUse } from "./gear.js";
+import { floorPile } from "./floor.js";
+import { monsterGroupChangeIndex } from "./mon-group.js";
+import { disturb } from "./player-path.js";
+import { DEFAULT_HITPOINT_WARN } from "./project-cast.js";
+import { deleteMonster } from "./context.js";
+import type { GameState } from "./context.js";
 
 /** player-util.h PY_EXERT_* over-exertion bit flags. */
 const PY_EXERT_CON = 0x01;

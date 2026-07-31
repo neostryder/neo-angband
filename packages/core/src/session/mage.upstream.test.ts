@@ -25,15 +25,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { TMD } from "../generated";
-import { PY_FOOD_FULL_DEFAULT } from "../player/birth";
-import { gearGet } from "../game/gear";
-import { playerObjectToBook, spellOkayToCast } from "../player/spell";
-import { processPlayer } from "../game/player-turn";
-import type { GameState, PlayerCommand } from "../game/context";
-import type { ActionRegistry } from "../game/player-turn";
-import { startGame } from "./game";
-import type { GamePack } from "./game";
+import { TMD } from "../generated/index.js";
+import { PY_FOOD_FULL_DEFAULT } from "../player/birth.js";
+import { gearGet } from "../game/gear.js";
+import { playerObjectToBook, spellOkayToCast } from "../player/spell.js";
+import { processPlayer } from "../game/player-turn.js";
+import type { GameState, PlayerCommand } from "../game/context.js";
+import type { ActionRegistry } from "../game/player-turn.js";
+import { startGame } from "./game.js";
+import type { GamePack } from "./game.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

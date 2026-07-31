@@ -18,46 +18,46 @@
  * handlers (armour, elemental, timed, SHATTER quake/thrust, EAT_ITEM steal).
  */
 
-import { EF, FEAT, MON_MSG, MON_TMD, MSG, RF, TMD } from "../generated";
-import { EffectRegistry, sourceMonster } from "../effects/interpreter";
-import { MDESC, MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc";
-import type { BlowMethod } from "../mon/types";
-import { DDGRID, loc, locSum } from "../loc";
-import type { Loc } from "../loc";
-import type { Monster } from "../mon/monster";
-import { monsterCarry } from "../mon/make";
-import { getLore, loreCountU16, loreCountU8, loreUpdate } from "../mon/lore";
-import { monsterIsVisible } from "../mon/predicate";
-import { stealMonsterItem } from "../mon/steal";
+import { EF, FEAT, MON_MSG, MON_TMD, MSG, RF, TMD } from "../generated/index.js";
+import { EffectRegistry, sourceMonster } from "../effects/interpreter.js";
+import { MDESC, MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc.js";
+import type { BlowMethod } from "../mon/types.js";
+import { DDGRID, loc, locSum } from "../loc.js";
+import type { Loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
+import { monsterCarry } from "../mon/make.js";
+import { getLore, loreCountU16, loreCountU8, loreUpdate } from "../mon/lore.js";
+import { monsterIsVisible } from "../mon/predicate.js";
+import { stealMonsterItem } from "../mon/steal.js";
 import {
   MON_TMD_FLG_NOTIFY,
   monClearTimed,
   monIncTimed,
-} from "../mon/timed";
-import { monSpellIsInnate } from "../mon/spell";
-import { STUN_DAM_REDUCTION } from "../combat/hit";
+} from "../mon/timed.js";
+import { monSpellIsInnate } from "../mon/spell.js";
+import { STUN_DAM_REDUCTION } from "../combat/hit.js";
 import {
   adjustDamArmor,
   chanceOfMonsterHit,
   checkHit,
   monsterCritical,
-} from "../combat/mon-melee";
-import type { GameState, PlayerCommand } from "./context";
-import { monsterSwap, squareMonster } from "./context";
-import { doMonSpell } from "./mon-cast";
-import type { DoMonSpellDeps } from "./mon-cast";
-import { chooseAttackSpell } from "./mon-ranged";
-import { buildEffectContext } from "./effect-env";
-import { attachGameEnv } from "./effect-game-env";
-import { registerTerrainHandlers } from "./effect-terrain";
+} from "../combat/mon-melee.js";
+import type { GameState, PlayerCommand } from "./context.js";
+import { monsterSwap, squareMonster } from "./context.js";
+import { doMonSpell } from "./mon-cast.js";
+import type { DoMonSpellDeps } from "./mon-cast.js";
+import { chooseAttackSpell } from "./mon-ranged.js";
+import { buildEffectContext } from "./effect-env.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import { registerTerrainHandlers } from "./effect-terrain.js";
 import {
   getNonplayerHitDeps,
   monTakeNonplayerHit,
-} from "./mon-death";
-import { basicPlayerActor } from "./project-cast";
-import { thrustAway } from "./thrust";
-import { squareDoorPower, squareSetDoorLock } from "./trap";
-import type { TrapDeps } from "./trap";
+} from "./mon-death.js";
+import { basicPlayerActor } from "./project-cast.js";
+import { thrustAway } from "./thrust.js";
+import { squareDoorPower, squareSetDoorLock } from "./trap.js";
+import type { TrapDeps } from "./trap.js";
 
 /** Trailing punct that suppresses MDESC_COMMA after {target} (mon-blows.c L76). */
 const BLOW_PUNCT = ".!?;:,'";

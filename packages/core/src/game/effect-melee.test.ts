@@ -1,26 +1,26 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG, PROJ, RF, TMD } from "../generated";
-import { loc, locEq } from "../loc";
-import { distance } from "../loc";
+import { EF, MFLAG, PROJ, RF, TMD } from "../generated/index.js";
+import { loc, locEq } from "../loc.js";
+import { distance } from "../loc.js";
 import {
   EffectRegistry,
   sourcePlayer,
-} from "../effects/interpreter";
-import type { EffectContext, EffectPlayer } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import type { Monster } from "../mon/monster";
-import { addMon, makeRace, makeState } from "./harness";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import type { CastContext } from "./project-cast";
-import { attachGameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
-import { closestTarget, registerMeleeHandlers } from "./effect-melee";
-import { formatPainMessage } from "./mon-message";
-import { monsterIsUndead } from "../mon/predicate";
+} from "../effects/interpreter.js";
+import type { EffectContext, EffectPlayer } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import type { Monster } from "../mon/monster.js";
+import { addMon, makeRace, makeState } from "./harness.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import type { CastContext } from "./project-cast.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
+import { closestTarget, registerMeleeHandlers } from "./effect-melee.js";
+import { formatPainMessage } from "./mon-message.js";
+import { monsterIsUndead } from "../mon/predicate.js";
 
 const projections = bindProjections(
   (

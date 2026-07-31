@@ -18,12 +18,12 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { startGame } from "../session/game";
-import type { GamePack } from "../session/game";
-import { ELEM, TMD } from "../generated";
-import { STAT_MAX } from "../player/types";
-import { Rng } from "../rng";
-import { playerClearTimed, playerIncTimed } from "../player/timed";
+import { startGame } from "../session/game.js";
+import type { GamePack } from "../session/game.js";
+import { ELEM, TMD } from "../generated/index.js";
+import { STAT_MAX } from "../player/types.js";
+import { Rng } from "../rng.js";
+import { playerClearTimed, playerIncTimed } from "../player/timed.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

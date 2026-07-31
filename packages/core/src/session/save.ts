@@ -67,50 +67,50 @@
  *   wr_trap          (save.c:261)  -> SavedTrap
  */
 
-import type { Loc } from "../loc";
-import { loc } from "../loc";
-import type { RngState } from "../rng";
-import type { RandomValue } from "../rng";
-import { FlagSet } from "../bitflag";
-import { Chunk, SQUARE_SIZE } from "../world/chunk";
-import type { ChunkSquaresData } from "../world/chunk";
-import type { GameObject } from "../obj/object";
-import type { ObjRegistry } from "../obj/bind";
-import type { ElementInfo } from "../obj/types";
-import type { AutoinscriptionRegistry, Rune } from "../obj/knowledge";
-import { buildRuneList, runeKey } from "../obj/knowledge";
-import type { IgnoreSettingsData } from "../obj/ignore";
-import { blankMonster, GROUP_MAX } from "../mon/monster";
-import type { Monster, MonsterGroupInfo } from "../mon/monster";
-import type { MonsterLore } from "../mon/lore";
-import type { MonsterRegistry } from "../mon/bind";
-import { blankPlayer } from "../player/player";
-import type { Player, PlayerQuest } from "../player/player";
-import type { PlayerRegistry } from "../player/bind";
-import type { TrapKind } from "../world/trap";
-import type { GameState, MonsterGroup, StoredLevel } from "../game/context";
-import { MessageLog } from "../msg";
-import type { Trap } from "../game/trap";
-import type { Gear } from "../game/gear";
-import type { Store } from "../store/store";
-import type { BoundStore } from "../store/types";
-import { newKnownMap } from "../game/known";
-import type { KnownMap } from "../game/known";
+import type { Loc } from "../loc.js";
+import { loc } from "../loc.js";
+import type { RngState } from "../rng.js";
+import type { RandomValue } from "../rng.js";
+import { FlagSet } from "../bitflag.js";
+import { Chunk, SQUARE_SIZE } from "../world/chunk.js";
+import type { ChunkSquaresData } from "../world/chunk.js";
+import type { GameObject } from "../obj/object.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import type { ElementInfo } from "../obj/types.js";
+import type { AutoinscriptionRegistry, Rune } from "../obj/knowledge.js";
+import { buildRuneList, runeKey } from "../obj/knowledge.js";
+import type { IgnoreSettingsData } from "../obj/ignore.js";
+import { blankMonster, GROUP_MAX } from "../mon/monster.js";
+import type { Monster, MonsterGroupInfo } from "../mon/monster.js";
+import type { MonsterLore } from "../mon/lore.js";
+import type { MonsterRegistry } from "../mon/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player, PlayerQuest } from "../player/player.js";
+import type { PlayerRegistry } from "../player/bind.js";
+import type { TrapKind } from "../world/trap.js";
+import type { GameState, MonsterGroup, StoredLevel } from "../game/context.js";
+import { MessageLog } from "../msg.js";
+import type { Trap } from "../game/trap.js";
+import type { Gear } from "../game/gear.js";
+import type { Store } from "../store/store.js";
+import type { BoundStore } from "../store/types.js";
+import { newKnownMap } from "../game/known.js";
+import type { KnownMap } from "../game/known.js";
 import {
   fnv1aIntegrity,
   stampSavefile,
   verifyStampedSavefile,
-} from "../save/integrity";
-import type { SaveIntegrity } from "../save/integrity";
-import { applyCodec, findCodec, stripCodec } from "../save/compress";
-import type { SaveCodec } from "../save/compress";
-import type { ContentIdResolver } from "../mod/ids";
-import { PY_MAX_LEVEL, TMD_MAX } from "../player/types";
+} from "../save/integrity.js";
+import type { SaveIntegrity } from "../save/integrity.js";
+import { applyCodec, findCodec, stripCodec } from "../save/compress.js";
+import type { SaveCodec } from "../save/compress.js";
+import type { ContentIdResolver } from "../mod/ids.js";
+import { PY_MAX_LEVEL, TMD_MAX } from "../player/types.js";
 import type {
   ModBag,
   OrphanStore,
   SaveManifest,
-} from "../mod/save-blocks";
+} from "../mod/save-blocks.js";
 
 /**
  * The save format version this build writes. Version 2 replaced every numeric
@@ -947,7 +947,7 @@ export interface SavedGame {
    * delay_factor, and the immutable birth-option snapshot. Optional: absent in
    * saves written before the option store, which load with the table defaults.
    */
-  options?: import("../player/options").OptionStateData;
+  options?: import("../player/options.js").OptionStateData;
   /**
    * randart_seed (obj-randart.c): the seed do_randart used when birth_randarts
    * is on. Optional / 0 when the standard artifact set is in use. Persisted so

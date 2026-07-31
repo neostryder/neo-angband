@@ -1,22 +1,22 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { TV } from "../generated";
-import { loc } from "../loc";
+import { TV } from "../generated/index.js";
+import { loc } from "../loc.js";
 import {
   COLOUR_RED,
   COLOUR_SLATE,
   COLOUR_VIOLET,
   COLOUR_WHITE,
-} from "../color";
-import type { Loc } from "../loc";
-import { ObjRegistry } from "../obj/bind";
-import { OBJ_NOTICE } from "../obj/knowledge";
-import type { ObjPackJson, ObjectKind } from "../obj/types";
-import { objectNew } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import type { Artifact } from "../obj/types";
-import type { GameState } from "./context";
-import { makeState } from "./harness";
+} from "../color.js";
+import type { Loc } from "../loc.js";
+import { ObjRegistry } from "../obj/bind.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import type { ObjPackJson, ObjectKind } from "../obj/types.js";
+import { objectNew } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import type { Artifact } from "../obj/types.js";
+import type { GameState } from "./context.js";
+import { makeState } from "./harness.js";
 import {
   OBJECT_LIST_SECTION_LOS,
   OBJECT_LIST_SECTION_NO_LOS,
@@ -25,7 +25,7 @@ import {
   objectListEntryName,
   objectListSort,
   objectListStandardCompare,
-} from "./obj-list";
+} from "./obj-list.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -267,8 +267,8 @@ describe("objectListStandardCompare - the objectListTiebreak seam", () => {
   /* Two DISTINCT entries of the same kind at the SAME squared distance from the
    * player but different offsets: compareTypes ties, distanceCompare ties. */
   function sameDistancePair(): [
-    import("./obj-list").ObjectListEntry,
-    import("./obj-list").ObjectListEntry,
+    import("./obj-list.js").ObjectListEntry,
+    import("./obj-list.js").ObjectListEntry,
   ] {
     const obj = {
       kind: { name: "Ration of Food", dChar: ",", dAttr: "w", cost: 3 },

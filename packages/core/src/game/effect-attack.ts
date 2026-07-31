@@ -24,29 +24,29 @@
  * attack projections are rare and resolve to a bare source.
  */
 
-import { EF, MSG, PROJ, TMD } from "../generated";
-import type { Loc } from "../loc";
-import { monsterIsPowerful } from "../mon/predicate";
-import { breathDam } from "../mon/spell";
-import { DIR_TARGET, effectCalculateValue } from "../effects/interpreter";
+import { EF, MSG, PROJ, TMD } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import { monsterIsPowerful } from "../mon/predicate.js";
+import { breathDam } from "../mon/spell.js";
+import { DIR_TARGET, effectCalculateValue } from "../effects/interpreter.js";
 import type {
   EffectHandler,
   EffectRegistry,
   Source,
-} from "../effects/interpreter";
+} from "../effects/interpreter.js";
 import {
   damageEffectApplyToPlayer,
   handleDAMAGE as baseHandleDAMAGE,
-} from "../effects/handlers";
-import { gameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
+} from "../effects/handlers.js";
+import { gameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
 import {
   caveFindDecoy,
   destroyDecoy,
   monTakeNonplayerHit,
   monsterIsDecoyed,
   monsterTargetMonster,
-} from "./effect-mon-origin";
+} from "./effect-mon-origin.js";
 import {
   castAlter,
   castArc,
@@ -69,9 +69,9 @@ import {
   monsterCastSource,
   playerCastSource,
   resolveAimedTarget,
-} from "./project-cast";
-import type { CastSource } from "./project-cast";
-import { PROJECT, projectable } from "../world/project";
+} from "./project-cast.js";
+import type { CastSource } from "./project-cast.js";
+import { PROJECT, projectable } from "../world/project.js";
 
 /** Build a CastSource from the effect origin. */
 function sourceFor(env: GameEffectEnv, origin: Source): CastSource {

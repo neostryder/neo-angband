@@ -9,10 +9,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { Dice } from "./dice";
-import { Expression } from "./expression";
-import { Rng } from "./rng";
-import type { RandomValue } from "./rng";
+import { Dice } from "./dice.js";
+import { Expression } from "./expression.js";
+import { Rng } from "./rng.js";
+import type { RandomValue } from "./rng.js";
 
 describe("z-dice/dice upstream", () => {
   // C: test_alloc

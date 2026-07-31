@@ -14,15 +14,15 @@
  * Player can back those narrow interfaces without adaptation.
  */
 
-import { PY_MAX_LEVEL, SKILL_MAX, STAT_MAX, TMD_MAX } from "./types";
-import type { PlayerBody, PlayerClass, PlayerRace, Shape } from "./types";
-import { newElemInfo, newOfFlags, OBJ_MOD_MAX } from "../obj/types";
-import type { ElementInfo } from "../obj/types";
-import type { FlagSet } from "../bitflag";
-import type { HistoryInfo } from "./history";
-import { randnameMake } from "../obj/randname";
-import type { NameProbs } from "../obj/randname";
-import type { Rng } from "../rng";
+import { PY_MAX_LEVEL, SKILL_MAX, STAT_MAX, TMD_MAX } from "./types.js";
+import type { PlayerBody, PlayerClass, PlayerRace, Shape } from "./types.js";
+import { newElemInfo, newOfFlags, OBJ_MOD_MAX } from "../obj/types.js";
+import type { ElementInfo } from "../obj/types.js";
+import type { FlagSet } from "../bitflag.js";
+import type { HistoryInfo } from "./history.js";
+import { randnameMake } from "../obj/randname.js";
+import type { NameProbs } from "../obj/randname.js";
+import type { Rng } from "../rng.js";
 
 /**
  * Minimal struct player_upkeep: only the derived counters the headless core

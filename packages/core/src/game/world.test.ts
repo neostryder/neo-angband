@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { OF, TMD, TV } from "../generated";
-import { loc } from "../loc";
-import type { GameObject } from "../obj/object";
-import { objectNew } from "../obj/object";
-import type { ObjectKind } from "../obj/types";
-import { MonAllocTable } from "../mon/make";
-import type { MonPlaceDeps } from "./mon-place";
-import { pickAndPlaceDistantMonster } from "./mon-place";
+import { OF, TMD, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { GameObject } from "../obj/object.js";
+import { objectNew } from "../obj/object.js";
+import type { ObjectKind } from "../obj/types.js";
+import { MonAllocTable } from "../mon/make.js";
+import type { MonPlaceDeps } from "./mon-place.js";
+import { pickAndPlaceDistantMonster } from "./mon-place.js";
 import {
   digestFood,
   isDaytime,
@@ -14,10 +14,10 @@ import {
   processFaintOrStarve,
   rechargeObjects,
   worldTakeHit,
-} from "./world";
-import { processWorld } from "./loop";
-import { makeState, monReg } from "./harness";
-import { OptionState } from "../player/options";
+} from "./world.js";
+import { processWorld } from "./loop.js";
+import { makeState, monReg } from "./harness.js";
+import { OptionState } from "../player/options.js";
 
 /** A minimal held object for the light / recharge upkeep tests. */
 function makeObj(tval: number, over: Partial<GameObject> = {}): GameObject {

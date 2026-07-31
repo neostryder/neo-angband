@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { GameEvents } from "../events";
-import { SQUARE } from "../generated";
-import { loc } from "../loc";
-import { Chunk } from "./chunk";
-import { FeatureRegistry } from "./feature";
-import type { TerrainRecordJson } from "./feature";
-import { squareIsSeen, squareIsView, updateView } from "./view";
-import type { ViewConstants, ViewerState } from "./view";
+import { GameEvents } from "../events.js";
+import { SQUARE } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Chunk } from "./chunk.js";
+import { FeatureRegistry } from "./feature.js";
+import type { TerrainRecordJson } from "./feature.js";
+import { squareIsSeen, squareIsView, updateView } from "./view.js";
+import type { ViewConstants, ViewerState } from "./view.js";
 
 const terrain = JSON.parse(
   readFileSync(

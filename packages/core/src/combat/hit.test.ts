@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { MON_TMD } from "../generated";
-import { Rng } from "../rng";
-import type { CritActor, DebuffTarget } from "./hit";
+import { MON_TMD } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import type { CritActor, DebuffTarget } from "./hit.js";
 import {
   criticalMelee,
   criticalShot,
@@ -12,7 +12,7 @@ import {
   RANGED_CRIT_LEVELS,
   selectCritLevel,
   testHit,
-} from "./hit";
+} from "./hit.js";
 
 function notDebuffed(): DebuffTarget {
   return { mTimed: new Int16Array(MON_TMD.MAX) };

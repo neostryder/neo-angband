@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { Rng } from "../rng";
-import { loc } from "../loc";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { historyFindArtifact, historyIsArtifactKnown } from "../player/history";
-import { makeState } from "./harness";
-import { artifactHistoryName, historyStamp } from "./history";
+import { bindConstants } from "../constants.js";
+import { Rng } from "../rng.js";
+import { loc } from "../loc.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { historyFindArtifact, historyIsArtifactKnown } from "../player/history.js";
+import { makeState } from "./harness.js";
+import { artifactHistoryName, historyStamp } from "./history.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

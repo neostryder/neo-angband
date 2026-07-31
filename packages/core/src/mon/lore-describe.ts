@@ -27,7 +27,7 @@
  * element's damage divisor/cap, world/projection.ts).
  */
 
-import { FlagSet, FLAG_START, NO_FLAG } from "../bitflag";
+import { FlagSet, FLAG_START, NO_FLAG } from "../bitflag.js";
 import {
   COLOUR_BLUE,
   COLOUR_DARK,
@@ -41,11 +41,11 @@ import {
   COLOUR_VIOLET,
   COLOUR_WHITE,
   colorTextToAttr,
-} from "../color";
-import { EF, MON_RACE_FLAG_ENTRIES, OF, PROJ, RF } from "../generated";
-import { createMonFlagMask, monsterFlagsKnown } from "./lore";
-import type { MonsterLore } from "./lore";
-import { EXTRACT_ENERGY } from "./monster";
+} from "../color.js";
+import { EF, MON_RACE_FLAG_ENTRIES, OF, PROJ, RF } from "../generated/index.js";
+import { createMonFlagMask, monsterFlagsKnown } from "./lore.js";
+import type { MonsterLore } from "./lore.js";
+import { EXTRACT_ENERGY } from "./monster.js";
 import {
   breathDam,
   createMonSpellMask,
@@ -54,10 +54,10 @@ import {
   monSpellIsValid,
   monSpellNonhpDamage,
   RST,
-} from "./spell";
-import type { BreathProjection } from "./spell";
-import { RF_SIZE, RSF_SIZE } from "./types";
-import type { BlowEffect, MonsterRace, MonsterSpell } from "./types";
+} from "./spell.js";
+import type { BreathProjection } from "./spell.js";
+import { RF_SIZE, RSF_SIZE } from "./types.js";
+import type { BlowEffect, MonsterRace, MonsterSpell } from "./types.js";
 
 const SHRT_MAX = 32767;
 const UCHAR_MAX = 255;

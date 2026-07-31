@@ -31,7 +31,7 @@
  * a `number` here stands for a C `unsigned int` unless stated otherwise.
  */
 
-import { INT_MAX, UINT32_MAX } from "./guard";
+import { INT_MAX, UINT32_MAX } from "./guard.js";
 
 /** struct my_rational (z-util.h): a fraction in lowest terms, d > 0. */
 export interface MyRational {

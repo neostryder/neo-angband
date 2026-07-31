@@ -33,7 +33,7 @@ import {
   resetColorTable,
   restoreColorTable,
   setColorChannel,
-} from "./color";
+} from "./color.js";
 
 describe("color table", () => {
   it("has MAX_COLORS rows and BASIC_COLORS named rows", () => {

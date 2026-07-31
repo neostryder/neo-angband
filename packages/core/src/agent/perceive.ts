@@ -23,18 +23,18 @@ import {
   OBJECT_FLAG_ENTRIES,
   SQUARE,
   TMD,
-} from "../generated";
-import type { FlagSet } from "../bitflag";
-import type { GameState } from "../game/context";
-import { gearGet } from "../game/gear";
-import type { GameObject } from "../obj/object";
-import { OBJ_MOD_NAMES } from "../obj/bind";
-import { objectValue } from "../obj/value";
-import { monsterIsVisible } from "../mon/predicate";
-import { PY_SPELL, spellChance } from "../player/spell";
-import { makeSpellChanceEnv } from "../game/spell-cmd";
-import { priceItem } from "../store/price";
-import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types";
+} from "../generated/index.js";
+import type { FlagSet } from "../bitflag.js";
+import type { GameState } from "../game/context.js";
+import { gearGet } from "../game/gear.js";
+import type { GameObject } from "../obj/object.js";
+import { OBJ_MOD_NAMES } from "../obj/bind.js";
+import { objectValue } from "../obj/value.js";
+import { monsterIsVisible } from "../mon/predicate.js";
+import { PY_SPELL, spellChance } from "../player/spell.js";
+import { makeSpellChanceEnv } from "../game/spell-cmd.js";
+import { priceItem } from "../store/price.js";
+import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
 import type {
   AgentCapabilities,
   AgentView,
@@ -48,7 +48,7 @@ import type {
   StoreItemView,
   StoreView,
   TargetView,
-} from "./types";
+} from "./types.js";
 
 /** OF_* codes for the set flags in an object-flag FlagSet (OF is 1-indexed). */
 function ofCodes(flags: FlagSet): string[] {

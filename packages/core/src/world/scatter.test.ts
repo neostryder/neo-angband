@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { distance, loc } from "../loc";
-import { Rng } from "../rng";
-import { Chunk } from "./chunk";
-import { FeatureRegistry } from "./feature";
-import type { TerrainRecordJson } from "./feature";
-import { scatter, scatterExt } from "./scatter";
+import { distance, loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { Chunk } from "./chunk.js";
+import { FeatureRegistry } from "./feature.js";
+import type { TerrainRecordJson } from "./feature.js";
+import { scatter, scatterExt } from "./scatter.js";
 
 const terrain = JSON.parse(
   readFileSync(

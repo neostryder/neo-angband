@@ -6,8 +6,8 @@ import {
   SaveWriter,
   readSavefile,
   writeSavefile,
-} from "./buffer";
-import type { SaveBlock } from "./buffer";
+} from "./buffer.js";
+import type { SaveBlock } from "./buffer.js";
 
 describe("SaveWriter / SaveReader primitives", () => {
   it("round-trips every width, including signed values", () => {

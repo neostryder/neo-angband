@@ -11,7 +11,7 @@
 // `?tiles=<base-url>`. ASCII is the default and the game runs fully with no tile
 // pack present.
 
-import type { GraphicsMode } from "./grafmode";
+import type { GraphicsMode } from "./grafmode.js";
 
 /** Every parsed graphics mode from list.txt, in file order (grafID 1..N). */
 export const GRAPHICS_MODE_CATALOG: readonly GraphicsMode[] = [

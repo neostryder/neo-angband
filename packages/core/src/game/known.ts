@@ -22,9 +22,9 @@
  * tickMonsterMarks() until the world-clock port absorbs it.
  */
 
-import { FEAT, MFLAG, OF, RF, SQUARE, TF, TMD } from "../generated";
-import type { Loc } from "../loc";
-import { DDGRID_DDD, loc, locEq, locSum } from "../loc";
+import { FEAT, MFLAG, OF, RF, SQUARE, TF, TMD } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import { DDGRID_DDD, loc, locEq, locSum } from "../loc.js";
 import {
   featIsBright,
   featIsGranite,
@@ -32,36 +32,36 @@ import {
   featIsPassable,
   featIsProjectable,
   featIsQuartz,
-} from "../world/chunk";
-import { caveIlluminate } from "../gen/cave";
-import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view";
-import { getLore, loreCountU16 } from "../mon/lore";
+} from "../world/chunk.js";
+import { caveIlluminate } from "../gen/cave.js";
+import { squareIsNoEsp, squareIsSeen, squareIsView } from "../world/view.js";
+import { getLore, loreCountU16 } from "../mon/lore.js";
 import {
   monsterIsCamouflaged,
   monsterIsEspDetectable,
   monsterIsInView,
   monsterIsInvisible,
   monsterIsVisible,
-} from "../mon/predicate";
-import { disturb } from "./player-path";
-import { describeObject } from "./describe";
-import { floorCarry, floorExcise, floorPile, squareHoldsObject } from "./floor";
-import { noteSpotRevealTrap } from "./trap";
-import { GEAR_LABELS, gearToLabel } from "./gear";
-import { ODESC } from "../obj/desc";
-import { monsterCarry } from "../mon/make";
-import type { Monster } from "../mon/monster";
-import type { GameObject } from "../obj/object";
-import { objectCopy, tvalIsJewelry } from "../obj/object";
-import { objectTouch, playerKnowsEgo } from "../obj/known-object";
+} from "../mon/predicate.js";
+import { disturb } from "./player-path.js";
+import { describeObject } from "./describe.js";
+import { floorCarry, floorExcise, floorPile, squareHoldsObject } from "./floor.js";
+import { noteSpotRevealTrap } from "./trap.js";
+import { GEAR_LABELS, gearToLabel } from "./gear.js";
+import { ODESC } from "../obj/desc.js";
+import { monsterCarry } from "../mon/make.js";
+import type { Monster } from "../mon/monster.js";
+import type { GameObject } from "../obj/object.js";
+import { objectCopy, tvalIsJewelry } from "../obj/object.js";
+import { objectTouch, playerKnowsEgo } from "../obj/known-object.js";
 import {
   NOOP_FLAVOR_AWARE_DEPS,
   OBJ_NOTICE,
   buildRuneList,
   objectRunesKnown,
   playerKnowObjectAwareness,
-} from "../obj/knowledge";
-import type { GameState } from "./context";
+} from "../obj/knowledge.js";
+import type { GameState } from "./context.js";
 
 /**
  * A remembered floor object: the pile head's display glyph, or a null

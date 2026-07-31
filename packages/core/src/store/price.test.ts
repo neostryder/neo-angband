@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { FEAT, TV } from "../generated";
-import { ObjRegistry } from "../obj/bind";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import type { ObjPackJson } from "../obj/types";
-import { Rng } from "../rng";
-import { priceItem } from "./price";
+import { bindConstants } from "../constants.js";
+import { FEAT, TV } from "../generated/index.js";
+import { ObjRegistry } from "../obj/bind.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { Rng } from "../rng.js";
+import { priceItem } from "./price.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

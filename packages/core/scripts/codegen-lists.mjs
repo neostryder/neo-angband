@@ -668,7 +668,10 @@ function generate() {
 
     const base = moduleBaseName(header);
     emit(join(outDir, `${base}.ts`), lines.join("\n"));
-    barrel.push(`export * from "./${base}";`);
+    /* An explicit .js is required, not cosmetic: tsc emits specifiers verbatim,
+     * and this package is published to npm, where Node - unlike a bundler -
+     * cannot resolve an extensionless relative import. */
+    barrel.push(`export * from "./${base}.js";`);
     if (!checkOnly) {
       console.log(`${header} -> generated/${base}.ts (${entries.length} entries)`);
     }

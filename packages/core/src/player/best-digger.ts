@@ -17,9 +17,9 @@
  * any draw here).
  */
 
-import { OF } from "../generated";
-import type { GameObject } from "../obj/object";
-import { tvalIsMeleeWeapon } from "../obj/object";
+import { OF } from "../generated/index.js";
+import type { GameObject } from "../obj/object.js";
+import { tvalIsMeleeWeapon } from "../obj/object.js";
 
 /**
  * player_best_digger + the do_cmd_tunnel_aux / compute_rubble_penalty swap:

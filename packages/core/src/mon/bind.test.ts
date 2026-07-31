@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { RF, RSF } from "../generated";
-import { Rng } from "../rng";
-import { bindMonsters } from "./bind";
+import { RF, RSF } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { bindMonsters } from "./bind.js";
 import type {
   MonsterBaseRecordJson,
   MonsterPackRecords,
   MonsterRecordJson,
-} from "./bind";
+} from "./bind.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(

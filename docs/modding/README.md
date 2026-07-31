@@ -6,7 +6,7 @@ that do not exist in the base resources. The base game is itself a pack
 ("core", pack zero) loaded through the same pipeline your mod uses - if
 core can do it, your mod can do it, redefine it, or delete it. Core is
 parity plus the mod architecture only; everything else - including the
-bundled neo-linoleum and QoL mods - is a mod (decisions 17-18). Cheaty
+first-party neo-linoleum and QoL mods - is a mod (decisions 17-18). Cheaty
 mods are allowed: the engine warns and labels, it does not forbid.
 
 This directory is the modding SDK documentation set. It grows with the
@@ -41,17 +41,26 @@ overall design and the moddable-surface matrix, read `docs/MODS.md`.
   reference for scripted plugins, dialog/quest/shop cookbooks, the
   `neo-pack` validator/bundler, and publishing guidance.
 
-## The bundled mods
+## The first-party mods
 
-Three mods ship with the game, all under `packages/web/mods/`, all OFF on
-a fresh install (see `DEFAULT_ENABLED_MODS` - an untouched install is
-faithful 4.2.6 with no mod loaded):
+Four, all OFF until enabled (see `DEFAULT_ENABLED_MODS` - an untouched
+install is faithful 4.2.6 with no mod loaded). Two are bundled under
+`packages/web/mods/`; two are not:
 
-| id | shape | what it adds |
-| --- | --- | --- |
-| `qol` | content | Genuinely new conveniences, currently just auto-dig on walk. Built-in Angband `=` options are NOT here: they ship in core at their upstream defaults. See `QOL.md`. |
-| `bug-fixes` | content | An unofficial patch set for upstream 4.2.6 bugs core deliberately keeps. See `BUG_FIXES.md`. |
-| `neo-linoleum` | tiles | An ALTERNATIVE tile engine: the Linoleum loose-pack format (individual PNGs addressed by readable target maps, plus variant pools) and the converter that builds a pack from any legacy tileset. It does NOT supply the game's graphics - all five upstream tile sets (Original / Adam Bolt / David Gervais / Nomad / Shockbolt Dark and Light) are core content (`grafmode.c` / `lib/tiles/list.txt`) and appear in the Graphics screen with no mod enabled. It declares six packs, one per upstream set converted to a loose pack, so you can compare the two engines on identical art; packs you build yourself are yours. Declare a pack with `{ "grafID": >=100, "engine": "linoleum", "menuname": "...", "path": "..." }` - note `engine` is the FORMAT name and stays `linoleum`; `neo-linoleum` is the mod. See `docs/LINOLEUM.md`. |
+| id | shape | where it lives | what it adds |
+| --- | --- | --- | --- |
+| `qol` | content | bundled | Genuinely new conveniences, currently just auto-dig on walk. Built-in Angband `=` options are NOT here: they ship in core at their upstream defaults. See `QOL.md`. |
+| `bug-fixes` | content | bundled | An unofficial patch set for upstream 4.2.6 bugs core deliberately keeps. See `BUG_FIXES.md`. |
+| `neo-linoleum` | tiles | [own repo](https://github.com/neostryder/neo-angband-mod-linoleum) | An ALTERNATIVE tile engine: the Linoleum loose-pack format (individual PNGs addressed by readable target maps, plus variant pools). It does NOT supply the game's graphics - all five upstream tile sets (Original / Adam Bolt / David Gervais / Nomad / Shockbolt Dark and Light) are core content (`grafmode.c` / `lib/tiles/list.txt`) and appear in the Graphics screen with no mod enabled. It ships all six converted to loose packs, so you can compare the two engines on identical art. Declare a pack with `{ "grafID": >=100, "engine": "linoleum", "menuname": "...", "path": "..." }` - note `engine` is the FORMAT name and stays `linoleum`; `neo-linoleum` is the mod. See `docs/LINOLEUM.md`. |
+| `borg` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player, driving the game through the same perceive/act API any third-party automation would use. **Not released** - the repository holds the name and the plan; `packages/borg` here is the engine half. See `docs/BORG_AS_MOD.md`. |
+
+**Bundled and first-party are different things.** `qol` and `bug-fixes` are in the
+build; `neo-linoleum` is equally first-party and is *not*, because its six converted
+tile packs are 9161 files and 42 MiB of art that belongs to the mod rather than to the
+game. It arrives through the installer (game menu -> Mods -> install), which verifies
+each archive against a digest built into the game and unpacks it into the mod's own
+folder. Every first-party mod's source and tests stay here, in the main repository,
+where there is an engine to test them against.
 
 Enable one in the in-app mod manager (game menu -> Mods), or with
 `?mods=qol,bug-fixes,neo-linoleum` for a one-off.
@@ -60,7 +69,7 @@ Enable one in the in-app mod manager (game menu -> Mods), or with
 disabled its patches DO NOT EXIST - its code is never called, no hook is
 installed, nothing appears in the menu, and core runs faithful 4.2.6. A mod that
 changes BEHAVIOUR does so by default-exporting `ModHooks` from its own
-`hooks.ts`; core holds one composed `ModHooks` and never learns which mod
+`plugin.ts`; core holds one composed `ModHooks` and never learns which mod
 supplied what (`docs/modding/MOD_SEAMS.md`).
 Enabling the mod turns its whole patch set on at once,
 and each patch is then individually switchable on that mod's own screen
@@ -73,7 +82,8 @@ framework proofs - one per SDK load path (a content pack that patches a core
 monster, a sandboxed worker plugin, a trusted in-process plugin) - and exist
 so all three paths stay exercised in dev and in the test suite. Discovery
 drops them from release builds (`isShippedMod` in `mod-store.ts`), so a
-player's mod manager lists exactly the three above.
+player's mod manager lists exactly the bundled two, plus whatever they have
+installed.
 
 ## Pack anatomy
 

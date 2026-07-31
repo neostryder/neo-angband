@@ -1,18 +1,18 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { TV } from "../generated";
-import { bindPlayer } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import { ObjRegistry } from "./bind";
-import type { KnownDesc } from "./known-object";
-import type { RuneEnv } from "./knowledge";
-import { makeRuneEnv, OBJ_NOTICE, playerLearnAllRunes } from "./knowledge";
-import { objectPrep } from "./make";
-import type { ObjPackJson } from "./types";
-import { objectValue, objectValueBase, objectValueReal } from "./value";
-import { Rng } from "../rng";
+import { bindConstants } from "../constants.js";
+import { TV } from "../generated/index.js";
+import { bindPlayer } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { ObjRegistry } from "./bind.js";
+import type { KnownDesc } from "./known-object.js";
+import type { RuneEnv } from "./knowledge.js";
+import { makeRuneEnv, OBJ_NOTICE, playerLearnAllRunes } from "./knowledge.js";
+import { objectPrep } from "./make.js";
+import type { ObjPackJson } from "./types.js";
+import { objectValue, objectValueBase, objectValueReal } from "./value.js";
+import { Rng } from "../rng.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

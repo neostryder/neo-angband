@@ -11,11 +11,11 @@
  * Upstream provenance: reference/src/game-world.c.
  */
 
-import { DDGRID_DDD } from "../loc";
-import type { Loc } from "../loc";
-import { loc } from "../loc";
-import type { Chunk } from "./chunk";
-import { featIsNoFlow, featIsNoScent } from "./chunk";
+import { DDGRID_DDD } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { loc } from "../loc.js";
+import type { Chunk } from "./chunk.js";
+import { featIsNoFlow, featIsNoScent } from "./chunk.js";
 
 /** The player fields the heatmaps read, injected like ViewerState. */
 export interface FlowSource {

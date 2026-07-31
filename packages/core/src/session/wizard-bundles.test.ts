@@ -7,10 +7,10 @@ import {
   wizCureAll,
   wizDetectAllLocal,
   wizSummonNamed,
-} from "../game/wizard";
-import type { WizardDeps } from "../game/wizard";
-import { startGame } from "./game";
-import type { GamePack, StartedGame } from "./game";
+} from "../game/wizard.js";
+import type { WizardDeps } from "../game/wizard.js";
+import { startGame } from "./game.js";
+import type { GamePack, StartedGame } from "./game.js";
 
 // WP-14 seam verification: session/game.ts wireGame assembles the wizard/debug
 // engine bundles (effect interpreter, ExpDeps, TrapDeps, live MonPlaceDeps,

@@ -23,19 +23,19 @@
  *   the monster is placed on, not the generation level).
  */
 
-import type { Rng } from "../rng";
-import type { Aspect } from "../rng";
-import { ORIGIN, RF } from "../generated";
-import { MON_TMD } from "../generated";
-import type { MonsterGroupRole, MonsterRace } from "./types";
-import { MON_GROUP } from "./types";
-import type { Monster } from "./monster";
-import { blankMonster, GROUP_TYPE, turnEnergy } from "./monster";
-import { MFLAG } from "../generated";
-import type { GameObject, StackLimits } from "../obj/object";
-import { objectAbsorb, objectMergeable, OSTACK_MONSTER } from "../obj/object";
+import type { Rng } from "../rng.js";
+import type { Aspect } from "../rng.js";
+import { ORIGIN, RF } from "../generated/index.js";
+import { MON_TMD } from "../generated/index.js";
+import type { MonsterGroupRole, MonsterRace } from "./types.js";
+import { MON_GROUP } from "./types.js";
+import type { Monster } from "./monster.js";
+import { blankMonster, GROUP_TYPE, turnEnergy } from "./monster.js";
+import { MFLAG } from "../generated/index.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
+import { objectAbsorb, objectMergeable, OSTACK_MONSTER } from "../obj/object.js";
 // z-color.h:78: ATTR_RAND rolls use the shared basic-colour count.
-import { BASIC_COLORS } from "../color";
+import { BASIC_COLORS } from "../color.js";
 
 /** One row of the allocation table (alloc_entry for races). */
 export interface MonAllocEntry {

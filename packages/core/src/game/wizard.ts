@@ -72,12 +72,12 @@
  * engine module.
  */
 
-import { EF, KF, ORIGIN, PROJ, TMD } from "../generated";
-import type { Loc } from "../loc";
-import { PLAYER_EXP, PY_MAX_EXP, playerExpGain, playerExpLose } from "../player/exp";
-import type { ExpDeps } from "../player/exp";
-import { PY_MAX_LEVEL } from "../player/calcs";
-import { STAT_MAX } from "../player/types";
+import { EF, KF, ORIGIN, PROJ, TMD } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import { PLAYER_EXP, PY_MAX_EXP, playerExpGain, playerExpLose } from "../player/exp.js";
+import type { ExpDeps } from "../player/exp.js";
+import { PY_MAX_LEVEL } from "../player/calcs.js";
+import { STAT_MAX } from "../player/types.js";
 import {
   applyMagic,
   copyArtifactData,
@@ -85,8 +85,8 @@ import {
   makeGold,
   makeObject,
   objectPrep,
-} from "../obj/make";
-import type { MakeDeps } from "../obj/make";
+} from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
 import {
   appendObjectCurse,
   objectCopy,
@@ -96,37 +96,37 @@ import {
   tvalCanHaveTimeout,
   tvalIsAmmo,
   tvalIsMoney,
-} from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { objectValue } from "../obj/value";
-import { OBJ_NOTICE, objectLearnOnWield } from "../obj/knowledge";
-import { MAX_PVAL, OBJ_MOD_MAX } from "../obj/types";
-import type { FlagSet } from "../bitflag";
-import type { Artifact, Curse, EgoItem, ObjectKind } from "../obj/types";
-import type { FlavorKnowledge } from "../obj/knowledge";
-import { MON_GROUP } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
-import { PY_FOOD_FULL_DEFAULT as PY_FOOD_FULL } from "../player/birth";
-import { cheatMonsterLore, getLore, wipeMonsterLore } from "../mon/lore";
-import { sourceNone, sourcePlayer } from "../effects/interpreter";
-import type { EffectContext } from "../effects/interpreter";
-import { scatterExt } from "../world/scatter";
-import { deleteMonster, monsterMax, squareIsEmpty } from "./context";
-import type { GameState } from "./context";
-import { dropNear, floorPile } from "./floor";
-import { objectIsInQuiver } from "./gear";
-import { placeNewMonster } from "./mon-place";
-import type { MonPlaceDeps } from "./mon-place";
-import { placeTrap, squareIsTrap, squareIsWebbed } from "./trap";
-import type { TrapDeps } from "./trap";
-import { pushObject } from "./project-feat";
-import { wizLightLevel } from "./effect-terrain";
-import { squareIsKnown, updatePlayerObjectKnowledge } from "./known";
-import { buildEffectContext } from "./effect-env";
-import type { EffectEnvDeps } from "./effect-env";
-import { attachGameEnv } from "./effect-game-env";
-import type { CastContext } from "./project-cast";
-import type { ObjCmdDeps } from "./obj-cmd";
+} from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { objectValue } from "../obj/value.js";
+import { OBJ_NOTICE, objectLearnOnWield } from "../obj/knowledge.js";
+import { MAX_PVAL, OBJ_MOD_MAX } from "../obj/types.js";
+import type { FlagSet } from "../bitflag.js";
+import type { Artifact, Curse, EgoItem, ObjectKind } from "../obj/types.js";
+import type { FlavorKnowledge } from "../obj/knowledge.js";
+import { MON_GROUP } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import { PY_FOOD_FULL_DEFAULT as PY_FOOD_FULL } from "../player/birth.js";
+import { cheatMonsterLore, getLore, wipeMonsterLore } from "../mon/lore.js";
+import { sourceNone, sourcePlayer } from "../effects/interpreter.js";
+import type { EffectContext } from "../effects/interpreter.js";
+import { scatterExt } from "../world/scatter.js";
+import { deleteMonster, monsterMax, squareIsEmpty } from "./context.js";
+import type { GameState } from "./context.js";
+import { dropNear, floorPile } from "./floor.js";
+import { objectIsInQuiver } from "./gear.js";
+import { placeNewMonster } from "./mon-place.js";
+import type { MonPlaceDeps } from "./mon-place.js";
+import { placeTrap, squareIsTrap, squareIsWebbed } from "./trap.js";
+import type { TrapDeps } from "./trap.js";
+import { pushObject } from "./project-feat.js";
+import { wizLightLevel } from "./effect-terrain.js";
+import { squareIsKnown, updatePlayerObjectKnowledge } from "./known.js";
+import { buildEffectContext } from "./effect-env.js";
+import type { EffectEnvDeps } from "./effect-env.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import type { CastContext } from "./project-cast.js";
+import type { ObjCmdDeps } from "./obj-cmd.js";
 
 /* ------------------------------------------------------------------ *
  * Deps and the wizard gate.

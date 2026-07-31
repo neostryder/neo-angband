@@ -1,37 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { EF, ELEM, FEAT, MON_TMD, RF, SQUARE, TMD } from "../generated";
-import { distance, loc, locEq, locSum, DDGRID_DDD } from "../loc";
+import { EF, ELEM, FEAT, MON_TMD, RF, SQUARE, TMD } from "../generated/index.js";
+import { distance, loc, locEq, locSum, DDGRID_DDD } from "../loc.js";
 import {
   EffectRegistry,
   sourceMonster,
   sourcePlayer,
   sourceTrap,
-} from "../effects/interpreter";
-import type { EffectContext, EffectPlayer } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { FLOOR, GRANITE, addMon, makeRace, makeState } from "./harness";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import { attachGameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
-import { floorCarry, floorPile } from "./floor";
+} from "../effects/interpreter.js";
+import type { EffectContext, EffectPlayer } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { FLOOR, GRANITE, addMon, makeRace, makeState } from "./harness.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
+import { floorCarry, floorPile } from "./floor.js";
 import {
   knownFeat,
   knownObject,
   squareIsKnown,
   squareKnowPile,
   squareMemorize,
-} from "./known";
-import { objectNew } from "../obj/object";
-import { OBJ_NOTICE } from "../obj/knowledge";
-import { ArtifactState } from "../obj/make";
-import type { Artifact, ObjectKind } from "../obj/types";
-import { OptionState } from "../player/options";
+} from "./known.js";
+import { objectNew } from "../obj/object.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { ArtifactState } from "../obj/make.js";
+import type { Artifact, ObjectKind } from "../obj/types.js";
+import { OptionState } from "../player/options.js";
 import {
   lightRoom,
   registerTerrainHandlers,
   wizLightLevel,
-} from "./effect-terrain";
+} from "./effect-terrain.js";
 
 function registry(): EffectRegistry {
   const r = new EffectRegistry();

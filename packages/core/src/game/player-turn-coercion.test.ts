@@ -11,17 +11,17 @@
  *   attack (player-attack.c:1023-1025).
  */
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD, TMD } from "../generated";
-import { loc } from "../loc";
-import type { PlayerState } from "../player/calcs";
+import { MFLAG, MON_TMD, TMD } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { PlayerState } from "../player/calcs.js";
 import {
   createDefaultRegistry,
   energyPerMove,
   playerAttackRandomMonster,
   processPlayer,
   walkAction,
-} from "./player-turn";
-import { addMon, makeRace, makeState } from "./harness";
+} from "./player-turn.js";
+import { addMon, makeRace, makeState } from "./harness.js";
 
 describe("energy_per_move (player-util.c:323-328, gap 2.3)", () => {
   it("two extra moves cost a third of a turn per step", () => {

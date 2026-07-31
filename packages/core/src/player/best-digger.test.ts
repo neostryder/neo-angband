@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { FlagSet } from "../bitflag";
-import { OF, TV } from "../generated";
-import { OF_SIZE } from "../obj/types";
-import type { GameObject } from "../obj/object";
-import { playerBestDiggerDigging } from "./best-digger";
+import { FlagSet } from "../bitflag.js";
+import { OF, TV } from "../generated/index.js";
+import { OF_SIZE } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import { playerBestDiggerDigging } from "./best-digger.js";
 
 /** A minimal melee-weapon-shaped object for the selection logic. */
 function weapon(

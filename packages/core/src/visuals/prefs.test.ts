@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { COLOUR_RED, colorCharToAttr } from "../color";
-import { TV } from "../generated";
-import { messageLookupByName } from "../sound/engine";
-import { FEAT, PARSE_ERROR } from "../generated";
-import { bindCore } from "../session/boot";
-import type { CorePack } from "../session/boot";
-import { GlyphTable } from "./glyph-table";
+import { COLOUR_RED, colorCharToAttr } from "../color.js";
+import { TV } from "../generated/index.js";
+import { messageLookupByName } from "../sound/engine.js";
+import { FEAT, PARSE_ERROR } from "../generated/index.js";
+import { bindCore } from "../session/boot.js";
+import type { CorePack } from "../session/boot.js";
+import { GlyphTable } from "./glyph-table.js";
 import {
   DUMP_SEPARATOR,
   dumpFeatures,
@@ -23,9 +23,9 @@ import {
   prefsSave,
   processPrefText,
   removeOldDump,
-} from "./prefs";
-import type { PrefDeps, PrefsFileIO } from "./prefs";
-import { LIGHTING } from "./tile-prefs";
+} from "./prefs.js";
+import type { PrefDeps, PrefsFileIO } from "./prefs.js";
+import { LIGHTING } from "./tile-prefs.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

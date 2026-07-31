@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { TV } from "../generated";
-import { ObjRegistry } from "./bind";
-import { applyCurseAttributes, modifyWeightForCurse } from "./object";
-import { objectPower } from "./power";
-import type { PowerObject } from "./power";
-import type { Curse, CurseObject, ObjPackJson } from "./types";
+import { TV } from "../generated/index.js";
+import { ObjRegistry } from "./bind.js";
+import { applyCurseAttributes, modifyWeightForCurse } from "./object.js";
+import { objectPower } from "./power.js";
+import type { PowerObject } from "./power.js";
+import type { Curse, CurseObject, ObjPackJson } from "./types.js";
 import {
   ELEM_MAX,
   newElemInfo,
@@ -13,7 +13,7 @@ import {
   newOfFlags,
   OBJ_MOD_MAX,
   zeroRv,
-} from "./types";
+} from "./types.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

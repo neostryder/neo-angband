@@ -14,17 +14,17 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { ELEM, TV } from "../generated";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { EL_INFO_IGNORE } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject, StackLimits } from "../obj/object";
-import { bindPlayer } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import { earlierObject } from "../player/calcs";
-import { Rng } from "../rng";
+import { bindConstants } from "../constants.js";
+import { ELEM, TV } from "../generated/index.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { EL_INFO_IGNORE } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
+import { bindPlayer } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import { earlierObject } from "../player/calcs.js";
+import { Rng } from "../rng.js";
 import {
   calcInventory,
   combinePack,
@@ -39,8 +39,8 @@ import {
   packSlotsUsed,
   preferredQuiverSlot,
   quiverAbsorbNum,
-} from "./gear";
-import type { Gear } from "./gear";
+} from "./gear.js";
+import type { Gear } from "./gear.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

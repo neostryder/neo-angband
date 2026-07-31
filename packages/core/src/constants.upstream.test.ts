@@ -17,8 +17,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { bindConstants } from "./constants";
-import type { ConstantsJson } from "./constants";
+import { bindConstants } from "./constants.js";
+import type { ConstantsJson } from "./constants.js";
 
 const packJson = JSON.parse(
   readFileSync(new URL("../../content/pack/constants.json", import.meta.url), "utf8"),

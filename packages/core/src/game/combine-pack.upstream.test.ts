@@ -15,26 +15,26 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import type { Constants } from "../constants";
-import { ORIGIN, TV } from "../generated";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import { bindPlayer } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import { registerBookKinds } from "../player/spell";
-import { Rng } from "../rng";
+import { bindConstants } from "../constants.js";
+import type { Constants } from "../constants.js";
+import { ORIGIN, TV } from "../generated/index.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import { bindPlayer } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { registerBookKinds } from "../player/spell.js";
+import { Rng } from "../rng.js";
 import {
   calcInventory,
   combinePack,
   gearAdd,
   newGear,
   wieldSlot,
-} from "./gear";
-import type { Gear } from "./gear";
+} from "./gear.js";
+import type { Gear } from "./gear.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

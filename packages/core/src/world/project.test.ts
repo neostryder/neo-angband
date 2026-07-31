@@ -1,19 +1,19 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { SQUARE } from "../generated";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import { Chunk } from "./chunk";
-import { FeatureRegistry } from "./feature";
-import type { TerrainRecordJson } from "./feature";
-import type { MonsterHitResult, Projection } from "./project";
+import { SQUARE } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { Chunk } from "./chunk.js";
+import { FeatureRegistry } from "./feature.js";
+import type { TerrainRecordJson } from "./feature.js";
+import type { MonsterHitResult, Projection } from "./project.js";
 import {
   PROJECT,
   computeProjection,
   project,
   projectPath,
   projectable,
-} from "./project";
+} from "./project.js";
 
 const terrain = JSON.parse(
   readFileSync(

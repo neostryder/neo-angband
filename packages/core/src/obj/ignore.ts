@@ -31,15 +31,15 @@
  * does the per-item context ignore menu.
  */
 
-import { TV } from "../generated";
-import { ITYPE } from "../generated";
-import { Rng } from "../rng";
-import type { RandomValue } from "../rng";
-import { OBJ_NOTICE } from "./knowledge";
-import { tvalIsJewelry } from "./object";
-import type { GameObject } from "./object";
-import { OBJ_MOD_MAX } from "./types";
-import type { EgoItem, ObjectKind } from "./types";
+import { TV } from "../generated/index.js";
+import { ITYPE } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import type { RandomValue } from "../rng.js";
+import { OBJ_NOTICE } from "./knowledge.js";
+import { tvalIsJewelry } from "./object.js";
+import type { GameObject } from "./object.js";
+import { OBJ_MOD_MAX } from "./types.js";
+import type { EgoItem, ObjectKind } from "./types.js";
 
 /**
  * Quality ignore tiers (obj-ignore.h quality_values). ALL means "everything

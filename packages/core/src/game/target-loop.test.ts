@@ -1,23 +1,23 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { MFLAG, RF, SQUARE, TMD, TV } from "../generated";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import type { Monster } from "../mon/monster";
-import { ObjRegistry } from "../obj/bind";
-import { ODESC } from "../obj/desc";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import type { ObjPackJson } from "../obj/types";
-import { Rng } from "../rng";
-import { COLOUR_BLUE, COLOUR_L_DARK, COLOUR_L_RED, COLOUR_WHITE } from "../color";
-import type { GameState } from "./context";
-import { describeObject } from "./describe";
-import { floorCarry } from "./floor";
-import { squareMemorize } from "./known";
-import { addMon, FLOOR, GRANITE, featureReg, makeRace, makeState } from "./harness";
-import { TARGET, targetGetMonsters, targetIsSet } from "./target";
+import { bindConstants } from "../constants.js";
+import { MFLAG, RF, SQUARE, TMD, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
+import { ObjRegistry } from "../obj/bind.js";
+import { ODESC } from "../obj/desc.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { Rng } from "../rng.js";
+import { COLOUR_BLUE, COLOUR_L_DARK, COLOUR_L_RED, COLOUR_WHITE } from "../color.js";
+import type { GameState } from "./context.js";
+import { describeObject } from "./describe.js";
+import { floorCarry } from "./floor.js";
+import { squareMemorize } from "./known.js";
+import { addMon, FLOOR, GRANITE, featureReg, makeRace, makeState } from "./harness.js";
+import { TARGET, targetGetMonsters, targetIsSet } from "./target.js";
 import {
   computePathColours,
   currentLoopGrid,
@@ -27,7 +27,7 @@ import {
   stepTargetLoop,
   targetDirAllow,
   useInterestingLoopMode,
-} from "./target-loop";
+} from "./target-loop.js";
 
 /** A visible (target-able) monster of the given race flags. */
 function addVisible(state: GameState, at: Loc, flags: number[] = [], hp = 60): Monster {

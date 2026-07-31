@@ -38,28 +38,28 @@ import {
   STAT_MAX,
   STAT_RANGE,
   TMD_MAX,
-} from "./types";
-import { ELEM, KF, OBJ_MOD, OF, PF, STAT, TMD, TV } from "../generated";
-import { COLOUR_L_GREEN, COLOUR_RED, COLOUR_YELLOW } from "../color";
-import { FlagSet } from "../bitflag";
+} from "./types.js";
+import { ELEM, KF, OBJ_MOD, OF, PF, STAT, TMD, TV } from "../generated/index.js";
+import { COLOUR_L_GREEN, COLOUR_RED, COLOUR_YELLOW } from "../color.js";
+import { FlagSet } from "../bitflag.js";
 import type {
   PlayerClass,
   PlayerElementInfo,
   PlayerRace,
   TimedEffect,
-} from "./types";
-import type { Player } from "./player";
-import type { GameObject } from "../obj/object";
-import type { Curse, ElementInfo } from "../obj/types";
+} from "./types.js";
+import type { Player } from "./player.js";
+import type { GameObject } from "../obj/object.js";
+import type { Curse, ElementInfo } from "../obj/types.js";
 import {
   tvalCanHaveFlavor,
   tvalIsAmmo,
   tvalIsDigger,
   tvalIsLight,
-} from "../obj/object";
-import { playerTimedGradeEq } from "./timed";
-import type { PlayerCombatState } from "../combat/melee";
-import type { DefenderState } from "../combat/mon-melee";
+} from "../obj/object.js";
+import { playerTimedGradeEq } from "./timed.js";
+import type { PlayerCombatState } from "../combat/melee.js";
+import type { DefenderState } from "../combat/mon-melee.js";
 
 /* ------------------------------------------------------------------ */
 /* Stat adjustment tables (player-calcs.c), each STAT_RANGE entries    */

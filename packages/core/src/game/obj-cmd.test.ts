@@ -1,15 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { OF, SQUARE, TMD, TV } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { EffectRegistry } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
+import { bindConstants } from "../constants.js";
+import { OF, SQUARE, TMD, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { EffectRegistry } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
 import {
   AutoinscriptionRegistry,
   FlavorKnowledge,
@@ -17,11 +17,11 @@ import {
   NOOP_FLAVOR_AWARE_DEPS,
   RuneNoteRegistry,
   setAutoinscription,
-} from "../obj/knowledge";
-import type { FlavorAwareDeps } from "../obj/knowledge";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { floorCarry, floorPile } from "./floor";
+} from "../obj/knowledge.js";
+import type { FlavorAwareDeps } from "../obj/knowledge.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { floorCarry, floorPile } from "./floor.js";
 import {
   gearAdd,
   gearGet,
@@ -30,12 +30,12 @@ import {
   packIsOverfull,
   packSlotsUsed,
   wieldSlot,
-} from "./gear";
-import { basicPlayerActor } from "./project-cast";
-import type { CastContext } from "./project-cast";
-import { registerAttackHandlers } from "./effect-attack";
-import { registerMonsterHandlers } from "./effect-monster";
-import { registerTeleportHandlers } from "./effect-teleport";
+} from "./gear.js";
+import { basicPlayerActor } from "./project-cast.js";
+import type { CastContext } from "./project-cast.js";
+import { registerAttackHandlers } from "./effect-attack.js";
+import { registerMonsterHandlers } from "./effect-monster.js";
+import { registerTeleportHandlers } from "./effect-teleport.js";
 import {
   applyAutoinscription,
   autoinscribeGround,
@@ -62,13 +62,13 @@ import {
   USE,
   wieldRingChoice,
   wieldTakeoffConfirm,
-} from "./obj-cmd";
-import type { ObjCmdDeps } from "./obj-cmd";
-import { describeObject } from "./describe";
-import { ODESC } from "../obj/desc";
-import { createDefaultRegistry, processPlayer } from "./player-turn";
-import { makeState, plReg } from "./harness";
-import type { GameState } from "./context";
+} from "./obj-cmd.js";
+import type { ObjCmdDeps } from "./obj-cmd.js";
+import { describeObject } from "./describe.js";
+import { ODESC } from "../obj/desc.js";
+import { createDefaultRegistry, processPlayer } from "./player-turn.js";
+import { makeState, plReg } from "./harness.js";
+import type { GameState } from "./context.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

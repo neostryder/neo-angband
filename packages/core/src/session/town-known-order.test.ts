@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { startGame } from "./game";
-import type { GamePack } from "./game";
-import { squareIsKnown } from "../game/known";
-import { loc } from "../loc";
+import { startGame } from "./game.js";
+import type { GamePack } from "./game.js";
+import { squareIsKnown } from "../game/known.js";
+import { loc } from "../loc.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

@@ -10,11 +10,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loc } from "../loc";
-import { walkAction } from "./player-turn";
-import { knownFeat, squareIsKnown, squareMemorize } from "./known";
-import { featureReg, makeState, GRANITE } from "./harness";
-import type { GameState } from "./context";
+import { loc } from "../loc.js";
+import { walkAction } from "./player-turn.js";
+import { knownFeat, squareIsKnown, squareMemorize } from "./known.js";
+import { featureReg, makeState, GRANITE } from "./harness.js";
+import type { GameState } from "./context.js";
 
 const RUBBLE = featureReg.byCodeName("RUBBLE").fidx;
 const CLOSED = featureReg.byCodeName("CLOSED").fidx;

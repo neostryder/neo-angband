@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { EF, MON_TMD, PROJ, STAT, TMD } from "../generated";
-import { Rng } from "../rng";
+import { EF, MON_TMD, PROJ, STAT, TMD } from "../generated/index.js";
+import { Rng } from "../rng.js";
 import {
   EF_MAX,
   ENCH_TOAC,
@@ -17,9 +17,9 @@ import {
   projNameToIdx,
   statNameToIdx,
   timedNameToIdx,
-} from "./effect";
-import { EffectRegistry } from "./interpreter";
-import { monTimedNameToIdx } from "../mon/timed";
+} from "./effect.js";
+import { EffectRegistry } from "./interpreter.js";
+import { monTimedNameToIdx } from "../mon/timed.js";
 
 describe("effectLookup", () => {
   it("maps names to EF indices (entry index + 1)", () => {

@@ -11,8 +11,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { composeModHooks, type ModHooks } from "./hooks";
-import type { GameState } from "../game/context";
+import { composeModHooks, type ModHooks } from "./hooks.js";
+import type { GameState } from "../game/context.js";
 
 const STATE = {} as GameState;
 const GRID = { y: 1, x: 1 };

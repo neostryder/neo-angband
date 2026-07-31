@@ -22,29 +22,29 @@
  * game/mon-cmd.ts via mon/steal.ts stealMonsterItem(midx >= 0).
  */
 
-import type { Constants } from "../constants";
-import { PF, STAT, TMD } from "../generated";
-import { DDGRID, distance, locSum } from "../loc";
-import type { Loc } from "../loc";
-import { SKILL } from "../player/types";
-import { adj_dex_th } from "../player/calcs";
-import type { GameObject, StackLimits } from "../obj/object";
-import { objectWeightOne, tvalIsMoney } from "../obj/object";
-import { MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc";
-import type { Monster } from "../mon/monster";
-import { monsterWake } from "../mon/take-hit";
-import { stealMonsterItem } from "../mon/steal";
-import type { StealEnv } from "../mon/steal";
-import type { GameState, PlayerCommand } from "./context";
-import { monsterMax, squareMonster } from "./context";
-import { describeObject } from "./describe";
-import { dropNear } from "./floor";
-import type { FloorEnv } from "./floor";
-import { invenCarry, invenCarryNum } from "./gear";
-import { playerHasWorld } from "./world";
-import { teleportPlayer } from "./effect-teleport";
-import { playerConfuseDir } from "./obj-cmd";
-import type { ActionRegistry } from "./player-turn";
+import type { Constants } from "../constants.js";
+import { PF, STAT, TMD } from "../generated/index.js";
+import { DDGRID, distance, locSum } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { SKILL } from "../player/types.js";
+import { adj_dex_th } from "../player/calcs.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
+import { objectWeightOne, tvalIsMoney } from "../obj/object.js";
+import { MDESC_STANDARD, MDESC_TARG, monsterDesc } from "../mon/desc.js";
+import type { Monster } from "../mon/monster.js";
+import { monsterWake } from "../mon/take-hit.js";
+import { stealMonsterItem } from "../mon/steal.js";
+import type { StealEnv } from "../mon/steal.js";
+import type { GameState, PlayerCommand } from "./context.js";
+import { monsterMax, squareMonster } from "./context.js";
+import { describeObject } from "./describe.js";
+import { dropNear } from "./floor.js";
+import type { FloorEnv } from "./floor.js";
+import { invenCarry, invenCarryNum } from "./gear.js";
+import { playerHasWorld } from "./world.js";
+import { teleportPlayer } from "./effect-teleport.js";
+import { playerConfuseDir } from "./obj-cmd.js";
+import type { ActionRegistry } from "./player-turn.js";
 
 /** What the steal command needs beyond the state. */
 export interface StealCmdDeps {

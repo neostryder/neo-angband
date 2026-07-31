@@ -17,19 +17,19 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { startGame } from "../session/game";
-import type { GamePack, StartedGame } from "../session/game";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson, ObjectKind } from "../obj/types";
-import { objectNew, tvalIsJewelry } from "../obj/object";
-import { OBJ_MOD } from "../generated";
-import { OBJ_NOTICE } from "../obj/knowledge";
-import { gearAdd } from "./gear";
-import { floorCarry } from "./floor";
-import { squareKnowPile } from "./known";
-import { invenWield } from "./obj-cmd";
-import { describeObject } from "./describe";
+import { bindConstants } from "../constants.js";
+import { startGame } from "../session/game.js";
+import type { GamePack, StartedGame } from "../session/game.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson, ObjectKind } from "../obj/types.js";
+import { objectNew, tvalIsJewelry } from "../obj/object.js";
+import { OBJ_MOD } from "../generated/index.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { gearAdd } from "./gear.js";
+import { floorCarry } from "./floor.js";
+import { squareKnowPile } from "./known.js";
+import { invenWield } from "./obj-cmd.js";
+import { describeObject } from "./describe.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

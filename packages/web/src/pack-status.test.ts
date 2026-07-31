@@ -56,23 +56,20 @@ describe("diskPackStatus reports the folder count AND the bundled count", () => 
     /* The invariant is AGREEMENT, not a fixed number: composeMods admits a
      * bundled directory iff isShippedMod does, so the count must use the same
      * predicate with the same default. isShippedMod's default is
-     * import.meta.env.DEV, so a release build lists 3 and a dev build lists 6 -
-     * pinning 3 here would have passed only in release and, worse, would have
-     * hidden the bug this caught: the first version of the count called
+     * import.meta.env.DEV, so a release build lists 2 and a dev build lists 5 -
+     * pinning a number here would have passed only in release and, worse, would
+     * have hidden the bug this caught: the first version of the count called
      * isShippedMod(id) meaning "release" while the catalog meant "current mode".
      *
      * Every directory under packages/web/mods/, so a new one has to be added
-     * here deliberately. */
-    const dirs = ["qol", "bug-fixes", "neo-linoleum", "demo-modtest", "demo-sandbox", "demo-trusted"];
+     * here deliberately. neo-linoleum is NOT one any more - its converted packs
+     * moved to their own repository and it arrives through the installer. */
+    const dirs = ["qol", "bug-fixes", "demo-modtest", "demo-sandbox", "demo-trusted"];
     const listed = dirs.filter((id) => isShippedMod(id));
     expect(diskPackStatus().bundledCount).toBe(listed.length);
-    /* And the release set really is the three shipped mods - the property the
+    /* And the release set really is the two shipped mods - the property the
      * demo filter exists for. */
-    expect(dirs.filter((id) => isShippedMod(id, false))).toEqual([
-      "qol",
-      "bug-fixes",
-      "neo-linoleum",
-    ]);
+    expect(dirs.filter((id) => isShippedMod(id, false))).toEqual(["qol", "bug-fixes"]);
   });
 
   it("keeps the two counts independent", () => {

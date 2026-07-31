@@ -37,10 +37,10 @@
  *   object, so that branch is skipped (module docs of object.ts).
  */
 
-import { KF, OBJ_MOD, OF } from "../generated";
-import { TV } from "../generated";
-import type { Player } from "../player/player";
-import type { GameObject } from "./object";
+import { KF, OBJ_MOD, OF } from "../generated/index.js";
+import { TV } from "../generated/index.js";
+import type { Player } from "../player/player.js";
+import type { GameObject } from "./object.js";
 import {
   tvalCanHaveCharges,
   tvalCanHaveFlavor,
@@ -52,18 +52,18 @@ import {
   tvalIsMoney,
   tvalIsRod,
   tvalIsWeapon,
-} from "./object";
-import { chestTrapName } from "./chest";
-import type { RuneEnv } from "./knowledge";
-import { OBJ_NOTICE, objectHasStandardToH } from "./knowledge";
-import type { KnownDesc } from "./known-object";
+} from "./object.js";
+import { chestTrapName } from "./chest.js";
+import type { RuneEnv } from "./knowledge.js";
+import { OBJ_NOTICE, objectHasStandardToH } from "./knowledge.js";
+import type { KnownDesc } from "./known-object.js";
 import {
   objectIsKnownArtifact,
   objectKnownShadow,
   objectRunesKnownUpstream,
-} from "./known-object";
-import type { ObjectKind } from "./types";
-import { OBJ_MOD_MAX } from "./types";
+} from "./known-object.js";
+import type { ObjectKind } from "./types.js";
+import { OBJ_MOD_MAX } from "./types.js";
 
 /**
  * Modes for object_desc (obj-desc.h L25-46). ODESC_BASE is the empty mode.

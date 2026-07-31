@@ -14,31 +14,31 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { bindMonsters } from "../mon/bind";
-import type { MonsterPackRecords } from "../mon/bind";
-import { blankMonster } from "../mon/monster";
-import type { Monster } from "../mon/monster";
-import type { MonsterBase, MonsterRace } from "../mon/types";
-import { Chunk } from "../world/chunk";
-import { FeatureRegistry } from "../world/feature";
-import type { TerrainRecordJson } from "../world/feature";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { bindMonsters } from "../mon/bind.js";
+import type { MonsterPackRecords } from "../mon/bind.js";
+import { blankMonster } from "../mon/monster.js";
+import type { Monster } from "../mon/monster.js";
+import type { MonsterBase, MonsterRace } from "../mon/types.js";
+import { Chunk } from "../world/chunk.js";
+import { FeatureRegistry } from "../world/feature.js";
+import type { TerrainRecordJson } from "../world/feature.js";
 import {
   DEFAULT_GAME_CONSTANTS,
   addMonster,
   placePlayer,
-} from "./context";
-import type { GameState } from "./context";
-import { chooseNearbyInjuredKin } from "./mon-ranged";
-import { blankPlayer } from "../player/player";
-import { bindPlayer } from "../player/bind";
-import type { PlayerPackRecords } from "../player/bind";
-import { newGear } from "./gear";
-import { newKnownMap } from "./known";
-import { newTargetState } from "./target";
-import { IgnoreSettings } from "../obj/ignore";
-import { makeRuneEnv } from "../obj/knowledge";
+} from "./context.js";
+import type { GameState } from "./context.js";
+import { chooseNearbyInjuredKin } from "./mon-ranged.js";
+import { blankPlayer } from "../player/player.js";
+import { bindPlayer } from "../player/bind.js";
+import type { PlayerPackRecords } from "../player/bind.js";
+import { newGear } from "./gear.js";
+import { newKnownMap } from "./known.js";
+import { newTargetState } from "./target.js";
+import { IgnoreSettings } from "../obj/ignore.js";
+import { makeRuneEnv } from "../obj/knowledge.js";
 
 function packJson<T>(name: string): T[] {
   return (

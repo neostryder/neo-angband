@@ -23,13 +23,13 @@
  * get_chamber_monsters themed fill) and huge (build_huge). Faithful RNG order.
  */
 
-import { FEAT, ORIGIN, SQUARE } from "../generated";
-import type { Loc } from "../loc";
-import { loc, DDGRID_DDD } from "../loc";
-import type { Rng } from "../rng";
-import { tvalFindIdx } from "../obj/bind";
-import type { Chunk } from "../world/chunk";
-import type { Gen } from "./util";
+import { FEAT, ORIGIN, SQUARE } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import { loc, DDGRID_DDD } from "../loc.js";
+import type { Rng } from "../rng.js";
+import { tvalFindIdx } from "../obj/bind.js";
+import type { Chunk } from "../world/chunk.js";
+import type { Gen } from "./util.js";
 import {
   countNeighbors,
   drawRectangle,
@@ -59,11 +59,11 @@ import {
   vaultMonsters,
   vaultObjects,
   vaultTraps,
-} from "./util";
-import { getChamberMonsters, getVaultMonsters, monPitHook, setPitType } from "./gen-monster";
-import type { MonsterGroupInfo } from "../mon/monster";
-import type { MonsterRace } from "../mon/types";
-import { MON_GROUP } from "../mon/types";
+} from "./util.js";
+import { getChamberMonsters, getVaultMonsters, monPitHook, setPitType } from "./gen-monster.js";
+import type { MonsterGroupInfo } from "../mon/monster.js";
+import type { MonsterRace } from "../mon/types.js";
+import { MON_GROUP } from "../mon/types.js";
 
 /* ------------------------------------------------------------------ *
  * Room and vault template data.

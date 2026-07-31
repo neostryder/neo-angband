@@ -40,7 +40,7 @@ import {
   flagsSet,
   flagsTest,
   flagsTestAll,
-} from "./bitflag";
+} from "./bitflag.js";
 
 describe("constants and size macros", () => {
   it("mirrors the upstream macro values", () => {

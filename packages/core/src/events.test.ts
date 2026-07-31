@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { GAME_EVENT_TYPES, GameEvents } from "./events";
-import type { GameEventType } from "./events";
+import { GAME_EVENT_TYPES, GameEvents } from "./events.js";
+import type { GameEventType } from "./events.js";
 
 describe("GameEvents", () => {
   it("covers all upstream event types exactly once", () => {

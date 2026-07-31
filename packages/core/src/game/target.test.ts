@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { FEAT, MFLAG, MON_TMD, RF, SQUARE, TMD } from "../generated";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import type { Monster } from "../mon/monster";
-import { deleteMonster } from "./context";
-import type { GameState } from "./context";
-import { squareMemorize } from "./known";
-import { addMon, makeRace, makeState } from "./harness";
+import { FEAT, MFLAG, MON_TMD, RF, SQUARE, TMD } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
+import { deleteMonster } from "./context.js";
+import type { GameState } from "./context.js";
+import { squareMemorize } from "./known.js";
+import { addMon, makeRace, makeState } from "./harness.js";
 import {
   TARGET,
   coordsDesc,
@@ -25,7 +25,7 @@ import {
   targetSetLocation,
   targetSetMonster,
   targetSighted,
-} from "./target";
+} from "./target.js";
 
 /** A visible (target-able) monster of the given race flags. */
 function addVisible(

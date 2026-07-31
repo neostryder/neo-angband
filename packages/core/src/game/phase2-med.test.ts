@@ -13,26 +13,26 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG, MON_MSG, PROJ, SQUARE, TMD, TRF } from "../generated";
-import { loc } from "../loc";
-import { FlagSet } from "../bitflag";
-import { RF_SIZE } from "../mon/types";
-import { EffectRegistry, sourcePlayer } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { PROJECT } from "../world/project";
-import { TRF_SIZE } from "../world/trap";
-import { addMon, featureReg, makeRace, makeState } from "./harness";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import type { CastContext } from "./project-cast";
-import { attachGameEnv } from "./effect-game-env";
-import { registerAttackHandlers } from "./effect-attack";
-import { projectFeature } from "./project-feat";
-import { projectMonster } from "./project-monster";
-import type { ProjectMonsterCtx, ProjectMonsterHooks } from "./project-monster";
-import { summonPossible, monsterCanCast } from "./mon-ranged";
+import { EF, MFLAG, MON_MSG, PROJ, SQUARE, TMD, TRF } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { FlagSet } from "../bitflag.js";
+import { RF_SIZE } from "../mon/types.js";
+import { EffectRegistry, sourcePlayer } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { PROJECT } from "../world/project.js";
+import { TRF_SIZE } from "../world/trap.js";
+import { addMon, featureReg, makeRace, makeState } from "./harness.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import type { CastContext } from "./project-cast.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import { registerAttackHandlers } from "./effect-attack.js";
+import { projectFeature } from "./project-feat.js";
+import { projectMonster } from "./project-monster.js";
+import type { ProjectMonsterCtx, ProjectMonsterHooks } from "./project-monster.js";
+import { summonPossible, monsterCanCast } from "./mon-ranged.js";
 
 const projections = bindProjections(
   JSON.parse(
@@ -137,7 +137,7 @@ describe("PR1 KILL_TRAP only disarms an enabled visible player trap", () => {
     flags.on(TRF.VISIBLE);
     /* timeout > 0 == already disabled (square_isdisabledtrap). */
     state.traps.set(grid.y * state.chunk.width + grid.x, [
-      { tidx: 2, flags, timeout: 5, grid } as unknown as import("./trap").Trap,
+      { tidx: 2, flags, timeout: 5, grid } as unknown as import("./trap.js").Trap,
     ]);
     const msgs: string[] = [];
     projectFeature(state, 0, grid, 0, PROJ.KILL_TRAP, { msg: (t) => msgs.push(t) });
@@ -152,7 +152,7 @@ describe("PR1 KILL_TRAP only disarms an enabled visible player trap", () => {
     flags.on(TRF.TRAP);
     flags.on(TRF.VISIBLE);
     state.traps.set(grid.y * state.chunk.width + grid.x, [
-      { tidx: 2, flags, timeout: 0, grid } as unknown as import("./trap").Trap,
+      { tidx: 2, flags, timeout: 0, grid } as unknown as import("./trap.js").Trap,
     ]);
     const msgs: string[] = [];
     projectFeature(state, 0, grid, 0, PROJ.KILL_TRAP, { msg: (t) => msgs.push(t) });
@@ -183,7 +183,7 @@ describe("S01 summon_possible gates", () => {
     const flags = new FlagSet(TRF_SIZE);
     flags.on(TRF.GLYPH);
     state.traps.set(only.y * state.chunk.width + only.x, [
-      { tidx: 1, flags, timeout: 0, grid: only } as unknown as import("./trap").Trap,
+      { tidx: 1, flags, timeout: 0, grid: only } as unknown as import("./trap.js").Trap,
     ]);
     expect(summonPossible(state, only)).toBe(false);
   });
@@ -193,7 +193,7 @@ describe("S01 summon_possible gates", () => {
 
 describe("S02 monster_can_cast honours COVERTRACKS short range", () => {
   it("a distant monster loses the clear-path gate under COVERTRACKS", () => {
-    const build = (): { state: GameState; mon: import("../mon/monster").Monster } => {
+    const build = (): { state: GameState; mon: import("../mon/monster.js").Monster } => {
       const state = makeState({ seed: 7, playerGrid: loc(20, 20) });
       const race = makeRace({ level: 5 });
       race.freqSpell = 100; // always rolls a cast chance

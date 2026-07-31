@@ -43,35 +43,35 @@
  * faithful to upstream but have no effect on an already-shown feeling.
  */
 
-import { MON_TMD, ORIGIN, RF } from "../generated";
-import type { Rng } from "../rng";
-import type { Loc } from "../loc";
-import { DDGRID_DDD, distance, locEq, locSum } from "../loc";
-import type { MonsterBase, MonsterGroupRole, MonsterRace } from "../mon/types";
-import { MON_GROUP } from "../mon/types";
-import type { Monster, MonsterGroupInfo } from "../mon/monster";
-import { turnEnergy } from "../mon/monster";
-import { createMonster, monsterCarry } from "../mon/make";
-import type { MonAllocTable } from "../mon/make";
-import { monsterIsCamouflaged, monsterIsShapeUnique } from "../mon/predicate";
-import { monsterWake } from "../mon/take-hit";
-import type { SummonTable } from "../mon/summon";
-import { summonSpecificOkay } from "../mon/summon";
-import { applyMagic, makeGold, objectPrep } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import type { LoreStore } from "../mon/lore";
-import { createDrop } from "./mon-death";
-import { tvalIsMoney } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { tvalFindIdx } from "../obj/bind";
-import type { ObjectKind } from "../obj/types";
-import { scatterExt } from "../world/scatter";
-import { los } from "../world/view";
-import { monPop, monsterMax, monsterSwap, squareMonster } from "./context";
-import type { GameState } from "./context";
-import { floorCarry } from "./floor";
-import type { FloorEnv } from "./floor";
-import { monsterGroupAssign, summonGroup } from "./mon-group";
+import { MON_TMD, ORIGIN, RF } from "../generated/index.js";
+import type { Rng } from "../rng.js";
+import type { Loc } from "../loc.js";
+import { DDGRID_DDD, distance, locEq, locSum } from "../loc.js";
+import type { MonsterBase, MonsterGroupRole, MonsterRace } from "../mon/types.js";
+import { MON_GROUP } from "../mon/types.js";
+import type { Monster, MonsterGroupInfo } from "../mon/monster.js";
+import { turnEnergy } from "../mon/monster.js";
+import { createMonster, monsterCarry } from "../mon/make.js";
+import type { MonAllocTable } from "../mon/make.js";
+import { monsterIsCamouflaged, monsterIsShapeUnique } from "../mon/predicate.js";
+import { monsterWake } from "../mon/take-hit.js";
+import type { SummonTable } from "../mon/summon.js";
+import { summonSpecificOkay } from "../mon/summon.js";
+import { applyMagic, makeGold, objectPrep } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import type { LoreStore } from "../mon/lore.js";
+import { createDrop } from "./mon-death.js";
+import { tvalIsMoney } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { tvalFindIdx } from "../obj/bind.js";
+import type { ObjectKind } from "../obj/types.js";
+import { scatterExt } from "../world/scatter.js";
+import { los } from "../world/view.js";
+import { monPop, monsterMax, monsterSwap, squareMonster } from "./context.js";
+import type { GameState } from "./context.js";
+import { floorCarry } from "./floor.js";
+import type { FloorEnv } from "./floor.js";
+import { monsterGroupAssign, summonGroup } from "./mon-group.js";
 
 /** Everything live placement needs beyond the state. */
 export interface MonPlaceDeps {

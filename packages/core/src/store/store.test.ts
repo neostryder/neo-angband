@@ -1,21 +1,21 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { FEAT, TV } from "../generated";
-import { ObjRegistry } from "../obj/bind";
-import { OBJ_NOTICE, learnBirthObviousFlags, makeRuneEnv } from "../obj/knowledge";
-import { ODESC, objectDesc } from "../obj/desc";
-import { bindPlayer } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import type { ObjPackJson } from "../obj/types";
-import { Rng } from "../rng";
-import { StoreRegistry } from "./bind";
-import { bindStoreRuntime, storeReset, storeWillBuy } from "./store";
-import type { Store, StoreMaintContext } from "./store";
-import type { StoreRecordJson } from "./types";
+import { bindConstants } from "../constants.js";
+import { FEAT, TV } from "../generated/index.js";
+import { ObjRegistry } from "../obj/bind.js";
+import { OBJ_NOTICE, learnBirthObviousFlags, makeRuneEnv } from "../obj/knowledge.js";
+import { ODESC, objectDesc } from "../obj/desc.js";
+import { bindPlayer } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { Rng } from "../rng.js";
+import { StoreRegistry } from "./bind.js";
+import { bindStoreRuntime, storeReset, storeWillBuy } from "./store.js";
+import type { Store, StoreMaintContext } from "./store.js";
+import type { StoreRecordJson } from "./types.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

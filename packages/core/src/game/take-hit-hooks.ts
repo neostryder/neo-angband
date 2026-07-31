@@ -30,16 +30,16 @@
  * is a visual no-op. It is deliberately omitted (matching the melee reference).
  */
 
-import { MSG, PF } from "../generated";
-import type { TakeHitHooks } from "../player/take-hit";
-import type { GameState } from "./context";
-import { disturb } from "./player-path";
-import { playerAdjustManaPrecise } from "./loop";
+import { MSG, PF } from "../generated/index.js";
+import type { TakeHitHooks } from "../player/take-hit.js";
+import type { GameState } from "./context.js";
+import { disturb } from "./player-path.js";
+import { playerAdjustManaPrecise } from "./loop.js";
 import {
   markNoscore,
   wizCheatDeath,
   type WizardDeps,
-} from "./wizard";
+} from "./wizard.js";
 
 /**
  * Optional deps for the EVENT_CHEAT_DEATH path (ui-display.c:2568-2573).

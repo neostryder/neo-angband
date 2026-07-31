@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { EF, TMD } from "../generated";
+import { EF, TMD } from "../generated/index.js";
 import {
   EffectRegistry,
   sourcePlayer,
-} from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { makeState, plReg } from "./harness";
-import type { GameState } from "./context";
+} from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { makeState, plReg } from "./harness.js";
+import type { GameState } from "./context.js";
 import {
   buildEffectContext,
   buildTimedHost,
-} from "./effect-env";
-import type { EffectEnvDeps } from "./effect-env";
+} from "./effect-env.js";
+import type { EffectEnvDeps } from "./effect-env.js";
 
 function registry(): EffectRegistry {
   const r = new EffectRegistry();

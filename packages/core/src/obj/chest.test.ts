@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { TV } from "../generated";
-import { Rng } from "../rng";
-import { ObjRegistry } from "./bind";
-import type { ObjPackJson } from "./types";
-import { objectPrep } from "./make";
+import { bindConstants } from "../constants.js";
+import { TV } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "./bind.js";
+import type { ObjPackJson } from "./types.js";
+import { objectPrep } from "./make.js";
 import {
   CHEST_TRAPS,
   chestTrapName,
@@ -15,7 +15,7 @@ import {
   pickLevelGated,
   pickOneChestTrap,
   unlockChest,
-} from "./chest";
+} from "./chest.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

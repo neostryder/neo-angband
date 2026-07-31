@@ -11,8 +11,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { HostDir, FileMode, NULL_HOST, host, setHost, textLinesToFile } from "./io";
-import { MemoryHost } from "./memory";
+import { HostDir, FileMode, NULL_HOST, host, setHost, textLinesToFile } from "./io.js";
+import { MemoryHost } from "./memory.js";
 
 describe("NULL_HOST", () => {
   it("fails every write rather than reporting a silent success", () => {

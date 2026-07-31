@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MAX_RAND_DEPTH, RAND_DEG, Rng, RngStreams, randomChanceScaled } from "./rng";
+import { MAX_RAND_DEPTH, RAND_DEG, Rng, RngStreams, randomChanceScaled } from "./rng.js";
 
 interface SeedVectors {
   state_after_init: number[];

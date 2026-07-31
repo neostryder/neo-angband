@@ -1,19 +1,19 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FlagSet } from "../bitflag";
-import { ELEM, OF, TV } from "../generated";
-import { Rng } from "../rng";
-import { RF_SIZE } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
-import { bindPlayer } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import { ObjRegistry } from "./bind";
-import type { ObjPackJson } from "./types";
-import { objectNew, sameMonstersSlain } from "./object";
-import type { GameObject } from "./object";
-import { ELEM_HIGH_MAX, OBJ_PROPERTY, OFID, OFT } from "./types";
-import type { ObjectProperty } from "./types";
+import { FlagSet } from "../bitflag.js";
+import { ELEM, OF, TV } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { RF_SIZE } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import { bindPlayer } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { ObjRegistry } from "./bind.js";
+import type { ObjPackJson } from "./types.js";
+import { objectNew, sameMonstersSlain } from "./object.js";
+import type { GameObject } from "./object.js";
+import { ELEM_HIGH_MAX, OBJ_PROPERTY, OFID, OFT } from "./types.js";
+import type { ObjectProperty } from "./types.js";
 import {
   buildRuneList,
   equipLearnAfterTime,
@@ -35,14 +35,14 @@ import {
   playerLearnInnate,
   playerLearnRune,
   playerLearnSlay,
-} from "./knowledge";
-import type { RuneEnv } from "./knowledge";
+} from "./knowledge.js";
+import type { RuneEnv } from "./knowledge.js";
 import {
   learnBrandSlayFromMelee,
   learnBrandSlayFromLaunch,
-} from "../combat/brand-slay";
-import { deserializePlayer, serializePlayer } from "../session/save";
-import { ContentIdResolver } from "../mod/ids";
+} from "../combat/brand-slay.js";
+import { deserializePlayer, serializePlayer } from "../session/save.js";
+import { ContentIdResolver } from "../mod/ids.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

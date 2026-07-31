@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { makeState, plReg } from "../game/harness";
-import { blankPlayer } from "./player";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { playerAbilities } from "./abilities";
-import type { PlayerClass, PlayerRace } from "./types";
-import { Rng } from "../rng";
+import { makeState, plReg } from "../game/harness.js";
+import { blankPlayer } from "./player.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { playerAbilities } from "./abilities.js";
+import type { PlayerClass, PlayerRace } from "./types.js";
+import { Rng } from "../rng.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(

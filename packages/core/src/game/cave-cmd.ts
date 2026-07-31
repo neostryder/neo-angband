@@ -38,21 +38,21 @@
  * in game/player-path.ts.
  */
 
-import type { Loc } from "../loc";
-import { DDGRID, DDGRID_DDD, locSum } from "../loc";
-import { FEAT, ORIGIN, TF, TMD, TRF } from "../generated";
-import { SKILL } from "../player/types";
-import { motionDir, squareIsSeen } from "../world/view";
-import { monsterIsCamouflaged } from "../mon/predicate";
-import { monsterWake } from "../mon/take-hit";
-import { featIsTreasure } from "../world/chunk";
-import type { MakeDeps } from "../obj/make";
-import { makeGold, makeObject } from "../obj/make";
-import { CHEST_QUERY } from "../obj/chest";
-import { chestCheck, countChests, doCmdDisarmChest, doCmdOpenChest } from "./chest";
-import type { ChestCmdDeps } from "./chest";
-import type { GameState, PlayerCommand } from "./context";
-import { queueCommandRepeat, squareMonster } from "./context";
+import type { Loc } from "../loc.js";
+import { DDGRID, DDGRID_DDD, locSum } from "../loc.js";
+import { FEAT, ORIGIN, TF, TMD, TRF } from "../generated/index.js";
+import { SKILL } from "../player/types.js";
+import { motionDir, squareIsSeen } from "../world/view.js";
+import { monsterIsCamouflaged } from "../mon/predicate.js";
+import { monsterWake } from "../mon/take-hit.js";
+import { featIsTreasure } from "../world/chunk.js";
+import type { MakeDeps } from "../obj/make.js";
+import { makeGold, makeObject } from "../obj/make.js";
+import { CHEST_QUERY } from "../obj/chest.js";
+import { chestCheck, countChests, doCmdDisarmChest, doCmdOpenChest } from "./chest.js";
+import type { ChestCmdDeps } from "./chest.js";
+import type { GameState, PlayerCommand } from "./context.js";
+import { queueCommandRepeat, squareMonster } from "./context.js";
 import {
   knownFeat,
   knownIsBrokenDoor,
@@ -64,12 +64,12 @@ import {
   squareForget,
   squareIsKnown,
   squareMemorize,
-} from "./known";
-import { dungeonGetNextLevel, isQuest } from "./quest";
-import { floorCarry } from "./floor";
-import { playerConfuseDir } from "./obj-cmd";
-import { attackMonster } from "./player-turn";
-import type { ActionRegistry } from "./player-turn";
+} from "./known.js";
+import { dungeonGetNextLevel, isQuest } from "./quest.js";
+import { floorCarry } from "./floor.js";
+import { playerConfuseDir } from "./obj-cmd.js";
+import { attackMonster } from "./player-turn.js";
+import type { ActionRegistry } from "./player-turn.js";
 import {
   disarmAux,
   squareDoorPower,
@@ -79,7 +79,7 @@ import {
   squareRemoveAllTraps,
   squareTrap,
   type TrapDeps,
-} from "./trap";
+} from "./trap.js";
 
 /** Hooks for messages and unported subsystems; all optional. */
 export interface CaveCmdEnv {

@@ -30,37 +30,37 @@
  *   learn block and must not gain one.
  */
 
-import type { Constants } from "../constants";
-import { FEAT, OF, ORIGIN } from "../generated";
-import type { GameObject, StackLimits } from "../obj/object";
+import type { Constants } from "../constants.js";
+import { FEAT, OF, ORIGIN } from "../generated/index.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
 import {
   distributeCharges,
   objectAbsorb,
   objectMergeable,
   OSTACK_PACK,
   tvalCanHaveCharges,
-} from "../obj/object";
+} from "../obj/object.js";
 import {
   NOOP_FLAVOR_AWARE_DEPS,
   objectLearnUnknownRune,
   objectRunesKnown,
-} from "../obj/knowledge";
+} from "../obj/knowledge.js";
 import type {
   FlavorAwareDeps,
   FlavorKnowledge,
   Rune,
   RuneEnv,
-} from "../obj/knowledge";
-import type { Gear } from "../game/gear";
+} from "../obj/knowledge.js";
+import type { Gear } from "../game/gear.js";
 import {
   gearObjectForUse,
   invenCarry,
   invenCarryNum,
   objectCopyAmt,
-} from "../game/gear";
-import type { Player } from "../player/player";
-import { objectValue, objectValueReal } from "../obj/value";
-import { priceItem } from "./price";
+} from "../game/gear.js";
+import type { Player } from "../player/player.js";
+import { objectValue, objectValueReal } from "../obj/value.js";
+import { priceItem } from "./price.js";
 import {
   storeCarry,
   storeCheckNum,
@@ -69,8 +69,8 @@ import {
   storeSaleShouldReduceStock,
   storeShuffle,
   storeWillBuy,
-} from "./store";
-import type { Store, StoreMaintContext } from "./store";
+} from "./store.js";
+import type { Store, StoreMaintContext } from "./store.js";
 
 /** Pack stacking limits derived from the bound constants. */
 function packLimits(constants: Constants): StackLimits {

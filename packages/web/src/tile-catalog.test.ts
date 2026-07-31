@@ -10,6 +10,7 @@
  * port-vs-C disparity; these tests pin the fix.
  */
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { GRAPHICS_MODE_CATALOG, GRAPHICS_NONE } from "@neo-angband/core";
@@ -20,6 +21,7 @@ import {
   composeTileModes,
   coreTileModes,
 } from "./tile-catalog";
+import { usableRecommendedMods } from "./mod-registry";
 import { BUNDLED_MODS_BASE, tilePackResolver } from "./tile-mods";
 import type { TileModePack } from "./tile-mods";
 
@@ -168,65 +170,72 @@ describe("BUNDLED_TILE_DIRECTORIES", () => {
     const credits = flat(readFileSync(join(TILES_DIR, "CREDITS.md"), "utf8"));
     expect(credits).toContain("the tilesheet is bundled here with the author's permission");
     expect(credits).not.toContain("both as the tilesheet and as converted");
-    expect(credits).toContain("public/mods/neo-linoleum/credits.md");
+    expect(credits).toContain("neo-angband-mod-linoleum");
   });
 });
 
-describe("converted tile packs carry their own attribution", () => {
+describe("this repository holds no converted tile art, and no way to make any", () => {
   /*
-   * The converted loose packs are the neo-linoleum mod's, they are gitignored, and
-   * ONE script produces them - so that script is what has to credit them. There is
-   * no other file in a position to: a credit back in public/tiles/ cannot promise to
-   * travel with bytes that land in a deploy only when someone passes --packs all.
+   * The mod owns its art. This used to be the other way round: gen-linoleum-demo.mjs
+   * lived in packages/web/scripts, the web package's `dev` and `bundle` scripts ran
+   * it, and it wrote 9161 PNGs into public/mods/neo-linoleum/ - so a MOD's resources
+   * sat inside the game's build and were served from the game's origin. The packs are
+   * neo-angband-mod-linoleum's now, pre-converted and committed there as seven
+   * archives, and the installer unpacks them into the mod's own folder, which is
+   * where the tile resolver already looks (tilePackResolver).
    *
-   * Comments are stripped before any source assertion. The generator's header
-   * explains this attribution scheme at length, so an un-stripped `toContain` here
-   * would be satisfied by the prose describing the behaviour instead of by the
-   * behaviour - see term.test.ts for where that trap was found.
+   * Asserted as ABSENCE, which is the only form that holds: a test that read the
+   * generator would pass whether or not the generator was still wired into a build,
+   * and reading code cannot find code that is not written. So these check what is on
+   * disk and what the scripts say, and the honest limit is that they cannot prove a
+   * deploy has no pack bytes - only that nothing here produces any.
    */
-  const stripComments = (src: string): string =>
-    src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const WEB_ROOT = join(MODS_DIR, "..");
 
-  const GEN = join(MODS_DIR, "..", "scripts", "gen-linoleum-demo.mjs");
-  const OUT_DIR = join(MODS_DIR, "..", "public", "mods", "neo-linoleum");
-  const code = stripComments(readFileSync(GEN, "utf8"));
-
-  it("writes the credit into the pack directory, not somewhere else", () => {
-    expect(code).toContain('writeFileSync(join(outputRoot, "CREDITS.md")');
-    // Named from what is on disk, so a default build does not credit art it never
-    // converted - the whole reason this is generated rather than committed.
-    expect(code).toContain("creditsText(present)");
-    expect(code).toMatch(/const present = linoleum\.ALL_PACKS\.map/);
+  it("has no bundled neo-linoleum mod folder, under either id", () => {
+    expect(existsSync(join(MODS_DIR, "neo-linoleum"))).toBe(false);
+    expect(existsSync(join(MODS_DIR, "linoleum"))).toBe(false);
+    /* Guards the guard: MODS_DIR must be a real directory with the mods that DO
+     * ship, or the two assertions above are true of a typo. */
+    expect(readdirSync(MODS_DIR)).toContain("qol");
+    expect(readdirSync(MODS_DIR)).toContain("bug-fixes");
   });
 
-  it("states the three things Shockbolt's permission actually requires", () => {
-    // Copyright, the non-commercial condition, and the ask-him-yourself pointer.
-    // Plus the fact that makes the conversion need permission at all: Angband's
-    // own licence for the set grants no right to modify it.
-    const text = flat(code);
-    expect(text).toContain("gaustadnes");
-    expect(text).toContain("non-commercial");
-    expect(text).toContain("contact the author for permission");
-    expect(text).toContain("a conversion is a modification");
-    expect(text).toContain("neo angband specifically");
-    // No address, same reason as public/tiles/CREDITS.md.
-    expect(code).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
-  });
-
-  it("has actually emitted it, in a checkout where the packs were built", () => {
-    /* The strongest form of the check and the only one that is behaviour rather
-     * than source. Skipped on a clean checkout, where no pack is built and there is
-     * nothing for a credit to sit beside. */
-    if (!existsSync(OUT_DIR)) return;
-    const built = readdirSync(OUT_DIR).filter((n) =>
-      existsSync(join(OUT_DIR, n, "manifest.txt")),
-    );
-    if (built.length === 0) return;
-    const emitted = readFileSync(join(OUT_DIR, "CREDITS.md"), "utf8");
-    for (const key of built) {
-      expect(emitted, `${key} is built but uncredited`).toContain(`\`${key}/\``);
+  it("has no pack generator, and no build step that would run one", () => {
+    expect(existsSync(join(WEB_ROOT, "scripts", "gen-linoleum-demo.mjs"))).toBe(false);
+    const pkg = JSON.parse(readFileSync(join(WEB_ROOT, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    for (const [name, command] of Object.entries(pkg.scripts)) {
+      expect(command, `web script "${name}" still generates packs`).not.toMatch(
+        /gen-linoleum/u,
+      );
     }
-    expect(emitted.toLowerCase()).toContain("gaustadnes");
+    /* The scripts that would have carried it, named so a rename cannot make this
+     * vacuous by removing the entry the loop was watching. */
+    expect(Object.keys(pkg.scripts)).toContain("dev");
+    expect(Object.keys(pkg.scripts)).toContain("bundle");
+  });
+
+  it("ships no loose pack bytes in public/", () => {
+    /* public/mods/ is gitignored so a developer can drop a locally built pack in for
+     * testing; what must not happen is this repository COMMITTING one. Checked
+     * against git rather than the filesystem, for exactly that reason. */
+    const tracked = execFileSync("git", ["ls-files", "packages/web/public/mods"], {
+      cwd: join(WEB_ROOT, "..", ".."),
+      encoding: "utf8",
+    }).trim();
+    expect(tracked).toBe("");
+  });
+
+  it("sends anyone looking for the conversion's credit to the mod", () => {
+    /* The credit did not vanish with the files - it moved with them, and this is the
+     * pointer that says so. A file that dropped the conversion without a pointer
+     * reads as a credit someone quietly deleted. */
+    const credits = flat(readFileSync(join(TILES_DIR, "CREDITS.md"), "utf8"));
+    expect(credits).toContain("neo-angband-mod-linoleum");
+    expect(credits).toContain("a separate use of the same art");
+    expect(credits).toContain("the author's permission covers both forms");
   });
 });
 
@@ -416,6 +425,28 @@ describe("bundled mods", () => {
       unknown
     >;
 
+  /**
+   * How many bundled manifests declare tilePacks. **Zero today**, and saying so out
+   * loud is the point: neo-linoleum was the only one, and its departure turned every
+   * `for (const id of readdirSync(MODS_DIR))` loop below into a loop over nothing.
+   * They still pass. They prove nothing about the mod that used to be here.
+   *
+   * They are kept because they are the rules ANY future bundled tiles mod must obey,
+   * and the assertion below is what stops that from being a silent claim: if this
+   * ever stops being 0, the loops are live again and this line is the one that says
+   * they were not. What the equivalent rules for the INSTALLED mod are checked
+   * against instead is the catalogue - see the mod-registry tests - and its manifest
+   * is verified in its own repository, because reaching into a sibling checkout is
+   * how the last three linoleum path breakages went unnoticed.
+   */
+  const bundledTilesModCount = readdirSync(MODS_DIR).filter((id) =>
+    Array.isArray(manifestOf(id).tilePacks),
+  ).length;
+
+  it("has no bundled tiles mod, so the per-manifest rules below guard nothing yet", () => {
+    expect(bundledTilesModCount).toBe(0);
+  });
+
   it("never re-skins a row upstream's own catalog assigns", () => {
     /* This began as a licence guard - "nothing WE ship may declare Shockbolt" -
      * while the art was withheld. That reason is gone: the art ships with the
@@ -496,23 +527,22 @@ describe("bundled mods", () => {
      * The generated PNGs are gitignored, so links 2 and 3 are checked against the
      * filesystem only when a build has actually run here (see below); link 1 needs
      * no artefacts and is the one that catches a typo'd path in the manifest. */
-    const declared = manifestOf("neo-linoleum").tilePacks as { path: string }[];
-    expect(declared.length).toBeGreaterThan(0);
+    /* The pack keys the CONVERTER produces. Held against those rather than against a
+     * manifest, because there is no longer a manifest here to hold them against - the
+     * mod's own repository verifies that its manifest declares these, and its packer
+     * refuses to build if a declared pack has no converted directory. The link this
+     * side still owns is that the converter's key is what the resolver composes. */
+    const keys = ALL_PACKS.map((p) => p.key);
+    expect(keys).toEqual([
+      "original-tiles",
+      "adam-bolt",
+      "gervais",
+      "nomad",
+      "shockbolt-dark",
+      "shockbolt-light",
+    ]);
 
-    const keys = new Set(ALL_PACKS.map((p) => p.key));
-    for (const { path } of declared) {
-      expect(keys, `manifest declares '${path}', not a converter pack key`).toContain(
-        path,
-      );
-    }
-
-    const gen = readFileSync(
-      join(MODS_DIR, "..", "scripts", "gen-linoleum-demo.mjs"),
-      "utf8",
-    );
-    expect(gen).toMatch(/join\(webRoot, "public", "mods", "neo-linoleum"\)/);
-
-    for (const { path } of declared) {
+    for (const path of keys) {
       const resolve = tilePackResolver({
         source: { kind: "bundle", base: BUNDLED_MODS_BASE },
         modId: "neo-linoleum",
@@ -520,16 +550,36 @@ describe("bundled mods", () => {
       });
       const url = await resolve?.("manifest.txt");
       expect(url).toBe(`mods/neo-linoleum/${path}/manifest.txt`);
-      /* When this checkout HAS built the pack, the resolved URL must name a file
-       * that exists - the strongest form of the check, and the one that would have
-       * caught a resolver/generator disagreement directly. Skipped rather than
-       * failed on a clean checkout, where no pack is built and there is nothing to
-       * disagree about. */
-      const onDisk = join(MODS_DIR, "..", "public", url!);
-      if (existsSync(dirname(onDisk))) {
-        expect(existsSync(onDisk), `${path}: built but ${url} is not there`).toBe(true);
-      }
     }
+  });
+
+  it("offers neo-linoleum for download, since it is no longer in the bundle", () => {
+    /* The half of the chain that replaced the generator: the game reaches these packs
+     * by installing them, so the catalogue entry IS the wiring, and a broken one is a
+     * Graphics screen with no Linoleum rows and nothing to say why.
+     *
+     * usableRecommendedMods is the real validator (digest shape, path safety,
+     * duplicate ids), so this asserts through it rather than eyeballing the literal. */
+    const { mods, problems } = usableRecommendedMods();
+    expect(problems).toEqual([]);
+    const entry = mods.find((m) => m.id === "neo-linoleum");
+    expect(entry, "neo-linoleum is not in RECOMMENDED_MODS").toBeDefined();
+    expect(entry?.payload.kind).toBe("archive");
+
+    /* One archive per converter pack key, plus the mod's own root files. Named from
+     * ALL_PACKS so adding a pack to the converter and forgetting to ship it fails
+     * here rather than as a silently ASCII row. */
+    const paths =
+      entry?.payload.kind === "archive"
+        ? entry.payload.archives.map((a) => a.path)
+        : [];
+    expect(paths).toContain("dist/neo-linoleum-mod.zip");
+    for (const key of ALL_PACKS.map((p) => p.key)) {
+      expect(paths, `no archive ships the ${key} pack`).toContain(
+        `dist/neo-linoleum-${key}.zip`,
+      );
+    }
+    expect(paths.length).toBe(ALL_PACKS.length + 1);
   });
 
   it("no longer claims the game's own tile sets as a mod's contribution", () => {

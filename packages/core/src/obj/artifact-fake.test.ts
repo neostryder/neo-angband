@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { Rng } from "../rng";
-import { ObjRegistry } from "./bind";
-import type { Artifact, ObjPackJson } from "./types";
-import { FAKE_ARTIFACT_SEED, makeFakeArtifact } from "./artifact-fake";
+import { bindConstants } from "../constants.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "./bind.js";
+import type { Artifact, ObjPackJson } from "./types.js";
+import { FAKE_ARTIFACT_SEED, makeFakeArtifact } from "./artifact-fake.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

@@ -21,8 +21,8 @@
  *   bell).
  */
 
-import { TMD } from "../generated";
-import type { Rng } from "../rng";
+import { TMD } from "../generated/index.js";
+import type { Rng } from "../rng.js";
 
 /** The player state take_hit reads and mutates (a narrow structural view). */
 export interface TakeHitTarget {

@@ -16,28 +16,28 @@
  * knowledge #13).
  */
 
-import type { Loc } from "../loc";
-import { DDGRID, locEq, locSum } from "../loc";
-import type { Rng } from "../rng";
-import { SKILL } from "../player/types";
-import { OF, TMD, TRF } from "../generated";
-import { checkHit } from "../combat/mon-melee";
-import { equipLearnFlag } from "../obj/knowledge";
-import { featIsTrapHolding } from "../world/chunk";
-import type { TrapKind } from "../world/trap";
-import { lookupTrap } from "../world/trap";
-import { squareIsSeen } from "../world/view";
-import { sourceTrap } from "../effects/interpreter";
-import type { GameState, PlayerCommand } from "./context";
-import { movePlayer, queueCommandRepeat } from "./context";
-import { floorPile } from "./floor";
-import { buildObjectEffectChain } from "./obj-cmd";
-import type { ObjCmdDeps } from "./obj-cmd";
-import { buildEffectContext } from "./effect-env";
-import { squareIsKnown } from "./known";
-import { attachGameEnv } from "./effect-game-env";
-import type { ActionRegistry } from "./player-turn";
-import { gearGet } from "./gear";
+import type { Loc } from "../loc.js";
+import { DDGRID, locEq, locSum } from "../loc.js";
+import type { Rng } from "../rng.js";
+import { SKILL } from "../player/types.js";
+import { OF, TMD, TRF } from "../generated/index.js";
+import { checkHit } from "../combat/mon-melee.js";
+import { equipLearnFlag } from "../obj/knowledge.js";
+import { featIsTrapHolding } from "../world/chunk.js";
+import type { TrapKind } from "../world/trap.js";
+import { lookupTrap } from "../world/trap.js";
+import { squareIsSeen } from "../world/view.js";
+import { sourceTrap } from "../effects/interpreter.js";
+import type { GameState, PlayerCommand } from "./context.js";
+import { movePlayer, queueCommandRepeat } from "./context.js";
+import { floorPile } from "./floor.js";
+import { buildObjectEffectChain } from "./obj-cmd.js";
+import type { ObjCmdDeps } from "./obj-cmd.js";
+import { buildEffectContext } from "./effect-env.js";
+import { squareIsKnown } from "./known.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import type { ActionRegistry } from "./player-turn.js";
+import { gearGet } from "./gear.js";
 
 /** struct trap: one trap instance on a grid. */
 export interface Trap {
@@ -49,7 +49,7 @@ export interface Trap {
   /** Turns this trap is disabled for (0 = armed). */
   timeout: number;
   /** Instance flags (a copy of the kind's; VISIBLE toggles here). */
-  flags: import("../bitflag").FlagSet;
+  flags: import("../bitflag.js").FlagSet;
 }
 
 /** Hooks for unported subsystems; all optional. */
@@ -561,7 +561,7 @@ export function hitTrap(
 function runTrapEffect(
   state: GameState,
   trap: Trap,
-  records: readonly import("../obj/types").EffectRecordJson[],
+  records: readonly import("../obj/types.js").EffectRecordJson[],
   deps: TrapDeps,
 ): void {
   if (!deps.effects || records.length === 0) return;

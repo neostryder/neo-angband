@@ -4,10 +4,10 @@ import {
   findArtifact,
   liveObjectIsKnownArtifact,
   type ArtifactKnownEnv,
-} from "./artifact-known";
-import { OBJ_NOTICE } from "./knowledge";
-import type { GameObject } from "./object";
-import type { Artifact } from "./types";
+} from "./artifact-known.js";
+import { OBJ_NOTICE } from "./knowledge.js";
+import type { GameObject } from "./object.js";
+import type { Artifact } from "./types.js";
 
 const artOf = (aidx: number, name = `Artifact ${aidx}`): Artifact =>
   ({ aidx, name, tval: 1, sval: 1 }) as unknown as Artifact;

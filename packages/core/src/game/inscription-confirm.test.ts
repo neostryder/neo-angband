@@ -12,10 +12,10 @@ import {
   itemAllowPrompt,
   keyConfirmCount,
   unKtrlCap,
-} from "./inscription-confirm";
-import type { GameObject } from "../obj/object";
-import type { Gear } from "./gear";
-import type { Player } from "../player/player";
+} from "./inscription-confirm.js";
+import type { GameObject } from "../obj/object.js";
+import type { Gear } from "./gear.js";
+import type { Player } from "../player/player.js";
 
 /* check_for_inscrip reads only obj.note (game/pickup.ts:104), and neither
  * function under test touches anything else, so a note-only stand-in is the

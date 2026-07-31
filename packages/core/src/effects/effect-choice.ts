@@ -1,6 +1,6 @@
-import type { Effect } from "./effect";
-import { effectMenuName, effectNext } from "./effect-info";
-import type { EffectMenuNameDeps } from "./effect-info";
+import type { Effect } from "./effect.js";
+import { effectMenuName, effectNext } from "./effect-info.js";
+import type { EffectMenuNameDeps } from "./effect-info.js";
 
 /** Renderer-neutral EF_SELECT menu rows (ui-effect.c L34-180). */
 export interface EffectChoiceRow {

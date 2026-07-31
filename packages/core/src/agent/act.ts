@@ -16,11 +16,11 @@
  * trusted in-process host) every verb is granted.
  */
 
-import type { GameState } from "../game/context";
-import { targetSetLocation, targetSetMonster } from "../game/target";
-import { loc } from "../loc";
-import { AgentCapabilityError } from "./types";
-import type { AgentActions, AgentCapabilities, AgentCommand } from "./types";
+import type { GameState } from "../game/context.js";
+import { targetSetLocation, targetSetMonster } from "../game/target.js";
+import { loc } from "../loc.js";
+import { AgentCapabilityError } from "./types.js";
+import type { AgentActions, AgentCapabilities, AgentCommand } from "./types.js";
 
 /**
  * Wrap every act verb so it throws AgentCapabilityError unless the caller was

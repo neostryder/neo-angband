@@ -31,7 +31,7 @@ import {
   TERRAIN_ENTRIES,
   TV,
   TVAL_ENTRIES,
-} from "./index";
+} from "./index.js";
 
 describe("object-flags", () => {
   it("has 39 entries and OF_PROT_FEAR", () => {

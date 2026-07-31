@@ -10,9 +10,9 @@
  * deterministic (no RNG draw), so recharging never perturbs the seeded stream.
  */
 
-import type { Rng } from "../rng";
-import type { GameObject } from "./object";
-import { tvalCanHaveTimeout } from "./object";
+import type { Rng } from "../rng.js";
+import type { GameObject } from "./object.js";
+import { tvalCanHaveTimeout } from "./object.js";
 
 export { tvalCanHaveTimeout };
 

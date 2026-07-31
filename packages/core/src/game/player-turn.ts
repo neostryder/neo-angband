@@ -19,30 +19,30 @@
  * upstream do-while around cmdq_pop.
  */
 
-import { FEAT, MON_MSG, MON_TMD, MSG, OF, PF, STAT, TF, TMD, TRF } from "../generated";
-import { DDGRID, DDGRID_DDD, locSum } from "../loc";
-import type { Loc } from "../loc";
-import { pyAttack } from "../combat/melee";
-import type { MeleeAttack, MeleeEffectHooks } from "../combat/melee";
-import { learnBrandSlayFromMelee } from "../combat/brand-slay";
-import type { TempBrandSlay } from "../combat/brand-slay";
-import { getLore } from "../mon/lore";
-import type { Monster } from "../mon/monster";
-import { MDESC, monsterDesc } from "../mon/desc";
+import { FEAT, MON_MSG, MON_TMD, MSG, OF, PF, STAT, TF, TMD, TRF } from "../generated/index.js";
+import { DDGRID, DDGRID_DDD, locSum } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { pyAttack } from "../combat/melee.js";
+import type { MeleeAttack, MeleeEffectHooks } from "../combat/melee.js";
+import { learnBrandSlayFromMelee } from "../combat/brand-slay.js";
+import type { TempBrandSlay } from "../combat/brand-slay.js";
+import { getLore } from "../mon/lore.js";
+import type { Monster } from "../mon/monster.js";
+import { MDESC, monsterDesc } from "../mon/desc.js";
 import {
   monsterIsCamouflaged,
   monsterIsObvious,
   monsterIsVisible,
-} from "../mon/predicate";
-import { monsterWake } from "../mon/take-hit";
-import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed";
-import { equipLearnFlag, equipLearnOnMeleeAttack } from "../obj/knowledge";
-import { playerClearTimed, playerTimedGradeEq } from "../player/timed";
-import type { GameState, PlayerCommand } from "./context";
-import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context";
-import { gearGet } from "./gear";
-import { floorPile } from "./floor";
-import { isTrappedChest } from "../obj/chest";
+} from "../mon/predicate.js";
+import { monsterWake } from "../mon/take-hit.js";
+import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed.js";
+import { equipLearnFlag, equipLearnOnMeleeAttack } from "../obj/knowledge.js";
+import { playerClearTimed, playerTimedGradeEq } from "../player/timed.js";
+import type { GameState, PlayerCommand } from "./context.js";
+import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context.js";
+import { gearGet } from "./gear.js";
+import { floorPile } from "./floor.js";
+import { isTrappedChest } from "../obj/chest.js";
 import {
   knownIsClosedDoor,
   knownIsEnterable,
@@ -51,14 +51,14 @@ import {
   squareForget,
   squareIsKnown,
   squareMemorize,
-} from "./known";
-import { squareIsSeen } from "../world/view";
-import { playerConfuseDir } from "./obj-cmd";
-import { disturb } from "./player-path";
-import { playerAdjustManaPrecise } from "./loop";
-import { formatMonsterMessage } from "./mon-message";
-import { squareIsWebbed, squareRemoveAllTraps, squareTrap } from "./trap";
-import { PY_EXERT, playerCheckTerrainDamage, playerOverExert } from "./world";
+} from "./known.js";
+import { squareIsSeen } from "../world/view.js";
+import { playerConfuseDir } from "./obj-cmd.js";
+import { disturb } from "./player-path.js";
+import { playerAdjustManaPrecise } from "./loop.js";
+import { formatMonsterMessage } from "./mon-message.js";
+import { squareIsWebbed, squareRemoveAllTraps, squareTrap } from "./trap.js";
+import { PY_EXERT, playerCheckTerrainDamage, playerOverExert } from "./world.js";
 
 /**
  * A player action: mutate the state for `cmd` and return the energy spent

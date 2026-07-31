@@ -28,12 +28,12 @@
  * Determinism: parsing and lookup draw no game RNG.
  */
 
-import { projNameToIdx } from "../effects/effect";
-import type { PrefExprVars } from "./pref-expr";
-import type { ObjRegistry } from "../obj/bind";
-import type { ObjectKind, Flavor } from "../obj/types";
-import type { FeatureRegistry } from "../world/feature";
-import type { TrapKind } from "../world/trap";
+import { projNameToIdx } from "../effects/effect.js";
+import type { PrefExprVars } from "./pref-expr.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import type { ObjectKind, Flavor } from "../obj/types.js";
+import type { FeatureRegistry } from "../world/feature.js";
+import type { TrapKind } from "../world/trap.js";
 
 /**
  * grid_light_level (cave.h L137-143): the lighting variants a feat/trap tile

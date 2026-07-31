@@ -9,7 +9,7 @@
  * because closures carry state.
  */
 
-import type { Loc } from "./loc";
+import type { Loc } from "./loc.js";
 
 /** EVENT_MESSAGE / EVENT_INITSTATUS payloads. */
 export interface MessageEventData {

@@ -16,8 +16,8 @@
  * the flat list, exactly as upstream partitions the same membership.
  */
 
-import { RF } from "../generated";
-import type { MonsterRace } from "./types";
+import { RF } from "../generated/index.js";
+import type { MonsterRace } from "./types.js";
 
 /** struct ui_monster_category (one parsed ui_knowledge.txt category). */
 export interface MonsterCategory {

@@ -28,8 +28,8 @@
  * pack data.
  */
 
-import { FlagSet } from "../bitflag";
-import { Dice } from "../dice";
+import { FlagSet } from "../bitflag.js";
+import { Dice } from "../dice.js";
 import {
   ELEMENT_ENTRIES,
   KF,
@@ -39,8 +39,8 @@ import {
   STAT_ENTRIES,
   TV,
   TVAL_ENTRIES,
-} from "../generated";
-import type { RandomValue } from "../rng";
+} from "../generated/index.js";
+import type { RandomValue } from "../rng.js";
 import type {
   Activation,
   ActivationRecordJson,
@@ -64,7 +64,7 @@ import type {
   ObjectPropertyRecordJson,
   ObjPackJson,
   Slay,
-} from "./types";
+} from "./types.js";
 import {
   EL_INFO_HATES,
   EL_INFO_IGNORE,
@@ -82,7 +82,7 @@ import {
   SV_UNKNOWN,
   TV_MAX,
   zeroRv,
-} from "./types";
+} from "./types.js";
 
 /* ------------------------------------------------------------------ */
 /* Name tables (the C string arrays built from the list headers)        */

@@ -50,17 +50,20 @@ export const DEFAULT_ENABLED_MODS: readonly string[] = [];
  * list is deliberately decoupled from DEFAULT_ENABLED_MODS: bundled mods are
  * trusted-when-enabled but are NOT on by default (parity). The demo mods
  * (demo-*) are not first-party and always require explicit consent.
+ *
+ * BUNDLED, not first-party: neo-linoleum is equally first-party and is NOT here,
+ * because it is no longer in the bundle. Its six converted tile packs are 9161
+ * files and 42 MiB - art that belongs to the mod rather than to the game - so it
+ * lives in neo-angband-mod-linoleum and arrives through the installer like any
+ * other mod. Nothing is lost by its absence from this list: implicit consent is
+ * about CAPABILITIES, and a tiles-only mod declares none.
  */
-export const FIRST_PARTY_MOD_IDS: readonly string[] = [
-  "bug-fixes",
-  "qol",
-  "neo-linoleum",
-];
+export const FIRST_PARTY_MOD_IDS: readonly string[] = ["bug-fixes", "qol"];
 
 /**
  * Whether a bundled mod id is part of the SHIPPED set, i.e. offered to a player
  * in a release build. The shipped set is exactly FIRST_PARTY_MOD_IDS: the
- * minimal QoL mod, the bug-fixes patch set, and neo-linoleum.
+ * minimal QoL mod and the bug-fixes patch set.
  *
  * The `demo-*` mods under packages/web/mods/ are not shipped - they are the
  * mod-framework proofs (a content pack that patches a core monster, a sandboxed

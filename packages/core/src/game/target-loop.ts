@@ -42,38 +42,38 @@
  *   the approximation for this exact, UI-only, deferred branch.
  */
 
-import { RF, TMD } from "../generated";
-import type { Loc } from "../loc";
-import { DDX, DDY, distance, loc } from "../loc";
-import type { Monster } from "../mon/monster";
+import { RF, TMD } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import { DDX, DDY, distance, loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
 import {
   monsterIsCamouflaged,
   monsterIsMimicking,
   monsterIsObvious,
   monsterIsVisible,
-} from "../mon/predicate";
+} from "../mon/predicate.js";
 import {
   COLOUR_BLUE,
   COLOUR_L_DARK,
   COLOUR_L_RED,
   COLOUR_WHITE,
   COLOUR_YELLOW,
-} from "../color";
-import { describeObject } from "./describe";
-import { ODESC } from "../obj/desc";
-import { floorPile } from "./floor";
+} from "../color.js";
+import { describeObject } from "./describe.js";
+import { ODESC } from "../obj/desc.js";
+import { floorPile } from "./floor.js";
 import {
   knownObject,
   squareApparentLookInPreposition,
   squareApparentLookPrefix,
   squareApparentName,
   squareIsKnown,
-} from "./known";
-import { squareIsVisibleTrap, squareTrap } from "./trap";
-import { squareIsSeen } from "../world/view";
-import type { GameState } from "./context";
-import { squareMonster } from "./context";
-import { pathNearestKnown } from "./player-path";
+} from "./known.js";
+import { squareIsVisibleTrap, squareTrap } from "./trap.js";
+import { squareIsSeen } from "../world/view.js";
+import type { GameState } from "./context.js";
+import { squareMonster } from "./context.js";
+import { pathNearestKnown } from "./player-path.js";
 import {
   coordsDesc,
   lookMonDesc,
@@ -81,7 +81,7 @@ import {
   targetPick,
   targetSetLocation,
   targetSetMonster,
-} from "./target";
+} from "./target.js";
 
 /** is_a_vowel (z-util.c). */
 function isAVowel(c: string): boolean {

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { EF } from "../generated";
-import { Rng } from "../rng";
-import { EffectBuilder, effectNew } from "./effect";
+import { EF } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { EffectBuilder, effectNew } from "./effect.js";
 import type {
   EffectContext,
   EffectHandlerContext,
   StubCall,
-} from "./interpreter";
+} from "./interpreter.js";
 import {
   DIR_TARGET,
   EffectRegistry,
@@ -15,8 +15,8 @@ import {
   sourceMonster,
   sourceNone,
   sourcePlayer,
-} from "./interpreter";
-import { registerCoreHandlers } from "./handlers";
+} from "./interpreter.js";
+import { registerCoreHandlers } from "./handlers.js";
 
 function makeEnv(seed = 42): EffectContext {
   return { rng: new Rng(seed) };

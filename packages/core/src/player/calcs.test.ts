@@ -13,9 +13,9 @@ import {
   player_exp,
   statUseToIndex,
   bonusChangeMessages,
-} from "./calcs";
-import type { PlayerState } from "./calcs";
-import { STAT_RANGE } from "./types";
+} from "./calcs.js";
+import type { PlayerState } from "./calcs.js";
+import { STAT_RANGE } from "./types.js";
 
 describe("adj_* tables (player-calcs.c verbatim)", () => {
   it("all tables have exactly STAT_RANGE entries", () => {

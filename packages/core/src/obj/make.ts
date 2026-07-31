@@ -40,14 +40,14 @@
  *   supplied and a no-op (the prior behaviour) when it is absent.
  */
 
-import type { Constants } from "../constants";
-import { KF, OBJ_MOD, OF, TV } from "../generated";
-import { INT_MAX } from "../guard";
-import type { Aspect, Rng } from "../rng";
-import type { ObjRegistry } from "./bind";
-import type { CurseTimedFoil, GameObject } from "./object";
-import { pickChestTraps } from "./chest";
-import { objectValueReal } from "./value";
+import type { Constants } from "../constants.js";
+import { KF, OBJ_MOD, OF, TV } from "../generated/index.js";
+import { INT_MAX } from "../guard.js";
+import type { Aspect, Rng } from "../rng.js";
+import type { ObjRegistry } from "./bind.js";
+import type { CurseTimedFoil, GameObject } from "./object.js";
+import { pickChestTraps } from "./chest.js";
+import { objectValueReal } from "./value.js";
 import {
   appendObjectCurse,
   copyBrands,
@@ -68,10 +68,10 @@ import {
   tvalIsRing,
   tvalIsWeapon,
   tvalIsWearable,
-} from "./object";
-import type { Artifact, ElementInfo, ObjectKind, ObjectProperty } from "./types";
-import type { EgoItem } from "./types";
-import { FlagSet } from "../bitflag";
+} from "./object.js";
+import type { Artifact, ElementInfo, ObjectKind, ObjectProperty } from "./types.js";
+import type { EgoItem } from "./types.js";
+import { FlagSet } from "../bitflag.js";
 import {
   EL_INFO_IGNORE,
   EL_INFO_RANDOM,
@@ -85,8 +85,8 @@ import {
   OF_SIZE,
   OFT,
   TV_MAX,
-} from "./types";
-import type { RandomValue } from "../rng";
+} from "./types.js";
+import type { RandomValue } from "../rng.js";
 
 /** randcalc(v, 0, MINIMISE) without an Rng (consumes no randomness). */
 function randcalcMin(v: RandomValue): number {
@@ -1116,7 +1116,7 @@ export interface MakeDeps {
    * offer its extension point without a GameState. Only `artifactCommit` is
    * consulted here. Absent => creation is faithful 4.2.6.
    */
-  hooks?: import("../mod/hooks").ModHooks | undefined;
+  hooks?: import("../mod/hooks.js").ModHooks | undefined;
   /**
    * The player-timed failure tables (timed effect NAME -> fail directives),
    * for append_object_curse's TIMED_INC foil rejection (obj-curse.c L159-188).

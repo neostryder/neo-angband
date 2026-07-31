@@ -7,32 +7,32 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { EF, TV } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { ENCH_TOAC, ENCH_TOHIT } from "../effects/effect";
-import { EffectBuilder } from "../effects/effect";
-import { EffectRegistry } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import { FlavorKnowledge } from "../obj/knowledge";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { basicPlayerActor } from "./project-cast";
-import type { CastContext } from "./project-cast";
-import { registerItemHandlers, itemTargetRequest, requestForEffect } from "./effect-item";
-import type { ItemEffectEnv } from "./effect-item";
-import { useAux, USE } from "./obj-cmd";
-import type { ObjCmdDeps } from "./obj-cmd";
-import { resolveTargetItem, resolveTargetCurse } from "../session/game";
-import { gearGet, invenCarry } from "./gear";
-import { makeState, plReg } from "./harness";
-import type { GameState } from "./context";
+import { bindConstants } from "../constants.js";
+import { EF, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { ENCH_TOAC, ENCH_TOHIT } from "../effects/effect.js";
+import { EffectBuilder } from "../effects/effect.js";
+import { EffectRegistry } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import { FlavorKnowledge } from "../obj/knowledge.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { basicPlayerActor } from "./project-cast.js";
+import type { CastContext } from "./project-cast.js";
+import { registerItemHandlers, itemTargetRequest, requestForEffect } from "./effect-item.js";
+import type { ItemEffectEnv } from "./effect-item.js";
+import { useAux, USE } from "./obj-cmd.js";
+import type { ObjCmdDeps } from "./obj-cmd.js";
+import { resolveTargetItem, resolveTargetCurse } from "../session/game.js";
+import { gearGet, invenCarry } from "./gear.js";
+import { makeState, plReg } from "./harness.js";
+import type { GameState } from "./context.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

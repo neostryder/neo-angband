@@ -59,14 +59,23 @@ defensive change: target rules are now written in source order, because the
 format is last-rule-wins and sorting discards a pack's own precedence (that one
 changes no tile in the bundled packs; `convert.test.ts` pins it).
 
-**Demonstration pack.** The mod declares one pack, `Original Tiles (Linoleum)`:
-the game's own 8x8 art, converted at build time by
-`packages/web/scripts/gen-linoleum-demo.mjs` into
-`packages/web/public/mods/linoleum/original-tiles/`. It is generated rather than
-committed (~1500 PNGs derived from art already in the tree) and gitignored. With
-the mod enabled the Graphics screen offers it beside core's own `Original Tiles`,
-which is the point: the same tiles, the other engine, no visible difference.
-Packs you convert yourself are yours and none are redistributed here.
+**Where the packs are.** Not here. The mod declares six, one per tile set Angband
+ships, and it ships all six pre-converted in its own repository -
+[neo-angband-mod-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum)
+- as seven committed archives (9161 files and 42 MiB of art, 24.6 MiB zipped). The
+installer verifies each against a digest built into this game and unpacks them into
+the mod's own folder, which is where `tilePackResolver` looks.
+
+This repository holds the *converter* (`packages/linoleum`, a port of the upstream
+fork's `build-linoleum-packs.ps1`) and the *reader*
+(`packages/web/src/linoleum-pack.ts`), and no pack bytes at all. It used to
+generate them into `packages/web/public/mods/` on every `pnpm dev` and serve them
+from the game's own origin, which put a mod's art inside the game's build;
+`packages/web/src/tile-catalog.test.ts` now asserts the absence.
+
+With the mod installed and enabled, the Graphics screen offers its six rows beside
+core's own six, which is the point: the same tiles, the other engine, no visible
+difference. Packs you convert yourself are yours.
 
 Known limits, shared by BOTH engines so they agree: conditional (`?:` /
 `:when:`) rules are not evaluated; `family` effect metadata (glow/tint/pulse) is

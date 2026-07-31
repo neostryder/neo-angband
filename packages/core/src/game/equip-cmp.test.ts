@@ -9,25 +9,25 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { TV } from "../generated";
-import { Rng } from "../rng";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import { makeRuneEnv } from "../obj/knowledge";
-import { makeState } from "./harness";
-import type { GameState } from "./context";
-import { FEAT } from "../generated";
-import type { Store } from "../store/store";
+import { bindConstants } from "../constants.js";
+import { TV } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import { makeRuneEnv } from "../obj/knowledge.js";
+import { makeState } from "./harness.js";
+import type { GameState } from "./context.js";
+import { FEAT } from "../generated/index.js";
+import type { Store } from "../store/store.js";
 import {
   cycleStoreInclusion,
   equipCmpFilterKeeps,
   equipCmpSummary,
   matchEquipCmpFilter,
-} from "./equip-cmp";
-import type { UiEntryPackRecords } from "./ui-entry";
+} from "./equip-cmp.js";
+import type { UiEntryPackRecords } from "./ui-entry.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

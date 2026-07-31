@@ -12,19 +12,19 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-import { SQUARE } from "../generated";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import { Rng } from "../rng";
-import { Chunk } from "../world/chunk";
-import { FeatureRegistry } from "../world/feature";
-import type { TerrainRecordJson } from "../world/feature";
+import { SQUARE } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { Chunk } from "../world/chunk.js";
+import { FeatureRegistry } from "../world/feature.js";
+import type { TerrainRecordJson } from "../world/feature.js";
 import {
   CaveFinder,
   caveFind,
   caveFindInRange,
   findNearbyGrid,
-} from "./util";
+} from "./util.js";
 
 const terrain = JSON.parse(
   readFileSync(

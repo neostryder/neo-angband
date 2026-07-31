@@ -21,7 +21,7 @@
  *   player-agnostic; the game loop wires it once the player exists.
  */
 
-import type { Loc } from "./loc";
+import type { Loc } from "./loc.js";
 
 /** cmd_code, kebab-cased. "null" is the CMD_NULL no-command sentinel. */
 export type CommandCode =

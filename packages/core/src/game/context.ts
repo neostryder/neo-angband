@@ -15,39 +15,39 @@
  * (called after the player moves, as game code calls update_view).
  */
 
-import { MON_TMD, RF, TMD } from "../generated";
-import type { GameEvents } from "../events";
-import type { MessageLog, MessageType } from "../msg";
-import type { Loc } from "../loc";
-import { distance, locEq } from "../loc";
-import { los } from "../world/view";
-import type { Connector } from "../gen/util";
-import type { Rng } from "../rng";
-import type { Chunk } from "../world/chunk";
-import type { Player } from "../player/player";
-import type { Monster } from "../mon/monster";
-import type { MeleeAttack, PlayerCombatState } from "../combat/melee";
-import type { DefenderState } from "../combat/mon-melee";
-import type { GameObject } from "../obj/object";
-import type { Effect } from "../effects/effect";
-import type { Brand, Slay } from "../obj/types";
-import type { FlavorAwareDeps, FlavorKnowledge } from "../obj/knowledge";
-import type { Gear } from "./gear";
-import type { Store } from "../store/store";
-import { NORMAL_ENERGY } from "./energy";
+import { MON_TMD, RF, TMD } from "../generated/index.js";
+import type { GameEvents } from "../events.js";
+import type { MessageLog, MessageType } from "../msg.js";
+import type { Loc } from "../loc.js";
+import { distance, locEq } from "../loc.js";
+import { los } from "../world/view.js";
+import type { Connector } from "../gen/util.js";
+import type { Rng } from "../rng.js";
+import type { Chunk } from "../world/chunk.js";
+import type { Player } from "../player/player.js";
+import type { Monster } from "../mon/monster.js";
+import type { MeleeAttack, PlayerCombatState } from "../combat/melee.js";
+import type { DefenderState } from "../combat/mon-melee.js";
+import type { GameObject } from "../obj/object.js";
+import type { Effect } from "../effects/effect.js";
+import type { Brand, Slay } from "../obj/types.js";
+import type { FlavorAwareDeps, FlavorKnowledge } from "../obj/knowledge.js";
+import type { Gear } from "./gear.js";
+import type { Store } from "../store/store.js";
+import { NORMAL_ENERGY } from "./energy.js";
 /* Value import is safe: mon-group's imports from this module are type-only,
  * so there is no runtime cycle. */
-import { monsterRemoveFromGroups } from "./mon-group";
+import { monsterRemoveFromGroups } from "./mon-group.js";
 import {
   becomeAware,
   moveMimickedObject,
   updateMon,
-} from "./known";
+} from "./known.js";
 import {
   monsterIsCamouflaged,
   monsterIsInView,
   monsterIsMimicking,
-} from "../mon/predicate";
+} from "../mon/predicate.js";
 
 /**
  * z_info fields the turn loop and monster AI read (defaults are the shipped
@@ -181,8 +181,8 @@ export interface StoredLevel {
   monsters: Array<Monster | null>;
   groups: Array<MonsterGroup | null>;
   floor: Map<number, GameObject[]>;
-  traps: Map<number, import("./trap").Trap[]>;
-  known: import("./known").KnownMap;
+  traps: Map<number, import("./trap.js").Trap[]>;
+  known: import("./known.js").KnownMap;
   decoy: Loc | null;
   turn: number;
   /**
@@ -224,25 +224,25 @@ export interface GameState {
    * first. Managed by game/trap.ts (place_trap / hit_trap / locks).
    * The type import is erased, so no runtime cycle with game/trap.
    */
-  traps: Map<number, import("./trap").Trap[]>;
+  traps: Map<number, import("./trap.js").Trap[]>;
   /**
    * The player's map knowledge (the upstream player->cave twin, reduced):
    * remembered terrain and floor objects, possibly stale. Managed by
    * game/known.ts (square_memorize / note_spot / detection).
    */
-  known: import("./known").KnownMap;
+  known: import("./known.js").KnownMap;
   /**
    * The player's target (target.c's file-statics). Managed by
    * game/target.ts (target_set_monster / target_okay / fix / release).
    */
-  target: import("./target").TargetState;
+  target: import("./target.js").TargetState;
   /**
    * The player's ignore settings (obj-ignore.c's file-statics: quality tiers,
    * ego ignore, per-kind flags). Defaults to nothing ignored. Persists in the
    * save. Read through state.isIgnored (built by the session with flavor
    * awareness), so worldless code stays decoupled from flavor knowledge.
    */
-  ignore: import("../obj/ignore").IgnoreSettings;
+  ignore: import("../obj/ignore.js").IgnoreSettings;
   /**
    * The per-kind autoinscription registry (obj-ignore.c note_aware/note_unaware,
    * obj/knowledge.ts AutoinscriptionRegistry). Notes registered through the
@@ -251,7 +251,7 @@ export interface GameState {
    * Optional so the worldless harness (game/harness.ts) stays total: absent,
    * autoinscribe is a no-op.
    */
-  autoinscribe?: import("../obj/knowledge").AutoinscriptionRegistry;
+  autoinscribe?: import("../obj/knowledge.js").AutoinscriptionRegistry;
   /**
    * The per-RUNE autoinscription registry (rune_list[i].note, obj-knowledge.c
    * rune_note / rune_set_note). Separate from `autoinscribe`: upstream
@@ -259,7 +259,7 @@ export interface GameState {
    * obj-ignore.c:259). Persists in the save (wr_ignore, save.c:586-605).
    * Optional so the worldless harness stays total.
    */
-  runeNotes?: import("../obj/knowledge").RuneNoteRegistry;
+  runeNotes?: import("../obj/knowledge.js").RuneNoteRegistry;
   /**
    * apply_autoinscription (obj-ignore.c:242) as a seam, for the call sites that
    * have no ObjCmdDeps to hand: inven_carry (obj-gear.c:868, every pickup) and
@@ -279,7 +279,7 @@ export interface GameState {
    * store.c:208-231) can resolve which spellbooks are town (non-dungeon) books.
    * Absent in the worldless harness; the expansion then no-ops.
    */
-  classes?: readonly import("../player/types").PlayerClass[];
+  classes?: readonly import("../player/types.js").PlayerClass[];
   /**
    * ignore_item_ok(obj): whether an object is currently ignored. Installed by
    * the session (wireGame) with the flavor-awareness lookup baked in; absent,
@@ -302,19 +302,19 @@ export interface GameState {
    * knowledge, so presentation code (obj-list.c, #25) stays decoupled from
    * the flavor store the same way isIgnored does; absent, treated as aware.
    */
-  isAware?: (kind: import("../obj/types").ObjectKind) => boolean;
+  isAware?: (kind: import("../obj/types.js").ObjectKind) => boolean;
   /**
    * obj->kind->flavor != NULL: whether flavor_init assigned this kind a
    * flavour. Installed by the session (wireGame) from the per-game
    * FlavorAssignment; absent, presentation falls back to the tval-only test.
    */
-  hasFlavor?: (kind: import("../obj/types").ObjectKind) => boolean;
+  hasFlavor?: (kind: import("../obj/types.js").ObjectKind) => boolean;
   /**
    * obj->kind->flavor->text: the flavour adjective ("Smoky") or scroll title
    * shown for an unaware flavoured object. Installed by wireGame from the
    * FlavorAssignment; absent, no '#' modstr is produced.
    */
-  flavorText?: (kind: import("../obj/types").ObjectKind) => string;
+  flavorText?: (kind: import("../obj/types.js").ObjectKind) => string;
   /**
    * object_kind_attr / object_kind_char (ui-object.c:97-112): the assigned
    * flavour's display glyph (d_char) and colour NAME (d_attr) for a flavoured
@@ -323,8 +323,8 @@ export interface GameState {
    * wireGame from the FlavorAssignment; absent, the base kind glyph is used.
    */
   flavorGlyph?: (
-    kind: import("../obj/types").ObjectKind,
-  ) => import("../obj/flavor").AssignedFlavor | undefined;
+    kind: import("../obj/types.js").ObjectKind,
+  ) => import("../obj/flavor.js").AssignedFlavor | undefined;
   /**
    * The player option store (option.c op_ptr->opt / hitpoint_warn). Built by
    * the session (startGame / loadGame) from OPTION_ENTRIES defaults and the
@@ -333,14 +333,14 @@ export interface GameState {
    * `dep ?? state.options?.get(name) ?? <shipped default>`, so an absent store
    * reproduces the shipped defaults exactly.
    */
-  options?: import("../player/options").OptionState;
+  options?: import("../player/options.js").OptionState;
   /**
    * aup_info[] (obj-make.c): the shared per-artifact created flags. The
    * session owns the single per-game instance and threads it into every
    * MakeDeps so no artifact spawns twice; it is serialized in the save.
    * Optional so the worldless harness (game/harness.ts) stays total.
    */
-  artifacts?: import("../obj/make").ArtifactState;
+  artifacts?: import("../obj/make.js").ArtifactState;
   /**
    * kind->everseen / ego->everseen (object_kind/ego_item; save.c L397/L533):
    * the per-game "ever seen" flags for object kinds and egos, marked the first
@@ -349,7 +349,7 @@ export interface GameState {
    * knowledge browsers; installed by wireGame; serialized in the save. Optional
    * so the worldless harness stays total (absent = nothing ever seen).
    */
-  everseen?: import("../obj/knowledge").EverseenKnowledge;
+  everseen?: import("../obj/knowledge.js").EverseenKnowledge;
   /**
    * The per-game flavor-awareness store (FlavorKnowledge). Installed by wireGame
    * so the game-layer knowledge sweep (game/known.ts updatePlayerObjectKnowledge,
@@ -372,7 +372,7 @@ export interface GameState {
    * in the worldless harness, where update_mon falls back to the bare race
    * infravision and an empty flag set.
    */
-  playerState?: import("../player/calcs").PlayerState;
+  playerState?: import("../player/calcs.js").PlayerState;
   /**
    * player->upkeep->health_who (health_track reduced to the tracked
    * monster; the health-bar redraw rides presentation, #25).
@@ -383,7 +383,7 @@ export interface GameState {
    * lazily by getLore (mon/lore.ts). Persists across levels and in the
    * save.
    */
-  lore: import("../mon/lore").LoreStore;
+  lore: import("../mon/lore.js").LoreStore;
   /** turn (game-world.c): the game-turn counter. */
   turn: number;
   /**
@@ -452,7 +452,7 @@ export interface GameState {
    * tables plus equipment access. Built by the session (wireGame); the
    * harness supplies an inert default so worldless tests stay total.
    */
-  runeEnv: import("../obj/knowledge").RuneEnv;
+  runeEnv: import("../obj/knowledge.js").RuneEnv;
 
   /**
    * player->wizard (player.h): the session wizard-mode flag. Client/runtime
@@ -590,7 +590,7 @@ export interface GameState {
    * RNG order. Installed by wireGame; absent, monster melee falls back to the
    * worldless stub-log intents (the physical HP slice only).
    */
-  monBlowEnv?: (mon: Monster) => import("../combat/mon-melee").MonBlowEnv;
+  monBlowEnv?: (mon: Monster) => import("../combat/mon-melee.js").MonBlowEnv;
   /**
    * do_cmd_mon_command: while TMD_COMMAND runs, player commands drive the
    * commanded monster instead (upstream swaps the command list,
@@ -621,7 +621,7 @@ export interface GameState {
    * L1371-1373). Stored when leaving depth 0 without birth_levels_persist so
    * town_gen can reload the same shops/stairs. Cleared when consumed on re-entry.
    */
-  townChunk?: import("../world/chunk").Chunk | null;
+  townChunk?: import("../world/chunk.js").Chunk | null;
   /**
    * The walk-into-a-wall seam: consulted by walkAction (game/player-turn.ts)
    * when a walk is blocked, BEFORE the faithful no-energy bump.
@@ -666,7 +666,7 @@ export interface GameState {
    * hook alive across a later installPickup re-registration (which only
    * replaces the message-hook env, not this state-level slot).
    */
-  onArtifactFound?: (art: import("../obj/types").Artifact) => void;
+  onArtifactFound?: (art: import("../obj/types.js").Artifact) => void;
   /**
    * history_lose_artifact (player-history.c L246): fires when a known artifact
    * is lost - destroyed by an effect (effect-handler-attack/general.c),
@@ -675,7 +675,7 @@ export interface GameState {
    * Installed by the session (wireGame); marks the artifact's history entry
    * "Missed", or logs a fresh one.
    */
-  onArtifactLost?: (art: import("../obj/types").Artifact) => void;
+  onArtifactLost?: (art: import("../obj/types.js").Artifact) => void;
   /**
    * py_attack's message slice: runs after the player melees a monster, with
    * the full blow-by-blow result (hits, damage, crit HitType, and whether the
@@ -716,7 +716,7 @@ export interface GameState {
    * every enabled mod's contributions (composeModHooks), so core holds one object
    * and knows nothing about mod identity, ordering or enablement.
    */
-  modHooks?: import("../mod/hooks").ModHooks;
+  modHooks?: import("../mod/hooks.js").ModHooks;
   /**
    * PU_BONUS | PU_HP | PU_MANA: recompute the derived state from the
    * current gear (equipment commands call this after changing what is
@@ -772,7 +772,7 @@ export interface GameState {
    * (or a filter-failing) preset target - the shell's defensive fallback reads
    * it to re-prompt. Absent in the normal probe/pre-resolution flow.
    */
-  itemRequest?: import("./effect-item").ItemRequest | null;
+  itemRequest?: import("./effect-item.js").ItemRequest | null;
   /**
    * The preset curse index for EF_REMOVE_CURSE's get_curse selection (the port
    * of cmd_get_arg_choice on a multi-curse item). Set from cmd.args.tgtcurse;
@@ -821,7 +821,7 @@ export interface GameState {
    * falls back to raw mutation and the damage-over-time / digestion / recharge
    * upkeep is skipped (the ambient-spawn roll is still drawn unconditionally).
    */
-  world?: import("./world").WorldClockEnv;
+  world?: import("./world.js").WorldClockEnv;
 }
 
 /**

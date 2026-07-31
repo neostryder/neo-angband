@@ -14,7 +14,7 @@
  * weighted-pick loop (so the RNG draw sequence matches upstream for a corpus).
  */
 
-import type { Rng } from "../rng";
+import type { Rng } from "../rng.js";
 
 /* Markers for the start and end of words (randname.c L23-25). E_WORD aliases
  * S_WORD; TOTAL is the running-sum slot appended after the 27 letter/end

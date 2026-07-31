@@ -12,10 +12,10 @@
  * parity/ledger/high-scores.yaml for the equivalence argument.
  */
 
-import type { Player } from "../player/player";
-import { ENGINE_VERSION } from "../version";
-import { MAX_HISCORES, WINNING_HOW } from "./types";
-import type { HighScore, ScoreStore } from "./types";
+import type { Player } from "../player/player.js";
+import { ENGINE_VERSION } from "../version.js";
+import { MAX_HISCORES, WINNING_HOW } from "./types.js";
+import type { HighScore, ScoreStore } from "./types.js";
 
 /**
  * Default build id stamped into a record's `what` (score.c build_score uses the

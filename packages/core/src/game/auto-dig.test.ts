@@ -19,15 +19,15 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import { SKILL } from "../player/types";
-import { walkAction } from "./player-turn";
-import { movementAutoDig, movementTunnelTest, tunnelAux } from "./cave-cmd";
-import type { CaveCmdDeps } from "./cave-cmd";
-import { squareMemorize } from "./known";
-import { featureReg, makeState, GRANITE } from "./harness";
-import type { GameState } from "./context";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { SKILL } from "../player/types.js";
+import { walkAction } from "./player-turn.js";
+import { movementAutoDig, movementTunnelTest, tunnelAux } from "./cave-cmd.js";
+import type { CaveCmdDeps } from "./cave-cmd.js";
+import { squareMemorize } from "./known.js";
+import { featureReg, makeState, GRANITE } from "./harness.js";
+import type { GameState } from "./context.js";
 
 const RUBBLE = featureReg.byCodeName("RUBBLE").fidx;
 const PERM = featureReg.byCodeName("PERM").fidx;

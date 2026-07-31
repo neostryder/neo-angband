@@ -27,13 +27,13 @@
  *   (obj-knowledge.c object_learn_on_wield); see obj/knowledge.ts.
  */
 
-import type { Constants } from "../constants";
-import { ELEM, OF, ORIGIN, TV } from "../generated";
-import type { Rng } from "../rng";
-import type { ObjRegistry } from "../obj/bind";
-import { tvalFindIdx } from "../obj/bind";
-import type { GameObject } from "../obj/object";
-import { learnBirthObviousFlags, objectLearnOnWield, OBJ_NOTICE } from "../obj/knowledge";
+import type { Constants } from "../constants.js";
+import { ELEM, OF, ORIGIN, TV } from "../generated/index.js";
+import type { Rng } from "../rng.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import { tvalFindIdx } from "../obj/bind.js";
+import type { GameObject } from "../obj/object.js";
+import { learnBirthObviousFlags, objectLearnOnWield, OBJ_NOTICE } from "../obj/knowledge.js";
 import {
   distributeCharges,
   objectAbsorb,
@@ -53,16 +53,16 @@ import {
   tvalIsMoney,
   tvalIsRing,
   tvalIsRod,
-} from "../obj/object";
-import type { PackTotalGear, StackLimits } from "../obj/object";
-import { EL_INFO_IGNORE } from "../obj/types";
-import type { ObjectKind } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import { objectValueReal } from "../obj/value";
-import { earlierObject } from "../player/calcs";
-import type { EarlierObjectOpts } from "../player/calcs";
-import type { Player } from "../player/player";
-import type { PlayerBody } from "../player/types";
+} from "../obj/object.js";
+import type { PackTotalGear, StackLimits } from "../obj/object.js";
+import { EL_INFO_IGNORE } from "../obj/types.js";
+import type { ObjectKind } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import { objectValueReal } from "../obj/value.js";
+import { earlierObject } from "../player/calcs.js";
+import type { EarlierObjectOpts } from "../player/calcs.js";
+import type { Player } from "../player/player.js";
+import type { PlayerBody } from "../player/types.js";
 
 /* ------------------------------------------------------------------ */
 /* The gear store                                                       */
@@ -1118,7 +1118,7 @@ export function wieldObject(
   gear: Gear,
   player: Player,
   handle: number,
-  env?: import("../obj/knowledge").RuneEnv,
+  env?: import("../obj/knowledge.js").RuneEnv,
   split: WieldSplit = "wield_all",
   intoSlot?: number,
 ): number {

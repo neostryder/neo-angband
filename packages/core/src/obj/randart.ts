@@ -57,11 +57,11 @@
  *   so this is unobservable, but it is reproduced exactly. Noted.
  */
 
-import { KF, TV } from "../generated";
-import { Rng } from "../rng";
-import type { ObjRegistry } from "./bind";
-import { tvalFindName } from "./bind";
-import { buildProb, randnameMake, type NameProbs } from "./randname";
+import { KF, TV } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import type { ObjRegistry } from "./bind.js";
+import { tvalFindName } from "./bind.js";
+import { buildProb, randnameMake, type NameProbs } from "./randname.js";
 import {
   addAbility,
   getBaseItem,
@@ -70,15 +70,15 @@ import {
   makeBad,
   removeContradictory,
   trySupercharge,
-} from "./randart-build";
-import type { ArtifactSetData } from "./randart-data";
+} from "./randart-build.js";
+import type { ArtifactSetData } from "./randart-data.js";
 import {
   artifactPower,
   collectArtifactData,
   getBaseItemTval,
-} from "./randart-data";
-import type { Artifact } from "./types";
-import { TV_MAX } from "./types";
+} from "./randart-data.js";
+import type { Artifact } from "./types.js";
+import { TV_MAX } from "./types.js";
 
 /* Re-export makeBad so consumers can reach it from the top-level module. */
 export { makeBad };

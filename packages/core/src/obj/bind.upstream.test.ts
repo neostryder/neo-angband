@@ -20,8 +20,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { ObjRegistry, grabIntRange } from "./bind";
-import type { ObjPackJson } from "./types";
+import { ObjRegistry, grabIntRange } from "./bind.js";
+import type { ObjPackJson } from "./types.js";
 
 function load(name: string): unknown {
   return JSON.parse(

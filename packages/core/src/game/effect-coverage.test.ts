@@ -22,18 +22,18 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { EF, EFFECT_ENTRIES } from "../generated";
-import { EFFECT_HANDLER_MANIFEST, registerCoreHandlers } from "../effects/handlers";
-import { EffectRegistry } from "../effects/interpreter";
-import { ATTACK_HANDLER_CODES, registerAttackHandlers } from "./effect-attack";
-import { DETECT_HANDLER_CODES, registerDetectHandlers } from "./effect-detect";
-import { GENERAL_HANDLER_CODES, registerGeneralHandlers } from "./effect-general";
-import { ITEM_HANDLER_CODES, registerItemHandlers } from "./effect-item";
-import { MELEE_HANDLER_CODES, registerMeleeHandlers } from "./effect-melee";
-import { MONSTER_HANDLER_CODES, registerMonsterHandlers } from "./effect-monster";
-import { SUMMON_HANDLER_CODES, registerSummonHandlers } from "./effect-summon";
-import { TELEPORT_HANDLER_CODES, registerTeleportHandlers } from "./effect-teleport";
-import { TERRAIN_HANDLER_CODES, registerTerrainHandlers } from "./effect-terrain";
+import { EF, EFFECT_ENTRIES } from "../generated/index.js";
+import { EFFECT_HANDLER_MANIFEST, registerCoreHandlers } from "../effects/handlers.js";
+import { EffectRegistry } from "../effects/interpreter.js";
+import { ATTACK_HANDLER_CODES, registerAttackHandlers } from "./effect-attack.js";
+import { DETECT_HANDLER_CODES, registerDetectHandlers } from "./effect-detect.js";
+import { GENERAL_HANDLER_CODES, registerGeneralHandlers } from "./effect-general.js";
+import { ITEM_HANDLER_CODES, registerItemHandlers } from "./effect-item.js";
+import { MELEE_HANDLER_CODES, registerMeleeHandlers } from "./effect-melee.js";
+import { MONSTER_HANDLER_CODES, registerMonsterHandlers } from "./effect-monster.js";
+import { SUMMON_HANDLER_CODES, registerSummonHandlers } from "./effect-summon.js";
+import { TELEPORT_HANDLER_CODES, registerTeleportHandlers } from "./effect-teleport.js";
+import { TERRAIN_HANDLER_CODES, registerTerrainHandlers } from "./effect-terrain.js";
 
 /** EF codes for a list of upstream effect names (the manifest speaks in names). */
 const codesFor = (names: readonly string[]): readonly number[] =>

@@ -1,21 +1,21 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { RF } from "../generated";
-import { FlagSet } from "../bitflag";
-import { bindMonsters } from "../mon/bind";
-import type { MonsterPackRecords } from "../mon/bind";
-import { RF_SIZE } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson, Brand, Slay, ObjectKind } from "../obj/types";
-import { objectNew } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import type { AttackModifier, BrandSlayTarget } from "./brand-slay";
+import { RF } from "../generated/index.js";
+import { FlagSet } from "../bitflag.js";
+import { bindMonsters } from "../mon/bind.js";
+import type { MonsterPackRecords } from "../mon/bind.js";
+import { RF_SIZE } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson, Brand, Slay, ObjectKind } from "../obj/types.js";
+import { objectNew } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import type { AttackModifier, BrandSlayTarget } from "./brand-slay.js";
 import {
   getMonsterBrandMultiplier,
   improveAttackModifier,
   reactToSlay,
-} from "./brand-slay";
+} from "./brand-slay.js";
 
 function load(name: string): unknown {
   return JSON.parse(

@@ -27,7 +27,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { COLOUR_L_BLUE, COLOUR_L_GREEN, COLOUR_WHITE } from "../color";
+import { COLOUR_L_BLUE, COLOUR_L_GREEN, COLOUR_WHITE } from "../color.js";
 import {
   tbAppend,
   tbAppendC,
@@ -35,7 +35,7 @@ import {
   tbNew,
   textblockAttrs,
   textblockToString,
-} from "./object-info";
+} from "./object-info.js";
 
 describe("z-textblock/textblock upstream", () => {
   // C: test_append

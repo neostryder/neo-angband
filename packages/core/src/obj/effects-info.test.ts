@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ELEM, OF } from "../generated";
-import { ObjRegistry } from "./bind";
+import { ELEM, OF } from "../generated/index.js";
+import { ObjRegistry } from "./bind.js";
 import type {
   ActivationSummarizerDeps,
   RawTimedRecord,
-} from "./effects-info";
-import { makeActivationSummarizer } from "./effects-info";
-import { EFPROP, removeContradictoryActivation } from "./randart-build";
-import type { Artifact, EffectRecordJson, ObjPackJson } from "./types";
+} from "./effects-info.js";
+import { makeActivationSummarizer } from "./effects-info.js";
+import { EFPROP, removeContradictoryActivation } from "./randart-build.js";
+import type { Artifact, EffectRecordJson, ObjPackJson } from "./types.js";
 
 /*
  * effect_summarize_properties (effects-info.c L843-L1087), the summarizer that

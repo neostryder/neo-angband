@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PROJ, RF, TMD } from "../generated";
-import { DIR_TARGET } from "../effects/interpreter";
-import { loc } from "../loc";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { GRANITE, addMon, makeState, monReg } from "./harness";
-import type { GameState } from "./context";
+import { PROJ, RF, TMD } from "../generated/index.js";
+import { DIR_TARGET } from "../effects/interpreter.js";
+import { loc } from "../loc.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { GRANITE, addMon, makeState, monReg } from "./harness.js";
+import type { GameState } from "./context.js";
 import {
   basicPlayerActor,
   castAlter,
@@ -23,8 +23,8 @@ import {
   monsterCastSource,
   playerCastSource,
   resolveAimedTarget,
-} from "./project-cast";
-import type { CastContext, CastHooks } from "./project-cast";
+} from "./project-cast.js";
+import type { CastContext, CastHooks } from "./project-cast.js";
 
 const projections = bindProjections(
   JSON.parse(

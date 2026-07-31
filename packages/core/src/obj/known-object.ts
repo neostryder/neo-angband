@@ -67,9 +67,9 @@
  *   object, so it is not modelled here.
  */
 
-import type { RandomValue } from "../rng";
-import type { Player } from "../player/player";
-import type { CurseData, GameObject } from "./object";
+import type { RandomValue } from "../rng.js";
+import type { Player } from "../player/player.js";
+import type { CurseData, GameObject } from "./object.js";
 import {
   objectNew,
   cursesAreEqual,
@@ -79,17 +79,17 @@ import {
   tvalIsLauncher,
   tvalIsMoney,
   tvalIsWearable,
-} from "./object";
-import type { RuneEnv } from "./knowledge";
+} from "./object.js";
+import type { RuneEnv } from "./knowledge.js";
 import {
   OBJ_NOTICE,
   objectHasStandardToH,
   playerKnowsBrand,
   playerKnowsCurse,
   playerKnowsSlay,
-} from "./knowledge";
-import type { ObjectKind, EgoItem, ElementInfo } from "./types";
-import { ELEM_MAX, OBJ_MOD_MAX } from "./types";
+} from "./knowledge.js";
+import type { ObjectKind, EgoItem, ElementInfo } from "./types.js";
+import { ELEM_MAX, OBJ_MOD_MAX } from "./types.js";
 
 /**
  * The player's floor-knowledge state for a single object, the three cases

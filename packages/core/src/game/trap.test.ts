@@ -1,19 +1,19 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { OF, TMD, TRF } from "../generated";
-import { loc } from "../loc";
-import { SKILL } from "../player/types";
-import { EffectRegistry } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { bindTraps, lookupTrap } from "../world/trap";
-import type { TrapRecordJson } from "../world/trap";
-import { basicPlayerActor } from "./project-cast";
-import { registerAttackHandlers } from "./effect-attack";
-import { registerMonsterHandlers } from "./effect-monster";
-import { registerTeleportHandlers } from "./effect-teleport";
-import { registerTerrainHandlers } from "./effect-terrain";
+import { OF, TMD, TRF } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { SKILL } from "../player/types.js";
+import { EffectRegistry } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { bindTraps, lookupTrap } from "../world/trap.js";
+import type { TrapRecordJson } from "../world/trap.js";
+import { basicPlayerActor } from "./project-cast.js";
+import { registerAttackHandlers } from "./effect-attack.js";
+import { registerMonsterHandlers } from "./effect-monster.js";
+import { registerTeleportHandlers } from "./effect-teleport.js";
+import { registerTerrainHandlers } from "./effect-terrain.js";
 import {
   calcUnlockingChance,
   disarmAux,
@@ -31,17 +31,17 @@ import {
   squareSetDoorLock,
   squareSetTrapTimeout,
   squareTrap,
-} from "./trap";
-import type { TrapDeps } from "./trap";
-import { createDefaultRegistry, processPlayer } from "./player-turn";
-import { runAction } from "./player-path";
-import { makeState, plReg } from "./harness";
-import type { GameState } from "./context";
-import { FEAT, SQUARE } from "../generated";
-import { movePlayer } from "./context";
-import { thrustAway } from "./thrust";
-import { squareMemorize } from "./known";
-import { Rng } from "../rng";
+} from "./trap.js";
+import type { TrapDeps } from "./trap.js";
+import { createDefaultRegistry, processPlayer } from "./player-turn.js";
+import { runAction } from "./player-path.js";
+import { makeState, plReg } from "./harness.js";
+import type { GameState } from "./context.js";
+import { FEAT, SQUARE } from "../generated/index.js";
+import { movePlayer } from "./context.js";
+import { thrustAway } from "./thrust.js";
+import { squareMemorize } from "./known.js";
+import { Rng } from "../rng.js";
 
 function loadRecords<T>(name: string): T[] {
   return (

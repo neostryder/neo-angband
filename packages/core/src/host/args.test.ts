@@ -17,8 +17,8 @@ import {
   hostDirOverrides,
   launchUsage,
   parseLaunchArgs,
-} from "./args";
-import type { LaunchArgs } from "./args";
+} from "./args.js";
+import type { LaunchArgs } from "./args.js";
 
 /** The parsed args, or a failure the test did not expect. */
 function run(argv: readonly string[]): LaunchArgs {

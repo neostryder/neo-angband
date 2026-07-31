@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { TMD } from "../generated";
-import { loc } from "../loc";
-import { createDefaultRegistry } from "./player-turn";
+import { TMD } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { createDefaultRegistry } from "./player-turn.js";
 import {
   LOOP_STATUS,
   checkForPlayerInterrupt,
@@ -10,10 +10,10 @@ import {
   playerAdjustManaPrecise,
   processWorld,
   runGameLoop,
-} from "./loop";
-import { makePlayer, makeState } from "./harness";
-import { installRunning } from "./player-path";
-import type { GameState, InterruptResponse } from "./context";
+} from "./loop.js";
+import { makePlayer, makeState } from "./harness.js";
+import { installRunning } from "./player-path.js";
+import type { GameState, InterruptResponse } from "./context.js";
 
 describe("player_adjust_*_precise", () => {
   it("saturates the hp fixed-point accumulator at INT32_MIN", () => {

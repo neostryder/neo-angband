@@ -13,19 +13,19 @@
  * are the race name until MDESC (#25).
  */
 
-import { FLAG_START, NO_FLAG } from "../bitflag";
-import type { Loc } from "../loc";
-import type { Monster } from "../mon/monster";
-import type { MonsterRace } from "../mon/types";
-import { monsterIsObvious, monsterPassesWalls } from "../mon/predicate";
-import { RST, createMonSpellMask } from "../mon/spell";
-import type { MonsterSpell } from "../mon/types";
-import type { GameState } from "./context";
-import { selectShape } from "./mon-place";
-import type { SummonDeps } from "./mon-place";
-import type { SummonEffectEnv } from "./effect-summon";
-import { teleportMonster } from "./effect-teleport";
-import type { TeleportEnv } from "./effect-teleport";
+import { FLAG_START, NO_FLAG } from "../bitflag.js";
+import type { Loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
+import type { MonsterRace } from "../mon/types.js";
+import { monsterIsObvious, monsterPassesWalls } from "../mon/predicate.js";
+import { RST, createMonSpellMask } from "../mon/spell.js";
+import type { MonsterSpell } from "../mon/types.js";
+import type { GameState } from "./context.js";
+import { selectShape } from "./mon-place.js";
+import type { SummonDeps } from "./mon-place.js";
+import type { SummonEffectEnv } from "./effect-summon.js";
+import { teleportMonster } from "./effect-teleport.js";
+import type { TeleportEnv } from "./effect-teleport.js";
 
 /** Everything a shapechange needs beyond the state. */
 export interface MonShapeDeps {

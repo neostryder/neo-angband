@@ -23,10 +23,10 @@
  * leaves those fields NULL.
  */
 
-import { Dice } from "../dice";
-import type { Aspect, Rng } from "../rng";
-import { ELEMENT_ENTRIES, PROJ, PROJECTION_ENTRIES } from "../generated";
-import { messageLookupByName } from "../sound/engine";
+import { Dice } from "../dice.js";
+import type { Aspect, Rng } from "../rng.js";
+import { ELEMENT_ENTRIES, PROJ, PROJECTION_ENTRIES } from "../generated/index.js";
+import { messageLookupByName } from "../sound/engine.js";
 
 /** struct projection: the behavioural data for one PROJ_ type. */
 export interface ProjectionInfo {

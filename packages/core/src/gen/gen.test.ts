@@ -1,22 +1,22 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import type { ConstantsJson } from "../constants";
-import { FEAT, ORIGIN, ROOM_ENTRIES, SQUARE } from "../generated";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import { Rng } from "../rng";
-import { Chunk } from "../world/chunk";
-import { FeatureRegistry } from "../world/feature";
-import type { TerrainRecordJson } from "../world/feature";
-import { ObjRegistry, tvalFindIdx } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { applyMagic, ArtifactState, objectPrep, ObjAllocState } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import { bindMonsters } from "../mon/bind";
-import type { MonsterPackRecords } from "../mon/bind";
-import { createMonster, MonAllocTable } from "../mon/make";
-import { createMimickedObject } from "../game/mon-place";
+import { bindConstants } from "../constants.js";
+import type { ConstantsJson } from "../constants.js";
+import { FEAT, ORIGIN, ROOM_ENTRIES, SQUARE } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { Chunk } from "../world/chunk.js";
+import { FeatureRegistry } from "../world/feature.js";
+import type { TerrainRecordJson } from "../world/feature.js";
+import { ObjRegistry, tvalFindIdx } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { applyMagic, ArtifactState, objectPrep, ObjAllocState } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import { bindMonsters } from "../mon/bind.js";
+import type { MonsterPackRecords } from "../mon/bind.js";
+import { createMonster, MonAllocTable } from "../mon/make.js";
+import { createMimickedObject } from "../game/mon-place.js";
 
 import {
   cavernGen,
@@ -35,7 +35,7 @@ import {
   type CaveBuildContext,
   type DunProfile,
   type DunProfileRecordJson,
-} from "./cave";
+} from "./cave.js";
 import {
   buildRoomTemplate,
   buildVault,
@@ -45,19 +45,19 @@ import {
   type RoomProfile,
   type RoomTemplateRecordJson,
   type VaultRecordJson,
-} from "./room";
+} from "./room.js";
 import {
   calcMonFeeling,
   calcObjFeeling,
   generateLevel,
   placeFeeling,
   type GenDeps,
-} from "./generate";
-import { getVaultMonsters, monPitHook, resolvePits, setPitType } from "./gen-monster";
-import { RF } from "../generated";
-import { GROUP_TYPE } from "../mon/monster";
-import { MON_GROUP } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
+} from "./generate.js";
+import { getVaultMonsters, monPitHook, resolvePits, setPitType } from "./gen-monster.js";
+import { RF } from "../generated/index.js";
+import { GROUP_TYPE } from "../mon/monster.js";
+import { MON_GROUP } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
 import {
   Dun,
   Gen,
@@ -68,7 +68,7 @@ import {
   placeNewMonster,
   placeObject,
   type MonPlaceDeps,
-} from "./util";
+} from "./util.js";
 
 /* ------------------------------------------------------------------ *
  * Pack loading.

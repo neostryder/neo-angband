@@ -85,7 +85,7 @@
  *   paths is unaffected.
  */
 
-import type { Loc } from "../loc";
+import type { Loc } from "../loc.js";
 import {
   DDD,
   DDGRID,
@@ -97,10 +97,10 @@ import {
   locEq,
   locIsZero,
   locSum,
-} from "../loc";
-import { FEAT, MFLAG, MON_TMD, MSG, OF, RF, SQUARE, TF, TMD, TRF } from "../generated";
-import type { Monster } from "../mon/monster";
-import { MON_GROUP } from "../mon/types";
+} from "../loc.js";
+import { FEAT, MFLAG, MON_TMD, MSG, OF, RF, SQUARE, TF, TMD, TRF } from "../generated/index.js";
+import type { Monster } from "../mon/monster.js";
+import { MON_GROUP } from "../mon/types.js";
 import {
   monsterBreathes,
   monsterIsCamouflaged,
@@ -110,18 +110,18 @@ import {
   monsterIsVisible,
   monsterLovesArchery,
   monsterPassesWalls,
-} from "../mon/predicate";
-import { MDESC, monsterDesc } from "../mon/desc";
+} from "../mon/predicate.js";
+import { MDESC, monsterDesc } from "../mon/desc.js";
 import {
   getLore,
   loreCountU16,
   loreCountU8,
   loreLearnFlagIfVisible,
   loreUpdate,
-} from "../mon/lore";
-import { monsterRevertShape } from "./mon-shape";
-import { monsterCarry } from "../mon/make";
-import { monsterWake } from "../mon/take-hit";
+} from "../mon/lore.js";
+import { monsterRevertShape } from "./mon-shape.js";
+import { monsterCarry } from "../mon/make.js";
+import { monsterWake } from "../mon/take-hit.js";
 import {
   MON_TMD_FLG_NOMESSAGE,
   MON_TMD_FLG_NOTIFY,
@@ -130,39 +130,39 @@ import {
   monIncTimed,
   monsterEffectLevel,
   type MonTimedMessageSink,
-} from "../mon/timed";
-import { formatMonsterMessageByName } from "./mon-message";
-import { tvalIsMoney } from "../obj/object";
-import { monMeleeAttack } from "../combat/mon-melee";
-import { reactToSlay } from "../combat/brand-slay";
-import { equipLearnOnDefend } from "../obj/knowledge";
-import { updatePlayerObjectKnowledge } from "./known";
-import { los, squareIsSeen, squareIsView } from "../world/view";
-import { PROJECT, projectPath, projectable } from "../world/project";
-import type { GameState } from "./context";
+} from "../mon/timed.js";
+import { formatMonsterMessageByName } from "./mon-message.js";
+import { tvalIsMoney } from "../obj/object.js";
+import { monMeleeAttack } from "../combat/mon-melee.js";
+import { reactToSlay } from "../combat/brand-slay.js";
+import { equipLearnOnDefend } from "../obj/knowledge.js";
+import { updatePlayerObjectKnowledge } from "./known.js";
+import { los, squareIsSeen, squareIsView } from "../world/view.js";
+import { PROJECT, projectPath, projectable } from "../world/project.js";
+import type { GameState } from "./context.js";
 import {
   deleteMonster,
   monsterSwap,
   squareIsPlayer,
   squareMonster,
-} from "./context";
-import { disturb } from "./player-path";
-import { floorExcise, floorPile } from "./floor";
-import { describeObject } from "./describe";
-import { ODESC } from "../obj/desc";
-import { squareIsEmptyLive } from "./mon-place";
+} from "./context.js";
+import { disturb } from "./player-path.js";
+import { floorExcise, floorPile } from "./floor.js";
+import { describeObject } from "./describe.js";
+import { ODESC } from "../obj/desc.js";
+import { squareIsEmptyLive } from "./mon-place.js";
 import {
   squareIsPlayerTrap,
   squareIsWarded,
   squareIsWebbed,
   squareRemoveAllTraps,
   squareTrap,
-} from "./trap";
+} from "./trap.js";
 import {
   groupMonsterTracking,
   monsterGroupLeader,
   monsterGroupRouse,
-} from "./mon-group";
+} from "./mon-group.js";
 
 /** enum monster_stagger. */
 export const STAGGER = {

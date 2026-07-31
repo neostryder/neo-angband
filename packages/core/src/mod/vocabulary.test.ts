@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { VocabularyRegistry } from "./vocabulary";
+import { VocabularyRegistry } from "./vocabulary.js";
 
 describe("VocabularyRegistry - declaring terms", () => {
   it("declares terms across kinds and lists them, filtered or not", () => {

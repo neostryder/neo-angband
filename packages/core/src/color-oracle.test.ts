@@ -32,7 +32,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { COLOR_TABLE, colorChannel } from "./color";
+import { COLOR_TABLE, colorChannel } from "./color.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const zColor = readFileSync(join(repoRoot, "reference", "src", "z-color.c"), "utf8");

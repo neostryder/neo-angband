@@ -1,29 +1,29 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, RF, TMD } from "../generated";
-import { loc } from "../loc";
-import { distance } from "../loc";
+import { EF, RF, TMD } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { distance } from "../loc.js";
 import {
   EffectRegistry,
   sourceMonster,
   sourcePlayer,
-} from "../effects/interpreter";
-import type { EffectContext, EffectPlayer } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { MonAllocTable } from "../mon/make";
-import { SummonTable } from "../mon/summon";
-import { GROUP_TYPE } from "../mon/monster";
-import { MON_GROUP } from "../mon/types";
-import { addMon, makeRace, makeState, monReg } from "./harness";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import type { CastContext } from "./project-cast";
-import { attachGameEnv } from "./effect-game-env";
-import { registerSummonHandlers } from "./effect-summon";
-import type { SummonEffectEnv } from "./effect-summon";
-import { summonGroup } from "./mon-group";
+} from "../effects/interpreter.js";
+import type { EffectContext, EffectPlayer } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { MonAllocTable } from "../mon/make.js";
+import { SummonTable } from "../mon/summon.js";
+import { GROUP_TYPE } from "../mon/monster.js";
+import { MON_GROUP } from "../mon/types.js";
+import { addMon, makeRace, makeState, monReg } from "./harness.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import type { CastContext } from "./project-cast.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import { registerSummonHandlers } from "./effect-summon.js";
+import type { SummonEffectEnv } from "./effect-summon.js";
+import { summonGroup } from "./mon-group.js";
 
 const projections = bindProjections(
   (

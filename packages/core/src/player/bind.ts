@@ -24,8 +24,8 @@
  * pack's before binding (see the extension test).
  */
 
-import { FlagSet } from "../bitflag";
-import { colorCharToAttr, colorTextToAttr } from "../color";
+import { FlagSet } from "../bitflag.js";
+import { colorCharToAttr, colorTextToAttr } from "../color.js";
 import {
   ELEMENT_ENTRIES,
   OBJECT_MODIFIER_ENTRIES,
@@ -36,15 +36,15 @@ import {
   PF,
   STAT,
   TMD,
-} from "../generated";
-import { effectSubtype } from "../effects/effect";
+} from "../generated/index.js";
+import { effectSubtype } from "../effects/effect.js";
 import {
   OF_SIZE,
   PF_SIZE,
   SKILL,
   SKILL_MAX,
   STAT_MAX,
-} from "./types";
+} from "./types.js";
 import type {
   ClassBook,
   ClassMagic,
@@ -63,7 +63,7 @@ import type {
   TimedEffectStep,
   TimedFail,
   TimedGrade,
-} from "./types";
+} from "./types.js";
 
 /* re-export sizes for consumers that reach the domain through bind. */
 export { OF_SIZE, PF_SIZE };

@@ -17,22 +17,22 @@
  * (store stock, identified gear) and over-values only an item with unknown runes.
  */
 
-import { OF, TV } from "../generated";
-import { INT_MAX, INT_MIN } from "../guard";
-import type { Player } from "../player/player";
-import type { ObjRegistry } from "./bind";
-import type { KnownDesc } from "./known-object";
-import { objectKnownShadow } from "./known-object";
-import type { RuneEnv } from "./knowledge";
+import { OF, TV } from "../generated/index.js";
+import { INT_MAX, INT_MIN } from "../guard.js";
+import type { Player } from "../player/player.js";
+import type { ObjRegistry } from "./bind.js";
+import type { KnownDesc } from "./known-object.js";
+import { objectKnownShadow } from "./known-object.js";
+import type { RuneEnv } from "./knowledge.js";
 import {
   tvalCanHaveCharges,
   tvalCanHaveFlavor,
   tvalHasVariablePower,
   tvalIsAmmo,
   tvalIsLight,
-} from "./object";
-import type { GameObject } from "./object";
-import { objectPower } from "./power";
+} from "./object.js";
+import type { GameObject } from "./object.js";
+import { objectPower } from "./power.js";
 
 /**
  * AMMO_RESCALER (obj-power.h): a stack of this many pieces of ammo (or plain

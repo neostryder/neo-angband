@@ -19,13 +19,13 @@
  * upstream prepend.
  */
 
-import { Dice } from "../dice";
+import { Dice } from "../dice.js";
 import type {
   ActivationSummarizer,
   EffectObjectProperty,
-} from "./randart-build";
-import { EFPROP } from "./randart-build";
-import type { EffectRecordJson } from "./types";
+} from "./randart-build.js";
+import { EFPROP } from "./randart-build.js";
+import type { EffectRecordJson } from "./types.js";
 
 /**
  * TMD failure-condition codes (player-timed.h enum, mirrored in player/timed.ts

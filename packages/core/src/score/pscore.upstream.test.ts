@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { Player } from "../player/player";
+import type { Player } from "../player/player.js";
 import {
   buildScore,
   highscoreAdd,
@@ -26,9 +26,9 @@ import {
   highscoreRegularize,
   highscoreValid,
   highscoreWhere,
-} from "./score";
-import { MAX_HISCORES, WINNING_HOW } from "./types";
-import type { HighScore } from "./types";
+} from "./score.js";
+import { MAX_HISCORES, WINNING_HOW } from "./types.js";
+import type { HighScore } from "./types.js";
 
 function stubPlayer(over: Partial<Player> = {}): Player {
   return {

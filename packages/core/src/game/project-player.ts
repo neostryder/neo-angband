@@ -18,22 +18,22 @@
  * needs the monster-description and trap systems.
  */
 
-import { PROJ, TMD } from "../generated";
-import { locEq } from "../loc";
-import type { Loc } from "../loc";
-import type { Rng } from "../rng";
-import { ELEM_MAX } from "../obj/types";
+import { PROJ, TMD } from "../generated/index.js";
+import { locEq } from "../loc.js";
+import type { Loc } from "../loc.js";
+import type { Rng } from "../rng.js";
+import { ELEM_MAX } from "../obj/types.js";
 import {
   playerApplyDamageReduction,
   takeHit,
-} from "../player/take-hit";
+} from "../player/take-hit.js";
 import type {
   DamageReduction,
   TakeHitHooks,
   TakeHitTarget,
-} from "../player/take-hit";
-import { adjustDam } from "../world/projection";
-import type { ProjectionInfo } from "../world/projection";
+} from "../player/take-hit.js";
+import { adjustDam } from "../world/projection.js";
+import type { ProjectionInfo } from "../world/projection.js";
 
 /** The player state project_p reads and damages. */
 export interface PlayerProjActor extends TakeHitTarget {

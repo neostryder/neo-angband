@@ -33,23 +33,23 @@
  * of grids by an area effect.
  */
 
-import { EF, SQUARE } from "../generated";
-import { distance, loc, randLoc } from "../loc";
-import type { Loc } from "../loc";
+import { EF, SQUARE } from "../generated/index.js";
+import { distance, loc, randLoc } from "../loc.js";
+import type { Loc } from "../loc.js";
 import type {
   EffectHandler,
   EffectHandlerContext,
   EffectRegistry,
-} from "../effects/interpreter";
-import { deleteMonster, monsterSwap, movePlayer } from "./context";
-import type { GameState } from "./context";
-import { gameEnv } from "./effect-game-env";
+} from "../effects/interpreter.js";
+import { deleteMonster, monsterSwap, movePlayer } from "./context.js";
+import type { GameState } from "./context.js";
+import { gameEnv } from "./effect-game-env.js";
 import {
   caveFindDecoy,
   destroyDecoy,
   monsterIsDecoyed,
-} from "./effect-mon-origin";
-import { targetSetLocation } from "./target";
+} from "./effect-mon-origin.js";
+import { targetSetLocation } from "./target.js";
 
 /**
  * The teleport-family hooks and unmodelled-subsystem seams, grouped on the

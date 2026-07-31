@@ -11,14 +11,14 @@
  * monster spells (mon/spell.ts vs game/mon-cast.ts).
  */
 
-import { TMD, PF, TVAL_ENTRIES } from "../generated";
-import type { ObjRegistry } from "../obj/bind";
-import type { ObjectKind } from "../obj/types";
-import { newElemInfo, newModifiersRv, newOfFlags } from "../obj/types";
-import type { GameObject } from "../obj/object";
-import type { ClassBook, ClassSpell, MagicRealm, PlayerClass } from "./types";
-import type { Player } from "./player";
-import { adj_mag_mana, adj_mag_study } from "./calcs";
+import { TMD, PF, TVAL_ENTRIES } from "../generated/index.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import type { ObjectKind } from "../obj/types.js";
+import { newElemInfo, newModifiersRv, newOfFlags } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import type { ClassBook, ClassSpell, MagicRealm, PlayerClass } from "./types.js";
+import type { Player } from "./player.js";
+import { adj_mag_mana, adj_mag_study } from "./calcs.js";
 
 /* ------------------------------------------------------------------ *
  * Constants and tables.

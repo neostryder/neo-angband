@@ -28,16 +28,16 @@
  * and is reused unchanged; a "hook" here is the (race) => boolean it preps.
  */
 
-import { FlagSet } from "../bitflag";
-import { ORIGIN, RF, RSF, SQUARE } from "../generated";
-import { colorCharToAttr, colorTextToAttr } from "../color";
-import type { Rng } from "../rng";
-import type { MonsterBase, MonsterRace } from "../mon/types";
-import { RF_SIZE, RSF_SIZE } from "../mon/types";
-import type { MonsterRegistry } from "../mon/bind";
-import type { MonAllocTable } from "../mon/make";
-import type { Gen } from "./util";
-import { generateMark, loc, pickAndPlaceMonster, squareIsEmpty } from "./util";
+import { FlagSet } from "../bitflag.js";
+import { ORIGIN, RF, RSF, SQUARE } from "../generated/index.js";
+import { colorCharToAttr, colorTextToAttr } from "../color.js";
+import type { Rng } from "../rng.js";
+import type { MonsterBase, MonsterRace } from "../mon/types.js";
+import { RF_SIZE, RSF_SIZE } from "../mon/types.js";
+import type { MonsterRegistry } from "../mon/bind.js";
+import type { MonAllocTable } from "../mon/make.js";
+import type { Gen } from "./util.js";
+import { generateMark, loc, pickAndPlaceMonster, squareIsEmpty } from "./util.js";
 
 /* ------------------------------------------------------------------ *
  * Resolved pit profiles (pit_profile with names resolved to references).

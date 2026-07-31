@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PROJ } from "../generated";
-import { Rng } from "../rng";
-import { adjustDam, bindProjections } from "./projection";
-import type { ProjectionRecordJson } from "./projection";
+import { PROJ } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { adjustDam, bindProjections } from "./projection.js";
+import type { ProjectionRecordJson } from "./projection.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(

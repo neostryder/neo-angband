@@ -9,8 +9,8 @@
  * spell points in the 2^16 fixed-point form upstream uses.
  */
 
-import type { Player } from "./player";
-import { playerAdjustHpPrecise } from "../game/loop";
+import type { Player } from "./player.js";
+import { playerAdjustHpPrecise } from "../game/loop.js";
 
 /** convert_mana_to_hp (player-util.c L655). No RNG. */
 export function convertManaToHp(p: Player, spLong: number): void {

@@ -11,15 +11,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { TMD, TV } from "../generated";
-import { PY_FOOD_FULL_DEFAULT } from "../player/birth";
-import { floorCarry, floorPile } from "../game/floor";
-import { gearGet } from "../game/gear";
-import { objectPrep } from "../obj/make";
-import { Rng } from "../rng";
-import { bindConstants } from "../constants";
-import { loadGame, saveGame, startGame } from "./game";
-import type { GamePack } from "./game";
+import { TMD, TV } from "../generated/index.js";
+import { PY_FOOD_FULL_DEFAULT } from "../player/birth.js";
+import { floorCarry, floorPile } from "../game/floor.js";
+import { gearGet } from "../game/gear.js";
+import { objectPrep } from "../obj/make.js";
+import { Rng } from "../rng.js";
+import { bindConstants } from "../constants.js";
+import { loadGame, saveGame, startGame } from "./game.js";
+import type { GamePack } from "./game.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

@@ -12,16 +12,16 @@
  * scattered over per-file parsers.
  */
 
-import { Dice } from "../dice";
-import { Expression } from "../expression";
+import { Dice } from "../dice.js";
+import { Expression } from "../expression.js";
 import {
   EF,
   EFFECT_ENTRIES,
   PLAYER_TIMED_ENTRIES,
   PROJ,
   STAT_ENTRIES,
-} from "../generated";
-import { monTimedNameToIdx } from "../mon/timed";
+} from "../generated/index.js";
+import { monTimedNameToIdx } from "../mon/timed.js";
 
 /**
  * An effect code: an upstream EF_* numeric index, or a string code for a

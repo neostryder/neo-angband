@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { colorCharToAttr, colorTextToAttr, COLOUR_RED } from "../color";
-import { FEAT } from "../generated";
-import { bindCore } from "../session/boot";
-import type { CorePack } from "../session/boot";
-import { GlyphTable } from "./glyph-table";
-import { LIGHTING } from "./tile-prefs";
+import { colorCharToAttr, colorTextToAttr, COLOUR_RED } from "../color.js";
+import { FEAT } from "../generated/index.js";
+import { bindCore } from "../session/boot.js";
+import type { CorePack } from "../session/boot.js";
+import { GlyphTable } from "./glyph-table.js";
+import { LIGHTING } from "./tile-prefs.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

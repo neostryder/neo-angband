@@ -13,49 +13,49 @@
  * later assemble registries from more than one pack in load order.
  */
 
-import { bindConstants } from "../constants";
-import type { Constants, ConstantsJson } from "../constants";
-import { Rng } from "../rng";
-import type { RngState } from "../rng";
-import type { Loc } from "../loc";
-import type { Chunk } from "../world/chunk";
-import { FeatureRegistry } from "../world/feature";
-import type { TerrainRecordJson } from "../world/feature";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { ArtifactState, ObjAllocState } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import { bindMonsters } from "../mon/bind";
-import type { MonsterPackRecords } from "../mon/bind";
-import { bindMonsterCategories } from "../mon/knowledge-groups";
-import type { MonsterCategory, UiKnowledgeRecordJson } from "../mon/knowledge-groups";
-import { MonAllocTable } from "../mon/make";
-import type { LoreStore } from "../mon/lore";
+import { bindConstants } from "../constants.js";
+import type { Constants, ConstantsJson } from "../constants.js";
+import { Rng } from "../rng.js";
+import type { RngState } from "../rng.js";
+import type { Loc } from "../loc.js";
+import type { Chunk } from "../world/chunk.js";
+import { FeatureRegistry } from "../world/feature.js";
+import type { TerrainRecordJson } from "../world/feature.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { ArtifactState, ObjAllocState } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import { bindMonsters } from "../mon/bind.js";
+import type { MonsterPackRecords } from "../mon/bind.js";
+import { bindMonsterCategories } from "../mon/knowledge-groups.js";
+import type { MonsterCategory, UiKnowledgeRecordJson } from "../mon/knowledge-groups.js";
+import { MonAllocTable } from "../mon/make.js";
+import type { LoreStore } from "../mon/lore.js";
 import {
   createRoomRegistry,
   loadRoomTemplates,
   loadVaults,
-} from "../gen/room";
+} from "../gen/room.js";
 import type {
   RoomRegistry,
   RoomTemplateRecordJson,
   VaultRecordJson,
-} from "../gen/room";
-import { createDungeonProfiles } from "../gen/cave";
-import type { DungeonProfiles, DunProfileRecordJson } from "../gen/cave";
-import { generateLevel } from "../gen/generate";
-import type { GenDeps, GenerateOptions } from "../gen/generate";
-import type { GenTrap, MonPlaceDeps, PlacedMonster, PlacedObject } from "../gen/util";
-import { bindProjections } from "../world/projection";
-import type { ProjectionInfo, ProjectionRecordJson } from "../world/projection";
-import { bindTraps } from "../world/trap";
-import type { TrapKind, TrapRecordJson } from "../world/trap";
-import { StoreRegistry } from "../store/bind";
-import type { StoreRecordJson } from "../store/types";
-import { bindQuests } from "../game/quest";
-import type { Quest, QuestRecordJson } from "../game/quest";
-import { iToGrid } from "../gen/util";
-import { resolvePits } from "../gen/gen-monster";
+} from "../gen/room.js";
+import { createDungeonProfiles } from "../gen/cave.js";
+import type { DungeonProfiles, DunProfileRecordJson } from "../gen/cave.js";
+import { generateLevel } from "../gen/generate.js";
+import type { GenDeps, GenerateOptions } from "../gen/generate.js";
+import type { GenTrap, MonPlaceDeps, PlacedMonster, PlacedObject } from "../gen/util.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionInfo, ProjectionRecordJson } from "../world/projection.js";
+import { bindTraps } from "../world/trap.js";
+import type { TrapKind, TrapRecordJson } from "../world/trap.js";
+import { StoreRegistry } from "../store/bind.js";
+import type { StoreRecordJson } from "../store/types.js";
+import { bindQuests } from "../game/quest.js";
+import type { Quest, QuestRecordJson } from "../game/quest.js";
+import { iToGrid } from "../gen/util.js";
+import { resolvePits } from "../gen/gen-monster.js";
 
 /** The base content pack as parsed JSON (pack zero, or a merged pack). */
 export interface CorePack {
@@ -278,7 +278,7 @@ export interface BootLevelOptions {
    * hook cave_generate consults is `levelGenerated`. Omitted (the default, and
    * the only possibility with no mod enabled) = faithful 4.2.6.
    */
-  modHooks?: import("../mod/hooks").ModHooks | undefined;
+  modHooks?: import("../mod/hooks.js").ModHooks | undefined;
 }
 
 /** A generated, populated level ready to hand to a renderer or game loop. */

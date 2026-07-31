@@ -19,10 +19,10 @@
  * recomputes once after the loops settle).
  */
 
-import type { Rng } from "../rng";
-import type { MessageType } from "../msg";
-import { PY_MAX_LEVEL, STAT_MAX } from "./types";
-import type { Player } from "./player";
+import type { Rng } from "../rng.js";
+import type { MessageType } from "../msg.js";
+import { PY_MAX_LEVEL, STAT_MAX } from "./types.js";
+import type { Player } from "./player.js";
 
 /** player_exp[PY_MAX_LEVEL] (player.c L48): exp needed to reach level i+2. */
 export const PLAYER_EXP: readonly number[] = [

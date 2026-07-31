@@ -36,7 +36,7 @@
  *   PlayerIncCheckHooks; absent them the check stays a pure predicate.
  */
 
-import type { TimedEffect, TimedGrade } from "./types";
+import type { TimedEffect, TimedGrade } from "./types.js";
 
 /**
  * The equipped-weapon descriptor print_custom_message (obj-util.c:1118)

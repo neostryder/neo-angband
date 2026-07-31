@@ -11,11 +11,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { FlagSet } from "../bitflag";
-import { ELEM_MAX, KF_SIZE, OF_SIZE } from "../obj/types";
-import type { Artifact, ObjectKind } from "../obj/types";
-import { objectNew } from "../obj/object";
-import { breakageChance } from "./ranged";
+import { FlagSet } from "../bitflag.js";
+import { ELEM_MAX, KF_SIZE, OF_SIZE } from "../obj/types.js";
+import type { Artifact, ObjectKind } from "../obj/types.js";
+import { objectNew } from "../obj/object.js";
+import { breakageChance } from "./ranged.js";
 
 function makeKind(breakPerc: number): ObjectKind {
   return {

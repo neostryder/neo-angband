@@ -52,7 +52,7 @@ export interface RegistryFile {
 }
 
 /**
- * A mod's payload: either its files listed one by one, or one committed archive.
+ * A mod's payload: either its files listed one by one, or committed archives.
  *
  * Two shapes rather than one because the sizes differ by three orders of magnitude. A
  * code mod is a manifest and a script - listing them is clearer, and each file gets
@@ -62,12 +62,19 @@ export interface RegistryFile {
 export type RegistryPayload =
   | { readonly kind: "files"; readonly files: readonly RegistryFile[] }
   /**
-   * A ZIP committed in the repository, unpacked after the digest matches. The digest
-   * covers the ARCHIVE, so one comparison authenticates every file inside it - and it
-   * is checked before a single entry is decompressed, so a malicious archive never
-   * gets to be parsed.
+   * ZIPs committed in the repository, unpacked after each digest matches. A digest
+   * covers a whole ARCHIVE, so one comparison authenticates every file inside it -
+   * and it is checked before a single entry is decompressed, so a malicious archive
+   * never gets to be parsed.
+   *
+   * A LIST rather than one archive, because a tiles mod is many separable packs.
+   * Measured on neo-linoleum: 9161 loose files and 42 MiB of art become 7 archives
+   * and 24.6 MiB, the largest 10.6 MiB. As one archive that would be a 24.6 MiB blob
+   * rewritten in full whenever a single tile changed, carrying one digest whose
+   * failure says only "something in here is wrong". Per pack, a digest names what
+   * failed, a fix rewrites one pack, and the installer is free to offer a subset.
    */
-  | { readonly kind: "archive"; readonly archive: RegistryFile };
+  | { readonly kind: "archive"; readonly archives: readonly RegistryFile[] };
 
 export interface RecommendedMod {
   /** The mod id, which is also its folder name and its manifest's `id`. */
@@ -99,17 +106,75 @@ export interface RecommendedMod {
 /**
  * The catalogue this build ships.
  *
- * EMPTY, deliberately and temporarily. The three mods (qol, bug-fixes, linoleum) are
- * still built into this bundle; they move to their own repositories next, and an entry
- * may only be added here once that repository has a real tag and the digests have been
- * computed from the bytes at it.
+ * ONE ENTRY, and the reason the other first-party mods are absent is not oversight:
+ * qol and bug-fixes are still BUNDLED (see FIRST_PARTY_MOD_IDS in mod-store.ts), so
+ * offering a download of a mod already in the build would give one id two sources.
+ * They join this list if and when they leave the bundle. neo-angband-mod-borg has no
+ * release - the repository reserves the name.
+ *
+ * EVERY DIGEST BELOW WAS MEASURED, not transcribed. `node tools/pack.mjs --json` in
+ * the mod repository printed them, and each was then re-fetched from
+ * raw.githubusercontent.com at the pinned tag and hashed again, so what is pinned is
+ * the bytes GitHub actually serves rather than the bytes a local build produced. The
+ * same check confirmed `Access-Control-Allow-Origin: *` on that path, which is what
+ * makes an install from the static web build possible at all.
  *
  * A placeholder entry with an invented tag or digest would be worse than an empty
  * list: it would fail verification, and a verification failure is the signal that
  * something has TAMPERED with a download. Filling this with fake hashes would train
  * whoever sees it to ignore the one alarm that matters.
  */
-export const RECOMMENDED_MODS: readonly RecommendedMod[] = [];
+export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
+  {
+    id: "neo-linoleum",
+    name: "neo-linoleum",
+    repo: "neostryder/neo-angband-mod-linoleum",
+    /* v0.9.1, not v0.9.0: that tag exists in that repository at content which shipped
+     * one pack, and moving a published tag is exactly what pinning a tag rather than a
+     * branch is here to prevent. */
+    tag: "v0.9.1",
+    summary:
+      "A second tile engine, and all six of Angband's tile sets converted to its loose-pack format",
+    /* Its absence is the game being faithful, not the game being worse: every tile set
+     * it converts is already selectable, drawn by the tilesheet engine. And it is a
+     * 25 MiB download. So the row starts clear. */
+    preChecked: false,
+    approxBytes: 25_780_914,
+    payload: {
+      kind: "archive",
+      archives: [
+        {
+          path: "dist/neo-linoleum-mod.zip",
+          sha256: "444ad879c7550827e4532dd8d53124b63095fe63b73674feb872345a55fe245a",
+        },
+        {
+          path: "dist/neo-linoleum-original-tiles.zip",
+          sha256: "8d894e8b657b47b1affbe68640e5304daca76a6a164c2ccab5b72763bc06ae32",
+        },
+        {
+          path: "dist/neo-linoleum-adam-bolt.zip",
+          sha256: "ae390e51191096006c1c602c7cdbceaabc217166bbca89c8c2e34c2679df6dde",
+        },
+        {
+          path: "dist/neo-linoleum-gervais.zip",
+          sha256: "a45a1a4758e409e7789dce3ba673c26ac795f38ccdf3b9894e71926c797fc7da",
+        },
+        {
+          path: "dist/neo-linoleum-nomad.zip",
+          sha256: "8349236290be9e4b9d12146006f9d30152525930d64661f997d23b9c41cab023",
+        },
+        {
+          path: "dist/neo-linoleum-shockbolt-dark.zip",
+          sha256: "0c892fdd128d6f6b3673052bb2e36c5d318f0ba81bdd046da1b300e802d4c39f",
+        },
+        {
+          path: "dist/neo-linoleum-shockbolt-light.zip",
+          sha256: "087aa80e370bd4d5d79c4c5a9ffd5828e06908b7a3caddd02b82cd7c6fb1ae8b",
+        },
+      ],
+    },
+  },
+];
 
 const SHA256_HEX = /^[0-9a-f]{64}$/u;
 /* `owner/repo`, GitHub's own character set for both halves. */
@@ -136,8 +201,7 @@ export function validateRecommendedMod(mod: RecommendedMod): string | null {
   if (mod.tag.includes("/")) return `${mod.id}: tag "${mod.tag}" looks like a ref path`;
 
   const seen = new Set<string>();
-  const files =
-    mod.payload.kind === "files" ? mod.payload.files : [mod.payload.archive];
+  const files = mod.payload.kind === "files" ? mod.payload.files : mod.payload.archives;
   if (files.length === 0) return `${mod.id}: nothing to download`;
   for (const f of files) {
     if (!SHA256_HEX.test(f.sha256)) {

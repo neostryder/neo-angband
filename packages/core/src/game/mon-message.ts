@@ -21,11 +21,11 @@
  * wired at every upstream notice_stuff site, not an edit here.
  */
 
-import { MON_MESSAGE_ENTRIES, MON_MSG, MSG, RF } from "../generated";
-import type { Loc } from "../loc";
-import type { Monster } from "../mon/monster";
-import type { MonsterAltMsg, MonsterRace, MonsterSpell } from "../mon/types";
-import { MDESC, MDESC_TARG, monsterDesc, pluralAux } from "../mon/desc";
+import { MON_MESSAGE_ENTRIES, MON_MSG, MSG, RF } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
+import type { MonsterAltMsg, MonsterRace, MonsterSpell } from "../mon/types.js";
+import { MDESC, MDESC_TARG, monsterDesc, pluralAux } from "../mon/desc.js";
 
 /**
  * get_message_text's bracket state machine (mon-msg.c L358): "[a|b]" selects a
