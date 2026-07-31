@@ -16,7 +16,7 @@
  */
 
 import type { BorgContext } from "../context.js";
-import type { ItemView, StoreItemView, AgentCommand } from "@neo-angband/core";
+import type { ItemView, StoreItemView, AgentCommand } from "@rpgm-tools/neo-angband-core";
 import {
   BI,
   CLASS_PRIEST, CLASS_PALADIN, CLASS_DRUID, CLASS_RANGER, CLASS_MAGE, CLASS_ROGUE,

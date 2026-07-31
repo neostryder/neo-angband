@@ -1,6 +1,6 @@
 {
-  "name": "@neo-angband/mod-sdk",
-  "version": "0.9.0",
+  "name": "@rpgm-tools/neo-angband-mod-sdk",
+  "version": "0.10.0",
   "description": "Pack schemas, validation, and tooling for Neo Angband mods (content packs, tile packs, scripted plugins)",
   "license": "GPL-2.0-only",
   "author": "neostryder (RPGM Tools)",
@@ -44,9 +44,13 @@
     "LICENSE.md",
     "README.md"
   ],
+  "//publishConfig": [
+    "provenance is deliberately absent - trusted publishing attaches it with no flag,",
+    "and the flag would break the one manual publish a new package needs. The long",
+    "version is in packages/core/package.json and docs/RELEASING.md step 4."
+  ],
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "scripts": {
     "build": "tsc"

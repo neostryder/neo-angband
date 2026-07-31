@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { playerSafeName } from "@neo-angband/core";
+import { playerSafeName } from "@rpgm-tools/neo-angband-core";
 import { getFile, getChar } from "./overlay";
 import {
   setUserStorage,
@@ -30,7 +30,7 @@ import {
   USER_DIR,
 } from "./userdir";
 import type { UserStorage } from "./userdir";
-import { FileMode, HostDir } from "@neo-angband/core";
+import { FileMode, HostDir } from "@rpgm-tools/neo-angband-core";
 import { BrowserHost } from "./host-browser";
 import { htmlScreenshot, cssToHex, DUMP_HTML, DUMP_FORUM } from "./screenshot";
 import type { GlyphTerm, ColoredCell } from "./term";

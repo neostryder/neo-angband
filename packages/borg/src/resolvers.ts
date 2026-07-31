@@ -10,7 +10,7 @@
  * running on the conservative zero-state defaults.
  *
  * This lives in the borg package (not a specific host) so web / cli / desktop
- * all wire the Borg the same faithful way. It depends only on @neo-angband/core,
+ * all wire the Borg the same faithful way. It depends only on @rpgm-tools/neo-angband-core,
  * which the package already depends on.
  */
 
@@ -18,7 +18,7 @@ import {
   MON_RACE_FLAG_ENTRIES,
   MON_SPELL_ENTRIES,
   type MonsterRace,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type { BorgResolvers } from "./think-session.js";
 import type { BlowFacts, FactsResolver, MonsterFacts } from "./danger/facts.js";
 import { defaultResolveMonsterFacts } from "./danger/facts.js";

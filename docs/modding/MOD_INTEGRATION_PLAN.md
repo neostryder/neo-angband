@@ -21,7 +21,7 @@ A three-part code audit established that the mod machinery is BUILT-BUT-NOT-WIRE
   pack in load order."
 - `composePacks`, `resolveLoadOrder`, `computeConflictReport`, `applyFieldPatch`,
   and `CapabilitySet` have ZERO non-test callers. No package depends on
-  `@neo-angband/mod-sdk`. A mod's patch/replace/remove/fieldPatch would have no
+  `@rpgm-tools/neo-angband-mod-sdk`. A mod's patch/replace/remove/fieldPatch would have no
   runtime effect.
 - The on-disk pack format (`{ id, name, version, engine, files: string[] }` +
   per-file `{ file, source, records: [] }`) is a DIFFERENT shape from the SDK's

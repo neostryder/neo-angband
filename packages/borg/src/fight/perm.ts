@@ -7,7 +7,7 @@
  * FightState). Each aux's priority value and cost gate is preserved verbatim.
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import { BI } from "../trait/trait-index.js";
 import { trait } from "../item/deps.js";

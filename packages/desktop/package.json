@@ -1,6 +1,6 @@
 {
-  "name": "@neo-angband/desktop",
-  "version": "0.9.0",
+  "name": "@rpgm-tools/neo-angband-desktop",
+  "version": "0.10.0",
   "private": true,
   "description": "Electron front end: the same web app, handed a real filesystem and argv",
   "license": "GPL-2.0-only",
@@ -11,14 +11,14 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "start": "pnpm build && electron .",
-    "dev": "pnpm --filter @neo-angband/web bundle && pnpm build && electron .",
-    "dist": "pnpm --filter @neo-angband/web bundle && pnpm build && electron-builder",
-    "dist:portable": "pnpm --filter @neo-angband/web bundle && pnpm build && electron-builder --win portable",
+    "dev": "pnpm --filter @rpgm-tools/neo-angband-web bundle && pnpm build && electron .",
+    "dist": "pnpm --filter @rpgm-tools/neo-angband-web bundle && pnpm build && electron-builder",
+    "dist:portable": "pnpm --filter @rpgm-tools/neo-angband-web bundle && pnpm build && electron-builder --win portable",
     "install:portable": "node scripts/install-portable.mjs"
   },
   "dependencies": {
-    "@neo-angband/cli": "workspace:*",
-    "@neo-angband/core": "workspace:*"
+    "@rpgm-tools/neo-angband-cli": "workspace:*",
+    "@rpgm-tools/neo-angband-core": "workspace:*"
   },
   "devDependencies": {
     "electron": "^43.2.0",

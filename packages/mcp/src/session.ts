@@ -27,13 +27,10 @@
 import {
   AGENT_API_VERSION,
   LOOP_STATUS,
-  TMD,
   installController,
-  noteSpots,
   runGameLoop,
   startGame,
-  updateView,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   AgentActions,
   AgentCommand,
@@ -41,7 +38,7 @@ import type {
   AgentView,
   GamePack,
   StartedGame,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 
 /** What `new_game` accepts. Every field has an upstream-faithful default. */
 export interface NewGameOptions {
@@ -94,12 +91,6 @@ export class GameSession {
   private pending: AgentCommand | null = null;
   private lastTurn: number;
   private nondeterministicTripped = false;
-  /**
-   * updateView's two constants. `maxSight` is on `state.z`; `feelingNeed` is NOT
-   * (GameConstants does not carry it), so it comes from the bound constants
-   * registry - which is where the web shell reads both from (main.ts:5622).
-   */
-  private readonly viewConstants: { maxSight: number; feelingNeed: number };
 
   constructor(pack: GamePack, opts: NewGameOptions, now: () => number) {
     /* A seed the caller did not pick is still REPORTED, so a session is always
@@ -156,52 +147,23 @@ export class GameSession {
       );
     }
 
-    const bound = this.game.booted.registries.constants;
-    this.viewConstants = { maxSight: bound.maxSight, feelingNeed: bound.feelingNeed };
     this.lastTurn = this.game.state.turn;
-    /* Last in the constructor, because it needs viewConstants. Before the first
-     * perceive, or the agent's opening `map` shows nothing at all - see
-     * refreshDerivedView. */
-    this.refreshDerivedView();
-  }
-
-  /**
-   * Recompute the field of view and the remembered map.
-   *
-   * A FOUND GAP, not a nicety. `runGameLoop` does not do this: it advances the
-   * world and leaves the DERIVED view state alone, and the web shell calls
-   * `updateView` + `noteSpots` itself on every render (main.ts:5641). Measured on
-   * a fresh startGame boot before this existed: of 12740 cells, `known` was true
-   * for 0 and `inView` for 0 - including the player's own square. An agent driving
-   * the frozen facade could see monsters and its own statistics and had NO MAP.
-   *
-   * Nothing in the repository could have caught it. The Borg's tests run against
-   * a hand-built fake view (`packages/borg/src/harness.ts` says so in its header),
-   * so the live perceive path had never been driven by anything but the web shell,
-   * which happens to refresh for its own drawing reasons.
-   *
-   * Doing it here is the RIGHT FIX FOR TODAY and the wrong home for it: two hosts
-   * now duplicate a refresh that upstream does inside update_stuff/handle_stuff,
-   * and a third host would forget. That belongs in core's loop, which is a parity
-   * change and so a decision rather than a drive-by. See docs/MCP.md.
-   */
-  private refreshDerivedView(): void {
-    const state = this.game.state;
-    const actor = state.actor;
-    updateView(
-      state.chunk,
-      {
-        grid: actor.grid,
-        curLight: actor.light,
-        blind: (actor.player.timed[TMD.BLIND] ?? 0) > 0,
-        hasUnlight: actor.unlight,
-        level: state.chunk.depth,
-      },
-      this.viewConstants,
-      [],
-      state.events,
-    );
-    noteSpots(state);
+    /* NO FOV REFRESH HERE, and that is the fix rather than an omission.
+     *
+     * This class used to carry a refreshDerivedView() that called updateView +
+     * noteSpots itself, because building this server found that an agent had no map
+     * at all: measured on a fresh startGame boot, of 12740 cells `known` was true
+     * for 0 and `inView` for 0, including the player's own square. The cause was
+     * not a missing refresh in the loop - core calls `state.updateFov` from ~25
+     * sites, including the level-entry flood - it was that `updateFov` is a host
+     * seam with no DEFAULT, so every one of those calls was a no-op for a host that
+     * had not wired one, and this host had not.
+     *
+     * core now installs a default in wireGame (session/game.ts), so startGame,
+     * loadGame and every acting path refresh with no host cooperation. Measured
+     * again at the same seed: 19 known, 59 in view, the player's own square known.
+     * Nothing to do here.
+     */
   }
 
   get view(): AgentView {
@@ -255,7 +217,6 @@ export class GameSession {
     const before = this.game.state.turn;
     this.pending = command;
     const status = runGameLoop(this.game.state, this.game.registry);
-    if (!this.dead) this.refreshDerivedView();
     /* Drained through the VIEW, not from a private buffer, so an agent reading
      * messages here sees exactly what messages() would report. */
     const messages = this.view.messages();

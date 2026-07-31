@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { newGear, gearAdd, objectNew, TV, FEAT } from "@neo-angband/core";
-import type { GameObject, ObjectKind, StartedGame, Store } from "@neo-angband/core";
+import { newGear, gearAdd, objectNew, TV, FEAT } from "@rpgm-tools/neo-angband-core";
+import type { GameObject, ObjectKind, StartedGame, Store } from "@rpgm-tools/neo-angband-core";
 import { findInven, sortStoreStock, wrapCssRuns, SEL_ORIGINAL, SEL_ROGUE } from "./shop";
 
 /**

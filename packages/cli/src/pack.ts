@@ -15,7 +15,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import type { GamePack } from "@neo-angband/core";
+import type { GamePack } from "@rpgm-tools/neo-angband-core";
 
 /** packages/content/pack, resolved relative to this module (src or dist). */
 const PACK_DIR = new URL("../../content/pack/", import.meta.url);

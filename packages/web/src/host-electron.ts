@@ -17,8 +17,8 @@
  * that would claim real files it does not have.
  */
 
-import type { HostIo } from "@neo-angband/core";
-import { RawFsHost, rawFsOverTransport } from "@neo-angband/core";
+import type { HostIo } from "@rpgm-tools/neo-angband-core";
+import { RawFsHost, rawFsOverTransport } from "@rpgm-tools/neo-angband-core";
 
 /**
  * What packages/desktop's preload exposes on `window`. Declared here rather than

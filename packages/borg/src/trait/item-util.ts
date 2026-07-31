@@ -5,7 +5,7 @@
  * (code-string lists) to the borg's numeric/flag view.
  */
 
-import type { ItemView } from "@neo-angband/core";
+import type { ItemView } from "@rpgm-tools/neo-angband-core";
 
 /** of_has(item->flags, OF_<name>). ItemView.flags holds OF_* names sans prefix. */
 export function hasFlag(item: ItemView, name: string): boolean {

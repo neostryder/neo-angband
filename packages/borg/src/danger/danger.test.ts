@@ -12,7 +12,7 @@ import { perceive, makePerceiveMemo } from "../perceive.js";
 import { makeScenarioView, makeFakeActions, type Scenario } from "../harness.js";
 import { makeBorgRng } from "../rng.js";
 import type { BorgContext } from "../context.js";
-import { RSF, FEAT } from "@neo-angband/core";
+import { RSF, FEAT } from "@rpgm-tools/neo-angband-core";
 import { BI } from "../trait/trait-index.js";
 import { MONBLOW } from "./tables.js";
 import type { MonsterFacts } from "./facts.js";

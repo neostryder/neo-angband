@@ -18,7 +18,7 @@ import {
   colorToCss,
   COLOUR_WHITE,
   ENGINE_VERSION,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import { UI_DIM } from "./ui-colors";
 
 /**

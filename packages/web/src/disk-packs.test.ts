@@ -25,8 +25,8 @@ import {
 } from "./disk-packs";
 import type { DiskPackReport, ModDirKind } from "./disk-packs";
 import { resolveEnabledIds } from "./mod-store";
-import { composeContentPacks } from "@neo-angband/mod-sdk";
-import type { LoadedPack } from "@neo-angband/mod-sdk";
+import { composeContentPacks } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { LoadedPack } from "@rpgm-tools/neo-angband-mod-sdk";
 
 afterEach(() => {
   resetDiskPacks();

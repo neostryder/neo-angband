@@ -4,7 +4,7 @@
  * They exercise the mod exactly as the game does: import its default entry
  * point, hand it resolved flags, install the result as GameState.modHooks, and
  * play a real turn through a real startGame. Nothing here reaches into core's
- * internals - it imports @neo-angband/core's published API, like any third-party
+ * internals - it imports @rpgm-tools/neo-angband-core's published API, like any third-party
  * mod's tests would.
  *
  * The complementary half is in core: packages/core/src/game/auto-dig.test.ts
@@ -23,9 +23,9 @@ import {
   squareMonster,
   startGame,
   walkAction,
-} from "@neo-angband/core";
-import type { GamePack, GameState, Loc } from "@neo-angband/core";
-import * as neoCore from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { GamePack, GameState, Loc } from "@rpgm-tools/neo-angband-core";
+import * as neoCore from "@rpgm-tools/neo-angband-core";
 import plugin from "./plugin";
 
 /**

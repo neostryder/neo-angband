@@ -4,14 +4,14 @@
 
 | Package | Role |
 | --- | --- |
-| `@neo-angband/core` | Headless engine: rules, world, entities, effects, generation, saves. Runs anywhere (browser, Node, workers). |
-| `@neo-angband/content` | The core content pack: Angband 4.2.6 gamedata compiled into pack format. Pack zero. |
-| `@neo-angband/mod-sdk` | Pack schemas, validation, and tooling for the mod ecosystem. |
-| `@neo-angband/web` | Web + PWA front-end (v1 target): modern glyph-first renderer. |
-| `@neo-angband/cli` | Terminal front-end and dev harness (golden scenarios, stats runs). |
-| `@neo-angband/desktop` | Optional Electron desktop wrapper around the same web bundle. |
-| `@neo-angband/linoleum` | Linoleum loose-pack tile format: the converter (Node) plus the format readers and portable md5 the web renderer uses. |
-| `@neo-angband/borg` | The bundled Borg autoplayer mod. |
+| `@rpgm-tools/neo-angband-core` | Headless engine: rules, world, entities, effects, generation, saves. Runs anywhere (browser, Node, workers). |
+| `@rpgm-tools/neo-angband-content` | The core content pack: Angband 4.2.6 gamedata compiled into pack format. Pack zero. |
+| `@rpgm-tools/neo-angband-mod-sdk` | Pack schemas, validation, and tooling for the mod ecosystem. |
+| `@rpgm-tools/neo-angband-web` | Web + PWA front-end (v1 target): modern glyph-first renderer. |
+| `@rpgm-tools/neo-angband-cli` | Terminal front-end and dev harness (golden scenarios, stats runs). |
+| `@rpgm-tools/neo-angband-desktop` | Optional Electron desktop wrapper around the same web bundle. |
+| `@rpgm-tools/neo-angband-linoleum` | Linoleum loose-pack tile format: the converter (Node) plus the format readers and portable md5 the web renderer uses. |
+| `@rpgm-tools/neo-angband-borg` | The bundled Borg autoplayer mod. |
 | `reference/` | The original C tree at parity baseline 4.2.6, buildable, read-only. |
 | `parity/` | Machine-readable provenance ledger mapping port modules to upstream sources. |
 
@@ -61,7 +61,7 @@ chokepoint into data:
   content is reproducible and saves can serialize exact RNG state.
 - **Registries everywhere.** All content - monsters, items, effects,
   generators, objectives - lives in namespaced registries populated by
-  packs. The engine ships empty; `@neo-angband/content` fills it.
+  packs. The engine ships empty; `@rpgm-tools/neo-angband-content` fills it.
 - **Determinism first, AI optional.** The generator seam has a deterministic
   default. Plugins may replace or augment generation; the engine never
   requires them.

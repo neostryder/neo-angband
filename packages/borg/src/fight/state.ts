@@ -26,7 +26,7 @@
  * exactly as danger/state.ts does for the danger globals.
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgWorld } from "../world/model.js";
 
 /** The combat cluster's mutable scratch state (one per Borg). */

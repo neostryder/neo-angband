@@ -34,7 +34,7 @@ import type {
   SpellbookView,
   StoreView,
   TargetView,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 
 /** Bumped on any breaking change to the message shapes below. */
 export const SANDBOX_PROTOCOL_VERSION = "1.0.0";

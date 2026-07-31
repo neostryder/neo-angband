@@ -1,5 +1,5 @@
 /**
- * @neo-angband/linoleum
+ * @rpgm-tools/neo-angband-linoleum
  *
  * Tools for building Linoleum loose-pack tile sets from the bundled legacy
  * tilesheets. Ported from the original PowerShell implementation

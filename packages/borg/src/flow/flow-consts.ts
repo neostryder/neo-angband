@@ -20,7 +20,7 @@
  *   behaviour depends on ddx_ddd/ddy_ddd verbatim.
  */
 
-import { FEAT } from "@neo-angband/core";
+import { FEAT } from "@rpgm-tools/neo-angband-core";
 import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid.js";
 import type { BorgGrid } from "../world/grid.js";
 import type { BorgWorld } from "../world/model.js";

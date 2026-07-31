@@ -24,8 +24,8 @@
  * cannot tell, and null is not false.
  */
 
-import type { HostCapabilities, HostIo, WriteOutcome } from "@neo-angband/core";
-import { FileMode, HostDir } from "@neo-angband/core";
+import type { HostCapabilities, HostIo, WriteOutcome } from "@rpgm-tools/neo-angband-core";
+import { FileMode, HostDir } from "@rpgm-tools/neo-angband-core";
 import {
   deleteUserFile,
   listUserFiles,

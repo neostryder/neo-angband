@@ -10,11 +10,11 @@ compactions."*
 The two detectors:
 
 ```bash
-pnpm --filter @neo-angband/cli census
+pnpm --filter @rpgm-tools/neo-angband-cli census
 ```
 
 ```bash
-pnpm --filter @neo-angband/cli call-census --shortfall --unmatched
+pnpm --filter @rpgm-tools/neo-angband-cli call-census --shortfall --unmatched
 ```
 
 Their allowlists (`text-census.test.ts` `KNOWN_ABSENT`,

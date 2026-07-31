@@ -10,7 +10,7 @@ import type {
   ItemView,
   SpellbookView,
   SpellView,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import { BorgWorld } from "../world/model.js";
 import { makeScenarioView, makeFakeActions, type Scenario } from "../harness.js";
 import { makeBorgRng } from "../rng.js";

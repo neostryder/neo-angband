@@ -7,7 +7,7 @@
  * into an empty directory with no node_modules and no repository around it, and
  * imports every declared entry point with plain Node.
  *
- * That last step is the whole point. Before it existed, `@neo-angband/core`
+ * That last step is the whole point. Before it existed, `@rpgm-tools/neo-angband-core`
  * emitted 4612 extensionless relative specifiers - `export * from "./rng"` - which
  * Vite resolves and Node does not, so the published engine would have been
  * unimportable by anyone not using a bundler. Every test in the repository passed,

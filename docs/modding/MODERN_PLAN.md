@@ -99,7 +99,7 @@ Costs are the reviewers' consensus.
 3. **Record-level schema validation + published JSON Schemas.** Turns a malformed
    contribution from a late binder crash into a message naming file, pointer,
    expected type and fix — and gives authors editor autocomplete for free.
-4. **The author platform: `@neo-angband/mod-api`, `create-mod`, `neo-pack
+4. **The author platform: `@rpgm-tools/neo-angband-mod-api`, `create-mod`, `neo-pack
    validate|build|test`.** Today an author reverse-engineers a monorepo. This is
    the difference all three named between an architecture and an ecosystem.
 5. **Registry-ify the largest closed dispatch families.** Monster blow effects,

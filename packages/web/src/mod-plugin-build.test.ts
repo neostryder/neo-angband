@@ -63,12 +63,17 @@ describe("build-mod-plugins.mjs", () => {
 
   it("leaves NO bare import in the output", () => {
     /* The failure mode that is invisible in the dev bundle and total in a player's
-     * install: "@neo-angband/core" resolves against the document, where nothing is
+     * install: "@rpgm-tools/neo-angband-core" resolves against the document, where nothing is
      * published. Asserted on the bytes as well as inside the script, because the
      * script's own check is a thing that could be deleted. */
     for (const id of MODS) {
       const js = readFileSync(join(outDir, id, PLUGIN_FILE), "utf8");
-      expect(js, id).not.toMatch(/from\s*["']@neo-angband\//);
+      /* Any BARE specifier, not the engine's name spelled out. The first version of
+       * this line matched "@neo-angband\/" - and a scope rename left the regex
+       * matching a name nothing writes any more, so it would have passed on a
+       * plugin.js that imported the engine. A rename must not be able to defang a
+       * guard; the invariant is "no non-relative import", and that survives one. */
+      expect(js, id).not.toMatch(/(?:^|[\s;}])(?:import|export)[\s\S]*?from\s*["'][^."'][^"']*["']/);
       expect(js, id).not.toMatch(/import\s*\(\s*["'][^."'][^"']*["']\s*\)/);
     }
   });

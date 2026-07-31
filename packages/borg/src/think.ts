@@ -16,7 +16,7 @@
  * flow/perception ports share).
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "./context.js";
 import {
   getThinkSession,

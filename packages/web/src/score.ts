@@ -24,7 +24,7 @@ import {
   SCORES_PER_PAGE,
   SCORE_DETAIL_INDENT,
   colorToCss,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
 import type {
   HighScore,
@@ -33,7 +33,7 @@ import type {
   ScoreNameResolver,
   Player,
   BuildScoreDeps,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 
 /** Version-name shown in the page title (ui-score.c VERSION_NAME). */

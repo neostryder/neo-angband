@@ -56,7 +56,7 @@ import {
   objCanCastFrom,
   objCanStudy,
   bindConstants,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   Textblock,
   GameState,
@@ -75,7 +75,7 @@ import type {
   MonsterRace,
   MonsterLore,
   LoreDeps,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import {
   wrapRuns,
   objectListLines,
@@ -98,7 +98,7 @@ import {
   packMenu,
   quiverMenu,
 } from "./screens";
-import type { Monster } from "@neo-angband/core";
+import type { Monster } from "@rpgm-tools/neo-angband-core";
 
 const WHITE = 1;
 const L_GREEN = 13;

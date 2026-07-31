@@ -1,7 +1,7 @@
 /**
  * Loads the active pack set into a GamePack the engine can start.
  *
- * The compiled pack JSON lives in @neo-angband/content; Vite's glob import
+ * The compiled pack JSON lives in @rpgm-tools/neo-angband-content; Vite's glob import
  * inlines every file into the bundle at build time, so the whole game ships as
  * one static asset with no runtime fetch.
  *
@@ -13,14 +13,14 @@
  * mod-sdk-agnostic - this host module owns the glue.
  */
 
-import type { GamePack, UiEntryPackRecords } from "@neo-angband/core";
+import type { GamePack, UiEntryPackRecords } from "@rpgm-tools/neo-angband-core";
 import {
   composeContentPacks,
   computeConflictReport,
   hasFacet,
   resolveLoadOrder,
-} from "@neo-angband/mod-sdk";
-import type { LoadedPack, PackContent, PackManifest } from "@neo-angband/mod-sdk";
+} from "@rpgm-tools/neo-angband-mod-sdk";
+import type { LoadedPack, PackContent, PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { isShippedMod, readEnabledModIds } from "./mod-store";
 import { diskPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
 
@@ -471,7 +471,7 @@ export function loadUiEntryPacks(): UiEntryPackRecords {
 export interface ModRuleDecl {
   modId: string;
   modName: string;
-  rule: import("@neo-angband/mod-sdk").PackRule;
+  rule: import("@rpgm-tools/neo-angband-mod-sdk").PackRule;
 }
 
 /**

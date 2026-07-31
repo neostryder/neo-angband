@@ -24,7 +24,7 @@
  * Decision subsystems read BorgWorld, never the live engine.
  */
 
-import type { AgentView } from "@neo-angband/core";
+import type { AgentView } from "@rpgm-tools/neo-angband-core";
 import { BORG_MARK, BORG_VIEW, BORG_GLOW } from "./world/grid.js";
 import type { BorgWorld } from "./world/model.js";
 import { makeLevelFacts } from "./world/model.js";

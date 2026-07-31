@@ -94,10 +94,10 @@ inferred.
 
 ## Pass counts
 
-- `pnpm --filter @neo-angband/core exec tsc --noEmit -p .` - clean
-- `pnpm --filter @neo-angband/web exec tsc --noEmit -p .` - clean
-- `pnpm --filter @neo-angband/core exec vitest run` - **223 files, 2979 tests, all passed**
-- `pnpm --filter @neo-angband/web exec vitest run` - **36 files, 449 tests, all passed**
+- `pnpm --filter @rpgm-tools/neo-angband-core exec tsc --noEmit -p .` - clean
+- `pnpm --filter @rpgm-tools/neo-angband-web exec tsc --noEmit -p .` - clean
+- `pnpm --filter @rpgm-tools/neo-angband-core exec vitest run` - **223 files, 2979 tests, all passed**
+- `pnpm --filter @rpgm-tools/neo-angband-web exec vitest run` - **36 files, 449 tests, all passed**
 - `pnpm build` (root `tsc -b`) - clean, no output
 
 (Borg's known-hanging `packages/borg/src/{think,foundation}.test.ts` were not

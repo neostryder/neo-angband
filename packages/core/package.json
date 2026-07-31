@@ -1,6 +1,6 @@
 {
-  "name": "@neo-angband/core",
-  "version": "0.9.0",
+  "name": "@rpgm-tools/neo-angband-core",
+  "version": "0.10.0",
   "description": "Headless Neo Angband game engine: rules, world, entities, effects, generation",
   "license": "GPL-2.0-only",
   "author": "neostryder (RPGM Tools)",
@@ -58,9 +58,16 @@
     "LICENSE.md",
     "README.md"
   ],
+  "//publishConfig": [
+    "provenance is NOT set here, and its absence is load-bearing. Trusted publishing",
+    "generates a provenance attestation on its own, with no flag; setting the flag",
+    "instead forces provenance on EVERY publish, including the one manual publish a",
+    "brand-new package needs before it has a settings page to configure a trusted",
+    "publisher on - and provenance cannot be generated outside a cloud CI runner, so",
+    "that first publish would fail. See docs/RELEASING.md step 4."
+  ],
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "scripts": {
     "build": "tsc"

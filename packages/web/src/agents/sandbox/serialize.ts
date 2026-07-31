@@ -16,9 +16,9 @@
  * worker-side reconstruction contract.
  */
 
-import type { AgentCapabilities, AgentView } from "@neo-angband/core";
-import { AGENT_STATE_DOMAINS } from "@neo-angband/core";
-import type { ItemView, CellView } from "@neo-angband/core";
+import type { AgentCapabilities, AgentView } from "@rpgm-tools/neo-angband-core";
+import { AGENT_STATE_DOMAINS } from "@rpgm-tools/neo-angband-core";
+import type { ItemView, CellView } from "@rpgm-tools/neo-angband-core";
 import type { ViewSnapshot } from "./protocol";
 
 /** True if the plugin may read `domain` (specific grant or the wildcard). */

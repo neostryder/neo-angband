@@ -13,8 +13,8 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { GRAPHICS_MODE_CATALOG, GRAPHICS_NONE } from "@neo-angband/core";
-import { ALL_PACKS } from "@neo-angband/linoleum";
+import { GRAPHICS_MODE_CATALOG, GRAPHICS_NONE } from "@rpgm-tools/neo-angband-core";
+import { ALL_PACKS } from "@rpgm-tools/neo-angband-linoleum";
 import { describe, expect, it } from "vitest";
 import {
   BUNDLED_TILE_DIRECTORIES,
@@ -349,7 +349,7 @@ describe("the game does not know or expect any particular mod", () => {
 
   /**
    * `linoleum` is the one bundled mod id these sources may contain, because the
-   * token there names a tile FORMAT and its engine (@neo-angband/linoleum, the
+   * token there names a tile FORMAT and its engine (@rpgm-tools/neo-angband-linoleum, the
    * workspace package, and docs/LINOLEUM.md), not the mod. The shell can read
    * that format the way it can read a PNG; what it must not do is depend on a
    * mod to have tile sets at all, which the other tests here pin.

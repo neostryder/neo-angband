@@ -42,7 +42,7 @@ describe("findSpecifiers: every position the grammar allows", () => {
     ['export * as ns from "./a.js";', ["./a.js"]],
     ['const m = await import("./a.js");', ["./a.js"]],
     ['import{a}from"./a.js";', ["./a.js"]], // minified, no spaces
-    ['import x from "@neo-angband/core";', ["@neo-angband/core"]], // bare, still found
+    ['import x from "@rpgm-tools/neo-angband-core";', ["@rpgm-tools/neo-angband-core"]], // bare, still found
   ])("finds the specifier in %s", (src, want) => {
     expect(specs(src as string)).toEqual(want);
   });
@@ -124,7 +124,7 @@ describe("resolveModulePath", () => {
   });
 
   it("knows a bare specifier is not its business", () => {
-    expect(isRelative("@neo-angband/core")).toBe(false);
+    expect(isRelative("@rpgm-tools/neo-angband-core")).toBe(false);
     expect(isRelative("./a.js")).toBe(true);
     expect(isRelative("../a.js")).toBe(true);
   });
@@ -197,10 +197,10 @@ describe("buildModuleGraph", () => {
     /* There should be none - the engine is passed in - but if a mod has one, the
      * rewriter must not invent a path for it. The import then fails with the
      * browser's message, which is the honest outcome. */
-    const p = pack({ "plugin.js": 'import * as core from "@neo-angband/core";' });
+    const p = pack({ "plugin.js": 'import * as core from "@rpgm-tools/neo-angband-core";' });
     const res = await buildModuleGraph("plugin.js", p.source);
     expect(res.problem).toBeNull();
-    expect(p.built.get("plugin.js")).toBe('import * as core from "@neo-angband/core";');
+    expect(p.built.get("plugin.js")).toBe('import * as core from "@rpgm-tools/neo-angband-core";');
   });
 
   it("names both files in a cycle", async () => {

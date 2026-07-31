@@ -1,5 +1,5 @@
 /**
- * `pnpm --filter @neo-angband/cli call-census` - print the call-site census.
+ * `pnpm --filter @rpgm-tools/neo-angband-cli call-census` - print the call-site census.
  *
  * TIER 1 is the gate (call-census.test.ts): the port DEFINES a function of that
  * name and nothing in the port mentions it. That is dead ported code, and it is

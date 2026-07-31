@@ -91,7 +91,15 @@ import { registerMeleeHandlers } from "../game/effect-melee.js";
 import { registerSummonHandlers } from "../game/effect-summon.js";
 import type { SummonEffectEnv } from "../game/effect-summon.js";
 import { registerDetectHandlers } from "../game/effect-detect.js";
-import { becomeAware, caveIlluminateKnown, caveKnown, newKnownMap } from "../game/known.js";
+import {
+  becomeAware,
+  caveIlluminateKnown,
+  caveKnown,
+  newKnownMap,
+  noteSpots,
+  viewerStateOf,
+} from "../game/known.js";
+import { updateView } from "../world/view.js";
 import { PY_EXERT, compactMonsters, isDaytime, playerOverExert } from "../game/world.js";
 import { restoreMonsters } from "../game/scheduler.js";
 import { newTargetState, targetSetMonster } from "../game/target.js";
@@ -388,6 +396,16 @@ export interface StartGameOptions extends BootLevelOptions {
    * enabled - leaves core byte-identical to faithful 4.2.6.
    */
   modHooks?: import("../mod/hooks.js").ModHooks;
+  /**
+   * The host's own FOV refresh, installed BEFORE the initial level-entry flood.
+   *
+   * Core installs a default when this is absent, so a host needs this only when it
+   * wants its own - the web shell routes the view's events at its sound bus. It is
+   * an option rather than a post-boot assignment because the level-entry flood runs
+   * inside startGame: a seam installed afterwards misses it, which is how the web
+   * build came to do its first view build with `onlyPartial` already cleared.
+   */
+  updateFov?: (state: GameState) => void;
 }
 
 /** A started game: the loop's state and registry, plus what a renderer needs. */
@@ -724,6 +742,43 @@ function wireGame(
     }
   };
   state.updateBonuses = refreshDerived;
+
+  /**
+   * update_stuff's PU_UPDATE_VIEW arm (player-calcs.c:2608), as the DEFAULT.
+   *
+   * `state.updateFov` is a host seam that core already calls from ~25 sites - the
+   * level-entry flood, the after-action refresh in player-turn.ts, every terrain
+   * and light effect. All of them are `?.`, and core supplied no default, so a
+   * host that did not install one got silence from every one of them. Measured on
+   * a fresh startGame boot with no host wiring: of 12740 cells, `known` was true
+   * for 0 and `inView` for 0, including the player's own square. The engine was
+   * complete and every caller was wired; the DEFAULT was the missing piece, and
+   * an agent driving the frozen agent API therefore had no map at all.
+   *
+   * Invisible until something drove it: the web shell installs its own (main.ts,
+   * routing view events at its sound bus) and the Borg's tests use a hand-built
+   * fake AgentView, so no test in the repository ever ran core's perceive path
+   * with nothing installed.
+   *
+   * `??=` rather than `=`: a host that wants its own events bus or light sources
+   * still replaces this, and the web does. Wired in wireGame so startGame and
+   * loadGame both get it - a resumed character has the same right to a map as a
+   * new one.
+   *
+   * The viewer fields come from `viewerStateOf` (game/known.ts) rather than being
+   * spelled out again here, because spelling them out twice is how both hosts came
+   * to pass `chunk.depth` where cave-view.c:778 reads `p->lev`.
+   */
+  state.updateFov ??= (s: GameState): void => {
+    updateView(
+      s.chunk,
+      viewerStateOf(s),
+      { maxSight: reg.constants.maxSight, feelingNeed: reg.constants.feelingNeed },
+      [],
+      s.events,
+    );
+    noteSpots(s);
+  };
   /* game-world.c:941-947: the C refreshes upkeep->inven[] before its
    * catch-all pack_overflow(NULL).  This closure has the same live
    * calc_inventory inputs used by pickup and command paths, preserving the
@@ -2824,6 +2879,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   };
 
   // seed_flavor already drawn above; flavor_init runs inside wireGame.
+  if (opts.updateFov) state.updateFov = opts.updateFov;
   const wired = wireGame(state, reg, players, pstate, seedFlavor, pack);
   /* PU_INVEN from the starting kit's inven_carry (player-birth.c). */
   buildGearViews(state, reg, pstate.ammoTval);
@@ -2901,9 +2957,15 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   /*
    * only_partial during the initial level-entry FOV (ui-display.c:2522 /
    * cave-view.c:851): C sets this for the first new-level display too, not
-   * only for later change_level transitions. When the host has already wired
-   * updateFov (tests), run under the flag now; otherwise leave onlyPartial
-   * set so the host's first FOV (packages/web main after wiring) matches C.
+   * only for later change_level transitions.
+   *
+   * The guard used to be load-bearing: with no default updateFov, a host that had
+   * not wired one yet got NO initial flood, and onlyPartial was left set for it to
+   * run later. That is what left an agent with a blank map - it never wired one, so
+   * the else branch was the whole story rather than a fallback. wireGame now
+   * installs a default, so the branch is always taken. The `if` stays because a
+   * host may still replace the seam with its own, and one that deleted it outright
+   * should get silence rather than a crash.
    */
   state.chunk.onlyPartial = true;
   if (state.updateFov) {

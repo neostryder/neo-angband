@@ -17,8 +17,8 @@ import {
   COLOUR_UMBER,
   COLOUR_WHITE,
   colorToCss,
-} from "@neo-angband/core";
-import type { AbilityRow } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { AbilityRow } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 import { menuLetter, selectFromMenu } from "./overlay";
 import type { MenuItem, ScreenLine } from "./overlay";

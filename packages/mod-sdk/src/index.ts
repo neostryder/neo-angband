@@ -1,5 +1,5 @@
 /**
- * @neo-angband/mod-sdk - schemas and tooling for the mod ecosystem.
+ * @rpgm-tools/neo-angband-mod-sdk - schemas and tooling for the mod ecosystem.
  *
  * Three pack shapes, one loading pipeline (see docs/MODS.md):
  * - content packs: schema-validated declarative JSON (safe by construction)

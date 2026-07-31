@@ -19,6 +19,7 @@ import { histHas, historyIsArtifactKnown } from "../player/history.js";
 import { floorCarry } from "../game/floor.js";
 import { objectPrep } from "../obj/make.js";
 import { squareIsKnown } from "../game/known.js";
+import { squareIsView } from "../world/view.js";
 import { loc } from "../loc.js";
 import { bindTraps, lookupTrap } from "../world/trap.js";
 import { placeTrap, squareIsPlayerTrap } from "../game/trap.js";
@@ -99,11 +100,50 @@ describe("startGame (new-game assembly)", () => {
     expect(state.monsters[0]).toBeNull();
   });
 
-  it("initial birth entry leaves only_partial set until first FOV (ui-display.c:2522)", () => {
-    /* startGame has no host updateFov yet, so onlyPartial stays true for the
-     * host's first level-entry FOV (feeling suppressed, cave-view.c:849-851). */
+  it("births with a POPULATED field of view, wiring no host seams at all", () => {
+    /**
+     * The assertion this replaced said `onlyPartial` was still true after birth,
+     * because startGame had no updateFov and so never ran the level-entry flood.
+     * It was an accurate description of the code and it documented a defect: core
+     * calls `state.updateFov` from ~25 sites and supplied no DEFAULT, so a host
+     * that wired none got a no-op from every one of them. Measured at this seed
+     * before the fix: 0 of 12740 cells known, 0 in view, the player's own square
+     * unknown - which is what an AI agent on the frozen agent API actually saw.
+     *
+     * Nothing here wires anything. That is the point: what is being tested is what
+     * a host gets for free.
+     */
     const { state } = startGame(pack, { seed: 123, depth: 1 });
-    expect(state.chunk.onlyPartial).toBe(true);
+    expect(state.updateFov).toBeTypeOf("function");
+    expect(state.chunk.onlyPartial).toBe(false);
+
+    let known = 0;
+    let inView = 0;
+    for (let y = 0; y < state.chunk.height; y++) {
+      for (let x = 0; x < state.chunk.width; x++) {
+        const g = loc(x, y);
+        if (squareIsKnown(state, g)) known++;
+        if (squareIsView(state.chunk, g)) inView++;
+      }
+    }
+    expect(known).toBeGreaterThan(0);
+    expect(inView).toBeGreaterThan(0);
+    /* The one square whose absence made the bug unmistakable. */
+    expect(squareIsKnown(state, state.actor.grid)).toBe(true);
+    expect(squareIsView(state.chunk, state.actor.grid)).toBe(true);
+  });
+
+  it("lets a host REPLACE the default rather than being stuck with it", () => {
+    /* The web shell installs its own, routing view events at its sound bus, so
+     * `??=` and not `=`. A test that only proved the default exists would pass
+     * just as well if the assignment clobbered a host's. */
+    let calls = 0;
+    const mine = (): void => {
+      calls++;
+    };
+    const { state } = startGame(pack, { seed: 123, depth: 1, updateFov: mine });
+    expect(state.updateFov).toBe(mine);
+    expect(calls).toBeGreaterThan(0);
   });
 
   it("memorizes the whole daytime town on birth (town_gen -> cave_illuminate)", () => {

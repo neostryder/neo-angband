@@ -32,9 +32,9 @@ import {
   prefErrorMessage,
   prefsSave,
   processPrefText,
-} from "@neo-angband/core";
-import { HostDir, host } from "@neo-angband/core";
-import type { DumpDeps, GlyphTable, PrefDeps, PrefSink } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import { HostDir, host } from "@rpgm-tools/neo-angband-core";
+import type { DumpDeps, GlyphTable, PrefDeps, PrefSink } from "@rpgm-tools/neo-angband-core";
 import { getCheck, getString, selectFromMenu } from "./overlay";
 import { argForceName } from "./launch";
 import type { MenuItem } from "./overlay";

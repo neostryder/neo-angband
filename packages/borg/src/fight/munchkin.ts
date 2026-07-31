@@ -7,7 +7,7 @@
  * routines reuse borgCalculateAttackEffectiveness for the actual damage sim.
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import { BI, CLASS_MAGE, CLASS_NECROMANCER } from "../trait/trait-index.js";
 import { trait } from "../item/deps.js";

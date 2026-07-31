@@ -15,7 +15,7 @@ Prerequisites, once per rebase:
 - A clean working tree and a fresh branch.
 - The port test suites green at the current baseline (`pnpm -r test`).
 - The B1 self-regression baseline reproducing integer-for-integer
-  (`pnpm --filter @neo-angband/cli test`, the `parity.test.ts` EXACT guard).
+  (`pnpm --filter @rpgm-tools/neo-angband-cli test`, the `parity.test.ts` EXACT guard).
 
 If any of these is red before you start, fix that first; you cannot tell rebase
 drift from a pre-existing failure otherwise.
@@ -186,7 +186,7 @@ For each worklist row:
 2. Re-run the module's own vitest tests first (fast inner loop):
 
    ```sh
-   pnpm --filter @neo-angband/core test -- calcs.test.ts bonuses.test.ts
+   pnpm --filter @rpgm-tools/neo-angband-core test -- calcs.test.ts bonuses.test.ts
    ```
 
    Update the tests where upstream legitimately changed expected behavior; a
@@ -196,8 +196,8 @@ For each worklist row:
 3. Re-run the B1 statistical harness (whole-level distributions):
 
    ```sh
-   pnpm --filter @neo-angband/cli build
-   pnpm --filter @neo-angband/cli test         # parity.test.ts EXACT self-regression guard
+   pnpm --filter @rpgm-tools/neo-angband-cli build
+   pnpm --filter @rpgm-tools/neo-angband-cli test         # parity.test.ts EXACT self-regression guard
    ```
 
    - If your change was meant to be distribution-NEUTRAL (a refactor, a
@@ -211,10 +211,10 @@ For each worklist row:
      regenerate the committed baseline:
 
      ```sh
-     pnpm --filter @neo-angband/cli stats:baseline   # rewrites baseline/stats-baseline.json
+     pnpm --filter @rpgm-tools/neo-angband-cli stats:baseline   # rewrites baseline/stats-baseline.json
      ```
 
-     Re-run `pnpm --filter @neo-angband/cli test` to confirm the fresh baseline
+     Re-run `pnpm --filter @rpgm-tools/neo-angband-cli test` to confirm the fresh baseline
      is now reproduced integer-for-integer. Commit the regenerated
      `stats-baseline.json` alongside the code change and note the reason in the
      commit and in `packages/cli/baseline/README.md` if the metric set changed.
@@ -222,8 +222,8 @@ For each worklist row:
 4. Optionally re-run the golden scenarios and spoiler dumps as extra coverage:
 
    ```sh
-   pnpm --filter @neo-angband/cli scenarios
-   pnpm --filter @neo-angband/cli spoil -- --kind all --out /tmp/spoil.txt
+   pnpm --filter @rpgm-tools/neo-angband-cli scenarios
+   pnpm --filter @rpgm-tools/neo-angband-cli spoil -- --kind all --out /tmp/spoil.txt
    ```
 
 5. When all touched modules are re-ported, run the full suite once
@@ -238,8 +238,8 @@ Only after the port is green at the new tag:
 1. Content re-compile (if `lib/gamedata` changed):
 
    ```sh
-   pnpm --filter @neo-angband/content build
-   pnpm --filter @neo-angband/content compile   # rebuild packages/content/pack/*.json from reference/lib/gamedata
+   pnpm --filter @rpgm-tools/neo-angband-content build
+   pnpm --filter @rpgm-tools/neo-angband-content compile   # rebuild packages/content/pack/*.json from reference/lib/gamedata
    ```
 
 2. Bump the pinned tag in `parity/README.md` (the "pinned to the parity
@@ -314,10 +314,10 @@ the `weight_limit()` table in `player-calcs.c`.
 
    ```sh
    # edit packages/core/src/player/calcs.ts weightLimit() to the 4.3.0 table
-   pnpm --filter @neo-angband/core test -- calcs.test.ts bonuses.test.ts
+   pnpm --filter @rpgm-tools/neo-angband-core test -- calcs.test.ts bonuses.test.ts
    # calcs.test.ts pins the weight-limit values; re-derive them from the new
    # reference/ source, not by eyeballing the failure.
-   pnpm --filter @neo-angband/cli test
+   pnpm --filter @rpgm-tools/neo-angband-cli test
    # weight_limit does not feed level generation, so the B1 EXACT guard should
    # STILL PASS; if it fails, the edit perturbed something it should not have.
    ```

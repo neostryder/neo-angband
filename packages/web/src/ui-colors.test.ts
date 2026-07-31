@@ -17,7 +17,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { describe, it, expect } from "vitest";
-import { colorToCss, MAX_COLORS } from "@neo-angband/core";
+import { colorToCss, MAX_COLORS } from "@rpgm-tools/neo-angband-core";
 
 const SRC_DIR = dirname(fileURLToPath(import.meta.url));
 

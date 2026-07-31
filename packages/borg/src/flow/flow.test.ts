@@ -5,13 +5,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import { BorgWorld } from "../world/model.js";
 import { perceive, makePerceiveMemo } from "../perceive.js";
 import { makeScenarioView, makeFakeActions, type Scenario } from "../harness.js";
 import { makeBorgRng } from "../rng.js";
 import type { BorgContext } from "../context.js";
-import { FEAT } from "@neo-angband/core";
+import { FEAT } from "@rpgm-tools/neo-angband-core";
 import { BI } from "./flow-consts.js";
 import {
   borgFlowClear,

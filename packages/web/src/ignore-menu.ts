@@ -31,8 +31,8 @@ import {
   IGNORE_TYPE_ENTRIES,
   OBJ_NOTICE,
   tvalIsJewelry,
-} from "@neo-angband/core";
-import type { GameState, GameObject } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { GameState, GameObject } from "@rpgm-tools/neo-angband-core";
 import { SVAL_DEPENDENT } from "./screens";
 import { selectFromMenu } from "./overlay";
 import type { MenuItem } from "./overlay";

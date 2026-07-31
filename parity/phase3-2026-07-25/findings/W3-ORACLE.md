@@ -24,7 +24,7 @@ Set-Location C:/Repositories/_c-oracle/build/game
 ./angband.exe -mstats -- -n1000 -q
 
 Set-Location C:/Repositories/na-wt-save
-pnpm --filter @neo-angband/cli build
+pnpm --filter @rpgm-tools/neo-angband-cli build
 Set-Location packages/cli
 node --import ./register.mjs dist/main-cimport.js C:/Repositories/_c-oracle/build/game/lib/user/stats/2026-07-25T11-45.db 20
 node --import ./register.mjs dist/main-stats.js --runs 1000 --depth-max 20 --seed 1337 --race Human --class Warrior --out C:/Repositories/_c-oracle/ts-stats-n1000.json

@@ -251,7 +251,7 @@ describe("the pref-file paths under arg_force_name", () => {
      * message is the success one. Without it the installed default reports
      * create-failed and the test would pass on "Failed to save ...", which is
      * not the branch under test. */
-    const { MemoryHost, setHost } = await import("@neo-angband/core");
+    const { MemoryHost, setHost } = await import("@rpgm-tools/neo-angband-core");
     setHost(new MemoryHost());
   });
 

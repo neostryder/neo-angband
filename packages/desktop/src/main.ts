@@ -33,8 +33,8 @@ import {
   hostDirOverrides,
   parseLaunchArgs,
   serveRawFs,
-} from "@neo-angband/core/host";
-import { NodeRawFs } from "@neo-angband/cli/host-node";
+} from "@rpgm-tools/neo-angband-core/host";
+import { NodeRawFs } from "@rpgm-tools/neo-angband-cli/host-node";
 import { LAUNCH_MODULES } from "./modules.js";
 import {
   HOST_BRIDGE_CHANNEL,
@@ -78,7 +78,7 @@ const WEB_ROOT = findWebRoot();
  * Set BEFORE the first app.getPath("userData"), which derives from it and then
  * caches. Without this, Electron takes the name from package.json - which is the
  * scoped workspace name - and a player's savefiles land in a directory called
- * "@neo-angband/desktop". That path is where saves live for the lifetime of an
+ * "@rpgm-tools/neo-angband-desktop". That path is where saves live for the lifetime of an
  * install, so it is not a cosmetic detail.
  */
 app.setName("Neo Angband");
@@ -950,7 +950,7 @@ async function start(): Promise<void> {
       message: "Web bundle not found.",
       detail:
         `Expected the built web app at:\n${WEB_ROOT}\n\n` +
-        "Build it first:  pnpm --filter @neo-angband/web bundle",
+        "Build it first:  pnpm --filter @rpgm-tools/neo-angband-web bundle",
     });
     app.quit();
     return;

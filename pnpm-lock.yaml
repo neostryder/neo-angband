@@ -29,13 +29,13 @@ importers:
 
   packages/borg:
     dependencies:
-      '@neo-angband/core':
+      '@rpgm-tools/neo-angband-core':
         specifier: workspace:*
         version: link:../core
 
   packages/cli:
     dependencies:
-      '@neo-angband/core':
+      '@rpgm-tools/neo-angband-core':
         specifier: workspace:*
         version: link:../core
 
@@ -45,10 +45,10 @@ importers:
 
   packages/desktop:
     dependencies:
-      '@neo-angband/cli':
+      '@rpgm-tools/neo-angband-cli':
         specifier: workspace:*
         version: link:../cli
-      '@neo-angband/core':
+      '@rpgm-tools/neo-angband-core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -77,10 +77,10 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@4.4.3)
-      '@neo-angband/cli':
+      '@rpgm-tools/neo-angband-cli':
         specifier: workspace:*
         version: link:../cli
-      '@neo-angband/core':
+      '@rpgm-tools/neo-angband-core':
         specifier: workspace:*
         version: link:../core
 
@@ -88,16 +88,16 @@ importers:
 
   packages/web:
     dependencies:
-      '@neo-angband/content':
+      '@rpgm-tools/neo-angband-content':
         specifier: workspace:*
         version: link:../content
-      '@neo-angband/core':
+      '@rpgm-tools/neo-angband-core':
         specifier: workspace:*
         version: link:../core
-      '@neo-angband/linoleum':
+      '@rpgm-tools/neo-angband-linoleum':
         specifier: workspace:*
         version: link:../linoleum
-      '@neo-angband/mod-sdk':
+      '@rpgm-tools/neo-angband-mod-sdk':
         specifier: workspace:*
         version: link:../mod-sdk
       fflate:

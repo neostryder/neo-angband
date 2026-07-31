@@ -1,11 +1,11 @@
-# @neo-angband/mod-sdk
+# @rpgm-tools/neo-angband-mod-sdk
 
 The mod machinery for [Neo Angband](https://github.com/neostryder/neo-angband):
 manifest schema and validation, the deterministic load-order resolver, and the
 record-composition engine that merges packs.
 
 ```bash
-npm install @neo-angband/mod-sdk
+npm install @rpgm-tools/neo-angband-mod-sdk
 ```
 
 ## Why it is a separate package
@@ -28,7 +28,7 @@ compose records without pulling in a game.
 | Capabilities | `CapabilitySet`, `parseCapability` — what a scripted plugin is allowed to reach |
 
 ```ts
-import { validateManifest, ManifestError } from "@neo-angband/mod-sdk";
+import { validateManifest, ManifestError } from "@rpgm-tools/neo-angband-mod-sdk";
 
 try {
   const manifest = validateManifest(JSON.parse(text));
@@ -53,7 +53,7 @@ reads them.
 
 ## Related
 
-- [`@neo-angband/core`](https://www.npmjs.com/package/@neo-angband/core) — the engine itself
+- [`@rpgm-tools/neo-angband-core`](https://www.npmjs.com/package/@rpgm-tools/neo-angband-core) — the engine itself
 - [docs/MODS.md](https://github.com/neostryder/neo-angband/blob/master/docs/MODS.md) — the full modding guide
 - First-party mods: [qol](https://github.com/neostryder/neo-angband-mod-qol) ·
   [bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) ·

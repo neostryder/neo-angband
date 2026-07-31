@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { colorToCss, COLOUR_ORANGE, MessageLog as CoreMessageLog, MSG } from "@neo-angband/core";
+import { colorToCss, COLOUR_ORANGE, MessageLog as CoreMessageLog, MSG } from "@rpgm-tools/neo-angband-core";
 import {
   MessageLog,
   messageTypeCode,

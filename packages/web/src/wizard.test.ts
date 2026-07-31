@@ -14,8 +14,8 @@ import {
   DEBUG_CONFIRM,
 } from "./wizard";
 import type { DebugCategory, DebugCommand, WizardUiCtx } from "./wizard";
-import { NOSCORE, markNoscore, noscoreInvalidatesScore } from "@neo-angband/core";
-import type { GameState, WizardDeps } from "@neo-angband/core";
+import { NOSCORE, markNoscore, noscoreInvalidatesScore } from "@rpgm-tools/neo-angband-core";
+import type { GameState, WizardDeps } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 
 // The wizard UI drives the repo's keydown-listener modal pattern (selectFromMenu

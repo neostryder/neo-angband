@@ -31,7 +31,7 @@
  */
 
 import type { BorgContext } from "../context.js";
-import type { ItemView, StoreView, StoreItemView } from "@neo-angband/core";
+import type { ItemView, StoreView, StoreItemView } from "@rpgm-tools/neo-angband-core";
 import { BI } from "../trait/trait-index.js";
 import { TV, SVAL, type BorgSvalTable } from "../item/svals.js";
 

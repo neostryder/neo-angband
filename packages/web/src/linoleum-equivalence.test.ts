@@ -21,7 +21,7 @@
  *
  * It has already earned its keep: it caught an asset-name collision that made
  * two different scrolls share one file (so one drew the other's tile) and the
- * dropped decimal-byte `<pile>` line, both now fixed in @neo-angband/linoleum.
+ * dropped decimal-byte `<pile>` line, both now fixed in @rpgm-tools/neo-angband-linoleum.
  * It did NOT catch the third change made there - writing target rules in source
  * order instead of alphabetically - because on these four packs that changes no
  * tile; convert.test.ts pins that one.
@@ -54,11 +54,11 @@ import {
   parseTilePrefsInto,
   TileMap,
   tileForMonster,
-} from "@neo-angband/core";
-import type { TileAtlas, TilePrefsDeps } from "@neo-angband/core";
-import { ALL_PACKS, buildPackExport } from "@neo-angband/linoleum";
-import type { PackConfig } from "@neo-angband/linoleum";
-import { parseTargetsFile } from "@neo-angband/linoleum/targets";
+} from "@rpgm-tools/neo-angband-core";
+import type { TileAtlas, TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
+import { ALL_PACKS, buildPackExport } from "@rpgm-tools/neo-angband-linoleum";
+import type { PackConfig } from "@rpgm-tools/neo-angband-linoleum";
+import { parseTargetsFile } from "@rpgm-tools/neo-angband-linoleum/targets";
 import { atlasToSlot, buildLinoleumIndex, parseFamiliesFile } from "./linoleum-pack";
 import type { LinoleumIndex } from "./linoleum-pack";
 import { isTile, tileCode } from "./tiles";

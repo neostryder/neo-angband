@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { PackManifest } from "@neo-angband/mod-sdk";
+import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { loadModCode, hasPlugin, PLUGIN_FILE } from "./mod-code";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
 import { MOD_API_VERSION, validateModPlugin } from "./mod-plugin";
@@ -272,10 +272,10 @@ describe("a broken plugin is one line, not a boot failure", () => {
       consented: NO_CAPS,
       importer: () =>
         Promise.reject(
-          new Error('Failed to resolve module specifier "@neo-angband/core"'),
+          new Error('Failed to resolve module specifier "@rpgm-tools/neo-angband-core"'),
         ),
     });
-    expect(report.problems[0]).toContain("@neo-angband/core");
+    expect(report.problems[0]).toContain("@rpgm-tools/neo-angband-core");
     expect(report.problems[0]).toContain("ctx.core");
     /* And it must not tell the author to bundle, which is what it used to say and
      * is now simply wrong: relative imports of the mod's own files work. */

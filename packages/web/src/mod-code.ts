@@ -48,11 +48,11 @@
  * build step to ship one would put a toolchain between an author and the game.
  *
  * What a folder plugin still cannot do is import a BARE specifier
- * ("@neo-angband/core"): it resolves against the document, where nothing is
+ * ("@rpgm-tools/neo-angband-core"): it resolves against the document, where nothing is
  * published. There is nothing to import - the engine is handed in as `ctx.core`.
  */
 
-import { hasFacet, validateManifest, type PackManifest } from "@neo-angband/mod-sdk";
+import { hasFacet, validateManifest, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
 import {
   MOD_API_VERSION,
@@ -314,7 +314,7 @@ function importAdvice(e: unknown): string {
       `${msg} - a plugin loaded from a folder cannot import a package by name. ` +
       `Relative imports of the mod's own files work ("./lib/dice.js"); the engine ` +
       `is handed to the plugin as ctx.core, so there is nothing to import from ` +
-      `"@neo-angband/core"`
+      `"@rpgm-tools/neo-angband-core"`
     );
   }
   return msg;

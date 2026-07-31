@@ -48,7 +48,7 @@ batch and the reason matters:
 `gen/gen-monster.ts`, `effects/effect.ts`, `expression.ts` — as a plain `Error`, not by the
 compiler.
 
-And `packages/content` has **no dependency on `@neo-angband/core`** (`content/package.json` lists
+And `packages/content` has **no dependency on `@rpgm-tools/neo-angband-core`** (`content/package.json` lists
 none, `content/tsconfig.json` has no project reference). A cross-package import from a content
 test would break `tsc -b`. So the batch splits:
 

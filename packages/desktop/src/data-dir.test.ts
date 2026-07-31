@@ -6,7 +6,7 @@
  * under the no-save-scumming policy a wrong answer is unrecoverable character
  * loss rather than an inconvenience. It has already been wrong once - Electron
  * derived it from the scoped package name and put saves in a directory called
- * "@neo-angband/desktop".
+ * "@rpgm-tools/neo-angband-desktop".
  */
 
 import { describe, expect, it } from "vitest";

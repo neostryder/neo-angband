@@ -14,7 +14,7 @@
  *
  * WHAT IT MUST GUARANTEE, and why each is checked rather than assumed:
  *
- *  1. NO BARE IMPORTS. "@neo-angband/core" does not resolve in a module fetched
+ *  1. NO BARE IMPORTS. "@rpgm-tools/neo-angband-core" does not resolve in a module fetched
  *     from a folder - it resolves against the document, where nothing is published.
  *     The engine arrives as ctx.core instead. A mod's source may import core for
  *     TYPES, which esbuild erases; if a VALUE import survives into the output, the
@@ -149,7 +149,7 @@ for (const id of selected) {
     fail(
       `${id}: plugin.js imports ${bare.map((s) => `"${s}"`).join(", ")} - a module ` +
         `loaded from a mod folder cannot resolve a package by name. Take what you ` +
-        `need from ctx.core, and import @neo-angband/core for TYPES only ` +
+        `need from ctx.core, and import @rpgm-tools/neo-angband-core for TYPES only ` +
         `("import type { ... }").`,
     );
     continue;

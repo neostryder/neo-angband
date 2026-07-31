@@ -27,7 +27,7 @@
  * BorgTraitOpts with inert defaults. See config.ts. Caveats in the port report.
  */
 
-import type { ItemView, PlayerView } from "@neo-angband/core";
+import type { ItemView, PlayerView } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import {
   BI,

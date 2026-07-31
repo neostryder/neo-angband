@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { ItemView } from "@neo-angband/core";
+import type { ItemView } from "@rpgm-tools/neo-angband-core";
 import { BorgWorld } from "../world/model.js";
 import { perceive, makePerceiveMemo } from "../perceive.js";
 import { makeScenarioView, makeFakeActions, type Scenario } from "../harness.js";

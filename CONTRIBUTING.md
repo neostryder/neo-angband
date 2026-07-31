@@ -43,12 +43,12 @@ pnpm test packages/core/src/rng  # narrow to a file or name fragment
 
 Package-specific scripts you may need (run with `pnpm --filter <name> <script>`):
 
-- `@neo-angband/web` - `dev` (Vite dev server), `bundle` (Vite/PWA build).
-- `@neo-angband/cli` - `scenarios` (golden parity scenarios), `stats`,
+- `@rpgm-tools/neo-angband-web` - `dev` (Vite dev server), `bundle` (Vite/PWA build).
+- `@rpgm-tools/neo-angband-cli` - `scenarios` (golden parity scenarios), `stats`,
   `stats:baseline`, `spoil`.
-- `@neo-angband/content` - `compile` (build the core content pack).
-- `@neo-angband/desktop` - `start` / `dev` (Electron), `dist` (packaged app).
-- `@neo-angband/linoleum` - the `neo-linoleum` tile-pack converter.
+- `@rpgm-tools/neo-angband-content` - `compile` (build the core content pack).
+- `@rpgm-tools/neo-angband-desktop` - `start` / `dev` (Electron), `dist` (packaged app).
+- `@rpgm-tools/neo-angband-linoleum` - the `neo-linoleum` tile-pack converter.
 
 ## Repository layout
 
@@ -122,7 +122,7 @@ New original code (UI, mod-sdk) needs no ledger entry.
 - CI (`.github/workflows/ci.yml`) runs on Node 24 and must stay green: it does
   `pnpm build`, `pnpm lint`, the web `bundle`, `pnpm test`, and the CLI parity
   `scenarios` as a standalone run.
-- Run `pnpm test` (and, for engine changes, `pnpm --filter @neo-angband/cli
+- Run `pnpm test` (and, for engine changes, `pnpm --filter @rpgm-tools/neo-angband-cli
   scenarios`) locally before opening a pull request.
 - **Prove the test bites.** Revert your fix, confirm the new test fails, then put
   the fix back. A test that passes either way documents nothing. (If you are
@@ -142,7 +142,7 @@ has, the gate goes quiet on its own; if you find one that is missing and *not*
 listed, that is a real find.
 
 ```sh
-pnpm --filter @neo-angband/cli census    # the current list, grouped by C file
+pnpm --filter @rpgm-tools/neo-angband-cli census    # the current list, grouped by C file
 ```
 
 Everything still absent is in `KNOWN_ABSENT` with the reason - host file I/O the
@@ -163,9 +163,9 @@ not exist. That is the shape of most of the bugs found by playing, because
 reviewing the ported function finds nothing wrong with it.
 
 ```sh
-pnpm --filter @neo-angband/cli call-census              # tier 1, the gate
-pnpm --filter @neo-angband/cli call-census --shortfall  # + fewer-calls report
-pnpm --filter @neo-angband/cli call-census --unmatched  # + unmatched report
+pnpm --filter @rpgm-tools/neo-angband-cli call-census              # tier 1, the gate
+pnpm --filter @rpgm-tools/neo-angband-cli call-census --shortfall  # + fewer-calls report
+pnpm --filter @rpgm-tools/neo-angband-cli call-census --unmatched  # + unmatched report
 ```
 
 Tier 1 is "the port defines a function of this upstream name and nothing in the

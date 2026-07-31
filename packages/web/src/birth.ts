@@ -91,7 +91,7 @@ import {
   sellStat,
   statTable,
   toCombatState,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   GameState,
   HistoryChart,
@@ -101,7 +101,7 @@ import type {
   PlayerProperty,
   PlayerRace,
   PlayerState,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 
 export interface BirthChoice {
   raceName: string;

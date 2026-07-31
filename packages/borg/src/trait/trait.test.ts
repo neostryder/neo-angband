@@ -10,7 +10,7 @@ import type {
   AgentView,
   ItemView,
   PlayerView,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import { BorgWorld } from "../world/model.js";
 import { makeScenarioView, makeFakeActions } from "../harness.js";

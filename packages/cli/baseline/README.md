@@ -73,8 +73,8 @@ port and its own baseline share, so it is NOT evidence of parity with Angband
 Regenerate after an intentional generator change (and review the diff):
 
 ```
-pnpm --filter @neo-angband/cli build
-pnpm --filter @neo-angband/cli stats:baseline
+pnpm --filter @rpgm-tools/neo-angband-cli build
+pnpm --filter @rpgm-tools/neo-angband-cli stats:baseline
 ```
 
 ## Reproducing the C baseline
@@ -118,7 +118,7 @@ finds automatically.
 3. **Import it** to this JSON (sqlite3 CLI must be on PATH, or set `$NEO_SQLITE3`):
 
    ```
-   pnpm --filter @neo-angband/cli build
+   pnpm --filter @rpgm-tools/neo-angband-cli build
    node dist/main-cimport.js <stats.db> 20
    ```
 

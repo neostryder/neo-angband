@@ -54,8 +54,8 @@ import {
   doRandart,
   generateLevel,
   genDeps,
-} from "@neo-angband/core";
-import type { CoreRegistries, GameObject, GamePack } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { CoreRegistries, GameObject, GamePack } from "@rpgm-tools/neo-angband-core";
 
 /** Parameters for a stats batch. Sane defaults let `runStatsBatch(pack)` work. */
 export interface StatsParams {
@@ -169,7 +169,7 @@ export const DEFAULT_STATS_PARAMS: StatsParams = {
  * The pinned parameters the committed baseline is captured with and the parity
  * test re-runs. Kept small so the vitest guard stays fast (24 level builds) but
  * spanning several depths for real signal. Changing these REQUIRES regenerating
- * the baseline (pnpm --filter @neo-angband/cli stats:baseline).
+ * the baseline (pnpm --filter @rpgm-tools/neo-angband-cli stats:baseline).
  */
 export const BASELINE_PARAMS: StatsParams = {
   runs: 3,

@@ -1,5 +1,5 @@
 /**
- * @neo-angband/borg - the Borg: a faithful TypeScript port of Angband 4.2.6's
+ * @rpgm-tools/neo-angband-borg - the Borg: a faithful TypeScript port of Angband 4.2.6's
  * automatic player (reference/src/borg), packaged as a bundled mod that rides
  * the frozen perceive/act agent API (core/src/agent).
  *
