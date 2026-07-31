@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { problemLines } from "./mod-problems";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { loadModCode, hasPlugin, PLUGIN_FILE } from "./mod-code";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
@@ -120,7 +121,7 @@ describe("a folder can supply code", () => {
       consented: NO_CAPS,
     });
     expect(report.plugins).toEqual([]);
-    expect(report.problems[0]).toContain("cannot serve code");
+    expect(problemLines(report.problems)[0]).toContain("cannot serve code");
   });
 
   it("is silent for a data-only folder with no code source", async () => {
@@ -165,11 +166,11 @@ describe("every gate is applied BEFORE the import", () => {
   it("refuses code from a pack whose manifest is not shape:plugin", async () => {
     const { report, imported } = await attempt(codePack("sneaky", { shape: "content" }));
     expect(imported).toBe(0);
-    expect(report.problems[0]).toContain('shape is "content"');
+    expect(problemLines(report.problems)[0]).toContain('shape is "content"');
     /* The refusal now names the FACET and the fix, since a mod may legitimately
      * be content-shaped and still run code - it just has to say so. */
-    expect(report.problems[0]).toContain('does not declare the "plugin" facet');
-    expect(report.problems[0]).toContain('"facets": ["content", "plugin"]');
+    expect(problemLines(report.problems)[0]).toContain('does not declare the "plugin" facet');
+    expect(problemLines(report.problems)[0]).toContain('"facets": ["content", "plugin"]');
   });
 
   it("refuses a pack that ships code and declares no modApi", async () => {
@@ -180,7 +181,7 @@ describe("every gate is applied BEFORE the import", () => {
     delete (pack.manifest as { modApi?: number }).modApi;
     const { report, imported } = await attempt(pack);
     expect(imported).toBe(0);
-    expect(report.problems[0]).toContain("modApi");
+    expect(problemLines(report.problems)[0]).toContain("modApi");
   });
 
   it("names both versions, and which side is behind", async () => {
@@ -189,15 +190,15 @@ describe("every gate is applied BEFORE the import", () => {
      * numbers says which. */
     const newer = await attempt(codePack("future", { modApi: MOD_API_VERSION + 1 }));
     expect(newer.imported).toBe(0);
-    expect(newer.report.problems[0]).toContain(`${MOD_API_VERSION + 1}`);
-    expect(newer.report.problems[0]).toContain(`${MOD_API_VERSION}`);
-    expect(newer.report.problems[0]).toContain("newer game");
+    expect(problemLines(newer.report.problems)[0]).toContain(`${MOD_API_VERSION + 1}`);
+    expect(problemLines(newer.report.problems)[0]).toContain(`${MOD_API_VERSION}`);
+    expect(problemLines(newer.report.problems)[0]).toContain("newer game");
 
     const older = await attempt(codePack("past", { modApi: MOD_API_VERSION + 1 }), {
       hostApi: MOD_API_VERSION + 2,
     });
     expect(older.imported).toBe(0);
-    expect(older.report.problems[0]).toContain("needs updating");
+    expect(problemLines(older.report.problems)[0]).toContain("needs updating");
   });
 
   it("does not import a plugin whose capabilities are not consented", async () => {
@@ -242,12 +243,12 @@ describe("a broken plugin is one line, not a boot failure", () => {
       importer: () => Promise.resolve({}),
     });
     expect(report.plugins).toEqual([]);
-    expect(report.problems[0]).toContain("no default export");
+    expect(problemLines(report.problems)[0]).toContain("no default export");
   });
 
   it("rejects a default export that declares neither hooks nor register", async () => {
     const report = await loadDefault({ api: MOD_API_VERSION });
-    expect(report.problems[0]).toContain("neither hooks nor register");
+    expect(problemLines(report.problems)[0]).toContain("neither hooks nor register");
   });
 
   it("rejects a plugin whose own api field disagrees with its manifest", async () => {
@@ -255,7 +256,7 @@ describe("a broken plugin is one line, not a boot failure", () => {
      * two disagree - a plugin rebuilt without its manifest, which is exactly the
      * mistake a mod author makes while iterating. */
     const report = await loadDefault({ api: MOD_API_VERSION + 5, hooks: () => undefined });
-    expect(report.problems[0]).toContain("mod API");
+    expect(problemLines(report.problems)[0]).toContain("mod API");
   });
 
   it("explains a BARE specifier rather than repeating the browser's message", async () => {
@@ -275,12 +276,12 @@ describe("a broken plugin is one line, not a boot failure", () => {
           new Error('Failed to resolve module specifier "@rpgm-tools/neo-angband-core"'),
         ),
     });
-    expect(report.problems[0]).toContain("@rpgm-tools/neo-angband-core");
-    expect(report.problems[0]).toContain("ctx.core");
+    expect(problemLines(report.problems)[0]).toContain("@rpgm-tools/neo-angband-core");
+    expect(problemLines(report.problems)[0]).toContain("ctx.core");
     /* And it must not tell the author to bundle, which is what it used to say and
      * is now simply wrong: relative imports of the mod's own files work. */
-    expect(report.problems[0]).toContain("./lib/dice.js");
-    expect(report.problems[0]).not.toMatch(/single plugin\.js|bundle it into/u);
+    expect(problemLines(report.problems)[0]).toContain("./lib/dice.js");
+    expect(problemLines(report.problems)[0]).not.toMatch(/single plugin\.js|bundle it into/u);
   });
 
   it("carries the pack's record files to the caller for the plugin's context", async () => {

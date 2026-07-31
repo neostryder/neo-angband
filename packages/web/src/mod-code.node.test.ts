@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { problemLines } from "./mod-problems";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { readModDir, type ModDirEntry, type ModDirSource } from "./disk-packs";
@@ -198,8 +199,8 @@ describe("a mod folder on disk supplies working code", () => {
       consented: () => [],
     });
     expect(code.plugins).toEqual([]);
-    expect(code.problems[0]).toContain("needs a newer game");
-    expect(code.problems[0]).not.toContain("top-level code ran");
+    expect(problemLines(code.problems)[0]).toContain("needs a newer game");
+    expect(problemLines(code.problems)[0]).not.toContain("top-level code ran");
   });
 
   it("reports a plugin that fails to evaluate, and keeps the game up", async () => {
@@ -213,7 +214,7 @@ describe("a mod folder on disk supplies working code", () => {
     });
     expect(code.plugins).toEqual([]);
     expect(code.problems).toHaveLength(1);
-    expect(code.problems[0]).toContain("failed to load");
+    expect(problemLines(code.problems)[0]).toContain("failed to load");
   });
 
   it("carries the pack's own record files through to the plugin's context", async () => {
@@ -344,7 +345,7 @@ describe("a mod may be several scripts, not one bundled file", () => {
     });
     expect(code.plugins).toEqual([]);
     expect(code.problems).toHaveLength(1);
-    expect(code.problems[0]).toContain("failed to load");
+    expect(problemLines(code.problems)[0]).toContain("failed to load");
   });
 
   it("WORKS from an opaque URL once the graph is resolved (the browser path)", async () => {
@@ -379,8 +380,8 @@ describe("a mod may be several scripts, not one bundled file", () => {
       consented: () => [],
     });
     expect(code.plugins).toEqual([]);
-    expect(code.problems[0]).toContain("lib/absent.js");
-    expect(code.problems[0]).toContain("not in the mod folder");
+    expect(problemLines(code.problems)[0]).toContain("lib/absent.js");
+    expect(problemLines(code.problems)[0]).toContain("not in the mod folder");
   });
 });
 

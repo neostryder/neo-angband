@@ -43,6 +43,11 @@ import type { GlyphTerm } from "./term";
 import type { ModDirKind, ModOrigin } from "./disk-packs";
 import type { CatalogMod, ModStore } from "./mod-store";
 import type { ModRuleDecl } from "./pack";
+import {
+  problemsFor,
+  unattributedProblems,
+  type ModProblem,
+} from "./mod-problems";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
 import { showModCatalogue, type ModCatalogueDeps } from "./mod-catalogue";
 import { wrapCssRuns } from "./shop";
@@ -71,7 +76,17 @@ export interface DiskPackStatus {
    * only place that knows both sets.
    */
   bundledCount: number;
-  problems: readonly string[];
+  /**
+   * Everything any layer knows about why a mod is not working, attributed to the mod
+   * when it can be (mod-problems.ts). Five sources feed it and only two of them used
+   * to reach a screen; the code loader's list reached nothing at all.
+   */
+  problems: readonly ModProblem[];
+  /**
+   * Mods not loaded ON PURPOSE - disabled, or waiting for capability consent. Kept
+   * apart from `problems` so this screen never calls a mod broken for being off.
+   */
+  skipped: readonly ModProblem[];
   /**
    * Which kind of source these came from.
    *
@@ -248,11 +263,27 @@ export function noFolderPickerLines(): ScreenLine[] {
   ];
 }
 
-/** The one-line badge for a catalog row: enabled state + any warning. */
-function rowLabel(m: CatalogMod): MenuItem {
+/**
+ * The one-line badge for a catalog row: enabled state, any warning, and whether
+ * this mod is BROKEN.
+ *
+ * "NOT WORKING" outranks every other flag and takes the row's colour, because it is
+ * the only one that answers the question a player opens this screen with. A row that
+ * said `[x] Quality of Life v0.10.0 (plugin)` in the enabled colour was the whole
+ * problem: the mod was on, consented, listed, and contributing nothing, and the
+ * screen agreed with it.
+ *
+ * `problems` is the mod's OWN problems, already filtered by caller - pure so the
+ * wording is assertable.
+ */
+export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuItem {
   const box = m.enabled ? "[x]" : "[ ]";
   const needsConsent = m.enabled && !m.consented;
+  const broken = problems.length > 0;
   const flags: string[] = [];
+  /* First in the list as well as first in precedence: the flags share one line and
+   * this is the one worth reading if the line is cut short. */
+  if (broken) flags.push("NOT WORKING");
   if (m.nondeterministic) flags.push("non-deterministic");
   if (m.affectsGameplay) flags.push("noscore");
   if (needsConsent) flags.push("NEEDS CONSENT");
@@ -262,11 +293,13 @@ function rowLabel(m: CatalogMod): MenuItem {
   // shape there instead ("tiles" for a tile pack, not "content").
   const kindTag = m.kind === "content" ? m.shape : m.kind;
   const label = `${box} ${m.name}  v${m.version}  (${kindTag})${suffix}`;
-  const color = needsConsent
-    ? C_WARN
-    : m.enabled
-      ? C_ENABLED
-      : C_DISABLED;
+  const color = broken
+    ? C_DANGER
+    : needsConsent
+      ? C_WARN
+      : m.enabled
+        ? C_ENABLED
+        : C_DISABLED;
   const capNote =
     m.capabilities.length > 0
       ? `Requests ${m.capabilities.length} capability(ies).`
@@ -274,7 +307,9 @@ function rowLabel(m: CatalogMod): MenuItem {
   return {
     label,
     color,
-    hint: `${m.shape} mod - ${capNote} Enter to manage.`,
+    hint: broken
+      ? `${problems.length === 1 ? "A problem" : `${problems.length} problems`} stopped this mod working. Enter for details.`
+      : `${m.shape} mod - ${capNote} Enter to manage.`,
   };
 }
 
@@ -302,7 +337,13 @@ function wrapped(text: string, width: number, color = C_FG): ScreenLine[] {
  * description flexes: the identity and trust lines are never dropped, and the
  * mod's own screen (few rows, a big budget) shows the description in full.
  */
-export function rowDetail(m: CatalogMod, width = 80, maxLines = 99): ScreenLine[] {
+export function rowDetail(
+  m: CatalogMod,
+  width = 80,
+  maxLines = 99,
+  problems: readonly string[] = [],
+  skipped: readonly string[] = [],
+): ScreenLine[] {
   const w = width - 1;
   /* EVERY line here goes through wrapped(), not just the description. The
    * description was wrapped and its siblings were not, so on any terminal
@@ -321,6 +362,42 @@ export function rowDetail(m: CatalogMod, width = 80, maxLines = 99): ScreenLine[
   ];
   const by = [m.manifest.author, m.manifest.license].filter(Boolean).join("  -  ");
   if (by) head.push(...wrapped(by, w, C_DIM));
+
+  /* WHY THIS MOD IS NOT WORKING, directly under its name and above everything else
+   * including its own description.
+   *
+   * It goes here rather than in the `below` block for the same reason it takes the
+   * row's colour: the description is what a player reads to decide whether they WANT
+   * the mod, and this is what they read when they already turned it on and nothing
+   * happened. The description flexes to fit the pane; this never does - it is
+   * subtracted from the description's budget instead, so a long blurb can be cut and
+   * a fault cannot. Every one of these lines was previously reachable only from a
+   * devtools console, and four of the five sources reached nothing at all. */
+  const trouble: ScreenLine[] = [];
+  if (problems.length > 0) {
+    trouble.push({ text: "", color: C_FG });
+    trouble.push(
+      ...wrapped(
+        problems.length === 1 ? "NOT WORKING:" : `NOT WORKING - ${problems.length} problems:`,
+        w,
+        C_DANGER,
+      ),
+    );
+    for (const p of problems) {
+      /* Hanging indent, so a wrapped problem stays visibly one problem. */
+      trouble.push(
+        ...wrapped(`  - ${p}`, w, C_DANGER).map((l, i) =>
+          i === 0 ? l : { ...l, text: `    ${l.text}` },
+        ),
+      );
+    }
+  }
+  /* Not a fault, and said differently: a mod that is enabled and waiting for consent
+   * is not broken, but it is also not running, and "enabled" alone does not
+   * distinguish those two for a player looking at a mod that does nothing. */
+  for (const s of skipped) {
+    trouble.push({ text: "", color: C_FG }, ...wrapped(`Not loaded: ${s}`, w, C_WARN));
+  }
 
   const below: ScreenLine[] = [];
   const ruleCount = m.manifest.rules?.length ?? 0;
@@ -395,10 +472,10 @@ export function rowDetail(m: CatalogMod, width = 80, maxLines = 99): ScreenLine[
    * : 0, deps ? 1 : 0, ...), which is only right while every one of them is a
    * single line - and once they wrap, the guess under-reserves and the pane
    * overflows. Measuring the built lines cannot drift from what is drawn. */
-  const lines = [...head];
+  const lines = [...head, ...trouble];
   const MORE = { text: "...  (open the mod to read the rest)", color: C_DIM };
   if (m.manifest.description) {
-    const room = maxLines - head.length - below.length - 1;
+    const room = maxLines - head.length - trouble.length - below.length - 1;
     const desc = wrapped(m.manifest.description, w);
     if (desc.length <= room) {
       lines.push({ text: "", color: C_FG }, ...desc);
@@ -531,6 +608,9 @@ async function manageMod(
   for (;;) {
     const m = deps.listCatalog().find((x) => x.id === id);
     if (!m) return changed;
+    const trouble = deps.diskPackStatus?.();
+    const myProblems = problemsFor(trouble?.problems ?? [], id);
+    const mySkipped = problemsFor(trouble?.skipped ?? [], id);
     const items: MenuItem[] = [];
     const acts: string[] = [];
     const ruleCount = m.manifest.rules?.length ?? 0;
@@ -573,7 +653,7 @@ async function manageMod(
       items,
       "[ choose an action; ESC to go back ]",
       {
-        detail: () => rowDetail(m, term.size().cols),
+        detail: () => rowDetail(m, term.size().cols, 99, myProblems, mySkipped),
         detailToggleKey: "?",
         detailInitiallyShown: true,
       },
@@ -784,12 +864,6 @@ async function showModSources(
       { text: "", color: C_FG },
       { text: "You can also give this browser a mods FOLDER, and use both.", color: C_DIM },
     );
-    if (status.problems.length > 0) {
-      lines.push({ text: "", color: C_FG }, { text: "Could not be used:", color: C_DANGER });
-      for (const p of status.problems.slice(0, 8)) {
-        lines.push({ text: `  ${p}`, color: C_DANGER });
-      }
-    }
   } else {
     lines.push(
       {
@@ -847,14 +921,42 @@ async function showModSources(
           : []),
       );
     }
-    if (status.problems.length > 0) {
-      lines.push({ text: "", color: C_FG }, { text: "Could not be used:", color: C_DANGER });
-      for (const p of status.problems.slice(0, 8)) {
-        lines.push({ text: `  ${p}`, color: C_DANGER });
-      }
-    }
   }
+  /* HOISTED OUT OF THE BRANCHES (2026-07-31). Two of the three said this and the
+   * first did not, so a problem collected while no folder was attached - a bundled
+   * plugin that failed validation, a hooks() that threw - was computed, carried all
+   * the way here, and then fell down the one branch that never printed it. */
+  lines.push(...problemBlock(status?.problems ?? []));
   await showTextScreen(term, "Where mods come from", lines);
+}
+
+/**
+ * The "could not be used" block, or nothing.
+ *
+ * Exported and pure because the CAP is the interesting part. This used to
+ * `slice(0, 8)` and print nothing about the rest, so nine problems looked like
+ * eight - a truncation that reads as completeness is worse than a long list, and it
+ * hid exactly the case where a lot has gone wrong. The cap stays (a text screen has
+ * one page and no scroll) and now says what it dropped.
+ */
+export function problemBlock(problems: readonly ModProblem[]): ScreenLine[] {
+  if (problems.length === 0) return [];
+  const CAP = 8;
+  const out: ScreenLine[] = [
+    { text: "", color: C_FG },
+    { text: "Could not be used:", color: C_DANGER },
+  ];
+  for (const p of problems.slice(0, CAP)) {
+    out.push({ text: `  ${p.id === null ? p.why : `${p.id}: ${p.why}`}`, color: C_DANGER });
+  }
+  if (problems.length > CAP) {
+    const rest = problems.length - CAP;
+    out.push({
+      text: `  ...and ${rest} more (each mod's own are on its row in the Mods list)`,
+      color: C_DANGER,
+    });
+  }
+  return out;
 }
 
 /**
@@ -968,7 +1070,15 @@ export async function runModManager(
   const tileModsAtEntry = enabledTileModIds(deps);
   for (;;) {
     const catalog = deps.listCatalog();
-    const items: MenuItem[] = catalog.map(rowLabel);
+    /* Read ONCE per pass, not once per row: diskPackStatus recomposes and re-reads
+     * every source, and calling it inside a map over thirty mods would do that thirty
+     * times for one screen. */
+    const trouble = deps.diskPackStatus?.();
+    const problems = trouble?.problems ?? [];
+    const skipped = trouble?.skipped ?? [];
+    const items: MenuItem[] = catalog.map((m) =>
+      rowLabel(m, problemsFor(problems, m.id)),
+    );
     type ActionKind =
       | "conflicts"
       | "profiles"
@@ -1009,7 +1119,7 @@ export async function runModManager(
         "Download a mod from its own repository, digest-checked.",
       );
     }
-    const diskStatus = deps.diskPackStatus?.();
+    const diskStatus = trouble;
     /* The saved folder's name is read fresh each pass, because picking or
      * forgetting one changes it and the row has to follow. */
     const savedFolder = deps.modFolder ? await deps.modFolder.savedName() : null;
@@ -1026,15 +1136,26 @@ export async function runModManager(
             : "Choose another, reconnect, or stop using it.",
       );
     }
+    /* The problems belonging to no ROW - a folder whose manifest would not validate
+     * never becomes a catalogue entry, so there is nowhere else in this screen they
+     * can appear. Badged onto the row that shows them, because the failure this whole
+     * change is about is a diagnosis nobody could find: leaving them behind an
+     * unremarkable "Where mods come from..." row was how the pack reader's list stayed
+     * effectively invisible even though it was, technically, rendered. */
+    const orphans = unattributedProblems(problems, new Set(catalog.map((m) => m.id)));
     addAction(
-      "Where mods come from...",
+      orphans.length > 0
+        ? `Where mods come from...  ! ${orphans.length} ${orphans.length === 1 ? "problem" : "problems"}`
+        : "Where mods come from...",
       "install",
-      C_DIM,
-      diskStatus?.available === true
-        ? "Your mods folder: path, contents, and anything unreadable."
-        : deps.modFolder
-          ? "The folder layout, and how one is read."
-          : "Why this build has no mods folder.",
+      orphans.length > 0 ? C_DANGER : C_DIM,
+      orphans.length > 0
+        ? "A mod could not be read at all, so it has no row above."
+        : diskStatus?.available === true
+          ? "Your mods folder: path, contents, and anything unreadable."
+          : deps.modFolder
+            ? "The folder layout, and how one is read."
+            : "Why this build has no mods folder.",
     );
     if (dirty) {
       addAction("Apply changes and reload", "reload", C_WARN, "Reload so enable/disable/order take effect.");
@@ -1074,7 +1195,13 @@ export async function runModManager(
         const { cols, rows } = term.size();
         const CHROME = 4; // title, blank, hint line, footer
         const budget = Math.max(0, rows - CHROME - Math.min(items.length, MIN_LIST_ROWS));
-        const detail = rowDetail(m, cols, budget - 1);
+        const detail = rowDetail(
+          m,
+          cols,
+          budget - 1,
+          problemsFor(problems, m.id),
+          problemsFor(skipped, m.id),
+        );
         /* Where in the list this row is. With five rows of a thirty-mod catalogue
          * on screen there is otherwise nothing that says the list continues -
          * upstream's menu draws no scroll indicator (display_scrolling has none)

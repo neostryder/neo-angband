@@ -33,8 +33,8 @@ export type {
 export { ResolveError, resolveLoadOrder } from "./resolve.js";
 export { satisfies, SemverError } from "./semver.js";
 export { ComposeError, composePacks, mergePatch } from "./compose.js";
-export { composeContentPacks } from "./loader.js";
-export type { ComposedContent, LoadedPack } from "./loader.js";
+export { composeContentPacks, composeDroppingBroken } from "./loader.js";
+export type { ComposedContent, ComposeFault, DroppedPack, LoadedPack } from "./loader.js";
 export {
   KEYED_RECORD_FILES,
   keyDescription,

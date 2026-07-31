@@ -44,6 +44,7 @@ import { defaultModStore, isShippedMod, resolveModRules } from "./mod-store";
 import { activeModCode } from "./mod-code";
 import { validateModPlugin, type ModPlugin } from "./mod-plugin";
 import { modPluginContext, modOwnFiles } from "./mod-context";
+import { faultMessage, reportModFault } from "./mod-problems";
 
 /**
  * The one-argument adapter both paths are reduced to before the fold: a mod's
@@ -78,6 +79,7 @@ export function discoverModHookEntries(): Map<string, ModHookEntry> {
      * check, which is the one that catches a mod left behind by a bump. */
     const wrong = validateModPlugin(entry);
     if (wrong) {
+      reportModFault(id, `${wrong} - the mod contributes no behaviour`);
       console.warn(`[mod-hooks] ${id}/plugin.ts: ${wrong}; skipping`);
       continue;
     }
@@ -93,6 +95,11 @@ export function discoverModHookEntries(): Map<string, ModHookEntry> {
  * nothing else, whether it came from a folder or the bundle. A bundled mod is first
  *-party, but "first-party code cannot throw" is an assumption, not a guarantee, and
  * a mod that takes the game down on boot is the worst version of that being wrong.
+ *
+ * THE CATCH WAS RIGHT AND THE REPORT WAS A console.error, which is a channel a
+ * player does not have: a mod whose hooks() threw was enabled, listed, consented to,
+ * and behaviourally absent, with nothing anywhere on screen saying so. It now also
+ * reports, so the mod manager can put it on that mod's row.
  */
 function pluginAdapter(id: string, plugin: ModPlugin): ModHookEntry {
   return (flags) => {
@@ -100,6 +107,7 @@ function pluginAdapter(id: string, plugin: ModPlugin): ModHookEntry {
     try {
       return plugin.hooks(modPluginContext(id, flags));
     } catch (e) {
+      reportModFault(id, `hooks() threw, so it changes no behaviour: ${faultMessage(e)}`);
       console.error(`[mod:${id}] hooks() threw; contributing nothing:`, e);
       return undefined;
     }
@@ -178,6 +186,10 @@ function folderHookEntries(): Map<string, ModHookEntry> {
           modPluginContext(loaded.id, flags, undefined, modOwnFiles(loaded.data)),
         );
       } catch (e) {
+        reportModFault(
+          loaded.id,
+          `hooks() threw, so it changes no behaviour: ${faultMessage(e)}`,
+        );
         console.error(`[mod:${loaded.id}] hooks() threw; contributing nothing:`, e);
         return undefined;
       }
