@@ -20,7 +20,7 @@
  * ?trusted= still override for one-off testing, per pack.ts / main.ts.)
  */
 
-import type { PackManifest } from "@neo-angband/mod-sdk";
+import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 
 const ENABLED_KEY = "neo:enabledMods";
 /* Explicit per-mod decisions, distinct from the resulting enabled SET: an entry

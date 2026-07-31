@@ -12,7 +12,7 @@
  * manager UI (enable/consent/reorder) is W2.4.
  */
 
-import { hasFacet, type PackManifest } from "@neo-angband/mod-sdk";
+import { hasFacet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { isShippedMod } from "../../mod-store";
 
 /* Each sandbox.ts becomes a module-Worker constructor (Vite ?worker).

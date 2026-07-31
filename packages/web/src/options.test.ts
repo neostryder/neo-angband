@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
-import { OptionState, Rng } from "@neo-angband/core";
-import type { GameState } from "@neo-angband/core";
+import { OptionState, Rng } from "@rpgm-tools/neo-angband-core";
+import type { GameState } from "@rpgm-tools/neo-angband-core";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { GlyphTerm } from "./term";
 

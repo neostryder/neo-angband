@@ -12,8 +12,8 @@
  * last render as the top status line, and feeds the full history screen.
  */
 
-import { MSG } from "@neo-angband/core";
-import type { MessageType } from "@neo-angband/core";
+import { MSG } from "@rpgm-tools/neo-angband-core";
+import type { MessageType } from "@rpgm-tools/neo-angband-core";
 
 export interface LoggedMessage {
   text: string;

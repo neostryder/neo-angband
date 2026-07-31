@@ -35,13 +35,13 @@
  * level mod would reach for.
  */
 
-import type { Chunk, Gen, Loc } from "@neo-angband/core";
+import type { Chunk, Gen, Loc } from "@rpgm-tools/neo-angband-core";
 
 /**
  * The engine primitives this fix needs, HANDED IN rather than imported.
  *
  * The mod's entry point receives the live core namespace as `ctx.core` and passes
- * it down. A folder-loaded plugin.js cannot resolve "@neo-angband/core", and even
+ * it down. A folder-loaded plugin.js cannot resolve "@rpgm-tools/neo-angband-core", and even
  * where it could - a bundled build - importing it would risk a second copy of the
  * engine's registries and singletons. See src/mod-plugin.ts's header.
  *
@@ -50,7 +50,7 @@ import type { Chunk, Gen, Loc } from "@neo-angband/core";
  * trace in the built plugin.js.
  */
 export type StairsCore = Pick<
-  typeof import("@neo-angband/core"),
+  typeof import("@rpgm-tools/neo-angband-core"),
   | "FEAT"
   | "loc"
   | "placeStairs"

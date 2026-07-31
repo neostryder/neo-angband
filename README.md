@@ -60,7 +60,7 @@ git clone https://github.com/neostryder/neo-angband.git
 ```
 
 ```bash
-cd neo-angband && pnpm install && pnpm --filter @neo-angband/web dev
+cd neo-angband && pnpm install && pnpm --filter @rpgm-tools/neo-angband-web dev
 ```
 
 Then open **http://localhost:5178** and play. The dev server hot-reloads, so this
@@ -72,7 +72,7 @@ The production build is a folder of static files - no server code, no database,
 no network calls at runtime.
 
 ```bash
-pnpm --filter @neo-angband/web bundle
+pnpm --filter @rpgm-tools/neo-angband-web bundle
 ```
 
 Serve `packages/web/dist-web/` with any static file host. It uses a relative
@@ -90,7 +90,7 @@ headers and hosting notes.
 ### Run it as a desktop app
 
 ```bash
-pnpm --filter @neo-angband/desktop dev
+pnpm --filter @rpgm-tools/neo-angband-desktop dev
 ```
 
 That builds the web bundle and opens it in an Electron window. To produce real
@@ -136,7 +136,7 @@ Honest list, so nobody wastes a report on something already written down:
 - **Some upstream messages are still missing.** The exact set is enumerated, with
   a reason for each, in `KNOWN_ABSENT` in
   [packages/cli/src/text-census.test.ts](packages/cli/src/text-census.test.ts).
-  `pnpm --filter @neo-angband/cli census` prints the current list. A message that
+  `pnpm --filter @rpgm-tools/neo-angband-cli census` prints the current list. A message that
   is absent and *not* on that list fails CI - so if you find one that isn't
   listed, that is a genuine find and a bug in the checking.
 - **The terminal is a fixed 80x24**, scaled to fit your window and letterboxed.

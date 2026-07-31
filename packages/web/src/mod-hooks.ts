@@ -38,7 +38,7 @@
  * call site on its faithful path.
  */
 
-import { composeModHooks, type ModHooks } from "@neo-angband/core";
+import { composeModHooks, type ModHooks } from "@rpgm-tools/neo-angband-core";
 import { enabledModIds, loadEnabledModRuleDecls } from "./pack";
 import { defaultModStore, isShippedMod, resolveModRules } from "./mod-store";
 import { activeModCode } from "./mod-code";

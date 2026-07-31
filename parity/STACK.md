@@ -136,7 +136,7 @@ Two things this turned up that were not on any list:
    scripts unless allowlisted, and Electron's postinstall is what downloads the
    Chromium binary - so `electron .` died with "Electron failed to install
    correctly". Fixed by `onlyBuiltDependencies` in `pnpm-workspace.yaml`.
-2. **Savefiles were going to land in a directory called `@neo-angband/desktop`,**
+2. **Savefiles were going to land in a directory called `@rpgm-tools/neo-angband-desktop`,**
    because Electron derives `userData` from the package name and this is a scoped
    workspace package. Fixed with `app.setName("Neo Angband")` before the first
    `getPath("userData")`, which caches.

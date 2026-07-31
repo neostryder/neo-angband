@@ -89,8 +89,8 @@ import {
   DEFAULT_DELAY_FACTOR,
   DEFAULT_LAZYMOVE_DELAY,
   GRAPHICS_NONE,
-} from "@neo-angband/core";
-import type { GameState } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { GameState } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 import { selectFromMenu, promptNumber, menuNav } from "./overlay";
 import type { MenuItem } from "./overlay";

@@ -107,7 +107,7 @@ state of each noted):
 - The base game must consume every surface through the same public API mods
   use. If core needs a private hook, the hook becomes public API instead.
   *Measured: holds for the bundled mods' hooks - `packages/web/mods/bug-fixes/`
-  and `qol/` import only `@neo-angband/core`'s public API and no test hook.*
+  and `qol/` import only `@rpgm-tools/neo-angband-core`'s public API and no test hook.*
 
 ## Pack shapes
 
@@ -270,7 +270,7 @@ the documentation alone.
   the handler registry catalog, dialog/quest/shop cookbooks, tile-pack guide
   (see `docs/LINOLEUM.md`), sandbox capability reference, and publishing
   guidance.
-- Typed APIs: `@neo-angband/core` exports the same typed interfaces the base
+- Typed APIs: `@rpgm-tools/neo-angband-core` exports the same typed interfaces the base
   game is built from; plugin authors get full TypeScript types.
 - Validation-first tooling: `neo-pack` (planned) scaffolds, validates, and
   bundles packs; validation errors point at the offending line of the

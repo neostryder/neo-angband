@@ -1,5 +1,5 @@
 /**
- * @neo-angband/cli - terminal front-end and developer harness.
+ * @rpgm-tools/neo-angband-cli - terminal front-end and developer harness.
  *
  * Serves the same role as upstream's main-gcu (play in a terminal) plus
  * main-test/main-stats (scripted golden scenarios and Monte-Carlo
@@ -7,7 +7,7 @@
  * (Phase 2) because it is load-bearing for parity checks.
  */
 
-export { ENGINE_VERSION, PARITY_BASELINE } from "@neo-angband/core";
+export { ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-core";
 
 /** Content-pack loader shared by the harnesses. */
 export { loadGamePack } from "./pack.js";

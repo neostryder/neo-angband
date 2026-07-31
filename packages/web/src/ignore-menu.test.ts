@@ -29,7 +29,7 @@ import {
   IGNORE,
   ITYPE,
   TV,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   GameState,
   GameObject,
@@ -38,7 +38,7 @@ import type {
   ObjPackJson,
   TerrainRecordJson,
   PlayerPackRecords,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import {
   buildIgnoreItemMenu,
   applyIgnoreItemChoice,

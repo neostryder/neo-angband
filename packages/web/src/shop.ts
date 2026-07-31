@@ -41,8 +41,8 @@ import {
   storeRetrieveGuard,
   storeSellGuard,
   storeStashGuard,
-} from "@neo-angband/core";
-import type { GameObject, StartedGame, Store, EarlierObjectOpts } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { GameObject, StartedGame, Store, EarlierObjectOpts } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 import { getQuantity, itemSelect, selectFromMenu } from "./overlay";
 import { objectColor, objectName, packMenu, quiverMenu } from "./screens";

@@ -1,6 +1,6 @@
 /**
  * Local type re-exports for the item subsystem, so modules import from one place
- * (the frozen contract lives in @neo-angband/core; BorgContext in ../context).
+ * (the frozen contract lives in @rpgm-tools/neo-angband-core; BorgContext in ../context).
  */
 
 export type { BorgContext } from "../context.js";
@@ -9,4 +9,4 @@ export type {
   AgentCommand,
   SpellView,
   SpellbookView,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";

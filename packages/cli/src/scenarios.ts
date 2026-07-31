@@ -20,8 +20,8 @@ import {
   runGameLoop,
   startGame,
   TMD,
-} from "@neo-angband/core";
-import type { GamePack, PlayerCommand } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import type { GamePack, PlayerCommand } from "@rpgm-tools/neo-angband-core";
 
 /** The outcome of one scenario. */
 export interface ScenarioResult {
@@ -153,7 +153,7 @@ function scenarioDescend(pack: GamePack): ScenarioResult {
 
 /**
  * Captured golden end-state values (port, pinned seeds). Regenerate with
- * `pnpm --filter @neo-angband/cli scenarios --print` and paste the observed
+ * `pnpm --filter @rpgm-tools/neo-angband-cli scenarios --print` and paste the observed
  * numbers here if an intentional change moves them.
  */
 const EXPECTED = {

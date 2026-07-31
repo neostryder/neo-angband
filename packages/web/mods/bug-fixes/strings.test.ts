@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { MISC_STRING_CORRECTIONS, MISSPELLINGS, miscStringFix } from "./strings";
-import * as neoCore from "@neo-angband/core";
+import * as neoCore from "@rpgm-tools/neo-angband-core";
 import plugin from "./plugin";
 
 /** The mod's behaviour as the host drives it: plugin.hooks(ctx) reduced to a

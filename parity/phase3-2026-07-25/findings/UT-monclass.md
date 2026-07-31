@@ -423,7 +423,7 @@ Method: revert one change, run (a) only `records-monclass.upstream.test.ts` + `m
 
 2. **The one-file instruction is not satisfiable.** `packages/content` has no
    dependency on `packages/core` (no project reference in `tsconfig.json`, no
-   `@neo-angband/*` import anywhere in `packages/content/src`), and
+   `@rpgm-tools/neo-angband-*` import anywhere in `packages/content/src`), and
    `tsc -b` typechecks test files, so a content test cannot import a binder.
    Two files, both new.
 

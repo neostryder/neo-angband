@@ -36,7 +36,7 @@
  * (a cycle, and an extensionless specifier).
  *
  * WHY NO IMPORTS. The obvious design is to let plugin.js `import` from
- * "@neo-angband/core" the way a bundled mod's TypeScript does. It cannot: a bare
+ * "@rpgm-tools/neo-angband-core" the way a bundled mod's TypeScript does. It cannot: a bare
  * specifier does not resolve in a module fetched from a folder, and bundling core
  * into each plugin would give every plugin its own copy of the engine's
  * registries and singletons - two effect registries, two action registries,
@@ -71,7 +71,7 @@
  * bundled into every plugin - which is the exact duplication the host-passes-the-
  * engine design exists to avoid. The one function that needs the live namespace
  * lives in mod-context.ts, which no plugin imports. */
-import type { ModHooks, ModRegistryHost, GameState } from "@neo-angband/core";
+import type { ModHooks, ModRegistryHost, GameState } from "@rpgm-tools/neo-angband-core";
 
 /**
  * The ABI version this host implements. Bump ONLY when an existing plugin would
@@ -140,7 +140,7 @@ export interface ModPluginContext {
  * type rather than a hand-written list so it can never drift from what core
  * actually exports - the drift is the whole failure mode a curated list has.
  */
-export type ModCoreApi = typeof import("@neo-angband/core");
+export type ModCoreApi = typeof import("@rpgm-tools/neo-angband-core");
 
 /** A mod's code. Both members optional: a plugin may do either job, or both. */
 export interface ModPlugin {

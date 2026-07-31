@@ -207,9 +207,9 @@ function resolveImport(fromFile, spec) {
   let base;
   if (spec.startsWith(".")) {
     base = join(REPO, dirname(fromFile), spec);
-  } else if (spec.startsWith("@neo-angband/")) {
-    const pkg = spec.slice("@neo-angband/".length).split("/")[0];
-    const restParts = spec.slice("@neo-angband/".length).split("/").slice(1);
+  } else if (spec.startsWith("@rpgm-tools/neo-angband-")) {
+    const pkg = spec.slice("@rpgm-tools/neo-angband-".length).split("/")[0];
+    const restParts = spec.slice("@rpgm-tools/neo-angband-".length).split("/").slice(1);
     base = join(REPO, "packages", pkg, "src", ...(restParts.length ? restParts : ["index"]));
   } else {
     return null; // node/npm dependency

@@ -1,5 +1,5 @@
 /**
- * @neo-angband/core agent API (P7 phase 7): the frozen perceive/act/controller
+ * @rpgm-tools/neo-angband-core agent API (P7 phase 7): the frozen perceive/act/controller
  * facade every agent mod - the bundled Borg (P8) first, third-party and AI
  * agents after - drives the game through, with no privileged core access.
  *

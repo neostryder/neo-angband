@@ -31,7 +31,7 @@ run `pnpm install` once at its root.
 git clone https://github.com/neostryder/neo-angband.git
 cd neo-angband
 pnpm install
-pnpm --filter @neo-angband/web dev
+pnpm --filter @rpgm-tools/neo-angband-web dev
 ```
 
 Open **http://localhost:5178**. That is it - there is no build step to wait for
@@ -60,7 +60,7 @@ file host.
 ```sh
 # from the repo root
 pnpm install
-pnpm --filter @neo-angband/web bundle
+pnpm --filter @rpgm-tools/neo-angband-web bundle
 # the built site is now in packages/web/dist-web/
 ```
 
@@ -131,17 +131,17 @@ for the reason given under [where your data lives](#where-your-data-lives).
 pnpm install                       # installs Electron (a large download)
 
 # build the web bundle, then launch the desktop app
-pnpm --filter @neo-angband/desktop dev
+pnpm --filter @rpgm-tools/neo-angband-desktop dev
 ```
 
 `dev` builds `packages/web/dist-web` and then opens it in the Electron window.
-If you have already built the web bundle, `pnpm --filter @neo-angband/desktop
+If you have already built the web bundle, `pnpm --filter @rpgm-tools/neo-angband-desktop
 start` launches without rebuilding.
 
 ### Package it
 
 ```sh
-pnpm --filter @neo-angband/desktop dist
+pnpm --filter @rpgm-tools/neo-angband-desktop dist
 ```
 
 Everything lands in `packages/desktop/dist-desktop/`, built by electron-builder.
@@ -162,7 +162,7 @@ further and keep their data in the folder too - see
 For just the single-file portable Windows build:
 
 ```sh
-pnpm --filter @neo-angband/desktop dist:portable
+pnpm --filter @rpgm-tools/neo-angband-desktop dist:portable
 ```
 
 ### Install it into a folder you choose
@@ -171,14 +171,14 @@ To build the game and put it straight into one self-contained folder - the shape
 described above, ready to run:
 
 ```sh
-pnpm --filter @neo-angband/desktop install:portable
+pnpm --filter @rpgm-tools/neo-angband-desktop install:portable
 ```
 
 It goes to `C:\Games\Neo Angband` on Windows and `~/Games/Neo Angband` elsewhere.
 Name another location as an argument, or set `NEO_ANGBAND_INSTALL_DIR`:
 
 ```sh
-pnpm --filter @neo-angband/desktop install:portable "D:\Games\Neo Angband"
+pnpm --filter @rpgm-tools/neo-angband-desktop install:portable "D:\Games\Neo Angband"
 ```
 
 Re-running it over an existing install replaces the program and **keeps

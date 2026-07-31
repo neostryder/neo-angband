@@ -22,7 +22,7 @@ import type { BorgContext } from "../context.js";
 import { BI, CLASS_MAGE, CLASS_WARRIOR, CLASS_PRIEST, CLASS_DRUID,
   CLASS_NECROMANCER, CLASS_ROGUE, CLASS_RANGER, CLASS_PALADIN, CLASS_BLACKGUARD,
   STAT_MAX, spellStatForClass } from "./trait-index.js";
-import type { ItemView } from "@neo-angband/core";
+import type { ItemView } from "@rpgm-tools/neo-angband-core";
 import { present } from "./item-util.js";
 import { ADJ_STR_HOLD } from "./tables.js";
 import { resolveOpts, type BorgTraitOpts, type ResolvedOpts } from "./config.js";

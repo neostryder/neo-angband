@@ -32,8 +32,8 @@ import type {
   AgentSession,
   AgentView,
   GameState,
-} from "@neo-angband/core";
-import { installController } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import { installController } from "@rpgm-tools/neo-angband-core";
 import { serializeView } from "./serialize";
 import {
   SANDBOX_PROTOCOL_VERSION,
@@ -173,7 +173,7 @@ export interface SandboxInstallOptions {
   /** The exact capability strings from the manifest (forwarded to the worker). */
   capabilityStrings: string[];
   pluginUrl: string;
-  viewDeps?: import("@neo-angband/core").AgentViewDeps;
+  viewDeps?: import("@rpgm-tools/neo-angband-core").AgentViewDeps;
   onLog?: (level: "info" | "warn" | "error", message: string) => void;
   onError?: (phase: "init" | "decide", message: string) => void;
   onReady?: () => void;

@@ -30,15 +30,15 @@ import {
   objectPrep,
   saveGame,
   startGame,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   Artifact,
   GameObject,
   GamePack,
   MakeDeps,
   ObjectListEntry,
-} from "@neo-angband/core";
-import * as neoCore from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import * as neoCore from "@rpgm-tools/neo-angband-core";
 import plugin from "./plugin";
 
 /**

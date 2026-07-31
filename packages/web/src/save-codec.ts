@@ -24,7 +24,7 @@
  */
 
 import { gunzipSync, gzipSync } from "fflate";
-import type { SaveCodec } from "@neo-angband/core";
+import type { SaveCodec } from "@rpgm-tools/neo-angband-core";
 
 /**
  * gzip, not raw deflate: the 18-byte header costs nothing next to a 20x saving

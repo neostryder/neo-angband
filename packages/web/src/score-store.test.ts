@@ -16,7 +16,7 @@
 import { describe, expect, it } from "vitest";
 import { createLocalStorageScoreStore } from "./score";
 import type { ScoreStorage } from "./score";
-import type { HighScore } from "@neo-angband/core";
+import type { HighScore } from "@rpgm-tools/neo-angband-core";
 
 const KEY = "t-scores";
 const CUR = KEY;

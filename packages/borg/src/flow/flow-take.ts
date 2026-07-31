@@ -14,7 +14,7 @@
  *   P8.5 follow-up and is not ported here.
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import { distance } from "../think.js";
 import { GOAL_TAKE } from "../world/model.js";

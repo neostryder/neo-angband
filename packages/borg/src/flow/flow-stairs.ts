@@ -9,7 +9,7 @@
  * the C borg would hold; only the moment of collection differs.
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import { distance } from "../think.js";
 import { AUTO_MAX_X, AUTO_MAX_Y, BI, FEAT, trait } from "./flow-consts.js";

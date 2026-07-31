@@ -95,7 +95,7 @@ mod with no code simply ships no `plugin.js`.
 on, passed in rather than imported.
 
 This is not a limitation, it is the point. A bare specifier like
-`import { tunnelAux } from "@neo-angband/core"` cannot resolve in a module fetched
+`import { tunnelAux } from "@rpgm-tools/neo-angband-core"` cannot resolve in a module fetched
 from a folder, and bundling the engine into your plugin would give you your *own*
 copy of every registry and singleton: your effect handler would land on a registry
 the interpreter never consults, and your mod would appear to do nothing at all,
@@ -166,7 +166,7 @@ and a path that climbs out of it is refused.
 
 ## Bare specifiers still do not work
 
-`import { tunnelAux } from "@neo-angband/core"` cannot resolve from a folder, and
+`import { tunnelAux } from "@rpgm-tools/neo-angband-core"` cannot resolve from a folder, and
 there is nothing to import: the engine is `ctx.core`, already live. That is the one
 import a folder plugin cannot have, and the mod manager says so instead of
 repeating the browser's message.

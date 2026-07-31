@@ -42,7 +42,7 @@ import {
   TF,
   TRF,
   TV,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   Rune,
   Player,
@@ -63,7 +63,7 @@ import type {
   Constants,
   RuneEnv,
   ObjectInfoExtras,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
 import {
   promptText,

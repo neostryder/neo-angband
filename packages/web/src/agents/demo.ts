@@ -8,7 +8,7 @@
  * the Borg rides - an in-process controller before the sandbox (W2.1).
  */
 
-import type { AgentController } from "@neo-angband/core";
+import type { AgentController } from "@rpgm-tools/neo-angband-core";
 
 /** Keypad direction (1-9, 5 = center) from a signed (dx, dy) step. */
 function keypadDir(dx: number, dy: number): number {

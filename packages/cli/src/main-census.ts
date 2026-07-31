@@ -1,5 +1,5 @@
 /**
- * `pnpm --filter @neo-angband/cli census` - print the upstream text census.
+ * `pnpm --filter @rpgm-tools/neo-angband-cli census` - print the upstream text census.
  *
  * The CI gate is text-census.test.ts; this is the same run in a form you can
  * read while working: every player-visible C literal the port does not contain,

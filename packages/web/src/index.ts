@@ -1,5 +1,5 @@
 /**
- * @neo-angband/web - the primary front-end (Phase 5).
+ * @rpgm-tools/neo-angband-web - the primary front-end (Phase 5).
  *
  * A modern glyph-first renderer replacing the classic multi-terminal-window
  * layout with one responsive, fullscreen-friendly surface. Classic keymaps
@@ -7,4 +7,4 @@
  * export/import. Ships as an installable, offline-capable PWA.
  */
 
-export { ENGINE_VERSION, PARITY_BASELINE } from "@neo-angband/core";
+export { ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-core";

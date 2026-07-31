@@ -919,7 +919,7 @@ index c9855fb70..f4be4b252 100644
 +++ b/packages/web/src/birth.test.ts
 @@ -14,6 +14,7 @@ import { runBirth } from "./birth";
  import type { GlyphTerm } from "./term";
- import type { PlayerClass, PlayerRace } from "@neo-angband/core";
+ import type { PlayerClass, PlayerRace } from "@rpgm-tools/neo-angband-core";
  import {
 +  Rng,
    colorToCss,

@@ -16,7 +16,7 @@
  * flow does not apply (yield to the next ladder stage).
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import { GOAL_BORE } from "../world/model.js";
 import {

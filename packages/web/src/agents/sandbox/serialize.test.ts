@@ -9,7 +9,7 @@ import type {
   AgentCapabilities,
   AgentView,
   CellView,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import { serializeView } from "./serialize";
 
 /** Exact-match capability stub (serializeView also checks the wildcard). */

@@ -1,5 +1,5 @@
 /**
- * @neo-angband/mcp - a Model Context Protocol server for Neo Angband.
+ * @rpgm-tools/neo-angband-mcp - a Model Context Protocol server for Neo Angband.
  *
  * The library half. `server.ts` is the executable (`neo-angband-mcp`); everything
  * it needs is here, so a host that wants the game exposed over some other

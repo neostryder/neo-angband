@@ -11,7 +11,7 @@ import type {
   ItemView,
   StoreView,
   StoreItemView,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import { BorgWorld } from "../world/model.js";
 import { makeScenarioView, makeFakeActions } from "../harness.js";
 import { makeBorgRng } from "../rng.js";

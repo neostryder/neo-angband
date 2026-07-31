@@ -1,8 +1,8 @@
 /**
  * Build a self-contained Neo Angband folder and put it somewhere real.
  *
- *   pnpm --filter @neo-angband/desktop install:portable
- *   pnpm --filter @neo-angband/desktop install:portable "D:\Games\Neo Angband"
+ *   pnpm --filter @rpgm-tools/neo-angband-desktop install:portable
+ *   pnpm --filter @rpgm-tools/neo-angband-desktop install:portable "D:\Games\Neo Angband"
  *
  * Default target: C:\Games\Neo Angband on Windows, ~/Games/Neo Angband elsewhere.
  * Override with the first argument or NEO_ANGBAND_INSTALL_DIR.
@@ -73,7 +73,7 @@ function clearExceptData(target) {
 const target = process.argv[2] ? path.resolve(process.argv[2]) : defaultTarget();
 
 console.log(`[install-portable] building the renderer and main process`);
-run("pnpm", ["--filter", "@neo-angband/web", "bundle"], PKG);
+run("pnpm", ["--filter", "@rpgm-tools/neo-angband-web", "bundle"], PKG);
 run("pnpm", ["run", "build"], PKG);
 
 console.log(`[install-portable] packaging (electron-builder --dir)`);

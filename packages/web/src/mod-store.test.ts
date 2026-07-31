@@ -7,7 +7,7 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import type { PackManifest } from "@neo-angband/mod-sdk";
+import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   ModStore,
   buildCatalog,

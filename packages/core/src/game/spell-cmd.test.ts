@@ -405,12 +405,24 @@ describe("player_can_cast no_light (player-util.c L1096)", () => {
     expect(state.actor.player.spellFlags[0] ?? 0).toBe(0);
   });
 
-  it("no_light is inert without the updateFov seam (core-only hosts can cast)", () => {
+  it("no_light applies to EVERY host now the seam guard is gone (player-util.c L1096)", () => {
+    /**
+     * This asserted the opposite: `state.updateFov` undefined after startGame, and
+     * noLight() answering false because of a guard that existed so a host with no
+     * FOV seam could still cast at all. Both halves were accurate and both were
+     * symptoms of the same thing - core supplied no default updateFov, SQUARE_SEEN
+     * was clear on every grid, and the guard was covering for it.
+     *
+     * With a default installed the birth square is genuinely seen, so no_light is
+     * upstream's check for everyone and the guard is deleted. What matters here is
+     * that it reads the FLAG rather than the seam: lit, can cast; dark, cannot.
+     */
     const { state } = startMage(14);
-    /* startGame installs no FOV seam and leaves SQUARE_SEEN clear, so reading
-     * the flag would make casting impossible for headless consumers. */
-    expect(state.updateFov).toBeUndefined();
+    expect(state.updateFov).toBeTypeOf("function");
+    withView(state, true);
     expect(playerCanCast(state, {})).toBe(true);
+    withView(state, false);
+    expect(playerCanCast(state, {})).toBe(false);
   });
 });
 

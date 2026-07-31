@@ -80,7 +80,7 @@ import {
   EQUIP_SLOT_ENTRIES,
   monsterKnowledgeGroups,
   weightRemaining,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   GameState,
   GameObject,
@@ -100,7 +100,7 @@ import type {
   MonsterLore,
   MonsterRace,
   MonsterCategory,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type { ScreenLine, MenuItem } from "./overlay";
 import { MessageLog, format as formatMessage } from "./messages";
 import { UI_TEXT, UI_DIM, UI_GOLD } from "./ui-colors";

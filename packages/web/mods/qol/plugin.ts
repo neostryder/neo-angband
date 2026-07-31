@@ -21,7 +21,7 @@
  * ONCE per enabled mod, in load order, and folds the results with composeModHooks
  * (core/mod/hooks.ts) into the single ModHooks core holds.
  *
- * `ctx.core` is the ENGINE, handed in. This file imports @neo-angband/core for
+ * `ctx.core` is the ENGINE, handed in. This file imports @rpgm-tools/neo-angband-core for
  * TYPES ONLY, and that is not a style choice. The same source is built to the
  * `plugin.js` that ships in this mod's own repository, and a module fetched from a
  * folder cannot resolve a bare specifier - nor should it, because a bundled copy of
@@ -47,13 +47,13 @@
  * no private path and no test hook.
  */
 
-import type { CaveCmdDeps, ModHooks } from "@neo-angband/core";
+import type { CaveCmdDeps, ModHooks } from "@rpgm-tools/neo-angband-core";
 
 /**
  * The engine, as a type. `typeof import(...)` is type-only syntax, so this pulls
  * in no runtime dependency and the built plugin.js contains no import at all.
  */
-type CoreApi = typeof import("@neo-angband/core");
+type CoreApi = typeof import("@rpgm-tools/neo-angband-core");
 
 /**
  * What this plugin needs from the host's context, structurally.

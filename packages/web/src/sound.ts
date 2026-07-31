@@ -19,14 +19,14 @@ import {
   SoundEngine,
   SoundStatus,
   SOUND_PREF_ENTRIES,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 import type {
   GameEvents,
   SoundData,
   SoundFileType,
   SoundHooks,
   Randint0,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 
 /** Per-sample platform data: the prepared HTMLAudioElement, if any. */
 interface WebPlatData {

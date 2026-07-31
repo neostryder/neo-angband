@@ -16,7 +16,7 @@
  * match upstream verbatim with no change to the math here.
  */
 
-import { RSF } from "@neo-angband/core";
+import { RSF } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import type { BorgKill } from "../world/kill.js";
 import { MONBLOW } from "./tables.js";

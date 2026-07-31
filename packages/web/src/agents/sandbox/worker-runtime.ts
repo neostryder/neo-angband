@@ -34,8 +34,8 @@ import type {
   SpellbookView,
   StoreView,
   TargetView,
-} from "@neo-angband/core";
-import { AGENT_API_VERSION } from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
+import { AGENT_API_VERSION } from "@rpgm-tools/neo-angband-core";
 import type { HostToWorker, ViewSnapshot, WorkerToHost } from "./protocol";
 import {
   SANDBOX_PROTOCOL_VERSION,
@@ -101,7 +101,7 @@ if (typeof self !== "undefined") {
  */
 export interface SandboxActions
   extends Omit<
-    import("@neo-angband/core").AgentActions,
+    import("@rpgm-tools/neo-angband-core").AgentActions,
     "setTargetMonster" | "setTargetLocation"
   > {
   setTargetMonster(midx: number): AgentCommand;

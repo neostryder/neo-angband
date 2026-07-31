@@ -10,8 +10,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { FileMode, HostDir, serveRawFs } from "@neo-angband/core";
-import type { RawFs } from "@neo-angband/core";
+import { FileMode, HostDir, serveRawFs } from "@rpgm-tools/neo-angband-core";
+import type { RawFs } from "@rpgm-tools/neo-angband-core";
 import {
   HOST_BRIDGE_GLOBAL,
   detectDesktopBridge,

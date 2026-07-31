@@ -4436,7 +4436,7 @@ index f4be4b252..c9855fb70 100644
 +++ b/packages/web/src/birth.test.ts
 @@ -14,7 +14,6 @@ import { runBirth } from "./birth";
  import type { GlyphTerm } from "./term";
- import type { PlayerClass, PlayerRace } from "@neo-angband/core";
+ import type { PlayerClass, PlayerRace } from "@rpgm-tools/neo-angband-core";
  import {
 -  Rng,
    colorToCss,
@@ -4748,7 +4748,7 @@ index 7d73a3197..b92fb491a 100644
    displayFeeling,
 +  effectChoiceRows,
 +  OBJ_PROPERTY,
- } from "@neo-angband/core";
+ } from "@rpgm-tools/neo-angband-core";
  import type {
    GamePack,
    GameObject,
@@ -5002,7 +5002,7 @@ index a92507f0c..84406af23 100644
 +++ b/packages/web/src/messages.test.ts
 @@ -1,13 +1,5 @@
  import { describe, expect, it } from "vitest";
--import { colorToCss, COLOUR_ORANGE, MessageLog as CoreMessageLog, MSG } from "@neo-angband/core";
+-import { colorToCss, COLOUR_ORANGE, MessageLog as CoreMessageLog, MSG } from "@rpgm-tools/neo-angband-core";
 -import {
 -  MessageLog,
 -  messageTypeCode,
@@ -5056,8 +5056,8 @@ index 5f325e6b3..d72ce5466 100644
   * last render as the top status line, and feeds the full history screen.
   */
  
--import { MSG } from "@neo-angband/core";
--import type { MessageType } from "@neo-angband/core";
+-import { MSG } from "@rpgm-tools/neo-angband-core";
+-import type { MessageType } from "@rpgm-tools/neo-angband-core";
 -
  export interface LoggedMessage {
    text: string;

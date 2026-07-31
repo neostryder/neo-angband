@@ -10,7 +10,7 @@
  * search, scoring, and flow are ported verbatim.
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import { distance } from "../think.js";
 import { GOAL_MISC } from "../world/model.js";

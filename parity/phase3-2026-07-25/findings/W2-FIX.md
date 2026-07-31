@@ -25,7 +25,7 @@ Constraint: every fix is reachable from a **live entry point**; every test exerc
 | W2-014 `spellBookCountSpells` | yes | `packages/web/src/main.ts` `browseCmd` gate | `main.ts` `b`/`P` → `browseCmd` | **none** | browse path now rejects empty/non-browsable books (`spellBookCountSpells(..., spellOkayToBrowse) === 0`) |
 | W2-015 `spellOkayToBrowse` | yes | `browseCmd` gate + per-row `disabled` | same browse path | **none** | level-99 spells stay disabled; empty books get “You cannot browse that.” |
 | W2-016 `featIsTorch` | yes | `packages/web/src/main.ts` `terrainGlyph` | map redraw every frame → `terrainGlyph` | **none** | `w2-wiring-fix.test.ts` featIsTorch ≡ `TF.TORCH` |
-| W2-017 `objMonStats` | yes | `packages/cli/src/main-stats.ts` `runWizStats` / `--wiz-objmon` | CLI `main-stats` entry (`pnpm --filter @neo-angband/cli stats -- --wiz-objmon`) | seed-driven only (existing collectors) | `packages/cli/src/main-stats-wiz.test.ts` |
+| W2-017 `objMonStats` | yes | `packages/cli/src/main-stats.ts` `runWizStats` / `--wiz-objmon` | CLI `main-stats` entry (`pnpm --filter @rpgm-tools/neo-angband-cli stats -- --wiz-objmon`) | seed-driven only (existing collectors) | `packages/cli/src/main-stats-wiz.test.ts` |
 | W2-018 `pitStats` | yes | same, `--wiz-pits` | CLI `--wiz-pits` | seed-driven only | same |
 | W2-019 `disconnectStats` | yes | same, `--wiz-disconnect` | CLI `--wiz-disconnect` | seed-driven only | same |
 | W2-020 `DEFAULT_OBJ_MON_PARAMS` | yes | `runWizStats` spreads `DEFAULT_OBJ_MON_PARAMS` | same as W2-017 | n/a (defaults object) | same; asserts `divingStep` from defaults |

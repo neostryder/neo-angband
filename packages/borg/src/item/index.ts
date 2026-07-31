@@ -1,5 +1,5 @@
 /**
- * @neo-angband/borg item/magic/recovery subsystem (P8.5).
+ * @rpgm-tools/neo-angband-borg item/magic/recovery subsystem (P8.5).
  *
  * A faithful port of the Angband 4.2.6 borg's consumable, magic, wear, junk,
  * light and recovery decisions (reference/src/borg/borg-item-*, borg-magic*,

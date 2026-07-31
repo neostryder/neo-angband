@@ -1,5 +1,5 @@
 /**
- * @neo-angband/borg trait subsystem (P8.3): the self-model and power fitness.
+ * @rpgm-tools/neo-angband-borg trait subsystem (P8.3): the self-model and power fitness.
  *
  * Public API:
  * - BI / BI_MAX / PREFIX_PREF - the trait index space (borg-trait.h enum).

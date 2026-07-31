@@ -1,6 +1,6 @@
 {
-  "name": "@neo-angband/cli",
-  "version": "0.9.0",
+  "name": "@rpgm-tools/neo-angband-cli",
+  "version": "0.10.0",
   "private": true,
   "description": "Terminal front-end and developer harness (headless runs, stats, golden scenarios)",
   "license": "GPL-2.0-only",
@@ -30,6 +30,6 @@
     "call-census": "node dist/main-call-census.js"
   },
   "dependencies": {
-    "@neo-angband/core": "workspace:*"
+    "@rpgm-tools/neo-angband-core": "workspace:*"
   }
 }

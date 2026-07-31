@@ -1,5 +1,5 @@
 /**
- * @neo-angband/borg stores / shopping / home subsystem (P8.7).
+ * @rpgm-tools/neo-angband-borg stores / shopping / home subsystem (P8.7).
  *
  * A faithful port of the Angband 4.2.6 borg's shop-interaction decisions
  * (reference/src/borg/borg-store*.c, borg-think-store.c, borg-home-notice.c,

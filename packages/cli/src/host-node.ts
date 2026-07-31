@@ -20,8 +20,8 @@ import * as path from "node:path";
 /* The host subpath, not the barrel: the Electron main process bundles this file
  * and needs z-file.c, not the game engine. Going through core's index dragged
  * the whole of core into that bundle. */
-import type { FileType, HostDir, RawFs, WriteOutcome } from "@neo-angband/core/host";
-import { ALL_HOST_DIRS, RawFsHost } from "@neo-angband/core/host";
+import type { FileType, HostDir, RawFs, WriteOutcome } from "@rpgm-tools/neo-angband-core/host";
+import { ALL_HOST_DIRS, RawFsHost } from "@rpgm-tools/neo-angband-core/host";
 
 /**
  * node:fs as a RawFs. Every method reports failure by return value, the way

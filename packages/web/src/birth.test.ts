@@ -15,14 +15,14 @@ import { describe, expect, it, afterEach, beforeEach } from "vitest";
 import { runBirth } from "./birth";
 import { initLaunchArgs, resetLaunchArgs } from "./launch";
 import type { GlyphTerm } from "./term";
-import type { PlayerClass, PlayerRace } from "@neo-angband/core";
+import type { PlayerClass, PlayerRace } from "@rpgm-tools/neo-angband-core";
 import {
   Rng,
   colorToCss,
   COLOUR_L_BLUE,
   COLOUR_WHITE,
   COLOUR_YELLOW,
-} from "@neo-angband/core";
+} from "@rpgm-tools/neo-angband-core";
 
 interface FakeWindow {
   addEventListener(type: string, fn: (ev: Event) => void, capture?: boolean): void;

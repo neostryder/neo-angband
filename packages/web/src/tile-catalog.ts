@@ -32,8 +32,8 @@
  * Everything here is pure, over injected inputs; main.ts supplies the live ones.
  */
 
-import { GRAPHICS_MODE_CATALOG, GRAPHICS_NONE } from "@neo-angband/core";
-import type { GraphicsMode } from "@neo-angband/core";
+import { GRAPHICS_MODE_CATALOG, GRAPHICS_NONE } from "@rpgm-tools/neo-angband-core";
+import type { GraphicsMode } from "@rpgm-tools/neo-angband-core";
 import type { PackFileResolver } from "./pack-files";
 import type { TileModePack } from "./tile-mods";
 

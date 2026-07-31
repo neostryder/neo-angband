@@ -235,7 +235,22 @@ export function wizLightLevel(
       c.sqinfoOff(loc(x, y), SQUARE.MARK);
     }
   }
-  state.updateFov?.(state);
+  /*
+   * cave-map.c:474 sets PU_UPDATE_VIEW; it does NOT call update_view. The
+   * difference matters at generate.c:1109 and :1256, where wiz_light runs on a
+   * chunk that is not yet `cave`: upstream's flag is serviced at the next
+   * update_stuff, by which time the player has been placed on the new level. This
+   * port has no PU_ flags and refreshes immediately, so on the not-current-cave
+   * path it would build the view while `state.chunk` is the NEW level and the
+   * player's grid is still the OLD one.
+   *
+   * That threw `square out of bounds: 75,31` on arena entry the moment core
+   * acquired a default updateFov - a live crash in the web build, which has always
+   * had one, reachable through EF_SINGLE_COMBAT. It was invisible for as long as
+   * the seam could be absent. Deferring to the caller's own refresh (changeLevel
+   * calls updateFov after placePlayer) is what upstream's flag does.
+   */
+  if (isCurrentCave) state.updateFov?.(state);
 }
 
 /** square_changeable: no perma-grids, shops, stairs or artifact piles. */

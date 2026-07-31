@@ -1,4 +1,4 @@
-# @neo-angband/core
+# @rpgm-tools/neo-angband-core
 
 The headless game engine behind [Neo Angband](https://github.com/neostryder/neo-angband) —
 a TypeScript port of [Angband](https://angband.github.io/angband/) 4.2.6.
@@ -7,7 +7,7 @@ No renderer, no input, no DOM, no filesystem: rules, world, entities, effects,
 generation and the save format, as plain modules. Runs in Node and in a browser.
 
 ```bash
-npm install @neo-angband/core
+npm install @rpgm-tools/neo-angband-core
 ```
 
 ## What it is for
@@ -25,22 +25,22 @@ Two audiences, and it is worth knowing which one you are:
 ## Quick start
 
 ```ts
-import { Rng, ENGINE_VERSION, PARITY_BASELINE } from "@neo-angband/core";
+import { Rng, ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-core";
 
 // The RNG is upstream's WELL1024a, seeded exactly as Rand_state_init does,
 // so a seed reproduces a sequence across runs, platforms and save/load.
 const rng = new Rng(1234);
 console.log(rng.damroll(3, 6), rng.damroll(3, 6), rng.damroll(3, 6)); // 9 13 8
 
-console.log(ENGINE_VERSION, PARITY_BASELINE); // 0.9.0 4.2.6
+console.log(ENGINE_VERSION, PARITY_BASELINE); // 0.10.0 4.2.6
 ```
 
 Two entry points:
 
 | Import | What it holds |
 | --- | --- |
-| `@neo-angband/core` | The engine: rules, world, entities, effects, generation, saves |
-| `@neo-angband/core/host` | The `HostIo` seam — the shape of `z-file.c`, for a front end that gives the engine real file and terminal I/O |
+| `@rpgm-tools/neo-angband-core` | The engine: rules, world, entities, effects, generation, saves |
+| `@rpgm-tools/neo-angband-core/host` | The `HostIo` seam — the shape of `z-file.c`, for a front end that gives the engine real file and terminal I/O |
 
 ## The API is upstream's, deliberately
 
@@ -58,7 +58,7 @@ against taste. Two consequences for anyone importing this package:
 
 **Game data is a separate concern.** This package is the rules; Angband's
 gamedata (monsters, objects, dungeon profiles) is compiled into a content pack
-that the host loads. So `@neo-angband/core` on its own can roll dice, run the
+that the host loads. So `@rpgm-tools/neo-angband-core` on its own can roll dice, run the
 effect interpreter and read a save, but it cannot generate a populated level
 without content handed to it.
 

@@ -15,7 +15,7 @@
  * are approximated (class list / no vault flag on the borg map).
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import {
   BI,

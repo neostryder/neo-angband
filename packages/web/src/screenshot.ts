@@ -24,7 +24,7 @@
  * the text census rather than paraphrased into something else.
  */
 
-import { colorToCss, COLOUR_WHITE, COLOUR_DARK } from "@neo-angband/core";
+import { colorToCss, COLOUR_WHITE, COLOUR_DARK } from "@rpgm-tools/neo-angband-core";
 import type { ColoredCell } from "./term";
 
 /** The two modes of do_cmd_save_screen_html. */

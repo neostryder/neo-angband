@@ -16,7 +16,7 @@
  *   skipped and the pattern search (the geometric heart) runs unchanged.
  */
 
-import type { AgentCommand } from "@neo-angband/core";
+import type { AgentCommand } from "@rpgm-tools/neo-angband-core";
 import type { BorgContext } from "../context.js";
 import { distance } from "../think.js";
 import { GOAL_DIGGING, GOAL_KILL } from "../world/model.js";

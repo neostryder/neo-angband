@@ -16,7 +16,7 @@ overall design and the moddable-surface matrix, read `docs/MODS.md`.
 ## Contents
 
 - This page: pack anatomy, manifests, and record composition (live today,
-  backed by `@neo-angband/mod-sdk`).
+  backed by `@rpgm-tools/neo-angband-mod-sdk`).
 - `MOD_LIFECYCLE.md`: how saves stay safe across install/update/
   uninstall, installing from git (and a future marketplace), multi-mod
   composition and conflict resolution, uninstall recovery, and the UX
@@ -197,7 +197,7 @@ Two levels:
 
 ## Versioning and stability
 
-`@neo-angband/mod-sdk` is the versioned surface mod authors build
+`@rpgm-tools/neo-angband-mod-sdk` is the versioned surface mod authors build
 against. Types are exported for TypeScript authors; everything is plain
 JSON at rest. Breaking changes to pack semantics bump the SDK major
 version and are called out in release notes.

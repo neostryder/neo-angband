@@ -40,7 +40,7 @@ import {
   renderMap,
   renderStatus,
 } from "./render.js";
-import type { AgentCommand, AgentView, ItemView } from "@neo-angband/core";
+import type { AgentCommand, AgentView, ItemView } from "@rpgm-tools/neo-angband-core";
 
 /** A JSON Schema object, loose enough not to re-type the whole spec here. */
 export type JsonSchema = Record<string, unknown>;
