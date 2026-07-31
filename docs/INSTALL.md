@@ -86,6 +86,37 @@ Notes:
 
 ---
 
+## Which browser?
+
+**Any current one.** The whole game plays in Firefox, Safari, Chrome and Edge, and
+mods install in all of them. There is no browser this game refuses, and no feature a
+Firefox or Safari player has to do without to play it.
+
+Two things are genuinely Chromium-only, and neither is gameplay:
+
+- **Choosing a mods folder on your computer.** Firefox and Safari have no way to hand
+  a directory to a web page - the capability does not exist, so there is no
+  workaround. It matters if you are *writing* a mod or using one that was never
+  published. Downloading a mod needs nothing special and works everywhere, so a
+  player's mod list is not affected.
+- **Installing as an app from the browser.** Desktop Firefox has no PWA install; use
+  a tab (offline caching still works), or the desktop build. Safari on macOS 14+ and
+  iOS installs fine.
+
+**The recommended way to play is the desktop build** (§4), and not as a fallback for
+anything: it keeps real saves in a real folder, needs no network at all, and is not
+subject to a browser deciding to reclaim its storage. The browser build exists so the
+game is one link away, and so a bug report can be pinned to a build you control.
+
+This is measured rather than assumed. The web build's whole browser-API surface is
+`localStorage`, `indexedDB`, `crypto.subtle`, module Workers, `ResizeObserver`,
+`matchMedia`, `structuredClone`, a service worker and a 2D canvas - all of which
+Firefox and Safari have. It deliberately does not use `CompressionStream` (the save
+codec has its own reason, see `packages/web/src/save-codec.ts`), and the only
+File System Access call anywhere is the directory picker named above.
+
+---
+
 ## 3. Install as a PWA (offline, any platform)
 
 The game is a Progressive Web App, so any build served over **https** (or from
@@ -96,8 +127,9 @@ from your own build in §1 or §2 - that keeps you on a version you control.
   -> "Install Neo Angband..."), then launch it like any app.
 - **Android (Chrome):** menu -> "Add to Home screen" / "Install app".
 - **iOS / iPadOS (Safari):** Share -> "Add to Home Screen".
-- **Firefox:** desktop Firefox does not install PWAs; use the browser tab, or
-  Chrome/Edge, or the desktop app below.
+- **Firefox:** desktop Firefox does not install PWAs; use the browser tab (the
+  service worker still caches the game for offline play), or Chrome/Edge, or the
+  desktop app below - which is the better answer anyway.
 
 Once installed, the service worker caches the whole game, so it works offline.
 Updates apply automatically the next time you load it online.
@@ -281,43 +313,59 @@ The same game everywhere. This table is the honest, per-surface difference list
 |---|---|---|---|---|
 | Full gameplay (faithful 4.2.6) | Yes | Yes | Yes | Yes |
 | Saves persist across sessions | Yes (localStorage) | Yes (localStorage) | Yes (localStorage) | Yes (localStorage) |
-| Saves exempt from browser eviction | If granted (5) | Usually (5) | If granted (5) | Usually (5) |
+| Saves exempt from browser eviction | If granted (8) | Usually (8) | If granted (8) | Usually (8) |
 | Works offline | Only after first load (SW) | Yes | Only after first load (SW) | Yes (always) |
 | Responsive / any viewport | Yes | Yes | Yes | Yes |
-| Bundled mods + in-app mod manager | Yes | Yes | Yes | Yes |
+| In-app mod manager | Yes | Yes | Yes | Yes |
+| Mods bundled with the game | **None, by design** (1) | None | None | None |
+| Download and install a mod | Yes (2) | Yes (2) | Yes (2) | Yes (2) |
+| Install a mod from a FOLDER | Chrome / Edge only (3) | Chrome / Edge only (3) | Chrome / Edge only (3) | Yes, its own folder (4) |
 | Enable / disable / reorder / consent / profiles | Yes | Yes | Yes | Yes |
-| Content-pack mods (bundled) | Yes | Yes | Yes | Yes |
+| Content-pack (data) mods | Yes | Yes | Yes | Yes |
+| Scripted-plugin (code) mods | Yes (5) | Yes (5) | Yes (5) | Yes (5) |
 | Trusted in-process system-override mods | Yes | Yes | Yes | Yes |
 | Untrusted sandbox (Worker) mods | Yes | Yes | Yes | Yes |
-| Install mods from a folder | Yes, you pick it (1) | Yes, you pick it (1) | Yes, you pick it (1) | Yes, its own folder (2) |
-| SharedArrayBuffer / cross-origin isolation | Only with COOP/COEP headers | Same as host | Only if host sends COOP/COEP (3) | Yes (built in) |
-| Accessibility (screen reader, keyboard) | Yes (4) | Yes (4) | Yes (4) | Yes (4) |
+| SharedArrayBuffer / cross-origin isolation | Only with COOP/COEP headers | Same as host | Only if host sends COOP/COEP (6) | Yes (built in) |
+| Accessibility (screen reader, keyboard) | Yes (7) | Yes (7) | Yes (7) | Yes (7) |
 
 Notes:
-1. The mod manager's "Choose a mods folder..." row asks you for a folder on your
-   computer and remembers it, so later visits read the same one without asking. It
-   is read by the same validator the desktop build uses, so a mod behaves
-   identically. Three narrower limits, each stated in the manager rather than left
-   to be discovered: you pick the folder once (a page may not browse a filesystem
-   uninvited); the browser may need permission again after a long gap, and the row
-   then says `NEEDS RECONNECTING`; and Firefox and Safari cannot pick a directory at
-   all, where the answer stays "bundled mods only". Neither surface has a runtime
-   CODE loader, so it still cannot fetch and RUN a mod from a URL - a folder of
-   records is data.
-2. The desktop build reads content and tile packs from its `mods/` folder, and an
-   external mod manager can deploy into it (`load-order.json` is honoured). Neither
-   surface has a runtime CODE loader, so a scripted-plugin mod still has to be
-   bundled - a folder of records is data, and composes through the same pipeline
-   as a bundled pack.
-3. GitHub Pages and most static hosts cannot send custom headers, so cross-
+1. **The game ships with no mods at all**, and that is the parity mandate in
+   mechanical form: a fresh install is Angband 4.2.6 and nothing else. The
+   first-party mods - `qol`, `bug-fixes`, `neo-linoleum` - each live in their own
+   repository and arrive through the same route, and the same verification, as
+   anybody else's. Nothing is second-class, including mine.
+2. The mod manager's **Install a mod...** row downloads from a mod's own repository
+   at a pinned TAG (never a branch, so what arrives cannot change under you) and
+   checks every file against a SHA-256 that ships inside your copy of the game - not
+   against anything the download claims about itself. A tampered, replaced or
+   truncated file is discarded and nothing is stored. It needs only a network request
+   and the browser's own storage, so it works on **every** browser, and it is the
+   reason no browser is excluded below. Installed mods are read back at boot by the
+   same validator that reads a folder on disk.
+3. **"Choose a mods folder..." is the Chromium-only route**, because Firefox and
+   Safari have no way to hand a directory to a web page - there is no workaround to
+   find, the capability does not exist. It is for developing a mod, or using one that
+   was never published: you pick the folder once (a page may not browse a filesystem
+   uninvited), and the browser may need permission again after a long gap, when the
+   row says `NEEDS RECONNECTING`. Nothing is missing from a Firefox or Safari player's
+   mod list because of note 2.
+4. The desktop build reads mods from its own `mods/` folder, and an external mod
+   manager can deploy into it (`load-order.json` is honoured). It can also install
+   from the catalogue, like every other surface.
+5. A mod folder may ship `plugin.js` and it will be loaded and RUN - from a loopback
+   URL on desktop, a `blob:` from a picked directory, or browser storage for one that
+   was installed. This used to be false: a mod from outside the build was data only,
+   and scripted plugins had to be bundled. Both halves changed, which is what made
+   shipping no bundled mods possible at all.
+6. GitHub Pages and most static hosts cannot send custom headers, so cross-
    origin isolation is unavailable there. It is never required - the trusted
    in-process mod tier works on every surface.
-4. The grid auto-scales to any viewport (see below); the game does NOT currently
+7. The grid auto-scales to any viewport (see below); the game does NOT currently
    offer a manual text/tile scale control. Browser pinch-zoom is intentionally
    disabled on the game canvas (the page sets `maximum-scale=1,
    user-scalable=no`) so a stray pinch cannot blur or misalign the grid - resize
    the window or use your OS/browser page zoom instead.
-5. By default a browser may delete a site's whole storage bucket to reclaim space,
+8. By default a browser may delete a site's whole storage bucket to reclaim space,
    without asking - which under this game's terminal-death rule is permanent
    character loss from a mechanism you never see. So the first time a character save
    lands, the game asks for **persistent** storage, which is exempt from that.

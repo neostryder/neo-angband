@@ -32,7 +32,7 @@ overall design and the moddable-surface matrix, read `docs/MODS.md`.
   both design-of-record pages and built-today pages, and the two are not
   the same thing.
 - `docs/LINOLEUM.md`: tile packs and converting the classic tilesets.
-- `BUG_FIXES.md`: the bundled `bug-fixes` mod - its design of record and
+- `BUG_FIXES.md`: the `bug-fixes` mod - its design of record and
   referenced changelog for upstream crash/corruption/save/determinism fixes
   that core deliberately does not carry (decision 24). Design of record;
   patches land with the mod runtime and the systems they touch.
@@ -43,24 +43,19 @@ overall design and the moddable-surface matrix, read `docs/MODS.md`.
 
 ## The first-party mods
 
-Four, all OFF until enabled (see `DEFAULT_ENABLED_MODS` - an untouched
-install is faithful 4.2.6 with no mod loaded). Two are bundled under
-`packages/web/mods/`; two are not:
+Four, **none of them bundled**, all OFF until enabled (see
+`DEFAULT_ENABLED_MODS` - an untouched install is faithful 4.2.6 with no mod
+loaded). Each lives in its own repository and arrives through the mod manager's
+*Install a mod...* row:
 
 | id | shape | where it lives | what it adds |
 | --- | --- | --- | --- |
-| `qol` | content | bundled | Genuinely new conveniences, currently just auto-dig on walk. Built-in Angband `=` options are NOT here: they ship in core at their upstream defaults. See `QOL.md`. |
-| `bug-fixes` | content | bundled | An unofficial patch set for upstream 4.2.6 bugs core deliberately keeps. See `BUG_FIXES.md`. |
+| `qol` | content | [own repo](https://github.com/neostryder/neo-angband-mod-qol) | Genuinely new conveniences, currently just auto-dig on walk. Built-in Angband `=` options are NOT here: they ship in core at their upstream defaults. See `QOL.md`. |
+| `bug-fixes` | content | [own repo](https://github.com/neostryder/neo-angband-mod-bug-fixes) | An unofficial patch set for upstream 4.2.6 bugs core deliberately keeps. See `BUG_FIXES.md`. |
 | `neo-linoleum` | tiles | [own repo](https://github.com/neostryder/neo-angband-mod-linoleum) | An ALTERNATIVE tile engine: the Linoleum loose-pack format (individual PNGs addressed by readable target maps, plus variant pools). It does NOT supply the game's graphics - all five upstream tile sets (Original / Adam Bolt / David Gervais / Nomad / Shockbolt Dark and Light) are core content (`grafmode.c` / `lib/tiles/list.txt`) and appear in the Graphics screen with no mod enabled. It ships all six converted to loose packs, so you can compare the two engines on identical art. Declare a pack with `{ "grafID": >=100, "engine": "linoleum", "menuname": "...", "path": "..." }` - note `engine` is the FORMAT name and stays `linoleum`; `neo-linoleum` is the mod. See `docs/LINOLEUM.md`. |
 | `borg` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player, driving the game through the same perceive/act API any third-party automation would use. **Not released** - the repository holds the name and the plan; `packages/borg` here is the engine half. See `docs/BORG_AS_MOD.md`. |
 
-**Bundled and first-party are different things.** `qol` and `bug-fixes` are in the
-build; `neo-linoleum` is equally first-party and is *not*, because its six converted
-tile packs are 9161 files and 42 MiB of art that belongs to the mod rather than to the
-game. It arrives through the installer (game menu -> Mods -> install), which verifies
-each archive against a digest built into the game and unpacks it into the mod's own
-folder. Every first-party mod's source and tests stay here, in the main repository,
-where there is an engine to test them against.
+**First-party is not a shortcut.** All four take the same route into the game as anybody else's mod, and that is on purpose: bundling the author's own mods would have hidden every defect in the install path behind three mods that never used it. The download route, the folder code loader and the plugin ABI all work because nothing is exempt from them. What first-party buys is that these four are also the reference examples - read them to learn the seams.
 
 Enable one in the in-app mod manager (game menu -> Mods), or with
 `?mods=qol,bug-fixes,neo-linoleum` for a one-off.
@@ -81,9 +76,15 @@ The `demo-*` directories alongside them are NOT shipped mods. They are the
 framework proofs - one per SDK load path (a content pack that patches a core
 monster, a sandboxed worker plugin, a trusted in-process plugin) - and exist
 so all three paths stay exercised in dev and in the test suite. Discovery
-drops them from release builds (`isShippedMod` in `mod-store.ts`), so a
-player's mod manager lists exactly the bundled two, plus whatever they have
-installed.
+drops them from release builds (`isShippedMod` in `mod-store.ts`). Since nothing
+else is bundled, a release build's discovered mod set is EMPTY and a player's mod
+manager lists exactly what they installed - which is asserted, not assumed
+(`mod-store.test.ts`, "a release build's content catalog is EMPTY").
+
+One demo does carry its weight beyond being an example: `demo-hooks` is the only
+mod in the build with a `plugin.ts`, so it is what keeps the ModHooks discovery
+path and its guards from going vacuous now that the real mods have left. A glob
+matching nothing passes every assertion about what it matched.
 
 ## Pack anatomy
 
