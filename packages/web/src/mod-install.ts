@@ -49,7 +49,7 @@ import {
   openDb,
 } from "./idb";
 import { buildModuleGraph } from "./mod-modules";
-import { type RecommendedMod, badPath, rawUrl } from "./mod-registry";
+import { type RecommendedMod, type RegistryFile, badPath, rawUrl } from "./mod-registry";
 import { assetMime, sortPackFiles } from "./pack-files";
 
 /** What is recorded about an installed mod, so the manager can say where it came from. */
@@ -252,27 +252,45 @@ async function downloadPayload(
   onProgress?: (p: InstallProgress) => void,
 ): Promise<Array<readonly [string, Uint8Array]>> {
   if (mod.payload.kind === "archive") {
-    const { path, sha256 } = mod.payload.archive;
-    onProgress?.({ done: 1, total: 1, path });
-    const zip = await fetchVerified(rawUrl(mod.repo, mod.tag, path), sha256, path, env);
-    /* Only now, with the digest matched, is the archive parsed. An unzip is the most
-     * hostile thing this module does to untrusted bytes, and the whole point of
-     * hashing the archive rather than its contents is that it never runs on bytes the
-     * game did not expect. */
-    let entries: Record<string, Uint8Array>;
-    try {
-      entries = unzipSync(zip);
-    } catch (e) {
-      throw new Error(`${path}: is not a readable zip (${message(e)})`, { cause: e });
-    }
+    const archives = mod.payload.archives;
     const out: Array<readonly [string, Uint8Array]> = [];
-    for (const [name, bytes] of Object.entries(entries)) {
-      /* Directory entries: zero-length and named with a trailing slash. Skipped
-       * rather than stored as empty files. */
-      if (name.endsWith("/")) continue;
-      out.push([name, bytes]);
+    /* Which archive contributed each path, so a collision can name both. Two archives
+     * writing one path is an authoring mistake in the mod (a root file duplicated
+     * across packs, say) and the install would silently keep whichever unzipped last -
+     * a mod that behaves differently depending on catalogue order. */
+    const from = new Map<string, string>();
+
+    for (let i = 0; i < archives.length; i++) {
+      const { path, sha256 } = archives[i] as RegistryFile;
+      onProgress?.({ done: i + 1, total: archives.length, path });
+      const zip = await fetchVerified(rawUrl(mod.repo, mod.tag, path), sha256, path, env);
+      /* Only now, with the digest matched, is the archive parsed. An unzip is the most
+       * hostile thing this module does to untrusted bytes, and the whole point of
+       * hashing the archive rather than its contents is that it never runs on bytes the
+       * game did not expect. */
+      let entries: Record<string, Uint8Array>;
+      try {
+        entries = unzipSync(zip);
+      } catch (e) {
+        throw new Error(`${path}: is not a readable zip (${message(e)})`, { cause: e });
+      }
+      let kept = 0;
+      for (const [name, bytes] of Object.entries(entries)) {
+        /* Directory entries: zero-length and named with a trailing slash. Skipped
+         * rather than stored as empty files. */
+        if (name.endsWith("/")) continue;
+        const owner = from.get(name);
+        if (owner !== undefined) {
+          throw new Error(`${name}: in both ${owner} and ${path}`);
+        }
+        from.set(name, path);
+        out.push([name, bytes]);
+        kept++;
+      }
+      /* Per archive, not just overall: five good packs and one empty one is a broken
+       * install that a total count would call fine. */
+      if (kept === 0) throw new Error(`${path}: the archive is empty`);
     }
-    if (out.length === 0) throw new Error(`${path}: the archive is empty`);
     return out;
   }
 

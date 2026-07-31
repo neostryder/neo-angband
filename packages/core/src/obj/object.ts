@@ -26,11 +26,11 @@
  * doubly-linked pile pointers of upstream are not part of GameObject.
  */
 
-import type { FlagSet } from "../bitflag";
-import { ELEM, OF, TV } from "../generated";
-import { addGuardi16 } from "../guard";
-import type { Loc } from "../loc";
-import type { RandomValue, Rng } from "../rng";
+import type { FlagSet } from "../bitflag.js";
+import { ELEM, OF, TV } from "../generated/index.js";
+import { addGuardi16 } from "../guard.js";
+import type { Loc } from "../loc.js";
+import type { RandomValue, Rng } from "../rng.js";
 import type {
   Activation,
   Artifact,
@@ -41,7 +41,7 @@ import type {
   ElementInfo,
   ObjectKind,
   Slay,
-} from "./types";
+} from "./types.js";
 import {
   EL_INFO_HATES,
   EL_INFO_IGNORE,
@@ -51,7 +51,7 @@ import {
   newOfFlags,
   OBJ_MOD_MAX,
   zeroRv,
-} from "./types";
+} from "./types.js";
 
 /* ------------------------------------------------------------------ */
 /* tval predicates (obj-tval.c), on numeric tvals                       */

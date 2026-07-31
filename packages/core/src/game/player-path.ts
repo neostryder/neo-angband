@@ -32,19 +32,19 @@
  * light / trap layers.
  */
 
-import { TF, TRF, TMD } from "../generated";
-import type { Loc } from "../loc";
-import { DDD, DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc";
-import { qpNew } from "../z-queue";
-import { SKILL } from "../player/types";
+import { TF, TRF, TMD } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import { DDD, DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc.js";
+import { qpNew } from "../z-queue.js";
+import { SKILL } from "../player/types.js";
 import {
   monsterIsInView,
   monsterIsObvious,
   monsterIsVisible,
-} from "../mon/predicate";
-import type { GameState, PlayerCommand, RunState } from "./context";
-import { squareMonster } from "./context";
-import { squareIsKnown } from "./known";
+} from "../mon/predicate.js";
+import type { GameState, PlayerCommand, RunState } from "./context.js";
+import { squareMonster } from "./context.js";
+import { squareIsKnown } from "./known.js";
 import {
   calcUnlockingChance,
   playerIsTrapsafe,
@@ -53,11 +53,11 @@ import {
   squareIsWebbed,
   squareRemoveTrap,
   squareTrap,
-} from "./trap";
-import { DIGGING, calcDiggingChances } from "./cave-cmd";
-import { playerConfuseDir } from "./obj-cmd";
-import { energyPerMove, walkAction } from "./player-turn";
-import type { ActionRegistry } from "./player-turn";
+} from "./trap.js";
+import { DIGGING, calcDiggingChances } from "./cave-cmd.js";
+import { playerConfuseDir } from "./obj-cmd.js";
+import { energyPerMove, walkAction } from "./player-turn.js";
+import type { ActionRegistry } from "./player-turn.js";
 
 /** Quick "cycling" through the eight legal directions (player-path.c cycle[]). */
 const CYCLE: readonly number[] = [

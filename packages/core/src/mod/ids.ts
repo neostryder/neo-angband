@@ -36,12 +36,12 @@
  * fragile than upstream's bare-index scheme, which breaks on ANY reorder.
  */
 
-import { TVAL_ENTRIES } from "../generated";
-import type { ObjRegistry } from "../obj/bind";
-import type { MonsterRace } from "../mon/types";
-import type { PlayerClass, PlayerRace } from "../player/types";
-import type { FeatureRegistry } from "../world/feature";
-import type { TrapKind } from "../world/trap";
+import { TVAL_ENTRIES } from "../generated/index.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import type { MonsterRace } from "../mon/types.js";
+import type { PlayerClass, PlayerRace } from "../player/types.js";
+import type { FeatureRegistry } from "../world/feature.js";
+import type { TrapKind } from "../world/trap.js";
 
 /** The base game's namespace (pack zero). */
 export const CORE_NS = "core";

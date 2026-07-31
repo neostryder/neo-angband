@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, PROJ } from "../generated";
-import { tvalFindIdx } from "../obj/bind";
-import { bindCore } from "../session/boot";
-import type { CorePack } from "../session/boot";
+import { FEAT, PROJ } from "../generated/index.js";
+import { tvalFindIdx } from "../obj/bind.js";
+import { bindCore } from "../session/boot.js";
+import type { CorePack } from "../session/boot.js";
 import {
   BOLT,
   LIGHTING,
@@ -14,8 +14,8 @@ import {
   tileForObject,
   tileForProjection,
   tileForTrap,
-} from "./tile-prefs";
-import { parseTilePrefs, parseTilePrefsInto } from "./prefs";
+} from "./tile-prefs.js";
+import { parseTilePrefs, parseTilePrefsInto } from "./prefs.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

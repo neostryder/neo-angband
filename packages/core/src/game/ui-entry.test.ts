@@ -11,15 +11,15 @@
 
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { FlagSet } from "../bitflag";
-import { OF } from "../generated/object-flags";
-import { ELEM } from "../generated/elements";
-import { STAT } from "../generated/stats";
-import { OBJ_MOD } from "../generated/object-modifiers";
-import { newElemInfo, newOfFlags, OBJ_MOD_MAX, OF_SIZE } from "../obj/types";
-import type { ElementInfo } from "../obj/types";
-import type { GameObject } from "../obj/object";
-import { makeState } from "./harness";
+import { FlagSet } from "../bitflag.js";
+import { OF } from "../generated/object-flags.js";
+import { ELEM } from "../generated/elements.js";
+import { STAT } from "../generated/stats.js";
+import { OBJ_MOD } from "../generated/object-modifiers.js";
+import { newElemInfo, newOfFlags, OBJ_MOD_MAX, OF_SIZE } from "../obj/types.js";
+import type { ElementInfo } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import { makeState } from "./harness.js";
 import {
   applyRenderer,
   buildUiEntryConfig,
@@ -30,8 +30,8 @@ import {
   UI_ENTRY_RESIST0_RES_VUL,
   UI_ENTRY_UNKNOWN_VALUE,
   UI_ENTRY_VALUE_NOT_PRESENT,
-} from "./ui-entry";
-import type { UiEntryConfig } from "./ui-entry";
+} from "./ui-entry.js";
+import type { UiEntryConfig } from "./ui-entry.js";
 
 /* ------------------------------------------------------------------ */
 /* Fixtures                                                            */

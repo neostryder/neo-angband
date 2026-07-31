@@ -10,11 +10,11 @@
  * square_light_spot) are deferred and ledgered.
  */
 
-import { FlagSet } from "../bitflag";
-import { SQUARE, SQUARE_FLAG_ENTRIES, TF } from "../generated";
-import { UINT32_MAX } from "../guard";
-import type { Loc } from "../loc";
-import type { Feature, FeatureRegistry } from "./feature";
+import { FlagSet } from "../bitflag.js";
+import { SQUARE, SQUARE_FLAG_ENTRIES, TF } from "../generated/index.js";
+import { UINT32_MAX } from "../guard.js";
+import type { Loc } from "../loc.js";
+import type { Feature, FeatureRegistry } from "./feature.js";
 
 /** Byte size of a square info FlagSet (upstream SQUARE_SIZE). */
 export const SQUARE_SIZE = Math.ceil(SQUARE_FLAG_ENTRIES.length / 8);

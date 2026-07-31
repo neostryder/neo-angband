@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Player } from "../player/player";
+import type { Player } from "../player/player.js";
 import {
   buildScore,
   totalPoints,
@@ -12,11 +12,11 @@ import {
   enterScore,
   scoreGateNoscore,
   predictScore,
-} from "./score";
-import { MAX_HISCORES, WINNING_HOW } from "./types";
-import type { HighScore, ScoreStore } from "./types";
-import { ENGINE_VERSION } from "../version";
-import { OptionState } from "../player/options";
+} from "./score.js";
+import { MAX_HISCORES, WINNING_HOW } from "./types.js";
+import type { HighScore, ScoreStore } from "./types.js";
+import { ENGINE_VERSION } from "../version.js";
+import { OptionState } from "../player/options.js";
 
 /**
  * A minimal Player stub carrying only the fields the score code reads

@@ -19,27 +19,27 @@
  * not modelled).
  */
 
-import { EF, MON_TMD, TMD } from "../generated";
-import { distance, loc, locEq } from "../loc";
-import { monsterIsUnique, monsterIsVisible } from "../mon/predicate";
-import { monsterWake } from "../mon/take-hit";
-import { MON_TMD_FLG_NOMESSAGE, monClearTimed } from "../mon/timed";
-import type { Monster } from "../mon/monster";
+import { EF, MON_TMD, TMD } from "../generated/index.js";
+import { distance, loc, locEq } from "../loc.js";
+import { monsterIsUnique, monsterIsVisible } from "../mon/predicate.js";
+import { monsterWake } from "../mon/take-hit.js";
+import { MON_TMD_FLG_NOMESSAGE, monClearTimed } from "../mon/timed.js";
+import type { Monster } from "../mon/monster.js";
 import type {
   EffectHandler,
   EffectHandlerContext,
   EffectRegistry,
-} from "../effects/interpreter";
-import { effectCalculateValue } from "../effects/interpreter";
+} from "../effects/interpreter.js";
+import { effectCalculateValue } from "../effects/interpreter.js";
 import {
   playerApplyDamageReduction,
   takeHit,
-} from "../player/take-hit";
-import { los } from "../world/view";
-import { deleteMonster, monsterMax } from "./context";
-import type { GameState } from "./context";
-import { gameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
+} from "../player/take-hit.js";
+import { los } from "../world/view.js";
+import { deleteMonster, monsterMax } from "./context.js";
+import type { GameState } from "./context.js";
+import { gameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
 
 /** take_hit through the player-projection actor, with the show-damage message. */
 function hurtPlayer(

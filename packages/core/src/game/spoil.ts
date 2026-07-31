@@ -21,29 +21,29 @@
  * wiz-spoil.c line citations are given inline as `// wiz-spoil.c L###`.
  */
 
-import { attrToText } from "../color";
-import { KF, RF, TV } from "../generated";
-import { Rng } from "../rng";
-import { PARITY_BASELINE } from "../version";
-import { ODESC, objectDesc } from "../obj/desc";
-import { OINFO, objectInfo, textblockToString } from "../obj/object-info";
-import { OBJ_NOTICE, playerLearnAllRunes } from "../obj/knowledge";
-import { copyArtifactData, objectPrep } from "../obj/make";
-import { objectPower } from "../obj/power";
-import { objectValue } from "../obj/value";
-import { tvalIsAmmo, tvalIsArmor, tvalIsMeleeWeapon } from "../obj/object";
-import { cheatMonsterLore, newMonsterLore } from "../mon/lore";
-import { loreDescription } from "../mon/lore-describe";
-import { knownDescOf } from "./describe";
-import { makeObjectInfoDeps } from "./object-inspect";
-import { startGame } from "../session/game";
-import type { Artifact, ObjectKind } from "../obj/types";
-import type { GameObject } from "../obj/object";
-import type { PowerObject } from "../obj/power";
-import type { ObjectInfoExtras } from "./object-inspect";
-import type { LoreDeps } from "../mon/lore-describe";
-import type { MonsterRace } from "../mon/types";
-import type { GamePack, StartedGame } from "../session/game";
+import { attrToText } from "../color.js";
+import { KF, RF, TV } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { PARITY_BASELINE } from "../version.js";
+import { ODESC, objectDesc } from "../obj/desc.js";
+import { OINFO, objectInfo, textblockToString } from "../obj/object-info.js";
+import { OBJ_NOTICE, playerLearnAllRunes } from "../obj/knowledge.js";
+import { copyArtifactData, objectPrep } from "../obj/make.js";
+import { objectPower } from "../obj/power.js";
+import { objectValue } from "../obj/value.js";
+import { tvalIsAmmo, tvalIsArmor, tvalIsMeleeWeapon } from "../obj/object.js";
+import { cheatMonsterLore, newMonsterLore } from "../mon/lore.js";
+import { loreDescription } from "../mon/lore-describe.js";
+import { knownDescOf } from "./describe.js";
+import { makeObjectInfoDeps } from "./object-inspect.js";
+import { startGame } from "../session/game.js";
+import type { Artifact, ObjectKind } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import type { PowerObject } from "../obj/power.js";
+import type { ObjectInfoExtras } from "./object-inspect.js";
+import type { LoreDeps } from "../mon/lore-describe.js";
+import type { MonsterRace } from "../mon/types.js";
+import type { GamePack, StartedGame } from "../session/game.js";
 
 /**
  * The build id upstream stamps into every spoiler header (buildid, e.g.

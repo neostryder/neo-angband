@@ -27,7 +27,7 @@
  * GameState and each deferred seam reads it through state.options.
  */
 
-import { OPTION_ENTRIES } from "../generated/options";
+import { OPTION_ENTRIES } from "../generated/options.js";
 
 /** Every option name in the table (the `name` field of OPTION_ENTRIES). */
 export type OptionName = (typeof OPTION_ENTRIES)[number]["name"];

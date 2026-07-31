@@ -18,42 +18,42 @@
  * then prepare_next_level generation.
  */
 
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import { MessageLog } from "../msg";
-import { SKILL, STAT_MAX } from "../player/types";
-import { EF, ELEM, HIST, OF, PF, RF, STAT, TMD } from "../generated";
-import { bindPlayer } from "../player/bind";
-import type { PlayerPackRecords, PlayerRegistry } from "../player/bind";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { MessageLog } from "../msg.js";
+import { SKILL, STAT_MAX } from "../player/types.js";
+import { EF, ELEM, HIST, OF, PF, RF, STAT, TMD } from "../generated/index.js";
+import { bindPlayer } from "../player/bind.js";
+import type { PlayerPackRecords, PlayerRegistry } from "../player/bind.js";
 import {
   generatePlayer,
   optionsInitCheat,
   flavorSetAllAware,
-} from "../player/birth";
+} from "../player/birth.js";
 import {
   bonusChangeMessages,
   calcBonuses,
   calcHitpoints,
   toCombatState,
   toDefenderState,
-} from "../player/calcs";
-import type { PlayerState } from "../player/calcs";
+} from "../player/calcs.js";
+import type { PlayerState } from "../player/calcs.js";
 import {
   playerBestDiggerDigging,
   playerBestDiggerWithClause,
-} from "../player/best-digger";
-import { playerExpGain, playerKillExp } from "../player/exp";
-import type { ExpDeps } from "../player/exp";
-import { historyAdd, historyFindArtifact, historyLoseArtifact } from "../player/history";
-import { artifactHistoryName, historyStamp } from "../game/history";
-import { makePlayerSideEffects, makeIncCheckQueries } from "../game/player-side";
-import { makeTakeHitHooks } from "../game/take-hit-hooks";
-import { makeMonBlowEnv } from "../game/mon-side";
-import { adj_dex_safe } from "../player/calcs";
-import { processCurseTimeouts } from "../game/curse-tick";
-import { buildEffectContext } from "../game/effect-env";
-import { attachGameEnv } from "../game/effect-game-env";
-import { sourceMonster, sourceNone, sourcePlayer } from "../effects/interpreter";
+} from "../player/best-digger.js";
+import { playerExpGain, playerKillExp } from "../player/exp.js";
+import type { ExpDeps } from "../player/exp.js";
+import { historyAdd, historyFindArtifact, historyLoseArtifact } from "../player/history.js";
+import { artifactHistoryName, historyStamp } from "../game/history.js";
+import { makePlayerSideEffects, makeIncCheckQueries } from "../game/player-side.js";
+import { makeTakeHitHooks } from "../game/take-hit-hooks.js";
+import { makeMonBlowEnv } from "../game/mon-side.js";
+import { adj_dex_safe } from "../player/calcs.js";
+import { processCurseTimeouts } from "../game/curse-tick.js";
+import { buildEffectContext } from "../game/effect-env.js";
+import { attachGameEnv } from "../game/effect-game-env.js";
+import { sourceMonster, sourceNone, sourcePlayer } from "../effects/interpreter.js";
 import {
   DEFAULT_GAME_CONSTANTS,
   addMonster,
@@ -61,81 +61,81 @@ import {
   placePlayer,
   squareMonster,
   updateMonsterDistances,
-} from "../game/context";
-import { Chunk } from "../world/chunk";
-import { chunkWriteTerrain } from "../gen/cave";
-import { FEAT, SQUARE } from "../generated";
-import { blankMonster } from "../mon/monster";
-import { MON_GROUP } from "../mon/types";
+} from "../game/context.js";
+import { Chunk } from "../world/chunk.js";
+import { chunkWriteTerrain } from "../gen/cave.js";
+import { FEAT, SQUARE } from "../generated/index.js";
+import { blankMonster } from "../mon/monster.js";
+import { MON_GROUP } from "../mon/types.js";
 import type {
   GameState,
   ItemTargetRef,
   PlayerActor,
   PlayerCommand,
-} from "../game/context";
-import { monsterGroupAssign, monsterGroupsVerify } from "../game/mon-group";
-import { floorCarry, floorObjectForUse, floorPile } from "../game/floor";
-import { installPickup } from "../game/pickup";
-import { IgnoreSettings, ignoreItemOk } from "../obj/ignore";
-import { EffectRegistry } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { registerAttackHandlers } from "../game/effect-attack";
-import { registerGeneralHandlers } from "../game/effect-general";
-import type { GeneralEffectEnv } from "../game/effect-general";
-import { registerMonsterHandlers } from "../game/effect-monster";
-import { registerTeleportHandlers, teleportMonster } from "../game/effect-teleport";
-import { registerTerrainHandlers, wizLightLevel } from "../game/effect-terrain";
-import { registerItemHandlers } from "../game/effect-item";
-import type { ItemEffectEnv, ItemRequest } from "../game/effect-item";
-import { registerMeleeHandlers } from "../game/effect-melee";
-import { registerSummonHandlers } from "../game/effect-summon";
-import type { SummonEffectEnv } from "../game/effect-summon";
-import { registerDetectHandlers } from "../game/effect-detect";
-import { becomeAware, caveIlluminateKnown, caveKnown, newKnownMap } from "../game/known";
-import { PY_EXERT, compactMonsters, isDaytime, playerOverExert } from "../game/world";
-import { restoreMonsters } from "../game/scheduler";
-import { newTargetState, targetSetMonster } from "../game/target";
+} from "../game/context.js";
+import { monsterGroupAssign, monsterGroupsVerify } from "../game/mon-group.js";
+import { floorCarry, floorObjectForUse, floorPile } from "../game/floor.js";
+import { installPickup } from "../game/pickup.js";
+import { IgnoreSettings, ignoreItemOk } from "../obj/ignore.js";
+import { EffectRegistry } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { registerAttackHandlers } from "../game/effect-attack.js";
+import { registerGeneralHandlers } from "../game/effect-general.js";
+import type { GeneralEffectEnv } from "../game/effect-general.js";
+import { registerMonsterHandlers } from "../game/effect-monster.js";
+import { registerTeleportHandlers, teleportMonster } from "../game/effect-teleport.js";
+import { registerTerrainHandlers, wizLightLevel } from "../game/effect-terrain.js";
+import { registerItemHandlers } from "../game/effect-item.js";
+import type { ItemEffectEnv, ItemRequest } from "../game/effect-item.js";
+import { registerMeleeHandlers } from "../game/effect-melee.js";
+import { registerSummonHandlers } from "../game/effect-summon.js";
+import type { SummonEffectEnv } from "../game/effect-summon.js";
+import { registerDetectHandlers } from "../game/effect-detect.js";
+import { becomeAware, caveIlluminateKnown, caveKnown, newKnownMap } from "../game/known.js";
+import { PY_EXERT, compactMonsters, isDaytime, playerOverExert } from "../game/world.js";
+import { restoreMonsters } from "../game/scheduler.js";
+import { newTargetState, targetSetMonster } from "../game/target.js";
 import {
   getLore,
   loreCountU16,
   loreLearnFlagIfVisible,
   loreLearnSpellIfVisible,
   loreUpdate,
-} from "../mon/lore";
-import { monsterIsVisible } from "../mon/predicate";
+} from "../mon/lore.js";
+import { monsterIsVisible } from "../mon/predicate.js";
 import {
   countMonsterRaces,
   multiplyMonster,
   pickAndPlaceDistantMonster,
   squareIsEmptyLive,
   wipeMonsterCounts,
-} from "../game/mon-place";
-import type { MonPlaceDeps } from "../game/mon-place";
-import { SummonTable } from "../mon/summon";
-import { MonAllocTable } from "../mon/make";
-import type { EffectBuilderInjections } from "../effects/effect";
-import { thrustAway } from "../game/thrust";
-import { basicPlayerActor } from "../game/project-cast";
-import type { CastContext } from "../game/project-cast";
-import type { EffectEnvDeps } from "../game/effect-env";
-import { installMonsterCasting } from "../game/mon-ranged";
-import { buildMonSpellHooks, buildFailRuneEnv } from "../game/mon-cast";
-import { installMonCommand } from "../game/mon-cmd";
-import { monsterChangeShape, monsterRevertShape } from "../game/mon-shape";
-import type { MonShapeHooks } from "../mon/timed";
-import { installMonTimedLore } from "../mon/timed";
+} from "../game/mon-place.js";
+import type { MonPlaceDeps } from "../game/mon-place.js";
+import { SummonTable } from "../mon/summon.js";
+import { MonAllocTable } from "../mon/make.js";
+import type { EffectBuilderInjections } from "../effects/effect.js";
+import { thrustAway } from "../game/thrust.js";
+import { basicPlayerActor } from "../game/project-cast.js";
+import type { CastContext } from "../game/project-cast.js";
+import type { EffectEnvDeps } from "../game/effect-env.js";
+import { installMonsterCasting } from "../game/mon-ranged.js";
+import { buildMonSpellHooks, buildFailRuneEnv } from "../game/mon-cast.js";
+import { installMonCommand } from "../game/mon-cmd.js";
+import { monsterChangeShape, monsterRevertShape } from "../game/mon-shape.js";
+import type { MonShapeHooks } from "../mon/timed.js";
+import { installMonTimedLore } from "../mon/timed.js";
 import {
   applyAutoinscription,
   autoinscribeGround,
   autoinscribePack,
   installObjCommands,
   packOverflow,
-} from "../game/obj-cmd";
-import type { ObjCmdDeps } from "../game/obj-cmd";
-import { displayFeeling, installCaveCommands, movementAutoDig } from "../game/cave-cmd";
-import type { CaveCmdDeps } from "../game/cave-cmd";
-import { installSteal } from "../game/steal";
-import type { ChestCmdDeps } from "../game/chest";
+} from "../game/obj-cmd.js";
+import type { ObjCmdDeps } from "../game/obj-cmd.js";
+import { displayFeeling, installCaveCommands, movementAutoDig } from "../game/cave-cmd.js";
+import type { CaveCmdDeps } from "../game/cave-cmd.js";
+import { installSteal } from "../game/steal.js";
+import type { ChestCmdDeps } from "../game/chest.js";
 import {
   calcUnlockingChance,
   installChunkFeatHook,
@@ -149,22 +149,22 @@ import {
   squareRemoveAllTraps,
   squareSetDoorLock,
   trapPredicates,
-} from "../game/trap";
-import type { TrapDeps } from "../game/trap";
-import { lookupTrap } from "../world/trap";
+} from "../game/trap.js";
+import type { TrapDeps } from "../game/trap.js";
+import { lookupTrap } from "../world/trap.js";
 import {
   calcMana,
   calcSpells,
   cumberArmorFrom,
   playerSpellsInit,
   registerBookKinds,
-} from "../player/spell";
-import { installSpellCommands, makeSpellChanceEnv } from "../game/spell-cmd";
-import { installRangedCommands } from "../game/ranged-cmd";
-import { markNoscore, NOSCORE } from "../game/wizard";
-import type { WizardDeps } from "../game/wizard";
-import { createTownStores, storeUpdate, storeWillBuy } from "../store/store";
-import type { Store, StoreMaintContext } from "../store/store";
+} from "../player/spell.js";
+import { installSpellCommands, makeSpellChanceEnv } from "../game/spell-cmd.js";
+import { installRangedCommands } from "../game/ranged-cmd.js";
+import { markNoscore, NOSCORE } from "../game/wizard.js";
+import type { WizardDeps } from "../game/wizard.js";
+import { createTownStores, storeUpdate, storeWillBuy } from "../store/store.js";
+import type { Store, StoreMaintContext } from "../store/store.js";
 import {
   homeCarry,
   homeRetrieve,
@@ -172,10 +172,10 @@ import {
   storeBuy,
   storeSell,
   storeSellFloor,
-} from "../store/transact";
-import type { BuyResult, SellResult, TxnKnowledge } from "../store/transact";
-import { storeCheckNum } from "../store/store";
-import { priceItem } from "../store/price";
+} from "../store/transact.js";
+import type { BuyResult, SellResult, TxnKnowledge } from "../store/transact.js";
+import { storeCheckNum } from "../store/store.js";
+import { priceItem } from "../store/price.js";
 import {
   formatMonsterMessage,
   formatMonsterMessageByName,
@@ -184,7 +184,7 @@ import {
   formatPainMessageShowDamage,
   monMessageSoundType,
   painMessageCode,
-} from "../game/mon-message";
+} from "../game/mon-message.js";
 import {
   AutoinscriptionRegistry,
   RuneNoteRegistry,
@@ -199,16 +199,16 @@ import {
   objectLearnOnWield,
   playerLearnInnate,
   playerLearnAllRunes,
-} from "../obj/knowledge";
-import type { FlavorAwareDeps } from "../obj/knowledge";
-import { flavorInit } from "../obj/flavor";
-import { ELEM_MAX } from "../obj/types";
-import type { ObjectKind } from "../obj/types";
-import { ArtifactState, ObjAllocState } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import { monsterDeath, installNonplayerHitDeps } from "../game/mon-death";
-import type { MonsterDeathDeps } from "../game/mon-death";
-import type { ProjectFeatEnv } from "../game/project-feat";
+} from "../obj/knowledge.js";
+import type { FlavorAwareDeps } from "../obj/knowledge.js";
+import { flavorInit } from "../obj/flavor.js";
+import { ELEM_MAX } from "../obj/types.js";
+import type { ObjectKind } from "../obj/types.js";
+import { ArtifactState, ObjAllocState } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import { monsterDeath, installNonplayerHitDeps } from "../game/mon-death.js";
+import type { MonsterDeathDeps } from "../game/mon-death.js";
+import type { ProjectFeatEnv } from "../game/project-feat.js";
 import {
   newGear,
   outfitPlayer,
@@ -216,42 +216,42 @@ import {
   calcInventory,
   minusAc as applyMinusAc,
   objectCopyAmt,
-} from "../game/gear";
-import { objectValue as computeObjectValue } from "../obj/value";
-import type { GameObject, CurseTimedFoil } from "../obj/object";
-import { buildCurseTimedFoil } from "../obj/object";
-import { createDefaultRegistry, installMeleeSideEffects, search } from "../game/player-turn";
-import type { ActionRegistry } from "../game/player-turn";
-import { buildTempBrandSlay, playerIncCheck } from "../player/timed";
+} from "../game/gear.js";
+import { objectValue as computeObjectValue } from "../obj/value.js";
+import type { GameObject, CurseTimedFoil } from "../obj/object.js";
+import { buildCurseTimedFoil } from "../obj/object.js";
+import { createDefaultRegistry, installMeleeSideEffects, search } from "../game/player-turn.js";
+import type { ActionRegistry } from "../game/player-turn.js";
+import { buildTempBrandSlay, playerIncCheck } from "../player/timed.js";
 import type {
   TimedTempBrandSlayRecord,
   PlayerIncCheckQueries,
   TimedWeaponDesc,
-} from "../player/timed";
-import { disturb, installRunning } from "../game/player-path";
-import { bindCore, bootLevel, genDeps } from "./boot";
+} from "../player/timed.js";
+import { disturb, installRunning } from "../game/player-path.js";
+import { bindCore, bootLevel, genDeps } from "./boot.js";
 import {
   dungeonGetNextLevel,
   isQuest,
   playerQuestsReset,
   questCheck,
-} from "../game/quest";
+} from "../game/quest.js";
 import type {
   BootedLevel,
   BootLevelOptions,
   CorePack,
   CoreRegistries,
-} from "./boot";
-import { Rng } from "../rng";
-import type { Player } from "../player/player";
-import { OptionState } from "../player/options";
-import type { OptionName } from "../player/options";
-import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart";
-import { makeActivationSummarizer } from "../obj/effects-info";
-import type { RawTimedRecord } from "../obj/effects-info";
-import type { ActivationSummarizer } from "../obj/randart-build";
-import { generateLevel, getJoinInfo, type QuestSpawn } from "../gen/generate";
-import { iToGrid } from "../gen/util";
+} from "./boot.js";
+import { Rng } from "../rng.js";
+import type { Player } from "../player/player.js";
+import { OptionState } from "../player/options.js";
+import type { OptionName } from "../player/options.js";
+import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart.js";
+import { makeActivationSummarizer } from "../obj/effects-info.js";
+import type { RawTimedRecord } from "../obj/effects-info.js";
+import type { ActivationSummarizer } from "../obj/randart-build.js";
+import { generateLevel, getJoinInfo, type QuestSpawn } from "../gen/generate.js";
+import { iToGrid } from "../gen/util.js";
 import {
   SAVE_VERSION,
   deserializeAutoinscriptions,
@@ -273,15 +273,15 @@ import {
   deserializeStores,
   deserializeTraps,
   serializeGame,
-} from "./save";
-import type { SavedGame } from "./save";
-import { ContentIdResolver } from "../mod/ids";
+} from "./save.js";
+import type { SavedGame } from "./save.js";
+import { ContentIdResolver } from "../mod/ids.js";
 import {
   coreOnlyManifest,
   quarantineSave,
   rehydrateSave,
-} from "../mod/save-blocks";
-import type { ModBag, OrphanStore, SaveManifest } from "../mod/save-blocks";
+} from "../mod/save-blocks.js";
+import type { ModBag, OrphanStore, SaveManifest } from "../mod/save-blocks.js";
 
 /**
  * The getItem seam body (cmd_get_item's "tgtitem" fast path, cmd-core.c L1060):
@@ -387,7 +387,7 @@ export interface StartGameOptions extends BootLevelOptions {
    * the host (mod/hooks.ts composeModHooks). Absent - the case with no mod
    * enabled - leaves core byte-identical to faithful 4.2.6.
    */
-  modHooks?: import("../mod/hooks").ModHooks;
+  modHooks?: import("../mod/hooks.js").ModHooks;
 }
 
 /** A started game: the loop's state and registry, plus what a renderer needs. */
@@ -1803,8 +1803,8 @@ function wireGame(
 /** The parts of a generated level that populate a GameState. */
 interface LevelContent {
   playerSpot: Loc | null;
-  monsters: readonly { grid: Loc; mon: import("../mon/monster").Monster }[];
-  objects: readonly { grid: Loc; obj: import("../obj/object").GameObject }[];
+  monsters: readonly { grid: Loc; mon: import("../mon/monster.js").Monster }[];
+  objects: readonly { grid: Loc; obj: import("../obj/object.js").GameObject }[];
   trapGrids: readonly Loc[];
   /**
    * Kind+power chosen at generation (place_trap). Required for every trapGrid
@@ -3203,7 +3203,7 @@ function swapRandartSet(
 /** The worn-armor weight calc_mana penalizes (non-weapon/bow/jewelry slots). */
 function wornArmorWeight(
   player: Player,
-  equipment: readonly (import("../obj/object").GameObject | null)[],
+  equipment: readonly (import("../obj/object.js").GameObject | null)[],
 ): number {
   let weight = 0;
   for (let i = 0; i < player.body.count; i++) {
@@ -3263,7 +3263,7 @@ export interface LoadGameOptions {
    * The composed behaviour of every enabled mod (mod/hooks.ts). A client setting
    * like the flags above; absent = faithful 4.2.6.
    */
-  modHooks?: import("../mod/hooks").ModHooks;
+  modHooks?: import("../mod/hooks.js").ModHooks;
   /**
    * arg_wizard (savefile.c:631 savefile_load's cheat_death parameter): the game
    * was launched in wizard mode. Loading a DEAD character this way resurrects it

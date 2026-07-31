@@ -10,18 +10,18 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, TV } from "../generated";
-import { loc } from "../loc";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson, ObjectKind } from "../obj/types";
-import { objectNew } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { displayFeeling } from "./cave-cmd";
-import { createDefaultRegistry } from "./player-turn";
-import { installRangedCommands } from "./ranged-cmd";
-import { gearAdd } from "./gear";
-import type { GameState } from "./context";
-import { addMon, makeRace, makeState } from "./harness";
+import { MFLAG, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson, ObjectKind } from "../obj/types.js";
+import { objectNew } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { displayFeeling } from "./cave-cmd.js";
+import { createDefaultRegistry } from "./player-turn.js";
+import { installRangedCommands } from "./ranged-cmd.js";
+import { gearAdd } from "./gear.js";
+import type { GameState } from "./context.js";
+import { addMon, makeRace, makeState } from "./harness.js";
 
 function load(name: string): unknown {
   return JSON.parse(

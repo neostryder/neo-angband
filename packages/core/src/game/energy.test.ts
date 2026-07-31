@@ -7,7 +7,7 @@ import {
   gainEnergy,
   spendEnergy,
   turnEnergy,
-} from "./energy";
+} from "./energy.js";
 
 /** Count how many actions an actor of `speed` takes over `turns` game turns. */
 function countActions(speed: number, turns: number, moveEnergy = NORMAL_ENERGY): number {

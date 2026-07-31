@@ -11,7 +11,7 @@
  * object valuation (object_power, obj-power.c), which is not ported yet.
  */
 
-import type { ObjectKind } from "../obj/types";
+import type { ObjectKind } from "../obj/types.js";
 
 /* ------------------------------------------------------------------ */
 /* Parsed JSON shape (packages/content/pack/store.json)                 */

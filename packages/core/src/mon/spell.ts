@@ -23,18 +23,18 @@
  * for real; breath damage keeps using breathDam below unchanged.
  */
 
-import { Dice } from "../dice";
-import { Expression } from "../expression";
-import { FlagSet } from "../bitflag";
-import { ELEM, MON_SPELL_ENTRIES, MON_TMD, OF, PF, RSF } from "../generated";
-import type { RandomValue, Rng } from "../rng";
-import { ELEM_MAX } from "../obj/types";
-import type { TimedFailLike } from "../obj/object";
-import { RSF_SIZE } from "./types";
-import type { MonsterRace, MonsterSpell, MonsterSpellEffect } from "./types";
-import type { Monster } from "./monster";
-import { monsterEffectLevel } from "./timed";
-import { monsterIsSmart, monsterIsStupid } from "./predicate";
+import { Dice } from "../dice.js";
+import { Expression } from "../expression.js";
+import { FlagSet } from "../bitflag.js";
+import { ELEM, MON_SPELL_ENTRIES, MON_TMD, OF, PF, RSF } from "../generated/index.js";
+import type { RandomValue, Rng } from "../rng.js";
+import { ELEM_MAX } from "../obj/types.js";
+import type { TimedFailLike } from "../obj/object.js";
+import { RSF_SIZE } from "./types.js";
+import type { MonsterRace, MonsterSpell, MonsterSpellEffect } from "./types.js";
+import type { Monster } from "./monster.js";
+import { monsterEffectLevel } from "./timed.js";
+import { monsterIsSmart, monsterIsStupid } from "./predicate.js";
 
 /**
  * RST_ spell-type bitflags (mon-spell.h). RST_DAMAGE is the composite of the

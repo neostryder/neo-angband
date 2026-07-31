@@ -27,9 +27,9 @@
  * random state.
  */
 
-import type { Expression } from "./expression";
-import { strtolBase0 } from "./expression";
-import type { Aspect, RandomValue, Rng } from "./rng";
+import type { Expression } from "./expression.js";
+import { strtolBase0 } from "./expression.js";
+import type { Aspect, RandomValue, Rng } from "./rng.js";
 
 /** Hard limit on the number of variables/expressions. */
 const DICE_MAX_EXPRESSIONS = 4;

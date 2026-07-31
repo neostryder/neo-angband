@@ -1,18 +1,18 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PROJ, TMD } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { TMD_MAX } from "../player/types";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { projectPlayer } from "./project-player";
+import { PROJ, TMD } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { TMD_MAX } from "../player/types.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { projectPlayer } from "./project-player.js";
 import type {
   PlayerProjActor,
   ProjectPlayerCtx,
   ProjectPlayerHooks,
   ProjectPlayerSource,
-} from "./project-player";
+} from "./project-player.js";
 
 const projections = bindProjections(
   JSON.parse(

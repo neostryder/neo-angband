@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { loc } from "../loc";
-import { Chunk } from "./chunk";
-import { FeatureRegistry } from "./feature";
-import type { TerrainRecordJson } from "./feature";
-import { makeNoise, updateScent } from "./flow";
-import type { FlowSource } from "./flow";
+import { loc } from "../loc.js";
+import { Chunk } from "./chunk.js";
+import { FeatureRegistry } from "./feature.js";
+import type { TerrainRecordJson } from "./feature.js";
+import { makeNoise, updateScent } from "./flow.js";
+import type { FlowSource } from "./flow.js";
 
 const terrain = JSON.parse(
   readFileSync(

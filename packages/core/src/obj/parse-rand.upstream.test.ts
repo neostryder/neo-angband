@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { parseRand } from "./bind";
+import { parseRand } from "./bind.js";
 
 /** Hand-traced through parse_random, one row per interesting shape. */
 const CASES: ReadonlyArray<{

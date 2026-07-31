@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD } from "../generated";
-import { loc } from "../loc";
-import { GROUP_TYPE } from "../mon/monster";
-import type { Monster } from "../mon/monster";
-import { MON_GROUP } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
-import { addMon, makeState, makeRace } from "./harness";
-import type { GameState } from "./context";
-import { deleteMonster } from "./context";
+import { MFLAG, MON_TMD } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { GROUP_TYPE } from "../mon/monster.js";
+import type { Monster } from "../mon/monster.js";
+import { MON_GROUP } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import { addMon, makeState, makeRace } from "./harness.js";
+import type { GameState } from "./context.js";
+import { deleteMonster } from "./context.js";
 import {
   groupMonsterTracking,
   monsterAddToGroup,
@@ -21,7 +21,7 @@ import {
   monsterPrimaryGroupSize,
   monsterRemoveFromGroups,
   summonGroup,
-} from "./mon-group";
+} from "./mon-group.js";
 
 /** Start a primary group led by `leader` and add `members` to it. */
 function makeGroup(state: GameState, leader: Monster, members: Monster[]): number {

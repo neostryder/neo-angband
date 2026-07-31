@@ -21,17 +21,17 @@
  * - The decoy branch of trap handling (decoys ride mon-desire, #24).
  */
 
-import type { Loc } from "../loc";
-import { FEAT, ORIGIN, PROJ, SQUARE, TMD } from "../generated";
-import { squareIsSeen, squareIsView } from "../world/view";
-import { featIsBright, featIsTreasure } from "../world/chunk";
-import { lookupTrap } from "../world/trap";
-import { isDaytime } from "./world";
-import type { GameState } from "./context";
-import { squareIsEmpty, squareIsPlayer, squareMonster } from "./context";
-import { dropNear, floorExcise, floorPile, floorCarry } from "./floor";
-import type { MakeDeps } from "../obj/make";
-import { squareIsSecretDoor } from "./cave-cmd";
+import type { Loc } from "../loc.js";
+import { FEAT, ORIGIN, PROJ, SQUARE, TMD } from "../generated/index.js";
+import { squareIsSeen, squareIsView } from "../world/view.js";
+import { featIsBright, featIsTreasure } from "../world/chunk.js";
+import { lookupTrap } from "../world/trap.js";
+import { isDaytime } from "./world.js";
+import type { GameState } from "./context.js";
+import { squareIsEmpty, squareIsPlayer, squareMonster } from "./context.js";
+import { dropNear, floorExcise, floorPile, floorCarry } from "./floor.js";
+import type { MakeDeps } from "../obj/make.js";
+import { squareIsSecretDoor } from "./cave-cmd.js";
 import {
   placeTrap,
   squareDoorPower,
@@ -43,10 +43,10 @@ import {
   squareIsPlayerTrap,
   squareSetTrapTimeout,
   squareTrap,
-} from "./trap";
-import type { TrapDeps } from "./trap";
-import { makeObject, makeGold } from "../obj/make";
-import type { ProjectWorldEnv } from "./project-obj";
+} from "./trap.js";
+import type { TrapDeps } from "./trap.js";
+import { makeObject, makeGold } from "../obj/make.js";
+import type { ProjectWorldEnv } from "./project-obj.js";
 
 /** The seams the terrain handlers need beyond the GameState. */
 export interface ProjectFeatEnv extends ProjectWorldEnv {

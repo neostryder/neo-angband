@@ -13,7 +13,7 @@
  * under a seeded Rng.
  */
 
-import { EXTRACT_ENERGY, turnEnergy } from "../mon/monster";
+import { EXTRACT_ENERGY, turnEnergy } from "../mon/monster.js";
 
 export { EXTRACT_ENERGY, turnEnergy };
 

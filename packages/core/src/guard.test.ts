@@ -8,7 +8,7 @@ import {
   INT_MIN,
   subGuardi,
   subGuardi16,
-} from "./guard";
+} from "./guard.js";
 
 describe("add_guardi / sub_guardi (z-util.c)", () => {
   it("adds and subtracts normally within range", () => {

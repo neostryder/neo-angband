@@ -26,12 +26,12 @@
  * uses (game/player-turn.ts) because the core command path cannot block on UI.
  */
 
-import type { Player } from "../player/player";
-import type { GameObject } from "../obj/object";
-import type { Gear } from "./gear";
-import type { CommandCode } from "../cmd";
-import { cmdVerb } from "../cmd";
-import { checkForInscrip } from "./pickup";
+import type { Player } from "../player/player.js";
+import type { GameObject } from "../obj/object.js";
+import type { Gear } from "./gear.js";
+import type { CommandCode } from "../cmd.js";
+import { cmdVerb } from "../cmd.js";
+import { checkForInscrip } from "./pickup.js";
 
 /** get_check's prompt in key_confirm_command (ui-input.c:2014), verbatim. */
 export const KEY_CONFIRM_PROMPT = "Are you sure? ";

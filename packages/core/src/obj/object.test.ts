@@ -1,20 +1,20 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { ELEM, OF, TV } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { ObjRegistry } from "./bind";
-import type { ObjPackJson } from "./types";
-import { objectPrep } from "./make";
+import { bindConstants } from "../constants.js";
+import { ELEM, OF, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "./bind.js";
+import type { ObjPackJson } from "./types.js";
+import { objectPrep } from "./make.js";
 import {
   appendObjectCurse,
   buildCurseTimedFoil,
   objectCopy,
   objectPackTotal,
   tvalIsBolt,
-} from "./object";
-import type { GameObject, PackTotalGear } from "./object";
+} from "./object.js";
+import type { GameObject, PackTotalGear } from "./object.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

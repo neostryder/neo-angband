@@ -1,28 +1,28 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { EF, TV } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
+import { bindConstants } from "../constants.js";
+import { EF, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
 import {
   EffectRegistry,
   sourcePlayer,
-} from "../effects/interpreter";
-import type { EffectContext } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import type { CastContext } from "./project-cast";
-import { attachGameEnv } from "./effect-game-env";
-import { registerItemHandlers } from "./effect-item";
-import type { ItemEffectEnv } from "./effect-item";
-import { makeState } from "./harness";
+} from "../effects/interpreter.js";
+import type { EffectContext } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import type { CastContext } from "./project-cast.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import { registerItemHandlers } from "./effect-item.js";
+import type { ItemEffectEnv } from "./effect-item.js";
+import { makeState } from "./harness.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

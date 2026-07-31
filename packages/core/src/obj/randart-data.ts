@@ -35,12 +35,12 @@
  *   varianceFloored below, rather than reimplemented here.
  */
 
-import { ELEM, KF, OBJ_MOD, OF, TV } from "../generated";
-import { ART_IDX } from "../generated/randart-properties";
-import type { Rng } from "../rng";
-import type { ObjRegistry } from "./bind";
-import type { CurseData, CurseTimedFoil } from "./object";
-import type { ActivationSummarizer } from "./randart-build";
+import { ELEM, KF, OBJ_MOD, OF, TV } from "../generated/index.js";
+import { ART_IDX } from "../generated/randart-properties.js";
+import type { Rng } from "../rng.js";
+import type { ObjRegistry } from "./bind.js";
+import type { CurseData, CurseTimedFoil } from "./object.js";
+import type { ActivationSummarizer } from "./randart-build.js";
 import {
   copyBrands,
   copySlays,
@@ -49,13 +49,13 @@ import {
   tvalIsFuel,
   tvalIsLauncher,
   tvalIsPotion,
-} from "./object";
-import { mean, variance } from "../rational";
-import { objectPower } from "./power";
-import type { PowerObject } from "./power";
-import type { Artifact, ElementInfo, ObjectKind } from "./types";
-import { ELEM_MAX, newOfFlags, OBJ_MOD_MAX, TV_MAX } from "./types";
-import type { RandomValue } from "../rng";
+} from "./object.js";
+import { mean, variance } from "../rational.js";
+import { objectPower } from "./power.js";
+import type { PowerObject } from "./power.js";
+import type { Artifact, ElementInfo, ObjectKind } from "./types.js";
+import { ELEM_MAX, newOfFlags, OBJ_MOD_MAX, TV_MAX } from "./types.js";
+import type { RandomValue } from "../rng.js";
 
 /** ART_IDX_TOTAL: number of learned-probability slots (obj-randart.h). */
 const ART_IDX_TOTAL = ART_IDX.TOTAL;

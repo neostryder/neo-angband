@@ -11,9 +11,9 @@
  * effects domains later (see the "deferred" notes and parity/ledger).
  */
 
-import type { FlagSet } from "../bitflag";
-import { flagSize } from "../bitflag";
-import { OF, PLAYER_FLAG_ENTRIES, PLAYER_TIMED_ENTRIES } from "../generated";
+import type { FlagSet } from "../bitflag.js";
+import { flagSize } from "../bitflag.js";
+import { OF, PLAYER_FLAG_ENTRIES, PLAYER_TIMED_ENTRIES } from "../generated/index.js";
 
 /** Number of timed effects (player-timed.h TMD_MAX); no MAX in the enum. */
 export const TMD_MAX = PLAYER_TIMED_ENTRIES.length;

@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MON_TMD, RF, RSF } from "../generated";
-import { Rng } from "../rng";
-import { FlagSet } from "../bitflag";
-import { bindMonsters } from "./bind";
-import type { MonsterPackRecords } from "./bind";
-import { blankMonster } from "./monster";
-import type { MonsterRace, MonsterSpell } from "./types";
-import { RSF_SIZE } from "./types";
+import { MON_TMD, RF, RSF } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { FlagSet } from "../bitflag.js";
+import { bindMonsters } from "./bind.js";
+import type { MonsterPackRecords } from "./bind.js";
+import { blankMonster } from "./monster.js";
+import type { MonsterRace, MonsterSpell } from "./types.js";
+import { RSF_SIZE } from "./types.js";
 import {
   MON_SPELL_TYPES,
   RST,
@@ -23,8 +23,8 @@ import {
   monSpellIsValid,
   testSpells,
   updateSmartLearn,
-} from "./spell";
-import type { SmartLearnEnv } from "./spell";
+} from "./spell.js";
+import type { SmartLearnEnv } from "./spell.js";
 
 function packJson<T>(name: string): T[] {
   return (

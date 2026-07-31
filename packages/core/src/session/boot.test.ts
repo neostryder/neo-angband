@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { loc } from "../loc";
-import { bindCore, bootLevel } from "./boot";
-import type { CorePack } from "./boot";
+import { loc } from "../loc.js";
+import { bindCore, bootLevel } from "./boot.js";
+import type { CorePack } from "./boot.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

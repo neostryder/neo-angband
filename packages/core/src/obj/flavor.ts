@@ -18,12 +18,12 @@
  * name. That is written into the per-game FlavorKnowledge.
  */
 
-import { KF, TV } from "../generated";
-import { Rng } from "../rng";
-import type { FlavorKnowledge } from "./knowledge";
-import { buildProb, randnameMake, type NameProbs } from "./randname";
-import type { Flavor, ObjectKind } from "./types";
-import { tvalCanHaveFlavor } from "./object";
+import { KF, TV } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import type { FlavorKnowledge } from "./knowledge.js";
+import { buildProb, randnameMake, type NameProbs } from "./randname.js";
+import type { Flavor, ObjectKind } from "./types.js";
+import { tvalCanHaveFlavor } from "./object.js";
 
 /** SV_UNKNOWN (obj-tval.h L27): a flavour not yet bound to a specific sval. */
 const SV_UNKNOWN = 0;

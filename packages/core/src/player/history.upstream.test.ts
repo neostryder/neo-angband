@@ -6,9 +6,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { Rng } from "../rng";
-import { generateHistory } from "./birth";
-import type { HistoryChart, HistoryEntry } from "./types";
+import { Rng } from "../rng.js";
+import { generateHistory } from "./birth.js";
+import type { HistoryChart, HistoryEntry } from "./types.js";
 
 function entry(
   roll: number,

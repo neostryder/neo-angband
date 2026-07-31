@@ -15,22 +15,22 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { TMD } from "../generated";
-import { bindPlayer } from "./bind";
-import type { PlayerPackRecords } from "./bind";
-import { TMD_MAX } from "./types";
-import type { TimedEffect } from "./types";
+import { TMD } from "../generated/index.js";
+import { bindPlayer } from "./bind.js";
+import type { PlayerPackRecords } from "./bind.js";
+import { TMD_MAX } from "./types.js";
+import type { TimedEffect } from "./types.js";
 import type {
   PlayerIncCheckHooks,
   PlayerIncCheckQueries,
   PlayerTimedTarget,
-} from "./timed";
+} from "./timed.js";
 import {
   buildTempBrandSlay,
   playerIncCheck,
   playerSetTimed,
   substituteTimedMessage,
-} from "./timed";
+} from "./timed.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(

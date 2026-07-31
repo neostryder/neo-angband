@@ -36,40 +36,40 @@ import {
   COLOUR_RED,
   COLOUR_WHITE,
   COLOUR_YELLOW,
-} from "../color";
-import { OF, OBJ_MOD } from "../generated";
-import { ORIGIN, ORIGIN_ENTRIES } from "../generated/origins";
+} from "../color.js";
+import { OF, OBJ_MOD } from "../generated/index.js";
+import { ORIGIN, ORIGIN_ENTRIES } from "../generated/origins.js";
 import {
   MELEE_CRIT,
   MELEE_CRIT_LEVELS,
   RANGED_CRIT,
   RANGED_CRIT_LEVELS,
   type CriticalLevel,
-} from "../combat/hit";
-import { chanceOfMeleeHitBase } from "../combat/melee";
-import { chanceOfMissileHitBase } from "../combat/ranged";
-import type { PlayerCombatState } from "../combat/melee";
-import type { PlayerState } from "../player/calcs";
-import type { Player } from "../player/player";
-import { SKILL, STAT_MAX } from "../player/types";
-import type { MyRational } from "../rational";
+} from "../combat/hit.js";
+import { chanceOfMeleeHitBase } from "../combat/melee.js";
+import { chanceOfMissileHitBase } from "../combat/ranged.js";
+import type { PlayerCombatState } from "../combat/melee.js";
+import type { PlayerState } from "../player/calcs.js";
+import type { Player } from "../player/player.js";
+import { SKILL, STAT_MAX } from "../player/types.js";
+import type { MyRational } from "../rational.js";
 import {
   myRationalConstruct,
   myRationalProduct,
   myRationalSum,
   myRationalToUint,
-} from "../rational";
-import type { RandomValue } from "../rng";
-import type { ProjectionInfo } from "../world/projection";
-import type { RuneEnv } from "./knowledge";
-import { OBJ_NOTICE, objectHasStandardToH, sustainFlag } from "./knowledge";
-import type { KnownDesc } from "./known-object";
+} from "../rational.js";
+import type { RandomValue } from "../rng.js";
+import type { ProjectionInfo } from "../world/projection.js";
+import type { RuneEnv } from "./knowledge.js";
+import { OBJ_NOTICE, objectHasStandardToH, sustainFlag } from "./knowledge.js";
+import type { KnownDesc } from "./known-object.js";
 import {
   objectEffectIsKnown,
   objectFullyKnown,
   objectKnownShadow,
-} from "./known-object";
-import type { CurseData, GameObject } from "./object";
+} from "./known-object.js";
+import type { CurseData, GameObject } from "./object.js";
 import {
   copyBrands,
   copySlays,
@@ -87,7 +87,7 @@ import {
   tvalIsWand,
   tvalIsWeapon,
   tvalIsWearable,
-} from "./object";
+} from "./object.js";
 import {
   EL_INFO_HATES,
   EL_INFO_IGNORE,
@@ -96,7 +96,7 @@ import {
   OBJ_PROPERTY,
   OFT,
   type ObjectProperty,
-} from "./types";
+} from "./types.js";
 
 /* ------------------------------------------------------------------ *
  * OINFO modes (obj-info.h L28-35). Values MUST match upstream so the

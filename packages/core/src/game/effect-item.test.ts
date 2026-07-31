@@ -1,40 +1,40 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { EF, OF, TMD, TV } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { ENCH_TOAC, ENCH_TOBOTH, ENCH_TOHIT } from "../effects/effect";
+import { bindConstants } from "../constants.js";
+import { EF, OF, TMD, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { ENCH_TOAC, ENCH_TOBOTH, ENCH_TOHIT } from "../effects/effect.js";
 import {
   EffectRegistry,
   sourceMonster,
   sourcePlayer,
-} from "../effects/interpreter";
-import type { EffectContext, EffectPlayer } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import { appendObjectCurse } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { makeRuneEnv } from "../obj/knowledge";
-import { makeState } from "./harness";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import { attachGameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
-import { gearAdd } from "./gear";
-import type { Gear } from "./gear";
-import { floorPile } from "./floor";
+} from "../effects/interpreter.js";
+import type { EffectContext, EffectPlayer } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import { appendObjectCurse } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { makeRuneEnv } from "../obj/knowledge.js";
+import { makeState } from "./harness.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
+import { gearAdd } from "./gear.js";
+import type { Gear } from "./gear.js";
+import { floorPile } from "./floor.js";
 import {
   enchant,
   rechargeFailureChance,
   registerItemHandlers,
   removeCurseDiceString,
-} from "./effect-item";
-import { Dice } from "../dice";
-import { effectNew } from "../effects/effect";
+} from "./effect-item.js";
+import { Dice } from "../dice.js";
+import { effectNew } from "../effects/effect.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

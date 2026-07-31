@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { EF, PROJ } from "../generated";
-import { Rng } from "../rng";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { EffectBuilder, effectNew } from "./effect";
+import { EF, PROJ } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { EffectBuilder, effectNew } from "./effect.js";
 import {
   appendRandomValueString,
   describeEffect,
@@ -17,9 +17,9 @@ import {
   effectProjection,
   getSpellInfo,
   spellDamageSummary,
-} from "./effect-info";
-import type { EffectDescribeDeps } from "./effect-info";
-import { effectChoiceRows } from "./effect-choice";
+} from "./effect-info.js";
+import type { EffectDescribeDeps } from "./effect-info.js";
+import { effectChoiceRows } from "./effect-choice.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(

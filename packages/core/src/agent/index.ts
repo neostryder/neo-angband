@@ -8,7 +8,7 @@
  * from here (see types.ts freeze note).
  */
 
-export { AGENT_API_VERSION, AGENT_STATE_DOMAINS } from "./types";
+export { AGENT_API_VERSION, AGENT_STATE_DOMAINS } from "./types.js";
 export type {
   AgentCapabilities,
   AgentCommand,
@@ -28,9 +28,9 @@ export type {
   StoreItemView,
   StoreView,
   TargetView,
-} from "./types";
-export { createAgentView } from "./perceive";
-export { createAgentActions } from "./act";
-export { AgentCapabilityError, installController } from "./controller";
-export { subscribeEvents } from "./events";
-export type { AgentEventSubscription } from "./events";
+} from "./types.js";
+export { createAgentView } from "./perceive.js";
+export { createAgentActions } from "./act.js";
+export { AgentCapabilityError, installController } from "./controller.js";
+export { subscribeEvents } from "./events.js";
+export type { AgentEventSubscription } from "./events.js";

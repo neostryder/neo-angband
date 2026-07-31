@@ -1,22 +1,22 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { FEAT, OF, TV } from "../generated";
-import { gearAdd, invenCarry, newGear, objectCopyAmt } from "../game/gear";
-import type { Gear } from "../game/gear";
-import { ObjRegistry } from "../obj/bind";
-import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import type { GameObject, StackLimits } from "../obj/object";
-import type { ObjPackJson } from "../obj/types";
-import { bindPlayer } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import { Rng } from "../rng";
-import { StoreRegistry } from "./bind";
-import { priceItem } from "./price";
-import { bindStoreRuntime, storeReset } from "./store";
-import type { Store, StoreMaintContext } from "./store";
+import { bindConstants } from "../constants.js";
+import { FEAT, OF, TV } from "../generated/index.js";
+import { gearAdd, invenCarry, newGear, objectCopyAmt } from "../game/gear.js";
+import type { Gear } from "../game/gear.js";
+import { ObjRegistry } from "../obj/bind.js";
+import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { bindPlayer } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { Rng } from "../rng.js";
+import { StoreRegistry } from "./bind.js";
+import { priceItem } from "./price.js";
+import { bindStoreRuntime, storeReset } from "./store.js";
+import type { Store, StoreMaintContext } from "./store.js";
 import {
   homeRetrieve,
   homeStash,
@@ -24,16 +24,16 @@ import {
   storeBuy,
   storeSell,
   storeSellFloor,
-} from "./transact";
-import type { StoreRecordJson } from "./types";
+} from "./transact.js";
+import type { StoreRecordJson } from "./types.js";
 import {
   buildRuneList,
   FlavorKnowledge,
   makeRuneEnv,
   objectRunesKnown,
   playerKnowsRune,
-} from "../obj/knowledge";
-import type { FlavorAwareDeps, Rune, RuneEnv } from "../obj/knowledge";
+} from "../obj/knowledge.js";
+import type { FlavorAwareDeps, Rune, RuneEnv } from "../obj/knowledge.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

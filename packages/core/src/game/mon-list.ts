@@ -23,17 +23,17 @@
  * out-of-view monsters land in the telepathy section.
  */
 
-import { MFLAG, RF } from "../generated";
-import { MON_TMD } from "../generated";
+import { MFLAG, RF } from "../generated/index.js";
+import { MON_TMD } from "../generated/index.js";
 import {
   COLOUR_RED,
   COLOUR_VIOLET,
   COLOUR_WHITE,
-} from "../color";
-import { PROJECT, projectable } from "../world/project";
-import { monsterIsCamouflaged, monsterIsVisible } from "../mon/predicate";
-import type { MonsterRace } from "../mon/types";
-import type { GameState } from "./context";
+} from "../color.js";
+import { PROJECT, projectable } from "../world/project.js";
+import { monsterIsCamouflaged, monsterIsVisible } from "../mon/predicate.js";
+import type { MonsterRace } from "../mon/types.js";
+import type { GameState } from "./context.js";
 
 /** Which part of the list an entry's monsters fall under. */
 export const MONSTER_LIST_SECTION_LOS = 0;

@@ -8,20 +8,20 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import type { ConstantsJson } from "../constants";
-import { FEAT } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { Chunk } from "../world/chunk";
-import { FeatureRegistry } from "../world/feature";
-import type { TerrainRecordJson } from "../world/feature";
+import { bindConstants } from "../constants.js";
+import type { ConstantsJson } from "../constants.js";
+import { FEAT } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { Chunk } from "../world/chunk.js";
+import { FeatureRegistry } from "../world/feature.js";
+import type { TerrainRecordJson } from "../world/feature.js";
 import {
   collectJoins,
   getJoinInfo,
   type AdjacentJoins,
-} from "./generate";
-import { Dun, Gen, type Connector } from "./util";
+} from "./generate.js";
+import { Dun, Gen, type Connector } from "./util.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

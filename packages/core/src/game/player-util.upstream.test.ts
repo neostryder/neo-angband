@@ -15,10 +15,10 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindPlayer } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import { playerAdjustHpPrecise, playerAdjustManaPrecise } from "./loop";
+import { bindPlayer } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { playerAdjustHpPrecise, playerAdjustManaPrecise } from "./loop.js";
 
 function packJson<T>(name: string): T[] {
   return (

@@ -21,8 +21,8 @@
  * caller's animator; this module only selects between values it is handed.
  */
 
-import { COLOUR_L_RED, COLOUR_ORANGE, COLOUR_RED, COLOUR_VIOLET, COLOUR_WHITE, COLOUR_YELLOW } from "../color";
-import type { GlyphPair } from "./glyph-table";
+import { COLOUR_L_RED, COLOUR_ORANGE, COLOUR_RED, COLOUR_VIOLET, COLOUR_WHITE, COLOUR_YELLOW } from "../color.js";
+import type { GlyphPair } from "./glyph-table.js";
 
 /**
  * The high bit upstream reserves for "this slot holds a graphics tile code,

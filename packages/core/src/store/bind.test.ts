@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, TV } from "../generated";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { StoreRegistry } from "./bind";
-import type { StoreRecordJson } from "./types";
+import { FEAT, TV } from "../generated/index.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { StoreRegistry } from "./bind.js";
+import type { StoreRecordJson } from "./types.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

@@ -27,7 +27,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { qpNew } from "./z-queue";
+import { qpNew } from "./z-queue.js";
 
 /** A stand-in for the `void *` payloads: identity is the only thing asserted. */
 interface Marker {

@@ -22,8 +22,8 @@
  * artifact fake-name builder live in game/history.ts.
  */
 
-import { HIST } from "../generated";
-import type { Player } from "./player";
+import { HIST } from "../generated/index.js";
+import type { Player } from "./player.js";
 
 /** struct history_info (player-history.h L47-54). */
 export interface HistoryInfo {

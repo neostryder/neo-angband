@@ -1,37 +1,37 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG, MON_TMD, OF, RF, TMD, TV } from "../generated";
-import { loc, locEq } from "../loc";
+import { EF, MFLAG, MON_TMD, OF, RF, TMD, TV } from "../generated/index.js";
+import { loc, locEq } from "../loc.js";
 import {
   EffectRegistry,
   sourceMonster,
   sourcePlayer,
-} from "../effects/interpreter";
-import type { EffectContext } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { GLYPH_DECOY, GLYPH_WARDING } from "../effects/effect";
-import { bindTraps } from "../world/trap";
-import type { TrapRecordJson } from "../world/trap";
-import { OBJ_PROPERTY } from "../obj/types";
-import type { ObjectKind, ObjectProperty } from "../obj/types";
-import { objectNew } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { makeRuneEnv } from "../obj/knowledge";
-import { addMon, makeRace, makeState, monReg } from "./harness";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import { attachGameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
-import { squareIsWarded, squareIsWebbed } from "./trap";
-import type { TrapDeps } from "./trap";
+} from "../effects/interpreter.js";
+import type { EffectContext } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { GLYPH_DECOY, GLYPH_WARDING } from "../effects/effect.js";
+import { bindTraps } from "../world/trap.js";
+import type { TrapRecordJson } from "../world/trap.js";
+import { OBJ_PROPERTY } from "../obj/types.js";
+import type { ObjectKind, ObjectProperty } from "../obj/types.js";
+import { objectNew } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { makeRuneEnv } from "../obj/knowledge.js";
+import { addMon, makeRace, makeState, monReg } from "./harness.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
+import { squareIsWarded, squareIsWebbed } from "./trap.js";
+import type { TrapDeps } from "./trap.js";
 import {
   disenchantEquipment,
   playerGetRecallDepth,
   registerGeneralHandlers,
-} from "./effect-general";
-import { processWorld } from "./loop";
-import { OptionState } from "../player/options";
-import type { StoredLevel } from "./context";
+} from "./effect-general.js";
+import { processWorld } from "./loop.js";
+import { OptionState } from "../player/options.js";
+import type { StoredLevel } from "./context.js";
 
 const trapKinds = bindTraps(
   (

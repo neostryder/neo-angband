@@ -9,12 +9,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { STAT } from "../generated";
-import { Rng } from "../rng";
-import { playerStatDec, playerStatInc } from "./exp";
-import { blankPlayer } from "./player";
-import type { Player } from "./player";
-import { bindPlayer } from "./bind";
+import { STAT } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { playerStatDec, playerStatInc } from "./exp.js";
+import { blankPlayer } from "./player.js";
+import type { Player } from "./player.js";
+import { bindPlayer } from "./bind.js";
 import { readFileSync } from "node:fs";
 
 function packJson<T>(name: string): T[] {

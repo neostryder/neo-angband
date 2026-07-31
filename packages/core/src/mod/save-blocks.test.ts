@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SavedGame } from "../session/save";
+import type { SavedGame } from "../session/save.js";
 import {
   advanceModNoscore,
   advanceDeterminism,
@@ -10,9 +10,9 @@ import {
   orphanedNamespaces,
   quarantineSave,
   rehydrateSave,
-} from "./save-blocks";
-import type { SaveManifest } from "./save-blocks";
-import { ENGINE_VERSION } from "../version";
+} from "./save-blocks.js";
+import type { SaveManifest } from "./save-blocks.js";
+import { ENGINE_VERSION } from "../version.js";
 
 /* A manifest whose save was produced by core + a "frost" mod at 1.2.0. */
 const manifest: SaveManifest = {

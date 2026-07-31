@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FlagSet } from "../bitflag";
-import { FEAT, MFLAG, MON_TMD, OF, SQUARE, TMD, TV } from "../generated";
-import { OF_SIZE, PF_SIZE } from "../player/types";
-import type { PlayerState } from "../player/calcs";
-import { MDESC, monsterDesc } from "../mon/desc";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
+import { FlagSet } from "../bitflag.js";
+import { FEAT, MFLAG, MON_TMD, OF, SQUARE, TMD, TV } from "../generated/index.js";
+import { OF_SIZE, PF_SIZE } from "../player/types.js";
+import type { PlayerState } from "../player/calcs.js";
+import { MDESC, monsterDesc } from "../mon/desc.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
 import {
   ActionRegistry,
   attackMonster,
@@ -19,13 +19,13 @@ import {
   search,
   walkAction,
   walkTerrainPrompt,
-} from "./player-turn";
-import { floorCarry } from "./floor";
-import { squareKnowPile } from "./known";
-import type { GameObject } from "../obj/object";
-import { playerCheckTerrainDamage } from "./world";
-import { GRANITE, addMon, featureReg, makeRace, makeState } from "./harness";
-import type { GameState, PlayerCommand } from "./context";
+} from "./player-turn.js";
+import { floorCarry } from "./floor.js";
+import { squareKnowPile } from "./known.js";
+import type { GameObject } from "../obj/object.js";
+import { playerCheckTerrainDamage } from "./world.js";
+import { GRANITE, addMon, featureReg, makeRace, makeState } from "./harness.js";
+import type { GameState, PlayerCommand } from "./context.js";
 
 const terrainProjections = bindProjections(
   (

@@ -30,10 +30,10 @@
  * rides this facade as the completeness proof.
  */
 
-import type { GameConstants, PlayerCommand } from "../game/context";
-import type { ContentIdResolver } from "../mod/ids";
-import type { ObjRegistry } from "../obj/bind";
-import type { ObjectKind } from "../obj/types";
+import type { GameConstants, PlayerCommand } from "../game/context.js";
+import type { ContentIdResolver } from "../mod/ids.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import type { ObjectKind } from "../obj/types.js";
 
 /**
  * The frozen agent-API version (ratified 2026-07-14). Add-only from here: a new

@@ -27,9 +27,9 @@
  * historyFindArtifact's per-aidx de-dupe keeps both paths safe.
  */
 
-import type { Constants } from "../constants";
-import { PF } from "../generated";
-import type { GameObject, StackLimits } from "../obj/object";
+import type { Constants } from "../constants.js";
+import { PF } from "../generated/index.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
 import {
   OSTACK_PACK,
   objectPackTotal,
@@ -37,22 +37,22 @@ import {
   tvalIsMoney,
   tvalIsMushroom,
   tvalIsZapper,
-} from "../obj/object";
-import { objectTouch } from "../obj/known-object";
-import { ODESC } from "../obj/desc";
-import { NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge";
-import type { GameState } from "./context";
-import { describeObject } from "./describe";
-import { floorExcise, floorObjectForUse, floorPile } from "./floor";
+} from "../obj/object.js";
+import { objectTouch } from "../obj/known-object.js";
+import { ODESC } from "../obj/desc.js";
+import { NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge.js";
+import type { GameState } from "./context.js";
+import { describeObject } from "./describe.js";
+import { floorExcise, floorObjectForUse, floorPile } from "./floor.js";
 import {
   gearGet,
   invenCarryNum,
   invenCarryResult,
   packTotalSuppressed,
   packTotalView,
-} from "./gear";
-import { gearToLabel } from "./project-obj";
-import type { ActionRegistry } from "./player-turn";
+} from "./gear.js";
+import { gearToLabel } from "./project-obj.js";
+import type { ActionRegistry } from "./player-turn.js";
 
 /** Hooks and options for the pickup routines; every slot is optional. */
 export interface PickupEnv {

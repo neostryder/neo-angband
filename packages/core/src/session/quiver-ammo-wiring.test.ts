@@ -32,14 +32,14 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { KF, TV } from "../generated";
-import { startGame } from "./game";
-import type { GamePack } from "./game";
-import { floorCarry } from "../game/floor";
-import { gearGet, objectIsInQuiver } from "../game/gear";
-import { floorPile } from "../game/floor";
-import { objectPrep } from "../obj/make";
-import { Rng } from "../rng";
+import { KF, TV } from "../generated/index.js";
+import { startGame } from "./game.js";
+import type { GamePack } from "./game.js";
+import { floorCarry } from "../game/floor.js";
+import { gearGet, objectIsInQuiver } from "../game/gear.js";
+import { floorPile } from "../game/floor.js";
+import { objectPrep } from "../obj/make.js";
+import { Rng } from "../rng.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, TF } from "../generated";
-import { FeatureRegistry } from "./feature";
-import type { TerrainRecordJson } from "./feature";
+import { FEAT, TF } from "../generated/index.js";
+import { FeatureRegistry } from "./feature.js";
+import type { TerrainRecordJson } from "./feature.js";
 
 const terrain = JSON.parse(
   readFileSync(

@@ -26,10 +26,10 @@
  * brands/slays (lore is #24), and shapechange learning (shapes are bound raw).
  */
 
-import { FLAG_START, FlagSet, NO_FLAG } from "../bitflag";
-import type { RandomValue } from "../rng";
-import type { GameObject } from "./object";
-import { sameMonstersSlain, tvalIsBodyArmor, tvalIsJewelry } from "./object";
+import { FLAG_START, FlagSet, NO_FLAG } from "../bitflag.js";
+import type { RandomValue } from "../rng.js";
+import type { GameObject } from "./object.js";
+import { sameMonstersSlain, tvalIsBodyArmor, tvalIsJewelry } from "./object.js";
 import type {
   Brand,
   Curse,
@@ -37,7 +37,7 @@ import type {
   ObjectKind,
   ObjectProperty,
   Slay,
-} from "./types";
+} from "./types.js";
 import {
   ELEM_HIGH_MAX,
   ELEM_MAX,
@@ -46,12 +46,12 @@ import {
   OF_SIZE,
   OFID,
   OFT,
-} from "./types";
-import { OF } from "../generated";
-import { OBJECT_FLAG_ENTRIES } from "../generated/object-flags";
-import { OBJ_MOD } from "../generated/object-modifiers";
-import { STAT_MAX } from "../player/types";
-import type { Player } from "../player/player";
+} from "./types.js";
+import { OF } from "../generated/index.js";
+import { OBJECT_FLAG_ENTRIES } from "../generated/object-flags.js";
+import { OBJ_MOD } from "../generated/object-modifiers.js";
+import { STAT_MAX } from "../player/types.js";
+import type { Player } from "../player/player.js";
 
 /** obj->notice bits (object.h). */
 export const OBJ_NOTICE = {
@@ -756,7 +756,7 @@ export function equipLearnElement(p: Player, env: RuneEnv, element: number): voi
 export function shapeLearnOnAssume(
   p: Player,
   env: RuneEnv,
-  shape: import("../player/types").Shape,
+  shape: import("../player/types.js").Shape,
 ): void {
   /* Get the shape's obvious flags. */
   const f = shape.flags.clone();

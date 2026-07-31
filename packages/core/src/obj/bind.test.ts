@@ -1,15 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ELEM, KF, OBJ_MOD, OF, TV } from "../generated";
-import { ObjRegistry, objDescNameFormat, tvalFindIdx } from "./bind";
+import { ELEM, KF, OBJ_MOD, OF, TV } from "../generated/index.js";
+import { ObjRegistry, objDescNameFormat, tvalFindIdx } from "./bind.js";
 import type {
   ArtifactRecordJson,
   Curse,
   EgoRecordJson,
   ObjectKindRecordJson,
   ObjPackJson,
-} from "./types";
-import { EL_INFO_IGNORE, NO_MINIMUM, TV_MAX } from "./types";
+} from "./types.js";
+import { EL_INFO_IGNORE, NO_MINIMUM, TV_MAX } from "./types.js";
 
 function load(name: string): unknown {
   return JSON.parse(

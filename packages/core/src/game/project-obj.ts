@@ -24,18 +24,18 @@
  *   driver (the persistent floor twin is game/known.ts' reduced glyph memory).
  */
 
-import type { Loc } from "../loc";
-import { ELEM, PROJ } from "../generated";
-import { EL_INFO_HATES, EL_INFO_IGNORE } from "../obj/types";
-import type { GameObject } from "../obj/object";
-import { tvalIsAmmo, tvalIsArmor, tvalIsRod, tvalIsWeapon } from "../obj/object";
-import { isLockedChest, unlockChest } from "../obj/chest";
-import { ODESC } from "../obj/desc";
-import { squareIsSeen } from "../world/view";
-import type { GameState } from "./context";
-import { describeObject } from "./describe";
-import { floorExcise, floorPile } from "./floor";
-import { gearObjectForUse, gearToLabel } from "./gear";
+import type { Loc } from "../loc.js";
+import { ELEM, PROJ } from "../generated/index.js";
+import { EL_INFO_HATES, EL_INFO_IGNORE } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import { tvalIsAmmo, tvalIsArmor, tvalIsRod, tvalIsWeapon } from "../obj/object.js";
+import { isLockedChest, unlockChest } from "../obj/chest.js";
+import { ODESC } from "../obj/desc.js";
+import { squareIsSeen } from "../world/view.js";
+import type { GameState } from "./context.js";
+import { describeObject } from "./describe.js";
+import { floorExcise, floorPile } from "./floor.js";
+import { gearObjectForUse, gearToLabel } from "./gear.js";
 
 /**
  * gear_to_label (obj-gear.c:443) lives in game/gear.ts, beside the Gear it reads.

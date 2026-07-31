@@ -17,12 +17,12 @@
  * Attribution: neostryder / RPGM Tools.
  */
 
-import type { Constants } from "../constants";
-import { Rng } from "../rng";
-import type { ObjRegistry } from "./bind";
-import { copyArtifactData, objectPrep } from "./make";
-import type { GameObject } from "./object";
-import type { Artifact } from "./types";
+import type { Constants } from "../constants.js";
+import { Rng } from "../rng.js";
+import type { ObjRegistry } from "./bind.js";
+import { copyArtifactData, objectPrep } from "./make.js";
+import type { GameObject } from "./object.js";
+import type { Artifact } from "./types.js";
 
 /**
  * The fixed seed for the throwaway prep Rng. object_prep(maximise) consumes no

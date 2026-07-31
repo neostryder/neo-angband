@@ -20,12 +20,12 @@
  *   random branch (documented in the parity ledger).
  */
 
-import type { Rng, RandomValue } from "../rng";
-import type { GameEvents } from "../events";
-import { Dice } from "../dice";
-import { EF, EFFECT_ENTRIES } from "../generated";
-import type { Effect, EffectCode } from "./effect";
-import { EF_MAX, effectNew } from "./effect";
+import type { Rng, RandomValue } from "../rng.js";
+import type { GameEvents } from "../events.js";
+import { Dice } from "../dice.js";
+import { EF, EFFECT_ENTRIES } from "../generated/index.js";
+import type { Effect, EffectCode } from "./effect.js";
+import { EF_MAX, effectNew } from "./effect.js";
 
 /** cave.h DIR_TARGET. */
 export const DIR_TARGET = 5;

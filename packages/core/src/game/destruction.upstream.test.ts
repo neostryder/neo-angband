@@ -12,19 +12,19 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { EF, TV } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { EffectRegistry, sourcePlayer } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { registerTerrainHandlers } from "./effect-terrain";
-import { buildEffectContext } from "./effect-env";
-import { attachGameEnv } from "./effect-game-env";
-import { floorCarry, floorPile } from "./floor";
-import { objectPrep } from "../obj/make";
-import { bindConstants } from "../constants";
-import { startGame } from "../session/game";
-import type { GamePack } from "../session/game";
+import { EF, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { EffectRegistry, sourcePlayer } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { registerTerrainHandlers } from "./effect-terrain.js";
+import { buildEffectContext } from "./effect-env.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import { floorCarry, floorPile } from "./floor.js";
+import { objectPrep } from "../obj/make.js";
+import { bindConstants } from "../constants.js";
+import { startGame } from "../session/game.js";
+import type { GamePack } from "../session/game.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

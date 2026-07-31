@@ -21,14 +21,14 @@
  * (the pile map is the object list), and mimicked-object handling.
  */
 
-import type { Loc } from "../loc";
-import { loc, locEq, locSum, randLoc } from "../loc";
-import { ORIGIN } from "../generated";
-import type { GameObject, StackLimits } from "../obj/object";
-import { OSTACK_FLOOR, objectAbsorb, objectMergeable, tvalIsMoney } from "../obj/object";
-import { los } from "../world/view";
-import type { GameState } from "./context";
-import { objectIsInQuiver, objectSplit } from "./gear";
+import type { Loc } from "../loc.js";
+import { loc, locEq, locSum, randLoc } from "../loc.js";
+import { ORIGIN } from "../generated/index.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
+import { OSTACK_FLOOR, objectAbsorb, objectMergeable, tvalIsMoney } from "../obj/object.js";
+import { los } from "../world/view.js";
+import type { GameState } from "./context.js";
+import { objectIsInQuiver, objectSplit } from "./gear.js";
 
 /** Unported-subsystem hooks for the floor routines; every slot is optional. */
 export interface FloorEnv {

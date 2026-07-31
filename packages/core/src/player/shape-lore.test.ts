@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { shapeLoreLines, type ShapeLoreEnv } from "./shape-lore";
-import { OBJ_PROPERTY, OBJ_MOD_MAX, ELEM_MAX } from "../obj/types";
-import type { ObjectProperty } from "../obj/types";
-import type { Shape } from "./types";
+import { shapeLoreLines, type ShapeLoreEnv } from "./shape-lore.js";
+import { OBJ_PROPERTY, OBJ_MOD_MAX, ELEM_MAX } from "../obj/types.js";
+import type { ObjectProperty } from "../obj/types.js";
+import type { Shape } from "./types.js";
 
 /** A FlagSet stub whose membership is a fixed number Set. */
 const flagsOf = (bits: Set<number> = new Set()) =>

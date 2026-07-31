@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { KF, TV } from "../generated";
-import { bindPlayer } from "../player/bind";
-import { registerBookKinds } from "../player/spell";
-import { Rng } from "../rng";
-import { ObjRegistry } from "./bind";
-import type { Artifact, ObjPackJson } from "./types";
+import { bindConstants } from "../constants.js";
+import { KF, TV } from "../generated/index.js";
+import { bindPlayer } from "../player/bind.js";
+import { registerBookKinds } from "../player/spell.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "./bind.js";
+import type { Artifact, ObjPackJson } from "./types.js";
 import {
   ArtifactState,
   makeArtifact,
@@ -14,10 +14,10 @@ import {
   makeGold,
   makeObject,
   objectPrep,
-} from "./make";
-import { ObjAllocState } from "./make";
-import type { MakeDeps, MakeObjectRating } from "./make";
-import { objectValueReal } from "./value";
+} from "./make.js";
+import { ObjAllocState } from "./make.js";
+import type { MakeDeps, MakeObjectRating } from "./make.js";
+import { objectValueReal } from "./value.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -365,12 +365,12 @@ describe("RNG neutrality of the make_artifact mod guard (Phase 3 / D1=B)", () =>
    * false values that core read and short-circuited on. Here the hook is really
    * invoked on every commit, so the pin now proves that CALLING a mod does not
    * itself move the stream. */
-  const PERMISSIVE: import("../mod/hooks").ModHooks = { artifactCommit: () => true };
+  const PERMISSIVE: import("../mod/hooks.js").ModHooks = { artifactCommit: () => true };
 
   /** Prep an object of a unique-base artifact's kind, then run make_artifact. */
   function runAt(
     seed: number,
-    hooks?: import("../mod/hooks").ModHooks,
+    hooks?: import("../mod/hooks.js").ModHooks,
   ): { ok: boolean; draws: Array<[number, number]> } {
     const art = uniqueNormalArt();
     const kind = reg.lookupKind(art.tval, art.sval)!;

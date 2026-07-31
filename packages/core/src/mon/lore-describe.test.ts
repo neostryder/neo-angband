@@ -1,15 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PROJ, RF, RSF } from "../generated";
-import { monReg } from "../game/harness";
-import { Rng } from "../rng";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import type { MonsterRace } from "./types";
-import { cheatMonsterLore, newMonsterLore } from "./lore";
-import type { MonsterLore } from "./lore";
-import { LoreTextBuilder, loreDescription } from "./lore-describe";
-import type { LoreDeps } from "./lore-describe";
+import { PROJ, RF, RSF } from "../generated/index.js";
+import { monReg } from "../game/harness.js";
+import { Rng } from "../rng.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import type { MonsterRace } from "./types.js";
+import { cheatMonsterLore, newMonsterLore } from "./lore.js";
+import type { MonsterLore } from "./lore.js";
+import { LoreTextBuilder, loreDescription } from "./lore-describe.js";
+import type { LoreDeps } from "./lore-describe.js";
 
 function deps(): LoreDeps {
   return {

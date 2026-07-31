@@ -1,15 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD, PROJ, RF } from "../generated";
-import { loc } from "../loc";
-import type { Monster } from "../mon/monster";
-import { PROJECT } from "../world/project";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { addMon, makeState, monReg } from "./harness";
-import { projectMonster } from "./project-monster";
-import type { ProjectMonsterCtx, ProjectMonsterHooks } from "./project-monster";
-import type { GameState } from "./context";
+import { MFLAG, MON_TMD, PROJ, RF } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
+import { PROJECT } from "../world/project.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { addMon, makeState, monReg } from "./harness.js";
+import { projectMonster } from "./project-monster.js";
+import type { ProjectMonsterCtx, ProjectMonsterHooks } from "./project-monster.js";
+import type { GameState } from "./context.js";
 
 const projections = bindProjections(
   JSON.parse(

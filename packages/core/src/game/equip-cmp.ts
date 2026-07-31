@@ -33,19 +33,19 @@
  * model, like the rest of the ui-entry backend it is built on.
  */
 
-import type { GameObject } from "../obj/object";
-import type { Player } from "../player/player";
-import type { GameState } from "./context";
-import { gearGet } from "./gear";
-import { floorPile } from "./floor";
-import { wieldSlot } from "./gear";
-import { ignoreLevelOf, IGNORE } from "../obj/ignore";
-import { objectFullyKnown, objectKnownShadow } from "../obj/known-object";
-import { tvalIsWearable } from "../obj/object";
-import { describeObject, knownDescOf } from "./describe";
-import { ODESC } from "../obj/desc";
-import { colorCharToAttr } from "../color";
-import { FEAT } from "../generated";
+import type { GameObject } from "../obj/object.js";
+import type { Player } from "../player/player.js";
+import type { GameState } from "./context.js";
+import { gearGet } from "./gear.js";
+import { floorPile } from "./floor.js";
+import { wieldSlot } from "./gear.js";
+import { ignoreLevelOf, IGNORE } from "../obj/ignore.js";
+import { objectFullyKnown, objectKnownShadow } from "../obj/known-object.js";
+import { tvalIsWearable } from "../obj/object.js";
+import { describeObject, knownDescOf } from "./describe.js";
+import { ODESC } from "../obj/desc.js";
+import { colorCharToAttr } from "../color.js";
+import { FEAT } from "../generated/index.js";
 import {
   buildUiEntryConfig,
   equipCmpCategories,
@@ -57,9 +57,9 @@ import {
   applyRenderer,
   resolveUiDeps,
   isUiEntryForKnownRune,
-} from "./ui-entry";
-import type { UiEntryConfig, UiEntryDeps, UiEntryCell } from "./ui-entry";
-import { playerFlags } from "../player/calcs";
+} from "./ui-entry.js";
+import type { UiEntryConfig, UiEntryDeps, UiEntryCell } from "./ui-entry.js";
+import { playerFlags } from "../player/calcs.js";
 
 export type EquipCmpSource = "worn" | "pack" | "floor" | "home" | "store";
 export type EquipCmpQuality = "artifact" | "ego" | "good" | "average" | "bad";

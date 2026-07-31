@@ -12,25 +12,25 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { FlagSet } from "../bitflag";
-import { RF } from "../generated";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson, Brand, Slay } from "../obj/types";
-import { objectNew, sameMonstersSlain } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { RF_SIZE } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
-import { blankMonster } from "../mon/monster";
-import { blankPlayer } from "../player/player";
-import { buildTempBrandSlay } from "../player/timed";
-import { bindPlayer } from "../player/bind";
-import type { PlayerPackRecords } from "../player/bind";
+import { FlagSet } from "../bitflag.js";
+import { RF } from "../generated/index.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson, Brand, Slay } from "../obj/types.js";
+import { objectNew, sameMonstersSlain } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { RF_SIZE } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import { blankMonster } from "../mon/monster.js";
+import { blankPlayer } from "../player/player.js";
+import { buildTempBrandSlay } from "../player/timed.js";
+import { bindPlayer } from "../player/bind.js";
+import type { PlayerPackRecords } from "../player/bind.js";
 import {
   getMonsterBrandMultiplier,
   improveAttackModifier,
   reactToSlay,
   type AttackModifier,
-} from "./brand-slay";
+} from "./brand-slay.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

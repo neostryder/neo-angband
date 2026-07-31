@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { MFLAG, RF, SQUARE } from "../generated";
-import { loc } from "../loc";
-import type { MonsterDeathDeps } from "./mon-death";
-import { installNonplayerHitDeps } from "./mon-death";
-import { updateMonsterDistances } from "./context";
+import { MFLAG, RF, SQUARE } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { MonsterDeathDeps } from "./mon-death.js";
+import { installNonplayerHitDeps } from "./mon-death.js";
+import { updateMonsterDistances } from "./context.js";
 import {
   givePlayerEnergy,
   processMonsters,
   resetMonsters,
-} from "./scheduler";
-import { addMon, featureReg, makeRace, makeState } from "./harness";
+} from "./scheduler.js";
+import { addMon, featureReg, makeRace, makeState } from "./harness.js";
 
 describe("processMonsters energy bookkeeping", () => {
   it("energizes a ready monster and spends move_energy, marking it handled", () => {

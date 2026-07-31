@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { OPTION_ENTRIES } from "../generated/options";
+import { OPTION_ENTRIES } from "../generated/options.js";
 import {
   DEFAULT_DELAY_FACTOR,
   DEFAULT_HITPOINT_WARN,
   DEFAULT_LAZYMOVE_DELAY,
   OptionState,
-} from "./options";
-import type { OptionStateData } from "./options";
+} from "./options.js";
+import type { OptionStateData } from "./options.js";
 
 describe("OptionState defaults (option.c options_init_defaults)", () => {
   it("seeds every option from OPTION_ENTRIES.normal", () => {

@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MON_TMD } from "../generated";
-import { loadGame, saveGame, startGame } from "./game";
-import type { GamePack, StartedGame } from "./game";
-import type { Monster } from "../mon/monster";
-import type { GameState } from "../game/context";
+import { MON_TMD } from "../generated/index.js";
+import { loadGame, saveGame, startGame } from "./game.js";
+import type { GamePack, StartedGame } from "./game.js";
+import type { Monster } from "../mon/monster.js";
+import type { GameState } from "../game/context.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

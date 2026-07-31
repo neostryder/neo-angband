@@ -1,15 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, MFLAG, TMD } from "../generated";
-import { bindTraps } from "../world/trap";
-import type { TrapRecordJson } from "../world/trap";
-import { placeTrap, squareIsVisibleTrap, squareRevealTrap } from "./trap";
-import { DDGRID, loc, locEq, locSum } from "../loc";
-import type { Loc } from "../loc";
-import type { GameState, PlayerCommand } from "./context";
-import { addMon, makeRace, makeState, FLOOR, GRANITE } from "./harness";
-import { squareMemorize } from "./known";
-import { OptionState } from "../player/options";
+import { FEAT, MFLAG, TMD } from "../generated/index.js";
+import { bindTraps } from "../world/trap.js";
+import type { TrapRecordJson } from "../world/trap.js";
+import { placeTrap, squareIsVisibleTrap, squareRevealTrap } from "./trap.js";
+import { DDGRID, loc, locEq, locSum } from "../loc.js";
+import type { Loc } from "../loc.js";
+import type { GameState, PlayerCommand } from "./context.js";
+import { addMon, makeRace, makeState, FLOOR, GRANITE } from "./harness.js";
+import { squareMemorize } from "./known.js";
+import { OptionState } from "../player/options.js";
 import {
   disturb,
   exploreAction,
@@ -19,10 +19,10 @@ import {
   pathfindAction,
   pathfindDirectionTo,
   runAction,
-} from "./player-path";
-import { createDefaultRegistry } from "./player-turn";
-import type { ActionRegistry } from "./player-turn";
-import { installCaveCommands } from "./cave-cmd";
+} from "./player-path.js";
+import { createDefaultRegistry } from "./player-turn.js";
+import type { ActionRegistry } from "./player-turn.js";
+import { installCaveCommands } from "./cave-cmd.js";
 
 /** Remember every in-bounds grid (the running engine reads the known map). */
 function memorizeAll(state: GameState): void {

@@ -10,12 +10,12 @@
  * activation exactly like object effects (game/obj-cmd.ts).
  */
 
-import { FlagSet, flagSize } from "../bitflag";
-import { Dice } from "../dice";
-import { OF, TRAP_FLAG_ENTRIES, TRF } from "../generated";
-import { myStristr } from "../guard";
-import type { RandomValue } from "../rng";
-import type { EffectRecordJson } from "../obj/types";
+import { FlagSet, flagSize } from "../bitflag.js";
+import { Dice } from "../dice.js";
+import { OF, TRAP_FLAG_ENTRIES, TRF } from "../generated/index.js";
+import { myStristr } from "../guard.js";
+import type { RandomValue } from "../rng.js";
+import type { EffectRecordJson } from "../obj/types.js";
 
 /** TRF_SIZE = FLAG_SIZE(TRF_MAX): byte size of a trap FlagSet. */
 export const TRF_SIZE = flagSize(TRAP_FLAG_ENTRIES.length);

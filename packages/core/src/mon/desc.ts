@@ -19,11 +19,11 @@
  *   monster it cannot show, so the default matches the reachable behaviour.
  */
 
-import { RF } from "../generated";
-import type { Loc } from "../loc";
-import type { Monster } from "./monster";
-import type { MonsterRace } from "./types";
-import { monsterIsShapeUnique, monsterIsVisible } from "./predicate";
+import { RF } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import type { Monster } from "./monster.js";
+import type { MonsterRace } from "./types.js";
+import { monsterIsShapeUnique, monsterIsVisible } from "./predicate.js";
 
 /** Bit flags for monster_desc (mon-desc.h L27-42). */
 export const MDESC = {

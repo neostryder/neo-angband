@@ -1,11 +1,28 @@
 {
   "name": "@neo-angband/core",
   "version": "0.9.0",
-  "private": true,
   "description": "Headless Neo Angband game engine: rules, world, entities, effects, generation",
   "license": "GPL-2.0-only",
   "author": "neostryder (RPGM Tools)",
+  "homepage": "https://github.com/neostryder/neo-angband#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neostryder/neo-angband.git",
+    "directory": "packages/core"
+  },
+  "bugs": "https://github.com/neostryder/neo-angband/issues",
+  "keywords": [
+    "angband",
+    "roguelike",
+    "game-engine",
+    "neo-angband",
+    "modding"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -16,7 +33,34 @@
     "./host": {
       "types": "./dist/host/index.d.ts",
       "default": "./dist/host/index.js"
-    }
+    },
+    "./package.json": "./package.json"
+  },
+  "//files": [
+    "This engine keeps its 248 test modules beside its 485 source modules in src/,",
+    "not in a tests/ tree, so a bare `dist` would publish 248 compiled test files",
+    "that import vitest - a dependency this package does not declare and a consumer",
+    "does not have. The negations drop them, and tools/check-npm-package.mjs runs",
+    "`npm pack` and FAILS if one survives; a `files` list is a claim, and the",
+    "tarball is the measurement.",
+    "src/ ships on purpose: the .js.map files point into it, so a stack trace out of",
+    "the engine lands on real TypeScript instead of nowhere."
+  ],
+  "files": [
+    "dist",
+    "src",
+    "!**/*.test.ts",
+    "!**/*.test.js",
+    "!**/*.test.js.map",
+    "!**/*.test.d.ts",
+    "!**/*.test.d.ts.map",
+    "!**/*.tsbuildinfo",
+    "LICENSE.md",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "tsc"

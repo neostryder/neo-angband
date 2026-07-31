@@ -20,20 +20,20 @@
  * knowledge/detection batch (#24).
  */
 
-import { EF, OF, ORIGIN, TMD, TV } from "../generated";
+import { EF, OF, ORIGIN, TMD, TV } from "../generated/index.js";
 import {
   ENCH_TOAC,
   ENCH_TOBOTH,
   ENCH_TODAM,
   ENCH_TOHIT,
-} from "../effects/effect";
+} from "../effects/effect.js";
 import type {
   EffectHandler,
   EffectHandlerContext,
   EffectRegistry,
-} from "../effects/interpreter";
-import { effectCalculateValue } from "../effects/interpreter";
-import type { GameObject } from "../obj/object";
+} from "../effects/interpreter.js";
+import { effectCalculateValue } from "../effects/interpreter.js";
+import type { GameObject } from "../obj/object.js";
 import {
   appendObjectCurse,
   removeObjectCurse,
@@ -44,24 +44,24 @@ import {
   tvalIsStaff,
   tvalIsWand,
   tvalIsWeapon,
-} from "../obj/object";
+} from "../obj/object.js";
 import {
   buildRuneList,
   objectLearnUnknownRune,
   objectRunesKnown,
   playerLearnFlagRune,
-} from "../obj/knowledge";
-import { ODESC } from "../obj/desc";
-import { describeObject } from "./describe";
-import { updatePlayerObjectKnowledge } from "./known";
-import type { ObjRegistry } from "../obj/bind";
-import { egoApplyMagic, makeObject } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import type { GameState } from "./context";
-import { gearObjectForUse } from "./gear";
-import { dropNear, floorExcise } from "./floor";
-import { gameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
+} from "../obj/knowledge.js";
+import { ODESC } from "../obj/desc.js";
+import { describeObject } from "./describe.js";
+import { updatePlayerObjectKnowledge } from "./known.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import { egoApplyMagic, makeObject } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import type { GameState } from "./context.js";
+import { gearObjectForUse } from "./gear.js";
+import { dropNear, floorExcise } from "./floor.js";
+import { gameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
 
 /** The get_item request: prompt/reject texts, the tester, allowed sources. */
 export interface ItemRequest {
@@ -188,7 +188,7 @@ export function requestForEffect(
  * Returns null for objects / spells with no item-target effect.
  */
 export function itemTargetRequest(
-  chain: import("../effects/effect").Effect | null,
+  chain: import("../effects/effect.js").Effect | null,
   state: GameState,
 ): ItemRequest | null {
   for (let e = chain; e; e = e.next) {
@@ -205,7 +205,7 @@ export function itemTargetRequest(
  * spec (base/dice/sides). Pure: does not draw the RNG (mirrors
  * Dice.randomValue(), not Dice.roll()).
  */
-function formatUncurseDiceString(v: import("../rng").RandomValue): string {
+function formatUncurseDiceString(v: import("../rng.js").RandomValue): string {
   if (v.dice === 1 && v.base) return `${v.base}+d${v.sides}`;
   if (v.dice && v.base) return `${v.base}+${v.dice}d${v.sides}`;
   if (v.dice === 1) return `d${v.sides}`;
@@ -223,7 +223,7 @@ function formatUncurseDiceString(v: import("../rng").RandomValue): string {
  * chain has no REMOVE_CURSE effect.
  */
 export function removeCurseDiceString(
-  chain: import("../effects/effect").Effect | null,
+  chain: import("../effects/effect.js").Effect | null,
 ): string | null {
   for (let e = chain; e; e = e.next) {
     if (e.index !== EF.REMOVE_CURSE) continue;

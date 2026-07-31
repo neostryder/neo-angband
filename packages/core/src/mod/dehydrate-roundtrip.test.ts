@@ -29,10 +29,10 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { runGameLoop } from "../game/loop";
-import type { PlayerCommand } from "../game/context";
-import { loadGame, saveGame, startGame } from "../session/game";
-import type { GamePack, StartedGame } from "../session/game";
+import { runGameLoop } from "../game/loop.js";
+import type { PlayerCommand } from "../game/context.js";
+import { loadGame, saveGame, startGame } from "../session/game.js";
+import type { GamePack, StartedGame } from "../session/game.js";
 import type {
   SavedGame,
   SavedLore,
@@ -40,9 +40,9 @@ import type {
   SavedObject,
   SavedStoredLevel,
   SavedTrap,
-} from "../session/save";
-import { orphanCount, quarantineSave, rehydrateSave } from "./save-blocks";
-import type { OrphanEntry, SaveManifest } from "./save-blocks";
+} from "../session/save.js";
+import { orphanCount, quarantineSave, rehydrateSave } from "./save-blocks.js";
+import type { OrphanEntry, SaveManifest } from "./save-blocks.js";
 
 /* ------------------------------------------------------------------ *
  * The standard headless pack fixture (mirrors session/save.test.ts).

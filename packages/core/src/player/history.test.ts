@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { HIST } from "../generated";
-import { bindPlayer } from "./bind";
-import { blankPlayer } from "./player";
-import type { Player } from "./player";
+import { HIST } from "../generated/index.js";
+import { bindPlayer } from "./bind.js";
+import { blankPlayer } from "./player.js";
+import type { Player } from "./player.js";
 import {
   histHas,
   historyAdd,
@@ -14,7 +14,7 @@ import {
   historyIsArtifactKnown,
   historyLoseArtifact,
   historyUnmaskUnknown,
-} from "./history";
+} from "./history.js";
 
 function loadRecords<T>(name: string): T[] {
   return (

@@ -52,9 +52,9 @@
  * stash view) are P-UI work per MOD_LIFECYCLE section 6 step 2.
  */
 
-import { parseId } from "./ids";
-import { ENGINE_VERSION } from "../version";
-import type { SavedGame } from "../session/save";
+import { parseId } from "./ids.js";
+import { ENGINE_VERSION } from "../version.js";
+import type { SavedGame } from "../session/save.js";
 
 /* ------------------------------------------------------------------ *
  * Value shapes.

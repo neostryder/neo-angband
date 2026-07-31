@@ -1,20 +1,20 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { FlagSet } from "../bitflag";
-import { MFLAG, OF, RF, SQUARE, TMD, TV } from "../generated";
-import { OF_SIZE } from "../player/types";
-import type { PlayerState } from "../player/calcs";
-import { getLore } from "../mon/lore";
-import type { Monster } from "../mon/monster";
-import type { GameState } from "./context";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import { floorCarry, floorExcise, floorPile } from "./floor";
+import { bindConstants } from "../constants.js";
+import { FlagSet } from "../bitflag.js";
+import { MFLAG, OF, RF, SQUARE, TMD, TV } from "../generated/index.js";
+import { OF_SIZE } from "../player/types.js";
+import type { PlayerState } from "../player/calcs.js";
+import { getLore } from "../mon/lore.js";
+import type { Monster } from "../mon/monster.js";
+import type { GameState } from "./context.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import { floorCarry, floorExcise, floorPile } from "./floor.js";
 import {
   becomeAware,
   caveIlluminateKnown,
@@ -35,8 +35,8 @@ import {
   tickMonsterMarks,
   updateMon,
   updateMonsters,
-} from "./known";
-import { FLOOR, GRANITE, addMon, featureReg, makeRace, makeState } from "./harness";
+} from "./known.js";
+import { FLOOR, GRANITE, addMon, featureReg, makeRace, makeState } from "./harness.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

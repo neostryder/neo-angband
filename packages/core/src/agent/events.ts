@@ -11,9 +11,9 @@
  * only adds the consent gate a sandboxed plugin (W2.1) needs.
  */
 
-import type { GameEventHandler, GameEvents, GameEventType } from "../events";
-import { AgentCapabilityError } from "./types";
-import type { AgentCapabilities } from "./types";
+import type { GameEventHandler, GameEvents, GameEventType } from "../events.js";
+import { AgentCapabilityError } from "./types.js";
+import type { AgentCapabilities } from "./types.js";
 
 /** A capability-gated view of the event bus handed to a mod. */
 export interface AgentEventSubscription {

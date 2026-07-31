@@ -5,7 +5,7 @@
  * reader (that agreement is what makes enable-then-reload actually work).
  */
 
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { PackManifest } from "@neo-angband/mod-sdk";
 import {
@@ -23,6 +23,7 @@ import {
   migrateModIds,
   type StorageLike,
 } from "./mod-store";
+import { RECOMMENDED_MODS } from "./mod-registry";
 import { confirmGameplayNoscore, needsGameplayNoscoreWarning } from "./mods";
 import { discoverContentModManifests, loadEnabledModRuleDecls } from "./pack";
 
@@ -77,12 +78,13 @@ describe("ModStore - enabled set", () => {
 });
 
 describe("the shipped mod set (isShippedMod)", () => {
-  it("ships exactly the three bundled mods: qol, bug-fixes, linoleum", () => {
-    expect([...FIRST_PARTY_MOD_IDS].sort()).toEqual([
-      "bug-fixes",
-      "neo-linoleum",
-      "qol",
-    ]);
+  it("ships exactly the two bundled mods: qol and bug-fixes", () => {
+    /* neo-linoleum was the third until its six converted packs - 9161 files,
+     * 42 MiB of art that belongs to the mod - moved to their own repository. It
+     * is equally first-party and arrives through the installer instead, so it is
+     * in RECOMMENDED_MODS rather than here. */
+    expect([...FIRST_PARTY_MOD_IDS].sort()).toEqual(["bug-fixes", "qol"]);
+    expect(FIRST_PARTY_MOD_IDS).not.toContain("neo-linoleum");
   });
 
   it("keeps every first-party id in both builds", () => {
@@ -161,11 +163,11 @@ describe("the shipped mod set (isShippedMod)", () => {
    * globs the manifests on disk, so this is what the mod manager's catalog is
    * actually built from in each build.
    */
-  it("a release build's content catalog is exactly the three shipped mods", () => {
+  it("a release build's content catalog is exactly the two shipped mods", () => {
     vi.stubEnv("DEV", false);
     try {
       const ids = discoverContentModManifests().map((m) => m.id);
-      expect([...ids].sort()).toEqual(["bug-fixes", "neo-linoleum", "qol"]);
+      expect([...ids].sort()).toEqual(["bug-fixes", "qol"]);
     } finally {
       vi.unstubAllEnvs();
     }
@@ -522,13 +524,17 @@ describe("renamed mod ids keep working", () => {
     ]);
   });
 
-  it("the shipped set names the NEW id, and the mod folder matches it", () => {
-    expect(FIRST_PARTY_MOD_IDS).toContain("neo-linoleum");
+  it("the catalogue names the NEW id, and no bundled folder claims either", () => {
+    /* The rename outlives the de-bundling: the id is still what a player's saved
+     * enabled set and an external manager's load-order.json record, and it is now
+     * the id the INSTALLER writes. So the migration still has to hold, and the
+     * thing that must agree with it is the download catalogue rather than a
+     * manifest in this repository - there is no longer one. */
+    const entry = RECOMMENDED_MODS.find((m) => m.id === "neo-linoleum");
+    expect(entry, "neo-linoleum is missing from RECOMMENDED_MODS").toBeDefined();
+    expect(entry?.repo).toBe("neostryder/neo-angband-mod-linoleum");
     expect(FIRST_PARTY_MOD_IDS).not.toContain("linoleum");
-    const manifest = JSON.parse(
-      readFileSync(new URL("../mods/neo-linoleum/manifest.json", import.meta.url), "utf8"),
-    ) as { id: string; name: string };
-    expect(manifest.id).toBe("neo-linoleum");
-    expect(manifest.name).toBe("neo-linoleum");
+    expect(existsSync(new URL("../mods/neo-linoleum/", import.meta.url))).toBe(false);
+    expect(existsSync(new URL("../mods/linoleum/", import.meta.url))).toBe(false);
   });
 });

@@ -1,25 +1,25 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { OF, RF } from "../generated";
-import { FlagSet } from "../bitflag";
-import { Rng } from "../rng";
-import { bindMonsters } from "../mon/bind";
-import type { MonsterPackRecords } from "../mon/bind";
-import { blankMonster } from "../mon/monster";
-import type { Monster } from "../mon/monster";
-import { RF_SIZE } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
-import { ObjRegistry } from "../obj/bind";
-import type { Artifact, ObjPackJson, ObjectKind, Slay } from "../obj/types";
-import { objectNew, tvalIsMeleeWeapon } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { bindPlayer } from "../player/bind";
-import type { PlayerPackRecords } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import { SKILL_MAX } from "../player/types";
-import type { PlayerCombatState } from "./melee";
-import { breakageChance, makeRangedShot, rangedDamage } from "./ranged";
+import { OF, RF } from "../generated/index.js";
+import { FlagSet } from "../bitflag.js";
+import { Rng } from "../rng.js";
+import { bindMonsters } from "../mon/bind.js";
+import type { MonsterPackRecords } from "../mon/bind.js";
+import { blankMonster } from "../mon/monster.js";
+import type { Monster } from "../mon/monster.js";
+import { RF_SIZE } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { Artifact, ObjPackJson, ObjectKind, Slay } from "../obj/types.js";
+import { objectNew, tvalIsMeleeWeapon } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { bindPlayer } from "../player/bind.js";
+import type { PlayerPackRecords } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { SKILL_MAX } from "../player/types.js";
+import type { PlayerCombatState } from "./melee.js";
+import { breakageChance, makeRangedShot, rangedDamage } from "./ranged.js";
 
 function load(name: string): unknown {
   return JSON.parse(

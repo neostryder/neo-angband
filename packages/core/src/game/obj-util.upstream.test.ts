@@ -13,26 +13,26 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { bindConstants } from "../constants";
-import { FlagSet } from "../bitflag";
-import { OF, TV } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { ObjRegistry } from "../obj/bind";
-import type { Curse, ObjPackJson } from "../obj/types";
-import { OF_SIZE } from "../obj/types";
+import { bindConstants } from "../constants.js";
+import { FlagSet } from "../bitflag.js";
+import { OF, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { Curse, ObjPackJson } from "../obj/types.js";
+import { OF_SIZE } from "../obj/types.js";
 import {
   objectNew,
   objectWeightOne,
   type CurseData,
   type GameObject,
-} from "../obj/object";
-import { objectPrep } from "../obj/make";
-import { checkForInscripWithInt } from "./pickup";
-import { invenCarry } from "./gear";
-import { invenWield, objCanRefill } from "./obj-cmd";
-import { makeState } from "./harness";
-import type { GameState } from "./context";
+} from "../obj/object.js";
+import { objectPrep } from "../obj/make.js";
+import { checkForInscripWithInt } from "./pickup.js";
+import { invenCarry } from "./gear.js";
+import { invenWield, objCanRefill } from "./obj-cmd.js";
+import { makeState } from "./harness.js";
+import type { GameState } from "./context.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

@@ -17,12 +17,12 @@
  * Attribution: neostryder / RPGM Tools.
  */
 
-import { STAT_MAX, SKILL_MAX } from "./types";
-import type { Shape } from "./types";
-import { OBJ_PROPERTY, OBJ_MOD_MAX, ELEM_MAX, OFT } from "../obj/types";
-import type { ObjectProperty } from "../obj/types";
-import { OF } from "../generated";
-import { sustainFlag } from "../obj/knowledge";
+import { STAT_MAX, SKILL_MAX } from "./types.js";
+import type { Shape } from "./types.js";
+import { OBJ_PROPERTY, OBJ_MOD_MAX, ELEM_MAX, OFT } from "../obj/types.js";
+import type { ObjectProperty } from "../obj/types.js";
+import { OF } from "../generated/index.js";
+import { sustainFlag } from "../obj/knowledge.js";
 
 /** One entry of the player_abilities list, filtered to type "player". */
 export interface ShapeLorePlayerAbility {

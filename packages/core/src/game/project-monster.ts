@@ -23,26 +23,26 @@
  *   knowledge, shapechange and message-list systems.
  */
 
-import { MON_MSG, MON_TMD, PROJ } from "../generated";
-import type { Loc } from "../loc";
-import type { Monster } from "../mon/monster";
+import { MON_MSG, MON_TMD, PROJ } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
 import {
   monsterIsCamouflaged,
   monsterIsDestroyed,
   monsterIsInView,
   monsterIsUnique,
   monsterIsVisible,
-} from "../mon/predicate";
-import { newMonProjectContext, runMonsterHandler } from "../mon/project-mon";
-import type { MonProjectContext } from "../mon/project-mon";
-import { monsterWake, monTakeHit } from "../mon/take-hit";
-import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed";
-import type { MonTimedMessageSink } from "../mon/timed";
-import { PROJECT } from "../world/project";
-import type { MonsterHitResult } from "../world/project";
-import type { ProjectionInfo } from "../world/projection";
-import { arenaInterceptDeath, deleteMonster } from "./context";
-import type { GameState } from "./context";
+} from "../mon/predicate.js";
+import { newMonProjectContext, runMonsterHandler } from "../mon/project-mon.js";
+import type { MonProjectContext } from "../mon/project-mon.js";
+import { monsterWake, monTakeHit } from "../mon/take-hit.js";
+import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed.js";
+import type { MonTimedMessageSink } from "../mon/timed.js";
+import { PROJECT } from "../world/project.js";
+import type { MonsterHitResult } from "../world/project.js";
+import type { ProjectionInfo } from "../world/projection.js";
+import { arenaInterceptDeath, deleteMonster } from "./context.js";
+import type { GameState } from "./context.js";
 
 /** The player-facing / downstream consequences the driver defers to the caller. */
 export interface ProjectMonsterHooks {

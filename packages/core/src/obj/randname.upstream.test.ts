@@ -12,9 +12,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-import { Rng } from "../rng";
-import { buildProb } from "./randname";
-import { artifactGenName, RANDNAME_TOLKIEN } from "./randart";
+import { Rng } from "../rng.js";
+import { buildProb } from "./randname.js";
+import { artifactGenName, RANDNAME_TOLKIEN } from "./randart.js";
 
 function loadTolkienWords(): string[] {
   const names = JSON.parse(

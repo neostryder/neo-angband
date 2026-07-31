@@ -14,24 +14,24 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { EF, TMD } from "../generated";
-import { Rng } from "../rng";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { EffectBuilder } from "./effect";
-import type { Effect } from "./effect";
+import { EF, TMD } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { EffectBuilder } from "./effect.js";
+import type { Effect } from "./effect.js";
 import {
   effectAvgDamage,
   effectDamages,
   effectNext,
   effectProjection,
-} from "./effect-info";
-import type { EffectContext, EffectPlayer, HasHp, TimedHost } from "./interpreter";
+} from "./effect-info.js";
+import type { EffectContext, EffectPlayer, HasHp, TimedHost } from "./interpreter.js";
 import {
   EffectRegistry,
   sourcePlayer,
-} from "./interpreter";
-import { registerCoreHandlers } from "./handlers";
+} from "./interpreter.js";
+import { registerCoreHandlers } from "./handlers.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(

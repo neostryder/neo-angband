@@ -21,7 +21,7 @@
  * timed increase through, matching a bare resistance-less player.
  */
 
-import type { GameEvents } from "../events";
+import type { GameEvents } from "../events.js";
 import type {
   EffectContext,
   EffectMessages,
@@ -29,32 +29,32 @@ import type {
   HasHp,
   HasMana,
   TimedHost,
-} from "../effects/interpreter";
+} from "../effects/interpreter.js";
 import {
   playerClearTimed,
   playerDecTimed,
   playerIncCheck,
   playerIncTimed,
   playerSetTimed,
-} from "../player/timed";
+} from "../player/timed.js";
 import type {
   PlayerIncCheckHooks,
   PlayerIncCheckQueries,
   PlayerTimedHooks,
-} from "../player/timed";
+} from "../player/timed.js";
 import {
   playerApplyDamageReduction,
   takeHit,
-} from "../player/take-hit";
+} from "../player/take-hit.js";
 import type {
   DamageReduction,
   TakeHitHooks,
   TakeHitTarget,
-} from "../player/take-hit";
-import type { TimedEffect } from "../player/types";
-import { DEFAULT_HITPOINT_WARN } from "./project-cast";
-import type { GameState } from "./context";
-import type { Effect } from "../effects/effect";
+} from "../player/take-hit.js";
+import type { TimedEffect } from "../player/types.js";
+import { DEFAULT_HITPOINT_WARN } from "./project-cast.js";
+import type { GameState } from "./context.js";
+import type { Effect } from "../effects/effect.js";
 
 /** What the effect-environment adapters need beyond the GameState. */
 export interface EffectEnvDeps {

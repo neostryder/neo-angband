@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { STAT, TMD } from "../generated";
+import { STAT, TMD } from "../generated/index.js";
 import {
   COLOUR_L_GREEN,
   COLOUR_L_UMBER,
@@ -7,11 +7,11 @@ import {
   COLOUR_RED,
   COLOUR_WHITE,
   COLOUR_YELLOW,
-} from "../color";
-import { playerSpAttr } from "../player/calcs";
-import { makeState, plReg } from "./harness";
-import type { DisplayRun, SidebarField, StatusIndicator } from "./display";
-import { cnvStat, sidebarModel, statusLineModel } from "./display";
+} from "../color.js";
+import { playerSpAttr } from "../player/calcs.js";
+import { makeState, plReg } from "./harness.js";
+import type { DisplayRun, SidebarField, StatusIndicator } from "./display.js";
+import { cnvStat, sidebarModel, statusLineModel } from "./display.js";
 
 function field(fields: SidebarField[] | StatusIndicator[], key: string): DisplayRun[] {
   const f = fields.find((x) => x.key === key);

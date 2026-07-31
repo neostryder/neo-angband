@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { Rng } from "../rng";
-import { bindPlayer } from "./bind";
-import { blankPlayer } from "./player";
-import type { Player } from "./player";
-import { PY_MAX_LEVEL } from "./types";
+import { Rng } from "../rng.js";
+import { bindPlayer } from "./bind.js";
+import { blankPlayer } from "./player.js";
+import type { Player } from "./player.js";
+import { PY_MAX_LEVEL } from "./types.js";
 import {
   adjustLevel,
   PLAYER_EXP,
@@ -14,7 +14,7 @@ import {
   playerStatDec,
   playerStatInc,
   rollHp,
-} from "./exp";
+} from "./exp.js";
 
 function loadRecords<T>(name: string): T[] {
   return (

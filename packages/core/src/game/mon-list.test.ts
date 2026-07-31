@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { MFLAG, MON_TMD, RF } from "../generated";
-import { loc } from "../loc";
+import { MFLAG, MON_TMD, RF } from "../generated/index.js";
+import { loc } from "../loc.js";
 import {
   COLOUR_RED,
   COLOUR_VIOLET,
   COLOUR_WHITE,
-} from "../color";
-import type { Loc } from "../loc";
-import type { Monster } from "../mon/monster";
-import type { GameState } from "./context";
-import { addMon, makeRace, makeState } from "./harness";
+} from "../color.js";
+import type { Loc } from "../loc.js";
+import type { Monster } from "../mon/monster.js";
+import type { GameState } from "./context.js";
+import { addMon, makeRace, makeState } from "./harness.js";
 import {
   MONSTER_LIST_SECTION_ESP,
   MONSTER_LIST_SECTION_LOS,
@@ -18,7 +18,7 @@ import {
   monsterListEntryLineColor,
   monsterListSort,
   monsterListStandardCompare,
-} from "./mon-list";
+} from "./mon-list.js";
 
 /** A visible monster of the given race at a grid. */
 function addVisible(

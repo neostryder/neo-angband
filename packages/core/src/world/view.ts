@@ -17,12 +17,12 @@
  * after every updateView; the flag bookkeeping they sit beside is ported.
  */
 
-import type { GameEvents } from "../events";
-import { SQUARE } from "../generated";
-import { DDGRID, DDGRID_DDD, distance, loc, locEq, locSum } from "../loc";
-import type { Loc } from "../loc";
-import { featIsBright } from "./chunk";
-import type { Chunk } from "./chunk";
+import type { GameEvents } from "../events.js";
+import { SQUARE } from "../generated/index.js";
+import { DDGRID, DDGRID_DDD, distance, loc, locEq, locSum } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { featIsBright } from "./chunk.js";
+import type { Chunk } from "./chunk.js";
 
 /** los(c, grid1, grid2). */
 export function los(c: Chunk, grid1: Loc, grid2: Loc): boolean {

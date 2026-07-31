@@ -10,14 +10,14 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import type { Constants } from "../constants";
-import { TV } from "../generated";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject, StackLimits } from "../obj/object";
-import { Rng } from "../rng";
+import { bindConstants } from "../constants.js";
+import type { Constants } from "../constants.js";
+import { TV } from "../generated/index.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
+import { Rng } from "../rng.js";
 import {
   calcInventory,
   gearAdd,
@@ -25,8 +25,8 @@ import {
   invenCarryNum,
   newGear,
   packSlotsUsed,
-} from "./gear";
-import type { Gear } from "./gear";
+} from "./gear.js";
+import type { Gear } from "./gear.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

@@ -37,17 +37,17 @@ import {
   COLOUR_RED,
   COLOUR_WHITE,
   COLOUR_YELLOW,
-} from "../color";
-import { TMD } from "../generated";
-import { EXTRACT_ENERGY } from "../mon/monster";
-import { BTH_PLUS_ADJ } from "../combat/hit";
-import { objectToDam, objectToHit } from "../combat/brand-slay";
-import { PY_MAX_LEVEL, SKILL, STAT_MAX } from "../player/types";
-import { modifyStatValue, player_exp } from "../player/calcs";
-import { cnvStat } from "./display";
-import type { Player } from "../player/player";
-import type { GameObject } from "../obj/object";
-import type { GameState } from "./context";
+} from "../color.js";
+import { TMD } from "../generated/index.js";
+import { EXTRACT_ENERGY } from "../mon/monster.js";
+import { BTH_PLUS_ADJ } from "../combat/hit.js";
+import { objectToDam, objectToHit } from "../combat/brand-slay.js";
+import { PY_MAX_LEVEL, SKILL, STAT_MAX } from "../player/types.js";
+import { modifyStatValue, player_exp } from "../player/calcs.js";
+import { cnvStat } from "./display.js";
+import type { Player } from "../player/player.js";
+import type { GameObject } from "../obj/object.js";
+import type { GameState } from "./context.js";
 
 /** One computed panel row: a label, its preformatted value, and a COLOUR_*. */
 export interface CharSheetLine {

@@ -196,12 +196,18 @@ maintainers and three decades of contributors whose work this builds on.
 ## Author
 
 Built and maintained by [neostryder](https://github.com/neostryder) at RPGM
-Tools. The bundled mods are by the same author: the
-[neo-linoleum](docs/LINOLEUM.md) tile packs, the
-[qol](docs/modding/QOL.md) quality-of-life tweaks, and the
-[bug-fixes](docs/modding/BUG_FIXES.md) bug-fix patch set - all ship as
-standalone mods, not as part of the parity core. All honor, as above, to the
-upstream Angband maintainers and contributors whose work this builds on.
+Tools. The first-party mods are by the same author, and each is a standalone mod
+rather than part of the parity core:
+
+| Mod | Repository | What it is |
+| --- | --- | --- |
+| [qol](docs/modding/QOL.md) | [neo-angband-mod-qol](https://github.com/neostryder/neo-angband-mod-qol) | Quality-of-life conveniences (bundled) |
+| [bug-fixes](docs/modding/BUG_FIXES.md) | [neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) | Patches for upstream bugs core keeps on purpose (bundled) |
+| [neo-linoleum](docs/LINOLEUM.md) | [neo-angband-mod-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) | A second tile engine, and all six of Angband's tile sets converted to its loose-pack format |
+| [borg](docs/BORG_AS_MOD.md) | [neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player. Not released - the repo holds the name and the plan |
+
+All honor, as above, to the upstream Angband maintainers and contributors whose
+work this builds on.
 
 ## License
 

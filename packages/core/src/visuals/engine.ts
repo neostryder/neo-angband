@@ -28,14 +28,14 @@
  *    flicker -> base fallback, otherwise static).
  */
 
-import { BASIC_COLORS, colorCharToAttr, MAX_COLORS } from "../color";
+import { BASIC_COLORS, colorCharToAttr, MAX_COLORS } from "../color.js";
 
 /**
  * z-color.h BASIC_COLORS: the count of the basic color attrs (0..28). It
  * doubles as the "no color / invalid" sentinel the cycler/flicker return on a
  * miss, since it is one past the last valid attr.
  */
-export { BASIC_COLORS } from "../color";
+export { BASIC_COLORS } from "../color.js";
 
 /**
  * z-color.h MAX_COLORS (32). The flicker table is sized with this by

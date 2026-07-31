@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { EF, EFFECT_ENTRIES, TMD } from "../generated";
-import { Rng } from "../rng";
-import { EffectBuilder } from "./effect";
+import { EF, EFFECT_ENTRIES, TMD } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { EffectBuilder } from "./effect.js";
 import type {
   EffectContext,
   EffectPlayer,
   HasHp,
   StubCall,
   TimedHost,
-} from "./interpreter";
-import { EffectRegistry, sourceMonster, sourceNone, sourcePlayer } from "./interpreter";
-import { EFFECT_HANDLER_MANIFEST, registerCoreHandlers } from "./handlers";
+} from "./interpreter.js";
+import { EffectRegistry, sourceMonster, sourceNone, sourcePlayer } from "./interpreter.js";
+import { EFFECT_HANDLER_MANIFEST, registerCoreHandlers } from "./handlers.js";
 
 interface TimedCall {
   op: "set" | "inc" | "dec" | "clear";

@@ -10,9 +10,8 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "node scripts/gen-linoleum-demo.mjs && vite",
-    "bundle": "node scripts/gen-linoleum-demo.mjs && vite build",
-    "gen-linoleum-demo": "node scripts/gen-linoleum-demo.mjs",
+    "dev": "vite",
+    "bundle": "vite build",
     "gen-icons": "node scripts/gen-icons.mjs",
     "build-mod-plugins": "node scripts/build-mod-plugins.mjs"
   },

@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { RF } from "../generated";
-import { bindMonsters } from "./bind";
-import type { MonsterPackRecords } from "./bind";
-import type { MonsterRace } from "./types";
-import { SummonTable, summonSpecificOkay } from "./summon";
+import { RF } from "../generated/index.js";
+import { bindMonsters } from "./bind.js";
+import type { MonsterPackRecords } from "./bind.js";
+import type { MonsterRace } from "./types.js";
+import { SummonTable, summonSpecificOkay } from "./summon.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(

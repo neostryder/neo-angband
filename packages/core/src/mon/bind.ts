@@ -33,11 +33,11 @@
  * before binding.
  */
 
-import { FlagSet } from "../bitflag";
-import { colorCharToAttr, colorTextToAttr } from "../color";
-import { Dice } from "../dice";
-import { myStristr } from "../guard";
-import { MFLAG_SIZE, monSpellsOfTypes, MON_GROUP, RF_SIZE, RSF_SIZE } from "./types";
+import { FlagSet } from "../bitflag.js";
+import { colorCharToAttr, colorTextToAttr } from "../color.js";
+import { Dice } from "../dice.js";
+import { myStristr } from "../guard.js";
+import { MFLAG_SIZE, monSpellsOfTypes, MON_GROUP, RF_SIZE, RSF_SIZE } from "./types.js";
 import type {
   BlowEffect,
   BlowMethod,
@@ -57,9 +57,9 @@ import type {
   Pain,
   PitProfile,
   SummonType,
-} from "./types";
-import { RF, RSF } from "../generated";
-import { messageLookupByName } from "../sound/engine";
+} from "./types.js";
+import { RF, RSF } from "../generated/index.js";
+import { messageLookupByName } from "../sound/engine.js";
 
 /* re-export for consumers that reach the domain through bind */
 export { MFLAG_SIZE, RF_SIZE, RSF_SIZE };

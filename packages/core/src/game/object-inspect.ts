@@ -13,33 +13,33 @@
  * breakageChance are pure. See obj/object-info.test.ts for the invariance guard.
  */
 
-import { calcBonuses } from "../player/calcs";
-import type { PlayerState } from "../player/calcs";
-import type { Constants } from "../constants";
-import { OBJ_PROPERTY } from "../obj/types";
-import type { GameObject } from "../obj/object";
-import type { ProjectionInfo } from "../world/projection";
-import { describeEffect as describeEffectChain } from "../effects/effect-info";
-import type { EffectDescribeDeps } from "../effects/effect-info";
+import { calcBonuses } from "../player/calcs.js";
+import type { PlayerState } from "../player/calcs.js";
+import type { Constants } from "../constants.js";
+import { OBJ_PROPERTY } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import type { ProjectionInfo } from "../world/projection.js";
+import { describeEffect as describeEffectChain } from "../effects/effect-info.js";
+import type { EffectDescribeDeps } from "../effects/effect-info.js";
 import {
   OINFO,
   objectInfo,
   type ObjectInfoDeps,
   type OriginRace,
   type Textblock,
-} from "../obj/object-info";
-import { breakageChance } from "../combat/ranged";
-import { calcDiggingChances } from "./cave-cmd";
-import { gearGet, wieldSlot } from "./gear";
+} from "../obj/object-info.js";
+import { breakageChance } from "../combat/ranged.js";
+import { calcDiggingChances } from "./cave-cmd.js";
+import { gearGet, wieldSlot } from "./gear.js";
 import {
   buildObjectEffectChain,
   effectRecordsNeedAim,
   getUseDeviceChance,
-} from "./obj-cmd";
-import { turnEnergy } from "./energy";
-import { isDaytime } from "./world";
-import type { GameState } from "./context";
-import { knownDescOf } from "./describe";
+} from "./obj-cmd.js";
+import { turnEnergy } from "./energy.js";
+import { isDaytime } from "./world.js";
+import type { GameState } from "./context.js";
+import { knownDescOf } from "./describe.js";
 
 /** Registry-only data the engine needs that a GameState does not carry. */
 export interface ObjectInfoExtras {

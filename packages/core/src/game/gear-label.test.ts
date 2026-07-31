@@ -22,20 +22,20 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { TV } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import { floorCarry } from "./floor";
-import { GEAR_LABELS, calcInventory, gearToLabel, invenCarry } from "./gear";
-import { playerPickupItem } from "./pickup";
-import type { PickupDeps } from "./pickup";
-import { makeState } from "./harness";
-import type { GameState } from "./context";
+import { bindConstants } from "../constants.js";
+import { TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import { floorCarry } from "./floor.js";
+import { GEAR_LABELS, calcInventory, gearToLabel, invenCarry } from "./gear.js";
+import { playerPickupItem } from "./pickup.js";
+import type { PickupDeps } from "./pickup.js";
+import { makeState } from "./harness.js";
+import type { GameState } from "./context.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

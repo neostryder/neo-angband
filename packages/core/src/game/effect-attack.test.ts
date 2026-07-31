@@ -1,25 +1,25 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG, PROJ, RF } from "../generated";
+import { EF, MFLAG, PROJ, RF } from "../generated/index.js";
 import {
   EffectRegistry,
   sourceMonster,
   sourcePlayer,
-} from "../effects/interpreter";
-import type { EffectContext } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { loc } from "../loc";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { Dice } from "../dice";
-import type { MonsterRace } from "../mon/types";
-import { addMon, makeRace, makeState, monReg } from "./harness";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import type { CastContext } from "./project-cast";
-import { attachGameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
-import { registerAttackHandlers } from "./effect-attack";
+} from "../effects/interpreter.js";
+import type { EffectContext } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { loc } from "../loc.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { Dice } from "../dice.js";
+import type { MonsterRace } from "../mon/types.js";
+import { addMon, makeRace, makeState, monReg } from "./harness.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import type { CastContext } from "./project-cast.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
+import { registerAttackHandlers } from "./effect-attack.js";
 
 const projections = bindProjections(
   JSON.parse(

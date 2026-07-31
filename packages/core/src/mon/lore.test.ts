@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { MFLAG, RF } from "../generated";
-import { Rng } from "../rng";
-import { blankMonster } from "./monster";
-import { makeRace } from "../game/harness";
+import { MFLAG, RF } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { blankMonster } from "./monster.js";
+import { makeRace } from "../game/harness.js";
 import {
   cheatMonsterLore,
   createMonFlagMask,
@@ -16,8 +16,8 @@ import {
   monsterFlagsKnown,
   newMonsterLore,
   wipeMonsterLore,
-} from "./lore";
-import type { LoreStore } from "./lore";
+} from "./lore.js";
+import type { LoreStore } from "./lore.js";
 
 describe("get_lore (mon-lore.c L1735) and the flag mask", () => {
   it("creates a blank record lazily and reuses it", () => {

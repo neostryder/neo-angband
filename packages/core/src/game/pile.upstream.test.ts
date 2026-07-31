@@ -41,16 +41,16 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { bindConstants } from "../constants";
-import { TV } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import { floorCarry, floorExcise, floorPile } from "./floor";
-import { makeState } from "./harness";
+import { bindConstants } from "../constants.js";
+import { TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import { floorCarry, floorExcise, floorPile } from "./floor.js";
+import { makeState } from "./harness.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

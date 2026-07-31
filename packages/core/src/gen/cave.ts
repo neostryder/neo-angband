@@ -33,18 +33,18 @@
  * as upstream also special-cases it outside the normal builder loop.
  */
 
-import type { Constants } from "../constants";
-import { DUN_PROFILE_ENTRIES, FEAT, ORIGIN, ROOM_ENTRIES, SQUARE } from "../generated";
-import type { Loc } from "../loc";
-import { DDGRID_DDD, loc, locSum } from "../loc";
-import type { Rng } from "../rng";
-import { Chunk, featIsBright } from "../world/chunk";
-import type { FeatureRegistry } from "../world/feature";
-import type { TrapKind } from "../world/trap";
-import type { MakeDeps } from "../obj/make";
-import type { RoomProfile, RoomRegistry } from "./room";
-import { roomBuild, symmetryTransform, vaultChunk } from "./room";
-import { monRestrict, setPitType, spreadMonsters } from "./gen-monster";
+import type { Constants } from "../constants.js";
+import { DUN_PROFILE_ENTRIES, FEAT, ORIGIN, ROOM_ENTRIES, SQUARE } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import { DDGRID_DDD, loc, locSum } from "../loc.js";
+import type { Rng } from "../rng.js";
+import { Chunk, featIsBright } from "../world/chunk.js";
+import type { FeatureRegistry } from "../world/feature.js";
+import type { TrapKind } from "../world/trap.js";
+import type { MakeDeps } from "../obj/make.js";
+import type { RoomProfile, RoomRegistry } from "./room.js";
+import { roomBuild, symmetryTransform, vaultChunk } from "./room.js";
+import { monRestrict, setPitType, spreadMonsters } from "./gen-monster.js";
 import {
   CaveFinder,
   Dun,
@@ -93,7 +93,7 @@ import {
   DIR_W,
   DIR_SE,
   distance,
-} from "./util";
+} from "./util.js";
 
 /* ------------------------------------------------------------------ *
  * Profile types and loading.

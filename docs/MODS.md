@@ -29,14 +29,16 @@ The dividing line (PORT_PLAN.md decisions 17-18) is deliberately sharp:
   the extensibility SEAMS (part of the mod architecture); mods ship the
   features that ride them.
 - **Bundled mods ship in the box**, off on a fresh install and fully removable,
-  each a separate standalone pack (never combined): **neo-linoleum** (an
-  alternative loose-pack tile engine and converter - NOT the source of the
-  game's tile sets, which are core content from `lib/tiles/list.txt`; it adds a
-  second renderer plus one demonstration pack built from the game's own art, and
-  a converted pack is proven to draw pixel-for-pixel what its tilesheet draws; a
-  `tiles` pack, see `docs/LINOLEUM.md` and decision 26), a **QoL mod**
-  (UI quality-of-life), and the **`bug-fixes`** mod (upstream crash/corruption/
-  save/determinism patches; see `docs/modding/BUG_FIXES.md`). They are ordinary
+  each a separate standalone pack (never combined): a **QoL mod** (UI
+  quality-of-life) and the **`bug-fixes`** mod (upstream crash/corruption/
+  save/determinism patches; see `docs/modding/BUG_FIXES.md`).
+  **`neo-linoleum`** - an alternative loose-pack tile engine, NOT the source of
+  the game's tile sets, which are core content from `lib/tiles/list.txt` - is
+  equally first-party but is NOT bundled: it ships all six upstream sets
+  converted to loose packs, 9161 files of art that belongs to the mod, so it
+  lives in its own repository and arrives through the installer. A converted
+  pack is proven to draw pixel-for-pixel what its tilesheet draws
+  (`docs/LINOLEUM.md`, decision 26). The bundled two are ordinary
   mods that happen to ship in the box - proof the seams are real, and the
   reference examples mod authors (and AI agents) learn from.
 - **Cheaty mods are allowed.** A mod may add, patch, replace, or remove
@@ -274,8 +276,9 @@ the documentation alone.
   bundles packs; validation errors point at the offending line of the
   author's JSON.
 - Sample mods maintained in-repo as living documentation and CI-tested
-  against every engine change, so the SDK cannot silently rot. The two
-  bundled mods (neo-linoleum, QoL) are the largest such examples.
+  against every engine change, so the SDK cannot silently rot. The QoL and
+  bug-fixes mods are the largest such examples; neo-linoleum's sources and
+  tests are here too, though the mod itself installs from its own repository.
 - AI-agent accessibility (decision 20): machine-readable JSON Schemas for
   every record type, a generated registry/handler reference, a single-file
   agent context document (an `llms.txt`-style digest of the whole SDK),

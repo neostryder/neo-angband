@@ -1,23 +1,23 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { RF } from "../generated";
-import { FlagSet } from "../bitflag";
-import { Dice } from "../dice";
-import type { RandomValue } from "../rng";
-import { Rng } from "../rng";
-import { loc } from "../loc";
-import { bindMonsters } from "../mon/bind";
-import type { MonsterPackRecords } from "../mon/bind";
-import { blankMonster } from "../mon/monster";
-import type { Monster } from "../mon/monster";
-import { RF_SIZE } from "../mon/types";
-import type { MonsterBlow, MonsterRace } from "../mon/types";
-import { bindPlayer } from "../player/bind";
-import type { PlayerPackRecords } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import type { DefenderState, MonBlowEnv } from "./mon-melee";
-import { monMeleeAttack, monsterCritical, RESOLVED_BLOW_EFFECTS } from "./mon-melee";
+import { RF } from "../generated/index.js";
+import { FlagSet } from "../bitflag.js";
+import { Dice } from "../dice.js";
+import type { RandomValue } from "../rng.js";
+import { Rng } from "../rng.js";
+import { loc } from "../loc.js";
+import { bindMonsters } from "../mon/bind.js";
+import type { MonsterPackRecords } from "../mon/bind.js";
+import { blankMonster } from "../mon/monster.js";
+import type { Monster } from "../mon/monster.js";
+import { RF_SIZE } from "../mon/types.js";
+import type { MonsterBlow, MonsterRace } from "../mon/types.js";
+import { bindPlayer } from "../player/bind.js";
+import type { PlayerPackRecords } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import type { DefenderState, MonBlowEnv } from "./mon-melee.js";
+import { monMeleeAttack, monsterCritical, RESOLVED_BLOW_EFFECTS } from "./mon-melee.js";
 
 function load(name: string): unknown {
   return JSON.parse(

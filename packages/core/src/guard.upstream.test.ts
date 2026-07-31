@@ -16,7 +16,7 @@ import {
   myStristr,
   subGuardi,
   subGuardi16,
-} from "./guard";
+} from "./guard.js";
 
 describe("z-util/guard upstream", () => {
   // C: test_add_guardi

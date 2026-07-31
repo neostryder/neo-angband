@@ -32,9 +32,9 @@
  * die - and it is what keeps a broken bridge from throwing halfway through a save.
  */
 
-import { FileType, HostDir } from "./io";
-import type { WriteOutcome } from "./io";
-import type { RawFs } from "./raw";
+import { FileType, HostDir } from "./io.js";
+import type { WriteOutcome } from "./io.js";
+import type { RawFs } from "./raw.js";
 
 /**
  * One synchronous round trip: an operation name and its arguments in, whatever

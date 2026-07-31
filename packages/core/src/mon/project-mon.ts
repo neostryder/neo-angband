@@ -26,18 +26,18 @@
  *   message branch is taken unconditionally, matching an untracked monster.
  */
 
-import { MON_MSG, MON_TMD, PROJ, RF, RSF } from "../generated";
-import type { Loc } from "../loc";
-import type { Rng } from "../rng";
-import type { Monster } from "./monster";
+import { MON_MSG, MON_TMD, PROJ, RF, RSF } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import type { Rng } from "../rng.js";
+import type { Monster } from "./monster.js";
 import {
   monsterHasNonInnateSpells,
   monsterIsLiving,
   monsterIsNonliving,
-} from "./predicate";
-import { monsterWake } from "./take-hit";
-import { MON_TMD_FLG_NOTIFY, monIncTimed } from "./timed";
-import type { MonTimedMessageSink } from "./timed";
+} from "./predicate.js";
+import { monsterWake } from "./take-hit.js";
+import { MON_TMD_FLG_NOTIFY, monIncTimed } from "./timed.js";
+import type { MonTimedMessageSink } from "./timed.js";
 
 /** The player-facing / world-mutating consequences the handlers defer. */
 export interface MonProjectHooks {

@@ -16,12 +16,12 @@
  * become_aware (lore) and the monster-vs-monster witness path.
  */
 
-import { MFLAG, MON_TMD, RSF, TMD } from "../generated";
-import { distance } from "../loc";
-import type { Loc } from "../loc";
-import { los } from "../world/view";
-import { PROJECT, projectable } from "../world/project";
-import { monsterIsSmart, monsterIsStupid } from "../mon/predicate";
+import { MFLAG, MON_TMD, RSF, TMD } from "../generated/index.js";
+import { distance } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { los } from "../world/view.js";
+import { PROJECT, projectable } from "../world/project.js";
+import { monsterIsSmart, monsterIsStupid } from "../mon/predicate.js";
 import {
   RST,
   RST_DAMAGE,
@@ -29,20 +29,20 @@ import {
   monSpellIsInnate,
   testSpells,
   unsetSpells,
-} from "../mon/spell";
-import type { TimedFailLike } from "../obj/object";
-import { ELEM_MAX } from "../obj/types";
-import type { FlagSet } from "../bitflag";
-import { getLore, loreCountU16, loreCountU8 } from "../mon/lore";
-import type { Monster } from "../mon/monster";
-import { squareIsEmpty, squareMonster } from "./context";
-import { squareIsWarded } from "./trap";
-import type { GameState } from "./context";
-import { doMonSpell } from "./mon-cast";
-import type { DoMonSpellDeps } from "./mon-cast";
-import { monsterIsDecoyed } from "./monster-turn";
-import { disturb } from "./player-path";
-import { MDESC_STANDARD, monsterDesc } from "../mon/desc";
+} from "../mon/spell.js";
+import type { TimedFailLike } from "../obj/object.js";
+import { ELEM_MAX } from "../obj/types.js";
+import type { FlagSet } from "../bitflag.js";
+import { getLore, loreCountU16, loreCountU8 } from "../mon/lore.js";
+import type { Monster } from "../mon/monster.js";
+import { squareIsEmpty, squareMonster } from "./context.js";
+import { squareIsWarded } from "./trap.js";
+import type { GameState } from "./context.js";
+import { doMonSpell } from "./mon-cast.js";
+import type { DoMonSpellDeps } from "./mon-cast.js";
+import { monsterIsDecoyed } from "./monster-turn.js";
+import { disturb } from "./player-path.js";
+import { MDESC_STANDARD, monsterDesc } from "../mon/desc.js";
 
 /** Extra configuration for make_ranged_attack beyond the do_mon_spell deps. */
 export interface MakeRangedAttackConfig {

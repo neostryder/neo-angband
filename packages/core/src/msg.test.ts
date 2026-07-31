@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { COLOUR_DARK, COLOUR_ORANGE, COLOUR_WHITE } from "./color";
-import { GameEvents } from "./events";
-import { MSG_GENERIC, MessageLog, Messages } from "./msg";
-import { MSG } from "./generated/message";
+import { COLOUR_DARK, COLOUR_ORANGE, COLOUR_WHITE } from "./color.js";
+import { GameEvents } from "./events.js";
+import { MSG_GENERIC, MessageLog, Messages } from "./msg.js";
+import { MSG } from "./generated/message.js";
 
 describe("MessageLog", () => {
   it("stores newest-first with age access", () => {

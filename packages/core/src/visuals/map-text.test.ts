@@ -8,9 +8,9 @@ import {
   COLOUR_VIOLET,
   COLOUR_WHITE,
   COLOUR_YELLOW,
-} from "../color";
-import { monsterGlyph, playerGlyph } from "./map-text";
-import type { MonsterGlyphInput } from "./map-text";
+} from "../color.js";
+import { monsterGlyph, playerGlyph } from "./map-text.js";
+import type { MonsterGlyphInput } from "./map-text.js";
 
 /** A plain monster over a plain floor: no display flags, no options. */
 function base(over: Partial<MonsterGlyphInput> = {}): MonsterGlyphInput {

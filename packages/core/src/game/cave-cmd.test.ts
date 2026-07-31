@@ -1,17 +1,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { FEAT, MFLAG, MON_TMD, SQUARE, TV } from "../generated";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import type { Rng } from "../rng";
-import { SKILL } from "../player/types";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make";
-import type { MakeDeps } from "../obj/make";
-import { tvalIsMoney } from "../obj/object";
-import { OptionState } from "../player/options";
+import { bindConstants } from "../constants.js";
+import { FEAT, MFLAG, MON_TMD, SQUARE, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import type { Rng } from "../rng.js";
+import { SKILL } from "../player/types.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make.js";
+import type { MakeDeps } from "../obj/make.js";
+import { tvalIsMoney } from "../obj/object.js";
+import { OptionState } from "../player/options.js";
 import {
   DIGGING,
   calcDiggingChances,
@@ -21,13 +21,13 @@ import {
   countFeats,
   squareIsOpenDoor,
   squareIsUnlockedDoor,
-} from "./cave-cmd";
-import { floorCarry, floorPile } from "./floor";
-import { squareMemorize } from "./known";
-import { createDefaultRegistry, processPlayer } from "./player-turn";
-import { addMon, makeRace, makeState } from "./harness";
-import type { GameState } from "./context";
-import type { PlayerCommand } from "./context";
+} from "./cave-cmd.js";
+import { floorCarry, floorPile } from "./floor.js";
+import { squareMemorize } from "./known.js";
+import { createDefaultRegistry, processPlayer } from "./player-turn.js";
+import { addMon, makeRace, makeState } from "./harness.js";
+import type { GameState } from "./context.js";
+import type { PlayerCommand } from "./context.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

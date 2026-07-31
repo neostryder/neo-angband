@@ -33,36 +33,36 @@
  * mutations (chp, is_dead) write back through it to the live player/state.
  */
 
-import { PF, TMD } from "../generated";
-import { DIR_TARGET } from "../effects/interpreter";
-import { DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc";
-import type { Loc } from "../loc";
-import { monsterIsVisible } from "../mon/predicate";
-import { PROJECT, project } from "../world/project";
+import { PF, TMD } from "../generated/index.js";
+import { DIR_TARGET } from "../effects/interpreter.js";
+import { DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { monsterIsVisible } from "../mon/predicate.js";
+import { PROJECT, project } from "../world/project.js";
 import type {
   BoltStep,
   Projection,
   ProjectHooks,
   ProjectParams,
-} from "../world/project";
-import { los, squareIsView } from "../world/view";
-import type { ProjectionInfo } from "../world/projection";
-import type { DamageReduction } from "../player/take-hit";
-import { monsterMax } from "./context";
-import type { GameState } from "./context";
-import { destroyDecoy, monsterGetTarget } from "./effect-mon-origin";
-import { projectMonster } from "./project-monster";
-import type { ProjectMonsterHooks } from "./project-monster";
-import { updateSmartLearn } from "../mon/spell";
-import { buildSmartLearnEnv } from "./mon-cast";
-import { projectPlayer } from "./project-player";
-import { projectObject } from "./project-obj";
-import { projectFeature } from "./project-feat";
-import { squareIsBelievedWall } from "./known";
-import type { PlayerProjActor, ProjectPlayerHooks } from "./project-player";
+} from "../world/project.js";
+import { los, squareIsView } from "../world/view.js";
+import type { ProjectionInfo } from "../world/projection.js";
+import type { DamageReduction } from "../player/take-hit.js";
+import { monsterMax } from "./context.js";
+import type { GameState } from "./context.js";
+import { destroyDecoy, monsterGetTarget } from "./effect-mon-origin.js";
+import { projectMonster } from "./project-monster.js";
+import type { ProjectMonsterHooks } from "./project-monster.js";
+import { updateSmartLearn } from "../mon/spell.js";
+import { buildSmartLearnEnv } from "./mon-cast.js";
+import { projectPlayer } from "./project-player.js";
+import { projectObject } from "./project-obj.js";
+import { projectFeature } from "./project-feat.js";
+import { squareIsBelievedWall } from "./known.js";
+import type { PlayerProjActor, ProjectPlayerHooks } from "./project-player.js";
 
 /** option.c: op_ptr->hitpoint_warn default (0..9). Canonical in player/options. */
-import { DEFAULT_HITPOINT_WARN } from "../player/options";
+import { DEFAULT_HITPOINT_WARN } from "../player/options.js";
 export { DEFAULT_HITPOINT_WARN };
 
 /**
@@ -156,7 +156,7 @@ export interface CastContext {
    * trap and door effects). When absent, PROJECT.ITEM / PROJECT.GRID
    * projections skip objects and terrain (the pre-#20/#21 behaviour).
    */
-  worldEnv?: import("./project-feat").ProjectFeatEnv;
+  worldEnv?: import("./project-feat.js").ProjectFeatEnv;
 }
 
 /**

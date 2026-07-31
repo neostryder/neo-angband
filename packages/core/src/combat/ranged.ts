@@ -21,30 +21,30 @@
  * RNG draws are byte-identical to the standard path.
  */
 
-import type { Rng } from "../rng";
-import type { Brand, Slay } from "../obj/types";
-import type { GameObject } from "../obj/object";
-import type { Monster } from "../mon/monster";
-import type { Player } from "../player/player";
-import { OF } from "../generated";
-import { SKILL } from "../player/types";
-import { objectWeightOne, tvalIsAmmo } from "../obj/object";
-import type { CritActor, HitType } from "./hit";
+import type { Rng } from "../rng.js";
+import type { Brand, Slay } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
+import type { Monster } from "../mon/monster.js";
+import type { Player } from "../player/player.js";
+import { OF } from "../generated/index.js";
+import { SKILL } from "../player/types.js";
+import { objectWeightOne, tvalIsAmmo } from "../obj/object.js";
+import type { CritActor, HitType } from "./hit.js";
 import {
   BTH_PLUS_ADJ,
   applyDeadliness,
   criticalShot,
   oCriticalShot,
   testHit,
-} from "./hit";
-import type { PlayerCombatState } from "./melee";
+} from "./hit.js";
+import type { PlayerCombatState } from "./melee.js";
 import {
   getMonsterBrandMultiplier,
   improveAttackModifier,
   objectToDam,
   objectToHit,
-} from "./brand-slay";
-import type { AttackModifier } from "./brand-slay";
+} from "./brand-slay.js";
+import type { AttackModifier } from "./brand-slay.js";
 
 /** The outcome of a single ranged attack resolution. */
 export interface RangedAttackResult {

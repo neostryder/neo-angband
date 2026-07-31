@@ -10,10 +10,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { FileMode, FileType, HostDir } from "./io";
-import { RawFsHost } from "./raw";
-import type { RawFs } from "./raw";
-import { isHostDir, rawFsOverTransport, serveRawFs } from "./bridge";
+import { FileMode, FileType, HostDir } from "./io.js";
+import { RawFsHost } from "./raw.js";
+import type { RawFs } from "./raw.js";
+import { isHostDir, rawFsOverTransport, serveRawFs } from "./bridge.js";
 
 /** A minimal in-memory RawFs, standing in for the real filesystem. */
 function memRaw(): RawFs {

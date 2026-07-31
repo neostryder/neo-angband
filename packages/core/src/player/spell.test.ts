@@ -1,16 +1,16 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { TV } from "../generated";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { bindPlayer } from "./bind";
-import type { PlayerPackRecords } from "./bind";
-import { blankPlayer } from "./player";
-import type { Player } from "./player";
-import { Rng } from "../rng";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
+import { bindConstants } from "../constants.js";
+import { TV } from "../generated/index.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { bindPlayer } from "./bind.js";
+import type { PlayerPackRecords } from "./bind.js";
+import { blankPlayer } from "./player.js";
+import type { Player } from "./player.js";
+import { Rng } from "../rng.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
 import {
   PY_SPELL,
   adj_mag_fail,
@@ -30,7 +30,7 @@ import {
   spellOkayToCast,
   spellOkayToStudy,
   playerRestoreMana,
-} from "./spell";
+} from "./spell.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

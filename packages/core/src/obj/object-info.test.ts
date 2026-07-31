@@ -1,16 +1,16 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { Rng } from "../rng";
-import { TV, RF } from "../generated";
-import { startGame } from "../session/game";
-import type { GamePack } from "../session/game";
-import { objectPrep } from "./make";
-import { objectInfoTextblock, type ObjectInfoExtras } from "../game/object-inspect";
-import { textblockToString } from "./object-info";
-import { OBJ_NOTICE, playerLearnAllRunes } from "./knowledge";
-import { ORIGIN } from "../generated/origins";
-import type { GameObject } from "./object";
-import type { GameState } from "../game/context";
+import { Rng } from "../rng.js";
+import { TV, RF } from "../generated/index.js";
+import { startGame } from "../session/game.js";
+import type { GamePack } from "../session/game.js";
+import { objectPrep } from "./make.js";
+import { objectInfoTextblock, type ObjectInfoExtras } from "../game/object-inspect.js";
+import { textblockToString } from "./object-info.js";
+import { OBJ_NOTICE, playerLearnAllRunes } from "./knowledge.js";
+import { ORIGIN } from "../generated/origins.js";
+import type { GameObject } from "./object.js";
+import type { GameState } from "../game/context.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

@@ -16,19 +16,19 @@
  * upstream process_monsters loop nests it.
  */
 
-import { MFLAG, MON_TMD, RF } from "../generated";
-import type { Monster } from "../mon/monster";
-import { monsterIsMimicking } from "../mon/predicate";
-import { turnEnergy } from "./energy";
-import type { GameState } from "./context";
-import { updateMonsterDistances } from "./context";
-import { monDecTimed, monsterEffectLevel } from "../mon/timed";
-import { getNonplayerHitDeps, monsterTakeTerrainDamage } from "./mon-death";
+import { MFLAG, MON_TMD, RF } from "../generated/index.js";
+import type { Monster } from "../mon/monster.js";
+import { monsterIsMimicking } from "../mon/predicate.js";
+import { turnEnergy } from "./energy.js";
+import type { GameState } from "./context.js";
+import { updateMonsterDistances } from "./context.js";
+import { monDecTimed, monsterEffectLevel } from "../mon/timed.js";
+import { getNonplayerHitDeps, monsterTakeTerrainDamage } from "./mon-death.js";
 import {
   monsterCheckActive,
   monsterTurn,
   processMonsterTimed,
-} from "./monster-turn";
+} from "./monster-turn.js";
 
 /** regen_monster: heal 1/100 of max hp per regeneration (doubled by REGEN). */
 export function regenMonster(mon: Monster, num: number): void {

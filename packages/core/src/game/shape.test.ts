@@ -1,30 +1,30 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, ELEM, MON_TMD, OF, PF } from "../generated";
-import { OBJ_MOD } from "../generated";
-import { loc } from "../loc";
-import { Rng } from "../rng";
-import { EffectRegistry, sourcePlayer } from "../effects/interpreter";
-import type { EffectContext } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { SKILL } from "../player/types";
-import { calcBonuses } from "../player/calcs";
-import { blankMonster } from "../mon/monster";
-import { monIncTimed, monSetTimed } from "../mon/timed";
-import type { MonShapeHooks } from "../mon/timed";
-import { addMon, makeRace, makeState, plReg } from "./harness";
-import type { GameState } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import { attachGameEnv } from "./effect-game-env";
-import { registerGeneralHandlers } from "./effect-general";
+import { EF, ELEM, MON_TMD, OF, PF } from "../generated/index.js";
+import { OBJ_MOD } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { Rng } from "../rng.js";
+import { EffectRegistry, sourcePlayer } from "../effects/interpreter.js";
+import type { EffectContext } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { SKILL } from "../player/types.js";
+import { calcBonuses } from "../player/calcs.js";
+import { blankMonster } from "../mon/monster.js";
+import { monIncTimed, monSetTimed } from "../mon/timed.js";
+import type { MonShapeHooks } from "../mon/timed.js";
+import { addMon, makeRace, makeState, plReg } from "./harness.js";
+import type { GameState } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import { registerGeneralHandlers } from "./effect-general.js";
 import {
   playerGetResumeNormalShape,
   playerIsShapechanged,
   playerResumeNormalShape,
-} from "./obj-cmd";
-import { monsterChangeShape, monsterRevertShape } from "./mon-shape";
+} from "./obj-cmd.js";
+import { monsterChangeShape, monsterRevertShape } from "./mon-shape.js";
 
 const projections = bindProjections(
   (

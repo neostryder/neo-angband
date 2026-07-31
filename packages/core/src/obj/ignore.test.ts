@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ITYPE, TV } from "../generated";
-import { Rng } from "../rng";
-import { ObjRegistry } from "./bind";
-import type { ObjPackJson } from "./types";
-import { objectNew } from "./object";
-import type { GameObject } from "./object";
-import type { EgoItem } from "./types";
-import { OBJ_NOTICE } from "./knowledge";
+import { ITYPE, TV } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { ObjRegistry } from "./bind.js";
+import type { ObjPackJson } from "./types.js";
+import { objectNew } from "./object.js";
+import type { GameObject } from "./object.js";
+import type { EgoItem } from "./types.js";
+import { OBJ_NOTICE } from "./knowledge.js";
 import {
   IGNORE,
   IgnoreSettings,
@@ -16,7 +16,7 @@ import {
   ignoreLevelOf,
   ignoreTypeOf,
   objectIsIgnored,
-} from "./ignore";
+} from "./ignore.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

@@ -23,9 +23,9 @@
  * calcMana), so msp/csp are left at 0 here and populated there.
  */
 
-import type { Rng } from "../rng";
-import { HIST, STAT } from "../generated";
-import { TMD } from "../generated";
+import type { Rng } from "../rng.js";
+import { HIST, STAT } from "../generated/index.js";
+import { TMD } from "../generated/index.js";
 import {
   calcBlows,
   calcHitpoints,
@@ -33,22 +33,22 @@ import {
   calcStatIndices,
   modifyStatValue,
   statUseToIndex,
-} from "./calcs";
-import { blankPlayer } from "./player";
-import type { Player } from "./player";
-import type { OptionState } from "./options";
-import { historyAddFull } from "./history";
-import { rollHp } from "./exp";
-import { STAT_MAX } from "./types";
+} from "./calcs.js";
+import { blankPlayer } from "./player.js";
+import type { Player } from "./player.js";
+import type { OptionState } from "./options.js";
+import { historyAddFull } from "./history.js";
+import { rollHp } from "./exp.js";
+import { STAT_MAX } from "./types.js";
 import type {
   HistoryChart,
   PlayerBody,
   PlayerClass,
   PlayerRace,
   StartItem,
-} from "./types";
-import type { FlavorKnowledge } from "../obj/knowledge";
-import type { ObjectKind } from "../obj/types";
+} from "./types.js";
+import type { FlavorKnowledge } from "../obj/knowledge.js";
+import type { ObjectKind } from "../obj/types.js";
 
 /** z_info->start_gold (constants.txt). */
 export const START_GOLD = 600;

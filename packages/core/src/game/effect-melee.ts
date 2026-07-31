@@ -23,45 +23,45 @@
  * EF_SINGLE_COMBAT rides arena levels (not modelled, #24).
  */
 
-import { EF, MON_MSG, TMD } from "../generated";
-import { PROJECT } from "../world/project";
-import type { Loc } from "../loc";
-import { CLOCKWISE_GRID, DDGRID, DDGRID_DDD, distance, loc, locDiff, locSum } from "../loc";
-import { DIR_TARGET, effectCalculateValue } from "../effects/interpreter";
+import { EF, MON_MSG, TMD } from "../generated/index.js";
+import { PROJECT } from "../world/project.js";
+import type { Loc } from "../loc.js";
+import { CLOCKWISE_GRID, DDGRID, DDGRID_DDD, distance, loc, locDiff, locSum } from "../loc.js";
+import { DIR_TARGET, effectCalculateValue } from "../effects/interpreter.js";
 import type {
   EffectHandler,
   EffectHandlerContext,
   EffectRegistry,
-} from "../effects/interpreter";
-import type { Monster } from "../mon/monster";
+} from "../effects/interpreter.js";
+import type { Monster } from "../mon/monster.js";
 import {
   monsterIsLiving,
   monsterIsObvious,
   monsterIsUndead,
   monsterIsVisible,
-} from "../mon/predicate";
-import { getLore } from "../mon/lore";
-import { monTakeHit } from "../mon/take-hit";
-import { pyAttackReal } from "../combat/melee";
-import { learnBrandSlayFromMelee } from "../combat/brand-slay";
-import { equipLearnOnMeleeAttack } from "../obj/knowledge";
-import type { GameState } from "./context";
-import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context";
-import { gameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
+} from "../mon/predicate.js";
+import { getLore } from "../mon/lore.js";
+import { monTakeHit } from "../mon/take-hit.js";
+import { pyAttackReal } from "../combat/melee.js";
+import { learnBrandSlayFromMelee } from "../combat/brand-slay.js";
+import { equipLearnOnMeleeAttack } from "../obj/knowledge.js";
+import type { GameState } from "./context.js";
+import { arenaInterceptDeath, deleteMonster, movePlayer, squareMonster } from "./context.js";
+import { gameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
 import {
   formatMonsterMessage,
   formatPainMessage,
   formatPainMessageShowDamage,
-} from "./mon-message";
-import { castProjection, playerCastSource } from "./project-cast";
-import { squareIsPlayerTrap, squareIsWebbed } from "./trap";
+} from "./mon-message.js";
+import { castProjection, playerCastSource } from "./project-cast.js";
+import { squareIsPlayerTrap, squareIsWebbed } from "./trap.js";
 import {
   TARGET,
   targetGetMonster,
   targetSetClosest,
   targetSetMonster,
-} from "./target";
+} from "./target.js";
 
 /** msg() over the effect context's optional message sink. */
 function say(ctx: EffectHandlerContext, text: string): void {

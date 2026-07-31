@@ -10,8 +10,8 @@ import {
   assertCodecId,
   findCodec,
   stripCodec,
-} from "./compress";
-import type { SaveCodec } from "./compress";
+} from "./compress.js";
+import type { SaveCodec } from "./compress.js";
 
 /** A reversible stand-in: byte-wise complement, so the body is not plain JSON. */
 const flip: SaveCodec = {

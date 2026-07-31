@@ -18,8 +18,8 @@ import {
   locOffset,
   locSum,
   randLoc,
-} from "./loc";
-import { Rng } from "./rng";
+} from "./loc.js";
+import { Rng } from "./rng.js";
 
 describe("loc primitives", () => {
   it("constructs and compares", () => {

@@ -21,24 +21,24 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bindConstants } from "../constants";
-import { FEAT, OBJ_MOD, TV } from "../generated";
-import { loc } from "../loc";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectPrep } from "../obj/make";
-import type { GameObject } from "../obj/object";
-import { playerBestDiggerDigging } from "../player/best-digger";
-import { calcBonuses } from "../player/calcs";
-import { SKILL } from "../player/types";
-import { Rng } from "../rng";
-import { installCaveCommands } from "./cave-cmd";
-import type { GameState } from "./context";
-import { gearAdd, gearGet, wieldSlot } from "./gear";
-import { findPath } from "./player-path";
-import { createDefaultRegistry, processPlayer } from "./player-turn";
-import { GRANITE, makeState, plReg } from "./harness";
-import { squareMemorize } from "./known";
+import { bindConstants } from "../constants.js";
+import { FEAT, OBJ_MOD, TV } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectPrep } from "../obj/make.js";
+import type { GameObject } from "../obj/object.js";
+import { playerBestDiggerDigging } from "../player/best-digger.js";
+import { calcBonuses } from "../player/calcs.js";
+import { SKILL } from "../player/types.js";
+import { Rng } from "../rng.js";
+import { installCaveCommands } from "./cave-cmd.js";
+import type { GameState } from "./context.js";
+import { gearAdd, gearGet, wieldSlot } from "./gear.js";
+import { findPath } from "./player-path.js";
+import { createDefaultRegistry, processPlayer } from "./player-turn.js";
+import { GRANITE, makeState, plReg } from "./harness.js";
+import { squareMemorize } from "./known.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

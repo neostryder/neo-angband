@@ -5,19 +5,19 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { Rng } from "../rng";
-import { bindPlayer } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import { KF, TV } from "../generated";
-import { OBJ_NOTICE } from "./knowledge";
-import { ObjRegistry } from "./bind";
-import type { ObjPackJson, ObjectKind } from "./types";
-import { objectNew } from "./object";
-import { makeRuneEnv } from "./knowledge";
-import type { RuneEnv } from "./knowledge";
-import type { KnownDesc } from "./known-object";
-import { ODESC, objectDesc } from "./desc";
+import { Rng } from "../rng.js";
+import { bindPlayer } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import { KF, TV } from "../generated/index.js";
+import { OBJ_NOTICE } from "./knowledge.js";
+import { ObjRegistry } from "./bind.js";
+import type { ObjPackJson, ObjectKind } from "./types.js";
+import { objectNew } from "./object.js";
+import { makeRuneEnv } from "./knowledge.js";
+import type { RuneEnv } from "./knowledge.js";
+import type { KnownDesc } from "./known-object.js";
+import { ODESC, objectDesc } from "./desc.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(

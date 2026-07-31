@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { GameEvents } from "../events";
-import { MSG } from "../generated/message";
+import { GameEvents } from "../events.js";
+import { MSG } from "../generated/message.js";
 import {
   SoundEngine,
   djb2Hash,
   messageLookupByName,
-} from "./engine";
-import { SOUND_PREF_ENTRIES } from "./sound-prefs-data";
-import { SoundStatus } from "./types";
-import type { SoundData, SoundFileType, SoundHooks } from "./types";
+} from "./engine.js";
+import { SOUND_PREF_ENTRIES } from "./sound-prefs-data.js";
+import { SoundStatus } from "./types.js";
+import type { SoundData, SoundFileType, SoundHooks } from "./types.js";
 
 /** A deterministic RNG seam that returns a fixed index. */
 function fixedRandint0(value: number) {

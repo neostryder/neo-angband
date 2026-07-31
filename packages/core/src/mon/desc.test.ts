@@ -5,10 +5,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { FlagSet } from "../bitflag";
-import { RF } from "../generated";
-import { loc } from "../loc";
-import { MFLAG } from "../generated";
+import { FlagSet } from "../bitflag.js";
+import { RF } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { MFLAG } from "../generated/index.js";
 import {
   MDESC,
   MDESC_DIED_FROM,
@@ -17,11 +17,11 @@ import {
   getMonName,
   monsterDesc,
   pluralAux,
-} from "./desc";
-import { blankMonster } from "./monster";
-import type { Monster } from "./monster";
-import { RF_SIZE } from "./types";
-import type { MonsterRace } from "./types";
+} from "./desc.js";
+import { blankMonster } from "./monster.js";
+import type { Monster } from "./monster.js";
+import { RF_SIZE } from "./types.js";
+import type { MonsterRace } from "./types.js";
 
 /** A minimal race carrying just what monster_desc reads. */
 function race(

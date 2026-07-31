@@ -8,9 +8,9 @@ import {
   cmdSetArg,
   cmdVerb,
   makeCommand,
-} from "./cmd";
-import type { Command } from "./cmd";
-import { loc } from "./loc";
+} from "./cmd.js";
+import type { Command } from "./cmd.js";
+import { loc } from "./loc.js";
 
 describe("command metadata", () => {
   it("mirrors the upstream game_cmds table", () => {

@@ -12,35 +12,35 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FlagSet } from "../bitflag";
-import { RF, TV } from "../generated";
-import { Rng } from "../rng";
-import { getLore } from "../mon/lore";
-import type { LoreStore } from "../mon/lore";
-import { bindMonsters } from "../mon/bind";
-import type { MonsterPackRecords } from "../mon/bind";
-import { RF_SIZE } from "../mon/types";
-import type { MonsterRace } from "../mon/types";
-import { ObjRegistry } from "../obj/bind";
-import type { ObjPackJson } from "../obj/types";
-import { objectNew } from "../obj/object";
-import type { GameObject } from "../obj/object";
+import { FlagSet } from "../bitflag.js";
+import { RF, TV } from "../generated/index.js";
+import { Rng } from "../rng.js";
+import { getLore } from "../mon/lore.js";
+import type { LoreStore } from "../mon/lore.js";
+import { bindMonsters } from "../mon/bind.js";
+import type { MonsterPackRecords } from "../mon/bind.js";
+import { RF_SIZE } from "../mon/types.js";
+import type { MonsterRace } from "../mon/types.js";
+import { ObjRegistry } from "../obj/bind.js";
+import type { ObjPackJson } from "../obj/types.js";
+import { objectNew } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
 import {
   makeRuneEnv,
   playerKnowsBrand,
   playerKnowsSlay,
-} from "../obj/knowledge";
-import type { RuneEnv } from "../obj/knowledge";
-import { bindPlayer } from "../player/bind";
-import type { PlayerPackRecords } from "../player/bind";
-import { blankPlayer } from "../player/player";
-import type { Player } from "../player/player";
-import type { AttackModifier, BrandSlayLearnTarget, TempBrandSlay } from "./brand-slay";
+} from "../obj/knowledge.js";
+import type { RuneEnv } from "../obj/knowledge.js";
+import { bindPlayer } from "../player/bind.js";
+import type { PlayerPackRecords } from "../player/bind.js";
+import { blankPlayer } from "../player/player.js";
+import type { Player } from "../player/player.js";
+import type { AttackModifier, BrandSlayLearnTarget, TempBrandSlay } from "./brand-slay.js";
 import {
   improveAttackModifier,
   learnBrandSlayFromMelee,
   learnBrandSlayFromThrow,
-} from "./brand-slay";
+} from "./brand-slay.js";
 
 function load(name: string): unknown {
   return JSON.parse(

@@ -1,21 +1,21 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, MFLAG, SQUARE, TF } from "../generated";
-import { loc, locEq } from "../loc";
-import { EffectRegistry, sourcePlayer } from "../effects/interpreter";
-import type { EffectContext } from "../effects/interpreter";
-import { registerCoreHandlers } from "../effects/handlers";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { addMon, makeRace, makeState } from "./harness";
-import type { GameState } from "./context";
-import { arenaInterceptDeath } from "./context";
-import { basicPlayerActor } from "./project-cast";
-import { attachGameEnv } from "./effect-game-env";
-import { registerMeleeHandlers } from "./effect-melee";
-import { targetSetMonster } from "./target";
-import { startGame } from "../session/game";
-import type { GamePack } from "../session/game";
+import { EF, MFLAG, SQUARE, TF } from "../generated/index.js";
+import { loc, locEq } from "../loc.js";
+import { EffectRegistry, sourcePlayer } from "../effects/interpreter.js";
+import type { EffectContext } from "../effects/interpreter.js";
+import { registerCoreHandlers } from "../effects/handlers.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { addMon, makeRace, makeState } from "./harness.js";
+import type { GameState } from "./context.js";
+import { arenaInterceptDeath } from "./context.js";
+import { basicPlayerActor } from "./project-cast.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import { registerMeleeHandlers } from "./effect-melee.js";
+import { targetSetMonster } from "./target.js";
+import { startGame } from "../session/game.js";
+import type { GamePack } from "../session/game.js";
 
 const projections = bindProjections(
   (

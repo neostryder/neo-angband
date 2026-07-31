@@ -24,35 +24,35 @@
  * project_player_drain_stats (no sustain, always "You're not as %s...").
  */
 
-import { ELEM, OF, PF, PROJ, STAT, TMD } from "../generated";
-import { DDGRID_DDD, locEq, locSum } from "../loc";
-import { SKILL, STAT_MAX } from "../player/types";
-import type { ProjectionInfo } from "../world/projection";
-import type { TimedEffect } from "../player/types";
-import { playerIncCheck, playerIncTimed } from "../player/timed";
-import type { PlayerIncCheckQueries } from "../player/timed";
-import type { Player } from "../player/player";
-import { playerExpLose, playerStatDec } from "../player/exp";
-import type { ExpDeps } from "../player/exp";
-import { equipLearnFlag } from "../obj/knowledge";
-import { adjustDam } from "../world/projection";
-import { ODESC } from "../obj/desc";
-import { minusAc } from "./gear";
-import { describeObject } from "./describe";
-import type { GameState } from "./context";
+import { ELEM, OF, PF, PROJ, STAT, TMD } from "../generated/index.js";
+import { DDGRID_DDD, locEq, locSum } from "../loc.js";
+import { SKILL, STAT_MAX } from "../player/types.js";
+import type { ProjectionInfo } from "../world/projection.js";
+import type { TimedEffect } from "../player/types.js";
+import { playerIncCheck, playerIncTimed } from "../player/timed.js";
+import type { PlayerIncCheckQueries } from "../player/timed.js";
+import type { Player } from "../player/player.js";
+import { playerExpLose, playerStatDec } from "../player/exp.js";
+import type { ExpDeps } from "../player/exp.js";
+import { equipLearnFlag } from "../obj/knowledge.js";
+import { adjustDam } from "../world/projection.js";
+import { ODESC } from "../obj/desc.js";
+import { minusAc } from "./gear.js";
+import { describeObject } from "./describe.js";
+import type { GameState } from "./context.js";
 import type {
   PlayerProjActor,
   ProjectPlayerSideContext,
-} from "./project-player";
-import { invenDamage } from "./project-obj";
-import { disenchantEquipment } from "./effect-general";
+} from "./project-player.js";
+import { invenDamage } from "./project-obj.js";
+import { disenchantEquipment } from "./effect-general.js";
 import {
   teleportPlayer,
   teleportPlayerLevel,
   teleportPlayerTo,
-} from "./effect-teleport";
-import type { TeleportEnv } from "./effect-teleport";
-import { thrustAway } from "./thrust";
+} from "./effect-teleport.js";
+import type { TeleportEnv } from "./effect-teleport.js";
+import { thrustAway } from "./thrust.js";
 
 /**
  * makeIncCheckQueries: the player_inc_check fail-condition resolvers over the

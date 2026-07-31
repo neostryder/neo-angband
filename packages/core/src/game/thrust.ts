@@ -22,12 +22,12 @@
  * square_isfiery; fire damage itself is the terrain-damage pass on movement.
  */
 
-import { SQUARE } from "../generated";
-import { DDGRID_DDD, loc, locSum } from "../loc";
-import type { Loc } from "../loc";
-import { GET_ANGLE_TO_GRID } from "../world/project";
-import { monsterSwap } from "./context";
-import type { GameState } from "./context";
+import { SQUARE } from "../generated/index.js";
+import { DDGRID_DDD, loc, locSum } from "../loc.js";
+import type { Loc } from "../loc.js";
+import { GET_ANGLE_TO_GRID } from "../world/project.js";
+import { monsterSwap } from "./context.js";
+import type { GameState } from "./context.js";
 
 /** The seams thrust_away needs beyond the GameState. */
 export interface ThrustEnv {

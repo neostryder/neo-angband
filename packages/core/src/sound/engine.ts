@@ -18,10 +18,10 @@
  *    preload loads it as soon as it is assigned to a message.
  */
 
-import type { GameEvents, MessageEventData } from "../events";
-import { MESSAGE_ENTRIES, MSG } from "../generated/message";
-import { SoundStatus, MAX_SOUNDS_PER_MESSAGE } from "./types";
-import type { SoundData, SoundHooks } from "./types";
+import type { GameEvents, MessageEventData } from "../events.js";
+import { MESSAGE_ENTRIES, MSG } from "../generated/message.js";
+import { SoundStatus, MAX_SOUNDS_PER_MESSAGE } from "./types.js";
+import type { SoundData, SoundHooks } from "./types.js";
 
 /** djb2_hash (z-util.c): hash * 33 + c, seeded at 5381, in uint32. */
 export function djb2Hash(str: string): number {

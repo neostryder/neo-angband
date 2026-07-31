@@ -26,16 +26,16 @@
  * confirmation prompt (get_check, UI).
  */
 
-import type { Constants } from "../constants";
-import { EFFECT_ENTRIES, EQUIP_SLOT_ENTRIES, OF, TMD } from "../generated";
-import { DDD } from "../loc";
-import { SKILL } from "../player/types";
-import { EffectBuilder } from "../effects/effect";
-import type { Effect, EffectBuilderInjections } from "../effects/effect";
-import { sourcePlayer } from "../effects/interpreter";
-import type { EffectRegistry } from "../effects/interpreter";
-import type { EffectRecordJson, ObjectKind } from "../obj/types";
-import type { GameObject, StackLimits } from "../obj/object";
+import type { Constants } from "../constants.js";
+import { EFFECT_ENTRIES, EQUIP_SLOT_ENTRIES, OF, TMD } from "../generated/index.js";
+import { DDD } from "../loc.js";
+import { SKILL } from "../player/types.js";
+import { EffectBuilder } from "../effects/effect.js";
+import type { Effect, EffectBuilderInjections } from "../effects/effect.js";
+import { sourcePlayer } from "../effects/interpreter.js";
+import type { EffectRegistry } from "../effects/interpreter.js";
+import type { EffectRecordJson, ObjectKind } from "../obj/types.js";
+import type { GameObject, StackLimits } from "../obj/object.js";
 import {
   objectPackTotal,
   tvalIsEdible,
@@ -52,20 +52,20 @@ import {
   tvalIsWearable,
   tvalCanHaveCharges,
   tvalCanHaveTimeout,
-} from "../obj/object";
+} from "../obj/object.js";
 import {
   FlavorKnowledge,
   NOOP_FLAVOR_AWARE_DEPS,
   buildRuneList,
   objectHasRune,
   playerKnowsRune,
-} from "../obj/knowledge";
-import type { FlavorAwareDeps } from "../obj/knowledge";
-import { ignoreItemOk } from "../obj/ignore";
-import type { GameState, ItemTargetRef, PlayerCommand } from "./context";
-import { dropNear, floorObjectForUse, floorPile } from "./floor";
-import type { FloorEnv } from "./floor";
-import type { TeleportEnv } from "./effect-teleport";
+} from "../obj/knowledge.js";
+import type { FlavorAwareDeps } from "../obj/knowledge.js";
+import { ignoreItemOk } from "../obj/ignore.js";
+import type { GameState, ItemTargetRef, PlayerCommand } from "./context.js";
+import { dropNear, floorObjectForUse, floorPile } from "./floor.js";
+import type { FloorEnv } from "./floor.js";
+import type { TeleportEnv } from "./effect-teleport.js";
 import {
   calcInventory,
   combinePack,
@@ -80,21 +80,21 @@ import {
   packTotalView,
   wieldObject,
   wieldSlot,
-} from "./gear";
-import type { CalcInventoryOpts } from "./gear";
-import { checkForInscrip } from "./pickup";
-import { disturb } from "./player-path";
-import { buildEffectContext } from "./effect-env";
-import type { EffectEnvDeps } from "./effect-env";
-import { attachGameEnv } from "./effect-game-env";
-import { describeObject } from "./describe";
-import { ODESC, objDescNameFormat } from "../obj/desc";
-import { substituteTimedMessage } from "../player/timed";
-import { squareIsSeen } from "../world/view";
-import { updatePlayerObjectKnowledge } from "./known";
-import type { CastContext } from "./project-cast";
-import type { ActionRegistry } from "./player-turn";
-import { targetFix, targetGet, targetOkay, targetRelease } from "./target";
+} from "./gear.js";
+import type { CalcInventoryOpts } from "./gear.js";
+import { checkForInscrip } from "./pickup.js";
+import { disturb } from "./player-path.js";
+import { buildEffectContext } from "./effect-env.js";
+import type { EffectEnvDeps } from "./effect-env.js";
+import { attachGameEnv } from "./effect-game-env.js";
+import { describeObject } from "./describe.js";
+import { ODESC, objDescNameFormat } from "../obj/desc.js";
+import { substituteTimedMessage } from "../player/timed.js";
+import { squareIsSeen } from "../world/view.js";
+import { updatePlayerObjectKnowledge } from "./known.js";
+import type { CastContext } from "./project-cast.js";
+import type { ActionRegistry } from "./player-turn.js";
+import { targetFix, targetGet, targetOkay, targetRelease } from "./target.js";
 
 /** enum use (cmd-obj.c). */
 export const USE = { TIMEOUT: 0, CHARGE: 1, SINGLE: 2 } as const;
@@ -136,11 +136,11 @@ export interface ObjCmdDeps {
   /** Teleport-family seams (trap predicates; wired by game/trap.ts). */
   teleport?: TeleportEnv;
   /** General-handler seams (trap access for glyphs; effect-general.ts). */
-  general?: import("./effect-general").GeneralEffectEnv;
+  general?: import("./effect-general.js").GeneralEffectEnv;
   /** Item-targeting seams (get_item, ego/curse tables; effect-item.ts). */
-  item?: import("./effect-item").ItemEffectEnv;
+  item?: import("./effect-item.js").ItemEffectEnv;
   /** Summoning seams (summon table + live placement; effect-summon.ts). */
-  summon?: import("./effect-summon").SummonEffectEnv;
+  summon?: import("./effect-summon.js").SummonEffectEnv;
   /** Floor-pile seams (isTrap for drop placement). */
   floorEnv?: FloorEnv;
   env?: ObjCmdEnv;

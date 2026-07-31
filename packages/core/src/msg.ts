@@ -14,9 +14,9 @@
  * C's printf-style formatting is dropped; callers use template strings.
  */
 
-import { colorCharToAttr, COLOUR_DARK, COLOUR_WHITE } from "./color";
-import { MSG } from "./generated/message";
-import type { GameEvents } from "./events";
+import { colorCharToAttr, COLOUR_DARK, COLOUR_WHITE } from "./color.js";
+import { MSG } from "./generated/message.js";
+import type { GameEvents } from "./events.js";
 
 /** A message type as it appears at engine call sites or after codegen. */
 export type MessageType = number | string;

@@ -14,13 +14,13 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { startGame } from "./game";
-import type { GamePack } from "./game";
-import { OPTION_ENTRIES } from "../generated/options";
-import { FEAT } from "../generated";
-import { loc } from "../loc";
-import type { Loc } from "../loc";
-import type { GameState } from "../game/context";
+import { startGame } from "./game.js";
+import type { GamePack } from "./game.js";
+import { OPTION_ENTRIES } from "../generated/options.js";
+import { FEAT } from "../generated/index.js";
+import { loc } from "../loc.js";
+import type { Loc } from "../loc.js";
+import type { GameState } from "../game/context.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -183,7 +183,7 @@ describe("RNG neutrality: the empty mod system does not perturb the stream (Phas
      * what faithful core does on its own - so this proves that CALLING a mod does
      * not itself move the stream.
      */
-    const NEUTRAL: import("../mod/hooks").ModHooks = {
+    const NEUTRAL: import("../mod/hooks.js").ModHooks = {
       walkBlockedByDiggable: () => null,
       objectListTiebreak: () => 0,
       levelGenerated: () => true,

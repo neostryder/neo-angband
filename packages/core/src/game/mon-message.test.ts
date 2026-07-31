@@ -9,25 +9,25 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { FlagSet } from "../bitflag";
-import { MFLAG, MON_MSG, MSG, RF } from "../generated";
-import { loc } from "../loc";
-import { blankMonster } from "../mon/monster";
-import type { Monster } from "../mon/monster";
-import { RF_SIZE } from "../mon/types";
+import { FlagSet } from "../bitflag.js";
+import { MFLAG, MON_MSG, MSG, RF } from "../generated/index.js";
+import { loc } from "../loc.js";
+import { blankMonster } from "../mon/monster.js";
+import type { Monster } from "../mon/monster.js";
+import { RF_SIZE } from "../mon/types.js";
 import type {
   MonsterAltMsg,
   MonsterRace,
   MonsterSpell,
   MonsterSpellLevel,
-} from "../mon/types";
+} from "../mon/types.js";
 import {
   formatMonsterMessage,
   formatMonsterMessageShowDamage,
   formatPainMessageShowDamage,
   monMessageSoundType,
   spellMessageText,
-} from "./mon-message";
+} from "./mon-message.js";
 
 function level(overrides: Partial<MonsterSpellLevel>): MonsterSpellLevel {
   return {

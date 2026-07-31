@@ -24,16 +24,16 @@
  * ledgered.
  */
 
-import { EF, FEAT, MFLAG, SQUARE, TF } from "../generated";
-import type { Loc } from "../loc";
-import { loc } from "../loc";
-import { DDGRID_DDD } from "../loc";
+import { EF, FEAT, MFLAG, SQUARE, TF } from "../generated/index.js";
+import type { Loc } from "../loc.js";
+import { loc } from "../loc.js";
+import { DDGRID_DDD } from "../loc.js";
 import type {
   EffectHandler,
   EffectHandlerContext,
   EffectRegistry,
-} from "../effects/interpreter";
-import type { Monster } from "../mon/monster";
+} from "../effects/interpreter.js";
+import type { Monster } from "../mon/monster.js";
 import {
   monsterIsCamouflaged,
   monsterIsEvil,
@@ -42,13 +42,13 @@ import {
   monsterIsInvisible,
   monsterIsLiving,
   monsterIsNotInvisible,
-} from "../mon/predicate";
-import { tvalIsMoney } from "../obj/object";
-import type { GameObject } from "../obj/object";
-import { monsterMax } from "./context";
-import type { GameState } from "./context";
-import { gameEnv } from "./effect-game-env";
-import type { GameEffectEnv } from "./effect-game-env";
+} from "../mon/predicate.js";
+import { tvalIsMoney } from "../obj/object.js";
+import type { GameObject } from "../obj/object.js";
+import { monsterMax } from "./context.js";
+import type { GameState } from "./context.js";
+import { gameEnv } from "./effect-game-env.js";
+import type { GameEffectEnv } from "./effect-game-env.js";
 import {
   squareForget,
   squareKnowPile,
@@ -56,8 +56,8 @@ import {
   squareMemoryBad,
   squareSensePile,
   knownFeat,
-} from "./known";
-import { squareRevealTrap, squareSetDoorLock } from "./trap";
+} from "./known.js";
+import { squareRevealTrap, squareSetDoorLock } from "./trap.js";
 
 /** The clamped detection rectangle around a centre. */
 interface Bounds {

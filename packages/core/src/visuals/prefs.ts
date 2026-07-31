@@ -23,20 +23,20 @@
  * Determinism: no RNG. Parsing and dumping are pure functions of their inputs.
  */
 
-import { colorCharToAttr, colorChannel, colorTextToAttr, COLOR_TABLE, BASIC_COLORS, MAX_COLORS } from "../color";
-import { projNameToIdx } from "../effects/effect";
-import { PARSE_ERROR, PARSER_ERROR_ENTRIES } from "../generated";
-import { tvalFindIdx, tvalFindName } from "../obj/bind";
-import type { ObjRegistry } from "../obj/bind";
-import { messageLookupByName } from "../sound/engine";
-import { lookupTrap } from "../world/trap";
-import type { TrapKind } from "../world/trap";
-import type { FeatureRegistry } from "../world/feature";
-import { GlyphTable } from "./glyph-table";
-import { prefExprBypasses } from "./pref-expr";
-import type { PrefExprVars } from "./pref-expr";
-import { BOLT, LIGHTING, TileMap } from "./tile-prefs";
-import type { TileAtlas, TilePrefsDeps } from "./tile-prefs";
+import { colorCharToAttr, colorChannel, colorTextToAttr, COLOR_TABLE, BASIC_COLORS, MAX_COLORS } from "../color.js";
+import { projNameToIdx } from "../effects/effect.js";
+import { PARSE_ERROR, PARSER_ERROR_ENTRIES } from "../generated/index.js";
+import { tvalFindIdx, tvalFindName } from "../obj/bind.js";
+import type { ObjRegistry } from "../obj/bind.js";
+import { messageLookupByName } from "../sound/engine.js";
+import { lookupTrap } from "../world/trap.js";
+import type { TrapKind } from "../world/trap.js";
+import type { FeatureRegistry } from "../world/feature.js";
+import { GlyphTable } from "./glyph-table.js";
+import { prefExprBypasses } from "./pref-expr.js";
+import type { PrefExprVars } from "./pref-expr.js";
+import { BOLT, LIGHTING, TileMap } from "./tile-prefs.js";
+import type { TileAtlas, TilePrefsDeps } from "./tile-prefs.js";
 
 /* ------------------------------------------------------------------------
  * Shared grammar

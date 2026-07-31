@@ -12,17 +12,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { PLAYER_TIMED_ENTRIES } from "../generated";
-import { bindProjections } from "../world/projection";
-import type { ProjectionRecordJson } from "../world/projection";
-import { EffectBuilder } from "./effect";
-import type { Effect } from "./effect";
+import { PLAYER_TIMED_ENTRIES } from "../generated/index.js";
+import { bindProjections } from "../world/projection.js";
+import type { ProjectionRecordJson } from "../world/projection.js";
+import { EffectBuilder } from "./effect.js";
+import type { Effect } from "./effect.js";
 import {
   effectAvgDamage,
   effectDamages,
   effectMenuName,
   effectProjection,
-} from "./effect-info";
+} from "./effect-info.js";
 
 function packJson<T>(name: string): T[] {
   const parsed = JSON.parse(
