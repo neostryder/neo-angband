@@ -186,20 +186,24 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
     id: "neo-linoleum",
     name: "neo-linoleum",
     repo: "neostryder/neo-angband-mod-linoleum",
-    /* v0.10.0. The two tags before it are both still wrong to pin and for different
-     * reasons, which is why the history is worth keeping here: v0.9.0 points at
-     * content that shipped ONE pack, and v0.9.1 declares `"engine": "4.2.x"` - the
-     * Angband baseline in a field that ranges over the PORT's version - which the
-     * engine gate now evaluates and refuses. Moving either tag instead of cutting a
-     * new one is exactly what pinning a tag rather than a branch exists to prevent. */
-    tag: "v0.10.0",
+    /* v0.11.0, and every tag before it is wrong to pin for a DIFFERENT reason, which
+     * is why the history earns its space here:
+     *   v0.9.0   points at content that shipped one pack, not six.
+     *   v0.9.1   declares `"engine": "4.2.x"` - the Angband baseline in a field that
+     *            ranges over the PORT's version - which the engine gate now refuses.
+     *   v0.10.0  fixes that, but its six tile archives were built by the converter as
+     *            it was before the @rpgm-tools rename, so they are not what a fresh
+     *            conversion produces. Its own CI says so.
+     * Three ways for a pinned tag to be quietly wrong, none of which moving a tag
+     * would fix - which is the argument for pinning one in the first place. */
+    tag: "v0.11.0",
     summary:
       "A second tile engine, and all six of Angband's tile sets converted to its loose-pack format",
     /* Its absence is the game being faithful, not the game being worse: every tile set
      * it converts is already selectable, drawn by the tilesheet engine. And it is a
      * 25 MiB download. So the row starts clear. */
     preChecked: false,
-    approxBytes: 25_780_917,
+    approxBytes: 25_781_010,
     payload: {
       kind: "archive",
       archives: [
@@ -209,31 +213,31 @@ export const RECOMMENDED_MODS: readonly RecommendedMod[] = [
            * which is the packer's determinism claim (tools/pack.mjs) holding on a
            * different day - so their pins below are unchanged. */
           path: "dist/neo-linoleum-mod.zip",
-          sha256: "347002425bce1d445935d108dae77cdb7fa7583b05ed5cc16f7b41bc03ae6fe4",
+          sha256: "9ace556b96596968761b1180a5067bdc7979467ecdfdc38f2bd3a36467eb4c66",
         },
         {
           path: "dist/neo-linoleum-original-tiles.zip",
-          sha256: "8d894e8b657b47b1affbe68640e5304daca76a6a164c2ccab5b72763bc06ae32",
+          sha256: "78cf1842702873617817701d78b305f2bbf1d45710690f273823613752e8ad0b",
         },
         {
           path: "dist/neo-linoleum-adam-bolt.zip",
-          sha256: "ae390e51191096006c1c602c7cdbceaabc217166bbca89c8c2e34c2679df6dde",
+          sha256: "10fe50b2992917238a9569980976b114cf34b64a400e8bcd5899eec397cf8cd2",
         },
         {
           path: "dist/neo-linoleum-gervais.zip",
-          sha256: "a45a1a4758e409e7789dce3ba673c26ac795f38ccdf3b9894e71926c797fc7da",
+          sha256: "1dea2487f6b94753ee94228560f213d40cf70de3996ba42bbe4cedb89af5f6ae",
         },
         {
           path: "dist/neo-linoleum-nomad.zip",
-          sha256: "8349236290be9e4b9d12146006f9d30152525930d64661f997d23b9c41cab023",
+          sha256: "b8a074ac4184fe99e7fd592775a4bc829275e9b1c02b2ba004ba15f03d4ad02c",
         },
         {
           path: "dist/neo-linoleum-shockbolt-dark.zip",
-          sha256: "0c892fdd128d6f6b3673052bb2e36c5d318f0ba81bdd046da1b300e802d4c39f",
+          sha256: "38975c01720bdeb48efe0b327d34ec7f39d7b7f40723d2c9d3ac17da57aa3835",
         },
         {
           path: "dist/neo-linoleum-shockbolt-light.zip",
-          sha256: "087aa80e370bd4d5d79c4c5a9ffd5828e06908b7a3caddd02b82cd7c6fb1ae8b",
+          sha256: "9e0b27f41005e5730702b8de264c2cbfd1c269973b3e440eb25d119a5bb62213",
         },
       ],
     },
