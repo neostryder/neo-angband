@@ -146,16 +146,15 @@ Honest list, so nobody wastes a report on something already written down:
   display-lever inventory.
 - **No subwindows.** Upstream can put the monster list, messages, and inventory
   in separate terminal windows; the port is one surface.
-- **There is no mod catalogue to browse and install from yet.** What works
-  today: the two bundled mods (`qol`, `bug-fixes`) are fully manageable, the
-  download catalogue knows about `neo-linoleum` with verified digests, and the
-  mod manager's *Choose a mods folder...* row reads mods from a folder on your
-  computer - in the browser
-  build too, not just on the desktop (Chrome/Edge; Firefox and Safari cannot
-  pick a directory, so those stay bundled-only). What is missing is the
-  one-click "install this recommended mod" front end. Neither surface has a
-  runtime *code* loader, so a scripted-plugin mod still has to be bundled; a
-  folder of records is data, and composes like a bundled pack. Full matrix in
+- **Mods install, but the catalogue in this build is short.** The mod manager's
+  *Install a mod...* row downloads from the mod's own repository at a pinned tag
+  and verifies every file against a SHA-256 that ships inside the game, so a
+  tampered or truncated download never becomes an installed mod. Today it offers
+  `neo-linoleum`; `qol` and `bug-fixes` are still bundled with the app and are
+  moving to the same route. *Choose a mods folder...* also reads mods from a
+  folder on your computer, in the browser build as well as on the desktop
+  (Chrome/Edge only - Firefox and Safari cannot hand a directory over, which is
+  why the download route matters). Full matrix in
   [docs/INSTALL.md](docs/INSTALL.md).
 - The save format is pre-1.0 and may still change between versions. Export
   anything you care about.
