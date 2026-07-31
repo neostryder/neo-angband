@@ -11,10 +11,10 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { distance } from "../think";
-import { GOAL_DARK } from "../world/model";
-import { BORG_LIGHT, BORG_VIEW } from "../world/grid";
+import type { BorgContext } from "../context.js";
+import { distance } from "../think.js";
+import { GOAL_DARK } from "../world/model.js";
+import { BORG_LIGHT, BORG_VIEW } from "../world/grid.js";
 import {
   AUTO_MAX_X,
   AUTO_MAX_Y,
@@ -25,7 +25,7 @@ import {
   ddy_ddd,
   featIsTrapHolding,
   trait,
-} from "./flow-consts";
+} from "./flow-consts.js";
 import {
   borgCanDig,
   borgFlowClear,
@@ -36,13 +36,13 @@ import {
   computeFear,
   dataIdx,
   type FlowState,
-} from "./flow";
+} from "./flow.js";
 import {
   borgFlowFarFromStairs,
   borgFlowFarFromStairsDist,
   borgGetLeash,
-} from "./flow-misc";
-import { syncStairsFromMap } from "./flow-stairs";
+} from "./flow-misc.js";
+import { syncStairsFromMap } from "./flow-stairs.js";
 
 /**
  * borg_flow_dark_interesting (borg-flow-dark.c): is (x, y) worth exploring --

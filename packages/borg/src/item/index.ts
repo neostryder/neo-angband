@@ -21,19 +21,19 @@
  * - Identity (svals.ts): SVAL table + TV; seams (deps.ts): ItemDeps.
  */
 
-export * from "./svals";
+export * from "./svals.js";
 /* deps.ts holds mostly internal helpers (trait/danger/itemLevel/... imported
  * directly by the item modules). Only the public seam + slot/device helpers are
  * re-exported; `trait` in particular is NOT (it also lives in flow/think, so a
  * flat root re-export would clash). */
-export type { ItemDeps } from "./deps";
-export { borgSlot, hasSlot, deviceFail } from "./deps";
-export * from "./magic";
-export * from "./item-use";
-export * from "./item-id";
-export * from "./item-decurse";
-export * from "./item-enchant";
-export * from "./light";
-export * from "./recover";
-export * from "./junk";
-export * from "./item-wear";
+export type { ItemDeps } from "./deps.js";
+export { borgSlot, hasSlot, deviceFail } from "./deps.js";
+export * from "./magic.js";
+export * from "./item-use.js";
+export * from "./item-id.js";
+export * from "./item-decurse.js";
+export * from "./item-enchant.js";
+export * from "./light.js";
+export * from "./recover.js";
+export * from "./junk.js";
+export * from "./item-wear.js";

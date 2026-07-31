@@ -21,13 +21,13 @@ export {
   borgDangerOneKill,
   borgDangerPhysical,
   borgDangerSpell,
-} from "./danger";
+} from "./danger.js";
 
-export * from "./tables";
-export * from "./facts";
-export * from "./globals";
-export * from "./fear";
-export * from "./state";
+export * from "./tables.js";
+export * from "./facts.js";
+export * from "./globals.js";
+export * from "./fear.js";
+export * from "./state.js";
 
 /* Geometry helpers, excluding names that also live in the flow/think subsystems
  * (trait, ddx_ddd, ddy_ddd, distance, borgCaveFloorBold, borgCaveFloorGrid) to
@@ -43,4 +43,4 @@ export {
   borgIncMotion,
   borgProjectable,
   borgProjectablePure,
-} from "./geometry";
+} from "./geometry.js";

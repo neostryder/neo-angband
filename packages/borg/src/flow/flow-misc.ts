@@ -17,16 +17,16 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { distance } from "../think";
+import type { BorgContext } from "../context.js";
+import { distance } from "../think.js";
 import {
   GOAL_MISC,
   GOAL_RECOVER,
   GOAL_TAKE,
   GOAL_VAULT,
   GOAL_XTRA,
-} from "../world/model";
-import { BORG_GLOW, BORG_VIEW } from "../world/grid";
+} from "../world/model.js";
+import { BORG_GLOW, BORG_VIEW } from "../world/grid.js";
 import {
   AUTO_MAX_X,
   AUTO_MAX_Y,
@@ -40,7 +40,7 @@ import {
   ddy_ddd,
   inBoundsFully,
   trait,
-} from "./flow-consts";
+} from "./flow-consts.js";
 import {
   borgCanDig,
   borgFlowClear,
@@ -50,8 +50,8 @@ import {
   borgFlowSpread,
   dataIdx,
   type FlowState,
-} from "./flow";
-import { borgFlowCostStair, syncStairsFromMap } from "./flow-stairs";
+} from "./flow.js";
+import { borgFlowCostStair, syncStairsFromMap } from "./flow-stairs.js";
 
 /** borg_get_leash (borg-flow-misc.c): how far to roam from the stairs. */
 export function borgGetLeash(ctx: BorgContext, flow: FlowState, pickUp: boolean): number {

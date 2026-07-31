@@ -17,9 +17,9 @@
  */
 
 import { RSF } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import type { BorgKill } from "../world/kill";
-import { MONBLOW } from "./tables";
+import type { BorgContext } from "../context.js";
+import type { BorgKill } from "../world/kill.js";
+import { MONBLOW } from "./tables.js";
 
 /** One melee blow of a race (r_ptr->blow[k]): dice/sides and its MONBLOW kind. */
 export interface BlowFacts {

@@ -10,9 +10,9 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { distance } from "../think";
-import { AUTO_MAX_X, AUTO_MAX_Y, BI, FEAT, trait } from "./flow-consts";
+import type { BorgContext } from "../context.js";
+import { distance } from "../think.js";
+import { AUTO_MAX_X, AUTO_MAX_Y, BI, FEAT, trait } from "./flow-consts.js";
 import {
   borgFlowClear,
   borgFlowCommit,
@@ -21,7 +21,7 @@ import {
   borgFlowSpread,
   dataIdx,
   type FlowState,
-} from "./flow";
+} from "./flow.js";
 
 /**
  * Rebuild track_less / track_more from the remembered map. Faithful to the set

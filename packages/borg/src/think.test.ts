@@ -8,8 +8,8 @@
 
 import { describe, expect, it } from "vitest";
 import { FEAT } from "@neo-angband/core";
-import { createBorg } from "./controller";
-import { makeScenarioView, makeFakeActions } from "./harness";
+import { createBorg } from "./controller.js";
+import { makeScenarioView, makeFakeActions } from "./harness.js";
 
 describe("borg_think dispatch", () => {
   it("yields (null) when the player is dead", () => {

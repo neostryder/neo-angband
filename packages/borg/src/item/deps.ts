@@ -17,8 +17,8 @@
  * defaulting to 0 (no danger), per the P8.5 architecture note - never imported.
  */
 
-import type { BorgContext, ItemView } from "./types";
-import { BI } from "../trait/trait-index";
+import type { BorgContext, ItemView } from "./types.js";
+import { BI } from "../trait/trait-index.js";
 
 /** borg.trait[bi], default 0 before borg_notice has run. */
 export function trait(ctx: BorgContext, bi: BI): number {

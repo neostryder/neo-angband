@@ -12,12 +12,12 @@ import type {
   StoreView,
   StoreItemView,
 } from "@neo-angband/core";
-import { BorgWorld } from "../world/model";
-import { makeScenarioView, makeFakeActions } from "../harness";
-import { makeBorgRng } from "../rng";
-import type { BorgContext } from "../context";
-import { BI } from "../trait/trait-index";
-import { TV, SVAL } from "../item/svals";
+import { BorgWorld } from "../world/model.js";
+import { makeScenarioView, makeFakeActions } from "../harness.js";
+import { makeBorgRng } from "../rng.js";
+import type { BorgContext } from "../context.js";
+import { BI } from "../trait/trait-index.js";
+import { TV, SVAL } from "../item/svals.js";
 import {
   BORG_HOME,
   SHOP_TEMPLE,
@@ -36,7 +36,7 @@ import {
   borgThinkHomeGrabUseless,
   borgThinkHomeSellUseful,
   borgChooseShop,
-} from "./index";
+} from "./index.js";
 
 /**
  * A partial where every field may also be explicitly undefined. SVAL table

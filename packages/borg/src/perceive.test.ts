@@ -8,15 +8,15 @@
 
 import { describe, expect, it } from "vitest";
 import { FEAT } from "@neo-angband/core";
-import { BorgWorld } from "./world/model";
-import { perceive, makePerceiveMemo, BORG_EXPIRE_TURNS } from "./perceive";
-import { borgReactMessages } from "./perceive-messages";
-import { borgNearMonsterType } from "./perceive-facts";
-import { borgNotice, BI } from "./trait";
-import { getFightState } from "./fight";
-import { makeScenarioView, makeFakeActions } from "./harness";
-import { makeBorgRng } from "./rng";
-import type { BorgContext } from "./context";
+import { BorgWorld } from "./world/model.js";
+import { perceive, makePerceiveMemo, BORG_EXPIRE_TURNS } from "./perceive.js";
+import { borgReactMessages } from "./perceive-messages.js";
+import { borgNearMonsterType } from "./perceive-facts.js";
+import { borgNotice, BI } from "./trait/index.js";
+import { getFightState } from "./fight/index.js";
+import { makeScenarioView, makeFakeActions } from "./harness.js";
+import { makeBorgRng } from "./rng.js";
+import type { BorgContext } from "./context.js";
 
 /** Build a primed context (perceive + notice run) for a scenario. */
 function makeCtx(scenario: Parameters<typeof makeScenarioView>[0]): {

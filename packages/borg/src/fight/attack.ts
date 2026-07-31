@@ -30,8 +30,8 @@
 
 import type { AgentCommand, ItemView } from "@neo-angband/core";
 import { RSF } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import type { MonsterFacts } from "../danger";
+import type { BorgContext } from "../context.js";
+import type { MonsterFacts } from "../danger/index.js";
 import {
   borgDanger,
   borgDangerOneKill,
@@ -40,7 +40,7 @@ import {
   borgProjectablePure,
   borgIncMotion,
   MONBLOW,
-} from "../danger";
+} from "../danger/index.js";
 import {
   BI,
   CLASS_MAGE,
@@ -50,13 +50,13 @@ import {
   CLASS_ROGUE,
   CLASS_RANGER,
   CLASS_PALADIN,
-} from "../trait/trait-index";
-import { trait } from "../item/deps";
-import type { BorgKill } from "../world/kill";
-import { FEAT, borgCaveFloorGrid } from "../flow/flow-consts";
-import { GOAL_KILL } from "../world/model";
-import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid";
-import { TV, SVAL } from "../item/svals";
+} from "../trait/trait-index.js";
+import { trait } from "../item/deps.js";
+import type { BorgKill } from "../world/kill.js";
+import { FEAT, borgCaveFloorGrid } from "../flow/flow-consts.js";
+import { GOAL_KILL } from "../world/model.js";
+import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid.js";
+import { TV, SVAL } from "../item/svals.js";
 import {
   Spell,
   borgSpell,
@@ -66,7 +66,7 @@ import {
   borgSpellLegal,
   borgSpellLegalFail,
   borgGetSpellPower,
-} from "../item/magic";
+} from "../item/magic.js";
 import {
   borgAimWand,
   borgZapRod,
@@ -80,12 +80,12 @@ import {
   borgActivateDragon,
   borgEquipsDragon,
   borgActivateFailure,
-} from "../item/item-use";
-import { borgSlot } from "../item/deps";
-import { borgExtractDir } from "../flow/flow-consts";
-import { getFightState, idiv, iabs, type FightState } from "./state";
-import { BA, BF, BTH_PLUS_ADJ } from "./bf";
-import { borgOffsetProjectable, borgTarget } from "./projection";
+} from "../item/item-use.js";
+import { borgSlot } from "../item/deps.js";
+import { borgExtractDir } from "../flow/flow-consts.js";
+import { getFightState, idiv, iabs, type FightState } from "./state.js";
+import { BA, BF, BTH_PLUS_ADJ } from "./bf.js";
+import { borgOffsetProjectable, borgTarget } from "./projection.js";
 
 /* ---------------------------------------------------------------- *
  * Small shared readers

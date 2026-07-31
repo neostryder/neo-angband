@@ -17,11 +17,11 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { distance } from "../think";
-import { GOAL_DIGGING, GOAL_KILL } from "../world/model";
-import { BORG_VIEW } from "../world/grid";
-import { AUTO_MAX_X, AUTO_MAX_Y, BI, FEAT, trait } from "./flow-consts";
+import type { BorgContext } from "../context.js";
+import { distance } from "../think.js";
+import { GOAL_DIGGING, GOAL_KILL } from "../world/model.js";
+import { BORG_VIEW } from "../world/grid.js";
+import { AUTO_MAX_X, AUTO_MAX_Y, BI, FEAT, trait } from "./flow-consts.js";
 import {
   borgCanDig,
   borgFlowClear,
@@ -30,9 +30,9 @@ import {
   borgFlowOld,
   borgFlowSpread,
   type FlowState,
-} from "./flow";
-import { borgFlowFarFromStairs, nearestUpStair } from "./flow-misc";
-import { syncStairsFromMap } from "./flow-stairs";
+} from "./flow.js";
+import { borgFlowFarFromStairs, nearestUpStair } from "./flow-misc.js";
+import { syncStairsFromMap } from "./flow-stairs.js";
 
 /**
  * borg_flow_kill (borg-flow-kill.c): flow toward a monster worth engaging.

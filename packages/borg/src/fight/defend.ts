@@ -18,9 +18,9 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { BI } from "../trait/trait-index";
-import { trait } from "../item/deps";
+import type { BorgContext } from "../context.js";
+import { BI } from "../trait/trait-index.js";
+import { trait } from "../item/deps.js";
 import {
   borgDanger,
   borgDangerOneKill,
@@ -28,18 +28,18 @@ import {
   getFearCaches,
   borgProjectable,
   borgLos,
-} from "../danger";
-import { borgCaveFloorBold } from "../danger/geometry";
-import { FEAT } from "../flow/flow-consts";
-import { BORG_GLOW } from "../world/grid";
-import { TV, SVAL } from "../item/svals";
+} from "../danger/index.js";
+import { borgCaveFloorBold } from "../danger/geometry.js";
+import { FEAT } from "../flow/flow-consts.js";
+import { BORG_GLOW } from "../world/grid.js";
+import { TV, SVAL } from "../item/svals.js";
 import {
   Spell,
   borgSpell,
   borgSpellFail,
   borgSpellOkayFail,
   borgHeroismLevel,
-} from "../item/magic";
+} from "../item/magic.js";
 import {
   borgEquipsItem,
   borgActivateItem,
@@ -53,13 +53,13 @@ import {
   borgReadScroll,
   borgEat,
   borgAimWand,
-} from "../item/item-use";
-import { borgSlot } from "../item/deps";
-import { getFightState, idiv, type FightState } from "./state";
-import { BA } from "./bf";
-import { borgLaunchBolt } from "./attack";
-import { borgCautionTeleport } from "./escape";
-import type { Temp } from "../world/model";
+} from "../item/item-use.js";
+import { borgSlot } from "../item/deps.js";
+import { getFightState, idiv, type FightState } from "./state.js";
+import { BA } from "./bf.js";
+import { borgLaunchBolt } from "./attack.js";
+import { borgCautionTeleport } from "./escape.js";
+import type { Temp } from "../world/model.js";
 
 /* enum BD_* (defend.c:65). */
 enum BD {

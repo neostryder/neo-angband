@@ -21,11 +21,11 @@
  */
 
 import { FEAT } from "@neo-angband/core";
-import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid";
-import type { BorgGrid } from "../world/grid";
-import type { BorgWorld } from "../world/model";
-import { BI } from "../trait/trait-index";
-import type { DangerGlobals } from "./globals";
+import { AUTO_MAX_X, AUTO_MAX_Y } from "../world/grid.js";
+import type { BorgGrid } from "../world/grid.js";
+import type { BorgWorld } from "../world/model.js";
+import { BI } from "../trait/trait-index.js";
+import type { DangerGlobals } from "./globals.js";
 
 /** Read a derived trait, defaulting to 0 when the self-model has not set it. */
 export function trait(world: BorgWorld, bi: number): number {

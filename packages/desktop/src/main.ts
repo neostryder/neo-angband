@@ -35,20 +35,20 @@ import {
   serveRawFs,
 } from "@neo-angband/core/host";
 import { NodeRawFs } from "@neo-angband/cli/host-node";
-import { LAUNCH_MODULES } from "./modules";
+import { LAUNCH_MODULES } from "./modules.js";
 import {
   HOST_BRIDGE_CHANNEL,
   HOST_INFO_CHANNEL,
   HOST_QUIT_CHANNEL,
   HOST_SHELL_LIMITS,
-} from "./bridge-channel";
-import type { HostBridgeInfo } from "./bridge-channel";
-import { checkWritable, resolveDataBase } from "./data-dir";
-import { PORT_ENV, rememberLoopbackPort, resolveLoopbackPort } from "./loopback-port";
-import { planOriginMerge } from "./origin-merge";
-import { ORIGIN_PROBE_ROUTE, planRequest } from "./routes";
-import type { OriginSnapshot } from "./origin-merge";
-import { readWindowState, startPlacement, writeWindowState } from "./window-state";
+} from "./bridge-channel.js";
+import type { HostBridgeInfo } from "./bridge-channel.js";
+import { checkWritable, resolveDataBase } from "./data-dir.js";
+import { PORT_ENV, rememberLoopbackPort, resolveLoopbackPort } from "./loopback-port.js";
+import { planOriginMerge } from "./origin-merge.js";
+import { ORIGIN_PROBE_ROUTE, planRequest } from "./routes.js";
+import type { OriginSnapshot } from "./origin-merge.js";
+import { readWindowState, startPlacement, writeWindowState } from "./window-state.js";
 
 /**
  * Where the renderer bundle is, which differs between a checkout and a package.

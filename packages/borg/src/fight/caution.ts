@@ -19,13 +19,13 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { BI, CLASS_MAGE, CLASS_PRIEST, CLASS_PALADIN } from "../trait/trait-index";
-import { trait } from "../item/deps";
-import { borgDanger, getDangerGlobals } from "../danger";
-import { FEAT, ddx_ddd, ddy_ddd } from "../flow/flow-consts";
-import { TV, SVAL } from "../item/svals";
-import { Spell, borgSpell, borgSpellFail } from "../item/magic";
+import type { BorgContext } from "../context.js";
+import { BI, CLASS_MAGE, CLASS_PRIEST, CLASS_PALADIN } from "../trait/trait-index.js";
+import { trait } from "../item/deps.js";
+import { borgDanger, getDangerGlobals } from "../danger/index.js";
+import { FEAT, ddx_ddd, ddy_ddd } from "../flow/flow-consts.js";
+import { TV, SVAL } from "../item/svals.js";
+import { Spell, borgSpell, borgSpellFail } from "../item/magic.js";
 import {
   borgQuaffPotion,
   borgQuaffCrit,
@@ -39,11 +39,11 @@ import {
   borgActivateItem,
   borgZapRod,
   borgActivateFailure,
-} from "../item/item-use";
-import { borgSlot } from "../item/deps";
-import { getFightState, idiv } from "./state";
-import { borgSurrounded, borgEscape } from "./escape";
-import { borgDefend } from "./defend";
+} from "../item/item-use.js";
+import { borgSlot } from "../item/deps.js";
+import { getFightState, idiv } from "./state.js";
+import { borgSurrounded, borgEscape } from "./escape.js";
+import { borgDefend } from "./defend.js";
 
 function av(ctx: BorgContext): number {
   return getDangerGlobals(ctx.world).avoidance;

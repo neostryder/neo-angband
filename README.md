@@ -147,8 +147,10 @@ Honest list, so nobody wastes a report on something already written down:
 - **No subwindows.** Upstream can put the monster list, messages, and inventory
   in separate terminal windows; the port is one surface.
 - **There is no mod catalogue to browse and install from yet.** What works
-  today: the bundled mods are fully manageable, and the mod manager's *Choose a
-  mods folder...* row reads mods from a folder on your computer - in the browser
+  today: the two bundled mods (`qol`, `bug-fixes`) are fully manageable, the
+  download catalogue knows about `neo-linoleum` with verified digests, and the
+  mod manager's *Choose a mods folder...* row reads mods from a folder on your
+  computer - in the browser
   build too, not just on the desktop (Chrome/Edge; Firefox and Safari cannot
   pick a directory, so those stay bundled-only). What is missing is the
   one-click "install this recommended mod" front end. Neither surface has a
@@ -168,6 +170,7 @@ Honest list, so nobody wastes a report on something already written down:
 | `packages/web` | Web + PWA front-end (v1 target) |
 | `packages/cli` | Terminal front-end and dev/parity harness |
 | `packages/desktop` | Optional Electron desktop wrapper |
+| `packages/mcp` | [MCP server](docs/MCP.md): an AI client plays the game through the frozen agent API |
 | `packages/linoleum` | Linoleum tile-pack converter (neo-linoleum) |
 | `packages/borg` | The bundled Borg autoplayer mod |
 | `docs/` | Port documentation (plan, architecture, parity, mods) |

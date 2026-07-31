@@ -14,18 +14,18 @@
  * the when_call_light / when_wizard_light timers are preserved exactly.
  */
 
-import type { BorgContext, ItemView, AgentCommand } from "./types";
-import { BI } from "../trait/trait-index";
-import { CLASS_NECROMANCER } from "../trait/trait-index";
-import { TV, SVAL } from "./svals";
-import type { ItemDeps } from "./deps";
-import { trait, borgSlot, clockOf } from "./deps";
-import { hasFlag } from "../trait/item-util";
+import type { BorgContext, ItemView, AgentCommand } from "./types.js";
+import { BI } from "../trait/trait-index.js";
+import { CLASS_NECROMANCER } from "../trait/trait-index.js";
+import { TV, SVAL } from "./svals.js";
+import type { ItemDeps } from "./deps.js";
+import { trait, borgSlot, clockOf } from "./deps.js";
+import { hasFlag } from "../trait/item-util.js";
 import {
   Spell,
   borgSpellFail,
   borgSpellOkayFail,
-} from "./magic";
+} from "./magic.js";
 import {
   borgActivateItem,
   borgZapRod,
@@ -33,7 +33,7 @@ import {
   borgReadScroll,
   borgEquipsRod,
   borgAimWand,
-} from "./item-use";
+} from "./item-use.js";
 
 /** enum borg_need (borg-item-use.h:31). */
 export enum BorgNeed {

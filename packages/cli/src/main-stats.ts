@@ -16,14 +16,14 @@
 
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { loadGamePack } from "./pack";
+import { loadGamePack } from "./pack.js";
 import {
   DEFAULT_STATS_PARAMS,
   runStatsBatch,
   serializeReport,
   summarizeReport,
-} from "./stats";
-import type { StatsParams } from "./stats";
+} from "./stats.js";
+import type { StatsParams } from "./stats.js";
 import {
   DEFAULT_DISCONNECT_PARAMS,
   DEFAULT_OBJ_MON_PARAMS,
@@ -31,7 +31,7 @@ import {
   disconnectStats,
   objMonStats,
   pitStats,
-} from "./wiz-stats";
+} from "./wiz-stats.js";
 
 type WizMode = "objmon" | "pits" | "disconnect" | null;
 

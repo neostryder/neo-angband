@@ -13,7 +13,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { FileMode, HostDir, RawFsHost, rawFsOverTransport, serveRawFs } from "@neo-angband/core";
-import { NodeHost, NodeRawFs } from "./host-node";
+import { NodeHost, NodeRawFs } from "./host-node.js";
 
 let base: string;
 

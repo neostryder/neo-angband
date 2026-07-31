@@ -30,10 +30,10 @@
  * declutter/optimise decisions function without any seam.
  */
 
-import type { BorgContext } from "../context";
+import type { BorgContext } from "../context.js";
 import type { ItemView, StoreView, StoreItemView } from "@neo-angband/core";
-import { BI } from "../trait/trait-index";
-import { TV, SVAL, type BorgSvalTable } from "../item/svals";
+import { BI } from "../trait/trait-index.js";
+import { TV, SVAL, type BorgSvalTable } from "../item/svals.js";
 
 /* ------------------------------------------------------------------ *
  * Fixed store identities (borg-store.h:31, borg-think-store.c, borg-store-buy.c).

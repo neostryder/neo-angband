@@ -18,13 +18,13 @@
  * The port expresses these via noticeHome({ items, includeEquip }).
  */
 
-import type { BorgContext } from "../context";
+import type { BorgContext } from "../context.js";
 import type { ItemView, StoreItemView } from "@neo-angband/core";
-import { BI } from "../trait/trait-index";
+import { BI } from "../trait/trait-index.js";
 import { STAT_MAX, STAT_STR, STAT_INT, STAT_WIS, STAT_DEX, STAT_CON,
-  CLASS_WARRIOR, spellStatForClass } from "../trait/trait-index";
-import { hasFlag, mod, resLevel } from "../trait/item-util";
-import { TV, SVAL } from "../item/svals";
+  CLASS_WARRIOR, spellStatForClass } from "../trait/trait-index.js";
+import { hasFlag, mod, resLevel } from "../trait/item-util.js";
+import { TV, SVAL } from "../item/svals.js";
 import {
   type StoreDeps,
   type HomeExtras,
@@ -34,7 +34,7 @@ import {
   needsIdent,
   homeWares,
   DEFAULT_MAX_STACK,
-} from "./store";
+} from "./store.js";
 
 /* ------------------------------------------------------------------ *
  * The counts borg_notice_home derives (borg-home-notice.c:39-138).

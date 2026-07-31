@@ -5,19 +5,19 @@
  *
  * This is the human-facing view of the same comparison the parity-c vitest
  * asserts. Usage:
- *   node --import ./register.mjs dist/main-cparity.js [runs] [depthMax]
+ *   node dist/main-cparity.js [runs] [depthMax]
  */
 
 import { pathToFileURL } from "node:url";
-import { loadGamePack } from "./pack";
-import { runStatsBatch, type StatsReport } from "./stats";
+import { loadGamePack } from "./pack.js";
+import { runStatsBatch, type StatsReport } from "./stats.js";
 import {
   loadCBaseline,
   compareReports,
   formatCompareResult,
   STATISTICAL_TOLERANCE,
-} from "./baseline";
-import { C_RECORD_METRICS, C_SCALAR_METRICS } from "./c-stats";
+} from "./baseline.js";
+import { C_RECORD_METRICS, C_SCALAR_METRICS } from "./c-stats.js";
 
 /** Keep only the depths <= depthMax so the depth sets match for comparison. */
 function sliceDepths(report: StatsReport, depthMax: number): StatsReport {

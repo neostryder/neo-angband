@@ -26,7 +26,7 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
-import type { DepthMetrics, StatsReport } from "./stats";
+import type { DepthMetrics, StatsReport } from "./stats.js";
 
 /** Per-metric tolerance: a value passes if within max(abs, rel*|baseline|). */
 export interface Tolerance {

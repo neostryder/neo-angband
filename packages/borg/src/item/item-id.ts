@@ -9,10 +9,10 @@
  * borg_item_note_needs_id is ported as a predicate over the knowledge seams.
  */
 
-import type { BorgContext, ItemView, AgentCommand } from "./types";
-import { BI } from "../trait/trait-index";
-import { TV, SVAL } from "./svals";
-import type { ItemDeps } from "./deps";
+import type { BorgContext, ItemView, AgentCommand } from "./types.js";
+import { BI } from "../trait/trait-index.js";
+import { TV, SVAL } from "./svals.js";
+import type { ItemDeps } from "./deps.js";
 import {
   trait,
   danger,
@@ -20,9 +20,9 @@ import {
   isAware,
   itemValue,
   needsIdent,
-} from "./deps";
-import { Spell, borgSpell, borgSpellLegal } from "./magic";
-import { borgReadScroll } from "./item-use";
+} from "./deps.js";
+import { Spell, borgSpell, borgSpellLegal } from "./magic.js";
+import { borgReadScroll } from "./item-use.js";
 
 /**
  * borg_item_note_needs_id (id.c:145): the item still has unknown runes. Without

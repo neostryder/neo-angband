@@ -15,8 +15,8 @@
  * same approach BorgWorld takes for the rest of the upstream globals.
  */
 
-import type { FearCaches } from "./fear";
-import { defaultResolveMonsterFacts, type FactsResolver } from "./facts";
+import type { FearCaches } from "./fear.js";
+import { defaultResolveMonsterFacts, type FactsResolver } from "./facts.js";
 
 /** The subset of BORG spell ids the danger physical-blow branches test. */
 export const BORG_SPELL = {

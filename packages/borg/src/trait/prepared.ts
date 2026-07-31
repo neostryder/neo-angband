@@ -13,7 +13,7 @@
  * the stock borg_kills_uniques = false.
  */
 
-import type { BorgContext } from "../context";
+import type { BorgContext } from "../context.js";
 import {
   BI,
   CLASS_WARRIOR,
@@ -26,9 +26,9 @@ import {
   CLASS_MAGE,
   CLASS_NECROMANCER,
   spellStatForClass,
-} from "./trait-index";
-import { resolveOpts, type BorgTraitOpts, type ResolvedOpts } from "./config";
-import { getDerived, has, type BorgDerived } from "./state";
+} from "./trait-index.js";
+import { resolveOpts, type BorgTraitOpts, type ResolvedOpts } from "./config.js";
+import { getDerived, has, type BorgDerived } from "./state.js";
 
 /**
  * borg_prepared - is the Borg ready to dive to `depth`? Returns the blocking

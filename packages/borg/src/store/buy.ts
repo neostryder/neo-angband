@@ -15,14 +15,14 @@
  * (Step 6) decisions function without seams.
  */
 
-import type { BorgContext } from "../context";
+import type { BorgContext } from "../context.js";
 import type { ItemView, StoreItemView, AgentCommand } from "@neo-angband/core";
 import {
   BI,
   CLASS_PRIEST, CLASS_PALADIN, CLASS_DRUID, CLASS_RANGER, CLASS_MAGE, CLASS_ROGUE,
-} from "../trait/trait-index";
-import { hasFlag } from "../trait/item-util";
-import { TV, SVAL } from "../item/svals";
+} from "../trait/trait-index.js";
+import { hasFlag } from "../trait/item-util.js";
+import { TV, SVAL } from "../item/svals.js";
 import {
   type StoreDeps,
   type BuySim,
@@ -40,14 +40,14 @@ import {
   homeWares,
   recordBought,
   createStoreMemory,
-} from "./store";
+} from "./store.js";
 import {
   borgNoticeHome,
   borgPowerHomeFrom,
   noticeHomeEmpty,
   noticeHomeFull,
   noticeHomeSingle,
-} from "./home";
+} from "./home.js";
 
 /* ------------------------------------------------------------------ *
  * Wield-slot detection (borg_wield_slot proxy).

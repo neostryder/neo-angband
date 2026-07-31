@@ -15,11 +15,11 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { distance } from "../think";
-import { GOAL_TAKE } from "../world/model";
-import { BORG_VIEW } from "../world/grid";
-import { BI, trait } from "./flow-consts";
+import type { BorgContext } from "../context.js";
+import { distance } from "../think.js";
+import { GOAL_TAKE } from "../world/model.js";
+import { BORG_VIEW } from "../world/grid.js";
+import { BI, trait } from "./flow-consts.js";
 import {
   borgFlowClear,
   borgFlowCommit,
@@ -27,13 +27,13 @@ import {
   borgFlowOld,
   borgFlowSpread,
   type FlowState,
-} from "./flow";
+} from "./flow.js";
 import {
   borgFlowFarFromStairs,
   borgGetLeash,
   nearestUpStair,
-} from "./flow-misc";
-import { borgFlowCostStair, syncStairsFromMap } from "./flow-stairs";
+} from "./flow-misc.js";
+import { borgFlowCostStair, syncStairsFromMap } from "./flow-stairs.js";
 
 /** z_info->quiver_slot_size default; used for the ammo-capacity skip. */
 const QUIVER_SLOT_SIZE = 40;

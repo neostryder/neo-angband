@@ -7,14 +7,14 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loadGamePack } from "./pack";
+import { loadGamePack } from "./pack.js";
 import {
   spoilArtifact,
   spoilMonDesc,
   spoilMonInfo,
   spoilObjDesc,
 } from "@neo-angband/core";
-import { renderSpoiler } from "./main-spoil";
+import { renderSpoiler } from "./main-spoil.js";
 
 const pack = loadGamePack();
 

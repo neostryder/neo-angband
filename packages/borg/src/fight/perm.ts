@@ -8,10 +8,10 @@
  */
 
 import type { AgentCommand } from "@neo-angband/core";
-import type { BorgContext } from "../context";
-import { BI } from "../trait/trait-index";
-import { trait } from "../item/deps";
-import { TV, SVAL } from "../item/svals";
+import type { BorgContext } from "../context.js";
+import { BI } from "../trait/trait-index.js";
+import { trait } from "../item/deps.js";
+import { TV, SVAL } from "../item/svals.js";
 import {
   Spell,
   borgSpell,
@@ -19,15 +19,15 @@ import {
   borgSpellOkayFail,
   borgGetSpellPower,
   borgHeroismLevel,
-} from "../item/magic";
+} from "../item/magic.js";
 import {
   borgEquipsItem,
   borgActivateItem,
   borgQuaffPotion,
-} from "../item/item-use";
-import { borgSlot } from "../item/deps";
-import { getFightState, idiv, type FightState } from "./state";
-import { BORG_GLOW } from "../world/grid";
+} from "../item/item-use.js";
+import { borgSlot } from "../item/deps.js";
+import { getFightState, idiv, type FightState } from "./state.js";
+import { BORG_GLOW } from "../world/grid.js";
 
 /* enum BP_* (perm.c:45). */
 enum BP {

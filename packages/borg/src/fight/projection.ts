@@ -10,9 +10,9 @@
  * is added under danger/).
  */
 
-import type { BorgContext } from "../context";
-import { FEAT, borgCaveFloorGrid } from "../flow/flow-consts";
-import { borgIncMotion } from "../danger";
+import type { BorgContext } from "../context.js";
+import { FEAT, borgCaveFloorGrid } from "../flow/flow-consts.js";
+import { borgIncMotion } from "../danger/index.js";
 
 /** z_info->max_range (20 in 4.2.6); read from the frozen constants when set. */
 function maxRange(ctx: BorgContext): number {

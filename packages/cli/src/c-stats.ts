@@ -47,8 +47,8 @@
  */
 
 import { execFileSync } from "node:child_process";
-import type { DepthMetrics, StatsReport } from "./stats";
-import { emptyDepth } from "./stats";
+import type { DepthMetrics, StatsReport } from "./stats.js";
+import { emptyDepth } from "./stats.js";
 
 /** Which StatsReport metrics the C import populates (for comparison scoping). */
 export const C_SCALAR_METRICS = [

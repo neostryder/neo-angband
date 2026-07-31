@@ -9,18 +9,18 @@
 
 import { describe, expect, it } from "vitest";
 import type { ItemView } from "@neo-angband/core";
-import { BorgWorld } from "../world/model";
-import { perceive, makePerceiveMemo } from "../perceive";
-import { makeScenarioView, makeFakeActions, type Scenario } from "../harness";
-import { makeBorgRng } from "../rng";
-import type { BorgContext } from "../context";
-import { BI } from "../trait/trait-index";
-import type { MonsterFacts } from "../danger";
-import { getDangerGlobals, MONBLOW } from "../danger";
-import { BA } from "./bf";
-import { getFightState } from "./state";
-import { borgThrustDamageOne, borgLaunchDamageOne, borgBestMult, borgAttack } from "./attack";
-import { borgCaution } from "./caution";
+import { BorgWorld } from "../world/model.js";
+import { perceive, makePerceiveMemo } from "../perceive.js";
+import { makeScenarioView, makeFakeActions, type Scenario } from "../harness.js";
+import { makeBorgRng } from "../rng.js";
+import type { BorgContext } from "../context.js";
+import { BI } from "../trait/trait-index.js";
+import type { MonsterFacts } from "../danger/index.js";
+import { getDangerGlobals, MONBLOW } from "../danger/index.js";
+import { BA } from "./bf.js";
+import { getFightState } from "./state.js";
+import { borgThrustDamageOne, borgLaunchDamageOne, borgBestMult, borgAttack } from "./attack.js";
+import { borgCaution } from "./caution.js";
 
 /** Build a seeded BorgContext with trait overrides applied after perceive. */
 function makeCtx(

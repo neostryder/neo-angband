@@ -10,12 +10,12 @@
  * canRest). The paranoia roll uses ctx.rng (deterministic).
  */
 
-import type { BorgContext, AgentCommand } from "./types";
-import { BI } from "../trait/trait-index";
-import { GOAL_RECOVER } from "../world/model";
-import { getDerived, has } from "../trait/state";
-import { SVAL, TV } from "./svals";
-import type { ItemDeps } from "./deps";
+import type { BorgContext, AgentCommand } from "./types.js";
+import { BI } from "../trait/trait-index.js";
+import { GOAL_RECOVER } from "../world/model.js";
+import { getDerived, has } from "../trait/state.js";
+import { SVAL, TV } from "./svals.js";
+import type { ItemDeps } from "./deps.js";
 import {
   trait,
   danger,
@@ -23,8 +23,8 @@ import {
   canRest,
   clockOf,
   borgSlot,
-} from "./deps";
-import { Spell, borgSpell, borgSpellOkay } from "./magic";
+} from "./deps.js";
+import { Spell, borgSpell, borgSpellOkay } from "./magic.js";
 import {
   borgActivateItem,
   borgQuaffCrit,
@@ -33,8 +33,8 @@ import {
   borgEat,
   borgUseStaffFail,
   borgZapRod,
-} from "./item-use";
-import { borgMaintainLight, borgCheckLightOnly, BorgNeed } from "./light";
+} from "./item-use.js";
+import { borgMaintainLight, borgCheckLightOnly, BorgNeed } from "./light.js";
 
 /**
  * borg_recover: try, in the C's exact order, spells/prayers (free), then cheap

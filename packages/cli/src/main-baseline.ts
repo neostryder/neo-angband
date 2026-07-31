@@ -6,9 +6,9 @@
  */
 
 import { pathToFileURL } from "node:url";
-import { loadGamePack } from "./pack";
-import { BASELINE_PARAMS, runStatsBatch, serializeReport } from "./stats";
-import { BASELINE_URL, writeBaseline } from "./baseline";
+import { loadGamePack } from "./pack.js";
+import { BASELINE_PARAMS, runStatsBatch, serializeReport } from "./stats.js";
+import { BASELINE_URL, writeBaseline } from "./baseline.js";
 
 function main(): void {
   const pack = loadGamePack();
