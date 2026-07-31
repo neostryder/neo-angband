@@ -22,9 +22,17 @@ import {
 import { UI_DIM } from "./ui-colors";
 
 /**
- * The Angband baseline this port reproduces, substituted for the file's
- * $VERSION token exactly as the upstream title screen shows it. (The port's own
- * version is reported by the 'V' command, do_cmd_version.)
+ * The Angband baseline this port reproduces.
+ *
+ * This no longer fills news.txt's `$VERSION` slot. The slot sits beside art that
+ * now reads "Neo Angband", so stamping Angband's release number there told the
+ * player the wrong thing about what they were running - and the port's version is
+ * the one that changes, so it is the one worth showing. ENGINE_VERSION takes the
+ * slot; Angband's number moves to ANGBAND_CREDIT, in the grey block at the foot
+ * of the screen where the project's own links already are.
+ *
+ * The substitution stays a substitution either way: NEWS below is still a
+ * verbatim copy of reference/lib/screens/news.txt, token included.
  */
 const BASELINE_VERSION = "4.2.6";
 
@@ -111,10 +119,81 @@ const NEO_COL = 19;
 const NEO_COLOUR = "red";
 
 /**
- * The port's own credit line, below the upstream art. Deliberately separate
- * from the art itself: the art is Angband's, this line is not.
+ * news.txt's last mountain row: the long ground ridge that closes the scene.
+ * The port's credit is inserted directly BELOW it, which pushes everything from
+ * the Morgoth quote down one row.
  */
-const ATTRIBUTION = `Neo Angband ${ENGINE_VERSION} - a port by neostryder / RPGM Tools`;
+const GROUND_ROW = 12;
+
+/**
+ * news.txt's near-blank spacer (fourteen spaces) between the Forums link and the
+ * help line. Angband's credit takes it over rather than being inserted, so the
+ * screen gains exactly ONE row overall and still ends above the prompt on a
+ * 24-row terminal - see titleLines.
+ */
+const SPACER_ROW = 20;
+
+/**
+ * The port's own credit, painted directly under the mountain scene.
+ *
+ * It used to sit at the foot of the screen, one row above the prompt, where it
+ * read as a footnote to Angband's links rather than as whose game this is. The
+ * art is Angband's; this line is not, which is exactly why it belongs against
+ * the title and not buried in the credit block.
+ *
+ * No version number here - it is already beside the title, two rows up.
+ */
+const PORT_CREDIT = "{light slate}A port by neostryder / RPGM Tools{/}";
+
+/**
+ * Angband's own credit, in the grey block at the foot of the screen beside the
+ * links, carrying the baseline release the port reproduces.
+ *
+ * Slate (0x808080) is Angband's own mid-grey, so this is grey by the game's
+ * palette rather than by a CSS colour invented for the web build.
+ *
+ * Deliberately NOT a partial copyright notice: the full statement (Ben Harrison,
+ * James E. Wilson, Robert A. Koeneke, and the licence choice) ships in the
+ * licence files, and a three-name notice trimmed to fit 80 columns would be worse
+ * than a line that points at the real one.
+ */
+const ANGBAND_CREDIT = `{slate}Based on Angband ${BASELINE_VERSION} by the Angband developers{/}`;
+
+/** One painted title row. */
+export interface TitleLine {
+  /** `{colour}...{/}` markup, as news.txt writes it. */
+  markup: string;
+  /**
+   * Centre the line for the terminal width instead of painting from column 0.
+   * news.txt's own rows carry baked-in centring as leading spaces and must NOT
+   * be re-centred; the two lines the port adds have no such padding and must.
+   */
+  centred: boolean;
+}
+
+/**
+ * The full painted screen: news.txt with the port's two credit lines woven in.
+ *
+ * Pure, and separate from the paint loop, so the row budget is checkable without
+ * a terminal. That budget is the thing an edit here breaks silently: NEWS is 22
+ * rows (0-21), the insert after GROUND_ROW makes 23 (0-22), and the prompt sits
+ * at row 23 - so on upstream's 80x24 terminal this fits with nothing to spare.
+ * That is why Angband's credit REPLACES the spacer instead of being inserted:
+ * a second insert would put the help line under the prompt. news.test.ts asserts
+ * the count.
+ */
+export function titleLines(): readonly TitleLine[] {
+  const out: TitleLine[] = [];
+  for (let i = 0; i < NEWS.length; i++) {
+    const raw = NEWS[i] ?? "";
+    out.push({
+      markup: i === SPACER_ROW ? ANGBAND_CREDIT : raw.replace("$VERSION", ENGINE_VERSION),
+      centred: i === SPACER_ROW,
+    });
+    if (i === GROUND_ROW) out.push({ markup: PORT_CREDIT, centred: true });
+  }
+  return out;
+}
 
 /**
  * What the player chose at the title screen. These are main-win.c's File menu
@@ -278,10 +357,18 @@ export function showTitleScreen(
     const paint = (): void => {
       const { cols, rows: height } = term.size();
       term.clear();
-      for (let y = 0; y < NEWS.length && y < height; y++) {
-        const raw = (NEWS[y] ?? "").replace("$VERSION", BASELINE_VERSION);
-        let x = 0;
-        for (const run of parseNewsLine(raw)) {
+      const lines = titleLines();
+      for (let y = 0; y < lines.length && y < height; y++) {
+        const line = lines[y];
+        if (!line) continue;
+        const runs = parseNewsLine(line.markup);
+        /* Centring measures the RUNS, not the markup: a {colour} tag occupies no
+         * columns, so centring on the raw string's length would shift the line
+         * left by the width of its tags. */
+        let x = line.centred
+          ? Math.max(0, Math.floor((cols - runs.reduce((n, r) => n + r.text.length, 0)) / 2))
+          : 0;
+        for (const run of runs) {
           if (x >= cols) break;
           const chunk = run.text.slice(0, cols - x);
           term.print(x, y, chunk, run.css);
@@ -295,13 +382,11 @@ export function showTitleScreen(
         if (y >= height) break;
         term.print(NEO_COL, y, (NEO_ART[i] ?? "").slice(0, Math.max(0, cols - NEO_COL)), neoCss);
       }
-      /* The credit line, then the prompt line on upstream's own row. */
+      /* The prompt line, on upstream's own row. Both credits are part of the
+       * painted screen above (titleLines) rather than being dropped in here, so
+       * there is one place where the layout is decided and one place to check it
+       * against the row budget. */
       promptRow = Math.min(height - 1, 23);
-      const creditRow = promptRow - 1;
-      if (creditRow > NEWS.length - 1) {
-        const cx = Math.max(0, Math.floor((cols - ATTRIBUTION.length) / 2));
-        term.print(cx, creditRow, ATTRIBUTION.slice(0, cols), UI_DIM);
-      }
       spans = titleRowSpans(rows, cols);
       const white = colorToCss(COLOUR_WHITE);
       for (const span of spans) {

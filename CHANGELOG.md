@@ -9,9 +9,13 @@ change between minor versions. This file is maintained going forward - each
 notable change lands in the Unreleased section and moves under a version
 heading when that version is cut.
 
+`0.9.0` is the pre-release line. Everything ships and is tested at `0.9.x`;
+`1.0.0` is reserved for the public release. The bundled mods follow the same
+scheme and turn `1.0.0` with the game rather than ahead of it.
+
 ## [Unreleased]
 
-Current state of the project at version `0.1.0`. High level, what exists today:
+Current state of the project at version `0.9.0`. High level, what exists today:
 
 - A TypeScript port of Angband 4.2.6, held faithful to the original, with the
   upstream C tree kept buildable in `reference/` as the golden-master oracle.

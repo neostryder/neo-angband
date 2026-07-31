@@ -53,6 +53,7 @@
  */
 
 import { parseId } from "./ids";
+import { ENGINE_VERSION } from "../version";
 import type { SavedGame } from "../session/save";
 
 /* ------------------------------------------------------------------ *
@@ -153,11 +154,19 @@ export type OrphanStore = Record<string, OrphanEntry[]>;
  * ------------------------------------------------------------------ */
 
 /**
- * The base game's pack version (kept in sync with packages/core/package.json).
- * Core has no runtime version constant, so it is stated here; the manifest
- * records it as pack zero's version for the compatibility gate.
+ * The base game's pack version: pack zero's version in the save manifest.
+ *
+ * It used to be its own string literal, "kept in sync with
+ * packages/core/package.json" by hand, and was not - core moved to 0.9.0 while
+ * every new save went on recording core as 0.1.0. Core DOES have a runtime
+ * version constant (version.ts, deliberately outside the barrel so citing it
+ * makes no cycle), so it cites that instead.
+ *
+ * Changing it does not invalidate an older save: orphanedNamespaces skips the
+ * core pack outright, and versionMap's versions are only ever used to key
+ * quarantined MOD entities. An existing save keeps whatever it recorded.
  */
-export const CORE_PACK_VERSION = "0.1.0";
+export const CORE_PACK_VERSION = ENGINE_VERSION;
 
 /** A core-only manifest: the base game with no mods, deterministic. */
 export function coreOnlyManifest(): SaveManifest {

@@ -13,16 +13,22 @@
  */
 
 import type { Player } from "../player/player";
+import { ENGINE_VERSION } from "../version";
 import { MAX_HISCORES, WINNING_HOW } from "./types";
 import type { HighScore, ScoreStore } from "./types";
 
 /**
- * Default build id stamped into a record's `what` (score.c build_score uses
- * the global `buildid`). Kept local so this module does not depend on the
- * barrel's ENGINE_VERSION (which would be a circular import); the web shell
- * may pass a specific build id via BuildScoreDeps.buildid.
+ * Default build id stamped into a record's `what` (score.c build_score uses the
+ * global `buildid`). The web shell may pass a specific build id via
+ * BuildScoreDeps.buildid.
+ *
+ * This was a hardcoded copy of the version, on the reasoning that importing the
+ * barrel's ENGINE_VERSION would make a cycle. True of the barrel, but version.ts
+ * exists precisely so a core module can cite the version without it - and the
+ * copy did exactly what a copy does: the port went to 0.9.0 and every score kept
+ * being stamped 0.1.0.
  */
-const DEFAULT_BUILDID = "0.1.0";
+const DEFAULT_BUILDID = ENGINE_VERSION;
 
 /**
  * total_points (score.c L28): the whole score is max experience plus a flat
