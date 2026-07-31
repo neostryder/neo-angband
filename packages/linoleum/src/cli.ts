@@ -56,13 +56,12 @@ const LICENSE_NOTES: Record<string, readonly string[]> = {
 
 const SHOCKBOLT_WARNING: readonly string[] = [
   "Shockbolt's 64x64 tiles are copyright (C) Raymond Gaustadnes 2012 and are",
-  "bespoke-licensed (see reference/docs/copying.rst). He granted Neo Angband",
-  "free use of them, as the Angband tilesheet and as separate converted tiles,",
-  "ON THE CONDITION that the project does not profit from sales or other",
-  "income; a game that aims for profit needs a USD 250 licence from him.",
-  "That permission is Neo Angband's and does not travel to your project: if",
-  "you want to use this tileset in your own project, contact the author.",
-  "This converted pack is DERIVED from his art and carries the same terms.",
+  "bespoke-licensed (see reference/docs/copying.rst). Neo Angband bundles them,",
+  "as the tilesheet and as converted tiles, with the author's permission, and",
+  "that permission holds only while the project stays non-commercial.",
+  "It is Neo Angband's, not yours: this converted pack is DERIVED from his art",
+  "and carries the same terms, so if you want to use the tileset in your own",
+  "project, contact the author.",
 ];
 
 interface CliArguments {

@@ -51,10 +51,10 @@ faithful 4.2.6 with no mod loaded):
 | --- | --- | --- |
 | `qol` | content | Genuinely new conveniences, currently just auto-dig on walk. Built-in Angband `=` options are NOT here: they ship in core at their upstream defaults. See `QOL.md`. |
 | `bug-fixes` | content | An unofficial patch set for upstream 4.2.6 bugs core deliberately keeps. See `BUG_FIXES.md`. |
-| `linoleum` | tiles | An ALTERNATIVE tile engine: the Linoleum loose-pack format (individual PNGs addressed by readable target maps, plus variant pools) and the converter that builds a pack from any legacy tileset. It does NOT supply the game's graphics - the upstream Original / Adam Bolt / David Gervais / Nomad tile sets are core content (`grafmode.c` / `lib/tiles/list.txt`) and appear in the Graphics screen with no mod enabled. It ships one demonstration pack - the game's own 8x8 art, converted at build time - so enabling it adds an `Original Tiles (Linoleum)` row you can compare against core's own `Original Tiles`; packs you build yourself are yours. Declare a pack with `{ "grafID": >=100, "engine": "linoleum", "menuname": "...", "path": "..." }`. See `docs/LINOLEUM.md`. |
+| `neo-linoleum` | tiles | An ALTERNATIVE tile engine: the Linoleum loose-pack format (individual PNGs addressed by readable target maps, plus variant pools) and the converter that builds a pack from any legacy tileset. It does NOT supply the game's graphics - all five upstream tile sets (Original / Adam Bolt / David Gervais / Nomad / Shockbolt Dark and Light) are core content (`grafmode.c` / `lib/tiles/list.txt`) and appear in the Graphics screen with no mod enabled. It declares six packs, one per upstream set converted to a loose pack, so you can compare the two engines on identical art; packs you build yourself are yours. Declare a pack with `{ "grafID": >=100, "engine": "linoleum", "menuname": "...", "path": "..." }` - note `engine` is the FORMAT name and stays `linoleum`; `neo-linoleum` is the mod. See `docs/LINOLEUM.md`. |
 
 Enable one in the in-app mod manager (game menu -> Mods), or with
-`?mods=qol,bug-fixes,linoleum` for a one-off.
+`?mods=qol,bug-fixes,neo-linoleum` for a one-off.
 
 **The mod is the unit you switch; its patches ride with it.** While a mod is
 disabled its patches DO NOT EXIST - its code is never called, no hook is

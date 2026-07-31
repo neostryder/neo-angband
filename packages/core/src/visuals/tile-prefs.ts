@@ -29,6 +29,7 @@
  */
 
 import { projNameToIdx } from "../effects/effect";
+import type { PrefExprVars } from "./pref-expr";
 import type { ObjRegistry } from "../obj/bind";
 import type { ObjectKind, Flavor } from "../obj/types";
 import type { FeatureRegistry } from "../world/feature";
@@ -111,6 +112,19 @@ export interface TilePrefsDeps {
    * `%` lines are ignored (the web front end loads graf and flvr explicitly).
    */
   loadFile?: (name: string) => string | null;
+  /**
+   * The `?:` expression variables (ui-prefs.c L553-560): $SYS, $RACE, $CLASS.
+   *
+   * This is how a pack's "special player pictures" are selected. Every bundled
+   * pack ships an xtra-*.prf whose `monster:<player>` lines sit behind
+   * `[AND [EQU $CLASS ...] [EQU $RACE ...] ]` blocks, and upstream evaluates
+   * them against the LIVE character - reset_visuals(true) runs at
+   * ui_leave_init, after birth (ui-display.c L2703), and again whenever the
+   * graphics mode changes (main-win.c L1769). Omitted, those blocks all bypass
+   * and the pack's unconditional player line stands, which is the correct
+   * pre-character state.
+   */
+  vars?: PrefExprVars;
 }
 
 /* ------------------------------------------------------------------ */

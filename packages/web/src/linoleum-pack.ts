@@ -41,21 +41,24 @@
  * are one code path for both engines, and the only engine-specific step is
  * turning a slot back into a picture at blit time (drawTile below).
  *
- * KNOWN LIMITS, all shared with the tilesheet engine so the two agree:
- * - Conditional rules (a legacy `?:` expression, carried in a selector as
- *   `:when:<expr>`) are not evaluated and are skipped. In the packs the game
- *   ships, every conditional line is an xtra-*.prf `monster:<player>` remap
- *   keyed on $CLASS and $RACE, so a Gnome Druid currently draws the same player
- *   tile as a Human Warrior instead of its own.
+ * Conditional rules - a legacy `?:` expression, carried in a selector as
+ * `:when:<expr>` - are RE-EMITTED as `?:` lines and decided by core's shared
+ * evaluator (visuals/pref-expr.ts) against the character's race and class, so
+ * the loose pack picks the same per-race player picture the tilesheet does. This
+ * header carried two wrong claims about that before 2026-07-31, and both were
+ * the kind of wrong that stops a bug being found, so they are recorded here:
+ * - It said `<player>` was "the placeholder race at index 0, which the map
+ *   render never draws". Race 0 is exactly what the map render draws the player
+ *   from (grid_data_as_text's is_player branch, ported in visuals/map-text.ts
+ *   playerGlyph). What was missing was the caller - the player draw site passed
+ *   no tile at all.
+ * - It said conditional rules "are not evaluated and are skipped", which was
+ *   true of this engine and became a reason not to look at the shared parser -
+ *   where the real defects were: an expression evaluator that could not read a
+ *   nested bracket, and a number parser strict enough to drop every pref line
+ *   with a trailing comment.
  *
- *   This bullet used to say `<player>` was "the placeholder race at index 0,
- *   which the map render never draws". That was FALSE, and it was the kind of
- *   false that stops the bug being found: race 0 is exactly what the map render
- *   draws the player from (grid_data_as_text's is_player branch, ported in
- *   core/src/visuals/map-text.ts playerGlyph), and the UNconditional
- *   `monster:<player>` line in every graf-*.prf is a real player tile that both
- *   engines resolve. What was actually missing was the caller: the player draw
- *   site passed no tile at all. Fixed; only the $CLASS/$RACE variants remain.
+ * KNOWN LIMITS, all shared with the tilesheet engine so the two agree:
  * - `family` effect metadata (glow/tint/pulse) is parsed but not applied; a
  *   family draws its base asset, which is what the tilesheet shows.
  * - Double-height (overdraw) tiles are not drawn above their cell by either
@@ -101,8 +104,6 @@ export type LinoleumSlot =
 
 /** Rules a pack declared that this runtime could not turn into a slot. */
 export interface LinoleumSkipped {
-  /** `:when:<expr>` conditional rules (not evaluated - see the header). */
-  conditional: number;
   /** A family/pool id the pack never defines, or a pool with no members. */
   unresolved: number;
   /** Rules past the synthetic slot space (a pack with >16384 distinct tiles). */
@@ -116,6 +117,12 @@ export interface LinoleumIndex {
   /** Slot table, indexed by slot number (the decoded atlas row/col). */
   slots: readonly LinoleumSlot[];
   skipped: LinoleumSkipped;
+  /**
+   * How many rules carried a `:when:<expr>` condition. These are EMITTED, each
+   * behind its own `?:` line, so core's evaluator decides them against the
+   * current character - the count is diagnostics, not a shortfall.
+   */
+  conditional: number;
 }
 
 /**
@@ -213,7 +220,12 @@ export function linoleumPrefLines(input: {
   rules: readonly TargetRule[];
   pools?: readonly PoolDefinition[] | undefined;
   families?: ReadonlyMap<string, string> | undefined;
-}): { lines: string[]; slots: LinoleumSlot[]; skipped: LinoleumSkipped } {
+}): {
+  lines: string[];
+  slots: LinoleumSlot[];
+  skipped: LinoleumSkipped;
+  conditional: number;
+} {
   const poolById = new Map<string, PoolDefinition>();
   for (const pool of input.pools ?? []) poolById.set(pool.poolId, pool);
   const families = input.families ?? new Map<string, string>();
@@ -221,13 +233,18 @@ export function linoleumPrefLines(input: {
   const lines: string[] = [];
   const slots: LinoleumSlot[] = [];
   const slotOf = new Map<string, number>();
-  const skipped: LinoleumSkipped = { conditional: 0, unresolved: 0, overflow: 0 };
+  const skipped: LinoleumSkipped = { unresolved: 0, overflow: 0 };
+  let conditional = 0;
 
   for (const rule of input.rules) {
-    if (rule.selector.includes(":when:")) {
-      skipped.conditional += 1;
-      continue;
-    }
+    /* `<selector>:when:<expr>` - the converter's record of an xtra-*.prf `?:`
+     * block. Emit it AS a `?:` line and let core's evaluator decide it, so the
+     * loose pack honours $RACE/$CLASS exactly as the tilesheet does. */
+    const whenAt = rule.selector.indexOf(":when:");
+    const when = whenAt < 0 ? null : rule.selector.slice(whenAt + ":when:".length);
+    const bare: TargetRule =
+      whenAt < 0 ? rule : { ...rule, selector: rule.selector.slice(0, whenAt) };
+    if (when !== null) conditional += 1;
     let slot: LinoleumSlot | null = null;
     if (rule.kind === "asset") {
       slot = { kind: "asset", asset: rule.value };
@@ -255,10 +272,15 @@ export function linoleumPrefLines(input: {
       slotOf.set(key, index);
     }
     const { attr, char } = slotToAtlas(index);
-    lines.push(`${rule.type}:${prefSelector(rule)}:${hexByte(attr)}:${hexByte(char)}`);
+    /* The `?:1` after a conditional line closes its block. A generated file has
+     * no later `?:` to reset the bypass flag the way an authored pref file does,
+     * and without it one false condition would swallow every rule after it. */
+    if (when !== null) lines.push(`?:${when}`);
+    lines.push(`${bare.type}:${prefSelector(bare)}:${hexByte(attr)}:${hexByte(char)}`);
+    if (when !== null) lines.push("?:1");
   }
 
-  return { lines, slots, skipped };
+  return { lines, slots, skipped, conditional };
 }
 
 /**
@@ -272,10 +294,10 @@ export function buildLinoleumIndex(input: {
   families?: ReadonlyMap<string, string> | undefined;
   deps: TilePrefsDeps;
 }): LinoleumIndex {
-  const { lines, slots, skipped } = linoleumPrefLines(input);
+  const { lines, slots, skipped, conditional } = linoleumPrefLines(input);
   const map = new TileMap();
   parseTilePrefsInto(map, lines.join("\n"), input.deps);
-  return { map, slots, skipped };
+  return { map, slots, skipped, conditional };
 }
 
 /** One cached asset image and its load state. */

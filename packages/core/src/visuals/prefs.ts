@@ -33,6 +33,8 @@ import { lookupTrap } from "../world/trap";
 import type { TrapKind } from "../world/trap";
 import type { FeatureRegistry } from "../world/feature";
 import { GlyphTable } from "./glyph-table";
+import { prefExprBypasses } from "./pref-expr";
+import type { PrefExprVars } from "./pref-expr";
 import { BOLT, LIGHTING, TileMap } from "./tile-prefs";
 import type { TileAtlas, TilePrefsDeps } from "./tile-prefs";
 
@@ -113,20 +115,36 @@ export interface PrefSink {
 }
 
 /**
- * parse_int / parse_uint (parser.c L315: `strtol(tok, &z, 0)`): base-0 integer
- * parsing - 0x/0X hex, a leading 0 as octal, otherwise decimal, with an
- * optional sign. The whole trimmed token must be a clean number, or the parser
- * reports NOT_NUMBER.
+ * parse_int / parse_uint (parser.c L313-320: `strtol(tok, &z, 0)`), including
+ * strtol's LENIENCY, which is load-bearing: it skips leading whitespace, takes
+ * an optional sign, reads the longest valid base-0 digit run (0x/0X hex, a
+ * leading 0 as octal, otherwise decimal) and simply STOPS at the first
+ * character it cannot use. The parser reports NOT_NUMBER only when nothing at
+ * all was consumed (`z == tok`) - trailing text is discarded in silence.
+ *
+ * Requiring a clean token instead - which this did until 2026-07-31 - throws
+ * away every pref line with a trailing comment. Measured across the five
+ * bundled packs' 16 pref files: 132 such lines, ALL of them in
+ * shockbolt/xtra-shb.prf, and all 132 of them are the `monster:<player>` lines
+ * that end `0x83:0x87 #  `. So Shockbolt's special player pictures never reached
+ * the tile map at all, whatever the character was.
+ *
+ * "0x" with no hex digits reads as the plain 0 that precedes it, and "08" as 0,
+ * both exactly as strtol does.
  */
 export function parsePrefNum(tok: string): number | null {
-  const s = tok.trim();
-  if (/^[-+]?0[xX][0-9a-fA-F]+$/.test(s)) return parseInt(s, 16);
-  if (/^[-+]?0[0-7]+$/.test(s)) {
-    const neg = s.startsWith("-");
-    return (neg ? -1 : 1) * parseInt(s.replace(/^[-+]/, ""), 8);
-  }
-  if (/^[-+]?\d+$/.test(s)) return parseInt(s, 10);
-  return null;
+  const m = /^\s*([-+]?)(?:0[xX]([0-9a-fA-F]+)|0([0-7]*)|([0-9]+))/.exec(tok);
+  if (!m) return null;
+  const sign = m[1] === "-" ? -1 : 1;
+  const mag =
+    m[2] !== undefined
+      ? parseInt(m[2], 16)
+      : m[3] !== undefined
+        ? m[3] === ""
+          ? 0
+          : parseInt(m[3], 8)
+        : parseInt(m[4]!, 10);
+  return sign * mag;
 }
 
 /**
@@ -443,44 +461,6 @@ const parseEntryRenderer: Handler = (fields, sink) => {
  * process_pref_file
  * ------------------------------------------------------------------------ */
 
-/**
- * process_pref_file_expr (ui-prefs.c L453-575) reduced to what a pref file in
- * this port can actually ask. Upstream's expression language reads the host's
- * $SYS/$GRAF/$RACE/$CLASS/$PLAYER variables and supports the AND/OR/NOT/IOR
- * prefix forms; the bundled packs use only the `[EQU $GRAF <id>]` shape and a
- * bare variable. Anything this cannot evaluate yields "?" - a non-"0" value, so
- * the block is NOT bypassed, which is upstream's behaviour for an unknown
- * variable too (L500: an unknown $VAR expands to "?").
- */
-function evalPrefExpr(expr: string, vars: Readonly<Record<string, string>>): string {
-  const s = expr.trim();
-  const bracket = /^\[\s*(\w+)\s+(.*?)\s*\]$/.exec(s);
-  if (bracket) {
-    const op = bracket[1]!.toUpperCase();
-    const args = bracket[2]!.split(/\s+/).filter((a) => a.length > 0);
-    const vals = args.map((a) => (a.startsWith("$") ? vars[a.slice(1)] ?? "?" : a));
-    switch (op) {
-      case "EQU":
-        return vals.every((v) => v === vals[0]) ? "1" : "0";
-      case "LEQ":
-        return vals.every((v, i) => i === 0 || vals[i - 1]! <= v) ? "1" : "0";
-      case "GEQ":
-        return vals.every((v, i) => i === 0 || vals[i - 1]! >= v) ? "1" : "0";
-      case "NOT":
-        return vals.every((v) => v === "0") ? "1" : "0";
-      case "AND":
-        return vals.every((v) => v !== "0") ? "1" : "0";
-      case "OR":
-      case "IOR":
-        return vals.some((v) => v !== "0") ? "1" : "0";
-      default:
-        return "?";
-    }
-  }
-  if (s.startsWith("$")) return vars[s.slice(1)] ?? "?";
-  return s;
-}
-
 const HANDLERS: Readonly<Record<string, Handler>> = {
   object: parseObject,
   monster: parseMonster,
@@ -498,8 +478,13 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
 
 /** Options process_pref_file_named's caller controls. */
 export interface ProcessPrefOptions {
-  /** The $VAR values `?` expression lines test (GRAF, SYS, RACE, CLASS, ...). */
-  vars?: Readonly<Record<string, string>>;
+  /**
+   * The $VAR values `?` expression lines test. Upstream has exactly three -
+   * SYS, RACE and CLASS (ui-prefs.c L553-560) - and the graphics packs' player
+   * pictures are selected entirely by RACE and CLASS, so a caller that omits
+   * them gets whatever the pack's unconditional lines set.
+   */
+  vars?: PrefExprVars;
   /**
    * get_parser_error_limit(): stop after this many bad lines (0 = no limit).
    * Upstream's default is 0 (ui-init.c / z-util), so every error is reported.
@@ -544,7 +529,7 @@ export function processPrefText(
     /* `?` is evaluated even inside a bypassed block - that is how a block ends
      * (parse_prefs_expr has no bypass guard, ui-prefs.c L577). */
     if (dir === "?") {
-      bypass = evalPrefExpr(fields.join(":"), opts.vars ?? {}) === "0";
+      bypass = prefExprBypasses(fields.join(":"), opts.vars ?? {});
       continue;
     }
     if (bypass) continue;
@@ -980,7 +965,12 @@ export function parseTilePrefsInto(
   text: string,
   deps: TilePrefsDeps,
 ): void {
-  processPrefText(text, deps as PrefDeps, tileMapSink(map, deps));
+  /* deps.vars is what selects the pack's player picture: the `?:` blocks in
+   * xtra-*.prf test $RACE and $CLASS, and with neither supplied only the pack's
+   * unconditional monster:<player> line survives. */
+  processPrefText(text, deps as PrefDeps, tileMapSink(map, deps), {
+    ...(deps.vars ? { vars: deps.vars } : {}),
+  });
 }
 
 /** Parse pref text into a fresh TileMap. */

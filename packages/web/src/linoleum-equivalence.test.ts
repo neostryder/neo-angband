@@ -48,7 +48,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import { beforeAll, describe, expect, it } from "vitest";
-import { bindCore, LIGHTING, parseTilePrefsInto, TileMap } from "@neo-angband/core";
+import {
+  bindCore,
+  LIGHTING,
+  parseTilePrefsInto,
+  TileMap,
+  tileForMonster,
+} from "@neo-angband/core";
 import type { TileAtlas, TilePrefsDeps } from "@neo-angband/core";
 import { ALL_PACKS, buildPackExport } from "@neo-angband/linoleum";
 import type { PackConfig } from "@neo-angband/linoleum";
@@ -81,6 +87,10 @@ const PACKS: readonly { key: string; ascii: number }[] = [
   // nomad's graf-nmd.prf gives its two joke monsters (Red-Hatted Elf, Father
   // Christmas) a plain colour/char pair instead of a tile.
   { key: "nomad", ascii: 2 },
+  // Shockbolt was missing from this list until 2026-07-31, and it is the pack
+  // that matters most for the conditional rules: its xtra-shb.prf carries 132
+  // `monster:<player>` remaps, more than the other four packs put together.
+  { key: "shockbolt-dark", ascii: 0 },
 ];
 
 function readText(path: string): string {
@@ -108,6 +118,13 @@ function regionKey(png: PNG, x0: number, y0: number, w: number, h: number): stri
   return out.join(",");
 }
 
+/**
+ * The `?:` variables both engines are given, so the comparison covers the packs'
+ * conditional (xtra-*.prf `monster:<player>`) rules rather than bypassing them on
+ * both sides. Every bundled pack defines a tile for this pair.
+ */
+const EQUIV_VARS = { RACE: "Hobbit", CLASS: "Ranger" } as const;
+
 /** One pack under test: both engines' views of it, plus a pixel comparator. */
 interface Subject {
   config: PackConfig;
@@ -134,6 +151,7 @@ function prepare(key: string): Subject {
   const sheetMap = new TileMap();
   parseTilePrefsInto(sheetMap, readText(join(sourceDir, config.primaryPref)), {
     ...deps,
+    vars: EQUIV_VARS,
     loadFile: (name: string) => {
       const path = join(sourceDir, name);
       return existsSync(path) ? readText(path) : null;
@@ -146,7 +164,11 @@ function prepare(key: string): Subject {
   const families = existsSync(familiesPath)
     ? parseFamiliesFile(readText(familiesPath))
     : new Map<string, string>();
-  const loose = buildLinoleumIndex({ rules: targets, families, deps });
+  const loose = buildLinoleumIndex({
+    rules: targets,
+    families,
+    deps: { ...deps, vars: EQUIV_VARS },
+  });
 
   const assetPixels = new Map<string, string | null>();
   return {
@@ -155,10 +177,22 @@ function prepare(key: string): Subject {
     loose,
     sheetPixels: (atlas: TileAtlas): string | null => {
       const code = tileCode(atlas.attr, atlas.char);
+      /* sourceTileRectangle (convert.ts L224-241): a row inside a pack's legacy
+       * OVERDRAW band is a double-height tile whose upper half lives in the row
+       * ABOVE it, and the exporter keeps the whole bottom-anchored rectangle. So
+       * the comparator has to read the same rectangle - cropping one cell here
+       * compared a 64x64 window against a 64x128 asset and called the pack
+       * wrong. That is what kept Shockbolt, the only pack with an overdraw band,
+       * out of this list: its five shop entrances sit on row 27. */
       const x0 = code.col * tileWidth;
-      const y0 = code.row * tileHeight;
-      if (x0 + tileWidth > sheet.width || y0 + tileHeight > sheet.height) return null;
-      return regionKey(sheet, x0, y0, tileWidth, tileHeight);
+      const tall =
+        (config.overdrawRow ?? 0) > 0 &&
+        code.row >= (config.overdrawRow ?? 0) &&
+        code.row <= (config.overdrawMax ?? 0);
+      const y0 = (code.row - (tall ? 1 : 0)) * tileHeight;
+      const h = tileHeight * (tall ? 2 : 1);
+      if (x0 + tileWidth > sheet.width || y0 < 0 || y0 + h > sheet.height) return null;
+      return regionKey(sheet, x0, y0, tileWidth, h);
     },
     loosePixels: (atlas: TileAtlas): string | null => {
       const slot = loose.slots[atlasToSlot(tileCode(atlas.attr, atlas.char))];
@@ -301,12 +335,24 @@ for (const { key, ascii } of PACKS) {
       expect(compared).toBe(entities.length - ascii);
     });
 
-    it("reads every rule the pack declares, skipping only the conditionals", () => {
-      // The bundled packs' only conditional rules are the xtra-*.prf <player>
-      // remaps; nothing else is dropped, so no other tile can go missing.
+    it("reads every rule the pack declares, dropping none of them", () => {
+      // Nothing is dropped, so no tile can go missing. The conditional rules -
+      // the xtra-*.prf <player> remaps - are no longer among the casualties:
+      // they are emitted as `?:` blocks and decided by the same evaluator the
+      // sheet uses, which is why the player row above compares at all.
       expect(subject.loose.skipped.unresolved).toBe(0);
       expect(subject.loose.skipped.overflow).toBe(0);
-      expect(subject.loose.skipped.conditional).toBeGreaterThan(0);
+      expect(subject.loose.conditional).toBeGreaterThan(0);
+    });
+
+    it("both engines pick the SAME player tile for this race and class", () => {
+      // The point of threading $RACE/$CLASS through both: race 0 is the player,
+      // and a pack whose xtra file remaps it must move BOTH engines or neither.
+      const sheet = tileForMonster(subject.sheetMap, 0);
+      const loose = tileForMonster(subject.loose.map, 0);
+      expect(sheet, "the sheet maps the player").not.toBeNull();
+      expect(loose, "the loose pack maps the player").not.toBeNull();
+      expect(subject.loosePixels(loose!)).toBe(subject.sheetPixels(sheet!));
     });
   });
 }

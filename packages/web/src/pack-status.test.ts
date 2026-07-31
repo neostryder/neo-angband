@@ -63,7 +63,7 @@ describe("diskPackStatus reports the folder count AND the bundled count", () => 
      *
      * Every directory under packages/web/mods/, so a new one has to be added
      * here deliberately. */
-    const dirs = ["qol", "bug-fixes", "linoleum", "demo-modtest", "demo-sandbox", "demo-trusted"];
+    const dirs = ["qol", "bug-fixes", "neo-linoleum", "demo-modtest", "demo-sandbox", "demo-trusted"];
     const listed = dirs.filter((id) => isShippedMod(id));
     expect(diskPackStatus().bundledCount).toBe(listed.length);
     /* And the release set really is the three shipped mods - the property the
@@ -71,7 +71,7 @@ describe("diskPackStatus reports the folder count AND the bundled count", () => 
     expect(dirs.filter((id) => isShippedMod(id, false))).toEqual([
       "qol",
       "bug-fixes",
-      "linoleum",
+      "neo-linoleum",
     ]);
   });
 
